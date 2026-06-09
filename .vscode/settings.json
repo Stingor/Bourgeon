@@ -1,0 +1,4 @@
+{
+    "cmake.configureArgs": ["-A", "Win32", "-DPYTHON_EXECUTABLE=C:/Python39-32/python.exe"],
+    "cmake.buildDirectory": "${workspaceFolder}/build"
+}
