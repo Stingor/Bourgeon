@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 # Must come before project() — enables CMAKE_MSVC_RUNTIME_LIBRARY property
 # which writes <RuntimeLibrary> directly into .vcxproj, overriding any /MT or /MD
-# flags that subprojects (yaml-cpp, pybind11) inject into CMAKE_CXX_FLAGS_*.
+# flags that subprojects (yaml-cpp) inject into CMAKE_CXX_FLAGS_*.
 cmake_policy(SET CMP0091 NEW)
 
 project(Bourgeon

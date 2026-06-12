@@ -10,9 +10,10 @@ set(BOURGEON_FILES
         "ddraw/proxy_idirectdraw.cc"
         "ddraw/proxy_idirectdraw.h"
 
-	# Python
-	"python/bourgeon.cc"
-	"python/ragnarok_client.cc"
+	# Plugins (compiled-in, no runtime scripting)
+	"plugins/plugin.h"
+	"plugins/moonlight_ui.cc"
+	"plugins/moonlight_ui.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
@@ -61,27 +62,6 @@ set(BOURGEON_FILES
         # D3D9 hook (for clients that use Direct3D9 instead of DX7)
         "d3d9/d3d9_hook.cc"
         "d3d9/d3d9_hook.h"
-
-        # UI
-        "ui/widget.h"
-        "ui/window.cc"
-        "ui/window.h"
-        "ui/window_manager.cc"
-        "ui/window_manager.h"
-        "ui/text.cc"
-        "ui/text.h"
-        "ui/button.cc"
-        "ui/button.h"
-        "ui/check_box.cc"
-        "ui/check_box.h"
-        "ui/text_input.cc"
-        "ui/text_input.h"
-        "ui/combo.cc"
-        "ui/combo.h"
-        "ui/separator.cc"
-        "ui/separator.h"
-        "ui/list_box.cc"
-        "ui/list_box.h"
 )
 foreach(source IN LISTS BOURGEON_FILES)
     get_filename_component(source_path "${source}" PATH)
@@ -93,24 +73,17 @@ add_library(bourgeon MODULE ${BOURGEON_FILES})
 set_target_properties(bourgeon PROPERTIES OUTPUT_NAME "ddraw")
 target_include_directories(bourgeon PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(bourgeon PRIVATE "/MT")
-target_compile_definitions(bourgeon PUBLIC -DWITH_THREAD -DNOMINMAX)
+target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-target_link_libraries(bourgeon PRIVATE pybind11::embed spdlog yaml-cpp imgui)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui)
 
 if(RO_DEPLOY_DIR)
     add_custom_command(TARGET bourgeon POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:bourgeon>"
             "${RO_DEPLOY_DIR}/ddraw.dll"
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "${RO_DEPLOY_DIR}/plugins"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_SOURCE_DIR}/examples"
-            "${RO_DEPLOY_DIR}/plugins"
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "${RO_DEPLOY_DIR}/plugins/config"
         COMMENT "Deployed to ${RO_DEPLOY_DIR}"
     )
 endif()

@@ -25,15 +25,7 @@ void ModeMgr::FireModeSwitch(ModeType mode_type, const char* map_name) {
   s_current_mode = mode_type;
 
   LogInfo("OnModeSwitch mode={}", static_cast<int>(mode_type));
-  auto registrees = Bourgeon::Instance().GetCallbackRegistrees("OnModeSwitch");
-  for (auto registree : registrees) {
-    try {
-      registree(mode_type, map_name);
-    } catch (pybind11::error_already_set& error) {
-      LogError(error.what());
-      Bourgeon::Instance().UnregisterCallback("OnModeSwitch", registree);
-    }
-  }
+  Bourgeon::Instance().FireModeSwitch(mode_type, map_name);
 }
 
 void ModeMgr::SwitchHook(ModeType mode_type, char const* map_name) {

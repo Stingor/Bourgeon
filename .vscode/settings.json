@@ -6,7 +6,6 @@
     "cmake.configureArgs": [
         "-A", "Win32",
         "-DCMAKE_GENERATOR_INSTANCE=C:/Program Files/Microsoft Visual Studio/18/Community",
-        "-DPYTHON_EXECUTABLE=C:/Python39-32/python.exe",
         "-DRO_DEPLOY_DIR=E:/Nouveau dossier/Moonlight-Destiny"
     ]
 }

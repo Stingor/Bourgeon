@@ -3,20 +3,13 @@
 #include <Windows.h>
 
 #include "imgui.h"
+#include "plugins/moonlight_ui.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
-    : interpreter_(),
-      callbacks_(),
-      last_tick_count_(),
-      window_mgr_(),
-      log_lines_(),
-      client_(),
-      loaded_plugins_() {}
+    : plugins_(), last_tick_count_(), log_lines_(), client_() {}
 
 RagnarokClient& Bourgeon::client() { return client_; }
-
-ui::WindowManager& Bourgeon::window_manager() { return window_mgr_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -27,7 +20,7 @@ bool Bourgeon::Initialize() {
   }
 
   LogInfo("Bourgeon initialized successfully!");
-  LoadPlugins("./plugins");
+  LoadPlugins();
 
   return true;
 }
@@ -41,12 +34,11 @@ void Bourgeon::OnTick() {
   }
   last_tick_count_ = current_tick_count;
 
-  for (auto& registree : callbacks_["OnTick"]) {
+  for (auto& plugin : plugins_) {
     try {
-      registree();
-    } catch (pybind11::error_already_set& error) {
-      LogError(error.what());
-      UnregisterCallback("OnTick", registree);
+      plugin->OnTick();
+    } catch (const std::exception& error) {
+      LogError("[{}] OnTick: {}", plugin->name(), error.what());
     }
   }
 }
@@ -56,7 +48,7 @@ void Bourgeon::AddLogLine(std::string log_line) {
   log_lines_.emplace_back(std::move(log_line));
 }
 
-void Bourgeon::RenderUI() const {
+void Bourgeon::RenderUI() {
 #ifdef BOURGEON_DEBUG
   ImGui::ShowDemoWindow();
 #endif  // BOURGEON_DEBUG
@@ -64,76 +56,72 @@ void Bourgeon::RenderUI() const {
   // Render Bourgeon's main window
   ShowBourgeonWindow();
 
-  // Render windows created by plugins
-  window_mgr_.RenderWindows();
-}
-
-void Bourgeon::RegisterCallback(const std::string& callback_name,
-                                const pybind11::object& function) {
-  try {
-    LogInfo("{} has been registered to {}",
-            function.attr("__name__").cast<std::string>(), callback_name);
-  } catch (pybind11::error_already_set& error) {
-    LogError("{}", error.what());
-  }
-  callbacks_[callback_name].push_back(function);
-}
-
-void Bourgeon::UnregisterCallback(const std::string& callback_name,
-                                  const pybind11::object& function) {
-  for (auto it = callbacks_[callback_name].begin();
-       it != callbacks_[callback_name].end(); ++it) {
-    if (function.ptr() == it->ptr()) {
-      callbacks_[callback_name].erase(it);
-      LogInfo("{} has been unregistered from {}",
-              function.attr("__name__").cast<std::string>(), callback_name);
-      break;
-    }
-  }
-}
-
-const std::vector<pybind11::object>& Bourgeon::GetCallbackRegistrees(
-    const std::string& callback_name) {
-  return callbacks_[callback_name];
-}
-
-void Bourgeon::LoadPlugins(const std::string& folder) {
-  using namespace pybind11;
-
-  std::string search_path = folder + "/*.py";
-  WIN32_FIND_DATA fd;
-  HANDLE h_find = FindFirstFileA(search_path.c_str(), &fd);
-
-  if (h_find == INVALID_HANDLE_VALUE) {
-    return;
-  }
-
-  do {
-    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      continue;
-    }
-
-    std::string filename(fd.cFileName);
-    LogInfo("Loading {}", filename);
+  // Render windows drawn by plugins
+  for (auto& plugin : plugins_) {
     try {
-      eval_file(folder + '/' + filename,
-                module::import("__main__").attr("__dict__"));
-      loaded_plugins_.emplace_back(std::move(filename));
-    } catch (error_already_set& error) {
-      LogError("{}", error.what());
+      plugin->OnRenderUI();
+    } catch (const std::exception& error) {
+      LogError("[{}] OnRenderUI: {}", plugin->name(), error.what());
     }
-  } while (FindNextFileA(h_find, &fd));
+  }
+}
 
-  FindClose(h_find);
+void Bourgeon::FireModeSwitch(ModeMgr::ModeType mode_type,
+                              const char* map_name) {
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->OnModeSwitch(mode_type, map_name);
+    } catch (const std::exception& error) {
+      LogError("[{}] OnModeSwitch: {}", plugin->name(), error.what());
+    }
+  }
+}
+
+void Bourgeon::FireTalkType(const char* chat_buffer) {
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->OnTalkType(chat_buffer);
+    } catch (const std::exception& error) {
+      LogError("[{}] OnTalkType: {}", plugin->name(), error.what());
+    }
+  }
+}
+
+void Bourgeon::FireChatMessage(const char* chat_buffer) {
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->OnChatMessage(chat_buffer);
+    } catch (const std::exception& error) {
+      LogError("[{}] OnChatMessage: {}", plugin->name(), error.what());
+    }
+  }
+}
+
+void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->OnKeyDown(vkey, new_key, accurate_key);
+    } catch (const std::exception& error) {
+      LogError("[{}] OnKeyDown: {}", plugin->name(), error.what());
+    }
+  }
+}
+
+void Bourgeon::LoadPlugins() {
+  plugins_.emplace_back(std::make_unique<MoonlightUi>());
+
+  for (const auto& plugin : plugins_) {
+    LogInfo("Loaded plugin: {}", plugin->name());
+  }
 }
 
 void Bourgeon::ShowBourgeonWindow() const {
   ImGui::Begin("Bourgeon");
 
-  // List of successfully loaded plugins
+  // List of loaded plugins
   if (ImGui::CollapsingHeader("Loaded plugins")) {
-    for (auto& plugin_name : loaded_plugins_) {
-      ImGui::BulletText("%s", plugin_name.c_str());
+    for (const auto& plugin : plugins_) {
+      ImGui::BulletText("%s", plugin->name());
     }
   }
 

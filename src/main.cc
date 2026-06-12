@@ -29,7 +29,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst_dll, DWORD fdw_reason,
     case DLL_PROCESS_DETACH:
       if (lpv_reserved != nullptr) {
         // Process is terminating — forcefully exit before C++ destructors
-        // (pybind11, hooks, background threads) run on partially-freed memory.
+        // (hooks, background threads) run on partially-freed memory.
         TerminateProcess(GetCurrentProcess(), 0);
       }
       FreeDDraw();

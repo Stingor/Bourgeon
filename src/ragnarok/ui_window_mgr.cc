@@ -63,16 +63,7 @@ void UIWindowMgr::UIWindowMgrHook() {
 
 bool UIWindowMgr::ProcessPushButtonHook(unsigned long vkey, int new_key,
                                         int accurate_key) {
-  auto registrees = Bourgeon::Instance().GetCallbackRegistrees("OnKeyDown");
-
-  for (auto registree : registrees) {
-    try {
-      registree(vkey, new_key, accurate_key);
-    } catch (pybind11::error_already_set& error) {
-      LogError(error.what());
-      Bourgeon::Instance().UnregisterCallback("OnKeyDown", registree);
-    }
-  }
+  Bourgeon::Instance().FireKeyDown(vkey, new_key, accurate_key);
 
   return ProcessPushButtonRef(this, vkey, new_key, accurate_key);
 }
@@ -82,19 +73,7 @@ size_t UIWindowMgr::SendMsgHook(UIMessage message, int val1, int val2, int val3,
   if (message != UIMessage::UIM_PUSHINTOCHATHISTORY)
     return SendMsgRef(this, static_cast<int>(message), val1, val2, val3, val4);
 
-  auto registrees = Bourgeon::Instance().GetCallbackRegistrees("OnChatMessage");
-
-  const char* chat_buffer = reinterpret_cast<const char*>(val1);
-  for (auto registree : registrees) {
-    try {
-      pybind11::str py_chat = pybind11::reinterpret_steal<pybind11::str>(
-          PyUnicode_DecodeLatin1(chat_buffer, strlen(chat_buffer), nullptr));
-      registree(py_chat);
-    } catch (pybind11::error_already_set& error) {
-      LogError(error.what());
-      Bourgeon::Instance().UnregisterCallback("OnChatMessage", registree);
-    }
-  }
+  Bourgeon::Instance().FireChatMessage(reinterpret_cast<const char*>(val1));
 
   return SendMsgRef(this, static_cast<int>(message), val1, val2, val3, val4);
 }
