@@ -1,2 +1,3 @@
 build/*
 Win32/*
+plugins/config/discord_config.py

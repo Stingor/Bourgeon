@@ -13,5 +13,9 @@ add_library(imgui STATIC
 
   "imgui/backends/imgui_impl_win32.cpp"
   "imgui/backends/imgui_impl_win32.h"
+
+  "imgui/backends/imgui_impl_dx9.cpp"
+  "imgui/backends/imgui_impl_dx9.h"
 )
 target_include_directories(imgui PUBLIC "imgui")
+target_link_libraries(imgui PUBLIC d3d9)

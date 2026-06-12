@@ -3,6 +3,13 @@
 
 #include <d3d.h>
 
+// Start the background thread that patches IDirect3DDevice7::EndScene vtable.
+// Must be called after LoadDDraw() so the system ddraw.dll functions are available.
+void InitDX7Hook();
+
+// Set to true once the DX7 ImGui backend is live; used to suppress D3D9 hook.
+extern bool g_imgui_dx7_active;
+
 #define PROXY0(name) \
   { return m_Instance->name(); }
 #define PROXY1(name) \

@@ -24,6 +24,9 @@ Session::Pointer ObjectFactory::CreateSession(
       case 20190116:
         result = std::make_unique<Session_20190116>(session_configuration);
         break;
+      case 20250716:
+        result = std::make_unique<Session_20250716>(session_configuration);
+        break;
       default:
         result = nullptr;
         break;

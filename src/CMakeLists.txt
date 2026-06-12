@@ -58,6 +58,10 @@ set(BOURGEON_FILES
         "imgui/imgui_impl_dx7.cc"
         "imgui/imgui_impl_dx7.h"
 
+        # D3D9 hook (for clients that use Direct3D9 instead of DX7)
+        "d3d9/d3d9_hook.cc"
+        "d3d9/d3d9_hook.h"
+
         # UI
         "ui/widget.h"
         "ui/window.cc"
@@ -94,3 +98,19 @@ target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSIO
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
 target_link_libraries(bourgeon PRIVATE pybind11::embed spdlog yaml-cpp imgui)
+
+if(RO_DEPLOY_DIR)
+    add_custom_command(TARGET bourgeon POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:bourgeon>"
+            "${RO_DEPLOY_DIR}/ddraw.dll"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${RO_DEPLOY_DIR}/plugins"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/examples"
+            "${RO_DEPLOY_DIR}/plugins"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${RO_DEPLOY_DIR}/plugins/config"
+        COMMENT "Deployed to ${RO_DEPLOY_DIR}"
+    )
+endif()

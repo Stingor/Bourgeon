@@ -29,27 +29,22 @@ class BasicInfoWindow:
 basic_info_window = None
 
 
+_tick_count = 0
+
 def on_tick() -> None:
-    """
-	OnTick callback.
-	"""
-    global basic_info_window
-    if basic_info_window:
-        basic_info_window.update(client.get_hp(), client.get_max_hp(),
-                                 client.get_sp(), client.get_max_sp())
+    global _tick_count
+    _tick_count += 1
+    if _tick_count % 20 == 0:  # every ~2 seconds
+        hp, max_hp = client.get_hp(), client.get_max_hp()
+        sp, max_sp = client.get_sp(), client.get_max_sp()
+        if max_hp > 0:
+            client.print_in_chat(f"HP: {hp}/{max_hp}  SP: {sp}/{max_sp}", 0x00FF00, 0)
 
 
 def on_mode_switch(mode_type: Mode, _map_name: str) -> None:
-    """
-	OnModeSwitch callback.
-	"""
-    global basic_info_window
+    bourgeon.log(f"OnModeSwitch: {mode_type}")
     if mode_type == Mode.Game:
-        basic_info_window = BasicInfoWindow(client.get_char_name())
-        basic_info_window.open()
-    elif mode_type == Mode.Login:
-        if basic_info_window:
-            basic_info_window.close()
+        client.print_in_chat("Bourgeon loaded!", 0x7289DA, 0)
 
 
 bourgeon.register_callback("OnTick", on_tick)

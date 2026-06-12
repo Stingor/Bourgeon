@@ -1,4 +1,12 @@
 {
-    "cmake.configureArgs": ["-A", "Win32", "-DPYTHON_EXECUTABLE=C:/Python39-32/python.exe"],
-    "cmake.buildDirectory": "${workspaceFolder}/build"
+    "cmake.useCMakePresets": "never",
+    "cmake.buildType": "Release",
+    "cmake.cmakePath": "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureArgs": [
+        "-A", "Win32",
+        "-DCMAKE_GENERATOR_INSTANCE=C:/Program Files/Microsoft Visual Studio/18/Community",
+        "-DPYTHON_EXECUTABLE=C:/Python39-32/python.exe",
+        "-DRO_DEPLOY_DIR=E:/Nouveau dossier/Moonlight-Destiny"
+    ]
 }

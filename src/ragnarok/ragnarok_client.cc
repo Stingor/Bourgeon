@@ -8,6 +8,7 @@
 
 #include "backends/imgui_impl_win32.h"
 #include "imgui/imgui_impl_dx7.h"
+#include "imgui_internal.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
@@ -43,6 +44,10 @@ RagnarokClient::RagnarokClient()
 RagnarokClient::~RagnarokClient() { ImGui_ImplWin32_Shutdown(); }
 
 bool RagnarokClient::Initialize() {
+  // Hook CreateWindowExA unconditionally so ImGui gets initialized when the
+  // game window is created, even for unsupported clients.
+  SetupImgui();
+
   timestamp_ = GetClientTimeStamp();
   if (timestamp_ == kUnknownTimeStamp) {
     LogError("Failed to determine client date");
@@ -89,9 +94,6 @@ bool RagnarokClient::Initialize() {
   if (!game_mode_) {
     return false;
   }
-
-  // Setup hooks required for imgui's IO
-  SetupImgui();
 
   return true;
 }
@@ -207,6 +209,21 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
     return hwnd;
   }
 
+  // Only hook the FIRST game window. d3d9.dll internally calls CreateWindowExA
+  // for its "Direct3DWindowClass" window during device creation (triggered by
+  // our WatchThread). If we re-run this setup, WndProcRef gets overwritten to
+  // d3d9's DefWindowProc trampoline, so the game's WndProc is never reached,
+  // leaving the connection coroutine's task pointer uninitialised → crash.
+  if (WndProcRef != nullptr) {
+    LogInfo("CreateWindowExAHook: skipping re-init for class='{}' (already set up)",
+            lpClassName ? lpClassName : "(null)");
+    return hwnd;
+  }
+
+  LogInfo("CreateWindowExAHook: class='{}' hwnd={:x}",
+          lpClassName ? lpClassName : "(null)",
+          reinterpret_cast<uintptr_t>(hwnd));
+
   // Hook WndProc
   WNDCLASSEXA wnd_class;
   wnd_class.cbSize = sizeof(wnd_class);
@@ -221,8 +238,9 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   WndProcRef = reinterpret_cast<WindowProcFunc>(HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(wnd_class.lpfnWndProc),
       reinterpret_cast<uint8_t*>(WindowProcHook)));
-  LogDebug("Hooked WndProc: 0x{:x}",
-           reinterpret_cast<size_t>(wnd_class.lpfnWndProc));
+  LogInfo("CreateWindowExAHook: WndProc hooked, proc={:x} trampoline={:x}",
+          reinterpret_cast<uintptr_t>(wnd_class.lpfnWndProc),
+          reinterpret_cast<uintptr_t>(WndProcRef));
 
   // Start initializing imgui
   ImGui::CreateContext();
@@ -235,17 +253,61 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   return hwnd;
 }
 
+// Check if client-space coordinates (mx, my) fall inside any ImGui window that
+// was active in the last rendered frame. This uses last-frame window rects but
+// current-frame mouse coords, which is correct: windows don't move between a
+// WM_MOUSEMOVE and the previous EndScene, so there's no meaningful lag.
+// This handles the one-frame gap in io.WantCaptureMouse when the cursor first
+// enters an ImGui window (WantCaptureMouse is still false that first frame).
+static bool IsMouseOverAnyImGuiWindow(float mx, float my) {
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  if (!ctx) return false;
+  ImVec2 p(mx, my);
+  for (ImGuiWindow* w : ctx->Windows) {
+    if (w->WasActive && w->OuterRectClipped.Contains(p))
+      return true;
+  }
+  return false;
+}
+
 static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
                                        LPARAM lParam) {
-  const LRESULT result =
-      ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam);
+  // Only process ImGui events after at least one frame has been rendered.
+  // Before that (e.g. D3D9 login screen where EndScene hasn't fired yet),
+  // ImGui side-effects like SetCapture() on WM_LBUTTONDOWN interfere with
+  // the game's connection coroutine and cause a crash.
+  if (ImGui::GetCurrentContext() && ImGui::GetFrameCount() > 0) {
+    ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam);
 
-  ImGuiIO& io = ImGui::GetIO();
-  // Draw system cursor over imgui's windows
-  if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
-    io.MouseDrawCursor = true;
-  } else {
-    io.MouseDrawCursor = false;
+    ImGuiIO& io = ImGui::GetIO();
+    io.MouseDrawCursor = ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+
+    // lParam for client-space mouse messages encodes X in low word, Y in high
+    // word as signed 16-bit values.
+    float mx = static_cast<float>(static_cast<short>(LOWORD(lParam)));
+    float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
+    bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
+
+    if (over_imgui) {
+      switch (uMsg) {
+        case WM_MOUSEMOVE:
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+        case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+        case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+        case WM_MOUSEWHEEL:  case WM_MOUSEHWHEEL:
+          return 0;
+      }
+    }
+
+    if (io.WantCaptureKeyboard) {
+      switch (uMsg) {
+        case WM_KEYDOWN: case WM_KEYUP:
+        case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+        case WM_CHAR: case WM_UNICHAR:
+          return 0;
+      }
+    }
   }
 
   return WndProcRef(hwnd, uMsg, wParam, lParam);

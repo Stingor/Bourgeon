@@ -226,7 +226,7 @@ HRESULT WINAPI DirectDrawCreateClipper(DWORD dwFlags,
 
 HRESULT WINAPI DirectDrawCreateEx(GUID FAR *lpGUID, LPVOID *lplpDD, REFIID riid,
                                   IUnknown FAR *pUnkOuter) {
-  LogDebug("DirectDrawCreateEx");
+  LogInfo("DirectDrawCreateEx called");
   if (!m_pDirectDrawCreateEx) {
     return E_FAIL;
   }

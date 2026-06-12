@@ -52,6 +52,7 @@ void Bourgeon::OnTick() {
 }
 
 void Bourgeon::AddLogLine(std::string log_line) {
+  LogInfo("[plugin] {}", log_line);
   log_lines_.emplace_back(std::move(log_line));
 }
 

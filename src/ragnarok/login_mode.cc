@@ -1,6 +1,7 @@
 #include "ragnarok/login_mode.h"
 
 #include "bourgeon.h"
+#include "ragnarok/mode_mgr.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -19,6 +20,7 @@ LoginMode::LoginMode(const YAML::Node& login_mode_configuration) {
 }
 
 void LoginMode::OnUpdateHook() {
+  ModeMgr::FireModeSwitch(ModeMgr::ModeType::kLogin);
   Bourgeon::Instance().OnTick();
   return OnUpdateRef(this);
 }

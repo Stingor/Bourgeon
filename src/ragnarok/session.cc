@@ -34,6 +34,16 @@ Session::Session(const YAML::Node& session_configuration) {
 }
 
 std::string Session::GetCharName() const {
+  const char* raw = char_name();
+  if (!raw || raw[0] == '\0') return "";
+
+  // Newer clients (e.g. 20250716) store the name as plain ASCII.
+  // Older clients XOR-encode it. Detect by checking if the first byte is
+  // printable ASCII — XOR-encoded names start with high bytes (>=0x80).
+  if (static_cast<uint8_t>(raw[0]) < 0x80) {
+    return std::string(raw);
+  }
+
   static const std::array<uint8_t, 0x40> kNameKey = {
       0xB0, 0xA1, 0xB3, 0xAA, 0xB4, 0xD9, 0xB6, 0xF3, 0xB8, 0xB6, 0xB9,
       0xD9, 0xBB, 0xE7, 0xBE, 0xC6, 0xC0, 0xDA, 0xC2, 0xF7, 0xC4, 0xAB,
@@ -43,8 +53,7 @@ std::string Session::GetCharName() const {
       0xCF, 0x00, 0x00, 0x00, 0x00, 0xBE, 0xC6, 0xBA, 0xFC};
   std::array<char, 0x40> clear_name;
 
-  memcpy(clear_name.data(), char_name(), clear_name.size());
-
+  memcpy(clear_name.data(), raw, clear_name.size());
   for (size_t i = 0; i < clear_name.size(); i++) {
     clear_name[i] ^= kNameKey[i];
   }
@@ -77,7 +86,7 @@ std::string Session::GetItemNameById(int id) const {
 }
 
 void Session::SessionHook() {
-  LogDebug("Session: 0x{:x}", reinterpret_cast<uintptr_t>(this));
+  LogInfo("Session ctor this=0x{:x}", reinterpret_cast<uintptr_t>(this));
   g_session_ptr.store(this);
   SessionRef(this);
 }

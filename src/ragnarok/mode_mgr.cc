@@ -18,9 +18,14 @@ ModeMgr::ModeMgr(const YAML::Node& modemgr_configuration) {
       reinterpret_cast<uint8_t*>(void_cast(&ModeMgr::SwitchHook)));
 }
 
-void ModeMgr::SwitchHook(ModeType mode_type, char const* map_name) {
-  auto registrees = Bourgeon::Instance().GetCallbackRegistrees("OnModeSwitch");
+static ModeMgr::ModeType s_current_mode = static_cast<ModeMgr::ModeType>(-1);
 
+void ModeMgr::FireModeSwitch(ModeType mode_type, const char* map_name) {
+  if (s_current_mode == mode_type) return;
+  s_current_mode = mode_type;
+
+  LogInfo("OnModeSwitch mode={}", static_cast<int>(mode_type));
+  auto registrees = Bourgeon::Instance().GetCallbackRegistrees("OnModeSwitch");
   for (auto registree : registrees) {
     try {
       registree(mode_type, map_name);
@@ -29,7 +34,10 @@ void ModeMgr::SwitchHook(ModeType mode_type, char const* map_name) {
       Bourgeon::Instance().UnregisterCallback("OnModeSwitch", registree);
     }
   }
+}
 
+void ModeMgr::SwitchHook(ModeType mode_type, char const* map_name) {
+  FireModeSwitch(mode_type, map_name);
   return SwitchRef(this, mode_type, map_name);
 }
 

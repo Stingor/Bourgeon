@@ -1,0 +1,11 @@
+buildType:
+  default: release
+  choices:
+    release:
+      short: Release
+      long: Optimized build (required for ABI compatibility with RO client)
+      buildType: Release
+    relwithdebinfo:
+      short: RelWithDebInfo
+      long: Optimized with debug info
+      buildType: RelWithDebInfo

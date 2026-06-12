@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 
+# Must come before project() — enables CMAKE_MSVC_RUNTIME_LIBRARY property
+# which writes <RuntimeLibrary> directly into .vcxproj, overriding any /MT or /MD
+# flags that subprojects (yaml-cpp, pybind11) inject into CMAKE_CXX_FLAGS_*.
+cmake_policy(SET CMP0091 NEW)
+
 project(Bourgeon
   LANGUAGES CXX
   VERSION 0.1.0
@@ -17,9 +22,12 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   )
 endif()
 
-# Remove Debug configuration since it would generate binaries with a different ABI
-# compared to the game client
-set(CMAKE_CONFIGURATION_TYPES Release RelWithDebInfo CACHE STRING INTERNAL FORCE)
+set(CMAKE_CONFIGURATION_TYPES Debug Release RelWithDebInfo CACHE STRING INTERNAL FORCE)
+
+# Dynamic CRT (/MD) for all configs and all subprojects.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "" FORCE)
+
+add_compile_definitions(_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
 
 add_subdirectory("src")
 add_subdirectory("thirdparty")

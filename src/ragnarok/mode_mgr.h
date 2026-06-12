@@ -13,6 +13,9 @@ class ModeMgr {
   ModeMgr(const YAML::Node &modemgr_configuration);
   virtual ~ModeMgr() = default;
 
+  // Fires OnModeSwitch callbacks, deduplicated — call from any hook
+  static void FireModeSwitch(ModeType mode_type, const char* map_name = "");
+
   // Hooks
   void SwitchHook(ModeType mode_type, char const *map_name);
 

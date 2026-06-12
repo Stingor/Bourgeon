@@ -1,4 +1,5 @@
 #include <pybind11/embed.h>
+#include <Windows.h>
 
 #include "bourgeon.h"
 #include "ragnarok/mode_mgr.h"
@@ -14,9 +15,18 @@ PYBIND11_EMBEDDED_MODULE(ragnarok_client, m) {
   // Print a message into the game chat
   m.def("print_in_chat",
         [](std::string message, unsigned int color, unsigned int filter) {
+          // pybind11 encodes Python str as UTF-8; game expects Windows-1252.
+          // Transcode UTF-8 → UTF-16 → CP_ACP (Windows-1252 on Western systems).
+          int wlen = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
+          std::wstring wide(wlen, L'\0');
+          MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wide.data(), wlen);
+          int alen = WideCharToMultiByte(CP_ACP, 0, wide.c_str(), -1, nullptr, 0, "?", nullptr);
+          std::string ansi(alen, '\0');
+          WideCharToMultiByte(CP_ACP, 0, wide.c_str(), -1, ansi.data(), alen, "?", nullptr);
+          if (!ansi.empty() && ansi.back() == '\0') ansi.pop_back();
           Bourgeon::Instance().client().window_mgr().SendMsg(
               UIMessage::UIM_PUSHINTOCHATHISTORY,
-              reinterpret_cast<int>(message.c_str()), color, filter, 0);
+              reinterpret_cast<int>(ansi.c_str()), color, filter, 0);
         });
 
   // Use an item given its id. Returns true if the item was used successfully,
