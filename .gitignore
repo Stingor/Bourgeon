@@ -3,3 +3,4 @@ Win32/*
 # Discord relay credentials — must never be committed.
 plugins/config/discord_config.py
 plugins/config/discord.yaml
+plugins/config/discord.enc

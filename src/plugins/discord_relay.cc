@@ -2,10 +2,12 @@
 
 #include <Windows.h>
 #include <winhttp.h>
+#include <wincrypt.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <fstream>
 #include <thread>
 
 #include "bourgeon.h"
@@ -17,7 +19,7 @@ using json = nlohmann::json;
 
 namespace {
 
-constexpr char kConfigPath[] = "./plugins/config/discord.yaml";
+constexpr char kEncConfigPath[] = "./plugins/config/discord.enc";
 constexpr wchar_t kApiHost[] = L"discord.com";
 constexpr char kApiBasePath[] = "/api/v10";
 constexpr unsigned int kDiscordColor = 0x7289DA;
@@ -145,8 +147,33 @@ std::string Trim(const std::string& text) {
 }  // namespace
 
 DiscordRelay::DiscordRelay() {
+  // Read the encrypted blob written by discord_encrypt.exe.
+  std::ifstream enc_file(kEncConfigPath, std::ios::binary);
+  if (!enc_file) return;  // Not configured — stay inert.
+
+  const std::string blob_bytes((std::istreambuf_iterator<char>(enc_file)),
+                                std::istreambuf_iterator<char>());
+
+  DATA_BLOB input_blob;
+  input_blob.cbData = static_cast<DWORD>(blob_bytes.size());
+  input_blob.pbData = reinterpret_cast<BYTE*>(
+      const_cast<char*>(blob_bytes.data()));
+
+  DATA_BLOB output_blob{};
+  if (!CryptUnprotectData(&input_blob, nullptr, nullptr, nullptr, nullptr, 0,
+                          &output_blob)) {
+    // File exists but can't decrypt — wrong machine/account, or corrupted.
+    Bourgeon::Instance().AddLogLine(
+        "Discord: failed to decrypt discord.enc (wrong machine or corrupted)");
+    return;
+  }
+
+  const std::string yaml_text(reinterpret_cast<char*>(output_blob.pbData),
+                               output_blob.cbData);
+  LocalFree(output_blob.pbData);
+
   try {
-    YAML::Node config = YAML::LoadFile(kConfigPath);
+    YAML::Node config = YAML::Load(yaml_text);
     bot_token_ = config["bot_token"].as<std::string>("");
     guild_name_ = config["guild_name"].as<std::string>("");
     if (config["channels_to_watch"].IsSequence()) {
@@ -157,7 +184,7 @@ DiscordRelay::DiscordRelay() {
     webhook_url_ = config["webhook_url"].as<std::string>("");
     char_name_fallback_ = config["char_name"].as<std::string>("");
   } catch (const std::exception&) {
-    return;  // No/invalid config: plugin stays inert.
+    return;
   }
 
   enabled_ = !bot_token_.empty() && !guild_name_.empty() &&
