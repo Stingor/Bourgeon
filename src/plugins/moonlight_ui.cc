@@ -298,7 +298,7 @@ void MoonlightUi::OnRenderUI() {
           ? "Discord relay : ACTIVE"
           : "Discord relay : DESACTIVE";
       UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
-                           reinterpret_cast<int>(msg), 0, 0, 0);
+                           reinterpret_cast<int>(msg), 0x00FF00, 0, 0);
     }
 
     // ── Chat Background Color ─────────────────────────────────────────────

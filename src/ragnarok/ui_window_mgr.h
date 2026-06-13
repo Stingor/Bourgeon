@@ -39,6 +39,7 @@ class UIWindowMgr {
 
   // Original
   bool ProcessPushButton(unsigned long vkey, int new_key, int accurate_key);
+  // For UIM_PUSHINTOCHATHISTORY: val1=const char* text, val2=0xRRGGBB font color (0=default), val3/val4 unused.
   static size_t SendMsg(UIMessage message, int val1, int val2, int val3, int val4);
 
   // Hooks
