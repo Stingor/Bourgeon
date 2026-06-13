@@ -4,6 +4,12 @@ Bourgeon is a C++17 library to implement plugins for Ragnarok Online clients.
 
 *Note: This is a work in progress.*
 
+I (Stingor) am no developper, i used Claude to make it work on 20250716 using Ghidra MCP
+that's a lot of what people know as Vibe Coding! So don't expect to see a perfect work.
+
+For now it works perfectly on my warped exe (Thanks to CrazyBepop and is team)
+And many thanks to L1nkZ and his Bourgeon work /bow
+
 How to use
 ----------
 * Build the module (*ddraw.dll*)
