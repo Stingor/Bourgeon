@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include "imgui.h"
+#include "plugins/discord_relay.h"
 #include "plugins/moonlight_ui.h"
 #include "utils/log_console.h"
 
@@ -109,6 +110,7 @@ void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
 
 void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
+  plugins_.emplace_back(std::make_unique<DiscordRelay>());
 
   for (const auto& plugin : plugins_) {
     LogInfo("Loaded plugin: {}", plugin->name());

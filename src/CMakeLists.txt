@@ -14,6 +14,8 @@ set(BOURGEON_FILES
 	"plugins/plugin.h"
 	"plugins/moonlight_ui.cc"
 	"plugins/moonlight_ui.h"
+	"plugins/discord_relay.cc"
+	"plugins/discord_relay.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
@@ -72,12 +74,14 @@ endforeach()
 add_library(bourgeon MODULE ${BOURGEON_FILES})
 set_target_properties(bourgeon PROPERTIES OUTPUT_NAME "ddraw")
 target_include_directories(bourgeon PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(bourgeon PRIVATE
+    "${CMAKE_SOURCE_DIR}/thirdparty/json/include")
 target_compile_options(bourgeon PRIVATE "/MT")
 target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp)
 
 if(RO_DEPLOY_DIR)
     add_custom_command(TARGET bourgeon POST_BUILD
