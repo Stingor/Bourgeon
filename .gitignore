@@ -4,3 +4,5 @@ Win32/*
 plugins/config/discord_config.py
 plugins/config/discord.yaml
 plugins/config/discord.enc
+# AES key shared between the DLL and the encryptor — never commit.
+src/plugins/discord_key.h

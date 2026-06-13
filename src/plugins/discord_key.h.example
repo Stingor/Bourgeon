@@ -1,0 +1,30 @@
+#pragma once
+
+// Copy this file to discord_key.h and fill in 32 random bytes.
+// Generate a key with PowerShell:
+//
+//   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+//   $bytes = New-Object byte[] 32
+//   $rng.GetBytes($bytes)
+//   ($bytes | ForEach-Object { "0x{0:x2}" -f $_ }) -join ", "
+//
+// discord_key.h is gitignored. Share it out-of-band with anyone who needs
+// to rebuild a compatible encryptor. Keep the same key across builds so that
+// existing discord.enc files keep working.
+
+#include <Windows.h>
+#include <bcrypt.h>
+
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <vector>
+
+static constexpr uint8_t kDiscordAesKey[32] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // replace with your key
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+// (crypto helpers follow in discord_key.h — not duplicated here)

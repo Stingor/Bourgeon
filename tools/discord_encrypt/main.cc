@@ -1,5 +1,4 @@
-#include <Windows.h>
-#include <wincrypt.h>
+#include "plugins/discord_key.h"
 
 #include <fstream>
 #include <iostream>
@@ -33,13 +32,13 @@ std::string YamlEscape(const std::string& s) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  const char* output_path =
-      (argc > 1) ? argv[1] : "discord.enc";
+  const char* output_path = (argc > 1) ? argv[1] : "discord.enc";
 
   std::cout << "=== Bourgeon Discord relay — credential encryptor ===\n\n"
-            << "Credentials are encrypted with Windows DPAPI (tied to this\n"
-            << "Windows user account) and written to: " << output_path
-            << "\n\n";
+            << "Credentials are AES-256 encrypted and written to: "
+            << output_path << "\n"
+            << "Copy the output file to plugins/config/discord.enc in the\n"
+            << "game directory. The same file works on every player PC.\n\n";
 
   const std::string bot_token = PromptLine("Bot token: ");
   const std::string webhook_url =
@@ -63,7 +62,7 @@ int main(int argc, char* argv[]) {
   const std::string char_name =
       PromptLine("Fallback character name (optional): ", false);
 
-  // Build the YAML plaintext that the DLL will parse after decryption.
+  // Build the YAML that the DLL will parse after decryption.
   std::ostringstream yaml;
   yaml << "bot_token: \"" << YamlEscape(bot_token) << "\"\n";
   yaml << "webhook_url: \"" << YamlEscape(webhook_url) << "\"\n";
@@ -74,35 +73,24 @@ int main(int argc, char* argv[]) {
   }
   yaml << "char_name: \"" << YamlEscape(char_name) << "\"\n";
 
-  const std::string plaintext = yaml.str();
-
-  DATA_BLOB input_blob;
-  input_blob.pbData =
-      reinterpret_cast<BYTE*>(const_cast<char*>(plaintext.data()));
-  input_blob.cbData = static_cast<DWORD>(plaintext.size());
-
-  DATA_BLOB output_blob{};
-  if (!CryptProtectData(&input_blob, L"bourgeon-discord", nullptr, nullptr,
-                        nullptr, 0, &output_blob)) {
-    std::cerr << "CryptProtectData failed (error " << GetLastError() << ").\n";
+  std::vector<uint8_t> encrypted;
+  if (!discord_crypto::Encrypt(yaml.str(), encrypted)) {
+    std::cerr << "Encryption failed.\n";
     return 1;
   }
 
   std::ofstream out(output_path, std::ios::binary);
   if (!out) {
-    LocalFree(output_blob.pbData);
     std::cerr << "Cannot write to " << output_path << ".\n";
     return 1;
   }
-  out.write(reinterpret_cast<char*>(output_blob.pbData), output_blob.cbData);
-  LocalFree(output_blob.pbData);
-
+  out.write(reinterpret_cast<char*>(encrypted.data()), encrypted.size());
   if (!out) {
     std::cerr << "Write failed.\n";
     return 1;
   }
 
-  std::cout << "\nDone. Copy " << output_path
-            << " to plugins/config/discord.enc in your game directory.\n";
+  std::cout << "\nDone. " << encrypted.size() << " bytes written to "
+            << output_path << ".\n";
   return 0;
 }

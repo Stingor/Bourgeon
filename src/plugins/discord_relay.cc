@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <winhttp.h>
-#include <wincrypt.h>
 
 #include <algorithm>
 #include <chrono>
@@ -12,6 +11,7 @@
 
 #include "bourgeon.h"
 #include "nlohmann/json.hpp"
+#include "plugins/discord_key.h"
 #include "spdlog/fmt/fmt.h"
 #include "yaml-cpp/yaml.h"
 
@@ -151,26 +151,17 @@ DiscordRelay::DiscordRelay() {
   std::ifstream enc_file(kEncConfigPath, std::ios::binary);
   if (!enc_file) return;  // Not configured — stay inert.
 
-  const std::string blob_bytes((std::istreambuf_iterator<char>(enc_file)),
-                                std::istreambuf_iterator<char>());
+  const std::string raw((std::istreambuf_iterator<char>(enc_file)),
+                         std::istreambuf_iterator<char>());
+  const std::vector<uint8_t> blob(raw.begin(), raw.end());
 
-  DATA_BLOB input_blob;
-  input_blob.cbData = static_cast<DWORD>(blob_bytes.size());
-  input_blob.pbData = reinterpret_cast<BYTE*>(
-      const_cast<char*>(blob_bytes.data()));
-
-  DATA_BLOB output_blob{};
-  if (!CryptUnprotectData(&input_blob, nullptr, nullptr, nullptr, nullptr, 0,
-                          &output_blob)) {
-    // File exists but can't decrypt — wrong machine/account, or corrupted.
+  std::string yaml_text;
+  if (!discord_crypto::Decrypt(blob, yaml_text)) {
     Bourgeon::Instance().AddLogLine(
-        "Discord: failed to decrypt discord.enc (wrong machine or corrupted)");
+        "Discord: failed to decrypt discord.enc "
+        "(wrong key or corrupted file)");
     return;
   }
-
-  const std::string yaml_text(reinterpret_cast<char*>(output_blob.pbData),
-                               output_blob.cbData);
-  LocalFree(output_blob.pbData);
 
   try {
     YAML::Node config = YAML::Load(yaml_text);

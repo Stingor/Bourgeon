@@ -81,7 +81,7 @@ target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp crypt32)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp bcrypt)
 
 if(RO_DEPLOY_DIR)
     add_custom_command(TARGET bourgeon POST_BUILD
