@@ -2,6 +2,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "plugins/discord_relay.h"
 #include "spdlog/fmt/fmt.h"
 
 namespace {
@@ -35,8 +36,11 @@ void MoonlightUi::OnRenderUI() {
     }
 
     if (ImGui::Checkbox("Discord chat Gonryun", &discord_chat_)) {
+      if (auto* relay = Bourgeon::Instance().discord_relay()) {
+        relay->set_chat_active(discord_chat_);
+      }
       Bourgeon::Instance().AddLogLine(
-          fmt::format("CheckBox state: {}", discord_chat_));
+          fmt::format("Discord chat: {}", discord_chat_ ? "enabled" : "disabled"));
     }
 
     if (ImGui::InputText("TextInput", text_input_, sizeof(text_input_))) {

@@ -11,6 +11,7 @@ Bourgeon::Bourgeon()
     : plugins_(), last_tick_count_(), log_lines_(), client_() {}
 
 RagnarokClient& Bourgeon::client() { return client_; }
+DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -110,7 +111,11 @@ void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
 
 void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
-  plugins_.emplace_back(std::make_unique<DiscordRelay>());
+  {
+    auto relay = std::make_unique<DiscordRelay>();
+    discord_relay_ = relay.get();
+    plugins_.emplace_back(std::move(relay));
+  }
 
   for (const auto& plugin : plugins_) {
     LogInfo("Loaded plugin: {}", plugin->name());

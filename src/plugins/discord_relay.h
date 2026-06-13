@@ -35,6 +35,10 @@ class DiscordRelay : public Plugin {
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnTalkType(const char* chat_buffer) override;
 
+  // Controlled by the UI checkbox — enables/disables both relay directions.
+  void set_chat_active(bool active) { chat_active_.store(active); }
+  bool chat_active() const { return chat_active_.load(); }
+
  private:
   struct Channel {
     std::string id;
@@ -67,6 +71,7 @@ class DiscordRelay : public Plugin {
   bool init_started_ = false;
   std::atomic<bool> init_done_{false};
   std::atomic<bool> in_game_{false};
+  std::atomic<bool> chat_active_{false};
   std::vector<Channel> watched_channels_;  // filled before the poll thread starts
 
   std::mutex events_mutex_;

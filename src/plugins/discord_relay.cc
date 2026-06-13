@@ -228,7 +228,7 @@ void DiscordRelay::OnModeSwitch(ModeMgr::ModeType mode_type,
 }
 
 void DiscordRelay::OnTalkType(const char* chat_buffer) {
-  if (!enabled_ || webhook_url_.empty() || !in_game_) return;
+  if (!enabled_ || webhook_url_.empty() || !in_game_ || !chat_active_.load()) return;
 
   const std::string text = Trim(chat_buffer ? chat_buffer : "");
   if (text.empty() ||
@@ -382,8 +382,10 @@ void DiscordRelay::PullMessages() {
         if (display.empty()) display = author.value("username", "");
       }
 
-      PushEvent(Event::Type::kChat,
-                fmt::format("(#{}) {}: {}", channel.name, display, content));
+      if (chat_active_.load()) {
+        PushEvent(Event::Type::kChat,
+                  fmt::format("(#{}) {}: {}", channel.name, display, content));
+      }
     }
   }
 }

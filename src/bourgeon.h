@@ -8,6 +8,8 @@
 #include "plugins/plugin.h"
 #include "ragnarok/ragnarok_client.h"
 
+class DiscordRelay;
+
 class Bourgeon {
  public:
   // Singleton stuff
@@ -19,6 +21,7 @@ class Bourgeon {
   void operator=(Bourgeon const&) = delete;
 
   RagnarokClient& client();
+  DiscordRelay* discord_relay();
 
   bool Initialize();
   void OnTick();
@@ -38,6 +41,7 @@ class Bourgeon {
   void ShowBourgeonWindow() const;
 
   std::vector<std::unique_ptr<Plugin>> plugins_;
+  DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::vector<std::string> log_lines_;
   RagnarokClient client_;
