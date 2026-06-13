@@ -39,7 +39,7 @@ class UIWindowMgr {
 
   // Original
   bool ProcessPushButton(unsigned long vkey, int new_key, int accurate_key);
-  size_t SendMsg(UIMessage message, int val1, int val2, int val3, int val4);
+  static size_t SendMsg(UIMessage message, int val1, int val2, int val3, int val4);
 
   // Hooks
   void UIWindowMgrHook();

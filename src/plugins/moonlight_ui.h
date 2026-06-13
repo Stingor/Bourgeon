@@ -22,8 +22,14 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kOpcodeFromServer = 0x0BFE;  // ZC_BOURGEON_SETTINGS
   static constexpr uint16_t kOpcodeToServer   = 0x0BFD;  // CZ_BOURGEON_SETTING
 
-  // Setting IDs (must match server-side switch in clif_parse_bourgeon_setting)
-  static constexpr uint16_t kSettingDiscord = 0;
+  // Setting IDs sent via CZ 0x0BFD (must match server-side clif_parse_bourgeon_setting).
+  // Discord is now client-only (saved to YAML); IDs 0-5 are server-side toggles.
+  static constexpr uint16_t kSettingShowExp     = 0;
+  static constexpr uint16_t kSettingShowZeny    = 1;
+  static constexpr uint16_t kSettingShowMobInfo = 2;
+  static constexpr uint16_t kSettingSeparate    = 3;
+  static constexpr uint16_t kSettingBlockExp    = 4;
+  static constexpr uint16_t kSettingAlootRare   = 5;
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -32,7 +38,17 @@ class MoonlightUi : public Plugin {
 
   bool in_game_    = false;
   bool in_gonryun_ = false;
+
+  // Client-only (saved to YAML, never sent to server).
   bool discord_chat_ = false;
+
+  // Server-synced toggles (IDs above).
+  bool show_exp_      = false;
+  bool show_zeny_     = false;
+  bool show_mob_info_ = false;
+  bool separate_      = false;
+  bool block_exp_     = false;
+  bool aloot_rare_    = false;
 
   // ── Chat window background color ─────────────────────────────────────────
   // The chat window init stores an ARGB color (default 0x66000000 = 40% alpha
@@ -54,6 +70,12 @@ class MoonlightUi : public Plugin {
   // Called once in the constructor (before the chat window is created).
   void FindChatBgInstruction();
 
+  // Persists / restores chat_bg_color_ from bourgeon_settings.yaml in the
+  // game directory.  Load is called after FindChatBgInstruction so it can
+  // immediately apply the saved color.  Save is called on picker release.
+  void LoadSettings();
+  void SaveSettings();
+
   // Writes argb to the instruction immediate (cheap: 4-byte write + icache flush).
   void PatchInstruction(uint32_t argb);
 
@@ -70,4 +92,13 @@ class MoonlightUi : public Plugin {
 
   // ImGui color picker state: RGBA, each channel in [0.0, 1.0].
   float chat_bg_color_[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+
+  // True while the user is dragging the color picker popup; used to trigger
+  // the heap walk + settings save on mouse release.
+  bool picker_was_editing_ = false;
+
+  // Persisted collapse state of the Moonlight-Destiny window.
+  // Restored once per login via SetNextWindowCollapsed; saved on every change.
+  bool ui_collapsed_     = false;
+  bool apply_collapse_   = false;  // set by LoadSettings, consumed on first render
 };

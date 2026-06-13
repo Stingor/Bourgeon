@@ -88,7 +88,7 @@ const std::string kYamlConfiguration = R"(
     SendPacket: 0x00c14920
     RecvDispatchTable: 0x00caa2e0
     RecvOpcodeBase: 0x73
-    RecvPacketBuf: 0x015e8198
+    RecvOpcodeReader: 0x00c144b0
   CModeMgr:
     Switch: 0x00a756e0
   CLoginMode:

@@ -19,12 +19,17 @@ ModeMgr::ModeMgr(const YAML::Node& modemgr_configuration) {
 }
 
 static ModeMgr::ModeType s_current_mode = static_cast<ModeMgr::ModeType>(-1);
+static char s_current_map[64] = {};
 
 void ModeMgr::FireModeSwitch(ModeType mode_type, const char* map_name) {
-  if (s_current_mode == mode_type) return;
-  s_current_mode = mode_type;
+  const bool mode_changed = (s_current_mode != mode_type);
+  const bool map_changed  = (strncmp(s_current_map, map_name, sizeof(s_current_map)) != 0);
+  if (!mode_changed && !map_changed) return;
 
-  LogInfo("OnModeSwitch mode={}", static_cast<int>(mode_type));
+  s_current_mode = mode_type;
+  strncpy_s(s_current_map, sizeof(s_current_map), map_name, _TRUNCATE);
+
+  LogInfo("OnModeSwitch mode={} map={}", static_cast<int>(mode_type), map_name);
   Bourgeon::Instance().FireModeSwitch(mode_type, map_name);
 }
 

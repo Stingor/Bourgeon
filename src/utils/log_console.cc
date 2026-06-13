@@ -9,11 +9,14 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 LogConsole::LogConsole() {
-  if (AllocConsole() == TRUE) {
-    FILE *out;
-    freopen_s(&out, "CONOUT$", "w", stdout);
-    // Disable buffering so every log write reaches the console immediately.
-    setvbuf(stdout, nullptr, _IONBF, 0);
+  // Only allocate a console window when the process was launched with --console.
+  // The file sink (bourgeon.log) is always active regardless.
+  if (strstr(GetCommandLineA(), "--console") != nullptr) {
+    if (AllocConsole() == TRUE) {
+      FILE *out;
+      freopen_s(&out, "CONOUT$", "w", stdout);
+      setvbuf(stdout, nullptr, _IONBF, 0);
+    }
   }
 
   auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();

@@ -280,13 +280,17 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam);
 
     ImGuiIO& io = ImGui::GetIO();
-    io.MouseDrawCursor = ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
 
     // lParam for client-space mouse messages encodes X in low word, Y in high
     // word as signed 16-bit values.
     float mx = static_cast<float>(static_cast<short>(LOWORD(lParam)));
     float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
     bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
+
+    // Use over_imgui (not IsWindowHovered) so the software cursor stays visible
+    // while dragging outside a popup/window boundary — WantCaptureMouse remains
+    // true for active drag items even when the pointer leaves the window rect.
+    io.MouseDrawCursor = over_imgui;
 
     if (over_imgui) {
       switch (uMsg) {

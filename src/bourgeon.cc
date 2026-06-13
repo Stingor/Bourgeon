@@ -56,7 +56,7 @@ void Bourgeon::RenderUI() {
 #endif  // BOURGEON_DEBUG
 
   // Render Bourgeon's main window
-  ShowBourgeonWindow();
+  // ShowBourgeonWindow();
 
   // Render windows drawn by plugins
   for (auto& plugin : plugins_) {
