@@ -44,12 +44,12 @@ bool g_imgui_dx7_active = false;
 static void PatchDX7Slot(void** vtable, int idx, void* hook, void** out_orig) {
     void** slot = &vtable[idx];
     *out_orig   = *slot;
-    LogInfo("DX7: vtable[{}] = {:x}", idx, reinterpret_cast<uintptr_t>(*slot));
+    LogDebug("DX7: vtable[{}] = {:x}", idx, reinterpret_cast<uintptr_t>(*slot));
     DWORD old;
     if (VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old)) {
         *slot = hook;
         VirtualProtect(slot, sizeof(void*), old, &old);
-        LogInfo("DX7: vtable[{}] patched", idx);
+        LogDebug("DX7: vtable[{}] patched", idx);
     } else {
         LogError("DX7: VirtualProtect failed for vtable[{}]", idx);
     }
@@ -86,11 +86,11 @@ static HRESULT __fastcall Hooked_D3D7_CreateDevice(IDirect3D7* self, void* /*edx
                                                     REFCLSID rclsid,
                                                     LPDIRECTDRAWSURFACE7 lpDDS,
                                                     LPDIRECT3DDEVICE7* lplpD3DDevice) {
-    LogInfo("D3D7 Hooked_CreateDevice factory={:x}", reinterpret_cast<uintptr_t>(self));
+    LogDebug("D3D7 Hooked_CreateDevice factory={:x}", reinterpret_cast<uintptr_t>(self));
     HRESULT hr = g_orig_d3d7_create_device(self, nullptr, rclsid, lpDDS, lplpD3DDevice);
     if (SUCCEEDED(hr) && lplpD3DDevice && *lplpD3DDevice) {
         void** vtable7 = *reinterpret_cast<void***>(*lplpD3DDevice);
-        LogInfo("D3D7 Hooked_CreateDevice: device={:x} vtable={:x}",
+        LogDebug("D3D7 Hooked_CreateDevice: device={:x} vtable={:x}",
                 reinterpret_cast<uintptr_t>(*lplpD3DDevice),
                 reinterpret_cast<uintptr_t>(vtable7));
         // Patch EndScene on this vtable if not already hooked.
@@ -99,7 +99,7 @@ static HRESULT __fastcall Hooked_D3D7_CreateDevice(IDirect3D7* self, void* /*edx
                          reinterpret_cast<void**>(&g_orig_dx7_end_scene));
         }
     }
-    LogInfo("D3D7 Hooked_CreateDevice: hr={:x}", (unsigned)hr);
+    LogDebug("D3D7 Hooked_CreateDevice: hr={:x}", (unsigned)hr);
     return hr;
 }
 
@@ -118,21 +118,18 @@ static void EnsureIDirect3D7Patched(IDirectDraw7* dd7) {
         return;
     }
     void** vtbl = *reinterpret_cast<void***>(d3d7);
-    LogInfo("SysDDCreateEx: IDirect3D7 vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
+    LogDebug("SysDDCreateEx: IDirect3D7 vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
     if (vtbl[kDX7CreateDeviceIdx] != static_cast<void*>(&Hooked_D3D7_CreateDevice)) {
-        LogInfo("SysDDCreateEx: patching CreateDevice slot");
+        LogDebug("SysDDCreateEx: patching CreateDevice slot");
         PatchDX7Slot(vtbl, kDX7CreateDeviceIdx, &Hooked_D3D7_CreateDevice,
                      reinterpret_cast<void**>(&g_orig_d3d7_create_device));
-    } else {
-        LogInfo("SysDDCreateEx: CreateDevice already patched");
     }
     d3d7->Release();
 }
 
 static HRESULT WINAPI Hooked_SysDDCreateEx(GUID FAR* lpGuid, LPVOID* lplpDD,
                                              REFIID riid, IUnknown FAR* pUnk) {
-    LogInfo("System DirectDrawCreateEx called riid={:x}",
-            riid.Data1);  // first DWORD of GUID
+    LogDebug("System DirectDrawCreateEx called riid={:x}", riid.Data1);
     HRESULT hr = g_orig_sys_ddraw_create(lpGuid, lplpDD, riid, pUnk);
     if (SUCCEEDED(hr) && lplpDD && *lplpDD && IsEqualIID(riid, IID_IDirectDraw7)) {
         EnsureIDirect3D7Patched(reinterpret_cast<IDirectDraw7*>(*lplpDD));
@@ -142,7 +139,7 @@ static HRESULT WINAPI Hooked_SysDDCreateEx(GUID FAR* lpGuid, LPVOID* lplpDD,
 
 // ── background thread ─────────────────────────────────────────────────────────
 static void DX7WatchThread() {
-    LogInfo("DX7 WatchThread: started");
+    LogDebug("DX7 WatchThread: started");
 
     if (!m_pDirectDrawCreateEx) {
         LogError("DX7 WatchThread: m_pDirectDrawCreateEx not ready");
@@ -158,7 +155,7 @@ static void DX7WatchThread() {
             HookManager::Instance().SetHook(HookType::kJmpHook, fn,
                                             reinterpret_cast<uint8_t*>(Hooked_SysDDCreateEx)));
         if (g_orig_sys_ddraw_create)
-            LogInfo("DX7 WatchThread: system DirectDrawCreateEx JMP-hooked");
+            LogDebug("DX7 WatchThread: system DirectDrawCreateEx JMP-hooked");
         else
             LogError("DX7 WatchThread: JMP hook on DirectDrawCreateEx failed");
     }
@@ -176,34 +173,11 @@ static void DX7WatchThread() {
             LogError("DX7 WatchThread: temp DirectDrawCreateEx failed hr={:x}", (unsigned)hr);
         }
     }
-    LogInfo("DX7 WatchThread: done");
-}
-
-// ── diagnostic: log which rendering DLLs are loaded after game starts ────────
-static void RenderDiagThread() {
-    Sleep(5000);  // wait for game to finish loading everything
-    static const char* kDlls[] = {
-        "d3d8.dll", "d3d9.dll", "d3d10.dll", "d3d10_1.dll",
-        "d3d11.dll", "d3d12.dll", "opengl32.dll", "vulkan-1.dll",
-        "dxgi.dll", nullptr
-    };
-    LogInfo("=== Render DLL scan ===");
-    for (int i = 0; kDlls[i]; ++i) {
-        HMODULE h = GetModuleHandleA(kDlls[i]);
-        if (h) {
-            char path[MAX_PATH] = {};
-            GetModuleFileNameA(h, path, sizeof(path));
-            LogInfo("  {}: LOADED  path={}", kDlls[i], path);
-        } else {
-            LogInfo("  {}: not loaded", kDlls[i]);
-        }
-    }
-    LogInfo("=== end scan ===");
+    LogDebug("DX7 WatchThread: done");
 }
 
 void InitDX7Hook() {
     std::thread(DX7WatchThread).detach();
-    std::thread(RenderDiagThread).detach();
 }
 
 // ── Proxy class implementations ───────────────────────────────────────────────
@@ -234,14 +208,14 @@ HRESULT CProxyIDirectDraw7::Proxy_RestoreAllSurfaces(void) {
 HRESULT CProxyIDirectDraw7::Proxy_QueryInterface(THIS_ REFIID riid,
                                                  LPVOID FAR* ppvObj) {
   if (IsEqualGUID(riid, IID_IDirect3D7)) {
-    LogInfo("CProxyIDirectDraw7::QueryInterface(IDirect3D7)");
+    LogDebug("CProxyIDirectDraw7::QueryInterface(IDirect3D7)");
     HRESULT temp_ret = m_Instance->QueryInterface(riid, ppvObj);
     if (temp_ret == S_OK) {
       *ppvObj = new CProxyIDirect3D7(reinterpret_cast<IDirect3D7*>(*ppvObj));
-      LogInfo("CProxyIDirectDraw7::IDirect3D7 wrapped");
+      LogDebug("CProxyIDirectDraw7::IDirect3D7 wrapped");
       return S_OK;
     }
-    LogInfo("CProxyIDirectDraw7::IDirect3D7 QI failed hr={:x}", (unsigned)temp_ret);
+    LogError("CProxyIDirectDraw7::IDirect3D7 QI failed hr={:x}", (unsigned)temp_ret);
     return temp_ret;
   }
   return m_Instance->QueryInterface(riid, ppvObj);
@@ -296,7 +270,7 @@ HRESULT CProxyIDirectDraw7::Proxy_WaitForVerticalBlank(DWORD dwFlags, HANDLE hEv
 HRESULT CProxyIDirect3D7::Proxy_CreateDevice(REFCLSID rclsid,
                                              LPDIRECTDRAWSURFACE7 lpDDS,
                                              LPDIRECT3DDEVICE7* lplpD3DDevice) {
-  LogInfo("CProxyIDirect3D7::CreateDevice called");
+  LogDebug("CProxyIDirect3D7::CreateDevice called");
   HRESULT temp_ret = m_Instance->CreateDevice(rclsid, lpDDS, lplpD3DDevice);
   if (temp_ret == D3D_OK) {
     *lplpD3DDevice = reinterpret_cast<LPDIRECT3DDEVICE7>(

@@ -86,12 +86,12 @@ static std::atomic<bool> g_rendered_this_frame{false};
 static void PatchSlot(void** vtable, int idx, void* hook, void** out_orig) {
     void** slot = &vtable[idx];
     if (out_orig) *out_orig = *slot;
-    LogInfo("D3D9: vtable[{}] = {:x}", idx, reinterpret_cast<uintptr_t>(*slot));
+    LogDebug("D3D9: vtable[{}] = {:x}", idx, reinterpret_cast<uintptr_t>(*slot));
     DWORD old;
     if (VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old)) {
         *slot = hook;
         VirtualProtect(slot, sizeof(void*), old, &old);
-        LogInfo("D3D9: vtable[{}] patched", idx);
+        LogDebug("D3D9: vtable[{}] patched", idx);
     } else {
         LogError("D3D9: VirtualProtect failed for vtable[{}]", idx);
     }
@@ -165,7 +165,7 @@ static HRESULT __fastcall Hooked_ResetEx(void* vtable_ecx, void* /*edx*/,
 // Called from Hooked_D3D9_CreateDevice and Hooked_D3D9Ex_CreateDeviceEx with
 // the *actual* device the game is about to use — no more guessing vtables.
 static void PatchDeviceVtable(void** vtbl, bool is_ex) {
-    LogInfo("D3D9 PatchDeviceVtable: vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
+    LogDebug("D3D9 PatchDeviceVtable: vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
     if (vtbl[kPresentIdx] != static_cast<void*>(&Hooked_Present))
         PatchSlot(vtbl, kPresentIdx, &Hooked_Present,
                   g_orig_present ? nullptr : reinterpret_cast<void**>(&g_orig_present));
@@ -186,7 +186,7 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
                                                     HWND hwnd, DWORD flags,
                                                     D3DPRESENT_PARAMETERS* pp,
                                                     IDirect3DDevice9** ppDev) {
-    LogInfo("D3D9 Hooked_CreateDevice factory={:x}", reinterpret_cast<uintptr_t>(self));
+    LogDebug("D3D9 Hooked_CreateDevice factory={:x}", reinterpret_cast<uintptr_t>(self));
     if (!self) {
         LogError("D3D9 Hooked_CreateDevice: null factory — skipping");
         return D3DERR_INVALIDCALL;
@@ -195,11 +195,11 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
                                                hwnd, flags, pp, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         void** vtbl = *reinterpret_cast<void***>(*ppDev);
-        LogInfo("D3D9 CreateDevice: device={:x} vtable={:x}",
+        LogDebug("D3D9 CreateDevice: device={:x} vtable={:x}",
                 reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
         PatchDeviceVtable(vtbl, false);
     }
-    LogInfo("D3D9 Hooked_CreateDevice: hr={:x}", static_cast<unsigned>(hr));
+    LogDebug("D3D9 Hooked_CreateDevice: hr={:x}", static_cast<unsigned>(hr));
     return hr;
 }
 
@@ -213,16 +213,16 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
                                                          D3DPRESENT_PARAMETERS* pp,
                                                          D3DDISPLAYMODEEX* pFullscreen,
                                                          IDirect3DDevice9Ex** ppDev) {
-    LogInfo("D3D9 Hooked_CreateDeviceEx factory={:x}", reinterpret_cast<uintptr_t>(self));
+    LogDebug("D3D9 Hooked_CreateDeviceEx factory={:x}", reinterpret_cast<uintptr_t>(self));
     HRESULT hr = g_orig_factory_create_device_ex(pFullEcx, nullptr, self, adapter, devtype,
                                                   hwnd, flags, pp, pFullscreen, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         void** vtbl = *reinterpret_cast<void***>(*ppDev);
-        LogInfo("D3D9 CreateDeviceEx: device={:x} vtable={:x}",
+        LogDebug("D3D9 CreateDeviceEx: device={:x} vtable={:x}",
                 reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
         PatchDeviceVtable(vtbl, true);
     }
-    LogInfo("D3D9 Hooked_CreateDeviceEx: hr={:x}", static_cast<unsigned>(hr));
+    LogDebug("D3D9 Hooked_CreateDeviceEx: hr={:x}", static_cast<unsigned>(hr));
     return hr;
 }
 
@@ -231,7 +231,7 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
 // internally during Direct3DCreate9Ex.
 static void PatchCreateDevice(IDirect3D9Ex* d3d9ex) {
     void** vtbl = *reinterpret_cast<void***>(d3d9ex);
-    LogInfo("D3D9 factory vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
+    LogDebug("D3D9 factory vtable={:x}", reinterpret_cast<uintptr_t>(vtbl));
     if (vtbl[kFactoryCreateDeviceIdx] != static_cast<void*>(&Hooked_D3D9_CreateDevice)) {
         PatchSlot(vtbl, kFactoryCreateDeviceIdx, &Hooked_D3D9_CreateDevice,
                   reinterpret_cast<void**>(&g_orig_factory_create_device));
@@ -261,12 +261,12 @@ static void RestoreCreateDeviceEx() {
     VirtualProtect(&vtbl[kFactoryCreateDeviceExIdx], sizeof(void*), PAGE_READWRITE, &old);
     vtbl[kFactoryCreateDeviceExIdx] = reinterpret_cast<void*>(g_orig_factory_create_device_ex);
     VirtualProtect(&vtbl[kFactoryCreateDeviceExIdx], sizeof(void*), old, &old);
-    LogInfo("D3D9: vtable[20] temporarily restored");
+    LogDebug("D3D9: vtable[20] temporarily restored");
 }
 
 // ── JMP hooks on Direct3DCreate9 / Direct3DCreate9Ex ──────────────────────────
 static HRESULT WINAPI Hooked_Direct3DCreate9Ex(UINT sdkVer, IDirect3D9Ex** ppD3D) {
-    LogInfo("D3D9 Direct3DCreate9Ex called depth={}", g_create9ex_depth);
+    LogDebug("D3D9 Direct3DCreate9Ex called depth={}", g_create9ex_depth);
     ++g_create9ex_depth;
     // Always restore vtable[20] to original before entering d3d9.dll code.
     // d3d9.dll makes a recursive Direct3DCreate9Ex call internally, and after
@@ -278,13 +278,13 @@ static HRESULT WINAPI Hooked_Direct3DCreate9Ex(UINT sdkVer, IDirect3D9Ex** ppD3D
     --g_create9ex_depth;
     if (SUCCEEDED(hr) && ppD3D && *ppD3D) {
         g_factory_ptr = *ppD3D;
-        LogInfo("D3D9 factory={:x} depth={}", reinterpret_cast<uintptr_t>(*ppD3D), g_create9ex_depth);
+        LogDebug("D3D9 factory={:x} depth={}", reinterpret_cast<uintptr_t>(*ppD3D), g_create9ex_depth);
         // vtable[16]: safe at any depth, d3d9 never calls it internally.
         PatchCreateDevice(*ppD3D);
         // vtable[20]: only once all factory-init recursion is done.
         if (g_create9ex_depth == 0) PatchCreateDeviceEx(*ppD3D);
     } else {
-        LogInfo("D3D9 Direct3DCreate9Ex: hr={:x} ppD3D={} *ppD3D={}",
+        LogDebug("D3D9 Direct3DCreate9Ex: hr={:x} ppD3D={} *ppD3D={}",
                 static_cast<unsigned>(hr),
                 ppD3D != nullptr,
                 (ppD3D && *ppD3D) ? "non-null" : "null");
@@ -293,22 +293,22 @@ static HRESULT WINAPI Hooked_Direct3DCreate9Ex(UINT sdkVer, IDirect3D9Ex** ppD3D
 }
 
 static IDirect3D9* WINAPI Hooked_Direct3DCreate9(UINT sdkVer) {
-    LogInfo("D3D9 Direct3DCreate9 called");
+    LogDebug("D3D9 Direct3DCreate9 called");
     IDirect3D9* d3d9 = g_orig_create9_fn(sdkVer);
-    LogInfo("D3D9 Direct3DCreate9: factory={:x}", reinterpret_cast<uintptr_t>(d3d9));
+    LogDebug("D3D9 Direct3DCreate9: factory={:x}", reinterpret_cast<uintptr_t>(d3d9));
     return d3d9;
 }
 
 // ── background thread ─────────────────────────────────────────────────────────
 static void WatchThread() {
-    LogInfo("D3D9 WatchThread: started");
+    LogDebug("D3D9 WatchThread: started");
 
     int ticks = 0;
     while (GetModuleHandleA("d3d9.dll") == nullptr) {
         Sleep(50);
-        if (++ticks % 100 == 0) LogInfo("D3D9 WatchThread: waiting ({} ticks)", ticks);
+        if (++ticks % 100 == 0) LogDebug("D3D9 WatchThread: waiting ({} ticks)", ticks);
     }
-    LogInfo("D3D9 WatchThread: d3d9.dll detected");
+    LogDebug("D3D9 WatchThread: d3d9.dll detected");
 
     HMODULE mod = GetModuleHandleA("d3d9.dll");
     using namespace hooking;
@@ -319,7 +319,7 @@ static void WatchThread() {
         g_orig_create9ex_fn = reinterpret_cast<Direct3DCreate9Ex_t>(
             HookManager::Instance().SetHook(HookType::kJmpHook, fn_ex,
                                             reinterpret_cast<uint8_t*>(Hooked_Direct3DCreate9Ex)));
-        LogInfo("D3D9 WatchThread: Direct3DCreate9Ex JMP-hooked ok={}", g_orig_create9ex_fn != nullptr);
+        LogDebug("D3D9 WatchThread: Direct3DCreate9Ex JMP-hooked ok={}", g_orig_create9ex_fn != nullptr);
     }
 
     // JMP-hook Direct3DCreate9
@@ -328,7 +328,7 @@ static void WatchThread() {
         g_orig_create9_fn = reinterpret_cast<Direct3DCreate9_t>(
             HookManager::Instance().SetHook(HookType::kJmpHook, fn9,
                                             reinterpret_cast<uint8_t*>(Hooked_Direct3DCreate9)));
-        LogInfo("D3D9 WatchThread: Direct3DCreate9 JMP-hooked ok={}", g_orig_create9_fn != nullptr);
+        LogDebug("D3D9 WatchThread: Direct3DCreate9 JMP-hooked ok={}", g_orig_create9_fn != nullptr);
     }
 
     // No temp factory creation here — creating a factory before the game has a window
@@ -336,7 +336,7 @@ static void WatchThread() {
     // The JMP hooks above are sufficient; Hooked_Direct3DCreate9Ex will patch the
     // factory vtable and code-hook CreateDeviceEx on the first real game call.
 
-    LogInfo("D3D9 WatchThread: done");
+    LogDebug("D3D9 WatchThread: done");
 }
 
 void InitD3D9Hook() {

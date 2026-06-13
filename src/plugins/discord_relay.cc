@@ -13,13 +13,14 @@
 #include "nlohmann/json.hpp"
 #include "plugins/discord_key.h"
 #include "spdlog/fmt/fmt.h"
+#include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 
 using json = nlohmann::json;
 
 namespace {
 
-constexpr char kEncConfigPath[] = "./plugins/config/discord.enc";
+constexpr char kEncConfigPath[] = "./discord.enc";
 constexpr wchar_t kApiHost[] = L"discord.com";
 constexpr char kApiBasePath[] = "/api/v10";
 constexpr unsigned int kDiscordColor = 0x7289DA;
@@ -149,7 +150,10 @@ std::string Trim(const std::string& text) {
 DiscordRelay::DiscordRelay() {
   // Read the encrypted blob written by discord_encrypt.exe.
   std::ifstream enc_file(kEncConfigPath, std::ios::binary);
-  if (!enc_file) return;  // Not configured — stay inert.
+  if (!enc_file) {
+    LogInfo("Discord relay: {} not found — relay inactive", kEncConfigPath);
+    return;
+  }
 
   const std::string raw((std::istreambuf_iterator<char>(enc_file)),
                          std::istreambuf_iterator<char>());
@@ -157,9 +161,8 @@ DiscordRelay::DiscordRelay() {
 
   std::string yaml_text;
   if (!discord_crypto::Decrypt(blob, yaml_text)) {
-    Bourgeon::Instance().AddLogLine(
-        "Discord: failed to decrypt discord.enc "
-        "(wrong key or corrupted file)");
+    LogError("Discord relay: failed to decrypt {} (wrong key or corrupted)",
+             kEncConfigPath);
     return;
   }
 
@@ -174,12 +177,19 @@ DiscordRelay::DiscordRelay() {
     }
     webhook_url_ = config["webhook_url"].as<std::string>("");
     char_name_fallback_ = config["char_name"].as<std::string>("");
-  } catch (const std::exception&) {
+  } catch (const std::exception& e) {
+    LogError("Discord relay: failed to parse config: {}", e.what());
     return;
   }
 
   enabled_ = !bot_token_.empty() && !guild_name_.empty() &&
              !channel_names_.empty();
+  if (enabled_) {
+    LogInfo("Discord relay: active (guild={}, channels={})", guild_name_,
+            channel_names_.size());
+  } else {
+    LogError("Discord relay: config loaded but missing required fields");
+  }
 }
 
 void DiscordRelay::PushEvent(Event::Type type, std::string text) {
