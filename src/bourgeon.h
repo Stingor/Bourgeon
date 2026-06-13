@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstddef>
 
 #include "plugins/plugin.h"
 #include "ragnarok/ragnarok_client.h"
@@ -33,6 +34,14 @@ class Bourgeon {
   void FireTalkType(const char* chat_buffer);
   void FireChatMessage(const char* chat_buffer);
   void FireKeyDown(unsigned long vkey, int new_key, int accurate_key);
+  void FireRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len);
+
+  // Packet helpers for plugins.
+  // SendPacket: raw send — caller builds the full packet including any header.
+  bool SendPacket(const uint8_t* buf, size_t len);
+  // RegisterRecvOpcode: installs a dispatch-table hook so the given server
+  // opcode is forwarded to OnRecvPacket instead of being dropped as unknown.
+  void RegisterRecvOpcode(uint16_t opcode);
 
  private:
   Bourgeon();

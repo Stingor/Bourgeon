@@ -109,6 +109,26 @@ void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
   }
 }
 
+void Bourgeon::FireRecvPacket(uint16_t opcode, const uint8_t* data,
+                              uint16_t len) {
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->OnRecvPacket(opcode, data, len);
+    } catch (const std::exception& error) {
+      LogError("[{}] OnRecvPacket: {}", plugin->name(), error.what());
+    }
+  }
+}
+
+bool Bourgeon::SendPacket(const uint8_t* buf, size_t len) {
+  return client_.rag_connection().SendPacket(
+      static_cast<int>(len), reinterpret_cast<char*>(const_cast<uint8_t*>(buf)));
+}
+
+void Bourgeon::RegisterRecvOpcode(uint16_t opcode) {
+  client_.rag_connection().RegisterRecvOpcode(opcode);
+}
+
 void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   {

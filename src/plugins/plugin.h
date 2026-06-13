@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "ragnarok/mode_mgr.h"
 
 // Base class for Bourgeon plugins. Plugins are written in C++ and compiled
@@ -33,4 +35,10 @@ class Plugin {
   // Fired every frame between ImGui::NewFrame() and ImGui::Render();
   // draw plugin windows here using the ImGui API directly.
   virtual void OnRenderUI() {}
+
+  // Fired when a server packet with a registered custom opcode is received.
+  // `data`/`len` cover the payload after the [opcode:2][total_len:2] header.
+  // Register the opcode first with Bourgeon::RegisterRecvOpcode(opcode).
+  virtual void OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                            uint16_t len) {}
 };
