@@ -194,11 +194,16 @@ void AutoLogin::OnTick() {
 
     case Stage::kSelectServer: {
       if (RagnarokClient::GameWindow() == nullptr) break;
-      // The first entry is highlighted by default; step down to our target and
-      // confirm. (Moonlight-Destiny is index 0 here, so this is just Enter.)
+      // The client remembers the last connection used, so the highlighted entry
+      // is whatever was picked last time — NOT necessarily the first. Force the
+      // highlight to the top (Up-arrow clamps there), then step down to our
+      // target index and confirm. server_count_ Up presses are enough to reach
+      // the top from any position.
+      for (int i = 0; i < server_count_; ++i) PressKey(VK_UP);
       for (int i = 0; i < server_index_; ++i) PressKey(VK_DOWN);
       PressKey(VK_RETURN);
-      LogInfo("[AutoLogin] selected server index {}", server_index_);
+      LogInfo("[AutoLogin] selected server index {} (of {})", server_index_,
+              server_count_);
       tick_counter_ = 0;
       stage_ = Stage::kWaitLogin;
       break;
