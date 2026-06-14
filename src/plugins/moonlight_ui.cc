@@ -27,6 +27,8 @@ static std::string GetSettingsPath() {
 
 MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
+  // Observe the standard map-move packet to learn the current map name.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
   FindChatBgInstruction();
 }
 
@@ -201,8 +203,16 @@ void MoonlightUi::UpdateRelay() {
 void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type,
                                const char* map_name) {
   const bool was_in_game = in_game_;
-  in_game_    = (mode_type == ModeMgr::ModeType::kGame);
-  in_gonryun_ = in_game_ && (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
+  in_game_ = (mode_type == ModeMgr::ModeType::kGame);
+
+  // Only update in_gonryun_ when we have a real map name. OnUpdateHook fires
+  // FireModeSwitch(kGame, "") on every tick for in_game_ tracking; that empty
+  // call must not override the map we learned from a real CModeMgr::Switch.
+  if (map_name && map_name[0] != '\0') {
+    in_gonryun_ = in_game_ && (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
+  } else if (!in_game_) {
+    in_gonryun_ = false;
+  }
 
   if (in_game_ && !was_in_game)
     LoadSettings();
@@ -214,6 +224,17 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type,
 //   [count:2][{id:2, value:2} * count]
 void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                uint16_t len) {
+  if (opcode == kOpcodeMapMove) {
+    // 0x0091 ZC_NPCACK_MAPMOVE: data points at mapname[16] (e.g. "gonryun.gat").
+    const char* map_name = reinterpret_cast<const char*>(data);
+    in_gonryun_ = in_game_ &&
+                  (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
+    LogInfo("[MoonlightUi] map move -> '{}' in_gonryun={}",
+            std::string(map_name, strnlen(map_name, len)), in_gonryun_);
+    UpdateRelay();
+    return;
+  }
+
   if (opcode != kOpcodeFromServer) return;
   if (len < 2) return;
 

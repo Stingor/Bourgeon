@@ -14,6 +14,9 @@ std::atomic<RagConnection*> RagConnection::g_ragconnection_ptr(nullptr);
 // Opcodes registered via RegisterRecvOpcode.
 std::unordered_set<uint16_t> RagConnection::s_registered_opcodes_;
 
+// Opcodes observed via RegisterObserveOpcode (opcode -> forward byte count).
+std::unordered_map<uint16_t, uint16_t> RagConnection::s_observe_opcodes_;
+
 // Packet saved by PacketBufReaderHook: captured right after FUN_00c147d0
 // fills the shared buffer, before anything downstream overwrites it.
 // The dispatch handler (RecvPacketHandlerImpl) reads from here.
@@ -95,6 +98,11 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
   LogInfo("RagConnection: recv opcode 0x{:04x} → dispatch table slot [{}]", opcode, idx);
 }
 
+void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
+  s_observe_opcodes_[opcode] = forward_len;
+  LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
+}
+
 // Called by the game's packet-read loop (FUN_00c9df00) right after
 // FUN_00c147d0 copies the incoming packet into the shared buffer.  At this
 // point the buffer has not yet been processed by FUN_00b1e920, so the data is
@@ -110,14 +118,24 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
     if (total_len >= 4 && total_len <= sizeof(g_saved_packet)) {
       std::memcpy(g_saved_packet, param_1, total_len);
       g_saved_packet_len = total_len;
+    } else {
+      LogError("PacketBufReaderHook: opcode=0x{:04x} bad total_len={} (ignored)", opcode, total_len);
     }
+  }
+
+  // Passive observation of standard packets: fire the plugin callback with the
+  // bytes right after the opcode.  We do NOT touch the dispatch table, so the
+  // game's own handler still runs — we only peek (e.g. mapname from 0x0091).
+  const auto obs = s_observe_opcodes_.find(opcode);
+  if (obs != s_observe_opcodes_.end()) {
+    Bourgeon::Instance().FireRecvPacket(opcode, param_1 + 2, obs->second);
   }
   return result;
 }
 
 void RagConnection::RecvPacketHandlerImpl() {
   if (g_saved_packet_len < 4) {
-    LogInfo("RecvPacketHandlerImpl: no saved packet (opcode=0x{:04x})", g_dispatch_opcode);
+    LogInfo("RecvPacketHandlerImpl: no saved packet (dispatch_opcode=0x{:04x})", g_dispatch_opcode);
     return;
   }
   const uint16_t opcode   = *reinterpret_cast<const uint16_t*>(g_saved_packet);

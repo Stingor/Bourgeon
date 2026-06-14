@@ -21,6 +21,13 @@ class MoonlightUi : public Plugin {
 
   static constexpr uint16_t kOpcodeFromServer = 0x0BFE;  // ZC_BOURGEON_SETTINGS
   static constexpr uint16_t kOpcodeToServer   = 0x0BFD;  // CZ_BOURGEON_SETTING
+  // We read the current map name from the STANDARD client packet 0x0091
+  // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
+  // carries mapname[16] right after the opcode.  This needs no custom packet
+  // and no server changes, so there is no opcode to collide with the client's
+  // packet-length table (0x0BFC and 0x0BFF both turned out to be reserved).
+  static constexpr uint16_t kOpcodeMapMove    = 0x0091;  // [opcode:2][mapname:16][x:2][y:2]
+  static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
   // Setting IDs sent via CZ 0x0BFD (must match server-side clif_parse_bourgeon_setting).
   // Discord is now client-only (saved to YAML); IDs 0-5 are server-side toggles.
@@ -34,7 +41,7 @@ class MoonlightUi : public Plugin {
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
 
-  static constexpr const char* kDiscordMap = "gonryun";
+  static constexpr char kDiscordMap[] = "gonryun";  // sizeof - 1 = 7, correct prefix length
 
   bool in_game_    = false;
   bool in_gonryun_ = false;

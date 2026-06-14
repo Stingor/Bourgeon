@@ -43,6 +43,12 @@ class Bourgeon {
   // opcode is forwarded to OnRecvPacket instead of being dropped as unknown.
   void RegisterRecvOpcode(uint16_t opcode);
 
+  // RegisterObserveOpcode: forwards a *standard* client packet to OnRecvPacket
+  // without replacing its dispatch handler.  `forward_len` bytes after the
+  // 2-byte opcode are passed as `data`.  Use for reading fields off packets the
+  // client already handles (e.g. mapname from 0x0091 ZC_NPCACK_MAPMOVE).
+  void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
+
  private:
   Bourgeon();
 

@@ -129,6 +129,10 @@ void Bourgeon::RegisterRecvOpcode(uint16_t opcode) {
   client_.rag_connection().RegisterRecvOpcode(opcode);
 }
 
+void Bourgeon::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
+  client_.rag_connection().RegisterObserveOpcode(opcode, forward_len);
+}
+
 void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   {
