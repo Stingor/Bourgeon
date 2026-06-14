@@ -77,6 +77,7 @@ target_include_directories(bourgeon PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(bourgeon PRIVATE
     "${CMAKE_SOURCE_DIR}/thirdparty/json/include")
 target_compile_options(bourgeon PRIVATE "/MT")
+target_link_options(bourgeon PRIVATE "/MAP")
 target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)

@@ -69,10 +69,11 @@ static FactoryCreateDeviceEx_t g_orig_factory_create_device_ex = nullptr;
 static Direct3DCreate9Ex_t g_orig_create9ex_fn = nullptr;
 static Direct3DCreate9_t   g_orig_create9_fn   = nullptr;
 
-// Cached factory pointer — used to temporarily restore vtable[20] before each
-// g_orig_create9ex_fn call so d3d9.dll's internal null-self vtable dispatch
-// goes to the original and never enters our hook.
-static IDirect3D9Ex* g_factory_ptr = nullptr;
+// Direct pointer into d3d9.dll's shared vtable array for IDirect3D9Ex.
+// We store the vtable pointer (not the factory object) so that RestoreCreateDeviceEx
+// stays valid even after the game releases the factory object — the vtable lives
+// in d3d9.dll's .rdata section and is never freed.
+static void** g_factory_vtable = nullptr;
 
 // Nesting depth of Hooked_Direct3DCreate9Ex calls.
 // d3d9.dll internally calls Direct3DCreate9Ex recursively.  We patch vtable[20]
@@ -194,6 +195,11 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
     HRESULT hr = g_orig_factory_create_device(self, nullptr, adapter, devtype,
                                                hwnd, flags, pp, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
+        if (g_dx9_initialized.load()) {
+            LogInfo("D3D9: device recreated via CreateDevice — resetting ImGui");
+            ImGui_ImplDX9_InvalidateDeviceObjects();
+            g_dx9_initialized.store(false);
+        }
         void** vtbl = *reinterpret_cast<void***>(*ppDev);
         LogDebug("D3D9 CreateDevice: device={:x} vtable={:x}",
                 reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
@@ -217,6 +223,11 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
     HRESULT hr = g_orig_factory_create_device_ex(pFullEcx, nullptr, self, adapter, devtype,
                                                   hwnd, flags, pp, pFullscreen, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
+        if (g_dx9_initialized.load()) {
+            LogInfo("D3D9: device recreated via CreateDeviceEx — resetting ImGui");
+            ImGui_ImplDX9_InvalidateDeviceObjects();
+            g_dx9_initialized.store(false);
+        }
         void** vtbl = *reinterpret_cast<void***>(*ppDev);
         LogDebug("D3D9 CreateDeviceEx: device={:x} vtable={:x}",
                 reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
@@ -254,13 +265,12 @@ static void PatchCreateDeviceEx(IDirect3D9Ex* d3d9ex) {
 // re-patch after. Prevents d3d9.dll's internal null-self vtable[20] dispatch from
 // entering our hook with a mismatched stack ABI.
 static void RestoreCreateDeviceEx() {
-    if (!g_factory_ptr || !g_orig_factory_create_device_ex) return;
-    void** vtbl = *reinterpret_cast<void***>(g_factory_ptr);
-    if (vtbl[kFactoryCreateDeviceExIdx] != static_cast<void*>(&Hooked_D3D9Ex_CreateDeviceEx)) return;
+    if (!g_factory_vtable || !g_orig_factory_create_device_ex) return;
+    if (g_factory_vtable[kFactoryCreateDeviceExIdx] != static_cast<void*>(&Hooked_D3D9Ex_CreateDeviceEx)) return;
     DWORD old;
-    VirtualProtect(&vtbl[kFactoryCreateDeviceExIdx], sizeof(void*), PAGE_READWRITE, &old);
-    vtbl[kFactoryCreateDeviceExIdx] = reinterpret_cast<void*>(g_orig_factory_create_device_ex);
-    VirtualProtect(&vtbl[kFactoryCreateDeviceExIdx], sizeof(void*), old, &old);
+    VirtualProtect(&g_factory_vtable[kFactoryCreateDeviceExIdx], sizeof(void*), PAGE_READWRITE, &old);
+    g_factory_vtable[kFactoryCreateDeviceExIdx] = reinterpret_cast<void*>(g_orig_factory_create_device_ex);
+    VirtualProtect(&g_factory_vtable[kFactoryCreateDeviceExIdx], sizeof(void*), old, &old);
     LogDebug("D3D9: vtable[20] temporarily restored");
 }
 
@@ -277,7 +287,9 @@ static HRESULT WINAPI Hooked_Direct3DCreate9Ex(UINT sdkVer, IDirect3D9Ex** ppD3D
     HRESULT hr = g_orig_create9ex_fn(sdkVer, ppD3D);
     --g_create9ex_depth;
     if (SUCCEEDED(hr) && ppD3D && *ppD3D) {
-        g_factory_ptr = *ppD3D;
+        // Save the vtable pointer (in d3d9.dll .rdata, always valid) rather than
+        // the factory object pointer (which the game may Release before the next call).
+        g_factory_vtable = *reinterpret_cast<void***>(*ppD3D);
         LogDebug("D3D9 factory={:x} depth={}", reinterpret_cast<uintptr_t>(*ppD3D), g_create9ex_depth);
         // vtable[16]: safe at any depth, d3d9 never calls it internally.
         PatchCreateDevice(*ppD3D);
