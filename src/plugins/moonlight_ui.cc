@@ -236,18 +236,19 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   }
 
   if (opcode != kOpcodeFromServer) return;
-  if (len < 2) return;
+  // Layout after the [opcode:2][len:2] header: [char_id:4][count:2][{id,value}*].
+  if (len < 6) return;
 
-  const uint16_t count = *reinterpret_cast<const uint16_t*>(data);
-  const uint16_t expected_len = static_cast<uint16_t>(2 + count * 4);
+  const uint16_t count = *reinterpret_cast<const uint16_t*>(data + 4);
+  const uint16_t expected_len = static_cast<uint16_t>(6 + count * 4);
   if (len < expected_len) {
     LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len, count);
     return;
   }
 
   for (uint16_t i = 0; i < count; ++i) {
-    const uint16_t id    = *reinterpret_cast<const uint16_t*>(data + 2 + i * 4);
-    const uint16_t value = *reinterpret_cast<const uint16_t*>(data + 2 + i * 4 + 2);
+    const uint16_t id    = *reinterpret_cast<const uint16_t*>(data + 6 + i * 4);
+    const uint16_t value = *reinterpret_cast<const uint16_t*>(data + 6 + i * 4 + 2);
     switch (id) {
       case kSettingShowExp:
         show_exp_ = (value != 0);

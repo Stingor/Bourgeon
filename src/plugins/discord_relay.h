@@ -34,6 +34,7 @@ class DiscordRelay : public Plugin {
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnTalkType(const char* chat_buffer) override;
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Controlled by the UI checkbox — enables/disables both relay directions.
   void set_chat_active(bool active) { chat_active_.store(active); }
@@ -65,6 +66,14 @@ class DiscordRelay : public Plugin {
   std::vector<std::string> channel_names_;
   std::string webhook_url_;
   std::string char_name_fallback_;
+  // Per-character avatar: "<base><char_id>.png" is used as the webhook avatar.
+  // Configurable so the host URL isn't hard-coded; empty disables it.
+  std::string avatar_base_;
+
+  // ZC_BOURGEON_SETTINGS (0x0BFE) carries the player's char_id as its first
+  // field; we read it here to build the avatar URL. 0 until received.
+  static constexpr uint16_t kOpcodeSettings = 0x0BFE;
+  uint32_t char_id_ = 0;
 
   // Runtime state
   uint32_t tick_count_ = 0;

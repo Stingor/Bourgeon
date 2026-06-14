@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <regex>
 #include <thread>
 
 #include "bourgeon.h"
@@ -39,15 +40,28 @@ std::wstring Utf8ToWide(const std::string& utf8) {
 }
 
 // The game uses the ANSI codepage (Windows-1252 on Western systems) while
-// Discord speaks UTF-8; unmappable characters become '?'.
+// Discord speaks UTF-8. Characters that don't exist in the codepage (e.g.
+// Unicode emoji) are DROPPED rather than turned into '?' clutter, while
+// representable ones (accents, etc.) are kept. Converted codepoint-by-codepoint
+// so surrogate-pair emoji are detected and skipped as a unit.
 std::string Utf8ToAnsi(const std::string& utf8) {
   std::wstring wide = Utf8ToWide(utf8);
   if (wide.empty()) return {};
-  int alen = WideCharToMultiByte(CP_ACP, 0, wide.data(), wide.size(), nullptr,
-                                 0, "?", nullptr);
-  std::string ansi(alen, '\0');
-  WideCharToMultiByte(CP_ACP, 0, wide.data(), wide.size(), ansi.data(), alen,
-                      "?", nullptr);
+  std::string ansi;
+  ansi.reserve(wide.size());
+  for (size_t i = 0; i < wide.size();) {
+    int units = 1;
+    if (wide[i] >= 0xD800 && wide[i] <= 0xDBFF && i + 1 < wide.size() &&
+        wide[i + 1] >= 0xDC00 && wide[i + 1] <= 0xDFFF) {
+      units = 2;  // surrogate pair (e.g. an emoji) → one codepoint
+    }
+    char buf[8];
+    BOOL used_default = FALSE;
+    int n = WideCharToMultiByte(CP_ACP, 0, &wide[i], units, buf, sizeof(buf),
+                                "?", &used_default);
+    if (n > 0 && !used_default) ansi.append(buf, n);  // drop if unmappable
+    i += units;
+  }
   return ansi;
 }
 
@@ -145,6 +159,43 @@ std::string Trim(const std::string& text) {
   return text.substr(begin, end - begin + 1);
 }
 
+void ReplaceAll(std::string& s, const std::string& from, const std::string& to) {
+  if (from.empty()) return;
+  for (size_t pos = 0; (pos = s.find(from, pos)) != std::string::npos;
+       pos += to.size()) {
+    s.replace(pos, from.size(), to);
+  }
+}
+
+// Turns Discord's raw markup in a message into something readable in the ANSI
+// game chat:
+//   <@id> / <@!id>  user mention  -> @name  (resolved via the message's
+//                                    `mentions` array, else @user)
+//   <@&id>          role mention  -> @role
+//   <#id>           channel       -> #channel
+//   <:name:id> / <a:name:id> custom emote -> :name:
+// Unicode emoji left in the text are dropped later by Utf8ToAnsi.
+std::string SanitizeContent(const json& msg, std::string s) {
+  if (msg.contains("mentions") && msg["mentions"].is_array()) {
+    for (const auto& user : msg["mentions"]) {
+      const std::string id = user.value("id", "");
+      if (id.empty()) continue;
+      std::string name;
+      if (user.contains("global_name") && user["global_name"].is_string())
+        name = user["global_name"].get<std::string>();
+      if (name.empty()) name = user.value("username", "user");
+      ReplaceAll(s, "<@" + id + ">", "@" + name);
+      ReplaceAll(s, "<@!" + id + ">", "@" + name);
+    }
+  }
+  s = std::regex_replace(s, std::regex(R"(<a?:([A-Za-z0-9_]+):[0-9]+>)"),
+                         ":$1:");
+  s = std::regex_replace(s, std::regex(R"(<@&[0-9]+>)"), "@role");
+  s = std::regex_replace(s, std::regex(R"(<@!?[0-9]+>)"), "@user");
+  s = std::regex_replace(s, std::regex(R"(<#[0-9]+>)"), "#channel");
+  return s;
+}
+
 }  // namespace
 
 DiscordRelay::DiscordRelay() {
@@ -177,6 +228,8 @@ DiscordRelay::DiscordRelay() {
     }
     webhook_url_ = config["webhook_url"].as<std::string>("");
     char_name_fallback_ = config["char_name"].as<std::string>("");
+    avatar_base_ = config["avatar_base"].as<std::string>(
+        "https://moonlight-destiny.fr/images/CacheAvatar/");
   } catch (const std::exception& e) {
     LogError("Discord relay: failed to parse config: {}", e.what());
     return;
@@ -227,6 +280,14 @@ void DiscordRelay::OnModeSwitch(ModeMgr::ModeType mode_type,
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
 }
 
+void DiscordRelay::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                uint16_t len) {
+  // ZC_BOURGEON_SETTINGS (registered by MoonlightUi) carries the player's
+  // char_id as its first field, right after the [opcode:2][len:2] header.
+  if (opcode != kOpcodeSettings || len < 4) return;
+  char_id_ = *reinterpret_cast<const uint32_t*>(data);
+}
+
 void DiscordRelay::OnTalkType(const char* chat_buffer) {
   if (!enabled_ || webhook_url_.empty() || !in_game_ || !chat_active_.load()) return;
 
@@ -243,6 +304,10 @@ void DiscordRelay::OnTalkType(const char* chat_buffer) {
   json payload;
   payload["username"] = AnsiToUtf8(char_name);
   payload["content"] = AnsiToUtf8(text);
+  // Per-character avatar, once the server has told us this character's id.
+  if (char_id_ != 0 && !avatar_base_.empty()) {
+    payload["avatar_url"] = fmt::format("{}{}.png", avatar_base_, char_id_);
+  }
 
   std::thread([url = webhook_url_, body = payload.dump()] {
     std::wstring host, path;
@@ -368,8 +433,8 @@ void DiscordRelay::PullMessages() {
       const json& msg = *it;
       channel.cursor = msg.value("id", channel.cursor);
       if (msg.contains("webhook_id")) continue;  // skip our own echoes
-      const std::string content = Trim(msg.value("content", ""));
-      if (content.empty()) continue;
+      std::string content = Trim(SanitizeContent(msg, msg.value("content", "")));
+      if (content.empty()) continue;  // e.g. an emoji-only message
 
       std::string display;
       if (msg.contains("member")) display = msg["member"].value("nick", "");
