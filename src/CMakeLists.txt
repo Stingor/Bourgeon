@@ -18,6 +18,8 @@ set(BOURGEON_FILES
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"
 	"plugins/auto_login.h"
+	"plugins/integrity_check.cc"
+	"plugins/integrity_check.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
@@ -85,6 +87,17 @@ target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSIO
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
 target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp bcrypt shell32)
+
+# Emit the SHA-256 of the freshly-built DLL (prints it and writes a sidecar
+# ddraw.dll.sha256). Use it to fill the `hash:` line in the server's
+# conf/bourgeon_integrity.conf for the integrity check.
+add_custom_command(TARGET bourgeon POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -D "DLL=$<TARGET_FILE:bourgeon>"
+        -D "OUT=$<TARGET_FILE_DIR:bourgeon>/ddraw.dll.sha256"
+        -P "${CMAKE_SOURCE_DIR}/cmake/sha256.cmake"
+    VERBATIM
+)
 
 if(RO_DEPLOY_DIR)
     add_custom_command(TARGET bourgeon POST_BUILD
