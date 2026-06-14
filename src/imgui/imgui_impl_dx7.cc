@@ -7,6 +7,7 @@
 // online: https://github.com/ocornut/imgui/tree/master/docs
 
 #include "imgui/imgui_impl_dx7.h"
+#include "utils/log_console.h"
 
 // DirectX
 #include <d3d.h>
@@ -34,6 +35,10 @@ static std::vector<WORD> g_indices;
 #endif
 
 static void ImGui_ImplDX7_SetupRenderState(ImDrawData* draw_data) {
+  if (!g_pd3dDevice) {
+    LogError("ImplDX7 SetupRenderState: g_pd3dDevice is NULL");
+    return;
+  }
   // Setup viewport
   D3DVIEWPORT7 vp;
   vp.dwX = vp.dwY = 0;
@@ -104,6 +109,10 @@ static void ImGui_ImplDX7_SetupRenderState(ImDrawData* draw_data) {
 
 // Render function.
 void ImGui_ImplDX7_RenderDrawData(ImDrawData* draw_data) {
+  if (!g_pd3dDevice) {
+    LogError("ImplDX7 RenderDrawData: g_pd3dDevice is NULL — skipping");
+    return;
+  }
   // Avoid rendering when minimized
   if (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f) {
     return;

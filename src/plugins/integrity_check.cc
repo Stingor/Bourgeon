@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "imgui.h"
 #include "utils/log_console.h"
 
 namespace {
@@ -76,6 +77,11 @@ bool IntegrityCheck::ParseEnabled() {
 
 IntegrityCheck::IntegrityCheck() {
   enabled_ = ParseEnabled();
+
+  // Always register the kick-notice opcode so the server can warn us even if
+  // integrity sending is disabled on this client.
+  Bourgeon::Instance().RegisterRecvOpcode(kOpcodeKickNotice);
+
   if (!enabled_) {
     LogInfo("[Integrity] disabled via --integrity:false — not sending checksum");
     return;  // skip hashing entirely; nothing will be sent
@@ -113,4 +119,58 @@ void IntegrityCheck::SendChecksum() {
   std::memcpy(buf + 4, hash_, kHashLen);
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
   LogInfo("[Integrity] checksum sent");
+}
+
+void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
+                                  uint16_t /*len*/) {
+  if (opcode == kOpcodeKickNotice) {
+    LogInfo("[Integrity] kick-notice received — showing update popup");
+    kick_notice_tick_ = static_cast<uint32_t>(GetTickCount());
+    popup_pending_ = true;
+  }
+}
+
+void IntegrityCheck::OnRenderUI() {
+  if (popup_pending_) {
+    ImGui::OpenPopup("Client Update Required");
+    popup_pending_ = false;
+  }
+
+  if (kick_notice_tick_ != 0) {
+    const uint32_t elapsed =
+        static_cast<uint32_t>(GetTickCount()) - kick_notice_tick_;
+    if (elapsed >= kKickDelayMs + 500) {
+      // Server has kicked us by now; close the process rather than staying
+      // frozen on the disconnected game screen.
+      ExitProcess(0);
+    }
+  }
+
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                          ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal("Client Update Required", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize |
+                                 ImGuiWindowFlags_NoMove)) {
+    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                       "Your game client is outdated!");
+    ImGui::Spacing();
+    ImGui::TextWrapped(
+        "Please close the game and run the patcher to update,\n"
+        "then reconnect.");
+    ImGui::Spacing();
+
+    if (kick_notice_tick_ != 0) {
+      const uint32_t elapsed =
+          static_cast<uint32_t>(GetTickCount()) - kick_notice_tick_;
+      const uint32_t remaining =
+          elapsed < kKickDelayMs ? kKickDelayMs - elapsed : 0;
+      const int secs = static_cast<int>((remaining + 999) / 1000);
+      ImGui::TextDisabled("Closing in %d second%s...", secs,
+                          secs == 1 ? "" : "s");
+    } else {
+      ImGui::TextDisabled("Disconnecting in a few seconds...");
+    }
+
+    ImGui::EndPopup();
+  }
 }
