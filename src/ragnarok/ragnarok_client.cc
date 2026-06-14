@@ -33,6 +33,10 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
 static CreateWindowExAFunc CreateWindowExARef;
 static WindowProcFunc WndProcRef;
 
+// Handle of the first (game) window created via CreateWindowExA. Exposed to
+// plugins through RagnarokClient::GameWindow() (e.g. for synthesizing input).
+static HWND g_game_hwnd = nullptr;
+
 RagnarokClient::RagnarokClient()
     : timestamp_(),
       session_(),
@@ -101,6 +105,8 @@ bool RagnarokClient::Initialize() {
 YAML::Node RagnarokClient::LoadConfiguration() {
   return YAML::Load(kYamlConfiguration);
 }
+
+void* RagnarokClient::GameWindow() { return g_game_hwnd; }
 
 uint32_t RagnarokClient::timestamp() const { return timestamp_; }
 
@@ -223,6 +229,10 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   LogInfo("CreateWindowExAHook: class='{}' hwnd={:x}",
           lpClassName ? lpClassName : "(null)",
           reinterpret_cast<uintptr_t>(hwnd));
+
+  // Remember the main game window so plugins can target it (e.g. AutoLogin
+  // posts input messages here).
+  g_game_hwnd = hwnd;
 
   // Hook WndProc
   WNDCLASSEXA wnd_class;

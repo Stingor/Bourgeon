@@ -16,6 +16,8 @@ set(BOURGEON_FILES
 	"plugins/moonlight_ui.h"
 	"plugins/discord_relay.cc"
 	"plugins/discord_relay.h"
+	"plugins/auto_login.cc"
+	"plugins/auto_login.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
@@ -82,13 +84,16 @@ target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp bcrypt)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp bcrypt shell32)
 
 if(RO_DEPLOY_DIR)
     add_custom_command(TARGET bourgeon POST_BUILD
+        # Best-effort copy: if the game is running it holds ddraw.dll open, so
+        # fall back to a message instead of failing the whole build.
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:bourgeon>"
             "${RO_DEPLOY_DIR}/ddraw.dll"
+            || ${CMAKE_COMMAND} -E echo "Deploy skipped (ddraw.dll in use — close the game)"
         COMMENT "Deployed to ${RO_DEPLOY_DIR}"
     )
 endif()

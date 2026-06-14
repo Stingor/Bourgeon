@@ -27,6 +27,11 @@ class RagnarokClient {
   // High level methods implemented by the client
   bool UseItemById(int item_id) const;
 
+  // Raw HWND of the main game window, captured when the client creates it.
+  // Returned as void* so this header doesn't need to pull in <Windows.h>;
+  // callers cast back to HWND. Null until the window exists.
+  static void* GameWindow();
+
  private:
   static YAML::Node LoadConfiguration();
   static uint32_t GetClientTimeStamp();

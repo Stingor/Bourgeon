@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include "imgui.h"
+#include "plugins/auto_login.h"
 #include "plugins/discord_relay.h"
 #include "plugins/moonlight_ui.h"
 #include "utils/log_console.h"
@@ -134,6 +135,7 @@ void Bourgeon::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
 }
 
 void Bourgeon::LoadPlugins() {
+  plugins_.emplace_back(std::make_unique<AutoLogin>());
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   {
     auto relay = std::make_unique<DiscordRelay>();
