@@ -22,9 +22,12 @@ static ProcessInputMsg_t g_orig_process_input_msg = nullptr;
 static int __fastcall Hooked_ProcessInputMsg(void* ecx, void* edx, int msg,
                                              int p1, int p2, int p3, int p4) {
   ImGuiIO& io = ImGui::GetIO();
-  if (io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput) {
-    return 0;
-  }
+  // Suppress game input when ImGui needs the keyboard (text input active).
+  if (io.WantCaptureKeyboard || io.WantTextInput) return 0;
+  // Suppress game input during active mouse interactions on ImGui (click/drag).
+  // Do NOT suppress on hover alone — that would swallow keyboard events (chat
+  // Enter, etc.) whenever the mouse rests over the overlay.
+  if (io.WantCaptureMouse && ImGui::IsAnyMouseDown()) return 0;
   return g_orig_process_input_msg(ecx, edx, msg, p1, p2, p3, p4);
 }
 
@@ -68,13 +71,8 @@ void GameMode::OnUpdateHook() {
 
 void GameMode::ProcessInputHook() {
   ImGuiIO& io = ImGui::GetIO();
-  // "Capture" mouse/keyboard inputs when imgui uses them.
-  // Note: This might capture more inputs than needed but in practice it
-  // turns out fine.
-  if (io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput) {
-    return;
-  }
-
+  if (io.WantCaptureKeyboard || io.WantTextInput) return;
+  if (io.WantCaptureMouse && ImGui::IsAnyMouseDown()) return;
   return ProcessInputRef(this);
 }
 

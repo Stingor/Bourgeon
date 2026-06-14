@@ -290,6 +290,21 @@ void MoonlightUi::SendSetting(uint16_t id, uint16_t value) {
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
 }
 
+// Helper to display a little (?) mark which shows a tooltip when hovered.
+// In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
+static void HelpMarker(const char* desc)
+{
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(desc);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
 // ── ImGui panel ───────────────────────────────────────────────────────────
 
 void MoonlightUi::OnRenderUI() {
@@ -310,72 +325,223 @@ void MoonlightUi::OnRenderUI() {
 
   if (!is_collapsed) {
 
-    // ── Chat Box Settings ────────────────────────────────────────────────
-    ImGui::TextUnformatted("Chat Box Settings");
-    ImGui::Separator();
-    if (ImGui::Checkbox("Chat Discord (Gonryun only)", &discord_chat_)) {
-      UpdateRelay();
-      SaveSettings();
-      const char* msg = discord_chat_
-          ? "Discord relay : ACTIVE"
-          : "Discord relay : DESACTIVE";
-      UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
-                           reinterpret_cast<int>(msg), 0x00FF00, 0, 0);
-    }
-
-    // ── Chat Background Color ─────────────────────────────────────────────
-    if (chat_bg_instr_) {
-      // Color swatch — click to open the picker popup.
-      const ImVec4 swatch(chat_bg_color_[0], chat_bg_color_[1],
-                           chat_bg_color_[2], chat_bg_color_[3]);
-      if (ImGui::ColorButton("##chatbg_btn", swatch,
-                             ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
-        ImGui::OpenPopup("chatbg_picker");
-
-      ImGui::SameLine();
-      ImGui::TextUnformatted("Background Color");
-
-      // Popup with full picker + explicit Close button.
-      if (ImGui::BeginPopup("chatbg_picker")) {
-        if (ImGui::ColorPicker4("##chatbg", chat_bg_color_,
-                                ImGuiColorEditFlags_AlphaBar |
-                                ImGuiColorEditFlags_NoSidePreview)) {
-          PatchInstruction(PickerToArgb());
-          picker_was_editing_ = true;
-        }
-        if (picker_was_editing_ && ImGui::IsMouseReleased(0)) {
-          const uint32_t argb = PickerToArgb();
-          PatchExistingObjects(argb);
-          SaveSettings();
-          picker_was_editing_ = false;
-        }
-        ImGui::Separator();
-        if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f)))
-          ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+    if (ImGui::CollapsingHeader("Règles du serveur"))
+    {
+      ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
+      if (ImGui::TreeNode("Règlements généraux"))
+      {
+          ImGui::Text("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
+          ImGui::Spacing();
+          ImGui::BulletText("Les joueurs doivent se respecter et garder un langage propre et courtois.");
+          ImGui::BulletText("Les propos visant à rejeter un nouveau joueur sont interdits.");
+          ImGui::BulletText("L'utilisation de programmes tels que bots ou hacks = ban définitif sans hésitation.");
+          ImGui::BulletText("Le flood est strictement interdit.");
+          ImGui::BulletText("Vous êtes entièrement responsable de votre compte.");
+          ImGui::BulletText("Le staff ne rend pas les items perdus (vente NPC, deslotage raté, refine raté).");
+          ImGui::BulletText("Le staff peut exceptionnellement rendre un item perdu si les logs prouvent un bug serveur.");
+          ImGui::BulletText("Ne partagez jamais votre compte ou votre mot de passe.");
+          ImGui::BulletText("La demande de support pour créer un serveur privé est non recommandée.");
+          ImGui::BulletText("Le plagiat volontaire d'un membre du staff est puni.");
+          ImGui::BulletText("Tout ce qui se rapporte au serveur est la propriété exclusive des administrateurs.");
+          ImGui::BulletText("Le langage SMS est à proscrire.");
+          ImGui::BulletText("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur.");
+          ImGui::BulletText("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus...");
+          ImGui::TreePop();
       }
-    } else {
-      ImGui::TextDisabled("(chat background patch unavailable)");
+      ImGui::Spacing();
+      if (ImGui::TreeNode("Sur le serveur de jeu"))
+      {
+          ImGui::BulletText("Insultes et vols de drop (Looting) = INTERDITS.");
+          ImGui::BulletText("Heal ou buff un monstre qui ne vous appartient pas sans accord = puni.");
+          ImGui::BulletText("Si vous êtes banni définitivement, tous les comptes liés à votre IP/PC le seront aussi.");
+          ImGui::BulletText("Les sanctions (mute, jail, kick, ban) sont à la discrétion du staff.");
+          ImGui::BulletText("Le Kill Steal est strictement interdit (voir définition). Utilisez @noks pour vous protéger.");
+          ImGui::Spacing();
+          ImGui::BulletText("Les MVPs sont FFA :");
+          ImGui::Indent();
+          ImGui::Text("Vous pouvez les attaquer même si quelqu'un est dessus.");
+          ImGui::Text("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
+          ImGui::Text("Si vous ne voulez pas vous faire KS, faites @noks <3");
+          ImGui::Unindent();
+          ImGui::TreePop();
+      }
+      ImGui::Spacing();
+      if (ImGui::TreeNode("Le staff"))
+      {
+          ImGui::BulletText("Si vous cassez les couilles du staff ban/delete non temporaire.");
+          ImGui::BulletText("Aucun membre du staff ne vous demandera votre mot de passe.");
+          ImGui::BulletText("Aucun membre du staff ne vous demandera votre login.");
+          ImGui::BulletText("Aucun membre du staff ne vous demandera votre email.");
+          ImGui::BulletText("Seuls les admins peuvent rendre des items perdus suite à un bug serveur.");
+          ImGui::BulletText("Le staff ne rend pas les items prêtés à un joueur disparu/banni.");
+          ImGui::BulletText("Le staff ne donne pas d'items (hors events).");
+          ImGui::BulletText("Les membres du staff ne sont pas des robots. Soyez courtois, cherchez avant de demander.");
+          ImGui::BulletText("Les questions dont la réponse est sur une database = évitez.");
+          ImGui::TreePop();
+      }
+      ImGui::Spacing();
+      if (ImGui::TreeNode("Règlements dans les endroits spécifiques"))
+      {
+          if (ImGui::TreeNode("Salle de duel"))
+          {
+              ImGui::BulletText("Ce n'est pas un salon de thé");
+              ImGui::BulletText("Si vous regardez, ok. Sinon, laissez la place.");
+              ImGui::BulletText("Utilisez : @duel, @invite, @accept, @reject, @leave.");
+              ImGui::TreePop();
+          }
+          if (ImGui::TreeNode("Carnage Room"))
+          {
+              ImGui::BulletText("Loi du plus fort.");
+              ImGui::BulletText("Amusez‑vous dans le respect.");
+              ImGui::TreePop();
+          }
+          if (ImGui::TreeNode("PVP Room"))
+          {
+              ImGui::BulletText("Free Kill interdit.");
+              ImGui::TreePop();
+          }
+          if (ImGui::TreeNode("DB Room"))
+          {
+              ImGui::BulletText("Kill Steal STRICTEMENT interdit.");
+              ImGui::BulletText("Si la personne meurt ou se hide les mobs sont à vous.");
+              ImGui::TreePop();
+          }
+          if (ImGui::TreeNode("Guild Dungeon"))
+          {
+              ImGui::BulletText("Libre de tuer les guildiens adverses.");
+              ImGui::TreePop();
+          }
+          if (ImGui::TreeNode("WoE Castles"))
+          {
+              ImGui::BulletText("Interdiction d'apporter de l'aide via un perso non participant (multi-account/perso).");
+              ImGui::BulletText("Les ententes entre guildes sont informelles, non officielles, non sanctionnables.");
+              ImGui::BulletText("Elles doivent être discutées entre guildes dominantes, dans le respect.");
+              ImGui::TreePop();
+            
+          }
+          ImGui::TreePop();
+      }
+      ImGui::Spacing();
+      if (ImGui::TreeNode("Logiciels tiers"))
+      {
+          ImGui::Text("Autorisations :");
+          ImGui::Indent();
+            ImGui::BulletText("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :");
+            ImGui::BulletText("SIMPLE");
+            ImGui::BulletText("BASIQUE");
+            ImGui::BulletText("Pas un tableau de bord de la NASA");
+            ImGui::BulletText("Vous bouclez le spell, éventuellement un clic en plus pour les AOE type Storm Gust, et basta.");
+          ImGui::Unindent();
+          ImGui::Text("Quality of Life :");
+          ImGui::Indent();
+            ImGui::BulletText("Le but, c'est du Q.O.L");
+            ImGui::BulletText("Vous préservez votre clavier, votre souris, vos doigts, vos poignets, vos oreilles, et celles de vos voisins qui n'ont rien demandé.");
+            ImGui::BulletText("Bref : du confort, pas du cheat.");
+          ImGui::Unindent();
+          ImGui::Text("Les trucs interdits (et je rigole zéro) :");
+          ImGui::Indent();
+            ImGui::BulletText("Ne me prenez pas pour un jambon.");
+            ImGui::Text("Si vous me sortez :");
+            ImGui::Indent();
+              ImGui::BulletText("un auto-buffer");
+              ImGui::BulletText("un auto-pot");
+              ImGui::BulletText("un super TP/SG de physicien quantique");
+              ImGui::BulletText("un script qui ferait rougir Tony Stark");
+            ImGui::Unindent();
+            ImGui::Text("Alors là :");
+            ImGui::Indent();
+              ImGui::BulletText("Je vous fais le fion.");
+              ImGui::BulletText("Je m'en bats les couilles.");
+              ImGui::BulletText("Je vous dégage plus vite que Thanos avec son finger snap. *Snap*");
+            ImGui::Unindent();
+            ImGui::Text("Les excuses bidon :");
+            ImGui::Indent();
+              ImGui::BulletText("\"Mais les autres serveurs le font...\"");
+              ImGui::BulletText("\"Mais j'étais pas AFK, je regardais Naruto à côté...\"");
+            ImGui::Unindent();
+            ImGui::Text("Résultat :");
+            ImGui::Indent();
+              ImGui::BulletText("Pouf.");
+              ImGui::BulletText("Vous étiez sur Moon.");
+              ImGui::BulletText("Vous ne l'êtes plus.");
+              ImGui::BulletText("Et il ne restera de vous que des ruines numériques sur Wayback Machine.");
+            ImGui::Unindent();
+          ImGui::Unindent();
+          ImGui::TreePop();
+      }
+      ImGui::Spacing();
     }
 
-    // ── Commands Settings ────────────────────────────────────────────────
-    ImGui::Spacing();
-    ImGui::TextUnformatted("Commands Settings");
-    ImGui::Separator();
-    if (ImGui::Checkbox("Show EXP gain", &show_exp_))
-      SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
-    if (ImGui::Checkbox("Show Zeny gain", &show_zeny_))
-      SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
-    if (ImGui::Checkbox("Show mob info (Race/Element)", &show_mob_info_))
-      SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-    if (ImGui::Checkbox("Separate Mob Kill in chat", &separate_))
-      SendSetting(kSettingSeparate, separate_ ? 1 : 0);
-    if (ImGui::Checkbox("Block EXP Gain", &block_exp_))
-      SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
-    if (ImGui::Checkbox("Autoloot rares items", &aloot_rare_))
-      SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
+    // ── Chat Box Settings ────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Chat Settings"))
+    {
+        if (ImGui::Checkbox("Chat Discord (Gonryun only)", &discord_chat_)) {
+          UpdateRelay();
+          SaveSettings();
+          const char* msg = discord_chat_
+              ? "Discord relay : ACTIVE"
+              : "Discord relay : DESACTIVE";
+          UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
+                              reinterpret_cast<int>(msg), 0x00FF00, 0, 0);
+        }
 
-    ImGui::Spacing();
+          ImGui::SameLine();
+        // ── Chat Background Color ─────────────────────────────────────────────
+        if (chat_bg_instr_) {
+          // Color swatch — click to open the picker popup.
+          const ImVec4 swatch(chat_bg_color_[0], chat_bg_color_[1],
+                              chat_bg_color_[2], chat_bg_color_[3]);
+          if (ImGui::ColorButton("##chatbg_btn", swatch,
+                                ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
+            ImGui::OpenPopup("chatbg_picker");
+
+          ImGui::SameLine();
+          ImGui::TextUnformatted("Background Chat Color");
+
+          // Popup with full picker + explicit Close button.
+          if (ImGui::BeginPopup("chatbg_picker")) {
+            if (ImGui::ColorPicker4("##chatbg", chat_bg_color_,
+                                    ImGuiColorEditFlags_AlphaBar |
+                                    ImGuiColorEditFlags_NoSidePreview)) {
+              PatchInstruction(PickerToArgb());
+              picker_was_editing_ = true;
+            }
+            if (picker_was_editing_ && ImGui::IsMouseReleased(0)) {
+              const uint32_t argb = PickerToArgb();
+              PatchExistingObjects(argb);
+              SaveSettings();
+              picker_was_editing_ = false;
+            }
+            ImGui::Separator();
+            if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f)))
+              ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+          }
+        } else {
+          ImGui::TextDisabled("(chat background patch unavailable)");
+        }
+    }
+    // ── Commands Settings ────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Commands Settings"))
+    {
+        if (ImGui::BeginTable("split", 2))
+        {
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Mob Kill in chat", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Autoloot rares items", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker(
+                "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
+                "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
+                "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
+                "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
+            ImGui::EndTable();
+        }
+    }
   }
   ImGui::End();
 }

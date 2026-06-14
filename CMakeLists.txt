@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...3.31)
 
 # Must come before project() — enables CMAKE_MSVC_RUNTIME_LIBRARY property
 # which writes <RuntimeLibrary> directly into .vcxproj, overriding any /MT or /MD

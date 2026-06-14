@@ -164,6 +164,8 @@ void RagConnection::RecvPacketHandlerImpl() {
 //
 // auStack_44c4[0] (the dispatch opcode) lives at [EBP-0x44C0] in
 // FUN_00c9df00's frame; we snapshot it for diagnostic use.
+#pragma warning(push)
+#pragma warning(disable: 4733)  // intentional: restoring FUN_00c9df00's SEH chain in its own epilogue
 __declspec(naked) void RagConnection::RecvPacketHandler() {
   __asm {
     movzx eax, word ptr [ebp - 0x44c0]
@@ -181,6 +183,7 @@ __declspec(naked) void RagConnection::RecvPacketHandler() {
     ret
   }
 }
+#pragma warning(pop)
 
 void RagConnection::ConnectionHook() {
   LogDebug("RagConnection: 0x{:x}", reinterpret_cast<uintptr_t>(this));
