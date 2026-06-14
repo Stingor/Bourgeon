@@ -7,3 +7,4 @@ plugins/config/discord.enc
 discord.enc
 # AES key shared between the DLL and the encryptor — never commit.
 src/plugins/discord_key.h
+/out
