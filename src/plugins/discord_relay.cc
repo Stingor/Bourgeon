@@ -146,6 +146,59 @@ std::string Trim(const std::string& text) {
   return text.substr(begin, end - begin + 1);
 }
 
+// rAthena base62 alphabet (utilities.cpp:base62_dictionary).
+constexpr char kBase62Dict[] =
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+// Characters used as field separators inside <ITEML> data.
+constexpr char kItemlSeps[] = "%&')+-,";
+// Base URL for the item database page.
+constexpr char kItemDbUrl[] =
+    "https://moonlight-destiny.fr/index.php?page=itemdb&itemid=";
+
+uint32_t Base62Decode(const char* s, size_t len) {
+  uint32_t v = 0;
+  for (size_t i = 0; i < len; ++i) {
+    const char* p = strchr(kBase62Dict, s[i]);
+    if (!p) break;
+    v = v * 62u + static_cast<uint32_t>(p - kBase62Dict);
+  }
+  return v;
+}
+
+// Replace every <ITEML>...</ITEML> in text with a Discord markdown link.
+// Layout: [equip:5 base62][isequip:1][nameid:base62 until separator][...]
+std::string DecodeItemLinks(const std::string& text) {
+  static const std::string kOpen  = "<ITEML>";
+  static const std::string kClose = "</ITEML>";
+  std::string out;
+  out.reserve(text.size());
+  size_t pos = 0;
+  while (pos < text.size()) {
+    const size_t ts = text.find(kOpen, pos);
+    if (ts == std::string::npos) { out += text.substr(pos); break; }
+    out += text.substr(pos, ts - pos);
+    const size_t ds = ts + kOpen.size();
+    const size_t te = text.find(kClose, ds);
+    if (te == std::string::npos) { out += text.substr(ts); break; }
+    const std::string data = text.substr(ds, te - ds);
+    pos = te + kClose.size();
+    // Skip 5-char equip field + 1-char isequip flag = 6 chars header.
+    if (data.size() > 6) {
+      size_t ne = 6;
+      while (ne < data.size() && strchr(kItemlSeps, data[ne]) == nullptr)
+        ++ne;
+      const uint32_t nameid = Base62Decode(data.c_str() + 6, ne - 6);
+      if (nameid > 0) {
+        out += "[Item " + std::to_string(nameid) + "](" +
+               kItemDbUrl + std::to_string(nameid) + ")";
+        continue;
+      }
+    }
+    out += "[item]";
+  }
+  return out;
+}
+
 }  // namespace
 
 DiscordRelay::DiscordRelay() {
@@ -255,7 +308,7 @@ void DiscordRelay::OnTalkType(const char* chat_buffer) {
 
   json payload;
   payload["username"] = AnsiToUtf8(char_name);
-  payload["content"]  = AnsiToUtf8(text);
+  payload["content"]  = DecodeItemLinks(AnsiToUtf8(text));
   if (char_id_ != 0 && !avatar_base_.empty())
     payload["avatar_url"] = fmt::format("{}{}.png", avatar_base_, char_id_);
 
