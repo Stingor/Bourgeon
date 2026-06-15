@@ -37,6 +37,9 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingSeparate    = 3;
   static constexpr uint16_t kSettingBlockExp    = 4;
   static constexpr uint16_t kSettingAlootRare   = 5;
+  static constexpr uint16_t kSettingAlootRate   = 6;  // autoloot rate 0-100
+  static constexpr uint16_t kSettingAlootPognon = 7;  // zeny threshold / 100 on wire
+  static constexpr uint16_t kSettingAlootType   = 8;  // autoloottype toggle
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -56,6 +59,9 @@ class MoonlightUi : public Plugin {
   bool separate_      = false;
   bool block_exp_     = false;
   bool aloot_rare_    = false;
+  int  aloot_rate_    = 0;    // 0-100 (%)
+  int  aloot_pognon_  = 0;    // 0-1,000,000 (z), stored locally; wire = /100
+  int  aloot_type_mask_ = 0;  // bitmask uint16 : bit i = (1 << item_type i)
 
   // ── Chat window background color ─────────────────────────────────────────
   // The chat window init stores an ARGB color (default 0x66000000 = 40% alpha

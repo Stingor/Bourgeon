@@ -274,6 +274,18 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
         aloot_rare_ = (value != 0);
         LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);
         break;
+      case kSettingAlootRate:
+        aloot_rate_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] aloot_rate={}", aloot_rate_);
+        break;
+      case kSettingAlootPognon:
+        aloot_pognon_ = static_cast<int>(value) * 100;
+        LogInfo("[MoonlightUi] aloot_pognon={}", aloot_pognon_);
+        break;
+      case kSettingAlootType:
+        aloot_type_mask_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] aloot_type_mask=0x{:04X}", aloot_type_mask_);
+        break;
       default:
         LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
         break;
@@ -440,7 +452,7 @@ void MoonlightUi::OnRenderUI() {
           ImGui::Unindent();
           ImGui::Text("Les trucs interdits (et je rigole zéro) :");
           ImGui::Indent();
-            ImGui::BulletText("Ne me prenez pas pour un jambon.");
+            ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Ne me prenez pas pour un jambon.");
             ImGui::Text("Si vous me sortez :");
             ImGui::Indent();
               ImGui::BulletText("un auto-buffer");
@@ -539,6 +551,78 @@ void MoonlightUi::OnRenderUI() {
                 "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
                 "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
                 "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
+            ImGui::EndTable();
+        }
+        ImGui::Separator();
+        {
+            int rate = aloot_rate_;
+            ImGui::SetNextItemWidth(130.0f);
+            if (ImGui::SliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
+                aloot_rate_ = rate;
+                SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset##rate")) {
+                aloot_rate_ = 0;
+                SendSetting(kSettingAlootRate, 0);
+            }
+        }
+        {
+            int pognon = aloot_pognon_;
+            ImGui::SetNextItemWidth(130.0f);
+            if (ImGui::InputInt("@autolootpognon (z)", &pognon, 100, 10000)) {
+                if (pognon < 0) pognon = 0;
+                if (pognon > 1000000) pognon = 1000000;
+                pognon = (pognon / 100) * 100;
+                aloot_pognon_ = pognon;
+                SendSetting(kSettingAlootPognon, static_cast<uint16_t>(pognon / 100));
+            }
+            auto apply_pognon_delta = [this](int delta) {
+                int v = aloot_pognon_ + delta;
+                if (v < 0) v = 0;
+                if (v > 1000000) v = 1000000;
+                v = (v / 100) * 100;
+                aloot_pognon_ = v;
+                SendSetting(kSettingAlootPognon, static_cast<uint16_t>(v / 100));
+            };
+            if (ImGui::Button("-10kz"))  apply_pognon_delta(-10000);
+            ImGui::SameLine();
+            if (ImGui::Button("-1kz"))   apply_pognon_delta(-1000);
+            ImGui::SameLine();
+            if (ImGui::Button("+1kz"))   apply_pognon_delta(1000);
+            ImGui::SameLine();
+            if (ImGui::Button("+10kz"))  apply_pognon_delta(10000);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset##pognon")) {
+                aloot_pognon_ = 0;
+                SendSetting(kSettingAlootPognon, 0);
+            }
+        }
+        ImGui::TextUnformatted("@autoloottype :");
+        ImGui::SameLine();
+        HelpMarker("Cochez les types d'items a lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Delay=11");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset##type")) {
+            aloot_type_mask_ = 0;
+            SendSetting(kSettingAlootType, 0);
+        }
+        static const struct { const char* label; int bit; } kAlootTypes[] = {
+            {"Healing",   1 << 0},  {"Usable",    1 << 2},
+            {"Etc",       1 << 3},  {"Armor",     1 << 4},
+            {"Weapon",    1 << 5},  {"Card",      1 << 6},
+            {"Pet Egg",   1 << 7},  {"Pet Armor", 1 << 8},
+            {"Ammo",      1 << 10}, {"Delay",     1 << 11},
+        };
+        if (ImGui::BeginTable("aloottype", 2)) {
+            for (const auto& t : kAlootTypes) {
+                ImGui::TableNextColumn();
+                bool checked = (aloot_type_mask_ & t.bit) != 0;
+                if (ImGui::Checkbox(t.label, &checked)) {
+                    if (checked) aloot_type_mask_ |=  t.bit;
+                    else         aloot_type_mask_ &= ~t.bit;
+                    SendSetting(kSettingAlootType, static_cast<uint16_t>(aloot_type_mask_));
+                }
+            }
             ImGui::EndTable();
         }
     }
