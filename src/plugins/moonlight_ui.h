@@ -30,7 +30,6 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
   // Setting IDs sent via CZ 0x0BFD (must match server-side clif_parse_bourgeon_setting).
-  // Discord is now client-only (saved to YAML); IDs 0-5 are server-side toggles.
   static constexpr uint16_t kSettingShowExp     = 0;
   static constexpr uint16_t kSettingShowZeny    = 1;
   static constexpr uint16_t kSettingShowMobInfo = 2;
@@ -40,6 +39,7 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingAlootRate   = 6;  // autoloot rate 0-100
   static constexpr uint16_t kSettingAlootPognon = 7;  // zeny threshold / 100 on wire
   static constexpr uint16_t kSettingAlootType   = 8;  // autoloottype toggle
+  static constexpr uint16_t kSettingDiscordChat  = 9;  // discord relay opt-in
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -49,7 +49,7 @@ class MoonlightUi : public Plugin {
   bool in_game_    = false;
   bool in_gonryun_ = false;
 
-  // Client-only (saved to YAML, never sent to server).
+  // Server-synced (ID 9); restored from globalreg on login.
   bool discord_chat_ = false;
 
   // Server-synced toggles (IDs above).
