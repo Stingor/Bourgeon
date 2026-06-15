@@ -1,10 +1,3 @@
 build/*
 Win32/*
-# Discord relay credentials — must never be committed.
-plugins/config/discord_config.py
-plugins/config/discord.yaml
-plugins/config/discord.enc
-discord.enc
-# AES key shared between the DLL and the encryptor — never commit.
-src/plugins/discord_key.h
 /out

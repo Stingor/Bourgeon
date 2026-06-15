@@ -31,4 +31,3 @@ add_compile_definitions(_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
 
 add_subdirectory("src")
 add_subdirectory("thirdparty")
-add_subdirectory("tools")
