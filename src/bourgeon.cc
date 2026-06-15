@@ -53,7 +53,7 @@ void Bourgeon::AddLogLine(std::string log_line) {
 }
 
 void Bourgeon::RenderUI() {
-  ImGui::ShowDemoWindow();
+  // ImGui::ShowDemoWindow();
 
   // Render Bourgeon's main window
   // ShowBourgeonWindow();
