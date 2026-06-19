@@ -40,6 +40,15 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingAlootPognon = 7;  // zeny threshold / 100 on wire
   static constexpr uint16_t kSettingAlootType   = 8;  // autoloottype toggle
   static constexpr uint16_t kSettingDiscordChat  = 9;  // discord relay opt-in
+  static constexpr uint16_t kSettingShowDelay   = 10;
+  static constexpr uint16_t kSettingShowSpeed   = 11;
+  static constexpr uint16_t kSettingSellStuff   = 12;
+  static constexpr uint16_t kSettingSellItem    = 13;
+  static constexpr uint16_t kSettingNoAsk       = 14;
+  static constexpr uint16_t kSettingNoks        = 15;  // 0=off 1=self 2=party 3=guild
+  static constexpr uint16_t kSettingWings       = 16;
+  static constexpr uint16_t kSettingAlootMvp    = 17;
+  static constexpr uint16_t kSettingAlootMvpRwd = 18;
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -62,6 +71,16 @@ class MoonlightUi : public Plugin {
   int  aloot_rate_    = 0;    // 0-100 (%)
   int  aloot_pognon_  = 0;    // 0-1,000,000 (z), stored locally; wire = /100
   int  aloot_type_mask_ = 0;  // bitmask uint16 : bit i = (1 << item_type i)
+
+  bool show_delay_  = false;
+  bool show_speed_  = false;
+  bool sell_stuff_  = false;
+  bool sell_item_   = false;
+  bool no_ask_      = false;
+  int  noks_        = 0;  // 0=off 1=self 2=party 3=guild
+  bool wings_           = false;
+  bool aloot_mvp_       = false;
+  bool aloot_mvp_rwd_   = false;
 
   // ── Chat window background color ─────────────────────────────────────────
   // The chat window init stores an ARGB color (default 0x66000000 = 40% alpha

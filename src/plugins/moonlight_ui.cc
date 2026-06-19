@@ -287,6 +287,42 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
         LogInfo("[MoonlightUi] discord_chat={}", discord_chat_);
         UpdateRelay();
         break;
+      case kSettingShowDelay:
+        show_delay_ = (value != 0);
+        LogInfo("[MoonlightUi] show_delay={}", show_delay_);
+        break;
+      case kSettingShowSpeed:
+        show_speed_ = (value != 0);
+        LogInfo("[MoonlightUi] show_speed={}", show_speed_);
+        break;
+      case kSettingSellStuff:
+        sell_stuff_ = (value != 0);
+        LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_);
+        break;
+      case kSettingSellItem:
+        sell_item_ = (value != 0);
+        LogInfo("[MoonlightUi] sell_item={}", sell_item_);
+        break;
+      case kSettingNoAsk:
+        no_ask_ = (value != 0);
+        LogInfo("[MoonlightUi] no_ask={}", no_ask_);
+        break;
+      case kSettingNoks:
+        noks_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] noks={}", noks_);
+        break;
+      case kSettingWings:
+        wings_ = (value != 0);
+        LogInfo("[MoonlightUi] wings={}", wings_);
+        break;
+      case kSettingAlootMvp:
+        aloot_mvp_ = (value != 0);
+        LogInfo("[MoonlightUi] aloot_mvp={}", aloot_mvp_);
+        break;
+      case kSettingAlootMvpRwd:
+        aloot_mvp_rwd_ = (value != 0);
+        LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
+        break;
       default:
         LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
         break;
@@ -553,16 +589,47 @@ void MoonlightUi::OnRenderUI() {
       if (ImGui::BeginTable("split", 2)) // Toggles settings
       {
         ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
         ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
         ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo)");
+        ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
         ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider)");
+        ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
         ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Permet la vente des items du groupe IG_SELLITEM\nchez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
+        ImGui::TableNextColumn(); if (ImGui::Checkbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
         ImGui::EndTable();
       }
+      // @noks — combo 4 options (off / self / party / guild)
+      {
+        static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::BeginCombo("@noks", kNoksLabels[noks_ < 4 ? noks_ : 0])) {
+          for (int i = 0; i < 4; ++i) {
+            const bool selected = (noks_ == i);
+            if (ImGui::Selectable(kNoksLabels[i], selected)) {
+              noks_ = i;
+              SendSetting(kSettingNoks, static_cast<uint16_t>(i));
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+          }
+          ImGui::EndCombo();
+        }
+        ImGui::SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
+      }
       ImGui::Separator();
-      ImGui::Indent();
       if (ImGui::CollapsingHeader("Autoloots"))
       {
         ImGui::Spacing();
@@ -650,8 +717,14 @@ void MoonlightUi::OnRenderUI() {
           "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
           "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
         }
+        ImGui::Separator();
+        {// @autolootmvp / @autolootmvpreward
+        if (ImGui::Checkbox("Autoloot MVP cards", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Loot automatiquement les cartes MVP\nquelque soit leur taux de drop. (@autolootmvp)");
+        if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
+        ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
+        }
       }
-      ImGui::Unindent();
       PopStyleCompact();
     }
   }
