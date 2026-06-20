@@ -8,6 +8,8 @@
 #include "imgui/imgui_impl_dx7.h"
 #include "utils/log_console.h"
 
+extern void DrawROCursorImGui();
+
 // ImGui is rendered in Proxy_EndScene which fires for every frame because the
 // game always goes through our DirectDrawCreateEx export (ddraw.dll proxy).
 // g_imgui_dx7_active tells the D3D9 hook to stay quiet while DX7 is running.
@@ -151,6 +153,7 @@ HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
     Bourgeon::Instance().RenderUI();
+    DrawROCursorImGui();
     ImGui::EndFrame();
     ImGui::Render();
     ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());

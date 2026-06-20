@@ -97,4 +97,6 @@ const std::string kYamlConfiguration = R"(
     OnUpdate: 0x00c74a80
     ProcessInput: 0x00c86740
     ProcessInputArgs: 5
+  CScene:
+    RenderCellsAndCursor: 0x00a7b0a0
 )";

@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <d3d9.h>
-#include <atomic>
 #include <thread>
 
 #include "backends/imgui_impl_dx9.h"
@@ -13,6 +12,8 @@
 #include "utils/log_console.h"
 
 extern bool g_imgui_dx7_active;
+extern void DrawROCursorImGui();
+
 
 // ── vtable indices ─────────────────────────────────────────────────────────────
 // IDirect3DDevice9 / IDirect3DDevice9Ex
@@ -81,7 +82,6 @@ static void** g_factory_vtable = nullptr;
 static int g_create9ex_depth = 0;
 
 static std::atomic<bool> g_dx9_initialized{false};
-static std::atomic<bool> g_rendered_this_frame{false};
 
 // ── vtable slot patcher ───────────────────────────────────────────────────────
 static void PatchSlot(void** vtable, int idx, void* hook, void** out_orig) {
@@ -109,32 +109,38 @@ static void RenderImGuiDX9(IDirect3DDevice9* self) {
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
     Bourgeon::Instance().RenderUI();
+    DrawROCursorImGui();
     ImGui::EndFrame();
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-    g_rendered_this_frame.store(true);
 }
 
 // ── EndScene hook ─────────────────────────────────────────────────────────────
 // ecx = vtable (*device); self = device (first explicit stack arg).
 static HRESULT __fastcall Hooked_EndScene(void* vtable_ecx, void* /*edx*/,
                                            IDirect3DDevice9* self) {
-    if (!g_imgui_dx7_active && ImGui::GetCurrentContext() && !g_rendered_this_frame.load()) {
-        RenderImGuiDX9(self);
-    }
     return g_orig_end_scene(vtable_ecx, nullptr, self);
 }
 
 // ── Present hook ──────────────────────────────────────────────────────────────
 // ecx = vtable; self = device (first explicit stack arg).
-// BeginScene/EndScene cannot be called safely here (would re-enter our hooks
-// via standard C++ dispatch using the wrong calling convention).
+// ImGui is rendered here — after ALL of the game's BeginScene/EndScene passes —
+// in a dedicated scene so it is never baked into an intermediate backbuffer that
+// a later game pass would read and composite (which caused ghost/double artifacts
+// when the equipment window or other overlay windows were open).
 static HRESULT __fastcall Hooked_Present(void* vtable_ecx, void* /*edx*/,
                                           IDirect3DDevice9* self,
                                           const RECT* pSrcRect, const RECT* pDestRect,
                                           HWND hDestWindowOverride,
                                           const RGNDATA* pDirtyRegion) {
-    g_rendered_this_frame.store(false);
+    if (!g_imgui_dx7_active && ImGui::GetCurrentContext()) {
+        // BeginScene is not hooked, so calling through the vtable is safe.
+        if (SUCCEEDED(self->BeginScene())) {
+            RenderImGuiDX9(self);
+            // Call the original EndScene directly to avoid re-entering our hook.
+            g_orig_end_scene(vtable_ecx, nullptr, self);
+        }
+    }
     return g_orig_present(vtable_ecx, nullptr, self, pSrcRect, pDestRect,
                           hDestWindowOverride, pDirtyRegion);
 }

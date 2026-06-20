@@ -37,6 +37,31 @@ static WindowProcFunc WndProcRef;
 // plugins through RagnarokClient::GameWindow() (e.g. for synthesizing input).
 static HWND g_game_hwnd = nullptr;
 
+static bool IsMouseOverAnyImGuiWindow(float mx, float my);
+
+// ── RO cursor overlay via ImGui foreground draw list ─────────────────────────
+// Called between ImGui::NewFrame() and ImGui::EndFrame() so the draw commands
+// are part of the current frame's render data, guaranteed above all windows.
+void DrawROCursorImGui() {
+  if (!ImGui::GetCurrentContext()) return;
+
+  const ImVec2 mp = ImGui::GetIO().MousePos;
+  if (mp.x < 0.f || mp.y < 0.f) return;
+  if (!IsMouseOverAnyImGuiWindow(mp.x, mp.y)) return;
+
+  if (*reinterpret_cast<int*>(0x01229448)) return;  // hidden
+  const uintptr_t mgr = *reinterpret_cast<uintptr_t*>(0x0121333c);
+  if (!mgr) return;
+
+  const float mx = mp.x;
+  const float my = mp.y;
+
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  ImVec2 pts[3] = {{mx, my}, {mx + 10.f, my + 10.f}, {mx, my + 13.f}};
+  dl->AddTriangleFilled(pts[0], pts[1], pts[2], IM_COL32(255, 255, 255, 230));
+  dl->AddTriangle(pts[0], pts[1], pts[2], IM_COL32(0, 0, 0, 200), 1.2f);
+}
+
 RagnarokClient::RagnarokClient()
     : timestamp_(),
       session_(),
@@ -280,6 +305,11 @@ static bool IsMouseOverAnyImGuiWindow(float mx, float my) {
   return false;
 }
 
+// Track which mouse buttons were pressed while NOT over ImGui, so their
+// corresponding button-up events are always forwarded to the game even if the
+// cursor has drifted over an ImGui window in the meantime.
+static uint8_t g_mouse_captured_by_game = 0;  // bitmask: bit0=L, bit1=R, bit2=M
+
 static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
                                        LPARAM lParam) {
   // Only process ImGui events after at least one frame has been rendered.
@@ -297,19 +327,48 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
     bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
 
-    // Show ImGui's software cursor when over its windows; hide it otherwise so
-    // RO renders its own sprite cursor (which now follows the mouse even over
-    // ImGui since WM_MOUSEMOVE is no longer blocked).
-    io.MouseDrawCursor = over_imgui;
+    // Let the game's Windows cursor (SetCursor) show through on top of ImGui.
+    // ImGui's own software cursor is never drawn — the game controls the cursor
+    // appearance (arrow/hand/NPC) via SetCursor() which the OS renders on top.
+    io.MouseDrawCursor = false;
 
     if (over_imgui) {
       switch (uMsg) {
-        case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
-        case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
-        case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+        // Track button-down events so their up-events reach the game even if
+        // the cursor drifts over ImGui before the button is released.
+        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: g_mouse_captured_by_game &= ~1; break;
+        case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: g_mouse_captured_by_game &= ~2; break;
+        case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: g_mouse_captured_by_game &= ~4; break;
+        // Forward button-up to the game if the press started outside ImGui.
+        case WM_LBUTTONUP:
+          if (g_mouse_captured_by_game & 1) { g_mouse_captured_by_game &= ~1; break; }
+          return 0;
+        case WM_RBUTTONUP:
+          if (g_mouse_captured_by_game & 2) { g_mouse_captured_by_game &= ~2; break; }
+          return 0;
+        case WM_MBUTTONUP:
+          if (g_mouse_captured_by_game & 4) { g_mouse_captured_by_game &= ~4; break; }
+          return 0;
         case WM_XBUTTONDOWN: case WM_XBUTTONUP:
         case WM_MOUSEWHEEL:  case WM_MOUSEHWHEEL:
           return 0;
+      }
+      // Block down/dblclk events from reaching the game when over ImGui.
+      switch (uMsg) {
+        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
+        case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
+        case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
+          return 0;
+      }
+    } else {
+      // Press started outside ImGui — mark it so the up-event reaches the game.
+      switch (uMsg) {
+        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: g_mouse_captured_by_game |= 1; break;
+        case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: g_mouse_captured_by_game |= 2; break;
+        case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: g_mouse_captured_by_game |= 4; break;
+        case WM_LBUTTONUP: g_mouse_captured_by_game &= ~1; break;
+        case WM_RBUTTONUP: g_mouse_captured_by_game &= ~2; break;
+        case WM_MBUTTONUP: g_mouse_captured_by_game &= ~4; break;
       }
     }
 
