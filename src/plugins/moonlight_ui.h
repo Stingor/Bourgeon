@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
 #include "plugins/plugin.h"
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
@@ -17,7 +20,7 @@ class MoonlightUi : public Plugin {
  private:
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
-  void SendSetting(uint16_t id, uint16_t value);
+  void SendSetting(uint16_t id, uint32_t value);
 
   static constexpr uint16_t kOpcodeFromServer = 0x0BFE;  // ZC_BOURGEON_SETTINGS
   static constexpr uint16_t kOpcodeToServer   = 0x0BFD;  // CZ_BOURGEON_SETTING
@@ -47,8 +50,14 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingNoAsk       = 14;
   static constexpr uint16_t kSettingNoks        = 15;  // 0=off 1=self 2=party 3=guild
   static constexpr uint16_t kSettingWings       = 16;
-  static constexpr uint16_t kSettingAlootMvp    = 17;
-  static constexpr uint16_t kSettingAlootMvpRwd = 18;
+  static constexpr uint16_t kSettingAlootMvp      = 17;
+  static constexpr uint16_t kSettingAlootMvpRwd   = 18;
+  static constexpr uint16_t kSettingTriInv        = 19;
+  static constexpr uint16_t kSettingTriCart       = 20;
+  static constexpr uint16_t kSettingTriStorage    = 21;
+  static constexpr uint16_t kSettingTriGstorage   = 22;
+  static constexpr uint16_t kSettingAlootId       = 23;  // add item ID to autolootid list (0=clear)
+  static constexpr uint16_t kSettingAlootIdRemove = 24;  // remove item ID from list
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -81,6 +90,21 @@ class MoonlightUi : public Plugin {
   bool wings_           = false;
   bool aloot_mvp_       = false;
   bool aloot_mvp_rwd_   = false;
+  int  tri_inv_         = 0;  // e_sort_mode 0-6
+  int  tri_cart_        = 0;
+  int  tri_storage_     = 0;
+  int  tri_gstorage_    = 0;
+
+  std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 10)
+  int                   aloot_id_input_ = 0;
+  bool                  show_alootid_overlay_ = false;  // floating Add/Remove overlay on right-click
+
+  // Address of the item description window message handler (FUN_008c18b0,
+  // 20250716 client).  We hook it to capture the nameid of right-clicked items.
+  static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
+
+  std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
+  void LoadItemNames();
 
   // ── Chat window background color ─────────────────────────────────────────
   // The chat window init stores an ARGB color (default 0x66000000 = 40% alpha

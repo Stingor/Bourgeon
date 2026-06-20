@@ -54,9 +54,11 @@ void Bourgeon::AddLogLine(std::string log_line) {
 
 void Bourgeon::RenderUI() {
   if (strstr(GetCommandLineA(), "--console") != nullptr) {
-    ImGui::ShowDemoWindow();
   // Render Bourgeon's main window
   ShowBourgeonWindow();
+  }
+  if (strstr(GetCommandLineA(), "--demo") != nullptr) {
+    ImGui::ShowDemoWindow();
   }
   // Render windows drawn by plugins
   for (auto& plugin : plugins_) {

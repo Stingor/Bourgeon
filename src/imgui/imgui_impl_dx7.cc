@@ -183,7 +183,7 @@ void ImGui_ImplDX7_RenderDrawData(ImDrawData* draw_data) {
         }
       } else {
         const auto texture =
-            reinterpret_cast<LPDIRECTDRAWSURFACE7>(pcmd->TextureId);
+            reinterpret_cast<LPDIRECTDRAWSURFACE7>(pcmd->GetTexID());
         g_pd3dDevice->SetTexture(0, texture);
         // FIXME: Replace scissor test to fix issues when scrolling
         g_pd3dDevice->DrawIndexedPrimitive(

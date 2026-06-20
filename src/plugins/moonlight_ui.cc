@@ -12,8 +12,63 @@
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
+#include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
+
+// ── Item description window hook ──────────────────────────────────────────
+// Hooks FUN_008c18b0 (__thiscall, 20250716 client) to capture the nameid of
+// whichever item the player right-clicks to inspect.
+//
+// The function is a UI window message handler.  Message 0x18 means "set item":
+//   param_3 is the item data struct; the item's nameid is stored as a
+//   MSVC std::string (SSO layout) at byte offset 0x2C (= param_3[11]):
+//     [0..3]  char* ptr  (or inline buf when small)
+//     [4..7]  inline buf continued
+//     [8..11] inline buf continued
+//     [12]    _Mysize (string length)
+//     [16]    _Myres  (capacity - 1)  <- checked against 15 to detect heap
+//   If capacity-1 > 15 the string is heap-allocated and param_3[11] is a ptr;
+//   otherwise the 16-byte inline buffer starts at param_3+0x2C.
+//   atoi() on that text gives the numeric nameid.
+
+using ItemDescWndFn = int (__fastcall*)(void*, void*, uint32_t, int, int*, int, int, int);
+static ItemDescWndFn g_item_desc_wnd_orig  = nullptr;
+static uint32_t      g_last_viewed_item    = 0;
+static POINT         g_item_desc_cursor    = {0, 0};
+static bool          g_item_desc_visible   = false;  // set on 0x18, cleared on close msg
+static void*         g_item_desc_wnd_ptr   = nullptr; // ecx of the desc window object
+
+static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
+                                       uint32_t p1, int p2, int* p3,
+                                       int p4, int p5, int p6) {
+  if (p2 == 0x18 && p3 != nullptr) {
+    // Ignore 0x18 from secondary windows (e.g. equipment comparison window).
+    // Lock onto the first ecx that sends 0x18 while no tooltip is open.
+    if (g_item_desc_visible && ecx != g_item_desc_wnd_ptr)
+      return g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+
+    const int* sso = p3 + 11;  // std::string at byte offset 0x2C
+    const char* str;
+    if (static_cast<uint32_t>(sso[5]) > 15u)
+      str = *reinterpret_cast<const char* const*>(sso);
+    else
+      str = reinterpret_cast<const char*>(sso);
+    if (str) {
+      const long id = std::atol(str);
+      if (id > 0) {
+        g_last_viewed_item  = static_cast<uint32_t>(id);
+        g_item_desc_visible = true;
+        g_item_desc_wnd_ptr = ecx;
+        GetCursorPos(&g_item_desc_cursor);
+      }
+    }
+  } else if (p2 == 0x06 && ecx == g_item_desc_wnd_ptr) {
+    // Only clear visibility when the main window closes, not the comparison window.
+    g_item_desc_visible = false;
+  }
+  return g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+}
 
 // Returns the path to bourgeon_settings.yaml next to the game executable.
 static std::string GetSettingsPath() {
@@ -25,11 +80,72 @@ static std::string GetSettingsPath() {
   return path + "bourgeon_settings.yaml";
 }
 
+void MoonlightUi::LoadItemNames() {
+  char buf[MAX_PATH];
+  GetModuleFileNameA(nullptr, buf, MAX_PATH);
+  std::string path(buf);
+  const auto sep = path.find_last_of("\\/");
+  if (sep != std::string::npos) path.resize(sep + 1);
+  path += "SystemEN\\itemInfoMerged.lua";
+
+  std::ifstream f(path);
+  if (!f) {
+    LogError("[MoonlightUi] itemInfoMerged.lua not found at {}", path);
+    return;
+  }
+
+  uint32_t current_id = 0;
+  std::string line;
+  while (std::getline(f, line)) {
+    // Match item ID line: \t[501] = {
+    // Only treat as item ID when the bracket content is purely numeric.
+    // Lines like  identifiedDisplayName = "Horn Card [Shield]",  contain
+    // non-numeric brackets and must fall through to the Name check below.
+    const auto lb = line.find('[');
+    if (lb != std::string::npos) {
+      const auto rb = line.find(']', lb + 1);
+      if (rb != std::string::npos) {
+        const auto between = line.substr(lb + 1, rb - lb - 1);
+        const bool all_digits = !between.empty() &&
+            std::all_of(between.begin(), between.end(),
+                        [](unsigned char c){ return std::isdigit(c) != 0; });
+        if (all_digits) {
+          try {
+            current_id = static_cast<uint32_t>(std::stoul(between));
+          } catch (...) { current_id = 0; }
+          continue;  // item ID line fully consumed
+        }
+        // Non-numeric bracket (e.g. "[Shield]"): fall through to Name check.
+      }
+    }
+    // Match: identifiedDisplayName = "Sleipnir",
+    if (current_id > 0 && line.find("identifiedDisplayName") != std::string::npos) {
+      const auto q1 = line.find('"');
+      const auto q2 = line.rfind('"');  // rfind: last quote handles names with "
+      if (q1 != std::string::npos && q2 != std::string::npos && q1 < q2)
+        item_names_[current_id] = line.substr(q1 + 1, q2 - q1 - 1);
+    }
+  }
+  LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
+}
+
 MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
   // Observe the standard map-move packet to learn the current map name.
   Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
   FindChatBgInstruction();
+  LoadItemNames();
+
+  // Hook the item description window to capture the nameid when right-clicking.
+  g_item_desc_wnd_orig = reinterpret_cast<ItemDescWndFn>(
+      hooking::HookManager::Instance().SetHook(
+          hooking::HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kItemDescWndAddr),
+          reinterpret_cast<uint8_t*>(ItemDescWndHook)));
+  if (!g_item_desc_wnd_orig) {
+    LogError("[MoonlightUi] failed to hook item desc wnd at 0x{:08X}",
+             kItemDescWndAddr);
+  }
 }
 
 // ── Chat background color ─────────────────────────────────────────────────
@@ -158,7 +274,8 @@ void MoonlightUi::LoadSettings() {
       LogInfo("[MoonlightUi] loaded chat_bg 0x{:08X}", argb);
     }
 
-    ui_collapsed_  = ui["ui_collapsed"].as<bool>(false);
+    ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
+    show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     apply_collapse_ = true;
   } catch (const std::exception& e) {
     LogError("[MoonlightUi] failed to parse {}: {}", path, e.what());
@@ -173,8 +290,9 @@ void MoonlightUi::SaveSettings() {
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
       << YAML::Value << YAML::BeginMap
-        << YAML::Key << "chat_bg"      << YAML::Value << hex
-        << YAML::Key << "ui_collapsed" << YAML::Value << ui_collapsed_
+        << YAML::Key << "chat_bg"          << YAML::Value << hex
+        << YAML::Key << "ui_collapsed"    << YAML::Value << ui_collapsed_
+        << YAML::Key << "alootid_overlay" << YAML::Value << show_alootid_overlay_
       << YAML::EndMap
       << YAML::EndMap;
 
@@ -213,11 +331,14 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type,
   if (in_game_ && !was_in_game)
     LoadSettings();
 
+  if (!in_game_ && was_in_game)
+    aloot_ids_.clear();
+
   UpdateRelay();
 }
 
 // ZC packet layout (data points past [opcode:2][total_len:2]):
-//   [count:2][{id:2, value:2} * count]
+//   [char_id:4][count:2][{id:2, value:4} * count]
 void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                uint16_t len) {
   if (opcode == kOpcodeMapMove) {
@@ -236,15 +357,15 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   if (len < 6) return;
 
   const uint16_t count = *reinterpret_cast<const uint16_t*>(data + 4);
-  const uint16_t expected_len = static_cast<uint16_t>(6 + count * 4);
+  const uint16_t expected_len = static_cast<uint16_t>(6 + count * 6);
   if (len < expected_len) {
     LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len, count);
     return;
   }
 
   for (uint16_t i = 0; i < count; ++i) {
-    const uint16_t id    = *reinterpret_cast<const uint16_t*>(data + 6 + i * 4);
-    const uint16_t value = *reinterpret_cast<const uint16_t*>(data + 6 + i * 4 + 2);
+    const uint16_t id    = *reinterpret_cast<const uint16_t*>(data + 6 + i * 6);
+    const uint32_t value = *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2);
     switch (id) {
       case kSettingShowExp:
         show_exp_ = (value != 0);
@@ -323,6 +444,35 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
         aloot_mvp_rwd_ = (value != 0);
         LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
         break;
+      case kSettingTriInv:
+        tri_inv_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] tri_inv={}", tri_inv_);
+        break;
+      case kSettingTriCart:
+        tri_cart_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] tri_cart={}", tri_cart_);
+        break;
+      case kSettingTriStorage:
+        tri_storage_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] tri_storage={}", tri_storage_);
+        break;
+      case kSettingTriGstorage:
+        tri_gstorage_ = static_cast<int>(value);
+        LogInfo("[MoonlightUi] tri_gstorage={}", tri_gstorage_);
+        break;
+      case kSettingAlootId:
+        if (value == 0) {
+          aloot_ids_.clear();
+          LogInfo("[MoonlightUi] aloot_ids cleared");
+        } else {
+          bool found = false;
+          for (uint32_t x : aloot_ids_) if (x == value) { found = true; break; }
+          if (!found) aloot_ids_.push_back(value);
+          LogInfo("[MoonlightUi] aloot_id added={}", value);
+        }
+        break;
+      case kSettingAlootIdRemove:
+        break;
       default:
         LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
         break;
@@ -330,12 +480,12 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   }
 }
 
-void MoonlightUi::SendSetting(uint16_t id, uint16_t value) {
-  uint8_t buf[8];
+void MoonlightUi::SendSetting(uint16_t id, uint32_t value) {
+  uint8_t buf[10];
   *reinterpret_cast<uint16_t*>(buf)     = kOpcodeToServer;
-  *reinterpret_cast<uint16_t*>(buf + 2) = 8;
+  *reinterpret_cast<uint16_t*>(buf + 2) = 10;
   *reinterpret_cast<uint16_t*>(buf + 4) = id;
-  *reinterpret_cast<uint16_t*>(buf + 6) = value;
+  *reinterpret_cast<uint32_t*>(buf + 6) = value;
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
 }
 
@@ -344,9 +494,8 @@ void MoonlightUi::SendSetting(uint16_t id, uint16_t value) {
 static void HelpMarker(const char* desc)
 {
   ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
+  if (ImGui::BeginItemTooltip())
   {
-    ImGui::BeginTooltip();
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
     ImGui::TextUnformatted(desc);
     ImGui::PopTextWrapPos();
@@ -586,147 +735,330 @@ void MoonlightUi::OnRenderUI() {
     if (ImGui::CollapsingHeader("Commands Settings"))
     {
       PushStyleCompact();
-      if (ImGui::BeginTable("split", 2)) // Toggles settings
+      ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+      if (ImGui::BeginTabBar("CommandsSettingsTabs", tab_bar_flags))
       {
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Permet la vente des items du groupe IG_SELLITEM\nchez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
-        ImGui::TableNextColumn(); if (ImGui::Checkbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
-        ImGui::EndTable();
-      }
-      // @noks — combo 4 options (off / self / party / guild)
-      {
-        static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::BeginCombo("@noks", kNoksLabels[noks_ < 4 ? noks_ : 0])) {
-          for (int i = 0; i < 4; ++i) {
-            const bool selected = (noks_ == i);
-            if (ImGui::Selectable(kNoksLabels[i], selected)) {
-              noks_ = i;
-              SendSetting(kSettingNoks, static_cast<uint16_t>(i));
-            }
-            if (selected) ImGui::SetItemDefaultFocus();
-          }
-          ImGui::EndCombo();
-        }
-        ImGui::SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
-      }
-      ImGui::Separator();
-      if (ImGui::CollapsingHeader("Autoloots"))
-      {
-        ImGui::Spacing();
-        {// @autoloot
-          int rate = aloot_rate_;
-          ImGui::SetNextItemWidth(130.0f);
-          if (ImGui::SliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
-            aloot_rate_ = rate;
-            SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
-          }
-          ImGui::SameLine();
-          if (ImGui::SmallButton("Reset##rate")) {
-            aloot_rate_ = 0;
-            SendSetting(kSettingAlootRate, 0);
-          }
-        }
-        ImGui::Separator();
-        { // @autolootpognon
-          int pognon = aloot_pognon_;
-          ImGui::SetNextItemWidth(130.0f);
-          if (ImGui::InputInt("@autolootpognon (z)", &pognon, 100, 10000)) {
-            if (pognon < 0) pognon = 0;
-            if (pognon > 1000000) pognon = 1000000;
-            pognon = (pognon / 100) * 100;
-            aloot_pognon_ = pognon;
-            SendSetting(kSettingAlootPognon, static_cast<uint16_t>(pognon / 100));
-          }
-        ImGui::SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
-          auto apply_pognon_delta = [this](int delta) {
-            int v = aloot_pognon_ + delta;
-            if (v < 0) v = 0;
-            if (v > 1000000) v = 1000000;
-            v = (v / 100) * 100;
-            aloot_pognon_ = v;
-            SendSetting(kSettingAlootPognon, static_cast<uint16_t>(v / 100));
-          };
-          if (ImGui::Button("-10kz"))  apply_pognon_delta(-10000);
-          ImGui::SameLine();
-          if (ImGui::Button("-1kz"))   apply_pognon_delta(-1000);
-          ImGui::SameLine();
-          if (ImGui::Button("+1kz"))   apply_pognon_delta(1000);
-          ImGui::SameLine();
-          if (ImGui::Button("+10kz"))  apply_pognon_delta(10000);
-          ImGui::SameLine();
-          if (ImGui::SmallButton("Reset##pognon")) {
-            aloot_pognon_ = 0;
-            SendSetting(kSettingAlootPognon, 0);
-          }
-        }
-        ImGui::Separator();
-        {// @autoloottype
-          ImGui::TextUnformatted("@autoloottype :");
-          ImGui::SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
-          ImGui::SameLine();
-          if (ImGui::SmallButton("Reset##type")) {
-            aloot_type_mask_ = 0;
-            SendSetting(kSettingAlootType, 0);
-          }
-          static const struct { const char* label; int bit; } kAlootTypes[] = {
-            {"Healing",   1 << 0},  {"Usable",    1 << 2},
-            {"Etc",       1 << 3},  {"Armor",     1 << 4},
-            {"Weapon",    1 << 5},  {"Card",      1 << 6},
-            {"Pet Egg",   1 << 7},  {"Pet Armor", 1 << 8},
-            {"Ammo",      1 << 10}, {"Cash",     1 << 11},
-          };
-          if (ImGui::BeginTable("aloottype", 2)) {
-            for (const auto& t : kAlootTypes) {
-              ImGui::TableNextColumn();
-              bool checked = (aloot_type_mask_ & t.bit) != 0;
-              if (ImGui::Checkbox(t.label, &checked)) {
-                if (checked) aloot_type_mask_ |=  t.bit;
-                else         aloot_type_mask_ &= ~t.bit;
-                SendSetting(kSettingAlootType, static_cast<uint16_t>(aloot_type_mask_));
-              }
-            }
+        if (ImGui::BeginTabItem("Général"))
+        {
+          if (ImGui::BeginTable("split", 2)) // Toggles settings
+          {
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker(
+              "Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
+              "Groupe SELLITEM :\nGreen Potion (506)\nWhite Slim Potion (547)\nLucky Candy (570)\n"
+              "Old Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\n"
+              "Old Violet Box (617)\nGift Box (644)\nPoison Bottle (678)\nGold (969)\n"
+              "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\n"
+              "Fire Bottle (7135)\nAcid Bottle (7136)\nCoating Bottle (7139)\n"
+              "Fragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\nPiece of Memory Red (7439)\n"
+              "Ice Scale (7562)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
+              "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
+            ImGui::TableNextColumn(); if (ImGui::Checkbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
+            ImGui::SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
             ImGui::EndTable();
           }
+          // @noks — combo 4 options (off / self / party / guild)
+          {
+            static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
+            ImGui::SetNextItemWidth(100.0f);
+            if (ImGui::BeginCombo("@noks", kNoksLabels[noks_ < 4 ? noks_ : 0])) {
+              for (int i = 0; i < 4; ++i) {
+                const bool selected = (noks_ == i);
+                if (ImGui::Selectable(kNoksLabels[i], selected)) {
+                  noks_ = i;
+                  SendSetting(kSettingNoks, static_cast<uint16_t>(i));
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+              }
+              ImGui::EndCombo();
+            }
+            ImGui::SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
+          }
+          // Tri inventaires — combo 7 options (0=Par ID … 6=Aucun)
+          {
+            static const char* kTriLabels[] = { "Par ID", "Par type", "Par quantité", "Par poids", "Par prix", "Par nom", "Aucun" };
+            auto TriCombo = [&](const char* label, int& value, uint16_t setting_id) {
+              ImGui::SetNextItemWidth(130.0f);
+              if (ImGui::BeginCombo(label, kTriLabels[value >= 0 && value < 7 ? value : 0])) {
+                for (int i = 0; i < 7; ++i) {
+                  const bool selected = (value == i);
+                  if (ImGui::Selectable(kTriLabels[i], selected)) {
+                    value = i;
+                    SendSetting(setting_id, static_cast<uint16_t>(i));
+                  }
+                  if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+              }
+            };
+            TriCombo("Tri Inventaire", tri_inv_, kSettingTriInv);
+            ImGui::SameLine(); HelpMarker("Tri automatique de l'inventaire.");
+            TriCombo("Tri Chariot",    tri_cart_, kSettingTriCart);
+            ImGui::SameLine(); HelpMarker("Tri automatique du chariot.");
+            TriCombo("Tri Coffre",     tri_storage_, kSettingTriStorage);
+            ImGui::SameLine(); HelpMarker("Tri automatique du coffre personnel à la prochaine ouverture.");
+            TriCombo("Tri Coffre Guilde", tri_gstorage_, kSettingTriGstorage);
+            ImGui::SameLine(); HelpMarker("Tri automatique du coffre de guilde à la prochaine ouverture.");
+          }
+            ImGui::EndTabItem();
         }
-        ImGui::Separator();
-        {// @autolootrare
-        if (ImGui::Checkbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker(
-          "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
-          "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
-          "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
-          "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
-        }
-        ImGui::Separator();
-        {// @autolootmvp / @autolootmvpreward
-        if (ImGui::Checkbox("Autoloot MVP cards", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Loot automatiquement les cartes MVP\nquelque soit leur taux de drop. (@autolootmvp)");
-        if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
-        ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
+        if (ImGui::BeginTabItem("Autoloots"))
+        {
+          ImGui::Spacing();
+          {// @autoloot
+            int rate = aloot_rate_;
+            ImGui::SetNextItemWidth(130.0f);
+            if (ImGui::SliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
+              aloot_rate_ = rate;
+              SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset##rate")) {
+              aloot_rate_ = 0;
+              SendSetting(kSettingAlootRate, 0);
+            }
+          }
+          ImGui::Separator();
+          { // @autolootpognon
+            int pognon = aloot_pognon_;
+            ImGui::SetNextItemWidth(130.0f);
+            if (ImGui::InputInt("@autolootpognon (z)", &pognon, 100, 10000)) {
+              if (pognon < 0) pognon = 0;
+              if (pognon > 1000000) pognon = 1000000;
+              pognon = (pognon / 100) * 100;
+              aloot_pognon_ = pognon;
+              SendSetting(kSettingAlootPognon, static_cast<uint16_t>(pognon / 100));
+            }
+          ImGui::SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
+            auto apply_pognon_delta = [this](int delta) {
+              int v = aloot_pognon_ + delta;
+              if (v < 0) v = 0;
+              if (v > 1000000) v = 1000000;
+              v = (v / 100) * 100;
+              aloot_pognon_ = v;
+              SendSetting(kSettingAlootPognon, static_cast<uint16_t>(v / 100));
+            };
+            if (ImGui::Button("-10kz"))  apply_pognon_delta(-10000);
+            ImGui::SameLine();
+            if (ImGui::Button("-1kz"))   apply_pognon_delta(-1000);
+            ImGui::SameLine();
+            if (ImGui::Button("+1kz"))   apply_pognon_delta(1000);
+            ImGui::SameLine();
+            if (ImGui::Button("+10kz"))  apply_pognon_delta(10000);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset##pognon")) {
+              aloot_pognon_ = 0;
+              SendSetting(kSettingAlootPognon, 0);
+            }
+          }
+          ImGui::Separator();
+          {// @autoloottype
+            ImGui::TextUnformatted("@autoloottype :");
+            ImGui::SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset##type")) {
+              aloot_type_mask_ = 0;
+              SendSetting(kSettingAlootType, 0);
+            }
+            static const struct { const char* label; int bit; } kAlootTypes[] = {
+              {"Healing",   1 << 0},  {"Usable",    1 << 2},
+              {"Etc",       1 << 3},  {"Armor",     1 << 4},
+              {"Weapon",    1 << 5},  {"Card",      1 << 6},
+              {"Pet Egg",   1 << 7},  {"Pet Armor", 1 << 8},
+              {"Ammo",      1 << 10}, {"Cash",     1 << 11},
+            };
+            if (ImGui::BeginTable("aloottype", 2)) {
+              for (const auto& t : kAlootTypes) {
+                ImGui::TableNextColumn();
+                bool checked = (aloot_type_mask_ & t.bit) != 0;
+                if (ImGui::Checkbox(t.label, &checked)) {
+                  if (checked) aloot_type_mask_ |=  t.bit;
+                  else         aloot_type_mask_ &= ~t.bit;
+                  SendSetting(kSettingAlootType, static_cast<uint16_t>(aloot_type_mask_));
+                }
+              }
+              ImGui::EndTable();
+            }
+          }
+          ImGui::Separator();
+          {// @autolootrare
+          if (ImGui::Checkbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
+          ImGui::SameLine(); HelpMarker(
+            "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
+            "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
+            "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
+            "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
+          }
+          ImGui::Separator();
+          {// @autolootmvp / @autolootmvpreward
+          if (ImGui::Checkbox("Autoloot MVP cards", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
+          ImGui::SameLine(); HelpMarker("Loot automatiquement les cartes MVP\nquelque soit leur taux de drop. (@autolootmvp)");
+          if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
+          ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
+          }
+          ImGui::Separator();
+          {// @autolootid
+            ImGui::TextUnformatted("@autolootid :");
+            ImGui::SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 10 IDs. (@autolootid <id>)");
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Overlay", &show_alootid_overlay_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##alootid")) {
+              aloot_ids_.clear();
+              SendSetting(kSettingAlootId, 0);
+            }
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::InputInt("##alootid_input", &aloot_id_input_, 0, 0);
+            if (aloot_id_input_ < 0) aloot_id_input_ = 0;
+            ImGui::SameLine();
+            const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 10);
+            if (!can_add) ImGui::BeginDisabled();
+            if (ImGui::Button("Add##alootid")) {
+              const uint32_t id = static_cast<uint32_t>(aloot_id_input_);
+              bool found = false;
+              for (uint32_t x : aloot_ids_) if (x == id) { found = true; break; }
+              if (!found) {
+                aloot_ids_.push_back(id);
+                SendSetting(kSettingAlootId, id);
+              }
+            }
+            if (!can_add) ImGui::EndDisabled();
+            for (int i = 0; i < static_cast<int>(aloot_ids_.size()); ++i) {
+              const uint32_t id = aloot_ids_[i];
+              const auto it = item_names_.find(id);
+              if (it != item_names_.end())
+                ImGui::Text("[%u] %s", id, it->second.c_str());
+              else
+                ImGui::Text("[%u]", id);
+              ImGui::SameLine();
+              char lbl[32];
+              std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
+              if (ImGui::SmallButton(lbl)) {
+                SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
+                aloot_ids_.erase(aloot_ids_.begin() + i);
+                --i;
+              }
+            }
+            // Quick-add/remove from the last right-clicked item description window.
+            if (g_last_viewed_item != 0) {
+              ImGui::Separator();
+              const auto itv = item_names_.find(g_last_viewed_item);
+              if (itv != item_names_.end())
+                ImGui::Text("Vu: [%u] %s", g_last_viewed_item, itv->second.c_str());
+              else
+                ImGui::Text("Vu: [%u]", g_last_viewed_item);
+              ImGui::SameLine();
+              int vu_idx = -1;
+              for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
+                if (aloot_ids_[k] == g_last_viewed_item) { vu_idx = k; break; }
+              if (vu_idx >= 0) {
+                if (ImGui::SmallButton("Remove##alootid_vu")) {
+                  SendSetting(kSettingAlootIdRemove, aloot_ids_[vu_idx]);
+                  aloot_ids_.erase(aloot_ids_.begin() + vu_idx);
+                }
+              } else {
+                const bool can_add_vu = (aloot_ids_.size() < 10);
+                if (!can_add_vu) ImGui::BeginDisabled();
+                if (ImGui::SmallButton("Add##alootid_vu")) {
+                  aloot_ids_.push_back(g_last_viewed_item);
+                  SendSetting(kSettingAlootId, g_last_viewed_item);
+                }
+                if (!can_add_vu) ImGui::EndDisabled();
+              }
+            }
+          }
+          ImGui::EndTabItem();
         }
       }
+      ImGui::EndTabBar();
       PopStyleCompact();
     }
   }
   ImGui::End();
+  ImGui::PopStyleVar(4);
+
+  // ── Alootid floating overlay ──────────────────────────────────────────────
+  if (show_alootid_overlay_ && g_last_viewed_item != 0 && g_item_desc_visible) {
+    // Try to read the tooltip window position from the stored object pointer.
+    // Offsets found via CheatEngine: [ptr+0x18]=Y, [ptr+0x20]=X.
+    // If the pointer doesn't match the right object the values will be garbage
+    // and we fall back to the cursor position captured at open time.
+    float overlay_x = static_cast<float>(g_item_desc_cursor.x) + 12.0f;
+    float overlay_y = static_cast<float>(g_item_desc_cursor.y) + 12.0f;
+    if (g_item_desc_wnd_ptr != nullptr) {
+      const auto* base = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
+      const int wx = *reinterpret_cast<const int*>(base + 0x1C);  // X (confirmed)
+      const int wy = *reinterpret_cast<const int*>(base + 0x20);  // Y (confirmed)
+      const int wh = *reinterpret_cast<const int*>(base + 0x18);  // height (confirmed ~120)
+      if (wx > 0 && wx < 4096 && wy > 0 && wy < 4096) {
+        overlay_x = static_cast<float>(wx);
+        overlay_y = static_cast<float>(wy + (wh > 0 ? wh : 120));  // just below the tooltip
+      }
+    }
+    ImGui::SetNextWindowPos(ImVec2(overlay_x, overlay_y), ImGuiCond_Always);  // live-track
+    ImGui::SetNextWindowBgAlpha(0.88f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+    constexpr ImGuiWindowFlags kOverlayFlags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##alootid_overlay", nullptr, kOverlayFlags)) {
+      const auto itv = item_names_.find(g_last_viewed_item);
+      if (itv != item_names_.end())
+        ImGui::TextUnformatted(itv->second.c_str());
+      else
+        ImGui::Text("[%u]", g_last_viewed_item);
+
+      int ov_idx = -1;
+      for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
+        if (aloot_ids_[k] == g_last_viewed_item) { ov_idx = k; break; }
+
+      ImGui::SameLine();
+      if (ov_idx >= 0) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.18f, 0.18f, 1.0f));
+        if (ImGui::SmallButton("- alootid")) {
+          SendSetting(kSettingAlootIdRemove, aloot_ids_[ov_idx]);
+          aloot_ids_.erase(aloot_ids_.begin() + ov_idx);
+        }
+        ImGui::PopStyleColor();
+      } else {
+        const bool can_add = (aloot_ids_.size() < 10);
+        if (!can_add) ImGui::BeginDisabled();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.48f, 0.18f, 1.0f));
+        if (ImGui::SmallButton("+ alootid")) {
+          aloot_ids_.push_back(g_last_viewed_item);
+          SendSetting(kSettingAlootId, g_last_viewed_item);
+        }
+        ImGui::PopStyleColor();
+        if (!can_add) ImGui::EndDisabled();
+      }
+      ImGui::SameLine();
+      if (ImGui::SmallButton("x"))
+        g_item_desc_visible = false;
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+  }
 }
