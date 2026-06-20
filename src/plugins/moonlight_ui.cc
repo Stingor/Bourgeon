@@ -57,15 +57,23 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
     if (str) {
       const long id = std::atol(str);
       if (id > 0) {
-        g_last_viewed_item  = static_cast<uint32_t>(id);
-        g_item_desc_visible = true;
-        g_item_desc_wnd_ptr = ecx;
-        GetCursorPos(&g_item_desc_cursor);
+        if (g_item_desc_visible && static_cast<uint32_t>(id) == g_last_viewed_item) {
+          LogInfo("[ItemDescWnd] same-item 0x18: id={} ecx=0x{:08X} -> toggle-close",
+                  id, reinterpret_cast<uint32_t>(ecx));
+          g_item_desc_visible = false;
+          g_item_desc_wnd_ptr = nullptr;
+        } else {
+          g_last_viewed_item  = static_cast<uint32_t>(id);
+          g_item_desc_visible = true;
+          g_item_desc_wnd_ptr = ecx;
+          GetCursorPos(&g_item_desc_cursor);
+        }
       }
     }
   } else if (p2 == 0x06 && ecx == g_item_desc_wnd_ptr) {
-    // Only clear visibility when the main window closes, not the comparison window.
+    // X button close — also reset ptr for the same reason.
     g_item_desc_visible = false;
+    g_item_desc_wnd_ptr = nullptr;
   }
   return g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
 }
@@ -83,16 +91,30 @@ static std::string GetSettingsPath() {
 void MoonlightUi::LoadItemNames() {
   char buf[MAX_PATH];
   GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string path(buf);
-  const auto sep = path.find_last_of("\\/");
-  if (sep != std::string::npos) path.resize(sep + 1);
-  path += "SystemEN\\itemInfoMerged.lua";
+  std::string base(buf);
+  const auto sep = base.find_last_of("\\/");
+  if (sep != std::string::npos) base.resize(sep + 1);
 
-  std::ifstream f(path);
+  // Try common RO client layouts in order.
+  static const char* kCandidates[] = {
+    "System\\itemInfoMerged.lua",
+    "SystemEN\\itemInfoMerged.lua",
+    "System\\itemInfo.lua",
+    "SystemEN\\itemInfo.lua",
+  };
+  std::ifstream f;
+  std::string path;
+  for (const char* cand : kCandidates) {
+    path = base + cand;
+    f.open(path);
+    if (f) break;
+    f.clear();
+  }
   if (!f) {
-    LogError("[MoonlightUi] itemInfoMerged.lua not found at {}", path);
+    LogError("[MoonlightUi] itemInfoMerged.lua not found (tried System\\ and SystemEN\\)");
     return;
   }
+  LogInfo("[MoonlightUi] loading item names from {}", path);
 
   uint32_t current_id = 0;
   std::string line;
@@ -118,8 +140,10 @@ void MoonlightUi::LoadItemNames() {
         // Non-numeric bracket (e.g. "[Shield]"): fall through to Name check.
       }
     }
-    // Match: identifiedDisplayName = "Sleipnir",
-    if (current_id > 0 && line.find("identifiedDisplayName") != std::string::npos) {
+    // Match: Name = "Red Potion"  (compact format used by this client)
+    // Also handles legacy: identifiedDisplayName = "Sleipnir",
+    if (current_id > 0 &&
+        (line.find("Name =") != std::string::npos)) {
       const auto q1 = line.find('"');
       const auto q2 = line.rfind('"');  // rfind: last quote handles names with "
       if (q1 != std::string::npos && q2 != std::string::npos && q1 < q2)
@@ -131,6 +155,7 @@ void MoonlightUi::LoadItemNames() {
 
 MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
+  Bourgeon::Instance().RegisterRecvOpcode(kOpcodePresetList);
   // Observe the standard map-move packet to learn the current map name.
   Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
   FindChatBgInstruction();
@@ -352,6 +377,29 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     return;
   }
 
+  if (opcode == kOpcodePresetList) {
+    // ZC_BOURGEON_PRESET_LIST: [active_no:1][count:1][{no:1,autoload:1,namelen:1,name:var}...]
+    // data points past [opcode:2][len:2], so data[0]=active_no, data[1]=count.
+    if (len < 2) return;
+    alootid_active_preset_   = data[0];
+    alootid_selected_preset_ = data[0];  // select active preset in combo by default
+    const uint8_t count = data[1];
+    alootid_presets_.clear();
+    uint16_t off = 2;
+    for (uint8_t i = 0; i < count && off + 3 <= len; ++i) {
+      AlootPreset p;
+      p.no       = data[off];
+      p.autoload = data[off + 1] != 0;
+      const uint8_t namelen = data[off + 2];
+      off += 3;
+      if (off + namelen > len) break;
+      p.name.assign(reinterpret_cast<const char*>(data + off), namelen);
+      off += namelen;
+      alootid_presets_.push_back(std::move(p));
+    }
+    return;
+  }
+
   if (opcode != kOpcodeFromServer) return;
   // Layout after the [opcode:2][len:2] header: [char_id:4][count:2][{id,value}*].
   if (len < 6) return;
@@ -487,6 +535,18 @@ void MoonlightUi::SendSetting(uint16_t id, uint32_t value) {
   *reinterpret_cast<uint16_t*>(buf + 4) = id;
   *reinterpret_cast<uint32_t*>(buf + 6) = value;
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
+}
+
+void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
+  const uint16_t namelen = name ? static_cast<uint16_t>(strnlen(name, 50)) : 0;
+  const uint16_t total   = static_cast<uint16_t>(6 + namelen);
+  std::vector<uint8_t> buf(total);
+  *reinterpret_cast<uint16_t*>(buf.data())     = kOpcodePresetCmd;
+  *reinterpret_cast<uint16_t*>(buf.data() + 2) = total;
+  buf[4] = cmd;
+  buf[5] = no;
+  if (namelen > 0) std::memcpy(buf.data() + 6, name, namelen);
+  Bourgeon::Instance().SendPacket(buf.data(), total);
 }
 
 // Helper to display a little (?) mark which shows a tooltip when hovered.
@@ -870,7 +930,7 @@ void MoonlightUi::OnRenderUI() {
             }
           }
           ImGui::Separator();
-          {// @autoloottype
+          if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
             ImGui::TextUnformatted("@autoloottype :");
             ImGui::SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
             ImGui::SameLine();
@@ -897,6 +957,7 @@ void MoonlightUi::OnRenderUI() {
               }
               ImGui::EndTable();
             }
+            ImGui::TreePop();
           }
           ImGui::Separator();
           {// @autolootrare
@@ -915,9 +976,9 @@ void MoonlightUi::OnRenderUI() {
           ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
           ImGui::Separator();
-          {// @autolootid
+          if (ImGui::TreeNode("@autolootid")) {// @autolootid
             ImGui::TextUnformatted("@autolootid :");
-            ImGui::SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 10 IDs. (@autolootid <id>)");
+            ImGui::SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
             ImGui::SameLine();
             if (ImGui::Checkbox("Overlay", &show_alootid_overlay_))
               SaveSettings();
@@ -931,7 +992,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::InputInt("##alootid_input", &aloot_id_input_, 0, 0);
             if (aloot_id_input_ < 0) aloot_id_input_ = 0;
             ImGui::SameLine();
-            const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 10);
+            const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 50);
             if (!can_add) ImGui::BeginDisabled();
             if (ImGui::Button("Add##alootid")) {
               const uint32_t id = static_cast<uint32_t>(aloot_id_input_);
@@ -943,21 +1004,30 @@ void MoonlightUi::OnRenderUI() {
               }
             }
             if (!can_add) ImGui::EndDisabled();
-            for (int i = 0; i < static_cast<int>(aloot_ids_.size()); ++i) {
-              const uint32_t id = aloot_ids_[i];
-              const auto it = item_names_.find(id);
-              if (it != item_names_.end())
-                ImGui::Text("[%u] %s", id, it->second.c_str());
-              else
-                ImGui::Text("[%u]", id);
-              ImGui::SameLine();
-              char lbl[32];
-              std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
-              if (ImGui::SmallButton(lbl)) {
-                SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
-                aloot_ids_.erase(aloot_ids_.begin() + i);
-                --i;
+            if (ImGui::BeginTable("##alootid_tbl", 2,
+                                   ImGuiTableFlags_SizingStretchProp |
+                                   ImGuiTableFlags_BordersInnerV)) {
+              ImGui::TableSetupColumn("Item",  ImGuiTableColumnFlags_WidthStretch);
+              ImGui::TableSetupColumn("##rm",  ImGuiTableColumnFlags_WidthFixed, 16.0f);
+              for (int i = 0; i < static_cast<int>(aloot_ids_.size()); ++i) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                const uint32_t id = aloot_ids_[i];
+                const auto it = item_names_.find(id);
+                if (it != item_names_.end())
+                  ImGui::Text("%s [%u]", it->second.c_str(), id);
+                else
+                  ImGui::Text("[%u]", id);
+                ImGui::TableSetColumnIndex(1);
+                char lbl[32];
+                std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
+                if (ImGui::SmallButton(lbl)) {
+                  SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
+                  aloot_ids_.erase(aloot_ids_.begin() + i);
+                  --i;
+                }
               }
+              ImGui::EndTable();
             }
             // Quick-add/remove from the last right-clicked item description window.
             if (g_last_viewed_item != 0) {
@@ -977,7 +1047,7 @@ void MoonlightUi::OnRenderUI() {
                   aloot_ids_.erase(aloot_ids_.begin() + vu_idx);
                 }
               } else {
-                const bool can_add_vu = (aloot_ids_.size() < 10);
+                const bool can_add_vu = (aloot_ids_.size() < 50);
                 if (!can_add_vu) ImGui::BeginDisabled();
                 if (ImGui::SmallButton("Add##alootid_vu")) {
                   aloot_ids_.push_back(g_last_viewed_item);
@@ -986,6 +1056,115 @@ void MoonlightUi::OnRenderUI() {
                 if (!can_add_vu) ImGui::EndDisabled();
               }
             }
+            // ── Presets (server-backed, DB table `alootid`) ──
+            ImGui::Separator();
+            ImGui::TextUnformatted("Presets :");
+            ImGui::SetNextItemWidth(120.0f);
+            ImGui::InputText("##preset_name", alootid_preset_input_,
+                             sizeof(alootid_preset_input_));
+            ImGui::SameLine();
+            const bool can_save = alootid_preset_input_[0] != '\0' && !aloot_ids_.empty();
+            if (!can_save) ImGui::BeginDisabled();
+            if (ImGui::SmallButton("Sauvegarder##preset")) {
+              // Reuse existing no if name already exists, else pick next free slot.
+              uint8_t save_no = 0;
+              bool used[11] = {};
+              for (const auto& p : alootid_presets_) {
+                if (p.name == alootid_preset_input_) { save_no = p.no; break; }
+                if (p.no <= 10) used[p.no] = true;
+              }
+              if (save_no == 0)
+                for (uint8_t n = 1; n <= 10; ++n) if (!used[n]) { save_no = n; break; }
+              if (save_no > 0)
+                SendPresetCmd(2, save_no, alootid_preset_input_);
+            }
+            if (!can_save) ImGui::EndDisabled();
+
+            // Combo: select preset by name
+            {
+              const AlootPreset* sel_preset = nullptr;
+              for (const auto& p : alootid_presets_)
+                if (p.no == alootid_selected_preset_) { sel_preset = &p; break; }
+
+              auto preset_label = [](const AlootPreset& p, char* buf, size_t sz, bool mark_active) {
+                if (p.name.empty())
+                  std::snprintf(buf, sz, "#%u%s", p.no, mark_active ? " *" : "");
+                else
+                  std::snprintf(buf, sz, "%s%s", p.name.c_str(), mark_active ? " *" : "");
+              };
+              char preview_buf[66];
+              const char* preview;
+              if (sel_preset) {
+                preset_label(*sel_preset, preview_buf, sizeof(preview_buf), false);
+                preview = preview_buf;
+              } else {
+                preview = "-- choisir --";
+              }
+              ImGui::SetNextItemWidth(120.0f);
+              if (ImGui::BeginCombo("##preset_select", preview)) {
+                for (const auto& p : alootid_presets_) {
+                  const bool sel = (p.no == alootid_selected_preset_);
+                  char label[66];
+                  preset_label(p, label, sizeof(label), p.no == alootid_active_preset_);
+                  if (ImGui::Selectable(label, sel))
+                    alootid_selected_preset_ = p.no;
+                  if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+              }
+              ImGui::SameLine();
+              const bool has_sel = sel_preset != nullptr;
+              if (!has_sel) ImGui::BeginDisabled();
+              if (ImGui::SmallButton("Charger##preset"))
+                SendPresetCmd(3, alootid_selected_preset_);
+              ImGui::SameLine();
+              if (ImGui::SmallButton("Supprimer##preset"))
+                SendPresetCmd(4, alootid_selected_preset_);
+              if (!has_sel) ImGui::EndDisabled();
+
+              // Autoload checkbox for the selected preset
+              if (sel_preset) {
+                bool al = sel_preset->autoload;
+                if (ImGui::Checkbox("Autoload##preset", &al))
+                  SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
+                ImGui::SameLine();
+                HelpMarker("Charge ce preset automatiquement à la connexion.");
+              }
+
+              // Mettre à jour le preset actif avec la liste courante
+              if (alootid_active_preset_ != 0 && !aloot_ids_.empty()) {
+                const AlootPreset* act = nullptr;
+                for (const auto& p : alootid_presets_)
+                  if (p.no == alootid_active_preset_) { act = &p; break; }
+                if (act) {
+                  if (ImGui::SmallButton("Mettre à jour##preset"))
+                    SendPresetCmd(2, alootid_active_preset_, act->name.c_str());
+                  if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Sauvegarde la liste courante dans le preset actif (%s)",
+                                      act->name.empty() ? "#" : act->name.c_str());
+                }
+              }
+
+              // Renommer le preset sélectionné
+              if (sel_preset) {
+                if (alootid_rename_last_no_ != alootid_selected_preset_) {
+                  std::strncpy(alootid_rename_input_, sel_preset->name.c_str(),
+                               sizeof(alootid_rename_input_) - 1);
+                  alootid_rename_input_[sizeof(alootid_rename_input_) - 1] = '\0';
+                  alootid_rename_last_no_ = alootid_selected_preset_;
+                }
+                ImGui::SetNextItemWidth(120.0f);
+                ImGui::InputText("##preset_rename", alootid_rename_input_,
+                                 sizeof(alootid_rename_input_));
+                ImGui::SameLine();
+                const bool can_rename = alootid_rename_input_[0] != '\0';
+                if (!can_rename) ImGui::BeginDisabled();
+                if (ImGui::SmallButton("Renommer##preset"))
+                  SendPresetCmd(6, alootid_selected_preset_, alootid_rename_input_);
+                if (!can_rename) ImGui::EndDisabled();
+              }
+            }
+            ImGui::TreePop();
           }
           ImGui::EndTabItem();
         }
@@ -998,6 +1177,14 @@ void MoonlightUi::OnRenderUI() {
   ImGui::PopStyleVar(4);
 
   // ── Alootid floating overlay ──────────────────────────────────────────────
+  // Detect silent tooltip close (e.g. comparison→non-comparison): the game
+  // zeroes kItemDescWndGlobalPtr without sending our hook a close message.
+  if (g_item_desc_visible &&
+      *reinterpret_cast<const uintptr_t*>(kItemDescWndGlobalPtr) == 0) {
+    g_item_desc_visible = false;
+    g_item_desc_wnd_ptr = nullptr;
+  }
+
   if (show_alootid_overlay_ && g_last_viewed_item != 0 && g_item_desc_visible) {
     // Try to read the tooltip window position from the stored object pointer.
     // Offsets found via CheatEngine: [ptr+0x18]=Y, [ptr+0x20]=X.
@@ -1009,10 +1196,9 @@ void MoonlightUi::OnRenderUI() {
       const auto* base = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
       const int wx = *reinterpret_cast<const int*>(base + 0x1C);  // X (confirmed)
       const int wy = *reinterpret_cast<const int*>(base + 0x20);  // Y (confirmed)
-      const int wh = *reinterpret_cast<const int*>(base + 0x18);  // height (confirmed ~120)
       if (wx > 0 && wx < 4096 && wy > 0 && wy < 4096) {
         overlay_x = static_cast<float>(wx);
-        overlay_y = static_cast<float>(wy + (wh > 0 ? wh : 120));  // just below the tooltip
+        overlay_y = static_cast<float>(wy) - 24.0f;
       }
     }
     ImGui::SetNextWindowPos(ImVec2(overlay_x, overlay_y), ImGuiCond_Always);  // live-track
@@ -1044,7 +1230,7 @@ void MoonlightUi::OnRenderUI() {
         }
         ImGui::PopStyleColor();
       } else {
-        const bool can_add = (aloot_ids_.size() < 10);
+        const bool can_add = (aloot_ids_.size() < 50);
         if (!can_add) ImGui::BeginDisabled();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.48f, 0.18f, 1.0f));
         if (ImGui::SmallButton("+ alootid")) {

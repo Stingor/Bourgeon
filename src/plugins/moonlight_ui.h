@@ -22,8 +22,10 @@ class MoonlightUi : public Plugin {
   // CZ: [opcode:2][total_len:2][id:2][value:2]
   void SendSetting(uint16_t id, uint32_t value);
 
-  static constexpr uint16_t kOpcodeFromServer = 0x0BFE;  // ZC_BOURGEON_SETTINGS
-  static constexpr uint16_t kOpcodeToServer   = 0x0BFD;  // CZ_BOURGEON_SETTING
+  static constexpr uint16_t kOpcodeFromServer    = 0x0BFE;  // ZC_BOURGEON_SETTINGS
+  static constexpr uint16_t kOpcodeToServer      = 0x0BFD;  // CZ_BOURGEON_SETTING
+  static constexpr uint16_t kOpcodePresetList    = 0x0C21;  // ZC_BOURGEON_PRESET_LIST
+  static constexpr uint16_t kOpcodePresetCmd     = 0x0C20;  // CZ_BOURGEON_PRESET_CMD
   // We read the current map name from the STANDARD client packet 0x0091
   // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
   // carries mapname[16] right after the opcode.  This needs no custom packet
@@ -95,13 +97,29 @@ class MoonlightUi : public Plugin {
   int  tri_storage_     = 0;
   int  tri_gstorage_    = 0;
 
-  std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 10)
+  std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 50)
   int                   aloot_id_input_ = 0;
+
+  struct AlootPreset { uint8_t no; std::string name; bool autoload; };
+  std::vector<AlootPreset> alootid_presets_;   // received from server (ZC 0x0C21)
+  uint8_t alootid_active_preset_   = 0;        // currently loaded preset no (0=none)
+  uint8_t alootid_selected_preset_ = 0;        // selected in combo (may differ from active)
+  char    alootid_preset_input_[64] = {};       // name field for save
+  char    alootid_rename_input_[64] = {};       // name field for rename (cmd 6)
+  uint8_t alootid_rename_last_no_   = 0;        // tracks when to re-fill rename field
+
+  // Sends a preset management command to the server (CZ 0x0C20).
+  void SendPresetCmd(uint8_t cmd, uint8_t no = 0, const char* name = nullptr);
   bool                  show_alootid_overlay_ = false;  // floating Add/Remove overlay on right-click
 
   // Address of the item description window message handler (FUN_008c18b0,
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
-  static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
+  static constexpr uintptr_t kItemDescWndAddr      = 0x008c18b0;
+  // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
+  // the active item description window, 0 when no tooltip is open.  Written by
+  // the game independently of our hook, so polling it catches silent closes
+  // (e.g. comparison→non-comparison transition).
+  static constexpr uintptr_t kItemDescWndGlobalPtr = 0x0131F700;
 
   std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
   void LoadItemNames();
