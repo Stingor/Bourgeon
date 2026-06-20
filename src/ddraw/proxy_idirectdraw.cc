@@ -17,14 +17,6 @@ extern void DrawROCursorImGui();
 static bool g_dx7_imgui_ready = false;
 bool g_imgui_dx7_active = false;
 
-// Track which EndScene call is the last one before Flip (1-frame delay).
-// On frame N, Flip records how many EndScenes happened (g_dx7_target_endscene).
-// On frame N+1, ImGui renders only at that index — never in earlier passes —
-// so ImGui is never baked into an intermediate backbuffer that a later pass
-// reads, which was the root cause of the ghost/duplicate artifact.
-static int g_dx7_endscene_index  = 0;
-static int g_dx7_target_endscene = INT_MAX;  // initially large = skip first frame
-
 // InitDX7Hook is called from main.cc; nothing to install for the proxy path.
 void InitDX7Hook() {}
 
@@ -157,24 +149,18 @@ HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
       g_imgui_dx7_active = true;
       g_dx7_imgui_ready = true;
     }
-    if (++g_dx7_endscene_index == g_dx7_target_endscene) {
-      ImGui_ImplDX7_NewFrame();
-      ImGui_ImplWin32_NewFrame();
-      ImGui::NewFrame();
-      Bourgeon::Instance().RenderUI();
-      DrawROCursorImGui();
-      ImGui::EndFrame();
-      ImGui::Render();
-      ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
-    }
+    ImGui_ImplDX7_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+    Bourgeon::Instance().RenderUI();
+    DrawROCursorImGui();
+    ImGui::EndFrame();
+    ImGui::Render();
+    ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
   }
   return m_Instance->EndScene();
 }
 
 HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2) {
-  // Record how many EndScene calls happened this frame so next frame we render
-  // ImGui only on the last one (avoiding ghost artifacts from intermediate passes).
-  g_dx7_target_endscene = g_dx7_endscene_index;
-  g_dx7_endscene_index  = 0;
   return m_Instance->Flip(p1, p2);
 }
