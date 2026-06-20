@@ -16,7 +16,14 @@ extern void DrawROCursorImGui();
 
 static bool g_dx7_imgui_ready = false;
 bool g_imgui_dx7_active = false;
-static IDirect3DDevice7* g_dx7_device = nullptr;
+
+// Track which EndScene call is the last one before Flip (1-frame delay).
+// On frame N, Flip records how many EndScenes happened (g_dx7_target_endscene).
+// On frame N+1, ImGui renders only at that index — never in earlier passes —
+// so ImGui is never baked into an intermediate backbuffer that a later pass
+// reads, which was the root cause of the ghost/duplicate artifact.
+static int g_dx7_endscene_index  = 0;
+static int g_dx7_target_endscene = INT_MAX;  // initially large = skip first frame
 
 // InitDX7Hook is called from main.cc; nothing to install for the proxy path.
 void InitDX7Hook() {}
@@ -144,18 +151,13 @@ HRESULT CProxyIDirect3DDevice7::Proxy_BeginScene() {
 }
 
 HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
-  if (ImGui::GetCurrentContext() && !g_dx7_imgui_ready) {
-    ImGui_ImplDX7_Init(m_Instance);
-    g_imgui_dx7_active = true;
-    g_dx7_imgui_ready = true;
-    g_dx7_device = m_Instance;
-  }
-  return m_Instance->EndScene();
-}
-
-HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2) {
-  if (ImGui::GetCurrentContext() && g_dx7_imgui_ready && g_dx7_device) {
-    if (SUCCEEDED(g_dx7_device->BeginScene())) {
+  if (ImGui::GetCurrentContext()) {
+    if (!g_dx7_imgui_ready) {
+      ImGui_ImplDX7_Init(m_Instance);
+      g_imgui_dx7_active = true;
+      g_dx7_imgui_ready = true;
+    }
+    if (++g_dx7_endscene_index == g_dx7_target_endscene) {
       ImGui_ImplDX7_NewFrame();
       ImGui_ImplWin32_NewFrame();
       ImGui::NewFrame();
@@ -164,8 +166,15 @@ HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2)
       ImGui::EndFrame();
       ImGui::Render();
       ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
-      g_dx7_device->EndScene();
     }
   }
+  return m_Instance->EndScene();
+}
+
+HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2) {
+  // Record how many EndScene calls happened this frame so next frame we render
+  // ImGui only on the last one (avoiding ghost artifacts from intermediate passes).
+  g_dx7_target_endscene = g_dx7_endscene_index;
+  g_dx7_endscene_index  = 0;
   return m_Instance->Flip(p1, p2);
 }
