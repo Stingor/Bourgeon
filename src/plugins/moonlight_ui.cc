@@ -397,6 +397,21 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       off += namelen;
       alootid_presets_.push_back(std::move(p));
     }
+    // Auto-fill the save input with the active preset's name so "Sauvegarder"
+    // updates it directly instead of creating a new slot.
+    if (alootid_active_preset_ != 0) {
+      for (const auto& p : alootid_presets_) {
+        if (p.no == alootid_active_preset_) {
+          std::strncpy(alootid_preset_input_, p.name.c_str(),
+                       sizeof(alootid_preset_input_) - 1);
+          alootid_preset_input_[sizeof(alootid_preset_input_) - 1] = '\0';
+          break;
+        }
+      }
+    }
+    // Snapshot the current list as "saved state" — the server sends this packet
+    // after every save/load/delete, so the snapshot stays in sync automatically.
+    alootid_saved_ids_ = aloot_ids_;
     return;
   }
 
@@ -1004,31 +1019,62 @@ void MoonlightUi::OnRenderUI() {
               }
             }
             if (!can_add) ImGui::EndDisabled();
-            if (ImGui::BeginTable("##alootid_tbl", 2,
-                                   ImGuiTableFlags_SizingStretchProp |
-                                   ImGuiTableFlags_BordersInnerV)) {
-              ImGui::TableSetupColumn("Item",  ImGuiTableColumnFlags_WidthStretch);
-              ImGui::TableSetupColumn("##rm",  ImGuiTableColumnFlags_WidthFixed, 16.0f);
-              for (int i = 0; i < static_cast<int>(aloot_ids_.size()); ++i) {
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                const uint32_t id = aloot_ids_[i];
-                const auto it = item_names_.find(id);
-                if (it != item_names_.end())
-                  ImGui::Text("%s [%u]", it->second.c_str(), id);
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1));
+            {
+              // Detect unsaved changes: compare current list vs snapshot (order-independent).
+              auto sorted_copy = [](const std::vector<uint32_t>& v) {
+                auto s = v; std::sort(s.begin(), s.end()); return s;
+              };
+              const bool dirty = (alootid_active_preset_ != 0) &&
+                                 (sorted_copy(aloot_ids_) != sorted_copy(alootid_saved_ids_));
+
+              static char hdr[96];
+              if (alootid_active_preset_ != 0) {
+                const char* preset_name = nullptr;
+                char no_buf[8];
+                for (const auto& p : alootid_presets_) {
+                  if (p.no == alootid_active_preset_) {
+                    preset_name = p.name.empty()
+                      ? (std::snprintf(no_buf, sizeof(no_buf), "#%u", p.no), no_buf)
+                      : p.name.c_str();
+                    break;
+                  }
+                }
+                if (dirty)
+                  std::snprintf(hdr, sizeof(hdr), "%s (non sauvegardé)",
+                                preset_name ? preset_name : "?");
                 else
-                  ImGui::Text("[%u]", id);
-                ImGui::TableSetColumnIndex(1);
+                  std::snprintf(hdr, sizeof(hdr), "%s",
+                                preset_name ? preset_name : "?");
+              } else {
+                std::strncpy(hdr, "Liste courante", sizeof(hdr));
+              }
+              ImGui::TextUnformatted(hdr);
+            }
+            ImGui::BeginChild("##alootid_list", ImVec2(0, 160), true);
+            if (ImGui::BeginTable("##alootid_tbl", 2, ImGuiTableFlags_SizingStretchSame)) {
+              for (int i = 0; i < static_cast<int>(aloot_ids_.size()); ++i) {
+                ImGui::TableNextColumn();
+                const uint32_t id = aloot_ids_[i];
                 char lbl[32];
                 std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
                 if (ImGui::SmallButton(lbl)) {
                   SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
                   aloot_ids_.erase(aloot_ids_.begin() + i);
                   --i;
+                  continue;
                 }
+                ImGui::SameLine();
+                const auto it = item_names_.find(id);
+                if (it != item_names_.end())
+                  ImGui::Text("%s [%u]", it->second.c_str(), id);
+                else
+                  ImGui::Text("[%u]", id);
               }
               ImGui::EndTable();
             }
+            ImGui::EndChild();
+            ImGui::PopStyleVar();
             // Quick-add/remove from the last right-clicked item description window.
             if (g_last_viewed_item != 0) {
               ImGui::Separator();
@@ -1059,26 +1105,86 @@ void MoonlightUi::OnRenderUI() {
             // ── Presets (server-backed, DB table `alootid`) ──
             ImGui::Separator();
             ImGui::TextUnformatted("Presets :");
+            // Autoload indicator + toggle, on the same line as the label.
+            {
+              const AlootPreset* autoload_preset = nullptr;
+              for (const auto& p : alootid_presets_)
+                if (p.autoload) { autoload_preset = &p; break; }
+              ImGui::SameLine();
+              // Find the selected preset to know what toggling autoload does.
+              const AlootPreset* sel_for_al = nullptr;
+              for (const auto& p : alootid_presets_)
+                if (p.no == alootid_selected_preset_) { sel_for_al = &p; break; }
+              bool al = sel_for_al && sel_for_al->autoload;
+              if (!sel_for_al) ImGui::BeginDisabled();
+              if (ImGui::Checkbox("Autoload##preset", &al))
+                SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
+              if (!sel_for_al) ImGui::EndDisabled();
+              ImGui::SameLine();
+              if (autoload_preset) {
+                if (autoload_preset->name.empty())
+                  ImGui::TextDisabled("(#%u)", autoload_preset->no);
+                else
+                  ImGui::TextDisabled("(%s)", autoload_preset->name.c_str());
+              } else {
+                ImGui::TextDisabled("(aucun)");
+              }
+            }
             ImGui::SetNextItemWidth(120.0f);
             ImGui::InputText("##preset_name", alootid_preset_input_,
                              sizeof(alootid_preset_input_));
             ImGui::SameLine();
-            const bool can_save = alootid_preset_input_[0] != '\0' && !aloot_ids_.empty();
-            if (!can_save) ImGui::BeginDisabled();
-            if (ImGui::SmallButton("Sauvegarder##preset")) {
-              // Reuse existing no if name already exists, else pick next free slot.
-              uint8_t save_no = 0;
-              bool used[11] = {};
-              for (const auto& p : alootid_presets_) {
-                if (p.name == alootid_preset_input_) { save_no = p.no; break; }
-                if (p.no <= 10) used[p.no] = true;
-              }
-              if (save_no == 0)
-                for (uint8_t n = 1; n <= 10; ++n) if (!used[n]) { save_no = n; break; }
-              if (save_no > 0)
-                SendPresetCmd(2, save_no, alootid_preset_input_);
+            ImGui::Checkbox("Renommer##preset_toggle", &alootid_rename_open_);
+            if (alootid_rename_open_) {
+              ImGui::SameLine();
+              ImGui::SetNextItemWidth(120.0f);
+              ImGui::InputText("##preset_rename", alootid_rename_input_,
+                               sizeof(alootid_rename_input_));
             }
-            if (!can_save) ImGui::EndDisabled();
+            ImGui::SameLine();
+            {
+              const AlootPreset* sel_for_rename = nullptr;
+              for (const auto& p : alootid_presets_)
+                if (p.no == alootid_selected_preset_) { sel_for_rename = &p; break; }
+
+              // Find existing preset matching the typed name (for delete-on-empty).
+              const AlootPreset* named_preset = nullptr;
+              for (const auto& p : alootid_presets_)
+                if (p.name == alootid_preset_input_) { named_preset = &p; break; }
+
+              const bool is_rename = alootid_rename_open_;
+              const bool list_empty = aloot_ids_.empty();
+              // Rename: need a new name + a selected preset.
+              // Save: need a non-empty name; list empty → delete the named preset.
+              const bool can_act = is_rename
+                ? (alootid_rename_input_[0] != '\0' && sel_for_rename != nullptr)
+                : (alootid_preset_input_[0] != '\0' &&
+                   (!list_empty || named_preset != nullptr));
+
+              if (!can_act) ImGui::BeginDisabled();
+              const char* btn_label = (!is_rename && list_empty && named_preset)
+                ? "Supprimer##preset_save" : "Sauvegarder##preset";
+              if (ImGui::SmallButton(btn_label)) {
+                if (is_rename && sel_for_rename) {
+                  SendPresetCmd(6, alootid_selected_preset_, alootid_rename_input_);
+                  alootid_rename_open_ = false;
+                } else if (!is_rename && list_empty && named_preset) {
+                  SendPresetCmd(4, named_preset->no);
+                } else {
+                  uint8_t save_no = 0;
+                  bool used[11] = {};
+                  for (const auto& p : alootid_presets_) {
+                    if (p.name == alootid_preset_input_) { save_no = p.no; break; }
+                    if (p.no <= 10) used[p.no] = true;
+                  }
+                  if (save_no == 0)
+                    for (uint8_t n = 1; n <= 10; ++n) if (!used[n]) { save_no = n; break; }
+                  if (save_no > 0)
+                    SendPresetCmd(2, save_no, alootid_preset_input_);
+                }
+              }
+              if (!can_act) ImGui::EndDisabled();
+            }
 
             // Combo: select preset by name
             {
@@ -1122,47 +1228,6 @@ void MoonlightUi::OnRenderUI() {
                 SendPresetCmd(4, alootid_selected_preset_);
               if (!has_sel) ImGui::EndDisabled();
 
-              // Autoload checkbox for the selected preset
-              if (sel_preset) {
-                bool al = sel_preset->autoload;
-                if (ImGui::Checkbox("Autoload##preset", &al))
-                  SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
-                ImGui::SameLine();
-                HelpMarker("Charge ce preset automatiquement à la connexion.");
-              }
-
-              // Mettre à jour le preset actif avec la liste courante
-              if (alootid_active_preset_ != 0 && !aloot_ids_.empty()) {
-                const AlootPreset* act = nullptr;
-                for (const auto& p : alootid_presets_)
-                  if (p.no == alootid_active_preset_) { act = &p; break; }
-                if (act) {
-                  if (ImGui::SmallButton("Mettre à jour##preset"))
-                    SendPresetCmd(2, alootid_active_preset_, act->name.c_str());
-                  if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Sauvegarde la liste courante dans le preset actif (%s)",
-                                      act->name.empty() ? "#" : act->name.c_str());
-                }
-              }
-
-              // Renommer le preset sélectionné
-              if (sel_preset) {
-                if (alootid_rename_last_no_ != alootid_selected_preset_) {
-                  std::strncpy(alootid_rename_input_, sel_preset->name.c_str(),
-                               sizeof(alootid_rename_input_) - 1);
-                  alootid_rename_input_[sizeof(alootid_rename_input_) - 1] = '\0';
-                  alootid_rename_last_no_ = alootid_selected_preset_;
-                }
-                ImGui::SetNextItemWidth(120.0f);
-                ImGui::InputText("##preset_rename", alootid_rename_input_,
-                                 sizeof(alootid_rename_input_));
-                ImGui::SameLine();
-                const bool can_rename = alootid_rename_input_[0] != '\0';
-                if (!can_rename) ImGui::BeginDisabled();
-                if (ImGui::SmallButton("Renommer##preset"))
-                  SendPresetCmd(6, alootid_selected_preset_, alootid_rename_input_);
-                if (!can_rename) ImGui::EndDisabled();
-              }
             }
             ImGui::TreePop();
           }

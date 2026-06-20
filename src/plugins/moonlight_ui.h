@@ -98,6 +98,7 @@ class MoonlightUi : public Plugin {
   int  tri_gstorage_    = 0;
 
   std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 50)
+  std::vector<uint32_t> alootid_saved_ids_; // snapshot at last preset load/save
   int                   aloot_id_input_ = 0;
 
   struct AlootPreset { uint8_t no; std::string name; bool autoload; };
@@ -106,7 +107,7 @@ class MoonlightUi : public Plugin {
   uint8_t alootid_selected_preset_ = 0;        // selected in combo (may differ from active)
   char    alootid_preset_input_[64] = {};       // name field for save
   char    alootid_rename_input_[64] = {};       // name field for rename (cmd 6)
-  uint8_t alootid_rename_last_no_   = 0;        // tracks when to re-fill rename field
+  bool    alootid_rename_open_      = false;    // checkbox: show rename field
 
   // Sends a preset management command to the server (CZ 0x0C20).
   void SendPresetCmd(uint8_t cmd, uint8_t no = 0, const char* name = nullptr);

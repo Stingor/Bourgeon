@@ -297,14 +297,13 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
     bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
 
-    // Use over_imgui (not IsWindowHovered) so the software cursor stays visible
-    // while dragging outside a popup/window boundary — WantCaptureMouse remains
-    // true for active drag items even when the pointer leaves the window rect.
+    // Show ImGui's software cursor when over its windows; hide it otherwise so
+    // RO renders its own sprite cursor (which now follows the mouse even over
+    // ImGui since WM_MOUSEMOVE is no longer blocked).
     io.MouseDrawCursor = over_imgui;
 
     if (over_imgui) {
       switch (uMsg) {
-        case WM_MOUSEMOVE:
         case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
         case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
         case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
