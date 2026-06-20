@@ -16,6 +16,7 @@ extern void DrawROCursorImGui();
 
 static bool g_dx7_imgui_ready = false;
 bool g_imgui_dx7_active = false;
+static IDirect3DDevice7* g_dx7_device = nullptr;
 
 // InitDX7Hook is called from main.cc; nothing to install for the proxy path.
 void InitDX7Hook() {}
@@ -143,20 +144,28 @@ HRESULT CProxyIDirect3DDevice7::Proxy_BeginScene() {
 }
 
 HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
-  if (ImGui::GetCurrentContext()) {
-    if (!g_dx7_imgui_ready) {
-      ImGui_ImplDX7_Init(m_Instance);
-      g_imgui_dx7_active = true;
-      g_dx7_imgui_ready = true;
-    }
-    ImGui_ImplDX7_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-    Bourgeon::Instance().RenderUI();
-    DrawROCursorImGui();
-    ImGui::EndFrame();
-    ImGui::Render();
-    ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
+  if (ImGui::GetCurrentContext() && !g_dx7_imgui_ready) {
+    ImGui_ImplDX7_Init(m_Instance);
+    g_imgui_dx7_active = true;
+    g_dx7_imgui_ready = true;
+    g_dx7_device = m_Instance;
   }
   return m_Instance->EndScene();
+}
+
+HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2) {
+  if (ImGui::GetCurrentContext() && g_dx7_imgui_ready && g_dx7_device) {
+    if (SUCCEEDED(g_dx7_device->BeginScene())) {
+      ImGui_ImplDX7_NewFrame();
+      ImGui_ImplWin32_NewFrame();
+      ImGui::NewFrame();
+      Bourgeon::Instance().RenderUI();
+      DrawROCursorImGui();
+      ImGui::EndFrame();
+      ImGui::Render();
+      ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
+      g_dx7_device->EndScene();
+    }
+  }
+  return m_Instance->Flip(p1, p2);
 }

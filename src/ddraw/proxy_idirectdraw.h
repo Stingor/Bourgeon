@@ -179,7 +179,7 @@ class CProxyIDirectDrawSurface7 final : public IDirectDrawSurface7 {
   STDMETHOD(EnumOverlayZOrders)
   (THIS_ DWORD p1, LPVOID p2, LPDDENUMSURFACESCALLBACK7 p3)
       PROXY3(EnumOverlayZOrders);
-  STDMETHOD(Flip)(THIS_ LPDIRECTDRAWSURFACE7 p1, DWORD p2) PROXY2(Flip);
+  STDMETHOD(Flip)(THIS_ LPDIRECTDRAWSURFACE7 p1, DWORD p2) { return Proxy_Flip(p1, p2); }
   STDMETHOD(GetAttachedSurface)
   (THIS_ LPDDSCAPS2 p1, LPDIRECTDRAWSURFACE7 FAR *p2)
       PROXY2(GetAttachedSurface);
@@ -242,6 +242,8 @@ class CProxyIDirectDrawSurface7 final : public IDirectDrawSurface7 {
   STDMETHOD(GetPriority)(THIS_ LPDWORD p1) PROXY1(GetPriority);
   STDMETHOD(SetLOD)(THIS_ DWORD p1) PROXY1(SetLOD);
   STDMETHOD(GetLOD)(THIS_ LPDWORD p1) PROXY1(GetLOD);
+
+  HRESULT Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2);
 };
 #undef CLASSNAME
 
