@@ -16,11 +16,13 @@
 //   CONFIRMED: talk_type_table_ (+0x51F8)
 //   LIKELY:    item_list_ (+0x16D8, xref pattern matches std::list usage)
 //   ESTIMATE:  mkcount_ block (+0xAFC, stable across versions)
+//
+// NOTE: Fields are listed in ascending offset order (correct memory layout).
+//       char_name_ is at +0x81A8 which is above aid_ at +0x15E4 — char_name_
+//       must come last in the struct definition.
 SESSION_IMPLEMENTATION(20250716, {
   /*+0x000*/ int32_t cur_map_type_;
-  /*+0x004*/ uint8_t padding0[0x81A4];
-  /*+0x81A8*/ char char_name_[0x40];
-  /*+0x81E8*/ uint8_t padding1[0x314];
+  /*+0x004*/ uint8_t padding0[0xAF8];
   /*+0xAFC*/ int32_t mkcount_;
   /*+0xB00*/ int32_t haircolor_;
   /*+0xB04*/ int32_t deadcount_;
@@ -55,4 +57,6 @@ SESSION_IMPLEMENTATION(20250716, {
   /*+0x554C*/ int32_t max_hp_;
   /*+0x5550*/ int32_t sp_;
   /*+0x5554*/ int32_t max_sp_;
+  /*+0x5558*/ uint8_t padding6[0x2C50];
+  /*+0x81A8*/ char char_name_[0x40];
 });

@@ -10,6 +10,7 @@
 #include "ragnarok/ragnarok_client.h"
 
 class DiscordRelay;
+class DpsMeter;
 
 class Bourgeon {
  public:
@@ -23,6 +24,7 @@ class Bourgeon {
 
   RagnarokClient& client();
   DiscordRelay* discord_relay();
+  DpsMeter* dps_meter();
 
   bool Initialize();
   void OnTick();
@@ -57,6 +59,7 @@ class Bourgeon {
 
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
+  DpsMeter*     dps_meter_     = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::vector<std::string> log_lines_;
   RagnarokClient client_;

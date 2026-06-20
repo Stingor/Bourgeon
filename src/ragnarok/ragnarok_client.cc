@@ -49,7 +49,7 @@ void DrawROCursorImGui() {
   if (mp.x < 0.f || mp.y < 0.f) return;
   if (!IsMouseOverAnyImGuiWindow(mp.x, mp.y)) return;
 
-  if (*reinterpret_cast<int*>(0x01229448)) return;  // hidden
+  // if (*reinterpret_cast<int*>(0x01229448)) return;  // hidden
   const uintptr_t mgr = *reinterpret_cast<uintptr_t*>(0x0121333c);
   if (!mgr) return;
 

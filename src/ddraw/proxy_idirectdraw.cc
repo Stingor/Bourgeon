@@ -161,6 +161,3 @@ HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
   return m_Instance->EndScene();
 }
 
-HRESULT CProxyIDirectDrawSurface7::Proxy_Flip(LPDIRECTDRAWSURFACE7 p1, DWORD p2) {
-  return m_Instance->Flip(p1, p2);
-}

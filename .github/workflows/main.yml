@@ -1,0 +1,55 @@
+name: Discord Commit Notification
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send commits to Discord
+        run: |
+          msg=""
+
+          while IFS= read -r commit; do
+            ts=$(echo "$commit" | jq -r .timestamp)
+            msgtxt=$(echo "$commit" | jq -r .message)
+            sha=$(echo "$commit" | jq -r .id)
+            url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}"
+            formatted=$(TZ="Europe/Paris" date -d "$ts" "+%d/%m/%Y %H:%M")
+            msg="${msg}- \`${formatted}\` — [${msgtxt}](${url})"$'\n'
+          done < <(
+            jq -c '.commits[]' "$GITHUB_EVENT_PATH"
+          )
+
+          jq -n --arg description "$msg" '{
+            embeds: [{
+              title: "Nouveaux commits poussés (Bourgeon Plugins):",
+              description: $description,
+              color: 5814783
+            }]
+          }' > payload.json
+
+          curl -fsSL -H "Content-Type: application/json" \
+               -X POST \
+               -d @payload.json \
+               "${{ secrets.DISCORD_WEBHOOK }}"
+
+      - name: Send commits to changelog
+        run: |
+          jq -c '.commits[]' "$GITHUB_EVENT_PATH" | while IFS= read -r commit; do
+            body=$(echo "$commit" | jq -c '{
+              hash: .id,
+              message: .message,
+              timestamp: .timestamp,
+              author: .author.name,
+              files: (.added + .removed + .modified)
+            }')
+            curl -fsSL -X POST "https://moonlight-destiny.fr/changelog_api.php" \
+              -H "Authorization: Bearer ${{ secrets.CHANGELOG_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "$body"
+          done

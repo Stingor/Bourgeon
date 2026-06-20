@@ -172,6 +172,10 @@ class MoonlightUi : public Plugin {
   // the heap walk + settings save on mouse release.
   bool picker_was_editing_ = false;
 
+  struct ChatBgPreset { std::string name; uint32_t argb; };
+  std::vector<ChatBgPreset> chat_bg_presets_;
+  char preset_name_buf_[64] = {};
+
   // Persisted collapse state of the Moonlight-Destiny window.
   // Restored once per login via SetNextWindowCollapsed; saved on every change.
   bool ui_collapsed_     = false;

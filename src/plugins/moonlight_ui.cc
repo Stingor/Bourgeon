@@ -9,6 +9,7 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "plugins/discord_relay.h"
+#include "plugins/dps_meter.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -302,6 +303,17 @@ void MoonlightUi::LoadSettings() {
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     apply_collapse_ = true;
+
+    chat_bg_presets_.clear();
+    if (const YAML::Node presets = ui["chat_bg_presets"]) {
+      for (const YAML::Node& p : presets) {
+        const std::string name  = p["name"].as<std::string>("");
+        const std::string color = p["color"].as<std::string>("");
+        if (name.empty() || color.size() != 8) continue;
+        const uint32_t argb = static_cast<uint32_t>(std::stoul(color, nullptr, 16));
+        chat_bg_presets_.push_back({name, argb});
+      }
+    }
   } catch (const std::exception& e) {
     LogError("[MoonlightUi] failed to parse {}: {}", path, e.what());
   }
@@ -318,6 +330,16 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "chat_bg"          << YAML::Value << hex
         << YAML::Key << "ui_collapsed"    << YAML::Value << ui_collapsed_
         << YAML::Key << "alootid_overlay" << YAML::Value << show_alootid_overlay_
+        << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
+  for (const auto& p : chat_bg_presets_) {
+    char pbuf[9];
+    std::snprintf(pbuf, sizeof(pbuf), "%08X", p.argb);
+    out << YAML::BeginMap
+        << YAML::Key << "name"  << YAML::Value << p.name
+        << YAML::Key << "color" << YAML::Value << pbuf
+        << YAML::EndMap;
+  }
+  out       << YAML::EndSeq
       << YAML::EndMap
       << YAML::EndMap;
 
@@ -784,6 +806,57 @@ void MoonlightUi::OnRenderUI() {
 
         // Popup with full picker + explicit Close button.
         if (ImGui::BeginPopup("chatbg_picker")) {
+          // ── User presets ─────────────────────────────────────────────────
+          if (!chat_bg_presets_.empty()) {
+            ImGui::TextUnformatted("Presets:");
+            int delete_idx = -1;
+            for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
+              const auto& p = chat_bg_presets_[i];
+              const uint32_t a = (p.argb >> 24) & 0xFF;
+              const uint32_t r = (p.argb >> 16) & 0xFF;
+              const uint32_t g = (p.argb >>  8) & 0xFF;
+              const uint32_t b = (p.argb      ) & 0xFF;
+              const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+              ImGui::PushID(i);
+              if (ImGui::ColorButton("##swatch", col,
+                                     ImGuiColorEditFlags_AlphaPreview |
+                                     ImGuiColorEditFlags_NoTooltip,
+                                     ImVec2(18, 18))) {
+                chat_bg_color_[0] = col.x;
+                chat_bg_color_[1] = col.y;
+                chat_bg_color_[2] = col.z;
+                chat_bg_color_[3] = col.w;
+                PatchInstruction(p.argb);
+                PatchExistingObjects(p.argb);
+                SaveSettings();
+              }
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", p.name.c_str());
+              ImGui::SameLine();
+              ImGui::TextUnformatted(p.name.c_str());
+              ImGui::SameLine();
+              if (ImGui::SmallButton("x"))
+                delete_idx = i;
+              ImGui::PopID();
+            }
+            if (delete_idx >= 0) {
+              chat_bg_presets_.erase(chat_bg_presets_.begin() + delete_idx);
+              SaveSettings();
+            }
+            ImGui::Separator();
+          }
+          // ── Save current as preset ────────────────────────────────────────
+          ImGui::SetNextItemWidth(120.0f);
+          ImGui::InputText("##preset_name", preset_name_buf_, sizeof(preset_name_buf_));
+          ImGui::SameLine();
+          if (ImGui::Button("Save preset")) {
+            if (preset_name_buf_[0] != '\0') {
+              chat_bg_presets_.push_back({preset_name_buf_, PickerToArgb()});
+              preset_name_buf_[0] = '\0';
+              SaveSettings();
+            }
+          }
+          ImGui::Separator();
           if (ImGui::ColorPicker4("##chatbg", chat_bg_color_,
                                   ImGuiColorEditFlags_AlphaBar |
                                   ImGuiColorEditFlags_NoSidePreview)) {
@@ -806,6 +879,36 @@ void MoonlightUi::OnRenderUI() {
       }
       PopStyleCompact();
     }
+    // ── DPS Meter ────────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("DPS Meter")) {
+      if (auto* dps = Bourgeon::Instance().dps_meter()) {
+        ImGui::Checkbox("Afficher", &dps->visible_);
+
+        ImGui::SetNextItemWidth(160.0f);
+        int slot_ms = dps->slot_ms_;
+        if (ImGui::SliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
+          dps->slot_ms_ = slot_ms;
+          dps->ResetHistory();
+        }
+        ImGui::SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
+
+        ImGui::SetNextItemWidth(160.0f);
+        int win = dps->dps_window_secs_;
+        if (ImGui::SliderInt("Fenêtre DPS (s)", &win, 1, 30))
+          dps->dps_window_secs_ = win;
+        ImGui::SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
+
+        ImGui::SetNextItemWidth(160.0f);
+        int timeout = dps->combat_timeout_secs_;
+        if (ImGui::SliderInt("Timeout combat (s)", &timeout, 1, 15))
+          dps->combat_timeout_secs_ = timeout;
+        ImGui::SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
+
+        if (ImGui::Button("Reset graphique"))
+          dps->ResetHistory();
+      }
+    }
+
     // ── Commands Settings ────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Commands Settings"))
     {

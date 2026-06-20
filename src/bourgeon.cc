@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "plugins/auto_login.h"
 #include "plugins/discord_relay.h"
+#include "plugins/dps_meter.h"
 #include "plugins/integrity_check.h"
 #include "plugins/moonlight_ui.h"
 #include "utils/log_console.h"
@@ -14,6 +15,7 @@ Bourgeon::Bourgeon()
 
 RagnarokClient& Bourgeon::client() { return client_; }
 DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
+DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -139,6 +141,11 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<AutoLogin>());
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
+  {
+    auto dps = std::make_unique<DpsMeter>();
+    dps_meter_ = dps.get();
+    plugins_.emplace_back(std::move(dps));
+  }
   {
     auto relay = std::make_unique<DiscordRelay>();
     discord_relay_ = relay.get();
