@@ -20,6 +20,8 @@ set(BOURGEON_FILES
 	"plugins/auto_login.h"
 	"plugins/integrity_check.cc"
 	"plugins/integrity_check.h"
+	"plugins/cheat_detector.cc"
+	"plugins/cheat_detector.h"
 	"plugins/dps_meter.cc"
 	"plugins/dps_meter.h"
 

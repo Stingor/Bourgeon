@@ -4,6 +4,7 @@
 
 #include "imgui.h"
 #include "plugins/auto_login.h"
+#include "plugins/cheat_detector.h"
 #include "plugins/discord_relay.h"
 #include "plugins/dps_meter.h"
 #include "plugins/integrity_check.h"
@@ -140,6 +141,7 @@ void Bourgeon::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
 void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<AutoLogin>());
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
+  plugins_.emplace_back(std::make_unique<CheatDetector>());
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   {
     auto dps = std::make_unique<DpsMeter>();
