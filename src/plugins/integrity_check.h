@@ -8,6 +8,12 @@
 // map-server when the player enters the game, so the server can verify the
 // client is running an approved Bourgeon build.
 //
+// The same packet also carries the Windows MachineGuid (registry) so the server
+// can detect multi-account abuse across different accounts on the same machine.
+//
+// Packet CZ_BOURGEON_INTEGRITY (0x0BFB):
+//   [opcode:2][total_len:2][sha256:32][guid:36]   (total_len = 72)
+//
 // IMPORTANT: enforcement (kick + admin report) and any "development" bypass live
 // entirely on the SERVER. A client-side bypass flag would be trivially spoofed,
 // and the check itself only raises the bar — a determined attacker controlling
@@ -30,28 +36,25 @@ class IntegrityCheck : public Plugin {
   void OnRenderUI() override;
 
  private:
-  // CZ_BOURGEON_INTEGRITY: [opcode:2][total_len:2][sha256:32]  (total_len = 36)
+  // CZ_BOURGEON_INTEGRITY: [opcode:2][total_len:2][sha256:32][guid:36]  (total_len = 72)
   // Returns false if SendPacket failed (socket not ready) — caller should retry.
   bool SendChecksum();
 
-  // Reads --integrity:true|false from the command line (default true). Use
-  // --integrity:false on shortcuts that connect to servers which don't yet
-  // understand the integrity opcode, so the client doesn't get dropped for
-  // sending an unknown packet.
-  static bool ParseEnabled();
-
-  static constexpr uint16_t kOpcodeToServer  = 0x0BFB;  // CZ: SHA-256 report
+  static constexpr uint16_t kOpcodeToServer   = 0x0BFB;  // CZ: SHA-256 + MachineGuid
   static constexpr uint16_t kOpcodeKickNotice = 0x0BFA;  // ZC: outdated-client notice
-  static constexpr int kHashLen = 32;                    // SHA-256
+  static constexpr int kHashLen  = 32;                   // SHA-256
+  static constexpr int kGuidLen  = 36;                   // MachineGuid (no null)
 
   // Delay must match the server-side add_timer value in clif_parse_bourgeon_integrity.
   static constexpr uint32_t kKickDelayMs = 5000;
 
   bool TryComputeHash();        // computes hash_, returns true on success
+  static bool ReadMachineGuid(char out[37]);
 
-  bool enabled_           = true;
   uint8_t hash_[kHashLen] = {};
   bool have_hash_         = false;  // self-hash computed successfully
+  char guid_[37]          = {};     // MachineGuid (36 chars + null)
+  bool have_guid_         = false;
   bool sent_              = false;  // already sent for the current game session
   bool in_game_           = false;
   bool popup_pending_     = false;

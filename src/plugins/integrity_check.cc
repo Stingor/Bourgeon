@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <bcrypt.h>
-#include <shellapi.h>  // CommandLineToArgvW
 
 #include <cstring>
 #include <fstream>
@@ -55,24 +54,20 @@ bool Sha256OfFile(const std::wstring& path, uint8_t* out, ULONG out_len) {
 
 }  // namespace
 
-bool IntegrityCheck::ParseEnabled() {
-  bool enabled = true;  // default: send the integrity packet
-  int argc = 0;
-  LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-  if (argv == nullptr) return enabled;
-
-  for (int i = 1; i < argc; ++i) {
-    // Match "--integrity:<v>" or "--integrity=<v>".
-    const wchar_t* a = argv[i];
-    if (wcsncmp(a, L"--integrity", 11) != 0) continue;
-    const wchar_t sep = a[11];
-    if (sep != L':' && sep != L'=') continue;
-    const wchar_t* v = a + 12;
-    enabled = !(wcscmp(v, L"false") == 0 || wcscmp(v, L"0") == 0 ||
-                wcscmp(v, L"no") == 0 || wcscmp(v, L"off") == 0);
+bool IntegrityCheck::ReadMachineGuid(char out[37]) {
+  HKEY hKey = nullptr;
+  if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                    "SOFTWARE\\Microsoft\\Cryptography",
+                    0, KEY_READ | KEY_WOW64_64KEY, &hKey) != ERROR_SUCCESS) {
+    return false;
   }
-  LocalFree(argv);
-  return enabled;
+  DWORD size = 37;
+  const LSTATUS status = RegQueryValueExA(hKey, "MachineGuid", nullptr, nullptr,
+                                          reinterpret_cast<LPBYTE>(out), &size);
+  RegCloseKey(hKey);
+  if (status != ERROR_SUCCESS || size < kGuidLen) return false;
+  out[kGuidLen] = '\0';
+  return true;
 }
 
 bool IntegrityCheck::TryComputeHash() {
@@ -86,16 +81,17 @@ bool IntegrityCheck::TryComputeHash() {
 }
 
 IntegrityCheck::IntegrityCheck() {
-  enabled_ = ParseEnabled();
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeKickNotice);
-
-  if (!enabled_) {
-    LogInfo("[Integrity] disabled via --integrity:false — not sending checksum");
-    return;
-  }
 
   if (!TryComputeHash())
     LogError("[Integrity] failed to compute self checksum at startup — will retry on game entry");
+
+  if (ReadMachineGuid(guid_)) {
+    have_guid_ = true;
+    LogInfo("[Integrity] MachineGuid: {:.8s}...", guid_);
+  } else {
+    LogError("[Integrity] failed to read MachineGuid from registry");
+  }
 }
 
 void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
@@ -108,7 +104,7 @@ void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
   if (mode_type != ModeMgr::ModeType::kGame) return;
   in_game_ = true;
 
-  if (!enabled_ || sent_) return;
+  if (sent_) return;
   // Retry hash if it failed at startup (e.g. DLL locked by patcher).
   if (!have_hash_ && !TryComputeHash()) return;
   if (SendChecksum())
@@ -118,20 +114,24 @@ void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
 
 void IntegrityCheck::OnTick() {
   // Retry sending if OnModeSwitch's SendPacket failed (socket not ready yet).
-  if (!enabled_ || !in_game_ || sent_) return;
+  if (!in_game_ || sent_) return;
   if (!have_hash_ && !TryComputeHash()) return;
   if (SendChecksum())
     sent_ = true;
 }
 
 bool IntegrityCheck::SendChecksum() {
-  uint8_t buf[4 + kHashLen];
-  *reinterpret_cast<uint16_t*>(buf) = kOpcodeToServer;
+  uint8_t buf[4 + kHashLen + kGuidLen];
+  *reinterpret_cast<uint16_t*>(buf)     = kOpcodeToServer;
   *reinterpret_cast<uint16_t*>(buf + 2) = static_cast<uint16_t>(sizeof(buf));
   std::memcpy(buf + 4, hash_, kHashLen);
+  if (have_guid_)
+    std::memcpy(buf + 4 + kHashLen, guid_, kGuidLen);
+  else
+    std::memset(buf + 4 + kHashLen, 0, kGuidLen);
   const bool ok = Bourgeon::Instance().SendPacket(buf, sizeof(buf));
   if (ok)
-    LogInfo("[Integrity] checksum sent");
+    LogInfo("[Integrity] checksum + MachineGuid sent");
   else
     LogError("[Integrity] SendPacket failed — will retry on next tick");
   return ok;
