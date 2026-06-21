@@ -1005,10 +1005,10 @@ void MoonlightUi::OnRenderUI() {
             ImGui::SameLine(); HelpMarker("Tri automatique de l'inventaire.");
             TriCombo("Tri Chariot",    tri_cart_, kSettingTriCart);
             ImGui::SameLine(); HelpMarker("Tri automatique du chariot.");
-            TriCombo("Tri Coffre",     tri_storage_, kSettingTriStorage);
-            ImGui::SameLine(); HelpMarker("Tri automatique du coffre personnel à la prochaine ouverture.");
-            TriCombo("Tri Coffre Guilde", tri_gstorage_, kSettingTriGstorage);
-            ImGui::SameLine(); HelpMarker("Tri automatique du coffre de guilde à la prochaine ouverture.");
+            TriCombo("Tri Storages",     tri_storage_, kSettingTriStorage);
+            ImGui::SameLine(); HelpMarker("Tri automatique des Storages personnel à la prochaine ouverture.");
+            TriCombo("Tri Storage Guilde", tri_gstorage_, kSettingTriGstorage);
+            ImGui::SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
           }
             ImGui::EndTabItem();
         }
