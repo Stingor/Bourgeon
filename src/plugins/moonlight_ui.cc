@@ -304,6 +304,9 @@ void MoonlightUi::LoadSettings() {
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     apply_collapse_ = true;
 
+    if (auto* dps = Bourgeon::Instance().dps_meter())
+      dps->show_ground_dmg_in_chat_ = ui["dps_ground_dmg_chat"].as<bool>(true);
+
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
       for (const YAML::Node& p : presets) {
@@ -328,8 +331,12 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "moonlight_ui"
       << YAML::Value << YAML::BeginMap
         << YAML::Key << "chat_bg"          << YAML::Value << hex
-        << YAML::Key << "ui_collapsed"    << YAML::Value << ui_collapsed_
-        << YAML::Key << "alootid_overlay" << YAML::Value << show_alootid_overlay_
+        << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
+        << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
+        << YAML::Key << "dps_ground_dmg_chat"  << YAML::Value
+            << (Bourgeon::Instance().dps_meter()
+                    ? Bourgeon::Instance().dps_meter()->show_ground_dmg_in_chat_
+                    : true)
         << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
   for (const auto& p : chat_bg_presets_) {
     char pbuf[9];
@@ -906,6 +913,13 @@ void MoonlightUi::OnRenderUI() {
 
         if (ImGui::Button("Reset graphique"))
           dps->ResetHistory();
+
+        ImGui::Separator();
+        if (ImGui::Checkbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
+            "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
       }
     }
 

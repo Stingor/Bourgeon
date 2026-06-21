@@ -3,17 +3,37 @@ name: Discord Commit Notification
 on:
   push:
     branches:
-      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Nombre de commits à rejouer"
+        required: false
+        default: "10"
 
 jobs:
   notify:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Build commit list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/commits?per_page=${{ inputs.count }}&sha=master" \
+              | jq '[.[] | {id: .sha, message: .commit.message, timestamp: .commit.author.date, author: {name: .commit.author.name}}]' \
+              > /tmp/commits.json
+          else
+            jq '.commits' "$GITHUB_EVENT_PATH" > /tmp/commits.json
+          fi
+          jq -c '.[]' /tmp/commits.json > /tmp/commits.jsonl
+
       - name: Send commits to Discord
         run: |
           msg=""
-
           while IFS= read -r commit; do
             ts=$(echo "$commit" | jq -r .timestamp)
             msgtxt=$(echo "$commit" | jq -r .message)
@@ -21,9 +41,7 @@ jobs:
             url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}"
             formatted=$(TZ="Europe/Paris" date -d "$ts" "+%d/%m/%Y %H:%M")
             msg="${msg}- \`${formatted}\` — [${msgtxt}](${url})"$'\n'
-          done < <(
-            jq -c '.commits[]' "$GITHUB_EVENT_PATH"
-          )
+          done < /tmp/commits.jsonl
 
           jq -n --arg description "$msg" '{
             embeds: [{
@@ -31,25 +49,24 @@ jobs:
               description: $description,
               color: 5814783
             }]
-          }' > payload.json
+          }' > /tmp/payload.json
 
           curl -fsSL -H "Content-Type: application/json" \
                -X POST \
-               -d @payload.json \
+               -d @/tmp/payload.json \
                "${{ secrets.DISCORD_WEBHOOK }}"
 
       - name: Send commits to changelog
         run: |
-          jq -c '.commits[]' "$GITHUB_EVENT_PATH" | while IFS= read -r commit; do
+          while IFS= read -r commit; do
             body=$(echo "$commit" | jq -c '{
               hash: .id,
               message: .message,
               timestamp: .timestamp,
-              author: .author.name,
-              files: (.added + .removed + .modified)
+              author: .author.name
             }')
             curl -fsSL -X POST "https://moonlight-destiny.fr/changelog_api.php" \
               -H "Authorization: Bearer ${{ secrets.CHANGELOG_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d "$body"
-          done
+          done < /tmp/commits.jsonl

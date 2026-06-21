@@ -18,6 +18,7 @@ class IntegrityCheck : public Plugin {
 
   const char* name() const override { return "Integrity Check"; }
 
+  void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
   // Receives ZC_BOURGEON_KICK_NOTICE (0x0BFA): server signals the client is
@@ -30,7 +31,8 @@ class IntegrityCheck : public Plugin {
 
  private:
   // CZ_BOURGEON_INTEGRITY: [opcode:2][total_len:2][sha256:32]  (total_len = 36)
-  void SendChecksum();
+  // Returns false if SendPacket failed (socket not ready) — caller should retry.
+  bool SendChecksum();
 
   // Reads --integrity:true|false from the command line (default true). Use
   // --integrity:false on shortcuts that connect to servers which don't yet
@@ -45,10 +47,13 @@ class IntegrityCheck : public Plugin {
   // Delay must match the server-side add_timer value in clif_parse_bourgeon_integrity.
   static constexpr uint32_t kKickDelayMs = 5000;
 
-  bool enabled_ = true;        // sending of the integrity packet is enabled
+  bool TryComputeHash();        // computes hash_, returns true on success
+
+  bool enabled_           = true;
   uint8_t hash_[kHashLen] = {};
-  bool have_hash_ = false;     // self-hash computed successfully in the ctor
-  bool sent_ = false;          // already sent for the current game session
-  bool popup_pending_ = false; // set by OnRecvPacket, consumed by OnRenderUI
-  uint32_t kick_notice_tick_ = 0; // GetTickCount() when kick-notice arrived (0 = not arrived)
+  bool have_hash_         = false;  // self-hash computed successfully
+  bool sent_              = false;  // already sent for the current game session
+  bool in_game_           = false;
+  bool popup_pending_     = false;
+  uint32_t kick_notice_tick_ = 0;
 };

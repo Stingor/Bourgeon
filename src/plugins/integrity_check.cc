@@ -75,50 +75,66 @@ bool IntegrityCheck::ParseEnabled() {
   return enabled;
 }
 
+bool IntegrityCheck::TryComputeHash() {
+  std::wstring path;
+  if (!SelfModulePath(path) || !Sha256OfFile(path, hash_, kHashLen))
+    return false;
+  have_hash_ = true;
+  LogInfo("[Integrity] self SHA-256 {:02x}{:02x}{:02x}{:02x}... computed",
+          hash_[0], hash_[1], hash_[2], hash_[3]);
+  return true;
+}
+
 IntegrityCheck::IntegrityCheck() {
   enabled_ = ParseEnabled();
-
-  // Always register the kick-notice opcode so the server can warn us even if
-  // integrity sending is disabled on this client.
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeKickNotice);
 
   if (!enabled_) {
     LogInfo("[Integrity] disabled via --integrity:false — not sending checksum");
-    return;  // skip hashing entirely; nothing will be sent
+    return;
   }
 
-  std::wstring path;
-  if (SelfModulePath(path) && Sha256OfFile(path, hash_, kHashLen)) {
-    have_hash_ = true;
-    LogInfo("[Integrity] self SHA-256 {:02x}{:02x}{:02x}{:02x}... computed",
-            hash_[0], hash_[1], hash_[2], hash_[3]);
-  } else {
-    // Without a checksum we simply send nothing; the server will see a client
-    // that never reports and can treat that as a failure when enforcing.
-    LogError("[Integrity] failed to compute self checksum");
-  }
+  if (!TryComputeHash())
+    LogError("[Integrity] failed to compute self checksum at startup — will retry on game entry");
 }
 
 void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
                                   const char* /*map*/) {
-  // Re-arm on every login so each game session reports once.
   if (mode_type == ModeMgr::ModeType::kLogin) {
-    sent_ = false;
+    in_game_ = false;
+    sent_    = false;
     return;
   }
   if (mode_type != ModeMgr::ModeType::kGame) return;
-  if (!enabled_ || sent_ || !have_hash_) return;
-  SendChecksum();
-  sent_ = true;
+  in_game_ = true;
+
+  if (!enabled_ || sent_) return;
+  // Retry hash if it failed at startup (e.g. DLL locked by patcher).
+  if (!have_hash_ && !TryComputeHash()) return;
+  if (SendChecksum())
+    sent_ = true;
+  // If SendPacket failed, sent_ stays false — OnTick will retry.
 }
 
-void IntegrityCheck::SendChecksum() {
+void IntegrityCheck::OnTick() {
+  // Retry sending if OnModeSwitch's SendPacket failed (socket not ready yet).
+  if (!enabled_ || !in_game_ || sent_) return;
+  if (!have_hash_ && !TryComputeHash()) return;
+  if (SendChecksum())
+    sent_ = true;
+}
+
+bool IntegrityCheck::SendChecksum() {
   uint8_t buf[4 + kHashLen];
   *reinterpret_cast<uint16_t*>(buf) = kOpcodeToServer;
   *reinterpret_cast<uint16_t*>(buf + 2) = static_cast<uint16_t>(sizeof(buf));
   std::memcpy(buf + 4, hash_, kHashLen);
-  Bourgeon::Instance().SendPacket(buf, sizeof(buf));
-  LogInfo("[Integrity] checksum sent");
+  const bool ok = Bourgeon::Instance().SendPacket(buf, sizeof(buf));
+  if (ok)
+    LogInfo("[Integrity] checksum sent");
+  else
+    LogError("[Integrity] SendPacket failed — will retry on next tick");
+  return ok;
 }
 
 void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,

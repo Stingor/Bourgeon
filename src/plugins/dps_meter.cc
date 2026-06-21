@@ -7,6 +7,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "ragnarok/ui_window_mgr.h"
 #include "utils/log_console.h"
 
 // ── Packet layouts (after stripping the 2-byte opcode) ───────────────────────
@@ -84,8 +85,11 @@ DpsMeter::DpsMeter() {
 }
 
 void DpsMeter::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
-  if (mode_type != ModeMgr::ModeType::kGame)
+  in_game_ = (mode_type == ModeMgr::ModeType::kGame);
+  if (!in_game_) {
     ResetHistory();
+    chat_queue_.clear();
+  }
 }
 
 void DpsMeter::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
@@ -123,6 +127,17 @@ void DpsMeter::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) 
     return;
 
   RecordDamage(damage);
+
+  if (opcode == kOpcodeSkillUnitDmg && show_ground_dmg_in_chat_) {
+    // Queue for delivery in OnRenderUI — never call UIWindowMgr::SendMsg from
+    // inside the recv dispatch loop; under heavy AoE (Storm Gust/Meteor Storm)
+    // it generates dozens of packets per frame and stalls the recv loop.
+    if (static_cast<int>(chat_queue_.size()) < kMaxChatQueueSize) {
+      char msg[64];
+      std::snprintf(msg, sizeof(msg), "Ground skill : %d dmg", damage);
+      chat_queue_.emplace_back(msg);
+    }
+  }
 }
 
 void DpsMeter::ResetHistory() {
@@ -158,6 +173,17 @@ void DpsMeter::RecordDamage(int damage) {
   events_.push_back({now, damage});
 }
 
+void DpsMeter::FlushChatQueue() {
+  int flushed = 0;
+  while (!chat_queue_.empty() && flushed < kMaxChatFlushPerFrame) {
+    const std::string& msg = chat_queue_.front();
+    UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
+                         reinterpret_cast<int>(msg.c_str()), 0xFFAA00, 0, 0);
+    chat_queue_.erase(chat_queue_.begin());
+    ++flushed;
+  }
+}
+
 void DpsMeter::UpdatePlotSlot(DWORD now) {
   if (last_slot_tick_ == 0) return;
 
@@ -182,6 +208,9 @@ void DpsMeter::UpdatePlotSlot(DWORD now) {
 }
 
 void DpsMeter::OnRenderUI() {
+  FlushChatQueue();
+  if (!in_game_) return;
+
   const DWORD now = GetTickCount();
 
   // Expire combat after timeout

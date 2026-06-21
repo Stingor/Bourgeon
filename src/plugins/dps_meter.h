@@ -4,6 +4,8 @@
 #include <array>
 #include <deque>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "plugins/plugin.h"
 
@@ -19,10 +21,11 @@ class DpsMeter : public Plugin {
 
  public:
   // ── Settings (read/written by MoonlightUi) ────────────────────────────────
-  bool visible_           = true;
-  int  slot_ms_           = 200;    // ms per plot slot (50–2000)
-  int  dps_window_secs_   = 10;     // rolling DPS window in seconds (1–30)
-  int  combat_timeout_secs_ = 5;    // seconds without damage → out of combat (1–15)
+  bool visible_                 = true;
+  bool show_ground_dmg_in_chat_ = true;   // push ground-skill hits to chat log
+  int  slot_ms_                 = 200;    // ms per plot slot (50–2000)
+  int  dps_window_secs_         = 10;     // rolling DPS window in seconds (1–30)
+  int  combat_timeout_secs_     = 5;      // seconds without damage → out of combat (1–15)
 
   void ResetHistory();  // call after changing slot_ms_
 
@@ -55,7 +58,16 @@ class DpsMeter : public Plugin {
   int   total_damage_      = 0;
   float current_dps_       = 0.0f;
   float peak_dps_          = 0.0f;
+  bool  in_game_           = false;
 
   void RecordDamage(int damage);
   void UpdatePlotSlot(DWORD now);
+  void FlushChatQueue();
+
+  // Messages queued from OnRecvPacket to avoid calling UIWindowMgr::SendMsg
+  // from within the recv dispatch loop (causes freeze under heavy AoE spam).
+  // Drained in OnRenderUI() — at most kMaxChatFlushPerFrame per frame.
+  static constexpr int kMaxChatQueueSize   = 64;
+  static constexpr int kMaxChatFlushPerFrame = 4;
+  std::vector<std::string> chat_queue_;
 };
