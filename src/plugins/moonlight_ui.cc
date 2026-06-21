@@ -646,40 +646,43 @@ void MoonlightUi::OnRenderUI() {
 
     if (ImGui::CollapsingHeader("Règles du serveur"))
     {
+      auto BulletWrapped = [](const char* text) {
+        ImGui::Bullet(); ImGui::SameLine(); ImGui::TextWrapped("%s", text);
+      };
       ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
       if (ImGui::TreeNode("Règlements généraux"))
       {
-        ImGui::Text("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
+        ImGui::TextWrapped("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
         ImGui::Spacing();
-        ImGui::BulletText("Les joueurs doivent se respecter et garder un langage propre et courtois.");
-        ImGui::BulletText("Les propos visant à rejeter un nouveau joueur sont interdits.");
-        ImGui::BulletText("L'utilisation de programmes tels que bots ou hacks = ban définitif sans hésitation.");
-        ImGui::BulletText("Le flood est strictement interdit.");
-        ImGui::BulletText("Vous êtes entièrement responsable de votre compte.");
-        ImGui::BulletText("Le staff ne rend pas les items perdus (vente NPC, deslotage raté, refine raté).");
-        ImGui::BulletText("Le staff peut exceptionnellement rendre un item perdu si les logs prouvent un bug serveur.");
-        ImGui::BulletText("Ne partagez jamais votre compte ou votre mot de passe.");
-        ImGui::BulletText("La demande de support pour créer un serveur privé est non recommandée.");
-        ImGui::BulletText("Le plagiat volontaire d'un membre du staff est puni.");
-        ImGui::BulletText("Tout ce qui se rapporte au serveur est la propriété exclusive des administrateurs.");
-        ImGui::BulletText("Le langage SMS est à proscrire.");
-        ImGui::BulletText("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur.");
-        ImGui::BulletText("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus...");
+        BulletWrapped("Les joueurs doivent se respecter et garder un langage propre et courtois.");
+        BulletWrapped("Les propos visant à rejeter un nouveau joueur sont interdits.");
+        BulletWrapped("L'utilisation de programmes tels que bots ou hacks = ban définitif sans hésitation.");
+        BulletWrapped("Le flood est strictement interdit.");
+        BulletWrapped("Vous êtes entièrement responsable de votre compte.");
+        BulletWrapped("Le staff ne rend pas les items perdus (vente NPC, deslotage raté, refine raté).");
+        BulletWrapped("Le staff peut exceptionnellement rendre un item perdu si les logs prouvent un bug serveur.");
+        BulletWrapped("Ne partagez jamais votre compte ou votre mot de passe.");
+        BulletWrapped("La demande de support pour créer un serveur privé est non recommandée.");
+        BulletWrapped("Le plagiat volontaire d'un membre du staff est puni.");
+        BulletWrapped("Tout ce qui se rapporte au serveur est la propriété exclusive des administrateurs.");
+        BulletWrapped("Le langage SMS est à proscrire.");
+        BulletWrapped("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur.");
+        BulletWrapped("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus...");
         ImGui::TreePop();
       }
       ImGui::Spacing();
       if (ImGui::TreeNode("Sur le serveur de jeu"))
       {
-        ImGui::BulletText("Insultes et vols de drop (Looting) = INTERDITS.");
-        ImGui::BulletText("Heal ou buff un monstre qui ne vous appartient pas sans accord = puni.");
-        ImGui::BulletText("Si vous êtes banni définitivement, tous les comptes liés à votre IP/PC le seront aussi.");
-        ImGui::BulletText("Les sanctions (mute, jail, kick, ban) sont à la discrétion du staff.");
-        ImGui::BulletText("Le Kill Steal est strictement interdit (voir définition). Utilisez @noks pour vous protéger.");
+        BulletWrapped("Insultes et vols de drop (Looting) = INTERDITS.");
+        BulletWrapped("Heal ou buff un monstre qui ne vous appartient pas sans accord = puni.");
+        BulletWrapped("Si vous êtes banni définitivement, tous les comptes liés à votre IP/PC le seront aussi.");
+        BulletWrapped("Les sanctions (mute, jail, kick, ban) sont à la discrétion du staff.");
+        BulletWrapped("Le Kill Steal est strictement interdit (voir définition). Utilisez @noks pour vous protéger.");
         ImGui::Spacing();
-        ImGui::BulletText("Les MVPs sont FFA :");
+        BulletWrapped("Les MVPs sont FFA :");
         ImGui::Indent();
-        ImGui::Text("Vous pouvez les attaquer même si quelqu'un est dessus.");
-        ImGui::Text("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
+        ImGui::TextWrapped("Vous pouvez les attaquer même si quelqu'un est dessus.");
+        ImGui::TextWrapped("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
         ImGui::Text("Si vous ne voulez pas vous faire KS, faites @noks <3");
         ImGui::Unindent();
         ImGui::TreePop();
@@ -687,15 +690,15 @@ void MoonlightUi::OnRenderUI() {
       ImGui::Spacing();
       if (ImGui::TreeNode("Le staff"))
       {
-        ImGui::BulletText("Si vous cassez les couilles du staff ban/delete non temporaire.");
-        ImGui::BulletText("Aucun membre du staff ne vous demandera votre mot de passe.");
-        ImGui::BulletText("Aucun membre du staff ne vous demandera votre login.");
-        ImGui::BulletText("Aucun membre du staff ne vous demandera votre email.");
-        ImGui::BulletText("Seuls les admins peuvent rendre des items perdus suite à un bug serveur.");
-        ImGui::BulletText("Le staff ne rend pas les items prêtés à un joueur disparu/banni.");
-        ImGui::BulletText("Le staff ne donne pas d'items (hors events).");
-        ImGui::BulletText("Les membres du staff ne sont pas des robots. Soyez courtois, cherchez avant de demander.");
-        ImGui::BulletText("Les questions dont la réponse est sur une database = évitez.");
+        BulletWrapped("Si vous cassez les couilles du staff ban/delete non temporaire.");
+        BulletWrapped("Aucun membre du staff ne vous demandera votre mot de passe.");
+        BulletWrapped("Aucun membre du staff ne vous demandera votre login.");
+        BulletWrapped("Aucun membre du staff ne vous demandera votre email.");
+        BulletWrapped("Seuls les admins peuvent rendre des items perdus suite à un bug serveur.");
+        BulletWrapped("Le staff ne rend pas les items prêtés à un joueur disparu/banni.");
+        BulletWrapped("Le staff ne donne pas d'items (hors events).");
+        BulletWrapped("Les membres du staff ne sont pas des robots. Soyez courtois, cherchez avant de demander.");
+        BulletWrapped("Les questions dont la réponse est sur une database = évitez.");
         ImGui::TreePop();
       }
       ImGui::Spacing();
@@ -703,38 +706,38 @@ void MoonlightUi::OnRenderUI() {
       {
         if (ImGui::TreeNode("Salle de duel"))
         {
-          ImGui::BulletText("Ce n'est pas un salon de thé");
-          ImGui::BulletText("Si vous regardez, ok. Sinon, laissez la place.");
-          ImGui::BulletText("Utilisez : @duel, @invite, @accept, @reject, @leave.");
+          BulletWrapped("Ce n'est pas un salon de thé");
+          BulletWrapped("Si vous regardez, ok. Sinon, laissez la place.");
+          BulletWrapped("Utilisez : @duel, @invite, @accept, @reject, @leave.");
           ImGui::TreePop();
         }
         if (ImGui::TreeNode("Carnage Room"))
         {
-          ImGui::BulletText("Loi du plus fort.");
-          ImGui::BulletText("Amusez‑vous dans le respect.");
+          BulletWrapped("Loi du plus fort.");
+          BulletWrapped("Amusez‑vous dans le respect.");
           ImGui::TreePop();
         }
         if (ImGui::TreeNode("PVP Room"))
         {
-          ImGui::BulletText("Free Kill interdit.");
+          BulletWrapped("Free Kill interdit.");
           ImGui::TreePop();
         }
         if (ImGui::TreeNode("DB Room"))
         {
-          ImGui::BulletText("Kill Steal STRICTEMENT interdit.");
-          ImGui::BulletText("Si la personne meurt ou se hide les mobs sont à vous.");
+          BulletWrapped("Kill Steal STRICTEMENT interdit.");
+          BulletWrapped("Si la personne meurt ou se hide les mobs sont à vous.");
           ImGui::TreePop();
         }
         if (ImGui::TreeNode("Guild Dungeon"))
         {
-          ImGui::BulletText("Libre de tuer les guildiens adverses.");
+          BulletWrapped("Libre de tuer les guildiens adverses.");
           ImGui::TreePop();
         }
         if (ImGui::TreeNode("WoE Castles"))
         {
-          ImGui::BulletText("Interdiction d'apporter de l'aide via un perso non participant (multi-account/perso).");
-          ImGui::BulletText("Les ententes entre guildes sont informelles, non officielles, non sanctionnables.");
-          ImGui::BulletText("Elles doivent être discutées entre guildes dominantes, dans le respect.");
+          BulletWrapped("Interdiction d'apporter de l'aide via un perso non participant (multi-account/perso).");
+          BulletWrapped("Les ententes entre guildes sont informelles, non officielles, non sanctionnables.");
+          BulletWrapped("Elles doivent être discutées entre guildes dominantes, dans le respect.");
           ImGui::TreePop();
         }
         ImGui::TreePop();
@@ -744,45 +747,45 @@ void MoonlightUi::OnRenderUI() {
       {
         ImGui::Text("Autorisations :");
         ImGui::Indent();
-          ImGui::BulletText("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :");
-          ImGui::BulletText("SIMPLE");
-          ImGui::BulletText("BASIQUE");
-          ImGui::BulletText("Pas un tableau de bord de la NASA");
-          ImGui::BulletText("Vous bouclez le spell, éventuellement un clic en plus pour les AOE type Storm Gust, et basta.");
+          BulletWrapped("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :");
+          BulletWrapped("SIMPLE");
+          BulletWrapped("BASIQUE");
+          BulletWrapped("Pas un tableau de bord de la NASA");
+          BulletWrapped("Vous bouclez le spell, éventuellement un clic en plus pour les AOE type Storm Gust, et basta.");
         ImGui::Unindent();
         ImGui::Text("Quality of Life :");
         ImGui::Indent();
-          ImGui::BulletText("Le but, c'est du Q.O.L");
-          ImGui::BulletText("Vous préservez votre clavier, votre souris, vos doigts, vos poignets, vos oreilles, et celles de vos voisins qui n'ont rien demandé.");
-          ImGui::BulletText("Bref : du confort, pas du cheat.");
+          BulletWrapped("Le but, c'est du Q.O.L");
+          BulletWrapped("Vous préservez votre clavier, votre souris, vos doigts, vos poignets, vos oreilles, et celles de vos voisins qui n'ont rien demandé.");
+          BulletWrapped("Bref : du confort, pas du cheat.");
         ImGui::Unindent();
         ImGui::Text("Les trucs interdits (et je rigole zéro) :");
         ImGui::Indent();
           ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Ne me prenez pas pour un jambon.");
           ImGui::Text("Si vous me sortez :");
           ImGui::Indent();
-            ImGui::BulletText("un auto-buffer");
-            ImGui::BulletText("un auto-pot");
-            ImGui::BulletText("un super TP/SG de physicien quantique");
-            ImGui::BulletText("un script qui ferait rougir Tony Stark");
+            BulletWrapped("un auto-buffer");
+            BulletWrapped("un auto-pot");
+            BulletWrapped("un super TP/SG de physicien quantique");
+            BulletWrapped("un script qui ferait rougir Tony Stark");
           ImGui::Unindent();
           ImGui::Text("Alors là :");
           ImGui::Indent();
-            ImGui::BulletText("Je vous fais le fion.");
-            ImGui::BulletText("Je m'en bats les couilles.");
-            ImGui::BulletText("Je vous dégage plus vite que Thanos avec son finger snap. *Snap*");
+            BulletWrapped("Je vous fais le fion.");
+            BulletWrapped("Je m'en bats les couilles.");
+            BulletWrapped("Je vous dégage plus vite que Thanos avec son finger snap. *Snap*");
           ImGui::Unindent();
           ImGui::Text("Les excuses bidon :");
           ImGui::Indent();
-            ImGui::BulletText("\"Mais les autres serveurs le font...\"");
-            ImGui::BulletText("\"Mais j'étais pas AFK, je regardais Naruto à côté...\"");
+            BulletWrapped("\"Mais les autres serveurs le font...\"");
+            BulletWrapped("\"Mais j'étais pas AFK, je regardais Naruto à côté...\"");
           ImGui::Unindent();
           ImGui::Text("Résultat :");
           ImGui::Indent();
-            ImGui::BulletText("Pouf.");
-            ImGui::BulletText("Vous étiez sur Moon.");
-            ImGui::BulletText("Vous ne l'êtes plus.");
-            ImGui::BulletText("Et il ne restera de vous que des ruines numériques sur Wayback Machine.");
+            BulletWrapped("Pouf.");
+            BulletWrapped("Vous étiez sur Moon.");
+            BulletWrapped("Vous ne l'êtes plus.");
+            BulletWrapped("Et il ne restera de vous que des ruines numériques sur Wayback Machine.");
           ImGui::Unindent();
         ImGui::Unindent();
         ImGui::TreePop();
