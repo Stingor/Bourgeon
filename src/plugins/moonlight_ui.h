@@ -125,53 +125,60 @@ class MoonlightUi : public Plugin {
   std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
   void LoadItemNames();
 
-  // ── Chat window background color ─────────────────────────────────────────
-  // The chat window init stores an ARGB color (default 0x66000000 = 40% alpha
-  // black) at object+0xD8.  We patch the MOV immediate in .text at startup so
-  // new windows use our color, and write object+0xD8 on existing instances via
-  // a heap walk triggered when the user releases the color-picker drag.
+  // ── Chat window background colours ───────────────────────────────────────
+  // Three independent, in-game-customisable chat backgrounds. Each is backed by
+  // one or more ARGB immediates in .text (default 0x66000000 = 40% alpha black),
+  // patched live so future windows and the per-frame draws use the new colour.
+  // The ctor-based sites also store the colour into the object, so a heap walk
+  // recolours already-open windows.
   //
-  // Pattern searched in .text: C7 ?? D8 00 00 00 ?? ?? ?? ??
-  //   C7 ??            = MOV dword ptr [reg+disp32], imm32  (any register)
-  //   D8 00 00 00      = displacement 0xD8
-  //   ?? ?? ?? ??      = the 4-byte ARGB immediate  ← chat_bg_instr_ points here
+  //   Main     : UINewChatWnd ctor (obj+0xD8) + selected-tab colour (Draw).
+  //   Detached : detached outer border (Draw) + UISubChatHisWnd ctor (obj+0xD4).
+  //   Whisper  : 1:1 whisper window background (Draw).
 
-  // Chat-window vtable address (20250716 client).
-  static constexpr uint32_t kChatWinVtable  = 0x01037F80;
-  // Byte offset of the ARGB color field inside the chat window object.
-  static constexpr uint32_t kChatBgColorOff = 0xD8;
+  // Vtable addresses (20250716 client) used to recognise live window objects.
+  static constexpr uint32_t kVtUINewChatWnd    = 0x01037F80;  // main chat window
+  static constexpr uint32_t kVtUISubChatHisWnd = 0x01037EA8;  // detached chat history
 
-  // Scans .text for the init instruction and makes its immediate writable.
-  // Called once in the constructor (before the chat window is created).
-  void FindChatBgInstruction();
+  enum ChatBgGroupId { kChatBgMain = 0, kChatBgDetached, kChatBgWhisper, kChatBgCount };
 
-  // Persists / restores chat_bg_color_ from bourgeon_settings.yaml in the
-  // game directory.  Load is called after FindChatBgInstruction so it can
-  // immediately apply the saved color.  Save is called on picker release.
+  // A heap-stored colour field to recolour on existing objects.
+  struct ChatBgHeapTarget { uint32_t vtable; uint32_t field_off; };
+
+  // One user-facing chat-background setting.
+  struct ChatBgGroup {
+    const char* label    = "";                  // UI label
+    const char* yaml_key = "";                  // persistence key
+    std::vector<uint32_t*>        instrs;       // resolved writable .text ARGB immediates
+    std::vector<ChatBgHeapTarget> heap;         // existing-object recolour targets
+    float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // ImGui RGBA picker state
+    bool  editing  = false;                     // picker drag in progress
+  };
+
+  ChatBgGroup chat_bg_[kChatBgCount];
+  bool        chat_bg_found_ = false;           // at least one site resolved
+
+  // Scans .text once (constructor) and resolves every group's immediates + heap
+  // targets, seeding each picker from the colour currently in the binary.
+  void FindChatBgSites();
+
+  // Writes argb to all of a group's .text immediates (+ icache flush). When
+  // walk_heap is set and the group has heap targets, also recolours live objects.
+  void ApplyChatBg(ChatBgGroup& g, uint32_t argb, bool walk_heap);
+
+  // Single heap walk: recolours every live object matching one of g's heap targets.
+  void PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb);
+
+  static uint32_t ArgbFromPicker(const float c[4]);
+  static void     PickerFromArgb(float c[4], uint32_t argb);
+
+  // Persists / restores all chat-bg groups from bourgeon_settings.yaml in the
+  // game directory.  Load is called after FindChatBgSites so it can immediately
+  // apply the saved colours.  Save is called on picker release / preset change.
   void LoadSettings();
   void SaveSettings();
 
-  // Writes argb to the instruction immediate (cheap: 4-byte write + icache flush).
-  void PatchInstruction(uint32_t argb);
-
-  // Walks the process heap and writes argb to every chat window object's +0xD8.
-  // Relatively expensive; call only when the user releases the color picker.
-  void PatchExistingObjects(uint32_t argb);
-
-  // Converts the current ImGui float[4] RGBA picker state to a packed ARGB uint32.
-  uint32_t PickerToArgb() const;
-
-  // Pointer into the writable .text section at the 4-byte ARGB immediate.
-  // Null if the pattern was not found.
-  uint32_t* chat_bg_instr_ = nullptr;
-
-  // ImGui color picker state: RGBA, each channel in [0.0, 1.0].
-  float chat_bg_color_[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-
-  // True while the user is dragging the color picker popup; used to trigger
-  // the heap walk + settings save on mouse release.
-  bool picker_was_editing_ = false;
-
+  // Shared colour presets, applicable to any group's picker.
   struct ChatBgPreset { std::string name; uint32_t argb; };
   std::vector<ChatBgPreset> chat_bg_presets_;
   char preset_name_buf_[64] = {};
