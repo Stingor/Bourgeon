@@ -115,7 +115,12 @@ class MoonlightUi : public Plugin {
 
   // Address of the item description window message handler (FUN_008c18b0,
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
-  static constexpr uintptr_t kItemDescWndAddr      = 0x008c18b0;
+  static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
+  // UISubChatWnd_AddLine (0x0083F070, 20250716 client): __thiscall per-tab
+  // line appender. Called from UINewChatWnd_WndProc (0x008fc220) msgs 0x25/0x73
+  // after per-tab bitmask check. Signature: (tab, char* text, uint color, char* sender).
+  // We hook here to inject ^i[itemid] before each <ITEML> equipment link tag.
+  static constexpr uintptr_t kSubChatAddLineAddr = 0x0083F070;
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by
   // the game independently of our hook, so polling it catches silent closes
@@ -182,6 +187,16 @@ class MoonlightUi : public Plugin {
   struct ChatBgPreset { std::string name; uint32_t argb; };
   std::vector<ChatBgPreset> chat_bg_presets_;
   char preset_name_buf_[64] = {};
+
+  // When true, shows a small draggable window listing the colour presets, so the
+  // user can quickly switch the MAIN chat colour without opening the picker.
+  bool mainchat_preset_bar_ = false;
+
+  // Log verbosity threshold (rAthena-style), persisted so it's discoverable in
+  // bourgeon_settings.yaml. Applied via LogConsole::SetLevel on load; also read
+  // directly by LogConsole at startup so it takes effect before login.
+  // One of: trace, debug, info, warn, error, off.
+  std::string log_level_ = "info";
 
   // Persisted collapse state of the Moonlight-Destiny window.
   // Restored once per login via SetNextWindowCollapsed; saved on every change.
