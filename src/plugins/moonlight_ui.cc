@@ -18,24 +18,16 @@
 #include "yaml-cpp/yaml.h"
 
 // ── Item link icon injection ──────────────────────────────────────────────
-// Hooks UISubChatWnd_AddLine (0x0083F070, __thiscall, 20250716 client).
-// Called once per eligible tab for every chat line arriving in the UI.
-// Signature: (void* tab, char* text, uint32_t color, char* sender)
-// text is a raw C-string — we inject ^i[itemid] before each <ITEML> tag so
-// the client's tokenizer renders a 25×25 item icon to the left of each link.
-//
-// Call chain: UINewChatWnd_WndProc(0x008fc220) msg 0x25/0x73
-//             → per-tab bitmask check
-//             → UISubChatWnd_AddLine(0x0083F070)   ← hooked here
+// Item icons are drawn next to each <ITEML> equipment link in chat via THREE
+// hooks: inject a short ^i{<base62 id>} token before the tag (AppendLineHook),
+// render it at the GDI leaf (TextOutLowHook), and report the token as the icon's
+// width to the layout so links sit flush against the icon (MeasureHook).
 //
 // Item link format (PACKETVER >= 20200724, moonlight/rAthena):
 //   <ITEML>[5ch_equip_b62][1ch_slot][nameid_b62][optional fields]</ITEML>
 //   nameid starts at byte offset 13 (7+5+1) and runs until non-base62 char.
 //
 // Base62 alphabet (rAthena utilities.cpp): 0-9=0-9, a-z=10-35, A-Z=36-61
-
-using SubChatAddLineFn = void (__fastcall*)(void*, void*, char*, uint32_t, char*);
-static SubChatAddLineFn g_subchat_add_line_orig = nullptr;
 
 static int B62Digit(unsigned char c) {
   if (c >= '0' && c <= '9') return c - '0';
@@ -51,21 +43,6 @@ static uint32_t B62Decode(const char* s, size_t len) {
   return v;
 }
 
-// Encodes |v| in the same base-62 alphabet (0-9 a-z A-Z).  Used to keep the
-// injected ^i[<id>] token short (item ids in base-62 are <=3 chars vs up to 7
-// in decimal), so the layout reserves much less width for the icon.
-static std::string B62Encode(uint32_t v) {
-  static const char* kDigits =
-      "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  if (v == 0) return "0";
-  char tmp[8];
-  int n = 0;
-  while (v && n < 7) { tmp[n++] = kDigits[v % 62u]; v /= 62u; }
-  std::string s;
-  while (n > 0) s += tmp[--n];
-  return s;
-}
-
 // Returns a copy of |text| with ^i[itemid] prepended before each <ITEML> tag.
 static std::string InjectItemIcons(const char* text) {
   std::string result;
@@ -76,30 +53,19 @@ static std::string InjectItemIcons(const char* text) {
     const char* data = tag + 13;
     size_t id_len = 0;
     while (B62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
-    if (id_len > 0) {
-      uint32_t item_id = B62Decode(data, id_len);
-      if (item_id > 0) {
-        // ^i{<base62 id>} — short token for auto item-link icons.  Distinct from
-        // the public ^i[<decimal>] typed form so both keep working.
-        result += "^i{";
-        result += B62Encode(item_id);
-        result += '}';
-      }
+    if (id_len > 0 && B62Decode(data, id_len) > 0) {
+      // ^i{<base62 id>} — reuse the tag's own base62 nameid verbatim; the leaf
+      // hook decodes it back, so no decode→re-encode round-trip is needed.  The
+      // {} form is distinct from the public typed ^i[<decimal>] so both work.
+      result += "^i{";
+      result.append(data, id_len);
+      result += '}';
     }
     result += '<';  // re-emit the '<'; loop advances past it
     p = tag + 1;
   }
   result += p;
   return result;
-}
-
-static void __fastcall SubChatAddLineHook(void* ecx, void* /*edx*/,
-    char* text, uint32_t color, char* sender) {
-  // AddLine stores raw text to a history vector (this+0x100), NOT the drawn
-  // list, so ^i injection is done downstream in AppendLineHook instead.  This
-  // hook is retained only as the capture point that first identified the chat
-  // tab class; it now just forwards.
-  g_subchat_add_line_orig(ecx, nullptr, text, color, sender);
 }
 
 // ── PROTOTYPE: native item-icon draw on chat links ─────────────────────────
@@ -483,17 +449,6 @@ MoonlightUi::MoonlightUi() {
   if (!g_item_desc_wnd_orig) {
     LogError("[MoonlightUi] failed to hook item desc wnd at 0x{:08X}",
              kItemDescWndAddr);
-  }
-
-  // Hook UISubChatWnd_AddLine to inject ^i[itemid] before item links on each chat line.
-  g_subchat_add_line_orig = reinterpret_cast<SubChatAddLineFn>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kSubChatAddLineAddr),
-          reinterpret_cast<uint8_t*>(SubChatAddLineHook)));
-  if (!g_subchat_add_line_orig) {
-    LogError("[MoonlightUi] failed to hook UISubChatWnd_AddLine at 0x{:08X}",
-             kSubChatAddLineAddr);
   }
 
   // Hook the chat tab's "append drawn line" virtual (FUN_0083d840) to inject

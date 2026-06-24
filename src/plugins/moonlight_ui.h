@@ -116,11 +116,6 @@ class MoonlightUi : public Plugin {
   // Address of the item description window message handler (FUN_008c18b0,
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
   static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
-  // UISubChatWnd_AddLine (0x0083F070, 20250716 client): __thiscall per-tab
-  // line appender. Called from UINewChatWnd_WndProc (0x008fc220) msgs 0x25/0x73
-  // after per-tab bitmask check. Signature: (tab, char* text, uint color, char* sender).
-  // We hook here to inject ^i[itemid] before each <ITEML> equipment link tag.
-  static constexpr uintptr_t kSubChatAddLineAddr = 0x0083F070;
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by
   // the game independently of our hook, so polling it catches silent closes
