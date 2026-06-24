@@ -55,8 +55,8 @@ static std::string InjectItemIcons(const char* text) {
     while (B62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
     if (id_len > 0 && B62Decode(data, id_len) > 0) {
       // ^i{<base62 id>} — reuse the tag's own base62 nameid verbatim; the leaf
-      // hook decodes it back, so no decode→re-encode round-trip is needed.  The
-      // {} form is distinct from the public typed ^i[<decimal>] so both work.
+      // hook decodes it back, so no decode→re-encode round-trip is needed.  Uses
+      // {} (not the engine's native ^i[ token) so it can't collide with it.
       result += "^i{";
       result.append(data, id_len);
       result += '}';
@@ -152,38 +152,25 @@ constexpr int kIconAdvance = kChatIconSize + 2;
 
 // FUN_00a21c90: the layout text-width used to position chat link buttons + their
 // click targets (see FUN_0084a780).  __thiscall(this, text, len, p3, p4, p5, p6)
-// -> width.  We make each ^i{..}/^i[..] token report kIconAdvance instead of its
+// -> width.  We make each ^i{..} token report kIconAdvance instead of its
 // (wider) literal text width, so links sit flush against the icon.
 using LayoutMeasureFn = int (__fastcall*)(void*, void*, char*, unsigned, int, int, char, char);
 LayoutMeasureFn g_layout_measure_orig = nullptr;
 
-// Heap-free decimal parse (replaces atoi(std::string(...)) in the hot leaf path,
-// and keeps that path free of the C++ runtime for WARP-cave portability).
-static uint32_t DecDecode(const char* s, unsigned n) {
-  uint32_t v = 0;
-  for (unsigned i = 0; i < n && s[i] >= '0' && s[i] <= '9'; ++i)
-    v = v * 10u + static_cast<uint32_t>(s[i] - '0');
-  return v;
-}
-
-// Scans str[from..len) for the next item-icon token — ^i[<decimal>] (typed) or
-// ^i{<base62>} (auto link).  On a match returns true and sets *tok = index of
-// the '^', *end = one past the closing bracket, *id = decoded nameid (0 if the
-// body is empty/invalid).  An unclosed ^i[/^i{ is skipped (not a token).  This
-// is the single source of truth for token detection used by both hooks below.
+// Scans str[from..len) for the next item-icon token ^i{<base62 id>} — the form
+// we inject before each <ITEML> link.  On a match returns true and sets
+// *tok = index of the '^', *end = one past the '}', *id = decoded nameid (0 if
+// the body is empty/invalid).  An unclosed ^i{ is skipped (not a token).  Single
+// source of truth for token detection, used by both hooks below.  (The engine's
+// own ^i[<decimal>] token is rendered natively by TextLayout windows, not here.)
 static bool NextIconToken(const char* str, unsigned len, unsigned from,
                           unsigned* tok, unsigned* end, uint32_t* id) {
   for (unsigned i = from; i + 3 <= len; ++i) {
-    if (str[i] != '^' || str[i + 1] != 'i') continue;
-    const char open = str[i + 2];
-    if (open != '[' && open != '{') continue;
-    const char close = open == '{' ? '}' : ']';
+    if (str[i] != '^' || str[i + 1] != 'i' || str[i + 2] != '{') continue;
     unsigned e = i + 3;
-    while (e < len && str[e] != close) ++e;
-    if (e >= len) continue;  // no closing bracket in this run — not a token
-    const char* body = str + i + 3;
-    const unsigned n = e - (i + 3);
-    *id = (open == '{') ? B62Decode(body, n) : DecDecode(body, n);
+    while (e < len && str[e] != '}') ++e;
+    if (e >= len) continue;  // no closing brace in this run — not a token
+    *id = B62Decode(str + i + 3, e - (i + 3));
     *tok = i;
     *end = e + 1;
     return true;
@@ -263,9 +250,7 @@ static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
 
 void __fastcall TextOutLowHook(void* ctx, void* edx, int x, int y, char* str,
                                unsigned len) {
-  // Nothing to do unless the run carries an item-icon token.  Two forms:
-  //   ^i[<decimal>]  — public/typed form
-  //   ^i{<base62>}   — short form we inject for auto item-link icons
+  // Nothing to do unless the run carries an injected ^i{<base62>} icon token.
   unsigned tok, end;
   uint32_t id;
   if (!str || len < 4 || !NextIconToken(str, len, 0, &tok, &end, &id)) {
