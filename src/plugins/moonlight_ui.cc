@@ -157,33 +157,55 @@ constexpr int kIconAdvance = kChatIconSize + 2;
 using LayoutMeasureFn = int (__fastcall*)(void*, void*, char*, unsigned, int, int, char, char);
 LayoutMeasureFn g_layout_measure_orig = nullptr;
 
+// Heap-free decimal parse (replaces atoi(std::string(...)) in the hot leaf path,
+// and keeps that path free of the C++ runtime for WARP-cave portability).
+static uint32_t DecDecode(const char* s, unsigned n) {
+  uint32_t v = 0;
+  for (unsigned i = 0; i < n && s[i] >= '0' && s[i] <= '9'; ++i)
+    v = v * 10u + static_cast<uint32_t>(s[i] - '0');
+  return v;
+}
+
+// Scans str[from..len) for the next item-icon token — ^i[<decimal>] (typed) or
+// ^i{<base62>} (auto link).  On a match returns true and sets *tok = index of
+// the '^', *end = one past the closing bracket, *id = decoded nameid (0 if the
+// body is empty/invalid).  An unclosed ^i[/^i{ is skipped (not a token).  This
+// is the single source of truth for token detection used by both hooks below.
+static bool NextIconToken(const char* str, unsigned len, unsigned from,
+                          unsigned* tok, unsigned* end, uint32_t* id) {
+  for (unsigned i = from; i + 3 <= len; ++i) {
+    if (str[i] != '^' || str[i + 1] != 'i') continue;
+    const char open = str[i + 2];
+    if (open != '[' && open != '{') continue;
+    const char close = open == '{' ? '}' : ']';
+    unsigned e = i + 3;
+    while (e < len && str[e] != close) ++e;
+    if (e >= len) continue;  // no closing bracket in this run — not a token
+    const char* body = str + i + 3;
+    const unsigned n = e - (i + 3);
+    *id = (open == '{') ? B62Decode(body, n) : DecDecode(body, n);
+    *tok = i;
+    *end = e + 1;
+    return true;
+  }
+  return false;
+}
+
 int __fastcall MeasureHook(void* ecx, void* edx, char* text, unsigned len,
                            int p3, int p4, char p5, char p6) {
   if (text) {
     const unsigned L = len ? len : static_cast<unsigned>(std::strlen(text));
-    bool tok = false;
-    for (unsigned i = 0; i + 3 <= L; ++i)
-      if (text[i] == '^' && text[i + 1] == 'i' &&
-          (text[i + 2] == '[' || text[i + 2] == '{')) { tok = true; break; }
-    if (tok) {
+    unsigned tok, end;
+    uint32_t id;
+    if (NextIconToken(text, L, 0, &tok, &end, &id)) {
+      // Each token's literal text would measure wider than the icon; replace its
+      // width with kIconAdvance so link buttons sit flush against the icon.
       int w = g_layout_measure_orig(ecx, edx, text, len, p3, p4, p5, p6);
-      unsigned i = 0;
-      while (i + 3 <= L) {
-        if (text[i] == '^' && text[i + 1] == 'i' &&
-            (text[i + 2] == '[' || text[i + 2] == '{')) {
-          const char close = text[i + 2] == '{' ? '}' : ']';
-          unsigned e = i + 3;
-          while (e < L && text[e] != close) ++e;
-          if (e < L) {
-            const int tw = g_layout_measure_orig(ecx, edx, text + i,
-                                                 e - i + 1, p3, p4, p5, p6);
-            w += kIconAdvance - tw;  // count the token as the icon's width
-            i = e + 1;
-            continue;
-          }
-        }
-        ++i;
-      }
+      do {
+        const int tw = g_layout_measure_orig(ecx, edx, text + tok,
+                                             end - tok, p3, p4, p5, p6);
+        w += kIconAdvance - tw;
+      } while (NextIconToken(text, L, end, &tok, &end, &id));
       return w;
     }
   }
@@ -241,54 +263,31 @@ static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
 
 void __fastcall TextOutLowHook(void* ctx, void* edx, int x, int y, char* str,
                                unsigned len) {
-  // Fast path: nothing to do unless the run has an item-icon token.  Two forms:
+  // Nothing to do unless the run carries an item-icon token.  Two forms:
   //   ^i[<decimal>]  — public/typed form
   //   ^i{<base62>}   — short form we inject for auto item-link icons
-  bool has_token = false;
-  if (str && len >= 4 && std::memchr(str, '^', len)) {
-    for (unsigned i = 0; i + 3 <= len; ++i)
-      if (str[i] == '^' && str[i + 1] == 'i' &&
-          (str[i + 2] == '[' || str[i + 2] == '{')) { has_token = true; break; }
-  }
-  if (!has_token) {
+  unsigned tok, end;
+  uint32_t id;
+  if (!str || len < 4 || !NextIconToken(str, len, 0, &tok, &end, &id)) {
     g_textout_low_orig(ctx, edx, x, y, str, len);
     return;
   }
 
   // Draw the run in pieces at explicit x: plain segments via the original, and
-  // for each ^i[id] token advance x by the token's ORIGINAL width (so following
-  // text stays exactly where the layout/link-buttons expect it — no shift, no
-  // doubling) while blitting the icon into the token's gap.
+  // for each token blit the icon into a kIconAdvance-wide gap (matching what
+  // MeasureHook told the layout) so the following name/link click-target stays
+  // exactly where it expects — no shift, no doubling.
   int cur_x = x;
   unsigned seg = 0;
-  unsigned i = 0;
-  while (i + 3 <= len) {
-    if (str[i] == '^' && str[i + 1] == 'i' &&
-        (str[i + 2] == '[' || str[i + 2] == '{')) {
-      const bool base62 = (str[i + 2] == '{');
-      const char close = base62 ? '}' : ']';
-      unsigned e = i + 3;
-      while (e < len && str[e] != close) ++e;
-      if (e >= len) break;  // no closing bracket in this run
-      const uint32_t id = base62
-          ? B62Decode(str + i + 3, e - (i + 3))
-          : static_cast<uint32_t>(std::atoi(std::string(str + i + 3, e - (i + 3)).c_str()));
-      // draw the plain segment before the token
-      if (i > seg) {
-        g_textout_low_orig(ctx, edx, cur_x, y, str + seg, i - seg);
-        cur_x += MeasureSEH(ctx, str + seg, static_cast<int>(i - seg));
-      }
-      // Advance by exactly the icon width (matches MeasureHook, which tells the
-      // layout the token is this wide) so the name sits flush after the icon and
-      // its click target stays aligned.  Icon drawn at the token's position.
-      if (id > 0) BlitIconAtSEH(ctx, cur_x, y, id);
-      cur_x += kIconAdvance;
-      seg = e + 1;
-      i = e + 1;
-      continue;
+  do {
+    if (tok > seg) {
+      g_textout_low_orig(ctx, edx, cur_x, y, str + seg, tok - seg);
+      cur_x += MeasureSEH(ctx, str + seg, static_cast<int>(tok - seg));
     }
-    ++i;
-  }
+    if (id > 0) BlitIconAtSEH(ctx, cur_x, y, id);
+    cur_x += kIconAdvance;
+    seg = end;
+  } while (NextIconToken(str, len, seg, &tok, &end, &id));
   // draw the trailing segment
   if (seg < len)
     g_textout_low_orig(ctx, edx, cur_x, y, str + seg, len - seg);
