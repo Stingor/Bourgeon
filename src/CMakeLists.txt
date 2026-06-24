@@ -12,6 +12,8 @@ set(BOURGEON_FILES
 
 	# Plugins (compiled-in, no runtime scripting)
 	"plugins/plugin.h"
+	"plugins/chat.cc"
+	"plugins/chat.h"
 	"plugins/moonlight_ui.cc"
 	"plugins/moonlight_ui.h"
 	"plugins/discord_relay.cc"

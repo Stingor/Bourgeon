@@ -8,6 +8,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "plugins/chat.h"
 #include "plugins/discord_relay.h"
 #include "plugins/dps_meter.h"
 #include "ragnarok/ui_window_mgr.h"
@@ -17,267 +18,7 @@
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 
-// ── Item link icon injection ──────────────────────────────────────────────
-// Item icons are drawn next to each <ITEML> equipment link in chat via THREE
-// hooks: inject a short ^i{<base62 id>} token before the tag (AppendLineHook),
-// render it at the GDI leaf (TextOutLowHook), and report the token as the icon's
-// width to the layout so links sit flush against the icon (MeasureHook).
-//
-// Item link format (PACKETVER >= 20200724, moonlight/rAthena):
-//   <ITEML>[5ch_equip_b62][1ch_slot][nameid_b62][optional fields]</ITEML>
-//   nameid starts at byte offset 13 (7+5+1) and runs until non-base62 char.
-//
-// Base62 alphabet (rAthena utilities.cpp): 0-9=0-9, a-z=10-35, A-Z=36-61
-
-static int B62Digit(unsigned char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'z') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'Z') return c - 'A' + 36;
-  return -1;
-}
-
-static uint32_t B62Decode(const char* s, size_t len) {
-  uint32_t v = 0;
-  for (size_t i = 0; i < len; i++)
-    v = v * 62u + static_cast<uint32_t>(B62Digit(static_cast<unsigned char>(s[i])));
-  return v;
-}
-
-// Returns a copy of |text| with ^i[itemid] prepended before each <ITEML> tag.
-static std::string InjectItemIcons(const char* text) {
-  std::string result;
-  const char* p = text;
-  while (const char* tag = strstr(p, "<ITEML>")) {
-    result.append(p, tag - p);
-    // Parse nameid: <ITEML>(7) + equip(5) + slot_flag(1) = offset 13
-    const char* data = tag + 13;
-    size_t id_len = 0;
-    while (B62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
-    if (id_len > 0 && B62Decode(data, id_len) > 0) {
-      // ^i{<base62 id>} — reuse the tag's own base62 nameid verbatim; the leaf
-      // hook decodes it back, so no decode→re-encode round-trip is needed.  Uses
-      // {} (not the engine's native ^i[ token) so it can't collide with it.
-      result += "^i{";
-      result.append(data, id_len);
-      result += '}';
-    }
-    result += '<';  // re-emit the '<'; loop advances past it
-    p = tag + 1;
-  }
-  result += p;
-  return result;
-}
-
-// ── PROTOTYPE: native item-icon draw on chat links ─────────────────────────
-// Reuses the engine's own `^i` ItemIconWnd machinery (vtable 0x010276dc) to
-// draw a 25x25 item icon next to each chat <ITEML> link, the same way the NPC
-// dialog / ChatWindow (TextLayout) renders item icons.  All calls below are to
-// the game's own functions, so a working sequence is directly portable to a
-// WARP exe code-cave (no DLL/ImGui dependency).
-//
-// Construction sequence reverse-engineered from TextLayout_EmitItemIconToken
-// (FUN_00800f60) construction site at 0x00801043-0x0080112c:
-//   obj = operator_new(0x94, &nothrow)            ; 0x00dbbeae, &DAT_010a4bc0
-//   UIWindow_base_ctor(obj, 0)                    ; 0x00a1b190 (__thiscall)
-//   *obj = 0x010276dc                             ; ItemIconWnd vtable
-//   <init SSO std::string at obj+0x7c>            ; size=0 cap=0xF buf[0]=0; obj+0x79=1
-//   ItemIconWnd_SetSize(obj, 0x19, 0x19)          ; 0x00a1cb70 (__thiscall)
-//   std::string::assign(obj+0x7c, "501", 3)       ; 0x004f1940 (__thiscall)
-//   (*[vtable+0x98])(obj)                          ; paint dispatch
-// To actually draw at a screen position we additionally drive the standard
-// UIWindow draw chain ourselves (the parent TextLayout normally does this):
-//   UIWindow_OnDraw_Base(obj, w, h)  -> builds render node at obj+0x24 (0x00a245c0)
-//   ItemIconWnd_LoadBitmap(obj)      -> loads tex into node     (0x00803850)
-//   UIWindow_SetPos(obj, x, y)       -> obj+0x1c/0x20 = x/y     (0x00a23450)
-//   UIWindow_PaintDispatch(obj)      -> blit                    (0x00a23340)
-
-namespace {
-// Engine glue (20250716).  All calls match dis-assembled conventions from
-// ItemBtn_LoadIconByResName (0x00857350): a render-node-backed image blit that
-// the engine composites as part of the owning window's draw pass.
-constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __thiscall(session, idstr, outbuf, byte)
-constexpr uintptr_t kEngSession   = 0x015fa3c0;  // session object (ecx for BuildPath)
-constexpr uintptr_t kEngTexMgr    = 0x00a90350;  // __cdecl() -> tex mgr
-constexpr uintptr_t kEngMakeKey   = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kEngLoadTex   = 0x00a8d4a0;  // __thiscall(mgr, key) -> tex
-
-using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
-using TexMgr_t    = void* (__cdecl*)();
-using MakeKey_t   = void* (__cdecl*)(const char*);
-using LoadTex_t   = void* (__fastcall*)(void*, void*, void*);
-
-// FUN_0083d840: the chat tab's "append drawn line" virtual (vtable +0xe4).
-// __thiscall(this, char* text, color, sender-ish).  Called for EVERY drawn line
-// — by WrapAndDispatch (per wrapped chunk) and by the direct link path — with
-// |text| still containing the raw <ITEML> tag.  Injecting ^i[id] before each
-// <ITEML> here puts the token into the drawn text, which UIText_DrawColored
-// then renders as an icon via ChatTextHook.  This is THE chokepoint AddLine and
-// the dispatcher hooks missed.
-using AppendLineFn = void (__fastcall*)(void*, void*, char*, uint32_t, void*);
-AppendLineFn g_append_line_orig = nullptr;
-
-void __fastcall AppendLineHook(void* ecx, void* edx, char* text, uint32_t p2,
-                               void* p3) {
-  if (text && std::strstr(text, "<ITEML>")) {
-    std::string modified = InjectItemIcons(text);
-    g_append_line_orig(ecx, edx, const_cast<char*>(modified.c_str()), p2, p3);
-    return;
-  }
-  g_append_line_orig(ecx, edx, text, p2, p3);
-}
-
-// ── Leaf renderer hook: draw the icon where ^i[id] appears in a text segment ──
-// FUN_005471a0 is the engine's low-level GDI text-out: __thiscall(ctx, x, y,
-// str, len).  ctx+8 = the render node, ctx+0x14 = font.  The chat line text
-// (carrying our injected ^i[id], which the chat renderer leaves literal) passes
-// through here.  We detect ^i[id], measure the preceding text to get the icon x,
-// blit the item icon into the same render node (reusing FUN_00a1d260 via a tiny
-// fake-window whose +0x24 points at the node), and blank the token so it isn't
-// drawn.  Reuses only engine calls -> portable to a WARP code-cave.
-constexpr uintptr_t kEngTextOutLow  = 0x005471a0;  // __thiscall(ctx, x, y, str, len)
-constexpr uintptr_t kEngTextMeasure = 0x005474a0;  // __thiscall(ctx, SIZE*, str, len, font)
-constexpr uintptr_t kEngNodeBlit    = 0x0053f140;  // __thiscall(node, x, y, w, h, ARGB*, colorkey)
-using TextOutLowFn = void  (__fastcall*)(void*, void*, int, int, char*, unsigned);
-using MeasureFn    = void* (__fastcall*)(void*, void*, void*, const char*, int, int);
-using NodeBlitFn   = void  (__fastcall*)(void*, void*, int, int, int, int, const uint32_t*, char);
-TextOutLowFn g_textout_low_orig = nullptr;
-
-// Target on-screen icon size in chat (px).  Item BMPs are ~24px; chat lines are
-// ~14px, so we downsample to this.
-constexpr int kChatIconSize = 16;
-// Horizontal space a token occupies (icon + small pad).  Used both as the
-// layout width an ^i token reports (MeasureHook) and the leaf draw advance, so
-// the icon sits flush and the following name/link-click-target stay aligned.
-constexpr int kIconAdvance = kChatIconSize + 2;
-
-// FUN_00a21c90: the layout text-width used to position chat link buttons + their
-// click targets (see FUN_0084a780).  __thiscall(this, text, len, p3, p4, p5, p6)
-// -> width.  We make each ^i{..} token report kIconAdvance instead of its
-// (wider) literal text width, so links sit flush against the icon.
-using LayoutMeasureFn = int (__fastcall*)(void*, void*, char*, unsigned, int, int, char, char);
-LayoutMeasureFn g_layout_measure_orig = nullptr;
-
-// Scans str[from..len) for the next item-icon token ^i{<base62 id>} — the form
-// we inject before each <ITEML> link.  On a match returns true and sets
-// *tok = index of the '^', *end = one past the '}', *id = decoded nameid (0 if
-// the body is empty/invalid).  An unclosed ^i{ is skipped (not a token).  Single
-// source of truth for token detection, used by both hooks below.  (The engine's
-// own ^i[<decimal>] token is rendered natively by TextLayout windows, not here.)
-static bool NextIconToken(const char* str, unsigned len, unsigned from,
-                          unsigned* tok, unsigned* end, uint32_t* id) {
-  for (unsigned i = from; i + 3 <= len; ++i) {
-    if (str[i] != '^' || str[i + 1] != 'i' || str[i + 2] != '{') continue;
-    unsigned e = i + 3;
-    while (e < len && str[e] != '}') ++e;
-    if (e >= len) continue;  // no closing brace in this run — not a token
-    *id = B62Decode(str + i + 3, e - (i + 3));
-    *tok = i;
-    *end = e + 1;
-    return true;
-  }
-  return false;
-}
-
-int __fastcall MeasureHook(void* ecx, void* edx, char* text, unsigned len,
-                           int p3, int p4, char p5, char p6) {
-  if (text) {
-    const unsigned L = len ? len : static_cast<unsigned>(std::strlen(text));
-    unsigned tok, end;
-    uint32_t id;
-    if (NextIconToken(text, L, 0, &tok, &end, &id)) {
-      // Each token's literal text would measure wider than the icon; replace its
-      // width with kIconAdvance so link buttons sit flush against the icon.
-      int w = g_layout_measure_orig(ecx, edx, text, len, p3, p4, p5, p6);
-      do {
-        const int tw = g_layout_measure_orig(ecx, edx, text + tok,
-                                             end - tok, p3, p4, p5, p6);
-        w += kIconAdvance - tw;
-      } while (NextIconToken(text, L, end, &tok, &end, &id));
-      return w;
-    }
-  }
-  return g_layout_measure_orig(ecx, edx, text, len, p3, p4, p5, p6);
-}
-
-// SEH-guarded width of |s[0..n)| in the ctx font.  0 on fault.
-static int MeasureSEH(void* ctx, const char* s, int n) {
-  int w = 0;
-  __try {
-    char buf[512];
-    int k = (n < 0) ? 0 : (n < 511 ? n : 511);
-    std::memcpy(buf, s, k);
-    buf[k] = '\0';
-    const int font = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ctx) + 0x14);
-    SIZE sz = {0, 0};
-    reinterpret_cast<MeasureFn>(kEngTextMeasure)(ctx, nullptr, &sz, buf, k, font);
-    w = sz.cx;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    w = 0;
-  }
-  return w;
-}
-
-// SEH-guarded: load item |id|'s icon, downsample to kChatIconSize, blit into the
-// ctx's render node at (x, y).  No C++ objects in scope (legal __try).
-static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
-  static uint32_t dbuf[kChatIconSize * kChatIconSize];
-  __try {
-    char idbuf[16];
-    std::snprintf(idbuf, sizeof(idbuf), "%u", id);
-    char path[260] = {0};
-    reinterpret_cast<BuildPath_t>(kEngBuildPath)(
-        reinterpret_cast<void*>(kEngSession), nullptr, idbuf, path, 0);
-    void* mgr = reinterpret_cast<TexMgr_t>(kEngTexMgr)();
-    void* key = reinterpret_cast<MakeKey_t>(kEngMakeKey)(path);
-    void* texv = reinterpret_cast<LoadTex_t>(kEngLoadTex)(mgr, nullptr, key);
-    if (!texv) return;
-    auto* t = reinterpret_cast<uint8_t*>(texv);
-    const int sw = *reinterpret_cast<int*>(t + 0x114);
-    const int sh = *reinterpret_cast<int*>(t + 0x118);
-    const uint32_t* spx = *reinterpret_cast<uint32_t**>(t + 0x11c);
-    if (!spx || sw <= 0 || sh <= 0) return;
-    for (int dy = 0; dy < kChatIconSize; ++dy) {
-      const int syy = dy * sh / kChatIconSize;
-      for (int dx = 0; dx < kChatIconSize; ++dx)
-        dbuf[dy * kChatIconSize + dx] = spx[syy * sw + (dx * sw / kChatIconSize)];
-    }
-    void* node = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(ctx) + 8);
-    reinterpret_cast<NodeBlitFn>(kEngNodeBlit)(node, nullptr, x, y,
-                                               kChatIconSize, kChatIconSize, dbuf, 1);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-}
-
-void __fastcall TextOutLowHook(void* ctx, void* edx, int x, int y, char* str,
-                               unsigned len) {
-  // Nothing to do unless the run carries an injected ^i{<base62>} icon token.
-  unsigned tok, end;
-  uint32_t id;
-  if (!str || len < 4 || !NextIconToken(str, len, 0, &tok, &end, &id)) {
-    g_textout_low_orig(ctx, edx, x, y, str, len);
-    return;
-  }
-
-  // Draw the run in pieces at explicit x: plain segments via the original, and
-  // for each token blit the icon into a kIconAdvance-wide gap (matching what
-  // MeasureHook told the layout) so the following name/link click-target stays
-  // exactly where it expects — no shift, no doubling.
-  int cur_x = x;
-  unsigned seg = 0;
-  do {
-    if (tok > seg) {
-      g_textout_low_orig(ctx, edx, cur_x, y, str + seg, tok - seg);
-      cur_x += MeasureSEH(ctx, str + seg, static_cast<int>(tok - seg));
-    }
-    if (id > 0) BlitIconAtSEH(ctx, cur_x, y, id);
-    cur_x += kIconAdvance;
-    seg = end;
-  } while (NextIconToken(str, len, seg, &tok, &end, &id));
-  // draw the trailing segment
-  if (seg < len)
-    g_textout_low_orig(ctx, edx, cur_x, y, str + seg, len - seg);
-}
-}  // namespace
+// Item-link icon injection moved to plugins/chat.cc (ChatTweaks).
 
 // ── Item description window hook ──────────────────────────────────────────
 // Hooks FUN_008c18b0 (__thiscall, 20250716 client) to capture the nameid of
@@ -435,38 +176,6 @@ MoonlightUi::MoonlightUi() {
              kItemDescWndAddr);
   }
 
-  // Hook the chat tab's "append drawn line" virtual (FUN_0083d840) to inject
-  // ^i[id] before <ITEML> into the text that becomes a drawn chat line.
-  g_append_line_orig = reinterpret_cast<AppendLineFn>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(0x0083d840),
-          reinterpret_cast<uint8_t*>(AppendLineHook)));
-  if (!g_append_line_orig) {
-    LogError("[MoonlightUi] failed to hook chat AppendLine at 0x0083d840");
-  }
-
-  // Hook the low-level GDI text-out (FUN_005471a0) to render ^i[id] tokens in
-  // drawn text as item icons (blitting into the ctx's render node).
-  g_textout_low_orig = reinterpret_cast<TextOutLowFn>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(0x005471a0),
-          reinterpret_cast<uint8_t*>(TextOutLowHook)));
-  if (!g_textout_low_orig) {
-    LogError("[MoonlightUi] failed to hook GDI text-out at 0x005471a0");
-  }
-
-  // Hook the layout text-measure so ^i tokens count as the icon width (keeps the
-  // icon flush against the name and the link click-target aligned).
-  g_layout_measure_orig = reinterpret_cast<LayoutMeasureFn>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(0x00a21c90),
-          reinterpret_cast<uint8_t*>(MeasureHook)));
-  if (!g_layout_measure_orig) {
-    LogError("[MoonlightUi] failed to hook layout measure at 0x00a21c90");
-  }
 }
 
 // ── Chat background colours ───────────────────────────────────────────────
@@ -654,6 +363,14 @@ void MoonlightUi::LoadSettings() {
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
+
+    chat_width_enabled_ = ui["chat_width_enabled"].as<bool>(false);
+    chat_width_px_      = ui["chat_width"].as<int>(800);
+    if (chat_width_px_ < 320)  chat_width_px_ = 320;
+    if (chat_width_px_ > 1200) chat_width_px_ = 1200;
+    chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
+    chat_timestamps_ = ui["chat_timestamps"].as<bool>(false);
+    chat::SetTimestamps(chat_timestamps_);
     LogConsole::instance().SetLevel(log_level_);
     apply_collapse_ = true;
 
@@ -689,6 +406,9 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
+        << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
+        << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
+        << YAML::Key << "chat_timestamps"      << YAML::Value << chat_timestamps_
         << YAML::Key << "dps_ground_dmg_chat"  << YAML::Value
             << (Bourgeon::Instance().dps_meter()
                     ? Bourgeon::Instance().dps_meter()->show_ground_dmg_in_chat_
@@ -1155,6 +875,38 @@ void MoonlightUi::OnRenderUI() {
       if (ImGui::Checkbox("Chat Discord (Gonryun only)", &discord_chat_)) {
         UpdateRelay();
         SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
+      }
+
+      // ── Main-chat width (the stock chat resizes height only; applied by the
+      //    ChatTweaks plugin via the WndProc relayout hook) ───────────────────
+      if (ImGui::Checkbox("Largeur du chat", &chat_width_enabled_)) {
+        chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
+        SaveSettings();
+      }
+      if (chat_width_enabled_) {
+        bool changed = ImGui::SliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
+        // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
+        // Claim the wheel for this item so it only adjusts the value and does NOT
+        // also scroll the settings window / its scrollbar(s).
+        const bool hovered = ImGui::IsItemHovered();
+        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+        const float wheel = hovered ? ImGui::GetIO().MouseWheel : 0.0f;
+        if (wheel != 0.0f) {
+          const int dir  = wheel > 0.0f ? 1 : -1;
+          const int step = ImGui::GetIO().KeyShift ? 10 : 1;
+          chat_width_px_ += dir * step;
+          if (chat_width_px_ < 320)  chat_width_px_ = 320;
+          if (chat_width_px_ > 1200) chat_width_px_ = 1200;
+          changed = true;
+        }
+        if (changed) chat::SetCustomWidth(true, chat_width_px_);
+        if (ImGui::IsItemDeactivatedAfterEdit() || wheel != 0.0f) SaveSettings();
+      }
+
+      // ── Chat line timestamps ([HH:MM:SS] prefix, stored in raw history) ────
+      if (ImGui::Checkbox("Horodatage du chat", &chat_timestamps_)) {
+        chat::SetTimestamps(chat_timestamps_);
+        SaveSettings();
       }
 
       // ── Chat Background Colours (Main / Detached / Whisper) ───────────────

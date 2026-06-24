@@ -8,11 +8,28 @@
 #include <string>
 #include <vector>
 
+#include "spdlog/sinks/base_sink.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/msvc_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 namespace {
+// spdlog sink that mirrors each record into LogLineBuffer for the in-game log
+// window.  base_sink<std::mutex> serialises sink_it_ so the formatter is used by
+// one thread at a time; LogLineBuffer adds its own lock for the snapshot reader.
+class UiLogSink : public spdlog::sinks::base_sink<std::mutex> {
+ protected:
+  void sink_it_(const spdlog::details::log_msg& msg) override {
+    spdlog::memory_buf_t buf;
+    formatter_->format(msg, buf);
+    std::string line(buf.data(), buf.size());
+    while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+      line.pop_back();
+    LogLineBuffer::instance().Push(std::move(line));
+  }
+  void flush_() override {}
+};
+
 // Returns the directory of the running module (with trailing separator).
 std::string ModuleDir() {
   char buf[MAX_PATH];
@@ -66,19 +83,29 @@ LogConsole::LogConsole() {
   // File sink: each write is flushed immediately so the file survives crashes.
   auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
       "bourgeon.log", /*truncate=*/true);
-  file_sink->set_level(spdlog::level::debug);
+  // In-memory sink: mirrors every emitted line into LogLineBuffer so the in-game
+  // Bourgeon log window shows all LogInfo/LogWarn/LogError output, not just the
+  // plugin lines pushed via Bourgeon::AddLogLine.
+  auto ui_sink = std::make_shared<UiLogSink>();
+
+  // The file and in-game-window sinks always capture down to |capture_floor_| so
+  // they keep info even when the console is configured quieter (e.g. warn).
+#ifdef BOURGEON_DEBUG
+  capture_floor_ = spdlog::level::debug;
+#else
+  capture_floor_ = spdlog::level::info;
+#endif
+  stdout_sink_ = stdout_sink;
+  file_sink->set_level(capture_floor_);
+  ui_sink->set_level(capture_floor_);
 
   p_logger_ = std::make_unique<spdlog::logger>(
       "Bourgeon",
-      spdlog::sinks_init_list{stdout_sink, file_sink});
+      spdlog::sinks_init_list{stdout_sink, file_sink, ui_sink});
   p_logger_->flush_on(spdlog::level::trace);  // flush every write to file
 
-  // Default threshold (debug builds are chattier), overridable by config.
-#ifdef BOURGEON_DEBUG
-  spdlog::level::level_enum lvl = spdlog::level::debug;
-#else
-  spdlog::level::level_enum lvl = spdlog::level::info;
-#endif
+  // Console threshold default (debug builds are chattier), overridable by config.
+  spdlog::level::level_enum lvl = capture_floor_;
   // Command line wins and is "sticky": when --loglevel is given, later
   // SetLevel() calls (e.g. from loading settings) are ignored so the cmdline
   // override is never clobbered by the yaml default.
@@ -89,7 +116,7 @@ LogConsole::LogConsole() {
   } else {
     lvl = ParseLevel(FileLevelName(), lvl);
   }
-  p_logger_->set_level(lvl);
+  ApplyConsoleLevel(lvl);
 }
 
 LogConsole::~LogConsole() {}
@@ -112,5 +139,24 @@ spdlog::level::level_enum LogConsole::ParseLevel(
 
 void LogConsole::SetLevel(const std::string &name) {
   if (cmdline_forced_) return;  // --loglevel on the command line is sticky
-  p_logger_->set_level(ParseLevel(name, p_logger_->level()));
+  ApplyConsoleLevel(ParseLevel(name, stdout_sink_->level()));
+}
+
+void LogConsole::ApplyConsoleLevel(spdlog::level::level_enum console_level) {
+  stdout_sink_->set_level(console_level);
+  // The logger gates a record before any sink sees it, so it must pass the more
+  // verbose of the console level and the always-capture floor — otherwise a quiet
+  // console (e.g. warn) would also starve the file / in-game-window sinks of info.
+  p_logger_->set_level(std::min(console_level, capture_floor_));
+}
+
+void LogLineBuffer::Push(std::string line) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (lines_.size() >= kCapacity) lines_.pop_front();
+  lines_.push_back(std::move(line));
+}
+
+void LogLineBuffer::Snapshot(std::vector<std::string> *out) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out->assign(lines_.begin(), lines_.end());
 }
