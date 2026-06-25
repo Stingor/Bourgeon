@@ -422,6 +422,8 @@ constexpr uintptr_t kSetTabBarHeight  = 0x00903160;  // __thiscall(this, rows) �
 constexpr uintptr_t kInputRowLayout   = 0x008f9840;  // __thiscall(this) — input-row controls
 constexpr uintptr_t kUISetSize        = 0x00a1cb70;   // __thiscall(obj, w, h)
 constexpr uintptr_t kRebuildFromHist  = 0x008642d0;   // __thiscall(tab): clear+re-wrap history
+constexpr uintptr_t kResizeBtnVtable  = 0x0102a260;   // UIResizeButton vtable (PTR_FUN_0102a260)
+constexpr int kResizeBtnModeOff       = 0x9c;         // UIResizeButton mode field (2 = height bar)
 constexpr int kChatMinWidth = 0x140;  // 320 px floor
 // Gap (px) between the right edge of the rightmost input-row filter button and the
 // window's right edge.  The frame border occupies the last ~6px (this+0xcc = width-6),
@@ -476,6 +478,32 @@ static void ApplyChatWidthSEH(void* wnd, int new_w) {
     for (; it != end; ++it) {
       void* tab = reinterpret_cast<void*>(*it);
       if (tab) reinterpret_cast<RebuildFn>(kRebuildFromHist)(tab);
+    }
+    // Stretch the TOP height-resize bar to follow the width.  It's an anonymous
+    // mode-2 UIResizeButton (created at width-0x1a, NOT kept in a this+ field and
+    // never re-widened), so past the default width its grab strip ends mid-chat and
+    // the handle can't be grabbed on the right.  Walk the child list
+    // (this+0x50 std::list; node+0=next, node+8=child) for the mode-2 resize button
+    // and set its hit width to new_w-0x1a (its x=3 is kept by create/SetTabBarHeight).
+    uint8_t* sentinel = *reinterpret_cast<uint8_t**>(w + 0x50);
+    if (sentinel) {
+      for (uint8_t* n = *reinterpret_cast<uint8_t**>(sentinel);
+           n && n != sentinel; n = *reinterpret_cast<uint8_t**>(n)) {
+        auto* child = *reinterpret_cast<uint8_t**>(n + 8);
+        if (child && *reinterpret_cast<uintptr_t*>(child) == kResizeBtnVtable &&
+            *reinterpret_cast<int*>(child + kResizeBtnModeOff) == 2) {
+          // Resize via UIWindow_SetSize (rebuilds the render node) — NOT a direct
+          // +0x14 write: the grip's DrawContent paints its line across +0x14 into
+          // the node, so widening +0x14 alone leaves the extra span as a black
+          // (un-colorkeyed) strip.  Only when the width actually changed, to avoid
+          // rebuilding the node on every relayout.
+          const int want = new_w - 0x1a;
+          if (*reinterpret_cast<int*>(child + 0x14) != want)
+            reinterpret_cast<UISetSizeFn>(kUISetSize)(
+                child, nullptr, want, *reinterpret_cast<int*>(child + 0x18));
+          break;
+        }
+      }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
