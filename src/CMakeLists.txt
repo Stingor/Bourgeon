@@ -14,6 +14,8 @@ set(BOURGEON_FILES
 	"plugins/plugin.h"
 	"plugins/chat.cc"
 	"plugins/chat.h"
+	"plugins/status_tweaks.cc"
+	"plugins/status_tweaks.h"
 	"plugins/moonlight_ui.cc"
 	"plugins/moonlight_ui.h"
 	"plugins/discord_relay.cc"

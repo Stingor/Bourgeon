@@ -10,6 +10,7 @@
 #include "plugins/dps_meter.h"
 #include "plugins/integrity_check.h"
 #include "plugins/moonlight_ui.h"
+#include "plugins/status_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -145,6 +146,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<CheatDetector>());
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
+  plugins_.emplace_back(std::make_unique<StatusTweaks>());
   {
     auto dps = std::make_unique<DpsMeter>();
     dps_meter_ = dps.get();
