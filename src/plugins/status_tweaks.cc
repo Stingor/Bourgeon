@@ -59,6 +59,16 @@ constexpr uintptr_t kLoadTex      = 0x00a8d4a0;  // __thiscall(mgr, key) -> tex
 constexpr uintptr_t kGetMsg       = 0x00a9ed30;  // __cdecl(uint id) -> char*
 constexpr uintptr_t kBgNormalPath = 0x010361b4;  // "...\statuswnd\w_statwin_bg.bmp"
 
+// ---- GLOBAL title-bar text offset (shared UIWindow_DrawTitleBar 0x00898bc0) -
+// Moves the title text in EVERY window (the title position is hardcoded in this
+// shared function).  +dx = right, +dy = down.  0/0 leaves it unchanged.
+constexpr int kTitleDx = 0;
+constexpr int kTitleDy = -2;
+constexpr uintptr_t kTitleWhiteX = 0x00898cd5;  // push 0x13  (white title x)
+constexpr uintptr_t kTitleWhiteY = 0x00898cd2;  // lea eax,[edi-0xd] disp8 (white y-off)
+constexpr uintptr_t kTitleBlackX = 0x00898cef;  // push 0x12  (black edge x)
+constexpr uintptr_t kTitleBlackY = 0x00898cea;  // lea eax,[edi-0xe] disp8 (black y-off)
+
 using DrawOrig_t = void (__fastcall*)(void*, void*);
 using TitleBar_t = void (__fastcall*)(void*, void*, char, const char*, int);
 using DrawText_t = void (__fastcall*)(void*, void*, int, int, const char*, unsigned,
@@ -287,5 +297,19 @@ StatusTweaks::StatusTweaks() {
   } else {
     LogError("[Status] tooltip rect guard 0x010371c0 = {}, expected 108; rect patch skipped",
              guard);
+  }
+
+  // 4) GLOBAL title-bar text offset — moves EVERY window's title text (shared
+  //    DrawTitleBar). y-disp8 = -(base - dy): base 13/14, +dy moves down.
+  if (*reinterpret_cast<uint8_t*>(kTitleWhiteX) == 0x13) {
+    PatchValue<uint8_t>(kTitleWhiteX, static_cast<uint8_t>(19 + kTitleDx));
+    PatchValue<uint8_t>(kTitleBlackX, static_cast<uint8_t>(18 + kTitleDx));
+    PatchValue<uint8_t>(kTitleWhiteY, static_cast<uint8_t>(kTitleDy - 13));
+    PatchValue<uint8_t>(kTitleBlackY, static_cast<uint8_t>(kTitleDy - 14));
+    LogInfo("[Status] title-bar text offset patched dx={} dy={} (all windows)",
+            kTitleDx, kTitleDy);
+  } else {
+    LogError("[Status] DrawTitleBar title-x = 0x{:x}, expected 0x13; title offset skipped",
+             *reinterpret_cast<uint8_t*>(kTitleWhiteX));
   }
 }
