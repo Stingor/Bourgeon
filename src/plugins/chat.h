@@ -26,4 +26,8 @@ void SetCustomWidth(bool enabled, int px);
 // into the chat's raw history, so it persists across re-wraps/resizes.  Driven
 // by the settings UI in MoonlightUi.
 void SetTimestamps(bool enabled);
+
+// Enable/disable the native item icons on <ITEML> chat links.  Driven by the
+// settings UI in MoonlightUi.
+void SetItemIcons(bool enabled);
 }  // namespace chat

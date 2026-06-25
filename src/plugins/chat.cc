@@ -116,6 +116,7 @@ int   g_chat_orig_width = 0;        // captured engine default width (for restor
 bool  g_in_apply        = false;    // re-entrancy guard for the relayout
 void* g_chat_wnd        = nullptr;  // live UINewChatWnd (cached from WndProc ecx)
 bool  g_chat_timestamps = false;    // true = prefix new chat lines with [HH:MM:SS]
+bool  g_chat_item_icons = true;     // true = inject ^i item icons on <ITEML> chat links
 
 // Writes the current local time as "[HH:MM:SS] " into |out| (needs >= 12 bytes).
 // Shared by the timestamp injection sites: the raw-history writer (AddLine, so it
@@ -205,7 +206,8 @@ void __fastcall AppendLineHook(void* ecx, void* edx, char* text, uint32_t p2,
       FormatTimestamp(stamp, sizeof(stamp));
       modified = stamp;
     }
-    modified += InjectItemIcons(text);
+    if (g_chat_item_icons) modified += InjectItemIcons(text);
+    else                   modified += text;
     g_append_line_orig(ecx, edx, const_cast<char*>(modified.c_str()), p2, p3);
     return;
   }
@@ -697,4 +699,5 @@ void SetCustomWidth(bool enabled, int px) {
 }
 
 void SetTimestamps(bool enabled) { g_chat_timestamps = enabled; }
+void SetItemIcons(bool enabled)  { g_chat_item_icons = enabled; }
 }  // namespace chat

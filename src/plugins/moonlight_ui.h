@@ -164,6 +164,7 @@ class MoonlightUi : public Plugin {
   bool chat_width_enabled_ = false;
   int  chat_width_px_      = 800;
   bool chat_timestamps_    = false;  // [HH:MM:SS] prefix on chat lines
+  bool chat_item_icons_    = true;   // native item icons on <ITEML> chat links
 
   // Scans .text once (constructor) and resolves every group's immediates + heap
   // targets, seeding each picker from the colour currently in the binary.

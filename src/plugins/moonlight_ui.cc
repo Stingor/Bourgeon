@@ -371,6 +371,8 @@ void MoonlightUi::LoadSettings() {
     chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
     chat_timestamps_ = ui["chat_timestamps"].as<bool>(false);
     chat::SetTimestamps(chat_timestamps_);
+    chat_item_icons_ = ui["chat_item_icons"].as<bool>(true);
+    chat::SetItemIcons(chat_item_icons_);
     LogConsole::instance().SetLevel(log_level_);
     apply_collapse_ = true;
 
@@ -409,6 +411,7 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
         << YAML::Key << "chat_timestamps"      << YAML::Value << chat_timestamps_
+        << YAML::Key << "chat_item_icons"      << YAML::Value << chat_item_icons_
         << YAML::Key << "dps_ground_dmg_chat"  << YAML::Value
             << (Bourgeon::Instance().dps_meter()
                     ? Bourgeon::Instance().dps_meter()->show_ground_dmg_in_chat_
@@ -906,6 +909,12 @@ void MoonlightUi::OnRenderUI() {
       // ── Chat line timestamps ([HH:MM:SS] prefix, stored in raw history) ────
       if (ImGui::Checkbox("Horodatage du chat", &chat_timestamps_)) {
         chat::SetTimestamps(chat_timestamps_);
+        SaveSettings();
+      }
+
+      // ── Native item icons on <ITEML> chat links ──────────────────────────
+      if (ImGui::Checkbox("Icônes d'objets", &chat_item_icons_)) {
+        chat::SetItemIcons(chat_item_icons_);
         SaveSettings();
       }
 
