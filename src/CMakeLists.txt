@@ -28,6 +28,10 @@ set(BOURGEON_FILES
 	"plugins/cheat_detector.h"
 	"plugins/dps_meter.cc"
 	"plugins/dps_meter.h"
+	"plugins/basic_info.cc"
+	"plugins/basic_info.h"
+	"plugins/menu_icons.cc"
+	"plugins/menu_icons.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"

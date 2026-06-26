@@ -11,6 +11,8 @@
 
 class DiscordRelay;
 class DpsMeter;
+class BasicInfoTweaks;
+class MenuIconTweaks;
 
 class Bourgeon {
  public:
@@ -25,9 +27,12 @@ class Bourgeon {
   RagnarokClient& client();
   DiscordRelay* discord_relay();
   DpsMeter* dps_meter();
+  BasicInfoTweaks* basic_info();
+  MenuIconTweaks* menu_icons();
 
   bool Initialize();
   void OnTick();
+  void OnProcessInput();  // per-frame input-phase dispatch (NOT throttled)
   void AddLogLine(std::string log_line);
   void RenderUI();
 
@@ -60,6 +65,8 @@ class Bourgeon {
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
   DpsMeter*     dps_meter_     = nullptr;  // non-owning, lifetime tied to plugins_
+  BasicInfoTweaks* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MenuIconTweaks* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::vector<std::string> log_lines_;
   RagnarokClient client_;

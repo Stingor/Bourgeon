@@ -19,15 +19,25 @@ using ProcessInputMsg_t = int(__fastcall*)(void* ecx, void* edx, int msg,
                                            int p1, int p2, int p3, int p4);
 static ProcessInputMsg_t g_orig_process_input_msg = nullptr;
 
+// CMode::SendMsg (the ProcessInput target @0x00c86740) is the game's GENERAL,
+// RE-ENTRANT message dispatch — used for real input AND internal data queries
+// (e.g. SendMsg(9) = current map name, during world-map init). We do NOT suppress
+// input here: ImGui input blocking is handled at the WndProc level (WindowProcHook
+// in ragnarok_client.cc drops WM_* mouse/keyboard when the cursor is over ImGui).
+// Suppressing SendMsg here returned NULL to those internal queries and crashed
+// the world-map open on strlen(NULL). The depth counter only lets the queued-icon
+// dispatch run once, at the outermost (top-level) call.
+static int g_send_msg_depth = 0;
+struct SendMsgDepthGuard {
+  SendMsgDepthGuard() { ++g_send_msg_depth; }
+  ~SendMsgDepthGuard() { --g_send_msg_depth; }
+};
+
 static int __fastcall Hooked_ProcessInputMsg(void* ecx, void* edx, int msg,
                                              int p1, int p2, int p3, int p4) {
-  ImGuiIO& io = ImGui::GetIO();
-  // Suppress game input when ImGui needs the keyboard (text input active).
-  if (io.WantCaptureKeyboard || io.WantTextInput) return 0;
-  // Suppress game input during active mouse interactions on ImGui (click/drag).
-  // Do NOT suppress on hover alone — that would swallow keyboard events (chat
-  // Enter, etc.) whenever the mouse rests over the overlay.
-  if (io.WantCaptureMouse && ImGui::IsAnyMouseDown()) return 0;
+  SendMsgDepthGuard depth;
+  if (g_send_msg_depth == 1)  // top-level call only
+    Bourgeon::Instance().OnProcessInput();  // dispatch queued icon clicks
   return g_orig_process_input_msg(ecx, edx, msg, p1, p2, p3, p4);
 }
 
@@ -70,9 +80,9 @@ void GameMode::OnUpdateHook() {
 }
 
 void GameMode::ProcessInputHook() {
-  ImGuiIO& io = ImGui::GetIO();
-  if (io.WantCaptureKeyboard || io.WantTextInput) return;
-  if (io.WantCaptureMouse && ImGui::IsAnyMouseDown()) return;
+  SendMsgDepthGuard depth;
+  if (g_send_msg_depth == 1)  // top-level call only
+    Bourgeon::Instance().OnProcessInput();  // dispatch queued icon clicks
   return ProcessInputRef(this);
 }
 

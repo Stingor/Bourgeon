@@ -22,6 +22,10 @@ class DpsMeter : public Plugin {
  public:
   // ── Settings (read/written by MoonlightUi) ────────────────────────────────
   bool visible_                 = true;
+  bool locked_                  = false;  // freeze window + click-through
+  float text_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // DPS value text colour
+  float plot_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // graph line colour
+  float bg_alpha_      = 0.90f;                         // window background alpha
   bool show_ground_dmg_in_chat_ = true;   // push ground-skill hits to chat log
   int  slot_ms_                 = 200;    // ms per plot slot (50–2000)
   int  dps_window_secs_         = 10;     // rolling DPS window in seconds (1–30)

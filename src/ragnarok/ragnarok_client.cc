@@ -299,7 +299,10 @@ static bool IsMouseOverAnyImGuiWindow(float mx, float my) {
   if (!ctx) return false;
   ImVec2 p(mx, my);
   for (ImGuiWindow* w : ctx->Windows) {
-    if (w->WasActive && w->OuterRectClipped.Contains(p))
+    // Skip click-through windows (NoMouseInputs, e.g. locked HUD bars): they
+    // never capture the mouse, so they must not block clicks to the game.
+    if (w->WasActive && !(w->Flags & ImGuiWindowFlags_NoMouseInputs) &&
+        w->OuterRectClipped.Contains(p))
       return true;
   }
   return false;

@@ -7,7 +7,9 @@
 #include "plugins/chat.h"
 #include "plugins/cheat_detector.h"
 #include "plugins/discord_relay.h"
+#include "plugins/basic_info.h"
 #include "plugins/dps_meter.h"
+#include "plugins/menu_icons.h"
 #include "plugins/integrity_check.h"
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
@@ -19,6 +21,8 @@ Bourgeon::Bourgeon()
 RagnarokClient& Bourgeon::client() { return client_; }
 DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
 DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
+BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
+MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -50,6 +54,14 @@ void Bourgeon::OnTick() {
       LogError("[{}] OnTick: {}", plugin->name(), error.what());
     }
   }
+}
+
+void Bourgeon::OnProcessInput() {
+  // Runs every frame in the game's input phase (NOT throttled like OnTick) so a
+  // menu-icon click dispatches with the same timing/context as a native click —
+  // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
+  // windows (world map) crash intermittently.
+  if (auto* mi = menu_icons()) mi->FlushPending();
 }
 
 void Bourgeon::AddLogLine(std::string log_line) {
@@ -151,6 +163,16 @@ void Bourgeon::LoadPlugins() {
     auto dps = std::make_unique<DpsMeter>();
     dps_meter_ = dps.get();
     plugins_.emplace_back(std::move(dps));
+  }
+  {
+    auto basic_info = std::make_unique<BasicInfoTweaks>();
+    basic_info_ = basic_info.get();
+    plugins_.emplace_back(std::move(basic_info));
+  }
+  {
+    auto menu_icons = std::make_unique<MenuIconTweaks>();
+    menu_icons_ = menu_icons.get();
+    plugins_.emplace_back(std::move(menu_icons));
   }
   {
     auto relay = std::make_unique<DiscordRelay>();

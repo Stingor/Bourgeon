@@ -242,12 +242,22 @@ void DpsMeter::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
+  // Border opacity follows the background opacity.
+  ImVec4 dps_border = ImGui::GetStyleColorVec4(ImGuiCol_Border);
+  dps_border.w = bg_alpha_;
+  ImGui::PushStyleColor(ImGuiCol_Border, dps_border);
+  ImGuiWindowFlags flags = 0;
+  if (locked_)
+    flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+             ImGuiWindowFlags_NoInputs;  // freeze + click-through
   ImGui::SetNextWindowSize(ImVec2(260, 160), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowBgAlpha(bg_alpha_);
   bool open = true;
-  ImGui::Begin(title, &open);
-  if (!open) { visible_ = false; ImGui::End(); ImGui::PopStyleVar(4); return; }
+  ImGui::Begin(title, locked_ ? nullptr : &open, flags);
+  if (!open) { visible_ = false; ImGui::End(); ImGui::PopStyleColor(1); ImGui::PopStyleVar(4); return; }
 
-  ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%.0f DPS", current_dps_);
+  ImGui::TextColored(ImVec4(text_color_[0], text_color_[1], text_color_[2],
+                            text_color_[3]), "%.0f DPS", current_dps_);
   ImGui::SameLine();
   ImGui::TextDisabled("  peak %.0f", peak_dps_);
 
@@ -256,9 +266,13 @@ void DpsMeter::OnRenderUI() {
   const float plot_h   = std::max(ImGui::GetContentRegionAvail().y - line_h, 20.0f);
 
   // Plot: oldest → newest, use plot_offset_ as the starting slot
+  ImGui::PushStyleColor(ImGuiCol_PlotLines,
+                        ImVec4(plot_color_[0], plot_color_[1], plot_color_[2],
+                               plot_color_[3]));
   ImGui::PlotLines("##dps", plot_buf_.data(), kPlotSlots, plot_offset_,
                    nullptr, 0.0f, std::max(peak_dps_ * 1.2f, 1.0f),
                    ImVec2(-1, plot_h));
+  ImGui::PopStyleColor();
   if (ImGui::IsItemHovered()) {
     const float t = std::clamp(
         (ImGui::GetIO().MousePos.x - ImGui::GetItemRectMin().x) /
@@ -276,5 +290,6 @@ void DpsMeter::OnRenderUI() {
   }
 
   ImGui::End();
+  ImGui::PopStyleColor(1);
   ImGui::PopStyleVar(4);
 }

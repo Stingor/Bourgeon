@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <d3d9.h>
+#include <cstring>
 #include <thread>
 
 #include "backends/imgui_impl_dx9.h"
@@ -62,6 +63,9 @@ static ResetEx_t  g_orig_reset_ex  = nullptr;
 static EndScene_t g_orig_end_scene = nullptr;
 static Present_t  g_orig_present   = nullptr;
 
+// Captured every frame in RenderImGuiDX9 so plugins can create textures.
+static IDirect3DDevice9* g_imgui_device = nullptr;
+
 // ── factory hook originals ────────────────────────────────────────────────────
 static FactoryCreateDevice_t   g_orig_factory_create_device    = nullptr;
 static FactoryCreateDeviceEx_t g_orig_factory_create_device_ex = nullptr;
@@ -100,6 +104,7 @@ static void PatchSlot(void** vtable, int idx, void* hook, void** out_orig) {
 
 // ── ImGui render helper ───────────────────────────────────────────────────────
 static void RenderImGuiDX9(IDirect3DDevice9* self) {
+    g_imgui_device = self;
     if (!g_dx9_initialized.load()) {
         LogInfo("D3D9: ImGui_ImplDX9_Init device={:x}", reinterpret_cast<uintptr_t>(self));
         ImGui_ImplDX9_Init(self);
@@ -113,6 +118,31 @@ static void RenderImGuiDX9(IDirect3DDevice9* self) {
     ImGui::EndFrame();
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+}
+
+// Creates a D3D9 texture from a 32-bit A8R8G8B8 buffer (w*h, tightly packed).
+// D3DUSAGE_DYNAMIC + D3DPOOL_DEFAULT so it works on the client's D3D9Ex device
+// (which forbids D3DPOOL_MANAGED). Returns an IDirect3DTexture9* as void*.
+void* D3D9_CreateTextureARGB(const void* argb, int w, int h) {
+    if (!g_imgui_device || !argb || w <= 0 || h <= 0) return nullptr;
+    IDirect3DTexture9* tex = nullptr;
+    if (FAILED(g_imgui_device->CreateTexture(
+            static_cast<UINT>(w), static_cast<UINT>(h), 1, D3DUSAGE_DYNAMIC,
+            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &tex, nullptr)))
+        return nullptr;
+    D3DLOCKED_RECT lr;
+    if (FAILED(tex->LockRect(0, &lr, nullptr, 0))) {
+        tex->Release();
+        return nullptr;
+    }
+    const auto* src = static_cast<const unsigned char*>(argb);
+    auto* dst = static_cast<unsigned char*>(lr.pBits);
+    for (int y = 0; y < h; ++y)
+        std::memcpy(dst + static_cast<size_t>(y) * lr.Pitch,
+                    src + static_cast<size_t>(y) * w * 4,
+                    static_cast<size_t>(w) * 4);
+    tex->UnlockRect(0);
+    return tex;
 }
 
 // ── EndScene hook ─────────────────────────────────────────────────────────────

@@ -10,7 +10,9 @@
 #include "imgui.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
+#include "plugins/basic_info.h"
 #include "plugins/dps_meter.h"
+#include "plugins/menu_icons.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -376,8 +378,68 @@ void MoonlightUi::LoadSettings() {
     LogConsole::instance().SetLevel(log_level_);
     apply_collapse_ = true;
 
-    if (auto* dps = Bourgeon::Instance().dps_meter())
+    if (auto* dps = Bourgeon::Instance().dps_meter()) {
       dps->show_ground_dmg_in_chat_ = ui["dps_ground_dmg_chat"].as<bool>(true);
+      dps->locked_ = ui["dps_locked"].as<bool>(false);
+      dps->bg_alpha_ = ui["dps_bg_alpha"].as<float>(0.90f);
+      auto load_dps_col = [&](const char* key, float c[4]) {
+        const std::string hex = ui[key].as<std::string>("");
+        if (hex.size() == 8)
+          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
+      };
+      load_dps_col("dps_text_color", dps->text_color_);
+      load_dps_col("dps_plot_color", dps->plot_color_);
+    }
+
+    if (auto* eb = Bourgeon::Instance().basic_info()) {
+      eb->visible_   = ui["expbar_visible"].as<bool>(true);
+      eb->locked_    = ui["expbar_locked"].as<bool>(false);
+      eb->sticky_    = ui["expbar_sticky"].as<bool>(false);
+      eb->text_mode_ = ui["expbar_text"].as<int>(1);
+      eb->vertical_  = ui["expbar_vertical"].as<bool>(false);
+      eb->rounding_  = ui["expbar_rounding"].as<float>(4.0f);
+      auto load_color = [&](const std::string& key, float c[4]) {
+        const std::string hex = ui[key].as<std::string>("");
+        if (hex.size() == 8)
+          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
+      };
+      for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+        const std::string p =
+            std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+        auto& b = eb->bars_[i];
+        b.show = ui[p + "show"].as<bool>(true);
+        b.x = ui[p + "x"].as<int>(b.x);
+        b.y = ui[p + "y"].as<int>(b.y);
+        b.w = ui[p + "w"].as<int>(b.w);
+        b.h = ui[p + "h"].as<int>(b.h);
+        load_color(p + "color", b.fill);
+      }
+      load_color("expbar_bg_color", eb->bg_color_);
+      eb->grid_show_ = ui["expbar_grid_show"].as<bool>(false);
+      eb->grid_snap_ = ui["expbar_grid_snap"].as<bool>(false);
+      eb->grid_size_ = ui["expbar_grid_size"].as<int>(32);
+      load_color("expbar_grid_color", eb->grid_color_);
+    }
+
+    if (auto* mi = Bourgeon::Instance().menu_icons()) {
+      mi->edit_mode_ = ui["menu_icons_edit"].as<bool>(false);
+      mi->saved_.clear();
+      // Per-icon saved position/visibility under "menu_icons: { <name>: {...} }".
+      // Stored here because the live icon list only exists once in-game; applied
+      // later in MenuIconTweaks::BuildIconList.
+      if (const YAML::Node icons = ui["menu_icons"]) {
+        for (auto it = icons.begin(); it != icons.end(); ++it) {
+          const std::string nm = it->first.as<std::string>("");
+          if (nm.empty()) continue;
+          MenuIconTweaks::IconSave s;
+          s.x      = it->second["x"].as<int>(-1);
+          s.y      = it->second["y"].as<int>(-1);
+          s.hidden = it->second["hidden"].as<bool>(false);
+          s.valid  = true;
+          mi->saved_[nm] = s;
+        }
+      }
+    }
 
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
@@ -395,6 +457,24 @@ void MoonlightUi::LoadSettings() {
 }
 
 void MoonlightUi::SaveSettings() {
+  auto* dps = Bourgeon::Instance().dps_meter();
+  char dps_text_col[9] = "FFFFCC33", dps_plot_col[9] = "FFFFCC33";
+  if (dps) {
+    std::snprintf(dps_text_col, sizeof(dps_text_col), "%08X",
+                  ArgbFromPicker(dps->text_color_));
+    std::snprintf(dps_plot_col, sizeof(dps_plot_col), "%08X",
+                  ArgbFromPicker(dps->plot_color_));
+  }
+
+  auto* eb = Bourgeon::Instance().basic_info();
+  char eb_bg_col[9] = "B30D0D12", eb_grid_col[9] = "26FFFFFF";
+  if (eb) {
+    std::snprintf(eb_bg_col, sizeof(eb_bg_col), "%08X",
+                  ArgbFromPicker(eb->bg_color_));
+    std::snprintf(eb_grid_col, sizeof(eb_grid_col), "%08X",
+                  ArgbFromPicker(eb->grid_color_));
+  }
+
   YAML::Emitter out;
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
@@ -416,7 +496,60 @@ void MoonlightUi::SaveSettings() {
             << (Bourgeon::Instance().dps_meter()
                     ? Bourgeon::Instance().dps_meter()->show_ground_dmg_in_chat_
                     : true)
-        << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
+        << YAML::Key << "dps_locked" << YAML::Value
+            << (Bourgeon::Instance().dps_meter()
+                    ? Bourgeon::Instance().dps_meter()->locked_
+                    : false)
+        << YAML::Key << "dps_bg_alpha"   << YAML::Value << (dps ? dps->bg_alpha_ : 0.90f)
+        << YAML::Key << "dps_text_color" << YAML::Value << dps_text_col
+        << YAML::Key << "dps_plot_color" << YAML::Value << dps_plot_col;
+
+  // EXP/HP/SP bar settings (BasicInfoTweaks)
+  out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : true)
+      << YAML::Key << "expbar_locked"   << YAML::Value << (eb ? eb->locked_ : false)
+      << YAML::Key << "expbar_sticky"   << YAML::Value << (eb ? eb->sticky_ : false)
+      << YAML::Key << "expbar_text"     << YAML::Value << (eb ? eb->text_mode_ : 1)
+      << YAML::Key << "expbar_vertical" << YAML::Value << (eb ? eb->vertical_ : false)
+      << YAML::Key << "expbar_rounding" << YAML::Value << (eb ? eb->rounding_ : 4.0f)
+      << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
+      << YAML::Key << "expbar_grid_show"  << YAML::Value << (eb ? eb->grid_show_ : false)
+      << YAML::Key << "expbar_grid_snap"  << YAML::Value << (eb ? eb->grid_snap_ : false)
+      << YAML::Key << "expbar_grid_size"  << YAML::Value << (eb ? eb->grid_size_ : 32)
+      << YAML::Key << "expbar_grid_color" << YAML::Value << eb_grid_col;
+  if (eb) {
+    for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+      const std::string p =
+          std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+      const auto& b = eb->bars_[i];
+      char col[9];
+      std::snprintf(col, sizeof(col), "%08X", ArgbFromPicker(b.fill));
+      out << YAML::Key << (p + "show")  << YAML::Value << b.show
+          << YAML::Key << (p + "x")     << YAML::Value << b.x
+          << YAML::Key << (p + "y")     << YAML::Value << b.y
+          << YAML::Key << (p + "w")     << YAML::Value << b.w
+          << YAML::Key << (p + "h")     << YAML::Value << b.h
+          << YAML::Key << (p + "color") << YAML::Value << col;
+    }
+  }
+
+  {
+    auto* mi = Bourgeon::Instance().menu_icons();
+    out << YAML::Key << "menu_icons_edit"
+        << YAML::Value << (mi ? mi->edit_mode_ : false);
+    out << YAML::Key << "menu_icons" << YAML::Value << YAML::BeginMap;
+    if (mi) {
+      for (const auto& kv : mi->saved_) {
+        out << YAML::Key << kv.first << YAML::Value << YAML::BeginMap
+            << YAML::Key << "x"      << YAML::Value << kv.second.x
+            << YAML::Key << "y"      << YAML::Value << kv.second.y
+            << YAML::Key << "hidden" << YAML::Value << kv.second.hidden
+            << YAML::EndMap;
+      }
+    }
+    out << YAML::EndMap;
+  }
+
+  out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
   for (const auto& p : chat_bg_presets_) {
     char pbuf[9];
     std::snprintf(pbuf, sizeof(pbuf), "%08X", p.argb);
@@ -703,6 +836,17 @@ static void PopStyleCompact()
 
 void MoonlightUi::OnRenderUI() {
   if (!in_game_) return;
+
+  // Persist EXP-bar geometry once, the frame after the user finishes a drag.
+  if (auto* eb = Bourgeon::Instance().basic_info(); eb && eb->geometry_dirty_) {
+    eb->geometry_dirty_ = false;
+    SaveSettings();
+  }
+  // Same for menu-icon positions (set on drag-end in MenuIconTweaks).
+  if (auto* mi = Bourgeon::Instance().menu_icons(); mi && mi->geometry_dirty_) {
+    mi->geometry_dirty_ = false;
+    SaveSettings();
+  }
 
   if (apply_collapse_) {
     ImGui::SetNextWindowCollapsed(ui_collapsed_, ImGuiCond_Always);
@@ -1011,6 +1155,21 @@ void MoonlightUi::OnRenderUI() {
     if (ImGui::CollapsingHeader("DPS Meter")) {
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
         ImGui::Checkbox("Afficher", &dps->visible_);
+        if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Fige la fenêtre DPS (position/taille) et laisse passer les clics "
+            "au jeu en dessous.");
+
+        if (ImGui::ColorEdit4("Couleur texte", dps->text_color_,
+                              ImGuiColorEditFlags_NoInputs))
+          SaveSettings();
+        if (ImGui::ColorEdit4("Couleur graphe", dps->plot_color_,
+                              ImGuiColorEditFlags_NoInputs))
+          SaveSettings();
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::SliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f"))
+          SaveSettings();
 
         ImGui::SetNextItemWidth(160.0f);
         int slot_ms = dps->slot_ms_;
@@ -1041,6 +1200,140 @@ void MoonlightUi::OnRenderUI() {
         ImGui::SameLine(); HelpMarker(
             "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
             "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
+      }
+    }
+
+    // ── Interface de jeu (HUD bars + alignment grid) ─────────────────────
+    if (ImGui::CollapsingHeader("Interface de jeu")) {
+      if (auto* eb = Bourgeon::Instance().basic_info()) {
+        PushStyleCompact();
+        if (ImGui::Checkbox("Afficher les barres", &eb->visible_))
+          SaveSettings();
+        ImGui::Indent();
+        for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+          if (i) ImGui::SameLine();
+          if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
+            SaveSettings();
+        }
+        ImGui::SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+        ImGui::Unindent();
+
+        if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
+                            &eb->locked_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Verrouillée : les barres ne bougent plus et laissent passer les "
+            "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
+            "tirez le coin pour redimensionner.");
+
+        if (ImGui::Checkbox("Aimanter les barres (snap)", &eb->sticky_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
+            "et se collent automatiquement (~10px).\nÉloigne-la pour la "
+            "détacher. Les barres restent indépendantes.");
+
+        if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
+
+        const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::Combo("Texte", &eb->text_mode_, modes, IM_ARRAYSIZE(modes)))
+          SaveSettings();
+
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::SliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f"))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker("Arrondi des coins des barres.");
+
+        for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+          char lbl[32];
+          std::snprintf(lbl, sizeof(lbl), "Couleur %s",
+                        BasicInfoTweaks::kBarLabels[i]);
+          if (ImGui::ColorEdit4(lbl, eb->bars_[i].fill,
+                                ImGuiColorEditFlags_NoInputs))
+            SaveSettings();
+        }
+        if (ImGui::ColorEdit4("Fond / Opacité", eb->bg_color_,
+                              ImGuiColorEditFlags_NoInputs |
+                                  ImGuiColorEditFlags_AlphaBar))
+          SaveSettings();
+
+        ImGui::TextUnformatted("Tailles rapides (toutes) :");
+        auto preset = [&](const char* label, int w, int h) {
+          ImGui::SameLine();
+          if (ImGui::Button(label)) {
+            for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
+              eb->bars_[j].w = w;
+              eb->bars_[j].h = h;
+            }
+            eb->force_apply_ = true;  // re-apply size even while unlocked
+            SaveSettings();
+          }
+        };
+        preset("XS", 110, 9);
+        preset("S", 160, 16);
+        preset("M", 220, 22);
+        preset("L", 320, 30);
+
+        ImGui::Separator();
+        if (ImGui::Checkbox("Grille d'alignement", &eb->grid_show_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Affiche une grille plein écran pour aligner ton interface "
+            "(comme les add-ons d'interface de WoW).");
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::SliderInt("Taille grille", &eb->grid_size_, 4, 128))
+          SaveSettings();
+        if (ImGui::Checkbox("Aimanter à la grille", &eb->grid_snap_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Les barres s'alignent sur les cellules de la grille pendant le "
+            "déplacement et le redimensionnement.");
+        if (ImGui::ColorEdit4("Couleur grille", eb->grid_color_,
+                              ImGuiColorEditFlags_NoInputs |
+                                  ImGuiColorEditFlags_AlphaBar))
+          SaveSettings();
+        PopStyleCompact();
+      }
+    }
+
+    // ── Menu icons (ImGui replacement) ───────────────────────────────────
+    if (ImGui::CollapsingHeader("Icônes du menu")) {
+      if (auto* mi = Bourgeon::Instance().menu_icons()) {
+        if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Cache la grille native et recrée les icônes fonctionnelles en "
+            "ImGui (cliquables + tooltip + masquage par icône).");
+
+        if (ImGui::Checkbox("Mode édition (glisser pour déplacer)",
+                            &mi->edit_mode_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "En mode édition : glisse chaque icône pour la repositionner.\n"
+            "Aimantage aux autres icônes + à la grille d'alignement (réglages "
+            "EXP Bar : grille/snap).\nDésactive le mode pour cliquer les icônes "
+            "normalement.");
+
+        // Per-icon show/hide. icons() is populated once in-game.
+        if (ImGui::TreeNode("Afficher / masquer les icônes")) {
+          auto& icons = mi->icons();
+          if (icons.empty()) {
+            ImGui::TextDisabled("(disponible une fois en jeu)");
+          } else {
+            for (auto& ic : icons) {
+              bool shown = !ic.hidden;
+              ImGui::PushID(ic.cmd_id);
+              if (ImGui::Checkbox(ic.name, &shown)) {
+                ic.hidden = !shown;
+                mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
+                SaveSettings();
+              }
+              ImGui::PopID();
+            }
+          }
+          ImGui::TreePop();
+        }
       }
     }
 
