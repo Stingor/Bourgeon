@@ -622,17 +622,62 @@ constexpr uintptr_t kVecStrResize = 0x007103d0;  // std::vector<std::string>::re
 constexpr uintptr_t kVecU32Resize = 0x0053faa0;  // std::vector<uint32_t>::resize
 using VecResizeFn = void (__fastcall*)(void*, void*, unsigned);
 
+// Clear one channel tab (UISubChatWnd).  Calls game funcs — invoke only inside SEH.
+static void ClearOneTab(char* tab) {
+  if (!tab) return;
+  reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x100, nullptr, 0);  // text
+  reinterpret_cast<VecResizeFn>(kVecU32Resize)(tab + 0x10c, nullptr, 0);  // colors
+  reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x118, nullptr, 0);  // senders
+  reinterpret_cast<RebuildFn>(kRebuildFromHist)(tab);  // clear drawn + re-wrap
+}
+
+// Main chat (UINewChatWnd): its channel tabs are a std::vector [wnd+0xf4, wnd+0xf8).
 static void ClearChatWindowHistorySEH(void* wnd) {
   __try {
     int* it  = *reinterpret_cast<int**>(reinterpret_cast<char*>(wnd) + 0xf4);
     int* end = *reinterpret_cast<int**>(reinterpret_cast<char*>(wnd) + 0xf8);
-    for (; it != end; ++it) {
-      auto* tab = reinterpret_cast<char*>(*it);
-      if (!tab) continue;
-      reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x100, nullptr, 0);  // text
-      reinterpret_cast<VecResizeFn>(kVecU32Resize)(tab + 0x10c, nullptr, 0);  // colors
-      reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x118, nullptr, 0);  // senders
-      reinterpret_cast<RebuildFn>(kRebuildFromHist)(tab);  // clear drawn + re-wrap
+    for (; it != end; ++it) ClearOneTab(reinterpret_cast<char*>(*it));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// Detached chat windows (UIChatWnd — a SEPARATE class from the main UINewChatWnd)
+// keep their OWN history, so clearing the main window leaves them untouched. They
+// live in a std::set whose head node is the global at 0x0131f510 (MSVC _Tree node:
+// +0=_Left, +4=_Parent, +8=_Right, +0xd=_Isnil byte, value @+0x14 = the UIChatWnd*);
+// each window's active tab is at wnd+0xb4. Walk the tree (iterative DFS, nil-skip +
+// stack/iteration caps for safety) and clear each window's tab. Mirrors the game's
+// own per-window enumeration in ChatLog_SaveAllToFiles (0x00907030).
+constexpr uintptr_t kDetachedChatTree  = 0x0131f510;  // std::set<UIChatWnd*> head node
+constexpr int       kDetachedActiveTab = 0xb4;        // UIChatWnd -> active UISubChatWnd
+
+static bool TreeNodeIsNil(int* n) {
+  return !n || *(reinterpret_cast<char*>(n) + 0xd) != 0;  // _Isnil byte
+}
+
+static void ClearDetachedChatsSEH() {
+  __try {
+    // 0x0131f510 is the std::set OBJECT: [+0] = _Myhead (sentinel node ptr),
+    // [+4] = _Mysize. The tree root is _Myhead._Parent (verified live: object ->
+    // _Myhead 0x03b41da0 -> root node -> value@+0x14 = UIChatWnd -> tab@+0xb4).
+    int* setobj   = reinterpret_cast<int*>(kDetachedChatTree);
+    int* sentinel = reinterpret_cast<int*>(setobj[0]);  // _Myhead
+    if (!sentinel) return;
+    int* st[64];
+    int  sp = 0;
+    int* root = reinterpret_cast<int*>(sentinel[1]);    // _Myhead._Parent = root
+    if (!TreeNodeIsNil(root)) st[sp++] = root;
+    for (int guard = 0; sp > 0 && guard < 512; ++guard) {
+      int* node = st[--sp];
+      if (void* wnd = reinterpret_cast<void*>(node[5]))  // value @node+0x14
+        ClearOneTab(*reinterpret_cast<char**>(
+            reinterpret_cast<char*>(wnd) + kDetachedActiveTab));
+      int* l = reinterpret_cast<int*>(node[0]);  // _Left
+      int* r = reinterpret_cast<int*>(node[2]);  // _Right
+      if (sp < 62) {
+        if (!TreeNodeIsNil(l)) st[sp++] = l;
+        if (!TreeNodeIsNil(r)) st[sp++] = r;
+      }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -757,6 +802,7 @@ void SetTimestamps(bool enabled) { g_chat_timestamps = enabled; }
 void SetItemIcons(bool enabled)  { g_chat_item_icons = enabled; }
 
 void ClearHistory() {
-  if (g_chat_wnd) ClearChatWindowHistorySEH(g_chat_wnd);
+  if (g_chat_wnd) ClearChatWindowHistorySEH(g_chat_wnd);  // main window's tab vector
+  ClearDetachedChatsSEH();  // every detached UIChatWnd keeps its own history
 }
 }  // namespace chat
