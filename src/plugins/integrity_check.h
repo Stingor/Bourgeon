@@ -42,6 +42,14 @@ class IntegrityCheck : public Plugin {
 
   static constexpr uint16_t kOpcodeToServer   = 0x0BFB;  // CZ: SHA-256 + MachineGuid
   static constexpr uint16_t kOpcodeKickNotice = 0x0BFA;  // ZC: outdated-client notice
+
+  // ZC_ACCEPT_ENTER — the server's clif_authok, sent exactly once per zone-server
+  // session (initial login AND after a character change). We observe it to re-arm
+  // the handshake on every new session, because the client otherwise sends the
+  // integrity packet only once per process and may not re-fire a login->game mode
+  // switch on a character change. 0x02eb for PACKETVER >= 20160330 (incl.
+  // 20250716); older 2014-2016 clients used 0x0a18.
+  static constexpr uint16_t kOpcodeAcceptEnter = 0x02eb;
   static constexpr int kHashLen  = 32;                   // SHA-256
   static constexpr int kGuidLen  = 36;                   // MachineGuid (no null)
 

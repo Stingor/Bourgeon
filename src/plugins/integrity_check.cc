@@ -82,6 +82,10 @@ bool IntegrityCheck::TryComputeHash() {
 
 IntegrityCheck::IntegrityCheck() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeKickNotice);
+  // Observe map-entry so we re-handshake on every new zone session (e.g. after a
+  // character change), not just once per process. Passive — the game's own
+  // handler still runs.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpcodeAcceptEnter, 0);
 
   if (!TryComputeHash())
     LogError("[Integrity] failed to compute self checksum at startup — will retry on game entry");
@@ -139,6 +143,16 @@ bool IntegrityCheck::SendChecksum() {
 
 void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
                                   uint16_t /*len*/) {
+  if (opcode == kOpcodeAcceptEnter) {
+    // Entered a (new) zone-server session — re-arm so OnTick re-sends the
+    // integrity handshake. Covers character changes, where the client does not
+    // reliably re-fire a login->game mode switch but the server still expects a
+    // fresh CZ_BOURGEON_INTEGRITY per session. We just received a packet on this
+    // socket, so it is connected; the actual send happens on the next OnTick.
+    in_game_ = true;
+    sent_    = false;
+    return;
+  }
   if (opcode == kOpcodeKickNotice) {
     LogInfo("[Integrity] kick-notice received — showing update popup");
     kick_notice_tick_ = static_cast<uint32_t>(GetTickCount());
