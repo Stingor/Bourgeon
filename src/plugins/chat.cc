@@ -242,6 +242,39 @@ void __fastcall AddLineHook(void* ecx, void* edx, char* text, uint32_t color,
   g_addline_orig(ecx, edx, text, color, sender);
 }
 
+// ── Timestamp on DETACHED chat-window live lines ────────────────────────────
+// Detached chat windows (UIChatWnd) display new lines via UISubChatWnd_WrapAndDispatch
+// with the ORIGINAL (unstamped) text, so the live [HH:MM:SS] never showed there.
+// (Raw history IS stamped by AddLineHook; the MAIN chat's live display by CharWrapHook;
+// item-link lines by AppendLineHook — detached PLAIN lines fell through every one.)
+// WrapAndDispatch is shared (main @0x008fd269, RebuildFromHistory @0x008643b9, detached)
+// and word-wraps the FULL line then dispatches each chunk, so a blanket stamp would
+// double-stamp the main and wrongly stamp wrapped continuation chunks. We gate on the
+// DETACHED call site's return address (0x0090243f in UIChatWnd_HandleMsg case 0x25) and
+// stamp the FULL line BEFORE it wraps -> the stamp lands on the first chunk only.
+// Idempotent via HasTimestamp (a rebuild from already-stamped raw history won't double).
+// Signature mirrors the per-line dispatch: __thiscall(this, text, p2, p3) (3 stack args).
+constexpr uintptr_t kWrapAndDispatch    = 0x0083d3f0;  // UISubChatWnd_WrapAndDispatch
+constexpr uintptr_t kDetachedWrapCaller = 0x0090243f;  // ret addr of the detached call site
+using WrapDispatchFn = void (__fastcall*)(void*, void*, char*, uint32_t, void*);
+WrapDispatchFn g_wrap_dispatch_orig = nullptr;
+
+void __fastcall WrapAndDispatchHook(void* ecx, void* edx, char* text, uint32_t p2,
+                                    void* p3) {
+  if (g_chat_timestamps && text && text[0] && !HasTimestamp(text) &&
+      _ReturnAddress() == reinterpret_cast<void*>(kDetachedWrapCaller)) {
+    char stamp[16];
+    FormatTimestamp(stamp, sizeof(stamp));
+    std::string stamped;
+    stamped.reserve(11 + std::strlen(text));
+    stamped.append(stamp);
+    stamped.append(text);
+    g_wrap_dispatch_orig(ecx, edx, const_cast<char*>(stamped.c_str()), p2, p3);
+    return;
+  }
+  g_wrap_dispatch_orig(ecx, edx, text, p2, p3);
+}
+
 // ── Leaf renderer hook: draw the icon where ^i[id] appears in a text segment ──
 // FUN_005471a0 is the engine's low-level GDI text-out: __thiscall(ctx, x, y,
 // str, len).  ctx+8 = the render node, ctx+0x14 = font.  The chat line text
@@ -705,6 +738,17 @@ ChatTweaks::ChatTweaks() {
           reinterpret_cast<uint8_t*>(AddLineHook)));
   if (!g_addline_orig) {
     LogError("[Chat] failed to hook UISubChatWnd_AddLine at 0x0083f070");
+  }
+
+  // Hook the per-line dispatch so DETACHED chat windows' live lines get the
+  // timestamp too (gated to the detached call site — see WrapAndDispatchHook).
+  g_wrap_dispatch_orig = reinterpret_cast<WrapDispatchFn>(
+      hooking::HookManager::Instance().SetHook(
+          hooking::HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kWrapAndDispatch),
+          reinterpret_cast<uint8_t*>(WrapAndDispatchHook)));
+  if (!g_wrap_dispatch_orig) {
+    LogError("[Chat] failed to hook UISubChatWnd_WrapAndDispatch at 0x0083d3f0");
   }
 
   // Hook the low-level GDI text-out (FUN_005471a0) to render ^i{id} tokens in
