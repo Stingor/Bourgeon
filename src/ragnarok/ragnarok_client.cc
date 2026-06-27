@@ -147,6 +147,53 @@ void InstallCursorCapture() {
           reinterpret_cast<uintptr_t>(g_orig_cursor_render),
           reinterpret_cast<uintptr_t>(g_orig_atlas_get));
 }
+
+// ── Char-select paging crash fix (native UINewSelectCharWnd off-by-one) ───────
+// Native bug (predates Bourgeon): UINewSelectCharWnd's selected-slot render
+// (0x0079d590) reads slots[idx] from the per-page slot array at this+0xe8, where
+// idx = this+0x120, guarded ONLY by a non-null check — there is NO
+// `idx < slots_per_page (this+0x128)` bounds check. While paging through the
+// char list, idx is left at slots_per_page (15) as a "no current selection"
+// sentinel, so the render reads slots[15] — one element past the 15-entry array,
+// i.e. the heap guard bytes 0xABABABAB — and dereferences it as a vtable. Crash
+// (very often around the 3rd page). Confirmed live with x32dbg; see
+// project_charselect_paging_crash.
+//
+// Fix: re-insert the missing bounds check at the read site. The native code
+// already has a clean "no selection" path (je 0x0079d60d -> pop esi; ret, which
+// also skips the child tree-walk). We detour the `mov ecx,[esi+0x120]` at
+// 0x0079d5e0 (the je at 0x0079d5d3 targets exactly 0x0079d5e0, so the 5-byte jmp
+// patch lands on no other instruction) and, when idx >= slots_per_page, branch
+// to that same skip path; otherwise resume the original render at 0x0079d5e6
+// (right after the stolen mov, with ecx = idx already loaded). esi (this) is
+// callee-saved across the function's intervening calls, and eax is immediately
+// overwritten on both paths, so this is register-safe. 20250716-specific.
+constexpr uintptr_t kSelCharRenderPatch = 0x0079d5e0;  // mov ecx,[esi+0x120]
+
+__declspec(naked) void SelCharPagingFixStub() {
+  __asm {
+    mov  ecx, [esi+120h]   ; selected slot index (this+0x120)
+    cmp  ecx, [esi+128h]   ; vs slots-per-page (this+0x128)
+    jae  no_selection      ; idx >= per_page -> out of range, skip safely
+    mov  eax, 79d5e6h      ; in range: resume original render (ecx already set)
+    jmp  eax
+  no_selection:
+    mov  eax, 79d60dh      ; native "no selection" path: pop esi; ret
+    jmp  eax
+  }
+}
+
+void InstallCharSelectPagingFix() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  using namespace hooking;
+  HookManager::Instance().SetHook(
+      HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSelCharRenderPatch),
+      reinterpret_cast<uint8_t*>(&SelCharPagingFixStub));
+  LogInfo("[CharSelect] paging-crash bounds-check installed @ {:x}",
+          kSelCharRenderPatch);
+}
 }  // namespace
 
 // ── RO cursor overlay via ImGui foreground draw list ─────────────────────────
@@ -209,6 +256,10 @@ bool RagnarokClient::Initialize() {
     LogError("This client isn't supported");
     return false;
   }
+
+  // Native client patch: fix the char-select paging crash (UINewSelectCharWnd
+  // off-by-one OOB on the selected slot). Addresses are 20250716-specific.
+  if (timestamp_as_str == "20250716") InstallCharSelectPagingFix();
 
   ObjectFactory factory;
   session_ = factory.CreateSession(client_configuration["CSession"]);
