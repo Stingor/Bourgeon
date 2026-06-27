@@ -51,6 +51,7 @@ class MenuIconTweaks : public Plugin {
   bool in_game_     = false;
   bool icons_built_ = false;
   bool grid_hidden_ = false;
+  bool pending_refresh_ = false;  // request a server clif_refresh (drains in OnTick)
   int  pending_cmd_ = 0;   // click queued in OnRenderUI, dispatched from OnTick
   int  dragging_    = -1;  // index of the icon being dragged in edit mode, else -1
   float drag_off_x_ = 0.0f, drag_off_y_ = 0.0f;  // mouse-to-origin offset at grab

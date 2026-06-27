@@ -148,6 +148,24 @@ const IconDef kIconTable[] = {
     {"adventurerAgency", 0x220, 0xDBA}, {"repute", 0x237, 0xEF3},
     {"adventureguide", 0x245, 0xFD5},   {"probability", 0x24B, 0x1017},
 };
+
+// Ask the server to clif_refresh us (reuses the CZ 0x0BFD settings packet with a
+// REFRESH id). The client receives the resulting ZC_NPCACK_MAPMOVE (0x91) in its
+// recv loop and re-composites the UI — this drops the stale native menu-icon
+// "ghost" that lingers after GridClear empties the node list (the already-
+// composited pixels aren't re-blitted until a relayout). @refresh proved this
+// safe in-game. Sent from OnTick (never mid-Present). Server side: moonlight
+// clif_parse_bourgeon_setting case BOURGEON_SETTING_REFRESH -> clif_refresh(sd).
+constexpr uint16_t kCzBourgeonSetting      = 0x0BFD;
+constexpr uint16_t kBourgeonSettingRefresh = 25;  // matches moonlight e_bourgeon_setting
+void RequestServerRefresh() {
+  uint8_t buf[10];
+  *reinterpret_cast<uint16_t*>(buf)     = kCzBourgeonSetting;
+  *reinterpret_cast<uint16_t*>(buf + 2) = 10;
+  *reinterpret_cast<uint16_t*>(buf + 4) = kBourgeonSettingRefresh;
+  *reinterpret_cast<uint32_t*>(buf + 6) = 0;
+  Bourgeon::Instance().SendPacket(buf, sizeof(buf));
+}
 }  // namespace
 
 void MenuIconTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
@@ -207,10 +225,17 @@ void MenuIconTweaks::HideNativeGrid(bool hide) {
       if (void* wnd = reinterpret_cast<FindWindowFn>(kFindWindowFn)(
               reinterpret_cast<void*>(kUIWindowMgr), kMenuIconWndId))
         GridClear(wnd, nullptr);
+      // GridClear empties the node list but the already-composited pixels linger
+      // until a relayout — ask the server to clif_refresh so the client
+      // re-composites and the ghost vanishes (drained in OnTick, never mid-Present).
+      pending_refresh_ = true;
     }
   } else if (!hide && grid_hidden_) {
     PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(kGridDrawOrig));
     grid_hidden_ = false;
+    // Symmetric to enable: refresh so the restored native grid re-composites and
+    // reappears immediately (otherwise it waits for the next natural relayout).
+    pending_refresh_ = true;
   }
 }
 
@@ -237,7 +262,15 @@ void MenuIconTweaks::FlushPending() {
 
 // Fallback only: OnTick is throttled to ~100ms, so ProcessInput (which runs
 // first each frame) normally drains pending_cmd_ before this ever sees it.
-void MenuIconTweaks::OnTick() { FlushPending(); }
+void MenuIconTweaks::OnTick() {
+  // Drain a queued server-refresh request here (update phase, never mid-Present)
+  // so the client re-composites and the stale native-grid ghost vanishes.
+  if (pending_refresh_ && in_game_) {
+    pending_refresh_ = false;
+    RequestServerRefresh();
+  }
+  FlushPending();
+}
 
 void MenuIconTweaks::OnRenderUI() {
   if (!enabled_ || !in_game_) {
