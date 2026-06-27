@@ -610,6 +610,33 @@ void EnforceChatWidthNow(int target) {
   ApplyChatWidthSEH(g_chat_wnd, target);
   g_in_apply = false;
 }
+
+// ── Clear chat history ──────────────────────────────────────────────────────
+// Empty a chat window's per-channel raw-history vectors (text @tab+0x100, colors
+// @tab+0x10c, senders @tab+0x118) via std::vector::resize(0), then
+// UISubChatWnd_RebuildFromHistory (clears the drawn lines + re-wraps the now-empty
+// history -> blank). Iterates the window's tab vector [wnd+0xf4, wnd+0xf8).
+// SEH-guarded with no C++ objects in scope (legal __try). Runs from OnRenderUI,
+// the same context the width re-wrap already calls RebuildFromHistory from.
+constexpr uintptr_t kVecStrResize = 0x007103d0;  // std::vector<std::string>::resize
+constexpr uintptr_t kVecU32Resize = 0x0053faa0;  // std::vector<uint32_t>::resize
+using VecResizeFn = void (__fastcall*)(void*, void*, unsigned);
+
+static void ClearChatWindowHistorySEH(void* wnd) {
+  __try {
+    int* it  = *reinterpret_cast<int**>(reinterpret_cast<char*>(wnd) + 0xf4);
+    int* end = *reinterpret_cast<int**>(reinterpret_cast<char*>(wnd) + 0xf8);
+    for (; it != end; ++it) {
+      auto* tab = reinterpret_cast<char*>(*it);
+      if (!tab) continue;
+      reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x100, nullptr, 0);  // text
+      reinterpret_cast<VecResizeFn>(kVecU32Resize)(tab + 0x10c, nullptr, 0);  // colors
+      reinterpret_cast<VecResizeFn>(kVecStrResize)(tab + 0x118, nullptr, 0);  // senders
+      reinterpret_cast<RebuildFn>(kRebuildFromHist)(tab);  // clear drawn + re-wrap
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
 }  // namespace
 
 ChatTweaks::ChatTweaks() {
@@ -728,4 +755,8 @@ void SetCustomWidth(bool enabled, int px) {
 
 void SetTimestamps(bool enabled) { g_chat_timestamps = enabled; }
 void SetItemIcons(bool enabled)  { g_chat_item_icons = enabled; }
+
+void ClearHistory() {
+  if (g_chat_wnd) ClearChatWindowHistorySEH(g_chat_wnd);
+}
 }  // namespace chat

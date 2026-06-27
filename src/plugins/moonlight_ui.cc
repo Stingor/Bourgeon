@@ -64,8 +64,7 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
       const long id = std::atol(str);
       if (id > 0) {
         if (g_item_desc_visible && static_cast<uint32_t>(id) == g_last_viewed_item) {
-          LogInfo("[ItemDescWnd] same-item 0x18: id={} ecx=0x{:08X} -> toggle-close",
-                  id, reinterpret_cast<uint32_t>(ecx));
+          // Same item re-clicked while visible = toggle-close (no native 0x06).
           g_item_desc_visible = false;
           g_item_desc_wnd_ptr = nullptr;
         } else {
@@ -1061,6 +1060,13 @@ void MoonlightUi::OnRenderUI() {
         chat::SetItemIcons(chat_item_icons_);
         SaveSettings();
       }
+
+      // ── Clear chat history (all channels of the main chat window) ─────────
+      if (ImGui::Button("Effacer l'historique du chat")) chat::ClearHistory();
+      ImGui::SameLine(); HelpMarker(
+          "Vide l'historique de tous les canaux de la fenêtre de chat principale "
+          "(historique brut effacé + affichage vidé). Les nouveaux messages "
+          "réapparaissent normalement ensuite.");
 
       // ── Chat Background Colours (Main / Detached / Whisper) ───────────────
       // One independent colour+opacity picker per group, persisted locally.

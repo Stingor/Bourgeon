@@ -30,4 +30,9 @@ void SetTimestamps(bool enabled);
 // Enable/disable the native item icons on <ITEML> chat links.  Driven by the
 // settings UI in MoonlightUi.
 void SetItemIcons(bool enabled);
+
+// Clear the main chat window's history: empties every channel tab's raw-history
+// vectors and re-wraps to a blank display.  Safe no-op if the chat isn't live.
+// Driven by the "Effacer l'historique" button in MoonlightUi's chat section.
+void ClearHistory();
 }  // namespace chat
