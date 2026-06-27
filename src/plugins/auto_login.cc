@@ -252,6 +252,21 @@ void AutoLogin::OnTick() {
       if (++tick_counter_ >= kCharServerTicks) {
         PressKey(VK_RETURN);
         LogInfo("[AutoLogin] confirmed char-server select");
+        tick_counter_ = 0;
+        stage_ = Stage::kCharSelect;
+      }
+      break;
+
+    case Stage::kCharSelect:
+      // Character-select screen: enter the game with the first character. Wait
+      // for the char list to arrive (it comes after the char-server connect),
+      // then clamp the selection to the leftmost slot (Left arrow — harmless if
+      // already there) and confirm (Enter), same keyboard path as the others.
+      if (RagnarokClient::GameWindow() == nullptr) break;
+      if (++tick_counter_ >= kCharSelectTicks) {
+        for (int i = 0; i < 9; ++i) PressKey(VK_LEFT);  // clamp to the first slot
+        PressKey(VK_RETURN);                            // enter the game
+        LogInfo("[AutoLogin] selected first character — entering game");
         stage_ = Stage::kDone;
       }
       break;

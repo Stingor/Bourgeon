@@ -42,6 +42,7 @@ class AutoLogin : public Plugin {
     kWaitLogin,     // wait for the id/password window after selecting a server
     kCredentials,   // type id / password and submit
     kCharServer,    // confirm the char-server select screen
+    kCharSelect,    // pick the first character and enter the game
     kDone,          // finished — don't run again this session
   };
 
@@ -80,4 +81,5 @@ class AutoLogin : public Plugin {
   static constexpr int kSettleTicks = 1;
   static constexpr int kWaitLoginTicks = 2;
   static constexpr int kCharServerTicks = 5;
+  static constexpr int kCharSelectTicks = 10;
 };
