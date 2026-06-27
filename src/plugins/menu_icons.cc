@@ -31,12 +31,25 @@ constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;
 const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 // ── Native menu-icon window draw hook (hide the native grid) ───────────────
-// GridNoDraw replaces the native grid's DrawContent (RebuildNodes) with a no-op
-// so the grid never rebuilds its render nodes — staying invisible while the icon
-// map (window+0xb4) remains populated for FindIconByCmd / dispatch.
+// GridClear replaces the native grid's DrawContent (UIMenuIconWnd_RebuildNodes):
+// it empties the window's render-node list (window+4 = std::list head, window+8 =
+// size) and does NOT rebuild from the icon map (+0xb4, which stays populated for
+// dispatch). Unlike a plain no-op, this also drops the ALREADY-built nodes, so
+// the grid vanishes immediately instead of lingering until the next relayout
+// (map reload). The orphaned nodes leak once per enable (~25 * 0x18 bytes —
+// negligible; the game rebuilds them when the replacement is disabled).
 constexpr uintptr_t kGridDrawSlot = 0x01028200;  // UIMenuIconWnd vtbl +0x50
 constexpr uintptr_t kGridDrawOrig = 0x00814150;  // UIMenuIconWnd_RebuildNodes
-void __fastcall GridNoDraw(void* /*self*/, void* /*edx*/) {}
+void __fastcall GridClear(void* self, void* /*edx*/) {
+  __try {
+    char* w = reinterpret_cast<char*>(self);
+    int* head = *reinterpret_cast<int**>(w + 4);  // std::list sentinel node
+    if (!head) return;
+    head[0] = reinterpret_cast<int>(head);         // next = self (empty list)
+    head[1] = reinterpret_cast<int>(head);         // prev = self
+    *reinterpret_cast<int*>(w + 8) = 0;            // size = 0
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 
 // ── Command dispatch ───────────────────────────────────────────────────────
 // A native icon click routes (OnLButtonDown -> FUN_00a38b40 table lookup ->
@@ -187,8 +200,13 @@ float MenuIconTweaks::SnapIcon(float v, float ext, int self, bool y_axis) const 
 void MenuIconTweaks::HideNativeGrid(bool hide) {
   if (hide && !grid_hidden_) {
     if (*reinterpret_cast<uintptr_t*>(kGridDrawSlot) == kGridDrawOrig) {
-      PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(&GridNoDraw));
+      PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(&GridClear));
       grid_hidden_ = true;
+      // Drop the already-built render nodes now so the native grid disappears
+      // immediately (otherwise it lingers until the next relayout / map reload).
+      if (void* wnd = reinterpret_cast<FindWindowFn>(kFindWindowFn)(
+              reinterpret_cast<void*>(kUIWindowMgr), kMenuIconWndId))
+        GridClear(wnd, nullptr);
     }
   } else if (!hide && grid_hidden_) {
     PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(kGridDrawOrig));

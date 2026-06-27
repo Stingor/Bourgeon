@@ -421,6 +421,7 @@ void MoonlightUi::LoadSettings() {
     }
 
     if (auto* mi = Bourgeon::Instance().menu_icons()) {
+      mi->enabled_   = ui["menu_icons_enabled"].as<bool>(mi->enabled_);
       mi->edit_mode_ = ui["menu_icons_edit"].as<bool>(false);
       mi->saved_.clear();
       // Per-icon saved position/visibility under "menu_icons: { <name>: {...} }".
@@ -533,6 +534,8 @@ void MoonlightUi::SaveSettings() {
 
   {
     auto* mi = Bourgeon::Instance().menu_icons();
+    out << YAML::Key << "menu_icons_enabled"
+        << YAML::Value << (mi ? mi->enabled_ : false);
     out << YAML::Key << "menu_icons_edit"
         << YAML::Value << (mi ? mi->edit_mode_ : false);
     out << YAML::Key << "menu_icons" << YAML::Value << YAML::BeginMap;
