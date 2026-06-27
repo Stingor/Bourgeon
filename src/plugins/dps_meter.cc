@@ -268,14 +268,30 @@ void DpsMeter::OnRenderUI() {
   dps_border.w = bg_alpha_;
   ImGui::PushStyleColor(ImGuiCol_Border, dps_border);
   ImGuiWindowFlags flags = 0;
-  if (locked_)
-    flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-             ImGuiWindowFlags_NoInputs;  // freeze + click-through
+  if (locked_) {
+    flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;  // freeze
+    // Stay click-through over the body, but keep the collapse arrow clickable:
+    // only add NoInputs when the mouse is NOT over the title bar (rect captured
+    // last frame). With NoMove, the title bar's only live control is the arrow.
+    const ImVec2 mp = ImGui::GetIO().MousePos;
+    const bool over_title =
+        mp.x >= lock_title_rect_[0] && mp.x < lock_title_rect_[2] &&
+        mp.y >= lock_title_rect_[1] && mp.y < lock_title_rect_[3];
+    if (!over_title) flags |= ImGuiWindowFlags_NoInputs;  // body = click-through
+  }
   ImGui::SetNextWindowSize(ImVec2(260, 160), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowBgAlpha(bg_alpha_);
   bool open = true;
   ImGui::Begin(title, locked_ ? nullptr : &open, flags);
   if (!open) { visible_ = false; ImGui::End(); ImGui::PopStyleColor(1); ImGui::PopStyleVar(4); return; }
+  // Record the title-bar rect for next frame's locked collapse-arrow hit-test.
+  if (locked_) {
+    const ImVec2 wp = ImGui::GetWindowPos();
+    lock_title_rect_[0] = wp.x;
+    lock_title_rect_[1] = wp.y;
+    lock_title_rect_[2] = wp.x + ImGui::GetWindowSize().x;
+    lock_title_rect_[3] = wp.y + ImGui::GetFrameHeight();
+  }
 
   // Muted but still readable on a transparent background (the drop-shadow gives
   // the contrast that the stock ~0.5 grey TextDisabled lacked).

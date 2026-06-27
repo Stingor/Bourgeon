@@ -63,6 +63,9 @@ class DpsMeter : public Plugin {
   float current_dps_       = 0.0f;
   float peak_dps_          = 0.0f;
   bool  in_game_           = false;
+  // When locked: the title-bar rect (x0,y0,x1,y1) captured the previous frame,
+  // so the collapse arrow stays clickable while the body is click-through.
+  float lock_title_rect_[4] = {0, 0, 0, 0};
 
   void RecordDamage(int damage);
   void UpdatePlotSlot(DWORD now);
