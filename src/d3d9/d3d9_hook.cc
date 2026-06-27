@@ -9,6 +9,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "bourgeon.h"
 #include "imgui.h"
+#include "imgui/imgui_impl_dx7.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -143,6 +144,14 @@ void* D3D9_CreateTextureARGB(const void* argb, int w, int h) {
                     static_cast<size_t>(w) * 4);
     tex->UnlockRect(0);
     return tex;
+}
+
+// Picks the texture upload path for the renderer the client is actually running:
+// the DX7 proxy (Proxy_EndScene) sets g_imgui_dx7_active, in which case ImGui's
+// ImTextureID must be a DirectDraw surface, not a D3D9 texture.
+void* Overlay_CreateTextureARGB(const void* argb, int w, int h) {
+    if (g_imgui_dx7_active) return DX7_CreateTextureARGB(argb, w, h);
+    return D3D9_CreateTextureARGB(argb, w, h);
 }
 
 // ── EndScene hook ─────────────────────────────────────────────────────────────

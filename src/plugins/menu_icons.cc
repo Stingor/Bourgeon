@@ -106,7 +106,10 @@ void* LoadIconTexture(const char* name, int* out_w, int* out_h) {
   }
   *out_w = w;
   *out_h = h;
-  return D3D9_CreateTextureARGB(argb.data(), w, h);
+  // Route through the renderer-agnostic helper so icons upload as a DirectDraw
+  // surface in DX7 mode and a D3D9 texture in DX9 mode (else they're invisible
+  // in whichever renderer doesn't match the upload path).
+  return Overlay_CreateTextureARGB(argb.data(), w, h);
 }
 
 template <typename T>

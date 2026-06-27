@@ -7,3 +7,9 @@ void InitD3D9Hook();
 // Returns nullptr until the device has been captured (first rendered frame).
 // Caller owns the returned IDirect3DTexture9* (Release on shutdown / device loss).
 void* D3D9_CreateTextureARGB(const void* argb, int w, int h);
+
+// Renderer-agnostic ARGB→texture upload: routes to the DX7 (DirectDraw surface)
+// or D3D9 helper depending on which renderer the client is running. Plugins that
+// draw textured ImGui content (e.g. menu icons) MUST use this so they work in
+// both modes. Returns an ImTextureID-compatible void* (or nullptr).
+void* Overlay_CreateTextureARGB(const void* argb, int w, int h);

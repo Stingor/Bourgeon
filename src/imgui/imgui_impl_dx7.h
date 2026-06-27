@@ -17,6 +17,12 @@ IMGUI_IMPL_API void ImGui_ImplDX7_Shutdown();
 IMGUI_IMPL_API void ImGui_ImplDX7_NewFrame();
 IMGUI_IMPL_API void ImGui_ImplDX7_RenderDrawData(ImDrawData* draw_data);
 
+// Creates a DX7 texture (LPDIRECTDRAWSURFACE7, returned as void*) from a 32-bit
+// A8R8G8B8 pixel buffer (w*h, tightly packed, top-down) for use as an ImGui
+// ImTextureID in DX7 mode. Returns nullptr if the device isn't ready yet.
+// Caller owns the surface (Release on teardown / device loss).
+IMGUI_IMPL_API void* DX7_CreateTextureARGB(const void* argb, int w, int h);
+
 // Use if you want to reset your rendering device without losing Dear ImGui
 // state.
 IMGUI_IMPL_API bool ImGui_ImplDX7_CreateDeviceObjects();

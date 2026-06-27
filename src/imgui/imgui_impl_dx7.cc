@@ -201,6 +201,66 @@ void ImGui_ImplDX7_RenderDrawData(ImDrawData* draw_data) {
   // FIXME: Restore DX7 state
 }
 
+void* DX7_CreateTextureARGB(const void* argb, int w, int h) {
+  if (!g_pd3dDevice || !argb || w <= 0 || h <= 0) return nullptr;
+
+  // The icon buffer is already A8R8G8B8 (B,G,R,A bytes per pixel) — the same
+  // layout the font atlas is converted to above — so no color swap is needed.
+  D3DDEVICEDESC7 ddDesc;
+  g_pd3dDevice->GetCaps(&ddDesc);
+
+  DDSURFACEDESC2 ddsd;
+  ZeroMemory(&ddsd, sizeof(ddsd));
+  ddsd.dwSize = sizeof(ddsd);
+  ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT |
+                 DDSD_TEXTURESTAGE;
+  ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
+  ddsd.dwWidth = static_cast<DWORD>(w);
+  ddsd.dwHeight = static_cast<DWORD>(h);
+  // Texture-manage on hardware devices, system memory on the ref device.
+  if (ddDesc.deviceGUID == IID_IDirect3DHALDevice ||
+      ddDesc.deviceGUID == IID_IDirect3DTnLHalDevice) {
+    ddsd.ddsCaps.dwCaps2 = DDSCAPS2_TEXTUREMANAGE;
+  } else {
+    ddsd.ddsCaps.dwCaps |= DDSCAPS_SYSTEMMEMORY;
+  }
+  ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+  ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB | DDPF_ALPHAPIXELS;
+  ddsd.ddpfPixelFormat.dwRGBBitCount = 32;
+  ddsd.ddpfPixelFormat.dwRBitMask = 0xff0000;
+  ddsd.ddpfPixelFormat.dwGBitMask = 0xff00;
+  ddsd.ddpfPixelFormat.dwBBitMask = 0xff;
+  ddsd.ddpfPixelFormat.dwRGBAlphaBitMask = 0xff000000;
+
+  LPDIRECTDRAWSURFACE7 render_target = nullptr;
+  if (FAILED(g_pd3dDevice->GetRenderTarget(&render_target)) || !render_target)
+    return nullptr;
+  LPDIRECTDRAW7 dd = nullptr;
+  render_target->GetDDInterface(reinterpret_cast<void**>(&dd));
+  render_target->Release();
+  if (!dd) return nullptr;
+
+  LPDIRECTDRAWSURFACE7 tex = nullptr;
+  HRESULT hr = dd->CreateSurface(&ddsd, &tex, nullptr);
+  dd->Release();
+  if (FAILED(hr) || !tex) return nullptr;
+
+  DDSURFACEDESC2 lock;
+  ZeroMemory(&lock, sizeof(lock));
+  lock.dwSize = sizeof(lock);
+  if (tex->Lock(nullptr, &lock, DDLOCK_WAIT, nullptr) != D3D_OK) {
+    tex->Release();
+    return nullptr;
+  }
+  const auto* src = static_cast<const unsigned char*>(argb);
+  for (int y = 0; y < h; ++y)
+    memcpy(static_cast<unsigned char*>(lock.lpSurface) +
+               static_cast<size_t>(lock.lPitch) * y,
+           src + static_cast<size_t>(y) * w * 4, static_cast<size_t>(w) * 4);
+  tex->Unlock(nullptr);
+  return tex;
+}
+
 bool ImGui_ImplDX7_Init(IDirect3DDevice7* device) {
   // Setup backend capabilities flags
   ImGuiIO& io = ImGui::GetIO();
