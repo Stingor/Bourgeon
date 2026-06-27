@@ -13,6 +13,7 @@
 #include "plugins/integrity_check.h"
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
+#include "plugins/inventory_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -70,10 +71,9 @@ void Bourgeon::AddLogLine(std::string log_line) {
 }
 
 void Bourgeon::RenderUI() {
-  if (strstr(GetCommandLineA(), "--console") != nullptr) {
-  // Render Bourgeon's main window
-  ShowBourgeonWindow();
-  }
+  // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
+  // ShowBourgeonWindow();
+  // }
   if (strstr(GetCommandLineA(), "--demo") != nullptr) {
     ImGui::ShowDemoWindow();
   }
@@ -159,6 +159,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<MoonlightUi>());
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
+  plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   {
     auto dps = std::make_unique<DpsMeter>();
     dps_meter_ = dps.get();

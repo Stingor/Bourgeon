@@ -32,6 +32,8 @@ set(BOURGEON_FILES
 	"plugins/basic_info.h"
 	"plugins/menu_icons.cc"
 	"plugins/menu_icons.h"
+	"plugins/inventory_tweaks.cc"
+	"plugins/inventory_tweaks.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"

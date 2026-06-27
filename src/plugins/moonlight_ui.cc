@@ -388,6 +388,10 @@ void MoonlightUi::LoadSettings() {
       };
       load_dps_col("dps_text_color", dps->text_color_);
       load_dps_col("dps_plot_color", dps->plot_color_);
+      dps->visible_             = ui["dps_visible"].as<bool>(true);
+      dps->slot_ms_             = ui["dps_slot_ms"].as<int>(200);
+      dps->dps_window_secs_     = ui["dps_window_secs"].as<int>(10);
+      dps->combat_timeout_secs_ = ui["dps_combat_timeout_secs"].as<int>(5);
     }
 
     if (auto* eb = Bourgeon::Instance().basic_info()) {
@@ -502,7 +506,11 @@ void MoonlightUi::SaveSettings() {
                     : false)
         << YAML::Key << "dps_bg_alpha"   << YAML::Value << (dps ? dps->bg_alpha_ : 0.90f)
         << YAML::Key << "dps_text_color" << YAML::Value << dps_text_col
-        << YAML::Key << "dps_plot_color" << YAML::Value << dps_plot_col;
+        << YAML::Key << "dps_plot_color" << YAML::Value << dps_plot_col
+        << YAML::Key << "dps_visible"             << YAML::Value << (dps ? dps->visible_ : true)
+        << YAML::Key << "dps_slot_ms"             << YAML::Value << (dps ? dps->slot_ms_ : 200)
+        << YAML::Key << "dps_window_secs"         << YAML::Value << (dps ? dps->dps_window_secs_ : 10)
+        << YAML::Key << "dps_combat_timeout_secs" << YAML::Value << (dps ? dps->combat_timeout_secs_ : 5);
 
   // EXP/HP/SP bar settings (BasicInfoTweaks)
   out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : true)
@@ -663,7 +671,9 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   if (len < 6) return;
 
   const uint16_t count = *reinterpret_cast<const uint16_t*>(data + 4);
-  const uint16_t expected_len = static_cast<uint16_t>(6 + count * 6);
+  // 32-bit math: a uint16_t cast here would truncate (e.g. count=0xFFFF wraps
+  // 393216 -> 0), defeating the length check and allowing an OOB read.
+  const uint32_t expected_len = 6u + static_cast<uint32_t>(count) * 6u;
   if (len < expected_len) {
     LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len, count);
     return;
@@ -1163,7 +1173,8 @@ void MoonlightUi::OnRenderUI() {
     // ── DPS Meter ────────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("DPS Meter")) {
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
-        ImGui::Checkbox("Afficher", &dps->visible_);
+        if (ImGui::Checkbox("Afficher", &dps->visible_))
+          SaveSettings();
         if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
@@ -1185,19 +1196,24 @@ void MoonlightUi::OnRenderUI() {
         if (ImGui::SliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
           dps->slot_ms_ = slot_ms;
           dps->ResetHistory();
+          SaveSettings();
         }
         ImGui::SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
 
         ImGui::SetNextItemWidth(160.0f);
         int win = dps->dps_window_secs_;
-        if (ImGui::SliderInt("Fenêtre DPS (s)", &win, 1, 30))
+        if (ImGui::SliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
           dps->dps_window_secs_ = win;
+          SaveSettings();
+        }
         ImGui::SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
 
         ImGui::SetNextItemWidth(160.0f);
         int timeout = dps->combat_timeout_secs_;
-        if (ImGui::SliderInt("Timeout combat (s)", &timeout, 1, 15))
+        if (ImGui::SliderInt("Timeout combat (s)", &timeout, 1, 15)) {
           dps->combat_timeout_secs_ = timeout;
+          SaveSettings();
+        }
         ImGui::SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
 
         if (ImGui::Button("Reset graphique"))
@@ -1525,8 +1541,8 @@ void MoonlightUi::OnRenderUI() {
           }
           ImGui::Separator();
           {// @autolootmvp / @autolootmvpreward
-          if (ImGui::Checkbox("Autoloot MVP cards", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
-          ImGui::SameLine(); HelpMarker("Loot automatiquement les cartes MVP\nquelque soit leur taux de drop. (@autolootmvp)");
+          if (ImGui::Checkbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
+          ImGui::SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
           if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
           ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
