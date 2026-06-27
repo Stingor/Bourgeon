@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <algorithm>
+#include <cstdarg>
 #include <cstdio>
 #include <numeric>
 
@@ -196,7 +197,6 @@ void DpsMeter::UpdatePlotSlot(DWORD now) {
     }
     const float slot_dps = slot_dmg * (1000.0f / sms);
     plot_buf_[plot_offset_] = slot_dps;
-    if (slot_dps > peak_dps_) peak_dps_ = slot_dps;
     plot_offset_ = (plot_offset_ + 1) % kPlotSlots;
     last_slot_tick_ += sms;
   }
@@ -205,6 +205,23 @@ void DpsMeter::UpdatePlotSlot(DWORD now) {
   const DWORD cutoff = now - kPlotSlots * sms;
   while (!events_.empty() && events_.front().tick_ms < cutoff)
     events_.pop_front();
+}
+
+// Draws text with a 1px dark drop-shadow so it stays legible over a transparent
+// window background (the game world shows through when bg_alpha_ is low — plain
+// grey TextDisabled vanished against it). Honors the current ImGui cursor and
+// advances layout like ImGui::Text, so it works after SameLine() too.
+static void TextShadowed(const ImVec4& col, const char* fmt, ...) {
+  char buf[256];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+
+  const ImVec2 pos = ImGui::GetCursorScreenPos();
+  ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+                                      IM_COL32(0, 0, 0, 190), buf);
+  ImGui::TextColored(col, "%s", buf);
 }
 
 void DpsMeter::OnRenderUI() {
@@ -229,7 +246,11 @@ void DpsMeter::OnRenderUI() {
       if (e.tick_ms >= window_start)
         window_dmg += e.damage;
     current_dps_ = static_cast<float>(window_dmg) / static_cast<float>(dps_window_secs_);
-    // peak_dps_ is updated per-slot in UpdatePlotSlot (not smoothed)
+    // Peak = the highest the rolling-window DPS ever reached this fight, so it
+    // stays consistent with the "current DPS" readout. (The old per-slot peak
+    // used the short slot window scaled by 1000/slot_ms, so one burst hit in a
+    // 200ms slot inflated it ~5x and never matched the displayed DPS.)
+    if (in_combat_ && current_dps_ > peak_dps_) peak_dps_ = current_dps_;
   }
 
   if (!visible_) return;
@@ -256,21 +277,29 @@ void DpsMeter::OnRenderUI() {
   ImGui::Begin(title, locked_ ? nullptr : &open, flags);
   if (!open) { visible_ = false; ImGui::End(); ImGui::PopStyleColor(1); ImGui::PopStyleVar(4); return; }
 
-  ImGui::TextColored(ImVec4(text_color_[0], text_color_[1], text_color_[2],
-                            text_color_[3]), "%.0f DPS", current_dps_);
+  // Muted but still readable on a transparent background (the drop-shadow gives
+  // the contrast that the stock ~0.5 grey TextDisabled lacked).
+  const ImVec4 kSub(0.78f, 0.78f, 0.78f, 1.0f);
+  TextShadowed(ImVec4(text_color_[0], text_color_[1], text_color_[2],
+                      text_color_[3]), "%.0f DPS", current_dps_);
   ImGui::SameLine();
-  ImGui::TextDisabled("  peak %.0f", peak_dps_);
+  TextShadowed(kSub, "  peak %.0f", peak_dps_);
 
   // Plot height = available space minus one text line at the bottom.
   const float line_h   = ImGui::GetTextLineHeightWithSpacing();
   const float plot_h   = std::max(ImGui::GetContentRegionAvail().y - line_h, 20.0f);
+
+  // Y-axis auto-scales to the tallest visible slot. The plot shows fine-grained
+  // per-slot bursts (slot_ms_ window), which run higher than the smoothed peak
+  // label — so it gets its own scale rather than reusing peak_dps_.
+  const float plot_max = *std::max_element(plot_buf_.begin(), plot_buf_.end());
 
   // Plot: oldest → newest, use plot_offset_ as the starting slot
   ImGui::PushStyleColor(ImGuiCol_PlotLines,
                         ImVec4(plot_color_[0], plot_color_[1], plot_color_[2],
                                plot_color_[3]));
   ImGui::PlotLines("##dps", plot_buf_.data(), kPlotSlots, plot_offset_,
-                   nullptr, 0.0f, std::max(peak_dps_ * 1.2f, 1.0f),
+                   nullptr, 0.0f, std::max(plot_max * 1.2f, 1.0f),
                    ImVec2(-1, plot_h));
   ImGui::PopStyleColor();
   if (ImGui::IsItemHovered()) {
@@ -284,9 +313,9 @@ void DpsMeter::OnRenderUI() {
   if (in_combat_) {
     const float elapsed = static_cast<float>(now - combat_start_tick_) / 1000.0f;
     const float avg_dps = elapsed > 0.0f ? static_cast<float>(total_damage_) / elapsed : 0.0f;
-    ImGui::TextDisabled("avg %.0f  |  %d dmg  |  %.0fs", avg_dps, total_damage_, elapsed);
+    TextShadowed(kSub, "avg %.0f  |  %d dmg  |  %.0fs", avg_dps, total_damage_, elapsed);
   } else {
-    ImGui::TextDisabled("(pas en combat)");
+    TextShadowed(kSub, "(pas en combat)");
   }
 
   ImGui::End();
