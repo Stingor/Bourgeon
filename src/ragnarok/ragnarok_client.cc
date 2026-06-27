@@ -39,24 +39,142 @@ static HWND g_game_hwnd = nullptr;
 
 static bool IsMouseOverAnyImGuiWindow(float mx, float my);
 
+// ── Real RO cursor capture (DX9) ─────────────────────────────────────────────
+// The game draws its cursor as a SOFTWARE sprite batched into the scene render
+// queue, BEFORE our Present-hook ImGui — so it's always hidden under ImGui
+// windows (see project_ro_cursor). Instead of re-drawing the game's batched
+// cursor (impossible after the flush), we CAPTURE the cursor's atlas texture +
+// UV each frame and re-draw it ourselves via ImGui's foreground list, but only
+// where the mouse is over an ImGui window (so there's no double cursor).
+//
+// Capture mechanism: CursorMgr_RenderSprite (0x00a74410) renders the cursor; it
+// resolves the current frame's GPU texture through SpriteAtlas_GetCachedTexture
+// (0x00566b70). We hook the former to scope a re-entrancy flag, and the latter
+// to grab, while that flag is set, the returned CTexture's IDirect3DTexture9*
+// (CTexture+0x12c, confirmed live) + the atlas UV rect (geom[3..6]) + the sprite
+// pixel size. Everything runs on the single render thread, so no locking.
+extern bool g_imgui_dx7_active;
+
+namespace {
+constexpr uintptr_t kCursorRenderFn = 0x00a74410;  // CursorMgr_RenderSprite
+constexpr uintptr_t kAtlasGetFn     = 0x00566b70;  // SpriteAtlas_GetCachedTexture
+// CTexture -> native GPU handle. The concrete CTexture class is renderer-
+// specific (different vtable + field offset): DX9 stores an IDirect3DTexture9*
+// at +0x12c, DX7 an IDirectDrawSurface7* at +0x128 (both confirmed live). ImGui's
+// ImTextureID is opaque — the active backend (imgui_impl_dx9 / imgui_impl_dx7)
+// interprets it, so the same AddImage works for both.
+constexpr int kCTexNativeOffDX9 = 0x12c;
+constexpr int kCTexNativeOffDX7 = 0x128;
+
+struct CursorCapture {
+  void*  tex = nullptr;             // IDirect3DTexture9* (atlas page)
+  ImVec2 uv0{0.f, 0.f}, uv1{1.f, 1.f};
+  int    w = 0, h = 0;              // sprite frame pixel size
+  DWORD  tick = 0;                  // GetTickCount() of last capture (freshness)
+};
+CursorCapture g_cursor_cap;
+bool g_capturing_cursor   = false;  // set only inside CursorMgr_RenderSprite
+bool g_captured_this_pass = false;  // grab just the first (main) layer
+
+using CursorRenderFn = void(__fastcall*)(void* thisptr);
+using AtlasGetFn = void*(__fastcall*)(void* thisptr, void* edx, int spr_frame,
+                                      int palette, int* geom);
+CursorRenderFn g_orig_cursor_render = nullptr;
+AtlasGetFn     g_orig_atlas_get     = nullptr;
+
+// Hook on SpriteAtlas_GetCachedTexture: while the cursor is rendering, grab the
+// first non-null atlas texture it resolves.
+void* __fastcall Hooked_AtlasGet(void* thisptr, void* edx, int spr_frame,
+                                 int palette, int* geom) {
+  void* ctex = g_orig_atlas_get(thisptr, edx, spr_frame, palette, geom);
+  if (g_capturing_cursor && !g_captured_this_pass && ctex && geom && spr_frame) {
+    const int off = g_imgui_dx7_active ? kCTexNativeOffDX7 : kCTexNativeOffDX9;
+    void* d3dtex = *reinterpret_cast<void**>(
+        reinterpret_cast<char*>(ctex) + off);
+    if (d3dtex) {
+      const short* sf = reinterpret_cast<const short*>(
+          static_cast<uintptr_t>(static_cast<unsigned>(spr_frame)));
+      g_cursor_cap.tex = d3dtex;
+      g_cursor_cap.uv0 = ImVec2(*reinterpret_cast<float*>(&geom[3]),
+                                *reinterpret_cast<float*>(&geom[4]));
+      g_cursor_cap.uv1 = ImVec2(*reinterpret_cast<float*>(&geom[5]),
+                                *reinterpret_cast<float*>(&geom[6]));
+      g_cursor_cap.w   = sf[0];
+      g_cursor_cap.h   = sf[1];
+      g_cursor_cap.tick = GetTickCount();
+      g_captured_this_pass = true;
+    }
+  }
+  return ctex;
+}
+
+// Hook on CursorMgr_RenderSprite: scope the capture flag to the cursor render,
+// and while the mouse is over an ImGui window force the cursor type (this+0x50)
+// to 0 (arrow). Without this, the game's hover state machine keeps switching the
+// type (NPC / attack / no-walk) based on the game entity or cell sitting *under*
+// the ImGui window, so the captured cursor flickered between arrow and those.
+// The write is transient — the game re-derives the type every frame via its own
+// hover update, so there's no lasting state change.
+void __fastcall Hooked_CursorRender(void* thisptr) {
+  g_capturing_cursor = true;
+  g_captured_this_pass = false;
+  if (thisptr && ImGui::GetCurrentContext()) {
+    const ImVec2 mp = ImGui::GetIO().MousePos;
+    if (IsMouseOverAnyImGuiWindow(mp.x, mp.y))
+      *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = 0;
+  }
+  g_orig_cursor_render(thisptr);
+  g_capturing_cursor = false;
+}
+
+// Installed lazily from the render thread (the hooked functions run on the same
+// thread, so they can't be mid-execution while we patch them). Works in both
+// renderers — the native-handle offset is chosen per renderer in the capture.
+void InstallCursorCapture() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  using namespace hooking;
+  g_orig_cursor_render = reinterpret_cast<CursorRenderFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kCursorRenderFn),
+          reinterpret_cast<uint8_t*>(&Hooked_CursorRender)));
+  g_orig_atlas_get = reinterpret_cast<AtlasGetFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kAtlasGetFn),
+          reinterpret_cast<uint8_t*>(&Hooked_AtlasGet)));
+  LogInfo("[Cursor] capture hooks installed (render_orig={:x} atlas_orig={:x})",
+          reinterpret_cast<uintptr_t>(g_orig_cursor_render),
+          reinterpret_cast<uintptr_t>(g_orig_atlas_get));
+}
+}  // namespace
+
 // ── RO cursor overlay via ImGui foreground draw list ─────────────────────────
 // Called between ImGui::NewFrame() and ImGui::EndFrame() so the draw commands
 // are part of the current frame's render data, guaranteed above all windows.
 void DrawROCursorImGui() {
   if (!ImGui::GetCurrentContext()) return;
+  InstallCursorCapture();  // lazy, once (no-op in DX7)
 
   const ImVec2 mp = ImGui::GetIO().MousePos;
   if (mp.x < 0.f || mp.y < 0.f) return;
   if (!IsMouseOverAnyImGuiWindow(mp.x, mp.y)) return;
 
-  // if (*reinterpret_cast<int*>(0x01229448)) return;  // hidden
-  const uintptr_t mgr = *reinterpret_cast<uintptr_t*>(0x0121333c);
-  if (!mgr) return;
-
-  const float mx = mp.x;
-  const float my = mp.y;
-
   ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+  // Real captured RO cursor (DX9): the atlas sub-rect the game resolved for the
+  // current cursor frame. Freshness-gated so a stale texture isn't drawn after
+  // the game stops rendering a cursor.
+  const CursorCapture cap = g_cursor_cap;
+  if (cap.tex && cap.w > 0 && cap.h > 0 &&
+      (GetTickCount() - cap.tick) < 500) {
+    dl->AddImage((ImTextureID)(uintptr_t)cap.tex,
+                 mp, ImVec2(mp.x + cap.w, mp.y + cap.h), cap.uv0, cap.uv1);
+    return;
+  }
+
+  // Fallback: placeholder triangle (cursor not captured yet).
+  const float mx = mp.x, my = mp.y;
   ImVec2 pts[3] = {{mx, my}, {mx + 10.f, my + 10.f}, {mx, my + 13.f}};
   dl->AddTriangleFilled(pts[0], pts[1], pts[2], IM_COL32(255, 255, 255, 230));
   dl->AddTriangle(pts[0], pts[1], pts[2], IM_COL32(0, 0, 0, 200), 1.2f);
