@@ -17,6 +17,10 @@ class MoonlightUi : public Plugin {
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void OnRenderUI() override;
 
+  // Writes bourgeon_settings.yaml.  Public so sibling plugins (e.g. the
+  // status-icon panel) can persist their own config through the shared file.
+  void SaveSettings();
+
  private:
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
@@ -180,11 +184,10 @@ class MoonlightUi : public Plugin {
   static uint32_t ArgbFromPicker(const float c[4]);
   static void     PickerFromArgb(float c[4], uint32_t argb);
 
-  // Persists / restores all chat-bg groups from bourgeon_settings.yaml in the
-  // game directory.  Load is called after FindChatBgSites so it can immediately
-  // apply the saved colours.  Save is called on picker release / preset change.
+  // Restores all chat-bg groups from bourgeon_settings.yaml in the game
+  // directory.  Called after FindChatBgSites so it can immediately apply the
+  // saved colours.  (SaveSettings is declared public above.)
   void LoadSettings();
-  void SaveSettings();
 
   // Shared colour presets, applicable to any group's picker.
   struct ChatBgPreset { std::string name; uint32_t argb; };

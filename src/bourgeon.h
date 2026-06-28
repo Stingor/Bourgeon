@@ -13,6 +13,8 @@ class DiscordRelay;
 class DpsMeter;
 class BasicInfoTweaks;
 class MenuIconTweaks;
+class StatusIconTweaks;
+class MoonlightUi;
 
 class Bourgeon {
  public:
@@ -29,6 +31,8 @@ class Bourgeon {
   DpsMeter* dps_meter();
   BasicInfoTweaks* basic_info();
   MenuIconTweaks* menu_icons();
+  StatusIconTweaks* status_icons();
+  MoonlightUi* moonlight_ui();
 
   bool Initialize();
   void OnTick();
@@ -67,6 +71,8 @@ class Bourgeon {
   DpsMeter*     dps_meter_     = nullptr;  // non-owning, lifetime tied to plugins_
   BasicInfoTweaks* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   MenuIconTweaks* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
+  StatusIconTweaks* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::vector<std::string> log_lines_;
   RagnarokClient client_;

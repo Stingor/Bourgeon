@@ -14,6 +14,7 @@
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/inventory_tweaks.h"
+#include "plugins/status_icon_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -24,6 +25,8 @@ DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
 DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
 BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
 MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
+StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
+MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -156,10 +159,19 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<AutoLogin>());
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
   plugins_.emplace_back(std::make_unique<CheatDetector>());
-  plugins_.emplace_back(std::make_unique<MoonlightUi>());
+  {
+    auto moonlight_ui = std::make_unique<MoonlightUi>();
+    moonlight_ui_ = moonlight_ui.get();
+    plugins_.emplace_back(std::move(moonlight_ui));
+  }
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
+  {
+    auto status_icons = std::make_unique<StatusIconTweaks>();
+    status_icons_ = status_icons.get();
+    plugins_.emplace_back(std::move(status_icons));
+  }
   {
     auto dps = std::make_unique<DpsMeter>();
     dps_meter_ = dps.get();
@@ -196,7 +208,7 @@ void Bourgeon::ShowBourgeonWindow() const {
     }
   }
 
-  // Logs: a live mirror of every LogInfo/LogWarn/LogError (fed by the in-memory
+  // Logs: a live mirror of every LogInfo/LogDiag/LogError (fed by the in-memory
   // spdlog sink), not just the plugin lines pushed via AddLogLine.  Snapshotted
   // each frame so it stays thread-safe against sinks running on other threads.
   if (ImGui::CollapsingHeader("Logs")) {

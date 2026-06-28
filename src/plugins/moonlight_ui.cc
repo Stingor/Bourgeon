@@ -13,6 +13,7 @@
 #include "plugins/basic_info.h"
 #include "plugins/dps_meter.h"
 #include "plugins/menu_icons.h"
+#include "plugins/status_icon_tweaks.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -445,6 +446,23 @@ void MoonlightUi::LoadSettings() {
       }
     }
 
+    if (auto* si = Bourgeon::Instance().status_icons()) {
+      StatusIconConfig& c = si->config();
+      c.enabled        = ui["statusicon_enabled"].as<bool>(c.enabled);
+      c.corner         = ui["statusicon_corner"].as<int>(c.corner);
+      c.margin_x       = ui["statusicon_margin_x"].as<int>(c.margin_x);
+      c.margin_y       = ui["statusicon_margin_y"].as<int>(c.margin_y);
+      c.step_dir       = ui["statusicon_step_dir"].as<int>(c.step_dir);
+      c.wrap_dir       = ui["statusicon_wrap_dir"].as<int>(c.wrap_dir);
+      c.per_line       = ui["statusicon_per_line"].as<int>(c.per_line);
+      c.icon_pitch     = ui["statusicon_icon_pitch"].as<int>(c.icon_pitch);
+      c.line_pitch     = ui["statusicon_line_pitch"].as<int>(c.line_pitch);
+      c.sort_mode      = ui["statusicon_sort_mode"].as<int>(c.sort_mode);
+      c.show_remaining = ui["statusicon_show_remaining"].as<bool>(c.show_remaining);
+      c.time_bg        = ui["statusicon_time_bg"].as<bool>(c.time_bg);
+      si->MarkDirty();
+    }
+
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
       for (const YAML::Node& p : presets) {
@@ -557,6 +575,23 @@ void MoonlightUi::SaveSettings() {
       }
     }
     out << YAML::EndMap;
+  }
+
+  {
+    auto* si = Bourgeon::Instance().status_icons();
+    const StatusIconConfig c = si ? si->config() : StatusIconConfig{};
+    out << YAML::Key << "statusicon_enabled"        << YAML::Value << c.enabled
+        << YAML::Key << "statusicon_corner"         << YAML::Value << c.corner
+        << YAML::Key << "statusicon_margin_x"       << YAML::Value << c.margin_x
+        << YAML::Key << "statusicon_margin_y"       << YAML::Value << c.margin_y
+        << YAML::Key << "statusicon_step_dir"       << YAML::Value << c.step_dir
+        << YAML::Key << "statusicon_wrap_dir"       << YAML::Value << c.wrap_dir
+        << YAML::Key << "statusicon_per_line"       << YAML::Value << c.per_line
+        << YAML::Key << "statusicon_icon_pitch"     << YAML::Value << c.icon_pitch
+        << YAML::Key << "statusicon_line_pitch"     << YAML::Value << c.line_pitch
+        << YAML::Key << "statusicon_sort_mode"      << YAML::Value << c.sort_mode
+        << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
+        << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg;
   }
 
   out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
@@ -1360,6 +1395,14 @@ void MoonlightUi::OnRenderUI() {
           ImGui::TreePop();
         }
       }
+    }
+
+    // ── Status icons (StatusIconTweaks) ──────────────────────────────────
+    if (ImGui::CollapsingHeader("Icônes de statut")) {
+      if (auto* si = Bourgeon::Instance().status_icons())
+        si->DrawSettings();
+      else
+        ImGui::TextDisabled("(plugin indisponible)");
     }
 
     // ── Commands Settings ────────────────────────────────────────────────
