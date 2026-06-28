@@ -433,13 +433,15 @@ void MoonlightUi::LoadSettings() {
       load_color("expbar_bg_color", eb->bg_color_);
     }
 
-    // Global alignment grid (kept under the legacy expbar_grid_* keys for
-    // back-compat with existing settings files).
-    grid_.show = ui["expbar_grid_show"].as<bool>(false);
-    grid_.snap = ui["expbar_grid_snap"].as<bool>(false);
-    grid_.size = ui["expbar_grid_size"].as<int>(32);
+    // Global alignment grid. Reads grid_*, falling back to the legacy
+    // expbar_grid_* keys so existing settings files keep working (they get
+    // rewritten under the new keys on the next save).
+    grid_.show = ui["grid_show"].as<bool>(ui["expbar_grid_show"].as<bool>(false));
+    grid_.snap = ui["grid_snap"].as<bool>(ui["expbar_grid_snap"].as<bool>(false));
+    grid_.size = ui["grid_size"].as<int>(ui["expbar_grid_size"].as<int>(32));
     {
-      const std::string hex = ui["expbar_grid_color"].as<std::string>("");
+      std::string hex = ui["grid_color"].as<std::string>("");
+      if (hex.size() != 8) hex = ui["expbar_grid_color"].as<std::string>("");
       if (hex.size() == 8)
         PickerFromArgb(grid_.color,
                        static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
@@ -514,8 +516,8 @@ void MoonlightUi::SaveSettings() {
     std::snprintf(eb_bg_col, sizeof(eb_bg_col), "%08X",
                   ArgbFromPicker(eb->bg_color_));
   // Global alignment grid colour (owned by MoonlightUi, not basic_info).
-  char eb_grid_col[9];
-  std::snprintf(eb_grid_col, sizeof(eb_grid_col), "%08X",
+  char grid_col[9];
+  std::snprintf(grid_col, sizeof(grid_col), "%08X",
                 ArgbFromPicker(grid_.color));
 
   YAML::Emitter out;
@@ -559,10 +561,10 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "expbar_vertical" << YAML::Value << (eb ? eb->vertical_ : false)
       << YAML::Key << "expbar_rounding" << YAML::Value << (eb ? eb->rounding_ : 4.0f)
       << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
-      << YAML::Key << "expbar_grid_show"  << YAML::Value << grid_.show
-      << YAML::Key << "expbar_grid_snap"  << YAML::Value << grid_.snap
-      << YAML::Key << "expbar_grid_size"  << YAML::Value << grid_.size
-      << YAML::Key << "expbar_grid_color" << YAML::Value << eb_grid_col;
+      << YAML::Key << "grid_show"  << YAML::Value << grid_.show
+      << YAML::Key << "grid_snap"  << YAML::Value << grid_.snap
+      << YAML::Key << "grid_size"  << YAML::Value << grid_.size
+      << YAML::Key << "grid_color" << YAML::Value << grid_col;
   if (eb) {
     for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
       const std::string p =
