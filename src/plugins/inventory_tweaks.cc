@@ -126,6 +126,28 @@ constexpr uintptr_t kRsvNeg[] = {
 // editing colorchip.bmp (data\ overrides the GRF). Stock chip (16,0) = #797979.
 constexpr uintptr_t kColorChip  = 0x007a6df0;  // FUN_007a6df0(x,y,&r,&g,&b) -> colorchip.bmp pixel
 constexpr int kTabCtrl      = 0x118;  // inventory tab control (this+0x118)
+constexpr int kTabSel       = 0x7c;   // tab control: selected/active tab index (Use active <=> ==0)
+constexpr int kTabSizeArr   = 0xcc;   // tab control: per-tab size int-vector begin (size[i] = tab height)
+constexpr int kTabThickness = 0x84;   // tab control: strip cross-thickness; width = this+0x84+1 (via Recompute)
+constexpr int kTabMaxWidth  = 36;     // clamp the strip width so it stays clear of the slot grid (x=0x28=40)
+constexpr int kTabLabelVec  = 0xb4;   // tab control: per-tab std::string label vector begin (stride 0x18)
+constexpr int kTabStripX    = 3;      // tab strip origin in the inventory window (native SetPos(3,0x12))
+constexpr int kTabStripY    = 0x12;
+constexpr uintptr_t kTabRecompute = 0x0085fca0;  // FUN_0085fca0(tabctrl): recompute strip size after a size[] change
+// Tab control DrawContent (vtable +0x50): FUN_00857910 clears the strip node
+// (colorkey 0xffff00ff) then draws each tab. We hook it so the Use-tab image is
+// repainted on EVERY strip render (a per-frame blit from the inventory hook gets
+// wiped by this clear, and only survived a manual resize by node-recreate luck).
+// The tab class is shared (chat/skill/etc.), so the hook filters on OUR control.
+constexpr uintptr_t kTabDrawSlot  = 0x0102dd94;  // tab control vtable +0x50 slot (static .rdata)
+constexpr uintptr_t kTabDrawOrig  = 0x00857910;  // FUN_00857910 tab DrawContent
+constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // inventory UIWindow* global (identifies our tab control)
+// Per-tab image base names in the btnbar folder; index = tab order (added in
+// FUN_0093f100: 0=Use 1=Eqp 2=Etc 3=Fav). Each has active "<name>1.bmp" and
+// inactive "<name>2.bmp". Sized/blitted per tab; the strip width (this+0x14) is
+// shared, so all images should be <= that width or they clip on the right.
+constexpr int kTabCount = 4;
+const char* const kTabImgName[kTabCount] = {"tab_use", "tab_cos", "tab_etc", "tab_fav"};
 constexpr int kTabFillSel   = 0x90;   // tab control: selected-tab fill colour
 constexpr int kTabFillUnsel = 0x94;   // tab control: unselected-tab fill colour
 constexpr int kTabChipX     = 16;     // colorchip coord of the tab chip
@@ -154,8 +176,15 @@ using SetName_t   = void(__fastcall*)(void*, void*, const char*);
 using ColorChip_t = void(__stdcall*)(int, int, unsigned*, unsigned*, unsigned*);  // FUN_007a6df0 ends RET 0x14
 using FmtComma_t  = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 thousands-separated
 using Fill_t      = void(__fastcall*)(void*, void*, int, int, int, int, unsigned);  // FUN_00a1d460 filled rect
+using Recompute_t = void(__fastcall*)(void*, void*);  // FUN_0085fca0 __thiscall(tabctrl) -> recompute strip size
+using TabDraw_t   = void(__fastcall*)(void*, void*);  // FUN_00857910 __thiscall(tabctrl) -> draw strip into node
 
-const auto g_draw_orig = reinterpret_cast<DrawOrig_t>(kDrawOrig);
+const auto g_draw_orig     = reinterpret_cast<DrawOrig_t>(kDrawOrig);
+const auto g_tab_draw_orig = reinterpret_cast<TabDraw_t>(kTabDrawOrig);
+// Per-tab images, loaded + published once per frame by the inventory hook so the
+// tab DrawContent hook can blit them (A = active "<name>1", B = inactive "2").
+void* g_tabTexA[kTabCount] = {nullptr};
+void* g_tabTexB[kTabCount] = {nullptr};
 
 inline int RD(uintptr_t a) { return *reinterpret_cast<volatile int*>(a); }
 
@@ -175,6 +204,31 @@ inline void VCall1(void* obj, int vf, int a) {
       *reinterpret_cast<uintptr_t*>(obj) + vf))(obj, nullptr, a);
 }
 
+// True iff `tabobj` is the inventory window's tab control. The tab class is
+// shared by chat/skill/other windows (FUN_00864690 has many callers), so the
+// shared-vtable DrawContent hook must only theme ours.
+inline bool IsInventoryTab(void* tabobj) {
+  void* inv = *reinterpret_cast<void**>(kInvWndGlobal);
+  return inv && *reinterpret_cast<void**>(
+                    reinterpret_cast<uint8_t*>(inv) + kTabCtrl) == tabobj;
+}
+
+// Live tab count = label-vector size: (end - begin) / sizeof(std::string=0x18).
+inline int TabCount(void* tabobj) {
+  auto* t = reinterpret_cast<uint8_t*>(tabobj);
+  const int begin = *reinterpret_cast<int*>(t + kTabLabelVec);
+  const int end   = *reinterpret_cast<int*>(t + kTabLabelVec + 4);
+  return (end - begin) / 0x18;
+}
+
+// The image for tab i in the given state, falling back to the other state's bmp
+// if a user only supplied one variant (so a missing "2.bmp" still shows "1").
+inline void* TabImg(int i, bool active) {
+  void* primary  = active ? g_tabTexA[i] : g_tabTexB[i];
+  void* fallback = active ? g_tabTexB[i] : g_tabTexA[i];
+  return primary ? primary : fallback;
+}
+
 template <typename T> void PatchValue(uintptr_t addr, T value);  // defined below
 
 // Sample colorchip.bmp pixel (x,y) -> game colour 0x00BBGGRR.
@@ -191,6 +245,61 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     auto* w = reinterpret_cast<uint8_t*>(wnd);
     const int height = *reinterpret_cast<const int*>(w + kWndHeight);
     const int width  = *reinterpret_cast<const int*>(w + kWndWidth);
+
+    // ---- Tab strip -> images. Build the per-tab paths once (btnbar folder),
+    // load each tab's active/inactive bmp (cached by the tex mgr) and publish to
+    // g_tabTexA/B for TabDrawContentHook, then size each tab to its image height.
+    // The blit + label-empty happen in the tab hook: the strip node is cleared+
+    // redrawn (FUN_00857910) every render, so a blit from here would be wiped.
+    static char s_paths[kTabCount][2][128] = {};
+    if (s_paths[0][0][0] == 0) {
+      const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+      const char* slash = std::strrchr(base, '\\');
+      const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
+      for (int i = 0; i < kTabCount; ++i)
+        for (int v = 0; v < 2; ++v) {
+          std::memcpy(s_paths[i][v], base, n);
+          std::snprintf(s_paths[i][v] + n, sizeof(s_paths[i][v]) - n,
+                        "%s%d.bmp", kTabImgName[i], v + 1);
+        }
+    }
+    void* ttmgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+    for (int i = 0; i < kTabCount; ++i) {
+      g_tabTexA[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
+          ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][0]));
+      g_tabTexB[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
+          ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][1]));
+    }
+    if (void* tabobj = Child(wnd, kTabCtrl)) {
+      auto* t = reinterpret_cast<uint8_t*>(tabobj);
+      bool changed = false;
+      // Widen the (shared) strip to the widest tab image so nothing clips. Width
+      // derives from this+0x84+1 (Recompute calls SetSize with it), so set that
+      // source field — not this+0x14 — or a native recompute overwrites it.
+      int maxW = 0;
+      for (int i = 0; i < kTabCount; ++i)
+        if (void* img = TabImg(i, true)) {
+          const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(img) + kTexW);
+          if (iw > maxW) maxW = iw;
+        }
+      if (maxW > kTabMaxWidth) maxW = kTabMaxWidth;  // keep clear of the slot grid
+      if (maxW > 0 && *reinterpret_cast<int*>(t + kTabThickness) != maxW - 1) {
+        *reinterpret_cast<int*>(t + kTabThickness) = maxW - 1;
+        changed = true;
+      }
+      // Size each tab to its image height.
+      if (int* sz = *reinterpret_cast<int**>(t + kTabSizeArr)) {
+        const int count = TabCount(tabobj);
+        for (int i = 0; i < count && i < kTabCount; ++i) {
+          void* img = TabImg(i, true);
+          if (!img) continue;
+          const int imgH = *reinterpret_cast<int*>(
+              reinterpret_cast<uint8_t*>(img) + kTexH);
+          if (imgH > 0 && sz[i] != imgH) { sz[i] = imgH; changed = true; }
+        }
+      }
+      if (changed) reinterpret_cast<Recompute_t>(kTabRecompute)(tabobj, nullptr);
+    }
 
     // Original: slot grid + bottom-left "X/200" count + the btnbar bottom frame.
     g_draw_orig(wnd, nullptr);
@@ -308,6 +417,53 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
   }
 }
 
+// Replacement for the tab control's DrawContent (FUN_00857910, vtable +0x50).
+// The class is shared, so only OUR inventory tab is themed: empty each tab's
+// label (so the native draw paints no text), let the original clear+draw the
+// strip into the node, then blit each tab's image (active = "<name>1", inactive
+// = "<name>2"). Riding inside the strip draw means the images are repainted on
+// every render -> they survive tab switches and map changes. Tab i's top y and
+// width match the native layout in FUN_00847330 (tabs overlap 1px, full width).
+void __fastcall TabDrawContentHook(void* tabobj, void* /*edx*/) {
+  __try {
+    const bool ours = IsInventoryTab(tabobj);
+    auto* t = reinterpret_cast<uint8_t*>(tabobj);
+    const int count = ours ? TabCount(tabobj) : 0;
+    if (ours) {
+      // Empty each tab's label where its image is available (else keep its text).
+      if (uint8_t* lbeg = *reinterpret_cast<uint8_t**>(t + kTabLabelVec)) {
+        for (int i = 0; i < count && i < kTabCount; ++i) {
+          if (!TabImg(i, true)) continue;
+          uint8_t* s = lbeg + i * 0x18;
+          if (*reinterpret_cast<unsigned*>(s + 0x10) != 0) {
+            const unsigned cap = *reinterpret_cast<unsigned*>(s + 0x14);
+            char* data = (cap > 0xf) ? *reinterpret_cast<char**>(s)
+                                     : reinterpret_cast<char*>(s);
+            data[0] = '\0';
+            *reinterpret_cast<unsigned*>(s + 0x10) = 0;
+          }
+        }
+      }
+    }
+    g_tab_draw_orig(tabobj, nullptr);  // clears the strip node + draws all tabs
+    if (ours) {
+      const int sel = *reinterpret_cast<int*>(t + kTabSel);
+      const int sw  = *reinterpret_cast<int*>(t + kWndWidth);
+      int* sz = *reinterpret_cast<int**>(t + kTabSizeArr);
+      int y = 0;  // tab i top = sum(size[0..i-1] - 1), matching FUN_00847330
+      for (int i = 0; i < count && i < kTabCount; ++i) {
+        if (void* ttex = TabImg(i, i == sel)) {
+          const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ttex) + kTexW);
+          const int bx = (sw > iw) ? (sw - iw) / 2 : 0;  // centre in the strip width
+          reinterpret_cast<Blit_t>(kBlit)(tabobj, nullptr, bx, y, ttex, 0);
+        }
+        if (sz) y += sz[i] - 1;
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
 template <typename T>
 void PatchValue(uintptr_t addr, T value) {
   DWORD old_protect;
@@ -330,6 +486,18 @@ InventoryTweaks::InventoryTweaks() {
   } else {
     LogError("[Inventory] vtable slot 0x0103d4b0 = 0x{:x}, expected 0x00946da0; "
              "hook skipped", cur_slot);
+  }
+
+  // 1b) Hook the tab control's DrawContent (shared-class vtable +0x50) so the
+  //     tab images are repainted inside every strip render -> they survive tab
+  //     switches and map changes. Guarded per-instance via IsInventoryTab.
+  const uintptr_t tab_slot = *reinterpret_cast<uintptr_t*>(kTabDrawSlot);
+  if (tab_slot == kTabDrawOrig) {
+    PatchValue<void*>(kTabDrawSlot, reinterpret_cast<void*>(&TabDrawContentHook));
+    LogInfo("[Inventory] tab DrawContent vtable hook installed (tab images)");
+  } else {
+    LogError("[Inventory] tab vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
+             "tab hook skipped", kTabDrawSlot, tab_slot, kTabDrawOrig);
   }
 
   // 2) Raise the user-resize max clamp (MOV EDI,0x140 / MOV EDX,0xf0 in the

@@ -84,7 +84,7 @@ LogConsole::LogConsole() {
   auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
       "bourgeon.log", /*truncate=*/true);
   // In-memory sink: mirrors every emitted line into LogLineBuffer so the in-game
-  // Bourgeon log window shows all LogInfo/LogWarn/LogError output, not just the
+  // Bourgeon log window shows all LogInfo/LogDiag/LogError output, not just the
   // plugin lines pushed via Bourgeon::AddLogLine.
   auto ui_sink = std::make_shared<UiLogSink>();
 

@@ -90,7 +90,8 @@ class LogConsole {
 #define LogInfo(fmt, ...) \
   LogConsole::instance().logger()->info(fmt, ##__VA_ARGS__)
 
-#define LogWarn(fmt, ...) \
+// LogDiag = diagnostic line at warn level (shown even when LogInfo is filtered).
+#define LogDiag(fmt, ...) \
   LogConsole::instance().logger()->warn(fmt, ##__VA_ARGS__)
 
 #define LogError(fmt, ...) \

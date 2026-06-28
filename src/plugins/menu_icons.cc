@@ -243,7 +243,7 @@ void MenuIconTweaks::DispatchCommand(int cmd_id) {
   void* wnd = reinterpret_cast<FindWindowFn>(kFindWindowFn)(
       reinterpret_cast<void*>(kUIWindowMgr), kMenuIconWndId);
   if (!wnd) {
-    LogWarn("[MenuIcons] menu-icon window not found for cmd 0x{:X}", cmd_id);
+    LogDiag("[MenuIcons] menu-icon window not found for cmd 0x{:X}", cmd_id);
     return;
   }
   // action 6 = button-click command; the handler reads the cmd id from arg3.
