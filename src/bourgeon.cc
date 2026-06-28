@@ -14,6 +14,7 @@
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/inventory_tweaks.h"
+#include "plugins/equip_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
 #include "utils/log_console.h"
 
@@ -167,6 +168,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
+  plugins_.emplace_back(std::make_unique<EquipTweaks>());
   {
     auto status_icons = std::make_unique<StatusIconTweaks>();
     status_icons_ = status_icons.get();
