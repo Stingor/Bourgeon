@@ -142,12 +142,60 @@ constexpr uintptr_t kTabRecompute = 0x0085fca0;  // FUN_0085fca0(tabctrl): recom
 constexpr uintptr_t kTabDrawSlot  = 0x0102dd94;  // tab control vtable +0x50 slot (static .rdata)
 constexpr uintptr_t kTabDrawOrig  = 0x00857910;  // FUN_00857910 tab DrawContent
 constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // inventory UIWindow* global (identifies our tab control)
-// Per-tab image base names in the btnbar folder; index = tab order (added in
-// FUN_0093f100: 0=Use 1=Eqp 2=Etc 3=Fav). Each has active "<name>1.bmp" and
-// inactive "<name>2.bmp". Sized/blitted per tab; the strip width (this+0x14) is
-// shared, so all images should be <= that width or they clip on the right.
-constexpr int kTabCount = 4;
-const char* const kTabImgName[kTabCount] = {"tab_use", "tab_cos", "tab_etc", "tab_fav"};
+
+// ---- NEW "Cards" category (client-side; players asked for a cards tab) --------
+// The inventory message handler FUN_00955530 (inv vtable +0x94) owns the category
+// filter: case 0x16 writes the clicked tab index -> inv+0x10c then sends 0x17;
+// case 0x17 rebuilds the slot list inv+0xe8 (cases 0/1/2 + 3=Fav). We hook +0x94
+// to (a) REMAP the clicked visual slot -> a category (so we can order tabs freely
+// without disturbing the hardcoded ==3 Fav gates), and (b) populate cat 4 (Cards)
+// by building it as Etc then dropping non-cards at draw time. Fav stays cat 3.
+constexpr uintptr_t kMsgSlot  = 0x0103d4f4;  // inventory vtable +0x94 (message handler slot)
+constexpr uintptr_t kMsgOrig  = 0x00955530;  // FUN_00955530 inventory message handler
+constexpr uintptr_t kAddTab   = 0x00864690;  // tab control AddTab(this, label, tooltip)
+constexpr uintptr_t kListErase   = 0x0080d1a0;  // std::list::erase(first,last) __thiscall(listObj,&out,first,last): frees nodes + dtors + size-=n
+constexpr uintptr_t kInvFinalize = 0x00950400;  // FUN_00950400(inv): refresh scrollbar/scroll from inv+0xec count
+// FUN_0096b700 layout-restore validator: 'CMP [ECX+0x14],3 / JA fail' rejects a saved
+// tab/category > 3, so closing on Cards (cat 4) makes the client discard the saved
+// layout and fall back to FUN_0096c610's DEFAULT (x=0 -> stuck left, tab 0 = Use).
+// Bumping the imm 3->4 accepts category 4 so the layout (position + Cards) persists.
+constexpr uintptr_t kLayoutTabBoundImm = 0x0096b72b;  // the imm8 (0x03) of that CMP
+constexpr int kMsgSelectTab = 0x16;  // tab clicked: param_3 = visual slot index
+constexpr int kMsgRefresh   = 0x17;  // rebuild inv+0xe8 for the current category
+constexpr int kMsgRestore   = 0x22;  // layout restore (sets category + selected tab)
+constexpr int kEtcCat  = 2;   // Etc category (admits cards) — populated then filtered
+constexpr int kFavCat  = 3;   // Fav category (pinned to literal 3 in native ==3 gates)
+constexpr int kCardCat = 4;   // our new client-side Cards category
+constexpr int kItCard  = 6;   // item TYPE for cards (node+0x08 == 6)
+constexpr int kEtcSub  = 0x108;  // inv+0x108 = Etc sub-filter (==4 => "show all etc")
+constexpr int kListHead  = 0xe8;  // inv+0xe8 -> head sentinel node (node+0 next, +4 prev)
+constexpr int kListCount = 0xec;  // inv+0xec element count
+constexpr int kNodeNext  = 0x00;  // list node: next
+constexpr int kNodePrev  = 0x04;  // list node: prev
+constexpr int kNodeType  = 0x08;  // list node: item TYPE (record+0x00)
+
+// Per-tab image base names in the btnbar folder, in VISUAL slot order (top->bottom
+// on screen). Cards sits before Fav. AddTab appends Cards as native index 4; we
+// DECOUPLE the visual order from the native category via kSlotCategory + a message
+// remap, so no hardcoded ==3 Fav gate in native code is disturbed (Fav stays cat 3).
+// Each name has active "<name>1.bmp" / inactive "<name>2.bmp"; strip width (this+0x14)
+// is shared, so all images should be <= that width or they clip on the right.
+// Cards tab, incremental re-enable after the v1 crash (UIWindow_SetSize, corrupted
+// vtable from AddTab-during-render). Two flags so we isolate the cause:
+//   kEnableCardsTab    = the 5th VISUAL tab: AddTab now runs in OnTick (LOGIC phase,
+//                        NOT during render) + the per-tab image. v2a tests this alone.
+//   kEnableCardsFilter = the FUNCTIONAL part: the msg-handler hook (slot remap + the
+//                        cards-only list filter). Enable only once v2a is proven stable.
+constexpr bool kEnableCardsTab    = true;
+constexpr bool kEnableCardsFilter = true;   // v2b: msg-hook remap + cards-only filter ON
+constexpr int kTabCount = 5;
+// Visual slot order (on-screen top->bottom). AddTab appends the new tab at native
+// index 4, but we DECOUPLE visual order from native category via kSlotCategory + the
+// msg remap, so Card shows before Fav while Fav keeps native category 3 (every native
+// ==3 Fav gate stays correct). slot3 = Card image, slot4 = Fav image.
+const char* const kTabImgName[kTabCount] = {"tab_use", "tab_cos", "tab_etc", "tab_card", "tab_fav"};
+// Visual slot -> native category (inv+0x10c): slot3->cat4 (Cards), slot4->cat3 (Fav).
+constexpr int kSlotCategory[kTabCount] = {0, 1, 2, kCardCat, kFavCat};
 constexpr int kTabFillSel   = 0x90;   // tab control: selected-tab fill colour
 constexpr int kTabFillUnsel = 0x94;   // tab control: unselected-tab fill colour
 constexpr int kTabChipX     = 16;     // colorchip coord of the tab chip
@@ -178,9 +226,18 @@ using FmtComma_t  = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 thousands
 using Fill_t      = void(__fastcall*)(void*, void*, int, int, int, int, unsigned);  // FUN_00a1d460 filled rect
 using Recompute_t = void(__fastcall*)(void*, void*);  // FUN_0085fca0 __thiscall(tabctrl) -> recompute strip size
 using TabDraw_t   = void(__fastcall*)(void*, void*);  // FUN_00857910 __thiscall(tabctrl) -> draw strip into node
+// FUN_00955530 inventory message handler (__thiscall -> __fastcall, edx unused).
+// IMPORTANT: it cleans 0x18 = SIX stack params (ret 0x18), NOT five (Ghidra mis-typed
+// it as 5). A 5-arg hook under-pops 4 bytes -> stack imbalance -> corrupt frame -> the
+// v1/v2b crash. Layout: (this, _, p1, msg, p3, p4, p5, p6).
+using MsgFn_t    = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
+using AddTab_t   = void(__fastcall*)(void*, void*, const char*, const char*);  // FUN_00864690
+using Erase_t    = void(__fastcall*)(void*, void*, void*, void*, void*);  // FUN_0080d1a0(listObj,edx,&out,first,last)
+using Finalize_t = void(__fastcall*)(void*);                               // FUN_00950400(inv) — single ecx arg
 
 const auto g_draw_orig     = reinterpret_cast<DrawOrig_t>(kDrawOrig);
 const auto g_tab_draw_orig = reinterpret_cast<TabDraw_t>(kTabDrawOrig);
+const auto g_msg_orig      = reinterpret_cast<MsgFn_t>(kMsgOrig);
 // Per-tab images, loaded + published once per frame by the inventory hook so the
 // tab DrawContent hook can blit them (A = active "<name>1", B = inactive "2").
 void* g_tabTexA[kTabCount] = {nullptr};
@@ -273,6 +330,9 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     if (void* tabobj = Child(wnd, kTabCtrl)) {
       auto* t = reinterpret_cast<uint8_t*>(tabobj);
       bool changed = false;
+      // NB: the extra tab is appended in OnTick (logic phase), NOT here — doing the
+      // AddTab structural mutation during the render pass corrupted window state (v1
+      // crash). Here we only SIZE/width the tabs that already exist.
       // Widen the (shared) strip to the widest tab image so nothing clips. Width
       // derives from this+0x84+1 (Recompute calls SetSize with it), so set that
       // source field — not this+0x14 — or a native recompute overwrites it.
@@ -302,6 +362,9 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     }
 
     // Original: slot grid + bottom-left "X/200" count + the btnbar bottom frame.
+    // The cards/Etc filtering is done for REAL in DoRefresh (PruneList erases nodes
+    // from inv+0xe8), so the list DrawContent walks is already correct — no per-draw
+    // surgery (which desynced the hit-test/click index from the drawn slots).
     g_draw_orig(wnd, nullptr);
 
     if (height <= kCollapsedH) return;  // minimized -> nothing below the bar
@@ -464,6 +527,104 @@ void __fastcall TabDrawContentHook(void* tabobj, void* /*edx*/) {
   }
 }
 
+// Append the extra tab(s) so the control has kTabCount tabs. Idempotent (only adds
+// while short). AddTab resets the selected index to 0 — fine before a layout-restore
+// (case 0x22 re-sets it) and at creation (opens on Use). Runs in the LOGIC phase
+// (message handling / OnTick), never during render — render-time AddTab is untested
+// but the v1 crash was the msg-hook arity, not this.
+inline void EnsureExtraTab(void* tabobj) {
+  for (int guard = 0; TabCount(tabobj) < kTabCount && guard < kTabCount; ++guard)
+    reinterpret_cast<AddTab_t>(kAddTab)(tabobj, nullptr, "", "");
+}
+
+// Erase nodes from the slot list inv+0xe8 by item type, FOR REAL (frees the node via
+// the native std::list::erase so size, draw AND hit-test all stay consistent — a
+// draw-only filter desynced the click index). keep=true erases everything whose type
+// != `type` (keep only cards); keep=false erases type == `type` (drop cards from Etc).
+void PruneList(void* self, int type, bool keep) {
+  void* listObj = reinterpret_cast<uint8_t*>(self) + kListHead;  // {head ptr @+0, size @+4}
+  void* head = *reinterpret_cast<void**>(listObj);
+  if (!head) return;
+  void* cur = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(head) + kNodeNext);
+  while (cur != head) {
+    void* next = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(cur) + kNodeNext);
+    const int t = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(cur) + kNodeType);
+    if (keep ? (t != type) : (t == type)) {
+      void* out = nullptr;
+      reinterpret_cast<Erase_t>(kListErase)(listObj, nullptr, &out, cur, next);  // erase [cur,next)
+    }
+    cur = next;
+  }
+}
+
+// Rebuild the filtered slot list inv+0xe8 for the CURRENT category, then prune so the
+// REAL list matches the tab: Cards (cat 4) is built as Etc (which admits cards) then
+// pruned to cards-only; Etc (cat 2) drops the cards. FUN_00950400 re-syncs the
+// scrollbar/scroll to the new count. Other categories run the native refresh as-is.
+void DoRefresh(void* self, void* edx) {
+  auto* cat = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kTabCat);
+  if (*cat == kCardCat) {
+    auto* sub = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kEtcSub);
+    const int savedSub = *sub;
+    *cat = kEtcCat;
+    *sub = 4;  // "show all etc" so every card is in the build
+    g_msg_orig(self, edx, 0, kMsgRefresh, 0, 0, 0, 0);
+    *cat = kCardCat;
+    *sub = savedSub;
+    PruneList(self, kItCard, /*keep=*/true);   // keep only cards
+    reinterpret_cast<Finalize_t>(kInvFinalize)(self);
+  } else if (*cat == kEtcCat) {
+    g_msg_orig(self, edx, 0, kMsgRefresh, 0, 0, 0, 0);
+    PruneList(self, kItCard, /*keep=*/false);  // remove cards from Etc
+    reinterpret_cast<Finalize_t>(kInvFinalize)(self);
+  } else {
+    g_msg_orig(self, edx, 0, kMsgRefresh, 0, 0, 0, 0);
+  }
+}
+
+// Replacement for the inventory message handler FUN_00955530 (vtable +0x94). Only
+// three messages are intercepted; everything else passes straight through:
+//  - 0x16 (tab clicked): remap the clicked VISUAL slot -> a category (so we can
+//    order tabs freely; Fav stays cat 3 so native ==3 gates are untouched), then
+//    refresh (cards-aware).
+//  - 0x17 (refresh, e.g. item add/remove while a tab is open): cards-aware rebuild.
+//  - 0x22 (layout restore): native sets inv+0x10c = saved visual slot; remap it.
+int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, int p5, int p6) {
+  __try {
+    // Ensure the 5th tab exists BEFORE any message is handled — especially the
+    // layout-restore (0x22): with only 4 tabs the saved tab index is out of range
+    // and the resize miscomputes (window jumps left + tab not remembered).
+    if (void* tab = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(self) + kTabCtrl))
+      EnsureExtraTab(tab);
+    if (msg == kMsgSelectTab) {
+      const int cat = (p3 >= 0 && p3 < kTabCount) ? kSlotCategory[p3] : p3;
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kTabCat) = cat;
+      DoRefresh(self, edx);
+      return 0;
+    }
+    if (msg == kMsgRefresh) {
+      DoRefresh(self, edx);
+      return 0;
+    }
+    if (msg == kMsgRestore) {
+      const int r = g_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+      // The save persists the CATEGORY (inv+0x10c); native restore copied it into BOTH
+      // inv+0x10c AND tabctrl+0x7c. Keep the category (the internal 0x17 already built
+      // its list); just move the highlighted SLOT to the tab that shows that category
+      // (kSlotCategory is the 3<->4 swap, self-inverse, so it maps cat->slot too).
+      const int v = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kTabCat);
+      if (v >= 0 && v < kTabCount) {
+        if (void* tab = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(self) + kTabCtrl))
+          *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tab) + kTabSel) = kSlotCategory[v];
+      }
+      return r;
+    }
+    return g_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
 template <typename T>
 void PatchValue(uintptr_t addr, T value) {
   DWORD old_protect;
@@ -500,6 +661,34 @@ InventoryTweaks::InventoryTweaks() {
              "tab hook skipped", kTabDrawSlot, tab_slot, kTabDrawOrig);
   }
 
+  // 1c) Hook the inventory message handler (vtable +0x94 = FUN_00955530) so the
+  //     extra Cards tab works: remap clicked slot -> category (0x16), cards-aware
+  //     refresh (0x17), and remap on layout restore (0x22). All other messages
+  //     pass straight through. DrawContentHook appends the 5th tab + filters cards.
+  const uintptr_t msg_slot = *reinterpret_cast<uintptr_t*>(kMsgSlot);
+  if (kEnableCardsFilter && msg_slot == kMsgOrig) {
+    PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&MsgHook));
+    LogInfo("[Inventory] message-handler vtable hook installed (Cards tab)");
+  } else if (kEnableCardsFilter) {
+    LogError("[Inventory] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
+             "Cards tab hook skipped", kMsgSlot, msg_slot, kMsgOrig);
+  }
+
+  // 1d) Let the layout-restore validator (FUN_0096b700) accept the Cards category 4:
+  //     bump its 'tab <= 3' bound to 'tab <= 4'. Without this, closing on Cards saves
+  //     category 4, the validator rejects it, and the client restores the DEFAULT
+  //     layout (window at x=0 + Use tab) instead of the saved position/tab.
+  if (kEnableCardsFilter) {
+    const uint8_t bound = *reinterpret_cast<uint8_t*>(kLayoutTabBoundImm);
+    if (bound == 3) {
+      PatchValue<uint8_t>(kLayoutTabBoundImm, 4);
+      LogInfo("[Inventory] layout-restore tab bound 3->4 (Cards layout persists)");
+    } else {
+      LogError("[Inventory] layout bound imm @0x{:x} = {}, expected 3; patch skipped",
+               kLayoutTabBoundImm, bound);
+    }
+  }
+
   // 2) Raise the user-resize max clamp (MOV EDI,0x140 / MOV EDX,0xf0 in the
   //    case-0xe handler).  Background is tiled, so larger sizes render fine.
   //    Runtime equivalent of the WARP 'BiggerInventoryWindow' patch — a no-op
@@ -530,5 +719,21 @@ InventoryTweaks::InventoryTweaks() {
             kRsvOld, kRsvNew);
   } else {
     LogError("[Inventory] bottom-reserve immediates unexpected; enlarge skipped");
+  }
+}
+
+// Logic-phase (throttled, NOT during render): append the extra "Cards" tab once
+// per inventory instance. AddTab -> Recompute recreates the strip node; doing that
+// mid-render corrupted window state in v1, so it lives here. Hit-test + draw derive
+// the tab count from the label vector, so the new tab is honored automatically.
+void InventoryTweaks::OnTick() {
+  if (!kEnableCardsTab) return;
+  __try {
+    void* inv = *reinterpret_cast<void**>(kInvWndGlobal);
+    if (!inv) return;
+    if (void* tabobj = *reinterpret_cast<void**>(
+            reinterpret_cast<uint8_t*>(inv) + kTabCtrl))
+      EnsureExtraTab(tabobj);  // fallback; MsgHook already adds it before the restore
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }

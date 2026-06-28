@@ -15,4 +15,8 @@ class InventoryTweaks : public Plugin {
   InventoryTweaks();
 
   const char* name() const override { return "Inventory"; }
+
+  // Appends the extra "Cards" tab once per inventory instance, in the LOGIC phase
+  // (not during render) so the tab-control node recreate can't corrupt frame state.
+  void OnTick() override;
 };
