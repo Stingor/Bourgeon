@@ -235,13 +235,22 @@ void DrawNormal(void* wnd, int blitY) {
     DTextL(wnd, 163, y6 - 1, gname, 12, 0);  // left-aligned right after the Guild label
   }
 
-  // ---- reposition the 6 stat-up arrow buttons into the box arrow-cell ----
+  // ---- reposition the 6 stat-up arrow buttons into the box arrow-cell -----
+  // Replicate the native show/hide rule (FUN_008cb7c0 case 0x23, RE-verified): show
+  // the arrow only when the stat can still be raised (raise-cost != 0 — the server
+  // sends 0 at max level) AND the player has enough points (kStatusPt >= cost);
+  // otherwise hide it off-screen exactly like the native (-100,-100). We rewrite the
+  // button x/y every frame, so without this our relayout re-showed arrows the native
+  // had hidden. Mirror the native arithmetic literally — no extra max-level logic.
+  const int points = RD(kStatusPt);
   for (int i = 0; i < 6; ++i) {
     void* btn = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(wnd) + 0xb4 + i * 4);
-    if (btn) {
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x1c) = 88;
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x20) = blitY + kRowCenter[i] - 5;
-    }
+    if (!btn) continue;
+    const int cost = RD(kRaise[i]);
+    const bool show = (cost != 0) && (points >= cost);
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x1c) = show ? 88 : -100;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x20) =
+        show ? (blitY + kRowCenter[i] - 5) : -100;
   }
 }
 
