@@ -1,6 +1,7 @@
 #include "plugins/moonlight_ui.h"
 
 #include <Windows.h>
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -14,6 +15,7 @@
 #include "plugins/dps_meter.h"
 #include "plugins/menu_icons.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/status_tweaks.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -447,6 +449,10 @@ void MoonlightUi::LoadSettings() {
                        static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
     }
 
+    // STATUS window saved position (applied by StatusTweaks' msg-handler hook).
+    StatusTweaks_SetSavedPos(ui["status_pos_x"].as<int>(INT_MIN),
+                             ui["status_pos_y"].as<int>(INT_MIN));
+
     if (auto* mi = Bourgeon::Instance().menu_icons()) {
       mi->enabled_   = ui["menu_icons_enabled"].as<bool>(mi->enabled_);
       mi->edit_mode_ = ui["menu_icons_edit"].as<bool>(false);
@@ -564,7 +570,9 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "grid_show"  << YAML::Value << grid_.show
       << YAML::Key << "grid_snap"  << YAML::Value << grid_.snap
       << YAML::Key << "grid_size"  << YAML::Value << grid_.size
-      << YAML::Key << "grid_color" << YAML::Value << grid_col;
+      << YAML::Key << "grid_color" << YAML::Value << grid_col
+      << YAML::Key << "status_pos_x" << YAML::Value << StatusTweaks_SavedX()
+      << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY();
   if (eb) {
     for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
       const std::string p =

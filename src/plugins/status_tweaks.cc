@@ -2,9 +2,12 @@
 
 #include <Windows.h>
 
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 
+#include "bourgeon.h"
+#include "plugins/moonlight_ui.h"
 #include "utils/log_console.h"
 
 // ===========================================================================
@@ -44,6 +47,18 @@ constexpr uintptr_t kHeightImm = 0x00a3a48b;  // push 0x8d (h=141) imm in MakeWi
 constexpr uintptr_t kWidthImm  = 0x00a3a490;  // push 0x118 (w=280) imm in MakeWindow
 constexpr uintptr_t kDrawSlot  = 0x01032a24;  // UIStatusWnd vtable +0x50 (DrawContent)
 constexpr uintptr_t kDrawOrig  = 0x008b66a0;  // original UIStatusWnd::DrawContent
+// Position persistence (the engine never saves window id 0xb — see workflow RE).
+constexpr uintptr_t kMsgSlot   = 0x01032a68;  // UIStatusWnd vtable +0x94 (message handler slot)
+constexpr uintptr_t kMsgOrig   = 0x008cb7c0;  // FUN_008cb7c0 status msg handler (ret 0x18 = SIX stack args!)
+constexpr int kVfSetPos  = 0x10;   // UIWindow::SetPos(x,y) (vtable+0x10)
+constexpr int kWinX      = 0x1c;   // window live x
+constexpr int kWinY      = 0x20;   // window live y
+constexpr int kMsgCmd    = 6;      // command message
+constexpr int kSubClose  = 0xc9;   // msg 6 sub-command = close
+constexpr int kMsgRestore = 0x22;  // layout-restore message
+constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;  // g_UIWindowMgr
+constexpr uintptr_t kFindWindow  = 0x00a47b90;  // FUN_00a47b90(mgr,id) -> window* (or null)
+constexpr int kStatusId  = 0xb;    // UIStatusWnd window id
 
 constexpr uint32_t  kNewWidth  = 302;
 constexpr uint32_t  kNewHeight = 132;         // 17 title bar + 115 bitmap
@@ -80,6 +95,12 @@ using TexMgr_t = void* (__cdecl*)();
 using MakeKey_t = void* (__cdecl*)(const char*);
 using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 using GetMsg_t  = char* (__cdecl*)(unsigned);
+using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
+using SetPos_t    = void (__fastcall*)(void*, void*, int, int);                       // UIWindow SetPos(this,x,y)
+using FindWindow_t = void* (__thiscall*)(void*, int);                                 // FUN_00a47b90(mgr,id)
+
+const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
+int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
 
 // ---- session fields (g_session = 0x015fa3c0) -------------------------------
 const uintptr_t kBase[6]  = {0x015fba24, 0x015fba28, 0x015fba2c,
@@ -250,6 +271,35 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
   }
 }
 
+// Replacement for the STATUS message handler FUN_008cb7c0 (vtable +0x94). The engine
+// never persists window id 0xb's position, so we do: snapshot live x/y on close (msg 6
+// sub 0xc9) + trigger a settings save, and on layout-restore (msg 0x22) override SetPos
+// with the saved x/y AFTER the native restore (we override, so the native validator/
+// default are irrelevant). SIX stack args / ret 0x18 — a 5-arg hook corrupts the stack.
+int __fastcall StatusMsgHook(void* self, void* edx, int p1, int msg, int p3,
+                             int p4, int p5, int p6) {
+  __try {
+    if (msg == kMsgCmd && p3 == kSubClose) {  // X close -> persist immediately
+      g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinX);
+      g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinY);
+      const int r = g_status_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      return r;
+    }
+    const int r = g_status_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+    // After the native layout-restore, override with the saved position (we override,
+    // so the native validator/default are irrelevant). OnTick (live FindWindow read,
+    // throttled 200ms) + this close-save cover drag-end and every close path.
+    if (msg == kMsgRestore && g_posX != INT_MIN && g_posX >= 0 && g_posY >= 0) {
+      reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
+          *reinterpret_cast<uintptr_t*>(self) + kVfSetPos))(self, nullptr, g_posX, g_posY);
+    }
+    return r;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
 template <typename T>
 void PatchValue(uintptr_t addr, T value) {
   DWORD old_protect;
@@ -311,5 +361,46 @@ StatusTweaks::StatusTweaks() {
   } else {
     LogError("[Status] DrawTitleBar title-x = 0x{:x}, expected 0x13; title offset skipped",
              *reinterpret_cast<uint8_t*>(kTitleWhiteX));
+  }
+
+  // 5) Hook the message handler (vtable +0x94) to persist the window position the
+  //    engine never saves for id 0xb: snapshot x/y on close, re-apply on open.
+  const uintptr_t cur_msg = *reinterpret_cast<uintptr_t*>(kMsgSlot);
+  if (cur_msg == kMsgOrig) {
+    PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&StatusMsgHook));
+    LogInfo("[Status] message-handler hook installed (position persistence)");
+  } else {
+    LogError("[Status] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; pos-persist skipped",
+             kMsgSlot, cur_msg, kMsgOrig);
+  }
+}
+
+// Saved-position accessors for MoonlightUi's settings yaml (g_posX/g_posY live in
+// the anonymous namespace above; these bridge them to the persistence layer).
+int  StatusTweaks_SavedX() { return g_posX; }
+int  StatusTweaks_SavedY() { return g_posY; }
+void StatusTweaks_SetSavedPos(int x, int y) { g_posX = x; g_posY = y; }
+
+// Persist the window position when it changes. We read the LIVE position straight from
+// the window each tick via FindWindow — the status window does NOT redraw every frame
+// (only on stat changes / periodic refresh), so capturing inside DrawContent lagged by
+// up to ~1s. Throttled to once per 200ms: the first move saves within ~100ms, then at
+// most every 200ms during a drag (final spot lands within ~200ms of release). Covers
+// drag-end + every close path (X / Escape / Alt+A toggle / game exit). While the window
+// is closed FindWindow returns null, so g_posX keeps the last spot for the next restore.
+void StatusTweaks::OnTick() {
+  static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
+  static DWORD lastSave = 0;                       // GetTickCount of the last save
+  static bool init = false;
+  void* win = reinterpret_cast<FindWindow_t>(kFindWindow)(
+      reinterpret_cast<void*>(kUIWindowMgr), kStatusId);
+  if (!win) return;                               // status window not open
+  g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
+  g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
+  if (!init) { savedX = g_posX; savedY = g_posY; init = true; return; }  // baseline
+  if ((g_posX != savedX || g_posY != savedY) && GetTickCount() - lastSave >= 200) {
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    savedX = g_posX; savedY = g_posY;
+    lastSave = GetTickCount();
   }
 }

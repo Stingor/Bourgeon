@@ -21,4 +21,15 @@ class StatusTweaks : public Plugin {
   StatusTweaks();
 
   const char* name() const override { return "Status"; }
+
+  // Persists the window position when it changes (reads it live via FindWindow,
+  // throttled 200ms) — covers drag-end and every close path (X/Escape/Alt+A/exit).
+  void OnTick() override;
 };
+
+// STATUS-window saved position, persisted through MoonlightUi's settings yaml.
+// The message-handler hook captures x/y on close and re-applies it on open;
+// MoonlightUi Save/LoadSettings reads/writes these. INT_MIN = no saved position.
+int  StatusTweaks_SavedX();
+int  StatusTweaks_SavedY();
+void StatusTweaks_SetSavedPos(int x, int y);
