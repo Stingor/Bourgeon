@@ -6,6 +6,30 @@
 #include <vector>
 #include "plugins/plugin.h"
 
+// Full-screen HUD alignment grid — a shared overlay for lining up any movable
+// ImGui widget (EXP/HP/SP bars, menu icons, …). One instance lives on
+// MoonlightUi; consumers reach it via Bourgeon::Instance().moonlight_ui()->grid_.
+struct AlignGrid {
+  bool  show = false;
+  bool  snap = false;   // snap dragged/resized widgets to grid cells
+  int   size = 32;      // cell size in px (4..128)
+  float color[4] = {1.0f, 1.0f, 1.0f, 0.15f};
+
+  // Cell size clamped to a sane minimum.
+  int cell() const { return size < 4 ? 4 : size; }
+
+  // Snaps one coordinate to the nearest grid line; returns v unchanged when
+  // snapping is off, so callers can apply it unconditionally.
+  float SnapAxis(float v) const {
+    if (!snap) return v;
+    const float g = static_cast<float>(cell());
+    return g * static_cast<float>(static_cast<int>(v / g + 0.5f));
+  }
+
+  // Draws the grid full-screen on the background draw list (behind all windows).
+  void Draw() const;
+};
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:
@@ -20,6 +44,10 @@ class MoonlightUi : public Plugin {
   // Writes bourgeon_settings.yaml.  Public so sibling plugins (e.g. the
   // status-icon panel) can persist their own config through the shared file.
   void SaveSettings();
+
+  // Shared HUD alignment grid. Public so sibling plugins (BasicInfoTweaks bars,
+  // MenuIconTweaks) can read it for snapping while dragging/resizing.
+  AlignGrid grid_;
 
  private:
   // Sends a single setting change to the server.

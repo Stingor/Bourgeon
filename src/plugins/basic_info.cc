@@ -5,6 +5,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "plugins/moonlight_ui.h"  // shared AlignGrid (snap + draw)
 
 // ── Live value sources (20250716 client) ─────────────────────────────────────
 // EXP confirmed by RE of UIBasicInfoWnd::OnCreate (UIINT64BarGraph_SetCurMax) —
@@ -79,6 +80,11 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
   Bar& bar = bars_[id];
   const bool frozen = locked_;
 
+  // Shared alignment grid (owned by MoonlightUi). SnapAxis is a no-op when grid
+  // snapping is off, so we can call it unconditionally when present.
+  const AlignGrid* grid = nullptr;
+  if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
+
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
                            ImGuiWindowFlags_NoScrollbar |
                            ImGuiWindowFlags_NoCollapse |
@@ -135,11 +141,7 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
             nx = SnapValue(nx, static_cast<float>(bar.w), id, false);
             ny = SnapValue(ny, static_cast<float>(bar.h), id, true);
           }
-          if (grid_snap_) {
-            const float g = static_cast<float>(grid_size_ < 4 ? 4 : grid_size_);
-            nx = g * static_cast<float>(static_cast<int>(nx / g + 0.5f));
-            ny = g * static_cast<float>(static_cast<int>(ny / g + 0.5f));
-          }
+          if (grid) { nx = grid->SnapAxis(nx); ny = grid->SnapAxis(ny); }
           const int ix = static_cast<int>(nx + 0.5f);
           const int iy = static_cast<int>(ny + 0.5f);
           if (ix != bar.x || iy != bar.y) {
@@ -148,10 +150,9 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
         } else if (drag_mode_ == 2) {  // resize from bottom-right corner
           int nw = static_cast<int>((m.x - drag_off_x_) - p0.x + 0.5f);
           int nh = static_cast<int>((m.y - drag_off_y_) - p0.y + 0.5f);
-          if (grid_snap_) {
-            const int g = grid_size_ < 4 ? 4 : grid_size_;
-            nw = ((nw + g / 2) / g) * g;
-            nh = ((nh + g / 2) / g) * g;
+          if (grid) {
+            nw = static_cast<int>(grid->SnapAxis(static_cast<float>(nw)) + 0.5f);
+            nh = static_cast<int>(grid->SnapAxis(static_cast<float>(nh)) + 0.5f);
           }
           if (nw < 8) nw = 8;
           if (nh < 4) nh = 4;
@@ -223,29 +224,10 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
   return changed;
 }
 
-void BasicInfoTweaks::DrawAlignmentGrid() const {
-  const ImVec2 ds = ImGui::GetIO().DisplaySize;
-  const float step = static_cast<float>(grid_size_ < 4 ? 4 : grid_size_);
-  ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under the bars
-  const ImU32 col = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(grid_color_[0], grid_color_[1], grid_color_[2], grid_color_[3]));
-  for (float x = 0.0f; x <= ds.x; x += step)
-    dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, ds.y), col);
-  for (float y = 0.0f; y <= ds.y; y += step)
-    dl->AddLine(ImVec2(0.0f, y), ImVec2(ds.x, y), col);
-  // Brighter centre cross for quick centring.
-  float ca = grid_color_[3] * 2.5f;
-  if (ca > 1.0f) ca = 1.0f;
-  const ImU32 cc = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(grid_color_[0], grid_color_[1], grid_color_[2], ca));
-  dl->AddLine(ImVec2(ds.x * 0.5f, 0.0f), ImVec2(ds.x * 0.5f, ds.y), cc, 1.5f);
-  dl->AddLine(ImVec2(0.0f, ds.y * 0.5f), ImVec2(ds.x, ds.y * 0.5f), cc, 1.5f);
-}
-
 void BasicInfoTweaks::OnRenderUI() {
   if (!in_game_) return;
   if (HudReplaced()) return;  // world map / full-screen UI replaces the HUD
-  if (grid_show_) DrawAlignmentGrid();
+  // The alignment grid is drawn by MoonlightUi (shared overlay), not here.
 
   if (!visible_) return;
   // Globals are only populated once a character is in the world.

@@ -9,7 +9,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
-#include "plugins/basic_info.h"  // shared alignment grid (grid_snap_/grid_size_)
+#include "plugins/moonlight_ui.h"  // shared AlignGrid (snap)
 #include "utils/log_console.h"
 
 namespace {
@@ -332,10 +332,9 @@ void MenuIconTweaks::OnRenderUI() {
         float nx = mp.x - drag_off_x_, ny = mp.y - drag_off_y_;
         nx = SnapIcon(nx, static_cast<float>(ic.w), i, false);  // magnetic to icons
         ny = SnapIcon(ny, static_cast<float>(ic.h), i, true);
-        if (auto* bi = Bourgeon::Instance().basic_info(); bi && bi->grid_snap_) {
-          const float g = static_cast<float>(bi->grid_size_ < 4 ? 4 : bi->grid_size_);
-          nx = g * static_cast<float>(static_cast<int>(nx / g + 0.5f));
-          ny = g * static_cast<float>(static_cast<int>(ny / g + 0.5f));
+        if (auto* mui = Bourgeon::Instance().moonlight_ui()) {  // shared grid snap
+          nx = mui->grid_.SnapAxis(nx);
+          ny = mui->grid_.SnapAxis(ny);
         }
         ic.x = static_cast<int>(nx + 0.5f);
         ic.y = static_cast<int>(ny + 0.5f);

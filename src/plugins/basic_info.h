@@ -50,11 +50,8 @@ class BasicInfoTweaks : public Plugin {
   float rounding_  = 4.0f;   // corner rounding of the drawn bars (0..16)
   float bg_color_[4] = {0.05f, 0.05f, 0.07f, 0.70f};  // shared background + alpha
 
-  // Full-screen alignment grid overlay (WoW-style HUD alignment helper).
-  bool  grid_show_  = false;
-  bool  grid_snap_  = false;  // snap bar position/size to grid cells
-  int   grid_size_  = 32;  // cell size in px (4..128)
-  float grid_color_[4] = {1.0f, 1.0f, 1.0f, 0.15f};
+  // The alignment grid moved to a shared AlignGrid owned by MoonlightUi
+  // (Bourgeon::Instance().moonlight_ui()->grid_); bars read it for snapping.
 
   Bar bars_[kBarCount] = {
     /* Base EXP */ {true, 100, 76, 220, 16, {0.36f, 0.78f, 1.00f, 1.00f}},
@@ -87,7 +84,4 @@ class BasicInfoTweaks : public Plugin {
   // Nearest magnetic alignment of value `v` (extent `ext`) on one axis to any
   // other shown bar's edges, within the snap threshold; else returns `v`.
   float SnapValue(float v, float ext, int self_id, bool y_axis) const;
-
-  // Draws the full-screen alignment grid (background draw list).
-  void DrawAlignmentGrid() const;
 };

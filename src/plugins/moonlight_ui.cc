@@ -158,6 +158,18 @@ void MoonlightUi::LoadItemNames() {
   }
   LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
 }
+  // Style helpers for the Bourgeon window.  Compact spacing and smaller font.
+      // PushStyleCompact();
+      // ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+      // if (ImGui::BeginTabBar("Tabs", tab_bar_flags))
+      // {
+      //   if (ImGui::BeginTabItem("tab"))
+      //   {
+      //     ImGui::EndTabItem();
+      //   }
+      // }
+      // ImGui::EndTabBar();
+      // PopStyleCompact();
 
 MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
@@ -419,10 +431,18 @@ void MoonlightUi::LoadSettings() {
         load_color(p + "color", b.fill);
       }
       load_color("expbar_bg_color", eb->bg_color_);
-      eb->grid_show_ = ui["expbar_grid_show"].as<bool>(false);
-      eb->grid_snap_ = ui["expbar_grid_snap"].as<bool>(false);
-      eb->grid_size_ = ui["expbar_grid_size"].as<int>(32);
-      load_color("expbar_grid_color", eb->grid_color_);
+    }
+
+    // Global alignment grid (kept under the legacy expbar_grid_* keys for
+    // back-compat with existing settings files).
+    grid_.show = ui["expbar_grid_show"].as<bool>(false);
+    grid_.snap = ui["expbar_grid_snap"].as<bool>(false);
+    grid_.size = ui["expbar_grid_size"].as<int>(32);
+    {
+      const std::string hex = ui["expbar_grid_color"].as<std::string>("");
+      if (hex.size() == 8)
+        PickerFromArgb(grid_.color,
+                       static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
     }
 
     if (auto* mi = Bourgeon::Instance().menu_icons()) {
@@ -489,13 +509,14 @@ void MoonlightUi::SaveSettings() {
   }
 
   auto* eb = Bourgeon::Instance().basic_info();
-  char eb_bg_col[9] = "B30D0D12", eb_grid_col[9] = "26FFFFFF";
-  if (eb) {
+  char eb_bg_col[9] = "B30D0D12";
+  if (eb)
     std::snprintf(eb_bg_col, sizeof(eb_bg_col), "%08X",
                   ArgbFromPicker(eb->bg_color_));
-    std::snprintf(eb_grid_col, sizeof(eb_grid_col), "%08X",
-                  ArgbFromPicker(eb->grid_color_));
-  }
+  // Global alignment grid colour (owned by MoonlightUi, not basic_info).
+  char eb_grid_col[9];
+  std::snprintf(eb_grid_col, sizeof(eb_grid_col), "%08X",
+                ArgbFromPicker(grid_.color));
 
   YAML::Emitter out;
   out << YAML::BeginMap
@@ -538,9 +559,9 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "expbar_vertical" << YAML::Value << (eb ? eb->vertical_ : false)
       << YAML::Key << "expbar_rounding" << YAML::Value << (eb ? eb->rounding_ : 4.0f)
       << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
-      << YAML::Key << "expbar_grid_show"  << YAML::Value << (eb ? eb->grid_show_ : false)
-      << YAML::Key << "expbar_grid_snap"  << YAML::Value << (eb ? eb->grid_snap_ : false)
-      << YAML::Key << "expbar_grid_size"  << YAML::Value << (eb ? eb->grid_size_ : 32)
+      << YAML::Key << "expbar_grid_show"  << YAML::Value << grid_.show
+      << YAML::Key << "expbar_grid_snap"  << YAML::Value << grid_.snap
+      << YAML::Key << "expbar_grid_size"  << YAML::Value << grid_.size
       << YAML::Key << "expbar_grid_color" << YAML::Value << eb_grid_col;
   if (eb) {
     for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
@@ -879,10 +900,44 @@ static void PopStyleCompact()
     ImGui::PopStyleVar(2);
 }
 
+namespace {
+// A full-screen UI (world map = window id 0x8c) replaces the in-game HUD; hide
+// the alignment grid while it is open. (Mirrors BasicInfoTweaks/MenuIconTweaks.)
+bool HudReplaced() {
+  using FindWindowFn = void* (__thiscall*)(void*, int);
+  return reinterpret_cast<FindWindowFn>(0x00a47b90)(
+             reinterpret_cast<void*>(0x0131f4e8), 0x8c) != nullptr;
+}
+}  // namespace
+
+void AlignGrid::Draw() const {
+  const ImVec2 ds = ImGui::GetIO().DisplaySize;
+  const float step = static_cast<float>(cell());
+  ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under windows
+  const ImU32 col = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(color[0], color[1], color[2], color[3]));
+  for (float x = 0.0f; x <= ds.x; x += step)
+    dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, ds.y), col);
+  for (float y = 0.0f; y <= ds.y; y += step)
+    dl->AddLine(ImVec2(0.0f, y), ImVec2(ds.x, y), col);
+  // Brighter centre cross for quick centring.
+  float ca = color[3] * 2.5f;
+  if (ca > 1.0f) ca = 1.0f;
+  const ImU32 cc = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(color[0], color[1], color[2], ca));
+  dl->AddLine(ImVec2(ds.x * 0.5f, 0.0f), ImVec2(ds.x * 0.5f, ds.y), cc, 1.5f);
+  dl->AddLine(ImVec2(0.0f, ds.y * 0.5f), ImVec2(ds.x, ds.y * 0.5f), cc, 1.5f);
+}
+
 // ── ImGui panel ───────────────────────────────────────────────────────────
 
 void MoonlightUi::OnRenderUI() {
   if (!in_game_) return;
+
+  // Global alignment grid (shared HUD overlay). Drawn here on the background
+  // list so it shows even with the bars hidden; suppressed while a full-screen
+  // UI (world map) replaces the HUD, matching the bars/icons.
+  if (grid_.show && !HudReplaced()) grid_.Draw();
 
   // Persist EXP-bar geometry once, the frame after the user finishes a drag.
   if (auto* eb = Bourgeon::Instance().basic_info(); eb && eb->geometry_dirty_) {
@@ -1263,149 +1318,160 @@ void MoonlightUi::OnRenderUI() {
       }
     }
 
-    // ── Interface de jeu (HUD bars + alignment grid) ─────────────────────
+    // ── Interface de jeu  ────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Interface de jeu")) {
-      if (auto* eb = Bourgeon::Instance().basic_info()) {
-        PushStyleCompact();
-        if (ImGui::Checkbox("Afficher les barres", &eb->visible_))
-          SaveSettings();
-        ImGui::Indent();
-        for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-          if (i) ImGui::SameLine();
-          if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
-            SaveSettings();
-        }
-        ImGui::SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
-        ImGui::Unindent();
-
-        if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
-                            &eb->locked_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "Verrouillée : les barres ne bougent plus et laissent passer les "
-            "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
-            "tirez le coin pour redimensionner.");
-
-        if (ImGui::Checkbox("Aimanter les barres (snap)", &eb->sticky_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
-            "et se collent automatiquement (~10px).\nÉloigne-la pour la "
-            "détacher. Les barres restent indépendantes.");
-
-        if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
-
-        const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::Combo("Texte", &eb->text_mode_, modes, IM_ARRAYSIZE(modes)))
-          SaveSettings();
-
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::SliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f"))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker("Arrondi des coins des barres.");
-
-        for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-          char lbl[32];
-          std::snprintf(lbl, sizeof(lbl), "Couleur %s",
-                        BasicInfoTweaks::kBarLabels[i]);
-          if (ImGui::ColorEdit4(lbl, eb->bars_[i].fill,
-                                ImGuiColorEditFlags_NoInputs))
-            SaveSettings();
-        }
-        if (ImGui::ColorEdit4("Fond / Opacité", eb->bg_color_,
-                              ImGuiColorEditFlags_NoInputs |
-                                  ImGuiColorEditFlags_AlphaBar))
-          SaveSettings();
-
-        ImGui::TextUnformatted("Tailles rapides (toutes) :");
-        auto preset = [&](const char* label, int w, int h) {
-          ImGui::SameLine();
-          if (ImGui::Button(label)) {
-            for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
-              eb->bars_[j].w = w;
-              eb->bars_[j].h = h;
+      PushStyleCompact();
+      if (ImGui::Checkbox("Grille d'alignement", &grid_.show))
+        SaveSettings();
+      ImGui::SameLine(); HelpMarker(
+          "Affiche une grille plein écran pour aligner ton interface "
+          "(comme les add-ons d'interface de WoW).");
+      ImGui::SetNextItemWidth(160.0f);
+      if (ImGui::SliderInt("Taille grille", &grid_.size, 4, 128))
+        SaveSettings();
+      if (ImGui::Checkbox("Aimanter à la grille", &grid_.snap))
+        SaveSettings();
+      ImGui::SameLine(); HelpMarker(
+          "Les barres et les icônes s'alignent sur les cellules de la grille "
+          "pendant le déplacement et le redimensionnement.");
+      if (ImGui::ColorEdit4("Couleur grille", grid_.color,
+                            ImGuiColorEditFlags_NoInputs |
+                                ImGuiColorEditFlags_AlphaBar))
+        SaveSettings();
+      ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+      if (ImGui::BeginTabBar("InterfaceSettingsTabs", tab_bar_flags))
+      {
+        // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
+        if (ImGui::BeginTabItem("Barres d'info"))
+        {
+          if (auto* eb = Bourgeon::Instance().basic_info()) {
+            PushStyleCompact();
+            if (ImGui::Checkbox("Afficher les barres", &eb->visible_))
+              SaveSettings();
+            ImGui::Indent();
+            for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+              if (i) ImGui::SameLine();
+              if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
+                SaveSettings();
             }
-            eb->force_apply_ = true;  // re-apply size even while unlocked
-            SaveSettings();
-          }
-        };
-        preset("XS", 110, 9);
-        preset("S", 160, 16);
-        preset("M", 220, 22);
-        preset("L", 320, 30);
+            ImGui::SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+            ImGui::Unindent();
 
-        ImGui::Separator();
-        if (ImGui::Checkbox("Grille d'alignement", &eb->grid_show_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "Affiche une grille plein écran pour aligner ton interface "
-            "(comme les add-ons d'interface de WoW).");
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::SliderInt("Taille grille", &eb->grid_size_, 4, 128))
-          SaveSettings();
-        if (ImGui::Checkbox("Aimanter à la grille", &eb->grid_snap_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "Les barres s'alignent sur les cellules de la grille pendant le "
-            "déplacement et le redimensionnement.");
-        if (ImGui::ColorEdit4("Couleur grille", eb->grid_color_,
-                              ImGuiColorEditFlags_NoInputs |
-                                  ImGuiColorEditFlags_AlphaBar))
-          SaveSettings();
-        PopStyleCompact();
-      }
-    }
+            if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
+                                &eb->locked_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Verrouillée : les barres ne bougent plus et laissent passer les "
+                "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
+                "tirez le coin pour redimensionner.");
 
-    // ── Menu icons (ImGui replacement) ───────────────────────────────────
-    if (ImGui::CollapsingHeader("Icônes du menu")) {
-      if (auto* mi = Bourgeon::Instance().menu_icons()) {
-        if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "Cache la grille native et recrée les icônes fonctionnelles en "
-            "ImGui (cliquables + tooltip + masquage par icône).");
+            if (ImGui::Checkbox("Aimanter les barres (snap)", &eb->sticky_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
+                "et se collent automatiquement (~10px).\nÉloigne-la pour la "
+                "détacher. Les barres restent indépendantes.");
 
-        if (ImGui::Checkbox("Mode édition (glisser pour déplacer)",
-                            &mi->edit_mode_))
-          SaveSettings();
-        ImGui::SameLine(); HelpMarker(
-            "En mode édition : glisse chaque icône pour la repositionner.\n"
-            "Aimantage aux autres icônes + à la grille d'alignement (réglages "
-            "EXP Bar : grille/snap).\nDésactive le mode pour cliquer les icônes "
-            "normalement.");
+            if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
 
-        // Per-icon show/hide. icons() is populated once in-game.
-        if (ImGui::TreeNode("Afficher / masquer les icônes")) {
-          auto& icons = mi->icons();
-          if (icons.empty()) {
-            ImGui::TextDisabled("(disponible une fois en jeu)");
-          } else {
-            for (auto& ic : icons) {
-              bool shown = !ic.hidden;
-              ImGui::PushID(ic.cmd_id);
-              if (ImGui::Checkbox(ic.name, &shown)) {
-                ic.hidden = !shown;
-                mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
+            const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::Combo("Texte", &eb->text_mode_, modes, IM_ARRAYSIZE(modes)))
+              SaveSettings();
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::SliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f"))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker("Arrondi des coins des barres.");
+
+            for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+              char lbl[32];
+              std::snprintf(lbl, sizeof(lbl), "Couleur %s",
+                            BasicInfoTweaks::kBarLabels[i]);
+              if (ImGui::ColorEdit4(lbl, eb->bars_[i].fill,
+                                    ImGuiColorEditFlags_NoInputs))
+                SaveSettings();
+            }
+            if (ImGui::ColorEdit4("Fond / Opacité", eb->bg_color_,
+                                  ImGuiColorEditFlags_NoInputs |
+                                      ImGuiColorEditFlags_AlphaBar))
+              SaveSettings();
+
+            ImGui::TextUnformatted("Tailles rapides (toutes) :");
+            auto preset = [&](const char* label, int w, int h) {
+              ImGui::SameLine();
+              if (ImGui::Button(label)) {
+                for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
+                  eb->bars_[j].w = w;
+                  eb->bars_[j].h = h;
+                }
+                eb->force_apply_ = true;  // re-apply size even while unlocked
                 SaveSettings();
               }
-              ImGui::PopID();
+            };
+            preset("XS", 200, 9);
+            preset("S", 400, 16);
+            preset("M", 600, 22);
+            preset("L", 800, 30);
+            PopStyleCompact();
+          }
+          ImGui::EndTabItem();
+        }
+        // ── Menu icons (ImGui replacement) ───────────────────────────────────
+        if (ImGui::BeginTabItem("Icônes du menu"))
+        {
+          if (auto* mi = Bourgeon::Instance().menu_icons()) {
+            if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Cache la grille native et recrée les icônes fonctionnelles en "
+                "ImGui (cliquables + tooltip + masquage par icône).");
+
+            if (ImGui::Checkbox("Mode édition (glisser pour déplacer)",
+                                &mi->edit_mode_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "En mode édition : glisse chaque icône pour la repositionner.\n"
+                "Aimantage aux autres icônes + à la grille d'alignement (réglages "
+                "Interface de jeu : grille/snap).\nDésactive le mode pour cliquer "
+                "les icônes normalement.");
+
+            // Per-icon show/hide. icons() is populated once in-game.
+            if (ImGui::TreeNode("Afficher / masquer les icônes")) {
+              auto& icons = mi->icons();
+              if (icons.empty()) {
+                ImGui::TextDisabled("(disponible une fois en jeu)");
+              } else {
+                for (auto& ic : icons) {
+                  bool shown = !ic.hidden;
+                  ImGui::PushID(ic.cmd_id);
+                  if (ImGui::Checkbox(ic.name, &shown)) {
+                    ic.hidden = !shown;
+                    mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
+                    SaveSettings();
+                  }
+                  ImGui::PopID();
+                }
+              }
+              ImGui::TreePop();
             }
           }
-          ImGui::TreePop();
+          ImGui::EndTabItem();
+        }
+        // ── Status icons (StatusIconTweaks) ──────────────────────────────────
+        if (ImGui::BeginTabItem("Icônes de statut"))
+        {
+          if (auto* si = Bourgeon::Instance().status_icons())
+            si->DrawSettings();
+          else
+            ImGui::TextDisabled("(plugin indisponible)");
+          ImGui::EndTabItem();
         }
       }
+      ImGui::EndTabBar();
+      PopStyleCompact();
     }
-
-    // ── Status icons (StatusIconTweaks) ──────────────────────────────────
-    if (ImGui::CollapsingHeader("Icônes de statut")) {
-      if (auto* si = Bourgeon::Instance().status_icons())
-        si->DrawSettings();
-      else
-        ImGui::TextDisabled("(plugin indisponible)");
-    }
-
-    // ── Commands Settings ────────────────────────────────────────────────
+    // ── Commands Settings ────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Commands Settings"))
     {
       PushStyleCompact();
@@ -1840,7 +1906,7 @@ void MoonlightUi::OnRenderUI() {
   ImGui::End();
   ImGui::PopStyleVar(4);
 
-  // ── Alootid floating overlay ──────────────────────────────────────────────
+  // ── Alootid floating overlay ───────────────────────────────────────────────
   // Detect silent tooltip close (e.g. comparison→non-comparison): the game
   // zeroes kItemDescWndGlobalPtr without sending our hook a close message.
   if (g_item_desc_visible &&
@@ -1912,7 +1978,7 @@ void MoonlightUi::OnRenderUI() {
     ImGui::PopStyleVar(2);
   }
 
-  // ── Main-chat quick preset switcher (compact, draggable, resizable) ───────
+  // ── Main-chat quick preset switcher (compact, draggable, resizable) ────────
   if (mainchat_preset_bar_ && chat_bg_found_) {
     ImGui::SetNextWindowBgAlpha(0.85f);
     ImGui::SetNextWindowSize(ImVec2(80.0f, 10.0f), ImGuiCond_FirstUseEver);
