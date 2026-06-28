@@ -160,6 +160,15 @@ constexpr uintptr_t kInvFinalize = 0x00950400;  // FUN_00950400(inv): refresh sc
 // layout and fall back to FUN_0096c610's DEFAULT (x=0 -> stuck left, tab 0 = Use).
 // Bumping the imm 3->4 accepts category 4 so the layout (position + Cards) persists.
 constexpr uintptr_t kLayoutTabBoundImm = 0x0096b72b;  // the imm8 (0x03) of that CMP
+// Drag-drop "add to favorites": dropping an inventory item onto a tab fires packet
+// 0x907 with a flag byte = (hit-tested VISUAL tab slot != Fav). FUN_00938650 case 1
+// hit-tests the strip (FUN_00848e60 -> visual slot) and compares it to the literal 3
+// (`CMP EAX,3 / SETNZ`): stock Fav is visual slot 3 -> flag 0 -> server ADDS favorite.
+// We moved Fav to visual slot 4 (Card took slot 3), so the stock compare made dropping
+// on CARD favorite the item and dropping on FAV a no-op (exactly the reported bug).
+// Bump the imm8 3->4 (= the Fav visual slot) so the drop-to-favorite targets the Fav tab.
+constexpr uintptr_t kFavDropSlotImm = 0x009386d0;  // imm8 of CMP EAX,3 in FUN_00938650 case 1
+constexpr uint8_t   kFavSlot        = 4;           // Fav's VISUAL slot (kSlotCategory[4]==kFavCat)
 constexpr int kMsgSelectTab = 0x16;  // tab clicked: param_3 = visual slot index
 constexpr int kMsgRefresh   = 0x17;  // rebuild inv+0xe8 for the current category
 constexpr int kMsgRestore   = 0x22;  // layout restore (sets category + selected tab)
@@ -710,6 +719,21 @@ InventoryTweaks::InventoryTweaks() {
     } else {
       LogError("[Inventory] layout bound imm @0x{:x} = {}, expected 3; patch skipped",
                kLayoutTabBoundImm, bound);
+    }
+
+    // 1e) Re-aim the drag-drop "add to favorites" at the moved Fav tab. Dropping an
+    //     item on a tab (FUN_00938650 case 1) hit-tests the strip and compares the
+    //     VISUAL slot to 3 to set the 0x907 favorite flag; Fav is now visual slot 4
+    //     (Card sits at 3), so bump the CMP imm8 3->kFavSlot. Without this, dropping
+    //     on Card favorites the item and dropping on Fav does nothing.
+    const uint8_t favSlot = *reinterpret_cast<uint8_t*>(kFavDropSlotImm);
+    if (favSlot == 3) {
+      PatchValue<uint8_t>(kFavDropSlotImm, kFavSlot);
+      LogInfo("[Inventory] drag-drop favorite tab slot 3->{} (Fav moved past Cards)",
+              kFavSlot);
+    } else {
+      LogError("[Inventory] fav-drop slot imm @0x{:x} = {}, expected 3; patch skipped",
+               kFavDropSlotImm, favSlot);
     }
   }
 
