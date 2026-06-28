@@ -295,6 +295,67 @@ inline unsigned ChipColor(int x, int y) {
   return (b << 16) | (g << 8) | r;
 }
 
+// Build the per-tab image paths once (btnbar folder) and (re)load each tab's
+// active/inactive bmp into g_tabTexA/B (cached by the tex mgr). Safe to call every
+// frame and from the logic phase. Publishes the images for TabDrawContentHook.
+void LoadTabImages() {
+  static char s_paths[kTabCount][2][128] = {};
+  if (s_paths[0][0][0] == 0) {
+    const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+    const char* slash = std::strrchr(base, '\\');
+    const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
+    for (int i = 0; i < kTabCount; ++i)
+      for (int v = 0; v < 2; ++v) {
+        std::memcpy(s_paths[i][v], base, n);
+        std::snprintf(s_paths[i][v] + n, sizeof(s_paths[i][v]) - n,
+                      "%s%d.bmp", kTabImgName[i], v + 1);
+      }
+  }
+  void* ttmgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+  for (int i = 0; i < kTabCount; ++i) {
+    g_tabTexA[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
+        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][0]));
+    g_tabTexB[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
+        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][1]));
+  }
+}
+
+// Widen the (shared) tab strip to the widest tab image and size each tab to its
+// image height, then recompute the strip. Leaves the strip at its FINAL rendered
+// height. Must run BEFORE the native layout-restore (msg 0x22): that restore
+// clamps the window height up to (tabStripHeight + bottom reserve); pre-render the
+// tabs sit at their taller NATIVE height, so the floor is inflated and a saved
+// short height is clamped away (window springs back to "standard" on reopen).
+// Sizing first makes the restore floor match the live resize floor (= rendered
+// strip), so the saved height survives. Width derives from this+0x84+1 (Recompute
+// calls SetSize with it), so set that source field — not this+0x14.
+void SizeTabsToImages(void* tabobj) {
+  auto* t = reinterpret_cast<uint8_t*>(tabobj);
+  bool changed = false;
+  int maxW = 0;
+  for (int i = 0; i < kTabCount; ++i)
+    if (void* img = TabImg(i, true)) {
+      const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(img) + kTexW);
+      if (iw > maxW) maxW = iw;
+    }
+  if (maxW > kTabMaxWidth) maxW = kTabMaxWidth;  // keep clear of the slot grid
+  if (maxW > 0 && *reinterpret_cast<int*>(t + kTabThickness) != maxW - 1) {
+    *reinterpret_cast<int*>(t + kTabThickness) = maxW - 1;
+    changed = true;
+  }
+  if (int* sz = *reinterpret_cast<int**>(t + kTabSizeArr)) {
+    const int count = TabCount(tabobj);
+    for (int i = 0; i < count && i < kTabCount; ++i) {
+      void* img = TabImg(i, true);
+      if (!img) continue;
+      const int imgH = *reinterpret_cast<int*>(
+          reinterpret_cast<uint8_t*>(img) + kTexH);
+      if (imgH > 0 && sz[i] != imgH) { sz[i] = imgH; changed = true; }
+    }
+  }
+  if (changed) reinterpret_cast<Recompute_t>(kTabRecompute)(tabobj, nullptr);
+}
+
 // Replacement for UIItemWnd::DrawContent (__thiscall -> __fastcall, edx unused).
 // POD-only locals so the body can live under SEH.
 void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
@@ -303,63 +364,15 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     const int height = *reinterpret_cast<const int*>(w + kWndHeight);
     const int width  = *reinterpret_cast<const int*>(w + kWndWidth);
 
-    // ---- Tab strip -> images. Build the per-tab paths once (btnbar folder),
-    // load each tab's active/inactive bmp (cached by the tex mgr) and publish to
-    // g_tabTexA/B for TabDrawContentHook, then size each tab to its image height.
-    // The blit + label-empty happen in the tab hook: the strip node is cleared+
-    // redrawn (FUN_00857910) every render, so a blit from here would be wiped.
-    static char s_paths[kTabCount][2][128] = {};
-    if (s_paths[0][0][0] == 0) {
-      const char* base = reinterpret_cast<const char*>(kBtnbarPath);
-      const char* slash = std::strrchr(base, '\\');
-      const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
-      for (int i = 0; i < kTabCount; ++i)
-        for (int v = 0; v < 2; ++v) {
-          std::memcpy(s_paths[i][v], base, n);
-          std::snprintf(s_paths[i][v] + n, sizeof(s_paths[i][v]) - n,
-                        "%s%d.bmp", kTabImgName[i], v + 1);
-        }
-    }
-    void* ttmgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    for (int i = 0; i < kTabCount; ++i) {
-      g_tabTexA[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
-          ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][0]));
-      g_tabTexB[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
-          ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][1]));
-    }
-    if (void* tabobj = Child(wnd, kTabCtrl)) {
-      auto* t = reinterpret_cast<uint8_t*>(tabobj);
-      bool changed = false;
-      // NB: the extra tab is appended in OnTick (logic phase), NOT here — doing the
-      // AddTab structural mutation during the render pass corrupted window state (v1
-      // crash). Here we only SIZE/width the tabs that already exist.
-      // Widen the (shared) strip to the widest tab image so nothing clips. Width
-      // derives from this+0x84+1 (Recompute calls SetSize with it), so set that
-      // source field — not this+0x14 — or a native recompute overwrites it.
-      int maxW = 0;
-      for (int i = 0; i < kTabCount; ++i)
-        if (void* img = TabImg(i, true)) {
-          const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(img) + kTexW);
-          if (iw > maxW) maxW = iw;
-        }
-      if (maxW > kTabMaxWidth) maxW = kTabMaxWidth;  // keep clear of the slot grid
-      if (maxW > 0 && *reinterpret_cast<int*>(t + kTabThickness) != maxW - 1) {
-        *reinterpret_cast<int*>(t + kTabThickness) = maxW - 1;
-        changed = true;
-      }
-      // Size each tab to its image height.
-      if (int* sz = *reinterpret_cast<int**>(t + kTabSizeArr)) {
-        const int count = TabCount(tabobj);
-        for (int i = 0; i < count && i < kTabCount; ++i) {
-          void* img = TabImg(i, true);
-          if (!img) continue;
-          const int imgH = *reinterpret_cast<int*>(
-              reinterpret_cast<uint8_t*>(img) + kTexH);
-          if (imgH > 0 && sz[i] != imgH) { sz[i] = imgH; changed = true; }
-        }
-      }
-      if (changed) reinterpret_cast<Recompute_t>(kTabRecompute)(tabobj, nullptr);
-    }
+    // ---- Tab strip -> images. Load each tab's active/inactive bmp (published to
+    // g_tabTexA/B for TabDrawContentHook) and size the strip to them. The blit +
+    // label-empty happen in the tab hook: the strip node is cleared+redrawn
+    // (FUN_00857910) every render, so a blit from here would be wiped. NB: the
+    // extra tab is appended in OnTick/MsgHook (logic phase), NOT here — the AddTab
+    // structural mutation during the render pass corrupted window state (v1 crash);
+    // here we only load + SIZE/width the tabs that already exist.
+    LoadTabImages();
+    if (void* tabobj = Child(wnd, kTabCtrl)) SizeTabsToImages(tabobj);
 
     // Original: slot grid + bottom-left "X/200" count + the btnbar bottom frame.
     // The cards/Etc filtering is done for REAL in DoRefresh (PruneList erases nodes
@@ -607,6 +620,17 @@ int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, i
       return 0;
     }
     if (msg == kMsgRestore) {
+      // Size the tab strip to its image height BEFORE the native restore. That
+      // restore clamps the window height up to (tabStripHeight + bottom reserve);
+      // pre-render the tabs sit at their taller NATIVE height, so a saved SHORT
+      // height gets clamped up to an inflated floor and lost (the window springs
+      // back to "standard" size on reopen). Sizing first makes the restore floor
+      // match the rendered strip (= the live resize floor), so the saved height
+      // survives. EnsureExtraTab above guarantees all 5 tabs exist first.
+      if (void* tab = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(self) + kTabCtrl)) {
+        LoadTabImages();
+        SizeTabsToImages(tab);
+      }
       const int r = g_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
       // The save persists the CATEGORY (inv+0x10c); native restore copied it into BOTH
       // inv+0x10c AND tabctrl+0x7c. Keep the category (the internal 0x17 already built
