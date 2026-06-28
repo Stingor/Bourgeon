@@ -333,8 +333,9 @@ void MenuIconTweaks::OnRenderUI() {
         nx = SnapIcon(nx, static_cast<float>(ic.w), i, false);  // magnetic to icons
         ny = SnapIcon(ny, static_cast<float>(ic.h), i, true);
         if (auto* mui = Bourgeon::Instance().moonlight_ui()) {  // shared grid snap
-          nx = mui->grid_.SnapAxis(nx);
-          ny = mui->grid_.SnapAxis(ny);
+          const ImVec2 ds = ImGui::GetIO().DisplaySize;
+          nx = mui->grid_.SnapAxis(nx, ds.x);
+          ny = mui->grid_.SnapAxis(ny, ds.y);
         }
         ic.x = static_cast<int>(nx + 0.5f);
         ic.y = static_cast<int>(ny + 0.5f);

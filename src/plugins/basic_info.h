@@ -73,7 +73,9 @@ class BasicInfoTweaks : public Plugin {
   bool drag_pending_ = false;  // geometry changed mid-drag, awaiting mouse-up
 
   // Custom drag/resize state (only one bar is ever dragged at a time).
-  int   drag_mode_  = 0;     // 0=none, 1=move, 2=resize (bottom-right)
+  enum DragEdge { kEdgeL = 1, kEdgeR = 2, kEdgeT = 4, kEdgeB = 8 };
+  int   drag_mode_  = 0;     // 0=none, 1=move, 2=resize
+  int   drag_edges_ = 0;     // DragEdge bitmask of the edge(s) grabbed (resize)
   float drag_off_x_ = 0.0f;  // mouse-to-anchor offset captured at drag start
   float drag_off_y_ = 0.0f;
 

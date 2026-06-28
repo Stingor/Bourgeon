@@ -111,53 +111,97 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0f, 8.0f));
 
   bool changed = false;
   if (ImGui::Begin(kSrc[id].win_id, nullptr, flags)) {
     const ImVec2 p0 = ImGui::GetWindowPos();
     const ImVec2 sz = ImGui::GetWindowSize();
+    int hl_edges = 0;  // edge(s) to highlight this frame (hover/drag feedback)
 
     // Custom move/resize via one full-window invisible button.  The grab spot
-    // decides the mode: bottom-right corner = resize, anywhere else = move.  We
-    // update the stored geometry (which pins the window next frame), and snap
-    // the moved position to other bars — graphics + hit-test stay in lockstep.
+    // decides the mode: a window edge (within kEdge, or the generous bottom-right
+    // corner grip) = resize that edge/corner, anywhere else = move.  We update the
+    // stored geometry (which pins the window next frame), and snap the moved
+    // position to other bars — graphics + hit-test stay in lockstep.
     if (!frozen) {
-      const float kGrip = 12.0f;
+      const float kGrip = 12.0f;  // generous bottom-right corner grab zone
+      const float kEdge = 5.0f;   // edge grab thickness
       ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
       ImGui::InvisibleButton("##bihandle", sz);
       const ImVec2 m = ImGui::GetIO().MousePos;
+      const float rx = p0.x + sz.x, by = p0.y + sz.y;  // right / bottom edges
+
+      // Edge hit-test under the cursor, shared by activation and the hover
+      // highlight (no OS resize cursor here — the game draws its own).
+      int hov = 0;
+      if (m.x <= p0.x + kEdge) hov |= kEdgeL;
+      if (m.x >= rx   - kEdge) hov |= kEdgeR;
+      if (m.y <= p0.y + kEdge) hov |= kEdgeT;
+      if (m.y >= by   - kEdge) hov |= kEdgeB;
+      // Keep the original bottom-right corner grip generous.
+      if (m.x >= rx - kGrip && m.y >= by - kGrip) hov |= kEdgeR | kEdgeB;
+
       if (ImGui::IsItemActivated()) {
-        const bool corner =
-            m.x >= p0.x + sz.x - kGrip && m.y >= p0.y + sz.y - kGrip;
-        drag_mode_  = corner ? 2 : 1;
-        drag_off_x_ = m.x - (corner ? p0.x + sz.x : p0.x);
-        drag_off_y_ = m.y - (corner ? p0.y + sz.y : p0.y);
+        drag_edges_ = hov;
+        drag_mode_  = hov ? 2 : 1;
+        if (hov) {  // resize: offset from the grabbed edge so it tracks the cursor
+          drag_off_x_ = (hov & kEdgeL) ? m.x - p0.x : (hov & kEdgeR) ? m.x - rx : 0.0f;
+          drag_off_y_ = (hov & kEdgeT) ? m.y - p0.y : (hov & kEdgeB) ? m.y - by : 0.0f;
+        } else {  // move: offset from the top-left
+          drag_off_x_ = m.x - p0.x;
+          drag_off_y_ = m.y - p0.y;
+        }
       }
+      // Highlight the dragged edges while resizing, else the hovered edge(s).
+      if (ImGui::IsItemActive() && drag_mode_ == 2) hl_edges = drag_edges_;
+      else if (ImGui::IsItemHovered())              hl_edges = hov;
+
       if (ImGui::IsItemActive()) {
+        const ImVec2 ds = ImGui::GetIO().DisplaySize;
         if (drag_mode_ == 1) {  // move
           float nx = m.x - drag_off_x_, ny = m.y - drag_off_y_;
           if (sticky_) {
             nx = SnapValue(nx, static_cast<float>(bar.w), id, false);
             ny = SnapValue(ny, static_cast<float>(bar.h), id, true);
           }
-          if (grid) { nx = grid->SnapAxis(nx); ny = grid->SnapAxis(ny); }
+          // Snap the top-left corner to the visible grid lines.
+          if (grid) { nx = grid->SnapAxis(nx, ds.x); ny = grid->SnapAxis(ny, ds.y); }
           const int ix = static_cast<int>(nx + 0.5f);
           const int iy = static_cast<int>(ny + 0.5f);
           if (ix != bar.x || iy != bar.y) {
             bar.x = ix; bar.y = iy; changed = true;
           }
-        } else if (drag_mode_ == 2) {  // resize from bottom-right corner
-          int nw = static_cast<int>((m.x - drag_off_x_) - p0.x + 0.5f);
-          int nh = static_cast<int>((m.y - drag_off_y_) - p0.y + 0.5f);
-          if (grid) {
-            nw = static_cast<int>(grid->SnapAxis(static_cast<float>(nw)) + 0.5f);
-            nh = static_cast<int>(grid->SnapAxis(static_cast<float>(nh)) + 0.5f);
+        } else if (drag_mode_ == 2) {  // resize the grabbed edge(s)/corner
+          // Move only the grabbed edges; the opposite ones stay pinned. Each
+          // dragged edge snaps to the visible grid (lands on a line), then the
+          // x/y/w/h fall out of the four edge positions.
+          float left = p0.x, right = rx, top = p0.y, bottom = by;
+          const float kMin = 5.0f;  // minimum bar width/height (px)
+          if (drag_edges_ & kEdgeL) {
+            left = m.x - drag_off_x_;
+            if (grid) left = grid->SnapAxis(left, ds.x);
+            if (left > right - kMin) left = right - kMin;
+          } else if (drag_edges_ & kEdgeR) {
+            right = m.x - drag_off_x_;
+            if (grid) right = grid->SnapAxis(right, ds.x);
+            if (right < left + kMin) right = left + kMin;
           }
-          if (nw < 8) nw = 8;
-          if (nh < 4) nh = 4;
-          if (nw != bar.w || nh != bar.h) {
-            bar.w = nw; bar.h = nh; changed = true;
+          if (drag_edges_ & kEdgeT) {
+            top = m.y - drag_off_y_;
+            if (grid) top = grid->SnapAxis(top, ds.y);
+            if (top > bottom - kMin) top = bottom - kMin;
+          } else if (drag_edges_ & kEdgeB) {
+            bottom = m.y - drag_off_y_;
+            if (grid) bottom = grid->SnapAxis(bottom, ds.y);
+            if (bottom < top + kMin) bottom = top + kMin;
+          }
+          const int ix = static_cast<int>(left   + 0.5f);
+          const int iy = static_cast<int>(top    + 0.5f);
+          const int nw = static_cast<int>(right  - left + 0.5f);
+          const int nh = static_cast<int>(bottom - top  + 0.5f);
+          if (ix != bar.x || iy != bar.y || nw != bar.w || nh != bar.h) {
+            bar.x = ix; bar.y = iy; bar.w = nw; bar.h = nh; changed = true;
           }
         }
       }
@@ -217,6 +261,17 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
       dl->AddTriangleFilled(ImVec2(p1.x, p1.y - kGrip), ImVec2(p1.x, p1.y),
                             ImVec2(p1.x - kGrip, p1.y),
                             IM_COL32(255, 255, 255, 70));
+    }
+
+    // Edge-resize feedback: glow the hovered/dragged edge(s) (a corner lights
+    // two). Replaces the OS resize cursor, which the game's own cursor hides.
+    if (hl_edges) {
+      const ImU32 hc = IM_COL32(255, 220, 80, 210);
+      const float t  = 2.0f;
+      if (hl_edges & kEdgeL) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p0.x, p1.y), hc, t);
+      if (hl_edges & kEdgeR) dl->AddLine(ImVec2(p1.x, p0.y), ImVec2(p1.x, p1.y), hc, t);
+      if (hl_edges & kEdgeT) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p1.x, p0.y), hc, t);
+      if (hl_edges & kEdgeB) dl->AddLine(ImVec2(p0.x, p1.y), ImVec2(p1.x, p1.y), hc, t);
     }
   }
   ImGui::End();

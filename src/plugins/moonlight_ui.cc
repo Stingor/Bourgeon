@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -926,9 +927,14 @@ void AlignGrid::Draw() const {
   ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under windows
   const ImU32 col = ImGui::ColorConvertFloat4ToU32(
       ImVec4(color[0], color[1], color[2], color[3]));
-  for (float x = 0.0f; x <= ds.x; x += step)
+  // Anchor the grid on the screen centre: offset the first line so a grid line
+  // falls exactly on the centre, keeping the mesh symmetric left/right and
+  // top/bottom (the bright centre cross then lands right on a line).
+  const float ox = std::fmod(ds.x * 0.5f, step);
+  const float oy = std::fmod(ds.y * 0.5f, step);
+  for (float x = ox; x <= ds.x; x += step)
     dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, ds.y), col);
-  for (float y = 0.0f; y <= ds.y; y += step)
+  for (float y = oy; y <= ds.y; y += step)
     dl->AddLine(ImVec2(0.0f, y), ImVec2(ds.x, y), col);
   // Brighter centre cross for quick centring.
   float ca = color[3] * 2.5f;
@@ -1337,8 +1343,23 @@ void MoonlightUi::OnRenderUI() {
           "Affiche une grille plein écran pour aligner ton interface "
           "(comme les add-ons d'interface de WoW).");
       ImGui::SetNextItemWidth(160.0f);
-      if (ImGui::SliderInt("Taille grille", &grid_.size, 4, 128))
-        SaveSettings();
+      {
+        ImGui::SliderInt("Taille grille", &grid_.size, 4, 128);
+        // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
+        // Claim the wheel for this item so it adjusts the cell size and does NOT
+        // also scroll the settings window.
+        const bool hovered = ImGui::IsItemHovered();
+        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+        const float wheel = hovered ? ImGui::GetIO().MouseWheel : 0.0f;
+        if (wheel != 0.0f) {
+          const int dir  = wheel > 0.0f ? 1 : -1;
+          const int step = ImGui::GetIO().KeyShift ? 10 : 1;
+          grid_.size += dir * step;
+          if (grid_.size < 4)   grid_.size = 4;
+          if (grid_.size > 128) grid_.size = 128;
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() || wheel != 0.0f) SaveSettings();
+      }
       if (ImGui::Checkbox("Aimanter à la grille", &grid_.snap))
         SaveSettings();
       ImGui::SameLine(); HelpMarker(

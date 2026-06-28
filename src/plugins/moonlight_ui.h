@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -18,12 +19,18 @@ struct AlignGrid {
   // Cell size clamped to a sane minimum.
   int cell() const { return size < 4 ? 4 : size; }
 
-  // Snaps one coordinate to the nearest grid line; returns v unchanged when
-  // snapping is off, so callers can apply it unconditionally.
-  float SnapAxis(float v) const {
+  // Snaps one absolute screen coordinate to the nearest visible grid line.
+  // The grid is centred on the screen, so `extent` (the screen size along this
+  // axis, ds.x or ds.y) is needed to locate the lines — it must match Draw()'s
+  // offset or the snap targets and the drawn lines drift apart. Returns v
+  // unchanged when snapping is off, so callers can apply it unconditionally.
+  // Snap a window EDGE (move: its top-left; resize: its bottom-right corner),
+  // never a width/height, or the edge won't land on a line.
+  float SnapAxis(float v, float extent) const {
     if (!snap) return v;
-    const float g = static_cast<float>(cell());
-    return g * static_cast<float>(static_cast<int>(v / g + 0.5f));
+    const float g   = static_cast<float>(cell());
+    const float off = std::fmod(extent * 0.5f, g);  // same anchor as Draw()
+    return off + g * std::floor((v - off) / g + 0.5f);
   }
 
   // Draws the grid full-screen on the background draw list (behind all windows).
