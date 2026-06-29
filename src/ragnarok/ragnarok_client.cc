@@ -38,6 +38,9 @@ static WindowProcFunc WndProcRef;
 static HWND g_game_hwnd = nullptr;
 
 static bool IsMouseOverAnyImGuiWindow(float mx, float my);
+// Same, but ALSO counts click-through (locked) windows — used to decide whether
+// to draw the RO cursor on top of them (they still render above the game cursor).
+static bool IsMouseOverAnyVisibleImGuiWindow(float mx, float my);
 
 // ── Real RO cursor capture (DX9) ─────────────────────────────────────────────
 // The game draws its cursor as a SOFTWARE sprite batched into the scene render
@@ -205,7 +208,9 @@ void DrawROCursorImGui() {
 
   const ImVec2 mp = ImGui::GetIO().MousePos;
   if (mp.x < 0.f || mp.y < 0.f) return;
-  if (!IsMouseOverAnyImGuiWindow(mp.x, mp.y)) return;
+  // Draw over locked (click-through) bars/portrait too, not just interactive
+  // windows — otherwise the game's batched cursor stays hidden behind them.
+  if (!IsMouseOverAnyVisibleImGuiWindow(mp.x, mp.y)) return;
 
   ImDrawList* dl = ImGui::GetForegroundDrawList();
 
@@ -472,6 +477,22 @@ static bool IsMouseOverAnyImGuiWindow(float mx, float my) {
     // never capture the mouse, so they must not block clicks to the game.
     if (w->WasActive && !(w->Flags & ImGuiWindowFlags_NoMouseInputs) &&
         w->OuterRectClipped.Contains(p))
+      return true;
+  }
+  return false;
+}
+
+// Like IsMouseOverAnyImGuiWindow but INCLUDES click-through (NoMouseInputs)
+// windows: a locked HUD bar/portrait still draws ON TOP of the game's batched
+// cursor, so we must redraw the RO cursor above it (while still letting the click
+// pass to the game — that's handled separately by the input-routing path which
+// uses the stricter check above).
+static bool IsMouseOverAnyVisibleImGuiWindow(float mx, float my) {
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  if (!ctx) return false;
+  ImVec2 p(mx, my);
+  for (ImGuiWindow* w : ctx->Windows) {
+    if (w->WasActive && w->OuterRectClipped.Contains(p))
       return true;
   }
   return false;

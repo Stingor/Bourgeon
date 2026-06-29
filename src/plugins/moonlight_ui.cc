@@ -416,6 +416,7 @@ void MoonlightUi::LoadSettings() {
       eb->sticky_    = ui["expbar_sticky"].as<bool>(false);
       eb->text_mode_ = ui["expbar_text"].as<int>(1);
       eb->vertical_  = ui["expbar_vertical"].as<bool>(false);
+      eb->border_    = ui["expbar_border"].as<bool>(true);
       eb->rounding_  = ui["expbar_rounding"].as<float>(4.0f);
       auto load_color = [&](const std::string& key, float c[4]) {
         const std::string hex = ui[key].as<std::string>("");
@@ -434,6 +435,35 @@ void MoonlightUi::LoadSettings() {
         load_color(p + "color", b.fill);
       }
       load_color("expbar_bg_color", eb->bg_color_);
+
+      // Status portrait (part of the Basic Info tweaks): per-element layout.
+      eb->portrait_visible_         = ui["portrait_visible"].as<bool>(false);
+      eb->portrait_locked_          = ui["portrait_locked"].as<bool>(false);
+      eb->portrait_hide_basic_info_ = ui["portrait_hide_basic_info"].as<bool>(false);
+      eb->portrait_border_          = ui["portrait_border"].as<bool>(false);
+      eb->portrait_head_sprite_     = ui["portrait_head_sprite"].as<bool>(true);
+      eb->portrait_head_only_       = ui["portrait_head_only"].as<bool>(true);
+      eb->portrait_debug_log_       = ui["portrait_debug_log"].as<bool>(false);
+      eb->portrait_head_zoom_       = ui["portrait_head_zoom"].as<float>(1.0f);
+      eb->portrait_head_offx_       = ui["portrait_head_offx"].as<float>(0.0f);
+      eb->portrait_head_offy_       = ui["portrait_head_offy"].as<float>(0.0f);
+      eb->portrait_anim_            = ui["portrait_anim"].as<int>(4);
+      eb->portrait_dir_             = ui["portrait_dir"].as<int>(0);
+      eb->portrait_animate_         = ui["portrait_animate"].as<bool>(true);
+      eb->portrait_show_garment_    = ui["portrait_show_garment"].as<bool>(true);
+      for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+        const std::string p =
+            std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+        auto& e = eb->ports_[i];
+        e.show     = ui[p + "show"].as<bool>(e.show);
+        e.x        = ui[p + "x"].as<int>(e.x);
+        e.y        = ui[p + "y"].as<int>(e.y);
+        e.w        = ui[p + "w"].as<int>(e.w);
+        e.h        = ui[p + "h"].as<int>(e.h);
+        e.rounding = ui[p + "rounding"].as<float>(e.rounding);
+        load_color(p + "bg", e.bg);
+        load_color(p + "fg", e.fg);
+      }
     }
 
     // Global alignment grid. Reads grid_*, falling back to the legacy
@@ -566,6 +596,7 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "expbar_sticky"   << YAML::Value << (eb ? eb->sticky_ : false)
       << YAML::Key << "expbar_text"     << YAML::Value << (eb ? eb->text_mode_ : 1)
       << YAML::Key << "expbar_vertical" << YAML::Value << (eb ? eb->vertical_ : false)
+      << YAML::Key << "expbar_border"   << YAML::Value << (eb ? eb->border_ : true)
       << YAML::Key << "expbar_rounding" << YAML::Value << (eb ? eb->rounding_ : 4.0f)
       << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
       << YAML::Key << "grid_show"  << YAML::Value << grid_.show
@@ -587,6 +618,40 @@ void MoonlightUi::SaveSettings() {
           << YAML::Key << (p + "w")     << YAML::Value << b.w
           << YAML::Key << (p + "h")     << YAML::Value << b.h
           << YAML::Key << (p + "color") << YAML::Value << col;
+    }
+  }
+
+  // Status portrait settings (part of BasicInfoTweaks): per-element layout.
+  if (eb) {
+    out << YAML::Key << "portrait_visible"         << YAML::Value << eb->portrait_visible_
+        << YAML::Key << "portrait_locked"          << YAML::Value << eb->portrait_locked_
+        << YAML::Key << "portrait_hide_basic_info" << YAML::Value << eb->portrait_hide_basic_info_
+        << YAML::Key << "portrait_border"          << YAML::Value << eb->portrait_border_
+        << YAML::Key << "portrait_head_sprite"     << YAML::Value << eb->portrait_head_sprite_
+        << YAML::Key << "portrait_head_only"       << YAML::Value << eb->portrait_head_only_
+        << YAML::Key << "portrait_debug_log"       << YAML::Value << eb->portrait_debug_log_
+        << YAML::Key << "portrait_head_zoom"       << YAML::Value << eb->portrait_head_zoom_
+        << YAML::Key << "portrait_head_offx"       << YAML::Value << eb->portrait_head_offx_
+        << YAML::Key << "portrait_head_offy"       << YAML::Value << eb->portrait_head_offy_
+        << YAML::Key << "portrait_anim"            << YAML::Value << eb->portrait_anim_
+        << YAML::Key << "portrait_dir"             << YAML::Value << eb->portrait_dir_
+        << YAML::Key << "portrait_animate"         << YAML::Value << eb->portrait_animate_
+        << YAML::Key << "portrait_show_garment"    << YAML::Value << eb->portrait_show_garment_;
+    for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+      const std::string p =
+          std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+      const auto& e = eb->ports_[i];
+      char bg[9], fg[9];
+      std::snprintf(bg, sizeof(bg), "%08X", ArgbFromPicker(e.bg));
+      std::snprintf(fg, sizeof(fg), "%08X", ArgbFromPicker(e.fg));
+      out << YAML::Key << (p + "show")     << YAML::Value << e.show
+          << YAML::Key << (p + "x")        << YAML::Value << e.x
+          << YAML::Key << (p + "y")        << YAML::Value << e.y
+          << YAML::Key << (p + "w")        << YAML::Value << e.w
+          << YAML::Key << (p + "h")        << YAML::Value << e.h
+          << YAML::Key << (p + "rounding") << YAML::Value << e.rounding
+          << YAML::Key << (p + "bg")       << YAML::Value << bg
+          << YAML::Key << (p + "fg")       << YAML::Value << fg;
     }
   }
 
@@ -896,6 +961,42 @@ static void HelpMarker(const char* desc)
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
   }
+}
+
+// SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
+// (fine-tuning without grabbing the handle). SetItemKeyOwner(MouseWheelY) claims
+// the wheel so the settings window doesn't scroll at the same time. Step defaults
+// to ~2% of the range (float) / range/50 (int), min 1.
+static bool WheelSliderFloat(const char* label, float* v, float lo, float hi,
+                             const char* fmt = "%.3f", float step = 0.0f) {
+  bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt);
+  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
+    const float w = ImGui::GetIO().MouseWheel;
+    if (w != 0.0f) {
+      if (step <= 0.0f) step = (hi - lo) * 0.02f;
+      float nv = *v + w * step;
+      if (nv < lo) nv = lo;
+      if (nv > hi) nv = hi;
+      if (nv != *v) { *v = nv; changed = true; }
+    }
+  }
+  return changed;
+}
+
+static bool WheelSliderInt(const char* label, int* v, int lo, int hi,
+                           const char* fmt = "%d", int step = 0) {
+  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
+  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
+    const float w = ImGui::GetIO().MouseWheel;
+    if (w != 0.0f) {
+      if (step <= 0) { step = (hi - lo) / 50; if (step < 1) step = 1; }
+      int nv = *v + (w > 0.0f ? step : -step);
+      if (nv < lo) nv = lo;
+      if (nv > hi) nv = hi;
+      if (nv != *v) { *v = nv; changed = true; }
+    }
+  }
+  return changed;
 }
 
 // Make the UI compact because there are so many fields
@@ -1294,12 +1395,12 @@ void MoonlightUi::OnRenderUI() {
                               ImGuiColorEditFlags_NoInputs))
           SaveSettings();
         ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::SliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f"))
+        if (WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f"))
           SaveSettings();
 
         ImGui::SetNextItemWidth(160.0f);
         int slot_ms = dps->slot_ms_;
-        if (ImGui::SliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
+        if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
           dps->slot_ms_ = slot_ms;
           dps->ResetHistory();
           SaveSettings();
@@ -1308,7 +1409,7 @@ void MoonlightUi::OnRenderUI() {
 
         ImGui::SetNextItemWidth(160.0f);
         int win = dps->dps_window_secs_;
-        if (ImGui::SliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
+        if (WheelSliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
           dps->dps_window_secs_ = win;
           SaveSettings();
         }
@@ -1316,7 +1417,7 @@ void MoonlightUi::OnRenderUI() {
 
         ImGui::SetNextItemWidth(160.0f);
         int timeout = dps->combat_timeout_secs_;
-        if (ImGui::SliderInt("Timeout combat (s)", &timeout, 1, 15)) {
+        if (WheelSliderInt("Timeout combat (s)", &timeout, 1, 15)) {
           dps->combat_timeout_secs_ = timeout;
           SaveSettings();
         }
@@ -1404,6 +1505,11 @@ void MoonlightUi::OnRenderUI() {
                 "détacher. Les barres restent indépendantes.");
 
             if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Bordure", &eb->border_)) SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). "
+                "Décoche pour des barres sans contour.");
 
             const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
             ImGui::SetNextItemWidth(160.0f);
@@ -1411,7 +1517,7 @@ void MoonlightUi::OnRenderUI() {
               SaveSettings();
 
             ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::SliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f"))
+            if (WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f", 1.0f))
               SaveSettings();
             ImGui::SameLine(); HelpMarker("Arrondi des coins des barres.");
 
@@ -1444,6 +1550,133 @@ void MoonlightUi::OnRenderUI() {
             preset("S", 400, 16);
             preset("M", 600, 22);
             preset("L", 800, 30);
+            PopStyleCompact();
+          }
+          ImGui::EndTabItem();
+        }
+        // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
+        if (ImGui::BeginTabItem("Portrait"))
+        {
+          if (auto* eb = Bourgeon::Instance().basic_info()) {
+            PushStyleCompact();
+            if (ImGui::Checkbox("Afficher le portrait", &eb->portrait_visible_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Portrait de statut : la tête du personnage, le pseudo, la classe "
+                "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
+                "redimensionnable, avec sa couleur/opacité de fond et son arrondi.\n"
+                "(Le sprite de tête arrive bientôt.)");
+
+            if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)",
+                                &eb->portrait_locked_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Verrouillé : les éléments ne bougent plus et laissent passer les "
+                "clics au jeu.\nDéverrouillé : glisse pour déplacer, tire un bord/"
+                "coin pour redimensionner (aimantage à la grille d'alignement).");
+
+            if (ImGui::Checkbox("Sprite de tête (sinon placeholder)",
+                                &eb->portrait_head_sprite_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Régénère la tête du personnage via le moteur de sprites du jeu "
+                "et l'affiche dans l'élément Portrait.");
+            if (ImGui::Checkbox("Tête seule (sans le corps)",
+                                &eb->portrait_head_only_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Ne garde que les couches de la tête (visage/cheveux/coiffes) et "
+                "retire le corps. Décoche pour le personnage entier.");
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Bordure", &eb->portrait_border_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker("Trait noir 1px autour de chaque cadre.");
+
+            // Live framing of the head sprite (zoom + vertical focus).
+            ImGui::SetNextItemWidth(160.0f);
+            if (WheelSliderFloat("Zoom tête", &eb->portrait_head_zoom_, 0.10f,
+                                   2.0f, "%.2f", 0.01f))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Zoom dans la tête (1 = corps entier). Ajuste avec le décalage "
+                "vertical pour cadrer le visage.");
+            ImGui::SetNextItemWidth(160.0f);
+            if (WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_,
+                                   -1.5f, 1.5f, "%.2f", 0.01f))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Décale le portrait horizontalement (0 = centré). Sert à aligner "
+                "la tête/le corps ; le zoom reste centré.");
+            ImGui::SetNextItemWidth(160.0f);
+            if (WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_,
+                                   -1.5f, 1.5f, "%.2f", 0.01f))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Décale le portrait verticalement (0 = centré). Optionnel — le "
+                "zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
+
+            // Animation pose (animType): the frame count auto-adapts per action.
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::Combo("Animation", &eb->portrait_anim_,
+                             "Repos\0Marche\0Assis\0Ramasser\0Combat\0Attaque\0"
+                             "Touché\0Gelé\0Mort\0"))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Pose animée du portrait (Combat = posture prête au combat). "
+                "Le nombre d'images de l'animation s'ajuste automatiquement.");
+            // Facing direction (low 3 bits of the pose) + play/freeze toggle.
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::Combo("Direction", &eb->portrait_dir_,
+                             "Face (0)\0Diag. 1\0Côté (2)\0Diag. 3\0Dos (4)\0"
+                             "Diag. 5\0Côté (6)\0Diag. 7\0"))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
+                "l'angle voulu (le rendu se met à jour en direct).");
+            if (ImGui::Checkbox("Animer", &eb->portrait_animate_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Joue les images de l'animation (ex. le balayage de la posture "
+                "Combat). Décoche pour figer une pose calme (image 0).");
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Cape / garment", &eb->portrait_show_garment_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Affiche la cape/garment équipée (seulement en mode corps "
+                "entier — décoche \"Tête seule\" pour la voir).");
+
+            ImGui::Separator();
+            // Per-element config: show / background colour+opacity / rounding /
+            // text colour.  Each element is independent.
+            for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+              auto& e = eb->ports_[i];
+              ImGui::PushID(i);
+              if (ImGui::Checkbox(BasicInfoTweaks::kPortLabels[i], &e.show))
+                SaveSettings();
+              ImGui::Indent();
+              if (ImGui::ColorEdit4("Fond / Opacité", e.bg,
+                                    ImGuiColorEditFlags_NoInputs |
+                                        ImGuiColorEditFlags_AlphaBar))
+                SaveSettings();
+              if (i != BasicInfoTweaks::kPortHead) {
+                ImGui::SameLine();
+                if (ImGui::ColorEdit4("Texte", e.fg, ImGuiColorEditFlags_NoInputs))
+                  SaveSettings();
+              }
+              ImGui::SetNextItemWidth(160.0f);
+              if (WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f))
+                SaveSettings();
+              ImGui::Unindent();
+              ImGui::PopID();
+            }
+
+            ImGui::Separator();
+            if (ImGui::Checkbox("Masquer la fenêtre Basic Info d'origine",
+                                &eb->portrait_hide_basic_info_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Masque la fenêtre native \"Basic Info\" (déplacée hors écran) une "
+                "fois ton portrait en place. Décoche pour la restaurer.");
             PopStyleCompact();
           }
           ImGui::EndTabItem();
@@ -1597,7 +1830,7 @@ void MoonlightUi::OnRenderUI() {
           {// @autoloot
             int rate = aloot_rate_;
             ImGui::SetNextItemWidth(130.0f);
-            if (ImGui::SliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
+            if (WheelSliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
               aloot_rate_ = rate;
               SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
             }
