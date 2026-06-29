@@ -16,6 +16,8 @@
 #include "plugins/inventory_tweaks.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/weapon_layer.h"
+#include "plugins/skill_bar_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -169,6 +171,8 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
+  plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
+  plugins_.emplace_back(std::make_unique<SkillBarTweaks>());
   {
     auto status_icons = std::make_unique<StatusIconTweaks>();
     status_icons_ = status_icons.get();
