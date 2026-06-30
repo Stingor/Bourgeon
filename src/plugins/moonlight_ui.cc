@@ -515,6 +515,8 @@ void MoonlightUi::LoadSettings() {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
       sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
+      sb->show_keys_  = ui["skillbar_show_keys"].as<bool>(sb->show_keys_);
+      sb->bold_text_  = ui["skillbar_bold_text"].as<bool>(sb->bold_text_);
       sb->columns_    = ui["skillbar_columns"].as<int>(sb->columns_);
       sb->slot_count_ = ui["skillbar_slots"].as<int>(sb->slot_count_);
       sb->icon_size_  = ui["skillbar_size"].as<float>(sb->icon_size_);
@@ -532,6 +534,8 @@ void MoonlightUi::LoadSettings() {
       load_sbcol("skillbar_col_empty",    sb->col_empty_);
       load_sbcol("skillbar_col_border",   sb->col_border_);
       load_sbcol("skillbar_col_borderhi", sb->col_borderhi_);
+      load_sbcol("skillbar_col_keytext",  sb->col_keytext_);
+      load_sbcol("skillbar_col_count",    sb->col_count_);
     }
 
     if (auto* si = Bourgeon::Instance().status_icons()) {
@@ -783,6 +787,8 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "skillbar_enabled"  << YAML::Value << (sb ? sb->enabled_    : false)
         << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
         << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
+        << YAML::Key << "skillbar_show_keys" << YAML::Value << (sb ? sb->show_keys_ : true)
+        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false)
         << YAML::Key << "skillbar_columns"  << YAML::Value << (sb ? sb->columns_    : 9)
         << YAML::Key << "skillbar_slots"    << YAML::Value << (sb ? sb->slot_count_ : 9)
         << YAML::Key << "skillbar_size"     << YAML::Value << (sb ? sb->icon_size_  : 32.0f)
@@ -790,19 +796,23 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "skillbar_x"        << YAML::Value << (sb ? sb->bar_x_      : 300)
         << YAML::Key << "skillbar_y"        << YAML::Value << (sb ? sb->bar_y_      : 500);
     if (sb) {
-      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9];
+      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9], ck[9], cn[9];
       std::snprintf(cf, sizeof(cf), "%08X", ArgbFromPicker(sb->col_frame_));
       std::snprintf(cs, sizeof(cs), "%08X", ArgbFromPicker(sb->col_skill_));
       std::snprintf(ci, sizeof(ci), "%08X", ArgbFromPicker(sb->col_item_));
       std::snprintf(ce, sizeof(ce), "%08X", ArgbFromPicker(sb->col_empty_));
       std::snprintf(cb, sizeof(cb), "%08X", ArgbFromPicker(sb->col_border_));
       std::snprintf(ch, sizeof(ch), "%08X", ArgbFromPicker(sb->col_borderhi_));
+      std::snprintf(ck, sizeof(ck), "%08X", ArgbFromPicker(sb->col_keytext_));
+      std::snprintf(cn, sizeof(cn), "%08X", ArgbFromPicker(sb->col_count_));
       out << YAML::Key << "skillbar_col_frame"    << YAML::Value << cf
           << YAML::Key << "skillbar_col_skill"    << YAML::Value << cs
           << YAML::Key << "skillbar_col_item"     << YAML::Value << ci
           << YAML::Key << "skillbar_col_empty"    << YAML::Value << ce
           << YAML::Key << "skillbar_col_border"   << YAML::Value << cb
-          << YAML::Key << "skillbar_col_borderhi" << YAML::Value << ch;
+          << YAML::Key << "skillbar_col_borderhi" << YAML::Value << ch
+          << YAML::Key << "skillbar_col_keytext"  << YAML::Value << ck
+          << YAML::Key << "skillbar_col_count"    << YAML::Value << cn;
     }
   }
 

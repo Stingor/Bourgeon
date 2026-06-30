@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -42,6 +43,7 @@ constexpr int       kShortCutId     = 0x24;
 constexpr uintptr_t kSkillInfoMgr = 0x015fa3c0;    // g_SkillInfoMgr (this des setters)
 constexpr uintptr_t kSetShortCut  = 0x00d96c20;    // SkillMgr_SetShortCutSlot
 constexpr uintptr_t kGetOption    = 0x008e1d50;    // SkillInfoMgr_GetOption(mgr,key) ; key10=onglet courant
+constexpr uintptr_t kSetOption    = 0x005c5950;    // SkillMgr_SetOption(mgr,key,val,0) ; key5=UI-lock (≥1 bloque OnMsg 0x29)
 
 // ---- vtable / champs UIShortCutWnd -----------------------------------------
 constexpr int kVfSetVisible = 0x38;   // FUN_009030c0(this, vis) -> this+0x28
@@ -67,17 +69,20 @@ constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
 constexpr int kSkillStr1      = 0x44;  // std::string nom
 
-// ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50 -> FUN_00a753d0) ----
-constexpr uintptr_t kCmdDispatcher  = 0x0121333c;  // g_UICommandDispatcher : this = *(void**)addr
-constexpr uintptr_t kShowTooltip    = 0x00a753d0;  // tooltip-curseur(this,text,x,y,color,p5,p6) ; appel/frame
-constexpr uintptr_t kGetSkillName   = 0x006a2ce0;  // FUN_006a2ce0(SkillInfo,out,0) -> nom (std::string)
+// ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50) ----
+// OBJET (rec[0]==1) : nom via la DB item (FUN_006a0d40, table 0x01255130 ; record+0x04 = nom EN,
+//   +0x08 = localisé). Les objets y sont chargés au boot (FUN_006a4e20 parse item.txt etc.).
+// SKILL (rec[0]==0) : les ids de skills NE SONT PAS dans la DB item — VÉRIFIÉ live (traversée de
+//   l'arbre RB de 0x01255130 : clé 29 Inc AGI introuvable ; la DB ne contient que des objets). Le
+//   nom vient de Lua GetSkillName(id) via le wrapper __cdecl FUN_0073a1f0 (format "d>s", renvoie
+//   "Unknown-Skill" si l'id est inconnu). C'est exactement la source de la barre native pour les
+//   skills standard (les skills custom ~12622 sont, eux, aussi dans la DB item).
 constexpr uintptr_t kItemDbGet      = 0x006a0d40;  // ItemDB_GetRecordById(__cdecl nameid, table)
 constexpr uintptr_t kItemDbTable    = 0x01255130;  // table std::map du DB item (arg)
 constexpr uintptr_t kItemDbSentinel = 0x01255138;  // retour si id inconnu -> NE PAS déréf
-constexpr uintptr_t kItemRecVtable  = 0x0100a5ec;  // vtable d'un vrai record (garde anti-sentinelle)
 constexpr int kItemNameEn  = 0x04;  // record+0x04 = nom anglais (ASCII, propre à l'affichage)
 constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli)
-constexpr int kStrCap      = 0x14;  // std::string : capacité (>0xf => heap, lire *(char**))
+constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
 
 // ---- cooldown (g_ShortCutCooldownList 0x015ff7e0) --------------------------
 constexpr uintptr_t kCooldownList  = 0x015ff7e0;   // sentinelle (la liste EST la sentinelle)
@@ -89,6 +94,7 @@ using SetVisible_t = void  (__fastcall*)(void*, void*, int);
 using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
 using SetSlot_t    = void  (__fastcall*)(void*, void*, int, int, int, int, int);
 using GetOption_t  = int   (__thiscall*)(void*, int);
+using SetOption_t  = void  (__thiscall*)(void*, int, int, int);  // (mgr,key,val,0)
 using GameClock_t  = void* (__cdecl*)();
 using GetSkillInfo_t = void (__fastcall*)(void*, void*, void*, int, int);  // (mgr,edx,out,id,gate)
 using StrFree_t      = void (__fastcall*)(void*);                          // (ecx=std::string base)
@@ -96,7 +102,7 @@ using CloseWin_t     = char (__fastcall*)(void*, void*, int);             // (mg
 using SetPos_t       = void (__fastcall*)(void*, void*, int, int);        // (wnd,edx,x,y)
 using ShowTip_t      = void (__fastcall*)(void*, void*, const char*, int, int, unsigned, unsigned char, char);
 using ItemDbGet_t    = void* (__cdecl*)(int, void*);                       // (nameid, table) -> record / sentinelle
-using GetSkillName_t = void* (__fastcall*)(void*, void*, void*, int);     // (SkillInfo,edx,out,p2=0) -> out
+using GetSkillNameLua_t = char* (__cdecl*)(int);                          // GetSkillName(id) -> nom skill / "Unknown-Skill"
 
 struct CooldownNode {       // 0x24 octets
   CooldownNode* next;       // +0x00
@@ -155,7 +161,14 @@ SlotRec ReadSlot(void* w, int i) {
 
 // Active le slot logique i exactement comme une touche F (OnMsg case 0x29).
 void ActivateSlot(void* w, int i) {
+  LogDiag("[SkillBar] L-CLICK activate slot={} (col={} row={})", i, i % 9, i / 9);
+  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  // Le handler 0x29 est GATE par l'option #5 (UI-lock natif, >=1 bloque). On le neutralise le temps
+  // de l'appel puis on le restaure (état natif préservé). VÉRIFIÉ live : =1.
+  const int lock = reinterpret_cast<GetOption_t>(kGetOption)(mgr, 5);
+  if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
   Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, i % 9, i / 9, 0, 0);
+  if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
 }
 // Notifie le serveur d'un changement de raccourci -> PERSISTANCE. Sur ce serveur
 // (moonlight/rAthena) les barres sont sauvées côté serveur : le client envoie
@@ -173,7 +186,7 @@ void SendHotkeyChange(int tab, int index, uint8_t type, uint32_t id, int level) 
   p.op = 0x0b21;
   p.tab = static_cast<uint16_t>(tab);
   p.index = static_cast<uint16_t>(index);
-  p.isSkill = type;            // record type tel quel (0=skill, !=0=objet) ; round-trip via le serveur
+  p.isSkill = type;            // record type BRUT (NATIF : 0=SKILL, 1=OBJET) ; round-trip serveur (chargt = copie brute)
   p.id = id;
   p.count = static_cast<uint16_t>(level);
   Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&p), sizeof(p));
@@ -200,6 +213,68 @@ void MoveSlot(void* w, int src, int dst, int tab) {
   const SlotRec b = ReadSlot(w, dst);
   SetSlot(dst, tab, a.type, a.id, a.level);  // a.id==0 si vide -> efface dst
   SetSlot(src, tab, b.type, b.id, b.level);
+}
+
+// Quantité LIVE d'un OBJET en inventaire — comme la barre native OnDraw (branche OBJET) : le getter
+// unifié ItemSkillMgr_GetInfoByResId_UNIFIED (0x00d5a980, ex-"GetSkillInfo") par nameid -> info+0x04
+// trouvé, info+0x10 = quantité courante. Interrogé À CHAQUE FRAME -> décrémente à l'usage, jamais figé.
+// (Le natif ne STOCKE PAS le count ; nous non plus -> plus de corruption 940->255 à la persistance.) SEH.
+int GetItemLiveCount(uint32_t nameid) {
+  int cnt = 0;
+  __try {
+    alignas(8) uint8_t info[kSkillInfoSize] = {};
+    reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
+        reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, static_cast<int>(nameid), 1);
+    if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0)
+      cnt = *reinterpret_cast<int*>(info + 0x10);
+    reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
+    reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { cnt = 0; }
+  return cnt;
+}
+
+// ---- étiquette de touche réelle par slot (lue depuis UserKeys.lua) ----------
+// Le client expose le getter Lua "GetHotKey" via le wrapper natif 0x00d80950 :
+//   GetHotKey(out, category, slot)   (__stdcall, RET 0xc). C'est EXACTEMENT la source du
+//   tooltip de la barre native (UIShortCutWnd_OnMouseMove 0x008f7f50, branche GetOption(10)) :
+//     category : onglet -> 0 = SkillBar_1Tab, 3 = SkillBar_2Tab  (= GetOption(mgr,10) ? 3 : 0)
+//     slot     : index natif du slot (colonne + ligne*9)
+//   Remplit out (le wrapper ré-initialise les 2 std::string lui-même) :
+//     out+0x00 = keycode, out+0x08 = std::string nom de touche ("F1","A","Shift+F1"...),
+//     out+0x20 = std::string 2e touche.
+//   Source unique = UserKeys.lua -> touche RÉELLE (rebinds inclus) ET layout-aware (AZERTY/
+//   QWERTY, car le nom vient du jeu). Les 2 std::string créées par le wrapper DOIVENT être
+//   détruites (kStrFree, sinon fuite si nom > 15 car.). SEH : on touche Lua + globals.
+constexpr uintptr_t kGetHotKey = 0x00d80950;
+using GetHotKey_t = void* (__stdcall*)(void* out, int category, int slot);
+
+// Copie une std::string MSVC vers dst (base = objet string ; +0x10 = size, +0x14 = cap ;
+// data inline si cap<0x10, sinon pointeur). dst NUL-terminé, tronqué à n.
+void CopyMsvcString(const uint8_t* base, char* dst, int n) {
+  if (n < 1) return;
+  dst[0] = '\0';
+  const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
+  const uint32_t cap  = *reinterpret_cast<const uint32_t*>(base + 0x14);
+  const char* s = (cap >= 0x10) ? *reinterpret_cast<const char* const*>(base)
+                                : reinterpret_cast<const char*>(base);
+  if (!s || size == 0) return;
+  const int len = size < static_cast<uint32_t>(n - 1) ? static_cast<int>(size) : n - 1;
+  std::memcpy(dst, s, len);
+  dst[len] = '\0';
+}
+
+// Étiquette de touche d'un slot, lue depuis UserKeys.lua (touche réelle, layout-aware). out>=2.
+void GetSlotKeyLabel(int tab, int slot, char* out, int n) {
+  out[0] = '\0';
+  const int category = (tab == 0) ? 0 : 3;
+  __try {
+    alignas(4) uint8_t buf[0x40];
+    std::memset(buf, 0, sizeof(buf));
+    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
+    CopyMsvcString(buf + 0x08, out, n);                  // out+0x08 = nom de la touche
+    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);   // détruit les 2 std::string du wrapper
+    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
 DWORD ShortCutNow() {  // même sélection d'horloge que OnDraw/OnMsg 0x8f
@@ -257,6 +332,12 @@ using BuildPath_t  = void  (__stdcall*)(const char*, char*);  // 0x00d5a720 (id_
 
 std::unordered_map<uint32_t, void*> g_iconCache;  // (type0?hi:0)|id -> ImTextureID (null=miss connu)
 
+// Resname sentinelle quand l'id n'a pas de ressource (0x00d7fa90 -> "Unknown-Skill",
+// 0x00d5a720 -> "...unknown item..."). Tenter de charger ces .bmp échoue et SPAMME la console
+// ("Resource File Loading fail"). On les rejette -> repli propre sur la boîte-id. ("nknown"
+// couvre Unknown/unknown sans souci de casse de l'initiale).
+inline bool LooksUnknown(const char* s) { return s && std::strstr(s, "nknown") != nullptr; }
+
 // Chemins SEH-protégés (aucun objet C++ -> SEH OK), écrits dans out (taille >=260).
 bool ItemPath(int id, char* out, int /*n*/) {
   __try {
@@ -264,6 +345,7 @@ bool ItemPath(int id, char* out, int /*n*/) {
     std::snprintf(idstr, sizeof(idstr), "%d", id);
     out[0] = '\0';
     reinterpret_cast<BuildPath_t>(0x00d5a720)(idstr, out);  // écrit le chemin complet dans out
+    if (LooksUnknown(out)) { out[0] = '\0'; return false; }  // pas de ressource -> ne pas charger
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
@@ -272,7 +354,7 @@ bool SkillPath(int id, char* out, int n) {  // 0x00d7fa90 (+0x20 déréf) = ce q
     alignas(8) uint8_t info[0xA0] = {};
     reinterpret_cast<GetInvInfo_t>(0x00d7fa90)(info, id);          // __stdcall(out, id)
     const char* rn = *reinterpret_cast<const char**>(info + 0x20);  // resname (déréférencé)
-    if (rn && rn[0]) {
+    if (rn && rn[0] && !LooksUnknown(rn)) {                         // rejette "Unknown-Skill"
       std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, rn);
       return out[0] != '\0';
     }
@@ -298,20 +380,20 @@ void* UploadBmp(const char* path) {
   }
   return Overlay_CreateTextureARGB(argb.data(), w, h);
 }
-// type0=objet, sinon skill ; essaie la source prioritaire selon le type puis l'autre
+// type0=skill, type1=objet ; essaie la source prioritaire selon le type puis l'autre
 // (robuste à l'ambiguïté du type). Fail-safe : null mis en cache (boîte id) si échec.
 void* GetIconTex(uint8_t type, uint32_t id) {
-  // ⚠️ ORDRE EMPIRIQUE (calé en jeu) — NE PAS "logiquer". Convention jeu : type 0 =
-  // SKILL, !=0 = OBJET. Mais ItemPath(0x00d5a720)/SkillPath(0x00d7fa90) ne sont PAS
-  // strictement objet/skill ; le seul ordre qui donne les bonnes icônes des DEUX
-  // est : type0 -> 0x00d5a720 d'abord, type!=0 -> 0x00d7fa90 d'abord (le fallback
-  // 2-passes couvre l'autre). L'inverser CASSE les icônes de sorts (vu en jeu).
+  // CONVENTION NATIVE CERTIFIÉE (OnDrop 0x008dd70b + SetShortCutSlot + tooltip read) :
+  // type/rec[0] == 0 => SKILL, == 1 => OBJET. Source d'icône par type : SKILL ->
+  // SkillPath (0x00d7fa90 ItemMgr_GetInvItemById, gère aussi les plages d'ids skills) ;
+  // OBJET -> ItemPath (0x00d5a720 BuildItemIconGrfPath). On tente la bonne source en
+  // 1er ; fallback 2-passes + garde LooksUnknown pour les cas limites.
   const uint32_t k = (type == 0 ? 0x80000000u : 0u) | (id & 0x7fffffffu);
   auto it = g_iconCache.find(k);
   if (it != g_iconCache.end()) return it->second;
   char path[300] = {};
   void* tex = nullptr;
-  const bool item_first = (type == 0);  // (nom historique) type0 -> 0x00d5a720 d'abord ; sinon 0x00d7fa90
+  const bool item_first = (type == 0);  // OBJET (type0) -> ItemPath d'abord ; SKILL (type1) -> SkillPath
   for (int pass = 0; pass < 2 && !tex; ++pass) {
     const bool try_item = (pass == 0) ? item_first : !item_first;
     const bool ok = try_item ? ItemPath(static_cast<int>(id), path, sizeof(path))
@@ -325,10 +407,15 @@ void FlushIconCache() { g_iconCache.clear(); }  // changement de zone (textures 
 
 // ---- pont drag NATIF (grimoire/inventaire) -> slot ImGui (RE drag-drop) -----
 // FUN_00a75340(0x1213338) renvoie l'objet de drag en cours (gate +0x58==1) ou null.
-// Charge (== OnDrop param_3) à objet+0x308 : +0x80 byte type (0=skill/1=objet),
-// +0x04 id, +0x14 srcSlot (-1 si source = fenêtre), +0x6c count/level.
-//   OBJET : id assignable = ItemMgr_GetInvItemById(id)+0x8 (nameid) ; level = count.
-//   SKILL : id assignable = atoi(SkillInfo+0x2c) via FUN_00d5aa40 ; level = 0.
+// Charge (== OnDrop param_3) à objet+0x308 : +0x00 catégorie, +0x80 OCTET DE FORMAT, +0x04 id,
+// +0x14 srcSlot (-1 si source externe), +0x18 nameid (FullPayload), +0x08 count (FullPayload),
+// +0x6c count/level (LitePayload).
+// ⚠️ L'octet +0x80 N'EST PAS "skill/objet" mais le FORMAT du payload (DragDropMgr_BeginDrag_*) :
+//   octet 0 = FullPayload  -> inventaire/cart/stockage = OBJET (nameid @+0x18, count @+0x08)
+//   octet 1 = LitePayload  -> grimoire de skills       = SKILL (id @+0x04, level @+0x6c)
+// (Les re-drags de la barre inversent ce mapping mais ont srcSlot>=0 -> rejetés par HandleNativeDrop.)
+//   OBJET : id = nameid @+0x18 (repli ItemMgr_GetInvItemById+0x8) ; level = count.
+//   SKILL : id = atoi(SkillInfo+0x2c) via FUN_00d5aa40 (repli rawid) ; level = count LitePayload.
 using GetDragObj_t  = void* (__fastcall*)(void*);                    // FUN_00a75340(mgr)
 using LookupSkill_t = void  (__fastcall*)(void*, void*, void*, int); // FUN_00d5aa40(mgr,edx,out,id)
 using SkillId_t     = int   (__fastcall*)(void*);                    // FUN_005d98a0(&info) -> skill id
@@ -339,8 +426,18 @@ constexpr uintptr_t kSkillIdAtoi  = 0x005d98a0;
 constexpr uintptr_t kGetInvItem   = 0x00d7fa90;  // ItemMgr_GetInvItemById(out,id) ; nameid=out+0x8
 constexpr int kPayloadOff = 0x308;
 constexpr int kPL_type = 0x80, kPL_id = 0x04, kPL_src = 0x14, kPL_cnt = 0x6c;
+constexpr int kPL_cat = 0x00;      // catégorie/source du drag
+constexpr int kPL_nameid = 0x18;   // FullPayload : nameid objet (param_2[0])
+constexpr int kPL_fullcnt = 0x08;  // FullPayload : count objet (param_2[5])
 
-struct NativeDrag { bool isItem; uint32_t id; int level; int srcSlot; };
+struct NativeDrag { bool isItem; uint32_t id; int level; int srcSlot; int cat; int octet;
+                    int dbg_raw; int dbg_inv; int dbg_res24; int dbg_res3c; };
+
+// c_str d'une std::string MSVC à p+off (SSO : si cap@+0x14 > 0xf -> heap *(char**), sinon inline).
+inline const char* PayloadStr(uint8_t* p, int off) {
+  const uint32_t cap = *reinterpret_cast<uint32_t*>(p + off + 0x14);
+  return (cap > 0xf) ? *reinterpret_cast<char**>(p + off) : reinterpret_cast<const char*>(p + off);
+}
 
 inline void* DragObj() {  // objet de drag en cours, ou null
   return reinterpret_cast<GetDragObj_t>(kGetDragObj)(reinterpret_cast<void*>(kDragMgr));
@@ -351,21 +448,32 @@ bool DecodeDrag(void* obj, NativeDrag* d) {
     uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
     const int rawid = *reinterpret_cast<int*>(p + kPL_id);
     if (rawid == 0) return false;
-    d->isItem  = p[kPL_type] != 0;
+    d->octet   = p[kPL_type];
+    d->cat     = *reinterpret_cast<int*>(p + kPL_cat);
+    // octet 0 = FullPayload (inventaire => OBJET) ; octet 1 = LitePayload (grimoire => SKILL).
+    d->isItem  = (p[kPL_type] == 0);
     d->srcSlot = *reinterpret_cast<int*>(p + kPL_src);
+    // --- DIAGNOSTIC : candidats d'id (pour trancher quel champ = id castable/nameid) ---
+    d->dbg_raw = rawid;                                        // payload+0x04 brut
+    { alignas(8) uint8_t inv[0xC0] = {};
+      reinterpret_cast<GetInvInfo_t>(kGetInvItem)(inv, rawid);
+      d->dbg_inv = *reinterpret_cast<int*>(inv + 0x08); }      // GetInvItemById(raw)+0x08
+    { const char* s = PayloadStr(p, 0x24); d->dbg_res24 = (s && s[0]) ? std::atoi(s) : 0; }
+    { const char* s = PayloadStr(p, 0x3c); d->dbg_res3c = (s && s[0]) ? std::atoi(s) : 0; }
+    // ID UNIFIÉ = atoi(resname BRUT à payload+0x3c = mgr+0x344) : nameid (objet) / id skill (29...).
+    // (payload+0x24 = resname transformé pour l'icône ; inv08 = INDEX inventaire -> FAUX, cf. user.)
     if (d->isItem) {
-      alignas(8) uint8_t inv[0xC0] = {};
-      reinterpret_cast<GetInvInfo_t>(kGetInvItem)(inv, rawid);  // __stdcall(out,id)
-      const int nameid = *reinterpret_cast<int*>(inv + 0x08);
-      d->id    = static_cast<uint32_t>(nameid != 0 ? nameid : rawid);
-      d->level = *reinterpret_cast<int*>(p + kPL_cnt);          // count
+      d->id    = static_cast<uint32_t>(d->dbg_res3c != 0 ? d->dbg_res3c
+                                       : (d->dbg_inv != 0 ? d->dbg_inv : rawid));
+      d->level = 0;  // OBJET : on NE stocke PAS le count -> affiché LIVE via GetItemLiveCount (le 0x29
+                     // objet/rec0==0 ne lit pas rec[5]). Évite la corruption 940->255 à la persistance.
     } else {
-      alignas(8) uint8_t info[0xF8] = {};
-      reinterpret_cast<LookupSkill_t>(kLookupSkill)(
-          reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, rawid);
-      const int sid = reinterpret_cast<SkillId_t>(kSkillIdAtoi)(info);
-      d->id    = static_cast<uint32_t>(sid != 0 ? sid : rawid);
-      d->level = 0;
+      // SKILL (LitePayload grimoire) : id = raw04 (payload+0x04) = l'id skill du grimoire. C'est ce que
+      // la barre NATIVE stocke aussi (vérifié par capture live : Angelus -> rec0=1, id=33). Convention
+      // record : rec[0]=is_item?0:1 -> SKILL=1. Le cast (OnMsg 0x29) et la desc passent par les handlers
+      // NATIFS qui branchent sur rec[0]=1 -> tout marche directement (pas de conversion d'id nécessaire).
+      d->id    = static_cast<uint32_t>(rawid);
+      d->level = *reinterpret_cast<int*>(p + kPL_cnt);       // LitePayload count = niveau skill
     }
     return d->id != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -394,7 +502,7 @@ void WriteSlotRecord(void* w, int slot, bool is_item, uint32_t id, int level) {
     uint8_t* rec = *reinterpret_cast<uint8_t**>(
         reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
     if (rec) {
-      rec[0] = is_item ? 1 : 0;
+      rec[0] = is_item ? 0 : 1;  // CONVENTION NATIVE (capture live barre native: Angelus rec0=1) : OBJET=0, SKILL=1
       std::memcpy(rec + 1, &id, 4);
       const int16_t lv = static_cast<int16_t>(level);
       std::memcpy(rec + 5, &lv, 2);
@@ -404,94 +512,118 @@ void WriteSlotRecord(void* w, int slot, bool is_item, uint32_t id, int level) {
 
 // Clic-droit sur un slot -> ouvre la description en jeu, RÉPLIQUE EXACTE du handler
 // natif UIShortCutWnd::OnRButtonDown 0x008f91a0 (par index de slot, sans le HitTest) :
-//   OBJET (rec[0]!=0) : fenêtre tooltip 0x2e ; bascule si elle montre déjà ce nameid
+//   OBJET (rec[0]==1) : fenêtre tooltip 0x2e ; bascule si elle montre déjà ce nameid
 //     (w+0x104), sinon OnMsg(0x3d, nameid brut). Positionne au curseur.
 //   SKILL (rec[0]==0) : SkillMgr_GetSkillInfo remplit une struct (2 std::string), si
 //     trouvé (out+4) -> fenêtre 0xc + OnMsg(0x18, &struct) ; libère les 2 strings.
 // OnMsg 0x18 COPIE la struct (sûr de libérer après). À n'appeler QUE hors drag natif
 // (clic-droit simple) — appeler une fn jeu pendant un drag crashe. SEH (POD only).
 void OpenSlotDescription(void* w, int slot, int mx, int my) {
-  __try {
-    uint8_t* rec = *reinterpret_cast<uint8_t**>(
-        reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
-    if (!rec) return;
-    const int id = *reinterpret_cast<int*>(rec + 1);
-    if (id == 0) return;
-    void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
-
-    if (rec[0] != 0) {  // ── OBJET ──
-      void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-          mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
-      if (!wnd) return;
-      if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kItemWinShownId) == id) {
-        reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinItemDesc);  // bascule fermer
-      } else {
-        Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem, id, 0, 0, 0);
-        Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
-      }
-    } else {            // ── SKILL ──
-      alignas(8) uint8_t info[kSkillInfoSize] = {};
-      reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
-          reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
-      if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0) {
-        void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-            mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
-        if (wnd) {
-          Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
-                                     static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
-          Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
-        }
-      }
-      reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);  // libère nom puis resname
-      reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-// Survol d'un slot rempli -> tooltip-curseur NATIF (le même que la barre native),
-// réplique du handler natif UIShortCutWnd::OnMouseMove 0x008f7f50 : on récupère le NOM
-// (skill via SkillMgr_GetSkillInfo+FUN_006a2ce0 ; objet via le DB item FUN_006a0d40) et
-// on le passe à FUN_00a753d0 (tooltip-curseur du dispatcher). À APPELER CHAQUE FRAME au
-// survol -> il rafraîchit son timer et s'auto-masque quand on cesse d'appeler. Aucune fn
-// jeu pendant un drag (ici = simple survol, OK). SEH (POD only).
-void ShowSlotTooltip(void* w, int slot) {
-  char nm[160] = {};  // nom extrait (POD) -> rendu ensuite en tooltip ImGui (z-order garanti)
+  int d_id = 0, d_isItem = -1, d_found = -1, d_toggle = 0;
+  uintptr_t d_wnd = 0;
   __try {
     uint8_t* rec = *reinterpret_cast<uint8_t**>(
         reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
     if (rec) {
       const int id = *reinterpret_cast<int*>(rec + 1);
+      d_id = id;
       if (id != 0) {
-        if (rec[0] != 0) {  // ── OBJET : nom depuis le DB item ──
+        void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+        if (rec[0] != 0) {  // ── OBJET (rec[0]==1) ──
+          d_isItem = 1;
+          void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+              mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+          d_wnd = reinterpret_cast<uintptr_t>(wnd);
+          if (wnd) {
+            if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kItemWinShownId) == id) {
+              d_toggle = 1;
+              reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinItemDesc);  // bascule
+            } else {
+              Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem, id, 0, 0, 0);
+              Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+            }
+          }
+        } else {            // ── SKILL (rec[0]==0) ──
+          d_isItem = 0;
+          alignas(8) uint8_t info[kSkillInfoSize] = {};
+          reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
+              reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
+          d_found = (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0) ? 1 : 0;
+          if (d_found) {
+            void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+                mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+            d_wnd = reinterpret_cast<uintptr_t>(wnd);
+            if (wnd) {
+              Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
+                                         static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+              Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+            }
+          }
+          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
+          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
+        }
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  LogDiag("[SkillBar] DESC slot={} id={} isItem={} found={} wnd={:#x} toggle={}",
+          slot, d_id, d_isItem, d_found, d_wnd, d_toggle);
+}
+
+// Survol d'un slot rempli -> tooltip ImGui avec le nom (réplique le NOM de la barre native
+// UIShortCutWnd::OnMouseMove 0x008f7f50) : OBJET = DB item (FUN_006a0d40) ; SKILL = Lua
+// GetSkillName(id) (FUN_0073a1f0) car les ids skills sont absents de la DB item (prouvé par
+// traversée RB live de 0x01255130). Rendu via ImGui::SetTooltip (le tooltip natif FUN_00a753d0
+// passait SOUS la barre ImGui + 1 frame de retard). SEH (POD only ; SetTooltip hors __try).
+void ShowSlotTooltip(void* w, int slot) {
+  char nm[160] = {};  // nom extrait (POD)
+  bool valid = false, is_item = false;
+  int id = 0, level = 0;
+  unsigned rec0 = 0;  // octet type brut (diagnostic)
+  __try {
+    uint8_t* rec = *reinterpret_cast<uint8_t**>(
+        reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
+    if (rec) {
+      id = *reinterpret_cast<int*>(rec + 1);
+      if (id != 0) {
+        valid = true;
+        rec0 = rec[0];
+        is_item = (rec[0] == 0);  // NATIF (capture live) : rec[0]==0 => OBJET, ==1 => SKILL
+        int16_t lv; std::memcpy(&lv, rec + 5, 2); level = lv;
+        if (is_item) {
+          // OBJET : DB item (chargée au boot) ; record+0x04 = nom EN, +0x08 = localisé.
           char* dbrec = static_cast<char*>(
               reinterpret_cast<ItemDbGet_t>(kItemDbGet)(id, reinterpret_cast<void*>(kItemDbTable)));
-          if (dbrec && reinterpret_cast<uintptr_t>(dbrec) != kItemDbSentinel &&
-              *reinterpret_cast<uintptr_t*>(dbrec) == kItemRecVtable) {  // garde anti-sentinelle
+          if (dbrec && reinterpret_cast<uintptr_t>(dbrec) != kItemDbSentinel) {
             const char* en  = *reinterpret_cast<const char**>(dbrec + kItemNameEn);
             const char* loc = *reinterpret_cast<const char**>(dbrec + kItemNameLoc);
             const char* name = (en && *en) ? en : loc;
             if (name && *name) std::snprintf(nm, sizeof(nm), "%s", name);
           }
-        } else {            // ── SKILL : nom via GetSkillInfo + FUN_006a2ce0 ──
-          alignas(8) uint8_t info[kSkillInfoSize] = {};
-          reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
-              reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
-          alignas(8) uint8_t nameStr[0x18] = {};  // std::string construit par FUN_006a2ce0
-          reinterpret_cast<GetSkillName_t>(kGetSkillName)(info, nullptr, nameStr, 0);
-          const uint32_t cap = *reinterpret_cast<uint32_t*>(nameStr + kStrCap);
-          const char* name = (cap > 0xf) ? *reinterpret_cast<const char**>(nameStr)
-                                         : reinterpret_cast<const char*>(nameStr);
-          if (name && *name) std::snprintf(nm, sizeof(nm), "%s", name);
-          reinterpret_cast<StrFree_t>(kStrFree)(nameStr);           // free le nom
-          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);  // puis les 2 strings du SkillInfo
-          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
+        } else {
+          // SKILL : nom via Lua GetSkillName(id) — les ids skills sont absents de la DB item (les
+          // skills custom y sont parfois, mais GetSkillName couvre TOUT, source que la fenêtre de
+          // skills/le tooltip natif utilisent). "" ou "Unknown-Skill" => repli ci-dessous.
+          const char* sn = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+          if (sn && *sn && std::strcmp(sn, "Unknown-Skill") != 0)
+            std::snprintf(nm, sizeof(nm), "%s", sn);
         }
       }
     }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { nm[0] = '\0'; }
-  // Rendu en tooltip ImGui (au-dessus de tout) — le tooltip-curseur natif FUN_00a753d0
-  // passait SOUS notre barre (fenêtre jeu rendue avant l'overlay) et n'apparaissait pas.
-  if (nm[0]) ImGui::SetTooltip("%s", nm);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { valid = false; }
+  if (!valid) return;
+  if (!nm[0]) std::snprintf(nm, sizeof(nm), "%s", is_item ? "Objet" : "Skill");  // repli si nom absent
+  static int s_lastTipSlot = -1;  // throttle : 1 ligne par changement de slot survolé
+  if (slot != s_lastTipSlot) {
+    s_lastTipSlot = slot;
+    LogDiag("[SkillBar] TOOLTIP slot={} rec0={} id={} is_item={} name='{}'",
+            slot, rec0, id, is_item, nm);
+  }
+  // Format : objet = "Nom (ID: n)" ; skill = "Nom - Lv: l (ID: n)". Rendu ImGui (au-dessus de tout ;
+  // le tooltip natif FUN_00a753d0 passait sous la barre + 1 frame de retard).
+  char out[224];
+  if (is_item) std::snprintf(out, sizeof(out), "%s (ID: %d)", nm, id);
+  else         std::snprintf(out, sizeof(out), "%s - Lv: %d (ID: %d)", nm, level, id);
+  ImGui::SetTooltip("%s", out);
 }
 
 // Callback ImGui : applique le filtre texture choisi (POINT net / LINEAR flou)
@@ -559,6 +691,12 @@ void SkillBarTweaks::OnKeyDown(unsigned long vkey, int, int) {
 }
 
 void SkillBarTweaks::OnRenderUI() {
+  static bool s_banner = false;  // bannière 1x : confirme quel code de convention tourne
+  if (!s_banner) {
+    s_banner = true;
+    LogDiag("[SkillBar] CONVENTION NATIVE active: rec0==0=SKILL, rec0==1=OBJET "
+            "(is_item=rec0!=0 ; write rec0=is_item?1:0). Hash DLL dans la ligne [Integrity].");
+  }
   if (!in_game_) return;
 
   void* w = ShortCutWnd();
@@ -621,10 +759,13 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
   const int slot = first_slot_ + k;
   if (slot >= kMaxSlots) return false;
 
+  LogDiag("[SkillBar] DROP isItem={} id={} lvl={} src={} octet={} cat={} | raw04={} inv08={} res24={} res3c={} -> slot={} (rec0={})",
+          d.isItem, d.id, d.level, d.srcSlot, d.octet, d.cat,
+          d.dbg_raw, d.dbg_inv, d.dbg_res24, d.dbg_res3c, slot, d.isItem ? 1 : 0);
   WriteSlotRecord(w, slot, d.isItem, d.id, d.level);
   // Écriture directe -> le serveur n'est pas notifié par SetShortCutSlot : on envoie
   // nous-même CZ_SHORTCUT_KEY_CHANGE pour persister l'assignation (drop inventaire/grimoire).
-  SendHotkeyChange(CurrentTab(), slot, d.isItem ? 1 : 0, d.id, d.level);
+  SendHotkeyChange(CurrentTab(), slot, d.isItem ? 0 : 1, d.id, d.level);  // isSkill=rec[0] : OBJET=0, SKILL=1
   CancelNativeDrag(obj);
   return true;
 }
@@ -663,6 +804,12 @@ void SkillBarTweaks::DrawPanel() {
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Coche = les clics traversent la barre (vont au jeu).\n"
                       "Maintiens Shift pour utiliser / rearranger / vider.");
+  changed |= ImGui::Checkbox("Afficher les touches", &show_keys_);
+  ImGui::SameLine(); ImGui::TextDisabled("(?)");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Affiche la touche de chaque slot en haut-gauche (F1-F9 ou la touche\n"
+                      "rebindee si tu l'as changee dans les raccourcis clavier).");
+  changed |= ImGui::Checkbox("Texte gras", &bold_text_);  // faux-gras (touches + nombres)
   if (ImGui::CollapsingHeader("Couleurs")) {
     changed |= ColorSwatch("Fond du cadre", col_frame_);
     changed |= ColorSwatch("Fond objet", col_item_);
@@ -670,6 +817,8 @@ void SkillBarTweaks::DrawPanel() {
     changed |= ColorSwatch("Fond vide", col_empty_);
     changed |= ColorSwatch("Bordure", col_border_);
     changed |= ColorSwatch("Bordure survol", col_borderhi_);
+    changed |= ColorSwatch("Texte touches", col_keytext_);
+    changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
   }
   ImGui::Text("Position : %d, %d  (onglet %d)", bar_x_, bar_y_, native_hidden_ ? last_tab_ : 0);
   ImGui::EndDisabled();
@@ -740,6 +889,18 @@ void SkillBarTweaks::DrawBar(void* w) {
   const ImU32 cEmpty  = ImGui::GetColorU32(ImVec4(col_empty_[0], col_empty_[1], col_empty_[2], col_empty_[3]));
   const ImU32 cBorder = ImGui::GetColorU32(ImVec4(col_border_[0], col_border_[1], col_border_[2], col_border_[3]));
   const ImU32 cBordHi = ImGui::GetColorU32(ImVec4(col_borderhi_[0], col_borderhi_[1], col_borderhi_[2], col_borderhi_[3]));
+  const ImU32 cKeyTxt = ImGui::GetColorU32(ImVec4(col_keytext_[0], col_keytext_[1], col_keytext_[2], col_keytext_[3]));
+  const ImU32 cCount  = ImGui::GetColorU32(ImVec4(col_count_[0], col_count_[1], col_count_[2], col_count_[3]));
+  // Faux-gras : re-dessine le texte décalé d'1px (ImGui n'a pas de fonte bold chargée).
+  const bool bold = bold_text_;
+  auto boldAdd = [&](ImVec2 p, ImU32 c, const char* t) {
+    dl->AddText(p, c, t);
+    if (bold) dl->AddText(ImVec2(p.x + 1.0f, p.y), c, t);
+  };
+  auto boldAddF = [&](ImFont* f, float s, ImVec2 p, ImU32 c, const char* t) {
+    dl->AddText(f, s, p, c, t);
+    if (bold) dl->AddText(f, s, ImVec2(p.x + 1.0f, p.y), c, t);
+  };
 
   // Fond du cadre (derrière tous les boutons).
   dl->AddRectFilled(wp, ImVec2(wp.x + winw, wp.y + winh), cFrame, 4.0f);
@@ -800,7 +961,7 @@ void SkillBarTweaks::DrawBar(void* w) {
         void* ptex = GetIconTex(r.type, r.id);
         if (ptex) ImGui::Image((ImTextureID)(uintptr_t)ptex,
                                ImVec2(icon_size_, icon_size_));
-        else ImGui::Text("%s %u", r.type != 0 ? "Objet" : "Skill", r.id);
+        else ImGui::Text("%s %u", r.type == 0 ? "Objet" : "Skill", r.id);
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar(3);
@@ -813,7 +974,7 @@ void SkillBarTweaks::DrawBar(void* w) {
     }
 
     ImU32 bg = cEmpty;
-    if (r.valid) bg = (r.type != 0) ? cItem : cSkill;  // type!=0=objet(bleu), type0=skill(vert)
+    if (r.valid) bg = (r.type == 0) ? cItem : cSkill;  // NATIF : type0=objet(bleu), type1=skill(vert)
     dl->AddRectFilled(p0, p1, bg, 3.0f);
 
     if (r.valid) {
@@ -825,16 +986,18 @@ void SkillBarTweaks::DrawBar(void* w) {
         char idbuf[16];
         std::snprintf(idbuf, sizeof(idbuf), "%u", r.id);
         const ImVec2 ts = ImGui::CalcTextSize(idbuf);
-        dl->AddText(ImVec2(p0.x + (icon_size_ - ts.x) * 0.5f,
-                           p0.y + (icon_size_ - ts.y) * 0.5f),
-                    IM_COL32(235, 235, 235, 255), idbuf);
+        boldAdd(ImVec2(p0.x + (icon_size_ - ts.x) * 0.5f,
+                       p0.y + (icon_size_ - ts.y) * 0.5f),
+                IM_COL32(235, 235, 235, 255), idbuf);
       }
-      if (r.level > 0) {
-        char lv[8];
-        std::snprintf(lv, sizeof(lv), "%d", r.level);
+      // Nombre en bas-droite : OBJET = quantité LIVE de l'inventaire (décrémente à l'usage) ;
+      // SKILL = niveau (rec[5], statique). Convention NATIVE : type0=OBJET, type1=SKILL.
+      const int shown = (r.type == 0) ? GetItemLiveCount(r.id) : r.level;
+      if (shown > 0) {
+        char lv[12];
+        std::snprintf(lv, sizeof(lv), "%d", shown);
         const ImVec2 ls = ImGui::CalcTextSize(lv);
-        dl->AddText(ImVec2(p1.x - ls.x - 1, p1.y - ls.y - 1),
-                    IM_COL32(255, 230, 120, 255), lv);
+        boldAdd(ImVec2(p1.x - ls.x - 1, p1.y - ls.y - 1), cCount, lv);
       }
       // Overlay de cooldown : indexé par skill id ; un objet n'y figure pas -> 0.
       const float f = CooldownFraction(r.id);
@@ -845,6 +1008,17 @@ void SkillBarTweaks::DrawBar(void* w) {
     }
 
     dl->AddRect(p0, p1, (hover == k) ? cBordHi : cBorder, 3.0f);
+
+    // Étiquette de touche en haut-gauche : touche RÉELLE lue depuis UserKeys.lua (rebinds inclus,
+    // layout-aware). Dessinée même sur slot vide (la touche dépend de la position, pas du contenu).
+    if (show_keys_) {
+      char key[24];
+      GetSlotKeyLabel(tab, slot, key, sizeof(key));
+      if (key[0]) {
+        const float ks = std::max(7.0f, icon_size_ * 0.30f);  // petit, proportionnel à l'icône
+        boldAddF(ImGui::GetFont(), ks, ImVec2(p0.x + 1.5f, p0.y + 0.5f), cKeyTxt, key);
+      }
+    }
 
     if (locked_) {
       if (clicked && r.valid) ActivateSlot(w, slot);
@@ -863,6 +1037,7 @@ void SkillBarTweaks::DrawBar(void* w) {
   // ── Verrouillé, clic droit sur le slot survolé : Shift = vider, sinon description ──
   if (locked_ && hover >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     const int slot = first_slot_ + hover;
+    LogDiag("[SkillBar] R-CLICK slot={} shift={}", slot, ImGui::GetIO().KeyShift);
     if (ImGui::GetIO().KeyShift) {              // Shift+clic D = vider la case
       const SlotRec r = ReadSlot(w, slot);
       if (r.valid) ClearSlot(slot, tab);

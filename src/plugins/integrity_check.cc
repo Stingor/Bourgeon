@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <bcrypt.h>
 
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -75,8 +76,10 @@ bool IntegrityCheck::TryComputeHash() {
   if (!SelfModulePath(path) || !Sha256OfFile(path, hash_, kHashLen))
     return false;
   have_hash_ = true;
-  LogInfo("[Integrity] self SHA-256 {:02x}{:02x}{:02x}{:02x}... computed",
-          hash_[0], hash_[1], hash_[2], hash_[3]);
+  char hex[kHashLen * 2 + 1];
+  for (int i = 0; i < kHashLen; ++i)
+    std::snprintf(hex + i * 2, 3, "%02x", hash_[i]);
+  LogInfo("[Integrity] self SHA-256 {} computed (= hash du DLL charge ; comparer au build)", hex);
   return true;
 }
 
