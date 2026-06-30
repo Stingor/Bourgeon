@@ -32,4 +32,18 @@ class EquipTweaks : public Plugin {
   EquipTweaks();
 
   const char* name() const override { return "Equip"; }
+
+  // Persists the OWN equipment window's position when it changes (reads it live
+  // via FindWindow, throttled 200ms) — covers drag-end and every close path. The
+  // engine never saves window id 0xa's position, so the message-handler hook
+  // re-applies our saved x/y on open (msg 0x22). See status_tweaks for the
+  // template this mirrors.
+  void OnTick() override;
 };
+
+// OWN equipment-window saved position, persisted through MoonlightUi's settings
+// yaml (only the own view, this+0xb4 == 0 — not the other-player view id 0x8b).
+// INT_MIN = no saved position.
+int  EquipTweaks_SavedX();
+int  EquipTweaks_SavedY();
+void EquipTweaks_SetSavedPos(int x, int y);

@@ -31,10 +31,20 @@ class SkillBarTweaks : public Plugin {
   void OnKeyDown(unsigned long vkey, int new_key, int accurate_key) override;
   void OnRenderUI() override;
 
+  // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input jeu). Si un drag natif
+  // (inventaire/grimoire) est relâché sur une case de la barre, assigne la case
+  // (écriture directe) + vide la charge du drag -> pas de drop au sol, pas de
+  // crash. Renvoie true si le drop a été traité. (mx,my = coords client.)
+  bool HandleNativeDrop(int mx, int my);
+
   // ── Config (publique : futur câblage MoonlightUi / persistance yaml) ───────
   bool  panel_visible_ = true;   // panneau de réglage affiché
   bool  enabled_       = false;  // remplacement ImGui actif (cache la barre native)
-  bool  edit_mode_     = false;  // barre déplaçable + surlignage des cellules
+  bool  locked_        = true;   // barre verrouillée (fixe) ; décoché = déplaçable. Slots
+                                 // toujours utilisables/réarrangeables, lock ou pas.
+  bool  bilinear_      = false;  // filtre texture icônes : false=POINT (net), true=LINEAR (flou ImGui)
+  bool  clickthrough_  = false;  // clics traversent la barre (vont au jeu) sauf si Shift maintenu
+  bool  dirty_         = false;  // config modifiée -> MoonlightUi draine et persiste (yaml)
   int   columns_       = 9;      // colonnes de la grille (1..12)
   int   slot_count_    = 9;      // nombre de slots affichés (1..36)
   int   first_slot_    = 0;      // premier slot logique (0..35)
@@ -42,6 +52,14 @@ class SkillBarTweaks : public Plugin {
   float spacing_       = 2.0f;   // px entre icônes
   int   bar_x_         = 300;    // position écran de la barre
   int   bar_y_         = 500;
+
+  // Couleurs (RGBA 0..1) — fond du cadre, fond par type, fond vide, bordures.
+  float col_frame_[4]    = {0.050f, 0.050f, 0.070f, 0.600f};  // fond du cadre (derrière les boutons)
+  float col_skill_[4]    = {0.157f, 0.510f, 0.275f, 0.863f};  // vert
+  float col_item_[4]     = {0.157f, 0.314f, 0.588f, 0.863f};  // bleu
+  float col_empty_[4]    = {0.118f, 0.118f, 0.141f, 0.784f};  // vide
+  float col_border_[4]   = {0.000f, 0.000f, 0.000f, 0.784f};
+  float col_borderhi_[4] = {1.000f, 0.863f, 0.471f, 0.902f};  // survol / édition
 
  private:
   void DrawPanel();          // panneau de configuration ImGui

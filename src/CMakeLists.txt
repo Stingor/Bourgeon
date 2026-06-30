@@ -38,6 +38,8 @@ set(BOURGEON_FILES
 	"plugins/equip_tweaks.h"
 	"plugins/status_icon_tweaks.cc"
 	"plugins/status_icon_tweaks.h"
+	"plugins/settings_tweaks.cc"
+	"plugins/settings_tweaks.h"
 	"plugins/weapon_layer.cc"
 	"plugins/weapon_layer.h"
 	"plugins/skill_bar_tweaks.cc"

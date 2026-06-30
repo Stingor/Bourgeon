@@ -7,8 +7,10 @@
 #include <sstream>
 
 #include "backends/imgui_impl_win32.h"
+#include "bourgeon.h"
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
+#include "plugins/skill_bar_tweaks.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
@@ -519,6 +521,17 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     float mx = static_cast<float>(static_cast<short>(LOWORD(lParam)));
     float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
     bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
+
+    // Drag natif (inventaire/grimoire) relâché sur la barre d'action ImGui : on
+    // assigne la case + on vide la charge du drag AVANT que le jeu ne traite le up
+    // (sinon l'objet tombe au sol). Le drag est resté vivant pendant la traverse,
+    // donc le jeu n'a jamais reclassé le bouton maintenu en clic-au-sol. On laisse
+    // ensuite le up suivre son cours : le jeu solde son drag à vide (pas de drop).
+    // No-op rapide si pas de drag natif en cours (DecodeDrag échoue).
+    if (uMsg == WM_LBUTTONUP) {
+      if (auto* sb = Bourgeon::Instance().skill_bar())
+        sb->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
+    }
 
     // Let the game's Windows cursor (SetCursor) show through on top of ImGui.
     // ImGui's own software cursor is never drawn — the game controls the cursor

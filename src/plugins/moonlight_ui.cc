@@ -16,7 +16,10 @@
 #include "plugins/dps_meter.h"
 #include "plugins/menu_icons.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/settings_tweaks.h"
+#include "plugins/skill_bar_tweaks.h"
 #include "plugins/status_tweaks.h"
+#include "plugins/equip_tweaks.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -483,6 +486,9 @@ void MoonlightUi::LoadSettings() {
     // STATUS window saved position (applied by StatusTweaks' msg-handler hook).
     StatusTweaks_SetSavedPos(ui["status_pos_x"].as<int>(INT_MIN),
                              ui["status_pos_y"].as<int>(INT_MIN));
+    // EQUIP window saved position (applied by EquipTweaks' msg-handler hook).
+    EquipTweaks_SetSavedPos(ui["equip_pos_x"].as<int>(INT_MIN),
+                            ui["equip_pos_y"].as<int>(INT_MIN));
 
     if (auto* mi = Bourgeon::Instance().menu_icons()) {
       mi->enabled_   = ui["menu_icons_enabled"].as<bool>(mi->enabled_);
@@ -505,6 +511,29 @@ void MoonlightUi::LoadSettings() {
       }
     }
 
+    if (auto* sb = Bourgeon::Instance().skill_bar()) {
+      sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
+      sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
+      sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
+      sb->columns_    = ui["skillbar_columns"].as<int>(sb->columns_);
+      sb->slot_count_ = ui["skillbar_slots"].as<int>(sb->slot_count_);
+      sb->icon_size_  = ui["skillbar_size"].as<float>(sb->icon_size_);
+      sb->spacing_    = ui["skillbar_spacing"].as<float>(sb->spacing_);
+      sb->bar_x_      = ui["skillbar_x"].as<int>(sb->bar_x_);
+      sb->bar_y_      = ui["skillbar_y"].as<int>(sb->bar_y_);
+      auto load_sbcol = [&](const char* key, float c[4]) {
+        const std::string hex = ui[key].as<std::string>("");
+        if (hex.size() == 8)
+          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
+      };
+      load_sbcol("skillbar_col_frame",    sb->col_frame_);
+      load_sbcol("skillbar_col_skill",    sb->col_skill_);
+      load_sbcol("skillbar_col_item",     sb->col_item_);
+      load_sbcol("skillbar_col_empty",    sb->col_empty_);
+      load_sbcol("skillbar_col_border",   sb->col_border_);
+      load_sbcol("skillbar_col_borderhi", sb->col_borderhi_);
+    }
+
     if (auto* si = Bourgeon::Instance().status_icons()) {
       StatusIconConfig& c = si->config();
       c.enabled        = ui["statusicon_enabled"].as<bool>(c.enabled);
@@ -520,6 +549,33 @@ void MoonlightUi::LoadSettings() {
       c.show_remaining = ui["statusicon_show_remaining"].as<bool>(c.show_remaining);
       c.time_bg        = ui["statusicon_time_bg"].as<bool>(c.time_bg);
       si->MarkDirty();
+    }
+
+    if (auto* st = Bourgeon::Instance().settings_tweaks()) {
+      D3D9PostFx& g = st->fx();
+      g.enabled     = ui["fx_enabled"].as<bool>(g.enabled);
+      g.brightness  = ui["fx_brightness"].as<float>(g.brightness);
+      g.contrast    = ui["fx_contrast"].as<float>(g.contrast);
+      g.gamma       = ui["fx_gamma"].as<float>(g.gamma);
+      g.saturation  = ui["fx_saturation"].as<float>(g.saturation);
+      g.temperature = ui["fx_temperature"].as<float>(g.temperature);
+      g.filter      = ui["fx_filter"].as<int>(g.filter);
+      g.vignette    = ui["fx_vignette"].as<float>(g.vignette);
+      g.grain       = ui["fx_grain"].as<float>(g.grain);
+      g.aberration  = ui["fx_aberration"].as<float>(g.aberration);
+      g.sharpen     = ui["fx_sharpen"].as<float>(g.sharpen);
+      g.fxaa        = ui["fx_fxaa"].as<bool>(g.fxaa);
+      g.fxaa_strength = ui["fx_fxaa_strength"].as<float>(g.fxaa_strength);
+      st->fps_overlay() = ui["fps_overlay"].as<bool>(false);
+      st->zoom_enabled() = ui["cam_zoom_enabled"].as<bool>(false);
+      st->zoom_factor()  = ui["cam_zoom_factor"].as<float>(1.0f);
+      st->zoom_speed()   = ui["cam_zoom_speed"].as<float>(1.0f);
+      st->tex_filter()   = ui["tex_filter"].as<int>(0);
+      st->gopt_x()       = ui["game_option_pos_x"].as<int>(INT_MIN);
+      st->gopt_y()       = ui["game_option_pos_y"].as<int>(INT_MIN);
+      st->esc_x()        = ui["esc_option_pos_x"].as<int>(INT_MIN);
+      st->esc_y()        = ui["esc_option_pos_y"].as<int>(INT_MIN);
+      st->Apply();  // push to the d3d9 post-process layer
     }
 
     chat_bg_presets_.clear();
@@ -604,7 +660,9 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "grid_size"  << YAML::Value << grid_.size
       << YAML::Key << "grid_color" << YAML::Value << grid_col
       << YAML::Key << "status_pos_x" << YAML::Value << StatusTweaks_SavedX()
-      << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY();
+      << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY()
+      << YAML::Key << "equip_pos_x" << YAML::Value << EquipTweaks_SavedX()
+      << YAML::Key << "equip_pos_y" << YAML::Value << EquipTweaks_SavedY();
   if (eb) {
     for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
       const std::string p =
@@ -689,6 +747,61 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "statusicon_sort_mode"      << YAML::Value << c.sort_mode
         << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
         << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg;
+  }
+
+  {
+    auto* st = Bourgeon::Instance().settings_tweaks();
+    const D3D9PostFx g = st ? st->fx() : D3D9PostFx{};
+    out << YAML::Key << "fx_enabled"     << YAML::Value << g.enabled
+        << YAML::Key << "fx_brightness"  << YAML::Value << g.brightness
+        << YAML::Key << "fx_contrast"    << YAML::Value << g.contrast
+        << YAML::Key << "fx_gamma"       << YAML::Value << g.gamma
+        << YAML::Key << "fx_saturation"  << YAML::Value << g.saturation
+        << YAML::Key << "fx_temperature" << YAML::Value << g.temperature
+        << YAML::Key << "fx_filter"      << YAML::Value << g.filter
+        << YAML::Key << "fx_vignette"    << YAML::Value << g.vignette
+        << YAML::Key << "fx_grain"       << YAML::Value << g.grain
+        << YAML::Key << "fx_aberration"  << YAML::Value << g.aberration
+        << YAML::Key << "fx_sharpen"     << YAML::Value << g.sharpen
+        << YAML::Key << "fx_fxaa"        << YAML::Value << g.fxaa
+        << YAML::Key << "fx_fxaa_strength" << YAML::Value << g.fxaa_strength
+        << YAML::Key << "fps_overlay"    << YAML::Value << (st ? st->fps_overlay() : false)
+        << YAML::Key << "cam_zoom_enabled" << YAML::Value << (st ? st->zoom_enabled() : false)
+        << YAML::Key << "cam_zoom_factor"  << YAML::Value << (st ? st->zoom_factor() : 1.0f)
+        << YAML::Key << "cam_zoom_speed"   << YAML::Value << (st ? st->zoom_speed() : 1.0f)
+        << YAML::Key << "tex_filter"       << YAML::Value << (st ? st->tex_filter() : 0)
+        << YAML::Key << "game_option_pos_x" << YAML::Value << (st ? st->gopt_x() : INT_MIN)
+        << YAML::Key << "game_option_pos_y" << YAML::Value << (st ? st->gopt_y() : INT_MIN)
+        << YAML::Key << "esc_option_pos_x"  << YAML::Value << (st ? st->esc_x() : INT_MIN)
+        << YAML::Key << "esc_option_pos_y"  << YAML::Value << (st ? st->esc_y() : INT_MIN);
+  }
+
+  {
+    auto* sb = Bourgeon::Instance().skill_bar();
+    out << YAML::Key << "skillbar_enabled"  << YAML::Value << (sb ? sb->enabled_    : false)
+        << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
+        << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
+        << YAML::Key << "skillbar_columns"  << YAML::Value << (sb ? sb->columns_    : 9)
+        << YAML::Key << "skillbar_slots"    << YAML::Value << (sb ? sb->slot_count_ : 9)
+        << YAML::Key << "skillbar_size"     << YAML::Value << (sb ? sb->icon_size_  : 32.0f)
+        << YAML::Key << "skillbar_spacing"  << YAML::Value << (sb ? sb->spacing_    : 2.0f)
+        << YAML::Key << "skillbar_x"        << YAML::Value << (sb ? sb->bar_x_      : 300)
+        << YAML::Key << "skillbar_y"        << YAML::Value << (sb ? sb->bar_y_      : 500);
+    if (sb) {
+      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9];
+      std::snprintf(cf, sizeof(cf), "%08X", ArgbFromPicker(sb->col_frame_));
+      std::snprintf(cs, sizeof(cs), "%08X", ArgbFromPicker(sb->col_skill_));
+      std::snprintf(ci, sizeof(ci), "%08X", ArgbFromPicker(sb->col_item_));
+      std::snprintf(ce, sizeof(ce), "%08X", ArgbFromPicker(sb->col_empty_));
+      std::snprintf(cb, sizeof(cb), "%08X", ArgbFromPicker(sb->col_border_));
+      std::snprintf(ch, sizeof(ch), "%08X", ArgbFromPicker(sb->col_borderhi_));
+      out << YAML::Key << "skillbar_col_frame"    << YAML::Value << cf
+          << YAML::Key << "skillbar_col_skill"    << YAML::Value << cs
+          << YAML::Key << "skillbar_col_item"     << YAML::Value << ci
+          << YAML::Key << "skillbar_col_empty"    << YAML::Value << ce
+          << YAML::Key << "skillbar_col_border"   << YAML::Value << cb
+          << YAML::Key << "skillbar_col_borderhi" << YAML::Value << ch;
+    }
   }
 
   out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
@@ -1064,6 +1177,11 @@ void MoonlightUi::OnRenderUI() {
   // Same for menu-icon positions (set on drag-end in MenuIconTweaks).
   if (auto* mi = Bourgeon::Instance().menu_icons(); mi && mi->geometry_dirty_) {
     mi->geometry_dirty_ = false;
+    SaveSettings();
+  }
+  // Skill-bar config (set on any panel change / drag-end in SkillBarTweaks).
+  if (auto* sb = Bourgeon::Instance().skill_bar(); sb && sb->dirty_) {
+    sb->dirty_ = false;
     SaveSettings();
   }
 
@@ -1735,6 +1853,14 @@ void MoonlightUi::OnRenderUI() {
       ImGui::EndTabBar();
       PopStyleCompact();
     }
+    // ── Graphismes (color grading post-process, SettingsTweaks plugin) ───────
+    if (ImGui::CollapsingHeader("Graphismes")) {
+      PushStyleCompact();
+      if (auto* st = Bourgeon::Instance().settings_tweaks())
+        st->DrawSettings();
+      PopStyleCompact();
+    }
+
     // ── Commands Settings ────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Commands Settings"))
     {

@@ -16,6 +16,7 @@
 #include "plugins/inventory_tweaks.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/settings_tweaks.h"
 #include "plugins/weapon_layer.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "utils/log_console.h"
@@ -29,7 +30,9 @@ DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
 BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
 MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
+SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
+SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -172,11 +175,20 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
-  plugins_.emplace_back(std::make_unique<SkillBarTweaks>());
+  {
+    auto skill_bar = std::make_unique<SkillBarTweaks>();
+    skill_bar_ = skill_bar.get();
+    plugins_.emplace_back(std::move(skill_bar));
+  }
   {
     auto status_icons = std::make_unique<StatusIconTweaks>();
     status_icons_ = status_icons.get();
     plugins_.emplace_back(std::move(status_icons));
+  }
+  {
+    auto settings_tweaks = std::make_unique<SettingsTweaks>();
+    settings_tweaks_ = settings_tweaks.get();
+    plugins_.emplace_back(std::move(settings_tweaks));
   }
   {
     auto dps = std::make_unique<DpsMeter>();
