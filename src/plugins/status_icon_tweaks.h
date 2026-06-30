@@ -17,6 +17,7 @@ struct StatusIconConfig {
   int  sort_mode  = 0;    // 0=none 1=longest-first 2=shortest-first
   bool show_remaining = false;
   bool time_bg = false;   // draw a dark background behind the remaining-time text
+  int  icon_alpha = 100;  // icon opacity %, 100 = fully opaque (stock); fades the icons
 };
 
 // Buff/debuff status-icon BAR relayout for the 20250716 client.

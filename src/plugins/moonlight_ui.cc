@@ -548,6 +548,7 @@ void MoonlightUi::LoadSettings() {
       c.sort_mode      = ui["statusicon_sort_mode"].as<int>(c.sort_mode);
       c.show_remaining = ui["statusicon_show_remaining"].as<bool>(c.show_remaining);
       c.time_bg        = ui["statusicon_time_bg"].as<bool>(c.time_bg);
+      c.icon_alpha     = ui["statusicon_icon_alpha"].as<int>(c.icon_alpha);
       si->MarkDirty();
     }
 
@@ -746,7 +747,8 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "statusicon_line_pitch"     << YAML::Value << c.line_pitch
         << YAML::Key << "statusicon_sort_mode"      << YAML::Value << c.sort_mode
         << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
-        << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg;
+        << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg
+        << YAML::Key << "statusicon_icon_alpha"     << YAML::Value << c.icon_alpha;
   }
 
   {
@@ -1079,7 +1081,7 @@ static void HelpMarker(const char* desc)
 // SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
 // (fine-tuning without grabbing the handle). SetItemKeyOwner(MouseWheelY) claims
 // the wheel so the settings window doesn't scroll at the same time. Step defaults
-// to ~2% of the range (float) / range/50 (int), min 1.
+// to ~2% of the range (float) / 1 unit (int).
 static bool WheelSliderFloat(const char* label, float* v, float lo, float hi,
                              const char* fmt = "%.3f", float step = 0.0f) {
   bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt);
@@ -1102,7 +1104,7 @@ static bool WheelSliderInt(const char* label, int* v, int lo, int hi,
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
-      if (step <= 0) { step = (hi - lo) / 50; if (step < 1) step = 1; }
+      if (step <= 0) step = 1;  // unit precision by default ("à l'unité près")
       int nv = *v + (w > 0.0f ? step : -step);
       if (nv < lo) nv = lo;
       if (nv > hi) nv = hi;

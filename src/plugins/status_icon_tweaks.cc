@@ -71,6 +71,15 @@ using Alloc_t     = void* (__cdecl*)(size_t);
 using ClearFn_t   = void (__fastcall*)(void* scene, void* edx, int, int, int, int, int,
                                        int, int, int, int);
 using BuildFn_t   = void (__fastcall*)(void* scene, void* edx);
+using RenderFn_t  = void (__fastcall*)(void* node);
+
+// Type-0 effect-sprite render (FUN_00b5ed20).  Reads node+0x1c0 as the quad's
+// diffuse color, AFTER the engine's per-frame fade animation has reset it — so
+// it's the only point where forcing our alpha actually reaches the vertices.
+// Gated on the 0x3e8=='b' marker (set only on status-icon nodes).
+constexpr uintptr_t kRenderType0 = 0x00b5ed20;
+constexpr int       kNodeMark    = 0x3e8;  // node+0x3e8 == 0x62 ('b') => status icon
+constexpr uint8_t   kNodeMarkVal = 0x62;
 
 const auto MakeNode  = reinterpret_cast<MakeNode_t>(kMakeNode);
 const auto GetImg    = reinterpret_cast<GetImg_t>(kGetEFSTImg);
@@ -84,8 +93,9 @@ enum Dir    { kDown = 0, kUp = 1, kRight = 2, kLeft = 3 };
 enum Sort   { kSortNone = 0, kSortLongest = 1, kSortShortest = 2 };
 
 StatusIconConfig g_cfg;
-void*     g_scene       = nullptr;
-BuildFn_t g_build_orig  = nullptr;
+void*      g_scene       = nullptr;
+BuildFn_t  g_build_orig  = nullptr;
+RenderFn_t g_render_orig = nullptr;  // trampoline to the stock type-0 render
 bool      g_dirty       = false;   // settings changed -> force a rebuild
 bool      g_in_game     = false;
 bool      g_unlocked    = false;   // edit mode: draggable frame over the bar
@@ -135,6 +145,20 @@ void ComputeXY(int placed, int vpW, int vpH, float* ox, float* oy) {
 
   *ox = static_cast<float>(baseX + line * wx + idx * sx);
   *oy = static_cast<float>(baseY + line * wy + idx * sy);
+}
+
+// Diffuse color field (node+0x1c0) the type-0 render (FUN_00b5ed20) copies onto
+// every vertex of the icon quad.  The engine re-animates its alpha byte each
+// frame (fade-in / expire-blink, steady ~0xfe), so a one-shot write here loses
+// the race — our opacity is instead forced inside RenderIconHook, immediately
+// before the render reads this field.  RGB stays white.
+constexpr int kNodeColor = 0x1c0;
+
+// Alpha byte (0..255) for the configured opacity %.
+inline uint8_t IconAlphaByte() {
+  int a = g_cfg.icon_alpha;
+  if (a < 0) a = 0; else if (a > 100) a = 100;
+  return static_cast<uint8_t>(a * 255 / 100);
 }
 
 // Faithful re-emit of one status-icon node (mirrors FUN_00bd4230's per-icon
@@ -286,6 +310,27 @@ void BuildCustom(void* scene, void* vp) {
   g_placed_count = n;  // for the tooltip hit-test inverse lookup
 }
 
+// Render hook for the type-0 effect sprite (FUN_00b5ed20).  Runs once per node
+// per frame, right before the render copies node+0x1c0 onto the quad vertices.
+// For status-icon nodes (0x3e8=='b') with opacity < 100%, we force the alpha
+// byte here — the only spot the engine's per-frame fade animation can't undo
+// (it has already written its value by now; the render is about to read it).
+// Absolute override (not a multiply) so it can never compound toward invisible.
+// Works for both the stock and custom layouts.  SEH-guarded; always forwards.
+void __fastcall RenderIconHook(void* node) {
+  if (g_cfg.icon_alpha < 100 && node) {
+    __try {
+      auto* B = reinterpret_cast<uint8_t*>(node);
+      if (*reinterpret_cast<uint8_t*>(B + kNodeMark) == kNodeMarkVal) {
+        auto* col = reinterpret_cast<uint32_t*>(B + kNodeColor);
+        *col = (*col & 0x00ffffffu) | (static_cast<uint32_t>(IconAlphaByte()) << 24);
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+  }
+  if (g_render_orig) g_render_orig(node);
+}
+
 // Replacement for FUN_00bd4230.  Replicates the original's rebuild gate exactly
 // (so the game's state machine + old-node clearing are untouched), then either
 // forwards to stock or builds our custom layout.
@@ -414,6 +459,23 @@ void HelpMarker(const char* desc) {
   }
 }
 
+// SliderInt that also fine-tunes by +/-1 per mouse-wheel notch while hovered
+// (no need to grab the handle).  SetItemKeyOwner(MouseWheelY) claims the wheel
+// so the settings page doesn't scroll under the slider at the same time.
+bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d") {
+  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
+  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
+    const float w = ImGui::GetIO().MouseWheel;
+    if (w != 0.0f) {
+      int nv = *v + (w > 0.0f ? 1 : -1);
+      if (nv < lo) nv = lo;
+      if (nv > hi) nv = hi;
+      if (nv != *v) { *v = nv; changed = true; }
+    }
+  }
+  return changed;
+}
+
 // Unlocked edit mode: a translucent ImGui frame over the bar's bounding box.
 // Dragging it updates the corner margins (so Marge X/Y stay in sync) and flags
 // a rebuild.  The icons are engine-drawn, so this is an overlay, not the bar.
@@ -509,9 +571,11 @@ void DrawRemainingTime() {
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);
   const uint32_t now = GetTickCount();
   ImDrawList* dl = ImGui::GetForegroundDrawList();
-  const ImU32 kWhite   = IM_COL32(255, 255, 255, 255);
-  const ImU32 kOutline = IM_COL32(0, 0, 0, 230);
-  const ImU32 kBg      = IM_COL32(0, 0, 0, 165);
+  // Fade the duration text with the icons (same opacity factor).
+  const float af = IconAlphaByte() / 255.0f;
+  const ImU32 kWhite   = IM_COL32(255, 255, 255, static_cast<int>(255 * af));
+  const ImU32 kOutline = IM_COL32(0, 0, 0, static_cast<int>(230 * af));
+  const ImU32 kBg      = IM_COL32(0, 0, 0, static_cast<int>(165 * af));
   for (int i = 0; i < g_placed_count; ++i) {
     char buf[16];
     if (!FormatRemaining(g_endtick[i], now, buf, sizeof(buf))) continue;
@@ -573,6 +637,26 @@ StatusIconTweaks::StatusIconTweaks() {
   } else {
     LogError("[StatusIcons] FUN_00c93cb0 prologue mismatch; tooltip hook skipped");
   }
+
+  // Type-0 effect render (FUN_00b5ed20): prologue 55 8B EC 83 EC 1C.  Hooked to
+  // force the icon opacity right before the quad color is read (the engine's
+  // per-frame fade animation overwrites node+0x1c0, so this is the only winning
+  // spot).  Forwards verbatim; the per-node 'b' gate keeps it icon-only.
+  const auto* r = reinterpret_cast<const uint8_t*>(kRenderType0);
+  if (r[0] == 0x55 && r[1] == 0x8B && r[2] == 0xEC && r[3] == 0x83 &&
+      r[4] == 0xEC && r[5] == 0x1C) {
+    g_render_orig = reinterpret_cast<RenderFn_t>(
+        hooking::HookManager::Instance().SetHook(
+            hooking::HookType::kJmpHook,
+            reinterpret_cast<uint8_t*>(kRenderType0),
+            reinterpret_cast<uint8_t*>(&RenderIconHook)));
+    if (g_render_orig)
+      LogInfo("[StatusIcons] icon-opacity render hook installed");
+    else
+      LogError("[StatusIcons] failed to install icon-opacity render hook");
+  } else {
+    LogError("[StatusIcons] FUN_00b5ed20 prologue mismatch; opacity hook skipped");
+  }
 }
 
 void StatusIconTweaks::OnTick() {
@@ -595,6 +679,15 @@ void StatusIconTweaks::DrawSettings() {
   changed |= ImGui::Checkbox("Disposition personnalisée", &g_cfg.enabled);
   ImGui::SameLine();
   HelpMarker("Désactivé = disposition d'origine du jeu (inchangée).");
+
+  // Opacity is independent of the custom layout — it's forced at render time on
+  // any status-icon node, so it works with the stock layout too.  The render
+  // hook reads g_cfg.icon_alpha live, so no rebuild is needed.
+  if (WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%"))
+    g_needs_save = true;
+  ImGui::SameLine();
+  HelpMarker("Transparence des icônes de statut (100 % = opaque, comme l'origine). "
+             "Fonctionne même sans la disposition personnalisée.");
   ImGui::Separator();
 
   ImGui::BeginDisabled(!g_cfg.enabled);
@@ -611,15 +704,15 @@ void StatusIconTweaks::DrawSettings() {
   ImGui::Separator();
 
   changed |= ImGui::Combo("Coin d'ancrage", &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
-  changed |= ImGui::SliderInt("Marge X", &g_cfg.margin_x, 0, 1920);
-  changed |= ImGui::SliderInt("Marge Y", &g_cfg.margin_y, 0, 1080);
+  changed |= WheelSliderInt("Marge X", &g_cfg.margin_x, 0, 1920);
+  changed |= WheelSliderInt("Marge Y", &g_cfg.margin_y, 0, 1080);
   ImGui::Separator();
 
   changed |= ImGui::Combo("Sens d'empilement", &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
   changed |= ImGui::Combo("Retour à la ligne",  &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
-  changed |= ImGui::SliderInt("Icônes par ligne", &g_cfg.per_line, 1, 20);
-  changed |= ImGui::SliderInt("Espacement icônes", &g_cfg.icon_pitch, 30, 60);
-  changed |= ImGui::SliderInt("Espacement lignes", &g_cfg.line_pitch, 30, 60);
+  changed |= WheelSliderInt("Icônes par ligne", &g_cfg.per_line, 1, 20);
+  changed |= WheelSliderInt("Espacement icônes", &g_cfg.icon_pitch, 30, 60);
+  changed |= WheelSliderInt("Espacement lignes", &g_cfg.line_pitch, 30, 60);
   ImGui::Separator();
 
   changed |= ImGui::Combo("Tri par durée", &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
@@ -644,6 +737,7 @@ void StatusIconTweaks::DrawSettings() {
     g_cfg.corner = kTopRight; g_cfg.margin_x = 32; g_cfg.margin_y = 185;
     g_cfg.step_dir = kDown; g_cfg.wrap_dir = kLeft; g_cfg.per_line = 17;
     g_cfg.icon_pitch = 35; g_cfg.line_pitch = 45; g_cfg.sort_mode = kSortNone;
+    g_cfg.icon_alpha = 100;
     changed = true;
   }
 
