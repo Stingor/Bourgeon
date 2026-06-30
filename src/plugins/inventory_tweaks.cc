@@ -58,6 +58,22 @@ constexpr uintptr_t kWeightMax     = 0x015fba9c;  // max weight (raw)
 constexpr uintptr_t kOverweightPct = 0x01602324;  // red-tint % threshold
 constexpr uintptr_t kZeny          = 0x015fba90;  // player zeny (int32, next to weight)
 
+// ---- inventory slot-count "X / max" readout (drawn by the native FUN_00946da0) --
+// The native draw computes max = 100 + DAT_01602354 (the client hardcodes a 100-slot
+// base; DAT_01602354 = the server-sent expansion) and uses that SAME value as the
+// red-tint threshold (red when used >= max). The moonlight server, however, sets
+// INVENTORY_BASE_SIZE = 200 (src/custom/defines_pre.hpp) and sends
+//   expansion = inventory_slots - 200
+// so for a default char DAT_01602354 = 0 and the readout collapses to "X / 100", red
+// already at 101. We bridge the server/client base mismatch by adding the delta to
+// the expansion JUST for the native draw (see DrawContentHook): max becomes
+//   (DAT + 100) + 100 = DAT + 200 = inventory_slots
+// i.e. the real capacity, with red only at full. Restored right after the draw so the
+// three DAT_01602354 writers (FUN_00d2c150 / FUN_00d00b00 / login case 0xb18) and the
+// other readers see the unmodified server value.
+constexpr uintptr_t kInvExpansion = 0x01602354;  // server-sent inventory expansion (slots - 200)
+constexpr int kInvBaseDelta = 100;  // server INVENTORY_BASE_SIZE 200 - client base 100
+
 // ---- UIWindow field offsets / UITexture fields -----------------------------
 constexpr int kWndWidth   = 0x14;
 constexpr int kWndHeight  = 0x18;
@@ -383,11 +399,20 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     LoadTabImages();
     if (void* tabobj = Child(wnd, kTabCtrl)) SizeTabsToImages(tabobj);
 
-    // Original: slot grid + bottom-left "X/200" count + the btnbar bottom frame.
+    // Original: slot grid + bottom-left "X/max" count + the btnbar bottom frame.
     // The cards/Etc filtering is done for REAL in DoRefresh (PruneList erases nodes
     // from inv+0xe8), so the list DrawContent walks is already correct — no per-draw
     // surgery (which desynced the hit-test/click index from the drawn slots).
+    //
+    // Bump the inventory-expansion global by the server/client base delta for the
+    // span of the native draw so the "X / max" readout (and its red-tint threshold,
+    // which share the same 100 + DAT_01602354 formula) report the REAL slot count
+    // instead of "X / 100" red-at-101. Restored immediately; see kInvExpansion.
+    int* const invExp = reinterpret_cast<int*>(kInvExpansion);
+    const int savedExp = *invExp;
+    *invExp = savedExp + kInvBaseDelta;
     g_draw_orig(wnd, nullptr);
+    *invExp = savedExp;
 
     if (height <= kCollapsedH) return;  // minimized -> nothing below the bar
 
