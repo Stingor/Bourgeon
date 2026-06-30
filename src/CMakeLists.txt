@@ -44,6 +44,8 @@ set(BOURGEON_FILES
 	"plugins/weapon_layer.h"
 	"plugins/skill_bar_tweaks.cc"
 	"plugins/skill_bar_tweaks.h"
+	"plugins/item_desc_tweaks.cc"
+	"plugins/item_desc_tweaks.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
