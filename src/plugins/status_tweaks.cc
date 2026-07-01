@@ -101,6 +101,7 @@ using FindWindow_t = void* (__thiscall*)(void*, int);                           
 
 const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
 int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
+bool g_restorePending = false;           // a freshly-loaded position waiting to be re-applied
 
 // ---- session fields (g_session = 0x015fa3c0) -------------------------------
 const uintptr_t kBase[6]  = {0x015fba24, 0x015fba28, 0x015fba2c,
@@ -388,7 +389,15 @@ StatusTweaks::StatusTweaks() {
 // the anonymous namespace above; these bridge them to the persistence layer).
 int  StatusTweaks_SavedX() { return g_posX; }
 int  StatusTweaks_SavedY() { return g_posY; }
-void StatusTweaks_SetSavedPos(int x, int y) { g_posX = x; g_posY = y; }
+void StatusTweaks_SetSavedPos(int x, int y) {
+  g_posX = x;
+  g_posY = y;
+  // A newly-loaded on-screen position must be (re)applied to the live window on the
+  // next tick: the client re-opens saved-open windows at their hardcoded native spot,
+  // and the ordering of that vs. our msg-0x22 override is not guaranteed across a full
+  // client restart, so OnTick force-applies it. This is what survives a restart.
+  g_restorePending = (x != INT_MIN && x >= 0 && y >= 0);
+}
 
 // Persist the window position when it changes. We read the LIVE position straight from
 // the window each tick via FindWindow — the status window does NOT redraw every frame
@@ -404,12 +413,30 @@ void StatusTweaks::OnTick() {
   void* win = reinterpret_cast<FindWindow_t>(kFindWindow)(
       reinterpret_cast<void*>(kUIWindowMgr), kStatusId);
   if (!win) return;                               // status window not open
-  g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
-  g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
-  if (!init) { savedX = g_posX; savedY = g_posY; init = true; return; }  // baseline
-  if ((g_posX != savedX || g_posY != savedY) && GetTickCount() - lastSave >= 200) {
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+
+  // A position was just loaded from the yaml (fresh launch, or a re-entry into game):
+  // force the live window onto it once, then switch to tracking. The client re-opens the
+  // window at its hardcoded native spot, so without this the loaded value would be
+  // clobbered by the live read below and the native position saved back over it. This is
+  // what makes the position survive a full client restart.
+  if (g_restorePending) {
+    reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
+        *reinterpret_cast<uintptr_t*>(win) + kVfSetPos))(win, nullptr, g_posX, g_posY);
     savedX = g_posX; savedY = g_posY;
+    g_restorePending = false;
+    init = true;
+    return;
+  }
+
+  const int liveX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
+  const int liveY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
+  if (!init) {  // no saved pos to restore: baseline off the current spot
+    savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
+  }
+  if ((liveX != savedX || liveY != savedY) && GetTickCount() - lastSave >= 200) {
+    g_posX = liveX; g_posY = liveY;
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    savedX = liveX; savedY = liveY;
     lastSave = GetTickCount();
   }
 }
