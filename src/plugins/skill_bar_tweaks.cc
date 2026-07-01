@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
 #include "utils/log_console.h"
@@ -143,32 +144,104 @@ int CurrentTab() {
              reinterpret_cast<void*>(kSkillInfoMgr), 10) ? 1 : 0;
 }
 
-// Lit le slot logique i (0..35) via this+0xc4[i] -> record 7 octets dans les globals.
-SlotRec ReadSlot(void* w, int i) {
+// ── 3 régions natives = 3 barres fixes (index de barre == index de région) ───
+// LECTURE DIRECTE des stores globals (record 7 o : +0 type, +1 id dword, +5 level short), au lieu
+// de this+0xc4 (qui ne tient que l'onglet ACTIF) -> on affiche les 3 régions simultanément.
+//   region 0 = Onglet 1 (g_ShortCutSlots_Tab0), 36 slots, onglet 0, catégorie hotkey 0
+//   region 1 = Onglet 2 (g_ShortCutSlots_Tab1), 36 slots, onglet 1, catégorie hotkey 3
+//   region 2 = Items    -> STORE PLUGIN g_itemStore (le natif g_ShortCutItemSlotExt ne fait que 9 ;
+//              nos slots d'items n'ont pas de raccourci clavier & sont persistés client -> on en offre
+//              kItemSlotMax). Records au MÊME format 7o -> tout le code base+i*7 marche à l'identique.
+struct RegionDef { uintptr_t base; int count; int tab; int hotkeyCat; const char* name; };
+uint8_t g_itemStore[SkillBarTweaks::kItemSlotMax * 7] = {};  // records 7o (type/id/level), plugin-owned
+void WriteSlotRecord(int region, int slot, bool is_item, uint32_t id, int level);  // fwd (défini plus bas)
+const RegionDef kRegions[3] = {  // const (pas constexpr) : la base items = adresse runtime de g_itemStore
+    {0x015fa850, 36,  0,  0, "Onglet 1"},
+    {0x015fa94c, 36,  1,  3, "Onglet 2"},
+    {reinterpret_cast<uintptr_t>(g_itemStore), SkillBarTweaks::kItemSlotMax, -1, -1, "Items"},
+};
+inline bool RegionIsItems(int r) { return r == 2; }
+
+// Assignation/vidage d'un slot d'ITEM : SkillMgr_SetShortCutItemSlot(mgr, id, slot) (__thiscall ;
+// id==0 vide ; écrit g_ShortCutItemSlotExt, type=0/objet). Use objet (réplique branche objet de
+// OnMsg 0x29) : dispatcher (*(0x0121333c)) ->vtable[0x18](0x71, info, count, 0, 0) (__thiscall).
+using SetItemSlot_t = void  (__thiscall*)(void*, int, int);
+using DispUse_t     = void  (__thiscall*)(void*, int, void*, int, int, int);
+using GetInvItemU_t = void* (__stdcall*)(void*, int);   // 0x00d7fa90 (out, id) ; found out+0x04, qty out+0x10
+constexpr uintptr_t kSetItemSlot    = 0x00da8f90;
+constexpr uintptr_t kUICmdDisp      = 0x0121333c;        // *(void**) = g_UICommandDispatcher
+constexpr uintptr_t kGetInvItemAddr = 0x00d7fa90;
+
+// Lit le slot logique i de la région `region` directement dans le store global (record 7 o). SEH.
+SlotRec ReadSlot(int region, int i) {
   SlotRec s{false, 0, 0, 0};
-  if (i < 0 || i >= kMaxSlots) return s;
-  uint8_t* rec = *reinterpret_cast<uint8_t**>(
-      reinterpret_cast<uint8_t*>(w) + kSlotArr + i * 4);
-  if (!rec) return s;
-  uint32_t id;
-  std::memcpy(&id, rec + 1, 4);  // id NON aligné dans le record packé
-  if (id == 0) return s;         // slot vide (le natif teste id!=0)
-  int16_t lvl;
-  std::memcpy(&lvl, rec + 5, 2);
-  s = {true, rec[0], id, lvl};
+  if (region < 0 || region >= 3) return s;
+  const RegionDef& rg = kRegions[region];
+  if (i < 0 || i >= rg.count) return s;
+  __try {
+    uint8_t* rec = reinterpret_cast<uint8_t*>(rg.base) + i * 7;
+    uint32_t id;
+    std::memcpy(&id, rec + 1, 4);  // id NON aligné dans le record packé
+    if (id != 0) {                 // slot vide (le natif teste id!=0)
+      int16_t lvl;
+      std::memcpy(&lvl, rec + 5, 2);
+      s = {true, rec[0], id, lvl};
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { s = {false, 0, 0, 0}; }
   return s;
 }
 
-// Active le slot logique i exactement comme une touche F (OnMsg case 0x29).
-void ActivateSlot(void* w, int i) {
-  LogDiag("[SkillBar] L-CLICK activate slot={} (col={} row={})", i, i % 9, i / 9);
+// Use d'un slot d'ITEM. La barre native d'items NE passe PAS par OnMsg 0x29 (records en this+0x160,
+// pas this+0xc4). Plutôt que répliquer la branche objet (les getters/cmds sont piégés par les noms
+// Ghidra inversés -> on prenait la branche SKILL : 0x00d7fa90(607)=found 0), on DÉTOURNE temporairement
+// this+0xc4[0] vers le record d'item et on appelle le VRAI OnMsg 0x29 (col=0,row=0) : le natif exécute
+// sa branche objet complète (bon getter + type + dispatch), comme un objet posé dans le grid. La branche
+// objet ne lit PAS rec[5] -> rec[5]=0 des items OK. Gate option #5 neutralisé le temps de l'appel. SEH.
+void UseItemSlot(int slot) {
+  void* w = ShortCutWnd();
+  if (!w) return;
+  __try {
+    uint8_t* itemRec = reinterpret_cast<uint8_t*>(kRegions[2].base) + slot * 7;
+    uint32_t id;
+    std::memcpy(&id, itemRec + 1, 4);
+    if (id == 0) return;
+    void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+    const int lock = reinterpret_cast<GetOption_t>(kGetOption)(mgr, 5);
+    if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
+    uint8_t** arr = reinterpret_cast<uint8_t**>(reinterpret_cast<uint8_t*>(w) + kSlotArr);  // this+0xc4
+    uint8_t* saved = arr[0];
+    arr[0] = itemRec;                                                  // détourne le slot 0 -> item
+    Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, 0, 0, 0, 0);  // OnMsg 0x29 col=0,row=0 -> arr[0]
+    arr[0] = saved;                                                    // restaure
+    if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Active le slot `slot` de la région `region`. SKILLS (onglets) : exactement comme une touche F
+// (OnMsg 0x29), MAIS 0x29 ne lit que this+0xc4 = onglet ACTIF -> on bascule temporairement sur
+// l'onglet de la barre (SetOption 10 + OnMsg 0x17) puis on restaure. ITEMS : UseItemSlot.
+// Gate option #5 (UI-lock natif, >=1 bloque) neutralisé le temps de l'appel puis restauré. SEH (Lua/jeu).
+void ActivateSlot(int region, int slot) {
+  if (RegionIsItems(region)) { UseItemSlot(slot); return; }
+  void* w = ShortCutWnd();
+  if (!w) return;
   void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
-  // Le handler 0x29 est GATE par l'option #5 (UI-lock natif, >=1 bloque). On le neutralise le temps
-  // de l'appel puis on le restaure (état natif préservé). VÉRIFIÉ live : =1.
+  const int tab = kRegions[region].tab;
+  const int cur = CurrentTab();
   const int lock = reinterpret_cast<GetOption_t>(kGetOption)(mgr, 5);
-  if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
-  Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, i % 9, i / 9, 0, 0);
-  if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
+  __try {
+    if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
+    if (tab != cur) {  // bascule sur l'onglet de la barre + reconstruit this+0xc4
+      reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, tab, 0);
+      Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+    }
+    Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, slot % 9, slot / 9, 0, 0);
+    if (tab != cur) {  // restaure l'onglet d'origine
+      reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, cur, 0);
+      Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+    }
+    if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Notifie le serveur d'un changement de raccourci -> PERSISTANCE. Sur ce serveur
 // (moonlight/rAthena) les barres sont sauvées côté serveur : le client envoie
@@ -192,27 +265,49 @@ void SendHotkeyChange(int tab, int index, uint8_t type, uint32_t id, int level) 
   Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&p), sizeof(p));
 }
 
-// Vide le slot logique i de l'onglet tab (écrit directement les globals).
-void ClearSlot(int i, int tab) {
-  reinterpret_cast<SetSlot_t>(kSetShortCut)(
-      reinterpret_cast<void*>(kSkillInfoMgr), nullptr, /*type*/0, /*id=0 -> clear*/0,
-      /*level*/0, /*slot*/i, /*tab*/tab);
-  SendHotkeyChange(tab, i, 0, 0, 0);  // persiste l'effacement côté serveur
+// Vide le slot i de la région (skills -> SetShortCutSlot + persist serveur ; items -> store plugin).
+void ClearSlot(int region, int i) {
+  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  if (RegionIsItems(region)) {
+    WriteSlotRecord(region, i, /*is_item*/ true, 0, 0);  // vide le store plugin (persist client)
+    return;
+  }
+  const int tab = kRegions[region].tab;
+  reinterpret_cast<SetSlot_t>(kSetShortCut)(mgr, nullptr, 0, 0, 0, i, tab);
+  SendHotkeyChange(tab, i, 0, 0, 0);
 }
-// Écrit un slot (id==0 => efface) via SkillMgr_SetShortCutSlot.
-void SetSlot(int slot, int tab, uint8_t type, uint32_t id, int level) {
+// Écrit un slot (id==0 => efface). Skills via SkillMgr_SetShortCutSlot (+ persist serveur) ; items
+// dans le store plugin (type/level ignorés : un slot d'item ne porte qu'un nameid, type=0).
+void SetSlot(int region, int i, uint8_t type, uint32_t id, int level) {
+  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  if (RegionIsItems(region)) {
+    WriteSlotRecord(region, i, /*is_item*/ true, id, 0);  // écrit le store plugin (persist client)
+    return;
+  }
+  const int tab = kRegions[region].tab;
   reinterpret_cast<SetSlot_t>(kSetShortCut)(
-      reinterpret_cast<void*>(kSkillInfoMgr), nullptr,
-      static_cast<int>(type), static_cast<int>(id), level, slot, tab);
-  SendHotkeyChange(tab, slot, type, id, level);  // persiste côté serveur
+      mgr, nullptr, static_cast<int>(type), static_cast<int>(id), level, i, tab);
+  SendHotkeyChange(tab, i, type, id, level);
 }
-// Échange le contenu de deux slots (ou déplace vers un slot vide) = réarrangement.
-void MoveSlot(void* w, int src, int dst, int tab) {
+// Échange le contenu de deux slots de la MÊME région (ou déplace vers un slot vide) = réarrangement.
+void MoveSlot(int region, int src, int dst) {
   if (src == dst || src < 0 || dst < 0) return;
-  const SlotRec a = ReadSlot(w, src);
-  const SlotRec b = ReadSlot(w, dst);
-  SetSlot(dst, tab, a.type, a.id, a.level);  // a.id==0 si vide -> efface dst
-  SetSlot(src, tab, b.type, b.id, b.level);
+  const SlotRec a = ReadSlot(region, src);
+  const SlotRec b = ReadSlot(region, dst);
+  SetSlot(region, dst, a.type, a.id, a.level);  // a.id==0 si vide -> efface dst
+  SetSlot(region, src, b.type, b.id, b.level);
+}
+// Déplace/échange entre DEUX régions (drag INTER-onglets : Onglet 1 <-> Onglet 2, ou vers/depuis la
+// barre d'items). ⚠️ la barre d'items (region 2) ne reçoit QUE des objets -> un skill vers/depuis
+// items est refusé. Skills = SetShortCutSlot(tab) ; items = SetShortCutItemSlot (via SetSlot).
+void MoveSlotCross(int srcRegion, int srcSlot, int dstRegion, int dstSlot) {
+  if (srcRegion == dstRegion) { MoveSlot(srcRegion, srcSlot, dstSlot); return; }
+  const SlotRec a = ReadSlot(srcRegion, srcSlot);  // source
+  const SlotRec b = ReadSlot(dstRegion, dstSlot);  // cible (échangée vers la source)
+  if (RegionIsItems(dstRegion) && a.valid && a.type != 0) return;  // skill -> barre d'items : interdit
+  if (RegionIsItems(srcRegion) && b.valid && b.type != 0) return;  // (échange) skill -> items : interdit
+  SetSlot(dstRegion, dstSlot, a.type, a.id, a.level);  // a.id==0 => vide dst
+  SetSlot(srcRegion, srcSlot, b.type, b.id, b.level);  // b.id==0 => vide src (déplacement simple)
 }
 
 // Quantité LIVE d'un OBJET en inventaire — comme la barre native OnDraw (branche OBJET) : le getter
@@ -264,9 +359,10 @@ void CopyMsvcString(const uint8_t* base, char* dst, int n) {
 }
 
 // Étiquette de touche d'un slot, lue depuis UserKeys.lua (touche réelle, layout-aware). out>=2.
-void GetSlotKeyLabel(int tab, int slot, char* out, int n) {
+// category = catégorie GetHotKey (0=Onglet1, 3=Onglet2) ; <0 (items) => pas d'étiquette.
+void GetSlotKeyLabel(int category, int slot, char* out, int n) {
   out[0] = '\0';
-  const int category = (tab == 0) ? 0 : 3;
+  if (category < 0) return;
   __try {
     alignas(4) uint8_t buf[0x40];
     std::memset(buf, 0, sizeof(buf));
@@ -275,6 +371,47 @@ void GetSlotKeyLabel(int tab, int slot, char* out, int n) {
     reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);   // détruit les 2 std::string du wrapper
     reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
+
+// Keycodes bruts d'un slot (out+0x00 = touche, out+0x04 = 2e touche / modificateur). false si vide.
+// Sert à intercepter au clavier les touches d'une barre d'onglet non-active (le natif ne sert que
+// l'onglet actif). SEH (Lua). category<0 (items) -> pas de touche.
+bool GetSlotKeyCodes(int category, int slot, int* kc1, int* kc2) {
+  *kc1 = 0; *kc2 = 0;
+  if (category < 0) return false;
+  bool ok = false;
+  __try {
+    alignas(4) uint8_t buf[0x40];
+    std::memset(buf, 0, sizeof(buf));
+    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
+    *kc1 = *reinterpret_cast<int*>(buf + 0x00);
+    *kc2 = *reinterpret_cast<int*>(buf + 0x04);
+    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);
+    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
+    ok = (*kc1 != 0 || *kc2 != 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  return ok;
+}
+
+// ── Cache clavier : (touche principale + modificateur) -> slot, par région (0/1). Évite un scan Lua
+// GetHotKey à CHAQUE frappe (jusqu'à 72 appels). Reconstruit périodiquement (capte les rebinds). ──
+struct SlotKeyBind { int mainK; int modK; int slot; };
+std::vector<SlotKeyBind> g_keyCache[2];
+DWORD g_keyCacheTick = 0;
+void RebuildKeyCache() {
+  auto isMod = [](int k) { return k == VK_CONTROL || k == VK_SHIFT || k == VK_MENU; };
+  for (int region = 0; region < 2; ++region) {
+    g_keyCache[region].clear();
+    const int cat = kRegions[region].hotkeyCat;
+    for (int k = 0; k < kRegions[region].count; ++k) {
+      int kc1, kc2;
+      if (!GetSlotKeyCodes(cat, k, &kc1, &kc2)) continue;
+      int mainK = kc1, modK = 0;
+      if (isMod(kc1)) { modK = kc1; mainK = kc2; }
+      else if (isMod(kc2)) { modK = kc2; mainK = kc1; }
+      if (mainK != 0) g_keyCache[region].push_back({mainK, modK, k});
+    }
+  }
 }
 
 DWORD ShortCutNow() {  // même sélection d'horloge que OnDraw/OnMsg 0x8f
@@ -405,6 +542,22 @@ void* GetIconTex(uint8_t type, uint32_t id) {
 }
 void FlushIconCache() { g_iconCache.clear(); }  // changement de zone (textures fuient, négligeable)
 
+// Le joueur connaît-il / peut-il utiliser ce skill ? Réplique le test de rendu natif (OnDraw, branche
+// skill rec0!=0) : ItemMgr_GetInvItemById(0x00d7fa90)(out, id) -> out+0x04 (found) != 0 = connu/
+// utilisable (un skill lié à un item disparu repasse à found=0 -> le natif cesse de le dessiner).
+// Nettoyage via FUN_00739cd0 (même signature __fastcall(void*) que StrFree_t) -> pas de fuite malgré
+// l'appel par frame. SEH (POD only). id = id canonique stocké (rec+1), comme OnDraw.
+bool SkillKnown(uint32_t id) {
+  bool known = false;
+  __try {
+    alignas(8) uint8_t info[0xC0] = {};
+    reinterpret_cast<GetInvInfo_t>(0x00d7fa90)(info, static_cast<int>(id));
+    known = (*reinterpret_cast<int*>(info + 0x04) != 0);
+    reinterpret_cast<StrFree_t>(0x00739cd0)(info);  // = FUN_00739cd0 (cleanup de la struct)
+  } __except (EXCEPTION_EXECUTE_HANDLER) { known = false; }
+  return known;
+}
+
 // ---- pont drag NATIF (grimoire/inventaire) -> slot ImGui (RE drag-drop) -----
 // FUN_00a75340(0x1213338) renvoie l'objet de drag en cours (gate +0x58==1) ou null.
 // Charge (== OnDrop param_3) à objet+0x308 : +0x00 catégorie, +0x80 OCTET DE FORMAT, +0x04 id,
@@ -430,8 +583,7 @@ constexpr int kPL_cat = 0x00;      // catégorie/source du drag
 constexpr int kPL_nameid = 0x18;   // FullPayload : nameid objet (param_2[0])
 constexpr int kPL_fullcnt = 0x08;  // FullPayload : count objet (param_2[5])
 
-struct NativeDrag { bool isItem; uint32_t id; int level; int srcSlot; int cat; int octet;
-                    int dbg_raw; int dbg_inv; int dbg_res24; int dbg_res3c; };
+struct NativeDrag { bool isItem; uint32_t id; int level; int srcSlot; };
 
 // c_str d'une std::string MSVC à p+off (SSO : si cap@+0x14 > 0xf -> heap *(char**), sinon inline).
 inline const char* PayloadStr(uint8_t* p, int off) {
@@ -448,25 +600,19 @@ bool DecodeDrag(void* obj, NativeDrag* d) {
     uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
     const int rawid = *reinterpret_cast<int*>(p + kPL_id);
     if (rawid == 0) return false;
-    d->octet   = p[kPL_type];
-    d->cat     = *reinterpret_cast<int*>(p + kPL_cat);
     // octet 0 = FullPayload (inventaire => OBJET) ; octet 1 = LitePayload (grimoire => SKILL).
     d->isItem  = (p[kPL_type] == 0);
     d->srcSlot = *reinterpret_cast<int*>(p + kPL_src);
-    // --- DIAGNOSTIC : candidats d'id (pour trancher quel champ = id castable/nameid) ---
-    d->dbg_raw = rawid;                                        // payload+0x04 brut
-    { alignas(8) uint8_t inv[0xC0] = {};
-      reinterpret_cast<GetInvInfo_t>(kGetInvItem)(inv, rawid);
-      d->dbg_inv = *reinterpret_cast<int*>(inv + 0x08); }      // GetInvItemById(raw)+0x08
-    { const char* s = PayloadStr(p, 0x24); d->dbg_res24 = (s && s[0]) ? std::atoi(s) : 0; }
-    { const char* s = PayloadStr(p, 0x3c); d->dbg_res3c = (s && s[0]) ? std::atoi(s) : 0; }
-    // ID UNIFIÉ = atoi(resname BRUT à payload+0x3c = mgr+0x344) : nameid (objet) / id skill (29...).
-    // (payload+0x24 = resname transformé pour l'icône ; inv08 = INDEX inventaire -> FAUX, cf. user.)
     if (d->isItem) {
-      d->id    = static_cast<uint32_t>(d->dbg_res3c != 0 ? d->dbg_res3c
-                                       : (d->dbg_inv != 0 ? d->dbg_inv : rawid));
-      d->level = 0;  // OBJET : on NE stocke PAS le count -> affiché LIVE via GetItemLiveCount (le 0x29
-                     // objet/rec0==0 ne lit pas rec[5]). Évite la corruption 940->255 à la persistance.
+      // ID OBJET = atoi(resname BRUT @payload+0x3c) = nameid ; replis GetInvItemById(raw)+0x08 puis raw.
+      // (payload+0x24 = resname transformé pour l'icône ; +0x08 = INDEX inventaire -> repli seulement.)
+      int resId = 0, invIdx = 0;
+      { const char* s = PayloadStr(p, 0x3c); resId = (s && s[0]) ? std::atoi(s) : 0; }
+      { alignas(8) uint8_t inv[0xC0] = {};
+        reinterpret_cast<GetInvInfo_t>(kGetInvItem)(inv, rawid);
+        invIdx = *reinterpret_cast<int*>(inv + 0x08); }
+      d->id    = static_cast<uint32_t>(resId != 0 ? resId : (invIdx != 0 ? invIdx : rawid));
+      d->level = 0;  // OBJET : count NON stocké -> affiché LIVE via GetItemLiveCount (évite corruption 940->255)
     } else {
       // SKILL (LitePayload grimoire) : id = raw04 (payload+0x04) = l'id skill du grimoire. C'est ce que
       // la barre NATIVE stocke aussi (vérifié par capture live : Angelus -> rec0=1, id=33). Convention
@@ -493,20 +639,18 @@ void CancelNativeDrag(void* dragobj) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Écrit le record 7 octets (type/id/level) directement via this+0xc4[slot] (= là où
-// ReadSlot lit). AUCUN appel de fonction du jeu (SkillMgr_SetShortCutSlot notifie le
-// dispatcher 0x139 -> crash pendant un drag) ; ReadSlot voit la donnée au frame
-// suivant. type record : 0=skill, !=0=objet (OnDrop écrit 1 objet / 0 skill). SEH.
-void WriteSlotRecord(void* w, int slot, bool is_item, uint32_t id, int level) {
+// Écrit le record 7 octets (type/id/level) DIRECTEMENT dans le store global de la région
+// (= là où ReadSlot lit). AUCUN appel de fonction du jeu (SkillMgr_SetShortCutSlot notifie le
+// dispatcher 0x139 -> crash pendant un drag) ; ReadSlot voit la donnée au frame suivant.
+// CONVENTION NATIVE (capture live: Angelus rec0=1) : type 0=OBJET, 1=SKILL. Items = toujours OBJET. SEH.
+void WriteSlotRecord(int region, int slot, bool is_item, uint32_t id, int level) {
+  if (region < 0 || region >= 3) return;
   __try {
-    uint8_t* rec = *reinterpret_cast<uint8_t**>(
-        reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
-    if (rec) {
-      rec[0] = is_item ? 0 : 1;  // CONVENTION NATIVE (capture live barre native: Angelus rec0=1) : OBJET=0, SKILL=1
-      std::memcpy(rec + 1, &id, 4);
-      const int16_t lv = static_cast<int16_t>(level);
-      std::memcpy(rec + 5, &lv, 2);
-    }
+    uint8_t* rec = reinterpret_cast<uint8_t*>(kRegions[region].base) + slot * 7;
+    rec[0] = is_item ? 0 : 1;
+    std::memcpy(rec + 1, &id, 4);
+    const int16_t lv = static_cast<int16_t>(level);
+    std::memcpy(rec + 5, &lv, 2);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -518,55 +662,42 @@ void WriteSlotRecord(void* w, int slot, bool is_item, uint32_t id, int level) {
 //     trouvé (out+4) -> fenêtre 0xc + OnMsg(0x18, &struct) ; libère les 2 strings.
 // OnMsg 0x18 COPIE la struct (sûr de libérer après). À n'appeler QUE hors drag natif
 // (clic-droit simple) — appeler une fn jeu pendant un drag crashe. SEH (POD only).
-void OpenSlotDescription(void* w, int slot, int mx, int my) {
-  int d_id = 0, d_isItem = -1, d_found = -1, d_toggle = 0;
-  uintptr_t d_wnd = 0;
+void OpenSlotDescription(int region, int slot, int mx, int my) {
+  if (region < 0 || region >= 3) return;
   __try {
-    uint8_t* rec = *reinterpret_cast<uint8_t**>(
-        reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
-    if (rec) {
-      const int id = *reinterpret_cast<int*>(rec + 1);
-      d_id = id;
-      if (id != 0) {
-        void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
-        if (rec[0] != 0) {  // ── OBJET (rec[0]==1) ──
-          d_isItem = 1;
-          void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-              mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
-          d_wnd = reinterpret_cast<uintptr_t>(wnd);
-          if (wnd) {
-            if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kItemWinShownId) == id) {
-              d_toggle = 1;
-              reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinItemDesc);  // bascule
-            } else {
-              Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem, id, 0, 0, 0);
-              Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
-            }
+    uint8_t* rec = reinterpret_cast<uint8_t*>(kRegions[region].base) + slot * 7;
+    const int id = *reinterpret_cast<int*>(rec + 1);
+    if (id != 0) {
+      void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+      if (rec[0] != 0) {  // ── OBJET (rec[0]==1) ──
+        void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+            mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+        if (wnd) {
+          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kItemWinShownId) == id) {
+            reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinItemDesc);  // bascule
+          } else {
+            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem, id, 0, 0, 0);
+            Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
           }
-        } else {            // ── SKILL (rec[0]==0) ──
-          d_isItem = 0;
-          alignas(8) uint8_t info[kSkillInfoSize] = {};
-          reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
-              reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
-          d_found = (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0) ? 1 : 0;
-          if (d_found) {
-            void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-                mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
-            d_wnd = reinterpret_cast<uintptr_t>(wnd);
-            if (wnd) {
-              Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
-                                         static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
-              Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
-            }
-          }
-          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
-          reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
         }
+      } else {            // ── SKILL (rec[0]==0) ──
+        alignas(8) uint8_t info[kSkillInfoSize] = {};
+        reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
+            reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
+        if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0) {  // skill trouvé
+          void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+              mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+          if (wnd) {
+            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
+                                       static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+            Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+          }
+        }
+        reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
+        reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  LogDiag("[SkillBar] DESC slot={} id={} isItem={} found={} wnd={:#x} toggle={}",
-          slot, d_id, d_isItem, d_found, d_wnd, d_toggle);
 }
 
 // Survol d'un slot rempli -> tooltip ImGui avec le nom (réplique le NOM de la barre native
@@ -574,19 +705,17 @@ void OpenSlotDescription(void* w, int slot, int mx, int my) {
 // GetSkillName(id) (FUN_0073a1f0) car les ids skills sont absents de la DB item (prouvé par
 // traversée RB live de 0x01255130). Rendu via ImGui::SetTooltip (le tooltip natif FUN_00a753d0
 // passait SOUS la barre ImGui + 1 frame de retard). SEH (POD only ; SetTooltip hors __try).
-void ShowSlotTooltip(void* w, int slot) {
+void ShowSlotTooltip(int region, int slot) {
   char nm[160] = {};  // nom extrait (POD)
   bool valid = false, is_item = false;
   int id = 0, level = 0;
-  unsigned rec0 = 0;  // octet type brut (diagnostic)
+  if (region < 0 || region >= 3) return;
   __try {
-    uint8_t* rec = *reinterpret_cast<uint8_t**>(
-        reinterpret_cast<char*>(w) + kSlotArr + slot * 4);
-    if (rec) {
+    uint8_t* rec = reinterpret_cast<uint8_t*>(kRegions[region].base) + slot * 7;
+    {
       id = *reinterpret_cast<int*>(rec + 1);
       if (id != 0) {
         valid = true;
-        rec0 = rec[0];
         is_item = (rec[0] == 0);  // NATIF (capture live) : rec[0]==0 => OBJET, ==1 => SKILL
         int16_t lv; std::memcpy(&lv, rec + 5, 2); level = lv;
         if (is_item) {
@@ -612,12 +741,6 @@ void ShowSlotTooltip(void* w, int slot) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { valid = false; }
   if (!valid) return;
   if (!nm[0]) std::snprintf(nm, sizeof(nm), "%s", is_item ? "Objet" : "Skill");  // repli si nom absent
-  static int s_lastTipSlot = -1;  // throttle : 1 ligne par changement de slot survolé
-  if (slot != s_lastTipSlot) {
-    s_lastTipSlot = slot;
-    LogDiag("[SkillBar] TOOLTIP slot={} rec0={} id={} is_item={} name='{}'",
-            slot, rec0, id, is_item, nm);
-  }
   // Format : objet = "Nom (ID: n)" ; skill = "Nom - Lv: l (ID: n)". Rendu ImGui (au-dessus de tout ;
   // le tooltip natif FUN_00a753d0 passait sous la barre + 1 frame de retard).
   char out[224];
@@ -682,21 +805,59 @@ bool WheelFloat(const char* label, float* v, float mn, float mx, const char* fmt
 
 void SkillBarTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
-  if (!in_game_) { native_hidden_ = false; last_tab_ = -1; }
+  if (!in_game_) { native_hidden_ = false; last_tab_ = -1; items_restored_ = false; }
   FlushIconCache();  // recharge les icônes au changement de zone
 }
 
+// Lit les slots d'items du store plugin (g_itemStore) -> item_slots_ (pour la sauvegarde yaml). SEH.
+// Garde : avant la restauration en jeu le store est vide -> on garde la valeur chargée du yaml.
+void SkillBarTweaks::SnapshotItemSlots() {
+  if (!in_game_ || !items_restored_) return;
+  __try {
+    for (int i = 0; i < kItemSlotMax; ++i) {
+      uint8_t* rec = reinterpret_cast<uint8_t*>(kRegions[2].base) + i * 7;
+      uint32_t id;
+      std::memcpy(&id, rec + 1, 4);
+      item_slots_[i] = id;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 void SkillBarTweaks::OnKeyDown(unsigned long vkey, int, int) {
-  if (vkey == VK_OEM_3) panel_visible_ = !panel_visible_;  // touche ²/~ : panneau
+  if (!enabled_ || !native_hidden_ || !in_game_) return;
+
+  // Le natif ne dispatche qu'à l'onglet ACTIF (DispatchHotkeyBehavior : behavior<0x2d -> singleton
+  // this+0x1e8 via l'onglet actif ; les 2 tables UserKeys.lua = jeux de touches ALTERNATIFS par onglet).
+  // On route les touches vers l'autre onglet (visible) selon la logique de l'utilisateur, pour gérer
+  // AUSSI les touches partagées (F2-F9) : si l'onglet ACTIF a un slot OCCUPÉ pour cette touche -> on
+  // laisse le natif (priorité onglet 1 ; couvre "les 2 occupés"). Sinon, si l'onglet non-actif visible
+  // a un slot OCCUPÉ pour cette touche -> on l'active. Aucun occupé -> rien. Cache anti-lag (Lua).
+  const DWORD now = GetTickCount();
+  if (now - g_keyCacheTick > 1500 || (g_keyCache[0].empty() && g_keyCache[1].empty())) {
+    RebuildKeyCache();
+    g_keyCacheTick = now;
+  }
+  auto held = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+  int pressedMod = 0;  // un seul modificateur (priorité Ctrl > Alt > Shift ; combos multiples rares)
+  if (held(VK_CONTROL)) pressedMod = VK_CONTROL;
+  else if (held(VK_MENU)) pressedMod = VK_MENU;
+  else if (held(VK_SHIFT)) pressedMod = VK_SHIFT;
+  // Slot OCCUPÉ de la région lié à (vkey, pressedMod), ou -1.
+  auto occupiedSlot = [&](int region) -> int {
+    for (const SlotKeyBind& b : g_keyCache[region])
+      if (b.mainK == static_cast<int>(vkey) && b.modK == pressedMod && ReadSlot(region, b.slot).valid)
+        return b.slot;
+    return -1;
+  };
+  const int cur = CurrentTab();
+  if (occupiedSlot(cur) != -1) return;  // onglet actif occupé pour cette touche -> le natif s'en charge
+  const int other = 1 - cur;
+  if (!bars_[other].visible) return;
+  const int s = occupiedSlot(other);
+  if (s != -1) ActivateSlot(other, s);
 }
 
 void SkillBarTweaks::OnRenderUI() {
-  static bool s_banner = false;  // bannière 1x : confirme quel code de convention tourne
-  if (!s_banner) {
-    s_banner = true;
-    LogDiag("[SkillBar] CONVENTION NATIVE active: rec0==0=SKILL, rec0==1=OBJET "
-            "(is_item=rec0!=0 ; write rec0=is_item?1:0). Hash DLL dans la ligne [Integrity].");
-  }
   if (!in_game_) return;
 
   void* w = ShortCutWnd();
@@ -720,14 +881,25 @@ void SkillBarTweaks::OnRenderUI() {
         last_tab_ = tab;
       }
       native_hidden_ = true;
+      // Restaure 1×/session le contenu persisté de la barre d'items (store plugin g_itemStore ;
+      // ni le serveur ni le natif ne le fournissent). WriteSlotRecord écrit g_itemStore.
+      if (!items_restored_) {
+        for (int i = 0; i < kItemSlotMax; ++i)
+          if (item_slots_[i] != 0) WriteSlotRecord(2, i, /*is_item*/ true, item_slots_[i], 0);
+        items_restored_ = true;
+      }
     }
   } else if (native_hidden_) {
     if (w) ShowNative(w);
     native_hidden_ = false;
   }
 
-  if (panel_visible_) DrawPanel();
-  if (native_hidden_ && w) DrawBar(w);
+  // Le panneau de réglages vit désormais dans MoonlightUi (onglet "Barre d'action"), plus de
+  // fenêtre flottante détachée (DrawPanel/²~ retirés).
+  if (native_hidden_ && w) {
+    for (int b = 0; b < kBarCount; ++b)
+      if (bars_[b].visible) DrawBar(b);  // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
+  }
 }
 
 // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input). Si un drag natif est
@@ -745,29 +917,35 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
   if (!obj) return false;
   NativeDrag d{};
   if (!DecodeDrag(obj, &d) || d.srcSlot >= 0) return false;  // pas de self-drag de la barre
+  (void)w;
 
-  const int   cols = (columns_ < 1) ? 1 : columns_;
-  const float step = icon_size_ + spacing_;
-  const float lx = static_cast<float>(mx) - static_cast<float>(bar_x_);
-  const float ly = static_cast<float>(my) - static_cast<float>(bar_y_);
-  if (lx < 0 || ly < 0) return false;
-  const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
-  if (cc >= cols) return false;
-  if ((lx - cc * step) >= icon_size_ || (ly - cr * step) >= icon_size_) return false;  // gap
-  const int k = cr * cols + cc;
-  if (k < 0 || k >= slot_count_) return false;
-  const int slot = first_slot_ + k;
-  if (slot >= kMaxSlots) return false;
+  // Cherche LAQUELLE des barres visibles couvre (mx,my). Géométrie = celle de DrawBar (pad=0).
+  for (int b = 0; b < kBarCount; ++b) {
+    if (!bars_[b].visible) continue;
+    const BarCfg& bc = bars_[b];
+    const float step = bc.icon_size + bc.spacing;  // taille/espacement PAR barre
+    const int cols = (bc.columns < 1) ? 1 : bc.columns;
+    const float lx = static_cast<float>(mx) - static_cast<float>(bc.x);
+    const float ly = static_cast<float>(my) - static_cast<float>(bc.y);
+    if (lx < 0 || ly < 0) continue;
+    const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
+    if (cc >= cols) continue;
+    if ((lx - cc * step) >= bc.icon_size || (ly - cr * step) >= bc.icon_size) continue;  // gap
+    const int k = cr * cols + cc;
+    if (k < 0 || k >= bc.slot_count) continue;
+    const int slot = bc.first_slot + k;
+    if (slot < 0 || slot >= kRegions[b].count) continue;
+    if (RegionIsItems(b) && !d.isItem) continue;  // un slot d'item ne reçoit qu'un OBJET
 
-  LogDiag("[SkillBar] DROP isItem={} id={} lvl={} src={} octet={} cat={} | raw04={} inv08={} res24={} res3c={} -> slot={} (rec0={})",
-          d.isItem, d.id, d.level, d.srcSlot, d.octet, d.cat,
-          d.dbg_raw, d.dbg_inv, d.dbg_res24, d.dbg_res3c, slot, d.isItem ? 1 : 0);
-  WriteSlotRecord(w, slot, d.isItem, d.id, d.level);
-  // Écriture directe -> le serveur n'est pas notifié par SetShortCutSlot : on envoie
-  // nous-même CZ_SHORTCUT_KEY_CHANGE pour persister l'assignation (drop inventaire/grimoire).
-  SendHotkeyChange(CurrentTab(), slot, d.isItem ? 0 : 1, d.id, d.level);  // isSkill=rec[0] : OBJET=0, SKILL=1
-  CancelNativeDrag(obj);
-  return true;
+    WriteSlotRecord(b, slot, d.isItem, d.id, d.level);  // écriture directe (sûr en drag, 0 appel jeu)
+    if (!RegionIsItems(b))  // skills : persiste côté serveur (CZ_SHORTCUT_KEY_CHANGE)
+      SendHotkeyChange(kRegions[b].tab, slot, d.isItem ? 0 : 1, d.id, d.level);
+    else
+      dirty_ = true;  // items : persistance CLIENT (yaml) -> déclenche une sauvegarde
+    CancelNativeDrag(obj);
+    return true;
+  }
+  return false;
 }
 
 // ---- panneau de configuration ----------------------------------------------
@@ -778,7 +956,12 @@ void SkillBarTweaks::DrawPanel() {
     ImGui::End(); if (!open) panel_visible_ = false; return;
   }
   if (!open) panel_visible_ = false;
+  DrawSettingsContent();
+  ImGui::End();
+}
 
+// ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
+void SkillBarTweaks::DrawSettingsContent() {
   bool changed = false;
   changed |= ImGui::Checkbox("Activer (barres ImGui)", &enabled_);
   ImGui::SameLine();
@@ -791,25 +974,48 @@ void SkillBarTweaks::DrawPanel() {
   ImGui::EndDisabled();
 
   ImGui::BeginDisabled(!enabled_);
-  changed |= WheelInt("Colonnes", &columns_, 1, 12);
-  changed |= WheelInt("Nb slots", &slot_count_, 1, kMaxSlots);
-  changed |= WheelFloat("Taille", &icon_size_, 16.0f, 64.0f, "%.0f px");
-  changed |= WheelFloat("Espacement", &spacing_, 0.0f, 12.0f, "%.0f px");
+  // ── Réglages COMMUNS (taille/espacement sont PAR BARRE, dans chaque section ci-dessous) ──
   changed |= ImGui::Checkbox("Filtre bilineaire (flou)", &bilinear_);
   ImGui::SameLine(); ImGui::TextDisabled("(?)");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Decoche = pixels nets (POINT). Coche = lissage ImGui (LINEAR).");
   changed |= ImGui::Checkbox("Clic-traversant (Shift = interagir)", &clickthrough_);
-  ImGui::SameLine(); ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Coche = les clics traversent la barre (vont au jeu).\n"
-                      "Maintiens Shift pour utiliser / rearranger / vider.");
   changed |= ImGui::Checkbox("Afficher les touches", &show_keys_);
-  ImGui::SameLine(); ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Affiche la touche de chaque slot en haut-gauche (F1-F9 ou la touche\n"
-                      "rebindee si tu l'as changee dans les raccourcis clavier).");
   changed |= ImGui::Checkbox("Texte gras", &bold_text_);  // faux-gras (touches + nombres)
+  ImGui::TextDisabled("Aimantation : Reglages interface > \"Aimanter a la grille\" (grille commune a tout l'UI).");
+
+  // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
+  ImGui::Separator();
+  ImGui::TextDisabled("Barres");
+  static const char* const kBarNames[kBarCount] = {"Onglet 1", "Onglet 2", "Items"};
+  for (int b = 0; b < kBarCount; ++b) {
+    BarCfg& bc = bars_[b];
+    ImGui::PushID(b);
+    bool vis = bc.visible;
+    if (ImGui::Checkbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
+    if (bc.visible && ImGui::TreeNode("cfg", "Reglages %s", kBarNames[b])) {
+      changed |= WheelInt("Colonnes", &bc.columns, 1, 12);
+      changed |= WheelInt("Nb slots", &bc.slot_count, 1, kRegions[b].count);
+      changed |= WheelFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px");
+      changed |= WheelFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px");
+      changed |= WheelInt("X", &bc.x, -200, 4000);
+      changed |= WheelInt("Y", &bc.y, -200, 4000);
+      ImGui::Text("Position : %d, %d", bc.x, bc.y);
+      ImGui::TreePop();
+    }
+    ImGui::PopID();
+  }
+
+  if (ImGui::CollapsingHeader("Aide : clavier & onglets")) {
+    ImGui::TextWrapped(
+        "Le jeu ne pilote qu'UN onglet au clavier a la fois. Bourgeon route les touches vers l'autre "
+        "onglet visible :\n"
+        "- Touche PARTAGEE (ex. F2 sur les 2 onglets) : la case OCCUPEE repond. Si les deux cases "
+        "sont occupees, seul l'onglet actif repond (l'onglet 2 reste inerte pour cette touche).\n"
+        "- Pour piloter l'Onglet 2 de facon dediee, rebinde ses cases sur des combos Ctrl+/Alt+ "
+        "(touches uniques) dans les raccourcis clavier du jeu -> elles agissent toujours sur l'onglet 2.\n"
+        "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).");
+  }
   if (ImGui::CollapsingHeader("Couleurs")) {
     changed |= ColorSwatch("Fond du cadre", col_frame_);
     changed |= ColorSwatch("Fond objet", col_item_);
@@ -820,29 +1026,35 @@ void SkillBarTweaks::DrawPanel() {
     changed |= ColorSwatch("Texte touches", col_keytext_);
     changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
   }
-  ImGui::Text("Position : %d, %d  (onglet %d)", bar_x_, bar_y_, native_hidden_ ? last_tab_ : 0);
   ImGui::EndDisabled();
   if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
 
   ImGui::Separator();
   ImGui::TextDisabled("Clic G = utiliser. Glisser = rearranger. Clic D = description. Shift+Clic D = vider.");
-  ImGui::TextDisabled("Bleu = objet, Vert = skill. Toggle panneau : 2/~");
-  ImGui::End();
+  ImGui::TextDisabled("Bleu = objet, Vert = skill. Items = barre d'objets. Toggle panneau : 2/~");
 }
 
 // ---- la barre d'action elle-même -------------------------------------------
-void SkillBarTweaks::DrawBar(void* w) {
-  const int cols = std::max(1, columns_);
-  const int rows = (slot_count_ + cols - 1) / cols;
+void SkillBarTweaks::DrawBar(int bar) {
+  if (bar < 0 || bar >= kBarCount) return;
+  BarCfg& bc = bars_[bar];
+  const float icon_size_ = bc.icon_size;  // taille/espacement PAR BARRE (locals = alias des champs bc)
+  const float spacing_   = bc.spacing;
+  const int region   = bar;                     // index de barre == région native
+  const int maxSlots = kRegions[region].count;  // 36 (skills) / 9 (items)
+  const int keyCat   = kRegions[region].hotkeyCat;
+  const int cols  = std::max(1, bc.columns);
+  const int count = std::min(bc.slot_count, maxSlots);
+  const int rows  = (count + cols - 1) / cols;
   const float step = icon_size_ + spacing_;
   const float pad  = 0.0f;  // identique en édition et normal -> aucun décalage au changement de mode
   const float winw = cols * step - spacing_ + pad * 2;
   const float winh = rows * step - spacing_ + pad * 2;
 
-  // Fenêtre toujours épinglée à (bar_x_,bar_y_) ; le déplacement en édition se
+  // Fenêtre toujours épinglée à (bc.x,bc.y) ; le déplacement en édition se
   // fait en glissant un slot (delta souris), comme menu_icons -> dessin et
   // hit-rect jamais désynchronisés.
-  ImGui::SetNextWindowPos(ImVec2((float)bar_x_, (float)bar_y_), ImGuiCond_Always);
+  ImGui::SetNextWindowPos(ImVec2((float)bc.x, (float)bc.y), ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(winw, winh), ImGuiCond_Always);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -862,13 +1074,13 @@ void SkillBarTweaks::DrawBar(void* w) {
   bool over_filled = false;
   {
     const ImVec2 mp = ImGui::GetIO().MousePos;
-    const float lx = mp.x - static_cast<float>(bar_x_), ly = mp.y - static_cast<float>(bar_y_);
+    const float lx = mp.x - static_cast<float>(bc.x), ly = mp.y - static_cast<float>(bc.y);
     if (lx >= 0 && ly >= 0) {
       const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
       if (cc < cols && (lx - cc * step) < icon_size_ && (ly - cr * step) < icon_size_) {
         const int k = cr * cols + cc;
-        if (k >= 0 && k < slot_count_ && first_slot_ + k < kMaxSlots)
-          over_filled = ReadSlot(w, first_slot_ + k).valid;
+        if (k >= 0 && k < count && bc.first_slot + k < maxSlots)
+          over_filled = ReadSlot(region, bc.first_slot + k).valid;
       }
     }
   }
@@ -878,10 +1090,11 @@ void SkillBarTweaks::DrawBar(void* w) {
     no_input = true;                             // cases vides / espaces
   if (no_input) flags |= ImGuiWindowFlags_NoMouseInputs;
 
-  ImGui::Begin("##SkillActionBar", nullptr, flags);
+  char winName[32];
+  std::snprintf(winName, sizeof(winName), "##SkillActionBar%d", bar);
+  ImGui::Begin(winName, nullptr, flags);
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 wp = ImGui::GetWindowPos();
-  const int tab = native_hidden_ ? last_tab_ : 0;
 
   const ImU32 cFrame  = ImGui::GetColorU32(ImVec4(col_frame_[0], col_frame_[1], col_frame_[2], col_frame_[3]));
   const ImU32 cSkill  = ImGui::GetColorU32(ImVec4(col_skill_[0], col_skill_[1], col_skill_[2], col_skill_[3]));
@@ -891,13 +1104,22 @@ void SkillBarTweaks::DrawBar(void* w) {
   const ImU32 cBordHi = ImGui::GetColorU32(ImVec4(col_borderhi_[0], col_borderhi_[1], col_borderhi_[2], col_borderhi_[3]));
   const ImU32 cKeyTxt = ImGui::GetColorU32(ImVec4(col_keytext_[0], col_keytext_[1], col_keytext_[2], col_keytext_[3]));
   const ImU32 cCount  = ImGui::GetColorU32(ImVec4(col_count_[0], col_count_[1], col_count_[2], col_count_[3]));
-  // Faux-gras : re-dessine le texte décalé d'1px (ImGui n'a pas de fonte bold chargée).
+  // Contour noir (4 directions) pour la lisibilité + faux-gras optionnel (ImGui n'a pas de fonte bold).
   const bool bold = bold_text_;
+  const ImU32 cOutline = IM_COL32(0, 0, 0, 230);
   auto boldAdd = [&](ImVec2 p, ImU32 c, const char* t) {
+    dl->AddText(ImVec2(p.x - 1, p.y), cOutline, t);
+    dl->AddText(ImVec2(p.x + 1, p.y), cOutline, t);
+    dl->AddText(ImVec2(p.x, p.y - 1), cOutline, t);
+    dl->AddText(ImVec2(p.x, p.y + 1), cOutline, t);
     dl->AddText(p, c, t);
     if (bold) dl->AddText(ImVec2(p.x + 1.0f, p.y), c, t);
   };
   auto boldAddF = [&](ImFont* f, float s, ImVec2 p, ImU32 c, const char* t) {
+    dl->AddText(f, s, ImVec2(p.x - 1, p.y), cOutline, t);
+    dl->AddText(f, s, ImVec2(p.x + 1, p.y), cOutline, t);
+    dl->AddText(f, s, ImVec2(p.x, p.y - 1), cOutline, t);
+    dl->AddText(f, s, ImVec2(p.x, p.y + 1), cOutline, t);
     dl->AddText(f, s, p, c, t);
     if (bold) dl->AddText(f, s, ImVec2(p.x + 1.0f, p.y), c, t);
   };
@@ -922,24 +1144,36 @@ void SkillBarTweaks::DrawBar(void* w) {
   if (!locked_) {
     ImGui::SetCursorPos(ImVec2(0, 0));
     ImGui::InvisibleButton("##bardrag", ImVec2(winw, winh));
-    if (ImGui::IsItemActive()) {
-      const ImVec2 d = ImGui::GetIO().MouseDelta;
-      bar_x_ += (int)d.x;
-      bar_y_ += (int)d.y;
+    const ImVec2 mp = ImGui::GetIO().MousePos;
+    if (ImGui::IsItemActivated()) {  // mémorise le décalage curseur -> coin de la barre
+      bar_drag_off_x_ = mp.x - static_cast<float>(bc.x);
+      bar_drag_off_y_ = mp.y - static_cast<float>(bc.y);
     }
-    if (ImGui::IsItemDeactivated()) dirty_ = true;  // persiste la position en fin de drag
+    if (ImGui::IsItemActive()) {
+      float nx = mp.x - bar_drag_off_x_, ny = mp.y - bar_drag_off_y_;
+      // Aimante sur la grille d'alignement PARTAGÉE de MoonlightUi (la même que menu icons / basic
+      // info ; réglée dans Réglages interface > "Aimanter à la grille"). SnapAxis = no-op si off.
+      if (auto* mui = Bourgeon::Instance().moonlight_ui()) {
+        const ImVec2 ds = ImGui::GetIO().DisplaySize;
+        nx = mui->grid_.SnapAxis(nx, ds.x);
+        ny = mui->grid_.SnapAxis(ny, ds.y);
+      }
+      bc.x = static_cast<int>(nx + 0.5f);
+      bc.y = static_cast<int>(ny + 0.5f);
+    }
+    if (ImGui::IsItemDeactivated()) dirty_ = true;  // persiste la position en fin de glisser
   }
 
-  int move_from = -1, move_to = -1;  // glisser-déposer différé hors de la boucle
+  int move_from = -1, move_to = -1, move_region = -1;  // glisser-déposer différé hors de la boucle
 
-  for (int k = 0; k < slot_count_; ++k) {
-    const int slot = first_slot_ + k;
-    if (slot >= kMaxSlots) break;
+  for (int k = 0; k < count; ++k) {
+    const int slot = bc.first_slot + k;
+    if (slot >= maxSlots) break;
     const int cx = k % cols, cy = k / cols;
     const ImVec2 p0(wp.x + pad + cx * step, wp.y + pad + cy * step);
     const ImVec2 p1(p0.x + icon_size_, p0.y + icon_size_);
 
-    const SlotRec r = ReadSlot(w, slot);
+    const SlotRec r = ReadSlot(region, slot);
 
     bool clicked = false;
     if (locked_) {  // verrouillé = interactif : clic = use, glisser = réarranger, survol = tooltip
@@ -957,7 +1191,8 @@ void SkillBarTweaks::DrawBar(void* w) {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
       ImGui::PushStyleVar(ImGuiStyleVar_ImageBorderSize, 0.0f);
       if (r.valid && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-        ImGui::SetDragDropPayload("SBSLOT", &slot, sizeof(slot));
+        const int pl[2] = {region, slot};  // région + slot : interdit le mélange entre barres
+        ImGui::SetDragDropPayload("SBSLOT", pl, sizeof(pl));
         void* ptex = GetIconTex(r.type, r.id);
         if (ptex) ImGui::Image((ImTextureID)(uintptr_t)ptex,
                                ImVec2(icon_size_, icon_size_));
@@ -967,8 +1202,10 @@ void SkillBarTweaks::DrawBar(void* w) {
       ImGui::PopStyleVar(3);
       ImGui::PopStyleColor(2);
       if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("SBSLOT"))
-          { move_from = *static_cast<const int*>(pl->Data); move_to = slot; }
+        if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("SBSLOT")) {
+          const int* d = static_cast<const int*>(pl->Data);
+          move_region = d[0]; move_from = d[1]; move_to = slot;
+        }
         ImGui::EndDragDropTarget();
       }
     }
@@ -978,6 +1215,12 @@ void SkillBarTweaks::DrawBar(void* w) {
     dl->AddRectFilled(p0, p1, bg, 3.0f);
 
     if (r.valid) {
+      // Utilisable ? OBJET = quantité inventaire > 0 ; SKILL = connu/appris (getter natif). Sinon la
+      // case reste affichée mais GRISÉE (objet épuisé à 0, ou skill non appris / item source perdu).
+      const bool isItem    = (r.type == 0);
+      const int  liveCount = isItem ? GetItemLiveCount(r.id) : 0;
+      const bool usable    = isItem ? (liveCount > 0) : SkillKnown(r.id);
+
       // Icône du jeu si dispo (V2), sinon repli sur la boîte-id (fail-safe).
       void* tex = GetIconTex(r.type, r.id);
       if (tex) {
@@ -992,7 +1235,7 @@ void SkillBarTweaks::DrawBar(void* w) {
       }
       // Nombre en bas-droite : OBJET = quantité LIVE de l'inventaire (décrémente à l'usage) ;
       // SKILL = niveau (rec[5], statique). Convention NATIVE : type0=OBJET, type1=SKILL.
-      const int shown = (r.type == 0) ? GetItemLiveCount(r.id) : r.level;
+      const int shown = isItem ? liveCount : r.level;
       if (shown > 0) {
         char lv[12];
         std::snprintf(lv, sizeof(lv), "%d", shown);
@@ -1005,6 +1248,9 @@ void SkillBarTweaks::DrawBar(void* w) {
         const float h = icon_size_ * f;
         dl->AddRectFilled(ImVec2(p0.x, p1.y - h), p1, IM_COL32(0, 0, 0, 150), 3.0f);
       }
+      // Case INUTILISABLE (objet épuisé / skill non appris) : voile gris sombre par-dessus.
+      if (!usable)
+        dl->AddRectFilled(p0, p1, IM_COL32(10, 10, 15, 165), 3.0f);
     }
 
     dl->AddRect(p0, p1, (hover == k) ? cBordHi : cBorder, 3.0f);
@@ -1013,17 +1259,21 @@ void SkillBarTweaks::DrawBar(void* w) {
     // layout-aware). Dessinée même sur slot vide (la touche dépend de la position, pas du contenu).
     if (show_keys_) {
       char key[24];
-      GetSlotKeyLabel(tab, slot, key, sizeof(key));
+      GetSlotKeyLabel(keyCat, slot, key, sizeof(key));
       if (key[0]) {
-        const float ks = std::max(7.0f, icon_size_ * 0.30f);  // petit, proportionnel à l'icône
-        boldAddF(ImGui::GetFont(), ks, ImVec2(p0.x + 1.5f, p0.y + 0.5f), cKeyTxt, key);
+        ImFont* font = ImGui::GetFont();
+        float ks = std::max(7.0f, icon_size_ * 0.30f);  // petit, proportionnel à l'icône
+        const float maxW = icon_size_ - 3.0f;           // marge à droite de la case
+        const float w = font->CalcTextSizeA(ks, 1.0e30f, 0.0f, key).x;
+        if (w > maxW && w > 0.0f) ks *= maxW / w;        // rétrécit un libellé long (ex "Ctrl + F1")
+        boldAddF(font, ks, ImVec2(p0.x + 1.5f, p0.y + 0.5f), cKeyTxt, key);
       }
     }
 
     if (locked_) {
-      if (clicked && r.valid) ActivateSlot(w, slot);
+      if (clicked && r.valid) ActivateSlot(region, slot);
       if (hover == k && r.valid)  // tooltip ImGui avec le nom natif (skill/objet)
-        ShowSlotTooltip(w, slot);
+        ShowSlotTooltip(region, slot);
       ImGui::PopID();
     }
   }
@@ -1032,18 +1282,21 @@ void SkillBarTweaks::DrawBar(void* w) {
   dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 
   // Réarrangement différé (glisser-déposer interne) : swap src <-> dst.
-  if (move_from >= 0 && move_to >= 0) MoveSlot(w, move_from, move_to, tab);
+  if (move_from >= 0 && move_to >= 0) {
+    if (move_region == region) MoveSlot(region, move_from, move_to);        // même barre
+    else MoveSlotCross(move_region, move_from, region, move_to);            // INTER-onglets
+    if (RegionIsItems(region) || RegionIsItems(move_region)) dirty_ = true;  // items -> persist client
+  }
 
   // ── Verrouillé, clic droit sur le slot survolé : Shift = vider, sinon description ──
   if (locked_ && hover >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-    const int slot = first_slot_ + hover;
-    LogDiag("[SkillBar] R-CLICK slot={} shift={}", slot, ImGui::GetIO().KeyShift);
+    const int slot = bc.first_slot + hover;
     if (ImGui::GetIO().KeyShift) {              // Shift+clic D = vider la case
-      const SlotRec r = ReadSlot(w, slot);
-      if (r.valid) ClearSlot(slot, tab);
+      const SlotRec r = ReadSlot(region, slot);
+      if (r.valid) { ClearSlot(region, slot); if (RegionIsItems(region)) dirty_ = true; }
     } else {                                    // clic D = description en jeu (objet/skill)
       const ImVec2 mp = ImGui::GetIO().MousePos;
-      OpenSlotDescription(w, slot, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      OpenSlotDescription(region, slot, static_cast<int>(mp.x), static_cast<int>(mp.y));
     }
   }
 

@@ -517,12 +517,21 @@ void MoonlightUi::LoadSettings() {
       sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
       sb->show_keys_  = ui["skillbar_show_keys"].as<bool>(sb->show_keys_);
       sb->bold_text_  = ui["skillbar_bold_text"].as<bool>(sb->bold_text_);
-      sb->columns_    = ui["skillbar_columns"].as<int>(sb->columns_);
-      sb->slot_count_ = ui["skillbar_slots"].as<int>(sb->slot_count_);
-      sb->icon_size_  = ui["skillbar_size"].as<float>(sb->icon_size_);
-      sb->spacing_    = ui["skillbar_spacing"].as<float>(sb->spacing_);
-      sb->bar_x_      = ui["skillbar_x"].as<int>(sb->bar_x_);
-      sb->bar_y_      = ui["skillbar_y"].as<int>(sb->bar_y_);
+      // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items) : clés skillbarN_*
+      for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
+        auto& bc = sb->bars_[b];
+        const std::string p = "skillbar" + std::to_string(b) + "_";
+        bc.visible    = ui[p + "visible"].as<bool>(bc.visible);
+        bc.x          = ui[p + "x"].as<int>(bc.x);
+        bc.y          = ui[p + "y"].as<int>(bc.y);
+        bc.columns    = ui[p + "columns"].as<int>(bc.columns);
+        bc.first_slot = ui[p + "first"].as<int>(bc.first_slot);
+        bc.slot_count = ui[p + "slots"].as<int>(bc.slot_count);
+        bc.icon_size  = ui[p + "size"].as<float>(bc.icon_size);
+        bc.spacing    = ui[p + "spacing"].as<float>(bc.spacing);
+      }
+      for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)  // contenu persisté barre d'items (nameids)
+        sb->item_slots_[i] = ui["skillbar_item" + std::to_string(i)].as<uint32_t>(sb->item_slots_[i]);
       auto load_sbcol = [&](const char* key, float c[4]) {
         const std::string hex = ui[key].as<std::string>("");
         if (hex.size() == 8)
@@ -788,14 +797,24 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
         << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
         << YAML::Key << "skillbar_show_keys" << YAML::Value << (sb ? sb->show_keys_ : true)
-        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false)
-        << YAML::Key << "skillbar_columns"  << YAML::Value << (sb ? sb->columns_    : 9)
-        << YAML::Key << "skillbar_slots"    << YAML::Value << (sb ? sb->slot_count_ : 9)
-        << YAML::Key << "skillbar_size"     << YAML::Value << (sb ? sb->icon_size_  : 32.0f)
-        << YAML::Key << "skillbar_spacing"  << YAML::Value << (sb ? sb->spacing_    : 2.0f)
-        << YAML::Key << "skillbar_x"        << YAML::Value << (sb ? sb->bar_x_      : 300)
-        << YAML::Key << "skillbar_y"        << YAML::Value << (sb ? sb->bar_y_      : 500);
+        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false);
     if (sb) {
+      // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
+      for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
+        const auto& bc = sb->bars_[b];
+        const std::string p = "skillbar" + std::to_string(b) + "_";
+        out << YAML::Key << (p + "visible") << YAML::Value << bc.visible
+            << YAML::Key << (p + "x")       << YAML::Value << bc.x
+            << YAML::Key << (p + "y")       << YAML::Value << bc.y
+            << YAML::Key << (p + "columns") << YAML::Value << bc.columns
+            << YAML::Key << (p + "first")   << YAML::Value << bc.first_slot
+            << YAML::Key << (p + "slots")   << YAML::Value << bc.slot_count
+            << YAML::Key << (p + "size")    << YAML::Value << bc.icon_size
+            << YAML::Key << (p + "spacing") << YAML::Value << bc.spacing;
+      }
+      sb->SnapshotItemSlots();  // capture le contenu live de la barre d'items -> yaml (persistance client)
+      for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)
+        out << YAML::Key << ("skillbar_item" + std::to_string(i)) << YAML::Value << sb->item_slots_[i];
       char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9], ck[9], cn[9];
       std::snprintf(cf, sizeof(cf), "%08X", ArgbFromPicker(sb->col_frame_));
       std::snprintf(cs, sizeof(cs), "%08X", ArgbFromPicker(sb->col_skill_));
@@ -1809,6 +1828,13 @@ void MoonlightUi::OnRenderUI() {
                 "fois ton portrait en place. Décoche pour la restaurer.");
             PopStyleCompact();
           }
+          ImGui::EndTabItem();
+        }
+        // ── Barre d'action (skill bar ImGui : 3 barres fixes Onglet1/Onglet2/Items) ──
+        if (ImGui::BeginTabItem("Barre d'action"))
+        {
+          if (auto* sb = Bourgeon::Instance().skill_bar())
+            sb->DrawSettingsContent();
           ImGui::EndTabItem();
         }
         // ── Menu icons (ImGui replacement) ───────────────────────────────────
