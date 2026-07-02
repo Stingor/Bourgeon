@@ -19,7 +19,6 @@
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
-#include "plugins/fps_view.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/equip_tweaks.h"
@@ -1639,31 +1638,8 @@ void MoonlightUi::OnRenderUI() {
     }
 
     // ── Interface de jeu  ────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Caméra FPS (expérimental)")) {
-      if (auto* fps = Bourgeon::Instance().fps_view()) {
-        bool on = fps->enabled();
-        if (ImGui::Checkbox("Vue première personne (FPS)", &on))
-          fps->SetEnabled(on);
-        ImGui::SameLine(); HelpMarker(
-            "Bascule la caméra du monde en vue à la première personne "
-            "(RO est un vrai moteur 3D : on force le tilt/distance cible de la "
-            "caméra et on relève l'œil à hauteur de tête).\n\n"
-            "Règle les 3 curseurs en live pour trouver le bon rendu. "
-            "Raccourci clavier : F9.");
-        if (on) {
-          ImGui::Indent();
-          ImGui::SetNextItemWidth(180.0f);
-          ImGui::SliderFloat("Pitch (0 = horizontal)", fps->p_pitch(), -60.0f, 60.0f, "%.1f");
-          ImGui::SetNextItemWidth(180.0f);
-          ImGui::SliderFloat("Distance (recul)", fps->p_dist(), 0.0f, 80.0f, "%.1f");
-          ImGui::SetNextItemWidth(180.0f);
-          ImGui::SliderFloat("Hauteur des yeux", fps->p_height(), 0.0f, 60.0f, "%.1f");
-          ImGui::Unindent();
-        }
-      } else {
-        ImGui::TextDisabled("Indisponible (client non 20250716).");
-      }
-    }
+    // NB: la vue caméra FPS (FpsViewTweaks) reste dans le code (toggle F9) mais
+    // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
     if (ImGui::CollapsingHeader("DOOM")) {
       if (auto* doom = Bourgeon::Instance().doom()) {
         bool on = doom->enabled();

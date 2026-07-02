@@ -251,7 +251,7 @@ bool DoomTweaks::WantsKeyboard() { return g_doom_wants_keys; }
 void DoomTweaks::Start() {
   if (GetFileAttributesA(kWad) == INVALID_FILE_ATTRIBUTES) {
     state_ = State::kNoWad;
-    LogDiag("[DOOM] {} not found in the client folder — not starting", kWad);
+    LogInfo("[DOOM] {} not found in the client folder — not starting", kWad);
     return;
   }
   // argv is kept BY POINTER by the engine (myargv) — must outlive the process.

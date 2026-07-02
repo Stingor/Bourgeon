@@ -60,19 +60,12 @@ void __fastcall Hooked_SetView(void* self, void* edx, float* eye, float* lookat,
 // Capture the camera object from the game mode (ECX at the clamp function's entry).
 // __try-guarded: the pointer chain is only valid once in-world.
 void __fastcall FpsCamCapture(void* gamemode) {
-  static int s_diag = 0;  // log the first few calls only (this runs every frame)
   __try {
     if (!gamemode) return;
     void* pcam = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(gamemode) + kCamOffInMode);
-    const uintptr_t vt = pcam ? *reinterpret_cast<uintptr_t*>(pcam) : 0;
-    if (s_diag < 4) {
-      ++s_diag;
-      LogDiag("[FpsView] capture #{}: mode={} pcam={} vtable={:#x} (want {:#x})",
-              s_diag, gamemode, pcam, vt,
-              static_cast<uintptr_t>(kCameraVtable));
-    }
-    if (pcam && vt == kCameraVtable) g_fpscam_pcam = pcam;
+    if (pcam && *reinterpret_cast<uintptr_t*>(pcam) == kCameraVtable)
+      g_fpscam_pcam = pcam;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
@@ -109,10 +102,7 @@ FpsViewTweaks::FpsViewTweaks() {
 }
 
 void FpsViewTweaks::SetEnabled(bool on) {
-  const int ts = Bourgeon::Instance().client().timestamp();
-  LogDiag("[FpsView] SetEnabled({}) ts={} pcam={}", on, ts,
-          static_cast<void*>(g_fpscam_pcam));
-  if (ts != 20250716) return;
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   if (on == enabled_) return;
   enabled_ = on;
   if (!enabled_) Restore();  // Apply() runs from OnTick once pCam is available
@@ -125,11 +115,7 @@ void FpsViewTweaks::OnKeyDown(unsigned long vkey, int, int) {
 }
 
 void FpsViewTweaks::Apply() {
-  if (!g_fpscam_pcam) {
-    static int s_nopcam = 0;
-    if (s_nopcam < 3) { ++s_nopcam; LogDiag("[FpsView] Apply: pcam not captured yet"); }
-    return;  // not in-world yet; retry next tick
-  }
+  if (!g_fpscam_pcam) return;  // not in-world yet; retry next tick
   auto* pcam = reinterpret_cast<char*>(g_fpscam_pcam);
 
   // Capture stock TARGET values once per enable, so Restore() puts them back.
@@ -137,8 +123,6 @@ void FpsViewTweaks::Apply() {
     base_pitch_ = *reinterpret_cast<float*>(pcam + kCamPitchTarget);
     base_dist_  = *reinterpret_cast<float*>(pcam + kCamDistTarget);
     base_ok_ = true;
-    LogDiag("[FpsView] Apply: base captured pitch={} dist={} (pcam={})",
-            base_pitch_, base_dist_, static_cast<void*>(g_fpscam_pcam));
   }
 
   // Snap the pitch/distance targets ONLY when they change (on enable, or when the
@@ -186,7 +170,6 @@ void FpsViewTweaks::OnTick() {
           g_setview_orig = *slot;
           *slot = reinterpret_cast<void*>(&Hooked_SetView);
           VirtualProtect(slot, sizeof(void*), old, &old);
-          LogDiag("[FpsView] SetView hook installed (orig={})", g_setview_orig);
         }
       }
     }
