@@ -9,6 +9,7 @@
 #include <stdexcept>
 
 #include "bourgeon.h"
+#include "plugins/item_desc_tweaks.h"
 #include "imgui.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
@@ -18,6 +19,8 @@
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
+#include "plugins/fps_view.h"
+#include "plugins/doom_tweaks.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/equip_tweaks.h"
 #include "ragnarok/ui_window_mgr.h"
@@ -87,8 +90,17 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
     g_item_desc_visible = false;
     g_item_desc_wnd_ptr = nullptr;
   }
-  return g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+  const int ret = g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+  // Enriched descriptions (Option A) : cacher la fenêtre native DÈS qu'elle est
+  // posée/affichée (msg 0x18 set-item, 0x22 restore-pos) -> l'utilisateur ne voit
+  // jamais la native (sinon flicker de ~100ms le temps du OnTick throttlé).
+  if (p2 == 0x18 || p2 == 0x22) {
+    if (auto* idt = Bourgeon::Instance().item_desc())
+      idt->HideNativeDescWindows();  // item 0xc + comparaison 0xea (déjà créée)
+  }
+  return ret;
 }
+
 
 // Returns the path to bourgeon_settings.yaml next to the game executable.
 static std::string GetSettingsPath() {
@@ -195,7 +207,9 @@ MoonlightUi::MoonlightUi() {
     LogError("[MoonlightUi] failed to hook item desc wnd at 0x{:08X}",
              kItemDescWndAddr);
   }
-
+  // NB : hook de la fenêtre skill (0x2e) RETIRÉ — il crashait le chemin natif
+  // du message 0x3d. Repro skill désactivée (kSkillWindowEnabled) en attendant
+  // une approche sûre (inspection live du rich-text natif).
 }
 
 // ── Chat background colours ───────────────────────────────────────────────
@@ -381,6 +395,10 @@ void MoonlightUi::LoadSettings() {
 
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
+    if (auto* idt = Bourgeon::Instance().item_desc()) {
+      idt->show_item_panel()  = ui["itemdesc_show_item"].as<bool>(true);
+      idt->show_skill_panel() = ui["itemdesc_show_skill"].as<bool>(true);
+    }
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
 
@@ -627,6 +645,13 @@ void MoonlightUi::SaveSettings() {
   std::snprintf(grid_col, sizeof(grid_col), "%08X",
                 ArgbFromPicker(grid_.color));
 
+  // ItemDescTweaks toggles (owned by the plugin) — persist both panels.
+  bool itemdesc_show_item = true, itemdesc_show_skill = true;
+  if (auto* idt = Bourgeon::Instance().item_desc()) {
+    itemdesc_show_item  = idt->show_item_panel();
+    itemdesc_show_skill = idt->show_skill_panel();
+  }
+
   YAML::Emitter out;
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
@@ -639,6 +664,8 @@ void MoonlightUi::SaveSettings() {
   out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
+        << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
+        << YAML::Key << "itemdesc_show_skill"  << YAML::Value << itemdesc_show_skill
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
@@ -1079,6 +1106,33 @@ void MoonlightUi::SendSetting(uint16_t id, uint32_t value) {
   *reinterpret_cast<uint16_t*>(buf + 4) = id;
   *reinterpret_cast<uint32_t*>(buf + 6) = value;
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
+}
+
+// ── API autolootid partagée (utilisée par le panneau de description enrichi) ──
+bool MoonlightUi::IsAlootId(uint32_t id) const {
+  for (uint32_t v : aloot_ids_)
+    if (v == id) return true;
+  return false;
+}
+bool MoonlightUi::AddAlootId(uint32_t id) {
+  if (id == 0 || aloot_ids_.size() >= 50 || IsAlootId(id)) return false;
+  aloot_ids_.push_back(id);
+  SendSetting(kSettingAlootId, id);
+  return true;
+}
+bool MoonlightUi::RemoveAlootId(uint32_t id) {
+  for (size_t k = 0; k < aloot_ids_.size(); ++k) {
+    if (aloot_ids_[k] == id) {
+      SendSetting(kSettingAlootIdRemove, id);
+      aloot_ids_.erase(aloot_ids_.begin() + k);
+      return true;
+    }
+  }
+  return false;
+}
+const char* MoonlightUi::ItemName(uint32_t id) const {
+  const auto it = item_names_.find(id);
+  return (it != item_names_.end()) ? it->second.c_str() : nullptr;
 }
 
 void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
@@ -1585,6 +1639,50 @@ void MoonlightUi::OnRenderUI() {
     }
 
     // ── Interface de jeu  ────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Caméra FPS (expérimental)")) {
+      if (auto* fps = Bourgeon::Instance().fps_view()) {
+        bool on = fps->enabled();
+        if (ImGui::Checkbox("Vue première personne (FPS)", &on))
+          fps->SetEnabled(on);
+        ImGui::SameLine(); HelpMarker(
+            "Bascule la caméra du monde en vue à la première personne "
+            "(RO est un vrai moteur 3D : on force le tilt/distance cible de la "
+            "caméra et on relève l'œil à hauteur de tête).\n\n"
+            "Règle les 3 curseurs en live pour trouver le bon rendu. "
+            "Raccourci clavier : F9.");
+        if (on) {
+          ImGui::Indent();
+          ImGui::SetNextItemWidth(180.0f);
+          ImGui::SliderFloat("Pitch (0 = horizontal)", fps->p_pitch(), -60.0f, 60.0f, "%.1f");
+          ImGui::SetNextItemWidth(180.0f);
+          ImGui::SliderFloat("Distance (recul)", fps->p_dist(), 0.0f, 80.0f, "%.1f");
+          ImGui::SetNextItemWidth(180.0f);
+          ImGui::SliderFloat("Hauteur des yeux", fps->p_height(), 0.0f, 60.0f, "%.1f");
+          ImGui::Unindent();
+        }
+      } else {
+        ImGui::TextDisabled("Indisponible (client non 20250716).");
+      }
+    }
+    if (ImGui::CollapsingHeader("DOOM")) {
+      if (auto* doom = Bourgeon::Instance().doom()) {
+        bool on = doom->enabled();
+        if (ImGui::Checkbox("Lancer DOOM (1993) dans Ragnarok", &on))
+          doom->SetEnabled(on);
+        ImGui::SameLine(); HelpMarker(
+            "Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
+            "par-dessus le jeu.\n\n"
+            "Nécessite doom1.wad (shareware) à côté de l'exe du client.\n"
+            "Clique la fenêtre DOOM pour capturer le clavier : ZQSD (AZERTY), "
+            "WASD ou flèches pour bouger, Ctrl tirer, Espace/E ouvrir, Shift "
+            "courir, Échap menu.\n"
+            "Décocher = pause. Quitter depuis le menu DOOM = définitif "
+            "jusqu'au redémarrage du client.");
+        ImGui::TextDisabled("État : %s", doom->StatusText());
+      } else {
+        ImGui::TextDisabled("Indisponible.");
+      }
+    }
     if (ImGui::CollapsingHeader("Interface de jeu")) {
       PushStyleCompact();
       if (ImGui::Checkbox("Grille d'alignement", &grid_.show))
@@ -1885,6 +1983,30 @@ void MoonlightUi::OnRenderUI() {
             si->DrawSettings();
           else
             ImGui::TextDisabled("(plugin indisponible)");
+          ImGui::EndTabItem();
+        }
+        // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ────
+        if (ImGui::BeginTabItem("Descriptions"))
+        {
+          if (auto* idt = Bourgeon::Instance().item_desc()) {
+            ImGui::TextUnformatted(
+                "Panneaux d'infos techniques affichés à côté des fenêtres de "
+                "description natives (item et skill).");
+            if (ImGui::Checkbox("Panneau technique des items",
+                                &idt->show_item_panel()))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Affiche le panneau enrichi description d'un ITEM "
+                "(clic droit item).");
+            if (ImGui::Checkbox("Panneau technique des skills",
+                                &idt->show_skill_panel()))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Affiche le panneau enrichi à côté de la description d'un SKILL "
+                "(clic droit dans le grimoire).");
+          } else {
+            ImGui::TextDisabled("(plugin indisponible)");
+          }
           ImGui::EndTabItem();
         }
       }
@@ -2343,7 +2465,16 @@ void MoonlightUi::OnRenderUI() {
     g_item_desc_wnd_ptr = nullptr;
   }
 
-  if (show_alootid_overlay_ && g_last_viewed_item != 0 && g_item_desc_visible) {
+  // Quand les descriptions enrichies (Option A) sont actives, la fenêtre native
+  // est cachée -> l'overlay alootid autonome n'aurait pas d'ancrage cohérent et
+  // fera doublon avec le bouton qui sera réintégré DANS le cadre enrichi. On le
+  // désactive donc tant que le panneau item enrichi est activé.
+  bool enriched_item = false;
+  if (auto* idt = Bourgeon::Instance().item_desc())
+    enriched_item = idt->show_item_panel();
+
+  if (show_alootid_overlay_ && !enriched_item &&
+      g_last_viewed_item != 0 && g_item_desc_visible) {
     // Try to read the tooltip window position from the stored object pointer.
     // Offsets found via CheatEngine: [ptr+0x18]=Y, [ptr+0x20]=X.
     // If the pointer doesn't match the right object the values will be garbage

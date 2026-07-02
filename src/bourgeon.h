@@ -17,6 +17,9 @@ class StatusIconTweaks;
 class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
+class ItemDescTweaks;
+class FpsViewTweaks;
+class DoomTweaks;
 
 class Bourgeon {
  public:
@@ -37,6 +40,9 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks();
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
+  ItemDescTweaks* item_desc();
+  FpsViewTweaks* fps_view();
+  DoomTweaks* doom();
 
   bool Initialize();
   void OnTick();
@@ -79,6 +85,9 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks_ = nullptr; // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
+  FpsViewTweaks* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
+  DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
+  ItemDescTweaks* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::vector<std::string> log_lines_;
   RagnarokClient client_;

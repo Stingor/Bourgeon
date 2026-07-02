@@ -8,6 +8,12 @@ void InitD3D9Hook();
 // Caller owns the returned IDirect3DTexture9* (Release on shutdown / device loss).
 void* D3D9_CreateTextureARGB(const void* argb, int w, int h);
 
+// Re-uploads a full 32-bit A8R8G8B8 pixel buffer (w*h, tightly packed) into a
+// texture previously created by D3D9_CreateTextureARGB (D3DUSAGE_DYNAMIC, so a
+// D3DLOCK_DISCARD lock is cheap). w/h must match the creation size. Returns
+// false on lock failure (caller may Release + recreate). DX9 only.
+bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h);
+
 // Renderer-agnostic ARGB→texture upload: routes to the DX7 (DirectDraw surface)
 // or D3D9 helper depending on which renderer the client is running. Plugins that
 // draw textured ImGui content (e.g. menu icons) MUST use this so they work in

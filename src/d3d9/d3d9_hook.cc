@@ -166,6 +166,24 @@ void* D3D9_CreateTextureARGB(const void* argb, int w, int h) {
     return tex;
 }
 
+// Re-uploads a full frame into a texture made by D3D9_CreateTextureARGB. The
+// texture is D3DUSAGE_DYNAMIC, so LockRect with D3DLOCK_DISCARD avoids stalling
+// the GPU (fresh memory each time — the whole surface must be rewritten).
+bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h) {
+    if (!tex || !argb || w <= 0 || h <= 0) return false;
+    auto* t = static_cast<IDirect3DTexture9*>(tex);
+    D3DLOCKED_RECT lr;
+    if (FAILED(t->LockRect(0, &lr, nullptr, D3DLOCK_DISCARD))) return false;
+    const auto* src = static_cast<const unsigned char*>(argb);
+    auto* dst = static_cast<unsigned char*>(lr.pBits);
+    for (int y = 0; y < h; ++y)
+        std::memcpy(dst + static_cast<size_t>(y) * lr.Pitch,
+                    src + static_cast<size_t>(y) * w * 4,
+                    static_cast<size_t>(w) * 4);
+    t->UnlockRect(0);
+    return true;
+}
+
 // Picks the texture upload path for the renderer the client is actually running:
 // the DX7 proxy (Proxy_EndScene) sets g_imgui_dx7_active, in which case ImGui's
 // ImTextureID must be a DirectDraw surface, not a D3D9 texture.

@@ -11,6 +11,7 @@
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
 #include "plugins/skill_bar_tweaks.h"
+#include "plugins/doom_tweaks.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
@@ -578,7 +579,12 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       }
     }
 
-    if (io.WantCaptureKeyboard) {
+    // DoomTweaks::WantsKeyboard() backstops io.WantCaptureKeyboard for the one
+    // frame between a click that focuses the DOOM window and ImGui's own
+    // capture flag taking effect (SetNextFrameWantCaptureKeyboard only applies
+    // at the NEXT NewFrame) — without it, a key pressed in that gap reaches
+    // the game too (e.g. Escape opening both DOOM's and the RO menu).
+    if (io.WantCaptureKeyboard || DoomTweaks::WantsKeyboard()) {
       switch (uMsg) {
         case WM_KEYDOWN: case WM_KEYUP:
         case WM_SYSKEYDOWN: case WM_SYSKEYUP:

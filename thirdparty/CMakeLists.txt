@@ -1,3 +1,4 @@
 add_subdirectory(spdlog)
 add_subdirectory(yaml-cpp)
 add_subdirectory(imgui)
+add_subdirectory(doomgeneric)

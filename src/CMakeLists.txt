@@ -42,6 +42,10 @@ set(BOURGEON_FILES
 	"plugins/settings_tweaks.h"
 	"plugins/weapon_layer.cc"
 	"plugins/weapon_layer.h"
+	"plugins/fps_view.cc"
+	"plugins/fps_view.h"
+	"plugins/doom_tweaks.cc"
+	"plugins/doom_tweaks.h"
 	"plugins/skill_bar_tweaks.cc"
 	"plugins/skill_bar_tweaks.h"
 	"plugins/item_desc_tweaks.cc"
@@ -112,7 +116,8 @@ target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui winhttp bcrypt shell32)
+# winmm: timeGetTime for the DOOM 35 Hz clock (doom_tweaks).
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt shell32 winmm)
 
 # Emit the SHA-256 of the freshly-built DLL (prints it and writes a sidecar
 # ddraw.dll.sha256). Use it to fill the `hash:` line in the server's

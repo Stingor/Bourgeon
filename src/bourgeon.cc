@@ -18,6 +18,8 @@
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/weapon_layer.h"
+#include "plugins/fps_view.h"
+#include "plugins/doom_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/item_desc_tweaks.h"
 #include "utils/log_console.h"
@@ -32,8 +34,11 @@ BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
 MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
 SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
+FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
+DoomTweaks* Bourgeon::doom() { return doom_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
+ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -73,6 +78,13 @@ void Bourgeon::OnProcessInput() {
   // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
   // windows (world map) crash intermittently.
   if (auto* mi = menu_icons()) mi->FlushPending();
+  // Cache les fenêtres de description natives DANS LA PHASE INPUT (par frame, non
+  // throttlé) -> flicker ~nul à l'ouverture d'un skill (dont l'OnMsg n'est PAS
+  // hookée, contrairement à l'item). Idempotent/sûr (re-cache chaque frame).
+  if (auto* idt = item_desc()) {
+    idt->HideNativeDescWindows();  // item 0xc + comparaison 0xea
+    idt->HideNativeSkillWindow();  // skill 0x2e
+  }
 }
 
 void Bourgeon::AddLogLine(std::string log_line) {
@@ -176,7 +188,21 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
-  plugins_.emplace_back(std::make_unique<ItemDescTweaks>());
+  {
+    auto fps_view = std::make_unique<FpsViewTweaks>();
+    fps_view_ = fps_view.get();
+    plugins_.emplace_back(std::move(fps_view));
+  }
+  {
+    auto doom = std::make_unique<DoomTweaks>();
+    doom_ = doom.get();
+    plugins_.emplace_back(std::move(doom));
+  }
+  {
+    auto item_desc = std::make_unique<ItemDescTweaks>();
+    item_desc_ = item_desc.get();
+    plugins_.emplace_back(std::move(item_desc));
+  }
   {
     auto skill_bar = std::make_unique<SkillBarTweaks>();
     skill_bar_ = skill_bar.get();
