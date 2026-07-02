@@ -70,6 +70,14 @@ constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
 constexpr int kSkillStr1      = 0x44;  // std::string nom
 
+// ItemSkillInfo standalone (ctor+SetId par id, INDÉPENDANT de l'inventaire courant — au contraire
+// de kGetSkillInfo/FUN_00d5a980 qui exige une quantité inventaire > 0). Utilisé pour la description
+// d'un OBJET grisé (épuisé) dans la barre : cf. project_item_skill_desc_window_re, section
+// "Accès STANDALONE". +0x5c = flag skill (laissé à 0 = objet par le ctor / FUN_006a5ff0).
+constexpr uintptr_t kItemSkillInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
+constexpr uintptr_t kItemSkillInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall (itoa->resname)
+constexpr int kItemSkillInfoSize = 0x100;  // struct ~0xf4 o
+
 // ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50) ----
 // OBJET (rec[0]==1) : nom via la DB item (FUN_006a0d40, table 0x01255130 ; record+0x04 = nom EN,
 //   +0x08 = localisé). Les objets y sont chargés au boot (FUN_006a4e20 parse item.txt etc.).
@@ -104,6 +112,8 @@ using SetPos_t       = void (__fastcall*)(void*, void*, int, int);        // (wn
 using ShowTip_t      = void (__fastcall*)(void*, void*, const char*, int, int, unsigned, unsigned char, char);
 using ItemDbGet_t    = void* (__cdecl*)(int, void*);                       // (nameid, table) -> record / sentinelle
 using GetSkillNameLua_t = char* (__cdecl*)(int);                          // GetSkillName(id) -> nom skill / "Unknown-Skill"
+using ItemSkillInfoCtor_t  = void* (__fastcall*)(void*);                  // (ecx=this) -> this
+using ItemSkillInfoSetId_t = void  (__thiscall*)(void*, int);             // (this, id)
 
 struct CooldownNode {       // 0x24 octets
   CooldownNode* next;       // +0x00
@@ -656,10 +666,16 @@ void WriteSlotRecord(int region, int slot, bool is_item, uint32_t id, int level)
 
 // Clic-droit sur un slot -> ouvre la description en jeu, RÉPLIQUE EXACTE du handler
 // natif UIShortCutWnd::OnRButtonDown 0x008f91a0 (par index de slot, sans le HitTest) :
-//   OBJET (rec[0]==1) : fenêtre tooltip 0x2e ; bascule si elle montre déjà ce nameid
-//     (w+0x104), sinon OnMsg(0x3d, nameid brut). Positionne au curseur.
-//   SKILL (rec[0]==0) : SkillMgr_GetSkillInfo remplit une struct (2 std::string), si
-//     trouvé (out+4) -> fenêtre 0xc + OnMsg(0x18, &struct) ; libère les 2 strings.
+//   SKILL (rec[0]==1) : fenêtre tooltip 0x2e ; bascule si elle montre déjà ce id
+//     (w+0x104), sinon OnMsg(0x3d, id brut). Positionne au curseur.
+//   OBJET (rec[0]==0) : SkillMgr_GetSkillInfo (kGetSkillInfo, gate=1) remplit une struct
+//     (2 std::string) ET amorce le cache de la DB desc (0x01255130) pour cet id ; sans cet
+//     appel, OnMsg(0x18) sur la fenêtre 0xc ouvre bien le nom/icône mais les lignes de
+//     description restent VIDES (testé : struct maison ItemSkillInfo_ctor/SetId sans ce
+//     gate = titre OK, desc vide). Le natif ne procède QUE si trouvé (out+4, = quantité
+//     inventaire > 0) -> case OBJET GRISÉE (stack épuisé) jamais décrite. FIX : on ignore
+//     ce garde-fou (le natif l'utilise pour la quantité, pas pour la desc) et on ouvre la
+//     fenêtre 0xc + OnMsg(0x18, &struct) dans tous les cas -> desc dispo même à 0 en stock.
 // OnMsg 0x18 COPIE la struct (sûr de libérer après). À n'appeler QUE hors drag natif
 // (clic-droit simple) — appeler une fn jeu pendant un drag crashe. SEH (POD only).
 void OpenSlotDescription(int region, int slot, int mx, int my) {
@@ -669,7 +685,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
     const int id = *reinterpret_cast<int*>(rec + 1);
     if (id != 0) {
       void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
-      if (rec[0] != 0) {  // ── OBJET (rec[0]==1) ──
+      if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
         void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
             mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
         if (wnd) {
@@ -680,18 +696,16 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
             Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
           }
         }
-      } else {            // ── SKILL (rec[0]==0) ──
+      } else {            // ── OBJET (rec[0]==0) ──
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
-        if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0) {  // skill trouvé
-          void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-              mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
-          if (wnd) {
-            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
-                                       static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
-            Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
-          }
+        void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+            mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+        if (wnd) {
+          Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
+                                     static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+          Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
         }
         reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
         reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
@@ -1030,7 +1044,7 @@ void SkillBarTweaks::DrawSettingsContent() {
   if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
 
   ImGui::Separator();
-  ImGui::TextDisabled("Clic G = utiliser. Glisser = rearranger. Clic D = description. Shift+Clic D = vider.");
+  ImGui::TextDisabled("Clic G = utiliser. Glisser = rearranger. Clic D = description. Clic molette = vider.");
   ImGui::TextDisabled("Bleu = objet, Vert = skill. Items = barre d'objets. Toggle panneau : 2/~");
 }
 
@@ -1288,16 +1302,16 @@ void SkillBarTweaks::DrawBar(int bar) {
     if (RegionIsItems(region) || RegionIsItems(move_region)) dirty_ = true;  // items -> persist client
   }
 
-  // ── Verrouillé, clic droit sur le slot survolé : Shift = vider, sinon description ──
+  // ── Verrouillé, slot survolé : clic molette = vider, clic droit = description ──
+  if (locked_ && hover >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+    const int slot = bc.first_slot + hover;
+    const SlotRec r = ReadSlot(region, slot);
+    if (r.valid) { ClearSlot(region, slot); if (RegionIsItems(region)) dirty_ = true; }
+  }
   if (locked_ && hover >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     const int slot = bc.first_slot + hover;
-    if (ImGui::GetIO().KeyShift) {              // Shift+clic D = vider la case
-      const SlotRec r = ReadSlot(region, slot);
-      if (r.valid) { ClearSlot(region, slot); if (RegionIsItems(region)) dirty_ = true; }
-    } else {                                    // clic D = description en jeu (objet/skill)
-      const ImVec2 mp = ImGui::GetIO().MousePos;
-      OpenSlotDescription(region, slot, static_cast<int>(mp.x), static_cast<int>(mp.y));
-    }
+    const ImVec2 mp = ImGui::GetIO().MousePos;
+    OpenSlotDescription(region, slot, static_cast<int>(mp.x), static_cast<int>(mp.y));
   }
 
   ImGui::End();
