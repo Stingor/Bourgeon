@@ -14,22 +14,26 @@
 // cast/cooldown réels pour les skills), rendues PAR-DESSUS l'overlay ImGui (la
 // fenêtre native se dessine sous ImGui).
 //
-// Architecture cible (cf. mémoire project_item_skill_desc_window_re) :
-//   - la fenêtre native (id 0xc, vtable 0x01032aac) reste la SOURCE de données
-//     côté client (nom/desc/cartes/options/niveaux) + le DÉCLENCHEUR ;
-//   - le RENDU bascule en panneau ImGui propriétaire ;
-//   - une couche requête/cache async récupère le bloc technique du serveur.
+// ⚠️ ARCHITECTURE RÉELLE (corrigée live 2026-07-01, x32 attaché — cf. mémoire
+// project_item_skill_desc_window_re « CORRECTION LIVE ») : il y a DEUX fenêtres
+// natives DISTINCTES, pas une fenêtre unifiée, et elles peuvent COEXISTER :
+//   - ITEM  = classe 0xc  (vtable 0x01032aac), slot manager mgr+0x218
+//             (0x0131f700). id = atoi(std::string @ wnd+0xe4).
+//   - SKILL = classe 0x2e (vtable 0x01032e0c), slot manager mgr+0x230
+//             (0x0131f718). id = *(int*)(wnd+0x104) (BRUT).
+// Signal ouvert/fermé FIABLE = le SLOT MANAGER (non-nul ⇒ ouvert, remis à 0 à
+// la fermeture). ⚠️ wnd+0x28 (« visible ») N'EST PAS fiable (reste à 1 après
+// fermeture, mémoire périmée). ⚠️ La fenêtre skill 0x2e est RÉALLOUÉE ⇒ relire
+// le pointeur FRAIS chaque tick, jamais le cacher. ⚠️ wnd+0x114 N'EST PAS
+// isSkill (vaut 1 pour un item) — le type vient de QUELLE fenêtre, pas d'un flag.
 //
 // ÉTAT ACTUEL = SQUELETTE NON-INTRUSIF :
-//   - AUCUN hook installé (le OnMsg 0xc 0x008c18b0 est déjà hooké par MoonlightUi
-//     — on ne le re-hooke pas). On lit l'état en POLLING read-only du pointeur
-//     live de la fenêtre desc (kDescWndLivePtr), sous garde SEH.
-//   - AUCUN paquet envoyé / opcode enregistré (les constantes/handlers serveur
-//     sont présents mais désactivés derrière kEnableServerFetch=false).
-//   - AUCUN rendu natif neutralisé (on ne fait que SUPERPOSER un panneau
-//     placeholder ; la fenêtre native reste intacte).
-// => Quand on activera la vraie feature : flip kEnableServerFetch, enregistrer
-//    les opcodes, et (option) neutraliser UIItemSkillDescWnd_DrawContent.
+//   - AUCUN hook installé : polling read-only des 2 slots, sous garde SEH.
+//   - AUCUN paquet envoyé / opcode enregistré (couche serveur derrière
+//     kEnableServerFetch=false).
+//   - AUCUN rendu natif neutralisé (on SUPERPOSE un panneau par fenêtre).
+// => Vraie feature : flip kEnableServerFetch, enregistrer les opcodes, et
+//    (option) neutraliser le DrawContent natif de chaque fenêtre.
 
 class ItemDescTweaks : public Plugin {
  public:
@@ -37,15 +41,35 @@ class ItemDescTweaks : public Plugin {
 
   const char* name() const override { return "ItemDescTweaks"; }
 
-  void OnTick() override;       // capture l'item/skill courant (polling read-only)
-  void OnRenderUI() override;   // dessine le panneau placeholder ImGui
+  void OnTick() override;       // capture item ET skill courants (polling read-only)
+  void OnRenderUI() override;   // dessine un panneau placeholder par fenêtre ouverte
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Toggle runtime de l'overlay placeholder (TODO : exposer dans moonlight_ui).
-  bool& enabled() { return enabled_; }
+  // Toggles runtime indépendants (persistés par MoonlightUi) : panneau item
+  // et/ou panneau skill peuvent être désactivés séparément.
+  bool& show_item_panel()  { return show_item_panel_; }
+  bool& show_skill_panel() { return show_skill_panel_; }
+
+  // Cache IMMÉDIATEMENT le rendu natif des fenêtres desc (item 0xc + comparaison
+  // 0xea) depuis leurs slots manager (appelé depuis le hook OnMsg de MoonlightUi
+  // au moment de l'ouverture -> zéro flicker). No-op si le panneau item enrichi
+  // est désactivé. SEH-gardé.
+  void HideNativeDescWindows();
+  // Cache la fenêtre skill (0x2e) — appelée depuis le hook OnMsg 0x3d (zéro
+  // flicker). No-op si le panneau skill est désactivé. SEH-gardé.
+  void HideNativeSkillWindow();
+
+  // Instantané read-only d'une fenêtre native de description (public : lu par
+  // un helper libre dans le .cc).
+  struct DescWindow {
+    bool      open = false;
+    uint32_t  id = 0;
+    bool      is_skill = false;
+    int       x = 0, y = 0, w = 0, h = 0;  // pos/taille écran (base UIWindow)
+  };
 
  private:
-  // État d'une entrée de cache de données techniques (par id).
+  // État d'une entrée de cache de données techniques (par (is_skill,id)).
   enum class FetchState : uint8_t { kNone, kPending, kReady, kFailed };
 
   struct TechData {
@@ -56,15 +80,34 @@ class ItemDescTweaks : public Plugin {
     std::string    raw;                  // payload brut (debug, pour l'instant)
   };
 
+  // Clé de cache combinant type + id (les espaces d'id item/skill se chevauchent).
+  static uint32_t CacheKey(uint32_t id, bool is_skill) {
+    return (is_skill ? 0x80000000u : 0u) | (id & 0x7fffffffu);
+  }
+
   // Lance (à terme) une requête serveur pour cet id ; STUB pour l'instant.
   void RequestTechData(uint32_t id, bool is_skill);
+  // Reproduit la fenêtre de description d'ITEM en ImGui (Option A : native
+  // cachée, redessinée à EndScene).
+  void RenderItemWindow();
+  // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui.
+  void RenderSkillWindow();
+  // Bloc d'infos techniques (placeholder serveur) inséré dans un panneau.
+  void RenderTechBlock(const DescWindow& w);
 
-  bool      enabled_ = true;             // overlay placeholder visible
-  uint32_t  current_id_ = 0;             // id desc courant (0 = aucun)
-  bool      current_is_skill_ = false;
-  bool      desc_open_ = false;          // une fenêtre desc native est ouverte ?
-  int       desc_x_ = 0, desc_y_ = 0;    // position écran de la fenêtre native
-  int       desc_w_ = 0, desc_h_ = 0;    // taille de la fenêtre native
+  bool       show_item_panel_  = true;  // panneau technique pour les items
+  bool       show_skill_panel_ = true;  // panneau technique pour les skills
+  DescWindow item_;             // fenêtre item candidate (classe 0xc)
+  DescWindow compare_;          // fenêtre équipé/comparaison (classe 0xea)
+  // Placement de la fenêtre item reproduite : au 1er frame d'ouverture on la
+  // pose près du curseur, puis on laisse ImGui la mémoriser (déplaçable).
+  bool       item_was_open_ = false;
+  bool       item_need_pos_ = false;
+  int        item_spawn_x_ = 0, item_spawn_y_ = 0;
+  DescWindow skill_;            // fenêtre skill (classe 0x2e)
+  bool       skill_was_open_ = false;
+  bool       skill_need_pos_ = false;
+  int        skill_spawn_x_ = 0, skill_spawn_y_ = 0;
 
-  std::unordered_map<uint32_t, TechData> cache_;
+  std::unordered_map<uint32_t, TechData> cache_;  // clé = CacheKey(id,is_skill)
 };

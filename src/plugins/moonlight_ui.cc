@@ -22,6 +22,7 @@
 #include "plugins/doom_tweaks.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/equip_tweaks.h"
+#include "plugins/window_pos_tweaks.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -506,6 +507,13 @@ void MoonlightUi::LoadSettings() {
     // EQUIP window saved position (applied by EquipTweaks' msg-handler hook).
     EquipTweaks_SetSavedPos(ui["equip_pos_x"].as<int>(INT_MIN),
                             ui["equip_pos_y"].as<int>(INT_MIN));
+    // Generic per-window saved positions (WindowPosTweaks table: achievement,
+    // bank, mail, ...). One "<key>_pos_x/y" pair each; applied on the next tick.
+    for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
+      const std::string k = WindowPosTweaks_Key(i);
+      WindowPosTweaks_SetSavedPos(i, ui[k + "_pos_x"].as<int>(INT_MIN),
+                                  ui[k + "_pos_y"].as<int>(INT_MIN));
+    }
 
     if (auto* mi = Bourgeon::Instance().menu_icons()) {
       mi->enabled_   = ui["menu_icons_enabled"].as<bool>(mi->enabled_);
@@ -703,6 +711,12 @@ void MoonlightUi::SaveSettings() {
       << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY()
       << YAML::Key << "equip_pos_x" << YAML::Value << EquipTweaks_SavedX()
       << YAML::Key << "equip_pos_y" << YAML::Value << EquipTweaks_SavedY();
+  // Generic per-window saved positions (WindowPosTweaks table).
+  for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
+    const std::string k = WindowPosTweaks_Key(i);
+    out << YAML::Key << (k + "_pos_x") << YAML::Value << WindowPosTweaks_X(i)
+        << YAML::Key << (k + "_pos_y") << YAML::Value << WindowPosTweaks_Y(i);
+  }
   if (eb) {
     for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
       const std::string p =

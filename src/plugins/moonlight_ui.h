@@ -56,6 +56,13 @@ class MoonlightUi : public Plugin {
   // MenuIconTweaks) can read it for snapping while dragging/resizing.
   AlignGrid grid_;
 
+  // ── Liste autolootid (partagée) : le panneau de description enrichi
+  // (ItemDescTweaks) réintègre le bouton +/- alootid. ─────────────────────────
+  bool IsAlootId(uint32_t id) const;   // l'item est-il dans la liste ?
+  bool AddAlootId(uint32_t id);        // ajoute + notifie serveur (false si plein/déjà)
+  bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
+  const char* ItemName(uint32_t id) const;  // nom via itemInfoMerged.lua (ou nullptr)
+
  private:
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
@@ -155,6 +162,7 @@ class MoonlightUi : public Plugin {
   // Address of the item description window message handler (FUN_008c18b0,
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
   static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
+  static constexpr uintptr_t kSkillDescWndAddr = 0x008ca900;  // UIItemTooltipWnd_OnMsg (skill 0x2e)
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by
   // the game independently of our hook, so polling it catches silent closes
