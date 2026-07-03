@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "plugins/plugin.h"
 
@@ -72,28 +73,61 @@ class ItemDescTweaks : public Plugin {
   // État d'une entrée de cache de données techniques (par (is_skill,id)).
   enum class FetchState : uint8_t { kNone, kPending, kReady, kFailed };
 
-  struct TechData {
-    FetchState     state = FetchState::kNone;
-    uint32_t       requested_tick = 0;   // GetTickCount au moment de la requête
-    bool           is_skill = false;
-    // Placeholder : champs techniques à remplir depuis la réponse serveur.
-    std::string    raw;                  // payload brut (debug, pour l'instant)
+  // Une source de drop (item) : mob + taux réel calculé serveur + type de boss.
+  struct DropSrc {
+    uint32_t    mob_id = 0;
+    uint32_t    rate = 0;       // en 0.01% (pour 100.00% = 10000), tel que @whodrops
+    uint8_t     boss = 0;       // 0=normal, 1=mini-boss, 2=MVP (get_bosstype)
+    uint8_t     src = 0;        // 0=drop normal, 1=MVP reward
+    std::string name;
+  };
+  // Une ligne du tableau de cast d'un skill (par niveau).
+  struct SkillLv {
+    int32_t     cast_var = 0;   // variable cast (ms)
+    int32_t     cast_fixed = 0; // fixed cast (ms)
+    int32_t     cooldown = 0;   // cooldown (ms)
+    int32_t     delay = 0;      // after-cast delay (ms)
   };
 
-  // Clé de cache combinant type + id (les espaces d'id item/skill se chevauchent).
-  static uint32_t CacheKey(uint32_t id, bool is_skill) {
-    return (is_skill ? 0x80000000u : 0u) | (id & 0x7fffffffu);
+  struct TechData {
+    FetchState           state = FetchState::kNone;
+    uint32_t             requested_tick = 0;  // GetTickCount au moment de la requête
+    bool                 is_skill = false;
+    // --- item ---
+    std::vector<DropSrc> drops;
+    bool                 truncated = false;   // plus de sources que renvoyées
+    uint8_t              treasure_excluded = 0;  // nb de coffres au trésor filtrés
+    // --- skill ---
+    uint8_t              max_lv = 0;
+    std::vector<SkillLv> levels;
+  };
+
+  // Scope d'une requête item : quels mobs on veut (le scan MVP côté serveur ne
+  // tourne que si demandé). Ignoré pour les skills.
+  static constexpr uint8_t kScopeNormal = 0;  // mobs à drop normal
+  static constexpr uint8_t kScopeMvp    = 1;  // MVP rewards (mvpitem)
+
+  // Clé de cache combinant type + scope + id (les espaces d'id item/skill se
+  // chevauchent ; drops normaux et MVP sont cachés séparément).
+  static uint32_t CacheKey(uint32_t id, bool is_skill, uint8_t scope) {
+    return (is_skill ? 0x80000000u : 0u) | (scope ? 0x40000000u : 0u) |
+           (id & 0x3fffffffu);
   }
 
-  // Lance (à terme) une requête serveur pour cet id ; STUB pour l'instant.
-  void RequestTechData(uint32_t id, bool is_skill);
+  // Envoie une requête serveur (0x0F0B) pour cet id/scope si pas déjà en cache
+  // frais. Déclenché par les boutons du panneau (aucune requête automatique).
+  void RequestTechData(uint32_t id, bool is_skill, uint8_t scope);
   // Reproduit la fenêtre de description d'ITEM en ImGui (Option A : native
   // cachée, redessinée à EndScene).
   void RenderItemWindow();
   // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui.
   void RenderSkillWindow();
-  // Bloc d'infos techniques (placeholder serveur) inséré dans un panneau.
+  // Bloc d'infos techniques (boutons on-demand) inséré dans un panneau.
   void RenderTechBlock(const DescWindow& w);
+  // Rend une table de sources de drop (filtre + tri + liens). show_type ajoute
+  // une colonne mécanisme (drop normal / MVP reward), utile pour le bucket MVP.
+  void RenderDropTable(const TechData& td, const char* table_id,
+                       uint32_t filter_key, bool show_type);
 
   bool       show_item_panel_  = true;  // panneau technique pour les items
   bool       show_skill_panel_ = true;  // panneau technique pour les skills

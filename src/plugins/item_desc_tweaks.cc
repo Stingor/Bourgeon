@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (ouvrir les liens <URL>)
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -128,13 +129,21 @@ using GameMalloc_t = void* (__cdecl*)(size_t);
 // 0x008ca900 : il crashait le chemin du msg 0x3d) -> léger flicker toléré.
 constexpr bool     kSkillWindowEnabled = true;
 
-// ── Couche serveur (DÉSACTIVÉE — squelette non-intrusif) ────────────────────
-constexpr bool     kEnableServerFetch = false;
+// ── Couche serveur (ACTIVE — requiert le map-server rebuild avec 0x0F0B/0x0F0C) ─
+constexpr bool     kEnableServerFetch = true;
 // Zone custom SÛRE (>0x0C35, hors table client ET plage rAthena) : dispatch via
 // le reader-hook (cf. RagConnection::RegisterRecvOpcode). Vérifié flag=-1.
 // Source unique : plugins/bourgeon_opcodes.h
-constexpr uint16_t kOpcodeReqTechData = bopcodes::kReqTechData;  // 0x0F00 client -> serveur
-constexpr uint16_t kOpcodeTechData    = bopcodes::kTechData;     // 0x0F01 serveur -> client
+constexpr uint16_t kOpcodeReqTechData = bopcodes::kReqTechData;  // 0x0F0B client -> serveur
+constexpr uint16_t kOpcodeTechData    = bopcodes::kTechData;     // 0x0F0C serveur -> client
+
+// Les taux de drop dépendent de facteurs DYNAMIQUES côté serveur (event_drop,
+// VIP, SC_ITEMBOOST, bonus de gear) : on ne peut pas cacher indéfiniment. On
+// ré-interroge donc au bout de kTechTtlMs, ET à chaque réouverture de la
+// fenêtre (invalidation du cache sur front montant). kTechPendingMs = délai
+// avant de renvoyer une requête restée sans réponse.
+constexpr uint32_t kTechTtlMs     = 15000;  // fraîcheur d'une réponse
+constexpr uint32_t kTechPendingMs = 3000;   // timeout d'une requête en vol
 
 // Icône de collection : texture + dimensions natives (pour préserver le ratio).
 struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
@@ -748,6 +757,8 @@ void ItemDescTweaks::OnTick() {
     HideDescSlot(kSkillWndSlot, kSkillVTable);
 
   // Front montant d'ouverture -> pose la fenêtre reproduite près du curseur.
+  // Aucune requête serveur automatique : c'est le joueur qui les déclenche via
+  // les boutons du panneau (cf. RenderTechBlock).
   if (item_.open && !item_was_open_) {
     POINT pt;
     if (GetCursorPos(&pt)) {
@@ -766,73 +777,283 @@ void ItemDescTweaks::OnTick() {
     }
   }
   skill_was_open_ = skill_.open;
-
-  if (item_.open)  RequestTechData(item_.id, false);
-  if (skill_.open) RequestTechData(skill_.id, true);
 }
 
-void ItemDescTweaks::RequestTechData(uint32_t id, bool is_skill) {
-  auto& entry = cache_[CacheKey(id, is_skill)];
-  if (entry.state == FetchState::kReady || entry.state == FetchState::kPending)
+void ItemDescTweaks::RequestTechData(uint32_t id, bool is_skill, uint8_t scope) {
+  if (!kEnableServerFetch) return;
+  auto& entry = cache_[CacheKey(id, is_skill, scope)];
+  const uint32_t now = GetTickCount();
+  // Réponse encore fraîche : on ne réinterroge pas (le TTL borne la staleness
+  // des taux dynamiques). GetTickCount peut wrapper (~49j) -> la soustraction
+  // non-signée reste correcte.
+  if (entry.state == FetchState::kReady &&
+      (now - entry.requested_tick) < kTechTtlMs)
     return;
+  // Requête déjà en vol et pas encore expirée : on attend.
+  if (entry.state == FetchState::kPending &&
+      (now - entry.requested_tick) < kTechPendingMs)
+    return;
+
   entry.is_skill = is_skill;
-
-  if (!kEnableServerFetch) {
-    entry.state = FetchState::kNone;
-    return;
-  }
-
-  uint8_t pkt[9];
+  uint8_t pkt[10];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpcodeReqTechData;
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(sizeof(pkt));
   *reinterpret_cast<uint32_t*>(pkt + 4) = id;
   pkt[8] = is_skill ? 1 : 0;
+  pkt[9] = scope;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
   entry.state          = FetchState::kPending;
-  entry.requested_tick = GetTickCount();
+  entry.requested_tick = now;
 }
 
 void ItemDescTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   if (opcode != kOpcodeTechData) return;
-  if (len < 5) return;
+  if (len < 6) return;  // besoin d'au moins [id:4][is_skill:1][scope:1]
   const uint32_t id       = *reinterpret_cast<const uint32_t*>(data);
   const bool     is_skill = data[4] != 0;
-  auto& entry = cache_[CacheKey(id, is_skill)];
+  const uint8_t  scope    = data[5];
+
+  auto& entry = cache_[CacheKey(id, is_skill, scope)];
+  entry.is_skill          = is_skill;
+  entry.drops.clear();
+  entry.levels.clear();
+  entry.truncated         = false;
+  entry.treasure_excluded = 0;
+  entry.max_lv            = 0;
+
+  // Parseur borné : `p` avance dans le payload, `end` = garde-fou.
+  const uint8_t* p   = data + 6;
+  const uint8_t* end = data + len;
+
+  if (!is_skill) {
+    // [count:1][truncated:1][treasure_excluded:1] puis count ×
+    // [mob_id:4][rate:4][boss:1][namelen:1][name].
+    if (end - p < 3) { entry.state = FetchState::kReady; return; }
+    const uint8_t count     = p[0];
+    entry.truncated         = p[1] != 0;
+    entry.treasure_excluded = p[2];
+    p += 3;
+    for (uint8_t i = 0; i < count; ++i) {
+      if (end - p < 11) break;  // [mob:4][rate:4][boss:1][src:1][namelen:1]
+      DropSrc d;
+      d.mob_id = *reinterpret_cast<const uint32_t*>(p); p += 4;
+      d.rate   = *reinterpret_cast<const uint32_t*>(p); p += 4;
+      d.boss   = *p; p += 1;
+      d.src    = *p; p += 1;
+      const uint8_t namelen = *p; p += 1;
+      if (end - p < namelen) break;
+      d.name.assign(reinterpret_cast<const char*>(p), namelen);
+      p += namelen;
+      entry.drops.push_back(std::move(d));
+    }
+  } else {
+    // [max_lv:1] puis max_lv × [cast_var:4][cast_fixed:4][cooldown:4][delay:4].
+    if (end - p < 1) { entry.state = FetchState::kReady; return; }
+    const uint8_t maxlv = *p; p += 1;
+    entry.max_lv = maxlv;
+    for (uint8_t lv = 0; lv < maxlv; ++lv) {
+      if (end - p < 16) break;
+      SkillLv s;
+      s.cast_var   = *reinterpret_cast<const int32_t*>(p); p += 4;
+      s.cast_fixed = *reinterpret_cast<const int32_t*>(p); p += 4;
+      s.cooldown   = *reinterpret_cast<const int32_t*>(p); p += 4;
+      s.delay      = *reinterpret_cast<const int32_t*>(p); p += 4;
+      entry.levels.push_back(s);
+    }
+  }
   entry.state = FetchState::kReady;
-  entry.raw.assign(reinterpret_cast<const char*>(data + 5), len - 5);
 }
 
-// Bloc placeholder d'infos techniques (à remplacer par les données serveur).
+// Rend une table de sources (filtre + tri + liens bestiaire). show_type ajoute
+// une colonne mécanisme (drop normal / MVP reward).
+void ItemDescTweaks::RenderDropTable(const TechData& td, const char* table_id,
+                                     uint32_t filter_key, bool show_type) {
+  if (td.drops.empty()) {
+    ImGui::TextDisabled("Aucune source.");
+    return;
+  }
+  // Filtre texte (par nom de monstre), persistant entre frames par (id,scope).
+  static std::unordered_map<uint32_t, ImGuiTextFilter> s_filters;
+  ImGuiTextFilter& filter = s_filters[filter_key];
+  // Label ID unique par table (les 2 sections partagent le même texte visible
+  // -> sans ceci, ImGui signale un conflit d'ID entre les deux InputText).
+  char flabel[80];
+  _snprintf_s(flabel, sizeof(flabel), _TRUNCATE, "Filtrer (monstre)##%s",
+              table_id);
+  ImGui::SetNextItemWidth(180.0f);
+  filter.Draw(flabel);
+
+  std::vector<const DropSrc*> view;
+  view.reserve(td.drops.size());
+  for (const DropSrc& d : td.drops)
+    if (filter.PassFilter(d.name.c_str())) view.push_back(&d);
+
+  const ImGuiTableFlags tf =
+      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+      ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp;
+  ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, IM_COL32(206, 198, 172, 255));
+  if (ImGui::BeginTable(table_id, show_type ? 3 : 2, tf)) {
+    ImGui::TableSetupColumn("Monstre", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Taux", ImGuiTableColumnFlags_WidthFixed |
+                                        ImGuiTableColumnFlags_PreferSortDescending |
+                                        ImGuiTableColumnFlags_DefaultSort,
+                            70.0f);
+    if (show_type)
+      ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 105.0f);
+    ImGui::TableHeadersRow();
+
+    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
+      if (sort->SpecsCount > 0) {
+        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+        std::sort(view.begin(), view.end(),
+                  [&](const DropSrc* a, const DropSrc* b) {
+                    int c;
+                    if (sp.ColumnIndex == 1) {
+                      c = (a->rate < b->rate) ? -1 : (a->rate > b->rate ? 1 : 0);
+                    } else if (sp.ColumnIndex == 2) {  // Type (mécanisme)
+                      if (a->src != b->src)
+                        c = (a->src < b->src) ? -1 : 1;
+                      else
+                        c = (a->rate < b->rate) ? 1 : (a->rate > b->rate ? -1 : 0);
+                    } else {
+                      c = _stricmp(a->name.c_str(), b->name.c_str());
+                    }
+                    return asc ? c < 0 : c > 0;
+                  });
+      }
+    }
+
+    for (const DropSrc* d : view) {
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn();
+      // Badge type de boss avant le nom.
+      if (d->boss == 2) {
+        ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f), "[MVP]");
+        ImGui::SameLine();
+      } else if (d->boss == 1) {
+        ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "[Mini]");
+        ImGui::SameLine();
+      }
+      // Nom cliquable → bestiaire du site (lien externe).
+      const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
+      ImGui::TextColored(kLink, "%s (%u)", d->name.c_str(), d->mob_id);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        const ImVec2 mn = ImGui::GetItemRectMin();
+        const ImVec2 mx = ImGui::GetItemRectMax();
+        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
+                                            ImVec2(mx.x, mx.y),
+                                            ImGui::GetColorU32(kLink));
+      }
+      if (ImGui::IsItemClicked()) {
+        char url[192];
+        _snprintf_s(url, sizeof(url), _TRUNCATE,
+                    "https://moonlight-destiny.fr/index.php?page=bestiary&mobid=%u",
+                    d->mob_id);
+        ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
+      }
+      ImGui::TableNextColumn();
+      ImGui::Text("%.2f%%", d->rate / 100.0f);  // rate en 0.01% (10000 = 100%)
+      if (show_type) {
+        ImGui::TableNextColumn();
+        if (d->src == 1)
+          ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "MVP reward");
+        else
+          ImGui::TextDisabled("Drop normal");
+      }
+    }
+    ImGui::EndTable();
+  }
+  ImGui::PopStyleColor();  // TableHeaderBg
+  if (td.treasure_excluded > 0)
+    ImGui::TextDisabled("%u coffre(s) au tresor exclu(s).", td.treasure_excluded);
+  if (td.truncated)
+    ImGui::TextDisabled("... autres sources : voir la base de donnees.");
+}
+
+// Panneau d'infos techniques : boutons on-demand (aucune requête par défaut).
 void ItemDescTweaks::RenderTechBlock(const DescWindow& w) {
-  // Rien à afficher tant que la couche serveur est désactivée (pas de bruit).
   if (!kEnableServerFetch) return;
+  const bool panel_on = w.is_skill ? show_skill_panel_ : show_item_panel_;
+  if (!panel_on) return;
+
   ImGui::Separator();
-  const auto it = cache_.find(CacheKey(w.id, w.is_skill));
-  const FetchState st =
-      (it != cache_.end()) ? it->second.state : FetchState::kNone;
-  switch (st) {
-    case FetchState::kPending:
-      ImGui::TextDisabled("Chargement depuis le serveur...");
-      break;
-    case FetchState::kReady:
-      ImGui::TextUnformatted("Données serveur reçues (parsing à implémenter).");
-      break;
-    case FetchState::kFailed:
-      ImGui::TextDisabled("Echec de la requete serveur.");
-      break;
-    case FetchState::kNone:
-    default:
-      ImGui::TextDisabled("Infos techniques : couche serveur desactivee.");
-      break;
-  }
+  ImGui::PushID(static_cast<int>(w.id));  // IDs uniques (colonnes équipé/comparé)
+
+  // En-tête pliable : replié par défaut (donc AUCUNE requête au départ). Le
+  // déplier lance la requête (guardée par le TTL) et renvoie l'entrée cache une
+  // fois prête ; le replier cache les résultats (les données restent en cache).
+  auto open_section = [&](uint8_t scope, const char* header_label)
+      -> const TechData* {
+    if (!ImGui::CollapsingHeader(header_label))
+      return nullptr;  // replié : rien affiché, pas de requête
+    RequestTechData(w.id, w.is_skill, scope);
+    const uint32_t key = CacheKey(w.id, w.is_skill, scope);
+    auto it = cache_.find(key);
+    const FetchState st =
+        (it != cache_.end()) ? it->second.state : FetchState::kNone;
+    if (st == FetchState::kPending)
+      ImGui::TextDisabled("Chargement...");
+    else if (st == FetchState::kFailed)
+      ImGui::TextDisabled("echec de la requete");
+    return (st == FetchState::kReady && it != cache_.end()) ? &it->second
+                                                            : nullptr;
+  };
+
   if (w.is_skill) {
-    ImGui::TextDisabled("Cout SP / niveau : --");
-    ImGui::TextDisabled("Cast / Cooldown  : --");
-  } else {
-    ImGui::TextDisabled("ATK / MATK reels : --");
-    ImGui::TextDisabled("Sources de drop  : --");
+    // ── SKILL : en-tête pliable -> table de cast par niveau ─────────────────
+    if (const TechData* td =
+            open_section(kScopeNormal, "Informations techniques du sort")) {
+      if (td->levels.empty()) {
+        ImGui::TextDisabled("Aucune donnee de cast.");
+      } else {
+        const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
+                                   ImGuiTableFlags_RowBg |
+                                   ImGuiTableFlags_SizingFixedFit;
+        ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
+                              IM_COL32(206, 198, 172, 255));
+        if (ImGui::BeginTable("tech_skill", 5, tf)) {
+          ImGui::TableSetupColumn("Niv");
+          ImGui::TableSetupColumn("Cast");
+          ImGui::TableSetupColumn("Fixe");
+          ImGui::TableSetupColumn("Cooldown");
+          ImGui::TableSetupColumn("Delai");
+          ImGui::TableHeadersRow();
+          auto sec = [](int32_t ms) { return ms / 1000.0f; };
+          for (size_t i = 0; i < td->levels.size(); ++i) {
+            const SkillLv& s = td->levels[i];
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::Text("%d", (int)i + 1);
+            ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cast_var));
+            ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cast_fixed));
+            ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cooldown));
+            ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.delay));
+          }
+          ImGui::EndTable();
+        }
+        ImGui::PopStyleColor();
+      }
+    }
+    ImGui::PopID();
+    return;
   }
+
+  // ── ITEM : deux en-têtes pliables, split par boss-type du mob ─────────────
+  // Monstres = mobs non-boss (une seule mécanique : drop normal, pas de colonne
+  // Type). MVP/boss = mobs boss-type (drops normaux + MVP rewards -> colonne Type).
+  if (const TechData* td =
+          open_section(kScopeNormal, "Quels monstres droppent cet item ?"))
+    RenderDropTable(*td, "tech_drops_normal",
+                    CacheKey(w.id, false, kScopeNormal), /*show_type=*/false);
+  ImGui::Spacing();
+  if (const TechData* td =
+          open_section(kScopeMvp, "Quels boss / MVP droppent cet item ?"))
+    RenderDropTable(*td, "tech_drops_mvp", CacheKey(w.id, false, kScopeMvp),
+                    /*show_type=*/true);
+
+  ImGui::PopID();
 }
 
 // Reproduit la fenêtre de description d'ITEM en ImGui (Option A). Le pointeur

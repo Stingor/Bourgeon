@@ -32,7 +32,7 @@ constexpr uint16_t kIntegrity   = 0x0F02;  // ex-0x0BFB  CZ_BOURGEON_INTEGRITY
 constexpr uint16_t kSetting     = 0x0F04;  // ex-0x0BFD  CZ_BOURGEON_SETTING
 constexpr uint16_t kPresetCmd   = 0x0F06;  // ex-0x0C20  CZ_BOURGEON_PRESET_CMD
 constexpr uint16_t kCheatReport = 0x0F0A;  // ex-0x0C23  CZ_BOURGEON_CHEAT_REPORT
-constexpr uint16_t kReqTechData = 0x0F00;  // (déjà)      CZ_BOURGEON_REQ_TECHDATA
+constexpr uint16_t kReqTechData = 0x0F0B;  // CZ_BOURGEON_REQ_TECHDATA (item/skill tech)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -40,13 +40,14 @@ constexpr uint16_t kSettings    = 0x0F05;  // ex-0x0BFE  ZC_BOURGEON_SETTINGS
 constexpr uint16_t kPresetList  = 0x0F07;  // ex-0x0C21  ZC_BOURGEON_PRESET_LIST
 constexpr uint16_t kDiscordMsg  = 0x0F08;  // ex-0x0C1F  ZC_BOURGEON_DISCORD_MSG
 constexpr uint16_t kSkillDmg    = 0x0F09;  // ex-0x0C22  ZC_BOURGEON_SKILL_DMG
-constexpr uint16_t kTechData    = 0x0F01;  // (déjà)      ZC_BOURGEON_TECHDATA
+constexpr uint16_t kTechData    = 0x0F0C;  // ZC_BOURGEON_TECHDATA (réponse tech)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F0B -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F0D -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
-constexpr uint16_t kNextFree    = 0x0F0B;
+// (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
+constexpr uint16_t kNextFree    = 0x0F0D;
 
 }  // namespace bopcodes

@@ -36,8 +36,6 @@
 
 | Opcode | Dir | Nom Bourgeon | Ancien | Table client | Statut | Code |
 |---|---|---|---|---|---|---|
-| 0x0F00 | CZ | CZ_BOURGEON_REQ_TECHDATA | (inchangé) | absent (variable) | **SÛR** — hors table client (flag=-1) | item_desc_tweaks.cc |
-| 0x0F01 | ZC | ZC_BOURGEON_TECHDATA | (inchangé) | absent (variable) | **SÛR** — hors table client (flag=-1) | item_desc_tweaks.cc |
 | 0x0F02 | CZ | CZ_BOURGEON_INTEGRITY | 0x0BFB | absent (variable) | **SÛR** — hors table client (flag=-1) | integrity_check.h |
 | 0x0F03 | ZC | ZC_BOURGEON_KICK_NOTICE | 0x0BFA | absent (variable) | **SÛR** — hors table client (flag=-1) | integrity_check.h |
 | 0x0F04 | CZ | CZ_BOURGEON_SETTING | 0x0BFD | absent (variable) | **SÛR** — hors table client (flag=-1) | moonlight_ui.h / menu_icons.cc |
@@ -47,10 +45,12 @@
 | 0x0F08 | ZC | ZC_BOURGEON_DISCORD_MSG | 0x0C1F | absent (variable) | **SÛR** — hors table client (flag=-1) | discord_relay.h |
 | 0x0F09 | ZC | ZC_BOURGEON_SKILL_DMG | 0x0C22 | absent (variable) | **SÛR** — hors table client (flag=-1) | dps_meter.h |
 | 0x0F0A | CZ | CZ_BOURGEON_CHEAT_REPORT | 0x0C23 | absent (variable) | **SÛR** — hors table client (flag=-1) | cheat_detector.h |
+| 0x0F0B | CZ | CZ_BOURGEON_REQ_TECHDATA | (ex-0x0F00) | absent (variable) | **SÛR** — hors table client (flag=-1) | item_desc_tweaks.cc |
+| 0x0F0C | ZC | ZC_BOURGEON_TECHDATA | (ex-0x0F01) | absent (variable) | **SÛR** — hors table client (flag=-1) | item_desc_tweaks.cc |
 
 **Notes** :
 - Tous absents de la table client => variables/sûrs. La migration a supprimé la fragilité historique de 0x0C22 (ex-fixe 12, gelait le jeu si étendu) : **0x0F09 peut désormais être étendu** (ex. skill_id) sans désync.
-- **Contrainte à deux têtes découverte** : client veut > 0x0C35, serveur veut <= MAX_PACKET_DB (était 0xCFF, remonté à 0xFFF). La plage 0x0F00..0x0FFF satisfait les deux => champ libre permanent. **Prochain opcode libre : 0x0F0B.**
+- **Contrainte à deux têtes découverte** : client veut > 0x0C35, serveur veut <= MAX_PACKET_DB (était 0xCFF, remonté à 0xFFF). La plage 0x0F00..0x0FFF satisfait les deux => champ libre permanent. **Prochain opcode libre : 0x0F0D** (0x0F00/0x0F01 libérés — anciennes valeurs tech data).
 - **À smoke-tester au 1er déploiement** : les ZC > 0x0C35 basculent de la dispatch-table (éprouvée) vers le reader-hook (codé mais non exercé en live jusqu'ici).
 
 ## Opcodes vanilla écoutés passivement par Bourgeon [o]
