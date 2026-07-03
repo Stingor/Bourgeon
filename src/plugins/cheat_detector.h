@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
 // Scans the local machine for known cheat tools (AHK, 4rTools, WPE, CE, …).
@@ -31,7 +32,7 @@ class CheatDetector : public Plugin {
 
  private:
   static constexpr DWORD    kScanIntervalMs  = 30'000;
-  static constexpr uint16_t kOpcodeCheatReport = 0x0C23;
+  static constexpr uint16_t kOpcodeCheatReport = bopcodes::kCheatReport;
   static constexpr size_t   kToolNameLen      = 32;
   static constexpr size_t   kDetailLen        = 64;
 

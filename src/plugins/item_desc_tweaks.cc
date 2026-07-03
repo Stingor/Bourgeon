@@ -12,6 +12,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
 #include "utils/log_console.h"
 
@@ -129,8 +130,11 @@ constexpr bool     kSkillWindowEnabled = true;
 
 // ── Couche serveur (DÉSACTIVÉE — squelette non-intrusif) ────────────────────
 constexpr bool     kEnableServerFetch = false;
-constexpr uint16_t kOpcodeReqTechData = 0x0C23;  // client -> serveur (requête)
-constexpr uint16_t kOpcodeTechData    = 0x0C24;  // serveur -> client (réponse)
+// Zone custom SÛRE (>0x0C35, hors table client ET plage rAthena) : dispatch via
+// le reader-hook (cf. RagConnection::RegisterRecvOpcode). Vérifié flag=-1.
+// Source unique : plugins/bourgeon_opcodes.h
+constexpr uint16_t kOpcodeReqTechData = bopcodes::kReqTechData;  // 0x0F00 client -> serveur
+constexpr uint16_t kOpcodeTechData    = bopcodes::kTechData;     // 0x0F01 serveur -> client
 
 // Icône de collection : texture + dimensions natives (pour préserver le ratio).
 struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };

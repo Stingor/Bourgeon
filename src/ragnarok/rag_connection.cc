@@ -17,6 +17,9 @@ std::unordered_set<uint16_t> RagConnection::s_registered_opcodes_;
 // Opcodes observed via RegisterObserveOpcode (opcode -> forward byte count).
 std::unordered_map<uint16_t, uint16_t> RagConnection::s_observe_opcodes_;
 
+// Opcodes au-dessus de la dispatch table (dispatchés depuis le reader-hook).
+std::unordered_set<uint16_t> RagConnection::s_reader_dispatch_opcodes_;
+
 // Packet saved by PacketBufReaderHook: captured right after FUN_00c147d0
 // fills the shared buffer, before anything downstream overwrites it.
 // The dispatch handler (RecvPacketHandlerImpl) reads from here.
@@ -55,6 +58,8 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
   // confirmed the layout.
   const auto table_addr = ragconnection_configuration["RecvDispatchTable"];
   if (table_addr.IsDefined()) {
+    recv_dispatch_table_size_ =
+        ragconnection_configuration["RecvDispatchTableSize"].as<uint16_t>(0xBC3);
     recv_dispatch_table_ =
         reinterpret_cast<void**>(table_addr.as<uint32_t>());
     recv_opcode_base_ =
@@ -89,6 +94,18 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
     LogError("RagConnection: opcode 0x{:04x} is below base 0x{:x}", opcode, recv_opcode_base_);
     return;
   }
+  // Au-delà de la dispatch table : patcher la table écrirait HORS BORNES
+  // (corruption). Ces opcodes (zone custom sûre > 0x0C35) sont dispatchés depuis
+  // PacketBufReaderHook, qui voit tous les paquets ; le parser de longueur du
+  // client les traite en variable (flag=-1).
+  if (recv_dispatch_table_size_ != 0 &&
+      idx >= static_cast<int>(recv_dispatch_table_size_)) {
+    s_reader_dispatch_opcodes_.insert(opcode);
+    s_registered_opcodes_.insert(opcode);
+    LogInfo("RagConnection: recv opcode 0x{:04x} -> reader-hook (au-dessus dispatch table, idx {})",
+            opcode, idx);
+    return;
+  }
   void** slot = &recv_dispatch_table_[idx];
   DWORD old;
   VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old);
@@ -118,6 +135,14 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
     if (total_len >= 4 && total_len <= sizeof(g_saved_packet)) {
       std::memcpy(g_saved_packet, param_1, total_len);
       g_saved_packet_len = total_len;
+      // Opcodes au-dessus de la dispatch table : leur handler natif n'est PAS
+      // appelé (hors bornes) -> on déclenche OnRecvPacket ICI (comme
+      // RecvPacketHandlerImpl le fait pour les opcodes de la table).
+      if (s_reader_dispatch_opcodes_.count(opcode)) {
+        const uint16_t data_len = static_cast<uint16_t>(g_saved_packet_len) - 4;
+        g_saved_packet_len = 0;
+        Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 4, data_len);
+      }
     } else {
       LogError("PacketBufReaderHook: opcode=0x{:04x} bad total_len={} (ignored)", opcode, total_len);
     }

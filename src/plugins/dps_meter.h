@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
 class DpsMeter : public Plugin {
@@ -37,7 +38,7 @@ class DpsMeter : public Plugin {
   static constexpr uint16_t kOpcodeNotifyAct    = 0x08c8;
   static constexpr uint16_t kOpcodeNotifySkill  = 0x01de;
   static constexpr uint16_t kOpcodeNotifySkill2 = 0x0115;
-  static constexpr uint16_t kOpcodeSkillUnitDmg = 0x0C22;  // ZC_BOURGEON_SKILL_DMG
+  static constexpr uint16_t kOpcodeSkillUnitDmg = bopcodes::kSkillDmg;  // ZC_BOURGEON_SKILL_DMG
 
   // Maximum ring-buffer size (slots). Actual history = slot_ms_ * kPlotSlots ms.
   static constexpr int kPlotSlots = 150;

@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
 // Full-screen HUD alignment grid — a shared overlay for lining up any movable
@@ -68,10 +69,10 @@ class MoonlightUi : public Plugin {
   // CZ: [opcode:2][total_len:2][id:2][value:2]
   void SendSetting(uint16_t id, uint32_t value);
 
-  static constexpr uint16_t kOpcodeFromServer    = 0x0BFE;  // ZC_BOURGEON_SETTINGS
-  static constexpr uint16_t kOpcodeToServer      = 0x0BFD;  // CZ_BOURGEON_SETTING
-  static constexpr uint16_t kOpcodePresetList    = 0x0C21;  // ZC_BOURGEON_PRESET_LIST
-  static constexpr uint16_t kOpcodePresetCmd     = 0x0C20;  // CZ_BOURGEON_PRESET_CMD
+  static constexpr uint16_t kOpcodeFromServer    = bopcodes::kSettings;    // ZC_BOURGEON_SETTINGS
+  static constexpr uint16_t kOpcodeToServer      = bopcodes::kSetting;     // CZ_BOURGEON_SETTING
+  static constexpr uint16_t kOpcodePresetList    = bopcodes::kPresetList;  // ZC_BOURGEON_PRESET_LIST
+  static constexpr uint16_t kOpcodePresetCmd     = bopcodes::kPresetCmd;   // CZ_BOURGEON_PRESET_CMD
   // We read the current map name from the STANDARD client packet 0x0091
   // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
   // carries mapname[16] right after the opcode.  This needs no custom packet
@@ -80,7 +81,7 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kOpcodeMapMove    = 0x0091;  // [opcode:2][mapname:16][x:2][y:2]
   static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
-  // Setting IDs sent via CZ 0x0BFD (must match server-side clif_parse_bourgeon_setting).
+  // Setting IDs sent via CZ 0x0F04 (must match server-side clif_parse_bourgeon_setting).
   static constexpr uint16_t kSettingShowExp     = 0;
   static constexpr uint16_t kSettingShowZeny    = 1;
   static constexpr uint16_t kSettingShowMobInfo = 2;
@@ -148,14 +149,14 @@ class MoonlightUi : public Plugin {
   int                   aloot_id_input_ = 0;
 
   struct AlootPreset { uint8_t no; std::string name; bool autoload; };
-  std::vector<AlootPreset> alootid_presets_;   // received from server (ZC 0x0C21)
+  std::vector<AlootPreset> alootid_presets_;   // received from server (ZC 0x0F07)
   uint8_t alootid_active_preset_   = 0;        // currently loaded preset no (0=none)
   uint8_t alootid_selected_preset_ = 0;        // selected in combo (may differ from active)
   char    alootid_preset_input_[64] = {};       // name field for save
   char    alootid_rename_input_[64] = {};       // name field for rename (cmd 6)
   bool    alootid_rename_open_      = false;    // checkbox: show rename field
 
-  // Sends a preset management command to the server (CZ 0x0C20).
+  // Sends a preset management command to the server (CZ 0x0F06).
   void SendPresetCmd(uint8_t cmd, uint8_t no = 0, const char* name = nullptr);
   bool                  show_alootid_overlay_ = false;  // floating Add/Remove overlay on right-click
 

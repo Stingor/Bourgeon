@@ -66,7 +66,14 @@ class RagConnection {
   // the 2-byte opcode).  Checked in PacketBufReaderHook; dispatch is untouched.
   static std::unordered_map<uint16_t, uint16_t> s_observe_opcodes_;
 
+  // Opcodes ABOVE the dispatch-table bound (can't patch the table without going
+  // out of bounds) — dispatched directly from PacketBufReaderHook instead, which
+  // sees every packet.  Guaranteed-free zone for custom ZC packets (the client's
+  // length parser handles them as unknown/variable).
+  static std::unordered_set<uint16_t> s_reader_dispatch_opcodes_;
+
   // Per-client addresses read from YAML config.
-  void**   recv_dispatch_table_ = nullptr;
-  uint16_t recv_opcode_base_    = 0;
+  void**   recv_dispatch_table_      = nullptr;
+  uint16_t recv_opcode_base_         = 0;
+  uint16_t recv_dispatch_table_size_ = 0;  // #entries (opcode > base+size-1 -> reader-hook)
 };

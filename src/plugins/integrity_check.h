@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
 // Anti-tamper: computes a SHA-256 of this DLL's on-disk file and sends it to the
@@ -11,7 +12,7 @@
 // The same packet also carries the Windows MachineGuid (registry) so the server
 // can detect multi-account abuse across different accounts on the same machine.
 //
-// Packet CZ_BOURGEON_INTEGRITY (0x0BFB):
+// Packet CZ_BOURGEON_INTEGRITY (0x0F02):
 //   [opcode:2][total_len:2][sha256:32][guid:36]   (total_len = 72)
 //
 // IMPORTANT: enforcement (kick + admin report) and any "development" bypass live
@@ -27,7 +28,7 @@ class IntegrityCheck : public Plugin {
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
-  // Receives ZC_BOURGEON_KICK_NOTICE (0x0BFA): server signals the client is
+  // Receives ZC_BOURGEON_KICK_NOTICE (0x0F03): server signals the client is
   // outdated before kicking. We queue an ImGui popup so the player understands
   // why they are being disconnected.
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
@@ -40,8 +41,8 @@ class IntegrityCheck : public Plugin {
   // Returns false if SendPacket failed (socket not ready) — caller should retry.
   bool SendChecksum();
 
-  static constexpr uint16_t kOpcodeToServer   = 0x0BFB;  // CZ: SHA-256 + MachineGuid
-  static constexpr uint16_t kOpcodeKickNotice = 0x0BFA;  // ZC: outdated-client notice
+  static constexpr uint16_t kOpcodeToServer   = bopcodes::kIntegrity;   // CZ: SHA-256 + MachineGuid
+  static constexpr uint16_t kOpcodeKickNotice = bopcodes::kKickNotice;  // ZC: outdated-client notice
 
   // ZC_ACCEPT_ENTER — the server's clif_authok, sent exactly once per zone-server
   // session (initial login AND after a character change). We observe it to re-arm

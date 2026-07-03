@@ -6,12 +6,13 @@
 #include <string>
 #include <vector>
 
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
 // Inbound Discord -> in-game relay.
 //
 // The map server (groq_service.py + groq.npc) polls Discord and broadcasts
-// new messages to all Gonryun players via ZC_BOURGEON_DISCORD_MSG (0x0C1F).
+// new messages to all Gonryun players via ZC_BOURGEON_DISCORD_MSG (0x0F08).
 // This plugin registers that opcode and queues messages for display when the
 // player's relay checkbox is ON; silently drops them when it is OFF.
 class DiscordRelay : public Plugin {
@@ -31,7 +32,7 @@ class DiscordRelay : public Plugin {
  private:
   void PushMessage(std::string text);
 
-  static constexpr uint16_t kOpcodeDiscordMsg = 0x0C1F;
+  static constexpr uint16_t kOpcodeDiscordMsg = bopcodes::kDiscordMsg;
 
   std::atomic<bool> chat_active_{false};
 
