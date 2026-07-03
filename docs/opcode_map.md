@@ -27,7 +27,7 @@
 - **1619 opcodes** au total (union table-longueurs u handlers u custom).
 - **1522** dans la table de longueurs (1186 fixes, 336 variables) ; bornes 0x0064 .. 0x0C35.
 - **847** ont un handler de zone réel ; les 2164 autres slots = défaut-skip.
-- **849** ont un nom symbolique (packetdb serveur) ; **58** divergences de longueur client/serveur (versions de paquet).
+- **850** ont un nom symbolique (packetdb serveur) ; **58** divergences de longueur client/serveur (versions de paquet).
 - Base dispatch `0x73`, taille `0xBC3`, **max dispatchable `0x0C35`** ; au-delà => reader-hook Bourgeon.
 
 ## Opcodes Bourgeon — les nôtres [X]  (migrés en zone sûre 0x0F00+ le 2026-07-03)
@@ -1615,11 +1615,11 @@
 | 0x0BF7 | ? |  | VAR | 6 | 0 |  |  |  |
 | 0x0BF8 | ? |  | FIX | 6 | 0 |  |  |  |
 | 0x0BF9 | ? |  | FIX | 11 | 0 |  |  |  |
-| 0x0BFA | ZC |  | FIX | 9 | 0 |  |  | ZC_BOURGEON_KICK_NOTICE |
-| 0x0BFB | CZ |  | FIX | 35 | 0 |  |  | CZ_BOURGEON_INTEGRITY |
+| 0x0BFA | ZC |  | FIX | 9 | 0 |  |  |  |
+| 0x0BFB | CZ |  | FIX | 35 | 0 |  |  |  |
 | 0x0BFC | ? |  | FIX | 6 | 0 |  |  |  |
-| 0x0BFD | CZ |  | FIX | 4 | 0 |  |  | CZ_BOURGEON_SETTING |
-| 0x0BFE | ZC |  | VAR | 76 | 0 |  |  | ZC_BOURGEON_SETTINGS |
+| 0x0BFD | CZ |  | FIX | 4 | 0 |  |  |  |
+| 0x0BFE | ZC |  | VAR | 76 | 0 |  |  |  |
 | 0x0BFF | ZC |  | FIX | 24 | 1 |  |  |  |
 | 0x0C00 | ? |  | FIX | 6 | 0 |  |  |  |
 | 0x0C01 | ? |  | FIX | 6 | 0 |  |  |  |
@@ -1652,11 +1652,11 @@
 | 0x0C1C | ZC |  | VAR | 8 | 1 |  |  |  |
 | 0x0C1D | ZC |  | VAR | 8 | 1 |  |  |  |
 | 0x0C1E | ? |  | FIX | 10 | 0 |  |  |  |
-| 0x0C1F | ZC |  | - |  |  |  |  | ZC_BOURGEON_DISCORD_MSG |
-| 0x0C20 | CZ |  | VAR | 4 | 0 | 0xC9E1DD |  | CZ_BOURGEON_PRESET_CMD |
-| 0x0C21 | ZC |  | VAR | 4 | 0 |  |  | ZC_BOURGEON_PRESET_LIST |
-| 0x0C22 | ZC |  | FIX | 12 | 0 |  |  | CZ_MOVE_ITEM_TO_PERSONAL | ZC_BOURGEON_SKILL_DMG |
-| 0x0C23 | CZ |  | FIX | 9 | 0 |  |  | CZ_BOURGEON_CHEAT_REPORT |
+| 0x0C1F | ZC |  | - |  |  |  |  |  |
+| 0x0C20 | CZ |  | VAR | 4 | 0 | 0xC9E1DD |  |  |
+| 0x0C21 | ZC |  | VAR | 4 | 0 |  |  |  |
+| 0x0C22 | ZC |  | FIX | 12 | 0 |  |  | CZ_MOVE_ITEM_TO_PERSONAL |
+| 0x0C23 | CZ |  | FIX | 9 | 0 |  |  |  |
 | 0x0C24 | ? |  | FIX | 979 | 0 |  |  |  |
 | 0x0C25 | ? |  | FIX | 12 | 0 |  |  |  |
 | 0x0C26 | ? |  | FIX | 94 | 0 |  |  |  |
@@ -1677,12 +1677,12 @@
 | 0x0C35 | ZC |  | FIX | 6 | 0 | 0xC9E1DD |  |  |
 | 0x0F00 | CZ | [X] | - |  |  |  |  |  |
 | 0x0F01 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F02 | CZ | [X] | - |  |  |  |  |  |
-| 0x0F03 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F04 | CZ | [X] | - |  |  |  |  |  |
-| 0x0F05 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F06 | CZ | [X] | - |  |  |  |  |  |
-| 0x0F07 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F08 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F09 | ZC | [X] | - |  |  |  |  |  |
-| 0x0F0A | CZ | [X] | - |  |  |  |  |  |
+| 0x0F02 | CZ | [X] | - |  |  |  |  | CZ_BOURGEON_INTEGRITY |
+| 0x0F03 | ZC | [X] | - |  |  |  |  | ZC_BOURGEON_KICK_NOTICE |
+| 0x0F04 | CZ | [X] | - |  |  |  |  | CZ_BOURGEON_SETTING |
+| 0x0F05 | ZC | [X] | - |  |  |  |  | ZC_BOURGEON_SETTINGS |
+| 0x0F06 | CZ | [X] | - |  |  |  |  | CZ_BOURGEON_PRESET_CMD |
+| 0x0F07 | ZC | [X] | - |  |  |  |  | ZC_BOURGEON_PRESET_LIST |
+| 0x0F08 | ZC | [X] | - |  |  |  |  | ZC_BOURGEON_DISCORD_MSG |
+| 0x0F09 | ZC | [X] | - |  |  |  |  | ZC_BOURGEON_SKILL_DMG |
+| 0x0F0A | CZ | [X] | - |  |  |  |  | CZ_BOURGEON_CHEAT_REPORT |
