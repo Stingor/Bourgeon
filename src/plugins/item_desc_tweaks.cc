@@ -136,6 +136,8 @@ constexpr bool     kEnableServerFetch = true;
 // Source unique : plugins/bourgeon_opcodes.h
 constexpr uint16_t kOpcodeReqTechData = bopcodes::kReqTechData;  // 0x0F0B client -> serveur
 constexpr uint16_t kOpcodeTechData    = bopcodes::kTechData;     // 0x0F0C serveur -> client
+constexpr uint16_t kOpcodeReqDamage   = bopcodes::kReqDamage;    // 0x0F0D client -> serveur
+constexpr uint16_t kOpcodeDamage      = bopcodes::kDamage;       // 0x0F0E serveur -> client
 
 // Les taux de drop dépendent de facteurs DYNAMIQUES côté serveur (event_drop,
 // VIP, SC_ITEMBOOST, bonus de gear) : on ne peut pas cacher indéfiniment. On
@@ -675,6 +677,7 @@ IconTex ResolveIcon(uint32_t id, const ItemExtract& e) {
 ItemDescTweaks::ItemDescTweaks() {
   if (kEnableServerFetch) {
     Bourgeon::Instance().RegisterRecvOpcode(kOpcodeTechData);
+    Bourgeon::Instance().RegisterRecvOpcode(kOpcodeDamage);
   }
 }
 
@@ -757,8 +760,8 @@ void ItemDescTweaks::OnTick() {
     HideDescSlot(kSkillWndSlot, kSkillVTable);
 
   // Front montant d'ouverture -> pose la fenêtre reproduite près du curseur.
-  // Aucune requête serveur automatique : c'est le joueur qui les déclenche via
-  // les boutons du panneau (cf. RenderTechBlock).
+  // Aucune requête serveur automatique : elles partent quand le joueur active
+  // un onglet data (cf. RenderTechTabs).
   if (item_.open && !item_was_open_) {
     POINT pt;
     if (GetCursorPos(&pt)) {
@@ -806,8 +809,53 @@ void ItemDescTweaks::RequestTechData(uint32_t id, bool is_skill, uint8_t scope) 
   entry.requested_tick = now;
 }
 
+void ItemDescTweaks::RequestDamage(uint32_t skill_id, uint32_t target_mob_id) {
+  if (!kEnableServerFetch) return;
+  auto& e = dmg_cache_[skill_id];
+  const uint32_t now = GetTickCount();
+  if (e.state == FetchState::kReady && (now - e.requested_tick) < kTechTtlMs)
+    return;
+  if (e.state == FetchState::kPending && (now - e.requested_tick) < kTechPendingMs)
+    return;
+
+  uint8_t pkt[14];  // [op:2][len:2][skill_id:4][skill_lv:2][target_mob_id:4]
+  *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpcodeReqDamage;
+  *reinterpret_cast<uint16_t*>(pkt + 2)  = static_cast<uint16_t>(sizeof(pkt));
+  *reinterpret_cast<uint32_t*>(pkt + 4)  = skill_id;
+  *reinterpret_cast<uint16_t*>(pkt + 8)  = 0;  // niveau 0 = niveau appris
+  *reinterpret_cast<uint32_t*>(pkt + 10) = target_mob_id;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  e.state          = FetchState::kPending;
+  e.requested_tick = now;
+  e.target         = target_mob_id;
+}
+
 void ItemDescTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
+  // Réponse d'estimation de dégâts (0x0F0E).
+  if (opcode == kOpcodeDamage) {
+    // [id:4][lv:2][target:4][status:1][atk:1][hits:2][min/max/avg:8*3] puis
+    // [namelen:1][name] (nom du monstre, optionnel).
+    if (len < 38) return;
+    const uint32_t sid = *reinterpret_cast<const uint32_t*>(data);
+    auto& e = dmg_cache_[sid];
+    e.skill_lv = *reinterpret_cast<const uint16_t*>(data + 4);
+    e.target   = *reinterpret_cast<const uint32_t*>(data + 6);
+    e.status   = data[10];
+    e.atk_type = data[11];
+    e.hits     = *reinterpret_cast<const uint16_t*>(data + 12);
+    std::memcpy(&e.dmg_min, data + 14, 8);
+    std::memcpy(&e.dmg_max, data + 22, 8);
+    std::memcpy(&e.dmg_avg, data + 30, 8);
+    e.target_name.clear();
+    if (len >= 39) {  // nom de monstre présent
+      const uint8_t nl = data[38];
+      if (nl && len >= 39u + nl)
+        e.target_name.assign(reinterpret_cast<const char*>(data + 39), nl);
+    }
+    e.state = FetchState::kReady;
+    return;
+  }
   if (opcode != kOpcodeTechData) return;
   if (len < 6) return;  // besoin d'au moins [id:4][is_skill:1][scope:1]
   const uint32_t id       = *reinterpret_cast<const uint32_t*>(data);
@@ -973,24 +1021,23 @@ void ItemDescTweaks::RenderDropTable(const TechData& td, const char* table_id,
     ImGui::TextDisabled("... autres sources : voir la base de donnees.");
 }
 
-// Panneau d'infos techniques : boutons on-demand (aucune requête par défaut).
-void ItemDescTweaks::RenderTechBlock(const DescWindow& w) {
+// Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
+// Description). L'onglet Description étant actif par défaut, aucune requête n'est
+// lancée tant que le joueur ne sélectionne pas un onglet data.
+void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
   if (!kEnableServerFetch) return;
   const bool panel_on = w.is_skill ? show_skill_panel_ : show_item_panel_;
   if (!panel_on) return;
 
-  ImGui::Separator();
-  ImGui::PushID(static_cast<int>(w.id));  // IDs uniques (colonnes équipé/comparé)
-
-  // En-tête pliable : replié par défaut (donc AUCUNE requête au départ). Le
-  // déplier lance la requête (guardée par le TTL) et renvoie l'entrée cache une
-  // fois prête ; le replier cache les résultats (les données restent en cache).
-  auto open_section = [&](uint8_t scope, const char* header_label)
-      -> const TechData* {
-    if (!ImGui::CollapsingHeader(header_label))
-      return nullptr;  // replié : rien affiché, pas de requête
-    RequestTechData(w.id, w.is_skill, scope);
+  // Corps commun (drops item / cast skill) : requête quand l'onglet est actif,
+  // renvoie l'entrée cache une fois prête. Bouton « Rafraîchir » = force un
+  // recalcul immédiat (utile après un changement de stats/stuff).
+  auto tech_body = [&](uint8_t scope) -> const TechData* {
     const uint32_t key = CacheKey(w.id, w.is_skill, scope);
+    char rlbl[40];
+    std::snprintf(rlbl, sizeof(rlbl), "Rafraichir##tech%u", key);
+    if (ImGui::SmallButton(rlbl)) cache_.erase(key);  // force refetch
+    RequestTechData(w.id, w.is_skill, scope);
     auto it = cache_.find(key);
     const FetchState st =
         (it != cache_.end()) ? it->second.state : FetchState::kNone;
@@ -1003,21 +1050,20 @@ void ItemDescTweaks::RenderTechBlock(const DescWindow& w) {
   };
 
   if (w.is_skill) {
-    // ── SKILL : en-tête pliable -> table de cast par niveau ─────────────────
-    if (const TechData* td =
-            open_section(kScopeNormal, "Informations techniques du sort")) {
-      if (td->levels.empty()) {
+    // ── Onglet « Infos techniques » : table de cast par niveau ──────────────
+    if (ImGui::BeginTabItem("Infos techniques")) {
+      const TechData* td = tech_body(kScopeNormal);
+      if (td && td->levels.empty()) {
         ImGui::TextDisabled("Aucune donnee de cast.");
-      } else {
+      } else if (td) {
         const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_RowBg |
                                    ImGuiTableFlags_SizingFixedFit;
         ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
                               IM_COL32(206, 198, 172, 255));
-        if (ImGui::BeginTable("tech_skill", 5, tf)) {
+        if (ImGui::BeginTable("tech_skill", 4, tf)) {
           ImGui::TableSetupColumn("Niv");
           ImGui::TableSetupColumn("Cast");
-          ImGui::TableSetupColumn("Fixe");
           ImGui::TableSetupColumn("Cooldown");
           ImGui::TableSetupColumn("Delai");
           ImGui::TableHeadersRow();
@@ -1027,33 +1073,99 @@ void ItemDescTweaks::RenderTechBlock(const DescWindow& w) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::Text("%d", (int)i + 1);
             ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cast_var));
-            ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cast_fixed));
             ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.cooldown));
             ImGui::TableNextColumn(); ImGui::Text("%.2fs", sec(s.delay));
           }
           ImGui::EndTable();
         }
         ImGui::PopStyleColor();
+        ImGui::TextDisabled("Valeurs effectives : tes stats + gear + buffs actifs.");
       }
+      ImGui::EndTabItem();
     }
-    ImGui::PopID();
+
+    // ── Onglet « Dégâts » : cible réglable (mob id, ou soi-même PvP) ────────
+    if (ImGui::BeginTabItem("Degats")) {
+      // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
+      const bool self_changed =
+          ImGui::Checkbox("Contre moi-meme (PvP)", &dmg_target_self_);
+      ImGui::SetNextItemWidth(120.0f);
+      if (dmg_target_self_) ImGui::BeginDisabled();
+      ImGui::InputInt("Cible : ID monstre (0 = neutre)", &dmg_target_input_,
+                      0, 0);
+      if (dmg_target_self_) ImGui::EndDisabled();
+      if (dmg_target_input_ < 0) dmg_target_input_ = 0;
+      ImGui::SameLine();
+      const bool calc = ImGui::Button("Calculer");
+
+      // Cible envoyée : 0xFFFFFFFF = soi-même, sinon l'id saisi (0 = neutre).
+      const uint32_t req_target =
+          dmg_target_self_ ? 0xFFFFFFFFu
+                           : static_cast<uint32_t>(dmg_target_input_);
+
+      auto it = dmg_cache_.find(w.id);
+      const bool have =
+          (it != dmg_cache_.end()) && it->second.state != FetchState::kNone;
+      if (calc || self_changed || !have) {
+        if (calc || self_changed) dmg_cache_.erase(w.id);
+        RequestDamage(w.id, req_target);
+        it = dmg_cache_.find(w.id);
+      }
+
+      const FetchState st =
+          (it != dmg_cache_.end()) ? it->second.state : FetchState::kNone;
+      if (st == FetchState::kPending) {
+        ImGui::TextDisabled("Calcul en cours...");
+      } else if (st == FetchState::kReady && it != dmg_cache_.end()) {
+        const DamageEst& d = it->second;
+        if (d.status == 1) {
+          ImGui::TextDisabled("Sort non offensif (aucun degat).");
+        } else if (d.status == 2) {
+          ImGui::TextDisabled("Monstre introuvable (ID invalide ?).");
+        } else if (d.status != 0) {
+          ImGui::TextDisabled("Estimation indisponible.");
+        } else {
+          const char* atk = (d.atk_type == 1) ? "Physique"
+                          : (d.atk_type == 2) ? "Magique"
+                                              : "Divers";
+          if (d.target == 0xFFFFFFFFu)
+            ImGui::TextDisabled("Cible : toi-meme (miroir PvP)");
+          else if (d.target == 0)
+            ImGui::TextDisabled("Cible : neutre 0 def (degats bruts)");
+          else if (!d.target_name.empty())
+            ImGui::Text("Cible : %s (#%u)", d.target_name.c_str(), d.target);
+          else
+            ImGui::Text("Cible : monstre #%u", d.target);
+          ImGui::Text("Niveau %u  -  %s", d.skill_lv, atk);
+          ImGui::Text("%lld - %lld  (moy. %lld)",
+                      static_cast<long long>(d.dmg_min),
+                      static_cast<long long>(d.dmg_max),
+                      static_cast<long long>(d.dmg_avg));
+          if (d.hits > 1) {
+            ImGui::SameLine();
+            ImGui::Text("x%u coups", d.hits);
+          }
+          ImGui::TextDisabled("Inclut ton stuff / buffs. Neutre = avant def/elem.");
+        }
+      }
+      ImGui::EndTabItem();
+    }
     return;
   }
 
-  // ── ITEM : deux en-têtes pliables, split par boss-type du mob ─────────────
-  // Monstres = mobs non-boss (une seule mécanique : drop normal, pas de colonne
-  // Type). MVP/boss = mobs boss-type (drops normaux + MVP rewards -> colonne Type).
-  if (const TechData* td =
-          open_section(kScopeNormal, "Quels monstres droppent cet item ?"))
-    RenderDropTable(*td, "tech_drops_normal",
-                    CacheKey(w.id, false, kScopeNormal), /*show_type=*/false);
-  ImGui::Spacing();
-  if (const TechData* td =
-          open_section(kScopeMvp, "Quels boss / MVP droppent cet item ?"))
-    RenderDropTable(*td, "tech_drops_mvp", CacheKey(w.id, false, kScopeMvp),
-                    /*show_type=*/true);
-
-  ImGui::PopID();
+  // ── ITEM : onglets « Monstres » (non-boss) et « Boss / MVP » ──────────────
+  if (ImGui::BeginTabItem("Monstres")) {
+    if (const TechData* td = tech_body(kScopeNormal))
+      RenderDropTable(*td, "tech_drops_normal",
+                      CacheKey(w.id, false, kScopeNormal), /*show_type=*/false);
+    ImGui::EndTabItem();
+  }
+  if (ImGui::BeginTabItem("Boss / MVP")) {
+    if (const TechData* td = tech_body(kScopeMvp))
+      RenderDropTable(*td, "tech_drops_mvp", CacheKey(w.id, false, kScopeMvp),
+                      /*show_type=*/true);
+    ImGui::EndTabItem();
+  }
 }
 
 // Reproduit la fenêtre de description d'ITEM en ImGui (Option A). Le pointeur
@@ -1162,7 +1274,6 @@ void ItemDescTweaks::RenderItemWindow() {
 
     ImGui::Separator();
     SelectableColoredText(selId, e.lines + skip, e.line_count - skip, black);
-    RenderTechBlock(snap);
   };
 
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
@@ -1190,24 +1301,31 @@ void ItemDescTweaks::RenderItemWindow() {
     if (nx != pos.x || ny != pos.y)
       ImGui::SetWindowPos(ImVec2(nx, ny));
   }
-  if (visible) {
-    if (has_cmp) {
-      // Deux colonnes redimensionnables qui se partagent la largeur (le texte
-      // se wrap dans chacune). Ordre NATIF : ÉQUIPÉ à gauche, sélection à droite.
-      if (ImGui::BeginTable("##cmp", 2,
-                            ImGuiTableFlags_BordersInnerV |
-                                ImGuiTableFlags_Resizable |
-                                ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        draw_col("##seltext_eq", "Equipé", cicon, ce, compare_, cwnd);
-        ImGui::TableNextColumn();
-        draw_col("##seltext_obj", "Objet", iicon, ie, item_, iwnd);
-        ImGui::EndTable();
+  if (visible && ImGui::BeginTabBar("##itemtabs")) {
+    if (ImGui::BeginTabItem("Description")) {
+      if (has_cmp) {
+        // Deux colonnes redimensionnables qui se partagent la largeur (le texte
+        // se wrap). Ordre NATIF : ÉQUIPÉ à gauche, sélection à droite.
+        if (ImGui::BeginTable("##cmp", 2,
+                              ImGuiTableFlags_BordersInnerV |
+                                  ImGuiTableFlags_Resizable |
+                                  ImGuiTableFlags_SizingStretchSame)) {
+          ImGui::TableNextRow();
+          ImGui::TableNextColumn();
+          draw_col("##seltext_eq", "Equipé", cicon, ce, compare_, cwnd);
+          ImGui::TableNextColumn();
+          draw_col("##seltext_obj", "Objet", iicon, ie, item_, iwnd);
+          ImGui::EndTable();
+        }
+      } else {
+        draw_col("##seltext_single", nullptr, iicon, ie, item_, iwnd);
       }
-    } else {
-      draw_col("##seltext_single", nullptr, iicon, ie, item_, iwnd);
+      ImGui::EndTabItem();
     }
+    // Onglets drops de l'objet principal (item_). En comparaison, ce sont les
+    // sources de l'objet évalué, pas de l'équipé.
+    RenderTechTabs(item_);
+    ImGui::EndTabBar();
   }
   ImGui::End();
   ImGui::PopStyleColor(4);
@@ -1271,13 +1389,16 @@ void ItemDescTweaks::RenderSkillWindow() {
     if (ny < 0.0f) ny = 0.0f;
     if (nx != pos.x || ny != pos.y) ImGui::SetWindowPos(ImVec2(nx, ny));
   }
-  if (visible) {
-    // Nom+SP déjà dans la barre de titre, et l'ID/Max Level sont déjà dans la
-    // description native (box head) -> on n'affiche QUE la description ici pour
-    // éviter les répétitions.
-    SelectableColoredText("##seltext_skill", s_e.lines, s_e.line_count,
-                          IM_COL32(0, 0, 0, 255));
-    RenderTechBlock(skill_);
+  if (visible && ImGui::BeginTabBar("##skilltabs")) {
+    if (ImGui::BeginTabItem("Description")) {
+      // Nom+SP déjà dans la barre de titre, ID/Max Level déjà dans la desc
+      // native (box head) -> on n'affiche QUE la description ici.
+      SelectableColoredText("##seltext_skill", s_e.lines, s_e.line_count,
+                            IM_COL32(0, 0, 0, 255));
+      ImGui::EndTabItem();
+    }
+    RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
+    ImGui::EndTabBar();
   }
   ImGui::End();
   ImGui::PopStyleColor(4);

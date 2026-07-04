@@ -102,6 +102,19 @@ class ItemDescTweaks : public Plugin {
     std::vector<SkillLv> levels;
   };
 
+  // Estimation de dégâts d'un sort (contre une cible côté serveur).
+  struct DamageEst {
+    FetchState state = FetchState::kNone;
+    uint32_t   requested_tick = 0;
+    uint8_t    status = 0;    // 0=ok, 1=sort non offensif, 2=cible introuvable
+    uint8_t    atk_type = 0;  // BF_WEAPON=1 / BF_MAGIC=2 / BF_MISC=4
+    uint16_t   hits = 0;      // div_
+    uint16_t   skill_lv = 0;
+    uint32_t   target = 0;    // 0=neutre / 0xFFFFFFFF=soi / sinon id du monstre
+    std::string target_name;  // nom du monstre (vrai mob uniquement)
+    int64_t    dmg_min = 0, dmg_max = 0, dmg_avg = 0;
+  };
+
   // Scope d'une requête item : quels mobs on veut (le scan MVP côté serveur ne
   // tourne que si demandé). Ignoré pour les skills.
   static constexpr uint8_t kScopeNormal = 0;  // mobs à drop normal
@@ -117,13 +130,18 @@ class ItemDescTweaks : public Plugin {
   // Envoie une requête serveur (0x0F0B) pour cet id/scope si pas déjà en cache
   // frais. Déclenché par les boutons du panneau (aucune requête automatique).
   void RequestTechData(uint32_t id, bool is_skill, uint8_t scope);
+  // Envoie une requête d'estimation de dégâts (0x0F0D) pour ce sort (niveau 0 =
+  // niveau appris) contre target_mob_id (0 = cible neutre). Déclenché par le
+  // bouton du panneau.
+  void RequestDamage(uint32_t skill_id, uint32_t target_mob_id);
   // Reproduit la fenêtre de description d'ITEM en ImGui (Option A : native
   // cachée, redessinée à EndScene).
   void RenderItemWindow();
   // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui.
   void RenderSkillWindow();
-  // Bloc d'infos techniques (boutons on-demand) inséré dans un panneau.
-  void RenderTechBlock(const DescWindow& w);
+  // Onglets d'infos techniques (émis dans le TabBar de la fenêtre, après
+  // l'onglet Description). Aucune requête tant qu'un onglet data n'est pas actif.
+  void RenderTechTabs(const DescWindow& w);
   // Rend une table de sources de drop (filtre + tri + liens). show_type ajoute
   // une colonne mécanisme (drop normal / MVP reward), utile pour le bucket MVP.
   void RenderDropTable(const TechData& td, const char* table_id,
@@ -144,4 +162,7 @@ class ItemDescTweaks : public Plugin {
   int        skill_spawn_x_ = 0, skill_spawn_y_ = 0;
 
   std::unordered_map<uint32_t, TechData> cache_;  // clé = CacheKey(id,is_skill)
+  std::unordered_map<uint32_t, DamageEst> dmg_cache_;  // clé = skill_id
+  int        dmg_target_input_ = 0;      // champ "ID monstre" du panneau dégâts
+  bool       dmg_target_self_  = false;  // cible = soi-même (miroir PvP)
 };
