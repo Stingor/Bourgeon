@@ -15,7 +15,9 @@
 #include "plugins/status_tweaks.h"
 #include "plugins/inventory_tweaks.h"
 #include "plugins/equip_tweaks.h"
+#include "plugins/window_pos_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/weapon_layer.h"
 #include "plugins/fps_view.h"
@@ -35,6 +37,7 @@ DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
 BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
 MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
+QuestTrackerTweaks* Bourgeon::quest_tracker() { return quest_tracker_; }
 SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
 FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
 DoomTweaks* Bourgeon::doom() { return doom_; }
@@ -191,6 +194,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
+  plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
   {
     auto fps_view = std::make_unique<FpsViewTweaks>();
@@ -226,6 +230,11 @@ void Bourgeon::LoadPlugins() {
     auto status_icons = std::make_unique<StatusIconTweaks>();
     status_icons_ = status_icons.get();
     plugins_.emplace_back(std::move(status_icons));
+  }
+  {
+    auto quest_tracker = std::make_unique<QuestTrackerTweaks>();
+    quest_tracker_ = quest_tracker.get();
+    plugins_.emplace_back(std::move(quest_tracker));
   }
   {
     auto settings_tweaks = std::make_unique<SettingsTweaks>();

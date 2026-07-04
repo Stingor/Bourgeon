@@ -14,6 +14,7 @@ class DpsMeter;
 class BasicInfoTweaks;
 class MenuIconTweaks;
 class StatusIconTweaks;
+class QuestTrackerTweaks;
 class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
@@ -39,6 +40,7 @@ class Bourgeon {
   BasicInfoTweaks* basic_info();
   MenuIconTweaks* menu_icons();
   StatusIconTweaks* status_icons();
+  QuestTrackerTweaks* quest_tracker();
   SettingsTweaks* settings_tweaks();
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
@@ -86,6 +88,7 @@ class Bourgeon {
   BasicInfoTweaks* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   MenuIconTweaks* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
   StatusIconTweaks* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
+  QuestTrackerTweaks* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
   SettingsTweaks* settings_tweaks_ = nullptr; // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_

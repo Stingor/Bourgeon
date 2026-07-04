@@ -9,6 +9,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
+#include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap)
 #include "utils/log_console.h"
 
@@ -149,14 +150,14 @@ const IconDef kIconTable[] = {
     {"adventureguide", 0x245, 0xFD5},   {"probability", 0x24B, 0x1017},
 };
 
-// Ask the server to clif_refresh us (reuses the CZ 0x0BFD settings packet with a
+// Ask the server to clif_refresh us (reuses the CZ 0x0F04 settings packet with a
 // REFRESH id). The client receives the resulting ZC_NPCACK_MAPMOVE (0x91) in its
 // recv loop and re-composites the UI — this drops the stale native menu-icon
 // "ghost" that lingers after GridClear empties the node list (the already-
 // composited pixels aren't re-blitted until a relayout). @refresh proved this
 // safe in-game. Sent from OnTick (never mid-Present). Server side: moonlight
 // clif_parse_bourgeon_setting case BOURGEON_SETTING_REFRESH -> clif_refresh(sd).
-constexpr uint16_t kCzBourgeonSetting      = 0x0BFD;
+constexpr uint16_t kCzBourgeonSetting      = bopcodes::kSetting;  // 0x0F04 CZ_BOURGEON_SETTING
 constexpr uint16_t kBourgeonSettingRefresh = 25;  // matches moonlight e_bourgeon_setting
 void RequestServerRefresh() {
   uint8_t buf[10];

@@ -980,14 +980,80 @@ void BasicInfoTweaks::OnRenderUI() {
   }
 }
 
-// Enforces the "Masquer la fenêtre Basic Info d'origine" option: while it is on,
-// pin the native UIBasicInfoWnd (id 0) off-screen every tick (remembering its
-// real position), and restore it when the option is turned off.  We move the
-// window via its live position fields (+0x1c/+0x20 = the same x/y the engine
-// reads each frame; live-verified) rather than SetPos, so the menu-icon grid
-// docked under it is NOT dragged off-screen with it.
+namespace {
+// ── Hide native Basic Info PRE-RENDER via its msg-0x22 handler ───────────────
+// UIBasicInfoWnd (id 0) vtable 0x0103e35c. Its OnMsg is vtable+0x94; MakeWindow's
+// id-0 case calls it with msg 0x22 (layout-restore) DURING creation, before the
+// first frame — so hiding there avoids the login flicker of the OnTick approach.
+//
+// We hide by moving it OFF-SCREEN via a raw +0x1c/+0x20 write. This is what kills
+// the native dock/snap "ghost" (a hidden-in-place window is still a snap target;
+// an off-screen one is not — live-verified). Crucially it does NOT corrupt the
+// saved position: BASICINFOWNDINFO.X/Y persist from a SEPARATE store in the window
+// manager (mgr+0x514), which a raw field write never touches — LIVE-VERIFIED via
+// x32dbg: live pos -> -10000 while mgr+0x514 stayed (0,0). The real pos is captured
+// before the override so it can be restored if the option is turned off.
+// Same handler ABI as Equip/Status (ret 0x18, this in ECX). Vtable-slot patch = safe.
+constexpr uintptr_t kBIMsgSlot    = 0x0103e35c + 0x94;  // vtable+0x94 OnMsg slot
+constexpr int       kBIWinX       = 0x1c;
+constexpr int       kBIWinY       = 0x20;
+constexpr int       kBIOffScreen  = -10000;
+constexpr int       kBIMsgRestore = 0x22;
+constexpr int       kBIUnset      = static_cast<int>(0x80000000);  // "no saved pos yet"
+using BIMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // ret 0x18
+BIMsg_t g_bi_orig_msg = nullptr;
+bool    g_bi_hide     = false;               // synced from portrait_hide_basic_info_
+int     g_bi_saved_x  = kBIUnset, g_bi_saved_y = kBIUnset;  // real pos, captured once
+
+// Move Basic Info off-screen via a raw field write (NOT SetPos — a raw write does
+// not sync back to the persisted mgr+0x514, so the save stays intact). Captures the
+// real on-screen position the first time so it can be restored.
+inline void BIPinOffscreen(void* w) {
+  int* px = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kBIWinX);
+  int* py = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kBIWinY);
+  if (*px > kBIOffScreen + 5000) { g_bi_saved_x = *px; g_bi_saved_y = *py; }
+  *px = kBIOffScreen;
+  *py = kBIOffScreen;
+}
+
+int __fastcall BIMsgHook(void* self, void* edx, int p1, int msg, int p3, int p4,
+                         int p5, int p6) {
+  __try {
+    const int r = g_bi_orig_msg(self, edx, p1, msg, p3, p4, p5, p6);
+    if (msg == kBIMsgRestore && g_bi_hide) BIPinOffscreen(self);  // pre-render off-screen
+    return r;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
+template <typename T>
+void BIPatchPtr(uintptr_t addr, T val) {
+  DWORD old;
+  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), PAGE_EXECUTE_READWRITE, &old)) {
+    *reinterpret_cast<T*>(addr) = val;
+    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old, &old);
+    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
+  }
+}
+}  // namespace
+
+BasicInfoTweaks::BasicInfoTweaks() {
+  // Install the msg-0x22 hide hook at DLL load (before any Basic Info is created),
+  // so the very first HUD creation at login is caught pre-render (no flicker).
+  void* cur = *reinterpret_cast<void**>(kBIMsgSlot);
+  if (cur && cur != reinterpret_cast<void*>(&BIMsgHook)) {
+    g_bi_orig_msg = reinterpret_cast<BIMsg_t>(cur);
+    BIPatchPtr<void*>(kBIMsgSlot, reinterpret_cast<void*>(&BIMsgHook));
+  }
+}
+
+// Enforces the "Masquer la fenêtre Basic Info d'origine" option using the native
+// VISIBILITY (SetVisible), NOT an off-screen move — so nothing corrupts a saved
+// position. The msg-0x22 hook above hides it pre-render at creation; here we
+// re-hide if the game re-shows it, and restore visibility when the option is off.
 //   BasicInfo singleton ptr = *(g_UIWindowMgr 0x0131f4e8 + 0x1dc) (vtable
-//   0x0103e35c); null until the HUD is created. Off-screen = -10000.
+//   0x0103e35c); null until the HUD is created.
 void BasicInfoTweaks::OnTick() {
   // Regenerate the head sprite from the game's actor renderer (update phase is a
   // safer place to call it than the Present hook). DrawPortrait reads g_caps.
@@ -1004,26 +1070,19 @@ void BasicInfoTweaks::OnTick() {
   }
 
   constexpr uintptr_t kBasicInfoPtr = 0x0131f6c4;  // 0x0131f4e8 + 0x1dc
-  constexpr int kWinX = 0x1c, kWinY = 0x20, kOffScreen = -10000;
 
+  g_bi_hide = portrait_hide_basic_info_;  // seen by the pre-render msg-0x22 hook
   void* bi = *reinterpret_cast<void**>(kBasicInfoPtr);
+  if (!bi) return;  // HUD not created yet
 
   if (portrait_hide_basic_info_) {
-    if (!bi) return;  // HUD not created yet; pin once it exists
-    int* px = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kWinX);
-    int* py = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kWinY);
-    if (!bi_pinned_off_ && *px > kOffScreen + 5000) {  // capture real pos once
-      bi_saved_x_ = *px;
-      bi_saved_y_ = *py;
-    }
+    BIPinOffscreen(bi);       // keep off-screen (raw write; persist mgr+0x514 untouched)
     bi_pinned_off_ = true;
-    *px = kOffScreen;
-    *py = kOffScreen;
   } else if (bi_pinned_off_) {
-    bi_pinned_off_ = false;
-    if (bi) {
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kWinX) = bi_saved_x_;
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kWinY) = bi_saved_y_;
+    if (g_bi_saved_x != kBIUnset) {  // restore real pos when the option is turned off
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kBIWinX) = g_bi_saved_x;
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kBIWinY) = g_bi_saved_y;
     }
+    bi_pinned_off_ = false;
   }
 }

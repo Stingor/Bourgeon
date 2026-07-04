@@ -23,6 +23,8 @@
 // in MoonlightUi's "EXP Bar" section, which reaches in via Bourgeon::basic_info().
 class BasicInfoTweaks : public Plugin {
  public:
+  BasicInfoTweaks();  // installs the msg-0x22 hook that hides native Basic Info pre-render
+
   const char* name() const override { return "Basic Info"; }
 
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;

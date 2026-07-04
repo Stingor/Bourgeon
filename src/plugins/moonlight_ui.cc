@@ -17,6 +17,7 @@
 #include "plugins/dps_meter.h"
 #include "plugins/menu_icons.h"
 #include "plugins/status_icon_tweaks.h"
+#include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/doom_tweaks.h"
@@ -592,6 +593,24 @@ void MoonlightUi::LoadSettings() {
       si->MarkDirty();
     }
 
+    if (auto* qt = Bourgeon::Instance().quest_tracker()) {
+      QuestTrackerConfig& c = qt->config();
+      c.enabled        = ui["questtracker_enabled"].as<bool>(c.enabled);
+      c.show_titlebar  = ui["questtracker_show_titlebar"].as<bool>(c.show_titlebar);
+      c.locked         = ui["questtracker_locked"].as<bool>(c.locked);
+      c.pos_x          = ui["questtracker_pos_x"].as<int>(c.pos_x);
+      c.pos_y          = ui["questtracker_pos_y"].as<int>(c.pos_y);
+      c.width          = ui["questtracker_width"].as<int>(c.width);
+      c.max_quests     = ui["questtracker_max_quests"].as<int>(c.max_quests);
+      c.title_rgb      = ui["questtracker_title_rgb"].as<int>(c.title_rgb);
+      c.desc_rgb       = ui["questtracker_desc_rgb"].as<int>(c.desc_rgb);
+      c.hunt_rgb       = ui["questtracker_hunt_rgb"].as<int>(c.hunt_rgb);
+      c.font_scale     = ui["questtracker_font_scale"].as<int>(c.font_scale);
+      c.show_bg        = ui["questtracker_show_bg"].as<bool>(c.show_bg);
+      c.bg_alpha       = ui["questtracker_bg_alpha"].as<int>(c.bg_alpha);
+      c.show_objective = ui["questtracker_show_objective"].as<bool>(c.show_objective);
+    }
+
     if (auto* st = Bourgeon::Instance().settings_tweaks()) {
       D3D9PostFx& g = st->fx();
       g.enabled     = ui["fx_enabled"].as<bool>(g.enabled);
@@ -804,6 +823,25 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
         << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg
         << YAML::Key << "statusicon_icon_alpha"     << YAML::Value << c.icon_alpha;
+  }
+
+  {
+    auto* qt = Bourgeon::Instance().quest_tracker();
+    const QuestTrackerConfig c = qt ? qt->config() : QuestTrackerConfig{};
+    out << YAML::Key << "questtracker_enabled"        << YAML::Value << c.enabled
+        << YAML::Key << "questtracker_show_titlebar"  << YAML::Value << c.show_titlebar
+        << YAML::Key << "questtracker_locked"         << YAML::Value << c.locked
+        << YAML::Key << "questtracker_pos_x"          << YAML::Value << c.pos_x
+        << YAML::Key << "questtracker_pos_y"          << YAML::Value << c.pos_y
+        << YAML::Key << "questtracker_width"          << YAML::Value << c.width
+        << YAML::Key << "questtracker_max_quests"     << YAML::Value << c.max_quests
+        << YAML::Key << "questtracker_title_rgb"      << YAML::Value << c.title_rgb
+        << YAML::Key << "questtracker_desc_rgb"       << YAML::Value << c.desc_rgb
+        << YAML::Key << "questtracker_hunt_rgb"       << YAML::Value << c.hunt_rgb
+        << YAML::Key << "questtracker_font_scale"     << YAML::Value << c.font_scale
+        << YAML::Key << "questtracker_show_bg"        << YAML::Value << c.show_bg
+        << YAML::Key << "questtracker_bg_alpha"       << YAML::Value << c.bg_alpha
+        << YAML::Key << "questtracker_show_objective" << YAML::Value << c.show_objective;
   }
 
   {
@@ -2008,6 +2046,15 @@ void MoonlightUi::OnRenderUI() {
         {
           if (auto* si = Bourgeon::Instance().status_icons())
             si->DrawSettings();
+          else
+            ImGui::TextDisabled("(plugin indisponible)");
+          ImGui::EndTabItem();
+        }
+        // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
+        if (ImGui::BeginTabItem("Suivi de quête"))
+        {
+          if (auto* qt = Bourgeon::Instance().quest_tracker())
+            qt->DrawSettings();
           else
             ImGui::TextDisabled("(plugin indisponible)");
           ImGui::EndTabItem();
