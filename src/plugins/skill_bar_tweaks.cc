@@ -472,18 +472,27 @@ using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 //   OBJET : BuildItemIconGrfPath 0x00d5a720 __stdcall(id_str, out) -> "유저인터페이스\item\<resname>.bmp"
 //           (resname via ResolveItemResNameById/DB objets -> marche même HORS inventaire). C'est la clé :
 //           les .bmp du GRF sont nommés par resource-name CP949, pas par id.
-//   SKILL : 0x00d7fa90 __stdcall(out, id) -> resname *(char**)(out+0x20) (= ce qui marchait ; getter
-//           unifié qui route vers le skill-mgr pour les ranges custom, sinon DB).
-using GetInvInfo_t = void* (__stdcall*)(void*, int);          // 0x00d7fa90 (out, id)
+//   SKILL : Lua_GetSkillIdName 0x0073a140 __cdecl(id) -> identifiant du skill (ex. "AL_BLESSING"),
+//           puis "유저인터페이스\item\<idname>.bmp". C'est la source d'icône NATIVE (le builder d'effet
+//           0x00bda890 fait le même sprintf) et surtout INDÉPENDANTE de l'état APPRIS : elle lit la DB
+//           Lua SkillInfoList, pas la liste apprise g_SkillInfoMgr+0xc. (L'ancien getter 0x00d7fa90 lit
+//           la liste apprise via FUN_00737e00 -> resname VIDE pour un skill d'une AUTRE classe -> icône
+//           perdue après relog sur un perso GM multi-classe. Le nom du slot survivait car il vient de
+//           GetSkillName Lua, elle aussi indép. de l'appris.) Repli sur 0x00d7fa90 si idname invalide.
+using GetInvInfo_t = void* (__stdcall*)(void*, int);          // 0x00d7fa90 (out, id) — liste APPRISE
 using BuildPath_t  = void  (__stdcall*)(const char*, char*);  // 0x00d5a720 (id_str, out_path[>=260])
+using GetSkillIdNameLua_t = char* (__cdecl*)(int);            // 0x0073a140 GetSkillIdName(id) -> idname
+constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;
 
 std::unordered_map<uint32_t, void*> g_iconCache;  // (type0?hi:0)|id -> ImTextureID (null=miss connu)
 
 // Resname sentinelle quand l'id n'a pas de ressource (0x00d7fa90 -> "Unknown-Skill",
-// 0x00d5a720 -> "...unknown item..."). Tenter de charger ces .bmp échoue et SPAMME la console
-// ("Resource File Loading fail"). On les rejette -> repli propre sur la boîte-id. ("nknown"
-// couvre Unknown/unknown sans souci de casse de l'initiale).
-inline bool LooksUnknown(const char* s) { return s && std::strstr(s, "nknown") != nullptr; }
+// 0x00d5a720 -> "...unknown item...", GetSkillIdName -> "Zero Skill"). Tenter de charger ces .bmp
+// échoue et SPAMME la console ("Resource File Loading fail"). On les rejette -> repli propre sur la
+// boîte-id. ("nknown" couvre Unknown/unknown sans souci de casse de l'initiale.)
+inline bool LooksUnknown(const char* s) {
+  return s && (std::strstr(s, "nknown") != nullptr || std::strcmp(s, "Zero Skill") == 0);
+}
 
 // Chemins SEH-protégés (aucun objet C++ -> SEH OK), écrits dans out (taille >=260).
 bool ItemPath(int id, char* out, int /*n*/) {
@@ -496,8 +505,18 @@ bool ItemPath(int id, char* out, int /*n*/) {
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
-bool SkillPath(int id, char* out, int n) {  // 0x00d7fa90 (+0x20 déréf) = ce qui marchait pour les skills
+bool SkillPath(int id, char* out, int n) {
   __try {
+    // 1) Source d'icône NATIVE, indépendante de l'état appris : Lua GetSkillIdName(id) -> identifiant
+    //    (ex. "AL_BLESSING"). Marche pour un skill d'une AUTRE classe (perso GM multi-classe) alors que
+    //    l'ancien getter renvoyait vide -> icône perdue après relog. Voir le bloc de commentaire ci-dessus.
+    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(kGetSkillIdNameLua)(id);
+    if (idn && idn[0] && !LooksUnknown(idn)) {                      // rejette "Zero Skill"/"Unknown"
+      std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, idn);
+      return out[0] != '\0';
+    }
+    // 2) Repli : ancien getter 0x00d7fa90 (resname de la liste APPRISE à +0x20). Utile si GetSkillIdName
+    //    ne couvre pas un id custom mais que le skill est appris.
     alignas(8) uint8_t info[0xA0] = {};
     reinterpret_cast<GetInvInfo_t>(0x00d7fa90)(info, id);          // __stdcall(out, id)
     const char* rn = *reinterpret_cast<const char**>(info + 0x20);  // resname (déréférencé)
@@ -904,7 +923,16 @@ void SkillBarTweaks::OnRenderUI() {
       }
     }
   } else if (native_hidden_) {
-    if (w) ShowNative(w);
+    if (w) {
+      ShowNative(w);
+      // Recovery: an earlier build wrongly pinned the native bar off-screen while
+      // hidden, which persisted -10000 into its saved position (QUICKSLOTWNDINFO).
+      // If we find it off-screen when re-showing, restore it to a sane on-screen
+      // spot so it isn't lost. (One-off safety net; harmless once positions are ok.)
+      int* nx = reinterpret_cast<int*>(reinterpret_cast<char*>(w) + 0x1c);
+      int* ny = reinterpret_cast<int*>(reinterpret_cast<char*>(w) + 0x20);
+      if (*nx < -5000 || *ny < -5000) { *nx = 200; *ny = 100; }
+    }
     native_hidden_ = false;
   }
 
