@@ -217,6 +217,30 @@ void RagConnection::ConnectionHook() {
 }
 
 bool RagConnection::SendPacketHook(int packet_len, char* packet) {
+  // [dual-wield CTRL = equip LEFT] A normal inventory double-click on a dual-wield
+  // weapon sends CZ_REQ_WEAR_EQUIP_V5 (0x0998) with position = EQP_ARMS (0x22 =
+  // both hand bits) and lets the (pre-renewal) server pick the hand — which, once
+  // the right hand is occupied, defaults to the LEFT. Holding CTRL while double-
+  // clicking lets the player FORCE the left hand: we narrow the position
+  // EQP_ARMS -> EQP_HAND_L (0x20) so the server equips left without re-picking.
+  //   - Why CTRL (not SHIFT): SHIFT+click inserts an item link into the chat when
+  //     the chat input is open. The native dblclick handler already lets
+  //     CTRL+dblclick reach the equip send (it only diverts to a chat link when
+  //     the chat input is open, DAT_01602278 != 0), so NO client exe patch is
+  //     needed — this send-hook does the whole feature.
+  //   - Gated on position == EQP_ARMS so a manual drag onto a specific hand slot
+  //     (single-bit position) is never touched, and on GetAsyncKeyState(CONTROL)
+  //     so a plain double-click keeps the server default.
+  //   - Safe rewrite: the opcode is still plaintext here (the original XORs only
+  //     the first word AFTER us) and the position field (bytes 4..7) is never
+  //     XORed. See memory project_weapon_dualwield_hand_bug.
+  if (packet_len >= 8 && packet != nullptr &&
+      *reinterpret_cast<uint16_t*>(packet) == 0x0998 &&
+      *reinterpret_cast<uint32_t*>(packet + 4) == 0x22 &&  // EQP_ARMS
+      (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+    *reinterpret_cast<uint32_t*>(packet + 4) = 0x20;  // EQP_HAND_L
+    LogInfo("[Equip] CTRL held -> weapon forced to LEFT hand (0x0998 pos 0x22->0x20)");
+  }
   return SendPacketRef(this, packet_len, packet);
 }
 
