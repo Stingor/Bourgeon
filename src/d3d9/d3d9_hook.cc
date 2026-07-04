@@ -141,6 +141,19 @@ void Overlay_SetTextureFilter(bool linear) {
     g_imgui_device->SetSamplerState(0, D3DSAMP_MAGFILTER, f);
 }
 
+// ImGui draw callback: switch the DX9 pipeline to ADDITIVE blend (src=ONE,
+// dst=ONE) so subsequent ImDrawList primitives GLOW like RO's additive effect
+// sprites. Follow the additive draws with ImDrawCallback_ResetRenderState to
+// restore ImGui's normal alpha blending.
+static void AdditiveBlendDrawCallback(const ImDrawList*, const ImDrawCmd*) {
+    if (!g_imgui_device) return;
+    g_imgui_device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+    g_imgui_device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+}
+void* D3D9_AdditiveBlendCallback() {
+    return reinterpret_cast<void*>(&AdditiveBlendDrawCallback);
+}
+
 // Creates a D3D9 texture from a 32-bit A8R8G8B8 buffer (w*h, tightly packed).
 // D3DUSAGE_DYNAMIC + D3DPOOL_DEFAULT so it works on the client's D3D9Ex device
 // (which forbids D3DPOOL_MANAGED). Returns an IDirect3DTexture9* as void*.

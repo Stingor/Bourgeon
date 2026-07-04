@@ -20,6 +20,8 @@
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/doom_tweaks.h"
+#include "plugins/roggle_tweaks.h"
+#include "plugins/rojeweled_tweaks.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
@@ -1654,7 +1656,9 @@ void MoonlightUi::OnRenderUI() {
     // ── Interface de jeu  ────────────────────────────────────────────────────
     // NB: la vue caméra FPS (FpsViewTweaks) reste dans le code (toggle F9) mais
     // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
-    if (ImGui::CollapsingHeader("DOOM")) {
+    if (ImGui::CollapsingHeader("Mini-jeux")) {
+      // ── DOOM ──
+      ImGui::SeparatorText("DOOM");
       if (auto* doom = Bourgeon::Instance().doom()) {
         bool on = doom->enabled();
         if (ImGui::Checkbox("Lancer DOOM (1993) dans Ragnarok", &on))
@@ -1669,6 +1673,39 @@ void MoonlightUi::OnRenderUI() {
             "Décocher = pause. Quitter depuis le menu DOOM = définitif "
             "jusqu'au redémarrage du client.");
         ImGui::TextDisabled("État : %s", doom->StatusText());
+      } else {
+        ImGui::TextDisabled("Indisponible.");
+      }
+
+      // ── Roggle ──
+      ImGui::SeparatorText("Roggle");
+      if (auto* roggle = Bourgeon::Instance().roggle()) {
+        bool on = roggle->enabled();
+        if (ImGui::Checkbox("Ouvrir Roggle", &on))
+          roggle->SetEnabled(on);
+        ImGui::SameLine(); HelpMarker(
+            "Mini-jeu façon Peggle, dessiné en ImGui par-dessus le jeu.\n\n"
+            "Vise à la souris depuis le canon en haut, clique pour tirer la "
+            "bille. Dégomme tous les pegs ORANGE pour gagner ; le seau vert en "
+            "bas rattrape la bille = bille gratuite.\n"
+            "Fermer la fenêtre ou décocher = masquer (la partie est conservée).");
+      } else {
+        ImGui::TextDisabled("Indisponible.");
+      }
+
+      // ── Rojeweled ──
+      ImGui::SeparatorText("Rojeweled");
+      if (auto* rj = Bourgeon::Instance().rojeweled()) {
+        bool on = rj->enabled();
+        if (ImGui::Checkbox("Ouvrir Rojeweled", &on))
+          rj->SetEnabled(on);
+        ImGui::SameLine(); HelpMarker(
+            "Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
+            "monstres RO (famille Poring : Poring, Drops, Metaling, Poporing, "
+            "Marin, Deviling).\n\n"
+            "Clique deux monstres voisins pour les échanger ; aligne-en 3+ pour "
+            "les faire disparaître (les cascades rapportent plus). DX9 requis "
+            "(sinon tuiles colorées).");
       } else {
         ImGui::TextDisabled("Indisponible.");
       }

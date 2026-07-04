@@ -31,7 +31,6 @@ class FpsViewTweaks : public Plugin {
   const char* name() const override { return "FpsView"; }
 
   void OnTick() override;
-  void OnKeyDown(unsigned long vkey, int new_key, int accurate_key) override;
 
   // Public toggle (used by the moonlight_ui checkbox and the F9 hotkey).
   bool enabled() const { return enabled_; }

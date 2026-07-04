@@ -20,6 +20,12 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h);
 // both modes. Returns an ImTextureID-compatible void* (or nullptr).
 void* Overlay_CreateTextureARGB(const void* argb, int w, int h);
 
+// Returns an ImGui draw callback (cast to ImDrawCallback) that switches the DX9
+// pipeline to ADDITIVE blend for the following draw commands — for glow effects
+// like RO-style explosions. Reset afterwards with ImDrawCallback_ResetRenderState.
+// DX9 only (returns a no-op-safe callback that early-outs when the device is gone).
+void* D3D9_AdditiveBlendCallback();
+
 // Sets the ImGui texture sampler filter for subsequent draw commands: false =
 // POINT (crisp pixel-art, e.g. RO icons), true = LINEAR (ImGui's default smooth
 // filtering). Call from an ImDrawList::AddCallback, then restore with

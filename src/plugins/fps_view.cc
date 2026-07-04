@@ -20,7 +20,6 @@ constexpr int       kCamPitchTarget  = 0x44;        // target latitude/pitch (0 
 constexpr int       kCamDistTarget   = 0x4c;        // target distance (small = first person)
 // Capture hook site: the per-camera-update clamp (writes the targets from input).
 constexpr uintptr_t kCamClamp        = 0x00c82340;  // Camera_ApplyViewDistanceClamp
-constexpr unsigned long kToggleKey   = VK_F9;
 // The camera builder (FUN_00a7ae20) ends by calling SetView(eye,lookat,up) on the
 // renderer object at [0x012515f8], via vtable slot +4. eye = pCam+0x80 and
 // lookat = pCam+0x20; in both, index 1 (the Y component, +0x84 / +0x24) is the
@@ -91,7 +90,7 @@ FpsViewTweaks::FpsViewTweaks() {
   // Install the capture hook unconditionally (like WeaponLayerTweaks): the client
   // timestamp is NOT yet known at LoadPlugins() time — it's set later in
   // RagnarokClient::Initialize — so gating the ctor on it would skip the install
-  // forever. Runtime methods (OnTick/OnKeyDown/SetEnabled) keep the timestamp
+  // forever. Runtime methods (OnTick/SetEnabled) keep the timestamp
   // guard, and this build targets the 20250716 client only.
   using namespace hooking;
   g_tramp_camclamp = HookManager::Instance().SetHook(
@@ -107,11 +106,6 @@ void FpsViewTweaks::SetEnabled(bool on) {
   enabled_ = on;
   if (!enabled_) Restore();  // Apply() runs from OnTick once pCam is available
   LogInfo("[FpsView] {}", enabled_ ? "ON" : "OFF");
-}
-
-void FpsViewTweaks::OnKeyDown(unsigned long vkey, int, int) {
-  if (vkey != kToggleKey) return;
-  SetEnabled(!enabled_);
 }
 
 void FpsViewTweaks::Apply() {

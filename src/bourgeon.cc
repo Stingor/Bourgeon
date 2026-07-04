@@ -20,6 +20,8 @@
 #include "plugins/weapon_layer.h"
 #include "plugins/fps_view.h"
 #include "plugins/doom_tweaks.h"
+#include "plugins/roggle_tweaks.h"
+#include "plugins/rojeweled_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/item_desc_tweaks.h"
 #include "utils/log_console.h"
@@ -36,6 +38,8 @@ StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
 SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
 FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
 DoomTweaks* Bourgeon::doom() { return doom_; }
+RoggleTweaks* Bourgeon::roggle() { return roggle_; }
+RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
@@ -197,6 +201,16 @@ void Bourgeon::LoadPlugins() {
     auto doom = std::make_unique<DoomTweaks>();
     doom_ = doom.get();
     plugins_.emplace_back(std::move(doom));
+  }
+  {
+    auto roggle = std::make_unique<RoggleTweaks>();
+    roggle_ = roggle.get();
+    plugins_.emplace_back(std::move(roggle));
+  }
+  {
+    auto rojeweled = std::make_unique<RojeweledTweaks>();
+    rojeweled_ = rojeweled.get();
+    plugins_.emplace_back(std::move(rojeweled));
   }
   {
     auto item_desc = std::make_unique<ItemDescTweaks>();
