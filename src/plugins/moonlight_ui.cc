@@ -1812,11 +1812,25 @@ void MoonlightUi::OnRenderUI() {
             "ON : cash shop ImGui moderne (icones, categories, panier) et la "
             "fenetre native est cachee.\nOFF : cash shop natif classique.");
       }
-      ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
-      if (ImGui::BeginTabBar("InterfaceSettingsTabs", tab_bar_flags))
+      // ── Navigation latérale (liste à gauche, contenu à droite) ───────────
+      // Remplace l'ancienne barre d'onglets : plus scalable quand les
+      // catégories se multiplient (noms entiers, scroll vertical naturel).
+      static int s_iface_nav = 0;
+      static const char* kIfaceCats[] = {
+          "Barres d'info", "Portrait",         "Barre d'action", "Icônes du menu",
+          "Icônes de statut", "Suivi de quête", "Descriptions"};
+      const float kNavH = 360.0f;
+      ImGui::BeginChild("iface_nav", ImVec2(150.0f, kNavH), true);
+      for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
+        if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i))
+          s_iface_nav = i;
+      ImGui::EndChild();
+      ImGui::SameLine();
+      ImGui::BeginChild("iface_content", ImVec2(0.0f, kNavH), false);
+      ImGui::PushTextWrapPos(0.0f);  // wrap le texte à la largeur du child
       {
         // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
-        if (ImGui::BeginTabItem("Barres d'info"))
+        if (s_iface_nav == 0)
         {
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
@@ -1894,10 +1908,9 @@ void MoonlightUi::OnRenderUI() {
             preset("L", 800, 30);
             PopStyleCompact();
           }
-          ImGui::EndTabItem();
         }
         // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
-        if (ImGui::BeginTabItem("Portrait"))
+        if (s_iface_nav == 1)
         {
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
@@ -2021,17 +2034,15 @@ void MoonlightUi::OnRenderUI() {
                 "fois ton portrait en place. Décoche pour la restaurer.");
             PopStyleCompact();
           }
-          ImGui::EndTabItem();
         }
         // ── Barre d'action (skill bar ImGui : 3 barres fixes Onglet1/Onglet2/Items) ──
-        if (ImGui::BeginTabItem("Barre d'action"))
+        if (s_iface_nav == 2)
         {
           if (auto* sb = Bourgeon::Instance().skill_bar())
             sb->DrawSettingsContent();
-          ImGui::EndTabItem();
         }
         // ── Menu icons (ImGui replacement) ───────────────────────────────────
-        if (ImGui::BeginTabItem("Icônes du menu"))
+        if (s_iface_nav == 3)
         {
           if (auto* mi = Bourgeon::Instance().menu_icons()) {
             if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
@@ -2069,28 +2080,25 @@ void MoonlightUi::OnRenderUI() {
               ImGui::TreePop();
             }
           }
-          ImGui::EndTabItem();
         }
         // ── Status icons (StatusIconTweaks) ──────────────────────────────────
-        if (ImGui::BeginTabItem("Icônes de statut"))
+        if (s_iface_nav == 4)
         {
           if (auto* si = Bourgeon::Instance().status_icons())
             si->DrawSettings();
           else
             ImGui::TextDisabled("(plugin indisponible)");
-          ImGui::EndTabItem();
         }
         // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
-        if (ImGui::BeginTabItem("Suivi de quête"))
+        if (s_iface_nav == 5)
         {
           if (auto* qt = Bourgeon::Instance().quest_tracker())
             qt->DrawSettings();
           else
             ImGui::TextDisabled("(plugin indisponible)");
-          ImGui::EndTabItem();
         }
         // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ────
-        if (ImGui::BeginTabItem("Descriptions"))
+        if (s_iface_nav == 6)
         {
           if (auto* idt = Bourgeon::Instance().item_desc()) {
             ImGui::TextUnformatted(
@@ -2111,10 +2119,10 @@ void MoonlightUi::OnRenderUI() {
           } else {
             ImGui::TextDisabled("(plugin indisponible)");
           }
-          ImGui::EndTabItem();
         }
       }
-      ImGui::EndTabBar();
+      ImGui::PopTextWrapPos();
+      ImGui::EndChild();
       PopStyleCompact();
     }
     // ── Graphismes (color grading post-process, SettingsTweaks plugin) ───────
