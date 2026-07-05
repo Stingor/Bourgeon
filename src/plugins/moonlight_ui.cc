@@ -20,6 +20,7 @@
 #include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
+#include "plugins/storage_tweaks.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -539,6 +540,8 @@ void MoonlightUi::LoadSettings() {
       }
     }
 
+    if (auto* stg = Bourgeon::Instance().storage_tweaks())
+      stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -869,6 +872,11 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "game_option_pos_y" << YAML::Value << (st ? st->gopt_y() : INT_MIN)
         << YAML::Key << "esc_option_pos_x"  << YAML::Value << (st ? st->esc_x() : INT_MIN)
         << YAML::Key << "esc_option_pos_y"  << YAML::Value << (st ? st->esc_y() : INT_MIN);
+  }
+
+  {
+    auto* stg = Bourgeon::Instance().storage_tweaks();
+    out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
   }
 
   {
@@ -1782,6 +1790,15 @@ void MoonlightUi::OnRenderUI() {
                             ImGuiColorEditFlags_NoInputs |
                                 ImGuiColorEditFlags_AlphaBar))
         SaveSettings();
+      // ── Entrepôt : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
+      if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
+        if (ImGui::Checkbox("Storage ImGui", &stg->imgui_enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "ON : storage ImGui moderne (icones, onglets, tri, drag-drop) "
+            "et la fenetre native est cachee.\nOFF : storage natif classique, aucun "
+            "viewer. Pas de cohabitation.");
+      }
       ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
       if (ImGui::BeginTabBar("InterfaceSettingsTabs", tab_bar_flags))
       {

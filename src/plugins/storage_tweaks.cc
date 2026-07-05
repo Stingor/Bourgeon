@@ -460,6 +460,21 @@ bool ReadDraggedInvItem(void* obj, int* index, int* qty) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Lit l'id de l'item d'un drag natif : resname BRUT = std::string @payload+0x3c
+// (atoi -> nameid = id d'item, pour résoudre l'icône). SSO (heap si cap>0xf).
+// SEH (POD). 0 si ce n'est pas un item. Sert à redessiner l'icône du drag au-
+// dessus du viewer (le jeu la rend DERRIÈRE l'overlay ImGui).
+uint32_t ReadDragItemId(void* obj) {
+  __try {
+    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
+    if (p[kPL_type] != 0) return 0;  // FullPayload (item) uniquement
+    const uint32_t cap = *reinterpret_cast<uint32_t*>(p + 0x3c + 0x14);  // SSO cap
+    const char* s = (cap > 0xf) ? *reinterpret_cast<char**>(p + 0x3c)
+                                : reinterpret_cast<const char*>(p + 0x3c);
+    return (s && s[0]) ? static_cast<uint32_t>(std::atoi(s)) : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 // Lit un pointeur de fenêtre valide depuis le slot (vtable vérifiée). SEH-gardé.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   __try {
@@ -499,20 +514,22 @@ void StorageTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t 
     storage_name_[i] = '\0';
     return;
   }
-  // ZC_BOURGEON_STORAGE_PRICES : [count:2] puis count * [id:4][sell:4][subtype:1][equip:4].
+  // ZC_BOURGEON_STORAGE_PRICES : [count:2] puis
+  // count * [id:4][sell:4][subtype:1][equip:4][slots:2].
   if (opcode != bopcodes::kStoragePrices || len < 2) return;
   const int16_t count = *reinterpret_cast<const int16_t*>(data);
-  // MERGE (pas de clear) : subtype/equip/prix sont statiques (itemdb) -> on accumule ;
-  // ainsi une MAJ 1-item (ajout au storage) n'efface pas les métas de l'ouverture.
+  // MERGE (pas de clear) : subtype/equip/slots/prix sont statiques (itemdb) -> on
+  // accumule ; ainsi une MAJ 1-item (ajout au storage) n'efface pas les métas.
   size_t off = 2;
-  for (int i = 0; i < count && off + 13 <= len; ++i) {
+  for (int i = 0; i < count && off + 15 <= len; ++i) {
     const uint32_t id      = *reinterpret_cast<const uint32_t*>(data + off);
     const uint32_t sell    = *reinterpret_cast<const uint32_t*>(data + off + 4);
     const uint8_t  subtype = data[off + 8];
     const uint32_t equip   = *reinterpret_cast<const uint32_t*>(data + off + 9);
+    const uint16_t slots   = *reinterpret_cast<const uint16_t*>(data + off + 13);
     prices_[id] = sell;
-    meta_[id] = ItemMeta{subtype, equip};
-    off += 13;
+    meta_[id] = ItemMeta{subtype, equip, slots};
+    off += 15;
   }
 }
 
@@ -576,39 +593,55 @@ void StorageTweaks::OnTick() {
     __try {
       used_ = *reinterpret_cast<int*>(wnd + kOffUsed);
       max_  = *reinterpret_cast<int*>(wnd + kOffMax);
-      // Placement à la 1re ouverture : si on cache le natif, le viewer prend SA place
-      // (nx, ny) ; sinon à droite (côte à côte pour valider la synchro).
+      // Placement à la 1re ouverture : le viewer prend la place du natif (nx, ny),
+      // que le natif soit caché ou non (pas de cohabitation).
       if (!was_open_) {
-        const int nx = *reinterpret_cast<int*>(wnd + kOffPosX);
-        const int ny = *reinterpret_cast<int*>(wnd + kOffPosY);
-        const int nw = *reinterpret_cast<int*>(wnd + kOffWidth);
-        spawn_x_ = hide_native_ ? nx : (nx + nw + 10);
-        spawn_y_ = ny;
+        spawn_x_ = *reinterpret_cast<int*>(wnd + kOffPosX);
+        spawn_y_ = *reinterpret_cast<int*>(wnd + kOffPosY);
         need_pos_ = true;
       }
-      // Remplacement complet : force le flag de visibilité natif (wnd+0x28) selon le
-      // setting. 0 = caché (hors rendu + hors hit-test input), 1 = montré. On le force
-      // chaque tick car le natif peut le remettre à 1 sur certains événements.
-      *reinterpret_cast<int*>(wnd + kOffVisible) = hide_native_ ? 0 : 1;
+      // Master switch : imgui_enabled_ ON -> cache le natif (wnd+0x28=0, hors rendu +
+      // hit-test) et affiche le viewer ; OFF -> laisse le natif (=1), aucun viewer.
+      // Forcé chaque tick car le natif peut remettre le flag à 1 sur certains events.
+      *reinterpret_cast<int*>(wnd + kOffVisible) = imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       open_ = false;
     }
     if (open_) Extract(wnd);
   }
+  // Suffixe [N] (nb de slots de carte, meta serveur) sur le nom, hors SEH d'Extract.
+  // BuildDisplayName n'affiche pas le compte de slots -> on l'ajoute si l'item a des
+  // slots et que le nom n'a pas déjà de crochet (évite tout double [N]/enchant).
+  if (open_) {
+    for (int i = 0; i < item_count_; ++i) {
+      auto it = meta_.find(items_[i].id);
+      if (it == meta_.end() || it->second.slots == 0) continue;
+      if (std::strchr(items_[i].name, '[')) continue;
+      char suf[8];
+      std::snprintf(suf, sizeof(suf), " [%u]", it->second.slots);
+      const size_t cur = std::strlen(items_[i].name);
+      if (cur + std::strlen(suf) < sizeof(items_[i].name))
+        std::strcat(items_[i].name, suf);
+    }
+  }
   was_open_ = open_;
 }
 
-// Mémorise si le clic a démarré sur la fenêtre cart (pour router le drop, cf. header).
+// Mémorise si le clic a démarré sur la fenêtre cart (routage du drop) et sur le
+// viewer (un vrai drag natif entrant démarre HORS du viewer).
 void StorageTweaks::OnMouseDown(int mx, int my) {
   mousedown_over_cart_ =
       MouseOverCart(static_cast<float>(mx), static_cast<float>(my));
+  mousedown_over_viewer_ =
+      win_valid_ && mx >= win_x_ && my >= win_y_ &&
+      mx < win_x_ + win_w_ && my < win_y_ + win_h_;
 }
 
 // Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
 // Vérifie la vtable storage par sûreté (le hook passe l'id 0x21, mais on confirme).
 void StorageTweaks::HideNativeAtCreation(void* win) {
-  if (!win || !hide_native_) return;
+  if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kStorageVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
@@ -620,7 +653,7 @@ void StorageTweaks::HideNativeAtCreation(void* win) {
 // annule le drag. Le paquet réel part de OnRenderUI (sûr, + prompt pour les piles).
 // Source = mousedown_over_cart_ (le payload n'expose pas la source de façon fiable).
 bool StorageTweaks::HandleNativeDrop(int mx, int my) {
-  if (!open_ || !show_panel_ || !win_valid_) return false;
+  if (!open_ || !imgui_enabled_ || !win_valid_) return false;
   if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui
   void* obj = DragObj();
   if (!obj) return false;  // pas de drag natif -> silencieux (pas de spam à chaque clic)
@@ -641,22 +674,26 @@ bool StorageTweaks::HandleNativeDrop(int mx, int my) {
 }
 
 void StorageTweaks::OnRenderUI() {
-  if (!open_ || !show_panel_) return;
+  if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {
+    // FirstUseEver (pas Appearing) : la position du natif n'est qu'un DÉFAUT pour la
+    // toute 1re ouverture. Ensuite ImGui garde la position déplacée par le joueur
+    // (en session + persistée dans imgui.ini via l'id stable ###bourgeon_storage) ;
+    // les appels suivants sont des no-op tant qu'une position existe déjà.
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(spawn_x_),
                                    static_cast<float>(spawn_y_)),
-                            ImGuiCond_Appearing);
+                            ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(320, 420), ImGuiCond_FirstUseEver);
 
   // Titre = nom de l'entrepôt envoyé par le serveur (ZC_INVENTORY_START), ex.
-  // "Storage" / "Guild Storage" / nom premium. Repli "Entrepot" si pas encore reçu.
+  // "Storage" / "Guild Storage" / nom premium. Repli "Storage" si pas encore reçu.
   // L'id ImGui (###) reste stable -> position/taille persistent malgré le nom variable.
   char title[64];
   std::snprintf(title, sizeof(title), "%s###bourgeon_storage",
-                storage_name_[0] ? storage_name_ : "Entrepot");
+                storage_name_[0] ? storage_name_ : "Storage");
   const bool begun = ImGui::Begin(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
   // Le X du viewer a été cliqué ce frame (show_panel_ était vrai à l'entrée, cf. le
   // early-return en tête) -> on FERME l'entrepôt côté serveur (CZ_CloseKafra). Le
@@ -824,20 +861,21 @@ void StorageTweaks::OnRenderUI() {
   ImGui::Checkbox("ID", &show_id_col_);
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Afficher une colonne avec l'id d'item");
   ImGui::SameLine();
-  ImGui::Checkbox("Cacher natif", &hide_native_);
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Masquer la fenetre de storage native (remplacement complet par ce viewer)");
+  ImGui::Checkbox("Slots", &show_slots_col_);
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Afficher une colonne avec le nombre de slots de carte");
   ImGui::Separator();
 
-  // Ordre courant des colonnes : [Index], Item, [ID], Qté, Prix revente. Les index
-  // de tri sont calculés dynamiquement (les colonnes optionnelles décalent tout).
-  const int ncols = 3 + (show_index_col_ ? 1 : 0) + (show_id_col_ ? 1 : 0);
+  // Ordre courant des colonnes : [Index], Item, [ID], [Slots], Qté, Prix revente.
+  // Les index de tri sont calculés dynamiquement (les colonnes optionnelles décalent).
+  const int ncols = 3 + (show_index_col_ ? 1 : 0) + (show_id_col_ ? 1 : 0) +
+                    (show_slots_col_ ? 1 : 0);
   int colc = 0;
-  const int kColIdx = show_index_col_ ? colc++ : -1;  // Index
-  ++colc;                                             // Item -> tri par nom (branche else)
-  const int kColId  = show_id_col_ ? colc++ : -1;      // ID
-  const int kColQte = colc++;                          // Qté
-  const int kColVal = colc++;                          // Prix revente
+  const int kColIdx   = show_index_col_ ? colc++ : -1;  // Index
+  ++colc;                                               // Item -> tri par nom (else)
+  const int kColId    = show_id_col_ ? colc++ : -1;      // ID
+  const int kColSlots = show_slots_col_ ? colc++ : -1;   // Slots
+  const int kColQte   = colc++;                          // Qté
+  const int kColVal   = colc++;                          // Prix revente
   const ImGuiTableFlags tf = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                              ImGuiTableFlags_Sortable |
                              ImGuiTableFlags_ScrollY |
@@ -852,6 +890,10 @@ void StorageTweaks::OnRenderUI() {
                                         ImGuiTableColumnFlags_DefaultSort);
     if (show_id_col_)
       ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+    if (show_slots_col_)
+      ImGui::TableSetupColumn("Slots", ImGuiTableColumnFlags_WidthFixed |
+                                           ImGuiTableColumnFlags_PreferSortDescending,
+                              48.0f);
     ImGui::TableSetupColumn("Qté", ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending,
                             56.0f);
@@ -879,6 +921,10 @@ void StorageTweaks::OnRenderUI() {
           } else if (sp.ColumnIndex == kColId) {
             c = (items_[a].id < items_[b].id) ? -1
                 : (items_[a].id > items_[b].id) ? 1 : 0;
+          } else if (sp.ColumnIndex == kColSlots) {
+            const int sa = submeta(items_[a].id).slots;
+            const int sb = submeta(items_[b].id).slots;
+            c = (sa < sb) ? -1 : (sa > sb) ? 1 : 0;
           } else {
             c = _stricmp(items_[a].name, items_[b].name);
           }
@@ -966,13 +1012,20 @@ void StorageTweaks::OnRenderUI() {
         ImGui::TableNextColumn();
         ImGui::Text("%u", items_[idx].id);
       }
+      // ── Colonne Slots (optionnelle) : nb de slots de carte ──
+      if (show_slots_col_) {
+        ImGui::TableNextColumn();
+        const int sl = submeta(items_[idx].id).slots;
+        if (sl > 0) ImGui::Text("%d", sl);
+        else ImGui::TextDisabled("-");
+      }
       // ── Colonne Qte ──
       ImGui::TableNextColumn();
       ImGui::Text("%d", items_[idx].amount);
       // ── Colonne Valeur (prix de vente NPC * quantité) ──
       ImGui::TableNextColumn();
       const long long val = price(items_[idx].id) * items_[idx].amount;
-      if (val > 0) ImGui::Text("%lld", val);
+      if (val > 0) ImGui::Text("%lldz", val);
       else ImGui::TextDisabled("-");
     }
     ImGui::EndTable();
@@ -1001,6 +1054,34 @@ void StorageTweaks::OnRenderUI() {
         pend_open_prompt_ = (pend_max_ > 1);
       }
       drag_active_ = false;
+    }
+  }
+
+  // Icône du drag NATIF au-dessus du viewer : le jeu rend l'icône du drag AVANT
+  // l'overlay ImGui -> elle passe derrière le viewer quand on le survole. Quand un
+  // drag d'item natif est actif et que le curseur est sur le viewer, on la redessine
+  // au curseur dans le foreground (au-dessus de tout). Ailleurs, l'icône native suffit.
+  // Gate anti-fantôme (le payload natif reste "périmé" avec l'id du dernier drag) :
+  //   - bouton gauche ENFONCÉ (un drag = bouton tenu) ;
+  //   - le clic a démarré HORS du viewer (un vrai drag entrant vient de l'inventaire ;
+  //     un clic sur le viewer, lui, démarre dessus -> pas d'icône) ;
+  //   - pas de drag ImGui en cours (retrait d'un item du viewer = aperçu propre).
+  void* dobj = (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !mousedown_over_viewer_ &&
+                ImGui::GetDragDropPayload() == nullptr) ? DragObj() : nullptr;
+  if (dobj) {
+    const uint32_t did = ReadDragItemId(dobj);
+    const ImVec2 m = ImGui::GetMousePos();
+    const bool over = m.x >= win_x_ && m.y >= win_y_ &&
+                      m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
+    if (did != 0 && over) {
+      const IconTex ic = ResolveIcon(did, 1);
+      if (ic.tex && ic.w > 0 && ic.h > 0) {
+        const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
+        ImGui::GetForegroundDrawList()->AddImage(
+            reinterpret_cast<ImTextureID>(ic.tex),
+            ImVec2(m.x - iw * 0.5f, m.y - ih * 0.5f),
+            ImVec2(m.x + iw * 0.5f, m.y + ih * 0.5f));
+      }
     }
   }
 

@@ -120,7 +120,7 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     }
     // Remplacement complet de l'entrepôt : StorageTweaks masque la fenêtre native
     // (win+0x28=0) DÈS ici, avant son 1er rendu -> pas de flicker (le OnTick seul
-    // laissait passer la frame de création). No-op si hide_native_ est off.
+    // laissait passer la frame de création). No-op si imgui_enabled_ est off (natif).
     if (windowID == 0x21) {
       if (auto* st = Bourgeon::Instance().storage_tweaks())
         st->HideNativeAtCreation(win);

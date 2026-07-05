@@ -37,6 +37,11 @@ class StorageTweaks : public Plugin {
 
   bool& show_panel() { return show_panel_; }
 
+  // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
+  // ON = viewer ImGui + fenêtre native cachée ; OFF = entrepôt natif seul, aucun viewer.
+  // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
+  bool imgui_enabled_ = true;
+
   // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input, comme skill_bar) : si un
   // drag NATIF d'un item d'inventaire est relâché au-dessus du viewer, capture un
   // dépôt en attente et annule le drag natif (charge vidée avant que le jeu voie le
@@ -51,7 +56,7 @@ class StorageTweaks : public Plugin {
   void OnMouseDown(int mx, int my);
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création d'une fenêtre id
-  // 0x21 (entrepôt) : si hide_native_, force le flag de visibilité (win+0x28) à 0
+  // 0x21 (entrepôt) : si imgui_enabled_, force le flag de visibilité (win+0x28) à 0
   // AVANT le 1er rendu -> pas de flicker (le OnTick seul laissait 1 frame visible).
   void HideNativeAtCreation(void* win);
 
@@ -70,14 +75,10 @@ class StorageTweaks : public Plugin {
   // Remplit items_/item_count_ depuis la liste de la fenêtre. SEH (POD only).
   void Extract(uint8_t* wnd);
 
-  bool  show_panel_ = true;   // toggle runtime (persistable plus tard)
-  // Masque la fenêtre native (remplacement complet) : force wnd+0x28 = 0 (flag de
-  // visibilité, cf. Show/Hide 0x005aad80) -> sort du rendu ET du hit-test input,
-  // sans toucher position (pas de corruption persistance) ni session (g_StorageWnd_ptr
-  // reste, viewer ouvert). Le snap ignore déjà +0x28==0. Togglable (défaut = caché).
-  bool  hide_native_ = true;
+  bool  show_panel_ = true;   // transitoire : détection du clic sur le X (ferme la session)
   bool  show_id_col_ = false; // setting : afficher une colonne avec l'id d'item
   bool  show_index_col_ = false;  // setting : afficher l'index storage (slot)
+  bool  show_slots_col_ = false;  // setting : afficher une colonne nb de slots carte
   int   cur_tab_ = 0;         // onglet catégorie sélectionné (0 = Tout)
 
   // Rect écran du viewer (capturé au rendu) pour tester le drop natif dessus.
@@ -86,11 +87,14 @@ class StorageTweaks : public Plugin {
   // Le dernier WM_LBUTTONDOWN a-t-il démarré sur la fenêtre cart ? (routage du
   // drag natif relâché sur le viewer : cart->storage vs dépôt inventaire).
   bool  mousedown_over_cart_ = false;
+  // Le dernier WM_LBUTTONDOWN a-t-il démarré SUR le viewer ? (un vrai drag natif
+  // entrant démarre HORS du viewer -> sinon = simple clic, pas d'icône de drag).
+  bool  mousedown_over_viewer_ = false;
   // Dépôt en attente (posé par HandleNativeDrop, traité en OnRenderUI).
   std::unordered_map<uint32_t, uint32_t> prices_;  // id -> prix de vente NPC (serveur)
   // Métadonnées item (serveur, statiques) pour les sous-catégories : subtype = type
   // d'arme (W_*) ou de munition (A_*) ; equip = masque de slot d'équipement.
-  struct ItemMeta { uint8_t subtype = 0; uint32_t equip = 0; };
+  struct ItemMeta { uint8_t subtype = 0; uint32_t equip = 0; uint16_t slots = 0; };
   std::unordered_map<uint32_t, ItemMeta> meta_;    // id -> {subtype, equip}
   int cur_sub_ = -1;  // sous-catégorie sélectionnée (clé SubCat, -1 = Tout)
   // Sens d'un déplacement en attente. L'index de pend_index_ dépend du sens :
