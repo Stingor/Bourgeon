@@ -90,6 +90,7 @@ const std::string kYamlConfiguration = R"(
     RecvOpcodeBase: 0x73
     RecvDispatchTableSize: 0xBC3
     RecvOpcodeReader: 0x00c144b0
+    RecvBufferReset: 0x00c148b0
   CModeMgr:
     Switch: 0x00a756e0
   CLoginMode:

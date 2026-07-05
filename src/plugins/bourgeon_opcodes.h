@@ -43,13 +43,14 @@ constexpr uint16_t kDiscordMsg  = 0x0F08;  // ex-0x0C1F  ZC_BOURGEON_DISCORD_MSG
 constexpr uint16_t kSkillDmg    = 0x0F09;  // ex-0x0C22  ZC_BOURGEON_SKILL_DMG
 constexpr uint16_t kTechData    = 0x0F0C;  // ZC_BOURGEON_TECHDATA (réponse tech)
 constexpr uint16_t kDamage      = 0x0F0E;  // ZC_BOURGEON_DAMAGE (réponse estim. dégâts)
+constexpr uint16_t kStoragePrices = 0x0F0F;  // ZC_BOURGEON_STORAGE_PRICES (prix vente storage)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F0F -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F10 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F0F;
+constexpr uint16_t kNextFree    = 0x0F10;
 
 }  // namespace bopcodes

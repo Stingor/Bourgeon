@@ -50,12 +50,24 @@ class RagConnection {
   static void RecvPacketHandler();
   static void RecvPacketHandlerImpl();  // called from the naked wrapper
 
+  // Hook on RecvBuffer_ResetAll_OnUnknownOpcode (0x00c148b0). Les 2 boucles recv
+  // (map + login/char) appellent cette fn pour TOUT opcode HORS-PLAGE (> 0x0C35) :
+  // elle VIDE les 3 buffers de connexion (curseurs read/write -> 0), ce qui JETTE
+  // les paquets encore en attente dans le buffer recv. Nos opcodes custom 0x0F00+
+  // sont hors-plage -> sans ce hook, un 0x0F0x suivi d'un paquet critique dans le
+  // même flush désynchronise (fantôme storage : delitem jeté 2026-07-04). Le hook
+  // skippe le reset quand le dernier opcode lu est un reader-dispatch enregistré
+  // (flag posé par PacketBufReaderHook) ; le reset légitime (vrai opcode inconnu)
+  // reste actif. thiscall : this = objet connexion (param_1 natif).
+  void BufferResetHook();
+
   static MethodRef<RagConnection, void (RagConnection::*)()> ConnectionRef;
   static MethodRef<RagConnection,
                    bool (RagConnection::*)(int packet_len, char *packet)>
       SendPacketRef;
   static MethodRef<RagConnection, uint16_t (RagConnection::*)(uint8_t *)>
       PacketBufReaderRef;
+  static MethodRef<RagConnection, void (RagConnection::*)()> BufferResetRef;
 
   static std::atomic<RagConnection *> g_ragconnection_ptr;
 

@@ -18,6 +18,7 @@ class QuestTrackerTweaks;
 class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
+class StorageTweaks;
 class ItemDescTweaks;
 class FpsViewTweaks;
 class DoomTweaks;
@@ -44,6 +45,7 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks();
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
+  StorageTweaks* storage_tweaks();
   ItemDescTweaks* item_desc();
   FpsViewTweaks* fps_view();
   DoomTweaks* doom();
@@ -92,6 +94,7 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks_ = nullptr; // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
+  StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
   FpsViewTweaks* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
   DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
   RoggleTweaks* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_

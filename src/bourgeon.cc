@@ -26,6 +26,7 @@
 #include "plugins/rojeweled_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/item_desc_tweaks.h"
+#include "plugins/storage_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -45,6 +46,7 @@ RoggleTweaks* Bourgeon::roggle() { return roggle_; }
 RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
+StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
 bool Bourgeon::Initialize() {
@@ -193,6 +195,11 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
+  {
+    auto storage_tweaks = std::make_unique<StorageTweaks>();
+    storage_tweaks_ = storage_tweaks.get();
+    plugins_.emplace_back(std::move(storage_tweaks));
+  }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());

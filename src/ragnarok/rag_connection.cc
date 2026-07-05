@@ -30,6 +30,14 @@ static uint32_t g_saved_packet_len = 0;
 // verify the right packet was saved.
 static uint16_t g_dispatch_opcode = 0;
 
+// Posé par PacketBufReaderHook quand l'opcode courant est un reader-dispatch
+// enregistré (custom 0x0F00+, HORS-PLAGE). Consommé par BufferResetHook : la
+// boucle recv appelle RecvBuffer_ResetAll_OnUnknownOpcode juste après avoir lu un
+// opcode hors-plage ; ce reset VIDE le buffer et jetterait les paquets suivants
+// (delitem, etc.). Quand ce flag est vrai, on skippe le reset -> le flux reste
+// intact. Séquentiel sur le thread réseau (pas de course).
+static bool g_suppress_buffer_reset = false;
+
 RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
   using namespace hooking;
 
@@ -76,6 +84,18 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
     } else {
       LogInfo("RagConnection: recv dispatch table at {:x}, opcode base 0x{:x}",
               table_addr.as<uint32_t>(), recv_opcode_base_);
+    }
+
+    // Hook du reset de buffer déclenché par les opcodes hors-plage : sans lui, nos
+    // opcodes custom 0x0F00+ vident le buffer recv et jettent le paquet suivant
+    // (désync). Le hook skippe le reset pour nos opcodes enregistrés uniquement.
+    const auto bufreset_addr = ragconnection_configuration["RecvBufferReset"];
+    if (bufreset_addr.IsDefined()) {
+      RagConnection::BufferResetRef = HookManager::Instance().SetHook(
+          HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(bufreset_addr.as<uint32_t>()),
+          reinterpret_cast<uint8_t*>(void_cast(&RagConnection::BufferResetHook)));
+      LogInfo("RagConnection: recv buffer-reset hook at {:x}", bufreset_addr.as<uint32_t>());
     }
   }
 }
@@ -129,6 +149,12 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
   const uint16_t opcode = *reinterpret_cast<const uint16_t*>(param_1);
   // Call the original (just returns opcode = *(uint16_t*)param_1).
   const uint16_t result = PacketBufReaderRef(this, param_1);
+
+  // Si c'est un de NOS opcodes hors-plage (reader-dispatch), la boucle recv va
+  // appeler RecvBuffer_ResetAll juste après -> on arme le skip pour éviter que le
+  // reset vide le buffer et jette le paquet suivant (cf. BufferResetHook). Toujours
+  // rafraîchi (faux pour tout autre opcode) : un vrai opcode inconnu garde le reset.
+  g_suppress_buffer_reset = s_reader_dispatch_opcodes_.count(opcode) != 0;
 
   if (s_registered_opcodes_.count(opcode)) {
     const uint16_t total_len = *reinterpret_cast<const uint16_t*>(param_1 + 2);
@@ -244,6 +270,20 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
   return SendPacketRef(this, packet_len, packet);
 }
 
+// Hook sur RecvBuffer_ResetAll_OnUnknownOpcode (0x00c148b0). La boucle recv l'appelle
+// pour TOUT opcode hors-plage (> 0x0C35). Ce reset vide les buffers de connexion et
+// jetterait les paquets suivants. Si le dernier opcode lu est un de nos opcodes custom
+// enregistrés (flag posé par PacketBufReaderHook), on SKIPPE le reset -> le flux reste
+// intact (fix fantôme storage + tout futur ZC custom en interleave). Sinon (vrai opcode
+// inconnu / corruption), on laisse le reset natif faire sa récupération d'erreur.
+void RagConnection::BufferResetHook() {
+  if (g_suppress_buffer_reset) {
+    g_suppress_buffer_reset = false;
+    return;  // notre paquet custom : ne PAS vider le buffer
+  }
+  BufferResetRef(this);
+}
+
 // References
 MethodRef<RagConnection, void (RagConnection::*)()>
     RagConnection::ConnectionRef;
@@ -251,3 +291,5 @@ MethodRef<RagConnection, bool (RagConnection::*)(int packet_len, char* packet)>
     RagConnection::SendPacketRef;
 MethodRef<RagConnection, uint16_t (RagConnection::*)(uint8_t*)>
     RagConnection::PacketBufReaderRef;
+MethodRef<RagConnection, void (RagConnection::*)()>
+    RagConnection::BufferResetRef;
