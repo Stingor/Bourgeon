@@ -15,6 +15,7 @@
 #include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 #include "utils/log_console.h"
 
 #pragma comment(lib, "winmm.lib")  // timeGetTime (matche l'horloge cooldown du jeu)
@@ -997,6 +998,7 @@ void SkillBarTweaks::DrawPanel() {
   if (!ImGui::Begin("Skill Bar###SkillBarPanel", &open, ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::End(); if (!open) panel_visible_ = false; return;
   }
+  bourgeon::CloseWindowOnEscape(open);
   if (!open) panel_visible_ = false;
   DrawSettingsContent();
   ImGui::End();

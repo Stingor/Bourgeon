@@ -12,6 +12,7 @@
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_storage_window_re)
@@ -695,6 +696,7 @@ void StorageTweaks::OnRenderUI() {
   std::snprintf(title, sizeof(title), "%s###bourgeon_storage",
                 storage_name_[0] ? storage_name_ : "Storage");
   const bool begun = ImGui::Begin(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
+  bourgeon::CloseWindowOnEscape(show_panel_);
   // Le X du viewer a été cliqué ce frame (show_panel_ était vrai à l'entrée, cf. le
   // early-return en tête) -> on FERME l'entrepôt côté serveur (CZ_CloseKafra). Le
   // serveur ferme la session -> native + viewer se ferment (open_ passe à false au

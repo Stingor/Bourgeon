@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 
 #include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback
 
@@ -379,6 +380,7 @@ void RojeweledTweaks::OnRenderUI() {
   ImGui::SetNextWindowSize(ImVec2(board + 16.0f, board + 70.0f), ImGuiCond_FirstUseEver);
   if (ImGui::Begin("Rojeweled", &open,
                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    bourgeon::CloseWindowOnEscape(open);
     ImGui::Text("Score : %d", g.score);
     ImGui::SameLine(0, 24);
     if (ImGui::SmallButton("Nouvelle partie")) NewGame();

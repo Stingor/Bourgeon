@@ -9,6 +9,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 #include "utils/log_console.h"
 
 // ── Signature table ───────────────────────────────────────────────────────────
@@ -245,6 +246,7 @@ void CheatDetector::OnRenderUI() {
   ImGui::SetNextWindowSize(ImVec2(460, 180), ImGuiCond_FirstUseEver);
   bool open = true;
   ImGui::Begin("Cheat Detector", &open);
+  bourgeon::CloseWindowOnEscape(open);
   if (!open) { visible_ = false; ImGui::End(); return; }
 
   const DWORD now   = GetTickCount();

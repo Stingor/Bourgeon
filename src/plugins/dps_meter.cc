@@ -8,6 +8,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "utils/log_console.h"
 
@@ -283,6 +284,7 @@ void DpsMeter::OnRenderUI() {
   ImGui::SetNextWindowBgAlpha(bg_alpha_);
   bool open = true;
   ImGui::Begin(title, locked_ ? nullptr : &open, flags);
+  if (!locked_) bourgeon::CloseWindowOnEscape(open);
   if (!open) { visible_ = false; ImGui::End(); ImGui::PopStyleColor(1); ImGui::PopStyleVar(4); return; }
   // Record the title-bar rect for next frame's locked collapse-arrow hit-test.
   if (locked_) {
