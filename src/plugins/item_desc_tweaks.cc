@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "plugins/imgui_escape.h"
 #include "plugins/basic_info.h"    // aperçu équipement (RenderItemPreviewTooltip)
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
@@ -232,7 +233,7 @@ const char* MsvcStr(const uint8_t* base, uint32_t cap) {
 // Résout le .bmp de collection en pixels bruts BGRA (appels natifs, POD only).
 // SEH ne peut pas contenir d'objets C++ (C2712) -> la conversion est faite hors
 // __try par l'appelant.
-struct RawTex { const uint8_t* bgra; int w; int h; };
+struct RawTex { const uint8_t* bgra; int w; int h; void* ctex; };
 bool GetRawTex(const char* path, RawTex* out) {
   __try {
     void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
@@ -246,7 +247,7 @@ bool GetRawTex(const char* path, RawTex* out) {
     const uint8_t* bgra =
         *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h;
+    out->bgra = bgra; out->w = w; out->h = h; out->ctex = t;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -257,10 +258,16 @@ IconTex LoadCollectionIcon(const char* path) {
   if (!GetRawTex(path, &rt)) return {};
   std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
   for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1],
-                  r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // colorkey magenta
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
+    const int b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1],
+              r = rt.bgra[i * 4 + 2];
+    // Colorkey magenta TOLÉRANT : attrape aussi la frange anti-aliasée
+    // (near-magenta) visible dans les angles. Magenta = R et B élevés + proches,
+    // G faible (distingue du rouge/bleu/violet pur).
+    const int drb = (r > b) ? r - b : b - r;
+    const bool ck = (r >= 0xC8 && b >= 0xC8 && g <= 0x38 && drb <= 0x30);
+    argb[i * 4] = static_cast<uint8_t>(b);
+    argb[i * 4 + 1] = static_cast<uint8_t>(g);
+    argb[i * 4 + 2] = static_cast<uint8_t>(r);
     argb[i * 4 + 3] = ck ? 0 : 0xFF;
   }
   return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
@@ -894,12 +901,37 @@ IconTex GetCardIcon(uint32_t id) {
   return t;
 }
 
-// Illustration cardBmp d'une carte (chargée au 1er survol, cache par id).
+// CTexture « Sorry now printing » que TexMgr renvoie pour un cardBmp MANQUANT
+// (même handle pour tous). Résolue 1x via un resname bidon -> sert à distinguer
+// les VRAIES cartes (illustration existante) des items sans (costumes/consos qui
+// reçoivent le placeholder). SEH (fonctions jeu).
+void* PlaceholderCTex() {
+  static void* ph = reinterpret_cast<void*>(1);  // 1 = non résolu
+  if (ph != reinterpret_cast<void*>(1)) return ph;
+  ph = nullptr;
+  __try {
+    char path[300];
+    std::snprintf(path, sizeof(path), "%s__bourgeon_nope__.bmp",
+                  reinterpret_cast<const char*>(kCardBmpPrefix));
+    RawTex rt{};
+    if (GetRawTex(path, &rt)) ph = rt.ctex;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return ph;
+}
+
+// Illustration cardBmp d'une VRAIE carte (chargée au 1er accès, cache par id).
+// Renvoie {} si l'item n'a pas de vraie illustration (TexMgr sert le placeholder).
 IconTex GetCardIllust(uint32_t id) {
   auto it = g_card_illust_cache.find(id);
   if (it != g_card_illust_cache.end()) return it->second;
   const CardDesc* cd = GetCardDesc(id);
-  IconTex t = cd->illust_path[0] ? LoadCollectionIcon(cd->illust_path) : IconTex{};
+  IconTex t{};
+  if (cd->illust_path[0]) {
+    RawTex rt{};
+    void* ph = PlaceholderCTex();
+    if (GetRawTex(cd->illust_path, &rt) && rt.ctex != ph)  // pas le placeholder
+      t = LoadCollectionIcon(cd->illust_path);
+  }
   g_card_illust_cache[id] = t;
   return t;
 }
@@ -1552,13 +1584,31 @@ void ItemDescTweaks::RenderItemWindow() {
                       const ItemExtract& e, const DescWindow& snap,
                       uint8_t* wnd) {
     if (header) { ImGui::TextDisabled("%s", header); ImGui::Separator(); }
-    if (icon.tex && icon.w > 0 && icon.h > 0) {
+    // Pour une CARTE : illustration cardBmp (réduite) + mouseover pleine taille,
+    // au lieu de l'icône collection générique. Sinon icône collection classique.
+    // Une VRAIE carte n'a pas d'emplacement (emplacement==0) ; costumes/équipement
+    // en ont un (Position: ...) et récupèrent un placeholder cardBmp « now
+    // printing » -> on ne montre l'illustration QUE pour les items sans emplacement.
+    IconTex cill = (e.emplacement == 0) ? GetCardIllust(snap.id) : IconTex{};
+    const bool is_card = cill.tex && cill.w > 0 && cill.h > 0;
+    const IconTex& ic = is_card ? cill : icon;
+    if (ic.tex && ic.w > 0 && ic.h > 0) {
       // Taille native, ratio préservé, plafonnée (évite la déformation 48x48).
-      const float kMax = 72.0f;
-      float w = static_cast<float>(icon.w), h = static_cast<float>(icon.h);
+      const float kMax = 120.0f;
+      float w = static_cast<float>(ic.w), h = static_cast<float>(ic.h);
       const float big = (w > h) ? w : h;
       if (big > kMax) { const float s = kMax / big; w *= s; h *= s; }
-      ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(w, h));
+      ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, h));
+      if (is_card && ImGui::IsItemHovered()) {  // mouseover illustration pleine taille
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));  // transparent
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+        ImGui::BeginTooltip();
+        ImGui::Image(reinterpret_cast<ImTextureID>(cill.tex),
+                     ImVec2(static_cast<float>(cill.w),
+                            static_cast<float>(cill.h)));
+        ImGui::EndTooltip();
+        ImGui::PopStyleColor(2);
+      }
       ImGui::SameLine();
     }
     ImGui::BeginGroup();
@@ -1709,6 +1759,10 @@ void ItemDescTweaks::RenderItemWindow() {
     std::snprintf(title, sizeof(title), "%s###itemdesc_item",
                   ie.name[0] ? ie.name : "Description");
 
+  // Coins arrondis (comme moonlight_ui) : fenêtre moins « rude ».
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   bool open = true;
   const bool visible = ImGui::Begin(title, &open, flags);
   // Anti hors-écran : après le placement (curseur/mémoire) et le resize, on
@@ -1725,6 +1779,7 @@ void ItemDescTweaks::RenderItemWindow() {
     if (nx != pos.x || ny != pos.y)
       ImGui::SetWindowPos(ImVec2(nx, ny));
   }
+  bourgeon::CloseWindowOnEscape(open);
   if (visible && ImGui::BeginTabBar("##itemtabs")) {
     if (ImGui::BeginTabItem("Description")) {
       if (has_cmp) {
@@ -1753,6 +1808,7 @@ void ItemDescTweaks::RenderItemWindow() {
   }
   ImGui::End();
   ImGui::PopStyleColor(4);
+  ImGui::PopStyleVar(3);
 
   // X ImGui -> ferme les fenêtres natives (item 0xc + comparaison 0xea).
   if (!open) {
@@ -1801,6 +1857,10 @@ void ItemDescTweaks::RenderSkillWindow() {
   std::snprintf(title, sizeof(title), "%s###itemdesc_skill",
                 s_e.name[0] ? s_e.name : "Skill");
 
+  // Coins arrondis (comme moonlight_ui).
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   bool open = true;
   const bool visible = ImGui::Begin(title, &open, flags);
   {
@@ -1814,6 +1874,7 @@ void ItemDescTweaks::RenderSkillWindow() {
     if (ny < 0.0f) ny = 0.0f;
     if (nx != pos.x || ny != pos.y) ImGui::SetWindowPos(ImVec2(nx, ny));
   }
+  bourgeon::CloseWindowOnEscape(open);
   if (visible && ImGui::BeginTabBar("##skilltabs")) {
     if (ImGui::BeginTabItem("Description")) {
       // Nom+SP déjà dans la barre de titre, ID/Max Level déjà dans la desc
@@ -1827,6 +1888,7 @@ void ItemDescTweaks::RenderSkillWindow() {
   }
   ImGui::End();
   ImGui::PopStyleColor(4);
+  ImGui::PopStyleVar(3);
 
   if (!open) {
     __try {

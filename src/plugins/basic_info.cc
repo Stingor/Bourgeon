@@ -531,30 +531,58 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
   }
   CaptureItemPreviewActor(view_id, slot, s_dir);
   if (g_pv_count <= 0) return;
+  // Régions TÊTE (visage/cheveux/hat, RGBA) et CORPS (palette), + bbox totale
+  // (pour l'échelle). head_region posé par le hook (act_layer[8]!=0).
   float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+  float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;
+  float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
+  bool has_head = false, has_body = false;
   for (int i = 0; i < g_pv_count; ++i) {
     const CapLayer& L = g_pv_caps[i];
     const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
     const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
     if (lx0 < minx) minx = lx0;  if (lx1 > maxx) maxx = lx1;
     if (ly0 < miny) miny = ly0;  if (ly1 > maxy) maxy = ly1;
+    if (L.head_region) {
+      has_head = true;
+      if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
+      if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
+    } else {
+      has_body = true;
+      if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
+      if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
+    }
   }
   const float bw = maxx - minx, bh = maxy - miny;
   if (bw <= 1.0f || bh <= 1.0f) return;
-  // Ajuste pour tenir dans une petite boîte (largeur ET hauteur) : un sprite
-  // haut/décalé (costume transformation) ne doit pas faire un tooltip géant
-  // hors-écran. Ratio préservé.
-  const float kMaxW = 150.0f, kMaxH = 200.0f;
-  float s = kMaxW / bw;
-  if (bh * s > kMaxH) s = kMaxH / bh;
+  // Échelle + ancrage FIGÉS (calculés 1x, gardés) : le focal ne suit PLUS la bbox
+  // par frame (qui saute avec les membres ET les accessoires animés/volants comme
+  // l'oiseau, qui sont dans la « région tête »). Ancrage sur le CORPS seul
+  // (torse/jambes = noyau stable) : x = centre corps, y = pieds près du bas.
+  // -> perso stable, seule l'anim bouge autour.
+  static float s_scale = 0.0f, s_fx = 0.0f, s_feet = 0.0f;
+  if (s_scale <= 0.0f) {
+    // Échelle basée sur la HAUTEUR DU CORPS (pas la bbox totale, qui inclut les
+    // costumes larges comme le cat) -> perso à taille CONSTANTE, jamais rétréci.
+    const float body_h = has_body ? (by1 - by0) : (maxy - miny);
+    s_scale = (body_h > 1.0f) ? (120.0f / body_h) : 1.0f;
+    if (has_body)      { s_fx = (bx0 + bx1) * 0.5f; s_feet = by1; }
+    else if (has_head) { s_fx = (hx0 + hx1) * 0.5f; s_feet = hy1; }
+    else               { s_fx = (minx + maxx) * 0.5f; s_feet = maxy; }
+  }
+  const float s = s_scale;
+  // Boîte large + haute : costumes larges (cat à côté) / hauts (hats) ne sont pas
+  // cropés. Fond transparent -> l'espace vide est invisible.
+  const float box_w = 260.0f, box_h = 240.0f;
   // Fond + bordure transparents : seul le sprite du perso s'affiche (pas de boîte).
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
   ImGui::BeginTooltip();
   const ImVec2 p0 = ImGui::GetCursorScreenPos();
-  ImGui::Dummy(ImVec2(bw * s, bh * s));  // réserve l'espace du tooltip
+  ImGui::Dummy(ImVec2(box_w, box_h));
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const float ox = p0.x - minx * s, oy = p0.y - miny * s;
+  const float ox = p0.x + box_w * 0.5f - s_fx * s;      // corps centré horizontalement
+  const float oy = p0.y + box_h - 14.0f - s_feet * s;   // pieds près du bas (figé)
   for (int i = 0; i < g_pv_count; ++i) {
     const CapLayer& L = g_pv_caps[i];
     const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
