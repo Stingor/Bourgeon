@@ -27,6 +27,7 @@
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/item_desc_tweaks.h"
 #include "plugins/storage_tweaks.h"
+#include "plugins/cashshop_tweaks.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -47,6 +48,7 @@ RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
+CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
 bool Bourgeon::Initialize() {
@@ -199,6 +201,11 @@ void Bourgeon::LoadPlugins() {
     auto storage_tweaks = std::make_unique<StorageTweaks>();
     storage_tweaks_ = storage_tweaks.get();
     plugins_.emplace_back(std::move(storage_tweaks));
+  }
+  {
+    auto cashshop_tweaks = std::make_unique<CashShopTweaks>();
+    cashshop_tweaks_ = cashshop_tweaks.get();
+    plugins_.emplace_back(std::move(cashshop_tweaks));
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());

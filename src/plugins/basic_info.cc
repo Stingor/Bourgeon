@@ -577,6 +577,16 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
   // Fond + bordure transparents : seul le sprite du perso s'affiche (pas de boîte).
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+  // Ancre le preview PRÈS du curseur (sinon l'offset de tooltip par défaut + la
+  // grande boîte l'éloignent). Le sprite est ancré en bas de la boîte (pieds à
+  // top+box_h-14) -> on place la boîte au-dessus du curseur pour que le perso
+  // apparaisse juste à côté. Régler kPreviewDX (horizontal) / kPreviewDY (vertical,
+  // + = plus bas) pour la distance.
+  constexpr float kPreviewDX = -16.0f, kPreviewDY = -10.0f;
+  const ImVec2 mouse = ImGui::GetMousePos();
+  ImGui::SetNextWindowPos(
+      ImVec2(mouse.x + kPreviewDX, mouse.y + kPreviewDY - box_h),
+      ImGuiCond_Always);
   ImGui::BeginTooltip();
   const ImVec2 p0 = ImGui::GetCursorScreenPos();
   ImGui::Dummy(ImVec2(box_w, box_h));

@@ -8,6 +8,7 @@
 #include "bourgeon.h"
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
+#include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -124,6 +125,11 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x21) {
       if (auto* st = Bourgeon::Instance().storage_tweaks())
         st->HideNativeAtCreation(win);
+    }
+    // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
+    if (windowID == 0x13e) {
+      if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
+        cs->HideNativeAtCreation(win);
     }
   }
   return win;

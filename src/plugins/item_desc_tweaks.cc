@@ -1584,30 +1584,22 @@ void ItemDescTweaks::RenderItemWindow() {
                       const ItemExtract& e, const DescWindow& snap,
                       uint8_t* wnd) {
     if (header) { ImGui::TextDisabled("%s", header); ImGui::Separator(); }
-    // Pour une CARTE : illustration cardBmp (réduite) + mouseover pleine taille,
-    // au lieu de l'icône collection générique. Sinon icône collection classique.
-    // Une VRAIE carte n'a pas d'emplacement (emplacement==0) ; costumes/équipement
-    // en ont un (Position: ...) et récupèrent un placeholder cardBmp « now
-    // printing » -> on ne montre l'illustration QUE pour les items sans emplacement.
-    IconTex cill = (e.emplacement == 0) ? GetCardIllust(snap.id) : IconTex{};
-    const bool is_card = cill.tex && cill.w > 0 && cill.h > 0;
-    const IconTex& ic = is_card ? cill : icon;
-    if (ic.tex && ic.w > 0 && ic.h > 0) {
+    // Icône collection de l'item (TOUJOURS — plus de remplacement par le cardBmp
+    // qui masquait la collection des non-cartes). Le survol d'un équipement à
+    // viewID déclenche l'aperçu du perso (comme le survol du « ViewID : N »).
+    if (icon.tex && icon.w > 0 && icon.h > 0) {
       // Taille native, ratio préservé, plafonnée (évite la déformation 48x48).
       const float kMax = 120.0f;
-      float w = static_cast<float>(ic.w), h = static_cast<float>(ic.h);
+      float w = static_cast<float>(icon.w), h = static_cast<float>(icon.h);
       const float big = (w > h) ? w : h;
       if (big > kMax) { const float s = kMax / big; w *= s; h *= s; }
-      ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, h));
-      if (is_card && ImGui::IsItemHovered()) {  // mouseover illustration pleine taille
-        ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));  // transparent
-        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
-        ImGui::BeginTooltip();
-        ImGui::Image(reinterpret_cast<ImTextureID>(cill.tex),
-                     ImVec2(static_cast<float>(cill.w),
-                            static_cast<float>(cill.h)));
-        ImGui::EndTooltip();
-        ImGui::PopStyleColor(2);
+      ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(w, h));
+      if (ImGui::IsItemHovered()) {
+        auto* bi = Bourgeon::Instance().basic_info();
+        if (bi && e.view_id != 0 && bi->CanPreview(e.emplacement)) {
+          ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+          bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+        }
       }
       ImGui::SameLine();
     }

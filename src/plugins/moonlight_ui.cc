@@ -21,6 +21,7 @@
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
+#include "plugins/cashshop_tweaks.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -542,6 +543,8 @@ void MoonlightUi::LoadSettings() {
 
     if (auto* stg = Bourgeon::Instance().storage_tweaks())
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
+    if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
+      cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -877,6 +880,8 @@ void MoonlightUi::SaveSettings() {
   {
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
+    auto* cs = Bourgeon::Instance().cashshop_tweaks();
+    out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
   }
 
   {
@@ -1798,6 +1803,14 @@ void MoonlightUi::OnRenderUI() {
             "ON : storage ImGui moderne (icones, onglets, tri, drag-drop) "
             "et la fenetre native est cachee.\nOFF : storage natif classique, aucun "
             "viewer. Pas de cohabitation.");
+      }
+      // ── Cash shop : redraw ImGui moderne OU fenêtre native ──
+      if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
+        if (ImGui::Checkbox("Cash Shop ImGui", &cs->imgui_enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "ON : cash shop ImGui moderne (icones, categories, panier) et la "
+            "fenetre native est cachee.\nOFF : cash shop natif classique.");
       }
       ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
       if (ImGui::BeginTabBar("InterfaceSettingsTabs", tab_bar_flags))
