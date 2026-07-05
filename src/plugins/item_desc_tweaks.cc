@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "plugins/basic_info.h"    // aperçu équipement (RenderItemPreviewTooltip)
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
 #include "utils/log_console.h"
@@ -58,6 +59,7 @@ constexpr uintptr_t kItemIconCap  = 0x1d8;  // capacité de la std::string chemi
 constexpr uintptr_t kHideNative   = 0x009030c0;  // UIWnd_SetVisible(this,edx,vis) : cache sans détruire
 constexpr uintptr_t kGetDescLines = 0x006a2a70;  // ItemSkillDB_GetDescLines(info) -> &vector<char*>
 constexpr uintptr_t kGetBaseName  = 0x006a2b50;  // ItemSkillInfo_GetBaseName(info,out,&cap,flag)
+constexpr uintptr_t kGetResName   = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> resname C-str (icône)
 constexpr uintptr_t kBuildName    = 0x008a0570;  // ItemSkillInfo_BuildDisplayName (titre COMPLET)
 // DB de description (map id->record). Lookup(id,&db) -> record, ou nil(&kDescDbNil).
 // nom d'item affiché = *(char**)(record+4) (cf. GetBaseName). Sert à résoudre les
@@ -70,6 +72,20 @@ constexpr uintptr_t kDescDbNil    = 0x01255138;  // &DAT_01255138 (sentinelle "a
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
 constexpr uintptr_t kInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall
 constexpr int       kMsgSetItem = 0x18;       // OnMsg "SET ITEM/SKILL" (p3 = ItemSkillInfo*)
+// Chargement paresseux d'une desc par id (RE live 2026-07-05) : dans CE client,
+// TOUTES les descs (item ET skill) vivent dans rec+0x0c, lu par GetDescLines quand
+// info+0x5c==1 (rec+0x20, le champ "item", est toujours vide). EnsureLoaded parse
+// rec+0x0c dans le cache (comme OnMsg 0x18) avant lecture — indispensable pour une
+// carte compound jamais ouverte seule.
+constexpr uintptr_t kEnsureLoaded = 0x006a06b0;  // ItemSkillDescDB_EnsureLoaded(cache,id) __thiscall
+constexpr uintptr_t kEnsureCache  = 0x0125510c;  // *(void**) = cache (this d'EnsureLoaded)
+constexpr uintptr_t kInfoFlag     = 0x5c;        // info+0x5c : 1 => GetDescLines lit rec+0x0c
+// Icône (item\) + illustration (cardBmp\) d'une carte. resname icône = GetResName
+// (rec+0x08 quand +0x5c=1) ; resname illustration = GetCardResName (DB carte
+// 0x01255128, *record). Préfixes CP949 : cardBmp lu du jeu (null-term) ; item
+// hardcodé (l'occurrence mémoire 0x01024250 enchaîne un autre chemin, pas null-term).
+constexpr uintptr_t kGetCardResName = 0x006a2970;  // __cdecl(id) -> record ; *record = resname
+constexpr uintptr_t kCardBmpPrefix  = 0x01036648;  // "유저인터페이스\cardBmp\" (CP949, null-term)
 
 // Offsets DANS l'ItemSkillInfo (base = wnd+kItemStruct), remplis par
 // BuildFromItemRecord : 4 slots cartes/enchants + random options.
@@ -81,6 +97,7 @@ constexpr int       kMaxOpts      = 5;
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vector alloué côté jeu)
 constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
 constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr,edx,id)
+constexpr uintptr_t kMakeWindow   = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,edx,id) -> wnd
 constexpr uintptr_t kUIWindowMgr  = 0x0131f4e8;
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
@@ -93,8 +110,18 @@ constexpr uintptr_t kNaviMgr   = 0x015c3090;  // &DAT_015c3090 (nav manager)
 // Lua : appel d'un global via wrapper varargs. __cdecl(luaStatePtr, std::string
 // funcName BYVAL, const char* fmt "d>s", <args in> , <ptrs out>). Renvoie 1 si OK.
 // (RE 0x00a9a7d0 : fmt 'd'=int in / 's'=char* out ; '>' sépare in/out.)
-constexpr uintptr_t kLuaCall  = 0x00a9a7d0;  // Lua_CallGlobal_va
-constexpr uintptr_t kLuaState = 0x015ffd78;  // &g_UILuaState
+constexpr uintptr_t kLuaCall  = 0x00a9a7d0;  // Lua_CallGlobal_va (varargs, string BYVAL)
+constexpr uintptr_t kLuaState = 0x015ffd78;  // *=M (arg byval wrapper) ; **=vrai lua_State
+// API C Lua BRUTE (Lua 5.1, __cdecl) extraite du wrapper Lua_CallGlobal_va : permet
+// d'appeler un global avec un nom STATIQUE const char* (pas de std::string BYVAL
+// que le wrapper détruit => pas de heap/free/crash d'allocateur). Sert à
+// GetVarOptionName(id) pour les noms de random options (dynamique = suit le lub).
+constexpr uintptr_t kLuaGetField  = 0x00519df0;  // lua_getfield(L,idx,k)
+constexpr uintptr_t kLuaPushNum   = 0x0051a4b0;  // lua_pushnumber(L,double)
+constexpr uintptr_t kLuaPCall     = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int(0=ok)
+constexpr uintptr_t kLuaToLStr    = 0x0051aca0;  // lua_tolstring(L,idx,&len)->const char*
+constexpr uintptr_t kLuaSetTop    = 0x0051aab0;  // lua_settop(L,idx)
+constexpr int       kLuaGlobalsIdx = -10002;     // LUA_GLOBALSINDEX (5.1)
 constexpr uintptr_t kSkillIntStr = 0xec;     // (0x2e) std::string nom + coût SP (SSO/heap)
 // Fenêtre skill (0x2e) : 2 rich-text box enfants portant les lignes de desc.
 // this+0x108 (ptr box "haut" = id/max level) et this+0xb8 (ptr box "corps").
@@ -118,6 +145,10 @@ using GetBaseName_t  = size_t(__thiscall*)(void*, char*, size_t*, char);
 using DescLookup_t   = void* (__cdecl*)(int, void*);  // ItemSkillDescDB_Lookup
 using InfoCtor_t     = void  (__fastcall*)(void*);       // ItemSkillInfo_ctor
 using InfoSetId_t    = void  (__thiscall*)(void*, int);  // ItemSkillInfo_SetId
+using EnsureLoaded_t = char  (__thiscall*)(void*, int);  // ItemSkillDescDB_EnsureLoaded
+using GetResName_t   = char* (__fastcall*)(void*);       // ItemSkillDB_GetResName -> resname C-str
+using CardResName_t  = void* (__cdecl*)(int);            // GetCardResName -> record (*record=resname)
+using MakeWindow_t   = void* (__fastcall*)(void*, void*, void*);  // UIWindowMgr_MakeWindow
 using GameFree_t     = void  (__cdecl*)(void*);
 // std::vector<int> MSVC (begin/last/end) — grossi par l'allocateur du JEU.
 struct GVec { int* first; int* last; int* end; };
@@ -144,6 +175,11 @@ using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
 struct LuaStr { const char* ptr; char pad[12]; uint32_t size; uint32_t cap; };
 static_assert(sizeof(LuaStr) == 0x18, "LuaStr = std::string MSVC (0x18)");
 using LuaCall_t = char(__cdecl*)(void*, LuaStr, const char*, int, char**);
+using LuaGetField_t  = void       (__cdecl*)(void*, int, const char*);
+using LuaPushNum_t   = void       (__cdecl*)(void*, double);
+using LuaPCall_t     = int        (__cdecl*)(void*, int, int, int);
+using LuaToLStr_t    = const char*(__cdecl*)(void*, int, size_t*);
+using LuaSetTop_t    = void       (__cdecl*)(void*, int);
 using GameMalloc_t = void* (__cdecl*)(size_t);
 
 // Repro de la fenêtre SKILL (0x2e) : desc lue des rich-text box natifs (safe,
@@ -253,8 +289,21 @@ struct ItemExtract {
   // Instance : cartes/enchants (4 slots, id + nom résolu) + random options.
   uint32_t cards[kMaxCards] = {0, 0, 0, 0};
   char     card_names[kMaxCards][64] = {};
+  int      card_slots = 0;  // nb d'emplacements de carte de l'item (record+0x30)
+  int      view_id = 0;     // info+0x70 (viewID sprite ; 0 = aucun aperçu)
+  int      emplacement = 0; // info+0x8 (bitmask emplacement, pour le slot d'aperçu)
   int      opt_count = 0;
   RdmOpt   opts[kMaxOpts] = {};
+};
+
+// Desc d'une carte/enchant chargée par id (tooltip au survol). Lignes BRUTES
+// (markup ^RRGGBB/<URL>..). Chargée une fois, mise en cache par id.
+struct CardDesc {
+  char name[64] = {};
+  int  line_count = 0;
+  char lines[kMaxLines][kLineLen] = {};
+  char icon_path[288]   = {};  // 유저인터페이스\item\<resname>.bmp (petite icône liste)
+  char illust_path[288] = {};  // 유저인터페이스\cardBmp\<resname>.bmp (illustration tooltip)
 };
 
 // Remplit ItemExtract depuis la fenêtre item (POD only, SEH-gardé).
@@ -346,6 +395,35 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           }
         }
       }
+    }
+
+    // Nombre d'emplacements de carte de l'item : record+0x30 de la DB desc (le
+    // natif le formate " [%d]" via FUN_006a4c40 ; 0 = non-sloté). Guard 1..4.
+    e->card_slots = 0;
+    {
+      const char* idstr =
+          MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
+      const int item_id = idstr ? atoi(idstr) : 0;
+      if (item_id > 0) {
+        void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
+            item_id, reinterpret_cast<void*>(kDescDb));
+        if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+          const int sc =
+              *reinterpret_cast<int*>(reinterpret_cast<char*>(rec) + 0x30);
+          if (sc > 0 && sc <= kMaxCards) e->card_slots = sc;
+        }
+      }
+    }
+
+    // viewID (info+0x70) + emplacement (info+0x8) : pour l'aperçu 3D au survol.
+    e->view_id     = *reinterpret_cast<int*>(info + 0x70);
+    e->emplacement = *reinterpret_cast<int*>(info + 0x8);
+
+    // Suffixe " [N]" dans le nom (comme le natif FUN_006a4c40), si l'item a des
+    // emplacements. e->name est déjà le nom complet construit par BuildDisplayName.
+    if (e->card_slots > 0) {
+      const size_t nl = strnlen(e->name, sizeof(e->name));
+      std::snprintf(e->name + nl, sizeof(e->name) - nl, " [%d]", e->card_slots);
     }
 
     // Random options : count à info+0x98, entrées 5o à info+0x9c+i*5.
@@ -483,13 +561,15 @@ std::unordered_map<ImGuiID, SelState> g_sel;
 ImGuiID g_active_sel = 0;  // dernier bloc où une sélection a démarré
 
 void SelectableColoredText(const char* id, const char lines[][kLineLen],
-                           int count, ImU32 default_col) {
+                           int count, ImU32 default_col,
+                           float wrap_override = 0.0f) {
   ImDrawList* dl   = ImGui::GetWindowDrawList();
   ImFont*     font = ImGui::GetFont();
   const float fsz    = ImGui::GetFontSize();
   const float lineH  = ImGui::GetTextLineHeightWithSpacing();
   const float spaceW = ImGui::CalcTextSize(" ").x;
-  float wrap = ImGui::GetContentRegionAvail().x;
+  float wrap = wrap_override > 0.0f ? wrap_override
+                                    : ImGui::GetContentRegionAvail().x;
   if (wrap < 1.0f) wrap = 1.0f;
   const ImVec2 p0 = ImGui::GetCursorScreenPos();
 
@@ -730,28 +810,191 @@ void CallDescButton(uint8_t* wnd, int cmd) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Clic DROIT sur une carte : navigue la fenêtre desc 0xc COURANTE vers la carte.
-// Une carte n'a ni sous-cartes ni options -> ctor + SetId(id) + OnMsg 0x18 suffit
-// (OnMsg fait EnsureLoaded + refetch nom/lignes par atoi(+0x2c)). Notre repro
-// ImGui suit via le poll de mgr+0x218. SEH (appels natifs sur info synthétique).
-void NavigateToCardDesc(uint32_t cardId) {
+// Cache des descs de cartes/enchants (clé = id). Chargé une fois via LoadCardDesc.
+std::unordered_map<uint32_t, CardDesc> g_card_desc_cache;
+// Caches texture séparés (clé = id) : petite icône item + illustration cardBmp.
+std::unordered_map<uint32_t, IconTex> g_card_icon_cache;
+std::unordered_map<uint32_t, IconTex> g_card_illust_cache;
+// Préfixe icône item en CP949 (2 littéraux concaténés pour éviter que \xba avale
+// le \ suivant) : "유저인터페이스\item\".
+static const char kItemIconPrefix[] =
+    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\item\\";
+
+// Charge la desc d'une carte/enchant par id. Toutes les descs de ce client vivent
+// dans rec+0x0c (RE 2026-07-05), lues par GetDescLines quand info+0x5c==1. On
+// EnsureLoad d'abord (parse rec+0x0c dans le cache, comme OnMsg 0x18) — sinon une
+// carte compound jamais ouverte seule aurait rec+0x0c vide. SEH (fonctions jeu).
+void LoadCardDesc(uint32_t id, CardDesc* cd) {
   __try {
-    uint8_t* wnd = ReadValidWnd(kItemWndSlot, kItemVTable);
-    if (!wnd) return;
-    uint8_t infobuf[0x100];
-    std::memset(infobuf, 0, sizeof(infobuf));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(infobuf);
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(infobuf, static_cast<int>(cardId));
-    void** vt = *reinterpret_cast<void***>(wnd);
-    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
-    onmsg(wnd, 0, kMsgSetItem, reinterpret_cast<int>(infobuf), 0, 0, 0);
-    // infobuf : std::string SSO (id court) -> pas de heap -> pas de dtor requis.
+    // 1) Parse paresseux -> peuple rec+0x0c.
+    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    if (cache)
+      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
+
+    // 2) Nom affiché = record+4 (comme GetBaseName).
+    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
+        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
+    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
+      if (nm) std::strncpy(cd->name, nm, sizeof(cd->name) - 1);
+    }
+
+    // 3) Lignes de desc : info standalone (+0x5c=1) -> GetDescLines -> rec+0x0c.
+    uint8_t info[0x100];
+    std::memset(info, 0, sizeof(info));
+    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);            // init les std::string
+    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> info+0x2c
+    *(info + kInfoFlag) = 1;                                  // => lit rec+0x0c
+    char*** vec = reinterpret_cast<GetDescLines_t>(kGetDescLines)(info);
+    if (vec) {
+      char** first = vec[0];
+      char** last  = vec[1];
+      const ptrdiff_t n = last - first;
+      if (n > 0 && n < 4096) {
+        for (char** it = first; it < last && cd->line_count < kMaxLines; ++it) {
+          const char* line = *it;
+          std::strncpy(cd->lines[cd->line_count], line ? line : "", kLineLen - 1);
+          ++cd->line_count;
+        }
+      }
+    }
+
+    // 4) Chemins images (mêmes fonctions natives que le jeu) : petite icône item
+    // (GetResName -> rec+0x08 avec +0x5c=1) + illustration cardBmp (GetCardResName).
+    const char* irn = reinterpret_cast<GetResName_t>(kGetResName)(info);
+    if (irn && irn[0])
+      std::snprintf(cd->icon_path, sizeof(cd->icon_path), "%s%s.bmp",
+                    kItemIconPrefix, irn);
+    void* crec = reinterpret_cast<CardResName_t>(kGetCardResName)(static_cast<int>(id));
+    if (crec) {
+      const char* crn = *reinterpret_cast<char**>(crec);
+      if (crn && crn[0])
+        std::snprintf(cd->illust_path, sizeof(cd->illust_path), "%s%s.bmp",
+                      reinterpret_cast<const char*>(kCardBmpPrefix), crn);
+    }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Clic GAUCHE sur une carte : ouvre la base de données de l'item (par id). La
-// desc de la carte étant souvent vide côté client (pas d'itemInfo), on construit
-// l'URL directement depuis l'id (comme le lien bestiaire des mobs).
+// Desc cache d'une carte (charge au 1er survol). Jamais nullptr.
+const CardDesc* GetCardDesc(uint32_t id) {
+  auto it = g_card_desc_cache.find(id);
+  if (it != g_card_desc_cache.end()) return &it->second;
+  CardDesc cd;
+  LoadCardDesc(id, &cd);
+  return &g_card_desc_cache.emplace(id, cd).first->second;
+}
+
+// Petite icône item d'une carte (chargée au 1er accès, cache par id ; tex null OK).
+IconTex GetCardIcon(uint32_t id) {
+  auto it = g_card_icon_cache.find(id);
+  if (it != g_card_icon_cache.end()) return it->second;
+  const CardDesc* cd = GetCardDesc(id);
+  IconTex t = cd->icon_path[0] ? LoadCollectionIcon(cd->icon_path) : IconTex{};
+  g_card_icon_cache[id] = t;
+  return t;
+}
+
+// Illustration cardBmp d'une carte (chargée au 1er survol, cache par id).
+IconTex GetCardIllust(uint32_t id) {
+  auto it = g_card_illust_cache.find(id);
+  if (it != g_card_illust_cache.end()) return it->second;
+  const CardDesc* cd = GetCardDesc(id);
+  IconTex t = cd->illust_path[0] ? LoadCollectionIcon(cd->illust_path) : IconTex{};
+  g_card_illust_cache[id] = t;
+  return t;
+}
+
+// Tooltip au survol d'une carte/enchant : nom + desc (markup coloré). Saute la
+// ligne 0 (lien DB <URL>ItemID..</URL>) = bruit dans un tooltip.
+void RenderCardTooltip(uint32_t id) {
+  const CardDesc* cd = GetCardDesc(id);
+  // Fond crème identique à la fenêtre desc, mais alpha conservé (~240) pour garder
+  // la translucidité d'un tooltip. Texte noir (fond clair) comme la fenêtre.
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::BeginTooltip();
+  const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme "Cartes / Enchants")
+  if (cd->name[0]) ImGui::TextColored(hdr, "%s (#%u)", cd->name, id);
+  else             ImGui::TextColored(hdr, "#%u", id);
+
+  // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit dans un tooltip -> sautée.
+  const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
+                    std::strstr(cd->lines[0], "ItemID")) ? 1 : 0;
+  const bool has_desc = cd->line_count > skip;
+
+  // Illustration cardBmp (gauche) + desc (droite), comme la fenêtre native "view".
+  IconTex illust = GetCardIllust(id);
+  if (illust.tex || has_desc) ImGui::Separator();
+  if (illust.tex && illust.w > 0 && illust.h > 0) {
+    // Taille originale de l'illustration (pas de plafond).
+    ImGui::Image(reinterpret_cast<ImTextureID>(illust.tex),
+                 ImVec2(static_cast<float>(illust.w), static_cast<float>(illust.h)));
+    if (has_desc) ImGui::SameLine(0, 8);
+  }
+  if (has_desc) {
+    ImGui::BeginGroup();
+    SelectableColoredText("##cardtip", cd->lines + skip, cd->line_count - skip,
+                          IM_COL32(0, 0, 0, 255), 340.0f);
+    ImGui::EndGroup();
+  } else if (!illust.tex) {
+    ImGui::TextDisabled("(pas de description)");
+  }
+  ImGui::EndTooltip();
+  ImGui::PopStyleColor(2);
+}
+
+// Résout le nom localisé d'une random option via le getter Lua natif
+// GetVarOptionName(id), appelé par l'API C Lua BRUTE (nom STATIQUE const char* =>
+// pas de std::string BYVAL/heap/free, donc pas le crash d'allocateur du wrapper
+// varargs). 100% DYNAMIQUE : lit la table Lua VIVANTE du client (NameTable_VAR),
+// suit toutes les MàJ. Puis sprintf(valeur). SEH-gardé ; false si le lua_State
+// n'est pas prêt (repli brut « Option #id » côté appelant).
+bool ResolveOptName(int id, int value, char* out, size_t cap) {
+  char lua_fmt[128] = {0};
+  __try {
+    // 0x015ffd78 -> M (ptr passé byval au wrapper) -> *M = vrai lua_State. Le
+    // client fait `push [0x015ffd78]` puis `lua_getfield(*param_1,..)` : DOUBLE
+    // déréférencement (confirmé x32 : *M a tt=8 LUA_TTHREAD).
+    void* M = *reinterpret_cast<void**>(kLuaState);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;    // **(0x015ffd78)
+    if (L) {
+      reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobalsIdx,
+                                                    "GetVarOptionName");
+      reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(id));
+      if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 1, 0) == 0) {
+        const char* s =
+            reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+        if (s && s[0]) std::strncpy(lua_fmt, s, sizeof(lua_fmt) - 1);
+      }
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);       // pop résultat/erreur
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { lua_fmt[0] = '\0'; }
+  if (!lua_fmt[0]) return false;
+#pragma warning(push)
+#pragma warning(disable : 4774)  // format non littéral (chaîne client de confiance %d/%%)
+  std::snprintf(out, cap, lua_fmt, value);
+#pragma warning(pop)
+  return out[0] != '\0';
+}
+
+// Cache des noms d'options résolus (clé = id<<32 | valeur). "" = échec connu.
+std::unordered_map<uint64_t, std::string> g_opt_name_cache;
+const char* GetOptName(int id, int value) {
+  const uint64_t key =
+      (static_cast<uint64_t>(static_cast<uint32_t>(id)) << 32) |
+      static_cast<uint32_t>(value);
+  auto it = g_opt_name_cache.find(key);
+  if (it == g_opt_name_cache.end()) {
+    char buf[128] = {0};
+    const bool ok = ResolveOptName(id, value, buf, sizeof(buf));
+    it = g_opt_name_cache.emplace(key, ok ? buf : "").first;
+  }
+  return it->second.empty() ? nullptr : it->second.c_str();
+}
+
+// Clic GAUCHE sur une carte : ouvre la base de données de l'item (par id). Format
+// confirmé en live : c'est exactement l'URL du lien natif <URL>..<INFO>url</INFO>
+// de la ligne 0 de la desc (page=itemdb&itemid=<id>).
 void OpenCardDbLink(uint32_t cardId) {
   char url[256];
   std::snprintf(url, sizeof(url),
@@ -1340,9 +1583,26 @@ void ItemDescTweaks::RenderItemWindow() {
     const bool has_vid =
         (e.line_count > skip_db && std::strstr(e.lines[skip_db], "ViewID"));
     if (has_vid) {
-      char vid[64];
-      std::snprintf(vid, sizeof(vid), "%s_vid", selId);
-      SelectableColoredText(vid, e.lines + skip_db, 1, black);
+      auto* bi = Bourgeon::Instance().basic_info();
+      const bool previewable =
+          e.view_id != 0 && bi && bi->CanPreview(e.emplacement);
+      if (previewable) {
+        // ViewID en lien bleu (signale l'interaction) + hint molette. Survol ->
+        // aperçu du perso portant l'item (sprites capturés, cf. BasicInfoTweaks).
+        ImGui::TextColored(ImVec4(0.16f, 0.42f, 0.88f, 1.0f), "ViewID : %d",
+                           e.view_id);
+        const bool hov = ImGui::IsItemHovered();
+        ImGui::SameLine(0, 6);
+        ImGui::TextDisabled("(molette : tourner)");
+        if (hov) {
+          ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+          bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+        }
+      } else {
+        char vid[64];
+        std::snprintf(vid, sizeof(vid), "%s_vid", selId);
+        SelectableColoredText(vid, e.lines + skip_db, 1, black);
+      }
     }
     const int skip = skip_db + (has_vid ? 1 : 0);
 
@@ -1374,49 +1634,69 @@ void ItemDescTweaks::RenderItemWindow() {
     ImGui::Separator();
     SelectableColoredText(selId, e.lines + skip, e.line_count - skip, black);
 
-    // ── Instance : cartes/enchants + random options ──────────────────────────
+    // ── Instance : emplacements cartes/enchants + random options ─────────────
     int n_cards = 0;
     for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) ++n_cards;
-    if (n_cards > 0 || e.opt_count > 0) ImGui::Separator();
-    if (n_cards > 0) {
-      ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
-                         "Cartes / Enchants");
-      for (int i = 0; i < kMaxCards; ++i) {
-        if (e.cards[i] == 0) continue;
+    // Rangées = emplacements de l'item (card_slots), au minimum les cartes
+    // remplies détectées (edge case enchant sur item non-sloté).
+    int slot_rows = (e.card_slots > n_cards) ? e.card_slots : n_cards;
+    if (slot_rows > kMaxCards) slot_rows = kMaxCards;
+    if (slot_rows > 0 || e.opt_count > 0) ImGui::Separator();
+    if (slot_rows > 0) {
+      if (e.card_slots > 0)
+        ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
+                           "Cartes / Enchants (%d emplacement%s)",
+                           e.card_slots, e.card_slots > 1 ? "s" : "");
+      else
+        ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
+                           "Cartes / Enchants");
+      for (int i = 0; i < slot_rows; ++i) {
+        if (e.cards[i] == 0) {  // emplacement vide de l'item
+          ImGui::TextDisabled("  [Emplacement vide]");
+          continue;
+        }
         // Selectable = vrai widget interactif (détection de clic G/D fiable).
         // Label "Nom (#id)" + id ImGui unique par colonne (selId) ET par slot :
         // sans selId, les 2 colonnes de comparaison collisionnent (même carte).
         char clbl[160];
         if (e.card_names[i][0])
-          std::snprintf(clbl, sizeof(clbl), "  %s (#%u)##card%d%s",
+          std::snprintf(clbl, sizeof(clbl), "%s (#%u)##card%d%s",
                         e.card_names[i], e.cards[i], i, selId);
         else
-          std::snprintf(clbl, sizeof(clbl), "  #%u##card%d%s", e.cards[i], i,
+          std::snprintf(clbl, sizeof(clbl), "#%u##card%d%s", e.cards[i], i,
                         selId);
+        // Petite icône item de la carte (alignée sur la hauteur de texte).
+        IconTex cicon = GetCardIcon(e.cards[i]);
+        if (cicon.tex && cicon.h > 0) {
+          const float th = ImGui::GetTextLineHeight();
+          ImGui::Image(reinterpret_cast<ImTextureID>(cicon.tex),
+                       ImVec2(th * cicon.w / cicon.h, th));
+          ImGui::SameLine(0, 2);
+        }
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
         ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
           ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-          ImGui::SetTooltip(
-              "Clic gauche : base de donnees\nClic droit : description");
-          ImGui::PopStyleColor();
+          RenderCardTooltip(e.cards[i]);  // desc au survol (clic G = base de donnees)
         }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
           OpenCardDbLink(e.cards[i]);
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-          NavigateToCardDesc(e.cards[i]);
       }
     }
     if (e.opt_count > 0) {
       ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
                          "Options aleatoires");
-      // Nom d'option (Lua GetVarOptionName) a resoudre -> pour l'instant brut.
-      for (int i = 0; i < e.opt_count; ++i)
-        ImGui::BulletText("Option #%d : valeur %d (param %u)",
-                          (int)e.opts[i].index, (int)e.opts[i].value,
-                          (unsigned)e.opts[i].param);
+      // Nom localisé via le getter natif Lua GetVarOptionName ; repli brut.
+      for (int i = 0; i < e.opt_count; ++i) {
+        const char* on = GetOptName(e.opts[i].index, e.opts[i].value);
+        if (on)
+          ImGui::BulletText("%s", on);
+        else
+          ImGui::BulletText("Option #%d : valeur %d (param %u)",
+                            (int)e.opts[i].index, (int)e.opts[i].value,
+                            (unsigned)e.opts[i].param);
+      }
     }
   };
 

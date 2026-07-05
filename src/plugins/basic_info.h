@@ -31,6 +31,13 @@ class BasicInfoTweaks : public Plugin {
   void OnRenderUI() override;
   void OnTick() override;  // enforces the "hide native Basic Info" option
 
+  // Tooltip d'aperçu (perso portant l'item) au survol de « ViewID : N » dans
+  // item_desc_tweaks. Réutilise le moteur de capture sprite du portrait. No-op si
+  // l'item n'est pas un headgear/garment. À appeler entre Begin/End d'une frame UI.
+  void RenderItemPreviewTooltip(int view_id, int emplacement);
+  // true si l'item (par son emplacement) est prévisualisable (headgear/garment).
+  bool CanPreview(int emplacement) const;
+
   // ── Bars (read/written by MoonlightUi) ────────────────────────────────────
   struct Bar {
     bool  show;

@@ -114,6 +114,12 @@ struct CapLayer {
 CapLayer g_caps[48];
 int      g_cap_count   = 0;
 bool     g_cap_active  = false;  // set only during our actor render
+// Buffer SÉPARÉ pour l'aperçu d'équipement (ne doit PAS écraser g_caps du portrait
+// — les 2 rendus cohabitent). Le hook écrit vers la cible active g_cap_buf/g_cap_num.
+CapLayer  g_pv_caps[48];
+int       g_pv_count = 0;
+CapLayer* g_cap_buf = g_caps;
+int*      g_cap_num = &g_cap_count;
 bool     g_portrait_debug = false;  // when set, LogPortraitDiag logs each pass
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
@@ -159,6 +165,8 @@ bool  g_portrait_animate = true;    // cycle the action frames (vs freeze frame 
 bool  g_portrait_garment = false;   // feed the equipped garment/cape (full body)
 void* g_cur_actor = nullptr;        // our actor (read pose @+0x38 in the hook)
 int   g_body_frame_count = 1;       // frames in the chosen action (for wrap)
+int   g_pv_frame_count = 1;         // idem pour l'aperçu (anim marche)
+int*  g_frame_dst = &g_body_frame_count;  // cible du comptage (portrait par défaut)
 bool  g_first_layer = false;        // first layer of a pass = body (capture count)
 
 // Hook on FUN_00a1b7c0: while WE are rendering the portrait actor, capture each
@@ -243,7 +251,7 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
         int* fr = reinterpret_cast<ActFramesFn>(kActFramesFn)(p3, nullptr, pose);
         if (fr) {
           const int n = static_cast<int>((fr[1] - fr[0]) / 0x44);
-          if (n > 0) g_body_frame_count = n;
+          if (n > 0) *g_frame_dst = n;
         }
       }
 
@@ -263,8 +271,8 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
         d.rawy   = static_cast<float>(y);
       }
 
-      if (native && g_cap_count < 48) {
-        CapLayer& L = g_caps[g_cap_count++];
+      if (native && *g_cap_num < 48) {
+        CapLayer& L = g_cap_buf[(*g_cap_num)++];
         L.tex    = native;
         L.uv0    = uv0;
         L.uv1    = uv1;
@@ -417,10 +425,146 @@ void CapturePortraitActor() {
   }
   LogPortraitDiag();  // throttled diagnostics (outside __try — uses fmt/strings)
 }
+
+// ── Aperçu d'équipement (mouseover) ──────────────────────────────────────────
+// Réutilise le moteur de capture ci-dessus, mais en injectant le viewID de l'item
+// prévisualisé dans le bon slot de tête (mapping de UICostumePreviewWnd OnMsg 0x17)
+// au lieu de l'équipement porté. Rend le perso portant SEULEMENT l'item (base +
+// item), comme la fenêtre d'aperçu native. Slot ARME absent d'Actor_Init (le natif
+// non plus ne preview que tête/garment).
+enum PvSlot { PV_NONE, PV_TOP, PV_MID, PV_LOW, PV_GARMENT };
+PvSlot MapEmplacementToSlot(int emp) {
+  switch (emp) {
+    case 0x100: case 0x400: case 0x1400: case 0x300: case 0xc00: return PV_TOP;
+    case 0x200: case 0x800: case 0x201: case 0x1800:            return PV_MID;
+    case 0x1:   case 0x1000: case 0x301: case 0x1c00:           return PV_LOW;
+    case 0x4:   case 0x2000:                                    return PV_GARMENT;
+    default:                                                    return PV_NONE;
+  }
+}
+
+// Capture le perso (apparence live) portant l'item (viewID dans le slot), pose de
+// face statique, dans g_caps[]. SEH-gardé (g_cap_count=0 si échec).
+void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
+  InstallActorCapture();
+  if (!g_orig_actor_quad) return;
+  void* render_ctx = *reinterpret_cast<void**>(kRenderCtxPtr);
+  if (!render_ctx) return;
+  g_pv_count = 0;
+  g_cap_buf = g_pv_caps;   // rediriger le hook vers le buffer aperçu (pas g_caps)
+  g_cap_num = &g_pv_count;
+  g_frame_dst = &g_pv_frame_count;  // comptage de frames -> buffer aperçu
+  g_diag_count = 0;
+  g_first_layer = true;   // capturer le nb de frames de l'anim marche
+  __try {
+    using GetSexFn = int(__fastcall*)(void*, void*);
+    using GetJobFn = int(__fastcall*)(void*, void*);
+    const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
+        reinterpret_cast<void*>(kSession), nullptr);
+    const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+        reinterpret_cast<void*>(kSession), nullptr);
+    const int hair = *reinterpret_cast<int*>(kHair);
+    const int clo  = *reinterpret_cast<int*>(kClothesCol);
+    const int hc   = *reinterpret_cast<int*>(kHairCol);
+    const int hg_top  = (slot == PV_TOP) ? view_id : 0;
+    const int hg_mid  = (slot == PV_MID) ? view_id : 0;
+    const int hg_low  = (slot == PV_LOW) ? view_id : 0;
+    const int garment = (slot == PV_GARMENT) ? view_id : 0;
+    using CtorFn = void*(__fastcall*)(void* self, void* edx, void* render_ctx,
+        int x, int y, int sex, int job_short, int job_full, int job_body, int hair,
+        int hg_top, int hg_mid, int hg_low, int garment, int p13, int p14,
+        int clothes_col, int hair_col, int pose, int frame, int p19);
+    using DrawFn = void(__fastcall*)(void* self, void* edx, char param);
+    using DtorFn = void(__fastcall*)(void* self, void* edx);
+    alignas(8) unsigned char actor[0x200];
+    std::memset(actor, 0, sizeof(actor));
+    // Carrousel d'animations (~2.5s chacune) : marche -> idle -> assis. dir via
+    // molette. (anim : 0=idle, 1=marche, 2=assis — ajustable si l'index diffère.)
+    static const int kAnims[3] = {1, 0, 2};
+    const int anim = kAnims[(GetTickCount() / 2500u) % 3u];
+    const int pose = anim * 8 + (dir & 7);
+    // Cyclage des frames de l'anim courante (~600ms/cycle). g_pv_frame_count est
+    // capturé par le hook au 1er passage (0 au tout premier -> frame 0, 1 fr lag).
+    const int nf = g_pv_frame_count > 0 ? g_pv_frame_count : 1;
+    const int frame = static_cast<int>(
+        static_cast<unsigned long long>(GetTickCount() % 600u) *
+        static_cast<unsigned>(nf) / 600u);
+    reinterpret_cast<CtorFn>(kActorCtor)(
+        actor, nullptr, render_ctx, 0, 0, sex, job & 0xffff, job,
+        job & 0xffff, hair, hg_top, hg_mid, hg_low, garment, 0, 0, clo, hc,
+        pose, frame, 0);
+    g_cur_actor = actor;
+    g_cap_active = true;
+    reinterpret_cast<DrawFn>(kActorDraw)(actor, nullptr, 1);
+    g_cap_active = false;
+    g_cur_actor = nullptr;
+    reinterpret_cast<DtorFn>(kActorDtor)(actor, nullptr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { g_cap_active = false; }
+  g_cap_buf = g_caps;      // restaurer la cible portrait (toujours)
+  g_cap_num = &g_cap_count;
+  g_frame_dst = &g_body_frame_count;
+}
 }  // namespace
 
 void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
+}
+
+// Tooltip d'aperçu d'un équipement porté par le perso (appelé par item_desc au
+// survol de « ViewID : N »). Capture le perso + l'item (viewID dans le slot) via
+// le moteur du portrait, puis composite les sprites dans un tooltip ImGui. Ne
+// fait rien si l'item n'est pas un headgear/garment (slot PV_NONE).
+bool BasicInfoTweaks::CanPreview(int emplacement) const {
+  return MapEmplacementToSlot(emplacement) != PV_NONE;
+}
+
+void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
+  if (view_id == 0) return;
+  const PvSlot slot = MapEmplacementToSlot(emplacement);
+  if (slot == PV_NONE) return;
+  // Molette (pendant le survol) = rotation du perso (dir 0..7).
+  static int s_dir = 0;
+  const float wheel = ImGui::GetIO().MouseWheel;
+  if (wheel != 0.0f) {
+    s_dir = (s_dir + (wheel > 0.0f ? 1 : 7)) & 7;  // +1 / -1 avec wrap
+    ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenêtre
+  }
+  CaptureItemPreviewActor(view_id, slot, s_dir);
+  if (g_pv_count <= 0) return;
+  float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+  for (int i = 0; i < g_pv_count; ++i) {
+    const CapLayer& L = g_pv_caps[i];
+    const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
+    const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
+    if (lx0 < minx) minx = lx0;  if (lx1 > maxx) maxx = lx1;
+    if (ly0 < miny) miny = ly0;  if (ly1 > maxy) maxy = ly1;
+  }
+  const float bw = maxx - minx, bh = maxy - miny;
+  if (bw <= 1.0f || bh <= 1.0f) return;
+  // Ajuste pour tenir dans une petite boîte (largeur ET hauteur) : un sprite
+  // haut/décalé (costume transformation) ne doit pas faire un tooltip géant
+  // hors-écran. Ratio préservé.
+  const float kMaxW = 150.0f, kMaxH = 200.0f;
+  float s = kMaxW / bw;
+  if (bh * s > kMaxH) s = kMaxH / bh;
+  // Fond + bordure transparents : seul le sprite du perso s'affiche (pas de boîte).
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+  ImGui::BeginTooltip();
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  ImGui::Dummy(ImVec2(bw * s, bh * s));  // réserve l'espace du tooltip
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const float ox = p0.x - minx * s, oy = p0.y - miny * s;
+  for (int i = 0; i < g_pv_count; ++i) {
+    const CapLayer& L = g_pv_caps[i];
+    const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
+    const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
+    const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
+    const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
+    dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+  }
+  ImGui::EndTooltip();
+  ImGui::PopStyleColor(2);
 }
 
 float BasicInfoTweaks::SnapValue(float v, float ext, int self_id,
