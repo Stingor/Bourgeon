@@ -59,6 +59,25 @@ constexpr uintptr_t kHideNative   = 0x009030c0;  // UIWnd_SetVisible(this,edx,vi
 constexpr uintptr_t kGetDescLines = 0x006a2a70;  // ItemSkillDB_GetDescLines(info) -> &vector<char*>
 constexpr uintptr_t kGetBaseName  = 0x006a2b50;  // ItemSkillInfo_GetBaseName(info,out,&cap,flag)
 constexpr uintptr_t kBuildName    = 0x008a0570;  // ItemSkillInfo_BuildDisplayName (titre COMPLET)
+// DB de description (map id->record). Lookup(id,&db) -> record, ou nil(&kDescDbNil).
+// nom d'item affiché = *(char**)(record+4) (cf. GetBaseName). Sert à résoudre les
+// noms de cartes/enchants par id.
+constexpr uintptr_t kDescDbLookup = 0x006a0d40;  // ItemSkillDescDB_Lookup(id,&db)
+constexpr uintptr_t kDescDb       = 0x01255130;  // &DAT_01255130 (la map)
+constexpr uintptr_t kDescDbNil    = 0x01255138;  // &DAT_01255138 (sentinelle "absent")
+// Construction standalone d'une ItemSkillInfo (pour ouvrir/lire la desc d'une
+// carte par id) : ctor puis SetId. La fenêtre 0xc courante reçoit OnMsg 0x18.
+constexpr uintptr_t kInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
+constexpr uintptr_t kInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall
+constexpr int       kMsgSetItem = 0x18;       // OnMsg "SET ITEM/SKILL" (p3 = ItemSkillInfo*)
+
+// Offsets DANS l'ItemSkillInfo (base = wnd+kItemStruct), remplis par
+// BuildFromItemRecord : 4 slots cartes/enchants + random options.
+constexpr uintptr_t kInfoCards    = 0x1c;   // card[0..3] : 4 x uint32 id (0 = vide)
+constexpr uintptr_t kInfoOptCount = 0x98;   // int : nombre de random options
+constexpr uintptr_t kInfoOpts     = 0x9c;   // entrées 5o : [index:2][value:2][param:1]
+constexpr int       kMaxCards     = 4;
+constexpr int       kMaxOpts      = 5;
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vector alloué côté jeu)
 constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
 constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr,edx,id)
@@ -96,6 +115,9 @@ constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 using HideNative_t   = void  (__fastcall*)(void*, void*, int);
 using GetDescLines_t = char*** (__fastcall*)(void*);            // -> &vector : [0]=begin,[1]=end
 using GetBaseName_t  = size_t(__thiscall*)(void*, char*, size_t*, char);
+using DescLookup_t   = void* (__cdecl*)(int, void*);  // ItemSkillDescDB_Lookup
+using InfoCtor_t     = void  (__fastcall*)(void*);       // ItemSkillInfo_ctor
+using InfoSetId_t    = void  (__thiscall*)(void*, int);  // ItemSkillInfo_SetId
 using GameFree_t     = void  (__cdecl*)(void*);
 // std::vector<int> MSVC (begin/last/end) — grossi par l'allocateur du JEU.
 struct GVec { int* first; int* last; int* end; };
@@ -211,6 +233,13 @@ IconTex LoadCollectionIcon(const char* path) {
 // Données d'un item extraites sous SEH (POD only) pour sortir avant tout ImGui.
 constexpr int kMaxLines = 64;
 constexpr int kLineLen  = 192;
+// Une random option d'instance : type + valeur + param (offsets +0x9c du struct).
+struct RdmOpt {
+  int16_t index = 0;
+  int16_t value = 0;
+  uint8_t param = 0;
+};
+
 struct ItemExtract {
   char name[128];
   char iconpath[300];
@@ -221,6 +250,11 @@ struct ItemExtract {
   int      hl_start = -1;
   int      hl_end = -1;
   uint32_t hl_col = 0;  // ImU32 (0 = aucun)
+  // Instance : cartes/enchants (4 slots, id + nom résolu) + random options.
+  uint32_t cards[kMaxCards] = {0, 0, 0, 0};
+  char     card_names[kMaxCards][64] = {};
+  int      opt_count = 0;
+  RdmOpt   opts[kMaxOpts] = {};
 };
 
 // Remplit ItemExtract depuis la fenêtre item (POD only, SEH-gardé).
@@ -290,6 +324,40 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           ++e->line_count;
         }
       }
+    }
+
+    // Instance : cartes/enchants (4 slots) — id à info+0x1c+i*4, nom résolu via
+    // la DB desc (Lookup(id) -> rec+4). id 0 = slot vide.
+    uint8_t* info = wnd + kItemStruct;
+    for (int i = 0; i < kMaxCards; ++i) {
+      const uint32_t cid =
+          *reinterpret_cast<uint32_t*>(info + kInfoCards + i * 4);
+      e->cards[i] = cid;
+      e->card_names[i][0] = '\0';
+      if (cid != 0) {
+        void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
+            static_cast<int>(cid), reinterpret_cast<void*>(kDescDb));
+        if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+          const char* nm = *reinterpret_cast<char**>(
+              reinterpret_cast<char*>(rec) + 4);
+          if (nm) {
+            std::strncpy(e->card_names[i], nm, sizeof(e->card_names[i]) - 1);
+            e->card_names[i][sizeof(e->card_names[i]) - 1] = '\0';
+          }
+        }
+      }
+    }
+
+    // Random options : count à info+0x98, entrées 5o à info+0x9c+i*5.
+    int oc = *reinterpret_cast<int*>(info + kInfoOptCount);
+    if (oc < 0) oc = 0;
+    if (oc > kMaxOpts) oc = kMaxOpts;
+    e->opt_count = oc;
+    for (int i = 0; i < oc; ++i) {
+      uint8_t* ob = info + kInfoOpts + i * 5;
+      e->opts[i].index = *reinterpret_cast<int16_t*>(ob + 0);
+      e->opts[i].value = *reinterpret_cast<int16_t*>(ob + 2);
+      e->opts[i].param = *(ob + 4);
     }
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -660,6 +728,36 @@ void CallDescButton(uint8_t* wnd, int cmd) {
     auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
     onmsg(wnd, 0, kMsgButton, cmd, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Clic DROIT sur une carte : navigue la fenêtre desc 0xc COURANTE vers la carte.
+// Une carte n'a ni sous-cartes ni options -> ctor + SetId(id) + OnMsg 0x18 suffit
+// (OnMsg fait EnsureLoaded + refetch nom/lignes par atoi(+0x2c)). Notre repro
+// ImGui suit via le poll de mgr+0x218. SEH (appels natifs sur info synthétique).
+void NavigateToCardDesc(uint32_t cardId) {
+  __try {
+    uint8_t* wnd = ReadValidWnd(kItemWndSlot, kItemVTable);
+    if (!wnd) return;
+    uint8_t infobuf[0x100];
+    std::memset(infobuf, 0, sizeof(infobuf));
+    reinterpret_cast<InfoCtor_t>(kInfoCtor)(infobuf);
+    reinterpret_cast<InfoSetId_t>(kInfoSetId)(infobuf, static_cast<int>(cardId));
+    void** vt = *reinterpret_cast<void***>(wnd);
+    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+    onmsg(wnd, 0, kMsgSetItem, reinterpret_cast<int>(infobuf), 0, 0, 0);
+    // infobuf : std::string SSO (id court) -> pas de heap -> pas de dtor requis.
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Clic GAUCHE sur une carte : ouvre la base de données de l'item (par id). La
+// desc de la carte étant souvent vide côté client (pas d'itemInfo), on construit
+// l'URL directement depuis l'id (comme le lien bestiaire des mobs).
+void OpenCardDbLink(uint32_t cardId) {
+  char url[256];
+  std::snprintf(url, sizeof(url),
+                "https://moonlight-destiny.fr/index.php?page=itemdb&itemid=%u",
+                cardId);
+  ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 // Résout (cache + chargement) l'icône de collection d'un item extrait.
@@ -1196,6 +1294,7 @@ void ItemDescTweaks::RenderItemWindow() {
         ImVec2(static_cast<float>(item_spawn_x_),
                static_cast<float>(item_spawn_y_)),
         ImGuiCond_Always);
+    ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     item_need_pos_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
@@ -1274,6 +1373,51 @@ void ItemDescTweaks::RenderItemWindow() {
 
     ImGui::Separator();
     SelectableColoredText(selId, e.lines + skip, e.line_count - skip, black);
+
+    // ── Instance : cartes/enchants + random options ──────────────────────────
+    int n_cards = 0;
+    for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) ++n_cards;
+    if (n_cards > 0 || e.opt_count > 0) ImGui::Separator();
+    if (n_cards > 0) {
+      ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
+                         "Cartes / Enchants");
+      for (int i = 0; i < kMaxCards; ++i) {
+        if (e.cards[i] == 0) continue;
+        // Selectable = vrai widget interactif (détection de clic G/D fiable).
+        // Label "Nom (#id)" + id ImGui unique par colonne (selId) ET par slot :
+        // sans selId, les 2 colonnes de comparaison collisionnent (même carte).
+        char clbl[160];
+        if (e.card_names[i][0])
+          std::snprintf(clbl, sizeof(clbl), "  %s (#%u)##card%d%s",
+                        e.card_names[i], e.cards[i], i, selId);
+        else
+          std::snprintf(clbl, sizeof(clbl), "  #%u##card%d%s", e.cards[i], i,
+                        selId);
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
+        ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+          ImGui::SetTooltip(
+              "Clic gauche : base de donnees\nClic droit : description");
+          ImGui::PopStyleColor();
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+          OpenCardDbLink(e.cards[i]);
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+          NavigateToCardDesc(e.cards[i]);
+      }
+    }
+    if (e.opt_count > 0) {
+      ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
+                         "Options aleatoires");
+      // Nom d'option (Lua GetVarOptionName) a resoudre -> pour l'instant brut.
+      for (int i = 0; i < e.opt_count; ++i)
+        ImGui::BulletText("Option #%d : valeur %d (param %u)",
+                          (int)e.opts[i].index, (int)e.opts[i].value,
+                          (unsigned)e.opts[i].param);
+    }
   };
 
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
@@ -1362,6 +1506,7 @@ void ItemDescTweaks::RenderSkillWindow() {
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(skill_spawn_x_),
                                    static_cast<float>(skill_spawn_y_)),
                             ImGuiCond_Always);
+    ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     skill_need_pos_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
