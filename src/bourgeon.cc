@@ -28,6 +28,8 @@
 #include "plugins/item_desc_tweaks.h"
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
+#include "plugins/shop_tweaks.h"
+#include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
 Bourgeon::Bourgeon()
@@ -49,7 +51,99 @@ MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
+ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
+
+namespace {
+// Silence le message chat "Successfully purchased emotion." (EMSG_EMOTION_
+// EXPANTION_BUY_SUCCESS) affiché à CHAQUE ACK d'octroi d'emote (ZC 0x0BED). Le
+// serveur octroie tous les packs au login -> spam d'une ligne par pack. La string
+// (@0x01091ae8) est référencée par DEUX émetteurs identiques :
+//   - 0x00cb13c6 : dans NET_CashEmotion_RecvBuySuccess (0x00cb13a0), PAS le chemin
+//     du grant login ;
+//   - 0x00ca0c5d : dans le dispatcher cash-emotion inliné (le VRAI handler 0x0BED
+//     au login, juste après CALL MarkPackPurchased @0x00ca0c58).
+// Les deux ont le même bloc "message" de 38o : MOV ECX,[strMgr] + 4 push + CALL
+// lookup EMSG (FUN_00771110) + push EAX/1 + MOV ECX,imm + CALL ajout chat
+// (FUN_00a4ad20), les 2 CALL étant __thiscall (nettoient leur pile -> pas de
+// déséquilibre). On NOP les 2 blocs, en conservant MarkPackPurchased (ownership)
+// avant et le refresh UI après. Sanity-check (0x8B au début, 0xE8 à +0x21) pour ne
+// rien patcher si le binaire diffère.
+void PatchSilenceEmotePurchaseMsg() {
+  constexpr uintptr_t kBlocks[] = {0x00cb13c6, 0x00ca0c5d};
+  constexpr size_t    kLen = 0x26;  // 38o (jusqu'au MOV ECX,reg suivant)
+  for (uintptr_t addr : kBlocks) {
+    auto* p = reinterpret_cast<uint8_t*>(addr);
+    __try {
+      if (p[0] != 0x8B || p[0x21] != 0xE8) {
+        LogError("[emote-msg] 0x{:08x} motif inattendu (0x{:02x}/0x{:02x}) — ignoré",
+                 addr, p[0], p[0x21]);
+        continue;
+      }
+      DWORD old;
+      if (VirtualProtect(p, kLen, PAGE_EXECUTE_READWRITE, &old)) {
+        memset(p, 0x90, kLen);  // NOP le bloc message
+        VirtualProtect(p, kLen, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p, kLen);
+        LogInfo("[emote-msg] 0x{:08x} silencie", addr);
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+      LogError("[emote-msg] 0x{:08x} exception pendant le patch", addr);
+    }
+  }
+}
+
+// ── Filtre de messages système du chat ──────────────────────────────────────
+// FUN_00a4ad20 (__thiscall this=chatMgr, param_1=case, param_2=texte, ...) ajoute
+// une ligne au chat quand param_1 == 1 ou 0x13. Son switch(param_1) tombe dans un
+// DEFAULT no-op pour toute valeur non gérée. On détourne l'entrée : si le texte
+// matche la blocklist, on réécrit param_1 sur la pile en 0x7fffffff -> la fonction
+// s'exécute mais n'ajoute RIEN (et fait son propre épilogue/RET N -> zéro risque
+// ABI). Réutilisable : ajouter une sous-chaîne à kBlockedMsgs pour masquer un
+// autre message système (match par sous-chaîne, insensible aux codes couleur ^).
+constexpr uintptr_t kChatAddFn = 0x00a4ad20;
+void* g_tramp_chat = nullptr;
+const char* const kBlockedMsgs[] = {
+    "Command List: /h | /help",
+    "error when loading the data account settings",
+    "current shop display function is in",
+};
+int __fastcall ChatShouldBlock(int param_1, const char* text) {
+  if ((param_1 != 1 && param_1 != 0x13) || text == nullptr) return 0;
+  __try {
+    for (const char* pat : kBlockedMsgs)
+      if (std::strstr(text, pat) != nullptr) return 1;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+  return 0;
+}
+// Naked : sauve eax/ecx/edx, teste (param_1, texte) via ChatShouldBlock (__fastcall),
+// et si bloqué neutralise param_1 sur la pile, puis continue dans l'original.
+__declspec(naked) void ChatAddStub() {
+  __asm {
+    push eax
+    push ecx
+    push edx
+    mov  ecx, [esp+0x10]   // param_1  ([esp]=edx,+4=ecx,+8=eax,+0xc=ret,+0x10=p1)
+    mov  edx, [esp+0x14]   // param_2 (texte)
+    call ChatShouldBlock   // __fastcall(ecx=p1, edx=texte) -> eax
+    test eax, eax
+    jz   chat_pass
+    mov  dword ptr [esp+0x10], 0x7fffffff  // -> switch default (aucune ligne)
+  chat_pass:
+    pop  edx
+    pop  ecx
+    pop  eax
+    jmp  [g_tramp_chat]
+  }
+}
+void InstallChatMessageFilter() {
+  g_tramp_chat = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatAddFn),
+      reinterpret_cast<uint8_t*>(&ChatAddStub));
+  LogInfo("[chat-filter] hook {}", g_tramp_chat != nullptr ? "OK" : "FAIL");
+}
+}  // namespace
 
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
@@ -58,6 +152,9 @@ bool Bourgeon::Initialize() {
     LogError("Bourgeon failed to initialize");
     return false;
   }
+
+  PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
+  InstallChatMessageFilter();      // masque quelques messages systeme au login
 
   LogInfo("Bourgeon initialized successfully!");
   LoadPlugins();
@@ -206,6 +303,11 @@ void Bourgeon::LoadPlugins() {
     auto cashshop_tweaks = std::make_unique<CashShopTweaks>();
     cashshop_tweaks_ = cashshop_tweaks.get();
     plugins_.emplace_back(std::move(cashshop_tweaks));
+  }
+  {
+    auto shop_tweaks = std::make_unique<ShopTweaks>();
+    shop_tweaks_ = shop_tweaks.get();
+    plugins_.emplace_back(std::move(shop_tweaks));
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());

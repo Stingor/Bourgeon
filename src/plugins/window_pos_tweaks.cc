@@ -9,6 +9,7 @@
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
+#include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -131,6 +132,17 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
         cs->HideNativeAtCreation(win);
     }
+    // Shop NPC (achat 0x16, vente 0x17, chooser 0x19) : ShopTweaks les cache dès
+    // la création -> l'utilisateur atterrit direct sur la fenêtre ImGui unifiée.
+    if (windowID == 0x16 || windowID == 0x17 || windowID == 0x18 ||
+        windowID == 0x19) {
+      if (auto* sh = Bourgeon::Instance().shop_tweaks())
+        sh->HideNativeAtCreation(win);
+    }
+    // Comparateur ATK/DEF (UIItemParamChangeDisplayWnd) : id variable, créé par le
+    // handler d'achat natif -> détecté par vtable (no-op hors session shop).
+    if (auto* sh = Bourgeon::Instance().shop_tweaks())
+      sh->HideDetailWindow(win);
   }
   return win;
 }

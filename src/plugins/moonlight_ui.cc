@@ -218,18 +218,6 @@ void MoonlightUi::LoadItemNames() {
   }
   LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
 }
-  // Style helpers for the Bourgeon window.  Compact spacing and smaller font.
-      // PushStyleCompact();
-      // ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
-      // if (ImGui::BeginTabBar("Tabs", tab_bar_flags))
-      // {
-      //   if (ImGui::BeginTabItem("tab"))
-      //   {
-      //     ImGui::EndTabItem();
-      //   }
-      // }
-      // ImGui::EndTabBar();
-      // PopStyleCompact();
 
 MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
