@@ -286,7 +286,15 @@ void DrawRoScrollbar(ImGuiWindow* w) {
 
   const ImRect bb = ImGui::GetWindowScrollbarRect(w, ImGuiAxis_Y);
   const float x0 = bb.Min.x, x1 = bb.Max.x;
-  const float y0 = bb.Min.y, y1 = bb.Max.y;
+  const float y0 = bb.Min.y;
+  float y1 = bb.Max.y;
+  // Fenêtre principale redimensionnable : on raccourcit la scrollbar en bas pour
+  // laisser la place au grip de resize (sinon il est mangé par la scrollbar). Les
+  // child/table windows n'ont pas de grip → pas de raccourci.
+  const bool has_grip = !(w->Flags & ImGuiWindowFlags_ChildWindow) &&
+                        !(w->Flags & ImGuiWindowFlags_NoResize) &&
+                        !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize);
+  if (has_grip) y1 -= (float)skin::kBtnResize.h;
   const float arrow = (float)skin::kScroll0Up.h;  // 13
   const float track_top = y0 + arrow, track_bot = y1 - arrow;
   const float track_h = track_bot - track_top;

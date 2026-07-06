@@ -1477,7 +1477,8 @@ void MoonlightUi::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
-  ImGui::Begin("Moonlight-Destiny");
+  // Skin RO (toggleable : BeginRoWindow retombe sur ImGui::Begin si skin off).
+  ro::BeginRoWindow("Moonlight-Destiny");
 
   const bool is_collapsed = ImGui::IsWindowCollapsed();
   if (is_collapsed != ui_collapsed_) {
@@ -2769,7 +2770,7 @@ void MoonlightUi::OnRenderUI() {
       PopStyleCompact();
     }
   }
-  ImGui::End();
+  ro::EndRoWindow();
   ImGui::PopStyleVar(4);
 
   // ── Alootid floating overlay ───────────────────────────────────────────────
