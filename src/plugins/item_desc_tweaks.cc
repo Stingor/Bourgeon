@@ -1554,14 +1554,17 @@ void ItemDescTweaks::RenderItemWindow() {
   ItemExtract ie{}; ExtractItem(iwnd, &ie);
   IconTex iicon = ResolveIcon(item_.id, ie);
 
-  const bool has_cmp = (cwnd != nullptr && compare_.open);
+  const bool has_cmp_data = (cwnd != nullptr && compare_.open);
+  const bool has_cmp = has_cmp_data && cmp_show_equipped_;  // toggle par-vue
   ItemExtract ce{}; IconTex cicon;
   if (has_cmp) { ExtractItem(cwnd, &ce); cicon = ResolveIcon(compare_.id, ce); }
 
   // ── Rendu ImGui (fond clair : le texte RO est conçu pour un fond pâle) ─────
-  // Redimensionnable entre (500,300) et (1800,900) ; taille par défaut au 1er
-  // affichage, puis ImGui mémorise la taille choisie par l'utilisateur.
-  ImGui::SetNextWindowSizeConstraints(ImVec2(500.0f, 300.0f),
+  // Largeur mini DYNAMIQUE : large (500) seulement quand la comparaison 2 colonnes
+  // est affichée ; en vue simple, 320 -> la fenêtre peut être étroite (avant, le
+  // 500 bloquait même un item seul). Redimensionnable, ImGui mémorise la taille.
+  const float min_w = has_cmp ? 500.0f : 320.0f;
+  ImGui::SetNextWindowSizeConstraints(ImVec2(min_w, 300.0f),
                                       ImVec2(1800.0f, 900.0f));
   ImGui::SetNextWindowSize(ImVec2(560.0f, 420.0f), ImGuiCond_FirstUseEver);
   if (item_need_pos_) {
@@ -1774,6 +1777,16 @@ void ItemDescTweaks::RenderItemWindow() {
   bourgeon::CloseWindowOnEscape(open);
   if (visible && ImGui::BeginTabBar("##itemtabs")) {
     if (ImGui::BeginTabItem("Description")) {
+      // Toggle comparaison : replie/déplie la colonne « Équipé » (visible seulement
+      // quand la donnée de comparaison native existe).
+      if (has_cmp_data) {
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, (float)(int)(style.FramePadding.y * 0.60f)));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, (float)(int)(style.ItemSpacing.y * 0.60f)));
+        ImGui::Checkbox("Comparer", &cmp_show_equipped_);
+        ImGui::PopStyleVar(2);
+        ImGui::Separator();
+      }
       if (has_cmp) {
         // Deux colonnes redimensionnables qui se partagent la largeur (le texte
         // se wrap). Ordre NATIF : ÉQUIPÉ à gauche, sélection à droite.

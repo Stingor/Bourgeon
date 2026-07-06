@@ -149,6 +149,7 @@ class ItemDescTweaks : public Plugin {
 
   bool       show_item_panel_  = true;  // panneau technique pour les items
   bool       show_skill_panel_ = true;  // panneau technique pour les skills
+  bool       cmp_show_equipped_ = true; // toggle : afficher la colonne « Équipé »
   DescWindow item_;             // fenêtre item candidate (classe 0xc)
   DescWindow compare_;          // fenêtre équipé/comparaison (classe 0xea)
   // Placement de la fenêtre item reproduite : au 1er frame d'ouverture on la
