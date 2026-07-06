@@ -1,0 +1,780 @@
+#include "ui/ro_imgui.h"
+
+#include <Windows.h>
+
+#include <cfloat>
+#include <cstdio>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "imgui.h"
+#include "imgui_internal.h"  // ImGui::GetActiveID, GetCurrentWindow, TitleBarRect
+
+#include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
+#include "ui/ro_skin_blobs.hpp"  // pièces de skin embarquées (titlebar_*, sys_*)
+
+namespace ro {
+namespace {
+
+constexpr UINT kCp949 = 949;  // Unified Hangul Code (client wire/text encoding)
+
+// Malgun Gothic ships with every Windows 10/11 SKU regardless of system locale,
+// so a French Windows running a Korean client still has it. Covers latin + full
+// modern hangul, so a single font handles both the UI and server strings.
+constexpr char kKoreanFontPath[] = "C:\\Windows\\Fonts\\malgun.ttf";
+
+// Rotating thread-local scratch so several converted strings can coexist within
+// one frame (e.g. two TextCp949 calls in a row) without clobbering each other.
+std::string& NextScratch() {
+  constexpr int kSlots = 8;
+  thread_local std::string bufs[kSlots];
+  thread_local int idx = 0;
+  std::string& s = bufs[idx];
+  idx = (idx + 1) % kSlots;
+  return s;
+}
+
+// imgui_stdlib-style resize callback so InputText can grow a std::string.
+struct InputTextUserData {
+  std::string* str;
+};
+
+int InputTextResizeCb(ImGuiInputTextCallbackData* data) {
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+    auto* ud = static_cast<InputTextUserData*>(data->UserData);
+    std::string* str = ud->str;
+    IM_ASSERT(data->Buf == str->c_str());
+    str->resize(data->BufTextLen);
+    data->Buf = str->data();
+  }
+  return 0;
+}
+
+}  // namespace
+
+const char* Cp949ToUtf8(const char* cp949) {
+  std::string& out = NextScratch();
+  out.clear();
+  if (!cp949 || !*cp949) return out.c_str();
+
+  int wlen = MultiByteToWideChar(kCp949, 0, cp949, -1, nullptr, 0);
+  if (wlen <= 1) return out.c_str();  // includes the null terminator
+  std::wstring wide(wlen, L'\0');
+  MultiByteToWideChar(kCp949, 0, cp949, -1, wide.data(), wlen);
+
+  int ulen = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, nullptr, 0,
+                                 nullptr, nullptr);
+  if (ulen <= 1) return out.c_str();
+  out.resize(ulen - 1);  // drop the trailing null from the buffer size
+  WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, out.data(), ulen, nullptr,
+                      nullptr);
+  return out.c_str();
+}
+
+int Utf8ToCp949(const char* utf8, char* out, size_t out_size) {
+  if (!out || out_size == 0) return -1;
+  out[0] = '\0';
+  if (!utf8 || !*utf8) return 0;
+
+  int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+  if (wlen <= 1) return 0;
+  std::wstring wide(wlen, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wlen);
+
+  // '?' for glyphs that have no CP949 representation, so nothing is silently
+  // dropped (the server would otherwise receive a truncated string).
+  const char fallback = '?';
+  int written = WideCharToMultiByte(kCp949, 0, wide.data(), -1, out,
+                                    static_cast<int>(out_size), &fallback,
+                                    nullptr);
+  if (written <= 0) {
+    out[0] = '\0';
+    return -1;  // out too small (ERROR_INSUFFICIENT_BUFFER) or failure
+  }
+  return written - 1;  // exclude the null terminator
+}
+
+namespace {
+ImFont* g_font_default = nullptr;  // police intégrée ImGui (ProggyClean) = repli
+ImFont* g_font_malgun = nullptr;   // Malgun Gothic (null si absente du système)
+bool g_font_enabled = true;        // état du toggle (mémorisé même avant load)
+
+// (Re)sélectionne la police active selon le toggle. Immédiat (pris en compte au
+// prochain NewFrame), sans rebuild d'atlas.
+void ApplyFontSelection() {
+  ImGui::GetIO().FontDefault =
+      (g_font_enabled && g_font_malgun) ? g_font_malgun : g_font_default;
+}
+}  // namespace
+
+ImFont* LoadKoreanFont(float size_px) {
+  ImGuiIO& io = ImGui::GetIO();
+  // Les DEUX polices sont bakées dans l'atlas au init → bascule gratuite ensuite.
+  g_font_default = io.Fonts->AddFontDefault();
+
+  if (GetFileAttributesA(kKoreanFontPath) != INVALID_FILE_ATTRIBUTES) {
+    ImFontConfig cfg;
+    cfg.OversampleH = 1;  // keep the pre-baked hangul atlas within DX7 limits
+    cfg.OversampleV = 1;
+    cfg.PixelSnapH = true;
+    // Explicit ranges = glyphs are baked into the static atlas at build time,
+    // which is what the DX7 backend needs (it has no dynamic-texture path).
+    g_font_malgun = io.Fonts->AddFontFromFileTTF(kKoreanFontPath, size_px, &cfg,
+                                                 io.Fonts->GetGlyphRangesKorean());
+  }
+  ApplyFontSelection();
+  return io.FontDefault;
+}
+
+void SetFontEnabled(bool enabled) {
+  g_font_enabled = enabled;
+  if (ImGui::GetCurrentContext()) ApplyFontSelection();
+}
+
+bool IsFontEnabled() { return g_font_enabled; }
+
+void TextCp949(const char* cp949) {
+  ImGui::TextUnformatted(Cp949ToUtf8(cp949));
+}
+
+// ── Skin RO ───────────────────────────────────────────────────────────────────
+namespace {
+
+bool g_skin_enabled = true;
+int g_skin_colors = 0;  // combien de PushStyleColor à dépiler dans EndRoWindow
+int g_skin_vars = 0;
+
+// Type de curseur RO "main" (index d'action du sprite curseur). À CONFIRMER en jeu
+// (si ce n'est pas une main, tester d'autres index : 1..6).
+constexpr int kRoCursorHand = 2;
+int g_hover_cursor = 0;  // curseur RO demandé cette frame par un widget survolé
+
+RoSkinConfig g_cfg;  // leviers de customisation (persistés par l'appelant)
+
+// Applique luminosité (rgb*brightness) + opacité (a*alpha) globales à une couleur.
+// Utilisé par TOUTES les pièces dessinées main (images + texte) pour qu'elles
+// suivent les réglages, qu'ImGuiStyleVar_Alpha ne touche pas (rendu manuel).
+ImU32 ApplySkinTint(ImU32 c) {
+  float b = g_cfg.title_brightness;
+  if (b < 0.0f) b = 0.0f;
+  if (b > 2.0f) b = 2.0f;
+  const float a = g_cfg.alpha;
+  int r = (int)(((c >> IM_COL32_R_SHIFT) & 0xFF) * b);
+  int g = (int)(((c >> IM_COL32_G_SHIFT) & 0xFF) * b);
+  int bl = (int)(((c >> IM_COL32_B_SHIFT) & 0xFF) * b);
+  int al = (int)(((c >> IM_COL32_A_SHIFT) & 0xFF) * a);
+  if (r > 255) r = 255;
+  if (g > 255) g = 255;
+  if (bl > 255) bl = 255;
+  if (al > 255) al = 255;
+  return IM_COL32(r, g, bl, al);
+}
+
+struct SkinTex {
+  void* tex = nullptr;
+  int w = 0, h = 0;
+};
+SkinTex g_tl, g_tm, g_tr, g_close, g_close_on, g_mini, g_mini_on;
+SkinTex g_base;  // bullet sys_base devant le titre (décoratif)
+SkinTex g_btn_out_l, g_btn_out_m, g_btn_out_r;
+SkinTex g_btn_over_l, g_btn_over_m, g_btn_over_r;
+SkinTex g_btn_press_l, g_btn_press_m, g_btn_press_r;
+SkinTex g_resize;
+SkinTex g_cb0, g_cb1;
+SkinTex g_s0up, g_s0down, g_s0mid, g_s0bar_up, g_s0bar_mid, g_s0bar_down;
+SkinTex g_bar_l, g_bar_m, g_bar_r, g_iconnum;
+bool g_skin_active = false;  // BeginRoWindow a pris la branche skin (pour EndRoWindow)
+
+// ── Loader natif du client (conventions menu_icons.cc / status_tweaks.cc) ──────
+// Charge un bmp d'UI depuis le VFS du jeu (GRF + overrides data\) → un joueur qui
+// remplace le bmp dans son GRF/data voit son skin custom appliqué, à la RO.
+constexpr uintptr_t kTexMgr = 0x00a90350;   // __cdecl() -> tex mgr
+constexpr uintptr_t kMakeKey = 0x00a9f030;  // __cdecl(path) -> key
+constexpr uintptr_t kLoadTex = 0x00a8d4a0;  // __fastcall(mgr,_,key) -> UITexture*
+using TexMgr_t = void*(__cdecl*)();
+using MakeKey_t = void*(__cdecl*)(const char*);
+using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
+constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;  // UITexture fields
+// "유저인터페이스\" en CP949 (bytes verbatim, cf. menu_icons.cc).
+const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
+
+// Charge un bmp d'UI (chemin RELATIF sous 유저인터페이스\) via le loader natif,
+// décode BGRA->A8R8G8B8 avec magenta #FF00FF -> alpha. null si absent/échec.
+void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
+  void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+  if (!mgr) return nullptr;
+  char full[192];
+  std::snprintf(full, sizeof(full), "%s\\%s", kUIDir, rel_path);
+  void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(full);
+  if (!key) return nullptr;
+  void* tex = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+  if (!tex) return nullptr;
+  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
+  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffH);
+  void* bgra = *reinterpret_cast<void**>(static_cast<char*>(tex) + kOffPix);
+  if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
+  std::vector<unsigned char> argb(static_cast<size_t>(w) * h * 4);
+  const unsigned char* src = static_cast<const unsigned char*>(bgra);
+  for (int i = 0; i < w * h; ++i) {
+    const unsigned char b = src[i * 4 + 0], g = src[i * 4 + 1], r = src[i * 4 + 2];
+    const bool keyed = (r == 0xFF && g == 0x00 && b == 0xFF);
+    argb[i * 4 + 0] = b;
+    argb[i * 4 + 1] = g;
+    argb[i * 4 + 2] = r;
+    argb[i * 4 + 3] = keyed ? 0 : 0xFF;
+  }
+  *out_w = w;
+  *out_h = h;
+  return Overlay_CreateTextureARGB(argb.data(), w, h);
+}
+
+// Charge la pièce : fichier client d'abord (customisable via GRF/data), sinon le
+// blob embarqué en repli. Retente tant que rien n'est chargé (device pas prêt).
+void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
+  if (out.tex) return out.tex;
+  int w = 0, h = 0;
+  void* t = LoadClientBmp(rel_path, &w, &h);
+  if (t) {
+    out.tex = t;
+    out.w = w;
+    out.h = h;
+    return t;
+  }
+  out.tex = Overlay_CreateTextureARGB(b.argb, b.w, b.h);  // repli blob embarqué
+  out.w = b.w;
+  out.h = b.h;
+  return out.tex;
+}
+
+// Callback ImDrawList : bascule l'échantillonnage en POINT (pixel-art net).
+void ImCb_PointFilter(const ImDrawList*, const ImDrawCmd*) {
+  Overlay_SetTextureFilter(false);
+}
+
+// Dessine une pièce dans le rect donné (uv plein, teinte optionnelle). Renvoie
+// true si la texture est prête.
+bool BlitStretch(ImDrawList* dl, const SkinTex& t, ImVec2 p0, ImVec2 p1,
+                 ImU32 col = IM_COL32_WHITE) {
+  if (!t.tex) return false;
+  // Luminosité + opacité globales appliquées à chaque pièce.
+  dl->AddImage((ImTextureID)t.tex, p0, p1, ImVec2(0, 0), ImVec2(1, 1),
+               ApplySkinTint(col));
+  return true;
+}
+
+// Bouton système (11x11) dessiné à (cx,cy) top-left. Renvoie true si cliqué.
+bool SysButton(ImDrawList* dl, const SkinTex& off, const SkinTex& on, ImVec2 tl) {
+  const ImVec2 br(tl.x + (float)off.w, tl.y + (float)off.h);
+  const bool hovered = ImGui::IsMouseHoveringRect(tl, br, false);
+  const SkinTex& t = (hovered && on.tex) ? on : off;
+  BlitStretch(dl, t, tl, br);
+  return hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+}
+
+// Peint la scrollbar verticale RO par-dessus la scrollbar ImGui (transparente) et
+// possède entièrement l'interaction (drag du thumb + flèches), en écrivant le
+// scroll directement (annule la cible ImGui) → autorité totale, thumb immédiat.
+void DrawRoScrollbar(ImGuiWindow* w) {
+  if (!w || !w->ScrollbarY) return;
+  EnsureTex("scroll0up.bmp", skin::kScroll0Up, g_s0up);
+  EnsureTex("scroll0down.bmp", skin::kScroll0Down, g_s0down);
+  EnsureTex("scroll0mid.bmp", skin::kScroll0Mid, g_s0mid);
+  EnsureTex("scroll0bar_up.bmp", skin::kScroll0BarUp, g_s0bar_up);
+  EnsureTex("scroll0bar_mid.bmp", skin::kScroll0BarMid, g_s0bar_mid);
+  EnsureTex("scroll0bar_down.bmp", skin::kScroll0BarDown, g_s0bar_down);
+
+  const ImRect bb = ImGui::GetWindowScrollbarRect(w, ImGuiAxis_Y);
+  const float x0 = bb.Min.x, x1 = bb.Max.x;
+  const float y0 = bb.Min.y, y1 = bb.Max.y;
+  const float arrow = (float)skin::kScroll0Up.h;  // 13
+  const float track_top = y0 + arrow, track_bot = y1 - arrow;
+  const float track_h = track_bot - track_top;
+  const float smax = w->ScrollMax.y;
+  ImDrawList* dl = w->DrawList;
+
+  // Écrit le scroll immédiatement + annule toute cible ImGui (FLT_MAX = "pas de
+  // cible") pour que notre valeur soit autoritaire ce frame et le suivant.
+  auto set_scroll = [&](float s) {
+    if (s < 0.0f) s = 0.0f;
+    if (s > smax) s = smax;
+    w->Scroll.y = s;
+    w->ScrollTarget.y = FLT_MAX;
+  };
+
+  // Taille du thumb, dans la piste ENTRE les flèches.
+  float grab_h = track_h;
+  const float size_avail = w->InnerRect.GetHeight();
+  const float size_contents = w->ContentSize.y + w->WindowPadding.y * 2.0f;
+  const bool scrollable = (size_contents > size_avail && track_h > 0.0f);
+  if (scrollable) {
+    grab_h = track_h * (size_avail / size_contents);
+    const float gmin = ImGui::GetStyle().GrabMinSize;
+    if (grab_h < gmin) grab_h = gmin;
+    if (grab_h > track_h) grab_h = track_h;
+  }
+
+  const ImVec2 mouse = ImGui::GetIO().MousePos;
+  const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+  const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+  float sratio = smax > 0.0f ? ImSaturate(w->Scroll.y / smax) : 0.0f;
+  float grab_y = track_top + sratio * (track_h - grab_h);
+
+  // Drag du thumb (possédé par nous, keyé par fenêtre).
+  static ImGuiID s_drag = 0;
+  static float s_off = 0.0f;
+  if (scrollable && smax > 0.0f && track_h > grab_h) {
+    const bool over_thumb = ImGui::IsMouseHoveringRect(
+        ImVec2(x0, grab_y), ImVec2(x1, grab_y + grab_h), false);
+    if (s_drag == 0 && over_thumb && clicked) {
+      s_drag = w->ID;
+      s_off = mouse.y - grab_y;
+    }
+    if (s_drag == w->ID) {
+      if (!down) {
+        s_drag = 0;
+      } else {
+        const float r = (mouse.y - s_off - track_top) / (track_h - grab_h);
+        set_scroll(ImSaturate(r) * smax);
+      }
+    }
+  }
+  // Flèches (clic = 1 pas, maintien = défilement continu).
+  const float step = ImGui::GetTextLineHeightWithSpacing() * 3.0f;
+  if (scrollable && down &&
+      ImGui::IsMouseHoveringRect(ImVec2(x0, y0), ImVec2(x1, y0 + arrow), false))
+    set_scroll(w->Scroll.y - (clicked ? step : step * 0.2f));
+  if (scrollable && down &&
+      ImGui::IsMouseHoveringRect(ImVec2(x0, y1 - arrow), ImVec2(x1, y1), false))
+    set_scroll(w->Scroll.y + (clicked ? step : step * 0.2f));
+
+  // Recalcule la position du thumb après interaction.
+  sratio = smax > 0.0f ? ImSaturate(w->Scroll.y / smax) : 0.0f;
+  grab_y = track_top + sratio * (track_h - grab_h);
+
+  // ── Dessin ──
+  dl->PushClipRect(bb.Min, bb.Max, false);
+  dl->AddCallback(ImCb_PointFilter, nullptr);
+  // Piste : chevauche les flèches de 2px (elles sont peintes par-dessus) → jointure
+  // sans trou (seamless).
+  BlitStretch(dl, g_s0mid, ImVec2(x0, track_top - 2.0f),
+              ImVec2(x1, track_bot + 2.0f));
+  BlitStretch(dl, g_s0up, ImVec2(x0, y0), ImVec2(x1, y0 + arrow));
+  BlitStretch(dl, g_s0down, ImVec2(x0, y1 - arrow), ImVec2(x1, y1));
+  if (scrollable && track_h > grab_h) {
+    const float cap = (float)skin::kScroll0BarUp.h;  // 4
+    const float gy = ImFloor(grab_y);
+    BlitStretch(dl, g_s0bar_up, ImVec2(x0, gy), ImVec2(x1, gy + cap));
+    BlitStretch(dl, g_s0bar_down, ImVec2(x0, gy + grab_h - cap),
+                ImVec2(x1, gy + grab_h));
+    if (grab_h > cap * 2.0f)
+      BlitStretch(dl, g_s0bar_mid, ImVec2(x0, gy + cap),
+                  ImVec2(x1, gy + grab_h - cap));
+  }
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  dl->PopClipRect();
+
+  // Curseur main sur toute la scrollbar (comme le natif).
+  if (ImGui::IsMouseHoveringRect(bb.Min, bb.Max, false))
+    SetHoverCursor(kRoCursorHand);
+}
+
+}  // namespace
+
+void SetSkinEnabled(bool enabled) { g_skin_enabled = enabled; }
+bool IsSkinEnabled() { return g_skin_enabled; }
+RoSkinConfig& SkinConfig() { return g_cfg; }
+
+void SetHoverCursor(int ro_cursor_type) { g_hover_cursor = ro_cursor_type; }
+int TakeHoverCursor() {
+  const int t = g_hover_cursor;
+  g_hover_cursor = 0;
+  return t;
+}
+
+bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
+  if (!g_skin_enabled) {
+    g_skin_colors = g_skin_vars = 0;
+    g_skin_active = false;
+    return ImGui::Begin(title, p_open, imgui_window_flags);
+  }
+  g_skin_active = true;
+
+  // On garde la mécanique ImGui (drag/resize/collapse) mais on peint nous-mêmes la
+  // barre de titre et les boutons système → title bar native transparente, close
+  // natif désactivé (on dessine sys_close). p_open est géré manuellement.
+  const ImU32 body = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.body_col[0], g_cfg.body_col[1], g_cfg.body_col[2],
+             g_cfg.body_col[3]));
+  const ImU32 border = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.border_col[0], g_cfg.border_col[1], g_cfg.border_col[2],
+             g_cfg.border_col[3]));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, body);
+  ImGui::PushStyleColor(ImGuiCol_TitleBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_Border, border);
+  // Texte du corps : couleur configurable (défaut sombre, lisible sur fond clair).
+  ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertFloat4ToU32(ImVec4(
+                                           g_cfg.body_text[0], g_cfg.body_text[1],
+                                           g_cfg.body_text[2], g_cfg.body_text[3])));
+  // Grip de resize ImGui masqué (on dessine btn_resize RO par-dessus).
+  ImGui::PushStyleColor(ImGuiCol_ResizeGrip, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, IM_COL32(0, 0, 0, 0));
+  // Champs de saisie : couleur configurable (défaut CECECE natif RO).
+  const ImU32 inputc = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.input_col[0], g_cfg.input_col[1], g_cfg.input_col[2],
+             g_cfg.input_col[3]));
+  auto lighten = [](ImU32 c, int d) {
+    int r = ((c >> IM_COL32_R_SHIFT) & 0xFF) + d;
+    int g = ((c >> IM_COL32_G_SHIFT) & 0xFF) + d;
+    int b = ((c >> IM_COL32_B_SHIFT) & 0xFF) + d;
+    int a = (c >> IM_COL32_A_SHIFT) & 0xFF;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    return IM_COL32(r, g, b, a);
+  };
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, inputc);
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, lighten(inputc, 10));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, lighten(inputc, 22));
+  // Onglets : actif = couleur configurable, inactif = gris clair.
+  const ImU32 tabc = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.tab_col[0], g_cfg.tab_col[1], g_cfg.tab_col[2],
+             g_cfg.tab_col[3]));
+  const ImU32 tabi = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.tab_inact[0], g_cfg.tab_inact[1], g_cfg.tab_inact[2],
+             g_cfg.tab_inact[3]));
+  ImGui::PushStyleColor(ImGuiCol_Tab, tabi);
+  ImGui::PushStyleColor(ImGuiCol_TabHovered, lighten(tabi, 14));
+  ImGui::PushStyleColor(ImGuiCol_TabSelected, tabc);
+  // Scrollbar ImGui rendue transparente (elle garde la réservation d'espace + le
+  // drag) ; on peint les vraies pièces RO par-dessus dans EndRoWindow.
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32(0, 0, 0, 0));
+  // En-têtes de tableau + sélection de ligne (lisibles sur fond clair).
+  ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
+                        ImGui::ColorConvertFloat4ToU32(ImVec4(
+                            g_cfg.header_col[0], g_cfg.header_col[1],
+                            g_cfg.header_col[2], g_cfg.header_col[3])));
+  ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(0x9C, 0xB8, 0xEA, 160));
+  ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(0x9C, 0xB8, 0xEA, 110));
+  ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(0x7E, 0xA0, 0xE0, 210));
+  // Popups (tooltips, menus contextuels) : fond CLAIR sinon texte sombre illisible
+  // sur le fond sombre par défaut. Pas de barre de titre (ce sont des popups).
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0xF2, 0xF3, 0xF6, 255));
+  g_skin_colors = 24;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  // Arrondi bas fixe ~3px (le haut est couvert par l'art titre).
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);  // opacité globale
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);  // inputs arrondis ~3
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);  // largeur pièces RO
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
+  // Hauteur de barre de titre ImGui = FontSize + FramePadding.y*2. On règle
+  // FramePadding.y pour qu'elle vaille EXACTEMENT la hauteur de l'art (17px),
+  // sinon l'art est étiré verticalement (plus haut que le natif, dégradé déformé).
+  float pad_y = ((float)skin::kTitlebarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  if (pad_y < 0.0f) pad_y = 0.0f;
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                      ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
+  g_skin_vars = 8;
+
+  const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
+
+  // On dessine la barre de titre RO même quand la fenêtre est repliée (Begin
+  // renvoie false dans ce cas) — sinon le titre replié garde le chrome ImGui.
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  if (w && !w->Hidden) {
+    EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
+    EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
+    EnsureTex("basic_interface\\titlebar_right.bmp", skin::kTitlebarRight, g_tr);
+    EnsureTex("basic_interface\\sys_close_off.bmp", skin::kSysCloseOff, g_close);
+    EnsureTex("basic_interface\\sys_close_on.bmp", skin::kSysCloseOn, g_close_on);
+    EnsureTex("basic_interface\\sys_mini_off.bmp", skin::kSysMiniOff, g_mini);
+    EnsureTex("basic_interface\\sys_mini_on.bmp", skin::kSysMiniOn, g_mini_on);
+    EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
+
+    // Repliée : le rect visible EST la barre de titre ; sinon TitleBarRect().
+    const ImRect tb = w->Collapsed ? w->Rect() : w->TitleBarRect();
+    ImDrawList* dl = w->DrawList;
+    const float y0 = tb.Min.y, y1 = tb.Max.y;
+    const float capL = (float)g_tl.w, capR = (float)g_tr.w;
+
+    // Après Begin, la clip rect du draw list est réduite à la zone de contenu
+    // (sous le titre) → tout dessin dans la barre de titre serait découpé.
+    // On élargit la clip à la barre de titre le temps de la peindre.
+    dl->PushClipRect(tb.Min, tb.Max, false);
+
+    if (!g_tl.tex) {
+      // Repli visible : textures pas encore prêtes / échec de création. Barre bleue
+      // pleine (≠ chrome sombre par défaut) pour diagnostiquer d'un coup d'œil.
+      dl->AddRectFilledMultiColor(tb.Min, tb.Max, IM_COL32(126, 158, 224, 255),
+                                  IM_COL32(126, 158, 224, 255),
+                                  IM_COL32(86, 122, 200, 255),
+                                  IM_COL32(86, 122, 200, 255));
+    }
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
+    BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
+    BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
+
+    // Bullet sys_base devant le titre (décoratif, comme le natif RO).
+    const float base_sz = (float)g_base.w;  // 11
+    const float base_x = tb.Min.x + 5.0f;
+    const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
+    if (g_base.tex)
+      BlitStretch(dl, g_base, ImVec2(base_x, base_y),
+                  ImVec2(base_x + base_sz, base_y + base_sz));
+    const float text_x = base_x + base_sz + 4.0f;
+
+    // Titre par-dessus (couleur configurable ; coupe le "##id").
+    char nbuf[128];
+    const char* end = ImGui::FindRenderedTextEnd(title);
+    size_t n = (size_t)(end - title);
+    if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
+    memcpy(nbuf, title, n);
+    nbuf[n] = '\0';
+    const ImU32 title_tx = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
+               g_cfg.title_text[3] * g_cfg.alpha));  // suit l'opacité
+    const ImVec2 ts = ImGui::CalcTextSize(nbuf);
+    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.5f),
+                title_tx, nbuf);
+
+    // Boutons système à droite : close (seulement si la fenêtre est fermable,
+    // p_open != null) collé au bord droit ; mini à sa gauche, masqué si NoCollapse.
+    const bool show_mini = !(imgui_window_flags & ImGuiWindowFlags_NoCollapse);
+    const float by = y0 + (tb.GetHeight() - (float)g_close.h) * 0.5f;
+    float bx = tb.Max.x - 4.0f;  // curseur depuis le bord droit
+    bool close_clicked = false;
+    if (p_open) {
+      ImVec2 close_tl(bx - (float)g_close.w, by);
+      close_clicked = SysButton(dl, g_close, g_close_on, close_tl);
+      bx = close_tl.x - 2.0f;
+    }
+    bool mini_clicked = false;
+    if (show_mini) {
+      ImVec2 mini_tl(bx - (float)g_mini.w, by);
+      mini_clicked = SysButton(dl, g_mini, g_mini_on, mini_tl);
+    }
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    dl->PopClipRect();
+
+    if (close_clicked && p_open) *p_open = false;
+    if (mini_clicked) ImGui::SetWindowCollapsed(w, !w->Collapsed);
+
+    // Grip de resize RO en bas-à-droite (si redimensionnable). Le grip natif
+    // ImGui reste actif pour le drag (juste rendu transparent) ; on peint l'image.
+    if (!w->Collapsed && !(w->Flags & ImGuiWindowFlags_NoResize) &&
+        !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize)) {
+      EnsureTex("btn_resize.bmp", skin::kBtnResize, g_resize);
+      const float rw = (float)g_resize.w, rh = (float)g_resize.h;
+      const ImVec2 br(w->Pos.x + w->Size.x - 2.0f, w->Pos.y + w->Size.y - 2.0f);
+      const ImVec2 tl(br.x - rw, br.y - rh);
+      dl->PushClipRect(tl, br, false);
+      dl->AddCallback(ImCb_PointFilter, nullptr);
+      BlitStretch(dl, g_resize, tl, br);
+      dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+      dl->PopClipRect();
+      // Curseur main au survol du grip (via le curseur RO natif).
+      if (ImGui::IsMouseHoveringRect(tl, br, false))
+        SetHoverCursor(kRoCursorHand);
+    }
+  }
+  return open;
+}
+
+void EndRoWindow() {
+  // Scrollbar RO peinte pendant que la fenêtre est encore courante. On repeint
+  // la fenêtre ET ses descendantes (child windows + fenêtres internes de tables
+  // ScrollY, ex. le storage) : leur scrollbar ImGui a été rendue transparente par
+  // le style poussé, donc sans ça elle serait invisible.
+  if (g_skin_active) {
+    ImGuiWindow* main = ImGui::GetCurrentWindow();
+    ImGuiContext* g = ImGui::GetCurrentContext();
+    if (main && g) {
+      for (ImGuiWindow* cw : g->Windows) {
+        if (cw && cw->Active && cw->ScrollbarY && cw->RootWindow == main)
+          DrawRoScrollbar(cw);
+      }
+    }
+    g_skin_active = false;
+  }
+  ImGui::End();
+  if (g_skin_vars) {
+    ImGui::PopStyleVar(g_skin_vars);
+    g_skin_vars = 0;
+  }
+  if (g_skin_colors) {
+    ImGui::PopStyleColor(g_skin_colors);
+    g_skin_colors = 0;
+  }
+}
+
+bool RoButton(const char* label, float w, float h) {
+  EnsureTex("basic_interface\\btn_out_left.bmp", skin::kBtnOutLeft, g_btn_out_l);
+  EnsureTex("basic_interface\\btn_out_mid.bmp", skin::kBtnOutMid, g_btn_out_m);
+  EnsureTex("basic_interface\\btn_out_right.bmp", skin::kBtnOutRight, g_btn_out_r);
+  EnsureTex("basic_interface\\btn_over_left.bmp", skin::kBtnOverLeft, g_btn_over_l);
+  EnsureTex("basic_interface\\btn_over_mid.bmp", skin::kBtnOverMid, g_btn_over_m);
+  EnsureTex("basic_interface\\btn_over_right.bmp", skin::kBtnOverRight, g_btn_over_r);
+  EnsureTex("basic_interface\\btn_press_left.bmp", skin::kBtnPressLeft, g_btn_press_l);
+  EnsureTex("basic_interface\\btn_press_mid.bmp", skin::kBtnPressMid, g_btn_press_m);
+  EnsureTex("basic_interface\\btn_press_right.bmp", skin::kBtnPressRight, g_btn_press_r);
+
+  const float capL = (float)skin::kBtnOutLeft.w;
+  const float capR = (float)skin::kBtnOutRight.w;
+  const float nativeH = (float)skin::kBtnOutLeft.h;
+  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
+  if (w <= 0.0f) w = ts.x + capL + capR + 12.0f;
+  if (h <= 0.0f) h = nativeH;
+
+  ImGui::PushID(label);
+  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
+  const bool hovered = ImGui::IsItemHovered();
+  const bool held = ImGui::IsItemActive();
+  if (hovered) SetHoverCursor(kRoCursorHand);
+  const ImVec2 p0 = ImGui::GetItemRectMin();
+  const ImVec2 p1 = ImGui::GetItemRectMax();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+
+  const SkinTex *l, *m, *r;
+  if (held) { l = &g_btn_press_l; m = &g_btn_press_m; r = &g_btn_press_r; }
+  else if (hovered) { l = &g_btn_over_l; m = &g_btn_over_m; r = &g_btn_over_r; }
+  else { l = &g_btn_out_l; m = &g_btn_out_m; r = &g_btn_out_r; }
+
+  if (l->tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y));
+    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1);
+    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y));
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {
+    dl->AddRectFilled(p0, p1, IM_COL32(210, 216, 228, 255), 2.0f);
+    dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
+  }
+
+  const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
+                  p0.y + (h - ts.y) * 0.5f + (held ? 1.0f : 0.0f));
+  dl->AddText(tp, ImGui::GetColorU32(ImGuiCol_Text), label,
+              ImGui::FindRenderedTextEnd(label));
+  ImGui::PopID();
+  return clicked;
+}
+
+bool RoCheckbox(const char* label, bool* v) {
+  if (!v) return false;
+  EnsureTex("checkbox_0.bmp", skin::kCheckbox0, g_cb0);
+  EnsureTex("checkbox_1.bmp", skin::kCheckbox1, g_cb1);
+  const float sz = (float)skin::kCheckbox0.w;  // 10x10
+  const float gap = 6.0f;
+
+  ImGui::PushID(label);
+  const ImVec2 start = ImGui::GetCursorScreenPos();
+  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
+  const float h = sz > ts.y ? sz : ts.y;
+  const bool pressed = ImGui::InvisibleButton("##cb", ImVec2(sz + gap + ts.x, h));
+  if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+  if (pressed) *v = !*v;
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  // Position arrondie à l'entier : sinon (h-sz)/2 fractionnaire + sampling POINT
+  // coupe la dernière ligne de pixels (bas de la case « manquant »).
+  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f));
+  const ImVec2 bmax(bmin.x + sz, bmin.y + sz);
+  if (g_cb0.tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, *v ? g_cb1 : g_cb0, bmin, bmax);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {
+    dl->AddRect(bmin, bmax, IM_COL32(96, 112, 152, 255));
+    if (*v) dl->AddRectFilled(ImVec2(bmin.x + 2, bmin.y + 2),
+                              ImVec2(bmax.x - 2, bmax.y - 2),
+                              IM_COL32(96, 112, 152, 255));
+  }
+  dl->AddText(ImVec2(start.x + sz + gap, start.y + (h - ts.y) * 0.5f),
+              ImGui::GetColorU32(ImGuiCol_Text), label,
+              ImGui::FindRenderedTextEnd(label));
+  ImGui::PopID();
+  return pressed;
+}
+
+bool ShowRoSkinSettings() {
+  bool ch = false;
+  ch |= ImGui::SliderFloat("Luminosite", &g_cfg.title_brightness, 0.5f, 1.5f,
+                           "%.2f");
+  ImGui::SameLine();
+  ImGui::TextDisabled("(?)");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip(
+        "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
+        "icones) - pas le texte ni les fonds (regles par les couleurs ci-dessous).");
+  ch |= ImGui::SliderFloat("Opacite", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
+  const ImGuiColorEditFlags cf = ImGuiColorEditFlags_NoInputs;
+  ch |= ImGui::ColorEdit4("Corps", g_cfg.body_col, cf);
+  ch |= ImGui::ColorEdit4("Bordure", g_cfg.border_col, cf);
+  ch |= ImGui::ColorEdit4("Texte titre", g_cfg.title_text, cf);
+  ch |= ImGui::ColorEdit4("Texte corps", g_cfg.body_text, cf);
+  ch |= ImGui::ColorEdit4("Onglet actif", g_cfg.tab_col, cf);
+  ch |= ImGui::ColorEdit4("Onglet inactif", g_cfg.tab_inact, cf);
+  ch |= ImGui::ColorEdit4("Champ de saisie", g_cfg.input_col, cf);
+  ch |= ImGui::ColorEdit4("En-tete tableau", g_cfg.header_col, cf);
+  if (ImGui::Button("Reinitialiser le skin")) {
+    g_cfg = RoSkinConfig();
+    ch = true;
+  }
+  return ch;
+}
+
+void DrawBar(float x0, float y0, float x1, float y1) {
+  EnsureTex("basic_interface\\btnbar_left.bmp", skin::kBtnbarLeft, g_bar_l);
+  EnsureTex("basic_interface\\btnbar_mid.bmp", skin::kBtnbarMid, g_bar_m);
+  EnsureTex("basic_interface\\btnbar_right.bmp", skin::kBtnbarRight, g_bar_r);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const float cap = (float)skin::kBtnbarLeft.w;  // 21
+  dl->AddCallback(ImCb_PointFilter, nullptr);
+  BlitStretch(dl, g_bar_l, ImVec2(x0, y0), ImVec2(x0 + cap, y1));
+  BlitStretch(dl, g_bar_r, ImVec2(x1 - cap, y0), ImVec2(x1, y1));
+  BlitStretch(dl, g_bar_m, ImVec2(x0 + cap, y0), ImVec2(x1 - cap, y1));
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
+
+float DrawIconNum(float x, float y) {
+  EnsureTex("inventory\\icon_num.bmp", skin::kIconNum, g_iconnum);
+  if (!g_iconnum.tex) return 0.0f;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddCallback(ImCb_PointFilter, nullptr);
+  BlitStretch(dl, g_iconnum, ImVec2(ImFloor(x), ImFloor(y)),
+              ImVec2(ImFloor(x) + g_iconnum.w, ImFloor(y) + g_iconnum.h));
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  return (float)g_iconnum.w;
+}
+
+bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
+                    int imgui_input_flags) {
+  if (!cp949_buf || buf_size == 0) return false;
+
+  // One persistent UTF-8 edit buffer per widget id. Kept across frames so the
+  // cursor/selection survive; re-seeded from cp949_buf only while NOT editing so
+  // external changes are reflected without stomping in-progress input.
+  static std::unordered_map<ImGuiID, std::string> store;
+  const ImGuiID id = ImGui::GetID(label);
+  std::string& utf8 = store[id];
+  if (ImGui::GetActiveID() != id) utf8 = Cp949ToUtf8(cp949_buf);
+
+  InputTextUserData ud{&utf8};
+  const bool edited = ImGui::InputText(
+      label, utf8.data(), utf8.capacity() + 1,
+      imgui_input_flags | ImGuiInputTextFlags_CallbackResize, InputTextResizeCb,
+      &ud);
+
+  if (edited) Utf8ToCp949(utf8.c_str(), cp949_buf, buf_size);
+  return edited;
+}
+
+}  // namespace ro

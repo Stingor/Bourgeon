@@ -7,10 +7,13 @@
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "bourgeon.h"
 #include "plugins/item_desc_tweaks.h"
 #include "imgui.h"
+#include "ui/ro_imgui.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
 #include "plugins/basic_info.h"
@@ -22,6 +25,7 @@
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
+#include "plugins/shop_tweaks.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -34,6 +38,39 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
+
+// ── Presets de skin RO (jeux de couleurs nommés, sauvegardés dans le yaml) ──────
+namespace {
+struct RoPreset {
+  std::string name;
+  ro::RoSkinConfig cfg;
+};
+std::vector<RoPreset> g_ro_presets;
+int g_ro_preset_sel = -1;
+
+unsigned PackCol(const float* c) {
+  return static_cast<unsigned>(
+      ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3])));
+}
+void UnpackCol(unsigned v, float* c) {
+  ImVec4 f = ImGui::ColorConvertU32ToFloat4(v);
+  c[0] = f.x; c[1] = f.y; c[2] = f.z; c[3] = f.w;
+}
+ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
+  ro::RoSkinConfig c;
+  c.title_brightness = n["bright"].as<float>(c.title_brightness);
+  c.alpha = n["alpha"].as<float>(c.alpha);
+  if (n["body"]) UnpackCol(n["body"].as<unsigned>(0), c.body_col);
+  if (n["border"]) UnpackCol(n["border"].as<unsigned>(0), c.border_col);
+  if (n["titletx"]) UnpackCol(n["titletx"].as<unsigned>(0), c.title_text);
+  if (n["bodytx"]) UnpackCol(n["bodytx"].as<unsigned>(0), c.body_text);
+  if (n["tab"]) UnpackCol(n["tab"].as<unsigned>(0), c.tab_col);
+  if (n["tabinact"]) UnpackCol(n["tabinact"].as<unsigned>(0), c.tab_inact);
+  if (n["input"]) UnpackCol(n["input"].as<unsigned>(0), c.input_col);
+  if (n["header"]) UnpackCol(n["header"].as<unsigned>(0), c.header_col);
+  return c;
+}
+}  // namespace
 
 // Item-link icon injection moved to plugins/chat.cc (ChatTweaks).
 
@@ -541,10 +578,77 @@ void MoonlightUi::LoadSettings() {
       }
     }
 
+    ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
+    ro::SetSkinEnabled(ui["ro_skin"].as<bool>(ro::IsSkinEnabled()));
+    {
+      auto& sc = ro::SkinConfig();
+      sc.title_brightness = ui["ro_skin_bright"].as<float>(sc.title_brightness);
+      sc.rounding = ui["ro_skin_rounding"].as<float>(sc.rounding);
+      sc.alpha = ui["ro_skin_alpha"].as<float>(sc.alpha);
+      auto load_col = [&](const char* key, float* c) {
+        if (ui[key]) {
+          ImVec4 f = ImGui::ColorConvertU32ToFloat4(ui[key].as<unsigned int>(0));
+          c[0] = f.x; c[1] = f.y; c[2] = f.z; c[3] = f.w;
+        }
+      };
+      load_col("ro_skin_body", sc.body_col);
+      load_col("ro_skin_border", sc.border_col);
+      load_col("ro_skin_titletx", sc.title_text);
+      load_col("ro_skin_bodytx", sc.body_text);
+      load_col("ro_skin_tab", sc.tab_col);
+      load_col("ro_skin_tabinact", sc.tab_inact);
+      load_col("ro_skin_input", sc.input_col);
+      load_col("ro_skin_header", sc.header_col);
+    }
+    g_ro_presets.clear();
+    if (const YAML::Node ps = ui["ro_skin_presets"]) {
+      for (auto it = ps.begin(); it != ps.end(); ++it) {
+        RoPreset p;
+        p.name = (*it)["name"].as<std::string>("");
+        if (p.name.empty()) continue;
+        p.cfg = ReadSkinCfg(*it);
+        g_ro_presets.push_back(std::move(p));
+      }
+    }
+    // Starter set au 1er lancement (aucun preset sauvegardé) : donne des thèmes
+    // de départ que les joueurs peuvent Appliquer puis modifier.
+    if (g_ro_presets.empty()) {
+      auto setc = [](float* c, int r, int g, int b) {
+        c[0] = r / 255.f; c[1] = g / 255.f; c[2] = b / 255.f; c[3] = 1.f;
+      };
+      g_ro_presets.push_back({"RO Classique", ro::RoSkinConfig{}});  // défauts natifs
+      {
+        ro::RoSkinConfig d;
+        d.title_brightness = 0.90f;
+        setc(d.body_col, 44, 46, 54);
+        setc(d.border_col, 90, 94, 110);
+        setc(d.body_text, 226, 228, 235);
+        setc(d.title_text, 255, 255, 255);
+        setc(d.tab_col, 90, 120, 190);
+        setc(d.tab_inact, 70, 74, 86);
+        setc(d.input_col, 64, 66, 76);
+        setc(d.header_col, 58, 60, 70);
+        g_ro_presets.push_back({"Sombre", d});
+      }
+      {
+        ro::RoSkinConfig d;
+        setc(d.body_col, 244, 236, 218);
+        setc(d.border_col, 176, 150, 110);
+        setc(d.body_text, 60, 44, 24);
+        setc(d.title_text, 40, 28, 12);
+        setc(d.tab_col, 196, 166, 120);
+        setc(d.tab_inact, 226, 214, 190);
+        setc(d.input_col, 232, 222, 200);
+        setc(d.header_col, 224, 210, 184);
+        g_ro_presets.push_back({"Sepia", d});
+      }
+    }
     if (auto* stg = Bourgeon::Instance().storage_tweaks())
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
     if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
       cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
+    if (auto* sh = Bourgeon::Instance().shop_tweaks())
+      sh->imgui_enabled_ = ui["shop_imgui"].as<bool>(sh->imgui_enabled_);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -878,10 +982,49 @@ void MoonlightUi::SaveSettings() {
   }
 
   {
+    out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
+    out << YAML::Key << "ro_skin" << YAML::Value << ro::IsSkinEnabled();
+    {
+      auto& sc = ro::SkinConfig();
+      auto pk = [](const float* c) {
+        return (unsigned int)ImGui::ColorConvertFloat4ToU32(
+            ImVec4(c[0], c[1], c[2], c[3]));
+      };
+      out << YAML::Key << "ro_skin_bright" << YAML::Value << sc.title_brightness;
+      out << YAML::Key << "ro_skin_rounding" << YAML::Value << sc.rounding;
+      out << YAML::Key << "ro_skin_alpha" << YAML::Value << sc.alpha;
+      out << YAML::Key << "ro_skin_body" << YAML::Value << pk(sc.body_col);
+      out << YAML::Key << "ro_skin_border" << YAML::Value << pk(sc.border_col);
+      out << YAML::Key << "ro_skin_titletx" << YAML::Value << pk(sc.title_text);
+      out << YAML::Key << "ro_skin_bodytx" << YAML::Value << pk(sc.body_text);
+      out << YAML::Key << "ro_skin_tab" << YAML::Value << pk(sc.tab_col);
+      out << YAML::Key << "ro_skin_tabinact" << YAML::Value << pk(sc.tab_inact);
+      out << YAML::Key << "ro_skin_input" << YAML::Value << pk(sc.input_col);
+      out << YAML::Key << "ro_skin_header" << YAML::Value << pk(sc.header_col);
+    }
+    out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
+    for (const auto& p : g_ro_presets) {
+      out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << p.name;
+      // Réutilise EmitSkinCfg sauf le BeginMap/EndMap déjà ouverts ici : on inline.
+      out << YAML::Key << "bright" << YAML::Value << p.cfg.title_brightness;
+      out << YAML::Key << "alpha" << YAML::Value << p.cfg.alpha;
+      out << YAML::Key << "body" << YAML::Value << PackCol(p.cfg.body_col);
+      out << YAML::Key << "border" << YAML::Value << PackCol(p.cfg.border_col);
+      out << YAML::Key << "titletx" << YAML::Value << PackCol(p.cfg.title_text);
+      out << YAML::Key << "bodytx" << YAML::Value << PackCol(p.cfg.body_text);
+      out << YAML::Key << "tab" << YAML::Value << PackCol(p.cfg.tab_col);
+      out << YAML::Key << "tabinact" << YAML::Value << PackCol(p.cfg.tab_inact);
+      out << YAML::Key << "input" << YAML::Value << PackCol(p.cfg.input_col);
+      out << YAML::Key << "header" << YAML::Value << PackCol(p.cfg.header_col);
+      out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
     auto* cs = Bourgeon::Instance().cashshop_tweaks();
     out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
+    auto* sh = Bourgeon::Instance().shop_tweaks();
+    out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
   }
 
   {
@@ -1314,6 +1457,7 @@ void AlignGrid::Draw() const {
 
 void MoonlightUi::OnRenderUI() {
   if (!in_game_) return;
+
 
   // Global alignment grid (shared HUD overlay). Drawn here on the background
   // list so it shows even with the bars hidden; suppressed while a full-screen
@@ -1812,13 +1956,21 @@ void MoonlightUi::OnRenderUI() {
             "ON : cash shop ImGui moderne (icones, categories, panier) et la "
             "fenetre native est cachee.\nOFF : cash shop natif classique.");
       }
+      // ── Shop NPC : fenêtre achat/vente ImGui unifiée OU natif ──
+      if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
+        if (ImGui::Checkbox("Shop NPC ImGui", &sh->imgui_enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "ON : fenetre boutique ImGui unifiee (onglets Acheter/Vendre, saut "
+            "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
+      }
       // ── Navigation latérale (liste à gauche, contenu à droite) ───────────
       // Remplace l'ancienne barre d'onglets : plus scalable quand les
       // catégories se multiplient (noms entiers, scroll vertical naturel).
       static int s_iface_nav = 0;
       static const char* kIfaceCats[] = {
           "Barres d'info", "Portrait",         "Barre d'action", "Icônes du menu",
-          "Icônes de statut", "Suivi de quête", "Descriptions"};
+          "Icônes de statut", "Suivi de quête", "Descriptions", "Skin RO"};
       const float kNavH = 360.0f;
       ImGui::BeginChild("iface_nav", ImVec2(150.0f, kNavH), true);
       for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
@@ -2119,6 +2271,70 @@ void MoonlightUi::OnRenderUI() {
           } else {
             ImGui::TextDisabled("(plugin indisponible)");
           }
+        }
+        // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────
+        if (s_iface_nav == 7)
+        {
+          bool font_on = ro::IsFontEnabled();
+          if (ImGui::Checkbox("Police Malgun (UI)", &font_on)) {
+            ro::SetFontEnabled(font_on);
+            SaveSettings();
+          }
+          ImGui::SameLine(); HelpMarker(
+              "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
+              "OFF : police integree d'ImGui (ProggyClean).");
+          bool skin_on = ro::IsSkinEnabled();
+          if (ImGui::Checkbox("Skin RO (fenetres claires)", &skin_on)) {
+            ro::SetSkinEnabled(skin_on);
+            SaveSettings();
+          }
+          ImGui::SameLine(); HelpMarker(
+              "ON : les fenetres ImGui 'RO' utilisent la barre de titre et les "
+              "boutons du client.\nOFF : chrome ImGui standard.");
+          ImGui::Separator();
+          if (ro::ShowRoSkinSettings()) SaveSettings();
+
+          // ── Presets : jeux de couleurs sauvegardés ────────────────────────
+          ImGui::Separator();
+          ImGui::TextUnformatted("Presets");
+          const int npreset = static_cast<int>(g_ro_presets.size());
+          const bool valid_sel = g_ro_preset_sel >= 0 && g_ro_preset_sel < npreset;
+          const char* preview = valid_sel ? g_ro_presets[g_ro_preset_sel].name.c_str()
+                                          : "(choisir)";
+          ImGui::SetNextItemWidth(160.0f);
+          if (ImGui::BeginCombo("##ro_preset", preview)) {
+            for (int i = 0; i < npreset; ++i)
+              if (ImGui::Selectable(g_ro_presets[i].name.c_str(), g_ro_preset_sel == i))
+                g_ro_preset_sel = i;
+            ImGui::EndCombo();
+          }
+          ImGui::SameLine();
+          if (ImGui::Button("Appliquer") && valid_sel) {
+            ro::SkinConfig() = g_ro_presets[g_ro_preset_sel].cfg;
+            SaveSettings();
+          }
+          ImGui::SameLine();
+          if (ImGui::Button("Supprimer") && valid_sel) {
+            g_ro_presets.erase(g_ro_presets.begin() + g_ro_preset_sel);
+            g_ro_preset_sel = -1;
+            SaveSettings();
+          }
+          static char preset_name[32] = "";
+          ImGui::SetNextItemWidth(160.0f);
+          ImGui::InputText("##ro_preset_name", preset_name, sizeof(preset_name));
+          ImGui::SameLine();
+          if (ImGui::Button("Sauvegarder") && preset_name[0]) {
+            bool found = false;
+            for (auto& p : g_ro_presets)
+              if (p.name == preset_name) { p.cfg = ro::SkinConfig(); found = true; break; }
+            if (!found) g_ro_presets.push_back({preset_name, ro::SkinConfig()});
+            SaveSettings();
+            preset_name[0] = '\0';
+          }
+          ImGui::SameLine();
+          HelpMarker("Sauvegarde les couleurs/luminosite/opacite actuelles sous un "
+                     "nom. 'Appliquer' recharge un preset ; les joueurs peuvent se "
+                     "faire plusieurs themes.");
         }
       }
       ImGui::PopTextWrapPos();

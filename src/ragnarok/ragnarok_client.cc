@@ -16,6 +16,7 @@
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
+#include "ui/ro_imgui.h"
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -127,8 +128,11 @@ void __fastcall Hooked_CursorRender(void* thisptr) {
   g_captured_this_pass = false;
   if (thisptr && ImGui::GetCurrentContext()) {
     const ImVec2 mp = ImGui::GetIO().MousePos;
+    // Consommé chaque frame (remis à 0) : type de curseur RO demandé par un widget
+    // du toolkit au survol (main sur scrollbar/resize/checkbox/bouton), 0 = flèche.
+    const int req = ro::TakeHoverCursor();
     if (IsMouseOverAnyImGuiWindow(mp.x, mp.y))
-      *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = 0;
+      *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = req;
   }
   g_orig_cursor_render(thisptr);
   g_capturing_cursor = false;
@@ -457,6 +461,10 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
 
   // Start initializing imgui
   ImGui::CreateContext();
+  // Charge la police coréenne (glyphes hangul pré-bakés) AVANT la 1ère frame, pour
+  // que l'atlas statique construit par le backend (DX7/DX9) contienne le coréen.
+  // Sans ça, toute chaîne CP949 s'affiche en carrés. Voir ui/ro_imgui.h.
+  ro::LoadKoreanFont();
   ImGui::StyleColorsDark();
   ImGui_ImplWin32_Init(hwnd);
   ImGuiIO& io = ImGui::GetIO();

@@ -14,6 +14,7 @@
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
+#include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_storage_window_re)
 namespace {
@@ -695,7 +696,8 @@ void StorageTweaks::OnRenderUI() {
   char title[64];
   std::snprintf(title, sizeof(title), "%s###bourgeon_storage",
                 storage_name_[0] ? storage_name_ : "Storage");
-  const bool begun = ImGui::Begin(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
+  const bool begun =
+      ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
   bourgeon::CloseWindowOnEscape(show_panel_);
   // Le X du viewer a été cliqué ce frame (show_panel_ était vrai à l'entrée, cf. le
   // early-return en tête) -> on FERME l'entrepôt côté serveur (CZ_CloseKafra). Le
@@ -707,7 +709,7 @@ void StorageTweaks::OnRenderUI() {
     show_panel_ = true;
   }
   if (!begun) {
-    ImGui::End();
+    ro::EndRoWindow();
     return;
   }
 
@@ -856,14 +858,14 @@ void StorageTweaks::OnRenderUI() {
               static_cast<int>(view.size()), total_val);
   ImGui::SameLine();
   // ── Settings (début) : colonnes optionnelles Idx / ID ──
-  ImGui::Checkbox("Idx", &show_index_col_);
+  ro::RoCheckbox("Idx", &show_index_col_);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Afficher l'index storage (slot) — un item recemment ajoute a un index eleve");
   ImGui::SameLine();
-  ImGui::Checkbox("ID", &show_id_col_);
+  ro::RoCheckbox("ID", &show_id_col_);
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Afficher une colonne avec l'id d'item");
   ImGui::SameLine();
-  ImGui::Checkbox("Slots", &show_slots_col_);
+  ro::RoCheckbox("Slots", &show_slots_col_);
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Afficher une colonne avec le nombre de slots de carte");
   ImGui::Separator();
 
@@ -882,7 +884,14 @@ void StorageTweaks::OnRenderUI() {
                              ImGuiTableFlags_Sortable |
                              ImGuiTableFlags_ScrollY |
                              ImGuiTableFlags_SizingStretchProp;
-  if (ImGui::BeginTable("storage_items", ncols, tf)) {
+  // Footer btnbar : uniquement quand le skin RO est actif (c'est un élément du
+  // skin). Sinon la table remplit toute la hauteur (pas de réservation).
+  const bool ro_skin = ro::IsSkinEnabled();
+  const float kFooterH = 21.0f;
+  const ImVec2 table_size =
+      ro_skin ? ImVec2(0.0f, -(kFooterH + ImGui::GetStyle().ItemSpacing.y))
+              : ImVec2(0.0f, 0.0f);
+  if (ImGui::BeginTable("storage_items", ncols, tf, table_size)) {
     ImGui::TableSetupScrollFreeze(0, 1);
     if (show_index_col_)
       ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed |
@@ -1033,6 +1042,26 @@ void StorageTweaks::OnRenderUI() {
     ImGui::EndTable();
   }
 
+  // ── Footer btnbar (épinglé en bas de la fenêtre) : icône compteur + used/max.
+  // Le grip de resize (dessiné par BeginRoWindow) tombe dans le coin bas-droit,
+  // donc dans ce footer. La table a réservé kFooterH au-dessus. Skin RO seulement.
+  if (ro_skin) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+    const float fx0 = wp.x + st.WindowPadding.x;
+    const float fx1 = wp.x + ws.x - st.WindowPadding.x;
+    const float fy1 = wp.y + ws.y - st.WindowPadding.y;
+    const float fy0 = fy1 - kFooterH;
+    ro::DrawBar(fx0, fy0, fx1, fy1);
+    const float iw = ro::DrawIconNum(fx0 + 6.0f, fy0 + (kFooterH - 14.0f) * 0.5f);
+    char cnt[32];
+    std::snprintf(cnt, sizeof(cnt), "%d/%d", used_, max_);
+    const ImVec2 tsz = ImGui::CalcTextSize(cnt);
+    ImGui::GetWindowDrawList()->AddText(
+        ImVec2(fx0 + 6.0f + iw + 4.0f, fy0 + (kFooterH - tsz.y) * 0.5f),
+        ImGui::GetColorU32(ImGuiCol_Text), cnt);
+  }
+
   // DRAG d'un item storage : suit le curseur ; au relâché, la CIBLE décide du sens :
   //   - lâché sur l'INVENTAIRE -> retrait (storage -> inventaire)
   //   - lâché sur le CART       -> storage -> cart
@@ -1087,5 +1116,5 @@ void StorageTweaks::OnRenderUI() {
     }
   }
 
-  ImGui::End();
+  ro::EndRoWindow();
 }

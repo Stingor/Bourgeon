@@ -38,6 +38,8 @@ set(BOURGEON_FILES
 	"plugins/storage_tweaks.h"
 	"plugins/cashshop_tweaks.cc"
 	"plugins/cashshop_tweaks.h"
+	"plugins/shop_tweaks.cc"
+	"plugins/shop_tweaks.h"
 	"plugins/equip_tweaks.cc"
 	"plugins/equip_tweaks.h"
 	"plugins/window_pos_tweaks.cc"
@@ -62,6 +64,11 @@ set(BOURGEON_FILES
 	"plugins/skill_bar_tweaks.h"
 	"plugins/item_desc_tweaks.cc"
 	"plugins/item_desc_tweaks.h"
+
+	# UI toolkit (socle ImGui « façon RO »)
+	"ui/ro_imgui.cc"
+	"ui/ro_imgui.h"
+	"ui/ro_skin_blobs.hpp"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
