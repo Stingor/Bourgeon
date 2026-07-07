@@ -792,7 +792,9 @@ void StorageTweaks::OnRenderUI() {
   // Barre de recherche (filtre par nom), persistante entre frames.
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
-  filter.Draw("##storage_filter");
+  if (ImGui::InputTextWithHint("##storage_filter", "Filtrer...", filter.InputBuf,
+                               IM_ARRAYSIZE(filter.InputBuf)))
+    filter.Build();
 
   // Vue onglet+nom (avant sous-catégorie) : sert à connaître les sous-cats présentes.
   const int sub_dim = kStgCats[cur_tab_].sub;
