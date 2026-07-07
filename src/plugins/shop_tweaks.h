@@ -79,7 +79,8 @@ class ShopTweaks : public Plugin {
     int      index = 0;         // index inventaire (pour CZ_PC_SELL_ITEMLIST)
     uint32_t id = 0;            // itemId résolu (icône/nom)
     int      amount = 0;        // quantité possédée
-    int32_t  price = 0;         // prix de vente unitaire (overcharge inclus)
+    int32_t  price = 0;         // prix de vente unitaire (overcharge inclus) = final
+    int32_t  base_price = 0;    // prix de vente de base (avant Overcharge) — affichage base->final
     int      slots = 0;
     char     name[64] = {0};
   };
@@ -115,6 +116,10 @@ class ShopTweaks : public Plugin {
   bool     have_buy_ = false;        // liste achat reçue ?
   int      last_result_ = -1;        // dernier 0xca/0xcb (-1 = aucun)
   bool     last_result_sell_ = false;
+  // "Tout ajouter au panier" (vente) arme la fermeture AUTO du shop une fois la
+  // liste vendue (fonctionnalite dump-tout-et-quitte).
+  bool     sell_all_close_ = false;  // arme par "Tout ajouter au panier"
+  bool     want_close_ = false;      // fermeture differee (0xcb thread recv -> OnTick)
 
   // Tri / filtre partagés.
   int  cur_sort_ = 0;   // 0 = Nom, 1 = ID, 2 = Prix

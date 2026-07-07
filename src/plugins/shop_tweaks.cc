@@ -63,6 +63,20 @@ constexpr uintptr_t kInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __
 using InfoCtor_t  = void(__fastcall*)(void*);
 using InfoSetId_t = void(__thiscall*)(void*, int);
 
+// Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 (comme cashshop).
+constexpr int kWinItemDesc = 0xc;
+constexpr int kMsgSetItem  = 0x18;
+constexpr int kVfOnMsg     = 0x94;
+constexpr int kVfSetPos    = 0x10;
+constexpr uintptr_t kMakeWindow = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr, edx, id)
+using OnMsg_t      = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
+using SetPos_t     = void(__fastcall*)(void*, void*, int, int);
+using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
+template <typename Fn>
+inline Fn Vf(void* self, int off) {
+  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
+}
+
 // Nom par id : DB de description (map id->record), name = *(rec+4).
 constexpr uintptr_t kDescDbLookup = 0x006a0d40;
 constexpr uintptr_t kDescDb       = 0x01255130;
@@ -183,6 +197,35 @@ IconTex ResolveIcon(uint32_t id) {
   return g_icon_cache[id] = LoadItemIcon(id);
 }
 
+// Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my), via un
+// ItemSkillInfo standalone (comme cashshop_tweaks) : ctor + SetId + EnsureLoaded +
+// flag identifie. view/location = gate du bouton apercu (0 pour la vente = pas
+// d'apercu, la description reste correcte). SEH-garde (POD only).
+void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my) {
+  if (id == 0) return;
+  __try {
+    uint8_t info[0x100];
+    std::memset(info, 0, sizeof(info));
+    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
+    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));
+    info[0x5c] = 1;                                        // identifie
+    *reinterpret_cast<uint32_t*>(info + 0x8)  = location;  // equip point (gate apercu)
+    *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID (gate apercu)
+    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    if (cache)
+      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
+    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        reinterpret_cast<void*>(kWinItemDesc));
+    if (dwnd) {
+      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+                                  static_cast<int>(reinterpret_cast<uintptr_t>(info)),
+                                  0, 0, 0);
+      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // Résout l'itemId d'un payload ItemSkillInfo (pour l'icône côté vente). Le
 // payload porte l'id sous forme resname -> on relit son nom via la DB par id
 // stocké ; ici on lit le nom std::string du nœud (déjà résolu par le natif) et on
@@ -252,6 +295,8 @@ void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     buy_requested_ = false;
     sell_requested_ = false;
     last_result_ = -1;
+    sell_all_close_ = false;
+    want_close_ = false;
     // La requête de liste (0xc5) part de OnTick (thread principal), pas d'ici.
     return;
   }
@@ -297,7 +342,11 @@ void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     if (len < 1) return;
     last_result_ = data[0];
     last_result_sell_ = true;
-    if (last_result_ == 0 && cur_mode_ == kSell) cart_.clear();
+    if (last_result_ == 0 && cur_mode_ == kSell) {
+      cart_.clear();
+      // "Tout ajouter au panier" -> ferme le shop apres la vente reussie.
+      if (sell_all_close_) want_close_ = true;
+    }
     // La vente vide npc_shopid côté serveur : re-armer pour re-shopper.
     sell_requested_ = false;
     buy_requested_ = false;
@@ -409,6 +458,7 @@ void ShopTweaks::RefreshSellFromNative() {
       int32_t p2 = *reinterpret_cast<int32_t*>(n + kNodePrice2);
       int32_t p1 = *reinterpret_cast<int32_t*>(n + kNodePrice);
       s.price = (p2 != 0) ? p2 : p1;  // overcharge (prix réel) sinon prix de base
+      s.base_price = p1;              // base (avant Overcharge) pour l'affichage base->final
       s.slots = *reinterpret_cast<int16_t*>(n + kNodeSlots);
       // node+0x34 = std::string (MSVC : +0x14 cap) = itemId EN TEXTE -> atoi.
       const char* base = reinterpret_cast<const char*>(n + kNodeName);
@@ -450,6 +500,7 @@ void ShopTweaks::CloseNativeShop() {
   CloseWnd(kWinBuy);
   CloseWnd(kWinSell);
   CloseWnd(kWinDetail);
+  sell_all_close_ = false;  // desarme la fermeture auto
 }
 
 void ShopTweaks::HideNativeAtCreation(void* win) {
@@ -467,6 +518,17 @@ void ShopTweaks::HideDetailWindow(void* win) {
 
 void ShopTweaks::OnTick() {
   if (!imgui_enabled_) { open_ = false; was_open_ = false; return; }
+
+  // Fermeture AUTO demandee (vente d'un "Tout ajouter au panier" reussie) : on ferme
+  // comme un clic X (cmd 0x28 + destruction native) depuis le thread principal.
+  if (want_close_) {
+    want_close_ = false;
+    CloseNativeShop();
+    open_ = false;
+    was_open_ = false;
+    show_panel_ = true;
+    return;
+  }
 
   // Le shop est "ouvert" tant qu'une de ses fenêtres natives existe (le serveur
   // les crée ; on les cache). open_ posé aussi par 0xc4. Signal de fermeture :
@@ -552,6 +614,7 @@ void ShopTweaks::OnRenderUI() {
     // Bascule vers Vendre : RE-demander la liste (l'inventaire a pu changer, ex.
     // après un achat) -> la liste native est un snapshot, sinon elle reste périmée.
     if (cur_mode_ == kSell) sell_requested_ = false;
+    sell_all_close_ = false;  // changement d'onglet -> desarme la fermeture auto
   }
 
   // Bandeau : zeny du joueur + résultat de la dernière transaction.
@@ -566,6 +629,30 @@ void ShopTweaks::OnRenderUI() {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "  Echec (%d)", last_result_);
   }
+
+  // Rend une cellule prix facon natif : "base -> final" (base grise, final en
+  // couleur) quand la remise Discount (achat) ou la majoration Overcharge (vente)
+  // change le prix marchand ; sinon juste le prix final. base<=0 ou == final =>
+  // affichage simple.
+  auto draw_price = [&](int32_t base, int32_t final_price, const ImVec4& col) {
+    if (base > 0 && base != final_price) {
+      ImGui::TextDisabled("%d", base);
+      ImGui::SameLine(0.0f, 3.0f);
+      ImGui::TextDisabled("->");
+      ImGui::SameLine(0.0f, 3.0f);
+      ImGui::TextColored(col, "%dz", final_price);
+    } else {
+      ImGui::TextColored(col, "%dz", final_price);
+    }
+  };
+
+  // Clic-droit sur le DERNIER item dessine (icone ou nom) -> description native.
+  auto rclick_desc = [&](uint32_t id, uint16_t view, uint32_t loc) {
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      const ImVec2 mp = ImGui::GetMousePos();
+      OpenItemDesc(id, view, loc, static_cast<int>(mp.x), static_cast<int>(mp.y));
+    }
+  };
 
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
@@ -586,7 +673,7 @@ void ShopTweaks::OnRenderUI() {
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn("Objet");
-      ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+      ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 110.0f);
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 44.0f);
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
@@ -598,14 +685,16 @@ void ShopTweaks::OnRenderUI() {
         IconTex ic = ResolveIcon(b.id);
         if (ic.tex) {
           ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
+          rclick_desc(b.id, b.view, b.location);  // clic-droit icone -> desc
           ImGui::SameLine();
         }
         ImGui::TextUnformatted(nm);
+        rclick_desc(b.id, b.view, b.location);  // clic-droit nom -> desc
         ImGui::TableNextColumn();
         const bool afford = static_cast<uint32_t>(b.discount) <= zeny;
-        // Prix noir si abordable, rouge sombre si trop cher (signal conserve).
-        ImGui::TextColored(afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f),
-                           "%dz", b.discount);
+        // Prix noir si abordable, rouge sombre si trop cher ; "base -> remise" si Discount.
+        draw_price(b.price, b.discount,
+                   afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
         ImGui::TableNextColumn();
         if (ro::RoButton("+")) AddToCart(b.id, -1, b.discount, 30000);
         ImGui::PopID();
@@ -622,12 +711,16 @@ void ShopTweaks::OnRenderUI() {
       cart_.clear();
       for (const auto& s : sell_items_)
         cart_.push_back(CartEntry{s.id, s.index, s.amount, s.price, s.amount});
+      sell_all_close_ = true;  // arme la fermeture auto du shop apres la vente
     }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Ajoute tout l'inventaire vendable ; le shop se fermera "
+                        "automatiquement apres la vente.");
     if (ImGui::BeginTable("selltbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn("Objet");
-      ImGui::TableSetupColumn("Vente", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+      ImGui::TableSetupColumn("Vente", ImGuiTableColumnFlags_WidthFixed, 110.0f);
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 44.0f);
       ImGui::TableHeadersRow();
       for (const auto& s : sell_items_) {
@@ -637,14 +730,17 @@ void ShopTweaks::OnRenderUI() {
         ImGui::PushID(s.index);
         ImGui::TableNextColumn();
         IconTex ic = ResolveIcon(s.id);
+        // view/loc inconnus en vente -> 0 : pas d'apercu, la desc reste correcte.
         if (ic.tex) {
           ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
+          rclick_desc(s.id, 0, 0);  // clic-droit icone -> desc
           ImGui::SameLine();
         }
         ImGui::Text("%s x%d", nm, s.amount);
+        rclick_desc(s.id, 0, 0);  // clic-droit nom -> desc
         ImGui::TableNextColumn();
-        // s.price = prix de vente overcharge-inclus (lu du noeud natif, cf. RE).
-        ImGui::TextColored(kBlack, "%dz", s.price);
+        // "base -> majore" si Overcharge, sinon juste le prix (lu du noeud natif).
+        draw_price(s.base_price, s.price, kBlack);
         ImGui::TableNextColumn();
         if (ro::RoButton("+")) AddToCart(s.id, s.index, s.price, s.amount);
         ImGui::PopID();
@@ -661,7 +757,7 @@ void ShopTweaks::OnRenderUI() {
   ImGui::BeginChild("shop_cart", ImVec2(cart_w, 0), true);
   ImGui::TextUnformatted(cur_mode_ == kBuy ? "Panier d'achat" : "Panier de vente");
   ImGui::SameLine();
-  if (!cart_.empty() && ro::RoButton("Vider")) cart_.clear();
+  if (!cart_.empty() && ro::RoButton("Vider")) { cart_.clear(); sell_all_close_ = false; }
   ImGui::Separator();
   long long total = 0;
   int remove = -1;
