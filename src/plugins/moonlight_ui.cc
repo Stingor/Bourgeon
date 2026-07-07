@@ -68,6 +68,9 @@ ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
   if (n["tabinact"]) UnpackCol(n["tabinact"].as<unsigned>(0), c.tab_inact);
   if (n["input"]) UnpackCol(n["input"].as<unsigned>(0), c.input_col);
   if (n["header"]) UnpackCol(n["header"].as<unsigned>(0), c.header_col);
+  if (n["card"]) UnpackCol(n["card"].as<unsigned>(0), c.card_col);
+  if (n["cardhead"]) UnpackCol(n["cardhead"].as<unsigned>(0), c.card_head_col);
+  if (n["cardtx"]) UnpackCol(n["cardtx"].as<unsigned>(0), c.card_head_text);
   return c;
 }
 }  // namespace
@@ -587,6 +590,9 @@ void MoonlightUi::LoadSettings() {
       load_col("ro_skin_tabinact", sc.tab_inact);
       load_col("ro_skin_input", sc.input_col);
       load_col("ro_skin_header", sc.header_col);
+      load_col("ro_skin_card", sc.card_col);
+      load_col("ro_skin_cardhead", sc.card_head_col);
+      load_col("ro_skin_cardtx", sc.card_head_text);
     }
     g_ro_presets.clear();
     if (const YAML::Node ps = ui["ro_skin_presets"]) {
@@ -616,6 +622,9 @@ void MoonlightUi::LoadSettings() {
         setc(d.tab_inact, 70, 74, 86);
         setc(d.input_col, 64, 66, 76);
         setc(d.header_col, 58, 60, 70);
+        setc(d.card_col, 54, 56, 66);
+        setc(d.card_head_col, 34, 36, 44);
+        setc(d.card_head_text, 226, 228, 235);
         g_ro_presets.push_back({"Sombre", d});
       }
       {
@@ -628,6 +637,9 @@ void MoonlightUi::LoadSettings() {
         setc(d.tab_inact, 226, 214, 190);
         setc(d.input_col, 232, 222, 200);
         setc(d.header_col, 224, 210, 184);
+        setc(d.card_col, 250, 244, 228);
+        setc(d.card_head_col, 150, 120, 80);
+        setc(d.card_head_text, 250, 244, 230);
         g_ro_presets.push_back({"Sepia", d});
       }
     }
@@ -989,6 +1001,9 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "ro_skin_tabinact" << YAML::Value << pk(sc.tab_inact);
       out << YAML::Key << "ro_skin_input" << YAML::Value << pk(sc.input_col);
       out << YAML::Key << "ro_skin_header" << YAML::Value << pk(sc.header_col);
+      out << YAML::Key << "ro_skin_card" << YAML::Value << pk(sc.card_col);
+      out << YAML::Key << "ro_skin_cardhead" << YAML::Value << pk(sc.card_head_col);
+      out << YAML::Key << "ro_skin_cardtx" << YAML::Value << pk(sc.card_head_text);
     }
     out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
     for (const auto& p : g_ro_presets) {
@@ -1004,6 +1019,9 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "tabinact" << YAML::Value << PackCol(p.cfg.tab_inact);
       out << YAML::Key << "input" << YAML::Value << PackCol(p.cfg.input_col);
       out << YAML::Key << "header" << YAML::Value << PackCol(p.cfg.header_col);
+      out << YAML::Key << "card" << YAML::Value << PackCol(p.cfg.card_col);
+      out << YAML::Key << "cardhead" << YAML::Value << PackCol(p.cfg.card_head_col);
+      out << YAML::Key << "cardtx" << YAML::Value << PackCol(p.cfg.card_head_text);
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;

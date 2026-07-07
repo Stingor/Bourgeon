@@ -645,7 +645,6 @@ void CashShopTweaks::OnRenderUI() {
   {
     const float card_w = 172.0f, card_h = 100.0f, gap = 4.0f, box = 78.0f;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
-    const ImVec4 kGold(0.60f, 0.42f, 0.02f, 1.0f);   // prix (lisible sur creme)
     const float grid_inner_w = ImGui::GetContentRegionAvail().x;
     const float grid_inner_h = ImGui::GetContentRegionAvail().y;
     // Mesure du chrome (fenetre - zone cartes) -> le callback de snap l'utilise la
@@ -680,8 +679,16 @@ void CashShopTweaks::OnRenderUI() {
 
     // Dessine une carte pour l'item ci.
     auto draw_card = [&](const CashItem& ci) {
+      // Couleurs de carte pilotees par le skin RO (customisables + persistees).
+      const ro::RoSkinConfig& sc = ro::SkinConfig();
+      auto U32 = [](const float* c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3]));
+      };
+      const ImU32 card_bg   = U32(sc.card_col);
+      const ImU32 card_head = U32(sc.card_head_col);
+      const ImU32 card_txt  = U32(sc.card_head_text);
       ImGui::PushID(static_cast<int>(ci.id));
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(245, 243, 232, 255));  // fond creme
+      ImGui::PushStyleColor(ImGuiCol_ChildBg, card_bg);  // fond carte (couleur skin)
       // Marges resserrees (image plus grande) ; le ChildRounding est global (fenetre).
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5.0f, 3.0f));
       // NoScrollWithMouse : la carte ne capture PAS la molette -> le scroll va à la
@@ -697,8 +704,8 @@ void CashShopTweaks::OnRenderUI() {
       ImDrawList* dl = ImGui::GetWindowDrawList();
       const ImVec2 wp = ImGui::GetWindowPos();
       dl->AddRectFilled(wp, ImVec2(wp.x + card_w, wp.y + header_h),
-                        IM_COL32(58, 55, 48, 255), 6.0f,
-                        ImDrawFlags_RoundCornersTop);  // bandeau fonce, coins hauts arrondis
+                        card_head, 6.0f,
+                        ImDrawFlags_RoundCornersTop);  // bandeau (couleur skin), coins hauts arrondis
       // Nom sur UNE SEULE ligne : au lieu de wrapper, on REDUIT la police pour tenir
       // dans la largeur de la carte (draw-list a taille custom). Centre verticalement
       // dans le bandeau. Plancher a 55% pour rester lisible (leger debord au pire).
@@ -711,7 +718,7 @@ void CashShopTweaks::OnRenderUI() {
         float fsz = (tw > availw && tw > 0.0f) ? base * (availw / tw) : base;
         if (fsz < base * 0.55f) fsz = base * 0.55f;
         const ImVec2 tp(wp.x + 4.0f, wp.y + (header_h - fsz) * 0.5f);
-        dl->AddText(font, fsz, tp, IM_COL32(240, 238, 228, 255), nm);
+        dl->AddText(font, fsz, tp, card_txt, nm);
       }
       // 2) RangΓ©e du bas ancrΓ©e : image Γ  GAUCHE, prix + Buy Γ  DROITE.
       // Bloc du bas [image | prix+boutons] CENTRE sur tous les bords (coords contenu).
@@ -731,8 +738,14 @@ void CashShopTweaks::OnRenderUI() {
         iw = ic.w * s; ih = ic.h * s;
       }
       // Image a GAUCHE (cellule largeur `img`), centree verticalement dans la zone.
+      // Teinte = luminosite du skin (title_brightness) ; l'alpha suit deja style.Alpha.
+      // ImGui 1.92 : Image() n'a plus de tint_col -> ImageWithBg (bg transparent).
+      const float ib = ro::SkinImageBrightness();
+      const ImVec4 img_tint(ib, ib, ib, 1.0f);
       ImGui::SetCursorPos(ImVec2((img - iw) * 0.5f, low_top + (LH - ih) * 0.5f));
-      if (ic.tex) ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(iw, ih));
+      if (ic.tex) ImGui::ImageWithBg(reinterpret_cast<ImTextureID>(ic.tex),
+                                     ImVec2(iw, ih), ImVec2(0, 0), ImVec2(1, 1),
+                                     ImVec4(0, 0, 0, 0), img_tint);
       else        ImGui::Dummy(ImVec2(iw, ih));
       // Survol de l'image -> MÊME aperçu porté que la desc (viewID + emplacement) :
       // basic_info rend le perso portant l'item (sprites capturés, molette = tourner).

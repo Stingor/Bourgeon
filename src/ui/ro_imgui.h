@@ -113,12 +113,22 @@ struct RoSkinConfig {
   float tab_inact[4]  = {210.f / 255, 214.f / 255, 222.f / 255, 1.f};  // onglet inactif
   float input_col[4]  = {206.f / 255, 206.f / 255, 206.f / 255, 1.f};  // champ de saisie
   float header_col[4] = {206.f / 255, 206.f / 255, 206.f / 255, 1.f};  // en-tête tableau
+  float card_col[4]       = {245.f / 255, 243.f / 255, 232.f / 255, 1.f};  // fond carte item (crème)
+  float card_head_col[4]  = {58.f / 255, 55.f / 255, 48.f / 255, 1.f};     // bandeau titre de carte
+  float card_head_text[4] = {240.f / 255, 238.f / 255, 228.f / 255, 1.f};  // texte du bandeau de carte
 };
 RoSkinConfig& SkinConfig();
 
 // Widgets de réglage du skin (sliders + color pickers) à placer dans un panneau
 // ImGui existant. Renvoie true si une valeur a changé (pour déclencher une sauvegarde).
 bool ShowRoSkinSettings();
+
+// Luminosité (title_brightness, clampée 0..2) à appliquer comme teinte aux IMAGES de
+// jeu (icônes d'item, aperçus) dessinées dans une fenêtre RO, pour qu'elles suivent
+// le skin. L'opacité est déjà gérée par ImGui via style.Alpha → NON incluse ici.
+// Usage : const float b = ro::SkinImageBrightness();
+//         ImGui::Image(tex, size, ImVec2(0,0), ImVec2(1,1), ImVec4(b, b, b, 1.0f));
+float SkinImageBrightness();
 
 
 // InputText dont le buffer est du CP949 en entrée ET en sortie : la saisie

@@ -405,6 +405,13 @@ void SetSkinEnabled(bool enabled) { g_skin_enabled = enabled; }
 bool IsSkinEnabled() { return g_skin_enabled; }
 RoSkinConfig& SkinConfig() { return g_cfg; }
 
+float SkinImageBrightness() {
+  float b = g_cfg.title_brightness;
+  if (b < 0.0f) b = 0.0f;
+  if (b > 2.0f) b = 2.0f;
+  return b;
+}
+
 void SetHoverCursor(int ro_cursor_type) { g_hover_cursor = ro_cursor_type; }
 int TakeHoverCursor() {
   const int t = g_hover_cursor;
@@ -821,6 +828,9 @@ bool ShowRoSkinSettings() {
   ch |= ImGui::ColorEdit4("Onglet inactif", g_cfg.tab_inact, cf);
   ch |= ImGui::ColorEdit4("Champ de saisie", g_cfg.input_col, cf);
   ch |= ImGui::ColorEdit4("En-tete tableau", g_cfg.header_col, cf);
+  ch |= ImGui::ColorEdit4("Fond carte item", g_cfg.card_col, cf);
+  ch |= ImGui::ColorEdit4("Bandeau carte", g_cfg.card_head_col, cf);
+  ch |= ImGui::ColorEdit4("Texte bandeau carte", g_cfg.card_head_text, cf);
   if (ImGui::Button("Reinitialiser le skin")) {
     g_cfg = RoSkinConfig();
     ch = true;
