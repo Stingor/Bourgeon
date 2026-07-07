@@ -69,6 +69,16 @@ bool RoButton(const char* label, float w = 0.0f, float h = 0.0f);
 // ImGui::Checkbox : renvoie true si l'état a changé.
 bool RoCheckbox(const char* label, bool* v);
 
+// Combo box (menu déroulant) habillé RO : champ (fond input + bordure) + bouton
+// flèche txtbox_btn_a/b/c (états normal/survol/pressé, texture native du client),
+// liste ouverte en popup au fond « corps » RO. S'utilise EXACTEMENT comme
+// ImGui::BeginCombo — l'appelant ajoute des ImGui::Selectable entre les deux :
+//   if (ro::RoBeginCombo("##id", preview)) { ...Selectable...; ro::RoEndCombo(); }
+// RoEndCombo NE DOIT être appelé QUE si RoBeginCombo renvoie true. Largeur =
+// ImGui::CalcItemWidth() (respecte SetNextItemWidth).
+bool RoBeginCombo(const char* label, const char* preview_value);
+void RoEndCombo();
+
 // Barre horizontale 3-slice (btnbar_*) dessinée dans le rect donné, sur le draw
 // list de la fenêtre courante. Pour un footer/bandeau dans une fenêtre RO.
 void DrawBar(float x0, float y0, float x1, float y1);

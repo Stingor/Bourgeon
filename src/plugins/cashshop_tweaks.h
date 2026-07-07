@@ -67,6 +67,9 @@ class CashShopTweaks : public Plugin {
   void AddToCart(uint32_t id, int tab, int32_t price);
   // Envoie l'achat de tout le panier (CZ_SE_PC_BUY_CASHITEM_LIST 0x848).
   void SendBuy();
+  // Achat 1-clic : achète 1 unité de l'item immédiatement puis FERME le shop
+  // (paquet 0x848 count=1 + fermeture CZ 0x084a + destruction fenêtre native).
+  void BuyNow(uint32_t id, int tab, int32_t price);
   // Demande la liste d'items d'un onglet au serveur (CZ_REQ_SE_CASH_TAB_CODE 0x846).
   void RequestTab(int tab);
 

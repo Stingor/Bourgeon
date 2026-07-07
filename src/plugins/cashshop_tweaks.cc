@@ -15,6 +15,7 @@
 #include "imgui.h"
 #include "plugins/basic_info.h"   // aperçu porté (RenderItemPreviewTooltip / CanPreview)
 #include "plugins/imgui_escape.h"
+#include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
@@ -102,7 +103,30 @@ void* FindCashWnd() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-//  Cache nom d'item (id -> nom) 
+// ── Snap de resize : la fenêtre ne prend QUE des tailles tenant un nombre entier
+// de colonnes/lignes de cartes (pas d'espace vide partiel). Le callback arrondit
+// la taille demandée ; `chrome` (= fenêtre − zone cartes : panier + en-tête +
+// bordures) est mesuré chaque frame pour convertir taille fenêtre <-> grille.
+struct SnapState {
+  float cardw = 172.0f, cardh = 100.0f, gap = 4.0f;
+  float chromew = 0.0f, chromeh = 0.0f;
+  bool  valid = false;
+};
+SnapState g_snap;
+void SnapWindowSize(ImGuiSizeCallbackData* d) {
+  const SnapState& s = g_snap;
+  const float sx = s.cardw + s.gap, sy = s.cardh + s.gap;
+  const float gw = d->DesiredSize.x - s.chromew;
+  const float gh = d->DesiredSize.y - s.chromeh;
+  int cols = static_cast<int>((gw + s.gap) / sx + 0.5f);  // arrondi
+  int rows = static_cast<int>((gh + s.gap) / sy + 0.5f);
+  if (cols < 1) cols = 1;
+  if (rows < 1) rows = 1;
+  d->DesiredSize.x = s.chromew + cols * sx - s.gap;
+  d->DesiredSize.y = s.chromeh + rows * sy - s.gap;
+}
+
+//  Cache nom d'item (id -> nom)
 std::unordered_map<uint32_t, std::string> g_name_cache;
 
 // SEH isolΓ© (POD only, pas de std::string -> Γ©vite C2712) : Γ©crit le nom dans out.
@@ -413,6 +437,31 @@ void CashShopTweaks::SendBuy() {
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
 }
 
+// Achat 1-clic : 1 unité de `id` (tab `tab`), puis fermeture du shop. Paquet 0x848
+// à 1 item (indépendant du panier) + fermeture (CZ 0x084a + destruction native),
+// comme le bouton X. kafraPoints = min(prix, solde Event) si l'option est cochée.
+void CashShopTweaks::BuyNow(uint32_t id, int tab, int32_t price) {
+  uint8_t pkt[20];
+  const uint16_t plen = 20;  // 10 (en-tête) + 10 (1 item)
+  uint32_t kafra_to_spend = 0;
+  if (use_kafra_) {
+    const long long cap = std::min<long long>(price, kafra_points_);
+    kafra_to_spend = static_cast<uint32_t>(cap < 0 ? 0 : cap);
+  }
+  *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpBuy;
+  *reinterpret_cast<uint16_t*>(pkt + 2)  = plen;
+  *reinterpret_cast<uint16_t*>(pkt + 4)  = 1;  // count
+  *reinterpret_cast<uint32_t*>(pkt + 6)  = kafra_to_spend;
+  *reinterpret_cast<uint32_t*>(pkt + 10) = id;
+  *reinterpret_cast<uint32_t*>(pkt + 14) = 1;  // amount
+  *reinterpret_cast<uint16_t*>(pkt + 18) = static_cast<uint16_t>(tab);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  // Fermeture (idem bouton X) : le serveur ferme la session, la fenêtre disparaît.
+  uint16_t op = kOpClose;
+  Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
+  CloseNativeCashShop();
+}
+
 void CashShopTweaks::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
@@ -459,6 +508,13 @@ void CashShopTweaks::OnRenderUI() {
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(680, 500), ImGuiCond_FirstUseEver);
+  // Resize par PALIERS : la taille saute d'une colonne/ligne de cartes à la fois
+  // (aucun espace vide partiel). Le chrome est mesuré la frame précédente.
+  if (g_snap.valid) {
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(g_snap.chromew + g_snap.cardw, g_snap.chromeh + g_snap.cardh),
+        ImVec2(10000.0f, 10000.0f), SnapWindowSize);
+  }
 
   // MΓͺme style de fenΓͺtre que MoonlightUi (cadre arrondi / roundframe).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
@@ -467,8 +523,8 @@ void CashShopTweaks::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);  // grille/panier/cartes arrondis
   const bool begun =
-      ImGui::Begin("Vote Shop###bourgeon_cashshop", &show_panel_,
-                   ImGuiWindowFlags_NoCollapse);
+      ro::BeginRoWindow("Vote Shop###bourgeon_cashshop", &show_panel_,
+                        ImGuiWindowFlags_NoCollapse);
   bourgeon::CloseWindowOnEscape(show_panel_);
   if (!show_panel_) {
     // X (ou Γchap) -> on FERME rΓ©ellement le cash shop : paquet de fermeture serveur
@@ -480,21 +536,21 @@ void CashShopTweaks::OnRenderUI() {
     CloseNativeCashShop();
     show_panel_ = true;
   }
-  if (!begun) { ImGui::End(); ImGui::PopStyleVar(5); return; }
+  if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
   //  En-tΓͺte : points du compte 
-  ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Vote: %u", cash_points_);
+  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
+  ImGui::TextColored(kBlack, "Vote: %u", cash_points_);
   ImGui::SameLine();
-  ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1.0f), "  Points d'Event: %u",
-                     kafra_points_);
+  ImGui::TextColored(kBlack, " | Points d'Event: %u", kafra_points_);
   ImGui::SameLine();
-  ImGui::Checkbox("Utiliser mes points d'Event d'abord", &use_kafra_);
+  ro::RoCheckbox("Utiliser mes points d'Event d'abord", &use_kafra_);
   if (last_result_ == 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "  Achat OK");
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), " | Achat OK");
   } else if (last_result_ > 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "  Achat refuse (%d)",
+    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | Achat refuse (%d)",
                        last_result_);
   }
   ImGui::Separator();
@@ -542,11 +598,11 @@ void CashShopTweaks::OnRenderUI() {
       if (!found) cur_slot_ = -1;  // slot disparu -> Tous
     }
     ImGui::SetNextItemWidth(200.0f);
-    if (ImGui::BeginCombo("##cs_slot", cur_label)) {
+    if (ro::RoBeginCombo("##cs_slot", cur_label)) {
       if (ImGui::Selectable("Emplacement: tous", cur_slot_ == -1)) cur_slot_ = -1;
       for (const auto& s : slots)
         if (ImGui::Selectable(s.label, cur_slot_ == s.key)) cur_slot_ = s.key;
-      ImGui::EndCombo();
+      ro::RoEndCombo();
     }
   } else {
     cur_slot_ = -1;
@@ -558,18 +614,21 @@ void CashShopTweaks::OnRenderUI() {
   ImGui::SameLine();
   ImGui::SetNextItemWidth(90.0f);
   const char* kSortLabels[] = {"Nom", "ID", "Cout"};
-  if (ImGui::BeginCombo("##cs_sort", kSortLabels[cur_sort_])) {
+  if (ro::RoBeginCombo("##cs_sort", kSortLabels[cur_sort_])) {
     for (int s = 0; s < 3; ++s)
       if (ImGui::Selectable(kSortLabels[s], cur_sort_ == s)) cur_sort_ = s;
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
   ImGui::SameLine();
-  if (ImGui::SmallButton(sort_asc_ ? "Asc" : "Desc")) sort_asc_ = !sort_asc_;
+  if (ro::RoButton(sort_asc_ ? "Asc" : "Desc")) sort_asc_ = !sort_asc_;
 
   //  Disposition : grille Γ  gauche, panier Γ  droite (comme le cash shop natif) 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   const float  cart_w = 220.0f;
   const float  grid_w = std::max(120.0f, avail.x - cart_w - 8.0f);
+  // Taille de la fenêtre principale (pour mesurer le chrome du snap de resize).
+  const float  main_win_w = ImGui::GetWindowWidth();
+  const float  main_win_h = ImGui::GetWindowHeight();
 
   //  Grille d'items : cartes Γ  TAILLE FIXE (child) -> le texte est bornΓ© Γ  la
   // carte (sinon TextWrapped s'Γ©tale sur toute la fenΓͺtre et casse la grille) 
@@ -582,9 +641,16 @@ void CashShopTweaks::OnRenderUI() {
     const float card_w = 172.0f, card_h = 100.0f, gap = 4.0f, box = 78.0f;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     const ImVec4 kGold(0.60f, 0.42f, 0.02f, 1.0f);   // prix (lisible sur creme)
-    const int cols = std::max(
-        1, static_cast<int>((ImGui::GetContentRegionAvail().x + gap) /
-                            (card_w + gap)));
+    const float grid_inner_w = ImGui::GetContentRegionAvail().x;
+    const float grid_inner_h = ImGui::GetContentRegionAvail().y;
+    // Mesure du chrome (fenetre - zone cartes) -> le callback de snap l'utilise la
+    // frame suivante pour faire sauter la taille par colonne/ligne entiere.
+    g_snap.cardw = card_w; g_snap.cardh = card_h; g_snap.gap = gap;
+    g_snap.chromew = main_win_w - grid_inner_w;
+    g_snap.chromeh = main_win_h - grid_inner_h;
+    g_snap.valid = true;
+    const int cols =
+        std::max(1, static_cast<int>((grid_inner_w + gap) / (card_w + gap)));
     // Liste filtrΓ©e (ptrs) : une catΓ©gorie peut avoir 2500+ items -> on CLIPPE par
     // rangΓ©e (ImGuiListClipper) pour ne dessiner que les cartes visibles (sinon
     // 2500 child-windows/frame = chute de FPS).
@@ -643,15 +709,26 @@ void CashShopTweaks::OnRenderUI() {
         dl->AddText(font, fsz, tp, IM_COL32(240, 238, 228, 255), nm);
       }
       // 2) RangΓ©e du bas ancrΓ©e : image Γ  GAUCHE, prix + Buy Γ  DROITE.
-      ImGui::SetCursorPosY(header_h + 2.0f);
+      // Bloc du bas [image | prix+boutons] CENTRE sur tous les bords (coords contenu).
+      const float pad_x = 5.0f, pad_y = 3.0f;   // = WindowPadding de la carte
+      const float cont_w = card_w - 2.0f * pad_x;
+      const float cont_h = card_h - 2.0f * pad_y;
+      const float low_top = header_h - pad_y;    // Y contenu = bas de la bande
+      const float LH = cont_h - low_top;         // hauteur de la zone basse
+      const float frameH = ImGui::GetFrameHeight();
+      const float sp = ImGui::GetStyle().ItemSpacing.y;
+      const float gap2 = 8.0f;
       IconTex ic = ResolveIcon(ci.id);
-      ImVec2 isz(box, box);
+      const float img = LH - 10.0f;              // image un peu plus petite -> marges
+      float iw = img, ih = img;
       if (ic.tex && ic.w > 0 && ic.h > 0) {
-        const float s = box / std::max(ic.w, ic.h);
-        isz = ImVec2(ic.w * s, ic.h * s);
+        const float s = img / std::max(ic.w, ic.h);
+        iw = ic.w * s; ih = ic.h * s;
       }
-      if (ic.tex) ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), isz);
-      else        ImGui::Dummy(isz);
+      // Image a GAUCHE (cellule largeur `img`), centree verticalement dans la zone.
+      ImGui::SetCursorPos(ImVec2((img - iw) * 0.5f, low_top + (LH - ih) * 0.5f));
+      if (ic.tex) ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(iw, ih));
+      else        ImGui::Dummy(ImVec2(iw, ih));
       // Survol de l'image -> MÊME aperçu porté que la desc (viewID + emplacement) :
       // basic_info rend le perso portant l'item (sprites capturés, molette = tourner).
       if (ci.view != 0 && ImGui::IsItemHovered()) {
@@ -663,11 +740,29 @@ void CashShopTweaks::OnRenderUI() {
           }
         }
       }
-      ImGui::SameLine();
-      ImGui::BeginGroup();
-      ImGui::TextColored(kGold, "%d", ci.price);
-      if (ImGui::SmallButton("Buy")) AddToCart(ci.id, cur_tab_, ci.price);
-      ImGui::EndGroup();
+      // Colonne DROITE = TOUT l'espace restant a droite de l'image : prix + 2
+      // boutons pleine largeur (remplissent la colonne), le tout centre
+      // verticalement, prix centre horizontalement sur la colonne.
+      const float cx = img + gap2;
+      const float colw = cont_w - cx;            // remplit jusqu'au bord droit
+      const float col_h = ImGui::GetTextLineHeight() + 2.0f * frameH + 2.0f * sp;
+      const float cy = low_top + (LH - col_h) * 0.5f;
+      char pbuf[24];
+      std::snprintf(pbuf, sizeof(pbuf), "%d pts", ci.price);
+      const float tw = ImGui::CalcTextSize(pbuf).x;
+      ImGui::SetCursorPos(ImVec2(cx + (colw > tw ? (colw - tw) * 0.5f : 0.0f), cy));
+      ImGui::TextColored(kGold, "%s", pbuf);
+      ImGui::SetCursorPos(ImVec2(cx, cy + ImGui::GetTextLineHeight() + sp));
+      if (ro::RoButton("Panier", colw, frameH))
+        AddToCart(ci.id, cur_tab_, ci.price);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Ajouter au panier (achat groupe via Acheter)");
+      ImGui::SetCursorPos(
+          ImVec2(cx, cy + ImGui::GetTextLineHeight() + frameH + 2.0f * sp));
+      if (ro::RoButton("Achat 1-Click", colw, frameH))
+        BuyNow(ci.id, cur_tab_, ci.price);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Achat immediat d'1 unite, puis fermeture du shop");
       ImGui::EndChild();
       ImGui::PopStyleVar();    // WindowPadding (carte)
       ImGui::PopStyleColor();  // ChildBg
@@ -705,7 +800,7 @@ void CashShopTweaks::OnRenderUI() {
   ImGui::BeginChild("cs_cart", ImVec2(cart_w, 0), true);
   ImGui::TextUnformatted("Panier");
   ImGui::SameLine();
-  if (!cart_.empty() && ImGui::SmallButton("Vider")) cart_.clear();
+  if (!cart_.empty() && ro::RoButton("Vider")) cart_.clear();
   ImGui::Separator();
   long long total = 0;
   int remove = -1;
@@ -724,7 +819,7 @@ void CashShopTweaks::OnRenderUI() {
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%lld",
                        static_cast<long long>(e.price) * e.amount);
     ImGui::SameLine();
-    if (ImGui::SmallButton("x")) remove = i;
+    if (ro::RoButton("x")) remove = i;
     ImGui::Separator();
     ImGui::PopID();
   }
@@ -735,13 +830,12 @@ void CashShopTweaks::OnRenderUI() {
   const bool afford = total <= static_cast<long long>(cash_points_) +
                                    static_cast<long long>(kafra_points_);
   if (cart_.empty()) ImGui::BeginDisabled();
-  if (!afford) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 1));
-  if (ImGui::Button(afford ? "Acheter" : "Points insuffisants", ImVec2(-1, 0)))
+  if (ro::RoButton(afford ? "Acheter" : "Points insuffisants",
+                   ImGui::GetContentRegionAvail().x, 0))
     SendBuy();
-  if (!afford) ImGui::PopStyleColor();
   if (cart_.empty()) ImGui::EndDisabled();
   ImGui::EndChild();
 
-  ImGui::End();
+  ro::EndRoWindow();
   ImGui::PopStyleVar(5);
 }

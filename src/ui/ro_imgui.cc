@@ -181,6 +181,7 @@ SkinTex g_btn_out_l, g_btn_out_m, g_btn_out_r;
 SkinTex g_btn_over_l, g_btn_over_m, g_btn_over_r;
 SkinTex g_btn_press_l, g_btn_press_m, g_btn_press_r;
 SkinTex g_resize;
+SkinTex g_tb_btn_a, g_tb_btn_b, g_tb_btn_c;  // bouton flèche du combo (txtbox_btn_*)
 SkinTex g_cb0, g_cb1;
 SkinTex g_s0up, g_s0down, g_s0mid, g_s0bar_up, g_s0bar_mid, g_s0bar_down;
 SkinTex g_bar_l, g_bar_m, g_bar_r, g_iconnum;
@@ -244,6 +245,17 @@ void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
   out.tex = Overlay_CreateTextureARGB(b.argb, b.w, b.h);  // repli blob embarqué
   out.w = b.w;
   out.h = b.h;
+  return out.tex;
+}
+
+// Charge une pièce UNIQUEMENT depuis le client (pas de blob de repli embarqué) :
+// pour les ressources natives toujours présentes (txtbox_btn_*). out.tex reste nul
+// si le BMP manque -> le widget dessine un repli à plat.
+void* EnsureTexClient(const char* rel_path, SkinTex& out) {
+  if (out.tex) return out.tex;
+  int w = 0, h = 0;
+  void* t = LoadClientBmp(rel_path, &w, &h);
+  if (t) { out.tex = t; out.w = w; out.h = h; }
   return out.tex;
 }
 
@@ -710,6 +722,83 @@ bool RoCheckbox(const char* label, bool* v) {
               ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();
   return pressed;
+}
+
+bool RoBeginCombo(const char* label, const char* preview_value) {
+  EnsureTexClient("basic_interface\\txtbox_btn_a.bmp", g_tb_btn_a);
+  EnsureTexClient("basic_interface\\txtbox_btn_b.bmp", g_tb_btn_b);
+  EnsureTexClient("basic_interface\\txtbox_btn_c.bmp", g_tb_btn_c);
+
+  const float arrow_w = g_tb_btn_a.tex ? (float)g_tb_btn_a.w : 16.0f;
+  const float h = g_tb_btn_a.tex ? (float)g_tb_btn_a.h : ImGui::GetFrameHeight();
+  const float w = ImGui::CalcItemWidth();
+
+  ImGui::PushID(label);
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  const bool clicked = ImGui::InvisibleButton("##rcb", ImVec2(w, h));
+  const bool hovered = ImGui::IsItemHovered();
+  const bool held = ImGui::IsItemActive();
+  if (hovered) SetHoverCursor(kRoCursorHand);
+  const ImVec2 p1(p0.x + w, p0.y + h);
+  const ImVec2 arrowMin(p1.x - arrow_w, p0.y);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+
+  const RoSkinConfig& c = g_cfg;
+  const auto U32 = [](const float* a) {
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(a[0], a[1], a[2], a[3]));
+  };
+  // Champ : fond « input » + bordure (le txtbox natif est une simple boîte bordée).
+  dl->AddRectFilled(p0, ImVec2(arrowMin.x, p1.y), U32(c.input_col));
+  dl->AddRect(p0, p1, U32(c.border_col));
+  // Bouton flèche : texture native txtbox_btn (états normal/survol/pressé).
+  const SkinTex& btn = held ? g_tb_btn_c : (hovered ? g_tb_btn_b : g_tb_btn_a);
+  if (btn.tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, btn, arrowMin, p1);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {  // repli : triangle vers le bas
+    const float cx = (arrowMin.x + p1.x) * 0.5f, cy = (p0.y + p1.y) * 0.5f;
+    dl->AddTriangleFilled(ImVec2(cx - 3, cy - 2), ImVec2(cx + 3, cy - 2),
+                          ImVec2(cx, cy + 3), U32(c.body_text));
+  }
+  // Texte de sélection (clippé au champ).
+  if (preview_value && preview_value[0]) {
+    const char* end = ImGui::FindRenderedTextEnd(preview_value);
+    const float th = ImGui::CalcTextSize(preview_value, end).y;
+    dl->PushClipRect(p0, ImVec2(arrowMin.x, p1.y), true);
+    dl->AddText(ImVec2(p0.x + 4.0f, p0.y + (h - th) * 0.5f), U32(c.body_text),
+                preview_value, end);
+    dl->PopClipRect();
+  }
+
+  if (clicked) ImGui::OpenPopup("##rcb_pop");
+
+  // Liste en popup : sous le champ, largeur mini = champ, fond « corps » RO,
+  // sélection bleue (onglet actif) + texte corps foncé.
+  ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + 1.0f));
+  ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0), ImVec2(FLT_MAX, FLT_MAX));
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(c.body_col[0], c.body_col[1],
+                                                 c.body_col[2], c.body_col[3]));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(c.border_col[0], c.border_col[1],
+                                                c.border_col[2], c.border_col[3]));
+  ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(c.tab_col[0], c.tab_col[1],
+                                                c.tab_col[2], c.tab_col[3]));
+  ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(c.tab_col[0], c.tab_col[1],
+                                                       c.tab_col[2], 0.6f));
+  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(c.body_text[0], c.body_text[1],
+                                              c.body_text[2], c.body_text[3]));
+  const bool open = ImGui::BeginPopup("##rcb_pop");
+  if (!open) {
+    ImGui::PopStyleColor(5);
+    ImGui::PopID();
+  }
+  return open;
+}
+
+void RoEndCombo() {
+  ImGui::EndPopup();
+  ImGui::PopStyleColor(5);
+  ImGui::PopID();
 }
 
 bool ShowRoSkinSettings() {
