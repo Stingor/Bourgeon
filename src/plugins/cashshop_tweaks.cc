@@ -770,17 +770,36 @@ void CashShopTweaks::OnRenderUI() {
       const float tw = ImGui::CalcTextSize(pbuf).x;
       ImGui::SetCursorPos(ImVec2(cx + (colw > tw ? (colw - tw) * 0.5f : 0.0f), cy));
       ImGui::TextColored(kBlack, "%s", pbuf);
+      // Grise Panier + Achat 1-Click si le solde ne couvre pas le prix de l'item.
+      // Solde REEL selon la coche "Utiliser mes points d'Event d'abord" : cumul
+      // Vote+Event si cochee, Vote seul sinon (= ce que l'achat depensera vraiment).
+      const long long combined =
+          static_cast<long long>(cash_points_) + kafra_points_;
+      const long long avail =
+          use_kafra_ ? combined : static_cast<long long>(cash_points_);
+      const bool afford = static_cast<long long>(ci.price) <= avail;
+      // Si cocher "Utiliser Event" suffirait a couvrir, on le suggere dans le tooltip.
+      const bool event_helps =
+          !use_kafra_ && static_cast<long long>(ci.price) <= combined;
+      const char* why =
+          event_helps
+              ? "Solde Vote insuffisant - cochez \"Utiliser Event\" pour cumuler"
+              : "Solde Vote + Event insuffisant pour cet item";
+      if (!afford) ImGui::BeginDisabled();
       ImGui::SetCursorPos(ImVec2(cx, cy + ImGui::GetTextLineHeight() + sp));
       if (ro::RoButton("Panier", colw, frameH))
         AddToCart(ci.id, cur_tab_, ci.price);
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Ajouter au panier (achat groupe via Acheter)");
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(afford ? "Ajouter au panier (achat groupe via Acheter)"
+                                 : why);
       ImGui::SetCursorPos(
           ImVec2(cx, cy + ImGui::GetTextLineHeight() + frameH + 2.0f * sp));
       if (ro::RoButton("Achat 1-Click", colw, frameH))
         BuyNow(ci.id, cur_tab_, ci.price);
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Achat immediat d'1 unite, puis fermeture du shop");
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(afford ? "Achat immediat d'1 unite, puis fermeture du shop"
+                                 : why);
+      if (!afford) ImGui::EndDisabled();
       ImGui::EndChild();
       ImGui::PopStyleVar();    // WindowPadding (carte)
       ImGui::PopStyleColor();  // ChildBg
@@ -856,8 +875,12 @@ void CashShopTweaks::OnRenderUI() {
   if (remove >= 0) cart_.erase(cart_.begin() + remove);
   ImGui::Separator();
   ImGui::Text("Total: %lld pts", total);
-  const bool afford = total <= static_cast<long long>(cash_points_) +
-                                   static_cast<long long>(kafra_points_);
+  // Solde depensable selon la coche "Utiliser Event" (cumul si cochee, Vote seul
+  // sinon) : identique a la logique des cartes + a ce que l'achat depense reellement.
+  const long long buy_avail =
+      use_kafra_ ? static_cast<long long>(cash_points_) + kafra_points_
+                 : static_cast<long long>(cash_points_);
+  const bool afford = total <= buy_avail;
   if (cart_.empty()) ImGui::BeginDisabled();
   if (ro::RoButton(afford ? "Acheter" : "Points insuffisants",
                    ImGui::GetContentRegionAvail().x, 0))
