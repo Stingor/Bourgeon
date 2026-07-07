@@ -573,7 +573,12 @@ void CashShopTweaks::OnRenderUI() {
 
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
-  filter.Draw("##cs_filter");
+  // Champ filtre avec texte d'aide grise (placeholder) quand il est vide. On pilote
+  // directement le buffer du ImGuiTextFilter (InputBuf/Build) pour garder le filtrage
+  // natif tout en ayant le hint (filter.Draw() n'expose pas de hint).
+  if (ImGui::InputTextWithHint("##cs_filter", "Filtrer...", filter.InputBuf,
+                               IM_ARRAYSIZE(filter.InputBuf)))
+    filter.Build();
 
   //  Filtre par emplacement d'Γ©quipement (slots prΓ©sents dans l'onglet) 
   std::vector<Slot> slots;
@@ -751,7 +756,7 @@ void CashShopTweaks::OnRenderUI() {
       std::snprintf(pbuf, sizeof(pbuf), "%d pts", ci.price);
       const float tw = ImGui::CalcTextSize(pbuf).x;
       ImGui::SetCursorPos(ImVec2(cx + (colw > tw ? (colw - tw) * 0.5f : 0.0f), cy));
-      ImGui::TextColored(kGold, "%s", pbuf);
+      ImGui::TextColored(kBlack, "%s", pbuf);
       ImGui::SetCursorPos(ImVec2(cx, cy + ImGui::GetTextLineHeight() + sp));
       if (ro::RoButton("Panier", colw, frameH))
         AddToCart(ci.id, cur_tab_, ci.price);
@@ -810,23 +815,34 @@ void CashShopTweaks::OnRenderUI() {
     total += static_cast<long long>(e.price) * e.amount;
     ImGui::PushID(1000 + i);
     ImGui::TextWrapped("%s", ItemName(e.id));
-    ImGui::SetNextItemWidth(90);
-    if (ImGui::InputInt("##qty", &e.amount)) {
+    // Controle quantite : [-] [champ] [+], petits boutons RO carres (skin bouton,
+    // police inchangee). InputInt en step=0 -> pas de +/- natifs (non skinnes).
+    const float step = ImGui::GetFrameHeight();  // bouton carre = hauteur de ligne
+    if (ro::RoButton("-", step, step) && e.amount > 1) --e.amount;
+    ImGui::SameLine(0.0f, 2.0f);
+    ImGui::SetNextItemWidth(42.0f);
+    if (ImGui::InputInt("##qty", &e.amount, 0, 0)) {
       if (e.amount < 1) e.amount = 1;
       if (e.amount > 9999) e.amount = 9999;
     }
+    ImGui::SameLine(0.0f, 2.0f);
+    if (ro::RoButton("+", step, step) && e.amount < 9999) ++e.amount;
+    // Sous-total (noir, centre verticalement sur la ligne des champs).
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%lld",
-                       static_cast<long long>(e.price) * e.amount);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(kBlack, "%lld pts", static_cast<long long>(e.price) * e.amount);
+    // Bouton supprimer : meme petit bouton RO carre, aligne a droite.
     ImGui::SameLine();
-    if (ro::RoButton("x")) remove = i;
+    const float xr = ImGui::GetContentRegionMax().x - step;
+    if (xr > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(xr);
+    if (ro::RoButton("x", step, step)) remove = i;
     ImGui::Separator();
     ImGui::PopID();
   }
   ImGui::EndChild();
   if (remove >= 0) cart_.erase(cart_.begin() + remove);
   ImGui::Separator();
-  ImGui::Text("Total: %lld", total);
+  ImGui::Text("Total: %lld pts", total);
   const bool afford = total <= static_cast<long long>(cash_points_) +
                                    static_cast<long long>(kafra_points_);
   if (cart_.empty()) ImGui::BeginDisabled();
