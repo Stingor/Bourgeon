@@ -14,6 +14,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
+#include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
@@ -509,8 +510,11 @@ void ShopTweaks::OnRenderUI() {
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(560, 460), ImGuiCond_FirstUseEver);
+  // Meme habillage que le cashshop (skin RO).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
 
   // Titre = nom du NPC (observé via 0x0adf) si connu, sinon "Shop".
@@ -520,7 +524,8 @@ void ShopTweaks::OnRenderUI() {
                 (nit != npc_names_.end() && !nit->second.empty())
                     ? nit->second.c_str()
                     : "Shop");
-  const bool begun = ImGui::Begin(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
+  const bool begun =
+      ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
   bourgeon::CloseWindowOnEscape(show_panel_);
   if (!show_panel_) {
     // Fermeture réelle : détruit les fenêtres natives -> plus de fenêtre shop ->
@@ -528,11 +533,11 @@ void ShopTweaks::OnRenderUI() {
     CloseNativeShop();
     open_ = false;
     show_panel_ = true;
-    ImGui::End();
-    ImGui::PopStyleVar(3);
+    ro::EndRoWindow();
+    ImGui::PopStyleVar(5);
     return;
   }
-  if (!begun) { ImGui::End(); ImGui::PopStyleVar(3); return; }
+  if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
   // ── Onglets Achat / Vente ──
   int prev_mode = cur_mode_;
@@ -550,8 +555,9 @@ void ShopTweaks::OnRenderUI() {
   }
 
   // Bandeau : zeny du joueur + résultat de la dernière transaction.
+  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
   const uint32_t zeny = *reinterpret_cast<uint32_t*>(0x015fba90);  // g_PlayerZeny
-  ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Zeny: %uz", zeny);
+  ImGui::TextColored(kBlack, "Zeny: %uz", zeny);
   if (last_result_ == 0) {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "  %s OK",
@@ -563,7 +569,10 @@ void ShopTweaks::OnRenderUI() {
 
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
-  filter.Draw("##shop_filter");
+  // Placeholder grise "Filtrer..." quand le champ est vide (pilote InputBuf/Build).
+  if (ImGui::InputTextWithHint("##shop_filter", "Filtrer...", filter.InputBuf,
+                               IM_ARRAYSIZE(filter.InputBuf)))
+    filter.Build();
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -594,11 +603,11 @@ void ShopTweaks::OnRenderUI() {
         ImGui::TextUnformatted(nm);
         ImGui::TableNextColumn();
         const bool afford = static_cast<uint32_t>(b.discount) <= zeny;
-        ImGui::TextColored(afford ? ImVec4(0.85f, 0.72f, 0.2f, 1.0f)
-                                  : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+        // Prix noir si abordable, rouge sombre si trop cher (signal conserve).
+        ImGui::TextColored(afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f),
                            "%dz", b.discount);
         ImGui::TableNextColumn();
-        if (ImGui::SmallButton("+")) AddToCart(b.id, -1, b.discount, 30000);
+        if (ro::RoButton("+")) AddToCart(b.id, -1, b.discount, 30000);
         ImGui::PopID();
       }
       ImGui::EndTable();
@@ -609,7 +618,7 @@ void ShopTweaks::OnRenderUI() {
     // "Tout vendre" : remplit le panier avec TOUS les items vendables au stack
     // complet ; l'utilisateur confirme ensuite via le bouton "Vendre".
     if (!sell_items_.empty() &&
-        ImGui::SmallButton("Tout ajouter au panier")) {
+        ro::RoButton("Tout ajouter au panier")) {
       cart_.clear();
       for (const auto& s : sell_items_)
         cart_.push_back(CartEntry{s.id, s.index, s.amount, s.price, s.amount});
@@ -634,9 +643,10 @@ void ShopTweaks::OnRenderUI() {
         }
         ImGui::Text("%s x%d", nm, s.amount);
         ImGui::TableNextColumn();
-        ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.2f, 1.0f), "%dz", s.price);
+        // s.price = prix de vente overcharge-inclus (lu du noeud natif, cf. RE).
+        ImGui::TextColored(kBlack, "%dz", s.price);
         ImGui::TableNextColumn();
-        if (ImGui::SmallButton("+")) AddToCart(s.id, s.index, s.price, s.amount);
+        if (ro::RoButton("+")) AddToCart(s.id, s.index, s.price, s.amount);
         ImGui::PopID();
       }
       ImGui::EndTable();
@@ -651,7 +661,7 @@ void ShopTweaks::OnRenderUI() {
   ImGui::BeginChild("shop_cart", ImVec2(cart_w, 0), true);
   ImGui::TextUnformatted(cur_mode_ == kBuy ? "Panier d'achat" : "Panier de vente");
   ImGui::SameLine();
-  if (!cart_.empty() && ImGui::SmallButton("Vider")) cart_.clear();
+  if (!cart_.empty() && ro::RoButton("Vider")) cart_.clear();
   ImGui::Separator();
   long long total = 0;
   int remove = -1;
@@ -661,16 +671,27 @@ void ShopTweaks::OnRenderUI() {
     total += static_cast<long long>(e.price) * e.amount;
     ImGui::PushID(2000 + i);
     ImGui::TextWrapped("%s", ItemName(e.id));
-    ImGui::SetNextItemWidth(80);
-    if (ImGui::InputInt("##qty", &e.amount)) {
+    // Controle quantite : [-] [champ] [+], petits boutons RO carres (comme le
+    // cashshop). InputInt en step=0 -> pas de +/- natifs non skinnes.
+    const float step = ImGui::GetFrameHeight();
+    if (ro::RoButton("-", step, step) && e.amount > 1) --e.amount;
+    ImGui::SameLine(0.0f, 2.0f);
+    ImGui::SetNextItemWidth(42.0f);
+    if (ImGui::InputInt("##qty", &e.amount, 0, 0)) {
       if (e.amount < 1) e.amount = 1;
       if (e.amount > e.max) e.amount = e.max;  // vente = qté possédée ; achat = stack
     }
+    ImGui::SameLine(0.0f, 2.0f);
+    if (ro::RoButton("+", step, step) && e.amount < e.max) ++e.amount;
+    // Sous-total (noir) centre verticalement sur la ligne des champs.
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%lldz",
-                       static_cast<long long>(e.price) * e.amount);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(kBlack, "%lldz", static_cast<long long>(e.price) * e.amount);
+    // Bouton supprimer : petit bouton RO carre, aligne a droite.
     ImGui::SameLine();
-    if (ImGui::SmallButton("x")) remove = i;
+    const float xr = ImGui::GetContentRegionMax().x - step;
+    if (xr > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(xr);
+    if (ro::RoButton("x", step, step)) remove = i;
     ImGui::Separator();
     ImGui::PopID();
   }
@@ -682,18 +703,17 @@ void ShopTweaks::OnRenderUI() {
   if (cur_mode_ == kBuy) {
     const bool afford = total <= static_cast<long long>(zeny);
     if (cart_.empty()) ImGui::BeginDisabled();
-    if (!afford) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 1));
-    if (ImGui::Button(afford ? "Acheter" : "Zeny insuffisant", ImVec2(-1, 0)))
+    if (ro::RoButton(afford ? "Acheter" : "Zeny insuffisant",
+                     ImGui::GetContentRegionAvail().x, 0))
       SendBuy();
-    if (!afford) ImGui::PopStyleColor();
     if (cart_.empty()) ImGui::EndDisabled();
   } else {
     if (cart_.empty()) ImGui::BeginDisabled();
-    if (ImGui::Button("Vendre", ImVec2(-1, 0))) SendSell();
+    if (ro::RoButton("Vendre", ImGui::GetContentRegionAvail().x, 0)) SendSell();
     if (cart_.empty()) ImGui::EndDisabled();
   }
   ImGui::EndChild();
 
-  ImGui::End();
-  ImGui::PopStyleVar(3);
+  ro::EndRoWindow();
+  ImGui::PopStyleVar(5);
 }
