@@ -95,6 +95,12 @@ class ShopTweaks : public Plugin {
 
   // Envoi CZ_ACK_SELECT_DEALTYPE 0xc5 (demande la liste achat/vente).
   void RequestList(Mode mode);
+  // Re-arme la selection de deal (CZ 0xc5 ; type 0 = achat, 1 = vente). Le serveur
+  // EFFACE sd->npc_shopid apres CHAQUE 0xc8/0xc9 (clif_parse_NpcBuy/SellListSend :
+  // "npc_shopid = 0" ; le shop natif se ferme apres une transaction). Notre viewer
+  // reste ouvert -> il FAUT re-selectionner juste avant chaque transaction, sinon la
+  // 2e (et les suivantes) echouent avec PURCHASE_FAIL_MONEY (trompeur "pas de zeny").
+  void SendDealSelect(uint8_t type);
   // Envoi de l'achat (CZ_PC_PURCHASE_ITEMLIST 0xc8) / vente (CZ 0xc9) du panier.
   void SendBuy();
   void SendSell();
@@ -102,7 +108,11 @@ class ShopTweaks : public Plugin {
   void CloseNativeShop();
   // Recharge sell_items_ depuis la fenêtre native de vente cachée (SEH, POD).
   void RefreshSellFromNative();
-  void AddToCart(uint32_t id, int index, int32_t price, int max);
+  void AddToCart(uint32_t id, int index, int32_t price, int max, int qty = 1);
+  // Transaction IMMEDIATE (bypass panier) : achat CZ 0xc8 / vente CZ 0xc9 a 1 item
+  // de `qty` unites. Declenchee par Ctrl+clic sur les boutons quantite.
+  void QuickBuy(uint32_t id, int qty);
+  void QuickSell(int index, int qty);
 
   bool     open_ = false;        // shop ouvert ce frame ?
   bool     was_open_ = false;

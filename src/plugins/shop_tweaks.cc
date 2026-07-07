@@ -356,16 +356,24 @@ void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   // sa liste résolue en OnTick (RefreshSellFromNative). Rien à parser ici.
 }
 
+// Re-selectionne le deal (CZ_ACK_SELECT_DEALTYPE 0xc5) pour RE-ARMER sd->npc_shopid
+// que le serveur efface apres chaque 0xc8/0xc9. A envoyer JUSTE AVANT chaque
+// transaction (l'ordre TCP garantit : arme puis achete/vend). type 0=achat, 1=vente.
+void ShopTweaks::SendDealSelect(uint8_t type) {
+  if (npc_id_ == 0) return;
+  uint8_t pkt[7];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpDealAck;  // CZ_ACK_SELECT_DEALTYPE 0xc5
+  *reinterpret_cast<uint32_t*>(pkt + 2) = npc_id_;
+  pkt[6] = type;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
 void ShopTweaks::RequestList(Mode mode) {
   if (npc_id_ == 0) return;
   if (mode == kBuy) {
     // Achat : requête brute CZ_ACK_SELECT_DEALTYPE(0) suffit — on parse 0x0b77
     // nous-mêmes, pas besoin de la fenêtre native.
-    uint8_t pkt[7];
-    *reinterpret_cast<uint16_t*>(pkt + 0) = kOpDealAck;
-    *reinterpret_cast<uint32_t*>(pkt + 2) = npc_id_;
-    pkt[6] = 0;
-    Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+    SendDealSelect(0);  // 0xc5 type 0 = achat (arme npc_shopid + declenche 0x0b77)
     buy_requested_ = true;
   } else {
     // Vente : la requête 0xc5(1) BRUTE ne crée PAS la fenêtre native (le client
@@ -385,20 +393,23 @@ void ShopTweaks::RequestList(Mode mode) {
   }
 }
 
-void ShopTweaks::AddToCart(uint32_t id, int index, int32_t price, int max) {
+void ShopTweaks::AddToCart(uint32_t id, int index, int32_t price, int max, int qty) {
   if (max < 1) max = 1;
+  if (qty < 1) qty = 1;
   for (auto& e : cart_) {
     if (e.id == id && e.index == index) {
-      if (e.amount < e.max) ++e.amount;  // borné à la quantité dispo
+      e.amount += qty;
+      if (e.amount > e.max) e.amount = e.max;  // borné à la quantité dispo
       return;
     }
   }
-  cart_.push_back(CartEntry{id, index, 1, price, max});
+  cart_.push_back(CartEntry{id, index, qty > max ? max : qty, price, max});
 }
 
 // CZ_PC_PURCHASE_ITEMLIST 0xc8 : [op:2][len:2][ {amount:2, itemId:4} *count ]
 void ShopTweaks::SendBuy() {
   if (cart_.empty()) return;
+  SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
   const int count = static_cast<int>(cart_.size());
   const int plen = 4 + 6 * count;
   std::vector<uint8_t> pkt(plen);
@@ -417,6 +428,7 @@ void ShopTweaks::SendBuy() {
 // CZ_PC_SELL_ITEMLIST 0xc9 : [op:2][len:2][ {index:2, amount:2} *count ]
 void ShopTweaks::SendSell() {
   if (cart_.empty()) return;
+  SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
   const int count = static_cast<int>(cart_.size());
   const int plen = 4 + 4 * count;
   std::vector<uint8_t> pkt(plen);
@@ -430,6 +442,34 @@ void ShopTweaks::SendSell() {
     it += 4;
   }
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
+}
+
+// Achat IMMEDIAT de `qty` unites de `id` (bypass panier) : CZ_PC_PURCHASE_ITEMLIST
+// 0xc8 a 1 item. Le serveur calcule le cout (discount inclus) et valide.
+void ShopTweaks::QuickBuy(uint32_t id, int qty) {
+  if (npc_id_ == 0 || qty < 1) return;
+  SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
+  uint8_t pkt[10];
+  const uint16_t plen = 10;  // 4 (en-tete) + 6 (1 item)
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpBuyReq;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = plen;
+  *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(qty);
+  *reinterpret_cast<uint32_t*>(pkt + 6) = id;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// Vente IMMEDIATE de `qty` unites de l'item a l'index inventaire `index` (bypass
+// panier) : CZ_PC_SELL_ITEMLIST 0xc9 a 1 item. Le serveur calcule le gain (overcharge).
+void ShopTweaks::QuickSell(int index, int qty) {
+  if (npc_id_ == 0 || qty < 1) return;
+  SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
+  uint8_t pkt[8];
+  const uint16_t plen = 8;  // 4 (en-tete) + 4 (1 item)
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpSellReq;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = plen;
+  *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(index);
+  *reinterpret_cast<uint16_t*>(pkt + 6) = static_cast<uint16_t>(qty);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
 // Lit la liste de vente RÉSOLUE depuis le sous-window liste natif, pointé par le
@@ -571,7 +611,7 @@ void ShopTweaks::OnRenderUI() {
                             ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
-  ImGui::SetNextWindowSize(ImVec2(560, 460), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(720, 480), ImGuiCond_FirstUseEver);
   // Meme habillage que le cashshop (skin RO).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -654,12 +694,42 @@ void ShopTweaks::OnRenderUI() {
     }
   };
 
+  // Boutons quantite +1/+10/+100/+1k d'une ligne. Clic = ajout au panier ;
+  // Ctrl+clic = transaction immediate (bypass panier). Le grisage n'a lieu QU'EN
+  // mode immediat (Ctrl) : sans Ctrl on empile librement (le bouton Acheter/Vendre
+  // gere la solvabilite du total). Immediat : achat grise si qty*prix > zeny ;
+  // vente grisee si qty > quantite possedee.
+  static const int   kQty[4]    = {1, 10, 100, 1000};
+  static const char* kQtyLbl[4] = {"+1", "+10", "+100", "+1k"};
+  auto qty_buttons = [&](uint32_t id, int index, int32_t unit_price, int max_avail,
+                         bool is_buy) {
+    const bool ctrl = ImGui::GetIO().KeyCtrl;
+    for (int k = 0; k < 4; ++k) {
+      if (k) ImGui::SameLine(0.0f, 2.0f);
+      const int q = kQty[k];
+      // Sans Ctrl (ajout panier) : jamais grise. Avec Ctrl (transaction immediate) :
+      // grise si non abordable (achat) ou quantite insuffisante (vente).
+      bool ok = true;
+      if (ctrl)
+        ok = is_buy ? (static_cast<long long>(unit_price) * q <=
+                       static_cast<long long>(zeny))
+                    : (q <= max_avail);
+      if (!ok) ImGui::BeginDisabled();
+      if (ro::RoButton(kQtyLbl[k], 34.0f, 0.0f)) {
+        if (ctrl) { if (is_buy) QuickBuy(id, q); else QuickSell(index, q); }
+        else      AddToCart(id, index, unit_price, max_avail, q);
+      }
+      if (!ok) ImGui::EndDisabled();
+    }
+  };
+
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
   // Placeholder grise "Filtrer..." quand le champ est vide (pilote InputBuf/Build).
   if (ImGui::InputTextWithHint("##shop_filter", "Filtrer...", filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
+  ImGui::TextDisabled("Clic = panier   -   Ctrl+clic = achat/vente immediat");
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -674,7 +744,7 @@ void ShopTweaks::OnRenderUI() {
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn("Objet");
       ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 44.0f);
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
         const char* nm = ItemName(b.id);
@@ -696,7 +766,7 @@ void ShopTweaks::OnRenderUI() {
         draw_price(b.price, b.discount,
                    afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
         ImGui::TableNextColumn();
-        if (ro::RoButton("+")) AddToCart(b.id, -1, b.discount, 30000);
+        qty_buttons(b.id, -1, b.discount, 30000, true);
         ImGui::PopID();
       }
       ImGui::EndTable();
@@ -721,7 +791,7 @@ void ShopTweaks::OnRenderUI() {
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn("Objet");
       ImGui::TableSetupColumn("Vente", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 44.0f);
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
       ImGui::TableHeadersRow();
       for (const auto& s : sell_items_) {
         const char* nm = ItemName(s.id);
@@ -742,7 +812,7 @@ void ShopTweaks::OnRenderUI() {
         // "base -> majore" si Overcharge, sinon juste le prix (lu du noeud natif).
         draw_price(s.base_price, s.price, kBlack);
         ImGui::TableNextColumn();
-        if (ro::RoButton("+")) AddToCart(s.id, s.index, s.price, s.amount);
+        qty_buttons(s.id, s.index, s.price, s.amount, false);
         ImGui::PopID();
       }
       ImGui::EndTable();
