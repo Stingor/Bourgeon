@@ -670,6 +670,13 @@ bool RoButton(const char* label, float w, float h) {
   const ImVec2 p1 = ImGui::GetItemRectMax();
   ImDrawList* dl = ImGui::GetWindowDrawList();
 
+  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS le visuel des widgets
+  // dessines main -> on grise nous-memes (art estompe + texte grise).
+  const bool disabled =
+      ImGui::GetCurrentContext() &&
+      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
+
   const SkinTex *l, *m, *r;
   if (held) { l = &g_btn_press_l; m = &g_btn_press_m; r = &g_btn_press_r; }
   else if (hovered) { l = &g_btn_over_l; m = &g_btn_over_m; r = &g_btn_over_r; }
@@ -677,19 +684,24 @@ bool RoButton(const char* label, float w, float h) {
 
   if (l->tex) {
     dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y));
-    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1);
-    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y));
+    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y), tint);
+    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1, tint);
+    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y), tint);
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
   } else {
-    dl->AddRectFilled(p0, p1, IM_COL32(210, 216, 228, 255), 2.0f);
+    dl->AddRectFilled(p0, p1,
+                      disabled ? IM_COL32(210, 216, 228, 110)
+                               : IM_COL32(210, 216, 228, 255),
+                      2.0f);
     dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
   }
 
   const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
                   p0.y + (h - ts.y) * 0.5f + (held ? 1.0f : 0.0f));
-  dl->AddText(tp, ImGui::GetColorU32(ImGuiCol_Text), label,
-              ImGui::FindRenderedTextEnd(label));
+  dl->AddText(tp,
+              disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                       : ImGui::GetColorU32(ImGuiCol_Text),
+              label, ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();
   return clicked;
 }
