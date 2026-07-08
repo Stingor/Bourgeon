@@ -733,8 +733,13 @@ void ShopTweaks::OnRenderUI() {
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
+  // Panier auto-masque quand il est vide -> la liste prend toute la largeur. (Avec
+  // l'achat/vente immediat en Ctrl+clic, le panier ne sert qu'a l'achat groupe ; il
+  // reapparait des qu'on y ajoute un item.)
+  const bool show_cart = !cart_.empty();
   const float cart_w = 200.0f;
-  const float list_w = std::max(160.0f, avail.x - cart_w - 8.0f);
+  const float list_w =
+      show_cart ? std::max(160.0f, avail.x - cart_w - 8.0f) : 0.0f;
 
   // ── Liste (gauche) ──
   ImGui::BeginChild("shop_list", ImVec2(list_w, 0), true);
@@ -822,7 +827,8 @@ void ShopTweaks::OnRenderUI() {
   }
   ImGui::EndChild();
 
-  // ── Panier (droite) ──
+  // ── Panier (droite) — masque automatiquement quand vide (cf. show_cart) ──
+  if (show_cart) {
   ImGui::SameLine();
   ImGui::BeginChild("shop_cart", ImVec2(cart_w, 0), true);
   ImGui::TextUnformatted(cur_mode_ == kBuy ? "Panier d'achat" : "Panier de vente");
@@ -879,6 +885,7 @@ void ShopTweaks::OnRenderUI() {
     if (cart_.empty()) ImGui::EndDisabled();
   }
   ImGui::EndChild();
+  }  // if (show_cart) : panier masque quand vide
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);
