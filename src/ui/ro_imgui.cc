@@ -12,7 +12,7 @@
 #include "imgui_internal.h"  // ImGui::GetActiveID, GetCurrentWindow, TitleBarRect
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
-#include "ui/ro_skin_blobs.hpp"  // pièces de skin embarquées (titlebar_*, sys_*)
+#include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 
 namespace ro {
 namespace {
@@ -185,6 +185,9 @@ SkinTex g_tb_btn_a, g_tb_btn_b, g_tb_btn_c;  // bouton flèche du combo (txtbox_
 SkinTex g_cb0, g_cb1;
 SkinTex g_s0up, g_s0down, g_s0mid, g_s0bar_up, g_s0bar_mid, g_s0bar_down;
 SkinTex g_bar_l, g_bar_m, g_bar_r, g_iconnum;
+SkinTex g_up_l, g_up_m, g_up_r;                    // barre de titre desc (skill_upbar)
+SkinTex g_sb_lm, g_sb_rm, g_sb_ld, g_sb_md, g_sb_rd;  // cadre boîte desc (sysbox)
+SkinTex g_sb_lu, g_sb_mu, g_sb_ru;                    // haut du sysbox (panels sans titre)
 bool g_skin_active = false;  // BeginRoWindow a pris la branche skin (pour EndRoWindow)
 
 // ── Loader natif du client (conventions menu_icons.cc / status_tweaks.cc) ──────
@@ -230,9 +233,13 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
   return Overlay_CreateTextureARGB(argb.data(), w, h);
 }
 
-// Charge la pièce : fichier client d'abord (customisable via GRF/data), sinon le
-// blob embarqué en repli. Retente tant que rien n'est chargé (device pas prêt).
+// Charge la pièce depuis les fichiers du client (GRF/data) via le loader natif.
+// Les dimensions (b.w/b.h) sont connues d'avance → layout stable même avant que la
+// texture soit chargée. Retente tant que la texture n'est pas prête (device pas
+// prêt) ; si le fichier manque vraiment côté client, la pièce ne se dessine pas.
 void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
+  out.w = b.w;
+  out.h = b.h;
   if (out.tex) return out.tex;
   int w = 0, h = 0;
   void* t = LoadClientBmp(rel_path, &w, &h);
@@ -240,11 +247,7 @@ void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
     out.tex = t;
     out.w = w;
     out.h = h;
-    return t;
   }
-  out.tex = Overlay_CreateTextureARGB(b.argb, b.w, b.h);  // repli blob embarqué
-  out.w = b.w;
-  out.h = b.h;
   return out.tex;
 }
 
@@ -276,7 +279,11 @@ bool BlitStretch(ImDrawList* dl, const SkinTex& t, ImVec2 p0, ImVec2 p1,
 }
 
 // Bouton système (11x11) dessiné à (cx,cy) top-left. Renvoie true si cliqué.
+// Position arrondie à l'entier : sinon (sur une barre de titre de hauteur impaire
+// vs bouton pair) le Y tombe en x.5 → sampling POINT → bouton « botched ».
 bool SysButton(ImDrawList* dl, const SkinTex& off, const SkinTex& on, ImVec2 tl) {
+  tl.x = ImFloor(tl.x);
+  tl.y = ImFloor(tl.y);
   const ImVec2 br(tl.x + (float)off.w, tl.y + (float)off.h);
   const bool hovered = ImGui::IsMouseHoveringRect(tl, br, false);
   const SkinTex& t = (hovered && on.tex) ? on : off;
@@ -405,6 +412,43 @@ void SetSkinEnabled(bool enabled) { g_skin_enabled = enabled; }
 bool IsSkinEnabled() { return g_skin_enabled; }
 RoSkinConfig& SkinConfig() { return g_cfg; }
 
+// ── Échap centralisé ──
+// On ne stocke QUE des ImGuiWindow* (persistants) — jamais de bool* (souvent un
+// local d'OnRenderUI → pendouillant après retour). La fermeture se fait dans
+// RegisterEscapeWindow (appelé pendant le Begin, où p_open est valide) au frame
+// suivant : ProcessEscapeStack désigne la fenêtre-cible, Register la ferme.
+namespace {
+std::vector<ImGuiWindow*> g_esc_list;         // fenêtres fermables visibles ce frame
+ImGuiWindow* g_esc_close_target = nullptr;    // à fermer au prochain Begin
+bool g_esc_any = false;                        // ≥1 ouverte (lu par le WndProc)
+}  // namespace
+
+void RegisterEscapeWindow(bool* p_open) {
+  if (!p_open || !*p_open) return;
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  if (!w) return;
+  g_esc_list.push_back(w);
+  if (w == g_esc_close_target) {  // cible désignée à la frame précédente
+    *p_open = false;
+    g_esc_close_target = nullptr;
+  }
+}
+
+void ProcessEscapeStack() {
+  g_esc_any = !g_esc_list.empty();
+  if (g_esc_any && ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
+    // Désigne la plus au-dessus (FocusOrder max = plus récemment devant) ; fermée
+    // au prochain Begin (p_open valide à ce moment-là).
+    ImGuiWindow* top = nullptr;
+    for (ImGuiWindow* w : g_esc_list)
+      if (!top || w->FocusOrder > top->FocusOrder) top = w;
+    g_esc_close_target = top;
+  }
+  g_esc_list.clear();
+}
+
+bool AnyEscapeWindowOpen() { return g_esc_any; }
+
 float SkinImageBrightness() {
   float b = g_cfg.title_brightness;
   if (b < 0.0f) b = 0.0f;
@@ -419,17 +463,10 @@ int TakeHoverCursor() {
   return t;
 }
 
-bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
-  if (!g_skin_enabled) {
-    g_skin_colors = g_skin_vars = 0;
-    g_skin_active = false;
-    return ImGui::Begin(title, p_open, imgui_window_flags);
-  }
-  g_skin_active = true;
-
-  // On garde la mécanique ImGui (drag/resize/collapse) mais on peint nous-mêmes la
-  // barre de titre et les boutons système → title bar native transparente, close
-  // natif désactivé (on dessine sys_close). p_open est géré manuellement.
+// Pousse les 24 couleurs de style communes aux fenêtres RO (corps, texte, onglets,
+// scrollbar transparente, table, popups clairs…). Partagé par BeginRoWindow et
+// BeginRoDescWindow. Renvoie le nombre de PushStyleColor (à dépiler par End*).
+static int PushSkinColors() {
   const ImU32 body = ImGui::ColorConvertFloat4ToU32(
       ImVec4(g_cfg.body_col[0], g_cfg.body_col[1], g_cfg.body_col[2],
              g_cfg.body_col[3]));
@@ -441,15 +478,12 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_Border, border);
-  // Texte du corps : couleur configurable (défaut sombre, lisible sur fond clair).
   ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertFloat4ToU32(ImVec4(
                                            g_cfg.body_text[0], g_cfg.body_text[1],
                                            g_cfg.body_text[2], g_cfg.body_text[3])));
-  // Grip de resize ImGui masqué (on dessine btn_resize RO par-dessus).
   ImGui::PushStyleColor(ImGuiCol_ResizeGrip, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, IM_COL32(0, 0, 0, 0));
-  // Champs de saisie : couleur configurable (défaut CECECE natif RO).
   const ImU32 inputc = ImGui::ColorConvertFloat4ToU32(
       ImVec4(g_cfg.input_col[0], g_cfg.input_col[1], g_cfg.input_col[2],
              g_cfg.input_col[3]));
@@ -466,7 +500,6 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ImGui::PushStyleColor(ImGuiCol_FrameBg, inputc);
   ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, lighten(inputc, 10));
   ImGui::PushStyleColor(ImGuiCol_FrameBgActive, lighten(inputc, 22));
-  // Onglets : actif = couleur configurable, inactif = gris clair.
   const ImU32 tabc = ImGui::ColorConvertFloat4ToU32(
       ImVec4(g_cfg.tab_col[0], g_cfg.tab_col[1], g_cfg.tab_col[2],
              g_cfg.tab_col[3]));
@@ -476,13 +509,10 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ImGui::PushStyleColor(ImGuiCol_Tab, tabi);
   ImGui::PushStyleColor(ImGuiCol_TabHovered, lighten(tabi, 14));
   ImGui::PushStyleColor(ImGuiCol_TabSelected, tabc);
-  // Scrollbar ImGui rendue transparente (elle garde la réservation d'espace + le
-  // drag) ; on peint les vraies pièces RO par-dessus dans EndRoWindow.
   ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32(0, 0, 0, 0));
   ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32(0, 0, 0, 0));
-  // En-têtes de tableau + sélection de ligne (lisibles sur fond clair).
   ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
                         ImGui::ColorConvertFloat4ToU32(ImVec4(
                             g_cfg.header_col[0], g_cfg.header_col[1],
@@ -490,10 +520,24 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(0x9C, 0xB8, 0xEA, 160));
   ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(0x9C, 0xB8, 0xEA, 110));
   ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(0x7E, 0xA0, 0xE0, 210));
-  // Popups (tooltips, menus contextuels) : fond CLAIR sinon texte sombre illisible
-  // sur le fond sombre par défaut. Pas de barre de titre (ce sont des popups).
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0xF2, 0xF3, 0xF6, 255));
-  g_skin_colors = 24;
+  return 24;
+}
+
+bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
+  if (!g_skin_enabled) {
+    g_skin_colors = g_skin_vars = 0;
+    g_skin_active = false;
+    const bool o = ImGui::Begin(title, p_open, imgui_window_flags);
+    RegisterEscapeWindow(p_open);
+    return o;
+  }
+  g_skin_active = true;
+
+  // On garde la mécanique ImGui (drag/resize/collapse) mais on peint nous-mêmes la
+  // barre de titre et les boutons système → title bar native transparente, close
+  // natif désactivé (on dessine sys_close). p_open est géré manuellement.
+  g_skin_colors = PushSkinColors();
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   // Arrondi bas fixe ~3px (le haut est couvert par l'art titre).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
@@ -512,6 +556,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   g_skin_vars = 8;
 
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
+  RegisterEscapeWindow(p_open);
 
   // On dessine la barre de titre RO même quand la fenêtre est repliée (Begin
   // renvoie false dans ce cas) — sinon le titre replié garde le chrome ImGui.
@@ -641,6 +686,215 @@ void EndRoWindow() {
     ImGui::PopStyleColor(g_skin_colors);
     g_skin_colors = 0;
   }
+}
+
+// Fenêtre de description : design distinct (barre de titre skill_upbar claire +
+// cadre boîte sysbox), même config/couleurs/scrollbar que le reste du skin.
+bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags) {
+  if (!g_skin_enabled) {
+    g_skin_colors = g_skin_vars = 0;
+    g_skin_active = false;
+    const bool o = ImGui::Begin(title, p_open, imgui_window_flags);
+    RegisterEscapeWindow(p_open);
+    return o;
+  }
+  g_skin_active = true;
+
+  g_skin_colors = PushSkinColors();
+  // Desc : fond BLANC + bordure 1px c2c2c2 (continuité avec le titre). Ces 2
+  // pushes s'ajoutent aux 24 de PushSkinColors et écrasent WindowBg/Border.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
+  g_skin_colors += 2;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);  // bordure 1px c2c2c2
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
+  // Contenu : 14px sur les côtés (épaisseur sysbox), peu en haut/bas (réduit le
+  // vide sous le titre).
+  const float e = (float)skin::kSysboxLm.w;  // 14
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e, 5.0f));
+  // Barre de titre = hauteur de l'art skill_upbar (20px).
+  float pad_y = ((float)skin::kUpbarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  if (pad_y < 0.0f) pad_y = 0.0f;
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                      ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
+  g_skin_vars = 9;
+
+  const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
+  RegisterEscapeWindow(p_open);
+
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  if (w && !w->Hidden) {
+    EnsureTex("basic_interface\\skill_upbar_left.bmp", skin::kUpbarLeft, g_up_l);
+    EnsureTex("basic_interface\\skill_upbar_mid.bmp", skin::kUpbarMid, g_up_m);
+    EnsureTex("basic_interface\\skill_upbar_right.bmp", skin::kUpbarRight, g_up_r);
+    EnsureTex("sysbox_lm.bmp", skin::kSysboxLm, g_sb_lm);
+    EnsureTex("sysbox_rm.bmp", skin::kSysboxRm, g_sb_rm);
+    EnsureTex("sysbox_ld.bmp", skin::kSysboxLd, g_sb_ld);
+    EnsureTex("sysbox_md.bmp", skin::kSysboxMd, g_sb_md);
+    EnsureTex("sysbox_rd.bmp", skin::kSysboxRd, g_sb_rd);
+
+    const ImRect tb = w->Collapsed ? w->Rect() : w->TitleBarRect();
+    const ImRect wr = w->Rect();
+    ImDrawList* dl = w->DrawList;
+    const float y0 = tb.Min.y, y1 = tb.Max.y;
+    const float ucL = (float)g_up_l.w, ucR = (float)g_up_r.w;
+
+    dl->PushClipRect(wr.Min, wr.Max, false);  // couvre toute la fenêtre (titre+cadre)
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    // Barre de titre skill_upbar (3-slice).
+    BlitStretch(dl, g_up_l, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + ucL, y1));
+    BlitStretch(dl, g_up_r, ImVec2(tb.Max.x - ucR, y0), ImVec2(tb.Max.x, y1));
+    BlitStretch(dl, g_up_m, ImVec2(tb.Min.x + ucL, y0), ImVec2(tb.Max.x - ucR, y1));
+    // Cadre sysbox (côtés + bas ; le haut est couvert par le titre).
+    if (!w->Collapsed) {
+      const float fx0 = wr.Min.x, fx1 = wr.Max.x, fby = wr.Max.y;
+      BlitStretch(dl, g_sb_lm, ImVec2(fx0, y1), ImVec2(fx0 + e, fby - e));
+      BlitStretch(dl, g_sb_rm, ImVec2(fx1 - e, y1), ImVec2(fx1, fby - e));
+      BlitStretch(dl, g_sb_ld, ImVec2(fx0, fby - e), ImVec2(fx0 + e, fby));
+      BlitStretch(dl, g_sb_rd, ImVec2(fx1 - e, fby - e), ImVec2(fx1, fby));
+      BlitStretch(dl, g_sb_md, ImVec2(fx0 + e, fby - e), ImVec2(fx1 - e, fby));
+    }
+
+    // Titre (couleur configurable, coupe le "##id").
+    char nbuf[128];
+    const char* end = ImGui::FindRenderedTextEnd(title);
+    size_t n = (size_t)(end - title);
+    if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
+    memcpy(nbuf, title, n);
+    nbuf[n] = '\0';
+    const ImU32 ttx = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
+               g_cfg.title_text[3] * g_cfg.alpha));
+    const ImVec2 ts = ImGui::CalcTextSize(nbuf);
+    dl->AddText(ImVec2(tb.Min.x + 8.0f, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.0f),
+                ttx, nbuf);
+
+    // Bouton close (seulement si fermable), collé au bord droit du titre.
+    bool close_clicked = false;
+    if (p_open) {
+      EnsureTex("basic_interface\\sys_close_off.bmp", skin::kSysCloseOff, g_close);
+      EnsureTex("basic_interface\\sys_close_on.bmp", skin::kSysCloseOn, g_close_on);
+      const float by = y0 + (tb.GetHeight() - (float)g_close.h) * 0.5f;
+      ImVec2 ctl(tb.Max.x - (float)g_close.w - 5.0f, by);
+      close_clicked = SysButton(dl, g_close, g_close_on, ctl);
+    }
+    // Grip de resize RO dans le coin bas-droite (si redimensionnable). Le grip
+    // ImGui natif reste actif pour le drag (rendu transparent) ; on peint l'image.
+    if (!w->Collapsed && !(w->Flags & ImGuiWindowFlags_NoResize) &&
+        !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize)) {
+      EnsureTex("btn_resize.bmp", skin::kBtnResize, g_resize);
+      const float rw = (float)g_resize.w, rh = (float)g_resize.h;
+      const ImVec2 rbr(wr.Max.x - 2.0f, wr.Max.y - 2.0f);
+      const ImVec2 rtl(rbr.x - rw, rbr.y - rh);
+      BlitStretch(dl, g_resize, rtl, rbr);
+      if (ImGui::IsMouseHoveringRect(rtl, rbr, false))
+        SetHoverCursor(kRoCursorHand);
+    }
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    dl->PopClipRect();
+
+    if (close_clicked && p_open) *p_open = false;
+  }
+  return open;
+}
+
+void EndRoDescWindow() { EndRoWindow(); }  // même teardown (scrollbar + pop)
+
+// Panneau de description SANS barre de titre : cadre boîte sysbox complet (9-slice
+// avec le haut), fond blanc + bordure. Pour les sous-panneaux (cartes, options).
+bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
+  if (!g_skin_enabled) {
+    g_skin_colors = g_skin_vars = 0;
+    g_skin_active = false;
+    return ImGui::Begin(id, nullptr, imgui_window_flags);
+  }
+  g_skin_active = true;
+  g_skin_colors = PushSkinColors();
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
+  g_skin_colors += 2;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);  // sysbox = la bordure
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
+  const float e = (float)skin::kSysboxLm.w;  // 14
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e, e));
+  g_skin_vars = 4;
+
+  const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  if (open && w && !w->Hidden && !w->Collapsed) {
+    EnsureTex("sysbox_lu.bmp", skin::kSysboxLu, g_sb_lu);
+    EnsureTex("sysbox_mu.bmp", skin::kSysboxMu, g_sb_mu);
+    EnsureTex("sysbox_ru.bmp", skin::kSysboxRu, g_sb_ru);
+    EnsureTex("sysbox_lm.bmp", skin::kSysboxLm, g_sb_lm);
+    EnsureTex("sysbox_rm.bmp", skin::kSysboxRm, g_sb_rm);
+    EnsureTex("sysbox_ld.bmp", skin::kSysboxLd, g_sb_ld);
+    EnsureTex("sysbox_md.bmp", skin::kSysboxMd, g_sb_md);
+    EnsureTex("sysbox_rd.bmp", skin::kSysboxRd, g_sb_rd);
+    const ImRect wr = w->Rect();
+    ImDrawList* dl = w->DrawList;
+    const float fx0 = wr.Min.x, fy0 = wr.Min.y, fx1 = wr.Max.x, fy1 = wr.Max.y;
+    dl->PushClipRect(wr.Min, wr.Max, false);
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, g_sb_lu, ImVec2(fx0, fy0), ImVec2(fx0 + e, fy0 + e));
+    BlitStretch(dl, g_sb_ru, ImVec2(fx1 - e, fy0), ImVec2(fx1, fy0 + e));
+    BlitStretch(dl, g_sb_ld, ImVec2(fx0, fy1 - e), ImVec2(fx0 + e, fy1));
+    BlitStretch(dl, g_sb_rd, ImVec2(fx1 - e, fy1 - e), ImVec2(fx1, fy1));
+    BlitStretch(dl, g_sb_mu, ImVec2(fx0 + e, fy0), ImVec2(fx1 - e, fy0 + e));
+    BlitStretch(dl, g_sb_md, ImVec2(fx0 + e, fy1 - e), ImVec2(fx1 - e, fy1));
+    BlitStretch(dl, g_sb_lm, ImVec2(fx0, fy0 + e), ImVec2(fx0 + e, fy1 - e));
+    BlitStretch(dl, g_sb_rm, ImVec2(fx1 - e, fy0 + e), ImVec2(fx1, fy1 - e));
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    dl->PopClipRect();
+  }
+  return open;
+}
+
+void EndRoDescPanel() { EndRoWindow(); }
+
+float DescPanelEdge() { return (float)skin::kSysboxLm.w; }
+
+// Cadre « panneau desc » (fond clair + sysbox 9-slice) dessiné à la main dans un
+// rect arbitraire, sur un ImDrawList arbitraire. Même art que BeginRoDescPanel,
+// mais sans créer de fenêtre ImGui -> l'appelant peut le poser sur la draw list
+// de sa fenêtre parente (=> suit son z-order). L'appelant gère le clip global.
+void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1) {
+  if (!dl || x1 <= x0 || y1 <= y0) return;
+  const ImVec2 p0(x0, y0), p1(x1, y1);
+  // Fond clair (suit alpha/luminosité du skin comme les autres pièces main).
+  dl->AddRectFilled(p0, p1, ApplySkinTint(IM_COL32(255, 255, 255, 255)),
+                    g_skin_enabled ? 0.0f : 3.0f);
+  if (!g_skin_enabled) {  // repli : simple rounded-rect + bordure
+    dl->AddRect(p0, p1, ApplySkinTint(IM_COL32(0xC2, 0xC2, 0xC2, 255)), 3.0f, 0,
+                1.0f);
+    return;
+  }
+  EnsureTex("sysbox_lu.bmp", skin::kSysboxLu, g_sb_lu);
+  EnsureTex("sysbox_mu.bmp", skin::kSysboxMu, g_sb_mu);
+  EnsureTex("sysbox_ru.bmp", skin::kSysboxRu, g_sb_ru);
+  EnsureTex("sysbox_lm.bmp", skin::kSysboxLm, g_sb_lm);
+  EnsureTex("sysbox_rm.bmp", skin::kSysboxRm, g_sb_rm);
+  EnsureTex("sysbox_ld.bmp", skin::kSysboxLd, g_sb_ld);
+  EnsureTex("sysbox_md.bmp", skin::kSysboxMd, g_sb_md);
+  EnsureTex("sysbox_rd.bmp", skin::kSysboxRd, g_sb_rd);
+  const float e = (float)skin::kSysboxLm.w;
+  dl->PushClipRect(p0, p1, false);
+  dl->AddCallback(ImCb_PointFilter, nullptr);
+  BlitStretch(dl, g_sb_lu, ImVec2(x0, y0), ImVec2(x0 + e, y0 + e));
+  BlitStretch(dl, g_sb_ru, ImVec2(x1 - e, y0), ImVec2(x1, y0 + e));
+  BlitStretch(dl, g_sb_ld, ImVec2(x0, y1 - e), ImVec2(x0 + e, y1));
+  BlitStretch(dl, g_sb_rd, ImVec2(x1 - e, y1 - e), ImVec2(x1, y1));
+  BlitStretch(dl, g_sb_mu, ImVec2(x0 + e, y0), ImVec2(x1 - e, y0 + e));
+  BlitStretch(dl, g_sb_md, ImVec2(x0 + e, y1 - e), ImVec2(x1 - e, y1));
+  BlitStretch(dl, g_sb_lm, ImVec2(x0, y0 + e), ImVec2(x0 + e, y1 - e));
+  BlitStretch(dl, g_sb_rm, ImVec2(x1 - e, y0 + e), ImVec2(x1, y1 - e));
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  dl->PopClipRect();
 }
 
 bool RoButton(const char* label, float w, float h) {

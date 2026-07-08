@@ -524,6 +524,13 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
   if (ImGui::GetCurrentContext() && ImGui::GetFrameCount() > 0) {
     ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam);
 
+    // Échap avalé pour le JEU tant qu'une fenêtre RO fermable est ouverte (ImGui
+    // vient de le recevoir via le handler ; ProcessEscapeStack ferme la fenêtre du
+    // dessus). Évite l'ouverture intempestive du menu natif.
+    if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
+        ro::AnyEscapeWindowOpen())
+      return 0;
+
     ImGuiIO& io = ImGui::GetIO();
 
     // lParam for client-space mouse messages encodes X in low word, Y in high

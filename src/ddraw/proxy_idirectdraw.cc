@@ -151,12 +151,18 @@ HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
     }
     ImGui_ImplDX7_NewFrame();
     ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-    Bourgeon::Instance().RenderUI();
-    DrawROCursorImGui();
-    ImGui::EndFrame();
-    ImGui::Render();
-    ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
+    // Fenêtre minimisée : io.DisplaySize == (0,0) (GetClientRect nul). On saute la
+    // frame AVANT ImGui::NewFrame pour éviter que le clamp de viewport ne recolle
+    // nos fenêtres en (0,0) (cf. note détaillée dans d3d9_hook RenderImGuiDX9).
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+      ImGui::NewFrame();
+      Bourgeon::Instance().RenderUI();
+      DrawROCursorImGui();
+      ImGui::EndFrame();
+      ImGui::Render();
+      ImGui_ImplDX7_RenderDrawData(ImGui::GetDrawData());
+    }
   }
   return m_Instance->EndScene();
 }

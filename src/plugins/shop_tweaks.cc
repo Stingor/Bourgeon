@@ -239,6 +239,8 @@ constexpr uint16_t kOpSellList = 0x00c7;  // ZC_PC_SELL_ITEMLIST (var)
 constexpr uint16_t kOpBuyRes   = 0x00ca;  // ZC_PC_PURCHASE_RESULT {result:1}
 constexpr uint16_t kOpSellRes  = 0x00cb;  // ZC_PC_SELL_RESULT {result:1}
 constexpr uint16_t kOpNpcName  = 0x0adf;  // ZC_ACK_REQNAMEALL_NPC {gid:4,groupId:4,name[24],title[24]}
+constexpr uint16_t kOpMapChange  = 0x0091; // ZC_NPCACK_MAPMOVE (changement de map : @load, warp)
+constexpr uint16_t kOpServerMove = 0x0092; // ZC_NPCACK_SERVERMOVE (changement de serveur)
 // Envois (CZ).
 constexpr uint16_t kOpDealAck  = 0x00c5;  // CZ_ACK_SELECT_DEALTYPE {GID:4,type:1}
 constexpr uint16_t kOpBuyReq   = 0x00c8;  // CZ_PC_PURCHASE_ITEMLIST {amount:2,itemId:4}*
@@ -261,11 +263,23 @@ ShopTweaks::ShopTweaks() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpSellRes, 1);  // result
   // Nom des NPC (pour le titre) : gid:4 + groupId:4 + name[24] = 32 octets utiles.
   Bourgeon::Instance().RegisterObserveOpcode(kOpNpcName, 32);
+  // Changement de map / serveur (@load, warp) : le warp invalide la session shop
+  // cote serveur (npc_shopid=0) -> on ferme le viewer pour ne pas laisser une
+  // fenetre orpheline. On ne lit pas le payload, juste la reception.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
 }
 
 void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                               uint16_t len) {
   if (!imgui_enabled_) return;
+
+  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+    // Warp / changement de map -> la session shop est morte cote serveur. On ferme
+    // le viewer au prochain OnTick (thread principal ; jamais depuis le thread recv).
+    map_changed_ = true;
+    return;
+  }
 
   if (opcode == kOpNpcName) {
     // ZC_ACK_REQNAMEALL_NPC : gid@+0, name[24]@+8. Cache pour le titre.
@@ -567,6 +581,33 @@ void ShopTweaks::OnTick() {
     open_ = false;
     was_open_ = false;
     show_panel_ = true;
+    return;
+  }
+
+  // Changement de map (@load, warp...) recu : la session shop est invalidee cote
+  // serveur (pc_setpos remet npc_shopid=0 / npc_id=0). On ferme le viewer et on
+  // DETRUIT les fenetres natives orphelines (sinon, en cessant de les cacher, elles
+  // reapparaitraient). PAS de cmd 0x28 : le warp a deja reset le dialogue serveur.
+  if (map_changed_) {
+    map_changed_ = false;
+    if (open_) {
+      CloseWnd(kWinChoose);
+      CloseWnd(kWinBuy);
+      CloseWnd(kWinSell);
+      CloseWnd(kWinDetail);
+      open_ = false;
+      was_open_ = false;
+      show_panel_ = true;
+      npc_id_ = 0;
+      buy_items_.clear();
+      sell_items_.clear();
+      cart_.clear();
+      buy_requested_ = false;
+      sell_requested_ = false;
+      have_buy_ = false;
+      sell_all_close_ = false;
+      want_close_ = false;
+    }
     return;
   }
 

@@ -525,7 +525,6 @@ void CashShopTweaks::OnRenderUI() {
   const bool begun =
       ro::BeginRoWindow("Vote Shop###bourgeon_cashshop", &show_panel_,
                         ImGuiWindowFlags_NoCollapse);
-  bourgeon::CloseWindowOnEscape(show_panel_);
   if (!show_panel_) {
     // X (ou Γchap) -> on FERME rΓ©ellement le cash shop : paquet de fermeture serveur
     // (CZ 0x084a, reset npc_shopid) + destruction de la fenΓͺtre native (id 0x13e).

@@ -26,6 +26,7 @@
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/character_sheet.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -649,6 +650,8 @@ void MoonlightUi::LoadSettings() {
       cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
       sh->imgui_enabled_ = ui["shop_imgui"].as<bool>(sh->imgui_enabled_);
+    if (auto* cse = Bourgeon::Instance().character_sheet())
+      cse->imgui_enabled_ = ui["charsheet_imgui"].as<bool>(cse->imgui_enabled_);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -1031,6 +1034,9 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
     auto* sh = Bourgeon::Instance().shop_tweaks();
     out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
+    auto* cse = Bourgeon::Instance().character_sheet();
+    out << YAML::Key << "charsheet_imgui" << YAML::Value
+        << (cse ? cse->imgui_enabled_ : false);
   }
 
   {
@@ -1970,6 +1976,15 @@ void MoonlightUi::OnRenderUI() {
         ImGui::SameLine(); HelpMarker(
             "ON : fenetre boutique ImGui unifiee (onglets Acheter/Vendre, saut "
             "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
+      }
+      // ── Feuille de personnage (agrege Status + Equipement, en plus) ──────
+      if (auto* cse = Bourgeon::Instance().character_sheet()) {
+        if (ImGui::Checkbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "Fenetre facon WoW : avatar + slots equipement/costume + stats, en "
+            "COMPLEMENT des fenetres natives (conservees). Ouvre/ferme avec Alt+F.\n"
+            "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
       }
       // ── Navigation latérale (liste à gauche, contenu à droite) ───────────
       // Remplace l'ancienne barre d'onglets : plus scalable quand les

@@ -130,6 +130,7 @@ class ShopTweaks : public Plugin {
   // liste vendue (fonctionnalite dump-tout-et-quitte).
   bool     sell_all_close_ = false;  // arme par "Tout ajouter au panier"
   bool     want_close_ = false;      // fermeture differee (0xcb thread recv -> OnTick)
+  bool     map_changed_ = false;     // 0x0091/0x0092 recu (warp) -> fermer le viewer (OnTick)
 
   // Tri / filtre partagés.
   int  cur_sort_ = 0;   // 0 = Nom, 1 = ID, 2 = Prix

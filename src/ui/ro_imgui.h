@@ -14,6 +14,7 @@
 // Tout est à appeler depuis le thread principal du jeu (comme le reste d'ImGui).
 
 struct ImFont;
+struct ImDrawList;
 
 namespace ro {
 
@@ -86,6 +87,40 @@ void DrawBar(float x0, float y0, float x1, float y1);
 // Dessine l'icône compteur (icon_num) à (x, y). Renvoie sa largeur (pour placer
 // le texte du compteur juste après).
 float DrawIconNum(float x, float y);
+
+// Variante « fenêtre de description » : design distinct (barre de titre claire
+// skill_upbar + cadre boîte sysbox) mais même config/couleurs/scrollbar/toggle.
+// Pour les panneaux de description (item/skill). Même usage que Begin/EndRoWindow.
+bool BeginRoDescWindow(const char* title, bool* p_open = nullptr,
+                       int imgui_window_flags = 0);
+void EndRoDescWindow();
+
+// Panneau de description SANS barre de titre (cadre boîte sysbox complet). Pour
+// les sous-panneaux attachés à une fenêtre de description (cartes, options).
+bool BeginRoDescPanel(const char* id, int imgui_window_flags = 0);
+void EndRoDescPanel();
+
+// Épaisseur du bord du cadre sysbox (px). Sert à dimensionner un panneau dessiné
+// à la main via DrawDescPanelFrame.
+float DescPanelEdge();
+
+// Dessine le cadre « panneau de description » (fond clair + cadre sysbox 9-slice,
+// même look que BeginRoDescPanel) dans le rect [x0,y0]-[x1,y1] sur un ImDrawList
+// ARBITRAIRE. Permet de dessiner des sous-panneaux (cartes, options) directement
+// sur la draw list de la fenêtre PARENTE — ainsi ils suivent son z-order au lieu
+// d'être des fenêtres ImGui séparées qui passent derrière les autres. Repli
+// rounded-rect si le skin est désactivé. L'appelant gère le clip (les coords
+// peuvent sortir du rect de la fenêtre courante -> PushClipRectFullScreen).
+void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1);
+
+// ── Échap centralisé ──────────────────────────────────────────────────────────
+// Ferme la fenêtre RO la plus au-dessus (z-order) à chaque Échap, une par une,
+// jusqu'à ce qu'il n'en reste aucune ; tant qu'une fenêtre RO fermable est
+// ouverte, Échap est avalé (le jeu ne reçoit rien → pas de menu natif intempestif).
+// BeginRo*Window enregistre automatiquement leur fenêtre (si p_open non null).
+void RegisterEscapeWindow(bool* p_open);   // interne aux BeginRo*Window
+void ProcessEscapeStack();                 // à appeler 1×/frame après tous les OnRenderUI
+bool AnyEscapeWindowOpen();                // lu par le WndProc pour avaler Échap
 
 // Active/désactive le skin RO à chaud (les textures sont créées à la 1ère utilisation).
 void SetSkinEnabled(bool enabled);

@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include "imgui.h"
+#include "ui/ro_imgui.h"
 #include "plugins/auto_login.h"
 #include "plugins/chat.h"
 #include "plugins/cheat_detector.h"
@@ -29,6 +30,7 @@
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/character_sheet.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -52,6 +54,7 @@ SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
+CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
 namespace {
@@ -215,6 +218,9 @@ void Bourgeon::RenderUI() {
       LogError("[{}] OnRenderUI: {}", plugin->name(), error.what());
     }
   }
+  // Échap centralisé : ferme la fenêtre RO la plus au-dessus (après que toutes se
+  // soient enregistrées ce frame). Voir ui/ro_imgui.h.
+  ro::ProcessEscapeStack();
 }
 
 void Bourgeon::FireModeSwitch(ModeMgr::ModeType mode_type,
@@ -308,6 +314,11 @@ void Bourgeon::LoadPlugins() {
     auto shop_tweaks = std::make_unique<ShopTweaks>();
     shop_tweaks_ = shop_tweaks.get();
     plugins_.emplace_back(std::move(shop_tweaks));
+  }
+  {
+    auto character_sheet = std::make_unique<CharacterSheet>();
+    character_sheet_ = character_sheet.get();
+    plugins_.emplace_back(std::move(character_sheet));
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());

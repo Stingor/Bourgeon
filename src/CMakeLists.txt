@@ -40,6 +40,8 @@ set(BOURGEON_FILES
 	"plugins/cashshop_tweaks.h"
 	"plugins/shop_tweaks.cc"
 	"plugins/shop_tweaks.h"
+	"plugins/character_sheet.cc"
+	"plugins/character_sheet.h"
 	"plugins/equip_tweaks.cc"
 	"plugins/equip_tweaks.h"
 	"plugins/window_pos_tweaks.cc"

@@ -699,7 +699,6 @@ void StorageTweaks::OnRenderUI() {
                 storage_name_[0] ? storage_name_ : "Storage");
   const bool begun =
       ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
-  bourgeon::CloseWindowOnEscape(show_panel_);
   // Le X du viewer a été cliqué ce frame (show_panel_ était vrai à l'entrée, cf. le
   // early-return en tête) -> on FERME l'entrepôt côté serveur (CZ_CloseKafra). Le
   // serveur ferme la session -> native + viewer se ferment (open_ passe à false au

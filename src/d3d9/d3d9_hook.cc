@@ -123,6 +123,14 @@ static void RenderImGuiDX9(IDirect3DDevice9* self) {
     }
     ImGui_ImplDX9_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // Fenêtre minimisée dans la barre des tâches : GetClientRect renvoie 0x0 donc
+    // io.DisplaySize == (0,0). Si on ouvrait une frame ImGui, chaque Begin()
+    // clamperait sa fenêtre dans un viewport nul (coin haut-gauche 0,0) et cette
+    // position pourrie serait mémorisée -> au retour, nos fenêtres (ex. desc item)
+    // se retrouvent collées en 0,0. On saute la frame AVANT ImGui::NewFrame : aucune
+    // frame ouverte => aucun Begin => aucun clamp => positions préservées.
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) return;
     ImGui::NewFrame();
     Bourgeon::Instance().RenderUI();
     DrawROCursorImGui();

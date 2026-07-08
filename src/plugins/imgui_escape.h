@@ -1,23 +1,15 @@
 #pragma once
 
-#include "imgui.h"
+#include "ui/ro_imgui.h"
 
 namespace bourgeon {
 
-// Ferme une fenêtre ImGui quand Échap est pressé et qu'elle a le focus.
-// À appeler juste après ImGui::Begin(...). Passe la même variable `open` que
-// celle liée à Begin ; la fonction la met à false le cas échéant.
-//
-// ImGui ne route pas Échap vers la fermeture des fenêtres classiques (il ne
-// gère que les popups/menus). On reproduit le comportement attendu : Échap sur
-// la fenêtre focus la referme, comme le bouton de titre.
-inline void CloseWindowOnEscape(bool& open) {
-  if (!open) return;
-  // RootAndChildWindows : garde le focus si un enfant (combo, table) est actif.
-  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-      ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
-    open = false;
-  }
-}
+// Inscrit la fenêtre ImGui courante dans la pile Échap centralisée (ui/ro_imgui).
+// À appeler juste après ImGui::Begin(...), avec la variable `open` liée au Begin.
+// Échap ferme alors la fenêtre la PLUS AU-DESSUS (z-order), une par une, et est
+// avalé pour le jeu tant qu'une fenêtre est ouverte (voir ProcessEscapeStack).
+// Les fenêtres passant par ro::BeginRoWindow/BeginRoDescWindow s'inscrivent déjà
+// seules — ne pas doubler l'appel pour elles.
+inline void CloseWindowOnEscape(bool& open) { ro::RegisterEscapeWindow(&open); }
 
 }  // namespace bourgeon
