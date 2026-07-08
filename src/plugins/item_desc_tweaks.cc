@@ -14,6 +14,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
+#include "ui/ro_imgui.h"           // BeginRoDescWindow (cadre desc)
 #include "plugins/basic_info.h"    // aperçu équipement (RenderItemPreviewTooltip)
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
@@ -87,6 +88,12 @@ constexpr uintptr_t kInfoFlag     = 0x5c;        // info+0x5c : 1 => GetDescLine
 // hardcodé (l'occurrence mémoire 0x01024250 enchaîne un autre chemin, pas null-term).
 constexpr uintptr_t kGetCardResName = 0x006a2970;  // __cdecl(id) -> record ; *record = resname
 constexpr uintptr_t kCardBmpPrefix  = 0x01036648;  // "유저인터페이스\cardBmp\" (CP949, null-term)
+// Fiche « nil » renvoyée par GetCardResName quand l'id est ABSENT de la DB carte
+// (FUN_006a0ab0 : lower_bound échoue -> &LAB_01255180). Son resname est "sorry"
+// (=> cardBmp\sorry.bmp, le placeholder "now printing"). record == cette adresse
+// est donc le test FIABLE « n'est PAS une carte » (non-carte => pas d'illustration,
+// on garde l'icône collection). Confirmé live 2026-07-08.
+constexpr uintptr_t kCardNilRecord  = 0x01255180;
 
 // Offsets DANS l'ItemSkillInfo (base = wnd+kItemStruct), remplis par
 // BuildFromItemRecord : 4 slots cartes/enchants + random options.
@@ -293,6 +300,11 @@ struct ItemExtract {
   int      hl_start = -1;
   int      hl_end = -1;
   uint32_t hl_col = 0;  // ImU32 (0 = aucun)
+  // Ombre du nom : le natif (DrawName) dessine une ombre 0x5050fa (COLORREF BGR ->
+  // RGB 250,80,80 = ROUGE) sous le nom quand info+0x5d != 0 (ex. arme CASSÉE). Le
+  // "nom rouge" d'un item cassé = CETTE ombre, pas la couleur du texte (RE live
+  // 2026-07-08). 0 = aucune ombre.
+  uint32_t name_shadow = 0;  // ImU32
   // Instance : cartes/enchants (4 slots, id + nom résolu) + random options.
   uint32_t cards[kMaxCards] = {0, 0, 0, 0};
   char     card_names[kMaxCards][64] = {};
@@ -345,13 +357,26 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           if (he > hs) {
             e->hl_start = hs;
             e->hl_end   = he;
-            e->hl_col   = IM_COL32((colorOut >> 16) & 0xff,
-                                   (colorOut >> 8) & 0xff, colorOut & 0xff, 255);
+            // colorOut est un COLORREF Win32 (BGR : octet BAS = ROUGE), pas du RGB
+            // — le natif le passe tel quel à SetTextColor. Lire R dans l'octet bas,
+            // B dans l'octet haut (sinon rouge/bleu inversés : le nom « rouge » des
+            // items forgés/signés à nom non résolu s'affichait bleu). RE 2026-07-08.
+            e->hl_col   = IM_COL32(colorOut & 0xff,
+                                   (colorOut >> 8) & 0xff,
+                                   (colorOut >> 16) & 0xff, 255);
           }
         }
       }
       if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
     }
+    // Ombre ROUGE du nom : le natif (DrawName 0x008972c0) dessine l'ombre du nom en
+    // 0x5050fa (COLORREF BGR -> RGB 250,80,80 = ROUGE) quand info+0x5d != 0 (branche
+    // « else » : ni segment coloré, ni grade). C'est CE qui fait paraître le nom
+    // d'une arme CASSÉE « rouge » (ombre rouge sous le texte noir), pas la couleur
+    // du texte. On lit le même flag et on reproduit l'ombre — 0 sinon.
+    e->name_shadow =
+        (*(uint8_t*)(wnd + kItemStruct + 0x5d) != 0) ? IM_COL32(0xFA, 0x50, 0x50, 255)
+                                                     : 0u;
     // Repli : nom de base si BuildDisplayName n'a rien produit.
     if (e->name[0] == '\0') {
       size_t cap = sizeof(e->name);
@@ -385,9 +410,18 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // Instance : cartes/enchants (4 slots) — id à info+0x1c+i*4, nom résolu via
     // la DB desc (Lookup(id) -> rec+4). id 0 = slot vide.
     uint8_t* info = wnd + kItemStruct;
+    // ⚠️ Item FORGÉ/CRÉÉ (card[0] = marqueur 0xFF/0xFE, cf. ItemInfo_IsForgedOrCreated
+    // 0x006a5e30) : les slots de carte contiennent les DONNÉES DU CRÉATEUR (charid
+    // scindé, star crumbs, élément), PAS des cartes. On ne les lit donc PAS comme
+    // cartes (sinon #255 = 0xFF, #18928 = un bout de charid s'affichent), et on
+    // masque emplacements + suffixe [N]. Détection : card[0] PETIT NON NUL (<= 500 ;
+    // les vraies cartes/enchants ont un id > 500). card[0]==0 = slots VIDES d'un item
+    // normal (ex. Rapier) -> on garde l'affichage des emplacements vides + [N].
+    const uint32_t card0 = *reinterpret_cast<uint32_t*>(info + kInfoCards);
+    const bool forged = (card0 != 0 && card0 <= 500);
     for (int i = 0; i < kMaxCards; ++i) {
       const uint32_t cid =
-          *reinterpret_cast<uint32_t*>(info + kInfoCards + i * 4);
+          forged ? 0u : *reinterpret_cast<uint32_t*>(info + kInfoCards + i * 4);
       e->cards[i] = cid;
       e->card_names[i][0] = '\0';
       if (cid != 0) {
@@ -411,7 +445,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       const char* idstr =
           MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
       const int item_id = idstr ? atoi(idstr) : 0;
-      if (item_id > 0) {
+      if (!forged && item_id > 0) {  // forgé -> pas d'emplacements ni de suffixe [N]
         void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
             item_id, reinterpret_cast<void*>(kDescDb));
         if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
@@ -533,9 +567,16 @@ void StartNavigation(const char* map, int x, int y, int type) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Dessine le titre avec le segment [hs,he) coloré en hlcol (reste en def).
-void DrawTitle(const char* name, int hs, int he, ImU32 hlcol, ImU32 def) {
+// Dessine le titre avec le segment [hs,he) coloré en hlcol (reste en def). `shadow`
+// != 0 => ombre du nom entier décalée +1,+1 SOUS le texte (natif : 0x5050fa rouge
+// quand info+0x5d!=0, ex. arme cassée).
+void DrawTitle(const char* name, int hs, int he, ImU32 hlcol, ImU32 def,
+               ImU32 shadow = 0) {
   if (!name || !name[0]) { ImGui::TextUnformatted("(?)"); return; }
+  if (shadow) {
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + 1.0f, p.y + 1.0f), shadow, name);
+  }
   const int len = static_cast<int>(std::strlen(name));
   if (hs < 0 || he <= hs || hs >= len) {
     ImGui::PushStyleColor(ImGuiCol_Text, def);
@@ -873,7 +914,10 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
       std::snprintf(cd->icon_path, sizeof(cd->icon_path), "%s%s.bmp",
                     kItemIconPrefix, irn);
     void* crec = reinterpret_cast<CardResName_t>(kGetCardResName)(static_cast<int>(id));
-    if (crec) {
+    // crec == la fiche nil (kCardNilRecord, resname "sorry") => id absent de la DB
+    // carte = NON-carte : on laisse illust_path vide pour garder l'icône collection
+    // (sinon on chargeait cardBmp\sorry.bmp = le placeholder "now printing").
+    if (crec && crec != reinterpret_cast<void*>(kCardNilRecord)) {
       const char* crn = *reinterpret_cast<char**>(crec);
       if (crn && crn[0])
         std::snprintf(cd->illust_path, sizeof(cd->illust_path), "%s%s.bmp",
@@ -901,37 +945,15 @@ IconTex GetCardIcon(uint32_t id) {
   return t;
 }
 
-// CTexture « Sorry now printing » que TexMgr renvoie pour un cardBmp MANQUANT
-// (même handle pour tous). Résolue 1x via un resname bidon -> sert à distinguer
-// les VRAIES cartes (illustration existante) des items sans (costumes/consos qui
-// reçoivent le placeholder). SEH (fonctions jeu).
-void* PlaceholderCTex() {
-  static void* ph = reinterpret_cast<void*>(1);  // 1 = non résolu
-  if (ph != reinterpret_cast<void*>(1)) return ph;
-  ph = nullptr;
-  __try {
-    char path[300];
-    std::snprintf(path, sizeof(path), "%s__bourgeon_nope__.bmp",
-                  reinterpret_cast<const char*>(kCardBmpPrefix));
-    RawTex rt{};
-    if (GetRawTex(path, &rt)) ph = rt.ctex;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return ph;
-}
-
-// Illustration cardBmp d'une VRAIE carte (chargée au 1er accès, cache par id).
-// Renvoie {} si l'item n'a pas de vraie illustration (TexMgr sert le placeholder).
+// Illustration cardBmp d'une carte (chargée au 1er accès, cache par id). AUTO-gatée :
+// LoadCardDesc laisse illust_path vide pour les non-cartes (fiche nil kCardNilRecord),
+// donc renvoie une tex vide pour tout ce qui n'est pas dans la DB carte -> l'appelant
+// peut l'appeler inconditionnellement (les non-cartes gardent leur icône collection).
 IconTex GetCardIllust(uint32_t id) {
   auto it = g_card_illust_cache.find(id);
   if (it != g_card_illust_cache.end()) return it->second;
   const CardDesc* cd = GetCardDesc(id);
-  IconTex t{};
-  if (cd->illust_path[0]) {
-    RawTex rt{};
-    void* ph = PlaceholderCTex();
-    if (GetRawTex(cd->illust_path, &rt) && rt.ctex != ph)  // pas le placeholder
-      t = LoadCollectionIcon(cd->illust_path);
-  }
+  IconTex t = cd->illust_path[0] ? LoadCollectionIcon(cd->illust_path) : IconTex{};
   g_card_illust_cache[id] = t;
   return t;
 }
@@ -1587,30 +1609,50 @@ void ItemDescTweaks::RenderItemWindow() {
                       const ItemExtract& e, const DescWindow& snap,
                       uint8_t* wnd) {
     if (header) { ImGui::TextDisabled("%s", header); ImGui::Separator(); }
-    // Icône collection de l'item (TOUJOURS — plus de remplacement par le cardBmp
-    // qui masquait la collection des non-cartes). Le survol d'un équipement à
-    // viewID déclenche l'aperçu du perso (comme le survol du « ViewID : N »).
-    if (icon.tex && icon.w > 0 && icon.h > 0) {
+    // VRAIE carte -> illustration cardBmp (réduite) + mouseover pleine taille.
+    // Sinon -> icône collection ; survol d'un équipement à viewID -> aperçu du perso
+    // (comme le survol du « ViewID : N »). GetCardIllust est auto-gatée (renvoie vide
+    // pour tout ce qui n'est pas dans la DB carte), donc appel inconditionnel : les
+    // non-cartes (ex. 617 boîte) gardent leur icône collection.
+    IconTex cill = GetCardIllust(snap.id);
+    const bool is_card = cill.tex && cill.w > 0 && cill.h > 0;
+    const IconTex& ic = is_card ? cill : icon;
+    if (ic.tex && ic.w > 0 && ic.h > 0) {
       // Taille native, ratio préservé, plafonnée (évite la déformation 48x48).
       const float kMax = 120.0f;
-      float w = static_cast<float>(icon.w), h = static_cast<float>(icon.h);
+      float w = static_cast<float>(ic.w), h = static_cast<float>(ic.h);
       const float big = (w > h) ? w : h;
       if (big > kMax) { const float s = kMax / big; w *= s; h *= s; }
-      ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(w, h));
+      ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, h));
       if (ImGui::IsItemHovered()) {
-        auto* bi = Bourgeon::Instance().basic_info();
-        if (bi && e.view_id != 0 && bi->CanPreview(e.emplacement)) {
-          ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-          bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+        if (is_card) {  // mouseover illustration carte pleine taille
+          ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+          ImGui::BeginTooltip();
+          ImGui::Image(reinterpret_cast<ImTextureID>(cill.tex),
+                       ImVec2(static_cast<float>(cill.w),
+                              static_cast<float>(cill.h)));
+          ImGui::EndTooltip();
+          ImGui::PopStyleColor(2);
+        } else {  // équipement à viewID -> aperçu du perso
+          auto* bi = Bourgeon::Instance().basic_info();
+          if (bi && e.view_id != 0 && bi->CanPreview(e.emplacement)) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+          }
         }
       }
       ImGui::SameLine();
     }
     ImGui::BeginGroup();
-    // Nom coloré : uniquement en COMPARAISON (le titre de fenêtre = "Comparaison").
-    // En mode simple le nom est déjà dans la barre de titre -> pas de doublon.
-    if (header)
-      DrawTitle(e.name, e.hl_start, e.hl_end, e.hl_col, IM_COL32(0, 0, 0, 255));
+    // Nom coloré dans le corps : TOUJOURS en comparaison (header). En mode simple,
+    // seulement quand le nom porte un segment coloré (forgé/signé = nom du forgeron
+    // rouge/bleu) OU une ombre rouge (item CASSÉ, info+0x5d!=0) -> on montre ce que
+    // la barre de titre ne peut pas rendre ; un item normal garde juste son nom
+    // dans la barre de titre.
+    if (header || e.hl_start >= 0 || e.name_shadow)
+      DrawTitle(e.name, e.hl_start, e.hl_end, e.hl_col, IM_COL32(0, 0, 0, 255),
+                e.name_shadow);
 
     // La 1ère ligne de desc item est TOUJOURS le lien database (<URL>ItemID..),
     // qui affiche déjà l'ID -> on l'utilise À LA PLACE de la ligne "ID : N"
@@ -1678,71 +1720,149 @@ void ItemDescTweaks::RenderItemWindow() {
 
     ImGui::Separator();
     SelectableColoredText(selId, e.lines + skip, e.line_count - skip, black);
+    // NB : cartes/enchants + options aléatoires ne sont PLUS dessinés ici. Ils
+    // sont sortis dans des panneaux SATELLITES (DrawInstancePanels), ancrés à
+    // l'extérieur, SOUS la fenêtre principale (façon fenêtres natives).
+  };
 
-    // ── Instance : emplacements cartes/enchants + random options ─────────────
+  // Regroupement de FOCUS : la desc + ses panneaux satellites remontent ENSEMBLE au
+  // premier plan quand on interagit avec l'un d'eux (fenêtres séparées => sinon les
+  // panneaux passent SOUS les autres fenêtres). Noms des panneaux collectés au rendu
+  // ; sat_foc = true si un panneau est focus cette frame. Réordonnancement après.
+  // ⚠️ POD (tableau, pas std::vector) : RenderItemWindow utilise __try/SEH -> aucun
+  // objet à déroulement autorisé (C2712).
+  char sat_names[8][64];
+  int  sat_name_count = 0;
+  bool sat_foc = false;
+
+  // Panneaux SATELLITES (cartes + options) : fenêtres ImGui SKINNÉES RO séparées
+  // (cadre sysbox ro::BeginRoDescPanel = même look que la desc), ancrées sous la
+  // desc. Fenêtres séparées (AUCUN dessin sur la draw list parente) => curseur et
+  // rendu SÛRS. Boîtes d'options bordées à la main (AddRect, arrondies). Cartes =
+  // vrais Selectable (survol/clic gérés par ImGui). `tl` = coin haut-gauche ;
+  // renvoie le Y du bas. Le z-order est géré par le regroupement de focus (les
+  // panneaux remontent avec la desc), pas par un dessin sur la draw list parente
+  // (qui avait cassé curseur+skin le 2026-07-08).
+  auto draw_satellites = [&](const ItemExtract& e, const char* tag,
+                             ImVec2 tl) -> float {
     int n_cards = 0;
     for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) ++n_cards;
-    // Rangées = emplacements de l'item (card_slots), au minimum les cartes
-    // remplies détectées (edge case enchant sur item non-sloté).
     int slot_rows = (e.card_slots > n_cards) ? e.card_slots : n_cards;
     if (slot_rows > kMaxCards) slot_rows = kMaxCards;
-    if (slot_rows > 0 || e.opt_count > 0) ImGui::Separator();
-    if (slot_rows > 0) {
-      if (e.card_slots > 0)
-        ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
-                           "Cartes / Enchants (%d emplacement%s)",
-                           e.card_slots, e.card_slots > 1 ? "s" : "");
-      else
-        ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
-                           "Cartes / Enchants");
-      for (int i = 0; i < slot_rows; ++i) {
-        if (e.cards[i] == 0) {  // emplacement vide de l'item
-          ImGui::TextDisabled("  [Emplacement vide]");
-          continue;
-        }
-        // Selectable = vrai widget interactif (détection de clic G/D fiable).
-        // Label "Nom (#id)" + id ImGui unique par colonne (selId) ET par slot :
-        // sans selId, les 2 colonnes de comparaison collisionnent (même carte).
-        char clbl[160];
-        if (e.card_names[i][0])
-          std::snprintf(clbl, sizeof(clbl), "%s (#%u)##card%d%s",
-                        e.card_names[i], e.cards[i], i, selId);
-        else
-          std::snprintf(clbl, sizeof(clbl), "#%u##card%d%s", e.cards[i], i,
-                        selId);
-        // Petite icône item de la carte (alignée sur la hauteur de texte).
-        IconTex cicon = GetCardIcon(e.cards[i]);
-        if (cicon.tex && cicon.h > 0) {
-          const float th = ImGui::GetTextLineHeight();
-          ImGui::Image(reinterpret_cast<ImTextureID>(cicon.tex),
-                       ImVec2(th * cicon.w / cicon.h, th));
-          ImGui::SameLine(0, 2);
-        }
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
-        ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
-        ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-          ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-          RenderCardTooltip(e.cards[i]);  // desc au survol (clic G = base de donnees)
-        }
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-          OpenCardDbLink(e.cards[i]);
+    if (e.opt_count <= 0 && slot_rows <= 0) return tl.y;
+
+    const ImVec4 brown(0.30f, 0.24f, 0.10f, 1.0f);
+    const ImGuiWindowFlags wf =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav;
+    const float lh = ImGui::GetTextLineHeight();
+    char buf[160];
+    float y = tl.y;
+
+    // Panneau SKINNÉ RO (cadre sysbox, comme la fenêtre desc) ; marge +2px gérée
+    // dans BeginRoDescPanel (WindowPadding e+2). `y` capturé par ref (déplacé
+    // entre les panneaux).
+    auto begin_panel = [&](const char* id) -> bool {
+      ImGui::SetNextWindowPos(ImVec2(tl.x, y));
+      const bool o = ro::BeginRoDescPanel(id, wf);
+      if (sat_name_count < 8) {                           // pour le regroupement focus
+        std::strncpy(sat_names[sat_name_count], id, 63);
+        sat_names[sat_name_count][63] = '\0';
+        ++sat_name_count;
       }
-    }
+      if (ImGui::IsWindowFocused()) sat_foc = true;
+      return o;
+    };
+    auto end_panel = [&]() { ro::EndRoDescPanel(); };
+
+    // ── OPTIONS : boîte bordée arrondie par option (bordure dessinée main) ──────
     if (e.opt_count > 0) {
-      ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f),
-                         "Options aleatoires");
-      // Nom localisé via le getter natif Lua GetVarOptionName ; repli brut.
-      for (int i = 0; i < e.opt_count; ++i) {
-        const char* on = GetOptName(e.opts[i].index, e.opts[i].value);
-        if (on)
-          ImGui::BulletText("%s", on);
-        else
-          ImGui::BulletText("Option #%d : valeur %d (param %u)",
-                            (int)e.opts[i].index, (int)e.opts[i].value,
-                            (unsigned)e.opts[i].param);
+      char wid[64];
+      std::snprintf(wid, sizeof(wid), "##optpanel_%s", tag);
+      if (begin_panel(wid)) {
+        ImDrawList* wdl = ImGui::GetWindowDrawList();
+        const ImU32 tcol = ImGui::GetColorU32(ImGuiCol_Text);
+        const ImU32 bcol = IM_COL32(0xC2, 0xC2, 0xC2, 255);
+        const float bpx = 6.0f, bpy = 2.0f, gap = 3.0f;
+        const int n = (e.opt_count < kMaxOpts) ? e.opt_count : kMaxOpts;
+        float boxw = 40.0f;
+        for (int i = 0; i < n; ++i) {
+          const char* on = GetOptName(e.opts[i].index, e.opts[i].value);
+          if (!on)
+            std::snprintf(buf, sizeof(buf), "Option #%d : valeur %d (param %u)",
+                          (int)e.opts[i].index, (int)e.opts[i].value,
+                          (unsigned)e.opts[i].param);
+          const float w = ImGui::CalcTextSize(on ? on : buf).x;
+          if (w > boxw) boxw = w;
+        }
+        boxw += bpx * 2.0f;
+        const float bh = lh + bpy * 2.0f;
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, gap));
+        for (int i = 0; i < n; ++i) {
+          const char* on = GetOptName(e.opts[i].index, e.opts[i].value);
+          if (!on)
+            std::snprintf(buf, sizeof(buf), "Option #%d : valeur %d (param %u)",
+                          (int)e.opts[i].index, (int)e.opts[i].value,
+                          (unsigned)e.opts[i].param);
+          const ImVec2 p0 = ImGui::GetCursorScreenPos();
+          const ImVec2 p1(p0.x + boxw, p0.y + bh);
+          wdl->AddRect(p0, p1, bcol, 4.0f, 0, 1.0f);         // bordure 1px arrondie
+          wdl->AddText(ImVec2(p0.x + bpx, p0.y + bpy), tcol, on ? on : buf);
+          ImGui::Dummy(ImVec2(boxw, bh));
+        }
+        ImGui::PopStyleVar(1);
+        y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
       }
+      end_panel();
     }
+
+    // ── CARTES : titre + une ligne (icône + nom cliquable) par emplacement ──────
+    if (slot_rows > 0) {
+      char wid[64];
+      std::snprintf(wid, sizeof(wid), "##cardpanel_%s", tag);
+      if (begin_panel(wid)) {
+        if (e.card_slots > 0)
+          ImGui::TextColored(brown, "Cartes / Enchants (%d emplacement%s)",
+                             e.card_slots, e.card_slots > 1 ? "s" : "");
+        else
+          ImGui::TextColored(brown, "Cartes / Enchants");
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
+        for (int i = 0; i < slot_rows; ++i) {
+          if (e.cards[i] == 0) {  // emplacement vide de l'item
+            ImGui::TextDisabled("[Emplacement vide]");
+            continue;
+          }
+          char clbl[160];
+          if (e.card_names[i][0])
+            std::snprintf(clbl, sizeof(clbl), "%s (#%u)##sc%d_%s",
+                          e.card_names[i], e.cards[i], i, tag);
+          else
+            std::snprintf(clbl, sizeof(clbl), "#%u##sc%d_%s", e.cards[i], i, tag);
+          IconTex cicon = GetCardIcon(e.cards[i]);
+          if (cicon.tex && cicon.h > 0) {
+            const float th = ImGui::GetTextLineHeight();
+            ImGui::Image(reinterpret_cast<ImTextureID>(cicon.tex),
+                         ImVec2(th * cicon.w / cicon.h, th));
+            ImGui::SameLine(0, 2);
+          }
+          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
+          ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
+          ImGui::PopStyleColor();
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            RenderCardTooltip(e.cards[i]);
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            OpenCardDbLink(e.cards[i]);
+        }
+        ImGui::PopStyleVar(1);
+        y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
+      }
+      end_panel();
+    }
+    return y;
   };
 
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
@@ -1751,15 +1871,20 @@ void ItemDescTweaks::RenderItemWindow() {
   if (has_cmp)
     std::snprintf(title, sizeof(title), "Comparaison###itemdesc_item");
   else
-    std::snprintf(title, sizeof(title), "%s###itemdesc_item",
-                  ie.name[0] ? ie.name : "Description");
+    // Item cassé (name_shadow) -> suffixe " - Broken" dans le titre.
+    std::snprintf(title, sizeof(title), "%s%s###itemdesc_item",
+                  ie.name[0] ? ie.name : "Description",
+                  ie.name_shadow ? " - Broken" : "");
 
   // Coins arrondis (comme moonlight_ui) : fenêtre moins « rude ».
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   bool open = true;
-  const bool visible = ImGui::Begin(title, &open, flags);
+  // Ombre ROUGE du titre pour un item cassé, uniquement hors comparaison (le titre
+  // de comparaison = "Comparaison", pas de nom d'item).
+  const unsigned int title_shadow = has_cmp ? 0u : ie.name_shadow;
+  const bool visible = ro::BeginRoDescWindow(title, &open, flags, title_shadow);
   // Anti hors-écran : après le placement (curseur/mémoire) et le resize, on
   // ramène la fenêtre entièrement dans l'écran (bords droit/bas puis haut/gauche).
   {
@@ -1774,7 +1899,16 @@ void ItemDescTweaks::RenderItemWindow() {
     if (nx != pos.x || ny != pos.y)
       ImGui::SetWindowPos(ImVec2(nx, ny));
   }
-  bourgeon::CloseWindowOnEscape(open);
+  // Le texte desc est dessiné via la draw list (SelectableColoredText) => clippé au
+  // CORPS de la fenêtre (qui inclut le cadre sysbox 14px du bas), PAS au content
+  // region -> WindowPadding ne le contraint pas. On CLIPPE donc le contenu au-dessus
+  // du cadre du bas pour qu'il ne rende pas dedans (le curseur natif RO n'est pas
+  // affecté : la scrollbar est peinte après, hors de ce clip).
+  {
+    const ImVec2 wp = ImGui::GetWindowPos();
+    const ImVec2 ws = ImGui::GetWindowSize();
+    ImGui::PushClipRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y - 10.0f), true);
+  }
   if (visible && ImGui::BeginTabBar("##itemtabs")) {
     if (ImGui::BeginTabItem("Description")) {
       // Toggle comparaison : replie/déplie la colonne « Équipé » (visible seulement
@@ -1783,7 +1917,10 @@ void ItemDescTweaks::RenderItemWindow() {
         ImGuiStyle& style = ImGui::GetStyle();
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, (float)(int)(style.FramePadding.y * 0.60f)));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, (float)(int)(style.ItemSpacing.y * 0.60f)));
-        ImGui::Checkbox("Comparer", &cmp_show_equipped_);
+        // Persiste immédiatement l'état (la checkbox vit dans la fenêtre desc, pas
+        // dans le panneau de réglages qui déclenche le save autrement).
+        if (ro::RoCheckbox("Comparer", &cmp_show_equipped_))
+          if (auto* mui = Bourgeon::Instance().moonlight_ui()) mui->SaveSettings();
         ImGui::PopStyleVar(2);
         ImGui::Separator();
       }
@@ -1811,9 +1948,40 @@ void ItemDescTweaks::RenderItemWindow() {
     RenderTechTabs(item_);
     ImGui::EndTabBar();
   }
-  ImGui::End();
+  ImGui::PopClipRect();  // fin du clip « contenu au-dessus du cadre du bas »
+  // Ancre des satellites = rect de la fenêtre principale (capturé AVANT End, après
+  // le clamp anti-hors-écran). Les panneaux (fenêtres séparées) sont dessinés
+  // APRÈS End. En comparaison : équipé sous la moitié gauche, objet sous la droite.
+  const ImVec2 main_pos  = ImGui::GetWindowPos();
+  const ImVec2 main_size = ImGui::GetWindowSize();
+  // Focus de la desc (racine + enfants), capturé pendant qu'elle est courante.
+  const bool desc_foc =
+      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+  ro::EndRoDescWindow();
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);
+
+  if (visible) {
+    const float top = main_pos.y + main_size.y + 4.0f;
+    if (has_cmp) {
+      draw_satellites(ce, "eq", ImVec2(main_pos.x, top));
+      draw_satellites(ie, "obj", ImVec2(main_pos.x + main_size.x * 0.5f, top));
+    } else {
+      draw_satellites(ie, "obj", ImVec2(main_pos.x, top));
+    }
+    // Regroupement de focus : si la desc OU un panneau vient de GAGNER le focus
+    // (transition), on remonte tout le groupe au 1er plan ensemble (panneaux puis
+    // desc => desc au-dessus, panneaux juste en dessous, le tout au-dessus des
+    // autres fenêtres). Uniquement sur la transition -> aucune bagarre de focus par
+    // frame. Corrige « les panneaux passent sous l'inventaire ».
+    static bool s_grp_foc_prev = false;
+    const bool grp_foc = desc_foc || sat_foc;
+    if (grp_foc && !s_grp_foc_prev) {
+      for (int i = 0; i < sat_name_count; ++i) ImGui::SetWindowFocus(sat_names[i]);
+      ImGui::SetWindowFocus(title);
+    }
+    s_grp_foc_prev = grp_foc;
+  }
 
   // X ImGui -> ferme les fenêtres natives (item 0xc + comparaison 0xea).
   if (!open) {
@@ -1867,7 +2035,7 @@ void ItemDescTweaks::RenderSkillWindow() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   bool open = true;
-  const bool visible = ImGui::Begin(title, &open, flags);
+  const bool visible = ro::BeginRoDescWindow(title, &open, flags);
   {
     const ImVec2 disp = ImGui::GetIO().DisplaySize;
     const ImVec2 pos  = ImGui::GetWindowPos();
@@ -1879,7 +2047,6 @@ void ItemDescTweaks::RenderSkillWindow() {
     if (ny < 0.0f) ny = 0.0f;
     if (nx != pos.x || ny != pos.y) ImGui::SetWindowPos(ImVec2(nx, ny));
   }
-  bourgeon::CloseWindowOnEscape(open);
   if (visible && ImGui::BeginTabBar("##skilltabs")) {
     if (ImGui::BeginTabItem("Description")) {
       // Nom+SP déjà dans la barre de titre, ID/Max Level déjà dans la desc
@@ -1891,7 +2058,7 @@ void ItemDescTweaks::RenderSkillWindow() {
     RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
     ImGui::EndTabBar();
   }
-  ImGui::End();
+  ro::EndRoDescWindow();
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);
 

@@ -50,6 +50,8 @@ class ItemDescTweaks : public Plugin {
   // et/ou panneau skill peuvent être désactivés séparément.
   bool& show_item_panel()  { return show_item_panel_; }
   bool& show_skill_panel() { return show_skill_panel_; }
+  // État de la checkbox « Comparer » (persisté par MoonlightUi).
+  bool& cmp_show_equipped() { return cmp_show_equipped_; }
 
   // Cache IMMÉDIATEMENT le rendu natif des fenêtres desc (item 0xc + comparaison
   // 0xea) depuis leurs slots manager (appelé depuis le hook OnMsg de MoonlightUi

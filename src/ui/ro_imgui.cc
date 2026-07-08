@@ -304,7 +304,14 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   EnsureTex("scroll0bar_down.bmp", skin::kScroll0BarDown, g_s0bar_down);
 
   const ImRect bb = ImGui::GetWindowScrollbarRect(w, ImGuiAxis_Y);
-  const float x0 = bb.Min.x, x1 = bb.Max.x;
+  const float x0 = bb.Min.x;
+  // Largeur visuelle RO fixe (13px). Si ImGui a réservé un slot PLUS LARGE (fenêtre
+  // desc : ScrollbarSize inclut l'épaisseur du cadre sysbox), on garde la scrollbar
+  // à 13px À GAUCHE du slot : la marge droite est occupée par le cadre -> scrollbar
+  // DANS le cadre, pas par-dessus le bord.
+  float x1 = bb.Max.x;
+  const float kRoScrollW = 13.0f;
+  if (x1 - x0 > kRoScrollW) x1 = x0 + kRoScrollW;
   const float y0 = bb.Min.y;
   float y1 = bb.Max.y;
   // Fenêtre principale redimensionnable : on raccourcit la scrollbar en bas pour
@@ -690,7 +697,8 @@ void EndRoWindow() {
 
 // Fenêtre de description : design distinct (barre de titre skill_upbar claire +
 // cadre boîte sysbox), même config/couleurs/scrollbar que le reste du skin.
-bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags) {
+bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
+                       unsigned int title_shadow) {
   if (!g_skin_enabled) {
     g_skin_colors = g_skin_vars = 0;
     g_skin_active = false;
@@ -711,12 +719,15 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags) 
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);
+  // Scrollbar 13px + épaisseur du cadre sysbox (14px) réservée : ImGui garde le
+  // contenu à l'écart du cadre ET la scrollbar (dessinée à 13px à gauche du slot,
+  // cf. DrawRoScrollbar) se retrouve DANS le cadre au lieu de par-dessus le bord.
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,
+                      6.0f + (float)skin::kSysboxLm.w);
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
-  // Contenu : 14px sur les côtés (épaisseur sysbox), peu en haut/bas (réduit le
-  // vide sous le titre).
+  // Contenu : côtés = épaisseur sysbox +2px, peu en haut/bas.
   const float e = (float)skin::kSysboxLm.w;  // 14
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e, 5.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + 2.0f, 7.0f));
   // Barre de titre = hauteur de l'art skill_upbar (20px).
   float pad_y = ((float)skin::kUpbarLeft.h - ImGui::GetFontSize()) * 0.5f;
   if (pad_y < 0.0f) pad_y = 0.0f;
@@ -771,8 +782,13 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags) 
         ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
                g_cfg.title_text[3] * g_cfg.alpha));
     const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    dl->AddText(ImVec2(tb.Min.x + 8.0f, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.0f),
-                ttx, nbuf);
+    const ImVec2 tpos(tb.Min.x + 8.0f,
+                      y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.0f);
+    // Ombre optionnelle du titre (ex. rouge 0x5050fa pour un item cassé), décalée
+    // +1,+1 sous le texte du titre.
+    if (title_shadow)
+      dl->AddText(ImVec2(tpos.x + 1.0f, tpos.y + 1.0f), title_shadow, nbuf);
+    dl->AddText(tpos, ttx, nbuf);
 
     // Bouton close (seulement si fermable), collé au bord droit du titre.
     bool close_clicked = false;
@@ -789,7 +805,7 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags) 
         !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize)) {
       EnsureTex("btn_resize.bmp", skin::kBtnResize, g_resize);
       const float rw = (float)g_resize.w, rh = (float)g_resize.h;
-      const ImVec2 rbr(wr.Max.x - 2.0f, wr.Max.y - 2.0f);
+      const ImVec2 rbr(wr.Max.x - 4.0f, wr.Max.y - 4.0f);
       const ImVec2 rtl(rbr.x - rw, rbr.y - rh);
       BlitStretch(dl, g_resize, rtl, rbr);
       if (ImGui::IsMouseHoveringRect(rtl, rbr, false))
@@ -818,11 +834,16 @@ bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
   g_skin_colors += 2;
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);  // sysbox = la bordure
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  // Bordure 1px ARRONDIE (comme BeginRoDescWindow) EN PLUS du cadre sysbox : donne
+  // aux sous-panneaux le même liseré arrondi que la fenêtre de description parente
+  // (le sysbox seul rend un cadre carré/parfois non visible sur ces petits panneaux).
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
   const float e = (float)skin::kSysboxLm.w;  // 14
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e, e));
+  // Côtés = e+2 (marge intérieure vs cadre sysbox) ; haut/bas = 6px (panneaux
+  // cartes/options COMPACTS, demandé).
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + 2.0f, 6.0f));
   g_skin_vars = 4;
 
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);

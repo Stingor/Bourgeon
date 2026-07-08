@@ -432,6 +432,7 @@ void MoonlightUi::LoadSettings() {
     if (auto* idt = Bourgeon::Instance().item_desc()) {
       idt->show_item_panel()  = ui["itemdesc_show_item"].as<bool>(true);
       idt->show_skill_panel() = ui["itemdesc_show_skill"].as<bool>(true);
+      idt->cmp_show_equipped() = ui["itemdesc_compare"].as<bool>(true);
     }
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
@@ -786,11 +787,13 @@ void MoonlightUi::SaveSettings() {
   std::snprintf(grid_col, sizeof(grid_col), "%08X",
                 ArgbFromPicker(grid_.color));
 
-  // ItemDescTweaks toggles (owned by the plugin) — persist both panels.
+  // ItemDescTweaks toggles (owned by the plugin) — persist both panels + Comparer.
   bool itemdesc_show_item = true, itemdesc_show_skill = true;
+  bool itemdesc_compare = true;
   if (auto* idt = Bourgeon::Instance().item_desc()) {
     itemdesc_show_item  = idt->show_item_panel();
     itemdesc_show_skill = idt->show_skill_panel();
+    itemdesc_compare    = idt->cmp_show_equipped();
   }
 
   YAML::Emitter out;
@@ -807,6 +810,7 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
         << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
         << YAML::Key << "itemdesc_show_skill"  << YAML::Value << itemdesc_show_skill
+        << YAML::Key << "itemdesc_compare"     << YAML::Value << itemdesc_compare
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_

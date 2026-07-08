@@ -91,8 +91,10 @@ float DrawIconNum(float x, float y);
 // Variante « fenêtre de description » : design distinct (barre de titre claire
 // skill_upbar + cadre boîte sysbox) mais même config/couleurs/scrollbar/toggle.
 // Pour les panneaux de description (item/skill). Même usage que Begin/EndRoWindow.
+// `title_shadow` != 0 => ombre (ARGB ImU32) décalée +1,+1 sous le texte du titre
+// (ex. 0x5050fa rouge pour un item cassé). 0 = pas d'ombre.
 bool BeginRoDescWindow(const char* title, bool* p_open = nullptr,
-                       int imgui_window_flags = 0);
+                       int imgui_window_flags = 0, unsigned int title_shadow = 0);
 void EndRoDescWindow();
 
 // Panneau de description SANS barre de titre (cadre boîte sysbox complet). Pour
