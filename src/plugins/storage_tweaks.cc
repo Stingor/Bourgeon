@@ -14,6 +14,7 @@
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
+#include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
 #include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_storage_window_re)
@@ -751,10 +752,19 @@ void StorageTweaks::OnRenderUI() {
     ImGui::Text("%s combien ? (max %d)", verb, pend_max_);
     static int dq = 1;
     ImGui::SetNextItemWidth(140);
+    // À l'ouverture : défaut = stack ENTIER (le cas courant) + focus l'input (le
+    // texte est sélectionné -> taper un nombre remplace pour une quantité partielle).
+    if (ImGui::IsWindowAppearing()) {
+      dq = pend_max_;
+      ImGui::SetKeyboardFocusHere();
+    }
     ImGui::InputInt("##dq", &dq);
     if (dq < 1) dq = 1;
     if (dq > pend_max_) dq = pend_max_;
-    if (ImGui::Button("OK")) {
+    // Entrée (ou pavé numérique) valide comme le bouton OK.
+    const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                       ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+    if (ImGui::Button("OK") || enter) {
       do_move(dq);
       pend_id_ = 0; dq = 1;
       ImGui::CloseCurrentPopup();
@@ -1062,6 +1072,11 @@ void StorageTweaks::OnRenderUI() {
     ImGui::GetWindowDrawList()->AddText(
         ImVec2(fx0 + 6.0f + iw + 4.0f, fy0 + (kFooterH - tsz.y) * 0.5f),
         ImGui::GetColorU32(ImGuiCol_Text), cnt);
+    // Bouton Quitter (RO) aligné à DROITE du footer -> ferme l'entrepôt (envoie
+    // CZ_CloseKafra). Marge à droite pour ne pas recouvrir le grip de resize du coin.
+    const float bw = 72.0f;
+    ImGui::SetCursorScreenPos(ImVec2(fx1 - bw - 18.0f, fy0));
+    if (ro::RoButton("Quitter", bw, kFooterH)) SendCloseStorage();
   }
 
   // DRAG d'un item storage : suit le curseur ; au relâché, la CIBLE décide du sens :
