@@ -629,8 +629,13 @@ void CashShopTweaks::OnRenderUI() {
 
   //  Disposition : grille Γ  gauche, panier Γ  droite (comme le cash shop natif) 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
+  // Panier auto-masqué quand il est vide -> la grille prend toute la largeur. Il
+  // réapparaît dès qu'on ajoute un item et se re-masque après achat/vidage. (Avec
+  // l'achat 1-clic, le panier ne sert qu'à l'achat groupé.)
+  const bool   show_cart = !cart_.empty();
   const float  cart_w = 220.0f;
-  const float  grid_w = std::max(120.0f, avail.x - cart_w - 8.0f);
+  const float  grid_w =
+      show_cart ? std::max(120.0f, avail.x - cart_w - 8.0f) : 0.0f;
   // Taille de la fenêtre principale (pour mesurer le chrome du snap de resize).
   const float  main_win_w = ImGui::GetWindowWidth();
   const float  main_win_h = ImGui::GetWindowHeight();
@@ -833,6 +838,7 @@ void CashShopTweaks::OnRenderUI() {
   preview_active_ = preview_now;  // gele le scroll grille tant qu'on survole un apercu
 
   //  Panier (Γ  droite) 
+  if (show_cart) {  // panier masqué quand vide -> grille pleine largeur
   ImGui::SameLine();
   ImGui::BeginChild("cs_cart", ImVec2(cart_w, 0), true);
   ImGui::TextUnformatted("Panier");
@@ -887,6 +893,7 @@ void CashShopTweaks::OnRenderUI() {
     SendBuy();
   if (cart_.empty()) ImGui::EndDisabled();
   ImGui::EndChild();
+  }  // if (show_cart) : panier masqué quand vide
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);
