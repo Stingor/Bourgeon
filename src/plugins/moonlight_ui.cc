@@ -1987,21 +1987,21 @@ void MoonlightUi::OnRenderUI() {
                                 ImGuiColorEditFlags_AlphaBar))
         SaveSettings();
       // ── Entrepôt : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
-      // ── Inventaire : viewer ImGui moderne (grille) OU fenetre native (opt-in) ──
+      // ── Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in) ──
       if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
         if (ImGui::Checkbox("Inventaire ImGui", &iv->imgui_enabled_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
-            "ON : inventaire ImGui moderne (grille d'icones, onglets, recherche, "
-            "double-clic utiliser/equiper, clic-droit, drag) et la fenetre native "
-            "est cachee.\nOFF (defaut) : inventaire natif classique, aucun viewer.");
+            "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
+            "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
+            "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
       }
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
         if (ImGui::Checkbox("Storage ImGui", &stg->imgui_enabled_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
-            "ON : storage ImGui moderne (icones, onglets, tri, drag-drop) "
-            "et la fenetre native est cachee.\nOFF : storage natif classique, aucun "
+            "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
+            "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
             "viewer. Pas de cohabitation.");
       }
       // ── Cash shop : redraw ImGui moderne OU fenêtre native ──
@@ -2009,15 +2009,15 @@ void MoonlightUi::OnRenderUI() {
         if (ImGui::Checkbox("Cash Shop ImGui", &cs->imgui_enabled_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
-            "ON : cash shop ImGui moderne (icones, categories, panier) et la "
-            "fenetre native est cachee.\nOFF : cash shop natif classique.");
+            "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
+            "fenêtre native est cachée.\nOFF : cash shop natif classique.");
       }
       // ── Shop NPC : fenêtre achat/vente ImGui unifiée OU natif ──
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
         if (ImGui::Checkbox("Shop NPC ImGui", &sh->imgui_enabled_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
-            "ON : fenetre boutique ImGui unifiee (onglets Acheter/Vendre, saut "
+            "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
             "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
       }
       // ── Feuille de personnage (agrege Status + Equipement, en plus) ──────
@@ -2025,8 +2025,8 @@ void MoonlightUi::OnRenderUI() {
         if (ImGui::Checkbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
           SaveSettings();
         ImGui::SameLine(); HelpMarker(
-            "Fenetre facon WoW : avatar + slots equipement/costume + stats, en "
-            "COMPLEMENT des fenetres natives (conservees). Ouvre/ferme avec Alt+F.\n"
+            "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
+            "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
             "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
       }
       // ── Navigation latérale (liste à gauche, contenu à droite) ───────────
@@ -2377,12 +2377,12 @@ void MoonlightUi::OnRenderUI() {
               "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
               "OFF : police integree d'ImGui (ProggyClean).");
           bool skin_on = ro::IsSkinEnabled();
-          if (ImGui::Checkbox("Skin RO (fenetres claires)", &skin_on)) {
+          if (ImGui::Checkbox("Skin RO (fenêtres claires)", &skin_on)) {
             ro::SetSkinEnabled(skin_on);
             SaveSettings();
           }
           ImGui::SameLine(); HelpMarker(
-              "ON : les fenetres ImGui 'RO' utilisent la barre de titre et les "
+              "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
               "boutons du client.\nOFF : chrome ImGui standard.");
           ImGui::Separator();
           if (ro::ShowRoSkinSettings()) SaveSettings();

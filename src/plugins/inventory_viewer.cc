@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // skin RO (BeginRoWindow / RoButton / RoCheckbox / DrawBar)
@@ -116,7 +117,7 @@ using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
 // jeu — c'est *(0x0121333c) gardé). Son vtbl+0x18 = CMode::SendMsg (le gros switch).
 // Commandes (confirmées via le double-clic natif 0x00949fc0 et le clic-droit 0x0094f380) :
 //   use conso 0x1b / équiper 0x13 / carte 0x7b / munition-costume-ombre 0x57 ;
-//   transfert vers chariot 0x4c / vers entrepôt 0x33.
+//   transfert vers chariot 0x4c / vers entrepôt Kafra 0x37 (0x33 = guilde, fenêtre 0x271b).
 constexpr uintptr_t kGetMode = 0x00a75340;
 constexpr uintptr_t kModeArg = 0x1213338;
 constexpr int kVfDispCmd = 0x18;
@@ -124,8 +125,12 @@ constexpr int kCmdUse       = 0x1b;
 constexpr int kCmdEquip     = 0x13;
 constexpr int kCmdCard      = 0x7b;
 constexpr int kCmdAmmo      = 0x57;
+constexpr int kCmdChatLink  = 0x14e;  // Shift+clic G : poste le lien de l'item dans le chat.
 constexpr int kCmdToCart    = 0x4c;
-constexpr int kCmdToStorage = 0x33;
+constexpr int kCmdToStorage = 0x37;  // entrepôt KAFRA (g_StorageWnd_ptr 0x0131f770 ouvert).
+                                     // 0x33 = guilde (fenêtre 0x271b), 0x4c = chariot.
+                                     // RE UIInventoryWnd_OnRButtonDown : le natif choisit selon
+                                     // la fenêtre ouverte ; notre StorageOpen() lit 0x0131f770.
 using GetMode_t = void*(__fastcall*)(int);
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
@@ -394,6 +399,7 @@ constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // "유저인터페이스\inv
 struct BarTex { void* tex = nullptr; int w = 0; int h = 0; };
 BarTex g_bar[3];       // btnbar 3-slice : 0=left, 1=mid, 2=right
 BarTex g_tile;         // itemwin_mid.bmp : fond de tuile d'item (32px)
+BarTex g_tile_lock;    // itemwin_mid_lock.bmp : fond quand deal-lock actif sur Favoris
 BarTex g_ico_weight;   // icon_weight.bmp : icône poids (footer)
 BarTex g_ico_num;      // icon_num.bmp : icône compteur d'items (footer)
 BarTex g_tab[kNumCats][2];  // onglets images [catégorie][0=actif(1.bmp), 1=inactif(2.bmp)]
@@ -448,6 +454,10 @@ void LoadFooterAssets() {
   }
   BasicInterfacePath("itemwin_mid.bmp", path, sizeof(path));
   g_tile = LoadTexByPath(path);
+  // Variante « verrouillée » du fond de tuile (onglet Favoris + deal-lock actif) : le
+  // natif remplace itemwin_mid par itemwin_mid_lock (\inventory\, RE UIInventoryWnd_DrawContent).
+  InventoryPath("itemwin_mid_lock.bmp", path, sizeof(path));
+  g_tile_lock = LoadTexByPath(path);
   g_ico_weight = LoadTexByPath(reinterpret_cast<const char*>(kIconWeightPath));
   g_ico_num    = LoadTexByPath(reinterpret_cast<const char*>(kIconNumPath));
   // Onglets images (basic_interface\<img>1.bmp actif / <img>2.bmp inactif).
@@ -529,7 +539,7 @@ bool FooterImgToggle(const char* id, float x, float cyc, const BarTex& on,
     dl->AddText(ImVec2(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f),
                 active ? IM_COL32(255, 255, 255, 255) : IM_COL32(45, 45, 45, 255), glyph);
   }
-  if (hov && tip) ImGui::SetTooltip("%s", tip);
+  if (hov && tip) ImGui::SetTooltip(" %s ", tip);
   if (out_w) *out_w = w;
   return clicked;
 }
@@ -556,12 +566,12 @@ inline ImU32 SkinImgTint() {
 
 // Dessine itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], clippé — le fond
 // continu du natif (au lieu d'étirer une copie par tuile). Repli rect plein sinon.
-void DrawTiledBg(ImDrawList* dl, ImVec2 origin, ImVec2 mn, ImVec2 mx) {
-  if (!g_tile.tex || g_tile.w <= 0 || g_tile.h <= 0) {
+void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, ImVec2 mx) {
+  if (!tile.tex || tile.w <= 0 || tile.h <= 0) {
     dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImGuiCol_FrameBg));
     return;
   }
-  const float tw = static_cast<float>(g_tile.w), th = static_cast<float>(g_tile.h);
+  const float tw = static_cast<float>(tile.w), th = static_cast<float>(tile.h);
   // Pavage ALIGNÉ sur `origin` (la 1re tuile de la grille) : le fond et les items
   // partagent la même marge (fin du désync). Démarre à la 1re tuile <= mn (floor -inf).
   auto floorTo = [](float v, float o, float step) {
@@ -574,7 +584,7 @@ void DrawTiledBg(ImDrawList* dl, ImVec2 origin, ImVec2 mn, ImVec2 mx) {
   dl->PushClipRect(mn, mx, true);
   for (float y = sy; y < mx.y; y += th)
     for (float x = sx; x < mx.x; x += tw)
-      dl->AddImage(TexId(g_tile.tex), ImVec2(x, y), ImVec2(x + tw, y + th),
+      dl->AddImage(TexId(tile.tex), ImVec2(x, y), ImVec2(x + tw, y + th),
                    ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
   dl->PopClipRect();
 }
@@ -604,7 +614,7 @@ void MaybeFlushTextures() {
   g_tex_epoch = e;
   g_icon_cache.clear();
   for (auto& b : g_bar) b = BarTex{};
-  g_tile = g_ico_weight = g_ico_num = BarTex{};
+  g_tile = g_tile_lock = g_ico_weight = g_ico_num = BarTex{};
   for (auto& row : g_tab) for (auto& b : row) b = BarTex{};
   for (auto& b : g_btn_drop) b = BarTex{};
   for (auto& b : g_btn_deal) b = BarTex{};
@@ -748,19 +758,19 @@ void InventoryViewer::OnRenderUI() {
     }
   };
   if (pend_id_ != 0) {
-    if (pend_open_prompt_) { ImGui::OpenPopup("Quantite"); pend_open_prompt_ = false; }
+    if (pend_open_prompt_) { ImGui::OpenPopup("Quantité"); pend_open_prompt_ = false; }
     else if (pend_max_ <= 1) { do_move(1); pend_id_ = 0; }
   }
   ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0, 0, 0, 0));
   ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Appearing);
   const bool popen =
-      ImGui::BeginPopupModal("Quantite", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+      ImGui::BeginPopupModal("Quantité", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
   ImGui::PopStyleColor();
   if (popen) {
     const char* verb = pend_action_ == kPendDrop      ? "Jeter"
                      : pend_action_ == kPendToCart     ? "Vers le chariot"
-                     : pend_action_ == kPendToStorage  ? "Vers l'entrepot"
-                                                       : "Deplacer";
+                     : pend_action_ == kPendToStorage  ? "Vers le storage"
+                                                       : "Déplacer";
     ImGui::Text("%s combien ? (max %d)", verb, pend_max_);
     static int dq = 1;
     if (ImGui::IsWindowAppearing()) { dq = pend_max_; ImGui::SetKeyboardFocusHere(); }
@@ -820,12 +830,12 @@ void InventoryViewer::OnRenderUI() {
         // L'image active/inactive indique déjà la sélection -> pas de cadre jaune.
         tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
         if (!sel && ImGui::IsItemHovered())
-          tdl->AddRectFilled(p, pe, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.35f));
+          tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol : éclaircir (pas de bleu)
       } else {
         if (ImGui::Selectable(kCats[c].label, sel, 0, ImVec2(tabW, 0.0f)))
           cur_tab_ = c;
       }
-      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kCats[c].label);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kCats[c].label);
       if (sel) {  // onglet actif -> mémorise son rect pour le passage blanc vers la grille
         activeTabMin = ImGui::GetItemRectMin();
         activeTabMax = ImGui::GetItemRectMax();
@@ -885,7 +895,12 @@ void InventoryViewer::OnRenderUI() {
       const ImVec2 gridOrigin = ImGui::GetCursorScreenPos();  // = position de la 1re tuile
       const ImVec2 gmn = ImGui::GetWindowPos();
       const ImVec2 gsz = ImGui::GetWindowSize();
-      DrawTiledBg(dl, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
+      // Onglet Favoris + deal-lock actif -> fond « verrouillé » (itemwin_mid_lock), comme
+      // le natif (UIInventoryWnd_DrawContent : this+0x10c==3 && g_inv_dealLock). Repli sur
+      // le fond normal si le bmp verrouillé n'a pas chargé.
+      const bool tilesLocked = kCats[cur_tab_].fav && ReadLock(kDealLockGlobal);
+      const BarTex& bg = (tilesLocked && g_tile_lock.tex) ? g_tile_lock : g_tile;
+      DrawTiledBg(dl, bg, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
     }
     for (int k = 0; k < static_cast<int>(view.size()); ++k) {
       if (k % cols != 0) ImGui::SameLine();
@@ -899,8 +914,8 @@ void InventoryViewer::OnRenderUI() {
 
       // Fond = pavage itemwin_mid dessiné globalement (DrawTiledBg). Ici : juste la
       // surbrillance au survol (pas de cadre favori : les favoris sont sur leur onglet).
-      if (hovered)
-        dl->AddRectFilled(p0, p1, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.4f), 0.0f);
+      if (hovered)  // survol : léger éclaircissement (le HeaderHovered du skin est BLEU)
+        dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 55), 0.0f);
 
       // Icône à sa taille NATIVE (comme le natif : bmp dessiné 1:1, ~24px dans une
       // tuile 32px), centrée ; réduite seulement si plus grande que la tuile.
@@ -935,14 +950,33 @@ void InventoryViewer::OnRenderUI() {
       // Survol : tooltip + double-clic = utiliser/équiper.
       if (hovered) {
         ImGui::BeginTooltip();
-        ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
-        if (it.amount > 1) ImGui::TextDisabled("Quantite : %d", it.amount);
+        ImGui::Text("%s [%d]", it.name[0] ? it.name : "(?)", it.id);
+        if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
         ImGui::EndTooltip();
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
           UseOrEquip(it.index, it.type);
       }
-      // Clic-droit = menu contextuel.
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("ctx");
+      // Raccourcis clavier+souris natifs (RE UIInventoryWnd_OnRButtonDown) :
+      //   Shift + clic GAUCHE  = poster le lien de l'item dans le chat (0x14e) ;
+      //   Ctrl  + clic DROIT   = ouvrir la description directement (sans menu) ;
+      //   Shift + clic DROIT   = (dé)favori ;
+      //   Alt   + clic DROIT   = transfert rapide vers storage (sinon chariot) si ouvert ;
+      //   clic DROIT seul      = menu contextuel.
+      const ImGuiIO& mods = ImGui::GetIO();
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
+        SendCmd(kCmdChatLink, it.index, 0);
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        if (mods.KeyCtrl) {
+          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
+        } else if (mods.KeyShift) {
+          SendFavoriteToggle(it.index, it.favorite != 0);
+        } else if (mods.KeyAlt) {
+          if (StorageOpen())   SendCmd(kCmdToStorage, it.index, it.amount);
+          else if (CartOpen()) SendCmd(kCmdToCart, it.index, it.amount);
+        } else {
+          ImGui::OpenPopup("ctx");
+        }
+      }
 
       // Source de drag (transfert chariot/entrepôt ou jet au sol selon la cible).
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
@@ -963,7 +997,7 @@ void InventoryViewer::OnRenderUI() {
         }
         const char* act = (it.type == 0 || it.type == 1 || it.type == 2 ||
                            it.type == 0x12) ? "Utiliser"
-                        : "Equiper";
+                        : "Équiper";
         const bool usable = it.type <= 2 || it.type == 0x12 ||
                             (it.type >= 4 && it.type <= 0xf) || it.type == 6 ||
                             it.type == 0xa || it.type == 0x10 || it.type == 0x11 ||
@@ -971,6 +1005,13 @@ void InventoryViewer::OnRenderUI() {
         if (usable && ImGui::MenuItem(act)) UseOrEquip(it.index, it.type);
         if (ImGui::MenuItem(it.favorite ? "Retirer des favoris" : "Ajouter aux favoris"))
           SendFavoriteToggle(it.index, it.favorite != 0);
+        // alootid : ramassage auto par ID (via MoonlightUi, comme le bouton d'item_desc).
+        if (auto* mui = Bourgeon::Instance().moonlight_ui()) {
+          const bool inAloot = mui->IsAlootId(it.id);
+          if (ImGui::MenuItem(inAloot ? "Retirer de l'alootid" : "Ajouter à l'alootid")) {
+            if (inAloot) mui->RemoveAlootId(it.id); else mui->AddAlootId(it.id);
+          }
+        }
         ImGui::Separator();
         // Jeter (au sol) — grisé si le verrou drop (bouton footer) est actif.
         const bool dropLocked = ReadLock(kDropLockGlobal);
@@ -985,7 +1026,7 @@ void InventoryViewer::OnRenderUI() {
         if (CartOpen() || StorageOpen()) ImGui::Separator();
         if (CartOpen() && ImGui::MenuItem("Vers le chariot"))
           SendCmd(kCmdToCart, it.index, it.amount);
-        if (StorageOpen() && ImGui::MenuItem("Vers l'entrepot"))
+        if (StorageOpen() && ImGui::MenuItem("Vers le storage"))
           SendCmd(kCmdToStorage, it.index, it.amount);
         ImGui::EndPopup();
       }
@@ -997,13 +1038,17 @@ void InventoryViewer::OnRenderUI() {
   ImGui::EndChild();
   ImGui::PopStyleVar();  // WindowPadding (grille)
 
-  // Onglet actif "mange" le bord entre le strip et la grille : petit pont BLANC PUR
-  // sur son bord droit -> passage continu = souligne l'onglet actif.
+  // Onglet actif "mange" le bord entre le strip et la grille : petit pont sur son bord
+  // droit -> passage continu = souligne l'onglet actif. Couleur = corps de l'onglet
+  // actif : BLANC pour la plupart, mais D1DCE8 (gris-bleu) pour Favoris (dont l'image a
+  // ce corps) -> le pont se fond au lieu de trancher en blanc.
   if (haveActiveTab) {
+    const ImU32 pont = kCats[cur_tab_].fav ? IM_COL32(0xD1, 0xDC, 0xE8, 255)
+                                           : IM_COL32(255, 255, 255, 255);
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),
         ImVec2(activeTabMax.x + 2.0f, activeTabMax.y - 1.0f),
-        IM_COL32(255, 255, 255, 255));
+        pont);
   }
 
   // ── Drag terminé : router selon la cible (chariot / entrepôt / sol) ──
@@ -1114,12 +1159,12 @@ void InventoryViewer::OnRenderUI() {
   // Boutons (dessinés par-dessus la barre) : Drop, puis Deal + Tri sur les Favoris.
   float bx = grpL, bwOut = 0.0f;
   if (FooterImgToggle("##inv_droplock", bx, cyc, g_btn_drop[1], g_btn_drop[0], dropOn, "D",
-                      "Verrou drop : empeche de jeter des items (tous onglets)", &bwOut))
+                      "Verrou drop : empêche de jeter des items (tous onglets)", &bwOut))
     ToggleLock(kDropLockGlobal);
   bx += bwOut + bgap;
   if (favTab) {
     if (FooterImgToggle("##inv_deallock", bx, cyc, g_btn_deal[1], g_btn_deal[0], dealOn, "V",
-                        "Verrou vente : les favoris ne peuvent pas etre vendus aux NPC", &bwOut))
+                        "Verrou vente : les favoris ne peuvent pas être vendus aux NPC", &bwOut))
       ToggleLock(kDealLockGlobal);
     bx += bwOut + bgap;
     if (FooterImgToggle("##inv_sort", bx, cyc, g_btn_sort[1], g_btn_sort[0], sort_enabled_, "T",
