@@ -52,6 +52,14 @@ class ItemDescTweaks : public Plugin {
   bool& show_skill_panel() { return show_skill_panel_; }
   // État de la checkbox « Comparer » (persisté par MoonlightUi).
   bool& cmp_show_equipped() { return cmp_show_equipped_; }
+  // Ouverture de la desc : true = près de la souris, false = dernière position
+  // connue (persisté par MoonlightUi).
+  bool& desc_spawn_at_cursor() { return desc_spawn_at_cursor_; }
+  // Ancrage (0=HG 1=HD 2=BG 3=BD 4=centre) + offset X/Y de l'ouverture « près de la
+  // souris » (persistés par MoonlightUi).
+  int& desc_anchor()   { return desc_anchor_; }
+  int& desc_offset_x() { return desc_offset_x_; }
+  int& desc_offset_y() { return desc_offset_y_; }
 
   // Cache IMMÉDIATEMENT le rendu natif des fenêtres desc (item 0xc + comparaison
   // 0xea) depuis leurs slots manager (appelé depuis le hook OnMsg de MoonlightUi
@@ -152,6 +160,12 @@ class ItemDescTweaks : public Plugin {
   bool       show_item_panel_  = true;  // panneau technique pour les items
   bool       show_skill_panel_ = true;  // panneau technique pour les skills
   bool       cmp_show_equipped_ = true; // toggle : afficher la colonne « Équipé »
+  bool       desc_spawn_at_cursor_ = true;  // ouverture : true = près de la souris,
+                                            // false = dernière position connue
+  int        desc_anchor_ = 0;    // ancrage souris : 0=haut-G 1=haut-D 2=bas-G
+                                  // 3=bas-D 4=centre (mode près de la souris)
+  int        desc_offset_x_ = 12; // offset X/Y depuis la souris (mode près souris)
+  int        desc_offset_y_ = 12;
   DescWindow item_;             // fenêtre item candidate (classe 0xc)
   DescWindow compare_;          // fenêtre équipé/comparaison (classe 0xea)
   // Placement de la fenêtre item reproduite : au 1er frame d'ouverture on la

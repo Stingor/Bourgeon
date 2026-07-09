@@ -567,6 +567,19 @@ void StartNavigation(const char* map, int x, int y, int type) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Pivot ImGui (0..1) de l'ancrage souris de la desc (0=haut-G 1=haut-D 2=bas-G
+// 3=bas-D 4=centre) : passé à SetNextWindowPos pour ancrer ce coin/point de la
+// fenêtre sur le curseur (indépendant de la taille de la fenêtre).
+static ImVec2 DescAnchorPivot(int a) {
+  switch (a) {
+    case 1:  return ImVec2(1.0f, 0.0f);  // haut-droite
+    case 2:  return ImVec2(0.0f, 1.0f);  // bas-gauche
+    case 3:  return ImVec2(1.0f, 1.0f);  // bas-droite
+    case 4:  return ImVec2(0.5f, 0.5f);  // centre
+    default: return ImVec2(0.0f, 0.0f);  // haut-gauche
+  }
+}
+
 // Dessine le titre avec le segment [hs,he) coloré en hlcol (reste en def). `shadow`
 // != 0 => ombre du nom entier décalée +1,+1 SOUS le texte (natif : 0x5050fa rouge
 // quand info+0x5d!=0, ex. arme cassée).
@@ -863,6 +876,20 @@ std::unordered_map<uint32_t, CardDesc> g_card_desc_cache;
 // Caches texture séparés (clé = id) : petite icône item + illustration cardBmp.
 std::unordered_map<uint32_t, IconTex> g_card_icon_cache;
 std::unordered_map<uint32_t, IconTex> g_card_illust_cache;
+
+// Toutes les textures ci-dessus vivent en D3DPOOL_DEFAULT : mortes après un
+// reset/recréation du device. On jette les 3 caches quand l'epoch change, sinon
+// AddImage() sur un handle mort plante dans ddraw. (g_card_desc_cache = data pure,
+// pas de texture -> conservé.) À appeler en tête de chaque résolveur d'icône.
+void IconCachesGuard() {
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e == s_epoch) return;
+  g_icon_cache.clear();
+  g_card_icon_cache.clear();
+  g_card_illust_cache.clear();
+  s_epoch = e;
+}
 // Préfixe icône item en CP949 (2 littéraux concaténés pour éviter que \xba avale
 // le \ suivant) : "유저인터페이스\item\".
 static const char kItemIconPrefix[] =
@@ -937,6 +964,7 @@ const CardDesc* GetCardDesc(uint32_t id) {
 
 // Petite icône item d'une carte (chargée au 1er accès, cache par id ; tex null OK).
 IconTex GetCardIcon(uint32_t id) {
+  IconCachesGuard();
   auto it = g_card_icon_cache.find(id);
   if (it != g_card_icon_cache.end()) return it->second;
   const CardDesc* cd = GetCardDesc(id);
@@ -950,6 +978,7 @@ IconTex GetCardIcon(uint32_t id) {
 // donc renvoie une tex vide pour tout ce qui n'est pas dans la DB carte -> l'appelant
 // peut l'appeler inconditionnellement (les non-cartes gardent leur icône collection).
 IconTex GetCardIllust(uint32_t id) {
+  IconCachesGuard();
   auto it = g_card_illust_cache.find(id);
   if (it != g_card_illust_cache.end()) return it->second;
   const CardDesc* cd = GetCardDesc(id);
@@ -1060,6 +1089,7 @@ void OpenCardDbLink(uint32_t cardId) {
 // Résout (cache + chargement) l'icône de collection d'un item extrait.
 IconTex ResolveIcon(uint32_t id, const ItemExtract& e) {
   if (!e.has_icon) return {};
+  IconCachesGuard();
   auto it = g_icon_cache.find(id);
   if (it != g_icon_cache.end()) return it->second;
   IconTex tex = LoadCollectionIcon(e.iconpath);
@@ -1160,8 +1190,8 @@ void ItemDescTweaks::OnTick() {
   if (item_.open && !item_was_open_) {
     POINT pt;
     if (GetCursorPos(&pt)) {
-      item_spawn_x_ = pt.x + 12;
-      item_spawn_y_ = pt.y + 12;
+      item_spawn_x_ = pt.x + desc_offset_x_;
+      item_spawn_y_ = pt.y + desc_offset_y_;
       item_need_pos_ = true;
     }
   }
@@ -1169,8 +1199,8 @@ void ItemDescTweaks::OnTick() {
   if (skill_.open && !skill_was_open_) {
     POINT pt;
     if (GetCursorPos(&pt)) {
-      skill_spawn_x_ = pt.x + 12;
-      skill_spawn_y_ = pt.y + 12;
+      skill_spawn_x_ = pt.x + desc_offset_x_;
+      skill_spawn_y_ = pt.y + desc_offset_y_;
       skill_need_pos_ = true;
     }
   }
@@ -1590,10 +1620,14 @@ void ItemDescTweaks::RenderItemWindow() {
                                       ImVec2(1800.0f, 900.0f));
   ImGui::SetNextWindowSize(ImVec2(560.0f, 420.0f), ImGuiCond_FirstUseEver);
   if (item_need_pos_) {
-    ImGui::SetNextWindowPos(
-        ImVec2(static_cast<float>(item_spawn_x_),
-               static_cast<float>(item_spawn_y_)),
-        ImGuiCond_Always);
+    // Mode « près de la souris » : on force la position au curseur. Mode « dernière
+    // position » : on NE touche PAS la position (ImGui réutilise celle mémorisée
+    // via le ###id). Dans les 2 cas on remonte au 1er plan à l'ouverture.
+    if (desc_spawn_at_cursor_)
+      ImGui::SetNextWindowPos(
+          ImVec2(static_cast<float>(item_spawn_x_),
+                 static_cast<float>(item_spawn_y_)),
+          ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
     ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     item_need_pos_ = false;
   }
@@ -1745,9 +1779,13 @@ void ItemDescTweaks::RenderItemWindow() {
   // (qui avait cassé curseur+skin le 2026-07-08).
   auto draw_satellites = [&](const ItemExtract& e, const char* tag,
                              ImVec2 tl) -> float {
-    int n_cards = 0;
-    for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) ++n_cards;
-    int slot_rows = (e.card_slots > n_cards) ? e.card_slots : n_cards;
+    // Rangées = jusqu'au DERNIER slot occupé (index+1), au minimum le nb
+    // d'emplacements. ⚠️ PAS le COMPTE de cartes non nulles : avec un trou (ex.
+    // carte en 0, enchants en 2 et 3, slot 1 vide) le compte = 3 sauterait le
+    // slot 3. On prend donc le plus haut index occupé.
+    int last_slot = -1;
+    for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) last_slot = i;
+    int slot_rows = (e.card_slots > last_slot + 1) ? e.card_slots : last_slot + 1;
     if (slot_rows > kMaxCards) slot_rows = kMaxCards;
     if (e.opt_count <= 0 && slot_rows <= 0) return tl.y;
 
@@ -2012,9 +2050,10 @@ void ItemDescTweaks::RenderSkillWindow() {
                                       ImVec2(1800.0f, 900.0f));
   ImGui::SetNextWindowSize(ImVec2(520.0f, 360.0f), ImGuiCond_FirstUseEver);
   if (skill_need_pos_) {
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(skill_spawn_x_),
-                                   static_cast<float>(skill_spawn_y_)),
-                            ImGuiCond_Always);
+    if (desc_spawn_at_cursor_)  // sinon : dernière position mémorisée par ImGui
+      ImGui::SetNextWindowPos(ImVec2(static_cast<float>(skill_spawn_x_),
+                                     static_cast<float>(skill_spawn_y_)),
+                              ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
     ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     skill_need_pos_ = false;
   }

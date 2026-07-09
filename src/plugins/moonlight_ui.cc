@@ -24,6 +24,7 @@
 #include "plugins/settings_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
+#include "plugins/inventory_viewer.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/character_sheet.h"
@@ -433,6 +434,11 @@ void MoonlightUi::LoadSettings() {
       idt->show_item_panel()  = ui["itemdesc_show_item"].as<bool>(true);
       idt->show_skill_panel() = ui["itemdesc_show_skill"].as<bool>(true);
       idt->cmp_show_equipped() = ui["itemdesc_compare"].as<bool>(true);
+      idt->desc_spawn_at_cursor() =
+          ui["itemdesc_spawn_cursor"].as<bool>(true);
+      idt->desc_anchor()   = ui["itemdesc_anchor"].as<int>(0);
+      idt->desc_offset_x() = ui["itemdesc_off_x"].as<int>(12);
+      idt->desc_offset_y() = ui["itemdesc_off_y"].as<int>(12);
     }
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
@@ -645,6 +651,8 @@ void MoonlightUi::LoadSettings() {
         g_ro_presets.push_back({"Sepia", d});
       }
     }
+    if (auto* iv = Bourgeon::Instance().inventory_viewer())
+      iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
     if (auto* stg = Bourgeon::Instance().storage_tweaks())
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
     if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
@@ -787,13 +795,18 @@ void MoonlightUi::SaveSettings() {
   std::snprintf(grid_col, sizeof(grid_col), "%08X",
                 ArgbFromPicker(grid_.color));
 
-  // ItemDescTweaks toggles (owned by the plugin) — persist both panels + Comparer.
+  // ItemDescTweaks toggles (owned by the plugin) — panels + Comparer + placement.
   bool itemdesc_show_item = true, itemdesc_show_skill = true;
-  bool itemdesc_compare = true;
+  bool itemdesc_compare = true, itemdesc_spawn_cursor = true;
+  int  itemdesc_anchor = 0, itemdesc_off_x = 12, itemdesc_off_y = 12;
   if (auto* idt = Bourgeon::Instance().item_desc()) {
-    itemdesc_show_item  = idt->show_item_panel();
-    itemdesc_show_skill = idt->show_skill_panel();
-    itemdesc_compare    = idt->cmp_show_equipped();
+    itemdesc_show_item    = idt->show_item_panel();
+    itemdesc_show_skill   = idt->show_skill_panel();
+    itemdesc_compare      = idt->cmp_show_equipped();
+    itemdesc_spawn_cursor = idt->desc_spawn_at_cursor();
+    itemdesc_anchor       = idt->desc_anchor();
+    itemdesc_off_x        = idt->desc_offset_x();
+    itemdesc_off_y        = idt->desc_offset_y();
   }
 
   YAML::Emitter out;
@@ -811,6 +824,10 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
         << YAML::Key << "itemdesc_show_skill"  << YAML::Value << itemdesc_show_skill
         << YAML::Key << "itemdesc_compare"     << YAML::Value << itemdesc_compare
+        << YAML::Key << "itemdesc_spawn_cursor" << YAML::Value << itemdesc_spawn_cursor
+        << YAML::Key << "itemdesc_anchor"      << YAML::Value << itemdesc_anchor
+        << YAML::Key << "itemdesc_off_x"       << YAML::Value << itemdesc_off_x
+        << YAML::Key << "itemdesc_off_y"       << YAML::Value << itemdesc_off_y
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
@@ -1032,6 +1049,8 @@ void MoonlightUi::SaveSettings() {
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;
+    auto* iv = Bourgeon::Instance().inventory_viewer();
+    out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
     auto* cs = Bourgeon::Instance().cashshop_tweaks();
@@ -1957,6 +1976,15 @@ void MoonlightUi::OnRenderUI() {
                                 ImGuiColorEditFlags_AlphaBar))
         SaveSettings();
       // ── Entrepôt : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
+      // ── Inventaire : viewer ImGui moderne (grille) OU fenetre native (opt-in) ──
+      if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
+        if (ImGui::Checkbox("Inventaire ImGui", &iv->imgui_enabled_))
+          SaveSettings();
+        ImGui::SameLine(); HelpMarker(
+            "ON : inventaire ImGui moderne (grille d'icones, onglets, recherche, "
+            "double-clic utiliser/equiper, clic-droit, drag) et la fenetre native "
+            "est cachee.\nOFF (defaut) : inventaire natif classique, aucun viewer.");
+      }
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
         if (ImGui::Checkbox("Storage ImGui", &stg->imgui_enabled_))
           SaveSettings();
@@ -2294,6 +2322,42 @@ void MoonlightUi::OnRenderUI() {
             ImGui::SameLine(); HelpMarker(
                 "Affiche le panneau enrichi à côté de la description d'un SKILL "
                 "(clic droit dans le grimoire).");
+            ImGui::Separator();
+            if (ImGui::Checkbox("Ouvrir près de la souris",
+                                &idt->desc_spawn_at_cursor()))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "ON : la description apparaît près du curseur à chaque ouverture.\n"
+                "OFF : elle réapparaît à sa dernière position connue.");
+            if (idt->desc_spawn_at_cursor()) {
+              ImGui::Indent();
+              // Ancrage : quel coin/point de la fenêtre se pose sur le curseur.
+              const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche",
+                                        "Bas-droite", "Centre"};
+              ImGui::SetNextItemWidth(160.0f);
+              if (ImGui::Combo("Ancrage", &idt->desc_anchor(), kAnchors, 5))
+                SaveSettings();
+              // Sliders X/Y MOLETTABLES (la molette ajuste ±1px au survol).
+              auto wheel_slider = [](const char* lbl, int* v) -> bool {
+                ImGui::SetNextItemWidth(160.0f);
+                bool ch = ImGui::SliderInt(lbl, v, -400, 400, "%d px");
+                if (ImGui::IsItemHovered()) {
+                  const float w = ImGui::GetIO().MouseWheel;
+                  if (w != 0.0f) {
+                    *v += (w > 0.0f) ? 1 : -1;
+                    if (*v < -400) *v = -400;
+                    if (*v >  400) *v =  400;
+                    ch = true;
+                  }
+                }
+                return ch;
+              };
+              if (wheel_slider("Offset X", &idt->desc_offset_x())) SaveSettings();
+              if (wheel_slider("Offset Y", &idt->desc_offset_y())) SaveSettings();
+              ImGui::SameLine(); HelpMarker(
+                  "Décalage depuis le curseur (molette au survol pour ajuster).");
+              ImGui::Unindent();
+            }
           } else {
             ImGui::TextDisabled("(plugin indisponible)");
           }
