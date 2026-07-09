@@ -428,6 +428,7 @@ namespace {
 std::vector<ImGuiWindow*> g_esc_list;         // fenêtres fermables visibles ce frame
 ImGuiWindow* g_esc_close_target = nullptr;    // à fermer au prochain Begin
 bool g_esc_any = false;                        // ≥1 ouverte (lu par le WndProc)
+bool* g_esc_min_request = nullptr;             // flag « replier » de la fenêtre principale
 }  // namespace
 
 void RegisterEscapeWindow(bool* p_open) {
@@ -441,17 +442,30 @@ void RegisterEscapeWindow(bool* p_open) {
   }
 }
 
+void RegisterEscapeMinimizeWindow(bool* p_request_collapse) {
+  g_esc_min_request = p_request_collapse;
+}
+
 void ProcessEscapeStack() {
-  g_esc_any = !g_esc_list.empty();
+  // La fenêtre principale (repli) compte comme « ouverte » pour l'avalage, mais reste
+  // le tout dernier recours : on ne la minimise que si plus AUCUNE fenêtre fermable.
+  g_esc_any = !g_esc_list.empty() || (g_esc_min_request != nullptr);
   if (g_esc_any && ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
-    // Désigne la plus au-dessus (FocusOrder max = plus récemment devant) ; fermée
-    // au prochain Begin (p_open valide à ce moment-là).
-    ImGuiWindow* top = nullptr;
-    for (ImGuiWindow* w : g_esc_list)
-      if (!top || w->FocusOrder > top->FocusOrder) top = w;
-    g_esc_close_target = top;
+    if (!g_esc_list.empty()) {
+      // Désigne la plus au-dessus (FocusOrder max = plus récemment devant) ; fermée
+      // au prochain Begin (p_open valide à ce moment-là).
+      ImGuiWindow* top = nullptr;
+      for (ImGuiWindow* w : g_esc_list)
+        if (!top || w->FocusOrder > top->FocusOrder) top = w;
+      g_esc_close_target = top;
+    } else if (g_esc_min_request) {
+      // Seule la fenêtre principale reste : Échap la MINIMISE (elle se replie +
+      // persiste au rendu suivant), puis le prochain Échap ira au jeu.
+      *g_esc_min_request = true;
+    }
   }
   g_esc_list.clear();
+  g_esc_min_request = nullptr;
 }
 
 bool AnyEscapeWindowOpen() { return g_esc_any; }

@@ -162,8 +162,8 @@ class ItemDescTweaks : public Plugin {
   bool       cmp_show_equipped_ = true; // toggle : afficher la colonne « Équipé »
   bool       desc_spawn_at_cursor_ = true;  // ouverture : true = près de la souris,
                                             // false = dernière position connue
-  int        desc_anchor_ = 0;    // ancrage souris : 0=haut-G 1=haut-D 2=bas-G
-                                  // 3=bas-D 4=centre (mode près de la souris)
+  int        desc_anchor_ = 3;    // ancrage souris : 0=haut-G 1=haut-D 2=bas-G
+                                  // 3=bas-D (defaut, descend a droite) 4=centre
   int        desc_offset_x_ = 12; // offset X/Y depuis la souris (mode près souris)
   int        desc_offset_y_ = 12;
   DescWindow item_;             // fenêtre item candidate (classe 0xc)

@@ -252,4 +252,7 @@ class MoonlightUi : public Plugin {
   // Restored once per login via SetNextWindowCollapsed; saved on every change.
   bool ui_collapsed_     = false;
   bool apply_collapse_   = false;  // set by LoadSettings, consumed on first render
+  // Repli demandé par Échap (dernière fenêtre avant le jeu) ; posé par
+  // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
+  bool collapse_requested_ = false;
 };

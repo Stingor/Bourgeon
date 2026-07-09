@@ -567,16 +567,17 @@ void StartNavigation(const char* map, int x, int y, int type) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Pivot ImGui (0..1) de l'ancrage souris de la desc (0=haut-G 1=haut-D 2=bas-G
-// 3=bas-D 4=centre) : passé à SetNextWindowPos pour ancrer ce coin/point de la
-// fenêtre sur le curseur (indépendant de la taille de la fenêtre).
+// Pivot ImGui (0..1) de l'ancrage souris de la desc. L'ancrage = la DIRECTION dans
+// laquelle la fenêtre s'étend depuis le curseur (ex. « bas-droite » = la fenêtre
+// descend à droite du curseur = son coin HAUT-GAUCHE est posé sur le curseur =
+// pivot 0,0). Le pivot est donc le coin OPPOSÉ à la direction nommée.
 static ImVec2 DescAnchorPivot(int a) {
   switch (a) {
-    case 1:  return ImVec2(1.0f, 0.0f);  // haut-droite
-    case 2:  return ImVec2(0.0f, 1.0f);  // bas-gauche
-    case 3:  return ImVec2(1.0f, 1.0f);  // bas-droite
-    case 4:  return ImVec2(0.5f, 0.5f);  // centre
-    default: return ImVec2(0.0f, 0.0f);  // haut-gauche
+    case 1:  return ImVec2(0.0f, 1.0f);  // haut-droite  -> fenêtre en haut à droite
+    case 2:  return ImVec2(1.0f, 0.0f);  // bas-gauche
+    case 3:  return ImVec2(0.0f, 0.0f);  // bas-droite (classique : descend à droite)
+    case 4:  return ImVec2(0.5f, 0.5f);  // centre (sur le curseur)
+    default: return ImVec2(1.0f, 1.0f);  // haut-gauche
   }
 }
 

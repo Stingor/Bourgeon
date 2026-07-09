@@ -124,6 +124,14 @@ void RegisterEscapeWindow(bool* p_open);   // interne aux BeginRo*Window
 void ProcessEscapeStack();                 // à appeler 1×/frame après tous les OnRenderUI
 bool AnyEscapeWindowOpen();                // lu par le WndProc pour avaler Échap
 
+// Fenêtre principale (Moonlight-Destiny) : Échap la MINIMISE (repli) au lieu de la
+// fermer, et seulement EN DERNIER — quand plus aucune fenêtre fermable n'est ouverte
+// (la seule restante avant que le jeu ne reçoive Échap pour ses natives). À appeler
+// chaque frame où la fenêtre est DÉPLIÉE, en passant un pointeur vers un flag membre
+// « repli demandé » que ProcessEscapeStack met à true et que la fenêtre consomme au
+// rendu suivant. Compte comme « ouverte » pour l'avalage d'Échap.
+void RegisterEscapeMinimizeWindow(bool* p_request_collapse);
+
 // Active/désactive le skin RO à chaud (les textures sont créées à la 1ère utilisation).
 void SetSkinEnabled(bool enabled);
 bool IsSkinEnabled();

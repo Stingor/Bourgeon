@@ -1519,6 +1519,12 @@ void MoonlightUi::OnRenderUI() {
     ImGui::SetNextWindowCollapsed(ui_collapsed_, ImGuiCond_Always);
     apply_collapse_ = false;
   }
+  // Échap a demandé le repli (fenêtre principale = dernière avant le jeu) : on force le
+  // repli ce frame ; la détection is_collapsed ci-dessous met à jour ui_collapsed_ + persiste.
+  if (collapse_requested_) {
+    collapse_requested_ = false;
+    ImGui::SetNextWindowCollapsed(true, ImGuiCond_Always);
+  }
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -1532,6 +1538,11 @@ void MoonlightUi::OnRenderUI() {
     ui_collapsed_ = is_collapsed;
     SaveSettings();
   }
+  // Fenêtre principale = cible « minimiser » d'Échap, en DERNIER recours (seulement
+  // dépliée, seulement s'il ne reste aucune autre fenêtre fermable) : Échap la replie
+  // avant d'être rendu au jeu pour ses fenêtres natives.
+  if (!is_collapsed)
+    ro::RegisterEscapeMinimizeWindow(&collapse_requested_);
   ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   if (!is_collapsed) {
 
@@ -2337,23 +2348,15 @@ void MoonlightUi::OnRenderUI() {
               ImGui::SetNextItemWidth(160.0f);
               if (ImGui::Combo("Ancrage", &idt->desc_anchor(), kAnchors, 5))
                 SaveSettings();
-              // Sliders X/Y MOLETTABLES (la molette ajuste ±1px au survol).
-              auto wheel_slider = [](const char* lbl, int* v) -> bool {
-                ImGui::SetNextItemWidth(160.0f);
-                bool ch = ImGui::SliderInt(lbl, v, -400, 400, "%d px");
-                if (ImGui::IsItemHovered()) {
-                  const float w = ImGui::GetIO().MouseWheel;
-                  if (w != 0.0f) {
-                    *v += (w > 0.0f) ? 1 : -1;
-                    if (*v < -400) *v = -400;
-                    if (*v >  400) *v =  400;
-                    ch = true;
-                  }
-                }
-                return ch;
-              };
-              if (wheel_slider("Offset X", &idt->desc_offset_x())) SaveSettings();
-              if (wheel_slider("Offset Y", &idt->desc_offset_y())) SaveSettings();
+              // Sliders X/Y MOLETTABLES : WheelSliderInt claime la molette au survol
+              // (SetItemKeyOwner(MouseWheelY)) -> la molette n'ajuste QUE le slider, la
+              // fenêtre de réglages ne défile pas en même temps.
+              ImGui::SetNextItemWidth(160.0f);
+              if (WheelSliderInt("Offset X", &idt->desc_offset_x(), -400, 400, "%d px"))
+                SaveSettings();
+              ImGui::SetNextItemWidth(160.0f);
+              if (WheelSliderInt("Offset Y", &idt->desc_offset_y(), -400, 400, "%d px"))
+                SaveSettings();
               ImGui::SameLine(); HelpMarker(
                   "Décalage depuis le curseur (molette au survol pour ajuster).");
               ImGui::Unindent();
