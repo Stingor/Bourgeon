@@ -8,6 +8,7 @@
 #include "bourgeon.h"
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
+#include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "utils/hooking/hook_manager.h"
@@ -126,6 +127,12 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x21) {
       if (auto* st = Bourgeon::Instance().storage_tweaks())
         st->HideNativeAtCreation(win);
+    }
+    // Remplacement complet de l'inventaire : InventoryViewer cache la fenetre
+    // native (id 8) des la creation -> pas de flicker (comme le storage 0x21).
+    if (windowID == 8) {
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->HideNativeAtCreation(win);
     }
     // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
     if (windowID == 0x13e) {

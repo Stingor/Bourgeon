@@ -19,6 +19,7 @@ class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
 class StorageTweaks;
+class InventoryViewer;
 class CashShopTweaks;
 class ShopTweaks;
 class CharacterSheet;
@@ -49,6 +50,7 @@ class Bourgeon {
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
   StorageTweaks* storage_tweaks();
+  InventoryViewer* inventory_viewer();
   CashShopTweaks* cashshop_tweaks();
   ShopTweaks* shop_tweaks();
   CharacterSheet* character_sheet();
@@ -101,6 +103,7 @@ class Bourgeon {
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
   StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
+  InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_

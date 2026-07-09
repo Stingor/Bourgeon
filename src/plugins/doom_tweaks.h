@@ -58,4 +58,5 @@ class DoomTweaks : public Plugin {
   State state_   = State::kIdle;
 
   void* texture_ = nullptr;  // IDirect3DTexture9* (created lazily, owned here)
+  unsigned tex_epoch_ = 0;   // device epoch de texture_ (cf Overlay_DeviceEpoch)
 };

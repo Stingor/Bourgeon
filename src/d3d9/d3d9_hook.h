@@ -20,6 +20,18 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h);
 // both modes. Returns an ImTextureID-compatible void* (or nullptr).
 void* Overlay_CreateTextureARGB(const void* argb, int w, int h);
 
+// Monotonic counter bumped every time the D3D9 device is reset or recreated
+// (Reset / ResetEx / CreateDevice / CreateDeviceEx). Textures made via
+// Overlay_CreateTextureARGB live in D3DPOOL_DEFAULT and belong to a specific
+// device — after a reset/recreation (alt-tab, resolution change, or a TDR from
+// GPU contention) the old handles are dead, and drawing them (ImGui AddImage ->
+// SetTexture) faults inside the DX backend. Any plugin that CACHES such textures
+// across frames MUST compare this value and drop its cache when it changes.
+// DX9 path ONLY: under the DX7/DirectDraw proxy this counter never changes — which
+// is fine, because DX7_CreateTextureARGB allocates auto-restored managed / system-
+// memory surfaces that survive a mode change (they are not D3DPOOL_DEFAULT).
+unsigned Overlay_DeviceEpoch();
+
 // Returns an ImGui draw callback (cast to ImDrawCallback) that switches the DX9
 // pipeline to ADDITIVE blend for the following draw commands — for glow effects
 // like RO-style explosions. Reset afterwards with ImDrawCallback_ResetRenderState.

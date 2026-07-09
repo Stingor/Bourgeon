@@ -15,6 +15,7 @@
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/inventory_tweaks.h"
+#include "plugins/inventory_viewer.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
@@ -52,6 +53,7 @@ RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
+InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
@@ -300,6 +302,11 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
+  {
+    auto inventory_viewer = std::make_unique<InventoryViewer>();
+    inventory_viewer_ = inventory_viewer.get();
+    plugins_.emplace_back(std::move(inventory_viewer));
+  }
   {
     auto storage_tweaks = std::make_unique<StorageTweaks>();
     storage_tweaks_ = storage_tweaks.get();

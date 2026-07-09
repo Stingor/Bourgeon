@@ -174,6 +174,7 @@ ImU32 ApplySkinTint(ImU32 c) {
 struct SkinTex {
   void* tex = nullptr;
   int w = 0, h = 0;
+  unsigned epoch = 0;  // device epoch sous lequel tex a été créée (cf Overlay_DeviceEpoch)
 };
 SkinTex g_tl, g_tm, g_tr, g_close, g_close_on, g_mini, g_mini_on;
 SkinTex g_base;  // bullet sys_base devant le titre (décoratif)
@@ -238,6 +239,10 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
 // texture soit chargée. Retente tant que la texture n'est pas prête (device pas
 // prêt) ; si le fichier manque vraiment côté client, la pièce ne se dessine pas.
 void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
+  // Texture D3DPOOL_DEFAULT : morte après reset/recréation du device -> on lâche
+  // le handle mort pour forcer un rechargement (sinon BlitStretch/AddImage plante).
+  const unsigned dev_e = Overlay_DeviceEpoch();
+  if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }
   out.w = b.w;
   out.h = b.h;
   if (out.tex) return out.tex;
@@ -255,6 +260,8 @@ void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
 // pour les ressources natives toujours présentes (txtbox_btn_*). out.tex reste nul
 // si le BMP manque -> le widget dessine un repli à plat.
 void* EnsureTexClient(const char* rel_path, SkinTex& out) {
+  const unsigned dev_e = Overlay_DeviceEpoch();
+  if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }  // device changé -> recharge
   if (out.tex) return out.tex;
   int w = 0, h = 0;
   void* t = LoadClientBmp(rel_path, &w, &h);

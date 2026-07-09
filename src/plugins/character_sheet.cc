@@ -241,6 +241,10 @@ IconTex LoadItemIcon(uint32_t id) {
   return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
 }
 IconTex ResolveIcon(uint32_t id) {
+  // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> vider.
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
   auto it = g_icon_cache.find(id);
   if (it != g_icon_cache.end()) return it->second;
   return g_icon_cache[id] = LoadItemIcon(id);

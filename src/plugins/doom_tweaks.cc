@@ -304,11 +304,17 @@ void DoomTweaks::PumpEngine() {
     return;
   }
 
+  // Texture D3DPOOL_DEFAULT : morte après reset/recréation du device -> on lâche le
+  // handle et on force une recréation (sinon Update/Image sur handle mort = crash).
+  const unsigned dev_e = Overlay_DeviceEpoch();
+  if (texture_ && dev_e != tex_epoch_) { texture_ = nullptr; g_frame_dirty = true; }
   if (g_frame_dirty) {
-    if (!texture_)
+    if (!texture_) {
       texture_ = D3D9_CreateTextureARGB(g_frame, kW, kH);
-    else
+      tex_epoch_ = dev_e;
+    } else {
       D3D9_UpdateTextureARGB(texture_, g_frame, kW, kH);  // failure: retry next
+    }
     if (texture_) g_frame_dirty = false;
   }
 }
@@ -343,6 +349,9 @@ void DoomTweaks::DrawWindow() {
         break;
       case State::kRunning: {
         bool over_image = false;
+        // Garde défensif : si le device a changé depuis la création (et que OnTick
+        // n'a pas encore recréé), ne dessine PAS un handle mort -> "Chargement...".
+        if (texture_ && tex_epoch_ != Overlay_DeviceEpoch()) texture_ = nullptr;
         if (texture_) {
           ImGui::Image((ImTextureID)(uintptr_t)texture_,
                        ImVec2(static_cast<float>(kW), static_cast<float>(kH)));

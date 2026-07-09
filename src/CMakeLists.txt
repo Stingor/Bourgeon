@@ -34,6 +34,8 @@ set(BOURGEON_FILES
 	"plugins/menu_icons.h"
 	"plugins/inventory_tweaks.cc"
 	"plugins/inventory_tweaks.h"
+	"plugins/inventory_viewer.cc"
+	"plugins/inventory_viewer.h"
 	"plugins/storage_tweaks.cc"
 	"plugins/storage_tweaks.h"
 	"plugins/cashshop_tweaks.cc"

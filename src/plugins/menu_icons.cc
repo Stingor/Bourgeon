@@ -287,6 +287,14 @@ void MenuIconTweaks::OnRenderUI() {
   // (clicks are also rejected in OnTick).
   if (HudReplaced()) return;
 
+  // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> on nulle
+  // les handles cachés pour forcer le rechargement paresseux (sinon draw = crash).
+  {
+    static unsigned s_epoch = 0;
+    const unsigned e = Overlay_DeviceEpoch();
+    if (e != s_epoch) { for (Icon& ic : icons_) ic.tex = nullptr; s_epoch = e; }
+  }
+
   for (int i = 0; i < static_cast<int>(icons_.size()); ++i) {
     Icon& ic = icons_[i];
     if (ic.hidden) continue;  // user-hidden via the MoonlightUi list

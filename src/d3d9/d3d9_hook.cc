@@ -61,6 +61,12 @@ using FactoryCreateDeviceEx_t = HRESULT(__fastcall*)(D3DDISPLAYMODEEX*, void*,
 using Direct3DCreate9Ex_t = HRESULT(WINAPI*)(UINT, IDirect3D9Ex**);
 using Direct3DCreate9_t   = IDirect3D9*(WINAPI*)(UINT);
 
+// Device generation, bumped on every reset/recreation. Read on the render thread
+// and written only from the reset/create hooks (which run on that same thread —
+// the device owner), so a plain unsigned is sufficient. See Overlay_DeviceEpoch.
+static unsigned g_device_epoch = 0;
+unsigned Overlay_DeviceEpoch() { return g_device_epoch; }
+
 // ── device hook originals ─────────────────────────────────────────────────────
 static Reset_t    g_orig_reset     = nullptr;
 static ResetEx_t  g_orig_reset_ex  = nullptr;
@@ -313,8 +319,23 @@ static void PostFx_ReleaseRT() {
 }
 
 // Releases D3DPOOL_DEFAULT resources before a device Reset. Pixel shaders are not
-// pool-bound and survive.
+// pool-bound and survive a SAME-device reset.
 static void PostFx_OnDeviceLost() { PostFx_ReleaseRT(); }
+
+// Full teardown for a device RECREATION (CreateDevice / CreateDeviceEx): unlike a
+// same-device Reset, the pixel shaders ALSO belong to the destroyed old device, so
+// they must be released and g_fx_tried cleared to force a recompile on the new
+// device. Without this, PostFx_EnsureShaders early-returns dangling shaders and
+// PostFx_EnsureRT reuses/Release()s a dead surface -> crash at the next Present
+// when post-processing is enabled (a TDR/device-removed recreation is exactly the
+// path a GPU-contention crash takes). We still hold refs to these objects, so
+// Release() here is safe COM refcounting (it lets the old device finally die).
+static void PostFx_OnDeviceRecreated() {
+    PostFx_ReleaseRT();
+    if (g_fx_color_ps) { g_fx_color_ps->Release(); g_fx_color_ps = nullptr; }
+    if (g_fx_fxaa_ps)  { g_fx_fxaa_ps->Release();  g_fx_fxaa_ps = nullptr; }
+    g_fx_tried = false;
+}
 
 static IDirect3DPixelShader9* CompilePs(IDirect3DDevice9* dev, const char* src,
                                         UINT len, D3DXCompileShader_t compile) {
@@ -548,6 +569,7 @@ static HRESULT __fastcall Hooked_Reset(void* vtable_ecx, void* /*edx*/,
                                         IDirect3DDevice9* self,
                                         D3DPRESENT_PARAMETERS* pPP) {
     LogInfo("D3D9 Reset");
+    ++g_device_epoch;       // invalidate plugin texture caches (D3DPOOL_DEFAULT dies)
     PostFx_OnDeviceLost();  // free D3DPOOL_DEFAULT scene-copy RT before reset
     if (g_dx9_initialized.load()) ImGui_ImplDX9_InvalidateDeviceObjects();
     HRESULT hr = g_orig_reset(vtable_ecx, nullptr, self, pPP);
@@ -561,6 +583,7 @@ static HRESULT __fastcall Hooked_ResetEx(void* vtable_ecx, void* /*edx*/,
                                           D3DPRESENT_PARAMETERS* pPP,
                                           D3DDISPLAYMODEEX* pFullscreen) {
     LogInfo("D3D9 ResetEx");
+    ++g_device_epoch;       // invalidate plugin texture caches (D3DPOOL_DEFAULT dies)
     PostFx_OnDeviceLost();  // free D3DPOOL_DEFAULT scene-copy RT before reset
     if (g_dx9_initialized.load()) ImGui_ImplDX9_InvalidateDeviceObjects();
     HRESULT hr = g_orig_reset_ex(vtable_ecx, nullptr, self, pPP, pFullscreen);
@@ -607,6 +630,8 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         if (g_dx9_initialized.load()) {
             LogInfo("D3D9: device recreated via CreateDevice — resetting ImGui");
+            ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
+            PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
             ImGui_ImplDX9_InvalidateDeviceObjects();
             g_dx9_initialized.store(false);
         }
@@ -635,6 +660,8 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         if (g_dx9_initialized.load()) {
             LogInfo("D3D9: device recreated via CreateDeviceEx — resetting ImGui");
+            ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
+            PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
             ImGui_ImplDX9_InvalidateDeviceObjects();
             g_dx9_initialized.store(false);
         }

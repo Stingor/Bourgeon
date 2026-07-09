@@ -134,6 +134,11 @@ IconTex LoadItemIcon(uint32_t id, int identified) {
 // Résout (cache + charge) l'icône d'un item. Appelé au rendu (création de
 // texture D3D à EndScene, comme item_desc_tweaks).
 IconTex ResolveIcon(uint32_t id, int identified) {
+  // Textures D3DPOOL_DEFAULT : mortes après un reset/recréation du device -> on
+  // vide le cache si l'epoch a changé (sinon AddImage plante dans ddraw).
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
   auto it = g_icon_cache.find(id);
   if (it != g_icon_cache.end()) return it->second;
   IconTex t = LoadItemIcon(id, identified);
