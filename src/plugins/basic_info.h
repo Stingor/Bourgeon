@@ -4,9 +4,12 @@
 
 // Client-side tweaks for the "Basic Info" character window (UIBasicInfoWnd) and
 // its surrounding HUD.  Renders standalone, freely movable & resizable bars for
-// Base EXP, Job EXP, HP and SP as an ImGui overlay (the client already feeds
-// mouse input to ImGui, so the windows are draggable/resizable out of the box);
-// more Basic-Info customizations will be added here over time.
+// Base EXP, Job EXP, HP, SP, Zeny and Weight as an ImGui overlay (the client
+// already feeds mouse input to ImGui, so the windows are draggable/resizable out
+// of the box); more Basic-Info customizations will be added here over time.
+//
+// Zeny has no natural "max", so its bar is value-only: it fills fully and simply
+// shows the amount (thousands-grouped). Weight is a real fraction (cur / max).
 //
 // Each bar is an INDEPENDENT widget with its own position/size/colour/show flag.
 // A global "lock" flips the windows to NoMove|NoResize|NoInputs, which freezes
@@ -17,7 +20,9 @@
 // Values are read live from the session globals the native UIBasicInfoWnd gauges
 // use: Base EXP cur/max @0x015fb9d0/0x015fb9d8 and Job EXP cur/max
 // @0x015fb9e8/0x015fb9e0 (INT64); HP cur/max @0x015ff908/0x015ff90c and SP
-// cur/max @0x015ff910/0x015ff914 (INT32, like the client's own BasicInfo draw).
+// cur/max @0x015ff910/0x015ff914 (INT32, like the client's own BasicInfo draw);
+// Zeny @0x015fba90 (INT32, g_PlayerZeny) and Weight cur/max @0x015fbaa0/0x015fba9c
+// (INT32) — all confirmed by RE of UIBasicInfoWnd::DrawContent @0x0095e620.
 //
 // This plugin owns all the settings state; the settings UI + persistence live
 // in MoonlightUi's "EXP Bar" section, which reaches in via Bourgeon::basic_info().
@@ -45,11 +50,13 @@ class BasicInfoTweaks : public Plugin {
     float fill[4];  // ImGui RGBA picker state
   };
 
-  enum BarId { kBaseExp = 0, kJobExp, kHp, kSp, kBarCount };
+  enum BarId { kBaseExp = 0, kJobExp, kHp, kSp, kZeny, kWeight, kBarCount };
 
   // Persistence key suffix + UI label, indexed by BarId.
-  static constexpr const char* kBarKeys[kBarCount]   = {"base", "job", "hp", "sp"};
-  static constexpr const char* kBarLabels[kBarCount] = {"Base", "Job", "HP", "SP"};
+  static constexpr const char* kBarKeys[kBarCount] = {"base", "job",  "hp",
+                                                      "sp",   "zeny", "weight"};
+  static constexpr const char* kBarLabels[kBarCount] = {"Base", "Job",  "HP",
+                                                        "SP",   "Zeny", "Poids"};
 
   // Global style shared by every bar.
   bool  visible_   = true;   // master toggle for the whole feature
@@ -65,10 +72,12 @@ class BasicInfoTweaks : public Plugin {
   // (Bourgeon::Instance().moonlight_ui()->grid_); bars read it for snapping.
 
   Bar bars_[kBarCount] = {
-    /* Base EXP */ {true, 100, 76, 220, 16, {0.36f, 0.78f, 1.00f, 1.00f}},
-    /* Job EXP  */ {true, 100, 94, 220, 16, {1.00f, 0.82f, 0.30f, 1.00f}},
-    /* HP       */ {true, 100, 40, 220, 16, {0.85f, 0.27f, 0.27f, 1.00f}},
-    /* SP       */ {true, 100, 58, 220, 16, {0.30f, 0.62f, 0.95f, 1.00f}},
+    /* Base EXP */ {true, 100,  76, 220, 16, {0.36f, 0.78f, 1.00f, 1.00f}},
+    /* Job EXP  */ {true, 100,  94, 220, 16, {1.00f, 0.82f, 0.30f, 1.00f}},
+    /* HP       */ {true, 100,  40, 220, 16, {0.85f, 0.27f, 0.27f, 1.00f}},
+    /* SP       */ {true, 100,  58, 220, 16, {0.30f, 0.62f, 0.95f, 1.00f}},
+    /* Zeny     */ {true, 100, 112, 220, 16, {0.98f, 0.73f, 0.20f, 1.00f}},
+    /* Poids    */ {true, 100, 130, 220, 16, {0.65f, 0.55f, 0.80f, 1.00f}},
   };
 
   // ── Status portrait: independent, movable HUD elements ────────────────────

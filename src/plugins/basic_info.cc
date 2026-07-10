@@ -25,16 +25,39 @@ constexpr float kSnapThreshold = 10.0f;  // px magnetism radius for sticky snap
 
 struct Src {
   uintptr_t cur, max;
-  bool      wide;       // true = INT64, false = INT32
+  bool      wide;        // true = INT64, false = INT32
+  bool      value_only;  // true = no meaningful max: fill full, show value only
   const char* label;
-  const char* win_id;   // ImGui window id (### keeps it stable)
+  const char* win_id;    // ImGui window id (### keeps it stable)
 };
+// Zeny (g_PlayerZeny @0x015fba90) and Weight (cur @0x015fbaa0 / max @0x015fba9c)
+// confirmed by RE of UIBasicInfoWnd::DrawContent @0x0095e620 — both INT32. Zeny
+// has no max, so it's a value-only bar (max slot mirrors cur, ignored).
 const Src kSrc[BasicInfoTweaks::kBarCount] = {
-  {0x015fb9d0, 0x015fb9d8, true,  "Base", "###BIBaseExp"},
-  {0x015fb9e8, 0x015fb9e0, true,  "Job",  "###BIJobExp"},
-  {0x015ff908, 0x015ff90c, false, "HP",   "###BIHp"},
-  {0x015ff910, 0x015ff914, false, "SP",   "###BISp"},
+  {0x015fb9d0, 0x015fb9d8, true,  false, "Base",  "###BIBaseExp"},
+  {0x015fb9e8, 0x015fb9e0, true,  false, "Job",   "###BIJobExp"},
+  {0x015ff908, 0x015ff90c, false, false, "HP",    "###BIHp"},
+  {0x015ff910, 0x015ff914, false, false, "SP",    "###BISp"},
+  {0x015fba90, 0x015fba90, false, true,  "Zeny",  "###BIZeny"},
+  {0x015fbaa0, 0x015fba9c, false, false, "Poids", "###BIWeight"},
 };
+
+// Formats a signed integer with thousands separators (1234567 -> "1,234,567")
+// into `out` — used for the value-only zeny bar. Bounded; always NUL-terminated.
+void GroupInt(long long v, char* out, size_t n) {
+  if (n == 0) return;
+  char tmp[24];
+  std::snprintf(tmp, sizeof(tmp), "%lld", v < 0 ? -v : v);
+  const int len = static_cast<int>(std::strlen(tmp));
+  const int cap = static_cast<int>(n) - 1;  // room for the NUL
+  int oi = 0;
+  if (v < 0 && oi < cap) out[oi++] = '-';
+  for (int i = 0; i < len; ++i) {
+    if (i > 0 && (len - i) % 3 == 0 && oi < cap) out[oi++] = ',';
+    if (oi < cap) out[oi++] = tmp[i];
+  }
+  out[oi] = '\0';
+}
 
 inline long long RDval(uintptr_t addr, bool wide) {
   return wide ? *reinterpret_cast<const volatile int64_t*>(addr)
@@ -766,7 +789,10 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
         ImVec4(bar.fill[0], bar.fill[1], bar.fill[2], bar.fill[3]));
     const ImU32 border = IM_COL32(0, 0, 0, 160);
 
-    const float f = ExpFrac(cur, max);
+    // Value-only bars (zeny) have no max, so they always fill fully and show the
+    // amount instead of a fraction; everything else is a cur/max gauge.
+    const bool value_only = kSrc[id].value_only;
+    const float f = value_only ? 1.0f : ExpFrac(cur, max);
 
     dl->AddRectFilled(p0, p1, bg, rounding);
     // Fill: skip when essentially empty (avoids a rounded sliver at 0%), and
@@ -791,7 +817,11 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
     if (text_mode_ != 0) {
       const char* label = kSrc[id].label;
       char buf[96];
-      if (text_mode_ == 1)
+      if (value_only) {  // zeny: label + grouped amount, whatever the text mode
+        char num[24];
+        GroupInt(cur, num, sizeof(num));
+        std::snprintf(buf, sizeof(buf), "%s %s", label, num);
+      } else if (text_mode_ == 1)
         std::snprintf(buf, sizeof(buf), "%s %.2f%%", label, f * 100.0f);
       else if (text_mode_ == 2)
         std::snprintf(buf, sizeof(buf), "%s %lld / %lld", label, cur, max);
