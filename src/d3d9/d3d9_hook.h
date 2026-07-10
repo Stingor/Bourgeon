@@ -76,6 +76,23 @@ void D3D9_SetPostFx(const D3D9PostFx& fx);
 // overlay) to a PNG. Captured next Present. `filepath` is copied. DX9 only.
 void D3D9_RequestScreenshot(const char* filepath);
 
+// One textured quad for offscreen avatar compositing: `tex` = IDirect3DTexture9*,
+// (x0,y0)-(x1,y1) = destination rect in canvas pixels, (u0,v0)-(u1,v1) = source UVs
+// (pass them pre-swapped for a horizontal mirror).
+struct D3D9TexQuad {
+  void* tex;
+  float x0, y0, x1, y1;
+  float u0, v0, u1, v1;
+};
+
+// Composites `n` textured quads (in array/painter order, alpha-blended) onto a fresh
+// w*h TRANSPARENT render target and reads the result back into `out_argb` (w*h,
+// A8R8G8B8 = 0xAARRGGBB per pixel). The canvas alpha becomes the cut-out coverage.
+// Used by the character-sheet avatar GIF export. Returns false if the D3D9 device
+// isn't ready or a resource/lock fails. DX9 only (no-op under the DX7 proxy).
+bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
+                             void* out_argb);
+
 // Global texture min/mag filter override for the GAME's rendering (not the
 // Bourgeon overlay): 0 = off/default, 1 = POINT (crisp pixel-art), 2 = LINEAR
 // (smooth). Hooks IDirect3DDevice9::SetSamplerState. DX9 only.

@@ -106,6 +106,8 @@ set(BOURGEON_FILES
 	# Utils
 	"utils/byte_pattern.cc"
 	"utils/byte_pattern.h"
+	"utils/gif_writer.cc"
+	"utils/gif_writer.h"
 	"utils/log_console.cc"
 	"utils/log_console.h"
 	"utils/hooking/detours.h"
@@ -140,7 +142,7 @@ target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSIO
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
 # winmm: timeGetTime for the DOOM 35 Hz clock (doom_tweaks).
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt shell32 winmm)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt shell32 winmm comdlg32 ole32)
 
 # Emit the SHA-256 of the freshly-built DLL (prints it and writes a sidecar
 # ddraw.dll.sha256). Use it to fill the `hash:` line in the server's

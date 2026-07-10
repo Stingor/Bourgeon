@@ -2,13 +2,18 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 
 #include "bourgeon.h"
+#include "d3d9/d3d9_hook.h"  // D3D9_CompositeQuadsRGBA (export GIF avatar)
 #include "imgui.h"
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap + draw)
+#include "utils/gif_writer.h"       // GifWrite
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -144,6 +149,31 @@ bool     g_cap_active  = false;  // set only during our actor render
 // — les 2 rendus cohabitent). Le hook écrit vers la cible active g_cap_buf/g_cap_num.
 CapLayer  g_pv_caps[48];
 int       g_pv_count = 0;
+// Buffer DÉDIÉ à l'avatar plein-corps (character sheet). Comme g_pv_caps il
+// cohabite avec g_caps : la capture redirige g_cap_buf/g_cap_num/g_frame_dst
+// vers lui puis restaure. g_av_frame_count = nb d'images de l'action (wrap anim,
+// 1 frame de lag comme l'aperçu au tout premier passage).
+CapLayer  g_av_caps[48];
+int       g_av_count = 0;
+int       g_av_frame_count = 1;
+// Délai natif par image de l'action (float .act delays[0], tableau @actObj+0x12c),
+// capturé au 1er layer du corps. ms/image = delay * 25 (base AniTick RO ; delay~4.0
+// => ~100 ms). Sert à animer le doll à la VITESSE native (délai constant par image).
+float     g_av_frame_delay = 4.0f;
+// Scratch pour réordonner arme+bouclier DEVANT/DERRIÈRE le corps selon la direction,
+// comme le natif (cf. project_weapon_zorder / WeaponLayerTweaks) : FRONT {0,1,6,7} =
+// devant (ordre coiffes<arme<bouclier) ; BACK {2,3,4,5} = derrière le corps.
+// g_av_wpn_start = index de début du bloc arme/bouclier dans g_av_caps (= body_count),
+// posé par EmitWeaponShieldLayers. File-scope (static local + __try => C2712).
+CapLayer  g_av_reorder[48];
+int       g_av_wpn_start = -1;
+// Zoom du corps (FUN_00d7fd30 -> param `scale` du submit) capturé au 1er layer,
+// réutilisé pour dessiner l'arme/bouclier à la MÊME échelle que le corps.
+float     g_av_body_scale = 1.0f;
+// Signature d'apparence (viewids équipés + corps), INVARIANTE par frame d'animation :
+// posée par CaptureAvatarActor, lue par RenderPlayerAvatar pour re-figer le cadrage
+// quand l'équipement/apparence change (sinon cadrage périmé à équipement changé).
+unsigned  g_av_sig = 0;
 CapLayer* g_cap_buf = g_caps;
 int*      g_cap_num = &g_cap_count;
 bool     g_portrait_debug = false;  // when set, LogPortraitDiag logs each pass
@@ -195,6 +225,102 @@ int   g_pv_frame_count = 1;         // idem pour l'aperçu (anim marche)
 int*  g_frame_dst = &g_body_frame_count;  // cible du comptage (portrait par défaut)
 bool  g_first_layer = false;        // first layer of a pass = body (capture count)
 
+// EmitCapLayer — per-layer capture, factored out of Hooked_ActorQuad so the
+// weapon/shield injector (EmitWeaponShieldLayers) can reuse the EXACT same
+// texture resolution + quad math. Resolves the layer's DX9 texture (act_layer[8]
+// ==0 => sprite-atlas page via SpriteAtlas_GetCachedTexture + geom UVs; else the
+// frame's own CTexture at +8), replays Actor_SubmitSpriteQuad's rect math from
+// (x,y)+sprite offsets, and pushes ONE CapLayer into the ACTIVE buffer (g_cap_buf/
+// g_cap_num, bounded < 48). x/y are the submit position (already carrying any
+// body/head attach). p3/angle/color are unused by the capture (kept so the call
+// sites read like the native submit). Math is byte-for-byte the old inline code.
+void EmitCapLayer(void* p3, short* spr_frame, int* act_layer, float x, float y,
+                  float scale, float angle, unsigned color, void* palette) {
+  (void)p3; (void)angle; (void)color;
+  const int off = g_imgui_dx7_active ? kCTexOffDX7 : kCTexOffDX9;
+  void*  native = nullptr;
+  ImVec2 uv0(0.0f, 0.0f), uv1(1.0f, 1.0f);
+
+  if (act_layer[8] == 0) {
+    // Palette/atlas sprite (BODY, GARMENT, WEAPON, SHIELD): resolve via the
+    // sprite atlas; UVs are the atlas sub-rect (geom[3..6]).
+    int geom[12] = {0};
+    void* atlas = reinterpret_cast<void*>(
+        *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
+    void* ctex = reinterpret_cast<AtlasGetFn>(kAtlasGetFn)(
+        atlas, nullptr, static_cast<int>(reinterpret_cast<intptr_t>(spr_frame)),
+        static_cast<int>(reinterpret_cast<intptr_t>(palette)), geom);
+    if (ctex) {
+      native = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off);
+      uv0 = ImVec2(*reinterpret_cast<float*>(&geom[3]),
+                   *reinterpret_cast<float*>(&geom[4]));
+      uv1 = ImVec2(*reinterpret_cast<float*>(&geom[5]),
+                   *reinterpret_cast<float*>(&geom[6]));
+    }
+  } else {
+    // RGBA sprite (HEAD/face + hair): the frame references its own CTexture
+    // directly at byte +8 (spr_frame is short* → +4 shorts). UVs = sprite size /
+    // texture size (mirrors FUN_00a1b7c0's else branch).
+    void* ctex = *reinterpret_cast<void**>(spr_frame + 4);
+    if (ctex) {
+      native = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off);
+      const int tw = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0xc);
+      const int th = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0x10);
+      if (tw > 0 && th > 0)
+        uv1 = ImVec2(static_cast<float>(spr_frame[0]) / static_cast<float>(tw),
+                     static_cast<float>(spr_frame[1]) / static_cast<float>(th));
+    }
+  }
+
+  // Quad rect — replay Actor_SubmitSpriteQuad's own math (0x00a1b7c0). x/y already
+  // carry the attach; act_layer[5]/[6] are per-layer scale FLOATS stored in int
+  // slots (reinterpret, don't int-cast). spr_frame[0..3] = tileW, tileH, tilesX-1,
+  // tilesY-1; +0.5 = half-texel bias.
+  const float sX = *reinterpret_cast<float*>(&act_layer[5]);
+  const float sY = *reinterpret_cast<float*>(&act_layer[6]);
+  const int fullW = (spr_frame[2] + 1) * static_cast<int>(spr_frame[0]);
+  const int fullH = (spr_frame[3] + 1) * static_cast<int>(spr_frame[1]);
+  const float left   = x + static_cast<float>(act_layer[0]) * scale * sX;
+  const float right  = x + static_cast<float>(fullW + act_layer[0] - 1) * scale * sX;
+  const float top    = y + static_cast<float>(act_layer[1]) * scale * sY;
+  const float bottom = y + static_cast<float>(fullH - 1 + act_layer[1]) * scale * sY;
+  const float cx = (left + right) * 0.5f + 0.5f;
+  const float cy = (top + bottom) * 0.5f + 0.5f;
+  const float cw = right - left;
+  const float ch = bottom - top;
+
+  // Diagnostics: record every layer reaching the capture.
+  if (g_diag_count < 48) {
+    DiagLayer& d = g_diag[g_diag_count++];
+    d.type   = act_layer[8];
+    d.w      = spr_frame[0];
+    d.h      = spr_frame[1];
+    d.branch = (act_layer[8] == 0) ? 0 : 1;
+    d.tex    = (native != nullptr);
+    d.cx     = cx;
+    d.cy     = cy;
+    d.ox     = act_layer[0];
+    d.oy     = act_layer[1];
+    d.rawx   = x;
+    d.rawy   = y;
+  }
+
+  if (native && *g_cap_num < 48) {
+    CapLayer& L = g_cap_buf[(*g_cap_num)++];
+    L.tex    = native;
+    L.uv0    = uv0;
+    L.uv1    = uv1;
+    L.w      = cw;
+    L.h      = ch;
+    L.cx     = cx;
+    L.cy     = cy;
+    L.mirror = (act_layer[3] & 1) != 0;
+    // RGBA sprites (act_layer[8]!=0) are the face/hair/head-gears; palette sprites
+    // (==0) are the body/garment/weapon. Used to frame head vs head+body.
+    L.head_region = (act_layer[8] != 0);
+  }
+}
+
 // Hook on FUN_00a1b7c0: while WE are rendering the portrait actor, capture each
 // layer's atlas texture + UV + geometry and SKIP the native submit (so nothing
 // draws into the game scene). All other (game) rendering passes straight through.
@@ -209,69 +335,12 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
   }
   __try {
     if (spr_frame && act_layer) {
-      const int off = g_imgui_dx7_active ? kCTexOffDX7 : kCTexOffDX9;
-      void*  native = nullptr;
-      ImVec2 uv0(0.0f, 0.0f), uv1(1.0f, 1.0f);
-
-      if (act_layer[8] == 0) {
-        // Palette/atlas sprite (e.g. the BODY): resolve via the sprite atlas;
-        // UVs are the atlas sub-rect (geom[3..6]).
-        int geom[12] = {0};
-        void* atlas = reinterpret_cast<void*>(
-            *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
-        void* ctex = reinterpret_cast<AtlasGetFn>(kAtlasGetFn)(
-            atlas, nullptr, static_cast<int>(reinterpret_cast<intptr_t>(spr_frame)),
-            static_cast<int>(reinterpret_cast<intptr_t>(palette)), geom);
-        if (ctex) {
-          native = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off);
-          uv0 = ImVec2(*reinterpret_cast<float*>(&geom[3]),
-                       *reinterpret_cast<float*>(&geom[4]));
-          uv1 = ImVec2(*reinterpret_cast<float*>(&geom[5]),
-                       *reinterpret_cast<float*>(&geom[6]));
-        }
-      } else {
-        // RGBA sprite (e.g. the HEAD/face + hair): the frame references its own
-        // CTexture directly at byte +8 (spr_frame is short* → +4 shorts). UVs =
-        // sprite size / texture size (mirrors FUN_00a1b7c0's else branch). This
-        // is why head/hair used to vanish — our capture only handled type 0.
-        void* ctex = *reinterpret_cast<void**>(spr_frame + 4);
-        if (ctex) {
-          native = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off);
-          const int tw = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0xc);
-          const int th = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0x10);
-          if (tw > 0 && th > 0)
-            uv1 = ImVec2(static_cast<float>(spr_frame[0]) / static_cast<float>(tw),
-                         static_cast<float>(spr_frame[1]) / static_cast<float>(th));
-        }
-      }
-
-      // Quad rect — replay Actor_SubmitSpriteQuad's own math (0x00a1b7c0). The
-      // x/y passed here ALREADY carry the head/head-gear attach (the game sums the
-      // per-frame Pos[0] anchor diffs into the submit position), so we just place
-      // each layer at (x,y) + its sprite offsets. act_layer[5]/[6] are per-layer
-      // scale FLOATS stored in int slots (reinterpret, don't int-cast). spr_frame
-      // [0..3] = tileW, tileH, tilesX-1, tilesY-1; +0.5 = half-texel bias.
-      const float sX = *reinterpret_cast<float*>(&act_layer[5]);
-      const float sY = *reinterpret_cast<float*>(&act_layer[6]);
-      const int fullW = (spr_frame[2] + 1) * static_cast<int>(spr_frame[0]);
-      const int fullH = (spr_frame[3] + 1) * static_cast<int>(spr_frame[1]);
-      const float left   = static_cast<float>(x) +
-                           static_cast<float>(act_layer[0]) * scale * sX;
-      const float right  = static_cast<float>(x) +
-                           static_cast<float>(fullW + act_layer[0] - 1) * scale * sX;
-      const float top    = static_cast<float>(y) +
-                           static_cast<float>(act_layer[1]) * scale * sY;
-      const float bottom = static_cast<float>(y) +
-                           static_cast<float>(fullH - 1 + act_layer[1]) * scale * sY;
-      const float cx = (left + right) * 0.5f + 0.5f;
-      const float cy = (top + bottom) * 0.5f + 0.5f;
-      const float cw = right - left;
-      const float ch = bottom - top;
-
-      // First layer of the pass = body: capture its standby frame count so the
-      // next pass can wrap the frame index. p3 = this layer's ACT object.
+      // First layer of the pass = body: capture its standby frame count (so the
+      // next pass can wrap the frame index) AND the actor zoom (so injected
+      // weapon/shield layers use the SAME scale). p3 = this layer's ACT object.
       if (g_first_layer && p3 && g_cur_actor) {
         g_first_layer = false;
+        g_av_body_scale = scale;
         const unsigned pose = *reinterpret_cast<unsigned*>(
             reinterpret_cast<char*>(g_cur_actor) + 0x38);
         int* fr = reinterpret_cast<ActFramesFn>(kActFramesFn)(p3, nullptr, pose);
@@ -279,38 +348,16 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
           const int n = static_cast<int>((fr[1] - fr[0]) / 0x44);
           if (n > 0) *g_frame_dst = n;
         }
+        // Délai natif par image (tableau floats @act+0x12c..0x130) -> vitesse d'anim.
+        int* db = *reinterpret_cast<int**>(reinterpret_cast<char*>(p3) + 0x12c);
+        int* de = *reinterpret_cast<int**>(reinterpret_cast<char*>(p3) + 0x130);
+        if (db && de != db) {
+          const float d = *reinterpret_cast<float*>(db);  // delays[0]
+          if (d > 0.0f) g_av_frame_delay = d;
+        }
       }
-
-      // Diagnostics: record every layer reaching the hook.
-      if (g_diag_count < 48) {
-        DiagLayer& d = g_diag[g_diag_count++];
-        d.type   = act_layer[8];
-        d.w      = spr_frame[0];
-        d.h      = spr_frame[1];
-        d.branch = (act_layer[8] == 0) ? 0 : 1;
-        d.tex    = (native != nullptr);
-        d.cx     = cx;
-        d.cy     = cy;
-        d.ox     = act_layer[0];
-        d.oy     = act_layer[1];
-        d.rawx   = static_cast<float>(x);  // game x/y (carries attach)
-        d.rawy   = static_cast<float>(y);
-      }
-
-      if (native && *g_cap_num < 48) {
-        CapLayer& L = g_cap_buf[(*g_cap_num)++];
-        L.tex    = native;
-        L.uv0    = uv0;
-        L.uv1    = uv1;
-        L.w      = cw;
-        L.h      = ch;
-        L.cx     = cx;
-        L.cy     = cy;
-        L.mirror = (act_layer[3] & 1) != 0;
-        // RGBA sprites (act_layer[8]!=0) are the face/hair/head-gears; palette
-        // sprites (==0) are the body/garment. Used to frame head vs head+body.
-        L.head_region = (act_layer[8] != 0);
-      }
+      EmitCapLayer(p3, spr_frame, act_layer, static_cast<float>(x),
+                   static_cast<float>(y), scale, angle, color, palette);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -341,6 +388,26 @@ int EquipHeadgearView(int slot, int* out_tag) {
   const uintptr_t gen = kSession + 0x17d0 + static_cast<uintptr_t>(slot) * 0xf8;
   *out_tag = *reinterpret_cast<int*>(gen + 4);
   return *reinterpret_cast<int*>(gen + 0x70);
+}
+
+// Nameid de l'item équipé dans `slot` (arme=1, bouclier=5), lu in-place dans le
+// tableau equip (session+0x17d0+slot*0xf8 ; resname std::string SSO @+0x2c ->
+// atoi). Renvoie 0 si le slot est vide. SOURCE FIABLE (toujours à jour) pour
+// arme/bouclier : les globals g_OwnLook_WeaponViewId (0x280)/ShieldViewId (0x284)
+// sont MIS À ZÉRO au char-select (MOVLPD 0x00d2a8aa) — l'arme du login atterrit
+// dans WeaponViewId2 (0x288, +0x40ca) et le bouclier n'est JAMAIS seedé ; ils ne
+// se peuplent que via un ZC_SPRITE_CHANGE en jeu (cf. World_Spawn... / seed).
+int EquipSlotNameId(int slot) {
+  __try {
+    const uintptr_t e = kSession + 0x17d0 + static_cast<uintptr_t>(slot) * 0xf8;
+    if (*reinterpret_cast<int*>(e + 0x04) == 0 ||   // invIndex 0 = vide
+        *reinterpret_cast<int*>(e + 0x10) != 1)     // present != 1
+      return 0;
+    const unsigned cap = *reinterpret_cast<unsigned*>(e + 0x40);
+    const char* rn = (cap > 15) ? *reinterpret_cast<char**>(e + 0x2c)
+                                : reinterpret_cast<char*>(e + 0x2c);
+    return (rn && rn[0]) ? std::atoi(rn) : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 // Logs the last capture pass (throttled ~2s). Separate from CapturePortraitActor
@@ -530,6 +597,324 @@ void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
   g_cap_num = &g_cap_count;
   g_frame_dst = &g_body_frame_count;
 }
+
+// ── Arme + bouclier sur l'avatar (approche A) ────────────────────────────────
+// Le corps bas-niveau (Actor_Init/Actor_DrawSprites) n'a PAS de slot arme : arme
+// et bouclier ne vivent que sur le CActorSprite haut-niveau (slots 5/6, cf.
+// CActorSprite_BuildWeaponLayers 0x00d403a0). On réplique donc la résolution
+// native : view id -> weaponClass -> chemins .spr/.act -> charge -> frame de NOTRE
+// pose -> boucle les layers -> EmitCapLayer à l'origine du corps (0,0). Toutes les
+// adresses/offsets/signatures ont été vérifiés dans Ghidra (Actor_DrawSprites,
+// Job_BuildWeaponSpritePath, Job_ResolveBodyClass, Act_GetFrame/Layer).
+// ── Slot-live : lire l'arme/bouclier DÉJÀ résolus par le jeu sur l'acteur joueur ─
+// (Validé x32 en live.) Chaîne : GameMode_GetActive(0x1213338) renvoie le CMode
+// (*(mgr+4) si *(mgr+0x58)==1) ; actorMgr = *(CMode+0xcc) ; **acteur joueur** =
+// *(actorMgr+0x2c) (vtable 0x01094810, gid @+0x110 = AID own). Tableau des objets
+// sprite par slot = *(actor+0x4ac) : slot i = base[i] (objet COMBINÉ = cellules
+// @+0x510 ET frames via Act_GetFrame). Slots (CONFIRMÉ x32 en changeant l'équip) :
+// 0-4 corps/tête/coiffes, **5 = arme**, 6 = trail arme (souvent null), **7 = bouclier**
+// (SEUL le slot 7 change quand on change de bouclier ; le slot 6 reste null). On
+// dessine ce que le jeu a mis -> le doll identique au monde, zéro résolution.
+constexpr uintptr_t kGameModeGet   = 0x00a75340;  // GameMode_GetActive(mgr)
+constexpr uintptr_t kModeMgr       = 0x1213338;   // arg (CModeMgr)
+constexpr int kOffActorMgr = 0xcc;   // CMode -> actorMgr
+constexpr int kOffOwnActor = 0x2c;   // actorMgr -> acteur joueur
+constexpr int kOffSlotArr    = 0x4ac;  // acteur -> vector CELLULES (base @+0x4ac, end @+0x4b0)
+constexpr int kOffSlotActArr = 0x4b8;  // acteur -> vector FRAMES (Act_GetFrame). Par slot :
+constexpr int kSlotWeapon  = 5, kSlotShield = 7;  // cells=*(0x4ac)[s], act=*(0x4b8)[s]
+
+constexpr uintptr_t kWeaponView   = 0x015fb280;  // g_OwnLook_WeaponViewId (0 = rien)
+constexpr uintptr_t kShieldView   = 0x015fb284;  // g_OwnLook_ShieldViewId (0 = rien)
+constexpr uintptr_t kWeaponView2  = 0x015fb288;  // g_OwnLook_WeaponViewId2 (arme seed login)
+constexpr uintptr_t kTexMgrGet    = 0x00a90350;  // UITextureMgr_Get()
+constexpr uintptr_t kTexMgrLoad   = 0x00a8d4a0;  // UITextureMgr_Load(mgr, char* path)
+constexpr uintptr_t kTexExists    = 0x00a8e500;  // UITextureMgr_ResourceExists(mgr, path)->bool
+constexpr uintptr_t kWpnItemClass = 0x00d8a1d0;  // Weapon_ItemIdToWeaponClass(viewId)
+// ⚠ Le sélecteur (2e arg du builder) est INVERSÉ vs le nom Ghidra — PROUVÉ live
+// (LogWpnDiag) : le wrapper qui pousse 0 (0x..010/080, nommé "SpritePath") renvoie
+// le chemin **.act**, celui qui pousse 1 (0x..160/0f0, "ActPath") renvoie le **.spr**.
+// On assigne donc l'adresse par l'EXTENSION réelle, pas par le nom.
+constexpr uintptr_t kJobWpnSpr    = 0x00d8a160;  // -> .spr (pousse 1)
+constexpr uintptr_t kJobWpnAct    = 0x00d8a010;  // -> .act (pousse 0)
+constexpr uintptr_t kJobShieldSpr = 0x00d8a0f0;  // -> .spr (pousse 1)
+constexpr uintptr_t kJobShieldAct = 0x00d8a080;  // -> .act (pousse 0)
+constexpr uintptr_t kActGetFrame  = 0x0070f4b0;  // Act_GetFrame(actObj, action, frame)
+constexpr uintptr_t kActFrameLayer= 0x0070f390;  // Act_GetFrameLayer(frame, idx)
+constexpr uintptr_t kStrDtor      = 0x004e78c0;  // std::string::~string (game alloc)
+constexpr uintptr_t kAtlasBuild   = 0x005663d0;  // SpriteAtlas_BuildTexture(spr,pal,geom)
+// ── Réglages LIVE (à ajuster à l'œil, sans re-RE) ────────────────────────────
+// Nudge d'alignement (repli si décalage constant observé : cf. anchor +0x4dc/+0x4e0
+// de SetSlotSprite, non consommé au draw -> auto-align par offsets layer supposé).
+constexpr float kWeaponNudgeX = 0.0f;
+constexpr float kWeaponNudgeY = 0.0f;
+// palVariant = 2e arg de Job_ResolveBodyClass ; DOIT être le job COMPLET (sinon
+// fallback Novice). On le dérive du getter natif (pas de valeur figée).
+
+// ── Diagnostics arme/bouclier slot-live (POD, remplis sous __try, loggés HORS __try
+// par LogWpnDiag ; throttlé). À RETIRER une fois validé. ─────────────────────────
+struct PartDiag {
+  int   bail;    // -1=non tenté (item non équipé), 0=ok, 1=obj null, 2=frame null, 3=nL<=0
+  int   spr_ok, act_ok, nL, emitted;
+  float lx, ly, lw, lh;  // géométrie (cx,cy,w,h) du DERNIER layer émis
+  bool  has_tex;         // dernier layer émis a bien une texture native
+  void* spr_obj;         // objet slot combiné (= act_obj)
+  void* act_obj;
+};
+struct WpnDiag {
+  bool active;
+  int  wview, sview, pose;  // wview/sview = nameid équipé (gate)
+  PartDiag shield, weapon;
+};
+WpnDiag g_wpn_diag = {};
+
+// Injecte les layers d'UNE pièce (slot arme/bouclier/trail) dans le buffer actif, à
+// partir des DEUX objets sprite DÉJÀ chargés par le jeu (slot-live) : `sprObj` =
+// cellules @+0x510 + palette @+0x110 (tableau 0x4ac) ; `actObj` = frames via
+// Act_GetFrame (tableau 0x4b8). Prend la frame de NOTRE pose, boucle les layers,
+// pré-remplit l'atlas (Get puis Build si miss, CACHE-ONLY), EmitCapLayer à (0,0). pd=diag.
+void EmitSlotLayers(void* sprObj, void* actObj, int pose, int frameIdx, float scale,
+                    PartDiag* pd) {
+  if (pd) { pd->bail = 0; pd->spr_obj = sprObj; pd->act_obj = actObj;
+            pd->spr_ok = (sprObj != nullptr); pd->act_ok = (actObj != nullptr); }
+  if (!sprObj || !actObj) { if (pd) pd->bail = 1; return; }
+  const int emit_start = g_cap_num ? *g_cap_num : 0;
+  using ActFrameFn = void*(__fastcall*)(void*, void*, unsigned, unsigned);
+  using ActLayerFn = int* (__fastcall*)(void*, void*, unsigned);
+  // __thiscall CONFIRMÉ (this=atlas en ECX, RET 0xc) : passer l'atlas + edx=nullptr.
+  using AtlasBuildFn = void*(__fastcall*)(void*, void*, short*, int, int*);
+  // sprObj = *(actor+0x4ac)[slot] (cellules @+0x510) ; actObj = *(actor+0x4b8)[slot]
+  // (frames). Séparés — cf. CActorSprite_BuildPartMap (noms Ghidra SPR/ACT inversés).
+  void* frame = reinterpret_cast<ActFrameFn>(kActGetFrame)(
+      actObj, nullptr, static_cast<unsigned>(pose), static_cast<unsigned>(frameIdx));
+  if (!frame) { if (pd) pd->bail = 2; return; }
+  const int lbeg = *reinterpret_cast<int*>(reinterpret_cast<char*>(frame) + 0x20);
+  const int lend = *reinterpret_cast<int*>(reinterpret_cast<char*>(frame) + 0x24);
+  const int nL = (lend - lbeg) / 0x24;
+  if (pd) { pd->nL = nL; if (nL <= 0) pd->bail = 3; }
+  for (int i = 0; i < nL; ++i) {
+    int* L = reinterpret_cast<ActLayerFn>(kActFrameLayer)(
+        frame, nullptr, static_cast<unsigned>(i));
+    if (!L || L[2] == -1) continue;  // sprNo -1 = layer invisible (comme le draw)
+    // spr_frame = *(SPR+0x510 + sprType*0xc)[sprNo]  (cf. Actor_DrawSprites)
+    int* base = *reinterpret_cast<int**>(
+        reinterpret_cast<char*>(sprObj) + 0x510 + L[8] * 0xc);
+    if (!base) continue;
+    short* spr_frame = *reinterpret_cast<short**>(
+        reinterpret_cast<char*>(base) + L[2] * 4);
+    if (!spr_frame) continue;
+    void* palette = reinterpret_cast<char*>(sprObj) + 0x110;  // palette embarquée
+    if (L[8] == 0) {  // pré-remplir l'atlas pour que le Get dans EmitCapLayer hit
+      int g2[12] = {0};
+      void* atlas = reinterpret_cast<void*>(
+          *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
+      void* c = reinterpret_cast<AtlasGetFn>(kAtlasGetFn)(
+          atlas, nullptr, static_cast<int>(reinterpret_cast<intptr_t>(spr_frame)),
+          static_cast<int>(reinterpret_cast<intptr_t>(palette)), g2);
+      if (!c)
+        reinterpret_cast<AtlasBuildFn>(kAtlasBuild)(
+            atlas, nullptr, spr_frame,
+            static_cast<int>(reinterpret_cast<intptr_t>(palette)), g2);
+    }
+    EmitCapLayer(actObj, spr_frame, L, kWeaponNudgeX, kWeaponNudgeY, scale,
+                 *reinterpret_cast<float*>(&L[7]), 0xFFFFFFFFu, palette);
+  }
+  if (pd) {
+    pd->emitted = (g_cap_num ? *g_cap_num : 0) - emit_start;
+    if (pd->emitted > 0 && g_cap_buf && g_cap_num) {
+      const CapLayer& last = g_cap_buf[*g_cap_num - 1];  // dernier layer poussé
+      pd->lx = last.cx; pd->ly = last.cy; pd->lw = last.w; pd->lh = last.h;
+      pd->has_tex = (last.tex != nullptr);
+    }
+  }
+}
+
+// Injecte arme + bouclier + trail (slots 5/6/7) dans le buffer actif en SLOT-LIVE :
+// on lit les sprites DÉJÀ résolus par le jeu sur l'acteur joueur et on les dessine à
+// NOTRE pose. Zéro résolution de chemin (fini le Lua / le viewid item-vs-type). Par
+// slot : SPR(cellules @+0x510) = *(actor+0x4ac)[slot], ACT(frames) = *(actor+0x4b8)
+// [slot] — DEUX objets distincts (cf. CActorSprite_BuildPartMap ; noms Ghidra SPR/ACT
+// inversés). GATE NATIF : un slot n'est dessiné que si les DEUX sont non-null (un slot
+// arme stale sans arme n'a qu'UN des deux -> sauté, pas de fantôme). SEH-gardé.
+void EmitWeaponShieldLayers(int anim, int dir, int frameIdx, float body_scale) {
+  __try {
+    using GameModeFn = void*(__fastcall*)(int);
+    void* gameMode = reinterpret_cast<GameModeFn>(kGameModeGet)(
+        static_cast<int>(kModeMgr));
+    if (!gameMode) return;
+    void* actorMgr = *reinterpret_cast<void**>(
+        reinterpret_cast<char*>(gameMode) + kOffActorMgr);
+    if (!actorMgr) return;
+    void* actor = *reinterpret_cast<void**>(
+        reinterpret_cast<char*>(actorMgr) + kOffOwnActor);  // acteur joueur (vtbl 0x01094810)
+    if (!actor) return;
+    int* sprArr = *reinterpret_cast<int**>(
+        reinterpret_cast<char*>(actor) + kOffSlotArr);        // cellules (0x4ac)
+    int* sprEnd = *reinterpret_cast<int**>(
+        reinterpret_cast<char*>(actor) + kOffSlotArr + 4);
+    int* actArr = *reinterpret_cast<int**>(
+        reinterpret_cast<char*>(actor) + kOffSlotActArr);     // frames (0x4b8)
+    if (!sprArr || !sprEnd || !actArr) return;
+    const int count = static_cast<int>(sprEnd - sprArr);
+    const int pose = anim * 8 + (dir & 7);
+
+    std::memset(&g_wpn_diag, 0, sizeof(g_wpn_diag));
+    g_wpn_diag.active = true;
+    g_wpn_diag.pose = pose;
+    g_wpn_diag.weapon.bail = -1;
+    g_wpn_diag.shield.bail = -1;
+    g_wpn_diag.wview = EquipSlotNameId(1);  // nameid arme équipée (info log)
+    g_wpn_diag.sview = EquipSlotNameId(5);  // nameid bouclier équipé (info log)
+
+    // Ordre painter (vue FACE) : trail(6), arme(5), BOUCLIER(7) en dernier = au-dessus
+    // -> coiffes < arme < bouclier (comme le natif corrigé). g_av_wpn_start = début du
+    // bloc entier (arme+bouclier+trail) pour que le z-order directionnel le déplace en
+    // BLOC derrière le corps en vue de dos. EmitSlotLayers saute si un objet est null.
+    g_av_wpn_start = *g_cap_num;  // = body_count (juste après le corps)
+    const int order[3] = {6, kSlotWeapon, kSlotShield};
+    for (int i = 0; i < 3; ++i) {
+      const int slot = order[i];
+      if (slot >= count) continue;
+      PartDiag* pd = (slot == kSlotWeapon) ? &g_wpn_diag.weapon
+                   : (slot == kSlotShield) ? &g_wpn_diag.shield : nullptr;
+      EmitSlotLayers(reinterpret_cast<void*>(sprArr[slot]),
+                     reinterpret_cast<void*>(actArr[slot]), pose, frameIdx,
+                     body_scale, pd);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Construit l'acteur (ctor 19 params) à la pose/image données et le dessine
+// (chemin quad) : chaque layer passe par le hook -> buffer ACTIF (g_cap_buf).
+// Fonction plate (aucun objet C++ à dérouler) pour être appelable sous __try, et
+// réutilisable (corps animé + 2e passe tête figée). L'appelant doit avoir positionné
+// g_cap_buf/g_cap_num et g_first_layer avant l'appel.
+void AvatarBuildCaptureOnce(void* render_ctx, int sex, int job, int hair, int clo,
+                            int hc, int hg_top, int hg_mid, int hg_low, int garment,
+                            int pose, int frame) {
+  using CtorFn = void*(__fastcall*)(void* self, void* edx, void* render_ctx,
+      int x, int y, int sex, int job_short, int job_full, int job_body, int hair,
+      int hg_top, int hg_mid, int hg_low, int garment, int p13, int p14,
+      int clothes_col, int hair_col, int pose, int frame, int p19);
+  using DrawFn = void(__fastcall*)(void* self, void* edx, char param);
+  using DtorFn = void(__fastcall*)(void* self, void* edx);
+  alignas(8) unsigned char actor[0x200];
+  std::memset(actor, 0, sizeof(actor));
+  reinterpret_cast<CtorFn>(kActorCtor)(
+      actor, nullptr, render_ctx, 0, 0, sex, job & 0xffff, job,
+      job & 0xffff, hair, hg_top, hg_mid, hg_low, garment, 0, 0, clo, hc,
+      pose, frame, 0);
+  g_cur_actor = actor;
+  g_cap_active = true;
+  reinterpret_cast<DrawFn>(kActorDraw)(actor, nullptr, 1);  // 1 => quad path
+  g_cap_active = false;
+  g_cur_actor = nullptr;
+  reinterpret_cast<DtorFn>(kActorDtor)(actor, nullptr);
+}
+
+// ── Avatar plein-corps (character sheet) ─────────────────────────────────────
+// Clone de CapturePortraitActor, mais : (a) buffer dédié g_av_caps, (b) garment
+// TOUJOURS nourri (corps entier, jamais gaté par head_only), (c) coiffes live via
+// EquipHeadgearView(8/9/0) exactement comme le portrait. anim/dir/animate = pose
+// choisie (combo sous l'avatar). SEH-gardé ; restaure g_cap_buf/g_cap_num/
+// g_frame_dst vers le portrait à la sortie (même contrat que l'aperçu).
+// force_frame >= 0 : capture CETTE image précise (export GIF, ignore le temps/le gel
+// des poses statiques) ; < 0 : image auto (temps) selon la pose.
+void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1) {
+  InstallActorCapture();
+  if (!g_orig_actor_quad) return;
+  void* render_ctx = *reinterpret_cast<void**>(kRenderCtxPtr);
+  if (!render_ctx) return;
+  g_av_count = 0;
+  g_cap_buf = g_av_caps;            // rediriger le hook vers le buffer avatar
+  g_cap_num = &g_av_count;
+  g_frame_dst = &g_av_frame_count;  // comptage de frames -> buffer avatar
+  g_diag_count = 0;
+  g_first_layer = true;             // capturer le nb de frames du corps (wrap)
+  __try {
+    using GetSexFn = int(__fastcall*)(void*, void*);
+    using GetJobFn = int(__fastcall*)(void*, void*);
+    const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
+        reinterpret_cast<void*>(kSession), nullptr);
+    const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+        reinterpret_cast<void*>(kSession), nullptr);
+    const int hair = *reinterpret_cast<int*>(kHair);
+    const int clo  = *reinterpret_cast<int*>(kClothesCol);
+    const int hc   = *reinterpret_cast<int*>(kHairCol);
+    // Coiffes portées (costume > général ; de-dup par tag +4), comme le portrait.
+    int has8, has9, has0;
+    const int view8 = EquipHeadgearView(8, &has8);
+    const int view9 = EquipHeadgearView(9, &has9);
+    const int view0 = EquipHeadgearView(0, &has0);
+    const int hg_mid = (has8 != 0) ? view8 : 0;
+    const int hg_low = (has9 != 0 && has9 != has8) ? view9 : 0;
+    const int hg_top = (has0 != 0 && has0 != has8 && has0 != has9) ? view0 : 0;
+    const int garment = *reinterpret_cast<int*>(kGarmentView);  // TOUJOURS (corps entier)
+    // Signature d'apparence (FNV-1a des viewids/apparence, + nameids arme/bouclier) :
+    // stable d'une frame d'anim à l'autre (aucun terme dépendant de l'image), sert à
+    // RenderPlayerAvatar pour re-figer le cadrage quand l'équipement change.
+    {
+      const unsigned parts[] = {
+          static_cast<unsigned>(sex),    static_cast<unsigned>(job),
+          static_cast<unsigned>(hair),   static_cast<unsigned>(clo),
+          static_cast<unsigned>(hc),     static_cast<unsigned>(hg_top),
+          static_cast<unsigned>(hg_mid), static_cast<unsigned>(hg_low),
+          static_cast<unsigned>(garment),
+          static_cast<unsigned>(EquipSlotNameId(1)),   // nameid arme
+          static_cast<unsigned>(EquipSlotNameId(5))};  // nameid bouclier
+      unsigned sig = 2166136261u;
+      for (unsigned p : parts) sig = (sig ^ p) * 16777619u;
+      g_av_sig = sig;
+    }
+    const int pose = anim * 8 + (dir & 7);
+    const int nframes = g_av_frame_count > 0 ? g_av_frame_count : 1;
+    // Vitesse NATIVE : délai constant par image = .act delay * 25 ms (AniTick RO ;
+    // delay~4.0 => ~100 ms). L'ancien cycle fixe 1.3 s ignorait le nb d'images et
+    // était ~4x trop lent. Clamp sain [40, 600] ms.
+    float ims = g_av_frame_delay * 25.0f;
+    if (ims < 40.0f) ims = 40.0f;
+    if (ims > 600.0f) ims = 600.0f;
+    // Seuls Marche(1) et Combat(4) s'animent. Repos(0)/Assis(2) sont FIGÉS à l'image 0
+    // (sinon la tête + les coiffes « regardent autour » en défilant, gênant). Côté
+    // character_sheet, la case « Animer » n'est d'ailleurs proposée que pour Marche/Combat.
+    const bool anim_pose = (anim == 1 || anim == 4);
+    const int frame =
+        (force_frame >= 0)
+            ? (force_frame < nframes ? force_frame : (nframes - 1))
+            : ((animate && anim_pose && nframes > 1)
+                   ? static_cast<int>((GetTickCount() / static_cast<DWORD>(ims)) %
+                                      static_cast<unsigned>(nframes))
+                   : 0);
+    // Corps + tête + coiffes + garment -> g_av_caps (buffer actif).
+    AvatarBuildCaptureOnce(render_ctx, sex, job, hair, clo, hc, hg_top, hg_mid,
+                           hg_low, garment, pose, frame);
+    // Arme + bouclier : absents du corps bas-niveau -> on les injecte NOUS-MÊMES
+    // dans g_av_caps (buffer toujours actif ici), à la même pose/frame/échelle que
+    // le corps, à l'origine (0,0). `frame` = index d'image du corps ; g_av_body_scale
+    // = zoom capturé par le hook au 1er layer du corps.
+    g_av_wpn_start = -1;  // évite une valeur périmée si EmitWeaponShieldLayers sort tôt
+    EmitWeaponShieldLayers(anim, dir, frame, g_av_body_scale);
+    // Z-order directionnel (reproduit le natif corrigé, cf. project_weapon_zorder) :
+    // en vue de DOS (dir 2/3/4/5) l'arme ET le bouclier passent DERRIÈRE le corps ;
+    // en vue de FACE (dir 0/1/6/7) ils restent devant. On déplace le bloc entier
+    // arme+bouclier ([g_av_wpn_start .. count]) avant le corps quand on est de dos.
+    {
+      const int d = dir & 7;
+      const bool back = (d >= 2 && d <= 5);  // groupe DOS natif {2,3,4,5}
+      if (back && g_av_wpn_start > 0 && g_av_count > g_av_wpn_start) {
+        int m = 0;
+        for (int i = g_av_wpn_start; i < g_av_count && m < 48; ++i)
+          g_av_reorder[m++] = g_av_caps[i];               // arme + bouclier (derrière)
+        for (int i = 0; i < g_av_wpn_start && m < 48; ++i)
+          g_av_reorder[m++] = g_av_caps[i];               // corps par-dessus
+        std::memcpy(g_av_caps, g_av_reorder, static_cast<size_t>(m) * sizeof(CapLayer));
+        g_av_count = m;
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { g_cap_active = false; }
+  g_cap_buf = g_caps;              // restaurer la cible portrait (toujours)
+  g_cap_num = &g_cap_count;
+  g_frame_dst = &g_body_frame_count;
+}
 }  // namespace
 
 void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
@@ -629,6 +1014,167 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
   }
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
+}
+
+// Avatar plein-corps (perso complet : corps + coiffes + garment + arme/bouclier,
+// apparence live) composité dans la fenêtre ImGui COURANTE. Cadrage STABLE : l'échelle
+// + l'ancrage sont FIGÉS, recalculés seulement quand (w,h,anim,dir,apparence) changent
+// — jamais par frame d'animation (sinon le sprite « respire »). Le figeage se fait sur
+// l'UNION de TOUTES les frames de la pose (comme ExportAvatarGif) pour qu'AUCUNE frame
+// ne déborde le cadre (pas de croppage d'extrémités), et l'échelle horizontale est
+// bornée sur le demi-extent depuis l'ancrage CORPS (une arme large d'un seul côté n'est
+// pas rognée). Pieds ancrés en bas façon WoW, CORPS centré en X -> clip -> AddImage (U
+// swap si mirror). No-op hors-jeu ou capture vide. À appeler entre Begin/End.
+// anim=animType, dir=0..7 (0=face), animate=joue.
+void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
+                                         int anim, int dir, bool animate) {
+  if (Bourgeon::Instance().client().session().aid() == 0) return;
+
+  const float pad = 4.0f;
+  // Échelle + ancrage FIGÉS : recalculés seulement quand le rect / la pose / la
+  // direction / l'apparence changent — jamais par frame d'animation.
+  static float s_scale = 0.0f, s_cx = 0.0f, s_feet = 0.0f;
+  static float s_w = -1.0f, s_h = -1.0f;
+  static int   s_anim = -1, s_dir = -1;
+  static unsigned s_sig = 0;
+  static bool s_animate = false;  // dans la clé : nf (union) dépend de animate
+
+  // Capture LIVE (image courante) -> g_av_caps + g_av_sig (signature d'apparence).
+  CaptureAvatarActor(anim, dir, animate);
+  if (g_av_count <= 0) return;
+  const unsigned sig = g_av_sig;
+
+  if (s_scale <= 0.0f || s_w != w || s_h != h || s_anim != anim || s_dir != dir ||
+      s_sig != sig || s_animate != animate) {
+    // (Ré)figeage : bbox UNION sur TOUTES les frames de la pose (comme ExportAvatarGif)
+    // -> l'enveloppe contient chaque frame, donc rien n'est jamais rogné, et l'échelle
+    // reste constante (zéro « respiration »). bbox TOTALE (arme/coiffes incl.) pour la
+    // taille ; bbox CORPS (couches non-tête = torse/jambes) pour centrer X + les pieds.
+    float ax0 = 1e9f, ay0 = 1e9f, ax1 = -1e9f, ay1 = -1e9f;
+    float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
+    bool has_body = false;
+    const bool anim_pose = (anim == 1 || anim == 4);  // seules Marche/Combat animent
+    int nf = (animate && anim_pose && g_av_frame_count > 1) ? g_av_frame_count : 1;
+    if (nf > 40) nf = 40;  // garde-fou
+    for (int f = 0; f < nf; ++f) {
+      CaptureAvatarActor(anim, dir, true, f);  // force l'image f
+      for (int i = 0; i < g_av_count; ++i) {
+        const CapLayer& L = g_av_caps[i];
+        const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
+        const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
+        if (lx0 < ax0) ax0 = lx0;  if (lx1 > ax1) ax1 = lx1;
+        if (ly0 < ay0) ay0 = ly0;  if (ly1 > ay1) ay1 = ly1;
+        if (!L.head_region) {
+          has_body = true;
+          if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
+          if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
+        }
+      }
+    }
+    const float cx   = has_body ? (bx0 + bx1) * 0.5f : (ax0 + ax1) * 0.5f;
+    const float feet = has_body ? by1 : ay1;             // pieds = bas du corps
+    const float vh   = feet - ay0;                       // sommet (coiffe) -> pieds
+    const float half = (ax1 - cx > cx - ax0) ? (ax1 - cx) : (cx - ax0);  // demi-largeur
+    if (vh > 1.0f && half > 0.5f) {
+      // sx borne l'extent horizontal DEPUIS l'ancrage corps (pas la largeur totale) ->
+      // aucun côté ne sort du clip ; sy fait tenir toute la hauteur pieds->sommet.
+      const float sx = (w - 2.0f * pad) / (2.0f * half);
+      const float sy = (h - 2.0f * pad) / vh;
+      s_scale = (sx < sy) ? sx : sy;
+      s_cx = cx;
+      s_feet = feet;
+      s_w = w; s_h = h; s_anim = anim; s_dir = dir; s_sig = sig; s_animate = animate;
+    }
+    // Restaure la capture LIVE pour le rendu (la boucle a laissé la dernière image forcée).
+    CaptureAvatarActor(anim, dir, animate);
+    if (g_av_count <= 0) return;
+  }
+  if (s_scale <= 0.0f) return;  // pas encore de cadrage valide (capture dégénérée)
+  const float s  = s_scale;
+  const float ox = x + w * 0.5f - s_cx * s;      // CORPS centré horizontalement (figé)
+  const float oy = y + h - pad - s_feet * s;     // pieds du corps collés au bas (figé)
+
+  // (d) composite (clip au rect ; ordre du tableau = z-order painter correct).
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->PushClipRect(ImVec2(x, y), ImVec2(x + w, y + h), true);
+  for (int i = 0; i < g_av_count; ++i) {
+    const CapLayer& L = g_av_caps[i];
+    const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
+    const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
+    const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
+    const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
+    dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+  }
+  dl->PopClipRect();
+}
+
+// Exporte le pantin (pose `anim` + direction `dir` courantes) en GIF animé à fond
+// TRANSPARENT vers `filepath`. Capture CHAQUE image de la pose (force_frame), calcule
+// une bbox union (perso stable), composite chaque image dans un render target
+// hors-écran (D3D9_CompositeQuadsRGBA) puis encode (GifWrite) au délai natif. Toutes
+// les poses sont animées dans le GIF (même Repos/Assis, figés seulement dans la vue).
+bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath) {
+  if (!filepath || Bourgeon::Instance().client().session().aid() == 0) return false;
+  const int CW = 256, CH = 340;  // canvas GIF (agrandi pour la qualité ; LZW compressé)
+  const float PAD = 14.0f;
+
+  // Passe 1 : capturer toutes les images (renseigne g_av_frame_count) + bbox union.
+  CaptureAvatarActor(anim, dir, true, 0);
+  int nframes = g_av_frame_count > 0 ? g_av_frame_count : 1;
+  if (nframes > 40) nframes = 40;  // garde-fou
+
+  std::vector<std::vector<CapLayer>> frame_layers(static_cast<size_t>(nframes));
+  float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+  for (int f = 0; f < nframes; ++f) {
+    CaptureAvatarActor(anim, dir, true, f);
+    frame_layers[static_cast<size_t>(f)].assign(g_av_caps, g_av_caps + g_av_count);
+    for (const CapLayer& L : frame_layers[static_cast<size_t>(f)]) {
+      minx = std::min(minx, L.cx - L.w * 0.5f);
+      maxx = std::max(maxx, L.cx + L.w * 0.5f);
+      miny = std::min(miny, L.cy - L.h * 0.5f);
+      maxy = std::max(maxy, L.cy + L.h * 0.5f);
+    }
+  }
+  const float bw = maxx - minx, bh = maxy - miny;
+  if (bw <= 1.0f || bh <= 1.0f) return false;
+  const float s  = std::min((CW - 2 * PAD) / bw, (CH - 2 * PAD) / bh);
+  const float ox = CW * 0.5f - (minx + maxx) * 0.5f * s;  // corps centré en X
+  const float oy = CH - PAD - maxy * s;                   // pieds ancrés en bas
+
+  // Passe 2 : compositer chaque image sur fond transparent -> RGBA.
+  std::vector<uint32_t> canvas(static_cast<size_t>(CW) * CH);
+  std::vector<std::vector<uint32_t>> gif_frames(static_cast<size_t>(nframes));
+  std::vector<const uint32_t*> ptrs(static_cast<size_t>(nframes));
+  std::vector<D3D9TexQuad> quads;
+  for (int f = 0; f < nframes; ++f) {
+    quads.clear();
+    for (const CapLayer& L : frame_layers[static_cast<size_t>(f)]) {
+      if (!L.tex) continue;
+      D3D9TexQuad q;
+      q.tex = L.tex;
+      q.x0 = ox + (L.cx - L.w * 0.5f) * s;
+      q.x1 = ox + (L.cx + L.w * 0.5f) * s;
+      q.y0 = oy + (L.cy - L.h * 0.5f) * s;
+      q.y1 = oy + (L.cy + L.h * 0.5f) * s;
+      q.u0 = L.mirror ? L.uv1.x : L.uv0.x;  // U swap si miroir (comme le draw)
+      q.u1 = L.mirror ? L.uv0.x : L.uv1.x;
+      q.v0 = L.uv0.y;
+      q.v1 = L.uv1.y;
+      quads.push_back(q);
+    }
+    if (!D3D9_CompositeQuadsRGBA(quads.data(), static_cast<int>(quads.size()), CW, CH,
+                                 canvas.data()))
+      return false;
+    gif_frames[static_cast<size_t>(f)] = canvas;  // copie de l'image
+    ptrs[static_cast<size_t>(f)] = gif_frames[static_cast<size_t>(f)].data();
+  }
+
+  int delay_cs = static_cast<int>(g_av_frame_delay * 2.5f + 0.5f);  // *25ms /10 = cs
+  if (delay_cs < 2) delay_cs = 2;
+  const bool ok = GifWrite(filepath, ptrs.data(), CW, CH, nframes, delay_cs);
+  if (ok) LogInfo("Avatar GIF: {} ({} images)", filepath, nframes);
+  else    LogError("Avatar GIF echec: {}", filepath);
+  return ok;
 }
 
 float BasicInfoTweaks::SnapValue(float v, float ext, int self_id,

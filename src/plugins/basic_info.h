@@ -44,6 +44,21 @@ class BasicInfoTweaks : public Plugin {
   // true si l'item (par son emplacement) est prévisualisable (headgear/garment).
   bool CanPreview(int emplacement) const;
 
+  // Avatar plein-corps (perso complet : corps + coiffes + garment, apparence
+  // live) composité dans la fenêtre ImGui courante, fit aspect DANS [x,y,w,h] et
+  // ancré pieds-en-bas (façon WoW). anim = animType (0=Repos,4=Combat…), dir =
+  // 0..7 (0=face), animate = joue les images de l'action. Capture live à chaque
+  // appel (réutilise le moteur de capture sprite du portrait, buffer dédié).
+  // Utilisé par character_sheet. À appeler entre Begin/End d'une frame UI.
+  void RenderPlayerAvatar(float x, float y, float w, float h, int anim, int dir,
+                          bool animate);
+
+  // Exporte le pantin (pose `anim` + direction `dir`) en GIF animé fond transparent
+  // vers `filepath` (chemin complet ; le dossier doit exister). Toutes les images de
+  // la pose sont capturées et compositées hors-écran. Renvoie true si écrit. À appeler
+  // pendant le rendu de l'overlay (device D3D9). Utilisé par character_sheet.
+  bool ExportAvatarGif(int anim, int dir, const char* filepath);
+
   // ── Bars (read/written by MoonlightUi) ────────────────────────────────────
   struct Bar {
     bool  show;

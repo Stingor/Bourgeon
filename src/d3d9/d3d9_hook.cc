@@ -211,6 +211,110 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h) {
     return true;
 }
 
+// Composites textured quads onto a fresh transparent render target and reads the
+// pixels back (avatar GIF export). Called during the overlay pass (inside a scene),
+// so it saves/restores the render target + viewport + all render state around the
+// draw. Creates the RT + a system-memory readback surface per call (a handful of
+// small frames per export — not hot). DX9 only.
+bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
+                             void* out_argb) {
+    if (g_imgui_dx7_active) return false;
+    IDirect3DDevice9* dev = g_imgui_device;
+    if (!dev || !out_argb || w <= 0 || h <= 0) return false;
+
+    IDirect3DTexture9* rt = nullptr;
+    if (FAILED(dev->CreateTexture(static_cast<UINT>(w), static_cast<UINT>(h), 1,
+                                  D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
+                                  D3DPOOL_DEFAULT, &rt, nullptr)))
+        return false;
+    IDirect3DSurface9* rtSurf = nullptr;
+    IDirect3DSurface9* sysSurf = nullptr;
+    rt->GetSurfaceLevel(0, &rtSurf);
+    dev->CreateOffscreenPlainSurface(static_cast<UINT>(w), static_cast<UINT>(h),
+                                     D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &sysSurf,
+                                     nullptr);
+
+    IDirect3DSurface9* prevRT = nullptr;
+    D3DVIEWPORT9 prevVp{};
+    dev->GetRenderTarget(0, &prevRT);
+    dev->GetViewport(&prevVp);
+    IDirect3DStateBlock9* sb = nullptr;
+    dev->CreateStateBlock(D3DSBT_ALL, &sb);  // restored after the draw
+
+    bool ok = false;
+    if (rtSurf && sysSurf && SUCCEEDED(dev->SetRenderTarget(0, rtSurf))) {
+        D3DVIEWPORT9 vp{0, 0, static_cast<DWORD>(w), static_cast<DWORD>(h), 0.0f, 1.0f};
+        dev->SetViewport(&vp);
+        dev->Clear(0, nullptr, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 0, 0), 1.0f, 0);
+
+        dev->SetPixelShader(nullptr);
+        dev->SetVertexShader(nullptr);
+        dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+        dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+        dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        dev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        // Accumulate coverage into the target alpha (transparent bg -> cut-out).
+        dev->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE);
+        dev->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
+        dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+        dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+        dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+        dev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+        dev->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+        dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+        dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+        dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+
+        struct V { float x, y, z, rhw; DWORD c; float u, v; };
+        for (int i = 0; i < n; ++i) {
+            const D3D9TexQuad& q = quads[i];
+            if (!q.tex) continue;
+            dev->SetTexture(0, static_cast<IDirect3DBaseTexture9*>(q.tex));
+            const float o = -0.5f;  // pixel-center rasterisation offset
+            const V vtx[4] = {
+                {q.x0 + o, q.y0 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v0},
+                {q.x1 + o, q.y0 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v0},
+                {q.x0 + o, q.y1 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v1},
+                {q.x1 + o, q.y1 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v1},
+            };
+            dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vtx, sizeof(V));
+        }
+
+        if (SUCCEEDED(dev->GetRenderTargetData(rtSurf, sysSurf))) {
+            D3DLOCKED_RECT lr;
+            if (SUCCEEDED(sysSurf->LockRect(&lr, nullptr, D3DLOCK_READONLY))) {
+                auto* dst = static_cast<unsigned char*>(out_argb);
+                const auto* src = static_cast<const unsigned char*>(lr.pBits);
+                for (int y = 0; y < h; ++y)
+                    std::memcpy(dst + static_cast<size_t>(y) * w * 4,
+                                src + static_cast<size_t>(y) * lr.Pitch,
+                                static_cast<size_t>(w) * 4);
+                sysSurf->UnlockRect();
+                ok = true;
+            }
+        }
+    }
+
+    dev->SetRenderTarget(0, prevRT);
+    dev->SetViewport(&prevVp);
+    if (sb) { sb->Apply(); sb->Release(); }
+    if (prevRT) prevRT->Release();
+    if (sysSurf) sysSurf->Release();
+    if (rtSurf) rtSurf->Release();
+    if (rt) rt->Release();
+    return ok;
+}
+
 // Picks the texture upload path for the renderer the client is actually running:
 // the DX7 proxy (Proxy_EndScene) sets g_imgui_dx7_active, in which case ImGui's
 // ImTextureID must be a DirectDraw surface, not a D3D9 texture.

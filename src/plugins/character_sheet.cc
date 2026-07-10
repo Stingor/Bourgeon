@@ -1,18 +1,22 @@
 #include "plugins/character_sheet.h"
 
 #include <Windows.h>
+#include <commdlg.h>  // GetSaveFileNameA (dialogue « Enregistrer sous »)
+#include <objbase.h>  // CoInitializeEx pour le thread du dialogue
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "plugins/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
 #include "plugins/imgui_escape.h"
 #include "ui/ro_imgui.h"
 
@@ -54,6 +58,17 @@ constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpStatUp  = 0x00BB;  // CZ_STATUS_CHANGE {op, statType, amount}
 const int   kStatType[6] = {0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12};  // STR..LUK
 const char* kStatName[6] = {"STR", "AGI", "VIT", "INT", "DEX", "LUK"};
+// Poses proposées dans le combo (sous-ensemble d'animType : on retire mort/gelé/
+// touché/ramasser/attaque, peu utiles/moches en avatar). {animType, libellé}.
+struct PoseOpt { int anim; const char* label; };
+const PoseOpt kPoses[] = {{0, "Repos"}, {1, "Marche"}, {2, "Assis"}, {4, "Combat"}};
+const int kPoseCount = 4;
+const char* PoseLabel(int anim) {
+  for (int i = 0; i < kPoseCount; ++i)
+    if (kPoses[i].anim == anim) return kPoses[i].label;
+  return "Combat";  // repli
+}
+constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
 //  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_tweaks)
 constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
@@ -295,21 +310,34 @@ void SendStatUp(int statType) {
 // Abreviation d'un slot vide (pour l'afficher grise dans la case).
 const char* SlotAbbrev(int slot) {
   switch (slot) {
-    case 0: return "Tete\nhaut";
-    case 8: return "Tete\nmil.";
-    case 9: return "Tete\nbas";
-    case 4: return "Armure";
+    case 0: return "Head\nbot";
+    case 8: return "Head\ntop";
+    case 9: return "Head\nmid";
+    case 4: return "Armor";
     case 2: return "Cape";
-    case 1: return "Arme";
-    case 5: return "Bouclier";
-    case 6: return "Chauss.";
-    case 3: return "Acc. 1";
-    case 7: return "Acc. 2";
+    case 1: return "Weapon";
+    case 5: return "Shield";
+    case 6: return "Shoes";
+    case 3: return "Acc. L";
+    case 7: return "Acc. R";
     default: return "";
   }
 }
 
 const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
+
+//  Deux tailles de fenetre : doll seul (narrow) ou doll+stats (wide). Le drag snap
+//  sur la plus proche ; le volet stats est cache si la largeur ne suffit pas (evite
+//  la scrollbar "dans le vide").
+constexpr float kDollW  = 280.0f;   // largeur zone doll (contenu)
+constexpr float kStatsW = 240.0f;   // largeur zone stats (contenu)
+struct WinSnap { float narrow = 0.0f, wide = 0.0f; bool valid = false; };
+WinSnap g_win_snap;
+void SnapCharSheetWidth(ImGuiSizeCallbackData* d) {
+  if (!g_win_snap.valid) return;
+  const float mid = (g_win_snap.narrow + g_win_snap.wide) * 0.5f;
+  d->DesiredSize.x = (d->DesiredSize.x < mid) ? g_win_snap.narrow : g_win_snap.wide;
+}
 
 }  // namespace
 
@@ -334,10 +362,15 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex),
                    ImVec2(sz - 2 * pad, sz - 2 * pad));
     }
-    if (it.refine > 0) {  // overlay "+N" en haut a gauche
+    if (it.refine > 0) {  // overlay "+N" : texte noir + contour blanc (lisible)
       char rf[8];
       std::snprintf(rf, sizeof(rf), "+%d", it.refine);
-      dl->AddText(ImVec2(wp.x + 2, wp.y + 1), IM_COL32(255, 220, 60, 255), rf);
+      const ImVec2 rp(wp.x + 2, wp.y + 1);
+      const ImU32 white = IM_COL32(255, 255, 255, 255);
+      for (int oy = -1; oy <= 1; ++oy)
+        for (int ox = -1; ox <= 1; ++ox)
+          if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), white, rf);
+      dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
     }
   } else {  // slot vide : abreviation grisee
     const char* ab = SlotAbbrev(slot);
@@ -370,39 +403,190 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
 }
 
 void CharacterSheet::DrawDoll(float avail_w) {
-  // En-tete (colonne gauche) : pseudo, classe, niveau.
+  // En-tete (colonne gauche, CENTRE horizontalement) : pseudo, classe, niveau.
+  const float start_x = ImGui::GetCursorPosX();
+  auto centered = [&](const char* txt) {
+    const float tw = ImGui::CalcTextSize(txt).x;
+    ImGui::SetCursorPosX(start_x + std::max(0.0f, (avail_w - tw) * 0.5f));
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 5.0f);
+    ImGui::TextColored(kBlack, "%s", txt);
+  };
   const std::string name = Bourgeon::Instance().client().session().GetCharName();
-  ImGui::TextColored(kBlack, "%s", name.empty() ? "(perso)" : name.c_str());
-  ImGui::TextColored(kBlack, "%s   Nv %d / %d", ClassNameSEH(),
-                     ReadInt(kBaseLvl), ReadInt(kJobLvl));
+  char lvl[96];
+  std::snprintf(lvl, sizeof(lvl), "%s   Nv %d / %d", ClassNameSEH(),
+                ReadInt(kBaseLvl), ReadInt(kJobLvl));
+  centered(name.empty() ? "(perso)" : name.c_str());
+  centered(lvl);
   ImGui::Separator();
 
-  // Colonnes de slots facon poupee : gauche (tete/armure/cape), droite
-  // (arme/bouclier/chaussures/accessoires), avatar au centre.
-  const int leftSlots[5]  = {0, 8, 9, 4, 2};   // tete haut/mil/bas, armure, cape
-  const int rightSlots[5] = {1, 5, 6, 3, 7};   // arme, bouclier, chauss., acc1, acc2
-  const float sz = 44.0f, gap = 6.0f;
+  // Bloc poupée : 2 colonnes de slots + avatar central, largeur fixe CENTRÉE
+  // horizontalement (MÊME méthode que l'en-tête : start_x + marge -> sinon le bloc
+  // est collé à gauche). La disposition dépend de l'onglet (branches ci-dessous).
+  const float sz = 44.0f, gap = 6.0f, avatar_w = 130.0f;
+  const float block_w = sz + gap + avatar_w + gap + sz;
+  const float ox = start_x + std::max(0.0f, (avail_w - block_w) * 0.5f);  // centre
   const float y0 = ImGui::GetCursorPosY() + 2.0f;
-  const float lx = 4.0f;
-  const float rx = avail_w - sz - 4.0f;
-  for (int i = 0; i < 5; ++i) {
-    DrawSlot(leftSlots[i], costume_, lx, y0 + i * (sz + gap), sz);
-    DrawSlot(rightSlots[i], costume_, rx, y0 + i * (sz + gap), sz);
+  const float lx = ox;                              // colonne gauche
+  const float ax = ox + sz + gap;                   // avatar
+  const float rx = ox + sz + gap + avatar_w + gap;  // colonne droite
+  // Hauteur de l'avatar CONSTANTE (4 rangées) sur les deux onglets : le sprite ne
+  // change pas de taille en basculant Équipement <-> Costume (pas de re-figeage).
+  const float cw = avatar_w;
+  const float ch = 4 * (sz + gap) - gap;
+  float content_bottom;  // y du bas du contenu doll (base du sélecteur de pose)
+  if (costume_) {
+    // Onglet COSTUME : seuls les slots costume RÉELS existent (3 têtes + cape) ->
+    // aucun cadre vide. Tête mil en haut-droite (comme l'équip) ; les 2 rangées sont
+    // centrées verticalement contre l'avatar.
+    const int cL[2] = {8, 0};   // tête haut (8), tête bas (0)
+    const int cR[2] = {9, 2};   // tête mil (9, haut-droite), cape
+    const float block_h = 2 * (sz + gap) - gap;
+    const float off = (ch - block_h) * 0.5f;  // centrage vertical vs l'avatar
+    for (int i = 0; i < 2; ++i) {
+      DrawSlot(cL[i], costume_, lx, y0 + off + i * (sz + gap), sz);
+      DrawSlot(cR[i], costume_, rx, y0 + off + i * (sz + gap), sz);
+    }
+    content_bottom = y0 + ch;
+  } else {
+    // Onglet ÉQUIPEMENT : 4 rangées de slots + arme/bouclier SOUS le doll.
+    const int leftSlots[4]  = {8, 0, 2, 7};   // tête haut (8), tête bas (0), cape, Acc L (acc2)
+    const int rightSlots[4] = {9, 4, 6, 3};   // tête mil (9, haut-droite), armure, chauss., Acc R (acc1)
+    for (int i = 0; i < 4; ++i) {
+      DrawSlot(leftSlots[i], costume_, lx, y0 + i * (sz + gap), sz);
+      DrawSlot(rightSlots[i], costume_, rx, y0 + i * (sz + gap), sz);
+    }
+    // Arme (main DROITE du perso) à GAUCHE, bouclier / arme main gauche à DROITE
+    // — vue « miroir » d'un perso qui te fait face, sous les coins bas de l'avatar.
+    const float wpn_y = y0 + 4 * (sz + gap);
+    DrawSlot(1, costume_, ax, wpn_y, sz);                    // arme -> bas gauche
+    DrawSlot(5, costume_, ax + avatar_w - sz, wpn_y, sz);    // bouclier -> bas droite
+    content_bottom = wpn_y + sz;
   }
-  // Avatar central (placeholder Phase 1 ; RenderPlayerAvatar en Phase 2).
-  const float cx = lx + sz + gap;
-  const float cw = std::max(60.0f, rx - cx - gap);
-  const float ch = 5 * (sz + gap) - gap;
-  ImGui::SetCursorPos(ImVec2(cx, y0));
+  ImGui::SetCursorPos(ImVec2(ax, y0));
   ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(228, 230, 236, 255));
   ImGui::BeginChild("cs_avatar", ImVec2(cw, ch), true,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  const char* ph = "Avatar\n(Phase 2)";
-  const ImVec2 ts = ImGui::CalcTextSize(ph);
-  ImGui::SetCursorPos(ImVec2((cw - ts.x) * 0.5f, (ch - ts.y) * 0.5f));
-  ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.45f, 1.0f), "%s", ph);
+  if (auto* bi = Bourgeon::Instance().basic_info()) {
+    const ImVec2 rp = ImGui::GetWindowPos();
+    const ImVec2 rs = ImGui::GetWindowSize();
+    bi->RenderPlayerAvatar(rp.x + 2.0f, rp.y + 2.0f, rs.x - 4.0f, rs.y - 4.0f,
+                           avatar_anim_, avatar_dir_, avatar_animate_);
+  }
   ImGui::EndChild();
   ImGui::PopStyleColor();
+  // Molette sur l'avatar = tourner (comme le preview cashshop : dir 0..7 + wrap,
+  // et on CONSOMME la molette pour ne pas scroller la fenetre). Defaut = face.
+  if (ImGui::IsItemHovered()) {
+    ro::SetHoverCursor(2);
+    const float wheel = ImGui::GetIO().MouseWheel;
+    if (wheel != 0.0f) {
+      if (avatar_anim_ == kAnimCombat)  // combat : 4 dirs cardinales (0=face,2,4=dos,6)
+        avatar_dir_ = ((avatar_dir_ & ~1) + (wheel > 0.0f ? 2 : 6)) & 7;
+      else
+        avatar_dir_ = (avatar_dir_ + (wheel > 0.0f ? 1 : 7)) & 7;  // 8 dirs
+      ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenetre
+    }
+  }
+
+  // Selecteur de pose sous le contenu du doll (la direction = MOLETTE).
+  const float sel_y = content_bottom + 8.0f;
+  const float fh = ImGui::GetFrameHeightWithSpacing();
+  ImGui::SetCursorPos(ImVec2(ox, sel_y));
+  ImGui::SetNextItemWidth(block_w);
+  if (ro::RoBeginCombo("##cs_pose", PoseLabel(avatar_anim_))) {
+    for (int i = 0; i < kPoseCount; ++i)
+      if (ImGui::Selectable(kPoses[i].label, avatar_anim_ == kPoses[i].anim)) {
+        avatar_anim_ = kPoses[i].anim;
+        if (avatar_anim_ == kAnimCombat) avatar_dir_ &= ~1;  // snap dir cardinale
+      }
+    ro::RoEndCombo();
+  }
+  // « Animer » n'est utile que pour Marche(1)/Combat(4) : Repos/Assis sont figés
+  // (image 0) pour éviter la tête + coiffes qui « regardent autour » en défilant.
+  if (avatar_anim_ == 1 || avatar_anim_ == kAnimCombat) {
+    ImGui::SetCursorPos(ImVec2(ox, sel_y + fh));
+    ro::RoCheckbox("Animer", &avatar_animate_);
+  }
+  // Génère un GIF animé (fond transparent) de la pose+direction courante. Le clic
+  // ouvre un dialogue « Enregistrer sous » sur un thread séparé (non bloquant) ;
+  // l'export se fait ici, sur le thread principal, quand le chemin est prêt.
+  ImGui::SetCursorPos(ImVec2(ox, sel_y + 2.0f * fh));
+  const bool gif_busy = gif_dialog_busy_.load();
+  if (gif_busy) ImGui::BeginDisabled();
+  if (ro::RoButton("Générer le GIF", block_w)) RequestGifSave();
+  if (gif_busy) ImGui::EndDisabled();
+
+  // Résultat du dialogue (déposé par le thread séparé) → export ici, thread
+  // principal, car ExportAvatarGif a besoin du device D3D9.
+  if (gif_dialog_ready_.exchange(false)) {
+    const std::string p = gif_dialog_path_;
+    if (!p.empty()) {
+      auto* bi = Bourgeon::Instance().basic_info();
+      const bool ok =
+          bi && bi->ExportAvatarGif(gif_export_anim_, gif_export_dir_, p.c_str());
+      const char* fn = std::strrchr(p.c_str(), '\\');
+      gif_status_ = ok ? (std::string("GIF OK : ") + (fn ? fn + 1 : p.c_str()))
+                       : std::string("Échec GIF (voir log)");
+    } else {
+      gif_status_ = "Export annulé";
+    }
+    gif_dialog_busy_.store(false);
+  }
+  if (!gif_status_.empty()) {
+    ImGui::SetCursorPos(ImVec2(ox, sel_y + 3.0f * fh));
+    ImGui::PushTextWrapPos(ox + block_w);  // wrap dans la largeur du bloc
+    ImGui::TextColored(kBlack, "%s", gif_status_.c_str());
+    ImGui::PopTextWrapPos();
+  }
+}
+
+// Ouvre le dialogue Windows « Enregistrer sous » du GIF sur un THREAD séparé : un
+// dialogue modal ne doit PAS bloquer le thread de rendu/réseau du jeu (sinon
+// timeout → déconnexion). Le chemin choisi est déposé dans gif_dialog_path_ +
+// gif_dialog_ready_ ; le thread principal (DrawDoll) fait l'export une fois prêt.
+void CharacterSheet::RequestGifSave() {
+  if (gif_dialog_busy_.exchange(true)) return;  // un dialogue est déjà ouvert
+  gif_dialog_ready_.store(false);
+  gif_export_anim_ = avatar_anim_;  // fige la pose/direction au moment du clic
+  gif_export_dir_  = avatar_dir_;
+
+  // Nom par défaut : avatar_<pseudo>_<pose>_d<N>.gif (pseudo assaini).
+  std::string name = Bourgeon::Instance().client().session().GetCharName();
+  for (char& c : name)
+    if (c && std::strchr("\\/:*?\"<>| ", c)) c = '_';
+  if (name.empty()) name = "perso";
+  char defname[MAX_PATH];
+  std::snprintf(defname, sizeof(defname), "avatar_%s_%s_d%d.gif", name.c_str(),
+                PoseLabel(gif_export_anim_), gif_export_dir_);
+
+  // Dossier initial proposé : <jeu>\screenshot (créé s'il manque).
+  char exe[MAX_PATH] = {0};
+  GetModuleFileNameA(nullptr, exe, MAX_PATH);
+  char* slash = std::strrchr(exe, '\\');
+  if (slash) *slash = '\0';
+  std::string initdir = std::string(exe) + "\\screenshot";
+  CreateDirectoryA(initdir.c_str(), nullptr);
+
+  std::thread([this, def = std::string(defname), initdir]() {
+    // Apartment COM pour le dialogue moderne (places bar / shell) ; isolé au thread.
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    char path[MAX_PATH];
+    strncpy_s(path, sizeof(path), def.c_str(), _TRUNCATE);
+    OPENFILENAMEA ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner   = nullptr;  // top-level : pas de propriétaire cross-thread
+    ofn.lpstrFilter = "GIF anime (*.gif)\0*.gif\0Tous les fichiers\0*.*\0";
+    ofn.lpstrFile   = path;
+    ofn.nMaxFile    = sizeof(path);
+    ofn.lpstrInitialDir = initdir.c_str();
+    ofn.lpstrDefExt = "gif";
+    ofn.lpstrTitle  = "Enregistrer le GIF de l'avatar";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    const bool ok = GetSaveFileNameA(&ofn) != 0;
+    gif_dialog_path_ = ok ? std::string(path) : std::string();
+    gif_dialog_ready_.store(true);  // release : signale le thread principal
+    if (SUCCEEDED(hr)) CoUninitialize();
+  }).detach();
 }
 
 void CharacterSheet::DrawStatsPanel() {
@@ -465,7 +649,15 @@ void CharacterSheet::OnRenderUI() {
     ImGui::SetNextWindowPos(ImVec2(240, 140), ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
-  ImGui::SetNextWindowSize(ImVec2(600, 380), ImGuiCond_FirstUseEver);
+  // Deux tailles possibles : doll seul (narrow) ou doll+stats (wide) ; snap au drag.
+  const float gap = ImGui::GetStyle().ItemSpacing.x;
+  g_win_snap.narrow = kDollW + chrome_w_;
+  g_win_snap.wide   = kDollW + gap + kStatsW + chrome_w_;
+  g_win_snap.valid  = true;
+  ImGui::SetNextWindowSizeConstraints(ImVec2(g_win_snap.narrow, 450.0f),
+                                      ImVec2(g_win_snap.wide, 10000.0f),
+                                      SnapCharSheetWidth);
+  ImGui::SetNextWindowSize(ImVec2(g_win_snap.wide, 490.0f), ImGuiCond_FirstUseEver);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
@@ -486,17 +678,22 @@ void CharacterSheet::OnRenderUI() {
   }
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
-  const float stats_w = 240.0f;
-  const float doll_w = std::max(220.0f, avail.x - stats_w - 8.0f);
+  chrome_w_ = ImGui::GetWindowWidth() - avail.x;  // mesure pour la contrainte suivante
+  // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).
+  const bool show_stats =
+      avail.x >= kDollW + ImGui::GetStyle().ItemSpacing.x + kStatsW - 6.0f;
+  const float doll_w = show_stats ? kDollW : avail.x;
 
   ImGui::BeginChild("cs_doll", ImVec2(doll_w, 0), true);
   DrawDoll(ImGui::GetContentRegionAvail().x);
   ImGui::EndChild();
 
-  ImGui::SameLine();
-  ImGui::BeginChild("cs_stats", ImVec2(stats_w, 0), true);
-  DrawStatsPanel();
-  ImGui::EndChild();
+  if (show_stats) {
+    ImGui::SameLine();
+    ImGui::BeginChild("cs_stats", ImVec2(kStatsW, 0), true);
+    DrawStatsPanel();
+    ImGui::EndChild();
+  }
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);
