@@ -8,8 +8,9 @@
 // already feeds mouse input to ImGui, so the windows are draggable/resizable out
 // of the box); more Basic-Info customizations will be added here over time.
 //
-// Zeny has no natural "max", so its bar is value-only: it fills fully and simply
-// shows the amount (thousands-grouped). Weight is a real fraction (cur / max).
+// Zeny has no in-memory max, but the client stores it signed 32-bit, so its bar
+// fills relative to the INT32 hard cap (2,147,483,647) and shows the amount
+// thousands-grouped. Weight is a real fraction (cur / max).
 //
 // Each bar is an INDEPENDENT widget with its own position/size/colour/show flag.
 // A global "lock" flips the windows to NoMove|NoResize|NoInputs, which freezes
