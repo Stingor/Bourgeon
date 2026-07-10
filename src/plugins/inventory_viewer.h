@@ -54,12 +54,21 @@ class InventoryViewer : public Plugin {
   bool HandleNativeDrop(int mx, int my);
   void OnMouseDown(int mx, int my);
 
+  // True si (mx,my) est au-dessus de la fenêtre du viewer inventaire (ImGui) ouverte.
+  // Sert au viewer STORAGE pour router un retrait par glisser quand les deux sont des
+  // viewers ImGui (le rect natif de l'inventaire est caché -> MouseOverInventory échoue).
+  bool PointOverViewer(int mx, int my) const {
+    return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
+           mx < win_x_ + win_w_ && my < win_y_ + win_h_;
+  }
+
  private:
   // Un item d'inventaire, extrait en POD (sous SEH) pour un rendu hors __try.
   struct Item {
     uint32_t id = 0;          // atoi(std::string @info+0x2c) — la SOURCE du jeu
     int      amount = 0;      // node+0x18
     int      index = 0;       // info+4 : index inventaire (arg use/equip/drop)
+    uint32_t loc = 0;         // info+8 : masque d'emplacement d'équip (arg2 équip/munition)
     int      type = 0;        // info+0 : type d'item (onglets)
     uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
     uint8_t  favorite = 0;    // node+0x90 (onglet favoris)
@@ -78,6 +87,8 @@ class InventoryViewer : public Plugin {
   float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
   bool  win_valid_ = false;
   bool  mousedown_over_viewer_ = false;
+  bool  mousedown_over_equip_ = false;  // le drag natif a démarré sur la fenêtre Équipement
+  bool  mousedown_over_cart_ = false;   // le drag natif a démarré sur la fenêtre Chariot
 
   // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
   enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage };
@@ -90,6 +101,7 @@ class InventoryViewer : public Plugin {
   // Drag d'un item du viewer (-> équip/sol/chariot selon la cible).
   bool  drag_active_ = false;
   int   drag_index_ = 0, drag_amount_ = 0, drag_type_ = 0;
+  uint32_t drag_loc_ = 0;  // info+8 de l'item glissé (arg2 équip sur drop fenêtre Équip)
   float drag_mx_ = 0, drag_my_ = 0;
 
   bool open_ = false;         // inventaire ouvert ce frame ?

@@ -55,6 +55,14 @@ class StorageTweaks : public Plugin {
   // (Le payload de drag n'expose pas la source de façon fiable, cf. project mémoire.)
   void OnMouseDown(int mx, int my);
 
+  // True si (mx,my) est au-dessus de la fenêtre du viewer storage (ImGui) ouverte. Sert
+  // au viewer INVENTAIRE pour router un dépôt par glisser quand les DEUX sont des viewers
+  // ImGui (le rect natif du storage est caché, donc MouseOverStorage échoue).
+  bool PointOverViewer(int mx, int my) const {
+    return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
+           mx < win_x_ + win_w_ && my < win_y_ + win_h_;
+  }
+
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création d'une fenêtre id
   // 0x21 (entrepôt) : si imgui_enabled_, force le flag de visibilité (win+0x28) à 0
   // AVANT le 1er rendu -> pas de flicker (le OnTick seul laissait 1 frame visible).

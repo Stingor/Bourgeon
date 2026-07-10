@@ -11,6 +11,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
+#include "plugins/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // skin RO (BeginRoWindow / RoButton / RoCheckbox / DrawBar)
@@ -40,6 +41,7 @@ constexpr int kInfoFav  = 0x74;  // favori dans l'ItemSkillInfo (RE FUN_0095af80
 // Champs DANS l'ItemSkillInfo (= node+0x08) :
 constexpr int kInfoType   = 0x00;  // type d'item (onglets)
 constexpr int kInfoIndex  = 0x04;  // index inventaire CLIENT (arg use/equip/drop/fav)
+constexpr int kInfoLoc    = 0x08;  // masque d'emplacement d'équip (arg2 du msg 0x13/0x57 ; RE double-clic natif)
 constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
 constexpr int kInfoIdCap  = 0x40;  // capacité SSO de la std::string id (+0x2c+0x14)
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
@@ -102,6 +104,7 @@ constexpr uintptr_t kFmtComma = 0x00a948d0;
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
 constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
 constexpr uintptr_t kMakeWindow  = 0x00a39340;   // __fastcall(mgr, edx, id)
+constexpr uintptr_t kFindWindow  = 0x00a47b90;   // __thiscall(mgr, id) : ptr fenêtre par id (0 si absente)
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
 constexpr int kWinItemDesc = 0xc;
 constexpr int kWinInventory = 8;
@@ -109,6 +112,7 @@ constexpr int kMsgSetItem  = 0x18;
 constexpr int kVfOnMsg     = 0x94;
 constexpr int kVfSetPos    = 0x10;
 using MakeWindow_t   = void*(__fastcall*)(void*, void*, void*);
+using FindWindow_t   = void*(__thiscall*)(void*, int);
 using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fenêtre si ouverte
 using OnMsg_t        = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
@@ -117,7 +121,7 @@ using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
 // jeu — c'est *(0x0121333c) gardé). Son vtbl+0x18 = CMode::SendMsg (le gros switch).
 // Commandes (confirmées via le double-clic natif 0x00949fc0 et le clic-droit 0x0094f380) :
 //   use conso 0x1b / équiper 0x13 / carte 0x7b / munition-costume-ombre 0x57 ;
-//   transfert vers chariot 0x4c / vers entrepôt Kafra 0x37 (0x33 = guilde, fenêtre 0x271b).
+//   transfert vers chariot 0x4c / vers storage Kafra 0x37 (0x33 = guilde, fenêtre 0x271b).
 constexpr uintptr_t kGetMode = 0x00a75340;
 constexpr uintptr_t kModeArg = 0x1213338;
 constexpr int kVfDispCmd = 0x18;
@@ -125,9 +129,11 @@ constexpr int kCmdUse       = 0x1b;
 constexpr int kCmdEquip     = 0x13;
 constexpr int kCmdCard      = 0x7b;
 constexpr int kCmdAmmo      = 0x57;
-constexpr int kCmdChatLink  = 0x14e;  // Shift+clic G : poste le lien de l'item dans le chat.
+constexpr int kCmdEquipAlt  = 0x12e;  // Ctrl+double-clic : équipe en MAIN GAUCHE (dual-wield).
+constexpr uintptr_t kLeftHandEquipOpt = 0x01602278;  // DAT_01602278 : option client "équip main gauche" active ?
 constexpr int kCmdToCart    = 0x4c;
-constexpr int kCmdToStorage = 0x37;  // entrepôt KAFRA (g_StorageWnd_ptr 0x0131f770 ouvert).
+constexpr int kCmdCartToBody = 0x4d;  // chariot -> inventaire (retrait) ; RE UIInventoryWnd_OnMsg case 0x26 (contexte cart).
+constexpr int kCmdToStorage = 0x37;  // storage KAFRA (g_StorageWnd_ptr 0x0131f770 ouvert).
                                      // 0x33 = guilde (fenêtre 0x271b), 0x4c = chariot.
                                      // RE UIInventoryWnd_OnRButtonDown : le natif choisit selon
                                      // la fenêtre ouverte ; notre StorageOpen() lit 0x0131f770.
@@ -141,8 +147,9 @@ using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 //     Donc bascule : envoyer (déjà favori ? 1 : 0). index = index CLIENT (info+4).
 constexpr uint16_t kOpDrop     = 0x0363;  // CZ_ITEM_THROW. ATTENTION SHUFFLE : 0x0438 reecrit -> UseSkillToId (len 10) = disconnect ; drop shuffle = 0x0363 (clif_shuffle.hpp bloc > 20180307). Format [op:2][index:2][amount:2] inchange.
 constexpr uint16_t kOpFavorite = 0x0907;
+constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex} : dés-équiper.
 
-// Fenêtres cible d'un transfert (chariot / entrepôt), pour le drag-out + menu.
+// Fenêtres cible d'un transfert (chariot / storage), pour le drag-out + menu.
 constexpr uintptr_t kCartWndGlobal = 0x0131f6a0;
 constexpr uintptr_t kCartVTable    = 0x0103d538;
 constexpr uintptr_t kStorageSlot   = 0x0131f770;
@@ -170,19 +177,42 @@ void SendCmd(int cmd, int index, int arg2) {
 }
 
 // Utiliser ou équiper l'item selon son type (miroir du double-clic natif 0x00949fc0).
-// Le dispatcher réutilise toute la validation du client (et, pour l'équip, CALCULE
-// lui-même le masque de position — on n'a pas à le faire).
-void UseOrEquip(int index, int type) {
-  int cmd = 0;
+// arg2 = masque d'emplacement (info+8, `loc`) pour ÉQUIP/MUNITION — le natif le passe ;
+// arg2=0 => le serveur reçoit position 0 => l'équip échoue (c'était LE bug). arg2=0 pour
+// conso/carte (le natif le force à 0). leftHand (Ctrl+double-clic) = cmd 0x12e (main
+// gauche dual-wield) si l'option client DAT_01602278 est active.
+void UseOrEquip(int index, int type, uint32_t loc, bool leftHand) {
+  int cmd = 0, arg2 = 0;
   switch (type) {
-    case 0: case 1: case 2: case 0x12: cmd = kCmdUse;   break;  // consommables
+    case 0: case 1: case 2: case 0x12: cmd = kCmdUse; break;  // consommables (arg2=0)
     case 4: case 5: case 8: case 9:
-    case 0xb: case 0xc: case 0xd: case 0xe: case 0xf: cmd = kCmdEquip; break;  // équipement
-    case 6:                                  cmd = kCmdCard; break;  // carte (mode insertion)
-    case 0xa: case 0x10: case 0x11: case 0x13: cmd = kCmdAmmo; break;  // munition/costume/ombre
+    case 0xb: case 0xc: case 0xd: case 0xe: case 0xf:
+      cmd = kCmdEquip; arg2 = static_cast<int>(loc); break;  // équipement
+    case 6: cmd = kCmdCard; break;                           // carte (arg2=0)
+    case 0xa: case 0x10: case 0x11: case 0x13:
+      cmd = kCmdAmmo; arg2 = static_cast<int>(loc); break;   // munition/costume/ombre
     default: return;  // etc/divers : le double-clic ne fait rien
   }
-  SendCmd(cmd, index, 0);
+  // Ctrl = main gauche (équip/munition), si l'option client est active (comme le natif).
+  if (leftHand && (cmd == kCmdEquip || cmd == kCmdAmmo)) {
+    bool opt = false;
+    __try { opt = *reinterpret_cast<uint8_t*>(kLeftHandEquipOpt) != 0; }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    if (opt) cmd = kCmdEquipAlt;
+  }
+  SendCmd(cmd, index, arg2);
+}
+
+// Type équipable (équipement OU munition/costume/ombre) : pour le drop sur la fenêtre
+// Équipement — un consommable lâché dessus ne doit PAS être consommé.
+bool IsEquippable(int type) {
+  switch (type) {
+    case 4: case 5: case 8: case 9:
+    case 0xb: case 0xc: case 0xd: case 0xe: case 0xf:
+    case 0xa: case 0x10: case 0x11: case 0x13:
+      return true;
+    default: return false;
+  }
 }
 
 void SendDrop(int index, int amount) {
@@ -192,6 +222,56 @@ void SendDrop(int index, int amount) {
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
   *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(amount);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// ── Drag NATIF entrant (fenêtre Équipement -> viewer = dés-équiper) ──────────────
+// Le drag natif est porté par l'objet mode (Dispatcher(), charge à +0x308) : payload
+// +0x80=0 (FullPayload item), +0x04 = index inventaire client. Repris de StorageTweaks.
+constexpr int kDragPayloadOff = 0x308;
+constexpr int kDragPL_type = 0x80, kDragPL_index = 0x04, kDragPL_id = 0x04, kDragPL_cat = 0x00;
+constexpr int kDragPL_count = 0x10;  // quantité (pile) du drag natif
+
+bool ReadDraggedItem(void* obj, int* index, int* qty) {  // false si pas un item / invalide
+  __try {
+    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
+    if (p[kDragPL_type] != 0) return false;  // FullPayload (item) uniquement
+    const int idx = *reinterpret_cast<int*>(p + kDragPL_index);
+    if (idx <= 0) return false;
+    *index = idx;
+    const int c = *reinterpret_cast<int*>(p + kDragPL_count);
+    *qty = c > 0 ? c : 1;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+void CancelNativeDrag(void* obj) {  // vide la charge -> le jeu ne drop rien au relâché
+  __try {
+    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
+    *reinterpret_cast<int*>(p + kDragPL_cat) = 0;
+    *reinterpret_cast<int*>(p + kDragPL_id)  = 0;
+    p[kDragPL_type] = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// CZ_REQ_TAKEOFF_EQUIP 0x00AB {op, invIndex} : dés-équipe l'item à cet index inventaire.
+void SendUnequip(int index) {
+  if (index <= 0) return;
+  uint8_t pkt[4];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpUnequip;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// Lit l'id (nameid) de l'item d'un drag natif : resname = std::string @payload+0x3c (SSO,
+// heap si cap>0xf), atoi. Sert à redessiner l'icône du drag AU-DESSUS du viewer (le jeu la
+// rend DERRIÈRE l'overlay ImGui). 0 si ce n'est pas un item.
+uint32_t ReadDragItemId(void* obj) {
+  __try {
+    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
+    if (p[kDragPL_type] != 0) return 0;  // FullPayload (item) uniquement
+    const uint32_t cap = *reinterpret_cast<uint32_t*>(p + 0x3c + 0x14);  // capacité SSO
+    const char* s = (cap > 0xf) ? *reinterpret_cast<char**>(p + 0x3c)
+                                : reinterpret_cast<const char*>(p + 0x3c);
+    return (s && s[0]) ? static_cast<uint32_t>(atoi(s)) : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 // Bascule le favori d'un item : envoie son état ACTUEL (le serveur toggle).
@@ -323,6 +403,45 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Retrouve le pointeur ItemSkillInfo (node+8) d'un item par son INDEX inventaire, en
+// re-parcourant la liste session (comme OpenItemDesc, mais par index). nullptr si absent.
+void* FindInfoByIndex(int index) {
+  __try {
+    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    if (!head) return nullptr;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < 2000; ++guard) {
+      uint8_t* info = node + kNodeInfo;
+      if (*reinterpret_cast<int*>(info + kInfoIndex) == index) return info;
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return nullptr;
+}
+
+// Shift+clic G : insère le LIEN de l'item dans l'input de la fenêtre qui a le FOCUS
+// (chat), comme le natif UIInventoryWnd_OnLButtonDown (0x0094afb0, branche SHIFT) :
+// fenêtre focus = g_UIWindowMgr+0x1a0, son type = wnd+0x2c ; les types d'input chat
+// appellent UIChatWnd_InsertItemLink(wnd, info) (0x008217f0). L'utilisateur envoie
+// ensuite avec Entrée. Ne fait RIEN si la fenêtre focus n'est pas un input chat.
+using ChatInsertLink_t = void(__thiscall*)(void*, void*);
+void PostItemLinkToChat(int index) {
+  __try {
+    void* info = FindInfoByIndex(index);
+    if (!info) return;
+    void* focused = *reinterpret_cast<void**>(kUIWindowMgr + 0x1a0);
+    if (!focused) return;
+    const int type = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(focused) + 0x2c);
+    auto insert = reinterpret_cast<ChatInsertLink_t>(0x008217f0);
+    if (type == 0x1ea || type == 0x1ee) {   // input chat (focus direct)
+      insert(focused, info);
+    } else if (type == 0x1ed) {              // input via fenêtre dédiée (DAT_0131f6b0+0xbc)
+      void* base = *reinterpret_cast<void**>(0x0131f6b0);
+      if (base) insert(*reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(base) + 0xbc), info);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   __try {
@@ -348,6 +467,38 @@ bool MouseOverCart(float x, float y)    { return MouseOverWnd(kCartWndGlobal, kC
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
 bool CartOpen()    { return ReadValidWnd(kCartWndGlobal, kCartVTable) != nullptr; }
 bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
+
+// True si le point est au-dessus du VIEWER storage ImGui : quand les DEUX (inventaire +
+// storage) sont des viewers ImGui, le rect natif du storage est caché donc MouseOverStorage
+// échoue -> on teste le rect du viewer storage pour router le dépôt par glisser.
+bool StorageViewerOver(float x, float y) {
+  auto* st = Bourgeon::Instance().storage_tweaks();
+  return st && st->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
+}
+
+// Fenêtre Équipement (id 0xa) via FindWindow ; nullptr si absente OU cachée (flag +0x28).
+// Sert au drop d'équip : glisser un item dessus l'équipe.
+constexpr int kEquipWndId = 0xa;
+uint8_t* EquipWnd() {
+  __try {
+    auto* w = reinterpret_cast<uint8_t*>(reinterpret_cast<FindWindow_t>(kFindWindow)(
+        reinterpret_cast<void*>(kUIWindowMgr), kEquipWndId));
+    if (!w || *reinterpret_cast<int*>(w + kOffVisible) == 0) return nullptr;
+    return w;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+bool EquipOpen() { return EquipWnd() != nullptr; }
+bool MouseOverEquip(float x, float y) {
+  uint8_t* w = EquipWnd();
+  if (!w) return false;
+  __try {
+    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
+    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
+    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
 
 // Lecture SEH (POD only) des globals du footer -> hors OnRenderUI, qui contient des
 // objets C++ (vector/filter) et ne peut donc pas héberger de __try (C2712).
@@ -622,6 +773,27 @@ void MaybeFlushTextures() {
   g_assets_tried = false;
 }
 
+// Puce d'aide "(?)" listant les raccourcis souris de l'inventaire (tooltip au survol).
+void HelpMarkerShortcuts() {
+  ImGui::TextDisabled("(?)");
+  if (!ImGui::IsItemHovered()) return;
+  ImGui::BeginTooltip();
+  ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+  ImGui::TextUnformatted(
+      "Raccourcis inventaire\n\n"
+      "- Double-clic gauche : utiliser / équiper\n"
+      "- Ctrl + double-clic gauche : équiper en main gauche\n"
+      "- Maj + clic gauche : lien de l'item dans l'input du chat (puis Entrée)\n"
+      "- Clic droit : menu contextuel\n"
+      "- Ctrl + clic droit : description\n"
+      "- Maj + clic droit : (dé)favori\n"
+      "- Alt + clic droit : transfert rapide (storage / chariot si ouvert)\n"
+      "- Glisser : chariot / storage / équipement / sol\n"
+      "- Glisser un favori sur un autre onglet : le retirer des favoris");
+  ImGui::PopTextWrapPos();
+  ImGui::EndTooltip();
+}
+
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -675,6 +847,7 @@ void InventoryViewer::Extract() {
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
       it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
       it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
+      it.loc    = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
       it.type   = *reinterpret_cast<int*>(info + kInfoType);
       it.favorite = *reinterpret_cast<uint8_t*>(info + kInfoFav);
       SafeBuildName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
@@ -710,12 +883,33 @@ void InventoryViewer::OnMouseDown(int mx, int my) {
   mousedown_over_viewer_ =
       win_valid_ && mx >= win_x_ && my >= win_y_ &&
       mx < win_x_ + win_w_ && my < win_y_ + win_h_;
+  // Source d'un drag NATIF relâché sur le viewer : Équipement -> dés-équiper ; Chariot
+  // -> retirer vers l'inventaire.
+  mousedown_over_equip_ =
+      MouseOverEquip(static_cast<float>(mx), static_cast<float>(my));
+  mousedown_over_cart_ =
+      MouseOverCart(static_cast<float>(mx), static_cast<float>(my));
 }
 
-// Réservé (parité storage) : router un drag NATIF relâché sur le viewer. Non utilisé
-// en v1 (l'inventaire natif est caché -> pas de drag natif entrant), gardé pour la
-// symétrie de l'API WndProc.
-bool InventoryViewer::HandleNativeDrop(int /*mx*/, int /*my*/) { return false; }
+// Appelé par le hook WndProc au WM_LBUTTONUP (pré-input). Un drag NATIF relâché sur le
+// viewer : depuis l'Équipement => dés-équiper (CZ_REQ_TAKEOFF_EQUIP) ; depuis le Chariot
+// => retirer vers l'inventaire (cmd 0x4d). Puis vider la charge (pas de drop au sol).
+bool InventoryViewer::HandleNativeDrop(int mx, int my) {
+  if (!open_ || !imgui_enabled_ || !win_valid_) return false;
+  if (!mousedown_over_equip_ && !mousedown_over_cart_) return false;  // seules sources gérées
+  if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui
+  const bool over = !(mx < win_x_ || my < win_y_ ||
+                      mx >= win_x_ + win_w_ || my >= win_y_ + win_h_);
+  if (!over) return false;
+  void* obj = Dispatcher();
+  if (!obj) return false;
+  int index = 0, qty = 0;
+  if (!ReadDraggedItem(obj, &index, &qty)) return false;
+  if (mousedown_over_equip_) SendUnequip(index);                   // équip -> inventaire
+  else                       SendCmd(kCmdCartToBody, index, qty);  // chariot -> inventaire
+  CancelNativeDrag(obj);
+  return true;
+}
 
 void InventoryViewer::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
@@ -788,7 +982,10 @@ void InventoryViewer::OnRenderUI() {
     ImGui::EndPopup();
   }
 
-  // ── Recherche (pleine largeur, au-dessus) ──
+  // ── Aide raccourcis (?) + recherche (occupe le reste de la ligne) ──
+  ImGui::AlignTextToFramePadding();
+  HelpMarkerShortcuts();
+  ImGui::SameLine();
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
   if (ImGui::InputTextWithHint("##inv_filter", "Filtrer...", filter.InputBuf,
@@ -836,6 +1033,15 @@ void InventoryViewer::OnRenderUI() {
           cur_tab_ = c;
       }
       if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kCats[c].label);
+      // Glisser un item favori sur un AUTRE onglet -> le retirer des favoris (comme le natif).
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_ITEM")) {
+          const int di = *static_cast<const int*>(pl->Data);
+          if (di >= 0 && di < item_count_ && items_[di].favorite && !kCats[c].fav)
+            SendFavoriteToggle(items_[di].index, true);  // retire des favoris
+        }
+        ImGui::EndDragDropTarget();
+      }
       if (sel) {  // onglet actif -> mémorise son rect pour le passage blanc vers la grille
         activeTabMin = ImGui::GetItemRectMin();
         activeTabMax = ImGui::GetItemRectMax();
@@ -950,11 +1156,11 @@ void InventoryViewer::OnRenderUI() {
       // Survol : tooltip + double-clic = utiliser/équiper.
       if (hovered) {
         ImGui::BeginTooltip();
-        ImGui::Text("%s [%d]", it.name[0] ? it.name : "(?)", it.id);
+        ImGui::Text(" %s [%d] ", it.name[0] ? it.name : "(?)", it.id);
         if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
         ImGui::EndTooltip();
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-          UseOrEquip(it.index, it.type);
+          UseOrEquip(it.index, it.type, it.loc, ImGui::GetIO().KeyCtrl);  // Ctrl = main gauche
       }
       // Raccourcis clavier+souris natifs (RE UIInventoryWnd_OnRButtonDown) :
       //   Shift + clic GAUCHE  = poster le lien de l'item dans le chat (0x14e) ;
@@ -964,7 +1170,7 @@ void InventoryViewer::OnRenderUI() {
       //   clic DROIT seul      = menu contextuel.
       const ImGuiIO& mods = ImGui::GetIO();
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
-        SendCmd(kCmdChatLink, it.index, 0);
+        PostItemLinkToChat(it.index);  // Shift+clic G : lien item -> input chat focus
       if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
         if (mods.KeyCtrl) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
@@ -978,10 +1184,10 @@ void InventoryViewer::OnRenderUI() {
         }
       }
 
-      // Source de drag (transfert chariot/entrepôt ou jet au sol selon la cible).
+      // Source de drag (transfert chariot/storage ou jet au sol selon la cible).
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         drag_active_ = true;
-        drag_index_ = it.index; drag_amount_ = it.amount; drag_type_ = it.type;
+        drag_index_ = it.index; drag_amount_ = it.amount; drag_type_ = it.type; drag_loc_ = it.loc;
         ImGui::SetDragDropPayload("INV_ITEM", &idx, sizeof(idx));
         if (ic.tex) { ImGui::Image(TexId(ic.tex), ImVec2(24, 24)); ImGui::SameLine(); }
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
@@ -1002,7 +1208,7 @@ void InventoryViewer::OnRenderUI() {
                             (it.type >= 4 && it.type <= 0xf) || it.type == 6 ||
                             it.type == 0xa || it.type == 0x10 || it.type == 0x11 ||
                             it.type == 0x13;
-        if (usable && ImGui::MenuItem(act)) UseOrEquip(it.index, it.type);
+        if (usable && ImGui::MenuItem(act)) UseOrEquip(it.index, it.type, it.loc, false);
         if (ImGui::MenuItem(it.favorite ? "Retirer des favoris" : "Ajouter aux favoris"))
           SendFavoriteToggle(it.index, it.favorite != 0);
         // alootid : ramassage auto par ID (via MoonlightUi, comme le bouton d'item_desc).
@@ -1016,11 +1222,19 @@ void InventoryViewer::OnRenderUI() {
         // Jeter (au sol) — grisé si le verrou drop (bouton footer) est actif.
         const bool dropLocked = ReadLock(kDropLockGlobal);
         if (dropLocked) ImGui::BeginDisabled();
-        if (it.amount <= 1) { if (ImGui::MenuItem("Jeter")) SendDrop(it.index, 1); }
-        else if (ImGui::MenuItem("Jeter...")) {
-          pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
-          pend_action_ = kPendDrop; pend_open_prompt_ = true;
+        if (it.amount <= 1) {
+          if (dropLocked) 
+            ImGui::MenuItem("Jeter - verrouillé");
+          else
+            if (ImGui::MenuItem("Jeter")) SendDrop(it.index, 1);
         }
+        else
+          if (dropLocked) 
+            ImGui::MenuItem("Jeter - verrouillé");
+          else if (ImGui::MenuItem("Jeter...")) {
+            pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
+            pend_action_ = kPendDrop; pend_open_prompt_ = true;
+          }
         if (dropLocked) ImGui::EndDisabled();
         // Transferts (si la fenêtre cible est ouverte).
         if (CartOpen() || StorageOpen()) ImGui::Separator();
@@ -1051,7 +1265,7 @@ void InventoryViewer::OnRenderUI() {
         pont);
   }
 
-  // ── Drag terminé : router selon la cible (chariot / entrepôt / sol) ──
+  // ── Drag terminé : router selon la cible (chariot / storage / sol) ──
   if (drag_active_) {
     const ImGuiPayload* pl = ImGui::GetDragDropPayload();
     if (pl && pl->IsDataType("INV_ITEM")) {
@@ -1062,8 +1276,13 @@ void InventoryViewer::OnRenderUI() {
       if (drag_index_ > 0) {
         const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
                                drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
-        if (MouseOverCart(drag_mx_, drag_my_))         action = kPendToCart;
-        else if (MouseOverStorage(drag_mx_, drag_my_)) action = kPendToStorage;
+        if (MouseOverEquip(drag_mx_, drag_my_)) {         // drop sur la fenêtre Équipement
+          if (IsEquippable(drag_type_))
+            UseOrEquip(drag_index_, drag_type_, drag_loc_, false);  // -> équiper (sinon no-op)
+        }
+        else if (MouseOverCart(drag_mx_, drag_my_))    action = kPendToCart;
+        else if (MouseOverStorage(drag_mx_, drag_my_) ||
+                 StorageViewerOver(drag_mx_, drag_my_)) action = kPendToStorage;
         else if (!over_self && !ImGui::GetIO().WantCaptureMouse && !ReadLock(kDropLockGlobal))
           action = kPendDrop;  // verrou drop actif -> pas de jet au sol
       }
@@ -1170,6 +1389,28 @@ void InventoryViewer::OnRenderUI() {
     if (FooterImgToggle("##inv_sort", bx, cyc, g_btn_sort[1], g_btn_sort[0], sort_enabled_, "T",
                         "Trier la vue (type puis nom) ; sinon ordre d'inventaire", &bwOut))
       sort_enabled_ = !sort_enabled_;
+  }
+
+  // Icône du drag NATIF au-dessus du viewer : le jeu rend l'icône du drag AVANT l'overlay
+  // ImGui -> elle passe DERRIÈRE le viewer (ex. équip glissé depuis la fenêtre Équipement).
+  // Drag natif entrant = bouton gauche tenu + clic NON parti du viewer (sinon = notre drag
+  // ImGui) + pas de payload ImGui. Redessinée sur le curseur en taille tuile.
+  void* dobj = (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !mousedown_over_viewer_ &&
+                ImGui::GetDragDropPayload() == nullptr) ? Dispatcher() : nullptr;
+  if (dobj) {
+    const uint32_t did = ReadDragItemId(dobj);
+    const ImVec2 m = ImGui::GetMousePos();
+    const bool over = m.x >= win_x_ && m.y >= win_y_ &&
+                      m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
+    if (did != 0 && over) {
+      const IconTex ic = ResolveIcon(did, 1);
+      if (ic.tex && ic.w > 0 && ic.h > 0) {
+        const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
+        ImGui::GetForegroundDrawList()->AddImage(
+            TexId(ic.tex), ImVec2(m.x - iw * 0.5f, m.y - ih * 0.5f),
+            ImVec2(m.x + iw * 0.5f, m.y + ih * 0.5f));
+      }
+    }
   }
 
   ro::EndRoWindow();

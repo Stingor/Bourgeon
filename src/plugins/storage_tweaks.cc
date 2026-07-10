@@ -14,6 +14,7 @@
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
+#include "plugins/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
 #include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
 #include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
@@ -226,6 +227,10 @@ void WithdrawItem(int index, int amount) {
 constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;
 constexpr uintptr_t kInvVTable    = 0x0103d460;
 bool MouseOverInventory(float x, float y) {
+  // Viewer inventaire ImGui actif : son rect remplace la fenêtre native (cachée), donc
+  // le test natif ci-dessous échoue -> on teste d'abord le rect du viewer.
+  if (auto* iv = Bourgeon::Instance().inventory_viewer())
+    if (iv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
   __try {
     uint8_t* inv = *reinterpret_cast<uint8_t**>(kInvWndGlobal);
     if (!inv || *reinterpret_cast<uintptr_t*>(inv) != kInvVTable) return false;

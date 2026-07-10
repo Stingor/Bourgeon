@@ -12,6 +12,7 @@
 #include "imgui_internal.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
+#include "plugins/inventory_viewer.h"
 #include "plugins/doom_tweaks.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
@@ -550,12 +551,17 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
         sb->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
       if (auto* st = Bourgeon::Instance().storage_tweaks())
         st->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
     }
-    // Mémorise la source d'un drag natif dès le mousedown (cart vs inventaire) pour
-    // router correctement un drop sur le viewer storage (cart->storage vs dépôt).
+    // Mémorise la source d'un drag natif dès le mousedown (cart/équip vs inventaire) pour
+    // router correctement un drop sur les viewers (storage : cart->storage ; inventaire :
+    // équip->inventaire = dés-équiper).
     if (uMsg == WM_LBUTTONDOWN) {
       if (auto* st = Bourgeon::Instance().storage_tweaks())
         st->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
     }
 
     // Let the game's Windows cursor (SetCursor) show through on top of ImGui.
