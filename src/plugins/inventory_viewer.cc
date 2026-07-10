@@ -931,9 +931,10 @@ void InventoryViewer::OnRenderUI() {
         ImVec2(10000.0f, 10000.0f), SnapWindowSize);
   }
 
+  // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
+  // comme le natif ; clic dessus = SetWindowCollapsed (géré par BeginRoWindow).
   const bool begun =
-      ro::BeginRoWindow("Inventaire###bourgeon_inventory", &show_panel_,
-                        ImGuiWindowFlags_NoCollapse);
+      ro::BeginRoWindow("Inventaire###bourgeon_inventory", &show_panel_, 0);
   // X du viewer -> ferme l'inventaire natif (client-side). Réarme show_panel_.
   if (!show_panel_) { CloseInventory(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
@@ -1033,12 +1034,17 @@ void InventoryViewer::OnRenderUI() {
           cur_tab_ = c;
       }
       if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kCats[c].label);
-      // Glisser un item favori sur un AUTRE onglet -> le retirer des favoris (comme le natif).
+      // Glisser un item sur un onglet : sur Favoris = l'AJOUTE aux favoris ; hors de
+      // Favoris (item déjà favori) = le RETIRE (comme le natif).
       if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_ITEM")) {
           const int di = *static_cast<const int*>(pl->Data);
-          if (di >= 0 && di < item_count_ && items_[di].favorite && !kCats[c].fav)
-            SendFavoriteToggle(items_[di].index, true);  // retire des favoris
+          if (di >= 0 && di < item_count_) {
+            if (kCats[c].fav && !items_[di].favorite)
+              SendFavoriteToggle(items_[di].index, false);  // -> ajoute aux favoris
+            else if (!kCats[c].fav && items_[di].favorite)
+              SendFavoriteToggle(items_[di].index, true);   // -> retire des favoris
+          }
         }
         ImGui::EndDragDropTarget();
       }
