@@ -13,6 +13,7 @@
 
 #include "bourgeon.h"
 #include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
+#include "plugins/inventory_viewer.h"  // DraggedItemNameId (drag inventaire -> case de barre)
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
@@ -946,6 +947,43 @@ void SkillBarTweaks::OnRenderUI() {
   if (native_hidden_ && w) {
     for (int b = 0; b < kBarCount; ++b)
       if (bars_[b].visible) DrawBar(b);  // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
+
+    // Icône du drag NATIF (grimoire de skills / inventaire natif) redessinée AU-DESSUS des
+    // barres : le jeu rend l'icône-curseur du drag AVANT l'overlay ImGui -> elle passe DERRIÈRE
+    // nos cases dès qu'elle survole une barre. On la recolle sur le curseur (ForegroundDrawList,
+    // au-dessus de tout) quand un drag natif est en cours ET survole une barre visible. Même
+    // recette que InventoryViewer::OnRenderUI. On saute pendant un drag ImGui interne (payload
+    // non-null : SBSLOT / INV_ITEM ont déjà leur propre aperçu).
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        ImGui::GetDragDropPayload() == nullptr) {
+      void* obj = DragObj();
+      NativeDrag d{};
+      if (obj && DecodeDrag(obj, &d)) {
+        const ImVec2 m = ImGui::GetMousePos();
+        bool over = false;
+        for (int b = 0; b < kBarCount && !over; ++b) {
+          if (!bars_[b].visible) continue;
+          const BarCfg& bc = bars_[b];
+          const int cols  = std::max(1, bc.columns);
+          const int count = std::min(bc.slot_count, kRegions[b].count);
+          const int rows  = (count + cols - 1) / cols;
+          const float step = bc.icon_size + bc.spacing;
+          const float bw = cols * step - bc.spacing, bh = rows * step - bc.spacing;
+          if (m.x >= bc.x && m.y >= bc.y && m.x < bc.x + bw && m.y < bc.y + bh) over = true;
+        }
+        if (over) {
+          // GetIconTex : type 0 = OBJET, !=0 = SKILL (convention record). d.isItem -> objet.
+          void* tex = GetIconTex(d.isItem ? 0 : 1, d.id);
+          if (tex) {
+            const float sz = 24.0f;  // taille bmp native d'icône (comme le redraw inventaire)
+            ImGui::GetForegroundDrawList()->AddImage(
+                (ImTextureID)(uintptr_t)tex,
+                ImVec2(m.x - sz * 0.5f, m.y - sz * 0.5f),
+                ImVec2(m.x + sz * 0.5f, m.y + sz * 0.5f));
+          }
+        }
+      }
+    }
   }
 }
 
@@ -1213,6 +1251,7 @@ void SkillBarTweaks::DrawBar(int bar) {
   }
 
   int move_from = -1, move_to = -1, move_region = -1;  // glisser-déposer différé hors de la boucle
+  int inv_drop_slot = -1; uint32_t inv_drop_id = 0;    // item d'inventaire lâché sur une case (différé)
 
   for (int k = 0; k < count; ++k) {
     const int slot = bc.first_slot + k;
@@ -1253,6 +1292,14 @@ void SkillBarTweaks::DrawBar(int bar) {
         if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("SBSLOT")) {
           const int* d = static_cast<const int*>(pl->Data);
           move_region = d[0]; move_from = d[1]; move_to = slot;
+        } else if (ImGui::AcceptDragDropPayload("INV_ITEM")) {
+          // Item lâché depuis le viewer inventaire ImGui (comme le drag natif inventaire->barre,
+          // que HandleNativeDrop gère pour la fenêtre native). Le viewer expose le nameid glissé ;
+          // un slot d'item (region 2) OU une case de barre skill (regions 0/1) accepte un OBJET.
+          if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
+            const uint32_t nameid = iv->DraggedItemNameId();
+            if (nameid != 0) { inv_drop_slot = slot; inv_drop_id = nameid; }
+          }
         }
         ImGui::EndDragDropTarget();
       }
@@ -1334,6 +1381,17 @@ void SkillBarTweaks::DrawBar(int bar) {
     if (move_region == region) MoveSlot(region, move_from, move_to);        // même barre
     else MoveSlotCross(move_region, move_from, region, move_to);            // INTER-onglets
     if (RegionIsItems(region) || RegionIsItems(move_region)) dirty_ = true;  // items -> persist client
+  }
+
+  // Dépôt différé d'un item d'inventaire (payload "INV_ITEM") sur une case. MÊME logique que
+  // HandleNativeDrop pour un drag natif d'objet : écriture directe du record + persistance
+  // (skills 0/1 -> serveur CZ_SHORTCUT_KEY_CHANGE ; barre d'items -> yaml client).
+  if (inv_drop_slot >= 0 && inv_drop_id != 0) {
+    WriteSlotRecord(region, inv_drop_slot, /*is_item*/ true, inv_drop_id, 0);
+    if (!RegionIsItems(region))
+      SendHotkeyChange(kRegions[region].tab, inv_drop_slot, /*isSkill*/ 0, inv_drop_id, 0);
+    else
+      dirty_ = true;
   }
 
   // ── Verrouillé, slot survolé : clic molette = vider, clic droit = description ──

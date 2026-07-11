@@ -69,6 +69,12 @@ class InventoryViewer : public Plugin {
   // renumérotation d'items_ en cours de glisser (l'index utilisé est stable).
   bool EquipDraggedItem(bool leftHand);
 
+  // Nameid de l'item ACTUELLEMENT GLISSÉ (0 si aucun drag en cours). Utilisé par
+  // skill_bar_tweaks pour assigner l'item glissé à une case de la barre d'action
+  // (drag-drop cross-plugin, comme EquipDraggedItem pour le doll de character_sheet).
+  // Le nameid est la donnée stockée par un slot d'item de la barre (WriteSlotRecord).
+  uint32_t DraggedItemNameId() const { return drag_active_ ? drag_id_ : 0; }
+
   // Insère le lien de l'item d'index inventaire `invIndex` dans l'input chat focalisé
   // (comme Maj+clic gauche dans l'inventaire). No-op si aucun input chat n'a le focus.
   // Marche même inventaire fermé (lit le modèle session). Utilisé par character_sheet
@@ -115,6 +121,7 @@ class InventoryViewer : public Plugin {
   // Drag d'un item du viewer (-> équip/sol/chariot selon la cible).
   bool  drag_active_ = false;
   int   drag_index_ = 0, drag_amount_ = 0, drag_type_ = 0;
+  uint32_t drag_id_ = 0;   // nameid de l'item glissé (drag-drop vers la barre d'action)
   uint32_t drag_loc_ = 0;  // info+8 de l'item glissé (arg2 équip sur drop fenêtre Équip)
   float drag_mx_ = 0, drag_my_ = 0;
 
