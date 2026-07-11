@@ -509,7 +509,7 @@ void HelpMarkerShortcuts() {
   ImGui::TextUnformatted(
       "Raccourcis entrepot\n\n"
       "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
-      "  pile = demande la quantite)\n"
+      "  pile = menu contextuel : Retirer 1 / tout / quantite)\n"
       "- Clic droit : menu contextuel\n"
       "- Ctrl + clic droit : description\n"
       "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
