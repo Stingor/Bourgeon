@@ -933,6 +933,10 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
   if (view_id == 0) return;
   const PvSlot slot = MapEmplacementToSlot(emplacement);
   if (slot == PV_NONE) return;
+  // Réserve la molette à l'item survolé (rotation du perso) : ImGui ne scrolle plus
+  // AUCUNE fenêtre à la molette pendant l'aperçu (ex. la scrollbar de la description qui
+  // se trouve dessous). L'API prévue pour ça : SetItemKeyOwner sur le dernier item survolé.
+  ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
   // Molette (pendant le survol) = rotation du perso (dir 0..7).
   static int s_dir = 0;
   const float wheel = ImGui::GetIO().MouseWheel;
