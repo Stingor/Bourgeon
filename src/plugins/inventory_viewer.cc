@@ -34,6 +34,9 @@ constexpr int kOffVisible = 0x28;  // flag visibilité (0=caché, hors rendu+hit
 // std::list @ g_session+0x16f0. g_session = 0x015fa3c0.
 constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list (head)
 constexpr uintptr_t kInvCount    = 0x015fbab4;  // nb d'items
+constexpr uintptr_t kSessionObj  = 0x015fa3c0;  // g_session (base) — pour les compteurs natifs
+constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)
+constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
 constexpr int kNodeNext = 0x00;  // nœud : next
 constexpr int kNodeInfo = 0x08;  // nœud : value = ItemSkillInfo
 constexpr int kNodeAmt  = 0x18;  // nœud : quantité (= info+0x10)
@@ -167,6 +170,18 @@ void* Dispatcher() {
   __try {
     return reinterpret_cast<GetMode_t>(kGetMode)(static_cast<int>(kModeArg));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Items PORTÉS (équipés + costume) : la liste session 0x015fbab0 les EXCLUT, mais le
+// compteur du footer NATIF les compte dans le total (Inventory_GetCount + FUN_00d9aa70
+// équipés + FUN_00d9a960 costume). On appelle les deux (items distincts, 10 slots chacun)
+// pour que notre « N/max » matche le natif. SEH (POD).
+using WornCountFn_t = int(__fastcall*)(int);
+int WornItemCount() {
+  __try {
+    return reinterpret_cast<WornCountFn_t>(kCntEquipped)(static_cast<int>(kSessionObj)) +
+           reinterpret_cast<WornCountFn_t>(kCntCostume)(static_cast<int>(kSessionObj));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 // Envoie une commande UI native (use/equip/transfer...) via le dispatcher.
@@ -1399,7 +1414,7 @@ void InventoryViewer::OnRenderUI() {
   fdl->AddText(ImVec2(fx1 - gripM - zw, cy1 - th * 0.5f), colText, zline);  // plein droite
   // Ligne 2 : compteur d'items (icône + N/max).
   char cbuf[32];
-  std::snprintf(cbuf, sizeof(cbuf), "%d/%d", item_count_, maxSlots);
+  std::snprintf(cbuf, sizeof(cbuf), "%d/%d", item_count_ + WornItemCount(), maxSlots);
   x = fx0 + 6.0f;
   x += DrawFooterIcon(fdl, g_ico_num, x, cy2) + 3.0f;
   fdl->AddText(ImVec2(x, cy2 - th * 0.5f), colText, cbuf);
