@@ -924,6 +924,10 @@ bool InventoryViewer::EquipDraggedItem(bool leftHand) {
   return true;
 }
 
+// Wrapper public sur le helper interne PostItemLinkToChat (insère le lien dans l'input
+// chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
+void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
+
 void InventoryViewer::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
@@ -1216,15 +1220,8 @@ void InventoryViewer::OnRenderUI() {
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
         ImGui::EndDragDropSource();
       }
-
-      // Cible cross-plugin : lâcher un item ÉQUIPÉ (glissé depuis character_sheet,
-      // payload "BGN_EQUIP" = index inventaire) sur une case de l'inventaire = le
-      // déséquiper (CZ 0x00AB).
-      if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* pe = ImGui::AcceptDragDropPayload("BGN_EQUIP"))
-          SendUnequip(*static_cast<const int*>(pe->Data));
-        ImGui::EndDragDropTarget();
-      }
+      // (Le déséquip par glisser-vers-l'inventaire est détecté côté character_sheet via
+      //  PointOverViewer -> couvre TOUTE la fenêtre, pas seulement les cases avec item.)
 
       // Menu contextuel : toutes les actions.
       if (ImGui::BeginPopup("ctx")) {
