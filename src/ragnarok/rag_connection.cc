@@ -79,11 +79,11 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
           HookType::kJmpHook,
           reinterpret_cast<uint8_t*>(reader_addr.as<uint32_t>()),
           reinterpret_cast<uint8_t*>(void_cast(&RagConnection::PacketBufReaderHook)));
-      LogInfo("RagConnection: recv dispatch table at {:x}, opcode base 0x{:x}, reader hook at {:x}",
-              table_addr.as<uint32_t>(), recv_opcode_base_, reader_addr.as<uint32_t>());
+      // LogInfo("RagConnection: recv dispatch table at {:x}, opcode base 0x{:x}, reader hook at {:x}",
+              // table_addr.as<uint32_t>(), recv_opcode_base_, reader_addr.as<uint32_t>());
     } else {
-      LogInfo("RagConnection: recv dispatch table at {:x}, opcode base 0x{:x}",
-              table_addr.as<uint32_t>(), recv_opcode_base_);
+      // LogInfo("RagConnection: recv dispatch table at {:x}, opcode base 0x{:x}",
+              // table_addr.as<uint32_t>(), recv_opcode_base_);
     }
 
     // Hook du reset de buffer déclenché par les opcodes hors-plage : sans lui, nos
@@ -95,7 +95,7 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
           HookType::kJmpHook,
           reinterpret_cast<uint8_t*>(bufreset_addr.as<uint32_t>()),
           reinterpret_cast<uint8_t*>(void_cast(&RagConnection::BufferResetHook)));
-      LogInfo("RagConnection: recv buffer-reset hook at {:x}", bufreset_addr.as<uint32_t>());
+      // LogInfo("RagConnection: recv buffer-reset hook at {:x}", bufreset_addr.as<uint32_t>());
     }
   }
 }
@@ -122,8 +122,8 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
       idx >= static_cast<int>(recv_dispatch_table_size_)) {
     s_reader_dispatch_opcodes_.insert(opcode);
     s_registered_opcodes_.insert(opcode);
-    LogInfo("RagConnection: recv opcode 0x{:04x} -> reader-hook (au-dessus dispatch table, idx {})",
-            opcode, idx);
+    // LogInfo("RagConnection: recv opcode 0x{:04x} -> reader-hook (au-dessus dispatch table, idx {})",
+            // opcode, idx);
     return;
   }
   void** slot = &recv_dispatch_table_[idx];
@@ -132,12 +132,12 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
   *slot = reinterpret_cast<void*>(&RagConnection::RecvPacketHandler);
   VirtualProtect(slot, sizeof(void*), old, &old);
   s_registered_opcodes_.insert(opcode);
-  LogInfo("RagConnection: recv opcode 0x{:04x} → dispatch table slot [{}]", opcode, idx);
+  // LogInfo("RagConnection: recv opcode 0x{:04x} → dispatch table slot [{}]", opcode, idx);
 }
 
 void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
   s_observe_opcodes_[opcode] = forward_len;
-  LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
+  // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
 }
 
 // Called by the game's packet-read loop (FUN_00c9df00) right after
@@ -186,7 +186,7 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
 
 void RagConnection::RecvPacketHandlerImpl() {
   if (g_saved_packet_len < 4) {
-    LogInfo("RecvPacketHandlerImpl: no saved packet (dispatch_opcode=0x{:04x})", g_dispatch_opcode);
+    // LogInfo("RecvPacketHandlerImpl: no saved packet (dispatch_opcode=0x{:04x})", g_dispatch_opcode);
     return;
   }
   const uint16_t opcode   = *reinterpret_cast<const uint16_t*>(g_saved_packet);
@@ -265,7 +265,7 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
       *reinterpret_cast<uint32_t*>(packet + 4) == 0x22 &&  // EQP_ARMS
       (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
     *reinterpret_cast<uint32_t*>(packet + 4) = 0x20;  // EQP_HAND_L
-    LogInfo("[Equip] CTRL held -> weapon forced to LEFT hand (0x0998 pos 0x22->0x20)");
+    // LogInfo("[Equip] CTRL held -> weapon forced to LEFT hand (0x0998 pos 0x22->0x20)");
   }
   return SendPacketRef(this, packet_len, packet);
 }

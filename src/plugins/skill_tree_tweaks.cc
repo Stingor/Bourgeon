@@ -78,6 +78,6 @@ SkillTreeTweaks::SkillTreeTweaks() {
           hooking::HookType::kJmpHook,
           reinterpret_cast<uint8_t*>(kDrawContent),
           reinterpret_cast<uint8_t*>(&DrawContentHook)));
-  LogInfo("[SkillTree] repaint-on-change gate {}",
-          g_orig_draw ? "installed" : "FAILED");
+  // LogInfo("[SkillTree] repaint-on-change gate {}",
+          // g_orig_draw ? "installed" : "FAILED");
 }

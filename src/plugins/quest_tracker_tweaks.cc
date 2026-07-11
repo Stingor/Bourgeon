@@ -204,7 +204,7 @@ QuestTrackerTweaks::QuestTrackerTweaks() {
           reinterpret_cast<uint8_t*>(kDrawContent),
           reinterpret_cast<uint8_t*>(&DrawContentHook)));
   if (g_draw_orig)
-    LogInfo("[QuestTracker] native tracker draw hook installed");
+    /* LogInfo("[QuestTracker] native tracker draw hook installed") */;
   else
     LogError("[QuestTracker] failed to install draw hook");
 }

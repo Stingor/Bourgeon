@@ -330,7 +330,7 @@ StatusTweaks::StatusTweaks() {
   if (cur_h == 141 && cur_w == 280) {
     PatchValue<uint32_t>(kHeightImm, kNewHeight);
     PatchValue<uint32_t>(kWidthImm, kNewWidth);
-    LogInfo("[Status] window size patched to {}x{}", kNewWidth, kNewHeight);
+    // LogInfo("[Status] window size patched to {}x{}", kNewWidth, kNewHeight);
   } else {
     LogError("[Status] SetSize immediates unexpected (w={} h={}); size patch skipped",
              cur_w, cur_h);
@@ -340,7 +340,7 @@ StatusTweaks::StatusTweaks() {
   const uintptr_t cur_slot = *reinterpret_cast<uintptr_t*>(kDrawSlot);
   if (cur_slot == kDrawOrig) {
     PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
-    LogInfo("[Status] DrawContent vtable hook installed");
+    // LogInfo("[Status] DrawContent vtable hook installed");
   } else {
     LogError("[Status] vtable slot 0x01032a24 = 0x{:x}, expected 0x008b66a0; hook skipped",
              cur_slot);
@@ -353,7 +353,7 @@ StatusTweaks::StatusTweaks() {
       PatchValue<int32_t>(r.xa, r.nx);
       PatchValue<int32_t>(r.ya, r.ny);
     }
-    LogInfo("[Status] 16 tooltip hit-rects relocated to new layout");
+    // LogInfo("[Status] 16 tooltip hit-rects relocated to new layout");
   } else {
     LogError("[Status] tooltip rect guard 0x010371c0 = {}, expected 108; rect patch skipped",
              guard);
@@ -366,8 +366,8 @@ StatusTweaks::StatusTweaks() {
     PatchValue<uint8_t>(kTitleBlackX, static_cast<uint8_t>(18 + kTitleDx));
     PatchValue<uint8_t>(kTitleWhiteY, static_cast<uint8_t>(kTitleDy - 13));
     PatchValue<uint8_t>(kTitleBlackY, static_cast<uint8_t>(kTitleDy - 14));
-    LogInfo("[Status] title-bar text offset patched dx={} dy={} (all windows)",
-            kTitleDx, kTitleDy);
+    // LogInfo("[Status] title-bar text offset patched dx={} dy={} (all windows)",
+            // kTitleDx, kTitleDy);
   } else {
     LogError("[Status] DrawTitleBar title-x = 0x{:x}, expected 0x13; title offset skipped",
              *reinterpret_cast<uint8_t*>(kTitleWhiteX));
@@ -378,7 +378,7 @@ StatusTweaks::StatusTweaks() {
   const uintptr_t cur_msg = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (cur_msg == kMsgOrig) {
     PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&StatusMsgHook));
-    LogInfo("[Status] message-handler hook installed (position persistence)");
+    // LogInfo("[Status] message-handler hook installed (position persistence)");
   } else {
     LogError("[Status] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; pos-persist skipped",
              kMsgSlot, cur_msg, kMsgOrig);

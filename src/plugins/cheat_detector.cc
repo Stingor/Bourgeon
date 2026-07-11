@@ -233,7 +233,7 @@ void CheatDetector::AddDetection(const char* tool_name, std::string detail) {
     }
   }
   // New detection — log, report to server, then store.
-  LogInfo("[CheatDetector] detected: {} ({})", tool_name, detail);
+  // LogInfo("[CheatDetector] detected: {} ({})", tool_name, detail);
   SendCheatReport(tool_name, detail);
   detections_.push_back({ tool_name, std::move(detail), now, now, 1 });
 }

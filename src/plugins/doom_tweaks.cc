@@ -107,7 +107,7 @@ int DG_GetKey(int* pressed, unsigned char* doom_key) {
 }
 
 void DG_SetWindowTitle(const char* title) {
-  LogInfo("[DOOM] engine says hello: {}", title ? title : "?");
+  // LogInfo("[DOOM] engine says hello: {}", title ? title : "?");
 }
 
 // Called by the vendored I_Error patch (i_system.c) instead of exit(): stash the
@@ -251,7 +251,7 @@ bool DoomTweaks::WantsKeyboard() { return g_doom_wants_keys; }
 void DoomTweaks::Start() {
   if (GetFileAttributesA(kWad) == INVALID_FILE_ATTRIBUTES) {
     state_ = State::kNoWad;
-    LogInfo("[DOOM] {} not found in the client folder — not starting", kWad);
+    // LogInfo("[DOOM] {} not found in the client folder — not starting", kWad);
     return;
   }
   // argv is kept BY POINTER by the engine (myargv) — must outlive the process.
@@ -260,11 +260,11 @@ void DoomTweaks::Start() {
   static char  arg2[] = "doom1.wad";
   static char  arg3[] = "-nogui";  // I_Error must never pop a modal MessageBox
   static char* argv[] = {arg0, arg1, arg2, arg3};
-  LogInfo("[DOOM] starting engine ({})...", kWad);
+  // LogInfo("[DOOM] starting engine ({})...", kWad);
   const unsigned long t0 = GetTickCount();
   if (GuardedCreate(4, argv)) {
     state_ = State::kRunning;
-    LogInfo("[DOOM] engine up in {} ms — rip and tear!", GetTickCount() - t0);
+    // LogInfo("[DOOM] engine up in {} ms — rip and tear!", GetTickCount() - t0);
   } else {
     state_ = State::kDead;
     LogError("[DOOM] I_Error during startup: {}", g_doom_fatal);
@@ -274,7 +274,7 @@ void DoomTweaks::Start() {
 void DoomTweaks::PumpEngine() {
   if (g_doom_user_quit) {
     state_ = State::kQuit;
-    LogInfo("[DOOM] user quit from the DOOM menu");
+    // LogInfo("[DOOM] user quit from the DOOM menu");
     return;
   }
   // Pace doomgeneric_Tick on the ENGINE's own 35 Hz clock (I_GetTime), NOT a
@@ -300,7 +300,7 @@ void DoomTweaks::PumpEngine() {
   }
   if (g_doom_user_quit) {  // quit confirmed during this very tick
     state_ = State::kQuit;
-    LogInfo("[DOOM] user quit from the DOOM menu");
+    // LogInfo("[DOOM] user quit from the DOOM menu");
     return;
   }
 

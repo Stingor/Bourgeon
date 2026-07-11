@@ -29,7 +29,7 @@ void ModeMgr::FireModeSwitch(ModeType mode_type, const char* map_name) {
   s_current_mode = mode_type;
   strncpy_s(s_current_map, sizeof(s_current_map), map_name, _TRUNCATE);
 
-  LogInfo("OnModeSwitch mode={} map={}", static_cast<int>(mode_type), map_name);
+  // LogInfo("OnModeSwitch mode={} map={}", static_cast<int>(mode_type), map_name);
   Bourgeon::Instance().FireModeSwitch(mode_type, map_name);
 }
 

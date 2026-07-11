@@ -107,11 +107,11 @@ AutoLogin::AutoLogin() {
 
   ResolveServerFromClientInfo();
   stage_ = Stage::kIdle;
-  LogInfo(
-      "[AutoLogin] armed for '{}' — server '{}' (index {} of {} connection(s)), "
-      "save_id={} ({} focused first)",
-      login_, server_, server_index_, server_count_, save_id_,
-      save_id_ ? "password" : "id");
+  // LogInfo(
+      // "[AutoLogin] armed for '{}' — server '{}' (index {} of {} connection(s)), "
+      // "save_id={} ({} focused first)",
+      // login_, server_, server_index_, server_count_, save_id_,
+      // save_id_ ? "password" : "id");
 }
 
 bool AutoLogin::ParseCommandLine() {
@@ -202,8 +202,8 @@ void AutoLogin::OnTick() {
       for (int i = 0; i < server_count_; ++i) PressKey(VK_UP);
       for (int i = 0; i < server_index_; ++i) PressKey(VK_DOWN);
       PressKey(VK_RETURN);
-      LogInfo("[AutoLogin] selected server index {} (of {})", server_index_,
-              server_count_);
+      // LogInfo("[AutoLogin] selected server index {} (of {})", server_index_,
+              // server_count_);
       tick_counter_ = 0;
       stage_ = Stage::kWaitLogin;
       break;
@@ -236,7 +236,7 @@ void AutoLogin::OnTick() {
           break;
         case 4:
           PressKey(VK_RETURN);  // submit (Enter triggers the Login button)
-          LogInfo("[AutoLogin] submitted credentials for '{}'", login_);
+          // LogInfo("[AutoLogin] submitted credentials for '{}'", login_);
           tick_counter_ = 0;
           stage_ = Stage::kCharServer;
           break;
@@ -251,7 +251,7 @@ void AutoLogin::OnTick() {
       // single char-server, confirming the default entry reaches char select.
       if (++tick_counter_ >= kCharServerTicks) {
         PressKey(VK_RETURN);
-        LogInfo("[AutoLogin] confirmed char-server select");
+        // LogInfo("[AutoLogin] confirmed char-server select");
         tick_counter_ = 0;
         stage_ = Stage::kCharSelect;
       }
@@ -266,7 +266,7 @@ void AutoLogin::OnTick() {
       if (++tick_counter_ >= kCharSelectTicks) {
         for (int i = 0; i < 9; ++i) PressKey(VK_LEFT);  // clamp to the first slot
         PressKey(VK_RETURN);                            // enter the game
-        LogInfo("[AutoLogin] selected first character — entering game");
+        // LogInfo("[AutoLogin] selected first character — entering game");
         stage_ = Stage::kDone;
       }
       break;

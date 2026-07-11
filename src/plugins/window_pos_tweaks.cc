@@ -223,8 +223,8 @@ WindowPosTweaks::WindowPosTweaks() {
       HookManager::Instance().SetHook(HookType::kJmpHook,
           reinterpret_cast<uint8_t*>(kMakeWindow),
           reinterpret_cast<uint8_t*>(&MakeWindowHook)));
-  LogInfo("[WinPos] tracking {} window(s); MakeWindow restore hook {}",
-          kWindowCount, g_orig_makewindow ? "installed" : "FAILED");
+  // LogInfo("[WinPos] tracking {} window(s); MakeWindow restore hook {}",
+          // kWindowCount, g_orig_makewindow ? "installed" : "FAILED");
 
   // ── Disable native window dock-SNAP (kills the invisible "ghost" magnetism) ──
   // The base window-move FUN_00880e00 branches into its dock-SNAP path when the
@@ -243,7 +243,7 @@ WindowPosTweaks::WindowPosTweaks() {
     if (p[0] == 0x75 && p[1] == 0x1e) { p[0] = 0x90; p[1] = 0x90; }  // guard exact JNZ
     VirtualProtect(p, 2, old, &old);
     FlushInstructionCache(GetCurrentProcess(), p, 2);
-    LogInfo("[WinPos] window dock-snap {}", (p[0] == 0x90) ? "disabled" : "UNCHANGED");
+    // LogInfo("[WinPos] window dock-snap {}", (p[0] == 0x90) ? "disabled" : "UNCHANGED");
   }
 
   // ── Fix the native drag-snap: skip HIDDEN candidate windows ─────────────────
@@ -271,7 +271,7 @@ WindowPosTweaks::WindowPosTweaks() {
     }
     VirtualProtect(h, 6, old2, &old2);
     FlushInstructionCache(GetCurrentProcess(), h, 6);
-    LogInfo("[WinPos] snap hidden-window filter {}", (h[0] == 0xE9) ? "installed" : "UNCHANGED");
+    // LogInfo("[WinPos] snap hidden-window filter {}", (h[0] == 0xE9) ? "installed" : "UNCHANGED");
   }
 }
 

@@ -616,7 +616,7 @@ StatusIconTweaks::StatusIconTweaks() {
           reinterpret_cast<uint8_t*>(kBuildFn),
           reinterpret_cast<uint8_t*>(&BuildHook)));
   if (g_build_orig)
-    LogInfo("[StatusIcons] status-bar layout hook installed");
+    /* LogInfo("[StatusIcons] status-bar layout hook installed") */;
   else
     LogError("[StatusIcons] failed to install status-bar layout hook");
 
@@ -631,7 +631,7 @@ StatusIconTweaks::StatusIconTweaks() {
             reinterpret_cast<uint8_t*>(kHitTestFn),
             reinterpret_cast<uint8_t*>(&HitTestHook)));
     if (g_hittest_orig)
-      LogInfo("[StatusIcons] tooltip hit-test hook installed");
+      /* LogInfo("[StatusIcons] tooltip hit-test hook installed") */;
     else
       LogError("[StatusIcons] failed to install tooltip hit-test hook");
   } else {
@@ -651,7 +651,7 @@ StatusIconTweaks::StatusIconTweaks() {
             reinterpret_cast<uint8_t*>(kRenderType0),
             reinterpret_cast<uint8_t*>(&RenderIconHook)));
     if (g_render_orig)
-      LogInfo("[StatusIcons] icon-opacity render hook installed");
+      /* LogInfo("[StatusIcons] icon-opacity render hook installed") */;
     else
       LogError("[StatusIcons] failed to install icon-opacity render hook");
   } else {

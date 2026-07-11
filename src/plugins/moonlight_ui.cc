@@ -186,7 +186,7 @@ void MoonlightUi::LoadItemNames() {
     LogError("[MoonlightUi] itemInfoMerged.lua not found (tried System\\ and SystemEN\\)");
     return;
   }
-  LogInfo("[MoonlightUi] loading item names from {}", path);
+  // LogInfo("[MoonlightUi] loading item names from {}", path);
 
   uint32_t current_id = 0;
   std::string line;
@@ -222,7 +222,7 @@ void MoonlightUi::LoadItemNames() {
         item_names_[current_id] = line.substr(q1 + 1, q2 - q1 - 1);
     }
   }
-  LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
+  // LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
 }
 
 MoonlightUi::MoonlightUi() {
@@ -317,9 +317,9 @@ void MoonlightUi::FindChatBgSites() {
     return;
   }
 
-  LogInfo("[MoonlightUi] chat_bg: scanning .text [0x{:08X} .. +0x{:X}] for {} site(s)",
-          reinterpret_cast<uint32_t>(text_start), text_size,
-          static_cast<int>(sizeof(kChatBgSites) / sizeof(kChatBgSites[0])));
+  // LogInfo("[MoonlightUi] chat_bg: scanning .text [0x{:08X} .. +0x{:X}] for {} site(s)",
+          // reinterpret_cast<uint32_t>(text_start), text_size,
+          // static_cast<int>(sizeof(kChatBgSites) / sizeof(kChatBgSites[0])));
 
   int site_idx = 0;
   for (const ChatBgSiteDesc& d : kChatBgSites) {
@@ -343,11 +343,11 @@ void MoonlightUi::FindChatBgSites() {
     if (d.heap_vtable) g.heap.push_back({d.heap_vtable, d.heap_field});
     chat_bg_found_ = true;
 
-    LogInfo("[MoonlightUi] chat_bg: site #{} (group {} '{}') found @ VA 0x{:08X}, "
-            "imm @ +{} = 0x{:08X}{}",
-            site_idx, d.group, gname, reinterpret_cast<uint32_t>(found),
-            d.imm_off, *imm,
-            d.heap_vtable ? " [+heap recolour]" : "");
+    // LogInfo("[MoonlightUi] chat_bg: site #{} (group {} '{}') found @ VA 0x{:08X}, "
+            // "imm @ +{} = 0x{:08X}{}",
+            // site_idx, d.group, gname, reinterpret_cast<uint32_t>(found),
+            // d.imm_off, *imm,
+            // d.heap_vtable ? " [+heap recolour]" : "");
     ++site_idx;
   }
 
@@ -356,9 +356,9 @@ void MoonlightUi::FindChatBgSites() {
   for (int i = 0; i < kChatBgCount; ++i) {
     ChatBgGroup& g = chat_bg_[i];
     if (!g.instrs.empty()) PickerFromArgb(g.color, *g.instrs.front());
-    LogInfo("[MoonlightUi] chat_bg group {} '{}': {} instr site(s), {} heap target(s)",
-            i, g.label, static_cast<int>(g.instrs.size()),
-            static_cast<int>(g.heap.size()));
+    // LogInfo("[MoonlightUi] chat_bg group {} '{}': {} instr site(s), {} heap target(s)",
+            // i, g.label, static_cast<int>(g.instrs.size()),
+            // static_cast<int>(g.heap.size()));
   }
 }
 
@@ -390,7 +390,7 @@ void MoonlightUi::PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb) {
   }
 
   HeapUnlock(heap);
-  LogInfo("[MoonlightUi] chat_bg[{}]: recoloured {} live object(s)", g.yaml_key, count);
+  // LogInfo("[MoonlightUi] chat_bg[{}]: recoloured {} live object(s)", g.yaml_key, count);
 }
 
 uint32_t MoonlightUi::ArgbFromPicker(const float c[4]) {
@@ -426,7 +426,7 @@ void MoonlightUi::LoadSettings() {
       const uint32_t argb = static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
       PickerFromArgb(g.color, argb);
       if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
-      LogInfo("[MoonlightUi] loaded {} 0x{:08X}", g.yaml_key, argb);
+      // LogInfo("[MoonlightUi] loaded {} 0x{:08X}", g.yaml_key, argb);
     }
 
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
@@ -1195,7 +1195,7 @@ void MoonlightUi::SaveSettings() {
     return;
   }
   f << out.c_str();
-  LogInfo("[MoonlightUi] saved chat backgrounds to {}", path);
+  // LogInfo("[MoonlightUi] saved chat backgrounds to {}", path);
 }
 
 // ── Server settings sync ──────────────────────────────────────────────────
@@ -1238,8 +1238,8 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     const char* map_name = reinterpret_cast<const char*>(data);
     in_gonryun_ = in_game_ &&
                   (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
-    LogInfo("[MoonlightUi] map move -> '{}' in_gonryun={}",
-            std::string(map_name, strnlen(map_name, len)), in_gonryun_);
+    // LogInfo("[MoonlightUi] map move -> '{}' in_gonryun={}",
+            // std::string(map_name, strnlen(map_name, len)), in_gonryun_);
     UpdateRelay();
     return;
   }
@@ -1301,112 +1301,112 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     switch (id) {
       case kSettingShowExp:
         show_exp_ = (value != 0);
-        LogInfo("[MoonlightUi] show_exp={}", show_exp_);
+        // LogInfo("[MoonlightUi] show_exp={}", show_exp_);
         break;
       case kSettingShowZeny:
         show_zeny_ = (value != 0);
-        LogInfo("[MoonlightUi] show_zeny={}", show_zeny_);
+        // LogInfo("[MoonlightUi] show_zeny={}", show_zeny_);
         break;
       case kSettingShowMobInfo:
         show_mob_info_ = (value != 0);
-        LogInfo("[MoonlightUi] show_mob_info={}", show_mob_info_);
+        // LogInfo("[MoonlightUi] show_mob_info={}", show_mob_info_);
         break;
       case kSettingSeparate:
         separate_ = (value != 0);
-        LogInfo("[MoonlightUi] separate={}", separate_);
+        // LogInfo("[MoonlightUi] separate={}", separate_);
         break;
       case kSettingBlockExp:
         block_exp_ = (value != 0);
-        LogInfo("[MoonlightUi] block_exp={}", block_exp_);
+        // LogInfo("[MoonlightUi] block_exp={}", block_exp_);
         break;
       case kSettingAlootRare:
         aloot_rare_ = (value != 0);
-        LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);
+        // LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);
         break;
       case kSettingAlootRate:
         aloot_rate_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] aloot_rate={}", aloot_rate_);
+        // LogInfo("[MoonlightUi] aloot_rate={}", aloot_rate_);
         break;
       case kSettingAlootPognon:
         aloot_pognon_ = static_cast<int>(value) * 100;
-        LogInfo("[MoonlightUi] aloot_pognon={}", aloot_pognon_);
+        // LogInfo("[MoonlightUi] aloot_pognon={}", aloot_pognon_);
         break;
       case kSettingAlootType:
         aloot_type_mask_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] aloot_type_mask=0x{:04X}", aloot_type_mask_);
+        // LogInfo("[MoonlightUi] aloot_type_mask=0x{:04X}", aloot_type_mask_);
         break;
       case kSettingDiscordChat:
         discord_chat_ = (value != 0);
-        LogInfo("[MoonlightUi] discord_chat={}", discord_chat_);
+        // LogInfo("[MoonlightUi] discord_chat={}", discord_chat_);
         UpdateRelay();
         break;
       case kSettingShowDelay:
         show_delay_ = (value != 0);
-        LogInfo("[MoonlightUi] show_delay={}", show_delay_);
+        // LogInfo("[MoonlightUi] show_delay={}", show_delay_);
         break;
       case kSettingShowSpeed:
         show_speed_ = (value != 0);
-        LogInfo("[MoonlightUi] show_speed={}", show_speed_);
+        // LogInfo("[MoonlightUi] show_speed={}", show_speed_);
         break;
       case kSettingSellStuff:
         sell_stuff_ = (value != 0);
-        LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_);
+        // LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_);
         break;
       case kSettingSellItem:
         sell_item_ = (value != 0);
-        LogInfo("[MoonlightUi] sell_item={}", sell_item_);
+        // LogInfo("[MoonlightUi] sell_item={}", sell_item_);
         break;
       case kSettingNoAsk:
         no_ask_ = (value != 0);
-        LogInfo("[MoonlightUi] no_ask={}", no_ask_);
+        // LogInfo("[MoonlightUi] no_ask={}", no_ask_);
         break;
       case kSettingNoks:
         noks_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] noks={}", noks_);
+        // LogInfo("[MoonlightUi] noks={}", noks_);
         break;
       case kSettingWings:
         wings_ = (value != 0);
-        LogInfo("[MoonlightUi] wings={}", wings_);
+        // LogInfo("[MoonlightUi] wings={}", wings_);
         break;
       case kSettingAlootMvp:
         aloot_mvp_ = (value != 0);
-        LogInfo("[MoonlightUi] aloot_mvp={}", aloot_mvp_);
+        // LogInfo("[MoonlightUi] aloot_mvp={}", aloot_mvp_);
         break;
       case kSettingAlootMvpRwd:
         aloot_mvp_rwd_ = (value != 0);
-        LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
+        // LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
         break;
       case kSettingTriInv:
         tri_inv_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] tri_inv={}", tri_inv_);
+        // LogInfo("[MoonlightUi] tri_inv={}", tri_inv_);
         break;
       case kSettingTriCart:
         tri_cart_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] tri_cart={}", tri_cart_);
+        // LogInfo("[MoonlightUi] tri_cart={}", tri_cart_);
         break;
       case kSettingTriStorage:
         tri_storage_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] tri_storage={}", tri_storage_);
+        // LogInfo("[MoonlightUi] tri_storage={}", tri_storage_);
         break;
       case kSettingTriGstorage:
         tri_gstorage_ = static_cast<int>(value);
-        LogInfo("[MoonlightUi] tri_gstorage={}", tri_gstorage_);
+        // LogInfo("[MoonlightUi] tri_gstorage={}", tri_gstorage_);
         break;
       case kSettingAlootId:
         if (value == 0) {
           aloot_ids_.clear();
-          LogInfo("[MoonlightUi] aloot_ids cleared");
+          // LogInfo("[MoonlightUi] aloot_ids cleared");
         } else {
           bool found = false;
           for (uint32_t x : aloot_ids_) if (x == value) { found = true; break; }
           if (!found) aloot_ids_.push_back(value);
-          LogInfo("[MoonlightUi] aloot_id added={}", value);
+          // LogInfo("[MoonlightUi] aloot_id added={}", value);
         }
         break;
       case kSettingAlootIdRemove:
         break;
       default:
-        LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
+        // LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
         break;
     }
   }

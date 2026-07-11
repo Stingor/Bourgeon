@@ -93,7 +93,7 @@ void PatchSilenceEmotePurchaseMsg() {
         memset(p, 0x90, kLen);  // NOP le bloc message
         VirtualProtect(p, kLen, old, &old);
         FlushInstructionCache(GetCurrentProcess(), p, kLen);
-        LogInfo("[emote-msg] 0x{:08x} silencie", addr);
+        // LogInfo("[emote-msg] 0x{:08x} silencie", addr);
       }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       LogError("[emote-msg] 0x{:08x} exception pendant le patch", addr);
@@ -149,12 +149,12 @@ void InstallChatMessageFilter() {
   g_tramp_chat = hooking::HookManager::Instance().SetHook(
       hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatAddFn),
       reinterpret_cast<uint8_t*>(&ChatAddStub));
-  LogInfo("[chat-filter] hook {}", g_tramp_chat != nullptr ? "OK" : "FAIL");
+  // LogInfo("[chat-filter] hook {}", g_tramp_chat != nullptr ? "OK" : "FAIL");
 }
 }  // namespace
 
 bool Bourgeon::Initialize() {
-  LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
+  // LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
 
   if (!client_.Initialize()) {
     LogError("Bourgeon failed to initialize");
@@ -164,7 +164,7 @@ bool Bourgeon::Initialize() {
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
   InstallChatMessageFilter();      // masque quelques messages systeme au login
 
-  LogInfo("Bourgeon initialized successfully!");
+  // LogInfo("Bourgeon initialized successfully!");
   LoadPlugins();
 
   return true;
@@ -204,7 +204,7 @@ void Bourgeon::OnProcessInput() {
 }
 
 void Bourgeon::AddLogLine(std::string log_line) {
-  LogInfo("[plugin] {}", log_line);
+  // LogInfo("[plugin] {}", log_line);
   log_lines_.emplace_back(std::move(log_line));
 }
 
@@ -405,7 +405,7 @@ void Bourgeon::LoadPlugins() {
   }
 
   for (const auto& plugin : plugins_) {
-    LogInfo("Loaded plugin: {}", plugin->name());
+    // LogInfo("Loaded plugin: {}", plugin->name());
   }
 }
 

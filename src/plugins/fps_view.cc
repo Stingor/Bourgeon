@@ -96,8 +96,8 @@ FpsViewTweaks::FpsViewTweaks() {
   g_tramp_camclamp = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kCamClamp),
       reinterpret_cast<uint8_t*>(&CamClampEntryStub));
-  LogInfo("[FpsView] camera capture hook installed ({})",
-          g_tramp_camclamp != nullptr);
+  // LogInfo("[FpsView] camera capture hook installed ({})",
+          // g_tramp_camclamp != nullptr);
 }
 
 void FpsViewTweaks::SetEnabled(bool on) {
@@ -105,7 +105,7 @@ void FpsViewTweaks::SetEnabled(bool on) {
   if (on == enabled_) return;
   enabled_ = on;
   if (!enabled_) Restore();  // Apply() runs from OnTick once pCam is available
-  LogInfo("[FpsView] {}", enabled_ ? "ON" : "OFF");
+  // LogInfo("[FpsView] {}", enabled_ ? "ON" : "OFF");
 }
 
 void FpsViewTweaks::Apply() {

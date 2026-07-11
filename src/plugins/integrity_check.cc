@@ -79,7 +79,7 @@ bool IntegrityCheck::TryComputeHash() {
   char hex[kHashLen * 2 + 1];
   for (int i = 0; i < kHashLen; ++i)
     std::snprintf(hex + i * 2, 3, "%02x", hash_[i]);
-  LogInfo("[Integrity] self SHA-256 {} computed (= hash du DLL charge ; comparer au build)", hex);
+  // LogInfo("[Integrity] self SHA-256 {} computed (= hash du DLL charge ; comparer au build)", hex);
   return true;
 }
 
@@ -95,7 +95,7 @@ IntegrityCheck::IntegrityCheck() {
 
   if (ReadMachineGuid(guid_)) {
     have_guid_ = true;
-    LogInfo("[Integrity] MachineGuid: {:.8s}...", guid_);
+    // LogInfo("[Integrity] MachineGuid: {:.8s}...", guid_);
   } else {
     LogError("[Integrity] failed to read MachineGuid from registry");
   }
@@ -138,7 +138,7 @@ bool IntegrityCheck::SendChecksum() {
     std::memset(buf + 4 + kHashLen, 0, kGuidLen);
   const bool ok = Bourgeon::Instance().SendPacket(buf, sizeof(buf));
   if (ok)
-    LogInfo("[Integrity] checksum + MachineGuid sent");
+    /* LogInfo("[Integrity] checksum + MachineGuid sent") */;
   else
     LogError("[Integrity] SendPacket failed — will retry on next tick");
   return ok;
@@ -157,7 +157,7 @@ void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
     return;
   }
   if (opcode == kOpcodeKickNotice) {
-    LogInfo("[Integrity] kick-notice received — showing update popup");
+    // LogInfo("[Integrity] kick-notice received — showing update popup");
     kick_notice_tick_ = static_cast<uint32_t>(GetTickCount());
     popup_pending_ = true;
   }

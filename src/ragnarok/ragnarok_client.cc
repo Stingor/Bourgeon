@@ -155,9 +155,9 @@ void InstallCursorCapture() {
       HookManager::Instance().SetHook(HookType::kJmpHook,
           reinterpret_cast<uint8_t*>(kAtlasGetFn),
           reinterpret_cast<uint8_t*>(&Hooked_AtlasGet)));
-  LogInfo("[Cursor] capture hooks installed (render_orig={:x} atlas_orig={:x})",
-          reinterpret_cast<uintptr_t>(g_orig_cursor_render),
-          reinterpret_cast<uintptr_t>(g_orig_atlas_get));
+  // LogInfo("[Cursor] capture hooks installed (render_orig={:x} atlas_orig={:x})",
+          // reinterpret_cast<uintptr_t>(g_orig_cursor_render),
+          // reinterpret_cast<uintptr_t>(g_orig_atlas_get));
 }
 
 // ── Char-select paging crash fix (native UINewSelectCharWnd off-by-one) ───────
@@ -203,8 +203,8 @@ void InstallCharSelectPagingFix() {
   HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSelCharRenderPatch),
       reinterpret_cast<uint8_t*>(&SelCharPagingFixStub));
-  LogInfo("[CharSelect] paging-crash bounds-check installed @ {:x}",
-          kSelCharRenderPatch);
+  // LogInfo("[CharSelect] paging-crash bounds-check installed @ {:x}",
+          // kSelCharRenderPatch);
 }
 }  // namespace
 
@@ -262,7 +262,7 @@ bool RagnarokClient::Initialize() {
     return false;
   }
   const auto timestamp_as_str = std::to_string(timestamp_);
-  LogInfo("Detected client: {}", timestamp_as_str);
+  // LogInfo("Detected client: {}", timestamp_as_str);
 
   const YAML::Node configuration = LoadConfiguration();
   const auto client_configuration = configuration[timestamp_as_str];
@@ -429,14 +429,14 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   // d3d9's DefWindowProc trampoline, so the game's WndProc is never reached,
   // leaving the connection coroutine's task pointer uninitialised → crash.
   if (WndProcRef != nullptr) {
-    LogInfo("CreateWindowExAHook: skipping re-init for class='{}' (already set up)",
-            lpClassName ? lpClassName : "(null)");
+    // LogInfo("CreateWindowExAHook: skipping re-init for class='{}' (already set up)",
+            // lpClassName ? lpClassName : "(null)");
     return hwnd;
   }
 
-  LogInfo("CreateWindowExAHook: class='{}' hwnd={:x}",
-          lpClassName ? lpClassName : "(null)",
-          reinterpret_cast<uintptr_t>(hwnd));
+  // LogInfo("CreateWindowExAHook: class='{}' hwnd={:x}",
+          // lpClassName ? lpClassName : "(null)",
+          // reinterpret_cast<uintptr_t>(hwnd));
 
   // Remember the main game window so plugins can target it (e.g. AutoLogin
   // posts input messages here).
@@ -456,9 +456,9 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   WndProcRef = reinterpret_cast<WindowProcFunc>(HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(wnd_class.lpfnWndProc),
       reinterpret_cast<uint8_t*>(WindowProcHook)));
-  LogInfo("CreateWindowExAHook: WndProc hooked, proc={:x} trampoline={:x}",
-          reinterpret_cast<uintptr_t>(wnd_class.lpfnWndProc),
-          reinterpret_cast<uintptr_t>(WndProcRef));
+  // LogInfo("CreateWindowExAHook: WndProc hooked, proc={:x} trampoline={:x}",
+          // reinterpret_cast<uintptr_t>(wnd_class.lpfnWndProc),
+          // reinterpret_cast<uintptr_t>(WndProcRef));
 
   // Start initializing imgui
   ImGui::CreateContext();

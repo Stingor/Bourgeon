@@ -102,6 +102,6 @@ WeaponLayerTweaks::WeaponLayerTweaks() {
   g_tramp_key = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kKeyWrite),
       reinterpret_cast<uint8_t*>(&KeyWriteStub));
-  LogInfo("[WeaponLayer] z-order hooks installed (defer={} key={})",
-          g_tramp_defer != nullptr, g_tramp_key != nullptr);
+  // LogInfo("[WeaponLayer] z-order hooks installed (defer={} key={})",
+          // g_tramp_defer != nullptr, g_tramp_key != nullptr);
 }

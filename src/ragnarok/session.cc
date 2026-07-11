@@ -62,7 +62,7 @@ std::string Session::GetItemNameById(int id) const {
 }
 
 void Session::SessionHook() {
-  LogInfo("Session ctor this=0x{:x}", reinterpret_cast<uintptr_t>(this));
+  // LogInfo("Session ctor this=0x{:x}", reinterpret_cast<uintptr_t>(this));
   g_session_ptr.store(this);
   SessionRef(this);
 }

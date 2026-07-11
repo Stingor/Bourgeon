@@ -123,7 +123,7 @@ static void PatchSlot(void** vtable, int idx, void* hook, void** out_orig) {
 static void RenderImGuiDX9(IDirect3DDevice9* self) {
     g_imgui_device = self;
     if (!g_dx9_initialized.load()) {
-        LogInfo("D3D9: ImGui_ImplDX9_Init device={:x}", reinterpret_cast<uintptr_t>(self));
+        // LogInfo("D3D9: ImGui_ImplDX9_Init device={:x}", reinterpret_cast<uintptr_t>(self));
         ImGui_ImplDX9_Init(self);
         g_dx9_initialized.store(true);
     }
@@ -472,7 +472,7 @@ static bool PostFx_EnsureShaders(IDirect3DDevice9* dev) {
     if (!compile) { LogError("PostFx: D3DXCompileShader missing"); return false; }
     g_fx_color_ps = CompilePs(dev, kFxColorHLSL, sizeof(kFxColorHLSL) - 1, compile);
     g_fx_fxaa_ps  = CompilePs(dev, kFxFxaaHLSL,  sizeof(kFxFxaaHLSL)  - 1, compile);
-    if (g_fx_color_ps) LogInfo("PostFx: shaders ready (fxaa={})", g_fx_fxaa_ps != nullptr);
+    if (g_fx_color_ps) /* LogInfo("PostFx: shaders ready (fxaa={})", g_fx_fxaa_ps != nullptr) */;
     return g_fx_color_ps != nullptr;
 }
 
@@ -593,7 +593,7 @@ static void PostFx_CaptureIfRequested(IDirect3DDevice9* dev) {
     if (FAILED(dev->GetRenderTarget(0, &back)) || !back) return;
     HRESULT hr = save(g_shot_path, /*D3DXIFF_PNG*/3, back, nullptr, nullptr);
     back->Release();
-    if (SUCCEEDED(hr)) LogInfo("Screenshot saved: {}", g_shot_path);
+    if (SUCCEEDED(hr)) /* LogInfo("Screenshot saved: {}", g_shot_path) */;
     else LogError("Screenshot failed hr={:x}", static_cast<unsigned>(hr));
 }
 
@@ -629,7 +629,7 @@ static HRESULT __fastcall Hooked_SetSamplerState(void* vtable_ecx, void* /*edx*/
         // SetSamplerState (so the override path is reachable). If this never logs,
         // the game uses another mechanism and the filter feature can't work as-is.
         static bool seen = false;
-        if (!seen) { seen = true; LogInfo("D3D9: game SetSamplerState MIN/MAG seen (filter hook reachable)"); }
+        if (!seen) { seen = true; /* LogInfo("D3D9: game SetSamplerState MIN/MAG seen (filter hook reachable)"); */ }
         if (!g_in_overlay && g_tex_filter_mode)
             value = (g_tex_filter_mode == 1) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
     }
@@ -672,7 +672,7 @@ static HRESULT __fastcall Hooked_Present(void* vtable_ecx, void* /*edx*/,
 static HRESULT __fastcall Hooked_Reset(void* vtable_ecx, void* /*edx*/,
                                         IDirect3DDevice9* self,
                                         D3DPRESENT_PARAMETERS* pPP) {
-    LogInfo("D3D9 Reset");
+    // LogInfo("D3D9 Reset");
     ++g_device_epoch;       // invalidate plugin texture caches (D3DPOOL_DEFAULT dies)
     PostFx_OnDeviceLost();  // free D3DPOOL_DEFAULT scene-copy RT before reset
     if (g_dx9_initialized.load()) ImGui_ImplDX9_InvalidateDeviceObjects();
@@ -686,7 +686,7 @@ static HRESULT __fastcall Hooked_ResetEx(void* vtable_ecx, void* /*edx*/,
                                           IDirect3DDevice9* self,
                                           D3DPRESENT_PARAMETERS* pPP,
                                           D3DDISPLAYMODEEX* pFullscreen) {
-    LogInfo("D3D9 ResetEx");
+    // LogInfo("D3D9 ResetEx");
     ++g_device_epoch;       // invalidate plugin texture caches (D3DPOOL_DEFAULT dies)
     PostFx_OnDeviceLost();  // free D3DPOOL_DEFAULT scene-copy RT before reset
     if (g_dx9_initialized.load()) ImGui_ImplDX9_InvalidateDeviceObjects();
@@ -733,7 +733,7 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
                                                hwnd, flags, pp, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         if (g_dx9_initialized.load()) {
-            LogInfo("D3D9: device recreated via CreateDevice — resetting ImGui");
+            // LogInfo("D3D9: device recreated via CreateDevice — resetting ImGui");
             ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
             PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
             ImGui_ImplDX9_InvalidateDeviceObjects();
@@ -763,7 +763,7 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
                                                   hwnd, flags, pp, pFullscreen, ppDev);
     if (SUCCEEDED(hr) && ppDev && *ppDev) {
         if (g_dx9_initialized.load()) {
-            LogInfo("D3D9: device recreated via CreateDeviceEx — resetting ImGui");
+            // LogInfo("D3D9: device recreated via CreateDeviceEx — resetting ImGui");
             ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
             PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
             ImGui_ImplDX9_InvalidateDeviceObjects();

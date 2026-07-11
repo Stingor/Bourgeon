@@ -701,7 +701,7 @@ InventoryTweaks::InventoryTweaks() {
   const uintptr_t cur_slot = *reinterpret_cast<uintptr_t*>(kDrawSlot);
   if (cur_slot == kDrawOrig) {
     PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
-    LogInfo("[Inventory] DrawContent vtable hook installed (weight readout)");
+    // LogInfo("[Inventory] DrawContent vtable hook installed (weight readout)");
   } else {
     LogError("[Inventory] vtable slot 0x0103d4b0 = 0x{:x}, expected 0x00946da0; "
              "hook skipped", cur_slot);
@@ -713,7 +713,7 @@ InventoryTweaks::InventoryTweaks() {
   const uintptr_t tab_slot = *reinterpret_cast<uintptr_t*>(kTabDrawSlot);
   if (tab_slot == kTabDrawOrig) {
     PatchValue<void*>(kTabDrawSlot, reinterpret_cast<void*>(&TabDrawContentHook));
-    LogInfo("[Inventory] tab DrawContent vtable hook installed (tab images)");
+    // LogInfo("[Inventory] tab DrawContent vtable hook installed (tab images)");
   } else {
     LogError("[Inventory] tab vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
              "tab hook skipped", kTabDrawSlot, tab_slot, kTabDrawOrig);
@@ -726,7 +726,7 @@ InventoryTweaks::InventoryTweaks() {
   const uintptr_t msg_slot = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (kEnableCardsFilter && msg_slot == kMsgOrig) {
     PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&MsgHook));
-    LogInfo("[Inventory] message-handler vtable hook installed (Cards tab)");
+    // LogInfo("[Inventory] message-handler vtable hook installed (Cards tab)");
   } else if (kEnableCardsFilter) {
     LogError("[Inventory] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
              "Cards tab hook skipped", kMsgSlot, msg_slot, kMsgOrig);
@@ -740,7 +740,7 @@ InventoryTweaks::InventoryTweaks() {
     const uint8_t bound = *reinterpret_cast<uint8_t*>(kLayoutTabBoundImm);
     if (bound == 3) {
       PatchValue<uint8_t>(kLayoutTabBoundImm, 4);
-      LogInfo("[Inventory] layout-restore tab bound 3->4 (Cards layout persists)");
+      // LogInfo("[Inventory] layout-restore tab bound 3->4 (Cards layout persists)");
     } else {
       LogError("[Inventory] layout bound imm @0x{:x} = {}, expected 3; patch skipped",
                kLayoutTabBoundImm, bound);
@@ -754,8 +754,8 @@ InventoryTweaks::InventoryTweaks() {
     const uint8_t favSlot = *reinterpret_cast<uint8_t*>(kFavDropSlotImm);
     if (favSlot == 3) {
       PatchValue<uint8_t>(kFavDropSlotImm, kFavSlot);
-      LogInfo("[Inventory] drag-drop favorite tab slot 3->{} (Fav moved past Cards)",
-              kFavSlot);
+      // LogInfo("[Inventory] drag-drop favorite tab slot 3->{} (Fav moved past Cards)",
+              // kFavSlot);
     } else {
       LogError("[Inventory] fav-drop slot imm @0x{:x} = {}, expected 3; patch skipped",
                kFavDropSlotImm, favSlot);
@@ -771,10 +771,10 @@ InventoryTweaks::InventoryTweaks() {
   if (cw == kStockMaxW && ch == kStockMaxH) {
     PatchValue<uint32_t>(kMaxWidthImm, kNewMaxW);
     PatchValue<uint32_t>(kMaxHeightImm, kNewMaxH);
-    LogInfo("[Inventory] resize max unlocked to {}x{}", kNewMaxW, kNewMaxH);
+    // LogInfo("[Inventory] resize max unlocked to {}x{}", kNewMaxW, kNewMaxH);
   } else {
-    LogInfo("[Inventory] resize clamp already non-stock (w=0x{:x} h=0x{:x}); "
-            "likely the WARP patch — runtime unlock skipped", cw, ch);
+    // LogInfo("[Inventory] resize clamp already non-stock (w=0x{:x} h=0x{:x}); "
+            // "likely the WARP patch — runtime unlock skipped", cw, ch);
   }
 
   // 3) Enlarge the bottom reserve (0x26 -> kRsvNew) at ALL sites so the grid,
@@ -788,8 +788,8 @@ InventoryTweaks::InventoryTweaks() {
   if (rsv_ok) {
     for (uintptr_t a : kRsvPos) PatchValue<uint8_t>(a, kRsvNew);
     for (uintptr_t a : kRsvNeg) PatchValue<uint8_t>(a, static_cast<uint8_t>(-kRsvNew));
-    LogInfo("[Inventory] bottom reserve enlarged 0x{:x}->0x{:x} (3-line bar)",
-            kRsvOld, kRsvNew);
+    // LogInfo("[Inventory] bottom reserve enlarged 0x{:x}->0x{:x} (3-line bar)",
+            // kRsvOld, kRsvNew);
   } else {
     LogError("[Inventory] bottom-reserve immediates unexpected; enlarge skipped");
   }

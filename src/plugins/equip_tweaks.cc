@@ -180,14 +180,14 @@ EquipTweaks::EquipTweaks() {
   const uintptr_t cur_msg = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (cur_msg == kMsgOrig) {
     PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&EquipMsgHook));
-    LogInfo("[Equip] message-handler hook installed (position persistence)");
+    // LogInfo("[Equip] message-handler hook installed (position persistence)");
   } else {
     LogError("[Equip] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; pos-persist skipped",
              kMsgSlot, cur_msg, kMsgOrig);
   }
 
   if (kExtraWidth <= 0) {
-    LogInfo("[Equip] widening disabled (kExtraWidth=0); window left at stock 280x167");
+    // LogInfo("[Equip] widening disabled (kExtraWidth=0); window left at stock 280x167");
     return;
   }
 
@@ -251,8 +251,8 @@ EquipTweaks::EquipTweaks() {
     PatchValue<uint32_t>(kHighlightImm, kStockHighlight + static_cast<uint32_t>(kExtraWidth));
 
   if (ok) {
-    LogInfo("[Equip] widened: window {}px, right icon x={}, name cap {}px",
-            new_width, new_icon, kNameCap);
+    // LogInfo("[Equip] widened: window {}px, right icon x={}, name cap {}px",
+            // new_width, new_icon, kNameCap);
   }
 
   // 4) Swap Equipment window (UISwapEquipmentWnd) — same knobs, its own immediates.
@@ -275,7 +275,7 @@ EquipTweaks::EquipTweaks() {
       if (*reinterpret_cast<uint8_t*>(cap) == kStockNameCap)
         PatchValue<uint8_t>(cap, static_cast<uint8_t>(kNameCap));
     }
-    LogInfo("[Equip] swap window widened: {}px, title x={}", new_width, swap_title);
+    // LogInfo("[Equip] swap window widened: {}px, title x={}", new_width, swap_title);
   }
 }
 
