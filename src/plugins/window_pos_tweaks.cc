@@ -11,6 +11,7 @@
 #include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
+#include "plugins/npc_dialog_tweaks.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -145,6 +146,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
         windowID == 0x19) {
       if (auto* sh = Bourgeon::Instance().shop_tweaks())
         sh->HideNativeAtCreation(win);
+    }
+    // Dialogue NPC (say 0x10 / secondaire 0xe2, menu 0x11, input nombre 0x38 /
+    // texte 0x64) : NpcDialogTweaks les cache dès la création -> pas de flicker
+    // (le seul OnTick@100ms laissait la fenêtre native visible ~100 ms).
+    if (windowID == 0x10 || windowID == 0x11 || windowID == 0x38 ||
+        windowID == 0x64 || windowID == 0xe2) {
+      if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks())
+        nd->HideNativeAtCreation(win, windowID);
     }
     // Comparateur ATK/DEF (UIItemParamChangeDisplayWnd) : id variable, créé par le
     // handler d'achat natif -> détecté par vtable (no-op hors session shop).

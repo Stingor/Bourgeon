@@ -32,6 +32,7 @@
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/npc_dialog_tweaks.h"
 #include "plugins/character_sheet.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -57,6 +58,7 @@ StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
+NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
@@ -322,6 +324,10 @@ void Bourgeon::LoadPlugins() {
     auto shop_tweaks = std::make_unique<ShopTweaks>();
     shop_tweaks_ = shop_tweaks.get();
     plugins_.emplace_back(std::move(shop_tweaks));
+
+    auto npc_dialog_tweaks = std::make_unique<NpcDialogTweaks>();
+    npc_dialog_tweaks_ = npc_dialog_tweaks.get();
+    plugins_.emplace_back(std::move(npc_dialog_tweaks));
   }
   {
     auto character_sheet = std::make_unique<CharacterSheet>();

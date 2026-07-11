@@ -27,6 +27,7 @@
 #include "plugins/inventory_viewer.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/npc_dialog_tweaks.h"
 #include "plugins/character_sheet.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
@@ -659,6 +660,10 @@ void MoonlightUi::LoadSettings() {
       cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
       sh->imgui_enabled_ = ui["shop_imgui"].as<bool>(sh->imgui_enabled_);
+    if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
+      nd->imgui_enabled_ = ui["npc_dialog_imgui"].as<bool>(nd->imgui_enabled_);
+      nd->menu_search_ = ui["npc_menu_search"].as<bool>(nd->menu_search_);
+    }
     if (auto* cse = Bourgeon::Instance().character_sheet())
       cse->imgui_enabled_ = ui["charsheet_imgui"].as<bool>(cse->imgui_enabled_);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
@@ -1089,6 +1094,11 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
     auto* sh = Bourgeon::Instance().shop_tweaks();
     out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
+    auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
+    out << YAML::Key << "npc_dialog_imgui" << YAML::Value
+        << (nd ? nd->imgui_enabled_ : false);
+    out << YAML::Key << "npc_menu_search" << YAML::Value
+        << (nd ? nd->menu_search_ : true);
     auto* cse = Bourgeon::Instance().character_sheet();
     out << YAML::Key << "charsheet_imgui" << YAML::Value
         << (cse ? cse->imgui_enabled_ : false);
@@ -2072,6 +2082,7 @@ void MoonlightUi::OnRenderUI() {
             "fenêtre native est cachée.\nOFF : cash shop natif classique.");
       }
       // ── Shop NPC : fenêtre achat/vente ImGui unifiée OU natif ──
+      // (Le dialogue NPC ImGui a sa propre section « Fenêtre NPC ».)
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
         if (ImGui::Checkbox("Shop NPC ImGui", &sh->imgui_enabled_))
           SaveSettings();
@@ -2094,7 +2105,7 @@ void MoonlightUi::OnRenderUI() {
       static int s_iface_nav = 0;
       static const char* kIfaceCats[] = {
           "Barres d'info", "Portrait",         "Barre d'action", "Icônes du menu",
-          "Icônes de statut", "Suivi de quête", "Descriptions", "Skin RO"};
+          "Icônes de statut", "Suivi de quête", "Descriptions", "Skin RO", "Fenêtre NPC"};
       const float kNavH = 360.0f;
       ImGui::BeginChild("iface_nav", ImVec2(150.0f, kNavH), true);
       for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
@@ -2487,6 +2498,25 @@ void MoonlightUi::OnRenderUI() {
           HelpMarker("Sauvegarde les couleurs/luminosite/opacite actuelles sous un "
                      "nom. 'Appliquer' recharge un preset ; les joueurs peuvent se "
                      "faire plusieurs themes.");
+        }
+        // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
+        if (s_iface_nav == 8)
+        {
+          if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
+            if (ImGui::Checkbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
+                "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
+                "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
+            ImGui::BeginDisabled(!nd->imgui_enabled_);
+            if (ImGui::Checkbox("Barre de recherche du menu", &nd->menu_search_))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
+                "choix) pour filtrer les options. Décoche pour un menu épuré.");
+            ImGui::EndDisabled();
+          }
         }
       }
       ImGui::PopTextWrapPos();
