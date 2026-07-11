@@ -500,6 +500,28 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   }
 }
 
+// "(?)" survolable listant tous les raccourcis câblés du viewer (comme inventory_viewer).
+void HelpMarkerShortcuts() {
+  ImGui::TextDisabled("(?)");
+  if (!ImGui::IsItemHovered()) return;
+  ImGui::BeginTooltip();
+  ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
+  ImGui::TextUnformatted(
+      "Raccourcis entrepot\n\n"
+      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
+      "  pile = demande la quantite)\n"
+      "- Clic droit : menu contextuel\n"
+      "- Ctrl + clic droit : description\n"
+      "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
+      "- Glisser un item du viewer -> inventaire : retrait ; -> chariot : storage vers cart\n"
+      "- Glisser un item d'inventaire / chariot sur le viewer : depot / cart vers storage\n"
+      "- Entree : valide la quantite (defaut = stack entier)\n"
+      "- Clic sur un en-tete de colonne : tri ; combo Sous-type : filtre fin\n"
+      "- Bouton Quitter / X : ferme l'entrepot");
+  ImGui::PopTextWrapPos();
+  ImGui::EndTooltip();
+}
+
 }  // namespace
 
 // Opcode standard ZC_INVENTORY_START (0x0b08) : porte le nom de l'entrepôt ouvert
@@ -808,8 +830,10 @@ void StorageTweaks::OnRenderUI() {
     return it != meta_.end() ? it->second : ItemMeta{};
   };
 
-  // Barre de recherche (filtre par nom), persistante entre frames.
+  // Barre de recherche (filtre par nom) + "(?)" des raccourcis à gauche.
   static ImGuiTextFilter filter;
+  HelpMarkerShortcuts();
+  ImGui::SameLine();
   ImGui::SetNextItemWidth(-1.0f);
   if (ImGui::InputTextWithHint("##storage_filter", "Filtrer...", filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
@@ -1008,9 +1032,19 @@ void StorageTweaks::OnRenderUI() {
         ImGui::TextUnformatted(items_[idx].name[0] ? items_[idx].name : "(?)");
         ImGui::EndDragDropSource();
       }
-      // Clic DROIT : toujours le menu contextuel.
-      if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-        ImGui::OpenPopup("ctx");
+      // Clic DROIT : Ctrl -> description directe ; Alt/Maj -> retrait rapide du
+      // stack COMPLET vers l'inventaire ; sinon -> menu contextuel.
+      if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.KeyCtrl) {
+          POINT pt;
+          if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].id, pt.x, pt.y);
+        } else if (io.KeyAlt || io.KeyShift) {
+          WithdrawItem(items_[idx].index, items_[idx].amount);
+        } else {
+          ImGui::OpenPopup("ctx");
+        }
+      }
       if (ImGui::BeginPopup("ctx")) {
         ImGui::TextDisabled("%s", items_[idx].name[0] ? items_[idx].name : "(?)");
         ImGui::Separator();
