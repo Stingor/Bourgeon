@@ -45,6 +45,7 @@ constexpr int kInfoLoc    = 0x08;  // masque d'emplacement d'équip (arg2 du msg
 constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
 constexpr int kInfoIdCap  = 0x40;  // capacité SSO de la std::string id (+0x2c+0x14)
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
+constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet keRefine
 
 // Poids / zeny / compteur.
 constexpr uintptr_t kWeightCur     = 0x015fbaa0;
@@ -848,6 +849,7 @@ void InventoryViewer::Extract() {
       it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
       it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
       it.loc    = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
+      it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
       it.type   = *reinterpret_cast<int*>(info + kInfoType);
       it.favorite = *reinterpret_cast<uint8_t*>(info + kInfoFav);
       SafeBuildName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
@@ -1159,11 +1161,12 @@ void InventoryViewer::OnRenderUI() {
                     ImGui::GetColorU32(ImGuiCol_TextDisabled), "?");
       }
 
-      // Quantité : texte NOIR cerné d'un liseré BLANC sur TOUS les côtés (comme le
-      // natif) -> lisible sur n'importe quel fond de tuile.
-      if (it.amount > 1) {
-        char q[16];
-        std::snprintf(q, sizeof(q), "%d", it.amount);
+      // Coin bas-droit : refine "+N" (équipement) OU quantité (pile) — exclusifs (un
+      // équipement ne s'empile pas). Texte NOIR cerné de BLANC (lisible sur tout fond).
+      char q[16] = {0};
+      if (it.refine > 0)      std::snprintf(q, sizeof(q), "+%d", it.refine);
+      else if (it.amount > 1) std::snprintf(q, sizeof(q), "%d", it.amount);
+      if (q[0]) {
         const ImVec2 ts = ImGui::CalcTextSize(q);
         const ImVec2 qp(p1.x - ts.x - 2, p1.y - ts.y - 1);
         const ImU32 white = IM_COL32(255, 255, 255, 255);
