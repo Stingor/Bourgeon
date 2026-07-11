@@ -911,6 +911,17 @@ bool InventoryViewer::HandleNativeDrop(int mx, int my) {
   return true;
 }
 
+// Équipe l'item d'inventaire actuellement glissé : drag_index_/type_/loc_ sont les
+// valeurs SERVEUR stables (it.index/type/loc, rafraîchies chaque frame par la source du
+// drag dont l'ID est semé par l'index stable) -> robuste à une renumérotation d'items_
+// pendant le glisser, et indépendant de l'ordre de rendu des fenêtres. Utilisé par le
+// drag-drop cross-plugin de character_sheet.
+bool InventoryViewer::EquipDraggedItem(bool leftHand) {
+  if (!drag_active_ || !IsEquippable(drag_type_)) return false;
+  UseOrEquip(drag_index_, drag_type_, drag_loc_, leftHand);
+  return true;
+}
+
 void InventoryViewer::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
@@ -1118,7 +1129,10 @@ void InventoryViewer::OnRenderUI() {
       if (k % cols != 0) ImGui::SameLine();
       const int idx = view[k];
       const Item& it = items_[idx];
-      ImGui::PushID(idx);
+      // ID semé par l'index serveur STABLE (pas la position volatile) : si l'inventaire
+      // est renuméroté pendant un glisser (conso/autoloot serveur), le drag reste collé
+      // au bon item et le payload de position s'auto-corrige à la frame suivante.
+      ImGui::PushID(it.index);
       const ImVec2 p0 = ImGui::GetCursorScreenPos();
       ImGui::InvisibleButton("cell", ImVec2(cell, cell));
       const bool hovered = ImGui::IsItemHovered();
@@ -1198,6 +1212,15 @@ void InventoryViewer::OnRenderUI() {
         if (ic.tex) { ImGui::Image(TexId(ic.tex), ImVec2(24, 24)); ImGui::SameLine(); }
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
         ImGui::EndDragDropSource();
+      }
+
+      // Cible cross-plugin : lâcher un item ÉQUIPÉ (glissé depuis character_sheet,
+      // payload "BGN_EQUIP" = index inventaire) sur une case de l'inventaire = le
+      // déséquiper (CZ 0x00AB).
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* pe = ImGui::AcceptDragDropPayload("BGN_EQUIP"))
+          SendUnequip(*static_cast<const int*>(pe->Data));
+        ImGui::EndDragDropTarget();
       }
 
       // Menu contextuel : toutes les actions.

@@ -17,6 +17,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "plugins/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
+#include "plugins/inventory_viewer.h"  // EquipByPayloadIndex (drag-drop équip)
 #include "plugins/imgui_escape.h"
 #include "ui/ro_imgui.h"
 
@@ -58,6 +59,15 @@ constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpStatUp  = 0x00BB;  // CZ_STATUS_CHANGE {op, statType, amount}
 const int   kStatType[6] = {0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12};  // STR..LUK
 const char* kStatName[6] = {"STR", "AGI", "VIT", "INT", "DEX", "LUK"};
+// Explications (tooltip au survol) de chaque stat primaire, même ordre que kStatName.
+const char* kStatDesc[6] = {
+    "STR — Force : augmente l'ATK physique et le poids max.",
+    "AGI — Agilité : augmente la vitesse d'attaque (ASPD) et l'esquive (FLEE).",
+    "VIT — Vitalité : augmente les HP max, la DEF et la résistance aux status.",
+    "INT — Intelligence : augmente le MATK, les SP max et la MDEF.",
+    "DEX — Dextérité : augmente la précision (HIT), l'ATK à distance, réduit le temps de cast.",
+    "LUK — Chance : augmente le critique, la perfect dodge, réduit les status.",
+};
 // Poses proposées dans le combo (sous-ensemble d'animType : on retire mort/gelé/
 // touché/ramasser/attaque, peu utiles/moches en avatar). {animType, libellé}.
 struct PoseOpt { int anim; const char* label; };
@@ -349,23 +359,27 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
 
   ImGui::SetCursorPos(ImVec2(x, y));
   ImGui::PushID(slot * 2 + (costume ? 1 : 0));
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(206, 206, 206, 255));  // case grise RO
-  ImGui::BeginChild("slot", ImVec2(sz, sz), true,
-                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  const ImVec2 wp = ImGui::GetWindowPos();
+  // La case = un InvisibleButton (widget À ID) : INDISPENSABLE pour que le drag-drop
+  // (source/cible) et les clics fonctionnent — un BeginChild bordé passif ne capte pas
+  // l'ActiveId, donc BeginDragDropSource n'y démarre JAMAIS (même pattern que la grille
+  // d'inventaire). Fond gris RO + bordure dessinés à la main via le draw list.
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  ImGui::InvisibleButton("slot", ImVec2(sz, sz));
+  const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(p0, p1, IM_COL32(206, 206, 206, 255), 4.0f);  // case grise RO
+  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);               // bordure
   if (has) {
     IconTex ic = ResolveIcon(it.nameid);
     if (ic.tex) {
       const float pad = 3.0f;
-      ImGui::SetCursorPos(ImVec2(pad, pad));
-      ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex),
-                   ImVec2(sz - 2 * pad, sz - 2 * pad));
+      dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
+                   ImVec2(p1.x - pad, p1.y - pad));
     }
     if (it.refine > 0) {  // overlay "+N" : texte noir + contour blanc (lisible)
       char rf[8];
       std::snprintf(rf, sizeof(rf), "+%d", it.refine);
-      const ImVec2 rp(wp.x + 2, wp.y + 1);
+      const ImVec2 rp(p0.x + 2, p0.y + 1);
       const ImU32 white = IM_COL32(255, 255, 255, 255);
       for (int oy = -1; oy <= 1; ++oy)
         for (int ox = -1; ox <= 1; ++ox)
@@ -375,28 +389,50 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   } else {  // slot vide : abreviation grisee
     const char* ab = SlotAbbrev(slot);
     const ImVec2 ts = ImGui::CalcTextSize(ab);
-    dl->AddText(ImVec2(wp.x + (sz - ts.x) * 0.5f, wp.y + (sz - ts.y) * 0.5f),
+    dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
                 IM_COL32(120, 120, 120, 255), ab);
   }
-  ImGui::EndChild();
-  ImGui::PopStyleColor();
 
-  // Interactions sur la case : survol = tooltip, clic-gauche = desc, clic-droit =
-  // desequiper.
+  // Drag-drop. SOURCE (slot occupé) : glisser l'item vers l'inventaire = le déséquiper.
+  // Payload "BGN_EQUIP" = index inventaire ; l'inventaire l'accepte -> SendUnequip.
+  if (has && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+    int inv = it.invIndex;
+    ImGui::SetDragDropPayload("BGN_EQUIP", &inv, sizeof(inv));
+    IconTex ic = ResolveIcon(it.nameid);  // aperçu du drag (icône + nom)
+    if (ic.tex) {
+      ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24, 24));
+      ImGui::SameLine();
+    }
+    ImGui::TextUnformatted(ItemName(it.nameid));
+    ImGui::EndDragDropSource();
+  }
+  // CIBLE (tout slot) : lâcher un item d'inventaire (payload "INV_ITEM") sur le doll =
+  // l'équiper. Le serveur place/swappe automatiquement (pc_equipitem). Ctrl = main gauche.
+  if (ImGui::BeginDragDropTarget()) {
+    if (ImGui::AcceptDragDropPayload("INV_ITEM")) {  // item d'inventaire lâché sur le doll
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->EquipDraggedItem(ImGui::GetIO().KeyCtrl);  // Ctrl = main gauche
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  // Interactions sur la case : survol = tooltip, clic DROIT = description, double-clic
+  // GAUCHE = déséquiper, glisser = vers l'inventaire (drag-drop ci-dessus). Le clic
+  // gauche simple ne fait rien (réservé au démarrage du glisser).
   if (has && ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);  // main
+    const char* hint =
+        "(clic droit : description, double-clic : déséquiper, glisser : inventaire)";
     if (it.refine > 0)
-      ImGui::SetTooltip("+%d %s\n(clic gauche : description, clic droit : desequiper)",
-                        it.refine, ItemName(it.nameid));
+      ImGui::SetTooltip("+%d %s\n%s", it.refine, ItemName(it.nameid), hint);
     else
-      ImGui::SetTooltip("%s\n(clic gauche : description, clic droit : desequiper)",
-                        ItemName(it.nameid));
+      ImGui::SetTooltip("%s\n%s", ItemName(it.nameid), hint);
     const ImVec2 mp = ImGui::GetMousePos();
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
       OpenItemDesc(it.nameid, static_cast<uint16_t>(it.viewId),
                    static_cast<uint32_t>(it.location), static_cast<int>(mp.x),
                    static_cast<int>(mp.y));
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
       SendUnequip(it.invIndex);
   }
   ImGui::PopID();
@@ -602,32 +638,55 @@ void CharacterSheet::DrawStatsPanel() {
       ImGui::TextColored(kBlack, "%s  %d (+%d)", kStatName[i], s.base[i], s.bonus[i]);
     else
       ImGui::TextColored(kBlack, "%s  %d", kStatName[i], s.base[i]);
-    // Bouton "+" a droite, actif seulement si 0 < cout <= points.
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kStatDesc[i]);  // rôle de la stat
+    // Bouton "+" + COÛT du prochain point à sa droite (comme le natif). Actif SSI
+    // 0 < coût <= points restants.
     const bool can = (s.raise[i] > 0 && s.raise[i] <= s.points);
+    const float cost_w = 30.0f;  // largeur réservée au coût, à droite du +
     ImGui::SameLine();
-    if (right > step) ImGui::SetCursorPosX(right - step);
+    if (right > step + cost_w) ImGui::SetCursorPosX(right - step - cost_w);
     ImGui::PushID(100 + i);
     if (!can) ImGui::BeginDisabled();
     if (ro::RoButton("+", step, step)) SendStatUp(kStatType[i]);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("Monter %s (cout : %d point%s)", kStatName[i], s.raise[i],
+      ImGui::SetTooltip("Monter %s (coût : %d point%s)", kStatName[i], s.raise[i],
                         s.raise[i] > 1 ? "s" : "");
     if (!can) ImGui::EndDisabled();
     ImGui::PopID();
+    if (s.raise[i] > 0) {  // coût du prochain point, juste à droite du +
+      ImGui::SameLine();
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextColored(can ? kBlack : ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%d", s.raise[i]);
+    }
   }
   ImGui::TextColored(kBlack, "Points de statut : %d", s.points);
   ImGui::Separator();
 
-  // Stats derivees.
-  ImGui::TextColored(kBlack, "ATK   %d + %d", s.atk1, s.atk2);
-  ImGui::TextColored(kBlack, "MATK  %d ~ %d", s.matk_min, s.matk_max);
-  ImGui::TextColored(kBlack, "DEF   %d + %d", s.def_s, s.def_h);
-  ImGui::TextColored(kBlack, "MDEF  %d + %d", s.mdef_s, s.mdef_h);
-  ImGui::TextColored(kBlack, "HIT   %d", s.hit);
-  ImGui::TextColored(kBlack, "FLEE  %d", s.flee);
-  ImGui::TextColored(kBlack, "CRI   %d", s.crit);
-  ImGui::TextColored(kBlack, "ASPD  %d", (2000 - s.aspd_raw) / 10);
-  ImGui::TextColored(kBlack, "Esq.P %d", s.pdodge);
+  // Stats derivees (survol = explication du rôle). Le % : DEF/MDEF « 1 » (soft, VIT/INT
+  // = réduction en %) + « 2 » (plate) ; CRI et Esq.P sont des taux en %.
+  auto stat = [](const char* text, const char* tip) {
+    ImGui::TextColored(kBlack, "%s", text);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+  };
+  char b[64];
+  std::snprintf(b, sizeof(b), "ATK   %d + %d", s.atk1, s.atk2);
+  stat(b, "Attaque physique (arme + statut) : détermine les dégâts des coups physiques.");
+  std::snprintf(b, sizeof(b), "MATK  %d ~ %d", s.matk_min, s.matk_max);
+  stat(b, "Attaque magique : détermine les dégâts des sorts.");
+  std::snprintf(b, sizeof(b), "DEF   %d%% + %d", s.def_s, s.def_h);
+  stat(b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2).");
+  std::snprintf(b, sizeof(b), "MDEF  %d%% + %d", s.mdef_s, s.mdef_h);
+  stat(b, "Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2).");
+  std::snprintf(b, sizeof(b), "HIT   %d", s.hit);
+  stat(b, "Précision : comparée au FLEE de la cible pour déterminer si vous touchez.");
+  std::snprintf(b, sizeof(b), "FLEE  %d", s.flee);
+  stat(b, "Esquive : comparée au HIT de la cible, réduit la probabilité d'être touché par une attaque.");
+  std::snprintf(b, sizeof(b), "CRI   %d%%", s.crit / 10);  // stocké x10 (précision .1)
+  stat(b, "Taux de coup critique (%) : un critique ignore la DEF et ne rate jamais.");
+  std::snprintf(b, sizeof(b), "ASPD  %d", (2000 - s.aspd_raw) / 10);
+  stat(b, "Vitesse d'attaque : plus elle est haute, plus vous frappez souvent.");
+  std::snprintf(b, sizeof(b), "Esq.P %d%%", s.pdodge / 10);  // stocké x10 (précision .1)
+  stat(b, "Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique.");
   ImGui::Separator();
   ImGui::TextColored(kBlack, "HP  %d / %d", s.hp, s.hp_max);
   ImGui::TextColored(kBlack, "SP  %d / %d", s.sp, s.sp_max);
@@ -664,9 +723,11 @@ void CharacterSheet::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
 
+  // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
+  // comme l'inventaire/le natif ; le repli est géré par le `if (!begun)` ci-dessous.
   const bool begun =
       ro::BeginRoWindow("Personnage###bourgeon_charsheet", &show_,
-                        ImGuiWindowFlags_NoCollapse);
+                        ImGuiWindowFlags_None);
   bourgeon::CloseWindowOnEscape(show_);
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 

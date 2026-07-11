@@ -62,6 +62,13 @@ class InventoryViewer : public Plugin {
            mx < win_x_ + win_w_ && my < win_y_ + win_h_;
   }
 
+  // Équipe l'item d'inventaire ACTUELLEMENT GLISSÉ (index/type/loc SERVEUR stables du
+  // drag en cours) — le serveur place/swappe automatiquement. No-op si aucun drag actif
+  // ou item non équipable. Renvoie true si équipé. Utilisé par le drag-drop cross-plugin
+  // de character_sheet (lâcher un item d'inventaire sur le doll) ; robuste à une
+  // renumérotation d'items_ en cours de glisser (l'index utilisé est stable).
+  bool EquipDraggedItem(bool leftHand);
+
  private:
   // Un item d'inventaire, extrait en POD (sous SEH) pour un rendu hors __try.
   struct Item {
