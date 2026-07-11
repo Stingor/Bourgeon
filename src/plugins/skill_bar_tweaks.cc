@@ -1170,10 +1170,15 @@ void SkillBarTweaks::DrawBar(int bar) {
       }
     }
   }
+  // Un drag ImGui en cours (réarrangement interne "SBSLOT" OU item glissé du viewer
+  // inventaire "INV_ITEM") doit TOUJOURS pouvoir se déposer sur la barre -> on force la
+  // capture souris pendant le drag, quel que soit le réglage clic-traversant / Shift / verrou.
+  const bool imgui_dragging = ImGui::GetDragDropPayload() != nullptr;
   bool no_input = false;
   if (clickthrough_ && !shift) no_input = true;  // option : toute la barre
-  else if (locked_ && !over_filled && ImGui::GetDragDropPayload() == nullptr)
+  else if (locked_ && !over_filled && !imgui_dragging)
     no_input = true;                             // cases vides / espaces
+  if (imgui_dragging) no_input = false;          // drag en cours -> capturer pour permettre le drop
   if (no_input) flags |= ImGuiWindowFlags_NoMouseInputs;
 
   char winName[32];
