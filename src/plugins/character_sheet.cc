@@ -72,6 +72,15 @@ constexpr uintptr_t kSp = 0x015ff910, kSpMax = 0x015ff914;
 constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpEquip   = 0x0998;  // CZ_REQ_WEAR_EQUIP_V5 {op, invIndex, position:4}
 constexpr uint32_t kEqpHandL  = 0x20;    // EQP main GAUCHE (bouclier / arme dual-wield)
+
+// Toggles de config natifs (fenêtre équip case 0xd5) via le dispatcher CMode *(0x0121333c)->vf+0x18.
+// RE live 2026-07-11 : cmd 0xFD = « Show Equip » (config 0), cmd 0x148 = « View Costumes » (config 5).
+constexpr uintptr_t kUICmdDisp       = 0x0121333c;  // *ptr = dispatcher CMode (en jeu)
+constexpr int       kVfDispCmd       = 0x18;
+constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
+constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
+constexpr uintptr_t kShowEquipFlag   = 0x015ffd14;  // 1 = équip visible des autres (validé live)
+constexpr uintptr_t kCostumeHideFlag = 0x016024c0;  // 0 = costumes affichés (validé live)
 constexpr uint16_t kOpStatUp  = 0x00BB;  // CZ_STATUS_CHANGE {op, statType, amount}
 const int   kStatType[6] = {0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12};  // STR..LUK
 const char* kStatName[6] = {"STR", "AGI", "VIT", "INT", "DEX", "LUK"};
@@ -585,6 +594,16 @@ void SendEquip(int invIndex, uint32_t position) {
   *reinterpret_cast<uint32_t*>(pkt + 4) = position;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
+// Bascule un toggle de config natif (Show Equip / View Costumes) via le dispatcher, EXACTEMENT
+// comme la fenêtre équip (case 0xd5). `value` = nouvel état de la case ; le serveur répond
+// ZC_CONFIG qui applique le flag + rafraîchit le sprite. SEH (appel natif via vtable).
+using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
+void SendConfigToggle(int cmd, int value) {
+  __try {
+    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 // amount = nb de points à monter en UN paquet (le serveur pc_statusup clampe au coût
 // abordable + au plafond de la stat). L'octet amount est lu NON signé (RFIFOB) -> [1,255].
 void SendStatUp(int statType, int amount = 1) {
@@ -592,7 +611,7 @@ void SendStatUp(int statType, int amount = 1) {
   if (amount > 255) amount = 255;
   uint8_t pkt[5];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpStatUp;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(statType);
+  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(statType); // 
   pkt[4] = static_cast<uint8_t>(amount);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
@@ -1182,11 +1201,14 @@ void CharacterSheet::DrawDoll(float avail_w) {
   ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(228, 230, 236, 255));
   ImGui::BeginChild("cs_avatar", ImVec2(cw, ch), true,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  // Costumes : TOUJOURS affichés dans la vue Costume ; dans la vue Équipement, seulement si
+  // « Voir les costumes » est coché (flag 0x016024c0 == 0). Sinon on rend l'équipement RÉEL.
+  avatar_show_costume_ = costume_ || (ReadInt(kCostumeHideFlag) == 0);
   if (auto* bi = Bourgeon::Instance().basic_info()) {
     const ImVec2 rp = ImGui::GetWindowPos();
     const ImVec2 rs = ImGui::GetWindowSize();
     bi->RenderPlayerAvatar(rp.x + 2.0f, rp.y + 2.0f, rs.x - 4.0f, rs.y - 4.0f,
-                           avatar_anim_, avatar_dir_, avatar_animate_);
+                           avatar_anim_, avatar_dir_, avatar_animate_, avatar_show_costume_);
   }
   ImGui::EndChild();
   ImGui::PopStyleColor();
@@ -1251,7 +1273,8 @@ void CharacterSheet::DrawDoll(float avail_w) {
     if (!p.empty()) {
       auto* bi = Bourgeon::Instance().basic_info();
       const bool ok =
-          bi && bi->ExportAvatarGif(gif_export_anim_, gif_export_dir_, p.c_str());
+          bi && bi->ExportAvatarGif(gif_export_anim_, gif_export_dir_, p.c_str(),
+                                    gif_export_show_costume_);
       const char* fn = std::strrchr(p.c_str(), '\\');
       gif_status_ = ok ? (std::string("GIF OK : ") + (fn ? fn + 1 : p.c_str()))
                        : std::string("Échec GIF (voir log)");
@@ -1267,6 +1290,28 @@ void CharacterSheet::DrawDoll(float avail_w) {
     ImGui::PopTextWrapPos();
   }
 
+  // Case config native SOUS le combo de pose, selon l'onglet (bascule via le dispatcher, le
+  // serveur répond ZC_CONFIG qui applique + rafraîchit le sprite) :
+  //   Costume -> « Voir les costumes » (flag 0x016024c0 : 0=affiché) ;
+  //   Équipement -> « Montrer mon équipement » aux autres (flag 0x015ffd14 : 1=visible).
+  const float cfg_y = sel_y + fh + (gif_status_.empty() ? 0.0f : fh) + 4.0f;
+  if (costume_) {
+    bool show = ReadInt(kCostumeHideFlag) == 0;
+    const float cw = ImGui::CalcTextSize("Voir les costumes").x + 42.0f;
+    ImGui::SetCursorPos(ImVec2(start_x + std::max(0.0f, (avail_w - cw) * 0.5f), cfg_y));
+    if (ro::RoCheckbox("Voir les costumes", &show))
+      SendConfigToggle(kCmdViewCostume, show ? 1 : 0);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Affiche ou masque les costumes sur ton personnage");
+  } else {
+    bool pub = ReadInt(kShowEquipFlag) != 0;
+    const float cw = ImGui::CalcTextSize("Montrer mon équipement").x + 42.0f;
+    ImGui::SetCursorPos(ImVec2(start_x + std::max(0.0f, (avail_w - cw) * 0.5f), cfg_y));
+    if (ro::RoCheckbox("Montrer mon équipement", &pub))
+      SendConfigToggle(kCmdShowEquip, pub ? 1 : 0);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Rend ton équipement visible (ou non) aux autres joueurs");
+  }
 }
 
 // Ouvre le dialogue Windows « Enregistrer sous » du GIF sur un THREAD séparé : un
@@ -1278,6 +1323,7 @@ void CharacterSheet::RequestGifSave() {
   gif_dialog_ready_.store(false);
   gif_export_anim_ = avatar_anim_;  // fige la pose/direction au moment du clic
   gif_export_dir_  = avatar_dir_;
+  gif_export_show_costume_ = avatar_show_costume_;  // fige aussi l'état costume
 
   // Nom par défaut : avatar_<pseudo>_<pose>_d<N>.gif (pseudo assaini).
   std::string name = Bourgeon::Instance().client().session().GetCharName();

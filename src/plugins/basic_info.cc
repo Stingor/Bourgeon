@@ -379,9 +379,9 @@ void InstallActorCapture() {
 // costume item array (session+0x2b30) overrides the general one (session+0x17d0)
 // when a costume piece occupies the slot. Each item is 0xf8 bytes; view id @
 // +0x70, a unique slot/item tag @ +4 (0 = empty), used by the caller to de-dup.
-int EquipHeadgearView(int slot, int* out_tag) {
+int EquipHeadgearView(int slot, int* out_tag, bool allow_costume = true) {
   const uintptr_t cos = kSession + 0x2b30 + static_cast<uintptr_t>(slot) * 0xf8;
-  if (*reinterpret_cast<int*>(cos + 4) != 0) {  // costume present -> precedence
+  if (allow_costume && *reinterpret_cast<int*>(cos + 4) != 0) {  // costume present -> precedence
     *out_tag = *reinterpret_cast<int*>(cos + 4);
     return *reinterpret_cast<int*>(cos + 0x70);
   }
@@ -819,7 +819,8 @@ void AvatarBuildCaptureOnce(void* render_ctx, int sex, int job, int hair, int cl
 // g_frame_dst vers le portrait à la sortie (même contrat que l'aperçu).
 // force_frame >= 0 : capture CETTE image précise (export GIF, ignore le temps/le gel
 // des poses statiques) ; < 0 : image auto (temps) selon la pose.
-void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1) {
+void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
+                        bool show_costume = true) {
   InstallActorCapture();
   if (!g_orig_actor_quad) return;
   void* render_ctx = *reinterpret_cast<void**>(kRenderCtxPtr);
@@ -840,15 +841,25 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1) {
     const int hair = *reinterpret_cast<int*>(kHair);
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
-    // Coiffes portées (costume > général ; de-dup par tag +4), comme le portrait.
+    // Coiffes portées (de-dup par tag +4). show_costume gate la précédence costume : quand
+    // false (vue Équipement + « Voir les costumes » décoché), on rend les coiffes RÉELLES.
     int has8, has9, has0;
-    const int view8 = EquipHeadgearView(8, &has8);
-    const int view9 = EquipHeadgearView(9, &has9);
-    const int view0 = EquipHeadgearView(0, &has0);
+    const int view8 = EquipHeadgearView(8, &has8, show_costume);
+    const int view9 = EquipHeadgearView(9, &has9, show_costume);
+    const int view0 = EquipHeadgearView(0, &has0, show_costume);
     const int hg_mid = (has8 != 0) ? view8 : 0;
     const int hg_low = (has9 != 0 && has9 != has8) ? view9 : 0;
     const int hg_top = (has0 != 0 && has0 != has8 && has0 != has9) ? view0 : 0;
-    const int garment = *reinterpret_cast<int*>(kGarmentView);  // TOUJOURS (corps entier)
+    // Garment : quand show_costume, le costume de cape (tableau costume slot 2) prime ;
+    // sinon le garment EFFECTIF (kGarmentView, déjà config-aware -> réel si costumes off).
+    int garment;
+    if (show_costume) {
+      const uintptr_t cosG = kSession + 0x2b30 + 2 * 0xf8;  // slot cape/garment costume
+      garment = (*reinterpret_cast<int*>(cosG + 4) != 0) ? *reinterpret_cast<int*>(cosG + 0x70)
+                                                         : *reinterpret_cast<int*>(kGarmentView);
+    } else {
+      garment = *reinterpret_cast<int*>(kGarmentView);
+    }
     // Signature d'apparence (FNV-1a des viewids/apparence, + nameids arme/bouclier) :
     // stable d'une frame d'anim à l'autre (aucun terme dépendant de l'image), sert à
     // RenderPlayerAvatar pour re-figer le cadrage quand l'équipement change.
@@ -860,7 +871,8 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1) {
           static_cast<unsigned>(hg_mid), static_cast<unsigned>(hg_low),
           static_cast<unsigned>(garment),
           static_cast<unsigned>(EquipSlotNameId(1)),   // nameid arme
-          static_cast<unsigned>(EquipSlotNameId(5))};  // nameid bouclier
+          static_cast<unsigned>(EquipSlotNameId(5)),   // nameid bouclier
+          static_cast<unsigned>(show_costume)};        // costumes affichés ou non
       unsigned sig = 2166136261u;
       for (unsigned p : parts) sig = (sig ^ p) * 16777619u;
       g_av_sig = sig;
@@ -1031,7 +1043,7 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
 // swap si mirror). No-op hors-jeu ou capture vide. À appeler entre Begin/End.
 // anim=animType, dir=0..7 (0=face), animate=joue.
 void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
-                                         int anim, int dir, bool animate) {
+                                         int anim, int dir, bool animate, bool show_costume) {
   if (Bourgeon::Instance().client().session().aid() == 0) return;
 
   const float pad = 4.0f;
@@ -1044,7 +1056,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
   static bool s_animate = false;  // dans la clé : nf (union) dépend de animate
 
   // Capture LIVE (image courante) -> g_av_caps + g_av_sig (signature d'apparence).
-  CaptureAvatarActor(anim, dir, animate);
+  CaptureAvatarActor(anim, dir, animate, -1, show_costume);
   if (g_av_count <= 0) return;
   const unsigned sig = g_av_sig;
 
@@ -1061,7 +1073,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     int nf = (animate && anim_pose && g_av_frame_count > 1) ? g_av_frame_count : 1;
     if (nf > 40) nf = 40;  // garde-fou
     for (int f = 0; f < nf; ++f) {
-      CaptureAvatarActor(anim, dir, true, f);  // force l'image f
+      CaptureAvatarActor(anim, dir, true, f, show_costume);  // force l'image f
       for (int i = 0; i < g_av_count; ++i) {
         const CapLayer& L = g_av_caps[i];
         const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
@@ -1090,7 +1102,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       s_w = w; s_h = h; s_anim = anim; s_dir = dir; s_sig = sig; s_animate = animate;
     }
     // Restaure la capture LIVE pour le rendu (la boucle a laissé la dernière image forcée).
-    CaptureAvatarActor(anim, dir, animate);
+    CaptureAvatarActor(anim, dir, animate, -1, show_costume);
     if (g_av_count <= 0) return;
   }
   if (s_scale <= 0.0f) return;  // pas encore de cadrage valide (capture dégénérée)
@@ -1117,20 +1129,21 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
 // une bbox union (perso stable), composite chaque image dans un render target
 // hors-écran (D3D9_CompositeQuadsRGBA) puis encode (GifWrite) au délai natif. Toutes
 // les poses sont animées dans le GIF (même Repos/Assis, figés seulement dans la vue).
-bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath) {
+bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath,
+                                     bool show_costume) {
   if (!filepath || Bourgeon::Instance().client().session().aid() == 0) return false;
   const int CW = 256, CH = 340;  // canvas GIF (agrandi pour la qualité ; LZW compressé)
   const float PAD = 14.0f;
 
   // Passe 1 : capturer toutes les images (renseigne g_av_frame_count) + bbox union.
-  CaptureAvatarActor(anim, dir, true, 0);
+  CaptureAvatarActor(anim, dir, true, 0, show_costume);
   int nframes = g_av_frame_count > 0 ? g_av_frame_count : 1;
   if (nframes > 40) nframes = 40;  // garde-fou
 
   std::vector<std::vector<CapLayer>> frame_layers(static_cast<size_t>(nframes));
   float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
   for (int f = 0; f < nframes; ++f) {
-    CaptureAvatarActor(anim, dir, true, f);
+    CaptureAvatarActor(anim, dir, true, f, show_costume);
     frame_layers[static_cast<size_t>(f)].assign(g_av_caps, g_av_caps + g_av_count);
     for (const CapLayer& L : frame_layers[static_cast<size_t>(f)]) {
       minx = std::min(minx, L.cx - L.w * 0.5f);

@@ -71,6 +71,7 @@ class CharacterSheet : public Plugin {
   int  avatar_anim_ = 4;      // animType : 0=Repos..4=Combat..8=Mort (def Combat)
   int  avatar_dir_ = 0;       // direction 0..7 (0=face)
   bool avatar_animate_ = true;
+  bool avatar_show_costume_ = true;  // costumes affichés (Costume tab, ou Équip + config on)
   std::string gif_status_;    // retour UI du dernier export GIF (nom / erreur)
 
   // Dialogue « Enregistrer sous » du GIF : ouvert sur un THREAD séparé (ne pas
@@ -79,6 +80,7 @@ class CharacterSheet : public Plugin {
   std::atomic<bool> gif_dialog_ready_{false};  // le dialogue a rendu un résultat
   std::string gif_dialog_path_;                // chemin choisi (vide = annulé)
   int gif_export_anim_ = 4, gif_export_dir_ = 0;  // pose/dir figées au clic
+  bool gif_export_show_costume_ = true;           // état costume figé au clic (GIF)
 
   void DrawStatsPanel();
   void DrawDoll(float avail_w);

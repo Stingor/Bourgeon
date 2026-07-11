@@ -50,14 +50,16 @@ class BasicInfoTweaks : public Plugin {
   // 0..7 (0=face), animate = joue les images de l'action. Capture live à chaque
   // appel (réutilise le moteur de capture sprite du portrait, buffer dédié).
   // Utilisé par character_sheet. À appeler entre Begin/End d'une frame UI.
+  // show_costume : false = rend les sprites d'équipement RÉELS (masque les costumes),
+  // true = affiche les costumes (précédence costume sur coiffes/garment).
   void RenderPlayerAvatar(float x, float y, float w, float h, int anim, int dir,
-                          bool animate);
+                          bool animate, bool show_costume = true);
 
   // Exporte le pantin (pose `anim` + direction `dir`) en GIF animé fond transparent
   // vers `filepath` (chemin complet ; le dossier doit exister). Toutes les images de
   // la pose sont capturées et compositées hors-écran. Renvoie true si écrit. À appeler
   // pendant le rendu de l'overlay (device D3D9). Utilisé par character_sheet.
-  bool ExportAvatarGif(int anim, int dir, const char* filepath);
+  bool ExportAvatarGif(int anim, int dir, const char* filepath, bool show_costume = true);
 
   // ── Bars (read/written by MoonlightUi) ────────────────────────────────────
   struct Bar {
