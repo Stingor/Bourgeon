@@ -770,6 +770,38 @@ void MoonlightUi::LoadSettings() {
         chat_bg_presets_.push_back({name, argb});
       }
     }
+
+    // Presets d'équipement (loadouts nommés, par CID) — possédés par CharacterSheet.
+    if (auto* cse = Bourgeon::Instance().character_sheet()) {
+      auto& presets = cse->equip_presets();
+      presets.clear();
+      if (const YAML::Node eps = ui["equip_presets"]) {
+        for (const YAML::Node& pn : eps) {
+          EquipPreset ep;
+          ep.cid  = pn["cid"].as<uint32_t>(0);
+          ep.name = pn["name"].as<std::string>("");
+          if (ep.name.empty()) continue;
+          ep.hotkeyVk = pn["hkvk"].as<int>(0);
+          ep.hkCtrl   = pn["hkc"].as<bool>(false);
+          ep.hkAlt    = pn["hka"].as<bool>(false);
+          ep.hkShift  = pn["hks"].as<bool>(false);
+          if (const YAML::Node items = pn["items"]) {
+            for (const YAML::Node& it : items) {
+              EquipPresetItem pi;
+              pi.nameid   = it["id"].as<uint32_t>(0);
+              pi.refine   = it["refine"].as<int>(0);
+              pi.grade    = it["grade"].as<int>(0);
+              pi.leftHand = it["left"].as<bool>(false);
+              if (const YAML::Node cards = it["cards"])
+                for (int c = 0; c < 4 && c < static_cast<int>(cards.size()); ++c)
+                  pi.cards[c] = cards[c].as<uint32_t>(0);
+              ep.items.push_back(pi);
+            }
+          }
+          presets.push_back(std::move(ep));
+        }
+      }
+    }
   } catch (const std::exception& e) {
     LogError("[MoonlightUi] failed to parse {}: {}", path, e.what());
   }
@@ -1114,6 +1146,33 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "name"  << YAML::Value << p.name
         << YAML::Key << "color" << YAML::Value << pbuf
         << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+
+  // Presets d'équipement (loadouts par CID) — possédés par CharacterSheet.
+  out << YAML::Key << "equip_presets" << YAML::Value << YAML::BeginSeq;
+  if (auto* cse = Bourgeon::Instance().character_sheet()) {
+    for (const auto& ep : cse->equip_presets()) {
+      out << YAML::BeginMap
+          << YAML::Key << "cid"  << YAML::Value << ep.cid
+          << YAML::Key << "name" << YAML::Value << ep.name
+          << YAML::Key << "hkvk" << YAML::Value << ep.hotkeyVk
+          << YAML::Key << "hkc"  << YAML::Value << ep.hkCtrl
+          << YAML::Key << "hka"  << YAML::Value << ep.hkAlt
+          << YAML::Key << "hks"  << YAML::Value << ep.hkShift
+          << YAML::Key << "items" << YAML::Value << YAML::BeginSeq;
+      for (const auto& pi : ep.items) {
+        out << YAML::BeginMap
+            << YAML::Key << "id"     << YAML::Value << pi.nameid
+            << YAML::Key << "refine" << YAML::Value << pi.refine
+            << YAML::Key << "grade"  << YAML::Value << pi.grade
+            << YAML::Key << "left"   << YAML::Value << pi.leftHand
+            << YAML::Key << "cards"  << YAML::Value << YAML::Flow << YAML::BeginSeq;
+        for (int c = 0; c < 4; ++c) out << pi.cards[c];
+        out << YAML::EndSeq << YAML::EndMap;
+      }
+      out << YAML::EndSeq << YAML::EndMap;
+    }
   }
   out       << YAML::EndSeq
       << YAML::EndMap
