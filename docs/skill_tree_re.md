@@ -1,32 +1,34 @@
 # Skill tree / grimoire — reverse engineering + the FPS "over-render" bug
 
-> Ragnarok client (`Moonlight-Destiny.exe`). All addresses are VAs of the loaded image
-> (Ghidra == x32dbg, image base `0x00400000`, no ASLR). RE done 2026-07-11 (Ghidra, read-only —
-> attaching x32dbg *normally* crashes this client due to anti-debug; validated in-game by
-> behavior). Decompiler output cited for every claim.
+> Ragnarok client (`Moonlight-Destiny.exe`). All addresses are VAs of the loaded
+> image (Ghidra == x32dbg, image base `0x00400000`, no ASLR). RE done 2026-07-11
+> (Ghidra, read-only) + live profiling from the DLL (Bourgeon `skill_tree_tweaks`).
 
 This document covers the skill window ("grimoire"), the fact that **"legacy view" and "modern view"
-are two MODES of a single window** (not two windows), and **why the "modern" mode tanks FPS** — an
-**over-render** bug (immediate-mode geometry rebuilt every frame + an animated avatar that forces a
-continuous repaint loop).
+are two MODES of a single window** (not two windows), and **why the "modern" mode tanks FPS** —
+diagnosed by live timing, fixed by repainting only when the grid changes.
 
 ---
 
 ## 0. TL;DR
 
-- The "Skill" button / hotkey **always** opens `UINewSkillListWnd` (window id **`0x25`**). There is
-  **no** runtime choice of window class.
+- The "Skill" button / hotkey **always** opens `UINewSkillListWnd` (window id **`0x25`**). No runtime
+  choice of window class.
 - "legacy view" vs "modern view" = **internal display mode**, driven by the option
-  **`Simplicity_SkillList`** = `DAT_015fa454` (`0x015FA454`, default `0`). The toggle button lives
-  **inside** the window (`OnMsg` case `0xCA`).
-- **`Simplicity_SkillList == 0`** (default) → **icon grid 560×400 + ANIMATED class avatar** =
-  "modern", **heavy**.
-- **`Simplicity_SkillList != 0`** → **compact ~330 px list, no avatar, no grid background** =
-  "legacy", **light**.
-- **Root cause of the FPS bug**: the grid mode renders in **immediate mode** (all geometry thrown away
-  and rebuilt every paint) **and** draws an **animated `.act` sprite** (the avatar) that **forces a
-  continuous repaint** → the whole heavy `DrawContent` (42 grid quads + an **O(n²)** per-node loop) is
-  re-run **every frame, in a loop**. The compact mode has no avatar → it only repaints on interaction.
+  **`Simplicity_SkillList`** = `DAT_015fa454` (`0x015FA454`, default `0`). Toggle button inside the
+  window (`OnMsg` case `0xCA`). `0` = 560×400 icon grid ("modern"); `!= 0` = ~330 px compact list
+  ("legacy").
+- **Root cause of the FPS drop (measured live)**: the grid's `DrawContent` (`0x00977E80`) runs **every
+  frame** (≈ the FPS) and costs **9–15 ms per call, scaling with the number of skill icons** in the
+  tab — it drags 144 Hz down to ~50 on a full tab. It rebuilds the entire grid in **immediate mode**
+  every frame: per skill node it builds a texture key + `TextureMgr_Load` + an **O(n) `GetSkillInfoAt`
+  walk-and-copy** → **O(n²) + hundreds of heap allocations, every frame** — even though the grid is
+  static unless you hover / scroll / switch tab / spend a point.
+- **The animated avatar was a red herring.** Removing it (`FUN_00974700`) changed the FPS by **nothing**
+  — it is real per-frame work but tiny next to the per-node loop. Do not chase it.
+- **Fix (implemented & validated — `skill_tree_tweaks` plugin)**: hook `DrawContent` and **repaint only
+  when a render input changed** (dirty byte + tab/hover/scroll/points/size snapshot); skip the rebuild
+  on static frames. Result in-game: **FPS back to native (144), display correct**.
 
 ---
 
@@ -46,17 +48,18 @@ continuous repaint loop).
       DAT_015fa454 == 0  ("MODERN")                              DAT_015fa454 != 0  ("LEGACY")
       window 560×400                                             window ~330 px (compact)
       FUN_00975730  grid 42 cells + per-node                     FUN_009750d0  list + per-node
-      + FUN_00974700  ANIMATED CLASS AVATAR  ◄── FPS culprit      (no avatar, no grid)
-      → CONTINUOUS repaint (animation)                            → repaint on interaction only
+      + FUN_00974700  animated class avatar (cheap)              (no avatar, no grid)
 ```
 
 | | **"modern view"** (default) | **"legacy view"** |
 |---|---|---|
 | `Simplicity_SkillList` (`DAT_015fa454`) | `0` | `!= 0` |
 | window size | 560 × 400 | ~330 px compact |
-| render body | `FUN_00975730` (grid) **+ `FUN_00974700` animated avatar** | `FUN_009750d0` (list, no avatar/grid) |
-| cost / frame | grid 42 blits + per-node O(n²) + **animated sprite + Lua/frame** | per-node O(n²) only |
-| repaint | **continuous** (avatar animation forces it) | on interaction only |
+| render body | `FUN_00975730` (grid) + `FUN_00974700` avatar | `FUN_009750d0` (list) |
+| per-frame cost | high (grid 42 quads + per-node O(n²)) | lower (fewer nodes, no grid bg) |
+
+Both modes are immediate-mode and share the expensive per-node loop; the grid mode draws more (42 cell
+quads + a bigger window + more icons), so it is the one that visibly tanks FPS.
 
 > ⚠️ There is **also** a genuine, separate legacy class `UISkillListWnd` (id **`0x105`**), but **no
 > menu/hotkey path opens it** in this client (superseded — see §7). Do not confuse it with the "legacy"
@@ -64,106 +67,53 @@ continuous repaint loop).
 
 ---
 
-## 2. ⭐ The FPS "over-render" bug (the core)
+## 2. ⭐ The FPS bug — measured, not guessed
 
-### 2.1 Context — immediate mode, nothing retained
+### 2.1 What the profiler showed
 
-`DrawContent` (vtable `+0x50`) = **`0x00977E80`**. On **every paint** it starts with:
+A timing hook on `DrawContent` (`0x00977E80`), logged once/second while the grid was open on a full tab:
 
-```c
-// FUN_00977e80 (excerpt)
-FUN_00a1cb30(param_1, 0xffff00ff);   // FULL reset of the window's render-node list (this+0x24 -> method +0x2c)
+```
+[SkillTree] DrawContent: 48 calls/s, avg 15.24 ms, max 19.49 ms
+[SkillTree] DrawContent: 54 calls/s, avg 13.36 ms, max 15.52 ms
+...
 ```
 
-`FUN_00a1cb30` clears the window's entire render-node list. The base `UIWindow_OnDraw_Base 0x00A245C0`
-even **recreates** the render node (`this+0x24`) on each `OnDraw`. So **no geometry is retained across
-frames**: everything is re-emitted in full on each paint. This is immediate mode.
+Three facts fall out:
+1. **It is called every frame.** `calls/s` tracks the live FPS (41–72), so the window repaints
+   continuously while open — the engine drives it, it is not event-gated.
+2. **Each call is enormous.** 9–15 ms, i.e. most of a 16.6 ms (60 Hz) frame in a single function. At
+   144 Hz native, one 15 ms call alone caps the frame rate around 50.
+3. **It scales with the number of skill icons** in the active tab (confirmed by the player: the more
+   skills in the tab, the lower the FPS). So the cost is inside the per-node loop.
 
-Then the body is picked based on the option:
+### 2.2 Where the time goes — immediate-mode rebuild, every frame
 
-```c
-if (DAT_015fa454 == 0) {          // "modern": grid
-    ... SP counter -> std::string alloc/frame ...
-    FUN_00975730(param_1);        // grid body (42 cells + per-node)
-    FUN_00974700();               // ANIMATED CLASS AVATAR  ◄── grid mode only
-} else {                          // "legacy": compact list
-    ... header FUN_00a9ed30(0x11c) ...
-    FUN_009750d0(param_1);        // list body (per-node, no avatar, no grid)
-}
-*(uint8_t*)(param_1 + 0x271) = 0; // clear dirty
-```
+`DrawContent` starts by clearing the whole render-node list (`FUN_00a1cb30`); nothing is retained across
+frames. Then the grid body `FUN_00975730` walks the tab's skill list and, **for each node**:
 
-### 2.2 Cost SHARED by both modes — the O(n²) per-node loop
+- `FUN_00d5e3a0` — sprintf the icon path.
+- `UITexture_MakeKeyFromPath 0x00A9F030` — **NOT a cheap hash**: ~4–5 `std::string` allocations + path
+  normalization.
+- `UITextureMgr_Load 0x00A8D4A0` — `EnterCriticalSection` + more allocs + cache lookup (cached, so no
+  disk I/O, but heavy per call); up to 3 loads/node (icon + fallback + "learned" overlay).
+- **`GetSkillInfoAt 0x00976230`** — inits a temp SkillInfo, **linearly walks the tab list** to find the
+  node by grid-index, **copies the full record (heap alloc)**, then frees it. Called once per node while
+  iterating that same list → **O(n²) + one alloc/copy/free per node**. (It re-finds the very node the
+  loop already holds — pure waste; see §6.)
+- Several skill-DB map lookups + `UIText_MeasureWidth` + colored text draws.
 
-Both `FUN_00975730` (grid) **and** `FUN_009750d0` (list) do, **for each skill node** of the active tab
-(linked list at `this + tab*8 + 0x278`):
+For a 4th-class tab (~40+ skills) that is, **every single frame**: dozens of `EnterCriticalSection`,
+hundreds of `std::string` allocations, an O(n²) list walk, and dozens of texture-cache lookups. That is
+the 9–15 ms.
 
-1. `FUN_00d5e3a0(id, buf)` → **`sprintf`** the icon path (stack buffer).
-2. `UITexture_MakeKeyFromPath 0x00A9F030` → **NOT a cheap hash**: ~4–5 `std::string` allocations + path
-   normalization + service-type prefix handling.
-3. `UITextureMgr_Load 0x00A8D4A0` → **`EnterCriticalSection`** + normalization + extension parse +
-   several allocs + cache lookup. (Textures **are** cached → no disk I/O on repeat, but the **per-call
-   CPU cost is still large**.) Up to **3 loads/node** (icon + fallback `0x01039364` + "learned" overlay
-   `0x0103F937` in grid mode).
-4. **`GetSkillInfoAt 0x00976230`** (the worst offender):
-   ```c
-   // init a temp SkillInfo, THEN linearly walk the whole tab list:
-   FUN_00739700(param_1);
-   piVar2 = FUN_00976590(this, this->tab, ...);      // list head
-   do { ... if (node->gridIndex == wanted) FUN_008da950(out, node+2);  // FULL RECORD COPY (alloc)
-        node = node->next; } while (...);
-   // caller then FUN_00739cd0(temp) -> free
-   ```
-   → **O(n) walk + one alloc/copy/free of the record PER node** → across the whole draw loop this is
-   **O(n²) + N heap allocations** per frame.
-5. Several DB lookups (`DAT_015fa3cc`) + `UIText_MeasureWidth` + colored text draws (`FUN_00a26e30` /
-   `UIWindow_DrawText` / `FUN_00a240e0`) for the "cur/max level" and the skill name.
+### 2.3 The avatar was a red herring
 
-For a 4th-class character (~40+ skills/tab), that alone is **thousands of ops + hundreds of heap
-allocations + dozens of critical sections per frame**, just for the per-node loop.
-
-### 2.3 Cost EXCLUSIVE to grid mode — why it loses "so much" FPS
-
-On top of the loop above, grid mode (`DAT_015fa454 == 0`) adds:
-
-**(a) 42 grid-background quads**, re-emitted every frame:
-```c
-// FUN_00975730 (start)
-piVar5 = UITextureMgr_Load(...);       // grid-cell texture (1 load, fine)
-iVar12 = 0;
-do { UIWindow_BlitImageToNode(param_1, col*0x44+0x4c, row*0x38+0x2c, piVar5, 1);
-     iVar12++; } while (iVar12 < 0x2a);  // 0x2a = 42 unconditional blits
-```
-
-**(b) THE ANIMATED CLASS AVATAR — `FUN_00974700`** (the real culprit). Called **only** in grid mode, it
-renders the character (job) sprite that **plays its animation**:
-```c
-// FUN_00974700 (summary):
-Job_GetBodySpritePath(...)   -> std::string  (alloc)   \
-Job_GetHeadSpritePath(...)   -> std::string  (alloc)    |  several body/head/palette paths,
-Job_GetBodyPalettePath(...)  -> std::string  (alloc)    /  one alloc/free each, EVERY frame
-UITextureMgr_Load(...) x several             // sprites + palettes
-Act_GetFrameCount(spr, 0x17); timeGetTime(); // ── .act animation:
-frame = (now - this[0x274]) / frameDur;      //    advances the anim timer (this+0x274)
-Act_GetFrame(...); Act_GetFrameLayer(...);   //    layer composition
-SpriteAtlas_GetCachedTexture(...) / SpriteAtlas_BuildTexture(...)
-Lua_CallGlobal_va(g_UILuaState, "OffsetItemPos_GetOffsetForDoram");  // ── 1 Lua call PER frame
-```
-
-An **animated sprite forces a continuous repaint**: for the avatar to "breathe", the window must
-repaint every frame. But repainting = re-running **all** of the heavy `DrawContent` (§2.1 + §2.2 +
-§2.3a). Grid mode is therefore in **permanent over-render**: it re-pays the O(n²) + avatar + Lua cost
-**every frame, in a loop, as long as the window is open** — even when idle.
-
-The compact mode (`!= 0`) does **not** call `FUN_00974700` and does **not** blit the 42 cells → no
-animation → **no continuous repaint** → near-zero cost at idle. Hence the massive FPS gap.
-
-### 2.4 One-sentence diagnosis
-
-> The "modern" mode of the skill window is **immediate-mode with no caching**, whose paint cost is
-> **O(n²) + an animated sprite avatar + one Lua call**, and an **animated avatar forces it to repaint
-> every frame** → over-render → massive FPS drop. The "legacy" mode removes the avatar and grid, hence
-> the continuous repaint, hence the bug.
+The grid mode also renders an animated class avatar (`FUN_00974700`: `.act` animation + sprite/palette
+loads + a per-frame Lua call). It *looked* like the culprit (an animated sprite suggests forced
+repaints). It is not: **NOP-ing its call recovered exactly 0 FPS.** The window repaints every frame
+regardless of the avatar (the engine drives `DrawContent`, not the animation), and the avatar's own cost
+is small next to the per-node loop. Lesson: **measure before blaming.**
 
 ---
 
@@ -193,21 +143,23 @@ animation → **no continuous repaint** → near-zero cost at idle. Hence the ma
 
 | offset | field |
 |---|---|
+| `+0x14` / `+0x18` | live width / height |
 | `+0x24C` | anchor/parent |
 | `+0x250` | hovered index |
 | `+0x254` | **active tab** |
+| `+0x258` | **scroll row** (`this+600` in the render body) |
 | `+0x25C` | grid columns |
 | `+0x260` | rows/page |
 | `+0x264`/`+0x268` | top/bottom insets |
 | `+0x26C` | "has skill points" flag |
-| `+0x271` | **dirty** (set to 1 by input handlers, cleared at end of `DrawContent`) |
-| `+0x274` | **avatar animation timer** (`timeGetTime`) |
+| `+0x271` | **dirty** byte (set by input handlers, cleared at end of `DrawContent`) |
+| `+0x274` | avatar animation timer (`timeGetTime`) |
 | `+0x278 + tab*8` | **4 skill linked lists** (one per tab) |
 | `+0x298` | hover list |
 | `+0x2A0` | reserved-levels list |
 
-Skill node record (in the linked list): `+0x04` id, `+0x06` max-lvl, `+0x07` learned-lvl, `+0x0B`
-grid-index, `+0x10` icon-id, `+0x00` next.
+Skill node record (linked list): `+0x04` id, `+0x06` max-lvl, `+0x07` learned-lvl, `+0x0B` grid-index,
+`+0x10` icon-id, `+0x00` next.
 
 Grid (modern mode): cell `0x44 × 0x38`, origin `(0x4C, 0x2C)`, **42 cells** (`0x2A`).
 
@@ -215,21 +167,16 @@ Grid (modern mode): cell `0x44 × 0x38`, origin `(0x4C, 0x2C)`, **42 cells** (`0
 
 | msg / id | effect |
 |---|---|
-| **6 / `0xCA`** (@`0x00979520`) | **THE view toggle**: `DAT_015fa454 = (DAT_015fa454 == 0)` then resize `0x14a=330` (compact) or `0x230=560`×400 (grid) |
-| 6 / `0xD5` (@`0x0097956F`) | `DAT_015fa458 = (==0)` = **Show_SkillDescript** (secondary option) |
+| **6 / `0xCA`** (@`0x00979520`) | **view toggle**: `DAT_015fa454 = (== 0)` then resize `0x14a=330` (compact) or `0x230=560`×400 (grid) |
+| 6 / `0xD5` (@`0x0097956F`) | `DAT_015fa458 = (==0)` = **Show_SkillDescript** |
 | 6 / `0xC9` | `SaveWindowRect(0x25)` (self-close) |
-| 6 / `0xD8` | cycle tab |
-| 6 / `0x16B` | reset + refresh |
-| 6 / `0x10F` | confirm popup (reset all) |
-| 6 / `0xEF..0xF8` | direct level-up of a slot (if `this+0x26C`) |
-| 6 / default | +/- level (SkillMgr_SetOption 7) |
+| 6 / `0xD8` | cycle tab · `0x16B` reset+refresh · `0x10F` reset-all confirm · `0xEF..0xF8` direct level-up |
 | `0x0E` | resize (clamps height ≤ 400 in grid mode) |
 | `0x16` | change active tab (`this+0x254`) |
 | **`0x17`** | rebuild (FUN_00976b60 + FUN_00737ce0(DB) + relayout + repaint) |
 | **`0x3C`** | job-change (FUN_009765f0) |
 | `0x22` | (re)anchor to parent (`+0x24C`) + initial resize |
-| `0x3A` | open desc (dispatcher cmd `0x71`) |
-| `0xA1` | re-fit tab |
+| `0x3A` | open desc (dispatcher cmd `0x71`) · `0xA1` re-fit tab |
 
 ---
 
@@ -237,94 +184,86 @@ Grid (modern mode): cell `0x44 × 0x38`, origin `(0x4C, 0x2C)`, **42 cells** (`0
 
 ### 4.1 Opening (always `0x25`)
 
-- "Skill" menu icon = **command `0xC4`** (`UIMenuIconWnd_BuildIconList 0x00812FB0` ; click `0x008271F0`
+- "Skill" menu icon = **command `0xC4`** (`UIMenuIconWnd_BuildIconList 0x00812FB0`; click `0x008271F0`
   → `g_UICommandDispatcher` obj `0x0121333C`, vtable `+0x18` = `0x00C86740` `CGameMode::SendMsg`).
 - Skill hotkey = `UIWindowMgr_DispatchHotkeyBehavior 0x00A457E4` **case `0x66`** → menu `OnMsg(6, 0xC4)`.
-- The menu dispatcher **`FUN_00814A70`** maps `0xC4` → **`FUN_00812E60(0x25)`**:
-  ```c
-  bool FUN_00812e60(id) {                       // generic toggle helper
-      bool wasOpen = UIWindowMgr_SaveWindowRect(&g_UIWindowMgr, id);  // true if already open -> close
-      if (!wasOpen) UIWindowMgr_MakeWindow(&g_UIWindowMgr, id);       // else open
-      return !wasOpen;
-  }
-  ```
-  **No flag test; `0x105` is never referenced.** → always the "modern" `0x25`.
+- Menu dispatcher **`FUN_00814A70`** maps `0xC4` → **`FUN_00812E60(0x25)`** (open-if-closed / close-if-open
+  toggle helper). No flag test; `0x105` never referenced → always the "modern" `0x25`.
 
 ### 4.2 The `Simplicity_SkillList` option
 
 - `DAT_015fa454` (`0x015FA454`) = field `+0x94` of the OptionInfo/CSession singleton at base `0x015FA3C0`.
-- Loaded (**default `0`**) in `OptionInfo_LoadAndApplyAll 0x00D759F0` (read `@0x00D75B47`, writes
-  `[singleton+0x94]` `@0x00D75B55`).
-- Saved in `OptionInfo_SaveToFile 0x00D78970` (`@0x00D78D38`).
+- Loaded (**default `0`**) in `OptionInfo_LoadAndApplyAll 0x00D759F0` (`@0x00D75B47`); saved in
+  `OptionInfo_SaveToFile 0x00D78970` (`@0x00D78D38`).
 - Secondary `Show_SkillDescript` = `DAT_015fa458` (`+0x98`, default `0`, button `0xD5`).
-- Outside the skill window, the only reader of `DAT_015fa454` is the mgr relayout `FUN_00A46380`
-  (`@0x00A47044`), which merely redraws the cached window (`mgr+0x2C4`) when the flag is 0 — it never
-  selects a window class.
 
 ---
 
 ## 5. Populating the tree (data side) — event-driven, not per-frame
 
-- **`FUN_00D70D60`**: Lua `GetInheritJob` + `InitSkillTreeView` loop (`FUN_00D96790`) → sends msg
-  **`0x3C`** to the window (`mgr+0x2C4`) + relayouts basic-info. Triggered by **`FUN_00DA8ED0`** (job
-  change, writes `this+0x1608`).
-- **`FUN_00D95E60`**: sends msg **`0x17`** (refresh) to the window + `DAT_0131f6d0` + `FindWindow(0x9F)`.
-  Called by ~10 skill events (learned / leveled up).
+- **`FUN_00D70D60`**: Lua `GetInheritJob` + `InitSkillTreeView` loop (`FUN_00D96790`) → msg **`0x3C`**
+  to the window (`mgr+0x2C4`). Triggered by **`FUN_00DA8ED0`** (job change).
+- **`FUN_00D95E60`**: msg **`0x17`** (refresh) → the window, on skill events (learned / leveled).
 - Lua modules `Lua Files\SkillInfoz\skilltreeview` + `Lua Files\cls\skilltreeview` loaded by
-  `FUN_0171E200` (static init); Lua function `InitSkillTreeView` (string `0x0109BCC0`).
+  `FUN_0171E200`; Lua fn `InitSkillTreeView` (string `0x0109BCC0`).
 
-> So the **data** rebuild is **event-driven** (job/skill change) → **NOT** the cause of the FPS drop.
-> The cause is 100% in the **drawing** (§2).
+> The data rebuild is event-driven → not the FPS cause. The cost is 100% in the per-frame **drawing**.
 
 ---
 
-## 6. Fix ideas (not implemented)
+## 6. Fix — repaint only when the grid changes (implemented & validated)
 
-| # | Fix | Effort | Effect |
-|---|---|---|---|
-| A | **Force `Simplicity_SkillList = 1`** by default (compact mode) | trivial | removes avatar + grid + continuous repaint; compact UI |
-| B | **Decouple the avatar animation from the repaint**: only render `FUN_00974700` when the window is already dirty; don't invalidate *for* the avatar | medium | keeps modern grid but kills the idle over-render |
-| C | **Gate the rebuild** on the dirty flag (`this+0x271`) + cache node geometry across frames | medium/high | removes the per-frame rebuild; needs confirming whether the mgr calls `DrawContent` unconditionally or on invalidation |
-| D | **Hoist `GetSkillInfoAt` out of the draw loop** (max-lvl is already in the node, `+6`) and **hoist** `MakeKeyFromPath`/`Load` (same keys every frame) | medium | removes the O(n²) + redundant allocs/lookups; **benefits BOTH modes** |
-| E | (heavy) Redirect the skill open to the old `UISkillListWnd 0x105` (retained widgets, near-free) | high | very different UI (link list), evaluate first |
+The grid is static unless the player hovers / scrolls / switches tab / spends a point, yet `DrawContent`
+rebuilds it every frame. **`skill_tree_tweaks`** (`src/plugins/skill_tree_tweaks.cc`) hooks `DrawContent`
+and skips the heavy original when no render input changed since the last real paint:
 
-> Recommended: **B + D** (keep the modern look, kill the over-render), or **A** as a player-side
-> quick-win. **D** is an unconditional net win.
-> Confirm live before B/C: add a counter/log inside `DrawContent 0x00977E80` to verify it is called
-> every frame while the window is open and idle (the animated avatar strongly implies it is).
+```
+watch: this+0x271 (game dirty byte) | tab 0x254 | hovered 0x250 | scroll 0x258
+       | points 0x26C | size 0x14/0x18 | skill-point level 0x015FB9FC
+if unchanged -> return (keep last frame's render nodes); else -> run original.
+```
+
+Because the engine does NOT recreate the render node empty each frame, skipping keeps the previously
+built geometry on screen. **Measured after the fix: FPS back to native (144 Hz), display and hover/
+scroll behaviour correct.** The gate fails toward *painting* (any watched change repaints); if a rare
+update path is ever found to leave the grid stale, add its field to the watch set.
+
+Other options (not needed once the gate works, but each is a real win if you ever keep the per-frame
+rebuild):
+
+| # | Optimization | Effect |
+|---|---|---|
+| A | **Drop the redundant `GetSkillInfoAt`** in the draw loop — it re-finds and copies the node the loop already holds; read the field off the node directly (max-lvl is `node+0x06`) | removes the O(n²) walk + N heap allocs/frame |
+| B | **Cache the icon texture per skill** (keyed by `node+0x10` icon-id) instead of `MakeKeyFromPath`+`Load` every node every frame | removes the per-node string-alloc + critical-section churn |
+| C | Force `Simplicity_SkillList = 1` (compact mode) — fewer nodes, smaller window | player-side quick-win, changes the look |
+
+> The animated avatar (`FUN_00974700`) is **left ON** — it costs ~nothing and removing it did not help.
+> Note it only animates while the window repaints, so with the gate it animates during interaction and
+> is static at rest.
 
 ---
 
 ## 7. The genuine old `UISkillListWnd` (id `0x105`) — superseded
 
-A real, separate class, but **no menu/hotkey path opens it** in this client.
-
-- RTTI `.?AVUISkillListWnd@@` @ `0x01240678` ; vtable **`0x0103F3EC`**.
-- ctor **`0x00970D30`** (object `0xD4`), called **only** by the factory case `0x105`
-  (`@0x00A40127`: `PUSH 0x105 … FindWindow … CALL 0x00970D30`).
-- OnMsg **`0x00971560`** ; DrawContent **`0x00971120`** ; RebuildList **`0x00971A20`** (a vertical list
-  of cached `UIItemLinkBtn`, `y = 0xE6 + i*0x14`, built **once**).
-- Registry key `SKILLLISTWNDINFO.*` (`@0x0104BB04`).
-- Remaining role: skill **reordering** (packet **`0x9FB`** via `OnMsg` case 6 / id `0xB8`) and opening
-  the desc (case `0x62` → `MakeWindow(0xC)` + `OnMsg 0x18`).
-- **Retained** architecture (widgets built once, `DrawContent` nearly empty) → a good reference model if
-  a lightweight grimoire were ever wanted.
-- Live check: bp on `0x00970D30` while opening the grimoire → **should never hit**.
+A real, separate class, but **no menu/hotkey path opens it**. RTTI `.?AVUISkillListWnd@@` @ `0x01240678`;
+vtable `0x0103F3EC`; ctor `0x00970D30` (factory case `0x105` only); OnMsg `0x00971560`; DrawContent
+`0x00971120`; RebuildList `0x00971A20` (a vertical list of cached `UIItemLinkBtn`, built **once** — a
+retained-widget design, nearly free per frame). Registry key `SKILLLISTWNDINFO.*` (`@0x0104BB04`).
+Remaining role: skill **reordering** (packet **`0x9FB`**). Live check: bp on `0x00970D30` while opening
+the grimoire → should never hit.
 
 ---
 
 ## 8. Gotchas / conventions
 
-- `vtable+0x94` = `OnMsg` (`__thiscall`, 6 stack args) ; `+0x50` = `DrawContent` ; `+0x3C` = `OnCreate`.
-- Don't confuse the ids: skill/item **desc** = `0xC` ; **action bar** = `0x24` ; **grimoire** (the real
-  window) = **`0x25`** ; **old** grimoire = `0x105`.
+- `vtable+0x94` = `OnMsg` (`__thiscall`, 6 stack args); `+0x50` = `DrawContent`; `+0x3C` = `OnCreate`.
+- Don't confuse the ids: skill/item **desc** = `0xC`; **action bar** = `0x24`; **grimoire** (the real
+  window) = **`0x25`**; **old** grimoire = `0x105`.
 - The "window instance" globals `DAT_0131F6xx`/`DAT_0131F7xx` are **fields of the window manager**
-  `0x0131F4E8` (skill window = `mgr+0x2C4`), written **indirectly** by the factory (no direct write
-  xref).
-- `DAT_015fa454` = **`Simplicity_SkillList`** (compact mode), **NOT** a "reservation/sim" mode (initial
-  RE mistake, corrected). `DAT_015fa3c0` = OptionInfo/CSession base ; `DAT_015fa3cc` = skill-tree DB map.
-- Textures: `UITextureMgr_Load 0x00A8D4A0` (key-cached, `EnterCriticalSection`), key built by
-  `UITexture_MakeKeyFromPath 0x00A9F030` (several `std::string` allocs, expensive).
+  `0x0131F4E8` (skill window = `mgr+0x2C4`), written indirectly by the factory (no direct write xref).
+- `DAT_015fa454` = **`Simplicity_SkillList`** (compact mode), **NOT** a "reservation/sim" mode.
+- `DrawContent` runs **every frame while the window is open** — the FPS lever is *how often* it runs
+  (the gate), not the avatar.
 
 ---
 
@@ -332,23 +271,15 @@ A real, separate class, but **no menu/hotkey path opens it** in this client.
 
 | Symbol | VA |
 |---|---|
-| Skill window `UINewSkillListWnd` id | `0x25` |
-| vtable | `0x0103F660` |
-| ctor | `0x00974060` (size `0x2B0`) |
+| Skill window `UINewSkillListWnd` id / vtable / ctor / size | `0x25` / `0x0103F660` / `0x00974060` / `0x2B0` |
 | cached instance | `0x0131F7AC` (`mgr+0x2C4`, mgr `0x0131F4E8`) |
-| **DrawContent (hot path)** | **`0x00977E80`** |
-| grid body (modern) | `0x00975730` |
-| **animated avatar (FPS culprit)** | **`0x00974700`** |
-| list body (legacy/compact) | `0x009750D0` |
-| `GetSkillInfoAt` (O(n)+copy) | `0x00976230` |
-| render-node reset | `0x00A1CB30` |
-| `OnMsg` (+ toggle case 0xCA @0x00979520) | `0x00979270` |
-| OnCreate | `0x00976D70` |
-| option `Simplicity_SkillList` | `0x015FA454` (default 0) |
-| option `Show_SkillDescript` | `0x015FA458` |
+| **DrawContent (hot path, gate target)** | **`0x00977E80`** |
+| grid body / list body | `0x00975730` / `0x009750D0` |
+| `GetSkillInfoAt` (O(n)+copy, redundant) | `0x00976230` |
+| animated avatar (red herring) | `0x00974700` |
+| `OnMsg` (+ view toggle case 0xCA @0x00979520) | `0x00979270` |
+| option `Simplicity_SkillList` / `Show_SkillDescript` | `0x015FA454` / `0x015FA458` |
 | OptionInfo Load / Save | `0x00D759F0` / `0x00D78970` |
-| open: menu cmd `0xC4` → | `FUN_00814A70` → `FUN_00812E60(0x25)` (`0x00812E60`) |
-| hotkey dispatch (case 0x66) | `0x00A457E4` |
-| populate (job-change / refresh) | `0x00D70D60` / `0x00D95E60` |
+| open: menu cmd `0xC4` → | `FUN_00814A70` → `FUN_00812E60(0x25)` |
 | `UITextureMgr_Load` / `MakeKeyFromPath` | `0x00A8D4A0` / `0x00A9F030` |
-| Old `UISkillListWnd` id / vtable / ctor / OnMsg | `0x105` / `0x0103F3EC` / `0x00970D30` / `0x00971560` |
+| Old `UISkillListWnd` id / vtable / ctor | `0x105` / `0x0103F3EC` / `0x00970D30` |

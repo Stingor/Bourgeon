@@ -56,6 +56,8 @@ set(BOURGEON_FILES
 	"plugins/settings_tweaks.h"
 	"plugins/weapon_layer.cc"
 	"plugins/weapon_layer.h"
+	"plugins/skill_tree_tweaks.cc"
+	"plugins/skill_tree_tweaks.h"
 	"plugins/fps_view.cc"
 	"plugins/fps_view.h"
 	"plugins/doom_tweaks.cc"

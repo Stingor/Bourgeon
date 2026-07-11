@@ -22,6 +22,7 @@
 #include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/weapon_layer.h"
+#include "plugins/skill_tree_tweaks.h"
 #include "plugins/fps_view.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
@@ -330,6 +331,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
+  plugins_.emplace_back(std::make_unique<SkillTreeTweaks>());
   {
     auto fps_view = std::make_unique<FpsViewTweaks>();
     fps_view_ = fps_view.get();
