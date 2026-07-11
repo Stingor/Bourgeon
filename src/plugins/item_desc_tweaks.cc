@@ -622,9 +622,33 @@ struct SelState { int anchor = -1, head = -1; };
 std::unordered_map<ImGuiID, SelState> g_sel;
 ImGuiID g_active_sel = 0;  // dernier bloc où une sélection a démarré
 
+// Longueur VISIBLE d'une ligne (ignore les tokens couleur ^RRGGBB) + dernier caractère
+// visible. Sert au reflow skill : détecter les lignes « pleines » (== colonne de wrap
+// natif -> continuation coupée) et distinguer une fin de phrase d'une coupure.
+inline void AnalyzeDescLine(const char* s, int* out_len, char* out_last) {
+  int n = 0;
+  char last = '\0';
+  for (const char* p = s; *p;) {
+    if (p[0] == '^' && Hex2(p + 1) >= 0 && Hex2(p + 3) >= 0 && Hex2(p + 5) >= 0) {
+      p += 7;  // token ^RRGGBB : non visible
+      continue;
+    }
+    last = *p;
+    ++n;
+    ++p;
+  }
+  if (out_len) *out_len = n;
+  if (out_last) *out_last = last;
+}
+
+// reflow=true (skills) : les lignes viennent des rich-text box natifs DÉJÀ wrappés par
+// le jeu, qui coupe en plein mot (il compte les tokens ^RRGGBB dans la largeur) -> on
+// fusionne les lignes « pleines » (== colonne de wrap) non terminées par une ponctuation
+// de phrase avec la suivante, puis on re-wrappe à la largeur ImGui. reflow=false
+// (items/cartes) : lignes DB brutes déjà propres -> saut de ligne forcé par ligne.
 void SelectableColoredText(const char* id, const char lines[][kLineLen],
                            int count, ImU32 default_col,
-                           float wrap_override = 0.0f) {
+                           float wrap_override = 0.0f, bool reflow = false) {
   ImDrawList* dl   = ImGui::GetWindowDrawList();
   ImFont*     font = ImGui::GetFont();
   const float fsz    = ImGui::GetFontSize();
@@ -662,31 +686,44 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     return std::strncmp(p, t, std::strlen(t)) == 0;
   };
 
+  // Colonne de wrap (largeur visible max parmi les lignes) : une ligne « pleine »
+  // (== cette colonne) a été coupée par le wrap natif -> à re-fusionner (reflow skill).
+  int wrapCol = 0;
+  for (int li = 0; li < count; ++li) {
+    int v = 0;
+    AnalyzeDescLine(lines[li], &v, nullptr);
+    if (v > wrapCol) wrapCol = v;
+  }
+
+  // État PERSISTANT à travers une fusion de lignes (couleur/lien/mot en cours) : reset
+  // seulement en vraie fin de paragraphe (sinon la continuation perdrait sa couleur ou
+  // couperait le mot fusionné).
+  ImU32       cur = default_col;
+  bool        inHref = false;   // on lit l'URL entre <INFO> et </INFO> (non affichée)
+  std::string word;
+  auto flushWord = [&](ImU32 c) {
+    if (word.empty()) return;
+    ImU32 useCol = c;
+    if (curLink >= 0)
+      useCol = (linkKind[curLink] == 1) ? kLinkNavi : kLinkUrl;
+    const float ww = ImGui::CalcTextSize(word.c_str()).x;
+    if (penX > 0.0f) {
+      if (penX + spaceW + ww > wrap) {       // wrap doux -> espace logique
+        buf.push_back(' ');
+        penX = 0.0f; penY += lineH; ++row;
+      } else {
+        putVisible(' ', spaceW, useCol);     // espace visible entre mots
+      }
+    }
+    for (char ch : word) {
+      const char tmp[2] = {ch, '\0'};
+      putVisible(ch, ImGui::CalcTextSize(tmp).x, useCol);
+    }
+    word.clear();
+  };
+
   for (int li = 0; li < count; ++li) {
     const char* s = lines[li];
-    ImU32 cur = default_col;
-    bool  inHref = false;   // on lit l'URL entre <INFO> et </INFO> (non affichée)
-    std::string word;
-    auto flushWord = [&](ImU32 c) {
-      if (word.empty()) return;
-      ImU32 useCol = c;
-      if (curLink >= 0)
-        useCol = (linkKind[curLink] == 1) ? kLinkNavi : kLinkUrl;
-      const float ww = ImGui::CalcTextSize(word.c_str()).x;
-      if (penX > 0.0f) {
-        if (penX + spaceW + ww > wrap) {       // wrap doux -> espace logique
-          buf.push_back(' ');
-          penX = 0.0f; penY += lineH; ++row;
-        } else {
-          putVisible(' ', spaceW, useCol);     // espace visible entre mots
-        }
-      }
-      for (char ch : word) {
-        const char tmp[2] = {ch, '\0'};
-        putVisible(ch, ImGui::CalcTextSize(tmp).x, useCol);
-      }
-      word.clear();
-    };
     for (const char* p = s; *p;) {
       // Balises RO d'hyperlien : <URL>affichage<INFO>href</INFO></URL> et
       // <NAVI>affichage<INFO>map,x,y,...</INFO></NAVI>.
@@ -711,11 +748,24 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
       if (*p == ' ') { flushWord(cur); ++p; }
       else           { word.push_back(*p); ++p; }
     }
+    // Ligne PLEINE (== colonne de wrap) NON terminée par une ponctuation de phrase et
+    // suivie d'au moins une ligne = coupure de continuation du wrap natif -> on NE coupe
+    // PAS : le mot en cours + la couleur continuent sur la ligne suivante, l'ensemble est
+    // re-wrappé à la largeur ImGui (répare « Sle|ep »). Sinon = vraie fin de paragraphe.
+    int vlen = 0; char last = '\0';
+    AnalyzeDescLine(s, &vlen, &last);
+    const bool sentence_end = (last == '.' || last == '!' || last == '?');
+    const bool merge = reflow && (li + 1 < count) && wrapCol >= 40 &&
+                       vlen >= wrapCol && !sentence_end;
+    if (merge) continue;          // fusionne : garde word/cur/curLink/inHref/penX
     flushWord(cur);
     curLink = -1;
+    inHref  = false;
+    cur     = default_col;
     buf.push_back('\n');            // fin de ligne (dans le buffer, non visible)
     penX = 0.0f; penY += lineH; ++row;
   }
+  flushWord(cur);   // garde-fou : résidu si la dernière ligne était « pleine »
   float totalH = penY;
   if (totalH < lineH) totalH = lineH;
 
@@ -2091,8 +2141,10 @@ void ItemDescTweaks::RenderSkillWindow() {
     if (ImGui::BeginTabItem("Description")) {
       // Nom+SP déjà dans la barre de titre, ID/Max Level déjà dans la desc
       // native (box head) -> on n'affiche QUE la description ici.
+      // reflow=true : les lignes viennent des rich-text box natifs déjà wrappés (le jeu
+      // coupe en plein mot en comptant les tokens ^RRGGBB) -> on re-fusionne + re-wrap.
       SelectableColoredText("##seltext_skill", s_e.lines, s_e.line_count,
-                            IM_COL32(0, 0, 0, 255));
+                            IM_COL32(0, 0, 0, 255), 0.0f, /*reflow=*/true);
       ImGui::EndTabItem();
     }
     RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
