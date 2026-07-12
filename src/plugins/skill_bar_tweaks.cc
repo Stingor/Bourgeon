@@ -17,6 +17,7 @@
 #include "d3d9/d3d9_hook.h"
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
+#include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
 #pragma comment(lib, "winmm.lib")  // timeGetTime (matche l'horloge cooldown du jeu)
@@ -154,6 +155,38 @@ void ShowNative(void* w) {
 int CurrentTab() {
   return reinterpret_cast<GetOption_t>(kGetOption)(
              reinterpret_cast<void*>(kSkillInfoMgr), 10) ? 1 : 0;
+}
+
+// ── Anti-flicker : empêcher tout RÉ-AFFICHAGE de la native (barre + boutons) ──
+// Cacher la barre par polling en OnRenderUI (EndScene) arrive TROP TARD : la passe UI du jeu a déjà
+// dessiné CE frame ; on ne re-cache qu'au frame suivant. Quand @refresh/@load fait ré-afficher
+// UIShortCutWnd, on voit donc 1 frame de native (flicker).
+//
+// Point d'ancrage CORRECT (validé RE) : UIWnd_SetVisible (0x009030c0, vtable+0x38) écrit this+0x28
+// PUIS LIE (FUN_00a4ccf0) / délie (FUN_00a2e5c0) toute la fenêtre dans le set de rendu (mgr+0x194).
+// La barre native ET ses BOUTONS ENFANTS (onglets 1/2, croix de fermeture, bascule barre d'items)
+// forment UN sous-arbre lié d'un bloc -> ils apparaissent/disparaissent ensemble. Donc : tant que le
+// plugin veut la native cachée, on FORCE tout show de NOTRE fenêtre à hidden -> elle n'est jamais
+// re-liée -> aucun dessin (barre NI boutons), zéro flicker. C'est le seul niveau suffisant.
+//
+// (Le hook OnDraw ci-dessous reste en défense : il n'annule QUE le contenu-slots — pas les boutons
+//  enfants — donc insuffisant seul, mais utile si la fenêtre restait liée par une voie hors SetVisible.)
+constexpr uintptr_t kOnDraw = 0x008f5800;  // UIShortCutWnd::OnDraw (vtable+0x50) — contenu slots
+using OnDraw_t = void (__fastcall*)(void*, void*);
+OnDraw_t g_orig_shortcut_draw = nullptr;
+bool     g_suppress_native_draw = false;   // MAJ chaque frame par OnRenderUI ; lu par les 2 hooks
+void __fastcall ShortCutDrawHook(void* self, void* edx) {
+  if (g_suppress_native_draw) return;      // supprime le contenu natif (défense)
+  if (g_orig_shortcut_draw) g_orig_shortcut_draw(self, edx);
+}
+
+constexpr uintptr_t kSetVisibleFn = 0x009030c0;  // UIWnd_SetVisible (vtable+0x38, __thiscall)
+using SetVisibleFn_t = void (__thiscall*)(void*, int);
+SetVisibleFn_t g_orig_setvisible = nullptr;
+void __fastcall SetVisibleHook(void* self, void* /*edx*/, int visible) {
+  // self == ShortCutWnd() : fn de base PARTAGÉE -> on ne touche QUE la barre de raccourcis.
+  if (visible && g_suppress_native_draw && self == ShortCutWnd()) visible = 0;
+  if (g_orig_setvisible) g_orig_setvisible(self, visible);
 }
 
 // ── 3 régions natives = 3 barres fixes (index de barre == index de région) ───
@@ -812,10 +845,12 @@ bool ColorSwatch(const char* label, float col[4]) {
   return changed;
 }
 
-// Sliders ajustables à la molette (à l'unité) quand survolés.
+// Sliders ajustables à la molette (à l'unité) quand survolés. SetItemKeyOwner(MouseWheelY) réclame la
+// molette pour le slider survolé -> la fenêtre ne défile PAS en même temps (idiome officiel ImGui,
+// imgui.h : "make hovering/activating a button disable wheel for scrolling"). Renvoie vrai si survolé/actif.
 bool WheelInt(const char* label, int* v, int mn, int mx) {
   bool ch = ImGui::SliderInt(label, v, mn, mx);
-  if (ImGui::IsItemHovered()) {
+  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {  // capture la molette (pas de scroll fenêtre)
     const float wh = ImGui::GetIO().MouseWheel;
     if (wh != 0.0f) {
       int n = static_cast<int>(wh);
@@ -826,14 +861,14 @@ bool WheelInt(const char* label, int* v, int mn, int mx) {
   }
   return ch;
 }
-bool WheelFloat(const char* label, float* v, float mn, float mx, const char* fmt) {
+bool WheelFloat(const char* label, float* v, float mn, float mx, const char* fmt, float step = 1.0f) {
   bool ch = ImGui::SliderFloat(label, v, mn, mx, fmt);
-  if (ImGui::IsItemHovered()) {
+  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {  // capture la molette (pas de scroll fenêtre)
     const float wh = ImGui::GetIO().MouseWheel;
     if (wh != 0.0f) {
       int n = static_cast<int>(wh);
       if (n == 0) n = (wh > 0.0f) ? 1 : -1;
-      *v = std::clamp(*v + static_cast<float>(n), mn, mx);  // pas de 1 unité
+      *v = std::clamp(*v + static_cast<float>(n) * step, mn, mx);  // pas = `step` par cran de molette
       ch = true;
     }
   }
@@ -842,9 +877,26 @@ bool WheelFloat(const char* label, float* v, float mn, float mx, const char* fmt
 
 }  // namespace
 
+SkillBarTweaks::SkillBarTweaks() {
+  // Anti-flicker au ré-affichage (@refresh/@load). Voir le bloc de commentaire sur SetVisibleHook /
+  // ShortCutDrawHook. Adresses statiques dans l'exe -> installables au load.
+  auto& hm = hooking::HookManager::Instance();
+  // Principal : empêche la native (barre + boutons enfants) d'être re-liée tant qu'on la veut cachée.
+  g_orig_setvisible = reinterpret_cast<SetVisibleFn_t>(
+      hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSetVisibleFn),
+                 reinterpret_cast<uint8_t*>(&SetVisibleHook)));
+  // Défense : annule le contenu-slots natif si la fenêtre restait liée par une voie hors SetVisible.
+  g_orig_shortcut_draw = reinterpret_cast<OnDraw_t>(
+      hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kOnDraw),
+                 reinterpret_cast<uint8_t*>(&ShortCutDrawHook)));
+}
+
 void SkillBarTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
-  if (!in_game_) { native_hidden_ = false; last_tab_ = -1; items_restored_ = false; }
+  if (!in_game_) {
+    native_hidden_ = false; last_tab_ = -1; items_restored_ = false;
+    g_suppress_native_draw = false;  // hors jeu : ne pas bloquer le dessin natif
+  }
   FlushIconCache();  // recharge les icônes au changement de zone
 }
 
@@ -904,6 +956,7 @@ void SkillBarTweaks::OnRenderUI() {
   // ── Bascule cacher / restaurer la barre native selon l'activation ──────────
   const bool want_hidden = enabled_ &&
       Bourgeon::Instance().client().session().aid() != 0;
+  g_suppress_native_draw = want_hidden;  // arme le hook OnDraw AVANT la passe UI du frame suivant
   if (want_hidden) {
     EnsureCreated();
     w = ShortCutWnd();
@@ -1068,6 +1121,8 @@ void SkillBarTweaks::DrawSettingsContent() {
   changed |= ImGui::Checkbox("Clic-traversant (Shift = interagir)", &clickthrough_);
   changed |= ImGui::Checkbox("Afficher les touches", &show_keys_);
   changed |= ImGui::Checkbox("Texte gras", &bold_text_);  // faux-gras (touches + nombres)
+  changed |= WheelFloat("Taille texte touches", &key_scale_, 0.5f, 2.0f, "%.2fx", 0.01f);    // molette = +/-0.01x
+  changed |= WheelFloat("Taille texte nombre", &count_scale_, 0.5f, 2.0f, "%.2fx", 0.01f);   // molette = +/-0.01x
   ImGui::TextDisabled("Aimantation : Reglages interface > \"Aimanter a la grille\" (grille commune a tout l'UI).");
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
@@ -1111,6 +1166,7 @@ void SkillBarTweaks::DrawSettingsContent() {
     changed |= ColorSwatch("Bordure survol", col_borderhi_);
     changed |= ColorSwatch("Texte touches", col_keytext_);
     changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
+    changed |= ColorSwatch("Contour texte (ombre)", col_textout_);
   }
   ImGui::EndDisabled();
   if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
@@ -1195,22 +1251,23 @@ void SkillBarTweaks::DrawBar(int bar) {
   const ImU32 cBordHi = ImGui::GetColorU32(ImVec4(col_borderhi_[0], col_borderhi_[1], col_borderhi_[2], col_borderhi_[3]));
   const ImU32 cKeyTxt = ImGui::GetColorU32(ImVec4(col_keytext_[0], col_keytext_[1], col_keytext_[2], col_keytext_[3]));
   const ImU32 cCount  = ImGui::GetColorU32(ImVec4(col_count_[0], col_count_[1], col_count_[2], col_count_[3]));
-  // Contour noir (4 directions) pour la lisibilité + faux-gras optionnel (ImGui n'a pas de fonte bold).
+  // Contour/ombre RÉGLABLE (8 directions, comme l'inventaire & la fiche perso : texte noir + halo blanc
+  // tout autour -> lisible sur n'importe quelle icône). La couleur du contour est configurable (col_textout_)
+  // -> le joueur peut inverser (texte clair + contour sombre) ou ajuster l'opacité du halo. + faux-gras
+  // optionnel (ImGui n'a pas de fonte bold).
   const bool bold = bold_text_;
-  const ImU32 cOutline = IM_COL32(0, 0, 0, 230);
+  const ImU32 cOutline = ImGui::GetColorU32(ImVec4(col_textout_[0], col_textout_[1], col_textout_[2], col_textout_[3]));
   auto boldAdd = [&](ImVec2 p, ImU32 c, const char* t) {
-    dl->AddText(ImVec2(p.x - 1, p.y), cOutline, t);
-    dl->AddText(ImVec2(p.x + 1, p.y), cOutline, t);
-    dl->AddText(ImVec2(p.x, p.y - 1), cOutline, t);
-    dl->AddText(ImVec2(p.x, p.y + 1), cOutline, t);
+    for (int oy = -1; oy <= 1; ++oy)
+      for (int ox = -1; ox <= 1; ++ox)
+        if (ox || oy) dl->AddText(ImVec2(p.x + ox, p.y + oy), cOutline, t);
     dl->AddText(p, c, t);
     if (bold) dl->AddText(ImVec2(p.x + 1.0f, p.y), c, t);
   };
   auto boldAddF = [&](ImFont* f, float s, ImVec2 p, ImU32 c, const char* t) {
-    dl->AddText(f, s, ImVec2(p.x - 1, p.y), cOutline, t);
-    dl->AddText(f, s, ImVec2(p.x + 1, p.y), cOutline, t);
-    dl->AddText(f, s, ImVec2(p.x, p.y - 1), cOutline, t);
-    dl->AddText(f, s, ImVec2(p.x, p.y + 1), cOutline, t);
+    for (int oy = -1; oy <= 1; ++oy)
+      for (int ox = -1; ox <= 1; ++ox)
+        if (ox || oy) dl->AddText(f, s, ImVec2(p.x + ox, p.y + oy), cOutline, t);
     dl->AddText(f, s, p, c, t);
     if (bold) dl->AddText(f, s, ImVec2(p.x + 1.0f, p.y), c, t);
   };
@@ -1339,8 +1396,10 @@ void SkillBarTweaks::DrawBar(int bar) {
       if (shown > 0) {
         char lv[12];
         std::snprintf(lv, sizeof(lv), "%d", shown);
-        const ImVec2 ls = ImGui::CalcTextSize(lv);
-        boldAdd(ImVec2(p1.x - ls.x - 1, p1.y - ls.y - 1), cCount, lv);
+        ImFont* font = ImGui::GetFont();
+        const float ns = std::max(7.0f, ImGui::GetFontSize() * count_scale_);  // taille réglable
+        const ImVec2 ls = font->CalcTextSizeA(ns, 1.0e30f, 0.0f, lv);
+        boldAddF(font, ns, ImVec2(p1.x - ls.x - 1, p1.y - ls.y - 1), cCount, lv);
       }
       // Overlay de cooldown : indexé par skill id ; un objet n'y figure pas -> 0.
       const float f = CooldownFraction(r.id);
@@ -1362,7 +1421,7 @@ void SkillBarTweaks::DrawBar(int bar) {
       GetSlotKeyLabel(keyCat, slot, key, sizeof(key));
       if (key[0]) {
         ImFont* font = ImGui::GetFont();
-        float ks = std::max(7.0f, icon_size_ * 0.30f);  // petit, proportionnel à l'icône
+        float ks = std::max(7.0f, icon_size_ * 0.30f * key_scale_);  // proportionnel à l'icône × réglage
         const float maxW = icon_size_ - 3.0f;           // marge à droite de la case
         const float w = font->CalcTextSizeA(ks, 1.0e30f, 0.0f, key).x;
         if (w > maxW && w > 0.0f) ks *= maxW / w;        // rétrécit un libellé long (ex "Ctrl + F1")

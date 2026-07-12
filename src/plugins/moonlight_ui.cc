@@ -672,6 +672,9 @@ void MoonlightUi::LoadSettings() {
       sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
       sb->show_keys_  = ui["skillbar_show_keys"].as<bool>(sb->show_keys_);
       sb->bold_text_  = ui["skillbar_bold_text"].as<bool>(sb->bold_text_);
+      const float legacy_scale = ui["skillbar_text_scale"].as<float>(1.0f);  // ancienne clé unique (repli)
+      sb->key_scale_   = ui["skillbar_key_scale"].as<float>(legacy_scale);
+      sb->count_scale_ = ui["skillbar_count_scale"].as<float>(legacy_scale);
       // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items) : clés skillbarN_*
       for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
         auto& bc = sb->bars_[b];
@@ -700,6 +703,7 @@ void MoonlightUi::LoadSettings() {
       load_sbcol("skillbar_col_borderhi", sb->col_borderhi_);
       load_sbcol("skillbar_col_keytext",  sb->col_keytext_);
       load_sbcol("skillbar_col_count",    sb->col_count_);
+      load_sbcol("skillbar_col_textout",  sb->col_textout_);
     }
 
     if (auto* si = Bourgeon::Instance().status_icons()) {
@@ -1110,7 +1114,9 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
         << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
         << YAML::Key << "skillbar_show_keys" << YAML::Value << (sb ? sb->show_keys_ : true)
-        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false);
+        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false)
+        << YAML::Key << "skillbar_key_scale" << YAML::Value << (sb ? sb->key_scale_ : 1.0f)
+        << YAML::Key << "skillbar_count_scale" << YAML::Value << (sb ? sb->count_scale_ : 1.0f);
     if (sb) {
       // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
       for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
@@ -1128,7 +1134,7 @@ void MoonlightUi::SaveSettings() {
       sb->SnapshotItemSlots();  // capture le contenu live de la barre d'items -> yaml (persistance client)
       for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)
         out << YAML::Key << ("skillbar_item" + std::to_string(i)) << YAML::Value << sb->item_slots_[i];
-      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9], ck[9], cn[9];
+      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9], ck[9], cn[9], co[9];
       std::snprintf(cf, sizeof(cf), "%08X", ArgbFromPicker(sb->col_frame_));
       std::snprintf(cs, sizeof(cs), "%08X", ArgbFromPicker(sb->col_skill_));
       std::snprintf(ci, sizeof(ci), "%08X", ArgbFromPicker(sb->col_item_));
@@ -1137,6 +1143,7 @@ void MoonlightUi::SaveSettings() {
       std::snprintf(ch, sizeof(ch), "%08X", ArgbFromPicker(sb->col_borderhi_));
       std::snprintf(ck, sizeof(ck), "%08X", ArgbFromPicker(sb->col_keytext_));
       std::snprintf(cn, sizeof(cn), "%08X", ArgbFromPicker(sb->col_count_));
+      std::snprintf(co, sizeof(co), "%08X", ArgbFromPicker(sb->col_textout_));
       out << YAML::Key << "skillbar_col_frame"    << YAML::Value << cf
           << YAML::Key << "skillbar_col_skill"    << YAML::Value << cs
           << YAML::Key << "skillbar_col_item"     << YAML::Value << ci
@@ -1144,7 +1151,8 @@ void MoonlightUi::SaveSettings() {
           << YAML::Key << "skillbar_col_border"   << YAML::Value << cb
           << YAML::Key << "skillbar_col_borderhi" << YAML::Value << ch
           << YAML::Key << "skillbar_col_keytext"  << YAML::Value << ck
-          << YAML::Key << "skillbar_col_count"    << YAML::Value << cn;
+          << YAML::Key << "skillbar_col_count"    << YAML::Value << cn
+          << YAML::Key << "skillbar_col_textout"  << YAML::Value << co;
     }
   }
 

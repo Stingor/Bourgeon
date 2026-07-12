@@ -25,7 +25,7 @@
 // NON câblé dans MoonlightUi (persistance yaml + multi-barres = étape suivante).
 class SkillBarTweaks : public Plugin {
  public:
-  SkillBarTweaks() = default;
+  SkillBarTweaks();
 
   const char* name() const override { return "Skill Bar"; }
 
@@ -48,6 +48,8 @@ class SkillBarTweaks : public Plugin {
   bool  clickthrough_  = false;  // clics traversent les barres (vont au jeu) sauf si Shift maintenu
   bool  show_keys_     = true;   // affiche l'étiquette de touche (F1-F9..) en haut-gauche des slots
   bool  bold_text_     = false;  // faux-gras des textes (touches + nombres) : re-dessin décalé
+  float key_scale_     = 1.0f;   // multiplicateur de taille du texte des touches (F1..), 0.5..2.0
+  float count_scale_   = 1.0f;   // multiplicateur de taille du texte nombre (count objet / niveau), 0.5..2.0
   bool  dirty_         = false;  // config modifiée -> MoonlightUi draine et persiste (yaml)
   // (Taille/espacement sont PAR BARRE, dans BarCfg. L'aimantation utilise la grille d'alignement
   //  PARTAGÉE de MoonlightUi, pas de réglage propre ici.)
@@ -90,8 +92,9 @@ class SkillBarTweaks : public Plugin {
   float col_empty_[4]    = {0.118f, 0.118f, 0.141f, 0.784f};  // vide
   float col_border_[4]   = {0.000f, 0.000f, 0.000f, 0.784f};
   float col_borderhi_[4] = {1.000f, 0.863f, 0.471f, 0.902f};  // survol / édition
-  float col_keytext_[4]  = {0.745f, 0.804f, 0.922f, 0.588f};  // texte des touches (F1..) — discret
-  float col_count_[4]    = {1.000f, 0.902f, 0.471f, 1.000f};  // texte nombre (count objet / niveau skill)
+  float col_keytext_[4]  = {0.000f, 0.000f, 0.000f, 1.000f};  // texte des touches (F1..) — noir par défaut
+  float col_count_[4]    = {0.000f, 0.000f, 0.000f, 1.000f};  // texte nombre (count objet / niveau skill) — noir
+  float col_textout_[4]  = {1.000f, 1.000f, 1.000f, 1.000f};  // contour/ombre des textes (blanc, 8 directions)
 
  private:
   void DrawPanel();          // panneau de configuration ImGui
