@@ -47,6 +47,9 @@ class CharacterSheet : public Plugin {
   const char* name() const override { return "CharacterSheet"; }
 
   void OnRenderUI() override;
+  // Reçoit ZC_BOURGEON_STAT_BONUS (0x0F10) : apport équip/cartes compilé par
+  // status_calc_pc côté serveur, poussé à chaque recalc.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Setting PERSISTANT (bourgeon_settings.yaml "charsheet_imgui", gere par
   // MoonlightUi). Defaut OFF : opt-in. Quand ON, Alt+F bascule la fenetre.
@@ -57,6 +60,63 @@ class CharacterSheet : public Plugin {
   std::vector<EquipPreset>& equip_presets() { return equip_presets_; }
 
  private:
+  // Apport ÉQUIPEMENT + CARTES aux stats, poussé par le serveur (ZC 0x0F10),
+  // compilé par status_calc_pc. Le natif ne donne que le TOTAL par stat primaire ;
+  // ceci fournit le SPLIT équip/carte + l'ATK/MATK issus de l'équip. Phase 1.
+  // Un bonus conditionnel : (catégorie, index élément/race/taille, valeur %).
+  // Miroir de PACKET_BOURGEON_STAT_COND ; libellé résolu à l'affichage.
+  struct CondBonus {
+    uint16_t code = 0;
+    int16_t  idx = 0;
+    int32_t  value = 0;
+  };
+  // Un bonus lié à un skill (autocast / +dégâts skill). Nom résolu à l'affichage via
+  // GetSkillName. Miroir de PACKET_BOURGEON_STAT_SKILL.
+  struct SkillBonus {
+    uint16_t code = 0;
+    uint16_t skill_id = 0;
+    int16_t  lv = 0;
+    int32_t  value = 0;
+  };
+  // Un bonus lié à un item (drop). Nom résolu à l'affichage via le DB item.
+  struct ItemBonus {
+    uint16_t code = 0;
+    uint32_t nameid = 0;
+    int32_t  rate = 0;
+  };
+  struct BonusBreakdown {
+    bool valid = false;   // au moins un paquet reçu
+    int  equip[6] = {};   // apport ÉQUIPEMENT par stat primaire (STR..LUK)
+    int  card[6]  = {};   // apport CARTES
+    int  eatk = 0;        // ATK issu de l'équip
+    int  ematk = 0;       // MATK issu de l'équip
+    int  melee_pct = 0;   // % dégât mêlée non-armé
+    int  ranged_pct = 0;  // % dégât à distance
+    int  crit_dmg_pct = 0;// % dégât critique
+    int  hp_add = 0;      // PV max ajoutés par l'équip
+    int  sp_add = 0;      // SP max ajoutés par l'équip
+    int  aspd_add = 0;    // ASPD plate
+    int  vcast_pct = 0;   // cast variable n/100 (<0 = réduction)
+    int  fcast_pct = 0;   // cast fixe (<0 = réduction)
+    // Lot A — offensif
+    int  atk_pct = 0, matk_pct = 0;
+    int  dmg_ret_melee = 0, dmg_ret_ranged = 0, dmg_ret_magic = 0;
+    int  double_pct = 0, perfect_hit = 0;
+    // Lot B — survie
+    int  hp_pct = 0, sp_pct = 0, hp_regen_pct = 0, sp_regen_pct = 0;
+    int  crit_def_pct = 0, hp_on_kill = 0, sp_on_kill = 0, unbreak_pct = 0;
+    // Lot C — utilitaire
+    int  pot_hp_pct = 0, pot_sp_pct = 0, heal_up_pct = 0, delay_pct = 0;
+    int  add_vcast_ms = 0, add_fcast_ms = 0, steal_pct = 0;
+    // Lot E — réduction par type d'attaque + splash
+    int  def_melee_pct = 0, def_ranged_pct = 0, def_magic_pct = 0, def_misc_pct = 0;
+    int  splash = 0, splash_add = 0;
+    std::vector<CondBonus>  cond;    // conditionnels non nuls (vs race/élément/taille)
+    std::vector<SkillBonus> skills;  // bonus liés à un skill (autocast, +dégâts skill)
+    std::vector<ItemBonus>  items;   // bonus liés à un item (drop)
+  };
+  BonusBreakdown bonus_;
+
   std::vector<EquipPreset> equip_presets_;
   char preset_name_buf_[24] = {};  // saisie du nom (sauvegarde / renommage)
   std::string preset_status_;      // retour UI (ex. « Applique », « 2 item(s) manquant(s) »)

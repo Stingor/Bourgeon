@@ -204,6 +204,8 @@ constexpr uint16_t kOpcodeReqTechData = bopcodes::kReqTechData;  // 0x0F0B clien
 constexpr uint16_t kOpcodeTechData    = bopcodes::kTechData;     // 0x0F0C serveur -> client
 constexpr uint16_t kOpcodeReqDamage   = bopcodes::kReqDamage;    // 0x0F0D client -> serveur
 constexpr uint16_t kOpcodeDamage      = bopcodes::kDamage;       // 0x0F0E serveur -> client
+constexpr uint16_t kOpcodeReqItemScript = bopcodes::kReqItemScript;  // 0x0F11 client -> serveur
+constexpr uint16_t kOpcodeItemScript    = bopcodes::kItemScript;     // 0x0F12 serveur -> client
 
 // Les taux de drop dépendent de facteurs DYNAMIQUES côté serveur (event_drop,
 // VIP, SC_ITEMBOOST, bonus de gear) : on ne peut pas cacher indéfiniment. On
@@ -1154,6 +1156,7 @@ ItemDescTweaks::ItemDescTweaks() {
   if (kEnableServerFetch) {
     Bourgeon::Instance().RegisterRecvOpcode(kOpcodeTechData);
     Bourgeon::Instance().RegisterRecvOpcode(kOpcodeDamage);
+    Bourgeon::Instance().RegisterRecvOpcode(kOpcodeItemScript);
   }
 }
 
@@ -1306,8 +1309,74 @@ void ItemDescTweaks::RequestDamage(uint32_t skill_id, uint32_t target_mob_id) {
   e.target         = target_mob_id;
 }
 
+void ItemDescTweaks::RequestItemScript(uint32_t id) {
+  if (!kEnableServerFetch) return;
+  auto& e = script_cache_[id];
+  const uint32_t now = GetTickCount();
+  // Le script d'un item ne dépend d'aucun facteur dynamique : une fois « prêt »,
+  // on ne réinterroge jamais (cache définitif pour la session).
+  if (e.state == FetchState::kReady) return;
+  if (e.state == FetchState::kPending && (now - e.requested_tick) < kTechPendingMs)
+    return;
+
+  uint8_t pkt[8];  // [op:2][len:2][id:4]
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpcodeReqItemScript;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(sizeof(pkt));
+  *reinterpret_cast<uint32_t*>(pkt + 4) = id;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  e.state          = FetchState::kPending;
+  e.requested_tick = now;
+}
+
 void ItemDescTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
+  // Réponse script + combos (0x0F12). Payload (après [id:4][status:1] déjà retiré
+  // du header par le reader-hook -> data pointe sur [id:4]) :
+  //   [id:4][status:1] puis si status==0 : 3 chaînes préfixées 16 bits (script/
+  //   equip/unequip), [combo_count:1], puis par combo [member_count:1] ×
+  //   [member_id:4][namelen:1][name] et [script_len:2][script].
+  if (opcode == kOpcodeItemScript) {
+    if (len < 5) return;  // [id:4][status:1]
+    const uint32_t id     = *reinterpret_cast<const uint32_t*>(data);
+    const uint8_t  status = data[4];
+    auto& e = script_cache_[id];
+    e.main.clear(); e.equip.clear(); e.unequip.clear(); e.combos.clear();
+    e.status = status;
+    const uint8_t* p   = data + 5;
+    const uint8_t* end = data + len;
+    // Lit une chaîne préfixée d'une longueur 16 bits (bornée par `end`).
+    auto read_str = [&](std::string* out) -> bool {
+      if (end - p < 2) return false;
+      const uint16_t n = *reinterpret_cast<const uint16_t*>(p); p += 2;
+      if (end - p < n) return false;
+      out->assign(reinterpret_cast<const char*>(p), n); p += n;
+      return true;
+    };
+    if (status == 0) {
+      if (read_str(&e.main) && read_str(&e.equip) && read_str(&e.unequip) &&
+          p < end) {
+        const uint8_t combo_count = *p++;
+        for (uint8_t ci = 0; ci < combo_count; ++ci) {
+          if (p >= end) break;
+          ComboInfo ci_info;
+          const uint8_t mcount = *p++;
+          bool ok = true;
+          for (uint8_t mi = 0; mi < mcount; ++mi) {
+            if (end - p < 5) { ok = false; break; }  // [id:4][namelen:1]
+            const uint32_t mid = *reinterpret_cast<const uint32_t*>(p); p += 4;
+            const uint8_t  nl  = *p++;
+            if (end - p < nl) { ok = false; break; }
+            std::string nm(reinterpret_cast<const char*>(p), nl); p += nl;
+            ci_info.members.emplace_back(mid, std::move(nm));
+          }
+          if (!ok || !read_str(&ci_info.script)) break;
+          e.combos.push_back(std::move(ci_info));
+        }
+      }
+    }
+    e.state = FetchState::kReady;
+    return;
+  }
   // Réponse d'estimation de dégâts (0x0F0E).
   if (opcode == kOpcodeDamage) {
     // [id:4][lv:2][target:4][status:1][atk:1][hits:2][min/max/avg:8*3] puis
@@ -1640,6 +1709,114 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     if (const TechData* td = tech_body(kScopeMvp))
       RenderDropTable(*td, "tech_drops_mvp", CacheKey(w.id, false, kScopeMvp),
                       /*show_type=*/true);
+    ImGui::EndTabItem();
+  }
+
+  // Script + combos partagent la même requête serveur (0x0F11) mise en cache par
+  // id. On la déclenche dès qu'un des deux onglets est actif, et on renvoie
+  // l'entrée prête (ou null tant qu'elle ne l'est pas).
+  auto script_body = [&]() -> const ScriptData* {
+    RequestItemScript(w.id);
+    auto it = script_cache_.find(w.id);
+    const FetchState st =
+        (it != script_cache_.end()) ? it->second.state : FetchState::kNone;
+    if (st == FetchState::kPending) {
+      ImGui::TextDisabled("Chargement...");
+      return nullptr;
+    }
+    if (st != FetchState::kReady || it == script_cache_.end()) return nullptr;
+    if (it->second.status != 0) {
+      ImGui::TextDisabled("Script indisponible (item introuvable serveur).");
+      return nullptr;
+    }
+    return &it->second;
+  };
+
+  // Boîte de code en lecture seule : les scripts sont souvent UNE longue ligne,
+  // donc on WRAP le texte (InputTextMultiline ne le fait pas -> le reste partait
+  // en scroll horizontal invisible). Bouton « Copier » pour récupérer le script
+  // brut d'un clic (le wrap empêche la sélection multi-ligne fiable).
+  auto draw_code = [](const char* box_id, const std::string& text) {
+    char clbl[48];
+    std::snprintf(clbl, sizeof(clbl), "Copier##%s", box_id);
+    if (ImGui::SmallButton(clbl)) ImGui::SetClipboardText(text.c_str());
+    // Hauteur = texte wrappé à la largeur INTERNE du child (= largeur dispo moins
+    // son WindowPadding des deux côtés) : sinon le texte se replie sur plus de
+    // lignes que mesuré et une scrollbar apparaît pour rien. Petite marge de
+    // sécurité pour absorber les arrondis. Bornée -> scroll interne si énorme.
+    const ImVec2 padw = ImGui::GetStyle().WindowPadding;
+    const float avail = ImGui::GetContentRegionAvail().x;
+    float twrap = avail - padw.x * 2.0f - 2.0f;
+    if (twrap < 40.0f) twrap = 40.0f;
+    const ImVec2 sz =
+        ImGui::CalcTextSize(text.c_str(), nullptr, false, twrap);
+    float h = sz.y + padw.y * 2.0f + 2.0f;
+    const float maxh = ImGui::GetTextLineHeight() * 16.0f + padw.y * 2.0f;
+    if (h > maxh) h = maxh;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(0, 0, 0, 40));
+    ImGui::BeginChild(box_id, ImVec2(0.0f, h), true);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(text.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+  };
+
+  // ── Onglet « Script » : source brute (principal / équip / déséquip) ────────
+  if (ImGui::BeginTabItem("Script")) {
+    if (const ScriptData* sd = script_body()) {
+      if (sd->main.empty() && sd->equip.empty() && sd->unequip.empty()) {
+        ImGui::TextDisabled("Cet item n'a aucun script.");
+      } else {
+        if (!sd->main.empty()) {
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "Script");
+          draw_code("##script_main", sd->main);
+        }
+        if (!sd->equip.empty()) {
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "EquipScript");
+          draw_code("##script_equip", sd->equip);
+        }
+        if (!sd->unequip.empty()) {
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "UnEquipScript");
+          draw_code("##script_unequip", sd->unequip);
+        }
+      }
+    }
+    ImGui::EndTabItem();
+  }
+
+  // ── Onglet « Combos » : combos auxquels l'item participe + leur script ─────
+  if (ImGui::BeginTabItem("Combos")) {
+    if (const ScriptData* sd = script_body()) {
+      if (sd->combos.empty()) {
+        ImGui::TextDisabled("Cet item ne fait partie d'aucun combo.");
+      } else {
+        for (size_t i = 0; i < sd->combos.size(); ++i) {
+          const ComboInfo& c = sd->combos[i];
+          ImGui::PushID(static_cast<int>(i));
+          // En-tête : liste des membres (l'item courant en surbrillance).
+          std::string title;
+          for (size_t m = 0; m < c.members.size(); ++m) {
+            if (m) title += " + ";
+            const auto& mem = c.members[m];
+            title += mem.second.empty() ? ("#" + std::to_string(mem.first))
+                                        : mem.second;
+          }
+          ImGui::TextColored(ImVec4(0.55f, 0.80f, 0.55f, 1.0f), "Combo %zu",
+                             i + 1);
+          ImGui::TextWrapped("%s", title.c_str());
+          if (!c.script.empty()) {
+            char bid[24];
+            std::snprintf(bid, sizeof(bid), "##combo_scr%zu", i);
+            draw_code(bid, c.script);
+          } else {
+            ImGui::TextDisabled("(pas de script)");
+          }
+          if (i + 1 < sd->combos.size()) ImGui::Separator();
+          ImGui::PopID();
+        }
+      }
+    }
     ImGui::EndTabItem();
   }
 }

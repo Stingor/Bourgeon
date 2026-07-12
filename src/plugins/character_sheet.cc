@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
+#include "plugins/bourgeon_opcodes.h"  // kStatBonus (ZC 0x0F10)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "plugins/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
@@ -549,17 +550,31 @@ IconTex ResolveEmblem(int guildId) {
   return en.tex;
 }
 
-// Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my).
-void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my) {
+// Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my). `src` = l'item
+// SOURCE (ItemSkillInfo du slot equip) : ses cartes/refine/grade/options aleatoires sont
+// COPIEES dans l'info, sinon la description montre l'item de BASE (sans cartes/enchants).
+void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
+                  const void* src = nullptr) {
   if (id == 0) return;
   __try {
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
     reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
     reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));
+    if (src) {
+      // Copie TOUS les champs non-string du vrai item : le name-builder natif
+      // (ItemSkillInfo_BuildDisplayName 0x008a0570) décore le nom (préfixe/suffixe) à partir de
+      // type@0, cartes@0x1c-0x28, refine@0x60, grade@0x88, forge/options + IsDecoratedType. Sans
+      // ces champs (surtout le TYPE) il rend le nom NU. On saute les 2 std::string @0x2c (id) /
+      // @0x44 (resname) que InfoSetId construit -> pas de partage/corruption de heap.
+      const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
+      std::memcpy(info + 0x00, s + 0x00, 0x2c);         // type..cartes (avant l'id-string @0x2c)
+      std::memcpy(info + 0x5c, s + 0x5c, 0xf8 - 0x5c);  // identified/refine/view/grade/options...
+    } else {
+      *reinterpret_cast<uint32_t*>(info + 0x8)  = location;  // equip point
+      *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID
+    }
     info[0x5c] = 1;                                                  // identifie
-    *reinterpret_cast<uint32_t*>(info + 0x8)  = location;            // equip point
-    *reinterpret_cast<uint32_t*>(info + 0x70) = view;                // viewID
     void* cache = *reinterpret_cast<void**>(kEnsureCache);
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
@@ -573,6 +588,44 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
       Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
+// name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
+// source (slot equip). ItemName() ne rend que le nom de BASE ; ceci décore comme la description.
+constexpr uintptr_t kBuildName    = 0x008a0570;  // ItemSkillInfo_BuildDisplayName
+constexpr uintptr_t kGetBaseName  = 0x006a2b50;  // repli nom de base
+constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // libère le std::vector<int> alloué par le jeu
+constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // *ptr = fenêtre inventaire native (contexte)
+struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
+using BuildName_t   = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*, char**, char,
+                                       char);
+using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
+using GameFree_t    = void(__cdecl*)(void*);
+void DecoratedItemName(const void* info, char* out, size_t outsz) {
+  if (outsz == 0) return;
+  out[0] = '\0';
+  __try {
+    void* wnd = *reinterpret_cast<void**>(kInvWndGlobal);  // contexte (repli créateur ; peut être null)
+    char nbuf[128];
+    nbuf[0] = '\0';
+    char* bufptr = nbuf;
+    size_t ncap = sizeof(nbuf);
+    int colorOut = 0;
+    char* hlptr = nullptr;
+    GVec off = {nullptr, nullptr, nullptr};
+    reinterpret_cast<BuildName_t>(kBuildName)(wnd, const_cast<void*>(info), &colorOut, &off,
+                                              &bufptr, &ncap, &hlptr, 0, 0);
+    size_t k = 0;
+    while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
+    out[k] = '\0';
+    if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
+    if (out[0] == '\0') {  // repli : nom de base
+      size_t cap = outsz;
+      reinterpret_cast<GetBaseName_t>(kGetBaseName)(const_cast<void*>(info), out, &cap, 0);
+      out[outsz - 1] = '\0';
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
 //  Envois (raw, via Bourgeon::SendPacket)
@@ -740,7 +793,249 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
 
 }  // namespace
 
-CharacterSheet::CharacterSheet() {}
+CharacterSheet::CharacterSheet() {
+  // Apport équip/cartes poussé par le serveur à chaque status_calc_pc. Opcode zone
+  // custom sûre (>0x0C35) => livré par le reader-hook. cf. bourgeon_opcodes.h.
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStatBonus);
+}
+
+// Payload de ZC_BOURGEON_STAT_BONUS APRÈS le header [type:2][len:2] (le reader-hook
+// nous passe data = octets après le header, len = payload seul). Miroir exact de
+// PACKET_ZC_BOURGEON_STAT_BONUS côté moonlight.
+#pragma pack(push, 1)
+struct StatBonusPayload {   // bloc FIXE (miroir de PACKET_ZC_BOURGEON_STAT_BONUS sans le header)
+  int16_t param_equip[6];  // apport ÉQUIPEMENT (STR..LUK)
+  int16_t param_bonus[6];  // apport CARTES
+  int32_t eatk;            // ATK issu de l'équip
+  int32_t ematk;           // MATK issu de l'équip
+  int32_t melee_pct;       // % dégât mêlée non-armé
+  int32_t ranged_pct;      // % dégât à distance
+  int32_t crit_dmg_pct;    // % dégât critique
+  int32_t hp_add;          // PV max ajoutés par l'équip
+  int32_t sp_add;          // SP max ajoutés par l'équip
+  int32_t aspd_add;        // ASPD plate
+  int32_t vcast_pct;       // cast variable n/100 (<0 = réduction)
+  int32_t fcast_pct;       // cast fixe (<0 = réduction)
+  // Lot A — offensif
+  int32_t atk_pct, matk_pct;
+  int32_t dmg_ret_melee, dmg_ret_ranged, dmg_ret_magic;
+  int32_t double_pct, perfect_hit;
+  // Lot B — survie
+  int32_t hp_pct, sp_pct, hp_regen_pct, sp_regen_pct;
+  int32_t crit_def_pct, hp_on_kill, sp_on_kill, unbreak_pct;
+  // Lot C — utilitaire
+  int32_t pot_hp_pct, pot_sp_pct, heal_up_pct, delay_pct;
+  int32_t add_vcast_ms, add_fcast_ms, steal_pct;
+  // Lot E — réduction par type d'attaque + splash
+  int32_t def_melee_pct, def_ranged_pct, def_magic_pct, def_misc_pct;
+  int32_t splash, splash_add;
+};
+struct CondWire {          // miroir de PACKET_BOURGEON_STAT_COND
+  uint16_t code;
+  int16_t  idx;
+  int32_t  value;
+};
+struct SkillWire {         // miroir de PACKET_BOURGEON_STAT_SKILL
+  uint16_t code;
+  uint16_t skill_id;
+  int16_t  lv;
+  int32_t  value;
+};
+struct ItemWire {          // miroir de PACKET_BOURGEON_STAT_ITEM
+  uint16_t code;
+  uint32_t nameid;
+  int32_t  rate;
+};
+#pragma pack(pop)
+
+// Résolveur de nom de skill localisé (wrapper Lua natif, cf. skill_bar_tweaks) :
+// char* GetSkillName(int id) — renvoie « Unknown-Skill » si l'id est inconnu.
+constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
+using GetSkillNameLua_t = char* (__cdecl*)(int);
+
+// Résolution du nom de STATUT (EFST) via le global Lua GetStateIconDescript(efst),
+// appelé par l'API C Lua 5.1 BRUTE (nom statique => pas de std::string BYVAL détruit
+// par le wrapper varargs, cf. item_desc_tweaks ResolveOptName). RE : le tooltip natif
+// FUN_00c93cb0 utilise ce même global via Lua_CallGlobal_va.
+constexpr uintptr_t kLuaState    = 0x015ffd78;  // *=M ; **=vrai lua_State
+constexpr uintptr_t kLuaGetField = 0x00519df0;  // lua_getfield(L,idx,k)
+constexpr uintptr_t kLuaPushNum  = 0x0051a4b0;  // lua_pushnumber(L,double)
+constexpr uintptr_t kLuaPCall    = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int(0=ok)
+constexpr uintptr_t kLuaToLStr   = 0x0051aca0;  // lua_tolstring(L,idx,&len)->const char*
+constexpr uintptr_t kLuaSetTop   = 0x0051aab0;  // lua_settop(L,idx)
+constexpr int       kLuaGlobals  = -10002;      // LUA_GLOBALSINDEX (5.1)
+using LuaGetField_t = void        (__cdecl*)(void*, int, const char*);
+using LuaPushNum_t  = void        (__cdecl*)(void*, double);
+using LuaPCall_t    = int         (__cdecl*)(void*, int, int, int);
+using LuaToLStr_t   = const char* (__cdecl*)(void*, int, size_t*);
+using LuaSetTop_t   = void        (__cdecl*)(void*, int);
+
+// GetStateIconDescript(efst) renvoie la desc du statut (multi-ligne, markup ^RRGGBB) ;
+// on garde la 1re ligne nettoyée = le nom. SEH-gardé, caché. Repli « Statut #id ».
+std::unordered_map<uint16_t, std::string> g_status_name_cache;
+const char* StatusName(uint16_t efst) {
+  auto it = g_status_name_cache.find(efst);
+  if (it != g_status_name_cache.end()) return it->second.c_str();
+  char raw[256] = {0};
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaState);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    if (L) {
+      reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "GetStateIconDescript");
+      reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(efst));
+      if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 1, 0) == 0) {
+        const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+        if (s && s[0]) std::strncpy(raw, s, sizeof(raw) - 1);
+      }
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // pop résultat/erreur
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { raw[0] = '\0'; }
+  // 1re ligne, codes couleur ^RRGGBB retirés.
+  char clean[128];
+  int o = 0;
+  for (int i = 0; raw[i] && raw[i] != '\n' && raw[i] != '\r' && o < (int)sizeof(clean) - 1;) {
+    if (raw[i] == '^' && i + 6 < 255) {
+      bool hex6 = true;
+      for (int k = 1; k <= 6; ++k) {
+        const char c = raw[i + k];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+          hex6 = false; break;
+        }
+      }
+      if (hex6) { i += 7; continue; }
+    }
+    clean[o++] = raw[i++];
+  }
+  clean[o] = '\0';
+  while (o > 0 && clean[o - 1] == ' ') clean[--o] = '\0';  // trim fin
+  if (!clean[0]) std::snprintf(clean, sizeof(clean), "Statut #%u", efst);
+  return (g_status_name_cache[efst] = clean).c_str();
+}
+
+// Codes des bonus conditionnels — MIROIR de e_bourgeon_stat_cond (moonlight
+// packets_struct.hpp). Toute évolution ici DOIT être coordonnée avec le serveur.
+enum : uint16_t {
+  kBscSubEle = 1, kBscSubRace = 2, kBscSubSize = 3,
+  kBscAddEle = 4, kBscAddRace = 5, kBscAddSize = 6,
+  kBscMAddEle = 7, kBscMAddRace = 8, kBscMAddSize = 9,
+  kBscCritRace = 10, kBscIgnDefRace = 11, kBscIgnMdefRace = 12, kBscSubdefEle = 13,
+  kBscSubClass = 14, kBscSubRace2 = 15,
+};
+// Codes des bonus liés à un skill — MIROIR de e_bourgeon_stat_skill (serveur).
+enum : uint16_t {
+  kBskAutospell = 1, kBskAutospellHit = 2, kBskSkillAtk = 3,
+  kBskAddeff = 4, kBskAddeffHit = 5,  // skill_id porte un EFST (résolu via StatusName)
+};
+// Codes des bonus liés à un item — MIROIR de e_bourgeon_stat_item (serveur).
+enum : uint16_t {
+  kBsiAddDrop = 1,
+};
+
+// Noms FR pour libeller les conditionnels (index = ELE_*/RC_*/SZ_* côté serveur).
+static const char* const kEleName[] = {
+    "Neutral", "Water", "Earth", "Fire", "Wind",
+    "Poison", "Holy", "Shadow", "Ghost", "Undead",
+    "all elements",  // index 10 = ELE_ALL (résist./dégâts « tous éléments »)
+};
+static const char* const kRaceName[] = {
+    "Formless", "Undead", "Brute", "Plant", "Insect", "Fish",
+    "Demon", "Demi-human", "Angel", "Dragon",
+    "Player", "Doram Player", "Boss", "Non-boss",
+};
+static const char* const kSizeName[] = {"Small", "Medium", "Large"};
+// Classe de monstre (e_aegis_monsterclass) : index 3 = trou, 6 = CLASS_ALL.
+static const char* const kClassName[] = {
+    "Normal", "Boss", "Gardien", "?",
+    "Battlefield", "Event", "all classes",
+};
+// Groupes de monstres RC2 (e_race2) — communs libellés, le reste = « groupe #N ».
+static const char* const kRace2Name[] = {
+    "", "Goblin", "Kobold", "Orc", "Golem", "Gardian", "Ninja", "GvG",
+    "Battlefield", "Treasure", "Biolab", "Manuk", "Splendid", "Scaraba",
+};
+
+void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode != bopcodes::kStatBonus) return;
+  if (len < sizeof(StatBonusPayload)) return;  // bloc fixe tronqué : ignore
+  const auto* p = reinterpret_cast<const StatBonusPayload*>(data);
+  for (int i = 0; i < 6; ++i) {
+    bonus_.equip[i] = p->param_equip[i];
+    bonus_.card[i]  = p->param_bonus[i];
+  }
+  bonus_.eatk         = p->eatk;
+  bonus_.ematk        = p->ematk;
+  bonus_.melee_pct    = p->melee_pct;
+  bonus_.ranged_pct   = p->ranged_pct;
+  bonus_.crit_dmg_pct = p->crit_dmg_pct;
+  bonus_.hp_add       = p->hp_add;
+  bonus_.sp_add       = p->sp_add;
+  bonus_.aspd_add     = p->aspd_add;
+  bonus_.vcast_pct    = p->vcast_pct;
+  bonus_.fcast_pct    = p->fcast_pct;
+  bonus_.atk_pct        = p->atk_pct;
+  bonus_.matk_pct       = p->matk_pct;
+  bonus_.dmg_ret_melee  = p->dmg_ret_melee;
+  bonus_.dmg_ret_ranged = p->dmg_ret_ranged;
+  bonus_.dmg_ret_magic  = p->dmg_ret_magic;
+  bonus_.double_pct     = p->double_pct;
+  bonus_.perfect_hit    = p->perfect_hit;
+  bonus_.hp_pct         = p->hp_pct;
+  bonus_.sp_pct         = p->sp_pct;
+  bonus_.hp_regen_pct   = p->hp_regen_pct;
+  bonus_.sp_regen_pct   = p->sp_regen_pct;
+  bonus_.crit_def_pct   = p->crit_def_pct;
+  bonus_.hp_on_kill     = p->hp_on_kill;
+  bonus_.sp_on_kill     = p->sp_on_kill;
+  bonus_.unbreak_pct    = p->unbreak_pct;
+  bonus_.pot_hp_pct     = p->pot_hp_pct;
+  bonus_.pot_sp_pct     = p->pot_sp_pct;
+  bonus_.heal_up_pct    = p->heal_up_pct;
+  bonus_.delay_pct      = p->delay_pct;
+  bonus_.add_vcast_ms   = p->add_vcast_ms;
+  bonus_.add_fcast_ms   = p->add_fcast_ms;
+  bonus_.steal_pct      = p->steal_pct;
+  bonus_.def_melee_pct  = p->def_melee_pct;
+  bonus_.def_ranged_pct = p->def_ranged_pct;
+  bonus_.def_magic_pct  = p->def_magic_pct;
+  bonus_.def_misc_pct   = p->def_misc_pct;
+  bonus_.splash         = p->splash;
+  bonus_.splash_add     = p->splash_add;
+
+  // Queue variable : [cond_count:2] + CondWire[] puis [skill_count:2] + SkillWire[].
+  // Toutes les longueurs bornées par len (paquet potentiellement tronqué/ancien).
+  bonus_.cond.clear();
+  bonus_.skills.clear();
+  size_t off = sizeof(StatBonusPayload);
+  if (len >= off + 2) {
+    const int16_t n = *reinterpret_cast<const int16_t*>(data + off);
+    off += 2;
+    for (int i = 0; i < n && off + sizeof(CondWire) <= len; ++i) {
+      const auto* e = reinterpret_cast<const CondWire*>(data + off);
+      bonus_.cond.push_back({e->code, e->idx, e->value});
+      off += sizeof(CondWire);
+    }
+  }
+  if (len >= off + 2) {
+    const int16_t n = *reinterpret_cast<const int16_t*>(data + off);
+    off += 2;
+    for (int i = 0; i < n && off + sizeof(SkillWire) <= len; ++i) {
+      const auto* e = reinterpret_cast<const SkillWire*>(data + off);
+      bonus_.skills.push_back({e->code, e->skill_id, e->lv, e->value});
+      off += sizeof(SkillWire);
+    }
+  }
+  bonus_.items.clear();
+  if (len >= off + 2) {
+    const int16_t n = *reinterpret_cast<const int16_t*>(data + off);
+    off += 2;
+    for (int i = 0; i < n && off + sizeof(ItemWire) <= len; ++i) {
+      const auto* e = reinterpret_cast<const ItemWire*>(data + off);
+      bonus_.items.push_back({e->code, e->nameid, e->rate});
+      off += sizeof(ItemWire);
+    }
+  }
+  bonus_.valid = true;
+}
 
 // ── Presets d'equipement ─────────────────────────────────────────────────────
 void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
@@ -1053,12 +1348,16 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   if (has && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
     int inv = it.invIndex;
     ImGui::SetDragDropPayload("BGN_EQUIP", &inv, sizeof(inv));
-    IconTex ic = ResolveIcon(it.nameid);  // aperçu du drag (icône + nom)
+    IconTex ic = ResolveIcon(it.nameid);  // aperçu du drag (icône + nom complet)
     if (ic.tex) {
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24, 24));
       ImGui::SameLine();
     }
-    ImGui::TextUnformatted(ItemName(it.nameid));
+    const uintptr_t dsrc = kSession + (costume ? kCostumeBase : kEquipBase) +
+                           static_cast<uintptr_t>(slot) * kSlotStride;
+    char dnm[128];
+    DecoratedItemName(reinterpret_cast<const void*>(dsrc), dnm, sizeof(dnm));
+    ImGui::TextUnformatted(dnm[0] ? dnm : ItemName(it.nameid));
     ImGui::EndDragDropSource();
   }
   // CIBLE (tout slot) : lâcher un item d'inventaire (payload "INV_ITEM") sur le doll =
@@ -1079,19 +1378,25 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     ro::SetHoverCursor(2);  // main
     const char* hint =
         "(clic droit : desc, Maj+clic droit : lien chat, double-clic : déséquip, glisser : inv.)";
-    if (it.refine > 0)
-      ImGui::SetTooltip("+%d %s\n%s", it.refine, ItemName(it.nameid), hint);
-    else
-      ImGui::SetTooltip("%s\n%s", ItemName(it.nameid), hint);
+    // Nom COMPLET (refine + [slots] + cartes/enchant/forge) via BuildDisplayName, comme la
+    // description ; ItemName seul rendrait le nom NU. Repli sur ItemName si vide.
+    const uintptr_t hsrc = kSession + (costume ? kCostumeBase : kEquipBase) +
+                           static_cast<uintptr_t>(slot) * kSlotStride;
+    char nm[128];
+    DecoratedItemName(reinterpret_cast<const void*>(hsrc), nm, sizeof(nm));
+    if (nm[0] == '\0') std::snprintf(nm, sizeof(nm), "%s", ItemName(it.nameid));
+    ImGui::SetTooltip("%s\n%s", nm, hint);
     const ImVec2 mp = ImGui::GetMousePos();
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       if (ImGui::GetIO().KeyShift) {  // Maj+clic droit = lien de l'item dans le chat
         if (auto* iv = Bourgeon::Instance().inventory_viewer())
           iv->LinkItemToChat(it.invIndex);
-      } else {  // clic droit seul = description
+      } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
+        const uintptr_t src = kSession + (costume ? kCostumeBase : kEquipBase) +
+                              static_cast<uintptr_t>(slot) * kSlotStride;
         OpenItemDesc(it.nameid, static_cast<uint16_t>(it.viewId),
                      static_cast<uint32_t>(it.location), static_cast<int>(mp.x),
-                     static_cast<int>(mp.y));
+                     static_cast<int>(mp.y), reinterpret_cast<const void*>(src));
       }
     }
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -1368,6 +1673,18 @@ void CharacterSheet::DrawStatsPanel() {
   Stats s{};
   if (!ReadStats(&s)) return;
 
+  // Tooltip enrichi d'une stat primaire : rôle + split équip/carte quand le serveur
+  // l'a poussé (ZC_BOURGEON_STAT_BONUS). Le natif ne donne que le TOTAL ; ici on
+  // détaille l'origine. buf doit vivre jusqu'à l'appel ImGui (pile de l'appelant).
+  auto primaryTip = [&](int i, char* buf, int cap) -> const char* {
+    if (bonus_.valid && (bonus_.equip[i] != 0 || bonus_.card[i] != 0))
+      std::snprintf(buf, cap, "%s\nÉquipement : %+d   Cartes : %+d",
+                    kStatDesc[i], bonus_.equip[i], bonus_.card[i]);
+    else
+      std::snprintf(buf, cap, "%s", kStatDesc[i]);
+    return buf;
+  };
+
   // Stats primaires + boutons de montee. (Pseudo/classe/niveau : colonne gauche.)
   const float step = ImGui::GetFrameHeight();
   const float right = ImGui::GetContentRegionMax().x;  // bord droit local (align +)
@@ -1386,14 +1703,14 @@ void CharacterSheet::DrawStatsPanel() {
         ImVec2(rp.x - 3.0f, rp.y), ImVec2(rp.x + nw + 5.0f, rp.y + step), kRowBg, 4.0f);
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kBlack, "%s", kStatName[i]);             // label
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kStatDesc[i]);  // rôle de la stat
+    if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }  // rôle + split équip/carte
     ImGui::SameLine();
     ImGui::SetCursorPosX(val_x);                                // colonne valeurs
     if (s.bonus[i] != 0)
       ImGui::TextColored(kBlack, "— %d (+%d)", s.base[i], s.bonus[i]);
     else
       ImGui::TextColored(kBlack, "— %d", s.base[i]);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kStatDesc[i]);
+    if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }
     // Boutons de montée (actifs SSI on peut se payer >=1 point). « Max » ajoute le
     // MAXIMUM possible ; « + » = +1, ou MAJ+clic = jusqu'au prochain palier de 10 (qui
     // donne un bonus de stat). Le serveur (pc_statusup) clampe le montant envoyé.
@@ -1454,10 +1771,19 @@ void CharacterSheet::DrawStatsPanel() {
     ImGui::TextColored(kBlack, "%s", value);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
   };
-  char b[64];
+  char b[80];
+  // Apport de l'équip (bonus.eatk/ematk, poussé par le serveur) accolé à la valeur.
+  auto appendEquip = [&](int contrib) {
+    if (bonus_.valid && contrib != 0) {
+      const size_t n = std::strlen(b);
+      std::snprintf(b + n, sizeof(b) - n, "  (équip %+d)", contrib);
+    }
+  };
   std::snprintf(b, sizeof(b), "%d + %d", s.atk1, s.atk2);
+  appendEquip(bonus_.eatk);
   stat("ATK", b, "Attaque physique (arme + statut) : détermine les dégâts des coups physiques.");
   std::snprintf(b, sizeof(b), "%d ~ %d", s.matk_min, s.matk_max);
+  appendEquip(bonus_.ematk);
   stat("MATK", b, "Attaque magique : détermine les dégâts des sorts.");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.def_s, s.def_h);
   stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2).");
@@ -1473,6 +1799,194 @@ void CharacterSheet::DrawStatsPanel() {
   stat("ASPD", b, "Vitesse d'attaque : plus elle est haute, plus vous frappez souvent.");
   std::snprintf(b, sizeof(b), "%d,%d%%", s.pdodge / 10, s.pdodge % 10);  // x10 -> virgule, précision .1
   stat("Esq.P", b, "Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique.");
+
+  // ── Bonus d'équipement/cartes (poussés par le serveur, ZC_BOURGEON_STAT_BONUS) ──
+  // Origines que le natif n'expose pas : bonus plats + conditionnels vs cible.
+  // Libellé + valeur en colonne val_x (comme les dérivées) ; fond gris LIMITÉ au
+  // libellé. Un libellé conditionnel trop long décale sa valeur juste après lui (pas
+  // de chevauchement). N'affiche que les entrées non nulles.
+  if (bonus_.valid) {
+    // Calqué sur le lambda `stat` : fond sous le seul libellé, valeur alignée à val_x.
+    auto bonusStat = [&](const char* label, const char* value, const char* tip) {
+      const float start_x = ImGui::GetCursorPosX();
+      const ImVec2 rp = ImGui::GetCursorScreenPos();
+      const float nw = ImGui::CalcTextSize(label).x;  // fond limité au libellé
+      ImGui::GetWindowDrawList()->AddRectFilled(
+          ImVec2(rp.x - 3.0f, rp.y - 1.0f),
+          ImVec2(rp.x + nw + 5.0f, rp.y + ImGui::GetTextLineHeight() + 1.0f), kRowBg, 4.0f);
+      ImGui::TextColored(kBlack, "%s", label);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+      ImGui::SameLine();
+      const float after = start_x + nw + ImGui::GetStyle().ItemSpacing.x;
+      ImGui::SetCursorPosX(after > val_x ? after : val_x);  // aligné, sauf libellé trop long
+      ImGui::TextColored(kBlack, "%s", value);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+    };
+    char vb[24];
+    auto pct = [&](const char* label, int v, const char* tip) {
+      if (v == 0) return;
+      std::snprintf(vb, sizeof(vb), "%+d%%", v);
+      bonusStat(label, vb, tip);
+    };
+    auto flat = [&](const char* label, int v, const char* tip) {
+      if (v == 0) return;
+      std::snprintf(vb, sizeof(vb), "%+d", v);
+      bonusStat(label, vb, tip);
+    };
+    const bool any_flat =
+        bonus_.melee_pct || bonus_.ranged_pct || bonus_.crit_dmg_pct || bonus_.hp_add ||
+        bonus_.sp_add || bonus_.aspd_add || bonus_.vcast_pct || bonus_.fcast_pct ||
+        bonus_.atk_pct || bonus_.matk_pct || bonus_.dmg_ret_melee || bonus_.dmg_ret_ranged ||
+        bonus_.dmg_ret_magic || bonus_.double_pct || bonus_.perfect_hit || bonus_.hp_pct ||
+        bonus_.sp_pct || bonus_.hp_regen_pct || bonus_.sp_regen_pct || bonus_.crit_def_pct ||
+        bonus_.hp_on_kill || bonus_.sp_on_kill || bonus_.unbreak_pct || bonus_.pot_hp_pct ||
+        bonus_.pot_sp_pct || bonus_.heal_up_pct || bonus_.delay_pct || bonus_.add_vcast_ms ||
+        bonus_.add_fcast_ms || bonus_.steal_pct || bonus_.def_melee_pct || bonus_.def_ranged_pct ||
+        bonus_.def_magic_pct || bonus_.def_misc_pct || bonus_.splash || bonus_.splash_add;
+    if (any_flat || !bonus_.cond.empty() || !bonus_.skills.empty() || !bonus_.items.empty()) {
+      ImGui::Separator();
+      ImGui::TextColored(kBlack, "Bonus d'équipement");
+    }
+    pct("Mêlée", bonus_.melee_pct, "Dégâts de mêlée à mains nues (%).");
+    pct("Distance", bonus_.ranged_pct, "Dégâts des attaques à distance (%).");
+    pct("Dég. crit.", bonus_.crit_dmg_pct, "Dégâts des coups critiques (%).");
+    flat("PV max", bonus_.hp_add, "PV max ajoutés par l'équipement.");
+    flat("SP max", bonus_.sp_add, "SP max ajoutés par l'équipement.");
+    flat("ASPD", bonus_.aspd_add, "Vitesse d'attaque ajoutée (valeur plate).");
+    pct("Cast var.", bonus_.vcast_pct, "Temps de cast variable (%). Négatif = réduction.");
+    pct("Cast fixe", bonus_.fcast_pct, "Temps de cast fixe (%). Négatif = réduction.");
+    // Lot A — offensif
+    pct("ATK %", bonus_.atk_pct, "Bonus d'ATK physique global (%).");
+    pct("MATK %", bonus_.matk_pct, "Bonus d'ATK magique global (%).");
+    pct("Renvoi mêlée", bonus_.dmg_ret_melee, "Renvoie une part des dégâts de mêlée reçus (%).");
+    pct("Renvoi dist.", bonus_.dmg_ret_ranged, "Renvoie une part des dégâts à distance reçus (%).");
+    pct("Renvoi mag.", bonus_.dmg_ret_magic, "Renvoie une part des dégâts magiques reçus (%).");
+    pct("Double att.", bonus_.double_pct, "Chance de frapper deux fois (%).");
+    pct("Coup parfait", bonus_.perfect_hit, "Chance de coup parfait (%) : ignore FLEE et DEF.");
+    // Lot B — survie
+    pct("PV max %", bonus_.hp_pct, "Bonus de PV maximum (%).");
+    pct("SP max %", bonus_.sp_pct, "Bonus de SP maximum (%).");
+    pct("Régén. PV", bonus_.hp_regen_pct, "Récupération naturelle de PV (%).");
+    pct("Régén. SP", bonus_.sp_regen_pct, "Récupération naturelle de SP (%).");
+    pct("Réduc. crit", bonus_.crit_def_pct, "Réduit la probabilité de subir un critique (%).");
+    flat("PV/kill", bonus_.hp_on_kill, "PV récupérés en tuant un ennemi.");
+    flat("SP/kill", bonus_.sp_on_kill, "SP récupérés en tuant un ennemi.");
+    pct("Incassable", bonus_.unbreak_pct, "Chance d'éviter la casse d'un équipement (%).");
+    // Lot C — utilitaire
+    pct("Potions PV", bonus_.pot_hp_pct, "Efficacité des objets de soin PV (%).");
+    pct("Potions SP", bonus_.pot_sp_pct, "Efficacité des objets de soin SP (%).");
+    pct("Soin donné", bonus_.heal_up_pct, "Puissance des soins que vous prodiguez (%).");
+    pct("Délai skill", bonus_.delay_pct, "After-cast delay (%). Négatif = réduction.");
+    flat("Cast var. ms", bonus_.add_vcast_ms, "Ajout/retrait au cast variable, en millisecondes.");
+    flat("Cast fixe ms", bonus_.add_fcast_ms, "Ajout/retrait au cast fixe, en millisecondes.");
+    pct("Vol", bonus_.steal_pct, "Taux de vol d'objets (%).");
+    // Lot E — réduction par type d'attaque + splash
+    pct("Réduc. mêlée", bonus_.def_melee_pct, "Réduit les dégâts de mêlée reçus (%).");
+    pct("Réduc. distance", bonus_.def_ranged_pct, "Réduit les dégâts à distance reçus (%).");
+    pct("Réduc. magie", bonus_.def_magic_pct, "Réduit les dégâts magiques reçus (%).");
+    pct("Réduc. divers", bonus_.def_misc_pct, "Réduit les dégâts divers reçus (%).");
+    flat("Splash", bonus_.splash, "Portée de la zone d'effet de vos attaques (cases).");
+    flat("Splash+", bonus_.splash_add, "Portée de splash additionnelle (cases).");
+
+    // Conditionnels : (code, idx) -> libellé via les tables de noms.
+    auto nameOf = [](const char* const* tbl, int n, int idx) -> const char* {
+      return (idx >= 0 && idx < n) ? tbl[idx] : "?";
+    };
+    for (const auto& c : bonus_.cond) {
+      const char* kind = "Bonus";
+      const char* who = "?";
+      char who_buf[24];  // repli pour les groupes RC2 sans libellé
+      switch (c.code) {
+        case kBscSubEle:  kind = "Résist. vs"; who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscSubRace: kind = "Résist. vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscSubSize: kind = "Résist. vs"; who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscAddEle:  kind = "Dégâts vs";  who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscAddRace: kind = "Dégâts vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscAddSize: kind = "Dégâts vs";  who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscMAddEle:  kind = "Dég. mag. vs"; who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscMAddRace: kind = "Dég. mag. vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMAddSize: kind = "Dég. mag. vs"; who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscCritRace:    kind = "Crit vs";       who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnDefRace:  kind = "Ignore DEF vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnMdefRace: kind = "Ignore MDEF vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscSubdefEle:   kind = "Résist. arme";   who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscSubClass:    kind = "Réduc. vs";      who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscSubRace2:
+          kind = "Réduc. vs";
+          if (c.idx >= 0 && c.idx < IM_ARRAYSIZE(kRace2Name) && kRace2Name[c.idx][0]) {
+            who = kRace2Name[c.idx];
+          } else {
+            std::snprintf(who_buf, sizeof(who_buf), "groupe #%d", c.idx);
+            who = who_buf;
+          }
+          break;
+        default: break;
+      }
+      char label[64];
+      std::snprintf(label, sizeof(label), "%s %s", kind, who);
+      std::snprintf(vb, sizeof(vb), "%+d%%", c.value);
+      bonusStat(label, vb, "Bonus conditionnel : ne s'applique que contre ce type de cible.");
+    }
+
+    // Bonus liés à un skill : nom résolu via le wrapper Lua natif (localisé).
+    auto skillName = [](uint16_t id) -> const char* {
+      const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+      return (n && *n) ? n : "?";
+    };
+    for (const auto& sk : bonus_.skills) {
+      char label[96];
+      const char* tip = "Bonus lié à un skill.";
+      switch (sk.code) {
+        case kBskAutospell:
+        case kBskAutospellHit: {
+          const char* pre = (sk.code == kBskAutospellHit) ? "Riposte" : "Autocast";
+          const char* nm = skillName(sk.skill_id);
+          if (sk.lv > 0)
+            std::snprintf(label, sizeof(label), "%s %s Niv %d", pre, nm, sk.lv);
+          else
+            std::snprintf(label, sizeof(label), "%s %s", pre, nm);
+          std::snprintf(vb, sizeof(vb), "%d,%d%%", sk.value / 10, sk.value % 10);  // ‰ -> %
+          tip = (sk.code == kBskAutospellHit)
+                    ? "Chance de lancer ce sort automatiquement quand vous êtes touché."
+                    : "Chance de lancer ce sort automatiquement en attaquant.";
+          break;
+        }
+        case kBskSkillAtk:
+          std::snprintf(label, sizeof(label), "Dégâts %s", skillName(sk.skill_id));
+          std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
+          tip = "Bonus de dégâts sur ce skill précis (%).";
+          break;
+        case kBskAddeff:
+        case kBskAddeffHit: {
+          // skill_id porte l'EFST du statut, résolu en nom via GetStateIconDescript.
+          const char* pre = (sk.code == kBskAddeffHit) ? "Riposte statut" : "Inflige";
+          std::snprintf(label, sizeof(label), "%s %s", pre, StatusName(sk.skill_id));
+          std::snprintf(vb, sizeof(vb), "%d,%02d%%", sk.value / 100, std::abs(sk.value) % 100);  // 1/100% -> %
+          tip = (sk.code == kBskAddeffHit)
+                    ? "Chance d'infliger ce statut à l'attaquant quand vous êtes touché."
+                    : "Chance d'infliger ce statut à la cible en attaquant.";
+          break;
+        }
+        default:
+          std::snprintf(label, sizeof(label), "%s", skillName(sk.skill_id));
+          std::snprintf(vb, sizeof(vb), "%+d", sk.value);
+          break;
+      }
+      bonusStat(label, vb, tip);
+    }
+
+    // Bonus liés à un item : nom résolu via le DB item (ItemName, caché + SEH).
+    for (const auto& it : bonus_.items) {
+      char label[96];
+      const char* nm = ItemName(it.nameid);
+      if (it.code == kBsiAddDrop)
+        std::snprintf(label, sizeof(label), "Drop %s", nm);
+      else
+        std::snprintf(label, sizeof(label), "%s", nm);
+      std::snprintf(vb, sizeof(vb), "%d,%02d%%", it.rate / 100, std::abs(it.rate) % 100);  // 1~10000 -> %
+      bonusStat(label, vb, "Chance de drop bonus de cet objet en tuant un monstre.");
+    }
+  }
 }
 
 void CharacterSheet::OnRenderUI() {
