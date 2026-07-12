@@ -210,7 +210,25 @@ void Bourgeon::AddLogLine(std::string log_line) {
   log_lines_.emplace_back(std::move(log_line));
 }
 
+void Bourgeon::SetMapLoading(bool loading) {
+  if (loading) map_loading_since_ms_.store(GetTickCount());
+  map_loading_.store(loading);
+}
+
+bool Bourgeon::IsMapLoading() const {
+  if (!map_loading_.load()) return false;
+  // Safety cap: never report "loading" for more than 20 s, so a missed end
+  // signal (CZ_NOTIFY_ACTORINIT 0x007d) can't permanently lock UI/input.
+  return (GetTickCount() - map_loading_since_ms_.load()) <= 20000u;
+}
+
 void Bourgeon::RenderUI() {
+  // Stand down while a map is loading: hide all plugin UI. This also stops
+  // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
+  // every frame while the HUD is being torn down/rebuilt — the race that freed a
+  // UIShortCutWnd while it was still in the native window-snap manager and caused
+  // the use-after-free crash (WinSnap edge-adjacency deref at 0x007a85c4).
+  if (IsMapLoading()) return;
   // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
   // ShowBourgeonWindow();
   // }

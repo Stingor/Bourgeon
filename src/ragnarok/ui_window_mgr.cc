@@ -63,6 +63,13 @@ void UIWindowMgr::UIWindowMgrHook() {
 
 bool UIWindowMgr::ProcessPushButtonHook(unsigned long vkey, int new_key,
                                         int accurate_key) {
+  // Lock the keyboard while a map is loading: swallow the key without running the
+  // native handler (which routes hotkeys -> DispatchHotkeyBehavior -> skill cast /
+  // window open) or Bourgeon's own hotkeys. Acting mid-transition dereferences a
+  // not-yet-rebuilt world (e.g. the F-key skill-cast NULL deref) or opens a window
+  // during the HUD churn. Return true = "handled/consumed" so the key is dropped.
+  if (Bourgeon::Instance().IsMapLoading()) return true;
+
   Bourgeon::Instance().FireKeyDown(vkey, new_key, accurate_key);
 
   return ProcessPushButtonRef(this, vkey, new_key, accurate_key);

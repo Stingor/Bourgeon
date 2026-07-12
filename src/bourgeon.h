@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -90,6 +91,17 @@ class Bourgeon {
   // client already handles (e.g. mapname from 0x0091 ZC_NPCACK_MAPMOVE).
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
 
+  // Map-loading gate. True from the ZC_NPCACK_MAPMOVE (0x0091) that begins a
+  // warp/@load until the CZ_NOTIFY_ACTORINIT (0x007d) the client sends once the
+  // new map is ready. During this window the native HUD is being torn down and
+  // rebuilt (CGameMode::EnterWorld), so acting on it is unsafe — that race is
+  // what freed a UIShortCutWnd while it was still in the native window-snap
+  // manager and produced a use-after-free. While loading we stand down: hide the
+  // plugin UI (which also stops SkillBarTweaks from MakeWindow'ing the shortcut
+  // bar every frame) and swallow keyboard input.
+  bool IsMapLoading() const;
+  void SetMapLoading(bool loading);
+
  private:
   Bourgeon();
 
@@ -119,6 +131,8 @@ class Bourgeon {
   RojeweledTweaks* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescTweaks* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
+  std::atomic<bool> map_loading_{false};
+  std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
   std::vector<std::string> log_lines_;
   RagnarokClient client_;
 };

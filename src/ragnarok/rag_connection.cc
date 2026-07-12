@@ -148,6 +148,12 @@ void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len)
 // the dispatch handler can read it without racing against later writes.
 uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
   const uint16_t opcode = *reinterpret_cast<const uint16_t*>(param_1);
+  // Map-load start: ZC_NPCACK_MAPMOVE (0x0091, same-server warp/@load) or
+  // ZC_NPCACK_SERVERMOVE (0x0092, cross-server) begins a map transition. Hold the
+  // loading gate until the client reports ready (CZ_NOTIFY_ACTORINIT 0x007d, see
+  // SendPacketHook) so Bourgeon UI/input stand down while the HUD is rebuilt.
+  if (opcode == 0x0091 || opcode == 0x0092)
+    Bourgeon::Instance().SetMapLoading(true);
   // Call the original (just returns opcode = *(uint16_t*)param_1).
   const uint16_t result = PacketBufReaderRef(this, param_1);
 
@@ -244,6 +250,14 @@ void RagConnection::ConnectionHook() {
 }
 
 bool RagConnection::SendPacketHook(int packet_len, char* packet) {
+  // Map-load end: the client sends CZ_NOTIFY_ACTORINIT (0x007d, a 2-byte packet)
+  // once the new map has finished loading and it is ready — clear the loading
+  // gate. Opcode is plaintext here (the native XOR runs only after us).
+  if (packet_len == 2 && packet != nullptr &&
+      *reinterpret_cast<uint16_t*>(packet) == 0x007d) {
+    Bourgeon::Instance().SetMapLoading(false);
+  }
+
   // [NPC dialog ImGui] Quand l'overlay NPC est actif, on JETTE les CZ de dialogue
   // émis par les fenêtres NATIVES résiduelles (cachées mais vivantes) : au clic
   // « Fermer », cmd 0x28 ré-active la fenêtre menu native qui envoie un
