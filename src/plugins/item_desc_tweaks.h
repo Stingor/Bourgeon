@@ -172,6 +172,10 @@ class ItemDescTweaks : public Plugin {
   void RenderItemWindow();
   // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui.
   void RenderSkillWindow();
+  // Fenêtres de description de cartes/enchants ÉPINGLÉES (clic droit sur une carte
+  // du panneau « Cartes / Enchants »). Déplaçables, fermables (X), persistantes
+  // indépendamment de la fenêtre item. Même rendu que le tooltip de survol.
+  void RenderPinnedCardWindows();
   // Onglets d'infos techniques (émis dans le TabBar de la fenêtre, après
   // l'onglet Description). Aucune requête tant qu'un onglet data n'est pas actif.
   void RenderTechTabs(const DescWindow& w);
@@ -206,4 +210,6 @@ class ItemDescTweaks : public Plugin {
   std::unordered_map<uint32_t, ScriptData> script_cache_;  // clé = item id
   int        dmg_target_input_ = 0;      // champ "ID monstre" du panneau dégâts
   bool       dmg_target_self_  = false;  // cible = soi-même (miroir PvP)
+  // Cartes/enchants dont la description est épinglée en fenêtre (clic droit).
+  std::vector<uint32_t> pinned_cards_;
 };

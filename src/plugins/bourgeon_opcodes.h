@@ -35,6 +35,7 @@ constexpr uint16_t kCheatReport = 0x0F0A;  // ex-0x0C23  CZ_BOURGEON_CHEAT_REPOR
 constexpr uint16_t kReqTechData = 0x0F0B;  // CZ_BOURGEON_REQ_TECHDATA (item/skill tech)
 constexpr uint16_t kReqDamage   = 0x0F0D;  // CZ_BOURGEON_REQ_DAMAGE (estim. dégâts skill)
 constexpr uint16_t kReqItemScript = 0x0F11;  // CZ_BOURGEON_REQ_ITEMSCRIPT (script brut d'un item)
+constexpr uint16_t kBugReport   = 0x0F13;  // CZ_BOURGEON_BUG_REPORT (rapport de bug joueur)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -47,13 +48,14 @@ constexpr uint16_t kDamage      = 0x0F0E;  // ZC_BOURGEON_DAMAGE (réponse estim
 constexpr uint16_t kStoragePrices = 0x0F0F;  // ZC_BOURGEON_STORAGE_PRICES (prix vente storage)
 constexpr uint16_t kStatBonus     = 0x0F10;  // ZC_BOURGEON_STAT_BONUS (apport équip/cartes aux stats)
 constexpr uint16_t kItemScript    = 0x0F12;  // ZC_BOURGEON_ITEMSCRIPT (script brut d'un item)
+constexpr uint16_t kBugReportAck  = 0x0F14;  // ZC_BOURGEON_BUG_REPORT_ACK (accusé de réception)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F13 -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F15 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F13;
+constexpr uint16_t kNextFree    = 0x0F15;
 
 }  // namespace bopcodes
