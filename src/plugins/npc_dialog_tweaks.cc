@@ -1,6 +1,7 @@
 #include "plugins/npc_dialog_tweaks.h"
 
 #include <Windows.h>
+#include <shellapi.h>  // ShellExecuteA (clic <URL> -> navigateur)
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +13,8 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "plugins/bug_report.h"  // BugReportTweaks::NpcContext
+#include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch (icônes)
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
 
@@ -62,8 +65,9 @@ constexpr uint16_t kCzInputN      = 0x0143;  // CZ_INPUT_EDITDLG    {op,GID,int3
 constexpr uint16_t kCzInputS      = 0x01d5;  // CZ_INPUT_EDITDLGSTR {op,len,GID,texte} VAR
 constexpr uint16_t kCzCloseDialog = 0x0146;  // CZ_CLOSE_DIALOG     {op,GID} 6o
 
-// Couleur des liens (orange RO), en RGBA ImGui.
-constexpr uint32_t kLinkColor = IM_COL32(0xF4, 0x93, 0x4A, 0xFF);
+// Couleur des liens (bleu, comme le natif — il force cette couleur quel que soit le
+// ^RRGGBB du contexte), en RGBA ImGui.
+constexpr uint32_t kLinkColor = IM_COL32(0x2E, 0x74, 0xD8, 0xFF);
 
 // ── Fenêtres natives (SEH-gardé) ──
 void* FindWnd(int id) {
@@ -107,6 +111,31 @@ void ForceClearDialogFlag() {  // GameMode+0x24C = 0 (débloque le client, garan
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Ouvre une URL http(s) dans le navigateur (comme le clic <URL> natif cmd 0x1B5 ->
+// ShellExecute). Restreint à http/https (contenu piloté serveur) par sécurité.
+void OpenUrl(const std::string& url) {
+  if (url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) return;
+  __try {
+    ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// ── Ouverture de la fenêtre de description (id 0xc) par id d'item ──
+// Reproduit le clic lien natif FUN_00803e10 : construit un ItemSkillInfo minimal
+// (info[0]=id ; nom laissé vide) et l'envoie à MakeWindow(0xc)->OnMsg(0x18). La
+// fenêtre complète le reste depuis la DB client — donc marche pour un item NON possédé.
+constexpr uintptr_t kMakeWindow    = 0x00a39340;  // __fastcall(mgr, edx, id)
+constexpr uintptr_t kItemInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this)
+constexpr uintptr_t kItemInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) : id-string @0x2c
+constexpr int kWinItemDesc = 0x0c;
+constexpr int kMsgSetItem  = 0x18;
+constexpr int kVfOnMsg     = 0x94;  // vtable+0x94 = OnMsg
+constexpr int kInfoFlag    = 0x5c;  // ItemSkillInfo+0x5c=1 : desc « standalone » lue depuis la DB
+using MakeWindow_t    = void*(__fastcall*)(void*, void*, void*);
+using ItemInfoCtor_t  = void*(__fastcall*)(void*);
+using ItemInfoSetId_t = void(__thiscall*)(void*, int);
+using DescOnMsg_t     = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
+
 // ── Parsing helpers ──
 inline bool IsHex(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
@@ -143,6 +172,75 @@ std::string AnsiToUtf8(const std::string& in) {
   WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wn, &out[0], un, nullptr, nullptr);
   return out;
 }
+
+// ── Icônes item ImGui (recette inventory_viewer.cc) ──
+// BuildItemIconGrfPath(id_str, out[128], identified) __stdcall -> chemin bmp ; TexMgr
+// charge le bmp ; colorkey magenta -> alpha ; texture ImGui cachée (jetée au reset device).
+constexpr uintptr_t kBuildIconPath = 0x00d5a720;
+constexpr uintptr_t kTexMgr  = 0x00a90350;
+constexpr uintptr_t kMakeKey = 0x00a9f030;
+constexpr uintptr_t kLoadTex = 0x00a8d4a0;
+constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
+using BuildIconPath_t = void(__stdcall*)(const char*, char*, int);
+using TexMgr_t  = void*(__cdecl*)();
+using MakeKey_t = void*(__cdecl*)(const char*);
+using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
+
+struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
+std::unordered_map<uint32_t, IconTex> g_icon_cache;
+
+struct RawTex { const uint8_t* bgra; int w; int h; };
+bool GetRawTex(const char* path, RawTex* out) {
+  __try {
+    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+    if (!mgr) return false;
+    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
+    if (!key) return false;
+    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+    if (!t) return false;
+    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
+    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
+    const uint8_t* bgra =
+        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
+    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
+    out->bgra = bgra; out->w = w; out->h = h;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+bool BuildIconPathSafe(uint32_t id, char* out, int identified) {
+  char idstr[16];
+  std::snprintf(idstr, sizeof(idstr), "%u", id);
+  out[0] = '\0';
+  __try {
+    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, identified);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+IconTex LoadItemIcon(uint32_t id) {
+  char path[160];
+  if (!BuildIconPathSafe(id, path, 1)) return {};
+  RawTex rt{};
+  if (!GetRawTex(path, &rt)) return {};
+  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
+  for (int i = 0; i < rt.w * rt.h; ++i) {
+    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
+    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
+    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
+    argb[i * 4 + 3] = ck ? 0 : 0xFF;
+  }
+  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
+}
+IconTex ResolveIcon(uint32_t id) {
+  static unsigned s_epoch = 0;  // textures D3DPOOL_DEFAULT : jetées au reset device
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
+  auto it = g_icon_cache.find(id);
+  if (it != g_icon_cache.end()) return it->second;
+  IconTex t = LoadItemIcon(id);
+  g_icon_cache[id] = t;
+  return t;
+}
+inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 }  // namespace
 
@@ -277,6 +375,9 @@ void NpcDialogTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       if (mlen > 0) {
         std::string m(reinterpret_cast<const char*>(data + 6),
                       static_cast<size_t>(mlen));
+        // Séparateur RO = ':' (découpe fidèle au natif). NB : un ':' DANS un libellé
+        // scinde l'option (limite RO côté serveur, le natif aussi) -> ne pas mettre de
+        // ':' dans un nom d'option/map (à corriger dans la SQL).
         size_t start = 0;
         while (start <= m.size()) {
           size_t sep = m.find(':', start);
@@ -319,6 +420,7 @@ void NpcDialogTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 void NpcDialogTweaks::ParseLine(const std::string& raw, std::vector<Run>* out) {
   Run cur;
   cur.color = 0;
+  bool in_info = false;  // dans <INFO>…</INFO> : on capture l'id item (pas d'affichage)
   auto flush = [&]() {
     if (!cur.text.empty()) {
       out->push_back(cur);
@@ -338,6 +440,20 @@ void NpcDialogTweaks::ParseLine(const std::string& raw, std::vector<Run>* out) {
       p += 7;
       continue;
     }
+    // Icône item ^i[<id décimal>] (rendue en image inline, comme le natif).
+    if (*p == '^' && (end - p) >= 3 && (p[1] == 'i' || p[1] == 'I') && p[2] == '[') {
+      const char* rb =
+          static_cast<const char*>(std::memchr(p + 3, ']', end - (p + 3)));
+      if (rb) {
+        flush();
+        Run icon;
+        icon.color = 0;
+        icon.icon_id = std::atoi(std::string(p + 3, rb).c_str());
+        out->push_back(icon);
+        p = rb + 1;
+        continue;
+      }
+    }
     // Balises <...>.
     if (*p == '<') {
       const char* gt = static_cast<const char*>(std::memchr(p, '>', end - p));
@@ -349,17 +465,26 @@ void NpcDialogTweaks::ParseLine(const std::string& raw, std::vector<Run>* out) {
         else if (up == "I") { flush(); cur.italic = true; }
         else if (up == "/I") { flush(); cur.italic = false; }
         else if (up.rfind("FONT", 0) == 0 || up == "/FONT") { flush(); /* strip */ }
-        else if (up == "URL" || up == "ITEM" || up == "ITEML" || up == "NAVI" ||
-                 up == "QUEST" || up == "TIPBOX" || up == "MSG") {
-          flush(); cur.link = 1;  // ouverture de lien (P1 : visuel seul)
-        } else if (!up.empty() && up[0] == '/') {
-          flush(); cur.link = 0;  // fermeture de lien
-        }
+        else if (up == "INFO") { in_info = true; /* capture l'arg, pas de flush */ }
+        else if (up == "/INFO") { in_info = false; }
+        // link = cmd natif (cf. UIRichTextCtrl_WndProc case 0x62) : détermine l'action au clic.
+        else if (up == "ITEM" || up == "ITEML") { flush(); cur.link = 0x1D0; cur.link_arg.clear(); }
+        else if (up == "URL")                   { flush(); cur.link = 0x1B5; cur.link_arg.clear(); }
+        else if (up == "NAVI" || up == "NAVIL") { flush(); cur.link = 0x1B6; cur.link_arg.clear(); }
+        else if (up == "QUEST")                 { flush(); cur.link = 0x21B; cur.link_arg.clear(); }
+        else if (up == "TIPBOX" || up == "MSG") { flush(); cur.link = 1;     cur.link_arg.clear(); }
+        else if (!up.empty() && up[0] == '/')   { flush(); cur.link = 0;     cur.link_arg.clear(); }
         // (balise inconnue : consommée/masquée)
         continue;
       }
     }
-    cur.text += *p;
+    unsigned char uc = static_cast<unsigned char>(*p);
+    if (uc == 0xA0) uc = ' ';  // espace insécable (CP1252) -> espace normal
+    if (in_info) {
+      cur.link_arg += static_cast<char>(uc);  // contenu <INFO> INTÉGRAL (id d'item OU url)
+    } else {
+      cur.text += static_cast<char>(uc);
+    }
     ++p;
   }
   flush();
@@ -382,14 +507,30 @@ void NpcDialogTweaks::DrawRichLines() {
     runs.clear();
     ParseLine(raw, &runs);
     for (const Run& r : runs) {
-      const ImU32 col = r.color ? r.color : def_col;
+      // Icône item ^i[id] : hauteur = ligne, largeur au RATIO d'origine (pas de déform).
+      if (r.icon_id != 0) {
+        IconTex ic = ResolveIcon(static_cast<uint32_t>(r.icon_id));
+        if (ic.tex && ic.h > 0) {
+          const float ih = fsize + 3.0f;
+          const float iw = ih * static_cast<float>(ic.w) / static_cast<float>(ic.h);
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          const ImVec2 ip(origin.x + x, origin.y + y);
+          dl->AddImage(TexId(ic.tex), ip, ImVec2(ip.x + iw, ip.y + ih));
+          x += iw + 3.0f;
+        }
+        continue;
+      }
+      // Un lien prend TOUJOURS la couleur de lien (bleu, comme le natif) ; sinon la
+      // couleur ^RRGGBB explicite, ou le texte par défaut.
+      const ImU32 col = r.link ? kLinkColor : (r.color ? r.color : def_col);
       const std::string u = AnsiToUtf8(r.text);  // scripts serveur = ANSI -> UTF-8
       // Découpe le run en mots (word-wrap manuel). Sûr en UTF-8 : un octet de
       // continuation (0x80-0xBF) n'est jamais 0x20, donc split sur ' ' est correct.
       size_t i = 0;
       while (i < u.size()) {
-        // Avale les espaces de tête.
-        while (i < u.size() && u[i] == ' ') {
+        const float gap_x = x;      // x AVANT les espaces de tête (zone cliquable du lien)
+        const float gap_y = y;
+        while (i < u.size() && u[i] == ' ') {  // avale les espaces de tête
           x += space_w;
           ++i;
         }
@@ -399,14 +540,28 @@ void NpcDialogTweaks::DrawRichLines() {
         const char* w0 = u.c_str() + i;
         const char* w1 = u.c_str() + j;
         const float ww = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
-        if (x > 0.0f && x + ww > wrap) { x = 0.0f; y += line_h; }
+        bool wrapped = false;
+        if (x > 0.0f && x + ww > wrap) { x = 0.0f; y += line_h; wrapped = true; }
         const ImVec2 pos(origin.x + x, origin.y + y);
         dl->AddText(pos, col, w0, w1);
         if (r.bold)  // fake-bold : re-dessine décalé de 1px
           dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, w0, w1);
-        if (r.link)  // souligne les liens
-          dl->AddLine(ImVec2(pos.x, pos.y + fsize), ImVec2(pos.x + ww, pos.y + fsize),
+        if (r.link) {  // souligne + rend cliquable (item -> desc ; url -> navigateur)
+          // Étend à gauche jusqu'au début des espaces de tête (MÊME ligne) pour que TOUT
+          // le libellé du lien soit cliquable/souligné en continu, y compris entre 2 mots.
+          const float x0 = (!wrapped && gap_y == y) ? (origin.x + gap_x) : pos.x;
+          dl->AddLine(ImVec2(x0, pos.y + fsize), ImVec2(pos.x + ww, pos.y + fsize),
                       kLinkColor);
+          if (!r.link_arg.empty() &&
+              ImGui::IsMouseHoveringRect(ImVec2(x0, pos.y),
+                                         ImVec2(pos.x + ww, pos.y + fsize + 2.0f))) {
+            ro::SetHoverCursor(2);  // 2 = curseur « main » RO (le jeu dessine son curseur)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+              pending_link_cmd_ = r.link;      // action décidée au tick (item/url)
+              pending_link_arg_ = r.link_arg;
+            }
+          }
+        }
         x += ww;
         i = j;
       }
@@ -483,6 +638,17 @@ void NpcDialogTweaks::DrawMenu(float group_h) {
     dl->AddText(ImVec2(x, ty), def_col, num);
     x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, num).x;
     for (const Run& r : mruns) {
+      if (r.icon_id != 0) {  // icône item ^i[id] inline (ratio d'origine gardé)
+        IconTex ic = ResolveIcon(static_cast<uint32_t>(r.icon_id));
+        if (ic.tex && ic.h > 0) {
+          const float ih = row_h - 1.0f;
+          const float iw = ih * static_cast<float>(ic.w) / static_cast<float>(ic.h);
+          const float iy = p0.y + (row_h - ih) * 0.5f;
+          dl->AddImage(TexId(ic.tex), ImVec2(x, iy), ImVec2(x + iw, iy + ih));
+          x += iw + 3.0f;
+        }
+        continue;
+      }
       const std::string u = AnsiToUtf8(r.text);
       if (u.empty()) continue;
       const ImU32 col = r.color ? r.color : def_col;
@@ -566,10 +732,19 @@ void NpcDialogTweaks::OnRenderUI() {
   // fermer -> le natif n'offre d'ailleurs que « Suivant » à ce moment. Donc pas de croix
   // ⊗ ni d'Échap pendant un `next`.
   const bool can_close = has_close_ || !choices_.empty();
+  // État menu/input CAPTURÉ AVANT DrawMenu/DrawInput : ces fonctions, sur Entrée,
+  // répondent PUIS vident choices_/input_mode_. Sans ce snapshot, le footer verrait
+  // choices_ déjà vide et piloterait « Annuler » sur la MÊME touche -> double envoi
+  // (choix de menu + annulation). Donc : clavier du footer actif seulement s'il n'y a
+  // NI menu NI input en cours.
+  const bool footer_kbd_ok = choices_.empty() && input_mode_ == kInputNone;
   const bool begun = ro::BeginRoDescWindow(
       title, can_close ? &show_panel_ : nullptr,  // ⊗ + Échap seulement si fermable
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
-          ImGuiWindowFlags_NoScrollWithMouse);
+          ImGuiWindowFlags_NoScrollWithMouse |
+          // Ne PAS repasser au 1er plan quand on clique l'overlay : sinon un clic sur un
+          // lien re-focus l'overlay et masque la fenêtre de description qui vient d'ouvrir.
+          ImGuiWindowFlags_NoBringToFrontOnFocus);
   if (!show_panel_) {
     CloseDialog();
     show_panel_ = true;
@@ -577,6 +752,12 @@ void NpcDialogTweaks::OnRenderUI() {
     return;
   }
   if (begun) {
+    // Capture le clavier pour l'overlay tant qu'il est ouvert : Entrée/Espace servent
+    // à valider (Suivant / Fermer / option de menu) et NE DOIVENT PAS fuir vers le JEU
+    // (sinon Entrée ouvre le chat). Le hook WndProc (ragnarok_client) avale les touches
+    // quand io.WantCaptureKeyboard est vrai ; une fenêtre à boutons ne le pose pas seule.
+    ImGui::SetNextFrameWantCaptureKeyboard(true);
+
     // Layout à FOOTER FIXE : texte (flexible, scroll interne) + menu (borné, scroll
     // interne) + input, puis les boutons ÉPINGLÉS en bas. La fenêtre est NoScrollbar
     // -> jamais de grand scrollbar extérieur qui emporterait le bouton Annuler.
@@ -610,20 +791,51 @@ void NpcDialogTweaks::OnRenderUI() {
     // Footer ÉPINGLÉ : « Suivant » pour un `next` ; « Fermer »/« Annuler » seulement si
     // fermable (close/menu). Pas de fermeture pendant un `next` (le serveur avancerait).
     ImGui::Separator();
+    // Entrée/Espace valident le bouton principal — SEULEMENT hors menu (qui consomme
+    // Entrée pour son option focus) et hors saisie (l'input a son propre OK). Sans
+    // repeat pour qu'un appui maintenu ne re-déclenche pas.
+    const bool kbd_ok = footer_kbd_ok &&
+                        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
+                         ImGui::IsKeyPressed(ImGuiKey_Space, false));
     bool shown = false;
     if (has_next_) {
-      if (ro::RoButton("Suivant")) SendNext();
+      if (ro::RoButton("Suivant") || kbd_ok) SendNext();
       shown = true;
     }
     if (can_close) {
       if (shown) ImGui::SameLine();
-      if (ro::RoButton(has_close_ ? "Fermer" : "Annuler")) CloseDialog();
+      if (ro::RoButton(has_close_ ? "Fermer" : "Annuler") || (kbd_ok && !shown))
+        CloseDialog();
+      shown = true;
+    }
+    // Rapport de bug contextuel : GID + nom du PNJ joints automatiquement.
+    if (auto* br = Bourgeon::Instance().bug_report()) {
+      auto nit = npc_names_.find(gid_);
+      const std::string npc_name =
+          (nit != npc_names_.end()) ? nit->second : std::string();
+      if (shown) ImGui::SameLine();
+      br->Button(BugReportTweaks::NpcContext(gid_, npc_name), "npc_bug");
     }
   }
   ro::EndRoDescWindow();
 }
 
 // ── Envois (thread principal uniquement) ──
+bool NpcDialogTweaks::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
+  if (!imgui_enabled_) return false;  // toggle OFF : le natif garde la main
+  switch (opcode) {
+    case kCzNext:         // 0x00B9 CZ_REQ_NEXT_SCRIPT
+    case kCzChoose:       // 0x00B8 CZ_CHOOSE_MENU  (dont le « choix 1 » parasite)
+    case kCzInputN:       // 0x0143 CZ_INPUT_EDITDLG
+    case kCzInputS:       // 0x01D5 CZ_INPUT_EDITDLGSTR
+    case kCzCloseDialog:  // 0x0146 CZ_CLOSE_DIALOG
+      return true;
+    default:
+      return false;
+  }
+}
+
 void NpcDialogTweaks::SendNext() {
   if (gid_ == 0) return;
   uint8_t pkt[6];
@@ -642,6 +854,10 @@ void NpcDialogTweaks::SendMenuChoice(int one_based) {
   pkt[6] = static_cast<uint8_t>(one_based);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
   menu_answered_gen_ = menu_gen_;  // cette génération de menu est désormais répondue
+  // Détruit la fenêtre menu native (0x11) qu'on a répondue : sinon elle reste vivante
+  // (cachée) et peut ré-émettre un CZ_CHOOSE_MENU parasite plus tard (via cmd 0x28) ->
+  // « Invalid menu selection ... got 1, valid [1..0] ».
+  CloseWnd(kWinMenu);
   choices_.clear();
   menu_filter_[0] = '\0';
   start_fresh_ = true;  // un choix de menu = saut de PAGE -> vide l'ancienne page
@@ -701,16 +917,41 @@ void NpcDialogTweaks::CloseDialog() {
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
     }
   }
-  // 2. CLIENT : ferme l'UI NPC (cmd 0x28 gère aussi l'annulation d'un menu ouvert)
-  //    + garantit le déblocage client (+0x24C=0, au cas où cmd 0x28 ne l'ait pas fait).
-  DispatchNpcCmd(kSelClose);
-  ForceClearDialogFlag();
-  // 3. Détruit les fenêtres natives résiduelles.
+  // 2. Détruit les fenêtres natives D'ABORD : sinon cmd 0x28 (ci-dessous) re-déclenche
+  //    l'annulation d'une fenêtre menu native résiduelle -> CZ_CHOOSE_MENU parasite.
   CloseWnd(kWinSay); CloseWnd(kWinMenu); CloseWnd(kWinEditN);
   CloseWnd(kWinEditS); CloseWnd(kWinSay2);
+  // 3. CLIENT : débloque l'état dialogue (cmd 0x28 + garantie +0x24C=0).
+  DispatchNpcCmd(kSelClose);
+  ForceClearDialogFlag();
   open_ = false;
   was_open_ = false;
   Reset();
+}
+
+void NpcDialogTweaks::OpenItemDescById(uint32_t id) {
+  if (id == 0) return;
+  __try {
+    // ItemSkillInfo minimal sur la pile (comme FUN_00803e10 : info[0]=id ; les 2
+    // std::string membres restent SSO vides -> aucun heap alloué -> pas de dtor à
+    // appeler, le buffer pile est simplement abandonné). La fenêtre 0xc complète le
+    // reste depuis la DB client par id (marche même sans posséder l'item).
+    uint8_t info[256];
+    std::memset(info, 0, sizeof(info));
+    reinterpret_cast<ItemInfoCtor_t>(kItemInfoCtor)(info);            // init std::string SSO
+    reinterpret_cast<ItemInfoSetId_t>(kItemInfoSetId)(info, static_cast<int>(id));  // id-str @0x2c
+    *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
+    info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
+    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        reinterpret_cast<void*>(static_cast<uintptr_t>(kWinItemDesc)));
+    if (dwnd) {
+      void** vt = *reinterpret_cast<void***>(dwnd);
+      reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4])(
+          dwnd, nullptr, 0, kMsgSetItem,
+          static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 bool NpcDialogTweaks::DialogActiveNative() const {
@@ -746,6 +987,21 @@ void NpcDialogTweaks::HideNativeAtCreation(void* win, int window_id) {
 }
 
 void NpcDialogTweaks::OnTick() {
+  // Clic sur un lien d'item (<ITEM>) posé pendant le rendu : ouvre la desc au tick
+  // (hors de l'arbre ImGui, plus sûr pour créer une fenêtre native).
+  if (pending_link_cmd_ != 0) {
+    const int cmd = pending_link_cmd_;
+    const std::string arg = pending_link_arg_;
+    pending_link_cmd_ = 0;
+    pending_link_arg_.clear();
+    if (cmd == 0x1D0) {  // <ITEM> -> fenêtre de description (par id, depuis la DB)
+      OpenItemDescById(static_cast<uint32_t>(std::atoi(arg.c_str())));
+    } else if (cmd == 0x1B5) {  // <URL> -> navigateur
+      OpenUrl(arg);
+    }
+    // 0x1B6 <NAVI> / 0x21B <QUEST> : non gérés (P3)
+  }
+
   // Changement du toggle de config (ON<->OFF) EN COURS de dialogue : fermeture PROPRE
   // (débloque serveur + client, détruit les fenêtres natives) + dé-masquage de
   // sécurité. Sinon, OFF laisse les fenêtres natives CACHÉES + overlay éteint =

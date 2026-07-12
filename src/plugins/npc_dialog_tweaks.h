@@ -54,6 +54,12 @@ class NpcDialogTweaks : public Plugin {
   // (évite un flash natif que le seul OnTick laisserait passer).
   void HideNativeAtCreation(void* win, int window_id);
 
+  // Appelé par SendPacketHook : vrai si l'overlay ImGui est actif ET l'opcode est
+  // un CZ de dialogue NPC (next/menu/nombre/texte/close). On JETTE alors l'envoi,
+  // car il vient forcément de la fenêtre NATIVE résiduelle (nos propres CZ passent
+  // par SendPacketRef et contournent ce hook). Neutralise « got 1, valid [1..0] ».
+  bool ShouldSuppressNativeDialogSend(uint16_t opcode) const;
+
  private:
   enum InputMode { kInputNone, kInputNumber, kInputString };
 
@@ -64,7 +70,8 @@ class NpcDialogTweaks : public Plugin {
     bool        bold = false;
     bool        italic = false;
     int         link = 0;    // 0=aucun ; sinon cmd de lien (URL/ITEM/NAVI/QUEST)
-    std::string link_arg;    // URL brute, ou texte du lien
+    std::string link_arg;    // URL brute, ou id d'item (<INFO>) pour ouvrir la desc
+    int         icon_id = 0; // ^i[id] : icône d'item inline (0 = pas une icône)
   };
 
   void Reset();                       // vide le modèle (fermeture/warp)
@@ -81,6 +88,7 @@ class NpcDialogTweaks : public Plugin {
   void SendNumber(int value);
   void SendString(const char* text);
   void CloseDialog();                 // cmd 0x28 (débloque client) + détruit natif
+  void OpenItemDescById(uint32_t id); // clic sur un lien <ITEM> -> fenêtre desc 0xc
 
   bool DialogActiveNative() const;    // lit CGameMode+0x24C (flag dialogue actif)
   void HideNativeWindows();           // cache 0x10/0x11/0x38/0x64/0xE2 chaque tick
@@ -101,6 +109,8 @@ class NpcDialogTweaks : public Plugin {
   char  num_buf_[16]  = {0};
   char  str_buf_[128] = {0};
   char  menu_filter_[64] = {0};
+  int         pending_link_cmd_ = 0;  // type de lien cliqué (0x1D0 item / 0x1B5 url ; 0=aucun)
+  std::string pending_link_arg_;      // argument du lien (id d'item ou url), traité au prochain OnTick
   int   menu_hot_ = -1;               // choix focus clavier (index VISIBLE ; -1 = auto-focus #1)
   int   menu_vis_count_ = 0;          // nb d'items visibles (frame préc., pour le wrap flèches)
   unsigned menu_gen_ = 0;             // génération du menu (incr. à chaque ZC_MENU_LIST)

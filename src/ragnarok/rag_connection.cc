@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "plugins/npc_dialog_tweaks.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -243,6 +244,21 @@ void RagConnection::ConnectionHook() {
 }
 
 bool RagConnection::SendPacketHook(int packet_len, char* packet) {
+  // [NPC dialog ImGui] Quand l'overlay NPC est actif, on JETTE les CZ de dialogue
+  // émis par les fenêtres NATIVES résiduelles (cachées mais vivantes) : au clic
+  // « Fermer », cmd 0x28 ré-active la fenêtre menu native qui envoie un
+  // CZ_CHOOSE_MENU parasite (« Invalid menu selection ... got 1, valid [1..0] »).
+  // Nos propres CZ passent par RagConnection::SendPacket -> SendPacketRef et
+  // contournent CE hook, donc tout CZ de dialogue vu ici est forcément natif.
+  // L'opcode est en clair ici (le XOR natif n'agit qu'APRÈS nous, sur le 1er mot).
+  if (packet_len >= 2 && packet != nullptr) {
+    const uint16_t op = *reinterpret_cast<uint16_t*>(packet);
+    if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
+        nd && nd->ShouldSuppressNativeDialogSend(op)) {
+      return true;  // envoi natif supprimé (on simule le succès)
+    }
+  }
+
   // [dual-wield CTRL = equip LEFT] A normal inventory double-click on a dual-wield
   // weapon sends CZ_REQ_WEAR_EQUIP_V5 (0x0998) with position = EQP_ARMS (0x22 =
   // both hand bits) and lets the (pre-renewal) server pick the hand — which, once
