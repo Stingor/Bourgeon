@@ -28,6 +28,7 @@
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
+#include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
@@ -441,6 +442,8 @@ void MoonlightUi::LoadSettings() {
       idt->desc_offset_x() = ui["itemdesc_off_x"].as<int>(12);
       idt->desc_offset_y() = ui["itemdesc_off_y"].as<int>(12);
     }
+    if (auto* br = Bourgeon::Instance().bug_report())
+      br->enabled() = ui["bugreport_button"].as<bool>(true);
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
 
@@ -849,6 +852,9 @@ void MoonlightUi::SaveSettings() {
     itemdesc_off_x        = idt->desc_offset_x();
     itemdesc_off_y        = idt->desc_offset_y();
   }
+  bool bugreport_button = true;
+  if (auto* br = Bourgeon::Instance().bug_report())
+    bugreport_button = br->enabled();
 
   YAML::Emitter out;
   out << YAML::BeginMap
@@ -869,6 +875,7 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "itemdesc_anchor"      << YAML::Value << itemdesc_anchor
         << YAML::Key << "itemdesc_off_x"       << YAML::Value << itemdesc_off_x
         << YAML::Key << "itemdesc_off_y"       << YAML::Value << itemdesc_off_y
+        << YAML::Key << "bugreport_button"     << YAML::Value << bugreport_button
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
@@ -2441,6 +2448,16 @@ void MoonlightUi::OnRenderUI() {
             }
           } else {
             ImGui::TextDisabled("(plugin indisponible)");
+          }
+          // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
+          if (auto* br = Bourgeon::Instance().bug_report()) {
+            ImGui::Separator();
+            if (ImGui::Checkbox("Bouton « Signaler un bug »", &br->enabled()))
+              SaveSettings();
+            ImGui::SameLine(); HelpMarker(
+                "Affiche le bouton de rapport de bug dans les fenêtres de "
+                "description (item/skill) et le dialogue PNJ, et active le "
+                "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
           }
         }
         // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────

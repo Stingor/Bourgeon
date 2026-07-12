@@ -3,9 +3,12 @@
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (ouvrir les liens <URL>)
 #include <algorithm>
+#include <cctype>
+#include <cfloat>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #pragma comment(lib, "shell32.lib")
@@ -1085,7 +1088,8 @@ void RenderCardTooltip(uint32_t id) {
   RenderCardDescBody(id, "##cardtip", 340.0f);
   ImGui::Separator();
   ImGui::TextDisabled(
-      "Clic gauche : base de données   \xc2\xb7   Clic droit : épingler la description");
+      "Clic gauche : base de données   \xc2\xb7   "
+      "Clic droit : ouvrir la description complète");
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1178,6 +1182,46 @@ void HideDescSlot(uintptr_t slot, uintptr_t vtable) {
     __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 0); }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
+
+// Ferme une fenêtre du manager par id, SEH ISOLÉE dans une fonction libre : permet
+// aux appelants (RenderItemWindow/RenderSkillWindow) d'utiliser des objets C++ à
+// déroulement (temporaires std::string du bouton bug-report) sans C2712.
+void SafeCloseWindowId(int id) {
+  __try {
+    reinterpret_cast<CloseWin_t>(kCloseWindow)(
+        reinterpret_cast<void*>(kUIWindowMgr), nullptr, id);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Ouvre (ou navigue) la fenêtre de description native (classe 0xc) vers l'item/carte
+// `id`, comme un clic sur un lien de carte natif. Reproduit exactement le chemin de
+// UIInventoryWnd_OnRButtonDown : MakeWindow(0xc) puis OnMsg 0x18 avec une
+// ItemSkillInfo. Le handler natif (UIItemSkillDescWnd_OnMsg case 0x18) copie l'info
+// dans wnd+0xb8 PUIS re-résout nom/desc/icône depuis la DB via atoi(resname) — une
+// info minimale (ctor + SetId + flag +0x5c=1, comme LoadCardDesc) suffit donc. Le
+// plugin reproduit ensuite la desc complète en ImGui (le natif reste caché). Comme
+// la fenêtre 0xc est déjà ouverte, MakeWindow renvoie la MÊME instance -> l'item
+// courant est remplacé par la carte. SEH (fonctions jeu, POD only).
+void OpenCardDescWindow(uint32_t id) {
+  __try {
+    uint8_t info[0x100];
+    std::memset(info, 0, sizeof(info));
+    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);            // init les std::string
+    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> +0x2c
+    *(info + kInfoFlag) = 1;                                  // => desc lues de rec+0x0c
+    void* mgr = reinterpret_cast<void*>(kUIWindowMgr);        // objet manager embarqué
+    void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+        mgr, nullptr, reinterpret_cast<void*>(0xc));
+    if (wnd) {
+      void** vt = *reinterpret_cast<void***>(wnd);
+      auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+      onmsg(wnd, 0, kMsgSetItem, static_cast<int>(reinterpret_cast<uintptr_t>(info)),
+            0, 0, 0);
+    }
+    // Pas de dtor sur `info` : toutes ses std::string sont en SSO (id décimal court),
+    // aucune allocation heap à libérer — identique à LoadCardDesc.
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 }  // namespace
 
 void ItemDescTweaks::HideNativeDescWindows() {
@@ -1221,6 +1265,14 @@ void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
 }  // namespace
 
 void ItemDescTweaks::OnTick() {
+  // Clic droit sur une carte au frame précédent -> ouvre sa desc complète MAINTENANT
+  // (hors rendu ImGui). Navigue la fenêtre 0xc vers la carte ; les lectures de slot
+  // ci-dessous prennent aussitôt le nouvel id.
+  if (pending_card_open_ != 0) {
+    OpenCardDescWindow(pending_card_open_);
+    pending_card_open_ = 0;
+  }
+
   // ── Fenêtres ITEM (0xc) + COMPARAISON équipé (0xea) : Option A ─────────────
   ReadItemLayoutWindow(kItemWndSlot, kItemVTable, &item_);
   ReadItemLayoutWindow(kCompareWndSlot, kCompareVTable, &compare_);
@@ -1582,6 +1634,225 @@ void ItemDescTweaks::RenderDropTable(const TechData& td, const char* table_id,
                      "comptés/scannés.");
 }
 
+// ── Rendu « éditeur » d'un script rAthena (pretty-print + coloration) ────────
+namespace {
+
+// Reformate un script rAthena pour la lisibilité : un statement par ligne
+// (découpe sur « ; »), espace après les virgules, espaces multiples compactés.
+// Les CHAÎNES "..." et COMMENTAIRES // /* */ sont copiés VERBATIM (on ne coupe
+// jamais dedans — les scripts autobonus embarquent tout un sous-script entre
+// guillemets). Pas d'indentation de blocs (les vrais { } de haut niveau sont
+// rares dans les scripts d'item ; ils vivent surtout dans des chaînes).
+std::string PrettyPrintScript(const std::string& in) {
+  std::string out;
+  out.reserve(in.size() + 64);
+  bool in_str = false, in_line_c = false, in_block_c = false;
+  bool at_line_start = true;  // pour absorber les espaces en début de ligne
+  const size_t n = in.size();
+  for (size_t i = 0; i < n; ++i) {
+    const char c = in[i];
+    const char nx = (i + 1 < n) ? in[i + 1] : '\0';
+    if (in_line_c) {
+      if (c == '\n') { in_line_c = false; out.push_back('\n'); at_line_start = true; }
+      else out.push_back(c);
+      continue;
+    }
+    if (in_block_c) {
+      out.push_back(c);
+      if (c == '*' && nx == '/') { out.push_back('/'); ++i; in_block_c = false; }
+      continue;
+    }
+    if (in_str) {
+      out.push_back(c);
+      if (c == '\\' && nx) { out.push_back(nx); ++i; }
+      else if (c == '"') in_str = false;
+      continue;
+    }
+    if (c == '/' && nx == '/') { in_line_c = true; out += "//"; ++i; at_line_start = false; continue; }
+    if (c == '/' && nx == '*') { in_block_c = true; out += "/*"; ++i; at_line_start = false; continue; }
+    if (c == '"') { in_str = true; out.push_back(c); at_line_start = false; continue; }
+    if (c == '\n' || c == '\r' || c == '\t' || c == ' ') {
+      if (!at_line_start && !out.empty() && out.back() != ' ') out.push_back(' ');
+      continue;
+    }
+    if (c == ';') {
+      while (!out.empty() && out.back() == ' ') out.pop_back();
+      out.push_back(';');
+      out.push_back('\n');
+      at_line_start = true;
+      continue;
+    }
+    if (c == ',') {
+      while (!out.empty() && out.back() == ' ') out.pop_back();
+      out += ", ";
+      at_line_start = false;
+      continue;
+    }
+    out.push_back(c);
+    at_line_start = false;
+  }
+  while (!out.empty() && (out.back() == '\n' || out.back() == ' ')) out.pop_back();
+  return out;
+}
+
+inline bool IdentStart(char c) {
+  return std::isalpha(static_cast<unsigned char>(c)) || c == '_' || c == '.' ||
+         c == '@' || c == '$' || c == '#' || c == '\'';
+}
+inline bool IdentChar(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' ||
+         c == '@' || c == '$' || c == '#' || c == '\'';
+}
+// Mot-clé de contrôle (bleu) ?
+bool IsControlKw(const char* b, size_t len) {
+  static const char* kw[] = {"if", "else", "for", "while", "do", "switch",
+                             "case", "default", "break", "continue", "return",
+                             "function"};
+  for (const char* k : kw)
+    if (std::strlen(k) == len && std::strncmp(b, k, len) == 0) return true;
+  return false;
+}
+// Commande de script hors appel-fonction (jaune) ?
+bool IsCmdKw(const char* b, size_t len) {
+  static const char* kw[] = {"set",  "mes",  "next",     "close",   "close2",
+                             "end",  "menu", "goto",     "callfunc", "callsub",
+                             "warp", "getarg"};
+  for (const char* k : kw)
+    if (std::strlen(k) == len && std::strncmp(b, k, len) == 0) return true;
+  return false;
+}
+
+// Dessine un script rAthena dans un bloc « éditeur » à fond sombre fixe (palette
+// type VS Code — lisible quel que soit le thème de la fenêtre). Pretty-print +
+// coloration lexicale (mots-clés, commandes bonus/appels, params bXxx, constantes
+// MAJUSCULE, nombres, chaînes, commentaires). Wrap doux + bouton « Copier ».
+void DrawScriptCode(const char* box_id, const std::string& raw) {
+  const std::string code = PrettyPrintScript(raw);
+  char clbl[48];
+  std::snprintf(clbl, sizeof(clbl), "Copier##%s", box_id);
+  if (ImGui::SmallButton(clbl)) ImGui::SetClipboardText(code.c_str());
+
+  // Palette (VS Code Dark+).
+  const ImU32 kDef  = IM_COL32(212, 212, 212, 255);
+  const ImU32 kCom  = IM_COL32(106, 153, 85, 255);   // commentaire
+  const ImU32 kStr  = IM_COL32(206, 145, 120, 255);  // chaîne
+  const ImU32 kNum  = IM_COL32(181, 206, 168, 255);  // nombre
+  const ImU32 kCtl  = IM_COL32(86, 156, 214, 255);   // if/else/for…
+  const ImU32 kCmd  = IM_COL32(220, 220, 170, 255);  // bonus/appels/commandes
+  const ImU32 kParm = IM_COL32(156, 220, 254, 255);  // bStr, bBaseAtk…
+  const ImU32 kCst  = IM_COL32(78, 201, 176, 255);   // Constantes (MAJ)
+
+  ImDrawList* dl   = ImGui::GetWindowDrawList();
+  ImFont*     font = ImGui::GetFont();
+  const float fsz   = ImGui::GetFontSize();
+  const float lineH = ImGui::GetTextLineHeightWithSpacing();
+  const float padX = 6.0f, padY = 5.0f;
+  float avail = ImGui::GetContentRegionAvail().x;
+  if (avail < 60.0f) avail = 60.0f;
+  const float innerWrap = avail - padX * 2.0f;
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  const float x0 = p0.x + padX, y0 = p0.y + padY;
+
+  dl->ChannelsSplit(2);
+  dl->ChannelsSetCurrent(1);  // texte au-dessus du fond
+
+  float penX = 0.0f, penY = 0.0f;
+  auto tok = [&](const char* b, const char* e, ImU32 col) {
+    const ImVec2 sz = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, b, e);
+    if (penX > 0.0f && penX + sz.x > innerWrap) {  // wrap doux + indent continuation
+      penX = 12.0f;
+      penY += lineH;
+    }
+    dl->AddText(font, fsz, ImVec2(x0 + penX, y0 + penY), col, b, e);
+    penX += sz.x;
+  };
+
+  const char* s = code.c_str();
+  const size_t n = code.size();
+  for (size_t i = 0; i < n;) {
+    const char c = s[i];
+    if (c == '\n') { penX = 0.0f; penY += lineH; ++i; continue; }
+    if (c == ' ' || c == '\t') {
+      size_t j = i;
+      while (j < n && (s[j] == ' ' || s[j] == '\t')) ++j;
+      tok(s + i, s + j, kDef);
+      i = j;
+      continue;
+    }
+    if (c == '/' && i + 1 < n && s[i + 1] == '/') {  // commentaire ligne
+      size_t j = i;
+      while (j < n && s[j] != '\n') ++j;
+      tok(s + i, s + j, kCom);
+      i = j;
+      continue;
+    }
+    if (c == '/' && i + 1 < n && s[i + 1] == '*') {  // commentaire bloc
+      size_t j = i + 2;
+      while (j + 1 < n && !(s[j] == '*' && s[j + 1] == '/')) ++j;
+      j = (j + 2 < n) ? j + 2 : n;
+      tok(s + i, s + j, kCom);
+      i = j;
+      continue;
+    }
+    if (c == '"') {  // chaîne
+      size_t j = i + 1;
+      while (j < n && s[j] != '"') { if (s[j] == '\\' && j + 1 < n) ++j; ++j; }
+      if (j < n) ++j;
+      tok(s + i, s + j, kStr);
+      i = j;
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(c))) {  // nombre (dec/hex)
+      size_t j = i;
+      while (j < n && (std::isalnum(static_cast<unsigned char>(s[j])) ||
+                       s[j] == 'x' || s[j] == 'X'))
+        ++j;
+      tok(s + i, s + j, kNum);
+      i = j;
+      continue;
+    }
+    if (IdentStart(c)) {  // identifiant -> classification
+      size_t j = i;
+      while (j < n && IdentChar(s[j])) ++j;
+      const size_t len = j - i;
+      ImU32 col = kDef;
+      if (IsControlKw(s + i, len)) {
+        col = kCtl;
+      } else {
+        size_t k = j;  // appel de fonction ? (« ident( »)
+        while (k < n && (s[k] == ' ' || s[k] == '\t')) ++k;
+        const bool is_call = (k < n && s[k] == '(');
+        const bool is_bonus =
+            (len >= 5 && std::strncmp(s + i, "bonus", 5) == 0) ||
+            (len >= 9 && std::strncmp(s + i, "autobonus", 9) == 0);
+        if (is_call || is_bonus || IsCmdKw(s + i, len))
+          col = kCmd;
+        else if (len >= 2 && s[i] == 'b' &&
+                 std::isupper(static_cast<unsigned char>(s[i + 1])))
+          col = kParm;  // bStr, bBaseAtk, bAtkRate…
+        else if (std::isupper(static_cast<unsigned char>(c)))
+          col = kCst;   // Class_Boss, RC_*, Ele_*, EQI_*…
+      }
+      tok(s + i, s + j, col);
+      i = j;
+      continue;
+    }
+    // ponctuation / opérateur
+    tok(s + i, s + i + 1, kDef);
+    ++i;
+  }
+
+  const float totalH = penY + lineH;
+  dl->ChannelsSetCurrent(0);  // fond derrière le texte
+  dl->AddRectFilled(p0, ImVec2(p0.x + avail, y0 + totalH + padY),
+                    IM_COL32(30, 30, 32, 255), 4.0f);
+  dl->ChannelsMerge();
+
+  ImGui::Dummy(ImVec2(avail, totalH + padY * 2.0f));
+}
+
+}  // namespace
+
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
 // Description). L'onglet Description étant actif par défaut, aucune requête n'est
 // lancée tant que le joueur ne sélectionne pas un onglet data.
@@ -1748,34 +2019,10 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     return &it->second;
   };
 
-  // Boîte de code en lecture seule : les scripts sont souvent UNE longue ligne,
-  // donc on WRAP le texte (InputTextMultiline ne le fait pas -> le reste partait
-  // en scroll horizontal invisible). Bouton « Copier » pour récupérer le script
-  // brut d'un clic (le wrap empêche la sélection multi-ligne fiable).
+  // Bloc « éditeur » : pretty-print + coloration syntaxique rAthena, fond sombre
+  // fixe, bouton « Copier » (cf. DrawScriptCode).
   auto draw_code = [](const char* box_id, const std::string& text) {
-    char clbl[48];
-    std::snprintf(clbl, sizeof(clbl), "Copier##%s", box_id);
-    if (ImGui::SmallButton(clbl)) ImGui::SetClipboardText(text.c_str());
-    // Hauteur = texte wrappé à la largeur INTERNE du child (= largeur dispo moins
-    // son WindowPadding des deux côtés) : sinon le texte se replie sur plus de
-    // lignes que mesuré et une scrollbar apparaît pour rien. Petite marge de
-    // sécurité pour absorber les arrondis. Bornée -> scroll interne si énorme.
-    const ImVec2 padw = ImGui::GetStyle().WindowPadding;
-    const float avail = ImGui::GetContentRegionAvail().x;
-    float twrap = avail - padw.x * 2.0f - 2.0f;
-    if (twrap < 40.0f) twrap = 40.0f;
-    const ImVec2 sz =
-        ImGui::CalcTextSize(text.c_str(), nullptr, false, twrap);
-    float h = sz.y + padw.y * 2.0f + 2.0f;
-    const float maxh = ImGui::GetTextLineHeight() * 16.0f + padw.y * 2.0f;
-    if (h > maxh) h = maxh;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(0, 0, 0, 40));
-    ImGui::BeginChild(box_id, ImVec2(0.0f, h), true);
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(text.c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    DrawScriptCode(box_id, text);
   };
 
   // ── Onglet « Script » : source brute (principal / équip / déséquip) ────────
@@ -2026,8 +2273,8 @@ void ItemDescTweaks::RenderItemWindow() {
   // premier plan quand on interagit avec l'un d'eux (fenêtres séparées => sinon les
   // panneaux passent SOUS les autres fenêtres). Noms des panneaux collectés au rendu
   // ; sat_foc = true si un panneau est focus cette frame. Réordonnancement après.
-  // ⚠️ POD (tableau, pas std::vector) : RenderItemWindow utilise __try/SEH -> aucun
-  // objet à déroulement autorisé (C2712).
+  // Tableau POD (le SEH de fermeture est désormais isolé dans SafeCloseWindowId, donc
+  // les objets C++ à déroulement sont permis ici ; on garde ce tableau simple).
   char sat_names[8][64];
   int  sat_name_count = 0;
   bool sat_foc = false;
@@ -2157,14 +2404,11 @@ void ItemDescTweaks::RenderItemWindow() {
           }
           if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
             OpenCardDbLink(e.cards[i]);
-          // Clic droit -> épingle la description de la carte/enchant en fenêtre
-          // déplaçable (déjà épinglée = on laisse la fenêtre existante).
-          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-            const uint32_t cid = e.cards[i];
-            if (std::find(pinned_cards_.begin(), pinned_cards_.end(), cid) ==
-                pinned_cards_.end())
-              pinned_cards_.push_back(cid);
-          }
+          // Clic droit -> ouvre la description COMPLÈTE de la carte/enchant dans la
+          // fenêtre desc (remplace l'item courant, comme un lien de carte natif). On
+          // diffère l'appel natif au prochain OnTick (hors rendu ImGui).
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            pending_card_open_ = e.cards[i];
         }
         ImGui::PopStyleVar(1);
         y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
@@ -2295,14 +2539,11 @@ void ItemDescTweaks::RenderItemWindow() {
     s_grp_foc_prev = grp_foc;
   }
 
-  // X ImGui -> ferme les fenêtres natives (item 0xc + comparaison 0xea).
+  // X ImGui -> ferme les fenêtres natives (item 0xc + comparaison 0xea). SEH isolée
+  // dans SafeCloseWindowId (sinon C2712 : __try + temporaires C++ dans cette fonction).
   if (!open) {
-    __try {
-      reinterpret_cast<CloseWin_t>(kCloseWindow)(
-          reinterpret_cast<void*>(kUIWindowMgr), nullptr, 0xc);
-      reinterpret_cast<CloseWin_t>(kCloseWindow)(
-          reinterpret_cast<void*>(kUIWindowMgr), nullptr, 0xea);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    SafeCloseWindowId(0xc);
+    SafeCloseWindowId(0xea);
   }
 }
 
@@ -2379,47 +2620,7 @@ void ItemDescTweaks::RenderSkillWindow() {
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);
 
-  if (!open) {
-    __try {
-      reinterpret_cast<CloseWin_t>(kCloseWindow)(
-          reinterpret_cast<void*>(kUIWindowMgr), nullptr, 0x2e);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  }
-}
-
-void ItemDescTweaks::RenderPinnedCardWindows() {
-  if (pinned_cards_.empty()) return;
-  const ImGuiWindowFlags flags =
-      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing;
-  // Itère par index : une fenêtre peut être fermée (X) pendant la boucle.
-  for (size_t i = 0; i < pinned_cards_.size();) {
-    const uint32_t id = pinned_cards_[i];
-    const CardDesc* cd = GetCardDesc(id);
-    char title[128];
-    // ###pincard<id> = id ImGui STABLE (indépendant du nom) -> position mémorisée.
-    std::snprintf(title, sizeof(title), "%s (#%u)###pincard%u",
-                  cd->name[0] ? cd->name : "Carte", id, id);
-
-    // 1ère apparition : pose près du curseur (là où le clic droit a eu lieu).
-    ImGui::SetNextWindowPos(ImGui::GetIO().MousePos, ImGuiCond_Appearing,
-                            ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(ImVec2(420.0f, 260.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(240.0f, 120.0f),
-                                        ImVec2(700.0f, 900.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,      IM_COL32(245, 243, 232, 255));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
-    ImGui::PushStyleColor(ImGuiCol_Text,          IM_COL32(0, 0, 0, 255));
-    bool open = true;
-    if (ro::BeginRoDescWindow(title, &open, flags))
-      RenderCardDescBody(id, "##pincardbody", 0.0f);  // wrap = région dispo
-    ro::EndRoDescWindow();
-    ImGui::PopStyleColor(4);
-    ImGui::PopStyleVar(1);
-    if (!open) pinned_cards_.erase(pinned_cards_.begin() + i);
-    else       ++i;
-  }
+  if (!open) SafeCloseWindowId(0x2e);
 }
 
 void ItemDescTweaks::OnRenderUI() {
@@ -2427,7 +2628,4 @@ void ItemDescTweaks::OnRenderUI() {
   if (show_item_panel_  && item_.open)  RenderItemWindow();
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)
     RenderSkillWindow();
-  // Descriptions de cartes/enchants épinglées (clic droit) : persistantes,
-  // indépendantes de la fenêtre item.
-  RenderPinnedCardWindows();
 }

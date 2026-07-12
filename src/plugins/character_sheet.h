@@ -77,6 +77,7 @@ class CharacterSheet : public Plugin {
     uint16_t skill_id = 0;
     int16_t  lv = 0;
     int32_t  value = 0;
+    uint16_t aux = 0;  // skill déclencheur (autospell3) ; 0 sinon
   };
   // Un bonus lié à un item (drop). Nom résolu à l'affichage via le DB item.
   struct ItemBonus {
@@ -111,6 +112,8 @@ class CharacterSheet : public Plugin {
     // Lot E — réduction par type d'attaque + splash
     int  def_melee_pct = 0, def_ranged_pct = 0, def_magic_pct = 0, def_misc_pct = 0;
     int  splash = 0, splash_add = 0;
+    // Lot F — vol de vie
+    int  hp_drain_pct = 0, sp_drain_pct = 0;
     std::vector<CondBonus>  cond;    // conditionnels non nuls (vs race/élément/taille)
     std::vector<SkillBonus> skills;  // bonus liés à un skill (autocast, +dégâts skill)
     std::vector<ItemBonus>  items;   // bonus liés à un item (drop)

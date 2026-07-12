@@ -44,6 +44,8 @@ set(BOURGEON_FILES
 	"plugins/shop_tweaks.h"
 	"plugins/npc_dialog_tweaks.cc"
 	"plugins/npc_dialog_tweaks.h"
+	"plugins/bug_report.cc"
+	"plugins/bug_report.h"
 	"plugins/character_sheet.cc"
 	"plugins/character_sheet.h"
 	"plugins/equip_tweaks.cc"

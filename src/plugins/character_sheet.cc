@@ -829,6 +829,8 @@ struct StatBonusPayload {   // bloc FIXE (miroir de PACKET_ZC_BOURGEON_STAT_BONU
   // Lot E — réduction par type d'attaque + splash
   int32_t def_melee_pct, def_ranged_pct, def_magic_pct, def_misc_pct;
   int32_t splash, splash_add;
+  // Lot F — vol de vie
+  int32_t hp_drain_pct, sp_drain_pct;
 };
 struct CondWire {          // miroir de PACKET_BOURGEON_STAT_COND
   uint16_t code;
@@ -840,6 +842,7 @@ struct SkillWire {         // miroir de PACKET_BOURGEON_STAT_SKILL
   uint16_t skill_id;
   int16_t  lv;
   int32_t  value;
+  uint16_t aux;
 };
 struct ItemWire {          // miroir de PACKET_BOURGEON_STAT_ITEM
   uint16_t code;
@@ -920,11 +923,13 @@ enum : uint16_t {
   kBscMAddEle = 7, kBscMAddRace = 8, kBscMAddSize = 9,
   kBscCritRace = 10, kBscIgnDefRace = 11, kBscIgnMdefRace = 12, kBscSubdefEle = 13,
   kBscSubClass = 14, kBscSubRace2 = 15,
+  kBscExpRace = 16, kBscExpClass = 17, kBscDropRace = 18, kBscDropClass = 19,
 };
 // Codes des bonus liés à un skill — MIROIR de e_bourgeon_stat_skill (serveur).
 enum : uint16_t {
   kBskAutospell = 1, kBskAutospellHit = 2, kBskSkillAtk = 3,
   kBskAddeff = 4, kBskAddeffHit = 5,  // skill_id porte un EFST (résolu via StatusName)
+  kBskReseff = 6, kBskSubskill = 7, kBskAutospellSkill = 8,
 };
 // Codes des bonus liés à un item — MIROIR de e_bourgeon_stat_item (serveur).
 enum : uint16_t {
@@ -937,12 +942,14 @@ static const char* const kEleName[] = {
     "Poison", "Holy", "Shadow", "Ghost", "Undead",
     "all elements",  // index 10 = ELE_ALL (résist./dégâts « tous éléments »)
 };
+// e_race : … Dragon(9), Player(10), Doram(11), RC_ALL(12), RC_MAX=13 (pas de Boss ici !).
 static const char* const kRaceName[] = {
     "Formless", "Undead", "Brute", "Plant", "Insect", "Fish",
     "Demon", "Demi-human", "Angel", "Dragon",
-    "Player", "Doram Player", "Boss", "Non-boss",
+    "Player", "Doram Player", "all races",
 };
-static const char* const kSizeName[] = {"Small", "Medium", "Large"};
+// e_size : Small(0), Medium(1), Large(2), SZ_ALL(3), SZ_MAX=4.
+static const char* const kSizeName[] = {"Small", "Medium", "Large", "all sizes"};
 // Classe de monstre (e_aegis_monsterclass) : index 3 = trou, 6 = CLASS_ALL.
 static const char* const kClassName[] = {
     "Normal", "Boss", "Gardien", "?",
@@ -1000,6 +1007,8 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
   bonus_.def_misc_pct   = p->def_misc_pct;
   bonus_.splash         = p->splash;
   bonus_.splash_add     = p->splash_add;
+  bonus_.hp_drain_pct   = p->hp_drain_pct;
+  bonus_.sp_drain_pct   = p->sp_drain_pct;
 
   // Queue variable : [cond_count:2] + CondWire[] puis [skill_count:2] + SkillWire[].
   // Toutes les longueurs bornées par len (paquet potentiellement tronqué/ancien).
@@ -1020,7 +1029,7 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
     off += 2;
     for (int i = 0; i < n && off + sizeof(SkillWire) <= len; ++i) {
       const auto* e = reinterpret_cast<const SkillWire*>(data + off);
-      bonus_.skills.push_back({e->code, e->skill_id, e->lv, e->value});
+      bonus_.skills.push_back({e->code, e->skill_id, e->lv, e->value, e->aux});
       off += sizeof(SkillWire);
     }
   }
@@ -1842,11 +1851,12 @@ void CharacterSheet::DrawStatsPanel() {
         bonus_.hp_on_kill || bonus_.sp_on_kill || bonus_.unbreak_pct || bonus_.pot_hp_pct ||
         bonus_.pot_sp_pct || bonus_.heal_up_pct || bonus_.delay_pct || bonus_.add_vcast_ms ||
         bonus_.add_fcast_ms || bonus_.steal_pct || bonus_.def_melee_pct || bonus_.def_ranged_pct ||
-        bonus_.def_magic_pct || bonus_.def_misc_pct || bonus_.splash || bonus_.splash_add;
-    if (any_flat || !bonus_.cond.empty() || !bonus_.skills.empty() || !bonus_.items.empty()) {
-      ImGui::Separator();
-      ImGui::TextColored(kBlack, "Bonus d'équipement");
-    }
+        bonus_.def_magic_pct || bonus_.def_misc_pct || bonus_.splash || bonus_.splash_add ||
+        bonus_.hp_drain_pct || bonus_.sp_drain_pct;
+    ImGui::Separator();
+    // Sections repliables (la fiche peut être bien fournie) ; ouvertes par défaut.
+    constexpr ImGuiTreeNodeFlags kSec = ImGuiTreeNodeFlags_DefaultOpen;
+    if (any_flat && ImGui::CollapsingHeader("Bonus d'équipement", kSec)) {
     pct("Mêlée", bonus_.melee_pct, "Dégâts de mêlée à mains nues (%).");
     pct("Distance", bonus_.ranged_pct, "Dégâts des attaques à distance (%).");
     pct("Dég. crit.", bonus_.crit_dmg_pct, "Dégâts des coups critiques (%).");
@@ -1887,11 +1897,16 @@ void CharacterSheet::DrawStatsPanel() {
     pct("Réduc. divers", bonus_.def_misc_pct, "Réduit les dégâts divers reçus (%).");
     flat("Splash", bonus_.splash, "Portée de la zone d'effet de vos attaques (cases).");
     flat("Splash+", bonus_.splash_add, "Portée de splash additionnelle (cases).");
+    // Lot F — vol de vie
+    pct("Vol PV", bonus_.hp_drain_pct, "PV volés à chaque attaque (% des dégâts).");
+    pct("Vol SP", bonus_.sp_drain_pct, "SP volés à chaque attaque (% des dégâts).");
+    }  // ── fin « Bonus d'équipement »
 
     // Conditionnels : (code, idx) -> libellé via les tables de noms.
     auto nameOf = [](const char* const* tbl, int n, int idx) -> const char* {
       return (idx >= 0 && idx < n) ? tbl[idx] : "?";
     };
+    if (!bonus_.cond.empty() && ImGui::CollapsingHeader("Conditionnels", kSec))
     for (const auto& c : bonus_.cond) {
       const char* kind = "Bonus";
       const char* who = "?";
@@ -1920,6 +1935,10 @@ void CharacterSheet::DrawStatsPanel() {
             who = who_buf;
           }
           break;
+        case kBscExpRace:   kind = "EXP vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscExpClass:  kind = "EXP vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscDropRace:  kind = "Drop vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscDropClass: kind = "Drop vs"; who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
         default: break;
       }
       char label[64];
@@ -1933,6 +1952,7 @@ void CharacterSheet::DrawStatsPanel() {
       const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
       return (n && *n) ? n : "?";
     };
+    if (!bonus_.skills.empty() && ImGui::CollapsingHeader("Skills & statuts", kSec))
     for (const auto& sk : bonus_.skills) {
       char label[96];
       const char* tip = "Bonus lié à un skill.";
@@ -1967,6 +1987,32 @@ void CharacterSheet::DrawStatsPanel() {
                     : "Chance d'infliger ce statut à la cible en attaquant.";
           break;
         }
+        case kBskReseff: {
+          // skill_id porte l'EFST du statut (résolu via GetStateIconDescript).
+          std::snprintf(label, sizeof(label), "Résist. %s", StatusName(sk.skill_id));
+          std::snprintf(vb, sizeof(vb), "%d,%02d%%", sk.value / 100, std::abs(sk.value) % 100);  // 1/100% -> %
+          tip = "Résistance à ce statut (chance/durée réduite).";
+          break;
+        }
+        case kBskSubskill:
+          std::snprintf(label, sizeof(label), "Réduc. %s", skillName(sk.skill_id));
+          std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
+          tip = "Réduit les dégâts subis de ce skill (%).";
+          break;
+        case kBskAutospellSkill: {
+          // Deux noms de skill (casté + déclencheur) : copier le 1er avant le 2e appel.
+          char cast[48];
+          std::strncpy(cast, skillName(sk.skill_id), sizeof(cast) - 1);
+          cast[sizeof(cast) - 1] = '\0';
+          const char* trig = sk.aux ? skillName(sk.aux) : "?";
+          if (sk.lv > 0)
+            std::snprintf(label, sizeof(label), "Autocast %s Niv %d sur %s", cast, sk.lv, trig);
+          else
+            std::snprintf(label, sizeof(label), "Autocast %s sur %s", cast, trig);
+          std::snprintf(vb, sizeof(vb), "%d,%d%%", sk.value / 10, sk.value % 10);  // ‰ -> %
+          tip = "Chance de lancer ce sort en utilisant le skill déclencheur.";
+          break;
+        }
         default:
           std::snprintf(label, sizeof(label), "%s", skillName(sk.skill_id));
           std::snprintf(vb, sizeof(vb), "%+d", sk.value);
@@ -1976,6 +2022,7 @@ void CharacterSheet::DrawStatsPanel() {
     }
 
     // Bonus liés à un item : nom résolu via le DB item (ItemName, caché + SEH).
+    if (!bonus_.items.empty() && ImGui::CollapsingHeader("Objets", kSec))
     for (const auto& it : bonus_.items) {
       char label[96];
       const char* nm = ItemName(it.nameid);

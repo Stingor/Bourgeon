@@ -124,6 +124,13 @@ void RegisterEscapeWindow(bool* p_open);   // interne aux BeginRo*Window
 void ProcessEscapeStack();                 // à appeler 1×/frame après tous les OnRenderUI
 bool AnyEscapeWindowOpen();                // lu par le WndProc pour avaler Échap
 
+// Neutralise la pile Échap pour CE frame : à appeler tant qu'un popup modal ImGui
+// (ex. la modale « Signaler un bug ») est ouvert, AVANT ProcessEscapeStack. Sans
+// ça, Échap fermerait à la fois la modale ET la fenêtre RO derrière. Race-free :
+// on lève le flag pendant que la modale est encore ouverte, même si elle se ferme
+// juste après (CloseCurrentPopup la retire aussitôt de la pile ImGui).
+void SuppressEscapeStack();
+
 // Fenêtre principale (Moonlight-Destiny) : Échap la MINIMISE (repli) au lieu de la
 // fermer, et seulement EN DERNIER — quand plus aucune fenêtre fermable n'est ouverte
 // (la seule restante avant que le jeu ne reçoive Échap pour ses natives). À appeler

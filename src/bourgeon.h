@@ -29,6 +29,7 @@ class DoomTweaks;
 class RoggleTweaks;
 class RojeweledTweaks;
 class NpcDialogTweaks;
+class BugReportTweaks;
 
 class Bourgeon {
  public:
@@ -55,6 +56,7 @@ class Bourgeon {
   CashShopTweaks* cashshop_tweaks();
   ShopTweaks* shop_tweaks();
   NpcDialogTweaks* npc_dialog_tweaks();
+  BugReportTweaks* bug_report();
   CharacterSheet* character_sheet();
   ItemDescTweaks* item_desc();
   FpsViewTweaks* fps_view();
@@ -109,6 +111,7 @@ class Bourgeon {
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
   NpcDialogTweaks* npc_dialog_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
+  BugReportTweaks* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   FpsViewTweaks* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
   DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_

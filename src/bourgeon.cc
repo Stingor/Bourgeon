@@ -33,6 +33,7 @@
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
+#include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -59,6 +60,7 @@ InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
+BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 
@@ -301,6 +303,11 @@ void Bourgeon::LoadPlugins() {
     auto moonlight_ui = std::make_unique<MoonlightUi>();
     moonlight_ui_ = moonlight_ui.get();
     plugins_.emplace_back(std::move(moonlight_ui));
+  }
+  {
+    auto bug_report = std::make_unique<BugReportTweaks>();
+    bug_report_ = bug_report.get();
+    plugins_.emplace_back(std::move(bug_report));
   }
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());

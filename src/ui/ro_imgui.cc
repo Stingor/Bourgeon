@@ -436,6 +436,7 @@ std::vector<ImGuiWindow*> g_esc_list;         // fenêtres fermables visibles ce
 ImGuiWindow* g_esc_close_target = nullptr;    // à fermer au prochain Begin
 bool g_esc_any = false;                        // ≥1 ouverte (lu par le WndProc)
 bool* g_esc_min_request = nullptr;             // flag « replier » de la fenêtre principale
+bool g_esc_suppress = false;                   // un popup modal capte Échap ce frame
 }  // namespace
 
 void RegisterEscapeWindow(bool* p_open) {
@@ -453,11 +454,18 @@ void RegisterEscapeMinimizeWindow(bool* p_request_collapse) {
   g_esc_min_request = p_request_collapse;
 }
 
+void SuppressEscapeStack() { g_esc_suppress = true; }
+
 void ProcessEscapeStack() {
   // La fenêtre principale (repli) compte comme « ouverte » pour l'avalage, mais reste
   // le tout dernier recours : on ne la minimise que si plus AUCUNE fenêtre fermable.
   g_esc_any = !g_esc_list.empty() || (g_esc_min_request != nullptr);
-  if (g_esc_any && ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
+  // Un popup modal a capté Échap ce frame -> on ne ferme AUCUNE fenêtre RO derrière
+  // (sinon Échap fermerait la modale ET la desc). Le flag est consommé ici.
+  const bool suppressed = g_esc_suppress;
+  g_esc_suppress = false;
+  if (!suppressed && g_esc_any &&
+      ImGui::IsKeyPressed(ImGuiKey_Escape, /*repeat=*/false)) {
     if (!g_esc_list.empty()) {
       // Désigne la plus au-dessus (FocusOrder max = plus récemment devant) ; fermée
       // au prochain Begin (p_open valide à ce moment-là).
