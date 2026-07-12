@@ -400,12 +400,14 @@ void NpcDialogTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       if (len >= 4) gid_ = *reinterpret_cast<const uint32_t*>(data);
       input_mode_ = kInputNumber;
       num_buf_[0] = '\0';
+      input_need_focus_ = true;  // focus auto du champ à l'apparition
       open_ = true;
       return;
     case kZcEditS:
       if (len >= 4) gid_ = *reinterpret_cast<const uint32_t*>(data);
       input_mode_ = kInputString;
       str_buf_[0] = '\0';
+      input_need_focus_ = true;  // focus auto du champ à l'apparition
       open_ = true;
       return;
     case kZcClear:
@@ -687,6 +689,10 @@ void NpcDialogTweaks::DrawMenu(float group_h) {
 
 void NpcDialogTweaks::DrawInput() {
   if (input_mode_ == kInputNone) return;
+  if (input_need_focus_) {  // 1re frame : SetKeyboardFocusHere cible le prochain widget = le champ
+    ImGui::SetKeyboardFocusHere();
+    input_need_focus_ = false;
+  }
   if (input_mode_ == kInputNumber) {
     ImGui::SetNextItemWidth(160.0f);
     const bool enter = ImGui::InputText(

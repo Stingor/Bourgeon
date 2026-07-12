@@ -101,6 +101,7 @@ class NpcDialogTweaks : public Plugin {
   bool       has_close_ = false;      // bouton [Close] demandé (CLOSE)
   bool       start_fresh_ = true;     // prochain SAY = nouvelle conversation (vide le texte)
   InputMode  input_mode_ = kInputNone;
+  bool       input_need_focus_ = false;  // focus clavier du champ à sa 1re frame
   uint32_t   gid_ = 0;                 // GID du NPC en cours
 
   std::unordered_map<uint32_t, std::string> npc_names_;  // GID -> nom (titre)
