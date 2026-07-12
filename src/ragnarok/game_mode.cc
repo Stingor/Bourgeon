@@ -75,6 +75,11 @@ GameMode::GameMode(const YAML::Node& game_mode_configuration) {
 
 void GameMode::OnUpdateHook() {
   ModeMgr::FireModeSwitch(ModeMgr::ModeType::kGame);
+  // Heartbeat: this hook runs only while CGameMode is the actively-updating mode
+  // (the in-world game loop), so it is Bourgeon's authoritative "in game" signal
+  // — more reliable than the mode-switch event, which the char-change path does
+  // not always re-fire. RenderUI() gates plugin UI on its freshness.
+  Bourgeon::Instance().NotifyGameUpdate();
   Bourgeon::Instance().OnTick();
   return OnUpdateRef(this);
 }

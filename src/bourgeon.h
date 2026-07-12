@@ -102,6 +102,18 @@ class Bourgeon {
   bool IsMapLoading() const;
   void SetMapLoading(bool loading);
 
+  // Game-world gate. RenderUI() draws plugin ImGui windows only while the game
+  // world is the actively-updating mode (CGameMode). At the login and
+  // character-select screens CGameMode::OnUpdate does not run, so no plugin
+  // window can linger there. NotifyGameUpdate() is the per-frame heartbeat fired
+  // from GameMode::OnUpdateHook; IsGameActive() reports whether that heartbeat is
+  // fresh. FireModeSwitch(non-kGame) also clears it for an instant hide — the
+  // heartbeat staleness is the fallback for the char-change case, where the
+  // client does not reliably re-fire a game->login mode switch (cf. the same
+  // note in integrity_check.cc).
+  void NotifyGameUpdate();
+  bool IsGameActive() const;
+
  private:
   Bourgeon();
 
@@ -133,6 +145,7 @@ class Bourgeon {
   uint32_t last_tick_count_;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
+  std::atomic<uint32_t> last_game_update_ms_{0};   // GetTickCount of last CGameMode update (0 = never)
   std::vector<std::string> log_lines_;
   RagnarokClient client_;
 };

@@ -222,6 +222,23 @@ bool Bourgeon::IsMapLoading() const {
   return (GetTickCount() - map_loading_since_ms_.load()) <= 20000u;
 }
 
+void Bourgeon::NotifyGameUpdate() {
+  // Per-frame heartbeat from GameMode::OnUpdateHook — CGameMode::OnUpdate only
+  // runs while the game world is the active mode, so a fresh value means "in
+  // game", and login/char-select (where it never runs) leaves it stale.
+  last_game_update_ms_.store(GetTickCount());
+}
+
+bool Bourgeon::IsGameActive() const {
+  const uint32_t last = last_game_update_ms_.load();
+  if (last == 0) return false;  // CGameMode never updated (login / char-select)
+  // Fresh within the last second = CGameMode is the actively-updating mode. A
+  // cleared heartbeat (mode switch to login) or a stale one (char-change, where
+  // the client does not reliably re-fire the mode switch) both read as "not in
+  // game", so no plugin window survives the login / character-select screens.
+  return (GetTickCount() - last) <= 1000u;
+}
+
 void Bourgeon::RenderUI() {
   // Stand down while a map is loading: hide all plugin UI. This also stops
   // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
@@ -229,6 +246,12 @@ void Bourgeon::RenderUI() {
   // UIShortCutWnd while it was still in the native window-snap manager and caused
   // the use-after-free crash (WinSnap edge-adjacency deref at 0x007a85c4).
   if (IsMapLoading()) return;
+  // Stand down outside the game world: at the login and character-select screens
+  // CGameMode::OnUpdate does not run, so the game-update heartbeat is stale/cleared
+  // and we draw nothing. This is the single choke point that guarantees no plugin
+  // ImGui window can linger on those screens, regardless of a plugin's own
+  // in_game_ tracking (which the char-change path can leave stale).
+  if (!IsGameActive()) return;
   // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
   // ShowBourgeonWindow();
   // }
@@ -250,6 +273,11 @@ void Bourgeon::RenderUI() {
 
 void Bourgeon::FireModeSwitch(ModeMgr::ModeType mode_type,
                               const char* map_name) {
+  // Leaving the game world (login / character-select): clear the game-update
+  // heartbeat so RenderUI hides every plugin window this very frame, instead of
+  // waiting up to a second for it to go stale. Entering the game re-arms it via
+  // NotifyGameUpdate() from GameMode::OnUpdateHook.
+  if (mode_type != ModeMgr::ModeType::kGame) last_game_update_ms_.store(0);
   for (auto& plugin : plugins_) {
     try {
       plugin->OnModeSwitch(mode_type, map_name);
