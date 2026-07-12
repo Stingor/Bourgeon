@@ -11,6 +11,7 @@
 #pragma comment(lib, "shell32.lib")
 
 #include "bourgeon.h"
+#include "plugins/bug_report.h"  // BugReportTweaks::ItemContext/SkillContext
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
@@ -875,7 +876,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
         // Texte blanc forcé : la couleur de texte poussée (noir, pour le fond
         // clair de la fenêtre) rendrait le tooltip invisible sur fond sombre.
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-        ImGui::SetTooltip("Aller a : %s (%d, %d)", mapn, nx, ny);
+        ImGui::SetTooltip("Aller à : %s (%d, %d)", mapn, nx, ny);
         ImGui::PopStyleColor();
         if (clicked && mapn[0])
           StartNavigation(mapn, nx, ny, ntype);  // routage natif (ABI capturée live)
@@ -1040,20 +1041,17 @@ IconTex GetCardIllust(uint32_t id) {
   return t;
 }
 
-// Tooltip au survol d'une carte/enchant : nom + desc (markup coloré). Saute la
-// ligne 0 (lien DB <URL>ItemID..</URL>) = bruit dans un tooltip.
-void RenderCardTooltip(uint32_t id) {
+// Contenu PARTAGÉ (nom + illustration + description) d'une carte/enchant, dessiné
+// tel quel par le tooltip de survol ET la fenêtre épinglée (clic droit). Saute la
+// ligne 0 (lien DB <URL>ItemID..</URL>) = bruit. `sctext_id` = id du bloc de texte
+// sélectionnable (unique par appelant) ; `wrap` = largeur de wrap (0 = région dispo).
+void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
   const CardDesc* cd = GetCardDesc(id);
-  // Fond crème identique à la fenêtre desc, mais alpha conservé (~240) pour garder
-  // la translucidité d'un tooltip. Texte noir (fond clair) comme la fenêtre.
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
-  ImGui::BeginTooltip();
   const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme "Cartes / Enchants")
   if (cd->name[0]) ImGui::TextColored(hdr, "%s (#%u)", cd->name, id);
   else             ImGui::TextColored(hdr, "#%u", id);
 
-  // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit dans un tooltip -> sautée.
+  // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
   const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
                     std::strstr(cd->lines[0], "ItemID")) ? 1 : 0;
   const bool has_desc = cd->line_count > skip;
@@ -1062,19 +1060,32 @@ void RenderCardTooltip(uint32_t id) {
   IconTex illust = GetCardIllust(id);
   if (illust.tex || has_desc) ImGui::Separator();
   if (illust.tex && illust.w > 0 && illust.h > 0) {
-    // Taille originale de l'illustration (pas de plafond).
     ImGui::Image(reinterpret_cast<ImTextureID>(illust.tex),
                  ImVec2(static_cast<float>(illust.w), static_cast<float>(illust.h)));
     if (has_desc) ImGui::SameLine(0, 8);
   }
   if (has_desc) {
     ImGui::BeginGroup();
-    SelectableColoredText("##cardtip", cd->lines + skip, cd->line_count - skip,
-                          IM_COL32(0, 0, 0, 255), 340.0f);
+    SelectableColoredText(sctext_id, cd->lines + skip, cd->line_count - skip,
+                          IM_COL32(0, 0, 0, 255), wrap);
     ImGui::EndGroup();
   } else if (!illust.tex) {
     ImGui::TextDisabled("(pas de description)");
   }
+}
+
+// Tooltip au survol d'une carte/enchant : nom + desc (markup coloré) + rappel des
+// actions clic gauche/droit.
+void RenderCardTooltip(uint32_t id) {
+  // Fond crème identique à la fenêtre desc, mais alpha conservé (~240) pour garder
+  // la translucidité d'un tooltip. Texte noir (fond clair) comme la fenêtre.
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::BeginTooltip();
+  RenderCardDescBody(id, "##cardtip", 340.0f);
+  ImGui::Separator();
+  ImGui::TextDisabled(
+      "Clic gauche : base de données   \xc2\xb7   Clic droit : épingler la description");
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1561,9 +1572,14 @@ void ItemDescTweaks::RenderDropTable(const TechData& td, const char* table_id,
   }
   ImGui::PopStyleColor();  // TableHeaderBg
   if (td.treasure_excluded > 0)
-    ImGui::TextDisabled("%u coffre(s) au tresor exclu(s).", td.treasure_excluded);
+    ImGui::TextDisabled("%u coffre(s) au trésor exclu(s).", td.treasure_excluded);
   if (td.truncated)
-    ImGui::TextDisabled("... autres sources : voir la base de donnees.");
+    ImGui::TextDisabled("... autres sources : voir la base de données.");
+  // Les spawns d'instance (donjons instanciés) ne sont pas encore pris en
+  // compte par le scan serveur : ces sources peuvent manquer dans la liste.
+  ImGui::TextColored(ImVec4(0.70f, 0.55f, 0.20f, 1.0f),
+                     "Note : les spawns d'instance ne sont pas encore "
+                     "comptés/scannés.");
 }
 
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
@@ -1589,7 +1605,7 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     if (st == FetchState::kPending)
       ImGui::TextDisabled("Chargement...");
     else if (st == FetchState::kFailed)
-      ImGui::TextDisabled("echec de la requete");
+      ImGui::TextDisabled("échec de la requête");
     return (st == FetchState::kReady && it != cache_.end()) ? &it->second
                                                             : nullptr;
   };
@@ -1599,7 +1615,7 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     if (ImGui::BeginTabItem("Infos techniques")) {
       const TechData* td = tech_body(kScopeNormal);
       if (td && td->levels.empty()) {
-        ImGui::TextDisabled("Aucune donnee de cast.");
+        ImGui::TextDisabled("Aucune donnée de cast.");
       } else if (td) {
         const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_RowBg |
@@ -1630,10 +1646,10 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     }
 
     // ── Onglet « Dégâts » : cible réglable (mob id, ou soi-même PvP) ────────
-    if (ImGui::BeginTabItem("Degats")) {
+    if (ImGui::BeginTabItem("Dégâts")) {
       // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
       const bool self_changed =
-          ImGui::Checkbox("Contre moi-meme (PvP)", &dmg_target_self_);
+          ImGui::Checkbox("Contre moi-même (PvP)", &dmg_target_self_);
       ImGui::SetNextItemWidth(120.0f);
       if (dmg_target_self_) ImGui::BeginDisabled();
       ImGui::InputInt("Cible : ID monstre (0 = neutre)", &dmg_target_input_,
@@ -1664,7 +1680,7 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
       } else if (st == FetchState::kReady && it != dmg_cache_.end()) {
         const DamageEst& d = it->second;
         if (d.status == 1) {
-          ImGui::TextDisabled("Sort non offensif (aucun degat).");
+          ImGui::TextDisabled("Sort non offensif (aucun dégât).");
         } else if (d.status == 2) {
           ImGui::TextDisabled("Monstre introuvable (ID invalide ?).");
         } else if (d.status != 0) {
@@ -1674,9 +1690,9 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
                           : (d.atk_type == 2) ? "Magique"
                                               : "Divers";
           if (d.target == 0xFFFFFFFFu)
-            ImGui::TextDisabled("Cible : toi-meme (miroir PvP)");
+            ImGui::TextDisabled("Cible : toi-même (miroir PvP)");
           else if (d.target == 0)
-            ImGui::TextDisabled("Cible : neutre 0 def (degats bruts)");
+            ImGui::TextDisabled("Cible : neutre 0 def (dégâts bruts)");
           else if (!d.target_name.empty())
             ImGui::Text("Cible : %s (#%u)", d.target_name.c_str(), d.target);
           else
@@ -1819,6 +1835,25 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
     }
     ImGui::EndTabItem();
   }
+}
+
+// Émet le bouton de rapport de bug de la fenêtre de description. ISOLÉ dans une
+// fonction SANS __try : RenderItemWindow/RenderSkillWindow contiennent un __try, et
+// MSVC (C2712) interdit tout objet à destructeur (ici std::string via *Context)
+// dans une fonction qui utilise __try. On confine donc les std::string ici.
+static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill,
+                              const char* imgui_id) {
+  auto* br = Bourgeon::Instance().bug_report();
+  if (!br || !br->enabled()) return;  // opt-out : pas de bouton ni de marge basse
+  const char* nm = name ? name : "";
+  ImGui::Spacing();
+  br->Button(is_skill ? BugReportTweaks::SkillContext(id, nm)
+                      : BugReportTweaks::ItemContext(id, nm),
+             imgui_id);
+  // Marge basse OBLIGATOIRE : la fenêtre desc a un cadre décoratif (~14px) en bas
+  // + un clip à -10px. Sans réserve, le bouton (dernier item) est tronqué par le
+  // cadre même défilé tout en bas. 18px > 14px => il dégage entièrement au-dessus.
+  ImGui::Dummy(ImVec2(0.0f, 18.0f));
 }
 
 // Reproduit la fenêtre de description d'ITEM en ImGui (Option A). Le pointeur
@@ -2122,6 +2157,14 @@ void ItemDescTweaks::RenderItemWindow() {
           }
           if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
             OpenCardDbLink(e.cards[i]);
+          // Clic droit -> épingle la description de la carte/enchant en fenêtre
+          // déplaçable (déjà épinglée = on laisse la fenêtre existante).
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            const uint32_t cid = e.cards[i];
+            if (std::find(pinned_cards_.begin(), pinned_cards_.end(), cid) ==
+                pinned_cards_.end())
+              pinned_cards_.push_back(cid);
+          }
         }
         ImGui::PopStyleVar(1);
         y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
@@ -2214,6 +2257,9 @@ void ItemDescTweaks::RenderItemWindow() {
     RenderTechTabs(item_);
     ImGui::EndTabBar();
   }
+  // Rapport de bug contextuel : id + nom de l'objet joints automatiquement.
+  // (Émis hors de cette fonction : elle contient un __try -> C2712 sinon.)
+  EmitDescBugButton(item_.id, ie.name, /*is_skill=*/false, "itemdesc_bug");
   ImGui::PopClipRect();  // fin du clip « contenu au-dessus du cadre du bas »
   // Ancre des satellites = rect de la fenêtre principale (capturé AVANT End, après
   // le clamp anti-hors-écran). Les panneaux (fenêtres séparées) sont dessinés
@@ -2327,6 +2373,8 @@ void ItemDescTweaks::RenderSkillWindow() {
     RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
     ImGui::EndTabBar();
   }
+  // Rapport de bug contextuel : id + nom de la compétence joints.
+  EmitDescBugButton(skill_.id, s_e.name, /*is_skill=*/true, "skilldesc_bug");
   ro::EndRoDescWindow();
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);
@@ -2339,9 +2387,47 @@ void ItemDescTweaks::RenderSkillWindow() {
   }
 }
 
+void ItemDescTweaks::RenderPinnedCardWindows() {
+  if (pinned_cards_.empty()) return;
+  const ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing;
+  // Itère par index : une fenêtre peut être fermée (X) pendant la boucle.
+  for (size_t i = 0; i < pinned_cards_.size();) {
+    const uint32_t id = pinned_cards_[i];
+    const CardDesc* cd = GetCardDesc(id);
+    char title[128];
+    // ###pincard<id> = id ImGui STABLE (indépendant du nom) -> position mémorisée.
+    std::snprintf(title, sizeof(title), "%s (#%u)###pincard%u",
+                  cd->name[0] ? cd->name : "Carte", id, id);
+
+    // 1ère apparition : pose près du curseur (là où le clic droit a eu lieu).
+    ImGui::SetNextWindowPos(ImGui::GetIO().MousePos, ImGuiCond_Appearing,
+                            ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(420.0f, 260.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(240.0f, 120.0f),
+                                        ImVec2(700.0f, 900.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,      IM_COL32(245, 243, 232, 255));
+    ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
+    ImGui::PushStyleColor(ImGuiCol_Text,          IM_COL32(0, 0, 0, 255));
+    bool open = true;
+    if (ro::BeginRoDescWindow(title, &open, flags))
+      RenderCardDescBody(id, "##pincardbody", 0.0f);  // wrap = région dispo
+    ro::EndRoDescWindow();
+    ImGui::PopStyleColor(4);
+    ImGui::PopStyleVar(1);
+    if (!open) pinned_cards_.erase(pinned_cards_.begin() + i);
+    else       ++i;
+  }
+}
+
 void ItemDescTweaks::OnRenderUI() {
   // ITEM (0xc/0xea) + SKILL (0x2e) reproduits en ImGui (Option A).
   if (show_item_panel_  && item_.open)  RenderItemWindow();
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)
     RenderSkillWindow();
+  // Descriptions de cartes/enchants épinglées (clic droit) : persistantes,
+  // indépendantes de la fenêtre item.
+  RenderPinnedCardWindows();
 }
