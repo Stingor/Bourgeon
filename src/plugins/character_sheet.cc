@@ -74,6 +74,16 @@ constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpEquip   = 0x0998;  // CZ_REQ_WEAR_EQUIP_V5 {op, invIndex, position:4}
 constexpr uint32_t kEqpHandL  = 0x20;    // EQP main GAUCHE (bouclier / arme dual-wield)
 
+//  Munition : PAS un slot du tableau equip -> invIndex dans un global dédié (cf. RE 2026-07-12).
+//  On lit l'item par cet invIndex dans la liste inventaire (in-place, donne la quantité).
+constexpr uintptr_t kAmmoInvIndex = 0x015fba8c;  // g_AmmoEquippedInvIndex (0 = aucune)
+constexpr int keAmount = 0x10;   // quantité (item d'inventaire) ; == present pour un equip
+
+//  Compagnons : CZ_BOURGEON_COMPANION (bopcodes::kCompanion 0x0F15) {kind, action, arg}.
+//  Miroir des enums serveur e_bourgeon_companion_kind / _action.
+enum { kCompCart = 0, kCompPeco = 1, kCompFalcon = 2 };
+enum { kCompOff = 0, kCompOn = 1, kCompDeco = 2 };
+
 // Toggles de config natifs (fenêtre équip case 0xd5) via le dispatcher CMode *(0x0121333c)->vf+0x18.
 // RE live 2026-07-11 : cmd 0xFD = « Show Equip » (config 0), cmd 0x148 = « View Costumes » (config 5).
 constexpr uintptr_t kUICmdDisp       = 0x0121333c;  // *ptr = dispatcher CMode (en jeu)
@@ -179,6 +189,45 @@ bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+//  Munition équipée : lue par son invIndex (global g_AmmoEquippedInvIndex), retrouvée
+//  dans la liste inventaire (node next@+0, ItemSkillInfo@+8, mêmes offsets). La munition
+//  reste un item d'inventaire (consommé au tir) -> présente dans la liste, quantité @+0x10.
+struct AmmoItem {
+  bool     present = false;
+  uint32_t nameid = 0;
+  int      invIndex = 0;
+  int      amount = 0;
+  int      viewId = 0;
+  int      location = 0;
+};
+bool ReadEquippedAmmo(AmmoItem* out) {
+  __try {
+    const int ammoIdx = *reinterpret_cast<const int*>(kAmmoInvIndex);
+    if (ammoIdx == 0) return false;  // aucune munition équipée
+    void* sentinel = *reinterpret_cast<void* const*>(kInvListHead);
+    const int count = *reinterpret_cast<const int*>(kInvCount);
+    if (!sentinel || count <= 0) return false;
+    void* node = *reinterpret_cast<void* const*>(sentinel);  // sentinelle->next = 1er noeud
+    for (int i = 0; i < count && node && node != sentinel; ++i) {
+      const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
+      if (*reinterpret_cast<const int*>(info + keInvIndex) == ammoIdx) {
+        out->present  = true;
+        out->invIndex = ammoIdx;
+        out->amount   = *reinterpret_cast<const int*>(info + keAmount);
+        out->location = *reinterpret_cast<const int*>(info + keLocation);
+        out->viewId   = *reinterpret_cast<const int*>(info + keView);
+        const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + keResCap);
+        const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(info + keResname)
+                                    : reinterpret_cast<const char*>(info + keResname);
+        out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
+        return out->nameid != 0;
+      }
+      node = *reinterpret_cast<void* const*>(node);  // node->next
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return false;
 }
 
 //  Vue POD d'un item d'inventaire (pour resoudre un preset -> index courant). Volontairement
@@ -664,8 +713,19 @@ void SendStatUp(int statType, int amount = 1) {
   if (amount > 255) amount = 255;
   uint8_t pkt[5];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpStatUp;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(statType); // 
+  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(statType); //
   pkt[4] = static_cast<uint8_t>(amount);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Invoquer/basculer un compagnon (chariot/peco/faucon) : CZ_BOURGEON_COMPANION (0x0F15),
+// paquet FIXE 7 o {op:2, len:2, kind:1, action:1, arg:1}. Le serveur re-valide le skill.
+void SendCompanionPkt(int kind, int action, int arg) {
+  uint8_t pkt[7];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = bopcodes::kCompanion;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = 7;
+  pkt[4] = static_cast<uint8_t>(kind);
+  pkt[5] = static_cast<uint8_t>(action);
+  pkt[6] = static_cast<uint8_t>(arg);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
@@ -797,6 +857,9 @@ CharacterSheet::CharacterSheet() {
   // Apport équip/cartes poussé par le serveur à chaque status_calc_pc. Opcode zone
   // custom sûre (>0x0C35) => livré par le reader-hook. cf. bourgeon_opcodes.h.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStatBonus);
+  // État des compagnons (chariot/peco/faucon) poussé par le serveur au login + à chaque
+  // changement (pc_setcart/riding/falcon). Gate/affiche les cases sans RE côté client.
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kCompanionState);
 }
 
 // Payload de ZC_BOURGEON_STAT_BONUS APRÈS le header [type:2][len:2] (le reader-hook
@@ -831,6 +894,11 @@ struct StatBonusPayload {   // bloc FIXE (miroir de PACKET_ZC_BOURGEON_STAT_BONU
   int32_t splash, splash_add;
   // Lot F — vol de vie
   int32_t hp_drain_pct, sp_drain_pct;
+  // Lot G — très niche
+  int32_t break_weapon_pct, break_armor_pct, zeny_bonus_pct, classchange_pct;
+  int32_t dmg_ret_reduce, magic_hp_gain, magic_sp_gain;
+  // Part du raffinage dans l'ATK / la DEF
+  int32_t refine_atk, refine_def;
 };
 struct CondWire {          // miroir de PACKET_BOURGEON_STAT_COND
   uint16_t code;
@@ -924,16 +992,22 @@ enum : uint16_t {
   kBscCritRace = 10, kBscIgnDefRace = 11, kBscIgnMdefRace = 12, kBscSubdefEle = 13,
   kBscSubClass = 14, kBscSubRace2 = 15,
   kBscExpRace = 16, kBscExpClass = 17, kBscDropRace = 18, kBscDropClass = 19,
+  kBscDefsetRace = 20, kBscMdefsetRace = 21, kBscHpVanishRace = 22, kBscSpVanishRace = 23,
+  kBscComaRace = 24, kBscComaClass = 25, kBscIgnResRace = 26, kBscIgnMresRace = 27,
+  kBscMAddRace2 = 28, kBscIgnMdefRace2 = 29, kBscSpGainRace = 30,
 };
 // Codes des bonus liés à un skill — MIROIR de e_bourgeon_stat_skill (serveur).
 enum : uint16_t {
   kBskAutospell = 1, kBskAutospellHit = 2, kBskSkillAtk = 3,
   kBskAddeff = 4, kBskAddeffHit = 5,  // skill_id porte un EFST (résolu via StatusName)
   kBskReseff = 6, kBskSubskill = 7, kBskAutospellSkill = 8,
+  kBskSkillSprate = 9, kBskSkillSpcost = 10, kBskSkillVcastrate = 11, kBskSkillFcastrate = 12,
+  kBskSkillVcast = 13, kBskSkillFcast = 14, kBskSkillCooldown = 15, kBskSkillDelay = 16,
+  kBskSkillHeal = 17, kBskSkillHeal2 = 18, kBskSkillBlown = 19,
 };
 // Codes des bonus liés à un item — MIROIR de e_bourgeon_stat_item (serveur).
 enum : uint16_t {
-  kBsiAddDrop = 1,
+  kBsiAddDrop = 1, kBsiAddDropGroup = 2,
 };
 
 // Noms FR pour libeller les conditionnels (index = ELE_*/RC_*/SZ_* côté serveur).
@@ -962,6 +1036,33 @@ static const char* const kRace2Name[] = {
 };
 
 void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // État des compagnons (ZC 0x0F16) : 8 octets APRÈS le header (le reader-hook nous
+  // passe data = post-header, len = payload). Miroir de PACKET_ZC_BOURGEON_COMPANION_STATE.
+  if (opcode == bopcodes::kCompanionState) {
+#pragma pack(push, 1)
+    struct CompStatePayload {
+      uint8_t  pushcart_lv, changecart_lv, riding_lv, falcon_lv;
+      uint8_t  cart_active, riding_active, falcon_active, cart_deco_max;
+      uint16_t pushcart_id, riding_id, falcon_id;  // ids skills pour l'icône
+    };
+#pragma pack(pop)
+    if (len < sizeof(CompStatePayload)) return;
+    const auto* p = reinterpret_cast<const CompStatePayload*>(data);
+    companion_.valid         = true;
+    companion_.pushcart_lv   = p->pushcart_lv;
+    companion_.changecart_lv = p->changecart_lv;
+    companion_.riding_lv     = p->riding_lv;
+    companion_.falcon_lv     = p->falcon_lv;
+    companion_.cart_active   = p->cart_active;
+    companion_.riding_active = p->riding_active != 0;
+    companion_.falcon_active = p->falcon_active != 0;
+    companion_.cart_deco_max = p->cart_deco_max > 0 ? p->cart_deco_max : 1;
+    companion_.pushcart_id   = p->pushcart_id;
+    companion_.riding_id     = p->riding_id;
+    companion_.falcon_id     = p->falcon_id;
+    if (p->cart_active > 0) last_cart_type_ = p->cart_active;  // pour « rallumer » au même type
+    return;
+  }
   if (opcode != bopcodes::kStatBonus) return;
   if (len < sizeof(StatBonusPayload)) return;  // bloc fixe tronqué : ignore
   const auto* p = reinterpret_cast<const StatBonusPayload*>(data);
@@ -1009,6 +1110,15 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
   bonus_.splash_add     = p->splash_add;
   bonus_.hp_drain_pct   = p->hp_drain_pct;
   bonus_.sp_drain_pct   = p->sp_drain_pct;
+  bonus_.break_weapon_pct = p->break_weapon_pct;
+  bonus_.break_armor_pct  = p->break_armor_pct;
+  bonus_.zeny_bonus_pct   = p->zeny_bonus_pct;
+  bonus_.classchange_pct  = p->classchange_pct;
+  bonus_.dmg_ret_reduce   = p->dmg_ret_reduce;
+  bonus_.magic_hp_gain    = p->magic_hp_gain;
+  bonus_.magic_sp_gain    = p->magic_sp_gain;
+  bonus_.refine_atk       = p->refine_atk;
+  bonus_.refine_def       = p->refine_def;
 
   // Queue variable : [cond_count:2] + CondWire[] puis [skill_count:2] + SkillWire[].
   // Toutes les longueurs bornées par len (paquet potentiellement tronqué/ancien).
@@ -1414,6 +1524,173 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   ImGui::PopID();
 }
 
+// Case MUNITION (à côté du bouclier). La munition n'est pas un slot du tableau equip :
+// on la lit par son invIndex global. Interactions comme un slot (drop = équiper via le
+// chemin partagé, double-clic = déséquiper, clic droit = description, survol = tooltip).
+void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
+  AmmoItem am{};
+  const bool has = ReadEquippedAmmo(&am);
+
+  ImGui::SetCursorPos(ImVec2(x, y));
+  ImGui::PushID(1000);  // id unique hors plage des slots (slot*2+costume)
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  ImGui::SetNextItemAllowOverlap();
+  ImGui::InvisibleButton("ammo", ImVec2(sz, sz));
+  const ImVec2 p1(p0.x + sz, p0.y + sz);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(p0, p1, IM_COL32(206, 206, 206, 255), 4.0f);
+  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);
+  if (has) {
+    IconTex ic = ResolveIcon(am.nameid);
+    if (ic.tex) {
+      const float pad = 3.0f;
+      dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
+                   ImVec2(p1.x - pad, p1.y - pad));
+    }
+    if (am.amount > 1) {  // quantité restante, bas à droite (comme l'inventaire)
+      char q[12];
+      std::snprintf(q, sizeof(q), "%d", am.amount);
+      const ImVec2 ts = ImGui::CalcTextSize(q);
+      const ImVec2 rp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+      const ImU32 white = IM_COL32(255, 255, 255, 255);
+      for (int oy = -1; oy <= 1; ++oy)
+        for (int ox = -1; ox <= 1; ++ox)
+          if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), white, q);
+      dl->AddText(rp, IM_COL32(0, 0, 0, 255), q);
+    }
+  } else {
+    const char* ab = "Ammo";
+    const ImVec2 ts = ImGui::CalcTextSize(ab);
+    dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
+                IM_COL32(120, 120, 120, 255), ab);
+  }
+
+  // CIBLE drop : lâcher une munition (payload "INV_ITEM") = l'équiper (chemin partagé,
+  // le serveur route par type d'item -> cmd 0x57). Fonctionne pour flèche/balle/grenade/jet.
+  if (ImGui::BeginDragDropTarget()) {
+    if (ImGui::AcceptDragDropPayload("INV_ITEM")) {
+      if (auto* iv = Bourgeon::Instance().inventory_viewer()) iv->EquipDraggedItem(false);
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  if (ImGui::IsItemHovered()) {
+    ro::SetHoverCursor(2);
+    if (has) {
+      ImGui::SetTooltip("%s  x%d\n(clic droit : desc, double-clic : déséquiper, glisser ici : équiper)",
+                        ItemName(am.nameid), am.amount);
+      const ImVec2 mp = ImGui::GetMousePos();
+      if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        OpenItemDesc(am.nameid, static_cast<uint16_t>(am.viewId),
+                     static_cast<uint32_t>(am.location), static_cast<int>(mp.x),
+                     static_cast<int>(mp.y), nullptr);
+      if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        SendUnequip(am.invIndex);
+    } else {
+      ImGui::SetTooltip("Munition\n(glissez une flèche/balle/grenade/arme de jet ici pour l'équiper)");
+    }
+  }
+  ImGui::PopID();
+}
+
+// Colonne COMPAGNONS (à gauche de l'arme) : chariot/peco/faucon, chacun affiché SEULEMENT
+// si son skill est appris (état poussé par le serveur). Renvoie le nombre de cases dessinées.
+int CharacterSheet::DrawCompanions(float x, float y0, float sz, float gap) {
+  if (!companion_.valid) return 0;
+  const int kinds[3] = {kCompCart, kCompPeco, kCompFalcon};
+  const int lv[3]    = {companion_.pushcart_lv, companion_.riding_lv, companion_.falcon_lv};
+  int drawn = 0;
+  for (int i = 0; i < 3; ++i) {
+    if (lv[i] <= 0) continue;
+    DrawCompanionCase(kinds[i], x, y0 + drawn * (sz + gap), sz);
+    ++drawn;
+  }
+  return drawn;
+}
+
+// Une case compagnon : fond vert si actif. Clic gauche = basculer (invoquer/ranger).
+// Chariot : clic droit = menu {Ouvrir, Changer la déco (si MC_CHANGECART), Retirer}.
+void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
+  bool active = false;
+  const char* label = "";
+  const char* name = "";
+  switch (kind) {
+    case kCompCart:   active = companion_.cart_active > 0; label = "Cart";   name = "Chariot";        break;
+    case kCompPeco:   active = companion_.riding_active;   label = "Peco";   name = "Monture (Peco)"; break;
+    case kCompFalcon: active = companion_.falcon_active;   label = "Falcon"; name = "Faucon";         break;
+  }
+
+  ImGui::SetCursorPos(ImVec2(x, y));
+  ImGui::PushID(2000 + kind);
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  ImGui::SetNextItemAllowOverlap();
+  ImGui::InvisibleButton("comp", ImVec2(sz, sz));
+  const ImVec2 p1(p0.x + sz, p0.y + sz);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImU32 bg = active ? IM_COL32(120, 200, 120, 255) : IM_COL32(206, 206, 206, 255);
+  dl->AddRectFilled(p0, p1, bg, 4.0f);
+  dl->AddRect(p0, p1, active ? IM_COL32(30, 110, 30, 220) : IM_COL32(0, 0, 0, 80), 4.0f, 0,
+              active ? 1.5f : 1.0f);
+  const ImVec2 ts = ImGui::CalcTextSize(label);
+  dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
+              active ? IM_COL32(0, 40, 0, 255) : IM_COL32(90, 90, 90, 255), label);
+
+  const bool hov = ImGui::IsItemHovered();
+  if (hov) ro::SetHoverCursor(2);
+
+  // Clic gauche = basculer.
+  if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (kind == kCompCart) {
+      if (active) SendCompanionPkt(kCompCart, kCompOff, 0);
+      else        SendCompanionPkt(kCompCart, kCompOn, last_cart_type_ > 0 ? last_cart_type_ : 1);
+    } else {
+      SendCompanionPkt(kind, active ? kCompOff : kCompOn, 0);
+    }
+  }
+
+  // Menu contextuel (chariot uniquement).
+  if (kind == kCompCart) {
+    if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("cart_ctx");
+    if (ImGui::BeginPopup("cart_ctx")) {
+      if (ImGui::MenuItem("Ouvrir le chariot", nullptr, false, active)) OpenCartWindow();
+      const bool canDeco = companion_.changecart_lv > 0 && active;
+      if (ImGui::MenuItem("Changer la décoration", nullptr, false, canDeco)) {
+        int next = companion_.cart_active + 1;
+        if (next > companion_.cart_deco_max || next < 1) next = 1;
+        SendCompanionPkt(kCompCart, kCompDeco, next);
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Retirer le chariot", nullptr, false, active))
+        SendCompanionPkt(kCompCart, kCompOff, 0);
+      ImGui::EndPopup();
+    }
+  }
+
+  // Tooltip (pas pendant que le menu est ouvert).
+  if (hov && !ImGui::IsPopupOpen("cart_ctx")) {
+    if (kind == kCompCart)
+      ImGui::SetTooltip("%s — %s\n(clic gauche : %s, clic droit : menu)", name,
+                        active ? "actif" : "inactif", active ? "ranger" : "invoquer");
+    else
+      ImGui::SetTooltip("%s — %s\n(clic gauche : %s)", name, active ? "actif" : "inactif",
+                        active ? "renvoyer" : "invoquer");
+  }
+  ImGui::PopID();
+}
+
+// Ouvre la fenêtre d'inventaire du chariot. MakeWindow crée/affiche par id (RE 2026-07-12 :
+// id 0x28 = UIMerchantItemWnd, vtable 0x0103d538 ; même appel que la fenêtre de description).
+// Le case a un gate de contexte UI (IsWindowAllowedInContext) qui passe en jeu normal ;
+// OnCreate ne dépend pas de l'état cart (au pire fenêtre vide), le serveur pousse le contenu.
+void CharacterSheet::OpenCartWindow() {
+  constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire chariot)
+  __try {
+    reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        reinterpret_cast<void*>(static_cast<uintptr_t>(kCartWndId)));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 void CharacterSheet::DrawDoll(float avail_w) {
   // En-tete (colonne gauche, CENTRE horizontalement) : pseudo, classe, niveau.
   const float start_x = ImGui::GetCursorPosX();
@@ -1509,7 +1786,13 @@ void CharacterSheet::DrawDoll(float avail_w) {
     const float wpn_y = y0 + 4 * (sz + gap);
     DrawSlot(1, costume_, ax, wpn_y, sz);                    // arme -> bas gauche
     DrawSlot(5, costume_, ax + avatar_w - sz, wpn_y, sz);    // bouclier -> bas droite
-    content_bottom = wpn_y + sz;
+    DrawAmmoSlot(rx, wpn_y, sz);                             // munition -> à droite du bouclier
+    // Compagnons (chariot/peco/faucon) à GAUCHE de l'arme, empilés vers le bas. Seules les
+    // cases dont le skill est appris apparaissent (état poussé par le serveur).
+    const int nComp = DrawCompanions(lx, wpn_y, sz, gap);
+    content_bottom = wpn_y + sz;  // arme/bouclier/munition
+    if (nComp > 0)
+      content_bottom = std::max(content_bottom, wpn_y + (nComp - 1) * (sz + gap) + sz);
   }
   ImGui::SetCursorPos(ImVec2(ax, y0));
   ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(228, 230, 236, 255));
@@ -1625,6 +1908,44 @@ void CharacterSheet::DrawDoll(float avail_w) {
       SendConfigToggle(kCmdShowEquip, pub ? 1 : 0);
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Rend ton équipement visible (ou non) aux autres joueurs");
+  }
+
+  // ── Calibrage LIVE de l'effet costume (.str) ──────────────────────────────
+  // Visible seulement si le perso porte un costume à hat effect (diagnostic posé par
+  // RenderPlayerAvatar plus haut). Permet d'ajuster échelle/ancre/winding/rotation à
+  // l'œil (la relation canvas.str<->sprite n'est pas connue sans exécuter). « couches
+  // 0 » = le spawn/la capture STR a échoué. Reporter les valeurs finales pour les figer.
+  if (auto* bi = Bourgeon::Instance().basic_info()) {
+    if (bi->hat_diag_active_ > 0) {
+      ImGui::SetCursorPos(ImVec2(start_x, cfg_y + fh + 6.0f));
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(20, 20, 20, 255));
+      if (ImGui::CollapsingHeader("Effet costume (calibrage)")) {
+        bool save = false;  // persiste (yaml) à la RELÂCHE d'un slider / au toggle
+        if (ImGui::Checkbox("Afficher l'effet", &bi->hat_enabled_)) save = true;
+        ImGui::TextColored(kBlack, "actifs %d   couches %d   id %d",
+                           bi->hat_diag_active_, bi->hat_diag_layers_,
+                           bi->hat_diag_concrete_);
+        if (bi->hat_enabled_ && bi->hat_diag_layers_ == 0)
+          ImGui::TextColored(ImVec4(0.85f, 0.25f, 0.25f, 1.0f),
+                             "0 couche -> spawn/capture KO");
+        ImGui::PushItemWidth(std::max(90.0f, avail_w - 130.0f));
+        ImGui::SliderFloat("Echelle", &bi->hat_scale_, 0.1f, 4.0f, "%.2f");
+        save |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::SliderFloat("Decal. X", &bi->hat_off_x_, -100.0f, 100.0f, "%.0f");
+        save |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::SliderFloat("Decal. Y", &bi->hat_off_y_, -150.0f, 150.0f, "%.0f");
+        save |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::SliderInt("Winding", &bi->hat_winding_, 0, 1);
+        save |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::SliderInt("Rotation", &bi->hat_angle_mode_, 0, 2);
+        save |= ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::PopItemWidth();
+        ImGui::TextDisabled("(persiste auto entre sessions)");
+        if (save)
+          if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      }
+      ImGui::PopStyleColor();
+    }
   }
 }
 
@@ -1780,22 +2101,32 @@ void CharacterSheet::DrawStatsPanel() {
     ImGui::TextColored(kBlack, "%s", value);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
   };
-  char b[80];
-  // Apport de l'équip (bonus.eatk/ematk, poussé par le serveur) accolé à la valeur.
-  auto appendEquip = [&](int contrib) {
+  char b[112];
+  // Accole « (label ±X) » à la valeur courante (équip, refine…) si non nul.
+  auto append = [&](const char* label, int contrib) {
     if (bonus_.valid && contrib != 0) {
       const size_t n = std::strlen(b);
-      std::snprintf(b + n, sizeof(b) - n, "  (équip %+d)", contrib);
+      std::snprintf(b + n, sizeof(b) - n, "  (%s %+d)", label, contrib);
+    }
+  };
+  auto appendEquip = [&](int contrib) { append("équip", contrib); };
+  // Variante % (ex. DEF de refine, qui alimente la réduction en %).
+  auto appendPct = [&](const char* label, int contrib) {
+    if (bonus_.valid && contrib != 0) {
+      const size_t n = std::strlen(b);
+      std::snprintf(b + n, sizeof(b) - n, "  (%s %+d%%)", label, contrib);
     }
   };
   std::snprintf(b, sizeof(b), "%d + %d", s.atk1, s.atk2);
   appendEquip(bonus_.eatk);
+  append("refine", bonus_.refine_atk);
   stat("ATK", b, "Attaque physique (arme + statut) : détermine les dégâts des coups physiques.");
   std::snprintf(b, sizeof(b), "%d ~ %d", s.matk_min, s.matk_max);
   appendEquip(bonus_.ematk);
   stat("MATK", b, "Attaque magique : détermine les dégâts des sorts.");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.def_s, s.def_h);
-  stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2).");
+  appendPct("refine", bonus_.refine_def);
+  stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du raffinage des armures (dans la réduction %).");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.mdef_s, s.mdef_h);
   stat("MDEF", b, "Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2).");
   std::snprintf(b, sizeof(b), "%d", s.hit);
@@ -1852,7 +2183,9 @@ void CharacterSheet::DrawStatsPanel() {
         bonus_.pot_sp_pct || bonus_.heal_up_pct || bonus_.delay_pct || bonus_.add_vcast_ms ||
         bonus_.add_fcast_ms || bonus_.steal_pct || bonus_.def_melee_pct || bonus_.def_ranged_pct ||
         bonus_.def_magic_pct || bonus_.def_misc_pct || bonus_.splash || bonus_.splash_add ||
-        bonus_.hp_drain_pct || bonus_.sp_drain_pct;
+        bonus_.hp_drain_pct || bonus_.sp_drain_pct || bonus_.break_weapon_pct ||
+        bonus_.break_armor_pct || bonus_.zeny_bonus_pct || bonus_.classchange_pct ||
+        bonus_.dmg_ret_reduce || bonus_.magic_hp_gain || bonus_.magic_sp_gain;
     ImGui::Separator();
     // Sections repliables (la fiche peut être bien fournie) ; ouvertes par défaut.
     constexpr ImGuiTreeNodeFlags kSec = ImGuiTreeNodeFlags_DefaultOpen;
@@ -1900,6 +2233,14 @@ void CharacterSheet::DrawStatsPanel() {
     // Lot F — vol de vie
     pct("Vol PV", bonus_.hp_drain_pct, "PV volés à chaque attaque (% des dégâts).");
     pct("Vol SP", bonus_.sp_drain_pct, "SP volés à chaque attaque (% des dégâts).");
+    // Lot G — très niche
+    pct("Casse arme", bonus_.break_weapon_pct, "Chance de casser l'arme de la cible (%).");
+    pct("Casse armure", bonus_.break_armor_pct, "Chance de casser l'armure de la cible (%).");
+    pct("Zeny bonus", bonus_.zeny_bonus_pct, "Bonus de Zeny obtenu sur les monstres (%).");
+    pct("Transforme", bonus_.classchange_pct, "Chance de transformer la cible en un autre monstre (%).");
+    pct("Réduc. renvoi", bonus_.dmg_ret_reduce, "Réduit les dégâts que vous subissez du renvoi (%).");
+    flat("PV au sort", bonus_.magic_hp_gain, "PV récupérés en lançant un sort.");
+    flat("SP au sort", bonus_.magic_sp_gain, "SP récupérés en lançant un sort.");
     }  // ── fin « Bonus d'équipement »
 
     // Conditionnels : (code, idx) -> libellé via les tables de noms.
@@ -1911,6 +2252,11 @@ void CharacterSheet::DrawStatsPanel() {
       const char* kind = "Bonus";
       const char* who = "?";
       char who_buf[24];  // repli pour les groupes RC2 sans libellé
+      auto rc2 = [&](int idx) -> const char* {
+        if (idx >= 0 && idx < IM_ARRAYSIZE(kRace2Name) && kRace2Name[idx][0]) return kRace2Name[idx];
+        std::snprintf(who_buf, sizeof(who_buf), "groupe #%d", idx);
+        return who_buf;
+      };
       switch (c.code) {
         case kBscSubEle:  kind = "Résist. vs"; who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
         case kBscSubRace: kind = "Résist. vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
@@ -1926,19 +2272,23 @@ void CharacterSheet::DrawStatsPanel() {
         case kBscIgnMdefRace: kind = "Ignore MDEF vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         case kBscSubdefEle:   kind = "Résist. arme";   who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
         case kBscSubClass:    kind = "Réduc. vs";      who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscSubRace2:
-          kind = "Réduc. vs";
-          if (c.idx >= 0 && c.idx < IM_ARRAYSIZE(kRace2Name) && kRace2Name[c.idx][0]) {
-            who = kRace2Name[c.idx];
-          } else {
-            std::snprintf(who_buf, sizeof(who_buf), "groupe #%d", c.idx);
-            who = who_buf;
-          }
-          break;
+        case kBscSubRace2:  kind = "Réduc. vs";  who = rc2(c.idx); break;
         case kBscExpRace:   kind = "EXP vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         case kBscExpClass:  kind = "EXP vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
         case kBscDropRace:  kind = "Drop vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         case kBscDropClass: kind = "Drop vs"; who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        // Très niche
+        case kBscDefsetRace:   kind = "DEF fixée vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMdefsetRace:  kind = "MDEF fixée vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscHpVanishRace: kind = "Vanish PV vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscSpVanishRace: kind = "Vanish SP vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscComaRace:     kind = "Coma vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscComaClass:    kind = "Coma vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscIgnResRace:   kind = "Ignore RES vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnMresRace:  kind = "Ignore MRES vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMAddRace2:      kind = "Dég. mag. vs";  who = rc2(c.idx); break;
+        case kBscIgnMdefRace2:   kind = "Ignore MDEF vs"; who = rc2(c.idx); break;
+        case kBscSpGainRace:   kind = "SP/kill vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         default: break;
       }
       char label[64];
@@ -2013,6 +2363,34 @@ void CharacterSheet::DrawStatsPanel() {
           tip = "Chance de lancer ce sort en utilisant le skill déclencheur.";
           break;
         }
+        case kBskSkillSprate: case kBskSkillSpcost:
+        case kBskSkillVcastrate: case kBskSkillFcastrate:
+        case kBskSkillVcast: case kBskSkillFcast:
+        case kBskSkillCooldown: case kBskSkillDelay:
+        case kBskSkillHeal: case kBskSkillHeal2: case kBskSkillBlown: {
+          // Modificateur d'un skill précis. prefix + unité selon le code.
+          const char* pre = "";
+          int unit = 0;  // 0=% 1=ms 2=plat
+          switch (sk.code) {
+            case kBskSkillSprate:    pre = "Coût SP";   unit = 0; break;
+            case kBskSkillSpcost:    pre = "Coût SP";   unit = 2; break;
+            case kBskSkillVcastrate: pre = "Cast var."; unit = 0; break;
+            case kBskSkillFcastrate: pre = "Cast fixe"; unit = 0; break;
+            case kBskSkillVcast:     pre = "Cast var."; unit = 1; break;
+            case kBskSkillFcast:     pre = "Cast fixe"; unit = 1; break;
+            case kBskSkillCooldown:  pre = "Cooldown";  unit = 1; break;
+            case kBskSkillDelay:     pre = "Délai";     unit = 0; break;
+            case kBskSkillHeal:      pre = "Soin";      unit = 0; break;
+            case kBskSkillHeal2:     pre = "Soin reçu"; unit = 0; break;
+            case kBskSkillBlown:     pre = "Knockback"; unit = 2; break;
+          }
+          std::snprintf(label, sizeof(label), "%s %s", pre, skillName(sk.skill_id));
+          if (unit == 0)      std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
+          else if (unit == 1) std::snprintf(vb, sizeof(vb), "%+d ms", sk.value);
+          else                std::snprintf(vb, sizeof(vb), "%+d", sk.value);
+          tip = "Modificateur appliqué à ce skill précis.";
+          break;
+        }
         default:
           std::snprintf(label, sizeof(label), "%s", skillName(sk.skill_id));
           std::snprintf(vb, sizeof(vb), "%+d", sk.value);
@@ -2025,11 +2403,10 @@ void CharacterSheet::DrawStatsPanel() {
     if (!bonus_.items.empty() && ImGui::CollapsingHeader("Objets", kSec))
     for (const auto& it : bonus_.items) {
       char label[96];
-      const char* nm = ItemName(it.nameid);
-      if (it.code == kBsiAddDrop)
-        std::snprintf(label, sizeof(label), "Drop %s", nm);
+      if (it.code == kBsiAddDropGroup)  // nameid porte l'id de GROUPE, pas d'item
+        std::snprintf(label, sizeof(label), "Drop groupe #%u", it.nameid);
       else
-        std::snprintf(label, sizeof(label), "%s", nm);
+        std::snprintf(label, sizeof(label), "Drop %s", ItemName(it.nameid));
       std::snprintf(vb, sizeof(vb), "%d,%02d%%", it.rate / 100, std::abs(it.rate) % 100);  // 1~10000 -> %
       bonusStat(label, vb, "Chance de drop bonus de cet objet en tuant un monstre.");
     }

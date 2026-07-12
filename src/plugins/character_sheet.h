@@ -114,11 +114,37 @@ class CharacterSheet : public Plugin {
     int  splash = 0, splash_add = 0;
     // Lot F — vol de vie
     int  hp_drain_pct = 0, sp_drain_pct = 0;
+    // Lot G — très niche
+    int  break_weapon_pct = 0, break_armor_pct = 0, zeny_bonus_pct = 0, classchange_pct = 0;
+    int  dmg_ret_reduce = 0, magic_hp_gain = 0, magic_sp_gain = 0;
+    // Part du raffinage dans l'ATK / la DEF
+    int  refine_atk = 0, refine_def = 0;
     std::vector<CondBonus>  cond;    // conditionnels non nuls (vs race/élément/taille)
     std::vector<SkillBonus> skills;  // bonus liés à un skill (autocast, +dégâts skill)
     std::vector<ItemBonus>  items;   // bonus liés à un item (drop)
   };
   BonusBreakdown bonus_;
+
+  // État des COMPAGNONS (chariot / peco / faucon), poussé par le serveur
+  // (ZC_BOURGEON_COMPANION_STATE 0x0F16) : niveaux des skills requis + états actifs.
+  // La feuille n'affiche/gate les cases QUE d'après ceci — aucune lecture côté client
+  // d'IDs de skills ni du bitmask option (ce dernier ne reflète pas le cart sous NEW_CARTS).
+  struct CompanionState {
+    bool valid = false;         // au moins un paquet reçu
+    int  pushcart_lv = 0;       // MC_PUSHCART   (0 = non appris -> pas de case chariot)
+    int  changecart_lv = 0;     // MC_CHANGECART (0 = non appris -> pas de « changer déco »)
+    int  riding_lv = 0;         // KN_RIDING     (0 = non appris -> pas de case peco)
+    int  falcon_lv = 0;         // HT_FALCON     (0 = non appris -> pas de case faucon)
+    int  cart_active = 0;       // type de chariot courant (0 = aucun)
+    bool riding_active = false; // sur peco/monture
+    bool falcon_active = false; // faucon présent
+    int  cart_deco_max = 1;     // type de déco max (cycle) autorisé par le niveau de base
+    int  pushcart_id = 0;       // ids AEGIS des skills (envoyés par le serveur) pour l'icône
+    int  riding_id = 0;
+    int  falcon_id = 0;
+  };
+  CompanionState companion_;
+  int last_cart_type_ = 1;      // dernier type de chariot actif (pour « rallumer » au même)
 
   std::vector<EquipPreset> equip_presets_;
   char preset_name_buf_[24] = {};  // saisie du nom (sauvegarde / renommage)
@@ -161,6 +187,16 @@ class CharacterSheet : public Plugin {
   bool HotkeyConflict(int vk, bool ctrl, bool alt, bool shift, int selfIdx, char* what, int cap);
   // Dessine un slot d'equipement a (x,y) taille sz dans le draw courant.
   void DrawSlot(int slot, bool costume, float x, float y, float sz);
+  // Case MUNITION (à côté du bouclier) : lit la munition équipée (invIndex global, hors
+  // tableau equip), affiche icône + quantité, drop = équiper, double-clic = déséquiper.
+  void DrawAmmoSlot(float x, float y, float sz);
+  // Colonne COMPAGNONS (à gauche de l'arme) : cases chariot/peco/faucon, gated par l'état
+  // serveur. Renvoie le nombre de cases dessinées (pour étendre la hauteur du contenu).
+  int  DrawCompanions(float x, float y0, float sz, float gap);
+  // Une case compagnon (kind 0=cart 1=peco 2=falcon) : toggle clic-G + menu contextuel cart.
+  void DrawCompanionCase(int kind, float x, float y, float sz);
+  // Ouvre la fenêtre d'inventaire du chariot (MakeWindow natif).
+  void OpenCartWindow();
   // Ouvre le dialogue "Enregistrer sous" du GIF (thread séparé, non bloquant).
   void RequestGifSave();
 };
