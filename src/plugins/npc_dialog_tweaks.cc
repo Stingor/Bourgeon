@@ -664,8 +664,11 @@ void NpcDialogTweaks::DrawMenu(float group_h) {
   ImGui::EndChild();      // ##menugrp
 
   // Touches 1-9 : sélectionne le N-ième choix VISIBLE (envoie son index original).
-  // Seulement hors saisie clavier (sinon taper "1" dans le filtre choisirait #1).
-  if (!ImGui::GetIO().WantTextInput) {
+  // Seulement hors saisie clavier (sinon taper "1" dans le filtre choisirait #1) ET
+  // sans modificateur : Ctrl/Alt/Shift + chiffre = combo hotkey (skillbar, macro…),
+  // à laisser passer au jeu, pas une sélection de menu.
+  const ImGuiIO& io = ImGui::GetIO();
+  if (!io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeyShift) {
     for (int k = 1; k <= 9 && k <= static_cast<int>(visible.size()); ++k) {
       if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + (k - 1)), false))
         chosen = visible[k - 1] + 1;
@@ -758,11 +761,16 @@ void NpcDialogTweaks::OnRenderUI() {
     return;
   }
   if (begun) {
-    // Capture le clavier pour l'overlay tant qu'il est ouvert : Entrée/Espace servent
-    // à valider (Suivant / Fermer / option de menu) et NE DOIVENT PAS fuir vers le JEU
-    // (sinon Entrée ouvre le chat). Le hook WndProc (ragnarok_client) avale les touches
-    // quand io.WantCaptureKeyboard est vrai ; une fenêtre à boutons ne le pose pas seule.
-    ImGui::SetNextFrameWantCaptureKeyboard(true);
+    // Capture le clavier pour l'overlay tant qu'il est ouvert : Entrée/Espace/1-9/flèches
+    // servent à piloter le dialogue et NE DOIVENT PAS fuir vers le JEU (sinon Entrée ouvre
+    // le chat). Le hook WndProc (ragnarok_client) avale les touches quand
+    // io.WantCaptureKeyboard est vrai ; une fenêtre à boutons ne le pose pas seule.
+    // EXCEPTION : si un modificateur est tenu (Ctrl/Alt/Shift), on NE capture PAS -> les
+    // combos (skillbar, macros) passent au jeu. La saisie d'un champ garde sa propre
+    // capture via WantTextInput, donc Maj+lettre y fonctionne toujours.
+    const ImGuiIO& io_kb = ImGui::GetIO();
+    if (!io_kb.KeyCtrl && !io_kb.KeyAlt && !io_kb.KeyShift)
+      ImGui::SetNextFrameWantCaptureKeyboard(true);
 
     // Layout à FOOTER FIXE : texte (flexible, scroll interne) + menu (borné, scroll
     // interne) + input, puis les boutons ÉPINGLÉS en bas. La fenêtre est NoScrollbar
