@@ -226,12 +226,6 @@ int   g_portrait_dir  = 0;          // facing direction 0..7 (low 3 bits of pose
 bool  g_portrait_animate = true;    // cycle the action frames (vs freeze frame 0)
 bool  g_portrait_garment = false;   // feed the equipped garment/cape (full body)
 void* g_cur_actor = nullptr;        // our actor (read pose @+0x38 in the hook)
-// Auto-calibrage du lift hat effect : on mémorise l'objet sprite bas-niveau du CORPS joueur
-// (1er `self` vu pendant NOTRE capture), puis on capte au vol son échelle de rendu EN JEU
-// (`scale` = jobScale*DepthToScreenScale = S) quand le jeu redessine ce même objet en passthrough.
-// S convertit le lift natif (px sprite -> écran via la caméra) en px doll. 0 = pas encore vu.
-void* g_own_body_self    = nullptr; // objet sprite du corps joueur (identité pour matcher en jeu)
-float g_live_render_scale = 0.0f;   // S en jeu du perso joueur (jobScale*DepthToScreenScale)
 int   g_body_frame_count = 1;       // frames in the chosen action (for wrap)
 int   g_pv_frame_count = 1;         // idem pour l'aperçu (anim marche)
 int*  g_frame_dst = &g_body_frame_count;  // cible du comptage (portrait par défaut)
@@ -345,12 +339,6 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
                                  int* act_layer, float scale, float angle,
                                  unsigned color, void* palette, float p11) {
   if (!g_cap_active) {
-    // Passthrough (rendu jeu) : capte l'échelle de rendu S du perso joueur quand le jeu
-    // redessine SON objet corps (celui mémorisé pendant notre capture). Sert à calibrer le
-    // lift du hat effect sur le doll (RE : lift_écran = 11*jobScale*0.6428, converti en doll
-    // par s/DepthToScreenScale). __try : `self` peut être n'importe quel acteur.
-    if (self && self == g_own_body_self && scale > 0.01f && scale < 100.0f)
-      g_live_render_scale = scale;
     g_orig_actor_quad(self, edx, x, y, p3, p4, spr_frame, act_layer, scale,
                       angle, color, palette, p11);
     return;
@@ -362,7 +350,6 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
       // weapon/shield layers use the SAME scale). p3 = this layer's ACT object.
       if (g_first_layer && p3 && g_cur_actor) {
         g_first_layer = false;
-        g_own_body_self = self;   // identité du corps joueur -> matcher son rendu EN JEU (S)
         g_av_body_scale = scale;
         const unsigned pose = *reinterpret_cast<unsigned*>(
             reinterpret_cast<char*>(g_cur_actor) + 0x38);
@@ -1435,6 +1422,7 @@ constexpr uintptr_t kLuaPushNumB = 0x0051a4b0;  // lua_pushnumber(L,double)
 constexpr uintptr_t kLuaPCallB   = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int
 constexpr uintptr_t kLuaToLStrB  = 0x0051aca0;  // lua_tolstring(L,idx,&len) (convertit un nombre)
 constexpr uintptr_t kLuaSetTopB  = 0x0051aab0;  // lua_settop(L,idx)
+constexpr uintptr_t kLuaToBoolB  = 0x0051abf0;  // lua_toboolean(L,idx)->int (RE : !l_isfalse)
 constexpr int       kLuaGlobalsB = -10002;      // LUA_GLOBALSINDEX (5.1)
 
 // Un nœud d'effet en cache : le nœud lui-même + son tick de départ (horloge relative :
@@ -1499,6 +1487,65 @@ const char* HatOrdinalToResName(int ordinal) {
   HatOrdinalToResNameRaw(ordinal, buf, sizeof(buf));
   if (buf[0]) return (cache[ordinal] = buf).c_str();
   return "";
+}
+
+// Paramètres d'un hat effect (Lua, AUCUN hardcode) :
+//   posX  = GetHatEfPosX(ord)           : décalage horizontal (HatEffectInfo.lub)
+//   before= IsRenderBeforeCharacter(ord): effet DERRIÈRE le perso (true) ou devant (false)
+// (Le décalage VERTICAL des effets "tête/scène" vient d'un nudge ÉCRAN -80 natif
+//  (CActorSprite_ComputeStrScreenAnchor), NON reproductible à plat sans l'échelle de rendu en jeu S.
+//  On ancre donc tous les effets sur l'ORIGINE de l'acteur (pieds) et le .str se place lui-même :
+//  cercle magique au sol, pièces au-dessus, etc. -> correct pour les effets sol, un peu bas pour
+//  les effets tête/scène qui voudraient le -80.)
+struct HatEffectParams { float posX = 0.0f; bool before = false; };
+
+// Appel brut d'un global Lua getter(ord). Nombre : lua_tolstring+atof (le natif convertit les
+// nombres en place, cf. GetHatEfResName). Booléen : lua_toboolean. POD/SEH. `def` si Lua KO.
+float HatLuaNum(int ordinal, const char* fn, float def) {
+  float r = def;
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaStateB);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    if (L) {
+      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(L, kLuaGlobalsB, fn);
+      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
+      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
+        const char* s = reinterpret_cast<const char*(__cdecl*)(void*, int, size_t*)>(
+            kLuaToLStrB)(L, -1, nullptr);
+        if (s && s[0]) r = static_cast<float>(std::atof(s));
+      }
+      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
+  return r;
+}
+bool HatLuaBool(int ordinal, const char* fn, bool def) {
+  bool r = def;
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaStateB);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    if (L) {
+      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(L, kLuaGlobalsB, fn);
+      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
+      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0)
+        r = reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaToBoolB)(L, -1) != 0;
+      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
+  return r;
+}
+// Caché par ordinal. NE met en cache QUE si Lua est prêt (sinon repli non figé -> réessai).
+const HatEffectParams& HatOrdinalParams(int ordinal) {
+  static std::unordered_map<int, HatEffectParams> cache;
+  static const HatEffectParams s_fallback;
+  auto it = cache.find(ordinal);
+  if (it != cache.end()) return it->second;
+  void* M = *reinterpret_cast<void**>(kLuaStateB);     // simple lecture (global toujours mappé)
+  if (!M || !*reinterpret_cast<void**>(M)) return s_fallback;  // Lua pas prêt -> pas de cache
+  HatEffectParams p;
+  p.posX   = HatLuaNum(ordinal, "GetHatEfPosX", 0.0f);
+  p.before = HatLuaBool(ordinal, "IsRenderBeforeCharacter", false);
+  return cache[ordinal] = p;
 }
 
 // Adresses de chargement de ressource (comme cashshop_tweaks) + AddRef (0x00a8e800).
@@ -1753,6 +1800,19 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const float ox = p0.x + box_w * 0.5f - s_fx * s;      // corps centré horizontalement
   const float oy = p0.y + box_h - 14.0f - s_feet * s;   // pieds près du bas (figé)
+  // Hat effect (.str) superposé : MÊME logique que l'avatar (ancre = ORIGINE + hatEffectPos(X) Lua ;
+  // ordre derrière/devant = isRenderBeforeCharacter ; cf. RenderPlayerAvatar). Zéro hardcode.
+  static const HatEffectParams s_hp_none_pv;
+  const HatEffectParams& hp = hat_ordinal ? HatOrdinalParams(hat_ordinal) : s_hp_none_pv;
+  auto drawPreviewHat = [&]() {
+    if (hat_ordinal == 0) return;
+    CaptureHatEffectOrdinal(hat_ordinal);
+    hat_diag_concrete_ = hat_ordinal;
+    hat_diag_layers_   = g_str_count;
+    // Ancre = ORIGINE de l'acteur (oy) comme l'avatar : le .str se place lui-même (sol/tête/centré).
+    DrawStrCapLayers(dl, ox + hp.posX * s, oy, s);
+  };
+  if (hp.before) drawPreviewHat();     // effet DERRIÈRE le perso
   for (int i = 0; i < g_pv_count; ++i) {
     const CapLayer& L = g_pv_caps[i];
     const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
@@ -1761,23 +1821,7 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
   }
-  // Hat effect (.str) superposé : MÊME calibrage automatique que l'avatar (ancre = ORIGINE acteur
-  // (ox, oy) car le corps est capturé à (0,0), - 11 px sprite en Y ; contenu à l'échelle s ;
-  // cf. RenderPlayerAvatar). Aucun réglage manuel. Résolution par NOM (GetHatEfResName).
-  if (hat_ordinal != 0) {
-    constexpr float kHatOffsetPx = 11.0f, kCamTiltZtoY = 0.6428f;  // RE : offset sprite + tilt caméra
-    const float jobScale = g_av_body_scale;
-    const float S = g_live_render_scale;                        // échelle rendu en jeu (0 = pas vue)
-    const float lift = (S > 0.01f)
-        ? (kHatOffsetPx * kCamTiltZtoY * jobScale * jobScale * s / S)
-        : (kHatOffsetPx * s * jobScale);                        // repli plat
-    const float hox = ox;                                       // origine acteur X (capture x=0), k_x=0
-    const float hoy = oy - lift;                                // origine acteur Y (capture y=0) - lift
-    CaptureHatEffectOrdinal(hat_ordinal);
-    hat_diag_concrete_ = hat_ordinal;
-    hat_diag_layers_   = g_str_count;
-    DrawStrCapLayers(dl, hox, hoy, s);                          // contenu .str -> écran via DepthScale = s
-  }
+  if (!hp.before) drawPreviewHat();    // effet DEVANT le perso
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1890,10 +1934,38 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
   const float ox = x + w * 0.5f - s_cx * s;      // CORPS centré horizontalement (figé)
   const float oy = y + h - pad - s_feet * s;     // pieds du corps collés au bas (figé)
 
-  // (d) composite (clip au rect ; ordre du tableau = z-order painter correct).
+  // (d) composite (clip au rect). Hat effects (.str, costumes SANS viewid) capturés depuis un nœud
+  // STR autonome puis compositéss comme le natif (blend/rotation/échelle RE). AUCUN hardcode : ancre
+  // ET ordre de rendu viennent de HatEffectInfo.lub via Lua (HatOrdinalParams) :
+  //  - Ancre X/Y = ORIGINE de l'acteur (le corps est capturé à (0,0) -> l'origine se projette en
+  //    (ox, oy)) + hatEffectPosX / hatEffectPos (unités canvas .str -> ×s, l'échelle du contenu).
+  //    hatEffectPos<0 = vers le haut. (Remplace l'ancien 11 px + tilt 0.6428 hardcodés = data-driven.)
+  //  - isRenderBeforeCharacter : l'effet se dessine DERRIÈRE le perso (avant le sprite) ou DEVANT.
+  //  - Contenu .str : 1 px canvas -> s à l'écran. Un effet par ordinal actif (suivi 0x0A3B).
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->PushClipRect(ImVec2(x, y), ImVec2(x + w, y + h), true);
-  for (int i = 0; i < g_av_count; ++i) {
+
+  hat_diag_active_ = static_cast<int>(own_hat_effects_.size());
+  auto drawHatEffects = [&](bool beforePhase) {
+    for (uint16_t ordinal : own_hat_effects_) {
+      const HatEffectParams& hp = HatOrdinalParams(static_cast<int>(ordinal));
+      if (hp.before != beforePhase) continue;
+      CaptureHatEffectOrdinal(static_cast<int>(ordinal));  // GetHatEfResName -> .str -> g_str_caps
+      hat_diag_concrete_ = static_cast<int>(ordinal);
+      hat_diag_layers_   = g_str_count;      // 0 = résolution/charge/capture a échoué (debug)
+      // Ancre = ORIGINE de l'acteur (le corps est capturé à (0,0) -> l'origine se projette en (ox,oy),
+      // = la cellule sol/pieds). Le .str place SON contenu par rapport à ça : cercle magique au SOL
+      // (contenu au centre canvas = origine), pluie de pièces AU-DESSUS, scène CENTRÉE, etc. -> une
+      // seule ancre pour tous, pose-suivie (oy = pieds recadrés par pose). + hatEffectPosX horizontal.
+      // (Le lift écran -80 natif des effets "tête/scène" n'est PAS reproductible à plat sans l'échelle
+      //  de rendu en jeu S ; l'ancre origine reste juste au sol et sous la tête.)
+      const float hox = ox + hp.posX * s;
+      DrawStrCapLayers(dl, hox, oy, s);      // contenu .str -> écran via DepthScale = s
+    }
+  };
+
+  drawHatEffects(true);   // (a) effets DERRIÈRE le perso (isRenderBeforeCharacter)
+  for (int i = 0; i < g_av_count; ++i) {   // (b) sprite (ordre tableau = painter z-order)
     const CapLayer& L = g_av_caps[i];
     const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
     const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
@@ -1901,46 +1973,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
   }
-
-  // Hat effects (.str) actifs du joueur (costumes SANS viewid) : capturés depuis un nœud STR
-  // autonome puis compositéss EXACTEMENT comme le natif (blend/rotation/échelle/ancre RE), sur
-  // l'avatar. Un effet par ordinal actif (suivi 0x0A3B). Clip au rect. Cf. docs/hat_effect_re.md.
-  //
-  // CALIBRAGE AUTOMATIQUE (RE live moonlight-destiny.exe, AUCUN réglage manuel) :
-  //  - Échelle : R = S_effet / S_sprite = 1/jobScale (les deux partagent Effect_DepthToScreenScale ;
-  //    le corps a en plus ×jobScale). Le sprite est dessiné à `s` avec jobScale déjà dans les coords
-  //    capturées (g_av_body_scale) -> 1 unité canvas .str = 1 px sprite natif à l'écran ->
-  //    hsc = s × g_av_body_scale (= s pour les jobs normaux, jobScale=1).
-  //  - Ancre = ORIGINE DE L'ACTEUR (owner+0x24, la cellule sol/pieds), PAS le centre de la bbox.
-  //    Le corps est capturé à l'origine (0,0) -> l'origine se projette exactement à l'écran en
-  //    (ox, oy) (car screen = ox + Lcx*s, oy + Lcy*s, et l'origine a Lcx=Lcy=0). Une bbox décalée
-  //    par un costume asymétrique déplace s_cx/s_feet mais PAS l'origine : c'est pourquoi il faut
-  //    ancrer sur (ox, oy) et non (ox+s_cx*s, oy+s_feet*s), sinon l'effet ne suit pas la tête/corps.
-  //    X = origine (k_x=0, FUN_00aebf50=0 sauf strangelights/superstar/ljosalfar).
-  //  - Décalage vertical : Actor_GetHatEffectPosOffset = 11 px sprite (sizeClass 0 + 0x12 - 7),
-  //    SOUSTRAIT en Z (monte l'ancre) -> échelle px sprite = jobScale*DepthScale = hsc.
-  //  - Contenu .str : 1 px canvas -> DepthScale = s à l'écran (R = S_effet/S_sprite = 1/jobScale).
-  hat_diag_active_ = static_cast<int>(own_hat_effects_.size());
-  if (!own_hat_effects_.empty()) {   // toujours actif (aucun réglage on/off)
-    constexpr float kHatOffsetPx = 11.0f;    // px sprite au-dessus des pieds (RE, sizeClass 0)
-    constexpr float kCamTiltZtoY = 0.6428f;  // proj[0xd8]=cos50° : Z-vue -> Y-écran (tilt caméra RO)
-    const float jobScale = g_av_body_scale;  // jobScale (baked dans les coords capturées)
-    const float S = g_live_render_scale;     // échelle de rendu EN JEU (jobScale*DepthToScreenScale ; 0=pas vue)
-    // Lift ÉCRAN doll = lift natif (11*jobScale*0.6428 px écran : offset Z-vue projeté par le tilt
-    // caméra) × grossissement du doll (s/DepthToScreenScale, DepthToScreenScale = S/jobScale).
-    // Auto-calibré depuis le rendu en jeu, zéro réglage. Repli plat 11*s tant que S inconnu.
-    const float lift = (S > 0.01f)
-        ? (kHatOffsetPx * kCamTiltZtoY * jobScale * jobScale * s / S)
-        : (kHatOffsetPx * s * jobScale);
-    const float hox = ox;                    // origine acteur X (capture x=0), k_x=0
-    const float hoy = oy - lift;             // origine acteur Y (capture y=0) - lift (RE, auto-calibré)
-    for (uint16_t ordinal : own_hat_effects_) {
-      CaptureHatEffectOrdinal(static_cast<int>(ordinal));  // GetHatEfResName -> .str -> g_str_caps
-      hat_diag_concrete_ = static_cast<int>(ordinal);
-      hat_diag_layers_   = g_str_count;    // 0 = résolution/charge/capture a échoué (debug)
-      DrawStrCapLayers(dl, hox, hoy, s);   // contenu .str -> écran via DepthScale = s
-    }
-  }
+  drawHatEffects(false);  // (c) effets DEVANT le perso
   // DIAG throttlé (~1.5 s) -> bourgeon.log : localise la cause d'un rendu absent.
   //   own_fx=0   => tracking 0x0A3B a échoué (voir les logs "recv 0x0A3B") ;
   //   resname='' => GetHatEfResName KO (Lua pas prêt / ordinal inconnu du client) ;
@@ -1954,20 +1987,15 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       s_hat_log = now;
       const int ord0 = own_hat_effects_.empty() ? 0 : static_cast<int>(own_hat_effects_[0]);
       const char* resname = ord0 ? HatOrdinalToResName(ord0) : "";
-      const float jobScale_dg = g_av_body_scale;
-      const float S_dg = g_live_render_scale;
-      const float lift_dg = (S_dg > 0.01f)
-          ? (11.0f * 0.6428f * jobScale_dg * jobScale_dg * s / S_dg)
-          : (11.0f * s * jobScale_dg);
-      LogDiag("[HatFx] avatar own_fx={} ord0={} resname='{}' node_ok={} "
-              "layers={} captured={} anchor=({},{}) s={:.3f} bodyscale={:.3f} S_live={:.3f} lift={:.1f} "
-              "feet={:.1f} rect=({:.0f},{:.0f},{:.0f},{:.0f})",
+      static const HatEffectParams s_hp_none;
+      const HatEffectParams& hp0 = ord0 ? HatOrdinalParams(ord0) : s_hp_none;
+      LogDiag("[HatFx] avatar own_fx={} ord0={} resname='{}' node_ok={} layers={} captured={} "
+              "posX={:.1f} before={} anchor=({},{}) s={:.3f} feet={:.1f} rect=({:.0f},{:.0f},{:.0f},{:.0f})",
               static_cast<int>(own_hat_effects_.size()), ord0, resname,
               g_hatfx_dg_nodeok, g_hatfx_dg_layers, g_hatfx_dg_captured,
-              static_cast<int>(ox),                                     // ancre X (origine acteur)
-              static_cast<int>(oy - lift_dg),                           // ancre Y (origine - lift)
-              s, jobScale_dg, S_dg, lift_dg,
-              s_feet, x, y, w, h);
+              hp0.posX, hp0.before ? 1 : 0,
+              static_cast<int>(ox + hp0.posX * s), static_cast<int>(oy),   // ancre = origine + posX
+              s, s_feet, x, y, w, h);
       // Placement du 1er layer capturé (canvas + coin écran) -> dedans le rect ou hors-champ ?
       LogDiag("[HatFx] place: Lcanvas=({:.1f},{:.1f}) origin=({:.1f},{:.1f}) -> screen p0=({:.0f},{:.0f})",
               g_str_dg_l0cx, g_str_dg_l0cy, g_str_dg_ccx, g_str_dg_ccy,
