@@ -38,6 +38,14 @@ unsigned Overlay_DeviceEpoch();
 // DX9 only (returns a no-op-safe callback that early-outs when the device is gone).
 void* D3D9_AdditiveBlendCallback();
 
+// Returns an ImGui draw callback that sets an EXPLICIT SRCBLEND/DESTBLEND on the DX9
+// pipeline, encoded in the callback's UserCallbackData: low byte = D3DBLEND source
+// factor, second byte = D3DBLEND dest factor (D3DBLEND enum values). Used to replicate
+// a .str effect layer's native per-layer blend (e.g. SRCALPHA/ONE = alpha-modulated
+// additive, so a black-background coin texture composites without a black halo).
+// Reset afterwards with ImDrawCallback_ResetRenderState. DX9 only (no-op if device gone).
+void* D3D9_ExplicitBlendCallback();
+
 // Sets the ImGui texture sampler filter for subsequent draw commands: false =
 // POINT (crisp pixel-art, e.g. RO icons), true = LINEAR (ImGui's default smooth
 // filtering). Call from an ImDrawList::AddCallback, then restore with

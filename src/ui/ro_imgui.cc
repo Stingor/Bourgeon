@@ -1144,6 +1144,8 @@ bool ShowRoSkinSettings() {
   ch |= ImGui::ColorEdit4("Onglet inactif", g_cfg.tab_inact, cf);
   ch |= ImGui::ColorEdit4("Champ de saisie", g_cfg.input_col, cf);
   ch |= ImGui::ColorEdit4("En-tete tableau", g_cfg.header_col, cf);
+  ch |= ImGui::ColorEdit4("Fond cases (feuille perso)", g_cfg.slot_col, cf);
+  ch |= ImGui::ColorEdit4("Fond doll (feuille perso)", g_cfg.doll_col, cf);
   ch |= ImGui::ColorEdit4("Fond carte item", g_cfg.card_col, cf);
   ch |= ImGui::ColorEdit4("Bandeau carte", g_cfg.card_head_col, cf);
   ch |= ImGui::ColorEdit4("Texte bandeau carte", g_cfg.card_head_text, cf);

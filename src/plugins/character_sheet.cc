@@ -147,6 +147,12 @@ constexpr uintptr_t kBuildIconPath = 0x00d5a720;
 constexpr uintptr_t kTexMgr = 0x00a90350, kMakeKey = 0x00a9f030, kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 using BuildIconPath_t = void*(__stdcall*)(const char*, char*, int);
+// Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
+// (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
+// "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar_tweaks).
+constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;  // char* GetSkillIdName(int) __cdecl
+using GetSkillIdNameLua_t = char*(__cdecl*)(int);
+const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
 using TexMgr_t  = void*(__cdecl*)();
 using MakeKey_t = void*(__cdecl*)(const char*);
 using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
@@ -512,6 +518,45 @@ IconTex ResolveIcon(uint32_t id) {
   return g_icon_cache[id] = LoadItemIcon(id);
 }
 
+// ── Icône de skill (case compagnon) ──────────────────────────────────────────
+std::unordered_map<uint32_t, IconTex> g_skill_icon_cache;
+// Le .bmp d'icône de skill est nommé par l'idname Lua (rejet des sentinelles
+// "Unknown"/"Zero Skill" qui spamment la console de chargement).
+bool BuildSkillIconPathSafe(int skillId, char* out, int n) {
+  out[0] = '\0';
+  __try {
+    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(kGetSkillIdNameLua)(skillId);
+    if (!idn || !idn[0]) return false;
+    if (std::strstr(idn, "nknown") || std::strcmp(idn, "Zero Skill") == 0) return false;
+    std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, idn);
+    return out[0] != '\0';
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
+}
+IconTex LoadSkillIcon(int skillId) {
+  char path[192];
+  if (!BuildSkillIconPathSafe(skillId, path, sizeof(path))) return {};
+  RawTex rt{};
+  if (!GetRawTex(path, &rt)) return {};
+  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
+  for (int i = 0; i < rt.w * rt.h; ++i) {
+    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
+    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
+    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
+    argb[i * 4 + 3] = ck ? 0 : 0xFF;
+  }
+  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
+}
+IconTex ResolveSkillIcon(int skillId) {
+  if (skillId <= 0) return {};
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { g_skill_icon_cache.clear(); s_epoch = e; }
+  const uint32_t k = static_cast<uint32_t>(skillId);
+  auto it = g_skill_icon_cache.find(k);
+  if (it != g_skill_icon_cache.end()) return it->second;
+  return g_skill_icon_cache[k] = LoadSkillIcon(skillId);
+}
+
 // ── Emblème de guilde ────────────────────────────────────────────────────────
 // L'emblème est un fichier <jeu>\_tmpEmblem\<nom>_<guildId>_<ver>.ebm = un BMP 24x24
 // 24-bit COMPRESSÉ ZLIB. Le TexMgr générique ne le décompresse pas -> on lit le fichier,
@@ -748,6 +793,18 @@ const char* SlotAbbrev(int slot) {
 
 const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
 
+// Fonds réglables via le skin RO (ro::SkinConfig, persistés par MoonlightUi) : couleur des
+// cases d'équipement (slot_col) et du panneau doll/avatar (doll_col). Lues à chaque frame ->
+// changement de skin/preset appliqué à chaud, sans état local.
+ImU32 SlotBgCol() {
+  const float* c = ro::SkinConfig().slot_col;
+  return ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3]));
+}
+ImU32 DollBgCol() {
+  const float* c = ro::SkinConfig().doll_col;
+  return ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3]));
+}
+
 //  Deux tailles de fenetre : doll seul (narrow) ou doll+stats (wide). Le drag snap
 //  sur la plus proche ; le volet stats est cache si la largeur ne suffit pas (evite
 //  la scrollbar "dans le vide").
@@ -829,7 +886,7 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
   const bool hov = ImGui::IsItemHovered();
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(p0, p1, IM_COL32(206, 206, 206, 255), 3.0f);
+  dl->AddRectFilled(p0, p1, SlotBgCol(), 3.0f);
   dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 3.0f);
   IconTex ic = ResolveIcon(pi.nameid);
   if (ic.tex)
@@ -1435,8 +1492,8 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   ImGui::InvisibleButton("slot", ImVec2(sz, sz));
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(p0, p1, IM_COL32(206, 206, 206, 255), 4.0f);  // case grise RO
-  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);               // bordure
+  dl->AddRectFilled(p0, p1, SlotBgCol(), 4.0f);     // fond de case (réglable skin RO)
+  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);  // bordure
   if (has) {
     IconTex ic = ResolveIcon(it.nameid);
     if (ic.tex) {
@@ -1538,7 +1595,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
   ImGui::InvisibleButton("ammo", ImVec2(sz, sz));
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(p0, p1, IM_COL32(206, 206, 206, 255), 4.0f);
+  dl->AddRectFilled(p0, p1, SlotBgCol(), 4.0f);
   dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);
   if (has) {
     IconTex ic = ResolveIcon(am.nameid);
@@ -1614,10 +1671,11 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
   bool active = false;
   const char* label = "";
   const char* name = "";
+  int skillId = 0;  // skill dont on affiche l'icône (id envoyé par le serveur)
   switch (kind) {
-    case kCompCart:   active = companion_.cart_active > 0; label = "Cart";   name = "Chariot";        break;
-    case kCompPeco:   active = companion_.riding_active;   label = "Peco";   name = "Monture (Peco)"; break;
-    case kCompFalcon: active = companion_.falcon_active;   label = "Falcon"; name = "Faucon";         break;
+    case kCompCart:   active = companion_.cart_active > 0; label = "Cart";   name = "Chariot";        skillId = companion_.pushcart_id; break;
+    case kCompPeco:   active = companion_.riding_active;   label = "Peco";   name = "Monture (Peco)"; skillId = companion_.riding_id;   break;
+    case kCompFalcon: active = companion_.falcon_active;   label = "Falcon"; name = "Faucon";         skillId = companion_.falcon_id;   break;
   }
 
   ImGui::SetCursorPos(ImVec2(x, y));
@@ -1627,13 +1685,23 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
   ImGui::InvisibleButton("comp", ImVec2(sz, sz));
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const ImU32 bg = active ? IM_COL32(120, 200, 120, 255) : IM_COL32(206, 206, 206, 255);
+  const ImU32 bg = active ? IM_COL32(120, 200, 120, 255) : SlotBgCol();
   dl->AddRectFilled(p0, p1, bg, 4.0f);
   dl->AddRect(p0, p1, active ? IM_COL32(30, 110, 30, 220) : IM_COL32(0, 0, 0, 80), 4.0f, 0,
               active ? 1.5f : 1.0f);
-  const ImVec2 ts = ImGui::CalcTextSize(label);
-  dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
-              active ? IM_COL32(0, 40, 0, 255) : IM_COL32(90, 90, 90, 255), label);
+  // Icône du skill (chariot/peco/faucon) ; repli sur le libellé texte si absente.
+  // Grisée quand le compagnon est inactif (tint alpha réduit via le canal de couleur).
+  IconTex ic = ResolveSkillIcon(skillId);
+  if (ic.tex) {
+    const float pad = 4.0f;
+    const ImU32 tint = active ? IM_COL32(255, 255, 255, 255) : IM_COL32(255, 255, 255, 140);
+    dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
+                 ImVec2(p1.x - pad, p1.y - pad), ImVec2(0, 0), ImVec2(1, 1), tint);
+  } else {
+    const ImVec2 ts = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
+                active ? IM_COL32(0, 40, 0, 255) : IM_COL32(90, 90, 90, 255), label);
+  }
 
   const bool hov = ImGui::IsItemHovered();
   if (hov) ro::SetHoverCursor(2);
@@ -1795,7 +1863,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
       content_bottom = std::max(content_bottom, wpn_y + (nComp - 1) * (sz + gap) + sz);
   }
   ImGui::SetCursorPos(ImVec2(ax, y0));
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(228, 230, 236, 255));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, DollBgCol());
   ImGui::BeginChild("cs_avatar", ImVec2(cw, ch), true,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   // Costumes : TOUJOURS affichés dans la vue Costume ; dans la vue Équipement, seulement si
@@ -1909,44 +1977,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Rend ton équipement visible (ou non) aux autres joueurs");
   }
-
-  // ── Calibrage LIVE de l'effet costume (.str) ──────────────────────────────
-  // Visible seulement si le perso porte un costume à hat effect (diagnostic posé par
-  // RenderPlayerAvatar plus haut). Permet d'ajuster échelle/ancre/winding/rotation à
-  // l'œil (la relation canvas.str<->sprite n'est pas connue sans exécuter). « couches
-  // 0 » = le spawn/la capture STR a échoué. Reporter les valeurs finales pour les figer.
-  if (auto* bi = Bourgeon::Instance().basic_info()) {
-    if (bi->hat_diag_active_ > 0) {
-      ImGui::SetCursorPos(ImVec2(start_x, cfg_y + fh + 6.0f));
-      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(20, 20, 20, 255));
-      if (ImGui::CollapsingHeader("Effet costume (calibrage)")) {
-        bool save = false;  // persiste (yaml) à la RELÂCHE d'un slider / au toggle
-        if (ImGui::Checkbox("Afficher l'effet", &bi->hat_enabled_)) save = true;
-        ImGui::TextColored(kBlack, "actifs %d   couches %d   id %d",
-                           bi->hat_diag_active_, bi->hat_diag_layers_,
-                           bi->hat_diag_concrete_);
-        if (bi->hat_enabled_ && bi->hat_diag_layers_ == 0)
-          ImGui::TextColored(ImVec4(0.85f, 0.25f, 0.25f, 1.0f),
-                             "0 couche -> spawn/capture KO");
-        ImGui::PushItemWidth(std::max(90.0f, avail_w - 130.0f));
-        ImGui::SliderFloat("Echelle", &bi->hat_scale_, 0.1f, 4.0f, "%.2f");
-        save |= ImGui::IsItemDeactivatedAfterEdit();
-        ImGui::SliderFloat("Decal. X", &bi->hat_off_x_, -100.0f, 100.0f, "%.0f");
-        save |= ImGui::IsItemDeactivatedAfterEdit();
-        ImGui::SliderFloat("Decal. Y", &bi->hat_off_y_, -150.0f, 150.0f, "%.0f");
-        save |= ImGui::IsItemDeactivatedAfterEdit();
-        ImGui::SliderInt("Winding", &bi->hat_winding_, 0, 1);
-        save |= ImGui::IsItemDeactivatedAfterEdit();
-        ImGui::SliderInt("Rotation", &bi->hat_angle_mode_, 0, 2);
-        save |= ImGui::IsItemDeactivatedAfterEdit();
-        ImGui::PopItemWidth();
-        ImGui::TextDisabled("(persiste auto entre sessions)");
-        if (save)
-          if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-      }
-      ImGui::PopStyleColor();
-    }
-  }
+  // Effet costume (.str) : rendu 100 % automatique et toujours actif (aucun réglage UI).
 }
 
 // Ouvre le dialogue Windows « Enregistrer sous » du GIF sur un THREAD séparé : un

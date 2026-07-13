@@ -168,6 +168,25 @@ void* D3D9_AdditiveBlendCallback() {
     return reinterpret_cast<void*>(&AdditiveBlendDrawCallback);
 }
 
+// ImGui draw callback: set an EXPLICIT SRCBLEND/DESTBLEND from UserCallbackData
+// (low byte = src D3DBLEND, next byte = dst D3DBLEND). Replicates a .str layer's
+// native per-layer blend factors (RE : record+0x18/+0x1c = SetRenderState 0x13/0x14).
+// e.g. gold_shower = SRCALPHA(5)/ONE(2) -> alpha-modulated additive, no black halo.
+static void ExplicitBlendDrawCallback(const ImDrawList*, const ImDrawCmd* cmd) {
+    if (!g_imgui_device || !cmd) return;
+    const uintptr_t v = reinterpret_cast<uintptr_t>(cmd->UserCallbackData);
+    const DWORD src = static_cast<DWORD>(v & 0xff);
+    const DWORD dst = static_cast<DWORD>((v >> 8) & 0xff);
+    if (!src || !dst) return;  // 0 = pas de facteur valide -> on laisse l'état courant
+    g_imgui_device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    g_imgui_device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+    g_imgui_device->SetRenderState(D3DRS_SRCBLEND, src);
+    g_imgui_device->SetRenderState(D3DRS_DESTBLEND, dst);
+}
+void* D3D9_ExplicitBlendCallback() {
+    return reinterpret_cast<void*>(&ExplicitBlendDrawCallback);
+}
+
 // Creates a D3D9 texture from a 32-bit A8R8G8B8 buffer (w*h, tightly packed).
 // D3DUSAGE_DYNAMIC + D3DPOOL_DEFAULT so it works on the client's D3D9Ex device
 // (which forbids D3DPOOL_MANAGED). Returns an IDirect3DTexture9* as void*.

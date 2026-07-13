@@ -3,15 +3,19 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // D3D9_CompositeQuadsRGBA (export GIF avatar)
 #include "imgui.h"
+#include "plugins/bourgeon_opcodes.h"  // kHatEffectMap (ZC 0x0F17)
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap + draw)
 #include "utils/gif_writer.h"       // GifWrite
 #include "utils/hooking/hook_manager.h"
@@ -141,6 +145,8 @@ struct CapLayer {
   float  cx, cy, w, h;        // sprite centre + scaled size (actor space)
   bool   mirror;
   bool   head_region;         // true = face/hair/head-gear (RGBA), false = body/garment
+  bool   companion;           // true = chariot/faucon (sous-acteur) : rendu MAIS exclu de
+                              // l'ancrage (ne doit PAS tirer le centre/pieds du corps)
 };
 CapLayer g_caps[48];
 int      g_cap_count   = 0;
@@ -220,6 +226,12 @@ int   g_portrait_dir  = 0;          // facing direction 0..7 (low 3 bits of pose
 bool  g_portrait_animate = true;    // cycle the action frames (vs freeze frame 0)
 bool  g_portrait_garment = false;   // feed the equipped garment/cape (full body)
 void* g_cur_actor = nullptr;        // our actor (read pose @+0x38 in the hook)
+// Auto-calibrage du lift hat effect : on mémorise l'objet sprite bas-niveau du CORPS joueur
+// (1er `self` vu pendant NOTRE capture), puis on capte au vol son échelle de rendu EN JEU
+// (`scale` = jobScale*DepthToScreenScale = S) quand le jeu redessine ce même objet en passthrough.
+// S convertit le lift natif (px sprite -> écran via la caméra) en px doll. 0 = pas encore vu.
+void* g_own_body_self    = nullptr; // objet sprite du corps joueur (identité pour matcher en jeu)
+float g_live_render_scale = 0.0f;   // S en jeu du perso joueur (jobScale*DepthToScreenScale)
 int   g_body_frame_count = 1;       // frames in the chosen action (for wrap)
 int   g_pv_frame_count = 1;         // idem pour l'aperçu (anim marche)
 int*  g_frame_dst = &g_body_frame_count;  // cible du comptage (portrait par défaut)
@@ -318,6 +330,10 @@ void EmitCapLayer(void* p3, short* spr_frame, int* act_layer, float x, float y,
     // RGBA sprites (act_layer[8]!=0) are the face/hair/head-gears; palette sprites
     // (==0) are the body/garment/weapon. Used to frame head vs head+body.
     L.head_region = (act_layer[8] != 0);
+    // Par défaut PAS un compagnon (le slot est réutilisé d'une frame à l'autre : il faut
+    // effacer un éventuel `true` laissé par un chariot/faucon). EmitCompanionLayers le
+    // repasse à true APRÈS coup pour ses propres couches.
+    L.companion = false;
   }
 }
 
@@ -329,6 +345,12 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
                                  int* act_layer, float scale, float angle,
                                  unsigned color, void* palette, float p11) {
   if (!g_cap_active) {
+    // Passthrough (rendu jeu) : capte l'échelle de rendu S du perso joueur quand le jeu
+    // redessine SON objet corps (celui mémorisé pendant notre capture). Sert à calibrer le
+    // lift du hat effect sur le doll (RE : lift_écran = 11*jobScale*0.6428, converti en doll
+    // par s/DepthToScreenScale). __try : `self` peut être n'importe quel acteur.
+    if (self && self == g_own_body_self && scale > 0.01f && scale < 100.0f)
+      g_live_render_scale = scale;
     g_orig_actor_quad(self, edx, x, y, p3, p4, spr_frame, act_layer, scale,
                       angle, color, palette, p11);
     return;
@@ -340,6 +362,7 @@ void __fastcall Hooked_ActorQuad(void* self, void* edx, int x, int y,
       // weapon/shield layers use the SAME scale). p3 = this layer's ACT object.
       if (g_first_layer && p3 && g_cur_actor) {
         g_first_layer = false;
+        g_own_body_self = self;   // identité du corps joueur -> matcher son rendu EN JEU (S)
         g_av_body_scale = scale;
         const unsigned pose = *reinterpret_cast<unsigned*>(
             reinterpret_cast<char*>(g_cur_actor) + 0x38);
@@ -783,6 +806,223 @@ void EmitWeaponShieldLayers(int anim, int dir, int frameIdx, float body_scale) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// ── Compagnons (chariot / faucon) sur l'avatar ───────────────────────────────
+// Le CHARIOT et le FAUCON ne sont PAS des slots du composite 9-parts : ce sont des
+// SOUS-ACTEURS enfants du joueur (std::list @actor+0x3a8, count @+0x3ac ; nœud MSVC
+// {+0 next, +4 prev, +8 subActor}). RE live 2026-07-12 (x32 sur un perso en chariot).
+// Chaque enfant a la MÊME base CActorSprite que les slots -> EmitSlotLayers le dessine
+// tel quel : SPR(cellules @+0x510) = child+0x104, ACT(frames) = child+0x108, pose @+0x38,
+// frame @+0x3c. Le SPR stocke son chemin GRF à spr+0x14 -> on filtre cart (손수레) / faucon
+// (매) par sous-chaîne (le KIND @+0x1a8 est générique = pas discriminant). Le peco, lui,
+// s'affiche déjà via le sprite de CORPS monté (rien à faire).
+constexpr int kOffChildPrimary = 0x380;  // acteur -> pointeur enfant PERSISTANT (stable tout le frame)
+constexpr int kOffChildHead    = 0x3a8;  // acteur -> std::list enfants de RENDU (souvent VIDE en EndScene)
+constexpr int kOffChildCount   = 0x3ac;  // acteur -> _Mysize de la liste ci-dessus
+constexpr int kcPose = 0x38, kcFrame = 0x3c, kcActive = 0xa0;
+constexpr int kcSpr = 0x104, kcAct = 0x108, kcVisible = 0x158, kcParent = 0x15c;
+constexpr int kcSprPath = 0x14;  // ressource SPR -> chemin GRF (char buffer null-terminé)
+const char kCartMark[]   = "\xBC\xD5\xBC\xF6\xB7\xB9";  // 손수레 (CP949) = chariot
+const char kFalconMark[] = "\xB8\xC5";                   // 매 (CP949) = faucon
+// Nudge d'ancrage (espace acteur, scalé par body_scale) — à régler à l'œil si le chariot/faucon
+// est décalé. +X = droite, +Y = bas.
+constexpr float kCartNudgeX = 0.0f, kCartNudgeY = 0.0f;
+constexpr float kFalconNudgeX = 0.0f, kFalconNudgeY = 0.0f;
+// Décalage de direction (0..7) si la rotation du compagnon a une base constante-fausse vs le corps.
+// Devraient rester 0 : le jeu donne à l'enfant la MÊME direction 0-7 que le corps (RE ScreenDir).
+constexpr int kCartDirOffset = 0, kFalconDirOffset = 0;
+
+// Le chemin GRF du SPR (spr+0x14) contient-il `needle` (bytes CP949) ? SEH (POD).
+bool ChildSprPathHas(void* spr, const char* needle, int nlen) {
+  __try {
+    const char* p = reinterpret_cast<const char*>(spr) + kcSprPath;
+    for (int i = 0; i < 256 && p[i]; ++i) {
+      int j = 0;
+      for (; j < nlen && p[i + j]; ++j)
+        if (p[i + j] != needle[j]) break;
+      if (j == nlen) return true;
+    }
+    return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+int g_av_companion_present = 0;  // bit0=cart, bit1=faucon (posé ici, lu par la sig d'apparence)
+
+// Placement du chariot dans le doll À PLAT (aucune projection perspective live). RE de la
+// matrice de vue (`cam+0x98`, lue live, caméra standard camYaw=0) : la carte monde→écran est
+// DÉCOUPLÉE (termes croisés = 0) → world +X ⇒ écran X (×1), world +Z ⇒ écran Y (×0.766 =
+// sin~50°, l'inclinaison caméra), world +Y(hauteur) ⇒ écran Y (×0.643). Le hat-effect RE
+// notait déjà : « pour ImGui standalone, PAS de projection ; depthScale=1, offsets pixel
+// directs ». C'est ce qu'on fait : la perspective (invW/profondeur) + la position ÉCRAN live du
+// joueur (caméra qui SUIT avec du lag) étaient la cause du « décalage Y+ en marchant ». Ici :
+// 100% statique, zéro lecture live. kCartTilePx = 1 tuile en px NATIFS (×body_scale) — RÉGLABLE
+// (l'user disait « trop près » : monter la valeur éloigne). kCamPitch = foreshortening vertical.
+// Magnitude = taille écran d'1 tuile en px natifs (×body_scale). MESURÉE live : la valeur
+// GÉOMÉTRIQUE exacte ≈ 20 px (live tile ~82 px à W=230 ÷ échelle sprite), mais l'user la
+// trouvait « trop près » ; 46 était « trop loin ». C'est donc un MULTIPLICATEUR stylistique
+// (seul knob de distance) — X et Y en dérivent tous deux (Y = ×kCamPitch), d'où « faux en X ou
+// en Y sur les cardinales, trop loin dans les 2 en diagonale » quand il est mal réglé.
+constexpr float kCartTilePx = 32.0f;   // entre 20 (fidèle, trop près) et 46 (trop loin) — régler
+constexpr float kCamPitch   = 0.766f;  // écrasement vertical axe Z (vm[7], mesuré) — NE PAS toucher
+// En pose COMBAT (anim 4) le sprite d'attaque LUNGE en diagonale (45°) ; le chariot doit suivre
+// ce visuel → direction de placement décalée d'1 pas (±45°). +1 par défaut ; passer à -1 si le
+// chariot part du mauvais côté diagonal en combat.
+constexpr int   kCartCombatShift = 1;
+// Faucon MASQUÉ sur l'avatar (choix utilisateur 2026-07-13). Mettre à true pour le réafficher :
+// la détection le peuple alors et le reste du pipeline (présence, émission) le prend en charge.
+constexpr bool  kShowFalcon = false;
+
+// Dessine le chariot (derrière le corps) et le faucon (devant) de l'acteur joueur dans
+// le buffer avatar actif, à la DIRECTION de l'avatar. On lit les sprites DÉJÀ résolus par
+// le jeu sur les sous-acteurs enfants (aucune résolution de chemin). SEH-gardé.
+void EmitCompanionLayers(int pose, bool animate, float body_scale) {
+  g_av_companion_present = 0;
+  __try {
+    using GameModeFn = void*(__fastcall*)(int);
+    void* gameMode = reinterpret_cast<GameModeFn>(kGameModeGet)(static_cast<int>(kModeMgr));
+    if (!gameMode) return;
+    void* actorMgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gameMode) + kOffActorMgr);
+    if (!actorMgr) return;
+    void* actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(actorMgr) + kOffOwnActor);
+    if (!actor) return;
+    // Sources d'enfants : (1) le POINTEUR PERSISTANT actor+0x380 (stable tout le frame —
+    // c'est LUI qui compte : la fiche capture l'avatar en EndScene, où la liste de rendu
+    // 0x3a8 est VIDE) ; (2) la std::list 0x3a8 en BONUS (rarement peuplée ici). Dédup.
+    void* kids[8]; int nk = 0;
+    {
+      void* prim = *reinterpret_cast<void**>(reinterpret_cast<char*>(actor) + kOffChildPrimary);
+      if (prim) kids[nk++] = prim;
+      void* head = *reinterpret_cast<void**>(reinterpret_cast<char*>(actor) + kOffChildHead);
+      const int count = *reinterpret_cast<int*>(reinterpret_cast<char*>(actor) + kOffChildCount);
+      if (head && count > 0 && count <= 64) {
+        void* node = *reinterpret_cast<void**>(head);  // head->next = 1er nœud
+        for (int i = 0; i < count && node && node != head && nk < 8; ++i) {
+          void* c = *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + 8);  // subActor
+          node = *reinterpret_cast<void**>(node);                                  // ->next
+          bool dup = (c == nullptr);
+          for (int k = 0; k < nk && !dup; ++k) if (kids[k] == c) dup = true;
+          if (!dup) kids[nk++] = c;
+        }
+      }
+    }
+    if (nk == 0) return;
+
+    // Retient le chariot / le faucon appartenant à CE joueur (parent==actor, actif, visible),
+    // avec leur ACTION+frame LIVE (valides pour LEUR .act).
+    void* cartSpr = nullptr; void* cartAct = nullptr;
+    void* falcSpr = nullptr; void* falcAct = nullptr;
+    for (int i = 0; i < nk; ++i) {
+      void* c = kids[i];
+      if (*reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcParent) != actor) continue;
+      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kcActive) == 0) continue;
+      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kcVisible) == 0) continue;
+      void* spr = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcSpr);
+      void* act = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcAct);
+      if (!spr || !act) continue;
+      // On NE lit PAS pose/frame live de l'enfant (ils défilent quand le joueur bouge → doll
+      // qui vibre) : la fiche est FIGÉE, on reconstruit pose (base idle + dir affichée) et frame
+      // (0, ou horloge propre en Marche animée) nous-mêmes. On ne garde que les objets SPR/ACT.
+      if (ChildSprPathHas(spr, kCartMark, 6))                       { cartSpr = spr; cartAct = act; }
+      else if (kShowFalcon && ChildSprPathHas(spr, kFalconMark, 2)) { falcSpr = spr; falcAct = act; }
+    }
+    if (!cartSpr && !falcSpr) return;
+    g_av_companion_present = (cartSpr ? 1 : 0) | (falcSpr ? 2 : 0);
+
+    // POSITION : voir kCartTilePx/kCamPitch plus haut. Le chariot traîne ~1 tuile derrière le
+    // joueur dans le MONDE (RE `ChildSprite_UpdatePoseAndPos` case 3 : rattrape si dist>seuil
+    // DAT_0100ec3c=5.0, sinon FIGE — il ne converge PAS et reflète le DERNIER déplacement, pas le
+    // cap courant). On NE LIT donc PAS sa position live ; on place « 1 tuile derrière la dir
+    // AFFICHÉE » à plat (bloc chariot). `CActorSprite_SetFacingTowardXZ 0x00c40ac0` (ex-mal nommée
+    // "SetWorldPosXZ") ne pose que le CAP, pas la position.
+    const int d = pose & 7;
+    const int anim = pose >> 3;
+    // COMBAT (anim 4) : le sprite d'attaque lunge en DIAGONALE → direction EFFECTIVE du chariot
+    // décalée de kCartCombatShift (45°). Hors combat, dEff == d.
+    const int dEff = (anim == 4) ? ((d + kCartCombatShift) & 7) : d;
+    // Z-order : le chariot passe DEVANT le corps UNIQUEMENT pour les 3 directions « de dos »
+    // {3,4,5} (perso face à l'opposé → chariot PLUS PRÈS de la caméra, bz=cos(dEff·45)<0) ; il est
+    // DERRIÈRE pour les 5 autres {0,1,2,6,7}. (Ancien test asymétrique {0,1,6,7} oubliait d=2.)
+    const bool behindBody = (dEff < 3 || dEff > 5);
+    // Le CHARIOT est en action idle (base 0) + direction ; le corps garde sa dir `d`, mais pour la
+    // FICHE on aligne le chariot sur `dEff` (= d hors combat, d±1 en combat pour suivre la diagonale
+    // d'attaque perçue — l'utilisateur l'exige). Frame = 0 (ou défilé si Marche). Position à plat
+    // ~1 tuile derrière `dEff` (kCartTilePx) ; z-order = behindBody. Réglage fin : kCart*Nudge.
+    // FAUCON : dir `d` non décalée, toujours dessiné en DERNIER = devant.
+    const int cartDir = (dEff + kCartDirOffset) & 7;  // sprite + placement suivent la diagonale combat
+    const int falcDir = (d + kFalconDirOffset) & 7;
+    if (cartSpr) {
+      // Image du chariot : au REPOS = image 0 (figée) ; quand l'avatar S'ANIME on fait
+      // DÉFILER les frames du .act — c'est ÇA la « vibration » qui simule le déplacement.
+      // RE .act (GRF editor) : le châssis (layer 0) reste fixe, le layer 1 oscille offY
+      // −18 → −20 → −18 d'une frame à l'autre ; cycler l'image rejoue ce rebond tel quel,
+      // sans autre sprite ni autre action. Cadence = même horloge que le corps
+      // (g_av_frame_delay × 25 ms, clampé). Nb d'images du chariot via kActFramesFn (stride 0x44).
+      // Gate = Marche (anim 1) SEULE : la RE (case 3, frame avancé si dist>seuil) prouve que le
+      // chariot ne défile QUE quand le joueur se DÉPLACE ; en Combat sur place il reste figé.
+      // ⚠ DÉFAUT = 0 (image figée), PAS `cartFrame` (frame LIVE) : le jeu fait défiler le frame
+      // live du chariot quand le PERSO se déplace sur la map → lire `cartFrame` faisait VIBRER le
+      // doll figé (bug signalé). La fiche ne défile QUE via son horloge propre (Marche animée).
+      int cartFrameUse = 0;
+      if (animate && (pose >> 3) == 1) {
+        int cartNframes = 1;
+        int* fr = reinterpret_cast<ActFramesFn>(kActFramesFn)(
+            cartAct, nullptr, static_cast<unsigned>(cartDir));  // base 0 (idle) + dir affichée
+        if (fr) { const int n = static_cast<int>((fr[1] - fr[0]) / 0x44); if (n > 0) cartNframes = n; }
+        if (cartNframes > 1) {
+          float ims = g_av_frame_delay * 25.0f;
+          if (ims < 40.0f) ims = 40.0f;
+          if (ims > 600.0f) ims = 600.0f;
+          cartFrameUse = static_cast<int>(
+              (GetTickCount() / static_cast<DWORD>(ims)) % static_cast<unsigned>(cartNframes));
+        }
+      }
+      const int s = *g_cap_num;
+      EmitSlotLayers(cartSpr, cartAct, cartDir, cartFrameUse, body_scale, nullptr);  // base 0 idle
+      const int e = *g_cap_num;
+      // Marque AVANT le reorder (le flag voyage avec la couche copiée) : le chariot est
+      // rendu mais NE tire PAS l'ancrage corps (sinon il décentre/rapetisse l'avatar).
+      for (int i = s; i < e; ++i) g_av_caps[i].companion = true;
+      // POSITION À PLAT = 1 tuile derrière la dir AFFICHÉE `d` — 100% STATIQUE, zéro lecture live
+      // (ni position ni caméra) → aucun décalage quand le perso marche. « Derrière » unité monde
+      // (X,Z) = (-sin facing_d, cos facing_d), facing_d = -d*45 (camYaw=0, conv. vérifiée live).
+      // Carte monde→écran (matrice de vue mesurée, découplée) : X_monde→X_écran, Z_monde→Y_écran
+      // ×kCamPitch, Y_écran vers le BAS → +Z (derrière une vue de face) = VERS LE HAUT (−Y). ×
+      // kCartTilePx × body_scale (mêmes unités que les couches capturées).
+      {
+        const float rad = static_cast<float>(-dEff) * 45.0f * 0.01745329252f;  // facing_dEff en rad
+        const float bx = -std::sin(rad), bz = std::cos(rad);   // « derrière » unité monde (X, Z)
+        const float dx = bx * kCartTilePx * body_scale;
+        const float dy = -bz * kCamPitch * kCartTilePx * body_scale;  // Z→Y écrasé, écran vers bas
+        for (int i = s; i < e; ++i) { g_av_caps[i].cx += dx; g_av_caps[i].cy += dy; }
+      }
+      const float nx = kCartNudgeX * body_scale, ny = kCartNudgeY * body_scale;
+      if (nx != 0.0f || ny != 0.0f)
+        for (int i = s; i < e; ++i) { g_av_caps[i].cx += nx; g_av_caps[i].cy += ny; }
+      if (behindBody && e > s && s > 0) {
+        const int cn = e - s;
+        if (cn > 0 && e <= 48) {
+          for (int i = 0; i < cn; ++i) g_av_reorder[i] = g_av_caps[s + i];
+          for (int i = s - 1; i >= 0; --i) g_av_caps[i + cn] = g_av_caps[i];
+          for (int i = 0; i < cn; ++i) g_av_caps[i] = g_av_reorder[i];
+        }
+      }
+    }
+    if (falcSpr) {
+      const int s = *g_cap_num;
+      // FIGÉ : action de base 0 (repos) + frame 0. Le jeu change la RANGÉE de base du faucon
+      // selon l'état de mouvement du joueur (parent+0x70 : repos/marche/…) ET fait défiler son
+      // frame → lire `falcPose`/`falcFrame` live ferait bouger le doll figé. On force l'idle.
+      EmitSlotLayers(falcSpr, falcAct, falcDir, 0, body_scale, nullptr);
+      const int e = *g_cap_num;
+      for (int i = s; i < e; ++i) g_av_caps[i].companion = true;  // idem : hors ancrage
+      // Faucon perché SUR le joueur (offset monde ~0) : pas de synthèse de position, réglage
+      // fin uniquement via kFalconNudge* (aucune lecture live → aucun désync au déplacement).
+      const float nx = kFalconNudgeX * body_scale, ny = kFalconNudgeY * body_scale;
+      if (nx != 0.0f || ny != 0.0f)
+        for (int i = s; i < e; ++i) { g_av_caps[i].cx += nx; g_av_caps[i].cy += ny; }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // Construit l'acteur (ctor 19 params) à la pose/image données et le dessine
 // (chemin quad) : chaque layer passe par le hook -> buffer ACTIF (g_cap_buf).
 // Fonction plate (aucun objet C++ à dérouler) pour être appelable sous __try, et
@@ -872,6 +1112,7 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
           static_cast<unsigned>(garment),
           static_cast<unsigned>(EquipSlotNameId(1)),   // nameid arme
           static_cast<unsigned>(EquipSlotNameId(5)),   // nameid bouclier
+          static_cast<unsigned>(g_av_companion_present),  // chariot/faucon (frame précédente)
           static_cast<unsigned>(show_costume)};        // costumes affichés ou non
       unsigned sig = 2166136261u;
       for (unsigned p : parts) sig = (sig ^ p) * 16777619u;
@@ -922,15 +1163,503 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
         g_av_count = m;
       }
     }
+    // Compagnons (chariot / faucon) : sous-acteurs enfants du joueur, à la MÊME direction que
+    // le corps (child+0x38 = action propre + ScreenDir, cf. RE). Le chariot a sa PROPRE horloge
+    // d'image : figé au repos, il « vibre » (frames .act) en Marche pour simuler le déplacement.
+    // Chariot derrière le corps en vue de face, faucon devant. APRÈS le reorder arme/bouclier.
+    EmitCompanionLayers(pose, animate, g_av_body_scale);
   } __except (EXCEPTION_EXECUTE_HANDLER) { g_cap_active = false; }
   g_cap_buf = g_caps;              // restaurer la cible portrait (toujours)
   g_cap_num = &g_cap_count;
   g_frame_dst = &g_body_frame_count;
 }
+
+// ── Capture d'effet STR (hat effect .str) ─────────────────────────────────────
+// Miroir du moteur de capture SPRITE ci-dessus, mais pour les effets .str : les hat
+// effects (costumes SANS viewid, cf. docs/hat_effect_re.md). Un effet .str est un
+// billboard 2D animé (glow additif) rendu par un pipeline SÉPARÉ des sprites :
+// Effect_DrawStrFrameQuads (vtable+0xc) boucle les couches actives et appelle
+// Effect_SubmitStrQuad (0x00bcfb10) qui projette monde->écran + insère en file
+// différée. On hooke Effect_SubmitStrQuad : hors capture -> natif (les effets du
+// monde rendent normalement) ; en capture (g_str_cap_active) -> on ASSEMBLE les 4
+// sommets 2D EXACTEMENT comme le natif (mêmes branches min/max = winding + UV
+// corrects), SANS la projection monde/écran ni l'échelle caméra, puis on SUPPRIME
+// l'insert natif. La rotation + l'ancrage tête + l'échelle se font au composite.
+constexpr uintptr_t kStrSubmitQuad = 0x00bcfb10;  // Effect_SubmitStrQuad (hooké)
+constexpr uintptr_t kStrLayerTex   = 0x00715be0;  // Str_GetLayerTexture(layer, idx)
+
+// Une couche capturée d'un effet .str : 4 sommets locaux (pré-rotation, relatifs à
+// (cx,cy)) + UV normalisés + couleur + blend. Le composite applique rotation(angle)
+// puis (cx,cy), puis son propre ancrage/échelle, et dessine via AddImageQuad (tint).
+struct StrCapLayer {
+  void*    tex;                       // IDirect3DTexture9* (page de la couche)
+  float    cx, cy;                    // centre 2D de la couche (unités canvas .str)
+  float    vx[4], vy[4];              // 4 coins locaux (pré-rotation)
+  float    vu[4], vv[4];              // 4 UV (déjà normalisés [0..1])
+  float    angle;                     // angle brut workBuf[0x15] (deg ; conv. au composite)
+  unsigned rgba;                      // IM_COL32(r,g,b,a) (tint de la couche)
+  int      sblend, dblend;            // facteurs de blend .str (additif quasi toujours)
+};
+StrCapLayer g_str_caps[64];
+int         g_str_count = 0;
+// Diag placement (1er layer dessiné par DrawStrCapLayers) : origine canvas, centre couche,
+// coin écran p[0] -> dit si l'effet est DANS le rect ou hors-champ.
+float g_str_dg_ccx = 0.0f, g_str_dg_ccy = 0.0f;   // canvas origin (DAT_01022f5c/DAT_01013e88)
+float g_str_dg_l0cx = 0.0f, g_str_dg_l0cy = 0.0f;  // L.cx / L.cy du 1er layer
+float g_str_dg_px = 0.0f, g_str_dg_py = 0.0f;      // p[0] écran du 1er layer
+bool        g_str_cap_active = false;  // vrai seulement pendant NOTRE rendu d'effet
+
+using StrLayerTexFn = void* (__fastcall*)(void* layer, void* edx, int idx);
+using StrSubmitFn = void (__fastcall*)(void* self, void* edx, void* layer,
+                                       float* workBuf, int depthIdx, float* camera);
+StrSubmitFn g_orig_str_quad = nullptr;
+
+// Résolution texture des .str en SOUS-DOSSIER = mécanisme NATIF (RE 2026-07-12). Le nœud
+// in-world (CActorSprite host, dir posé par _splitpath dans CActorSprite_LoadStrEffect) charge ses
+// textures via Str_GetLayerTextureWithDir 0x00715d30 : construit "effect\<dir><basename>" à partir
+// d'un std::string (dir) et met en cache au MÊME slot que Str_GetLayerTexture (layer+idx*4+0x1c8).
+// On appelle CETTE fonction (au lieu d'un loader maison) -> même chemin, même cache, MÊME type
+// d'objet écrit dans +0x1c8 que le rendu natif -> cohérent (pas de confusion de type = plus de
+// crash), pas de cache maison (FPS natif). dir = partie dossier de GetHatEfResName, CASSE
+// D'ORIGINE (le natif ne minusculise pas ; l'effet rend in-world donc la casse résout bien).
+char g_str_cap_subdir[80] = "";                    // dir du .str (ex. "efst_Gold_Shower\") ou ""
+constexpr uintptr_t kStrLayerTexDir = 0x00715d30;  // Str_GetLayerTextureWithDir(layer, idx, &dir)
+using StrLayerTexDirFn = void* (__fastcall*)(void* layer, void* edx, int idx, const void* dir);
+
+// std::string MSVC (release, 32-bit) reconstruite en POD : [union buf16/ptr][_Mysize][_Myres].
+// Le natif lit _Mysize @+0x10, et si _Myres @+0x14 > 15 déréférence *ptr (mode tas), sinon lit les
+// caractères en place (SSO). Remplie depuis le dir à chaque capture ; passée par & au natif. POD
+// -> utilisable même si le hook est sous SEH (pas d'unwind C++).
+struct MsvcStdString { char bx[16]; uint32_t mysize; uint32_t myres; };
+MsvcStdString g_str_dir_str = { {0}, 0, 15 };
+char          g_str_dir_chars[80] = "";
+void SetStrCapDir(const char* dir) {
+  size_t n = dir ? std::strlen(dir) : 0;
+  if (n >= sizeof(g_str_dir_chars)) n = sizeof(g_str_dir_chars) - 1;
+  std::memcpy(g_str_cap_subdir, dir ? dir : "", n); g_str_cap_subdir[n] = '\0';
+  std::memcpy(g_str_dir_chars,  dir ? dir : "", n); g_str_dir_chars[n]  = '\0';
+  if (n < 16) {                                          // SSO : caractères en place
+    std::memcpy(g_str_dir_str.bx, g_str_dir_chars, n + 1);
+    g_str_dir_str.mysize = static_cast<uint32_t>(n);
+    g_str_dir_str.myres  = 15;                           // <=15 -> natif lit bx en place
+  } else {                                               // tas : ptr dans les 4 premiers octets
+    *reinterpret_cast<char**>(g_str_dir_str.bx) = g_str_dir_chars;
+    g_str_dir_str.mysize = static_cast<uint32_t>(n);
+    g_str_dir_str.myres  = static_cast<uint32_t>(n);     // >15 -> natif déréférence *ptr
+  }
+}
+
+// Hook sur Effect_SubmitStrQuad. Assemble les 4 sommets comme le natif (0x00bcfb10) :
+// bloc X/U gardé par workBuf[0xb]<=workBuf[0xa], bloc Y/V par workBuf[0x10]<=workBuf[0xf].
+// Coins X = workBuf[0xa..0xd], Y = workBuf[0xe..0x11] ; src rect (px) = workBuf[2..5] ;
+// UV normalisés par tex+0x14/tex+0xc (U) & tex+0x18/tex+0x10 (V). SEH-gardé.
+void __fastcall Hooked_StrQuad(void* self, void* edx, void* layer, float* workBuf,
+                               int depthIdx, float* camera) {
+  if (!g_str_cap_active) {
+    g_orig_str_quad(self, edx, layer, workBuf, depthIdx, camera);
+    return;
+  }
+  __try {
+    if (layer && workBuf && g_str_count < 64) {
+      const int off = g_imgui_dx7_active ? kCTexOffDX7 : kCTexOffDX9;
+      int texIdx = static_cast<int>(workBuf[0x12]);
+      if (texIdx < 0) texIdx = 0;
+      // Résolution texture = résolveurs NATIFS (mêmes chemin/cache/type d'objet que le rendu
+      // in-world -> cohérent, pas de crash de confusion de type). Sous-dossier ->
+      // Str_GetLayerTextureWithDir(layer, idx, &dir) : "effect\<dir><basename>". Racine ->
+      // Str_GetLayerTexture(layer, idx) : "effect\<basename>". Les deux mettent en cache au slot
+      // natif layer+idx*4+0x1c8 (pas de cache maison = FPS natif).
+      void* ctex = g_str_cap_subdir[0]
+          ? reinterpret_cast<StrLayerTexDirFn>(kStrLayerTexDir)(layer, nullptr, texIdx, &g_str_dir_str)
+          : reinterpret_cast<StrLayerTexFn>(kStrLayerTex)(layer, nullptr, texIdx);
+      void* native = ctex ? *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off)
+                          : nullptr;
+      if (native) {
+        StrCapLayer& L = g_str_caps[g_str_count++];
+        L.tex = native;
+        L.cx = workBuf[0]; L.cy = workBuf[1];
+        const float u0 = workBuf[2], v0 = workBuf[3];       // srcU0, srcV0 (px)
+        const float u1 = workBuf[4] + workBuf[2];           // srcU0+srcW
+        const float v1 = workBuf[5] + workBuf[3];           // srcV0+srcH
+        // Bloc X/U (vx/vu des 4 sommets) — réplique EXACTE de Effect_SubmitStrQuad.
+        if (workBuf[0xb] <= workBuf[0xa]) {
+          L.vx[0] = workBuf[0xc]; L.vu[0] = u1;
+          L.vx[1] = workBuf[0xb]; L.vu[1] = u1;
+          L.vx[2] = workBuf[0xd]; L.vu[2] = u0;
+          L.vx[3] = workBuf[0xa]; L.vu[3] = u0;
+        } else {
+          L.vx[0] = workBuf[0xd]; L.vu[0] = u0;
+          L.vx[1] = workBuf[0xa]; L.vu[1] = u0;
+          L.vx[2] = workBuf[0xc]; L.vu[2] = u1;
+          L.vx[3] = workBuf[0xb]; L.vu[3] = u1;
+        }
+        // Bloc Y/V (vy/vv des 4 sommets) — réplique EXACTE.
+        if (workBuf[0x10] <= workBuf[0xf]) {
+          L.vy[0] = workBuf[0xe];  L.vv[0] = v0;
+          L.vy[1] = workBuf[0x11]; L.vv[1] = v1;
+          L.vy[2] = workBuf[0xf];  L.vv[2] = v0;
+          L.vy[3] = workBuf[0x10]; L.vv[3] = v1;
+        } else {
+          L.vy[0] = workBuf[0x11]; L.vv[0] = v1;
+          L.vy[1] = workBuf[0xe];  L.vv[1] = v0;
+          L.vy[2] = workBuf[0x10]; L.vv[2] = v1;
+          L.vy[3] = workBuf[0xf];  L.vv[3] = v0;
+        }
+        // Normalisation UV : *= tex[0x14]/tex[0xc] (U), tex[0x18]/tex[0x10] (V).
+        const int tW  = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0xc);
+        const int tH  = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0x10);
+        const int t14 = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0x14);
+        const int t18 = *reinterpret_cast<int*>(reinterpret_cast<char*>(ctex) + 0x18);
+        const float us = (tW != 0) ? static_cast<float>(t14) / static_cast<float>(tW) : 0.0f;
+        const float vs = (tH != 0) ? static_cast<float>(t18) / static_cast<float>(tH) : 0.0f;
+        for (int k = 0; k < 4; ++k) { L.vu[k] *= us; L.vv[k] *= vs; }
+        L.angle = workBuf[0x15];
+        const unsigned r = static_cast<unsigned>(static_cast<int>(workBuf[0x16])) & 0xffu;
+        const unsigned g = static_cast<unsigned>(static_cast<int>(workBuf[0x17])) & 0xffu;
+        const unsigned b = static_cast<unsigned>(static_cast<int>(workBuf[0x18])) & 0xffu;
+        const unsigned a = static_cast<unsigned>(static_cast<int>(workBuf[0x19])) & 0xffu;
+        // Couleur de la couche (tint) = workBuf[0x16..0x19] (r,g,b,a) = IM_COL32(r,g,b,a).
+        // Pour gold_shower : blanc × alpha ANIMÉ (le fondu du glow vient de a, pas de la texture).
+        L.rgba = (a << 24) | (b << 16) | (g << 8) | r;
+        // Blend PAR COUCHE = facteurs D3DBLEND ENTIERS (RE : workBuf[0x1a]/[0x1b] copiés en MOV
+        // brut depuis le keyframe +0x70/+0x74, PAS des floats). Les lire en INT brut, sinon le
+        // cast float->int donne 0 (les bits entiers 5/7 = floats dénormaux ≈ 0).
+        L.sblend = reinterpret_cast<const int*>(workBuf)[0x1a];  // gold_shower : 5 = D3DBLEND_SRCALPHA
+        L.dblend = reinterpret_cast<const int*>(workBuf)[0x1b];  // gold_shower : 7 = D3DBLEND_DESTALPHA
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  // insert natif SUPPRIMÉ pendant la capture (rien ne rend dans la scène)
+}
+
+void InstallStrCapture() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  using namespace hooking;
+  g_orig_str_quad = reinterpret_cast<StrSubmitFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kStrSubmitQuad),
+          reinterpret_cast<uint8_t*>(&Hooked_StrQuad)));
+}
+
+// Origine du canvas .str : soustraite du centre de couche par Effect_SubmitStrQuad
+// (recentre l'effet sur le point d'ancrage = tête de l'acteur). LUES à l'exécution
+// (pas de valeur figée). L'échelle caméra + la position écran du nœud sont ignorées :
+// on ancre nous-mêmes (ox,oy) à l'échelle `scale` de notre choix.
+constexpr uintptr_t kStrCanvasCx = 0x01022f5c;  // DAT_01022f5c (soustrait de workBuf[0])
+constexpr uintptr_t kStrCanvasCy = 0x01013e88;  // DAT_01013e88 (soustrait de workBuf[1])
+
+// Composite les couches STR capturées (g_str_caps) par-dessus le dessin courant, EXACTEMENT
+// comme le natif (RE Effect_SubmitStrQuad) : (ox,oy) = point d'ancrage écran (canvas 320/240),
+// `scale` = échelle canvas.str -> px écran. Par couche : rotation (unité native 1024/tour) autour
+// du centre, translation (centre - centreCanvas), ancrage + échelle, blend NATIF par couche,
+// AddImageQuad (tint = couleur). No-op si vide. Aucun paramètre de calibrage manuel : tout est
+// dérivé du natif (cf. constantes d'ancre/échelle dans RenderPlayerAvatar).
+void DrawStrCapLayers(ImDrawList* dl, float ox, float oy, float scale) {
+  if (!dl || g_str_count <= 0) return;
+  float canvas_cx = 0.0f, canvas_cy = 0.0f;
+  __try {
+    canvas_cx = *reinterpret_cast<const float*>(kStrCanvasCx);
+    canvas_cy = *reinterpret_cast<const float*>(kStrCanvasCy);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { canvas_cx = canvas_cy = 0.0f; }
+
+  // Blend PAR COUCHE = facteurs NATIFS capturés (plus de mode alpha forcé qui peignait le fond
+  // noir des textures -> bord noir). Callback DX9 explicite par couche (DX7 : repli alpha).
+  for (int i = 0; i < g_str_count; ++i) {
+    const StrCapLayer& L = g_str_caps[i];
+    if (!L.tex) continue;
+    // Rotation : unité native = 1024 par tour (RE Effect_SubmitStrQuad), rad = angle * 2π/1024.
+    const float rad = L.angle * 0.006135923f;  // 2π/1024 (et NON deg->rad)
+    const float ca = std::cos(rad), sa = std::sin(rad);
+    ImVec2 p[4];
+    for (int k = 0; k < 4; ++k) {
+      const float rx = L.vx[k] * ca - L.vy[k] * sa;
+      const float ry = L.vx[k] * sa + L.vy[k] * ca;
+      p[k].x = (rx + (L.cx - canvas_cx)) * scale + ox;
+      p[k].y = (ry + (L.cy - canvas_cy)) * scale + oy;
+    }
+    if (i == 0) {  // diag placement (1er layer) : coords canvas + coin écran
+      g_str_dg_ccx = canvas_cx; g_str_dg_ccy = canvas_cy;
+      g_str_dg_l0cx = L.cx; g_str_dg_l0cy = L.cy;
+      g_str_dg_px = p[0].x; g_str_dg_py = p[0].y;
+    }
+    // SRCBLEND/DESTBLEND natifs. DESTALPHA(7)->ONE(2), INVDESTALPHA(8)->ZERO(1) car le backbuffer
+    // RO n'a pas d'alpha destination (le HW traite DESTALPHA comme 1.0) ; autres facteurs tels
+    // quels. gold_shower = SRCALPHA(5)/ONE(2) = additif modulé par alpha -> fond noir invisible.
+    int dst = L.dblend;
+    if (dst == 7) dst = 2; else if (dst == 8) dst = 1;
+    if (L.sblend > 0 && dst > 0) {
+      void* cb = reinterpret_cast<void*>(
+          static_cast<uintptr_t>((L.sblend & 0xff) | ((dst & 0xff) << 8)));
+      dl->AddCallback(reinterpret_cast<ImDrawCallback>(D3D9_ExplicitBlendCallback()), cb);
+    } else {
+      dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);  // repli alpha (blend inconnu)
+    }
+    // Winding : strip natif (0,1,2,3) -> périmètre AddImageQuad (0,2,3,1).
+    const ImTextureID tex = (ImTextureID)(uintptr_t)L.tex;
+    dl->AddImageQuad(tex, p[0], p[2], p[3], p[1],
+                     ImVec2(L.vu[0], L.vv[0]), ImVec2(L.vu[2], L.vv[2]),
+                     ImVec2(L.vu[3], L.vv[3]), ImVec2(L.vu[1], L.vv[1]), L.rgba);
+  }
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);  // restaure l'alpha ImGui
+}
+
+// ── Spawn / pilotage d'un nœud d'effet STR autonome (hat effect) ──────────────
+// Recette RE (docs/hat_effect_re.md, agent 2026-07-12) : alloc(0x11ca8)+ctor,
+// Effect_LoadStrByEffectId(id CONCRET), horloge d'anim = node+0x178 (ms relatif),
+// Effect_UpdateStrKeyframes remplit les workBuf, puis on ITÈRE les couches nous-mêmes
+// (SANS les gardes visibilité de Effect_DrawStrFrameQuads) en appelant le SubmitStrQuad
+// HOOKÉ (capture). Nœuds MIS EN CACHE par id concret (persistants : pas d'alloc/dtor
+// par frame, pas de gestion de durée de vie fragile ; ~72 Ko × nb d'effets distincts).
+constexpr uintptr_t kEffCtor     = 0x00b90780;  // EffectInst_Ctor_StrNode(node)
+constexpr uintptr_t kEffLoadStr  = 0x00bb4170;  // Effect_LoadStrByEffectId(node,src,id,x,y,z)
+constexpr uintptr_t kEffUpdateKF = 0x00bced10;  // Effect_UpdateStrKeyframes(node,offXYZ,f,f)
+constexpr int       kEffNodeSize = 0x11ca8;     // taille du nœud (alloc)
+constexpr int kEffCStr       = 0x7ec;    // CStr* chargé (0 si échec de chargement)
+constexpr int kEffLayerBase  = 0x7f0;    // valeur = CStr+0x110 (base couches/keyframes)
+constexpr int kEffClockMs    = 0x178;    // horloge d'anim (ms) — pilotée par nous
+constexpr int kEffWorkBuf0   = 0x7f4;    // workBuf couche L = node+0x7f4+L*0x74
+constexpr int kEffActiveFlag = 0x119fc;  // flag actif couche L = node+0x119fc+L (octet)
+constexpr int kEffLoopMax    = 0x11c80;  // boucles max (compteur node+0x11c7c ; Effect_ResetStrLoop rembobine +0x178=0)
+// Cadence native EXACTE (RE : GameLogic_ComputeTimestepCount 0x00c16a90) : le pas fixe est
+// DAT_015e5a9c = 0x10 = 16 ms/frame (flag DAT_0122b3dc=1) -> 62.5 Hz, INDÉPENDANT du FPS de rendu.
+// node+0x178 (index de frame ENTIER) avance de +1 toutes les 16 ms. f(T) = floor(T_ms / 16).
+constexpr unsigned kStrFrameMs = 16;  // ms par frame .str (pas fixe natif, non deviné)
+
+// Bridge Lua brut (Lua 5.1) — même mécanique que StatusName (character_sheet) : évite
+// le wrapper varargs (string BYVAL). Adresses partagées avec les autres plugins.
+constexpr uintptr_t kLuaStateB   = 0x015ffd78;  // *=M ; **=lua_State
+constexpr uintptr_t kLuaGetFieldB= 0x00519df0;  // lua_getfield(L,idx,k)
+constexpr uintptr_t kLuaPushNumB = 0x0051a4b0;  // lua_pushnumber(L,double)
+constexpr uintptr_t kLuaPCallB   = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int
+constexpr uintptr_t kLuaToLStrB  = 0x0051aca0;  // lua_tolstring(L,idx,&len) (convertit un nombre)
+constexpr uintptr_t kLuaSetTopB  = 0x0051aab0;  // lua_settop(L,idx)
+constexpr int       kLuaGlobalsB = -10002;      // LUA_GLOBALSINDEX (5.1)
+
+// Un nœud d'effet en cache : le nœud lui-même + son tick de départ (horloge relative :
+// node+0x178 = GetTickCount()-start, sinon un tick absolu dépasserait toutes les
+// keyframes -> effet « fini » = rien). failed = chargement échoué (ne pas re-tenter).
+struct StrEffNode {
+  void*    node    = nullptr;
+  DWORD    last    = 0;      // GetTickCount du dernier tick appliqué (cadence delta temps réel)
+  unsigned acc     = 0;      // reste de ms (< 16) pas encore converti en frame native
+  bool     primed  = false;  // frame 0 rendue au moins une fois
+  bool     failed  = false;
+};
+std::unordered_map<int, StrEffNode> g_str_nodes;  // id concret -> nœud
+float g_str_srcpos[0x20] = {0};                   // struct srcPos (XYZ @+0x10), zéro
+
+// Table itemId(client) -> ordinal de hat effect (e_hat_effects), poussée par le serveur
+// au login (ZC 0x0F17, cf. clif_bourgeon_hateffect_map). AUTORITATIVE (scan des scripts
+// item_db) : le client ne mappe pas item->ordinal nativement (effectHatItemTable = simple
+// appartenance). Sert à ItemToHatOrdinal pour prévisualiser les costumes sans viewid.
+std::unordered_map<uint32_t, uint16_t> g_hat_item_ord;
+
+// ── Diagnostic (POD) du dernier pilotage d'effet — rempli par les fonctions SEH, loggé
+// throttlé (fmt) par l'appelant hors __try (RenderPlayerAvatar). Sert à localiser où la
+// chaîne casse : résolution ordinal->concret, charge du .str, comptage de couches, capture.
+int g_hatfx_dg_concrete = 0;   // id concret pilotté (0 = résolution ratée)
+int g_hatfx_dg_nodeok   = -1;  // -1 non tenté, 0 échec charge/.str absent, 1 nœud chargé
+int g_hatfx_dg_layers   = -1;  // layerCount du .str (nb de couches)
+int g_hatfx_dg_captured = -1;  // g_str_count après capture (nb de couches capturées)
+
+// Résolution NATIVE ordinal hat -> nom/chemin du .str, via le global Lua GetHatEfResName
+// (cf. Effect_ResolveResourceName 0x00af0900). C'est LE résolveur des hat effects par NOM
+// (GetHatEffectID renvoie -1 pour eux). Ex : ordinal 48 -> "efst_Gold_Shower\coin2.str".
+// POD ONLY (SEH). out vidé si échec.
+void HatOrdinalToResNameRaw(int ordinal, char* out, int cap) {
+  if (cap <= 0) return;
+  out[0] = '\0';
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaStateB);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    if (L) {
+      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(
+          L, kLuaGlobalsB, "GetHatEfResName");
+      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(
+          L, static_cast<double>(ordinal));
+      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
+        const char* s = reinterpret_cast<const char*(__cdecl*)(void*, int, size_t*)>(
+            kLuaToLStrB)(L, -1, nullptr);
+        if (s && s[0]) { std::strncpy(out, s, cap - 1); out[cap - 1] = '\0'; }
+      }
+      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
+
+// Wrapper caché (map = op C++, hors __try). Renvoie le nom .str de l'ordinal, "" si échec
+// (non figé : Lua peut ne pas être prêt au 1er appel).
+const char* HatOrdinalToResName(int ordinal) {
+  static std::unordered_map<int, std::string> cache;
+  auto it = cache.find(ordinal);
+  if (it != cache.end()) return it->second.c_str();
+  char buf[96];
+  HatOrdinalToResNameRaw(ordinal, buf, sizeof(buf));
+  if (buf[0]) return (cache[ordinal] = buf).c_str();
+  return "";
+}
+
+// Adresses de chargement de ressource (comme cashshop_tweaks) + AddRef (0x00a8e800).
+constexpr uintptr_t kTexGet2   = 0x00a90350;  // UITextureMgr_Get()
+constexpr uintptr_t kMakeKey2  = 0x00a9f030;  // UITextureMgr_MakeKey(path)->key
+constexpr uintptr_t kTexLoad2  = 0x00a8d4a0;  // UITextureMgr_Load(mgr, edx, key)
+constexpr uintptr_t kTexAddRef = 0x00a8e800;  // UITexture_AddRef(obj) (__fastcall, ecx=obj)
+constexpr int       kEffDummyId = 0x59;       // StormGust : id concret bidon (setup natif complet)
+
+// Crée un nœud d'effet STR chargé du .str `strName` (par NOM). POD ONLY (SEH -> pas de
+// C2712). Stratégie : ctor + Effect_LoadStrByEffectId avec un id concret BIDON (StormGust)
+// pour le setup COMPLET du nœud (préambule + init vtable), puis on REMPLACE la ressource
+// .str par la nôtre (queue de Effect_LoadStrByEffectId : UITextureMgr_Load + AddRef + champs
+// +0x7ec/+0x7f0/+0x119f8). +0x11c80=9999 -> boucle (aperçu permanent). nullptr si échec.
+void* StrNode_CreateByName(const char* strName) {
+  if (!strName || !strName[0]) return nullptr;
+  void* node = std::calloc(1, static_cast<size_t>(kEffNodeSize));
+  if (!node) return nullptr;
+  bool ok = false;
+  __try {
+    reinterpret_cast<void(__fastcall*)(void*)>(kEffCtor)(node);
+    reinterpret_cast<void(__fastcall*)(void*, void*, void*, int, float, float, float)>(
+        kEffLoadStr)(node, nullptr, g_str_srcpos, kEffDummyId, 0.0f, 0.0f, 0.0f);
+    void* mgr = reinterpret_cast<void*(__cdecl*)()>(kTexGet2)();
+    void* key = reinterpret_cast<void*(__cdecl*)(const char*)>(kMakeKey2)(strName);
+    void* strObj = (mgr && key)
+        ? reinterpret_cast<void*(__fastcall*)(void*, void*, void*)>(kTexLoad2)(mgr, nullptr, key)
+        : nullptr;
+    if (strObj) {
+      *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffCStr) = strObj;
+      reinterpret_cast<void(__fastcall*)(void*)>(kTexAddRef)(strObj);  // garde le .str vivant
+      *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffLayerBase) =
+          reinterpret_cast<char*>(strObj) + 0x110;
+      const int fc = *reinterpret_cast<int*>(reinterpret_cast<char*>(strObj) + 0x118);
+      *reinterpret_cast<int*>(reinterpret_cast<char*>(node) + 0x119f8) =
+          (*reinterpret_cast<int*>(reinterpret_cast<char*>(strObj) + 0x128) == 0) ? fc - 1 : fc;
+      // Boucle "à l'infini" = VALEUR NATIVE EXACTE : les auras qui bouclent (gc_darkcrow, chill…)
+      // mettent 9999 dans node+0x11c80 (RE : Effect_LoadStrByEffectId). On la réplique telle quelle.
+      *reinterpret_cast<int*>(reinterpret_cast<char*>(node) + kEffLoopMax) = 9999;
+      // NB : on NE modifie NI les noms NI le cache du CStr (partagé avec le rendu in-world natif
+      // -> corruption/crash). La résolution du BON chemin texture (avec sous-dossier) se fait
+      // dans le hook Hooked_StrQuad via le factory (cache par chemin), cf. g_str_cap_subdir.
+      ok = true;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  if (!ok) { std::free(node); return nullptr; }
+  return node;
+}
+
+// Pilote le nœud À LA MANIÈRE DU NATIF puis ITÈRE les couches -> capture via le hook.
+// RE (Effect_UpdateStrKeyframes 0x00bced10 + Effect_ResetStrLoop 0x00bb5b10) : node+0x178 est un
+// INDEX DE FRAME ENTIER que le driver natif incrémente de +1 par tick. L'avance d'un keyframe
+// n'a lieu QUE si node+0x178 == kf.endFrame EXACTEMENT (égalité entière) -> il FAUT visiter chaque
+// entier (donc +1 à la fois, jamais un saut = elapsed_ms). Quand toutes les couches finissent,
+// UpdateKF appelle Effect_ResetStrLoop qui rembobine node+0x178=0 -> la BOUCLE est INTERNE au
+// nœud (plafond node+0x11c80). Donc : on n'écrit JAMAIS une horloge absolue ; on incrémente de
+// `steps` (relatif), 1 UpdateKF par incrément. `prime` = 1er tick -> rend la frame 0 sans avancer.
+// POD ONLY (SEH, aucun objet C++ -> évite C2712).
+void StrNode_DriveCapture(void* node, int steps, bool prime) {
+  __try {
+    int* clock = reinterpret_cast<int*>(reinterpret_cast<char*>(node) + kEffClockMs);
+    float off3[3] = {0.0f, 0.0f, 0.0f};
+    const auto updkf =
+        reinterpret_cast<unsigned(__fastcall*)(void*, void*, void*, float, float)>(kEffUpdateKF);
+    if (prime) { *clock = 0; updkf(node, nullptr, off3, 0.0f, 0.0f); }  // frame 0
+    for (int i = 0; i < steps; ++i) {
+      *clock += 1;                              // +1 frame native (relatif ; boucle interne rembobine)
+      updkf(node, nullptr, off3, 0.0f, 0.0f);   // avance keyframes (match exact) + remplit workBuf
+    }
+    void* layerBase =
+        *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffLayerBase);
+    if (layerBase) {
+      int layerCount = *reinterpret_cast<int*>(reinterpret_cast<char*>(layerBase) + 8);
+      if (layerCount < 1) layerCount = 1;
+      if (layerCount > 48) layerCount = 48;  // borne sûre (évite d'itérer des couches fantômes)
+      g_hatfx_dg_layers = layerCount;  // diag
+      g_str_cap_active = true;
+      int depthIdx = 0;
+      // Réplique la boucle de Effect_DrawStrFrameQuads mais SANS les gardes (FUN_00d9d020
+      // effets-activés / FUN_00c0afa0 visible) qui recaleraient un nœud autonome.
+      for (int Lyr = 1; Lyr < layerCount && g_str_count < 64; ++Lyr) {
+        if (*(reinterpret_cast<char*>(node) + kEffActiveFlag + Lyr) != 0) {
+          void* layerStruct = reinterpret_cast<char*>(layerBase) + 0x10 + Lyr * 0x380;
+          float* workBuf = reinterpret_cast<float*>(
+              reinterpret_cast<char*>(node) + kEffWorkBuf0 + Lyr * 0x74);
+          // Appel du SubmitStrQuad HOOKÉ -> Hooked_StrQuad capture (camera ignoré).
+          reinterpret_cast<StrSubmitFn>(kStrSubmitQuad)(
+              node, nullptr, layerStruct, workBuf, depthIdx, nullptr);
+          depthIdx += 2;
+        }
+      }
+      g_str_cap_active = false;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { g_str_cap_active = false; }
+}
+
+// Pilote le nœud du .str de `concreteId` (crée/charge au 1er appel, cache ensuite) et
+// CAPTURE ses couches 2D dans g_str_caps via le hook. Réinitialise g_str_count. No-op si
+// l'effet ne charge pas. La MAP (C++) et le SEH sont dans des fonctions SÉPARÉES (C2712 :
+// MSVC interdit __try dans une fonction qui déroule aussi des objets C++).
+void CaptureHatEffectOrdinal(int ordinal) {
+  InstallStrCapture();
+  g_str_count = 0;
+  g_hatfx_dg_concrete = ordinal;
+  g_hatfx_dg_nodeok = -1; g_hatfx_dg_layers = -1; g_hatfx_dg_captured = -1;  // reset diag
+  if (!g_orig_str_quad || ordinal <= 0) return;
+  StrEffNode& slot = g_str_nodes[ordinal];  // clé = ordinal (crée l'entrée si absente)
+  if (slot.failed) { g_hatfx_dg_nodeok = 0; return; }
+  if (!slot.node) {
+    const char* name = HatOrdinalToResName(ordinal);  // GetHatEfResName -> .str
+    if (!name || !name[0]) { g_hatfx_dg_nodeok = 0; return; }  // Lua pas prêt : retenter (pas failed)
+    void* node = StrNode_CreateByName(name);
+    if (!node) { slot.failed = true; g_hatfx_dg_nodeok = 0; return; }
+    slot.node = node;
+    slot.last = GetTickCount();
+    slot.acc = 0;
+  }
+  g_hatfx_dg_nodeok = 1;
+  // dir du .str (partie dossier de GetHatEfResName, ex. "efst_Gold_Shower\") pour le résolveur
+  // NATIF subdir-aware du hook — CASSE D'ORIGINE (comme _splitpath natif ; rend in-world donc OK).
+  // "" -> effet racine. Remplit aussi la std::string POD passée à Str_GetLayerTextureWithDir.
+  {
+    const char* name = HatOrdinalToResName(ordinal);  // caché
+    const char* bs = name ? std::strrchr(name, '\\') : nullptr;
+    if (bs) {
+      char dir[80];
+      int n = static_cast<int>(bs - name) + 1;         // inclut le '\' final (comme _splitpath)
+      if (n > 0 && n < static_cast<int>(sizeof(dir))) {
+        std::memcpy(dir, name, static_cast<size_t>(n));
+        dir[n] = '\0';
+        SetStrCapDir(dir);
+      } else {
+        SetStrCapDir("");
+      }
+    } else {
+      SetStrCapDir("");
+    }
+  }
+  // Cadence temps réel EXACTE (16 ms/frame natif) par ACCUMULATEUR DE DELTA : on ne compte que le
+  // temps écoulé entre deux captures RÉELLES (la fiche ne rend/tick que visible), donc pas de
+  // fast-forward à la réouverture. steps = frames natives dues ce tick ; le reste <16 ms est gardé
+  // dans slot.acc. La BOUCLE est interne au nœud (Effect_ResetStrLoop rembobine node+0x178) ->
+  // aucun reset d'horloge ici. Après un gros trou (fiche masquée), on borne + on vide le backlog.
+  const DWORD now = GetTickCount();
+  slot.acc += now - slot.last;   // ms écoulées depuis le dernier tick (delta, non absolu)
+  slot.last = now;
+  int steps = static_cast<int>(slot.acc / kStrFrameMs);
+  slot.acc -= static_cast<unsigned>(steps) * kStrFrameMs;
+  if (steps > 8) { steps = 8; slot.acc = 0; }  // trou (fiche masquée) : reprendre, pas rattraper
+  StrNode_DriveCapture(slot.node, steps, !slot.primed);
+  slot.primed = true;
+  g_hatfx_dg_captured = g_str_count;
+}
 }  // namespace
 
 void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
+  // Repart d'une liste vide à l'entrée en jeu : le serveur re-pousse la liste
+  // complète des hat effects au spawn (0x0A3B status=1). Évite qu'un effet d'un
+  // perso précédent persiste (aucun status=0 n'est émis à la déconnexion).
+  if (in_game_) own_hat_effects_.clear();
 }
 
 // Tooltip d'aperçu d'un équipement porté par le perso (appelé par item_desc au
@@ -941,10 +1670,14 @@ bool BasicInfoTweaks::CanPreview(int emplacement) const {
   return MapEmplacementToSlot(emplacement) != PV_NONE;
 }
 
-void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
-  if (view_id == 0) return;
+void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
+                                               int hat_ordinal) {
+  // Rien à montrer si ni sprite (viewid) ni effet (hat effect) : sortie.
+  if (view_id == 0 && hat_ordinal == 0) return;
   const PvSlot slot = MapEmplacementToSlot(emplacement);
-  if (slot == PV_NONE) return;
+  // Un sprite non-prévisualisable (slot inconnu) SANS effet -> rien. Avec un hat effect,
+  // on rend quand même le perso de BASE (view 0) + l'effet.
+  if (slot == PV_NONE && hat_ordinal == 0) return;
   // Réserve la molette à l'item survolé (rotation du perso) : ImGui ne scrolle plus
   // AUCUNE fenêtre à la molette pendant l'aperçu (ex. la scrollbar de la description qui
   // se trouve dessous). L'API prévue pour ça : SetItemKeyOwner sur le dernier item survolé.
@@ -1028,8 +1761,36 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement) {
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
   }
+  // Hat effect (.str) superposé : MÊME calibrage automatique que l'avatar (ancre = ORIGINE acteur
+  // (ox, oy) car le corps est capturé à (0,0), - 11 px sprite en Y ; contenu à l'échelle s ;
+  // cf. RenderPlayerAvatar). Aucun réglage manuel. Résolution par NOM (GetHatEfResName).
+  if (hat_ordinal != 0) {
+    constexpr float kHatOffsetPx = 11.0f, kCamTiltZtoY = 0.6428f;  // RE : offset sprite + tilt caméra
+    const float jobScale = g_av_body_scale;
+    const float S = g_live_render_scale;                        // échelle rendu en jeu (0 = pas vue)
+    const float lift = (S > 0.01f)
+        ? (kHatOffsetPx * kCamTiltZtoY * jobScale * jobScale * s / S)
+        : (kHatOffsetPx * s * jobScale);                        // repli plat
+    const float hox = ox;                                       // origine acteur X (capture x=0), k_x=0
+    const float hoy = oy - lift;                                // origine acteur Y (capture y=0) - lift
+    CaptureHatEffectOrdinal(hat_ordinal);
+    hat_diag_concrete_ = hat_ordinal;
+    hat_diag_layers_   = g_str_count;
+    DrawStrCapLayers(dl, hox, hoy, s);                          // contenu .str -> écran via DepthScale = s
+  }
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
+}
+
+// Résout item id -> ordinal de hat effect via la table poussée par le serveur au login
+// (g_hat_item_ord, ZC 0x0F17). Autoritative (scan des scripts item_db). 0 si l'item n'a
+// pas de hat effect (ou table pas encore reçue). Le natif ne mappe PAS item->ordinal :
+// effectHatItemTable côté client n'est qu'une appartenance, et GetHatEffectID prend
+// l'ordinal (pas l'itemId) -> d'où le push serveur.
+int BasicInfoTweaks::ItemToHatOrdinal(int item_id) {
+  if (item_id <= 0) return 0;
+  auto it = g_hat_item_ord.find(static_cast<uint32_t>(item_id));
+  return (it != g_hat_item_ord.end()) ? static_cast<int>(it->second) : 0;
 }
 
 // Avatar plein-corps (perso complet : corps + coiffes + garment + arme/bouclier,
@@ -1050,6 +1811,8 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
   // Échelle + ancrage FIGÉS : recalculés seulement quand le rect / la pose / la
   // direction / l'apparence changent — jamais par frame d'animation.
   static float s_scale = 0.0f, s_cx = 0.0f, s_feet = 0.0f;
+  static float s_head_cx = 0.0f, s_head_cy = 0.0f;  // centre TÊTE (réf. ancre hat effect)
+  static float s_body_cy = 0.0f;                    // centre CORPS Y (réf. ancre hat effect)
   static float s_w = -1.0f, s_h = -1.0f;
   static int   s_anim = -1, s_dir = -1;
   static unsigned s_sig = 0;
@@ -1068,7 +1831,8 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     // taille ; bbox CORPS (couches non-tête = torse/jambes) pour centrer X + les pieds.
     float ax0 = 1e9f, ay0 = 1e9f, ax1 = -1e9f, ay1 = -1e9f;
     float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
-    bool has_body = false;
+    float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;  // région TÊTE (ancre effet)
+    bool has_body = false, has_head = false;
     const bool anim_pose = (anim == 1 || anim == 4);  // seules Marche/Combat animent
     int nf = (animate && anim_pose && g_av_frame_count > 1) ? g_av_frame_count : 1;
     if (nf > 40) nf = 40;  // garde-fou
@@ -1076,6 +1840,13 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       CaptureAvatarActor(anim, dir, true, f, show_costume);  // force l'image f
       for (int i = 0; i < g_av_count; ++i) {
         const CapLayer& L = g_av_caps[i];
+        // Chariot / faucon : DESSINÉS (boucle de rendu plus bas) mais EXCLUS de tout le
+        // cadrage — ni l'échelle (bbox totale ax), ni l'ancrage corps (bx)/tête (hx). Sinon
+        // un chariot large tire le centre X / les pieds et décentre/rapetisse l'avatar : le
+        // corps reste le seul « noyau », le compagnon peut déborder (clip du rect). C'est la
+        // cause du « position fausse en Repos » (direction OK) : la RE prouve que le chariot
+        // est bien placé RELATIVEMENT au corps ; c'est l'ancrage global qui dérivait.
+        if (L.companion) continue;  // chariot/faucon dessinés mais hors cadrage/ancrage
         const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
         const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
         if (lx0 < ax0) ax0 = lx0;  if (lx1 > ax1) ax1 = lx1;
@@ -1084,6 +1855,10 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
           has_body = true;
           if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
           if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
+        } else {
+          has_head = true;
+          if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
+          if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
         }
       }
     }
@@ -1099,6 +1874,11 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       s_scale = (sx < sy) ? sx : sy;
       s_cx = cx;
       s_feet = feet;
+      // Références pour l'ancre hat effect : centre TÊTE (couches tête) + centre CORPS Y (bbox
+      // corps). L'ancre du doll = MÉDIANE de ces deux (réglage retenu). Replis si pas de couche.
+      s_head_cx = has_head ? (hx0 + hx1) * 0.5f : cx;
+      s_head_cy = has_head ? (hy0 + hy1) * 0.5f : ay0;
+      s_body_cy = has_body ? (by0 + by1) * 0.5f : (ay0 + ay1) * 0.5f;
       s_w = w; s_h = h; s_anim = anim; s_dir = dir; s_sig = sig; s_animate = animate;
     }
     // Restaure la capture LIVE pour le rendu (la boucle a laissé la dernière image forcée).
@@ -1120,6 +1900,79 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+  }
+
+  // Hat effects (.str) actifs du joueur (costumes SANS viewid) : capturés depuis un nœud STR
+  // autonome puis compositéss EXACTEMENT comme le natif (blend/rotation/échelle/ancre RE), sur
+  // l'avatar. Un effet par ordinal actif (suivi 0x0A3B). Clip au rect. Cf. docs/hat_effect_re.md.
+  //
+  // CALIBRAGE AUTOMATIQUE (RE live moonlight-destiny.exe, AUCUN réglage manuel) :
+  //  - Échelle : R = S_effet / S_sprite = 1/jobScale (les deux partagent Effect_DepthToScreenScale ;
+  //    le corps a en plus ×jobScale). Le sprite est dessiné à `s` avec jobScale déjà dans les coords
+  //    capturées (g_av_body_scale) -> 1 unité canvas .str = 1 px sprite natif à l'écran ->
+  //    hsc = s × g_av_body_scale (= s pour les jobs normaux, jobScale=1).
+  //  - Ancre = ORIGINE DE L'ACTEUR (owner+0x24, la cellule sol/pieds), PAS le centre de la bbox.
+  //    Le corps est capturé à l'origine (0,0) -> l'origine se projette exactement à l'écran en
+  //    (ox, oy) (car screen = ox + Lcx*s, oy + Lcy*s, et l'origine a Lcx=Lcy=0). Une bbox décalée
+  //    par un costume asymétrique déplace s_cx/s_feet mais PAS l'origine : c'est pourquoi il faut
+  //    ancrer sur (ox, oy) et non (ox+s_cx*s, oy+s_feet*s), sinon l'effet ne suit pas la tête/corps.
+  //    X = origine (k_x=0, FUN_00aebf50=0 sauf strangelights/superstar/ljosalfar).
+  //  - Décalage vertical : Actor_GetHatEffectPosOffset = 11 px sprite (sizeClass 0 + 0x12 - 7),
+  //    SOUSTRAIT en Z (monte l'ancre) -> échelle px sprite = jobScale*DepthScale = hsc.
+  //  - Contenu .str : 1 px canvas -> DepthScale = s à l'écran (R = S_effet/S_sprite = 1/jobScale).
+  hat_diag_active_ = static_cast<int>(own_hat_effects_.size());
+  if (!own_hat_effects_.empty()) {   // toujours actif (aucun réglage on/off)
+    constexpr float kHatOffsetPx = 11.0f;    // px sprite au-dessus des pieds (RE, sizeClass 0)
+    constexpr float kCamTiltZtoY = 0.6428f;  // proj[0xd8]=cos50° : Z-vue -> Y-écran (tilt caméra RO)
+    const float jobScale = g_av_body_scale;  // jobScale (baked dans les coords capturées)
+    const float S = g_live_render_scale;     // échelle de rendu EN JEU (jobScale*DepthToScreenScale ; 0=pas vue)
+    // Lift ÉCRAN doll = lift natif (11*jobScale*0.6428 px écran : offset Z-vue projeté par le tilt
+    // caméra) × grossissement du doll (s/DepthToScreenScale, DepthToScreenScale = S/jobScale).
+    // Auto-calibré depuis le rendu en jeu, zéro réglage. Repli plat 11*s tant que S inconnu.
+    const float lift = (S > 0.01f)
+        ? (kHatOffsetPx * kCamTiltZtoY * jobScale * jobScale * s / S)
+        : (kHatOffsetPx * s * jobScale);
+    const float hox = ox;                    // origine acteur X (capture x=0), k_x=0
+    const float hoy = oy - lift;             // origine acteur Y (capture y=0) - lift (RE, auto-calibré)
+    for (uint16_t ordinal : own_hat_effects_) {
+      CaptureHatEffectOrdinal(static_cast<int>(ordinal));  // GetHatEfResName -> .str -> g_str_caps
+      hat_diag_concrete_ = static_cast<int>(ordinal);
+      hat_diag_layers_   = g_str_count;    // 0 = résolution/charge/capture a échoué (debug)
+      DrawStrCapLayers(dl, hox, hoy, s);   // contenu .str -> écran via DepthScale = s
+    }
+  }
+  // DIAG throttlé (~1.5 s) -> bourgeon.log : localise la cause d'un rendu absent.
+  //   own_fx=0   => tracking 0x0A3B a échoué (voir les logs "recv 0x0A3B") ;
+  //   resname='' => GetHatEfResName KO (Lua pas prêt / ordinal inconnu du client) ;
+  //   node_ok=0  => .str pas chargé (nom/chemin invalide) ;
+  //   captured=0 (layers>0) => le hook n'a rien capturé (SubmitStrQuad non atteint) ;
+  //   captured>0 mais rien à l'écran => souci d'ancre/échelle (anchor/hsc hors rect ou nul).
+  {
+    static DWORD s_hat_log = 0;
+    const DWORD now = GetTickCount();
+    if (now - s_hat_log > 1500) {
+      s_hat_log = now;
+      const int ord0 = own_hat_effects_.empty() ? 0 : static_cast<int>(own_hat_effects_[0]);
+      const char* resname = ord0 ? HatOrdinalToResName(ord0) : "";
+      const float jobScale_dg = g_av_body_scale;
+      const float S_dg = g_live_render_scale;
+      const float lift_dg = (S_dg > 0.01f)
+          ? (11.0f * 0.6428f * jobScale_dg * jobScale_dg * s / S_dg)
+          : (11.0f * s * jobScale_dg);
+      LogDiag("[HatFx] avatar own_fx={} ord0={} resname='{}' node_ok={} "
+              "layers={} captured={} anchor=({},{}) s={:.3f} bodyscale={:.3f} S_live={:.3f} lift={:.1f} "
+              "feet={:.1f} rect=({:.0f},{:.0f},{:.0f},{:.0f})",
+              static_cast<int>(own_hat_effects_.size()), ord0, resname,
+              g_hatfx_dg_nodeok, g_hatfx_dg_layers, g_hatfx_dg_captured,
+              static_cast<int>(ox),                                     // ancre X (origine acteur)
+              static_cast<int>(oy - lift_dg),                           // ancre Y (origine - lift)
+              s, jobScale_dg, S_dg, lift_dg,
+              s_feet, x, y, w, h);
+      // Placement du 1er layer capturé (canvas + coin écran) -> dedans le rect ou hors-champ ?
+      LogDiag("[HatFx] place: Lcanvas=({:.1f},{:.1f}) origin=({:.1f},{:.1f}) -> screen p0=({:.0f},{:.0f})",
+              g_str_dg_l0cx, g_str_dg_l0cy, g_str_dg_ccx, g_str_dg_ccy,
+              g_str_dg_px, g_str_dg_py);
+    }
   }
   dl->PopClipRect();
 }
@@ -1821,6 +2674,72 @@ BasicInfoTweaks::BasicInfoTweaks() {
   if (cur && cur != reinterpret_cast<void*>(&BIMsgHook)) {
     g_bi_orig_msg = reinterpret_cast<BIMsg_t>(cur);
     BIPatchPtr<void*>(kBIMsgSlot, reinterpret_cast<void*>(&BIMsgHook));
+  }
+  // ZC_EQUIPMENT_EFFECT 0x0A3B (VAR) : [len:2][aid:4][status:1]{effectId:2}. On
+  // OBSERVE (paquet natif intact) pour suivre les hat effects actifs du joueur ;
+  // `data` pointe dans le buffer recv live -> on lit toute la liste via `len`
+  // (champ de longueur du paquet). 7 = len(2)+aid(4)+status(1) garantis forwardés.
+  Bourgeon::Instance().RegisterObserveOpcode(0x0A3B, 7);
+  // ZC_BOURGEON_HATEFFECT_MAP 0x0F17 (opcode CUSTOM > 0x0C35 -> livré par le reader-hook,
+  // data = octets APRÈS [type:2][len:2]) : table itemId->ordinal poussée au login. Cf.
+  // bourgeon_opcodes.h / clif_bourgeon_hateffect_map (moonlight).
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kHatEffectMap);
+}
+
+// Suit les hat effects (.str) actifs sur le JOUEUR à partir de ZC_EQUIPMENT_EFFECT
+// (0x0A3B). Le serveur envoie la liste COMPLÈTE (status=1) au spawn/refresh et des
+// bascules unitaires (status=1 équip / status=0 déséquip). Modèle incrémental sur un
+// ensemble : status=1 => ajoute chaque id, status=0 => retire. On ne garde que le
+// propre joueur (aid == propre aid). `data` = buffer juste après l'opcode :
+// data[0..1]=packetLength (inclut l'opcode), data[2..5]=aid, data[6]=status,
+// data[7..]=liste d'effectId (2 o. chacun).
+void BasicInfoTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                   uint16_t len) {
+  // ZC_BOURGEON_HATEFFECT_MAP (custom recv) : data = APRÈS le header [type:2][len:2]
+  // -> [count:2] puis count × {itemId:4, ordinal:2}. Remplace la table en cache.
+  if (opcode == bopcodes::kHatEffectMap) {
+    if (!data || len < 2) return;
+    const uint16_t count = *reinterpret_cast<const uint16_t*>(data);
+    const uint8_t* p = data + 2;
+    g_hat_item_ord.clear();
+    g_hat_item_ord.reserve(count);
+    for (uint16_t i = 0; i < count; ++i) {
+      if (2 + (i + 1) * 6 > len) break;  // garde-fou (paquet tronqué)
+      const uint32_t id  = *reinterpret_cast<const uint32_t*>(p + i * 6);
+      const uint16_t ord = *reinterpret_cast<const uint16_t*>(p + i * 6 + 4);
+      if (id != 0 && ord != 0) g_hat_item_ord[id] = ord;
+    }
+    return;
+  }
+  if (opcode != 0x0A3B || len < 7 || data == nullptr) return;
+  const uint16_t plen   = *reinterpret_cast<const uint16_t*>(data);
+  const uint32_t aid    = *reinterpret_cast<const uint32_t*>(data + 2);
+  const uint8_t  status = data[6];
+  const uint32_t own    = Bourgeon::Instance().client().session().aid();
+  // Corps = plen - en-tête(opcode2 + len2 + aid4 + status1 = 9). Borné défensivement.
+  int body = static_cast<int>(plen) - 9;
+  if (body < 0) body = 0;
+  const int nfx = body / 2;
+  // DIAG : le paquet arrive-t-il ? l'aid correspond-il au joueur ? (suspect n°1 du
+  // « rien ne s'affiche » : si aid != own, own_hat_effects_ reste vide). Loggé AVANT le
+  // filtre. Note : la comparaison utilise l'aid du joueur (account id).
+  LogDiag("[HatFx] recv 0x0A3B aid={} own={} match={} status={} nfx={} plen={} len={}",
+          aid, own, aid == own ? 1 : 0, static_cast<int>(status), nfx,
+          static_cast<int>(plen), static_cast<int>(len));
+  if (aid != own) return;  // joueur only
+  const uint8_t* p = data + 7;
+  for (int i = 0; i < nfx; ++i) {
+    const uint16_t fx = *reinterpret_cast<const uint16_t*>(p + i * 2);
+    auto it = std::find(own_hat_effects_.begin(), own_hat_effects_.end(), fx);
+    if (status) {
+      if (it == own_hat_effects_.end()) own_hat_effects_.push_back(fx);  // dédup
+    } else if (it != own_hat_effects_.end()) {
+      own_hat_effects_.erase(it);
+    }
+    // NB : pas de résolution Lua ici (OnRecvPacket peut ne pas être sur le thread de
+    // rendu) ; le concret est loggé par le diag d'avatar (thread de rendu, Lua sûr).
+    LogDiag("[HatFx]   ordinal={} status={} (set size now {})", fx,
+            static_cast<int>(status), static_cast<int>(own_hat_effects_.size()));
   }
 }
 

@@ -165,6 +165,8 @@ struct RoSkinConfig {
   float tab_inact[4]  = {210.f / 255, 214.f / 255, 222.f / 255, 1.f};  // onglet inactif
   float input_col[4]  = {206.f / 255, 206.f / 255, 206.f / 255, 1.f};  // champ de saisie
   float header_col[4] = {206.f / 255, 206.f / 255, 206.f / 255, 1.f};  // en-tête tableau
+  float slot_col[4]   = {206.f / 255, 206.f / 255, 206.f / 255, 1.f};  // fond des cases (feuille perso)
+  float doll_col[4]   = {228.f / 255, 230.f / 255, 236.f / 255, 1.f};  // fond du doll/avatar (feuille perso)
   float card_col[4]       = {245.f / 255, 243.f / 255, 232.f / 255, 1.f};  // fond carte item (crème)
   float card_head_col[4]  = {58.f / 255, 55.f / 255, 48.f / 255, 1.f};     // bandeau titre de carte
   float card_head_text[4] = {240.f / 255, 238.f / 255, 228.f / 255, 1.f};  // texte du bandeau de carte

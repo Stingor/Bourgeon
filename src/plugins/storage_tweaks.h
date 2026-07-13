@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "plugins/plugin.h"
 
@@ -41,6 +42,20 @@ class StorageTweaks : public Plugin {
   // ON = viewer ImGui + fenêtre native cachée ; OFF = entrepôt natif seul, aucun viewer.
   // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
   bool imgui_enabled_ = true;
+
+  // Favoris 100 % CLIENT (aucun paquet, aucun flag serveur — le storage n'a pas de
+  // flag favori par item, contrairement à l'inventaire). Set d'ids d'items marqués
+  // favoris -> onglet « Favoris » + étoile sur l'icône. Keyé par id d'item (tous les
+  // stacks/raffinements d'un même id sont favoris ensemble). Persisté par MoonlightUi
+  // (bourgeon_settings.yaml "storage_favorites"). Public pour la persistance.
+  std::unordered_set<uint32_t> favorites_;
+  bool IsFavorite(uint32_t id) const { return favorites_.count(id) != 0; }
+  void ToggleFavorite(uint32_t id) {
+    if (id == 0) return;
+    auto it = favorites_.find(id);
+    if (it != favorites_.end()) favorites_.erase(it);
+    else favorites_.insert(id);
+  }
 
   // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input, comme skill_bar) : si un
   // drag NATIF d'un item d'inventaire est relâché au-dessus du viewer, capture un

@@ -290,6 +290,11 @@ const bool kTabShown[] = {true, true, false, false, false, false, true, true, fa
 // pc_equippoint). Renvoie {clΓ© d'ordre stable, label} ; {99,"Autre"} = non
 // Γ©quipable (consommable...) ou slot inconnu. Costumes prioritaires (les items
 // cash sont majoritairement des costumes/coiffes).
+// Clé de filtre virtuelle : "Costumes hat-effect" = costumes sans viewID rendus
+// via effet .str (ItemToHatOrdinal != 0). N'existe pas dans SlotOf (dérivé de
+// l'emplacement) -> clé dédiée hors de la plage des slots réels (0..13, 99).
+constexpr int kSlotHatEffect = 100;
+
 struct Slot { int key; const char* label; };
 Slot SlotOf(uint32_t e) {
   if (e & 0x2000)            return {13, "Costume cape"};       // COSTUME_GARMENT
@@ -583,9 +588,17 @@ void CashShopTweaks::OnRenderUI() {
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
 
-  //  Filtre par emplacement d'Γ©quipement (slots prΓ©sents dans l'onglet) 
+  //  Filtre par emplacement d'Γ©quipement (slots prΓ©sents dans l'onglet)
+  // Prédicat "costume hat-effect" : rendu par effet .str (ItemToHatOrdinal != 0),
+  // typiquement un costume SANS viewID propre. O(1) (lookup map dans basic_info).
+  auto* bi = Bourgeon::Instance().basic_info();
+  auto IsHatEffect = [bi](const CashItem& ci) {
+    return bi && bi->ItemToHatOrdinal(static_cast<int>(ci.id)) != 0;
+  };
   std::vector<Slot> slots;
+  bool has_hateffect = false;
   for (const auto& ci : tabs_[cur_tab_]) {
+    if (IsHatEffect(ci)) has_hateffect = true;
     const Slot s = SlotOf(ci.location);
     bool seen = false;
     for (const auto& x : slots) if (x.key == s.key) { seen = true; break; }
@@ -595,6 +608,9 @@ void CashShopTweaks::OnRenderUI() {
       slots.insert(slots.begin() + p, s);
     }
   }
+  // Entrée virtuelle "Costumes hat-effect" (clé 100 > toutes les clés réelles ->
+  // en fin de liste), présente seulement si l'onglet en contient.
+  if (has_hateffect) slots.push_back({kSlotHatEffect, "Costumes hat-effect"});
   // Un seul slot "Autre" (99) => onglet non-Γ©quipable : pas de filtre utile.
   const bool slot_filter_useful = slots.size() > 1;
   if (slot_filter_useful) {
@@ -669,7 +685,11 @@ void CashShopTweaks::OnRenderUI() {
     std::vector<const CashItem*> vis;
     vis.reserve(tabs_[cur_tab_].size());
     for (const auto& ci : tabs_[cur_tab_]) {
-      if (cur_slot_ != -1 && SlotOf(ci.location).key != cur_slot_) continue;
+      if (cur_slot_ == kSlotHatEffect) {
+        if (!IsHatEffect(ci)) continue;          // filtre "Costumes hat-effect"
+      } else if (cur_slot_ != -1 && SlotOf(ci.location).key != cur_slot_) {
+        continue;
+      }
       if (filter.PassFilter(ItemName(ci.id))) vis.push_back(&ci);
     }
     // Tri (Nom / ID / Cout, asc/desc).
@@ -755,13 +775,17 @@ void CashShopTweaks::OnRenderUI() {
                                      ImVec2(iw, ih), ImVec2(0, 0), ImVec2(1, 1),
                                      ImVec4(0, 0, 0, 0), img_tint);
       else        ImGui::Dummy(ImVec2(iw, ih));
-      // Survol de l'image -> MÊME aperçu porté que la desc (viewID + emplacement) :
-      // basic_info rend le perso portant l'item (sprites capturés, molette = tourner).
-      if (ci.view != 0 && ImGui::IsItemHovered()) {
+      // Survol de l'image -> aperçu porté (viewID + emplacement) ET/OU hat effect :
+      // basic_info rend le perso portant l'item (sprites capturés + effet .str superposé
+      // pour les costumes SANS viewid). Molette = tourner.
+      if (ImGui::IsItemHovered()) {
         if (auto* bi = Bourgeon::Instance().basic_info()) {
-          if (bi->CanPreview(static_cast<int>(ci.location))) {
+          const int ord = bi->ItemToHatOrdinal(static_cast<int>(ci.id));
+          const bool can_sprite =
+              ci.view != 0 && bi->CanPreview(static_cast<int>(ci.location));
+          if (can_sprite || ord != 0) {
             bi->RenderItemPreviewTooltip(static_cast<int>(ci.view),
-                                         static_cast<int>(ci.location));
+                                         static_cast<int>(ci.location), ord);
             preview_now = true;  // gele le scroll grille la frame suivante (rotation)
           }
         }

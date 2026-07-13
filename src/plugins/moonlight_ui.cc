@@ -72,6 +72,8 @@ ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
   if (n["tabinact"]) UnpackCol(n["tabinact"].as<unsigned>(0), c.tab_inact);
   if (n["input"]) UnpackCol(n["input"].as<unsigned>(0), c.input_col);
   if (n["header"]) UnpackCol(n["header"].as<unsigned>(0), c.header_col);
+  if (n["slot"]) UnpackCol(n["slot"].as<unsigned>(0), c.slot_col);
+  if (n["doll"]) UnpackCol(n["doll"].as<unsigned>(0), c.doll_col);
   if (n["card"]) UnpackCol(n["card"].as<unsigned>(0), c.card_col);
   if (n["cardhead"]) UnpackCol(n["cardhead"].as<unsigned>(0), c.card_head_col);
   if (n["cardtx"]) UnpackCol(n["cardtx"].as<unsigned>(0), c.card_head_text);
@@ -517,6 +519,7 @@ void MoonlightUi::LoadSettings() {
       eb->portrait_dir_             = ui["portrait_dir"].as<int>(0);
       eb->portrait_animate_         = ui["portrait_animate"].as<bool>(true);
       eb->portrait_show_garment_    = ui["portrait_show_garment"].as<bool>(true);
+      // Hat effects (.str) : rendu automatique et toujours actif (aucun réglage persisté).
       for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
         const std::string p =
             std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
@@ -602,6 +605,8 @@ void MoonlightUi::LoadSettings() {
       load_col("ro_skin_tabinact", sc.tab_inact);
       load_col("ro_skin_input", sc.input_col);
       load_col("ro_skin_header", sc.header_col);
+      load_col("ro_skin_slot", sc.slot_col);
+      load_col("ro_skin_doll", sc.doll_col);
       load_col("ro_skin_card", sc.card_col);
       load_col("ro_skin_cardhead", sc.card_head_col);
       load_col("ro_skin_cardtx", sc.card_head_text);
@@ -634,6 +639,8 @@ void MoonlightUi::LoadSettings() {
         setc(d.tab_inact, 70, 74, 86);
         setc(d.input_col, 64, 66, 76);
         setc(d.header_col, 58, 60, 70);
+        setc(d.slot_col, 64, 66, 76);
+        setc(d.doll_col, 54, 56, 66);
         setc(d.card_col, 54, 56, 66);
         setc(d.card_head_col, 34, 36, 44);
         setc(d.card_head_text, 226, 228, 235);
@@ -649,6 +656,8 @@ void MoonlightUi::LoadSettings() {
         setc(d.tab_inact, 226, 214, 190);
         setc(d.input_col, 232, 222, 200);
         setc(d.header_col, 224, 210, 184);
+        setc(d.slot_col, 232, 222, 200);
+        setc(d.doll_col, 240, 232, 214);
         setc(d.card_col, 250, 244, 228);
         setc(d.card_head_col, 150, 120, 80);
         setc(d.card_head_text, 250, 244, 230);
@@ -657,8 +666,17 @@ void MoonlightUi::LoadSettings() {
     }
     if (auto* iv = Bourgeon::Instance().inventory_viewer())
       iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
-    if (auto* stg = Bourgeon::Instance().storage_tweaks())
+    if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
+      // Favoris storage (client-side, keyés par id d'item).
+      if (const YAML::Node favs = ui["storage_favorites"]) {
+        stg->favorites_.clear();
+        for (const YAML::Node& f : favs) {
+          const uint32_t id = f.as<uint32_t>(0);
+          if (id != 0) stg->favorites_.insert(id);
+        }
+      }
+    }
     if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
       cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
@@ -1073,6 +1091,8 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "ro_skin_tabinact" << YAML::Value << pk(sc.tab_inact);
       out << YAML::Key << "ro_skin_input" << YAML::Value << pk(sc.input_col);
       out << YAML::Key << "ro_skin_header" << YAML::Value << pk(sc.header_col);
+      out << YAML::Key << "ro_skin_slot" << YAML::Value << pk(sc.slot_col);
+      out << YAML::Key << "ro_skin_doll" << YAML::Value << pk(sc.doll_col);
       out << YAML::Key << "ro_skin_card" << YAML::Value << pk(sc.card_col);
       out << YAML::Key << "ro_skin_cardhead" << YAML::Value << pk(sc.card_head_col);
       out << YAML::Key << "ro_skin_cardtx" << YAML::Value << pk(sc.card_head_text);
@@ -1091,6 +1111,8 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "tabinact" << YAML::Value << PackCol(p.cfg.tab_inact);
       out << YAML::Key << "input" << YAML::Value << PackCol(p.cfg.input_col);
       out << YAML::Key << "header" << YAML::Value << PackCol(p.cfg.header_col);
+      out << YAML::Key << "slot" << YAML::Value << PackCol(p.cfg.slot_col);
+      out << YAML::Key << "doll" << YAML::Value << PackCol(p.cfg.doll_col);
       out << YAML::Key << "card" << YAML::Value << PackCol(p.cfg.card_col);
       out << YAML::Key << "cardhead" << YAML::Value << PackCol(p.cfg.card_head_col);
       out << YAML::Key << "cardtx" << YAML::Value << PackCol(p.cfg.card_head_text);
@@ -1101,6 +1123,14 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
+    // Favoris storage (ids d'items, triés pour un yaml stable = pas de diff parasite).
+    out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+    if (stg) {
+      std::vector<uint32_t> favs(stg->favorites_.begin(), stg->favorites_.end());
+      std::sort(favs.begin(), favs.end());
+      for (uint32_t id : favs) out << id;
+    }
+    out << YAML::EndSeq;
     auto* cs = Bourgeon::Instance().cashshop_tweaks();
     out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
     auto* sh = Bourgeon::Instance().shop_tweaks();

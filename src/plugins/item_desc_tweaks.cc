@@ -2178,11 +2178,15 @@ void ItemDescTweaks::RenderItemWindow() {
                               static_cast<float>(cill.h)));
           ImGui::EndTooltip();
           ImGui::PopStyleColor(2);
-        } else {  // équipement à viewID -> aperçu du perso
+        } else {  // équipement à viewID (ou costume à hat effect) -> aperçu du perso
           auto* bi = Bourgeon::Instance().basic_info();
-          if (bi && e.view_id != 0 && bi->CanPreview(e.emplacement)) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+          if (bi) {
+            const int ord = bi->ItemToHatOrdinal(static_cast<int>(snap.id));
+            const bool can_sprite = e.view_id != 0 && bi->CanPreview(e.emplacement);
+            if (can_sprite || ord != 0) {
+              ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+              bi->RenderItemPreviewTooltip(e.view_id, e.emplacement, ord);
+            }
           }
         }
       }
@@ -2227,7 +2231,9 @@ void ItemDescTweaks::RenderItemWindow() {
         ImGui::TextDisabled("(molette : tourner)");
         if (hov) {
           ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-          bi->RenderItemPreviewTooltip(e.view_id, e.emplacement);
+          // + hat effect superposé si l'item en a un (costume viewid AVEC hateffect).
+          bi->RenderItemPreviewTooltip(e.view_id, e.emplacement,
+                                       bi->ItemToHatOrdinal(static_cast<int>(snap.id)));
         }
       } else {
         char vid[64];

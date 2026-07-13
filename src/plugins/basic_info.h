@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 #include "plugins/plugin.h"
 
 // Client-side tweaks for the "Basic Info" character window (UIBasicInfoWnd) and
@@ -36,13 +39,29 @@ class BasicInfoTweaks : public Plugin {
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnRenderUI() override;
   void OnTick() override;  // enforces the "hide native Basic Info" option
+  // Observe ZC 0x0A3B (ZC_EQUIPMENT_EFFECT / hat effects) pour SUIVRE les effets de
+  // chapeau (.str) actifs sur le JOUEUR (aid == propre aid) : status=1 ajoute, 0 retire.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
+  // Effets de chapeau (hat effect ids = enum e_hat_effects serveur) actifs sur le
+  // joueur, dérivés de 0x0A3B. Consommés par RenderPlayerAvatar pour superposer les
+  // .str des costumes sans viewid sur l'avatar. Vidés au changement de perso/carte.
+  const std::vector<uint16_t>& own_hat_effects() const { return own_hat_effects_; }
 
   // Tooltip d'aperçu (perso portant l'item) au survol de « ViewID : N » dans
-  // item_desc_tweaks. Réutilise le moteur de capture sprite du portrait. No-op si
-  // l'item n'est pas un headgear/garment. À appeler entre Begin/End d'une frame UI.
-  void RenderItemPreviewTooltip(int view_id, int emplacement);
+  // item_desc_tweaks / cashshop. Réutilise le moteur de capture sprite du portrait.
+  // hat_ordinal != 0 : superpose EN PLUS l'effet .str du hat effect (ordinal
+  // e_hat_effects) sur la tête — permet de prévisualiser les costumes SANS viewid
+  // (view_id==0 + hat_ordinal!=0 = perso de base + effet). No-op si rien à montrer.
+  // À appeler entre Begin/End d'une frame UI.
+  void RenderItemPreviewTooltip(int view_id, int emplacement, int hat_ordinal = 0);
   // true si l'item (par son emplacement) est prévisualisable (headgear/garment).
   bool CanPreview(int emplacement) const;
+  // Résout un item id (client) -> ordinal de hat effect (e_hat_effects) via la table
+  // poussée par le serveur au login (ZC 0x0F17, cf. clif_bourgeon_hateffect_map). 0 si
+  // l'item n'a pas de hat effect (ou table pas encore reçue). Le client ne mappe PAS
+  // item->ordinal nativement. Pour gater/piloter l'aperçu des costumes sans viewid.
+  int ItemToHatOrdinal(int item_id);
 
   // Avatar plein-corps (perso complet : corps + coiffes + garment, apparence
   // live) composité dans la fenêtre ImGui courante, fit aspect DANS [x,y,w,h] et
@@ -133,6 +152,14 @@ class BasicInfoTweaks : public Plugin {
   bool portrait_animate_         = true;   // play the action frames (vs freeze)
   bool portrait_show_garment_    = true;   // feed the equipped garment/cape (full body)
 
+  // ── Hat effects (.str) sur l'avatar ───────────────────────────────────────
+  // Calibrage 100% AUTOMATIQUE (RE : échelle = échelle sprite car R=1/jobScale ; ancre =
+  // pieds - 11 px sprite ; cf. RenderPlayerAvatar). AUCUN réglage manuel (pas d'offset/échelle
+  // à la main : ils ne transféraient pas d'un effet/pose à l'autre). Seul un on/off subsiste.
+  int   hat_diag_concrete_ = 0;   // dernier id d'effet CONCRET rendu (0=aucun)
+  int   hat_diag_layers_   = 0;   // nb de couches .str capturées au dernier rendu (0=échec spawn/capture)
+  int   hat_diag_active_   = 0;   // nb de hat effects actifs (own_hat_effects_.size())
+
   PortraitElem ports_[kPortCount] = {
     /* head  */ {true,  60,  60, 100, 100, {0.05f, 0.05f, 0.07f, 0.78f},
                  {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f},
@@ -155,6 +182,10 @@ class BasicInfoTweaks : public Plugin {
  private:
   bool in_game_      = false;
   bool drag_pending_ = false;  // geometry changed mid-drag, awaiting mouse-up
+
+  // Hat effects (.str) actifs sur le joueur, suivis via 0x0A3B (cf. OnRecvPacket).
+  // Petit vecteur (0-3 en pratique) ; dédup manuel à l'insertion.
+  std::vector<uint16_t> own_hat_effects_;
 
   // Custom drag/resize state (only one bar is ever dragged at a time).
   enum DragEdge { kEdgeL = 1, kEdgeR = 2, kEdgeT = 4, kEdgeB = 8 };

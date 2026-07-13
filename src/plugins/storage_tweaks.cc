@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -266,7 +267,9 @@ enum SubDim { kSubNone = 0, kSubWeapon, kSubArmor, kSubCard, kSubAmmo, kSubCostu
 // Masque des slots costume (rAthena EQP_COSTUME_* : head top/mid/low + garment).
 // Un item avec un de ces bits = costume -> onglet Costumes, exclu des Armures.
 constexpr uint32_t kCostumeMask = 0x3C00;
-struct StgCat { const char* label; const int* types; int n; int sub; };
+// `fav` = onglet spécial « Favoris » : filtré non par type mais par le set client
+// favorites_ (cf. StorageTweaks::IsFavorite). Les autres champs sont ignorés.
+struct StgCat { const char* label; const int* types; int n; int sub; bool fav; };
 const int kCatConso[]  = {0, 1, 2};
 const int kCatArme[]   = {5, 8, 9, 0xf};
 const int kCatArmure[] = {4, 0xb, 0xc, 0xd, 0xe};
@@ -275,17 +278,18 @@ const int kCatMuni[]   = {10, 0x10, 0x11, 0x13};
 const int kCatCash[]   = {0x12};
 const int kCatDivers[] = {3, 7};
 const StgCat kStgCats[] = {
-    {"Tout", nullptr, 0, kSubNone},
-    {"Consos", kCatConso, 3, kSubNone},
-    {"Armes", kCatArme, 4, kSubWeapon},
-    {"Armures", kCatArmure, 5, kSubArmor},
-    {"Costumes", nullptr, 0, kSubCostume},  // filtré par equip mask, pas par type
-    {"Cartes", kCatCarte, 1, kSubCard},
-    {"Munitions", kCatMuni, 4, kSubAmmo},
-    {"Cash", kCatCash, 1, kSubNone},
-    {"Etc", kCatDivers, 2, kSubNone},
+    {"Tout", nullptr, 0, kSubNone, false},
+    {"Favoris", nullptr, 0, kSubNone, true},  // filtré par le set client favorites_
+    {"Consos", kCatConso, 3, kSubNone, false},
+    {"Armes", kCatArme, 4, kSubWeapon, false},
+    {"Armures", kCatArmure, 5, kSubArmor, false},
+    {"Costumes", nullptr, 0, kSubCostume, false},  // filtré par equip mask, pas par type
+    {"Cartes", kCatCarte, 1, kSubCard, false},
+    {"Munitions", kCatMuni, 4, kSubAmmo, false},
+    {"Cash", kCatCash, 1, kSubNone, false},
+    {"Etc", kCatDivers, 2, kSubNone, false},
 };
-constexpr int kNumStgCats = 9;
+constexpr int kNumStgCats = 10;
 bool ItemInCat(int tab, int type) {
   if (tab <= 0 || tab >= kNumStgCats) return true;  // Tout
   const StgCat& c = kStgCats[tab];
@@ -510,7 +514,8 @@ void HelpMarkerShortcuts() {
       "Raccourcis entrepot\n\n"
       "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
       "  pile = menu contextuel : Retirer 1 / tout / quantite)\n"
-      "- Clic droit : menu contextuel\n"
+      "- Ctrl + clic gauche : (de)marquer l'item comme favori (onglet Favoris)\n"
+      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
       "- Ctrl + clic droit : description\n"
       "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
       "- Glisser un item du viewer -> inventaire : retrait ; -> chariot : storage vers cart\n"
@@ -520,6 +525,25 @@ void HelpMarkerShortcuts() {
       "- Bouton Quitter / X : ferme l'entrepot");
   ImGui::PopTextWrapPos();
   ImGui::EndTooltip();
+}
+
+// Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices
+// chargées (ProggyClean = ASCII, Malgun = range coréen) -> tracé main via
+// ImDrawList : 10 triangles en éventail depuis le centre (l'étoile est concave,
+// donc AddConvexPolyFilled est exclu), + un liseré foncé pour le contraste sur
+// n'importe quelle icône. cx,cy = centre ; r = rayon des pointes.
+void DrawFavStar(ImDrawList* dl, float cx, float cy, float r, ImU32 fill,
+                 ImU32 edge) {
+  ImVec2 p[10];
+  for (int i = 0; i < 10; ++i) {
+    const float rad = (i & 1) ? r * 0.42f : r;         // creux / pointe
+    const float a = -1.57079633f + i * 0.62831853f;    // -90° puis +36° par point
+    p[i] = ImVec2(cx + std::cos(a) * rad, cy + std::sin(a) * rad);
+  }
+  const ImVec2 c(cx, cy);
+  for (int i = 0; i < 10; ++i)
+    dl->AddTriangleFilled(c, p[i], p[(i + 1) % 10], fill);
+  dl->AddPolyline(p, 10, edge, ImDrawFlags_Closed, 1.0f);
 }
 
 }  // namespace
@@ -840,13 +864,17 @@ void StorageTweaks::OnRenderUI() {
     filter.Build();
 
   // Vue onglet+nom (avant sous-catégorie) : sert à connaître les sous-cats présentes.
-  const int sub_dim = kStgCats[cur_tab_].sub;
+  // Onglet Favoris : filtre par le set client (IsFavorite), pas par type d'item.
+  const int  sub_dim = kStgCats[cur_tab_].sub;
+  const bool fav_tab = kStgCats[cur_tab_].fav;
   std::vector<int> tabview;
   tabview.reserve(item_count_);
-  for (int i = 0; i < item_count_; ++i)
-    if (ItemInTab(cur_tab_, items_[i].type, submeta(items_[i].id).equip) &&
-        filter.PassFilter(items_[i].name))
-      tabview.push_back(i);
+  for (int i = 0; i < item_count_; ++i) {
+    const bool in_tab =
+        fav_tab ? IsFavorite(items_[i].id)
+                : ItemInTab(cur_tab_, items_[i].type, submeta(items_[i].id).equip);
+    if (in_tab && filter.PassFilter(items_[i].name)) tabview.push_back(i);
+  }
 
   // Combo de sous-catégorie (armes par type, armures/cartes par slot, munitions par
   // type) : ne liste que les sous-cats réellement présentes, triées par clé.
@@ -1000,18 +1028,25 @@ void StorageTweaks::OnRenderUI() {
       // ── Colonne Item : icône + nom cliquable (clic-droit = description) ──
       ImGui::TableNextColumn();
       const IconTex ic = ResolveIcon(items_[idx].id, items_[idx].identified);
+      const ImVec2 icon_pos = ImGui::GetCursorScreenPos();
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float w = kIcon * static_cast<float>(ic.w) / ic.h;
         ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, kIcon));
       } else {
         ImGui::Dummy(ImVec2(kIcon, kIcon));  // garde l'alignement si pas d'icône
       }
+      // Marqueur favori : petite étoile dorée en coin haut-gauche de l'icône.
+      if (IsFavorite(items_[idx].id))
+        DrawFavStar(ImGui::GetWindowDrawList(), icon_pos.x + 5.0f, icon_pos.y + 5.0f,
+                    5.0f, IM_COL32(255, 205, 40, 255), IM_COL32(60, 40, 0, 220));
       ImGui::SameLine();
       ImGui::PushID(idx);
-      // Clic GAUCHE : Shift -> tout retirer (hotkey native) ; 1 seul item ->
-      // retrait direct ; sinon (pile) -> ouvre le menu de choix de quantité.
+      // Clic GAUCHE : Ctrl -> (dé)favori ; Shift -> tout retirer (hotkey native) ;
+      // 1 seul item -> retrait direct ; sinon (pile) -> menu de choix de quantité.
       if (ImGui::Selectable(items_[idx].name[0] ? items_[idx].name : "(?)")) {
-        if (ImGui::GetIO().KeyShift || items_[idx].amount <= 1)
+        if (ImGui::GetIO().KeyCtrl)
+          ToggleFavorite(items_[idx].id);
+        else if (ImGui::GetIO().KeyShift || items_[idx].amount <= 1)
           WithdrawItem(items_[idx].index, items_[idx].amount);
         else
           ImGui::OpenPopup("ctx");
@@ -1052,6 +1087,9 @@ void StorageTweaks::OnRenderUI() {
           POINT pt;
           if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].id, pt.x, pt.y);
         }
+        if (ImGui::MenuItem(IsFavorite(items_[idx].id) ? "Retirer des favoris"
+                                                       : "Ajouter aux favoris"))
+          ToggleFavorite(items_[idx].id);
         ImGui::Separator();
         const int amt = items_[idx].amount;
         const int index = items_[idx].index;
