@@ -1575,6 +1575,7 @@ static void PopStyleCompact()
 }
 
 namespace {
+
 // A full-screen UI (world map = window id 0x8c) replaces the in-game HUD; hide
 // the alignment grid while it is open. (Mirrors BasicInfoTweaks/MenuIconTweaks.)
 bool HudReplaced() {
@@ -1582,15 +1583,15 @@ bool HudReplaced() {
   return reinterpret_cast<FindWindowFn>(0x00a47b90)(
              reinterpret_cast<void*>(0x0131f4e8), 0x8c) != nullptr;
 }
+
 }  // namespace
 
 void AlignGrid::Draw() const {
   const ImVec2 ds = ImGui::GetIO().DisplaySize;
   const float step = static_cast<float>(cell());
   ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under windows
-  const ImU32 col = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(color[0], color[1], color[2], color[3]));
-  // Anchor the grid on the screen centre: offset the first line so a grid line
+  const ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(color[0], color[1], color[2], color[3]));
+  // Anchor the grid on the screen center: offset the first line so a grid line
   // falls exactly on the centre, keeping the mesh symmetric left/right and
   // top/bottom (the bright centre cross then lands right on a line).
   const float ox = std::fmod(ds.x * 0.5f, step);
@@ -1599,46 +1600,47 @@ void AlignGrid::Draw() const {
     dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, ds.y), col);
   for (float y = oy; y <= ds.y; y += step)
     dl->AddLine(ImVec2(0.0f, y), ImVec2(ds.x, y), col);
-  // Brighter centre cross for quick centring.
+  // Brighter center cross for quick centering.
   float ca = color[3] * 2.5f;
   if (ca > 1.0f) ca = 1.0f;
-  const ImU32 cc = ImGui::ColorConvertFloat4ToU32(
-      ImVec4(color[0], color[1], color[2], ca));
+  const ImU32 cc = ImGui::ColorConvertFloat4ToU32(ImVec4(color[0], color[1], color[2], ca));
   dl->AddLine(ImVec2(ds.x * 0.5f, 0.0f), ImVec2(ds.x * 0.5f, ds.y), cc, 1.5f);
   dl->AddLine(ImVec2(0.0f, ds.y * 0.5f), ImVec2(ds.x, ds.y * 0.5f), cc, 1.5f);
 }
 
 // ── ImGui panel ───────────────────────────────────────────────────────────
-
 void MoonlightUi::OnRenderUI() {
   if (!in_game_) return;
-
 
   // Global alignment grid (shared HUD overlay). Drawn here on the background
   // list so it shows even with the bars hidden; suppressed while a full-screen
   // UI (world map) replaces the HUD, matching the bars/icons.
   if (grid_.show && !HudReplaced()) grid_.Draw();
 
-  // Persist EXP-bar geometry once, the frame after the user finishes a drag.
+  // Persist bars geometry once, the frame after the user finishes a drag.
   if (auto* eb = Bourgeon::Instance().basic_info(); eb && eb->geometry_dirty_) {
     eb->geometry_dirty_ = false;
     SaveSettings();
   }
+
   // Same for menu-icon positions (set on drag-end in MenuIconTweaks).
   if (auto* mi = Bourgeon::Instance().menu_icons(); mi && mi->geometry_dirty_) {
     mi->geometry_dirty_ = false;
     SaveSettings();
   }
+
   // Skill-bar config (set on any panel change / drag-end in SkillBarTweaks).
   if (auto* sb = Bourgeon::Instance().skill_bar(); sb && sb->dirty_) {
     sb->dirty_ = false;
     SaveSettings();
   }
 
+  // Persist the collapsed state of the main window (set on any collapse/expand).
   if (apply_collapse_) {
     ImGui::SetNextWindowCollapsed(ui_collapsed_, ImGuiCond_Always);
     apply_collapse_ = false;
   }
+
   // Échap a demandé le repli (fenêtre principale = dernière avant le jeu) : on force le
   // repli ce frame ; la détection is_collapsed ci-dessous met à jour ui_collapsed_ + persiste.
   if (collapse_requested_) {
@@ -1646,10 +1648,12 @@ void MoonlightUi::OnRenderUI() {
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Always);
   }
 
+  // Default window style (rounded corners, thin border, rounded sliders/knobs).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
+
   // Skin RO (toggleable : BeginRoWindow retombe sur ImGui::Begin si skin off).
   ro::BeginRoWindow("Moonlight-Destiny");
 
@@ -1658,24 +1662,18 @@ void MoonlightUi::OnRenderUI() {
     ui_collapsed_ = is_collapsed;
     SaveSettings();
   }
+
   // Fenêtre principale = cible « minimiser » d'Échap, en DERNIER recours (seulement
   // dépliée, seulement s'il ne reste aucune autre fenêtre fermable) : Échap la replie
   // avant d'être rendu au jeu pour ses fenêtres natives.
-  if (!is_collapsed)
-    ro::RegisterEscapeMinimizeWindow(&collapse_requested_);
-  ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-  if (!is_collapsed) {
+  if (!is_collapsed) ro::RegisterEscapeMinimizeWindow(&collapse_requested_);
 
-    if (ImGui::CollapsingHeader("Règles du serveur"))
-    {
-      auto BulletWrapped = [](const char* text) {
-        ImGui::Bullet(); SameLine(); ImGui::TextWrapped("%s", text);
-      };
-      ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
-      if (ImGui::TreeNode("Règlements généraux"))
-      {
-        ImGui::TextWrapped("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
-        ImGui::Spacing();
+  if (!is_collapsed) {
+    if (CollapsingHeader("Règles du serveur")) {
+      RedText("CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
+      if (TreeNode("Règlements généraux")) {
+        TextWrapped("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
+        Spacing();
         BulletWrapped("Les joueurs doivent se respecter et garder un langage propre et courtois.");
         BulletWrapped("Les propos visant à rejeter un nouveau joueur sont interdits.");
         BulletWrapped("L'utilisation de programmes tels que bots ou hacks = ban définitif sans hésitation.");
@@ -1690,28 +1688,26 @@ void MoonlightUi::OnRenderUI() {
         BulletWrapped("Le langage SMS est à proscrire.");
         BulletWrapped("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur.");
         BulletWrapped("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus...");
-        ImGui::TreePop();
+        TreePop();
       }
-      ImGui::Spacing();
-      if (ImGui::TreeNode("Sur le serveur de jeu"))
-      {
+      Spacing();
+      if (TreeNode("Sur le serveur de jeu")) {
         BulletWrapped("Insultes et vols de drop (Looting) = INTERDITS.");
         BulletWrapped("Heal ou buff un monstre qui ne vous appartient pas sans accord = puni.");
         BulletWrapped("Si vous êtes banni définitivement, tous les comptes liés à votre IP/PC le seront aussi.");
         BulletWrapped("Les sanctions (mute, jail, kick, ban) sont à la discrétion du staff.");
         BulletWrapped("Le Kill Steal est strictement interdit (voir définition). Utilisez @noks pour vous protéger.");
-        ImGui::Spacing();
+        Spacing();
         BulletWrapped("Les MVPs sont FFA :");
-        ImGui::Indent();
-        ImGui::TextWrapped("Vous pouvez les attaquer même si quelqu'un est dessus.");
-        ImGui::TextWrapped("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
-        ImGui::Text("Si vous ne voulez pas vous faire KS, faites @noks <3");
-        ImGui::Unindent();
-        ImGui::TreePop();
+        Indent();
+          TextWrapped("Vous pouvez les attaquer même si quelqu'un est dessus.");
+          TextWrapped("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
+          TextWrapped("Si vous ne voulez pas vous faire KS, faites @noks <3");
+        Unindent();
+        TreePop();
       }
-      ImGui::Spacing();
-      if (ImGui::TreeNode("Le staff"))
-      {
+      Spacing();
+      if (TreeNode("Le staff")) {
         BulletWrapped("Si vous cassez les couilles du staff ban/delete non temporaire.");
         BulletWrapped("Aucun membre du staff ne vous demandera votre mot de passe.");
         BulletWrapped("Aucun membre du staff ne vous demandera votre login.");
@@ -1721,101 +1717,93 @@ void MoonlightUi::OnRenderUI() {
         BulletWrapped("Le staff ne donne pas d'items (hors events).");
         BulletWrapped("Les membres du staff ne sont pas des robots. Soyez courtois, cherchez avant de demander.");
         BulletWrapped("Les questions dont la réponse est sur une database = évitez.");
-        ImGui::TreePop();
+        TreePop();
       }
-      ImGui::Spacing();
-      if (ImGui::TreeNode("Règlements dans les endroits spécifiques"))
-      {
-        if (ImGui::TreeNode("Salle de duel"))
-        {
+      Spacing();
+      if (TreeNode("Règlements dans les endroits spécifiques")) {
+        if (TreeNode("Salle de duel")) {
           BulletWrapped("Ce n'est pas un salon de thé");
           BulletWrapped("Si vous regardez, ok. Sinon, laissez la place.");
           BulletWrapped("Utilisez : @duel, @invite, @accept, @reject, @leave.");
-          ImGui::TreePop();
+          TreePop();
         }
-        if (ImGui::TreeNode("Carnage Room"))
-        {
+        if (TreeNode("Carnage Room")) {
           BulletWrapped("Loi du plus fort.");
           BulletWrapped("Amusez‑vous dans le respect.");
-          ImGui::TreePop();
+          TreePop();
         }
-        if (ImGui::TreeNode("PVP Room"))
-        {
+        if (TreeNode("PVP Room")) {
           BulletWrapped("Free Kill interdit.");
-          ImGui::TreePop();
+          TreePop();
         }
-        if (ImGui::TreeNode("DB Room"))
-        {
+        if (TreeNode("DB Room")) {
           BulletWrapped("Kill Steal STRICTEMENT interdit.");
           BulletWrapped("Si la personne meurt ou se hide les mobs sont à vous.");
-          ImGui::TreePop();
+          TreePop();
         }
-        if (ImGui::TreeNode("Guild Dungeon"))
-        {
+        if (TreeNode("Guild Dungeon")) {
           BulletWrapped("Libre de tuer les guildiens adverses.");
-          ImGui::TreePop();
+          TreePop();
         }
-        if (ImGui::TreeNode("WoE Castles"))
-        {
+        if (TreeNode("WoE Castles")) {
           BulletWrapped("Interdiction d'apporter de l'aide via un perso non participant (multi-account/perso).");
           BulletWrapped("Les ententes entre guildes sont informelles, non officielles, non sanctionnables.");
           BulletWrapped("Elles doivent être discutées entre guildes dominantes, dans le respect.");
-          ImGui::TreePop();
+          TreePop();
         }
-        ImGui::TreePop();
+        TreePop();
       }
-      ImGui::Spacing();
-      if (ImGui::TreeNode("Logiciels tiers"))
-      {
-        ImGui::Text("Autorisations :");
-        ImGui::Indent();
+      Spacing();
+      if (TreeNode("Logiciels tiers")) {
+        TextUnformatted("Autorisations :");
+        Indent();
           BulletWrapped("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :");
           BulletWrapped("SIMPLE");
           BulletWrapped("BASIQUE");
           BulletWrapped("Pas un tableau de bord de la NASA");
           BulletWrapped("Vous bouclez le spell, éventuellement un clic en plus pour les AOE type Storm Gust, et basta.");
-        ImGui::Unindent();
-        ImGui::Text("Quality of Life :");
-        ImGui::Indent();
+        Unindent();
+        TextUnformatted("Quality of Life :");
+        Indent();
           BulletWrapped("Le but, c'est du Q.O.L");
           BulletWrapped("Vous préservez votre clavier, votre souris, vos doigts, vos poignets, vos oreilles, et celles de vos voisins qui n'ont rien demandé.");
           BulletWrapped("Bref : du confort, pas du cheat.");
-        ImGui::Unindent();
-        ImGui::Text("Les trucs interdits (et je rigole zéro) :");
-        ImGui::Indent();
-          ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Ne me prenez pas pour un jambon.");
-          ImGui::Text("Si vous me sortez :");
-          ImGui::Indent();
+        Unindent();
+        TextUnformatted("Les trucs interdits (et je rigole zéro) :");
+        Indent();
+          RedText("Ne me prenez pas pour un jambon.");
+          TextUnformatted("Si vous me sortez :");
+          Indent();
             BulletWrapped("un auto-buffer");
             BulletWrapped("un auto-pot");
             BulletWrapped("un super TP/SG de physicien quantique");
             BulletWrapped("un script qui ferait rougir Tony Stark");
-          ImGui::Unindent();
-          ImGui::Text("Alors là :");
-          ImGui::Indent();
+          Unindent();
+          TextUnformatted("Alors là :");
+          Indent();
             BulletWrapped("Je vous fais le fion.");
             BulletWrapped("Je m'en bats les couilles.");
             BulletWrapped("Je vous dégage plus vite que Thanos avec son finger snap. *Snap*");
-          ImGui::Unindent();
-          ImGui::Text("Les excuses bidon :");
-          ImGui::Indent();
+          Unindent();
+          TextUnformatted("Les excuses bidon :");
+          Indent();
             BulletWrapped("\"Mais les autres serveurs le font...\"");
             BulletWrapped("\"Mais j'étais pas AFK, je regardais Naruto à côté...\"");
-          ImGui::Unindent();
-          ImGui::Text("Résultat :");
-          ImGui::Indent();
+          Unindent();
+          TextUnformatted("Résultat :");
+          Indent();
             BulletWrapped("Pouf.");
             BulletWrapped("Vous étiez sur Moon.");
             BulletWrapped("Vous ne l'êtes plus.");
             BulletWrapped("Et il ne restera de vous que des ruines numériques sur Wayback Machine.");
-          ImGui::Unindent();
-        ImGui::Unindent();
-        ImGui::TreePop();
+          Unindent();
+        Unindent();
+        TreePop();
       }
     }
 
     // ── Chat Box Settings ────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Chat Settings"))
+    if (CollapsingHeader("Chat Settings"))
     {
       PushStyleCompact();
       if (ImGui::Checkbox("Chat Discord (Gonryun only)", &discord_chat_)) {
@@ -1958,7 +1946,7 @@ void MoonlightUi::OnRenderUI() {
       PopStyleCompact();
     }
     // ── DPS Meter ────────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("DPS Meter")) {
+    if (CollapsingHeader("DPS Meter")) {
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
         bool changed = false;
         changed |= ImGui::Checkbox("Afficher", &dps->visible_);
@@ -2016,7 +2004,7 @@ void MoonlightUi::OnRenderUI() {
     // ── Interface de jeu  ────────────────────────────────────────────────────
     // NB: la vue caméra FPS (FpsViewTweaks) reste dans le code (toggle F9) mais
     // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
-    if (ImGui::CollapsingHeader("Mini-jeux")) {
+    if (CollapsingHeader("Mini-jeux")) {
       // ── DOOM ──
       SeparatorText("DOOM");
       if (auto* doom = Bourgeon::Instance().doom()) {
@@ -2070,7 +2058,7 @@ void MoonlightUi::OnRenderUI() {
         ImGui::TextDisabled("Indisponible.");
       }
     }
-    if (ImGui::CollapsingHeader("Interface de jeu")) {
+    if (CollapsingHeader("Interface de jeu")) {
       PushStyleCompact();
       if (ImGui::Checkbox("Grille d'alignement", &grid_.show)) SaveSettings();
       SameLine(); HelpMarker(
@@ -2154,14 +2142,14 @@ void MoonlightUi::OnRenderUI() {
             PushStyleCompact();
             if (ImGui::Checkbox("Afficher les barres", &eb->visible_))
               SaveSettings();
-            ImGui::Indent();
+            Indent();
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
               if (i) SameLine();
               if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
                 SaveSettings();
             }
             SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
-            ImGui::Unindent();
+            Unindent();
 
             if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
                                 &eb->locked_))
@@ -2325,7 +2313,7 @@ void MoonlightUi::OnRenderUI() {
               ImGui::PushID(i);
               if (ImGui::Checkbox(BasicInfoTweaks::kPortLabels[i], &e.show))
                 SaveSettings();
-              ImGui::Indent();
+              Indent();
               if (ImGui::ColorEdit4("Fond / Opacité", e.bg,
                                     ImGuiColorEditFlags_NoInputs |
                                         ImGuiColorEditFlags_AlphaBar))
@@ -2338,7 +2326,7 @@ void MoonlightUi::OnRenderUI() {
               ImGui::SetNextItemWidth(160.0f);
               if (WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f))
                 SaveSettings();
-              ImGui::Unindent();
+              Unindent();
               ImGui::PopID();
             }
 
@@ -2378,7 +2366,7 @@ void MoonlightUi::OnRenderUI() {
                 "les icônes normalement.");
 
             // Per-icon show/hide. icons() is populated once in-game.
-            if (ImGui::TreeNode("Afficher / masquer les icônes")) {
+            if (TreeNode("Afficher / masquer les icônes")) {
               auto& icons = mi->icons();
               if (icons.empty()) {
                 ImGui::TextDisabled("(disponible une fois en jeu)");
@@ -2441,7 +2429,7 @@ void MoonlightUi::OnRenderUI() {
                 "ON : la description apparaît près du curseur à chaque ouverture.\n"
                 "OFF : elle réapparaît à sa dernière position connue.");
             if (idt->desc_spawn_at_cursor()) {
-              ImGui::Indent();
+              Indent();
               // Ancrage : quel coin/point de la fenêtre se pose sur le curseur.
               const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche",
                                         "Bas-droite", "Centre"};
@@ -2459,7 +2447,7 @@ void MoonlightUi::OnRenderUI() {
                 SaveSettings();
               SameLine(); HelpMarker(
                   "Décalage depuis le curseur (molette au survol pour ajuster).");
-              ImGui::Unindent();
+              Unindent();
             }
           } else {
             ImGui::TextDisabled("(plugin indisponible)");
@@ -2564,7 +2552,7 @@ void MoonlightUi::OnRenderUI() {
       PopStyleCompact();
     }
     // ── Graphismes (color grading post-process, SettingsTweaks plugin) ───────
-    if (ImGui::CollapsingHeader("Graphismes")) {
+    if (CollapsingHeader("Graphismes")) {
       PushStyleCompact();
       if (auto* st = Bourgeon::Instance().settings_tweaks())
         st->DrawSettings();
@@ -2572,7 +2560,7 @@ void MoonlightUi::OnRenderUI() {
     }
 
     // ── Commands Settings ────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Commands Settings"))
+    if (CollapsingHeader("Commands Settings"))
     {
       PushStyleCompact();
       ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
@@ -2662,7 +2650,7 @@ void MoonlightUi::OnRenderUI() {
         }
         if (ImGui::BeginTabItem("Autoloots"))
         {
-          ImGui::Spacing();
+          Spacing();
           {// @autoloot
             int rate = aloot_rate_;
             ImGui::SetNextItemWidth(130.0f);
@@ -2710,7 +2698,7 @@ void MoonlightUi::OnRenderUI() {
             }
           }
           Separator();
-          if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
+          if (TreeNode("@autoloottype")) {// @autoloottype
             TextUnformatted("@autoloottype :");
             SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
             SameLine();
@@ -2756,7 +2744,7 @@ void MoonlightUi::OnRenderUI() {
           SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
           Separator();
-          if (ImGui::TreeNode("@autolootid")) {// @autolootid
+          if (TreeNode("@autolootid")) {// @autolootid
             TextUnformatted("@autolootid :");
             SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
             SameLine();

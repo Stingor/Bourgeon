@@ -52,16 +52,48 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt =
 inline void SameLine(float x = 0.0f, float spacing = -1.0f) {
     ImGui::SameLine(x, spacing);
 }
+inline void Spacing() {
+    ImGui::Spacing();
+}
 inline void Separator() {
     ImGui::Separator();
+}
+inline void BulletWrapped(const char* text) {
+    ImGui::Bullet(); ImGui::SameLine(); ImGui::TextWrapped("%s", text);
+}
+inline void TextWrapped(const char* text) {
+    ImGui::TextWrapped("%s", text);
 }
 inline void SeparatorText(const char* text) {
     ImGui::SeparatorText(text);
 }
+inline void Text(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    ImGui::TextV(fmt, args);
+    va_end(args);
+}
 inline void TextUnformatted(const char* text) {
     ImGui::TextUnformatted(text);
 }
-
+inline void RedText(const char* text) {
+    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", text);
+}
+inline bool CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0) {
+    return ImGui::CollapsingHeader(label, flags);
+}
+inline bool TreeNode(const char* label) {
+    return ImGui::TreeNode(label);
+}
+inline void TreePop() {
+    ImGui::TreePop();
+}
+inline void Indent(float indent_w = 0.0f) {
+    ImGui::Indent(indent_w);
+}
+inline void Unindent(float indent_w = 0.0f) {
+    ImGui::Unindent(indent_w);
+}
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:

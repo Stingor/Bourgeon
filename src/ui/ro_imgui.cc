@@ -583,6 +583,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);  // largeur pièces RO
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
+
   // Hauteur de barre de titre ImGui = FontSize + FramePadding.y*2. On règle
   // FramePadding.y pour qu'elle vaille EXACTEMENT la hauteur de l'art (17px),
   // sinon l'art est étiré verticalement (plus haut que le natif, dégradé déformé).
@@ -590,7 +592,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   if (pad_y < 0.0f) pad_y = 0.0f;
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
-  g_skin_vars = 8;
+  g_skin_vars = 9;
 
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
   RegisterEscapeWindow(p_open);
