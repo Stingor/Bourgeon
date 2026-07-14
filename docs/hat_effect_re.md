@@ -195,6 +195,76 @@ On applique **exactement le même patron** aux effets STR :
   additif, raffinable par-couche via le blend capturé.
 - DX7 : callback additif DX9-only ; overlay effet dégradé sous le proxy DX7 (legacy).
 
+## ⚠ Deuxième famille : hat effects `hatEffectID` (EZ-particle, PAS `.str`) — RE 2026-07-13
+
+`HatEffectInfo.lub` a **deux formes** d'entrée :
+- `resourceFileName = "x.str"` → billboard STR (résolveur `GetHatEfResName`) — **géré** (gold_shower…).
+- **`hatEffectID = <id>`** (ex. `[HAT_EF_Digital_Space] = { hatEffectID = 1240 }`) → **effet PARTICULES
+  procédural** (« EZ-effect »), **PAS un `.str`**. `HatEffectIDs.lub` : `HAT_EF_Digital_Space = 87`
+  (ordinal). `GetHatEfResName(87)` renvoie **vide** → la fiche perso est **NUE** (validé live).
+
+**Chemin natif (RE live+Ghidra 2026-07-13, effet équipé, x32dbg)** :
+`0x0A3B` → `Effect_ApplyEffectIdToActor(id=87+0x98a=2529)` → `GetEffectType` classe HAT →
+`Effect_ApplyHatEffectViaLua(0xc41ce0)` : `GetHatEffectID(87)=1240` puis **msg acteur 0x6d** :
+`Actor_OnMsg(0xd473b0)[vtbl+8]` → table `0xd47ebc[0x6d]=0x15` → `Actor_OnMsg_Base(0xd3c500)`
+→ table `0xd3d5d4[0x6e]=0x10` → `Actor_OnMsg_AppearanceEffects(0xc4aea0)` → byte-table
+`0xc55098[0x6d]=0x55` → jumptable `0xc54f40[0x55]=0xc54e84` → **`Actor_ManagePrimitiveEffectList
+(0xc4a7a0)` case 3** → `Effect_SpawnPrimitiveById(actor,1240)`.
+
+**Objet live (validé par lecture mémoire)** : `ownActor+0x144` = liste (count `+0x148`=3) de nœuds
+primitifs (vtable `0x01088de8`). Le nœud id **1240** (`+0x168`) a `CStr +0x7ec = 0` (aucun `.str`)
+et **`Effect_OnCreateBuildEmitters(0xbb80e0)` ne couvre que 300..373** → rien. MAIS `node+0x11c84`
+= **nœud ENFANT** (vtable **`0x01088c48`**) = **nœud EZ-particules**. Son draw
+`EzEffect_Draw(0xb666d0)` (vtbl+0x0c) dispatche sur `child+0x1d0` (~170 sous-effets) et **pousse un
+quad 2D** (`child+0x2210` : 4 verts pos/couleur/UV, textures `.tga/.bmp` p.ex. `effect\ring_purple.tga`,
+`Magic_Violet.tga`) via **`EzEffect_SubmitQuad(0x00550de0)` → `RenderQueue_InsertPrimitive`
+(g_SceneRenderQueue)**.
+
+🔑 **Conséquence capture** : ce rendu **NE passe NI par `Effect_SubmitStrQuad`(0xbcfb10) NI par
+`Actor_SubmitSpriteQuad`(0xa1b7c0)** — les DEUX hooks de Bourgeon aujourd'hui. D'où l'invisibilité
+totale dans les previews. **Point de capture pour ces effets = hooker `EzEffect_SubmitQuad`
+(0x00550de0) / `RenderQueue_InsertPrimitive`** et lire le quad (4 verts écran + couleur + UV +
+texture, comme la capture STR mais struct source différente à `node+0x2210`). Pilotage offscreen =
+répliquer `Effect_SpawnPrimitiveById(1240)` + drive/draw du nœud enfant EZ (émetteurs qui spawnent
+des sous-nœuds dans le temps) → plus lourd que le STR. Adresses renommées Ghidra : `EzEffect_Draw`,
+`EzEffect_SubmitQuad`, `Actor_ManagePrimitiveEffectList`, commentaires sur `Effect_ApplyHatEffectViaLua`.
+
+**Statut EZ (2 familles)** : [x] RE complète (chaîne + capture point + filtre propriétaire, offsets
+vérifiés live). [x] **Phase 1** (capture, VALIDÉE live : `[EzFx] captured=256 seen=7200 owner=1`) :
+hook `Hooked_EzQuad`/`InstallEzCapture` + `EzCapTri` + `EzOwnedRoot` (remonte `+0x140` -> nœud dont
+`+0x138`==ownActor) + arme/reset dans `OnTick`, passthrough non destructif, cap 2048. [x] **Phase 2
+code** (composite fiche perso) : `DrawEzCapTris` re-ancre les sommets écran ABSOLU sur le doll —
+ancre = `Scene_ProjectWorldToScreen(g_ez_queue, world=root+0x10, viewMtx=cam+0x98, &sx,&sy,&invW)`,
+échelle `S = Effect_DepthToScreenScale(g_ez_queue, invW)`, `doll = (ox+(vx-sx)·R, oy+(vy-sy)·R)`,
+`R=(s/S)·g_ez_cal`, blend additif, D3DCOLOR->IM_COL32. Appelé dans `RenderPlayerAvatar`. [ ] Validation
+build fiche perso + calibrage (`g_ez_cal`, blend, z-order). [ ] item_desc hover. [ ] cashshop
+non-équipé = spawn offscreen (`Effect_SpawnPrimitiveById(1240)` + drive) — phase 3.
+
+### ✅ Capture EZ : verts en ÉCRAN (XYZRHW), le vrai bug était un SUR-MATCH (RE 2026-07-13)
+
+Fausse piste initiale (« coords monde ») CORRIGÉE. Chaîne de draw : `EzEffect_Draw` ->
+`EzEffect_SubmitQuad(0x550de0)` (enqueue) -> `RenderQueue_InsertPrimitive(0x550b10)` (tri par Z en
+buckets, NE projette pas) -> flush `World_RenderScene` -> `RenderPrim_DrawRecord(0x560430)` =
+`DrawPrimitiveUP(g_SceneRenderQueue vtbl+0x38)` des verts **XYZRHW+DIFFUSE+SPEC+TEX1**. STR (type 5)
+et EZ (type 3) partagent CE MÊME chemin de draw -> **même FVF XYZRHW = ÉCRAN pré-transformé**. Donc
+les verts EZ SONT en écran (x@+0, y@+4), comme les STR. Le « vert à (847,2128) / span 7000px / nuages »
+venait d'un **SUR-MATCH** : `EzEffect_SubmitQuad` est un enqueue de quad PARTAGÉ (UI/curseur/autres
+effets) ; `rec-0x2210` n'est un nœud EZ que pour les appelants `EzEffect_Draw`. Pour les autres, on
+lisait des octets étrangers et on capturait des quads hors-sujet. **FIX** : discriminateur vtable dans
+`EzOwnedRoot` — n'accepter `rec-0x2210` que si vtable==`0x01088c48` (enfant EZ), et n'accepter la
+racine (owner via `+0x140`->`+0x138`) que si vtable==`0x01088de8` (nœud primitif). Ensuite le
+re-ancrage écran de `DrawEzCapTris` (ancre = projection de l'origine acteur, `R=s/S`) est correct pour
+des verts écran. Ghidra : `RenderQueue_InsertPrimitive`, `RenderPrim_DrawRecord`.
+
+**Confirmation FVF (diag live 2026-07-13)** : `tri0.z=0.9816` (∈[0,1] = depth), `tri0.rhw=0.0025`
+(=1/w) -> **XYZRHW ÉCRAN** confirmé. `tri0.xy=(878.9,-5.5)` = à l'ancre x=880, ~500px au-dessus des
+pieds (495) = un panneau flottant au-dessus du perso = CORRECT. MAIS le filtre propriétaire laisse
+passer des OUTLIERS (verts à x≈-2482..3922, hors-champ) -> « nuages ». **FIX pragmatique** : filtre de
+PROXIMITÉ écran (`g_ez_max_r`=700px autour de l'ancre) dans `DrawEzCapTris` — robuste car verts écran
+et effet joueur COMPACT. Reste à investiguer pourquoi le walk `+0x140`->`+0x138`==owner sur-matche
+(band-aid pour l'instant). Diag `near=X/total`. Note : l'effet (~600px) déborde le cadre doll (190px)
+-> clip (ou réduire `g_ez_cal`). `g_ez_enabled=true`.
+
 ## Statut
 
 - [x] Suivi `own_hat_effects_` (0x0A3B) — fiche perso.
