@@ -65,6 +65,7 @@ void EndRoWindow();
 // au clic. À utiliser dans une fenêtre RO (fond clair). Ignore le skin toggle :
 // dessine toujours le bouton RO (c'est un widget, pas un chrome de fenêtre).
 bool RoButton(const char* label, float w = 0.0f, float h = 0.0f);
+bool RoSmallButton(const char* label, float w = 0.0f, float h = 0.0f);
 
 // Case à cocher habillée avec les pièces checkbox_0/1 du client. Comme
 // ImGui::Checkbox : renvoie true si l'état a changé.
@@ -79,6 +80,7 @@ bool RoCheckbox(const char* label, bool* v);
 // ImGui::CalcItemWidth() (respecte SetNextItemWidth).
 bool RoBeginCombo(const char* label, const char* preview_value);
 void RoEndCombo();
+bool RoCombo(const char* label, int* current_item, const char* const items[], int items_count);
 
 // Barre horizontale 3-slice (btnbar_*) dessinée dans le rect donné, sur le draw
 // list de la fenêtre courante. Pour un footer/bandeau dans une fenêtre RO.

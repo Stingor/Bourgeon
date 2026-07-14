@@ -182,6 +182,9 @@ SkinTex g_base;  // bullet sys_base devant le titre (décoratif)
 SkinTex g_btn_out_l, g_btn_out_m, g_btn_out_r;
 SkinTex g_btn_over_l, g_btn_over_m, g_btn_over_r;
 SkinTex g_btn_press_l, g_btn_press_m, g_btn_press_r;
+SkinTex g_sbtn_out_l, g_sbtn_out_m, g_sbtn_out_r;
+SkinTex g_sbtn_over_l, g_sbtn_over_m, g_sbtn_over_r;
+SkinTex g_sbtn_press_l, g_sbtn_press_m, g_sbtn_press_r;
 SkinTex g_resize;
 SkinTex g_tb_btn_a, g_tb_btn_b, g_tb_btn_c;  // bouton flèche du combo (txtbox_btn_*)
 SkinTex g_cb0, g_cb1;
@@ -951,14 +954,14 @@ void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1) 
 }
 
 bool RoButton(const char* label, float w, float h) {
-  EnsureTex("basic_interface\\btn_out_left.bmp", skin::kBtnOutLeft, g_btn_out_l);
-  EnsureTex("basic_interface\\btn_out_mid.bmp", skin::kBtnOutMid, g_btn_out_m);
-  EnsureTex("basic_interface\\btn_out_right.bmp", skin::kBtnOutRight, g_btn_out_r);
-  EnsureTex("basic_interface\\btn_over_left.bmp", skin::kBtnOverLeft, g_btn_over_l);
-  EnsureTex("basic_interface\\btn_over_mid.bmp", skin::kBtnOverMid, g_btn_over_m);
-  EnsureTex("basic_interface\\btn_over_right.bmp", skin::kBtnOverRight, g_btn_over_r);
-  EnsureTex("basic_interface\\btn_press_left.bmp", skin::kBtnPressLeft, g_btn_press_l);
-  EnsureTex("basic_interface\\btn_press_mid.bmp", skin::kBtnPressMid, g_btn_press_m);
+  EnsureTex("basic_interface\\btn_out_left.bmp",    skin::kBtnOutLeft,    g_btn_out_l);
+  EnsureTex("basic_interface\\btn_out_mid.bmp",     skin::kBtnOutMid,     g_btn_out_m);
+  EnsureTex("basic_interface\\btn_out_right.bmp",   skin::kBtnOutRight,   g_btn_out_r);
+  EnsureTex("basic_interface\\btn_over_left.bmp",   skin::kBtnOverLeft,   g_btn_over_l);
+  EnsureTex("basic_interface\\btn_over_mid.bmp",    skin::kBtnOverMid,    g_btn_over_m);
+  EnsureTex("basic_interface\\btn_over_right.bmp",  skin::kBtnOverRight,  g_btn_over_r);
+  EnsureTex("basic_interface\\btn_press_left.bmp",  skin::kBtnPressLeft,  g_btn_press_l);
+  EnsureTex("basic_interface\\btn_press_mid.bmp",   skin::kBtnPressMid,   g_btn_press_m);
   EnsureTex("basic_interface\\btn_press_right.bmp", skin::kBtnPressRight, g_btn_press_r);
 
   const float capL = (float)skin::kBtnOutLeft.w;
@@ -1005,6 +1008,72 @@ bool RoButton(const char* label, float w, float h) {
 
   const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
                   p0.y + (h - ts.y) * 0.5f + (held ? 1.0f : 0.0f));
+  dl->AddText(tp,
+              disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                       : ImGui::GetColorU32(ImGuiCol_Text),
+              label, ImGui::FindRenderedTextEnd(label));
+  ImGui::PopID();
+  return clicked;
+}
+// Petit bouton (ex. pour les + - x ) : même design que RoButton mais plus petit
+bool RoSmallButton(const char* label, float w, float h) {
+  EnsureTex("basic_interface\\sbtn_out_left.bmp",    skin::ksBtnOutLeft,    g_sbtn_out_l);
+  EnsureTex("basic_interface\\sbtn_out_mid.bmp",     skin::ksBtnOutMid,     g_sbtn_out_m);
+  EnsureTex("basic_interface\\sbtn_out_right.bmp",   skin::ksBtnOutRight,   g_sbtn_out_r);
+  EnsureTex("basic_interface\\sbtn_over_left.bmp",   skin::ksBtnOverLeft,   g_sbtn_over_l);
+  EnsureTex("basic_interface\\sbtn_over_mid.bmp",    skin::ksBtnOverMid,    g_sbtn_over_m);
+  EnsureTex("basic_interface\\sbtn_over_right.bmp",  skin::ksBtnOverRight,  g_sbtn_over_r);
+  EnsureTex("basic_interface\\sbtn_press_left.bmp",  skin::ksBtnPressLeft,  g_sbtn_press_l);
+  EnsureTex("basic_interface\\sbtn_press_mid.bmp",   skin::ksBtnPressMid,   g_sbtn_press_m);
+  EnsureTex("basic_interface\\sbtn_press_right.bmp", skin::ksBtnPressRight, g_sbtn_press_r);
+
+  const float capL = (float)skin::ksBtnOutLeft.w;
+  const float capR = (float)skin::ksBtnOutRight.w;
+  const float nativeH = (float)skin::ksBtnOutLeft.h;
+  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
+  if (w <= 0.0f) w = ts.x + capL + capR; // +12px pour RoButton, pas pour le petit bouton
+  if (h <= 0.0f) h = nativeH;
+
+  ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 3.0f); // décale le bouton vers la gauche
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.0f); // décale le bouton vers le bas pour mieux centrer le bouton sur la ligne
+
+  ImGui::PushID(label);
+  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
+  const bool hovered = ImGui::IsItemHovered();
+  const bool held = ImGui::IsItemActive();
+  if (hovered) SetHoverCursor(kRoCursorHand);
+  const ImVec2 p0 = ImGui::GetItemRectMin();
+  const ImVec2 p1 = ImGui::GetItemRectMax();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+
+  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS le visuel des widgets
+  // dessines main -> on grise nous-memes (art estompe + texte grise).
+  const bool disabled =
+      ImGui::GetCurrentContext() &&
+      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
+
+  const SkinTex *l, *m, *r;
+  if (held) { l = &g_sbtn_press_l; m = &g_sbtn_press_m; r = &g_sbtn_press_r; }
+  else if (hovered) { l = &g_sbtn_over_l; m = &g_sbtn_over_m; r = &g_sbtn_over_r; }
+  else { l = &g_sbtn_out_l; m = &g_sbtn_out_m; r = &g_sbtn_out_r; }
+
+  if (l->tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y), tint);
+    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1, tint);
+    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y), tint);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {
+    dl->AddRectFilled(p0, p1,
+                      disabled ? IM_COL32(210, 216, 228, 110)
+                               : IM_COL32(210, 216, 228, 255),
+                      2.0f);
+    dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
+  }
+
+  const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
+                  p0.y + (h - ts.y) * 0.5f + (held ? 0.0f : 0.0f) - 2.0f);  // -2 pour centre le texte correctement dans la case
   dl->AddText(tp,
               disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
                        : ImGui::GetColorU32(ImGuiCol_Text),
@@ -1125,6 +1194,24 @@ void RoEndCombo() {
   ImGui::EndPopup();
   ImGui::PopStyleColor(5);
   ImGui::PopID();
+}
+
+bool RoCombo(const char* label, int *current_item, const char* const items[], int items_count) {
+  bool changed = false;
+  const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
+  if (ro::RoBeginCombo(label, items[*current_item])) {
+    for (int i = 0; i < items_count; ++i) {
+      const bool selected = (*current_item == i);
+      if (ImGui::Selectable(items[i], selected)) {
+        *current_item = i;
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    changed = true;
+    ro::RoEndCombo();
+  }
+
+  return changed;
 }
 
 bool ShowRoSkinSettings() {

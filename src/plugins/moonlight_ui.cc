@@ -1531,7 +1531,8 @@ void HelpMarker(const char* desc) {
 // to 0.01 (float) / 1 (int).
 // Shift+wheel uses a larger step (0.10 / 10) for faster adjustment.
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
-  bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt);
+  bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp);
+  if (ImGui::IsItemHovered()) Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
@@ -1547,6 +1548,7 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const cha
 
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
   bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
+  if (ImGui::IsItemHovered()) Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
@@ -1653,7 +1655,6 @@ void MoonlightUi::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
-
   // Skin RO (toggleable : BeginRoWindow retombe sur ImGui::Begin si skin off).
   ro::BeginRoWindow("Moonlight-Destiny");
 
@@ -1670,8 +1671,9 @@ void MoonlightUi::OnRenderUI() {
 
   if (!is_collapsed) {
     if (CollapsingHeader("Règles du serveur")) {
+      PushStyleCompact();
       RedText("CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
-      if (TreeNode("Règlements généraux")) {
+      if (ImGui::TreeNode("Règlements généraux")) {
         TextWrapped("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais.");
         Spacing();
         BulletWrapped("Les joueurs doivent se respecter et garder un langage propre et courtois.");
@@ -1688,10 +1690,10 @@ void MoonlightUi::OnRenderUI() {
         BulletWrapped("Le langage SMS est à proscrire.");
         BulletWrapped("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur.");
         BulletWrapped("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus...");
-        TreePop();
+        ImGui::TreePop();
       }
       Spacing();
-      if (TreeNode("Sur le serveur de jeu")) {
+      if (ImGui::TreeNode("Sur le serveur de jeu")) {
         BulletWrapped("Insultes et vols de drop (Looting) = INTERDITS.");
         BulletWrapped("Heal ou buff un monstre qui ne vous appartient pas sans accord = puni.");
         BulletWrapped("Si vous êtes banni définitivement, tous les comptes liés à votre IP/PC le seront aussi.");
@@ -1704,10 +1706,10 @@ void MoonlightUi::OnRenderUI() {
           TextWrapped("(À vous de voir si vous voulez passer pour un gros connard selfish en KSant le MVP)");
           TextWrapped("Si vous ne voulez pas vous faire KS, faites @noks <3");
         Unindent();
-        TreePop();
+        ImGui::TreePop();
       }
       Spacing();
-      if (TreeNode("Le staff")) {
+      if (ImGui::TreeNode("Le staff")) {
         BulletWrapped("Si vous cassez les couilles du staff ban/delete non temporaire.");
         BulletWrapped("Aucun membre du staff ne vous demandera votre mot de passe.");
         BulletWrapped("Aucun membre du staff ne vous demandera votre login.");
@@ -1717,44 +1719,44 @@ void MoonlightUi::OnRenderUI() {
         BulletWrapped("Le staff ne donne pas d'items (hors events).");
         BulletWrapped("Les membres du staff ne sont pas des robots. Soyez courtois, cherchez avant de demander.");
         BulletWrapped("Les questions dont la réponse est sur une database = évitez.");
-        TreePop();
+        ImGui::TreePop();
       }
       Spacing();
-      if (TreeNode("Règlements dans les endroits spécifiques")) {
-        if (TreeNode("Salle de duel")) {
+      if (ImGui::TreeNode("Règlements dans les endroits spécifiques")) {
+        if (ImGui::TreeNode("Salle de duel")) {
           BulletWrapped("Ce n'est pas un salon de thé");
           BulletWrapped("Si vous regardez, ok. Sinon, laissez la place.");
           BulletWrapped("Utilisez : @duel, @invite, @accept, @reject, @leave.");
-          TreePop();
+          ImGui::TreePop();
         }
-        if (TreeNode("Carnage Room")) {
+        if (ImGui::TreeNode("Carnage Room")) {
           BulletWrapped("Loi du plus fort.");
           BulletWrapped("Amusez‑vous dans le respect.");
-          TreePop();
+          ImGui::TreePop();
         }
-        if (TreeNode("PVP Room")) {
+        if (ImGui::TreeNode("PVP Room")) {
           BulletWrapped("Free Kill interdit.");
-          TreePop();
+          ImGui::TreePop();
         }
-        if (TreeNode("DB Room")) {
+        if (ImGui::TreeNode("DB Room")) {
           BulletWrapped("Kill Steal STRICTEMENT interdit.");
           BulletWrapped("Si la personne meurt ou se hide les mobs sont à vous.");
-          TreePop();
+          ImGui::TreePop();
         }
-        if (TreeNode("Guild Dungeon")) {
+        if (ImGui::TreeNode("Guild Dungeon")) {
           BulletWrapped("Libre de tuer les guildiens adverses.");
-          TreePop();
+          ImGui::TreePop();
         }
-        if (TreeNode("WoE Castles")) {
+        if (ImGui::TreeNode("WoE Castles")) {
           BulletWrapped("Interdiction d'apporter de l'aide via un perso non participant (multi-account/perso).");
           BulletWrapped("Les ententes entre guildes sont informelles, non officielles, non sanctionnables.");
           BulletWrapped("Elles doivent être discutées entre guildes dominantes, dans le respect.");
-          TreePop();
+          ImGui::TreePop();
         }
-        TreePop();
+        ImGui::TreePop();
       }
       Spacing();
-      if (TreeNode("Logiciels tiers")) {
+      if (ImGui::TreeNode("Logiciels tiers")) {
         TextUnformatted("Autorisations :");
         Indent();
           BulletWrapped("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :");
@@ -1798,157 +1800,25 @@ void MoonlightUi::OnRenderUI() {
             BulletWrapped("Et il ne restera de vous que des ruines numériques sur Wayback Machine.");
           Unindent();
         Unindent();
-        TreePop();
+        ImGui::TreePop();
       }
+    PopStyleCompact();
     }
 
-    // ── Chat Box Settings ────────────────────────────────────────────────
-    if (CollapsingHeader("Chat Settings")) {
-      PushStyleCompact();
-      if (ro::RoCheckbox("Chat Discord (Gonryun only)", &discord_chat_)) {
-        UpdateRelay();
-        SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
-      }
-
-      // Main-chat width (the stock chat resizes height only; applied by the
-      // ChatTweaks plugin via the WndProc relayout hook)
-      if (ro::RoCheckbox("Largeur du chat", &chat_width_enabled_)) {
-        chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
-        SaveSettings();
-      }
-
-      // Chat width slider (only enabled if the above checkbox is checked)
-      if (chat_width_enabled_ &&WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200)) {
-        chat::SetCustomWidth(true, chat_width_px_);
-        SaveSettings();
-      }
-
-      // Chat line timestamps ([HH:MM:SS] prefix, stored in raw history)
-      if (ro::RoCheckbox("Horodatage du chat", &chat_timestamps_)) {
-        chat::SetTimestamps(chat_timestamps_);
-        SaveSettings();
-      }
-
-      // Native item icons on <ITEML> chat links
-      if (ro::RoCheckbox("Icônes d'objets", &chat_item_icons_)) {
-        chat::SetItemIcons(chat_item_icons_);
-        SaveSettings();
-      }
-
-      // Clear chat history (all channels of the main chat window)
-      if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
-      SameLine(); HelpMarker(
-          "Vide l'historique de tous les canaux de la fenêtre de chat principale "
-          "(historique brut effacé + affichage vidé). Les nouveaux messages "
-          "réapparaissent normalement ensuite.");
-
-      // Chat Background Colours (Main / Detached / Whisper)
-      // One independent colour+opacity picker per group, persisted locally.
-      auto render_chatbg = [&](ChatBgGroup& g) {
-        if (g.instrs.empty()) return;
-        ImGui::PushID(g.yaml_key);
-        const ImVec4 swatch(g.color[0], g.color[1], g.color[2], g.color[3]);
-        if (ImGui::ColorButton("##btn", swatch,
-                               ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
-          ImGui::OpenPopup("picker");
-        SameLine();
-        TextUnformatted(g.label);
-
-        if (ImGui::BeginPopup("picker")) {
-          // ── Shared user presets ─────────────────────────────────────────
-          if (!chat_bg_presets_.empty()) {
-            TextUnformatted("Presets:");
-            int delete_idx = -1;
-            for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
-              const auto& p = chat_bg_presets_[i];
-              const ImVec4 col(((p.argb >> 16) & 0xFF) / 255.0f,
-                               ((p.argb >>  8) & 0xFF) / 255.0f,
-                               ( p.argb        & 0xFF) / 255.0f,
-                               ((p.argb >> 24) & 0xFF) / 255.0f);
-              ImGui::PushID(i);
-              if (ImGui::ColorButton("##swatch", col,
-                                     ImGuiColorEditFlags_AlphaPreview |
-                                     ImGuiColorEditFlags_NoTooltip,
-                                     ImVec2(18, 18))) {
-                PickerFromArgb(g.color, p.argb);
-                ApplyChatBg(g, p.argb, true);
-                SaveSettings();
-              }
-              if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", p.name.c_str());
-              SameLine();
-              TextUnformatted(p.name.c_str());
-              SameLine();
-              if (ImGui::SmallButton("x"))
-                delete_idx = i;
-              ImGui::PopID();
-            }
-            if (delete_idx >= 0) {
-              chat_bg_presets_.erase(chat_bg_presets_.begin() + delete_idx);
-              SaveSettings();
-            }
-            Separator();
-          }
-          // ── Save current colour as a preset ─────────────────────────────
-          ImGui::SetNextItemWidth(120.0f);
-          ImGui::InputText("##preset_name", preset_name_buf_, sizeof(preset_name_buf_));
-          SameLine();
-          if (ImGui::Button("Save preset") && preset_name_buf_[0] != '\0') {
-            chat_bg_presets_.push_back({preset_name_buf_, ArgbFromPicker(g.color)});
-            preset_name_buf_[0] = '\0';
-            SaveSettings();
-          }
-          Separator();
-          if (ImGui::ColorPicker4("##pick", g.color,
-                                  ImGuiColorEditFlags_AlphaBar |
-                                  ImGuiColorEditFlags_NoSidePreview)) {
-            ApplyChatBg(g, ArgbFromPicker(g.color), false);
-            g.editing = true;
-          }
-          if (g.editing && ImGui::IsMouseReleased(0)) {
-            ApplyChatBg(g, ArgbFromPicker(g.color), true);
-            SaveSettings();
-            g.editing = false;
-          }
-          Separator();
-          if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f)))
-            ImGui::CloseCurrentPopup();
-          ImGui::EndPopup();
-        }
-        ImGui::PopID();
-      };
-
-      if (chat_bg_found_) {
-        render_chatbg(chat_bg_[kChatBgMain]);
-        // Quick preset switcher toggle, on the same line as the main chat picker.
-        SameLine();
-        if (ro::RoCheckbox("Preset bar", &mainchat_preset_bar_))
-          SaveSettings();
-        render_chatbg(chat_bg_[kChatBgDetached]);
-        render_chatbg(chat_bg_[kChatBgWhisper]);
-      } else {
-        ImGui::TextDisabled("(chat background patch unavailable)");
-      }
-      PopStyleCompact();
-    }
     // ── DPS Meter ────────────────────────────────────────────────────────
     if (CollapsingHeader("DPS Meter")) {
+      PushStyleCompact();
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
         bool changed = false;
         changed |= ro::RoCheckbox("Afficher", &dps->visible_);
         changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &dps->locked_);
-        SameLine(); HelpMarker(
-            "Fige la fenêtre DPS (position/taille) et laisse passer les clics "
-            "au jeu en dessous.");
+        SameLine(); HelpMarker("Fige la fenêtre DPS (position/taille) et laisse passer les clics au jeu en dessous.");
+        changed |= ColorPicker("Couleur texte",  dps->text_color_);
+        changed |= ColorPicker("Couleur graphe", dps->plot_color_);
 
-        changed |= ImGui::ColorEdit4("Couleur texte", dps->text_color_,
-                                     ImGuiColorEditFlags_NoInputs);
-        changed |= ImGui::ColorEdit4("Couleur graphe", dps->plot_color_,
-                                     ImGuiColorEditFlags_NoInputs);
-        ImGui::SetNextItemWidth(160.0f);
-        changed |= WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f");
+        PushItemWidth(160.0f); // sliders are narrow to fit the window
+        changed |= WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f);
 
-        ImGui::SetNextItemWidth(160.0f);
         int slot_ms = dps->slot_ms_;
         if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
           dps->slot_ms_ = slot_ms;
@@ -1957,7 +1827,6 @@ void MoonlightUi::OnRenderUI() {
         }
         SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
 
-        ImGui::SetNextItemWidth(160.0f);
         int win = dps->dps_window_secs_;
         if (WheelSliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
           dps->dps_window_secs_ = win;
@@ -1965,7 +1834,6 @@ void MoonlightUi::OnRenderUI() {
         }
         SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
 
-        ImGui::SetNextItemWidth(160.0f);
         int timeout = dps->combat_timeout_secs_;
         if (WheelSliderInt("Timeout combat (s)", &timeout, 1, 15)) {
           dps->combat_timeout_secs_ = timeout;
@@ -1973,8 +1841,9 @@ void MoonlightUi::OnRenderUI() {
         }
         SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
 
-        if (ImGui::Button("Reset graphique"))
-          dps->ResetHistory();
+        PopItemWidth(); // restore default item width
+
+        if (ro::RoButton("Reset graphique")) dps->ResetHistory();
 
         Separator();
         changed |= ro::RoCheckbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_);
@@ -1985,13 +1854,13 @@ void MoonlightUi::OnRenderUI() {
             // Persist all DPS settings if any changed.
         if( changed ) SaveSettings();
       }
+      PopStyleCompact();
     }
 
     // ── Interface de jeu  ────────────────────────────────────────────────────
     // NB: la vue caméra FPS (FpsViewTweaks) reste dans le code (toggle F9) mais
     // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
     if (CollapsingHeader("Mini-jeux")) {
-      // ── DOOM ──
       SeparatorText("DOOM");
       if (auto* doom = Bourgeon::Instance().doom()) {
         bool on = doom->enabled();
@@ -2006,12 +1875,10 @@ void MoonlightUi::OnRenderUI() {
             "courir, Échap menu.\n"
             "Décocher = pause. Quitter depuis le menu DOOM = définitif "
             "jusqu'au redémarrage du client.");
-        ImGui::TextDisabled("État : %s", doom->StatusText());
-      } else {
-        ImGui::TextDisabled("Indisponible.");
-      }
+        GrayText("État : %s", doom->StatusText());
+      } else
+        GrayText("Indisponible.");
 
-      // ── Roggle ──
       SeparatorText("Roggle");
       if (auto* roggle = Bourgeon::Instance().roggle()) {
         bool on = roggle->enabled();
@@ -2023,11 +1890,9 @@ void MoonlightUi::OnRenderUI() {
             "bille. Dégomme tous les pegs ORANGE pour gagner ; le seau vert en "
             "bas rattrape la bille = bille gratuite.\n"
             "Fermer la fenêtre ou décocher = masquer (la partie est conservée).");
-      } else {
-        ImGui::TextDisabled("Indisponible.");
-      }
+      } else
+        GrayText("Indisponible.");
 
-      // ── Rojeweled ──
       SeparatorText("Rojeweled");
       if (auto* rj = Bourgeon::Instance().rojeweled()) {
         bool on = rj->enabled();
@@ -2040,346 +1905,461 @@ void MoonlightUi::OnRenderUI() {
             "Clique deux monstres voisins pour les échanger ; aligne-en 3+ pour "
             "les faire disparaître (les cascades rapportent plus). DX9 requis "
             "(sinon tuiles colorées).");
-      } else {
-        ImGui::TextDisabled("Indisponible.");
-      }
+      } else
+        GrayText("Indisponible.");
     }
+
     if (CollapsingHeader("Interface de jeu")) {
       PushStyleCompact();
-      if (ro::RoCheckbox("Grille d'alignement", &grid_.show)) SaveSettings();
+      bool changed = false;
+      changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);
       SameLine(); HelpMarker(
           "Affiche une grille plein écran pour aligner ton interface "
           "(comme les add-ons d'interface de WoW).");
       ImGui::SetNextItemWidth(160.0f);
-      if (WheelSliderInt("Taille grille", &grid_.size, 4, 128)) SaveSettings();
-      if (ro::RoCheckbox("Aimanter à la grille", &grid_.snap)) SaveSettings();
+      changed |= WheelSliderInt("Taille grille", &grid_.size, 4, 128);
+      changed |= ro::RoCheckbox("Aimanter à la grille", &grid_.snap);
       SameLine(); HelpMarker(
           "Les barres et les icônes s'alignent sur les cellules de la grille "
           "pendant le déplacement et le redimensionnement.");
-      if (ImGui::ColorEdit4("Couleur grille", grid_.color,
-                            ImGuiColorEditFlags_NoInputs |
-                                ImGuiColorEditFlags_AlphaBar))
-        SaveSettings();
-      // ── Storage : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
-      // ── Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in) ──
+      changed |= ColorPicker("Couleur grille", grid_.color);
+
+      // Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in)
       if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-        if (ro::RoCheckbox("Inventaire ImGui", &iv->imgui_enabled_))
-          SaveSettings();
+        changed |= ro::RoCheckbox("Inventaire ImGui", &iv->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
             "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
             "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
       }
+
+      // Storage : viewer ImGui moderne OU fenêtre native
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-        if (ro::RoCheckbox("Storage ImGui", &stg->imgui_enabled_))
-          SaveSettings();
+        changed |= ro::RoCheckbox("Storage ImGui", &stg->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
             "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
             "viewer. Pas de cohabitation.");
       }
-      // ── Cash shop : redraw ImGui moderne OU fenêtre native ──
+
+      // Cash shop : redraw ImGui moderne OU fenêtre native
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
-        if (ro::RoCheckbox("Cash Shop ImGui", &cs->imgui_enabled_))
-          SaveSettings();
+        changed |= ro::RoCheckbox("Cash Shop ImGui", &cs->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
             "fenêtre native est cachée.\nOFF : cash shop natif classique.");
       }
-      // ── Shop NPC : fenêtre achat/vente ImGui unifiée OU natif ──
-      // (Le dialogue NPC ImGui a sa propre section « Fenêtre NPC ».)
+
+      // Shop NPC : fenêtre achat/vente ImGui unifiée OU natif
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
-        if (ro::RoCheckbox("Shop NPC ImGui", &sh->imgui_enabled_))
-          SaveSettings();
+        changed |= ro::RoCheckbox("Shop NPC ImGui", &sh->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
             "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
       }
-      // ── Feuille de personnage (agrege Status + Equipement, en plus) ──────
+
+      // Feuille de personnage (agrege Status + Equipement)
       if (auto* cse = Bourgeon::Instance().character_sheet()) {
-        if (ro::RoCheckbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
-          SaveSettings();
+        changed |= ro::RoCheckbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_);
         SameLine(); HelpMarker(
             "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
             "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
             "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
       }
-      // ── Navigation latérale (liste à gauche, contenu à droite) ───────────
-      // Remplace l'ancienne barre d'onglets : plus scalable quand les
-      // catégories se multiplient (noms entiers, scroll vertical naturel).
+
+      if (changed) SaveSettings();
+
+      // Navigation latérale (liste à gauche, contenu à droite)
       static int s_iface_nav = 0;
       static const char* kIfaceCats[] = {
-          "Barres d'info", "Portrait",         "Barre d'action", "Icônes du menu",
-          "Icônes de statut", "Suivi de quête", "Descriptions", "Skin RO", "Fenêtre NPC"};
-      const float kNavH = 360.0f;
-      ImGui::BeginChild("iface_nav", ImVec2(150.0f, kNavH), true);
+          "Barre d'action",
+          "Basic Info",
+          "Chat",
+          "Icônes du menu",
+          "Icônes de statut",
+          "Suivi de quête",
+          "Descriptions",
+          "Skin RO",
+          "Fenêtre NPC"};
+
+      ImGui::BeginChild("iface_nav", ImVec2(150.0f, 350.0f), ImGuiChildFlags_Borders);
       for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
-        if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i))
-          s_iface_nav = i;
+        if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i)) s_iface_nav = i;
       ImGui::EndChild();
+
       SameLine();
-      ImGui::BeginChild("iface_content", ImVec2(0.0f, kNavH), false);
+      ImGui::BeginChild("iface_content");
       ImGui::PushTextWrapPos(0.0f);  // wrap le texte à la largeur du child
       {
-        // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
+        PushItemWidth(160.0f);
+
+        // ── Barre d'action ───────────────────────────────────────────────────
         if (s_iface_nav == 0)
         {
+          if (auto* sb = Bourgeon::Instance().skill_bar())
+            sb->DrawSettings();
+        }
+
+        // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
+        // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
+        if (s_iface_nav == 1) {
+          bool changed = false;
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
-            if (ro::RoCheckbox("Afficher les barres", &eb->visible_))
-              SaveSettings();
+
+            changed |= ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine", &eb->portrait_hide_basic_info_);
+            SameLine(); HelpMarker("Masque la fenêtre native \"Basic Info\".");
+
+            SeparatorText("Barres d'info");
+            changed |= ro::RoCheckbox("Afficher les barres", &eb->visible_);
+            ImGui::BeginDisabled(!eb->visible_);
             Indent();
-            for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-              if (i) SameLine();
-              if (ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
-                SaveSettings();
-            }
-            SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+              for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+                if (i) SameLine();
+                changed |= ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show);
+              }
+              SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
             Unindent();
+            ImGui::EndDisabled();
 
-            if (ro::RoCheckbox("Verrouiller (fige position/taille + clic-traversant)",
-                                &eb->locked_))
-              SaveSettings();
+            changed |= ro::RoCheckbox("Verrouiller les barres", &eb->locked_);
             SameLine(); HelpMarker(
-                "Verrouillée : les barres ne bougent plus et laissent passer les "
-                "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
-                "tirez le coin pour redimensionner.");
+                "Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\n"
+                "Déverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner.");
 
-            if (ro::RoCheckbox("Aimanter les barres (snap)", &eb->sticky_))
-              SaveSettings();
+            changed |= ro::RoCheckbox("Aimanter les barres (snap)", &eb->sticky_);
             SameLine(); HelpMarker(
                 "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
                 "et se collent automatiquement (~10px).\nÉloigne-la pour la "
                 "détacher. Les barres restent indépendantes.");
 
-            if (ro::RoCheckbox("Vertical", &eb->vertical_)) SaveSettings();
-            SameLine();
-            if (ro::RoCheckbox("Bordure", &eb->border_)) SaveSettings();
+            changed |= ro::RoCheckbox("Vertical", &eb->vertical_);
             SameLine(); HelpMarker(
-                "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). "
+                "Remplissage vertical des barres. \n"
+                "Décoche pour les barres horizontales.");
+
+            changed |= ro::RoCheckbox("Bordure des barres", &eb->border_);
+            SameLine(); HelpMarker(
+                "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). \n"
                 "Décoche pour des barres sans contour.");
 
             const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-            ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("Texte", &eb->text_mode_, modes, IM_ARRAYSIZE(modes)))
-              SaveSettings();
+            if (ro::RoBeginCombo("Animation", modes[eb->text_mode_])) {
+              for (int i = 0; i < IM_ARRAYSIZE(modes); ++i) {
+                const bool selected = (eb->text_mode_ == i);
+                if (ImGui::Selectable(modes[i], selected)) {
+                  eb->text_mode_ = i;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+              }
+              changed = true;
+              ro::RoEndCombo();
+            }
 
-            ImGui::SetNextItemWidth(160.0f);
-            if (WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f", 1.0f)) SaveSettings();
+            changed |= WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f);
             SameLine(); HelpMarker("Arrondi des coins des barres.");
 
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
               char lbl[32];
-              std::snprintf(lbl, sizeof(lbl), "Couleur %s",
-                            BasicInfoTweaks::kBarLabels[i]);
-              if (ImGui::ColorEdit4(lbl, eb->bars_[i].fill,
-                                    ImGuiColorEditFlags_NoInputs))
-                SaveSettings();
+              std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfoTweaks::kBarLabels[i]);
+              changed |= ColorPicker(lbl, eb->bars_[i].fill);
             }
-            if (ImGui::ColorEdit4("Fond / Opacité", eb->bg_color_,
-                                  ImGuiColorEditFlags_NoInputs |
-                                      ImGuiColorEditFlags_AlphaBar))
-              SaveSettings();
+            changed |= ColorPicker("Fond / Opacité", eb->bg_color_);
 
-            TextUnformatted("Tailles rapides (toutes) :");
+            TextUnformatted("Tailles rapides de barres (toutes) :");
             auto preset = [&](const char* label, int w, int h) {
               SameLine();
-              if (ImGui::Button(label)) {
+              if (ro::RoButton(label)) {
                 for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
                   eb->bars_[j].w = w;
                   eb->bars_[j].h = h;
                 }
                 eb->force_apply_ = true;  // re-apply size even while unlocked
-                SaveSettings();
+                changed = true;
               }
             };
             preset("XS", 200, 9);
             preset("S", 400, 16);
             preset("M", 600, 22);
             preset("L", 800, 30);
-            PopStyleCompact();
-          }
-        }
-        // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
-        if (s_iface_nav == 1)
-        {
-          if (auto* eb = Bourgeon::Instance().basic_info()) {
-            PushStyleCompact();
-            if (ro::RoCheckbox("Afficher le portrait", &eb->portrait_visible_))
-              SaveSettings();
+
+            SeparatorText("Portrait personnage");
+            changed |= ro::RoCheckbox("Afficher le portrait et les étiquettes", &eb->portrait_visible_);
             SameLine(); HelpMarker(
                 "Portrait de statut : la tête du personnage, le pseudo, la classe "
                 "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
-                "redimensionnable, avec sa couleur/opacité de fond et son arrondi.\n"
-                "(Le sprite de tête arrive bientôt.)");
+                "redimensionnable, avec sa couleur/opacité de fond et son arrondi.");
 
-            if (ro::RoCheckbox("Verrouiller (fige + clic-traversant)",
-                                &eb->portrait_locked_))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Verrouillé : les éléments ne bougent plus et laissent passer les "
-                "clics au jeu.\nDéverrouillé : glisse pour déplacer, tire un bord/"
-                "coin pour redimensionner (aimantage à la grille d'alignement).");
+            ImGui::BeginDisabled(!eb->portrait_visible_);
 
-            if (ro::RoCheckbox("Sprite de tête (sinon placeholder)",
-                                &eb->portrait_head_sprite_))
-              SaveSettings();
+            changed |= ro::RoCheckbox("Verrouiller le portrait", &eb->portrait_locked_);
+            if (IsHovered()) Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
             SameLine(); HelpMarker(
-                "Régénère la tête du personnage via le moteur de sprites du jeu "
-                "et l'affiche dans l'élément Portrait.");
-            if (ro::RoCheckbox("Tête seule (sans le corps)",
-                                &eb->portrait_head_only_))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Ne garde que les couches de la tête (visage/cheveux/coiffes) et "
-                "retire le corps. Décoche pour le personnage entier.");
-            SameLine();
-            if (ro::RoCheckbox("Bordure", &eb->portrait_border_))
-              SaveSettings();
-            SameLine(); HelpMarker("Trait noir 1px autour de chaque cadre.");
+                "Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
+                "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement).");
 
-            // Live framing of the head sprite (zoom + vertical focus).
-            ImGui::SetNextItemWidth(160.0f);
-            if (WheelSliderFloat("Zoom tête", &eb->portrait_head_zoom_, 0.10f,
-                                   2.0f, "%.2f", 0.01f))
-              SaveSettings();
+            changed |= ro::RoCheckbox("Tête seule (sans le corps)", &eb->portrait_head_only_);
             SameLine(); HelpMarker(
-                "Zoom dans la tête (1 = corps entier). Ajuste avec le décalage "
-                "vertical pour cadrer le visage.");
-            ImGui::SetNextItemWidth(160.0f);
-            if (WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_,
-                                   -1.5f, 1.5f, "%.2f", 0.01f))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Décale le portrait horizontalement (0 = centré). Sert à aligner "
-                "la tête/le corps ; le zoom reste centré.");
-            ImGui::SetNextItemWidth(160.0f);
-            if (WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_,
-                                   -1.5f, 1.5f, "%.2f", 0.01f))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Décale le portrait verticalement (0 = centré). Optionnel — le "
-                "zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
+                "Ne garde ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
+                "Décoche pour le personnage entier.");
 
-            // Animation pose (animType): the frame count auto-adapts per action.
-            ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("Animation", &eb->portrait_anim_,
-                             "Repos\0Marche\0Assis\0Ramasser\0Combat\0Attaque\0"
-                             "Touché\0Gelé\0Mort\0"))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Pose animée du portrait (Combat = posture prête au combat). "
-                "Le nombre d'images de l'animation s'ajuste automatiquement.");
-            // Facing direction (low 3 bits of the pose) + play/freeze toggle.
-            ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("Direction", &eb->portrait_dir_,
-                             "Face (0)\0Diag. 1\0Côté (2)\0Diag. 3\0Dos (4)\0"
-                             "Diag. 5\0Côté (6)\0Diag. 7\0"))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
-                "l'angle voulu (le rendu se met à jour en direct).");
-            if (ro::RoCheckbox("Animer", &eb->portrait_animate_))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Joue les images de l'animation (ex. le balayage de la posture "
-                "Combat). Décoche pour figer une pose calme (image 0).");
-            SameLine();
-            if (ro::RoCheckbox("Cape / garment", &eb->portrait_show_garment_))
-              SaveSettings();
+            changed |= ro::RoCheckbox("Cape / garment", &eb->portrait_show_garment_);
             SameLine(); HelpMarker(
                 "Affiche la cape/garment équipée (seulement en mode corps "
                 "entier — décoche \"Tête seule\" pour la voir).");
 
-            Separator();
+            changed |= WheelSliderFloat("Zoom tête", &eb->portrait_head_zoom_, 0.10f, 2.0f);
+            SameLine(); HelpMarker(
+                "Zoom dans la tête (1 = corps entier).\n"
+                "Ajuste avec le décalage vertical pour cadrer le visage.");
+
+            changed |= WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_, -1.5f, 1.5f);
+            SameLine(); HelpMarker(
+                "Décale le portrait horizontalement (0 = centré).\n"
+                "Sert à aligner la tête/le corps ; le zoom reste centré.");
+
+            changed |= WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_, -1.5f, 1.5f);
+            SameLine(); HelpMarker(
+                "Décale le portrait verticalement (0 = centré).\n"
+                "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
+
+            static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
+            if (ro::RoBeginCombo("Animation", kLabelsAnim[eb->portrait_anim_])) {
+              for (int i = 0; i < IM_ARRAYSIZE(kLabelsAnim); ++i) {
+                const bool selected = (eb->portrait_anim_ == i);
+                if (ImGui::Selectable(kLabelsAnim[i], selected)) {
+                  eb->portrait_anim_ = i;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+              }
+              changed = true;
+              ro::RoEndCombo();
+            }
+            SameLine(); HelpMarker(
+                "Pose animée du portrait (Combat = posture prête au combat).\n"
+                "Le nombre d'images de l'animation s'ajuste automatiquement.");
+
+            static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
+            if (ro::RoBeginCombo("Direction", kLabelsDir[eb->portrait_dir_])) {
+              for (int i = 0; i < IM_ARRAYSIZE(kLabelsDir); ++i) {
+                const bool selected = (eb->portrait_dir_ == i);
+                if (ImGui::Selectable(kLabelsDir[i], selected)) {
+                  eb->portrait_dir_ = i;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+              }
+              changed = true;
+              ro::RoEndCombo();
+            }
+            SameLine(); HelpMarker(
+                "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
+                "l'angle voulu (le rendu se met à jour en direct).");
+
+            changed |= ro::RoCheckbox("Animer", &eb->portrait_animate_);
+            SameLine(); HelpMarker(
+                "Joue les images de l'animation (ex. le balayage de la posture "
+                "Combat). Décoche pour figer une pose calme (image 0).");
+
+            SeparatorText("Couleurs et arrondis du portrait et des étiquettes");
+            changed |= ro::RoCheckbox("Bordure", &eb->portrait_border_);
+            SameLine(); HelpMarker("Trait 1px autour du cadre et des étiquettes.");
+
             // Per-element config: show / background colour+opacity / rounding /
             // text colour.  Each element is independent.
             for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
               auto& e = eb->ports_[i];
               ImGui::PushID(i);
-              if (ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show))
-                SaveSettings();
+              changed |= ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show);
               Indent();
-              if (ImGui::ColorEdit4("Fond / Opacité", e.bg,
-                                    ImGuiColorEditFlags_NoInputs |
-                                        ImGuiColorEditFlags_AlphaBar))
-                SaveSettings();
+              changed |= ColorPicker("Fond / Opacité", e.bg);
               if (i != BasicInfoTweaks::kPortHead) {
                 SameLine();
-                if (ImGui::ColorEdit4("Texte", e.fg, ImGuiColorEditFlags_NoInputs))
-                  SaveSettings();
+                changed |= ColorPicker("Texte", e.fg);
               }
               ImGui::SetNextItemWidth(160.0f);
-              if (WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f))
-                SaveSettings();
+              changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
               Unindent();
               ImGui::PopID();
             }
+            PopStyleCompact();
 
-            Separator();
-            if (ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine",
-                                &eb->portrait_hide_basic_info_))
-              SaveSettings();
+            ImGui::EndDisabled(); // eb->portrait_visible_
+          }
+          if (changed) SaveSettings();
+        }
+
+        // ── Chat Settings ────────────────────────────────────────────────────
+        if (s_iface_nav == 2) {
+          bool changed = false;
+          if (auto* eb = Bourgeon::Instance().basic_info()) {
+            PushStyleCompact();
+
+            SeparatorText("Réglages généraux");
+            if (ro::RoCheckbox("Chat Discord (Gonryun only)", &discord_chat_)) {
+              UpdateRelay();
+              SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
+            }
+
+            if (ro::RoCheckbox("Largeur du chat", &chat_width_enabled_)) {
+              chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
+              changed = true;
+            }
+
+            if (chat_width_enabled_ &&WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200)) {
+              chat::SetCustomWidth(true, chat_width_px_);
+              changed = true;
+            }
+
+            if (ro::RoCheckbox("Horodatage du chat", &chat_timestamps_)) {
+              chat::SetTimestamps(chat_timestamps_);
+              changed = true;
+            }
+
+            if (ro::RoCheckbox("Icônes d'objets", &chat_item_icons_)) {
+              chat::SetItemIcons(chat_item_icons_);
+              changed = true;
+            }
+
+            // Clear chat history (all channels of the main chat window)
+            if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
             SameLine(); HelpMarker(
-                "Masque la fenêtre native \"Basic Info\" (déplacée hors écran) une "
-                "fois ton portrait en place. Décoche pour la restaurer.");
+                "Vide l'historique de tous les canaux de la fenêtre de chat principale "
+                "(historique brut effacé + affichage vidé). Les nouveaux messages "
+                "réapparaissent normalement ensuite.");
+
+            SeparatorText("Couleurs du chat");
+            // Chat Background Colours (Main / Detached / Whisper)
+            // One independent colour+opacity picker per group, persisted locally.
+            auto render_chatbg = [&](ChatBgGroup& g) {
+              if (g.instrs.empty()) return;
+              ImGui::PushID(g.yaml_key);
+              const ImVec4 swatch(g.color[0], g.color[1], g.color[2], g.color[3]);
+              if (ImGui::ColorButton("##btn", swatch, ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
+              OpenPopup("picker");
+              SameLine();
+              TextUnformatted(g.label);
+
+              if (BeginPopup("picker")) {
+                // ── Shared user presets ─────────────────────────────────────────
+                if (!chat_bg_presets_.empty()) {
+                  TextUnformatted("Presets:");
+                  int delete_idx = -1;
+                  // Display each preset as a colour swatch + name + delete button.
+                  for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
+                    const auto& p = chat_bg_presets_[i];
+                    const ImVec4 col(((p.argb >> 16) & 0xFF) / 255.0f,
+                                    ((p.argb >>  8) & 0xFF) / 255.0f,
+                                    ( p.argb        & 0xFF) / 255.0f,
+                                    ((p.argb >> 24) & 0xFF) / 255.0f);
+                    ImGui::PushID(i);
+                    // Clicking a preset swatch updates the picker to match the preset, applies it to the chat background, and saves the settings.
+                    if (ImGui::ColorButton("##swatch", col,
+                                          ImGuiColorEditFlags_AlphaPreview |
+                                          ImGuiColorEditFlags_NoTooltip,
+                                          ImVec2(18, 18))) {
+                      PickerFromArgb(g.color, p.argb); // update the picker to match the preset
+                      ApplyChatBg(g, p.argb, true);
+                      changed = true;
+                    }
+                    SameLine();
+                    TextUnformatted(p.name.c_str());
+                    SameLine();
+                    if (ro::RoSmallButton("x")) delete_idx = i;
+                    ImGui::PopID();
+                  }
+                  if (delete_idx >= 0) {
+                    chat_bg_presets_.erase(chat_bg_presets_.begin() + delete_idx);
+                    changed = true;
+                  }
+                  SeparatorText("Sauvegarder une couleur comme preset");
+                }
+                // ── Save current colour as a preset ─────────────────────────────
+                ImGui::SetNextItemWidth(120.0f);
+                ImGui::InputTextWithHint("##preset_name", "Preset name", preset_name_buf_, sizeof(preset_name_buf_));
+                SameLine();
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f); // vertically align the button with the input text
+                if (ro::RoButton("Save preset") && preset_name_buf_[0] != '\0') {
+                  chat_bg_presets_.push_back({preset_name_buf_, ArgbFromPicker(g.color)});
+                  preset_name_buf_[0] = '\0';
+                  changed = true;
+                }
+                SeparatorText("Choisir une couleur");
+                if (ColorPicker("##pick", g.color)) {
+                  ApplyChatBg(g, ArgbFromPicker(g.color), false);
+                  g.editing = true;
+                }
+                if (g.editing && ImGui::IsMouseReleased(0)) {
+                  ApplyChatBg(g, ArgbFromPicker(g.color), true);
+                  changed = true;
+                  g.editing = false;
+                }
+                if (ro::RoButton("Close")) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+              }
+              ImGui::PopID();
+            };
+
+            if (chat_bg_found_) {
+              render_chatbg(chat_bg_[kChatBgMain]);
+              // Quick preset switcher toggle, on the same line as the main chat picker.
+              SameLine();
+              changed |= ro::RoCheckbox("Preset bar", &mainchat_preset_bar_);
+              render_chatbg(chat_bg_[kChatBgDetached]);
+              render_chatbg(chat_bg_[kChatBgWhisper]);
+            } else GrayText("(chat background patch unavailable)");
+
             PopStyleCompact();
           }
+          if (changed) SaveSettings();
         }
-        // ── Barre d'action (skill bar ImGui : 3 barres fixes Onglet1/Onglet2/Items) ──
-        if (s_iface_nav == 2)
-        {
-          if (auto* sb = Bourgeon::Instance().skill_bar())
-            sb->DrawSettingsContent();
-        }
-        // ── Menu icons (ImGui replacement) ───────────────────────────────────
-        if (s_iface_nav == 3)
-        {
-          if (auto* mi = Bourgeon::Instance().menu_icons()) {
-            if (ro::RoCheckbox("Remplacer par des icônes ImGui", &mi->enabled_))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Cache la grille native et recrée les icônes fonctionnelles en "
-                "ImGui (cliquables + tooltip + masquage par icône).");
 
-            if (ro::RoCheckbox("Mode édition (glisser pour déplacer)",
-                                &mi->edit_mode_))
-              SaveSettings();
+        // ── Menu icons (ImGui replacement) ───────────────────────────────────
+        if (s_iface_nav == 3) {
+          bool changed = false;
+          if (auto* mi = Bourgeon::Instance().menu_icons()) {
+            SeparatorText("Réglages généraux");
+            changed |= ro::RoCheckbox("Rendre les icônes déplaçables", &mi->enabled_);
+            SameLine(); HelpMarker("Cache la grille native et recrée les icônes fonctionnelles.");
+
+            ImGui::BeginDisabled(!mi->enabled_);
+
+            changed |= ro::RoCheckbox("Mode édition (glisser pour déplacer)", &mi->edit_mode_);
             SameLine(); HelpMarker(
                 "En mode édition : glisse chaque icône pour la repositionner.\n"
-                "Aimantage aux autres icônes + à la grille d'alignement (réglages "
-                "Interface de jeu : grille/snap).\nDésactive le mode pour cliquer "
-                "les icônes normalement.");
+                "Aimantage aux autres icônes et à la grille d'alignement.\n"
+                "Désactive le mode pour cliquer les icônes normalement.");
 
             // Per-icon show/hide. icons() is populated once in-game.
-            if (TreeNode("Afficher / masquer les icônes")) {
-              auto& icons = mi->icons();
-              if (icons.empty()) {
-                ImGui::TextDisabled("(disponible une fois en jeu)");
-              } else {
-                for (auto& ic : icons) {
-                  bool shown = !ic.hidden;
-                  ImGui::PushID(ic.cmd_id);
-                  if (ro::RoCheckbox(ic.name, &shown)) {
-                    ic.hidden = !shown;
-                    mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
-                    SaveSettings();
-                  }
-                  ImGui::PopID();
+            SeparatorText("Icônes");
+            auto& icons = mi->icons();
+            if (icons.empty()) {
+              GrayText("(disponible une fois en jeu)");
+            } else {
+              for (auto& ic : icons) {
+                bool shown = !ic.hidden;
+                ImGui::PushID(ic.cmd_id);
+                if (ro::RoCheckbox(ic.name, &shown)) {
+                  ic.hidden = !shown;
+                  mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
+                  changed = true;
                 }
+                ImGui::PopID();
               }
-              ImGui::TreePop();
             }
+
+            ImGui::EndDisabled();
           }
+          if (changed) SaveSettings();
         }
+
         // ── Status icons (StatusIconTweaks) ──────────────────────────────────
-        if (s_iface_nav == 4)
-        {
+        if (s_iface_nav == 4) {
           if (auto* si = Bourgeon::Instance().status_icons())
             si->DrawSettings();
           else
             ImGui::TextDisabled("(plugin indisponible)");
         }
+
         // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
         if (s_iface_nav == 5)
         {
@@ -2388,7 +2368,8 @@ void MoonlightUi::OnRenderUI() {
           else
             ImGui::TextDisabled("(plugin indisponible)");
         }
-        // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ────
+
+        // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
         if (s_iface_nav == 6)
         {
           if (auto* idt = Bourgeon::Instance().item_desc()) {
@@ -2449,6 +2430,7 @@ void MoonlightUi::OnRenderUI() {
                 "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
           }
         }
+
         // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────
         if (s_iface_nav == 7)
         {
@@ -2513,6 +2495,7 @@ void MoonlightUi::OnRenderUI() {
                      "nom. 'Appliquer' recharge un preset ; les joueurs peuvent se "
                      "faire plusieurs themes.");
         }
+
         // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
         if (s_iface_nav == 8)
         {
@@ -2532,6 +2515,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::EndDisabled();
           }
         }
+        PopItemWidth();
       }
       ImGui::PopTextWrapPos();
       ImGui::EndChild();
@@ -2684,7 +2668,7 @@ void MoonlightUi::OnRenderUI() {
             }
           }
           Separator();
-          if (TreeNode("@autoloottype")) {// @autoloottype
+          if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
             TextUnformatted("@autoloottype :");
             SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
             SameLine();
@@ -2730,7 +2714,7 @@ void MoonlightUi::OnRenderUI() {
           SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
           Separator();
-          if (TreeNode("@autolootid")) {// @autolootid
+          if (ImGui::TreeNode("@autolootid")) {// @autolootid
             TextUnformatted("@autolootid :");
             SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
             SameLine();

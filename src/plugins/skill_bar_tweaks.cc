@@ -11,12 +11,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "imgui.h"
 #include "bourgeon.h"
+#include "d3d9/d3d9_hook.h"
 #include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "plugins/inventory_viewer.h"  // DraggedItemNameId (drag inventaire -> case de barre)
-#include "d3d9/d3d9_hook.h"
-#include "imgui.h"
 #include "plugins/imgui_escape.h"
+#include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -965,8 +966,7 @@ void SkillBarTweaks::OnRenderUI() {
     native_hidden_ = false;
   }
 
-  // Le panneau de réglages vit désormais dans MoonlightUi (onglet "Barre d'action"), plus de
-  // fenêtre flottante détachée (DrawPanel/²~ retirés).
+  // ── Dessin des barres ImGui + drag natif au-dessus ─────────────────────────────
   if (native_hidden_ && w) {
     for (int b = 0; b < kBarCount; ++b)
       if (bars_[b].visible) DrawBar(b);  // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
@@ -1056,94 +1056,75 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
   return false;
 }
 
-// ---- panneau de configuration ----------------------------------------------
-void SkillBarTweaks::DrawPanel() {
-  ImGui::SetNextWindowSize(ImVec2(330, 0), ImGuiCond_FirstUseEver);
-  bool open = true;
-  if (!ImGui::Begin("Skill Bar###SkillBarPanel", &open, ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::End(); if (!open) panel_visible_ = false; return;
-  }
-  bourgeon::CloseWindowOnEscape(open);
-  if (!open) panel_visible_ = false;
-  DrawSettingsContent();
-  ImGui::End();
-}
-
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
-void SkillBarTweaks::DrawSettingsContent() {
+void SkillBarTweaks::DrawSettings() {
   bool changed = false;
-  changed |= ImGui::Checkbox("Activer (barres ImGui)", &enabled_);
-  ImGui::SameLine();
-  ImGui::BeginDisabled(!enabled_);
-  ImGui::Checkbox("Verrouiller", &locked_);  // décoché = barre déplaçable ; transitoire, non persisté
-  ImGui::SameLine(); ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Coche = barre fixe. Decoche = glisser n'importe ou pour la deplacer.\n"
-                      "Verrouillee, les slots restent utilisables et rearrangeables.");
-  ImGui::EndDisabled();
+  changed |= ro::RoCheckbox("Activer les barres d'action modernes", &enabled_);
+  SameLine(); HelpMarker(
+      "Désactivé = barres classiques.\nActivé = barres modernes entièrement customisables.");
 
+  SeparatorText("Réglages généraux");
   ImGui::BeginDisabled(!enabled_);
+  changed |= ro::RoCheckbox("Verrouiller", &locked_);
+  SameLine(); HelpMarker(
+      "Coche = barres fixe. Décoche = glisser n'importe où pour la déplacer.\n"
+      "Verrouillée, les slots restent utilisables et réarrangeables.");
+
   // ── Réglages COMMUNS (taille/espacement sont PAR BARRE, dans chaque section ci-dessous) ──
-  changed |= ImGui::Checkbox("Filtre bilineaire (flou)", &bilinear_);
-  ImGui::SameLine(); ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Decoche = pixels nets (POINT). Coche = lissage ImGui (LINEAR).");
-  changed |= ImGui::Checkbox("Clic-traversant (Shift = interagir)", &clickthrough_);
-  changed |= ImGui::Checkbox("Afficher les touches", &show_keys_);
-  changed |= ImGui::Checkbox("Texte gras", &bold_text_);  // faux-gras (touches + nombres)
-  changed |= WheelSliderFloat("Taille texte touches", &key_scale_, 0.5f, 2.0f, "%.2fx");
-  changed |= WheelSliderFloat("Taille texte nombre", &count_scale_, 0.5f, 2.0f, "%.2fx");
-  ImGui::TextDisabled("Aimantation : Reglages interface > \"Aimanter a la grille\" (grille commune a tout l'UI).");
+  changed |= ro::RoCheckbox("Filtre bilinéaire (flou)", &bilinear_);
+  SameLine(); HelpMarker("Décoche = pixels nets (POINT).\nCoche = lissage (BILINEAR).");
+  changed |= ro::RoCheckbox("Clic-traversant (maintenir Shift pour interagir)", &clickthrough_);
+  changed |= ro::RoCheckbox("Afficher les raccourcis dans les touches", &show_keys_);
+  changed |= ro::RoCheckbox("Texte \"gras\"", &bold_text_);  // faux-gras (touches + nombres)
+  changed |= WheelSliderFloat("Taille texte raccourcis", &key_scale_, 0.5f, 2.0f, "%.2fx");
+  changed |= WheelSliderFloat("Taille texte level/qté", &count_scale_, 0.5f, 2.0f, "%.2fx");
+  ImGui::TextDisabled("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI).");
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
-  ImGui::Separator();
-  ImGui::TextDisabled("Barres");
+  SeparatorText("Barres");
   static const char* const kBarNames[kBarCount] = {"Onglet 1", "Onglet 2", "Items"};
   for (int b = 0; b < kBarCount; ++b) {
     BarCfg& bc = bars_[b];
     ImGui::PushID(b);
     bool vis = bc.visible;
-    if (ImGui::Checkbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
-    if (bc.visible && ImGui::TreeNode("cfg", "Reglages %s", kBarNames[b])) {
+    if (ro::RoCheckbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
+    if (bc.visible && ImGui::TreeNode("cfg", "Réglages %s", kBarNames[b])) {
       changed |= WheelSliderInt("Colonnes", &bc.columns, 1, 12);
       changed |= WheelSliderInt("Nb slots", &bc.slot_count, 1, kRegions[b].count);
-      changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px");
-      changed |= WheelSliderFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px");
+      changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);
+      changed |= WheelSliderFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px", 1.0f);
       changed |= WheelSliderInt("X", &bc.x, -200, 4000);
       changed |= WheelSliderInt("Y", &bc.y, -200, 4000);
-      ImGui::Text("Position : %d, %d", bc.x, bc.y);
+      Text("Position : %d, %d", bc.x, bc.y);
       ImGui::TreePop();
     }
     ImGui::PopID();
   }
 
-  if (ImGui::CollapsingHeader("Aide : clavier & onglets")) {
-    ImGui::TextWrapped(
-        "Le jeu ne pilote qu'UN onglet au clavier a la fois. Bourgeon route les touches vers l'autre "
-        "onglet visible :\n"
-        "- Touche PARTAGEE (ex. F2 sur les 2 onglets) : la case OCCUPEE repond. Si les deux cases "
-        "sont occupees, seul l'onglet actif repond (l'onglet 2 reste inerte pour cette touche).\n"
-        "- Pour piloter l'Onglet 2 de facon dediee, rebinde ses cases sur des combos Ctrl+/Alt+ "
-        "(touches uniques) dans les raccourcis clavier du jeu -> elles agissent toujours sur l'onglet 2.\n"
-        "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).");
-  }
-  if (ImGui::CollapsingHeader("Couleurs")) {
-    changed |= ColorSwatch("Fond du cadre", col_frame_);
-    changed |= ColorSwatch("Fond objet", col_item_);
-    changed |= ColorSwatch("Fond skill", col_skill_);
-    changed |= ColorSwatch("Fond vide", col_empty_);
-    changed |= ColorSwatch("Bordure", col_border_);
-    changed |= ColorSwatch("Bordure survol", col_borderhi_);
-    changed |= ColorSwatch("Texte touches", col_keytext_);
-    changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
-    changed |= ColorSwatch("Contour texte (ombre)", col_textout_);
-  }
-  ImGui::EndDisabled();
-  if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
+  SeparatorText("Couleurs");
+  changed |= ColorSwatch("Fond du cadre", col_frame_);
+  changed |= ColorSwatch("Fond objet", col_item_);
+  changed |= ColorSwatch("Fond skill", col_skill_);
+  changed |= ColorSwatch("Fond vide", col_empty_);
+  changed |= ColorSwatch("Bordure", col_border_);
+  changed |= ColorSwatch("Bordure survol", col_borderhi_);
+  changed |= ColorSwatch("Texte touches", col_keytext_);
+  changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
+  changed |= ColorSwatch("Contour texte (ombre)", col_textout_);
 
-  ImGui::Separator();
-  ImGui::TextDisabled("Clic G = utiliser. Glisser = rearranger. Clic D = description. Clic molette = vider.");
-  ImGui::TextDisabled("Bleu = objet, Vert = skill. Items = barre d'objets. Toggle panneau : 2/~");
+  SeparatorText("Aide : clavier & onglets");
+  TextWrapped(
+      "Le jeu ne pilote qu'UN onglet au clavier à la fois.\n"
+      "Bourgeon route les touches vers l'autre onglet visible :\n"
+      "- Touche PARTAGEE (ex. F2 sur les 2 onglets) : la case OCCUPEE répond.\n"
+      "  Si les deux cases sont occupées, seul l'onglet actif répond.\n"
+      "- Pour piloter l'Onglet 2 de façon dédiée, rebinde ses cases\n"
+      "  sur des combos Ctrl+/Alt+ (touches uniques) dans les raccourcis clavier du jeu.\n"
+      "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).");
+
+  ImGui::EndDisabled();
+
+  if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
 }
 
 // ---- la barre d'action elle-même -------------------------------------------

@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "bourgeon.h"
 #include "plugins/moonlight_ui.h"
+#include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -648,61 +649,48 @@ void StatusIconTweaks::OnModeSwitch(ModeMgr::ModeType mode_type,
 void StatusIconTweaks::DrawSettings() {
   bool changed = false;
 
-  changed |= ImGui::Checkbox("Disposition personnalisée", &g_cfg.enabled);
-  ImGui::SameLine();
-  HelpMarker("Désactivé = disposition d'origine du jeu (inchangée).");
-
   // Opacity is independent of the custom layout — it's forced at render time on
   // any status-icon node, so it works with the stock layout too.  The render
   // hook reads g_cfg.icon_alpha live, so no rebuild is needed.
-  if (WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%"))
-    g_needs_save = true;
-  ImGui::SameLine();
-  HelpMarker("Transparence des icônes de statut (100 % = opaque, comme l'origine). "
-             "Fonctionne même sans la disposition personnalisée.");
-  ImGui::Separator();
+  changed |= WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%");
+  SameLine(); HelpMarker(
+    "Transparence des icônes de statut (100 % = opaque, comme l'origine).\n"
+    "Fonctionne même sans la disposition personnalisée.");
+  Separator();
+
+  changed |= ro::RoCheckbox("Disposition personnalisée", &g_cfg.enabled);
+  SameLine(); HelpMarker("Désactivé = disposition d'origine du jeu (inchangée).");
 
   ImGui::BeginDisabled(!g_cfg.enabled);
 
   // --- edit mode --------------------------------------------------------
-  ImGui::Checkbox("Déverrouiller (glisser pour déplacer)", &g_unlocked);
-  ImGui::SameLine();
-  HelpMarker("Affiche un cadre sur la barre ; glissez-le pour la déplacer. "
-             "La position met à jour Marge X / Marge Y.");
-  if (ImGui::Checkbox("Aperçu (faux statuts)", &g_preview)) g_dirty = true;
-  ImGui::SameLine();
-  HelpMarker("Génère de faux statuts (durées variées) pour prévisualiser la "
-             "disposition, le tri et le temps restant sans buffs réels.");
-  ImGui::Separator();
+  ro::RoCheckbox("Déverrouiller (glisser pour déplacer)", &g_unlocked);
+  SameLine(); HelpMarker(
+    "Affiche un cadre sur la barre ; glissez-le pour la déplacer.\n"
+    "La position met à jour Marge X / Marge Y.");
+  changed |= ro::RoCheckbox("Aperçu (faux statuts)", &g_preview);
+  SameLine(); HelpMarker("Génère de faux statuts pour prévisualiser la disposition.");
 
-  changed |= ImGui::Combo("Coin d'ancrage", &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
+  SeparatorText("Réglages");
+  changed |= ro::RoCombo("Coin d'ancrage", &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
   changed |= WheelSliderInt("Marge X", &g_cfg.margin_x, 0, 1920);
   changed |= WheelSliderInt("Marge Y", &g_cfg.margin_y, 0, 1080);
-  ImGui::Separator();
-
-  changed |= ImGui::Combo("Sens d'empilement", &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
-  changed |= ImGui::Combo("Retour à la ligne",  &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  changed |= ro::RoCombo("Sens d'empilement", &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  changed |= ro::RoCombo("Retour à la ligne", &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
   changed |= WheelSliderInt("Icônes par ligne", &g_cfg.per_line, 1, 20);
   changed |= WheelSliderInt("Espacement icônes", &g_cfg.icon_pitch, 30, 60);
   changed |= WheelSliderInt("Espacement lignes", &g_cfg.line_pitch, 30, 60);
-  ImGui::Separator();
-
-  changed |= ImGui::Combo("Tri par durée", &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
-  ImGui::SameLine();
+  changed |= ro::RoCombo("Tri par durée", &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
+  SameLine();
   HelpMarker("Trie les icônes selon le temps d'expiration restant.");
-  if (ImGui::Checkbox("Afficher le temps restant", &g_cfg.show_remaining))
-    g_needs_save = true;
-  ImGui::SameLine();
-  HelpMarker("Affiche le temps restant sous chaque icône "
-             "(<60s : s, <1h : min, sinon h). Les statuts permanents n'affichent rien. "
-             "Le texte est en gras avec un contour noir pour rester lisible.");
+  changed |= ro::RoCheckbox("Afficher le temps restant", &g_cfg.show_remaining);
+  SameLine(); HelpMarker("Affiche le temps restant sous chaque icône.");
+
   ImGui::BeginDisabled(!g_cfg.show_remaining);
-  ImGui::Indent();
-  if (ImGui::Checkbox("Fond derrière le texte", &g_cfg.time_bg)) g_needs_save = true;
-  ImGui::SameLine();
-  HelpMarker("Ajoute un fond sombre derrière le temps restant pour plus de "
-             "contraste sur les fonds clairs.");
-  ImGui::Unindent();
+  Indent();
+    changed |= ro::RoCheckbox("Fond derrière le texte", &g_cfg.time_bg);
+    SameLine(); HelpMarker("Ajoute un fond sombre derrière le temps restant.");
+  Unindent();
   ImGui::EndDisabled();
 
   if (ImGui::Button("Réinitialiser (origine)")) {

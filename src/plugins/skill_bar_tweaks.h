@@ -40,7 +40,6 @@ class SkillBarTweaks : public Plugin {
   bool HandleNativeDrop(int mx, int my);
 
   // ── Config GLOBALE (publique : câblage MoonlightUi / persistance yaml) ──────
-  bool  panel_visible_ = true;   // panneau de réglage affiché
   bool  enabled_       = false;  // remplacement ImGui actif (cache la barre native)
   bool  locked_        = true;   // barres verrouillées (fixes) ; décoché = déplaçables. Slots
                                  // toujours utilisables/réarrangeables, lock ou pas.
@@ -83,7 +82,7 @@ class SkillBarTweaks : public Plugin {
   // restaure à l'entrée en jeu. SnapshotItemSlots() rafraîchit ce tableau depuis les globals live.
   uint32_t item_slots_[kItemSlotMax] = {};
   void SnapshotItemSlots();     // lit g_ShortCutItemSlotExt -> item_slots_ (appelé avant la sauvegarde)
-  void DrawSettingsContent();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
+  void DrawSettings();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
 
   // Couleurs (RGBA 0..1) — fond du cadre, fond par type, fond vide, bordures.
   float col_frame_[4]    = {0.050f, 0.050f, 0.070f, 0.600f};  // fond du cadre (derrière les boutons)
@@ -97,7 +96,6 @@ class SkillBarTweaks : public Plugin {
   float col_textout_[4]  = {1.000f, 1.000f, 1.000f, 1.000f};  // contour/ombre des textes (blanc, 8 directions)
 
  private:
-  void DrawPanel();          // panneau de configuration ImGui
   void DrawBar(int bar);     // dessine la barre d'index `bar` (== région native)
 
   bool in_game_        = false;

@@ -44,7 +44,7 @@ void HelpMarker(const char* desc);
 
 // Helper to display a slider that can be fine-tuned with the mouse wheel
 // one is for floats, one for ints.  Step defaults to 0.01 (float) / 1 (int).
-bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.3f", float step = 0.0f);
+bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.2f", float step = 0.0f);
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d", int step = 0);
 
 // Imgui wrappers — so plugins don't have to include imgui.h just to use them.
@@ -76,17 +76,17 @@ inline void Text(const char* fmt, ...) {
 inline void TextUnformatted(const char* text) {
     ImGui::TextUnformatted(text);
 }
+inline void GrayText(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    ImGui::TextDisabledV(fmt, args);
+    va_end(args);
+}
 inline void RedText(const char* text) {
     ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", text);
 }
 inline bool CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0) {
     return ImGui::CollapsingHeader(label, flags);
-}
-inline bool TreeNode(const char* label) {
-    return ImGui::TreeNode(label);
-}
-inline void TreePop() {
-    ImGui::TreePop();
 }
 inline void Indent(float indent_w = 0.0f) {
     ImGui::Indent(indent_w);
@@ -94,6 +94,32 @@ inline void Indent(float indent_w = 0.0f) {
 inline void Unindent(float indent_w = 0.0f) {
     ImGui::Unindent(indent_w);
 }
+inline void OpenPopup(const char* str_id) {
+    ImGui::OpenPopup(str_id);
+}
+inline bool BeginPopup(const char* str_id) {
+    return ImGui::BeginPopup(str_id);
+}
+inline bool IsHovered() {
+    return ImGui::IsItemHovered();
+}
+inline void Tooltip(const char* text) {
+    ImGui::SetTooltip("%s", text);
+}
+inline void PushItemWidth(float item_width) {
+    ImGui::PushItemWidth(item_width);
+}
+inline void PopItemWidth() {
+    ImGui::PopItemWidth();
+}
+inline bool ColorPicker(const char* label, float col[4]) {
+    ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar |
+                                ImGuiColorEditFlags_NoSidePreview |
+                                ImGuiColorEditFlags_NoInputs | 
+                                ImGuiColorEditFlags_NoColorMarkers;
+    return ImGui::ColorEdit4(label, col, flags);
+}
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:

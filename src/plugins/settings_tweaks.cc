@@ -114,7 +114,7 @@ void SettingsTweaks::DrawSettings() {
   bool save  = false;  // persist to disk (on release, not every drag frame)
   auto slider = [&](const char* label, float* v, float lo, float hi) {
     ImGui::SetNextItemWidth(180.0f);
-    if (WheelSliderFloat(label, v, lo, hi, "%.2f")) apply = true;
+    if (WheelSliderFloat(label, v, lo, hi)) apply = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   };
 
