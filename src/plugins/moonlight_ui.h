@@ -46,6 +46,10 @@ void HelpMarker(const char* desc);
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.3f", float step = 0.0f);
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d", int step = 0);
 
+// SameLine() wrapper to avoid having to include imgui.h in every plugin that uses it.
+void SameLine(float x = 0.0f, float spacing = -1.0f);
+void SameLine(float x, float spacing);
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:

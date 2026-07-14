@@ -1530,12 +1530,13 @@ void HelpMarker(const char* desc) {
 // (fine-tuning without grabbing the handle). SetItemKeyOwner(MouseWheelY) claims
 // the wheel so the settings window doesn't scroll at the same time. Step defaults
 // to 0.01 (float) / 1 (int).
+// Shift+wheel uses a larger step (0.10 / 10) for faster adjustment.
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
   bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt);
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
-      if (step <= 0.0f) step = 0.01f;
+      if (step <= 0.0f) step = ImGui::GetIO().KeyShift ? 0.10f : 0.01f;
       float nv = *v + w * step;
       if (nv < lo) nv = lo;
       if (nv > hi) nv = hi;
@@ -1550,7 +1551,7 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, 
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
-      if (step <= 0) step = 1;  // unit precision by default ("à l'unité près")
+      if (step <= 0) step = ImGui::GetIO().KeyShift ? 10 : 1;  // unit precision by default ("à l'unité près")
       int nv = *v + (w > 0.0f ? step : -step);
       if (nv < lo) nv = lo;
       if (nv > hi) nv = hi;
@@ -1558,6 +1559,10 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, 
     }
   }
   return changed;
+}
+
+void SameLine(float x, float spacing) {
+    ImGui::SameLine(x, spacing);
 }
 
 // Make the UI compact because there are so many fields
@@ -1668,7 +1673,7 @@ void MoonlightUi::OnRenderUI() {
     if (ImGui::CollapsingHeader("Règles du serveur"))
     {
       auto BulletWrapped = [](const char* text) {
-        ImGui::Bullet(); ImGui::SameLine(); ImGui::TextWrapped("%s", text);
+        ImGui::Bullet(); SameLine(); ImGui::TextWrapped("%s", text);
       };
       ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
       if (ImGui::TreeNode("Règlements généraux"))
@@ -1862,7 +1867,7 @@ void MoonlightUi::OnRenderUI() {
 
       // ── Clear chat history (all channels of the main chat window) ─────────
       if (ImGui::Button("Effacer l'historique du chat")) chat::ClearHistory();
-      ImGui::SameLine(); HelpMarker(
+      SameLine(); HelpMarker(
           "Vide l'historique de tous les canaux de la fenêtre de chat principale "
           "(historique brut effacé + affichage vidé). Les nouveaux messages "
           "réapparaissent normalement ensuite.");
@@ -1876,7 +1881,7 @@ void MoonlightUi::OnRenderUI() {
         if (ImGui::ColorButton("##btn", swatch,
                                ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
           ImGui::OpenPopup("picker");
-        ImGui::SameLine();
+        SameLine();
         ImGui::TextUnformatted(g.label);
 
         if (ImGui::BeginPopup("picker")) {
@@ -1901,9 +1906,9 @@ void MoonlightUi::OnRenderUI() {
               }
               if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", p.name.c_str());
-              ImGui::SameLine();
+              SameLine();
               ImGui::TextUnformatted(p.name.c_str());
-              ImGui::SameLine();
+              SameLine();
               if (ImGui::SmallButton("x"))
                 delete_idx = i;
               ImGui::PopID();
@@ -1917,7 +1922,7 @@ void MoonlightUi::OnRenderUI() {
           // ── Save current colour as a preset ─────────────────────────────
           ImGui::SetNextItemWidth(120.0f);
           ImGui::InputText("##preset_name", preset_name_buf_, sizeof(preset_name_buf_));
-          ImGui::SameLine();
+          SameLine();
           if (ImGui::Button("Save preset") && preset_name_buf_[0] != '\0') {
             chat_bg_presets_.push_back({preset_name_buf_, ArgbFromPicker(g.color)});
             preset_name_buf_[0] = '\0';
@@ -1946,7 +1951,7 @@ void MoonlightUi::OnRenderUI() {
       if (chat_bg_found_) {
         render_chatbg(chat_bg_[kChatBgMain]);
         // Quick preset switcher toggle, on the same line as the main chat picker.
-        ImGui::SameLine();
+        SameLine();
         if (ImGui::Checkbox("Preset bar", &mainchat_preset_bar_))
           SaveSettings();
         render_chatbg(chat_bg_[kChatBgDetached]);
@@ -1963,7 +1968,7 @@ void MoonlightUi::OnRenderUI() {
           SaveSettings();
         if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Fige la fenêtre DPS (position/taille) et laisse passer les clics "
             "au jeu en dessous.");
 
@@ -1984,7 +1989,7 @@ void MoonlightUi::OnRenderUI() {
           dps->ResetHistory();
           SaveSettings();
         }
-        ImGui::SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
+        SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
 
         ImGui::SetNextItemWidth(160.0f);
         int win = dps->dps_window_secs_;
@@ -1992,7 +1997,7 @@ void MoonlightUi::OnRenderUI() {
           dps->dps_window_secs_ = win;
           SaveSettings();
         }
-        ImGui::SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
+        SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
 
         ImGui::SetNextItemWidth(160.0f);
         int timeout = dps->combat_timeout_secs_;
@@ -2000,7 +2005,7 @@ void MoonlightUi::OnRenderUI() {
           dps->combat_timeout_secs_ = timeout;
           SaveSettings();
         }
-        ImGui::SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
+        SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
 
         if (ImGui::Button("Reset graphique"))
           dps->ResetHistory();
@@ -2008,7 +2013,7 @@ void MoonlightUi::OnRenderUI() {
         ImGui::Separator();
         if (ImGui::Checkbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
             "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
       }
@@ -2024,7 +2029,7 @@ void MoonlightUi::OnRenderUI() {
         bool on = doom->enabled();
         if (ImGui::Checkbox("Lancer DOOM (1993) dans Ragnarok", &on))
           doom->SetEnabled(on);
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
             "par-dessus le jeu.\n\n"
             "Nécessite doom1.wad (shareware) à côté de l'exe du client.\n"
@@ -2044,7 +2049,7 @@ void MoonlightUi::OnRenderUI() {
         bool on = roggle->enabled();
         if (ImGui::Checkbox("Ouvrir Roggle", &on))
           roggle->SetEnabled(on);
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Mini-jeu façon Peggle, dessiné en ImGui par-dessus le jeu.\n\n"
             "Vise à la souris depuis le canon en haut, clique pour tirer la "
             "bille. Dégomme tous les pegs ORANGE pour gagner ; le seau vert en "
@@ -2060,7 +2065,7 @@ void MoonlightUi::OnRenderUI() {
         bool on = rj->enabled();
         if (ImGui::Checkbox("Ouvrir Rojeweled", &on))
           rj->SetEnabled(on);
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
             "monstres RO (famille Poring : Poring, Drops, Metaling, Poporing, "
             "Marin, Deviling).\n\n"
@@ -2073,32 +2078,14 @@ void MoonlightUi::OnRenderUI() {
     }
     if (ImGui::CollapsingHeader("Interface de jeu")) {
       PushStyleCompact();
-      if (ImGui::Checkbox("Grille d'alignement", &grid_.show))
-        SaveSettings();
-      ImGui::SameLine(); HelpMarker(
+      if (ImGui::Checkbox("Grille d'alignement", &grid_.show)) SaveSettings();
+      SameLine(); HelpMarker(
           "Affiche une grille plein écran pour aligner ton interface "
           "(comme les add-ons d'interface de WoW).");
       ImGui::SetNextItemWidth(160.0f);
-      {
-        WheelSliderInt("Taille grille", &grid_.size, 4, 128);
-        // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
-        // Claim the wheel for this item so it adjusts the cell size and does NOT
-        // also scroll the settings window.
-        const bool hovered = ImGui::IsItemHovered();
-        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-        const float wheel = hovered ? ImGui::GetIO().MouseWheel : 0.0f;
-        if (wheel != 0.0f) {
-          const int dir  = wheel > 0.0f ? 1 : -1;
-          const int step = ImGui::GetIO().KeyShift ? 10 : 1;
-          grid_.size += dir * step;
-          if (grid_.size < 4)   grid_.size = 4;
-          if (grid_.size > 128) grid_.size = 128;
-        }
-        if (ImGui::IsItemDeactivatedAfterEdit() || wheel != 0.0f) SaveSettings();
-      }
-      if (ImGui::Checkbox("Aimanter à la grille", &grid_.snap))
-        SaveSettings();
-      ImGui::SameLine(); HelpMarker(
+      if (WheelSliderInt("Taille grille", &grid_.size, 4, 128)) SaveSettings();
+      if (ImGui::Checkbox("Aimanter à la grille", &grid_.snap)) SaveSettings();
+      SameLine(); HelpMarker(
           "Les barres et les icônes s'alignent sur les cellules de la grille "
           "pendant le déplacement et le redimensionnement.");
       if (ImGui::ColorEdit4("Couleur grille", grid_.color,
@@ -2110,7 +2097,7 @@ void MoonlightUi::OnRenderUI() {
       if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
         if (ImGui::Checkbox("Inventaire ImGui", &iv->imgui_enabled_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
             "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
             "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
@@ -2118,7 +2105,7 @@ void MoonlightUi::OnRenderUI() {
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
         if (ImGui::Checkbox("Storage ImGui", &stg->imgui_enabled_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
             "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
             "viewer. Pas de cohabitation.");
@@ -2127,7 +2114,7 @@ void MoonlightUi::OnRenderUI() {
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
         if (ImGui::Checkbox("Cash Shop ImGui", &cs->imgui_enabled_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
             "fenêtre native est cachée.\nOFF : cash shop natif classique.");
       }
@@ -2136,7 +2123,7 @@ void MoonlightUi::OnRenderUI() {
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
         if (ImGui::Checkbox("Shop NPC ImGui", &sh->imgui_enabled_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
             "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
       }
@@ -2144,7 +2131,7 @@ void MoonlightUi::OnRenderUI() {
       if (auto* cse = Bourgeon::Instance().character_sheet()) {
         if (ImGui::Checkbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
           SaveSettings();
-        ImGui::SameLine(); HelpMarker(
+        SameLine(); HelpMarker(
             "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
             "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
             "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
@@ -2162,7 +2149,7 @@ void MoonlightUi::OnRenderUI() {
         if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i))
           s_iface_nav = i;
       ImGui::EndChild();
-      ImGui::SameLine();
+      SameLine();
       ImGui::BeginChild("iface_content", ImVec2(0.0f, kNavH), false);
       ImGui::PushTextWrapPos(0.0f);  // wrap le texte à la largeur du child
       {
@@ -2175,32 +2162,32 @@ void MoonlightUi::OnRenderUI() {
               SaveSettings();
             ImGui::Indent();
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-              if (i) ImGui::SameLine();
+              if (i) SameLine();
               if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
                 SaveSettings();
             }
-            ImGui::SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+            SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
             ImGui::Unindent();
 
             if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
                                 &eb->locked_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Verrouillée : les barres ne bougent plus et laissent passer les "
                 "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
                 "tirez le coin pour redimensionner.");
 
             if (ImGui::Checkbox("Aimanter les barres (snap)", &eb->sticky_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
                 "et se collent automatiquement (~10px).\nÉloigne-la pour la "
                 "détacher. Les barres restent indépendantes.");
 
             if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Checkbox("Bordure", &eb->border_)) SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). "
                 "Décoche pour des barres sans contour.");
 
@@ -2212,7 +2199,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::SetNextItemWidth(160.0f);
             if (WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f", 1.0f))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker("Arrondi des coins des barres.");
+            SameLine(); HelpMarker("Arrondi des coins des barres.");
 
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
               char lbl[32];
@@ -2229,7 +2216,7 @@ void MoonlightUi::OnRenderUI() {
 
             ImGui::TextUnformatted("Tailles rapides (toutes) :");
             auto preset = [&](const char* label, int w, int h) {
-              ImGui::SameLine();
+              SameLine();
               if (ImGui::Button(label)) {
                 for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
                   eb->bars_[j].w = w;
@@ -2253,7 +2240,7 @@ void MoonlightUi::OnRenderUI() {
             PushStyleCompact();
             if (ImGui::Checkbox("Afficher le portrait", &eb->portrait_visible_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Portrait de statut : la tête du personnage, le pseudo, la classe "
                 "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
                 "redimensionnable, avec sa couleur/opacité de fond et son arrondi.\n"
@@ -2262,7 +2249,7 @@ void MoonlightUi::OnRenderUI() {
             if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)",
                                 &eb->portrait_locked_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Verrouillé : les éléments ne bougent plus et laissent passer les "
                 "clics au jeu.\nDéverrouillé : glisse pour déplacer, tire un bord/"
                 "coin pour redimensionner (aimantage à la grille d'alignement).");
@@ -2270,40 +2257,40 @@ void MoonlightUi::OnRenderUI() {
             if (ImGui::Checkbox("Sprite de tête (sinon placeholder)",
                                 &eb->portrait_head_sprite_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Régénère la tête du personnage via le moteur de sprites du jeu "
                 "et l'affiche dans l'élément Portrait.");
             if (ImGui::Checkbox("Tête seule (sans le corps)",
                                 &eb->portrait_head_only_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Ne garde que les couches de la tête (visage/cheveux/coiffes) et "
                 "retire le corps. Décoche pour le personnage entier.");
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Checkbox("Bordure", &eb->portrait_border_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker("Trait noir 1px autour de chaque cadre.");
+            SameLine(); HelpMarker("Trait noir 1px autour de chaque cadre.");
 
             // Live framing of the head sprite (zoom + vertical focus).
             ImGui::SetNextItemWidth(160.0f);
             if (WheelSliderFloat("Zoom tête", &eb->portrait_head_zoom_, 0.10f,
                                    2.0f, "%.2f", 0.01f))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Zoom dans la tête (1 = corps entier). Ajuste avec le décalage "
                 "vertical pour cadrer le visage.");
             ImGui::SetNextItemWidth(160.0f);
             if (WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_,
                                    -1.5f, 1.5f, "%.2f", 0.01f))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Décale le portrait horizontalement (0 = centré). Sert à aligner "
                 "la tête/le corps ; le zoom reste centré.");
             ImGui::SetNextItemWidth(160.0f);
             if (WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_,
                                    -1.5f, 1.5f, "%.2f", 0.01f))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Décale le portrait verticalement (0 = centré). Optionnel — le "
                 "zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
 
@@ -2313,7 +2300,7 @@ void MoonlightUi::OnRenderUI() {
                              "Repos\0Marche\0Assis\0Ramasser\0Combat\0Attaque\0"
                              "Touché\0Gelé\0Mort\0"))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Pose animée du portrait (Combat = posture prête au combat). "
                 "Le nombre d'images de l'animation s'ajuste automatiquement.");
             // Facing direction (low 3 bits of the pose) + play/freeze toggle.
@@ -2322,18 +2309,18 @@ void MoonlightUi::OnRenderUI() {
                              "Face (0)\0Diag. 1\0Côté (2)\0Diag. 3\0Dos (4)\0"
                              "Diag. 5\0Côté (6)\0Diag. 7\0"))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
                 "l'angle voulu (le rendu se met à jour en direct).");
             if (ImGui::Checkbox("Animer", &eb->portrait_animate_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Joue les images de l'animation (ex. le balayage de la posture "
                 "Combat). Décoche pour figer une pose calme (image 0).");
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Checkbox("Cape / garment", &eb->portrait_show_garment_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Affiche la cape/garment équipée (seulement en mode corps "
                 "entier — décoche \"Tête seule\" pour la voir).");
 
@@ -2351,7 +2338,7 @@ void MoonlightUi::OnRenderUI() {
                                         ImGuiColorEditFlags_AlphaBar))
                 SaveSettings();
               if (i != BasicInfoTweaks::kPortHead) {
-                ImGui::SameLine();
+                SameLine();
                 if (ImGui::ColorEdit4("Texte", e.fg, ImGuiColorEditFlags_NoInputs))
                   SaveSettings();
               }
@@ -2366,7 +2353,7 @@ void MoonlightUi::OnRenderUI() {
             if (ImGui::Checkbox("Masquer la fenêtre Basic Info d'origine",
                                 &eb->portrait_hide_basic_info_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Masque la fenêtre native \"Basic Info\" (déplacée hors écran) une "
                 "fois ton portrait en place. Décoche pour la restaurer.");
             PopStyleCompact();
@@ -2384,14 +2371,14 @@ void MoonlightUi::OnRenderUI() {
           if (auto* mi = Bourgeon::Instance().menu_icons()) {
             if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Cache la grille native et recrée les icônes fonctionnelles en "
                 "ImGui (cliquables + tooltip + masquage par icône).");
 
             if (ImGui::Checkbox("Mode édition (glisser pour déplacer)",
                                 &mi->edit_mode_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "En mode édition : glisse chaque icône pour la repositionner.\n"
                 "Aimantage aux autres icônes + à la grille d'alignement (réglages "
                 "Interface de jeu : grille/snap).\nDésactive le mode pour cliquer "
@@ -2444,20 +2431,20 @@ void MoonlightUi::OnRenderUI() {
             if (ImGui::Checkbox("Panneau technique des items",
                                 &idt->show_item_panel()))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Affiche le panneau enrichi description d'un ITEM "
                 "(clic droit item).");
             if (ImGui::Checkbox("Panneau technique des skills",
                                 &idt->show_skill_panel()))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Affiche le panneau enrichi à côté de la description d'un SKILL "
                 "(clic droit dans le grimoire).");
             ImGui::Separator();
             if (ImGui::Checkbox("Ouvrir près de la souris",
                                 &idt->desc_spawn_at_cursor()))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "ON : la description apparaît près du curseur à chaque ouverture.\n"
                 "OFF : elle réapparaît à sa dernière position connue.");
             if (idt->desc_spawn_at_cursor()) {
@@ -2477,7 +2464,7 @@ void MoonlightUi::OnRenderUI() {
               ImGui::SetNextItemWidth(160.0f);
               if (WheelSliderInt("Offset Y", &idt->desc_offset_y(), -400, 400, "%d px"))
                 SaveSettings();
-              ImGui::SameLine(); HelpMarker(
+              SameLine(); HelpMarker(
                   "Décalage depuis le curseur (molette au survol pour ajuster).");
               ImGui::Unindent();
             }
@@ -2489,7 +2476,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::Separator();
             if (ImGui::Checkbox("Bouton « Signaler un bug »", &br->enabled()))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Affiche le bouton de rapport de bug dans les fenêtres de "
                 "description (item/skill) et le dialogue PNJ, et active le "
                 "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
@@ -2503,7 +2490,7 @@ void MoonlightUi::OnRenderUI() {
             ro::SetFontEnabled(font_on);
             SaveSettings();
           }
-          ImGui::SameLine(); HelpMarker(
+          SameLine(); HelpMarker(
               "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
               "OFF : police integree d'ImGui (ProggyClean).");
           bool skin_on = ro::IsSkinEnabled();
@@ -2511,7 +2498,7 @@ void MoonlightUi::OnRenderUI() {
             ro::SetSkinEnabled(skin_on);
             SaveSettings();
           }
-          ImGui::SameLine(); HelpMarker(
+          SameLine(); HelpMarker(
               "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
               "boutons du client.\nOFF : chrome ImGui standard.");
           ImGui::Separator();
@@ -2531,12 +2518,12 @@ void MoonlightUi::OnRenderUI() {
                 g_ro_preset_sel = i;
             ImGui::EndCombo();
           }
-          ImGui::SameLine();
+          SameLine();
           if (ImGui::Button("Appliquer") && valid_sel) {
             ro::SkinConfig() = g_ro_presets[g_ro_preset_sel].cfg;
             SaveSettings();
           }
-          ImGui::SameLine();
+          SameLine();
           if (ImGui::Button("Supprimer") && valid_sel) {
             g_ro_presets.erase(g_ro_presets.begin() + g_ro_preset_sel);
             g_ro_preset_sel = -1;
@@ -2545,7 +2532,7 @@ void MoonlightUi::OnRenderUI() {
           static char preset_name[32] = "";
           ImGui::SetNextItemWidth(160.0f);
           ImGui::InputText("##ro_preset_name", preset_name, sizeof(preset_name));
-          ImGui::SameLine();
+          SameLine();
           if (ImGui::Button("Sauvegarder") && preset_name[0]) {
             bool found = false;
             for (auto& p : g_ro_presets)
@@ -2554,7 +2541,7 @@ void MoonlightUi::OnRenderUI() {
             SaveSettings();
             preset_name[0] = '\0';
           }
-          ImGui::SameLine();
+          SameLine();
           HelpMarker("Sauvegarde les couleurs/luminosite/opacite actuelles sous un "
                      "nom. 'Appliquer' recharge un preset ; les joueurs peuvent se "
                      "faire plusieurs themes.");
@@ -2565,14 +2552,14 @@ void MoonlightUi::OnRenderUI() {
           if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
             if (ImGui::Checkbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
                 "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
                 "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
             ImGui::BeginDisabled(!nd->imgui_enabled_);
             if (ImGui::Checkbox("Barre de recherche du menu", &nd->menu_search_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
                 "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
                 "choix) pour filtrer les options. Décoche pour un menu épuré.");
             ImGui::EndDisabled();
@@ -2603,23 +2590,23 @@ void MoonlightUi::OnRenderUI() {
           if (ImGui::BeginTable("split", 2)) // Toggles settings
           {
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
+            SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
+            SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
+            SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
+            SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
+            SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
+            SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
+            SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
+            SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker(
+            SameLine(); HelpMarker(
               "Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
               "Groupe SELLITEM :\nGreen Potion (506)\nWhite Slim Potion (547)\nLucky Candy (570)\n"
               "Old Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\n"
@@ -2630,9 +2617,9 @@ void MoonlightUi::OnRenderUI() {
               "Ice Scale (7562)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
               "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
+            SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
             ImGui::TableNextColumn(); if (ImGui::Checkbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
-            ImGui::SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
+            SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
             ImGui::EndTable();
           }
           // @noks — combo 4 options (off / self / party / guild)
@@ -2650,7 +2637,7 @@ void MoonlightUi::OnRenderUI() {
               }
               ImGui::EndCombo();
             }
-            ImGui::SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
+            SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
           }
           // Tri inventaires — combo 7 options (0=Par ID … 6=Aucun)
           {
@@ -2670,13 +2657,13 @@ void MoonlightUi::OnRenderUI() {
               }
             };
             TriCombo("Tri Inventaire", tri_inv_, kSettingTriInv);
-            ImGui::SameLine(); HelpMarker("Tri automatique de l'inventaire.");
+            SameLine(); HelpMarker("Tri automatique de l'inventaire.");
             TriCombo("Tri Chariot",    tri_cart_, kSettingTriCart);
-            ImGui::SameLine(); HelpMarker("Tri automatique du chariot.");
+            SameLine(); HelpMarker("Tri automatique du chariot.");
             TriCombo("Tri Storages",     tri_storage_, kSettingTriStorage);
-            ImGui::SameLine(); HelpMarker("Tri automatique des Storages personnel à la prochaine ouverture.");
+            SameLine(); HelpMarker("Tri automatique des Storages personnel à la prochaine ouverture.");
             TriCombo("Tri Storage Guilde", tri_gstorage_, kSettingTriGstorage);
-            ImGui::SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
+            SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
           }
             ImGui::EndTabItem();
         }
@@ -2690,7 +2677,7 @@ void MoonlightUi::OnRenderUI() {
               aloot_rate_ = rate;
               SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
             }
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::SmallButton("Reset##rate")) {
               aloot_rate_ = 0;
               SendSetting(kSettingAlootRate, 0);
@@ -2707,7 +2694,7 @@ void MoonlightUi::OnRenderUI() {
               aloot_pognon_ = pognon;
               SendSetting(kSettingAlootPognon, static_cast<uint16_t>(pognon / 100));
             }
-          ImGui::SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
+          SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
             auto apply_pognon_delta = [this](int delta) {
               int v = aloot_pognon_ + delta;
               if (v < 0) v = 0;
@@ -2717,13 +2704,13 @@ void MoonlightUi::OnRenderUI() {
               SendSetting(kSettingAlootPognon, static_cast<uint16_t>(v / 100));
             };
             if (ImGui::Button("-10kz"))  apply_pognon_delta(-10000);
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Button("-1kz"))   apply_pognon_delta(-1000);
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Button("+1kz"))   apply_pognon_delta(1000);
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::Button("+10kz"))  apply_pognon_delta(10000);
-            ImGui::SameLine();
+            SameLine();
             if (ImGui::SmallButton("Reset##pognon")) {
               aloot_pognon_ = 0;
               SendSetting(kSettingAlootPognon, 0);
@@ -2732,8 +2719,8 @@ void MoonlightUi::OnRenderUI() {
           ImGui::Separator();
           if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
             ImGui::TextUnformatted("@autoloottype :");
-            ImGui::SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
-            ImGui::SameLine();
+            SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
+            SameLine();
             if (ImGui::SmallButton("Reset##type")) {
               aloot_type_mask_ = 0;
               SendSetting(kSettingAlootType, 0);
@@ -2762,7 +2749,7 @@ void MoonlightUi::OnRenderUI() {
           ImGui::Separator();
           {// @autolootrare
           if (ImGui::Checkbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
-          ImGui::SameLine(); HelpMarker(
+          SameLine(); HelpMarker(
             "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
             "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
             "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
@@ -2771,19 +2758,19 @@ void MoonlightUi::OnRenderUI() {
           ImGui::Separator();
           {// @autolootmvp / @autolootmvpreward
           if (ImGui::Checkbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
-          ImGui::SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
+          SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
           if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
-          ImGui::SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
+          SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
           ImGui::Separator();
           if (ImGui::TreeNode("@autolootid")) {// @autolootid
             ImGui::TextUnformatted("@autolootid :");
-            ImGui::SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
-            ImGui::SameLine();
+            SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
+            SameLine();
             if (ImGui::Checkbox("Overlay", &show_alootid_overlay_))
               SaveSettings();
-            ImGui::SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
-            ImGui::SameLine();
+            SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
+            SameLine();
             if (ImGui::SmallButton("Clear##alootid")) {
               aloot_ids_.clear();
               SendSetting(kSettingAlootId, 0);
@@ -2791,7 +2778,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::SetNextItemWidth(100.0f);
             ImGui::InputInt("##alootid_input", &aloot_id_input_, 0, 0);
             if (aloot_id_input_ < 0) aloot_id_input_ = 0;
-            ImGui::SameLine();
+            SameLine();
             const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 50);
             if (!can_add) ImGui::BeginDisabled();
             if (ImGui::Button("Add##alootid")) {
@@ -2849,7 +2836,7 @@ void MoonlightUi::OnRenderUI() {
                   --i;
                   continue;
                 }
-                ImGui::SameLine();
+                SameLine();
                 const auto it = item_names_.find(id);
                 if (it != item_names_.end())
                   ImGui::Text("%s [%u]", it->second.c_str(), id);
@@ -2868,7 +2855,7 @@ void MoonlightUi::OnRenderUI() {
                 ImGui::Text("Vu: [%u] %s", g_last_viewed_item, itv->second.c_str());
               else
                 ImGui::Text("Vu: [%u]", g_last_viewed_item);
-              ImGui::SameLine();
+              SameLine();
               int vu_idx = -1;
               for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
                 if (aloot_ids_[k] == g_last_viewed_item) { vu_idx = k; break; }
@@ -2895,7 +2882,7 @@ void MoonlightUi::OnRenderUI() {
               const AlootPreset* autoload_preset = nullptr;
               for (const auto& p : alootid_presets_)
                 if (p.autoload) { autoload_preset = &p; break; }
-              ImGui::SameLine();
+              SameLine();
               // Find the selected preset to know what toggling autoload does.
               const AlootPreset* sel_for_al = nullptr;
               for (const auto& p : alootid_presets_)
@@ -2905,7 +2892,7 @@ void MoonlightUi::OnRenderUI() {
               if (ImGui::Checkbox("Autoload##preset", &al))
                 SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
               if (!sel_for_al) ImGui::EndDisabled();
-              ImGui::SameLine();
+              SameLine();
               if (autoload_preset) {
                 if (autoload_preset->name.empty())
                   ImGui::TextDisabled("(#%u)", autoload_preset->no);
@@ -2918,15 +2905,15 @@ void MoonlightUi::OnRenderUI() {
             ImGui::SetNextItemWidth(120.0f);
             ImGui::InputText("##preset_name", alootid_preset_input_,
                              sizeof(alootid_preset_input_));
-            ImGui::SameLine();
+            SameLine();
             ImGui::Checkbox("Renommer##preset_toggle", &alootid_rename_open_);
             if (alootid_rename_open_) {
-              ImGui::SameLine();
+              SameLine();
               ImGui::SetNextItemWidth(120.0f);
               ImGui::InputText("##preset_rename", alootid_rename_input_,
                                sizeof(alootid_rename_input_));
             }
-            ImGui::SameLine();
+            SameLine();
             {
               const AlootPreset* sel_for_rename = nullptr;
               for (const auto& p : alootid_presets_)
@@ -3003,12 +2990,12 @@ void MoonlightUi::OnRenderUI() {
                 }
                 ImGui::EndCombo();
               }
-              ImGui::SameLine();
+              SameLine();
               const bool has_sel = sel_preset != nullptr;
               if (!has_sel) ImGui::BeginDisabled();
               if (ImGui::SmallButton("Charger##preset"))
                 SendPresetCmd(3, alootid_selected_preset_);
-              ImGui::SameLine();
+              SameLine();
               if (ImGui::SmallButton("Supprimer##preset"))
                 SendPresetCmd(4, alootid_selected_preset_);
               if (!has_sel) ImGui::EndDisabled();
@@ -3080,7 +3067,7 @@ void MoonlightUi::OnRenderUI() {
       for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
         if (aloot_ids_[k] == g_last_viewed_item) { ov_idx = k; break; }
 
-      ImGui::SameLine();
+      SameLine();
       if (ov_idx >= 0) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.18f, 0.18f, 1.0f));
         if (ImGui::SmallButton("- alootid")) {
@@ -3099,7 +3086,7 @@ void MoonlightUi::OnRenderUI() {
         ImGui::PopStyleColor();
         if (!can_add) ImGui::EndDisabled();
       }
-      ImGui::SameLine();
+      SameLine();
       if (ImGui::SmallButton("x"))
         g_item_desc_visible = false;
     }
@@ -3146,10 +3133,10 @@ void MoonlightUi::OnRenderUI() {
             ApplyChatBg(g, p.argb, true);
             SaveSettings();
           }
-          ImGui::SameLine();
+          SameLine();
           ImGui::TextUnformatted(p.name.c_str());
           ImGui::PopID();
-          ImGui::SameLine();
+          SameLine();
         }
       }
       PopStyleCompact();
