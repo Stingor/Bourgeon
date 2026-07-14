@@ -1251,8 +1251,8 @@ void MoonlightUi::UpdateRelay() {
   }
 }
 
-void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type,
-                               const char* map_name) {
+// Called by ModeMgr::Switch (and OnUpdateHook for in_game_ tracking).
+void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) {
   const bool was_in_game = in_game_;
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
 
@@ -1276,8 +1276,7 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type,
 
 // ZC packet layout (data points past [opcode:2][total_len:2]):
 //   [char_id:4][count:2][{id:2, value:4} * count]
-void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
-                               uint16_t len) {
+void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (opcode == kOpcodeMapMove) {
     // 0x0091 ZC_NPCACK_MAPMOVE: data points at mapname[16] (e.g. "gonryun.gat").
     const char* map_name = reinterpret_cast<const char*>(data);
@@ -1457,6 +1456,8 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   }
 }
 
+// Send a setting change to the server.
+// The server will echo it back in a ZC_BOURGEON_SETTINGS packet, which is how we know the change was accepted.
 void MoonlightUi::SendSetting(uint16_t id, uint32_t value) {
   uint8_t buf[10];
   *reinterpret_cast<uint16_t*>(buf)     = kOpcodeToServer;
@@ -1466,18 +1467,22 @@ void MoonlightUi::SendSetting(uint16_t id, uint32_t value) {
   Bourgeon::Instance().SendPacket(buf, sizeof(buf));
 }
 
-// ── API autolootid partagée (utilisée par le panneau de description enrichi) ──
+// API autolootid partagée (utilisée par le panneau de description enrichi) 
 bool MoonlightUi::IsAlootId(uint32_t id) const {
   for (uint32_t v : aloot_ids_)
     if (v == id) return true;
   return false;
 }
+
+// Add/remove an item id to the autoloot list. Returns true if the list changed.
 bool MoonlightUi::AddAlootId(uint32_t id) {
   if (id == 0 || aloot_ids_.size() >= 50 || IsAlootId(id)) return false;
   aloot_ids_.push_back(id);
   SendSetting(kSettingAlootId, id);
   return true;
 }
+
+// Remove an item id from the autoloot list. Returns true if the list changed.
 bool MoonlightUi::RemoveAlootId(uint32_t id) {
   for (size_t k = 0; k < aloot_ids_.size(); ++k) {
     if (aloot_ids_[k] == id) {
@@ -1488,11 +1493,15 @@ bool MoonlightUi::RemoveAlootId(uint32_t id) {
   }
   return false;
 }
+
+// Return the name of an item id, or nullptr if unknown. Used by the autolootid panel.
 const char* MoonlightUi::ItemName(uint32_t id) const {
   const auto it = item_names_.find(id);
   return (it != item_names_.end()) ? it->second.c_str() : nullptr;
 }
 
+// Send a preset command to the server (save/load/delete).
+// The server will echo it back in a ZC_BOURGEON_PRESET_CMD packet.
 void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
   const uint16_t namelen = name ? static_cast<uint16_t>(strnlen(name, 50)) : 0;
   const uint16_t total   = static_cast<uint16_t>(6 + namelen);
@@ -1507,11 +1516,9 @@ void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
 
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 // In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
-static void HelpMarker(const char* desc)
-{
+void MoonlightUi::HelpMarker(const char* desc) {
   ImGui::TextDisabled("(?)");
-  if (ImGui::BeginItemTooltip())
-  {
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
     ImGui::TextUnformatted(desc);
     ImGui::PopTextWrapPos();

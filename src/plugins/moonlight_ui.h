@@ -255,4 +255,5 @@ class MoonlightUi : public Plugin {
   // Repli demandé par Échap (dernière fenêtre avant le jeu) ; posé par
   // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
   bool collapse_requested_ = false;
+  void HelpMarker(const char* desc);
 };
