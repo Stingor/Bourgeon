@@ -448,17 +448,6 @@ const char* kCorners[] = {"Haut-gauche", "Haut-droite", "Bas-gauche", "Bas-droit
 const char* kDirs[]    = {"Bas", "Haut", "Droite", "Gauche"};
 const char* kSortModes[] = {"Aucun", "Plus long d'abord", "Plus court d'abord"};
 
-// "(?)" marker that shows `desc` in a tooltip on hover.
-void HelpMarker(const char* desc) {
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    ImGui::TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
-}
-
 // SliderInt that also fine-tunes by +/-1 per mouse-wheel notch while hovered
 // (no need to grab the handle).  SetItemKeyOwner(MouseWheelY) claims the wheel
 // so the settings page doesn't scroll under the slider at the same time.

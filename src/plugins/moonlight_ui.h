@@ -38,6 +38,9 @@ struct AlignGrid {
   void Draw() const;
 };
 
+// Helper to display a little (?) mark which shows a tooltip when hovered.
+void HelpMarker(const char* desc);
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:
@@ -255,5 +258,4 @@ class MoonlightUi : public Plugin {
   // Repli demandé par Échap (dernière fenêtre avant le jeu) ; posé par
   // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
   bool collapse_requested_ = false;
-  void HelpMarker(const char* desc);
 };

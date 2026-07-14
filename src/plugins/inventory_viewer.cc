@@ -789,27 +789,6 @@ void MaybeFlushTextures() {
   g_assets_tried = false;
 }
 
-// Puce d'aide "(?)" listant les raccourcis souris de l'inventaire (tooltip au survol).
-void HelpMarkerShortcuts() {
-  ImGui::TextDisabled("(?)");
-  if (!ImGui::IsItemHovered()) return;
-  ImGui::BeginTooltip();
-  ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
-  ImGui::TextUnformatted(
-      "Raccourcis inventaire\n\n"
-      "- Double-clic gauche : utiliser / équiper\n"
-      "- Ctrl + double-clic gauche : équiper en main gauche\n"
-      "- Maj + clic gauche : lien de l'item dans l'input du chat (puis Entrée)\n"
-      "- Clic droit : menu contextuel\n"
-      "- Ctrl + clic droit : description\n"
-      "- Maj + clic droit : (dé)favori\n"
-      "- Alt + clic droit : transfert rapide (storage / chariot si ouvert)\n"
-      "- Glisser : chariot / storage / équipement / barre d'action / sol\n"
-      "- Glisser un favori sur un autre onglet : le retirer des favoris");
-  ImGui::PopTextWrapPos();
-  ImGui::EndTooltip();
-}
-
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1017,7 +996,17 @@ void InventoryViewer::OnRenderUI() {
 
   // ── Aide raccourcis (?) + recherche (occupe le reste de la ligne) ──
   ImGui::AlignTextToFramePadding();
-  HelpMarkerShortcuts();
+  std::string desc = "Raccourcis inventaire\n\n"
+                     "- Double-clic gauche : utiliser / équiper\n"
+                     "- Ctrl + double-clic gauche : équiper en main gauche\n"
+                     "- Maj + clic gauche : lien de l'item dans l'input du chat (puis Entrée)\n"
+                     "- Clic droit : menu contextuel\n"
+                     "- Ctrl + clic droit : description\n"
+                     "- Maj + clic droit : (dé)favori\n"
+                     "- Alt + clic droit : transfert rapide (storage / chariot si ouvert)\n"
+                     "- Glisser : chariot / storage / équipement / barre d'action / sol\n"
+                     "- Glisser un favori sur un autre onglet : le retirer des favoris";
+  HelpMarker(desc.c_str());
   ImGui::SameLine();
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);

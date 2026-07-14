@@ -16,6 +16,7 @@
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "plugins/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
+#include "plugins/moonlight_ui.h"      // HelpMarker (tooltip)
 #include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
 #include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
@@ -504,29 +505,6 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   }
 }
 
-// "(?)" survolable listant tous les raccourcis câblés du viewer (comme inventory_viewer).
-void HelpMarkerShortcuts() {
-  ImGui::TextDisabled("(?)");
-  if (!ImGui::IsItemHovered()) return;
-  ImGui::BeginTooltip();
-  ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
-  ImGui::TextUnformatted(
-      "Raccourcis entrepot\n\n"
-      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
-      "  pile = menu contextuel : Retirer 1 / tout / quantite)\n"
-      "- Ctrl + clic gauche : (de)marquer l'item comme favori (onglet Favoris)\n"
-      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
-      "- Ctrl + clic droit : description\n"
-      "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
-      "- Glisser un item du viewer -> inventaire : retrait ; -> chariot : storage vers cart\n"
-      "- Glisser un item d'inventaire / chariot sur le viewer : depot / cart vers storage\n"
-      "- Entree : valide la quantite (defaut = stack entier)\n"
-      "- Clic sur un en-tete de colonne : tri ; combo Sous-type : filtre fin\n"
-      "- Bouton Quitter / X : ferme l'entrepot");
-  ImGui::PopTextWrapPos();
-  ImGui::EndTooltip();
-}
-
 // Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices
 // chargées (ProggyClean = ASCII, Malgun = range coréen) -> tracé main via
 // ImDrawList : 10 triangles en éventail depuis le centre (l'étoile est concave,
@@ -856,7 +834,19 @@ void StorageTweaks::OnRenderUI() {
 
   // Barre de recherche (filtre par nom) + "(?)" des raccourcis à gauche.
   static ImGuiTextFilter filter;
-  HelpMarkerShortcuts();
+  std::string desc = "Raccourcis entrepot\n\n"
+                     "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
+                     "  pile = menu contextuel : Retirer 1 / tout / quantite)\n"
+                     "- Ctrl + clic gauche : (de)marquer l'item comme favori (onglet Favoris)\n"
+                     "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
+                     "- Ctrl + clic droit : description\n"
+                     "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
+                     "- Glisser un item du viewer -> inventaire : retrait ; -> chariot : storage vers cart\n"
+                     "- Glisser un item d'inventaire / chariot sur le viewer : depot / cart vers storage\n"
+                     "- Entree : valide la quantite (defaut = stack entier)\n"
+                     "- Clic sur un en-tete de colonne : tri ; combo Sous-type : filtre fin\n"
+                     "- Bouton Quitter / X : ferme l'entrepot";
+  HelpMarker(desc.c_str());
   ImGui::SameLine();
   ImGui::SetNextItemWidth(-1.0f);
   if (ImGui::InputTextWithHint("##storage_filter", "Filtrer...", filter.InputBuf,

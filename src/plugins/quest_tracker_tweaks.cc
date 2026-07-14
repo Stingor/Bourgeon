@@ -176,17 +176,6 @@ void __fastcall DrawContentHook(void* self, void* edx) {
   if (g_draw_orig) g_draw_orig(self, edx);
 }
 
-// "(?)" help marker.
-void HelpMarker(const char* desc) {
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    ImGui::TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
-}
-
 }  // namespace
 
 QuestTrackerTweaks::QuestTrackerTweaks() {
