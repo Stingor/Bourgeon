@@ -1018,13 +1018,13 @@ bool RoCheckbox(const char* label, bool* v) {
   EnsureTex("checkbox_0.bmp", skin::kCheckbox0, g_cb0);
   EnsureTex("checkbox_1.bmp", skin::kCheckbox1, g_cb1);
   const float sz = (float)skin::kCheckbox0.w;  // 10x10
-  const float gap = 6.0f;
+  const float gapx = 4.0f;
 
   ImGui::PushID(label);
   const ImVec2 start = ImGui::GetCursorScreenPos();
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   const float h = sz > ts.y ? sz : ts.y;
-  const bool pressed = ImGui::InvisibleButton("##cb", ImVec2(sz + gap + ts.x, h));
+  const bool pressed = ImGui::InvisibleButton("##cb", ImVec2(sz + gapx + ts.x, h));
   if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
   if (pressed) *v = !*v;
 
@@ -1043,7 +1043,7 @@ bool RoCheckbox(const char* label, bool* v) {
                               ImVec2(bmax.x - 2, bmax.y - 2),
                               IM_COL32(96, 112, 152, 255));
   }
-  dl->AddText(ImVec2(start.x + sz + gap, start.y + (h - ts.y) * 0.5f),
+  dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f - 2.0f), // -2 pour aligner correctement avec la case
               ImGui::GetColorU32(ImGuiCol_Text), label,
               ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();

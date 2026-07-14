@@ -1803,60 +1803,46 @@ void MoonlightUi::OnRenderUI() {
     }
 
     // ── Chat Box Settings ────────────────────────────────────────────────
-    if (CollapsingHeader("Chat Settings"))
-    {
+    if (CollapsingHeader("Chat Settings")) {
       PushStyleCompact();
-      if (ImGui::Checkbox("Chat Discord (Gonryun only)", &discord_chat_)) {
+      if (ro::RoCheckbox("Chat Discord (Gonryun only)", &discord_chat_)) {
         UpdateRelay();
         SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
       }
 
-      // ── Main-chat width (the stock chat resizes height only; applied by the
-      //    ChatTweaks plugin via the WndProc relayout hook) ───────────────────
-      if (ImGui::Checkbox("Largeur du chat", &chat_width_enabled_)) {
+      // Main-chat width (the stock chat resizes height only; applied by the
+      // ChatTweaks plugin via the WndProc relayout hook)
+      if (ro::RoCheckbox("Largeur du chat", &chat_width_enabled_)) {
         chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
         SaveSettings();
       }
-      if (chat_width_enabled_) {
-        bool changed = WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
-        // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
-        // Claim the wheel for this item so it only adjusts the value and does NOT
-        // also scroll the settings window / its scrollbar(s).
-        const bool hovered = ImGui::IsItemHovered();
-        ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-        const float wheel = hovered ? ImGui::GetIO().MouseWheel : 0.0f;
-        if (wheel != 0.0f) {
-          const int dir  = wheel > 0.0f ? 1 : -1;
-          const int step = ImGui::GetIO().KeyShift ? 10 : 1;
-          chat_width_px_ += dir * step;
-          if (chat_width_px_ < 320)  chat_width_px_ = 320;
-          if (chat_width_px_ > 1200) chat_width_px_ = 1200;
-          changed = true;
-        }
-        if (changed) chat::SetCustomWidth(true, chat_width_px_);
-        if (ImGui::IsItemDeactivatedAfterEdit() || wheel != 0.0f) SaveSettings();
+
+      // Chat width slider (only enabled if the above checkbox is checked)
+      if (chat_width_enabled_ &&WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200)) {
+        chat::SetCustomWidth(true, chat_width_px_);
+        SaveSettings();
       }
 
-      // ── Chat line timestamps ([HH:MM:SS] prefix, stored in raw history) ────
-      if (ImGui::Checkbox("Horodatage du chat", &chat_timestamps_)) {
+      // Chat line timestamps ([HH:MM:SS] prefix, stored in raw history)
+      if (ro::RoCheckbox("Horodatage du chat", &chat_timestamps_)) {
         chat::SetTimestamps(chat_timestamps_);
         SaveSettings();
       }
 
-      // ── Native item icons on <ITEML> chat links ──────────────────────────
-      if (ImGui::Checkbox("Icônes d'objets", &chat_item_icons_)) {
+      // Native item icons on <ITEML> chat links
+      if (ro::RoCheckbox("Icônes d'objets", &chat_item_icons_)) {
         chat::SetItemIcons(chat_item_icons_);
         SaveSettings();
       }
 
-      // ── Clear chat history (all channels of the main chat window) ─────────
-      if (ImGui::Button("Effacer l'historique du chat")) chat::ClearHistory();
+      // Clear chat history (all channels of the main chat window)
+      if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
       SameLine(); HelpMarker(
           "Vide l'historique de tous les canaux de la fenêtre de chat principale "
           "(historique brut effacé + affichage vidé). Les nouveaux messages "
           "réapparaissent normalement ensuite.");
 
-      // ── Chat Background Colours (Main / Detached / Whisper) ───────────────
+      // Chat Background Colours (Main / Detached / Whisper)
       // One independent colour+opacity picker per group, persisted locally.
       auto render_chatbg = [&](ChatBgGroup& g) {
         if (g.instrs.empty()) return;
@@ -1936,7 +1922,7 @@ void MoonlightUi::OnRenderUI() {
         render_chatbg(chat_bg_[kChatBgMain]);
         // Quick preset switcher toggle, on the same line as the main chat picker.
         SameLine();
-        if (ImGui::Checkbox("Preset bar", &mainchat_preset_bar_))
+        if (ro::RoCheckbox("Preset bar", &mainchat_preset_bar_))
           SaveSettings();
         render_chatbg(chat_bg_[kChatBgDetached]);
         render_chatbg(chat_bg_[kChatBgWhisper]);
@@ -1949,8 +1935,8 @@ void MoonlightUi::OnRenderUI() {
     if (CollapsingHeader("DPS Meter")) {
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
         bool changed = false;
-        changed |= ImGui::Checkbox("Afficher", &dps->visible_);
-        changed |= ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_);
+        changed |= ro::RoCheckbox("Afficher", &dps->visible_);
+        changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &dps->locked_);
         SameLine(); HelpMarker(
             "Fige la fenêtre DPS (position/taille) et laisse passer les clics "
             "au jeu en dessous.");
@@ -1991,7 +1977,7 @@ void MoonlightUi::OnRenderUI() {
           dps->ResetHistory();
 
         Separator();
-        changed |= ImGui::Checkbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_);
+        changed |= ro::RoCheckbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_);
         SameLine(); HelpMarker(
             "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
             "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
@@ -2009,7 +1995,7 @@ void MoonlightUi::OnRenderUI() {
       SeparatorText("DOOM");
       if (auto* doom = Bourgeon::Instance().doom()) {
         bool on = doom->enabled();
-        if (ImGui::Checkbox("Lancer DOOM (1993) dans Ragnarok", &on))
+        if (ro::RoCheckbox("Lancer DOOM (1993) dans Ragnarok", &on))
           doom->SetEnabled(on);
         SameLine(); HelpMarker(
             "Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
@@ -2029,7 +2015,7 @@ void MoonlightUi::OnRenderUI() {
       SeparatorText("Roggle");
       if (auto* roggle = Bourgeon::Instance().roggle()) {
         bool on = roggle->enabled();
-        if (ImGui::Checkbox("Ouvrir Roggle", &on))
+        if (ro::RoCheckbox("Ouvrir Roggle", &on))
           roggle->SetEnabled(on);
         SameLine(); HelpMarker(
             "Mini-jeu façon Peggle, dessiné en ImGui par-dessus le jeu.\n\n"
@@ -2045,7 +2031,7 @@ void MoonlightUi::OnRenderUI() {
       SeparatorText("Rojeweled");
       if (auto* rj = Bourgeon::Instance().rojeweled()) {
         bool on = rj->enabled();
-        if (ImGui::Checkbox("Ouvrir Rojeweled", &on))
+        if (ro::RoCheckbox("Ouvrir Rojeweled", &on))
           rj->SetEnabled(on);
         SameLine(); HelpMarker(
             "Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
@@ -2060,13 +2046,13 @@ void MoonlightUi::OnRenderUI() {
     }
     if (CollapsingHeader("Interface de jeu")) {
       PushStyleCompact();
-      if (ImGui::Checkbox("Grille d'alignement", &grid_.show)) SaveSettings();
+      if (ro::RoCheckbox("Grille d'alignement", &grid_.show)) SaveSettings();
       SameLine(); HelpMarker(
           "Affiche une grille plein écran pour aligner ton interface "
           "(comme les add-ons d'interface de WoW).");
       ImGui::SetNextItemWidth(160.0f);
       if (WheelSliderInt("Taille grille", &grid_.size, 4, 128)) SaveSettings();
-      if (ImGui::Checkbox("Aimanter à la grille", &grid_.snap)) SaveSettings();
+      if (ro::RoCheckbox("Aimanter à la grille", &grid_.snap)) SaveSettings();
       SameLine(); HelpMarker(
           "Les barres et les icônes s'alignent sur les cellules de la grille "
           "pendant le déplacement et le redimensionnement.");
@@ -2074,10 +2060,10 @@ void MoonlightUi::OnRenderUI() {
                             ImGuiColorEditFlags_NoInputs |
                                 ImGuiColorEditFlags_AlphaBar))
         SaveSettings();
-      // ── Entrepôt : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
+      // ── Storage : viewer ImGui moderne OU fenêtre native (pas de cohabitation) ──
       // ── Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in) ──
       if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-        if (ImGui::Checkbox("Inventaire ImGui", &iv->imgui_enabled_))
+        if (ro::RoCheckbox("Inventaire ImGui", &iv->imgui_enabled_))
           SaveSettings();
         SameLine(); HelpMarker(
             "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
@@ -2085,7 +2071,7 @@ void MoonlightUi::OnRenderUI() {
             "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
       }
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-        if (ImGui::Checkbox("Storage ImGui", &stg->imgui_enabled_))
+        if (ro::RoCheckbox("Storage ImGui", &stg->imgui_enabled_))
           SaveSettings();
         SameLine(); HelpMarker(
             "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
@@ -2094,7 +2080,7 @@ void MoonlightUi::OnRenderUI() {
       }
       // ── Cash shop : redraw ImGui moderne OU fenêtre native ──
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
-        if (ImGui::Checkbox("Cash Shop ImGui", &cs->imgui_enabled_))
+        if (ro::RoCheckbox("Cash Shop ImGui", &cs->imgui_enabled_))
           SaveSettings();
         SameLine(); HelpMarker(
             "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
@@ -2103,7 +2089,7 @@ void MoonlightUi::OnRenderUI() {
       // ── Shop NPC : fenêtre achat/vente ImGui unifiée OU natif ──
       // (Le dialogue NPC ImGui a sa propre section « Fenêtre NPC ».)
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
-        if (ImGui::Checkbox("Shop NPC ImGui", &sh->imgui_enabled_))
+        if (ro::RoCheckbox("Shop NPC ImGui", &sh->imgui_enabled_))
           SaveSettings();
         SameLine(); HelpMarker(
             "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
@@ -2111,7 +2097,7 @@ void MoonlightUi::OnRenderUI() {
       }
       // ── Feuille de personnage (agrege Status + Equipement, en plus) ──────
       if (auto* cse = Bourgeon::Instance().character_sheet()) {
-        if (ImGui::Checkbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
+        if (ro::RoCheckbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_))
           SaveSettings();
         SameLine(); HelpMarker(
             "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
@@ -2140,18 +2126,18 @@ void MoonlightUi::OnRenderUI() {
         {
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
-            if (ImGui::Checkbox("Afficher les barres", &eb->visible_))
+            if (ro::RoCheckbox("Afficher les barres", &eb->visible_))
               SaveSettings();
             Indent();
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
               if (i) SameLine();
-              if (ImGui::Checkbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
+              if (ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show))
                 SaveSettings();
             }
             SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
             Unindent();
 
-            if (ImGui::Checkbox("Verrouiller (fige position/taille + clic-traversant)",
+            if (ro::RoCheckbox("Verrouiller (fige position/taille + clic-traversant)",
                                 &eb->locked_))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2159,16 +2145,16 @@ void MoonlightUi::OnRenderUI() {
                 "clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, "
                 "tirez le coin pour redimensionner.");
 
-            if (ImGui::Checkbox("Aimanter les barres (snap)", &eb->sticky_))
+            if (ro::RoCheckbox("Aimanter les barres (snap)", &eb->sticky_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
                 "et se collent automatiquement (~10px).\nÉloigne-la pour la "
                 "détacher. Les barres restent indépendantes.");
 
-            if (ImGui::Checkbox("Vertical", &eb->vertical_)) SaveSettings();
+            if (ro::RoCheckbox("Vertical", &eb->vertical_)) SaveSettings();
             SameLine();
-            if (ImGui::Checkbox("Bordure", &eb->border_)) SaveSettings();
+            if (ro::RoCheckbox("Bordure", &eb->border_)) SaveSettings();
             SameLine(); HelpMarker(
                 "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). "
                 "Décoche pour des barres sans contour.");
@@ -2219,7 +2205,7 @@ void MoonlightUi::OnRenderUI() {
         {
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
-            if (ImGui::Checkbox("Afficher le portrait", &eb->portrait_visible_))
+            if (ro::RoCheckbox("Afficher le portrait", &eb->portrait_visible_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Portrait de statut : la tête du personnage, le pseudo, la classe "
@@ -2227,7 +2213,7 @@ void MoonlightUi::OnRenderUI() {
                 "redimensionnable, avec sa couleur/opacité de fond et son arrondi.\n"
                 "(Le sprite de tête arrive bientôt.)");
 
-            if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)",
+            if (ro::RoCheckbox("Verrouiller (fige + clic-traversant)",
                                 &eb->portrait_locked_))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2235,20 +2221,20 @@ void MoonlightUi::OnRenderUI() {
                 "clics au jeu.\nDéverrouillé : glisse pour déplacer, tire un bord/"
                 "coin pour redimensionner (aimantage à la grille d'alignement).");
 
-            if (ImGui::Checkbox("Sprite de tête (sinon placeholder)",
+            if (ro::RoCheckbox("Sprite de tête (sinon placeholder)",
                                 &eb->portrait_head_sprite_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Régénère la tête du personnage via le moteur de sprites du jeu "
                 "et l'affiche dans l'élément Portrait.");
-            if (ImGui::Checkbox("Tête seule (sans le corps)",
+            if (ro::RoCheckbox("Tête seule (sans le corps)",
                                 &eb->portrait_head_only_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Ne garde que les couches de la tête (visage/cheveux/coiffes) et "
                 "retire le corps. Décoche pour le personnage entier.");
             SameLine();
-            if (ImGui::Checkbox("Bordure", &eb->portrait_border_))
+            if (ro::RoCheckbox("Bordure", &eb->portrait_border_))
               SaveSettings();
             SameLine(); HelpMarker("Trait noir 1px autour de chaque cadre.");
 
@@ -2293,13 +2279,13 @@ void MoonlightUi::OnRenderUI() {
             SameLine(); HelpMarker(
                 "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
                 "l'angle voulu (le rendu se met à jour en direct).");
-            if (ImGui::Checkbox("Animer", &eb->portrait_animate_))
+            if (ro::RoCheckbox("Animer", &eb->portrait_animate_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Joue les images de l'animation (ex. le balayage de la posture "
                 "Combat). Décoche pour figer une pose calme (image 0).");
             SameLine();
-            if (ImGui::Checkbox("Cape / garment", &eb->portrait_show_garment_))
+            if (ro::RoCheckbox("Cape / garment", &eb->portrait_show_garment_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Affiche la cape/garment équipée (seulement en mode corps "
@@ -2311,7 +2297,7 @@ void MoonlightUi::OnRenderUI() {
             for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
               auto& e = eb->ports_[i];
               ImGui::PushID(i);
-              if (ImGui::Checkbox(BasicInfoTweaks::kPortLabels[i], &e.show))
+              if (ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show))
                 SaveSettings();
               Indent();
               if (ImGui::ColorEdit4("Fond / Opacité", e.bg,
@@ -2331,7 +2317,7 @@ void MoonlightUi::OnRenderUI() {
             }
 
             Separator();
-            if (ImGui::Checkbox("Masquer la fenêtre Basic Info d'origine",
+            if (ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine",
                                 &eb->portrait_hide_basic_info_))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2350,13 +2336,13 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 3)
         {
           if (auto* mi = Bourgeon::Instance().menu_icons()) {
-            if (ImGui::Checkbox("Remplacer par des icônes ImGui", &mi->enabled_))
+            if (ro::RoCheckbox("Remplacer par des icônes ImGui", &mi->enabled_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Cache la grille native et recrée les icônes fonctionnelles en "
                 "ImGui (cliquables + tooltip + masquage par icône).");
 
-            if (ImGui::Checkbox("Mode édition (glisser pour déplacer)",
+            if (ro::RoCheckbox("Mode édition (glisser pour déplacer)",
                                 &mi->edit_mode_))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2374,7 +2360,7 @@ void MoonlightUi::OnRenderUI() {
                 for (auto& ic : icons) {
                   bool shown = !ic.hidden;
                   ImGui::PushID(ic.cmd_id);
-                  if (ImGui::Checkbox(ic.name, &shown)) {
+                  if (ro::RoCheckbox(ic.name, &shown)) {
                     ic.hidden = !shown;
                     mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
                     SaveSettings();
@@ -2409,20 +2395,20 @@ void MoonlightUi::OnRenderUI() {
             TextUnformatted(
                 "Panneaux d'infos techniques affichés à côté des fenêtres de "
                 "description natives (item et skill).");
-            if (ImGui::Checkbox("Panneau technique des items",
+            if (ro::RoCheckbox("Panneau technique des items",
                                 &idt->show_item_panel()))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Affiche le panneau enrichi description d'un ITEM "
                 "(clic droit item).");
-            if (ImGui::Checkbox("Panneau technique des skills",
+            if (ro::RoCheckbox("Panneau technique des skills",
                                 &idt->show_skill_panel()))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Affiche le panneau enrichi à côté de la description d'un SKILL "
                 "(clic droit dans le grimoire).");
             Separator();
-            if (ImGui::Checkbox("Ouvrir près de la souris",
+            if (ro::RoCheckbox("Ouvrir près de la souris",
                                 &idt->desc_spawn_at_cursor()))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2455,7 +2441,7 @@ void MoonlightUi::OnRenderUI() {
           // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
           if (auto* br = Bourgeon::Instance().bug_report()) {
             Separator();
-            if (ImGui::Checkbox("Bouton « Signaler un bug »", &br->enabled()))
+            if (ro::RoCheckbox("Bouton « Signaler un bug »", &br->enabled()))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Affiche le bouton de rapport de bug dans les fenêtres de "
@@ -2467,7 +2453,7 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 7)
         {
           bool font_on = ro::IsFontEnabled();
-          if (ImGui::Checkbox("Police Malgun (UI)", &font_on)) {
+          if (ro::RoCheckbox("Police Malgun (UI)", &font_on)) {
             ro::SetFontEnabled(font_on);
             SaveSettings();
           }
@@ -2475,7 +2461,7 @@ void MoonlightUi::OnRenderUI() {
               "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
               "OFF : police integree d'ImGui (ProggyClean).");
           bool skin_on = ro::IsSkinEnabled();
-          if (ImGui::Checkbox("Skin RO (fenêtres claires)", &skin_on)) {
+          if (ro::RoCheckbox("Skin RO (fenêtres claires)", &skin_on)) {
             ro::SetSkinEnabled(skin_on);
             SaveSettings();
           }
@@ -2531,14 +2517,14 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 8)
         {
           if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
-            if (ImGui::Checkbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
+            if (ro::RoCheckbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
                 "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
                 "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
             ImGui::BeginDisabled(!nd->imgui_enabled_);
-            if (ImGui::Checkbox("Barre de recherche du menu", &nd->menu_search_))
+            if (ro::RoCheckbox("Barre de recherche du menu", &nd->menu_search_))
               SaveSettings();
             SameLine(); HelpMarker(
                 "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
@@ -2570,23 +2556,23 @@ void MoonlightUi::OnRenderUI() {
         {
           if (ImGui::BeginTable("split", 2)) // Toggles settings
           {
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
             SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
             SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
             SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
             SameLine(); HelpMarker(
               "Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
               "Groupe SELLITEM :\nGreen Potion (506)\nWhite Slim Potion (547)\nLucky Candy (570)\n"
@@ -2597,9 +2583,9 @@ void MoonlightUi::OnRenderUI() {
               "Fragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\nPiece of Memory Red (7439)\n"
               "Ice Scale (7562)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
               "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
             SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
-            ImGui::TableNextColumn(); if (ImGui::Checkbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
+            ImGui::TableNextColumn(); if (ro::RoCheckbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
             SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
             ImGui::EndTable();
           }
@@ -2717,7 +2703,7 @@ void MoonlightUi::OnRenderUI() {
               for (const auto& t : kAlootTypes) {
                 ImGui::TableNextColumn();
                 bool checked = (aloot_type_mask_ & t.bit) != 0;
-                if (ImGui::Checkbox(t.label, &checked)) {
+                if (ro::RoCheckbox(t.label, &checked)) {
                   if (checked) aloot_type_mask_ |=  t.bit;
                   else         aloot_type_mask_ &= ~t.bit;
                   SendSetting(kSettingAlootType, static_cast<uint16_t>(aloot_type_mask_));
@@ -2729,7 +2715,7 @@ void MoonlightUi::OnRenderUI() {
           }
           Separator();
           {// @autolootrare
-          if (ImGui::Checkbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
+          if (ro::RoCheckbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
           SameLine(); HelpMarker(
             "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
             "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
@@ -2738,9 +2724,9 @@ void MoonlightUi::OnRenderUI() {
           }
           Separator();
           {// @autolootmvp / @autolootmvpreward
-          if (ImGui::Checkbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
+          if (ro::RoCheckbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
           SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
-          if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
+          if (ro::RoCheckbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
           SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
           Separator();
@@ -2748,7 +2734,7 @@ void MoonlightUi::OnRenderUI() {
             TextUnformatted("@autolootid :");
             SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
             SameLine();
-            if (ImGui::Checkbox("Overlay", &show_alootid_overlay_))
+            if (ro::RoCheckbox("Overlay", &show_alootid_overlay_))
               SaveSettings();
             SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
             SameLine();
@@ -2870,7 +2856,7 @@ void MoonlightUi::OnRenderUI() {
                 if (p.no == alootid_selected_preset_) { sel_for_al = &p; break; }
               bool al = sel_for_al && sel_for_al->autoload;
               if (!sel_for_al) ImGui::BeginDisabled();
-              if (ImGui::Checkbox("Autoload##preset", &al))
+              if (ro::RoCheckbox("Autoload##preset", &al))
                 SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
               if (!sel_for_al) ImGui::EndDisabled();
               SameLine();
@@ -2887,7 +2873,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::InputText("##preset_name", alootid_preset_input_,
                              sizeof(alootid_preset_input_));
             SameLine();
-            ImGui::Checkbox("Renommer##preset_toggle", &alootid_rename_open_);
+            ro::RoCheckbox("Renommer##preset_toggle", &alootid_rename_open_);
             if (alootid_rename_open_) {
               SameLine();
               ImGui::SetNextItemWidth(120.0f);
