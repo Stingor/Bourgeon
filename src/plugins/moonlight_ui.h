@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "imgui.h"
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
@@ -46,9 +47,20 @@ void HelpMarker(const char* desc);
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.3f", float step = 0.0f);
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d", int step = 0);
 
-// SameLine() wrapper to avoid having to include imgui.h in every plugin that uses it.
-void SameLine(float x = 0.0f, float spacing = -1.0f);
-void SameLine(float x, float spacing);
+// Imgui wrappers — so plugins don't have to include imgui.h just to use them.
+// These are inline and trivial, so the compiler will optimize them away.
+inline void SameLine(float x = 0.0f, float spacing = -1.0f) {
+    ImGui::SameLine(x, spacing);
+}
+inline void Separator() {
+    ImGui::Separator();
+}
+inline void SeparatorText(const char* text) {
+    ImGui::SeparatorText(text);
+}
+inline void TextUnformatted(const char* text) {
+    ImGui::TextUnformatted(text);
+}
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {

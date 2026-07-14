@@ -12,7 +12,6 @@
 
 #include "bourgeon.h"
 #include "plugins/item_desc_tweaks.h"
-#include "imgui.h"
 #include "ui/ro_imgui.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
@@ -1520,7 +1519,7 @@ void HelpMarker(const char* desc) {
   ImGui::TextDisabled("(?)");
   if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    ImGui::TextUnformatted(desc);
+    TextUnformatted(desc);
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
   }
@@ -1561,10 +1560,6 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, 
   return changed;
 }
 
-void SameLine(float x, float spacing) {
-    ImGui::SameLine(x, spacing);
-}
-
 // Make the UI compact because there are so many fields
 static void PushStyleCompact()
 {
@@ -1573,6 +1568,7 @@ static void PushStyleCompact()
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, (float)(int)(style.ItemSpacing.y * 0.60f)));
 }
 
+// Restore the default UI style after PushStyleCompact()
 static void PopStyleCompact()
 {
     ImGui::PopStyleVar(2);
@@ -1882,12 +1878,12 @@ void MoonlightUi::OnRenderUI() {
                                ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
           ImGui::OpenPopup("picker");
         SameLine();
-        ImGui::TextUnformatted(g.label);
+        TextUnformatted(g.label);
 
         if (ImGui::BeginPopup("picker")) {
           // ── Shared user presets ─────────────────────────────────────────
           if (!chat_bg_presets_.empty()) {
-            ImGui::TextUnformatted("Presets:");
+            TextUnformatted("Presets:");
             int delete_idx = -1;
             for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
               const auto& p = chat_bg_presets_[i];
@@ -1907,7 +1903,7 @@ void MoonlightUi::OnRenderUI() {
               if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", p.name.c_str());
               SameLine();
-              ImGui::TextUnformatted(p.name.c_str());
+              TextUnformatted(p.name.c_str());
               SameLine();
               if (ImGui::SmallButton("x"))
                 delete_idx = i;
@@ -1917,7 +1913,7 @@ void MoonlightUi::OnRenderUI() {
               chat_bg_presets_.erase(chat_bg_presets_.begin() + delete_idx);
               SaveSettings();
             }
-            ImGui::Separator();
+            Separator();
           }
           // ── Save current colour as a preset ─────────────────────────────
           ImGui::SetNextItemWidth(120.0f);
@@ -1928,7 +1924,7 @@ void MoonlightUi::OnRenderUI() {
             preset_name_buf_[0] = '\0';
             SaveSettings();
           }
-          ImGui::Separator();
+          Separator();
           if (ImGui::ColorPicker4("##pick", g.color,
                                   ImGuiColorEditFlags_AlphaBar |
                                   ImGuiColorEditFlags_NoSidePreview)) {
@@ -1940,7 +1936,7 @@ void MoonlightUi::OnRenderUI() {
             SaveSettings();
             g.editing = false;
           }
-          ImGui::Separator();
+          Separator();
           if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f)))
             ImGui::CloseCurrentPopup();
           ImGui::EndPopup();
@@ -1964,30 +1960,26 @@ void MoonlightUi::OnRenderUI() {
     // ── DPS Meter ────────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("DPS Meter")) {
       if (auto* dps = Bourgeon::Instance().dps_meter()) {
-        if (ImGui::Checkbox("Afficher", &dps->visible_))
-          SaveSettings();
-        if (ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_))
-          SaveSettings();
+        bool changed = false;
+        changed |= ImGui::Checkbox("Afficher", &dps->visible_);
+        changed |= ImGui::Checkbox("Verrouiller (fige + clic-traversant)", &dps->locked_);
         SameLine(); HelpMarker(
             "Fige la fenêtre DPS (position/taille) et laisse passer les clics "
             "au jeu en dessous.");
 
-        if (ImGui::ColorEdit4("Couleur texte", dps->text_color_,
-                              ImGuiColorEditFlags_NoInputs))
-          SaveSettings();
-        if (ImGui::ColorEdit4("Couleur graphe", dps->plot_color_,
-                              ImGuiColorEditFlags_NoInputs))
-          SaveSettings();
+        changed |= ImGui::ColorEdit4("Couleur texte", dps->text_color_,
+                                     ImGuiColorEditFlags_NoInputs);
+        changed |= ImGui::ColorEdit4("Couleur graphe", dps->plot_color_,
+                                     ImGuiColorEditFlags_NoInputs);
         ImGui::SetNextItemWidth(160.0f);
-        if (WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f"))
-          SaveSettings();
+        changed |= WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f, "%.2f");
 
         ImGui::SetNextItemWidth(160.0f);
         int slot_ms = dps->slot_ms_;
         if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
           dps->slot_ms_ = slot_ms;
           dps->ResetHistory();
-          SaveSettings();
+          changed = true;
         }
         SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
 
@@ -1995,7 +1987,7 @@ void MoonlightUi::OnRenderUI() {
         int win = dps->dps_window_secs_;
         if (WheelSliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
           dps->dps_window_secs_ = win;
-          SaveSettings();
+          changed = true;
         }
         SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
 
@@ -2003,19 +1995,21 @@ void MoonlightUi::OnRenderUI() {
         int timeout = dps->combat_timeout_secs_;
         if (WheelSliderInt("Timeout combat (s)", &timeout, 1, 15)) {
           dps->combat_timeout_secs_ = timeout;
-          SaveSettings();
+          changed = true;
         }
         SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
 
         if (ImGui::Button("Reset graphique"))
           dps->ResetHistory();
 
-        ImGui::Separator();
-        if (ImGui::Checkbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_))
-          SaveSettings();
+        Separator();
+        changed |= ImGui::Checkbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_);
         SameLine(); HelpMarker(
             "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
             "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
+
+            // Persist all DPS settings if any changed.
+        if( changed ) SaveSettings();
       }
     }
 
@@ -2024,7 +2018,7 @@ void MoonlightUi::OnRenderUI() {
     // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
     if (ImGui::CollapsingHeader("Mini-jeux")) {
       // ── DOOM ──
-      ImGui::SeparatorText("DOOM");
+      SeparatorText("DOOM");
       if (auto* doom = Bourgeon::Instance().doom()) {
         bool on = doom->enabled();
         if (ImGui::Checkbox("Lancer DOOM (1993) dans Ragnarok", &on))
@@ -2044,7 +2038,7 @@ void MoonlightUi::OnRenderUI() {
       }
 
       // ── Roggle ──
-      ImGui::SeparatorText("Roggle");
+      SeparatorText("Roggle");
       if (auto* roggle = Bourgeon::Instance().roggle()) {
         bool on = roggle->enabled();
         if (ImGui::Checkbox("Ouvrir Roggle", &on))
@@ -2060,7 +2054,7 @@ void MoonlightUi::OnRenderUI() {
       }
 
       // ── Rojeweled ──
-      ImGui::SeparatorText("Rojeweled");
+      SeparatorText("Rojeweled");
       if (auto* rj = Bourgeon::Instance().rojeweled()) {
         bool on = rj->enabled();
         if (ImGui::Checkbox("Ouvrir Rojeweled", &on))
@@ -2197,8 +2191,7 @@ void MoonlightUi::OnRenderUI() {
               SaveSettings();
 
             ImGui::SetNextItemWidth(160.0f);
-            if (WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f", 1.0f))
-              SaveSettings();
+            if (WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f, "%.0f", 1.0f)) SaveSettings();
             SameLine(); HelpMarker("Arrondi des coins des barres.");
 
             for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
@@ -2214,7 +2207,7 @@ void MoonlightUi::OnRenderUI() {
                                       ImGuiColorEditFlags_AlphaBar))
               SaveSettings();
 
-            ImGui::TextUnformatted("Tailles rapides (toutes) :");
+            TextUnformatted("Tailles rapides (toutes) :");
             auto preset = [&](const char* label, int w, int h) {
               SameLine();
               if (ImGui::Button(label)) {
@@ -2324,7 +2317,7 @@ void MoonlightUi::OnRenderUI() {
                 "Affiche la cape/garment équipée (seulement en mode corps "
                 "entier — décoche \"Tête seule\" pour la voir).");
 
-            ImGui::Separator();
+            Separator();
             // Per-element config: show / background colour+opacity / rounding /
             // text colour.  Each element is independent.
             for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
@@ -2349,7 +2342,7 @@ void MoonlightUi::OnRenderUI() {
               ImGui::PopID();
             }
 
-            ImGui::Separator();
+            Separator();
             if (ImGui::Checkbox("Masquer la fenêtre Basic Info d'origine",
                                 &eb->portrait_hide_basic_info_))
               SaveSettings();
@@ -2425,7 +2418,7 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 6)
         {
           if (auto* idt = Bourgeon::Instance().item_desc()) {
-            ImGui::TextUnformatted(
+            TextUnformatted(
                 "Panneaux d'infos techniques affichés à côté des fenêtres de "
                 "description natives (item et skill).");
             if (ImGui::Checkbox("Panneau technique des items",
@@ -2440,7 +2433,7 @@ void MoonlightUi::OnRenderUI() {
             SameLine(); HelpMarker(
                 "Affiche le panneau enrichi à côté de la description d'un SKILL "
                 "(clic droit dans le grimoire).");
-            ImGui::Separator();
+            Separator();
             if (ImGui::Checkbox("Ouvrir près de la souris",
                                 &idt->desc_spawn_at_cursor()))
               SaveSettings();
@@ -2473,7 +2466,7 @@ void MoonlightUi::OnRenderUI() {
           }
           // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
           if (auto* br = Bourgeon::Instance().bug_report()) {
-            ImGui::Separator();
+            Separator();
             if (ImGui::Checkbox("Bouton « Signaler un bug »", &br->enabled()))
               SaveSettings();
             SameLine(); HelpMarker(
@@ -2501,12 +2494,12 @@ void MoonlightUi::OnRenderUI() {
           SameLine(); HelpMarker(
               "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
               "boutons du client.\nOFF : chrome ImGui standard.");
-          ImGui::Separator();
+          Separator();
           if (ro::ShowRoSkinSettings()) SaveSettings();
 
           // ── Presets : jeux de couleurs sauvegardés ────────────────────────
-          ImGui::Separator();
-          ImGui::TextUnformatted("Presets");
+          Separator();
+          TextUnformatted("Presets");
           const int npreset = static_cast<int>(g_ro_presets.size());
           const bool valid_sel = g_ro_preset_sel >= 0 && g_ro_preset_sel < npreset;
           const char* preview = valid_sel ? g_ro_presets[g_ro_preset_sel].name.c_str()
@@ -2683,7 +2676,7 @@ void MoonlightUi::OnRenderUI() {
               SendSetting(kSettingAlootRate, 0);
             }
           }
-          ImGui::Separator();
+          Separator();
           { // @autolootpognon
             int pognon = aloot_pognon_;
             ImGui::SetNextItemWidth(130.0f);
@@ -2716,9 +2709,9 @@ void MoonlightUi::OnRenderUI() {
               SendSetting(kSettingAlootPognon, 0);
             }
           }
-          ImGui::Separator();
+          Separator();
           if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
-            ImGui::TextUnformatted("@autoloottype :");
+            TextUnformatted("@autoloottype :");
             SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
             SameLine();
             if (ImGui::SmallButton("Reset##type")) {
@@ -2746,7 +2739,7 @@ void MoonlightUi::OnRenderUI() {
             }
             ImGui::TreePop();
           }
-          ImGui::Separator();
+          Separator();
           {// @autolootrare
           if (ImGui::Checkbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
           SameLine(); HelpMarker(
@@ -2755,16 +2748,16 @@ void MoonlightUi::OnRenderUI() {
             "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
             "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
           }
-          ImGui::Separator();
+          Separator();
           {// @autolootmvp / @autolootmvpreward
           if (ImGui::Checkbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
           SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
           if (ImGui::Checkbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
           SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
           }
-          ImGui::Separator();
+          Separator();
           if (ImGui::TreeNode("@autolootid")) {// @autolootid
-            ImGui::TextUnformatted("@autolootid :");
+            TextUnformatted("@autolootid :");
             SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
             SameLine();
             if (ImGui::Checkbox("Overlay", &show_alootid_overlay_))
@@ -2821,7 +2814,7 @@ void MoonlightUi::OnRenderUI() {
               } else {
                 std::strncpy(hdr, "Liste courante", sizeof(hdr));
               }
-              ImGui::TextUnformatted(hdr);
+              TextUnformatted(hdr);
             }
             ImGui::BeginChild("##alootid_list", ImVec2(0, 160), true);
             if (ImGui::BeginTable("##alootid_tbl", 2, ImGuiTableFlags_SizingStretchSame)) {
@@ -2849,7 +2842,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::PopStyleVar();
             // Quick-add/remove from the last right-clicked item description window.
             if (g_last_viewed_item != 0) {
-              ImGui::Separator();
+              Separator();
               const auto itv = item_names_.find(g_last_viewed_item);
               if (itv != item_names_.end())
                 ImGui::Text("Vu: [%u] %s", g_last_viewed_item, itv->second.c_str());
@@ -2875,8 +2868,8 @@ void MoonlightUi::OnRenderUI() {
               }
             }
             // ── Presets (server-backed, DB table `alootid`) ──
-            ImGui::Separator();
-            ImGui::TextUnformatted("Presets :");
+            Separator();
+            TextUnformatted("Presets :");
             // Autoload indicator + toggle, on the same line as the label.
             {
               const AlootPreset* autoload_preset = nullptr;
@@ -3059,7 +3052,7 @@ void MoonlightUi::OnRenderUI() {
     if (ImGui::Begin("##alootid_overlay", nullptr, kOverlayFlags)) {
       const auto itv = item_names_.find(g_last_viewed_item);
       if (itv != item_names_.end())
-        ImGui::TextUnformatted(itv->second.c_str());
+        TextUnformatted(itv->second.c_str());
       else
         ImGui::Text("[%u]", g_last_viewed_item);
 
@@ -3134,7 +3127,7 @@ void MoonlightUi::OnRenderUI() {
             SaveSettings();
           }
           SameLine();
-          ImGui::TextUnformatted(p.name.c_str());
+          TextUnformatted(p.name.c_str());
           ImGui::PopID();
           SameLine();
         }
