@@ -845,36 +845,6 @@ bool ColorSwatch(const char* label, float col[4]) {
   return changed;
 }
 
-// Sliders ajustables à la molette (à l'unité) quand survolés. SetItemKeyOwner(MouseWheelY) réclame la
-// molette pour le slider survolé -> la fenêtre ne défile PAS en même temps (idiome officiel ImGui,
-// imgui.h : "make hovering/activating a button disable wheel for scrolling"). Renvoie vrai si survolé/actif.
-bool WheelInt(const char* label, int* v, int mn, int mx) {
-  bool ch = ImGui::SliderInt(label, v, mn, mx);
-  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {  // capture la molette (pas de scroll fenêtre)
-    const float wh = ImGui::GetIO().MouseWheel;
-    if (wh != 0.0f) {
-      int n = static_cast<int>(wh);
-      if (n == 0) n = (wh > 0.0f) ? 1 : -1;  // touchpad fractionnaire -> +/-1
-      *v = std::clamp(*v + n, mn, mx);
-      ch = true;
-    }
-  }
-  return ch;
-}
-bool WheelFloat(const char* label, float* v, float mn, float mx, const char* fmt, float step = 1.0f) {
-  bool ch = ImGui::SliderFloat(label, v, mn, mx, fmt);
-  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {  // capture la molette (pas de scroll fenêtre)
-    const float wh = ImGui::GetIO().MouseWheel;
-    if (wh != 0.0f) {
-      int n = static_cast<int>(wh);
-      if (n == 0) n = (wh > 0.0f) ? 1 : -1;
-      *v = std::clamp(*v + static_cast<float>(n) * step, mn, mx);  // pas = `step` par cran de molette
-      ch = true;
-    }
-  }
-  return ch;
-}
-
 }  // namespace
 
 SkillBarTweaks::SkillBarTweaks() {
@@ -1121,8 +1091,8 @@ void SkillBarTweaks::DrawSettingsContent() {
   changed |= ImGui::Checkbox("Clic-traversant (Shift = interagir)", &clickthrough_);
   changed |= ImGui::Checkbox("Afficher les touches", &show_keys_);
   changed |= ImGui::Checkbox("Texte gras", &bold_text_);  // faux-gras (touches + nombres)
-  changed |= WheelFloat("Taille texte touches", &key_scale_, 0.5f, 2.0f, "%.2fx", 0.01f);    // molette = +/-0.01x
-  changed |= WheelFloat("Taille texte nombre", &count_scale_, 0.5f, 2.0f, "%.2fx", 0.01f);   // molette = +/-0.01x
+  changed |= WheelSliderFloat("Taille texte touches", &key_scale_, 0.5f, 2.0f, "%.2fx");
+  changed |= WheelSliderFloat("Taille texte nombre", &count_scale_, 0.5f, 2.0f, "%.2fx");
   ImGui::TextDisabled("Aimantation : Reglages interface > \"Aimanter a la grille\" (grille commune a tout l'UI).");
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
@@ -1135,12 +1105,12 @@ void SkillBarTweaks::DrawSettingsContent() {
     bool vis = bc.visible;
     if (ImGui::Checkbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
     if (bc.visible && ImGui::TreeNode("cfg", "Reglages %s", kBarNames[b])) {
-      changed |= WheelInt("Colonnes", &bc.columns, 1, 12);
-      changed |= WheelInt("Nb slots", &bc.slot_count, 1, kRegions[b].count);
-      changed |= WheelFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px");
-      changed |= WheelFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px");
-      changed |= WheelInt("X", &bc.x, -200, 4000);
-      changed |= WheelInt("Y", &bc.y, -200, 4000);
+      changed |= WheelSliderInt("Colonnes", &bc.columns, 1, 12);
+      changed |= WheelSliderInt("Nb slots", &bc.slot_count, 1, kRegions[b].count);
+      changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px");
+      changed |= WheelSliderFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px");
+      changed |= WheelSliderInt("X", &bc.x, -200, 4000);
+      changed |= WheelSliderInt("Y", &bc.y, -200, 4000);
       ImGui::Text("Position : %d, %d", bc.x, bc.y);
       ImGui::TreePop();
     }

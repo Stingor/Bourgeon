@@ -13,6 +13,7 @@
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
+#include "plugins/moonlight_ui.h"  // SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
 
 namespace ro {
 namespace {
@@ -1126,15 +1127,15 @@ void RoEndCombo() {
 
 bool ShowRoSkinSettings() {
   bool ch = false;
-  ch |= ImGui::SliderFloat("Luminosite", &g_cfg.title_brightness, 0.5f, 1.5f,
-                           "%.2f");
+  ch |= WheelSliderFloat("Luminosite", &g_cfg.title_brightness, 0.5f, 1.5f,
+                                "%.2f");
   ImGui::SameLine();
   ImGui::TextDisabled("(?)");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
         "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
         "icones) - pas le texte ni les fonds (regles par les couleurs ci-dessous).");
-  ch |= ImGui::SliderFloat("Opacite", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
+  ch |= WheelSliderFloat("Opacite", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
   const ImGuiColorEditFlags cf = ImGuiColorEditFlags_NoInputs;
   ch |= ImGui::ColorEdit4("Corps", g_cfg.body_col, cf);
   ch |= ImGui::ColorEdit4("Bordure", g_cfg.border_col, cf);

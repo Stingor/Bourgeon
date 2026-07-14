@@ -1529,14 +1529,13 @@ void HelpMarker(const char* desc) {
 // SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
 // (fine-tuning without grabbing the handle). SetItemKeyOwner(MouseWheelY) claims
 // the wheel so the settings window doesn't scroll at the same time. Step defaults
-// to ~2% of the range (float) / 1 unit (int).
-static bool WheelSliderFloat(const char* label, float* v, float lo, float hi,
-                             const char* fmt = "%.3f", float step = 0.0f) {
+// to 0.01 (float) / 1 (int).
+bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
   bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt);
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
-      if (step <= 0.0f) step = (hi - lo) * 0.02f;
+      if (step <= 0.0f) step = 0.01f;
       float nv = *v + w * step;
       if (nv < lo) nv = lo;
       if (nv > hi) nv = hi;
@@ -1546,8 +1545,7 @@ static bool WheelSliderFloat(const char* label, float* v, float lo, float hi,
   return changed;
 }
 
-static bool WheelSliderInt(const char* label, int* v, int lo, int hi,
-                           const char* fmt = "%d", int step = 0) {
+bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
   bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
@@ -1831,7 +1829,7 @@ void MoonlightUi::OnRenderUI() {
         SaveSettings();
       }
       if (chat_width_enabled_) {
-        bool changed = ImGui::SliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
+        bool changed = WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
         // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
         // Claim the wheel for this item so it only adjusts the value and does NOT
         // also scroll the settings window / its scrollbar(s).
@@ -2082,7 +2080,7 @@ void MoonlightUi::OnRenderUI() {
           "(comme les add-ons d'interface de WoW).");
       ImGui::SetNextItemWidth(160.0f);
       {
-        ImGui::SliderInt("Taille grille", &grid_.size, 4, 128);
+        WheelSliderInt("Taille grille", &grid_.size, 4, 128);
         // Mouse-wheel fine-tuning while hovering the slider (Shift = x10 step).
         // Claim the wheel for this item so it adjusts the cell size and does NOT
         // also scroll the settings window.

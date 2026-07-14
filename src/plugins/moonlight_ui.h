@@ -41,6 +41,11 @@ struct AlignGrid {
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 void HelpMarker(const char* desc);
 
+// Helper to display a slider that can be fine-tuned with the mouse wheel
+// one is for floats, one for ints.  Step defaults to 0.01 (float) / 1 (int).
+bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.3f", float step = 0.0f);
+bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d", int step = 0);
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:

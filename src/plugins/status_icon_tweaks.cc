@@ -448,23 +448,6 @@ const char* kCorners[] = {"Haut-gauche", "Haut-droite", "Bas-gauche", "Bas-droit
 const char* kDirs[]    = {"Bas", "Haut", "Droite", "Gauche"};
 const char* kSortModes[] = {"Aucun", "Plus long d'abord", "Plus court d'abord"};
 
-// SliderInt that also fine-tunes by +/-1 per mouse-wheel notch while hovered
-// (no need to grab the handle).  SetItemKeyOwner(MouseWheelY) claims the wheel
-// so the settings page doesn't scroll under the slider at the same time.
-bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d") {
-  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
-  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
-    const float w = ImGui::GetIO().MouseWheel;
-    if (w != 0.0f) {
-      int nv = *v + (w > 0.0f ? 1 : -1);
-      if (nv < lo) nv = lo;
-      if (nv > hi) nv = hi;
-      if (nv != *v) { *v = nv; changed = true; }
-    }
-  }
-  return changed;
-}
-
 // Unlocked edit mode: a translucent ImGui frame over the bar's bounding box.
 // Dragging it updates the corner margins (so Marge X/Y stay in sync) and flags
 // a rebuild.  The icons are engine-drawn, so this is an overlay, not the bar.

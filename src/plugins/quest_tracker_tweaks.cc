@@ -343,11 +343,11 @@ void QuestTrackerTweaks::DrawSettings() {
              "est active.)");
   ImGui::EndDisabled();
 
-  changed |= ImGui::SliderInt("Position X", &g_cfg.pos_x, 0, 1920);
-  changed |= ImGui::SliderInt("Position Y", &g_cfg.pos_y, 0, 1080);
-  changed |= ImGui::SliderInt("Largeur", &g_cfg.width, 120, 600, "%d px");
-  changed |= ImGui::SliderInt("Quetes max", &g_cfg.max_quests, 1, kMaxCollect);
-  changed |= ImGui::SliderInt("Taille police", &g_cfg.font_scale, 60, 200, "%d%%");
+  changed |= WheelSliderInt("Position X", &g_cfg.pos_x, 0, 1920);
+  changed |= WheelSliderInt("Position Y", &g_cfg.pos_y, 0, 1080);
+  changed |= WheelSliderInt("Largeur", &g_cfg.width, 120, 600, "%d px");
+  changed |= WheelSliderInt("Quetes max", &g_cfg.max_quests, 1, kMaxCollect);
+  changed |= WheelSliderInt("Taille police", &g_cfg.font_scale, 60, 200, "%d%%");
   ImGui::Separator();
 
   float tc[3], dc[3], hc[3];
@@ -373,7 +373,7 @@ void QuestTrackerTweaks::DrawSettings() {
 
   changed |= ImGui::Checkbox("Fond translucide", &g_cfg.show_bg);
   ImGui::BeginDisabled(!g_cfg.show_bg);
-  changed |= ImGui::SliderInt("Opacite du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
+  changed |= WheelSliderInt("Opacite du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
   ImGui::EndDisabled();
 
   if (ImGui::Button("Reinitialiser")) {
