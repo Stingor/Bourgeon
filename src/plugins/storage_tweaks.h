@@ -41,7 +41,7 @@ class StorageTweaks : public Plugin {
   // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
   // ON = viewer ImGui + fenêtre native cachée ; OFF = entrepôt natif seul, aucun viewer.
   // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
-  bool imgui_enabled_ = true;
+  bool imgui_enabled_ = false;
 
   // Favoris 100 % CLIENT (aucun paquet, aucun flag serveur — le storage n'a pas de
   // flag favori par item, contrairement à l'inventaire). Set d'ids d'items marqués

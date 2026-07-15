@@ -478,7 +478,7 @@ void MoonlightUi::LoadSettings() {
     }
 
     if (auto* eb = Bourgeon::Instance().basic_info()) {
-      eb->visible_   = ui["expbar_visible"].as<bool>(true);
+      eb->visible_   = ui["expbar_visible"].as<bool>(false);
       eb->locked_    = ui["expbar_locked"].as<bool>(false);
       eb->sticky_    = ui["expbar_sticky"].as<bool>(false);
       eb->text_mode_ = ui["expbar_text"].as<int>(1);
@@ -684,8 +684,10 @@ void MoonlightUi::LoadSettings() {
       nd->imgui_enabled_ = ui["npc_dialog_imgui"].as<bool>(nd->imgui_enabled_);
       nd->menu_search_ = ui["npc_menu_search"].as<bool>(nd->menu_search_);
     }
-    if (auto* cse = Bourgeon::Instance().character_sheet())
+    if (auto* cse = Bourgeon::Instance().character_sheet()) {
       cse->imgui_enabled_ = ui["charsheet_imgui"].as<bool>(cse->imgui_enabled_);
+      cse->set_open(ui["charsheet_open"].as<bool>(cse->is_open()));
+    }
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -915,7 +917,7 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "dps_combat_timeout_secs" << YAML::Value << (dps ? dps->combat_timeout_secs_ : 5);
 
   // EXP/HP/SP bar settings (BasicInfoTweaks)
-  out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : true)
+  out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : false)
       << YAML::Key << "expbar_locked"   << YAML::Value << (eb ? eb->locked_ : false)
       << YAML::Key << "expbar_sticky"   << YAML::Value << (eb ? eb->sticky_ : false)
       << YAML::Key << "expbar_text"     << YAML::Value << (eb ? eb->text_mode_ : 1)
@@ -1121,7 +1123,7 @@ void MoonlightUi::SaveSettings() {
     auto* iv = Bourgeon::Instance().inventory_viewer();
     out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
     auto* stg = Bourgeon::Instance().storage_tweaks();
-    out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : true);
+    out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : false);
     // Favoris storage (ids d'items, triés pour un yaml stable = pas de diff parasite).
     out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
     if (stg) {
@@ -1131,7 +1133,7 @@ void MoonlightUi::SaveSettings() {
     }
     out << YAML::EndSeq;
     auto* cs = Bourgeon::Instance().cashshop_tweaks();
-    out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : true);
+    out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : false);
     auto* sh = Bourgeon::Instance().shop_tweaks();
     out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
     auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
@@ -1142,6 +1144,8 @@ void MoonlightUi::SaveSettings() {
     auto* cse = Bourgeon::Instance().character_sheet();
     out << YAML::Key << "charsheet_imgui" << YAML::Value
         << (cse ? cse->imgui_enabled_ : false);
+    out << YAML::Key << "charsheet_open" << YAML::Value
+        << (cse ? cse->is_open() : true);
   }
 
   {
@@ -1967,6 +1971,15 @@ void MoonlightUi::OnRenderUI() {
             "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
       }
 
+      // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
+      if (auto* br = Bourgeon::Instance().bug_report()) {
+        changed |= ro::RoCheckbox("Afficher le bouton « Signaler un bug »", &br->enabled());
+        SameLine(); HelpMarker(
+            "Affiche le bouton de rapport de bug dans les fenêtres de "
+            "description (item/skill) et le dialogue PNJ, et active le "
+            "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
+      }
+
       if (changed) SaveSettings();
 
       // Navigation latérale (liste à gauche, contenu à droite)
@@ -1998,6 +2011,8 @@ void MoonlightUi::OnRenderUI() {
         {
           if (auto* sb = Bourgeon::Instance().skill_bar())
             sb->DrawSettings();
+          else
+            GrayText("(plugin indisponible)");
         }
 
         // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
@@ -2357,87 +2372,60 @@ void MoonlightUi::OnRenderUI() {
           if (auto* si = Bourgeon::Instance().status_icons())
             si->DrawSettings();
           else
-            ImGui::TextDisabled("(plugin indisponible)");
+            GrayText("(plugin indisponible)");
         }
 
         // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
-        if (s_iface_nav == 5)
-        {
+        if (s_iface_nav == 5) {
           if (auto* qt = Bourgeon::Instance().quest_tracker())
             qt->DrawSettings();
           else
-            ImGui::TextDisabled("(plugin indisponible)");
+            GrayText("(plugin indisponible)");
         }
 
         // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
-        if (s_iface_nav == 6)
-        {
+        if (s_iface_nav == 6) {
+          bool changed = false;
           if (auto* idt = Bourgeon::Instance().item_desc()) {
-            TextUnformatted(
-                "Panneaux d'infos techniques affichés à côté des fenêtres de "
-                "description natives (item et skill).");
-            if (ro::RoCheckbox("Panneau technique des items",
-                                &idt->show_item_panel()))
-              SaveSettings();
+            TextUnformatted("Descriptions modernes des items et skills.");
+
+            changed |= ro::RoCheckbox("Panneau technique des items", &idt->show_item_panel());
             SameLine(); HelpMarker(
-                "Affiche le panneau enrichi description d'un ITEM "
-                "(clic droit item).");
-            if (ro::RoCheckbox("Panneau technique des skills",
-                                &idt->show_skill_panel()))
-              SaveSettings();
+                "Affiche le panneau enrichi description d'un ITEM.\n"
+                "Clic droit item");
+
+            changed |= ro::RoCheckbox("Panneau technique des skills", &idt->show_skill_panel());
             SameLine(); HelpMarker(
-                "Affiche le panneau enrichi à côté de la description d'un SKILL "
-                "(clic droit dans le grimoire).");
-            Separator();
-            if (ro::RoCheckbox("Ouvrir près de la souris",
-                                &idt->desc_spawn_at_cursor()))
-              SaveSettings();
+                "Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
+                "Clic droit dans le grimoire");
+
+            changed |= ro::RoCheckbox("Ouvrir près de la souris", &idt->desc_spawn_at_cursor());
             SameLine(); HelpMarker(
                 "ON : la description apparaît près du curseur à chaque ouverture.\n"
                 "OFF : elle réapparaît à sa dernière position connue.");
+
             if (idt->desc_spawn_at_cursor()) {
               Indent();
-              // Ancrage : quel coin/point de la fenêtre se pose sur le curseur.
-              const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche",
-                                        "Bas-droite", "Centre"};
-              ImGui::SetNextItemWidth(160.0f);
-              if (ImGui::Combo("Ancrage", &idt->desc_anchor(), kAnchors, 5))
-                SaveSettings();
-              // Sliders X/Y MOLETTABLES : WheelSliderInt claime la molette au survol
-              // (SetItemKeyOwner(MouseWheelY)) -> la molette n'ajuste QUE le slider, la
-              // fenêtre de réglages ne défile pas en même temps.
-              ImGui::SetNextItemWidth(160.0f);
-              if (WheelSliderInt("Offset X", &idt->desc_offset_x(), -400, 400, "%d px"))
-                SaveSettings();
-              ImGui::SetNextItemWidth(160.0f);
-              if (WheelSliderInt("Offset Y", &idt->desc_offset_y(), -400, 400, "%d px"))
-                SaveSettings();
-              SameLine(); HelpMarker(
-                  "Décalage depuis le curseur (molette au survol pour ajuster).");
+                const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche","Bas-droite", "Centre"};
+                changed |= ro::RoCombo("Ancrage", &idt->desc_anchor(), kAnchors, 5);
+                changed |= WheelSliderInt("Offset X", &idt->desc_offset_x(), -400, 400, "%d px");
+                changed |= WheelSliderInt("Offset Y", &idt->desc_offset_y(), -400, 400, "%d px");
+                SameLine(); HelpMarker("Décalage depuis le curseur (molette au survol pour ajuster).");
               Unindent();
             }
           } else {
-            ImGui::TextDisabled("(plugin indisponible)");
+            GrayText("(plugin indisponible)");
           }
-          // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
-          if (auto* br = Bourgeon::Instance().bug_report()) {
-            Separator();
-            if (ro::RoCheckbox("Bouton « Signaler un bug »", &br->enabled()))
-              SaveSettings();
-            SameLine(); HelpMarker(
-                "Affiche le bouton de rapport de bug dans les fenêtres de "
-                "description (item/skill) et le dialogue PNJ, et active le "
-                "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
-          }
+          if (changed) SaveSettings();
         }
 
         // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────
-        if (s_iface_nav == 7)
-        {
+        if (s_iface_nav == 7) {
+          bool changed = false;
           bool font_on = ro::IsFontEnabled();
           if (ro::RoCheckbox("Police Malgun (UI)", &font_on)) {
             ro::SetFontEnabled(font_on);
-            SaveSettings();
+            changed = true;
           }
           SameLine(); HelpMarker(
               "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
@@ -2445,13 +2433,13 @@ void MoonlightUi::OnRenderUI() {
           bool skin_on = ro::IsSkinEnabled();
           if (ro::RoCheckbox("Skin RO (fenêtres claires)", &skin_on)) {
             ro::SetSkinEnabled(skin_on);
-            SaveSettings();
+            changed = true;
           }
           SameLine(); HelpMarker(
               "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
               "boutons du client.\nOFF : chrome ImGui standard.");
           Separator();
-          if (ro::ShowRoSkinSettings()) SaveSettings();
+          if (changed |= ro::ShowRoSkinSettings()) SaveSettings();
 
           // ── Presets : jeux de couleurs sauvegardés ────────────────────────
           Separator();
@@ -2497,8 +2485,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
-        if (s_iface_nav == 8)
-        {
+        if (s_iface_nav == 8) {
           if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
             if (ro::RoCheckbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
               SaveSettings();

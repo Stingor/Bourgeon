@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "bourgeon.h"
 #include "plugins/moonlight_ui.h"
+#include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -312,79 +313,62 @@ void QuestTrackerTweaks::OnRenderUI() {
 }
 
 void QuestTrackerTweaks::DrawSettings() {
-  bool changed = false;
-
-  changed |= ImGui::Checkbox("Suivi de quete personnalise", &g_cfg.enabled);
-  ImGui::SameLine();
-  HelpMarker("Cache l'overlay natif et le redessine en ImGui (position, "
-             "couleurs, police reglables). Desactive = overlay d'origine.");
+  g_needs_save |= ro::RoCheckbox("Suivi de quête personnalisé", &g_cfg.enabled);
+  SameLine(); HelpMarker("Activé = overlay personnalisable\nDésactivé = overlay d'origine.");
 
   ImGui::BeginDisabled(!g_cfg.enabled);
-
-  // Title bar: shows "Suivi de quête (N)" + a close button; the window is
-  // draggable by the bar.
-  changed |= ImGui::Checkbox("Barre de titre (nom + bouton de fermeture)",
-                             &g_cfg.show_titlebar);
-  ImGui::SameLine();
-  HelpMarker("Affiche une barre de titre avec le nombre de quetes suivies et "
-             "un bouton (X) qui desactive le suivi personnalise. Le panneau se "
-             "deplace en glissant la barre.");
+  g_needs_save |= ImGui::Checkbox("Barre de titre (nom + bouton de fermeture)", &g_cfg.show_titlebar);
+  SameLine(); HelpMarker(
+    "Affiche une barre de titre avec le nombre de quêtes suivies.\n"
+    "Le panneau se déplace en glissant la barre.");
 
   // Borderless mode only: lock = click-through overlay; unlock = drag the body.
   ImGui::BeginDisabled(g_cfg.show_titlebar);
   bool unlocked = !g_cfg.locked;
-  if (ImGui::Checkbox("Deverrouiller (glisser pour deplacer)", &unlocked)) {
+  if (ImGui::Checkbox("Déverrouiller (glisser pour déplacer)", &unlocked)) {
     g_cfg.locked = !unlocked;
-    changed = true;
+    g_needs_save = true;
   }
-  ImGui::SameLine();
-  HelpMarker("Sans barre de titre : deverrouille = glisser le corps du panneau ; "
-             "verrouille = overlay non cliquable. (Ignore si la barre de titre "
-             "est active.)");
+  SameLine(); HelpMarker("Déverrouille = glisser le corps du panneau\nVerrouille = overlay non cliquable.");
   ImGui::EndDisabled();
 
-  changed |= WheelSliderInt("Position X", &g_cfg.pos_x, 0, 1920);
-  changed |= WheelSliderInt("Position Y", &g_cfg.pos_y, 0, 1080);
-  changed |= WheelSliderInt("Largeur", &g_cfg.width, 120, 600, "%d px");
-  changed |= WheelSliderInt("Quetes max", &g_cfg.max_quests, 1, kMaxCollect);
-  changed |= WheelSliderInt("Taille police", &g_cfg.font_scale, 60, 200, "%d%%");
-  ImGui::Separator();
+  g_needs_save |= ro::RoCheckbox("Afficher l'objectif", &g_cfg.show_objective);
+  g_needs_save |= WheelSliderInt("Position X", &g_cfg.pos_x, 0, 1920);
+  g_needs_save |= WheelSliderInt("Position Y", &g_cfg.pos_y, 0, 1080);
+  g_needs_save |= WheelSliderInt("Largeur", &g_cfg.width, 120, 600, "%d px");
+  g_needs_save |= WheelSliderInt("Quetes max", &g_cfg.max_quests, 1, kMaxCollect);
+  g_needs_save |= WheelSliderInt("Taille police", &g_cfg.font_scale, 60, 200, "%d%%");
 
+  SeparatorText("Couleurs");
   float tc[3], dc[3], hc[3];
   RgbToF3(g_cfg.title_rgb, tc);
   RgbToF3(g_cfg.desc_rgb, dc);
   RgbToF3(g_cfg.hunt_rgb, hc);
-  const ImGuiColorEditFlags cflags =
-      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoAlpha;
-  if (ImGui::ColorEdit3("Couleur titre", tc, cflags)) {
+  if (ColorPicker("Couleur titre", tc)) {
     g_cfg.title_rgb = F3ToRgb(tc);
-    changed = true;
+    g_needs_save = true;
   }
-  if (ImGui::ColorEdit3("Couleur objectif", dc, cflags)) {
+  if (ColorPicker("Couleur objectif", dc)) {
     g_cfg.desc_rgb = F3ToRgb(dc);
-    changed = true;
+    g_needs_save = true;
   }
-  if (ImGui::ColorEdit3("Couleur chasse", hc, cflags)) {
+  if (ColorPicker("Couleur chasse", hc)) {
     g_cfg.hunt_rgb = F3ToRgb(hc);
-    changed = true;
+    g_needs_save = true;
   }
-  changed |= ImGui::Checkbox("Afficher l'objectif", &g_cfg.show_objective);
-  ImGui::Separator();
 
-  changed |= ImGui::Checkbox("Fond translucide", &g_cfg.show_bg);
+  g_needs_save |= ImGui::Checkbox("Fond translucide", &g_cfg.show_bg);
   ImGui::BeginDisabled(!g_cfg.show_bg);
-  changed |= WheelSliderInt("Opacite du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
+  g_needs_save |= WheelSliderInt("Opacite du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
   ImGui::EndDisabled();
 
-  if (ImGui::Button("Reinitialiser")) {
+  if (ro::RoButton("Reinitialiser")) {
     g_cfg = QuestTrackerConfig{};
     g_cfg.enabled = true;  // keep it on after a reset from the panel
-    changed = true;
+    g_needs_save = true;
   }
 
   ImGui::EndDisabled();
-
-  if (changed) g_needs_save = true;
 }
 
 QuestTrackerConfig& QuestTrackerTweaks::config() { return g_cfg; }

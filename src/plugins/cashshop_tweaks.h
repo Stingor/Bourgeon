@@ -44,7 +44,7 @@ class CashShopTweaks : public Plugin {
 
   // Setting PERSISTANT (bourgeon_settings.yaml "cashshop_imgui", géré par
   // MoonlightUi) : ON = viewer ImGui + natif caché ; OFF = cash shop natif seul.
-  bool imgui_enabled_ = true;
+  bool imgui_enabled_ = false;
 
  private:
   static constexpr int kNumTabs = 9;  // e_cash_shop_tab (NEW..SALE)

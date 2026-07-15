@@ -59,6 +59,11 @@ class CharacterSheet : public Plugin {
   // (noeud "equip_presets"). Tous personnages confondus ; filtres par cid a l'affichage.
   std::vector<EquipPreset>& equip_presets() { return equip_presets_; }
 
+  // Etat ouvert/ferme de la fenetre, persiste par MoonlightUi (yaml "charsheet_open")
+  // pour ne pas se rouvrir a chaque connexion si le joueur l'a fermee.
+  bool  is_open() const { return show_; }
+  void  set_open(bool v) { show_ = v; }
+
  private:
   // Apport ÉQUIPEMENT + CARTES aux stats, poussé par le serveur (ZC 0x0F10),
   // compilé par status_calc_pc. Le natif ne donne que le TOTAL par stat primaire ;

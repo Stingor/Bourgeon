@@ -96,7 +96,7 @@ class BasicInfoTweaks : public Plugin {
                                                         "SP",   "Zeny", "Poids"};
 
   // Global style shared by every bar.
-  bool  visible_   = true;   // master toggle for the whole feature
+  bool  visible_   = false;  // master toggle for the whole feature (opt-in)
   bool  locked_    = false;  // freeze + click-through (all bars)
   bool  sticky_    = false;  // magnetic edge-snap between bars on drag
   int   text_mode_ = 1;      // 0=none 1=percent 2=values 3=both
