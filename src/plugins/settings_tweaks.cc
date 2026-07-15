@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "plugins/moonlight_ui.h"
+#include "ui/ro_imgui.h"
 
 namespace {
 
@@ -73,8 +74,7 @@ void* __fastcall Hooked_GsDtor(void* self, void* edx, char flag) {
 
 // Swaps one vtable slot for `hook` iff it still holds `expected` (defensive), via
 // VirtualProtect; saves the original into *save_orig.
-void PatchVtableSlot(uintptr_t vtable, int off, void* expected, void* hook,
-                     void** save_orig) {
+void PatchVtableSlot(uintptr_t vtable, int off, void* expected, void* hook, void** save_orig) {
   void** slot = reinterpret_cast<void**>(vtable + off);
   if (*slot != expected) return;
   DWORD old;
@@ -112,17 +112,18 @@ void PatchFloatRO(float* addr, float value) {
 void SettingsTweaks::DrawSettings() {
   bool apply = false;  // push to the renderer this frame (live preview)
   bool save  = false;  // persist to disk (on release, not every drag frame)
+  if (ro::RoCheckbox("Overlay FPS", &fps_overlay_)) save = true;
   auto slider = [&](const char* label, float* v, float lo, float hi) {
-    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SetNextItemWidth(160.0f);
     if (WheelSliderFloat(label, v, lo, hi)) apply = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   };
 
-  if (ImGui::Checkbox("Post-processing (effets d'écran)", &fx_.enabled)) {
+  if (ro::RoCheckbox("Post-processing (effets d'écran)", &fx_.enabled)) {
     apply = true;
     save  = true;
   }
-  ImGui::TextDisabled("Affecte le rendu du moteur (monde + UI native), pas l'overlay.");
+  GrayText("Affecte le rendu du moteur (monde + UI native), pas l'overlay.");
 
   if (fx_.enabled) {
     // ── Presets ──
@@ -136,59 +137,51 @@ void SettingsTweaks::DrawSettings() {
     };
     D3D9PostFx neutral;  // all-default
     preset("Neutre", neutral);
-    ImGui::SameLine();
+    SameLine();
     { D3D9PostFx p; p.brightness=-0.06f; p.contrast=1.08f; p.saturation=0.85f;
       p.temperature=-0.25f; p.vignette=0.35f; preset("Nuit", p); }
-    ImGui::SameLine();
+    SameLine();
     { D3D9PostFx p; p.contrast=1.15f; p.saturation=1.12f; p.vignette=0.30f;
       p.sharpen=0.30f; p.aberration=0.20f; p.fxaa=true; preset("Cinéma", p); }
-    ImGui::SameLine();
+    SameLine();
     { D3D9PostFx p; p.contrast=1.10f; p.saturation=1.20f; p.grain=0.35f;
       p.vignette=0.45f; preset("Rétro", p); }
-    ImGui::SameLine();
+    SameLine();
     { D3D9PostFx p; p.filter=1; preset("N&B", p); }
 
-    ImGui::Separator();
-    ImGui::TextDisabled("Couleur");
+    SeparatorText("Couleur");
     slider("Luminosité",  &fx_.brightness, -0.5f, 0.5f);
     slider("Contraste",   &fx_.contrast,    0.5f, 2.0f);
     slider("Gamma",       &fx_.gamma,       0.5f, 2.0f);
     slider("Saturation",  &fx_.saturation,  0.0f, 2.0f);
     slider("Température",  &fx_.temperature,-1.0f, 1.0f);
-    const char* filters[] = {"Aucun", "Noir & blanc", "Sépia", "Négatif",
-                             "Daltonien"};
+    const char* filters[] = {"Aucun", "Noir & blanc", "Sépia", "Négatif", "Daltonien"};
     ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::Combo("Filtre", &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
+    if (ro::RoCombo("Filtre", &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
       apply = true;
       save  = true;
     }
 
-    ImGui::Separator();
-    ImGui::TextDisabled("Effets");
+    SeparatorText("Effets");
     slider("Vignette",      &fx_.vignette,   0.0f, 1.0f);
     slider("Grain",         &fx_.grain,      0.0f, 1.0f);
     slider("Aberration",    &fx_.aberration, 0.0f, 1.0f);
     slider("Netteté",       &fx_.sharpen,    0.0f, 1.0f);
-    if (ImGui::Checkbox("FXAA (anti-crénelage)", &fx_.fxaa)) { apply = true; save = true; }
+    if (ro::RoCheckbox("FXAA (anti-crénelage)", &fx_.fxaa)) { apply = true; save = true; }
     if (fx_.fxaa) {
       slider("  Force FXAA", &fx_.fxaa_strength, 0.0f, 0.5f);  // >0.5 wrecks UI text
-      ImGui::SameLine();
-      ImGui::TextDisabled("(?)");
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
+      SameLine();
+      HelpMarker("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
                           "Plafonné à 0.5 — au-delà le texte devient illisible.");
     }
 
-    if (ImGui::Button("Réinitialiser")) {
+    if (ro::RoButton("Réinitialiser")) {
       fx_ = D3D9PostFx{};
       fx_.enabled = true;
       apply = true;
       save  = true;
     }
   }
-
-  ImGui::Separator();
-  if (ImGui::Checkbox("Overlay FPS", &fps_overlay_)) save = true;
 
   // NB: global texture-filter tweak (tex_filter_ + SetSamplerState hook) is kept
   // in the code but NOT exposed — RO renders sprites ~1:1 so POINT/LINEAR look
@@ -236,14 +229,10 @@ void SettingsTweaks::OnTick() {
   if (!hooks_installed) {
     hooks_installed = true;
     void* setpos = reinterpret_cast<void*>(0x00874af0);
-    PatchVtableSlot(0x010384a0, 0x10, setpos,
-                    reinterpret_cast<void*>(&Hooked_EscSetPos), &g_orig_setpos);
-    PatchVtableSlot(0x010384a0, 0x00, reinterpret_cast<void*>(0x008db420),
-                    reinterpret_cast<void*>(&Hooked_EscDtor), &g_esc_orig_dtor);
-    PatchVtableSlot(0x01047d7c, 0x10, setpos,
-                    reinterpret_cast<void*>(&Hooked_GsSetPos), &g_orig_setpos);
-    PatchVtableSlot(0x01047d7c, 0x00, reinterpret_cast<void*>(0x009eb410),
-                    reinterpret_cast<void*>(&Hooked_GsDtor), &g_gs_orig_dtor);
+    PatchVtableSlot(0x010384a0, 0x10, setpos, reinterpret_cast<void*>(&Hooked_EscSetPos), &g_orig_setpos);
+    PatchVtableSlot(0x010384a0, 0x00, reinterpret_cast<void*>(0x008db420), reinterpret_cast<void*>(&Hooked_EscDtor), &g_esc_orig_dtor);
+    PatchVtableSlot(0x01047d7c, 0x10, setpos, reinterpret_cast<void*>(&Hooked_GsSetPos), &g_orig_setpos);
+    PatchVtableSlot(0x01047d7c, 0x00, reinterpret_cast<void*>(0x009eb410), reinterpret_cast<void*>(&Hooked_GsDtor), &g_gs_orig_dtor);
   }
 
   auto* max_out = reinterpret_cast<float*>(0x012291c0);  // g_cam_zoomMaxOutdoor

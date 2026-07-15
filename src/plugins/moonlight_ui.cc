@@ -1930,7 +1930,7 @@ void MoonlightUi::OnRenderUI() {
 
       // Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in)
       if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-        changed |= ro::RoCheckbox("Inventaire ImGui", &iv->imgui_enabled_);
+        changed |= ro::RoCheckbox("Inventaire Moonlight®", &iv->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
             "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
@@ -1939,7 +1939,7 @@ void MoonlightUi::OnRenderUI() {
 
       // Storage : viewer ImGui moderne OU fenêtre native
       if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-        changed |= ro::RoCheckbox("Storage ImGui", &stg->imgui_enabled_);
+        changed |= ro::RoCheckbox("Storage Moonlight®", &stg->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
             "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
@@ -1948,7 +1948,7 @@ void MoonlightUi::OnRenderUI() {
 
       // Cash shop : redraw ImGui moderne OU fenêtre native
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
-        changed |= ro::RoCheckbox("Cash Shop ImGui", &cs->imgui_enabled_);
+        changed |= ro::RoCheckbox("Cash Shop Moonlight®", &cs->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
             "fenêtre native est cachée.\nOFF : cash shop natif classique.");
@@ -1956,7 +1956,7 @@ void MoonlightUi::OnRenderUI() {
 
       // Shop NPC : fenêtre achat/vente ImGui unifiée OU natif
       if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
-        changed |= ro::RoCheckbox("Shop NPC ImGui", &sh->imgui_enabled_);
+        changed |= ro::RoCheckbox("Shop NPC Moonlight®", &sh->imgui_enabled_);
         SameLine(); HelpMarker(
             "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
             "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
@@ -1964,7 +1964,7 @@ void MoonlightUi::OnRenderUI() {
 
       // Feuille de personnage (agrege Status + Equipement)
       if (auto* cse = Bourgeon::Instance().character_sheet()) {
-        changed |= ro::RoCheckbox("Feuille de perso (Alt+F)", &cse->imgui_enabled_);
+        changed |= ro::RoCheckbox("Feuille de perso Moonlight® (Alt+F)", &cse->imgui_enabled_);
         SameLine(); HelpMarker(
             "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
             "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
@@ -2059,18 +2059,7 @@ void MoonlightUi::OnRenderUI() {
                 "Décoche pour des barres sans contour.");
 
             const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-            if (ro::RoBeginCombo("Animation", modes[eb->text_mode_])) {
-              for (int i = 0; i < IM_ARRAYSIZE(modes); ++i) {
-                const bool selected = (eb->text_mode_ == i);
-                if (ImGui::Selectable(modes[i], selected)) {
-                  eb->text_mode_ = i;
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-              }
-              changed = true;
-              ro::RoEndCombo();
-            }
-
+            changed |= ro::RoCombo("Animation", &eb->text_mode_, modes, IM_ARRAYSIZE(modes));
             changed |= WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f);
             SameLine(); HelpMarker("Arrondi des coins des barres.");
 
@@ -2139,33 +2128,13 @@ void MoonlightUi::OnRenderUI() {
                 "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
 
             static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
-            if (ro::RoBeginCombo("Animation", kLabelsAnim[eb->portrait_anim_])) {
-              for (int i = 0; i < IM_ARRAYSIZE(kLabelsAnim); ++i) {
-                const bool selected = (eb->portrait_anim_ == i);
-                if (ImGui::Selectable(kLabelsAnim[i], selected)) {
-                  eb->portrait_anim_ = i;
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-              }
-              changed = true;
-              ro::RoEndCombo();
-            }
+            changed |= ro::RoCombo("Animation", &eb->portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
             SameLine(); HelpMarker(
                 "Pose animée du portrait (Combat = posture prête au combat).\n"
                 "Le nombre d'images de l'animation s'ajuste automatiquement.");
 
             static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
-            if (ro::RoBeginCombo("Direction", kLabelsDir[eb->portrait_dir_])) {
-              for (int i = 0; i < IM_ARRAYSIZE(kLabelsDir); ++i) {
-                const bool selected = (eb->portrait_dir_ == i);
-                if (ImGui::Selectable(kLabelsDir[i], selected)) {
-                  eb->portrait_dir_ = i;
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-              }
-              changed = true;
-              ro::RoEndCombo();
-            }
+            changed |= ro::RoCombo("Direction", &eb->portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
             SameLine(); HelpMarker(
                 "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
                 "l'angle voulu (le rendu se met à jour en direct).");
@@ -2191,7 +2160,6 @@ void MoonlightUi::OnRenderUI() {
                 SameLine();
                 changed |= ColorPicker("Texte", e.fg);
               }
-              ImGui::SetNextItemWidth(160.0f);
               changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
               Unindent();
               ImGui::PopID();
@@ -2438,50 +2406,46 @@ void MoonlightUi::OnRenderUI() {
           SameLine(); HelpMarker(
               "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
               "boutons du client.\nOFF : chrome ImGui standard.");
-          Separator();
-          if (changed |= ro::ShowRoSkinSettings()) SaveSettings();
+          changed |= ro::ShowRoSkinSettings();
 
           // ── Presets : jeux de couleurs sauvegardés ────────────────────────
-          Separator();
-          TextUnformatted("Presets");
+          SeparatorText("Presets");
           const int npreset = static_cast<int>(g_ro_presets.size());
           const bool valid_sel = g_ro_preset_sel >= 0 && g_ro_preset_sel < npreset;
           const char* preview = valid_sel ? g_ro_presets[g_ro_preset_sel].name.c_str()
                                           : "(choisir)";
-          ImGui::SetNextItemWidth(160.0f);
-          if (ImGui::BeginCombo("##ro_preset", preview)) {
+          if (ro::RoBeginCombo("##ro_preset", preview)) {
             for (int i = 0; i < npreset; ++i)
               if (ImGui::Selectable(g_ro_presets[i].name.c_str(), g_ro_preset_sel == i))
                 g_ro_preset_sel = i;
-            ImGui::EndCombo();
+            ro::RoEndCombo();
           }
           SameLine();
-          if (ImGui::Button("Appliquer") && valid_sel) {
+          if (ro::RoButton("Appliquer") && valid_sel) {
             ro::SkinConfig() = g_ro_presets[g_ro_preset_sel].cfg;
-            SaveSettings();
+            changed = true;
           }
           SameLine();
-          if (ImGui::Button("Supprimer") && valid_sel) {
+          if (ro::RoButton("Supprimer") && valid_sel) {
             g_ro_presets.erase(g_ro_presets.begin() + g_ro_preset_sel);
             g_ro_preset_sel = -1;
-            SaveSettings();
+            changed = true;
           }
           static char preset_name[32] = "";
-          ImGui::SetNextItemWidth(160.0f);
           ImGui::InputText("##ro_preset_name", preset_name, sizeof(preset_name));
           SameLine();
-          if (ImGui::Button("Sauvegarder") && preset_name[0]) {
+          if (ro::RoButton("Sauvegarder") && preset_name[0]) {
             bool found = false;
             for (auto& p : g_ro_presets)
               if (p.name == preset_name) { p.cfg = ro::SkinConfig(); found = true; break; }
             if (!found) g_ro_presets.push_back({preset_name, ro::SkinConfig()});
-            SaveSettings();
+            changed = true;
             preset_name[0] = '\0';
           }
-          SameLine();
-          HelpMarker("Sauvegarde les couleurs/luminosite/opacite actuelles sous un "
-                     "nom. 'Appliquer' recharge un preset ; les joueurs peuvent se "
-                     "faire plusieurs themes.");
+          SameLine(); HelpMarker(
+            "Sauvegarde les couleurs/luminosite/opacite actuelles sous un nom.\n"
+            "'Appliquer' recharge un preset ; les joueurs peuvent se faire plusieurs themes.");
+          if (changed) SaveSettings();
         }
 
         // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────

@@ -1216,30 +1216,25 @@ bool RoCombo(const char* label, int *current_item, const char* const items[], in
 
 bool ShowRoSkinSettings() {
   bool ch = false;
-  ch |= WheelSliderFloat("Luminosite", &g_cfg.title_brightness, 0.5f, 1.5f,
-                                "%.2f");
-  ImGui::SameLine();
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(
-        "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
-        "icones) - pas le texte ni les fonds (regles par les couleurs ci-dessous).");
-  ch |= WheelSliderFloat("Opacite", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
-  const ImGuiColorEditFlags cf = ImGuiColorEditFlags_NoInputs;
-  ch |= ImGui::ColorEdit4("Corps", g_cfg.body_col, cf);
-  ch |= ImGui::ColorEdit4("Bordure", g_cfg.border_col, cf);
-  ch |= ImGui::ColorEdit4("Texte titre", g_cfg.title_text, cf);
-  ch |= ImGui::ColorEdit4("Texte corps", g_cfg.body_text, cf);
-  ch |= ImGui::ColorEdit4("Onglet actif", g_cfg.tab_col, cf);
-  ch |= ImGui::ColorEdit4("Onglet inactif", g_cfg.tab_inact, cf);
-  ch |= ImGui::ColorEdit4("Champ de saisie", g_cfg.input_col, cf);
-  ch |= ImGui::ColorEdit4("En-tete tableau", g_cfg.header_col, cf);
-  ch |= ImGui::ColorEdit4("Fond cases (feuille perso)", g_cfg.slot_col, cf);
-  ch |= ImGui::ColorEdit4("Fond doll (feuille perso)", g_cfg.doll_col, cf);
-  ch |= ImGui::ColorEdit4("Fond carte item", g_cfg.card_col, cf);
-  ch |= ImGui::ColorEdit4("Bandeau carte", g_cfg.card_head_col, cf);
-  ch |= ImGui::ColorEdit4("Texte bandeau carte", g_cfg.card_head_text, cf);
-  if (ImGui::Button("Reinitialiser le skin")) {
+  ch |= WheelSliderFloat("Luminosité", &g_cfg.title_brightness, 0.5f, 1.5f);
+  SameLine(); HelpMarker(
+    "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
+    "icones) - pas le texte ni les fonds (régles par les couleurs ci-dessous).");
+  ch |= WheelSliderFloat("Opacité", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
+  ch |= ColorPicker("Corps", g_cfg.body_col);
+  ch |= ColorPicker("Bordure", g_cfg.border_col);
+  ch |= ColorPicker("Texte titre", g_cfg.title_text);
+  ch |= ColorPicker("Texte corps", g_cfg.body_text);
+  ch |= ColorPicker("Onglet actif", g_cfg.tab_col);
+  ch |= ColorPicker("Onglet inactif", g_cfg.tab_inact);
+  ch |= ColorPicker("Champ de saisie", g_cfg.input_col);
+  ch |= ColorPicker("En-tête tableau", g_cfg.header_col);
+  ch |= ColorPicker("Fond cases (feuille perso)", g_cfg.slot_col);
+  ch |= ColorPicker("Fond doll (feuille perso)", g_cfg.doll_col);
+  ch |= ColorPicker("Fond carte item", g_cfg.card_col);
+  ch |= ColorPicker("Bandeau carte", g_cfg.card_head_col);
+  ch |= ColorPicker("Texte bandeau carte", g_cfg.card_head_text);
+  if (ImGui::Button("Réinitialiser le skin")) {
     g_cfg = RoSkinConfig();
     ch = true;
   }
