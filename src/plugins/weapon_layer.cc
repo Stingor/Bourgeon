@@ -4,6 +4,8 @@
 
 #include <cstdint>
 
+#include "bourgeon.h"
+#include "plugins/weapon_dual_sprites.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -27,6 +29,15 @@
 // head-gears < weapon (part 5 -> 0x40000000) < shield (part 7 -> 0x40000010).
 // Two trampoline hooks on DeferQuadSorted: entry computes the force code into a
 // global; the key-write detour applies it to EDI.
+//
+// When WeaponDualSprites is on, the off-hand weapon is drawn as an extra layer at
+// part 6 (normally a weapon-trail slot, hence unhandled here); it would fall to
+// the default small key and sink behind the head-gears. We lift it to just above
+// the main weapon (part 6 -> 0x40000008), FRONT-facing only and only while that
+// feature is active, so the two weapons sit together at the weapon level and
+// stock trail effects keep their native z. Keys are kept distinct (…00/…08/…10)
+// because DeferQuadSorted DROPS a quad whose key collides with one already in the
+// tree.
 
 namespace {
 constexpr uintptr_t kDeferEntry = 0x006046e0;  // CActorSprite_DeferQuadSorted
@@ -34,9 +45,18 @@ constexpr uintptr_t kKeyWrite   = 0x006049e4;  // branch-1 key write (MOV [EAX+0
 }  // namespace
 
 // File scope (NOT namespaced) so the naked __asm can resolve them by name.
-static unsigned char g_weapon_top_force = 0;  // 0=none, 1=MID, 2=TOP (per call)
+static unsigned char g_weapon_top_force = 0;  // 0=none,1=MID,2=TOP,3=OFF-HAND (per call)
 static void* g_tramp_defer = nullptr;          // -> relocated prologue + body
 static void* g_tramp_key   = nullptr;          // -> relocated key writes + rest
+
+// True only while the dual-weapon-sprites feature is on. The off-hand weapon is
+// drawn as an EXTRA layer at partIdx 6 (resource slot 6), which normally holds a
+// weapon-trail/glow — so we only lift part 6 to weapon level when this is set,
+// leaving stock trail effects untouched.
+static bool OffhandWeaponActive() {
+  auto* wds = Bourgeon::Instance().weapon_dual_sprites();
+  return wds && wds->enabled();
+}
 
 // Decision logic in clean C (no fragile naked asm). Called from the entry stub
 // with the render-helper + partIdx. Sets g_weapon_top_force: 1 = MID key (above
@@ -54,6 +74,8 @@ void __fastcall WeaponDecide(void* helper, int partIdx) {
       return;  // back/side view is already correct natively — leave it untouched
     if (partIdx == 5) g_weapon_top_force = 1;        // weapon -> above head-gears
     else if (partIdx == 7) g_weapon_top_force = 2;   // shield -> above the weapon
+    else if (partIdx == 6 && OffhandWeaponActive())
+      g_weapon_top_force = 3;                        // off-hand weapon -> weapon level
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
@@ -84,11 +106,16 @@ __declspec(naked) static void KeyWriteStub() {
     cmp  byte ptr g_weapon_top_force, 0
     je   sk_done
     cmp  byte ptr g_weapon_top_force, 1
-    jne  sk_top
-    mov  edi, 0x40000000        // MID: the weapon, above head-gears
-    jmp  sk_done
-  sk_top:
+    je   sk_mid
+    cmp  byte ptr g_weapon_top_force, 3
+    je   sk_off
     mov  edi, 0x40000010        // TOP: the shield, above the weapon
+    jmp  sk_done
+  sk_off:
+    mov  edi, 0x40000008        // OFF-HAND: the second weapon, just above the main
+    jmp  sk_done
+  sk_mid:
+    mov  edi, 0x40000000        // MID: the (main) weapon, above head-gears
   sk_done:
     jmp  [g_tramp_key]
   }

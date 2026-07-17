@@ -351,7 +351,8 @@ void BugReportTweaks::RenderAckToast() {
               IM_COL32(236, 236, 236, A), text);
 }
 
-void BugReportTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void BugReportTweaks::OnRecvPacket(uint16_t opcode, 
+                                   const uint8_t* data,
                                    uint16_t len) {
   if (opcode != bopcodes::kBugReportAck) return;
   // Payload après header [type:2][len:2] : [status:1].

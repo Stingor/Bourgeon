@@ -103,9 +103,11 @@ inline bool BeginPopup(const char* str_id) {
 inline bool IsHovered() {
     return ImGui::IsItemHovered();
 }
+
 inline void Tooltip(const char* text) {
-    ImGui::SetTooltip("%s", text);
+    if (IsHovered()) ImGui::SetTooltip("%s", text);
 }
+
 inline void PushItemWidth(float item_width) {
     ImGui::PushItemWidth(item_width);
 }

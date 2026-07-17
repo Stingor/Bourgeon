@@ -12,12 +12,20 @@ struct StatusIconConfig {
   int  step_dir   = 0;    // within-line: 0=down 1=up 2=right 3=left
   int  wrap_dir   = 3;    // new line:    0=down 1=up 2=right 3=left
   int  per_line   = 17;
-  int  icon_pitch = 35;
-  int  line_pitch = 45;
+  int  icon_pitch = 3;    // EDGE gap between icons in px (0 = touching; stock 35-32)
+  int  line_pitch = 13;   // EDGE gap between lines/columns in px (0 = touching; stock 45-32)
   int  sort_mode  = 0;    // 0=none 1=longest-first 2=shortest-first
   bool show_remaining = false;
   bool time_bg = false;   // draw a dark background behind the remaining-time text
   int  icon_alpha = 100;  // icon opacity %, 100 = fully opaque (stock); fades the icons
+  int  icon_size  = 32;   // icon size in px (stock 32x32; engine scale = size/2)
+
+  // Remaining-time text styling (mirrors the skill-bar text options).
+  int   time_place  = 0;  // 0=below icon 1=above icon 2=inside the icon
+  int   time_anchor = 7;  // when inside: 0..8 = TL,T,TR,L,C,R,BL,B,BR (default bottom)
+  bool  time_bold   = false;                          // faux-bold (re-draw offset 1px)
+  float col_time_text[4]   = {1.0f, 1.0f, 1.0f, 1.0f};  // glyph colour
+  float col_time_shadow[4] = {0.0f, 0.0f, 0.0f, 0.9f};  // 8-way halo/shadow colour
 };
 
 // Buff/debuff status-icon BAR relayout for the 20250716 client.

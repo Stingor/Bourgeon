@@ -59,7 +59,6 @@ constexpr int kElemEndTick   = 0x04;     // element +0x04 = expiry tick (999999=
 constexpr uint32_t kInfiniteTick = 999999;  // sentinel for a permanent status
 constexpr uint32_t kGateSentinel = 0x5f5e0fe;
 constexpr uint32_t kNodeLifetime = 0x5f5e0ff;  // ~"infinite"
-constexpr uint32_t kScale16f     = 0x41800000; // 16.0f
 
 constexpr char kWhiteTex[] = "effect\\white02.bmp";
 
@@ -130,19 +129,45 @@ inline void DirVec(int dir, int pitch, int* dx, int* dy) {
   }
 }
 
+constexpr int kIconSizeMin = 16, kIconSizeMax = 64;  // px (stock 32)
+
+inline int IconSizePx() {
+  int s = g_cfg.icon_size;
+  if (s < kIconSizeMin) s = kIconSizeMin;
+  else if (s > kIconSizeMax) s = kIconSizeMax;
+  return s;
+}
+
+// Engine sprite scale (node+0x354/+0x360). The engine builds the quad at +/- the
+// scale value, so the icon is (2*scale) px on a side: scale = size/2. Stock size
+// is 32 px => scale 16.0f.
+inline float IconScaleF() { return static_cast<float>(IconSizePx()) * 0.5f; }
+
+// Icon hit/box half-extent in px (== the engine scale value).
+inline int IconHalf() { return IconSizePx() / 2; }
+
 void ComputeXY(int placed, int vpW, int vpH, float* ox, float* oy) {
   const bool right  = (g_cfg.corner == kTopRight || g_cfg.corner == kBottomRight);
   const bool bottom = (g_cfg.corner == kBottomLeft || g_cfg.corner == kBottomRight);
-  int baseX = right  ? (vpW - g_cfg.margin_x) : g_cfg.margin_x;
-  int baseY = bottom ? (vpH - g_cfg.margin_y) : g_cfg.margin_y;
+  // The engine renders the sprite CENTERED on (baseX,baseY), so shift the origin
+  // one half-icon inward: the anchored CORNER of icon 0 (not its center) lands on
+  // the margin — margin 0 => the icon sits flush against the screen edge, fully
+  // on-screen. The drag/fold-back in DrawDragOverlay mirrors this same offset.
+  const int half = IconHalf();
+  int baseX = right  ? (vpW - g_cfg.margin_x - half) : (g_cfg.margin_x + half);
+  int baseY = bottom ? (vpH - g_cfg.margin_y - half) : (g_cfg.margin_y + half);
 
   const int per = g_cfg.per_line < 1 ? 1 : g_cfg.per_line;
   const int line = placed / per;
   const int idx  = placed % per;
 
+  // Spacing is an EDGE gap: 0 => icons touch. Center-to-center distance is the
+  // icon span (2*half, scales with icon size) plus the configured gap, so the
+  // gap stays constant in px regardless of the icon scale.
+  const int span = 2 * half;
   int sx, sy, wx, wy;
-  DirVec(g_cfg.step_dir, g_cfg.icon_pitch, &sx, &sy);
-  DirVec(g_cfg.wrap_dir, g_cfg.line_pitch, &wx, &wy);
+  DirVec(g_cfg.step_dir, span + g_cfg.icon_pitch, &sx, &sy);
+  DirVec(g_cfg.wrap_dir, span + g_cfg.line_pitch, &wx, &wy);
 
   *ox = static_cast<float>(baseX + line * wx + idx * sx);
   *oy = static_cast<float>(baseY + line * wy + idx * sy);
@@ -177,8 +202,8 @@ void EmitIcon(void* scene, int id, const char* path, float x, float y) {
   *reinterpret_cast<int*>(B + 0x1dc)      = 4;
   *reinterpret_cast<int*>(B + 0x3c)       = 0;
   *reinterpret_cast<uint32_t*>(B + 0x1e4) = kNodeLifetime;
-  *reinterpret_cast<uint32_t*>(B + 0x354) = kScale16f;
-  *reinterpret_cast<uint32_t*>(B + 0x360) = kScale16f;
+  *reinterpret_cast<float*>(B + 0x354) = IconScaleF();
+  *reinterpret_cast<float*>(B + 0x360) = IconScaleF();
   *reinterpret_cast<float*>(B + 0x394)    = x;
   *reinterpret_cast<float*>(B + 0x398)    = y;
   *reinterpret_cast<uint8_t*>(B + 0x3e8)  = 0x62;
@@ -372,17 +397,16 @@ void ForceRebuild() {
   }
 }
 
-constexpr int kIconHalf = 15;  // icon hit half-extent (icon ~30px, centered on node)
-
 // Inverse of our layout: which placed icon is the cursor over?  Returns the
 // placed index (== DAT_015ffd80 slot) or -1.  Icons are centered on ComputeXY.
 int HitTestIcon(int mx, int my, int vpW, int vpH) {
+  const int half = IconHalf();
   for (int i = 0; i < g_placed_count; ++i) {
     float cx, cy;
     ComputeXY(i, vpW, vpH, &cx, &cy);
     const int ix = static_cast<int>(cx), iy = static_cast<int>(cy);
-    if (mx >= ix - kIconHalf && mx <= ix + kIconHalf &&
-        my >= iy - kIconHalf && my <= iy + kIconHalf)
+    if (mx >= ix - half && mx <= ix + half &&
+        my >= iy - half && my <= iy + half)
       return i;
   }
   return -1;
@@ -449,6 +473,31 @@ const char* kCorners[] = {"Haut-gauche", "Haut-droite", "Bas-gauche", "Bas-droit
 const char* kDirs[]    = {"Bas", "Haut", "Droite", "Gauche"};
 const char* kSortModes[] = {"Aucun", "Plus long d'abord", "Plus court d'abord"};
 
+// Remaining-time text placement relative to the icon, and (when inside) the
+// 9-way anchor within the icon box.
+const char* kTimePlaces[]  = {"Dessous", "Dessus", "Dans l'icône"};
+const char* kTimeAnchors[] = {"Haut-gauche", "Haut", "Haut-droite",
+                              "Gauche",      "Centre", "Droite",
+                              "Bas-gauche",  "Bas",  "Bas-droite"};
+
+// Compact colour swatch + popup picker (same UX as the skill-bar text colours).
+bool ColorSwatch(const char* label, float col[4]) {
+  bool changed = false;
+  ImGui::PushID(label);
+  if (ImGui::ColorButton("##sw", ImVec4(col[0], col[1], col[2], col[3]),
+                         ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
+    ImGui::OpenPopup("pick");
+  ImGui::SameLine();
+  ImGui::TextUnformatted(label);
+  if (ImGui::BeginPopup("pick")) {
+    changed = ImGui::ColorPicker4("##p", col,
+                        ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_NoSidePreview);
+    ImGui::EndPopup();
+  }
+  ImGui::PopID();
+  return changed;
+}
+
 // Unlocked edit mode: a translucent ImGui frame over the bar's bounding box.
 // Dragging it updates the corner margins (so Marge X/Y stay in sync) and flags
 // a rebuild.  The icons are engine-drawn, so this is an overlay, not the bar.
@@ -458,20 +507,23 @@ void DrawDragOverlay() {
   const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);
 
-  // Bounding box of the placed icons (each centered on ComputeXY, +/-kIconHalf).
+  // Bounding box of the placed icons (each centered on ComputeXY, +/-IconHalf()).
   const int cnt = g_placed_count > 0 ? g_placed_count : 1;
+  const int half = IconHalf();
   float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
   for (int i = 0; i < cnt; ++i) {
     float cx, cy;
     ComputeXY(i, vpW, vpH, &cx, &cy);
-    if (cx - kIconHalf < x0) x0 = cx - kIconHalf;
-    if (cy - kIconHalf < y0) y0 = cy - kIconHalf;
-    if (cx + kIconHalf > x1) x1 = cx + kIconHalf;
-    if (cy + kIconHalf > y1) y1 = cy + kIconHalf;
+    if (cx - half < x0) x0 = cx - half;
+    if (cy - half < y0) y0 = cy - half;
+    if (cx + half > x1) x1 = cx + half;
+    if (cy + half > y1) y1 = cy + half;
   }
-  const float pad = 4.0f;
-  const ImVec2 pos(x0 - pad, y0 - pad);
-  const ImVec2 size(x1 - x0 + 2 * pad, y1 - y0 + 2 * pad);
+  // No padding: the frame is exactly the icon cluster's bounding box, so its
+  // anchored corner coincides with the first icon's corner — the snap point
+  // then aligns the icon corner (not a padded frame edge) to the grid.
+  const ImVec2 pos(x0, y0);
+  const ImVec2 size(x1 - x0, y1 - y0);
 
   ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
   ImGui::SetNextWindowSize(size, ImGuiCond_Always);
@@ -485,35 +537,58 @@ void DrawDragOverlay() {
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
       ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
 
-  // Sub-pixel residual so slow drags don't get truncated away.
-  static float accx = 0.0f, accy = 0.0f;
+  // Shared alignment grid (owned by MoonlightUi). SnapAxis is a no-op when grid
+  // snapping is off, so we can apply it unconditionally when present.
+  const AlignGrid* grid = nullptr;
+  if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
+
+  const bool right  = (g_cfg.corner == kTopRight || g_cfg.corner == kBottomRight);
+  const bool bottom = (g_cfg.corner == kBottomLeft || g_cfg.corner == kBottomRight);
+
+  // The snap anchor must match the FRAME's anchor: for a right-anchored corner
+  // it's the box's right edge, for a bottom-anchored corner its bottom edge — so
+  // the corner the user pins to is the one that lands on a grid line. With no
+  // padding + the ComputeXY half-icon inset, this box corner equals the margin
+  // position directly (right edge = vpW - margin_x; left edge = margin_x), so the
+  // new margin folds straight back from the snapped corner — no origin math.
+  const float anchorX = right  ? (pos.x + size.x) : pos.x;
+  const float anchorY = bottom ? (pos.y + size.y) : pos.y;
+
+  // Grab offset: mouse-to-anchor-corner, captured on press so the drag tracks an
+  // absolute target (needed for the anchored corner to land on grid lines).
+  static bool  dragging = false;
+  static float grab_dx = 0.0f, grab_dy = 0.0f;
 
   if (ImGui::Begin("##status_drag", nullptr, flags)) {
     ImGui::InvisibleButton("##grab", size);
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
       ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     if (ImGui::IsItemActive()) {
-      const ImVec2 d = ImGui::GetIO().MouseDelta;
-      const bool right  = (g_cfg.corner == kTopRight || g_cfg.corner == kBottomRight);
-      const bool bottom = (g_cfg.corner == kBottomLeft || g_cfg.corner == kBottomRight);
-      accx += right  ? -d.x : d.x;   // moving the bar right shrinks a right margin
-      accy += bottom ? -d.y : d.y;
-      const int dix = static_cast<int>(accx);
-      const int diy = static_cast<int>(accy);
-      if (dix != 0 || diy != 0) {
-        accx -= dix;
-        accy -= diy;
-        g_cfg.margin_x += dix;
-        g_cfg.margin_y += diy;
-        if (g_cfg.margin_x < 0) g_cfg.margin_x = 0;
-        if (g_cfg.margin_y < 0) g_cfg.margin_y = 0;
-        if (g_cfg.margin_x > vpW) g_cfg.margin_x = vpW;
-        if (g_cfg.margin_y > vpH) g_cfg.margin_y = vpH;
+      const ImVec2 m = ImGui::GetIO().MousePos;
+      if (!dragging) {
+        dragging = true;
+        grab_dx = m.x - anchorX;
+        grab_dy = m.y - anchorY;
+      }
+      // Desired anchor-corner position, snapped to the visible grid lines.
+      float nax = m.x - grab_dx, nay = m.y - grab_dy;
+      if (grid) {
+        nax = grid->SnapAxis(nax, static_cast<float>(vpW));
+        nay = grid->SnapAxis(nay, static_cast<float>(vpH));
+      }
+      // The box corner IS the margin position, so fold it straight back.
+      int nmx = static_cast<int>((right  ? (vpW - nax) : nax) + 0.5f);
+      int nmy = static_cast<int>((bottom ? (vpH - nay) : nay) + 0.5f);
+      if (nmx < 0) nmx = 0; else if (nmx > vpW) nmx = vpW;
+      if (nmy < 0) nmy = 0; else if (nmy > vpH) nmy = vpH;
+      if (nmx != g_cfg.margin_x || nmy != g_cfg.margin_y) {
+        g_cfg.margin_x = nmx;
+        g_cfg.margin_y = nmy;
         g_dirty = true;       // OnTick rebuilds the bar at the new origin
         g_needs_save = true;  // flushed on release (when no item is active)
       }
     } else {
-      accx = accy = 0.0f;
+      dragging = false;
     }
   }
   ImGui::End();
@@ -535,40 +610,71 @@ bool FormatRemaining(uint32_t endtick, uint32_t now, char* buf, int cap) {
   return true;
 }
 
-// Remaining-time text under each icon, drawn via the foreground draw list
-// (independent of the engine sprites; counts down live every frame).
+// Text position within/around an icon box (centered on cx,cy; half-extent
+// `half`). place: 0=below 1=above 2=inside; anchor (inside only): 0..8 as
+// TL,T,TR,L,C,R,BL,B,BR. Returns the top-left draw position for the glyph run.
+void TimeTextPos(float cx, float cy, int half, const ImVec2& ts,
+                 int place, int anchor, float* tx, float* ty) {
+  const float gap = 1.0f;
+  if (place == 0) {          // below the icon, horizontally centered
+    *tx = cx - ts.x * 0.5f;
+    *ty = cy + half + gap;
+  } else if (place == 1) {   // above the icon, horizontally centered
+    *tx = cx - ts.x * 0.5f;
+    *ty = cy - half - ts.y - gap;
+  } else {                   // inside the icon: 9-way anchor
+    const int hcol = anchor % 3;  // 0=left 1=center 2=right
+    const int vrow = anchor / 3;  // 0=top  1=middle 2=bottom
+    *tx = (hcol == 0) ? (cx - half)
+        : (hcol == 2) ? (cx + half - ts.x)
+                      : (cx - ts.x * 0.5f);
+    *ty = (vrow == 0) ? (cy - half)
+        : (vrow == 2) ? (cy + half - ts.y)
+                      : (cy - ts.y * 0.5f);
+  }
+}
+
+// Remaining-time text at each icon, drawn via the BACKGROUND draw list (stays
+// under all ImGui windows). Styling mirrors the skill-bar text: independent
+// glyph / shadow colours, an 8-way halo, and optional faux-bold. All colours
+// fade with the icon opacity so the text tracks the bar.
 void DrawRemainingTime() {
   void* vp = *reinterpret_cast<void**>(kViewportPtr);
   if (!vp) return;
   const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);
   const uint32_t now = GetTickCount();
-  ImDrawList* dl = ImGui::GetForegroundDrawList();
-  // Fade the duration text with the icons (same opacity factor).
-  const float af = IconAlphaByte() / 255.0f;
-  const ImU32 kWhite   = IM_COL32(255, 255, 255, static_cast<int>(255 * af));
-  const ImU32 kOutline = IM_COL32(0, 0, 0, static_cast<int>(230 * af));
-  const ImU32 kBg      = IM_COL32(0, 0, 0, static_cast<int>(165 * af));
+  ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+  const float af = IconAlphaByte() / 255.0f;  // fade text with the icons
+  auto fade = [af](const float* c) {
+    return IM_COL32(static_cast<int>(c[0] * 255), static_cast<int>(c[1] * 255),
+                    static_cast<int>(c[2] * 255), static_cast<int>(c[3] * 255 * af));
+  };
+  const ImU32 cText   = fade(g_cfg.col_time_text);
+  const ImU32 cShadow = fade(g_cfg.col_time_shadow);
+  const ImU32 cBg     = IM_COL32(0, 0, 0, static_cast<int>(165 * af));
+  const int   half    = IconHalf();
+  const bool  bold    = g_cfg.time_bold;
+
   for (int i = 0; i < g_placed_count; ++i) {
     char buf[16];
     if (!FormatRemaining(g_endtick[i], now, buf, sizeof(buf))) continue;
     float cx, cy;
     ComputeXY(i, vpW, vpH, &cx, &cy);
     const ImVec2 ts = ImGui::CalcTextSize(buf);
-    const float tx = cx - ts.x * 0.5f;
-    const float ty = cy + kIconHalf - 1.0f;   // just below the icon
+    float tx, ty;
+    TimeTextPos(cx, cy, half, ts, g_cfg.time_place, g_cfg.time_anchor, &tx, &ty);
 
     if (g_cfg.time_bg)
       dl->AddRectFilled(ImVec2(tx - 3, ty - 1), ImVec2(tx + ts.x + 3, ty + ts.y + 1),
-                        kBg, 3.0f);
-    // 4-way black halo (outline) for contrast over the game scene.
-    dl->AddText(ImVec2(tx - 1, ty), kOutline, buf);
-    dl->AddText(ImVec2(tx + 1, ty), kOutline, buf);
-    dl->AddText(ImVec2(tx, ty - 1), kOutline, buf);
-    dl->AddText(ImVec2(tx, ty + 1), kOutline, buf);
-    // White drawn twice (1px apart) to fake a bold weight.
-    dl->AddText(ImVec2(tx, ty), kWhite, buf);
-    dl->AddText(ImVec2(tx + 1, ty), kWhite, buf);
+                        cBg, 3.0f);
+    // 8-way halo (outline/shadow) for contrast over the game scene.
+    for (int oy = -1; oy <= 1; ++oy)
+      for (int ox = -1; ox <= 1; ++ox)
+        if (ox || oy) dl->AddText(ImVec2(tx + ox, ty + oy), cShadow, buf);
+    dl->AddText(ImVec2(tx, ty), cText, buf);
+    if (bold) dl->AddText(ImVec2(tx + 1.0f, ty), cText, buf);  // faux-bold
   }
 }
 
@@ -649,15 +755,6 @@ void StatusIconTweaks::OnModeSwitch(ModeMgr::ModeType mode_type,
 void StatusIconTweaks::DrawSettings() {
   bool changed = false;
 
-  // Opacity is independent of the custom layout — it's forced at render time on
-  // any status-icon node, so it works with the stock layout too.  The render
-  // hook reads g_cfg.icon_alpha live, so no rebuild is needed.
-  changed |= WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%");
-  SameLine(); HelpMarker(
-    "Transparence des icônes de statut (100 % = opaque, comme l'origine).\n"
-    "Fonctionne même sans la disposition personnalisée.");
-  Separator();
-
   changed |= ro::RoCheckbox("Disposition personnalisée", &g_cfg.enabled);
   SameLine(); HelpMarker("Désactivé = disposition d'origine du jeu (inchangée).");
 
@@ -667,19 +764,39 @@ void StatusIconTweaks::DrawSettings() {
   ro::RoCheckbox("Déverrouiller (glisser pour déplacer)", &g_unlocked);
   SameLine(); HelpMarker(
     "Affiche un cadre sur la barre ; glissez-le pour la déplacer.\n"
-    "La position met à jour Marge X / Marge Y.");
+    "La position met à jour Marge X / Marge Y.\n"
+    "Si la grille d'alignement (aimantation) est active, le cadre s'y aligne.");
   changed |= ro::RoCheckbox("Aperçu (faux statuts)", &g_preview);
   SameLine(); HelpMarker("Génère de faux statuts pour prévisualiser la disposition.");
 
   SeparatorText("Réglages");
+  // Opacity is independent of the custom layout — it's forced at render time on
+  // any status-icon node, so it works with the stock layout too.  The render
+  // hook reads g_cfg.icon_alpha live, so no rebuild is needed.
+  changed |= WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%");
+  SameLine(); HelpMarker(
+    "Transparence des icônes de statut (100 % = opaque, comme l'origine).\n"
+    "Fonctionne même sans la disposition personnalisée.");
+
+  changed |= WheelSliderInt("Taille des icônes", &g_cfg.icon_size,
+                            kIconSizeMin, kIconSizeMax, "%d px");
+  SameLine(); HelpMarker(
+    "Taille des icônes de statut en pixels (32 = origine).\n"
+    "Nécessite la disposition personnalisée.\n"
+    "L'espacement (écart entre bords) est indépendant de la taille.");
   changed |= ro::RoCombo("Coin d'ancrage", &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
-  changed |= WheelSliderInt("Marge X", &g_cfg.margin_x, 0, 1920);
-  changed |= WheelSliderInt("Marge Y", &g_cfg.margin_y, 0, 1080);
+  Tooltip("Coin de la première icône qui sert d'ancrage.");
   changed |= ro::RoCombo("Sens d'empilement", &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  Tooltip("Direction dans laquelle les icônes s'empilent à partir du coin d'ancrage.");
   changed |= ro::RoCombo("Retour à la ligne", &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  Tooltip("Direction dans laquelle les icônes passent à la ligne suivante.");
   changed |= WheelSliderInt("Icônes par ligne", &g_cfg.per_line, 1, 20);
-  changed |= WheelSliderInt("Espacement icônes", &g_cfg.icon_pitch, 30, 60);
-  changed |= WheelSliderInt("Espacement lignes", &g_cfg.line_pitch, 30, 60);
+  changed |= WheelSliderInt("Espacement icônes", &g_cfg.icon_pitch, 0, 20, "%d px");
+  SameLine(); HelpMarker(
+    "Écart entre les bords de deux icônes voisines, en pixels.\n"
+    "0 = icônes collées ; augmentez pour les espacer.");
+  changed |= WheelSliderInt("Espacement lignes", &g_cfg.line_pitch, 0, 20, "%d px");
+  SameLine(); HelpMarker("Écart entre les bords de deux lignes/colonnes, en pixels (0 = collées).");
   changed |= ro::RoCombo("Tri par durée", &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
   SameLine();
   HelpMarker("Trie les icônes selon le temps d'expiration restant.");
@@ -688,6 +805,19 @@ void StatusIconTweaks::DrawSettings() {
 
   ImGui::BeginDisabled(!g_cfg.show_remaining);
   Indent();
+    changed |= ro::RoCombo("Placement du texte", &g_cfg.time_place,
+                           kTimePlaces, IM_ARRAYSIZE(kTimePlaces));
+    SameLine(); HelpMarker("Dessous / dessus l'icône, ou à l'intérieur.");
+    ImGui::BeginDisabled(g_cfg.time_place != 2);  // anchor only when "inside"
+      changed |= ro::RoCombo("Position dans l'icône", &g_cfg.time_anchor,
+                             kTimeAnchors, IM_ARRAYSIZE(kTimeAnchors));
+      SameLine(); HelpMarker("Ancrage du texte à l'intérieur de l'icône (9 positions).");
+    ImGui::EndDisabled();
+    changed |= ro::RoCheckbox("Texte \"gras\"", &g_cfg.time_bold);
+    SameLine(); HelpMarker("Faux-gras (ImGui n'a pas de fonte grasse).");
+    changed |= ColorSwatch("Couleur du texte", g_cfg.col_time_text);
+    changed |= ColorSwatch("Couleur de l'ombre", g_cfg.col_time_shadow);
+    SameLine(); HelpMarker("Contour/ombre 8 directions ; baissez l'alpha pour l'atténuer.");
     changed |= ro::RoCheckbox("Fond derrière le texte", &g_cfg.time_bg);
     SameLine(); HelpMarker("Ajoute un fond sombre derrière le temps restant.");
   Unindent();
@@ -696,8 +826,13 @@ void StatusIconTweaks::DrawSettings() {
   if (ImGui::Button("Réinitialiser (origine)")) {
     g_cfg.corner = kTopRight; g_cfg.margin_x = 32; g_cfg.margin_y = 185;
     g_cfg.step_dir = kDown; g_cfg.wrap_dir = kLeft; g_cfg.per_line = 17;
-    g_cfg.icon_pitch = 35; g_cfg.line_pitch = 45; g_cfg.sort_mode = kSortNone;
-    g_cfg.icon_alpha = 100;
+    g_cfg.icon_pitch = 3; g_cfg.line_pitch = 13; g_cfg.sort_mode = kSortNone;
+    g_cfg.icon_alpha = 100; g_cfg.icon_size = 32;
+    g_cfg.time_place = 0; g_cfg.time_anchor = 7; g_cfg.time_bold = false;
+    g_cfg.col_time_text[0] = g_cfg.col_time_text[1] =
+        g_cfg.col_time_text[2] = g_cfg.col_time_text[3] = 1.0f;
+    g_cfg.col_time_shadow[0] = g_cfg.col_time_shadow[1] =
+        g_cfg.col_time_shadow[2] = 0.0f; g_cfg.col_time_shadow[3] = 0.9f;
     changed = true;
   }
 

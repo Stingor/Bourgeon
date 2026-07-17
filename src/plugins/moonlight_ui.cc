@@ -750,6 +750,14 @@ void MoonlightUi::LoadSettings() {
       c.show_remaining = ui["statusicon_show_remaining"].as<bool>(c.show_remaining);
       c.time_bg        = ui["statusicon_time_bg"].as<bool>(c.time_bg);
       c.icon_alpha     = ui["statusicon_icon_alpha"].as<int>(c.icon_alpha);
+      c.icon_size      = ui["statusicon_icon_size"].as<int>(c.icon_size);
+      c.time_place     = ui["statusicon_time_place"].as<int>(c.time_place);
+      c.time_anchor    = ui["statusicon_time_anchor"].as<int>(c.time_anchor);
+      c.time_bold      = ui["statusicon_time_bold"].as<bool>(c.time_bold);
+      if (ui["statusicon_time_text"])
+        UnpackCol(ui["statusicon_time_text"].as<unsigned>(0), c.col_time_text);
+      if (ui["statusicon_time_shadow"])
+        UnpackCol(ui["statusicon_time_shadow"].as<unsigned>(0), c.col_time_shadow);
       si->MarkDirty();
     }
 
@@ -1034,7 +1042,13 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "statusicon_sort_mode"      << YAML::Value << c.sort_mode
         << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
         << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg
-        << YAML::Key << "statusicon_icon_alpha"     << YAML::Value << c.icon_alpha;
+        << YAML::Key << "statusicon_icon_alpha"     << YAML::Value << c.icon_alpha
+        << YAML::Key << "statusicon_icon_size"      << YAML::Value << c.icon_size
+        << YAML::Key << "statusicon_time_place"     << YAML::Value << c.time_place
+        << YAML::Key << "statusicon_time_anchor"    << YAML::Value << c.time_anchor
+        << YAML::Key << "statusicon_time_bold"      << YAML::Value << c.time_bold
+        << YAML::Key << "statusicon_time_text"      << YAML::Value << PackCol(c.col_time_text)
+        << YAML::Key << "statusicon_time_shadow"    << YAML::Value << PackCol(c.col_time_shadow);
   }
 
   {
@@ -1554,7 +1568,7 @@ void HelpMarker(const char* desc) {
 // Shift+wheel uses a larger step (0.10 / 10) for faster adjustment.
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
   bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp);
-  if (ImGui::IsItemHovered()) Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
@@ -1569,8 +1583,8 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const cha
 }
 
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
-  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt);
-  if (ImGui::IsItemHovered()) Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp);
+  Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
@@ -2115,7 +2129,7 @@ void MoonlightUi::OnRenderUI() {
             ImGui::BeginDisabled(!eb->portrait_visible_);
 
             changed |= ro::RoCheckbox("Verrouiller le portrait", &eb->portrait_locked_);
-            if (IsHovered()) Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
+            Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
             SameLine(); HelpMarker(
                 "Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
                 "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement).");
@@ -2503,7 +2517,7 @@ void MoonlightUi::OnRenderUI() {
             "Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
             "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
             "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
-            "générique. ON : chaque dague garde son apparence d'origine.");
+            "générique. ON : chaque arme garde son apparence d'origine.");
       }
       PopStyleCompact();
     }

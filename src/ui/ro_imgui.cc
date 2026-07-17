@@ -1088,7 +1088,6 @@ bool RoCheckbox(const char* label, bool* v) {
   EnsureTex("checkbox_1.bmp", skin::kCheckbox1, g_cb1);
   const float sz = (float)skin::kCheckbox0.w;  // 10x10
   const float gapx = 4.0f;
-
   ImGui::PushID(label);
   const ImVec2 start = ImGui::GetCursorScreenPos();
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
@@ -1100,7 +1099,10 @@ bool RoCheckbox(const char* label, bool* v) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
   // Position arrondie à l'entier : sinon (h-sz)/2 fractionnaire + sampling POINT
   // coupe la dernière ligne de pixels (bas de la case « manquant »).
-  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f));
+  // +2 : la case et le label sont posés sur la ligne de base naturelle (haut de
+  // ligne) plutôt que 2px au-dessus, sinon le « (?) » d'un HelpMarker en SameLine
+  // (dessiné à start.y) se retrouve décalé sous le label.
+  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f + 2.0f));
   const ImVec2 bmax(bmin.x + sz, bmin.y + sz);
   if (g_cb0.tex) {
     dl->AddCallback(ImCb_PointFilter, nullptr);
@@ -1112,7 +1114,7 @@ bool RoCheckbox(const char* label, bool* v) {
                               ImVec2(bmax.x - 2, bmax.y - 2),
                               IM_COL32(96, 112, 152, 255));
   }
-  dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f - 2.0f), // -2 pour aligner correctement avec la case
+  dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f), // aligné case + HelpMarker (voir bmin)
               ImGui::GetColorU32(ImGuiCol_Text), label,
               ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();
@@ -1139,17 +1141,25 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
 
   const RoSkinConfig& c = g_cfg;
-  const auto U32 = [](const float* a) {
-    return ImGui::ColorConvertFloat4ToU32(ImVec4(a[0], a[1], a[2], a[3]));
+  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS les widgets dessines
+  // main (ColorConvertFloat4ToU32 ignore style.Alpha) -> on grise nous-memes.
+  const bool disabled =
+      ImGui::GetCurrentContext() &&
+      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+  const float da = disabled ? 0.4f : 1.0f;
+  const auto U32 = [da](const float* a) {
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(a[0], a[1], a[2], a[3] * da));
   };
   // Champ : fond « input » + bordure (le txtbox natif est une simple boîte bordée).
   dl->AddRectFilled(p0, ImVec2(arrowMin.x, p1.y), U32(c.input_col));
   dl->AddRect(p0, p1, U32(c.border_col));
-  // Bouton flèche : texture native txtbox_btn (états normal/survol/pressé).
+  // Bouton flèche : texture native txtbox_btn (états normal/survol/pressé), teintée
+  // (alpha réduit) quand désactivé pour signaler l'état grisé.
+  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
   const SkinTex& btn = held ? g_tb_btn_c : (hovered ? g_tb_btn_b : g_tb_btn_a);
   if (btn.tex) {
     dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, btn, arrowMin, p1);
+    BlitStretch(dl, btn, arrowMin, p1, tint);
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
   } else {  // repli : triangle vers le bas
     const float cx = (arrowMin.x + p1.x) * 0.5f, cy = (p0.y + p1.y) * 0.5f;
@@ -1164,6 +1174,24 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
     dl->AddText(ImVec2(p0.x + 4.0f, p0.y + (h - th) * 0.5f), U32(c.body_text),
                 preview_value, end);
     dl->PopClipRect();
+  }
+
+  // Label à droite de la boîte (comme un combo ImGui standard) : partie visible
+  // avant « ## », centrée verticalement sur le champ. Dessiné en VRAI item ImGui
+  // pour que le layout réserve sa largeur : un SameLine() côté appelant (ex.
+  // HelpMarker) démarre alors APRÈS le label et non par-dessus.
+  const char* label_end = ImGui::FindRenderedTextEnd(label);
+  if (label != label_end) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::SameLine(0, style.ItemInnerSpacing.x);
+    ImGui::SetCursorScreenPos(ImVec2(
+        p1.x + style.ItemInnerSpacing.x,
+        p0.y + (h - ImGui::GetTextLineHeight()) * 0.5f));
+    ImGui::PushStyleColor(ImGuiCol_Text,
+                          ImVec4(c.body_text[0], c.body_text[1], c.body_text[2],
+                                 c.body_text[3] * da));
+    ImGui::TextUnformatted(label, label_end);
+    ImGui::PopStyleColor();
   }
 
   if (clicked) ImGui::OpenPopup("##rcb_pop");
@@ -1210,7 +1238,6 @@ bool RoCombo(const char* label, int *current_item, const char* const items[], in
     changed = true;
     ro::RoEndCombo();
   }
-
   return changed;
 }
 

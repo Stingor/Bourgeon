@@ -22,6 +22,8 @@
 #include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
 #include "plugins/weapon_layer.h"
+#include "plugins/weapon_dual_sprites.h"
+#include "plugins/hat_effect_depth.h"
 #include "plugins/skill_tree_tweaks.h"
 #include "plugins/fps_view.h"
 #include "plugins/doom_tweaks.h"
@@ -53,6 +55,7 @@ FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
 DoomTweaks* Bourgeon::doom() { return doom_; }
 RoggleTweaks* Bourgeon::roggle() { return roggle_; }
 RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
+WeaponDualSprites* Bourgeon::weapon_dual_sprites() { return weapon_dual_sprites_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
@@ -390,6 +393,12 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
   plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
+  {
+    auto weapon_dual = std::make_unique<WeaponDualSprites>();
+    weapon_dual_sprites_ = weapon_dual.get();
+    plugins_.emplace_back(std::move(weapon_dual));
+  }
+  plugins_.emplace_back(std::make_unique<HatEffectDepthTweaks>());
   plugins_.emplace_back(std::make_unique<SkillTreeTweaks>());
   {
     auto fps_view = std::make_unique<FpsViewTweaks>();

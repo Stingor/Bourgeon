@@ -12,9 +12,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "imgui.h"
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // D3D9_CompositeQuadsRGBA (export GIF avatar)
-#include "imgui.h"
 #include "plugins/bourgeon_opcodes.h"  // kHatEffectMap (ZC 0x0F17)
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap + draw)
 #include "utils/gif_writer.h"       // GifWrite
@@ -526,7 +526,7 @@ void CapturePortraitActor() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     g_cap_active = false;
   }
-  LogPortraitDiag();  // throttled diagnostics (outside __try — uses fmt/strings)
+  // LogPortraitDiag();  // throttled diagnostics (outside __try — uses fmt/strings)
 }
 
 // ── Aperçu d'équipement (mouseover) ──────────────────────────────────────────
@@ -1189,11 +1189,6 @@ struct StrCapLayer {
 };
 StrCapLayer g_str_caps[64];
 int         g_str_count = 0;
-// Diag placement (1er layer dessiné par DrawStrCapLayers) : origine canvas, centre couche,
-// coin écran p[0] -> dit si l'effet est DANS le rect ou hors-champ.
-float g_str_dg_ccx = 0.0f, g_str_dg_ccy = 0.0f;   // canvas origin (DAT_01022f5c/DAT_01013e88)
-float g_str_dg_l0cx = 0.0f, g_str_dg_l0cy = 0.0f;  // L.cx / L.cy du 1er layer
-float g_str_dg_px = 0.0f, g_str_dg_py = 0.0f;      // p[0] écran du 1er layer
 bool        g_str_cap_active = false;  // vrai seulement pendant NOTRE rendu d'effet
 
 using StrLayerTexFn = void* (__fastcall*)(void* layer, void* edx, int idx);
@@ -1366,11 +1361,6 @@ void DrawStrCapLayers(ImDrawList* dl, float ox, float oy, float scale) {
       p[k].x = (rx + (L.cx - canvas_cx)) * scale + ox;
       p[k].y = (ry + (L.cy - canvas_cy)) * scale + oy;
     }
-    if (i == 0) {  // diag placement (1er layer) : coords canvas + coin écran
-      g_str_dg_ccx = canvas_cx; g_str_dg_ccy = canvas_cy;
-      g_str_dg_l0cx = L.cx; g_str_dg_l0cy = L.cy;
-      g_str_dg_px = p[0].x; g_str_dg_py = p[0].y;
-    }
     // SRCBLEND/DESTBLEND natifs. DESTALPHA(7)->ONE(2), INVDESTALPHA(8)->ZERO(1) car le backbuffer
     // RO n'a pas d'alpha destination (le HW traite DESTALPHA comme 1.0) ; autres facteurs tels
     // quels. gold_shower = SRCALPHA(5)/ONE(2) = additif modulé par alpha -> fond noir invisible.
@@ -1390,6 +1380,429 @@ void DrawStrCapLayers(ImDrawList* dl, float ox, float oy, float scale) {
                      ImVec2(L.vu[3], L.vv[3]), ImVec2(L.vu[1], L.vv[1]), L.rgba);
   }
   dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);  // restaure l'alpha ImGui
+}
+
+// ── Capture d'effet EZ-PARTICULES (hat effects `hatEffectID`) — PHASE 1 (live) ─
+// 2E FAMILLE de hat effects (docs/hat_effect_re.md, RE 2026-07-13). Les entrées
+// HatEffectInfo avec `hatEffectID` (ex. HAT_EF_Digital_Space ordinal 87 -> id 1240)
+// NE sont PAS des .str : GetHatEfResName renvoie vide (fiche perso NUE, validé). Elles
+// rendent via le système PARTICULES procédural : nœud primitif (vtable 0x01088de8, sur
+// ownActor+0x144, CStr vide) -> nœud ENFANT (vtable 0x01088c48) dessiné par
+// EzEffect_Draw (0x00b666d0, ~170 sous-effets sur node+0x1d0) qui pousse des TRIANGLES
+// via EzEffect_SubmitQuad (0x00550de0) -> RenderQueue_InsertPrimitive. Ce chemin ne
+// passe NI par Effect_SubmitStrQuad NI par Actor_SubmitSpriteQuad (les 2 hooks existants)
+// -> invisible dans Bourgeon. PHASE 1 : on hooke EzEffect_SubmitQuad, et pendant la
+// passe de rendu MONDE (avant l'overlay) on SNAPSHOT les triangles appartenant à l'effet
+// du JOUEUR (filtre propriétaire), SANS toucher au rendu natif (passthrough non
+// destructif). Le composite/ancrage sur le doll vient en phase 2 (ces coords sont écran
+// ABSOLU, projetées monde par le natif -> re-ancrage à faire).
+// Offsets TOUS vérifiés live (x32) 2026-07-13.
+constexpr uintptr_t kEzSubmitQuad = 0x00550de0;  // EzEffect_SubmitQuad(queue, rec, blend)
+constexpr uintptr_t kEzEffectDraw = 0x00b666d0;  // EzEffect_Draw(this=nœud, param_1) (hooké : appartenance)
+// PUITS COMMUN de rendu : particules EZ ET sprites .act (Actor_SubmitQuad_RenderQueue) y convergent.
+// On hooke ICI (pas EzEffect_SubmitQuad) pour capturer les DEUX. record uniforme : prim[0]=float*
+// sommets (4× XYZRHW, stride 0x20 : x@0 y@4 z@8 w@0xc color@0x10 u@0x18 v@0x1c), prim[2]=CTexture*.
+constexpr uintptr_t kRenderQueueInsert = 0x00550b10;  // RenderQueue_InsertPrimitive(queue, prim, flags) (hooké)
+constexpr int kPrimVertsOff   = 0x0;   // prim[0] -> tableau de sommets
+constexpr int kPrimTexOff     = 0x8;   // prim[2] -> CTexture* (handle DX9 @ +0x12c)
+constexpr int kPrimVertStride = 0x20;  // 4 sommets, stride 0x20
+constexpr int kEzRecOff    = 0x2210;  // rec = nœud EZ + 0x2210 -> nœud EZ = rec - 0x2210
+constexpr int kEzParentOff = 0x140;   // nœud EZ -> nœud parent primitif (chaîne remontante)
+constexpr int kEzSrcActor  = 0x138;   // nœud primitif -> acteur source (== ownActor si à nous)
+constexpr int kEzVertStride= 0x20;    // 3 sommets XYZRHW+DIFFUSE+SPEC+TEX1 : x@0 y@4 (ÉCRAN) color@0x10 u@0x18 v@0x1c
+constexpr int kEzTexOff    = 0x60;    // rec+0x60 = CTexture* (handle DX9 @ +0x12c, comme STR/sprite)
+// DISCRIMINATEUR : EzEffect_SubmitQuad(0x550de0) est un enqueue de quad PARTAGÉ (UI/curseur/autres
+// effets). rec-0x2210 = nœud SEULEMENT si l'appelant est EzEffect_Draw (nœud EZ). On vérifie donc la
+// vtable (confirmée live 2026-07-13) : enfant EZ = 0x01088c48, racine primitive = 0x01088de8. Sans ça
+// on capture des quads étrangers (verts hors-écran, span 7000px = « nuages »).
+constexpr uintptr_t kEzChildVtbl = 0x01088c48;  // nœud EZ enfant (draw = EzEffect_Draw)
+constexpr uintptr_t kEzRootVtbl  = 0x01088de8;  // nœud primitif racine (sur ownActor+0x144)
+constexpr int       kEzEffectId  = 0x168;       // nœud PRIMITIF -> id d'effet concret (Digital_Space=1240)
+// ⭐ RE décisive via EzEffect_VisibilityGateForActor 0x00b7f8d0 : le nœud EZ enfant (celui qui SUBMIT les
+// quads, rec-0x2210, vtable kEzChildVtbl) a à **+0x140 le nœud PRIMITIF parent** (PAS l'acteur ! son +0x1d0
+// = sous-type de rendu, ex. 33 ; son +0x144 = tableau de textures). Sur le PRIMITIF : +0x168 = effectId,
+// +0x138 = acteur source, +0x11ca0 = flag. Donc match = *(*(ezNode+0x140)+0x168) ∈ cibles.
+
+// L'acteur tient ses nœuds d'effet (hat effects/costumes) dans une std::list à +0x144 (tête sentinelle),
+// count à +0x148 ; chaque maillon = {prev, next, effectNode*} (12 o), effectNode = racine primitive
+// (vtable kEzRootVtbl). RE : Effect_SpawnPrimitiveById 0x00c44540 (insert dans cette liste).
+constexpr int kEzActorFxListHead = 0x144;  // acteur -> *tête de liste (maillon sentinelle)
+constexpr int kEzActorFxListCnt  = 0x148;  // acteur -> nb d'effets (borne le parcours)
+constexpr int kEzListNodeNext    = 0x4;    // maillon -> maillon suivant
+constexpr int kEzListNodeData    = 0x8;    // maillon -> effectNode* (racine primitive)
+
+// ── Capture générique des effets CEffectMgr (aura/statut, ex. Perm_Frost 2429) ────
+// Ces effets (spawn EffectMgr_SpawnEffect, ex. @effect 2429 -> 0x66a/0x66b) ne sont NI sur
+// actor+0x144 NI dessinés par EzEffect_Draw -> invisibles pour le hook EZ. RE (workflow 2026-07-16) :
+// ils sont dessinés en PHASE RENDER chaque frame par EffectMgr_RenderAttachedEffects (0x00ad5700,
+// appelé par CScene_RenderCellsAndCursor avant le flush), qui itère la map par-acteur mgr+0x10 et
+// appelle EffectInstance_RenderDraw (0x00ae8480) par effet : gate OptionInfo(8)/+0xc2, visibilité
+// vtbl+0x7c, cull +0x34, PUIS le vrai draw vtbl+0x10 (-> CActorSprite_RenderStrLayers/EzEffect_
+// SubmitQuad -> RenderQueue_InsertPrimitive). ⚠ NE PAS confondre avec le sibling EffectInstance_
+// TickAndDraw (0x00ae85d0) = phase UPDATE (vtbl+8/+0xc), qui ne SUBMIT PAS le visible. On hooke donc
+// le RENDER : this=effet (ECX), owner handle @ effet+0x20 ; effet du joueur si == *(0x015fb9a4).
+constexpr uintptr_t kEffRenderFn  = 0x00ae8480;  // EffectInstance_RenderDraw (__fastcall ECX=effet)
+constexpr int       kEffOwnerHnd  = 0x20;        // effet+0x20 = handle de l'acteur propriétaire
+constexpr uintptr_t kOwnHandlePtr = 0x015fb9a4;  // handle/AID du joueur (cf. Actor_ResolveByHandle)
+// CEZ2STREffect (vtbl) = les hat effects .str NAME-BASED (gold_shower…). Ils ont DÉJÀ leur chemin de
+// capture piloté (CaptureHatEffectOrdinal -> DrawStrCapLayers). On les EXCLUT de la capture live
+// (EffectInstance_RenderDraw), sinon double-dessin + mauvais z-order. Chaque id d'effet a sa classe
+// distincte (cf. EffectMgr_FindClassByIdAndCallLoad) -> Permafrost & co (hatEffectID) ≠ CEZ2STREffect.
+constexpr uintptr_t kCEZ2STRVtbl  = 0x010758d8;  // CEZ2STREffect (.str name-based)
+// Aperçu cashshop « try before you buy » : spawn temporaire d'un effet EZ/CEffectMgr NON équipé sur le
+// JOUEUR (il rend en jeu -> la capture live le récupère). Actor_ToggleEffectId(this=acteur, id, addFlag) :
+// addFlag=1 insère l'id dans l'ENSEMBLE actor+0x3fc et RÉ-APPLIQUE TOUT l'ensemble (donc les effets
+// ÉQUIPÉS du joueur restent/sont restaurés) ; addFlag=0 retire l'id de l'ensemble et n'enlève QUE cet
+// effet. -> les effets équipés sont préservés par l'ensemble (⚠ NE PAS utiliser Effect_ApplyEffectIdToActor
+// direct 0xc41ba0 : il casse l'état équipé -> @refresh nécessaire). id unifié = ordinal + 0x98a.
+constexpr uintptr_t kToggleEffectId = 0x00c44940;  // Actor_ToggleEffectId(this, effectId, addFlag) __thiscall
+constexpr int       kHatOrdinalBase = 0x98a;       // id unifié d'un hat effect = ordinal + 0x98a
+
+// Ids concrets CIBLES = GetHatEffectID(ordinal) des hat effects équipés (rempli chaque OnTick). Le filtre
+// EZ (EzOwnedRoot) n'accepte que ces ids ; 0 cible = repli par match acteur-source. Isole les hat effects
+// des autres effets du joueur (auras skill/statut ids 164/230, footprint).
+int   g_ez_target_ids[8] = {0};
+int   g_ez_target_count  = 0;                        // 0 = pas de filtre id -> match acteur-source
+
+// Un QUAD capturé (record uniforme RenderQueue_InsertPrimitive : 4 sommets XYZRHW écran) + UV
+// + couleur D3DCOLOR par sommet + texture native. Le composite (phase 2) re-ancre au doll.
+struct EzCapTri {
+  void*    tex;
+  float    x[4], y[4];
+  float    u[4], v[4];
+  unsigned argb[4];          // D3DCOLOR natif (0xAARRGGBB) — convertir en IM_COL32 au dessin
+  unsigned blend;            // param_2 de RenderQueue_InsertPrimitive (bits de bucket/blend)
+};
+constexpr int kEzCapMax = 2048;      // Digital_Space émet ~centaines de quads (sprite .act billboard)
+EzCapTri g_ez_caps[kEzCapMax];
+int      g_ez_count      = 0;        // quads capturés (appartenant au joueur) ce passage
+uint32_t g_ez_last_frame = 0xFFFFFFFFu;  // compteur de frame (queue+0x38) vu au dernier reset -> reset g_ez_caps par frame
+void*    g_ez_owner_actor= nullptr;  // acteur dont on capture l'effet (nullptr = capture off)
+void*    g_ez_last_actor = nullptr;  // dernier ownActor NON-null connu (repli si mode transitoirement inactif)
+int      g_ez_preview_ord    = 0;    // ordinal EZ/CEffectMgr demandé pour l'aperçu cashshop (0 = aucun)
+DWORD    g_ez_preview_tick   = 0;    // dernier RequestEzPreview (keep-alive : despawn si non rafraîchi)
+int      g_ez_preview_active = 0;    // ordinal réellement spawné sur le joueur (0 = aucun)
+void*    g_ez_queue      = nullptr;  // file de rendu (this du hook) -> projection/échelle
+float    g_ez_world[3]   = {0,0,0};  // pos MONDE de l'effet (nœud+0x10) -> ancre écran par projection
+bool     g_ez_world_set  = false;    // ancre monde capturée ce passage
+
+using RenderInsertFn = void (__fastcall*)(void* queue, void* edx, int* prim, unsigned flags);
+RenderInsertFn g_orig_render_insert = nullptr;
+// EzEffect_Draw(this=nœud, param_1) __thiscall -> __fastcall(self, edx, param_1). On le hooke pour
+// établir l'APPARTENANCE au niveau NŒUD (this connu) : les quads submités PENDANT ce draw sont à lui.
+// Indispensable car les effets à PARTICULES submittent avec rec = node+0x2210+i*0x6c (stride 0x6c,
+// EzEffect_EmitParticleQuadProjected) -> `rec-0x2210` ne retombe PAS sur le nœud (raté : Digital_Space).
+using EzDrawFn = void (__fastcall*)(void* self, void* edx, float* param_1);
+EzDrawFn  g_orig_ez_draw = nullptr;
+bool      g_ez_cur_owned = false;    // le nœud EZ en cours de dessin est-il un hat effect ciblé ?
+void*     g_ez_cur_node  = nullptr;  // ce nœud (pour l'ancre +0x10)
+bool      g_ez_via_efftick   = false; // le nœud courant vient du chemin CEffectMgr (layout pos +0x8, pas +0x10)
+
+// Le nœud EZ (rec-0x2210) est-il un quad d'un hat effect CIBLE du joueur ? Vtable == kEzChildVtbl
+// (sinon = appelant étranger de EzEffect_SubmitQuad -> rejet). Puis lecture DIRECTE : owner (+0x140)
+// == ownActor ET effectId (+0x1d0) ∈ cibles (g_ez_target_ids, ex. Digital_Space 1240) — ce qui exclut
+// le footprint 230 et l'aura 164 présents sur le même acteur. Repli si Lua KO (aucune cible) : accepte
+// tout nœud à nous (diag). Renvoie ezNode (son +0x10 = pos acteur = ancre) ou nullptr. POD (sous SEH).
+void* EzOwnedRoot(void* ezNode) {
+  if (!ezNode || *reinterpret_cast<uintptr_t*>(ezNode) != kEzChildVtbl) return nullptr;
+  void* prim = *reinterpret_cast<void**>(reinterpret_cast<char*>(ezNode) + kEzParentOff);  // +0x140 = primitif
+  if (!prim) return nullptr;
+  const int id = *reinterpret_cast<int*>(reinterpret_cast<char*>(prim) + kEzEffectId);      // primitif+0x168
+  // Repli si Lua KO (aucune cible résolue) : match par acteur source du primitif (+0x138) == ownActor.
+  if (g_ez_target_count == 0) {
+    void* src = *reinterpret_cast<void**>(reinterpret_cast<char*>(prim) + kEzSrcActor);
+    return src == g_ez_owner_actor ? ezNode : nullptr;
+  }
+  // Match par id concret : isole Digital_Space (1240) du footprint (230) et de l'aura (164).
+  for (int t = 0; t < g_ez_target_count; ++t)
+    if (g_ez_target_ids[t] == id) return ezNode;
+  return nullptr;
+}
+
+// Hook sur EzEffect_Draw : établit l'APPARTENANCE au niveau NŒUD. `self` = le nœud EZ dessiné.
+// EzOwnedRoot(self) dit si c'est un hat effect ciblé -> on pose g_ez_cur_owned pour la durée du
+// dessin (les quads submités pendant appartiennent à ce nœud). Save/restore = robuste au nesting.
+void __fastcall Hooked_EzDraw(void* self, void* edx, float* param_1) {
+  const bool prevOwned = g_ez_cur_owned;
+  void* const prevNode = g_ez_cur_node;
+  bool owned = false;
+  if (g_ez_owner_actor && self) {
+    __try {
+      owned = EzOwnedRoot(self) != nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { owned = false; }
+  }
+  g_ez_cur_owned = owned;
+  g_ez_cur_node = owned ? self : nullptr;
+  g_orig_ez_draw(self, edx, param_1);
+  g_ez_cur_owned = prevOwned;
+  g_ez_cur_node = prevNode;
+}
+
+// Hook sur RenderQueue_InsertPrimitive (puits commun) : TOUJOURS passthrough. Si le nœud EN COURS de
+// dessin est un hat effect ciblé (g_ez_cur_owned, posé par Hooked_EzDraw), on snapshot le QUAD.
+// prim[0] = 4 sommets XYZRHW écran (stride 0x20 : x@0 y@4 z@8 w@0xc color@0x10 u@0x18 v@0x1c) ;
+// prim[2] = CTexture* (handle DX9 @ +0x12c). Marche pour particules EZ ET sprites .act.
+void __fastcall Hooked_RenderInsert(void* queue, void* edx, int* prim, unsigned flags) {
+  // FRONTIÈRE DE FRAME : quand le compteur de frame de la scene-queue (+0x38) change, on vide g_ez_caps.
+  // -> g_ez_caps contient EXACTEMENT les quads de la frame courante, consommables par PLUSIEURS vues
+  //    (doll + aperçu cashshop) sans qu'une réinitialise pour l'autre (indépendant du dessin ImGui).
+  __try {
+    const uint32_t frame = *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(queue) + 0x38);
+    if (frame != g_ez_last_frame) {
+      g_ez_last_frame = frame;
+      g_ez_count = 0;
+      g_ez_world_set = false;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (g_ez_cur_owned && prim) {
+    __try {
+      g_ez_queue = queue;
+      if (!g_ez_world_set && g_ez_cur_node) {           // ancre = pos MONDE du nœud/effet
+        // Layout pos : nœud EZ -> +0x10/14/18 ; instance CEffectMgr (efftick) -> +0x8/c/10.
+        const int po = g_ez_via_efftick ? 0x08 : 0x10;
+        const float* w = reinterpret_cast<const float*>(reinterpret_cast<char*>(g_ez_cur_node) + po);
+        g_ez_world[0] = w[0]; g_ez_world[1] = w[1]; g_ez_world[2] = w[2];
+        g_ez_world_set = true;
+      }
+      const char* verts = *reinterpret_cast<char* const*>(reinterpret_cast<char*>(prim) + kPrimVertsOff);
+      void* ctex = *reinterpret_cast<void* const*>(reinterpret_cast<char*>(prim) + kPrimTexOff);
+      const int off = g_imgui_dx7_active ? kCTexOffDX7 : kCTexOffDX9;
+      void* native = ctex ? *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off) : nullptr;
+      if (verts && native && g_ez_count < kEzCapMax) {
+        EzCapTri& T = g_ez_caps[g_ez_count++];
+        T.tex = native;
+        T.blend = flags;
+        for (int k = 0; k < 4; ++k) {
+          const float* vtx = reinterpret_cast<const float*>(verts + k * kPrimVertStride);
+          T.x[k] = vtx[0]; T.y[k] = vtx[1];          // +0x00 / +0x04 (écran)
+          T.u[k] = vtx[6]; T.v[k] = vtx[7];          // +0x18 / +0x1c (UV)
+          T.argb[k] = *reinterpret_cast<const unsigned*>(verts + k * kPrimVertStride + 0x10);
+        }
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  }
+  g_orig_render_insert(queue, edx, prim, flags);
+}
+
+// Hook sur EffectInstance_RenderDraw (0x00ae8480) : draw par-effet en PHASE RENDER (chaque frame).
+// this(ECX)=effet ; owner handle @ effet+0x20. Si == joueur (*(0x015fb9a4)), on arme g_ez_cur_owned
+// pour la durée du draw -> les quads submités par vtbl+0x10 sont capturés par Hooked_RenderInsert.
+// COUVRE les effets aura/statut/CEffectMgr (Perm_Frost...) que le hook EZ ne voit pas. Save/restore =
+// robuste au nesting. effet+0x8/c/10 = pos monde X/Y/Z -> ancre (offset ≠ nœud EZ, cf. g_ez_via_efftick).
+using EffRenderFn = void (__fastcall*)(void* self, void* edx);
+EffRenderFn g_orig_eff_render = nullptr;
+
+void __fastcall Hooked_EffRender(void* self, void* edx) {
+  const bool prevOwned = g_ez_cur_owned;
+  void* const prevNode = g_ez_cur_node;
+  const bool prevVia = g_ez_via_efftick;
+  bool owned = false;
+  if (g_ez_owner_actor && self) {
+    __try {
+      const int ownerHandle = *reinterpret_cast<int*>(reinterpret_cast<char*>(self) + kEffOwnerHnd);
+      if (ownerHandle == *reinterpret_cast<int*>(kOwnHandlePtr)) {   // effet du JOUEUR ?
+        const uintptr_t vtbl = *reinterpret_cast<uintptr_t*>(self);
+        owned = (vtbl != kCEZ2STRVtbl);  // exclut les .str name-based (déjà dessinés par DrawStrCapLayers)
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { owned = false; }
+  }
+  if (owned) {
+    g_ez_cur_owned = true;
+    g_ez_cur_node = self;
+    g_ez_via_efftick = true;
+  }
+  g_orig_eff_render(self, edx);
+  g_ez_cur_owned = prevOwned;
+  g_ez_cur_node = prevNode;
+  g_ez_via_efftick = prevVia;
+}
+
+void InstallEzCapture() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  using namespace hooking;
+  g_orig_render_insert = reinterpret_cast<RenderInsertFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kRenderQueueInsert),
+          reinterpret_cast<uint8_t*>(&Hooked_RenderInsert)));
+  g_orig_ez_draw = reinterpret_cast<EzDrawFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kEzEffectDraw),
+          reinterpret_cast<uint8_t*>(&Hooked_EzDraw)));
+  g_orig_eff_render = reinterpret_cast<EffRenderFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kEffRenderFn),
+          reinterpret_cast<uint8_t*>(&Hooked_EffRender)));
+}
+
+// Acteur joueur live : GameMode_GetActive(0x1213338) -> CMode -> *(+0xcc)=actorMgr ->
+// *(+0x2c)=ownActor. nullptr hors-jeu. POD/SEH. (Même chaîne que EmitCompanionLayers.)
+void* GetOwnActorLive() {
+  void* actor = nullptr;
+  __try {
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(
+        static_cast<int>(kModeMgr));
+    if (gm) {
+      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+      if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
+  return actor;
+}
+
+// ── Aperçu cashshop d'un effet EZ/CEffectMgr NON équipé (« try before you buy ») ──────────────
+// Appelé CHAQUE frame de survol d'un item-effet EZ (keep-alive). ReconcileEzPreview (OnTick) applique la
+// différence : spawn/despawn temporaire de l'effet SUR LE JOUEUR via Actor_ToggleEffectId -> il rend en
+// jeu -> la capture live (g_ez_caps) le récupère -> composité sur l'aperçu. L'effet apparaît sur le perso
+// en jeu pendant le survol (voulu). Robuste au survol qui change / s'arrête (keep-alive 300 ms).
+void RequestEzPreview(int ordinal) {
+  g_ez_preview_ord = ordinal;
+  g_ez_preview_tick = GetTickCount();
+}
+void ReconcileEzPreview() {
+  int wanted = g_ez_preview_ord;
+  if (wanted != 0 && GetTickCount() - g_ez_preview_tick > 300) wanted = 0;  // survol terminé -> despawn
+  if (wanted == g_ez_preview_active) return;                                 // rien à faire
+  void* actor = GetOwnActorLive();
+  if (!actor) return;                          // hors-jeu : on retentera (l'état actif reste, resync au retour)
+  using ToggleFn = void(__thiscall*)(void*, int, char);
+  const ToggleFn toggle = reinterpret_cast<ToggleFn>(kToggleEffectId);
+  __try {
+    if (g_ez_preview_active != 0)
+      toggle(actor, g_ez_preview_active + kHatOrdinalBase, 0);   // despawn l'ancien aperçu (retire de l'ensemble)
+    if (wanted != 0)
+      toggle(actor, wanted + kHatOrdinalBase, 1);                // spawn le nouvel aperçu (insère + ré-applique tout)
+    g_ez_preview_active = wanted;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { g_ez_preview_active = wanted; }
+}
+
+// Projection + échelle live (mêmes fonctions que le natif Effect_SubmitStrQuad). RE 2026-07-13 :
+// Scene_ProjectWorldToScreen(sceneCtx, worldXYZ, VIEWMTX(cam+0x98), &sx, &sy, &invW) ; puis
+// S = Effect_DepthToScreenScale(sceneCtx, invW) = px écran par unité canvas à cette profondeur.
+constexpr uintptr_t kSceneProject = 0x005541b0;  // Scene_ProjectWorldToScreen(ctx,world,viewMtx,&sx,&sy,&invW)
+constexpr uintptr_t kDepthScale   = 0x00553e80;  // Effect_DepthToScreenScale(ctx,invW)->float (st0)
+constexpr int       kOffCamera    = 0xd0;        // CMode -> caméra ; matrice de vue = caméra+0x98
+constexpr int       kOffViewMtx   = 0x98;        // caméra -> matrice de vue (arg de projection natif)
+
+// Dessin du composite EZ sur le doll. RÉACTIVÉ 2026-07-13 après correction : les verts EZ SONT en
+// écran (XYZRHW, même FVF/chemin de draw que les STR -> RenderPrim_DrawRecord partagé). Le « span
+// 7000px / nuages » venait d'un SUR-MATCH (EzEffect_SubmitQuad est partagé ; rec-0x2210 n'est un nœud
+// que pour les appelants EzEffect_Draw). Corrigé par le discriminateur vtable dans EzOwnedRoot. Le
+// re-ancrage écran (ci-dessous) est correct pour des verts écran. Repasser à false si régression.
+bool g_ez_enabled = true;  // verts = écran (XYZRHW confirmé) ; outliers filtrés par proximité (g_ez_max_r)
+// Calibrage manuel de l'échelle EZ sur le doll (défaut 1.0 = ratio physique s/S_live).
+float g_ez_cal = 1.0f;
+// Plancher du FIT : le doll ne rétrécit pas en-dessous de ce ratio de son échelle de base, même si
+// l'effet est plus grand que le cadre (au-delà, l'effet déborde et est rogné par le clip du rect).
+// Évite le « doll minuscule » quand un effet (aura) s'étale large. Réglable (0.5-0.8 raisonnable).
+float g_ez_fit_floor = 0.6f;
+// Rayon écran (px) autour de l'ancre au-delà duquel un triangle est rejeté (outlier hors-effet).
+float g_ez_max_r = 700.0f;
+// Blend : les quads EZ portent leur propre SRCBLEND/DESTBLEND (RE World_RenderScene : défaut
+// SRCALPHA/INVSRCALPHA = ALPHA normal ; certains glows = additif). On dessine en ALPHA normal
+// (blend par défaut ImGui) — forcer l'additif faisait « blanchir » les écrans (panneaux alpha).
+// g_ez_additive=true force l'additif global (pour comparer les glows). Mapping fin par-quad = TODO.
+bool g_ez_additive = false;
+
+// FIT : les quads sont dessinés LIVE (animés) chaque frame ; seule la BBOX de l'effet est figée une
+// fois (stabilité du scale doll), invalidée au changement de hat effect (0x0A3B) et nettoyée après
+// quelques frames sans capture (effet retiré).
+bool     g_ez_frozen_valid = false;  // bbox FIT calculée pour l'effet courant
+int      g_ez_empty_frames = 0;      // frames consécutives SANS effet capturé (g_ez_count==0) -> nettoie la bbox
+// BBox de l'effet figé, en unités « doll par unité d'échelle s » (= (v-ancre)/S). Sert au FIT :
+// RenderPlayerAvatar réduit s (perso ET effet ensemble) pour que l'effet tienne dans le cadre fixe.
+float    g_ez_fz_dx0 = 0.0f, g_ez_fz_dx1 = 0.0f, g_ez_fz_dy0 = 0.0f, g_ez_fz_dy1 = 0.0f;
+
+// Composite les triangles EZ capturés (g_ez_caps) sur le doll. Les sommets sont en écran
+// ABSOLU (projetés monde par le natif ce frame). Re-ancrage : ancre écran ax/ay = projection
+// de g_ez_world (pos monde de l'effet ≈ origine acteur) ; S = DepthToScreenScale(invW). Doll =
+// (ox + (vx-ax)·R, oy + (vy-ay)·R), R = (s/S)·cal (1 unité canvas monde -> s px doll, comme le
+// sprite). Blend ADDITIF (glow ; calibrable). No-op si vide / projection KO. SEH autour du natif.
+// `before` : ne dessine que la phase demandée. Z-ORDER par-quad = bit 0x8 du flag natif param_2
+// (capturé dans T.blend) — RE render-order (workflow 2026-07-16) : le jeu range chaque quad dans un
+// BUCKET selon param_2, et le bit 0x8 = "render before character" (bucket dessiné AVANT le perso).
+// On reproduit : quads bit-0x8 -> avant le sprite (derrière) ; les autres -> après (devant). Un effet
+// est TOUJOURS tout-devant OU tout-derrière (le moteur ne l'intercale jamais entre les couches perso).
+// PAS de reset ici (appelé 2×/frame) : g_ez_caps est vidé sur frontière de frame (Hooked_RenderInsert).
+void DrawEzCapTris(ImDrawList* dl, float ox, float oy, float s, bool before) {
+  if (!dl) return;
+  // ANCRE ÉCRAN LIVE : projette g_ez_world (origine de l'effet) CHAQUE frame. Comme elle suit
+  // l'acteur, (vx-ax) annule la translation quand le perso marche, tout en gardant les quads LIVE ->
+  // l'ANIMATION joue (l'ancien freeze figeait UN instantané -> position stable mais anim gelée).
+  if (g_ez_count <= 0 || !g_ez_queue || !g_ez_world_set) return;
+  float ax = 0.0f, ay = 0.0f, invW = 0.0f, S = 0.0f;
+  bool ok = false;
+  __try {
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(static_cast<int>(kModeMgr));
+    void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera) : nullptr;
+    float* viewMtx = cam ? reinterpret_cast<float*>(reinterpret_cast<char*>(cam) + kOffViewMtx)
+                         : nullptr;
+    if (viewMtx) {
+      reinterpret_cast<void(__fastcall*)(void*, void*, float*, float*, float*, float*, float*)>(
+          kSceneProject)(g_ez_queue, nullptr, g_ez_world, viewMtx, &ax, &ay, &invW);
+      S = reinterpret_cast<float(__fastcall*)(void*, void*, float)>(kDepthScale)(
+          g_ez_queue, nullptr, invW);
+      ok = (S > 1e-4f);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  if (!ok) return;                                       // reset g_ez_caps = frontière de frame (Hooked_RenderInsert)
+  const EzCapTri* caps = g_ez_caps;                     // LIVE (animé)
+  const int count = g_ez_count < kEzCapMax ? g_ez_count : kEzCapMax;
+  const float R = (s / S) * g_ez_cal;
+  // FIT : bbox figée UNE fois (l'effet garde ~la même étendue -> évite que le scale du doll jitter à
+  // chaque frame d'anim). RenderPlayerAvatar lit g_ez_fz_dx0.. AVANT ce dessin. Invalidée au changement
+  // de hat effect (handler 0x0A3B). ax/ay/S restent LIVE (l'ancre s'annule dans (vx-ax), cf. supra).
+  if (!g_ez_frozen_valid) {
+    float dx0 = 1e9f, dx1 = -1e9f, dy0 = 1e9f, dy1 = -1e9f;
+    const float mr2 = g_ez_max_r * g_ez_max_r, invS = 1.0f / S;
+    for (int i = 0; i < count; ++i)
+      for (int k = 0; k < 4; ++k) {
+        const float ddx = caps[i].x[k] - ax, ddy = caps[i].y[k] - ay;
+        if (ddx * ddx + ddy * ddy > mr2) continue;
+        if (ddx < dx0) dx0 = ddx; if (ddx > dx1) dx1 = ddx;
+        if (ddy < dy0) dy0 = ddy; if (ddy > dy1) dy1 = ddy;
+      }
+    if (dx1 >= dx0) {
+      g_ez_fz_dx0 = dx0 * invS; g_ez_fz_dx1 = dx1 * invS;
+      g_ez_fz_dy0 = dy0 * invS; g_ez_fz_dy1 = dy1 * invS;
+      g_ez_frozen_valid = true;
+    }
+  }
+  if (!g_ez_enabled) return;  // dessin désactivé (calibrage) — doll propre
+  // D3DCOLOR (0xAARRGGBB) -> IM_COL32 (0xAABBGGRR) : échange R<->B (A,G en place).
+  auto conv = [](unsigned c) -> unsigned {
+    return (c & 0xff00ff00u) | ((c & 0x00ff0000u) >> 16) | ((c & 0x000000ffu) << 16);
+  };
+  // Filtre PROXIMITÉ ÉCRAN (verts XYZRHW = écran) : l'effet du joueur est COMPACT autour de son
+  // ancre écran (ax,ay) ; on rejette les triangles dont un sommet est à > g_ez_max_r px (outliers
+  // qui fuient le filtre propriétaire -> « nuages » hors-champ). Robuste car les verts sont écran.
+  const float maxR = g_ez_max_r, maxR2 = maxR * maxR;
+  auto farOut = [&](float vx, float vy) {
+    const float dxp = vx - ax, dyp = vy - ay; return (dxp * dxp + dyp * dyp) > maxR2;
+  };
+  // ALPHA normal par défaut (= blend natif des panneaux) ; additif seulement si demandé.
+  if (g_ez_additive)
+    dl->AddCallback(reinterpret_cast<ImDrawCallback>(D3D9_AdditiveBlendCallback()), nullptr);
+  for (int i = 0; i < count; ++i) {
+    const EzCapTri& T = caps[i];
+    if (!T.tex) continue;
+    // Z-ORDER par-quad : bit 0x8 du flag natif (param_2, capturé dans blend) = "render before
+    // character". On ne dessine que la phase demandée (derrière = bit set, avant le sprite).
+    if (((T.blend & 0x8u) != 0) != before) continue;
+    if (farOut(T.x[0], T.y[0]) || farOut(T.x[1], T.y[1]) ||
+        farOut(T.x[2], T.y[2]) || farOut(T.x[3], T.y[3])) continue;
+    // Quad texturé : sommets natifs v0=HG v1=HD v2=BG v3=BD -> ordre ImGui HG,HD,BD,BG (v0,v1,v3,v2).
+    const ImVec2 p0(ox + (T.x[0] - ax) * R, oy + (T.y[0] - ay) * R);
+    const ImVec2 p1(ox + (T.x[1] - ax) * R, oy + (T.y[1] - ay) * R);
+    const ImVec2 p2(ox + (T.x[3] - ax) * R, oy + (T.y[3] - ay) * R);
+    const ImVec2 p3(ox + (T.x[2] - ax) * R, oy + (T.y[2] - ay) * R);
+    dl->AddImageQuad((ImTextureID)(uintptr_t)T.tex, p0, p1, p2, p3,
+                     ImVec2(T.u[0], T.v[0]), ImVec2(T.u[1], T.v[1]),
+                     ImVec2(T.u[3], T.v[3]), ImVec2(T.u[2], T.v[2]), conv(T.argb[0]));
+  }
+  if (g_ez_additive)
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 }
 
 // ── Spawn / pilotage d'un nœud d'effet STR autonome (hat effect) ──────────────
@@ -1416,11 +1829,13 @@ constexpr unsigned kStrFrameMs = 16;  // ms par frame .str (pas fixe natif, non 
 
 // Bridge Lua brut (Lua 5.1) — même mécanique que StatusName (character_sheet) : évite
 // le wrapper varargs (string BYVAL). Adresses partagées avec les autres plugins.
-constexpr uintptr_t kLuaStateB   = 0x015ffd78;  // *=M ; **=lua_State
+constexpr uintptr_t kLuaStateB   = 0x015ffd78;  // g_pLuaStateMgr : *=mgr ; **=lua_State (double deref)
 constexpr uintptr_t kLuaGetFieldB= 0x00519df0;  // lua_getfield(L,idx,k)
 constexpr uintptr_t kLuaPushNumB = 0x0051a4b0;  // lua_pushnumber(L,double)
 constexpr uintptr_t kLuaPCallB   = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int
 constexpr uintptr_t kLuaToLStrB  = 0x0051aca0;  // lua_tolstring(L,idx,&len) (convertit un nombre)
+constexpr uintptr_t kLuaToNumB   = 0x0051ad20;  // lua_tonumber(L,idx)->double (retour numérique fiable)
+constexpr uintptr_t kLuaCheckStk = 0x0051b570;  // lua_checkstack(L,n) : le natif l'appelle avant chaque push
 constexpr uintptr_t kLuaSetTopB  = 0x0051aab0;  // lua_settop(L,idx)
 constexpr uintptr_t kLuaToBoolB  = 0x0051abf0;  // lua_toboolean(L,idx)->int (RE : !l_isfalse)
 constexpr int       kLuaGlobalsB = -10002;      // LUA_GLOBALSINDEX (5.1)
@@ -1507,12 +1922,14 @@ float HatLuaNum(int ordinal, const char* fn, float def) {
     void* M = *reinterpret_cast<void**>(kLuaStateB);
     void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
     if (L) {
+      reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaCheckStk)(L, 3);  // comme le natif : garantit la place
       reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(L, kLuaGlobalsB, fn);
       reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
       if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
-        const char* s = reinterpret_cast<const char*(__cdecl*)(void*, int, size_t*)>(
-            kLuaToLStrB)(L, -1, nullptr);
-        if (s && s[0]) r = static_cast<float>(std::atof(s));
+        // Résultat NUMÉRIQUE lu via lua_tonumber (comme le natif Lua_CallGlobal_va pour 'd'/'l').
+        // lua_tolstring convertissait aussi mais on évite le round-trip string+atof (fragile).
+        const double d = reinterpret_cast<double(__cdecl*)(void*, int)>(kLuaToNumB)(L, -1);
+        r = static_cast<float>(d);
       }
       reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
     }
@@ -1706,7 +2123,7 @@ void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Repart d'une liste vide à l'entrée en jeu : le serveur re-pousse la liste
   // complète des hat effects au spawn (0x0A3B status=1). Évite qu'un effet d'un
   // perso précédent persiste (aucun status=0 n'est émis à la déconnexion).
-  if (in_game_) own_hat_effects_.clear();
+  if (in_game_) { own_hat_effects_.clear(); g_ez_frozen_valid = false; }
 }
 
 // Tooltip d'aperçu d'un équipement porté par le perso (appelé par item_desc au
@@ -1804,15 +2221,30 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
   // ordre derrière/devant = isRenderBeforeCharacter ; cf. RenderPlayerAvatar). Zéro hardcode.
   static const HatEffectParams s_hp_none_pv;
   const HatEffectParams& hp = hat_ordinal ? HatOrdinalParams(hat_ordinal) : s_hp_none_pv;
+  // Deux familles : .str name-based (resname NON vide) = chemin piloté off-screen (DrawStrCapLayers) ;
+  // sinon (resname vide) = effet EZ/CEffectMgr (hatEffectID, ex. Digital_Space/Perm_Frost) qu'on ne peut
+  // PAS piloter hors-scène -> on le SPAWNE temporairement sur le joueur (RequestEzPreview) et on capture
+  // le rendu live (g_ez_caps), composité comme le doll (z-order par-quad via DrawEzCapTris).
+  const char* rn_pv = hat_ordinal ? HatOrdinalToResName(hat_ordinal) : "";
+  const bool isStr = (rn_pv && rn_pv[0]);
+  // Ne PAS spawn l'aperçu si l'effet est DÉJÀ équipé : il rend déjà sur le joueur (capturé/affiché tel
+  // quel). Sinon le toggle-remove de l'aperçu retirerait l'instance ÉQUIPÉE (même id) -> script hateffect
+  // « overruled » jusqu'à @refresh. On ne spawne QUE les effets NON équipés (le vrai « try before buy »).
+  const bool alreadyEquipped =
+      std::find(own_hat_effects_.begin(), own_hat_effects_.end(),
+                static_cast<uint16_t>(hat_ordinal)) != own_hat_effects_.end();
+  if (hat_ordinal && !isStr && !alreadyEquipped) RequestEzPreview(hat_ordinal);  // « try before buy »
   auto drawPreviewHat = [&]() {
-    if (hat_ordinal == 0) return;
+    if (hat_ordinal == 0 || !isStr) return;
     CaptureHatEffectOrdinal(hat_ordinal);
     hat_diag_concrete_ = hat_ordinal;
     hat_diag_layers_   = g_str_count;
     // Ancre = ORIGINE de l'acteur (oy) comme l'avatar : le .str se place lui-même (sol/tête/centré).
     DrawStrCapLayers(dl, ox + hp.posX * s, oy, s);
   };
-  if (hp.before) drawPreviewHat();     // effet DERRIÈRE le perso
+  // DERRIÈRE le perso
+  if (hp.before) drawPreviewHat();                                             // .str derrière
+  if (hat_ordinal && !isStr) DrawEzCapTris(dl, ox, oy, s, /*before=*/true);    // EZ/CEffectMgr derrière (bit 0x8)
   for (int i = 0; i < g_pv_count; ++i) {
     const CapLayer& L = g_pv_caps[i];
     const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
@@ -1821,7 +2253,9 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
   }
-  if (!hp.before) drawPreviewHat();    // effet DEVANT le perso
+  // DEVANT le perso
+  if (!hp.before) drawPreviewHat();                                            // .str devant
+  if (hat_ordinal && !isStr) DrawEzCapTris(dl, ox, oy, s, /*before=*/false);   // EZ/CEffectMgr devant
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1930,9 +2364,41 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     if (g_av_count <= 0) return;
   }
   if (s_scale <= 0.0f) return;  // pas encore de cadrage valide (capture dégénérée)
-  const float s  = s_scale;
-  const float ox = x + w * 0.5f - s_cx * s;      // CORPS centré horizontalement (figé)
-  const float oy = y + h - pad - s_feet * s;     // pieds du corps collés au bas (figé)
+  float s  = s_scale;
+  float ox = x + w * 0.5f - s_cx * s;      // CORPS centré horizontalement (figé)
+  float oy = y + h - pad - s_feet * s;     // pieds du corps collés au bas (figé)
+  // FIT effet (demande user : le CADRE ne bouge pas ; l'effet rétrécit pour tenir dedans et le doll
+  // scale AVEC). Si un effet EZ est figé et sa bbox déborde du cadre, on réduit s (perso ET effet, car
+  // l'effet suit s via R=s/S) puis on re-centre la bbox de l'effet dans le cadre. Largeur effet en px
+  // doll = (dx1-dx0)*s (g_ez_fz_* sont en unités doll/s). On ne fait que RÉDUIRE (jamais agrandir).
+  // FIT appliqué SEULEMENT si un effet est réellement capturé CE frame (g_ez_count>0). Si le costume-
+  // effet est retiré (plus aucun quad -> g_ez_count==0), on n'applique PAS le FIT : le doll reprend sa
+  // taille de base IMMÉDIATEMENT (corrige « reste petit après dé-équipement », sans dépendre du paquet
+  // 0x0A3B). Après quelques frames vides on invalide la bbox figée (nettoyage pour le prochain effet).
+  if (g_ez_frozen_valid && g_ez_count <= 0) {
+    if (++g_ez_empty_frames > 4) g_ez_frozen_valid = false;
+  } else if (g_ez_frozen_valid) {
+    g_ez_empty_frames = 0;
+    const float ew = g_ez_fz_dx1 - g_ez_fz_dx0;
+    const float eh = g_ez_fz_dy1 - g_ez_fz_dy0;
+    if (ew > 1.0f && eh > 1.0f) {
+      const float m = 0.94f;                                   // petite marge intérieure
+      const float sfx = (w - 2.0f * pad) * m / ew;
+      const float sfy = (h - 2.0f * pad) * m / eh;
+      const float sfit = (sfx < sfy) ? sfx : sfy;
+      if (sfit < s) {
+        // Plancher : ne pas réduire le doll sous g_ez_fit_floor × base. Si l'effet est plus grand
+        // que ce que ça permet, il déborde (rogné par le clip du rect) au lieu d'écraser le perso.
+        const float sMin = s * g_ez_fit_floor;
+        s = (sfit < sMin) ? sMin : sfit;
+        // On garde le cadrage du CORPS (centré horizontal, pieds en bas) au nouveau scale — PAS un
+        // re-centrage sur la bbox de l'effet (qui décalerait le perso sur le côté). L'effet, dessiné
+        // relativement à l'origine acteur (ox,oy), reste ainsi centré sur le perso comme en jeu.
+        ox = x + w * 0.5f - s_cx * s;
+        oy = y + h - pad - s_feet * s;
+      }
+    }
+  }
 
   // (d) composite (clip au rect). Hat effects (.str, costumes SANS viewid) capturés depuis un nœud
   // STR autonome puis compositéss comme le natif (blend/rotation/échelle RE). AUCUN hardcode : ancre
@@ -1944,6 +2410,13 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
   //  - Contenu .str : 1 px canvas -> s à l'écran. Un effet par ordinal actif (suivi 0x0A3B).
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->PushClipRect(ImVec2(x, y), ImVec2(x + w, y + h), true);
+
+  // (0) hat effects EZ/SPRITE + CEffectMgr (hatEffectID, ex. Digital_Space, Perm_Frost) : capturés
+  // live depuis la passe monde (g_ez_caps), re-ancrés sur le doll (origine acteur (ox,oy), échelle
+  // s/S_live). Z-ORDER PAR-QUAD via le bit 0x8 du flag natif (param_2 capturé) = ordre EXACT du jeu
+  // (RE render-order workflow) : phase DERRIÈRE (bit set) avant le sprite, phase DEVANT après. Gère
+  // plusieurs effets d'un coup, sans Lua. g_ez_caps vidé sur frontière de frame (Hooked_RenderInsert).
+  DrawEzCapTris(dl, ox, oy, s, /*before=*/true);   // quads DERRIÈRE le perso (bit 0x8)
 
   hat_diag_active_ = static_cast<int>(own_hat_effects_.size());
   auto drawHatEffects = [&](bool beforePhase) {
@@ -1973,35 +2446,9 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
     const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
     dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
   }
-  drawHatEffects(false);  // (c) effets DEVANT le perso
-  // DIAG throttlé (~1.5 s) -> bourgeon.log : localise la cause d'un rendu absent.
-  //   own_fx=0   => tracking 0x0A3B a échoué (voir les logs "recv 0x0A3B") ;
-  //   resname='' => GetHatEfResName KO (Lua pas prêt / ordinal inconnu du client) ;
-  //   node_ok=0  => .str pas chargé (nom/chemin invalide) ;
-  //   captured=0 (layers>0) => le hook n'a rien capturé (SubmitStrQuad non atteint) ;
-  //   captured>0 mais rien à l'écran => souci d'ancre/échelle (anchor/hsc hors rect ou nul).
-  {
-    static DWORD s_hat_log = 0;
-    const DWORD now = GetTickCount();
-    if (now - s_hat_log > 1500) {
-      s_hat_log = now;
-      const int ord0 = own_hat_effects_.empty() ? 0 : static_cast<int>(own_hat_effects_[0]);
-      const char* resname = ord0 ? HatOrdinalToResName(ord0) : "";
-      static const HatEffectParams s_hp_none;
-      const HatEffectParams& hp0 = ord0 ? HatOrdinalParams(ord0) : s_hp_none;
-      LogDiag("[HatFx] avatar own_fx={} ord0={} resname='{}' node_ok={} layers={} captured={} "
-              "posX={:.1f} before={} anchor=({},{}) s={:.3f} feet={:.1f} rect=({:.0f},{:.0f},{:.0f},{:.0f})",
-              static_cast<int>(own_hat_effects_.size()), ord0, resname,
-              g_hatfx_dg_nodeok, g_hatfx_dg_layers, g_hatfx_dg_captured,
-              hp0.posX, hp0.before ? 1 : 0,
-              static_cast<int>(ox + hp0.posX * s), static_cast<int>(oy),   // ancre = origine + posX
-              s, s_feet, x, y, w, h);
-      // Placement du 1er layer capturé (canvas + coin écran) -> dedans le rect ou hors-champ ?
-      LogDiag("[HatFx] place: Lcanvas=({:.1f},{:.1f}) origin=({:.1f},{:.1f}) -> screen p0=({:.0f},{:.0f})",
-              g_str_dg_l0cx, g_str_dg_l0cy, g_str_dg_ccx, g_str_dg_ccy,
-              g_str_dg_px, g_str_dg_py);
-    }
-  }
+  drawHatEffects(false);  // (c) effets .str DEVANT le perso
+  DrawEzCapTris(dl, ox, oy, s, /*before=*/false);  // (c') quads EZ/CEffectMgr DEVANT le perso
+  // (reset g_ez_caps = frontière de frame dans Hooked_RenderInsert)
   dl->PopClipRect();
 }
 
@@ -2748,26 +3195,17 @@ void BasicInfoTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   int body = static_cast<int>(plen) - 9;
   if (body < 0) body = 0;
   const int nfx = body / 2;
-  // DIAG : le paquet arrive-t-il ? l'aid correspond-il au joueur ? (suspect n°1 du
-  // « rien ne s'affiche » : si aid != own, own_hat_effects_ reste vide). Loggé AVANT le
-  // filtre. Note : la comparaison utilise l'aid du joueur (account id).
-  LogDiag("[HatFx] recv 0x0A3B aid={} own={} match={} status={} nfx={} plen={} len={}",
-          aid, own, aid == own ? 1 : 0, static_cast<int>(status), nfx,
-          static_cast<int>(plen), static_cast<int>(len));
   if (aid != own) return;  // joueur only
   const uint8_t* p = data + 7;
   for (int i = 0; i < nfx; ++i) {
     const uint16_t fx = *reinterpret_cast<const uint16_t*>(p + i * 2);
     auto it = std::find(own_hat_effects_.begin(), own_hat_effects_.end(), fx);
     if (status) {
-      if (it == own_hat_effects_.end()) own_hat_effects_.push_back(fx);  // dédup
+      if (it == own_hat_effects_.end()) { own_hat_effects_.push_back(fx); g_ez_frozen_valid = false; }
     } else if (it != own_hat_effects_.end()) {
       own_hat_effects_.erase(it);
+      g_ez_frozen_valid = false;  // bbox FIT à recalculer pour ce qui reste
     }
-    // NB : pas de résolution Lua ici (OnRecvPacket peut ne pas être sur le thread de
-    // rendu) ; le concret est loggé par le diag d'avatar (thread de rendu, Lua sûr).
-    LogDiag("[HatFx]   ordinal={} status={} (set size now {})", fx,
-            static_cast<int>(status), static_cast<int>(own_hat_effects_.size()));
   }
 }
 
@@ -2790,6 +3228,34 @@ void BasicInfoTweaks::OnTick() {
     CapturePortraitActor();
   } else {
     g_cap_count = 0;
+  }
+
+  // ── Capture EZ/CEffectMgr (hat effects `hatEffectID`) : composite doll + aperçu cashshop ──
+  // Les hooks (EzEffect_Draw + EffectInstance_RenderDraw) remplissent g_ez_caps pendant la passe de
+  // rendu MONDE ; consommé par RenderPlayerAvatar / RenderItemPreviewTooltip. Reset = frontière de
+  // frame (Hooked_RenderInsert). Ici on ré-arme le propriétaire pour la passe suivante.
+  InstallEzCapture();
+  g_ez_cur_owned = false; g_ez_cur_node = nullptr;
+  // Aperçu cashshop : spawn/despawn l'effet EZ survolé sur le joueur (keep-alive expiré -> despawn).
+  ReconcileEzPreview();
+  // Arme le propriétaire. GameMode_GetActive renvoie 0 si le mode est transitoirement « inactif »
+  // (*(mgr+0x58)!=1) ; on garde alors le DERNIER acteur connu (l'effet est continu, l'acteur stable).
+  // Armé aussi si un aperçu cashshop est actif (effet spawné sur le joueur, à capturer).
+  if (own_hat_effects_.empty() && g_ez_preview_active == 0) {
+    g_ez_owner_actor = nullptr;
+  } else {
+    void* live = GetOwnActorLive();
+    if (live) g_ez_last_actor = live;
+    g_ez_owner_actor = live ? live : g_ez_last_actor;
+  }
+  // Ids concrets CIBLES = GetHatEffectID(ordinal) des hat effects équipés -> filtre la capture EZ
+  // (EzOwnedRoot) pour isoler le(s) hat effect(s) du footprint (230) / aura (164). Les CEffectMgr
+  // (Perm_Frost...) passent par EffectInstance_RenderDraw (match acteur-source, hors ce filtre).
+  g_ez_target_count = 0;
+  for (uint16_t ord : own_hat_effects_) {
+    if (g_ez_target_count >= 8) break;
+    const int cid = static_cast<int>(HatLuaNum(static_cast<int>(ord), "GetHatEffectID", -1.0f));
+    if (cid > 0) g_ez_target_ids[g_ez_target_count++] = cid;
   }
 
   constexpr uintptr_t kBasicInfoPtr = 0x0131f6c4;  // 0x0131f4e8 + 0x1dc
