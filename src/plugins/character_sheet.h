@@ -64,6 +64,13 @@ class CharacterSheet : public Plugin {
   bool  is_open() const { return show_; }
   void  set_open(bool v) { show_ = v; }
 
+  // Pose de l'avatar (pose + direction + animation on/off), persistee par MoonlightUi
+  // (yaml "charsheet_pose"/"charsheet_dir"/"charsheet_pose_anim") pour retrouver le
+  // meme cadrage a chaque ouverture. Accesseurs par reference (lecture + ecriture).
+  int&  avatar_anim()    { return avatar_anim_; }
+  int&  avatar_dir()     { return avatar_dir_; }
+  bool& avatar_animate() { return avatar_animate_; }
+
  private:
   // Apport ÉQUIPEMENT + CARTES aux stats, poussé par le serveur (ZC 0x0F10),
   // compilé par status_calc_pc. Le natif ne donne que le TOTAL par stat primaire ;

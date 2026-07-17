@@ -1888,6 +1888,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
       else
         avatar_dir_ = (avatar_dir_ + (wheel > 0.0f ? 1 : 7)) & 7;  // 8 dirs
       ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenetre
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();  // persister la direction
     }
   }
 
@@ -1919,6 +1920,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
         avatar_anim_    = kPoses[i].anim;
         avatar_animate_ = kPoses[i].animate;
         if (avatar_anim_ == kAnimCombat) avatar_dir_ &= ~1;  // snap dir cardinale
+        if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();  // persister la pose
       }
     }
     ro::RoEndCombo();

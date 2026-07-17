@@ -35,6 +35,7 @@
 #include "plugins/status_tweaks.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
+#include "plugins/weapon_dual_sprites.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -445,6 +446,8 @@ void MoonlightUi::LoadSettings() {
     }
     if (auto* br = Bourgeon::Instance().bug_report())
       br->enabled() = ui["bugreport_button"].as<bool>(true);
+    if (auto* wds = Bourgeon::Instance().weapon_dual_sprites())
+      wds->enabled() = ui["weapon_dual_sprites"].as<bool>(false);
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
 
@@ -687,6 +690,10 @@ void MoonlightUi::LoadSettings() {
     if (auto* cse = Bourgeon::Instance().character_sheet()) {
       cse->imgui_enabled_ = ui["charsheet_imgui"].as<bool>(cse->imgui_enabled_);
       cse->set_open(ui["charsheet_open"].as<bool>(cse->is_open()));
+      // Pose de l'avatar (pose/direction/animation) — persistee par personne.
+      cse->avatar_anim()    = ui["charsheet_pose"].as<int>(cse->avatar_anim());
+      cse->avatar_dir()     = ui["charsheet_dir"].as<int>(cse->avatar_dir());
+      cse->avatar_animate() = ui["charsheet_pose_anim"].as<bool>(cse->avatar_animate());
     }
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
@@ -895,6 +902,10 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "itemdesc_off_x"       << YAML::Value << itemdesc_off_x
         << YAML::Key << "itemdesc_off_y"       << YAML::Value << itemdesc_off_y
         << YAML::Key << "bugreport_button"     << YAML::Value << bugreport_button
+        << YAML::Key << "weapon_dual_sprites"  << YAML::Value
+            << (Bourgeon::Instance().weapon_dual_sprites()
+                    ? Bourgeon::Instance().weapon_dual_sprites()->enabled()
+                    : false)
         << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
@@ -1146,6 +1157,13 @@ void MoonlightUi::SaveSettings() {
         << (cse ? cse->imgui_enabled_ : false);
     out << YAML::Key << "charsheet_open" << YAML::Value
         << (cse ? cse->is_open() : true);
+    // Pose de l'avatar (pose/direction/animation).
+    out << YAML::Key << "charsheet_pose" << YAML::Value
+        << (cse ? cse->avatar_anim() : 4);
+    out << YAML::Key << "charsheet_dir" << YAML::Value
+        << (cse ? cse->avatar_dir() : 0);
+    out << YAML::Key << "charsheet_pose_anim" << YAML::Value
+        << (cse ? cse->avatar_animate() : true);
   }
 
   {
@@ -2477,6 +2495,16 @@ void MoonlightUi::OnRenderUI() {
       PushStyleCompact();
       if (auto* st = Bourgeon::Instance().settings_tweaks())
         st->DrawSettings();
+
+      if (auto* wds = Bourgeon::Instance().weapon_dual_sprites()) {
+        if (ro::RoCheckbox("Sprites d'armes doubles", &wds->enabled()))
+          SaveSettings();
+        SameLine(); HelpMarker(
+            "Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
+            "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
+            "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
+            "générique. ON : chaque dague garde son apparence d'origine.");
+      }
       PopStyleCompact();
     }
 
