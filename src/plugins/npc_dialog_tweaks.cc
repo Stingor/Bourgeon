@@ -720,8 +720,10 @@ void NpcDialogTweaks::OnRenderUI() {
       !has_close_)
     return;
 
+  const bool opening = need_pos_;  // 1re frame de cette ouverture (z-order à forcer)
   if (need_pos_) {
     ImGui::SetNextWindowPos(ImVec2(280.0f, 360.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowFocus();  // effectif car NoBringToFrontOnFocus est OMIS cette frame
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(460.0f, 300.0f), ImGuiCond_FirstUseEver);
@@ -747,13 +749,20 @@ void NpcDialogTweaks::OnRenderUI() {
   // (choix de menu + annulation). Donc : clavier du footer actif seulement s'il n'y a
   // NI menu NI input en cours.
   const bool footer_kbd_ok = choices_.empty() && input_mode_ == kInputNone;
+  // NoBringToFrontOnFocus : ne PAS repasser au 1er plan quand on clique l'overlay (sinon
+  // un clic sur un lien re-focus l'overlay et masque la fenêtre de description qui vient
+  // d'ouvrir). MAIS on l'OMET sur la 1re frame d'ouverture : avec ce flag posé,
+  // FocusWindow saute BringWindowToDisplayFront -> SetNextWindowFocus n'a aucun effet sur
+  // le z-order et le dialogue s'ouvrait enterré derrière charsheet/inventaire. En
+  // l'omettant juste cette frame, le SetNextWindowFocus ci-dessus le remonte réellement ;
+  // les frames suivantes le reposent pour figer le comportement au clic de lien.
+  ImGuiWindowFlags win_flags = ImGuiWindowFlags_NoCollapse |
+                               ImGuiWindowFlags_NoScrollbar |
+                               ImGuiWindowFlags_NoScrollWithMouse;
+  if (!opening) win_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
   const bool begun = ro::BeginRoDescWindow(
       title, can_close ? &show_panel_ : nullptr,  // ⊗ + Échap seulement si fermable
-      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
-          ImGuiWindowFlags_NoScrollWithMouse |
-          // Ne PAS repasser au 1er plan quand on clique l'overlay : sinon un clic sur un
-          // lien re-focus l'overlay et masque la fenêtre de description qui vient d'ouvrir.
-          ImGuiWindowFlags_NoBringToFrontOnFocus);
+      win_flags);
   if (!show_panel_) {
     CloseDialog();
     show_panel_ = true;
