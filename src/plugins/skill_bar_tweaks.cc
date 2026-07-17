@@ -991,7 +991,7 @@ void SkillBarTweaks::OnRenderUI() {
           const int count = std::min(bc.slot_count, kRegions[b].count);
           const int rows  = (count + cols - 1) / cols;
           const float step = bc.icon_size + bc.spacing;
-          const float bw = cols * step - bc.spacing, bh = rows * step - bc.spacing;
+          const float bw = cols * step, bh = rows * step;  // fenêtre = cols*step / rows*step (pad=spacing/2 des 2 côtés)
           if (m.x >= bc.x && m.y >= bc.y && m.x < bc.x + bw && m.y < bc.y + bh) over = true;
         }
         if (over) {
@@ -1015,7 +1015,7 @@ void SkillBarTweaks::OnRenderUI() {
 // charge, AVANT que le jeu ne traite le up. Le drag reste vivant pendant la
 // traverse (pas de clic-au-sol) ; ici on le solde sur la case survolée. Aucune
 // fonction du jeu appelée hors les getters de décodage (sûrs, cf. RE). Géométrie =
-// celle de DrawBar (pad=0). (mx,my en coords client == coords écran ImGui.)
+// celle de DrawBar (marge intérieure pad=spacing/2). (mx,my en coords client == coords écran ImGui.)
 bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
   if (!enabled_ || !native_hidden_) return false;
   if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui interne
@@ -1027,14 +1027,16 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
   if (!DecodeDrag(obj, &d) || d.srcSlot >= 0) return false;  // pas de self-drag de la barre
   (void)w;
 
-  // Cherche LAQUELLE des barres visibles couvre (mx,my). Géométrie = celle de DrawBar (pad=0).
+  // Cherche LAQUELLE des barres visibles couvre (mx,my). Géométrie = celle de DrawBar :
+  // marge intérieure pad=spacing/2 retirée pour retrouver les coords de la 1ère cellule icône.
   for (int b = 0; b < kBarCount; ++b) {
     if (!bars_[b].visible) continue;
     const BarCfg& bc = bars_[b];
     const float step = bc.icon_size + bc.spacing;  // taille/espacement PAR barre
+    const float pad  = bc.spacing * 0.5f;          // idem DrawBar : icônes centrées dans leur cellule
     const int cols = (bc.columns < 1) ? 1 : bc.columns;
-    const float lx = static_cast<float>(mx) - static_cast<float>(bc.x);
-    const float ly = static_cast<float>(my) - static_cast<float>(bc.y);
+    const float lx = static_cast<float>(mx) - static_cast<float>(bc.x) - pad;
+    const float ly = static_cast<float>(my) - static_cast<float>(bc.y) - pad;
     if (lx < 0 || ly < 0) continue;
     const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
     if (cc >= cols) continue;
@@ -1140,9 +1142,13 @@ void SkillBarTweaks::DrawBar(int bar) {
   const int count = std::min(bc.slot_count, maxSlots);
   const int rows  = (count + cols - 1) / cols;
   const float step = icon_size_ + spacing_;
-  const float pad  = 0.0f;  // identique en édition et normal -> aucun décalage au changement de mode
-  const float winw = cols * step - spacing_ + pad * 2;
-  const float winh = rows * step - spacing_ + pad * 2;
+  // Marge intérieure = MOITIÉ de l'espacement : chaque icône est ainsi CENTRÉE dans sa cellule
+  // de taille `step`, avec spacing/2 de chaque côté (au lieu de spacing entier collé à droite/bas).
+  // Du coup le bord de la fenêtre = bord de cellule : quand bc.x s'aimante sur une grille = step,
+  // les icônes tombent centrées sur les cases de la grille. Constante -> aucun décalage édition/normal.
+  const float pad  = spacing_ * 0.5f;
+  const float winw = cols * step - spacing_ + pad * 2;  // = cols*step (pad*2 == spacing)
+  const float winh = rows * step - spacing_ + pad * 2;  // = rows*step
 
   // Fenêtre toujours épinglée à (bc.x,bc.y) ; le déplacement en édition se
   // fait en glissant un slot (delta souris), comme menu_icons -> dessin et
@@ -1167,7 +1173,9 @@ void SkillBarTweaks::DrawBar(int bar) {
   bool over_filled = false;
   {
     const ImVec2 mp = ImGui::GetIO().MousePos;
-    const float lx = mp.x - static_cast<float>(bc.x), ly = mp.y - static_cast<float>(bc.y);
+    // Coordonnées locales relatives à la 1ère cellule ICÔNE (on retire la marge intérieure pad,
+    // sinon le hit-test serait décalé de spacing/2 par rapport aux icônes centrées).
+    const float lx = mp.x - static_cast<float>(bc.x) - pad, ly = mp.y - static_cast<float>(bc.y) - pad;
     if (lx >= 0 && ly >= 0) {
       const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
       if (cc < cols && (lx - cc * step) < icon_size_ && (ly - cr * step) < icon_size_) {
