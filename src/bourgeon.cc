@@ -242,6 +242,26 @@ bool Bourgeon::IsGameActive() const {
   return (GetTickCount() - last) <= 1000u;
 }
 
+namespace {
+
+// « Cacher toute l'interface » natif (F11 par défaut) : le hotkey behavior 0x74
+// appelle UIWindowMgr::ToggleHideAllWindows (0x00a47720), une machine à états
+// dont le compteur vit dans g_UIWindowMgr(0x0131f4e8)+0x508 :
+//   0 = jamais utilisé, 1 = interface visible, 2 = interface cachée.
+// L'état 2 est posé après que la fonction a parcouru la liste des fenêtres
+// (+0x17c) et appelé SetVisible(0) sur chacune, en mémorisant les fenêtres
+// masquées dans +0x50c pour les restaurer au basculement suivant. On lit donc
+// l'état natif au lieu d'entretenir notre propre toggle : peu importe la touche
+// réellement liée au behavior 0x74 (remappable via les hotkeys Lua), l'overlay
+// suit toujours l'interface du jeu.
+bool IsNativeUiHidden() {
+  constexpr uintptr_t kUIWindowMgr        = 0x0131f4e8;
+  constexpr uintptr_t kHideAllStateOffset = 0x508;
+  return *reinterpret_cast<const int*>(kUIWindowMgr + kHideAllStateOffset) == 2;
+}
+
+}  // namespace
+
 void Bourgeon::RenderUI() {
   // Stand down while a map is loading: hide all plugin UI. This also stops
   // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
@@ -255,6 +275,9 @@ void Bourgeon::RenderUI() {
   // ImGui window can linger on those screens, regardless of a plugin's own
   // in_game_ tracking (which the char-change path can leave stale).
   if (!IsGameActive()) return;
+  // Suivre le « cacher l'interface » natif (F11) : quand le joueur masque l'UI du
+  // jeu — capture d'écran, vue dégagée — l'overlay ImGui disparaît avec elle.
+  if (IsNativeUiHidden()) return;
   // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
   // ShowBourgeonWindow();
   // }
