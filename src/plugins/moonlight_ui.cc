@@ -1,6 +1,7 @@
 #include "plugins/moonlight_ui.h"
 
 #include <Windows.h>
+#include <algorithm>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -2031,13 +2032,32 @@ void MoonlightUi::OnRenderUI() {
           "Skin RO",
           "Fenêtre NPC"};
 
-      ImGui::BeginChild("iface_nav", ImVec2(150.0f, 350.0f), ImGuiChildFlags_Borders);
+      // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
+      // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
+      // rester lisible sur fenêtre étroite.
+      const ImGuiStyle& st = ImGui::GetStyle();
+      float nav_w = 0.0f;
+      for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
+        nav_w = (std::max)(nav_w, ImGui::CalcTextSize(kIfaceCats[i]).x);
+      nav_w += st.WindowPadding.x * 2.0f + st.FramePadding.x * 2.0f;
+      const float nav_w_min = ImGui::GetFontSize() * 5.0f;
+      const float nav_w_max =
+          (std::max)(nav_w_min, ImGui::GetContentRegionAvail().x * 0.4f);
+      nav_w = (std::min)((std::max)(nav_w, nav_w_min), nav_w_max);
+      const float nav_h = ImGui::GetTextLineHeightWithSpacing() * IM_ARRAYSIZE(kIfaceCats)
+                        + st.WindowPadding.y * 2.0f;
+
+      ImGui::BeginChild("iface_nav", ImVec2(nav_w, nav_h), ImGuiChildFlags_Borders);
       for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
         if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i)) s_iface_nav = i;
       ImGui::EndChild();
 
       SameLine();
-      ImGui::BeginChild("iface_content");
+      // Hauteur libre (AutoResizeY) : le panneau prend exactement la place de son
+      // contenu et c'est la fenêtre parente qui scrolle — plus de dépendance à la
+      // taille de la fenêtre ni de scrollbar imbriquée.
+      ImGui::BeginChild("iface_content", ImVec2(0.0f, 0.0f),
+                        ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
       ImGui::PushTextWrapPos(0.0f);  // wrap le texte à la largeur du child
       {
         PushItemWidth(160.0f);
