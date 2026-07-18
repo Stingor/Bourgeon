@@ -62,6 +62,8 @@ set(BOURGEON_FILES
 	"plugins/weapon_layer.h"
 	"plugins/weapon_dual_sprites.cc"
 	"plugins/weapon_dual_sprites.h"
+	"plugins/spr_effect_lab.cc"
+	"plugins/spr_effect_lab.h"
 	"plugins/hat_effect_depth.cc"
 	"plugins/hat_effect_depth.h"
 	"plugins/skill_tree_tweaks.cc"

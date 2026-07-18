@@ -37,6 +37,7 @@
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
 #include "plugins/weapon_dual_sprites.h"
+#include "plugins/spr_effect_lab.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
@@ -1660,6 +1661,10 @@ void MoonlightUi::OnRenderUI() {
   // UI (world map) replaces the HUD, matching the bars/icons.
   if (grid_.show && !HudReplaced()) grid_.Draw();
 
+  // SPR Effect Lab : reconcile spawn + overlay au centre (foreground drawlist, indépendant
+  // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé.
+  spr_lab::RenderFrame();
+
   // Persist bars geometry once, the frame after the user finishes a drag.
   if (auto* eb = Bourgeon::Instance().basic_info(); eb && eb->geometry_dirty_) {
     eb->geometry_dirty_ = false;
@@ -2634,6 +2639,12 @@ void MoonlightUi::OnRenderUI() {
             SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
           }
             ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("SPR Lab"))
+        {
+          Spacing();
+          spr_lab::DrawDebugControls();
+          ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Autoloots"))
         {
