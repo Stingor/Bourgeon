@@ -1567,8 +1567,11 @@ void HelpMarker(const char* desc) {
 // to 0.01 (float) / 1 (int).
 // Shift+wheel uses a larger step (0.10 / 10) for faster adjustment.
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
-  bool changed = ImGui::SliderFloat(label, v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  // Rendu = scrollbar horizontale RO (cf. ro::RoSliderFloat) ; ses flèches ajustent
+  // au même pas que la molette ci-dessous.
+  bool changed = ro::RoSliderFloat(label, v, lo, hi, fmt, step,
+                                   ImGuiSliderFlags_AlwaysClamp);
+  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {
@@ -1583,8 +1586,9 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const cha
 }
 
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
-  bool changed = ImGui::SliderInt(label, v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Mouse wheel adjusts value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  bool changed = ro::RoSliderInt(label, v, lo, hi, fmt, step,
+                                 ImGuiSliderFlags_AlwaysClamp);
+  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
   if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
     const float w = ImGui::GetIO().MouseWheel;
     if (w != 0.0f) {

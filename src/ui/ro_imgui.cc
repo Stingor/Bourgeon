@@ -189,6 +189,9 @@ SkinTex g_resize;
 SkinTex g_tb_btn_a, g_tb_btn_b, g_tb_btn_c;  // bouton flèche du combo (txtbox_btn_*)
 SkinTex g_cb0, g_cb1;
 SkinTex g_s0up, g_s0down, g_s0mid, g_s0bar_up, g_s0bar_mid, g_s0bar_down;
+// Scrollbar HORIZONTALE du client (scroll1*) : piste+flèches et thumb. Sert de
+// base au slider RO (RO n'a pas de « slider », son équivalent visuel est celle-ci).
+SkinTex g_s1l, g_s1m, g_s1r, g_s1bar_l, g_s1bar_m, g_s1bar_r;
 SkinTex g_bar_l, g_bar_m, g_bar_r, g_iconnum;
 SkinTex g_up_l, g_up_m, g_up_r;                    // barre de titre desc (skill_upbar)
 SkinTex g_sb_lm, g_sb_rm, g_sb_ld, g_sb_md, g_sb_rd;  // cadre boîte desc (sysbox)
@@ -1119,6 +1122,206 @@ bool RoCheckbox(const char* label, bool* v) {
               ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();
   return pressed;
+}
+
+// ── Slider = scrollbar RO horizontale ─────────────────────────────────────────
+// RO n'a pas de « slider » : le vocabulaire visuel équivalent est la scrollbar
+// HORIZONTALE du client — piste/flèches scroll1left|mid|right + thumb
+// scroll1bar_left|mid|right. On réutilise EXACTEMENT ces pièces (aucune rotation :
+// elles sont déjà horizontales). Le comportement reste celui d'ImGui
+// (SliderBehavior + Ctrl+clic = saisie directe) : seules l'interaction des flèches
+// et la peinture sont à nous.
+// Les tailles ne sont pas dans ro_skin_blobs (pièces non utilisées par ailleurs) :
+// on charge via EnsureTexClient et on lit w/h de la texture, avec un repli 13/4px
+// (dimensions de la scrollbar verticale) tant qu'elle n'est pas prête.
+static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
+                           const void* p_min, const void* p_max,
+                           const char* format, ImGuiSliderFlags flags,
+                           float arrow_step) {
+  if (!g_skin_enabled)
+    return ImGui::SliderScalar(label, dt, p_data, p_min, p_max, format, flags);
+
+  ImGuiWindow* win = ImGui::GetCurrentWindow();
+  if (!win || win->SkipItems) return false;
+  ImGuiContext& g = *ImGui::GetCurrentContext();
+  const ImGuiStyle& style = g.Style;
+  const ImGuiID id = win->GetID(label);
+
+  EnsureTexClient("scroll1left.bmp", g_s1l);
+  EnsureTexClient("scroll1mid.bmp", g_s1m);
+  EnsureTexClient("scroll1right.bmp", g_s1r);
+  EnsureTexClient("scroll1bar_left.bmp", g_s1bar_l);
+  EnsureTexClient("scroll1bar_mid.bmp", g_s1bar_m);
+  EnsureTexClient("scroll1bar_right.bmp", g_s1bar_r);
+
+  if (format == nullptr) format = ImGui::DataTypeGetInfo(dt)->PrintFmt;
+  char value_buf[64];
+  const char* value_end =
+      value_buf + ImGui::DataTypeFormatString(value_buf, IM_COUNTOF(value_buf),
+                                              dt, p_data, format);
+
+  const char* label_end = ImGui::FindRenderedTextEnd(label);
+  const ImVec2 label_size = ImGui::CalcTextSize(label, label_end, false);
+  // La valeur est affichée À DROITE de la barre (une scrollbar RO fait 13px de
+  // haut : le texte n'y tient pas centré comme sur un slider ImGui). Largeur
+  // réservée avec un plancher, sinon la barre se raccourcit/rallonge à chaque
+  // changement de nombre de chiffres (barre qui « respire »).
+  const float value_w =
+      ImMax(ImGui::CalcTextSize(value_buf, value_end).x,
+            ImGui::CalcTextSize("000000").x);
+  const float barh = g_s1l.tex ? (float)g_s1l.h : 13.0f;  // hauteur de l'art
+  const float w = ImGui::CalcItemWidth();
+  const float frame_h =
+      ImMax(barh, label_size.y + style.FramePadding.y * 2.0f);
+  // Additions écrites à la main : les opérateurs ImVec2 (IMGUI_DEFINE_MATH_OPERATORS)
+  // ne sont pas activés dans cette unité de compilation.
+  const ImVec2 pos = win->DC.CursorPos;
+  const ImRect frame_bb(pos, ImVec2(pos.x + w, pos.y + frame_h));
+  const float label_extra =
+      label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f;
+  const ImRect total_bb(frame_bb.Min,
+                        ImVec2(frame_bb.Max.x + label_extra, frame_bb.Max.y));
+
+  const bool temp_input_allowed = (flags & ImGuiSliderFlags_NoInput) == 0;
+  ImGui::ItemSize(total_bb, style.FramePadding.y);
+  if (!ImGui::ItemAdd(total_bb, id, &frame_bb,
+                      temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
+    return false;
+
+  // Géométrie : barre (hors zone valeur) = flèche gauche + piste + flèche droite.
+  const float bary = ImFloor(frame_bb.Min.y + (frame_h - barh) * 0.5f);
+  const ImRect bar(frame_bb.Min.x, bary,
+                   frame_bb.Max.x - value_w - style.ItemInnerSpacing.x,
+                   bary + barh);
+  const float arrow = g_s1l.tex ? (float)g_s1l.w : barh;
+  const bool has_arrows = (bar.GetWidth() > arrow * 2.0f + 8.0f);
+  const ImRect track(has_arrows ? bar.Min.x + arrow : bar.Min.x, bar.Min.y,
+                     has_arrows ? bar.Max.x - arrow : bar.Max.x, bar.Max.y);
+
+  const bool hovered = ImGui::ItemHoverable(frame_bb, id, g.LastItemData.ItemFlags);
+  if (hovered) SetHoverCursor(kRoCursorHand);
+  const bool over_left =
+      has_arrows && hovered &&
+      ImGui::IsMouseHoveringRect(bar.Min, ImVec2(track.Min.x, bar.Max.y), false);
+  const bool over_right =
+      has_arrows && hovered &&
+      ImGui::IsMouseHoveringRect(ImVec2(track.Max.x, bar.Min.y), bar.Max, false);
+
+  // Activation (calquée sur ImGui::SliderScalar), MAIS un clic sur une flèche ne
+  // saisit pas le thumb : il ne doit faire qu'un pas.
+  bool temp_input_is_active = temp_input_allowed && ImGui::TempInputIsActive(id);
+  if (!temp_input_is_active) {
+    const bool clicked = hovered && !over_left && !over_right &&
+                         ImGui::IsMouseClicked(0, ImGuiInputFlags_None, id);
+    const bool make_active = (clicked || g.NavActivateId == id);
+    if (make_active && clicked) ImGui::SetKeyOwner(ImGuiKey_MouseLeft, id);
+    if (make_active && temp_input_allowed)
+      if ((clicked && g.IO.KeyCtrl) ||
+          (g.NavActivateId == id && (g.NavActivateFlags & ImGuiActivateFlags_PreferInput)))
+        temp_input_is_active = true;
+    if (make_active && !temp_input_is_active) {
+      ImGui::SetActiveID(id, win);
+      ImGui::SetFocusID(id, win);
+      ImGui::FocusWindow(win);
+      g.ActiveIdUsingNavDirMask |= (1 << ImGuiDir_Left) | (1 << ImGuiDir_Right);
+    }
+  }
+  if (temp_input_is_active) {  // Ctrl+clic : saisie directe
+    const bool clamp_enabled = (flags & ImGuiSliderFlags_ClampOnInput) != 0;
+    return ImGui::TempInputScalar(frame_bb, id, label, dt, p_data, format,
+                                  clamp_enabled ? p_min : nullptr,
+                                  clamp_enabled ? p_max : nullptr);
+  }
+
+  // Flèches : ajustement À L'UNITÉ (même pas que la molette : 1 pour un entier,
+  // 0.01 pour un flottant, sauf pas explicite ; Shift = pas ×10). Clic = 1 pas,
+  // maintien = répétition, comme la scrollbar native.
+  bool value_changed = false;
+  if ((over_left || over_right) &&
+      ImGui::IsMouseClicked(ImGuiMouseButton_Left, /*repeat=*/true)) {
+    const float dir = over_left ? -1.0f : 1.0f;
+    const float shift = ImGui::GetIO().KeyShift ? 10.0f : 1.0f;
+    if (dt == ImGuiDataType_Float) {
+      float* v = (float*)p_data;
+      const float lo = *(const float*)p_min, hi = *(const float*)p_max;
+      const float st = (arrow_step > 0.0f ? arrow_step : 0.01f) * shift;
+      const float nv = ImClamp(*v + dir * st, lo, hi);
+      if (nv != *v) { *v = nv; value_changed = true; }
+    } else if (dt == ImGuiDataType_S32) {
+      int* v = (int*)p_data;
+      const int lo = *(const int*)p_min, hi = *(const int*)p_max;
+      int st = (int)(arrow_step > 0.0f ? arrow_step : 1.0f) * (int)shift;
+      if (st <= 0) st = 1;  // pas mini = l'unité
+      const int nv = ImClamp(*v + (int)dir * st, lo, hi);
+      if (nv != *v) { *v = nv; value_changed = true; }
+    }
+  }
+
+  // Comportement slider sur la PISTE (entre les flèches) : le thumb ne passe
+  // jamais sous une flèche, comme sur une scrollbar.
+  ImRect grab_bb;
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 16.0f);  // thumb « scrollbar »
+  if (ImGui::SliderBehavior(track, id, dt, p_data, p_min, p_max, format, flags,
+                            &grab_bb))
+    value_changed = true;
+  ImGui::PopStyleVar();
+  if (value_changed) ImGui::MarkItemEdited(id);
+
+  // ── Dessin ──
+  ImDrawList* dl = win->DrawList;
+  if (g_s1m.tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    // Piste débordant de 2px sous les flèches -> jointure sans trou (cf. la
+    // scrollbar verticale).
+    BlitStretch(dl, g_s1m, ImVec2(track.Min.x - 2.0f, bar.Min.y),
+                ImVec2(track.Max.x + 2.0f, bar.Max.y));
+    if (has_arrows) {
+      BlitStretch(dl, g_s1l, bar.Min, ImVec2(track.Min.x, bar.Max.y));
+      BlitStretch(dl, g_s1r, ImVec2(track.Max.x, bar.Min.y), bar.Max);
+    }
+    const float cap = g_s1bar_l.tex ? (float)g_s1bar_l.w : 4.0f;
+    const float gx0 = ImFloor(grab_bb.Min.x), gx1 = ImFloor(grab_bb.Max.x);
+    if (gx1 > gx0) {
+      BlitStretch(dl, g_s1bar_l, ImVec2(gx0, bar.Min.y),
+                  ImVec2(gx0 + cap, bar.Max.y));
+      BlitStretch(dl, g_s1bar_r, ImVec2(gx1 - cap, bar.Min.y),
+                  ImVec2(gx1, bar.Max.y));
+      if (gx1 - gx0 > cap * 2.0f)
+        BlitStretch(dl, g_s1bar_m, ImVec2(gx0 + cap, bar.Min.y),
+                    ImVec2(gx1 - cap, bar.Max.y));
+    }
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {  // repli : textures pas (encore) disponibles
+    dl->AddRectFilled(bar.Min, bar.Max, ImGui::GetColorU32(ImGuiCol_FrameBg));
+    dl->AddRect(bar.Min, bar.Max, ImGui::GetColorU32(ImGuiCol_Border));
+    if (grab_bb.Max.x > grab_bb.Min.x)
+      dl->AddRectFilled(ImVec2(grab_bb.Min.x, bar.Min.y),
+                        ImVec2(grab_bb.Max.x, bar.Max.y),
+                        ImGui::GetColorU32(ImGuiCol_SliderGrab), 2.0f);
+  }
+
+  // Valeur (alignée à droite) puis label, comme un slider ImGui.
+  const ImVec2 vs = ImGui::CalcTextSize(value_buf, value_end);
+  dl->AddText(ImVec2(frame_bb.Max.x - vs.x,
+                     frame_bb.Min.y + (frame_h - vs.y) * 0.5f),
+              ImGui::GetColorU32(ImGuiCol_Text), value_buf, value_end);
+  if (label_size.x > 0.0f)
+    ImGui::RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x,
+                             frame_bb.Min.y + style.FramePadding.y),
+                      label, label_end, false);
+  return value_changed;
+}
+
+bool RoSliderFloat(const char* label, float* v, float lo, float hi,
+                   const char* format, float arrow_step, int flags) {
+  return RoSliderScalar(label, ImGuiDataType_Float, v, &lo, &hi, format, flags,
+                        arrow_step);
+}
+
+bool RoSliderInt(const char* label, int* v, int lo, int hi, const char* format,
+                 int arrow_step, int flags) {
+  return RoSliderScalar(label, ImGuiDataType_S32, v, &lo, &hi, format, flags,
+                        (float)arrow_step);
 }
 
 bool RoBeginCombo(const char* label, const char* preview_value) {

@@ -67,6 +67,21 @@ void EndRoWindow();
 bool RoButton(const char* label, float w = 0.0f, float h = 0.0f);
 bool RoSmallButton(const char* label, float w = 0.0f, float h = 0.0f);
 
+// Slider habillé en SCROLLBAR HORIZONTALE RO (pièces natives scroll1left|mid|right
+// pour la piste/les flèches, scroll1bar_left|mid|right pour le curseur) : c'est le
+// vocabulaire visuel du client, qui n'a pas de « slider » à proprement parler.
+// Comportement ImGui conservé : drag du curseur, Ctrl+clic = saisie directe.
+// Les FLÈCHES ajustent à l'unité : `arrow_step` (0 = 1 pour un entier, 0.01 pour
+// un flottant), Shift = pas ×10, maintien = répétition. La valeur est affichée à
+// droite de la barre, le label après (comme un slider ImGui). Retombe sur
+// ImGui::Slider* quand le skin est désactivé.
+bool RoSliderFloat(const char* label, float* v, float lo, float hi,
+                   const char* format = "%.2f", float arrow_step = 0.0f,
+                   int imgui_slider_flags = 0);
+bool RoSliderInt(const char* label, int* v, int lo, int hi,
+                 const char* format = "%d", int arrow_step = 0,
+                 int imgui_slider_flags = 0);
+
 // Case à cocher habillée avec les pièces checkbox_0/1 du client. Comme
 // ImGui::Checkbox : renvoie true si l'état a changé.
 bool RoCheckbox(const char* label, bool* v);
