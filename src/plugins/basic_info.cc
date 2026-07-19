@@ -1607,6 +1607,12 @@ void DrawEzCapTris(ImDrawList* dl, float ox, float oy, float s, bool before, boo
   //    que d'un effet PORTÉ. Pendant un survol l'origine est ambiguë, on s'abstient.
   // ⚠ Conséquence assumée : pendant un survol, un effet PORTÉ de cette famille disparaît du doll.
   o.include_str_particle = with_preview || (g_ez_preview_active == 0);
+  // ⚠ AUCUN id à montrer = ne rien dessiner. La règle du module est « pas de filtre -> tout le
+  // capturé » : sans ce garde, un personnage sans hat effect équipé faisait dessiner TOUT le tampon
+  // sur le doll (constaté côté lab : les nuages d'ambiance de gonryun redessinés par-dessus l'écran).
+  // On ne sort PAS si la famille « hôte particule » est demandée : elle est anonyme, donc légitimement
+  // sans id — c'est le cas de la surface d'aperçu.
+  if (id_count == 0 && !o.include_str_particle) return;
 
   float ax, ay, S;
   if (!ez_capture::ProjectAnchor(o, &ax, &ay, &S) || S <= 1e-4f) return;

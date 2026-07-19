@@ -131,8 +131,11 @@ struct DrawOpts {
   bool  draw_behind = false;    // phase à dessiner : true = primitives à bit 0x8 (derrière le perso)
   float max_r = 0.0f;           // garde-fou : rejette un sommet à > max_r px de l'ancre (0 = désactivé)
   // FILTRE PAR EFFET : n'utiliser que les primitives dont l'effect_id est dans cette liste.
-  // nullptr / count == 0 => tout ce qui a été capturé. C'est ICI que chaque consommateur choisit ce
-  // qui le concerne, plutôt que dans un état global partagé.
+  // ⚠ nullptr / count == 0 => RIEN (et surtout pas « tout »). La capture couvre bien plus que ce que
+  // tu veux montrer — jusqu'aux effets d'ambiance de la map : un consommateur sans id à demander doit
+  // ne rien dessiner. Pour une famille entière, dis-le explicitement (include_effmgr /
+  // include_str_particle). C'est ICI que chaque consommateur choisit ce qui le concerne, plutôt que
+  // dans un état global partagé.
   const int* ids = nullptr;
   int        id_count = 0;
   // Primitives de la famille CEffectMgr (effect_id == -1). Deux façons de les traiter :

@@ -239,6 +239,12 @@ void Reconcile() {
 void DrawCenteredOverlay() {
   const int count = ez_capture::Count();
   if (count <= 0) return;
+  // ⚠⚠ RIEN DE SPAWNÉ = RIEN À DESSINER. Sans ce garde, `opts.id_count` tombe à 0 et la règle de
+  // filtrage du module (« pas de filtre -> tout le capturé ») fait dessiner TOUT le tampon : sur
+  // gonryun on redessinait ainsi les nuages d'ambiance de la map par-dessus l'écran, et seul le
+  // garde-fou de proximité `max_r` les retenait — d'où leur apparition quand on montait le Rayon.
+  // Le lab montre UN effet, désigné par son id : « aucun id » signifie « rien », jamais « tout ».
+  if (g_applied_concrete <= 0) return;
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
   if (disp.x <= 0 || disp.y <= 0) return;
 
@@ -691,7 +697,7 @@ void DrawDebugControls() {
     if (show_callers) {
       const ez_capture::Caller* c = ez_capture::Callers();
       const int n = ez_capture::CallerCount();
-      if (ImGui::BeginChild("##ez_callers", ImVec2(0, 96), true)) {
+      if (ImGui::BeginChild("##ez_callers", ImVec2(0, 0), true)) {
         for (int i = 0; i < n; ++i)
           ImGui::TextDisabled("0x%08X  ×%d", static_cast<unsigned>(c[i].addr), c[i].count);
         if (n == 0) ImGui::TextDisabled("(aucun appel cette frame)");

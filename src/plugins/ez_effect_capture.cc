@@ -132,6 +132,12 @@ int      g_cur_effmgr_id = -1;
 bool     g_cur_owned = false;
 void*    g_cur_node  = nullptr;
 bool     g_cur_via_effmgr = false;  // le nœud courant vient de CEffectMgr -> position monde à +0x8
+// Contexte du rendu d'effet en cours, INDÉPENDANT de l'appartenance (g_cur_owned) : il faut pouvoir
+// distinguer « effet du JOUEUR mais écarté par sa vtable » (les CEZ2STREffect, qui alimentent
+// justement la famille « hôte particule ») de « effet ÉTRANGER » (ambiance de la map). Les deux sont
+// non possédés ; seul le second doit voir ses particules refusées.
+bool     g_cur_in_eff_render = false;  // on est dans EffectInstance_RenderDraw (owner lisible)
+bool     g_cur_eff_is_player = false;  // ...et cet effet a pour propriétaire le JOUEUR (owner == AID)
 bool     g_effmgr_enabled = true;   // interrupteur de DIAGNOSTIC (cf. en-tête), pas un réglage
 bool     g_capture_str    = false;  // idem : lever l'exclusion des CEZ2STREffect (famille .str)
 
@@ -235,22 +241,29 @@ void __fastcall Hooked_EffRender(void* self, void* edx) {
   const bool  prev_via   = g_cur_via_effmgr;
   const int   prev_id    = g_cur_effect_id;
   const int   prev_em_id = g_cur_effmgr_id;
+  const bool  prev_in_eff = g_cur_in_eff_render;
+  const bool  prev_is_pl  = g_cur_eff_is_player;
   // Capturé par défaut (pas d'opt-in fonctionnel : ce serait un état à deux écrivains de plus).
   // g_effmgr_enabled est un interrupteur de DIAGNOSTIC (bissection d'une régression), pas un réglage.
   bool owned = false;
   int  em_id = -1;
+  bool in_eff = false, is_player = false;
   if (g_effmgr_enabled && self) {
     __try {
       const int owner = *reinterpret_cast<int*>(reinterpret_cast<char*>(self) + kEffOwnerHnd);
-      if (owner == *reinterpret_cast<int*>(kOwnHandlePtr)) {   // effet du JOUEUR ?
+      in_eff    = true;                                        // owner lu : le contexte est fiable
+      is_player = (owner == *reinterpret_cast<int*>(kOwnHandlePtr));
+      if (is_player) {                                         // effet du JOUEUR ?
         // Exclut les .str name-based : ils relèvent d'un autre pipeline (billboard STR).
         // ⚠ Exclusion levable en DIAGNOSTIC : un effet qui rend en jeu sans être capturé peut très
         // bien être de cette famille, et c'est alors NOUS qui l'écartons avant de le voir.
         owned = g_capture_str || (*reinterpret_cast<uintptr_t*>(self) != kCEZ2STRVtbl);
         if (owned) em_id = *reinterpret_cast<int*>(reinterpret_cast<char*>(self) + kEffEffectId);
       }
-    } __except (EXCEPTION_EXECUTE_HANDLER) { owned = false; }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { owned = false; in_eff = false; is_player = false; }
   }
+  g_cur_in_eff_render = in_eff;
+  g_cur_eff_is_player = is_player;
   if (owned) {
     g_stats_cur.draws++;
     g_cur_owned = true;
@@ -289,6 +302,8 @@ void __fastcall Hooked_EffRender(void* self, void* edx) {
   g_cur_via_effmgr = prev_via;
   g_cur_effect_id  = prev_id;
   g_cur_effmgr_id  = prev_em_id;
+  g_cur_in_eff_render = prev_in_eff;
+  g_cur_eff_is_player = prev_is_pl;
 }
 
 // Puits commun de toutes les primitives 2D. Frontière de frame -> vide le buffer.
@@ -299,7 +314,17 @@ void __fastcall Hooked_Insert(void* queue, void* edx, int* prim, unsigned flags)
   NoteCaller(ra);
   // Famille « hôte particule » : reconnue à la PROVENANCE, puisque aucun hook d'appartenance ne
   // couvre ce chemin. On la capture même si g_cur_owned est faux.
-  const bool from_str_particle = (ra == kStrParticleRet);
+  // ⚠⚠ LA PROVENANCE SEULE NE SUFFIT PAS : ce call-site est PARTAGÉ avec les effets d'ambiance de la
+  // map (nuages CCloud sur gonryun, ctor 0x006c9430, vtable 0x0100bf60, owner handle -1), qui
+  // réutilisent tel quel le système de particules des .str. Capturés, ils étaient redessinés par le
+  // doll, le portrait et l'aperçu — les surfaces qui incluent cette famille anonyme.
+  // On exige donc que l'effet en cours de rendu soit celui du JOUEUR. Ce test porte sur l'OWNER, pas
+  // sur l'appartenance : la famille « hôte particule » est faite de CEZ2STREffect, précisément exclus
+  // de g_cur_owned par leur vtable — refuser sur `!g_cur_owned` supprimerait les vrais effets portés.
+  // Hors de tout rendu d'effet (owner illisible), on conserve le comportement historique plutôt que
+  // de perdre silencieusement une famille.
+  const bool from_str_particle =
+      (ra == kStrParticleRet) && (!g_cur_in_eff_render || g_cur_eff_is_player);
   __try {
     const uint32_t frame =
         *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(queue) + kQueueFrameOff);
@@ -443,7 +468,12 @@ bool Wanted(const Prim& q, const DrawOpts& o) {
     }
     return o.include_effmgr;                      // repli : tout ou rien
   }
-  if (o.id_count <= 0 || !o.ids) return true;     // pas de filtre -> tout le capturé
+  // ⚠⚠ AUCUN id demandé = RIEN, jamais « tout ». L'ancienne règle (« pas de filtre -> tout le
+  // capturé ») transformait un consommateur qui n'a rien à montrer en consommateur qui montre TOUT :
+  // sans hat effect équipé, le doll et le portrait redessinaient l'intégralité du tampon — sur
+  // gonryun, 480 primitives de nuages d'ambiance (effect_id 230) par-dessus l'écran. Un consommateur
+  // qui veut une famille entière le dit explicitement (include_effmgr / include_str_particle).
+  if (o.id_count <= 0 || !o.ids) return false;
   for (int k = 0; k < o.id_count; ++k)
     if (o.ids[k] == q.effect_id) return true;
   return false;
