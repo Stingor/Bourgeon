@@ -101,6 +101,22 @@ ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
 //   otherwise the 16-byte inline buffer starts at param_3+0x2C.
 //   atoi() on that text gives the numeric nameid.
 
+// ── Mode dev (onglets d'outillage) ────────────────────────────────────────────
+// Masque les onglets qui n'intéressent que le développement (« SPR Lab »…) pour ne
+// pas encombrer l'UI des joueurs. Piloté par `dev_mode: true` dans
+// bourgeon_settings.yaml, à côté de l'exe (cf. GetSettingsPath).
+//
+// ⚠ C'est du CONFORT D'AFFICHAGE, PAS une autorisation : le fichier est éditable et
+// le booléen patchable. Toute fonctionnalité qui doit être réellement réservée doit
+// être revalidée côté SERVEUR (cf. la doctrine posée dans integrity_check.h) — le
+// point d'extension prévu serait un setting id de permissions rempli depuis
+// pc_get_group_level() dans clif_bourgeon_settings.
+//
+// Volontairement une variable de fichier et NON un membre de MoonlightUi : ajouter un
+// membre changerait le layout d'une classe très incluse et imposerait un rebuild
+// --clean-first (cf. les ODR/crashes déjà rencontrés sur ce projet).
+static bool g_dev_mode = false;
+
 using ItemDescWndFn = int (__fastcall*)(void*, void*, uint32_t, int, int*, int, int, int);
 static ItemDescWndFn g_item_desc_wnd_orig  = nullptr;
 static uint32_t      g_last_viewed_item    = 0;
@@ -417,6 +433,11 @@ void MoonlightUi::PickerFromArgb(float c[4], uint32_t argb) {
 
 void MoonlightUi::LoadSettings() {
   const std::string path = GetSettingsPath();
+  // Horodatage de COMPILATION, gardé volontairement (une ligne par login) : le
+  // déploiement POST_BUILD est best-effort et SILENCIEUSEMENT sauté quand le jeu tient
+  // ddraw.dll ouvert (cf. src/CMakeLists.txt) — le build passe au vert sans rien
+  // déployer. Cette ligne dit immédiatement quelle DLL tourne réellement.
+  LogInfo("[Bourgeon] build " __DATE__ " " __TIME__);
   std::ifstream f(path);
   if (!f) return;  // first run — no file yet
 
@@ -434,6 +455,17 @@ void MoonlightUi::LoadSettings() {
       // LogInfo("[MoonlightUi] loaded {} 0x{:08X}", g.yaml_key, argb);
     }
 
+    g_dev_mode            = ui["dev_mode"].as<bool>(false);
+
+    // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention
+    // que les autres couleurs persistées ici.
+    spr_lab::ground_paint_enabled() = ui["ground_paint"].as<bool>(false);
+    {
+      const std::string hex = ui["ground_paint_color"].as<std::string>("");
+      if (hex.size() == 8)
+        PickerFromArgb(spr_lab::ground_color(),
+                       static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
+    }
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     if (auto* idt = Bourgeon::Instance().item_desc()) {
@@ -901,7 +933,14 @@ void MoonlightUi::SaveSettings() {
     std::snprintf(hex, sizeof(hex), "%08X", ArgbFromPicker(g.color));
     out   << YAML::Key << g.yaml_key << YAML::Value << hex;
   }
-  out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
+  char ground_hex[9];
+  std::snprintf(ground_hex, sizeof(ground_hex), "%08X",
+                ArgbFromPicker(spr_lab::ground_color()));
+  out     << YAML::Key << "ground_paint"         << YAML::Value
+              << spr_lab::ground_paint_enabled()
+        << YAML::Key << "ground_paint_color"   << YAML::Value << ground_hex
+        << YAML::Key << "dev_mode"             << YAML::Value << g_dev_mode
+        << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
         << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
@@ -2173,15 +2212,13 @@ void MoonlightUi::OnRenderUI() {
                 "Affiche la cape/garment équipée (seulement en mode corps "
                 "entier — décoche \"Tête seule\" pour la voir).");
 
-            changed |= WheelSliderFloat("Zoom tête", &eb->portrait_head_zoom_, 0.10f, 2.0f);
-            SameLine(); HelpMarker(
-                "Zoom dans la tête (1 = corps entier).\n"
-                "Ajuste avec le décalage vertical pour cadrer le visage.");
+            changed |= WheelSliderFloat("Zoom", &eb->portrait_head_zoom_, 0.10f, 2.0f);
+            SameLine(); HelpMarker("Ajuster avec le zoom.");
 
             changed |= WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_, -1.5f, 1.5f);
             SameLine(); HelpMarker(
                 "Décale le portrait horizontalement (0 = centré).\n"
-                "Sert à aligner la tête/le corps ; le zoom reste centré.");
+                "Sert à cadrer la tête/le corps ; le zoom reste centré.");
 
             changed |= WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_, -1.5f, 1.5f);
             SameLine(); HelpMarker(
@@ -2640,7 +2677,9 @@ void MoonlightUi::OnRenderUI() {
           }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("SPR Lab"))
+        // Onglet d'outillage : visible seulement avec `dev_mode: true` dans
+        // bourgeon_settings.yaml (confort d'affichage, cf. g_dev_mode).
+        if (g_dev_mode && ImGui::BeginTabItem("SPR Lab"))
         {
           Spacing();
           spr_lab::DrawDebugControls();

@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,11 +9,12 @@
 
 #include "imgui.h"
 #include "bourgeon.h"        // Bourgeon::Instance().IsMapLoading() / IsGameActive() (gate anti-crash warp)
-#include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback (blend additif optionnel)
+#include "plugins/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
+#include "plugins/moonlight_ui.h"  // ColorPicker() (helper standardisé)
 #include "utils/hooking/hook_manager.h"
 
-// Backend actif (DX9 vs DX7) — choisit l'offset du handle GPU natif dans CTexture,
-// exactement comme la capture du curseur RO / basic_info. Défini ailleurs.
+// Backend actif (DX9 vs DX7) — le « Sol uni » n'existe que sur le chemin de rendu DX9.
+// Défini ailleurs.
 extern bool g_imgui_dx7_active;
 
 namespace spr_lab {
@@ -26,29 +26,9 @@ constexpr uintptr_t kGameModeGet      = 0x00a75340;  // GameMode_GetActive(mgr)
 constexpr uintptr_t kModeMgr          = 0x1213338;   // CModeMgr (arg)
 constexpr int       kOffActorMgr      = 0xcc;        // CMode -> actorMgr
 constexpr int       kOffOwnActor      = 0x2c;        // actorMgr -> acteur joueur
-constexpr int       kOffCamera        = 0xd0;        // CMode -> caméra
-constexpr int       kOffViewMtx       = 0x98;        // caméra -> matrice de vue (arg projection)
-
-constexpr uintptr_t kSceneProject     = 0x005541b0;  // Scene_ProjectWorldToScreen(ctx,_,world,view,&sx,&sy,&invW)
-
-constexpr uintptr_t kEzEffectDraw     = 0x00b666d0;  // EzEffect_Draw(this=nœud EZ, param_1) — hooké (appartenance)
-constexpr uintptr_t kRenderQueueInsert= 0x00550b10;  // RenderQueue_InsertPrimitive(queue, prim, flags) — hooké (capture)
-
-constexpr uintptr_t kEzChildVtbl      = 0x01088c48;  // nœud EZ enfant (celui que EzEffect_Draw dessine)
-constexpr int       kEzParentOff      = 0x140;       // enfant EZ -> nœud PRIMITIF parent
-constexpr int       kEzEffectId       = 0x168;       // nœud primitif -> id d'effet CONCRET (Digital_Space = 1240)
-constexpr int       kEzSrcActor       = 0x138;       // nœud primitif -> acteur source
-
-constexpr int       kPrimVertsOff     = 0x0;         // prim[0] -> tableau de sommets (XYZRHW écran)
-constexpr int       kPrimTexOff       = 0x8;         // prim[2] -> CTexture*
-constexpr int       kPrimVertStride   = 0x20;        // 4 sommets, stride 0x20 (x@0 y@4 z@8 w@c argb@10 u@18 v@1c)
-constexpr int       kCTexOffDX9       = 0x12c;       // CTexture -> IDirect3DTexture9*
-constexpr int       kCTexOffDX7       = 0x128;       // CTexture -> handle DX7
 
 constexpr uintptr_t kToggleEffectId   = 0x00c44940;  // Actor_ToggleEffectId(actor, unifiedId, add) __thiscall
 constexpr int       kHatOrdinalBase   = 0x98a;       // id unifié d'un hat effect = ordinal + 0x98a
-
-constexpr int       kQueueFrameOff    = 0x38;        // scene-queue -> compteur de frame (frontière = vidage buffer)
 
 // Bridge Lua brut (Lua 5.1) — pour appeler GetHatEffectID(ordinal) = getter NATIF de l'id concret
 // (ordinal -> id d'effet interne). Mêmes adresses/mécanique que basic_info.cc (HatLuaNum) :
@@ -71,24 +51,22 @@ constexpr int       kLuaGlobalsB  = -10002;      // LUA_GLOBALSINDEX (5.1)
 int  g_ui_ordinal        = 87;    // ordinal à spawner (SEUL champ saisi)
 int  g_resolved_concrete = 0;     // aperçu : GetHatEffectID(g_ui_ordinal) (affichage UI)
 bool g_suppress          = true;  // true = ne PAS dessiner l'effet en jeu (overlay seul)
-bool g_additive          = false; // blend additif global (glows) ; défaut alpha normal
+// Mode de BLEND. Un mode global ne peut PAS marcher : un même effet mélange des primitives additives
+// et des primitives en alpha dans la même frame. En alpha, les primitives que le natif dessine en
+// additif apparaissent en CARRÉS NOIRS (du noir additif = invisible, du noir alpha = du noir) ; en
+// additif global, à l'inverse, les primitives alpha CRAMENT en blanc. La bonne réponse est le blend
+// RÉEL de chaque primitive, lu dans l'enregistrement (+0x18/+0x1c) et rejoué via
+// D3D9_ExplicitBlendCallback (UserCallbackData : octet bas = SRCBLEND, octet suivant = DESTBLEND).
+// 0 = natif par primitive (défaut, correct) | 1 = alpha normal | 2 = additif global (comparaison)
+int g_blend_mode         = 0;
 bool g_debug             = false; // overlay diagnostic : capture BRUTE + ancre + rayon (in situ)
-bool  g_dbg_proj_ok      = false; // dernière ancre : true = projection native, false = repli bbox
+bool  g_dbg_proj_ok      = false; // dernière ancre : true = projection native disponible
 float g_dbg_ax = 0.0f, g_dbg_ay = 0.0f;  // dernière ancre écran (diagnostic UI)
-// Mode de calcul de l'ANCRE (le point de la capture qu'on ramène au centre de l'écran).
-// 0 = MÉDIANE des sommets (défaut) : l'ancre est déduite des quads EUX-MÊMES, donc l'amas atterrit au
-//     centre PAR CONSTRUCTION. Robuste : contrairement au centre de bbox, un seul quad géant (ou un
-//     sommet NaN/derrière-caméra) ne la déplace pas — la médiane ignore les extrêmes.
-// 1 = projection monde (ancienne valeur par défaut) : correcte pour beaucoup d'effets, mais tombe à
-//     ~1000 px de la géométrie pour certains (constaté id 829) -> tout l'effet part hors écran.
-// 2 = centre de bbox : sensible aux outliers, gardé pour comparaison/diagnostic.
-int   g_anchor_mode      = 0;
-// Garde-fous VOLONTAIREMENT LARGES : les « traînées » sont de la géométrie LÉGITIME (le natif les rend
+// Garde-fou VOLONTAIREMENT LARGE : les « traînées » sont de la géométrie LÉGITIME (le natif les rend
 // en additif + dégradé d'alpha, donc discrètes) — c'est notre RENDU qu'on a corrigé, pas la géométrie.
-// Ces deux filtres ne servent plus qu'à écarter les cas francs (NaN/inf, quad absurde). À baisser
-// seulement si un effet précis déborde encore.
+// Ce filtre ne sert plus qu'à écarter les cas francs (NaN/inf). À baisser seulement si un effet
+// précis déborde encore.
 float g_max_r            = 2000.0f; // rayon (px) max d'un sommet vs l'ancre (attrape aussi NaN/inf)
-float g_max_quad         = 4000.0f; // taille (px) max d'un quad (anti-quad absurde)
 
 // ── État de spawn (reconcile persistant : SURVIT au changement de map/@refresh) ──
 int   g_wanted_ordinal    = 0;        // ordinal voulu (0 = éteint)
@@ -96,29 +74,19 @@ int   g_applied_ordinal   = 0;        // ordinal appliqué sur l'acteur COURANT
 int   g_applied_concrete  = 0;        // id concret de l'effet spawné (= GetHatEffectID(applied)) — match capture
 void* g_applied_actor     = nullptr;  // acteur sur lequel on a appliqué. ⚠⚠ COMPARAISON SEULE : au warp cet
                                       // acteur est LIBÉRÉ (operator_delete) -> le déréférencer = USE-AFTER-FREE.
-int   g_no_capture_frames = 0;        // frames rendus consécutifs SANS capture pendant qu'on veut l'effet
-constexpr int kReviveFrames = 60;     // seuil de « perte » (~1 s) : re-spawn si acteur changé OU 0 capture > K
-
-// ── Buffer de capture ─────────────────────────────────────────────────────────
-struct Quad {
-  float x[4], y[4], u[4], v[4];
-  unsigned argb[4];
-  void*    tex;    // handle GPU natif (== ImTextureID)
-  unsigned blend;  // param_2 de RenderQueue_InsertPrimitive (bits bucket/blend)
-};
-constexpr int kCapMax = 2048;   // Digital_Space émet des centaines de quads
-Quad     g_caps[kCapMax];
-int      g_count = 0;
-uint32_t g_last_frame = 0;
-void*    g_queue = nullptr;      // scene-queue vue au dernier insert (pour la projection)
-float    g_world[3] = {0, 0, 0}; // position monde du nœud (ancre) ce frame
-bool     g_world_set = false;
-
-// État « en cours de dessin » posé par le hook EzEffect_Draw, lu par le hook insert.
-bool     g_cur_owned = false;
-void*    g_cur_node  = nullptr;
+// ⚠ PAS de détection de perte par « N frames sans capture » : une telle branche re-togglait l'effet
+// sur le MÊME acteur, or le remove natif ne nettoie pas les nœuds orphelins -> un nœud tické de plus
+// à chaque fois, donc une animation qui accélère (2×, 3×…). La perte se détecte UNIQUEMENT par le
+// changement de pointeur d'acteur (au warp, il change toujours).
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// La capture contient désormais TOUS les effets de l'acteur (chaque primitive porte son
+// `effect_id`) : tout ce que le lab COMPTE ou DESSINE doit donc être filtré sur NOTRE id, sinon
+// les chiffres et les tracés incluent les autres effets du joueur.
+bool IsOurs(const ez_capture::Prim& p) {
+  return g_applied_concrete > 0 && p.effect_id == g_applied_concrete;
+}
+
 void* GetOwnActor() {
   void* actor = nullptr;
   __try {
@@ -179,13 +147,18 @@ void ResolveResName(int ordinal, char* out, int cap) {
 // On balaie les ordinaux et on interroge le client lui-même : GetHatEffectID(ord) > 0 => c'est un
 // effet EZ/hatEffectID (ce que CE lab sait rendre) ; on note aussi GetHatEfResName (indicatif).
 // Construit à la demande (bouton), une fois, en jeu (Lua prêt). ~500 pcalls -> quelques ms.
-struct HatEntry { int ord; int cid; char res[48]; };
+// kind : 0 = INERTE (ne rend rien, même nativement) | 1 = EZ procédural (rendu ET capturé par ce lab)
+//        2 = .str (rend NATIVEMENT via le pipeline billboard STR — autre chemin que EzEffect_Draw,
+//            donc visible en jeu mais a priori PAS capturé par ce lab).
+struct HatEntry { int ord; int cid; char res[48]; int kind; };
 std::vector<HatEntry> g_catalog;
 bool g_catalog_built = false;
+int  g_catalog_impl = 0;   // nombre d'entrées réellement implémentées
 constexpr int kMaxOrdinalScan = 512;
 
 void BuildCatalog() {
   g_catalog.clear();
+  g_catalog_impl = 0;
   for (int ord = 1; ord < kMaxOrdinalScan; ++ord) {
     const int cid = ResolveConcreteId(ord);
     char res[48];
@@ -193,89 +166,18 @@ void BuildCatalog() {
     if (cid > 0) {                      // effet EZ/hatEffectID = rendable par ce lab
       HatEntry e;
       e.ord = ord; e.cid = cid;
+      // ⚠ Un ordinal rend s'il a une entrée PROCÉDURALE **OU** un resourceFileName (.str) — ne tester
+      // que la table procédurale marquait « inerte » des effets qui fonctionnent parfaitement.
+      // Le nom de ressource vient du getter NATIF GetHatEfResName (pas d'heuristique de notre cru).
+      if (ez_capture::EffectIdIsImplemented(cid)) e.kind = 1;
+      else if (res[0]) e.kind = 2;
+      else e.kind = 0;
+      if (e.kind != 0) g_catalog_impl++;
       std::strncpy(e.res, res, sizeof(e.res) - 1); e.res[sizeof(e.res) - 1] = '\0';
       g_catalog.push_back(e);
     }
   }
   g_catalog_built = true;
-}
-
-// Le nœud EZ en cours de dessin est-il NOTRE effet ? vtbl enfant EZ, id concret du primitif parent
-// (+0x168) == g_applied_concrete (résolu au spawn), ET acteur source (+0x138) == g_applied_actor.
-// ⚠ g_applied_actor est COMPARÉ, jamais déréférencé (UAF-safe). Le double critère isole notre effet
-// des autres effets EZ (auras/statuts) présents sur le même acteur. Inerte si aucun effet actif.
-bool IsOurNode(void* ez) {
-  if (g_applied_ordinal == 0 || g_applied_concrete <= 0 || !ez) return false;
-  if (*reinterpret_cast<uintptr_t*>(ez) != kEzChildVtbl) return false;
-  void* prim = *reinterpret_cast<void**>(reinterpret_cast<char*>(ez) + kEzParentOff);
-  if (!prim) return false;
-  if (*reinterpret_cast<int*>(reinterpret_cast<char*>(prim) + kEzEffectId) != g_applied_concrete)
-    return false;
-  void* src = *reinterpret_cast<void**>(reinterpret_cast<char*>(prim) + kEzSrcActor);
-  return src == g_applied_actor;  // comparaison seule
-}
-
-// ── Hooks (chaînés au-dessus de ceux de basic_info : PrepareHook relocalise le JMP) ──
-using EzDrawFn = void(__fastcall*)(void* self, void* edx, float* p);
-using RenderInsertFn = void(__fastcall*)(void* queue, void* edx, int* prim, unsigned flags);
-EzDrawFn       g_orig_ez_draw = nullptr;
-RenderInsertFn g_orig_insert  = nullptr;
-
-// Établit l'appartenance au niveau NŒUD : `self` = le nœud EZ dessiné. Save/restore = robuste
-// au nesting (un effet dessine plusieurs sous-nœuds/couches).
-void __fastcall Hooked_EzDraw(void* self, void* edx, float* p) {
-  const bool  prevOwned = g_cur_owned;
-  void* const prevNode  = g_cur_node;
-  bool owned = false;
-  __try { owned = IsOurNode(self); } __except (EXCEPTION_EXECUTE_HANDLER) { owned = false; }
-  g_cur_owned = owned;
-  g_cur_node  = owned ? self : nullptr;
-  g_orig_ez_draw(self, edx, p);
-  g_cur_owned = prevOwned;
-  g_cur_node  = prevNode;
-}
-
-// Puits commun. Frontière de frame -> vide le buffer. Si le nœud en cours est le nôtre : on
-// snapshot le quad (4 sommets XYZRHW écran + UV + couleur + texture). Si g_suppress, on NE
-// chaîne PAS (l'effet ne rend pas en jeu) ; sinon passthrough.
-void __fastcall Hooked_Insert(void* queue, void* edx, int* prim, unsigned flags) {
-  __try {
-    const uint32_t frame = *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(queue) + kQueueFrameOff);
-    if (frame != g_last_frame) { g_last_frame = frame; g_count = 0; g_world_set = false; }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-  bool captured = false;
-  if (g_cur_owned && prim) {
-    __try {
-      g_queue = queue;
-      if (!g_world_set && g_cur_node) {  // ancre = pos monde du nœud EZ (+0x10/14/18)
-        const float* w = reinterpret_cast<const float*>(reinterpret_cast<char*>(g_cur_node) + 0x10);
-        g_world[0] = w[0]; g_world[1] = w[1]; g_world[2] = w[2];
-        g_world_set = true;
-      }
-      const char* verts = *reinterpret_cast<char* const*>(reinterpret_cast<char*>(prim) + kPrimVertsOff);
-      void* ctex = *reinterpret_cast<void* const*>(reinterpret_cast<char*>(prim) + kPrimTexOff);
-      const int off = g_imgui_dx7_active ? kCTexOffDX7 : kCTexOffDX9;
-      void* native = ctex ? *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + off) : nullptr;
-      if (verts && native && g_count < kCapMax) {
-        Quad& q = g_caps[g_count++];
-        q.tex = native;
-        q.blend = flags;
-        for (int k = 0; k < 4; ++k) {
-          const float* vtx = reinterpret_cast<const float*>(verts + k * kPrimVertStride);
-          q.x[k] = vtx[0]; q.y[k] = vtx[1];
-          q.u[k] = vtx[6]; q.v[k] = vtx[7];
-          q.argb[k] = *reinterpret_cast<const unsigned*>(verts + k * kPrimVertStride + 0x10);
-        }
-        captured = true;
-      }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  }
-
-  // Suppression in-world : pour NOS quads capturés, on ne chaîne pas -> ni le natif ni
-  // basic_info ne les voient -> invisibles en jeu, visibles seulement dans l'overlay.
-  if (captured && g_suppress) return;
-  g_orig_insert(queue, edx, prim, flags);
 }
 
 // ── Reconcile spawn / despawn (persistant, survit au changement de map) ────────
@@ -316,167 +218,291 @@ void Reconcile() {
     } else {
       g_applied_concrete = 0;
     }
-    g_applied_ordinal   = g_wanted_ordinal;
-    g_applied_actor     = actor;
-    g_no_capture_frames = 0;
+    g_applied_ordinal = g_wanted_ordinal;
+    g_applied_actor   = actor;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
-    g_applied_ordinal   = g_wanted_ordinal;
-    g_applied_actor     = actor;
-    g_no_capture_frames = 0;
+    g_applied_ordinal = g_wanted_ordinal;
+    g_applied_actor   = actor;
   }
+
+  // Ciblage du module de capture. ⚠ L'acteur n'est transmis que pour être COMPARÉ (le module ne
+  // Rien à déclarer au module : il résout lui-même l'acteur joueur et capture tout ce qui lui
+  // appartient, en étiquetant chaque primitive (Prim::effect_id). C'est NOUS qui filtrons, au dessin
+  // (DrawOpts::ids) et à la suppression (SetSuppressedIds).
+  // ⚠ NE PAS réintroduire un réglage de capture partagé : le doll l'armait et le lab l'effaçait à
+  // chaque frame, d'où une capture qui ne tenait qu'une ou deux frames sur deux.
 }
 
-// ── Overlay : dessine les quads capturés AU CENTRE de l'écran ─────────────────
-// Ancre écran = projection de la position monde du nœud (stable, suit l'effet en jeu) ->
-// out = centre + (v - ancre) : conserve forme + TAILLE natives, juste recentré. Repli =
-// centre de la bbox des quads si la projection échoue.
-// Un quad doit-il être rejeté ? (a) sommet trop loin de l'ancre — attrape aussi NaN/inf (projection
-// derrière la caméra) ; (b) quad DÉMESURÉ (traînée dégénérée). Les deux sont des garde-fous : par
-// défaut ils sont LARGES, car les « traînées » sont en fait de la géométrie LÉGITIME que le natif
-// rend en additif + dégradé d'alpha — c'est notre rendu qu'il faut corriger, pas la géométrie.
-// Utilisé par le rendu ET l'overlay debug (mêmes couleurs = pas de divergence).
-bool QuadDropped(const Quad& q, float ax, float ay, float r2) {
-  for (int k = 0; k < 4; ++k) {
-    const float dxp = q.x[k] - ax, dyp = q.y[k] - ay;
-    if (!(dxp * dxp + dyp * dyp < r2)) return true;
-  }
-  float x0 = q.x[0], x1 = q.x[0], y0 = q.y[0], y1 = q.y[0];
-  for (int k = 1; k < 4; ++k) {
-    if (q.x[k] < x0) x0 = q.x[k];
-    if (q.x[k] > x1) x1 = q.x[k];
-    if (q.y[k] < y0) y0 = q.y[k];
-    if (q.y[k] > y1) y1 = q.y[k];
-  }
-  return !((x1 - x0) < g_max_quad && (y1 - y0) < g_max_quad);
-}
-
+// ── Overlay : dessine les primitives capturées AU CENTRE de l'écran ───────────
+// Tout le travail (capture, ancre, blend par primitive) vit dans ez_capture : ici on ne fait que
+// choisir la destination (centre écran) et l'échelle (1 = taille native).
 void DrawCenteredOverlay() {
-  if (g_count <= 0) return;
+  const int count = ez_capture::Count();
+  if (count <= 0) return;
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
   if (disp.x <= 0 || disp.y <= 0) return;
-  const float cx = disp.x * 0.5f, cy = disp.y * 0.5f;
-  const int count = g_count < kCapMax ? g_count : kCapMax;
 
-  // Ancre : projection du monde (comme le natif Effect_SubmitStrQuad). SEH autour du natif.
-  float ax = 0.0f, ay = 0.0f, invW = 0.0f;
-  bool have_anchor = false;
-  if (g_queue && g_world_set) {
-    __try {
-      void* gm  = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(static_cast<int>(kModeMgr));
-      void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera) : nullptr;
-      float* view = cam ? reinterpret_cast<float*>(reinterpret_cast<char*>(cam) + kOffViewMtx) : nullptr;
-      if (view) {
-        reinterpret_cast<void(__fastcall*)(void*, void*, float*, float*, float*, float*, float*)>(
-            kSceneProject)(g_queue, nullptr, g_world, view, &ax, &ay, &invW);
-        have_anchor = true;
-      }
-    } __except (EXCEPTION_EXECUTE_HANDLER) { have_anchor = false; }
-  }
-  if (!have_anchor) {  // repli : centre de la bbox capturée
-    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
-    for (int i = 0; i < count; ++i)
-      for (int k = 0; k < 4; ++k) {
-        const float vx = g_caps[i].x[k], vy = g_caps[i].y[k];
-        if (vx < x0) x0 = vx; if (vx > x1) x1 = vx;
-        if (vy < y0) y0 = vy; if (vy > y1) y1 = vy;
-      }
-    if (x1 < x0) return;
-    ax = (x0 + x1) * 0.5f; ay = (y0 + y1) * 0.5f;
-  }
-  g_dbg_proj_ok = have_anchor; g_dbg_ax = ax; g_dbg_ay = ay;  // diagnostic (affiché dans l'UI)
+  // Options de dessin : elles portent AUSSI le filtre, et l'ancre doit être celle de NOTRE effet —
+  // demander l'ancre sans filtre projetait la position d'un autre effet du joueur (ancre figée hors
+  // écran, plus rien de dessiné).
+  ez_capture::DrawOpts opts;
+  opts.ox         = disp.x * 0.5f;
+  opts.oy         = disp.y * 0.5f;
+  opts.scale      = 1.0f;          // 1 = taille native, juste recentré
+  opts.blend_mode = g_blend_mode;
+  opts.use_zorder = false;         // overlay : une seule passe, pas de tri autour d'un sprite
+  opts.max_r      = g_max_r;
+  opts.ids        = &g_applied_concrete;
+  opts.id_count   = (g_applied_concrete > 0) ? 1 : 0;
+  opts.include_effmgr = false;     // le lab ne vise qu'un effet précis, par id
 
-  // D3DCOLOR (0xAARRGGBB) -> IM_COL32 (0xAABBGGRR) : échange R<->B.
-  auto conv = [](unsigned c) -> unsigned {
-    return (c & 0xff00ff00u) | ((c & 0x00ff0000u) >> 16) | ((c & 0x000000ffu) << 16);
-  };
-
-  ImDrawList* dl = ImGui::GetForegroundDrawList();  // au-dessus de tout
-  const float r2 = g_max_r * g_max_r;
+  // Ancre ÉCRAN (projection de la position monde du nœud) : sert au diagnostic affiché dans l'UI,
+  // et au tracé de l'overlay debug. ez_capture::Draw la recalcule de la même façon.
+  float ax = 0.0f, ay = 0.0f;
+  const bool have_anchor = ez_capture::ProjectAnchor(opts, &ax, &ay, nullptr);
+  g_dbg_proj_ok = have_anchor; g_dbg_ax = ax; g_dbg_ay = ay;
 
   // MODE DEBUG : dessine la capture BRUTE (positions écran NATIVES, sans reproject) + l'ancre et le
-  // cercle du rayon. À utiliser avec « Cacher en jeu » DÉCOCHÉ : nos contours de quads se superposent
-  // alors à l'effet natif in-world -> on voit si l'ancre tombe au bon endroit et quels quads sont des
-  // outliers (ROUGE = rejeté par le filtre, VERT = gardé). Diagnostic quand le reproject déraille.
+  // cercle du rayon. À utiliser avec « Cacher en jeu » DÉCOCHÉ : nos contours de primitives se
+  // superposent alors à l'effet natif in-world -> on voit si l'ancre tombe au bon endroit.
   if (g_debug) {
-    dl->AddCircleFilled(ImVec2(ax, ay), 5.0f, IM_COL32(0, 255, 255, 255));        // ancre
-    dl->AddCircle(ImVec2(ax, ay), g_max_r, IM_COL32(0, 255, 255, 120), 64, 1.5f);  // rayon du filtre
+    ImDrawList* dl = ImGui::GetForegroundDrawList();  // au-dessus de tout
+    if (have_anchor) {
+      dl->AddCircleFilled(ImVec2(ax, ay), 5.0f, IM_COL32(0, 255, 255, 255));         // ancre
+      dl->AddCircle(ImVec2(ax, ay), g_max_r, IM_COL32(0, 255, 255, 120), 64, 1.5f);  // rayon du filtre
+    }
+    const ez_capture::Prim* prims = ez_capture::Prims();
+    const ImU32 col = IM_COL32(60, 255, 60, 220);
     for (int i = 0; i < count; ++i) {
-      const Quad& q = g_caps[i];
-      const bool drop = QuadDropped(q, ax, ay, r2);
-      dl->AddQuad(ImVec2(q.x[0], q.y[0]), ImVec2(q.x[1], q.y[1]),
-                  ImVec2(q.x[3], q.y[3]), ImVec2(q.x[2], q.y[2]),
-                  drop ? IM_COL32(255, 60, 60, 220) : IM_COL32(60, 255, 60, 220), 1.5f);
+      const ez_capture::Prim& q = prims[i];
+      if (!IsOurs(q)) continue;  // ne pas tracer les contours des autres effets du joueur
+      if (q.n == 3)
+        dl->AddTriangle(ImVec2(q.x[0], q.y[0]), ImVec2(q.x[1], q.y[1]),
+                        ImVec2(q.x[2], q.y[2]), col, 1.5f);
+      else
+        dl->AddQuad(ImVec2(q.x[0], q.y[0]), ImVec2(q.x[1], q.y[1]),
+                    ImVec2(q.x[3], q.y[3]), ImVec2(q.x[2], q.y[2]), col, 1.5f);
     }
     return;  // en debug on ne dessine PAS l'overlay reprojeté
   }
 
-  if (g_additive)
-    dl->AddCallback(reinterpret_cast<ImDrawCallback>(D3D9_AdditiveBlendCallback()), nullptr);
-  void* cur_tex = nullptr;      // texture actuellement poussée (batch : 1 draw call par texture)
-  bool  tex_pushed = false;
-  for (int i = 0; i < count; ++i) {
-    const Quad& q = g_caps[i];
-    if (!q.tex) continue;
-    if (QuadDropped(q, ax, ay, r2)) continue;  // garde-fous larges (outliers francs / NaN)
-    // Sommets natifs v0=HG v1=HD v2=BG v3=BD -> ordre ImGui HG,HD,BD,BG (v0,v1,v3,v2).
-    const ImVec2 p0(cx + (q.x[0] - ax), cy + (q.y[0] - ay));
-    const ImVec2 p1(cx + (q.x[1] - ax), cy + (q.y[1] - ay));
-    const ImVec2 p2(cx + (q.x[3] - ax), cy + (q.y[3] - ay));
-    const ImVec2 p3(cx + (q.x[2] - ax), cy + (q.y[2] - ay));
-    // ⚠ COULEURS PAR SOMMET (gouraud). AddImageQuad n'accepte qu'UNE couleur : appliquer celle du
-    // sommet 0 à tout le quad rendait OPAQUES les traînées à DÉGRADÉ D'ALPHA (nativement elles
-    // s'estompent jusqu'à transparent) -> d'où le « mess » de longues traînées solides. On écrit
-    // donc les 4 sommets à la main avec leur propre couleur/alpha, comme le fait le natif.
-    // Texture poussée SEULEMENT quand elle change (sinon 1 draw call par quad = des centaines).
-    if (q.tex != cur_tex) {
-      if (tex_pushed) dl->PopTexture();
-      dl->PushTexture((ImTextureID)(uintptr_t)q.tex);
-      cur_tex = q.tex;
-      tex_pushed = true;
+  // `opts` a été rempli plus haut (l'ancre en dépend). ⚠ `&g_applied_concrete` doit rester valide
+  // pendant Draw : c'est une globale, donc c'est bon.
+  ez_capture::Draw(ImGui::GetForegroundDrawList(), opts);
+}
+
+// ── Sol uni (fond de capture) ─────────────────────────────────────────────────
+// Repeint TOUT le terrain .gnd d'une couleur unie réglable, pour isoler un effet
+// sur un fond neutre lors d'une capture d'écran.
+//
+// ⚠⚠ PIÈGE MAJEUR (constaté en live 2026-07-18) : le client a DEUX chemins de rendu
+// complets et parallèles. La famille 0x00552xxx (World_RenderScene 0x00552fa0,
+// World_DrawGroundTiles 0x00552710, World_DrawWaterSurface 0x00552b70) est le chemin
+// DX7 et n'est JAMAIS exécutée en DX9 : un JMP hook posé sur 0x00552710 s'installe
+// correctement (trampoline non nul) mais ne se déclenche pas une seule fois.
+//
+// Le chemin DX9 réellement emprunté :
+//   RendererDX9_RenderScene 0x0055ca60  (BeginScene / EndScene)
+//     -> RendererDX9_FlushWorldScene 0x0055e5b0   (jumeau de World_RenderScene)
+//          -> RendererDX9_DrawGroundTiles 0x0055d680   <-- LE SOL, notre cible
+//          -> FUN_0055d850                              (l'eau)
+//     -> FUN_005511d0  (RESET des buckets, PAS un flush — ne pas s'y tromper)
+//
+// MÊME objet et MÊMES listes que la version DX7 (param_1 est un int*, donc [n] =
+// octet n*4) : [0x57]/[0x58] = +0x15c/+0x160 (sol), [0x6c]/[0x6d] = +0x1b0/+0x1b4
+// (lightmap). Deux boucles, SetTexture puis DrawPrimRecord — identique.
+//
+// La fonction du sol ne touche NI COLOROP NI COLORARG1 : elle ne pose que l'adressage
+// (FUN_005486e0(w, 0, 1, v) / (w, 0, 2, v) = ADDRESSU/ADDRESSV, v=3 CLAMP pour le sol,
+// v=1 WRAP pour la lightmap — l'équivalent DX9 du SetTextureStageState(0, 0xc, v) =
+// D3DTSS_ADDRESS du chemin DX7). On peut donc simplement ENCADRER l'appel original :
+// stage 0 en COLOROP = SELECTARG1 / COLORARG1 = TFACTOR + TEXTUREFACTOR = notre
+// couleur. Les deux couches sortent unies, la géométrie et le z-buffer restent
+// intacts (l'occlusion par le terrain reste correcte), et on restaure MODULATE/
+// TEXTURE en sortie car le stage 0 sert à TOUTE la suite de la scène.
+constexpr uintptr_t kDX9DrawGround = 0x0055d680;  // RendererDX9_DrawGroundTiles(this = renderer DX9)
+
+// On tape DIRECTEMENT sur le vrai IDirect3DDevice9, pas sur le wrapper d'état en
+// +0x25c : les slots de vtable du wrapper (+0x50/+0x8c/+0x94) venaient de commentaires
+// Ghidra déjà pris en défaut, et une sonde a montré que +0x50 tombe sur une fonction
+// qui charge scr_logo.bmp.
+//
+// PREUVE que +0x260 est le device COM brut (RendererDX9_DrawPrimRecord 0x0055c830,
+// = vtable renderer 0x00fd6d64 slot +0x38, appelée ici même via (**(*param_1+0x38))) :
+//   piVar2 = *(this + 0x260);  (**(piVar2 + 0x14c))(...)  = DrawPrimitiveUP
+// 0x14c / 4 = 83 = l'index EXACT de DrawPrimitiveUP dans IDirect3DDevice9 -> c'est
+// bien la vtable D3D9 standard, donc les index 57 et 67 ci-dessous sont sûrs.
+constexpr int kOffD3D9Device = 0x260;   // renderer DX9 -> IDirect3DDevice9*
+constexpr int kVtSetRenderState      = 57 * 4;  // 0x0e4
+constexpr int kVtSetTextureStageState = 67 * 4;  // 0x10c
+
+constexpr unsigned kD3DRS_TEXTUREFACTOR = 60;
+constexpr unsigned kD3DTSS_COLOROP      = 1;
+constexpr unsigned kD3DTSS_COLORARG1    = 2;
+constexpr unsigned kD3DTOP_SELECTARG1   = 2;
+constexpr unsigned kD3DTOP_MODULATE     = 4;
+constexpr unsigned kD3DTA_TEXTURE       = 2;
+constexpr unsigned kD3DTA_TFACTOR       = 3;
+
+constexpr uintptr_t kDX9DrawPrimRec  = 0x0055c830;  // vtbl +0x38 : draw mono-texture
+constexpr uintptr_t kDX9DrawPrimDual = 0x0055c8c0;  // vtbl +0x34 : draw BI-texture (aniso)
+constexpr uintptr_t kDX9DrawTerrain  = 0x0055d850;  // RendererDX9_DrawTerrainSurfaces
+
+using DrawGroundFn = void(__fastcall*)(void*);
+DrawGroundFn g_orig_draw_ground = nullptr;
+
+// > 0 pendant l'exécution de RendererDX9_DrawGroundTiles : c'est ce qui distingue les
+// primitives du SOL de toutes les autres dans Hooked_DrawPrimRecord (mono-thread rendu).
+int g_in_ground_pass = 0;
+
+bool  g_ground_paint    = false;
+float g_ground_col[4]   = {0.0f, 0.0f, 0.0f, 1.0f};  // noir opaque par défaut
+
+// NOTE : RendererDX9_DrawGroundTiles 0x0055d680 s'exécute avec ses deux listes VIDES
+// (mesuré en live). On la garde hookée par sécurité — si une carte l'utilisait, la
+// couleur s'appliquerait aussi — mais le terrain réel passe par
+// RendererDX9_DrawTerrainSurfaces (cf. Hooked_DrawTerrain).
+void __fastcall Hooked_DrawGround(void* self) {
+  ++g_in_ground_pass;
+  if (g_orig_draw_ground) g_orig_draw_ground(self);
+  --g_in_ground_pass;
+}
+
+// ── Le VRAI point d'injection : juste avant le DrawPrimitiveUP ────────────────
+// Poser COLOROP/COLORARG1 autour de l'appel à RendererDX9_DrawGroundTiles NE MARCHE
+// PAS, alors que les appels renvoient pourtant S_OK. Raison : l'objet en renderer+0x25c
+// est un CACHE D'ÉTATS (FUN_00547990 recopie 0xd2 dwords depuis wrapper+8 = render
+// states, 0x42 depuis wrapper+0x350 = texture stage states, 0x1c depuis wrapper+0x458).
+// Nos écritures vont directement sur le device COM et court-circuitent ce cache : tout
+// re-push des valeurs cachées entre notre écriture et le draw réel écrase notre COLOROP,
+// silencieusement.
+//
+// RendererDX9_DrawPrimRecord 0x0055c830 est le dernier maillon : il fait
+// Device_SetFVFCached puis appelle DrawPrimitiveUP (vtbl +0x14c) SUR LE DEVICE BRUT
+// (this+0x260), sans aucun flush d'état entre les deux. Écrire juste avant l'original
+// est donc inattaquable — plus rien ne peut s'intercaler.
+//
+// __thiscall(this = renderer, rec) -> émulé en __fastcall (edx ignoré).
+using DrawPrimRecFn = void(__fastcall*)(void*, void*, void*);
+DrawPrimRecFn g_orig_draw_prim = nullptr;
+
+// Pose la couleur unie sur le stage 0, appelle le draw natif, puis restaure. Le stage 0
+// sert à TOUTE la suite de la scène : on remet exactement les valeurs que le cache du
+// wrapper croit actives (MODULATE / TEXTURE), donc cache et device restent cohérents.
+void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
+  __try {
+    void* dev = *reinterpret_cast<void**>(reinterpret_cast<char*>(self) + kOffD3D9Device);
+    if (!dev) {
+      if (orig) orig(self, edx, rec);
+      return;
     }
-    dl->PrimReserve(6, 4);
-    const ImDrawIdx base = static_cast<ImDrawIdx>(dl->_VtxCurrentIdx);
-    dl->PrimWriteIdx(base);     dl->PrimWriteIdx(base + 1); dl->PrimWriteIdx(base + 2);
-    dl->PrimWriteIdx(base);     dl->PrimWriteIdx(base + 2); dl->PrimWriteIdx(base + 3);
-    dl->PrimWriteVtx(p0, ImVec2(q.u[0], q.v[0]), conv(q.argb[0]));
-    dl->PrimWriteVtx(p1, ImVec2(q.u[1], q.v[1]), conv(q.argb[1]));
-    dl->PrimWriteVtx(p2, ImVec2(q.u[3], q.v[3]), conv(q.argb[3]));
-    dl->PrimWriteVtx(p3, ImVec2(q.u[2], q.v[2]), conv(q.argb[2]));
+    void** vt = *reinterpret_cast<void***>(dev);
+    // Méthodes COM : __stdcall, `this` en 1er argument sur la pile.
+    auto SetRS = reinterpret_cast<long(__stdcall*)(void*, unsigned, unsigned)>(
+        vt[kVtSetRenderState / sizeof(void*)]);
+    auto SetTSS = reinterpret_cast<long(__stdcall*)(void*, unsigned, unsigned, unsigned)>(
+        vt[kVtSetTextureStageState / sizeof(void*)]);
+
+    auto ch = [](float v) -> unsigned {
+      int i = static_cast<int>(v * 255.0f + 0.5f);
+      return static_cast<unsigned>(i < 0 ? 0 : (i > 255 ? 255 : i));
+    };
+    const unsigned argb = (ch(g_ground_col[3]) << 24) | (ch(g_ground_col[0]) << 16) |
+                          (ch(g_ground_col[1]) << 8) | ch(g_ground_col[2]);
+
+    SetRS(dev, kD3DRS_TEXTUREFACTOR, argb);
+    SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TFACTOR);
+    SetTSS(dev, 0, kD3DTSS_COLOROP, kD3DTOP_SELECTARG1);
+    if (orig) orig(self, edx, rec);
+    SetTSS(dev, 0, kD3DTSS_COLOROP, kD3DTOP_MODULATE);
+    SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TEXTURE);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
-  if (tex_pushed) dl->PopTexture();
-  if (g_additive)
-    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
+
+void __fastcall Hooked_DrawPrimRecord(void* self, void* edx, void* rec) {
+  if (g_in_ground_pass <= 0 || !g_ground_paint || g_imgui_dx7_active || !self) {
+    if (g_orig_draw_prim) g_orig_draw_prim(self, edx, rec);
+    return;
+  }
+  PaintAroundDraw(self, edx, rec, g_orig_draw_prim);
+}
+
+// Jumeau BI-TEXTURE : vtbl +0x34 = RendererDX9_DrawPrimRecordDualTex 0x0055c8c0.
+// La branche aniso de RendererDX9_DrawTerrainSurfaces dessine le terrain PAR CE
+// SLOT-LÀ (SetTexture sur les stages 0 ET 1), pas par +0x38 — c'est la raison pour
+// laquelle le compteur restait à 0 avec le seul hook sur +0x38.
+DrawPrimRecFn g_orig_draw_prim_dual = nullptr;
+
+void __fastcall Hooked_DrawPrimRecordDual(void* self, void* edx, void* rec) {
+  if (g_in_ground_pass <= 0 || !g_ground_paint || g_imgui_dx7_active || !self) {
+    if (g_orig_draw_prim_dual) g_orig_draw_prim_dual(self, edx, rec);
+    return;
+  }
+  PaintAroundDraw(self, edx, rec, g_orig_draw_prim_dual);
+}
+
+// Marqueur de passe pour RendererDX9_DrawTerrainSurfaces 0x0055d850 — LA fonction qui
+// dessine réellement le terrain (3 branches selon OptionInfo 0x77 et le support aniso :
+// listes +0x168, +0x1f8 via vtbl +0x34, ou +0x174 via vtbl +0x38). Prouvé en live :
+// RendererDX9_DrawGroundTiles 0x0055d680 s'exécute avec ses DEUX listes VIDES.
+DrawGroundFn g_orig_draw_terrain = nullptr;
+
+void __fastcall Hooked_DrawTerrain(void* self) {
+  ++g_in_ground_pass;
+  if (g_orig_draw_terrain) g_orig_draw_terrain(self);
+  --g_in_ground_pass;
 }
 
 }  // namespace
 
 // ── API publique ──────────────────────────────────────────────────────────────
+bool&  ground_paint_enabled() { return g_ground_paint; }
+float* ground_color()         { return g_ground_col; }
+
 void EnsureInstalled() {
   static bool done = false;
   if (done) return;
   done = true;
   using namespace hooking;
-  g_orig_insert = reinterpret_cast<RenderInsertFn>(
+  ez_capture::EnsureInstalled();  // hooks de capture EZ (module partagé, idempotent)
+  g_orig_draw_ground = reinterpret_cast<DrawGroundFn>(
       HookManager::Instance().SetHook(HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kRenderQueueInsert),
-          reinterpret_cast<uint8_t*>(&Hooked_Insert)));
-  g_orig_ez_draw = reinterpret_cast<EzDrawFn>(
+          reinterpret_cast<uint8_t*>(kDX9DrawGround),
+          reinterpret_cast<uint8_t*>(&Hooked_DrawGround)));
+  // Un trampoline nul = SetHook a échoué (prologue non relocalisable) : le hook ne
+  // doit alors JAMAIS avaler l'appel, sinon le sol disparaît au lieu de changer de
+  // couleur. Hooked_DrawGround teste g_orig_draw_ground, mais on le trace ici.
+  g_orig_draw_prim = reinterpret_cast<DrawPrimRecFn>(
       HookManager::Instance().SetHook(HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kEzEffectDraw),
-          reinterpret_cast<uint8_t*>(&Hooked_EzDraw)));
+          reinterpret_cast<uint8_t*>(kDX9DrawPrimRec),
+          reinterpret_cast<uint8_t*>(&Hooked_DrawPrimRecord)));
+  g_orig_draw_prim_dual = reinterpret_cast<DrawPrimRecFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kDX9DrawPrimDual),
+          reinterpret_cast<uint8_t*>(&Hooked_DrawPrimRecordDual)));
+  g_orig_draw_terrain = reinterpret_cast<DrawGroundFn>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kDX9DrawTerrain),
+          reinterpret_cast<uint8_t*>(&Hooked_DrawTerrain)));
 }
 
 void RenderFrame() {
+  // Les hooks du « Sol uni » doivent exister dès que le réglage est actif, même si l'onglet
+  // SPR Lab n'a jamais été ouvert de la session (réglage restauré depuis le YAML au login).
+  // EnsureInstalled est idempotent.
+  if (g_ground_paint) EnsureInstalled();
+
+  // Suppression in-world NOMINATIVE (notre seul id) : supprimer « tout le capturé » ferait
+  // disparaître les AUTRES effets du joueur, dont la barre d'icônes de statut (bug réel constaté).
+  if (g_suppress && g_applied_concrete > 0) {  // piloté par la case « Cacher en jeu »
+    const int sup[1] = { g_applied_concrete };
+    ez_capture::SetSuppressedIds(ez_capture::kSlotLab, sup, 1);
+  } else {
+    ez_capture::SetSuppressedIds(ez_capture::kSlotLab, nullptr, 0);
+  }
   Reconcile();
   DrawCenteredOverlay();
-  // LIVENESS (hors Reconcile : doit compter CHAQUE frame, même quand Reconcile early-return —
-  // sinon la détection de perte par « 0 capture » se fige). g_count = quads capturés ce frame.
-  if (g_wanted_ordinal != 0) {
-    if (g_count > 0) g_no_capture_frames = 0;
-    else if (g_applied_ordinal != 0) g_no_capture_frames++;
-  } else {
-    g_no_capture_frames = 0;
-  }
 }
 
 void DrawDebugControls() {
@@ -501,67 +527,286 @@ void DrawDebugControls() {
   const bool on = (g_wanted_ordinal != 0);
   if (!on) {
     if (ImGui::Button("Spawn + afficher au centre")) {
-      g_wanted_ordinal = g_ui_ordinal;
-      g_no_capture_frames = 0;
-    }
+      g_wanted_ordinal = g_ui_ordinal;    }
   } else {
     if (ImGui::Button("Arrêter")) {
-      g_wanted_ordinal = 0;
-      g_no_capture_frames = 0;
-    }
+      g_wanted_ordinal = 0;    }
   }
   ImGui::SameLine();
-  ImGui::Text("état: %s (%d quads)", on ? "actif" : "éteint", g_count);
+  // DIAGNOSTIC (bissection d'une régression du rendu natif) : neutralise le hook du chemin
+  // CEffectMgr. Si le z-order des chapeaux/costumes natifs redevient correct en cochant, c'est ce
+  // hook qui perturbe le rendu ; sinon il est hors de cause. ⚠ Seul écrivain de ce réglage.
+  static bool s_no_effmgr = false;
+  if (ImGui::Checkbox("Couper le hook CEffectMgr (diag)", &s_no_effmgr))
+    ez_capture::SetEffMgrCaptureEnabled(!s_no_effmgr);
+  ImGui::SameLine();
+  // DIAGNOSTIC : lever l'exclusion de la famille .str. Si un effet rend en jeu mais n'est JAMAIS
+  // capturé (0 dessin le concernant), c'est peut-être NOUS qui l'écartons par sa vtable.
+  static bool s_capture_str = false;
+  if (ImGui::Checkbox("Capturer aussi les .str (diag)", &s_capture_str))
+    ez_capture::SetCaptureStrEffects(s_capture_str);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Les instances CEZ2STREffect sont normalement écartées (autre pipeline).\n"
+                      "Coche pour vérifier si un effet non capturé appartient à cette famille :\n"
+                      "s'il apparaît alors dans « effect_id capturés », c'est le cas.\n"
+                      "⚠ Peut provoquer un double dessin ailleurs : diagnostic uniquement.");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Sert à isoler une régression : coche, puis regarde si le rendu NATIF\n"
+                      "(z-order des chapeaux/costumes) redevient correct.\n"
+                      "Coché = la famille aura/statut n'est plus ni capturée ni composée\n"
+                      "sur le doll (Perm_Frost & co disparaîtront de l'aperçu).");
+  ImGui::SameLine();
+  // Répartition tri/quad : diagnostic direct du layout (EZ = triangles 3 sommets, STR = quads 4).
+  // ⚠ Count()/Prims() ramènent TOUS les effets du joueur : on ne compte que les NÔTRES (IsOurs),
+  // sinon les chiffres gonflent avec les auras, statuts et autres effets équipés.
+  const int cap_count = ez_capture::Count();
+  const ez_capture::Prim* cap_prims = ez_capture::Prims();
+  int n_tri = 0, n_quad = 0, n_ours = 0;
+  for (int i = 0; i < cap_count; ++i) {
+    if (!IsOurs(cap_prims[i])) continue;
+    n_ours++;
+    (cap_prims[i].n == 3 ? n_tri : n_quad)++;
+  }
+  ImGui::Text("état: %s (%d prim : %d tri, %d quad)", on ? "actif" : "éteint", n_ours, n_tri, n_quad);
+
+  // ── Sonde « rien ne s'affiche » : localise la cause au lieu de la deviner ──
+  // Beaucoup d'ordinaux ne rendent RIEN, même nativement (ex. 57, et toute la plage 60-78 =
+  // auras LEVEL99/LEVEL160). Ces trois compteurs disent OÙ ça s'arrête.
+  if (on) {
+    const ez_capture::Stats st = ez_capture::LastFrameStats();
+    // dessins/inserts viennent du module et restent tels quels ; « capturés » est en revanche
+    // ramené à NOTRE effet (n_ours), sinon un autre effet du joueur masquerait notre 0.
+    ImGui::TextDisabled("sonde: %d/%d dessins / %d inserts / %d capturés",
+                        st.draws, st.all_draws, st.inserts, n_ours);
+    ImGui::SameLine();
+    if (st.draws == 0)
+      ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f), "-> nœud jamais dessiné (non créé ?)");
+    else if (st.inserts == 0)
+      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "-> dessiné mais n'émet RIEN (ressource ?)");
+    else if (n_ours == 0)
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "-> émis mais REJETÉ par nous (bug)");
+    else
+      ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), "-> OK");
+    // Ce que le filtre de FORME a refusé cette frame. Quand « émis mais rejeté » s'affiche, c'est
+    // ici que se trouve la raison : type de primitive, nombre de sommets, primitive indexée.
+    // Formes acceptées : type 4 (TRIANGLELIST) à 3 sommets, ou type 5 (TRIANGLESTRIP) à 4, non indexé.
+    if (st.rej_count > 0)
+      ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.4f, 1.0f),
+                         "rejets: %d  (type=%d, sommets=%d, indices=%d)",
+                         st.rej_count, st.rej_type, st.rej_vtx, st.rej_idx);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("dessins  = appels d'EzEffect_Draw sur NOTRE nœud\n"
+                        "inserts  = primitives soumises pendant ce dessin (avant nos filtres)\n"
+                        "capturés = ce qu'on garde après filtres de forme\n\n"
+                        "0 dessin        -> le nœud n'existe pas : problème AMONT du rendu.\n"
+                        "dessins, 0 ins. -> le sous-rendu n'émet rien : ressource absente\n"
+                        "                   (le chargeur échoue en silence) ou condition non remplie.\n"
+                        "ins. mais 0 cap.-> le jeu émet et NOUS rejetons : là c'est notre bug.");
+  }
+
+  // Facteurs de blend RÉELLEMENT capturés cette frame (D3DBLEND bruts : 2=ONE, 5=SRCALPHA,
+  // 6=INVSRCALPHA…). Diagnostic direct : s'il y a plusieurs couples, aucun blend GLOBAL ne
+  // peut convenir — c'est la démonstration que le mode « natif par primitive » est nécessaire.
+  // ⚠ Là encore, uniquement NOS primitives : les couples de blend des autres effets du joueur
+  // n'apprendraient rien sur celui qu'on étudie.
+  int  bl_src[4] = {0, 0, 0, 0}, bl_dst[4] = {0, 0, 0, 0}, bl_n = 0;
+  for (int i = 0; i < cap_count; ++i) {
+    if (!IsOurs(cap_prims[i])) continue;
+    bool seen = false;
+    for (int k = 0; k < bl_n; ++k)
+      if (bl_src[k] == cap_prims[i].src_blend && bl_dst[k] == cap_prims[i].dst_blend) { seen = true; break; }
+    if (!seen && bl_n < 4) {
+      bl_src[bl_n] = cap_prims[i].src_blend; bl_dst[bl_n] = cap_prims[i].dst_blend; bl_n++;
+    }
+  }
+
+  // ── MESURE : ids RÉELS de la famille CEffectMgr (auras, statuts, certains costumes) ─────────
+  // Ces primitives n'ont pas d'id concret ; leur instance porte SON id à +0x04. DEUX hypothèses
+  // successives sur son encodage ont été RÉFUTÉES en jeu (« ces costumes ne passent pas par ce
+  // chemin », puis « id == ordinal + 0x98a ») : on ne suppose plus, on AFFICHE.
+  // Placé HAUT dans le panneau, au-dessus du catalogue, pour rester visible sans défiler.
+  {
+    const ez_capture::Prim* p = ez_capture::Prims();
+    const int total = ez_capture::Count();
+    int vals[8], nv = 0, n_em = 0;
+    for (int i = 0; i < total; ++i) {
+      if (p[i].effect_id >= 0) continue;          // chemin EZ : id concret, pas concerné
+      n_em++;
+      bool seen = false;
+      for (int k = 0; k < nv; ++k) if (vals[k] == p[i].effmgr_id) { seen = true; break; }
+      if (!seen && nv < 8) vals[nv++] = p[i].effmgr_id;
+    }
+    if (nv > 0) {
+      char b[128]; int o = 0;
+      for (int k = 0; k < nv && o < 110; ++k)
+        o += std::snprintf(b + o, sizeof(b) - o, k ? ", %d" : "%d", vals[k]);
+      ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), "ids CEffectMgr (%d prim) : %s", n_em, b);
+    } else {
+      ImGui::TextDisabled("ids CEffectMgr : aucun");
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Valeurs BRUTES lues à instance+0x04, pour établir leur encodage :\n"
+                        "équipe un costume dont tu connais l'ordinal, puis déséquipe-le et\n"
+                        "regarde quelle valeur disparaît.");
+
+    // ── TOUS les effect_id capturés, sans filtrage ────────────────────────────
+    // Angle mort corrigé : la ligne ci-dessus ne montre que la famille CEffectMgr (id < 0). Si des
+    // primitives sont capturées avec un id POSITIF différent de celui qu'on attend, rien ne le
+    // révélait — on voyait seulement « 0 capturés » sans comprendre pourquoi.
+    int all[10], na = 0, cnt[10] = {0};
+    for (int i = 0; i < total; ++i) {
+      int k = 0;
+      for (; k < na; ++k) if (all[k] == p[i].effect_id) break;
+      if (k == na && na < 10) { all[na] = p[i].effect_id; cnt[na] = 0; na++; }
+      if (k < 10) cnt[k]++;
+    }
+    if (na > 0) {
+      char b[160]; int o = 0;
+      for (int k = 0; k < na && o < 140; ++k)
+        o += std::snprintf(b + o, sizeof(b) - o, k ? ", %d×%d" : "%d×%d", all[k], cnt[k]);
+      ImGui::TextColored(ImVec4(0.6f, 0.9f, 1.0f, 1.0f), "effect_id capturés : %s", b);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Tous les ids présents dans la capture, au format id×nombre.\n"
+                          "Attendu : l'id concret de l'effet spawné. Une valeur DIFFÉRENTE\n"
+                          "signifie que le nœud porte un autre id que celui résolu par Lua.\n"
+                          "-1 = famille CEffectMgr.");
+    } else {
+      ImGui::TextDisabled("effect_id capturés : aucun (rien n'est capturé)");
+    }
+  }
+
+  // ── QUI soumet les primitives ? ──────────────────────────────────────────────
+  // Pour les effets qui ne sont dessinés par AUCUN de nos hooks d'appartenance (ils délèguent à un
+  // objet hôte piloté par un autre sous-système), c'est le seul moyen de trouver quoi hooker :
+  // on relève les appelants du puits de primitives et on compare effet ACTIF vs ÉTEINT.
+  // L'adresse qui n'apparaît QUE lorsque l'effet tourne est la fonction cherchée.
+  {
+    static bool show_callers = false;
+    ImGui::Checkbox("Appelants du puits (diag)", &show_callers);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Adresses de retour des fonctions qui soumettent des primitives, avec leur\n"
+                        "nombre d'appels sur la dernière frame.\n"
+                        "Méthode : relève la liste effet ÉTEINT, puis effet ACTIF —\n"
+                        "l'adresse qui APPARAÎT est celle qui dessine l'effet.");
+    if (show_callers) {
+      const ez_capture::Caller* c = ez_capture::Callers();
+      const int n = ez_capture::CallerCount();
+      if (ImGui::BeginChild("##ez_callers", ImVec2(0, 96), true)) {
+        for (int i = 0; i < n; ++i)
+          ImGui::TextDisabled("0x%08X  ×%d", static_cast<unsigned>(c[i].addr), c[i].count);
+        if (n == 0) ImGui::TextDisabled("(aucun appel cette frame)");
+      }
+      ImGui::EndChild();
+    }
+  }
 
   ImGui::Checkbox("Cacher en jeu (overlay seul)", &g_suppress);
+  ImGui::SetNextItemWidth(180.0f);
+  ImGui::Combo("Blend", &g_blend_mode,
+               "Natif par primitive\0Alpha normal\0Additif global\0");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Natif par primitive : rejoue SRCBLEND/DESTBLEND que le jeu a posés pour\n"
+                      "chaque primitive (record +0x18/+0x1c) — le seul mode correct, car un\n"
+                      "effet mélange additif et alpha dans la même frame.\n"
+                      "Alpha normal : les primitives additives sortent en CARRÉS NOIRS.\n"
+                      "Additif global : les primitives alpha CRAMENT en blanc.\n"
+                      "⚠ Le mode natif agit sur le device D3D9 : inopérant sous DX7.");
   ImGui::SameLine();
-  ImGui::Checkbox("Blend additif", &g_additive);
+  if (bl_n > 0) {
+    char b[96]; int o = 0;
+    for (int k = 0; k < bl_n && o < 80; ++k)
+      o += std::snprintf(b + o, sizeof(b) - o, k ? " + %d/%d" : "%d/%d", bl_src[k], bl_dst[k]);
+    ImGui::TextDisabled("blends: %s", b);
+  } else {
+    ImGui::TextDisabled("blends: -");
+  }
+
   ImGui::Checkbox("Debug capture (brut + ancre)", &g_debug);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Dessine la capture BRUTE (positions écran natives) + l'ancre (point cyan) et\n"
                       "le cercle du rayon, SANS reprojection. Décoche « Cacher en jeu » pour\n"
-                      "comparer à l'effet natif : rouge = quad rejeté, vert = gardé.");
+                      "comparer les contours (vert) à l'effet natif in-world.");
   ImGui::SameLine();
-  ImGui::TextDisabled("ancre %s (%.0f,%.0f)", g_dbg_proj_ok ? "proj" : "bbox", g_dbg_ax, g_dbg_ay);
+  ImGui::TextDisabled("ancre (%.0f,%.0f)%s", g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : " [non projetée]");
 
   ImGui::SetNextItemWidth(180.0f);
   ImGui::SliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(180.0f);
-  ImGui::SliderFloat("Quad max (px)", &g_max_quad, 100.0f, 4000.0f, "%.0f");
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Garde-fous larges par défaut (la géométrie « traînée » est LÉGITIME :\n"
+    ImGui::SetTooltip("Garde-fou large par défaut (la géométrie « traînée » est LÉGITIME :\n"
                       "le natif la rend en additif + dégradé d'alpha). À baisser seulement si\n"
-                      "un effet déborde encore : Rayon = distance sommet/ancre, Quad max =\n"
-                      "taille d'un quad.");
+                      "un effet déborde encore : Rayon = distance sommet/ancre.");
 
   // ── Catalogue : liste NATIVE des ordinaux d'effets .spr/EZ (aucune liste hardcodée) ──
   ImGui::Separator();
   if (ImGui::Button(g_catalog_built ? "Rescanner" : "Scanner le catalogue")) BuildCatalog();
   ImGui::SameLine();
-  ImGui::TextDisabled("%d effets EZ trouvés (clic = spawn)", static_cast<int>(g_catalog.size()));
+  ImGui::TextDisabled("%d effets EZ, dont %d implémentés (clic = spawn)",
+                      static_cast<int>(g_catalog.size()), g_catalog_impl);
   if (g_catalog_built) {
     static char filter[32] = "";
+    static bool only_impl = true;   // par défaut on masque les inertes : ils ne rendront JAMAIS rien
     ImGui::SetNextItemWidth(180.0f);
     ImGui::InputText("filtre", filter, sizeof(filter));
+    ImGui::SameLine();
+    ImGui::Checkbox("implémentés seulement", &only_impl);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Un effect id sans entrée dans la table de saut du client (0x00bc2e04)\n"
+                        "tombe sur un DEFAULT `mov al,1 ; ret` : le nœud est créé et tické, mais\n"
+                        "ne dessine JAMAIS rien — nativement compris, et sans aucune erreur.\n"
+                        "Ce n'est pas une ressource absente : c'est du code qui n'existe pas.\n"
+                        "L'état est LU dans la table du client, pas recopié d'une liste.");
     if (ImGui::BeginChild("##spr_catalog", ImVec2(0, 190), true)) {
       for (const HatEntry& e : g_catalog) {
+        if (only_impl && e.kind == 0) continue;
+        const char* tag = (e.kind == 0) ? "   [inerte]" : (e.kind == 2 ? "   [.str]" : "");
         char label[128];
         if (e.res[0])
-          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d   %s", e.ord, e.cid, e.res);
+          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d   %s%s", e.ord, e.cid, e.res, tag);
         else
-          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d", e.ord, e.cid);
+          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d%s", e.ord, e.cid, tag);
         if (filter[0] && !std::strstr(label, filter)) continue;
+        // Inerte = grisé (cliquable quand même, pour le vérifier soi-même via la sonde).
+        // .str = teinté : rend NATIVEMENT, mais par un autre pipeline -> ce lab ne le capture pas.
+        if (e.kind == 0) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+        else if (e.kind == 2) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
         if (ImGui::Selectable(label, e.ord == g_wanted_ordinal)) {
           g_ui_ordinal        = e.ord;
           g_resolved_concrete = e.cid;
           g_wanted_ordinal    = e.ord;   // spawn immédiat au clic
-          g_no_capture_frames = 0;
         }
+        if (e.kind != 1) ImGui::PopStyleColor();
       }
     }
     ImGui::EndChild();
-    ImGui::TextDisabled("Certains (famille aura/statut) peuvent ne pas se rendre ici.");
+    ImGui::TextDisabled("« inerte » = ni entrée procédurale ni resourceFileName -> ne rend rien, même");
+    ImGui::TextDisabled("nativement.  « .str » = rend en jeu, mais via le pipeline billboard STR :");
+    ImGui::TextDisabled("un autre chemin que EzEffect_Draw, donc a priori NON capturé par ce lab.");
+  }
+
+  // ── Fond de capture : sol uni ───────────────────────────────────────────────
+  ImGui::Separator();
+  bool ground_changed = ImGui::Checkbox("Sol uni (fond de capture)", &g_ground_paint);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
+                      "de la scène : la géométrie et le z-buffer du sol restent intacts, donc\n"
+                      "l'occlusion par le terrain reste correcte.\n"
+                      "L'eau, le ciel et le brouillard ne sont PAS affectés.\n"
+                      "DX9 uniquement (le chemin de rendu DX7 est une autre famille de "
+                      "fonctions).");
+  if (g_imgui_dx7_active) {
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "(DX7 : non supporté)");
+  }
+  if (g_ground_paint) {
+    ImGui::SetNextItemWidth(200.0f);
+    ColorPicker("Couleur du sol", g_ground_col);
+    // Le picker renvoie true à CHAQUE frame de drag : on ne persiste qu'au relâchement,
+    // sinon on réécrit tout le YAML des dizaines de fois par seconde.
+    if (ImGui::IsItemDeactivatedAfterEdit()) ground_changed = true;
+    ImGui::TextDisabled("L'alpha est ignoré (la passe du sol est opaque).");
+  }
+  if (ground_changed) {
+    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
   }
 }
 

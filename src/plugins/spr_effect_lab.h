@@ -32,4 +32,12 @@ void RenderFrame();
 // Contrôles ImGui du banc d'essai (à placer dans un panneau/onglet debug existant).
 void DrawDebugControls();
 
+// ── « Sol uni » : état persistable ────────────────────────────────────────────
+// Repeint le terrain d'une couleur unie (fond de capture). Exposés par référence pour
+// que MoonlightUi::LoadSettings/SaveSettings les sérialise dans bourgeon_settings.yaml,
+// selon le même pattern que les autres plugins (accesseur par référence).
+// ground_color() pointe sur 4 floats RGBA (ordre ImGui), à convertir en ARGB hex.
+bool&  ground_paint_enabled();
+float* ground_color();
+
 }  // namespace spr_lab
