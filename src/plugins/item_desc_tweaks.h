@@ -37,6 +37,25 @@
 // => Vraie feature : flip kEnableServerFetch, enregistrer les opcodes, et
 //    (option) neutraliser le DrawContent natif de chaque fenêtre.
 
+// API PARTAGÉE : contenu de description SIMPLIFIÉ pour un id d'item (nom + icône/
+// illustration + lignes de desc, markup ^RRGGBB rendu). Lit la DB de description du
+// client (chargement paresseux, cache par id) — aucun paquet, aucune donnée
+// dupliquée, et surtout aucune fenêtre native ouverte : l'appelant dessine ça dans
+// le conteneur de son choix (panneau RO, tooltip…). Utilisé par l'aperçu au survol
+// du viewer storage. `wrap` = largeur de retour à la ligne (0 = région dispo).
+namespace itemdesc {
+// Random option d'INSTANCE (propre au stack, pas à l'item de base) telle que le
+// client la stocke dans l'ItemSkillInfo (+0x9c, entrées de 5 octets).
+struct SimpleOpt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
+
+// `cards` = 4 slots max (0 = vide) et `opts` = options d'instance : eux non plus
+// ne sont pas dans la DB, l'appelant les lit dans SON ItemSkillInfo et les passe
+// ici. Passer nullptr/0 pour n'afficher que la description de base.
+void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
+                      int card_count = 0, const SimpleOpt* opts = nullptr,
+                      int opt_count = 0);
+}  // namespace itemdesc
+
 class ItemDescTweaks : public Plugin {
  public:
   ItemDescTweaks();

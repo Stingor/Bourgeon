@@ -79,6 +79,7 @@ ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
   if (n["card"]) UnpackCol(n["card"].as<unsigned>(0), c.card_col);
   if (n["cardhead"]) UnpackCol(n["cardhead"].as<unsigned>(0), c.card_head_col);
   if (n["cardtx"]) UnpackCol(n["cardtx"].as<unsigned>(0), c.card_head_text);
+  if (n["list"]) UnpackCol(n["list"].as<unsigned>(0), c.list_col);
   return c;
 }
 }  // namespace
@@ -621,7 +622,8 @@ void MoonlightUi::LoadSettings() {
     }
 
     ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
-    ro::SetSkinEnabled(ui["ro_skin"].as<bool>(ro::IsSkinEnabled()));
+    // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
+    // ancienne valeur false dans le yaml est simplement ignorée.)
     {
       auto& sc = ro::SkinConfig();
       sc.title_brightness = ui["ro_skin_bright"].as<float>(sc.title_brightness);
@@ -646,6 +648,7 @@ void MoonlightUi::LoadSettings() {
       load_col("ro_skin_card", sc.card_col);
       load_col("ro_skin_cardhead", sc.card_head_col);
       load_col("ro_skin_cardtx", sc.card_head_text);
+      load_col("ro_skin_list", sc.list_col);
     }
     g_ro_presets.clear();
     if (const YAML::Node ps = ui["ro_skin_presets"]) {
@@ -704,6 +707,18 @@ void MoonlightUi::LoadSettings() {
       iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
     if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
+      stg->desc_tooltip() =
+          ui["storage_desc_tooltip"].as<bool>(stg->desc_tooltip());
+      stg->show_filter()    = ui["storage_filter"].as<bool>(stg->show_filter());
+      stg->tabs_vertical()  = ui["storage_tabs_vertical"].as<bool>(stg->tabs_vertical());
+      stg->tab_images()     = ui["storage_tab_images"].as<bool>(stg->tab_images());
+      stg->show_index_col() = ui["storage_col_index"].as<bool>(stg->show_index_col());
+      stg->show_id_col()    = ui["storage_col_id"].as<bool>(stg->show_id_col());
+      stg->show_slots_col() = ui["storage_col_slots"].as<bool>(stg->show_slots_col());
+      stg->show_value_col() = ui["storage_col_value"].as<bool>(stg->show_value_col());
+      stg->show_total_value() =
+          ui["storage_total_value"].as<bool>(stg->show_total_value());
+      stg->cur_tab()        = ui["storage_tab"].as<int>(stg->cur_tab());
       // Favoris storage (client-side, keyés par id d'item).
       if (const YAML::Node favs = ui["storage_favorites"]) {
         stg->favorites_.clear();
@@ -1140,7 +1155,6 @@ void MoonlightUi::SaveSettings() {
 
   {
     out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
-    out << YAML::Key << "ro_skin" << YAML::Value << ro::IsSkinEnabled();
     {
       auto& sc = ro::SkinConfig();
       auto pk = [](const float* c) {
@@ -1163,6 +1177,7 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "ro_skin_card" << YAML::Value << pk(sc.card_col);
       out << YAML::Key << "ro_skin_cardhead" << YAML::Value << pk(sc.card_head_col);
       out << YAML::Key << "ro_skin_cardtx" << YAML::Value << pk(sc.card_head_text);
+      out << YAML::Key << "ro_skin_list" << YAML::Value << pk(sc.list_col);
     }
     out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
     for (const auto& p : g_ro_presets) {
@@ -1183,6 +1198,7 @@ void MoonlightUi::SaveSettings() {
       out << YAML::Key << "card" << YAML::Value << PackCol(p.cfg.card_col);
       out << YAML::Key << "cardhead" << YAML::Value << PackCol(p.cfg.card_head_col);
       out << YAML::Key << "cardtx" << YAML::Value << PackCol(p.cfg.card_head_text);
+      out << YAML::Key << "list" << YAML::Value << PackCol(p.cfg.list_col);
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;
@@ -1190,6 +1206,17 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : false);
+    out << YAML::Key << "storage_desc_tooltip" << YAML::Value
+        << (stg ? stg->desc_tooltip() : false);
+    out << YAML::Key << "storage_filter"    << YAML::Value << (stg ? stg->show_filter() : true);
+    out << YAML::Key << "storage_tabs_vertical" << YAML::Value << (stg ? stg->tabs_vertical() : false);
+    out << YAML::Key << "storage_tab_images" << YAML::Value << (stg ? stg->tab_images() : true);
+    out << YAML::Key << "storage_col_index" << YAML::Value << (stg ? stg->show_index_col() : false);
+    out << YAML::Key << "storage_col_id"    << YAML::Value << (stg ? stg->show_id_col() : false);
+    out << YAML::Key << "storage_col_slots" << YAML::Value << (stg ? stg->show_slots_col() : false);
+    out << YAML::Key << "storage_col_value" << YAML::Value << (stg ? stg->show_value_col() : true);
+    out << YAML::Key << "storage_total_value" << YAML::Value << (stg ? stg->show_total_value() : true);
+    out << YAML::Key << "storage_tab"       << YAML::Value << (stg ? stg->cur_tab() : 0);
     // Favoris storage (ids d'items, triés pour un yaml stable = pas de diff parasite).
     out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
     if (stg) {
@@ -1691,6 +1718,23 @@ void AlignGrid::Draw() const {
   dl->AddLine(ImVec2(0.0f, ds.y * 0.5f), ImVec2(ds.x, ds.y * 0.5f), cc, 1.5f);
 }
 
+// Ouvre le panneau directement sur une section d'« Interface de jeu ». Ne dessine
+// rien : pose l'état que le prochain OnRenderUI consomme (déplier la fenêtre +
+// ouvrir l'en-tête + sélectionner l'entrée). Sûr à appeler pendant le rendu d'une
+// AUTRE fenêtre (le bullet de barre de titre du storage, p. ex.).
+void MoonlightUi::OpenInterfaceSection(int section) {
+  if (section < 0 || section > kIfaceStorage) return;
+  iface_nav_ = section;
+  iface_jump_ = true;
+  // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
+  // la restauration au login (apply_collapse_ -> SetNextWindowCollapsed).
+  if (ui_collapsed_) {
+    ui_collapsed_ = false;
+    apply_collapse_ = true;
+  }
+  ImGui::SetWindowFocus("Moonlight-Destiny");
+}
+
 // ── ImGui panel ───────────────────────────────────────────────────────────
 void MoonlightUi::OnRenderUI() {
   if (!in_game_) return;
@@ -1994,7 +2038,13 @@ void MoonlightUi::OnRenderUI() {
         GrayText("Indisponible.");
     }
 
+    // Saut demandé (bullet de barre de titre d'une fenêtre Bourgeon) : on force
+    // l'en-tête ouvert et on scrolle dessus, une seule fois.
+    const bool iface_jump = iface_jump_;
+    iface_jump_ = false;
+    if (iface_jump) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (CollapsingHeader("Interface de jeu")) {
+      if (iface_jump) ImGui::SetScrollHereY(0.0f);
       PushStyleCompact();
       bool changed = false;
       changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);
@@ -2018,14 +2068,7 @@ void MoonlightUi::OnRenderUI() {
             "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
       }
 
-      // Storage : viewer ImGui moderne OU fenêtre native
-      if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-        changed |= ro::RoCheckbox("Storage Moonlight®", &stg->imgui_enabled_);
-        SameLine(); HelpMarker(
-            "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
-            "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
-            "viewer. Pas de cohabitation.");
-      }
+      // (Storage : tout est regroupé dans la section « Storage » ci-dessous.)
 
       // Cash shop : redraw ImGui moderne OU fenêtre native
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
@@ -2063,8 +2106,10 @@ void MoonlightUi::OnRenderUI() {
 
       if (changed) SaveSettings();
 
-      // Navigation latérale (liste à gauche, contenu à droite)
-      static int s_iface_nav = 0;
+      // Navigation latérale (liste à gauche, contenu à droite). L'entrée active est
+      // un MEMBRE (iface_nav_) : OpenInterfaceSection la pilote depuis le bullet de
+      // barre de titre d'une autre fenêtre Bourgeon.
+      int& s_iface_nav = iface_nav_;
       static const char* kIfaceCats[] = {
           "Barre d'action",
           "Basic Info",
@@ -2074,7 +2119,8 @@ void MoonlightUi::OnRenderUI() {
           "Suivi de quête",
           "Descriptions",
           "Skin RO",
-          "Fenêtre NPC"};
+          "Fenêtre NPC",
+          "Storage"};
 
       // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
       // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
@@ -2496,14 +2542,8 @@ void MoonlightUi::OnRenderUI() {
           SameLine(); HelpMarker(
               "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
               "OFF : police integree d'ImGui (ProggyClean).");
-          bool skin_on = ro::IsSkinEnabled();
-          if (ro::RoCheckbox("Skin RO (fenêtres claires)", &skin_on)) {
-            ro::SetSkinEnabled(skin_on);
-            changed = true;
-          }
-          SameLine(); HelpMarker(
-              "ON : les fenêtres ImGui 'RO' utilisent la barre de titre et les "
-              "boutons du client.\nOFF : chrome ImGui standard.");
+          // (Le skin RO n'est plus optionnel : c'est l'habillage standard des
+          // fenêtres ImGui Bourgeon. Seuls ses réglages restent configurables.)
           changed |= ro::ShowRoSkinSettings();
 
           // ── Presets : jeux de couleurs sauvegardés ────────────────────────
@@ -2562,6 +2602,69 @@ void MoonlightUi::OnRenderUI() {
                 "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
                 "choix) pour filtrer les options. Décoche pour un menu épuré.");
             ImGui::EndDisabled();
+          }
+        }
+
+        // ── Storage (StorageTweaks : viewer ImGui + colonnes/filtre/survol) ───
+        if (s_iface_nav == 9) {
+          if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
+            bool changed = false;
+            changed |= ro::RoCheckbox("Storage Moonlight®", &stg->imgui_enabled_);
+            SameLine(); HelpMarker(
+                "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
+                "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
+                "viewer. Pas de cohabitation.");
+
+            ImGui::BeginDisabled(!stg->imgui_enabled_);
+
+            changed |= ro::RoCheckbox("Description au survol", &stg->desc_tooltip());
+            SameLine(); HelpMarker(
+                "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+                "texte) dans un panneau au skin RO, posé au curseur et effacé dès "
+                "que la souris quitte la ligne.\n"
+                "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
+                "menu contextuel.");
+
+            changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &stg->tabs_vertical());
+            SameLine(); HelpMarker(
+                "Dispose les catégories en liste verticale à gauche, comme la "
+                "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.");
+
+            changed |= ro::RoCheckbox("Images d'onglet", &stg->tab_images());
+            SameLine(); HelpMarker(
+                "ON : tuiles images du client — jeu tab_* en disposition verticale, "
+                "tabh_* en horizontale (all/use/wea/ammo/card/fav/cash/cos/etc). Les "
+                "catégories sans art propre réutilisent celui de leur famille et "
+                "portent alors un sigle (Am, Cs, Et).\n"
+                "OFF : onglets texte — TabBar classique en horizontal, libellé écrit "
+                "à la verticale en vertical.");
+
+            changed |= ro::RoCheckbox("Champ de filtre", &stg->show_filter());
+            SameLine(); HelpMarker(
+                "Affiche la barre de recherche par nom au-dessus de la liste.\n"
+                "Décoche pour gagner une ligne (le filtre est alors vidé).");
+
+            changed |= ro::RoCheckbox("Valeur estimée du storage", &stg->show_total_value());
+            SameLine(); HelpMarker(
+                "Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
+                "— elle suit donc l'onglet, le sous-type et le filtre.");
+
+            SeparatorText("Colonnes");
+            changed |= ro::RoCheckbox("Index", &stg->show_index_col());
+            SameLine(); HelpMarker(
+                "Index storage (slot) — un item récemment ajouté a un index élevé.");
+            changed |= ro::RoCheckbox("ID d'item", &stg->show_id_col());
+            SameLine(); HelpMarker("Colonne avec l'id numérique de l'item.");
+            changed |= ro::RoCheckbox("Slots", &stg->show_slots_col());
+            SameLine(); HelpMarker("Colonne avec le nombre de slots de carte.");
+            changed |= ro::RoCheckbox("Prix de revente", &stg->show_value_col());
+            SameLine(); HelpMarker(
+                "Colonne avec le prix de revente NPC × la quantité du stack.");
+
+            ImGui::EndDisabled();
+            if (changed) SaveSettings();
+          } else {
+            GrayText("(plugin indisponible)");
           }
         }
         PopItemWidth();

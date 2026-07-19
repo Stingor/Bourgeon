@@ -142,7 +142,7 @@ void TextCp949(const char* cp949) {
 // ── Skin RO ───────────────────────────────────────────────────────────────────
 namespace {
 
-bool g_skin_enabled = true;
+// (Plus de g_skin_enabled : le skin RO est l'habillage standard, toujours actif.)
 int g_skin_colors = 0;  // combien de PushStyleColor à dépiler dans EndRoWindow
 int g_skin_vars = 0;
 
@@ -178,7 +178,15 @@ struct SkinTex {
   unsigned epoch = 0;  // device epoch sous lequel tex a été créée (cf Overlay_DeviceEpoch)
 };
 SkinTex g_tl, g_tm, g_tr, g_close, g_close_on, g_mini, g_mini_on;
-SkinTex g_base;  // bullet sys_base devant le titre (décoratif)
+SkinTex g_base, g_base_on;  // bullet sys_base devant le titre (décoratif ou bouton)
+// Bullet cliquable demandé pour la PROCHAINE fenêtre RO (SetNextWindowTitleBullet),
+// puis résultat du clic pour la fenêtre courante (TitleBulletClicked).
+bool g_next_bullet = false;
+const char* g_next_bullet_tip = nullptr;
+bool g_bullet_clicked = false;
+// Couleur de corps demandée pour la PROCHAINE fenêtre RO (SetNextWindowBodyColor).
+bool g_next_body_set = false;
+unsigned int g_next_body_col = 0;
 SkinTex g_btn_out_l, g_btn_out_m, g_btn_out_r;
 SkinTex g_btn_over_l, g_btn_over_m, g_btn_over_r;
 SkinTex g_btn_press_l, g_btn_press_m, g_btn_press_r;
@@ -429,9 +437,12 @@ void DrawRoScrollbar(ImGuiWindow* w) {
 
 }  // namespace
 
-void SetSkinEnabled(bool enabled) { g_skin_enabled = enabled; }
-bool IsSkinEnabled() { return g_skin_enabled; }
 RoSkinConfig& SkinConfig() { return g_cfg; }
+
+unsigned int ListBodyColorU32() {
+  return ImGui::ColorConvertFloat4ToU32(ImVec4(g_cfg.list_col[0], g_cfg.list_col[1],
+                                               g_cfg.list_col[2], g_cfg.list_col[3]));
+}
 
 // ── Échap centralisé ──
 // On ne stocke QUE des ImGuiWindow* (persistants) — jamais de bool* (souvent un
@@ -567,20 +578,42 @@ static int PushSkinColors() {
   return 24;
 }
 
+void SetNextWindowTitleBullet(const char* tooltip) {
+  g_next_bullet = true;
+  g_next_bullet_tip = tooltip;
+}
+
+bool TitleBulletClicked() { return g_bullet_clicked; }
+
+void SetNextWindowBodyColor(unsigned int argb) {
+  g_next_body_set = true;
+  g_next_body_col = argb;
+}
+
 bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
-  if (!g_skin_enabled) {
-    g_skin_colors = g_skin_vars = 0;
-    g_skin_active = false;
-    const bool o = ImGui::Begin(title, p_open, imgui_window_flags);
-    RegisterEscapeWindow(p_open);
-    return o;
-  }
+  // Consommé quoi qu'il arrive : la demande ne doit pas fuiter sur la fenêtre
+  // suivante si celle-ci n'est pas peinte (fenêtre masquée…).
+  const bool bullet_btn = g_next_bullet;
+  const char* bullet_tip = g_next_bullet_tip;
+  g_next_bullet = false;
+  g_next_bullet_tip = nullptr;
+  g_bullet_clicked = false;
+  const bool body_set = g_next_body_set;
+  const unsigned int body_col = g_next_body_col;
+  g_next_body_set = false;
+
   g_skin_active = true;
 
   // On garde la mécanique ImGui (drag/resize/collapse) mais on peint nous-mêmes la
   // barre de titre et les boutons système → title bar native transparente, close
   // natif désactivé (on dessine sys_close). p_open est géré manuellement.
   g_skin_colors = PushSkinColors();
+  // Corps forcé par l'appelant (SetNextWindowBodyColor) : s'ajoute aux 24 pushes et
+  // écrase WindowBg, comme le fait BeginRoDescWindow pour son fond blanc.
+  if (body_set) {
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, body_col);
+    ++g_skin_colors;
+  }
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   // Arrondi bas fixe ~3px (le haut est couvert par l'art titre).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
@@ -615,6 +648,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     EnsureTex("basic_interface\\sys_mini_off.bmp", skin::kSysMiniOff, g_mini);
     EnsureTex("basic_interface\\sys_mini_on.bmp", skin::kSysMiniOn, g_mini_on);
     EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
+    if (bullet_btn)
+      EnsureTex("basic_interface\\sys_base_on.bmp", skin::kSysBaseOn, g_base_on);
 
     // Repliée : le rect visible EST la barre de titre ; sinon TitleBarRect().
     const ImRect tb = w->Collapsed ? w->Rect() : w->TitleBarRect();
@@ -640,13 +675,28 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
     BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
 
-    // Bullet sys_base devant le titre (décoratif, comme le natif RO).
+    // Bullet sys_base devant le titre : décoratif (comme le natif RO), ou bouton
+    // si SetNextWindowTitleBullet a été appelé — art « on » au survol, curseur
+    // main, et le clic est remonté à l'appelant via TitleBulletClicked().
     const float base_sz = (float)g_base.w;  // 11
     const float base_x = tb.Min.x + 5.0f;
     const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
-    if (g_base.tex)
-      BlitStretch(dl, g_base, ImVec2(base_x, base_y),
-                  ImVec2(base_x + base_sz, base_y + base_sz));
+    const ImVec2 base_tl(base_x, base_y);
+    const ImVec2 base_br(base_x + base_sz, base_y + base_sz);
+    bool bullet_hovered = false;
+    if (bullet_btn) {
+      // Cible élargie de 2px : 11px est trop petit pour viser confortablement.
+      bullet_hovered = ImGui::IsMouseHoveringRect(
+          ImVec2(base_tl.x - 2.0f, base_tl.y - 2.0f),
+          ImVec2(base_br.x + 2.0f, base_br.y + 2.0f), false);
+      if (bullet_hovered) {
+        SetHoverCursor(kRoCursorHand);
+        g_bullet_clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+      }
+    }
+    const SkinTex& base_tex =
+        (bullet_hovered && g_base_on.tex) ? g_base_on : g_base;
+    if (base_tex.tex) BlitStretch(dl, base_tex, base_tl, base_br);
     const float text_x = base_x + base_sz + 4.0f;
 
     // Titre par-dessus (couleur configurable ; coupe le "##id").
@@ -681,6 +731,11 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     }
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
+
+    // Tooltip du bullet APRÈS le PopClipRect : ImGui::SetTooltip ouvre une autre
+    // fenêtre (donc une autre draw list) — la peinture du titre doit être finie.
+    if (bullet_hovered && bullet_tip && bullet_tip[0])
+      ImGui::SetTooltip("%s", bullet_tip);
 
     if (close_clicked && p_open) *p_open = false;
     if (mini_clicked) ImGui::SetWindowCollapsed(w, !w->Collapsed);
@@ -737,13 +792,6 @@ void EndRoWindow() {
 // cadre boîte sysbox), même config/couleurs/scrollbar que le reste du skin.
 bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
                        unsigned int title_shadow) {
-  if (!g_skin_enabled) {
-    g_skin_colors = g_skin_vars = 0;
-    g_skin_active = false;
-    const bool o = ImGui::Begin(title, p_open, imgui_window_flags);
-    RegisterEscapeWindow(p_open);
-    return o;
-  }
   g_skin_active = true;
 
   g_skin_colors = PushSkinColors();
@@ -862,11 +910,6 @@ void EndRoDescWindow() { EndRoWindow(); }  // même teardown (scrollbar + pop)
 // Panneau de description SANS barre de titre : cadre boîte sysbox complet (9-slice
 // avec le haut), fond blanc + bordure. Pour les sous-panneaux (cartes, options).
 bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
-  if (!g_skin_enabled) {
-    g_skin_colors = g_skin_vars = 0;
-    g_skin_active = false;
-    return ImGui::Begin(id, nullptr, imgui_window_flags);
-  }
   g_skin_active = true;
   g_skin_colors = PushSkinColors();
   ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
@@ -922,17 +965,15 @@ float DescPanelEdge() { return (float)skin::kSysboxLm.w; }
 // rect arbitraire, sur un ImDrawList arbitraire. Même art que BeginRoDescPanel,
 // mais sans créer de fenêtre ImGui -> l'appelant peut le poser sur la draw list
 // de sa fenêtre parente (=> suit son z-order). L'appelant gère le clip global.
-void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1) {
+void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
+                        bool fill_bg) {
   if (!dl || x1 <= x0 || y1 <= y0) return;
   const ImVec2 p0(x0, y0), p1(x1, y1);
-  // Fond clair (suit alpha/luminosité du skin comme les autres pièces main).
-  dl->AddRectFilled(p0, p1, ApplySkinTint(IM_COL32(255, 255, 255, 255)),
-                    g_skin_enabled ? 0.0f : 3.0f);
-  if (!g_skin_enabled) {  // repli : simple rounded-rect + bordure
-    dl->AddRect(p0, p1, ApplySkinTint(IM_COL32(0xC2, 0xC2, 0xC2, 255)), 3.0f, 0,
-                1.0f);
-    return;
-  }
+  // Fond clair (suit alpha/luminosité du skin comme les autres pièces main). Sauté
+  // quand l'appelant a déjà peint un fond ARRONDI : ce rect-ci est à angles droits
+  // et recouvrirait ses coins.
+  if (fill_bg)
+    dl->AddRectFilled(p0, p1, ApplySkinTint(IM_COL32(255, 255, 255, 255)), 0.0f);
   EnsureTex("sysbox_lu.bmp", skin::kSysboxLu, g_sb_lu);
   EnsureTex("sysbox_mu.bmp", skin::kSysboxMu, g_sb_mu);
   EnsureTex("sysbox_ru.bmp", skin::kSysboxRu, g_sb_ru);
@@ -1138,9 +1179,6 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
                            const void* p_min, const void* p_max,
                            const char* format, ImGuiSliderFlags flags,
                            float arrow_step) {
-  if (!g_skin_enabled)
-    return ImGui::SliderScalar(label, dt, p_data, p_min, p_max, format, flags);
-
   ImGuiWindow* win = ImGui::GetCurrentWindow();
   if (!win || win->SkipItems) return false;
   ImGuiContext& g = *ImGui::GetCurrentContext();
@@ -1464,6 +1502,7 @@ bool ShowRoSkinSettings() {
   ch |= ColorPicker("Fond carte item", g_cfg.card_col);
   ch |= ColorPicker("Bandeau carte", g_cfg.card_head_col);
   ch |= ColorPicker("Texte bandeau carte", g_cfg.card_head_text);
+  ch |= ColorPicker("Fond fenêtre de liste (storage)", g_cfg.list_col);
   if (ImGui::Button("Réinitialiser le skin")) {
     g_cfg = RoSkinConfig();
     ch = true;

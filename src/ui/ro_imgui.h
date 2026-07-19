@@ -53,12 +53,34 @@ void TextCp949(const char* cp949);
 //   if (ro::BeginRoWindow("Titre", &open)) { ... }
 //   ro::EndRoWindow();
 // EndRoWindow doit TOUJOURS être appelé après BeginRoWindow (même si false).
-// Quand le skin est désactivé (SetSkinEnabled(false)), retombe sur un ImGui::Begin
-// standard — les mécaniques (drag/resize/collapse) restent natives ImGui dans les
-// deux cas. Renvoie ImGui::Begin (false si repliée/masquée).
+// Les mécaniques (drag/resize/collapse) restent natives ImGui ; seules la barre de
+// titre et la peinture sont à nous. Renvoie ImGui::Begin (false si repliée/masquée).
 bool BeginRoWindow(const char* title, bool* p_open = nullptr,
                    int imgui_window_flags = 0);
 void EndRoWindow();
+
+// ── Bullet de la barre de titre, cliquable ────────────────────────────────────
+// Le petit blit sys_base à gauche du titre est décoratif par défaut (comme dans le
+// client). Appeler ceci JUSTE AVANT BeginRoWindow le rend interactif pour cette
+// fenêtre-là : survol = art « on » + curseur main + `tooltip`, et le clic est
+// récupéré par TitleBulletClicked() juste APRÈS BeginRoWindow (à appeler que Begin
+// ait renvoyé true ou non, la barre de titre existe même repliée) :
+//   ro::SetNextWindowTitleBullet("Options du storage");
+//   const bool begun = ro::BeginRoWindow(...);
+//   if (ro::TitleBulletClicked()) /* ouvrir la config de CETTE fenêtre */;
+// TitleBulletClicked() ne vaut que pour la fenêtre qui vient d'être ouverte : la
+// demande est consommée par BeginRoWindow, elle ne fuit pas sur la suivante.
+void SetNextWindowTitleBullet(const char* tooltip = nullptr);
+bool TitleBulletClicked();
+
+// Couleur de CORPS (ImGuiCol_WindowBg) de la PROCHAINE fenêtre RO, en ARGB ImU32,
+// à la place de la couleur configurée du skin. Pour une fenêtre qui doit rester
+// blanche quels que soient les réglages (liste d'items du storage, p. ex.) :
+//   ro::SetNextWindowBodyColor(IM_COL32(255, 255, 255, 255));
+//   ro::BeginRoWindow(...);
+// Comme le bullet, la demande est CONSOMMÉE par BeginRoWindow (pas de fuite sur la
+// fenêtre suivante). Le reste du skin (titre, bordure, onglets…) est inchangé.
+void SetNextWindowBodyColor(unsigned int argb);
 
 // Bouton habillé avec les pièces btn_* du client (3-slice, états normal/survol/
 // pressé). w/h à 0 = taille auto (texte + marges / hauteur native). Renvoie true
@@ -123,14 +145,18 @@ void EndRoDescPanel();
 // à la main via DrawDescPanelFrame.
 float DescPanelEdge();
 
+// `fill_bg` = false : blitte UNIQUEMENT l'art sysbox, sans peindre le fond clair.
+// Indispensable quand l'appelant a déjà peint un fond ARRONDI dessous (le fond de
+// cette fonction est un rect à angles droits, il écraserait les coins ronds).
 // Dessine le cadre « panneau de description » (fond clair + cadre sysbox 9-slice,
 // même look que BeginRoDescPanel) dans le rect [x0,y0]-[x1,y1] sur un ImDrawList
 // ARBITRAIRE. Permet de dessiner des sous-panneaux (cartes, options) directement
 // sur la draw list de la fenêtre PARENTE — ainsi ils suivent son z-order au lieu
-// d'être des fenêtres ImGui séparées qui passent derrière les autres. Repli
-// rounded-rect si le skin est désactivé. L'appelant gère le clip (les coords
-// peuvent sortir du rect de la fenêtre courante -> PushClipRectFullScreen).
-void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1);
+// d'être des fenêtres ImGui séparées qui passent derrière les autres. L'appelant
+// gère le clip (les coords peuvent sortir du rect de la fenêtre courante ->
+// PushClipRectFullScreen).
+void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
+                        bool fill_bg = true);
 
 // ── Échap centralisé ──────────────────────────────────────────────────────────
 // Ferme la fenêtre RO la plus au-dessus (z-order) à chaque Échap, une par une,
@@ -156,9 +182,9 @@ void SuppressEscapeStack();
 // rendu suivant. Compte comme « ouverte » pour l'avalage d'Échap.
 void RegisterEscapeMinimizeWindow(bool* p_request_collapse);
 
-// Active/désactive le skin RO à chaud (les textures sont créées à la 1ère utilisation).
-void SetSkinEnabled(bool enabled);
-bool IsSkinEnabled();
+// (Le skin RO n'est plus optionnel : c'est l'habillage STANDARD des fenêtres ImGui
+// Bourgeon. SetSkinEnabled/IsSkinEnabled ont donc disparu — les textures sont
+// toujours créées paresseusement à la 1ère utilisation.)
 
 // ── Curseur RO au survol ──────────────────────────────────────────────────────
 // Le toolkit DEMANDE un type de curseur RO (valeur de *(CursorMgr+0x50)) pour la
@@ -187,8 +213,15 @@ struct RoSkinConfig {
   float card_col[4]       = {245.f / 255, 243.f / 255, 232.f / 255, 1.f};  // fond carte item (crème)
   float card_head_col[4]  = {58.f / 255, 55.f / 255, 48.f / 255, 1.f};     // bandeau titre de carte
   float card_head_text[4] = {240.f / 255, 238.f / 255, 228.f / 255, 1.f};  // texte du bandeau de carte
+  // Corps des fenêtres de LISTE (storage…) : elles veulent un fond propre, plus
+  // clair que le corps général, pour que la liste d'items se lise bien. Blanc pur
+  // par défaut. Utilisé via SetNextWindowBodyColor(ListBodyColorU32()).
+  float list_col[4] = {1.f, 1.f, 1.f, 1.f};
 };
 RoSkinConfig& SkinConfig();
+
+// `list_col` du skin en ARGB ImU32, prêt pour SetNextWindowBodyColor.
+unsigned int ListBodyColorU32();
 
 // Widgets de réglage du skin (sliders + color pickers) à placer dans un panneau
 // ImGui existant. Renvoie true si une valeur a changé (pour déclencher une sauvegarde).

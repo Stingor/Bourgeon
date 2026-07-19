@@ -148,6 +148,21 @@ class MoonlightUi : public Plugin {
   bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
   const char* ItemName(uint32_t id) const;  // nom via itemInfoMerged.lua (ou nullptr)
 
+  // ── Accès direct à une section de config ────────────────────────────────────
+  // Sections de l'en-tête « Interface de jeu » (ordre de kIfaceCats dans le .cc :
+  // les deux listes DOIVENT rester alignées).
+  enum IfaceSection {
+    kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
+    kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
+    kIfaceStorage,
+  };
+  // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,
+  // ouvre l'en-tête « Interface de jeu », sélectionne l'entrée de nav et scrolle
+  // dessus. Appelé par le bullet de barre de titre des fenêtres Bourgeon
+  // (cf. ro::SetNextWindowTitleBullet) pour joindre LEUR config en un clic.
+  // Prend effet au rendu suivant (sûr à appeler depuis n'importe quel OnRenderUI).
+  void OpenInterfaceSection(int section);
+
  private:
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
@@ -339,4 +354,11 @@ class MoonlightUi : public Plugin {
   // Repli demandé par Échap (dernière fenêtre avant le jeu) ; posé par
   // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
   bool collapse_requested_ = false;
+
+  // Section sélectionnée dans « Interface de jeu » (membre, et non statique local,
+  // pour qu'OpenInterfaceSection puisse la piloter depuis une autre fenêtre).
+  int  iface_nav_ = 0;
+  // Saut demandé par OpenInterfaceSection : force l'ouverture de l'en-tête et le
+  // scroll au prochain rendu, puis se consomme.
+  bool iface_jump_ = false;
 };

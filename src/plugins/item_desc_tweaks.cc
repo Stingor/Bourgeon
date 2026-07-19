@@ -1853,6 +1853,98 @@ void DrawScriptCode(const char* box_id, const std::string& raw) {
 
 }  // namespace
 
+// ── API partagée : contenu de description simplifié ─────────────────────────
+// Même corps que le survol d'une carte/enchant (nom + illustration si c'en est une
+// + lignes colorées), sans le rappel d'actions propre au panneau « Cartes ». La
+// desc vient de la DB native via GetCardDesc/LoadCardDesc, qui vaut pour N'IMPORTE
+// quel id d'item, pas seulement les cartes.
+namespace itemdesc {
+
+// Hauteur max de l'illustration dans l'aperçu. Les cardBmp font ~300x460 : à leur
+// taille native (ce que fait la fenêtre complète) elles écrasent le texte et
+// remplissent l'écran. On borne la HAUTEUR et on déduit la largeur du ratio.
+constexpr float kSimpleIllustH = 110.0f;
+
+void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
+                      int card_count, const SimpleOpt* opts, int opt_count) {
+  if (id == 0) return;
+  const CardDesc* cd = GetCardDesc(id);
+  const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme la fenêtre desc)
+  if (cd->name[0]) ImGui::TextColored(hdr, "%s", cd->name);
+  else             ImGui::TextColored(hdr, "#%u", id);
+
+  // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
+  const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
+                    std::strstr(cd->lines[0], "ItemID")) ? 1 : 0;
+  const bool has_desc = cd->line_count > skip;
+
+  // Vignette : illustration de carte RÉDUITE si c'en est une, sinon l'icône item.
+  IconTex img = GetCardIllust(id);
+  if (!img.tex) img = GetCardIcon(id);
+  if (img.tex || has_desc) ImGui::Separator();
+  // `wrap` = largeur TOTALE dispo. Le texte étant posé À DROITE de la vignette, il
+  // faut lui retirer la largeur de celle-ci + l'espacement, sinon il déborde du
+  // panneau et se fait couper à droite.
+  float text_wrap = wrap;
+  if (img.tex && img.w > 0 && img.h > 0) {
+    const float h = (std::min)(kSimpleIllustH, static_cast<float>(img.h));
+    const float w = h * img.w / static_cast<float>(img.h);
+    ImGui::Image(reinterpret_cast<ImTextureID>(img.tex), ImVec2(w, h));
+    if (has_desc) {
+      ImGui::SameLine(0, 8);
+      if (text_wrap > 0.0f) text_wrap -= w + 8.0f;
+    }
+  }
+  if (has_desc) {
+    ImGui::BeginGroup();
+    SelectableColoredText("##simpledesc", cd->lines + skip, cd->line_count - skip,
+                          IM_COL32(0, 0, 0, 255), text_wrap);
+    ImGui::EndGroup();
+  } else if (!img.tex) {
+    ImGui::TextDisabled("(pas de description)");
+  }
+
+  // ── Cartes / enchants insérés (données d'INSTANCE, pas de la DB) ───────────
+  int ncards = 0;
+  for (int i = 0; i < card_count; ++i)
+    if (cards && cards[i]) ++ncards;
+  if (ncards > 0) {
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), "Cartes / Enchants");
+    for (int i = 0; i < card_count; ++i) {
+      const uint32_t cid = cards ? cards[i] : 0;
+      if (!cid) continue;
+      const IconTex ic = GetCardIcon(cid);
+      if (ic.tex && ic.w > 0 && ic.h > 0) {
+        const float h = ImGui::GetTextLineHeight();
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex),
+                     ImVec2(h * ic.w / static_cast<float>(ic.h), h));
+        ImGui::SameLine(0, 4);
+      }
+      const CardDesc* ccd = GetCardDesc(cid);
+      if (ccd->name[0]) ImGui::TextUnformatted(ccd->name);
+      else              ImGui::Text("#%u", cid);
+    }
+  }
+
+  // ── Random options d'instance (nom localisé résolu par le Lua du client) ───
+  int nopts = 0;
+  for (int i = 0; i < opt_count; ++i)
+    if (opts && opts[i].index) ++nopts;
+  if (nopts > 0) {
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), "Options");
+    for (int i = 0; i < opt_count; ++i) {
+      if (!opts || !opts[i].index) continue;
+      const char* nm = GetOptName(opts[i].index, opts[i].value);
+      if (nm && nm[0]) ImGui::TextUnformatted(nm);
+      else ImGui::Text("Option #%d : %d", opts[i].index, opts[i].value);
+    }
+  }
+}
+
+}  // namespace itemdesc
+
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
 // Description). L'onglet Description étant actif par défaut, aucune requête n'est
 // lancée tant que le joueur ne sélectionne pas un onglet data.

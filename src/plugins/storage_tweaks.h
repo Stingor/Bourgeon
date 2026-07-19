@@ -38,6 +38,25 @@ class StorageTweaks : public Plugin {
 
   bool& show_panel() { return show_panel_; }
 
+  // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Storage » du
+  // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
+  // Description au SURVOL : ouvre la VRAIE fenêtre de description (celle du clic
+  // droit) tant que la souris reste sur la ligne, et la ferme en sortant.
+  bool& desc_tooltip()   { return show_desc_tooltip_; }
+  bool& show_index_col() { return show_index_col_; }
+  bool& show_id_col()    { return show_id_col_; }
+  bool& show_slots_col() { return show_slots_col_; }
+  bool& show_value_col() { return show_value_col_; }
+  bool& show_total_value() { return show_total_value_; }
+  bool& show_filter()    { return show_filter_; }
+  // Disposition des onglets de catégorie : false = horizontale (TabBar, défaut),
+  // true = verticale à gauche (comme la fenêtre native).
+  bool& tabs_vertical()  { return tabs_vertical_; }
+  // Disposition VERTICALE uniquement : true = tuiles images du client (tab_*.bmp),
+  // false = onglets texte au libellé tourné à 90°.
+  bool& tab_images()     { return tab_images_; }
+  int&  cur_tab()        { return cur_tab_; }
+
   // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
   // ON = viewer ImGui + fenêtre native cachée ; OFF = entrepôt natif seul, aucun viewer.
   // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
@@ -92,6 +111,12 @@ class StorageTweaks : public Plugin {
     int      type = 0;        // info+0 : type d'item (pour les onglets)
     uint8_t  identified = 0;  // info+0x5c (flag pour la résolution d'icône)
     char     name[64] = {0};
+    // Données d'INSTANCE lues dans l'ItemSkillInfo (absentes de la DB) : elles
+    // alimentent l'aperçu de description au survol.
+    uint32_t cards[4] = {0};  // info+0x1c : 4 slots carte/enchant (0 = vide)
+    int      opt_count = 0;   // info+0x98 : nombre de random options
+    struct Opt { int16_t index; int16_t value; uint8_t param; };
+    Opt      opts[5] = {};    // info+0x9c : entrées de 5 octets
   };
   static constexpr int kMaxItems = 700;  // MAX_STORAGE serveur (marge)
 
@@ -102,7 +127,21 @@ class StorageTweaks : public Plugin {
   bool  show_id_col_ = false; // setting : afficher une colonne avec l'id d'item
   bool  show_index_col_ = false;  // setting : afficher l'index storage (slot)
   bool  show_slots_col_ = false;  // setting : afficher une colonne nb de slots carte
-  int   cur_tab_ = 0;         // onglet catégorie sélectionné (0 = Tout)
+  bool  show_desc_tooltip_ = false;  // setting : description native au survol
+  bool  show_value_col_ = true;    // setting : colonne prix de revente (NPC * qté)
+  bool  show_total_value_ = true;  // setting : valeur estimée du storage (en-tête)
+  bool  show_filter_ = true;  // setting : afficher le champ de filtre par nom
+  bool  tabs_vertical_ = false;  // setting : onglets verticaux à gauche (natif)
+  bool  tab_images_ = true;      // setting (vertical) : tuiles images vs texte 90°
+  int   cur_tab_ = 0;         // onglet catégorie sélectionné (0 = Tout), persisté
+  // Item survolé ce frame (0 = aucun) : alimente l'aperçu de description, un
+  // panneau RO simplifié dessiné au curseur après la fenêtre du viewer. L'INDEX
+  // sert à retrouver cartes/options (données d'instance) ; il n'est valable que
+  // dans la frame courante, items_ étant reconstruit à chaque tick.
+  uint32_t hover_desc_id_ = 0;
+  int      hover_desc_idx_ = -1;
+  // Onglet persisté déjà ré-appliqué au TabBar ? (une seule fois par session)
+  bool  tab_applied_ = false;
 
   // Rect écran du viewer (capturé au rendu) pour tester le drop natif dessus.
   float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
