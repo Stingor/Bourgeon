@@ -703,8 +703,24 @@ void MoonlightUi::LoadSettings() {
         g_ro_presets.push_back({"Sepia", d});
       }
     }
-    if (auto* iv = Bourgeon::Instance().inventory_viewer())
+    if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
       iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
+      iv->show_filter()   = ui["inventory_filter"].as<bool>(iv->show_filter());
+      iv->tabs_vertical() =
+          ui["inventory_tabs_vertical"].as<bool>(iv->tabs_vertical());
+      iv->lock_size()   = ui["inventory_lock_size"].as<bool>(iv->lock_size());
+      iv->free_layout() = ui["inventory_free_layout"].as<bool>(iv->free_layout());
+      // Placement libre : map nameid -> index de case (client-side, comme les
+      // favoris du storage).
+      if (const YAML::Node lay = ui["inventory_layout"]) {
+        iv->layout_.clear();
+        for (auto it = lay.begin(); it != lay.end(); ++it) {
+          const uint32_t id = it->first.as<uint32_t>(0);
+          const int cell = it->second.as<int>(-1);
+          if (id != 0 && cell >= 0) iv->layout_[id] = cell;
+        }
+      }
+    }
     if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
       stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
       stg->desc_tooltip() =
@@ -1204,6 +1220,19 @@ void MoonlightUi::SaveSettings() {
     out << YAML::EndSeq;
     auto* iv = Bourgeon::Instance().inventory_viewer();
     out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
+    out << YAML::Key << "inventory_filter" << YAML::Value << (iv ? iv->show_filter() : true);
+    out << YAML::Key << "inventory_tabs_vertical" << YAML::Value
+        << (iv ? iv->tabs_vertical() : true);
+    out << YAML::Key << "inventory_lock_size" << YAML::Value << (iv ? iv->lock_size() : false);
+    out << YAML::Key << "inventory_free_layout" << YAML::Value << (iv ? iv->free_layout() : false);
+    // Placement libre : nameid -> case. Trié pour un yaml stable (pas de diff parasite).
+    out << YAML::Key << "inventory_layout" << YAML::Value << YAML::Flow << YAML::BeginMap;
+    if (iv) {
+      std::vector<std::pair<uint32_t, int>> lay(iv->layout_.begin(), iv->layout_.end());
+      std::sort(lay.begin(), lay.end());
+      for (const auto& e : lay) out << YAML::Key << e.first << YAML::Value << e.second;
+    }
+    out << YAML::EndMap;
     auto* stg = Bourgeon::Instance().storage_tweaks();
     out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : false);
     out << YAML::Key << "storage_desc_tooltip" << YAML::Value
@@ -1723,7 +1752,7 @@ void AlignGrid::Draw() const {
 // ouvrir l'en-tête + sélectionner l'entrée). Sûr à appeler pendant le rendu d'une
 // AUTRE fenêtre (le bullet de barre de titre du storage, p. ex.).
 void MoonlightUi::OpenInterfaceSection(int section) {
-  if (section < 0 || section > kIfaceStorage) return;
+  if (section < 0 || section > kIfaceInventory) return;
   iface_nav_ = section;
   iface_jump_ = true;
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
@@ -2059,14 +2088,7 @@ void MoonlightUi::OnRenderUI() {
           "pendant le déplacement et le redimensionnement.");
       changed |= ColorPicker("Couleur grille", grid_.color);
 
-      // Inventaire : viewer ImGui moderne (grille) OU fenêtre native (opt-in)
-      if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-        changed |= ro::RoCheckbox("Inventaire Moonlight®", &iv->imgui_enabled_);
-        SameLine(); HelpMarker(
-            "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
-            "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
-            "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
-      }
+      // (Inventaire et Storage : tout est regroupé dans leurs sections dédiées.)
 
       // (Storage : tout est regroupé dans la section « Storage » ci-dessous.)
 
@@ -2120,7 +2142,8 @@ void MoonlightUi::OnRenderUI() {
           "Descriptions",
           "Skin RO",
           "Fenêtre NPC",
-          "Storage"};
+          "Storage",
+          "Inventaire"};
 
       // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
       // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
@@ -2660,6 +2683,59 @@ void MoonlightUi::OnRenderUI() {
             changed |= ro::RoCheckbox("Prix de revente", &stg->show_value_col());
             SameLine(); HelpMarker(
                 "Colonne avec le prix de revente NPC × la quantité du stack.");
+
+            ImGui::EndDisabled();
+            if (changed) SaveSettings();
+          } else {
+            GrayText("(plugin indisponible)");
+          }
+        }
+
+        // ── Inventaire (InventoryViewer : viewer ImGui + filtre/onglets) ──────
+        if (s_iface_nav == 10) {
+          if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
+            bool changed = false;
+            changed |= ro::RoCheckbox("Inventaire Moonlight®", &iv->imgui_enabled_);
+            SameLine(); HelpMarker(
+                "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
+                "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
+                "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
+
+            ImGui::BeginDisabled(!iv->imgui_enabled_);
+
+            changed |= ro::RoCheckbox("Champ de filtre", &iv->show_filter());
+            SameLine(); HelpMarker(
+                "Affiche la barre de recherche par nom au-dessus de la grille.\n"
+                "Décoche pour gagner une ligne (le filtre est alors vidé).");
+
+            changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &iv->tabs_vertical());
+            SameLine(); HelpMarker(
+                "ON (défaut) : onglets en colonne à gauche de la grille, comme la "
+                "fenêtre native (images tab_*).\n"
+                "OFF : rangée horizontale au-dessus de la grille (images tabh_*).");
+
+            changed |= ro::RoCheckbox("Verrouiller la taille", &iv->lock_size());
+            SameLine(); HelpMarker(
+                "La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).");
+
+            // Le placement libre EXIGE la taille verrouillée : une case est un index
+            // absolu (ligne × colonnes), donc changer la largeur change le nombre de
+            // colonnes et mélangerait toutes les positions mémorisées.
+            ImGui::BeginDisabled(!iv->lock_size());
+            Indent();
+              changed |= ro::RoCheckbox("Placement libre des items", &iv->free_layout());
+              SameLine(); HelpMarker(
+                  "Glisse un item sur une case vide pour l'y fixer ; sur une case "
+                  "occupée, les deux s'échangent. Les items sans case attribuée "
+                  "remplissent les trous restants, donc un nouvel objet ramassé ne "
+                  "bouscule plus ta disposition.\n\n"
+                  "L'onglet « Tout » n'est PAS concerné : il mélange les catégories, "
+                  "donc une case n'y désigne pas le même emplacement que dans "
+                  "l'onglet d'origine de l'item. Il garde le remplissage automatique.\n\n"
+                  "Nécessite « Verrouiller la taille » : les cases sont repérées par "
+                  "un index absolu, qu'un changement de largeur décalerait.");
+            Unindent();
+            ImGui::EndDisabled();
 
             ImGui::EndDisabled();
             if (changed) SaveSettings();

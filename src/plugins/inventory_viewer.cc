@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cmath>    // std::fabs (recalage de la taille verrouillée sur les tuiles)
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
@@ -539,17 +540,22 @@ FooterVals ReadFooterVals() {
 struct Cat { const char* label; const int* types; int n; bool fav; const char* img; };
 const int kUse[]   = {0, 1, 2, 0x12};
 const int kEquip[] = {4, 5, 8, 9, 0xb, 0xc, 0xd, 0xe, 0xf};
-const int kEtc[]   = {3, 7, 10, 0x10, 0x11, 0x13};
+// Munitions (IT_AMMO 10 + variantes) SORTIES d'Etc : elles ont leur propre onglet,
+// sinon elles apparaîtraient dans les deux (ItemInCat s'arrête au 1er type qui
+// matche, mais chaque onglet est testé indépendamment).
+const int kEtc[]   = {3, 7};
+const int kAmmo[]  = {10, 0x10, 0x11, 0x13};
 const int kCard[]  = {6};
 const Cat kCats[] = {
     {"Tout", nullptr, 0, false, "tab_all"},
     {"Conso", kUse, 4, false, "tab_use"},
     {"Equip", kEquip, 9, false, "tab_cos"},
-    {"Etc", kEtc, 6, false, "tab_etc"},
+    {"Ammo", kAmmo, 4, false, "tab_ammo"},
+    {"Etc", kEtc, 2, false, "tab_etc"},
     {"Cartes", kCard, 1, false, "tab_card"},
     {"Favoris", nullptr, 0, true, "tab_fav"},
 };
-constexpr int kNumCats = 6;
+constexpr int kNumCats = 7;
 
 // Convertit une texture jeu en ImTextureID ImGui.
 inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
@@ -569,7 +575,8 @@ BarTex g_tile;         // itemwin_mid.bmp : fond de tuile d'item (32px)
 BarTex g_tile_lock;    // itemwin_mid_lock.bmp : fond quand deal-lock actif sur Favoris
 BarTex g_ico_weight;   // icon_weight.bmp : icône poids (footer)
 BarTex g_ico_num;      // icon_num.bmp : icône compteur d'items (footer)
-BarTex g_tab[kNumCats][2];  // onglets images [catégorie][0=actif(1.bmp), 1=inactif(2.bmp)]
+BarTex g_tab[kNumCats][2];   // onglets VERTICAUX   [cat][0=actif(1.bmp), 1=inactif(2.bmp)]
+BarTex g_tabh[kNumCats][2];  // onglets HORIZONTAUX : mêmes noms en tabh_* (jeu dédié)
 BarTex g_btn_drop[2];  // item_drop_lock [0=off/déverrouillé, 1=on/verrouillé]
 BarTex g_btn_deal[2];  // bt_itemDeal_lock [0=off, 1=on/verrouillé (anti-vente NPC)]
 BarTex g_btn_sort[2];  // bt_sort [0=off (_off.bmp), 1=on (.bmp) = vue triée]
@@ -629,12 +636,20 @@ void LoadFooterAssets() {
   g_ico_num    = LoadTexByPath(reinterpret_cast<const char*>(kIconNumPath));
   // Onglets images (basic_interface\<img>1.bmp actif / <img>2.bmp inactif).
   for (int c = 0; c < kNumCats; ++c) {
-    if (!kCats[c].img) continue;
-    char nm[40];
-    std::snprintf(nm, sizeof(nm), "%s1.bmp", kCats[c].img);
+    const char* base = kCats[c].img;
+    if (!base) continue;
+    char nm[48];
+    std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
     BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = LoadTexByPath(path);
-    std::snprintf(nm, sizeof(nm), "%s2.bmp", kCats[c].img);
+    std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
     BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = LoadTexByPath(path);
+    // Jeu HORIZONTAL : même nom avec un « h » après « tab » (tab_use -> tabh_use).
+    char hbase[40];
+    std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute "tab"
+    std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = LoadTexByPath(path);
+    std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = LoadTexByPath(path);
   }
   // Boutons footer natifs (\inventory\..., préfixe CP949 via InventoryPath). idx1 =
   // état ACTIF (verrouillé / trié). Noms exacts = strings exe (RE 2026-07-09).
@@ -720,6 +735,17 @@ float TabStripWidth() {
   return w > 0.0f ? w : 22.0f;
 }
 
+// Hauteur de la rangée d'onglets HORIZONTALE = plus grande hauteur du jeu tabh_*
+// (repli 22 px). Comme pour la largeur du strip vertical : c'est la dimension
+// transverse, jamais étirée — l'autre se déduit du ratio de chaque image.
+float TabStripHeightH() {
+  float h = 0.0f;
+  for (int c = 0; c < kNumCats; ++c)
+    for (int s = 0; s < 2; ++s)
+      if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
+  return h > 0.0f ? h : 22.0f;
+}
+
 // Teinte des AddImage (icônes/tuiles/onglets/footer) = luminosité + opacité du skin RO,
 // pour que ces réglages s'appliquent AUSSI aux images du jeu (dessinées en draw-list
 // brut). b>1 ne peut pas sur-exposer via col -> capé à 1 ; a = style.Alpha du skin.
@@ -783,6 +809,7 @@ void MaybeFlushTextures() {
   for (auto& b : g_bar) b = BarTex{};
   g_tile = g_tile_lock = g_ico_weight = g_ico_num = BarTex{};
   for (auto& row : g_tab) for (auto& b : row) b = BarTex{};
+  for (auto& row : g_tabh) for (auto& b : row) b = BarTex{};
   for (auto& b : g_btn_drop) b = BarTex{};
   for (auto& b : g_btn_deal) b = BarTex{};
   for (auto& b : g_btn_sort) b = BarTex{};
@@ -935,17 +962,42 @@ void InventoryViewer::OnRenderUI() {
   ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
   // Resize par PALIER de tuile (chrome mesuré la frame précédente) : largeur/hauteur
   // saute d'une colonne/ligne de tuiles -> jamais de colonne partielle (fix overflow).
-  if (g_snap.valid) {
+  // Inutile quand la taille est verrouillée (plus aucun redimensionnement).
+  if (g_snap.valid && !lock_size_) {
     const float minGrid = 5.0f * (g_snap.cell + g_snap.gap) - g_snap.gap;  // min 5 tuiles
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(g_snap.chromew + minGrid, g_snap.chromeh + minGrid),
         ImVec2(10000.0f, 10000.0f), SnapWindowSize);
+  } else if (g_snap.valid && win_valid_) {
+    // Taille VERROUILLÉE : le callback de snap ne tourne plus (il n'agit que pendant
+    // un redimensionnement), donc la fenêtre reste figée sur la hauteur qu'elle avait
+    // — presque jamais un multiple exact de tuiles, d'où une dernière ligne coupée,
+    // items ou pas. On la recale une fois sur le palier le plus proche ; la frame
+    // suivante la taille correspond déjà et plus rien n'est forcé.
+    const float step = g_snap.cell + g_snap.gap;
+    int cols = static_cast<int>((win_w_ - g_snap.chromew + g_snap.gap) / step + 0.5f);
+    int rows = static_cast<int>((win_h_ - g_snap.chromeh + g_snap.gap) / step + 0.5f);
+    if (cols < 5) cols = 5;
+    if (rows < 5) rows = 5;
+    const ImVec2 snapped(g_snap.chromew + cols * step - g_snap.gap,
+                         g_snap.chromeh + rows * step - g_snap.gap);
+    if (std::fabs(snapped.x - win_w_) > 0.5f || std::fabs(snapped.y - win_h_) > 0.5f)
+      ImGui::SetNextWindowSize(snapped, ImGuiCond_Always);
   }
 
+  // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre
+  // (panneau Moonlight > Interface de jeu > Inventaire), comme le storage.
+  ro::SetNextWindowTitleBullet("Options de l'inventaire");
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme le natif ; clic dessus = SetWindowCollapsed (géré par BeginRoWindow).
-  const bool begun =
-      ro::BeginRoWindow("Inventaire###bourgeon_inventory", &show_panel_, 0);
+  const bool begun = ro::BeginRoWindow(
+      "Inventaire###bourgeon_inventory", &show_panel_,
+      lock_size_ ? ImGuiWindowFlags_NoResize : 0);
+  // À appeler que Begin ait renvoyé true ou non : la barre de titre existe même
+  // fenêtre repliée, et la demande est consommée par BeginRoWindow.
+  if (ro::TitleBulletClicked())
+    if (auto* mu = Bourgeon::Instance().moonlight_ui())
+      mu->OpenInterfaceSection(MoonlightUi::kIfaceInventory);
   // X du viewer -> ferme l'inventaire natif (client-side). Réarme show_panel_.
   if (!show_panel_) { CloseInventory(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
@@ -994,8 +1046,8 @@ void InventoryViewer::OnRenderUI() {
     ImGui::EndPopup();
   }
 
-  // ── Aide raccourcis (?) + recherche (occupe le reste de la ligne) ──
-  ImGui::AlignTextToFramePadding();
+  // Aide raccourcis : le texte est construit ici, mais le "(?)" est émis dans le
+  // FOOTER (cf. plus bas) pour ne pas manger une ligne au-dessus de la grille.
   std::string desc = "Raccourcis inventaire\n\n"
                      "- Double-clic gauche : utiliser / équiper\n"
                      "- Ctrl + double-clic gauche : équiper en main gauche\n"
@@ -1006,13 +1058,17 @@ void InventoryViewer::OnRenderUI() {
                      "- Alt + clic droit : transfert rapide (storage / chariot si ouvert)\n"
                      "- Glisser : chariot / storage / équipement / barre d'action / sol\n"
                      "- Glisser un favori sur un autre onglet : le retirer des favoris";
-  HelpMarker(desc.c_str());
-  ImGui::SameLine();
   static ImGuiTextFilter filter;
-  ImGui::SetNextItemWidth(-1.0f);
-  if (ImGui::InputTextWithHint("##inv_filter", "Filtrer...", filter.InputBuf,
-                               IM_ARRAYSIZE(filter.InputBuf)))
-    filter.Build();
+  if (show_filter_) {
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputTextWithHint("##inv_filter", "Filtrer...", filter.InputBuf,
+                                 IM_ARRAYSIZE(filter.InputBuf)))
+      filter.Build();
+  } else if (filter.InputBuf[0]) {
+    // Filtre masqué : on le vide, sinon il continuerait de cacher des items sans
+    // que rien à l'écran ne l'explique.
+    filter.Clear();
+  }
 
   // ── Dimensions communes (footer réservé + snap) ──
   LoadFooterAssets();
@@ -1023,36 +1079,53 @@ void InventoryViewer::OnRenderUI() {
   const float mainH = ImGui::GetWindowHeight();
   const float childH = -(footerH + style.ItemSpacing.y);
 
-  // ── Onglets IMAGES verticaux à GAUCHE (comme inventory_tweaks : tab_use/cos/etc/
-  //    card/fav ; actif = <img>1.bmp, inactif = <img>2.bmp). Tout = libellé texte. ──
+  // ── Onglets IMAGES (comme inventory_tweaks : tab_use/cos/etc/card/fav ; actif =
+  //    <img>1.bmp, inactif = <img>2.bmp). Deux dispositions au choix : strip
+  //    VERTICAL à gauche (défaut, comme le natif) ou rangée HORIZONTALE au-dessus
+  //    de la grille, qui utilise alors le jeu d'images tabh_* (mêmes noms avec un
+  //    « h » après « tab »). Sans image chargée -> libellé texte.
+  const bool vtabs = tabs_vertical_;
   const float tabW = TabStripWidth();
+  const float tabH = TabStripHeightH();
   // Rect (écran) de l'onglet ACTIF, capturé dans la boucle -> sert à "manger" le bord
   // C5C5C5 entre le strip et la grille (passage blanc continu = souligne l'onglet actif).
   ImVec2 activeTabMin(0, 0), activeTabMax(0, 0);
   bool haveActiveTab = false;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));  // strip sans marge
-  ImGui::BeginChild("inv_tabs", ImVec2(tabW, childH), false,
+  ImGui::BeginChild("inv_tabs", vtabs ? ImVec2(tabW, childH) : ImVec2(0.0f, tabH),
+                    false,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, -1.0f));  // onglets jointifs
+  // Jointifs : sur l'axe de la rangée (vertical ou horizontal selon la disposition).
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      vtabs ? ImVec2(0.0f, -1.0f) : ImVec2(-1.0f, 0.0f));
   {
     ImDrawList* tdl = ImGui::GetWindowDrawList();
     for (int c = 0; c < kNumCats; ++c) {
       const bool sel = (cur_tab_ == c);
       ImGui::PushID(c);
-      const BarTex& img = g_tab[c][sel ? 0 : 1].tex ? g_tab[c][sel ? 0 : 1]
-                                                     : g_tab[c][sel ? 1 : 0];
+      // Jeu d'images selon la disposition ; repli sur l'autre état si un seul des
+      // deux .bmp a pu être chargé.
+      const BarTex (&set)[2] = vtabs ? g_tab[c] : g_tabh[c];
+      const BarTex& img = set[sel ? 0 : 1].tex ? set[sel ? 0 : 1] : set[sel ? 1 : 0];
+      if (!vtabs && c) ImGui::SameLine();
       if (img.tex && img.w > 0 && img.h > 0) {
-        const float iw = tabW, ih = tabW * img.h / static_cast<float>(img.w);
+        // On fixe la dimension TRANSVERSE (largeur en vertical, hauteur en
+        // horizontal) et on déduit l'autre du ratio : jamais d'étirement.
+        const float iw = vtabs ? tabW : tabH * img.w / static_cast<float>(img.h);
+        const float ih = vtabs ? tabW * img.h / static_cast<float>(img.w) : tabH;
         const ImVec2 p = ImGui::GetCursorScreenPos();
-        if (ImGui::InvisibleButton("tab", ImVec2(tabW, ih))) cur_tab_ = c;
+        if (ImGui::InvisibleButton("tab", ImVec2(iw, ih))) cur_tab_ = c;
         const ImVec2 pe(p.x + iw, p.y + ih);
         // L'image active/inactive indique déjà la sélection -> pas de cadre jaune.
         tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
         if (!sel && ImGui::IsItemHovered())
           tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol : éclaircir (pas de bleu)
       } else {
-        if (ImGui::Selectable(kCats[c].label, sel, 0, ImVec2(tabW, 0.0f)))
-          cur_tab_ = c;
+        const ImVec2 sz = vtabs
+            ? ImVec2(tabW, 0.0f)
+            : ImVec2(ImGui::CalcTextSize(kCats[c].label).x +
+                         ImGui::GetStyle().FramePadding.x * 2.0f, tabH);
+        if (ImGui::Selectable(kCats[c].label, sel, 0, sz)) cur_tab_ = c;
       }
       if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kCats[c].label);
       // Glisser un item sur un onglet : sur Favoris = l'AJOUTE aux favoris ; hors de
@@ -1105,9 +1178,18 @@ void InventoryViewer::OnRenderUI() {
               [this](int a, int b) { return items_[a].index < items_[b].index; });
   }
 
-  // ── Grille de tuiles 32px (fond itemwin_mid), à DROITE des onglets. Défile. ──
-  ImGui::SameLine(0.0f, 0.0f);
+  // ── Grille de tuiles 32px (fond itemwin_mid) : à DROITE des onglets en
+  //    disposition verticale, EN DESSOUS en horizontale. Défile. ──
+  if (vtabs) {
+    ImGui::SameLine(0.0f, 0.0f);
+  } else {
+    // Collée à la rangée d'onglets : on reprend l'ItemSpacing vertical que le child
+    // du strip vient d'insérer.
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y);
+  }
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));  // grille sans marge
+  // En horizontal, la rangée d'onglets a déjà consommé sa hauteur : la grille prend
+  // le reste (hauteur négative = « place restante moins le footer »).
   ImGui::BeginChild("invgrid", ImVec2(0.0f, childH), true,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
   {
@@ -1135,9 +1217,87 @@ void InventoryViewer::OnRenderUI() {
       const BarTex& bg = (tilesLocked && g_tile_lock.tex) ? g_tile_lock : g_tile;
       DrawTiledBg(dl, bg, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
     }
-    for (int k = 0; k < static_cast<int>(view.size()); ++k) {
+    // ── Placement LIBRE (option, exige la taille verrouillée) ────────────────
+    // Chaque item mémorise un index de case ABSOLU (ligne × cols + colonne). On
+    // pose d'abord ceux qui ont une case libre, puis les autres dans les premières
+    // cases restantes -> un item nouvellement ramassé ne bouscule personne. Sans
+    // l'option : remplissage séquentiel comme avant (cell_of[k] = k).
+    // L'onglet « Tout » est EXCLU du placement libre : il mélange toutes les
+    // catégories, donc une même case n'y désigne pas le même emplacement que dans
+    // l'onglet d'origine de l'item — y déplacer quoi que ce soit casserait la
+    // disposition des autres onglets. Il garde le remplissage automatique.
+    const bool tabAll = (kCats[cur_tab_].types == nullptr && !kCats[cur_tab_].fav);
+    const bool freeGrid = free_layout_ && lock_size_ && !tabAll;
+    std::vector<int> cell_of;  // case -> rang dans `view` (-1 = case vide)
+    if (freeGrid) {
+      const int nitems = static_cast<int>(view.size());
+      int ncells = ((nitems + cols - 1) / cols) * cols;  // lignes pleines
+      for (int k = 0; k < nitems; ++k) {                 // étendre si une case assignée est au-delà
+        auto a = layout_.find(items_[view[k]].id);
+        if (a != layout_.end() && a->second >= ncells) ncells = a->second + 1;
+      }
+      // Toute la surface VISIBLE doit être posable : sans ça, les lignes vides sous
+      // le dernier item n'étaient que le pavage de fond — aucune case, donc aucune
+      // cible de dépose. On complète jusqu'à remplir la hauteur affichée, sans
+      // JAMAIS dépasser : une ligne de marge en trop suffit à rendre la grille
+      // défilante et à réveiller la scrollbar.
+      const int rows_visible = static_cast<int>((availh + gap) / (cell + gap));
+      if (ncells < rows_visible * cols) ncells = rows_visible * cols;
+      if (ncells < cols) ncells = cols;
+      cell_of.assign(ncells, -1);
+      std::vector<bool> placed(nitems, false);
+      for (int k = 0; k < nitems; ++k) {  // 1) cases assignées
+        auto a = layout_.find(items_[view[k]].id);
+        if (a == layout_.end()) continue;
+        const int c = a->second;
+        if (c >= 0 && c < ncells && cell_of[c] < 0) { cell_of[c] = k; placed[k] = true; }
+      }
+      int next = 0;
+      for (int k = 0; k < nitems; ++k) {  // 2) le reste dans les cases libres
+        if (placed[k]) continue;
+        while (next < ncells && cell_of[next] >= 0) ++next;
+        if (next >= ncells) break;
+        cell_of[next] = k;
+      }
+    }
+    // Dépose d'un item sur la case `c` : lui assigne cette case, et rend la sienne
+    // à l'occupant éventuel (échange) plutôt que de l'écraser.
+    auto drop_on_cell = [&](int c) {
+      if (!ImGui::BeginDragDropTarget()) return;
+      if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_ITEM")) {
+        const int di = *static_cast<const int*>(pl->Data);
+        if (di >= 0 && di < item_count_) {
+          const uint32_t moved = items_[di].id;
+          int prev = -1;
+          auto old = layout_.find(moved);
+          if (old != layout_.end()) prev = old->second;
+          if (c >= 0 && c < static_cast<int>(cell_of.size()) && cell_of[c] >= 0) {
+            const uint32_t occupant = items_[view[cell_of[c]]].id;
+            if (occupant != moved) {
+              if (prev >= 0) layout_[occupant] = prev;
+              else           layout_.erase(occupant);
+            }
+          }
+          layout_[moved] = c;
+          if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+        }
+      }
+      ImGui::EndDragDropTarget();
+    };
+
+    const int ncells = freeGrid ? static_cast<int>(cell_of.size())
+                                : static_cast<int>(view.size());
+    for (int k = 0; k < ncells; ++k) {
       if (k % cols != 0) ImGui::SameLine();
-      const int idx = view[k];
+      const int rank = freeGrid ? cell_of[k] : k;
+      if (rank < 0) {  // case VIDE : simple cible de dépose (le fond est déjà pavé)
+        ImGui::PushID(-1 - k);
+        ImGui::InvisibleButton("empty", ImVec2(cell, cell));
+        drop_on_cell(k);
+        ImGui::PopID();
+        continue;
+      }
+      const int idx = view[rank];
       const Item& it = items_[idx];
       // ID semé par l'index serveur STABLE (pas la position volatile) : si l'inventaire
       // est renuméroté pendant un glisser (conso/autoloot serveur), le drag reste collé
@@ -1225,6 +1385,9 @@ void InventoryViewer::OnRenderUI() {
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
         ImGui::EndDragDropSource();
       }
+      // Placement libre : une case OCCUPÉE est aussi une cible -> lâcher dessus
+      // échange les deux positions (drop_on_cell rend sa case à l'occupant).
+      if (freeGrid) drop_on_cell(k);
       // (Le déséquip par glisser-vers-l'inventaire est détecté côté character_sheet via
       //  PointOverViewer -> couvre TOUTE la fenêtre, pas seulement les cases avec item.)
 
@@ -1290,13 +1453,18 @@ void InventoryViewer::OnRenderUI() {
   // droit -> passage continu = souligne l'onglet actif. Couleur = corps de l'onglet
   // actif : BLANC pour la plupart, mais D1DCE8 (gris-bleu) pour Favoris (dont l'image a
   // ce corps) -> le pont se fond au lieu de trancher en blanc.
+  // Le pont suit le bord qui touche la grille : bord DROIT en disposition
+  // verticale, bord BAS en horizontale (la grille est alors juste dessous).
   if (haveActiveTab) {
     const ImU32 pont = kCats[cur_tab_].fav ? IM_COL32(0xD1, 0xDC, 0xE8, 255)
                                            : IM_COL32(255, 255, 255, 255);
-    ImGui::GetWindowDrawList()->AddRectFilled(
-        ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),
-        ImVec2(activeTabMax.x + 2.0f, activeTabMax.y - 1.0f),
-        pont);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (vtabs)
+      dl->AddRectFilled(ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),
+                        ImVec2(activeTabMax.x + 2.0f, activeTabMax.y - 1.0f), pont);
+    else
+      dl->AddRectFilled(ImVec2(activeTabMin.x + 1.0f, activeTabMax.y - 1.0f),
+                        ImVec2(activeTabMax.x - 1.0f, activeTabMax.y + 2.0f), pont);
   }
 
   // ── Drag terminé : router selon la cible (chariot / storage / sol) ──
@@ -1360,6 +1528,10 @@ void InventoryViewer::OnRenderUI() {
   //    (verrou vente NPC) + Tri (vue) sur les Favoris. Sur la ligne 2 -> le zeny garde
   //    TOUTE la ligne 1 (plus poussé sur le poids). idx1 = état actif.
   const bool favTab = kCats[cur_tab_].fav;
+  // Bouton de TRI masqué quand la taille est verrouillée : c'est le mode où la
+  // disposition est censée être maîtrisée par le joueur (placement libre), et un
+  // tri viendrait la remettre en cause.
+  const bool showSort = favTab && !lock_size_;
   const bool dropOn = ReadLock(kDropLockGlobal);
   const bool dealOn = ReadLock(kDealLockGlobal);
   auto bwidth = [](const BarTex& on, const BarTex& off, bool a) -> float {
@@ -1373,16 +1545,19 @@ void InventoryViewer::OnRenderUI() {
   const float bgap = 4.0f, gripM = 16.0f;
   const float wDrop = bwidth(g_btn_drop[1], g_btn_drop[0], dropOn);
   const float wDeal = favTab ? bwidth(g_btn_deal[1], g_btn_deal[0], dealOn) : 0.0f;
-  const float wSort = favTab ? bwidth(g_btn_sort[1], g_btn_sort[0], sort_enabled_) : 0.0f;
-  const float groupW = wDrop + (favTab ? wDeal + wSort + 2.0f * bgap : 0.0f);
+  const float wSort = showSort ? bwidth(g_btn_sort[1], g_btn_sort[0], sort_enabled_) : 0.0f;
+  const float groupW = wDrop + (favTab ? wDeal + bgap : 0.0f) +
+                       (showSort ? wSort + bgap : 0.0f);
   const float grpL = fx1 - gripM - groupW;   // bord gauche du groupe
   // Centré verticalement sur la ligne 2 (cy2), mais borné dans la barre (les bmps natifs
   // ~20px peuvent dépasser une demi-ligne -> on remonte juste assez pour ne pas clipper).
   float maxBtnH = bheight(g_btn_drop[1], g_btn_drop[0], dropOn);
   if (favTab) {
     const float hDeal = bheight(g_btn_deal[1], g_btn_deal[0], dealOn);
-    const float hSort = bheight(g_btn_sort[1], g_btn_sort[0], sort_enabled_);
     if (hDeal > maxBtnH) maxBtnH = hDeal;
+  }
+  if (showSort) {
+    const float hSort = bheight(g_btn_sort[1], g_btn_sort[0], sort_enabled_);
     if (hSort > maxBtnH) maxBtnH = hSort;
   }
   const float halfH = maxBtnH * 0.5f;
@@ -1420,9 +1595,20 @@ void InventoryViewer::OnRenderUI() {
                         "Verrou vente : les favoris ne peuvent pas être vendus aux NPC", &bwOut))
       ToggleLock(kDealLockGlobal);
     bx += bwOut + bgap;
+  }
+  if (showSort) {
     if (FooterImgToggle("##inv_sort", bx, cyc, g_btn_sort[1], g_btn_sort[0], sort_enabled_, "T",
                         "Trier la vue (type puis nom) ; sinon ordre d'inventaire", &bwOut))
       sort_enabled_ = !sort_enabled_;
+  }
+
+  // "(?)" des raccourcis : dans le FOOTER, juste à gauche du groupe de boutons —
+  // il ne mange plus une ligne au-dessus de la grille. Positionné en coordonnées
+  // écran comme les boutons (le curseur de layout est ailleurs à ce stade).
+  {
+    const float hw = ImGui::CalcTextSize("(?)").x;
+    ImGui::SetCursorScreenPos(ImVec2(grpL - hw - 10.0f, cyc - ImGui::GetTextLineHeight() * 0.5f));
+    HelpMarker(desc.c_str());
   }
 
   // Icône du drag NATIF au-dessus du viewer : le jeu rend l'icône du drag AVANT l'overlay

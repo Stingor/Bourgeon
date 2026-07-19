@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_map>
 
 #include "plugins/plugin.h"
 
@@ -43,6 +44,24 @@ class InventoryViewer : public Plugin {
   bool imgui_enabled_ = false;  // OPT-IN : inventaire natif par defaut
 
   bool& show_panel() { return show_panel_; }
+
+  // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Inventaire » du
+  // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
+  bool& show_filter()   { return show_filter_; }
+  // Disposition des onglets de catégorie : true = verticale à gauche (défaut,
+  // comme le natif), false = rangée horizontale au-dessus de la grille.
+  bool& tabs_vertical() { return tabs_vertical_; }
+  // Taille de la fenêtre verrouillée (plus de redimensionnement).
+  bool& lock_size()     { return lock_size_; }
+  // Placement LIBRE des items sur les cases (au lieu du remplissage automatique).
+  // ⚠ TRIBUTAIRE de lock_size_ : une case est un index absolu (ligne × colonnes +
+  // colonne), donc redimensionner la fenêtre change le nombre de colonnes et
+  // mélangerait toutes les positions. Ignoré tant que la taille n'est pas verrouillée.
+  bool& free_layout()   { return free_layout_; }
+  // Placement choisi par le joueur : nameid -> index de case. 100 % CLIENT (aucun
+  // paquet ; le serveur ne connaît pas de position d'item). Public pour que
+  // MoonlightUi le persiste, comme les favoris du storage.
+  std::unordered_map<uint32_t, int> layout_;
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
   // id 8 : si imgui_enabled_, force wnd+0x28 = 0 AVANT le 1er rendu -> pas de
@@ -100,6 +119,10 @@ class InventoryViewer : public Plugin {
   void Extract();
 
   bool show_panel_ = true;    // transitoire : clic sur le X (ferme la session)
+  bool show_filter_ = true;      // setting : champ de filtre par nom
+  bool tabs_vertical_ = true;    // setting : onglets verticaux (défaut) ou horizontaux
+  bool lock_size_ = false;       // setting : taille de fenêtre verrouillée
+  bool free_layout_ = false;     // setting : placement libre (exige lock_size_)
   int  cur_tab_ = 0;          // onglet catégorie sélectionné
   bool sort_enabled_ = true;  // bouton Tri (footer, onglet Favoris) : trie la vue
 

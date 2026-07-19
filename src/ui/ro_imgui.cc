@@ -633,7 +633,16 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
   g_skin_vars = 9;
 
+  // ⚠ Bullet cliquable : ImGui pose SON bouton de repli à gauche de la barre de
+  // titre (title_bar_rect.Min.x + FramePadding.x), c'est-à-dire tout juste sous
+  // notre bullet — il capte donc le clic et replie la fenêtre au lieu d'ouvrir la
+  // config. On le supprime pour CETTE fenêtre en neutralisant sa position.
+  // PAS via ImGuiWindowFlags_NoCollapse : ImGui force alors Collapsed=false a
+  // chaque frame, ce qui casserait le bouton minimiser dessine par le skin.
+  const ImGuiDir menu_btn_backup = ImGui::GetStyle().WindowMenuButtonPosition;
+  if (bullet_btn) ImGui::GetStyle().WindowMenuButtonPosition = ImGuiDir_None;
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
+  ImGui::GetStyle().WindowMenuButtonPosition = menu_btn_backup;
   RegisterEscapeWindow(p_open);
 
   // On dessine la barre de titre RO même quand la fenêtre est repliée (Begin

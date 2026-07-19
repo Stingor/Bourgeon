@@ -154,7 +154,7 @@ class MoonlightUi : public Plugin {
   enum IfaceSection {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
     kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
-    kIfaceStorage,
+    kIfaceStorage, kIfaceInventory,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,
   // ouvre l'en-tête « Interface de jeu », sélectionne l'entrée de nav et scrolle
