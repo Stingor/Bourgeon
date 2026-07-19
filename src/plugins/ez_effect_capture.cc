@@ -225,9 +225,10 @@ void __fastcall Hooked_EzDraw(void* self, void* edx, float* p) {
   g_cur_effect_id  = prev_id;
 }
 
-// Chemin CEffectMgr : dessin par effet, en phase render. Arme l'appartenance pour la durée du draw
-// -> les primitives soumises pendant celui-ci sont capturées par Hooked_Insert. Save/restore =
-// robuste au nesting.
+// Chemin CEffectMgr : dessin par effet, en phase render. Arme — ou DÉSARME — l'appartenance pour la
+// durée du draw -> les primitives soumises pendant celui-ci sont capturées par Hooked_Insert.
+// Save/restore = robuste au nesting. ⚠ Les deux branches doivent écrire l'état : cf. le désarmement
+// ci-dessous, dont l'absence faisait hériter les effets d'ambiance de la map de l'id du joueur.
 void __fastcall Hooked_EffRender(void* self, void* edx) {
   const bool  prev_owned = g_cur_owned;
   void* const prev_node  = g_cur_node;
@@ -268,6 +269,19 @@ void __fastcall Hooked_EffRender(void* self, void* edx) {
     // personnage. L'espace `ordinal + 0x98a` ne nous parvient JAMAIS : il correspond aux hat effects
     // à `resourceFileName`, dont les instances sont des CEZ2STREffect, exclues plus haut par vtable.
     g_cur_effect_id  = (em_id > 0) ? em_id : -1;
+  } else {
+    // ⚠⚠ DÉSARMEMENT INCONDITIONNEL. Ce hook armait l'appartenance mais ne l'ÉTEIGNAIT jamais : une
+    // instance NON possédée héritait de la fenêtre de l'appelant, et TOUTES ses primitives étaient
+    // capturées avec l'effect_id d'un effet du JOUEUR. C'est ainsi que les nuages de map (CCloud,
+    // ctor 0x006c9430, vtable 0x0100bf60, owner handle -1 -> jamais « à nous ») entraient dans la
+    // capture sur gonryun : ils ne sortaient ensuite QUE par le garde-fou de proximité `max_r`, d'où
+    // leur réapparition dès qu'on relâchait le rayon (un cache-misère, pas un filtre).
+    // Symétrique de Hooked_EzDraw, qui écrit g_cur_owned dans les DEUX cas.
+    g_cur_owned      = false;
+    g_cur_node       = nullptr;
+    g_cur_via_effmgr = false;
+    g_cur_effect_id  = -1;
+    g_cur_effmgr_id  = -1;
   }
   g_orig_eff_render(self, edx);
   g_cur_owned = prev_owned;
