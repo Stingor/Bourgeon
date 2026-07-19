@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <bcrypt.h>
+#include <shellapi.h>
 
 #include <cstdio>
 #include <cstring>
@@ -53,7 +54,100 @@ bool Sha256OfFile(const std::wstring& path, uint8_t* out, ULONG out_len) {
   return Sha256(data.data(), data.size(), out, out_len);
 }
 
+// Directory of the game executable, with a trailing backslash. Preferred over
+// GetCurrentDirectory: the CWD can be anything if the client was started from a
+// shortcut, whereas the patcher always sits next to the exe it launches.
+bool GameDir(std::wstring& out) {
+  wchar_t buf[MAX_PATH];
+  const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return false;
+  std::wstring path(buf, n);
+  const size_t slash = path.find_last_of(L'\\');
+  if (slash == std::wstring::npos) return false;
+  out = path.substr(0, slash + 1);
+  return true;
+}
+
+// Minimal extraction of an integer field from rpatchur's cache file. The file is
+// a single flat JSON object written by serde ({"last_patch_index":42}), so a
+// scan for the key beats pulling in a JSON parser for one number.
+bool ReadJsonInt(const std::wstring& path, const char* key, int32_t& out) {
+  std::ifstream f(path.c_str(), std::ios::binary);
+  if (!f) return false;
+  const std::string text((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+  const size_t at = text.find(key);
+  if (at == std::string::npos) return false;
+  size_t i = text.find(':', at + std::strlen(key));
+  if (i == std::string::npos) return false;
+  ++i;
+  while (i < text.size() && (text[i] == ' ' || text[i] == '\t')) ++i;
+  if (i >= text.size() || text[i] < '0' || text[i] > '9') return false;
+  int64_t value = 0;
+  for (; i < text.size() && text[i] >= '0' && text[i] <= '9'; ++i) {
+    value = value * 10 + (text[i] - '0');
+    if (value > INT32_MAX) return false;  // corrupt file — treat as unknown
+  }
+  out = static_cast<int32_t>(value);
+  return true;
+}
+
 }  // namespace
+
+void IntegrityCheck::DiscoverPatcher() {
+  std::wstring dir;
+  if (!GameDir(dir)) {
+    LogError("[Integrity] cannot resolve game directory — patcher discovery skipped");
+    return;
+  }
+
+  // rpatchur names its config, cache and lock after its own executable stem, so
+  // any `<stem>.yml` with a matching `<stem>.exe` identifies it.
+  WIN32_FIND_DATAW fd;
+  const HANDLE h = FindFirstFileW((dir + L"*.yml").c_str(), &fd);
+  if (h == INVALID_HANDLE_VALUE) return;
+  do {
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+    std::wstring stem(fd.cFileName);
+    const size_t dot = stem.find_last_of(L'.');
+    if (dot == std::wstring::npos) continue;
+    stem.resize(dot);
+
+    const std::wstring exe = dir + stem + L".exe";
+    if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+
+    patcher_exe_ = exe;
+    // Missing cache file is normal on a fresh install: the patcher only writes it
+    // after applying its first patch. patch_index_ stays -1.
+    ReadJsonInt(dir + stem + L".dat", "last_patch_index", patch_index_);
+    break;
+  } while (FindNextFileW(h, &fd));
+  FindClose(h);
+}
+
+void IntegrityCheck::LaunchPatcher() const {
+  if (patcher_exe_.empty()) return;
+
+  std::wstring dir;
+  if (!GameDir(dir)) return;
+
+  // ShellExecute rather than CreateProcess: rpatchur elevates itself via the
+  // "runas" verb, and the shell handles the UAC prompt for us. The patcher only
+  // starts downloading once the player clicks Update in its window, so it will
+  // not race this process for the file locks on ddraw.dll and the GRF.
+  SHELLEXECUTEINFOW sei = {};
+  sei.cbSize       = sizeof(sei);
+  sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
+  sei.lpVerb       = L"open";
+  sei.lpFile       = patcher_exe_.c_str();
+  sei.lpDirectory  = dir.c_str();
+  sei.nShow        = SW_SHOWNORMAL;
+  if (ShellExecuteExW(&sei)) {
+    if (sei.hProcess) CloseHandle(sei.hProcess);
+  } else {
+    LogError("[Integrity] failed to launch the patcher (error {})", GetLastError());
+  }
+}
 
 bool IntegrityCheck::ReadMachineGuid(char out[37]) {
   HKEY hKey = nullptr;
@@ -93,6 +187,9 @@ IntegrityCheck::IntegrityCheck() {
   if (!TryComputeHash())
     LogError("[Integrity] failed to compute self checksum at startup — will retry on game entry");
 
+  // Pure file I/O, safe under the loader lock (no LoadLibrary, no network).
+  DiscoverPatcher();
+
   if (ReadMachineGuid(guid_)) {
     have_guid_ = true;
     // LogInfo("[Integrity] MachineGuid: {:.8s}...", guid_);
@@ -128,7 +225,7 @@ void IntegrityCheck::OnTick() {
 }
 
 bool IntegrityCheck::SendChecksum() {
-  uint8_t buf[4 + kHashLen + kGuidLen];
+  uint8_t buf[4 + kHashLen + kGuidLen + 4];
   *reinterpret_cast<uint16_t*>(buf)     = kOpcodeToServer;
   *reinterpret_cast<uint16_t*>(buf + 2) = static_cast<uint16_t>(sizeof(buf));
   std::memcpy(buf + 4, hash_, kHashLen);
@@ -136,6 +233,7 @@ bool IntegrityCheck::SendChecksum() {
     std::memcpy(buf + 4 + kHashLen, guid_, kGuidLen);
   else
     std::memset(buf + 4 + kHashLen, 0, kGuidLen);
+  *reinterpret_cast<int32_t*>(buf + 4 + kHashLen + kGuidLen) = patch_index_;
   const bool ok = Bourgeon::Instance().SendPacket(buf, sizeof(buf));
   if (ok)
     /* LogInfo("[Integrity] checksum + MachineGuid sent") */;
@@ -174,7 +272,10 @@ void IntegrityCheck::OnRenderUI() {
         static_cast<uint32_t>(GetTickCount()) - kick_notice_tick_;
     if (elapsed >= kKickDelayMs + 500) {
       // Server has kicked us by now; close the process rather than staying
-      // frozen on the disconnected game screen.
+      // frozen on the disconnected game screen. Hand the player straight over to
+      // the patcher — it cannot rewrite ddraw.dll or the GRF until we are gone,
+      // but it waits for a click on Update before touching anything.
+      LaunchPatcher();
       ExitProcess(0);
     }
   }
@@ -187,9 +288,15 @@ void IntegrityCheck::OnRenderUI() {
     ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                        "Your game client is outdated!");
     ImGui::Spacing();
-    ImGui::TextWrapped(
-        "Please close the game and run the patcher to update,\n"
-        "then reconnect.");
+    if (patcher_exe_.empty()) {
+      ImGui::TextWrapped(
+          "Please close the game and run the patcher to update,\n"
+          "then reconnect.");
+    } else {
+      ImGui::TextWrapped(
+          "The patcher will open automatically once the game closes.\n"
+          "Update, then reconnect.");
+    }
     ImGui::Spacing();
 
     if (kick_notice_tick_ != 0) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
@@ -12,8 +13,12 @@
 // The same packet also carries the Windows MachineGuid (registry) so the server
 // can detect multi-account abuse across different accounts on the same machine.
 //
+// It also carries the patch level read from rpatchur's cache file, so the server
+// can detect a client whose *content* (GRF / loose files) is outdated even though
+// the DLL itself is an approved build — the two are versioned independently.
+//
 // Packet CZ_BOURGEON_INTEGRITY (0x0F02):
-//   [opcode:2][total_len:2][sha256:32][guid:36]   (total_len = 72)
+//   [opcode:2][total_len:2][sha256:32][guid:36][patch_index:4]  (total_len = 76)
 //
 // IMPORTANT: enforcement (kick + admin report) and any "development" bypass live
 // entirely on the SERVER. A client-side bypass flag would be trivially spoofed,
@@ -37,9 +42,21 @@ class IntegrityCheck : public Plugin {
   void OnRenderUI() override;
 
  private:
-  // CZ_BOURGEON_INTEGRITY: [opcode:2][total_len:2][sha256:32][guid:36]  (total_len = 72)
-  // Returns false if SendPacket failed (socket not ready) — caller should retry.
+  // CZ_BOURGEON_INTEGRITY: [opcode:2][total_len:2][sha256:32][guid:36][patch_index:4]
+  // (total_len = 76). Returns false if SendPacket failed (socket not ready) —
+  // caller should retry.
   bool SendChecksum();
+
+  // Locates rpatchur next to the game executable and reads its patch level.
+  // Discovery follows rpatchur's own convention (patcher/mod.rs get_patcher_name
+  // + core.rs get_instance_asset_file_name): the patcher is the `<name>.exe` that
+  // has a sibling `<name>.yml` config, and its cache is `<name>.dat`. Nothing is
+  // hardcoded, so renaming the patcher keeps working.
+  void DiscoverPatcher();
+
+  // Spawns the patcher so the player can update without hunting for it. Called
+  // right before we close the game on an outdated-client kick.
+  void LaunchPatcher() const;
 
   static constexpr uint16_t kOpcodeToServer   = bopcodes::kIntegrity;   // CZ: SHA-256 + MachineGuid
   static constexpr uint16_t kOpcodeKickNotice = bopcodes::kKickNotice;  // ZC: outdated-client notice
@@ -68,4 +85,13 @@ class IntegrityCheck : public Plugin {
   bool in_game_           = false;
   bool popup_pending_     = false;
   uint32_t kick_notice_tick_ = 0;
+
+  // Full path of the discovered patcher executable; empty if none was found (the
+  // player may have copied the client out of the patcher's directory). The popup
+  // falls back to the manual "run the patcher" wording in that case.
+  std::wstring patcher_exe_;
+  // rpatchur's last_patch_index, or -1 when unknown (no cache file yet, i.e. the
+  // patcher has never completed a patch). -1 lets the server tell "never patched"
+  // apart from "patched up to 0".
+  int32_t patch_index_ = -1;
 };
