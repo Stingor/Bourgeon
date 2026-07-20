@@ -116,9 +116,9 @@ void FrameProfiler_Tick() {
     const double secs = (g_clock_ms - g_win_start_ms) / 1000.0;
     const double avg  = (g_win_frames > 0) ? (g_win_sum_ms / g_win_frames) : 0.0;
     const double fps  = (avg > 0.0) ? (1000.0 / avg) : 0.0;
-    LogDiag("[FrameProf] {:.0f}s : {} frames, {:.1f} FPS ({:.1f} ms moy), max {:.1f} ms,"
-            " {} pics, {:.0f} ms perdus",
-            secs, g_win_frames, fps, avg, g_win_max_ms, g_win_spikes, g_win_spike_sum);
+    // LogDiag("[FrameProf] {:.0f}s : {} frames, {:.1f} FPS ({:.1f} ms moy), max {:.1f} ms,"
+    //         " {} pics, {:.0f} ms perdus",
+    //         secs, g_win_frames, fps, avg, g_win_max_ms, g_win_spikes, g_win_spike_sum);
     g_win_start_ms  = g_clock_ms;
     g_win_frames    = 0;
     g_win_sum_ms    = 0.0;
