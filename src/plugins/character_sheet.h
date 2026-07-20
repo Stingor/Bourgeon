@@ -191,6 +191,9 @@ class CharacterSheet : public Plugin {
   void SaveCurrentEquipAsPreset(const char* name);
   // Applique un preset : desequipe les slots hors preset, equipe les items manquants.
   void ApplyPreset(const EquipPreset& p);
+  // Desequipe TOUT l'equipement porte (« tout nu »), costumes inclus si demande.
+  // Renvoie le nombre de pieces retirees.
+  int UnequipAll(bool with_costumes);
   // Declenche l'application d'un preset dont le raccourci clavier est pressé (en jeu, hors
   // saisie texte). Actif même fenêtre fermée.
   void ProcessPresetHotkeys();

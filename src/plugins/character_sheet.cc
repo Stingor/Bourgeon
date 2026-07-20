@@ -288,9 +288,10 @@ bool FindInvLiteByIndex(const InvItemLite* inv, int n, int index, InvItemLite* o
 //  InvItemLite. Sert a AJOUTER les items PORTES aux candidats de resolution : la liste inventaire
 //  ne restitue pas toujours les items equipes -> un item commun deja porte serait declare
 //  « manquant » a tort. SEH/POD.
-bool ReadEquipLite(int slot, InvItemLite* out) {
+bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
   __try {
-    const uint8_t* e = reinterpret_cast<const uint8_t*>(kSession + kEquipBase + slot * kSlotStride);
+    const uint8_t* e = reinterpret_cast<const uint8_t*>(
+        kSession + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride);
     if (*reinterpret_cast<const int*>(e + keInvIndex) == 0 ||
         *reinterpret_cast<const int*>(e + kePresent) != 1)
       return false;
@@ -1295,6 +1296,27 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
                        : "Preset appliqué";
 }
 
+// « Tout nu » : desequipe tous les slots portes, en paquets bruts envoyes d'un coup (meme
+// chemin que le desequip de masse d'ApplyPreset -> instantane cote serveur). Couvre l'equip
+// normal ET les costumes (tableau session separe kCostumeBase : seuls 3 tetes + cape existent).
+int CharacterSheet::UnequipAll(bool with_costumes) {
+  int freed = 0;
+  auto strip = [&](int slot, bool costume) {
+    InvItemLite li{};
+    if (!ReadEquipLite(slot, &li, costume)) return;  // slot vide
+    SendUnequip(li.index);
+    ++freed;
+  };
+  for (int s = 0; s < kNormalSlots; ++s) strip(s, false);
+  if (with_costumes) {
+    const int kCostumeSlots[4] = {8, 0, 9, 2};  // tete haut, tete bas, tete mil, cape
+    for (int s : kCostumeSlots) strip(s, true);
+  }
+  preset_status_ = freed > 0 ? "Tout déséquipé (" + std::to_string(freed) + " pièce(s))"
+                             : "Rien à déséquiper";
+  return freed;
+}
+
 bool CharacterSheet::HotkeyConflict(int vk, bool ctrl, bool alt, bool shift, int selfIdx,
                                     char* what, int cap) {
   if (cap > 0) what[0] = '\0';
@@ -1358,6 +1380,19 @@ void CharacterSheet::DrawPresetsTab() {
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const float load_w = bw("Charger"), del_w = bw("Suppr");
   const float icon = 30.0f, igap = 3.0f;
+
+  // Action globale : se mettre « tout nu » (independant des presets). Les costumes vivent dans
+  // un tableau session distinct -> bouton separe pour tout retirer, costumes compris.
+  if (ro::RoButton("Tout déséquiper", bw("Tout déséquiper"))) UnequipAll(false);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Retire l'équipement porté (garde les costumes)");
+  ImGui::SameLine(0.0f, 4.0f);
+  if (ro::RoButton("+ costumes", bw("+ costumes"))) UnequipAll(true);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Retire aussi les costumes (têtes + cape)");
+  ImGui::Spacing();
+  ImGui::Separator();
+  ImGui::Spacing();
 
   if (mine.empty()) {
     ImGui::TextColored(kGray, "Aucun preset enregistré pour ce personnage.");
