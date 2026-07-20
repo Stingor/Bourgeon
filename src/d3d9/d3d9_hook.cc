@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "imgui/imgui_impl_dx7.h"
+#include "utils/frame_profiler.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -668,6 +669,9 @@ static HRESULT __fastcall Hooked_Present(void* vtable_ecx, void* /*edx*/,
                                           const RECT* pSrcRect, const RECT* pDestRect,
                                           HWND hDestWindowOverride,
                                           const RGNDATA* pDirtyRegion) {
+    // Chronométrage du temps de frame. En mode DX7 c'est Proxy_EndScene qui tient
+    // le compteur — ticker ici aussi compterait la frame deux fois.
+    if (!g_imgui_dx7_active) FrameProfiler_Tick();
     if (!g_imgui_dx7_active && ImGui::GetCurrentContext()) {
         // BeginScene is not hooked, so calling through the vtable is safe.
         if (SUCCEEDED(self->BeginScene())) {

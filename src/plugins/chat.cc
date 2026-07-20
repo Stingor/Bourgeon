@@ -285,6 +285,77 @@ void __fastcall WrapAndDispatchHook(void* ecx, void* edx, char* text, uint32_t p
 // drawn.  Reuses only engine calls -> portable to a WARP code-cave.
 constexpr uintptr_t kEngTextOutLow  = 0x005471a0;  // __thiscall(ctx, x, y, str, len)
 constexpr uintptr_t kEngTextMeasure = 0x005474a0;  // __thiscall(ctx, SIZE*, str, len, font)
+
+using MeasureTextFn = void* (__fastcall*)(void*, void*, void*, const char*, int, int);
+static MeasureTextFn g_measure_text_orig = nullptr;
+
+// ── Cache de mesure de texte (fix du freeze de chat en combat) ────────────────
+// Le word-wrap du moteur cherche le point de coupure d'une ligne en mesurant des
+// préfixes de plus en plus longs de la MÊME chaîne : [0..1], [0..2], [0..3]...
+// Mesuré sur un rebuild d'historique : 8640 appels GDI pour 120 lignes (72/ligne),
+// 94 % du temps total — chacun étant un GetTextExtentPoint32W (syscall). En combat,
+// TrimHistoryHalf relance ce rebuild toutes les ~1,4 s ; avec 2 fenêtres de chat ça
+// donnait un freeze de ~500 ms. Le coût unitaire du syscall varie d'un facteur ~30
+// selon la session (cause user-mode non trouvée, voir mémoire projet) — le cache le
+// rend sans effet.
+//
+// Ces mesures sont pures : même (texte, police) => même largeur. Mémoïsation en
+// table à adressage direct, clé FNV-1a 64 bits sur le texte + les paramètres de
+// police (ctx+0xc, ctx+0x10, id police, ctx+0x1c qui porte gras/italique), donc pas
+// de résultat périmé sur changement de style. Collision 64 bits hors de portée.
+// --nomeasurecache restaure le comportement d'origine.
+static bool g_measure_cache = true;
+struct MCacheEntry { uint64_t key; long cx, cy; };
+// 65536 entrees (~1,5 Mo) : un seul rebuild produit jusqu'a 8640 mesures DISTINCTES,
+// une table plus petite se piétinerait elle-meme.
+static constexpr size_t kMCacheSize = 65536;
+static constexpr size_t kMCacheMask = kMCacheSize - 1;
+static MCacheEntry g_mcache[kMCacheSize] = {};
+
+static uint64_t Fnv1a(const void* p, size_t n, uint64_t h) {
+  const unsigned char* b = static_cast<const unsigned char*>(p);
+  for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
+  return h;
+}
+
+// UIRenderCtx_MeasureText (0x005474a0) est LE point chaud du rebuild d'historique :
+// le word-wrap du moteur y mesure des prefixes croissants de la meme ligne (~72
+// par ligne, 8640 par rebuild), chacun etant un GetTextExtentPoint32W = un syscall
+// GDI. On memoise le resultat : meme (texte, police) => meme largeur, donc pur.
+// Detail complet dans la memoire projet "chat-trim-freeze".
+void* __fastcall MeasureTextHook(void* ecx, void* edx, void* out_size,
+                                 const char* str, int len, int font) {
+  if (!ecx) return g_measure_text_orig(ecx, edx, out_size, str, len, font);
+
+  SIZE* out = static_cast<SIZE*>(out_size);
+  uint64_t key = 0;
+  MCacheEntry* slot = nullptr;
+  if (g_measure_cache && out && str && len > 0 && len < 8192) {
+    const int* c = static_cast<const int*>(ecx);
+    key = Fnv1a(str, static_cast<size_t>(len), 1469598103934665603ULL);
+    // ctx+0xc et ctx+0x10 : parametres de police ; ctx+0x1c : mot portant les
+    // octets gras (0x1d) et italique (0x1e) — les inclure evite de servir une
+    // largeur mise en cache pour un style different.
+    const int meta[4] = { c[3], c[4], font, c[7] };
+    key = Fnv1a(meta, sizeof(meta), key);
+    slot = &g_mcache[key & kMCacheMask];
+    if (slot->key == key) {
+      out->cx = slot->cx;
+      out->cy = slot->cy;
+      return out_size;
+    }
+  }
+
+  void* r = g_measure_text_orig(ecx, edx, out_size, str, len, font);
+
+  if (slot) {  // memorise le resultat frais
+    slot->key = key;
+    slot->cx  = out->cx;
+    slot->cy  = out->cy;
+  }
+  return r;
+}
+
 constexpr uintptr_t kEngNodeBlit    = 0x0053f140;  // __thiscall(node, x, y, w, h, ARGB*, colorkey)
 using TextOutLowFn = void  (__fastcall*)(void*, void*, int, int, char*, unsigned);
 using MeasureFn    = void* (__fastcall*)(void*, void*, void*, const char*, int, int);
@@ -718,6 +789,18 @@ static void ClearDetachedChatsSEH() {
 }  // namespace
 
 ChatTweaks::ChatTweaks() {
+  // Cache de mesure de texte : supprime le freeze de chat en combat (word-wrap
+  // quadratique en appels GDI dans les rebuilds d'historique). --nomeasurecache
+  // le désactive pour reproduire le comportement d'origine.
+  g_measure_cache = (strstr(GetCommandLineA(), "--nomeasurecache") == nullptr);
+  g_measure_text_orig = reinterpret_cast<MeasureTextFn>(
+      hooking::HookManager::Instance().SetHook(
+          hooking::HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(kEngTextMeasure),
+          reinterpret_cast<uint8_t*>(MeasureTextHook)));
+  if (!g_measure_text_orig)
+    LogError("[Chat] failed to hook text measure at 0x005474a0");
+
   // Hook the chat tab's "append drawn line" virtual (FUN_0083d840) to inject
   // ^i{id} before <ITEML> into the text that becomes a drawn chat line.
   g_append_line_orig = reinterpret_cast<AppendLineFn>(

@@ -6,6 +6,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "bourgeon.h"
 #include "imgui/imgui_impl_dx7.h"
+#include "utils/frame_profiler.h"
 #include "utils/log_console.h"
 
 extern void DrawROCursorImGui();
@@ -143,6 +144,9 @@ HRESULT CProxyIDirect3DDevice7::Proxy_BeginScene() {
 }
 
 HRESULT CProxyIDirect3DDevice7::Proxy_EndScene(void) {
+  // Chemin DX7 : c'est ici que le temps de frame est chronométré (Hooked_Present
+  // se tait tant que g_imgui_dx7_active est vrai).
+  FrameProfiler_Tick();
   if (ImGui::GetCurrentContext()) {
     if (!g_dx7_imgui_ready) {
       ImGui_ImplDX7_Init(m_Instance);

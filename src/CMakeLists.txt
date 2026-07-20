@@ -120,6 +120,8 @@ set(BOURGEON_FILES
 	# Utils
 	"utils/byte_pattern.cc"
 	"utils/byte_pattern.h"
+	"utils/frame_profiler.cc"
+	"utils/frame_profiler.h"
 	"utils/gif_writer.cc"
 	"utils/gif_writer.h"
 	"utils/log_console.cc"
