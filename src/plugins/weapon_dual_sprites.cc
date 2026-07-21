@@ -20,6 +20,7 @@ constexpr uintptr_t kActFrameCall      = 0x00D36EE4;  // CALL Act_GetFrame (E8 r
 constexpr uintptr_t kActGetFrame       = 0x0070F4B0;  // Act_GetFrame (bridge passthrough)
 constexpr uintptr_t kResAddRef         = 0x00A8E800;  // resource AddRef (ECX = res)
 constexpr uintptr_t kResRelease        = 0x00A8F910;  // resource Release (ECX = res)
+constexpr uintptr_t kItemIdToWeaponClass = 0x00D8A1D0;  // Weapon_ItemIdToWeaponClass
 
 // CActorSprite field offsets.
 constexpr uint32_t kActVec    = 0x4AC;  // std::vector<ActRes*>  {begin,end,cap}
@@ -38,6 +39,11 @@ const uint8_t kEquipStolen[5] = {0x55, 0x8B, 0xEC, 0x6A, 0xFF};  // push ebp;mov
 // jmp-hook trampoline. Calling it runs the full original (RET 8) and returns.
 typedef void(__thiscall* BuildFn)(void* self, uint32_t main_view, uint32_t off_view);
 typedef void(__fastcall* RefFn)(void* res);
+// Maps an equip view/item id to its weapon sprite class. Returns <= 0 when the
+// item is NOT a weapon (e.g. a shield). Mirrors the stock BuildWeaponLayers
+// discriminator `0 < Weapon_ItemIdToWeaponClass(off)` used to tell a dual-wield
+// off-hand weapon apart from a shield sharing the same this+0x444 field.
+typedef int(__cdecl* ItemClassFn)(int item_view);
 
 // File scope (NOT namespaced) so the naked bridge can resolve them by name.
 static bool    g_dual_enabled = false;              // live toggle read by both hooks
@@ -47,6 +53,8 @@ static void*   g_act_get_frame = reinterpret_cast<void*>(kActGetFrame);
 
 static const RefFn Res_AddRef  = reinterpret_cast<RefFn>(kResAddRef);
 static const RefFn Res_Release = reinterpret_cast<RefFn>(kResRelease);
+static const ItemClassFn Weapon_ItemIdToWeaponClass =
+    reinterpret_cast<ItemClassFn>(kItemIdToWeaponClass);
 
 namespace {
 
@@ -142,6 +150,11 @@ void __fastcall DualEquipWorker(void* actor, void* /*edx*/,
   __try {
     g_stock_build(actor, main_view, off_view);  // stock first, keep side effects
     if (off_view == 0) return;                  // single weapon: nothing to split
+    // this+0x444 (off_view) doubles as the SHIELD view id. Only split when it is
+    // a real weapon-class off-hand — exactly the stock `0 < class` dual-wield
+    // gate. A shield here keeps the stock combined weapon+shield build; splitting
+    // it would forge a phantom left-hand weapon sprite alongside the shield.
+    if (Weapon_ItemIdToWeaponClass(static_cast<int>(off_view)) <= 0) return;
     if (!BuildSplit(actor, main_view, off_view))
       g_stock_build(actor, main_view, off_view);  // restore exact stock state
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -152,14 +165,32 @@ void __fastcall DualEquipWorker(void* actor, void* /*edx*/,
 
 // Naked entry that the jmp-hook lands on. Marshals (ecx = actor, [esp+4] = main,
 // [esp+8] = off) into the __fastcall worker, then RET 8 like the stock function.
+//
+// The stock vtbl+0x60 (CActorSprite_BuildWeaponLayers) is an SEH function whose
+// native caller keeps `this` in EDI across the call — EDI/ESI/EBX/EBP are all
+// callee-saved. When the worker's __except swallows a fault raised deep inside a
+// re-entrant stock rebuild, x86 MSVC only reloads a nonvolatile at the epilogue
+// IF the prologue pushed it, so a compiler that didn't spill EDI would let the
+// interrupted stock function's scratch value (e.g. the resolved job id 0xfad)
+// leak back to the caller -> crash at its next `mov eax,[edi]`. Spilling all four
+// nonvolatiles HERE, in code we control, guarantees the caller is made whole
+// regardless of the worker's codegen or any swallowed exception.
 __declspec(naked) static void DualEquipEntry() {
   __asm {
-    mov  eax, [esp+4]         // main_view
-    mov  edx, [esp+8]         // off_view
+    push ebp                  // preserve nonvolatiles for the native caller
+    push ebx
+    push esi
+    push edi
+    mov  eax, [esp+0x14]      // main_view  (was [esp+4], +0x10 for the 4 pushes)
+    mov  edx, [esp+0x18]      // off_view   (was [esp+8])
     push edx                  // fastcall stack arg 2 (off_view)
     push eax                  // fastcall stack arg 1 (main_view)
-    // ecx already = actor; edx = dummy 2nd register arg (worker ignores it)
+    // ecx still = actor (untouched by the pushes); edx = dummy 2nd reg arg
     call DualEquipWorker      // callee-cleans its 8 bytes of stack args
+    pop  edi
+    pop  esi
+    pop  ebx
+    pop  ebp
     ret  8                    // clean the stock function's 2 args
   }
 }
