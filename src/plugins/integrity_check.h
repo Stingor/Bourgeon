@@ -54,6 +54,12 @@ class IntegrityCheck : public Plugin {
   // hardcoded, so renaming the patcher keeps working.
   void DiscoverPatcher();
 
+  // Promotes a staged patcher self-update: a THOR patch cannot overwrite the
+  // running `<stem>.exe`, so it drops the new build as `<stem>.exe.new` and this
+  // renames it into place (Windows allows moving a running exe, not deleting it).
+  // `exe` is the full path of the current patcher executable.
+  static void SwapPendingPatcherUpdate(const std::wstring& exe);
+
   // Spawns the patcher so the player can update without hunting for it. Called
   // right before we close the game on an outdated-client kick.
   void LaunchPatcher() const;

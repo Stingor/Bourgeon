@@ -116,6 +116,11 @@ void IntegrityCheck::DiscoverPatcher() {
     const std::wstring exe = dir + stem + L".exe";
     if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
 
+    // rpatchur cannot update its own running executable (Windows locks it), so a
+    // cosmetic patch ships the new build alongside as `<stem>.exe.new` and we
+    // promote it here, before recording anything or launching it.
+    SwapPendingPatcherUpdate(exe);
+
     patcher_exe_ = exe;
     // Missing cache file is normal on a fresh install: the patcher only writes it
     // after applying its first patch. patch_index_ stays -1.
@@ -123,6 +128,43 @@ void IntegrityCheck::DiscoverPatcher() {
     break;
   } while (FindNextFileW(h, &fd));
   FindClose(h);
+}
+
+void IntegrityCheck::SwapPendingPatcherUpdate(const std::wstring& exe) {
+  const std::wstring pending = exe + L".new";  // staged by a THOR patch
+  const std::wstring backup  = exe + L".old";  // previous build, kept aside
+
+  // A `.new`/`.old` suffix keeps these files from matching the `*.yml`->`<stem>.exe`
+  // discovery above, and from being picked up as a second patcher.
+
+  // Drop the backup left by an earlier swap. It can still be locked if the old
+  // patcher happens to be running; ignore the failure and retry next launch.
+  if (GetFileAttributesW(backup.c_str()) != INVALID_FILE_ATTRIBUTES)
+    DeleteFileW(backup.c_str());
+
+  // Nothing staged — nothing to do.
+  if (GetFileAttributesW(pending.c_str()) == INVALID_FILE_ATTRIBUTES) return;
+
+  // Move the current exe aside, then promote the new one. Windows allows *moving*
+  // a running executable (a rename is a metadata op on the same volume), so this
+  // works even if the player left the patcher open behind the game — deleting it
+  // would not. If the old backup is still locked, MOVEFILE_REPLACE_EXISTING fails
+  // and we bail, leaving the staged file for the next attempt.
+  if (!MoveFileExW(exe.c_str(), backup.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    LogError("[Integrity] patcher self-update: cannot set current build aside (error {})",
+             GetLastError());
+    return;
+  }
+  if (!MoveFileExW(pending.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    LogError("[Integrity] patcher self-update: cannot promote new build (error {})",
+             GetLastError());
+    // Roll back so the player is never left without a patcher.
+    MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING);
+    return;
+  }
+  // Best-effort immediate cleanup; if the old build still holds a lock this
+  // fails and the delete at the top handles it on the next launch.
+  DeleteFileW(backup.c_str());
 }
 
 void IntegrityCheck::LaunchPatcher() const {
