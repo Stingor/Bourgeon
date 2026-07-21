@@ -37,6 +37,7 @@
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
+#include "plugins/entity_names.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -66,6 +67,7 @@ NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
 BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
+EntityNamesTweaks* Bourgeon::entity_names() { return entity_names_; }
 
 namespace {
 // Silence le message chat "Successfully purchased emotion." (EMSG_EMOTION_
@@ -487,6 +489,11 @@ void Bourgeon::LoadPlugins() {
     auto relay = std::make_unique<DiscordRelay>();
     discord_relay_ = relay.get();
     plugins_.emplace_back(std::move(relay));
+  }
+  {
+    auto entity_names = std::make_unique<EntityNamesTweaks>();
+    entity_names_ = entity_names.get();
+    plugins_.emplace_back(std::move(entity_names));
   }
 
   for (const auto& plugin : plugins_) {

@@ -42,6 +42,15 @@ struct AlignGrid {
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 void HelpMarker(const char* desc);
 
+// Vrai si le compte est STAFF : niveau de groupe serveur >= 80 reçu au login
+// (setting id 26, rempli depuis pc_get_group_level(sd) côté moonlight). Gate
+// PUREMENT serveur : tant que le serveur n'envoie pas l'id 26, la fonctionnalité
+// reste masquée. Sert à réserver au staff les fonctionnalités « ESP-like »
+// (p.ex. EntityNamesTweaks). Reste un gate de CONFIANCE côté client — pour une
+// donnée déjà présente sur chaque client (les noms), aucun enforcement serveur
+// n'est possible.
+bool IsStaff();
+
 // Helper to display a slider that can be fine-tuned with the mouse wheel
 // one is for floats, one for ints.  Step defaults to 0.01 (float) / 1 (int).
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.2f", float step = 0.0f);
@@ -206,6 +215,7 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingTriGstorage   = 22;
   static constexpr uint16_t kSettingAlootId       = 23;  // add item ID to autolootid list (0=clear)
   static constexpr uint16_t kSettingAlootIdRemove = 24;  // remove item ID from list
+  static constexpr uint16_t kSettingStaff         = 26;  // niveau de groupe serveur (pc_get_group_level), lecture seule
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();

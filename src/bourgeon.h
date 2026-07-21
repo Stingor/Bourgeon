@@ -32,6 +32,7 @@ class RojeweledTweaks;
 class NpcDialogTweaks;
 class BugReportTweaks;
 class WeaponDualSprites;
+class EntityNamesTweaks;
 
 class Bourgeon {
  public:
@@ -66,6 +67,7 @@ class Bourgeon {
   RoggleTweaks* roggle();
   RojeweledTweaks* rojeweled();
   WeaponDualSprites* weapon_dual_sprites();
+  EntityNamesTweaks* entity_names();
 
   bool Initialize();
   void OnTick();
@@ -145,6 +147,7 @@ class Bourgeon {
   RojeweledTweaks* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescTweaks* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
+  EntityNamesTweaks* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start

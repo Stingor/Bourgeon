@@ -22,6 +22,7 @@
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/quest_tracker_tweaks.h"
 #include "plugins/settings_tweaks.h"
+#include "plugins/entity_names.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
 #include "plugins/inventory_viewer.h"
@@ -102,21 +103,22 @@ ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
 //   otherwise the 16-byte inline buffer starts at param_3+0x2C.
 //   atoi() on that text gives the numeric nameid.
 
-// ── Mode dev (onglets d'outillage) ────────────────────────────────────────────
-// Masque les onglets qui n'intéressent que le développement (« SPR Lab »…) pour ne
-// pas encombrer l'UI des joueurs. Piloté par `dev_mode: true` dans
-// bourgeon_settings.yaml, à côté de l'exe (cf. GetSettingsPath).
-//
-// ⚠ C'est du CONFORT D'AFFICHAGE, PAS une autorisation : le fichier est éditable et
-// le booléen patchable. Toute fonctionnalité qui doit être réellement réservée doit
-// être revalidée côté SERVEUR (cf. la doctrine posée dans integrity_check.h) — le
-// point d'extension prévu serait un setting id de permissions rempli depuis
-// pc_get_group_level() dans clif_bourgeon_settings.
-//
-// Volontairement une variable de fichier et NON un membre de MoonlightUi : ajouter un
-// membre changerait le layout d'une classe très incluse et imposerait un rebuild
-// --clean-first (cf. les ODR/crashes déjà rencontrés sur ce projet).
-static bool g_dev_mode = false;
+// Niveau de groupe serveur du compte courant, reçu au login via le setting id 26
+// (ZC_BOURGEON_SETTINGS), rempli depuis pc_get_group_level(sd). Non persisté :
+// autoritatif serveur, rafraîchi à chaque login. File-static (pas un membre de
+// MoonlightUi) pour ne pas changer le layout de la classe. Le seuil « staff »
+// est appliqué dans IsStaff() ci-dessous.
+static int g_staff_level = 0;
+
+// Seuil de niveau de groupe serveur à partir duquel un compte est considéré
+// « staff ». 80 pour ce serveur (des groupes non-staff peuvent avoir un level
+// > 0 ; les vrais pouvoirs GM y sont gatés vers 60/90).
+static constexpr int kStaffMinGroupLevel = 80;
+
+// Staff = niveau de groupe serveur >= seuil (reçu au login via le setting id 26).
+// Gate PUREMENT serveur : si le serveur n'envoie pas l'id 26 (sources pas à
+// jour), la fonctionnalité reste masquée, y compris sur un poste dev.
+bool IsStaff() { return g_staff_level >= kStaffMinGroupLevel; }
 
 using ItemDescWndFn = int (__fastcall*)(void*, void*, uint32_t, int, int*, int, int, int);
 static ItemDescWndFn g_item_desc_wnd_orig  = nullptr;
@@ -455,8 +457,6 @@ void MoonlightUi::LoadSettings() {
       if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
       // LogInfo("[MoonlightUi] loaded {} 0x{:08X}", g.yaml_key, argb);
     }
-
-    g_dev_mode            = ui["dev_mode"].as<bool>(false);
 
     // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention
     // que les autres couleurs persistées ici.
@@ -873,6 +873,17 @@ void MoonlightUi::LoadSettings() {
       st->Apply();  // push to the d3d9 post-process layer
     }
 
+    if (auto* en = Bourgeon::Instance().entity_names()) {
+      en->enabled()       = ui["entnames_enabled"].as<bool>(false);
+      en->show_players()  = ui["entnames_players"].as<bool>(true);
+      en->show_monsters() = ui["entnames_monsters"].as<bool>(false);
+      en->show_npcs()     = ui["entnames_npcs"].as<bool>(false);
+      en->show_self()     = ui["entnames_self"].as<bool>(false);
+      en->outline()       = ui["entnames_outline"].as<bool>(true);
+      en->y_offset()      = ui["entnames_yoffset"].as<int>(2);
+      en->font_scale()    = ui["entnames_fontscale"].as<float>(1.0f);
+    }
+
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
       for (const YAML::Node& p : presets) {
@@ -972,7 +983,6 @@ void MoonlightUi::SaveSettings() {
   out     << YAML::Key << "ground_paint"         << YAML::Value
               << spr_lab::ground_paint_enabled()
         << YAML::Key << "ground_paint_color"   << YAML::Value << ground_hex
-        << YAML::Key << "dev_mode"             << YAML::Value << g_dev_mode
         << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
@@ -1169,6 +1179,18 @@ void MoonlightUi::SaveSettings() {
         << YAML::Key << "game_option_pos_y" << YAML::Value << (st ? st->gopt_y() : INT_MIN)
         << YAML::Key << "esc_option_pos_x"  << YAML::Value << (st ? st->esc_x() : INT_MIN)
         << YAML::Key << "esc_option_pos_y"  << YAML::Value << (st ? st->esc_y() : INT_MIN);
+  }
+
+  {
+    auto* en = Bourgeon::Instance().entity_names();
+    out << YAML::Key << "entnames_enabled"   << YAML::Value << (en ? en->enabled() : false)
+        << YAML::Key << "entnames_players"   << YAML::Value << (en ? en->show_players() : true)
+        << YAML::Key << "entnames_monsters"  << YAML::Value << (en ? en->show_monsters() : false)
+        << YAML::Key << "entnames_npcs"      << YAML::Value << (en ? en->show_npcs() : false)
+        << YAML::Key << "entnames_self"      << YAML::Value << (en ? en->show_self() : false)
+        << YAML::Key << "entnames_outline"   << YAML::Value << (en ? en->outline() : true)
+        << YAML::Key << "entnames_yoffset"   << YAML::Value << (en ? en->y_offset() : 2)
+        << YAML::Key << "entnames_fontscale" << YAML::Value << (en ? en->font_scale() : 1.0f);
   }
 
   {
@@ -1584,6 +1606,12 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         }
         break;
       case kSettingAlootIdRemove:
+        break;
+      case kSettingStaff:
+        // Niveau de groupe serveur (pc_get_group_level). > 0 => staff/GM ; active
+        // les fonctionnalités réservées (IsStaff), sans édition manuelle du yaml.
+        g_staff_level = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] staff_level={}", g_staff_level);
         break;
       default:
         // LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
@@ -2782,6 +2810,24 @@ void MoonlightUi::OnRenderUI() {
       PopStyleCompact();
     }
 
+    // ── Staff Tools (réservé group level serveur >= 80, cf. IsStaff) ──────────
+    // Regroupe les fonctionnalités réservées au staff : affichage permanent des
+    // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
+    // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
+    // des noms reste inerte (OnRenderUI vérifie IsStaff).
+    if (IsStaff() && CollapsingHeader("Staff Tools")) {
+      PushStyleCompact();
+
+      SeparatorText("Noms des entités");
+      if (auto* en = Bourgeon::Instance().entity_names())
+        en->DrawSettings();
+
+      SeparatorText("SPR Lab");
+      spr_lab::DrawDebugControls();
+
+      PopStyleCompact();
+    }
+
     // ── Commands Settings ────────────────────────────────────────────────────
     if (CollapsingHeader("Commands Settings"))
     {
@@ -2871,14 +2917,8 @@ void MoonlightUi::OnRenderUI() {
           }
             ImGui::EndTabItem();
         }
-        // Onglet d'outillage : visible seulement avec `dev_mode: true` dans
-        // bourgeon_settings.yaml (confort d'affichage, cf. g_dev_mode).
-        if (g_dev_mode && ImGui::BeginTabItem("SPR Lab"))
-        {
-          Spacing();
-          spr_lab::DrawDebugControls();
-          ImGui::EndTabItem();
-        }
+        // (« SPR Lab » a été déplacé dans le CollapsingHeader « Staff Tools »,
+        // gaté sur le group level serveur — cf. IsStaff.)
         if (ImGui::BeginTabItem("Autoloots"))
         {
           Spacing();

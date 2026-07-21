@@ -27,6 +27,8 @@ set(BOURGEON_FILES
 	"plugins/cheat_detector.cc"
 	"plugins/cheat_detector.h"
 	"plugins/dps_meter.cc"
+	"plugins/entity_names.cc"
+	"plugins/entity_names.h"
 	"plugins/dps_meter.h"
 	"plugins/basic_info.cc"
 	"plugins/basic_info.h"
