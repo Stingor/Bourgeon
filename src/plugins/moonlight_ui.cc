@@ -706,6 +706,8 @@ void MoonlightUi::LoadSettings() {
     if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
       iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
       iv->show_filter()   = ui["inventory_filter"].as<bool>(iv->show_filter());
+      iv->desc_tooltip()  =
+          ui["inventory_desc_tooltip"].as<bool>(iv->desc_tooltip());
       iv->tabs_vertical() =
           ui["inventory_tabs_vertical"].as<bool>(iv->tabs_vertical());
       iv->lock_size()   = ui["inventory_lock_size"].as<bool>(iv->lock_size());
@@ -1221,6 +1223,8 @@ void MoonlightUi::SaveSettings() {
     auto* iv = Bourgeon::Instance().inventory_viewer();
     out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
     out << YAML::Key << "inventory_filter" << YAML::Value << (iv ? iv->show_filter() : true);
+    out << YAML::Key << "inventory_desc_tooltip" << YAML::Value
+        << (iv ? iv->desc_tooltip() : false);
     out << YAML::Key << "inventory_tabs_vertical" << YAML::Value
         << (iv ? iv->tabs_vertical() : true);
     out << YAML::Key << "inventory_lock_size" << YAML::Value << (iv ? iv->lock_size() : false);
@@ -2699,9 +2703,20 @@ void MoonlightUi::OnRenderUI() {
             SameLine(); HelpMarker(
                 "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
                 "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
-                "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.");
+                "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
+                "Inclut la fenêtre de SERTISSAGE de cartes (double-clic sur une carte) : "
+                "elle remplace le popup natif « Insert Card ». La liste des équipements "
+                "compatibles reste calculée par le serveur, donc identique au natif.");
 
             ImGui::BeginDisabled(!iv->imgui_enabled_);
+
+            changed |= ro::RoCheckbox("Description au survol", &iv->desc_tooltip());
+            SameLine(); HelpMarker(
+                "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+                "texte, cartes et options) dans un panneau au skin RO, à la place du "
+                "petit tooltip nom + quantité.\n"
+                "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
+                "menu contextuel.");
 
             changed |= ro::RoCheckbox("Champ de filtre", &iv->show_filter());
             SameLine(); HelpMarker(

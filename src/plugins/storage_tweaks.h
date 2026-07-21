@@ -110,6 +110,7 @@ class StorageTweaks : public Plugin {
     int      index = 0;       // info+4 (= node+0xc) : index storage pour le retrait
     int      type = 0;        // info+0 : type d'item (pour les onglets)
     uint8_t  identified = 0;  // info+0x5c (flag pour la résolution d'icône)
+    int      refine = 0;      // info+0x60 : niveau de refine (préfixe « +N » de l'aperçu)
     char     name[64] = {0};
     // Données d'INSTANCE lues dans l'ItemSkillInfo (absentes de la DB) : elles
     // alimentent l'aperçu de description au survol.

@@ -51,9 +51,10 @@ struct SimpleOpt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
 // `cards` = 4 slots max (0 = vide) et `opts` = options d'instance : eux non plus
 // ne sont pas dans la DB, l'appelant les lit dans SON ItemSkillInfo et les passe
 // ici. Passer nullptr/0 pour n'afficher que la description de base.
+// `refine` (0 = aucun) préfixe le titre par « +N », comme le nom natif complet.
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int card_count = 0, const SimpleOpt* opts = nullptr,
-                      int opt_count = 0);
+                      int opt_count = 0, int refine = 0);
 }  // namespace itemdesc
 
 class ItemDescTweaks : public Plugin {

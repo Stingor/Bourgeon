@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "plugins/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
+#include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
 #include "plugins/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
@@ -160,6 +162,166 @@ constexpr uintptr_t kCartVTable    = 0x0103d538;
 constexpr uintptr_t kStorageSlot   = 0x0131f770;
 constexpr uintptr_t kStorageVTable = 0x0103ca40;
 
+// ── Sertissage de cartes : popup natif UIItemCompositionWnd (id 0x4A) ────────
+// RE complète : docs/card_insert_re.md. Ces offsets ont été VÉRIFIÉS en mémoire
+// live (x32dbg, popup ouvert sur une Turtle General Card) — une première passe de
+// RE statique les donnait 4 octets plus bas, seule cette table est cohérente avec
+// les offsets UIWindow standards du projet (w +0x14 / h +0x18 / visible +0x28).
+constexpr uintptr_t kCompWndSlot = 0x0131f6f0;  // = g_UIWindowMgr + 0x208
+constexpr uintptr_t kCompVTable  = 0x01034684;
+
+// ⚠ AMBIGUÏTÉ DE RE ASSUMÉE. Deux sources se contredisent de 4 octets sur ce bloc :
+//   - décompilation Ghidra de UIItemCompositionWnd_OnMsg (0x008c3590) : liste @+0xcc,
+//     cardinal @+0xd0, titre @+0xd4, rect @+0xf0, index carte @+0xf4 ;
+//   - dump mémoire live du popup ouvert : les mêmes champs 4 octets plus haut
+//     (la std::string du titre n'est cohérente — ptr/size/capacité — qu'à +0xd8).
+// Le delta est le MÊME pour tous les champs, donc un seul offset est à trancher.
+// Plutôt que de parier sur l'une des deux lectures, on résout à l'exécution en
+// validant la sentinelle de std::list (propriété structurelle, cf. LooksLikeListHead).
+// Les autres champs se déduisent du même delta :
+//   cardinal = liste + 4 ; index carte = liste + 0x28.
+constexpr int kCompListOffA = 0xd0;  // hypothèse « dump live »
+constexpr int kCompListOffB = 0xcc;  // hypothèse « décompilation »
+constexpr int kCompCountRel   = 0x04;
+constexpr int kCompCardIdxRel = 0x28;
+
+// Fermeture du popup. Le sélecteur 0x7C n'envoie QUE le paquet : c'est OnMsg qui
+// referme, via UIWindowMgr_SaveWindowRect(mgr, 0x4A) — vérifié dans le décompilé des
+// deux branches (bouton OK 0xB8 et bouton cancel 0xB9).
+constexpr uintptr_t kSaveWindowRect = 0x00a2e770;  // __thiscall(mgr, id)
+constexpr int kWinCardInsert = 0x4A;
+using SaveWindowRect_t = void(__thiscall*)(void*, int);
+
+void CloseCardInsert() {
+  __try {
+    reinterpret_cast<SaveWindowRect_t>(kSaveWindowRect)(
+        reinterpret_cast<void*>(kUIWindowMgr), kWinCardInsert);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Sélecteur CMode::SendMsg du sertissage : son bloc (0x00c8f59d) construit
+// CZ_REQ_ITEMCOMPOSITION — [op:2][cardIndex:2][equipIndex:2]. On passe par LUI plutôt
+// que de fabriquer le paquet, pour que le format ne puisse pas diverger. (Les helpers
+// SertirTimes/CancelComposition sont définis plus bas : ils ont besoin de SendCmd.)
+constexpr int kCmdComposition = 0x7c;
+
+// Une sentinelle de std::list MSVC est circulaire : head->next->prev == head et
+// head->prev->next == head. Deux déréférencements croisés qu'une valeur quelconque
+// (un cardinal, un flottant, un bout de chaîne) ne satisfait quasiment jamais —
+// c'est ce qui rend la résolution d'offset ci-dessous fiable.
+bool LooksLikeListHead(uint8_t* head) {
+  __try {
+    uint8_t* next = *reinterpret_cast<uint8_t**>(head + 0x00);
+    uint8_t* prev = *reinterpret_cast<uint8_t**>(head + 0x04);
+    if (!next || !prev) return false;
+    return *reinterpret_cast<uint8_t**>(next + 0x04) == head &&
+           *reinterpret_cast<uint8_t**>(prev + 0x00) == head;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Offset réel de la std::list des candidats dans CETTE build, ou -1 si aucun des deux
+// ne tient. Résolu à chaque appel (coût : deux lectures) plutôt que mis en cache : le
+// popup est éphémère et ce n'est pas un chemin chaud.
+int ResolveCompListOff(uint8_t* wnd) {
+  const int cands[2] = {kCompListOffA, kCompListOffB};
+  for (int i = 0; i < 2; ++i) {
+    uint8_t* head = nullptr;
+    __try {
+      head = *reinterpret_cast<uint8_t**>(wnd + cands[i]);
+    } __except (EXCEPTION_EXECUTE_HANDLER) { head = nullptr; }
+    if (head && LooksLikeListHead(head)) return cands[i];
+  }
+  return -1;
+}
+
+// Index d'inventaire de la carte en cours de sertissage (0 si illisible).
+int ReadCompCardIndex(uint8_t* wnd, int listOff) {
+  __try {
+    return *reinterpret_cast<int*>(wnd + listOff + kCompCardIdxRel);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Collecte les ItemSkillInfo des équipements candidats. Nœud de std::list MSVC :
+// {next@+0, prev@+4, value@+8} et value EST un ItemSkillInfo complet — on lit donc
+// directement le payload, sans repasser par la liste session (celle-ci EXCLUT les
+// items portés, ce qui ferait disparaître une arme déjà équipée de la liste).
+// La liste est remplie par le handler de ZC 0x017B : son contenu EST la réponse du
+// serveur. Renvoie le nombre d'entrées écrites. SEH, POD only.
+int CollectCompInfos(uint8_t* wnd, int listOff, uint8_t** out, int maxOut) {
+  int n = 0;
+  __try {
+    uint8_t* head = *reinterpret_cast<uint8_t**>(wnd + listOff);
+    if (!head) return 0;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < 1000 && n < maxOut; ++guard) {
+      out[n++] = node + kNodeInfo;
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return n; }
+  return n;
+}
+
+// Position écran d'une fenêtre native (pour aligner notre fenêtre ImGui dessus).
+bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
+  __try {
+    *x = *reinterpret_cast<int*>(wnd + kOffPosX);
+    *y = *reinterpret_cast<int*>(wnd + kOffPosY);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Nombre TOTAL d'emplacements de carte d'un item : ItemSkillDB_GetSlotCount(info),
+// __fastcall(ItemSkillInfo*) -> lit descRecord+0x30. 0 pour l'enregistrement nul.
+constexpr uintptr_t kGetSlotCount = 0x006a4c10;
+using GetSlotCount_t = int(__fastcall*)(void*);
+
+int SlotCountOf(void* info) {
+  __try {
+    return reinterpret_cast<GetSlotCount_t>(kGetSlotCount)(info);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Fiche POD d'un candidat, extraite sous SEH pour un rendu hors __try.
+// (Le lecteur ReadCompItem vit plus bas : il a besoin de FindInfoByIndex.)
+struct CompItem {
+  int      index = 0;        // index inventaire (argument du paquet)
+  uint32_t id = 0;           // nameid (icône)
+  int      refine = 0;
+  uint8_t  identified = 0;
+  int      used_slots = 0;   // nb de cartes DÉJÀ serties
+  int      total_slots = 0;  // nb d'emplacements de l'item (borne le « sertir ×N »)
+  bool     forged = false;   // item forgé/créé : +0x1c n'est PAS une liste de cartes
+  char     name[64] = {0};
+  // Données d'INSTANCE (cartes déjà serties + random options) pour l'aperçu au survol,
+  // mêmes offsets que la grille d'inventaire (info+0x1c / info+0x9c).
+  uint32_t cards[4] = {0};
+  int      opt_count = 0;
+  struct Opt { int16_t index; int16_t value; uint8_t param; };
+  Opt      opts[5] = {};
+};
+
+// Total d'un nameid présent dans l'inventaire (somme des quantités de tous ses stacks).
+// Lu frais depuis le modèle session à chaque appel -> se met à jour tout seul après un
+// sertissage (le handler natif de ZC 0x017D décrémente le stack de la carte). SEH, POD.
+int CountCardStock(uint32_t id) {
+  int total = 0;
+  __try {
+    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    if (!head) return 0;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < 2000; ++guard) {
+      uint8_t* info = node + kNodeInfo;
+      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
+      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
+                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
+      if (ids && static_cast<uint32_t>(atoi(ids)) == id)
+        total += *reinterpret_cast<int*>(node + kNodeAmt);
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return total; }
+  return total;
+}
+
 // ── Helpers vtable ──────────────────────────────────────────────────────────
 template <typename Fn>
 inline Fn Vf(void* self, int off) {
@@ -218,6 +380,33 @@ void UseOrEquip(int index, int type, uint32_t loc, bool leftHand) {
     if (opt) cmd = kCmdEquipAlt;
   }
   SendCmd(cmd, index, arg2);
+}
+
+// Valide le sertissage EXACTEMENT comme le bouton OK natif : le sélecteur 0x7C émet
+// CZ_REQ_ITEMCOMPOSITION et referme le popup. Ordre des arguments repris du natif
+// (SendMsg(0x7C, equipIdx, cardIdx)) — c'est le bloc 0x00c8f59d qui les remet dans
+// l'ordre du paquet (cardIndex d'abord).
+// Sertit `times` fois d'affilée le MÊME équipement, puis garde la fenêtre ouverte en
+// re-demandant une liste fraîche (0x017A via kCmdCard), tant qu'il reste des cartes.
+// `stockBefore` = nb de cartes en stock AVANT ce lot ; l'appelant garantit
+// times <= min(slots libres, stockBefore), donc chaque paquet reste valide (un slot
+// libre + une carte à consommer). Une fois le stock épuisé, l'index de la carte
+// devient invalide -> on ferme au lieu de re-demander.
+void SertirTimes(int cardIndex, int equipIndex, int times, int stockBefore) {
+  if (times < 1) times = 1;
+  for (int i = 0; i < times; ++i)
+    SendCmd(kCmdComposition, equipIndex, cardIndex);  // 0x017C ; ne ferme PAS
+  if (stockBefore - times > 0)
+    SendCmd(kCmdCard, cardIndex, 0);  // 0x017A : le serveur renvoie une liste à jour
+  else
+    CloseCardInsert();
+}
+
+// Annulation : même sélecteur avec (-1, -1) — le bloc natif n'émet alors aucun paquet
+// (c'est le chemin du bouton « cancel ») — puis fermeture, comme le natif.
+void CancelComposition() {
+  SendCmd(kCmdComposition, -1, -1);
+  CloseCardInsert();
 }
 
 // Type équipable (équipement OU munition/costume/ombre) : pour le drop sur la fenêtre
@@ -434,6 +623,93 @@ void* FindInfoByIndex(int index) {
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return nullptr;
+}
+
+// Remplit une fiche CompItem depuis un ItemSkillInfo. `namewnd` = fenêtre servant de
+// `this` à BuildDisplayName (la fenêtre inventaire native, même cachée) ; nullptr =>
+// repli sur le nom de base seul. Cf. struct CompItem plus haut.
+bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
+  if (!info) return false;
+  __try {
+    out->index = *reinterpret_cast<int*>(info + kInfoIndex);
+    const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
+    const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
+                                  : reinterpret_cast<const char*>(info + kInfoIdStr);
+    out->id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
+    out->refine = *reinterpret_cast<int*>(info + kInfoRefine);
+    out->identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
+    // Slots cartes : info+0x1c, 4 entrées. ⚠ Sur un item FORGÉ/CRÉÉ ces mêmes mots
+    // portent les données du forgeron (charid scindé, star crumbs, élément) et non
+    // des cartes — même critère que item_desc_tweaks.cc:419 (id <= 500).
+    const uint32_t c0 = *reinterpret_cast<uint32_t*>(info + 0x1c);
+    out->forged = (c0 != 0 && c0 <= 500);
+    if (!out->forged) {
+      for (int k = 0; k < 4; ++k) {
+        const uint32_t cid = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
+        out->cards[k] = cid;
+        if (cid != 0) ++out->used_slots;
+      }
+    }
+    // Random options d'instance (info+0x98 = nb, info+0x9c = entrées de 5 octets),
+    // pour l'aperçu de description au survol — mêmes offsets que la grille.
+    int nopt = *reinterpret_cast<int*>(info + 0x98);
+    if (nopt < 0) nopt = 0;
+    if (nopt > 5) nopt = 5;
+    out->opt_count = nopt;
+    for (int k = 0; k < nopt; ++k) {
+      const uint8_t* e = info + 0x9c + k * 5;
+      out->opts[k].index = *reinterpret_cast<const int16_t*>(e);
+      out->opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+      out->opts[k].param = e[4];
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  out->total_slots = SlotCountOf(info);  // hors __try (appel natif, déjà SEH-gardé)
+  if (namewnd) SafeBuildName(namewnd, info, out->name, sizeof(out->name));
+  if (out->name[0] == '\0') {
+    __try {
+      size_t cap = sizeof(out->name);
+      reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, out->name, &cap, 0);
+      out->name[sizeof(out->name) - 1] = '\0';
+    } __except (EXCEPTION_EXECUTE_HANDLER) { out->name[0] = '\0'; }
+  }
+  return true;
+}
+
+// Variante « par index d'inventaire », pour la CARTE source (elle, est bien dans
+// l'inventaire puisqu'on vient de double-cliquer dessus).
+bool ReadCompItemByIndex(int index, void* namewnd, CompItem* out) {
+  if (index <= 0) return false;
+  return ReadCompItemFromInfo(static_cast<uint8_t*>(FindInfoByIndex(index)), namewnd, out);
+}
+
+// Aperçu de description RO au survol (le MÊME que la grille d'inventaire) : tooltip
+// couche-avant, fond blanc arrondi + cadre sysbox peint derrière via un split de
+// canaux. `cards`/`opts` = données d'instance du stack survolé (la DB ne les connaît
+// pas). No-op si id == 0. Appelé À L'EXTÉRIEUR de toute fenêtre (crée son popup).
+void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
+                       const itemdesc::SimpleOpt* opts, int nopts, int refine = 0) {
+  if (id == 0) return;
+  constexpr float kW = 330.0f;  // largeur max (wrap du texte)
+  const float edge = ro::DescPanelEdge();
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));   // sur fond clair
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));
+  ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
+                                      ImVec2(kW, ImGui::GetIO().DisplaySize.y * 0.8f));
+  ImGui::BeginTooltip();
+  ImDrawList* ddl = ImGui::GetWindowDrawList();
+  ddl->ChannelsSplit(2);
+  ddl->ChannelsSetCurrent(1);
+  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine);
+  ddl->ChannelsSetCurrent(0);
+  const ImVec2 dwp = ImGui::GetWindowPos(), dws = ImGui::GetWindowSize();
+  ro::DrawDescPanelFrame(ddl, dwp.x, dwp.y, dwp.x + dws.x, dwp.y + dws.y, false);
+  ddl->ChannelsMerge();
+  ImGui::EndTooltip();
+  ImGui::PopStyleVar(3);
+  ImGui::PopStyleColor(2);
 }
 
 // Shift+clic G : insère le LIEN de l'item dans l'input de la fenêtre qui a le FOCUS
@@ -819,13 +1095,60 @@ void MaybeFlushTextures() {
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════════
-InventoryViewer::InventoryViewer() {}
+InventoryViewer::InventoryViewer() {
+  // Sertissage rapide : on reçoit la liste des cartes compatibles (calculée serveur).
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kCompatCards);
+}
+
+// Demande au serveur les cartes de l'inventaire sertissables sur `equipInvIndex`
+// (index CLIENT, = info+0x04). No-op si c'est déjà l'équipement en cours -> une seule
+// requête par ouverture de sous-menu. La réponse (OnRecvPacket) remplit qs_cards_.
+void InventoryViewer::RequestCompatCards(int equipInvIndex) {
+  if (equipInvIndex == qs_equip_index_) return;  // déjà demandé pour cet équip
+  qs_equip_index_ = equipInvIndex;
+  qs_card_count_ = 0;  // vidé jusqu'à la réponse -> le sous-menu affiche « … »
+  uint8_t pkt[6];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = bopcodes::kReqCompatCards;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = 6;  // longueur fixe
+  *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(equipInvIndex);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// ZC_BOURGEON_COMPAT_CARDS : [op:2][len:2][equip:2][count:2] puis count*[cardIdx:2].
+// On ne garde la réponse que si elle concerne l'équipement encore demandé (une
+// réponse en retard pour un ancien équipement est ignorée).
+void InventoryViewer::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode != bopcodes::kCompatCards) return;
+  // data pointe APRÈS [op:2][len:2] -> [equip:2][count:2][cardIdx:2]...
+  if (len < 4) return;
+  const uint16_t equip = *reinterpret_cast<const uint16_t*>(data);
+  if (static_cast<int>(equip) != qs_equip_index_) return;  // réponse périmée
+  int count = *reinterpret_cast<const int16_t*>(data + 2);
+  if (count < 0) count = 0;
+  int n = 0;
+  for (int i = 0; i < count && n < kQsMaxCards; ++i) {
+    const size_t off = 4 + static_cast<size_t>(i) * 2;
+    if (off + 2 > len) break;
+    qs_cards_[n++] = *reinterpret_cast<const uint16_t*>(data + off);
+  }
+  qs_card_count_ = n;
+}
 
 // Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
 void InventoryViewer::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kInvVTable) return;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Idem pour le popup de sertissage (id 0x4A) : il est créé par le handler du paquet
+// ZC 0x017B, donc bien après le tick — sans ce hook une frame native passerait à l'écran.
+void InventoryViewer::HideCardInsertAtCreation(void* win) {
+  if (!win || !imgui_enabled_) return;
+  __try {
+    if (*reinterpret_cast<uintptr_t*>(win) != kCompVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -873,6 +1196,20 @@ void InventoryViewer::Extract() {
       it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
       it.type   = *reinterpret_cast<int*>(info + kInfoType);
       it.favorite = *reinterpret_cast<uint8_t*>(info + kInfoFav);
+      // Cartes/enchants + random options : données d'instance nécessaires à l'aperçu
+      // de description au survol (mêmes offsets que la fenêtre de desc native).
+      for (int k = 0; k < 4; ++k)
+        it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
+      int nopt = *reinterpret_cast<int*>(info + 0x98);
+      if (nopt < 0) nopt = 0;
+      if (nopt > 5) nopt = 5;
+      it.opt_count = nopt;
+      for (int k = 0; k < nopt; ++k) {
+        const uint8_t* e = info + 0x9c + k * 5;
+        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
+        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+        it.opts[k].param = e[4];
+      }
       SafeBuildName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -899,7 +1236,25 @@ void InventoryViewer::OnTick() {
     } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
     if (open_) Extract();
   }
+  // Aperçu de description : purgé dès que le viewer ne dessine plus (fenêtre fermée
+  // ou viewer désactivé), sinon il resterait affiché sans rien pour l'effacer.
+  if (!open_ || !imgui_enabled_) { hover_desc_id_ = 0; hover_desc_idx_ = -1; }
   was_open_ = open_;
+
+  // Popup de sertissage : masquage du natif forcé chaque tick (comme l'inventaire),
+  // et remise à zéro de la sélection dès qu'il disparaît — sinon une sélection
+  // périmée serait réappliquée au sertissage suivant.
+  uint8_t* ci = ReadValidWnd(kCompWndSlot, kCompVTable);
+  if (ci) {
+    __try {
+      *reinterpret_cast<int*>(ci + kOffVisible) = imgui_enabled_ ? 0 : 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  } else {
+    // Popup fermé : on oublie la sélection ET on réarme le front montant, pour que
+    // la prochaine ouverture repasse au premier plan.
+    ci_sel_ = -1;
+    ci_was_open_ = false;
+  }
 }
 
 void InventoryViewer::OnMouseDown(int mx, int my) {
@@ -949,7 +1304,232 @@ bool InventoryViewer::EquipDraggedItem(bool leftHand) {
 // chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
 
+// ── Fenêtre de sertissage de cartes (remplace le popup natif id 0x4A) ─────────
+// On ne rejoue PAS le protocole : le popup natif est la source de vérité (il a été
+// peuplé par le handler de ZC 0x017B avec la liste que le SERVEUR a jugée
+// compatible). On le lit, on le dessine, et on émet CZ_REQ_ITEMCOMPOSITION à la
+// validation. Aucune règle de compatibilité n'est évaluée ici — ce serait
+// s'exposer à proposer des cibles que le serveur refusera.
+void InventoryViewer::RenderCardInsert() {
+  if (!imgui_enabled_) return;
+  uint8_t* wnd = ReadValidWnd(kCompWndSlot, kCompVTable);
+  if (!wnd) {  // pas de sertissage en cours
+    // Réarmé ici aussi (pas seulement dans OnTick) : le rendu tourne à chaque frame,
+    // donc un cycle fermeture/réouverture entre deux ticks garde le premier plan.
+    ci_was_open_ = false;
+    return;
+  }
+
+  constexpr int kMaxCands = 64;  // bien au-delà de ce qu'un inventaire peut proposer
+  int listOff = ResolveCompListOff(wnd);
+  const bool layout_ok = (listOff >= 0);
+  // Repli : on dessine QUAND MÊME la fenêtre. Le popup natif étant caché, un `return`
+  // ici laisserait l'utilisateur sans aucune UI et sans moyen d'annuler.
+  if (!layout_ok) listOff = kCompListOffA;
+
+  const int cardIndex = ReadCompCardIndex(wnd, listOff);
+  uint8_t* infos[kMaxCands];
+  const int n = CollectCompInfos(wnd, listOff, infos, kMaxCands);
+
+  // Contexte de nommage : la fenêtre inventaire native, même cachée (BuildDisplayName
+  // s'en sert comme `this`). Absente => repli automatique sur le nom de base.
+  void* namewnd = ReadValidWnd(kInvWndGlobal, kInvVTable);
+
+  CompItem card{};
+  const bool has_card = ReadCompItemByIndex(cardIndex, namewnd, &card);
+
+  CompItem cands[kMaxCands];
+  int cn = 0;
+  for (int i = 0; i < n; ++i)
+    if (ReadCompItemFromInfo(infos[i], namewnd, &cands[cn])) ++cn;
+
+  // La sélection mémorisée peut avoir disparu (item consommé, liste rafraîchie).
+  if (ci_sel_ >= 0) {
+    bool still = false;
+    for (int i = 0; i < cn; ++i) if (cands[i].index == ci_sel_) { still = true; break; }
+    if (!still) ci_sel_ = -1;
+  }
+
+  // Apparaît là où le natif se serait affiché, puis reste où l'utilisateur la pose.
+  int px = 0, py = 0;
+  if (ReadWndPos(wnd, &px, &py))
+    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(px), static_cast<float>(py)),
+                            ImGuiCond_Appearing);
+  ImGui::SetNextWindowSize(ImVec2(300, 320), ImGuiCond_FirstUseEver);
+  // Premier plan À L'OUVERTURE seulement : le double-clic vient de l'inventaire, qui
+  // a donc le focus — sans ça le popup se retrouve DERRIÈRE lui. On ne le force pas
+  // à chaque frame, sinon la fenêtre deviendrait impossible à passer en arrière-plan.
+  if (!ci_was_open_) {
+    ImGui::SetNextWindowFocus();
+    ci_was_open_ = true;
+  }
+
+  // Stock de la carte dans l'inventaire (somme des stacks du même nameid). Lu frais
+  // -> se met à jour tout seul après chaque sertissage. Détermine aussi combien de
+  // fois on peut enchaîner.
+  const int stock = has_card ? CountCardStock(card.id) : 0;
+
+  // Candidat survolé ce frame (aperçu de description au survol, peint après la fenêtre).
+  const CompItem* hover = nullptr;
+
+  bool open = true;
+  const bool begun = ro::BeginRoWindow("Sertir une carte###bourgeon_card_insert", &open,
+                                       ImGuiWindowFlags_NoCollapse);
+  if (begun) {
+    // En-tête : la carte que l'on sertit + son total en inventaire.
+    if (has_card) {
+      IconTex ic = ResolveIcon(card.id, card.identified);
+      if (ic.tex) {
+        ImGui::Image(TexId(ic.tex), ImVec2(24, 24));
+        ImGui::SameLine();
+      }
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextUnformatted(card.name[0] ? card.name : "Carte");
+      ImGui::SameLine();
+      ImGui::TextDisabled("(x%d)", stock);  // stock restant, mis à jour à chaque sertissage
+    } else {
+      ImGui::TextUnformatted("Carte introuvable");
+    }
+    ImGui::Separator();
+
+    if (!layout_ok) {
+      ImGui::TextWrapped(
+          "Impossible de lire la liste du client (layout de fenêtre inattendu). "
+          "Annule et désactive « Inventaire Moonlight® » pour utiliser le popup natif.");
+    } else if (cn == 0) {
+      ImGui::TextWrapped("Aucun équipement compatible avec un emplacement libre.");
+    } else {
+      ImGui::TextDisabled("Choisissez l'équipement à sertir :");
+      const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+      if (ImGui::BeginChild("##ci_list", ImVec2(0, -footer), true)) {
+        constexpr float kRowH = 26.0f;
+        for (int i = 0; i < cn; ++i) {
+          const CompItem& it = cands[i];
+          ImGui::PushID(it.index);
+          const bool sel = (ci_sel_ == it.index);
+
+          // Le Selectable prend TOUTE la largeur (zone de clic confortable) ; l'icône
+          // et le texte sont peints PAR-DESSUS via le draw list, en coordonnées écran.
+          // Surtout pas de SetCursorPos() pour cela : déplacer le curseur hors du flux
+          // étend les limites de la fenêtre sans soumettre d'item, ce qui déclenche
+          // l'assertion ImGui « use Dummy() to grow window boundaries ».
+          const ImVec2 scr = ImGui::GetCursorScreenPos();
+          if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_AllowDoubleClick,
+                                ImVec2(0, kRowH))) {
+            ci_sel_ = it.index;
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && cardIndex > 0) {
+              SertirTimes(cardIndex, it.index, 1, stock);  // 1 sertissage, garde ouvert
+              ci_sel_ = -1;
+            }
+          }
+          if (ImGui::IsItemHovered()) hover = &it;  // aperçu de description au survol
+
+          ImDrawList* dl = ImGui::GetWindowDrawList();
+          float tx = scr.x + 2.0f;
+          IconTex ic = ResolveIcon(it.id, it.identified);
+          if (ic.tex) {
+            dl->AddImage(TexId(ic.tex), ImVec2(tx, scr.y + 1.0f),
+                         ImVec2(tx + 24.0f, scr.y + 25.0f));
+            tx += 28.0f;
+          }
+          // Nom natif (il inclut DÉJÀ le refine « +10 » -> ne pas le re-préfixer) + le
+          // nombre d'emplacements « [N] », comme dans l'inventaire.
+          char line[96];
+          const char* nm = it.name[0] ? it.name : "(?)";
+          if (it.total_slots > 0)
+            std::snprintf(line, sizeof(line), "%s [%d]", nm, it.total_slots);
+          else
+            std::snprintf(line, sizeof(line), "%s", nm);
+          const float ty = scr.y + (kRowH - ImGui::GetTextLineHeight()) * 0.5f;
+          dl->AddText(ImVec2(tx, ty), ImGui::GetColorU32(ImGuiCol_Text), line);
+          // Slots déjà occupés : information utile pour choisir, jamais un filtre
+          // (le serveur a déjà écarté les items sans emplacement libre).
+          if (!it.forged && it.used_slots > 0) {
+            char sl[32];
+            std::snprintf(sl, sizeof(sl), "  (%d sertie%s)", it.used_slots,
+                          it.used_slots > 1 ? "s" : "");
+            const float w = ImGui::CalcTextSize(line).x;
+            dl->AddText(ImVec2(tx + w, ty), ImGui::GetColorU32(ImGuiCol_TextDisabled), sl);
+          }
+
+          ImGui::PopID();
+        }
+      }
+      ImGui::EndChild();
+    }
+
+    // Combien on peut sertir d'affilée sur l'équipement SÉLECTIONNÉ : borné par les
+    // emplacements encore libres ET le stock de cartes.
+    const CompItem* selItem = nullptr;
+    for (int i = 0; i < cn; ++i) if (cands[i].index == ci_sel_) { selItem = &cands[i]; break; }
+    int freeSlots = 0;
+    if (selItem) {
+      freeSlots = selItem->total_slots - selItem->used_slots;
+      if (freeSlots < 0) freeSlots = 0;
+    }
+    int maxK = freeSlots < stock ? freeSlots : stock;  // sertissages possibles d'un coup
+    if (maxK < 0) maxK = 0;
+
+    // Boutons en largeur AUTO (w=0 = texte + marges natives).
+    const bool can_ok = (selItem != nullptr && cardIndex > 0 && maxK >= 1);
+    if (!can_ok) ImGui::BeginDisabled();
+    if (ro::RoButton("Sertir")) {
+      SertirTimes(cardIndex, ci_sel_, 1, stock);
+      ci_sel_ = -1;
+    }
+    // Sertir 2× à maxK× d'affilée sur le même équipement (remplit plusieurs slots d'un
+    // coup). Chaque bouton « xK » est proposé uniquement s'il est réalisable.
+    for (int k = 2; k <= maxK && k <= 4; ++k) {
+      ImGui::SameLine();
+      char lbl[8];
+      std::snprintf(lbl, sizeof(lbl), "x%d", k);
+      if (ro::RoButton(lbl)) {
+        SertirTimes(cardIndex, ci_sel_, k, stock);
+        ci_sel_ = -1;
+      }
+    }
+    if (!can_ok) ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ro::RoButton("Fermer")) {
+      CancelComposition();
+      ci_sel_ = -1;
+    }
+  }
+  ro::EndRoWindow();
+
+  // Aperçu de description au survol, APRÈS la fenêtre (crée son propre popup) : le MÊME
+  // que la grille d'inventaire quand l'option est active, sinon un tooltip texte simple.
+  if (hover) {
+    if (show_desc_tooltip_) {
+      itemdesc::SimpleOpt sopts[5];
+      for (int k = 0; k < hover->opt_count && k < 5; ++k) {
+        sopts[k].index = hover->opts[k].index;
+        sopts[k].value = hover->opts[k].value;
+        sopts[k].param = hover->opts[k].param;
+      }
+      DrawRoDescTooltip(hover->id, hover->forged ? nullptr : hover->cards,
+                        hover->forged ? 0 : 4, sopts, hover->opt_count, hover->refine);
+    } else {
+      ImGui::BeginTooltip();
+      const char* hn = hover->name[0] ? hover->name : "(?)";
+      if (hover->total_slots > 0) ImGui::Text(" %s [%d] ", hn, hover->total_slots);
+      else                        ImGui::Text(" %s ", hn);
+      if (!hover->forged && hover->used_slots > 0)
+        ImGui::TextDisabled(" %d carte(s) sertie(s) ", hover->used_slots);
+      ImGui::EndTooltip();
+    }
+  }
+
+  // Croix de la barre de titre = même effet qu'Annuler (aucun paquet émis).
+  if (!open) { CancelComposition(); ci_sel_ = -1; }
+}
+
 void InventoryViewer::OnRenderUI() {
+  // Le popup de sertissage est INDÉPENDANT du viewer d'inventaire : il est ouvert par
+  // un paquet serveur et survit à la fermeture de l'inventaire. Donc AVANT le
+  // early-return ci-dessous (ResolveIcon gère lui-même l'epoch du device).
+  RenderCardInsert();
+
   if (!open_ || !imgui_enabled_) return;
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
@@ -1287,6 +1867,9 @@ void InventoryViewer::OnRenderUI() {
 
     const int ncells = freeGrid ? static_cast<int>(cell_of.size())
                                 : static_cast<int>(view.size());
+    // Aperçu de description au survol : recalculé à chaque frame (0 = aucune case).
+    hover_desc_id_ = 0;
+    hover_desc_idx_ = -1;
     for (int k = 0; k < ncells; ++k) {
       if (k % cols != 0) ImGui::SameLine();
       const int rank = freeGrid ? cell_of[k] : k;
@@ -1346,10 +1929,19 @@ void InventoryViewer::OnRenderUI() {
 
       // Survol : tooltip + double-clic = utiliser/équiper.
       if (hovered) {
-        ImGui::BeginTooltip();
-        ImGui::Text(" %s [%d] ", it.name[0] ? it.name : "(?)", it.id);
-        if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
-        ImGui::EndTooltip();
+        // Option « Description au survol » : on retient la case survolée, l'aperçu RO
+        // est dessiné après la fenêtre (cf. fin de OnRenderUI) et REMPLACE le tooltip
+        // texte. Pas pendant un glisser : l'aperçu masquerait la cible du drop.
+        if (show_desc_tooltip_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+            ImGui::GetDragDropPayload() == nullptr) {
+          hover_desc_id_ = it.id;
+          hover_desc_idx_ = idx;
+        } else if (!show_desc_tooltip_) {
+          ImGui::BeginTooltip();
+          ImGui::Text(" %s [%d] ", it.name[0] ? it.name : "(?)", it.id);
+          if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
+          ImGui::EndTooltip();
+        }
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
           UseOrEquip(it.index, it.type, it.loc, ImGui::GetIO().KeyCtrl);  // Ctrl = main gauche
       }
@@ -1398,14 +1990,57 @@ void InventoryViewer::OnRenderUI() {
         if (ImGui::MenuItem("Description")) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
         }
+        // Une carte (type 6) n'est ni « utilisée » ni « équipée » : le double-clic
+        // natif ouvre le sertissage (UseOrEquip -> kCmdCard 0x7b). On l'étiquette donc
+        // « Sertir » — même chemin de code, libellé juste.
         const char* act = (it.type == 0 || it.type == 1 || it.type == 2 ||
                            it.type == 0x12) ? "Utiliser"
+                        : (it.type == 6)    ? "Sertir"
                         : "Équiper";
         const bool usable = it.type <= 2 || it.type == 0x12 ||
                             (it.type >= 4 && it.type <= 0xf) || it.type == 6 ||
                             it.type == 0xa || it.type == 0x10 || it.type == 0x11 ||
                             it.type == 0x13;
         if (usable && ImGui::MenuItem(act)) UseOrEquip(it.index, it.type, it.loc, false);
+
+        // ── Sertissage rapide : sous-menu listant les cartes de l'inventaire
+        // sertissables sur CET équipement (arme/armure avec un slot libre). La liste
+        // est calculée par le SERVEUR (pc_can_insert_card) -> exacte. Sur un item
+        // forgé, cards[0] porte les données du forgeron (id <= 500) : pas de slot réel.
+        if (it.type == 4 || it.type == 5) {
+          const bool forged = (it.cards[0] != 0 && it.cards[0] <= 500);
+          int used = 0;
+          if (!forged)
+            for (int k = 0; k < 4; ++k) if (it.cards[k]) ++used;
+          void* einfo = FindInfoByIndex(it.index);
+          const int total = einfo ? SlotCountOf(einfo) : 0;
+          if (!forged && total > used) {  // au moins un emplacement libre
+            if (ImGui::BeginMenu("Sertissage rapide")) {
+              RequestCompatCards(it.index);  // no-op si déjà demandé pour cet équip
+              if (qs_equip_index_ == it.index && qs_card_count_ > 0) {
+                void* nw = ReadValidWnd(kInvWndGlobal, kInvVTable);
+                for (int c = 0; c < qs_card_count_; ++c) {
+                  CompItem cd{};
+                  if (!ReadCompItemByIndex(qs_cards_[c], nw, &cd)) continue;
+                  ImGui::PushID(qs_cards_[c]);
+                  if (ImGui::MenuItem(cd.name[0] ? cd.name : "(carte)")) {
+                    // Sertit directement (aucun popup en jeu) : juste le paquet 0x017C.
+                    // NE PAS passer par SertirTimes (qui rouvrirait/fermerait le popup).
+                    SendCmd(kCmdComposition, it.index, qs_cards_[c]);
+                    qs_equip_index_ = -1;  // liste périmée après sertissage -> re-demande
+                  }
+                  ImGui::PopID();
+                }
+              } else if (qs_equip_index_ == it.index) {
+                ImGui::TextDisabled("Aucune carte compatible");
+              } else {
+                ImGui::TextDisabled("Chargement…");
+              }
+              ImGui::EndMenu();
+            }
+          }
+        }
+
         if (ImGui::MenuItem(it.favorite ? "Retirer des favoris" : "Ajouter aux favoris"))
           SendFavoriteToggle(it.index, it.favorite != 0);
         // alootid : ramassage auto par ID (via MoonlightUi, comme le bouton d'item_desc).
@@ -1634,4 +2269,28 @@ void InventoryViewer::OnRenderUI() {
   }
 
   ro::EndRoWindow();
+
+  // ── Aperçu de description au SURVOL : TOOLTIP habillé RO ───────────────────
+  // Identique au storage : un vrai tooltip (couche avant, toujours au premier plan
+  // et recadré près des bords), cadre sysbox peint à la main derrière le contenu.
+  if (show_desc_tooltip_ && hover_desc_id_ != 0) {
+    // Cartes/options du stack survolé (la DB ne les connaît pas). Index revalidé :
+    // items_ est reconstruit à chaque tick.
+    itemdesc::SimpleOpt sopts[5];
+    const uint32_t* pcards = nullptr;
+    int ncards = 0, nopts = 0, hrefine = 0;
+    if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
+      const Item& hit = items_[hover_desc_idx_];
+      pcards = hit.cards;
+      ncards = 4;
+      nopts = hit.opt_count;
+      hrefine = hit.refine;
+      for (int k = 0; k < nopts && k < 5; ++k) {
+        sopts[k].index = hit.opts[k].index;
+        sopts[k].value = hit.opts[k].value;
+        sopts[k].param = hit.opts[k].param;
+      }
+    }
+    DrawRoDescTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine);
+  }
 }

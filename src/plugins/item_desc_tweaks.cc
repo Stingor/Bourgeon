@@ -1866,12 +1866,18 @@ namespace itemdesc {
 constexpr float kSimpleIllustH = 110.0f;
 
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
-                      int card_count, const SimpleOpt* opts, int opt_count) {
+                      int card_count, const SimpleOpt* opts, int opt_count, int refine) {
   if (id == 0) return;
   const CardDesc* cd = GetCardDesc(id);
   const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme la fenêtre desc)
-  if (cd->name[0]) ImGui::TextColored(hdr, "%s", cd->name);
-  else             ImGui::TextColored(hdr, "#%u", id);
+  // Titre = nom de base préfixé du refine « +N » (cd->name ne contient pas le refine,
+  // qui est une donnée d'instance passée par l'appelant).
+  if (cd->name[0]) {
+    if (refine > 0) ImGui::TextColored(hdr, "+%d %s", refine, cd->name);
+    else            ImGui::TextColored(hdr, "%s", cd->name);
+  } else {
+    ImGui::TextColored(hdr, "#%u", id);
+  }
 
   // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
   const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&

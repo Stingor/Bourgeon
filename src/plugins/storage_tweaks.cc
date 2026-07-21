@@ -761,6 +761,7 @@ void StorageTweaks::Extract(uint8_t* wnd) {
       // Mêmes offsets que ceux utilisés par la fenêtre de description native.
       for (int k = 0; k < 4; ++k)
         it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
+      it.refine = *reinterpret_cast<int*>(info + 0x60);  // niveau de refine (aperçu)
       int nopt = *reinterpret_cast<int*>(info + 0x98);
       if (nopt < 0) nopt = 0;
       if (nopt > 5) nopt = 5;
@@ -1693,12 +1694,13 @@ void StorageTweaks::OnRenderUI() {
     // reconstruit à chaque tick).
     itemdesc::SimpleOpt sopts[5];
     const uint32_t* pcards = nullptr;
-    int ncards = 0, nopts = 0;
+    int ncards = 0, nopts = 0, hrefine = 0;
     if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
       const Item& hit = items_[hover_desc_idx_];
       pcards = hit.cards;
       ncards = 4;
       nopts = hit.opt_count;
+      hrefine = hit.refine;
       for (int k = 0; k < nopts && k < 5; ++k) {
         sopts[k].index = hit.opts[k].index;
         sopts[k].value = hit.opts[k].value;
@@ -1706,7 +1708,7 @@ void StorageTweaks::OnRenderUI() {
       }
     }
     itemdesc::RenderSimpleDesc(hover_desc_id_, kW - 2.0f * edge, pcards, ncards,
-                               sopts, nopts);
+                               sopts, nopts, hrefine);
     dl->ChannelsSetCurrent(0);
     // Art sysbox SANS son fond (fill_bg=false) : le fond blanc arrondi est déjà
     // peint par ImGui, et celui de DrawDescPanelFrame est à angles droits — il

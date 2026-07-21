@@ -37,6 +37,7 @@ constexpr uint16_t kReqDamage   = 0x0F0D;  // CZ_BOURGEON_REQ_DAMAGE (estim. dé
 constexpr uint16_t kReqItemScript = 0x0F11;  // CZ_BOURGEON_REQ_ITEMSCRIPT (script brut d'un item)
 constexpr uint16_t kBugReport   = 0x0F13;  // CZ_BOURGEON_BUG_REPORT (rapport de bug joueur)
 constexpr uint16_t kCompanion   = 0x0F15;  // CZ_BOURGEON_COMPANION (invoquer/basculer cart/peco/falcon)
+constexpr uint16_t kReqCompatCards = 0x0F18;  // CZ_BOURGEON_REQ_COMPAT_CARDS (cartes sertissables sur un équip)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -52,13 +53,14 @@ constexpr uint16_t kItemScript    = 0x0F12;  // ZC_BOURGEON_ITEMSCRIPT (script b
 constexpr uint16_t kBugReportAck  = 0x0F14;  // ZC_BOURGEON_BUG_REPORT_ACK (accusé de réception)
 constexpr uint16_t kCompanionState = 0x0F16;  // ZC_BOURGEON_COMPANION_STATE (niveaux skills + états cart/peco/falcon)
 constexpr uint16_t kHatEffectMap   = 0x0F17;  // ZC_BOURGEON_HATEFFECT_MAP (itemId->ordinal hat effect ; preview costumes sans viewid)
+constexpr uint16_t kCompatCards    = 0x0F19;  // ZC_BOURGEON_COMPAT_CARDS (liste des cartes sertissables sur un équip)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F18 -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F1A -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F18;
+constexpr uint16_t kNextFree    = 0x0F1A;
 
 }  // namespace bopcodes

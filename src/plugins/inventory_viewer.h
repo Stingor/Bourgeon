@@ -37,6 +37,9 @@ class InventoryViewer : public Plugin {
 
   void OnTick() override;      // capture l'état de l'inventaire (polling read-only)
   void OnRenderUI() override;  // dessine la grille ImGui si l'inventaire est ouvert
+  // Reçoit ZC_BOURGEON_COMPAT_CARDS (sertissage rapide) : liste des index de cartes
+  // sertissables sur l'équipement demandé.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Setting PERSISTANT (bourgeon_settings.yaml "inventory_imgui", géré par
   // MoonlightUi comme storage_imgui) : ON = viewer ImGui + natif caché ; OFF =
@@ -48,6 +51,9 @@ class InventoryViewer : public Plugin {
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Inventaire » du
   // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
   bool& show_filter()   { return show_filter_; }
+  // Aperçu de description RO au survol d'une case (comme le storage) ; OFF = simple
+  // tooltip texte (nom + quantité).
+  bool& desc_tooltip()  { return show_desc_tooltip_; }
   // Disposition des onglets de catégorie : true = verticale à gauche (défaut,
   // comme le natif), false = rangée horizontale au-dessus de la grille.
   bool& tabs_vertical() { return tabs_vertical_; }
@@ -67,6 +73,25 @@ class InventoryViewer : public Plugin {
   // id 8 : si imgui_enabled_, force wnd+0x28 = 0 AVANT le 1er rendu -> pas de
   // flicker (le OnTick seul laisserait passer une frame native visible).
   void HideNativeAtCreation(void* win);
+
+  // ── Sertissage de cartes (popup natif UIItemCompositionWnd, id 0x4A) ────────
+  // Double-cliquer une carte envoie CZ_REQ_ITEMCOMPOSITION_LIST (0x017A) ; le
+  // SERVEUR répond (0x017B) avec la liste des équipements compatibles à slot
+  // libre, et le client ouvre un popup pour choisir la cible.
+  //
+  // Notre version ImGui ne rejoue PAS ce protocole : elle LIT le popup natif
+  // (slot 0x0131f6f0, vtable 0x01034684) qui contient déjà tout l'état — liste
+  // des candidats en +0xd0, carte source en +0xf8. Aucun état dupliqué, donc
+  // aucun risque de désynchro, et le filtrage reste 100 % serveur (le client
+  // n'évalue AUCUNE règle de compatibilité). Cf. docs/card_insert_re.md.
+  //
+  // PAS de réglage séparé : le sertissage suit `imgui_enabled_`. Les deux fenêtres
+  // forment un tout — proposer un inventaire ImGui qui ouvre un popup natif (ou
+  // l'inverse) serait incohérent à l'usage.
+  //
+  // Pendant du HideNativeAtCreation ci-dessus, pour la fenêtre id 0x4A : évite la
+  // frame de flicker entre la création du popup natif et le premier OnTick.
+  void HideCardInsertAtCreation(void* win);
 
   // Hooks WndProc (pré-input, comme storage/skill_bar) : router un drag NATIF
   // relâché sur le viewer, et mémoriser où le clic a démarré.
@@ -112,14 +137,48 @@ class InventoryViewer : public Plugin {
     uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
     uint8_t  favorite = 0;    // node+0x90 (onglet favoris)
     char     name[64] = {0};
+    // Données d'INSTANCE du stack (pas de la DB) : lues pour l'aperçu de description
+    // au survol, mêmes offsets que la fenêtre de description native (cf. storage).
+    uint32_t cards[4] = {0};  // info+0x1c : 4 slots carte/enchant (0 = vide)
+    int      opt_count = 0;   // info+0x98 : nb de random options
+    struct Opt { int16_t index; int16_t value; uint8_t param; };
+    Opt      opts[5] = {};    // info+0x9c : entrées de 5 octets
   };
   static constexpr int kMaxItems = 500;  // marge au-dessus de la capacité serveur
 
   // Remplit items_/item_count_ depuis le modèle session. SEH (POD only).
   void Extract();
 
+  // Dessine la fenêtre de sertissage si le popup natif 0x4A est ouvert. Appelée
+  // AVANT le early-return de OnRenderUI : le popup vit sa propre vie et peut
+  // rester ouvert alors que l'inventaire est refermé.
+  void RenderCardInsert();
+
+  // Candidat sélectionné dans la fenêtre de sertissage : index INVENTAIRE (pas un
+  // rang de liste), donc stable si le serveur renvoie une liste différente.
+  // -1 = aucune sélection. Remis à -1 dès que le popup natif disparaît.
+  int ci_sel_ = -1;
+  // Front montant du popup : sert à le placer ET à le mettre au premier plan la
+  // frame où il apparaît (sinon il s'ouvre derrière l'inventaire, qui a le focus
+  // puisque c'est de là que part le double-clic sur la carte).
+  bool ci_was_open_ = false;
+
+  // ── Sertissage rapide (sous-menu du menu contextuel d'un équipement) ────────
+  // Le serveur (ZC_BOURGEON_COMPAT_CARDS) calcule les cartes de l'inventaire
+  // compatibles avec un équipement via le prédicat EXACT du sertissage
+  // (pc_can_insert_card) -> aucun faux positif. Requête ASYNC : on la lance à
+  // l'ouverture du sous-menu, le résultat s'affiche à la frame où il arrive.
+  int  qs_equip_index_ = -1;   // équipement demandé (index inventaire CLIENT) ; -1 = aucun
+  static constexpr int kQsMaxCards = 128;
+  int  qs_cards_[kQsMaxCards] = {0};  // index inventaire des cartes compatibles reçues
+  int  qs_card_count_ = 0;
+  // Envoie CZ_BOURGEON_REQ_COMPAT_CARDS pour cet équipement si ce n'est pas déjà
+  // celui en cours (évite de re-demander à chaque frame d'ouverture du sous-menu).
+  void RequestCompatCards(int equipInvIndex);
+
   bool show_panel_ = true;    // transitoire : clic sur le X (ferme la session)
   bool show_filter_ = true;      // setting : champ de filtre par nom
+  bool show_desc_tooltip_ = false;  // setting : aperçu de description au survol
   bool tabs_vertical_ = true;    // setting : onglets verticaux (défaut) ou horizontaux
   bool lock_size_ = false;       // setting : taille de fenêtre verrouillée
   bool free_layout_ = false;     // setting : placement libre (exige lock_size_)
@@ -153,5 +212,9 @@ class InventoryViewer : public Plugin {
   bool need_pos_ = false;     // repositionner près du natif à l'ouverture
   int  spawn_x_ = 0, spawn_y_ = 0;
   int  item_count_ = 0;       // nb d'items valides dans items_
+  // Case survolée ce frame pour l'aperçu de description (0 = aucune) ; l'aperçu est
+  // dessiné APRÈS la fenêtre, en tooltip (cf. storage_tweaks).
+  uint32_t hover_desc_id_ = 0;
+  int      hover_desc_idx_ = -1;
   Item items_[kMaxItems];
 };

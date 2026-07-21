@@ -135,6 +135,13 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HideNativeAtCreation(win);
     }
+    // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : ce popup est créé par le
+    // handler du paquet ZC 0x017B, donc entre deux OnTick -> sans ce hook une frame
+    // native passerait à l'écran avant que le viewer ne la masque.
+    if (windowID == 0x4A) {
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->HideCardInsertAtCreation(win);
+    }
     // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
     if (windowID == 0x13e) {
       if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
