@@ -386,19 +386,48 @@ void InstallActorCapture() {
           reinterpret_cast<uint8_t*>(&Hooked_ActorQuad)));
 }
 
-// Equipped-headgear view id for an equip slot, with COSTUME precedence: the
-// costume item array (session+0x2b30) overrides the general one (session+0x17d0)
-// when a costume piece occupies the slot. Each item is 0xf8 bytes; view id @
-// +0x70, a unique slot/item tag @ +4 (0 = empty), used by the caller to de-dup.
-int EquipHeadgearView(int slot, int* out_tag, bool allow_costume = true) {
-  const uintptr_t cos = kSession + 0x2b30 + static_cast<uintptr_t>(slot) * 0xf8;
-  if (allow_costume && *reinterpret_cast<int*>(cos + 4) != 0) {  // costume present -> precedence
-    *out_tag = *reinterpret_cast<int*>(cos + 4);
-    return *reinterpret_cast<int*>(cos + 0x70);
+// Résout les 3 view ids de coiffe (top/mid/low) à afficher, avec :
+//  (1) précédence costume par slot (tableau costume session+0x2b30) quand `show_costume` ;
+//  (2) suppression NATIVE d'un chapeau RÉEL multi-slot dès qu'un costume occupe l'un de
+//      ses slots : un hat qui prend head top+mid+low (même invIndex/tag +4 dans les 3
+//      entrées equip) est masqué EN ENTIER par le natif quand un costume prend le head-top
+//      — il ne doit pas ressurgir via ses slots mid/low (que le costume, lui, ne couvre
+//      pas). Règle : un item réel est masqué si son tag == le tag réel d'un slot
+//      actuellement couvert par un costume.
+//  (3) de-dup par tag (item multi-slot / costume multi-slot -> une seule couche), en
+//      GARDANT la priorité de couche identique au rendu natif capturé (correct hors costume).
+// Slots equip (vérifié en jeu) : 0 = head-bot/low, 8 = head-top, 9 = head-mid. Les
+// paramètres hg_top/hg_mid/hg_low ne sont que des noms de COUCHE de l'actor ctor : on
+// conserve le câblage slot->couche de l'origine (slot8->hg_mid, slot9->hg_low, slot0->hg_top),
+// empiriquement correct — la suppression ci-dessus, elle, est symétrique et ne dépend PAS de
+// quel slot est « top » (elle opère sur les tags des 3 slots tête).
+void ResolveHeadgearViews(bool show_costume, int* hg_top, int* hg_mid, int* hg_low) {
+  const int slots[3] = {0, 8, 9};  // ordre de lecture ; [k] -> couche assignée plus bas
+  int rtag[3], rview[3], ctag[3], cview[3], etag[3], eview[3];
+  for (int k = 0; k < 3; ++k) {
+    const uintptr_t gen = kSession + 0x17d0 + static_cast<uintptr_t>(slots[k]) * 0xf8;
+    const uintptr_t cos = kSession + 0x2b30 + static_cast<uintptr_t>(slots[k]) * 0xf8;
+    rtag[k]  = *reinterpret_cast<int*>(gen + 4);
+    rview[k] = *reinterpret_cast<int*>(gen + 0x70);
+    ctag[k]  = show_costume ? *reinterpret_cast<int*>(cos + 4) : 0;
+    cview[k] = *reinterpret_cast<int*>(cos + 0x70);
   }
-  const uintptr_t gen = kSession + 0x17d0 + static_cast<uintptr_t>(slot) * 0xf8;
-  *out_tag = *reinterpret_cast<int*>(gen + 4);
-  return *reinterpret_cast<int*>(gen + 0x70);
+  // Vue EFFECTIVE par slot : costume prioritaire ; sinon réel s'il n'est pas « couvert »
+  // (aucun slot du même item réel n'est pris par un costume).
+  for (int k = 0; k < 3; ++k) {
+    if (ctag[k] != 0) { etag[k] = ctag[k]; eview[k] = cview[k]; continue; }
+    bool covered = false;
+    if (rtag[k] != 0)
+      for (int j = 0; j < 3; ++j)
+        if (ctag[j] != 0 && rtag[j] == rtag[k]) { covered = true; break; }
+    if (rtag[k] != 0 && !covered) { etag[k] = rtag[k]; eview[k] = rview[k]; }
+    else                          { etag[k] = 0;       eview[k] = 0; }
+  }
+  // De-dup couche (priorité de l'origine, préservée) : slot 8 d'abord, puis slot 9, puis
+  // slot 0 — un item multi-slot à view identique ne rend donc que dans une seule couche.
+  *hg_mid = etag[1] ? eview[1] : 0;                                        // slot 8
+  *hg_low = (etag[2] && etag[2] != etag[1]) ? eview[2] : 0;                // slot 9
+  *hg_top = (etag[0] && etag[0] != etag[1] && etag[0] != etag[2]) ? eview[0] : 0;  // slot 0
 }
 
 // Nameid de l'item équipé dans `slot` (arme=1, bouclier=5), lu in-place dans le
@@ -463,16 +492,10 @@ void CapturePortraitActor() {
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
 
-    // Equipped-headgear view ids (costume overrides general; see EquipHeadgearView).
-    // Slots: 8 = head-mid, 9 = head-low, 0 = head-top (per UIBasicInfoWnd doll
-    // FUN_008cf970). De-dup by the +4 tag so an item spanning slots draws once.
-    int has8, has9, has0;
-    const int view8 = EquipHeadgearView(8, &has8);
-    const int view9 = EquipHeadgearView(9, &has9);
-    const int view0 = EquipHeadgearView(0, &has0);
-    const int hg_mid = (has8 != 0) ? view8 : 0;
-    const int hg_low = (has9 != 0 && has9 != has8) ? view9 : 0;
-    const int hg_top = (has0 != 0 && has0 != has8 && has0 != has9) ? view0 : 0;
+    // Equipped-headgear view ids (costume precedence + native suppression of a
+    // multi-slot real hat covered by a costume; see ResolveHeadgearViews).
+    int hg_top, hg_mid, hg_low;
+    ResolveHeadgearViews(/*show_costume=*/true, &hg_top, &hg_mid, &hg_low);
 
     // __thiscall Actor_Init(this, p1..p19) via __fastcall(this, dummy_edx, ..).
     // Field map RE'd from Actor_DrawFromCharInfo (0x0079ab80): the actor stores a
@@ -1042,7 +1065,7 @@ void AvatarBuildCaptureOnce(void* render_ctx, int sex, int job, int hair, int cl
 // ── Avatar plein-corps (character sheet) ─────────────────────────────────────
 // Clone de CapturePortraitActor, mais : (a) buffer dédié g_av_caps, (b) garment
 // TOUJOURS nourri (corps entier, jamais gaté par head_only), (c) coiffes live via
-// EquipHeadgearView(8/9/0) exactement comme le portrait. anim/dir/animate = pose
+// ResolveHeadgearViews(top/mid/low) exactement comme le portrait. anim/dir/animate = pose
 // choisie (combo sous l'avatar). SEH-gardé ; restaure g_cap_buf/g_cap_num/
 // g_frame_dst vers le portrait à la sortie (même contrat que l'aperçu).
 // force_frame >= 0 : capture CETTE image précise (export GIF, ignore le temps/le gel
@@ -1069,15 +1092,11 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
     const int hair = *reinterpret_cast<int*>(kHair);
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
-    // Coiffes portées (de-dup par tag +4). show_costume gate la précédence costume : quand
-    // false (vue Équipement + « Voir les costumes » décoché), on rend les coiffes RÉELLES.
-    int has8, has9, has0;
-    const int view8 = EquipHeadgearView(8, &has8, show_costume);
-    const int view9 = EquipHeadgearView(9, &has9, show_costume);
-    const int view0 = EquipHeadgearView(0, &has0, show_costume);
-    const int hg_mid = (has8 != 0) ? view8 : 0;
-    const int hg_low = (has9 != 0 && has9 != has8) ? view9 : 0;
-    const int hg_top = (has0 != 0 && has0 != has8 && has0 != has9) ? view0 : 0;
+    // Coiffes portées : précédence costume + suppression native d'un hat réel multi-slot
+    // couvert par un costume (cf. ResolveHeadgearViews). show_costume gate la précédence
+    // costume : false (vue Équipement + « Voir les costumes » décoché) -> coiffes RÉELLES.
+    int hg_top, hg_mid, hg_low;
+    ResolveHeadgearViews(show_costume, &hg_top, &hg_mid, &hg_low);
     // Garment : quand show_costume, le costume de cape (tableau costume slot 2) prime ;
     // sinon le garment EFFECTIF (kGarmentView, déjà config-aware -> réel si costumes off).
     int garment;
