@@ -14,6 +14,7 @@
 #include "plugins/integrity_check.h"
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
+#include "plugins/berserk_chat_unlock.h"
 #include "plugins/inventory_tweaks.h"
 #include "plugins/inventory_viewer.h"
 #include "plugins/equip_tweaks.h"
@@ -385,6 +386,7 @@ void Bourgeon::LoadPlugins() {
   }
   plugins_.emplace_back(std::make_unique<ChatTweaks>());
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
+  plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   {
     auto inventory_viewer = std::make_unique<InventoryViewer>();

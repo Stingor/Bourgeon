@@ -64,6 +64,8 @@ set(BOURGEON_FILES
 	"plugins/weapon_layer.h"
 	"plugins/weapon_dual_sprites.cc"
 	"plugins/weapon_dual_sprites.h"
+	"plugins/berserk_chat_unlock.cc"
+	"plugins/berserk_chat_unlock.h"
 	"plugins/ez_effect_capture.cc"
 	"plugins/ez_effect_capture.h"
 	"plugins/spr_effect_lab.cc"
