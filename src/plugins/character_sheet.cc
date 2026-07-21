@@ -5,6 +5,7 @@
 #include <objbase.h>  // CoInitializeEx pour le thread du dialogue
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -775,6 +776,76 @@ void SendCompanionPkt(int kind, int action, int arg) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
+// ── Titres d'achievement (cf. project_achievement_title_re, docs/achievement_title_re.md) ────
+// Un titre = un simple entier (id 1000..1046). Le libellé est 100% client (Lua TitleTable.lub).
+constexpr uintptr_t kOwnTitleId    = 0x016004fc;  // g_Own_TitleId : titre ÉQUIPÉ (0 = aucun)
+constexpr uintptr_t kOwnTitleBegin = 0x01600500;  // std::vector<int> g_OwnTitleList : begin (possédés)
+constexpr uintptr_t kOwnTitleEnd   = 0x01600504;  // .. end
+// Title_GetStringById : __thiscall(this=session 0x015fa3c0, out_str, titleId) -> std::string* (out).
+// Résout l'id en libellé via l'appel Lua global GetTitleString. RET 0x8 (thiscall, 2 args pile).
+constexpr uintptr_t kTitleGetStr   = 0x00d89ed0;
+constexpr uintptr_t kStrDtor       = 0x004f08f0;  // std::string dtor (__thiscall, libère le heap SSO+)
+constexpr uint16_t  kOpChangeTitle = 0x0A2E;      // CZ_REQ_CHANGE_TITLE {op, title_id.L} (équiper)
+using TitleGetStr_t = void*(__fastcall*)(void* thisSession, void* edx, void* out, int titleId);
+using StrDtor_t     = void(__fastcall*)(void* thisStr, void* edx);
+
+// Titres possédés + titre équipé, lus LIVE des globals (SEH/POD).
+struct OwnedTitles {
+  int equipped = 0;     // g_Own_TitleId (0 = aucun)
+  int ids[128];         // titres possédés (dérivés des achievements complétés côté client)
+  int count = 0;
+};
+bool ReadOwnedTitles(OwnedTitles* o) {
+  __try {
+    o->equipped = *reinterpret_cast<const int*>(kOwnTitleId);
+    const int* b = *reinterpret_cast<const int* const*>(kOwnTitleBegin);
+    const int* e = *reinterpret_cast<const int* const*>(kOwnTitleEnd);
+    o->count = 0;
+    if (b && e && e > b) {
+      int n = static_cast<int>(e - b);
+      if (n > 128) n = 128;
+      for (int i = 0; i < n; ++i) o->ids[i] = b[i];
+      o->count = n;
+    }
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Cache id -> libellé (statique : TitleTable.lub ne change pas). Résolu via le natif Lua.
+std::unordered_map<int, std::string> g_title_cache;
+void ResolveTitleSEH(int id, char* out, size_t cap) {
+  out[0] = '\0';
+  __try {
+    // std::string MSVC : 16o buffer SSO @+0, size @+0x10, capacité @+0x14. Le natif écrase
+    // tout le buffer (init incluse) ; on lit puis on DÉTRUIT (libère si la chaîne dépasse la SSO).
+    uint8_t sbuf[0x18];
+    std::memset(sbuf, 0, sizeof(sbuf));
+    reinterpret_cast<TitleGetStr_t>(kTitleGetStr)(
+        reinterpret_cast<void*>(kSession), nullptr, sbuf, id);
+    const uint32_t scap = *reinterpret_cast<const uint32_t*>(sbuf + 0x14);
+    const char* p = (scap > 15) ? *reinterpret_cast<char* const*>(sbuf)
+                                : reinterpret_cast<const char*>(sbuf);
+    if (p) { size_t i = 0; for (; i + 1 < cap && p[i]; ++i) out[i] = p[i]; out[i] = '\0'; }
+    reinterpret_cast<StrDtor_t>(kStrDtor)(sbuf, nullptr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
+const char* TitleName(int id) {
+  auto it = g_title_cache.find(id);
+  if (it != g_title_cache.end()) return it->second.c_str();
+  char buf[96];
+  ResolveTitleSEH(id, buf, sizeof(buf));
+  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "Titre #%d", id);
+  return (g_title_cache[id] = buf).c_str();
+}
+// Équipe un titre : CZ_REQ_CHANGE_TITLE (0x0A2E) {title_id.L}. title_id=0 => retirer le titre.
+// Le serveur re-valide (refuse si ∉ sd->titles) et répond ZC 0x0A2F -> maj g_Own_TitleId.
+void SendChangeTitle(int titleId) {
+  uint8_t pkt[6];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpChangeTitle;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(titleId);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
 // Abreviation d'un slot vide (pour l'afficher grise dans la case).
 const char* SlotAbbrev(int slot) {
   switch (slot) {
@@ -1510,6 +1581,80 @@ void CharacterSheet::DrawPresetsTab() {
     hk_capturing_ = -1;  // l'indice capturé peut être invalidé par l'erase
     if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
   }
+}
+
+// Onglet Titres : liste des titres possédés (dérivés des achievements complétés), le titre
+// équipé mis en évidence + coché ; clic = équiper (CZ 0x0A2E), « Aucun titre » = retirer. Un
+// champ de filtre permet de retrouver un titre par son libellé quand la liste est longue.
+void CharacterSheet::DrawTitlesTab() {
+  OwnedTitles ot{};
+  ReadOwnedTitles(&ot);
+
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kGreen(0.15f, 0.55f, 0.20f, 1.0f);
+
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kBlack, "Titre équipé :");
+  ImGui::SameLine();
+  if (ot.equipped != 0)
+    ImGui::TextColored(kGreen, "%s", TitleName(ot.equipped));
+  else
+    ImGui::TextColored(kGray, "aucun");
+
+  ImGui::Spacing();
+  // Filtre par libellé (pratique quand beaucoup de titres décrochés).
+  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+  ImGui::InputTextWithHint("##cs_title_filter", "filtrer par nom…", title_filter_buf_,
+                           sizeof(title_filter_buf_));
+  ImGui::Spacing();
+  ImGui::Separator();
+  ImGui::Spacing();
+
+  int to_equip = -1;  // titre à équiper APRÈS le rendu (0 = retirer, -1 = rien)
+
+  // Entrée « Aucun titre » (retire le titre équipé) : visible seulement sans filtre actif.
+  const bool filtering = title_filter_buf_[0] != '\0';
+  if (!filtering) {
+    const bool sel_none = ot.equipped == 0;
+    if (ImGui::Selectable("Aucun titre", sel_none)) to_equip = 0;
+    ImGui::Spacing();
+  }
+
+  if (ot.count == 0) {
+    ImGui::TextColored(kGray,
+                       "Aucun titre décroché. Complète des succès qui récompensent un titre.");
+  }
+
+  // Comparaison insensible à la casse pour le filtre.
+  auto icontains = [](const char* hay, const char* needle) {
+    if (!needle[0]) return true;
+    for (const char* h = hay; *h; ++h) {
+      const char *a = h, *b = needle;
+      while (*a && *b && std::tolower((unsigned char)*a) == std::tolower((unsigned char)*b)) {
+        ++a; ++b;
+      }
+      if (!*b) return true;
+    }
+    return false;
+  };
+
+  for (int i = 0; i < ot.count; ++i) {
+    const int id = ot.ids[i];
+    const char* label = TitleName(id);
+    if (filtering && !icontains(label, title_filter_buf_)) continue;
+    ImGui::PushID(id);
+    const bool equipped = (id == ot.equipped);
+    // Ligne sélectionnable pleine largeur : « ✓ » (équipé) puis le libellé.
+    char row[128];
+    std::snprintf(row, sizeof(row), "%s%s", equipped ? "> " : "   ", label);
+    if (ImGui::Selectable(row, equipped)) to_equip = id;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip(equipped ? "Titre actuellement équipé (clic : garder)"
+                                 : "Clic : équiper ce titre");
+    ImGui::PopID();
+  }
+
+  if (to_equip >= 0 && to_equip != ot.equipped) SendChangeTitle(to_equip);
 }
 
 void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz) {
@@ -2529,6 +2674,7 @@ void CharacterSheet::OnRenderUI() {
     if (ImGui::BeginTabItem("Équipement")) { tab_ = 0; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem("Costume"))    { tab_ = 1; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem("Presets"))    { tab_ = 2; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Titres"))     { tab_ = 3; ImGui::EndTabItem(); }
     ImGui::EndTabBar();
   }
   costume_ = (tab_ == 1);
@@ -2539,6 +2685,11 @@ void CharacterSheet::OnRenderUI() {
     // Onglet Presets : pleine largeur (pas de doll/stats), liste avec icônes des items.
     ImGui::BeginChild("cs_presets", ImVec2(0, 0), true);
     DrawPresetsTab();
+    ImGui::EndChild();
+  } else if (tab_ == 3) {
+    // Onglet Titres : pleine largeur, liste des titres possédés + titre équipé.
+    ImGui::BeginChild("cs_titles", ImVec2(0, 0), true);
+    DrawTitlesTab();
     ImGui::EndChild();
   } else {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).

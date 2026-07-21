@@ -164,8 +164,9 @@ class CharacterSheet : public Plugin {
   int  hk_capturing_ = -1;         // index (dans equip_presets_) du preset en capture de touche
   std::string hk_conflict_msg_;    // message de conflit affiché pendant la capture
   bool show_    = true;   // fenetre visible (bascule Alt+F)
-  int  tab_     = 0;      // onglet actif : 0=Equipement, 1=Costume, 2=Presets
+  int  tab_     = 0;      // onglet actif : 0=Equipement, 1=Costume, 2=Presets, 3=Titres
   bool costume_ = false;  // == (tab_==1) ; garde pour DrawDoll/DrawSlot
+  char title_filter_buf_[32] = {};  // filtre de recherche de l'onglet Titres (par libellé)
   bool need_pos_ = true;  // 1er placement de la fenetre
   float chrome_w_ = 20.0f;  // largeur du chrome (fenetre - contenu), mesuree/frame
   // Pose de l'avatar (selecteur sous l'avatar).
@@ -187,6 +188,8 @@ class CharacterSheet : public Plugin {
   void DrawDoll(float avail_w);
   // Onglet Presets : liste des presets du perso (icones des items) + sauvegarde.
   void DrawPresetsTab();
+  // Onglet Titres : titres d'achievement possedes + titre equipe ; clic = equiper (CZ 0x0A2E).
+  void DrawTitlesTab();
   // Sauve l'equipement porte actuellement comme preset nomme (perso courant).
   void SaveCurrentEquipAsPreset(const char* name);
   // Applique un preset : desequipe les slots hors preset, equipe les items manquants.
