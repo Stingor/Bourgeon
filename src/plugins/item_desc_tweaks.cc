@@ -2152,20 +2152,62 @@ void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
       if (sd->combos.empty()) {
         ImGui::TextDisabled("Cet item ne fait partie d'aucun combo.");
       } else {
+        // Rend un membre de combo comme LIEN vers l'itemdb du site : bleu (or pour
+        // l'item courant), soulignement + curseur main au survol, aperçu de
+        // description au survol (le MÊME tooltip RO que l'inventaire/storage, via
+        // RenderCardTooltip), clic gauche -> base de données du site, clic droit ->
+        // description complète dans la fenêtre desc (différée au prochain tick).
+        auto draw_member = [&](const auto& mem) {
+          char lbl[96];
+          if (!mem.second.empty())
+            std::snprintf(lbl, sizeof(lbl), "%s", mem.second.c_str());
+          else
+            std::snprintf(lbl, sizeof(lbl), "#%u", mem.first);
+          const bool self = (mem.first == w.id);
+          const ImU32 col = self ? IM_COL32(230, 200, 90, 255)    // item courant : or
+                                 : IM_COL32(26, 77, 217, 255);    // lien : bleu
+          ImGui::PushStyleColor(ImGuiCol_Text, col);
+          ImGui::TextUnformatted(lbl);
+          ImGui::PopStyleColor();
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            const ImVec2 mn = ImGui::GetItemRectMin();
+            const ImVec2 mx = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
+                                                ImVec2(mx.x, mx.y), col);
+            RenderCardTooltip(mem.first);   // aperçu RO partagé (nom + desc + illust)
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            OpenCardDbLink(mem.first);      // base de données du site (page itemdb)
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            pending_card_open_ = mem.first; // desc complète au prochain OnTick
+        };
         for (size_t i = 0; i < sd->combos.size(); ++i) {
           const ComboInfo& c = sd->combos[i];
           ImGui::PushID(static_cast<int>(i));
-          // En-tête : liste des membres (l'item courant en surbrillance).
-          std::string title;
-          for (size_t m = 0; m < c.members.size(); ++m) {
-            if (m) title += " + ";
-            const auto& mem = c.members[m];
-            title += mem.second.empty() ? ("#" + std::to_string(mem.first))
-                                        : mem.second;
-          }
           ImGui::TextColored(ImVec4(0.55f, 0.80f, 0.55f, 1.0f), "Combo %zu",
                              i + 1);
-          ImGui::TextWrapped("%s", title.c_str());
+          // Membres cliquables joints par « + » ; wrap manuel (ImGui ne wrappe pas
+          // une série de widgets : on décide du SameLine selon la largeur dispo).
+          const float visible_x2 =
+              ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+          for (size_t m = 0; m < c.members.size(); ++m) {
+            if (m) {
+              ImGui::SameLine(0, 0);
+              ImGui::TextUnformatted(" + ");
+              // le prochain membre tient-il sur la ligne courante ?
+              char nbuf[96];
+              if (!c.members[m].second.empty())
+                std::snprintf(nbuf, sizeof(nbuf), "%s",
+                              c.members[m].second.c_str());
+              else
+                std::snprintf(nbuf, sizeof(nbuf), "#%u", c.members[m].first);
+              if (ImGui::GetItemRectMax().x + ImGui::CalcTextSize(nbuf).x <
+                  visible_x2)
+                ImGui::SameLine(0, 0);
+            }
+            draw_member(c.members[m]);
+          }
           if (!c.script.empty()) {
             char bid[24];
             std::snprintf(bid, sizeof(bid), "##combo_scr%zu", i);
