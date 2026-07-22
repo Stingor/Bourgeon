@@ -110,6 +110,16 @@ bool BuildSplit(void* actor, uint32_t main_view, uint32_t off_view) {
     // ── DUAL WIELD ── main's real pair into slot 5, off pair into slot 6.
     g_stock_build(actor, main_view, 0);
     if (!slots_ok()) { release_retained(); return false; }
+    // If BOTH hands resolve to the SAME sprite (two identical weapons, e.g. two
+    // Axe #1301, or two different items that fall back to the same base-class
+    // sprite _도끼.spr), the split would put an identical layer in slots 5 and 6.
+    // Both draw at the main-hand anchor -> they overlap perfectly -> only ONE
+    // weapon is visible. The stock COMBINED bucket (_xxx_xxx.spr, positions both
+    // hands correctly) is strictly better here, so bail out: the worker restores
+    // the stock combined build via our `false` return. Per-item splitting stays
+    // active only when the two weapons genuinely differ in sprite.
+    uint32_t main_spr = Slot(actor, kSprVec, kSlot5);
+    if (main_spr == ret_spr) { release_retained(); return false; }
     release_slot(kActVec, kSlot6);
     release_slot(kSprVec, kSlot6);
     SetSlot(actor, kActVec, kSlot6, ret_act);
