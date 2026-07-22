@@ -38,6 +38,7 @@
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
+#include "plugins/login_parade.h"
 #include "plugins/entity_names.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -67,6 +68,7 @@ ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
 BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
+LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
 EntityNamesTweaks* Bourgeon::entity_names() { return entity_names_; }
 
@@ -274,10 +276,22 @@ void Bourgeon::RenderUI() {
   if (IsMapLoading()) return;
   // Stand down outside the game world: at the login and character-select screens
   // CGameMode::OnUpdate does not run, so the game-update heartbeat is stale/cleared
-  // and we draw nothing. This is the single choke point that guarantees no plugin
-  // ImGui window can linger on those screens, regardless of a plugin's own
+  // and we draw no in-game plugin UI. This is the single choke point that guarantees
+  // no plugin ImGui window can linger on those screens, regardless of a plugin's own
   // in_game_ tracking (which the char-change path can leave stale).
-  if (!IsGameActive()) return;
+  // EXCEPTION: plugins that opt into login/char-select cosmetics get a dedicated
+  // hook here (OnRenderLoginUI) — e.g. the Poring parade — then we still return so
+  // the normal in-game path never runs off-world.
+  if (!IsGameActive()) {
+    for (auto& plugin : plugins_) {
+      try {
+        plugin->OnRenderLoginUI();
+      } catch (const std::exception& error) {
+        LogError("[{}] OnRenderLoginUI: {}", plugin->name(), error.what());
+      }
+    }
+    return;
+  }
   // Suivre le « cacher l'interface » natif (F11) : quand le joueur masque l'UI du
   // jeu — capture d'écran, vue dégagée — l'overlay ImGui disparaît avec elle.
   if (IsNativeUiHidden()) return;
@@ -416,6 +430,11 @@ void Bourgeon::LoadPlugins() {
     auto character_sheet = std::make_unique<CharacterSheet>();
     character_sheet_ = character_sheet.get();
     plugins_.emplace_back(std::move(character_sheet));
+  }
+  {
+    auto login_parade = std::make_unique<LoginParade>();
+    login_parade_ = login_parade.get();
+    plugins_.emplace_back(std::move(login_parade));
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());

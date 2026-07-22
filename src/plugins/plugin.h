@@ -34,7 +34,15 @@ class Plugin {
 
   // Fired every frame between ImGui::NewFrame() and ImGui::Render();
   // draw plugin windows here using the ImGui API directly.
+  // NOTE: only dispatched while the game world is active — the login and
+  // character-select screens are intentionally skipped (see Bourgeon::RenderUI).
   virtual void OnRenderUI() {}
+
+  // Like OnRenderUI, but dispatched ONLY on the login / character-select screens
+  // (when the game world is NOT active). Opt-in: override this for cosmetics that
+  // belong on those screens (e.g. the Poring parade). Still inside a live ImGui
+  // frame; still skipped while a map is loading.
+  virtual void OnRenderLoginUI() {}
 
   // Fired when a server packet with a registered custom opcode is received.
   // `data`/`len` cover the payload after the [opcode:2][total_len:2] header.

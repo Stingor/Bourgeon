@@ -50,6 +50,8 @@ set(BOURGEON_FILES
 	"plugins/bug_report.h"
 	"plugins/character_sheet.cc"
 	"plugins/character_sheet.h"
+	"plugins/login_parade.cc"
+	"plugins/login_parade.h"
 	"plugins/equip_tweaks.cc"
 	"plugins/equip_tweaks.h"
 	"plugins/window_pos_tweaks.cc"

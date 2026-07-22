@@ -31,6 +31,7 @@
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
+#include "plugins/login_parade.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -762,6 +763,9 @@ void MoonlightUi::LoadSettings() {
       cse->avatar_dir()     = ui["charsheet_dir"].as<int>(cse->avatar_dir());
       cse->avatar_animate() = ui["charsheet_pose_anim"].as<bool>(cse->avatar_animate());
     }
+    if (auto* lp = Bourgeon::Instance().login_parade()) {
+      lp->enabled_ = ui["login_parade"].as<bool>(lp->enabled_);
+    }
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
@@ -1301,6 +1305,9 @@ void MoonlightUi::SaveSettings() {
         << (cse ? cse->avatar_dir() : 0);
     out << YAML::Key << "charsheet_pose_anim" << YAML::Value
         << (cse ? cse->avatar_animate() : true);
+    auto* lp = Bourgeon::Instance().login_parade();
+    out << YAML::Key << "login_parade" << YAML::Value
+        << (lp ? lp->enabled_ : true);
   }
 
   {
@@ -2066,6 +2073,22 @@ void MoonlightUi::OnRenderUI() {
             "Décocher = pause. Quitter depuis le menu DOOM = définitif "
             "jusqu'au redémarrage du client.");
         GrayText("État : %s", doom->StatusText());
+      } else
+        GrayText("Indisponible.");
+
+      SeparatorText("Parade de Porings (login)");
+      if (auto* lp = Bourgeon::Instance().login_parade()) {
+        bool on = lp->enabled_;
+        if (ro::RoCheckbox("Porings sur l'écran de login", &on)) {
+          lp->enabled_ = on;
+          SaveSettings();
+        }
+        SameLine(); HelpMarker(
+            "Fait flâner une petite bande de monstres de la famille Poring sur "
+            "l'écran de login : ils sautillent d'un bord à l'autre, font des "
+            "pauses, et sursautent (avec un son) si tu cliques dessus.\n\n"
+            "Purement cosmétique. Ils s'estompent au-dessus du panneau de login "
+            "pour ne pas gêner la saisie. Visible uniquement à l'écran de login.");
       } else
         GrayText("Indisponible.");
 
