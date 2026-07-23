@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "plugins/trade_tweaks.h"  // « Vers l'échange » (AddItemToTrade / active)
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
@@ -760,6 +761,11 @@ bool MouseOverCart(float x, float y)    { return MouseOverWnd(kCartWndGlobal, kC
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
 bool CartOpen()    { return ReadValidWnd(kCartWndGlobal, kCartVTable) != nullptr; }
 bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
+// Échange joueur-joueur ImGui actif (TradeTweaks) : cible de « Vers l'échange ».
+bool TradeOpen() {
+  auto* tt = Bourgeon::Instance().trade_tweaks();
+  return tt && tt->active();
+}
 
 // True si le point est au-dessus du VIEWER storage ImGui : quand les DEUX (inventaire +
 // storage) sont des viewers ImGui, le rect natif du storage est caché donc MouseOverStorage
@@ -1300,6 +1306,23 @@ bool InventoryViewer::EquipDraggedItem(bool leftHand) {
   return true;
 }
 
+// Ajoute l'item ACTUELLEMENT GLISSÉ à l'échange en cours (drag-drop cross-plugin :
+// lâcher un item de l'inventaire sur « Mon offre » dans la fenêtre d'échange ImGui).
+// Même politique de quantité que le menu contextuel : une PILE ouvre le prompt de
+// quantité, un item seul part directement. No-op si aucun glisser ou aucun échange.
+bool InventoryViewer::TradeDraggedItem() {
+  if (!drag_active_) return false;
+  auto* tt = Bourgeon::Instance().trade_tweaks();
+  if (!tt || !tt->active()) return false;
+  if (drag_amount_ > 1) {  // pile -> demander combien (chemin « Vers l'échange... »)
+    pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
+    pend_action_ = kPendToTrade; pend_open_prompt_ = true;
+  } else {
+    tt->AddItemToTrade(drag_index_, 1);
+  }
+  return true;
+}
+
 // Wrapper public sur le helper interne PostItemLinkToChat (insère le lien dans l'input
 // chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
@@ -1592,6 +1615,10 @@ void InventoryViewer::OnRenderUI() {
       case kPendDrop:      SendDrop(pend_index_, amount); break;
       case kPendToCart:    SendCmd(kCmdToCart, pend_index_, amount); break;
       case kPendToStorage: SendCmd(kCmdToStorage, pend_index_, amount); break;
+      case kPendToTrade:
+        if (auto* tt = Bourgeon::Instance().trade_tweaks())
+          tt->AddItemToTrade(pend_index_, amount);
+        break;
       default: break;
     }
   };
@@ -1949,7 +1976,7 @@ void InventoryViewer::OnRenderUI() {
       //   Shift + clic GAUCHE  = poster le lien de l'item dans le chat (0x14e) ;
       //   Ctrl  + clic DROIT   = ouvrir la description directement (sans menu) ;
       //   Shift + clic DROIT   = (dé)favori ;
-      //   Alt   + clic DROIT   = transfert rapide vers storage (sinon chariot) si ouvert ;
+      //   Alt   + clic DROIT   = transfert rapide vers storage (sinon chariot, sinon échange) si ouvert ;
       //   clic DROIT seul      = menu contextuel.
       const ImGuiIO& mods = ImGui::GetIO();
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
@@ -1962,6 +1989,9 @@ void InventoryViewer::OnRenderUI() {
         } else if (mods.KeyAlt) {
           if (StorageOpen())   SendCmd(kCmdToStorage, it.index, it.amount);
           else if (CartOpen()) SendCmd(kCmdToCart, it.index, it.amount);
+          else if (TradeOpen())
+            if (auto* tt = Bourgeon::Instance().trade_tweaks())
+              tt->AddItemToTrade(it.index, it.amount);
         } else {
           ImGui::OpenPopup("ctx");
         }
@@ -2069,11 +2099,23 @@ void InventoryViewer::OnRenderUI() {
           }
         if (dropLocked) ImGui::EndDisabled();
         // Transferts (si la fenêtre cible est ouverte).
-        if (CartOpen() || StorageOpen()) ImGui::Separator();
+        if (CartOpen() || StorageOpen() || TradeOpen()) ImGui::Separator();
         if (CartOpen() && ImGui::MenuItem("Vers le chariot"))
           SendCmd(kCmdToCart, it.index, it.amount);
         if (StorageOpen() && ImGui::MenuItem("Vers le storage"))
           SendCmd(kCmdToStorage, it.index, it.amount);
+        // Échange joueur-joueur : stack -> prompt quantité (comme « Jeter... »),
+        // sinon ajout direct d'1 unité.
+        if (TradeOpen()) {
+          if (it.amount <= 1) {
+            if (ImGui::MenuItem("Vers l'échange"))
+              if (auto* tt = Bourgeon::Instance().trade_tweaks())
+                tt->AddItemToTrade(it.index, 1);
+          } else if (ImGui::MenuItem("Vers l'échange...")) {
+            pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
+            pend_action_ = kPendToTrade; pend_open_prompt_ = true;
+          }
+        }
         ImGui::EndPopup();
       }
 

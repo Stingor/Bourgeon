@@ -28,6 +28,7 @@
 #include "plugins/inventory_viewer.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/trade_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
@@ -436,12 +437,14 @@ void MoonlightUi::PickerFromArgb(float c[4], uint32_t argb) {
 }
 
 // « Tout-ImGui ou tout-natif » (cf. déclaration dans moonlight_ui.h) : synchronise
-// les 3 fenêtres modernes interdépendantes en un point unique. Chaque plugin garde
-// son propre flag, mais il n'est plus jamais basculé isolément.
+// les 4 fenêtres modernes interdépendantes en un point unique (inventaire, storage,
+// barres de skill, échange). Chaque plugin garde son propre flag, mais il n'est plus
+// jamais basculé isolément.
 void SetModernInterface(bool on) {
   if (auto* iv  = Bourgeon::Instance().inventory_viewer()) iv->imgui_enabled_ = on;
   if (auto* stg = Bourgeon::Instance().storage_tweaks())   stg->imgui_enabled_ = on;
   if (auto* sb  = Bourgeon::Instance().skill_bar())        sb->enabled_ = on;
+  if (auto* tt  = Bourgeon::Instance().trade_tweaks())     tt->imgui_enabled_ = on;
 }
 
 // ── Settings persistence ──────────────────────────────────────────────────
@@ -762,6 +765,8 @@ void MoonlightUi::LoadSettings() {
       cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
       sh->imgui_enabled_ = ui["shop_imgui"].as<bool>(sh->imgui_enabled_);
+    if (auto* tt = Bourgeon::Instance().trade_tweaks())
+      tt->imgui_enabled_ = ui["trade_imgui"].as<bool>(tt->imgui_enabled_);
     if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
       nd->imgui_enabled_ = ui["npc_dialog_imgui"].as<bool>(nd->imgui_enabled_);
       nd->menu_search_ = ui["npc_menu_search"].as<bool>(nd->menu_search_);
@@ -817,17 +822,19 @@ void MoonlightUi::LoadSettings() {
       load_sbcol("skillbar_col_textout",  sb->col_textout_);
     }
 
-    // « Tout-ImGui ou tout-natif » : ces 3 fenêtres (inventaire/storage/barres)
-    // s'activent ensemble. Un yaml antérieur au regroupement pouvait être mixé —
-    // on réconcilie en OR (au moins une moderne => les trois modernes ; tout natif
-    // sinon), puis les 3 cases restent synchronisées à l'exécution.
+    // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/storage/barres/
+    // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
+    // mixé — on réconcilie en OR (au moins une moderne => toutes modernes ; tout
+    // natif sinon), puis les cases restent synchronisées à l'exécution.
     {
       auto* iv  = Bourgeon::Instance().inventory_viewer();
       auto* stg = Bourgeon::Instance().storage_tweaks();
       auto* sb2 = Bourgeon::Instance().skill_bar();
+      auto* tt2 = Bourgeon::Instance().trade_tweaks();
       const bool modern = (iv  && iv->imgui_enabled_)  ||
                           (stg && stg->imgui_enabled_) ||
-                          (sb2 && sb2->enabled_);
+                          (sb2 && sb2->enabled_)       ||
+                          (tt2 && tt2->imgui_enabled_);
       SetModernInterface(modern);
     }
 
@@ -1313,6 +1320,8 @@ void MoonlightUi::SaveSettings() {
     out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : false);
     auto* sh = Bourgeon::Instance().shop_tweaks();
     out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
+    auto* tt = Bourgeon::Instance().trade_tweaks();
+    out << YAML::Key << "trade_imgui" << YAML::Value << (tt ? tt->imgui_enabled_ : false);
     auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
     out << YAML::Key << "npc_dialog_imgui" << YAML::Value
         << (nd ? nd->imgui_enabled_ : false);
@@ -2779,14 +2788,14 @@ void MoonlightUi::OnRenderUI() {
             bool changed = false;
             // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
             // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres)",
+            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
                                &stg->imgui_enabled_)) {
               SetModernInterface(stg->imgui_enabled_);
               changed = true;
             }
             SameLine(); HelpMarker(
-                "Interrupteur GLOBAL : inventaire, storage et barres d'action "
-                "modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+                "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
+                "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
                 "natif). Les cases des sections Inventaire et Barre d'action "
                 "reflètent le même état.\n\n"
                 "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
@@ -2852,14 +2861,14 @@ void MoonlightUi::OnRenderUI() {
             bool changed = false;
             // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
             // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres)",
+            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
                                &iv->imgui_enabled_)) {
               SetModernInterface(iv->imgui_enabled_);
               changed = true;
             }
             SameLine(); HelpMarker(
-                "Interrupteur GLOBAL : inventaire, storage et barres d'action "
-                "modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+                "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
+                "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
                 "natif). Les cases des sections Storage et Barre d'action reflètent "
                 "le même état.\n\n"
                 "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "

@@ -113,6 +113,11 @@ class InventoryViewer : public Plugin {
   // renumérotation d'items_ en cours de glisser (l'index utilisé est stable).
   bool EquipDraggedItem(bool leftHand);
 
+  // Ajoute l'item ACTUELLEMENT GLISSÉ à l'échange en cours (cible de drop « Mon offre »
+  // de trade_tweaks). Une PILE ouvre le prompt de quantité, un item seul part direct.
+  // No-op si aucun glisser en cours ou si aucun échange n'est ouvert.
+  bool TradeDraggedItem();
+
   // Nameid de l'item ACTUELLEMENT GLISSÉ (0 si aucun drag en cours). Utilisé par
   // skill_bar_tweaks pour assigner l'item glissé à une case de la barre d'action
   // (drag-drop cross-plugin, comme EquipDraggedItem pour le doll de character_sheet).
@@ -193,7 +198,8 @@ class InventoryViewer : public Plugin {
   bool  mousedown_over_cart_ = false;   // le drag natif a démarré sur la fenêtre Chariot
 
   // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
-  enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage };
+  enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage,
+                    kPendToTrade };
   int  pend_id_ = 0;      // 0 = aucune action en attente
   int  pend_index_ = 0;   // index inventaire de l'item concerné
   int  pend_max_ = 0;     // quantité max (stack) pour le prompt

@@ -44,6 +44,8 @@ set(BOURGEON_FILES
 	"plugins/cashshop_tweaks.h"
 	"plugins/shop_tweaks.cc"
 	"plugins/shop_tweaks.h"
+	"plugins/trade_tweaks.cc"
+	"plugins/trade_tweaks.h"
 	"plugins/npc_dialog_tweaks.cc"
 	"plugins/npc_dialog_tweaks.h"
 	"plugins/bug_report.cc"

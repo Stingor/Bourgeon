@@ -11,6 +11,7 @@
 #include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
+#include "plugins/trade_tweaks.h"  // hide-native-at-creation (échange, par vtable)
 #include "plugins/npc_dialog_tweaks.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -166,6 +167,11 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     // handler d'achat natif -> détecté par vtable (no-op hors session shop).
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
       sh->HideDetailWindow(win);
+    // Échange joueur-joueur : appel INCONDITIONNEL (la fenêtre est la classe
+    // CUIExchangeUI, détectée par VTABLE 0x010457d8 — cf. docs/trade_window_re.md),
+    // capture de l'id runtime + masquage du natif. No-op si le viewer est désactivé.
+    if (auto* tt = Bourgeon::Instance().trade_tweaks())
+      tt->HideNativeAtCreation(win, windowID);
   }
   return win;
 }
