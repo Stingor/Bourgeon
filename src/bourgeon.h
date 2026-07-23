@@ -27,6 +27,8 @@ class CharacterSheet;
 class LoginParade;
 class ItemDescTweaks;
 class FpsViewTweaks;
+class PlayerJumpTweaks;
+class KeyboardMoveTweaks;
 class DoomTweaks;
 class RoggleTweaks;
 class RojeweledTweaks;
@@ -65,6 +67,8 @@ class Bourgeon {
   LoginParade* login_parade();
   ItemDescTweaks* item_desc();
   FpsViewTweaks* fps_view();
+  PlayerJumpTweaks* player_jump();
+  KeyboardMoveTweaks* keyboard_move();
   DoomTweaks* doom();
   RoggleTweaks* roggle();
   RojeweledTweaks* rojeweled();
@@ -145,6 +149,8 @@ class Bourgeon {
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_
   FpsViewTweaks* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
+  PlayerJumpTweaks* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
+  KeyboardMoveTweaks* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
   DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
   RoggleTweaks* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
   RojeweledTweaks* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_

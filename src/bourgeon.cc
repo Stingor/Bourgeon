@@ -27,6 +27,8 @@
 #include "plugins/hat_effect_depth.h"
 #include "plugins/skill_tree_tweaks.h"
 #include "plugins/fps_view.h"
+#include "plugins/keyboard_move.h"
+#include "plugins/player_jump.h"
 #include "plugins/doom_tweaks.h"
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
@@ -55,6 +57,8 @@ StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
 QuestTrackerTweaks* Bourgeon::quest_tracker() { return quest_tracker_; }
 SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
 FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
+PlayerJumpTweaks* Bourgeon::player_jump() { return player_jump_; }
+KeyboardMoveTweaks* Bourgeon::keyboard_move() { return keyboard_move_; }
 DoomTweaks* Bourgeon::doom() { return doom_; }
 RoggleTweaks* Bourgeon::roggle() { return roggle_; }
 RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
@@ -204,6 +208,10 @@ void Bourgeon::OnProcessInput() {
   // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
   // windows (world map) crash intermittently.
   if (auto* mi = menu_icons()) mi->FlushPending();
+  // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
+  // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
+  // plugins. Auto-limité dans le temps -> aucun doublon de demande.
+  if (auto* km = keyboard_move()) km->Update();
   // Cache les fenêtres de description natives DANS LA PHASE INPUT (par frame, non
   // throttlé) -> flicker ~nul à l'ouverture d'un skill (dont l'OnMsg n'est PAS
   // hookée, contrairement à l'item). Idempotent/sûr (re-cache chaque frame).
@@ -450,6 +458,16 @@ void Bourgeon::LoadPlugins() {
     auto fps_view = std::make_unique<FpsViewTweaks>();
     fps_view_ = fps_view.get();
     plugins_.emplace_back(std::move(fps_view));
+  }
+  {
+    auto player_jump = std::make_unique<PlayerJumpTweaks>();
+    player_jump_ = player_jump.get();
+    plugins_.emplace_back(std::move(player_jump));
+  }
+  {
+    auto keyboard_move = std::make_unique<KeyboardMoveTweaks>();
+    keyboard_move_ = keyboard_move.get();
+    plugins_.emplace_back(std::move(keyboard_move));
   }
   {
     auto doom = std::make_unique<DoomTweaks>();
