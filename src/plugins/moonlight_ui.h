@@ -51,6 +51,15 @@ void HelpMarker(const char* desc);
 // n'est possible.
 bool IsStaff();
 
+// « Tout-ImGui ou tout-natif » : l'inventaire (InventoryViewer::imgui_enabled_),
+// le storage (StorageTweaks::imgui_enabled_) et les barres d'action
+// (SkillBarTweaks::enabled_) modernes s'activent ENSEMBLE — plus de mixe possible.
+// Force les 3 flags à `on`. Appelée par chacune des 3 cases synchronisées et par
+// LoadSettings (réconciliation d'un yaml hérité mixé). Encapsule l'accès aux
+// plugins pour que SkillBarTweaks::DrawSettings bascule l'ensemble sans inclure
+// les headers des deux autres. Sûre si un plugin manque.
+void SetModernInterface(bool on);
+
 // Helper to display a slider that can be fine-tuned with the mouse wheel
 // one is for floats, one for ints.  Step defaults to 0.01 (float) / 1 (int).
 bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.2f", float step = 0.0f);

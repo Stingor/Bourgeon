@@ -433,6 +433,15 @@ void MoonlightUi::PickerFromArgb(float c[4], uint32_t argb) {
   c[3] = static_cast<float>((argb >> 24) & 0xFF) / 255.0f; // A
 }
 
+// « Tout-ImGui ou tout-natif » (cf. déclaration dans moonlight_ui.h) : synchronise
+// les 3 fenêtres modernes interdépendantes en un point unique. Chaque plugin garde
+// son propre flag, mais il n'est plus jamais basculé isolément.
+void SetModernInterface(bool on) {
+  if (auto* iv  = Bourgeon::Instance().inventory_viewer()) iv->imgui_enabled_ = on;
+  if (auto* stg = Bourgeon::Instance().storage_tweaks())   stg->imgui_enabled_ = on;
+  if (auto* sb  = Bourgeon::Instance().skill_bar())        sb->enabled_ = on;
+}
+
 // ── Settings persistence ──────────────────────────────────────────────────
 
 void MoonlightUi::LoadSettings() {
@@ -804,6 +813,20 @@ void MoonlightUi::LoadSettings() {
       load_sbcol("skillbar_col_keytext",  sb->col_keytext_);
       load_sbcol("skillbar_col_count",    sb->col_count_);
       load_sbcol("skillbar_col_textout",  sb->col_textout_);
+    }
+
+    // « Tout-ImGui ou tout-natif » : ces 3 fenêtres (inventaire/storage/barres)
+    // s'activent ensemble. Un yaml antérieur au regroupement pouvait être mixé —
+    // on réconcilie en OR (au moins une moderne => les trois modernes ; tout natif
+    // sinon), puis les 3 cases restent synchronisées à l'exécution.
+    {
+      auto* iv  = Bourgeon::Instance().inventory_viewer();
+      auto* stg = Bourgeon::Instance().storage_tweaks();
+      auto* sb2 = Bourgeon::Instance().skill_bar();
+      const bool modern = (iv  && iv->imgui_enabled_)  ||
+                          (stg && stg->imgui_enabled_) ||
+                          (sb2 && sb2->enabled_);
+      SetModernInterface(modern);
     }
 
     if (auto* si = Bourgeon::Instance().status_icons()) {
@@ -2687,11 +2710,21 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 9) {
           if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
             bool changed = false;
-            changed |= ro::RoCheckbox("Storage Moonlight®", &stg->imgui_enabled_);
+            // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
+            // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
+            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres)",
+                               &stg->imgui_enabled_)) {
+              SetModernInterface(stg->imgui_enabled_);
+              changed = true;
+            }
             SameLine(); HelpMarker(
+                "Interrupteur GLOBAL : inventaire, storage et barres d'action "
+                "modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+                "natif). Les cases des sections Inventaire et Barre d'action "
+                "reflètent le même état.\n\n"
                 "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
                 "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
-                "viewer. Pas de cohabitation.");
+                "viewer.");
 
             ImGui::BeginDisabled(!stg->imgui_enabled_);
 
@@ -2750,8 +2783,18 @@ void MoonlightUi::OnRenderUI() {
         if (s_iface_nav == 10) {
           if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
             bool changed = false;
-            changed |= ro::RoCheckbox("Inventaire Moonlight®", &iv->imgui_enabled_);
+            // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
+            // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
+            if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres)",
+                               &iv->imgui_enabled_)) {
+              SetModernInterface(iv->imgui_enabled_);
+              changed = true;
+            }
             SameLine(); HelpMarker(
+                "Interrupteur GLOBAL : inventaire, storage et barres d'action "
+                "modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+                "natif). Les cases des sections Storage et Barre d'action reflètent "
+                "le même état.\n\n"
                 "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
                 "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
                 "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
