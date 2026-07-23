@@ -2370,7 +2370,10 @@ void MoonlightUi::OnRenderUI() {
                 "Décoche pour des barres sans contour.");
 
             const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-            changed |= ro::RoCombo("Animation", &eb->text_mode_, modes, IM_ARRAYSIZE(modes));
+            changed |= ro::RoCombo("Texte des barres", &eb->text_mode_, modes, IM_ARRAYSIZE(modes));
+            SameLine(); HelpMarker(
+                "Ce qui est écrit sur les barres : rien, le pourcentage, les "
+                "valeurs brutes (courant / max) ou les deux.");
             changed |= WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f);
             SameLine(); HelpMarker("Arrondi des coins des barres.");
 
