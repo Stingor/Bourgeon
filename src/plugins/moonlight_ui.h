@@ -150,10 +150,24 @@ class MoonlightUi : public Plugin {
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void OnRenderUI() override;
+  void OnTick() override;
 
-  // Writes bourgeon_settings.yaml.  Public so sibling plugins (e.g. the
+  // Demande l'écriture de bourgeon_settings.yaml. Public so sibling plugins (e.g. the
   // status-icon panel) can persist their own config through the shared file.
+  //
+  // ⚠ L'écriture est DIFFÉRÉE (anti-rebond) : l'appel ne fait que marquer les réglages
+  // sales, et le fichier n'est réellement écrit qu'après kSettingsFlushDelayMs sans
+  // nouvelle demande (flush depuis OnTick), ou immédiatement sur changement de mode.
+  // C'est indispensable parce que les sites d'appel sont des widgets ImGui évalués à
+  // chaque frame : un slider ou un color picker renvoie true à CHAQUE frame de
+  // glissement, ce qui déclenchait autant de sérialisations YAML complètes + autant
+  // d'écritures disque sur le thread de rendu (~120 pour un drag de 2 s).
+  // Appeler FlushSettings() pour forcer une écriture immédiate.
   void SaveSettings();
+
+  // Écrit tout de suite si des réglages sont en attente. À utiliser avant une
+  // opération qui pourrait faire perdre la fenêtre d'anti-rebond.
+  void FlushSettings();
 
   // Shared HUD alignment grid. Public so sibling plugins (BasicInfoTweaks bars,
   // MenuIconTweaks) can read it for snapping while dragging/resizing.
@@ -380,4 +394,16 @@ class MoonlightUi : public Plugin {
   // Saut demandé par OpenInterfaceSection : force l'ouverture de l'en-tête et le
   // scroll au prochain rendu, puis se consomme.
   bool iface_jump_ = false;
+
+  // ── Anti-rebond de la sauvegarde (voir SaveSettings) ────────────────────────
+  // Délai d'inactivité avant écriture réelle. Assez long pour absorber un drag de
+  // slider (60 Hz), assez court pour qu'un réglage suivi d'un alt-F4 immédiat reste
+  // l'exception. Un changement de mode force de toute façon un flush.
+  static constexpr unsigned kSettingsFlushDelayMs = 400;
+  bool     settings_dirty_    = false;  // une écriture est en attente
+  unsigned settings_dirty_ms_ = 0;      // GetTickCount() de la DERNIÈRE demande
+
+  // Écrit réellement le fichier. Tout le corps historique de SaveSettings ; n'est
+  // plus appelé que par FlushSettings, jamais depuis un widget.
+  void WriteSettingsFile();
 };

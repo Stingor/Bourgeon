@@ -967,7 +967,7 @@ void MoonlightUi::LoadSettings() {
   }
 }
 
-void MoonlightUi::SaveSettings() {
+void MoonlightUi::WriteSettingsFile() {
   auto* dps = Bourgeon::Instance().dps_meter();
   char dps_text_col[9] = "FFFFCC33", dps_plot_col[9] = "FFFFCC33";
   if (dps) {
@@ -1471,6 +1471,34 @@ void MoonlightUi::SaveSettings() {
   // LogInfo("[MoonlightUi] saved chat backgrounds to {}", path);
 }
 
+// ── Anti-rebond de la sauvegarde ──────────────────────────────────────────
+// Les ~40 sites d'appel de SaveSettings sont des widgets ImGui évalués à chaque
+// frame. Un slider ou un color picker renvoie true à CHAQUE frame de glissement :
+// le motif `if (changed) SaveSettings()` déclenchait donc une sérialisation YAML
+// complète (~330 clés, ~140 std::string, 36 lectures mémoire client sous SEH) plus
+// un cycle create/truncate/write/close, par frame — ~120 pour un drag de 2 s, sur
+// le thread de rendu. On ne marque désormais que l'intention ; l'écriture a lieu
+// une fois l'utilisateur stabilisé. Les appelants n'ont rien à changer.
+
+void MoonlightUi::SaveSettings() {
+  settings_dirty_    = true;
+  settings_dirty_ms_ = GetTickCount();
+}
+
+void MoonlightUi::FlushSettings() {
+  if (!settings_dirty_) return;
+  settings_dirty_ = false;
+  WriteSettingsFile();
+}
+
+void MoonlightUi::OnTick() {
+  // OnTick tourne ~10 Hz même panneau fermé : le flush arrive donc aussi pour les
+  // réglages poussés par les plugins frères hors de notre fenêtre.
+  if (!settings_dirty_) return;
+  if (GetTickCount() - settings_dirty_ms_ < kSettingsFlushDelayMs) return;
+  FlushSettings();
+}
+
 // ── Server settings sync ──────────────────────────────────────────────────
 
 void MoonlightUi::UpdateRelay() {
@@ -1493,11 +1521,22 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
     in_gonryun_ = false;
   }
 
-  if (in_game_ && !was_in_game)
+  if (in_game_ && !was_in_game) {
+    // Symétrique de la sortie : on écrit ce qui traîne AVANT de recharger, sinon un
+    // réglage touché sur l'écran de login/char-select serait écrasé par LoadSettings
+    // puis reperdu au flush suivant.
+    FlushSettings();
     LoadSettings();
+  }
 
-  if (!in_game_ && was_in_game)
+  if (!in_game_ && was_in_game) {
+    // Sortie du jeu (retour login / char-select) : on écrit TOUT DE SUITE, sans
+    // attendre la fenêtre d'anti-rebond, sinon un réglage touché dans les dernières
+    // centaines de ms serait perdu. Impérativement AVANT le clear : aloot_ids_ est
+    // persisté, et flusher après sauvegarderait une liste @autolootid vide.
+    FlushSettings();
     aloot_ids_.clear();
+  }
 
   UpdateRelay();
 }
@@ -2538,9 +2577,21 @@ void MoonlightUi::OnRenderUI() {
               changed = true;
             }
 
-            if (chat_width_enabled_ &&WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200)) {
-              chat::SetCustomWidth(true, chat_width_px_);
-              changed = true;
+            if (chat_width_enabled_) {
+              // Le slider bouge à 60 Hz, mais chat::SetCustomWidth relance le relayout
+              // natif ET RebuildFromHistory sur TOUS les onglets — le chemin exact du
+              // freeze de word-wrap déjà corrigé côté mesure. On ne l'applique donc
+              // qu'au RELÂCHEMENT du slider, pas à chaque frame de glissement (même
+              // logique que le color picker du fond de chat, plus bas).
+              // `moved && !IsItemActive()` = ajustement à la MOLETTE (WheelSliderInt la
+              // traite hors du slider, sans jamais « désactiver » l'item) : on applique
+              // tout de suite. `IsItemDeactivatedAfterEdit()` = fin de drag ou fin de
+              // saisie Ctrl+clic. Pendant le drag l'item est actif : on ne fait rien.
+              const bool moved = WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
+              if ((moved && !ImGui::IsItemActive()) || ImGui::IsItemDeactivatedAfterEdit()) {
+                chat::SetCustomWidth(true, chat_width_px_);
+                changed = true;
+              }
             }
 
             if (ro::RoCheckbox("Horodatage du chat", &chat_timestamps_)) {
