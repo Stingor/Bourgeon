@@ -14,6 +14,7 @@
 #include "plugins/dps_meter.h"
 #include "plugins/menu_icons.h"
 #include "plugins/integrity_check.h"
+#include "plugins/dx7_warning.h"
 #include "plugins/moonlight_ui.h"
 #include "plugins/status_tweaks.h"
 #include "plugins/berserk_chat_unlock.h"
@@ -417,6 +418,9 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<CharSelect>(moonlight_auth));
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
   plugins_.emplace_back(std::make_unique<CheatDetector>());
+  // Avertit dès l'écran de login quand le client rend en DirectX 7 (voir
+  // dx7_warning.h) : la moitié des modules graphiques de Bourgeon y est inerte.
+  plugins_.emplace_back(std::make_unique<Dx7Warning>());
   {
     auto moonlight_ui = std::make_unique<MoonlightUi>();
     moonlight_ui_ = moonlight_ui.get();

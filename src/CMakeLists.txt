@@ -100,6 +100,8 @@ set(BOURGEON_FILES
 	"plugins/skill_bar_tweaks.h"
 	"plugins/item_desc_tweaks.cc"
 	"plugins/item_desc_tweaks.h"
+	"plugins/dx7_warning.cc"
+	"plugins/dx7_warning.h"
 
 	# UI toolkit (socle ImGui « façon RO »)
 	"ui/ro_imgui.cc"
