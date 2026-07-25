@@ -135,7 +135,35 @@ void __fastcall Hooked_CursorRender(void* thisptr) {
     if (IsMouseOverAnyImGuiWindow(mp.x, mp.y))
       *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = req;
   }
+  // Curseur plein écran (login Moonlight / char-select) : on laisse le rendu natif
+  // s'exécuter (il alimente la capture d'atlas via Hooked_AtlasGet — rien à
+  // répliquer), mais on POUSSE son quad hors écran. Le sprite natif est calculé à
+  // base = g_MouseScreen{X,Y} + *(float*)(mode+0x30/+0x34) (RE 0x00a74554) ; on
+  // force ces deux offsets à ~ -(souris) - 4096 -> le quad tombe hors viewport
+  // (sommets XYZRHW, clippés), puis on RESTAURE avant de rendre la main : invisible
+  // pour tout le reste du client (anim, hit-test natif, notif UIWindowMgr intacts).
+  bool fs_suppress = false;
+  float saved_ox = 0.0f, saved_oy = 0.0f;
+  if (thisptr && ro::FullscreenCursorActive()) {
+    __try {
+      auto* ox = reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x30);
+      auto* oy = reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x34);
+      saved_ox = *ox;
+      saved_oy = *oy;
+      const float mx = static_cast<float>(*reinterpret_cast<int*>(0x011e40d4));
+      const float my = static_cast<float>(*reinterpret_cast<int*>(0x011e40d8));
+      *ox = -mx - 4096.0f;
+      *oy = -my - 4096.0f;
+      fs_suppress = true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+      fs_suppress = false;
+    }
+  }
   g_orig_cursor_render(thisptr);
+  if (fs_suppress) {  // restauré AVANT de rendre la main (aucun return entre-temps)
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x30) = saved_ox;
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x34) = saved_oy;
+  }
   g_capturing_cursor = false;
 }
 
@@ -219,7 +247,12 @@ void DrawROCursorImGui() {
   if (mp.x < 0.f || mp.y < 0.f) return;
   // Draw over locked (click-through) bars/portrait too, not just interactive
   // windows — otherwise the game's batched cursor stays hidden behind them.
-  if (!IsMouseOverAnyVisibleImGuiWindow(mp.x, mp.y)) return;
+  // Mode « plein écran » (login Moonlight / char-select) : le curseur natif est
+  // rendu hors écran (cf. Hooked_CursorRender), donc on redessine le nôtre PARTOUT
+  // -> pas de double curseur, et un seul curseur sur tout l'écran.
+  if (!ro::FullscreenCursorActive() &&
+      !IsMouseOverAnyVisibleImGuiWindow(mp.x, mp.y))
+    return;
 
   ImDrawList* dl = ImGui::GetForegroundDrawList();
 

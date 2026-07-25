@@ -33,6 +33,17 @@ class AutoLogin : public Plugin {
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnTick() override;
 
+  // Programmatically arm the login sequence with credentials resolved at runtime
+  // — used by MoonlightAuth after the player authenticates with their web
+  // account and picks an RO account. Jumps straight to the credentials stage
+  // (the id/password window is already up), types them into the native fields,
+  // then carries on through char-server / char-select exactly like the cmdline
+  // path. `save_id` must match the native "Save ID" checkbox (false recommended:
+  // the ID field is then empty + focused, so we type id first). Safe to call
+  // even when the cmdline/yaml path left the plugin disabled.
+  void DriveWithCredentials(const std::string& login,
+                            const std::string& password, bool save_id);
+
  private:
   enum class Stage {
     kDisabled,      // no credentials supplied — plugin is inert
@@ -79,7 +90,9 @@ class AutoLogin : public Plugin {
   // Ticks (~100ms each) to wait at each stage. Generous defaults; tune against
   // the live server if a screen needs more time to appear.
   static constexpr int kSettleTicks = 1;
-  static constexpr int kWaitLoginTicks = 2;
+  // Also used as the settle before typing in DriveWithCredentials (lets ImGui's
+  // WantCaptureKeyboard clear so the first WM_CHARs aren't swallowed).
+  static constexpr int kWaitLoginTicks = 4;
   static constexpr int kCharServerTicks = 5;
   static constexpr int kCharSelectTicks = 10;
 };

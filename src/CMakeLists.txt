@@ -22,6 +22,12 @@ set(BOURGEON_FILES
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"
 	"plugins/auto_login.h"
+	"plugins/moonlight_auth.cc"
+	"plugins/moonlight_auth.h"
+	"plugins/native_login.cc"
+	"plugins/native_login.h"
+	"plugins/char_select.cc"
+	"plugins/char_select.h"
 	"plugins/integrity_check.cc"
 	"plugins/integrity_check.h"
 	"plugins/cheat_detector.cc"
@@ -171,7 +177,7 @@ target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSIO
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
 # winmm: timeGetTime for the DOOM 35 Hz clock (doom_tweaks).
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt shell32 winmm comdlg32 ole32)
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt crypt32 shell32 winmm comdlg32 ole32)
 
 # Emit the SHA-256 of the freshly-built DLL (prints it and writes a sidecar
 # ddraw.dll.sha256). Use it to fill the `hash:` line in the server's

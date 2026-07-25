@@ -245,12 +245,44 @@ passe et un vrai SSO.
 
 ---
 
-## 8. Prochaines étapes concrètes
+## 8. État d'implémentation (Phase 1 — FAIT, à builder/déployer)
 
-1. **Valider ce design** + trancher les points §7 (surtout §7.1 mode mot de passe).
-2. **Site** : écrire `api/game_login.php` (réutiliser `moonAccount()` +
-   `phpbb_check_hash`) — dépôt `moonlightsite`.
-3. **Client** : scaffolder `src/plugins/moonlight_auth.{h,cc}` (état + WinHTTP
-   worker + formulaire ImGui + pilotage via helpers `AutoLogin`), enregistrer dans
-   `Bourgeon::LoadPlugins()` + `src/CMakeLists.txt`.
-4. **Tester** bout-en-bout sur un compte de test, puis planifier Phase 2 (SSO).
+Le MVP Phase 1 est **codé** (build + déploiement laissés à l'utilisateur, cf.
+`feedback_dont_relaunch_game` / `feedback_no_integrity_edits`) :
+
+- **Client** — `src/plugins/moonlight_auth.{h,cc}` : formulaire ImGui, worker
+  WinHTTP non bloquant, sélecteur de compte, délégation à
+  `AutoLogin::DriveWithCredentials(userid, otp, save_id)` (nouvelle méthode
+  publique). Enregistré dans `Bourgeon::LoadPlugins()` (reçoit le `AutoLogin*`) et
+  ajouté à `src/CMakeLists.txt` (`winhttp` + `nlohmann/json` déjà liés/inclus).
+- **Site** — `moonlightsite/api/game_login.php` : actions `auth` (valide
+  `phpbb_users` via `phpbb_check_hash`, liste les comptes RO liés) et `select`
+  (pose `user_pass = MD5(otp)`, renvoie l'OTP). Ticket = **jeton HMAC sans état**
+  (aucune table ni session — le client WinHTTP ne porte pas de cookies).
+
+### Baseline — activé d'origine, aucune config utilisateur
+Cette méthode **remplace le login par défaut** : le plugin est **activé
+d'origine** avec l'URL du serveur **intégrée au build** (`kDefaultBaseUrl` dans
+`moonlight_auth.cc`). Un joueur n'a **rien à éditer**. La section yaml
+`moonlight_auth:` est **optionnelle** et ne sert qu'à *surcharger* (dev/local, ou
+`enabled: false` pour retomber sur le login natif) :
+```yaml
+moonlight_auth:            # OPTIONNEL — surcharge seulement
+  base_url: "http://127.0.0.1"   # ex. pointer un site local en dev
+  enabled: false                 # ex. désactiver ponctuellement
+  save_id: false
+  remember: true
+```
+
+### À faire
+1. **Client** : régler `kDefaultBaseUrl` sur le vrai domaine du site.
+2. **Site** : `GAME_LOGIN_SECRET` défini ; servir en **HTTPS**.
+3. ⚠ **Filet de sécurité (UX, recommandé baseline)** : comme le formulaire ImGui
+   supersède le login natif, une panne du site/endpoint **verrouillerait tous les
+   joueurs**. Prévoir un bouton « Login classique » qui masque le formulaire pour
+   la session (repli sur les champs natifs).
+4. **Builder** (réécrit le hash d'intégrité + déploie → à ta main) et tester.
+
+### Ensuite
+- Migrer vers **Phase 2 (SSO 0x0825)** pour supprimer la rotation de `user_pass`
+  (réécriture `logclif_parse_reqauth_sso` + envoi 0x0825 direct côté client).

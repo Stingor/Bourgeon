@@ -1,10 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "plugins/plugin.h"
 
-// Saut cosmétique du joueur à la barre espace.
+// Saut à la barre espace — visible par les autres joueurs.
 //
 // RO est un vrai moteur 3D (terrain 3D + sprites billboardés). La hauteur du
 // sprite au sol est RECALCULÉE chaque frame depuis la heightmap (.gnd) dans
@@ -17,8 +18,7 @@
 //     pos.z += *(actor+0x3f8)   // offset Z
 // (initialisé à 0 dans ActorAiClass_ctor 0x00c3f900, jamais touché en jeu
 // normal). Écrire +0x3f4 soulève donc le sprite — même en marchant, puisque
-// l'offset est ré-ajouté après le recalcul terrain — sans aucun impact gameplay :
-// le serveur ne voit rien, c'est purement visuel.
+// l'offset est ré-ajouté après le recalcul terrain.
 //
 // ⚠ PIÈGE : ce recalcul de position n'a lieu QUE par intermittence. Dans
 // 0x00c47700 le bloc final (LAB_00c47c9c) est gardé par `if (local_10 != 0)`, et
@@ -31,21 +31,30 @@
 // exactement la même valeur que lui, donc zéro conflit dans les deux régimes.
 // (Terrain_GetHeightAt 0x007110c0, monde = *(actorMgr+0x30).)
 //
-// L'axe Y de RO pointe vers le BAS (cf FpsViewTweaks : « monter = soustraire »),
-// donc une hauteur de saut positive s'applique comme un offset NÉGATIF.
+// ── Multijoueur ─────────────────────────────────────────────────────────────
+// Le mécanisme n'a rien de spécifique au joueur local : +0x3f4 est un champ de
+// l'acteur, et n'importe quel acteur en a un. On anime donc une LISTE de sauts
+// (gid 0 = soi-même, sinon acteur résolu par ActorList_FindByGID 0x00a69eb0).
+// Au déclenchement on émet CZ_BOURGEON_JUMP (0x0F1A, sans payload) ; le serveur
+// applique un cooldown anti-flood puis rediffuse ZC_BOURGEON_JUMP (0x0F1B, le
+// GID du sauteur) aux clients Bourgeon de la zone SAUF l'émetteur (qui s'anime
+// déjà localement). Le saut reste purement esthétique : la position logique du
+// personnage ne bouge pas (ni case, ni portée, ni collisions).
 //
-// Espace lance un arc parabolique (montée puis descente) sur ~600 ms. La touche
-// n'est PAS consommée : elle traverse normalement. Le natif ne route espace vers
-// ProcessPushButton (d'où vient OnKeyDown) que HORS focus chat — taper une espace
-// dans le chat ne déclenche donc aucun saut, même garantie que les hotkeys de
-// skill. Adresses spécifiques au client 20250716.
+// La touche n'est PAS consommée : elle traverse normalement. Le natif ne route
+// espace vers ProcessPushButton (d'où vient OnKeyDown) que HORS focus chat —
+// taper une espace dans le chat ne déclenche donc aucun saut, même garantie que
+// les hotkeys de skill. Adresses spécifiques au client 20250716.
 class PlayerJumpTweaks : public Plugin {
  public:
+  PlayerJumpTweaks();
+
   const char* name() const override { return "PlayerJump"; }
 
   void OnKeyDown(unsigned long vkey, int new_key, int accurate_key) override;
   void OnRenderUI() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Toggle + réglages exposés au menu moonlight_ui.
   bool enabled() const { return enabled_; }
@@ -54,11 +63,18 @@ class PlayerJumpTweaks : public Plugin {
   int*   p_duration_ms() { return &jump_ms_; }        // durée de l'arc (ms)
 
  private:
-  void ResetOffset();  // remet +0x3f4 à 0 sur l'acteur joueur et coupe le saut
+  // Un saut en cours. gid == 0 => le joueur local (évite d'avoir à lire son
+  // propre GID ; l'acteur local est résolu directement via l'actorMgr).
+  struct Jump {
+    uint32_t gid;
+    uint32_t start_ms;
+  };
 
-  bool     enabled_       = true;
-  bool     jumping_       = false;
-  uint32_t jump_start_ms_ = 0;
-  float    jump_height_   = 10.0f;  // hauteur de crête, en unités monde
-  int      jump_ms_       = 600;    // durée montée+descente
+  void StartJump(uint32_t gid);   // idempotent : ignore si ce gid saute déjà
+  void ClearAll();                // repose tous les sprites au sol et vide la liste
+
+  bool  enabled_     = true;
+  float jump_height_ = 10.0f;  // hauteur de crête, en unités monde
+  int   jump_ms_     = 600;    // durée montée+descente
+  std::vector<Jump> jumps_;    // sauts actifs (local + distants)
 };

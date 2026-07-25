@@ -59,6 +59,25 @@ bool BeginRoWindow(const char* title, bool* p_open = nullptr,
                    int imgui_window_flags = 0);
 void EndRoWindow();
 
+// ── Boîte de dialogue MODALE façon RO ──────────────────────────────────────────
+// Même habillage que BeginRoWindow (barre de titre 3-slice titlebar_* + corps clair)
+// mais rendue via ImGui::BeginPopupModal : ImGui BLOQUE et ASSOMBRIT l'arrière-plan
+// tout seul (aucune gestion de modalité côté appelant). Centrée à l'apparition. Pas
+// de boutons système (mini/close/resize) : un dialogue se ferme par ses propres
+// boutons (ImGui::CloseCurrentPopup). S'utilise comme BeginPopupModal :
+//   if (want) ImGui::OpenPopup("Titre");
+//   if (ro::BeginRoPopupModal("Titre")) {
+//     ... ImGui::Text / InputText / ro::RoButton ...
+//     ro::EndRoPopupModal();
+//   }
+// ⚠ EndRoPopupModal NE DOIT être appelé QUE si BeginRoPopupModal renvoie true (règle
+// EndPopup d'ImGui). Le contenu profite auto des couleurs RO (corps clair, texte
+// sombre, champ blanc) — utiliser ro::RoButton (art clair).
+// (ro_imgui.h n'inclut pas imgui.h -> défaut en littéral : 64 =
+// ImGuiWindowFlags_AlwaysAutoResize = 1<<6. Statique dans imgui.h.)
+bool BeginRoPopupModal(const char* title, int imgui_window_flags = 64);
+void EndRoPopupModal();
+
 // ── Bullet de la barre de titre, cliquable ────────────────────────────────────
 // Le petit blit sys_base à gauche du titre est décoratif par défaut (comme dans le
 // client). Appeler ceci JUSTE AVANT BeginRoWindow le rend interactif pour cette
@@ -107,6 +126,12 @@ bool RoSliderInt(const char* label, int* v, int lo, int hi,
 // Case à cocher habillée avec les pièces checkbox_0/1 du client. Comme
 // ImGui::Checkbox : renvoie true si l'état a changé.
 bool RoCheckbox(const char* label, bool* v);
+
+// Bouton radio habillé avec le skin natif du client (radiobtn_on/off.bmp sous
+// 유저인터페이스\). Dessine l'image on/off + label cliquable ; renvoie true si cliqué
+// (à l'appelant de poser la valeur). Repli automatique sur ImGui::RadioButton si les
+// bmp sont absents du GRF/data. Un joueur qui remplace les bmp voit son skin.
+bool RadioImage(const char* label, bool selected);
 
 // Combo box (menu déroulant) habillé RO : champ (fond input + bordure) + bouton
 // flèche txtbox_btn_a/b/c (états normal/survol/pressé, texture native du client),
@@ -193,6 +218,17 @@ void RegisterEscapeMinimizeWindow(bool* p_request_collapse);
 void SetHoverCursor(int ro_cursor_type);
 // Lu+remis à 0 par le hook curseur, une fois par frame (évite un état figé).
 int TakeHoverCursor();
+
+// « Curseur plein écran » : quand une UI Bourgeon occupe TOUT l'écran (login
+// Moonlight, char-select), on veut n'avoir QUE le curseur redessiné par ImGui,
+// partout — pas seulement au-dessus des fenêtres ImGui. Le plugin concerné appelle
+// SetFullscreenCursorActive() CHAQUE frame tant qu'il occupe l'écran ; le latch
+// expire de lui-même (≤1 frame) dès que plus personne ne l'asserte (retour au jeu,
+// login classique, minimize) -> aucun « retrait » explicite à gérer.
+// Effet (ragnarok_client) : le curseur natif est rendu HORS ÉCRAN (sa capture
+// continue), et la garde « souris au-dessus d'une fenêtre ImGui » du redraw saute.
+void SetFullscreenCursorActive();
+bool FullscreenCursorActive();
 
 // Leviers de customisation du skin (ce que RO ne propose pas). Modifiable à chaud ;
 // lu par BeginRoWindow. Persisté par l'appelant via SkinConfig() (moonlight_ui).

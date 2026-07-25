@@ -170,6 +170,23 @@ void AutoLogin::ResolveServerFromClientInfo() {
       server_);
 }
 
+void AutoLogin::DriveWithCredentials(const std::string& login,
+                                     const std::string& password, bool save_id) {
+  login_ = login;
+  password_ = password;
+  save_id_ = save_id;
+  tick_counter_ = 0;
+  // The web-account flow (MoonlightAuth) has already carried the player past
+  // service-select and onto the id/password window. We do NOT type immediately:
+  // MoonlightAuth's ImGui form was drawn this very frame, so ImGui still has
+  // io.WantCaptureKeyboard set for one more frame — the WndProc hook would eat
+  // the first synthesized WM_CHARs (the login) while letting the later ones (the
+  // password) through. Going through kWaitLogin gives a short settle so the
+  // capture flag clears before we type. From there OnTick handles the id/password
+  // typing, then char-server + char-select.
+  stage_ = Stage::kWaitLogin;
+}
+
 void AutoLogin::OnModeSwitch(ModeMgr::ModeType mode_type, const char* /*map*/) {
   if (stage_ == Stage::kDisabled || stage_ == Stage::kDone) return;
 

@@ -517,6 +517,18 @@ int TakeHoverCursor() {
   return t;
 }
 
+// Latch « curseur plein écran » : on mémorise le n° de frame de la dernière
+// assertion ; actif si c'est la frame courante ou la précédente (tolérance 1
+// frame pour absorber l'ordre d'exécution hook/rendu).
+static int g_fs_cursor_frame = -1000;
+void SetFullscreenCursorActive() {
+  if (ImGui::GetCurrentContext()) g_fs_cursor_frame = ImGui::GetFrameCount();
+}
+bool FullscreenCursorActive() {
+  return ImGui::GetCurrentContext() &&
+         (ImGui::GetFrameCount() - g_fs_cursor_frame) <= 1;
+}
+
 // Pousse les 24 couleurs de style communes aux fenêtres RO (corps, texte, onglets,
 // scrollbar transparente, table, popups clairs…). Partagé par BeginRoWindow et
 // BeginRoDescWindow. Renvoie le nombre de PushStyleColor (à dépiler par End*).
@@ -794,6 +806,105 @@ void EndRoWindow() {
   if (g_skin_colors) {
     ImGui::PopStyleColor(g_skin_colors);
     g_skin_colors = 0;
+  }
+}
+
+// ── Boîte de dialogue MODALE façon RO ──────────────────────────────────────────
+// Même style que BeginRoWindow (PushSkinColors -> corps clair via PopupBg, texte
+// sombre, champ blanc + barre de titre 3-slice titlebar_*) mais via BeginPopupModal :
+// ImGui bloque/assombrit l'arrière-plan lui-même. Aucun bouton système (un dialogue
+// se ferme par ses propres boutons). Compteurs dédiés (g_modal_*) pour ne pas marcher
+// sur ceux de BeginRoWindow. Symétrie du pop : si la popup n'est pas ouverte, End ne
+// sera pas appelé -> on dépile ICI.
+static int g_modal_colors = 0;
+static int g_modal_vars = 0;
+
+// Verrou : le défaut de BeginRoPopupModal dans ro_imgui.h est le littéral 64 (le
+// header n'inclut pas imgui.h). Si ImGui renumérote ce flag, on casse ici, pas en
+// silence.
+static_assert(ImGuiWindowFlags_AlwaysAutoResize == 64,
+              "MAJ le défaut de BeginRoPopupModal dans ro_imgui.h");
+
+bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
+  g_modal_colors = PushSkinColors();
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 3.0f);
+  // Barre de titre = hauteur EXACTE de l'art (sinon l'art titlebar est étiré).
+  float pad_y = ((float)skin::kTitlebarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  if (pad_y < 0.0f) pad_y = 0.0f;
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                      ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
+  g_modal_vars = 6;
+
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                          ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  const bool open = ImGui::BeginPopupModal(title, nullptr, imgui_window_flags);
+  if (!open) {
+    ImGui::PopStyleVar(g_modal_vars);     g_modal_vars = 0;
+    ImGui::PopStyleColor(g_modal_colors); g_modal_colors = 0;
+    return false;
+  }
+
+  // Peinture de la barre de titre RO par-dessus le chrome ImGui (rendu transparent
+  // par PushSkinColors : TitleBg = 0). Bullet sys_base décoratif + titre ; pas de
+  // boutons système (dialogue modal).
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  if (w && !w->Hidden) {
+    EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
+    EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
+    EnsureTex("basic_interface\\titlebar_right.bmp", skin::kTitlebarRight, g_tr);
+    EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
+    const ImRect tb = w->TitleBarRect();
+    ImDrawList* dl = w->DrawList;
+    const float y0 = tb.Min.y, y1 = tb.Max.y;
+    const float capL = (float)g_tl.w, capR = (float)g_tr.w;
+    dl->PushClipRect(tb.Min, tb.Max, false);
+    if (!g_tl.tex)
+      dl->AddRectFilledMultiColor(tb.Min, tb.Max, IM_COL32(126, 158, 224, 255),
+                                  IM_COL32(126, 158, 224, 255),
+                                  IM_COL32(86, 122, 200, 255),
+                                  IM_COL32(86, 122, 200, 255));
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
+    BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
+    BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
+    const float base_sz = (float)g_base.w;
+    const float base_x = tb.Min.x + 5.0f;
+    const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
+    if (g_base.tex)
+      BlitStretch(dl, g_base, ImVec2(base_x, base_y),
+                  ImVec2(base_x + base_sz, base_y + base_sz));
+    const float text_x = base_x + base_sz + 4.0f;
+    char nbuf[128];
+    const char* end = ImGui::FindRenderedTextEnd(title);
+    size_t n = (size_t)(end - title);
+    if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
+    memcpy(nbuf, title, n);
+    nbuf[n] = '\0';
+    const ImU32 title_tx = ImGui::ColorConvertFloat4ToU32(
+        ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
+               g_cfg.title_text[3] * g_cfg.alpha));
+    const ImVec2 ts = ImGui::CalcTextSize(nbuf);
+    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.5f),
+                title_tx, nbuf);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    dl->PopClipRect();
+  }
+  return true;
+}
+
+void EndRoPopupModal() {
+  ImGui::EndPopup();
+  if (g_modal_vars) {
+    ImGui::PopStyleVar(g_modal_vars);
+    g_modal_vars = 0;
+  }
+  if (g_modal_colors) {
+    ImGui::PopStyleColor(g_modal_colors);
+    g_modal_colors = 0;
   }
 }
 
@@ -1168,6 +1279,44 @@ bool RoCheckbox(const char* label, bool* v) {
                               IM_COL32(96, 112, 152, 255));
   }
   dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f), // aligné case + HelpMarker (voir bmin)
+              ImGui::GetColorU32(ImGuiCol_Text), label,
+              ImGui::FindRenderedTextEnd(label));
+  ImGui::PopID();
+  return pressed;
+}
+
+// Bouton radio skinné : pièces client radiobtn_on/off.bmp (chargées UNIQUEMENT depuis
+// le client, pas de blob de repli -> repli dessiné à plat si absent). Même structure
+// que RoCheckbox (image + label cliquable), mais on/off = deux images pleines et le
+// repli est un cercle (vocabulaire radio). Renvoie true si cliqué.
+bool RadioImage(const char* label, bool selected) {
+  static SkinTex s_on, s_off;
+  EnsureTexClient("radiobtn_on.bmp", s_on);
+  EnsureTexClient("radiobtn_off.bmp", s_off);
+  const SkinTex& t = selected ? s_on : s_off;
+  const float sz = (t.h > 0) ? (float)t.h : 11.0f;  // taille native, repli 11px
+  const float gapx = 4.0f;
+  ImGui::PushID(label);
+  const ImVec2 start = ImGui::GetCursorScreenPos();
+  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
+  const float h = sz > ts.y ? sz : ts.y;
+  const bool pressed = ImGui::InvisibleButton("##rb", ImVec2(sz + gapx + ts.x, h));
+  if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f + 2.0f));
+  const ImVec2 bmax(bmin.x + sz, bmin.y + sz);
+  if (t.tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, t, bmin, bmax);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {  // repli à plat : cercle vide / point plein
+    const ImVec2 c(bmin.x + sz * 0.5f, bmin.y + sz * 0.5f);
+    dl->AddCircle(c, sz * 0.5f, IM_COL32(96, 112, 152, 255), 16, 1.5f);
+    if (selected)
+      dl->AddCircleFilled(c, sz * 0.30f, IM_COL32(96, 112, 152, 255), 16);
+  }
+  dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f),
               ImGui::GetColorU32(ImGuiCol_Text), label,
               ImGui::FindRenderedTextEnd(label));
   ImGui::PopID();

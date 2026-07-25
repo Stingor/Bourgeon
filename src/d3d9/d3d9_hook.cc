@@ -122,6 +122,28 @@ static void PatchSlot(void** vtable, int idx, void* hook, void** out_orig) {
 
 // ── ImGui render helper ───────────────────────────────────────────────────────
 static void RenderImGuiDX9(IDirect3DDevice9* self) {
+    // ── Garde de RÉ-ENTRANCE ─────────────────────────────────────────────────
+    // Un dialogue MODAL natif (ex. confirmation de suppression de perso : OnMsg
+    // 0xd3 -> UIWndMgr_ShowMessageBoxModal 0x00a31a30) lance une boucle de pump qui
+    // REND des frames -> notre EndScene est ré-appelé PENDANT RenderUI(). Deux
+    // dangers : (a) rouvrir une frame ImGui (NewFrame dans NewFrame) corrompt ImGui ;
+    // (b) redessiner notre overlay par-dessus la modale + capter l'input l'empêche
+    // d'être fermée = FREEZE (le pump attend un clic qu'on avalerait). Sur ré-entrance
+    // on SAUTE tout le bloc ImGui (la modale native se rend seule, visible) et on
+    // LIBÈRE la capture pour qu'elle soit cliquable -> le pump se termine.
+    static bool s_in_render = false;
+    if (s_in_render) {
+        ImGuiIO& io = ImGui::GetIO();
+        io.WantCaptureMouse = false;
+        io.WantCaptureKeyboard = false;
+        return;
+    }
+    struct ReentryGuard {
+        bool* f;
+        ~ReentryGuard() { *f = false; }
+    } reentry_guard{&s_in_render};
+    s_in_render = true;
+
     g_imgui_device = self;
     if (!g_dx9_initialized.load()) {
         // LogInfo("D3D9: ImGui_ImplDX9_Init device={:x}", reinterpret_cast<uintptr_t>(self));

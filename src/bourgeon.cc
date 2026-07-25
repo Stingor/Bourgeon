@@ -5,6 +5,8 @@
 #include "imgui.h"
 #include "ui/ro_imgui.h"
 #include "plugins/auto_login.h"
+#include "plugins/moonlight_auth.h"
+#include "plugins/char_select.h"
 #include "plugins/chat.h"
 #include "plugins/cheat_detector.h"
 #include "plugins/discord_relay.h"
@@ -395,7 +397,24 @@ void Bourgeon::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
 }
 
 void Bourgeon::LoadPlugins() {
-  plugins_.emplace_back(std::make_unique<AutoLogin>());
+  AutoLogin* auto_login = nullptr;
+  {
+    auto al = std::make_unique<AutoLogin>();
+    auto_login = al.get();
+    plugins_.emplace_back(std::move(al));
+  }
+  // Front d'authentification ImGui « compte Moonlight ». Délègue le login natif
+  // final à AutoLogin une fois le compte RO choisi (voir moonlight_auth.h).
+  MoonlightAuth* moonlight_auth = nullptr;
+  {
+    auto ma = std::make_unique<MoonlightAuth>(auto_login);
+    moonlight_auth = ma.get();
+    plugins_.emplace_back(std::move(ma));
+  }
+  // Remplacement ImGui du char-select (activé par défaut ; opt-out yaml
+  // char_select.imgui:false). Réservé au parcours de login Moonlight (gate via
+  // moonlight_auth). Socle du lobby unifié ; voir char_select.h / charselect_re.md.
+  plugins_.emplace_back(std::make_unique<CharSelect>(moonlight_auth));
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
   plugins_.emplace_back(std::make_unique<CheatDetector>());
   {
