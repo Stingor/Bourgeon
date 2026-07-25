@@ -69,13 +69,15 @@ class MoonlightAuth : public Plugin {
 
  private:
   enum class State {
-    kDisabled,     // pas de base_url / désactivé — login natif inchangé
-    kWebLogin,     // formulaire identifiants Moonlight
-    kAuthing,      // attente de la réponse HTTP /auth
-    kPickAccount,  // sélecteur de compte RO
-    kSelecting,    // attente de la réponse HTTP /select
-    kDriveLogin,   // AutoLogin pilote le login natif (pas d'UI focusable ici)
-    kError,        // message d'erreur + réessayer
+    kDisabled,      // pas de base_url / désactivé — login natif inchangé
+    kWebLogin,      // formulaire identifiants Moonlight
+    kAuthing,       // attente de la réponse HTTP /auth
+    kDiscordStart,  // attente de la réponse HTTP discord_start (ouvre le navigateur)
+    kDiscordWait,   // navigateur ouvert : polling discord_poll jusqu'à résolution
+    kPickAccount,   // sélecteur de compte RO
+    kSelecting,     // attente de la réponse HTTP /select
+    kDriveLogin,    // AutoLogin pilote le login natif (pas d'UI focusable ici)
+    kError,         // message d'erreur + réessayer
   };
 
   struct Account {
@@ -110,11 +112,22 @@ class MoonlightAuth : public Plugin {
   // Handlers d'états (dessin ImGui).
   void DrawWebLogin();
   void DrawSpinner(const char* label);
+  void DrawDiscordWait();
   void DrawPickAccount();
   void DrawError();
 
+  // Login via compte Discord (OAuth2 dans le navigateur, cf. site oauth_discord.php).
+  void StartDiscordLogin();  // POST discord_start -> ouvre le navigateur
+
+  // Renseigne accounts_/web_ticket_ à partir d'un JSON {web_ticket, accounts} et
+  // passe à kPickAccount ; renvoie false (+ error_msg_/kError) si invalide/vide.
+  // Partagé par la réponse /auth et la réponse discord_poll résolue.
+  bool ApplyAccountList(const HttpResult& r);
+
   // Traitement des réponses HTTP.
   void HandleAuthResponse(const HttpResult& r);
+  void HandleDiscordStartResponse(const HttpResult& r);
+  void HandleDiscordPollResponse(const HttpResult& r);
   void HandleSelectResponse(const HttpResult& r);
 
   AutoLogin* auto_login_ = nullptr;  // non-owning ; pilote le login natif
@@ -134,6 +147,15 @@ class MoonlightAuth : public Plugin {
   char user_buf_[64] = {0};
   char pass_buf_[64] = {0};
   std::string error_msg_;
+
+  // Login Discord (OAuth navigateur + polling). game_session_ = id opaque renvoyé
+  // par discord_start ; le navigateur est ouvert sur discord_authorize_url_ ; on
+  // interroge discord_poll toutes les poll_interval jusqu'à discord_deadline_tick_.
+  std::string game_session_;
+  std::string discord_authorize_url_;
+  unsigned long discord_deadline_tick_ = 0;  // GetTickCount() limite (TTL)
+  unsigned long discord_poll_tick_ = 0;       // dernier POST discord_poll
+  unsigned long discord_poll_interval_ms_ = 2000;
 
   // Session web + comptes.
   std::string web_ticket_;

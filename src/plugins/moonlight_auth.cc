@@ -12,8 +12,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <vector>
 
+#include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
 #include "imgui.h"
 #include "nlohmann/json.hpp"
 #include "plugins/auto_login.h"
@@ -262,6 +264,109 @@ MoonlightAuth::HttpResult DoPost(const std::string& full_url,
   return res;
 }
 
+// ── Texture du bouton Discord (data\texture\Discord.bmp) ─────────────────────
+// Chargée via le TexMgr natif (chemin RELATIF à data\texture\, comme les icônes
+// d'item) puis convertie en texture overlay ImGui. Cache 1 slot, recréé après un
+// reset device (epoch) — sinon handle mort -> crash au dessin (cf. d3d9_hook.h).
+constexpr uintptr_t kTexMgrGet  = 0x00a90350;  // UITextureMgr_Get() __cdecl -> mgr
+constexpr uintptr_t kTexMakeKey = 0x00a9f030;  // __cdecl(path) -> key
+constexpr uintptr_t kTexLoad    = 0x00a8d4a0;  // __fastcall(mgr, 0, key) -> tex
+constexpr int kTexOffW = 0x114, kTexOffH = 0x118, kTexOffPix = 0x11c;
+using TexMgrGet_t  = void*(__cdecl*)();
+using TexMakeKey_t = void*(__cdecl*)(const char*);
+using TexLoad_t    = void*(__fastcall*)(void*, void*, void*);
+
+struct ButtonTex { void* tex = nullptr; int w = 0; int h = 0; };
+
+// Charge une BMP de data\texture\ en pixels BGRA (pointeur natif). SEH (POD only).
+bool LoadRawBgra(const char* path, const uint8_t** bgra, int* w, int* h) {
+  __try {
+    void* mgr = reinterpret_cast<TexMgrGet_t>(kTexMgrGet)();
+    if (!mgr) return false;
+    void* key = reinterpret_cast<TexMakeKey_t>(kTexMakeKey)(path);
+    if (!key) return false;
+    void* t = reinterpret_cast<TexLoad_t>(kTexLoad)(mgr, nullptr, key);
+    if (!t) return false;
+    const int tw = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffW);
+    const int th = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffH);
+    const uint8_t* px =
+        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexOffPix);
+    if (tw <= 0 || th <= 0 || tw > 1024 || th > 1024 || !px) return false;
+    *bgra = px; *w = tw; *h = th;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+ButtonTex LoadDiscordBmp() {
+  const uint8_t* bgra = nullptr;
+  int w = 0, h = 0;
+  if (!LoadRawBgra("Discord.bmp", &bgra, &w, &h)) return {};
+  std::vector<uint8_t> argb(static_cast<size_t>(w) * h * 4);
+  for (int i = 0; i < w * h; ++i) {
+    const uint8_t b = bgra[i * 4], g = bgra[i * 4 + 1], r = bgra[i * 4 + 2];
+    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
+    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
+    argb[i * 4 + 3] = ck ? 0 : 0xFF;
+  }
+  // Alpha-bleeding : les pixels transparents gardent alpha=0 mais reçoivent la
+  // couleur MOYENNE d'un voisin opaque. Sans ça, le filtrage bilinéaire de l'GPU
+  // mélange le magenta (RGB conservé) dans les bords -> halo rose autour des
+  // lettres. Une seule passe suffit (le bilinéaire ne déborde que d'un texel).
+  std::vector<uint8_t> out = argb;
+  for (int y = 0; y < h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      const int idx = (y * w + x) * 4;
+      if (argb[idx + 3] != 0) continue;  // opaque -> inchangé
+      int bb = 0, gg = 0, rr = 0, n = 0;
+      for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+          const int nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const int nidx = (ny * w + nx) * 4;
+          if (argb[nidx + 3] == 0) continue;  // voisin transparent -> ignoré
+          bb += argb[nidx]; gg += argb[nidx + 1]; rr += argb[nidx + 2]; ++n;
+        }
+      }
+      if (n) {
+        out[idx] = static_cast<uint8_t>(bb / n);
+        out[idx + 1] = static_cast<uint8_t>(gg / n);
+        out[idx + 2] = static_cast<uint8_t>(rr / n);
+        // alpha reste 0 : le pixel est toujours transparent, seule sa couleur
+        // « fantôme » change pour que l'interpolation ne tire plus vers le rose.
+      }
+    }
+  }
+  return {Overlay_CreateTextureARGB(out.data(), w, h), w, h};
+}
+
+// Texture du bouton (chargement paresseux, retry tant que non chargée -> couvre
+// le device pas encore capturé ; recréée après reset device). Renvoie {} si
+// Discord.bmp est absent (le bouton bascule alors sur un repli texte).
+const ButtonTex& DiscordButtonTex() {
+  static ButtonTex s_tex;
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { s_tex = {}; s_epoch = e; }
+  if (!s_tex.tex) s_tex = LoadDiscordBmp();
+  return s_tex;
+}
+
+// Petit lien hypertexte ImGui : texte bleu, souligné au survol (+ curseur main),
+// ouvre `url` dans le navigateur au clic.
+void HyperlinkOpen(const char* label, const std::string& url) {
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(120, 160, 235, 255));
+  ImGui::TextUnformatted(label);
+  ImGui::PopStyleColor();
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    const ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
+                                        IM_COL32(120, 160, 235, 255));
+  }
+  if (ImGui::IsItemClicked())
+    ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 }  // namespace
 
 MoonlightAuth::MoonlightAuth(AutoLogin* auto_login) : auto_login_(auto_login) {
@@ -441,6 +546,8 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
       accounts_.clear();
       selected_ = -1;
       web_ticket_.clear();
+      game_session_.clear();
+      discord_authorize_url_.clear();
       error_msg_.clear();
       pass_buf_[0] = '\0';
       native_fallback_ = false;        // réarme le login moderne à chaque retour
@@ -460,6 +567,8 @@ const char* MoonlightAuth::StateName(State s) {
     case State::kDisabled: return "kDisabled";
     case State::kWebLogin: return "kWebLogin";
     case State::kAuthing: return "kAuthing";
+    case State::kDiscordStart: return "kDiscordStart";
+    case State::kDiscordWait: return "kDiscordWait";
     case State::kPickAccount: return "kPickAccount";
     case State::kSelecting: return "kSelecting";
     case State::kDriveLogin: return "kDriveLogin";
@@ -606,15 +715,35 @@ void MoonlightAuth::OnRenderLoginUI() {
   native_login::MaskLoginWindow(true);
 
   // Récupère un éventuel résultat HTTP avant de dessiner l'état correspondant.
-  if (state_ == State::kAuthing || state_ == State::kSelecting) {
+  if (state_ == State::kAuthing || state_ == State::kSelecting ||
+      state_ == State::kDiscordStart || state_ == State::kDiscordWait) {
     HttpResult r;
     if (TakeResult(&r)) {
-      if (state_ == State::kAuthing)
-        HandleAuthResponse(r);
-      else
-        HandleSelectResponse(r);
+      switch (state_) {
+        case State::kAuthing:      HandleAuthResponse(r); break;
+        case State::kSelecting:    HandleSelectResponse(r); break;
+        case State::kDiscordStart: HandleDiscordStartResponse(r); break;
+        case State::kDiscordWait:  HandleDiscordPollResponse(r); break;
+        default: break;
+      }
     }
   }
+
+  // Polling Discord : navigateur ouvert, on interroge discord_poll par intervalles
+  // jusqu'à résolution (kPickAccount), erreur, ou expiration (deadline TTL).
+  if (state_ == State::kDiscordWait && !busy_.load()) {
+    const unsigned long now = GetTickCount();
+    if (discord_deadline_tick_ != 0 && now > discord_deadline_tick_) {
+      error_msg_ =
+          "Connexion Discord expirée. Réessaie et valide dans le navigateur.";
+      state_ = State::kError;
+    } else if (now - discord_poll_tick_ >= discord_poll_interval_ms_) {
+      discord_poll_tick_ = now;
+      StartPost("action=discord_poll&game_session=" + UrlEncode(game_session_) +
+                "&server=" + UrlEncode(server_name_));
+    }
+  }
+
   // La réponse /select a pu déclencher le pilotage natif : ne rien dessiner.
   if (state_ == State::kDriveLogin) return;
 
@@ -637,11 +766,13 @@ void MoonlightAuth::OnRenderLoginUI() {
                                  ImGuiWindowFlags_AlwaysAutoResize;
   if (ro::BeginRoWindow("Connexion Moonlight", nullptr, flags)) {
     switch (state_) {
-      case State::kWebLogin:    DrawWebLogin(); break;
-      case State::kAuthing:     DrawSpinner("Authentification…"); break;
-      case State::kPickAccount: DrawPickAccount(); break;
-      case State::kSelecting:   DrawSpinner("Préparation du compte…"); break;
-      case State::kError:       DrawError(); break;
+      case State::kWebLogin:     DrawWebLogin(); break;
+      case State::kAuthing:      DrawSpinner("Authentification…"); break;
+      case State::kDiscordStart: DrawSpinner("Ouverture de Discord…"); break;
+      case State::kDiscordWait:  DrawDiscordWait(); break;
+      case State::kPickAccount:  DrawPickAccount(); break;
+      case State::kSelecting:    DrawSpinner("Préparation du compte…"); break;
+      case State::kError:        DrawError(); break;
       default: break;
     }
   }
@@ -689,6 +820,58 @@ void MoonlightAuth::DrawWebLogin() {
     state_ = State::kAuthing;
   }
 
+  // Connexion via Discord : ouvre le navigateur (OAuth2, cf. site). Même résultat
+  // que le login web (liste de comptes), mais sans mot de passe à saisir.
+  ImGui::Spacing();
+  {
+    const ButtonTex& d = DiscordButtonTex();
+    bool discord = false;
+    if (d.tex && d.w > 0) {
+      // Cadre = bouton RO (skin 3-slice btn_*, états survol/clic), image Discord
+      // dessinée CENTRÉE dedans à sa taille native (bornée à la largeur utile).
+      // Le colorkey magenta de l'image laisse voir le skin RO autour du logo.
+      const float pad = 6.0f;
+      float iw = static_cast<float>(d.w);
+      float ih = static_cast<float>(d.h);
+      const float maxw = kFormW - pad * 2.0f;
+      if (iw > maxw) { ih *= maxw / iw; iw = maxw; }
+      const float btnh = ih + pad * 2.0f;
+      discord = ro::RoButton("##discord_login", kFormW, btnh);
+      const ImVec2 a = ImGui::GetItemRectMin();
+      const ImVec2 b = ImGui::GetItemRectMax();
+      const ImVec2 c((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+      // Coin haut-gauche arrondi au pixel entier + taille native exacte : chaque
+      // texel tombe sur un pixel écran (échantillonnage 1:1) -> logo net, sans
+      // flou ni bavure d'interpolation.
+      const ImVec2 p0(static_cast<float>(static_cast<int>(c.x - iw * 0.5f)),
+                      static_cast<float>(static_cast<int>(c.y - ih * 0.5f)));
+      const ImVec2 p1(p0.x + iw, p0.y + ih);
+      const float bri = ro::SkinImageBrightness();  // suit la luminosité du skin
+      int cb = static_cast<int>(255.0f * bri);
+      if (cb > 255) cb = 255;  // brightness peut aller à 2.0 -> borne IM_COL32
+      ImGui::GetWindowDrawList()->AddImage((ImTextureID)(uintptr_t)d.tex, p0, p1,
+                                           ImVec2(0, 0), ImVec2(1, 1),
+                                           IM_COL32(cb, cb, cb, 255));
+    } else {
+      // Repli texte si Discord.bmp est absent : teinte « blurple » Discord.
+      ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(88, 101, 242, 255));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(105, 117, 245, 255));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(71, 82, 196, 255));
+      discord = ro::RoButton("Se connecter avec Discord", kFormW, 0.0f);
+      ImGui::PopStyleColor(3);
+    }
+    if (discord) StartDiscordLogin();
+  }
+
+  // Plusieurs comptes Moonlight à regrouper ? Lien vers le service de fusion de
+  // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ (même origine
+  // que les appels API) — pas d'hôte hardcodé.
+  ImGui::Spacing();
+  ImGui::TextDisabled("Plusieurs comptes à regrouper ?");
+  ImGui::SameLine();
+  HyperlinkOpen("Fusionner mes comptes",
+                base_url_ + "/ucp.php?i=moonlight&mode=merge");
+
   // Option secondaire : se connecter directement à un compte RO via le login
   // natif (login site oublié, préférence, etc.). Discrète, sous le bouton
   // principal — masque le formulaire moderne pour la session.
@@ -707,6 +890,29 @@ void MoonlightAuth::DrawSpinner(const char* label) {
   char buf[96];
   std::snprintf(buf, sizeof(buf), "%s%.*s", label, dots, "...");
   ImGui::TextUnformatted(buf);
+}
+
+void MoonlightAuth::DrawDiscordWait() {
+  DrawSpinner("En attente de Discord");
+  ImGui::Spacing();
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
+  ImGui::TextWrapped(
+      "Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
+      "de comptes s'affichera automatiquement.");
+  ImGui::PopTextWrapPos();
+  ImGui::Spacing();
+  // Ré-ouvrir la page si le joueur a fermé l'onglet par erreur.
+  if (!discord_authorize_url_.empty() &&
+      ro::RoSmallButton("Rouvrir la page Discord")) {
+    ShellExecuteA(nullptr, "open", discord_authorize_url_.c_str(), nullptr,
+                  nullptr, SW_SHOWNORMAL);
+  }
+  ImGui::Spacing();
+  if (ro::RoButton("Annuler", kFormW, 0.0f)) {
+    game_session_.clear();
+    discord_authorize_url_.clear();
+    state_ = State::kWebLogin;
+  }
 }
 
 void MoonlightAuth::DrawPickAccount() {
@@ -816,20 +1022,18 @@ void MoonlightAuth::DrawError() {
   }
 }
 
-void MoonlightAuth::HandleAuthResponse(const HttpResult& r) {
-  LogDiag("[MoonlightAuth] /auth -> status={} err='{}' body='{}'", r.status,
-          r.error, r.body);
+bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
   if (!r.error.empty()) {
     error_msg_ = "Connexion au serveur impossible : " + r.error;
     state_ = State::kError;
-    return;
+    return false;
   }
   try {
     const auto j = nlohmann::json::parse(r.body);
     if (r.status != 200 || !j.value("ok", false)) {
-      error_msg_ = j.value("error", std::string("Identifiants invalides."));
+      error_msg_ = j.value("error", std::string("Authentification refusée."));
       state_ = State::kError;
-      return;
+      return false;
     }
     web_ticket_ = j.value("web_ticket", std::string());
     accounts_.clear();
@@ -846,20 +1050,116 @@ void MoonlightAuth::HandleAuthResponse(const HttpResult& r) {
     if (accounts_.empty()) {
       error_msg_ = "Aucun compte Ragnarok lié à ce compte Moonlight.";
       state_ = State::kError;
-      return;
+      return false;
     }
     // Pré-sélectionne le compte joué le plus récemment (last_login "YYYY-MM-DD"
     // → max lexicographique), sinon le premier. Ainsi « Entrée » suffit.
-    selected_ = accounts_.empty() ? -1 : 0;
+    selected_ = 0;
     for (int i = 1; i < static_cast<int>(accounts_.size()); ++i)
       if (accounts_[i].last_login > accounts_[selected_].last_login)
         selected_ = i;
-    SavePref();  // mémorise l'identifiant web (jamais le mot de passe / l'OTP)
     pass_buf_[0] = '\0';
     state_ = State::kPickAccount;
+    return true;
   } catch (const std::exception&) {
     error_msg_ = "Réponse du serveur illisible.";
     state_ = State::kError;
+    return false;
+  }
+}
+
+void MoonlightAuth::HandleAuthResponse(const HttpResult& r) {
+  LogDiag("[MoonlightAuth] /auth -> status={} err='{}' body='{}'", r.status,
+          r.error, r.body);
+  // mémorise l'identifiant web (jamais le mot de passe / l'OTP)
+  if (ApplyAccountList(r)) SavePref();
+}
+
+void MoonlightAuth::StartDiscordLogin() {
+  // Ouvre une session de login Discord côté site : il renvoie l'URL OAuth à
+  // ouvrir dans le navigateur + un id de session à interroger (poll). Le client
+  // ne fait JAMAIS l'OAuth lui-même (navigateur + client_secret serveur requis).
+  game_session_.clear();
+  discord_authorize_url_.clear();
+  error_msg_.clear();
+  StartPost("action=discord_start&server=" + UrlEncode(server_name_));
+  state_ = State::kDiscordStart;
+}
+
+void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
+  LogDiag("[MoonlightAuth] discord_start -> status={} err='{}' body='{}'",
+          r.status, r.error, r.body);
+  if (!r.error.empty()) {
+    error_msg_ = "Connexion au serveur impossible : " + r.error;
+    state_ = State::kError;
+    return;
+  }
+  try {
+    const auto j = nlohmann::json::parse(r.body);
+    if (r.status != 200 || !j.value("ok", false)) {
+      error_msg_ =
+          j.value("error", std::string("Impossible de démarrer la connexion Discord."));
+      state_ = State::kError;
+      return;
+    }
+    game_session_ = j.value("game_session", std::string());
+    // Le serveur renvoie un chemin RELATIF (oauth_discord.php est à la racine du
+    // domaine, PAS sous le board phpBB /forum/). On préfixe avec notre base_url_
+    // (l'origine exacte de nos appels API) = source de vérité unique de l'hôte.
+    const std::string path = j.value("authorize_path", std::string());
+    if (game_session_.empty() || path.empty()) {
+      error_msg_ = "Réponse incomplète du serveur.";
+      state_ = State::kError;
+      return;
+    }
+    discord_authorize_url_ =
+        base_url_ + (path[0] == '/' ? path : ("/" + path));
+    const int interval = j.value("poll_interval", 2);
+    const int ttl = j.value("ttl", 180);
+    discord_poll_interval_ms_ = static_cast<unsigned long>((interval > 0 ? interval : 2) * 1000);
+    discord_deadline_tick_ =
+        GetTickCount() + static_cast<unsigned long>((ttl > 0 ? ttl : 180) * 1000);
+    discord_poll_tick_ = GetTickCount();  // 1er poll après un intervalle
+    // Ouvre le navigateur système sur la page d'autorisation Discord. ⚠ peut
+    // faire perdre le focus au jeu plein écran (Alt-Tab) — comportement attendu.
+    ShellExecuteA(nullptr, "open", discord_authorize_url_.c_str(), nullptr,
+                  nullptr, SW_SHOWNORMAL);
+    LogDiag("[MoonlightAuth] navigateur ouvert (session={}) -> {}", game_session_,
+            discord_authorize_url_);
+    state_ = State::kDiscordWait;
+  } catch (const std::exception&) {
+    error_msg_ = "Réponse du serveur illisible.";
+    state_ = State::kError;
+  }
+}
+
+void MoonlightAuth::HandleDiscordPollResponse(const HttpResult& r) {
+  // Erreur transport transitoire (perte réseau ponctuelle) : NE bascule PAS en
+  // erreur — le prochain intervalle réessaiera tant que la deadline n'est pas
+  // atteinte (gérée dans OnRenderLoginUI).
+  if (!r.error.empty()) {
+    LogDiag("[MoonlightAuth] discord_poll transport err='{}' (on réessaie)", r.error);
+    return;
+  }
+  try {
+    const auto j = nlohmann::json::parse(r.body);
+    if (r.status == 410 || r.status != 200) {
+      error_msg_ = j.value("error", std::string("Session Discord expirée. Réessaie."));
+      state_ = State::kError;
+      return;
+    }
+    if (!j.value("ok", false)) {
+      error_msg_ = j.value("error", std::string("Connexion Discord refusée."));
+      state_ = State::kError;
+      return;
+    }
+    if (j.value("pending", false)) return;  // pas encore validé -> continue le poll
+    // Résolu : la réponse porte web_ticket + accounts (comme /auth).
+    LogDiag("[MoonlightAuth] discord_poll résolu -> liste de comptes");
+    ApplyAccountList(r);
+  } catch (const std::exception&) {
+    // JSON illisible ponctuel : on réessaie plutôt que d'échouer sec.
+    LogDiag("[MoonlightAuth] discord_poll JSON illisible (on réessaie)");
   }
 }
 
