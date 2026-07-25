@@ -142,6 +142,13 @@ bool RadioImage(const char* label, bool selected);
 // ImGui::CalcItemWidth() (respecte SetNextItemWidth).
 bool RoBeginCombo(const char* label, const char* preview_value);
 void RoEndCombo();
+
+// Combo « tout fait » : liste de libellés + index sélectionné, sans Begin/End à écrire.
+// ⚠ CONTRAT DU RETOUR : true UNIQUEMENT sur un changement effectif de sélection (une
+// seule frame), PAS tant que le popup est ouvert, et PAS si l'on reclique l'entrée déjà
+// active. C'est ce qui permet aux appelants d'écrire sans risque le motif habituel
+//   changed |= ro::RoCombo(...);  ...  if (changed) SaveSettings();
+// sans déclencher une sérialisation par frame. Toute évolution doit préserver ce contrat.
 bool RoCombo(const char* label, int* current_item, const char* const items[], int items_count);
 
 // Barre horizontale 3-slice (btnbar_*) dessinée dans le rect donné, sur le draw

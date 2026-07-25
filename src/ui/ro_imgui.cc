@@ -1625,16 +1625,20 @@ void RoEndCombo() {
 
 bool RoCombo(const char* label, int *current_item, const char* const items[], int items_count) {
   bool changed = false;
-  const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
   if (ro::RoBeginCombo(label, items[*current_item])) {
     for (int i = 0; i < items_count; ++i) {
       const bool selected = (*current_item == i);
-      if (ImGui::Selectable(items[i], selected)) {
+      // `changed` ne doit être levé QUE sur un vrai changement de sélection. Il était
+      // auparavant posé dans le corps du if, donc vrai à chaque frame où le popup était
+      // ouvert : les appelants font `changed |= RoCombo(...)` puis `if (changed)
+      // SaveSettings()`, ce qui réécrivait bourgeon_settings.yaml à 60 Hz tant que le
+      // menu restait déroulé. Re-cliquer l'entrée déjà active n'est pas un changement.
+      if (ImGui::Selectable(items[i], selected) && !selected) {
         *current_item = i;
+        changed = true;
       }
       if (selected) ImGui::SetItemDefaultFocus();
     }
-    changed = true;
     ro::RoEndCombo();
   }
   return changed;
