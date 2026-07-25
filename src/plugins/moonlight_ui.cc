@@ -1433,12 +1433,41 @@ void MoonlightUi::SaveSettings() {
       << YAML::EndMap;
 
   const std::string path = GetSettingsPath();
+
+  // bourgeon_settings.yaml est PARTAGÉ : AutoLogin (section « auto_login »), CharSelect
+  // (« char_select ») et MoonlightAuth (« moonlight_auth ») y lisent chacun leur propre
+  // section racine et ne la réécrivent JAMAIS. Écrire `out` directement tronquait donc le
+  // fichier et DÉTRUISAIT ces sections : la première case cochée en jeu effaçait les
+  // identifiants d'auto-login. On relit le document existant et on n'y remplace QUE la
+  // clé « moonlight_ui ».
+  // ⚠ yaml-cpp ne conserve pas les commentaires : ceux écrits à la main dans le fichier
+  // disparaissent à la première sauvegarde. Toutes les VALEURS sont préservées.
+  YAML::Node settings_root;
+  try {
+    settings_root = YAML::LoadFile(path);
+  } catch (const std::exception&) {
+    // Fichier absent (premier lancement) ou illisible : on repart d'un document vide
+    // plutôt que de renoncer à sauvegarder nos propres réglages.
+  }
+  if (!settings_root.IsMap()) settings_root = YAML::Node(YAML::NodeType::Map);
+
+  // `emitted_doc` doit rester vivant jusqu'à l'écriture : après l'assignation,
+  // settings_root référence sa mémoire.
+  YAML::Node emitted_doc;
+  try {
+    emitted_doc = YAML::Load(out.c_str());
+  } catch (const std::exception& e) {
+    LogError("[MoonlightUi] re-parse of emitted settings failed, not saving: {}", e.what());
+    return;
+  }
+  settings_root["moonlight_ui"] = emitted_doc["moonlight_ui"];
+
   std::ofstream f(path);
   if (!f) {
     LogError("[MoonlightUi] failed to write {}", path);
     return;
   }
-  f << out.c_str();
+  f << settings_root;
   // LogInfo("[MoonlightUi] saved chat backgrounds to {}", path);
 }
 
