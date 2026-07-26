@@ -329,6 +329,7 @@ struct CardDesc {
   int  line_count = 0;
   char lines[kMaxLines][kLineLen] = {};
   char icon_path[288]   = {};  // 유저인터페이스\item\<resname>.bmp (petite icône liste)
+  char coll_path[288]   = {};  // 유저인터페이스\collection\<resname>.bmp (art de preview)
   char illust_path[288] = {};  // 유저인터페이스\cardBmp\<resname>.bmp (illustration tooltip)
 };
 
@@ -931,8 +932,11 @@ void CallDescButton(uint8_t* wnd, int cmd) {
 
 // Cache des descs de cartes/enchants (clé = id). Chargé une fois via LoadCardDesc.
 std::unordered_map<uint32_t, CardDesc> g_card_desc_cache;
-// Caches texture séparés (clé = id) : petite icône item + illustration cardBmp.
+// Caches texture séparés (clé = id) : petite icône item, art de collection,
+// illustration cardBmp. Trois images DIFFÉRENTES pour un même item — la vignette
+// des descriptions les essaie dans l'ordre inverse (cf. RenderSimpleDesc).
 std::unordered_map<uint32_t, IconTex> g_card_icon_cache;
+std::unordered_map<uint32_t, IconTex> g_card_collection_cache;
 std::unordered_map<uint32_t, IconTex> g_card_illust_cache;
 
 // Toutes les textures ci-dessus vivent en D3DPOOL_DEFAULT : mortes après un
@@ -945,13 +949,17 @@ void IconCachesGuard() {
   if (e == s_epoch) return;
   g_icon_cache.clear();
   g_card_icon_cache.clear();
+  g_card_collection_cache.clear();
   g_card_illust_cache.clear();
   s_epoch = e;
 }
-// Préfixe icône item en CP949 (2 littéraux concaténés pour éviter que \xba avale
-// le \ suivant) : "유저인터페이스\item\".
+// Préfixes CP949 (2 littéraux concaténés pour éviter que \xba avale le \ suivant).
+// L'item et sa collection portent le MÊME resname, dans deux dossiers : « item\ »
+// pour la petite icône d'inventaire, « collection\ » pour l'art de preview.
 static const char kItemIconPrefix[] =
     "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\item\\";
+static const char kCollectionPrefix[] =
+    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\collection\\";
 
 // Charge la desc d'une carte/enchant par id. Toutes les descs de ce client vivent
 // dans rec+0x0c (RE 2026-07-05), lues par GetDescLines quand info+0x5c==1. On
@@ -995,9 +1003,15 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
     // 4) Chemins images (mêmes fonctions natives que le jeu) : petite icône item
     // (GetResName -> rec+0x08 avec +0x5c=1) + illustration cardBmp (GetCardResName).
     const char* irn = reinterpret_cast<GetResName_t>(kGetResName)(info);
-    if (irn && irn[0])
+    if (irn && irn[0]) {
       std::snprintf(cd->icon_path, sizeof(cd->icon_path), "%s%s.bmp",
                     kItemIconPrefix, irn);
+      // Même resname, autre dossier : l'art de preview. Beaucoup d'items n'en
+      // ont pas — le chemin est bâti quand même, c'est le chargement qui échoue
+      // et fait retomber la vignette sur la petite icône.
+      std::snprintf(cd->coll_path, sizeof(cd->coll_path), "%s%s.bmp",
+                    kCollectionPrefix, irn);
+    }
     void* crec = reinterpret_cast<CardResName_t>(kGetCardResName)(static_cast<int>(id));
     // crec == la fiche nil (kCardNilRecord, resname "sorry") => id absent de la DB
     // carte = NON-carte : on laisse illust_path vide pour garder l'icône collection
@@ -1028,6 +1042,19 @@ IconTex GetCardIcon(uint32_t id) {
   const CardDesc* cd = GetCardDesc(id);
   IconTex t = cd->icon_path[0] ? LoadCollectionIcon(cd->icon_path) : IconTex{};
   g_card_icon_cache[id] = t;
+  return t;
+}
+
+// Art de COLLECTION de l'item (chargé au 1er accès, cache par id). C'est l'image
+// large que montre le cash shop ; la plupart des items d'équipement en ont une,
+// les consommables rarement — d'où la tex vide, mémorisée, quand elle manque.
+IconTex GetCardCollection(uint32_t id) {
+  IconCachesGuard();
+  auto it = g_card_collection_cache.find(id);
+  if (it != g_card_collection_cache.end()) return it->second;
+  const CardDesc* cd = GetCardDesc(id);
+  IconTex t = cd->coll_path[0] ? LoadCollectionIcon(cd->coll_path) : IconTex{};
+  g_card_collection_cache[id] = t;
   return t;
 }
 
@@ -1885,8 +1912,12 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
                     std::strstr(cd->lines[0], "ItemID")) ? 1 : 0;
   const bool has_desc = cd->line_count > skip;
 
-  // Vignette : illustration de carte RÉDUITE si c'en est une, sinon l'icône item.
+  // Vignette, par ordre de préférence : illustration de carte RÉDUITE si c'en est
+  // une, sinon l'art de COLLECTION (l'image large du client, la même que le cash
+  // shop), sinon la petite icône d'inventaire. La collection manquait ici : un
+  // costume s'affichait en vignette 24x24 alors que le client en a l'art complet.
   IconTex img = GetCardIllust(id);
+  if (!img.tex) img = GetCardCollection(id);
   if (!img.tex) img = GetCardIcon(id);
   if (img.tex || has_desc) ImGui::Separator();
   // `wrap` = largeur TOTALE dispo. Le texte étant posé À DROITE de la vignette, il
