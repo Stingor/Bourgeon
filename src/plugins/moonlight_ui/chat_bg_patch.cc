@@ -61,11 +61,11 @@ const ChatBgSiteDesc kChatBgSites[] = {
 }  // namespace
 
 void MoonlightUi::FindChatBgSites() {
-  chat_bg_[kChatBgMain].label        = "Main chat";
+  chat_bg_[kChatBgMain].label        = "Chat principal";
   chat_bg_[kChatBgMain].yaml_key     = "chat_bg";          // kept for back-compat
-  chat_bg_[kChatBgDetached].label    = "Detached windows";
+  chat_bg_[kChatBgDetached].label    = "Fenêtres détachées";
   chat_bg_[kChatBgDetached].yaml_key = "chat_bg_detached";
-  chat_bg_[kChatBgWhisper].label     = "Whisper (1:1)";
+  chat_bg_[kChatBgWhisper].label     = "Chuchotement (1:1)";
   chat_bg_[kChatBgWhisper].yaml_key  = "chat_bg_whisper";
 
   // Locate the .text section via the PE header of the main module.

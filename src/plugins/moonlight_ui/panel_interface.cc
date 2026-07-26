@@ -81,7 +81,7 @@ void MoonlightUi::DrawInterfacePanel() {
       SameLine(); HelpMarker(
           "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
           "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
-          "Clic gauche slot = description, clic droit = desequiper, boutons +stat.");
+          "Clic gauche slot = description, clic droit = déséquiper, boutons +stat.");
     }
 
     // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
@@ -260,7 +260,7 @@ void MoonlightUi::DrawInterfacePanel() {
 
           changed |= ro::RoCheckbox("Tête seule (sans le corps)", &eb->portrait_head_only_);
           SameLine(); HelpMarker(
-              "Ne garde ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
+              "Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
               "Décoche pour le personnage entier.");
 
           changed |= ro::RoCheckbox("Cape / garment", &eb->portrait_show_garment_);
@@ -397,7 +397,7 @@ void MoonlightUi::DrawInterfacePanel() {
             if (BeginPopup("picker")) {
               // ── Shared user presets ─────────────────────────────────────────
               if (!chat_bg_presets_.empty()) {
-                TextUnformatted("Presets:");
+                TextUnformatted("Préréglages :");
                 int delete_idx = -1;
                 // Display each preset as a colour swatch + name + delete button.
                 for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
@@ -427,10 +427,10 @@ void MoonlightUi::DrawInterfacePanel() {
               }
               // ── Save current colour as a preset ─────────────────────────────
               ImGui::SetNextItemWidth(120.0f);
-              ImGui::InputTextWithHint("##preset_name", "Preset name", preset_name_buf_, sizeof(preset_name_buf_));
+              ImGui::InputTextWithHint("##preset_name", "Nom du préréglage", preset_name_buf_, sizeof(preset_name_buf_));
               SameLine();
               ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f); // vertically align the button with the input text
-              if (ro::RoButton("Save preset") && preset_name_buf_[0] != '\0') {
+              if (ro::RoButton("Enregistrer") && preset_name_buf_[0] != '\0') {
                 chat_bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(g.color)});
                 preset_name_buf_[0] = '\0';
                 changed = true;
@@ -442,13 +442,22 @@ void MoonlightUi::DrawInterfacePanel() {
                 ApplyChatBg(g, ro::ArgbFromPicker(g.color), false);
                 g.editing = true;
               }
-              if (g.editing && ImGui::IsMouseReleased(0)) {
-                ApplyChatBg(g, ro::ArgbFromPicker(g.color), true);
-                changed = true;
-                g.editing = false;
-              }
-              if (ro::RoButton("Close")) ImGui::CloseCurrentPopup();
+              if (ro::RoButton("Fermer")) ImGui::CloseCurrentPopup();
               ImGui::EndPopup();
+            }
+            // Finalisation HORS du popup, à dessein. Elle était dedans : Échap, un
+            // clic hors du popup ou le bouton Fermer pendant un glissement le
+            // fermaient avant qu'elle ne soit atteinte, et `editing` restait à
+            // true. La couleur était alors visible tout de suite — le .text est
+            // déjà patché — mais jamais propagée aux fenêtres DÉJÀ OUVERTES, ni
+            // persistée : elle disparaissait au login suivant.
+            //
+            // !IsMouseDown plutôt que IsMouseReleased : le relâchement est un
+            // événement d'UNE frame, qu'un popup fermé entre-temps fait manquer.
+            if (g.editing && !ImGui::IsMouseDown(0)) {
+              ApplyChatBg(g, ro::ArgbFromPicker(g.color), true);
+              changed = true;
+              g.editing = false;
             }
             ImGui::PopID();
           };
@@ -457,10 +466,10 @@ void MoonlightUi::DrawInterfacePanel() {
             render_chatbg(chat_bg_[kChatBgMain]);
             // Quick preset switcher toggle, on the same line as the main chat picker.
             SameLine();
-            changed |= ro::RoCheckbox("Preset bar", &mainchat_preset_bar_);
+            changed |= ro::RoCheckbox("Barre de préréglages", &mainchat_preset_bar_);
             render_chatbg(chat_bg_[kChatBgDetached]);
             render_chatbg(chat_bg_[kChatBgWhisper]);
-          } else GrayText("(chat background patch unavailable)");
+          } else GrayText("(patch du fond de chat indisponible)");
 
           PopStyleCompact();
         }
@@ -567,8 +576,8 @@ void MoonlightUi::DrawInterfacePanel() {
           changed = true;
         }
         SameLine(); HelpMarker(
-            "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coreen).\n"
-            "OFF : police integree d'ImGui (ProggyClean).");
+            "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\n"
+            "OFF : police intégrée d'ImGui (ProggyClean).");
         // (Le skin RO n'est plus optionnel : c'est l'habillage standard des
         // fenêtres ImGui Bourgeon. Seuls ses réglages restent configurables.)
         changed |= ro::ShowRoSkinSettings();
@@ -608,8 +617,8 @@ void MoonlightUi::DrawInterfacePanel() {
           preset_name[0] = '\0';
         }
         SameLine(); HelpMarker(
-          "Sauvegarde les couleurs/luminosite/opacite actuelles sous un nom.\n"
-          "'Appliquer' recharge un preset ; les joueurs peuvent se faire plusieurs themes.");
+          "Sauvegarde les couleurs/luminosité/opacité actuelles sous un nom.\n"
+          "« Appliquer » recharge un préréglage ; on peut se faire plusieurs thèmes.");
         if (changed) SaveSettings();
       }
 

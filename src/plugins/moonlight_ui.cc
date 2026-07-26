@@ -241,8 +241,16 @@ void MoonlightUi::LoadItemNames() {
         (line.find("Name =") != std::string::npos)) {
       const auto q1 = line.find('"');
       const auto q2 = line.rfind('"');  // rfind: last quote handles names with "
-      if (q1 != std::string::npos && q2 != std::string::npos && q1 < q2)
-        item_names_[current_id] = line.substr(q1 + 1, q2 - q1 - 1);
+      if (q1 != std::string::npos && q2 != std::string::npos && q1 < q2) {
+        // itemInfoMerged.lua est en CP949, ImGui attend de l'UTF-8 : sans cette
+        // conversion, tout nom d'item non-ASCII s'affichait en octets bruts.
+        // Convertir ICI, une fois à l'insertion, plutôt qu'à chaque affichage :
+        // Cp949ToUtf8 rend un buffer thread-local rotatif à 8 emplacements qu'il
+        // ne faut jamais conserver — la copie dans la std::string règle la
+        // question définitivement.
+        const std::string raw = line.substr(q1 + 1, q2 - q1 - 1);
+        item_names_[current_id] = ro::Cp949ToUtf8(raw.c_str());
+      }
     }
   }
   // LogInfo("[MoonlightUi] loaded {} item names", item_names_.size());
@@ -1741,9 +1749,9 @@ void MoonlightUi::OnRenderUI() {
       PushStyleCompact();
       ChatBgGroup& g = chat_bg_[kChatBgMain];
       if (chat_bg_presets_.empty()) {
-        ImGui::TextDisabled("No presets yet.");
-        ImGui::TextDisabled("Add some in the");
-        ImGui::TextDisabled("Main chat picker.");
+        ImGui::TextDisabled("Aucun préréglage.");
+        ImGui::TextDisabled("Ajoute-en depuis le");
+        ImGui::TextDisabled("sélecteur du chat.");
       } else {
         for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
           const auto& p = chat_bg_presets_[i];
