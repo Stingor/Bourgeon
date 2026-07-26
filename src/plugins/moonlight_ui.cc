@@ -784,6 +784,7 @@ void MoonlightUi::LoadSettings() {
     }
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
+      sb->locked_     = ui["skillbar_locked"].as<bool>(sb->locked_);
       sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
       sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
       sb->show_keys_  = ui["skillbar_show_keys"].as<bool>(sb->show_keys_);
@@ -1347,6 +1348,7 @@ void MoonlightUi::WriteSettingsFile() {
   {
     auto* sb = Bourgeon::Instance().skill_bar();
     out << YAML::Key << "skillbar_enabled"  << YAML::Value << (sb ? sb->enabled_    : false)
+        << YAML::Key << "skillbar_locked"   << YAML::Value << (sb ? sb->locked_     : true)
         << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
         << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
         << YAML::Key << "skillbar_show_keys" << YAML::Value << (sb ? sb->show_keys_ : true)
@@ -3479,8 +3481,11 @@ void MoonlightUi::OnRenderUI() {
           }
           ImGui::EndTabItem();
         }
+        // EndTabBar DOIT rester dans le if (BeginTabBar) : ImGui l'exige (assert en
+        // debug, état de tab bar corrompu en release). Il était appelé juste après
+        // l'accolade, donc aussi quand BeginTabBar renvoyait false — onglet replié.
+        ImGui::EndTabBar();
       }
-      ImGui::EndTabBar();
       PopStyleCompact();
     }
   }
