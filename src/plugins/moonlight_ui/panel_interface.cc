@@ -23,6 +23,7 @@
 #include "plugins/menu_icons.h"
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/quest_tracker_tweaks.h"
+#include "plugins/rodex_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
@@ -77,6 +78,11 @@ void MoonlightUi::DrawInterfacePanel() {
           "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
           "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
     }
+
+    // (Courrier RODEX : PAS de case ici — il fait partie de l'interrupteur
+    // GLOBAL « Interface moderne », avec l'inventaire, l'entrepôt, les barres et
+    // l'échange, parce que ses pièces jointes se glissent depuis l'inventaire
+    // ImGui. Une case isolée rouvrirait la porte au mixe.)
 
     // Feuille de personnage (agrege Status + Equipement)
     if (auto* cse = Bourgeon::Instance().character_sheet()) {

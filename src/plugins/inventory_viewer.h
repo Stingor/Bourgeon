@@ -122,6 +122,11 @@ class InventoryViewer : public Plugin {
   // No-op si aucun glisser en cours ou si aucun échange n'est ouvert.
   bool TradeDraggedItem();
 
+  // Idem pour le COURRIER : joint l'item glissé au courrier en cours d'écriture
+  // (cible de drop « Pièces jointes » de rodex_tweaks). Même politique de quantité.
+  // No-op si aucun glisser en cours ou si aucune écriture n'est ouverte.
+  bool MailDraggedItem();
+
   // Nameid de l'item ACTUELLEMENT GLISSÉ (0 si aucun drag en cours). Utilisé par
   // skill_bar_tweaks pour assigner l'item glissé à une case de la barre d'action
   // (drag-drop cross-plugin, comme EquipDraggedItem pour le doll de character_sheet).
@@ -203,7 +208,7 @@ class InventoryViewer : public Plugin {
 
   // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
   enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage,
-                    kPendToTrade };
+                    kPendToTrade, kPendToMail };
   int  pend_id_ = 0;      // 0 = aucune action en attente
   int  pend_index_ = 0;   // index inventaire de l'item concerné
   int  pend_max_ = 0;     // quantité max (stack) pour le prompt

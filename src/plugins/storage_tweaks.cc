@@ -849,7 +849,7 @@ bool StorageTweaks::DrawSettings() {
   bool changed = false;
   // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
   // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
+  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)",
                      &imgui_enabled_)) {
     SetModernInterface(imgui_enabled_);
     changed = true;

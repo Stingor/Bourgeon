@@ -35,6 +35,7 @@
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/trade_tweaks.h"
+#include "plugins/rodex_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
@@ -294,6 +295,8 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
     {"shop_imgui",  SType::kBool, MLUI_FIELD(shop_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"trade_imgui", SType::kBool, MLUI_FIELD(trade_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"npc_dialog_imgui", SType::kBool, MLUI_FIELD(npc_dialog_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
@@ -636,6 +639,11 @@ void SetModernInterface(bool on) {
     skill_bar->enabled_ = on;
   if (auto* trade_tweaks = Bourgeon::Instance().trade_tweaks())
     trade_tweaks->imgui_enabled_ = on;
+  // Le courrier fait partie du lot : sa fenêtre d'écriture reçoit les objets
+  // glissés depuis l'inventaire ImGui, ce qui n'a de sens que si les deux sont
+  // modernes en même temps (un inventaire natif ne sait pas déposer chez nous).
+  if (auto* rodex_tweaks = Bourgeon::Instance().rodex_tweaks())
+    rodex_tweaks->imgui_enabled_ = on;
 }
 
 // ── Settings persistence ──────────────────────────────────────────────────
@@ -728,18 +736,20 @@ void MoonlightUi::PostLoadApply() {
   LogConsole::instance().SetLevel(log_level_);
   pending_collapse_restore_ = true;
 
-  // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/entrepôt/barres/
-  // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
-  // mixé — on réconcilie en OU (au moins une moderne => toutes modernes ; tout
-  // natif sinon), puis les cases restent synchronisées à l'exécution.
+  // « Tout-ImGui ou tout-natif » : ces 5 fenêtres (inventaire/entrepôt/barres/
+  // échange/courrier) s'activent ensemble. Un yaml antérieur au regroupement
+  // pouvait être mixé — on réconcilie en OU (au moins une moderne => toutes
+  // modernes ; tout natif sinon), puis les cases restent synchronisées.
   auto* inventory = Bourgeon::Instance().inventory_viewer();
   auto* storage   = Bourgeon::Instance().storage_tweaks();
   auto* skill_bar = Bourgeon::Instance().skill_bar();
   auto* trade     = Bourgeon::Instance().trade_tweaks();
+  auto* rodex     = Bourgeon::Instance().rodex_tweaks();
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||
-                     (trade && trade->imgui_enabled_));
+                     (trade && trade->imgui_enabled_) ||
+                     (rodex && rodex->imgui_enabled_));
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())

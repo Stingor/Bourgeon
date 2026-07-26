@@ -25,6 +25,7 @@ class InventoryViewer;
 class CashShopTweaks;
 class ShopTweaks;
 class TradeTweaks;
+class RodexTweaks;
 class CharacterSheet;
 class LoginParade;
 class ItemDescTweaks;
@@ -65,6 +66,7 @@ class Bourgeon {
   CashShopTweaks* cashshop_tweaks();
   ShopTweaks* shop_tweaks();
   TradeTweaks* trade_tweaks();
+  RodexTweaks* rodex_tweaks();
   NpcDialogTweaks* npc_dialog_tweaks();
   BugReportTweaks* bug_report();
   CharacterSheet* character_sheet();
@@ -150,6 +152,7 @@ class Bourgeon {
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
   TradeTweaks* trade_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
+  RodexTweaks* rodex_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogTweaks* npc_dialog_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   BugReportTweaks* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_

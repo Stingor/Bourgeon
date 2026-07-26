@@ -13,6 +13,7 @@
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "plugins/trade_tweaks.h"  // hide-native-at-creation (échange, par vtable)
+#include "plugins/rodex_tweaks.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "plugins/npc_dialog_tweaks.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -164,6 +165,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     // handler d'achat natif -> détecté par vtable (no-op hors session shop).
     if (auto* sh = Bourgeon::Instance().shop_tweaks())
       sh->HideDetailWindow(win);
+    // Courrier RODEX : la LISTE (0x107) est créée sur commande du joueur, mais la
+    // LECTURE (0x109) et l'ÉCRITURE (0x108) le sont par des handlers de paquet
+    // (ZC 0x0B63 et l'ack « commencer un courrier »), donc entre deux OnTick ->
+    // sans ce hook une frame native passerait à l'écran.
+    if (windowID == 0x107 || windowID == 0x108 || windowID == 0x109) {
+      if (auto* rodex = Bourgeon::Instance().rodex_tweaks())
+        rodex->HideNativeAtCreation(win, windowID);
+    }
     // Échange joueur-joueur : appel INCONDITIONNEL (la fenêtre est la classe
     // CUIExchangeUI, détectée par VTABLE 0x010457d8 — cf. docs/trade_window_re.md),
     // capture de l'id runtime + masquage du natif. No-op si le viewer est désactivé.

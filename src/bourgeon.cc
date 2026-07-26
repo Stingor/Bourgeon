@@ -43,6 +43,7 @@
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
 #include "plugins/trade_tweaks.h"
+#include "plugins/rodex_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/character_sheet.h"
@@ -77,6 +78,7 @@ InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 TradeTweaks* Bourgeon::trade_tweaks() { return trade_tweaks_; }
+RodexTweaks* Bourgeon::rodex_tweaks() { return rodex_tweaks_; }
 NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
 BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
@@ -497,6 +499,10 @@ void Bourgeon::LoadPlugins() {
     auto trade_tweaks = std::make_unique<TradeTweaks>();
     trade_tweaks_ = trade_tweaks.get();
     plugins_.emplace_back(std::move(trade_tweaks));
+
+    auto rodex_tweaks = std::make_unique<RodexTweaks>();
+    rodex_tweaks_ = rodex_tweaks.get();
+    plugins_.emplace_back(std::move(rodex_tweaks));
 
     auto npc_dialog_tweaks = std::make_unique<NpcDialogTweaks>();
     npc_dialog_tweaks_ = npc_dialog_tweaks.get();

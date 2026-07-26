@@ -18,6 +18,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "plugins/trade_tweaks.h"  // « Vers l'échange » (AddItemToTrade / active)
+#include "plugins/rodex_tweaks.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
@@ -721,6 +722,12 @@ bool TradeOpen() {
   auto* tt = Bourgeon::Instance().trade_tweaks();
   return tt && tt->active();
 }
+// Écriture d'un courrier ImGui en cours (RodexTweaks) : cible de « Joindre au
+// courrier ». Les pièces jointes n'existent QUE pendant une écriture.
+bool MailComposing() {
+  auto* rodex = Bourgeon::Instance().rodex_tweaks();
+  return rodex && rodex->composing();
+}
 
 // True si le point est au-dessus du VIEWER storage ImGui : quand les DEUX (inventaire +
 // storage) sont des viewers ImGui, le rect natif du storage est caché donc MouseOverStorage
@@ -1263,6 +1270,21 @@ bool InventoryViewer::TradeDraggedItem() {
   return true;
 }
 
+// Même chemin que TradeDraggedItem, vers le courrier en cours d'écriture : le
+// serveur borne à 5 pièces jointes, on ne double donc pas ce contrôle ici.
+bool InventoryViewer::MailDraggedItem() {
+  if (!drag_active_) return false;
+  auto* rodex = Bourgeon::Instance().rodex_tweaks();
+  if (!rodex || !rodex->composing()) return false;
+  if (drag_amount_ > 1) {  // pile -> prompt de quantité (« Joindre au courrier... »)
+    pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
+    pend_action_ = kPendToMail; pend_open_prompt_ = true;
+  } else {
+    rodex->AttachItem(drag_index_, 1);
+  }
+  return true;
+}
+
 // Wrapper public sur le helper interne PostItemLinkToChat (insère le lien dans l'input
 // chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
@@ -1692,6 +1714,10 @@ void InventoryViewer::OnRenderUI() {
         if (auto* tt = Bourgeon::Instance().trade_tweaks())
           tt->AddItemToTrade(pend_index_, amount);
         break;
+      case kPendToMail:
+        if (auto* rodex = Bourgeon::Instance().rodex_tweaks())
+          rodex->AttachItem(pend_index_, amount);
+        break;
       default: break;
     }
   };
@@ -1708,6 +1734,7 @@ void InventoryViewer::OnRenderUI() {
     const char* verb = pend_action_ == kPendDrop      ? "Jeter"
                      : pend_action_ == kPendToCart     ? "Vers le chariot"
                      : pend_action_ == kPendToStorage  ? "Vers le storage"
+                     : pend_action_ == kPendToMail     ? "Joindre au courrier"
                                                        : "Déplacer";
     ImGui::Text("%s combien ? (max %d)", verb, pend_max_);
     static int dq = 1;
@@ -2194,6 +2221,17 @@ void InventoryViewer::OnRenderUI() {
           } else if (ImGui::MenuItem("Vers l'échange...")) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToTrade; pend_open_prompt_ = true;
+          }
+        }
+        // Courrier en cours d'écriture : même politique de quantité que l'échange.
+        if (MailComposing()) {
+          if (it.amount <= 1) {
+            if (ImGui::MenuItem("Joindre au courrier"))
+              if (auto* rodex = Bourgeon::Instance().rodex_tweaks())
+                rodex->AttachItem(it.index, 1);
+          } else if (ImGui::MenuItem("Joindre au courrier...")) {
+            pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
+            pend_action_ = kPendToMail; pend_open_prompt_ = true;
           }
         }
         ImGui::EndPopup();

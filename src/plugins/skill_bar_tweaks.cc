@@ -1069,7 +1069,7 @@ void SkillBarTweaks::DrawSettings() {
   // l'accès aux deux autres plugins (déclarée dans moonlight_ui.h). La case reste
   // câblée sur enabled_ ; la persistance passe par dirty_ (drainé par MoonlightUi,
   // dont le SaveSettings écrit aussi inventory_imgui/storage_imgui à jour).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres)", &enabled_)) {
+  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)", &enabled_)) {
     SetModernInterface(enabled_);
     changed = true;
   }

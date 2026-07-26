@@ -66,6 +66,8 @@ set(BOURGEON_FILES
 	"plugins/shop_tweaks.h"
 	"plugins/trade_tweaks.cc"
 	"plugins/trade_tweaks.h"
+	"plugins/rodex_tweaks.cc"
+	"plugins/rodex_tweaks.h"
 	"plugins/npc_dialog_tweaks.cc"
 	"plugins/npc_dialog_tweaks.h"
 	"plugins/bug_report.cc"
