@@ -2,3 +2,18 @@ build/*
 Win32/*
 /out
 TODO.txt
+
+# ── Fichiers de config et de secrets créés à l'exécution ─────────────────────
+# Ils vivent normalement à côté de l'exe du jeu, pas dans le dépôt — mais une
+# copie de travail posée ici serait committée sans que rien ne le signale.
+# bourgeon_settings.yaml porte la section `auto_login` avec identifiant et mot de
+# passe EN CLAIR ; bourgeon_moonlight_pw.bin porte le mot de passe web chiffré
+# DPAPI, et bourgeon_moonlight_user.txt l'identifiant web mémorisé.
+bourgeon_settings.yaml
+bourgeon_moonlight_user.txt
+bourgeon_moonlight_pw.bin
+*.sha256
+
+# Cache/état de l'IDE — aucun intérêt en versionné, et ça bruite les diffs.
+.vs/
+*.user
