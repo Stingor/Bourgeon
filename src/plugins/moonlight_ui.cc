@@ -976,26 +976,26 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
     if (len < 2) return;
     alootid_active_preset_   = data[0];
     alootid_selected_preset_ = data[0];  // select active preset in combo by default
-    const uint8_t count = data[1];
+    const uint8_t preset_count = data[1];
     alootid_presets_.clear();
-    uint16_t off = 2;
-    for (uint8_t i = 0; i < count && off + 3 <= len; ++i) {
-      AlootPreset p;
-      p.slot_no  = data[off];
-      p.autoload = data[off + 1] != 0;
-      const uint8_t namelen = data[off + 2];
-      off += 3;
-      if (off + namelen > len) break;
-      p.name.assign(reinterpret_cast<const char*>(data + off), namelen);
-      off += namelen;
-      alootid_presets_.push_back(std::move(p));
+    uint16_t read_offset_bytes = 2;
+    for (uint8_t i = 0; i < preset_count && read_offset_bytes + 3 <= len; ++i) {
+      AlootPreset preset;
+      preset.slot_no  = data[read_offset_bytes];
+      preset.autoload = data[read_offset_bytes + 1] != 0;
+      const uint8_t name_len_bytes = data[read_offset_bytes + 2];
+      read_offset_bytes += 3;
+      if (read_offset_bytes + name_len_bytes > len) break;
+      preset.name.assign(reinterpret_cast<const char*>(data + read_offset_bytes), name_len_bytes);
+      read_offset_bytes += name_len_bytes;
+      alootid_presets_.push_back(std::move(preset));
     }
     // Auto-fill the save input with the active preset's name so "Sauvegarder"
     // updates it directly instead of creating a new slot.
     if (alootid_active_preset_ != 0) {
-      for (const auto& p : alootid_presets_) {
-        if (p.slot_no == alootid_active_preset_) {
-          std::strncpy(alootid_preset_input_, p.name.c_str(),
+      for (const auto& preset : alootid_presets_) {
+        if (preset.slot_no == alootid_active_preset_) {
+          std::strncpy(alootid_preset_input_, preset.name.c_str(),
                        sizeof(alootid_preset_input_) - 1);
           alootid_preset_input_[sizeof(alootid_preset_input_) - 1] = '\0';
           break;
@@ -1012,121 +1012,122 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
   // Layout after the [opcode:2][len:2] header: [char_id:4][count:2][{id,value}*].
   if (len < 6) return;
 
-  const uint16_t count = *reinterpret_cast<const uint16_t*>(data + 4);
+  const uint16_t setting_count = *reinterpret_cast<const uint16_t*>(data + 4);
   // 32-bit math: a uint16_t cast here would truncate (e.g. count=0xFFFF wraps
   // 393216 -> 0), defeating the length check and allowing an OOB read.
-  const uint32_t expected_len = 6u + static_cast<uint32_t>(count) * 6u;
+  const uint32_t expected_len = 6u + static_cast<uint32_t>(setting_count) * 6u;
   if (len < expected_len) {
-    LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len, count);
+    LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len,
+             setting_count);
     return;
   }
 
-  for (uint16_t i = 0; i < count; ++i) {
-    const uint16_t id    = *reinterpret_cast<const uint16_t*>(data + 6 + i * 6);
-    const uint32_t value = *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2);
-    switch (id) {
+  for (uint16_t i = 0; i < setting_count; ++i) {
+    const uint16_t setting_id    = *reinterpret_cast<const uint16_t*>(data + 6 + i * 6);
+    const uint32_t setting_value = *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2);
+    switch (setting_id) {
       case kSettingShowExp:
-        show_exp_ = (value != 0);
+        show_exp_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] show_exp={}", show_exp_);
         break;
       case kSettingShowZeny:
-        show_zeny_ = (value != 0);
+        show_zeny_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] show_zeny={}", show_zeny_);
         break;
       case kSettingShowMobInfo:
-        show_mob_info_ = (value != 0);
+        show_mob_info_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] show_mob_info={}", show_mob_info_);
         break;
       case kSettingSeparateKills:
-        separate_kills_enabled_ = (value != 0);
+        separate_kills_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] separate={}", separate_kills_enabled_);
         break;
       case kSettingBlockExp:
-        block_exp_ = (value != 0);
+        block_exp_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] block_exp={}", block_exp_);
         break;
       case kSettingAlootRare:
-        aloot_rare_ = (value != 0);
+        aloot_rare_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);
         break;
       case kSettingAlootRate:
-        aloot_rate_ = static_cast<int>(value);
+        aloot_rate_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] aloot_rate={}", aloot_rate_);
         break;
       case kSettingAlootMinZenyDiv100:
-        aloot_min_zeny_ = static_cast<int>(value) * 100;
+        aloot_min_zeny_ = static_cast<int>(setting_value) * 100;
         // LogInfo("[MoonlightUi] aloot_pognon={}", aloot_min_zeny_);
         break;
       case kSettingAlootType:
-        aloot_type_mask_ = static_cast<int>(value);
+        aloot_type_mask_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] aloot_type_mask=0x{:04X}", aloot_type_mask_);
         break;
       case kSettingDiscordChat:
-        discord_chat_ = (value != 0);
+        discord_chat_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] discord_chat={}", discord_chat_);
         UpdateRelay();
         break;
       case kSettingShowAttackDelay:
-        show_attack_delay_enabled_ = (value != 0);
+        show_attack_delay_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] show_delay={}", show_attack_delay_enabled_);
         break;
       case kSettingShowMoveSpeed:
-        show_move_speed_enabled_ = (value != 0);
+        show_move_speed_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] show_speed={}", show_move_speed_enabled_);
         break;
       case kSettingSellStuff:
-        sell_stuff_enabled_ = (value != 0);
+        sell_stuff_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_enabled_);
         break;
       case kSettingSellItem:
-        sell_item_enabled_ = (value != 0);
+        sell_item_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] sell_item={}", sell_item_enabled_);
         break;
       case kSettingNoAsk:
-        no_ask_enabled_ = (value != 0);
+        no_ask_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] no_ask={}", no_ask_enabled_);
         break;
       case kSettingNoksMode:
-        noks_mode_ = static_cast<int>(value);
+        noks_mode_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] noks={}", noks_mode_);
         break;
       case kSettingWings:
-        wings_enabled_ = (value != 0);
+        wings_enabled_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] wings={}", wings_enabled_);
         break;
       case kSettingAlootMvp:
-        aloot_mvp_ = (value != 0);
+        aloot_mvp_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_mvp={}", aloot_mvp_);
         break;
       case kSettingAlootMvpRwd:
-        aloot_mvp_rwd_ = (value != 0);
+        aloot_mvp_rwd_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
         break;
       case kSettingSortModeInventory:
-        sort_mode_inventory_ = static_cast<int>(value);
+        sort_mode_inventory_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] tri_inv={}", sort_mode_inventory_);
         break;
       case kSettingSortModeCart:
-        sort_mode_cart_ = static_cast<int>(value);
+        sort_mode_cart_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] tri_cart={}", sort_mode_cart_);
         break;
       case kSettingSortModeStorage:
-        sort_mode_storage_ = static_cast<int>(value);
+        sort_mode_storage_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] tri_storage={}", sort_mode_storage_);
         break;
       case kSettingSortModeGuildStorage:
-        sort_mode_guild_storage_ = static_cast<int>(value);
+        sort_mode_guild_storage_ = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] tri_gstorage={}", sort_mode_guild_storage_);
         break;
       case kSettingAlootId:
-        if (value == 0) {
+        if (setting_value == 0) {
           aloot_ids_.clear();
           // LogInfo("[MoonlightUi] aloot_ids cleared");
         } else {
           bool found = false;
-          for (uint32_t x : aloot_ids_) if (x == value) { found = true; break; }
-          if (!found) aloot_ids_.push_back(value);
-          // LogInfo("[MoonlightUi] aloot_id added={}", value);
+          for (uint32_t x : aloot_ids_) if (x == setting_value) { found = true; break; }
+          if (!found) aloot_ids_.push_back(setting_value);
+          // LogInfo("[MoonlightUi] aloot_id added={}", setting_value);
         }
         break;
       case kSettingAlootIdRemove:
@@ -1134,11 +1135,11 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
       case kSettingGroupLevel:
         // Niveau de groupe serveur (pc_get_group_level). > 0 => staff/GM ; active
         // les fonctionnalités réservées (IsStaff), sans édition manuelle du yaml.
-        g_staff_level = static_cast<int>(value);
+        g_staff_level = static_cast<int>(setting_value);
         // LogInfo("[MoonlightUi] staff_level={}", g_staff_level);
         break;
       default:
-        // LogInfo("[MoonlightUi] unknown setting id={} value={}", id, value);
+        // LogInfo("[MoonlightUi] unknown setting id={} value={}", setting_id, setting_value);
         break;
     }
   }
