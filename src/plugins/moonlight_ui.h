@@ -307,5 +307,6 @@ class MoonlightUi : public Plugin {
   void DrawCommandsPanel();
   void DrawFunPanels();
   void DrawAlootOverlay();
+  void DrawInterfacePanel();
   void InstallItemDescProbe();
 };

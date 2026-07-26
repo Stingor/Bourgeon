@@ -26,6 +26,10 @@
 //    cherche à supprimer.
 
 #include <cstdint>
+#include <string>
+#include <vector>
+
+#include "ui/ro_imgui.h"  // ro::RoSkinConfig
 
 class MoonlightUi;
 
@@ -33,6 +37,16 @@ class MoonlightUi;
 // ItemDescWndHook (moonlight_ui.cc). Le panneau Autoloots s'en sert pour proposer
 // l'item survolé en un clic. Défini dans item_desc_probe.cc.
 extern uint32_t g_last_viewed_item;
+
+// Presets de skin RO nommés, chargés du yaml. Partagés entre LoadSettings/
+// SaveSettings (moonlight_ui.cc) et le panneau « Skin RO » (panel_interface.cc).
+// Définis dans moonlight_ui.cc.
+struct RoPreset {
+  std::string name;
+  ro::RoSkinConfig cfg;
+};
+extern std::vector<RoPreset> g_ro_presets;
+extern int g_ro_preset_sel;
 
 namespace moonlight_ui {
 

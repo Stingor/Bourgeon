@@ -27,6 +27,7 @@ set(BOURGEON_FILES
 	"plugins/moonlight_ui/panel_fun.cc"
 	"plugins/moonlight_ui/item_desc_probe.cc"
 	"plugins/moonlight_ui/chat_bg_patch.cc"
+	"plugins/moonlight_ui/panel_interface.cc"
 	"plugins/discord_relay.cc"
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"
