@@ -394,6 +394,45 @@ poser `g_CharSelect_SelectedSlot` (0x015F8262) au slot visé, puis appeler
 | 0x197 | **programmer** la suppression | CZ **0x0827** [op:2][GID:4] |
 | 0x198 | **annuler** la suppression | CZ **0x082B** [op:2][GID:4] |
 | 0xD3 | supprimer maintenant (confirm + code natif) | cmd mode 0x271A |
+| 0xB9 (185) | « Cancel » : quitter l'écran (msgbox de confirmation, cf. ci-dessous) | — |
+
+### Quitter l'écran : retour au login vs. quitter le jeu
+
+Le **« Cancel » natif** (`ctrl 185`) confirme par une msgbox, puis branche sur le flag
+client `g_CanReturnToLoginScreen` `0x01602328` (posé à 1 en `0x00d24a45` ; même
+dichotomie dans le handler de refus de connexion `0x00d29630`) :
+
+| Branche | Commande de mode | Effet |
+|---|---|---|
+| flag = 1 | `SendMsg(mode, 10011)` = `0x271B` (`CLoginMode_SendMsg 0x00d2a130`) | `CRagConnection_OnDisconnect` + `mode+0xc = 3` ⇒ **retour à l'écran de connexion** |
+| sinon | `SendMsg(mode, 2)` → `CMode::SendMsg` de base **`0x00a763c0`** | arrêt des sous-systèmes + `mode+0x14 = 0` ⇒ la boucle principale sort = **quitter le jeu** |
+
+(`SendMsg(mode, 2)` est exactement ce que fait le bouton « Exit » de l'écran de login,
+`UILoginWnd_OnMsg 0x008848d0` `ctrl 221`.)
+
+Le plugin expose **les deux** dans une barre bas-droite (« Revenir au login », «
+Quitter le jeu »), chacune derrière sa confirmation ImGui, et envoie la commande de
+mode **lui-même** (`CharSelect::DriveModeCmd`, dispatcher `*(0x0121333c)` vtbl+0x18).
+⚠ Piloter `ctrl 185` ne marcherait PAS : sa msgbox passe par
+`UIWndMgr_ShowMessageBoxModal 0x00a31a30`, que le plugin **détourne** sous sa
+couverture (retour 185 ≠ 187 attendu) ⇒ le natif conclurait « annulé ».
+
+⚠ **Le client reste en `CLoginMode`** : seul l'ÉTAT change (9/6 → 3), donc **aucun
+`OnModeSwitch` n'est émis**. Deux conséquences, traitées explicitement :
+
+1. `MoonlightAuth` resterait bloqué en `kDriveLogin` (session authentifiée, drive
+   « terminé ») et ne redessinerait pas son formulaire ⇒ on retombait sur l'écran de
+   login **NATIF**. Le bouton appelle donc `MoonlightAuth::RearmWebLogin()` (même
+   remise à zéro que la branche « vraie (re)connexion » de `OnModeSwitch`, plus le
+   re-passage du service-select et le pré-remplissage du mot de passe DPAPI).
+2. Le plugin ne peut pas se fier aux `CHARACTER_INFO` (encore lisibles après la
+   déconnexion) pour savoir qu'il doit se retirer : il latche `left_` et se réarme sur
+   la **fenêtre native `0x115`** (`UIWindowMgr_FindWindow 0x00a47b90` — fiable,
+   contrairement au cache `mgr+0x3d4` jamais remis à zéro). Absente = écran de
+   connexion (on ne dessine rien) ; présente = nouveau char-select, on reprend.
+
+Pour la fermeture (`cmd 2`), la table passe derrière un fondu au noir
+« Fermeture du jeu… » le temps que la boucle principale sorte.
 
 `CHARACTER_INFO+0x9E` (DelRevDate) > 0 ⇒ suppression programmée en cours (délai
 restant, secondes) — bloque l'entrée en jeu. Réservation/annulation (0x197/0x198)
@@ -417,5 +456,10 @@ coords **normalisées** [0..1] sur le fond). Ordre = numérotation de l'image :
 slot i → place n°(i+1) (slot 0 = grand trône). Chaque place = pieds (nx,ny) + échelle
 (hauteur du pantin / hauteur écran, perspective). Rendu du pantin par
 `BasicInfoTweaks::RenderDoll` (coords écran). Coords estimées à l'œil ⇒ **éditeur de
-sièges staff** (`IsStaff()`) : glisser = position, molette = taille, « Journaliser »
-dump la table dans bourgeon.log, prête à recoller dans `g_seats`.
+layout** (glisser = position, molette = taille, « Dump layout » journalise la table +
+les points `Anchor`, prêts à recoller dans `g_seats`).
+
+⚠ **Éditeur DÉSACTIVÉ** : le layout est calé, le déclencheur (F10 / `IsStaff()`) est
+**commenté** en bas de `CharSelect::OnRenderLoginUI` — `seat_edit_` ne peut plus
+passer à `true`, tout le chemin d'édition est du code mort conservé pour un futur
+recalage (décommenter le bloc suffit).

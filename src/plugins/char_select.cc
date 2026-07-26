@@ -15,7 +15,7 @@
 #include "imgui.h"
 #include "plugins/basic_info.h"  // RenderDoll : moteur de capture sprite partagé
 #include "plugins/moonlight_auth.h"
-#include "plugins/moonlight_ui.h"  // IsStaff() : éditeur de sièges réservé staff
+#include "plugins/moonlight_ui.h"  // IsStaff() : éditeur de layout (désactivé, cf. bas)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
@@ -52,6 +52,40 @@ const char kHallBmpPath[] =
 // ── Fenêtre native de création (ouverte par le contrôle « créer » 0x1A0) ──────
 constexpr uintptr_t kFindWindow    = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr int       kMakeCharWndId = 0xC8;        // UIMakeCharWnd (MakeWindow 0xC8)
+
+// ── Quitter l'écran : retour au login / fermeture du jeu ─────────────────────
+// Le « Cancel » natif du char-select (UINewSelectCharWnd_OnMsg 0x0079d610, ctrl 185)
+// fait, après une msgbox de confirmation, l'un des deux selon un flag client
+// (g_CanReturnToLoginScreen 0x01602328) :
+//   flag=1 -> CLoginMode_SendMsg(mode, 10011) = CRagConnection_OnDisconnect + état 3
+//             (0x00d2a130 case 10011) = RETOUR à l'écran de connexion ;
+//   sinon  -> SendMsg(mode, 2), qui retombe sur CMode::SendMsg de base 0x00a763c0 :
+//             arrêt des sous-systèmes + mode+0x14 = 0 -> la boucle principale sort
+//             = QUITTER le jeu (exactement ce que fait le bouton « Exit » de
+//             UILoginWnd_OnMsg 0x008848d0 ctrl 221).
+// On expose les DEUX en ImGui, sans passer par le ctrl 185 : sa msgbox native est
+// supprimée sous notre UI (Detour_ShowModal renvoie 185 != 187) -> le natif
+// conclurait « annulé » et ne ferait rien. On envoie donc la commande de mode
+// nous-mêmes, après notre propre confirmation ImGui.
+constexpr int kCmdBackToLogin = 10011;  // 0x271B
+constexpr int kCmdQuitGame    = 2;
+// g_UIWindowMgr + id de la fenêtre native du char-select. FindWindow(0x115) non nul
+// = l'écran char-select est VIVANT dans le manager (contrairement au cache
+// mgr+0x3d4 = kCharSelWndPtr, jamais remis à zéro à la destruction). Sert à savoir
+// quand le natif a effectivement quitté l'écran après notre commande.
+constexpr uintptr_t kUIWindowMgr  = 0x0131f4e8;
+constexpr int       kCharSelWndId = 0x115;  // 277 = UINewSelectCharWnd
+
+// La fenêtre native du char-select existe-t-elle encore ?
+bool NativeCharSelectAlive() {
+  __try {
+    using FindWindow_t = void*(__thiscall*)(void*, int);
+    return reinterpret_cast<FindWindow_t>(kFindWindow)(
+               reinterpret_cast<void*>(kUIWindowMgr), kCharSelWndId) != nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
 
 // ── Entrée en jeu : séquence NATIVE (cf. EnterGame) ──────────────────────────
 // g_CharSelect_SelectedSlot : octet lu par le handler du bouton OK ET relu plus
@@ -986,6 +1020,25 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
   }
 }
 
+void CharSelect::DriveModeCmd(int cmd) {
+  // Envoie une commande au MODE courant (dispatcher *(0x0121333c), vtbl+0x18) — le
+  // même point d'entrée que ReadSlot (cmd 8) et que le natif quand il quitte l'écran.
+  // 5 args pile : DispCmd_t est le typedef partagé (aucun ne sert ici, tous à 0).
+  __try {
+    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    if (!d) {
+      LogError("[CharSelect] dispatcher de mode absent -> commande {} ignorée", cmd);
+      return;
+    }
+    auto fn = reinterpret_cast<DispCmd_t>(
+        (*reinterpret_cast<uintptr_t**>(d))[kVfDispCmd / 4]);
+    fn(d, cmd, 0, 0, 0, 0);
+    LogDiag("[CharSelect] commande de mode {} envoyée", cmd);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    LogError("[CharSelect] exception sur la commande de mode {}", cmd);
+  }
+}
+
 void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Réarme à chaque arrivée sur l'écran login/char-select.
   if (mode_type == ModeMgr::ModeType::kLogin) {
@@ -996,6 +1049,8 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     native_op_ = false;
     op_prev_nfilled_ = -1;
     entering_ = false;
+    quitting_ = false;
+    left_ = false;
     del_reject_until_ = 0;
     del_reject_seq_seen_ = g_del_reject_seq;  // ne pas ressortir un refus d'avant
   }
@@ -1014,6 +1069,21 @@ void CharSelect::OnRenderLoginUI() {
   if (!force_ && (auth_ == nullptr || !auth_->DroveMoonlightLogin())) return;
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
   if (disp.x <= 0.0f || disp.y <= 0.0f) return;  // garde minimize
+
+  // ── Écran quitté (« Revenir au login ») : on ne dessine plus rien ────────────
+  // On ne peut pas se fier aux CHARACTER_INFO (encore lisibles un moment après la
+  // déconnexion) ni à OnModeSwitch (un re-login ne change pas de MODE). On se réarme
+  // donc sur la fenêtre NATIVE du char-select (id 0x115) : absente = on est à l'écran
+  // de connexion, présente = un nouveau char-select s'est ouvert, on reprend la main.
+  if (left_) {
+    if (!NativeCharSelectAlive()) {
+      active_ = false;
+      return;
+    }
+    left_ = false;
+    selected_ = -1;
+    page_ = 0;
+  }
 
   // Détection char-select : au moins un slot chargé. (Sur l'écran de login pur,
   // aucun perso n'est chargé -> on ne dessine rien.) La détection robuste par
@@ -1116,19 +1186,23 @@ void CharSelect::OnRenderLoginUI() {
                               IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0),
                               IM_COL32(0, 0, 0, 150), IM_COL32(0, 0, 0, 150));
 
-  // ── Transition d'entrée en jeu : fondu au noir ──────────────────────────────
+  // ── Transitions (entrée en jeu / sortie de l'écran) : fondu au noir ─────────
   // Une fois l'entrée déclenchée (EnterGame -> OnMsg 0xB8), le natif VIDE les
   // CHARACTER_INFO pour semer l'état en jeu. Si on continuait à dessiner les sièges,
   // on verrait pendant ~½ s les dolls s'effacer et le slot retomber sur ses valeurs
   // par défaut (job 0 / sex 0 = Novice femelle). On masque cette fenêtre derrière un
   // fondu au noir + « Entrée en jeu… » : on ne relit ni ne redessine plus les slots.
-  if (entering_) {
-    const unsigned long el = GetTickCount() - enter_tick_;
+  // Même traitement pour la FERMETURE du jeu (le temps que la boucle principale
+  // sorte). Le retour au login, lui, n'a pas besoin de fondu : le formulaire
+  // Moonlight reprend l'écran dès la frame suivante (cf. left_).
+  if (entering_ || quitting_) {
+    const unsigned long since = entering_ ? enter_tick_ : quit_tick_;
+    const unsigned long el = GetTickCount() - since;
     float a = static_cast<float>(el) / 260.0f;  // fondu sur ~260 ms
     if (a > 1.0f) a = 1.0f;
     const int av = static_cast<int>(a * 255.0f);
     dl->AddRectFilled(ImVec2(0, 0), disp, IM_COL32(0, 0, 0, av));
-    const char* t = "Entrée en jeu…";
+    const char* t = entering_ ? "Entrée en jeu…" : "Fermeture du jeu…";
     const ImVec2 ts = ImGui::CalcTextSize(t);
     dl->AddText(ImVec2((disp.x - ts.x) * 0.5f, disp.y * 0.5f - ts.y * 0.5f),
                 IM_COL32(235, 230, 220, av), t);
@@ -1507,6 +1581,74 @@ void CharSelect::OnRenderLoginUI() {
           "Ouvre une confirmation : saisis l'EMAIL du compte (le serveur le\n"
           "vérifie ; c'est le même email pour tous tes personnages).");
     }
+  }
+
+  // ── Barre de SORTIE (bas-droite) : revenir au login / quitter le jeu ─────────
+  // Les deux issues du « Cancel » natif, séparées et explicites. Chacune ouvre sa
+  // confirmation ImGui (jamais la msgbox native : elle est supprimée sous notre UI),
+  // puis envoie la commande de mode (cf. kCmdBackToLogin / kCmdQuitGame).
+  {
+    const float back_w = 190.0f, quit_w = 160.0f, gap = 8.0f;
+    const float exit_bar_w = back_w + gap + quit_w;
+    // Point ancré (poignée déplaçable en mode édition) = coin GAUCHE-haut de la barre.
+    const ImVec2 xp = Anchor("sortie", (disp.x - exit_bar_w - 24.0f) / disp.x,
+                             (disp.y - 52.0f) / disp.y, seat_edit_);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(28, 32, 44, 255));
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled, IM_COL32(118, 124, 138, 255));
+    ImGui::SetCursorScreenPos(xp);
+    const bool back_clicked = ro::RoButton("Revenir au login", back_w, 0.0f);
+    const bool tip_back = ImGui::IsItemHovered();
+    ImGui::SameLine(0.0f, gap);
+    const bool quit_clicked = ro::RoButton("Quitter le jeu", quit_w, 0.0f);
+    const bool tip_quit = ImGui::IsItemHovered();
+    ImGui::PopStyleColor(2);
+    // Titres de popup distincts des labels de bouton (pas d'ID partagé dans la même
+    // fenêtre) et plus explicites dans la barre de titre RO.
+    if (back_clicked) ImGui::OpenPopup("Retour à l'écran de connexion");
+    if (quit_clicked) ImGui::OpenPopup("Fermer le jeu");
+    // Tooltips APRÈS le pop du texte sombre (sinon sombre sur sombre).
+    if (tip_back)
+      ImGui::SetTooltip(
+          "Se déconnecte du serveur et revient à l'écran de connexion,\n"
+          "sans fermer le jeu.");
+    if (tip_quit) ImGui::SetTooltip("Ferme le jeu.");
+  }
+
+  if (ro::BeginRoPopupModal("Retour à l'écran de connexion")) {
+    ImGui::TextUnformatted(
+        "Revenir à l'écran de connexion ?\n"
+        "Tu seras déconnecté du serveur ; aucun personnage n'est affecté.");
+    ImGui::Spacing();
+    if (ro::RoButton("Revenir au login", 170.0f, 0.0f)) {
+      DriveModeCmd(kCmdBackToLogin);
+      // ⚠ Le client reste en CLoginMode (seul l'ÉTAT change, 9/6 -> 3) : aucun
+      // OnModeSwitch n'est émis. Sans ce réarmement explicite, MoonlightAuth
+      // resterait en kDriveLogin (session authentifiée, drive « terminé ») et ne
+      // redessinerait PAS son formulaire -> le joueur retombait sur l'écran de
+      // login NATIF. On le ramène donc à kWebLogin nous-mêmes.
+      // (Effet de bord voulu : DroveMoonlightLogin() repasse à false, donc notre
+      // gate nous retire dès la frame suivante — pas besoin de fondu ici.)
+      if (auth_) auth_->RearmWebLogin("retour au login depuis le char-select");
+      left_ = true;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  if (ro::BeginRoPopupModal("Fermer le jeu")) {
+    ImGui::TextUnformatted("Fermer le jeu ?");
+    ImGui::Spacing();
+    if (ro::RoButton("Quitter", 130.0f, 0.0f)) {
+      DriveModeCmd(kCmdQuitGame);
+      quitting_ = true;
+      quit_tick_ = GetTickCount();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
   }
 
   // ── Popup de confirmation de suppression définitive (EMAIL) ──────────────────
@@ -1970,32 +2112,34 @@ void CharSelect::OnRenderLoginUI() {
     dl->AddText(ImVec2(x0 + bw + gap, pp.y + 6.0f), IM_COL32(240, 232, 208, 255), pl);
   }
 
-  // ── Éditeur de layout : F10 pour ouvrir/fermer ───────────────────────────────
+  // ── Éditeur de layout (DÉSACTIVÉ) ────────────────────────────────────────────
+  // Le layout est calé : plus de déclencheur. Le CODE reste (poignées Anchor, drag
+  // des sièges, molette de taille, dump), mais `seat_edit_` ne peut plus passer à
+  // true -> tout ce chemin est mort. Pour le réactiver le temps d'un recalage,
+  // décommenter le bloc ci-dessous (F10 = bascule).
   // ⚠ On NE peut PAS gater sur IsStaff() ici : le niveau de groupe serveur n'arrive
   // qu'EN JEU (setting id 26 sur la session map). Au char-select il vaut 0 -> le
-  // panneau ne s'affichait jamais. F10 l'ouvre inconditionnellement (effet purement
-  // local : déplace des éléments pour la session + journalise, aucun impact jeu).
-  // On garde IsStaff() comme second déclencheur (utile si un jour le flag arrive
-  // plus tôt), mais F10 est le chemin qui marche.
-  if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) seat_edit_ = !seat_edit_;
-  if (seat_edit_ || (Bourgeon::Instance().moonlight_ui() && ::IsStaff())) {
-    ImGui::SetCursorPos(ImVec2(disp.x - 320.0f, disp.y - 30.0f));
-    ImGui::Checkbox("Éditer layout (F10)", &seat_edit_);
-    if (seat_edit_) {
-      ImGui::SameLine();
-      // Glisser une poignée = déplacer ; molette sur un siège = taille du pantin.
-      if (ImGui::SmallButton("Dump layout")) {
-        LogDiag("[CharSelect] --- sièges (recoller dans g_seats) ---");
-        for (int i = 0; i < kSeatCount; ++i)
-          LogDiag("    {{{:.3f}f, {:.3f}f, {:.3f}f}},  // {}", g_seats[i].nx,
-                  g_seats[i].ny, g_seats[i].scale, i + 1);
-        LogDiag("[CharSelect] --- points (nx, ny en fractions d'écran) ---");
-        for (int i = 0; i < g_anchor_count; ++i)
-          LogDiag("    {}  ->  {:.4f}f, {:.4f}f", g_anchors[i].name,
-                  g_anchors[i].nx, g_anchors[i].ny);
-      }
-    }
-  }
+  // panneau ne s'affichait jamais. D'où F10, seul chemin qui marchait.
+  //
+  // if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) seat_edit_ = !seat_edit_;
+  // if (seat_edit_ || (Bourgeon::Instance().moonlight_ui() && ::IsStaff())) {
+  //   ImGui::SetCursorPos(ImVec2(disp.x - 320.0f, disp.y - 30.0f));
+  //   ImGui::Checkbox("Éditer layout (F10)", &seat_edit_);
+  //   if (seat_edit_) {
+  //     ImGui::SameLine();
+  //     // Glisser une poignée = déplacer ; molette sur un siège = taille du pantin.
+  //     if (ImGui::SmallButton("Dump layout")) {
+  //       LogDiag("[CharSelect] --- sièges (recoller dans g_seats) ---");
+  //       for (int i = 0; i < kSeatCount; ++i)
+  //         LogDiag("    {{{:.3f}f, {:.3f}f, {:.3f}f}},  // {}", g_seats[i].nx,
+  //                 g_seats[i].ny, g_seats[i].scale, i + 1);
+  //       LogDiag("[CharSelect] --- points (nx, ny en fractions d'écran) ---");
+  //       for (int i = 0; i < g_anchor_count; ++i)
+  //         LogDiag("    {}  ->  {:.4f}f, {:.4f}f", g_anchors[i].name,
+  //                 g_anchors[i].nx, g_anchors[i].ny);
+  //     }
+  //   }
+  // }
 
   ImGui::End();
   ImGui::PopStyleVar(2);

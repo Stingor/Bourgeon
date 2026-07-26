@@ -105,6 +105,14 @@ class CharSelect : public Plugin {
   //   0xD3 = supprimer maintenant (confirm + code natif). Voir docs/charselect_re.md.
   void DriveNativeCtrl(int ctrl, int slot);
 
+  // Envoie une commande au MODE courant (dispatcher *(0x0121333c), vtbl+0x18) — même
+  // point d'entrée que ReadSlot (cmd 8). Sert aux deux issues de l'écran :
+  //   10011 (0x271B) = déconnexion + retour à l'écran de connexion ;
+  //   2              = quitter le jeu (arrêt des sous-systèmes + fin de boucle).
+  // On ne passe pas par le « Cancel » natif (ctrl 185) : sa msgbox de confirmation
+  // est supprimée sous notre UI, il conclurait « annulé ». Cf. char_select.cc.
+  void DriveModeCmd(int cmd);
+
   MoonlightAuth* auth_ = nullptr;  // non-owning ; gate « parcours Moonlight »
   bool enabled_ = true;   // activé par défaut ; opt-out via char_select.imgui:false
   bool force_ = false;    // dev : ignore le gate Moonlight (tester via login natif)
@@ -123,9 +131,21 @@ class CharSelect : public Plugin {
   // serait ré-armé à chaque frame si on la rejouait. Réarmé au retour à l'écran.
   bool entering_ = false;
   unsigned long enter_tick_ = 0;  // GetTickCount() à l'instant de l'entrée en jeu (fondu)
-  // Éditeur de sièges (staff) : glisser les marqueurs pour caler les positions sur
-  // le décor, molette = taille, bouton « Journaliser » -> bourgeon.log. Purement
-  // outil d'auteur ; invisible pour les joueurs.
+  // Fermeture du jeu demandée (bouton « Quitter le jeu ») : même principe que
+  // `entering_`, on masque la table derrière un fondu au noir le temps que la boucle
+  // principale sorte.
+  bool quitting_ = false;
+  unsigned long quit_tick_ = 0;
+  // Écran quitté (« Revenir au login » / fin de transition) : on ne dessine plus rien
+  // jusqu'à ce qu'un NOUVEAU char-select natif s'ouvre. Nécessaire parce qu'un
+  // re-login ne change pas de MODE : OnModeSwitch ne repasse pas, et les
+  // CHARACTER_INFO restent lisibles un moment après la déconnexion.
+  bool left_ = false;
+  // Éditeur de sièges/layout : glisser les marqueurs pour caler les positions sur le
+  // décor, molette = taille, bouton « Dump layout » -> bourgeon.log. Outil d'auteur.
+  // ⚠ DÉSACTIVÉ : le layout est calé, plus aucun déclencheur ne met ce flag à true
+  // (le bloc F10 est commenté en bas de OnRenderLoginUI) -> tout le chemin d'édition
+  // est du code mort, conservé pour un futur recalage.
   bool seat_edit_ = false;
   // Résultat de « Programmer suppression ». Le serveur répond HC_DELETE_CHAR3_RESERVED
   // (0x0828 ; result 1=ok, 4=guilde, 5=groupe, 3=db, 6=échoppe, 0=déjà en file). On
