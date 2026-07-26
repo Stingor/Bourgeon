@@ -174,8 +174,8 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
       // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
       if (iface_nav_ == kIfaceBasicInfo) {
-        if (auto* eb = Bourgeon::Instance().basic_info()) {
-          if (eb->DrawSettings()) SaveSettings();
+        if (auto* basic_info = Bourgeon::Instance().basic_info()) {
+          if (basic_info->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
         }
