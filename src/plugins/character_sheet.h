@@ -63,6 +63,10 @@ class CharacterSheet : public Plugin {
   // pour ne pas se rouvrir a chaque connexion si le joueur l'a fermee.
   bool  is_open() const { return show_; }
   void  set_open(bool v) { show_ = v; }
+  // Même champ par référence, pour la table de persistance de MoonlightUi : elle
+  // décrit chaque réglage par l'ADRESSE de sa valeur, comme pour tous les autres
+  // plugins. is_open/set_open restent l'API des appelants ordinaires.
+  bool& open() { return show_; }
 
   // Pose de l'avatar (pose + direction + animation on/off), persistee par MoonlightUi
   // (yaml "charsheet_pose"/"charsheet_dir"/"charsheet_pose_anim") pour retrouver le

@@ -240,6 +240,76 @@ const moonlight_ui::SettingDesc kWeaponSpriteSettings[] = {
      MLUI_LITERAL(bool, false)},
 };
 
+// Inventaire ImGui. Le placement libre (inventory_layout) est un CONTENEUR :
+// il reste écrit à la main, juste après cette table, à sa place d'origine.
+const moonlight_ui::SettingDesc kInventorySettings[] = {
+    {"inventory_imgui",   SType::kBool, MLUI_FIELD(inventory_viewer, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"inventory_filter",  SType::kBool, MLUI_FIELD(inventory_viewer, show_filter()),
+     MLUI_LITERAL(bool, true)},
+    {"inventory_desc_tooltip", SType::kBool,
+     MLUI_FIELD(inventory_viewer, desc_tooltip()), MLUI_LITERAL(bool, false)},
+    {"inventory_tabs_vertical", SType::kBool,
+     MLUI_FIELD(inventory_viewer, tabs_vertical()), MLUI_LITERAL(bool, true)},
+    {"inventory_lock_size",   SType::kBool, MLUI_FIELD(inventory_viewer, lock_size()),
+     MLUI_LITERAL(bool, false)},
+    {"inventory_free_layout", SType::kBool, MLUI_FIELD(inventory_viewer, free_layout()),
+     MLUI_LITERAL(bool, false)},
+};
+
+// Entrepôt (Kafra / guilde / premium : la même fenêtre). storage_favorites est
+// un CONTENEUR, écrit à la main après cette table.
+const moonlight_ui::SettingDesc kStorageSettings[] = {
+    {"storage_imgui", SType::kBool, MLUI_FIELD(storage_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"storage_desc_tooltip", SType::kBool, MLUI_FIELD(storage_tweaks, desc_tooltip()),
+     MLUI_LITERAL(bool, false)},
+    {"storage_filter", SType::kBool, MLUI_FIELD(storage_tweaks, show_filter()),
+     MLUI_LITERAL(bool, true)},
+    {"storage_tabs_vertical", SType::kBool, MLUI_FIELD(storage_tweaks, tabs_vertical()),
+     MLUI_LITERAL(bool, false)},
+    {"storage_tab_images", SType::kBool, MLUI_FIELD(storage_tweaks, tab_images()),
+     MLUI_LITERAL(bool, true)},
+    {"storage_col_index", SType::kBool, MLUI_FIELD(storage_tweaks, show_index_col()),
+     MLUI_LITERAL(bool, false)},
+    {"storage_col_id", SType::kBool, MLUI_FIELD(storage_tweaks, show_id_col()),
+     MLUI_LITERAL(bool, false)},
+    {"storage_col_slots", SType::kBool, MLUI_FIELD(storage_tweaks, show_slots_col()),
+     MLUI_LITERAL(bool, false)},
+    {"storage_col_value", SType::kBool, MLUI_FIELD(storage_tweaks, show_value_col()),
+     MLUI_LITERAL(bool, true)},
+    {"storage_total_value", SType::kBool, MLUI_FIELD(storage_tweaks, show_total_value()),
+     MLUI_LITERAL(bool, true)},
+    {"storage_tab", SType::kInt, MLUI_FIELD(storage_tweaks, cur_tab()),
+     MLUI_LITERAL(int, 0)},
+};
+
+// Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
+const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
+    {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"shop_imgui",  SType::kBool, MLUI_FIELD(shop_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"trade_imgui", SType::kBool, MLUI_FIELD(trade_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"npc_dialog_imgui", SType::kBool, MLUI_FIELD(npc_dialog_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"npc_menu_search",  SType::kBool, MLUI_FIELD(npc_dialog_tweaks, menu_search_),
+     MLUI_LITERAL(bool, true)},
+    {"charsheet_imgui", SType::kBool, MLUI_FIELD(character_sheet, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"charsheet_open",  SType::kBool, MLUI_FIELD(character_sheet, open()),
+     MLUI_LITERAL(bool, true)},
+    {"charsheet_pose",  SType::kInt,  MLUI_FIELD(character_sheet, avatar_anim()),
+     MLUI_LITERAL(int, 4)},
+    {"charsheet_dir",   SType::kInt,  MLUI_FIELD(character_sheet, avatar_dir()),
+     MLUI_LITERAL(int, 0)},
+    {"charsheet_pose_anim", SType::kBool,
+     MLUI_FIELD(character_sheet, avatar_animate()), MLUI_LITERAL(bool, true)},
+    {"login_parade", SType::kBool, MLUI_FIELD(login_parade, enabled_),
+     MLUI_LITERAL(bool, true)},
+};
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -616,15 +686,8 @@ void MoonlightUi::LoadSettings() {
     // Thèmes de départ si le yaml n'en portait aucun (1er lancement) : le
     // toolkit les fournit, il n'y a rien de spécifique à moonlight_ui dedans.
     ro::EnsureDefaultSkinPresets();
+    moonlight_ui::ReadSettings(ui, kInventorySettings);
     if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-      iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
-      iv->show_filter()   = ui["inventory_filter"].as<bool>(iv->show_filter());
-      iv->desc_tooltip()  =
-          ui["inventory_desc_tooltip"].as<bool>(iv->desc_tooltip());
-      iv->tabs_vertical() =
-          ui["inventory_tabs_vertical"].as<bool>(iv->tabs_vertical());
-      iv->lock_size()   = ui["inventory_lock_size"].as<bool>(iv->lock_size());
-      iv->free_layout() = ui["inventory_free_layout"].as<bool>(iv->free_layout());
       // Placement libre : map nameid -> index de case (client-side, comme les
       // favoris du storage).
       if (const YAML::Node lay = ui["inventory_layout"]) {
@@ -636,20 +699,8 @@ void MoonlightUi::LoadSettings() {
         }
       }
     }
+    moonlight_ui::ReadSettings(ui, kStorageSettings);
     if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-      stg->imgui_enabled_ = ui["storage_imgui"].as<bool>(stg->imgui_enabled_);
-      stg->desc_tooltip() =
-          ui["storage_desc_tooltip"].as<bool>(stg->desc_tooltip());
-      stg->show_filter()    = ui["storage_filter"].as<bool>(stg->show_filter());
-      stg->tabs_vertical()  = ui["storage_tabs_vertical"].as<bool>(stg->tabs_vertical());
-      stg->tab_images()     = ui["storage_tab_images"].as<bool>(stg->tab_images());
-      stg->show_index_col() = ui["storage_col_index"].as<bool>(stg->show_index_col());
-      stg->show_id_col()    = ui["storage_col_id"].as<bool>(stg->show_id_col());
-      stg->show_slots_col() = ui["storage_col_slots"].as<bool>(stg->show_slots_col());
-      stg->show_value_col() = ui["storage_col_value"].as<bool>(stg->show_value_col());
-      stg->show_total_value() =
-          ui["storage_total_value"].as<bool>(stg->show_total_value());
-      stg->cur_tab()        = ui["storage_tab"].as<int>(stg->cur_tab());
       // Favoris storage (client-side, keyés par id d'item).
       if (const YAML::Node favs = ui["storage_favorites"]) {
         stg->favorites_.clear();
@@ -659,27 +710,7 @@ void MoonlightUi::LoadSettings() {
         }
       }
     }
-    if (auto* cs = Bourgeon::Instance().cashshop_tweaks())
-      cs->imgui_enabled_ = ui["cashshop_imgui"].as<bool>(cs->imgui_enabled_);
-    if (auto* sh = Bourgeon::Instance().shop_tweaks())
-      sh->imgui_enabled_ = ui["shop_imgui"].as<bool>(sh->imgui_enabled_);
-    if (auto* tt = Bourgeon::Instance().trade_tweaks())
-      tt->imgui_enabled_ = ui["trade_imgui"].as<bool>(tt->imgui_enabled_);
-    if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
-      nd->imgui_enabled_ = ui["npc_dialog_imgui"].as<bool>(nd->imgui_enabled_);
-      nd->menu_search_ = ui["npc_menu_search"].as<bool>(nd->menu_search_);
-    }
-    if (auto* cse = Bourgeon::Instance().character_sheet()) {
-      cse->imgui_enabled_ = ui["charsheet_imgui"].as<bool>(cse->imgui_enabled_);
-      cse->set_open(ui["charsheet_open"].as<bool>(cse->is_open()));
-      // Pose de l'avatar (pose/direction/animation) — persistee par personne.
-      cse->avatar_anim()    = ui["charsheet_pose"].as<int>(cse->avatar_anim());
-      cse->avatar_dir()     = ui["charsheet_dir"].as<int>(cse->avatar_dir());
-      cse->avatar_animate() = ui["charsheet_pose_anim"].as<bool>(cse->avatar_animate());
-    }
-    if (auto* lp = Bourgeon::Instance().login_parade()) {
-      lp->enabled_ = ui["login_parade"].as<bool>(lp->enabled_);
-    }
+    moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
       sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
       sb->locked_     = ui["skillbar_locked"].as<bool>(sb->locked_);
@@ -939,15 +970,8 @@ void MoonlightUi::WriteSettingsFile() {
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;
+    moonlight_ui::WriteSettings(out, kInventorySettings);
     auto* iv = Bourgeon::Instance().inventory_viewer();
-    out << YAML::Key << "inventory_imgui" << YAML::Value << (iv ? iv->imgui_enabled_ : false);
-    out << YAML::Key << "inventory_filter" << YAML::Value << (iv ? iv->show_filter() : true);
-    out << YAML::Key << "inventory_desc_tooltip" << YAML::Value
-        << (iv ? iv->desc_tooltip() : false);
-    out << YAML::Key << "inventory_tabs_vertical" << YAML::Value
-        << (iv ? iv->tabs_vertical() : true);
-    out << YAML::Key << "inventory_lock_size" << YAML::Value << (iv ? iv->lock_size() : false);
-    out << YAML::Key << "inventory_free_layout" << YAML::Value << (iv ? iv->free_layout() : false);
     // Placement libre : nameid -> case. Trié pour un yaml stable (pas de diff parasite).
     out << YAML::Key << "inventory_layout" << YAML::Value << YAML::Flow << YAML::BeginMap;
     if (iv) {
@@ -956,19 +980,8 @@ void MoonlightUi::WriteSettingsFile() {
       for (const auto& e : lay) out << YAML::Key << e.first << YAML::Value << e.second;
     }
     out << YAML::EndMap;
+    moonlight_ui::WriteSettings(out, kStorageSettings);
     auto* stg = Bourgeon::Instance().storage_tweaks();
-    out << YAML::Key << "storage_imgui" << YAML::Value << (stg ? stg->imgui_enabled_ : false);
-    out << YAML::Key << "storage_desc_tooltip" << YAML::Value
-        << (stg ? stg->desc_tooltip() : false);
-    out << YAML::Key << "storage_filter"    << YAML::Value << (stg ? stg->show_filter() : true);
-    out << YAML::Key << "storage_tabs_vertical" << YAML::Value << (stg ? stg->tabs_vertical() : false);
-    out << YAML::Key << "storage_tab_images" << YAML::Value << (stg ? stg->tab_images() : true);
-    out << YAML::Key << "storage_col_index" << YAML::Value << (stg ? stg->show_index_col() : false);
-    out << YAML::Key << "storage_col_id"    << YAML::Value << (stg ? stg->show_id_col() : false);
-    out << YAML::Key << "storage_col_slots" << YAML::Value << (stg ? stg->show_slots_col() : false);
-    out << YAML::Key << "storage_col_value" << YAML::Value << (stg ? stg->show_value_col() : true);
-    out << YAML::Key << "storage_total_value" << YAML::Value << (stg ? stg->show_total_value() : true);
-    out << YAML::Key << "storage_tab"       << YAML::Value << (stg ? stg->cur_tab() : 0);
     // Favoris storage (ids d'items, triés pour un yaml stable = pas de diff parasite).
     out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
     if (stg) {
@@ -977,32 +990,7 @@ void MoonlightUi::WriteSettingsFile() {
       for (uint32_t id : favs) out << id;
     }
     out << YAML::EndSeq;
-    auto* cs = Bourgeon::Instance().cashshop_tweaks();
-    out << YAML::Key << "cashshop_imgui" << YAML::Value << (cs ? cs->imgui_enabled_ : false);
-    auto* sh = Bourgeon::Instance().shop_tweaks();
-    out << YAML::Key << "shop_imgui" << YAML::Value << (sh ? sh->imgui_enabled_ : false);
-    auto* tt = Bourgeon::Instance().trade_tweaks();
-    out << YAML::Key << "trade_imgui" << YAML::Value << (tt ? tt->imgui_enabled_ : false);
-    auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
-    out << YAML::Key << "npc_dialog_imgui" << YAML::Value
-        << (nd ? nd->imgui_enabled_ : false);
-    out << YAML::Key << "npc_menu_search" << YAML::Value
-        << (nd ? nd->menu_search_ : true);
-    auto* cse = Bourgeon::Instance().character_sheet();
-    out << YAML::Key << "charsheet_imgui" << YAML::Value
-        << (cse ? cse->imgui_enabled_ : false);
-    out << YAML::Key << "charsheet_open" << YAML::Value
-        << (cse ? cse->is_open() : true);
-    // Pose de l'avatar (pose/direction/animation).
-    out << YAML::Key << "charsheet_pose" << YAML::Value
-        << (cse ? cse->avatar_anim() : 4);
-    out << YAML::Key << "charsheet_dir" << YAML::Value
-        << (cse ? cse->avatar_dir() : 0);
-    out << YAML::Key << "charsheet_pose_anim" << YAML::Value
-        << (cse ? cse->avatar_animate() : true);
-    auto* lp = Bourgeon::Instance().login_parade();
-    out << YAML::Key << "login_parade" << YAML::Value
-        << (lp ? lp->enabled_ : true);
+    moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   }
 
   {
