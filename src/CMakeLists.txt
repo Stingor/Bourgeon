@@ -30,6 +30,8 @@ set(BOURGEON_FILES
 	"plugins/moonlight_ui/panel_interface.cc"
 	"plugins/moonlight_ui/settings_table.cc"
 	"plugins/moonlight_ui/settings_table.h"
+	"plugins/moonlight_ui/settings_containers.cc"
+	"plugins/moonlight_ui/settings_containers.h"
 	"plugins/discord_relay.cc"
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"

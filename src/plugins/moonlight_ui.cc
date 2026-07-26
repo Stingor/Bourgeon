@@ -1,7 +1,8 @@
 #include "plugins/moonlight_ui.h"
 
 #include "plugins/moonlight_ui/internal.h"       // panneaux extraits (dossier privé)
-#include "plugins/moonlight_ui/settings_table.h"  // description des réglages persistés
+#include "plugins/moonlight_ui/settings_containers.h"  // collections persistées
+#include "plugins/moonlight_ui/settings_table.h"       // description des réglages persistés
 
 #include <Windows.h>
 #include <algorithm>
@@ -418,59 +419,6 @@ const moonlight_ui::SettingDesc kGroundPaintSettings[] = {
      MLUI_LITERAL_ARGB(0xFF000000)},  // noir opaque
 };
 
-// Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
-// épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
-// écriture preset — sans que rien ne garantisse que les quatre listes restent
-// d'accord : ajouter une couleur au skin demandait quatre éditions, en oublier
-// une donnait un réglage qui se perd au relancement sans aucun diagnostic.
-using SkinColorRef = float (ro::RoSkinConfig::*)[4];
-struct SkinColorField {
-  const char* key;      // suffixe ; préfixé « ro_skin_ » hors des presets
-  SkinColorRef member;
-};
-constexpr SkinColorField kSkinColorFields[] = {
-    {"body",     &ro::RoSkinConfig::body_col},
-    {"border",   &ro::RoSkinConfig::border_col},
-    {"titletx",  &ro::RoSkinConfig::title_text},
-    {"bodytx",   &ro::RoSkinConfig::body_text},
-    {"tab",      &ro::RoSkinConfig::tab_col},
-    {"tabinact", &ro::RoSkinConfig::tab_inact},
-    {"input",    &ro::RoSkinConfig::input_col},
-    {"header",   &ro::RoSkinConfig::header_col},
-    {"slot",     &ro::RoSkinConfig::slot_col},
-    {"doll",     &ro::RoSkinConfig::doll_col},
-    {"card",     &ro::RoSkinConfig::card_col},
-    {"cardhead", &ro::RoSkinConfig::card_head_col},
-    {"cardtx",   &ro::RoSkinConfig::card_head_text},
-    {"list",     &ro::RoSkinConfig::list_col},
-};
-
-// `with_rounding` : `rounding` n'a jamais été persisté dans les presets, et l'y
-// ajouter changerait le comportement — appliquer un preset écraserait alors
-// l'arrondi choisi par le joueur. Le paramètre garde aussi l'ordre des clés
-// identique aux deux sites, pour que le premier yaml réécrit ne diffère pas.
-void ReadSkinCfg(const YAML::Node& n, ro::RoSkinConfig& cfg,
-                 const std::string& prefix, bool with_rounding) {
-  cfg.title_brightness = n[prefix + "bright"].as<float>(cfg.title_brightness);
-  if (with_rounding) cfg.rounding = n[prefix + "rounding"].as<float>(cfg.rounding);
-  cfg.alpha = n[prefix + "alpha"].as<float>(cfg.alpha);
-  for (const SkinColorField& f : kSkinColorFields) {
-    const YAML::Node node = n[prefix + f.key];
-    if (node) ro::PickerFromImU32(node.as<unsigned>(0), cfg.*f.member);
-  }
-}
-
-void EmitSkinCfg(YAML::Emitter& out, const ro::RoSkinConfig& cfg,
-                 const std::string& prefix, bool with_rounding) {
-  out << YAML::Key << prefix + "bright" << YAML::Value << cfg.title_brightness;
-  if (with_rounding)
-    out << YAML::Key << prefix + "rounding" << YAML::Value << cfg.rounding;
-  out << YAML::Key << prefix + "alpha" << YAML::Value << cfg.alpha;
-  for (const SkinColorField& f : kSkinColorFields)
-    out << YAML::Key << prefix + f.key << YAML::Value
-        << ro::ImU32FromPicker(cfg.*f.member);
-}
-
 }  // namespace
 
 // ── Réglages qui appartiennent à MoonlightUi elle-même ───────────────────────
@@ -767,69 +715,12 @@ void MoonlightUi::LoadSettings() {
                                   ui[k + "_pos_y"].as<int>(INT_MIN));
     }
 
-    if (auto* mi = Bourgeon::Instance().menu_icons()) {
-      mi->enabled_   = ui["menu_icons_enabled"].as<bool>(mi->enabled_);
-      mi->edit_mode_ = ui["menu_icons_edit"].as<bool>(false);
-      mi->saved_.clear();
-      // Per-icon saved position/visibility under "menu_icons: { <name>: {...} }".
-      // Stored here because the live icon list only exists once in-game; applied
-      // later in MenuIconTweaks::BuildIconList.
-      if (const YAML::Node icons = ui["menu_icons"]) {
-        for (auto it = icons.begin(); it != icons.end(); ++it) {
-          const std::string nm = it->first.as<std::string>("");
-          if (nm.empty()) continue;
-          MenuIconTweaks::IconSave s;
-          s.x      = it->second["x"].as<int>(-1);
-          s.y      = it->second["y"].as<int>(-1);
-          s.hidden = it->second["hidden"].as<bool>(false);
-          s.valid  = true;
-          mi->saved_[nm] = s;
-        }
-      }
-    }
-
-    ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
-    // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
-    // ancienne valeur false dans le yaml est simplement ignorée.)
-    ReadSkinCfg(ui, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
-    auto& skin_presets = ro::SkinPresets();
-    skin_presets.clear();
-    if (const YAML::Node ps = ui["ro_skin_presets"]) {
-      for (auto it = ps.begin(); it != ps.end(); ++it) {
-        ro::SkinPreset preset;
-        preset.name = (*it)["name"].as<std::string>("");
-        if (preset.name.empty()) continue;
-        ReadSkinCfg(*it, preset.cfg, "", /*with_rounding=*/false);
-        skin_presets.push_back(std::move(preset));
-      }
-    }
-    // Thèmes de départ si le yaml n'en portait aucun (1er lancement) : le
-    // toolkit les fournit, il n'y a rien de spécifique à moonlight_ui dedans.
-    ro::EnsureDefaultSkinPresets();
+    moonlight_ui::ReadMenuIcons(ui);
+    moonlight_ui::ReadSkinAndPresets(ui);
     moonlight_ui::ReadSettings(ui, kInventorySettings);
-    if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-      // Placement libre : map nameid -> index de case (client-side, comme les
-      // favoris du storage).
-      if (const YAML::Node lay = ui["inventory_layout"]) {
-        iv->layout_.clear();
-        for (auto it = lay.begin(); it != lay.end(); ++it) {
-          const uint32_t id = it->first.as<uint32_t>(0);
-          const int cell = it->second.as<int>(-1);
-          if (id != 0 && cell >= 0) iv->layout_[id] = cell;
-        }
-      }
-    }
+    moonlight_ui::ReadInventoryLayout(ui);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
-    if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-      // Favoris storage (client-side, keyés par id d'item).
-      if (const YAML::Node favs = ui["storage_favorites"]) {
-        stg->favorites_.clear();
-        for (const YAML::Node& f : favs) {
-          const uint32_t id = f.as<uint32_t>(0);
-          if (id != 0) stg->favorites_.insert(id);
-        }
-      }
-    }
+    moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
@@ -869,37 +760,7 @@ void MoonlightUi::LoadSettings() {
       }
     }
 
-    // Presets d'équipement (loadouts nommés, par CID) — possédés par CharacterSheet.
-    if (auto* cse = Bourgeon::Instance().character_sheet()) {
-      auto& presets = cse->equip_presets();
-      presets.clear();
-      if (const YAML::Node eps = ui["equip_presets"]) {
-        for (const YAML::Node& pn : eps) {
-          EquipPreset ep;
-          ep.cid  = pn["cid"].as<uint32_t>(0);
-          ep.name = pn["name"].as<std::string>("");
-          if (ep.name.empty()) continue;
-          ep.hotkeyVk = pn["hkvk"].as<int>(0);
-          ep.hkCtrl   = pn["hkc"].as<bool>(false);
-          ep.hkAlt    = pn["hka"].as<bool>(false);
-          ep.hkShift  = pn["hks"].as<bool>(false);
-          if (const YAML::Node items = pn["items"]) {
-            for (const YAML::Node& it : items) {
-              EquipPresetItem pi;
-              pi.nameid   = it["id"].as<uint32_t>(0);
-              pi.refine   = it["refine"].as<int>(0);
-              pi.grade    = it["grade"].as<int>(0);
-              pi.leftHand = it["left"].as<bool>(false);
-              if (const YAML::Node cards = it["cards"])
-                for (int c = 0; c < 4 && c < static_cast<int>(cards.size()); ++c)
-                  pi.cards[c] = cards[c].as<uint32_t>(0);
-              ep.items.push_back(pi);
-            }
-          }
-          presets.push_back(std::move(ep));
-        }
-      }
-    }
+    moonlight_ui::ReadEquipPresets(ui);
 
     PostLoadApply();
   } catch (const std::exception& e) {
@@ -1030,24 +891,7 @@ void MoonlightUi::WriteSettingsFile() {
     }
   }
 
-  {
-    auto* mi = Bourgeon::Instance().menu_icons();
-    out << YAML::Key << "menu_icons_enabled"
-        << YAML::Value << (mi ? mi->enabled_ : false);
-    out << YAML::Key << "menu_icons_edit"
-        << YAML::Value << (mi ? mi->edit_mode_ : false);
-    out << YAML::Key << "menu_icons" << YAML::Value << YAML::BeginMap;
-    if (mi) {
-      for (const auto& kv : mi->saved_) {
-        out << YAML::Key << kv.first << YAML::Value << YAML::BeginMap
-            << YAML::Key << "x"      << YAML::Value << kv.second.x
-            << YAML::Key << "y"      << YAML::Value << kv.second.y
-            << YAML::Key << "hidden" << YAML::Value << kv.second.hidden
-            << YAML::EndMap;
-      }
-    }
-    out << YAML::EndMap;
-  }
+  moonlight_ui::WriteMenuIcons(out);
 
   moonlight_ui::WriteSettings(out, kStatusIconSettings);
 
@@ -1057,38 +901,12 @@ void MoonlightUi::WriteSettingsFile() {
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
 
-  {
-    out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
-    EmitSkinCfg(out, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
-    out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
-    for (const auto& preset : ro::SkinPresets()) {
-      out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << preset.name;
-      EmitSkinCfg(out, preset.cfg, "", /*with_rounding=*/false);
-      out << YAML::EndMap;
-    }
-    out << YAML::EndSeq;
-    moonlight_ui::WriteSettings(out, kInventorySettings);
-    auto* iv = Bourgeon::Instance().inventory_viewer();
-    // Placement libre : nameid -> case. Trié pour un yaml stable (pas de diff parasite).
-    out << YAML::Key << "inventory_layout" << YAML::Value << YAML::Flow << YAML::BeginMap;
-    if (iv) {
-      std::vector<std::pair<uint32_t, int>> lay(iv->layout_.begin(), iv->layout_.end());
-      std::sort(lay.begin(), lay.end());
-      for (const auto& e : lay) out << YAML::Key << e.first << YAML::Value << e.second;
-    }
-    out << YAML::EndMap;
-    moonlight_ui::WriteSettings(out, kStorageSettings);
-    auto* stg = Bourgeon::Instance().storage_tweaks();
-    // Favoris storage (ids d'items, triés pour un yaml stable = pas de diff parasite).
-    out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
-    if (stg) {
-      std::vector<uint32_t> favs(stg->favorites_.begin(), stg->favorites_.end());
-      std::sort(favs.begin(), favs.end());
-      for (uint32_t id : favs) out << id;
-    }
-    out << YAML::EndSeq;
-    moonlight_ui::WriteSettings(out, kOptInWindowSettings);
-  }
+  moonlight_ui::WriteSkinAndPresets(out);
+  moonlight_ui::WriteSettings(out, kInventorySettings);
+  moonlight_ui::WriteInventoryLayout(out);
+  moonlight_ui::WriteSettings(out, kStorageSettings);
+  moonlight_ui::WriteStorageFavorites(out);
+  moonlight_ui::WriteSettings(out, kOptInWindowSettings);
 
   {
     auto* sb = Bourgeon::Instance().skill_bar();
@@ -1128,34 +946,8 @@ void MoonlightUi::WriteSettingsFile() {
   }
   out << YAML::EndSeq;
 
-  // Presets d'équipement (loadouts par CID) — possédés par CharacterSheet.
-  out << YAML::Key << "equip_presets" << YAML::Value << YAML::BeginSeq;
-  if (auto* cse = Bourgeon::Instance().character_sheet()) {
-    for (const auto& ep : cse->equip_presets()) {
-      out << YAML::BeginMap
-          << YAML::Key << "cid"  << YAML::Value << ep.cid
-          << YAML::Key << "name" << YAML::Value << ep.name
-          << YAML::Key << "hkvk" << YAML::Value << ep.hotkeyVk
-          << YAML::Key << "hkc"  << YAML::Value << ep.hkCtrl
-          << YAML::Key << "hka"  << YAML::Value << ep.hkAlt
-          << YAML::Key << "hks"  << YAML::Value << ep.hkShift
-          << YAML::Key << "items" << YAML::Value << YAML::BeginSeq;
-      for (const auto& pi : ep.items) {
-        out << YAML::BeginMap
-            << YAML::Key << "id"     << YAML::Value << pi.nameid
-            << YAML::Key << "refine" << YAML::Value << pi.refine
-            << YAML::Key << "grade"  << YAML::Value << pi.grade
-            << YAML::Key << "left"   << YAML::Value << pi.leftHand
-            << YAML::Key << "cards"  << YAML::Value << YAML::Flow << YAML::BeginSeq;
-        for (int c = 0; c < 4; ++c) out << pi.cards[c];
-        out << YAML::EndSeq << YAML::EndMap;
-      }
-      out << YAML::EndSeq << YAML::EndMap;
-    }
-  }
-  out       << YAML::EndSeq
-      << YAML::EndMap
-      << YAML::EndMap;
+  moonlight_ui::WriteEquipPresets(out);
+  out << YAML::EndMap << YAML::EndMap;
 
   const std::string path = paths::SettingsPath();
 
