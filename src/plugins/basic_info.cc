@@ -1,4 +1,6 @@
 #include "plugins/basic_info.h"
+#include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"
 
 #include "ragnarok/uiwnd.h"
 
@@ -3267,6 +3269,163 @@ void BasicInfoTweaks::DrawPortrait() {
     portrait_drag_pending_ = false;
     geometry_dirty_ = true;  // drained by MoonlightUi (saves the yaml)
   }
+}
+
+// ── Section « BasicInfoTweaks » du panneau Moonlight ──────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
+// que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
+// de sauvegarder. Rend true si un réglage a changé.
+bool BasicInfoTweaks::DrawSettings() {
+  bool changed = false;
+  PushStyleCompact();
+
+  changed |= ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine", &portrait_hide_basic_info_);
+  SameLine(); HelpMarker("Masque la fenêtre native \"Basic Info\".");
+
+  SeparatorText("Barres d'info");
+  changed |= ro::RoCheckbox("Afficher les barres", &visible_);
+  ImGui::BeginDisabled(!visible_);
+  Indent();
+    for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+      if (i) SameLine();
+      changed |= ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &bars_[i].show);
+    }
+    SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+  Unindent();
+  ImGui::EndDisabled();
+
+  changed |= ro::RoCheckbox("Verrouiller les barres", &locked_);
+  SameLine(); HelpMarker(
+      "Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\n"
+      "Déverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner.");
+
+  changed |= ro::RoCheckbox("Aimanter les barres (snap)", &sticky_);
+  SameLine(); HelpMarker(
+      "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
+      "et se collent automatiquement (~10px).\nÉloigne-la pour la "
+      "détacher. Les barres restent indépendantes.");
+
+  changed |= ro::RoCheckbox("Vertical", &vertical_);
+  SameLine(); HelpMarker(
+      "Remplissage vertical des barres. \n"
+      "Décoche pour les barres horizontales.");
+
+  changed |= ro::RoCheckbox("Bordure des barres", &border_);
+  SameLine(); HelpMarker(
+      "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). \n"
+      "Décoche pour des barres sans contour.");
+
+  const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
+  changed |= ro::RoCombo("Texte des barres", &text_mode_, modes, IM_ARRAYSIZE(modes));
+  SameLine(); HelpMarker(
+      "Ce qui est écrit sur les barres : rien, le pourcentage, les "
+      "valeurs brutes (courant / max) ou les deux.");
+  changed |= WheelSliderFloat("Arrondi", &rounding_, 0.0f, 16.0f);
+  SameLine(); HelpMarker("Arrondi des coins des barres.");
+
+  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+    char lbl[32];
+    std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfoTweaks::kBarLabels[i]);
+    changed |= ColorPicker(lbl, bars_[i].fill);
+  }
+  changed |= ColorPicker("Fond / Opacité", bg_color_);
+
+  TextUnformatted("Tailles rapides de barres (toutes) :");
+  auto preset = [&](const char* label, int w, int h) {
+    SameLine();
+    if (ro::RoButton(label)) {
+      for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
+        bars_[j].w = w;
+        bars_[j].h = h;
+      }
+      force_apply_ = true;  // re-apply size even while unlocked
+      changed = true;
+    }
+  };
+  preset("XS", 200, 9);
+  preset("S", 400, 16);
+  preset("M", 600, 22);
+  preset("L", 800, 30);
+
+  SeparatorText("Portrait personnage");
+  changed |= ro::RoCheckbox("Afficher le portrait et les étiquettes", &portrait_visible_);
+  SameLine(); HelpMarker(
+      "Portrait de statut : la tête du personnage, le pseudo, la classe "
+      "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
+      "redimensionnable, avec sa couleur/opacité de fond et son arrondi.");
+
+  ImGui::BeginDisabled(!portrait_visible_);
+
+  changed |= ro::RoCheckbox("Verrouiller le portrait", &portrait_locked_);
+  Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
+  SameLine(); HelpMarker(
+      "Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
+      "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement).");
+
+  changed |= ro::RoCheckbox("Tête seule (sans le corps)", &portrait_head_only_);
+  SameLine(); HelpMarker(
+      "Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
+      "Décoche pour le personnage entier.");
+
+  changed |= ro::RoCheckbox("Cape / garment", &portrait_show_garment_);
+  SameLine(); HelpMarker(
+      "Affiche la cape/garment équipée (seulement en mode corps "
+      "entier — décoche \"Tête seule\" pour la voir).");
+
+  changed |= WheelSliderFloat("Zoom", &portrait_head_zoom_, 0.10f, 2.0f);
+  SameLine(); HelpMarker("Ajuster avec le zoom.");
+
+  changed |= WheelSliderFloat("Décalage horiz.", &portrait_head_offx_, -1.5f, 1.5f);
+  SameLine(); HelpMarker(
+      "Décale le portrait horizontalement (0 = centré).\n"
+      "Sert à cadrer la tête/le corps ; le zoom reste centré.");
+
+  changed |= WheelSliderFloat("Décalage vert.", &portrait_head_offy_, -1.5f, 1.5f);
+  SameLine(); HelpMarker(
+      "Décale le portrait verticalement (0 = centré).\n"
+      "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
+
+  static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
+  changed |= ro::RoCombo("Animation", &portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
+  SameLine(); HelpMarker(
+      "Pose animée du portrait (Combat = posture prête au combat).\n"
+      "Le nombre d'images de l'animation s'ajuste automatiquement.");
+
+  static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
+  changed |= ro::RoCombo("Direction", &portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
+  SameLine(); HelpMarker(
+      "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
+      "l'angle voulu (le rendu se met à jour en direct).");
+
+  changed |= ro::RoCheckbox("Animer", &portrait_animate_);
+  SameLine(); HelpMarker(
+      "Joue les images de l'animation (ex. le balayage de la posture "
+      "Combat). Décoche pour figer une pose calme (image 0).");
+
+  SeparatorText("Couleurs et arrondis du portrait et des étiquettes");
+  changed |= ro::RoCheckbox("Bordure", &portrait_border_);
+  SameLine(); HelpMarker("Trait 1px autour du cadre et des étiquettes.");
+
+  // Per-element config: show / background colour+opacity / rounding /
+  // text colour.  Each element is independent.
+  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+    auto& e = ports_[i];
+    ImGui::PushID(i);
+    changed |= ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show);
+    Indent();
+    changed |= ColorPicker("Fond / Opacité", e.bg);
+    if (i != BasicInfoTweaks::kPortHead) {
+      SameLine();
+      changed |= ColorPicker("Texte", e.fg);
+    }
+    changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
+    Unindent();
+    ImGui::PopID();
+  }
+  PopStyleCompact();
+
+  ImGui::EndDisabled(); // portrait_visible_
+  return changed;
 }
 
 void BasicInfoTweaks::OnRenderUI() {

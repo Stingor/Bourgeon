@@ -1,4 +1,5 @@
 #include "plugins/item_desc_tweaks.h"
+#include "ui/ro_widgets.h"
 
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
@@ -2767,6 +2768,41 @@ void ItemDescTweaks::RenderSkillWindow() {
   ImGui::PopStyleVar(3);
 
   if (!open) SafeCloseWindowId(0x2e);
+}
+
+// ── Section « ItemDescTweaks » du panneau Moonlight ──────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
+// que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
+// de sauvegarder. Rend true si un réglage a changé.
+bool ItemDescTweaks::DrawSettings() {
+  bool changed = false;
+  TextUnformatted("Descriptions modernes des items et skills.");
+
+  changed |= ro::RoCheckbox("Panneau technique des items", &show_item_panel());
+  SameLine(); HelpMarker(
+      "Affiche le panneau enrichi description d'un ITEM.\n"
+      "Clic droit item");
+
+  changed |= ro::RoCheckbox("Panneau technique des skills", &show_skill_panel());
+  SameLine(); HelpMarker(
+      "Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
+      "Clic droit dans le grimoire");
+
+  changed |= ro::RoCheckbox("Ouvrir près de la souris", &desc_spawn_at_cursor());
+  SameLine(); HelpMarker(
+      "ON : la description apparaît près du curseur à chaque ouverture.\n"
+      "OFF : elle réapparaît à sa dernière position connue.");
+
+  if (desc_spawn_at_cursor()) {
+    Indent();
+      const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche","Bas-droite", "Centre"};
+      changed |= ro::RoCombo("Ancrage", &desc_anchor(), kAnchors, 5);
+      changed |= WheelSliderInt("Offset X", &desc_offset_x(), -400, 400, "%d px");
+      changed |= WheelSliderInt("Offset Y", &desc_offset_y(), -400, 400, "%d px");
+      SameLine(); HelpMarker("Décalage depuis le curseur (molette au survol pour ajuster).");
+    Unindent();
+  }
+  return changed;
 }
 
 void ItemDescTweaks::OnRenderUI() {

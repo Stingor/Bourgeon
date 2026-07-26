@@ -32,6 +32,10 @@
 // in MoonlightUi's "EXP Bar" section, which reaches in via Bourgeon::basic_info().
 class BasicInfoTweaks : public Plugin {
  public:
+
+  // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
+  // a changé — l'appelant décide de sauvegarder, une seule fois.
+  bool DrawSettings();
   BasicInfoTweaks();  // installs the msg-0x22 hook that hides native Basic Info pre-render
 
   const char* name() const override { return "Basic Info"; }

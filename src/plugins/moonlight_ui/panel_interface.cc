@@ -171,158 +171,11 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
       // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
       if (iface_nav_ == kIfaceBasicInfo) {
-        bool changed = false;
         if (auto* eb = Bourgeon::Instance().basic_info()) {
-          PushStyleCompact();
-
-          changed |= ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine", &eb->portrait_hide_basic_info_);
-          SameLine(); HelpMarker("Masque la fenêtre native \"Basic Info\".");
-
-          SeparatorText("Barres d'info");
-          changed |= ro::RoCheckbox("Afficher les barres", &eb->visible_);
-          ImGui::BeginDisabled(!eb->visible_);
-          Indent();
-            for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-              if (i) SameLine();
-              changed |= ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &eb->bars_[i].show);
-            }
-            SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
-          Unindent();
-          ImGui::EndDisabled();
-
-          changed |= ro::RoCheckbox("Verrouiller les barres", &eb->locked_);
-          SameLine(); HelpMarker(
-              "Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\n"
-              "Déverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner.");
-
-          changed |= ro::RoCheckbox("Aimanter les barres (snap)", &eb->sticky_);
-          SameLine(); HelpMarker(
-              "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
-              "et se collent automatiquement (~10px).\nÉloigne-la pour la "
-              "détacher. Les barres restent indépendantes.");
-
-          changed |= ro::RoCheckbox("Vertical", &eb->vertical_);
-          SameLine(); HelpMarker(
-              "Remplissage vertical des barres. \n"
-              "Décoche pour les barres horizontales.");
-
-          changed |= ro::RoCheckbox("Bordure des barres", &eb->border_);
-          SameLine(); HelpMarker(
-              "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). \n"
-              "Décoche pour des barres sans contour.");
-
-          const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-          changed |= ro::RoCombo("Texte des barres", &eb->text_mode_, modes, IM_ARRAYSIZE(modes));
-          SameLine(); HelpMarker(
-              "Ce qui est écrit sur les barres : rien, le pourcentage, les "
-              "valeurs brutes (courant / max) ou les deux.");
-          changed |= WheelSliderFloat("Arrondi", &eb->rounding_, 0.0f, 16.0f);
-          SameLine(); HelpMarker("Arrondi des coins des barres.");
-
-          for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-            char lbl[32];
-            std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfoTweaks::kBarLabels[i]);
-            changed |= ColorPicker(lbl, eb->bars_[i].fill);
-          }
-          changed |= ColorPicker("Fond / Opacité", eb->bg_color_);
-
-          TextUnformatted("Tailles rapides de barres (toutes) :");
-          auto preset = [&](const char* label, int w, int h) {
-            SameLine();
-            if (ro::RoButton(label)) {
-              for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
-                eb->bars_[j].w = w;
-                eb->bars_[j].h = h;
-              }
-              eb->force_apply_ = true;  // re-apply size even while unlocked
-              changed = true;
-            }
-          };
-          preset("XS", 200, 9);
-          preset("S", 400, 16);
-          preset("M", 600, 22);
-          preset("L", 800, 30);
-
-          SeparatorText("Portrait personnage");
-          changed |= ro::RoCheckbox("Afficher le portrait et les étiquettes", &eb->portrait_visible_);
-          SameLine(); HelpMarker(
-              "Portrait de statut : la tête du personnage, le pseudo, la classe "
-              "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
-              "redimensionnable, avec sa couleur/opacité de fond et son arrondi.");
-
-          ImGui::BeginDisabled(!eb->portrait_visible_);
-
-          changed |= ro::RoCheckbox("Verrouiller le portrait", &eb->portrait_locked_);
-          Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
-          SameLine(); HelpMarker(
-              "Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
-              "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement).");
-
-          changed |= ro::RoCheckbox("Tête seule (sans le corps)", &eb->portrait_head_only_);
-          SameLine(); HelpMarker(
-              "Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
-              "Décoche pour le personnage entier.");
-
-          changed |= ro::RoCheckbox("Cape / garment", &eb->portrait_show_garment_);
-          SameLine(); HelpMarker(
-              "Affiche la cape/garment équipée (seulement en mode corps "
-              "entier — décoche \"Tête seule\" pour la voir).");
-
-          changed |= WheelSliderFloat("Zoom", &eb->portrait_head_zoom_, 0.10f, 2.0f);
-          SameLine(); HelpMarker("Ajuster avec le zoom.");
-
-          changed |= WheelSliderFloat("Décalage horiz.", &eb->portrait_head_offx_, -1.5f, 1.5f);
-          SameLine(); HelpMarker(
-              "Décale le portrait horizontalement (0 = centré).\n"
-              "Sert à cadrer la tête/le corps ; le zoom reste centré.");
-
-          changed |= WheelSliderFloat("Décalage vert.", &eb->portrait_head_offy_, -1.5f, 1.5f);
-          SameLine(); HelpMarker(
-              "Décale le portrait verticalement (0 = centré).\n"
-              "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
-
-          static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
-          changed |= ro::RoCombo("Animation", &eb->portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
-          SameLine(); HelpMarker(
-              "Pose animée du portrait (Combat = posture prête au combat).\n"
-              "Le nombre d'images de l'animation s'ajuste automatiquement.");
-
-          static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
-          changed |= ro::RoCombo("Direction", &eb->portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
-          SameLine(); HelpMarker(
-              "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
-              "l'angle voulu (le rendu se met à jour en direct).");
-
-          changed |= ro::RoCheckbox("Animer", &eb->portrait_animate_);
-          SameLine(); HelpMarker(
-              "Joue les images de l'animation (ex. le balayage de la posture "
-              "Combat). Décoche pour figer une pose calme (image 0).");
-
-          SeparatorText("Couleurs et arrondis du portrait et des étiquettes");
-          changed |= ro::RoCheckbox("Bordure", &eb->portrait_border_);
-          SameLine(); HelpMarker("Trait 1px autour du cadre et des étiquettes.");
-
-          // Per-element config: show / background colour+opacity / rounding /
-          // text colour.  Each element is independent.
-          for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
-            auto& e = eb->ports_[i];
-            ImGui::PushID(i);
-            changed |= ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show);
-            Indent();
-            changed |= ColorPicker("Fond / Opacité", e.bg);
-            if (i != BasicInfoTweaks::kPortHead) {
-              SameLine();
-              changed |= ColorPicker("Texte", e.fg);
-            }
-            changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
-            Unindent();
-            ImGui::PopID();
-          }
-          PopStyleCompact();
-
-          ImGui::EndDisabled(); // eb->portrait_visible_
+          if (eb->DrawSettings()) SaveSettings();
+        } else {
+          GrayText(kPluginUnavailable);
         }
-        if (changed) SaveSettings();
       }
 
       // ── Chat Settings ────────────────────────────────────────────────────
@@ -478,41 +331,11 @@ void MoonlightUi::DrawInterfacePanel() {
 
       // ── Menu icons (ImGui replacement) ───────────────────────────────────
       if (iface_nav_ == kIfaceMenuIcons) {
-        bool changed = false;
         if (auto* mi = Bourgeon::Instance().menu_icons()) {
-          SeparatorText("Réglages généraux");
-          changed |= ro::RoCheckbox("Rendre les icônes déplaçables", &mi->enabled_);
-          SameLine(); HelpMarker("Cache la grille native et recrée les icônes fonctionnelles.");
-
-          ImGui::BeginDisabled(!mi->enabled_);
-
-          changed |= ro::RoCheckbox("Mode édition (glisser pour déplacer)", &mi->edit_mode_);
-          SameLine(); HelpMarker(
-              "En mode édition : glisse chaque icône pour la repositionner.\n"
-              "Aimantage aux autres icônes et à la grille d'alignement.\n"
-              "Désactive le mode pour cliquer les icônes normalement.");
-
-          // Per-icon show/hide. icons() is populated once in-game.
-          SeparatorText("Icônes");
-          auto& icons = mi->icons();
-          if (icons.empty()) {
-            GrayText("(disponible une fois en jeu)");
-          } else {
-            for (auto& ic : icons) {
-              bool shown = !ic.hidden;
-              ImGui::PushID(ic.cmd_id);
-              if (ro::RoCheckbox(ic.name, &shown)) {
-                ic.hidden = !shown;
-                mi->saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
-                changed = true;
-              }
-              ImGui::PopID();
-            }
-          }
-
-          ImGui::EndDisabled();
+          if (mi->DrawSettings()) SaveSettings();
+        } else {
+          GrayText(kPluginUnavailable);
         }
-        if (changed) SaveSettings();
       }
 
       // ── Status icons (StatusIconTweaks) ──────────────────────────────────
@@ -533,38 +356,11 @@ void MoonlightUi::DrawInterfacePanel() {
 
       // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
       if (iface_nav_ == kIfaceDesc) {
-        bool changed = false;
         if (auto* idt = Bourgeon::Instance().item_desc()) {
-          TextUnformatted("Descriptions modernes des items et skills.");
-
-          changed |= ro::RoCheckbox("Panneau technique des items", &idt->show_item_panel());
-          SameLine(); HelpMarker(
-              "Affiche le panneau enrichi description d'un ITEM.\n"
-              "Clic droit item");
-
-          changed |= ro::RoCheckbox("Panneau technique des skills", &idt->show_skill_panel());
-          SameLine(); HelpMarker(
-              "Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
-              "Clic droit dans le grimoire");
-
-          changed |= ro::RoCheckbox("Ouvrir près de la souris", &idt->desc_spawn_at_cursor());
-          SameLine(); HelpMarker(
-              "ON : la description apparaît près du curseur à chaque ouverture.\n"
-              "OFF : elle réapparaît à sa dernière position connue.");
-
-          if (idt->desc_spawn_at_cursor()) {
-            Indent();
-              const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche","Bas-droite", "Centre"};
-              changed |= ro::RoCombo("Ancrage", &idt->desc_anchor(), kAnchors, 5);
-              changed |= WheelSliderInt("Offset X", &idt->desc_offset_x(), -400, 400, "%d px");
-              changed |= WheelSliderInt("Offset Y", &idt->desc_offset_y(), -400, 400, "%d px");
-              SameLine(); HelpMarker("Décalage depuis le curseur (molette au survol pour ajuster).");
-            Unindent();
-          }
+          if (idt->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
         }
-        if (changed) SaveSettings();
       }
 
       // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────

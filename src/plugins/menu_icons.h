@@ -15,6 +15,10 @@
 // Phase 2b will add per-icon move/snap/show-hide/persistence (edit mode).
 class MenuIconTweaks : public Plugin {
  public:
+
+  // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
+  // a changé — l'appelant décide de sauvegarder, une seule fois.
+  bool DrawSettings();
   const char* name() const override { return "Menu Icons"; }
 
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;

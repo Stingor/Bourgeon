@@ -1,4 +1,6 @@
 #include "plugins/menu_icons.h"
+#include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"
 
 #include "ragnarok/uiwnd.h"
 
@@ -262,6 +264,48 @@ void MenuIconTweaks::OnTick() {
     RequestServerRefresh();
   }
   FlushPending();
+}
+
+// ── Section « MenuIconTweaks » du panneau Moonlight ──────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
+// que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
+// de sauvegarder. Rend true si un réglage a changé.
+bool MenuIconTweaks::DrawSettings() {
+  bool changed = false;
+  SeparatorText("Réglages généraux");
+  changed |= ro::RoCheckbox("Rendre les icônes déplaçables", &enabled_);
+  SameLine(); HelpMarker("Cache la grille native et recrée les icônes fonctionnelles.");
+
+  ImGui::BeginDisabled(!enabled_);
+
+  changed |= ro::RoCheckbox("Mode édition (glisser pour déplacer)", &edit_mode_);
+  SameLine(); HelpMarker(
+      "En mode édition : glisse chaque icône pour la repositionner.\n"
+      "Aimantage aux autres icônes et à la grille d'alignement.\n"
+      "Désactive le mode pour cliquer les icônes normalement.");
+
+  // Per-icon show/hide. icons() is populated once in-game.
+  SeparatorText("Icônes");
+  // `icon_list` et non `icons` : la locale masquerait l'accesseur icons() dont
+  // elle est issue (elle le faisait, via mi->icons() une fois le préfixe retiré).
+  auto& icon_list = icons();
+  if (icon_list.empty()) {
+    GrayText("(disponible une fois en jeu)");
+  } else {
+    for (auto& ic : icon_list) {
+      bool shown = !ic.hidden;
+      ImGui::PushID(ic.cmd_id);
+      if (ro::RoCheckbox(ic.name, &shown)) {
+        ic.hidden = !shown;
+        saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
+        changed = true;
+      }
+      ImGui::PopID();
+    }
+  }
+
+  ImGui::EndDisabled();
+  return changed;
 }
 
 void MenuIconTweaks::OnRenderUI() {
