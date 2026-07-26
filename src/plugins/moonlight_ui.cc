@@ -491,7 +491,7 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kChat[5] = {
 const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kGrid[4] = {
     {"grid_show",  SType::kBool, MLUI_SELF(grid_.show), MLUI_LITERAL(bool, false)},
     {"grid_snap",  SType::kBool, MLUI_SELF(grid_.snap), MLUI_LITERAL(bool, false)},
-    {"grid_size",  SType::kInt,  MLUI_SELF(grid_.size), MLUI_LITERAL(int, 32)},
+    {"grid_size",  SType::kInt,  MLUI_SELF(grid_.cell_size_px), MLUI_LITERAL(int, 32)},
     {"grid_color", SType::kColorHex, MLUI_SELF(grid_.color),
      MLUI_LITERAL_ARGB(0x26FFFFFF)},
 };

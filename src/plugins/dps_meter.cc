@@ -356,8 +356,8 @@ bool DpsMeter::DrawSettings() {
   SameLine();
   HelpMarker("Fige la fenêtre DPS (position/taille) et laisse passer les clics "
              "au jeu en dessous.");
-  changed |= ColorPicker("Couleur texte",  text_color_);
-  changed |= ColorPicker("Couleur graphe", plot_color_);
+  changed |= ColorEdit4WithAlphaBar("Couleur texte",  text_color_);
+  changed |= ColorEdit4WithAlphaBar("Couleur graphe", plot_color_);
 
   ImGui::PushItemWidth(160.0f);  // sliders étroits, pour tenir dans la fenêtre
   changed |= WheelSliderFloat("Opacité fond", &bg_alpha_, 0.0f, 1.0f);

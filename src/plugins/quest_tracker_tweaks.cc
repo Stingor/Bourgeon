@@ -344,15 +344,15 @@ void QuestTrackerTweaks::DrawSettings() {
   RgbToF3(g_cfg.title_rgb, tc);
   RgbToF3(g_cfg.desc_rgb, dc);
   RgbToF3(g_cfg.hunt_rgb, hc);
-  if (ColorPicker("Couleur titre", tc)) {
+  if (ColorEdit4WithAlphaBar("Couleur titre", tc)) {
     g_cfg.title_rgb = F3ToRgb(tc);
     g_needs_save = true;
   }
-  if (ColorPicker("Couleur objectif", dc)) {
+  if (ColorEdit4WithAlphaBar("Couleur objectif", dc)) {
     g_cfg.desc_rgb = F3ToRgb(dc);
     g_needs_save = true;
   }
-  if (ColorPicker("Couleur chasse", hc)) {
+  if (ColorEdit4WithAlphaBar("Couleur chasse", hc)) {
     g_cfg.hunt_rgb = F3ToRgb(hc);
     g_needs_save = true;
   }

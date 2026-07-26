@@ -3326,26 +3326,28 @@ bool BasicInfoTweaks::DrawSettings() {
   for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
     char lbl[32];
     std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfoTweaks::kBarLabels[i]);
-    changed |= ColorPicker(lbl, bars_[i].fill);
+    changed |= ColorEdit4WithAlphaBar(lbl, bars_[i].fill);
   }
-  changed |= ColorPicker("Fond / Opacité", bg_color_);
+  changed |= ColorEdit4WithAlphaBar("Fond / Opacité", bg_color_);
 
   TextUnformatted("Tailles rapides de barres (toutes) :");
-  auto preset = [&](const char* label, int w, int h) {
+  // Ce n'est PAS un préréglage (le mot désigne déjà trois autres familles dans
+  // ce projet) : c'est le bouton qui applique une taille à TOUTES les barres.
+  auto bar_size_button = [&](const char* label, int width_px, int height_px) {
     SameLine();
     if (ro::RoButton(label)) {
       for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
-        bars_[j].w = w;
-        bars_[j].h = h;
+        bars_[j].w = width_px;
+        bars_[j].h = height_px;
       }
       force_apply_ = true;  // re-apply size even while unlocked
       changed = true;
     }
   };
-  preset("XS", 200, 9);
-  preset("S", 400, 16);
-  preset("M", 600, 22);
-  preset("L", 800, 30);
+  bar_size_button("XS", 200, 9);
+  bar_size_button("S", 400, 16);
+  bar_size_button("M", 600, 22);
+  bar_size_button("L", 800, 30);
 
   SeparatorText("Portrait personnage");
   changed |= ro::RoCheckbox("Afficher le portrait et les étiquettes", &portrait_visible_);
@@ -3413,10 +3415,10 @@ bool BasicInfoTweaks::DrawSettings() {
     ImGui::PushID(i);
     changed |= ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show);
     Indent();
-    changed |= ColorPicker("Fond / Opacité", e.bg);
+    changed |= ColorEdit4WithAlphaBar("Fond / Opacité", e.bg);
     if (i != BasicInfoTweaks::kPortHead) {
       SameLine();
-      changed |= ColorPicker("Texte", e.fg);
+      changed |= ColorEdit4WithAlphaBar("Texte", e.fg);
     }
     changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
     Unindent();

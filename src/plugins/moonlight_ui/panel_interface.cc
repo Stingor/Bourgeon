@@ -49,12 +49,12 @@ void MoonlightUi::DrawInterfacePanel() {
         "Affiche une grille plein écran pour aligner ton interface "
         "(comme les add-ons d'interface de WoW).");
     ImGui::SetNextItemWidth(160.0f);
-    changed |= WheelSliderInt("Taille grille", &grid_.size, 4, 128);
+    changed |= WheelSliderInt("Taille grille", &grid_.cell_size_px, 4, 128);
     changed |= ro::RoCheckbox("Aimanter à la grille", &grid_.snap);
     SameLine(); HelpMarker(
         "Les barres et les icônes s'alignent sur les cellules de la grille "
         "pendant le déplacement et le redimensionnement.");
-    changed |= ColorPicker("Couleur grille", grid_.color);
+    changed |= ColorEdit4WithAlphaBar("Couleur grille", grid_.color);
 
     // (Inventaire et Storage : tout est regroupé dans leurs sections dédiées.)
 

@@ -88,14 +88,15 @@ inline void OpenPopup(const char* str_id) {
 inline bool BeginPopup(const char* str_id) {
     return ImGui::BeginPopup(str_id);
 }
-// ⚠ Teste le DERNIER widget soumis (ImGui::IsItemHovered), pas la fenêtre ni un
-// objet nommé : à appeler immédiatement après le widget concerné.
-inline bool IsHovered() {
+// Teste le DERNIER widget soumis (ImGui::IsItemHovered), pas la fenêtre ni un
+// objet nommé — le sujet est dans le nom, pour ne pas inviter à l'appeler loin
+// du widget concerné, où il répondrait sur autre chose.
+inline bool IsLastItemHovered() {
     return ImGui::IsItemHovered();
 }
 
 inline void Tooltip(const char* text) {
-    if (IsHovered()) ImGui::SetTooltip("%s", text);
+    if (IsLastItemHovered()) ImGui::SetTooltip("%s", text);
 }
 
 inline void PushItemWidth(float item_width) {
@@ -104,12 +105,13 @@ inline void PushItemWidth(float item_width) {
 inline void PopItemWidth() {
     ImGui::PopItemWidth();
 }
-// ⚠ Appelle ImGui::ColorEdit4 (barre alpha, sans aperçu latéral ni champs), et NON
-// ImGui::ColorPicker4 — deux widgets ImGui distincts existent sous ces deux noms.
-inline bool ColorPicker(const char* label, float col[4]) {
+// ColorEdit4 et ColorPicker4 sont deux widgets ImGui DIFFÉRENTS ; celui-ci est
+// le premier, avec barre alpha, sans aperçu latéral ni champs numériques. Le
+// nom le dit maintenant, au lieu de faire attendre l'autre.
+inline bool ColorEdit4WithAlphaBar(const char* label, float rgba[4]) {
     ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar |
                                 ImGuiColorEditFlags_NoSidePreview |
                                 ImGuiColorEditFlags_NoInputs |
                                 ImGuiColorEditFlags_NoColorMarkers;
-    return ImGui::ColorEdit4(label, col, flags);
+    return ImGui::ColorEdit4(label, rgba, flags);
 }

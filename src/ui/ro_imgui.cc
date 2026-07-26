@@ -1660,20 +1660,20 @@ bool ShowRoSkinSettings() {
     "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
     "icones) - pas le texte ni les fonds (régles par les couleurs ci-dessous).");
   ch |= WheelSliderFloat("Opacité", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
-  ch |= ColorPicker("Corps", g_cfg.body_col);
-  ch |= ColorPicker("Bordure", g_cfg.border_col);
-  ch |= ColorPicker("Texte titre", g_cfg.title_text);
-  ch |= ColorPicker("Texte corps", g_cfg.body_text);
-  ch |= ColorPicker("Onglet actif", g_cfg.tab_col);
-  ch |= ColorPicker("Onglet inactif", g_cfg.tab_inact);
-  ch |= ColorPicker("Champ de saisie", g_cfg.input_col);
-  ch |= ColorPicker("En-tête tableau", g_cfg.header_col);
-  ch |= ColorPicker("Fond cases (feuille perso)", g_cfg.slot_col);
-  ch |= ColorPicker("Fond doll (feuille perso)", g_cfg.doll_col);
-  ch |= ColorPicker("Fond carte item", g_cfg.card_col);
-  ch |= ColorPicker("Bandeau carte", g_cfg.card_head_col);
-  ch |= ColorPicker("Texte bandeau carte", g_cfg.card_head_text);
-  ch |= ColorPicker("Fond fenêtre de liste (storage)", g_cfg.list_col);
+  ch |= ColorEdit4WithAlphaBar("Corps", g_cfg.body_col);
+  ch |= ColorEdit4WithAlphaBar("Bordure", g_cfg.border_col);
+  ch |= ColorEdit4WithAlphaBar("Texte titre", g_cfg.title_text);
+  ch |= ColorEdit4WithAlphaBar("Texte corps", g_cfg.body_text);
+  ch |= ColorEdit4WithAlphaBar("Onglet actif", g_cfg.tab_col);
+  ch |= ColorEdit4WithAlphaBar("Onglet inactif", g_cfg.tab_inact);
+  ch |= ColorEdit4WithAlphaBar("Champ de saisie", g_cfg.input_col);
+  ch |= ColorEdit4WithAlphaBar("En-tête tableau", g_cfg.header_col);
+  ch |= ColorEdit4WithAlphaBar("Fond cases (feuille perso)", g_cfg.slot_col);
+  ch |= ColorEdit4WithAlphaBar("Fond doll (feuille perso)", g_cfg.doll_col);
+  ch |= ColorEdit4WithAlphaBar("Fond carte item", g_cfg.card_col);
+  ch |= ColorEdit4WithAlphaBar("Bandeau carte", g_cfg.card_head_col);
+  ch |= ColorEdit4WithAlphaBar("Texte bandeau carte", g_cfg.card_head_text);
+  ch |= ColorEdit4WithAlphaBar("Fond fenêtre de liste (storage)", g_cfg.list_col);
   if (ImGui::Button("Réinitialiser le skin")) {
     g_cfg = RoSkinConfig();
     ch = true;

@@ -4,7 +4,7 @@
 
 void AlignGrid::Draw() const {
   const ImVec2 ds = ImGui::GetIO().DisplaySize;
-  const float step = static_cast<float>(cell());
+  const float step = static_cast<float>(cell_size_px_clamped());
   ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under windows
   const ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(color[0], color[1], color[2], color[3]));
   // Anchor the grid on the screen center: offset the first line so a grid line

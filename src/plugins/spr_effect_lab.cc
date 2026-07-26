@@ -10,7 +10,7 @@
 #include "imgui.h"
 #include "bourgeon.h"        // Bourgeon::Instance().IsMapLoading() / IsGameActive() (gate anti-crash warp)
 #include "plugins/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
-#include "plugins/moonlight_ui.h"  // ColorPicker() (helper standardisé)
+#include "plugins/moonlight_ui.h"  // ColorEdit4WithAlphaBar() (helper standardisé)
 #include "utils/hooking/hook_manager.h"
 
 // Backend actif (DX9 vs DX7) — le « Sol uni » n'existe que sur le chemin de rendu DX9.
@@ -805,7 +805,7 @@ void DrawDebugControls() {
   }
   if (g_ground_paint) {
     ImGui::SetNextItemWidth(200.0f);
-    ColorPicker("Couleur du sol", g_ground_col);
+    ColorEdit4WithAlphaBar("Couleur du sol", g_ground_col);
     // Le picker renvoie true à CHAQUE frame de drag : on ne persiste qu'au relâchement,
     // sinon on réécrit tout le YAML des dizaines de fois par seconde.
     if (ImGui::IsItemDeactivatedAfterEdit()) ground_changed = true;
