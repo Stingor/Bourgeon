@@ -320,7 +320,10 @@ void MoonlightUi::LoadSettings() {
       idt->cmp_show_equipped() = ui["itemdesc_compare"].as<bool>(true);
       idt->desc_spawn_at_cursor() =
           ui["itemdesc_spawn_cursor"].as<bool>(true);
-      idt->desc_anchor()   = ui["itemdesc_anchor"].as<int>(0);
+      // Défaut 3 = bas-droite, la valeur déclarée dans item_desc_tweaks.h:208.
+      // Elle valait 0 ici et dans le repli d'écriture : tout yaml antérieur à ce
+      // réglage faisait repasser l'ancrage en haut-gauche, silencieusement.
+      idt->desc_anchor()   = ui["itemdesc_anchor"].as<int>(3);
       idt->desc_offset_x() = ui["itemdesc_off_x"].as<int>(12);
       idt->desc_offset_y() = ui["itemdesc_off_y"].as<int>(12);
     }
@@ -774,7 +777,7 @@ void MoonlightUi::WriteSettingsFile() {
   // ItemDescTweaks toggles (owned by the plugin) — panels + Comparer + placement.
   bool itemdesc_show_item = true, itemdesc_show_skill = true;
   bool itemdesc_compare = true, itemdesc_spawn_cursor = true;
-  int  itemdesc_anchor = 0, itemdesc_off_x = 12, itemdesc_off_y = 12;
+  int  itemdesc_anchor = 3, itemdesc_off_x = 12, itemdesc_off_y = 12;  // cf. item_desc_tweaks.h
   if (auto* idt = Bourgeon::Instance().item_desc()) {
     itemdesc_show_item    = idt->show_item_panel();
     itemdesc_show_skill   = idt->show_skill_panel();
@@ -1289,6 +1292,12 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
     // persisté, et flusher après sauvegarderait une liste @autolootid vide.
     FlushSettings();
     aloot_ids_.clear();
+    // Le niveau staff est autoritatif SERVEUR, renvoyé au login via le setting
+    // id 26 — mais rien ne garantit qu'il soit renvoyé quand il vaut 0. Sans ce
+    // retour à zéro, changer de compte laissait les « Staff Tools » et les
+    // réglages fins de saut/marche exposés sur un compte qui n'y a pas droit,
+    // jusqu'au prochain paquet. On retombe fermé par défaut.
+    g_staff_level = 0;
   }
 
   UpdateRelay();

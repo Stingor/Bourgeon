@@ -328,7 +328,13 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Chat Settings ────────────────────────────────────────────────────
       if (iface_nav_ == kIfaceChat) {
         bool changed = false;
-        if (auto* eb = Bourgeon::Instance().basic_info()) {
+        // Ce panneau ne dépend d'AUCUN plugin : il ne pilote que chat:: et l'état
+        // de MoonlightUi. Il était pourtant gaté sur BasicInfoTweaks — un
+        // copier-coller du panneau Basic Info, où le pointeur sert quarante fois.
+        // Sans ce plugin, le joueur voyait une page entièrement vide, sans même
+        // le « (plugin indisponible) » affiché partout ailleurs.
+        // Les accolades restent pour ne pas réindenter 130 lignes.
+        {
           PushStyleCompact();
 
           SeparatorText("Réglages généraux");
