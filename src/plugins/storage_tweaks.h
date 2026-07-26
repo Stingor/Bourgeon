@@ -27,6 +27,10 @@
 
 class StorageTweaks : public Plugin {
  public:
+
+  // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
+  // a changé — l'appelant décide de sauvegarder, une seule fois.
+  bool DrawSettings();
   StorageTweaks();  // enregistre l'opcode ZC_BOURGEON_STORAGE_PRICES
 
   const char* name() const override { return "StorageTweaks"; }

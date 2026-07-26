@@ -22,6 +22,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch (icônes)
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
+#include "ui/ro_widgets.h"   // ro::HelpMarker (section de réglages)
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/npc_dialog_re.md) ──
 namespace {
@@ -649,6 +650,29 @@ void NpcDialogTweaks::DrawInput() {
     ImGui::SameLine();
     if (ro::RoButton("OK") || enter) SendString(str_buf_);
   }
+}
+
+// ── Section « Fenêtre NPC » du panneau Moonlight ─────────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent que
+// l'état de CE plugin, ils appartiennent donc à ce fichier. MoonlightUi ne garde
+// que l'appel et la décision de sauvegarder.
+bool NpcDialogTweaks::DrawSettings() {
+  bool changed = false;
+  changed |= ro::RoCheckbox("Dialogue NPC ImGui", &imgui_enabled_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
+      "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
+      "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
+
+  ImGui::BeginDisabled(!imgui_enabled_);
+  changed |= ro::RoCheckbox("Barre de recherche du menu", &menu_search_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
+      "choix) pour filtrer les options. Décoche pour un menu épuré.");
+  ImGui::EndDisabled();
+  return changed;
 }
 
 void NpcDialogTweaks::OnRenderUI() {

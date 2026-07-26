@@ -92,7 +92,7 @@ void MoonlightUi::DrawFunPanels() {
           "jusqu'au redémarrage du client.");
       GrayText("État : %s", doom->StatusText());
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
 
     SeparatorText("Parade de Porings (login)");
     if (auto* lp = Bourgeon::Instance().login_parade()) {
@@ -108,7 +108,7 @@ void MoonlightUi::DrawFunPanels() {
           "Purement cosmétique. Ils s'estompent au-dessus du panneau de login "
           "pour ne pas gêner la saisie. Visible uniquement à l'écran de login.");
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
 
     SeparatorText("Roggle");
     if (auto* roggle = Bourgeon::Instance().roggle()) {
@@ -122,7 +122,7 @@ void MoonlightUi::DrawFunPanels() {
           "bas rattrape la bille = bille gratuite.\n"
           "Fermer la fenêtre ou décocher = masquer (la partie est conservée).");
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
 
     SeparatorText("Rojeweled");
     if (auto* rj = Bourgeon::Instance().rojeweled()) {
@@ -137,7 +137,7 @@ void MoonlightUi::DrawFunPanels() {
           "les faire disparaître (les cascades rapportent plus). DX9 requis "
           "(sinon tuiles colorées).");
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
 
     SeparatorText("Saut (barre espace)");
     if (auto* pj = Bourgeon::Instance().player_jump()) {
@@ -161,7 +161,7 @@ void MoonlightUi::DrawFunPanels() {
         PopItemWidth();
       }
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
 
     SeparatorText("Déplacement au clavier");
     if (auto* km = Bourgeon::Instance().keyboard_move()) {
@@ -199,6 +199,6 @@ void MoonlightUi::DrawFunPanels() {
         }
       }
     } else
-      GrayText("Indisponible.");
+      GrayText(kPluginUnavailable);
   }
 }

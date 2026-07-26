@@ -43,9 +43,18 @@ class NpcDialogTweaks : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Settings persistants (gérés par MoonlightUi, section « Fenêtre NPC »).
+  // Settings persistants (la SÉRIALISATION reste chez MoonlightUi).
   bool imgui_enabled_ = false;  // OPT-IN : dialogue natif par défaut.
   bool menu_search_ = true;     // barre de recherche au-dessus des longs menus (>8 choix)
+
+  // Contenu de la section « Fenêtre NPC » du panneau Moonlight. Rend true si un
+  // réglage a changé — c'est l'appelant qui décide de sauvegarder, une seule fois.
+  //
+  // Ces widgets vivaient dans panel_interface.cc, à sept cents lignes du code
+  // qu'ils pilotent : quelqu'un qui travaille sur NpcDialogTweaks ne les y
+  // trouvait pas. Même patron que SkillBarTweaks::DrawSettings et les quatre
+  // autres plugins qui délèguent déjà.
+  bool DrawSettings();
 
   bool& show_panel() { return show_panel_; }
 

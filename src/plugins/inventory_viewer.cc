@@ -1497,6 +1497,79 @@ void InventoryViewer::RenderCardInsert() {
   if (!open) { CancelComposition(); ci_sel_ = -1; }
 }
 
+// ── Section « InventoryViewer » du panneau Moonlight ───────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
+// que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
+// de sauvegarder. Rend true si un réglage a changé.
+bool InventoryViewer::DrawSettings() {
+  bool changed = false;
+  // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
+  // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
+  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
+                     &imgui_enabled_)) {
+    SetModernInterface(imgui_enabled_);
+    changed = true;
+  }
+  SameLine(); HelpMarker(
+      "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
+      "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+      "natif). Les cases des sections Storage et Barre d'action reflètent "
+      "le même état.\n\n"
+      "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
+      "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
+      "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
+      "Inclut la fenêtre de SERTISSAGE de cartes (double-clic sur une carte) : "
+      "elle remplace le popup natif « Insert Card ». La liste des équipements "
+      "compatibles reste calculée par le serveur, donc identique au natif.");
+
+  ImGui::BeginDisabled(!imgui_enabled_);
+
+  changed |= ro::RoCheckbox("Description au survol", &desc_tooltip());
+  SameLine(); HelpMarker(
+      "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+      "texte, cartes et options) dans un panneau au skin RO, à la place du "
+      "petit tooltip nom + quantité.\n"
+      "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
+      "menu contextuel.");
+
+  changed |= ro::RoCheckbox("Champ de filtre", &show_filter());
+  SameLine(); HelpMarker(
+      "Affiche la barre de recherche par nom au-dessus de la grille.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé).");
+
+  changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &tabs_vertical());
+  SameLine(); HelpMarker(
+      "ON (défaut) : onglets en colonne à gauche de la grille, comme la "
+      "fenêtre native (images tab_*).\n"
+      "OFF : rangée horizontale au-dessus de la grille (images tabh_*).");
+
+  changed |= ro::RoCheckbox("Verrouiller la taille", &lock_size());
+  SameLine(); HelpMarker(
+      "La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).");
+
+  // Le placement libre EXIGE la taille verrouillée : une case est un index
+  // absolu (ligne × colonnes), donc changer la largeur change le nombre de
+  // colonnes et mélangerait toutes les positions mémorisées.
+  ImGui::BeginDisabled(!lock_size());
+  Indent();
+    changed |= ro::RoCheckbox("Placement libre des items", &free_layout());
+    SameLine(); HelpMarker(
+        "Glisse un item sur une case vide pour l'y fixer ; sur une case "
+        "occupée, les deux s'échangent. Les items sans case attribuée "
+        "remplissent les trous restants, donc un nouvel objet ramassé ne "
+        "bouscule plus ta disposition.\n\n"
+        "L'onglet « Tout » n'est PAS concerné : il mélange les catégories, "
+        "donc une case n'y désigne pas le même emplacement que dans "
+        "l'onglet d'origine de l'item. Il garde le remplissage automatique.\n\n"
+        "Nécessite « Verrouiller la taille » : les cases sont repérées par "
+        "un index absolu, qu'un changement de largeur décalerait.");
+  Unindent();
+  ImGui::EndDisabled();
+
+  ImGui::EndDisabled();
+  return changed;
+}
+
 void InventoryViewer::OnRenderUI() {
   // Le popup de sertissage est INDÉPENDANT du viewer d'inventaire : il est ouvert par
   // un paquet serveur et survit à la fermeture de l'inventaire. Donc AVANT le

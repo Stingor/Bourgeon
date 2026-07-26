@@ -839,6 +839,78 @@ bool StorageTweaks::DescPendingBlocksHover() {
   return desc_pending_;
 }
 
+// ── Section « StorageTweaks » du panneau Moonlight ───────────────────────────
+// Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
+// que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
+// de sauvegarder. Rend true si un réglage a changé.
+bool StorageTweaks::DrawSettings() {
+  bool changed = false;
+  // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
+  // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
+  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
+                     &imgui_enabled_)) {
+    SetModernInterface(imgui_enabled_);
+    changed = true;
+  }
+  SameLine(); HelpMarker(
+      "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
+      "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
+      "natif). Les cases des sections Inventaire et Barre d'action "
+      "reflètent le même état.\n\n"
+      "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
+      "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
+      "viewer.");
+
+  ImGui::BeginDisabled(!imgui_enabled_);
+
+  changed |= ro::RoCheckbox("Description au survol", &desc_tooltip());
+  SameLine(); HelpMarker(
+      "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+      "texte) dans un panneau au skin RO, posé au curseur et effacé dès "
+      "que la souris quitte la ligne.\n"
+      "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
+      "menu contextuel.");
+
+  changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &tabs_vertical());
+  SameLine(); HelpMarker(
+      "Dispose les catégories en liste verticale à gauche, comme la "
+      "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.");
+
+  changed |= ro::RoCheckbox("Images d'onglet", &tab_images());
+  SameLine(); HelpMarker(
+      "ON : tuiles images du client — jeu tab_* en disposition verticale, "
+      "tabh_* en horizontale (all/use/wea/ammo/card/fav/cash/cos/etc). Les "
+      "catégories sans art propre réutilisent celui de leur famille et "
+      "portent alors un sigle (Am, Cs, Et).\n"
+      "OFF : onglets texte — TabBar classique en horizontal, libellé écrit "
+      "à la verticale en vertical.");
+
+  changed |= ro::RoCheckbox("Champ de filtre", &show_filter());
+  SameLine(); HelpMarker(
+      "Affiche la barre de recherche par nom au-dessus de la liste.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé).");
+
+  changed |= ro::RoCheckbox("Valeur estimée du storage", &show_total_value());
+  SameLine(); HelpMarker(
+      "Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
+      "— elle suit donc l'onglet, le sous-type et le filtre.");
+
+  SeparatorText("Colonnes");
+  changed |= ro::RoCheckbox("Index", &show_index_col());
+  SameLine(); HelpMarker(
+      "Index storage (slot) — un item récemment ajouté a un index élevé.");
+  changed |= ro::RoCheckbox("ID d'item", &show_id_col());
+  SameLine(); HelpMarker("Colonne avec l'id numérique de l'item.");
+  changed |= ro::RoCheckbox("Slots", &show_slots_col());
+  SameLine(); HelpMarker("Colonne avec le nombre de slots de carte.");
+  changed |= ro::RoCheckbox("Prix de revente", &show_value_col());
+  SameLine(); HelpMarker(
+      "Colonne avec le prix de revente NPC × la quantité du stack.");
+
+  ImGui::EndDisabled();
+  return changed;
+}
+
 void StorageTweaks::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 

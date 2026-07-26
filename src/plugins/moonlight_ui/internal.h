@@ -33,6 +33,12 @@
 
 class MoonlightUi;
 
+// Texte affiché quand le plugin propriétaire d'une section n'est pas enregistré.
+// Deux libellés concurrents cohabitaient — « Indisponible. » (6 fois) et
+// « (plugin indisponible) » (6 fois) — pour exactement le même cas. Un seul
+// désormais : la formulation ne peut plus dépendre de la section qu'on regarde.
+inline constexpr const char* kPluginUnavailable = "(plugin indisponible)";
+
 // Dernier item dont la fenêtre de description a été ouverte, capté par le hook
 // ItemDescWndHook (moonlight_ui.cc). Le panneau Autoloots s'en sert pour proposer
 // l'item survolé en un clic. Défini dans item_desc_probe.cc.

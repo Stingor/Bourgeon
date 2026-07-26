@@ -31,6 +31,10 @@
 
 class InventoryViewer : public Plugin {
  public:
+
+  // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
+  // a changé — l'appelant décide de sauvegarder, une seule fois.
+  bool DrawSettings();
   InventoryViewer();
 
   const char* name() const override { return "InventoryViewer"; }

@@ -165,7 +165,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* sb = Bourgeon::Instance().skill_bar())
           sb->DrawSettings();
         else
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
       }
 
       // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
@@ -520,7 +520,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* si = Bourgeon::Instance().status_icons())
           si->DrawSettings();
         else
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
       }
 
       // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
@@ -528,7 +528,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* qt = Bourgeon::Instance().quest_tracker())
           qt->DrawSettings();
         else
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
       }
 
       // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
@@ -562,7 +562,7 @@ void MoonlightUi::DrawInterfacePanel() {
             Unindent();
           }
         } else {
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
         }
         if (changed) SaveSettings();
       }
@@ -625,166 +625,27 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
       if (iface_nav_ == kIfaceNpc) {
         if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
-          if (ro::RoCheckbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
-            SaveSettings();
-          SameLine(); HelpMarker(
-              "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
-              "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
-              "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
-          ImGui::BeginDisabled(!nd->imgui_enabled_);
-          if (ro::RoCheckbox("Barre de recherche du menu", &nd->menu_search_))
-            SaveSettings();
-          SameLine(); HelpMarker(
-              "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
-              "choix) pour filtrer les options. Décoche pour un menu épuré.");
-          ImGui::EndDisabled();
+          if (nd->DrawSettings()) SaveSettings();
+        } else {
+          GrayText(kPluginUnavailable);
         }
       }
 
       // ── Storage (StorageTweaks : viewer ImGui + colonnes/filtre/survol) ───
       if (iface_nav_ == kIfaceStorage) {
         if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
-          bool changed = false;
-          // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
-          // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-          if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
-                             &stg->imgui_enabled_)) {
-            SetModernInterface(stg->imgui_enabled_);
-            changed = true;
-          }
-          SameLine(); HelpMarker(
-              "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
-              "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
-              "natif). Les cases des sections Inventaire et Barre d'action "
-              "reflètent le même état.\n\n"
-              "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
-              "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
-              "viewer.");
-
-          ImGui::BeginDisabled(!stg->imgui_enabled_);
-
-          changed |= ro::RoCheckbox("Description au survol", &stg->desc_tooltip());
-          SameLine(); HelpMarker(
-              "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
-              "texte) dans un panneau au skin RO, posé au curseur et effacé dès "
-              "que la souris quitte la ligne.\n"
-              "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
-              "menu contextuel.");
-
-          changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &stg->tabs_vertical());
-          SameLine(); HelpMarker(
-              "Dispose les catégories en liste verticale à gauche, comme la "
-              "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.");
-
-          changed |= ro::RoCheckbox("Images d'onglet", &stg->tab_images());
-          SameLine(); HelpMarker(
-              "ON : tuiles images du client — jeu tab_* en disposition verticale, "
-              "tabh_* en horizontale (all/use/wea/ammo/card/fav/cash/cos/etc). Les "
-              "catégories sans art propre réutilisent celui de leur famille et "
-              "portent alors un sigle (Am, Cs, Et).\n"
-              "OFF : onglets texte — TabBar classique en horizontal, libellé écrit "
-              "à la verticale en vertical.");
-
-          changed |= ro::RoCheckbox("Champ de filtre", &stg->show_filter());
-          SameLine(); HelpMarker(
-              "Affiche la barre de recherche par nom au-dessus de la liste.\n"
-              "Décoche pour gagner une ligne (le filtre est alors vidé).");
-
-          changed |= ro::RoCheckbox("Valeur estimée du storage", &stg->show_total_value());
-          SameLine(); HelpMarker(
-              "Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
-              "— elle suit donc l'onglet, le sous-type et le filtre.");
-
-          SeparatorText("Colonnes");
-          changed |= ro::RoCheckbox("Index", &stg->show_index_col());
-          SameLine(); HelpMarker(
-              "Index storage (slot) — un item récemment ajouté a un index élevé.");
-          changed |= ro::RoCheckbox("ID d'item", &stg->show_id_col());
-          SameLine(); HelpMarker("Colonne avec l'id numérique de l'item.");
-          changed |= ro::RoCheckbox("Slots", &stg->show_slots_col());
-          SameLine(); HelpMarker("Colonne avec le nombre de slots de carte.");
-          changed |= ro::RoCheckbox("Prix de revente", &stg->show_value_col());
-          SameLine(); HelpMarker(
-              "Colonne avec le prix de revente NPC × la quantité du stack.");
-
-          ImGui::EndDisabled();
-          if (changed) SaveSettings();
+          if (stg->DrawSettings()) SaveSettings();
         } else {
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
         }
       }
 
       // ── Inventaire (InventoryViewer : viewer ImGui + filtre/onglets) ──────
       if (iface_nav_ == kIfaceInventory) {
         if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
-          bool changed = false;
-          // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
-          // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-          if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
-                             &iv->imgui_enabled_)) {
-            SetModernInterface(iv->imgui_enabled_);
-            changed = true;
-          }
-          SameLine(); HelpMarker(
-              "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
-              "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
-              "natif). Les cases des sections Storage et Barre d'action reflètent "
-              "le même état.\n\n"
-              "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
-              "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
-              "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
-              "Inclut la fenêtre de SERTISSAGE de cartes (double-clic sur une carte) : "
-              "elle remplace le popup natif « Insert Card ». La liste des équipements "
-              "compatibles reste calculée par le serveur, donc identique au natif.");
-
-          ImGui::BeginDisabled(!iv->imgui_enabled_);
-
-          changed |= ro::RoCheckbox("Description au survol", &iv->desc_tooltip());
-          SameLine(); HelpMarker(
-              "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
-              "texte, cartes et options) dans un panneau au skin RO, à la place du "
-              "petit tooltip nom + quantité.\n"
-              "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
-              "menu contextuel.");
-
-          changed |= ro::RoCheckbox("Champ de filtre", &iv->show_filter());
-          SameLine(); HelpMarker(
-              "Affiche la barre de recherche par nom au-dessus de la grille.\n"
-              "Décoche pour gagner une ligne (le filtre est alors vidé).");
-
-          changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &iv->tabs_vertical());
-          SameLine(); HelpMarker(
-              "ON (défaut) : onglets en colonne à gauche de la grille, comme la "
-              "fenêtre native (images tab_*).\n"
-              "OFF : rangée horizontale au-dessus de la grille (images tabh_*).");
-
-          changed |= ro::RoCheckbox("Verrouiller la taille", &iv->lock_size());
-          SameLine(); HelpMarker(
-              "La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).");
-
-          // Le placement libre EXIGE la taille verrouillée : une case est un index
-          // absolu (ligne × colonnes), donc changer la largeur change le nombre de
-          // colonnes et mélangerait toutes les positions mémorisées.
-          ImGui::BeginDisabled(!iv->lock_size());
-          Indent();
-            changed |= ro::RoCheckbox("Placement libre des items", &iv->free_layout());
-            SameLine(); HelpMarker(
-                "Glisse un item sur une case vide pour l'y fixer ; sur une case "
-                "occupée, les deux s'échangent. Les items sans case attribuée "
-                "remplissent les trous restants, donc un nouvel objet ramassé ne "
-                "bouscule plus ta disposition.\n\n"
-                "L'onglet « Tout » n'est PAS concerné : il mélange les catégories, "
-                "donc une case n'y désigne pas le même emplacement que dans "
-                "l'onglet d'origine de l'item. Il garde le remplissage automatique.\n\n"
-                "Nécessite « Verrouiller la taille » : les cases sont repérées par "
-                "un index absolu, qu'un changement de largeur décalerait.");
-          Unindent();
-          ImGui::EndDisabled();
-
-          ImGui::EndDisabled();
-          if (changed) SaveSettings();
+          if (iv->DrawSettings()) SaveSettings();
         } else {
-          GrayText("(plugin indisponible)");
+          GrayText(kPluginUnavailable);
         }
       }
       PopItemWidth();
