@@ -9,6 +9,7 @@
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
+#include "ui/skin_panel.h"
 
 // Types COMPLETS des plugins pilotés par les 11 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
@@ -364,58 +365,10 @@ void MoonlightUi::DrawInterfacePanel() {
       }
 
       // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────
+      // Seule section qui ne pilote PAS un plugin : elle règle le toolkit, donc
+      // elle vit dans ui/skin_panel.cc. Ici on ne fait que l'afficher.
       if (iface_nav_ == kIfaceSkin) {
-        bool changed = false;
-        bool font_on = ro::IsFontEnabled();
-        if (ro::RoCheckbox("Police Malgun (UI)", &font_on)) {
-          ro::SetFontEnabled(font_on);
-          changed = true;
-        }
-        SameLine(); HelpMarker(
-            "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\n"
-            "OFF : police intégrée d'ImGui (ProggyClean).");
-        // (Le skin RO n'est plus optionnel : c'est l'habillage standard des
-        // fenêtres ImGui Bourgeon. Seuls ses réglages restent configurables.)
-        changed |= ro::ShowRoSkinSettings();
-
-        // ── Presets : jeux de couleurs sauvegardés ────────────────────────
-        SeparatorText("Presets");
-        const int npreset = static_cast<int>(g_ro_presets.size());
-        const bool valid_sel = g_ro_preset_sel >= 0 && g_ro_preset_sel < npreset;
-        const char* preview = valid_sel ? g_ro_presets[g_ro_preset_sel].name.c_str()
-                                        : "(choisir)";
-        if (ro::RoBeginCombo("##ro_preset", preview)) {
-          for (int i = 0; i < npreset; ++i)
-            if (ImGui::Selectable(g_ro_presets[i].name.c_str(), g_ro_preset_sel == i))
-              g_ro_preset_sel = i;
-          ro::RoEndCombo();
-        }
-        SameLine();
-        if (ro::RoButton("Appliquer") && valid_sel) {
-          ro::SkinConfig() = g_ro_presets[g_ro_preset_sel].cfg;
-          changed = true;
-        }
-        SameLine();
-        if (ro::RoButton("Supprimer") && valid_sel) {
-          g_ro_presets.erase(g_ro_presets.begin() + g_ro_preset_sel);
-          g_ro_preset_sel = -1;
-          changed = true;
-        }
-        static char preset_name[32] = "";
-        ImGui::InputText("##ro_preset_name", preset_name, sizeof(preset_name));
-        SameLine();
-        if (ro::RoButton("Sauvegarder") && preset_name[0]) {
-          bool found = false;
-          for (auto& p : g_ro_presets)
-            if (p.name == preset_name) { p.cfg = ro::SkinConfig(); found = true; break; }
-          if (!found) g_ro_presets.push_back({preset_name, ro::SkinConfig()});
-          changed = true;
-          preset_name[0] = '\0';
-        }
-        SameLine(); HelpMarker(
-          "Sauvegarde les couleurs/luminosité/opacité actuelles sous un nom.\n"
-          "« Appliquer » recharge un préréglage ; on peut se faire plusieurs thèmes.");
-        if (changed) SaveSettings();
+        if (ro::DrawSkinPanel()) SaveSettings();
       }
 
       // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────

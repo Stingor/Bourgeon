@@ -44,15 +44,9 @@ inline constexpr const char* kPluginUnavailable = "(plugin indisponible)";
 // l'item survolé en un clic. Défini dans item_desc_probe.cc.
 extern uint32_t g_last_viewed_item;
 
-// Presets de skin RO nommés, chargés du yaml. Partagés entre LoadSettings/
-// SaveSettings (moonlight_ui.cc) et le panneau « Skin RO » (panel_interface.cc).
-// Définis dans moonlight_ui.cc.
-struct RoPreset {
-  std::string name;
-  ro::RoSkinConfig cfg;
-};
-extern std::vector<RoPreset> g_ro_presets;
-extern int g_ro_preset_sel;
+// (Les presets de skin RO ont déménagé vers ui/skin_panel.h : ro::SkinPreset,
+// ro::SkinPresets(), ro::SkinPresetSelection(). Ce sont des données du TOOLKIT ;
+// moonlight_ui n'en garde que la persistance yaml.)
 
 namespace moonlight_ui {
 

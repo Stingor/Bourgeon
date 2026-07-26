@@ -127,6 +127,8 @@ set(BOURGEON_FILES
 	"ui/icon_cache.h"
 	"ui/color_codec.cc"
 	"ui/color_codec.h"
+	"ui/skin_panel.cc"
+	"ui/skin_panel.h"
 
 	# Ragnarok
 	"ragnarok/uiwnd.h"

@@ -17,6 +17,7 @@
 #include "plugins/item_desc_tweaks.h"
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
+#include "ui/skin_panel.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
 #include "plugins/basic_info.h"
@@ -54,13 +55,6 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
-
-// ── Presets de skin RO (jeux de couleurs nommés, sauvegardés dans le yaml) ──────
-// Presets de skin RO : le TYPE et les deux globales sont déclarés dans
-// moonlight_ui/internal.h — le panneau « Skin RO » (panel_interface.cc) les lit,
-// LoadSettings/SaveSettings les écrivent. Définis ici.
-std::vector<RoPreset> g_ro_presets;
-int g_ro_preset_sel = -1;
 
 namespace {
 
@@ -481,59 +475,20 @@ void MoonlightUi::LoadSettings() {
     // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
     // ancienne valeur false dans le yaml est simplement ignorée.)
     ReadSkinCfg(ui, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
-    g_ro_presets.clear();
+    auto& skin_presets = ro::SkinPresets();
+    skin_presets.clear();
     if (const YAML::Node ps = ui["ro_skin_presets"]) {
       for (auto it = ps.begin(); it != ps.end(); ++it) {
-        RoPreset p;
-        p.name = (*it)["name"].as<std::string>("");
-        if (p.name.empty()) continue;
-        ReadSkinCfg(*it, p.cfg, "", /*with_rounding=*/false);
-        g_ro_presets.push_back(std::move(p));
+        ro::SkinPreset preset;
+        preset.name = (*it)["name"].as<std::string>("");
+        if (preset.name.empty()) continue;
+        ReadSkinCfg(*it, preset.cfg, "", /*with_rounding=*/false);
+        skin_presets.push_back(std::move(preset));
       }
     }
-    // Starter set au 1er lancement (aucun preset sauvegardé) : donne des thèmes
-    // de départ que les joueurs peuvent Appliquer puis modifier.
-    if (g_ro_presets.empty()) {
-      auto setc = [](float* c, int r, int g, int b) {
-        c[0] = r / 255.f; c[1] = g / 255.f; c[2] = b / 255.f; c[3] = 1.f;
-      };
-      g_ro_presets.push_back({"RO Classique", ro::RoSkinConfig{}});  // défauts natifs
-      {
-        ro::RoSkinConfig d;
-        d.title_brightness = 0.90f;
-        setc(d.body_col, 44, 46, 54);
-        setc(d.border_col, 90, 94, 110);
-        setc(d.body_text, 226, 228, 235);
-        setc(d.title_text, 255, 255, 255);
-        setc(d.tab_col, 90, 120, 190);
-        setc(d.tab_inact, 70, 74, 86);
-        setc(d.input_col, 64, 66, 76);
-        setc(d.header_col, 58, 60, 70);
-        setc(d.slot_col, 64, 66, 76);
-        setc(d.doll_col, 54, 56, 66);
-        setc(d.card_col, 54, 56, 66);
-        setc(d.card_head_col, 34, 36, 44);
-        setc(d.card_head_text, 226, 228, 235);
-        g_ro_presets.push_back({"Sombre", d});
-      }
-      {
-        ro::RoSkinConfig d;
-        setc(d.body_col, 244, 236, 218);
-        setc(d.border_col, 176, 150, 110);
-        setc(d.body_text, 60, 44, 24);
-        setc(d.title_text, 40, 28, 12);
-        setc(d.tab_col, 196, 166, 120);
-        setc(d.tab_inact, 226, 214, 190);
-        setc(d.input_col, 232, 222, 200);
-        setc(d.header_col, 224, 210, 184);
-        setc(d.slot_col, 232, 222, 200);
-        setc(d.doll_col, 240, 232, 214);
-        setc(d.card_col, 250, 244, 228);
-        setc(d.card_head_col, 150, 120, 80);
-        setc(d.card_head_text, 250, 244, 230);
-        g_ro_presets.push_back({"Sepia", d});
-      }
-    }
+    // Thèmes de départ si le yaml n'en portait aucun (1er lancement) : le
+    // toolkit les fournit, il n'y a rien de spécifique à moonlight_ui dedans.
+    ro::EnsureDefaultSkinPresets();
     if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
       iv->imgui_enabled_ = ui["inventory_imgui"].as<bool>(iv->imgui_enabled_);
       iv->show_filter()   = ui["inventory_filter"].as<bool>(iv->show_filter());
@@ -1047,9 +1002,9 @@ void MoonlightUi::WriteSettingsFile() {
     out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
     EmitSkinCfg(out, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
     out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
-    for (const auto& p : g_ro_presets) {
-      out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << p.name;
-      EmitSkinCfg(out, p.cfg, "", /*with_rounding=*/false);
+    for (const auto& preset : ro::SkinPresets()) {
+      out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << preset.name;
+      EmitSkinCfg(out, preset.cfg, "", /*with_rounding=*/false);
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;
