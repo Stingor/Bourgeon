@@ -1464,12 +1464,37 @@ void MoonlightUi::WriteSettingsFile() {
   }
   settings_root["moonlight_ui"] = emitted_doc["moonlight_ui"];
 
-  std::ofstream f(path);
-  if (!f) {
-    LogError("[MoonlightUi] failed to write {}", path);
-    return;
+  // Écriture ATOMIQUE : on remplit un fichier temporaire voisin, on le ferme (donc
+  // on le vide sur disque), puis on le déplace PAR-DESSUS la cible. MoveFileEx avec
+  // MOVEFILE_REPLACE_EXISTING est atomique sur un même volume — et le .tmp est dans
+  // le même dossier, donc c'est bien le cas. À aucun instant bourgeon_settings.yaml
+  // n'existe à moitié écrit.
+  // Ce n'est pas de la prudence gratuite : le fichier porte AUSSI les sections
+  // auto_login, char_select et moonlight_auth (cf. plus haut). Une écriture
+  // tronquée par un crash, une coupure ou un disque plein n'emporterait donc pas
+  // seulement nos réglages, mais les identifiants d'auto-login du joueur.
+  const std::string tmp_path = path + ".tmp";
+  {
+    std::ofstream f(tmp_path, std::ios::trunc);
+    if (!f) {
+      LogError("[MoonlightUi] failed to open {}", tmp_path);
+      return;
+    }
+    f << settings_root;
+    f.flush();
+    if (!f) {
+      // Disque plein ou erreur d'écriture : on garde le fichier précédent INTACT.
+      LogError("[MoonlightUi] write failed for {}, keeping previous settings", tmp_path);
+      f.close();
+      DeleteFileA(tmp_path.c_str());
+      return;
+    }
+  }  // fermeture du flux (donc flush complet) AVANT le remplacement
+  if (!MoveFileExA(tmp_path.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    LogError("[MoonlightUi] failed to replace {} (GetLastError={})", path,
+             GetLastError());
+    DeleteFileA(tmp_path.c_str());
   }
-  f << settings_root;
   // LogInfo("[MoonlightUi] saved chat backgrounds to {}", path);
 }
 
