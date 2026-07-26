@@ -1,39 +1,39 @@
 #pragma once
 
 // ── Cache d'icônes d'item ────────────────────────────────────────────────────
-// Charge l'icône d'un item par son nameid via le TexMgr natif, la convertit en
-// texture ImGui (magenta -> transparent) et la garde en cache.
+// Mémorise l'icône d'un item par nameid. Le CHARGEMENT lui-même appartient à
+// ui/game_texture.h — ici il n'y a que la construction du chemin depuis le
+// nameid, et le cache.
 //
-// Ce code existait à l'IDENTIQUE dans six plugins — storage, inventaire,
-// cash shop, boutique NPC, échange, dialogue NPC — chacun avec sa copie des
-// cinq adresses natives, de la fonction SEH qui lit les pixels, de la boucle de
-// colorkey et du garde d'epoch de device. Six endroits à corriger pour un seul
-// bug, et six caches distincts pour les mêmes icônes : ouvrir l'inventaire puis
-// le storage chargeait deux fois les mêmes textures.
+// Ce code existait à l'identique dans sept plugins — storage, inventaire,
+// cash shop, boutique NPC, échange, dialogue NPC, feuille de perso — chacun avec
+// sa copie des adresses natives, du chargeur et du garde d'epoch de device. Sept
+// caches distincts pour les mêmes icônes : ouvrir l'inventaire puis le storage
+// chargeait deux fois les mêmes textures.
 //
-// ⚠ Toute texture rendue ici vit en D3DPOOL_DEFAULT : elle MEURT à un reset de
-// device (ALT-TAB en plein écran). Le cache s'en occupe seul, via
-// Overlay_DeviceEpoch() — un appelant n'a rien à vider. Ne jamais conserver un
-// IconTex d'une frame à l'autre : le redemander est gratuit sur un hit.
+// ⚠ Ne jamais conserver un IconTex d'une frame à l'autre : les textures meurent
+// à un reset de device, et le cache s'en occupe seul (Overlay_DeviceEpoch). Le
+// redemander à chaque frame est gratuit sur un hit.
 
 #include <cstdint>
 
+#include "ui/game_texture.h"
+
 namespace ro {
 
-// Texture ImGui d'une icône, avec ses dimensions natives (pour garder le ratio).
-// `tex` nul = icône introuvable ; c'est un résultat mémorisé, pas une erreur à
-// réessayer chaque frame.
-struct IconTex {
-  void* tex = nullptr;
-  int   w   = 0;
-  int   h   = 0;
-};
+// Une icône est une texture du jeu comme une autre. Le nom reste : les appelants
+// manipulent des icônes, et `IconTex ic = ItemIcon(...)` se lit mieux que
+// `GameTexture`.
+using IconTex = GameTexture;
 
-// Icône de l'item `nameid`. `identified` = 0 donne l'icône « non identifié »,
-// que le client construit sous un autre chemin — d'où sa présence dans la CLÉ du
-// cache et pas seulement dans l'appel. Les copies précédentes ne mémorisaient
-// que le nameid : le premier état vu figeait l'icône pour tous les autres, et un
-// item non identifié gardait son icône terne une fois identifié.
+// Icône de l'item `nameid`. `identified` = 0 donne l'icône « non identifié », que
+// le client construit sous un autre chemin — d'où sa présence dans la CLÉ du
+// cache et pas seulement dans l'appel. Les copies précédentes ne mémorisaient que
+// le nameid : le premier état rencontré figeait l'icône pour tous les autres, et
+// un item non identifié gardait son icône terne une fois identifié.
+//
+// `tex` nul = icône introuvable ; c'est un résultat MÉMORISÉ, pas une erreur à
+// réessayer chaque frame.
 IconTex ItemIcon(uint32_t nameid, int identified = 1);
 
 }  // namespace ro

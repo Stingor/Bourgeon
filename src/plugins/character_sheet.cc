@@ -1,4 +1,5 @@
 #include "plugins/character_sheet.h"
+#include "ui/game_texture.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h) — cache partagé. Les caches
 // de skill et d'emblème restent locaux : chemins et clés différents.
@@ -148,17 +149,12 @@ using EnsureLoaded_t = char (__thiscall*)(void*, int);
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 
 //  Icone d'item (item\<resname>.bmp)
-constexpr uintptr_t kTexMgr = 0x00a90350, kMakeKey = 0x00a9f030, kLoadTex = 0x00a8d4a0;
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 // Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
 // "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar_tweaks).
 constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;  // char* GetSkillIdName(int) __cdecl
 using GetSkillIdNameLua_t = char*(__cdecl*)(int);
 const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
-using TexMgr_t  = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 
 template <typename Fn>
 inline Fn Vf(void* self, int off) {
@@ -468,24 +464,6 @@ const char* ItemName(uint32_t id) {
   return (g_name_cache[id] = buf).c_str();
 }
 
-struct RawTex { const uint8_t* bgra; int w; int h; };
-bool GetRawTex(const char* path, RawTex* out) {
-  __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
-    if (!t) return false;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
 // ── Icône de skill (case compagnon) ──────────────────────────────────────────
 std::unordered_map<uint32_t, ro::IconTex> g_skill_icon_cache;
@@ -504,16 +482,7 @@ bool BuildSkillIconPathSafe(int skillId, char* out, int n) {
 ro::IconTex LoadSkillIcon(int skillId) {
   char path[192];
   if (!BuildSkillIconPathSafe(skillId, path, sizeof(path))) return {};
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
+  return ro::TextureFromGameFile(path);
 }
 ro::IconTex ResolveSkillIcon(int skillId) {
   if (skillId <= 0) return {};

@@ -1,4 +1,5 @@
 #include "plugins/inventory_viewer.h"
+#include "ui/game_texture.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
@@ -102,13 +103,6 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
 }
 
 // Icône d'item : BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc).
-constexpr uintptr_t kTexMgr  = 0x00a90350;
-constexpr uintptr_t kMakeKey = 0x00a9f030;
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using TexMgr_t  = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateur milliers
 constexpr uintptr_t kFmtComma = 0x00a948d0;
 
@@ -519,24 +513,6 @@ void CloseInventory() {
 }
 
 
-struct RawTex { const uint8_t* bgra; int w; int h; };
-bool GetRawTex(const char* path, RawTex* out) {
-  __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
-    if (!t) return false;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
 
 
@@ -812,7 +788,7 @@ constexpr uintptr_t kBtnbarPath     = 0x010357b8;  // "유저인터페이스\bas
 constexpr uintptr_t kIconWeightPath = 0x0103db00;  // "유저인터페이스\inventory\icon_weight.bmp"
 constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // "유저인터페이스\inventory\icon_num.bmp"
 
-struct BarTex { void* tex = nullptr; int w = 0; int h = 0; };
+using BarTex = ro::GameTexture;  // (même forme ; le chargeur est partagé)
 BarTex g_bar[3];       // btnbar 3-slice : 0=left, 1=mid, 2=right
 BarTex g_tile;         // itemwin_mid.bmp : fond de tuile d'item (32px)
 BarTex g_tile_lock;    // itemwin_mid_lock.bmp : fond quand deal-lock actif sur Favoris
@@ -825,19 +801,6 @@ BarTex g_btn_deal[2];  // bt_itemDeal_lock [0=off, 1=on/verrouillé (anti-vente 
 BarTex g_btn_sort[2];  // bt_sort [0=off (_off.bmp), 1=on (.bmp) = vue triée]
 bool   g_assets_tried = false;
 
-// Charge un .bmp (chemin CP949) en texture ImGui (colorkey magenta -> alpha 0).
-BarTex LoadTexByPath(const char* path) {
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int p = 0; p < rt.w * rt.h; ++p) {
-    const uint8_t b = rt.bgra[p * 4], g = rt.bgra[p * 4 + 1], r = rt.bgra[p * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[p * 4] = b; argb[p * 4 + 1] = g; argb[p * 4 + 2] = r;
-    argb[p * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
 
 // Construit `<préfixe basic_interface\> + <file>` depuis la string exe du btnbar.
 void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
@@ -867,41 +830,41 @@ void LoadFooterAssets() {
   const char* names[3] = {"btnbar_left3.bmp", "btnbar_mid3.bmp", "btnbar_right3.bmp"};
   for (int i = 0; i < 3; ++i) {
     BasicInterfacePath(names[i], path, sizeof(path));
-    g_bar[i] = LoadTexByPath(path);
+    g_bar[i] = ro::TextureFromGameFile(path);
   }
   BasicInterfacePath("itemwin_mid.bmp", path, sizeof(path));
-  g_tile = LoadTexByPath(path);
+  g_tile = ro::TextureFromGameFile(path);
   // Variante « verrouillée » du fond de tuile (onglet Favoris + deal-lock actif) : le
   // natif remplace itemwin_mid par itemwin_mid_lock (\inventory\, RE UIInventoryWnd_DrawContent).
   InventoryPath("itemwin_mid_lock.bmp", path, sizeof(path));
-  g_tile_lock = LoadTexByPath(path);
-  g_ico_weight = LoadTexByPath(reinterpret_cast<const char*>(kIconWeightPath));
-  g_ico_num    = LoadTexByPath(reinterpret_cast<const char*>(kIconNumPath));
+  g_tile_lock = ro::TextureFromGameFile(path);
+  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconWeightPath));
+  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconNumPath));
   // Onglets images (basic_interface\<img>1.bmp actif / <img>2.bmp inactif).
   for (int c = 0; c < kNumCats; ++c) {
     const char* base = kCats[c].img;
     if (!base) continue;
     char nm[48];
     std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = LoadTexByPath(path);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = LoadTexByPath(path);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
     // Jeu HORIZONTAL : même nom avec un « h » après « tab » (tab_use -> tabh_use).
     char hbase[40];
     std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute "tab"
     std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = LoadTexByPath(path);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = LoadTexByPath(path);
+    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
   }
   // Boutons footer natifs (\inventory\..., préfixe CP949 via InventoryPath). idx1 =
   // état ACTIF (verrouillé / trié). Noms exacts = strings exe (RE 2026-07-09).
-  InventoryPath("item_drop_lock_off.bmp", path, sizeof(path)); g_btn_drop[0] = LoadTexByPath(path);
-  InventoryPath("item_drop_lock_on.bmp",  path, sizeof(path)); g_btn_drop[1] = LoadTexByPath(path);
-  InventoryPath("bt_itemDeal_lock_off.bmp", path, sizeof(path)); g_btn_deal[0] = LoadTexByPath(path);
-  InventoryPath("bt_itemdeal_lock_on.bmp",  path, sizeof(path)); g_btn_deal[1] = LoadTexByPath(path);
-  InventoryPath("bt_sort_off.bmp", path, sizeof(path)); g_btn_sort[0] = LoadTexByPath(path);
-  InventoryPath("bt_sort.bmp",     path, sizeof(path)); g_btn_sort[1] = LoadTexByPath(path);
+  InventoryPath("item_drop_lock_off.bmp", path, sizeof(path)); g_btn_drop[0] = ro::TextureFromGameFile(path);
+  InventoryPath("item_drop_lock_on.bmp",  path, sizeof(path)); g_btn_drop[1] = ro::TextureFromGameFile(path);
+  InventoryPath("bt_itemDeal_lock_off.bmp", path, sizeof(path)); g_btn_deal[0] = ro::TextureFromGameFile(path);
+  InventoryPath("bt_itemdeal_lock_on.bmp",  path, sizeof(path)); g_btn_deal[1] = ro::TextureFromGameFile(path);
+  InventoryPath("bt_sort_off.bmp", path, sizeof(path)); g_btn_sort[0] = ro::TextureFromGameFile(path);
+  InventoryPath("bt_sort.bmp",     path, sizeof(path)); g_btn_sort[1] = ro::TextureFromGameFile(path);
 }
 
 // Hauteur de la barre = hauteur du morceau milieu (repli 22 px si non chargé).
