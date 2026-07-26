@@ -1327,6 +1327,33 @@ bool InventoryViewer::TradeDraggedItem() {
 // chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
 
+// ── Verrou « description en vol » (anti-flicker de l'aperçu au survol) ────────
+// Armé au moment où l'utilisateur DEMANDE une description (menu contextuel ou
+// Ctrl+clic droit) : la fenêtre de description met quelques frames à apparaître,
+// et pendant ce trou le curseur est de nouveau sur la case -> l'aperçu au survol
+// se rouvrait puis disparaissait (flicker). Le verrou tient jusqu'au prochain
+// VRAI mouvement du curseur (le geste souris/menu est alors terminé), avec un
+// garde-fou de temps au cas où la fenêtre n'arriverait jamais.
+void InventoryViewer::MarkDescPending() {
+  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+  desc_pending_ = true;
+  desc_pending_x_ = mouse_pos.x;
+  desc_pending_y_ = mouse_pos.y;
+  desc_pending_tick_ = GetTickCount();
+}
+
+bool InventoryViewer::DescPendingBlocksHover() {
+  if (!desc_pending_) return false;
+  constexpr float kMoveThreshold = 6.0f;   // px : ignore le micro-jitter de la souris
+  constexpr uint32_t kMaxHoldMs = 1500;    // garde-fou : jamais bloqué indéfiniment
+  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+  const bool moved = std::fabs(mouse_pos.x - desc_pending_x_) +
+                     std::fabs(mouse_pos.y - desc_pending_y_) > kMoveThreshold;
+  if (moved || GetTickCount() - desc_pending_tick_ > kMaxHoldMs)
+    desc_pending_ = false;
+  return desc_pending_;
+}
+
 // ── Fenêtre de sertissage de cartes (remplace le popup natif id 0x4A) ─────────
 // On ne rejoue PAS le protocole : le popup natif est la source de vérité (il a été
 // peuplé par le handler de ZC 0x017B avec la liste que le SERVEUR a jugée
@@ -1960,7 +1987,7 @@ void InventoryViewer::OnRenderUI() {
         // est dessiné après la fenêtre (cf. fin de OnRenderUI) et REMPLACE le tooltip
         // texte. Pas pendant un glisser : l'aperçu masquerait la cible du drop.
         if (show_desc_tooltip_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-            ImGui::GetDragDropPayload() == nullptr) {
+            ImGui::GetDragDropPayload() == nullptr && !DescPendingBlocksHover()) {
           hover_desc_id_ = it.id;
           hover_desc_idx_ = idx;
         } else if (!show_desc_tooltip_) {
@@ -1983,6 +2010,7 @@ void InventoryViewer::OnRenderUI() {
         PostItemLinkToChat(it.index);  // Shift+clic G : lien item -> input chat focus
       if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
         if (mods.KeyCtrl) {
+          MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
         } else if (mods.KeyShift) {
           SendFavoriteToggle(it.index, it.favorite != 0);
@@ -2018,6 +2046,9 @@ void InventoryViewer::OnRenderUI() {
         ImGui::TextDisabled("%s", it.name[0] ? it.name : "(?)");
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
+          // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
+          // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
+          MarkDescPending();
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
         }
         // Une carte (type 6) n'est ni « utilisée » ni « équipée » : le double-clic

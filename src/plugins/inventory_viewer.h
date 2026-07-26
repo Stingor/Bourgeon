@@ -222,5 +222,20 @@ class InventoryViewer : public Plugin {
   // dessiné APRÈS la fenêtre, en tooltip (cf. storage_tweaks).
   uint32_t hover_desc_id_ = 0;
   int      hover_desc_idx_ = -1;
+
+  // ── Verrou « description en vol » (anti-flicker) ────────────────────────────
+  // Le menu contextuel masque l'aperçu au survol tant qu'il est ouvert. Au clic
+  // sur « Description » le menu se ferme AVANT que la fenêtre de description
+  // n'apparaisse : le curseur retombe sur la case et l'aperçu se rouvrait pour
+  // quelques frames -> flicker. On le bloque donc dès la DEMANDE de description,
+  // jusqu'à ce que le curseur bouge vraiment (le geste est fini), avec un
+  // garde-fou de temps si la fenêtre n'arrive jamais.
+  bool     desc_pending_ = false;
+  float    desc_pending_x_ = 0.0f, desc_pending_y_ = 0.0f;
+  uint32_t desc_pending_tick_ = 0;
+  // Arme le verrou (à appeler juste avant/après OpenItemDesc).
+  void MarkDescPending();
+  // Met à jour le verrou et renvoie true si l'aperçu doit rester masqué.
+  bool DescPendingBlocksHover();
   Item items_[kMaxItems];
 };
