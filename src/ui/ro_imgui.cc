@@ -13,7 +13,7 @@
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
-#include "plugins/moonlight_ui.h"  // SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
+#include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
 
 namespace ro {
 namespace {

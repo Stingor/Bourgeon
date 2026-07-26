@@ -1789,106 +1789,10 @@ void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
   Bourgeon::Instance().SendPacket(buf.data(), total);
 }
 
-// Helper to display a little (?) mark which shows a tooltip when hovered.
-// In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
-void HelpMarker(const char* desc) {
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
-}
-
-// SliderFloat/SliderInt variants that ALSO adjust on mouse-wheel while hovered
-// (fine-tuning without grabbing the handle). SetItemKeyOwner(MouseWheelY) claims
-// the wheel so the settings window doesn't scroll at the same time. Step defaults
-// to 0.01 (float) / 1 (int).
-// Shift+wheel uses a larger step (0.10 / 10) for faster adjustment.
-bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt, float step) {
-  // Rendu = scrollbar horizontale RO (cf. ro::RoSliderFloat) ; ses flèches ajustent
-  // au même pas que la molette ci-dessous.
-  bool changed = ro::RoSliderFloat(label, v, lo, hi, fmt, step,
-                                   ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
-  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
-    const float w = ImGui::GetIO().MouseWheel;
-    if (w != 0.0f) {
-      if (step <= 0.0f) step = ImGui::GetIO().KeyShift ? 0.10f : 0.01f;
-      float nv = *v + w * step;
-      if (nv < lo) nv = lo;
-      if (nv > hi) nv = hi;
-      if (nv != *v) { *v = nv; changed = true; }
-    }
-  }
-  return changed;
-}
-
-bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
-  bool changed = ro::RoSliderInt(label, v, lo, hi, fmt, step,
-                                 ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
-  if (ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
-    const float w = ImGui::GetIO().MouseWheel;
-    if (w != 0.0f) {
-      if (step <= 0) step = ImGui::GetIO().KeyShift ? 10 : 1;  // unit precision by default ("à l'unité près")
-      int nv = *v + (w > 0.0f ? step : -step);
-      if (nv < lo) nv = lo;
-      if (nv > hi) nv = hi;
-      if (nv != *v) { *v = nv; changed = true; }
-    }
-  }
-  return changed;
-}
-
-// Make the UI compact because there are so many fields
-static void PushStyleCompact()
-{
-    ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, (float)(int)(style.FramePadding.y * 0.60f)));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x, (float)(int)(style.ItemSpacing.y * 0.60f)));
-}
-
-// Restore the default UI style after PushStyleCompact()
-static void PopStyleCompact()
-{
-    ImGui::PopStyleVar(2);
-}
-
-namespace {
-
-// A full-screen UI (world map = window id 0x8c) replaces the in-game HUD; hide
-// the alignment grid while it is open. (Mirrors BasicInfoTweaks/MenuIconTweaks.)
-bool HudReplaced() {
-  using FindWindowFn = void* (__thiscall*)(void*, int);
-  return reinterpret_cast<FindWindowFn>(0x00a47b90)(
-             reinterpret_cast<void*>(0x0131f4e8), 0x8c) != nullptr;
-}
-
-}  // namespace
-
-void AlignGrid::Draw() const {
-  const ImVec2 ds = ImGui::GetIO().DisplaySize;
-  const float step = static_cast<float>(cell());
-  ImDrawList* dl = ImGui::GetBackgroundDrawList();  // over game, under windows
-  const ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(color[0], color[1], color[2], color[3]));
-  // Anchor the grid on the screen center: offset the first line so a grid line
-  // falls exactly on the centre, keeping the mesh symmetric left/right and
-  // top/bottom (the bright centre cross then lands right on a line).
-  const float ox = std::fmod(ds.x * 0.5f, step);
-  const float oy = std::fmod(ds.y * 0.5f, step);
-  for (float x = ox; x <= ds.x; x += step)
-    dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, ds.y), col);
-  for (float y = oy; y <= ds.y; y += step)
-    dl->AddLine(ImVec2(0.0f, y), ImVec2(ds.x, y), col);
-  // Brighter center cross for quick centering.
-  float ca = color[3] * 2.5f;
-  if (ca > 1.0f) ca = 1.0f;
-  const ImU32 cc = ImGui::ColorConvertFloat4ToU32(ImVec4(color[0], color[1], color[2], ca));
-  dl->AddLine(ImVec2(ds.x * 0.5f, 0.0f), ImVec2(ds.x * 0.5f, ds.y), cc, 1.5f);
-  dl->AddLine(ImVec2(0.0f, ds.y * 0.5f), ImVec2(ds.x, ds.y * 0.5f), cc, 1.5f);
-}
+// HelpMarker, WheelSliderFloat/Int, PushStyleCompact/PopStyleCompact ont été
+// déplacés dans ui/ro_widgets.cc ; AlignGrid::Draw et HudReplaced dans
+// ui/align_grid.cc — ce sont des widgets d'usage général, pas du panneau de
+// réglages. Ce fichier les consomme via les en-têtes correspondants.
 
 // Ouvre le panneau directement sur une section d'« Interface de jeu ». Ne dessine
 // rien : pose l'état que le prochain OnRenderUI consomme (déplier la fenêtre +
@@ -1914,7 +1818,7 @@ void MoonlightUi::OnRenderUI() {
   // Global alignment grid (shared HUD overlay). Drawn here on the background
   // list so it shows even with the bars hidden; suppressed while a full-screen
   // UI (world map) replaces the HUD, matching the bars/icons.
-  if (grid_.show && !HudReplaced()) grid_.Draw();
+  if (grid_.show && !ro::HudReplaced()) grid_.Draw();
 
   // SPR Effect Lab : reconcile spawn + overlay au centre (foreground drawlist, indépendant
   // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé.

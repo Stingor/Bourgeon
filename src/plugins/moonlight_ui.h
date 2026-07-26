@@ -9,47 +9,14 @@
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/plugin.h"
 
-// Full-screen HUD alignment grid — a shared overlay for lining up any movable
-// ImGui widget (EXP/HP/SP bars, menu icons, …). One instance lives on
-// MoonlightUi; consumers reach it via Bourgeon::Instance().moonlight_ui()->grid_.
-struct AlignGrid {
-  bool  show = false;
-  bool  snap = false;   // snap dragged/resized widgets to grid cells
-  int   size = 32;      // cell size in px (4..128)
-  float color[4] = {1.0f, 1.0f, 1.0f, 0.15f};
-
-  // Cell size clamped to a sane minimum.
-  int cell() const { return size < 4 ? 4 : size; }
-
-  // Snaps one absolute screen coordinate to the nearest visible grid line.
-  // The grid is centred on the screen, so `extent` (the screen size along this
-  // axis, ds.x or ds.y) is needed to locate the lines — it must match Draw()'s
-  // offset or the snap targets and the drawn lines drift apart. Returns v
-  // unchanged when snapping is off, so callers can apply it unconditionally.
-  // Snap a window EDGE (move: its top-left; resize: its bottom-right corner),
-  // never a width/height, or the edge won't land on a line.
-  float SnapAxis(float v, float extent) const {
-    if (!snap) return v;
-    const float g   = static_cast<float>(cell());
-    const float off = std::fmod(extent * 0.5f, g);  // same anchor as Draw()
-    return off + g * std::floor((v - off) / g + 0.5f);
-  }
-
-  // Draws the grid full-screen on the background draw list (behind all windows).
-  void Draw() const;
-};
-
-// Helper to display a little (?) mark which shows a tooltip when hovered.
-void HelpMarker(const char* desc);
-
-// Vrai si le compte est STAFF : niveau de groupe serveur >= 80 reçu au login
-// (setting id 26, rempli depuis pc_get_group_level(sd) côté moonlight). Gate
-// PUREMENT serveur : tant que le serveur n'envoie pas l'id 26, la fonctionnalité
-// reste masquée. Sert à réserver au staff les fonctionnalités « ESP-like »
-// (p.ex. EntityNamesTweaks). Reste un gate de CONFIANCE côté client — pour une
-// donnée déjà présente sur chaque client (les noms), aucun enforcement serveur
-// n'est possible.
-bool IsStaff();
+// Le toolkit UI générique et le gate staff vivaient ici ; ils sont désormais dans
+// ui/ro_widgets.h, ui/align_grid.h et plugins/staff_gate.h. Ils restent inclus
+// depuis ce header pour que les fichiers qui n'en utilisaient qu'une pièce
+// continuent de compiler — mais un NOUVEAU code doit inclure directement l'en-tête
+// dont il a besoin, et non ce header de plugin.
+#include "plugins/staff_gate.h"
+#include "ui/align_grid.h"
+#include "ui/ro_widgets.h"
 
 // « Tout-ImGui ou tout-natif » : l'inventaire (InventoryViewer::imgui_enabled_),
 // le storage (StorageTweaks::imgui_enabled_) et les barres d'action
@@ -59,86 +26,6 @@ bool IsStaff();
 // plugins pour que SkillBarTweaks::DrawSettings bascule l'ensemble sans inclure
 // les headers des deux autres. Sûre si un plugin manque.
 void SetModernInterface(bool on);
-
-// Helper to display a slider that can be fine-tuned with the mouse wheel
-// one is for floats, one for ints.  Step defaults to 0.01 (float) / 1 (int).
-bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const char* fmt = "%.2f", float step = 0.0f);
-bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt = "%d", int step = 0);
-
-// Imgui wrappers — so plugins don't have to include imgui.h just to use them.
-// These are inline and trivial, so the compiler will optimize them away.
-inline void SameLine(float x = 0.0f, float spacing = -1.0f) {
-    ImGui::SameLine(x, spacing);
-}
-inline void Spacing() {
-    ImGui::Spacing();
-}
-inline void Separator() {
-    ImGui::Separator();
-}
-inline void BulletWrapped(const char* text) {
-    ImGui::Bullet(); ImGui::SameLine(); ImGui::TextWrapped("%s", text);
-}
-inline void TextWrapped(const char* text) {
-    ImGui::TextWrapped("%s", text);
-}
-inline void SeparatorText(const char* text) {
-    ImGui::SeparatorText(text);
-}
-inline void Text(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    ImGui::TextV(fmt, args);
-    va_end(args);
-}
-inline void TextUnformatted(const char* text) {
-    ImGui::TextUnformatted(text);
-}
-inline void GrayText(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    ImGui::TextDisabledV(fmt, args);
-    va_end(args);
-}
-inline void RedText(const char* text) {
-    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", text);
-}
-inline bool CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0) {
-    return ImGui::CollapsingHeader(label, flags);
-}
-inline void Indent(float indent_w = 0.0f) {
-    ImGui::Indent(indent_w);
-}
-inline void Unindent(float indent_w = 0.0f) {
-    ImGui::Unindent(indent_w);
-}
-inline void OpenPopup(const char* str_id) {
-    ImGui::OpenPopup(str_id);
-}
-inline bool BeginPopup(const char* str_id) {
-    return ImGui::BeginPopup(str_id);
-}
-inline bool IsHovered() {
-    return ImGui::IsItemHovered();
-}
-
-inline void Tooltip(const char* text) {
-    if (IsHovered()) ImGui::SetTooltip("%s", text);
-}
-
-inline void PushItemWidth(float item_width) {
-    ImGui::PushItemWidth(item_width);
-}
-inline void PopItemWidth() {
-    ImGui::PopItemWidth();
-}
-inline bool ColorPicker(const char* label, float col[4]) {
-    ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar |
-                                ImGuiColorEditFlags_NoSidePreview |
-                                ImGuiColorEditFlags_NoInputs | 
-                                ImGuiColorEditFlags_NoColorMarkers;
-    return ImGui::ColorEdit4(label, col, flags);
-}
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {

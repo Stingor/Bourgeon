@@ -13,6 +13,7 @@ set(BOURGEON_FILES
 
 	# Plugins (compiled-in, no runtime scripting)
 	"plugins/plugin.h"
+	"plugins/staff_gate.h"
 	"plugins/chat.cc"
 	"plugins/chat.h"
 	"plugins/status_tweaks.cc"
@@ -108,6 +109,10 @@ set(BOURGEON_FILES
 	"ui/ro_imgui.cc"
 	"ui/ro_imgui.h"
 	"ui/ro_skin_blobs.hpp"
+	"ui/ro_widgets.cc"
+	"ui/ro_widgets.h"
+	"ui/align_grid.cc"
+	"ui/align_grid.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"
