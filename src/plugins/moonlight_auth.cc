@@ -430,7 +430,7 @@ void MoonlightAuth::LoadConfig() {
   }
 }
 
-void MoonlightAuth::SavePref() {
+void MoonlightAuth::SavePref(const char* password) {
   // Identifiant web.
   if (remember_) {
     std::ofstream o(RememberPath(), std::ios::trunc);
@@ -440,8 +440,15 @@ void MoonlightAuth::SavePref() {
   }
   // Mot de passe web (DPAPI, opt-in). Jamais l'OTP de jeu — seulement le mot de
   // passe du compte Moonlight, chiffré, lié au compte Windows.
-  if (remember_pw_ && pass_buf_[0] != '\0') {
-    DpapiEncryptToFile(PwPath(), pass_buf_);
+  // ⚠ On lit `password` et NON pass_buf_ : l'unique appelant (HandleAuthResponse)
+  // passe par ApplyAccountList, qui efface pass_buf_ avant de rendre la main. Lire
+  // le membre ici revenait donc toujours à voir un champ vide, à prendre la branche
+  // else et à SUPPRIMER le fichier — « Se souvenir du mot de passe » ne fonctionnait
+  // jamais, et la case revenait décochée au lancement suivant (remember_pw_ est
+  // reconstruit depuis la présence de ce fichier).
+  const char* pw_to_store = password ? password : pass_buf_;
+  if (remember_pw_ && pw_to_store[0] != '\0') {
+    DpapiEncryptToFile(PwPath(), pw_to_store);
   } else {
     DeleteFileA(PwPath().c_str());
   }
@@ -542,24 +549,42 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     }
     // Sinon (vraie (re)connexion / déconnexion) : (ré)arme le formulaire. On
     // n'écrase pas une saisie en cours si on n'est pas déjà en fin de flux.
-    if (state_ == State::kDriveLogin || state_ == State::kDisabled) {
-      accounts_.clear();
-      selected_ = -1;
-      web_ticket_.clear();
-      game_session_.clear();
-      discord_authorize_url_.clear();
-      error_msg_.clear();
-      pass_buf_[0] = '\0';
-      native_fallback_ = false;        // réarme le login moderne à chaque retour
-      drove_moonlight_login_ = false;  // reset le gate du char-select ImGui
-      fired_ = false;                  // réarme le déclencheur de login natif
-      socket_seen_ = false;
-      charsrv_tries_ = 0;
-      charsel_reached_ = false;        // vrai (re)login -> le drive reprend à zéro
-      authenticated_ = false;
-      state_ = State::kWebLogin;
-    }
+    if (state_ == State::kDriveLogin || state_ == State::kDisabled)
+      RearmWebLogin("mode LOGIN sans session vivante");
   }
+}
+
+void MoonlightAuth::RearmWebLogin(const char* reason) {
+  if (!enabled_) return;
+  LogDiag("[MoonlightAuth] réarmement du login web ({}) : état {} -> kWebLogin",
+          reason ? reason : "?", StateName(state_));
+  accounts_.clear();
+  selected_ = -1;
+  web_ticket_.clear();
+  game_session_.clear();
+  discord_authorize_url_.clear();
+  error_msg_.clear();
+  pass_buf_[0] = '\0';
+  // « Se souvenir du mot de passe » coché : on repré-remplit depuis le coffre DPAPI,
+  // comme au lancement (LoadConfig). Sans ça, un retour à l'écran de connexion
+  // obligerait à retaper le mot de passe alors que l'option est active.
+  if (remember_pw_) {
+    const std::string pw = DpapiDecryptFromFile(PwPath());
+    if (!pw.empty()) std::snprintf(pass_buf_, sizeof(pass_buf_), "%s", pw.c_str());
+  }
+  native_fallback_ = false;        // réarme le login moderne à chaque retour
+  drove_moonlight_login_ = false;  // reset le gate du char-select ImGui
+  fired_ = false;                  // réarme le déclencheur de login natif
+  socket_seen_ = false;
+  charsrv_tries_ = 0;
+  charsel_reached_ = false;        // vrai (re)login -> le drive reprend à zéro
+  authenticated_ = false;
+  // Le service-select natif (fenêtre <connection>) est reconstruit avec l'écran de
+  // login : il faut le re-passer, sinon on attendrait un écran déjà validé.
+  login_enter_tick_ = GetTickCount();
+  server_select_done_ = false;
+  svc_kbd_fallback_ = false;
+  state_ = State::kWebLogin;
 }
 
 const char* MoonlightAuth::StateName(State s) {
@@ -1071,8 +1096,15 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
 void MoonlightAuth::HandleAuthResponse(const HttpResult& r) {
   LogDiag("[MoonlightAuth] /auth -> status={} err='{}' body='{}'", r.status,
           r.error, r.body);
-  // mémorise l'identifiant web (jamais le mot de passe / l'OTP)
-  if (ApplyAccountList(r)) SavePref();
+  // Mémorise l'identifiant web et, si l'utilisateur l'a demandé, le mot de passe du
+  // compte Moonlight (chiffré DPAPI) — jamais l'OTP de jeu.
+  // ApplyAccountList efface pass_buf_ dès que l'authentification a réussi (le mot de
+  // passe ne reste pas en mémoire) : on en prend donc une copie AVANT l'appel, sinon
+  // SavePref ne verrait qu'un champ vide. La copie est effacée aussitôt après.
+  char password_entered[sizeof(pass_buf_)];
+  std::snprintf(password_entered, sizeof(password_entered), "%s", pass_buf_);
+  if (ApplyAccountList(r)) SavePref(password_entered);
+  SecureZeroMemory(password_entered, sizeof(password_entered));
 }
 
 void MoonlightAuth::StartDiscordLogin() {

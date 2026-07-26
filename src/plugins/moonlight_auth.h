@@ -59,6 +59,14 @@ class MoonlightAuth : public Plugin {
   // native de bout en bout. Réarmé à chaque retour sur l'écran de login.
   bool DroveMoonlightLogin() const { return drove_moonlight_login_; }
 
+  // Ramène le flux au formulaire de login web (état kWebLogin) et oublie la session
+  // authentifiée. À appeler quand on RETOURNE à l'écran de connexion sans changer de
+  // MODE — c'est le cas du bouton « Revenir au login » du char-select (commande de
+  // mode 10011 : le client reste en CLoginMode, donc OnModeSwitch ne repasse PAS et
+  // le plugin resterait bloqué en kDriveLogin, laissant l'écran de login NATIF).
+  // `reason` sert au diagnostic (bourgeon.log). No-op si le plugin est désactivé.
+  void RearmWebLogin(const char* reason);
+
   // Résultat d'une requête HTTP, publié par le thread worker sous verrou. Public
   // pour que le helper DoPost (moonlight_auth.cc) puisse le nommer.
   struct HttpResult {
@@ -90,7 +98,13 @@ class MoonlightAuth : public Plugin {
   };
 
   void LoadConfig();
-  void SavePref();  // persiste web_user/remember dans le yaml (jamais l'OTP)
+  // Persiste l'identifiant web (fichier dédié) et, si « Se souvenir du mot de passe »
+  // est coché, le mot de passe chiffré DPAPI. Jamais l'OTP de jeu.
+  // `password` : mot de passe à mémoriser. DOIT être fourni par l'appelant quand
+  // pass_buf_ a déjà été effacé — c'est le cas depuis HandleAuthResponse, car
+  // ApplyAccountList vide le champ avant de rendre la main. nullptr = utiliser
+  // pass_buf_ tel quel.
+  void SavePref(const char* password = nullptr);
 
   // Nom lisible d'un état (instrumentation LogDiag des transitions).
   static const char* StateName(State s);
