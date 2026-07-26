@@ -297,4 +297,12 @@ class MoonlightUi : public Plugin {
   // Écrit réellement le fichier. Tout le corps historique de SaveSettings ; n'est
   // plus appelé que par FlushSettings, jamais depuis un widget.
   void WriteSettingsFile();
+
+  // ── Panneaux extraits d'OnRenderUI (dossier plugins/moonlight_ui/) ──────────
+  // Déclarés MEMBRES et non fonctions libres : ils manipulent l'état privé de la
+  // classe (miroirs de réglages serveur, presets alootid…). Les en faire des
+  // fonctions libres aurait imposé de rendre ces membres publics — soit exactement
+  // le défaut que le chantier 8 cherche à supprimer. Leur définition vit dans le
+  // .cc du dossier, pas ici. Voir plugins/moonlight_ui/internal.h.
+  void DrawCommandsPanel();
 };

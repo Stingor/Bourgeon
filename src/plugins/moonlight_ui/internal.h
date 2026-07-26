@@ -16,7 +16,23 @@
 // c'est OnRenderUI qui décide d'appeler SaveSettings() une seule fois. Les
 // panneaux qui ne portent aucun état renvoient void.
 
+// DEUX FORMES selon ce que le panneau touche :
+//  - fonction libre dans `moonlight_ui::` quand il ne lit aucun état de la classe
+//    (charte du serveur) ;
+//  - MÉTHODE MEMBRE de MoonlightUi, déclarée dans moonlight_ui.h et définie ici,
+//    dès qu'il manipule l'état privé (miroirs de réglages serveur, presets…).
+//    L'alternative — fonctions libres prenant MoonlightUi& — aurait imposé de
+//    rendre ces membres publics, soit exactement le défaut que le chantier 8
+//    cherche à supprimer.
+
+#include <cstdint>
+
 class MoonlightUi;
+
+// Dernier item dont la fenêtre de description a été ouverte, capté par le hook
+// ItemDescWndHook (moonlight_ui.cc). Le panneau Autoloots s'en sert pour proposer
+// l'item survolé en un clic. Défini dans moonlight_ui.cc.
+extern uint32_t g_last_viewed_item;
 
 namespace moonlight_ui {
 
@@ -24,3 +40,6 @@ namespace moonlight_ui {
 void DrawRules();
 
 }  // namespace moonlight_ui
+
+// Méthodes membres définies dans ce dossier (déclarées dans moonlight_ui.h) :
+//   MoonlightUi::DrawCommandsPanel()  -> panel_commands.cc
