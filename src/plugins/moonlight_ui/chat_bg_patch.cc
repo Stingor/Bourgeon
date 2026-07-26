@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "plugins/moonlight_ui.h"
+#include "ui/color_codec.h"
 #include "utils/byte_pattern.h"
 #include "utils/log_console.h"
 
@@ -125,7 +126,7 @@ void MoonlightUi::FindChatBgSites() {
   // per-group summary so missing sites are obvious in the log.
   for (int i = 0; i < kChatBgCount; ++i) {
     ChatBgGroup& g = chat_bg_[i];
-    if (!g.instrs.empty()) PickerFromArgb(g.color, *g.instrs.front());
+    if (!g.instrs.empty()) ro::PickerFromArgb(g.color, *g.instrs.front());
     // LogInfo("[MoonlightUi] chat_bg group {} '{}': {} instr site(s), {} heap target(s)",
             // i, g.label, static_cast<int>(g.instrs.size()),
             // static_cast<int>(g.heap.size()));
@@ -163,17 +164,4 @@ void MoonlightUi::PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb) {
   // LogInfo("[MoonlightUi] chat_bg[{}]: recoloured {} live object(s)", g.yaml_key, count);
 }
 
-uint32_t MoonlightUi::ArgbFromPicker(const float c[4]) {
-  const uint32_t r = static_cast<uint32_t>(c[0] * 255.0f + 0.5f) & 0xFF;
-  const uint32_t g = static_cast<uint32_t>(c[1] * 255.0f + 0.5f) & 0xFF;
-  const uint32_t b = static_cast<uint32_t>(c[2] * 255.0f + 0.5f) & 0xFF;
-  const uint32_t a = static_cast<uint32_t>(c[3] * 255.0f + 0.5f) & 0xFF;
-  return (a << 24) | (r << 16) | (g << 8) | b;
-}
-
-void MoonlightUi::PickerFromArgb(float c[4], uint32_t argb) {
-  c[0] = static_cast<float>((argb >> 16) & 0xFF) / 255.0f; // R
-  c[1] = static_cast<float>((argb >>  8) & 0xFF) / 255.0f; // G
-  c[2] = static_cast<float>( argb        & 0xFF) / 255.0f; // B
-  c[3] = static_cast<float>((argb >> 24) & 0xFF) / 255.0f; // A
-}
+// (ArgbFromPicker / PickerFromArgb ont migré vers ui/color_codec.h, namespace ro.)

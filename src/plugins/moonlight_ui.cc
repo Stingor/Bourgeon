@@ -15,6 +15,7 @@
 
 #include "bourgeon.h"
 #include "plugins/item_desc_tweaks.h"
+#include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "plugins/chat.h"
 #include "plugins/discord_relay.h"
@@ -61,34 +62,90 @@ int g_ro_preset_sel = -1;
 
 namespace {
 
-unsigned PackCol(const float* c) {
-  return static_cast<unsigned>(
-      ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3])));
+// ── Couleurs persistées ──────────────────────────────────────────────────────
+// Deux formats coexistent sur disque, hérités et désormais FIGÉS — les unifier
+// invaliderait les bourgeon_settings.yaml déjà chez les joueurs :
+//   • chaîne hex ARGB « AARRGGBB » — chat_bg, dps, expbar, portrait, grid,
+//     skillbar, ground_paint, presets de chat ;
+//   • entier décimal ImU32        — statusicon_*, ro_skin_* et presets de skin.
+// Les quatre fonctions ci-dessous sont le seul endroit du projet qui connaît
+// cette dualité ; ailleurs on nomme l'encodage (cf. ui/color_codec.h).
+
+// Laisse `picker_rgba` INTACT si la clé est absente, vide ou corrompue : la
+// valeur par défaut du plugin survit. Avant, un std::stoul lançait sur une clé
+// corrompue et l'exception remontait jusqu'au catch qui enveloppe TOUT
+// LoadSettings — une seule couleur illisible faisait perdre le reste de la
+// configuration. Rend true si la couleur a été appliquée.
+bool ReadArgbKey(const YAML::Node& ui, const std::string& key, float picker_rgba[4]) {
+  uint32_t argb = 0;
+  if (!ro::ParseHex8(ui[key].as<std::string>(""), &argb)) return false;
+  ro::PickerFromArgb(picker_rgba, argb);
+  return true;
 }
-void UnpackCol(unsigned v, float* c) {
-  ImVec4 f = ImGui::ColorConvertU32ToFloat4(v);
-  c[0] = f.x; c[1] = f.y; c[2] = f.z; c[3] = f.w;
+
+std::string HexArgb(const float picker_rgba[4]) {
+  char hex[16];
+  std::snprintf(hex, sizeof(hex), "%08X", ro::ArgbFromPicker(picker_rgba));
+  return hex;
 }
-ro::RoSkinConfig ReadSkinCfg(const YAML::Node& n) {
-  ro::RoSkinConfig c;
-  c.title_brightness = n["bright"].as<float>(c.title_brightness);
-  c.alpha = n["alpha"].as<float>(c.alpha);
-  if (n["body"]) UnpackCol(n["body"].as<unsigned>(0), c.body_col);
-  if (n["border"]) UnpackCol(n["border"].as<unsigned>(0), c.border_col);
-  if (n["titletx"]) UnpackCol(n["titletx"].as<unsigned>(0), c.title_text);
-  if (n["bodytx"]) UnpackCol(n["bodytx"].as<unsigned>(0), c.body_text);
-  if (n["tab"]) UnpackCol(n["tab"].as<unsigned>(0), c.tab_col);
-  if (n["tabinact"]) UnpackCol(n["tabinact"].as<unsigned>(0), c.tab_inact);
-  if (n["input"]) UnpackCol(n["input"].as<unsigned>(0), c.input_col);
-  if (n["header"]) UnpackCol(n["header"].as<unsigned>(0), c.header_col);
-  if (n["slot"]) UnpackCol(n["slot"].as<unsigned>(0), c.slot_col);
-  if (n["doll"]) UnpackCol(n["doll"].as<unsigned>(0), c.doll_col);
-  if (n["card"]) UnpackCol(n["card"].as<unsigned>(0), c.card_col);
-  if (n["cardhead"]) UnpackCol(n["cardhead"].as<unsigned>(0), c.card_head_col);
-  if (n["cardtx"]) UnpackCol(n["cardtx"].as<unsigned>(0), c.card_head_text);
-  if (n["list"]) UnpackCol(n["list"].as<unsigned>(0), c.list_col);
-  return c;
+
+void WriteArgbKey(YAML::Emitter& out, const std::string& key, const float picker_rgba[4]) {
+  out << YAML::Key << key << YAML::Value << HexArgb(picker_rgba);
 }
+
+// Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
+// épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
+// écriture preset — sans que rien ne garantisse que les quatre listes restent
+// d'accord : ajouter une couleur au skin demandait quatre éditions, en oublier
+// une donnait un réglage qui se perd au relancement sans aucun diagnostic.
+using SkinColorRef = float (ro::RoSkinConfig::*)[4];
+struct SkinColorField {
+  const char* key;      // suffixe ; préfixé « ro_skin_ » hors des presets
+  SkinColorRef member;
+};
+constexpr SkinColorField kSkinColorFields[] = {
+    {"body",     &ro::RoSkinConfig::body_col},
+    {"border",   &ro::RoSkinConfig::border_col},
+    {"titletx",  &ro::RoSkinConfig::title_text},
+    {"bodytx",   &ro::RoSkinConfig::body_text},
+    {"tab",      &ro::RoSkinConfig::tab_col},
+    {"tabinact", &ro::RoSkinConfig::tab_inact},
+    {"input",    &ro::RoSkinConfig::input_col},
+    {"header",   &ro::RoSkinConfig::header_col},
+    {"slot",     &ro::RoSkinConfig::slot_col},
+    {"doll",     &ro::RoSkinConfig::doll_col},
+    {"card",     &ro::RoSkinConfig::card_col},
+    {"cardhead", &ro::RoSkinConfig::card_head_col},
+    {"cardtx",   &ro::RoSkinConfig::card_head_text},
+    {"list",     &ro::RoSkinConfig::list_col},
+};
+
+// `with_rounding` : `rounding` n'a jamais été persisté dans les presets, et l'y
+// ajouter changerait le comportement — appliquer un preset écraserait alors
+// l'arrondi choisi par le joueur. Le paramètre garde aussi l'ordre des clés
+// identique aux deux sites, pour que le premier yaml réécrit ne diffère pas.
+void ReadSkinCfg(const YAML::Node& n, ro::RoSkinConfig& cfg,
+                 const std::string& prefix, bool with_rounding) {
+  cfg.title_brightness = n[prefix + "bright"].as<float>(cfg.title_brightness);
+  if (with_rounding) cfg.rounding = n[prefix + "rounding"].as<float>(cfg.rounding);
+  cfg.alpha = n[prefix + "alpha"].as<float>(cfg.alpha);
+  for (const SkinColorField& f : kSkinColorFields) {
+    const YAML::Node node = n[prefix + f.key];
+    if (node) ro::PickerFromImU32(node.as<unsigned>(0), cfg.*f.member);
+  }
+}
+
+void EmitSkinCfg(YAML::Emitter& out, const ro::RoSkinConfig& cfg,
+                 const std::string& prefix, bool with_rounding) {
+  out << YAML::Key << prefix + "bright" << YAML::Value << cfg.title_brightness;
+  if (with_rounding)
+    out << YAML::Key << prefix + "rounding" << YAML::Value << cfg.rounding;
+  out << YAML::Key << prefix + "alpha" << YAML::Value << cfg.alpha;
+  for (const SkinColorField& f : kSkinColorFields)
+    out << YAML::Key << prefix + f.key << YAML::Value
+        << ro::ImU32FromPicker(cfg.*f.member);
+}
+
 }  // namespace
 
 // Item-link icon injection moved to plugins/chat.cc (ChatTweaks).
@@ -248,24 +305,20 @@ void MoonlightUi::LoadSettings() {
     const YAML::Node ui = root["moonlight_ui"];
     if (!ui) return;
 
+    // Seul site de lecture qui a besoin de l'ENTIER natif et pas seulement du
+    // picker : la couleur est écrite telle quelle dans les instructions patchées
+    // du client. D'où le ParseHex8 explicite plutôt que ReadArgbKey.
     for (ChatBgGroup& g : chat_bg_) {
-      const std::string hex = ui[g.yaml_key].as<std::string>("");
-      if (hex.size() != 8) continue;
-      const uint32_t argb = static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
-      PickerFromArgb(g.color, argb);
+      uint32_t argb = 0;
+      if (!ro::ParseHex8(ui[g.yaml_key].as<std::string>(""), &argb)) continue;
+      ro::PickerFromArgb(g.color, argb);
       if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
-      // LogInfo("[MoonlightUi] loaded {} 0x{:08X}", g.yaml_key, argb);
     }
 
     // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention
     // que les autres couleurs persistées ici.
     spr_lab::ground_paint_enabled() = ui["ground_paint"].as<bool>(false);
-    {
-      const std::string hex = ui["ground_paint_color"].as<std::string>("");
-      if (hex.size() == 8)
-        PickerFromArgb(spr_lab::ground_color(),
-                       static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
-    }
+    ReadArgbKey(ui, "ground_paint_color", spr_lab::ground_color());
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     if (auto* idt = Bourgeon::Instance().item_desc()) {
@@ -301,13 +354,8 @@ void MoonlightUi::LoadSettings() {
       dps->show_ground_dmg_in_chat_ = ui["dps_ground_dmg_chat"].as<bool>(true);
       dps->locked_ = ui["dps_locked"].as<bool>(false);
       dps->bg_alpha_ = ui["dps_bg_alpha"].as<float>(0.90f);
-      auto load_dps_col = [&](const char* key, float c[4]) {
-        const std::string hex = ui[key].as<std::string>("");
-        if (hex.size() == 8)
-          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
-      };
-      load_dps_col("dps_text_color", dps->text_color_);
-      load_dps_col("dps_plot_color", dps->plot_color_);
+      ReadArgbKey(ui, "dps_text_color", dps->text_color_);
+      ReadArgbKey(ui, "dps_plot_color", dps->plot_color_);
       dps->visible_             = ui["dps_visible"].as<bool>(true);
       dps->slot_ms_             = ui["dps_slot_ms"].as<int>(200);
       dps->dps_window_secs_     = ui["dps_window_secs"].as<int>(10);
@@ -322,11 +370,6 @@ void MoonlightUi::LoadSettings() {
       eb->vertical_  = ui["expbar_vertical"].as<bool>(false);
       eb->border_    = ui["expbar_border"].as<bool>(true);
       eb->rounding_  = ui["expbar_rounding"].as<float>(4.0f);
-      auto load_color = [&](const std::string& key, float c[4]) {
-        const std::string hex = ui[key].as<std::string>("");
-        if (hex.size() == 8)
-          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
-      };
       for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
         const std::string p =
             std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
@@ -336,9 +379,9 @@ void MoonlightUi::LoadSettings() {
         b.y = ui[p + "y"].as<int>(b.y);
         b.w = ui[p + "w"].as<int>(b.w);
         b.h = ui[p + "h"].as<int>(b.h);
-        load_color(p + "color", b.fill);
+        ReadArgbKey(ui, p + "color", b.fill);
       }
-      load_color("expbar_bg_color", eb->bg_color_);
+      ReadArgbKey(ui, "expbar_bg_color", eb->bg_color_);
 
       // Status portrait (part of the Basic Info tweaks): per-element layout.
       eb->portrait_visible_         = ui["portrait_visible"].as<bool>(false);
@@ -366,8 +409,8 @@ void MoonlightUi::LoadSettings() {
         e.w        = ui[p + "w"].as<int>(e.w);
         e.h        = ui[p + "h"].as<int>(e.h);
         e.rounding = ui[p + "rounding"].as<float>(e.rounding);
-        load_color(p + "bg", e.bg);
-        load_color(p + "fg", e.fg);
+        ReadArgbKey(ui, p + "bg", e.bg);
+        ReadArgbKey(ui, p + "fg", e.fg);
       }
     }
 
@@ -377,13 +420,8 @@ void MoonlightUi::LoadSettings() {
     grid_.show = ui["grid_show"].as<bool>(ui["expbar_grid_show"].as<bool>(false));
     grid_.snap = ui["grid_snap"].as<bool>(ui["expbar_grid_snap"].as<bool>(false));
     grid_.size = ui["grid_size"].as<int>(ui["expbar_grid_size"].as<int>(32));
-    {
-      std::string hex = ui["grid_color"].as<std::string>("");
-      if (hex.size() != 8) hex = ui["expbar_grid_color"].as<std::string>("");
-      if (hex.size() == 8)
-        PickerFromArgb(grid_.color,
-                       static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
-    }
+    if (!ReadArgbKey(ui, "grid_color", grid_.color))
+      ReadArgbKey(ui, "expbar_grid_color", grid_.color);  // repli sur la clé héritée
 
     // STATUS window saved position (applied by StatusTweaks' msg-handler hook).
     StatusTweaks_SetSavedPos(ui["status_pos_x"].as<int>(INT_MIN),
@@ -423,39 +461,14 @@ void MoonlightUi::LoadSettings() {
     ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
     // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
     // ancienne valeur false dans le yaml est simplement ignorée.)
-    {
-      auto& sc = ro::SkinConfig();
-      sc.title_brightness = ui["ro_skin_bright"].as<float>(sc.title_brightness);
-      sc.rounding = ui["ro_skin_rounding"].as<float>(sc.rounding);
-      sc.alpha = ui["ro_skin_alpha"].as<float>(sc.alpha);
-      auto load_col = [&](const char* key, float* c) {
-        if (ui[key]) {
-          ImVec4 f = ImGui::ColorConvertU32ToFloat4(ui[key].as<unsigned int>(0));
-          c[0] = f.x; c[1] = f.y; c[2] = f.z; c[3] = f.w;
-        }
-      };
-      load_col("ro_skin_body", sc.body_col);
-      load_col("ro_skin_border", sc.border_col);
-      load_col("ro_skin_titletx", sc.title_text);
-      load_col("ro_skin_bodytx", sc.body_text);
-      load_col("ro_skin_tab", sc.tab_col);
-      load_col("ro_skin_tabinact", sc.tab_inact);
-      load_col("ro_skin_input", sc.input_col);
-      load_col("ro_skin_header", sc.header_col);
-      load_col("ro_skin_slot", sc.slot_col);
-      load_col("ro_skin_doll", sc.doll_col);
-      load_col("ro_skin_card", sc.card_col);
-      load_col("ro_skin_cardhead", sc.card_head_col);
-      load_col("ro_skin_cardtx", sc.card_head_text);
-      load_col("ro_skin_list", sc.list_col);
-    }
+    ReadSkinCfg(ui, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
     g_ro_presets.clear();
     if (const YAML::Node ps = ui["ro_skin_presets"]) {
       for (auto it = ps.begin(); it != ps.end(); ++it) {
         RoPreset p;
         p.name = (*it)["name"].as<std::string>("");
         if (p.name.empty()) continue;
-        p.cfg = ReadSkinCfg(*it);
+        ReadSkinCfg(*it, p.cfg, "", /*with_rounding=*/false);
         g_ro_presets.push_back(std::move(p));
       }
     }
@@ -591,20 +604,15 @@ void MoonlightUi::LoadSettings() {
       }
       for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)  // contenu persisté barre d'items (nameids)
         sb->item_slots_[i] = ui["skillbar_item" + std::to_string(i)].as<uint32_t>(sb->item_slots_[i]);
-      auto load_sbcol = [&](const char* key, float c[4]) {
-        const std::string hex = ui[key].as<std::string>("");
-        if (hex.size() == 8)
-          PickerFromArgb(c, static_cast<uint32_t>(std::stoul(hex, nullptr, 16)));
-      };
-      load_sbcol("skillbar_col_frame",    sb->col_frame_);
-      load_sbcol("skillbar_col_skill",    sb->col_skill_);
-      load_sbcol("skillbar_col_item",     sb->col_item_);
-      load_sbcol("skillbar_col_empty",    sb->col_empty_);
-      load_sbcol("skillbar_col_border",   sb->col_border_);
-      load_sbcol("skillbar_col_borderhi", sb->col_borderhi_);
-      load_sbcol("skillbar_col_keytext",  sb->col_keytext_);
-      load_sbcol("skillbar_col_count",    sb->col_count_);
-      load_sbcol("skillbar_col_textout",  sb->col_textout_);
+      ReadArgbKey(ui, "skillbar_col_frame",    sb->col_frame_);
+      ReadArgbKey(ui, "skillbar_col_skill",    sb->col_skill_);
+      ReadArgbKey(ui, "skillbar_col_item",     sb->col_item_);
+      ReadArgbKey(ui, "skillbar_col_empty",    sb->col_empty_);
+      ReadArgbKey(ui, "skillbar_col_border",   sb->col_border_);
+      ReadArgbKey(ui, "skillbar_col_borderhi", sb->col_borderhi_);
+      ReadArgbKey(ui, "skillbar_col_keytext",  sb->col_keytext_);
+      ReadArgbKey(ui, "skillbar_col_count",    sb->col_count_);
+      ReadArgbKey(ui, "skillbar_col_textout",  sb->col_textout_);
     }
 
     // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/storage/barres/
@@ -642,10 +650,12 @@ void MoonlightUi::LoadSettings() {
       c.time_place     = ui["statusicon_time_place"].as<int>(c.time_place);
       c.time_anchor    = ui["statusicon_time_anchor"].as<int>(c.time_anchor);
       c.time_bold      = ui["statusicon_time_bold"].as<bool>(c.time_bold);
+      // Ces deux-là sont persistées en ImU32 décimal (pas en hex ARGB) : le
+      // nom de la fonction le dit, ne pas y appliquer ReadArgbKey.
       if (ui["statusicon_time_text"])
-        UnpackCol(ui["statusicon_time_text"].as<unsigned>(0), c.col_time_text);
+        ro::PickerFromImU32(ui["statusicon_time_text"].as<unsigned>(0), c.col_time_text);
       if (ui["statusicon_time_shadow"])
-        UnpackCol(ui["statusicon_time_shadow"].as<unsigned>(0), c.col_time_shadow);
+        ro::PickerFromImU32(ui["statusicon_time_shadow"].as<unsigned>(0), c.col_time_shadow);
       si->MarkDirty();
     }
 
@@ -708,10 +718,9 @@ void MoonlightUi::LoadSettings() {
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
       for (const YAML::Node& p : presets) {
-        const std::string name  = p["name"].as<std::string>("");
-        const std::string color = p["color"].as<std::string>("");
-        if (name.empty() || color.size() != 8) continue;
-        const uint32_t argb = static_cast<uint32_t>(std::stoul(color, nullptr, 16));
+        const std::string name = p["name"].as<std::string>("");
+        uint32_t argb = 0;
+        if (name.empty() || !ro::ParseHex8(p["color"].as<std::string>(""), &argb)) continue;
         chat_bg_presets_.push_back({name, argb});
       }
     }
@@ -753,24 +762,21 @@ void MoonlightUi::LoadSettings() {
 }
 
 void MoonlightUi::WriteSettingsFile() {
+  // Ces trois-là gardent une chaîne pré-calculée : elles ont un repli littéral à
+  // écrire quand le plugin propriétaire est absent, que WriteArgbKey ne sait pas
+  // exprimer (il part forcément d'un picker).
   auto* dps = Bourgeon::Instance().dps_meter();
-  char dps_text_col[9] = "FFFFCC33", dps_plot_col[9] = "FFFFCC33";
+  std::string dps_text_col = "FFFFCC33", dps_plot_col = "FFFFCC33";
   if (dps) {
-    std::snprintf(dps_text_col, sizeof(dps_text_col), "%08X",
-                  ArgbFromPicker(dps->text_color_));
-    std::snprintf(dps_plot_col, sizeof(dps_plot_col), "%08X",
-                  ArgbFromPicker(dps->plot_color_));
+    dps_text_col = HexArgb(dps->text_color_);
+    dps_plot_col = HexArgb(dps->plot_color_);
   }
 
   auto* eb = Bourgeon::Instance().basic_info();
-  char eb_bg_col[9] = "B30D0D12";
-  if (eb)
-    std::snprintf(eb_bg_col, sizeof(eb_bg_col), "%08X",
-                  ArgbFromPicker(eb->bg_color_));
+  std::string eb_bg_col = "B30D0D12";
+  if (eb) eb_bg_col = HexArgb(eb->bg_color_);
   // Global alignment grid colour (owned by MoonlightUi, not basic_info).
-  char grid_col[9];
-  std::snprintf(grid_col, sizeof(grid_col), "%08X",
-                ArgbFromPicker(grid_.color));
+  const std::string grid_col = HexArgb(grid_.color);
 
   // ItemDescTweaks toggles (owned by the plugin) — panels + Comparer + placement.
   bool itemdesc_show_item = true, itemdesc_show_skill = true;
@@ -793,18 +799,11 @@ void MoonlightUi::WriteSettingsFile() {
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
       << YAML::Value << YAML::BeginMap;
-  for (const ChatBgGroup& g : chat_bg_) {
-    char hex[9];
-    std::snprintf(hex, sizeof(hex), "%08X", ArgbFromPicker(g.color));
-    out   << YAML::Key << g.yaml_key << YAML::Value << hex;
-  }
-  char ground_hex[9];
-  std::snprintf(ground_hex, sizeof(ground_hex), "%08X",
-                ArgbFromPicker(spr_lab::ground_color()));
+  for (const ChatBgGroup& g : chat_bg_) WriteArgbKey(out, g.yaml_key, g.color);
   out     << YAML::Key << "ground_paint"         << YAML::Value
-              << spr_lab::ground_paint_enabled()
-        << YAML::Key << "ground_paint_color"   << YAML::Value << ground_hex
-        << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
+              << spr_lab::ground_paint_enabled();
+  WriteArgbKey(out, "ground_paint_color", spr_lab::ground_color());
+  out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
         << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
@@ -868,14 +867,12 @@ void MoonlightUi::WriteSettingsFile() {
       const std::string p =
           std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
       const auto& b = eb->bars_[i];
-      char col[9];
-      std::snprintf(col, sizeof(col), "%08X", ArgbFromPicker(b.fill));
       out << YAML::Key << (p + "show")  << YAML::Value << b.show
           << YAML::Key << (p + "x")     << YAML::Value << b.x
           << YAML::Key << (p + "y")     << YAML::Value << b.y
           << YAML::Key << (p + "w")     << YAML::Value << b.w
-          << YAML::Key << (p + "h")     << YAML::Value << b.h
-          << YAML::Key << (p + "color") << YAML::Value << col;
+          << YAML::Key << (p + "h")     << YAML::Value << b.h;
+      WriteArgbKey(out, p + "color", b.fill);
     }
   }
 
@@ -899,17 +896,14 @@ void MoonlightUi::WriteSettingsFile() {
       const std::string p =
           std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
       const auto& e = eb->ports_[i];
-      char bg[9], fg[9];
-      std::snprintf(bg, sizeof(bg), "%08X", ArgbFromPicker(e.bg));
-      std::snprintf(fg, sizeof(fg), "%08X", ArgbFromPicker(e.fg));
       out << YAML::Key << (p + "show")     << YAML::Value << e.show
           << YAML::Key << (p + "x")        << YAML::Value << e.x
           << YAML::Key << (p + "y")        << YAML::Value << e.y
           << YAML::Key << (p + "w")        << YAML::Value << e.w
           << YAML::Key << (p + "h")        << YAML::Value << e.h
-          << YAML::Key << (p + "rounding") << YAML::Value << e.rounding
-          << YAML::Key << (p + "bg")       << YAML::Value << bg
-          << YAML::Key << (p + "fg")       << YAML::Value << fg;
+          << YAML::Key << (p + "rounding") << YAML::Value << e.rounding;
+      WriteArgbKey(out, p + "bg", e.bg);
+      WriteArgbKey(out, p + "fg", e.fg);
     }
   }
 
@@ -952,8 +946,11 @@ void MoonlightUi::WriteSettingsFile() {
         << YAML::Key << "statusicon_time_place"     << YAML::Value << c.time_place
         << YAML::Key << "statusicon_time_anchor"    << YAML::Value << c.time_anchor
         << YAML::Key << "statusicon_time_bold"      << YAML::Value << c.time_bold
-        << YAML::Key << "statusicon_time_text"      << YAML::Value << PackCol(c.col_time_text)
-        << YAML::Key << "statusicon_time_shadow"    << YAML::Value << PackCol(c.col_time_shadow);
+        // Persistées en ImU32 décimal, pas en hex ARGB (cf. ReadArgbKey).
+        << YAML::Key << "statusicon_time_text"   << YAML::Value
+            << ro::ImU32FromPicker(c.col_time_text)
+        << YAML::Key << "statusicon_time_shadow" << YAML::Value
+            << ro::ImU32FromPicker(c.col_time_shadow);
   }
 
   {
@@ -1016,50 +1013,11 @@ void MoonlightUi::WriteSettingsFile() {
 
   {
     out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
-    {
-      auto& sc = ro::SkinConfig();
-      auto pk = [](const float* c) {
-        return (unsigned int)ImGui::ColorConvertFloat4ToU32(
-            ImVec4(c[0], c[1], c[2], c[3]));
-      };
-      out << YAML::Key << "ro_skin_bright" << YAML::Value << sc.title_brightness;
-      out << YAML::Key << "ro_skin_rounding" << YAML::Value << sc.rounding;
-      out << YAML::Key << "ro_skin_alpha" << YAML::Value << sc.alpha;
-      out << YAML::Key << "ro_skin_body" << YAML::Value << pk(sc.body_col);
-      out << YAML::Key << "ro_skin_border" << YAML::Value << pk(sc.border_col);
-      out << YAML::Key << "ro_skin_titletx" << YAML::Value << pk(sc.title_text);
-      out << YAML::Key << "ro_skin_bodytx" << YAML::Value << pk(sc.body_text);
-      out << YAML::Key << "ro_skin_tab" << YAML::Value << pk(sc.tab_col);
-      out << YAML::Key << "ro_skin_tabinact" << YAML::Value << pk(sc.tab_inact);
-      out << YAML::Key << "ro_skin_input" << YAML::Value << pk(sc.input_col);
-      out << YAML::Key << "ro_skin_header" << YAML::Value << pk(sc.header_col);
-      out << YAML::Key << "ro_skin_slot" << YAML::Value << pk(sc.slot_col);
-      out << YAML::Key << "ro_skin_doll" << YAML::Value << pk(sc.doll_col);
-      out << YAML::Key << "ro_skin_card" << YAML::Value << pk(sc.card_col);
-      out << YAML::Key << "ro_skin_cardhead" << YAML::Value << pk(sc.card_head_col);
-      out << YAML::Key << "ro_skin_cardtx" << YAML::Value << pk(sc.card_head_text);
-      out << YAML::Key << "ro_skin_list" << YAML::Value << pk(sc.list_col);
-    }
+    EmitSkinCfg(out, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
     out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
     for (const auto& p : g_ro_presets) {
       out << YAML::BeginMap << YAML::Key << "name" << YAML::Value << p.name;
-      // Réutilise EmitSkinCfg sauf le BeginMap/EndMap déjà ouverts ici : on inline.
-      out << YAML::Key << "bright" << YAML::Value << p.cfg.title_brightness;
-      out << YAML::Key << "alpha" << YAML::Value << p.cfg.alpha;
-      out << YAML::Key << "body" << YAML::Value << PackCol(p.cfg.body_col);
-      out << YAML::Key << "border" << YAML::Value << PackCol(p.cfg.border_col);
-      out << YAML::Key << "titletx" << YAML::Value << PackCol(p.cfg.title_text);
-      out << YAML::Key << "bodytx" << YAML::Value << PackCol(p.cfg.body_text);
-      out << YAML::Key << "tab" << YAML::Value << PackCol(p.cfg.tab_col);
-      out << YAML::Key << "tabinact" << YAML::Value << PackCol(p.cfg.tab_inact);
-      out << YAML::Key << "input" << YAML::Value << PackCol(p.cfg.input_col);
-      out << YAML::Key << "header" << YAML::Value << PackCol(p.cfg.header_col);
-      out << YAML::Key << "slot" << YAML::Value << PackCol(p.cfg.slot_col);
-      out << YAML::Key << "doll" << YAML::Value << PackCol(p.cfg.doll_col);
-      out << YAML::Key << "card" << YAML::Value << PackCol(p.cfg.card_col);
-      out << YAML::Key << "cardhead" << YAML::Value << PackCol(p.cfg.card_head_col);
-      out << YAML::Key << "cardtx" << YAML::Value << PackCol(p.cfg.card_head_text);
-      out << YAML::Key << "list" << YAML::Value << PackCol(p.cfg.list_col);
+      EmitSkinCfg(out, p.cfg, "", /*with_rounding=*/false);
       out << YAML::EndMap;
     }
     out << YAML::EndSeq;
@@ -1156,30 +1114,21 @@ void MoonlightUi::WriteSettingsFile() {
       sb->SnapshotItemSlots();  // capture le contenu live de la barre d'items -> yaml (persistance client)
       for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)
         out << YAML::Key << ("skillbar_item" + std::to_string(i)) << YAML::Value << sb->item_slots_[i];
-      char cf[9], cs[9], ci[9], ce[9], cb[9], ch[9], ck[9], cn[9], co[9];
-      std::snprintf(cf, sizeof(cf), "%08X", ArgbFromPicker(sb->col_frame_));
-      std::snprintf(cs, sizeof(cs), "%08X", ArgbFromPicker(sb->col_skill_));
-      std::snprintf(ci, sizeof(ci), "%08X", ArgbFromPicker(sb->col_item_));
-      std::snprintf(ce, sizeof(ce), "%08X", ArgbFromPicker(sb->col_empty_));
-      std::snprintf(cb, sizeof(cb), "%08X", ArgbFromPicker(sb->col_border_));
-      std::snprintf(ch, sizeof(ch), "%08X", ArgbFromPicker(sb->col_borderhi_));
-      std::snprintf(ck, sizeof(ck), "%08X", ArgbFromPicker(sb->col_keytext_));
-      std::snprintf(cn, sizeof(cn), "%08X", ArgbFromPicker(sb->col_count_));
-      std::snprintf(co, sizeof(co), "%08X", ArgbFromPicker(sb->col_textout_));
-      out << YAML::Key << "skillbar_col_frame"    << YAML::Value << cf
-          << YAML::Key << "skillbar_col_skill"    << YAML::Value << cs
-          << YAML::Key << "skillbar_col_item"     << YAML::Value << ci
-          << YAML::Key << "skillbar_col_empty"    << YAML::Value << ce
-          << YAML::Key << "skillbar_col_border"   << YAML::Value << cb
-          << YAML::Key << "skillbar_col_borderhi" << YAML::Value << ch
-          << YAML::Key << "skillbar_col_keytext"  << YAML::Value << ck
-          << YAML::Key << "skillbar_col_count"    << YAML::Value << cn
-          << YAML::Key << "skillbar_col_textout"  << YAML::Value << co;
+      WriteArgbKey(out, "skillbar_col_frame",    sb->col_frame_);
+      WriteArgbKey(out, "skillbar_col_skill",    sb->col_skill_);
+      WriteArgbKey(out, "skillbar_col_item",     sb->col_item_);
+      WriteArgbKey(out, "skillbar_col_empty",    sb->col_empty_);
+      WriteArgbKey(out, "skillbar_col_border",   sb->col_border_);
+      WriteArgbKey(out, "skillbar_col_borderhi", sb->col_borderhi_);
+      WriteArgbKey(out, "skillbar_col_keytext",  sb->col_keytext_);
+      WriteArgbKey(out, "skillbar_col_count",    sb->col_count_);
+      WriteArgbKey(out, "skillbar_col_textout",  sb->col_textout_);
     }
   }
 
   out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
   for (const auto& p : chat_bg_presets_) {
+    // Le preset porte déjà l'ARGB natif : pas de picker à convertir, on formate.
     char pbuf[9];
     std::snprintf(pbuf, sizeof(pbuf), "%08X", p.argb);
     out << YAML::BeginMap
@@ -1762,16 +1711,13 @@ void MoonlightUi::OnRenderUI() {
       } else {
         for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
           const auto& p = chat_bg_presets_[i];
-          const ImVec4 col(((p.argb >> 16) & 0xFF) / 255.0f,
-                           ((p.argb >>  8) & 0xFF) / 255.0f,
-                           ( p.argb        & 0xFF) / 255.0f,
-                           ((p.argb >> 24) & 0xFF) / 255.0f);
+          const ImVec4 col = ro::ImVec4FromArgb(p.argb);
           ImGui::PushID(i);
           if (ImGui::ColorButton("##sw", col,
                                  ImGuiColorEditFlags_AlphaPreview |
                                  ImGuiColorEditFlags_NoTooltip,
                                  ImVec2(14, 14))) {
-            PickerFromArgb(g.color, p.argb);
+            ro::PickerFromArgb(g.color, p.argb);
             ApplyChatBg(g, p.argb, true);
             SaveSettings();
           }

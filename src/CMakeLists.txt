@@ -121,6 +121,8 @@ set(BOURGEON_FILES
 	"ui/ro_widgets.h"
 	"ui/align_grid.cc"
 	"ui/align_grid.h"
+	"ui/color_codec.cc"
+	"ui/color_codec.h"
 
 	# Ragnarok
 	"ragnarok/configuration.h"

@@ -248,8 +248,10 @@ class MoonlightUi : public Plugin {
   // Single heap walk: recolours every live object matching one of g's heap targets.
   void PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb);
 
-  static uint32_t ArgbFromPicker(const float c[4]);
-  static void     PickerFromArgb(float c[4], uint32_t argb);
+  // (Les conversions de couleur vivent dans ui/color_codec.h : ro::ArgbFromPicker,
+  //  ro::PickerFromArgb, ro::ImVec4FromArgb. Elles étaient membres statiques ici
+  //  alors qu'elles ne touchent aucun état — et ce voisinage rendait invisible le
+  //  second encodage, ImU32, qui coexiste dans le même yaml.)
 
   // Restores all chat-bg groups from bourgeon_settings.yaml in the game
   // directory.  Called after FindChatBgSites so it can immediately apply the

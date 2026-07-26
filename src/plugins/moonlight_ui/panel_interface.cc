@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "plugins/moonlight_ui.h"
 #include "ui/align_grid.h"
+#include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 
@@ -395,17 +396,14 @@ void MoonlightUi::DrawInterfacePanel() {
                 // Display each preset as a colour swatch + name + delete button.
                 for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
                   const auto& p = chat_bg_presets_[i];
-                  const ImVec4 col(((p.argb >> 16) & 0xFF) / 255.0f,
-                                  ((p.argb >>  8) & 0xFF) / 255.0f,
-                                  ( p.argb        & 0xFF) / 255.0f,
-                                  ((p.argb >> 24) & 0xFF) / 255.0f);
+                  const ImVec4 col = ro::ImVec4FromArgb(p.argb);
                   ImGui::PushID(i);
                   // Clicking a preset swatch updates the picker to match the preset, applies it to the chat background, and saves the settings.
                   if (ImGui::ColorButton("##swatch", col,
                                         ImGuiColorEditFlags_AlphaPreview |
                                         ImGuiColorEditFlags_NoTooltip,
                                         ImVec2(18, 18))) {
-                    PickerFromArgb(g.color, p.argb); // update the picker to match the preset
+                    ro::PickerFromArgb(g.color, p.argb); // update the picker to match the preset
                     ApplyChatBg(g, p.argb, true);
                     changed = true;
                   }
@@ -427,7 +425,7 @@ void MoonlightUi::DrawInterfacePanel() {
               SameLine();
               ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f); // vertically align the button with the input text
               if (ro::RoButton("Save preset") && preset_name_buf_[0] != '\0') {
-                chat_bg_presets_.push_back({preset_name_buf_, ArgbFromPicker(g.color)});
+                chat_bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(g.color)});
                 preset_name_buf_[0] = '\0';
                 changed = true;
               }
@@ -435,11 +433,11 @@ void MoonlightUi::DrawInterfacePanel() {
               if (ImGui::ColorPicker4("##pick", g.color,
                                 ImGuiColorEditFlags_AlphaBar |
                                 ImGuiColorEditFlags_NoSidePreview)) {
-                ApplyChatBg(g, ArgbFromPicker(g.color), false);
+                ApplyChatBg(g, ro::ArgbFromPicker(g.color), false);
                 g.editing = true;
               }
               if (g.editing && ImGui::IsMouseReleased(0)) {
-                ApplyChatBg(g, ArgbFromPicker(g.color), true);
+                ApplyChatBg(g, ro::ArgbFromPicker(g.color), true);
                 changed = true;
                 g.editing = false;
               }
