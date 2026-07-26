@@ -31,7 +31,7 @@ class MoonlightUi;
 
 // Dernier item dont la fenêtre de description a été ouverte, capté par le hook
 // ItemDescWndHook (moonlight_ui.cc). Le panneau Autoloots s'en sert pour proposer
-// l'item survolé en un clic. Défini dans moonlight_ui.cc.
+// l'item survolé en un clic. Défini dans item_desc_probe.cc.
 extern uint32_t g_last_viewed_item;
 
 namespace moonlight_ui {
@@ -42,4 +42,7 @@ void DrawRules();
 }  // namespace moonlight_ui
 
 // Méthodes membres définies dans ce dossier (déclarées dans moonlight_ui.h) :
-//   MoonlightUi::DrawCommandsPanel()  -> panel_commands.cc
+//   MoonlightUi::DrawCommandsPanel()      -> panel_commands.cc
+//   MoonlightUi::DrawFunPanels()         -> panel_fun.cc
+//   MoonlightUi::DrawAlootOverlay()      -> item_desc_probe.cc
+//   MoonlightUi::InstallItemDescProbe()  -> item_desc_probe.cc

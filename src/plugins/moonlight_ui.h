@@ -306,4 +306,6 @@ class MoonlightUi : public Plugin {
   // .cc du dossier, pas ici. Voir plugins/moonlight_ui/internal.h.
   void DrawCommandsPanel();
   void DrawFunPanels();
+  void DrawAlootOverlay();
+  void InstallItemDescProbe();
 };
