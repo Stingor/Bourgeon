@@ -305,4 +305,5 @@ class MoonlightUi : public Plugin {
   // le défaut que le chantier 8 cherche à supprimer. Leur définition vit dans le
   // .cc du dossier, pas ici. Voir plugins/moonlight_ui/internal.h.
   void DrawCommandsPanel();
+  void DrawFunPanels();
 };

@@ -24,6 +24,7 @@ set(BOURGEON_FILES
 	"plugins/moonlight_ui/internal.h"
 	"plugins/moonlight_ui/panel_rules.cc"
 	"plugins/moonlight_ui/panel_commands.cc"
+	"plugins/moonlight_ui/panel_fun.cc"
 	"plugins/discord_relay.cc"
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"
