@@ -75,8 +75,8 @@ const ChatBgSiteDesc kChatBgSites[] = {
 // portée d'une fonction libre. Le tableau est rempli par l'appelant AVANT de
 // verrouiller le tas — allouer sous HeapLock s'interbloquerait avec soi-même.
 struct HeapRecolourTarget {
-  uint32_t vtable;
-  uint32_t field_off;
+  uint32_t vtable_va;
+  uint32_t color_field_off;
 };
 constexpr size_t kMaxHeapTargets = 8;
 
@@ -87,13 +87,15 @@ int WalkAndRecolour(HANDLE heap, const HeapRecolourTarget* targets, size_t targe
     PROCESS_HEAP_ENTRY entry = {};
     while (HeapWalk(heap, &entry)) {
       if (!(entry.wFlags & PROCESS_HEAP_ENTRY_BUSY)) continue;
-      // Un objet fenêtre commence par son pointeur de vtable.
-      const auto* vtable_ptr = static_cast<const uint32_t*>(entry.lpData);
+      // Début de l'objet — et NON sa vtable : c'est son déréférencement, plus
+      // bas, qui donne la vtable. Sur du parcours de tas brut, cet écart d'un
+      // niveau d'indirection est exactement ce qui produit un crash.
+      const auto* obj_first_word = static_cast<const uint32_t*>(entry.lpData);
       for (size_t i = 0; i < target_count; ++i) {
-        if (entry.cbData < targets[i].field_off + sizeof(uint32_t)) continue;
-        if (*vtable_ptr != targets[i].vtable) continue;
+        if (entry.cbData < targets[i].color_field_off + sizeof(uint32_t)) continue;
+        if (*obj_first_word != targets[i].vtable_va) continue;
         *reinterpret_cast<uint32_t*>(
-            static_cast<uint8_t*>(entry.lpData) + targets[i].field_off) = argb;
+            static_cast<uint8_t*>(entry.lpData) + targets[i].color_field_off) = argb;
         ++recoloured;
       }
     }
@@ -180,8 +182,8 @@ void ChatTweaks::FindBackgroundSites() {
     }
 
     BgGroup& group = bg_[desc.group];
-    group.instrs.push_back(immediate);
-    if (desc.heap_vtable) group.heap.push_back({desc.heap_vtable, desc.heap_field});
+    group.argb_imm_ptrs.push_back(immediate);
+    if (desc.heap_vtable) group.heap_targets.push_back({desc.heap_vtable, desc.heap_field});
     bg_found_ = true;
     ++site_idx;
   }
@@ -189,7 +191,7 @@ void ChatTweaks::FindBackgroundSites() {
   // Amorce chaque picker avec la couleur actuellement dans son premier immédiat.
   for (int i = 0; i < kBgCount; ++i) {
     BgGroup& group = bg_[i];
-    if (!group.instrs.empty()) ro::PickerFromArgb(group.color, *group.instrs.front());
+    if (!group.argb_imm_ptrs.empty()) ro::PickerFromArgb(group.picker_rgba, *group.argb_imm_ptrs.front());
   }
 }
 
@@ -200,46 +202,46 @@ const char* ChatTweaks::bg_yaml_key(int group) const {
 
 float* ChatTweaks::bg_color(int group) {
   if (group < 0 || group >= kBgCount) return nullptr;
-  return bg_[group].color;
+  return bg_[group].picker_rgba;
 }
 
 void ChatTweaks::ApplyBackground(int group, uint32_t argb, bool walk_heap) {
   if (group < 0 || group >= kBgCount) return;
   BgGroup& target = bg_[group];
-  for (uint32_t* immediate : target.instrs) {
+  for (uint32_t* immediate : target.argb_imm_ptrs) {
     *immediate = argb;
     FlushInstructionCache(GetCurrentProcess(), immediate, sizeof(uint32_t));
   }
-  if (walk_heap && !target.heap.empty()) PatchBackgroundObjects(target, argb);
+  if (walk_heap && !target.heap_targets.empty()) PatchBackgroundObjects(target, argb);
 }
 
 void ChatTweaks::ApplyAllBackgrounds() {
   for (int i = 0; i < kBgCount; ++i) {
-    if (bg_[i].instrs.empty()) continue;
+    if (bg_[i].argb_imm_ptrs.empty()) continue;
     // walk_heap = TRUE, et il le faut. Les réglages ne sont relus qu'à l'ENTRÉE
     // EN JEU, donc une fois le HUD construit : la fenêtre de chat principale est
     // déjà là. Le patch des immédiats .text ne vaut que pour les fenêtres créées
     // APRÈS — sans le parcours, le chat principal gardait sa couleur par défaut
     // à chaque login, en donnant l'impression que le réglage n'était pas
     // sauvegardé alors qu'il était correctement écrit et relu.
-    ApplyBackground(i, ro::ArgbFromPicker(bg_[i].color), /*walk_heap=*/true);
+    ApplyBackground(i, ro::ArgbFromPicker(bg_[i].picker_rgba), /*walk_heap=*/true);
   }
 }
 
 void ChatTweaks::PatchBackgroundObjects(const BgGroup& group, uint32_t argb) {
-  if (group.heap.empty()) return;
+  if (group.heap_targets.empty()) return;
 
   // Tout ce qui alloue doit être fait AVANT HeapLock.
   HeapRecolourTarget targets[kMaxHeapTargets];
   size_t target_count = 0;
-  for (const BgHeapTarget& target : group.heap) {
+  for (const BgHeapTarget& target : group.heap_targets) {
     if (target_count == kMaxHeapTargets) {
       LogError("[Chat] fond[{}] : {} cibles de tas pour {} places — "
                "les suivantes ne seront pas recolorées",
-               group.yaml_key, group.heap.size(), kMaxHeapTargets);
+               group.yaml_key, group.heap_targets.size(), kMaxHeapTargets);
       break;
     }
-    targets[target_count++] = {target.vtable, target.field_off};
+    targets[target_count++] = {target.vtable_va, target.color_field_off};
   }
 
   HANDLE heap = GetProcessHeap();
@@ -257,11 +259,11 @@ void ChatTweaks::PatchBackgroundObjects(const BgGroup& group, uint32_t argb) {
 bool ChatTweaks::DrawBackgroundGroup(int group_id) {
   if (group_id < 0 || group_id >= kBgCount) return false;
   BgGroup& group = bg_[group_id];
-  if (group.instrs.empty()) return false;
+  if (group.argb_imm_ptrs.empty()) return false;
   bool changed = false;
 
   ImGui::PushID(group.yaml_key);
-  const ImVec4 swatch(group.color[0], group.color[1], group.color[2], group.color[3]);
+  const ImVec4 swatch(group.picker_rgba[0], group.picker_rgba[1], group.picker_rgba[2], group.picker_rgba[3]);
   if (ImGui::ColorButton("##btn", swatch, ImGuiColorEditFlags_AlphaPreview,
                          ImVec2(20, 20)))
     ImGui::OpenPopup("picker");
@@ -282,7 +284,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
                                ImGuiColorEditFlags_AlphaPreview |
                                    ImGuiColorEditFlags_NoTooltip,
                                ImVec2(18, 18))) {
-          ro::PickerFromArgb(group.color, preset.argb);
+          ro::PickerFromArgb(group.picker_rgba, preset.argb);
           ApplyBackground(group_id, preset.argb, true);
           changed = true;
         }
@@ -305,16 +307,16 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
     SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f);  // aligne le bouton sur le champ
     if (ro::RoButton("Enregistrer") && preset_name_buf_[0] != '\0') {
-      bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(group.color)});
+      bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(group.picker_rgba)});
       preset_name_buf_[0] = '\0';
       changed = true;
     }
     SeparatorText("Choisir une couleur");
-    if (ImGui::ColorPicker4("##pick", group.color,
+    if (ImGui::ColorPicker4("##pick", group.picker_rgba,
                             ImGuiColorEditFlags_AlphaBar |
                                 ImGuiColorEditFlags_NoSidePreview)) {
-      ApplyBackground(group_id, ro::ArgbFromPicker(group.color), false);
-      group.editing = true;
+      ApplyBackground(group_id, ro::ArgbFromPicker(group.picker_rgba), false);
+      group.picker_drag_in_progress = true;
     }
     if (ro::RoButton("Fermer")) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
@@ -328,10 +330,10 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
   //
   // !IsMouseDown plutôt que IsMouseReleased : le relâchement est un événement
   // d'UNE frame, qu'un popup fermé entre-temps fait manquer.
-  if (group.editing && !ImGui::IsMouseDown(0)) {
-    ApplyBackground(group_id, ro::ArgbFromPicker(group.color), true);
+  if (group.picker_drag_in_progress && !ImGui::IsMouseDown(0)) {
+    ApplyBackground(group_id, ro::ArgbFromPicker(group.picker_rgba), true);
     changed = true;
-    group.editing = false;
+    group.picker_drag_in_progress = false;
   }
   ImGui::PopID();
   return changed;
@@ -371,7 +373,7 @@ bool ChatTweaks::DrawPresetBar() {
                                ImGuiColorEditFlags_AlphaPreview |
                                    ImGuiColorEditFlags_NoTooltip,
                                ImVec2(14, 14))) {
-          ro::PickerFromArgb(main_chat.color, preset.argb);
+          ro::PickerFromArgb(main_chat.picker_rgba, preset.argb);
           ApplyBackground(kBgMain, preset.argb, true);
           changed = true;
         }

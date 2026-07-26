@@ -18,6 +18,11 @@
 // g_last_viewed_item en sort (le panneau Autoloots le lit pour proposer l'item
 // survolé) — déclaré extern dans internal.h.
 
+// Messages reçus par l'OnMsg de la fenêtre de description native.
+constexpr int kMsgClose       = 0x06;  // bouton X
+constexpr int kMsgSetItem     = 0x18;  // pose l'item à décrire (porte le nameid)
+constexpr int kMsgRestorePos  = 0x22;  // repositionnement après restauration
+
 using ItemDescWndFn = int (__fastcall*)(void*, void*, uint32_t, int, int*, int, int, int);
 static ItemDescWndFn g_item_desc_wnd_orig  = nullptr;
 // Non-static : lu par le panneau Autoloots (moonlight_ui/panel_commands.cc) pour
@@ -27,23 +32,32 @@ static POINT         g_item_desc_cursor    = {0, 0};
 static bool          g_item_desc_visible   = false;  // set on 0x18, cleared on close msg
 static void*         g_item_desc_wnd_ptr   = nullptr; // ecx of the desc window object
 
+// Les paramètres s'appelaient p1..p6 — des noms Ghidra promus en identifiants
+// C++, ce que la convention du projet interdit : ils appartiennent aux
+// COMMENTAIRES, où ils font le pont avec le décompilé. Le sens de chacun était
+// déjà documenté juste à côté ; il est maintenant DANS le nom. (Ghidra :
+// p1=param_3, p2=param_4, p3=param_5, p4..p6=param_6..8.)
 static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
-                                       uint32_t p1, int p2, int* p3,
-                                       int p4, int p5, int p6) {
-  if (p2 == 0x18 && p3 != nullptr) {
+                                      uint32_t wparam, int msg_id, int* item_data,
+                                      int arg4, int arg5, int arg6) {
+  if (msg_id == kMsgSetItem && item_data != nullptr) {
     // Ignore 0x18 from secondary windows (e.g. equipment comparison window).
     // Lock onto the first ecx that sends 0x18 while no tooltip is open.
     if (g_item_desc_visible && ecx != g_item_desc_wnd_ptr)
-      return g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+      return g_item_desc_wnd_orig(ecx, nullptr, wparam, msg_id, item_data,
+                                  arg4, arg5, arg6);
 
-    const int* sso = p3 + 11;  // std::string at byte offset 0x2C
-    const char* str;
-    if (static_cast<uint32_t>(sso[5]) > 15u)
-      str = *reinterpret_cast<const char* const*>(sso);
+    // std::string MSVC à l'offset 0x2C : les 16 premiers octets sont soit le
+    // texte lui-même (small-string optimization), soit un pointeur vers le tas ;
+    // c'est la capacité, en [+5] mots, qui tranche.
+    const int* nameid_msvc_string = item_data + 11;
+    const char* nameid_text;
+    if (static_cast<uint32_t>(nameid_msvc_string[5]) > 15u)
+      nameid_text = *reinterpret_cast<const char* const*>(nameid_msvc_string);
     else
-      str = reinterpret_cast<const char*>(sso);
-    if (str) {
-      const long id = std::atol(str);
+      nameid_text = reinterpret_cast<const char*>(nameid_msvc_string);
+    if (nameid_text) {
+      const long id = std::atol(nameid_text);
       if (id > 0) {
         if (g_item_desc_visible && static_cast<uint32_t>(id) == g_last_viewed_item) {
           // Same item re-clicked while visible = toggle-close (no native 0x06).
@@ -57,18 +71,19 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
         }
       }
     }
-  } else if (p2 == 0x06 && ecx == g_item_desc_wnd_ptr) {
+  } else if (msg_id == kMsgClose && ecx == g_item_desc_wnd_ptr) {
     // X button close — also reset ptr for the same reason.
     g_item_desc_visible = false;
     g_item_desc_wnd_ptr = nullptr;
   }
-  const int ret = g_item_desc_wnd_orig(ecx, nullptr, p1, p2, p3, p4, p5, p6);
+  const int ret = g_item_desc_wnd_orig(ecx, nullptr, wparam, msg_id, item_data,
+                                       arg4, arg5, arg6);
   // Enriched descriptions (Option A) : cacher la fenêtre native DÈS qu'elle est
   // posée/affichée (msg 0x18 set-item, 0x22 restore-pos) -> l'utilisateur ne voit
   // jamais la native (sinon flicker de ~100ms le temps du OnTick throttlé).
-  if (p2 == 0x18 || p2 == 0x22) {
-    if (auto* idt = Bourgeon::Instance().item_desc())
-      idt->HideNativeDescWindows();  // item 0xc + comparaison 0xea (déjà créée)
+  if (msg_id == kMsgSetItem || msg_id == kMsgRestorePos) {
+    if (auto* item_desc = Bourgeon::Instance().item_desc())
+      item_desc->HideNativeDescWindows();  // item 0xc + comparaison 0xea (déjà créée)
   }
   return ret;
 }
@@ -104,11 +119,11 @@ void MoonlightUi::DrawAlootOverlay() {
   // est cachée -> l'overlay alootid autonome n'aurait pas d'ancrage cohérent et
   // fera doublon avec le bouton qui sera réintégré DANS le cadre enrichi. On le
   // désactive donc tant que le panneau item enrichi est activé.
-  bool enriched_item = false;
-  if (auto* idt = Bourgeon::Instance().item_desc())
-    enriched_item = idt->show_item_panel();
+  bool enriched_item_panel_on = false;
+  if (auto* item_desc = Bourgeon::Instance().item_desc())
+    enriched_item_panel_on = item_desc->show_item_panel();
 
-  if (show_alootid_overlay_ && !enriched_item &&
+  if (show_alootid_overlay_ && !enriched_item_panel_on &&
       g_last_viewed_item != 0 && g_item_desc_visible) {
     // Position de la fenêtre native, lue dans l'objet dont on a gardé le pointeur.
     // Offsets confirmés : [ptr+0x1C] = X, [ptr+0x20] = Y. (Le commentaire d'avant
@@ -125,12 +140,12 @@ void MoonlightUi::DrawAlootOverlay() {
     // test de plausibilité qui suit valide les VALEURS, jamais le pointeur.
     const void* live_wnd = *reinterpret_cast<void* const*>(kItemDescWndGlobalPtr);
     if (g_item_desc_wnd_ptr != nullptr && g_item_desc_wnd_ptr == live_wnd) {
-      const auto* base = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
-      const int wx = *reinterpret_cast<const int*>(base + 0x1C);  // X (confirmé)
-      const int wy = *reinterpret_cast<const int*>(base + 0x20);  // Y (confirmé)
-      if (wx > 0 && wx < 4096 && wy > 0 && wy < 4096) {
-        overlay_x = static_cast<float>(wx);
-        overlay_y = static_cast<float>(wy) - 24.0f;
+      const auto* desc_wnd_bytes = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
+      const int wnd_x = *reinterpret_cast<const int*>(desc_wnd_bytes + 0x1C);
+      const int wnd_y = *reinterpret_cast<const int*>(desc_wnd_bytes + 0x20);
+      if (wnd_x > 0 && wnd_x < 4096 && wnd_y > 0 && wnd_y < 4096) {
+        overlay_x = static_cast<float>(wnd_x);
+        overlay_y = static_cast<float>(wnd_y) - 24.0f;
       }
     }
     ImGui::SetNextWindowPos(ImVec2(overlay_x, overlay_y), ImGuiCond_Always);  // live-track

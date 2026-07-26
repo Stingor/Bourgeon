@@ -85,20 +85,24 @@ class ChatTweaks : public Plugin {
   bool timestamps_      = false; // préfixe [HH:MM:SS] sur les nouvelles lignes
   bool item_icons_      = true;  // icônes natives sur les liens <ITEML>
 
-  // Champ de couleur stocké dans le tas, à recolorer sur les objets existants.
+  // Comment reconnaître, dans le tas, un objet déjà construit dont il faut
+  // recolorer le champ de fond : sa vtable (adresse virtuelle) l'identifie, et
+  // l'offset dit où est la couleur dans l'objet.
   struct BgHeapTarget {
-    uint32_t vtable;
-    uint32_t field_off;
+    uint32_t vtable_va;
+    uint32_t color_field_off;
   };
 
   // Un réglage de fond de chat, tel que l'utilisateur le voit.
   struct BgGroup {
-    const char* label    = "";                  // libellé du panneau
-    const char* yaml_key = "";                  // clé de persistance
-    std::vector<uint32_t*>     instrs;          // immédiats ARGB résolus, inscriptibles
-    std::vector<BgHeapTarget>  heap;            // cibles de recoloration d'objets
-    float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // état du color picker
-    bool  editing  = false;                     // glissement du sélecteur en cours
+    const char* label    = "";  // libellé du panneau
+    const char* yaml_key = "";  // clé de persistance
+    // Pointeurs ÉCRITURE vers les immédiats ARGB en .text : on patche du code
+    // machine en place (VirtualProtect posé par FindBackgroundSites).
+    std::vector<uint32_t*>    argb_imm_ptrs;
+    std::vector<BgHeapTarget> heap_targets;  // objets déjà construits, à recolorer
+    float picker_rgba[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // état du color picker
+    bool  picker_drag_in_progress = false;  // glissement du sélecteur en cours
   };
 
   BgGroup bg_[kBgCount];
