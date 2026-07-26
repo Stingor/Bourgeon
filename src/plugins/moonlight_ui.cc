@@ -1,6 +1,7 @@
 #include "plugins/moonlight_ui.h"
 
-#include "plugins/moonlight_ui/internal.h"  // panneaux extraits (dossier privé)
+#include "plugins/moonlight_ui/internal.h"       // panneaux extraits (dossier privé)
+#include "plugins/moonlight_ui/settings_table.h"  // description des réglages persistés
 
 #include <Windows.h>
 #include <algorithm>
@@ -58,36 +59,91 @@
 
 namespace {
 
-// ── Couleurs persistées ──────────────────────────────────────────────────────
-// Deux formats coexistent sur disque, hérités et désormais FIGÉS — les unifier
-// invaliderait les bourgeon_settings.yaml déjà chez les joueurs :
-//   • chaîne hex ARGB « AARRGGBB » — chat_bg, dps, expbar, portrait, grid,
-//     skillbar, ground_paint, presets de chat ;
-//   • entier décimal ImU32        — statusicon_*, ro_skin_* et presets de skin.
-// Les quatre fonctions ci-dessous sont le seul endroit du projet qui connaît
-// cette dualité ; ailleurs on nomme l'encodage (cf. ui/color_codec.h).
+// Les trois helpers de couleur persistée vivent avec les moteurs de la table
+// (moonlight_ui/settings_table.h) : ce sont eux qui connaissent la dualité
+// « hex ARGB » / « ImU32 décimal » des yaml déjà chez les joueurs.
+using moonlight_ui::HexArgb;
+using moonlight_ui::ReadArgbKey;
+using moonlight_ui::WriteArgbKey;
 
-// Laisse `picker_rgba` INTACT si la clé est absente, vide ou corrompue : la
-// valeur par défaut du plugin survit. Avant, un std::stoul lançait sur une clé
-// corrompue et l'exception remontait jusqu'au catch qui enveloppe TOUT
-// LoadSettings — une seule couleur illisible faisait perdre le reste de la
-// configuration. Rend true si la couleur a été appliquée.
-bool ReadArgbKey(const YAML::Node& ui, const std::string& key, float picker_rgba[4]) {
-  uint32_t argb = 0;
-  if (!ro::ParseHex8(ui[key].as<std::string>(""), &argb)) return false;
-  ro::PickerFromArgb(picker_rgba, argb);
-  return true;
-}
+// ── Réglages décrits une fois, lus et écrits par la table ────────────────────
+// Chaque bloc ci-dessous remplace une paire lecture/écriture qu'il fallait tenir
+// synchronisée à la main. Le défaut ne s'écrit plus ici : MLUI_DEFAULT le prend
+// dans le header du plugin, seule source de vérité.
+//
+// ⚠ L'ORDRE de la table est l'ordre d'émission dans le yaml : le conserver
+// garde les fichiers des joueurs diff-identiques après le refactor.
+using SType = moonlight_ui::SettingType;
 
-std::string HexArgb(const float picker_rgba[4]) {
-  char hex[16];
-  std::snprintf(hex, sizeof(hex), "%08X", ro::ArgbFromPicker(picker_rgba));
-  return hex;
-}
+// Barre d'icônes de statut (buffs/debuffs). Les deux dernières couleurs sont
+// persistées en ImU32 DÉCIMAL, pas en hex ARGB — héritage figé.
+#define SICON(member) \
+  MLUI_FIELD(status_icons, config().member), MLUI_DEFAULT(StatusIconConfig, member)
+const moonlight_ui::SettingDesc kStatusIconSettings[] = {
+    {"statusicon_enabled",        SType::kBool,     SICON(enabled)},
+    {"statusicon_corner",         SType::kInt,      SICON(corner)},
+    {"statusicon_margin_x",       SType::kInt,      SICON(margin_x)},
+    {"statusicon_margin_y",       SType::kInt,      SICON(margin_y)},
+    {"statusicon_step_dir",       SType::kInt,      SICON(step_dir)},
+    {"statusicon_wrap_dir",       SType::kInt,      SICON(wrap_dir)},
+    {"statusicon_per_line",       SType::kInt,      SICON(per_line)},
+    {"statusicon_icon_pitch",     SType::kInt,      SICON(icon_pitch)},
+    {"statusicon_line_pitch",     SType::kInt,      SICON(line_pitch)},
+    {"statusicon_sort_mode",      SType::kInt,      SICON(sort_mode)},
+    {"statusicon_show_remaining", SType::kBool,     SICON(show_remaining)},
+    {"statusicon_time_bg",        SType::kBool,     SICON(time_bg)},
+    {"statusicon_icon_alpha",     SType::kInt,      SICON(icon_alpha)},
+    {"statusicon_icon_size",      SType::kInt,      SICON(icon_size)},
+    {"statusicon_time_place",     SType::kInt,      SICON(time_place)},
+    {"statusicon_time_anchor",    SType::kInt,      SICON(time_anchor)},
+    {"statusicon_time_bold",      SType::kBool,     SICON(time_bold)},
+    {"statusicon_time_text",      SType::kColorU32, SICON(col_time_text)},
+    {"statusicon_time_shadow",    SType::kColorU32, SICON(col_time_shadow)},
+};
+#undef SICON
 
-void WriteArgbKey(YAML::Emitter& out, const std::string& key, const float picker_rgba[4]) {
-  out << YAML::Key << key << YAML::Value << HexArgb(picker_rgba);
-}
+// Suivi de quête (overlay ImGui).
+#define QTRACK(member) \
+  MLUI_FIELD(quest_tracker, config().member), MLUI_DEFAULT(QuestTrackerConfig, member)
+const moonlight_ui::SettingDesc kQuestTrackerSettings[] = {
+    {"questtracker_enabled",        SType::kBool, QTRACK(enabled)},
+    {"questtracker_show_titlebar",  SType::kBool, QTRACK(show_titlebar)},
+    {"questtracker_locked",         SType::kBool, QTRACK(locked)},
+    {"questtracker_pos_x",          SType::kInt,  QTRACK(pos_x)},
+    {"questtracker_pos_y",          SType::kInt,  QTRACK(pos_y)},
+    {"questtracker_width",          SType::kInt,  QTRACK(width)},
+    {"questtracker_max_quests",     SType::kInt,  QTRACK(max_quests)},
+    {"questtracker_title_rgb",      SType::kInt,  QTRACK(title_rgb)},
+    {"questtracker_desc_rgb",       SType::kInt,  QTRACK(desc_rgb)},
+    {"questtracker_hunt_rgb",       SType::kInt,  QTRACK(hunt_rgb)},
+    {"questtracker_font_scale",     SType::kInt,  QTRACK(font_scale)},
+    {"questtracker_show_bg",        SType::kBool, QTRACK(show_bg)},
+    {"questtracker_bg_alpha",       SType::kInt,  QTRACK(bg_alpha)},
+    {"questtracker_show_objective", SType::kBool, QTRACK(show_objective)},
+};
+#undef QTRACK
+
+// Noms d'entités au-dessus des acteurs. Les champs d'EntityNames sont privés et
+// n'existent que derrière des accesseurs : le défaut ne peut pas être lu dans le
+// header, il est donc littéral ici (et une seule fois, cf. MLUI_LITERAL).
+const moonlight_ui::SettingDesc kEntityNameSettings[] = {
+    {"entnames_enabled",   SType::kBool,  MLUI_FIELD(entity_names, enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"entnames_players",   SType::kBool,  MLUI_FIELD(entity_names, show_players()),
+     MLUI_LITERAL(bool, true)},
+    {"entnames_monsters",  SType::kBool,  MLUI_FIELD(entity_names, show_monsters()),
+     MLUI_LITERAL(bool, false)},
+    {"entnames_npcs",      SType::kBool,  MLUI_FIELD(entity_names, show_npcs()),
+     MLUI_LITERAL(bool, false)},
+    {"entnames_self",      SType::kBool,  MLUI_FIELD(entity_names, show_self()),
+     MLUI_LITERAL(bool, false)},
+    {"entnames_outline",   SType::kBool,  MLUI_FIELD(entity_names, outline()),
+     MLUI_LITERAL(bool, true)},
+    {"entnames_yoffset",   SType::kInt,   MLUI_FIELD(entity_names, y_offset()),
+     MLUI_LITERAL(int, 2)},
+    {"entnames_fontscale", SType::kFloat, MLUI_FIELD(entity_names, font_scale()),
+     MLUI_LITERAL(float, 1.0f)},
+};
 
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
@@ -605,51 +661,10 @@ void MoonlightUi::LoadSettings() {
       SetModernInterface(modern);
     }
 
-    if (auto* si = Bourgeon::Instance().status_icons()) {
-      StatusIconConfig& c = si->config();
-      c.enabled        = ui["statusicon_enabled"].as<bool>(c.enabled);
-      c.corner         = ui["statusicon_corner"].as<int>(c.corner);
-      c.margin_x       = ui["statusicon_margin_x"].as<int>(c.margin_x);
-      c.margin_y       = ui["statusicon_margin_y"].as<int>(c.margin_y);
-      c.step_dir       = ui["statusicon_step_dir"].as<int>(c.step_dir);
-      c.wrap_dir       = ui["statusicon_wrap_dir"].as<int>(c.wrap_dir);
-      c.per_line       = ui["statusicon_per_line"].as<int>(c.per_line);
-      c.icon_pitch     = ui["statusicon_icon_pitch"].as<int>(c.icon_pitch);
-      c.line_pitch     = ui["statusicon_line_pitch"].as<int>(c.line_pitch);
-      c.sort_mode      = ui["statusicon_sort_mode"].as<int>(c.sort_mode);
-      c.show_remaining = ui["statusicon_show_remaining"].as<bool>(c.show_remaining);
-      c.time_bg        = ui["statusicon_time_bg"].as<bool>(c.time_bg);
-      c.icon_alpha     = ui["statusicon_icon_alpha"].as<int>(c.icon_alpha);
-      c.icon_size      = ui["statusicon_icon_size"].as<int>(c.icon_size);
-      c.time_place     = ui["statusicon_time_place"].as<int>(c.time_place);
-      c.time_anchor    = ui["statusicon_time_anchor"].as<int>(c.time_anchor);
-      c.time_bold      = ui["statusicon_time_bold"].as<bool>(c.time_bold);
-      // Ces deux-là sont persistées en ImU32 décimal (pas en hex ARGB) : le
-      // nom de la fonction le dit, ne pas y appliquer ReadArgbKey.
-      if (ui["statusicon_time_text"])
-        ro::PickerFromImU32(ui["statusicon_time_text"].as<unsigned>(0), c.col_time_text);
-      if (ui["statusicon_time_shadow"])
-        ro::PickerFromImU32(ui["statusicon_time_shadow"].as<unsigned>(0), c.col_time_shadow);
-      si->MarkDirty();
-    }
+    moonlight_ui::ReadSettings(ui, kStatusIconSettings);
+    if (auto* si = Bourgeon::Instance().status_icons()) si->MarkDirty();
 
-    if (auto* qt = Bourgeon::Instance().quest_tracker()) {
-      QuestTrackerConfig& c = qt->config();
-      c.enabled        = ui["questtracker_enabled"].as<bool>(c.enabled);
-      c.show_titlebar  = ui["questtracker_show_titlebar"].as<bool>(c.show_titlebar);
-      c.locked         = ui["questtracker_locked"].as<bool>(c.locked);
-      c.pos_x          = ui["questtracker_pos_x"].as<int>(c.pos_x);
-      c.pos_y          = ui["questtracker_pos_y"].as<int>(c.pos_y);
-      c.width          = ui["questtracker_width"].as<int>(c.width);
-      c.max_quests     = ui["questtracker_max_quests"].as<int>(c.max_quests);
-      c.title_rgb      = ui["questtracker_title_rgb"].as<int>(c.title_rgb);
-      c.desc_rgb       = ui["questtracker_desc_rgb"].as<int>(c.desc_rgb);
-      c.hunt_rgb       = ui["questtracker_hunt_rgb"].as<int>(c.hunt_rgb);
-      c.font_scale     = ui["questtracker_font_scale"].as<int>(c.font_scale);
-      c.show_bg        = ui["questtracker_show_bg"].as<bool>(c.show_bg);
-      c.bg_alpha       = ui["questtracker_bg_alpha"].as<int>(c.bg_alpha);
-      c.show_objective = ui["questtracker_show_objective"].as<bool>(c.show_objective);
-    }
+    moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
 
     if (auto* st = Bourgeon::Instance().settings_tweaks()) {
       D3D9PostFx& g = st->fx();
@@ -678,16 +693,7 @@ void MoonlightUi::LoadSettings() {
       st->Apply();  // push to the d3d9 post-process layer
     }
 
-    if (auto* en = Bourgeon::Instance().entity_names()) {
-      en->enabled()       = ui["entnames_enabled"].as<bool>(false);
-      en->show_players()  = ui["entnames_players"].as<bool>(true);
-      en->show_monsters() = ui["entnames_monsters"].as<bool>(false);
-      en->show_npcs()     = ui["entnames_npcs"].as<bool>(false);
-      en->show_self()     = ui["entnames_self"].as<bool>(false);
-      en->outline()       = ui["entnames_outline"].as<bool>(true);
-      en->y_offset()      = ui["entnames_yoffset"].as<int>(2);
-      en->font_scale()    = ui["entnames_fontscale"].as<float>(1.0f);
-    }
+    moonlight_ui::ReadSettings(ui, kEntityNameSettings);
 
     chat_bg_presets_.clear();
     if (const YAML::Node presets = ui["chat_bg_presets"]) {
@@ -913,51 +919,9 @@ void MoonlightUi::WriteSettingsFile() {
     out << YAML::EndMap;
   }
 
-  {
-    auto* si = Bourgeon::Instance().status_icons();
-    const StatusIconConfig c = si ? si->config() : StatusIconConfig{};
-    out << YAML::Key << "statusicon_enabled"        << YAML::Value << c.enabled
-        << YAML::Key << "statusicon_corner"         << YAML::Value << c.corner
-        << YAML::Key << "statusicon_margin_x"       << YAML::Value << c.margin_x
-        << YAML::Key << "statusicon_margin_y"       << YAML::Value << c.margin_y
-        << YAML::Key << "statusicon_step_dir"       << YAML::Value << c.step_dir
-        << YAML::Key << "statusicon_wrap_dir"       << YAML::Value << c.wrap_dir
-        << YAML::Key << "statusicon_per_line"       << YAML::Value << c.per_line
-        << YAML::Key << "statusicon_icon_pitch"     << YAML::Value << c.icon_pitch
-        << YAML::Key << "statusicon_line_pitch"     << YAML::Value << c.line_pitch
-        << YAML::Key << "statusicon_sort_mode"      << YAML::Value << c.sort_mode
-        << YAML::Key << "statusicon_show_remaining" << YAML::Value << c.show_remaining
-        << YAML::Key << "statusicon_time_bg"        << YAML::Value << c.time_bg
-        << YAML::Key << "statusicon_icon_alpha"     << YAML::Value << c.icon_alpha
-        << YAML::Key << "statusicon_icon_size"      << YAML::Value << c.icon_size
-        << YAML::Key << "statusicon_time_place"     << YAML::Value << c.time_place
-        << YAML::Key << "statusicon_time_anchor"    << YAML::Value << c.time_anchor
-        << YAML::Key << "statusicon_time_bold"      << YAML::Value << c.time_bold
-        // Persistées en ImU32 décimal, pas en hex ARGB (cf. ReadArgbKey).
-        << YAML::Key << "statusicon_time_text"   << YAML::Value
-            << ro::ImU32FromPicker(c.col_time_text)
-        << YAML::Key << "statusicon_time_shadow" << YAML::Value
-            << ro::ImU32FromPicker(c.col_time_shadow);
-  }
+  moonlight_ui::WriteSettings(out, kStatusIconSettings);
 
-  {
-    auto* qt = Bourgeon::Instance().quest_tracker();
-    const QuestTrackerConfig c = qt ? qt->config() : QuestTrackerConfig{};
-    out << YAML::Key << "questtracker_enabled"        << YAML::Value << c.enabled
-        << YAML::Key << "questtracker_show_titlebar"  << YAML::Value << c.show_titlebar
-        << YAML::Key << "questtracker_locked"         << YAML::Value << c.locked
-        << YAML::Key << "questtracker_pos_x"          << YAML::Value << c.pos_x
-        << YAML::Key << "questtracker_pos_y"          << YAML::Value << c.pos_y
-        << YAML::Key << "questtracker_width"          << YAML::Value << c.width
-        << YAML::Key << "questtracker_max_quests"     << YAML::Value << c.max_quests
-        << YAML::Key << "questtracker_title_rgb"      << YAML::Value << c.title_rgb
-        << YAML::Key << "questtracker_desc_rgb"       << YAML::Value << c.desc_rgb
-        << YAML::Key << "questtracker_hunt_rgb"       << YAML::Value << c.hunt_rgb
-        << YAML::Key << "questtracker_font_scale"     << YAML::Value << c.font_scale
-        << YAML::Key << "questtracker_show_bg"        << YAML::Value << c.show_bg
-        << YAML::Key << "questtracker_bg_alpha"       << YAML::Value << c.bg_alpha
-        << YAML::Key << "questtracker_show_objective" << YAML::Value << c.show_objective;
-  }
+  moonlight_ui::WriteSettings(out, kQuestTrackerSettings);
 
   {
     auto* st = Bourgeon::Instance().settings_tweaks();
@@ -986,17 +950,7 @@ void MoonlightUi::WriteSettingsFile() {
         << YAML::Key << "esc_option_pos_y"  << YAML::Value << (st ? st->esc_y() : INT_MIN);
   }
 
-  {
-    auto* en = Bourgeon::Instance().entity_names();
-    out << YAML::Key << "entnames_enabled"   << YAML::Value << (en ? en->enabled() : false)
-        << YAML::Key << "entnames_players"   << YAML::Value << (en ? en->show_players() : true)
-        << YAML::Key << "entnames_monsters"  << YAML::Value << (en ? en->show_monsters() : false)
-        << YAML::Key << "entnames_npcs"      << YAML::Value << (en ? en->show_npcs() : false)
-        << YAML::Key << "entnames_self"      << YAML::Value << (en ? en->show_self() : false)
-        << YAML::Key << "entnames_outline"   << YAML::Value << (en ? en->outline() : true)
-        << YAML::Key << "entnames_yoffset"   << YAML::Value << (en ? en->y_offset() : 2)
-        << YAML::Key << "entnames_fontscale" << YAML::Value << (en ? en->font_scale() : 1.0f);
-  }
+  moonlight_ui::WriteSettings(out, kEntityNameSettings);
 
   {
     out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
