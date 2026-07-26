@@ -36,4 +36,14 @@ using IconTex = GameTexture;
 // réessayer chaque frame.
 IconTex ItemIcon(uint32_t nameid, int identified = 1);
 
+// Image « COLLECTION » de l'item : l'art de preview, bien plus grand que l'icône
+// d'inventaire — c'est ce que le cash shop affiche. Le client la range sous un
+// autre dossier (« …\collection\<resname>.bmp ») et la nomme par son RESNAME, pas
+// par son id, d'où le détour par la DB d'items.
+//
+// Repli sur ItemIcon(nameid) quand l'item n'a pas d'art de collection : mieux
+// vaut la petite icône que rien. Le repli est mémorisé ici aussi, sinon un item
+// sans collection referait la résolution du resname à chaque frame.
+IconTex ItemCollectionIcon(uint32_t nameid);
+
 }  // namespace ro

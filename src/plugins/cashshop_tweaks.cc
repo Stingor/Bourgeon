@@ -61,16 +61,10 @@ constexpr uintptr_t kEnsureCache  = 0x0125510c;  // *(void**) = cache
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
 
-//  Icône d'item 
-// Cash shop = image "collection" (art de preview, plus grande) plutôt que la
-// petite icône d'inventaire. Chemin = μ μ μΈν°νμ΄μ€\collection\<resname>.bmp ;
-// repli sur μ μ μΈν°νμ΄μ€\item\<resname>.bmp si la collection manque.
-constexpr uintptr_t kGetResName    = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> resname C-str
-using GetResName_t = char*(__fastcall*)(void*);
-
-// PrΓ©fixes CP949 (2 littΓ©raux concatΓ©nΓ©s pour Γ©viter que \xba avale le \ suivant).
-static const char kCollectionPrefix[] =
-    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\collection\\";
+// Icône d'item : le cash shop affiche l'image de COLLECTION (art de preview,
+// bien plus grande que l'icône d'inventaire). Sa résolution vit dans le cache
+// partagé, ro::ItemCollectionIcon (ui/icon_cache.h), avec le repli sur la petite
+// icône quand l'art n'existe pas.
 
 template <typename Fn>
 inline Fn Vf(void* self, int off) {
@@ -152,20 +146,6 @@ const char* ItemName(uint32_t id) {
 
 
 
-// RΓ©sout le resname d'un item par id (ItemSkillInfo standalone -> GetResName).
-// SEH (POD only). Sert au chemin de l'image "collection".
-void ResolveResNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    uint8_t info[0x100];
-    std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));
-    info[0x5c] = 1;  // resname "identifiΓ©" (rec+8)
-    char* rn = reinterpret_cast<GetResName_t>(kGetResName)(info);
-    if (rn && rn[0]) { std::strncpy(out, rn, cap - 1); out[cap - 1] = '\0'; }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 
 
@@ -687,7 +667,10 @@ void CashShopTweaks::OnRenderUI() {
       const float frameH = ImGui::GetFrameHeight();
       const float sp = ImGui::GetStyle().ItemSpacing.y;
       const float gap2 = 8.0f;
-      ro::IconTex ic = ro::ItemIcon(ci.id);
+      // Image de COLLECTION (art de preview), pas la petite icône d'inventaire :
+      // c'est ce que le cash shop natif affiche, et c'est la raison d'être de la
+      // vignette large. Repli automatique sur l'icône quand l'art n'existe pas.
+      ro::IconTex ic = ro::ItemCollectionIcon(ci.id);
       const float img = LH - 10.0f;              // image un peu plus petite -> marges
       float iw = img, ih = img;
       if (ic.tex && ic.w > 0 && ic.h > 0) {
