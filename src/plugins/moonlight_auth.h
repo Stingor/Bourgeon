@@ -65,7 +65,11 @@ class MoonlightAuth : public Plugin {
   // mode 10011 : le client reste en CLoginMode, donc OnModeSwitch ne repasse PAS et
   // le plugin resterait bloqué en kDriveLogin, laissant l'écran de login NATIF).
   // `reason` sert au diagnostic (bourgeon.log). No-op si le plugin est désactivé.
-  void RearmWebLogin(const char* reason);
+  // `service_select_pending` : true = le natif va reconstruire l'écran de choix de
+  // connexion (<connection> du clientinfo), il faudra donc le repasser ; false = on
+  // arrive directement sur la fenêtre de login (cas du retour depuis le char-select,
+  // état 3), aucune sélection à tirer.
+  void RearmWebLogin(const char* reason, bool service_select_pending = true);
 
   // Résultat d'une requête HTTP, publié par le thread worker sous verrou. Public
   // pour que le helper DoPost (moonlight_auth.cc) puisse le nommer.

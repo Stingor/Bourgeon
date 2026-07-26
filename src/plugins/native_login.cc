@@ -19,6 +19,9 @@ constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kGetTextAddr    = 0x008210A0;  // UIEdit_GetTextPtr
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
+constexpr uintptr_t kUIWindowMgr    = 0x0131F4E8;  // g_UIWindowMgr
+constexpr uintptr_t kFindWindow     = 0x00A47B90;  // __thiscall(mgr, id) -> wnd|null
+constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
 
 // Offsets UILoginWnd (tous prouvés au désasm — cf. login_connect_re.md).
 constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler natif)
@@ -178,6 +181,22 @@ bool native_login::CharListLoaded() {
       if (fn(d, 8, slot, 0, 0, 0) != nullptr) return true;
     }
     return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+bool native_login::CharSelectWindowPresent() {
+  // Fenêtre native du char-select (UINewSelectCharWnd, id 0x115) vivante dans le
+  // manager. Sonde PRÉFÉRABLE à CharListLoaded() pour « on est arrivé au
+  // char-select » : les CHARACTER_INFO SURVIVENT à un retour à l'écran de connexion
+  // (elles restent lisibles par cmd 8), alors que les fenêtres sont TOUTES purgées à
+  // chaque changement d'état (UIWindowMgr_DestroyAllWindows 0x00a482f0, appelée en
+  // tête de CLoginMode_OnStateEnter). Aucun résidu, donc.
+  __try {
+    using FindWindow_t = void*(__thiscall*)(void*, int);
+    return reinterpret_cast<FindWindow_t>(kFindWindow)(
+               reinterpret_cast<void*>(kUIWindowMgr), kCharSelectWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

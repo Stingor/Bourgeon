@@ -434,6 +434,24 @@ couverture (retour 185 ≠ 187 attendu) ⇒ le natif conclurait « annulé ».
 Pour la fermeture (`cmd 2`), la table passe derrière un fondu au noir
 « Fermeture du jeu… » le temps que la boucle principale sorte.
 
+**Trace live (mesurée le 2026-07-26 avec une instrumentation temporaire, retirée
+depuis)** — `mode+0x4` (état courant) et fenêtres vivantes, du char-select au 2ᵉ login :
+
+| Moment | État | Fenêtre |
+|---|---|---|
+| char-select (avant le clic) | 7 | `0x115` char-select |
+| après `cmd 10011` | 3 | `3` login |
+| après le 2ᵉ `CA_LOGIN` | 6 | `2` « Select Service » (choix du char-server) |
+
+⚠ **Piège trouvé là** : l'auto-confirmation du char-server de `MoonlightAuth` se
+coupait au 2ᵉ login parce qu'elle testait `CharListLoaded()` — or **les
+`CHARACTER_INFO` survivent au retour à l'écran de connexion** (le dispatcher cmd 8
+répond encore), donc « char-select atteint » se latchait immédiatement et la fenêtre
+`2` restait affichée sans être validée. La sonde correcte est la **présence de la
+fenêtre** `0x115` (`native_login::CharSelectWindowPresent()`) : `OnStateEnter` appelle
+`UIWindowMgr_DestroyAllWindows 0x00a482f0` en tête, donc **aucune fenêtre ne survit à
+un changement d'état** — zéro résidu.
+
 `CHARACTER_INFO+0x9E` (DelRevDate) > 0 ⇒ suppression programmée en cours (délai
 restant, secondes) — bloque l'entrée en jeu. Réservation/annulation (0x197/0x198)
 restent **100 % en ImGui** (pas de dialogue natif) ; création et suppression

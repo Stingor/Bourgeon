@@ -554,7 +554,7 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
   }
 }
 
-void MoonlightAuth::RearmWebLogin(const char* reason) {
+void MoonlightAuth::RearmWebLogin(const char* reason, bool service_select_pending) {
   if (!enabled_) return;
   LogDiag("[MoonlightAuth] réarmement du login web ({}) : état {} -> kWebLogin",
           reason ? reason : "?", StateName(state_));
@@ -579,10 +579,14 @@ void MoonlightAuth::RearmWebLogin(const char* reason) {
   charsrv_tries_ = 0;
   charsel_reached_ = false;        // vrai (re)login -> le drive reprend à zéro
   authenticated_ = false;
-  // Le service-select natif (fenêtre <connection>) est reconstruit avec l'écran de
-  // login : il faut le re-passer, sinon on attendrait un écran déjà validé.
+  // Service-select (fenêtre de choix de <connection>) : à repasser seulement si le
+  // natif va le reconstruire (nouvelle entrée dans le mode login).
+  // ⚠ Sur un retour depuis le char-select (cmd 10011 -> état 3), il N'apparaît PAS :
+  // l'état 3 recrée directement UILoginWnd. Tirer quand même la sélection
+  // (cmd 0x2723 = CLoginMode_SendMsg 10019, Apply_ClientInfoConnection) rejouerait une
+  // transition d'état et pourrait ramener un écran de choix — d'où le drapeau.
   login_enter_tick_ = GetTickCount();
-  server_select_done_ = false;
+  server_select_done_ = !service_select_pending;
   svc_kbd_fallback_ = false;
   state_ = State::kWebLogin;
 }
@@ -653,19 +657,26 @@ void MoonlightAuth::OnRenderLoginUI() {
     // char-server tombe NORMALEMENT quand on entre en jeu, ce que la détection prenait
     // pour un login raté (dt>15s, socket=-1) -> faux kError -> reset authenticated_ ->
     // re-drive complet en boucle. On reste en passthrough idle ; CharSelect gère l'UI.
-    if (!charsel_reached_ && native_login::CharListLoaded()) charsel_reached_ = true;
+    // ⚠ Sonde = la FENÊTRE native du char-select, pas CharListLoaded() : les
+    // CHARACTER_INFO survivent à un retour à l'écran de connexion (bouton « Revenir
+    // au login »), donc la liste paraissait déjà chargée au login SUIVANT -> ce latch
+    // tombait immédiatement, l'auto-confirmation ne tirait plus et le joueur restait
+    // bloqué sur la fenêtre « Select Service » (choix du char-server, id 2). Les
+    // fenêtres, elles, sont purgées à chaque changement d'état du mode.
+    if (!charsel_reached_ && native_login::CharSelectWindowPresent())
+      charsel_reached_ = true;
     if (charsel_reached_) return;
 
-    // Auto-confirmation du char-server. NB : moonlight envoie AC_ACCEPT_LOGIN
-    // 0x0ac4 -> le client auto-pose l'état 6 (connexion char-server AUTOMATIQUE,
-    // pas de fenêtre de sélection). Cette Entrée est donc surtout un filet pour
-    // tout écran résiduel : on tire IMMÉDIATEMENT dès le login réussi (fenêtre de
-    // login détruite), retry rapide, et on s'ARRÊTE dès que la liste de persos est
-    // chargée (char-select atteint) -> jamais d'Entrée au char-select. Gaté sur
+    // Auto-confirmation du char-server. AC_ACCEPT_LOGIN 0x0ac4 amène le client à
+    // l'état 6, qui CONSTRUIT la fenêtre id 2 « Select Service » (liste des
+    // char-servers, boutons OK/cancel) : elle attend une validation, d'où cette
+    // Entrée. On tire IMMÉDIATEMENT dès le login réussi (fenêtre de login détruite),
+    // retry rapide, et on s'ARRÊTE dès que la fenêtre du char-select (0x115) est
+    // là -> jamais d'Entrée au char-select. Gaté sur
     // "login réussi" (pas de fenêtre de login présente) pour ne pas taper sur un
     // écran d'échec. La latence restante login->char-select = RÉSEAU (2 RTT).
     if (socket_seen_ && !native_login::LoginWindowPresent() &&
-        !native_login::CharListLoaded() && charsrv_tries_ < 20 &&
+        !native_login::CharSelectWindowPresent() && charsrv_tries_ < 20 &&
         (charsrv_tries_ == 0 || (GetTickCount() - charsrv_tick_) > 50)) {
       HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
       if (hwnd) {

@@ -64,9 +64,20 @@ void MaskLoginWindow(bool hide);
 // fd de la socket login (-1 = pas connecté). Sonde de progression du login.
 int SocketFd();
 
-// True si la liste de personnages est chargée (on est arrivé au char-select :
-// le dispatcher cmd 8 renvoie un CHARACTER_INFO pour le slot 0). Sert à savoir
-// quand ARRÊTER l'auto-confirmation du char-server (ni avant, ni après).
+// True si la liste de personnages est chargée (le dispatcher cmd 8 renvoie un
+// CHARACTER_INFO pour au moins un slot).
+// ⚠ NE PAS s'en servir pour « on est arrivé au char-select » : ces structures
+// SURVIVENT à un retour à l'écran de connexion (bouton « Revenir au login » du
+// char-select), donc la sonde reste vraie pendant tout le login SUIVANT. Utiliser
+// CharSelectWindowPresent().
 bool CharListLoaded();
+
+// True si la fenêtre NATIVE du char-select (UINewSelectCharWnd, id 0x115) est
+// vivante. Sonde fiable de « on est arrivé au char-select » : les fenêtres sont
+// toutes purgées à chaque changement d'état du mode (aucun résidu, contrairement aux
+// CHARACTER_INFO). Sert à savoir quand ARRÊTER l'auto-confirmation du char-server
+// (ni avant — la fenêtre id 2 attend une validation, ni après — l'Entrée fuirait
+// dans le char-select).
+bool CharSelectWindowPresent();
 
 }  // namespace native_login

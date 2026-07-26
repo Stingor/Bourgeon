@@ -8,6 +8,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <string>
 #include <vector>
 
 #include "bourgeon.h"
@@ -1628,7 +1629,11 @@ void CharSelect::OnRenderLoginUI() {
       // login NATIF. On le ramène donc à kWebLogin nous-mêmes.
       // (Effet de bord voulu : DroveMoonlightLogin() repasse à false, donc notre
       // gate nous retire dès la frame suivante — pas besoin de fondu ici.)
-      if (auth_) auth_->RearmWebLogin("retour au login depuis le char-select");
+      // service_select_pending=false : l'état 3 recrée directement UILoginWnd, il n'y
+      // a pas d'écran de choix de connexion à repasser.
+      if (auth_)
+        auth_->RearmWebLogin("retour au login depuis le char-select",
+                             /*service_select_pending=*/false);
       left_ = true;
       ImGui::CloseCurrentPopup();
     }
