@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -13,6 +12,7 @@
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/msvc_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
+#include "yaml-cpp/yaml.h"
 
 namespace {
 // spdlog sink that mirrors each record into LogLineBuffer for the in-game log
@@ -44,21 +44,29 @@ std::string CmdlineLevelName() {
   return {};
 }
 
-// Returns the "log_level: <name>" value from bourgeon_settings.yaml (any
-// nesting), or "" if absent.
+// Valeur de `moonlight_ui.log_level` dans bourgeon_settings.yaml, ou "" si absente.
+//
+// Ce niveau est nécessaire DÈS la construction du logger, donc bien avant que les
+// plugins existent et que MoonlightUi::LoadSettings ne tourne : sans cette lecture
+// anticipée, toutes les lignes du démarrage sortiraient au niveau par défaut. D'où
+// une seconde lecture du même fichier, assumée.
+//
+// Elle se faisait par recherche TEXTUELLE de « log_level: » ligne par ligne, à
+// n'importe quelle profondeur : un commentaire ou une valeur de chaîne contenant
+// ces caractères, dans n'importe quelle section du fichier partagé, était pris
+// pour le réglage. On lit maintenant la clé à sa place exacte, avec le parseur du
+// projet.
 std::string FileLevelName() {
-  std::ifstream f(paths::SettingsPath());
-  std::string line;
-  while (std::getline(f, line)) {
-    const auto key = line.find("log_level:");
-    if (key == std::string::npos) continue;
-    std::string v = line.substr(key + 10);
-    const auto b = v.find_first_not_of(" \t\"'");
-    if (b == std::string::npos) continue;
-    const auto e = v.find_last_not_of(" \t\"'\r\n");
-    return v.substr(b, e - b + 1);
+  try {
+    const YAML::Node root = YAML::LoadFile(paths::SettingsPath());
+    const YAML::Node ui = root["moonlight_ui"];
+    if (!ui) return {};
+    return ui["log_level"].as<std::string>("");
+  } catch (const std::exception&) {
+    // Fichier absent (premier lancement) ou yaml invalide : on garde le défaut.
+    // Surtout pas de log ici — le logger est justement en train de se construire.
+    return {};
   }
-  return {};
 }
 }  // namespace
 
