@@ -1,5 +1,6 @@
 #include "plugins/status_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <climits>
@@ -56,8 +57,6 @@ constexpr int kWinY      = 0x20;   // window live y
 constexpr int kMsgCmd    = 6;      // command message
 constexpr int kSubClose  = 0xc9;   // msg 6 sub-command = close
 constexpr int kMsgRestore = 0x22;  // layout-restore message
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;  // g_UIWindowMgr
-constexpr uintptr_t kFindWindow  = 0x00a47b90;  // FUN_00a47b90(mgr,id) -> window* (or null)
 constexpr int kStatusId  = 0xb;    // UIStatusWnd window id
 
 constexpr uint32_t  kNewWidth  = 302;
@@ -97,7 +96,6 @@ using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 using GetMsg_t  = char* (__cdecl*)(unsigned);
 using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
 using SetPos_t    = void (__fastcall*)(void*, void*, int, int);                       // UIWindow SetPos(this,x,y)
-using FindWindow_t = void* (__thiscall*)(void*, int);                                 // FUN_00a47b90(mgr,id)
 
 const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
 int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
@@ -410,8 +408,7 @@ void StatusTweaks::OnTick() {
   static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
   static DWORD lastSave = 0;                       // GetTickCount of the last save
   static bool init = false;
-  void* win = reinterpret_cast<FindWindow_t>(kFindWindow)(
-      reinterpret_cast<void*>(kUIWindowMgr), kStatusId);
+  void* win = uiwnd::FindWindow(kStatusId);
   if (!win) return;                               // status window not open
 
   // A position was just loaded from the yaml (fresh launch, or a re-entry into game):

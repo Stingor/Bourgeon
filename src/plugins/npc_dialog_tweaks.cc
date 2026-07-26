@@ -1,5 +1,6 @@
 #include "plugins/npc_dialog_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (clic <URL> -> navigateur)
 
@@ -22,10 +23,7 @@
 namespace {
 
 // UIWindowMgr + factory (SEH-gardé, comme shop_tweaks).
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
-constexpr uintptr_t kFindWindow  = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using FindWindow_t  = void* (__thiscall*)(void*, int);
 using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Dispatcher CMode::SendMsg : *(kDispatcherPtr) = mode zone actif (ou 0). vtbl+0x18
@@ -72,14 +70,13 @@ constexpr uint32_t kLinkColor = IM_COL32(0x2E, 0x74, 0xD8, 0xFF);
 // ── Fenêtres natives (SEH-gardé) ──
 void* FindWnd(int id) {
   __try {
-    return reinterpret_cast<FindWindow_t>(kFindWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), id);
+    return uiwnd::FindWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 void CloseWnd(int id) {
   __try {
     reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr, id);
+        uiwnd::Mgr(), nullptr, id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void HideWnd(void* w) {
@@ -966,7 +963,7 @@ void NpcDialogTweaks::OpenItemDescById(uint32_t id) {
     *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
     info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(static_cast<uintptr_t>(kWinItemDesc)));
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);

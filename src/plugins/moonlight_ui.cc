@@ -47,6 +47,7 @@
 #include "plugins/weapon_dual_sprites.h"
 #include "plugins/spr_effect_lab.h"
 #include "ragnarok/ui_window_mgr.h"
+#include "ragnarok/uiwnd.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
@@ -1578,7 +1579,7 @@ void MoonlightUi::OnRenderUI() {
   // Global alignment grid (shared HUD overlay). Drawn here on the background
   // list so it shows even with the bars hidden; suppressed while a full-screen
   // UI (world map) replaces the HUD, matching the bars/icons.
-  if (grid_.show && !ro::HudReplaced()) grid_.Draw();
+  if (grid_.show && !uiwnd::IsHudReplaced()) grid_.Draw();
 
   // SPR Effect Lab : reconcile spawn + overlay au centre (foreground drawlist, indépendant
   // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé.

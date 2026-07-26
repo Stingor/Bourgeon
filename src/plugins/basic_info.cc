@@ -1,5 +1,7 @@
 #include "plugins/basic_info.h"
 
+#include "ragnarok/uiwnd.h"
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -84,16 +86,6 @@ inline float ExpFrac(long long cur, long long max) {
   if (f < 0.0) return 0.0f;
   if (f > 1.0) return 1.0f;
   return static_cast<float>(f);
-}
-
-// A full-screen UI (world map = window id 0x8c) replaces the in-game HUD; hide
-// the bars + alignment grid while it is open. FindWindow @0x00a47b90 on the
-// window manager @0x0131f4e8; the world-map window is destroyed on close, so
-// this tracks its open-state exactly. (Mirrors MenuIconTweaks::HudReplaced.)
-bool HudReplaced() {
-  using FindWindowFn = void* (__thiscall*)(void*, int);
-  return reinterpret_cast<FindWindowFn>(0x00a47b90)(
-             reinterpret_cast<void*>(0x0131f4e8), 0x8c) != nullptr;
 }
 
 // ── Status-portrait value sources (20250716 client) ──────────────────────────
@@ -3279,7 +3271,7 @@ void BasicInfoTweaks::DrawPortrait() {
 
 void BasicInfoTweaks::OnRenderUI() {
   if (!in_game_) return;
-  if (HudReplaced()) return;  // world map / full-screen UI replaces the HUD
+  if (uiwnd::IsHudReplaced()) return;  // world map / full-screen UI replaces the HUD
   // The alignment grid is drawn by MoonlightUi (shared overlay), not here.
 
   DrawPortrait();  // independent of the EXP-bar master toggle below

@@ -1,5 +1,6 @@
 #include "plugins/item_desc_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (ouvrir les liens <URL>)
 #include <algorithm>
@@ -110,7 +111,6 @@ constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vecto
 constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
 constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr,edx,id)
 constexpr uintptr_t kMakeWindow   = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,edx,id) -> wnd
-constexpr uintptr_t kUIWindowMgr  = 0x0131f4e8;
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
@@ -1189,7 +1189,7 @@ void HideDescSlot(uintptr_t slot, uintptr_t vtable) {
 void SafeCloseWindowId(int id) {
   __try {
     reinterpret_cast<CloseWin_t>(kCloseWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr, id);
+        uiwnd::Mgr(), nullptr, id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1209,7 +1209,7 @@ void OpenCardDescWindow(uint32_t id) {
     reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);            // init les std::string
     reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> +0x2c
     *(info + kInfoFlag) = 1;                                  // => desc lues de rec+0x0c
-    void* mgr = reinterpret_cast<void*>(kUIWindowMgr);        // objet manager embarqué
+    void* mgr = uiwnd::Mgr();        // objet manager embarqué
     void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
         mgr, nullptr, reinterpret_cast<void*>(0xc));
     if (wnd) {

@@ -1,5 +1,6 @@
 #include "plugins/window_pos_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <climits>
@@ -39,14 +40,11 @@ constexpr int kWinX     = 0x1c;  // live x
 constexpr int kWinY     = 0x20;  // live y
 constexpr int kVfSetPos = 0x10;  // UIWindow::SetPos(x,y) — vtable slot +0x10
 
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;  // g_UIWindowMgr
-constexpr uintptr_t kFindWindow  = 0x00a47b90;  // UIWindowMgr_FindWindow(mgr,id) -> win|null
 constexpr uintptr_t kMakeWindow  = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,id) -> win (factory)
 
 // MakeWindow is __thiscall(mgr, int windowID) returning the window (id = [ebp+8]).
 using MakeWindow_t = void* (__fastcall*)(void*, void*, int);
 using SetPos_t     = void  (__fastcall*)(void*, void*, int, int);  // SetPos(this,,x,y)
-using FindWindow_t = void* (__thiscall*)(void*, int);              // FindWindow(mgr,id)
 
 // A saved coordinate is valid if it isn't the "unset" sentinel and isn't absurdly
 // off-screen. NEGATIVE coords are legal (a window dragged partly off the left/top
@@ -94,8 +92,7 @@ TrackedWindow g_windows[] = {
 constexpr int kWindowCount = static_cast<int>(sizeof(g_windows) / sizeof(g_windows[0]));
 
 inline void* FindWin(int id) {
-  return reinterpret_cast<FindWindow_t>(kFindWindow)(
-      reinterpret_cast<void*>(kUIWindowMgr), id);
+  return uiwnd::FindWindow(id);
 }
 
 inline void SetWinPos(void* win, int x, int y) {

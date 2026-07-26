@@ -1,5 +1,6 @@
 #include "plugins/inventory_viewer.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -110,9 +111,7 @@ using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateu
 constexpr uintptr_t kFmtComma = 0x00a948d0;
 
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
 constexpr uintptr_t kMakeWindow  = 0x00a39340;   // __fastcall(mgr, edx, id)
-constexpr uintptr_t kFindWindow  = 0x00a47b90;   // __thiscall(mgr, id) : ptr fenêtre par id (0 si absente)
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
 constexpr int kWinItemDesc = 0xc;
 constexpr int kWinInventory = 8;
@@ -120,7 +119,6 @@ constexpr int kMsgSetItem  = 0x18;
 constexpr int kVfOnMsg     = 0x94;
 constexpr int kVfSetPos    = 0x10;
 using MakeWindow_t   = void*(__fastcall*)(void*, void*, void*);
-using FindWindow_t   = void*(__thiscall*)(void*, int);
 using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fenêtre si ouverte
 using OnMsg_t        = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
@@ -196,7 +194,7 @@ using SaveWindowRect_t = void(__thiscall*)(void*, int);
 void CloseCardInsert() {
   __try {
     reinterpret_cast<SaveWindowRect_t>(kSaveWindowRect)(
-        reinterpret_cast<void*>(kUIWindowMgr), kWinCardInsert);
+        uiwnd::Mgr(), kWinCardInsert);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -598,7 +596,7 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
     }
     if (!found) return;
-    void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+    void* mgr = uiwnd::Mgr();
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
         mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
@@ -723,7 +721,7 @@ void PostItemLinkToChat(int index) {
   __try {
     void* info = FindInfoByIndex(index);
     if (!info) return;
-    void* focused = *reinterpret_cast<void**>(kUIWindowMgr + 0x1a0);
+    void* focused = *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + 0x1a0);
     if (!focused) return;
     const int type = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(focused) + 0x2c);
     auto insert = reinterpret_cast<ChatInsertLink_t>(0x008217f0);
@@ -780,8 +778,7 @@ bool StorageViewerOver(float x, float y) {
 constexpr int kEquipWndId = 0xa;
 uint8_t* EquipWnd() {
   __try {
-    auto* w = reinterpret_cast<uint8_t*>(reinterpret_cast<FindWindow_t>(kFindWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), kEquipWndId));
+    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kEquipWndId));
     if (!w || *reinterpret_cast<int*>(w + kOffVisible) == 0) return nullptr;
     return w;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }

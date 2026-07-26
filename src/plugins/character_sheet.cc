@@ -1,5 +1,6 @@
 #include "plugins/character_sheet.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 #include <commdlg.h>  // GetSaveFileNameA (dialogue « Enregistrer sous »)
 #include <objbase.h>  // CoInitializeEx pour le thread du dialogue
@@ -128,7 +129,6 @@ const char* PoseLabelFull(int anim, bool animate) {
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
 //  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_tweaks)
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
 constexpr uintptr_t kMakeWindow  = 0x00a39340;
 constexpr int kWinItemDesc = 0xc, kMsgSetItem = 0x18, kVfOnMsg = 0x94, kVfSetPos = 0x10;
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;
@@ -675,7 +675,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
       Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
@@ -1934,7 +1934,7 @@ void CharacterSheet::OpenCartWindow() {
   constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire chariot)
   __try {
     reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(static_cast<uintptr_t>(kCartWndId)));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

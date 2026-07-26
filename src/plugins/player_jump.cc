@@ -1,5 +1,6 @@
 #include "plugins/player_jump.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <cstdint>
@@ -23,7 +24,6 @@ constexpr int kOffPosY      = 0x14;   // acteur -> position monde Y = HAUTEUR (f
 constexpr int kOffPosZ      = 0x18;   // acteur -> position monde Z (float)
 constexpr int kOffHeightOff = 0x3f4;  // acteur -> offset hauteur (float ; vec3 +0x3f0/f4/f8)
 
-constexpr uintptr_t kUiWindowMgr = 0x0131f4e8;  // g_UIWindowMgr
 
 using TerrainHeightFn = float(__thiscall*)(void*, float, float);
 using FindByGidFn     = void*(__thiscall*)(void*, uint32_t);
@@ -116,7 +116,7 @@ void ApplyJumpHeight(void* actor, void* world, float offY) {
 bool NativeTextInputHasFocus() {
   bool focused = false;
   __try {
-    char* mgr = reinterpret_cast<char*>(kUiWindowMgr);
+    char* mgr = reinterpret_cast<char*>(uiwnd::kUIWindowMgrAddr);
     void* widget = *reinterpret_cast<void**>(mgr + 0x1a0);
     void* chat   = *reinterpret_cast<void**>(mgr + 0x1c8);
     const bool chat_typing = *reinterpret_cast<uint8_t*>(mgr + 0x24) != 0;

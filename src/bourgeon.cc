@@ -1,5 +1,6 @@
 #include "bourgeon.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include "imgui.h"
@@ -273,9 +274,8 @@ namespace {
 // réellement liée au behavior 0x74 (remappable via les hotkeys Lua), l'overlay
 // suit toujours l'interface du jeu.
 bool IsNativeUiHidden() {
-  constexpr uintptr_t kUIWindowMgr        = 0x0131f4e8;
   constexpr uintptr_t kHideAllStateOffset = 0x508;
-  return *reinterpret_cast<const int*>(kUIWindowMgr + kHideAllStateOffset) == 2;
+  return *reinterpret_cast<const int*>(uiwnd::kUIWindowMgrAddr + kHideAllStateOffset) == 2;
 }
 
 }  // namespace

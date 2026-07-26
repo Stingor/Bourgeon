@@ -1,5 +1,6 @@
 #include "plugins/storage_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -158,7 +159,6 @@ IconTex ResolveIcon(uint32_t id, int identified) {
 // Donc on re-parcourt la liste live au clic pour retrouver le nœud par id et
 // passer SON info (node+8). OnMsg 0x18 copie ce qu'il faut (on ne possède pas
 // l'info -> aucun free). item_desc_tweaks détecte 0xc et rend sa version enrichie.
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
 constexpr uintptr_t kMakeWindow  = 0x00a39340;  // __fastcall(mgr, edx, id) -> wnd
 constexpr int kWinItemDesc = 0xc;    // fenêtre desc ITEM (OnMsg 0x18 + &ItemSkillInfo)
 constexpr int kMsgSetItem  = 0x18;
@@ -195,7 +195,7 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
     }
     if (!found) return;
-    void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+    void* mgr = uiwnd::Mgr();
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
         mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {

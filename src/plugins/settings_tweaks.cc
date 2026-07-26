@@ -1,5 +1,6 @@
 #include "plugins/settings_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <windows.h>
 
 #include <cstdint>
@@ -273,9 +274,7 @@ void SettingsTweaks::OnTick() {
   // the window is already in place and this restore is a harmless no-op. (ESC above
   // is save-only because its centring-through-vtable is proven by disassembly.)
   // Found via FindWindow(0x271e); pos = win+0x1c/0x20; SetPos via vtable slot.
-  using FindWindow_t = void* (__thiscall*)(void*, int);
-  void* gw = reinterpret_cast<FindWindow_t>(0x00a47b90)(
-      reinterpret_cast<void*>(0x0131f4e8), 0x271e);
+  void* gw = uiwnd::FindWindow(0x271e);
   if (gw) {
     int* px = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(gw) + 0x1c);
     int* py = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(gw) + 0x20);
@@ -308,7 +307,7 @@ void SettingsTweaks::OnTick() {
   // (poll win+0x1c/0x20, throttled) and re-arm the restore hook on close. The live
   // pointer is g_UIWindowMgr+0x408 (null while closed), vtable-guarded against any
   // stale slot value.
-  void* ew = *reinterpret_cast<void**>(0x0131f4e8 + 0x408);
+  void* ew = *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + 0x408);
   if (ew && *reinterpret_cast<uintptr_t*>(ew) == 0x010384a0) {
     const int ex = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ew) + 0x1c);
     const int ey = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ew) + 0x20);

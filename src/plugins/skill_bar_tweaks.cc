@@ -1,5 +1,6 @@
 #include "plugins/skill_bar_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -39,7 +40,6 @@
 namespace {
 
 // ---- gestionnaire de fenêtres / instance singleton -------------------------
-constexpr uintptr_t kUIWindowMgr    = 0x0131f4e8;  // g_UIWindowMgr
 constexpr int       kMgrShortCutPtr = 0x1e8;       // mgr+0x1e8 = instance UIShortCutWnd cachée
 constexpr uintptr_t kMakeWindow     = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr, id) -> wnd (idempotent)
 constexpr int       kShortCutId     = 0x24;
@@ -131,7 +131,7 @@ struct CooldownNode {       // 0x24 octets
 struct SlotRec { bool valid; uint8_t type; uint32_t id; int16_t level; };
 
 inline void* ShortCutWnd() {
-  return *reinterpret_cast<void**>(kUIWindowMgr + kMgrShortCutPtr);
+  return *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + kMgrShortCutPtr);
 }
 template <typename Fn>
 inline Fn Vf(void* self, int off) {
@@ -141,7 +141,7 @@ inline Fn Vf(void* self, int off) {
 void EnsureCreated() {
   if (ShortCutWnd()) return;  // déjà créée (cas normal) ou recréée ci-dessous
   reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-      reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+      uiwnd::Mgr(), nullptr,
       reinterpret_cast<void*>(kShortCutId));
 }
 void RebuildSlotPtrs(void* w) {  // OnMsg 0x17 : reconstruit this+0xc4 depuis les globals
@@ -743,7 +743,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
     uint8_t* rec = reinterpret_cast<uint8_t*>(kRegions[region].base) + slot * 7;
     const int id = *reinterpret_cast<int*>(rec + 1);
     if (id != 0) {
-      void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+      void* mgr = uiwnd::Mgr();
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
         void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
             mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));

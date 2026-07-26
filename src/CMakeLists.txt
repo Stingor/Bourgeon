@@ -125,6 +125,7 @@ set(BOURGEON_FILES
 	"ui/color_codec.h"
 
 	# Ragnarok
+	"ragnarok/uiwnd.h"
 	"ragnarok/configuration.h"
 	"ragnarok/ragnarok_client.cc"
 	"ragnarok/ragnarok_client.h"

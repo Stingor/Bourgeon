@@ -1,5 +1,6 @@
 #include "plugins/trade_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -21,10 +22,7 @@
 namespace {
 
 // UIWindowMgr + factory.
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
-constexpr uintptr_t kFindWindow  = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr uintptr_t kCloseWindow = 0x00a2e770;  // SaveWindowRect+close (mgr, edx, id)
-using FindWindow_t  = void* (__thiscall*)(void*, int);
 using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Fenêtre d'échange — RE LIVE 2026-07-23 : c'est la NOUVELLE classe CUIExchangeUI
@@ -107,8 +105,7 @@ constexpr uint16_t kOpExec   = 0x00f0;  // ZC_EXEC_EXCHANGE_ITEM {result:1}
 void* FindWnd(int id) {
   if (id < 0) return nullptr;
   __try {
-    return reinterpret_cast<FindWindow_t>(kFindWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), id);
+    return uiwnd::FindWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 void HideWnd(void* w) {
@@ -120,7 +117,7 @@ void HideWnd(void* w) {
 void CloseWnd(int id) {
   __try {
     reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr, id);
+        uiwnd::Mgr(), nullptr, id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 uintptr_t VTableOf(void* w) {
@@ -133,7 +130,7 @@ uintptr_t VTableOf(void* w) {
 // Renvoie le pointeur (et son id = clé du nœud dans *out_id) ou nullptr. SEH + borné.
 void* FindTradeWndInMap(int* out_id) {
   __try {
-    uint8_t* mgr = reinterpret_cast<uint8_t*>(kUIWindowMgr);
+    uint8_t* mgr = reinterpret_cast<uint8_t*>(uiwnd::kUIWindowMgrAddr);
     void* head = *reinterpret_cast<void**>(mgr + 8);  // _Myhead = sentinelle (= nil)
     if (!head) return nullptr;
     void* root = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(head) + 4);

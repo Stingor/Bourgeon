@@ -1,5 +1,6 @@
 #include "plugins/shop_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -20,10 +21,7 @@
 namespace {
 
 // UIWindowMgr + factory.
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
-constexpr uintptr_t kFindWindow  = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using FindWindow_t  = void* (__thiscall*)(void*, int);
 using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Fenêtres shop NPC (cf. project_npc_shop_re).
@@ -100,14 +98,13 @@ using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 // ── Fenêtres natives (SEH-gardé) ──
 void* FindWnd(int id) {
   __try {
-    return reinterpret_cast<FindWindow_t>(kFindWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), id);
+    return uiwnd::FindWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 void CloseWnd(int id) {
   __try {
     reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr, id);
+        uiwnd::Mgr(), nullptr, id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void HideWnd(void* w) {
@@ -219,7 +216,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
       Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,

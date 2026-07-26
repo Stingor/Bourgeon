@@ -1,29 +1,6 @@
 #include "ui/align_grid.h"
 
-#include <cstdint>
-
 #include "imgui.h"
-
-// ── Adresses natives (client 20250716) ───────────────────────────────────────
-namespace {
-
-constexpr uintptr_t kUIWindowMgr    = 0x0131f4e8;  // g_UIWindowMgr
-constexpr uintptr_t kFindWindowAddr = 0x00a47b90;  // UIWindowMgr::FindWindow(id)
-constexpr int       kWorldMapWndId  = 0x8c;        // UIWorldViewWnd (plein écran)
-
-}  // namespace
-
-// A full-screen UI (world map = window id 0x8c) replaces the in-game HUD; hide
-// the alignment grid while it is open. (Mirrors BasicInfoTweaks/MenuIconTweaks.)
-namespace ro {
-
-bool HudReplaced() {
-  using FindWindowFn = void* (__thiscall*)(void*, int);
-  return reinterpret_cast<FindWindowFn>(kFindWindowAddr)(
-             reinterpret_cast<void*>(kUIWindowMgr), kWorldMapWndId) != nullptr;
-}
-
-}  // namespace ro
 
 void AlignGrid::Draw() const {
   const ImVec2 ds = ImGui::GetIO().DisplaySize;

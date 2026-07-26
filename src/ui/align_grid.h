@@ -36,14 +36,6 @@ struct AlignGrid {
   void Draw() const;
 };
 
-namespace ro {
-
-// Vrai quand une UI plein écran (la carte du monde, fenêtre id 0x8c) remplace le
-// HUD : la grille doit alors être masquée.
-// ⚠ Sous namespace À DESSEIN : basic_info.cc et menu_icons.cc gardent chacun leur
-// propre HudReplaced() dans un namespace anonyme (même test, pour leurs overlays
-// respectifs). Une déclaration globale rendrait leurs appels non qualifiés
-// ambigus. Ne pas « simplifier » en la remontant au global.
-bool HudReplaced();
-
-}  // namespace ro
+// (Le test « une UI plein écran remplace le HUD » vivait ici sous ro::HudReplaced,
+//  en TROIS copies avec celles de basic_info.cc et menu_icons.cc. Il est désormais
+//  unique : uiwnd::IsHudReplaced(), dans ragnarok/uiwnd.h.)

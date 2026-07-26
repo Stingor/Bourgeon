@@ -1,5 +1,7 @@
 #include "plugins/menu_icons.h"
 
+#include "ragnarok/uiwnd.h"
+
 #include <Windows.h>
 #include <cstdint>
 #include <cstdio>
@@ -60,23 +62,14 @@ void __fastcall GridClear(void* self, void* /*edx*/) {
 // path poked the window-manager's active-window slot (mgr+0x19c) and the icon's
 // +0xac then restored them, which corrupted the game's active-window tracking
 // and crashed when a window was opened/closed repeatedly (spam).
-constexpr uintptr_t kUIWindowMgr   = 0x0131f4e8;
-constexpr uintptr_t kFindWindowFn  = 0x00a47b90;  // __thiscall(mgr, id) -> wnd
 constexpr int       kMenuIconWndId = 0x133;
 constexpr uintptr_t kCmdHandler    = 0x00814a70;  // UIMenuIconWnd command handler
-using FindWindowFn = void* (__thiscall*)(void*, int);
 using CmdHandlerFn = void  (__thiscall*)(void*, int, int, int, int, int, int);
 
-// The world map (and similar full-screen UIs) replace the whole HUD: the native
-// menu-icon grid stops drawing, so we must hide our ImGui icons too and reject
-// clicks. The "map" icon (cmd 0xDB) opens window id 0x8c (FUN_00814a70); that
-// window is destroyed on close, so FindWindow(0x8c) != null is a reliable
-// per-frame "HUD replaced" signal.
-constexpr int kWorldMapWndId = 0x8c;
-bool HudReplaced() {
-  return reinterpret_cast<FindWindowFn>(kFindWindowFn)(
-             reinterpret_cast<void*>(kUIWindowMgr), kWorldMapWndId) != nullptr;
-}
+// La carte du monde (et les UI plein écran) remplacent tout le HUD : la grille
+// d'icônes native cesse de se dessiner, donc nos icônes ImGui doivent se cacher
+// et refuser les clics. C'est uiwnd::IsHudReplaced() qui porte ce test — il
+// était copié ici et dans basic_info.cc, à l'identique.
 
 // ── Functional-icon test: native grid only shows ids >= 0x178 per the WARP
 // visibility table @0x814064 (byte 1 = shown); classic ids < 0x178 always show.
@@ -223,8 +216,7 @@ void MenuIconTweaks::HideNativeGrid(bool hide) {
       grid_hidden_ = true;
       // Drop the already-built render nodes now so the native grid disappears
       // immediately (otherwise it lingers until the next relayout / map reload).
-      if (void* wnd = reinterpret_cast<FindWindowFn>(kFindWindowFn)(
-              reinterpret_cast<void*>(kUIWindowMgr), kMenuIconWndId))
+      if (void* wnd = uiwnd::FindWindow(kMenuIconWndId))
         GridClear(wnd, nullptr);
       // GridClear empties the node list but the already-composited pixels linger
       // until a relayout — ask the server to clif_refresh so the client
@@ -241,8 +233,7 @@ void MenuIconTweaks::HideNativeGrid(bool hide) {
 }
 
 void MenuIconTweaks::DispatchCommand(int cmd_id) {
-  void* wnd = reinterpret_cast<FindWindowFn>(kFindWindowFn)(
-      reinterpret_cast<void*>(kUIWindowMgr), kMenuIconWndId);
+  void* wnd = uiwnd::FindWindow(kMenuIconWndId);
   if (!wnd) {
     LogDiag("[MenuIcons] menu-icon window not found for cmd 0x{:X}", cmd_id);
     return;
@@ -258,7 +249,7 @@ void MenuIconTweaks::FlushPending() {
   // Driven from the game's input phase (ProcessInput, every frame) so the
   // command runs with native click timing/context — never from the Present hook,
   // and never while the HUD is replaced (world map, etc.).
-  if (enabled_ && in_game_ && !HudReplaced()) DispatchCommand(cmd);
+  if (enabled_ && in_game_ && !uiwnd::IsHudReplaced()) DispatchCommand(cmd);
 }
 
 // Fallback only: OnTick is throttled to ~100ms, so ProcessInput (which runs
@@ -285,7 +276,7 @@ void MenuIconTweaks::OnRenderUI() {
 
   // A full-screen UI (world map, etc.) replaces the HUD: hide our icons too
   // (clicks are also rejected in OnTick).
-  if (HudReplaced()) return;
+  if (uiwnd::IsHudReplaced()) return;
 
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> on nulle
   // les handles cachés pour forcer le rechargement paresseux (sinon draw = crash).

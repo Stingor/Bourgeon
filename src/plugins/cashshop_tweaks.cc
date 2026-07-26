@@ -1,5 +1,6 @@
 #include "plugins/cashshop_tweaks.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -23,11 +24,8 @@ namespace {
 // UICashShopWnd : id 0x13e (318), vtable 0x0101ca18. TrouvΓ©e par FindWindow.
 constexpr int       kWinCashShop  = 0x13e;
 constexpr uintptr_t kCashVTable   = 0x0101ca18;
-constexpr uintptr_t kUIWindowMgr  = 0x0131f4e8;
-constexpr uintptr_t kFindWindow   = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr uintptr_t kMakeWindow   = 0x00a39340;  // __fastcall(mgr, edx, id) -> wnd
 constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using FindWindow_t = void* (__thiscall*)(void*, int);
 using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
 using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
@@ -88,15 +86,14 @@ inline Fn Vf(void* self, int off) {
 void CloseNativeCashShop() {
   __try {
     reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr, kWinCashShop);
+        uiwnd::Mgr(), nullptr, kWinCashShop);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 // Lit le pointeur de fenΓͺtre valide (vtable vΓ©rifiΓ©e). SEH-gardΓ©.
 void* FindCashWnd() {
   __try {
-    void* w = reinterpret_cast<FindWindow_t>(kFindWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), kWinCashShop);
+    void* w = uiwnd::FindWindow(kWinCashShop);
     if (!w) return nullptr;
     if (*reinterpret_cast<uintptr_t*>(w) != kCashVTable) return nullptr;
     return w;
@@ -266,7 +263,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
     void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        reinterpret_cast<void*>(kUIWindowMgr), nullptr,
+        uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
       Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,

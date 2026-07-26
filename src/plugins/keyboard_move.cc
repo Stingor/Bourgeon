@@ -1,5 +1,6 @@
 #include "plugins/keyboard_move.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <cmath>
@@ -15,7 +16,6 @@ constexpr uintptr_t kModeMgr      = 0x1213338;   // arg (CModeMgr)
 constexpr uintptr_t kWorldToTile  = 0x00c6aa80;  // MapCoord_WorldToTileAndSub
 constexpr uintptr_t kCellValid    = 0x00c6cf80;  // Cell_IsMoveTargetValid
 constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
-constexpr uintptr_t kUiWindowMgr  = 0x0131f4e8;  // g_UIWindowMgr (objet, pas ptr)
 constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en msg 0x10
 constexpr uintptr_t kCameraVtable = 0x0104dee4;  // g_CCamera_vtable (valide pCam)
 
@@ -71,7 +71,7 @@ void* GetOwnActor(void* gm) {
 bool NativeTextInputHasFocus() {
   bool focused = false;
   __try {
-    char* mgr = reinterpret_cast<char*>(kUiWindowMgr);
+    char* mgr = reinterpret_cast<char*>(uiwnd::kUIWindowMgrAddr);
     void* widget = *reinterpret_cast<void**>(mgr + 0x1a0);
     void* chat   = *reinterpret_cast<void**>(mgr + 0x1c8);
     const bool chat_typing = *reinterpret_cast<uint8_t*>(mgr + 0x24) != 0;

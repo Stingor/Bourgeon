@@ -1,5 +1,6 @@
 #include "plugins/native_login.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <cstdint>
@@ -19,8 +20,6 @@ constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kGetTextAddr    = 0x008210A0;  // UIEdit_GetTextPtr
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
-constexpr uintptr_t kUIWindowMgr    = 0x0131F4E8;  // g_UIWindowMgr
-constexpr uintptr_t kFindWindow     = 0x00A47B90;  // __thiscall(mgr, id) -> wnd|null
 constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
 
 // Offsets UILoginWnd (tous prouvés au désasm — cf. login_connect_re.md).
@@ -194,9 +193,7 @@ bool native_login::CharSelectWindowPresent() {
   // chaque changement d'état (UIWindowMgr_DestroyAllWindows 0x00a482f0, appelée en
   // tête de CLoginMode_OnStateEnter). Aucun résidu, donc.
   __try {
-    using FindWindow_t = void*(__thiscall*)(void*, int);
-    return reinterpret_cast<FindWindow_t>(kFindWindow)(
-               reinterpret_cast<void*>(kUIWindowMgr), kCharSelectWndId) != nullptr;
+    return uiwnd::FindWindow(kCharSelectWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

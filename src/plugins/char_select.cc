@@ -1,5 +1,6 @@
 #include "plugins/char_select.h"
 
+#include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -50,7 +51,6 @@ const char kHallBmpPath[] =
     "lobby_hall.bmp";
 
 // ── Fenêtre native de création (ouverte par le contrôle « créer » 0x1A0) ──────
-constexpr uintptr_t kFindWindow    = 0x00a47b90;  // __thiscall(mgr, id) -> wnd|null
 constexpr int       kMakeCharWndId = 0xC8;        // UIMakeCharWnd (MakeWindow 0xC8)
 
 // ── Quitter l'écran : retour au login / fermeture du jeu ─────────────────────
@@ -73,15 +73,12 @@ constexpr int kCmdQuitGame    = 2;
 // = l'écran char-select est VIVANT dans le manager (contrairement au cache
 // mgr+0x3d4 = kCharSelWndPtr, jamais remis à zéro à la destruction). Sert à savoir
 // quand le natif a effectivement quitté l'écran après notre commande.
-constexpr uintptr_t kUIWindowMgr  = 0x0131f4e8;
 constexpr int       kCharSelWndId = 0x115;  // 277 = UINewSelectCharWnd
 
 // La fenêtre native du char-select existe-t-elle encore ?
 bool NativeCharSelectAlive() {
   __try {
-    using FindWindow_t = void*(__thiscall*)(void*, int);
-    return reinterpret_cast<FindWindow_t>(kFindWindow)(
-               reinterpret_cast<void*>(kUIWindowMgr), kCharSelWndId) != nullptr;
+    return uiwnd::FindWindow(kCharSelWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
