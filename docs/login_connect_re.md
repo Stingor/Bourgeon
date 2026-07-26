@@ -211,6 +211,37 @@ N'apparaît **que si >1 connexion** (cas dev `--server=TEST` ; en prod 1 seule �
   `MoonlightAuth` l'appelle dès l'entrée au service-select ; **repli clavier**
   (`DriveServerSelect`, éprouvé) si l'écran de login n'apparaît pas sous 1,5 s.
 
+#### Lire les `<connection>` : l'arbre XML natif, JAMAIS le disque
+`LoadClientInfoXml 0x0171d320` ouvre `clientinfo.xml` par **`ResFileStream_Open
+0x00573750`**, c.-à-d. **par le VFS** (`data\` puis les GRF), et laisse le document
+parsé dans **`g_ClientInfoXmlDoc 0x0159B8A8`** ; `Apply_ClientInfoConnection` le
+reparcourt à chaque sélection ⇒ **l'arbre vit toute la session**.
+
+> ⚠️ **Bug corrigé.** `MoonlightAuth`/`AutoLogin` lisaient les `<display>` avec un
+> `ifstream` sur `data\clientinfo.xml`. Ça ne marche que sur un client de **dev** :
+> chez les joueurs le fichier n'existe **que dans `moonlight.grf`** → liste vide →
+> `server_count_ == 0` → la condition `> 1 connexion` était fausse → **le
+> service-select n'était jamais franchi** et le formulaire Moonlight restait
+> derrière lui (il n'est dessiné qu'une fois `UILoginWnd` présente).
+
+Parcours (tout est `__thiscall(node, name)`, sauf `GetText` `__fastcall(node)`) :
+
+| Fonction | Adresse | Renvoie |
+|----------|---------|---------|
+| `XmlNode_FindChildByName` | `0x00A98400` | noeud enfant nommé, ou 0 |
+| `XmlNode_FindNextSiblingByName` | `0x00A98460` | frère suivant nommé, ou 0 |
+| `XmlNode_GetText` | `0x00A984C0` | `std::string*` (noeud+0xc) |
+
+`std::string` MSVC : `+0x10` taille, `+0x14` capacité ; **capacité ≥ 0x10 ⇒ le
+champ 0 est le pointeur** vers le buffer, sinon SSO en place (le natif teste
+exactement `Text[5] >= 0x10`).
+
+- Bourgeon : `native_login::ClientInfoConnectionNames()`. La lecture disque n'est
+  gardée qu'en **repli** (arbre pas encore parsé si on interroge trop tôt : le
+  ctor du plugin tourne AVANT `LoadClientInfoXml` → `MoonlightAuth` re-résout à
+  l'entrée en mode login). Dernier filet : si le compte reste inconnu, « mode login
+  sans `UILoginWnd` pendant >1,5 s » vaut service-select, franchi sur l'index 0.
+
 ### 7.1-bis Char-server select (**POST**-login) — cmd `0x2713`
 - `CLoginMode_SendMsg(mode, 0x2713, index, …)` : table **`mode+0x1e8`, stride `0xa0`**
   (entrée `i` : `+0x1e8` IP u32 · `+0x1ec` port u16 · `+0x1ee` nom · `+0x204` état,

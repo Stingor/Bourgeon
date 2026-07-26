@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <cstring>
 
 #include "utils/log_console.h"
 
@@ -43,6 +44,60 @@ using SendMsg_t = int(__thiscall*)(void*, int, const void*, int, int, int);
 constexpr int kConnBase   = 0x1E8;  // = IP de la connexion 0
 constexpr int kConnStride = 0xA0;
 
+// ── Arbre XML de clientinfo.xml (parsé au boot, gardé en mémoire) ─────────────
+// LoadClientInfoXml (0x0171d320) ouvre "clientinfo.xml" via ResFileStream_Open
+// (VFS : data\ PUIS les GRF) et laisse le document parsé dans g_ClientInfoXmlDoc.
+// Apply_ClientInfoConnection (0x00a72da0) le reparcourt à chaque sélection de
+// connexion : l'arbre reste donc vivant toute la session.
+constexpr uintptr_t kClientInfoXmlDoc  = 0x0159B8A8;  // racine du document parsé
+constexpr uintptr_t kXmlFindChild      = 0x00A98400;  // __thiscall(node, name) -> node
+constexpr uintptr_t kXmlFindNextSibling= 0x00A98460;  // __thiscall(node, name) -> node
+constexpr uintptr_t kXmlGetText        = 0x00A984C0;  // __fastcall(node) -> std::string*
+using XmlFind_t = void*(__thiscall*)(void*, const char*);
+using XmlGetText_t = void*(__fastcall*)(void*);
+constexpr int kMaxConnections = 8;  // borne du natif (boucle `while (v4 < 8)`)
+constexpr int kNameCap = 64;
+
+// Contenu d'un std::string MSVC renvoyé par XmlNode_GetText : +0x10 = taille,
+// +0x14 = capacité ; capacité >= 16 => le champ 0 est un pointeur vers le buffer
+// alloué, sinon la chaîne est stockée en place (SSO).
+const char* StdStringData(void* s) {
+  if (!s) return nullptr;
+  const uint32_t* fields = static_cast<const uint32_t*>(s);
+  return (fields[5] >= 0x10) ? reinterpret_cast<const char*>(fields[0])
+                             : static_cast<const char*>(s);
+}
+
+// Remplit `out` avec les <display> des <connection> ; renvoie leur nombre.
+// POD uniquement : le SEH interdit les objets à destructeur dans cette fonction.
+int ReadConnectionDisplaysRaw(char out[kMaxConnections][kNameCap]) {
+  __try {
+    auto find_child = reinterpret_cast<XmlFind_t>(kXmlFindChild);
+    auto next_sibling = reinterpret_cast<XmlFind_t>(kXmlFindNextSibling);
+    auto get_text = reinterpret_cast<XmlGetText_t>(kXmlGetText);
+    void* root = find_child(reinterpret_cast<void*>(kClientInfoXmlDoc), "clientinfo");
+    if (!root) return 0;
+    void* connection = find_child(root, "connection");
+    int count = 0;
+    while (connection && count < kMaxConnections) {
+      out[count][0] = '\0';
+      void* display = find_child(connection, "display");
+      if (display) {
+        const char* name = StdStringData(get_text(display));
+        if (name) {
+          std::strncpy(out[count], name, kNameCap - 1);
+          out[count][kNameCap - 1] = '\0';
+        }
+      }
+      ++count;
+      connection = next_sibling(connection, "connection");
+    }
+    return count;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
 // Renvoie le CMode courant s'il s'agit bien de CLoginMode, sinon nullptr.
 void* CurrentLoginMode() {
   __try {
@@ -77,6 +132,15 @@ bool native_login::AtLoginScreen() { return CurrentLoginMode() != nullptr; }
 
 bool native_login::LoginWindowPresent() {
   return CurrentLoginMode() != nullptr && ValidLoginWnd() != nullptr;
+}
+
+std::vector<std::string> native_login::ClientInfoConnectionNames() {
+  char raw[kMaxConnections][kNameCap];
+  const int count = ReadConnectionDisplaysRaw(raw);
+  std::vector<std::string> names;
+  names.reserve(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) names.emplace_back(raw[i]);
+  return names;
 }
 
 bool native_login::SelectClientInfoConnection(int index) {

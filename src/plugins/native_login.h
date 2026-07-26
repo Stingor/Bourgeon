@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 // native_login — pilotage du login RO natif SANS frappes clavier synthétiques.
 //
 // Au lieu de simuler des touches (fragile : focus, Save ID, timing), on écrit
@@ -19,6 +22,20 @@ bool AtLoginScreen();
 // (fenêtre recréée), c'est que l'auth a échoué (sur succès on passe au
 // char-select où cette fenêtre est détruite).
 bool LoginWindowPresent();
+
+// Noms (<display>) des <connection> de clientinfo.xml, DANS L'ORDRE du
+// service-select natif — lus dans l'arbre XML que le client garde en mémoire
+// (parsé au boot par LoadClientInfoXml 0x0171d320, qui ouvre le fichier via
+// ResFileStream = le VFS, donc GRF COMPRIS).
+//
+// ⚠ C'est la SEULE source correcte. Lire `data\clientinfo.xml` sur le disque ne
+// marche que sur un client de dev : chez les joueurs le fichier n'existe QUE dans
+// moonlight.grf, la lecture disque rend une liste vide -> « 0 connexion » -> le
+// service-select n'était jamais franchi automatiquement.
+//
+// Liste vide si l'arbre n'est pas encore parsé (appelé trop tôt au boot) : dans ce
+// cas réessayer plus tard. Bornée à 8 entrées, comme LoadClientInfoXml.
+std::vector<std::string> ClientInfoConnectionNames();
 
 // Commit NATIF d'une connexion clientinfo `index` = franchissement du SERVICE-SELECT
 // PRÉ-LOGIN (liste <connection>). CLoginMode_SendMsg cmd 0x2723 : applique
