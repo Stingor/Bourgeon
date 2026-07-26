@@ -16,7 +16,6 @@
 #include "imgui.h"
 #include "plugins/basic_info.h"  // RenderDoll : moteur de capture sprite partagé
 #include "plugins/moonlight_auth.h"
-#include "plugins/moonlight_ui.h"  // IsStaff() : éditeur de layout (désactivé, cf. bas)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
@@ -2124,10 +2123,12 @@ void CharSelect::OnRenderLoginUI() {
   // décommenter le bloc ci-dessous (F10 = bascule).
   // ⚠ On NE peut PAS gater sur IsStaff() ici : le niveau de groupe serveur n'arrive
   // qu'EN JEU (setting id 26 sur la session map). Au char-select il vaut 0 -> le
-  // panneau ne s'affichait jamais. D'où F10, seul chemin qui marchait.
+  // panneau ne s'affichait jamais. D'où F10, seul chemin qui marchait. La condition
+  // IsStaff() a donc été retirée du bloc ci-dessous (et son include avec) : la
+  // remettre ne ferait que rendre le panneau inaccessible à nouveau.
   //
   // if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) seat_edit_ = !seat_edit_;
-  // if (seat_edit_ || (Bourgeon::Instance().moonlight_ui() && ::IsStaff())) {
+  // if (seat_edit_) {
   //   ImGui::SetCursorPos(ImVec2(disp.x - 320.0f, disp.y - 30.0f));
   //   ImGui::Checkbox("Éditer layout (F10)", &seat_edit_);
   //   if (seat_edit_) {
