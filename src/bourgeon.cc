@@ -308,6 +308,23 @@ void Bourgeon::RenderUI() {
   // Suivre le « cacher l'interface » natif (F11) : quand le joueur masque l'UI du
   // jeu — capture d'écran, vue dégagée — l'overlay ImGui disparaît avec elle.
   if (IsNativeUiHidden()) return;
+  // Même règle quand une UI plein écran remplace le HUD (carte du monde) : le jeu
+  // cesse de dessiner son interface, l'overlay doit suivre.
+  //
+  // Ce test existait déjà, mais SEULEMENT dans le OnRenderUI de trois plugins qui
+  // le refaisaient chacun chez eux (grille d'alignement, barres d'exp/portrait,
+  // icônes de menu). Tous les overlays ajoutés depuis — panneau Moonlight, barres
+  // de skill, DPS, FPS, inventaire, storage… — restaient affichés par-dessus la
+  // carte du monde. La duplication masquait le manque : trois copies du test
+  // donnaient l'impression que le cas était traité, alors qu'aucune ne pouvait
+  // couvrir le rendu d'un autre plugin. C'est ici, et nulle part ailleurs, que la
+  // question « le HUD est-il remplacé ? » doit se poser pour le rendu.
+  //
+  // Les trois tests locaux sont donc retirés : gardés, ils auraient de nouveau
+  // laissé croire que chaque plugin gère le cas lui-même. Un seul survit,
+  // MenuIconTweaks::FlushPending — il ne filtre pas un rendu mais un CLIC, et
+  // s'exécute hors de cette boucle.
+  if (uiwnd::IsHudReplaced()) return;
   // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
   // ShowBourgeonWindow();
   // }

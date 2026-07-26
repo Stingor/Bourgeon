@@ -3271,7 +3271,6 @@ void BasicInfoTweaks::DrawPortrait() {
 
 void BasicInfoTweaks::OnRenderUI() {
   if (!in_game_) return;
-  if (uiwnd::IsHudReplaced()) return;  // world map / full-screen UI replaces the HUD
   // The alignment grid is drawn by MoonlightUi (shared overlay), not here.
 
   DrawPortrait();  // independent of the EXP-bar master toggle below

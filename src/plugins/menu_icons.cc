@@ -276,7 +276,6 @@ void MenuIconTweaks::OnRenderUI() {
 
   // A full-screen UI (world map, etc.) replaces the HUD: hide our icons too
   // (clicks are also rejected in OnTick).
-  if (uiwnd::IsHudReplaced()) return;
 
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> on nulle
   // les handles cachés pour forcer le rechargement paresseux (sinon draw = crash).
