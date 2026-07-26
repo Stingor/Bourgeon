@@ -2090,7 +2090,9 @@ void MoonlightUi::OnRenderUI() {
                   changed = true;
                 }
                 SeparatorText("Choisir une couleur");
-                if (ColorPicker("##pick", g.color)) {
+                if (ImGui::ColorPicker4("##pick", g.color,
+                                  ImGuiColorEditFlags_AlphaBar |
+                                  ImGuiColorEditFlags_NoSidePreview)) {
                   ApplyChatBg(g, ArgbFromPicker(g.color), false);
                   g.editing = true;
                 }
