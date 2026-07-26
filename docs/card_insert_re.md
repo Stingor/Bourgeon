@@ -428,8 +428,25 @@ Le code vit dans le plugin **`InventoryViewer`** (pas de plugin séparé : même
    **exclut les items portés**, ce qui ferait disparaître de la liste une arme déjà
    équipée que le serveur propose pourtant. On en tire le nom (`BuildDisplayName`, repli
    `GetBaseName`), l'icône via `ResolveIcon()`, le refine, et le **nombre de cartes serties**
-   (`info+0x1c`, avec le garde-fou « item forgé » de §5). Ce compteur est **informatif** :
-   il ne filtre jamais, le serveur ayant déjà écarté les items sans emplacement libre.
+   (`info+0x1c`, avec le garde-fou « item forgé » de §5).
+
+   > ⚠️ **Ne compter que les `ItemSkillDB_GetSlotCount` PREMIÈRES entrées** de
+   > `info+0x1c`. Les **enchantements** (items de type carte, sous-type *enchant*) sont
+   > écrits par le serveur dans les entrées **hautes** (`card[3]`, puis `card[2]`…) même
+   > sur un item à 2 emplacements. Les compter faisait passer l'item pour plein et
+   > grisait « Sertir » — alors que `pc_insert_card` ne cherche un emplacement libre que
+   > dans `[0, slots)` (d'où le double-clic qui sertissait quand même).
+   > ⚠️ **Le payload du nœud est un INSTANTANÉ, pas une vue.** Le handler de `0x017B`
+   > *copie* l'`ItemSkillInfo` (`Session_GetEquipInfoByInvIndex(&info, idx)` puis
+   > `Inventory_AppendNewItem`). Après un sertissage il ne reflète plus l'item : cartes
+   > serties et emplacements libres restent figés. Et la liste n'est vidée (`OnMsg 0x4B`)
+   > que si le serveur renvoie un `0x017B` — or quand plus **aucun** équipement n'est
+   > compatible il envoie `MSI_FAIL_ITEMCOMPOSITION_LIST` à la place, donc la fenêtre
+   > garde éternellement l'ancienne liste. Le plugin relit donc la fiche **vivante** dans
+   > l'inventaire session (`FindInfoByIndex`), avec repli sur l'instantané pour un item
+   > **porté** (la liste session les exclut), et écarte les entrées dont tous les
+   > emplacements sont pleins — même borne que `clif_use_card`, pas un filtrage de
+   > compatibilité.
 4. **Sélection** mémorisée par **index d'inventaire**, pas par rang de ligne — elle reste
    correcte si le serveur renvoie une liste différente, et elle est invalidée si l'item
    disparaît.

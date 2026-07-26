@@ -258,6 +258,14 @@ int CollectCompInfos(uint8_t* wnd, int listOff, uint8_t** out, int maxOut) {
   return n;
 }
 
+// Index d'inventaire porté par un ItemSkillInfo (0 = entrée vide / illisible).
+int ReadInfoIndex(uint8_t* info) {
+  if (!info) return 0;
+  __try {
+    return *reinterpret_cast<int*>(info + kInfoIndex);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 // Position écran d'une fenêtre native (pour aligner notre fenêtre ImGui dessus).
 bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
   __try {
@@ -585,11 +593,8 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
     const uint32_t c0 = *reinterpret_cast<uint32_t*>(info + 0x1c);
     out->forged = (c0 != 0 && c0 <= 500);
     if (!out->forged) {
-      for (int k = 0; k < 4; ++k) {
-        const uint32_t cid = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
-        out->cards[k] = cid;
-        if (cid != 0) ++out->used_slots;
-      }
+      for (int k = 0; k < 4; ++k)
+        out->cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
     }
     // Random options d'instance (info+0x98 = nb, info+0x9c = entrées de 5 octets),
     // pour l'aperçu de description au survol — mêmes offsets que la grille.
@@ -605,6 +610,16 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   out->total_slots = SlotCountOf(info);  // hors __try (appel natif, déjà SEH-gardé)
+  // Emplacements réellement OCCUPÉS PAR UNE CARTE : seules les `total_slots` premières
+  // entrées de info+0x1c comptent. Les enchantements (type carte, sous-type enchant)
+  // sont écrits par le serveur dans les entrées HAUTES (card[3], puis card[2]…) même
+  // sur un item à 2 emplacements ; les compter faisait croire l'item plein et grisait
+  // « Sertir », alors que pc_insert_card ne cherche un emplacement libre que dans
+  // [0, slots) — d'où le double-clic qui sertissait quand même.
+  if (!out->forged) {
+    for (int k = 0; k < out->total_slots && k < 4; ++k)
+      if (out->cards[k] != 0) ++out->used_slots;
+  }
   if (namewnd) SafeBuildName(namewnd, info, out->name, sizeof(out->name));
   if (out->name[0] == '\0') {
     __try {
@@ -1313,10 +1328,43 @@ void InventoryViewer::RenderCardInsert() {
   CompItem card{};
   const bool has_card = ReadCompItemByIndex(cardIndex, namewnd, &card);
 
+  // ⚠ Le payload d'un nœud de la liste native est un INSTANTANÉ : le handler de
+  // ZC 0x017B y a COPIÉ l'ItemSkillInfo au moment de la réponse serveur. Après un
+  // sertissage il est périmé (cartes serties, emplacements libres…) et il ne se
+  // rafraîchit que si le serveur renvoie une liste — ce qu'il NE fait pas quand plus
+  // aucun équipement n'est compatible (il envoie MSI_FAIL_ITEMCOMPOSITION_LIST à la
+  // place). On relit donc la fiche VIVANTE dans l'inventaire session par son index ;
+  // repli sur l'instantané pour un item PORTÉ (la liste session les exclut).
   CompItem cands[kMaxCands];
   int cn = 0;
-  for (int i = 0; i < n; ++i)
-    if (ReadCompItemFromInfo(infos[i], namewnd, &cands[cn])) ++cn;
+  for (int i = 0; i < n; ++i) {
+    // Remise à zéro obligatoire : la fiche est remplie EN PLACE et `used_slots` est
+    // incrémenté, donc un `continue` qui laisse `cn` inchangé polluerait le candidat
+    // suivant écrit au même rang.
+    cands[cn] = CompItem{};
+    uint8_t* live = static_cast<uint8_t*>(FindInfoByIndex(ReadInfoIndex(infos[i])));
+    if (!ReadCompItemFromInfo(live ? live : infos[i], namewnd, &cands[cn])) continue;
+    // Entrée PÉRIMÉE : plus un seul emplacement libre. Ce n'est pas un filtrage de
+    // compatibilité (interdit — le serveur en est seul juge), c'est la MÊME borne que
+    // clif_use_card côté serveur : il ne proposerait plus cet item. On ne l'applique
+    // que sur une fiche vivante, jamais sur l'instantané.
+    if (live && !cands[cn].forged && cands[cn].total_slots > 0 &&
+        cands[cn].used_slots >= cands[cn].total_slots)
+      continue;
+    ++cn;
+  }
+
+  // Plus AUCUN candidat exploitable alors que la liste native en contenait : ils sont
+  // tous pleins. Le serveur ne renverra pas de liste vide (il émet
+  // MSI_FAIL_ITEMCOMPOSITION_LIST), donc personne ne refermera le popup à notre place —
+  // on le fait ici. Garde-fou : uniquement si la liste native était LISIBLE et NON VIDE,
+  // pour ne jamais fermer sur un simple échec de lecture (cf. le repli `layout_ok`).
+  if (layout_ok && n > 0 && cn == 0) {
+    CloseCardInsert();
+    ci_was_open_ = false;
+    ci_sel_ = -1;
+    return;
+  }
 
   // La sélection mémorisée peut avoir disparu (item consommé, liste rafraîchie).
   if (ci_sel_ >= 0) {
@@ -1507,7 +1555,7 @@ bool InventoryViewer::DrawSettings() {
   bool changed = false;
   // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
   // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange)",
+  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)",
                      &imgui_enabled_)) {
     SetModernInterface(imgui_enabled_);
     changed = true;
@@ -2068,11 +2116,14 @@ void InventoryViewer::OnRenderUI() {
         // forgé, cards[0] porte les données du forgeron (id <= 500) : pas de slot réel.
         if (it.type == 4 || it.type == 5) {
           const bool forged = (it.cards[0] != 0 && it.cards[0] <= 500);
-          int used = 0;
-          if (!forged)
-            for (int k = 0; k < 4; ++k) if (it.cards[k]) ++used;
           void* einfo = FindInfoByIndex(it.index);
           const int total = einfo ? SlotCountOf(einfo) : 0;
+          // Ne compter QUE les `total` premières entrées : les enchantements occupent
+          // les entrées hautes (card[3], card[2]…) sans consommer d'emplacement de
+          // carte. Cf. ReadCompItemFromInfo pour le détail.
+          int used = 0;
+          if (!forged)
+            for (int k = 0; k < total && k < 4; ++k) if (it.cards[k]) ++used;
           if (!forged && total > used) {  // au moins un emplacement libre
             if (ImGui::BeginMenu("Sertissage rapide")) {
               RequestCompatCards(it.index);  // no-op si déjà demandé pour cet équip
