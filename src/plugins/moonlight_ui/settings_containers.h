@@ -44,4 +44,38 @@ void WriteSkinAndPresets(YAML::Emitter& out);
 void ReadEquipPresets(const YAML::Node& ui);
 void WriteEquipPresets(YAML::Emitter& out);
 
+// ── Réglages INDEXÉS ─────────────────────────────────────────────────────────
+// Même raison que les collections : leurs clés n'existent pas comme littéraux,
+// elles se construisent à l'exécution (« expbar_ » + kBarKeys[i] + « _x »…), ce
+// qu'une table de descripteurs ne peut pas décrire.
+
+// Disposition des barres EXP/HP/SP : expbar_<barre>_{show,x,y,w,h,color}.
+void ReadBarLayout(const YAML::Node& ui);
+void WriteBarLayout(YAML::Emitter& out);
+
+// Disposition du portrait par élément : portrait_<élément>_{show,x,y,w,h,rounding,bg,fg}.
+void ReadPortraitLayout(const YAML::Node& ui);
+void WritePortraitLayout(YAML::Emitter& out);
+
+// Barres de raccourcis : skillbarN_* (3 barres fixes) + skillbar_itemN (contenu
+// persisté de la barre d'items).
+void ReadSkillBarLayout(const YAML::Node& ui);
+void WriteSkillBarLayout(YAML::Emitter& out);
+
+// Positions de fenêtres natives mémorisées : status_pos_*, equip_pos_*, puis la
+// table de WindowPosTweaks (achievement, banque, courrier…). INT_MIN = « aucune
+// position mémorisée », la fenêtre garde son placement natif.
+void ReadWindowPositions(const YAML::Node& ui);
+void WriteWindowPositions(YAML::Emitter& out);
+
+// ── Clés renommées ───────────────────────────────────────────────────────────
+// Recopie les anciennes clés sur les nouvelles quand celles-ci manquent, DANS
+// L'ARBRE EN MÉMOIRE (le fichier n'est pas touché ; il se réécrit sous les
+// nouveaux noms à la sauvegarde suivante). Tout le reste de la lecture ignore
+// donc l'existence des anciens noms.
+//
+// À appeler en PREMIER, avant toute lecture. Datée : supprimable quand plus
+// aucun yaml de joueur ne portera les anciennes clés.
+void MigrateLegacyKeys(YAML::Node ui);
+
 }  // namespace moonlight_ui

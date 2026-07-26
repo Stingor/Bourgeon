@@ -329,6 +329,11 @@ const moonlight_ui::SettingDesc kBasicInfoSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"expbar_rounding", SType::kFloat, MLUI_FIELD(basic_info, rounding_),
      MLUI_LITERAL(float, 4.0f)},
+    // Le repli d'écriture disait B30D0D12 là où le plugin porte B20D0D12 : une
+    // unité d'alpha d'écart, invisible mais bien une divergence de plus entre
+    // les deux miroirs. La table garde la valeur du plugin.
+    {"expbar_bg_color", SType::kColorHex, MLUI_FIELD(basic_info, bg_color_),
+     MLUI_LITERAL_ARGB(0xB20D0D12)},
 };
 
 // Portrait de statut (même plugin) : un bloc séparé parce qu'il s'écrit après
@@ -380,6 +385,13 @@ const moonlight_ui::SettingDesc kSkillBarSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"skillbar_bold_text", SType::kBool, MLUI_FIELD(skill_bar, bold_text_),
      MLUI_LITERAL(bool, false)},
+    // Ces deux-ci n'avaient pas de défaut constant : c'était l'ANCIENNE clé
+    // unique skillbar_text_scale, lue en repli. MigrateLegacyKeys la recopie
+    // maintenant en amont, donc le défaut redevient une simple constante.
+    {"skillbar_key_scale",   SType::kFloat, MLUI_FIELD(skill_bar, key_scale_),
+     MLUI_LITERAL(float, 1.0f)},
+    {"skillbar_count_scale", SType::kFloat, MLUI_FIELD(skill_bar, count_scale_),
+     MLUI_LITERAL(float, 1.0f)},
 };
 
 // Couleurs des barres. Les ARGB ci-dessous sont la conversion EXACTE (formule de
@@ -442,6 +454,10 @@ struct MoonlightUiOwnSettings {
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
+  // Grille d'alignement globale : elle sert à TOUS les overlays déplaçables,
+  // d'où sa place ici plutôt que chez basic_info, où elle a commencé (cf. les
+  // anciennes clés expbar_grid_*, recopiées par MigrateLegacyKeys).
+  static const moonlight_ui::SettingDesc kGrid[4];
 };
 
 const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[3] = {
@@ -465,6 +481,14 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kChat[5] = {
      MLUI_LITERAL(bool, false)},
     {"chat_item_icons", SType::kBool, MLUI_SELF(chat_item_icons_),
      MLUI_LITERAL(bool, true)},
+};
+
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kGrid[4] = {
+    {"grid_show",  SType::kBool, MLUI_SELF(grid_.show), MLUI_LITERAL(bool, false)},
+    {"grid_snap",  SType::kBool, MLUI_SELF(grid_.snap), MLUI_LITERAL(bool, false)},
+    {"grid_size",  SType::kInt,  MLUI_SELF(grid_.size), MLUI_LITERAL(int, 32)},
+    {"grid_color", SType::kColorHex, MLUI_SELF(grid_.color),
+     MLUI_LITERAL_ARGB(0x26FFFFFF)},
 };
 #undef MLUI_SELF
 
@@ -626,8 +650,12 @@ void MoonlightUi::LoadSettings() {
 
   try {
     const YAML::Node root = YAML::Load(f);
-    const YAML::Node ui = root["moonlight_ui"];
+    // Non-const : MigrateLegacyKeys recopie les anciens noms de clés sur les
+    // nouveaux DANS L'ARBRE EN MÉMOIRE, avant que quoi que ce soit ne lise.
+    // Tout le reste ignore ainsi l'existence des anciens noms.
+    YAML::Node ui = root["moonlight_ui"];
     if (!ui) return;
+    moonlight_ui::MigrateLegacyKeys(ui);
 
     // Seul site de lecture qui a besoin de l'ENTIER natif et pas seulement du
     // picker : la couleur est écrite telle quelle dans les instructions patchées
@@ -660,61 +688,10 @@ void MoonlightUi::LoadSettings() {
 
     moonlight_ui::ReadSettings(ui, kBasicInfoSettings);
     moonlight_ui::ReadSettings(ui, kPortraitSettings);
-    if (auto* eb = Bourgeon::Instance().basic_info()) {
-      for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-        const std::string p =
-            std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
-        auto& b = eb->bars_[i];
-        b.show = ui[p + "show"].as<bool>(true);
-        b.x = ui[p + "x"].as<int>(b.x);
-        b.y = ui[p + "y"].as<int>(b.y);
-        b.w = ui[p + "w"].as<int>(b.w);
-        b.h = ui[p + "h"].as<int>(b.h);
-        ReadArgbKey(ui, p + "color", b.fill);
-      }
-      ReadArgbKey(ui, "expbar_bg_color", eb->bg_color_);
-
-      // Portrait de statut : disposition par ÉLÉMENT (les scalaires sont dans
-      // kPortraitSettings, lus plus haut). Effets de chapeau (.str) : rendu
-      // automatique et toujours actif, aucun réglage persisté.
-      for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
-        const std::string p =
-            std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
-        auto& e = eb->ports_[i];
-        e.show     = ui[p + "show"].as<bool>(e.show);
-        e.x        = ui[p + "x"].as<int>(e.x);
-        e.y        = ui[p + "y"].as<int>(e.y);
-        e.w        = ui[p + "w"].as<int>(e.w);
-        e.h        = ui[p + "h"].as<int>(e.h);
-        e.rounding = ui[p + "rounding"].as<float>(e.rounding);
-        ReadArgbKey(ui, p + "bg", e.bg);
-        ReadArgbKey(ui, p + "fg", e.fg);
-      }
-    }
-
-    // Global alignment grid. Reads grid_*, falling back to the legacy
-    // expbar_grid_* keys so existing settings files keep working (they get
-    // rewritten under the new keys on the next save).
-    grid_.show = ui["grid_show"].as<bool>(ui["expbar_grid_show"].as<bool>(false));
-    grid_.snap = ui["grid_snap"].as<bool>(ui["expbar_grid_snap"].as<bool>(false));
-    grid_.size = ui["grid_size"].as<int>(ui["expbar_grid_size"].as<int>(32));
-    if (!ReadArgbKey(ui, "grid_color", grid_.color))
-      ReadArgbKey(ui, "expbar_grid_color", grid_.color);  // repli sur la clé héritée
-
-    // STATUS window saved position (applied by StatusTweaks' msg-handler hook).
-    StatusTweaks_SetSavedPos(ui["status_pos_x"].as<int>(INT_MIN),
-                             ui["status_pos_y"].as<int>(INT_MIN));
-    // EQUIP window saved position (applied by EquipTweaks' msg-handler hook).
-    EquipTweaks_SetSavedPos(ui["equip_pos_x"].as<int>(INT_MIN),
-                            ui["equip_pos_y"].as<int>(INT_MIN));
-    // Generic per-window saved positions (WindowPosTweaks table: achievement,
-    // bank, mail, ...). One "<key>_pos_x/y" pair each; applied on the next tick.
-    for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
-      const std::string k = WindowPosTweaks_Key(i);
-      WindowPosTweaks_SetSavedPos(i, ui[k + "_pos_x"].as<int>(INT_MIN),
-                                  ui[k + "_pos_y"].as<int>(INT_MIN));
-    }
-
+    moonlight_ui::ReadBarLayout(ui);
+    moonlight_ui::ReadPortraitLayout(ui);
+    moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kGrid);
+    moonlight_ui::ReadWindowPositions(ui);
     moonlight_ui::ReadMenuIcons(ui);
     moonlight_ui::ReadSkinAndPresets(ui);
     moonlight_ui::ReadSettings(ui, kInventorySettings);
@@ -723,26 +700,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
-    if (auto* sb = Bourgeon::Instance().skill_bar()) {
-      const float legacy_scale = ui["skillbar_text_scale"].as<float>(1.0f);  // ancienne clé unique (repli)
-      sb->key_scale_   = ui["skillbar_key_scale"].as<float>(legacy_scale);
-      sb->count_scale_ = ui["skillbar_count_scale"].as<float>(legacy_scale);
-      // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items) : clés skillbarN_*
-      for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
-        auto& bc = sb->bars_[b];
-        const std::string p = "skillbar" + std::to_string(b) + "_";
-        bc.visible    = ui[p + "visible"].as<bool>(bc.visible);
-        bc.x          = ui[p + "x"].as<int>(bc.x);
-        bc.y          = ui[p + "y"].as<int>(bc.y);
-        bc.columns    = ui[p + "columns"].as<int>(bc.columns);
-        bc.first_slot = ui[p + "first"].as<int>(bc.first_slot);
-        bc.slot_count = ui[p + "slots"].as<int>(bc.slot_count);
-        bc.icon_size  = ui[p + "size"].as<float>(bc.icon_size);
-        bc.spacing    = ui[p + "spacing"].as<float>(bc.spacing);
-      }
-      for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)  // contenu persisté barre d'items (nameids)
-        sb->item_slots_[i] = ui["skillbar_item" + std::to_string(i)].as<uint32_t>(sb->item_slots_[i]);
-    }
+    moonlight_ui::ReadSkillBarLayout(ui);
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
 
     moonlight_ui::ReadSettings(ui, kStatusIconSettings);
@@ -819,16 +777,6 @@ void MoonlightUi::WriteSettingsFile() {
     return;
   }
 
-  // Ces deux-là gardent une chaîne pré-calculée : elles ont un repli littéral à
-  // écrire quand le plugin propriétaire est absent, que WriteArgbKey ne sait pas
-  // exprimer (il part forcément d'un picker).
-  auto* eb = Bourgeon::Instance().basic_info();
-  std::string eb_bg_col = "B30D0D12";
-  if (eb) eb_bg_col = HexArgb(eb->bg_color_);
-  // Couleur de la grille d'alignement globale (elle appartient à MoonlightUi,
-  // pas à basic_info).
-  const std::string grid_col = HexArgb(grid_.color);
-
   YAML::Emitter out;
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
@@ -844,53 +792,12 @@ void MoonlightUi::WriteSettingsFile() {
 
   // Barres EXP/HP/SP (BasicInfoTweaks)
   moonlight_ui::WriteSettings(out, kBasicInfoSettings);
-  out << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
-      << YAML::Key << "grid_show"  << YAML::Value << grid_.show
-      << YAML::Key << "grid_snap"  << YAML::Value << grid_.snap
-      << YAML::Key << "grid_size"  << YAML::Value << grid_.size
-      << YAML::Key << "grid_color" << YAML::Value << grid_col
-      << YAML::Key << "status_pos_x" << YAML::Value << StatusTweaks_SavedX()
-      << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY()
-      << YAML::Key << "equip_pos_x" << YAML::Value << EquipTweaks_SavedX()
-      << YAML::Key << "equip_pos_y" << YAML::Value << EquipTweaks_SavedY();
-  // Generic per-window saved positions (WindowPosTweaks table).
-  for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
-    const std::string k = WindowPosTweaks_Key(i);
-    out << YAML::Key << (k + "_pos_x") << YAML::Value << WindowPosTweaks_X(i)
-        << YAML::Key << (k + "_pos_y") << YAML::Value << WindowPosTweaks_Y(i);
-  }
-  if (eb) {
-    for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
-      const std::string p =
-          std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
-      const auto& b = eb->bars_[i];
-      out << YAML::Key << (p + "show")  << YAML::Value << b.show
-          << YAML::Key << (p + "x")     << YAML::Value << b.x
-          << YAML::Key << (p + "y")     << YAML::Value << b.y
-          << YAML::Key << (p + "w")     << YAML::Value << b.w
-          << YAML::Key << (p + "h")     << YAML::Value << b.h;
-      WriteArgbKey(out, p + "color", b.fill);
-    }
-  }
-
+  moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kGrid);
+  moonlight_ui::WriteWindowPositions(out);
+  moonlight_ui::WriteBarLayout(out);
   // Portrait de statut (même plugin) : scalaires puis disposition par élément.
   moonlight_ui::WriteSettings(out, kPortraitSettings);
-  if (eb) {
-    for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
-      const std::string p =
-          std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
-      const auto& e = eb->ports_[i];
-      out << YAML::Key << (p + "show")     << YAML::Value << e.show
-          << YAML::Key << (p + "x")        << YAML::Value << e.x
-          << YAML::Key << (p + "y")        << YAML::Value << e.y
-          << YAML::Key << (p + "w")        << YAML::Value << e.w
-          << YAML::Key << (p + "h")        << YAML::Value << e.h
-          << YAML::Key << (p + "rounding") << YAML::Value << e.rounding;
-      WriteArgbKey(out, p + "bg", e.bg);
-      WriteArgbKey(out, p + "fg", e.fg);
-    }
-  }
-
+  moonlight_ui::WritePortraitLayout(out);
   moonlight_ui::WriteMenuIcons(out);
 
   moonlight_ui::WriteSettings(out, kStatusIconSettings);
@@ -908,31 +815,9 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
 
-  {
-    auto* sb = Bourgeon::Instance().skill_bar();
-    moonlight_ui::WriteSettings(out, kSkillBarSettings);
-    out << YAML::Key << "skillbar_key_scale" << YAML::Value << (sb ? sb->key_scale_ : 1.0f)
-        << YAML::Key << "skillbar_count_scale" << YAML::Value << (sb ? sb->count_scale_ : 1.0f);
-    if (sb) {
-      // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
-      for (int b = 0; b < SkillBarTweaks::kBarCount; ++b) {
-        const auto& bc = sb->bars_[b];
-        const std::string p = "skillbar" + std::to_string(b) + "_";
-        out << YAML::Key << (p + "visible") << YAML::Value << bc.visible
-            << YAML::Key << (p + "x")       << YAML::Value << bc.x
-            << YAML::Key << (p + "y")       << YAML::Value << bc.y
-            << YAML::Key << (p + "columns") << YAML::Value << bc.columns
-            << YAML::Key << (p + "first")   << YAML::Value << bc.first_slot
-            << YAML::Key << (p + "slots")   << YAML::Value << bc.slot_count
-            << YAML::Key << (p + "size")    << YAML::Value << bc.icon_size
-            << YAML::Key << (p + "spacing") << YAML::Value << bc.spacing;
-      }
-      sb->SnapshotItemSlots();  // capture le contenu live de la barre d'items -> yaml (persistance client)
-      for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)
-        out << YAML::Key << ("skillbar_item" + std::to_string(i)) << YAML::Value << sb->item_slots_[i];
-    }
-    moonlight_ui::WriteSettings(out, kSkillBarColorSettings);
-  }
+  moonlight_ui::WriteSettings(out, kSkillBarSettings);
+  moonlight_ui::WriteSkillBarLayout(out);
+  moonlight_ui::WriteSettings(out, kSkillBarColorSettings);
 
   out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
   for (const auto& p : chat_bg_presets_) {

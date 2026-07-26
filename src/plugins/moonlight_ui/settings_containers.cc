@@ -1,16 +1,23 @@
 #include "plugins/moonlight_ui/settings_containers.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "bourgeon.h"
+#include "plugins/basic_info.h"
 #include "plugins/character_sheet.h"
+#include "plugins/equip_tweaks.h"
 #include "plugins/inventory_viewer.h"
 #include "plugins/menu_icons.h"
+#include "plugins/moonlight_ui/settings_table.h"  // ReadArgbKey / WriteArgbKey
+#include "plugins/skill_bar_tweaks.h"
+#include "plugins/status_tweaks.h"
 #include "plugins/storage_tweaks.h"
+#include "plugins/window_pos_tweaks.h"
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "ui/skin_panel.h"
@@ -255,6 +262,174 @@ void WriteEquipPresets(YAML::Emitter& out) {
     }
   }
   out << YAML::EndSeq;
+}
+
+void ReadBarLayout(const YAML::Node& ui) {
+  auto* basic_info = Bourgeon::Instance().basic_info();
+  if (!basic_info) return;
+  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+    const std::string prefix =
+        std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+    auto& bar = basic_info->bars_[i];
+    bar.show = ui[prefix + "show"].as<bool>(true);
+    bar.x = ui[prefix + "x"].as<int>(bar.x);
+    bar.y = ui[prefix + "y"].as<int>(bar.y);
+    bar.w = ui[prefix + "w"].as<int>(bar.w);
+    bar.h = ui[prefix + "h"].as<int>(bar.h);
+    ReadArgbKey(ui, prefix + "color", bar.fill);
+  }
+}
+
+void WriteBarLayout(YAML::Emitter& out) {
+  auto* basic_info = Bourgeon::Instance().basic_info();
+  if (!basic_info) return;
+  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+    const std::string prefix =
+        std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+    const auto& bar = basic_info->bars_[i];
+    out << YAML::Key << (prefix + "show") << YAML::Value << bar.show
+        << YAML::Key << (prefix + "x")    << YAML::Value << bar.x
+        << YAML::Key << (prefix + "y")    << YAML::Value << bar.y
+        << YAML::Key << (prefix + "w")    << YAML::Value << bar.w
+        << YAML::Key << (prefix + "h")    << YAML::Value << bar.h;
+    WriteArgbKey(out, prefix + "color", bar.fill);
+  }
+}
+
+void ReadPortraitLayout(const YAML::Node& ui) {
+  auto* basic_info = Bourgeon::Instance().basic_info();
+  if (!basic_info) return;
+  // Effets de chapeau (.str) : rendu automatique et toujours actif, aucun
+  // réglage persisté.
+  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+    const std::string prefix =
+        std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+    auto& element = basic_info->ports_[i];
+    element.show     = ui[prefix + "show"].as<bool>(element.show);
+    element.x        = ui[prefix + "x"].as<int>(element.x);
+    element.y        = ui[prefix + "y"].as<int>(element.y);
+    element.w        = ui[prefix + "w"].as<int>(element.w);
+    element.h        = ui[prefix + "h"].as<int>(element.h);
+    element.rounding = ui[prefix + "rounding"].as<float>(element.rounding);
+    ReadArgbKey(ui, prefix + "bg", element.bg);
+    ReadArgbKey(ui, prefix + "fg", element.fg);
+  }
+}
+
+void WritePortraitLayout(YAML::Emitter& out) {
+  auto* basic_info = Bourgeon::Instance().basic_info();
+  if (!basic_info) return;
+  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+    const std::string prefix =
+        std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+    const auto& element = basic_info->ports_[i];
+    out << YAML::Key << (prefix + "show")     << YAML::Value << element.show
+        << YAML::Key << (prefix + "x")        << YAML::Value << element.x
+        << YAML::Key << (prefix + "y")        << YAML::Value << element.y
+        << YAML::Key << (prefix + "w")        << YAML::Value << element.w
+        << YAML::Key << (prefix + "h")        << YAML::Value << element.h
+        << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding;
+    WriteArgbKey(out, prefix + "bg", element.bg);
+    WriteArgbKey(out, prefix + "fg", element.fg);
+  }
+}
+
+void ReadSkillBarLayout(const YAML::Node& ui) {
+  auto* skill_bar = Bourgeon::Instance().skill_bar();
+  if (!skill_bar) return;
+  // 3 barres fixes (0 = Onglet 1, 1 = Onglet 2, 2 = Items).
+  for (int index = 0; index < SkillBarTweaks::kBarCount; ++index) {
+    auto& bar = skill_bar->bars_[index];
+    const std::string prefix = "skillbar" + std::to_string(index) + "_";
+    bar.visible    = ui[prefix + "visible"].as<bool>(bar.visible);
+    bar.x          = ui[prefix + "x"].as<int>(bar.x);
+    bar.y          = ui[prefix + "y"].as<int>(bar.y);
+    bar.columns    = ui[prefix + "columns"].as<int>(bar.columns);
+    bar.first_slot = ui[prefix + "first"].as<int>(bar.first_slot);
+    bar.slot_count = ui[prefix + "slots"].as<int>(bar.slot_count);
+    bar.icon_size  = ui[prefix + "size"].as<float>(bar.icon_size);
+    bar.spacing    = ui[prefix + "spacing"].as<float>(bar.spacing);
+  }
+  // Contenu persisté de la barre d'items (nameids).
+  for (int slot = 0; slot < SkillBarTweaks::kItemSlotMax; ++slot)
+    skill_bar->item_slots_[slot] =
+        ui["skillbar_item" + std::to_string(slot)].as<uint32_t>(
+            skill_bar->item_slots_[slot]);
+}
+
+void WriteSkillBarLayout(YAML::Emitter& out) {
+  auto* skill_bar = Bourgeon::Instance().skill_bar();
+  if (!skill_bar) return;
+  for (int index = 0; index < SkillBarTweaks::kBarCount; ++index) {
+    const auto& bar = skill_bar->bars_[index];
+    const std::string prefix = "skillbar" + std::to_string(index) + "_";
+    out << YAML::Key << (prefix + "visible") << YAML::Value << bar.visible
+        << YAML::Key << (prefix + "x")       << YAML::Value << bar.x
+        << YAML::Key << (prefix + "y")       << YAML::Value << bar.y
+        << YAML::Key << (prefix + "columns") << YAML::Value << bar.columns
+        << YAML::Key << (prefix + "first")   << YAML::Value << bar.first_slot
+        << YAML::Key << (prefix + "slots")   << YAML::Value << bar.slot_count
+        << YAML::Key << (prefix + "size")    << YAML::Value << bar.icon_size
+        << YAML::Key << (prefix + "spacing") << YAML::Value << bar.spacing;
+  }
+  // Capture le contenu VIVANT de la barre d'items avant de l'écrire : c'est le
+  // jeu qui le modifie (drag&drop), pas nous.
+  skill_bar->SnapshotItemSlots();
+  for (int slot = 0; slot < SkillBarTweaks::kItemSlotMax; ++slot)
+    out << YAML::Key << ("skillbar_item" + std::to_string(slot))
+        << YAML::Value << skill_bar->item_slots_[slot];
+}
+
+void ReadWindowPositions(const YAML::Node& ui) {
+  // Fenêtre STATUS et fenêtre ÉQUIPEMENT : appliquées par le hook de leur
+  // gestionnaire de messages respectif.
+  StatusTweaks_SetSavedPos(ui["status_pos_x"].as<int>(INT_MIN),
+                           ui["status_pos_y"].as<int>(INT_MIN));
+  EquipTweaks_SetSavedPos(ui["equip_pos_x"].as<int>(INT_MIN),
+                          ui["equip_pos_y"].as<int>(INT_MIN));
+  // Table générique : une paire « <clé>_pos_x/y » par fenêtre, appliquée au tick
+  // suivant. Ajouter une fenêtre ne demande aucune édition ici.
+  for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
+    const std::string key = WindowPosTweaks_Key(i);
+    WindowPosTweaks_SetSavedPos(i, ui[key + "_pos_x"].as<int>(INT_MIN),
+                                ui[key + "_pos_y"].as<int>(INT_MIN));
+  }
+}
+
+void WriteWindowPositions(YAML::Emitter& out) {
+  out << YAML::Key << "status_pos_x" << YAML::Value << StatusTweaks_SavedX()
+      << YAML::Key << "status_pos_y" << YAML::Value << StatusTweaks_SavedY()
+      << YAML::Key << "equip_pos_x"  << YAML::Value << EquipTweaks_SavedX()
+      << YAML::Key << "equip_pos_y"  << YAML::Value << EquipTweaks_SavedY();
+  for (int i = 0; i < WindowPosTweaks_Count(); ++i) {
+    const std::string key = WindowPosTweaks_Key(i);
+    out << YAML::Key << (key + "_pos_x") << YAML::Value << WindowPosTweaks_X(i)
+        << YAML::Key << (key + "_pos_y") << YAML::Value << WindowPosTweaks_Y(i);
+  }
+}
+
+void MigrateLegacyKeys(YAML::Node ui) {
+  // La grille d'alignement était propre aux barres EXP/HP/SP avant de devenir
+  // globale : expbar_grid_* -> grid_*.
+  static const struct RenamedKey {
+    const char* current;
+    const char* legacy;
+  } kRenamedKeys[] = {
+      {"grid_show",  "expbar_grid_show"},
+      {"grid_snap",  "expbar_grid_snap"},
+      {"grid_size",  "expbar_grid_size"},
+      {"grid_color", "expbar_grid_color"},
+  };
+  for (const RenamedKey& renamed : kRenamedKeys)
+    if (!ui[renamed.current] && ui[renamed.legacy])
+      ui[renamed.current] = ui[renamed.legacy];
+
+  // Une seule échelle de texte pour les barres de raccourcis, devenue deux
+  // (touches et nombres réglables séparément).
+  if (const YAML::Node legacy_scale = ui["skillbar_text_scale"]) {
+    if (!ui["skillbar_key_scale"])   ui["skillbar_key_scale"]   = legacy_scale;
+    if (!ui["skillbar_count_scale"]) ui["skillbar_count_scale"] = legacy_scale;
+  }
 }
 
 }  // namespace moonlight_ui
