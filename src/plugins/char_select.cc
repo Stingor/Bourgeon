@@ -72,8 +72,8 @@ constexpr int kCmdBackToLogin = 10011;  // 0x271B
 constexpr int kCmdQuitGame    = 2;
 // g_UIWindowMgr + id de la fenêtre native du char-select. FindWindow(0x115) non nul
 // = l'écran char-select est VIVANT dans le manager (contrairement au cache
-// mgr+0x3d4 = kCharSelWndPtr, jamais remis à zéro à la destruction). Sert à savoir
-// quand le natif a effectivement quitté l'écran après notre commande.
+// mgr+0x3d4, jamais remis à zéro à la destruction). C'est la SEULE sonde fiable de
+// « on est bien à l'écran char-select », et la seule source du `this` qu'on pilote.
 constexpr int       kCharSelWndId = 0x115;  // 277 = UINewSelectCharWnd
 
 // La fenêtre native du char-select existe-t-elle encore ?
@@ -102,9 +102,22 @@ constexpr int kMaxHairColor = 250;
 // > 0 si on veut les retirer du picking.
 constexpr int kMinHairColor = 0;
 // UINewSelectCharWnd : id de fenêtre 0x115, pointeur caché à mgr+0x3d4.
-constexpr uintptr_t kCharSelWndPtr   = 0x0131F8BC;  // g_pCharSelectWnd
+// ⚠ Le cache mgr+0x3d4 (g_pCharSelectWnd, 0x0131F8BC) a été RETIRÉ de ce fichier :
+// il n'est jamais remis à zéro à la destruction, et au login SUIVANT (même
+// processus) il pointe encore sur l'objet du cycle précédent — mémoire libérée mais
+// non réutilisée, donc la garde de vtable PASSE et on pilotait une fenêtre morte.
+// C'est ce qui bloquait le joueur derrière notre fondu « Entrée en jeu… » : le
+// OnMsg 0xB8 partait dans le vide, le natif restait au char-select. On demande
+// donc la fenêtre au MANAGER (FindWindow 0x115), qui ne connaît que les vivantes.
 constexpr uintptr_t kCharSelWndVtbl  = 0x0101D424;  // garde anti-pointeur périmé
 constexpr uintptr_t kCharSelOnMsg    = 0x0079D610;  // vtbl+0x94, RET 0x18
+
+// Entrée en jeu : délai au-delà duquel une séquence qui n'a RIEN produit est
+// abandonnée (le natif purge ses fenêtres en une frame quand elle aboutit).
+constexpr unsigned long kEnterTimeoutMs = 2500;
+// Insensibilité à l'Entrée pendant les premières ms d'affichage de la table :
+// la file de messages contient encore les Entrées de l'écran précédent.
+constexpr unsigned long kEnterGraceMs = 400;
 
 // Comptes de slots renseignés par HC_ACCEPT_ENTER2 (serveur). Capacité = somme.
 constexpr uintptr_t kNormalSlots   = 0x015ffd60;
@@ -851,9 +864,10 @@ void CharSelect::EnterGame(int slot) {
   // un slot != 0 sèmerait l'état du MAUVAIS personnage.
   __try {
     *reinterpret_cast<uint8_t*>(kSelectedSlot) = static_cast<uint8_t>(slot);
-    void* wnd = *reinterpret_cast<void**>(kCharSelWndPtr);
-    // Garde de vtable : le cache mgr+0x3d4 n'est jamais remis à zéro à la
-    // destruction -> il peut pendouiller hors de cet écran.
+    // Fenêtre demandée au MANAGER, pas au cache mgr+0x3d4 : lui pendouille après
+    // destruction et sa vtable matche encore (cf. kCharSelWndVtbl plus haut), donc
+    // la garde le laissait passer et on pilotait une fenêtre morte.
+    void* wnd = uiwnd::FindWindow(kCharSelWndId);
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> entrée en jeu "
                "impossible (slot {}). Utilise « Mode Classique ».", slot);
@@ -995,7 +1009,7 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
   // OnMsg (msg 6 / ctrl). Aucun paquet fabriqué ici : le natif construit tout.
   __try {
     *reinterpret_cast<uint8_t*>(kSelectedSlot) = static_cast<uint8_t>(slot);
-    void* wnd = *reinterpret_cast<void**>(kCharSelWndPtr);
+    void* wnd = uiwnd::FindWindow(kCharSelWndId);  // vivante (cf. EnterGame)
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> ctrl 0x{:x} ignoré "
                "(slot {})", ctrl, slot);
@@ -1041,9 +1055,65 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     entering_ = false;
     quitting_ = false;
     left_ = false;
+    active_since_ = 0;
+    enter_failed_until_ = 0;
     del_reject_until_ = 0;
     del_reject_seq_seen_ = g_del_reject_seq;  // ne pas ressortir un refus d'avant
   }
+}
+
+void CharSelect::DrawHallBackdrop(ImDrawList* dl, const ImVec2& disp) {
+  // Décor plein écran : BMP du banquet chargé par le loader natif, ou dégradé
+  // sombre si le fichier n'est pas déployé. Partagé par la table et le fondu de
+  // transition (qui doit s'assombrir DEPUIS le décor, pas depuis un écran vide,
+  // sinon le char-select natif réapparaîtrait le temps du fondu).
+  if (void* hall = LoadHallTexture()) {
+    dl->AddImage(reinterpret_cast<ImTextureID>(hall), ImVec2(0, 0), disp);
+  } else {
+    dl->AddRectFilledMultiColor(ImVec2(0, 0), disp, IM_COL32(24, 22, 30, 255),
+                                IM_COL32(24, 22, 30, 255), IM_COL32(12, 11, 16, 255),
+                                IM_COL32(12, 11, 16, 255));
+  }
+  // Léger voile bas pour asseoir titre/barre d'action sur le décor.
+  dl->AddRectFilledMultiColor(ImVec2(0, disp.y - 96.0f), disp,
+                              IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0),
+                              IM_COL32(0, 0, 0, 150), IM_COL32(0, 0, 0, 150));
+}
+
+void CharSelect::DrawTransitionFade(const char* label, unsigned long since) {
+  // Transitions (entrée en jeu / fermeture du jeu) : décor + fondu au noir.
+  // Une fois l'entrée déclenchée (EnterGame -> OnMsg 0xB8), le natif VIDE les
+  // CHARACTER_INFO pour semer l'état en jeu. Si on continuait à dessiner les sièges,
+  // on verrait pendant ~½ s les dolls s'effacer et le slot retomber sur ses valeurs
+  // par défaut (job 0 / sex 0 = Novice femelle). Le retour au login, lui, n'a pas
+  // besoin de fondu : le formulaire Moonlight reprend l'écran dès la frame suivante.
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  ImGui::SetNextFrameWantCaptureKeyboard(true);
+  ImGui::SetNextFrameWantCaptureMouse(true);
+  ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(disp, ImGuiCond_Always);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  g_cover_active = true;  // on couvre encore le natif (détour de msgbox)
+  // MÊME nom de fenêtre que la table : ImGui garde ainsi le même état/z-order, la
+  // transition ne provoque aucun saut.
+  ImGui::Begin("##charselect_full", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+                   ImGuiWindowFlags_NoBringToFrontOnFocus);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  DrawHallBackdrop(dl, disp);
+  float a = static_cast<float>(GetTickCount() - since) / 260.0f;  // ~260 ms
+  if (a > 1.0f) a = 1.0f;
+  const int av = static_cast<int>(a * 255.0f);
+  dl->AddRectFilled(ImVec2(0, 0), disp, IM_COL32(0, 0, 0, av));
+  const ImVec2 ts = ImGui::CalcTextSize(label);
+  dl->AddText(ImVec2((disp.x - ts.x) * 0.5f, disp.y * 0.5f - ts.y * 0.5f),
+              IM_COL32(235, 230, 220, av), label);
+  ImGui::End();
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();  // WindowBg
 }
 
 void CharSelect::OnRenderLoginUI() {
@@ -1060,6 +1130,35 @@ void CharSelect::OnRenderLoginUI() {
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
   if (disp.x <= 0.0f || disp.y <= 0.0f) return;  // garde minimize
 
+  // ── Transition en cours : fondu au noir, traité AVANT toute sonde d'écran ────
+  // Pendant l'entrée en jeu le natif purge ses fenêtres ET vide les CHARACTER_INFO :
+  // les sondes ci-dessous tombent toutes, et on cesserait de dessiner en plein fondu.
+  //
+  // Filet anti-écran-mort : notre OnMsg 0xB8 peut ne RIEN produire (fenêtre native
+  // pas encore construite, slot refusé par le natif…). Le mode reste alors sagement
+  // au char-select pendant que nous couvrons l'écran et captons tout l'input — plus
+  // aucune issue pour le joueur, écran noir « Entrée en jeu… » définitif (constaté :
+  // mode CLoginMode état 7, transition demandée à -1, fenêtre native bien vivante
+  // sous le fondu). Une entrée qui ABOUTIT change l'état du mode, ce qui purge les
+  // fenêtres en une frame : si le char-select natif est toujours là au bout de
+  // kEnterTimeoutMs, c'est que rien n'est parti -> on rend la main.
+  if (entering_ || quitting_) {
+    const bool stalled = entering_ && NativeCharSelectAlive() &&
+                         (GetTickCount() - enter_tick_) > kEnterTimeoutMs;
+    if (!stalled) {
+      DrawTransitionFade(entering_ ? "Entrée en jeu…" : "Fermeture du jeu…",
+                         entering_ ? enter_tick_ : quit_tick_);
+      return;
+    }
+    LogError("[CharSelect] entrée en jeu sans effet (char-select natif toujours "
+             "présent après {} ms) -> retour à la table", kEnterTimeoutMs);
+    entering_ = false;
+    enter_failed_until_ = GetTickCount() + 8000;  // bandeau d'explication
+    // Réarme la fenêtre d'insensibilité : sans ça, une touche Entrée encore
+    // maintenue/spammée relancerait la séquence dans la foulée, en boucle.
+    active_since_ = GetTickCount();
+  }
+
   // ── Écran quitté (« Revenir au login ») : on ne dessine plus rien ────────────
   // On ne peut pas se fier aux CHARACTER_INFO (encore lisibles un moment après la
   // déconnexion) ni à OnModeSwitch (un re-login ne change pas de MODE). On se réarme
@@ -1075,9 +1174,21 @@ void CharSelect::OnRenderLoginUI() {
     page_ = 0;
   }
 
-  // Détection char-select : au moins un slot chargé. (Sur l'écran de login pur,
-  // aucun perso n'est chargé -> on ne dessine rien.) La détection robuste par
-  // fenêtre native viendra avec le masquage du natif.
+  // ── Sonde d'écran : la FENÊTRE NATIVE, surtout PAS les CHARACTER_INFO ────────
+  // Les CHARACTER_INFO SURVIVENT au retour à l'écran de connexion : au login SUIVANT
+  // (même processus) elles sont encore lisibles, donc « au moins un slot chargé »
+  // était déjà vrai à l'instant où le joueur envoyait ses identifiants. La table
+  // s'affichait alors PAR-DESSUS le login en cours et captait le clavier ; une Entrée
+  // (spam du joueur, ou auto-confirm char-server de MoonlightAuth) déclenchait une
+  // entrée en jeu sur un écran qui n'existait pas encore -> écran mort. Les fenêtres,
+  // elles, sont purgées à chaque changement d'état du mode : FindWindow(0x115) ne
+  // répond que si le char-select natif est RÉELLEMENT à l'écran.
+  if (!NativeCharSelectAlive()) {
+    active_ = false;
+    active_since_ = 0;
+    return;
+  }
+
   const int cap = SlotCapacity();
   if (cap <= 0) { active_ = false; return; }
 
@@ -1087,7 +1198,8 @@ void CharSelect::OnRenderLoginUI() {
   for (int i = 0; i < cap && i < 128; ++i) {
     if (ReadSlot(i, &views[i])) ++nfilled;
   }
-  if (nfilled == 0) { active_ = false; return; }  // pas encore au char-select
+  if (nfilled == 0) { active_ = false; return; }  // liste pas encore décodable
+  if (!active_) active_since_ = GetTickCount();   // arrivée sur l'écran (edge)
   active_ = true;
 
   // Refus de « Programmer suppression » remonté par le détour (code EXACT, msgbox
@@ -1162,45 +1274,7 @@ void CharSelect::OnRenderLoginUI() {
   ImGui::Begin("##charselect_full", nullptr, fs);
   ImDrawList* dl = ImGui::GetWindowDrawList();
 
-  // ── Décor plein écran ────────────────────────────────────────────────────────
-  if (void* hall = LoadHallTexture()) {
-    dl->AddImage(reinterpret_cast<ImTextureID>(hall), ImVec2(0, 0), disp);
-  } else {
-    // Repli si le .bmp n'est pas déployé : dégradé sombre (haut -> bas).
-    dl->AddRectFilledMultiColor(ImVec2(0, 0), disp, IM_COL32(24, 22, 30, 255),
-                                IM_COL32(24, 22, 30, 255), IM_COL32(12, 11, 16, 255),
-                                IM_COL32(12, 11, 16, 255));
-  }
-  // Léger voile bas pour asseoir titre/barre d'action sur le décor.
-  dl->AddRectFilledMultiColor(ImVec2(0, disp.y - 96.0f), disp,
-                              IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0),
-                              IM_COL32(0, 0, 0, 150), IM_COL32(0, 0, 0, 150));
-
-  // ── Transitions (entrée en jeu / sortie de l'écran) : fondu au noir ─────────
-  // Une fois l'entrée déclenchée (EnterGame -> OnMsg 0xB8), le natif VIDE les
-  // CHARACTER_INFO pour semer l'état en jeu. Si on continuait à dessiner les sièges,
-  // on verrait pendant ~½ s les dolls s'effacer et le slot retomber sur ses valeurs
-  // par défaut (job 0 / sex 0 = Novice femelle). On masque cette fenêtre derrière un
-  // fondu au noir + « Entrée en jeu… » : on ne relit ni ne redessine plus les slots.
-  // Même traitement pour la FERMETURE du jeu (le temps que la boucle principale
-  // sorte). Le retour au login, lui, n'a pas besoin de fondu : le formulaire
-  // Moonlight reprend l'écran dès la frame suivante (cf. left_).
-  if (entering_ || quitting_) {
-    const unsigned long since = entering_ ? enter_tick_ : quit_tick_;
-    const unsigned long el = GetTickCount() - since;
-    float a = static_cast<float>(el) / 260.0f;  // fondu sur ~260 ms
-    if (a > 1.0f) a = 1.0f;
-    const int av = static_cast<int>(a * 255.0f);
-    dl->AddRectFilled(ImVec2(0, 0), disp, IM_COL32(0, 0, 0, av));
-    const char* t = entering_ ? "Entrée en jeu…" : "Fermeture du jeu…";
-    const ImVec2 ts = ImGui::CalcTextSize(t);
-    dl->AddText(ImVec2((disp.x - ts.x) * 0.5f, disp.y * 0.5f - ts.y * 0.5f),
-                IM_COL32(235, 230, 220, av), t);
-    ImGui::End();
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();  // WindowBg
-    return;
-  }
+  DrawHallBackdrop(dl, disp);
 
   auto can_enter_slot = [&](int i) {
     return i >= 0 && i < cap && i < 128 && views[i].occupied &&
@@ -1217,9 +1291,17 @@ void CharSelect::OnRenderLoginUI() {
 
   // Enter joue le perso — SAUF si un champ texte a le focus (saisie de l'email) ou
   // qu'un popup est ouvert, sinon on entrerait en jeu en tapant.
+  //
+  // ⚠ Et pas non plus dans les premières kEnterGraceMs d'affichage de la table : en
+  // arrivant ici la file de messages contient encore les Entrées destinées aux écrans
+  // PRÉCÉDENTS (joueur qui spamme Entrée pour traverser login + « Select Service »,
+  // et les Entrées postées par l'auto-confirm char-server de MoonlightAuth). Sans ce
+  // délai, elles jouaient le personnage avant même que le joueur ait vu la table.
   const bool enter_key = ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false);
-  if (enter_key && !io.WantTextInput && !any_popup && can_enter_slot(selected_))
+  const bool enter_armed = (GetTickCount() - active_since_) > kEnterGraceMs;
+  if (enter_key && enter_armed && !io.WantTextInput && !any_popup &&
+      can_enter_slot(selected_))
     EnterGame(selected_);
 
   // ── Sièges (position = g_seats[i]) ; slot de perso = CharForSeat(i, page) ─────
@@ -1447,6 +1529,20 @@ void CharSelect::OnRenderLoginUI() {
   // Bandeau « suppression refusée » (poll de del_rev_date resté à 0 -> refus serveur,
   // perso en guilde/groupe). Affiché ~5 s sous le titre. La msgbox native équivalente
   // est cachée derrière notre UI plein écran, d'où ce relais ImGui.
+  // Même bandeau pour l'entrée en jeu abandonnée par le filet anti-écran-mort : le
+  // joueur doit comprendre pourquoi le fondu est retombé sur la table.
+  if (del_reject_until_ <= GetTickCount() && enter_failed_until_ > GetTickCount()) {
+    const char* msg = "L'entrée en jeu n'a pas abouti — réessaie.";
+    const ImVec2 ms = ImGui::CalcTextSize(msg);
+    const float by = tp.y + tsz.y + 10.0f;
+    const float bx = (disp.x - ms.x) * 0.5f;
+    dl->AddRectFilled(ImVec2(bx - 12, by - 4), ImVec2(bx + ms.x + 12, by + ms.y + 4),
+                      IM_COL32(70, 40, 0, 235), 4.0f);
+    dl->AddRect(ImVec2(bx - 12, by - 4), ImVec2(bx + ms.x + 12, by + ms.y + 4),
+                IM_COL32(220, 160, 60, 235), 4.0f, 0, 1.5f);
+    dl->AddText(ImVec2(bx + 1, by + 1), IM_COL32(0, 0, 0, 180), msg);
+    dl->AddText(ImVec2(bx, by), IM_COL32(255, 225, 170, 255), msg);
+  }
   if (del_reject_until_ > GetTickCount()) {
     const char* msg = DeleteRejectMsg(del_reject_reason_);  // guilde/groupe/db/échoppe…
     const ImVec2 ms = ImGui::CalcTextSize(msg);

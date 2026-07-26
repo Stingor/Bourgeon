@@ -663,13 +663,20 @@ void MoonlightAuth::OnRenderLoginUI() {
     // l'état 6, qui CONSTRUIT la fenêtre id 2 « Select Service » (liste des
     // char-servers, boutons OK/cancel) : elle attend une validation, d'où cette
     // Entrée. On tire IMMÉDIATEMENT dès le login réussi (fenêtre de login détruite),
-    // retry rapide, et on s'ARRÊTE dès que la fenêtre du char-select (0x115) est
+    // et on s'ARRÊTE dès que la fenêtre du char-select (0x115) est
     // là -> jamais d'Entrée au char-select. Gaté sur
     // "login réussi" (pas de fenêtre de login présente) pour ne pas taper sur un
     // écran d'échec. La latence restante login->char-select = RÉSEAU (2 RTT).
+    //
+    // ⚠ Rythme VOLONTAIREMENT lent (200 ms, 10 essais = 2 s de couverture, contre
+    // 50 ms/20 essais avant) : chaque essai POSTE une Entrée dans la file Win32, que
+    // le client consommera plus tard, sur l'écran qu'il aura atteint entre-temps. À
+    // 50 ms on chargeait la file d'une vingtaine de munitions qui retombaient sur le
+    // char-select. Le char-select ImGui s'en protège aussi de son côté (fenêtre
+    // d'insensibilité à l'arrivée), mais mieux vaut ne pas les tirer du tout.
     if (socket_seen_ && !native_login::LoginWindowPresent() &&
-        !native_login::CharSelectWindowPresent() && charsrv_tries_ < 20 &&
-        (charsrv_tries_ == 0 || (GetTickCount() - charsrv_tick_) > 50)) {
+        !native_login::CharSelectWindowPresent() && charsrv_tries_ < 10 &&
+        (charsrv_tries_ == 0 || (GetTickCount() - charsrv_tick_) > 200)) {
       HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
       if (hwnd) {
         PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0);

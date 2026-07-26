@@ -5,6 +5,10 @@
 #include "plugins/plugin.h"
 
 class MoonlightAuth;
+// Déclarations anticipées (comme ui/ro_imgui.h) : deux méthodes privées prennent
+// des types ImGui, ça ne justifie pas de tirer imgui.h dans cet en-tête.
+struct ImDrawList;
+struct ImVec2;
 
 // CharSelect — remplacement ImGui de l'écran de sélection de personnage.
 //
@@ -83,6 +87,14 @@ class CharSelect : public Plugin {
   // pas en envoyant CH_SELECT_CHAR à la main : le natif fait bien plus que ça.
   void EnterGame(int slot);
 
+  // Peint le décor plein écran (BMP du banquet, ou dégradé de repli) + le voile bas.
+  // Partagé par la table et par le fondu de transition.
+  void DrawHallBackdrop(ImDrawList* dl, const ImVec2& disp);
+
+  // Fenêtre plein écran « décor + fondu au noir + libellé » des transitions (entrée
+  // en jeu, fermeture du jeu). `since` = tick de départ du fondu (~260 ms).
+  void DrawTransitionFade(const char* label, unsigned long since);
+
   // Dessine le paperdoll du slot ancré sur son siège : pieds au point (cx, chair_y),
   // corps de hauteur `box_h` (px écran) étendu vers le haut, centré en X. Moteur de
   // capture partagé (BasicInfoTweaks::RenderDoll) ; placeholder si la capture n'est
@@ -131,6 +143,13 @@ class CharSelect : public Plugin {
   // serait ré-armé à chaque frame si on la rejouait. Réarmé au retour à l'écran.
   bool entering_ = false;
   unsigned long enter_tick_ = 0;  // GetTickCount() à l'instant de l'entrée en jeu (fondu)
+  // Tick d'ARRIVÉE sur l'écran (première frame où la table est dessinée). Sert à
+  // ignorer les Entrées encore en file, destinées aux écrans précédents (spam du
+  // joueur, auto-confirm char-server) : sans ça elles jouaient le perso aussitôt.
+  unsigned long active_since_ = 0;
+  // Bandeau « l'entrée en jeu n'a pas abouti » : posé par le filet anti-écran-mort
+  // quand la séquence native n'a rien produit (cf. kEnterTimeoutMs).
+  unsigned long enter_failed_until_ = 0;
   // Fermeture du jeu demandée (bouton « Quitter le jeu ») : même principe que
   // `entering_`, on masque la table derrière un fondu au noir le temps que la boucle
   // principale sorte.
