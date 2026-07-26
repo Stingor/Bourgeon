@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 
+#include "ui/color_codec.h"  // ro::PickerFromArgb (MLUI_LITERAL_ARGB)
 #include "yaml-cpp/yaml.h"
 
 // ── settings_table : décrire un réglage UNE fois, le lire et l'écrire ────────
@@ -110,4 +111,16 @@ void WriteArgbKey(YAML::Emitter& out, const std::string& key, const float picker
   []() -> const void* {                        \
     static const Type fallback = value;        \
     return &fallback;                          \
+  }
+
+// Même chose pour une couleur : le défaut s'écrit en ARGB (0xAARRGGBB), comme
+// sur disque et comme dans le client, et non en quatre flottants illisibles.
+// MLUI_LITERAL ne convient pas — un `float[4]` ne se déclare pas `Type x = v`.
+#define MLUI_LITERAL_ARGB(argb)                          \
+  []() -> const void* {                                  \
+    static const struct PickerDefault {                  \
+      float rgba[4];                                     \
+      PickerDefault() { ro::PickerFromArgb(rgba, argb); } \
+    } fallback;                                          \
+    return fallback.rgba;                                \
   }

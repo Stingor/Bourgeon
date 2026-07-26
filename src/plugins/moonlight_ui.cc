@@ -186,6 +186,60 @@ const moonlight_ui::SettingDesc kGraphicsSettings[] = {
 };
 #undef POSTFX
 
+// Compteur de dégâts. Les membres sont publics mais DpsMeter est un plugin : on
+// ne peut pas en instancier un exemplaire juste pour lire ses défauts, d'où les
+// littéraux (qui restent, eux, la seule source pour la lecture ET l'écriture).
+const moonlight_ui::SettingDesc kDpsSettings[] = {
+    {"dps_ground_dmg_chat", SType::kBool,
+     MLUI_FIELD(dps_meter, show_ground_dmg_in_chat_), MLUI_LITERAL(bool, true)},
+    {"dps_locked",   SType::kBool,  MLUI_FIELD(dps_meter, locked_),
+     MLUI_LITERAL(bool, false)},
+    {"dps_bg_alpha", SType::kFloat, MLUI_FIELD(dps_meter, bg_alpha_),
+     MLUI_LITERAL(float, 0.90f)},
+    {"dps_text_color", SType::kColorHex, MLUI_FIELD(dps_meter, text_color_),
+     MLUI_LITERAL_ARGB(0xFFFFCC33)},
+    {"dps_plot_color", SType::kColorHex, MLUI_FIELD(dps_meter, plot_color_),
+     MLUI_LITERAL_ARGB(0xFFFFCC33)},
+    {"dps_visible",             SType::kBool, MLUI_FIELD(dps_meter, visible_),
+     MLUI_LITERAL(bool, true)},
+    {"dps_slot_ms",             SType::kInt,  MLUI_FIELD(dps_meter, slot_ms_),
+     MLUI_LITERAL(int, 200)},
+    {"dps_window_secs",         SType::kInt,  MLUI_FIELD(dps_meter, dps_window_secs_),
+     MLUI_LITERAL(int, 10)},
+    {"dps_combat_timeout_secs", SType::kInt,  MLUI_FIELD(dps_meter, combat_timeout_secs_),
+     MLUI_LITERAL(int, 5)},
+};
+
+// Fenêtre de description (item + skill). Le défaut d'ancrage vaut 3 = bas-droite,
+// la valeur déclarée dans item_desc_tweaks.h : il valait 0 dans le repli
+// d'écriture, ce qui ramenait silencieusement l'ancrage en haut-gauche.
+const moonlight_ui::SettingDesc kItemDescSettings[] = {
+    {"itemdesc_show_item",  SType::kBool, MLUI_FIELD(item_desc, show_item_panel()),
+     MLUI_LITERAL(bool, true)},
+    {"itemdesc_show_skill", SType::kBool, MLUI_FIELD(item_desc, show_skill_panel()),
+     MLUI_LITERAL(bool, true)},
+    {"itemdesc_compare",    SType::kBool, MLUI_FIELD(item_desc, cmp_show_equipped()),
+     MLUI_LITERAL(bool, true)},
+    {"itemdesc_spawn_cursor", SType::kBool,
+     MLUI_FIELD(item_desc, desc_spawn_at_cursor()), MLUI_LITERAL(bool, true)},
+    {"itemdesc_anchor", SType::kInt, MLUI_FIELD(item_desc, desc_anchor()),
+     MLUI_LITERAL(int, 3)},
+    {"itemdesc_off_x",  SType::kInt, MLUI_FIELD(item_desc, desc_offset_x()),
+     MLUI_LITERAL(int, 12)},
+    {"itemdesc_off_y",  SType::kInt, MLUI_FIELD(item_desc, desc_offset_y()),
+     MLUI_LITERAL(int, 12)},
+};
+
+// Deux interrupteurs isolés, chacun chez son plugin.
+const moonlight_ui::SettingDesc kBugReportSettings[] = {
+    {"bugreport_button", SType::kBool, MLUI_FIELD(bug_report, enabled()),
+     MLUI_LITERAL(bool, true)},
+};
+const moonlight_ui::SettingDesc kWeaponSpriteSettings[] = {
+    {"weapon_dual_sprites", SType::kBool, MLUI_FIELD(weapon_dual_sprites, enabled()),
+     MLUI_LITERAL(bool, false)},
+};
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -428,23 +482,9 @@ void MoonlightUi::LoadSettings() {
     ReadArgbKey(ui, "ground_paint_color", spr_lab::ground_color());
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
-    if (auto* idt = Bourgeon::Instance().item_desc()) {
-      idt->show_item_panel()  = ui["itemdesc_show_item"].as<bool>(true);
-      idt->show_skill_panel() = ui["itemdesc_show_skill"].as<bool>(true);
-      idt->cmp_show_equipped() = ui["itemdesc_compare"].as<bool>(true);
-      idt->desc_spawn_at_cursor() =
-          ui["itemdesc_spawn_cursor"].as<bool>(true);
-      // Défaut 3 = bas-droite, la valeur déclarée dans item_desc_tweaks.h:208.
-      // Elle valait 0 ici et dans le repli d'écriture : tout yaml antérieur à ce
-      // réglage faisait repasser l'ancrage en haut-gauche, silencieusement.
-      idt->desc_anchor()   = ui["itemdesc_anchor"].as<int>(3);
-      idt->desc_offset_x() = ui["itemdesc_off_x"].as<int>(12);
-      idt->desc_offset_y() = ui["itemdesc_off_y"].as<int>(12);
-    }
-    if (auto* br = Bourgeon::Instance().bug_report())
-      br->enabled() = ui["bugreport_button"].as<bool>(true);
-    if (auto* wds = Bourgeon::Instance().weapon_dual_sprites())
-      wds->enabled() = ui["weapon_dual_sprites"].as<bool>(false);
+    moonlight_ui::ReadSettings(ui, kItemDescSettings);
+    moonlight_ui::ReadSettings(ui, kBugReportSettings);
+    moonlight_ui::ReadSettings(ui, kWeaponSpriteSettings);
     mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
     log_level_            = ui["log_level"].as<std::string>("info");
 
@@ -460,17 +500,7 @@ void MoonlightUi::LoadSettings() {
     LogConsole::instance().SetLevel(log_level_);
     apply_collapse_ = true;
 
-    if (auto* dps = Bourgeon::Instance().dps_meter()) {
-      dps->show_ground_dmg_in_chat_ = ui["dps_ground_dmg_chat"].as<bool>(true);
-      dps->locked_ = ui["dps_locked"].as<bool>(false);
-      dps->bg_alpha_ = ui["dps_bg_alpha"].as<float>(0.90f);
-      ReadArgbKey(ui, "dps_text_color", dps->text_color_);
-      ReadArgbKey(ui, "dps_plot_color", dps->plot_color_);
-      dps->visible_             = ui["dps_visible"].as<bool>(true);
-      dps->slot_ms_             = ui["dps_slot_ms"].as<int>(200);
-      dps->dps_window_secs_     = ui["dps_window_secs"].as<int>(10);
-      dps->combat_timeout_secs_ = ui["dps_combat_timeout_secs"].as<int>(5);
-    }
+    moonlight_ui::ReadSettings(ui, kDpsSettings);
 
     if (auto* eb = Bourgeon::Instance().basic_info()) {
       eb->visible_   = ui["expbar_visible"].as<bool>(false);
@@ -773,38 +803,15 @@ void MoonlightUi::WriteSettingsFile() {
     return;
   }
 
-  // Ces trois-là gardent une chaîne pré-calculée : elles ont un repli littéral à
+  // Ces deux-là gardent une chaîne pré-calculée : elles ont un repli littéral à
   // écrire quand le plugin propriétaire est absent, que WriteArgbKey ne sait pas
   // exprimer (il part forcément d'un picker).
-  auto* dps = Bourgeon::Instance().dps_meter();
-  std::string dps_text_col = "FFFFCC33", dps_plot_col = "FFFFCC33";
-  if (dps) {
-    dps_text_col = HexArgb(dps->text_color_);
-    dps_plot_col = HexArgb(dps->plot_color_);
-  }
-
   auto* eb = Bourgeon::Instance().basic_info();
   std::string eb_bg_col = "B30D0D12";
   if (eb) eb_bg_col = HexArgb(eb->bg_color_);
-  // Global alignment grid colour (owned by MoonlightUi, not basic_info).
+  // Couleur de la grille d'alignement globale (elle appartient à MoonlightUi,
+  // pas à basic_info).
   const std::string grid_col = HexArgb(grid_.color);
-
-  // ItemDescTweaks toggles (owned by the plugin) — panels + Comparer + placement.
-  bool itemdesc_show_item = true, itemdesc_show_skill = true;
-  bool itemdesc_compare = true, itemdesc_spawn_cursor = true;
-  int  itemdesc_anchor = 3, itemdesc_off_x = 12, itemdesc_off_y = 12;  // cf. item_desc_tweaks.h
-  if (auto* idt = Bourgeon::Instance().item_desc()) {
-    itemdesc_show_item    = idt->show_item_panel();
-    itemdesc_show_skill   = idt->show_skill_panel();
-    itemdesc_compare      = idt->cmp_show_equipped();
-    itemdesc_spawn_cursor = idt->desc_spawn_at_cursor();
-    itemdesc_anchor       = idt->desc_anchor();
-    itemdesc_off_x        = idt->desc_offset_x();
-    itemdesc_off_y        = idt->desc_offset_y();
-  }
-  bool bugreport_button = true;
-  if (auto* br = Bourgeon::Instance().bug_report())
-    bugreport_button = br->enabled();
 
   YAML::Emitter out;
   out << YAML::BeginMap
@@ -816,39 +823,16 @@ void MoonlightUi::WriteSettingsFile() {
   WriteArgbKey(out, "ground_paint_color", spr_lab::ground_color());
   out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
-        << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_
-        << YAML::Key << "itemdesc_show_item"   << YAML::Value << itemdesc_show_item
-        << YAML::Key << "itemdesc_show_skill"  << YAML::Value << itemdesc_show_skill
-        << YAML::Key << "itemdesc_compare"     << YAML::Value << itemdesc_compare
-        << YAML::Key << "itemdesc_spawn_cursor" << YAML::Value << itemdesc_spawn_cursor
-        << YAML::Key << "itemdesc_anchor"      << YAML::Value << itemdesc_anchor
-        << YAML::Key << "itemdesc_off_x"       << YAML::Value << itemdesc_off_x
-        << YAML::Key << "itemdesc_off_y"       << YAML::Value << itemdesc_off_y
-        << YAML::Key << "bugreport_button"     << YAML::Value << bugreport_button
-        << YAML::Key << "weapon_dual_sprites"  << YAML::Value
-            << (Bourgeon::Instance().weapon_dual_sprites()
-                    ? Bourgeon::Instance().weapon_dual_sprites()->enabled()
-                    : false)
-        << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
+        << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_;
+  moonlight_ui::WriteSettings(out, kItemDescSettings);
+  moonlight_ui::WriteSettings(out, kBugReportSettings);
+  moonlight_ui::WriteSettings(out, kWeaponSpriteSettings);
+  out   << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
         << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
         << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
         << YAML::Key << "chat_timestamps"      << YAML::Value << chat_timestamps_
-        << YAML::Key << "chat_item_icons"      << YAML::Value << chat_item_icons_
-        << YAML::Key << "dps_ground_dmg_chat"  << YAML::Value
-            << (Bourgeon::Instance().dps_meter()
-                    ? Bourgeon::Instance().dps_meter()->show_ground_dmg_in_chat_
-                    : true)
-        << YAML::Key << "dps_locked" << YAML::Value
-            << (Bourgeon::Instance().dps_meter()
-                    ? Bourgeon::Instance().dps_meter()->locked_
-                    : false)
-        << YAML::Key << "dps_bg_alpha"   << YAML::Value << (dps ? dps->bg_alpha_ : 0.90f)
-        << YAML::Key << "dps_text_color" << YAML::Value << dps_text_col
-        << YAML::Key << "dps_plot_color" << YAML::Value << dps_plot_col
-        << YAML::Key << "dps_visible"             << YAML::Value << (dps ? dps->visible_ : true)
-        << YAML::Key << "dps_slot_ms"             << YAML::Value << (dps ? dps->slot_ms_ : 200)
-        << YAML::Key << "dps_window_secs"         << YAML::Value << (dps ? dps->dps_window_secs_ : 10)
-        << YAML::Key << "dps_combat_timeout_secs" << YAML::Value << (dps ? dps->combat_timeout_secs_ : 5);
+        << YAML::Key << "chat_item_icons"      << YAML::Value << chat_item_icons_;
+  moonlight_ui::WriteSettings(out, kDpsSettings);
 
   // EXP/HP/SP bar settings (BasicInfoTweaks)
   out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : false)
