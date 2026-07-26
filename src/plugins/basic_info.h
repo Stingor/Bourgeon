@@ -181,7 +181,6 @@ class BasicInfoTweaks : public Plugin {
   bool portrait_border_          = false;  // draw a 1px border around each frame
   bool portrait_head_sprite_     = true;   // render the real head sprite (vs box)
   bool portrait_head_only_       = true;   // keep only head-region layers (no body)
-  bool portrait_debug_log_       = false;  // opt-in per-layer capture diagnostics
   float portrait_head_zoom_      = 1.0f;   // zoom into the head (0.10 .. 2.00)
   float portrait_head_offx_      = 0.0f;   // pan X from frame centre (0 = centred)
   float portrait_head_offy_      = 0.0f;   // pan Y from frame centre (0 = centred)

@@ -180,21 +180,6 @@ float     g_av_body_scale = 1.0f;
 unsigned  g_av_sig = 0;
 CapLayer* g_cap_buf = g_caps;
 int*      g_cap_num = &g_cap_count;
-bool     g_portrait_debug = false;  // when set, LogPortraitDiag logs each pass
-
-// ── Diagnostics ──────────────────────────────────────────────────────────────
-// Record EVERY layer that reaches the hook during our capture (type/size/branch/
-// tex-resolved) so the log shows exactly what the actor emits and why a layer is
-// or isn't captured. Drained + logged (throttled) by CapturePortraitActor.
-struct DiagLayer {
-  int type; int w; int h; int branch; bool tex;
-  float cx; float cy;      // computed sprite centre (actor space)
-  int   ox; int oy;        // act_layer[0]/[1] offsets
-  float rawx; float rawy;  // game's x/y at the quad submit (carries attach)
-};
-DiagLayer g_diag[48];
-int       g_diag_count = 0;
-
 // NB: x and y (param_1/param_2) are SIGNED INTEGER pixel offsets, NOT floats —
 // the caller pushes them as ints (the body-anchor sync is baked in, often
 // negative). Reading y as a float reinterprets e.g. -1 (0xFFFFFFFF) as a NaN,
@@ -292,22 +277,6 @@ void EmitCapLayer(void* p3, short* spr_frame, int* act_layer, float x, float y,
   const float cy = (top + bottom) * 0.5f + 0.5f;
   const float cw = right - left;
   const float ch = bottom - top;
-
-  // Diagnostics: record every layer reaching the capture.
-  if (g_diag_count < 48) {
-    DiagLayer& d = g_diag[g_diag_count++];
-    d.type   = act_layer[8];
-    d.w      = spr_frame[0];
-    d.h      = spr_frame[1];
-    d.branch = (act_layer[8] == 0) ? 0 : 1;
-    d.tex    = (native != nullptr);
-    d.cx     = cx;
-    d.cy     = cy;
-    d.ox     = act_layer[0];
-    d.oy     = act_layer[1];
-    d.rawx   = x;
-    d.rawy   = y;
-  }
 
   if (native && *g_cap_num < 48) {
     CapLayer& L = g_cap_buf[(*g_cap_num)++];
@@ -447,26 +416,6 @@ int EquipSlotNameId(int slot) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-// Logs the last capture pass (throttled ~2s). Separate from CapturePortraitActor
-// because that fn uses __try/__except (no C++ object unwinding allowed there).
-void LogPortraitDiag() {
-  if (!g_portrait_debug) return;  // opt-in (off by default — no log spam)
-  static DWORD last = 0;
-  const DWORD now = GetTickCount();
-  if (now - last < 2000) return;
-  last = now;
-  LogDiag("[Portrait] pass: {} layers hit hook, {} captured (hair={})",
-          g_diag_count, g_cap_count, *reinterpret_cast<int*>(kHair));
-  LogDiag("[Portrait] pose=standby(32) frames={}", g_body_frame_count);
-  for (int i = 0; i < g_diag_count; ++i) {
-    const DiagLayer& d = g_diag[i];
-    LogDiag("[Portrait]   layer[{}] type={} {}x{} tex={} off=({},{}) xy=({},{}) -> centre=({},{})",
-            i, d.type, d.w, d.h, d.tex ? "ok" : "FAIL", d.ox, d.oy,
-            static_cast<int>(d.rawx), static_cast<int>(d.rawy),
-            static_cast<int>(d.cx), static_cast<int>(d.cy));
-  }
-}
-
 // Renders the player's character once with the capture hook active, filling
 // g_caps[]. SEH-guarded — a failure leaves g_cap_count at 0 (placeholder shown).
 void CapturePortraitActor() {
@@ -476,7 +425,6 @@ void CapturePortraitActor() {
   if (!render_ctx) return;  // need a valid UIWindow as render context
 
   g_cap_count = 0;
-  g_diag_count = 0;
   g_first_layer = true;  // first layer this pass = body (capture frame count)
   __try {
     using GetSexFn = int(__fastcall*)(void*, void*);
@@ -547,7 +495,6 @@ void CapturePortraitActor() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     g_cap_active = false;
   }
-  // LogPortraitDiag();  // throttled diagnostics (outside __try — uses fmt/strings)
 }
 
 // ── Aperçu d'équipement (mouseover) ──────────────────────────────────────────
@@ -578,7 +525,6 @@ void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
   g_cap_buf = g_pv_caps;   // rediriger le hook vers le buffer aperçu (pas g_caps)
   g_cap_num = &g_pv_count;
   g_frame_dst = &g_pv_frame_count;  // comptage de frames -> buffer aperçu
-  g_diag_count = 0;
   g_first_layer = true;   // capturer le nb de frames de l'anim marche
   __try {
     using GetSexFn = int(__fastcall*)(void*, void*);
@@ -1077,7 +1023,6 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
   g_cap_buf = g_av_caps;            // rediriger le hook vers le buffer avatar
   g_cap_num = &g_av_count;
   g_frame_dst = &g_av_frame_count;  // comptage de frames -> buffer avatar
-  g_diag_count = 0;
   g_first_layer = true;             // capturer le nb de frames du corps (wrap)
   __try {
     using GetSexFn = int(__fastcall*)(void*, void*);
@@ -2122,7 +2067,6 @@ void CaptureDollActor(const BasicInfoTweaks::DollLook& k, int dir, int anim) {
   g_doll_count = 0;
   g_cap_buf = g_doll_caps;  // rediriger le hook vers le buffer doll
   g_cap_num = &g_doll_count;
-  g_diag_count = 0;
   // g_first_layer reste FAUX exprès : le bloc « 1re couche » du hook écrit
   // g_av_body_scale / g_av_frame_delay / *g_frame_dst, qui appartiennent au doll de
   // la fiche perso. Notre pose est FIGÉE (une seule image) -> aucun de ces trois
@@ -2730,8 +2674,7 @@ bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath,
   int delay_cs = static_cast<int>(g_av_frame_delay * 2.5f + 0.5f);  // *25ms /10 = cs
   if (delay_cs < 2) delay_cs = 2;
   const bool ok = GifWrite(filepath, ptrs.data(), CW, CH, nframes, delay_cs);
-  if (ok) /* LogInfo("Avatar GIF: {} ({} images)", filepath, nframes) */;
-  else    LogError("Avatar GIF echec: {}", filepath);
+  if (!ok) LogError("Avatar GIF echec: {}", filepath);
   return ok;
 }
 
@@ -3616,7 +3559,6 @@ void BasicInfoTweaks::OnTick() {
   // safer place to call it than the Present hook). DrawPortrait reads g_caps.
   if (portrait_visible_ && portrait_head_sprite_ && ports_[kPortHead].show &&
       Bourgeon::Instance().client().session().aid() != 0) {
-    g_portrait_debug = portrait_debug_log_;
     g_portrait_anim = portrait_anim_;
     g_portrait_dir = portrait_dir_;
     g_portrait_animate = portrait_animate_;

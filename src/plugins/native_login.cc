@@ -18,7 +18,6 @@ constexpr uintptr_t kPLoginWnd      = 0x0131F6B4;  // UILoginWnd* (== mgr+0x1cc,
 constexpr uintptr_t kSocketFd       = 0x015C5A24;  // g_RagConnection_SocketFd
 constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
-constexpr uintptr_t kGetTextAddr    = 0x008210A0;  // UIEdit_GetTextPtr
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
 constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
 
@@ -30,7 +29,6 @@ constexpr int kOffAcctClass = 0xEC;
 constexpr int kOffVisible   = 0x28;  // flag visibilité UIWindow
 
 using SetText_t = void(__thiscall*)(void* edit, const char* text);
-using GetText_t = const char*(__thiscall*)(void* edit);
 // ⚠ 6 ARGS PILE (la fonction fait RET 0x18) — un typedef à 5 args corrompt ESP
 // de +4 par appel => crash. Vérifié au désasm (vérif adversariale du workflow).
 using OnMsg_t = int(__thiscall*)(void*, int, int, int, int, int, int);
@@ -91,7 +89,6 @@ bool native_login::SelectClientInfoConnection(int index) {
     // (FUN_00a72da0) charge la connexion #index, puis mode+0xc = 3 (écran login)
     // — ou 0xd si servicetype 5/7. Aucune table à valider : les <connection> sont
     // parsées au boot (LoadClientInfoXml), pas dans le mode.
-    LogDiag("[native_login] SelectClientInfoConnection idx={} : tir 0x2723", index);
     fn(mode, 0x2723, reinterpret_cast<const void*>(index), 0, 0, 0);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -114,44 +111,11 @@ bool native_login::SelectConnection(int index) {
     // comme un clic/Entrée sur la fenêtre service-select mais instantané).
     auto fn = reinterpret_cast<SendMsg_t>(
         (*reinterpret_cast<uintptr_t**>(mode))[0x18 / 4]);
-    LogDiag("[native_login] SelectConnection idx={} : tir 0x2713 (mode=0x{:x})",
-            index, reinterpret_cast<uintptr_t>(mode));
     fn(mode, 0x2713, reinterpret_cast<const void*>(index), 0, 0, 0);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogDiag("[native_login] SelectConnection idx={} : EXCEPTION", index);
     return false;
-  }
-}
-
-void native_login::LogConnectionTable(int count, const char* tag) {
-  void* mode = CurrentLoginMode();
-  if (!mode) {
-    LogDiag("[native_login] table connexions ({}) : PAS en CLoginMode", tag);
-    return;
-  }
-  if (count < 0) count = 0;
-  if (count > 8) count = 8;  // garde-fou (dev n'a jamais 8 connexions)
-  __try {
-    char* m = reinterpret_cast<char*>(mode);
-    for (int i = 0; i < count; ++i) {
-      char* e = m + kConnBase + i * kConnStride;              // base entrée i
-      uint32_t ip = *reinterpret_cast<uint32_t*>(e);          // +0x1e8 IP (u32)
-      uint16_t port = *reinterpret_cast<uint16_t*>(e + 4);    // +0x1ec port (u16)
-      int16_t state = *reinterpret_cast<int16_t*>(e + 0x1c);  // +0x204 état
-      char nm[24] = {0};
-      lstrcpynA(nm, e + 6, 20);  // +0x1ee nom
-      const unsigned char* b = reinterpret_cast<const unsigned char*>(&ip);
-      // NB: caster les octets en int -> fmt formaterait un `unsigned char` comme
-      // un CARACTÈRE (illisible), pas comme un nombre.
-      LogDiag(
-          "[native_login] table({}) conn[{}] ip={}.{}.{}.{} port={} etat={} nom='{}'",
-          tag, i, static_cast<int>(b[0]), static_cast<int>(b[1]),
-          static_cast<int>(b[2]), static_cast<int>(b[3]), static_cast<int>(port),
-          static_cast<int>(state), nm);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    LogDiag("[native_login] table connexions ({}) : EXCEPTION (offset/pas prêt)", tag);
   }
 }
 
@@ -199,9 +163,7 @@ bool native_login::CharSelectWindowPresent() {
   }
 }
 
-bool native_login::DriveLogin(const char* userid, const char* password,
-                              char* readback_id, char* readback_pw,
-                              unsigned bufsz) {
+bool native_login::DriveLogin(const char* userid, const char* password) {
   if (!CurrentLoginMode()) return false;
   bool fired = false;
   __try {
@@ -219,15 +181,6 @@ bool native_login::DriveLogin(const char* userid, const char* password,
     reinterpret_cast<SetText_t>(kSetTextAddr)(idEdit, userid);
     reinterpret_cast<SetText_t>(kSetTextAddr)(pwEdit, password);
 
-    // Read-back diagnostic : relit les champs natifs APRÈS SetText (avant l'envoi).
-    if (readback_id && bufsz) {
-      const char* r = reinterpret_cast<GetText_t>(kGetTextAddr)(idEdit);
-      lstrcpynA(readback_id, r ? r : "", static_cast<int>(bufsz));
-    }
-    if (readback_pw && bufsz) {
-      const char* r = reinterpret_cast<GetText_t>(kGetTextAddr)(pwEdit);
-      lstrcpynA(readback_pw, r ? r : "", static_cast<int>(bufsz));
-    }
     // Évite un +0xEC (classe de compte) non initialisé si le combo n'a rien posé.
     *reinterpret_cast<void**>(L + kOffAcctClass) =
         reinterpret_cast<void*>(kAcctClassNormal);

@@ -764,9 +764,6 @@ CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
       LogError("[CharSelect] config illisible: {}", e.what());
     }
   }
-  LogDiag("[CharSelect] {}{}",
-          enabled_ ? "activé (défaut)" : "désactivé (opt-out yaml)",
-          force_ ? " [force: gate Moonlight ignoré]" : "");
   // Détour du handler de réponse « delete reserve » : supprime la msgbox native de
   // refus (guilde/groupe…) qui traînerait sous notre UI, et capte le code exact.
   InstallDeleteAckDetour();
@@ -879,7 +876,6 @@ void CharSelect::EnterGame(int slot) {
     reinterpret_cast<WndOnMsg_t>(kCharSelOnMsg)(wnd, 0, 6, 0xB8, 0, 0, 0);
     entering_ = true;
     enter_tick_ = GetTickCount();
-    LogDiag("[CharSelect] entrée en jeu slot={} (séquence native OnMsg 0xB8)", slot);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception pendant l'entrée en jeu (slot {})", slot);
   }
@@ -1018,7 +1014,6 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
     // RET 0x18 = 6 args pile (cf. EnterGame) : typedef à 6 args obligatoire.
     using WndOnMsg_t = int(__thiscall*)(void*, int, int, int, int, int, int);
     reinterpret_cast<WndOnMsg_t>(kCharSelOnMsg)(wnd, 0, 6, ctrl, 0, 0, 0);
-    LogDiag("[CharSelect] ctrl natif 0x{:x} (slot {})", ctrl, slot);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception ctrl 0x{:x} (slot {})", ctrl, slot);
   }
@@ -1037,7 +1032,6 @@ void CharSelect::DriveModeCmd(int cmd) {
     auto fn = reinterpret_cast<DispCmd_t>(
         (*reinterpret_cast<uintptr_t**>(d))[kVfDispCmd / 4]);
     fn(d, cmd, 0, 0, 0, 0);
-    LogDiag("[CharSelect] commande de mode {} envoyée", cmd);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception sur la commande de mode {}", cmd);
   }
@@ -1579,10 +1573,7 @@ void CharSelect::OnRenderLoginUI() {
   if (!can_enter) ImGui::EndDisabled();
 
   ImGui::SameLine();
-  if (ro::RoButton("Mode Classique", 190.0f, 0.0f)) {
-    native_fallback_ = true;
-    LogDiag("[CharSelect] repli char-select natif (session)");
-  }
+  if (ro::RoButton("Mode Classique", 190.0f, 0.0f)) native_fallback_ = true;
 
   // Suppression : réservation (pure ImGui) / annulation / suppression définitive.
   bool tip_sched = false, tip_cancel = false, tip_del = false;
@@ -1613,8 +1604,6 @@ void CharSelect::OnRenderLoginUI() {
         std::memcpy(pkt + 2, &views[selected_].gid, 4);  // CID
         Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
         del_reject_until_ = 0;
-        LogDiag("[CharSelect] CH_DELETE_CHAR3_CANCEL 0x082b (gid={}, slot={})",
-                views[selected_].gid, selected_);
       }
       tip_cancel = ImGui::IsItemHovered();
       ImGui::SameLine();
@@ -1716,9 +1705,7 @@ void CharSelect::OnRenderLoginUI() {
       // gate nous retire dès la frame suivante — pas besoin de fondu ici.)
       // service_select_pending=false : l'état 3 recrée directement UILoginWnd, il n'y
       // a pas d'écran de choix de connexion à repasser.
-      if (auth_)
-        auth_->RearmWebLogin("retour au login depuis le char-select",
-                             /*service_select_pending=*/false);
+      if (auth_) auth_->RearmWebLogin(/*service_select_pending=*/false);
       left_ = true;
       ImGui::CloseCurrentPopup();
     }
@@ -1775,9 +1762,6 @@ void CharSelect::OnRenderLoginUI() {
       std::strncpy(reinterpret_cast<char*>(pkt + 6), del_email_, 50);  // key[50]
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
       del_reject_until_ = 0;
-      LogDiag("[CharSelect] CH_DELETE_CHAR 0x01fb (gid={}, slot={}, email_len={})",
-              del_popup_gid_, del_popup_slot_,
-              static_cast<int>(std::strlen(del_email_)));
       ImGui::CloseCurrentPopup();
     }
     if (!has_email) ImGui::EndDisabled();
@@ -1990,8 +1974,6 @@ void CharSelect::OnRenderLoginUI() {
       std::memcpy(pkt + 31, &job, 4);
       pkt[35] = static_cast<uint8_t>(create_sex_);
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-      LogDiag("[CharSelect] CH_MAKE_CHAR 0x0a39 (slot={}, hair={}, color={}, sex={})",
-              create_slot_, create_hair_, create_hair_color_, create_sex_);
       create_pending_ = true;
       create_sent_tick_ = GetTickCount();
       create_modal_base_ = g_modal_suppressed_seq;  // baseline pour l'échec instantané
@@ -2114,8 +2096,6 @@ void CharSelect::OnRenderLoginUI() {
       std::memcpy(pkt + 2, &rename_gid_, 4);
       std::strncpy(reinterpret_cast<char*>(pkt + 6), Utf8ToLocal(rename_buf_), 24);
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-      LogDiag("[CharSelect] CH_REQ_CHANGE_CHARNAME 0x08fc (slot={}, cid={})",
-              rename_slot_, rename_gid_);
       rename_pending_ = true;
       rename_sent_tick_ = GetTickCount();
       rename_modal_base_ = g_modal_suppressed_seq;
@@ -2161,8 +2141,6 @@ void CharSelect::OnRenderLoginUI() {
         std::memcpy(pkt + 2, &from, 2);
         std::memcpy(pkt + 4, &to, 2);
         Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-        LogDiag("[CharSelect] CH_REQ_CHANGE_CHARACTER_SLOT 0x08d4 (from={}, to={})",
-                move_from_, s);
         ImGui::CloseCurrentPopup();
       }
     }

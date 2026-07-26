@@ -365,11 +365,11 @@ MoonlightAuth::MoonlightAuth(AutoLogin* auto_login) : auto_login_(auto_login) {
   LoadConfig();
   ResolveServer();
   state_ = enabled_ ? State::kWebLogin : State::kDisabled;
-  // Diagnostic (niveau warn -> toujours dans bourgeon.log) : dit si le plugin est
-  // armé et pourquoi. « inerte » = pas de base_url dans bourgeon_settings.yaml.
-  LogDiag("[MoonlightAuth] {} (base_url='{}', endpoint='{}')",
-          enabled_ ? "ARMÉ" : "inerte (base_url manquant/enabled=false)",
-          base_url_, endpoint_);
+  // Un plugin inerte = login web indisponible : c'est une anomalie de config
+  // (base_url manquant dans bourgeon_settings.yaml), pas un fonctionnement normal.
+  if (!enabled_)
+    LogDiag("[MoonlightAuth] inerte (base_url manquant/enabled=false) — login web "
+            "indisponible");
 }
 
 MoonlightAuth::~MoonlightAuth() { JoinWorker(); }
@@ -460,9 +460,6 @@ void MoonlightAuth::ResolveServer() {
       }
     }
   }
-  LogDiag("[MoonlightAuth] service-select : {} connexion(s), cible index {}{}",
-          server_count_, server_index_,
-          want.empty() ? "" : (" (--server=" + want + ")"));
 }
 
 void MoonlightAuth::DriveServerSelect() {
@@ -477,7 +474,6 @@ void MoonlightAuth::DriveServerSelect() {
   for (int i = 0; i < server_count_; ++i) press(VK_UP);
   for (int i = 0; i < server_index_; ++i) press(VK_DOWN);
   press(VK_RETURN);
-  LogDiag("[MoonlightAuth] service-select auto -> connexion index {}", server_index_);
 }
 
 void MoonlightAuth::JoinWorker() {
@@ -521,10 +517,6 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     login_enter_tick_ = GetTickCount();
     server_select_done_ = false;
     svc_kbd_fallback_ = false;
-    LogDiag("[MoonlightAuth] -> mode LOGIN (authenticated={}, drove_ml={}, "
-            "socket_fd={}, {} connexion(s), cible idx={})",
-            authenticated_, drove_moonlight_login_, native_login::SocketFd(),
-            server_count_, server_index_);
     // Retour au char-select DEPUIS LE JEU (changement de perso) : c'est un
     // kGame->kLogin, mais la session char-server est toujours vivante et on est
     // déjà authentifié. Il ne faut PAS reforcer le formulaire web (sinon le
@@ -542,14 +534,12 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     // Sinon (vraie (re)connexion / déconnexion) : (ré)arme le formulaire. On
     // n'écrase pas une saisie en cours si on n'est pas déjà en fin de flux.
     if (state_ == State::kDriveLogin || state_ == State::kDisabled)
-      RearmWebLogin("mode LOGIN sans session vivante");
+      RearmWebLogin();  // mode LOGIN sans session vivante
   }
 }
 
-void MoonlightAuth::RearmWebLogin(const char* reason, bool service_select_pending) {
+void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
   if (!enabled_) return;
-  LogDiag("[MoonlightAuth] réarmement du login web ({}) : état {} -> kWebLogin",
-          reason ? reason : "?", StateName(state_));
   accounts_.clear();
   selected_ = -1;
   web_ticket_.clear();
@@ -583,29 +573,8 @@ void MoonlightAuth::RearmWebLogin(const char* reason, bool service_select_pendin
   state_ = State::kWebLogin;
 }
 
-const char* MoonlightAuth::StateName(State s) {
-  switch (s) {
-    case State::kDisabled: return "kDisabled";
-    case State::kWebLogin: return "kWebLogin";
-    case State::kAuthing: return "kAuthing";
-    case State::kDiscordStart: return "kDiscordStart";
-    case State::kDiscordWait: return "kDiscordWait";
-    case State::kPickAccount: return "kPickAccount";
-    case State::kSelecting: return "kSelecting";
-    case State::kDriveLogin: return "kDriveLogin";
-    case State::kError: return "kError";
-  }
-  return "(init)";
-}
-
 void MoonlightAuth::OnRenderLoginUI() {
   if (!enabled_ || state_ == State::kDisabled) return;
-  // Instrumentation : loggue chaque transition d'état (un seul point couvre les
-  // ~15 sites de `state_ = …`). Verbeux mais inestimable pour diagnostiquer.
-  if (state_ != last_logged_state_) {
-    LogDiag("[MoonlightAuth] état -> {}", StateName(state_));
-    last_logged_state_ = state_;
-  }
   // Repli login natif choisi pour la session : la fenêtre native a déjà été
   // réaffichée (edge, au clic du bouton) — on rend juste la main.
   if (native_fallback_) return;
@@ -621,25 +590,17 @@ void MoonlightAuth::OnRenderLoginUI() {
   // -> plus rien à masquer, et la garde vtable rendrait l'écriture no-op).
   if (state_ == State::kDriveLogin) {
     if (!fired_) {
-      char rb_id[64] = {0}, rb_pw[64] = {0};
-      if (native_login::DriveLogin(drive_user_.c_str(), drive_pw_.c_str(), rb_id,
-                                   rb_pw, sizeof(rb_id))) {
+      if (native_login::DriveLogin(drive_user_.c_str(), drive_pw_.c_str())) {
         fired_ = true;
         fire_tick_ = GetTickCount();
-        LogDiag("[MoonlightAuth] login tiré : userid='{}' otp='{}' | champs "
-                "NATIFS relus -> id='{}' pw='{}'",
-                drive_user_, drive_pw_, rb_id, rb_pw);
       }
       return;
     }
-    // Diag : la socket login s'est-elle ouverte ? (le login a-t-il atteint le
-    // serveur, ou OnMsg n'a-t-il pas déclenché la connexion ?)
+    // Socket login ouverte = le login a atteint le serveur (un refus est alors un
+    // problème de credentials, pas de transport).
     if (!socket_seen_ && native_login::SocketFd() >= 0) {
       socket_seen_ = true;
       charsrv_tick_ = GetTickCount();  // départ de l'auto-confirm char-server
-      LogDiag("[MoonlightAuth] socket login OUVERTE (fd={}) -> le login a atteint "
-              "le serveur (refus = credentials)",
-              native_login::SocketFd());
     }
 
     // Char-select ATTEINT (liste de persos chargée) => le DRIVE de login est TERMINÉ.
@@ -684,8 +645,6 @@ void MoonlightAuth::OnRenderLoginUI() {
       }
       charsrv_tick_ = GetTickCount();
       ++charsrv_tries_;
-      LogDiag("[MoonlightAuth] char-server auto-confirm (Entrée, essai {})",
-              charsrv_tries_);
     }
 
     // Déjà tiré : détecter un ÉCHEC pour ne pas rester bloqué sur un écran mort.
@@ -729,11 +688,8 @@ void MoonlightAuth::OnRenderLoginUI() {
     if (login_enter_tick_ == 0) login_enter_tick_ = GetTickCount();
     const unsigned long now = GetTickCount();
     if (server_count_ > 1 && !server_select_done_) {
-      if (native_login::SelectClientInfoConnection(server_index_)) {
+      if (native_login::SelectClientInfoConnection(server_index_))
         server_select_done_ = true;
-        LogDiag("[MoonlightAuth] service-select NATIF (0x2723) -> connexion idx={}",
-                server_index_);
-      }
     } else if (server_count_ > 1 && server_select_done_ && !svc_kbd_fallback_ &&
                (now - login_enter_tick_) > 1500) {
       // Toujours pas d'écran de login 1,5 s après le 0x2723 -> il n'a pas pris.
@@ -1104,8 +1060,11 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
 }
 
 void MoonlightAuth::HandleAuthResponse(const HttpResult& r) {
-  LogDiag("[MoonlightAuth] /auth -> status={} err='{}' body='{}'", r.status,
-          r.error, r.body);
+  // Seul l'échec est loggué : sur succès le body porte le web_ticket et la liste
+  // des comptes, qui n'ont rien à faire dans bourgeon.log.
+  if (!r.error.empty() || r.status != 200)
+    LogDiag("[MoonlightAuth] /auth -> status={} err='{}' body='{}'", r.status,
+            r.error, r.body);
   // Mémorise l'identifiant web et, si l'utilisateur l'a demandé, le mot de passe du
   // compte Moonlight (chiffré DPAPI) — jamais l'OTP de jeu.
   // ApplyAccountList efface pass_buf_ dès que l'authentification a réussi (le mot de
@@ -1129,8 +1088,9 @@ void MoonlightAuth::StartDiscordLogin() {
 }
 
 void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
-  LogDiag("[MoonlightAuth] discord_start -> status={} err='{}' body='{}'",
-          r.status, r.error, r.body);
+  if (!r.error.empty() || r.status != 200)
+    LogDiag("[MoonlightAuth] discord_start -> status={} err='{}' body='{}'",
+            r.status, r.error, r.body);
   if (!r.error.empty()) {
     error_msg_ = "Connexion au serveur impossible : " + r.error;
     state_ = State::kError;
@@ -1166,8 +1126,6 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
     // faire perdre le focus au jeu plein écran (Alt-Tab) — comportement attendu.
     ShellExecuteA(nullptr, "open", discord_authorize_url_.c_str(), nullptr,
                   nullptr, SW_SHOWNORMAL);
-    LogDiag("[MoonlightAuth] navigateur ouvert (session={}) -> {}", game_session_,
-            discord_authorize_url_);
     state_ = State::kDiscordWait;
   } catch (const std::exception&) {
     error_msg_ = "Réponse du serveur illisible.";
@@ -1197,7 +1155,6 @@ void MoonlightAuth::HandleDiscordPollResponse(const HttpResult& r) {
     }
     if (j.value("pending", false)) return;  // pas encore validé -> continue le poll
     // Résolu : la réponse porte web_ticket + accounts (comme /auth).
-    LogDiag("[MoonlightAuth] discord_poll résolu -> liste de comptes");
     ApplyAccountList(r);
   } catch (const std::exception&) {
     // JSON illisible ponctuel : on réessaie plutôt que d'échouer sec.
@@ -1206,8 +1163,10 @@ void MoonlightAuth::HandleDiscordPollResponse(const HttpResult& r) {
 }
 
 void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
-  LogDiag("[MoonlightAuth] /select -> status={} err='{}' body='{}'", r.status,
-          r.error, r.body);
+  // Idem /auth : sur succès le body porte l'OTP de jeu — jamais dans le log.
+  if (!r.error.empty() || r.status != 200)
+    LogDiag("[MoonlightAuth] /select -> status={} err='{}' body='{}'", r.status,
+            r.error, r.body);
   if (!r.error.empty()) {
     error_msg_ = "Connexion au serveur impossible : " + r.error;
     state_ = State::kError;

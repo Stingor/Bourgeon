@@ -64,12 +64,12 @@ class MoonlightAuth : public Plugin {
   // MODE — c'est le cas du bouton « Revenir au login » du char-select (commande de
   // mode 10011 : le client reste en CLoginMode, donc OnModeSwitch ne repasse PAS et
   // le plugin resterait bloqué en kDriveLogin, laissant l'écran de login NATIF).
-  // `reason` sert au diagnostic (bourgeon.log). No-op si le plugin est désactivé.
+  // No-op si le plugin est désactivé.
   // `service_select_pending` : true = le natif va reconstruire l'écran de choix de
   // connexion (<connection> du clientinfo), il faudra donc le repasser ; false = on
   // arrive directement sur la fenêtre de login (cas du retour depuis le char-select,
   // état 3), aucune sélection à tirer.
-  void RearmWebLogin(const char* reason, bool service_select_pending = true);
+  void RearmWebLogin(bool service_select_pending = true);
 
   // Résultat d'une requête HTTP, publié par le thread worker sous verrou. Public
   // pour que le helper DoPost (moonlight_auth.cc) puisse le nommer.
@@ -109,9 +109,6 @@ class MoonlightAuth : public Plugin {
   // ApplyAccountList vide le champ avant de rendre la main. nullptr = utiliser
   // pass_buf_ tel quel.
   void SavePref(const char* password = nullptr);
-
-  // Nom lisible d'un état (instrumentation LogDiag des transitions).
-  static const char* StateName(State s);
 
   // Résout la connexion cible (service-select clientinfo) : défaut = 1ʳᵉ entrée
   // (Moonlight-Destiny), override `--server=<nom>` au lancement.
@@ -211,10 +208,6 @@ class MoonlightAuth : public Plugin {
   bool server_select_done_ = false;   // sélection native (0x2723) déjà envoyée
   bool svc_kbd_fallback_ = false;     // repli clavier déjà tenté cette session
   unsigned long login_enter_tick_ = 0;  // GetTickCount() à l'entrée en mode login
-  unsigned long diag_conn_tick_ = 0;    // throttle du dump diagnostic de la table
-  // Dernier état loggué (détecteur de transition -> LogDiag). Sentinelle invalide
-  // pour que la 1ʳᵉ frame loggue toujours l'état courant.
-  State last_logged_state_ = static_cast<State>(-1);
   // Vrai dès qu'un login Moonlight a été déclenché et tant que la session
   // char-server est vivante. Survit à un re-OnModeSwitch(kLogin) (retour au
   // char-select depuis le jeu) pour NE PAS reforcer une ré-authentification web.

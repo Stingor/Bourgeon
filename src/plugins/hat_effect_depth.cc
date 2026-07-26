@@ -283,8 +283,8 @@ void HatEffectDepthTweaks::InstallDepthPatch() {
   };
   for (const SigCheck& s : sigs) {
     if (!VerifySig(delta, s)) {
-      LogInfo("[HatEffectDepth] signature '{}' absente (build non supporte ou "
-              "deja patche) — plugin inactif", s.label);
+      LogError("[HatEffectDepth] signature '{}' absente (build non supporte ou "
+               "deja patche) — plugin inactif", s.label);
       return;
     }
   }
@@ -293,7 +293,7 @@ void HatEffectDepthTweaks::InstallDepthPatch() {
   void* cave = VirtualAlloc(nullptr, kCaveSize, MEM_COMMIT | MEM_RESERVE,
                             PAGE_EXECUTE_READWRITE);
   if (!cave) {
-    LogInfo("[HatEffectDepth] VirtualAlloc du code cave a echoue — plugin inactif");
+    LogError("[HatEffectDepth] VirtualAlloc du code cave a echoue — plugin inactif");
     return;
   }
   const uint32_t cave_va = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(cave));
@@ -319,8 +319,8 @@ void HatEffectDepthTweaks::InstallDepthPatch() {
       static_cast<uint32_t>(kDepthConvertedContinueVa + delta));
 
   if (wrapper.Size() != kWrapperSize || bridge.Size() != kDepthBridgeSize) {
-    LogInfo("[HatEffectDepth] taille stub inattendue (wrapper={} bridge={}) — "
-            "plugin inactif", wrapper.Size(), bridge.Size());
+    LogError("[HatEffectDepth] taille stub inattendue (wrapper={} bridge={}) — "
+             "plugin inactif", wrapper.Size(), bridge.Size());
     VirtualFree(cave, 0, MEM_RELEASE);
     return;
   }
@@ -347,6 +347,8 @@ void HatEffectDepthTweaks::InstallDepthPatch() {
     ok = PatchSite(delta, kDepthHookVa, bytes, 5) && ok;
   }
 
-  LogInfo("[HatEffectDepth] {} (cave=0x{:08X}) — profondeur monde active sur les "
-          "hat-effects .str", ok ? "installe" : "ECHEC patch", cave_va);
+  // Silencieux quand tout est en place : seul un patch raté vaut une ligne de log.
+  if (!ok)
+    LogError("[HatEffectDepth] ECHEC patch (cave=0x{:08X}) — profondeur monde "
+             "inactive sur les hat-effects .str", cave_va);
 }

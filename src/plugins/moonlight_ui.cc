@@ -353,8 +353,6 @@ const moonlight_ui::SettingDesc kPortraitSettings[] = {
      MLUI_FIELD(basic_info, portrait_head_sprite_), MLUI_LITERAL(bool, true)},
     {"portrait_head_only", SType::kBool, MLUI_FIELD(basic_info, portrait_head_only_),
      MLUI_LITERAL(bool, true)},
-    {"portrait_debug_log", SType::kBool, MLUI_FIELD(basic_info, portrait_debug_log_),
-     MLUI_LITERAL(bool, false)},
     {"portrait_head_zoom", SType::kFloat, MLUI_FIELD(basic_info, portrait_head_zoom_),
      MLUI_LITERAL(float, 1.0f)},
     {"portrait_head_offx", SType::kFloat, MLUI_FIELD(basic_info, portrait_head_offx_),

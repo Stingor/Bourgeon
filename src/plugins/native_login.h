@@ -36,23 +36,11 @@ bool SelectClientInfoConnection(int index);
 // NB : avec un seul char-server (cas moonlight) cet écran est sauté nativement.
 bool SelectConnection(int index);
 
-// DIAGNOSTIC : dumpe dans bourgeon.log la table des connexions lue à mode+0x1e8
-// (IP/port/état/nom, stride 0xa0) pour `count` entrées. Sert à comprendre pourquoi
-// la sélection native échoue (« Failed to Connect ») : on voit si/quand la table
-// est peuplée et avec quelles valeurs, à comparer avec ce que le clavier
-// sélectionne. `tag` préfixe la ligne (ex. contexte d'appel).
-void LogConnectionTable(int count, const char* tag);
-
 // Écrit userid + password/OTP dans les champs natifs et déclenche le bouton Start
 // (aucune frappe). Renvoie true si effectivement déclenché (fenêtre de login
 // présente), false si l'écran n'est pas prêt (réessayer au frame suivant).
 // À appeler UNE SEULE FOIS (edge-trigger) : re-déclencher relance une connexion.
-// `readback_id`/`readback_pw` (si non nuls, taille `bufsz`) reçoivent le contenu
-// RELU des champs natifs APRÈS SetText (diagnostic : confirme que SetText a bien
-// peuplé les champs, avant l'envoi).
-bool DriveLogin(const char* userid, const char* password,
-                char* readback_id = nullptr, char* readback_pw = nullptr,
-                unsigned bufsz = 0);
+bool DriveLogin(const char* userid, const char* password);
 
 // Masque (hide=true) / réaffiche la fenêtre de login native ET son fond
 // (bg_login.tga, fenêtre séparée). No-op hors CLoginMode (garde anti-UAF).
