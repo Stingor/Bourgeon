@@ -205,6 +205,7 @@ SkinTex g_up_l, g_up_m, g_up_r;                    // barre de titre desc (skill
 SkinTex g_sb_lm, g_sb_rm, g_sb_ld, g_sb_md, g_sb_rd;  // cadre boîte desc (sysbox)
 SkinTex g_sb_lu, g_sb_mu, g_sb_ru;                    // haut du sysbox (panels sans titre)
 bool g_skin_active = false;  // BeginRoWindow a pris la branche skin (pour EndRoWindow)
+bool g_collapse_allowed = true;  // faux hors du jeu (cf. SetWindowCollapseAllowed)
 
 // ── Loader natif du client (conventions menu_icons.cc / status_tweaks.cc) ──────
 // Charge un bmp d'UI depuis le VFS du jeu (GRF + overrides data\) → un joueur qui
@@ -602,6 +603,8 @@ void SetNextWindowBodyColor(unsigned int argb) {
   g_next_body_col = argb;
 }
 
+void SetWindowCollapseAllowed(bool allowed) { g_collapse_allowed = allowed; }
+
 bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   // Consommé quoi qu'il arrive : la demande ne doit pas fuiter sur la fenêtre
   // suivante si celle-ci n'est pas peinte (fenêtre masquée…).
@@ -613,6 +616,12 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   const bool body_set = g_next_body_set;
   const unsigned int body_col = g_next_body_col;
   g_next_body_set = false;
+
+  // Hors du monde de jeu (login, char-select) : aucune fenêtre ne se replie. Le
+  // flag NoCollapse fait tout — il retire le bouton sys_mini (test `show_mini`
+  // plus bas), neutralise le double-clic sur le titre, et redéplie une fenêtre
+  // qui aurait été laissée repliée en jeu.
+  if (!g_collapse_allowed) imgui_window_flags |= ImGuiWindowFlags_NoCollapse;
 
   g_skin_active = true;
 

@@ -59,6 +59,16 @@ bool BeginRoWindow(const char* title, bool* p_open = nullptr,
                    int imgui_window_flags = 0);
 void EndRoWindow();
 
+// Repli (« minimiser ») autorisé, GLOBALEMENT, pour toutes les fenêtres RO.
+// Posé une fois par frame par Bourgeon::RenderUI : vrai dans le monde de jeu,
+// FAUX à l'écran de login / char-select. Hors du jeu, aucune fenêtre ne doit
+// pouvoir être repliée — la barre de titre y perd son bouton sys_mini (et le
+// double-clic ne replie plus), sinon le joueur peut laisser un formulaire de
+// connexion réduit à une barre de titre sans moyen évident de le rouvrir.
+// Interne : équivaut à forcer ImGuiWindowFlags_NoCollapse sur chaque
+// BeginRoWindow, ce qui redéplie aussi une fenêtre restée repliée en jeu.
+void SetWindowCollapseAllowed(bool allowed);
+
 // ── Boîte de dialogue MODALE façon RO ──────────────────────────────────────────
 // Même habillage que BeginRoWindow (barre de titre 3-slice titlebar_* + corps clair)
 // mais rendue via ImGui::BeginPopupModal : ImGui BLOQUE et ASSOMBRIT l'arrière-plan

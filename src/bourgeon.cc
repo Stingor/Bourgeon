@@ -297,6 +297,11 @@ void Bourgeon::RenderUI() {
   // hook here (OnRenderLoginUI) — e.g. the Poring parade — then we still return so
   // the normal in-game path never runs off-world.
   if (!IsGameActive()) {
+    // Règle des écrans hors-jeu : on ne minimise RIEN. Les fenêtres RO du login
+    // (formulaire de connexion Moonlight…) perdent leur bouton sys_mini —
+    // replier un formulaire de connexion en simple barre de titre n'a aucun
+    // sens et le joueur n'a pas de barre des tâches pour le retrouver.
+    ro::SetWindowCollapseAllowed(false);
     for (auto& plugin : plugins_) {
       try {
         plugin->OnRenderLoginUI();
@@ -332,6 +337,9 @@ void Bourgeon::RenderUI() {
   if (strstr(GetCommandLineA(), "--demo") != nullptr) {
     ImGui::ShowDemoWindow();
   }
+  // En jeu : le repli des fenêtres RO redevient disponible (pendant du blocage
+  // posé sur la branche login ci-dessus).
+  ro::SetWindowCollapseAllowed(true);
   // Render windows drawn by plugins
   for (auto& plugin : plugins_) {
     try {
