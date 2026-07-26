@@ -145,6 +145,47 @@ const moonlight_ui::SettingDesc kEntityNameSettings[] = {
      MLUI_LITERAL(float, 1.0f)},
 };
 
+// Post-traitement D3D9 + réglages graphiques divers (SettingsTweaks). Les 13
+// premières vivent dans la structure fx() ; les 9 suivantes sont des accesseurs
+// sur des membres privés, d'où les littéraux.
+#define POSTFX(member) \
+  MLUI_FIELD(settings_tweaks, fx().member), MLUI_DEFAULT(D3D9PostFx, member)
+const moonlight_ui::SettingDesc kGraphicsSettings[] = {
+    {"fx_enabled",       SType::kBool,  POSTFX(enabled)},
+    {"fx_brightness",    SType::kFloat, POSTFX(brightness)},
+    {"fx_contrast",      SType::kFloat, POSTFX(contrast)},
+    {"fx_gamma",         SType::kFloat, POSTFX(gamma)},
+    {"fx_saturation",    SType::kFloat, POSTFX(saturation)},
+    {"fx_temperature",   SType::kFloat, POSTFX(temperature)},
+    {"fx_filter",        SType::kInt,   POSTFX(filter)},
+    {"fx_vignette",      SType::kFloat, POSTFX(vignette)},
+    {"fx_grain",         SType::kFloat, POSTFX(grain)},
+    {"fx_aberration",    SType::kFloat, POSTFX(aberration)},
+    {"fx_sharpen",       SType::kFloat, POSTFX(sharpen)},
+    {"fx_fxaa",          SType::kBool,  POSTFX(fxaa)},
+    {"fx_fxaa_strength", SType::kFloat, POSTFX(fxaa_strength)},
+    {"fps_overlay",       SType::kBool,  MLUI_FIELD(settings_tweaks, fps_overlay()),
+     MLUI_LITERAL(bool, false)},
+    {"cam_zoom_enabled",  SType::kBool,  MLUI_FIELD(settings_tweaks, zoom_enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"cam_zoom_factor",   SType::kFloat, MLUI_FIELD(settings_tweaks, zoom_factor()),
+     MLUI_LITERAL(float, 1.0f)},
+    {"cam_zoom_speed",    SType::kFloat, MLUI_FIELD(settings_tweaks, zoom_speed()),
+     MLUI_LITERAL(float, 1.0f)},
+    {"tex_filter",        SType::kInt,   MLUI_FIELD(settings_tweaks, tex_filter()),
+     MLUI_LITERAL(int, 0)},
+    // INT_MIN = « aucune position mémorisée » : la fenêtre garde son placement natif.
+    {"game_option_pos_x", SType::kInt,   MLUI_FIELD(settings_tweaks, gopt_x()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"game_option_pos_y", SType::kInt,   MLUI_FIELD(settings_tweaks, gopt_y()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"esc_option_pos_x",  SType::kInt,   MLUI_FIELD(settings_tweaks, esc_x()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"esc_option_pos_y",  SType::kInt,   MLUI_FIELD(settings_tweaks, esc_y()),
+     MLUI_LITERAL(int, INT_MIN)},
+};
+#undef POSTFX
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -666,32 +707,9 @@ void MoonlightUi::LoadSettings() {
 
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
 
-    if (auto* st = Bourgeon::Instance().settings_tweaks()) {
-      D3D9PostFx& g = st->fx();
-      g.enabled     = ui["fx_enabled"].as<bool>(g.enabled);
-      g.brightness  = ui["fx_brightness"].as<float>(g.brightness);
-      g.contrast    = ui["fx_contrast"].as<float>(g.contrast);
-      g.gamma       = ui["fx_gamma"].as<float>(g.gamma);
-      g.saturation  = ui["fx_saturation"].as<float>(g.saturation);
-      g.temperature = ui["fx_temperature"].as<float>(g.temperature);
-      g.filter      = ui["fx_filter"].as<int>(g.filter);
-      g.vignette    = ui["fx_vignette"].as<float>(g.vignette);
-      g.grain       = ui["fx_grain"].as<float>(g.grain);
-      g.aberration  = ui["fx_aberration"].as<float>(g.aberration);
-      g.sharpen     = ui["fx_sharpen"].as<float>(g.sharpen);
-      g.fxaa        = ui["fx_fxaa"].as<bool>(g.fxaa);
-      g.fxaa_strength = ui["fx_fxaa_strength"].as<float>(g.fxaa_strength);
-      st->fps_overlay() = ui["fps_overlay"].as<bool>(false);
-      st->zoom_enabled() = ui["cam_zoom_enabled"].as<bool>(false);
-      st->zoom_factor()  = ui["cam_zoom_factor"].as<float>(1.0f);
-      st->zoom_speed()   = ui["cam_zoom_speed"].as<float>(1.0f);
-      st->tex_filter()   = ui["tex_filter"].as<int>(0);
-      st->gopt_x()       = ui["game_option_pos_x"].as<int>(INT_MIN);
-      st->gopt_y()       = ui["game_option_pos_y"].as<int>(INT_MIN);
-      st->esc_x()        = ui["esc_option_pos_x"].as<int>(INT_MIN);
-      st->esc_y()        = ui["esc_option_pos_y"].as<int>(INT_MIN);
-      st->Apply();  // push to the d3d9 post-process layer
-    }
+    moonlight_ui::ReadSettings(ui, kGraphicsSettings);
+    if (auto* st = Bourgeon::Instance().settings_tweaks())
+      st->Apply();  // pousse le post-traitement vers la couche d3d9
 
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
 
@@ -923,32 +941,7 @@ void MoonlightUi::WriteSettingsFile() {
 
   moonlight_ui::WriteSettings(out, kQuestTrackerSettings);
 
-  {
-    auto* st = Bourgeon::Instance().settings_tweaks();
-    const D3D9PostFx g = st ? st->fx() : D3D9PostFx{};
-    out << YAML::Key << "fx_enabled"     << YAML::Value << g.enabled
-        << YAML::Key << "fx_brightness"  << YAML::Value << g.brightness
-        << YAML::Key << "fx_contrast"    << YAML::Value << g.contrast
-        << YAML::Key << "fx_gamma"       << YAML::Value << g.gamma
-        << YAML::Key << "fx_saturation"  << YAML::Value << g.saturation
-        << YAML::Key << "fx_temperature" << YAML::Value << g.temperature
-        << YAML::Key << "fx_filter"      << YAML::Value << g.filter
-        << YAML::Key << "fx_vignette"    << YAML::Value << g.vignette
-        << YAML::Key << "fx_grain"       << YAML::Value << g.grain
-        << YAML::Key << "fx_aberration"  << YAML::Value << g.aberration
-        << YAML::Key << "fx_sharpen"     << YAML::Value << g.sharpen
-        << YAML::Key << "fx_fxaa"        << YAML::Value << g.fxaa
-        << YAML::Key << "fx_fxaa_strength" << YAML::Value << g.fxaa_strength
-        << YAML::Key << "fps_overlay"    << YAML::Value << (st ? st->fps_overlay() : false)
-        << YAML::Key << "cam_zoom_enabled" << YAML::Value << (st ? st->zoom_enabled() : false)
-        << YAML::Key << "cam_zoom_factor"  << YAML::Value << (st ? st->zoom_factor() : 1.0f)
-        << YAML::Key << "cam_zoom_speed"   << YAML::Value << (st ? st->zoom_speed() : 1.0f)
-        << YAML::Key << "tex_filter"       << YAML::Value << (st ? st->tex_filter() : 0)
-        << YAML::Key << "game_option_pos_x" << YAML::Value << (st ? st->gopt_x() : INT_MIN)
-        << YAML::Key << "game_option_pos_y" << YAML::Value << (st ? st->gopt_y() : INT_MIN)
-        << YAML::Key << "esc_option_pos_x"  << YAML::Value << (st ? st->esc_x() : INT_MIN)
-        << YAML::Key << "esc_option_pos_y"  << YAML::Value << (st ? st->esc_y() : INT_MIN);
-  }
+  moonlight_ui::WriteSettings(out, kGraphicsSettings);
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
 
