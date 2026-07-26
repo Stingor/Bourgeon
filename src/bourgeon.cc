@@ -5,6 +5,7 @@
 
 #include "imgui.h"
 #include "ui/ro_imgui.h"
+#include "ui/window_clamp.h"
 #include "plugins/auto_login.h"
 #include "plugins/moonlight_auth.h"
 #include "plugins/char_select.h"
@@ -282,6 +283,13 @@ bool IsNativeUiHidden() {
 }  // namespace
 
 void Bourgeon::RenderUI() {
+  // Aucune fenêtre ImGui ne sort de l'écran de jeu. En PREMIÈRE ligne, avant tout
+  // return anticipé et avant le moindre Begin de plugin : on est juste après
+  // ImGui::NewFrame() (les deux chemins de rendu, DX7 et DX9, appellent RenderUI
+  // là), donc le déplacement souris de la frame est déjà appliqué et la position
+  // corrigée est celle qui sera dessinée. Écrans de login inclus (le bloc
+  // OnRenderLoginUI ci-dessous dessine aussi des fenêtres). Voir ui/window_clamp.h.
+  ro::KeepWindowsOnScreen();
   // Stand down while a map is loading: hide all plugin UI. This also stops
   // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
   // every frame while the HUD is being torn down/rebuilt — the race that freed a

@@ -125,6 +125,8 @@ set(BOURGEON_FILES
 	"ui/ro_widgets.h"
 	"ui/align_grid.cc"
 	"ui/align_grid.h"
+	"ui/window_clamp.cc"
+	"ui/window_clamp.h"
 	"ui/game_texture.cc"
 	"ui/game_texture.h"
 	"ui/icon_cache.cc"

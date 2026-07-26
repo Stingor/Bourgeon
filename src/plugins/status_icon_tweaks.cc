@@ -581,8 +581,17 @@ void DrawDragOverlay() {
       // The box corner IS the margin position, so fold it straight back.
       int nmx = static_cast<int>((right  ? (vpW - nax) : nax) + 0.5f);
       int nmy = static_cast<int>((bottom ? (vpH - nay) : nay) + 0.5f);
-      if (nmx < 0) nmx = 0; else if (nmx > vpW) nmx = vpW;
-      if (nmy < 0) nmy = 0; else if (nmy > vpH) nmy = vpH;
+      // La BOÎTE d'icônes reste entièrement dans le viewport, pas seulement son coin
+      // ancré : borner la marge au viewport laissait pousser le cluster entier dehors
+      // (marge = vpW, ancrage à gauche -> icônes hors écran à droite). La marge étant
+      // mesurée DEPUIS le coin ancré, le maximum est le même dans les deux sens :
+      // vp - taille de la boîte. Cluster plus grand que l'écran -> marge 0 (collé).
+      int max_margin_x = vpW - static_cast<int>(size.x + 0.5f);
+      int max_margin_y = vpH - static_cast<int>(size.y + 0.5f);
+      if (max_margin_x < 0) max_margin_x = 0;
+      if (max_margin_y < 0) max_margin_y = 0;
+      if (nmx < 0) nmx = 0; else if (nmx > max_margin_x) nmx = max_margin_x;
+      if (nmy < 0) nmy = 0; else if (nmy > max_margin_y) nmy = max_margin_y;
       if (nmx != g_cfg.margin_x || nmy != g_cfg.margin_y) {
         g_cfg.margin_x = nmx;
         g_cfg.margin_y = nmy;

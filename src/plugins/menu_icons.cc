@@ -15,6 +15,7 @@
 #include "imgui.h"
 #include "plugins/bourgeon_opcodes.h"
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap)
+#include "ui/window_clamp.h"  // ClampWindowPosToScreen (icônes déplacées à la main)
 #include "utils/log_console.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -382,6 +383,15 @@ void MenuIconTweaks::OnRenderUI() {
           nx = mui->grid_.SnapAxis(nx, ds.x);
           ny = mui->grid_.SnapAxis(ny, ds.y);
         }
+        // L'icône reste entièrement dans l'écran de jeu. APRÈS les deux aimantations
+        // (icônes voisines + grille), qui peuvent elles-mêmes pousser dehors ; le clamp
+        // global de ui/window_clamp.h ne peut rien ici, la fenêtre étant réépinglée à
+        // (ic.x,ic.y) en Cond_Always chaque frame.
+        const ImVec2 in_screen = ro::ClampWindowPosToScreen(
+            ImVec2(nx, ny),
+            ImVec2(static_cast<float>(ic.w), static_cast<float>(ic.h)));
+        nx = in_screen.x;
+        ny = in_screen.y;
         ic.x = static_cast<int>(nx + 0.5f);
         ic.y = static_cast<int>(ny + 0.5f);
       }

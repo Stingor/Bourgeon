@@ -1,6 +1,7 @@
 #include "plugins/basic_info.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
+#include "ui/window_clamp.h"  // ClampWindowPosToScreen (barres/portrait déplacés à la main)
 
 #include "ragnarok/uiwnd.h"
 
@@ -2845,6 +2846,16 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
           }
           // Snap the top-left corner to the visible grid lines.
           if (grid) { nx = grid->SnapAxis(nx, ds.x); ny = grid->SnapAxis(ny, ds.y); }
+          // La barre reste entièrement dans l'écran de jeu. APRÈS l'aimantation :
+          // le snap (barres voisines ou grille) peut lui-même repousser dehors, donc
+          // c'est le clamp qui doit avoir le dernier mot. Le clamp global de
+          // ui/window_clamp.h ne peut rien ici : la fenêtre est réépinglée à
+          // (bar.x,bar.y) en ImGuiCond_Always à chaque frame.
+          const ImVec2 in_screen = ro::ClampWindowPosToScreen(
+              ImVec2(nx, ny),
+              ImVec2(static_cast<float>(bar.w), static_cast<float>(bar.h)));
+          nx = in_screen.x;
+          ny = in_screen.y;
           const int ix = static_cast<int>(nx + 0.5f);
           const int iy = static_cast<int>(ny + 0.5f);
           if (ix != bar.x || iy != bar.y) {
@@ -3090,6 +3101,14 @@ bool BasicInfoTweaks::DrawPortraitElem(PortId id) {
         if (drag_mode_ == 1) {  // move
           float nx = m.x - drag_off_x_, ny = m.y - drag_off_y_;
           if (grid) { nx = grid->SnapAxis(nx, ds.x); ny = grid->SnapAxis(ny, ds.y); }
+          // Le cadre saisi reste entièrement dans l'écran de jeu (clamp APRÈS le
+          // snap, cf. la barre EXP plus haut). En bloc-move CTRL, le delta appliqué
+          // aux autres cadres est celui du cadre SAISI, donc borné par ce clamp.
+          const ImVec2 in_screen = ro::ClampWindowPosToScreen(
+              ImVec2(nx, ny),
+              ImVec2(static_cast<float>(e.w), static_cast<float>(e.h)));
+          nx = in_screen.x;
+          ny = in_screen.y;
           const int ix = static_cast<int>(nx + 0.5f), iy = static_cast<int>(ny + 0.5f);
           if (ix != e.x || iy != e.y) {
             const int dx = ix - e.x, dy = iy - e.y;  // per-frame delta

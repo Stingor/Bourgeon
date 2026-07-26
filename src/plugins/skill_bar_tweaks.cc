@@ -18,6 +18,7 @@
 #include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "plugins/inventory_viewer.h"  // DraggedItemNameId (drag inventaire -> case de barre)
 #include "plugins/imgui_escape.h"
+#include "ui/window_clamp.h"  // ClampWindowPosToScreen (barre déplacée à la main)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -1278,6 +1279,13 @@ void SkillBarTweaks::DrawBar(int bar) {
         nx = mui->grid_.SnapAxis(nx, ds.x);
         ny = mui->grid_.SnapAxis(ny, ds.y);
       }
+      // La barre reste entièrement dans l'écran de jeu. APRÈS l'aimantation (le snap
+      // peut repousser dehors) ; le clamp global de ui/window_clamp.h ne peut rien
+      // ici, la fenêtre étant réépinglée à (bc.x,bc.y) en Cond_Always chaque frame.
+      const ImVec2 in_screen =
+          ro::ClampWindowPosToScreen(ImVec2(nx, ny), ImVec2(winw, winh));
+      nx = in_screen.x;
+      ny = in_screen.y;
       bc.x = static_cast<int>(nx + 0.5f);
       bc.y = static_cast<int>(ny + 0.5f);
     }
