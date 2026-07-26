@@ -44,6 +44,19 @@ void WriteSkinAndPresets(YAML::Emitter& out);
 void ReadEquipPresets(const YAML::Node& ui);
 void WriteEquipPresets(YAML::Emitter& out);
 
+// Couleurs de fond des trois fenêtres de chat — possédées par ChatTweaks. Ce
+// n'est pas une table de descripteurs parce que les CLÉS appartiennent aux
+// groupes eux-mêmes (chat_bg, chat_bg_detached, chat_bg_whisper) et non à des
+// littéraux : elles restent au même endroit que les sites qu'elles patchent.
+// L'application est différée à ChatTweaks::ApplyAllBackgrounds (PostLoadApply).
+void ReadChatBackgrounds(const YAML::Node& ui);
+void WriteChatBackgrounds(YAML::Emitter& out);
+
+// Préréglages de couleur de chat (séquence nom + hex ARGB), partagés par les
+// trois groupes. Possédés par ChatTweaks.
+void ReadChatBgPresets(const YAML::Node& ui);
+void WriteChatBgPresets(YAML::Emitter& out);
+
 // ── Réglages INDEXÉS ─────────────────────────────────────────────────────────
 // Même raison que les collections : leurs clés n'existent pas comme littéraux,
 // elles se construisent à l'exécution (« expbar_ » + kBarKeys[i] + « _x »…), ce

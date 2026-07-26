@@ -205,65 +205,21 @@ class MoonlightUi : public Plugin {
   std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
   void LoadItemNames();
 
-  // ── Chat window background colours ───────────────────────────────────────
-  // Three independent, in-game-customisable chat backgrounds. Each is backed by
-  // one or more ARGB immediates in .text (default 0x66000000 = 40% alpha black),
-  // patched live so future windows and the per-frame draws use the new colour.
-  // The ctor-based sites also store the colour into the object, so a heap walk
-  // recolours already-open windows.
+  // ── Chat ─────────────────────────────────────────────────────────────────
+  // Tout ce qui touche à la fenêtre de chat — largeur, horodatage, icônes
+  // d'objets, et les COULEURS DE FOND (patch d'immédiats .text + parcours du tas)
+  // — appartient au plugin ChatTweaks (plugins/chat.h, plugins/chat_bg.cc).
+  // MoonlightUi n'en garde que la persistance et l'endroit où le panneau
+  // s'affiche. Le patch mémoire a longtemps vécu ici : c'est le panneau de
+  // réglages qui l'y avait attiré, pas une raison technique.
   //
-  //   Main     : UINewChatWnd ctor (obj+0xD8) + selected-tab colour (Draw).
-  //   Detached : detached outer border (Draw) + UISubChatHisWnd ctor (obj+0xD4).
-  //   Whisper  : 1:1 whisper window background (Draw).
-
-  // Vtable addresses (20250716 client) used to recognise live window objects.
-  static constexpr uint32_t kVtUINewChatWnd    = 0x01037F80;  // main chat window
-  static constexpr uint32_t kVtUISubChatHisWnd = 0x01037EA8;  // detached chat history
-
-  enum ChatBgGroupId { kChatBgMain = 0, kChatBgDetached, kChatBgWhisper, kChatBgCount };
-
-  // A heap-stored colour field to recolour on existing objects.
-  struct ChatBgHeapTarget { uint32_t vtable; uint32_t field_off; };
-
-  // One user-facing chat-background setting.
-  struct ChatBgGroup {
-    const char* label    = "";                  // UI label
-    const char* yaml_key = "";                  // persistence key
-    std::vector<uint32_t*>        instrs;       // resolved writable .text ARGB immediates
-    std::vector<ChatBgHeapTarget> heap;         // existing-object recolour targets
-    float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // ImGui RGBA picker state
-    bool  editing  = false;                     // picker drag in progress
-  };
-
-  ChatBgGroup chat_bg_[kChatBgCount];
-  bool        chat_bg_found_ = false;           // at least one site resolved
-
-  // Custom main-chat width — the stock chat resizes height only.  The apply
-  // mechanism (engine hooks) lives in the ChatTweaks plugin; this owns the
-  // setting + UI + persistence and drives it via chat::SetCustomWidth().
-  // (Largeur, horodatage et icônes d'objets ont rejoint ChatTweaks, qui les
-  // applique déjà : ils vivaient ici en double. MoonlightUi n'en garde que la
-  // persistance, via la table de descripteurs.)
-
-  // Scans .text once (constructor) and resolves every group's immediates + heap
-  // targets, seeding each picker from the colour currently in the binary.
-  void FindChatBgSites();
-
-  // Writes argb to all of a group's .text immediates (+ icache flush). When
-  // walk_heap is set and the group has heap targets, also recolours live objects.
-  void ApplyChatBg(ChatBgGroup& g, uint32_t argb, bool walk_heap);
-
-  // Single heap walk: recolours every live object matching one of g's heap targets.
-  void PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb);
-
   // (Les conversions de couleur vivent dans ui/color_codec.h : ro::ArgbFromPicker,
   //  ro::PickerFromArgb, ro::ImVec4FromArgb. Elles étaient membres statiques ici
   //  alors qu'elles ne touchent aucun état — et ce voisinage rendait invisible le
   //  second encodage, ImU32, qui coexiste dans le même yaml.)
 
-  // Restores all chat-bg groups from bourgeon_settings.yaml in the game
-  // directory.  Called after FindChatBgSites so it can immediately apply the
-  // saved colours.  (SaveSettings is declared public above.)
+  // Relit bourgeon_settings.yaml (section moonlight_ui) et distribue les réglages
+  // à leurs propriétaires. (SaveSettings est déclarée publique plus haut.)
   void LoadSettings();
 
   // Effets de bord d'un chargement : bornage des valeurs, et poussée vers les
@@ -271,13 +227,10 @@ class MoonlightUi : public Plugin {
   // statut). Appelée en dernier par LoadSettings, une fois TOUT lu.
   void PostLoadApply();
 
-  // Shared colour presets, applicable to any group's picker.
-  struct ChatBgPreset { std::string name; uint32_t argb; };
-  std::vector<ChatBgPreset> chat_bg_presets_;
-  char preset_name_buf_[64] = {};
-
-  // When true, shows a small draggable window listing the colour presets, so the
-  // user can quickly switch the MAIN chat colour without opening the picker.
+  // Affiche une petite fenêtre déplaçable listant les préréglages de couleur,
+  // pour changer le fond du chat PRINCIPAL sans ouvrir le sélecteur. Les
+  // préréglages appartiennent à ChatTweaks ; ce drapeau-ci décide seulement si la
+  // barre est à l'écran, et c'est bien un réglage du panneau Moonlight.
   bool mainchat_preset_bar_ = false;
 
   // Log verbosity threshold (rAthena-style), persisted so it's discoverable in

@@ -202,93 +202,21 @@ void MoonlightUi::DrawInterfacePanel() {
           }
 
           SeparatorText("Couleurs du chat");
-          // Chat Background Colours (Main / Detached / Whisper)
-          // One independent colour+opacity picker per group, persisted locally.
-          auto render_chatbg = [&](ChatBgGroup& g) {
-            if (g.instrs.empty()) return;
-            ImGui::PushID(g.yaml_key);
-            const ImVec4 swatch(g.color[0], g.color[1], g.color[2], g.color[3]);
-            if (ImGui::ColorButton("##btn", swatch, ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
-            OpenPopup("picker");
-            SameLine();
-            TextUnformatted(g.label);
-
-            if (BeginPopup("picker")) {
-              // ── Shared user presets ─────────────────────────────────────────
-              if (!chat_bg_presets_.empty()) {
-                TextUnformatted("Préréglages :");
-                int delete_idx = -1;
-                // Display each preset as a colour swatch + name + delete button.
-                for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
-                  const auto& p = chat_bg_presets_[i];
-                  const ImVec4 col = ro::ImVec4FromArgb(p.argb);
-                  ImGui::PushID(i);
-                  // Clicking a preset swatch updates the picker to match the preset, applies it to the chat background, and saves the settings.
-                  if (ImGui::ColorButton("##swatch", col,
-                                        ImGuiColorEditFlags_AlphaPreview |
-                                        ImGuiColorEditFlags_NoTooltip,
-                                        ImVec2(18, 18))) {
-                    ro::PickerFromArgb(g.color, p.argb); // update the picker to match the preset
-                    ApplyChatBg(g, p.argb, true);
-                    changed = true;
-                  }
-                  SameLine();
-                  TextUnformatted(p.name.c_str());
-                  SameLine();
-                  if (ro::RoSmallButton("x")) delete_idx = i;
-                  ImGui::PopID();
-                }
-                if (delete_idx >= 0) {
-                  chat_bg_presets_.erase(chat_bg_presets_.begin() + delete_idx);
-                  changed = true;
-                }
-                SeparatorText("Sauvegarder une couleur comme preset");
-              }
-              // ── Save current colour as a preset ─────────────────────────────
-              ImGui::SetNextItemWidth(120.0f);
-              ImGui::InputTextWithHint("##preset_name", "Nom du préréglage", preset_name_buf_, sizeof(preset_name_buf_));
+          // Les trois fonds appartiennent à ChatTweaks (patch .text + parcours du
+          // tas). Ils sont dessinés un par un et non en bloc pour une seule
+          // raison : la case « Barre de préréglages » ci-dessous est un réglage de
+          // MoonlightUi, et elle se pose à DROITE du premier sélecteur.
+          if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
+            if (chat_tweaks->bg_available()) {
+              changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgMain);
               SameLine();
-              ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f); // vertically align the button with the input text
-              if (ro::RoButton("Enregistrer") && preset_name_buf_[0] != '\0') {
-                chat_bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(g.color)});
-                preset_name_buf_[0] = '\0';
-                changed = true;
-              }
-              SeparatorText("Choisir une couleur");
-              if (ImGui::ColorPicker4("##pick", g.color,
-                                ImGuiColorEditFlags_AlphaBar |
-                                ImGuiColorEditFlags_NoSidePreview)) {
-                ApplyChatBg(g, ro::ArgbFromPicker(g.color), false);
-                g.editing = true;
-              }
-              if (ro::RoButton("Fermer")) ImGui::CloseCurrentPopup();
-              ImGui::EndPopup();
+              changed |= ro::RoCheckbox("Barre de préréglages", &mainchat_preset_bar_);
+              changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgDetached);
+              changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgWhisper);
+            } else {
+              GrayText("(patch du fond de chat indisponible)");
             }
-            // Finalisation HORS du popup, à dessein. Elle était dedans : Échap, un
-            // clic hors du popup ou le bouton Fermer pendant un glissement le
-            // fermaient avant qu'elle ne soit atteinte, et `editing` restait à
-            // true. La couleur était alors visible tout de suite — le .text est
-            // déjà patché — mais jamais propagée aux fenêtres DÉJÀ OUVERTES, ni
-            // persistée : elle disparaissait au login suivant.
-            //
-            // !IsMouseDown plutôt que IsMouseReleased : le relâchement est un
-            // événement d'UNE frame, qu'un popup fermé entre-temps fait manquer.
-            if (g.editing && !ImGui::IsMouseDown(0)) {
-              ApplyChatBg(g, ro::ArgbFromPicker(g.color), true);
-              changed = true;
-              g.editing = false;
-            }
-            ImGui::PopID();
-          };
-
-          if (chat_bg_found_) {
-            render_chatbg(chat_bg_[kChatBgMain]);
-            // Quick preset switcher toggle, on the same line as the main chat picker.
-            SameLine();
-            changed |= ro::RoCheckbox("Barre de préréglages", &mainchat_preset_bar_);
-            render_chatbg(chat_bg_[kChatBgDetached]);
-            render_chatbg(chat_bg_[kChatBgWhisper]);
-          } else GrayText("(patch du fond de chat indisponible)");
+          }
 
           PopStyleCompact();
         }

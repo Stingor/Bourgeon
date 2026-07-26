@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "plugins/plugin.h"
 
 // Retouches client de la fenêtre de chat (client 20250716) : icônes d'objets
@@ -28,15 +32,86 @@ class ChatTweaks : public Plugin {
   // après un chargement de configuration, et à chaque changement venu de l'UI.
   void ApplySettings();
 
-  // Section « Chat » du panneau Moonlight (hors couleurs de fond, qui relèvent
-  // du patch mémoire de MoonlightUi). Renvoie true si un réglage a changé.
+  // Section « Chat » du panneau Moonlight, hors couleurs de fond. Renvoie true
+  // si un réglage a changé.
   bool DrawSettings();
+
+  // ── Couleurs de fond des fenêtres de chat ────────────────────────────────
+  // Trois fonds indépendants, réglables en jeu. Chacun est porté par un ou
+  // plusieurs immédiats ARGB dans le .text du client (0x66000000 = noir 40 %
+  // par défaut), réécrits à chaud pour que les fenêtres à venir et les dessins
+  // par frame prennent la nouvelle couleur. Les sites situés dans un
+  // CONSTRUCTEUR rangent aussi la couleur dans l'objet : un parcours du tas
+  // recolore alors les fenêtres déjà ouvertes.
+  //
+  //   Principal  : ctor de UINewChatWnd (obj+0xD8) + couleur d'onglet actif (Draw)
+  //   Détachées  : bordure extérieure (Draw) + ctor de UISubChatHisWnd (obj+0xD4)
+  //   Chuchotement : fond de la fenêtre 1:1 (Draw)
+  enum BgGroupId { kBgMain = 0, kBgDetached, kBgWhisper, kBgCount };
+
+  // Un préréglage de couleur nommé, partagé par les trois groupes.
+  struct BgPreset {
+    std::string name;
+    uint32_t argb;
+  };
+
+  // Accès pour la PERSISTANCE (moonlight_ui/settings_containers.cc) et pour le
+  // panneau. La clé yaml appartient au groupe, pas à l'appelant.
+  const char* bg_yaml_key(int group) const;
+  float*      bg_color(int group);          // état du color picker, RGBA 0..1
+  bool        bg_available() const { return bg_found_; }
+  std::vector<BgPreset>& bg_presets() { return bg_presets_; }
+
+  // Écrit `argb` dans tous les immédiats du groupe (+ vidage du cache
+  // d'instructions). `walk_heap` recolore en plus les objets déjà construits.
+  void ApplyBackground(int group, uint32_t argb, bool walk_heap);
+  // Pousse les trois couleurs courantes, objets vivants compris. Appelé après un
+  // chargement de configuration.
+  void ApplyAllBackgrounds();
+
+  // Un groupe de la section « Couleurs du chat » : pastille, sélecteur,
+  // préréglages. Renvoie true si la couleur ou la liste de préréglages a changé.
+  // Les trois groupes sont dessinés séparément parce que MoonlightUi intercale
+  // sa case « Barre de préréglages » à droite du premier.
+  bool DrawBackgroundGroup(int group);
+  // Barre flottante de préréglages : bascule la couleur du chat PRINCIPAL en un
+  // clic, sans ouvrir le sélecteur. Rendue par MoonlightUi tant que son réglage
+  // « mainchat_preset_bar » est actif. Renvoie true si la couleur a changé.
+  bool DrawPresetBar();
 
  private:
   bool custom_width_    = false;
   int  custom_width_px_ = 800;   // borné 320..1200 par ApplySettings
   bool timestamps_      = false; // préfixe [HH:MM:SS] sur les nouvelles lignes
   bool item_icons_      = true;  // icônes natives sur les liens <ITEML>
+
+  // Champ de couleur stocké dans le tas, à recolorer sur les objets existants.
+  struct BgHeapTarget {
+    uint32_t vtable;
+    uint32_t field_off;
+  };
+
+  // Un réglage de fond de chat, tel que l'utilisateur le voit.
+  struct BgGroup {
+    const char* label    = "";                  // libellé du panneau
+    const char* yaml_key = "";                  // clé de persistance
+    std::vector<uint32_t*>     instrs;          // immédiats ARGB résolus, inscriptibles
+    std::vector<BgHeapTarget>  heap;            // cibles de recoloration d'objets
+    float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // état du color picker
+    bool  editing  = false;                     // glissement du sélecteur en cours
+  };
+
+  BgGroup bg_[kBgCount];
+  bool    bg_found_ = false;                    // au moins un site résolu
+  std::vector<BgPreset> bg_presets_;
+  char    preset_name_buf_[64] = {};
+
+  // Scanne le .text UNE fois (constructeur) et résout, pour chaque groupe, ses
+  // immédiats et ses cibles de tas, en amorçant le picker avec la couleur
+  // actuellement dans le binaire.
+  void FindBackgroundSites();
+  // Un seul parcours du tas : recolore tous les objets vivants du groupe.
+  void PatchBackgroundObjects(const BgGroup& group, uint32_t argb);
 };
 
 namespace chat {

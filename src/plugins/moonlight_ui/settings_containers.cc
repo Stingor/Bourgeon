@@ -7,8 +7,11 @@
 #include <utility>
 #include <vector>
 
+#include <cstdio>
+
 #include "bourgeon.h"
 #include "plugins/basic_info.h"
+#include "plugins/chat.h"
 #include "plugins/character_sheet.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/inventory_viewer.h"
@@ -259,6 +262,60 @@ void WriteEquipPresets(YAML::Emitter& out) {
         out << YAML::EndSeq << YAML::EndMap;
       }
       out << YAML::EndSeq << YAML::EndMap;
+    }
+  }
+  out << YAML::EndSeq;
+}
+
+void ReadChatBackgrounds(const YAML::Node& ui) {
+  auto* chat_tweaks = Bourgeon::Instance().chat_tweaks();
+  if (!chat_tweaks) return;
+  for (int group = 0; group < ChatTweaks::kBgCount; ++group) {
+    float* picker = chat_tweaks->bg_color(group);
+    if (!picker) continue;
+    // Clé absente ou corrompue : le picker garde la couleur lue dans le binaire
+    // au démarrage (cf. FindBackgroundSites), qui est le vrai défaut du client.
+    ReadArgbKey(ui, chat_tweaks->bg_yaml_key(group), picker);
+  }
+}
+
+void WriteChatBackgrounds(YAML::Emitter& out) {
+  auto* chat_tweaks = Bourgeon::Instance().chat_tweaks();
+  if (!chat_tweaks) return;
+  for (int group = 0; group < ChatTweaks::kBgCount; ++group) {
+    const float* picker = chat_tweaks->bg_color(group);
+    if (picker) WriteArgbKey(out, chat_tweaks->bg_yaml_key(group), picker);
+  }
+}
+
+void ReadChatBgPresets(const YAML::Node& ui) {
+  auto* chat_tweaks = Bourgeon::Instance().chat_tweaks();
+  if (!chat_tweaks) return;
+  auto& presets = chat_tweaks->bg_presets();
+  presets.clear();
+  const YAML::Node saved = ui["chat_bg_presets"];
+  if (!saved) return;
+  for (const YAML::Node& node : saved) {
+    const std::string name = node["name"].as<std::string>("");
+    uint32_t argb = 0;
+    if (name.empty() || !ro::ParseHex8(node["color"].as<std::string>(""), &argb))
+      continue;
+    presets.push_back({name, argb});
+  }
+}
+
+void WriteChatBgPresets(YAML::Emitter& out) {
+  out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
+  if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
+    for (const ChatTweaks::BgPreset& preset : chat_tweaks->bg_presets()) {
+      // Le préréglage porte déjà l'ARGB natif : pas de picker à convertir, on
+      // formate.
+      char hex[9];
+      std::snprintf(hex, sizeof(hex), "%08X", preset.argb);
+      out << YAML::BeginMap
+          << YAML::Key << "name"  << YAML::Value << preset.name
+          << YAML::Key << "color" << YAML::Value << hex
+          << YAML::EndMap;
     }
   }
   out << YAML::EndSeq;

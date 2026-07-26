@@ -612,7 +612,6 @@ MoonlightUi::MoonlightUi() {
   // réellement reçus. Pour un opcode observé, `len` ne prouve donc rien sur ce
   // qui est lisible : borner le champ soi-même (cf. le strnlen côté réception).
   Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
-  FindChatBgSites();
   LoadItemNames();
 
   InstallItemDescProbe();
@@ -662,26 +661,9 @@ void MoonlightUi::LoadSettings() {
     if (!ui) return;
     moonlight_ui::MigrateLegacyKeys(ui);
 
-    // Seul site de lecture qui a besoin de l'ENTIER natif et pas seulement du
-    // picker : la couleur est écrite telle quelle dans les instructions patchées
-    // du client. D'où le ParseHex8 explicite plutôt que ReadArgbKey.
-    for (ChatBgGroup& g : chat_bg_) {
-      uint32_t argb = 0;
-      if (!ro::ParseHex8(ui[g.yaml_key].as<std::string>(""), &argb)) continue;
-      ro::PickerFromArgb(g.color, argb);
-      // walk_heap = TRUE, et il le faut. L'audit affirmait qu'aucune fenêtre de
-      // chat n'existe à ce moment et que le parcours du tas ne trouvait jamais
-      // rien : c'est FAUX, vérifié depuis. LoadSettings n'est appelé que par
-      // OnModeSwitch à l'ENTRÉE EN JEU (in_game_ && !was_in_game), donc une fois
-      // le HUD construit — la fenêtre de chat principale est déjà là.
-      //
-      // Le patch des immédiats .text ne vaut que pour les fenêtres créées APRÈS.
-      // Sans le parcours, le chat principal gardait sa couleur par défaut à
-      // chaque login, en donnant l'impression que le réglage n'était pas
-      // sauvegardé alors qu'il était correctement écrit et relu.
-      if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
-    }
-
+    // Les couleurs sont seulement LUES ici ; c'est PostLoadApply qui demande à
+    // ChatTweaks de les pousser dans le client, une fois tout le fichier relu.
+    moonlight_ui::ReadChatBackgrounds(ui);
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
@@ -713,16 +695,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
 
-    chat_bg_presets_.clear();
-    if (const YAML::Node presets = ui["chat_bg_presets"]) {
-      for (const YAML::Node& p : presets) {
-        const std::string name = p["name"].as<std::string>("");
-        uint32_t argb = 0;
-        if (name.empty() || !ro::ParseHex8(p["color"].as<std::string>(""), &argb)) continue;
-        chat_bg_presets_.push_back({name, argb});
-      }
-    }
-
+    moonlight_ui::ReadChatBgPresets(ui);
     moonlight_ui::ReadEquipPresets(ui);
 
     PostLoadApply();
@@ -784,7 +757,7 @@ void MoonlightUi::WriteSettingsFile() {
   out << YAML::BeginMap
       << YAML::Key << "moonlight_ui"
       << YAML::Value << YAML::BeginMap;
-  for (const ChatBgGroup& g : chat_bg_) WriteArgbKey(out, g.yaml_key, g.color);
+  moonlight_ui::WriteChatBackgrounds(out);
   moonlight_ui::WriteSettings(out, kGroundPaintSettings);
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kHeader);
   moonlight_ui::WriteSettings(out, kItemDescSettings);
@@ -822,18 +795,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSkillBarLayout(out);
   moonlight_ui::WriteSettings(out, kSkillBarColorSettings);
 
-  out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
-  for (const auto& p : chat_bg_presets_) {
-    // Le preset porte déjà l'ARGB natif : pas de picker à convertir, on formate.
-    char pbuf[9];
-    std::snprintf(pbuf, sizeof(pbuf), "%08X", p.argb);
-    out << YAML::BeginMap
-        << YAML::Key << "name"  << YAML::Value << p.name
-        << YAML::Key << "color" << YAML::Value << pbuf
-        << YAML::EndMap;
-  }
-  out << YAML::EndSeq;
-
+  moonlight_ui::WriteChatBgPresets(out);
   moonlight_ui::WriteEquipPresets(out);
   out << YAML::EndMap << YAML::EndMap;
 
@@ -1372,52 +1334,11 @@ void MoonlightUi::OnRenderUI() {
 
   DrawAlootOverlay();
 
-  // ── Main-chat quick preset switcher (compact, draggable, resizable) ────────
-  if (mainchat_preset_bar_ && chat_bg_found_) {
-    ImGui::SetNextWindowBgAlpha(0.85f);
-    ImGui::SetNextWindowSize(ImVec2(80.0f, 10.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(40.0f, 1.0f), ImVec2(8000.0f, 8000.0f));
-    // Match the main Moonlight-Destiny window's frame/grab/window rounding.
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
-    // Lower the per-window minimum size (default 32x32) so this bar can be made
-    // as thin as a single preset row.
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(40.0f, 1.0f));
-    // No title bar (minimalist). Still draggable from the body and resizable.
-    if (ImGui::Begin("Chat presets", nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoNav)) {
-      PushStyleCompact();
-      ChatBgGroup& g = chat_bg_[kChatBgMain];
-      if (chat_bg_presets_.empty()) {
-        ImGui::TextDisabled("Aucun préréglage.");
-        ImGui::TextDisabled("Ajoute-en depuis le");
-        ImGui::TextDisabled("sélecteur du chat.");
-      } else {
-        for (int i = 0; i < static_cast<int>(chat_bg_presets_.size()); ++i) {
-          const auto& p = chat_bg_presets_[i];
-          const ImVec4 col = ro::ImVec4FromArgb(p.argb);
-          ImGui::PushID(i);
-          if (ImGui::ColorButton("##sw", col,
-                                 ImGuiColorEditFlags_AlphaPreview |
-                                 ImGuiColorEditFlags_NoTooltip,
-                                 ImVec2(14, 14))) {
-            ro::PickerFromArgb(g.color, p.argb);
-            ApplyChatBg(g, p.argb, true);
-            SaveSettings();
-          }
-          SameLine();
-          TextUnformatted(p.name.c_str());
-          ImGui::PopID();
-          SameLine();
-        }
-      }
-      PopStyleCompact();
-    }
-    ImGui::End();
-    ImGui::PopStyleVar(6);
-    // Closing is done by un-ticking the "Preset bar" checkbox (no title-bar [x]).
+  // Barre flottante de préréglages du chat principal : elle appartient à
+  // ChatTweaks (couleurs, préréglages), MoonlightUi ne décide que de l'AFFICHER
+  // — c'est son réglage « mainchat_preset_bar » — et de sauvegarder après coup.
+  if (mainchat_preset_bar_) {
+    if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks())
+      if (chat_tweaks->DrawPresetBar()) SaveSettings();
   }
 }

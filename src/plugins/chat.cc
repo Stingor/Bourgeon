@@ -791,6 +791,11 @@ static void ClearDetachedChatsSEH() {
 }  // namespace
 
 ChatTweaks::ChatTweaks() {
+  // Scan du .text pour les couleurs de fond (chat_bg.cc). Fait dans le ctor, donc
+  // AVANT toute lecture de configuration : les pickers sont amorcés avec ce que
+  // porte le binaire, et le yaml n'a plus qu'à écraser cette valeur.
+  FindBackgroundSites();
+
   // Cache de mesure de texte : supprime le freeze de chat en combat (word-wrap
   // quadratique en appels GDI dans les rebuilds d'historique). --nomeasurecache
   // le désactive pour reproduire le comportement d'origine.
@@ -946,6 +951,7 @@ void ChatTweaks::ApplySettings() {
   chat::SetCustomWidth(custom_width_, custom_width_px_);
   chat::SetTimestamps(timestamps_);
   chat::SetItemIcons(item_icons_);
+  ApplyAllBackgrounds();
 }
 
 bool ChatTweaks::DrawSettings() {
