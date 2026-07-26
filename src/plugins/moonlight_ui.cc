@@ -310,6 +310,59 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
 };
 
+// Barres EXP/HP/SP et portrait de statut (BasicInfoTweaks). Les barres et les
+// éléments du portrait sont indexés (expbar_<barre>_*, portrait_<élément>_*) :
+// leurs clés se construisent à l'exécution, elles restent en boucle.
+const moonlight_ui::SettingDesc kBasicInfoSettings[] = {
+    {"expbar_visible",  SType::kBool,  MLUI_FIELD(basic_info, visible_),
+     MLUI_LITERAL(bool, false)},
+    {"expbar_locked",   SType::kBool,  MLUI_FIELD(basic_info, locked_),
+     MLUI_LITERAL(bool, false)},
+    {"expbar_sticky",   SType::kBool,  MLUI_FIELD(basic_info, sticky_),
+     MLUI_LITERAL(bool, false)},
+    {"expbar_text",     SType::kInt,   MLUI_FIELD(basic_info, text_mode_),
+     MLUI_LITERAL(int, 1)},
+    {"expbar_vertical", SType::kBool,  MLUI_FIELD(basic_info, vertical_),
+     MLUI_LITERAL(bool, false)},
+    {"expbar_border",   SType::kBool,  MLUI_FIELD(basic_info, border_),
+     MLUI_LITERAL(bool, true)},
+    {"expbar_rounding", SType::kFloat, MLUI_FIELD(basic_info, rounding_),
+     MLUI_LITERAL(float, 4.0f)},
+};
+
+// Portrait de statut (même plugin) : un bloc séparé parce qu'il s'écrit après
+// les positions de fenêtres et la boucle des barres.
+const moonlight_ui::SettingDesc kPortraitSettings[] = {
+    {"portrait_visible", SType::kBool, MLUI_FIELD(basic_info, portrait_visible_),
+     MLUI_LITERAL(bool, false)},
+    {"portrait_locked",  SType::kBool, MLUI_FIELD(basic_info, portrait_locked_),
+     MLUI_LITERAL(bool, false)},
+    {"portrait_hide_basic_info", SType::kBool,
+     MLUI_FIELD(basic_info, portrait_hide_basic_info_), MLUI_LITERAL(bool, false)},
+    {"portrait_border", SType::kBool, MLUI_FIELD(basic_info, portrait_border_),
+     MLUI_LITERAL(bool, false)},
+    {"portrait_head_sprite", SType::kBool,
+     MLUI_FIELD(basic_info, portrait_head_sprite_), MLUI_LITERAL(bool, true)},
+    {"portrait_head_only", SType::kBool, MLUI_FIELD(basic_info, portrait_head_only_),
+     MLUI_LITERAL(bool, true)},
+    {"portrait_debug_log", SType::kBool, MLUI_FIELD(basic_info, portrait_debug_log_),
+     MLUI_LITERAL(bool, false)},
+    {"portrait_head_zoom", SType::kFloat, MLUI_FIELD(basic_info, portrait_head_zoom_),
+     MLUI_LITERAL(float, 1.0f)},
+    {"portrait_head_offx", SType::kFloat, MLUI_FIELD(basic_info, portrait_head_offx_),
+     MLUI_LITERAL(float, 0.0f)},
+    {"portrait_head_offy", SType::kFloat, MLUI_FIELD(basic_info, portrait_head_offy_),
+     MLUI_LITERAL(float, 0.0f)},
+    {"portrait_anim", SType::kInt, MLUI_FIELD(basic_info, portrait_anim_),
+     MLUI_LITERAL(int, 4)},
+    {"portrait_dir",  SType::kInt, MLUI_FIELD(basic_info, portrait_dir_),
+     MLUI_LITERAL(int, 0)},
+    {"portrait_animate", SType::kBool, MLUI_FIELD(basic_info, portrait_animate_),
+     MLUI_LITERAL(bool, true)},
+    {"portrait_show_garment", SType::kBool,
+     MLUI_FIELD(basic_info, portrait_show_garment_), MLUI_LITERAL(bool, true)},
+};
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -572,14 +625,9 @@ void MoonlightUi::LoadSettings() {
 
     moonlight_ui::ReadSettings(ui, kDpsSettings);
 
+    moonlight_ui::ReadSettings(ui, kBasicInfoSettings);
+    moonlight_ui::ReadSettings(ui, kPortraitSettings);
     if (auto* eb = Bourgeon::Instance().basic_info()) {
-      eb->visible_   = ui["expbar_visible"].as<bool>(false);
-      eb->locked_    = ui["expbar_locked"].as<bool>(false);
-      eb->sticky_    = ui["expbar_sticky"].as<bool>(false);
-      eb->text_mode_ = ui["expbar_text"].as<int>(1);
-      eb->vertical_  = ui["expbar_vertical"].as<bool>(false);
-      eb->border_    = ui["expbar_border"].as<bool>(true);
-      eb->rounding_  = ui["expbar_rounding"].as<float>(4.0f);
       for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
         const std::string p =
             std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
@@ -593,22 +641,9 @@ void MoonlightUi::LoadSettings() {
       }
       ReadArgbKey(ui, "expbar_bg_color", eb->bg_color_);
 
-      // Status portrait (part of the Basic Info tweaks): per-element layout.
-      eb->portrait_visible_         = ui["portrait_visible"].as<bool>(false);
-      eb->portrait_locked_          = ui["portrait_locked"].as<bool>(false);
-      eb->portrait_hide_basic_info_ = ui["portrait_hide_basic_info"].as<bool>(false);
-      eb->portrait_border_          = ui["portrait_border"].as<bool>(false);
-      eb->portrait_head_sprite_     = ui["portrait_head_sprite"].as<bool>(true);
-      eb->portrait_head_only_       = ui["portrait_head_only"].as<bool>(true);
-      eb->portrait_debug_log_       = ui["portrait_debug_log"].as<bool>(false);
-      eb->portrait_head_zoom_       = ui["portrait_head_zoom"].as<float>(1.0f);
-      eb->portrait_head_offx_       = ui["portrait_head_offx"].as<float>(0.0f);
-      eb->portrait_head_offy_       = ui["portrait_head_offy"].as<float>(0.0f);
-      eb->portrait_anim_            = ui["portrait_anim"].as<int>(4);
-      eb->portrait_dir_             = ui["portrait_dir"].as<int>(0);
-      eb->portrait_animate_         = ui["portrait_animate"].as<bool>(true);
-      eb->portrait_show_garment_    = ui["portrait_show_garment"].as<bool>(true);
-      // Hat effects (.str) : rendu automatique et toujours actif (aucun réglage persisté).
+      // Portrait de statut : disposition par ÉLÉMENT (les scalaires sont dans
+      // kPortraitSettings, lus plus haut). Effets de chapeau (.str) : rendu
+      // automatique et toujours actif, aucun réglage persisté.
       for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
         const std::string p =
             std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
@@ -865,15 +900,9 @@ void MoonlightUi::WriteSettingsFile() {
         << YAML::Key << "chat_item_icons"      << YAML::Value << chat_item_icons_;
   moonlight_ui::WriteSettings(out, kDpsSettings);
 
-  // EXP/HP/SP bar settings (BasicInfoTweaks)
-  out << YAML::Key << "expbar_visible"  << YAML::Value << (eb ? eb->visible_ : false)
-      << YAML::Key << "expbar_locked"   << YAML::Value << (eb ? eb->locked_ : false)
-      << YAML::Key << "expbar_sticky"   << YAML::Value << (eb ? eb->sticky_ : false)
-      << YAML::Key << "expbar_text"     << YAML::Value << (eb ? eb->text_mode_ : 1)
-      << YAML::Key << "expbar_vertical" << YAML::Value << (eb ? eb->vertical_ : false)
-      << YAML::Key << "expbar_border"   << YAML::Value << (eb ? eb->border_ : true)
-      << YAML::Key << "expbar_rounding" << YAML::Value << (eb ? eb->rounding_ : 4.0f)
-      << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
+  // Barres EXP/HP/SP (BasicInfoTweaks)
+  moonlight_ui::WriteSettings(out, kBasicInfoSettings);
+  out << YAML::Key << "expbar_bg_color" << YAML::Value << eb_bg_col
       << YAML::Key << "grid_show"  << YAML::Value << grid_.show
       << YAML::Key << "grid_snap"  << YAML::Value << grid_.snap
       << YAML::Key << "grid_size"  << YAML::Value << grid_.size
@@ -902,22 +931,9 @@ void MoonlightUi::WriteSettingsFile() {
     }
   }
 
-  // Status portrait settings (part of BasicInfoTweaks): per-element layout.
+  // Portrait de statut (même plugin) : scalaires puis disposition par élément.
+  moonlight_ui::WriteSettings(out, kPortraitSettings);
   if (eb) {
-    out << YAML::Key << "portrait_visible"         << YAML::Value << eb->portrait_visible_
-        << YAML::Key << "portrait_locked"          << YAML::Value << eb->portrait_locked_
-        << YAML::Key << "portrait_hide_basic_info" << YAML::Value << eb->portrait_hide_basic_info_
-        << YAML::Key << "portrait_border"          << YAML::Value << eb->portrait_border_
-        << YAML::Key << "portrait_head_sprite"     << YAML::Value << eb->portrait_head_sprite_
-        << YAML::Key << "portrait_head_only"       << YAML::Value << eb->portrait_head_only_
-        << YAML::Key << "portrait_debug_log"       << YAML::Value << eb->portrait_debug_log_
-        << YAML::Key << "portrait_head_zoom"       << YAML::Value << eb->portrait_head_zoom_
-        << YAML::Key << "portrait_head_offx"       << YAML::Value << eb->portrait_head_offx_
-        << YAML::Key << "portrait_head_offy"       << YAML::Value << eb->portrait_head_offy_
-        << YAML::Key << "portrait_anim"            << YAML::Value << eb->portrait_anim_
-        << YAML::Key << "portrait_dir"             << YAML::Value << eb->portrait_dir_
-        << YAML::Key << "portrait_animate"         << YAML::Value << eb->portrait_animate_
-        << YAML::Key << "portrait_show_garment"    << YAML::Value << eb->portrait_show_garment_;
     for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
       const std::string p =
           std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
