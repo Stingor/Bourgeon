@@ -363,6 +363,49 @@ const moonlight_ui::SettingDesc kPortraitSettings[] = {
      MLUI_FIELD(basic_info, portrait_show_garment_), MLUI_LITERAL(bool, true)},
 };
 
+// Barres de raccourcis ImGui. skillbar_key_scale / skillbar_count_scale restent
+// hors table : leur défaut n'est pas une constante mais l'ANCIENNE clé unique
+// skillbar_text_scale, encore lue en repli — une migration, pas un réglage.
+const moonlight_ui::SettingDesc kSkillBarSettings[] = {
+    {"skillbar_enabled", SType::kBool, MLUI_FIELD(skill_bar, enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"skillbar_locked",  SType::kBool, MLUI_FIELD(skill_bar, locked_),
+     MLUI_LITERAL(bool, true)},
+    {"skillbar_bilinear", SType::kBool, MLUI_FIELD(skill_bar, bilinear_),
+     MLUI_LITERAL(bool, false)},
+    {"skillbar_clickthrough", SType::kBool, MLUI_FIELD(skill_bar, clickthrough_),
+     MLUI_LITERAL(bool, false)},
+    {"skillbar_show_keys", SType::kBool, MLUI_FIELD(skill_bar, show_keys_),
+     MLUI_LITERAL(bool, true)},
+    {"skillbar_bold_text", SType::kBool, MLUI_FIELD(skill_bar, bold_text_),
+     MLUI_LITERAL(bool, false)},
+};
+
+// Couleurs des barres. Les ARGB ci-dessous sont la conversion EXACTE (formule de
+// ro::ArgbFromPicker) des flottants déclarés dans skill_bar_tweaks.h ; la couleur
+// étant de toute façon quantifiée sur 8 bits dès la première sauvegarde, le
+// défaut est identique à ce que le plugin porte.
+const moonlight_ui::SettingDesc kSkillBarColorSettings[] = {
+    {"skillbar_col_frame",    SType::kColorHex, MLUI_FIELD(skill_bar, col_frame_),
+     MLUI_LITERAL_ARGB(0x990D0D12)},
+    {"skillbar_col_skill",    SType::kColorHex, MLUI_FIELD(skill_bar, col_skill_),
+     MLUI_LITERAL_ARGB(0xDC288246)},
+    {"skillbar_col_item",     SType::kColorHex, MLUI_FIELD(skill_bar, col_item_),
+     MLUI_LITERAL_ARGB(0xDC285096)},
+    {"skillbar_col_empty",    SType::kColorHex, MLUI_FIELD(skill_bar, col_empty_),
+     MLUI_LITERAL_ARGB(0xC81E1E24)},
+    {"skillbar_col_border",   SType::kColorHex, MLUI_FIELD(skill_bar, col_border_),
+     MLUI_LITERAL_ARGB(0xC8000000)},
+    {"skillbar_col_borderhi", SType::kColorHex, MLUI_FIELD(skill_bar, col_borderhi_),
+     MLUI_LITERAL_ARGB(0xE6FFDC78)},
+    {"skillbar_col_keytext",  SType::kColorHex, MLUI_FIELD(skill_bar, col_keytext_),
+     MLUI_LITERAL_ARGB(0xFF000000)},
+    {"skillbar_col_count",    SType::kColorHex, MLUI_FIELD(skill_bar, col_count_),
+     MLUI_LITERAL_ARGB(0xFF000000)},
+    {"skillbar_col_textout",  SType::kColorHex, MLUI_FIELD(skill_bar, col_textout_),
+     MLUI_LITERAL_ARGB(0xFFFFFFFF)},
+};
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -746,13 +789,8 @@ void MoonlightUi::LoadSettings() {
       }
     }
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
+    moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     if (auto* sb = Bourgeon::Instance().skill_bar()) {
-      sb->enabled_    = ui["skillbar_enabled"].as<bool>(sb->enabled_);
-      sb->locked_     = ui["skillbar_locked"].as<bool>(sb->locked_);
-      sb->bilinear_   = ui["skillbar_bilinear"].as<bool>(sb->bilinear_);
-      sb->clickthrough_ = ui["skillbar_clickthrough"].as<bool>(sb->clickthrough_);
-      sb->show_keys_  = ui["skillbar_show_keys"].as<bool>(sb->show_keys_);
-      sb->bold_text_  = ui["skillbar_bold_text"].as<bool>(sb->bold_text_);
       const float legacy_scale = ui["skillbar_text_scale"].as<float>(1.0f);  // ancienne clé unique (repli)
       sb->key_scale_   = ui["skillbar_key_scale"].as<float>(legacy_scale);
       sb->count_scale_ = ui["skillbar_count_scale"].as<float>(legacy_scale);
@@ -771,16 +809,8 @@ void MoonlightUi::LoadSettings() {
       }
       for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)  // contenu persisté barre d'items (nameids)
         sb->item_slots_[i] = ui["skillbar_item" + std::to_string(i)].as<uint32_t>(sb->item_slots_[i]);
-      ReadArgbKey(ui, "skillbar_col_frame",    sb->col_frame_);
-      ReadArgbKey(ui, "skillbar_col_skill",    sb->col_skill_);
-      ReadArgbKey(ui, "skillbar_col_item",     sb->col_item_);
-      ReadArgbKey(ui, "skillbar_col_empty",    sb->col_empty_);
-      ReadArgbKey(ui, "skillbar_col_border",   sb->col_border_);
-      ReadArgbKey(ui, "skillbar_col_borderhi", sb->col_borderhi_);
-      ReadArgbKey(ui, "skillbar_col_keytext",  sb->col_keytext_);
-      ReadArgbKey(ui, "skillbar_col_count",    sb->col_count_);
-      ReadArgbKey(ui, "skillbar_col_textout",  sb->col_textout_);
     }
+    moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
 
     // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/storage/barres/
     // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
@@ -1011,13 +1041,8 @@ void MoonlightUi::WriteSettingsFile() {
 
   {
     auto* sb = Bourgeon::Instance().skill_bar();
-    out << YAML::Key << "skillbar_enabled"  << YAML::Value << (sb ? sb->enabled_    : false)
-        << YAML::Key << "skillbar_locked"   << YAML::Value << (sb ? sb->locked_     : true)
-        << YAML::Key << "skillbar_bilinear" << YAML::Value << (sb ? sb->bilinear_   : false)
-        << YAML::Key << "skillbar_clickthrough" << YAML::Value << (sb ? sb->clickthrough_ : false)
-        << YAML::Key << "skillbar_show_keys" << YAML::Value << (sb ? sb->show_keys_ : true)
-        << YAML::Key << "skillbar_bold_text" << YAML::Value << (sb ? sb->bold_text_ : false)
-        << YAML::Key << "skillbar_key_scale" << YAML::Value << (sb ? sb->key_scale_ : 1.0f)
+    moonlight_ui::WriteSettings(out, kSkillBarSettings);
+    out << YAML::Key << "skillbar_key_scale" << YAML::Value << (sb ? sb->key_scale_ : 1.0f)
         << YAML::Key << "skillbar_count_scale" << YAML::Value << (sb ? sb->count_scale_ : 1.0f);
     if (sb) {
       // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
@@ -1036,16 +1061,8 @@ void MoonlightUi::WriteSettingsFile() {
       sb->SnapshotItemSlots();  // capture le contenu live de la barre d'items -> yaml (persistance client)
       for (int i = 0; i < SkillBarTweaks::kItemSlotMax; ++i)
         out << YAML::Key << ("skillbar_item" + std::to_string(i)) << YAML::Value << sb->item_slots_[i];
-      WriteArgbKey(out, "skillbar_col_frame",    sb->col_frame_);
-      WriteArgbKey(out, "skillbar_col_skill",    sb->col_skill_);
-      WriteArgbKey(out, "skillbar_col_item",     sb->col_item_);
-      WriteArgbKey(out, "skillbar_col_empty",    sb->col_empty_);
-      WriteArgbKey(out, "skillbar_col_border",   sb->col_border_);
-      WriteArgbKey(out, "skillbar_col_borderhi", sb->col_borderhi_);
-      WriteArgbKey(out, "skillbar_col_keytext",  sb->col_keytext_);
-      WriteArgbKey(out, "skillbar_col_count",    sb->col_count_);
-      WriteArgbKey(out, "skillbar_col_textout",  sb->col_textout_);
     }
+    moonlight_ui::WriteSettings(out, kSkillBarColorSettings);
   }
 
   out << YAML::Key << "chat_bg_presets" << YAML::Value << YAML::BeginSeq;
