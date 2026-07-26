@@ -21,18 +21,24 @@ class DpsMeter : public Plugin {
   void OnRenderUI() override;
 
  public:
-  // ── Settings (read/written by MoonlightUi) ────────────────────────────────
+  // ── Réglages ──────────────────────────────────────────────────────────────
+  // Publics parce que la table de persistance de MoonlightUi décrit chaque
+  // réglage par l'ADRESSE de sa valeur. Le PANNEAU, lui, est ici : DrawSettings.
   bool visible_                 = true;
-  bool locked_                  = false;  // freeze window + click-through
-  float text_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // DPS value text colour
-  float plot_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // graph line colour
-  float bg_alpha_      = 0.90f;                         // window background alpha
-  bool show_ground_dmg_in_chat_ = true;   // push ground-skill hits to chat log
-  int  slot_ms_                 = 200;    // ms per plot slot (50–2000)
-  int  dps_window_secs_         = 10;     // rolling DPS window in seconds (1–30)
-  int  combat_timeout_secs_     = 5;      // seconds without damage → out of combat (1–15)
+  bool locked_                  = false;  // fige la fenêtre + clics traversants
+  float text_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // texte de la valeur DPS
+  float plot_color_[4] = {1.00f, 0.80f, 0.20f, 1.0f};  // courbe du graphique
+  float bg_alpha_      = 0.90f;                        // opacité du fond
+  bool show_ground_dmg_in_chat_ = true;   // pousse les coups de sorts de zone au chat
+  int  slot_ms_                 = 200;    // ms par colonne du graphique (50–2000)
+  int  dps_window_secs_         = 10;     // fenêtre glissante du DPS, en s (1–30)
+  int  combat_timeout_secs_     = 5;      // s sans dégâts avant de quitter le combat (1–15)
 
-  void ResetHistory();  // call after changing slot_ms_
+  void ResetHistory();  // à appeler après un changement de slot_ms_
+
+  // Section « DPS Meter » du panneau Moonlight. Renvoie true si un réglage a
+  // changé — l'appelant décide alors de sauvegarder.
+  bool DrawSettings();
 
  private:
   static constexpr uint16_t kOpcodeNotifyAct    = 0x08c8;

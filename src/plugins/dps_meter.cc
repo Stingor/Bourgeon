@@ -10,6 +10,8 @@
 #include "imgui.h"
 #include "plugins/imgui_escape.h"
 #include "ragnarok/ui_window_mgr.h"
+#include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"
 #include "utils/log_console.h"
 
 // ── Packet layouts (after stripping the 2-byte opcode) ───────────────────────
@@ -339,4 +341,66 @@ void DpsMeter::OnRenderUI() {
   ImGui::End();
   ImGui::PopStyleColor(1);
   ImGui::PopStyleVar(4);
+}
+
+// ── Panneau de réglages ──────────────────────────────────────────────────────
+// Il vivait dans moonlight_ui/panel_fun.cc, à quarante-huit lignes de ses neuf
+// membres — ce sont eux que le commentaire « read/written by MoonlightUi » du
+// header décrivait. Le plugin dessine maintenant sa propre section ; MoonlightUi
+// n'en garde que la place dans la fenêtre et la sauvegarde.
+bool DpsMeter::DrawSettings() {
+  bool changed = false;
+
+  changed |= ro::RoCheckbox("Afficher", &visible_);
+  changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &locked_);
+  SameLine();
+  HelpMarker("Fige la fenêtre DPS (position/taille) et laisse passer les clics "
+             "au jeu en dessous.");
+  changed |= ColorPicker("Couleur texte",  text_color_);
+  changed |= ColorPicker("Couleur graphe", plot_color_);
+
+  ImGui::PushItemWidth(160.0f);  // sliders étroits, pour tenir dans la fenêtre
+  changed |= WheelSliderFloat("Opacité fond", &bg_alpha_, 0.0f, 1.0f);
+
+  // slot_ms_ passe par une copie : le changer invalide l'historique, et
+  // ResetHistory ne doit être appelée qu'une fois, sur un vrai changement.
+  int slot_ms = slot_ms_;
+  if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
+    slot_ms_ = slot_ms;
+    ResetHistory();
+    changed = true;
+  }
+  SameLine();
+  HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\n"
+             "Valeur plus basse = graphique plus précis mais moins smooth.");
+
+  int window_secs = dps_window_secs_;
+  if (WheelSliderInt("Fenêtre DPS (s)", &window_secs, 1, 30)) {
+    dps_window_secs_ = window_secs;
+    changed = true;
+  }
+  SameLine();
+  HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
+
+  int combat_timeout = combat_timeout_secs_;
+  if (WheelSliderInt("Timeout combat (s)", &combat_timeout, 1, 15)) {
+    combat_timeout_secs_ = combat_timeout;
+    changed = true;
+  }
+  SameLine();
+  HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
+
+  ImGui::PopItemWidth();
+
+  if (ro::RoButton("Reset graphique")) ResetHistory();
+
+  ImGui::Separator();
+  changed |= ro::RoCheckbox("Afficher dommages de sorts de zone dans le chat",
+                            &show_ground_dmg_in_chat_);
+  SameLine();
+  HelpMarker("Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans "
+             "le chat.\nMessage custom Bourgeon — le serveur ne montre pas ces "
+             "dégâts dans le chat habituel.");
+
+  return changed;
 }

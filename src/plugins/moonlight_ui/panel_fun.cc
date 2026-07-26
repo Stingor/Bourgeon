@@ -24,50 +24,9 @@ void MoonlightUi::DrawFunPanels() {
   if (CollapsingHeader("DPS Meter")) {
     PushStyleCompact();
     if (auto* dps = Bourgeon::Instance().dps_meter()) {
-      bool changed = false;
-      changed |= ro::RoCheckbox("Afficher", &dps->visible_);
-      changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &dps->locked_);
-      SameLine(); HelpMarker("Fige la fenêtre DPS (position/taille) et laisse passer les clics au jeu en dessous.");
-      changed |= ColorPicker("Couleur texte",  dps->text_color_);
-      changed |= ColorPicker("Couleur graphe", dps->plot_color_);
-
-      PushItemWidth(160.0f); // sliders are narrow to fit the window
-      changed |= WheelSliderFloat("Opacité fond", &dps->bg_alpha_, 0.0f, 1.0f);
-
-      int slot_ms = dps->slot_ms_;
-      if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
-        dps->slot_ms_ = slot_ms;
-        dps->ResetHistory();
-        changed = true;
-      }
-      SameLine(); HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\nValeur plus basse = graphique plus précis mais moins smooth.");
-
-      int win = dps->dps_window_secs_;
-      if (WheelSliderInt("Fenêtre DPS (s)", &win, 1, 30)) {
-        dps->dps_window_secs_ = win;
-        changed = true;
-      }
-      SameLine(); HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
-
-      int timeout = dps->combat_timeout_secs_;
-      if (WheelSliderInt("Timeout combat (s)", &timeout, 1, 15)) {
-        dps->combat_timeout_secs_ = timeout;
-        changed = true;
-      }
-      SameLine(); HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
-
-      PopItemWidth(); // restore default item width
-
-      if (ro::RoButton("Reset graphique")) dps->ResetHistory();
-
-      Separator();
-      changed |= ro::RoCheckbox("Afficher dommages de sorts de zone dans le chat", &dps->show_ground_dmg_in_chat_);
-      SameLine(); HelpMarker(
-          "Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans le chat.\n"
-          "Message custom Bourgeon — le serveur ne montre pas ces dégâts dans le chat habituel.");
-
-          // Persist all DPS settings if any changed.
-      if( changed ) SaveSettings();
+      if (dps->DrawSettings()) SaveSettings();
+    } else {
+      GrayText(kPluginUnavailable);
     }
     PopStyleCompact();
   }
