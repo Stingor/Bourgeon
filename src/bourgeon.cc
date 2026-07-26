@@ -70,6 +70,7 @@ RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
 WeaponDualSprites* Bourgeon::weapon_dual_sprites() { return weapon_dual_sprites_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
+ChatTweaks* Bourgeon::chat_tweaks() { return chat_tweaks_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
@@ -448,7 +449,11 @@ void Bourgeon::LoadPlugins() {
     bug_report_ = bug_report.get();
     plugins_.emplace_back(std::move(bug_report));
   }
-  plugins_.emplace_back(std::make_unique<ChatTweaks>());
+  {
+    auto chat_tweaks = std::make_unique<ChatTweaks>();
+    chat_tweaks_ = chat_tweaks.get();
+    plugins_.emplace_back(std::move(chat_tweaks));
+  }
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());

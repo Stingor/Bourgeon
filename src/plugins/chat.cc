@@ -7,6 +7,8 @@
 #include <cstring>
 #include <string>
 
+#include "ui/ro_imgui.h"    // widgets « façon RO » du panneau de réglages
+#include "ui/ro_widgets.h"  // HelpMarker, SameLine, WheelSliderInt
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -933,3 +935,59 @@ void ClearHistory() {
   ClearDetachedChatsSEH();  // every detached UIChatWnd keeps its own history
 }
 }  // namespace chat
+
+// ── Réglages du plugin ───────────────────────────────────────────────────────
+
+void ChatTweaks::ApplySettings() {
+  // Le bornage vit ici, et non chez l'appelant : un yaml édité à la main ne doit
+  // pas pouvoir rendre le chat inutilisable, quel que soit le chemin d'arrivée.
+  if (custom_width_px_ < 320)  custom_width_px_ = 320;
+  if (custom_width_px_ > 1200) custom_width_px_ = 1200;
+  chat::SetCustomWidth(custom_width_, custom_width_px_);
+  chat::SetTimestamps(timestamps_);
+  chat::SetItemIcons(item_icons_);
+}
+
+bool ChatTweaks::DrawSettings() {
+  bool changed = false;
+
+  if (ro::RoCheckbox("Largeur du chat", &custom_width_)) {
+    chat::SetCustomWidth(custom_width_, custom_width_px_);
+    changed = true;
+  }
+
+  if (custom_width_) {
+    // Le slider bouge à 60 Hz, mais chat::SetCustomWidth relance le relayout
+    // natif ET RebuildFromHistory sur TOUS les onglets — le chemin exact du
+    // freeze de word-wrap déjà corrigé côté mesure. On ne l'applique donc qu'au
+    // RELÂCHEMENT du slider, pas à chaque frame de glissement.
+    // `moved && !IsItemActive()` = ajustement à la MOLETTE (WheelSliderInt la
+    // traite hors du slider, sans jamais « désactiver » l'item) : on applique
+    // tout de suite. `IsItemDeactivatedAfterEdit()` = fin de drag ou fin de
+    // saisie Ctrl+clic. Pendant le drag l'item est actif : on ne fait rien.
+    const bool moved = WheelSliderInt("Largeur (px)", &custom_width_px_, 320, 1200);
+    if ((moved && !ImGui::IsItemActive()) || ImGui::IsItemDeactivatedAfterEdit()) {
+      chat::SetCustomWidth(true, custom_width_px_);
+      changed = true;
+    }
+  }
+
+  if (ro::RoCheckbox("Horodatage du chat", &timestamps_)) {
+    chat::SetTimestamps(timestamps_);
+    changed = true;
+  }
+
+  if (ro::RoCheckbox("Icônes d'objets", &item_icons_)) {
+    chat::SetItemIcons(item_icons_);
+    changed = true;
+  }
+
+  if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
+  SameLine();
+  HelpMarker(
+      "Vide l'historique de tous les canaux de la fenêtre de chat principale "
+      "(historique brut effacé + affichage vidé). Les nouveaux messages "
+      "réapparaissent normalement ensuite.");
+
+  return changed;
+}

@@ -182,12 +182,10 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Chat Settings ────────────────────────────────────────────────────
       if (iface_nav_ == kIfaceChat) {
         bool changed = false;
-        // Ce panneau ne dépend d'AUCUN plugin : il ne pilote que chat:: et l'état
-        // de MoonlightUi. Il était pourtant gaté sur BasicInfoTweaks — un
-        // copier-coller du panneau Basic Info, où le pointeur sert quarante fois.
-        // Sans ce plugin, le joueur voyait une page entièrement vide, sans même
-        // le « (plugin indisponible) » affiché partout ailleurs.
-        // Les accolades restent pour ne pas réindenter 130 lignes.
+        // Deux propriétaires dans cette section, et c'est assumé : le relais
+        // Discord est un réglage SERVEUR (MoonlightUi l'envoie), les retouches de
+        // la fenêtre appartiennent à ChatTweaks, et les couleurs de fond au patch
+        // mémoire de MoonlightUi. Les accolades restent pour ne pas réindenter.
         {
           PushStyleCompact();
 
@@ -197,44 +195,11 @@ void MoonlightUi::DrawInterfacePanel() {
             SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
           }
 
-          if (ro::RoCheckbox("Largeur du chat", &chat_width_enabled_)) {
-            chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
-            changed = true;
+          if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
+            changed |= chat_tweaks->DrawSettings();
+          } else {
+            GrayText(kPluginUnavailable);
           }
-
-          if (chat_width_enabled_) {
-            // Le slider bouge à 60 Hz, mais chat::SetCustomWidth relance le relayout
-            // natif ET RebuildFromHistory sur TOUS les onglets — le chemin exact du
-            // freeze de word-wrap déjà corrigé côté mesure. On ne l'applique donc
-            // qu'au RELÂCHEMENT du slider, pas à chaque frame de glissement (même
-            // logique que le color picker du fond de chat, plus bas).
-            // `moved && !IsItemActive()` = ajustement à la MOLETTE (WheelSliderInt la
-            // traite hors du slider, sans jamais « désactiver » l'item) : on applique
-            // tout de suite. `IsItemDeactivatedAfterEdit()` = fin de drag ou fin de
-            // saisie Ctrl+clic. Pendant le drag l'item est actif : on ne fait rien.
-            const bool moved = WheelSliderInt("Largeur (px)", &chat_width_px_, 320, 1200);
-            if ((moved && !ImGui::IsItemActive()) || ImGui::IsItemDeactivatedAfterEdit()) {
-              chat::SetCustomWidth(true, chat_width_px_);
-              changed = true;
-            }
-          }
-
-          if (ro::RoCheckbox("Horodatage du chat", &chat_timestamps_)) {
-            chat::SetTimestamps(chat_timestamps_);
-            changed = true;
-          }
-
-          if (ro::RoCheckbox("Icônes d'objets", &chat_item_icons_)) {
-            chat::SetItemIcons(chat_item_icons_);
-            changed = true;
-          }
-
-          // Clear chat history (all channels of the main chat window)
-          if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
-          SameLine(); HelpMarker(
-              "Vide l'historique de tous les canaux de la fenêtre de chat principale "
-              "(historique brut effacé + affichage vidé). Les nouveaux messages "
-              "réapparaissent normalement ensuite.");
 
           SeparatorText("Couleurs du chat");
           // Chat Background Colours (Main / Detached / Whisper)

@@ -469,17 +469,22 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[3] = {
      MLUI_LITERAL(bool, false)},
 };
 
+// Seule « mainchat_preset_bar » appartient encore à MoonlightUi : c'est un
+// réglage de SON panneau (afficher la barre de préréglages de couleur), pas du
+// chat. Les quatre autres vivent chez ChatTweaks depuis qu'il porte ses propres
+// réglages — MoonlightUi n'en garde que la persistance.
 const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kChat[5] = {
     {"mainchat_preset_bar", SType::kBool, MLUI_SELF(mainchat_preset_bar_),
      MLUI_LITERAL(bool, false)},
-    {"chat_width_enabled", SType::kBool, MLUI_SELF(chat_width_enabled_),
+    {"chat_width_enabled", SType::kBool, MLUI_FIELD(chat_tweaks, custom_width()),
      MLUI_LITERAL(bool, false)},
-    // La largeur est BORNÉE à 320..1200 après lecture (cf. PostLoadApply) : un
-    // yaml édité à la main ne doit pas pouvoir rendre le chat inutilisable.
-    {"chat_width", SType::kInt, MLUI_SELF(chat_width_px_), MLUI_LITERAL(int, 800)},
-    {"chat_timestamps", SType::kBool, MLUI_SELF(chat_timestamps_),
+    // La largeur est BORNÉE à 320..1200 par ChatTweaks::ApplySettings : un yaml
+    // édité à la main ne doit pas pouvoir rendre le chat inutilisable.
+    {"chat_width", SType::kInt, MLUI_FIELD(chat_tweaks, custom_width_px()),
+     MLUI_LITERAL(int, 800)},
+    {"chat_timestamps", SType::kBool, MLUI_FIELD(chat_tweaks, timestamps()),
      MLUI_LITERAL(bool, false)},
-    {"chat_item_icons", SType::kBool, MLUI_SELF(chat_item_icons_),
+    {"chat_item_icons", SType::kBool, MLUI_FIELD(chat_tweaks, item_icons()),
      MLUI_LITERAL(bool, true)},
 };
 
@@ -739,12 +744,10 @@ void MoonlightUi::LoadSettings() {
 // d'une configuration à moitié lue — même raison que le drapeau
 // settings_load_failed_ qui suspend la sauvegarde.
 void MoonlightUi::PostLoadApply() {
-  // Bornage : un yaml édité à la main ne doit pas rendre le chat inutilisable.
-  if (chat_width_px_ < 320)  chat_width_px_ = 320;
-  if (chat_width_px_ > 1200) chat_width_px_ = 1200;
-  chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
-  chat::SetTimestamps(chat_timestamps_);
-  chat::SetItemIcons(chat_item_icons_);
+  // Le chat borne sa largeur et pousse ses quatre réglages vers le moteur : il
+  // les possède, on ne fait que lui dire qu'ils viennent d'être relus.
+  if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks())
+    chat_tweaks->ApplySettings();
   LogConsole::instance().SetLevel(log_level_);
   apply_collapse_ = true;
 

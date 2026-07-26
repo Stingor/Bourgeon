@@ -19,6 +19,7 @@ class QuestTrackerTweaks;
 class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
+class ChatTweaks;
 class StorageTweaks;
 class InventoryViewer;
 class CashShopTweaks;
@@ -58,6 +59,7 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks();
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
+  ChatTweaks* chat_tweaks();
   StorageTweaks* storage_tweaks();
   InventoryViewer* inventory_viewer();
   CashShopTweaks* cashshop_tweaks();
@@ -142,6 +144,7 @@ class Bourgeon {
   SettingsTweaks* settings_tweaks_ = nullptr; // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
+  ChatTweaks* chat_tweaks_ = nullptr;         // non-owning, lifetime tied to plugins_
   StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_

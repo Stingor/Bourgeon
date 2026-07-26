@@ -241,10 +241,9 @@ class MoonlightUi : public Plugin {
   // Custom main-chat width — the stock chat resizes height only.  The apply
   // mechanism (engine hooks) lives in the ChatTweaks plugin; this owns the
   // setting + UI + persistence and drives it via chat::SetCustomWidth().
-  bool chat_width_enabled_ = false;
-  int  chat_width_px_      = 800;
-  bool chat_timestamps_    = false;  // [HH:MM:SS] prefix on chat lines
-  bool chat_item_icons_    = true;   // native item icons on <ITEML> chat links
+  // (Largeur, horodatage et icônes d'objets ont rejoint ChatTweaks, qui les
+  // applique déjà : ils vivaient ici en double. MoonlightUi n'en garde que la
+  // persistance, via la table de descripteurs.)
 
   // Scans .text once (constructor) and resolves every group's immediates + heap
   // targets, seeding each picker from the colour currently in the binary.
