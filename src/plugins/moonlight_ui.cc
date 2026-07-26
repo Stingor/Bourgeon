@@ -300,7 +300,12 @@ void MoonlightUi::LoadSettings() {
       uint32_t argb = 0;
       if (!ro::ParseHex8(ui[g.yaml_key].as<std::string>(""), &argb)) continue;
       ro::PickerFromArgb(g.color, argb);
-      if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
+      // walk_heap = FALSE ici, à dessein : LoadSettings tourne au login, pendant
+      // le chargement de map, alors qu'AUCUNE fenêtre de chat n'existe encore.
+      // Le parcours du tas — trois fois par login, sous HeapLock — ne trouvait
+      // donc jamais rien. Patcher les immédiats .text suffit : les fenêtres
+      // créées ensuite prendront la couleur à leur construction.
+      if (!g.instrs.empty()) ApplyChatBg(g, argb, false);
     }
 
     // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention

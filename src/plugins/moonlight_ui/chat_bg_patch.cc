@@ -105,9 +105,22 @@ void MoonlightUi::FindChatBgSites() {
     }
     auto* imm = reinterpret_cast<uint32_t*>(found + d.imm_off);
 
-    // Make the immediate field writable (one VirtualProtect, never restored).
-    DWORD old_protect;
-    VirtualProtect(imm, sizeof(uint32_t), PAGE_EXECUTE_READWRITE, &old_protect);
+    // Rend l'immédiat inscriptible (un seul VirtualProtect, jamais restauré).
+    //
+    // Le retour est VÉRIFIÉ, et le site ignoré s'il échoue : sinon `imm` partait
+    // dans g.instrs quoi qu'il arrive, et le premier changement de couleur
+    // écrivait dans une page restée en lecture seule — violation d'accès dans
+    // .text. Un protecteur (« Lotus »), CFG ou ACG suffisent à provoquer ça, et
+    // le reste du code sait déjà vivre sans un site (g.instrs.empty(),
+    // chat_bg_found_).
+    DWORD old_protect = 0;
+    if (!VirtualProtect(imm, sizeof(uint32_t), PAGE_EXECUTE_READWRITE, &old_protect)) {
+      LogError("[MoonlightUi] chat_bg: site #{} (groupe {} '{}') non inscriptible "
+               "(VirtualProtect erreur {}) — site ignoré",
+               site_idx, d.group, gname, GetLastError());
+      ++site_idx;
+      continue;
+    }
 
     ChatBgGroup& g = chat_bg_[d.group];
     g.instrs.push_back(imm);
@@ -141,27 +154,87 @@ void MoonlightUi::ApplyChatBg(ChatBgGroup& g, uint32_t argb, bool walk_heap) {
   if (walk_heap && !g.heap.empty()) PatchChatBgObjects(g, argb);
 }
 
-void MoonlightUi::PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb) {
-  HANDLE heap = GetProcessHeap();
-  if (!heap || !HeapLock(heap)) return;
+namespace {
 
-  PROCESS_HEAP_ENTRY entry = {};
-  int count = 0;
-  while (HeapWalk(heap, &entry)) {
-    if (!(entry.wFlags & PROCESS_HEAP_ENTRY_BUSY)) continue;
-    // Window objects start with their vtable pointer.
-    const auto* vtable_ptr = static_cast<const uint32_t*>(entry.lpData);
-    for (const ChatBgHeapTarget& t : g.heap) {
-      if (entry.cbData < t.field_off + sizeof(uint32_t)) continue;
-      if (*vtable_ptr != t.vtable) continue;
-      *reinterpret_cast<uint32_t*>(
-          static_cast<uint8_t*>(entry.lpData) + t.field_off) = argb;
-      ++count;
+// Le parcours lui-même. Fonction SÉPARÉE parce qu'elle porte un __try : MSVC
+// refuse (C2712) qu'une même fonction mêle SEH et objets à destructeur — or
+// l'appelant en a un, le garde de verrou. D'où aussi les paramètres POD : un
+// tableau brut plutôt que le std::vector de l'appelant.
+//
+// Le __try n'est pas décoratif. Sans lui, une faute pendant le walk laissait le
+// tas du process VERROUILLÉ à vie : le client gelait entièrement au premier
+// malloc d'un autre thread, sans rien dans le log.
+// Copie POD des cibles : ChatBgHeapTarget est un type PRIVÉ de MoonlightUi, hors
+// de portée d'une fonction libre. Le tableau est rempli par l'appelant AVANT de
+// verrouiller le tas — allouer sous HeapLock s'interbloquerait avec soi-même.
+struct HeapRecolourTarget { uint32_t vtable; uint32_t field_off; };
+constexpr size_t kMaxHeapTargets = 8;
+
+int WalkAndRecolour(HANDLE heap, const HeapRecolourTarget* targets, size_t target_count,
+                    uint32_t argb) {
+  int recoloured = 0;
+  __try {
+    PROCESS_HEAP_ENTRY entry = {};
+    while (HeapWalk(heap, &entry)) {
+      if (!(entry.wFlags & PROCESS_HEAP_ENTRY_BUSY)) continue;
+      // Un objet fenêtre commence par son pointeur de vtable.
+      const auto* vtable_ptr = static_cast<const uint32_t*>(entry.lpData);
+      for (size_t i = 0; i < target_count; ++i) {
+        if (entry.cbData < targets[i].field_off + sizeof(uint32_t)) continue;
+        if (*vtable_ptr != targets[i].vtable) continue;
+        *reinterpret_cast<uint32_t*>(
+            static_cast<uint8_t*>(entry.lpData) + targets[i].field_off) = argb;
+        ++recoloured;
+      }
     }
+    return recoloured;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return -1;  // le verrou est relâché par le garde de l'appelant
+  }
+}
+
+// Relâche le verrou du tas QUOI QU'IL ARRIVE — sortie anticipée comme exception.
+// Un tas laissé verrouillé ne se manifeste pas par un crash mais par un gel
+// total et silencieux, le pire symptôme à diagnostiquer.
+class HeapLockGuard {
+ public:
+  explicit HeapLockGuard(HANDLE heap)
+      : heap_(heap && HeapLock(heap) ? heap : nullptr) {}
+  ~HeapLockGuard() { if (heap_) HeapUnlock(heap_); }
+  HeapLockGuard(const HeapLockGuard&) = delete;
+  HeapLockGuard& operator=(const HeapLockGuard&) = delete;
+  bool locked() const { return heap_ != nullptr; }
+
+ private:
+  HANDLE heap_;
+};
+
+}  // namespace
+
+void MoonlightUi::PatchChatBgObjects(const ChatBgGroup& g, uint32_t argb) {
+  if (g.heap.empty()) return;
+
+  // Tout ce qui alloue doit être fait AVANT HeapLock.
+  HeapRecolourTarget targets[kMaxHeapTargets];
+  size_t target_count = 0;
+  for (const ChatBgHeapTarget& t : g.heap) {
+    if (target_count == kMaxHeapTargets) {
+      LogError("[MoonlightUi] chat_bg[{}]: {} cibles de tas pour {} places — "
+               "les suivantes ne seront pas recolorées",
+               g.yaml_key, g.heap.size(), kMaxHeapTargets);
+      break;
+    }
+    targets[target_count++] = {t.vtable, t.field_off};
   }
 
-  HeapUnlock(heap);
-  // LogInfo("[MoonlightUi] chat_bg[{}]: recoloured {} live object(s)", g.yaml_key, count);
+  HANDLE heap = GetProcessHeap();
+  HeapLockGuard lock(heap);
+  if (!lock.locked()) return;
+
+  const int recoloured = WalkAndRecolour(heap, targets, target_count, argb);
+  if (recoloured < 0)
+    LogError("[MoonlightUi] chat_bg[{}]: faute pendant le parcours du tas — "
+             "recoloration des objets vivants abandonnée", g.yaml_key);
 }
 
 // (ArgbFromPicker / PickerFromArgb ont migré vers ui/color_codec.h, namespace ro.)
