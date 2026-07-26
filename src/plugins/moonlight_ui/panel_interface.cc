@@ -37,11 +37,11 @@
 void MoonlightUi::DrawInterfacePanel() {
   // Saut demandé (bullet de barre de titre d'une fenêtre Bourgeon) : on force
   // l'en-tête ouvert et on scrolle dessus, une seule fois.
-  const bool iface_jump = iface_jump_;
-  iface_jump_ = false;
-  if (iface_jump) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+  const bool jump_requested = pending_iface_jump_;
+  pending_iface_jump_ = false;
+  if (jump_requested) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
   if (CollapsingHeader("Interface de jeu")) {
-    if (iface_jump) ImGui::SetScrollHereY(0.0f);
+    if (jump_requested) ImGui::SetScrollHereY(0.0f);
     PushStyleCompact();
     bool changed = false;
     changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);

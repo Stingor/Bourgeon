@@ -113,29 +113,29 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
   // Setting IDs sent via CZ 0x0F04 (must match server-side clif_parse_bourgeon_setting).
-  static constexpr uint16_t kSettingShowExp     = 0;
-  static constexpr uint16_t kSettingShowZeny    = 1;
-  static constexpr uint16_t kSettingShowMobInfo = 2;
-  static constexpr uint16_t kSettingSeparate    = 3;
-  static constexpr uint16_t kSettingBlockExp    = 4;
-  static constexpr uint16_t kSettingAlootRare   = 5;
-  static constexpr uint16_t kSettingAlootRate   = 6;  // autoloot rate 0-100
-  static constexpr uint16_t kSettingAlootPognon = 7;  // zeny threshold / 100 on wire
-  static constexpr uint16_t kSettingAlootType   = 8;  // autoloottype toggle
-  static constexpr uint16_t kSettingDiscordChat  = 9;  // discord relay opt-in
-  static constexpr uint16_t kSettingShowDelay   = 10;
-  static constexpr uint16_t kSettingShowSpeed   = 11;
-  static constexpr uint16_t kSettingSellStuff   = 12;
-  static constexpr uint16_t kSettingSellItem    = 13;
-  static constexpr uint16_t kSettingNoAsk       = 14;
-  static constexpr uint16_t kSettingNoks        = 15;  // 0=off 1=self 2=party 3=guild
-  static constexpr uint16_t kSettingWings       = 16;
-  static constexpr uint16_t kSettingAlootMvp      = 17;
-  static constexpr uint16_t kSettingAlootMvpRwd   = 18;
-  static constexpr uint16_t kSettingTriInv        = 19;
-  static constexpr uint16_t kSettingTriCart       = 20;
-  static constexpr uint16_t kSettingTriStorage    = 21;
-  static constexpr uint16_t kSettingTriGstorage   = 22;
+  static constexpr uint16_t kSettingShowExp              = 0;
+  static constexpr uint16_t kSettingShowZeny             = 1;
+  static constexpr uint16_t kSettingShowMobInfo          = 2;
+  static constexpr uint16_t kSettingSeparateKills        = 3;
+  static constexpr uint16_t kSettingBlockExp             = 4;
+  static constexpr uint16_t kSettingAlootRare            = 5;
+  static constexpr uint16_t kSettingAlootRate            = 6;   // autoloot rate 0-100
+  static constexpr uint16_t kSettingAlootMinZenyDiv100   = 7;   // seuil zeny, /100 sur le fil
+  static constexpr uint16_t kSettingAlootType            = 8;   // autoloottype toggle
+  static constexpr uint16_t kSettingDiscordChat          = 9;   // discord relay opt-in
+  static constexpr uint16_t kSettingShowAttackDelay      = 10;
+  static constexpr uint16_t kSettingShowMoveSpeed        = 11;
+  static constexpr uint16_t kSettingSellStuff            = 12;
+  static constexpr uint16_t kSettingSellItem             = 13;
+  static constexpr uint16_t kSettingNoAsk                = 14;
+  static constexpr uint16_t kSettingNoksMode             = 15;  // 0=off 1=self 2=party 3=guild
+  static constexpr uint16_t kSettingWings                = 16;
+  static constexpr uint16_t kSettingAlootMvp             = 17;
+  static constexpr uint16_t kSettingAlootMvpRwd          = 18;
+  static constexpr uint16_t kSettingSortModeInventory    = 19;  // e_sort_mode 0-6
+  static constexpr uint16_t kSettingSortModeCart         = 20;
+  static constexpr uint16_t kSettingSortModeStorage      = 21;
+  static constexpr uint16_t kSettingSortModeGuildStorage = 22;
   static constexpr uint16_t kSettingAlootId       = 23;  // add item ID to autolootid list (0=clear)
   static constexpr uint16_t kSettingAlootIdRemove = 24;  // remove item ID from list
   // ⚠ Ce n'est PAS un booléen « est staff » : la valeur est le NIVEAU de groupe
@@ -158,30 +158,32 @@ class MoonlightUi : public Plugin {
   // Server-synced (ID 9); restored from globalreg on login.
   bool discord_chat_ = false;
 
-  // Server-synced toggles (IDs above).
+  // Miroirs locaux des bascules SERVEUR (ids ci-dessus). Ce sont des commandes
+  // rAthena au nom indevinable depuis le client, d'où les noms développés — et
+  // deux d'entre elles ne sont PAS des booléens malgré leur ancien nom.
   bool show_exp_      = false;
   bool show_zeny_     = false;
   bool show_mob_info_ = false;
-  bool separate_      = false;
+  bool separate_kills_enabled_ = false;
   bool block_exp_     = false;
   bool aloot_rare_    = false;
   int  aloot_rate_    = 0;    // 0-100 (%)
-  int  aloot_pognon_  = 0;    // 0-1,000,000 (z), stored locally; wire = /100
+  int  aloot_min_zeny_  = 0;  // 0-1 000 000 (z) en local ; /100 sur le fil
   int  aloot_type_mask_ = 0;  // bitmask uint16 : bit i = (1 << item_type i)
 
-  bool show_delay_  = false;
-  bool show_speed_  = false;
-  bool sell_stuff_  = false;
-  bool sell_item_   = false;
-  bool no_ask_      = false;
-  int  noks_        = 0;  // 0=off 1=self 2=party 3=guild
-  bool wings_           = false;
+  bool show_attack_delay_enabled_ = false;
+  bool show_move_speed_enabled_   = false;
+  bool sell_stuff_enabled_        = false;
+  bool sell_item_enabled_         = false;
+  bool no_ask_enabled_            = false;
+  int  noks_mode_                 = 0;  // ⚠ énuméré : 0=off 1=self 2=party 3=guild
+  bool wings_enabled_             = false;
   bool aloot_mvp_       = false;
   bool aloot_mvp_rwd_   = false;
-  int  tri_inv_         = 0;  // e_sort_mode 0-6
-  int  tri_cart_        = 0;
-  int  tri_storage_     = 0;
-  int  tri_gstorage_    = 0;
+  int  sort_mode_inventory_    = 0;  // ⚠ énumérés : e_sort_mode 0-6, pas des booléens
+  int  sort_mode_cart_         = 0;
+  int  sort_mode_storage_      = 0;
+  int  sort_mode_guild_storage_ = 0;
 
   std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 50)
   std::vector<uint32_t> alootid_saved_ids_; // snapshot at last preset load/save
@@ -265,17 +267,17 @@ class MoonlightUi : public Plugin {
   // Persisted collapse state of the Moonlight-Destiny window.
   // Restored once per login via SetNextWindowCollapsed; saved on every change.
   bool ui_collapsed_     = false;
-  bool apply_collapse_   = false;  // set by LoadSettings, consumed on first render
+  bool pending_collapse_restore_   = false;  // set by LoadSettings, consumed on first render
   // Repli demandé par Échap (dernière fenêtre avant le jeu) ; posé par
   // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
-  bool collapse_requested_ = false;
+  bool pending_collapse_request_ = false;
 
   // Section sélectionnée dans « Interface de jeu » (membre, et non statique local,
   // pour qu'OpenInterfaceSection puisse la piloter depuis une autre fenêtre).
   int  iface_nav_ = 0;
   // Saut demandé par OpenInterfaceSection : force l'ouverture de l'en-tête et le
   // scroll au prochain rendu, puis se consomme.
-  bool iface_jump_ = false;
+  bool pending_iface_jump_ = false;
 
   // ── Anti-rebond de la sauvegarde (voir SaveSettings) ────────────────────────
   // Délai d'inactivité avant écriture réelle. Assez long pour absorber un drag de

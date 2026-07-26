@@ -29,17 +29,17 @@ void MoonlightUi::DrawCommandsPanel() {
           SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Separate Kills", &separate_)) SendSetting(kSettingSeparate, separate_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Separate Kills", &separate_kills_enabled_)) SendSetting(kSettingSeparateKills, separate_kills_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
           SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Skill Delay", &show_delay_)) SendSetting(kSettingShowDelay, show_delay_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Skill Delay", &show_attack_delay_enabled_)) SendSetting(kSettingShowAttackDelay, show_attack_delay_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Speed", &show_speed_)) SendSetting(kSettingShowSpeed, show_speed_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Speed", &show_move_speed_enabled_)) SendSetting(kSettingShowMoveSpeed, show_move_speed_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Stuff", &sell_stuff_)) SendSetting(kSettingSellStuff, sell_stuff_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Stuff", &sell_stuff_enabled_)) SendSetting(kSettingSellStuff, sell_stuff_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Item", &sell_item_)) SendSetting(kSettingSellItem, sell_item_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Item", &sell_item_enabled_)) SendSetting(kSettingSellItem, sell_item_enabled_ ? 1 : 0);
           SameLine(); HelpMarker(
             "Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
             "Groupe SELLITEM :\nGreen Potion (506)\nWhite Slim Potion (547)\nLucky Candy (570)\n"
@@ -50,9 +50,9 @@ void MoonlightUi::DrawCommandsPanel() {
             "Fragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\nPiece of Memory Red (7439)\n"
             "Ice Scale (7562)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
             "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("No Ask", &no_ask_)) SendSetting(kSettingNoAsk, no_ask_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("No Ask", &no_ask_enabled_)) SendSetting(kSettingNoAsk, no_ask_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Wings", &wings_)) SendSetting(kSettingWings, wings_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox("Wings", &wings_enabled_)) SendSetting(kSettingWings, wings_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
           ImGui::EndTable();
         }
@@ -60,12 +60,12 @@ void MoonlightUi::DrawCommandsPanel() {
         {
           static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
           ImGui::SetNextItemWidth(100.0f);
-          if (ImGui::BeginCombo("@noks", kNoksLabels[noks_ < 4 ? noks_ : 0])) {
+          if (ImGui::BeginCombo("@noks", kNoksLabels[noks_mode_ < 4 ? noks_mode_ : 0])) {
             for (int i = 0; i < 4; ++i) {
-              const bool selected = (noks_ == i);
+              const bool selected = (noks_mode_ == i);
               if (ImGui::Selectable(kNoksLabels[i], selected)) {
-                noks_ = i;
-                SendSetting(kSettingNoks, static_cast<uint16_t>(i));
+                noks_mode_ = i;
+                SendSetting(kSettingNoksMode, static_cast<uint16_t>(i));
               }
               if (selected) ImGui::SetItemDefaultFocus();
             }
@@ -90,13 +90,13 @@ void MoonlightUi::DrawCommandsPanel() {
               ImGui::EndCombo();
             }
           };
-          TriCombo("Tri Inventaire", tri_inv_, kSettingTriInv);
+          TriCombo("Tri Inventaire", sort_mode_inventory_, kSettingSortModeInventory);
           SameLine(); HelpMarker("Tri automatique de l'inventaire.");
-          TriCombo("Tri Chariot",    tri_cart_, kSettingTriCart);
+          TriCombo("Tri Chariot",    sort_mode_cart_, kSettingSortModeCart);
           SameLine(); HelpMarker("Tri automatique du chariot.");
-          TriCombo("Tri Storages",     tri_storage_, kSettingTriStorage);
+          TriCombo("Tri Storages",     sort_mode_storage_, kSettingSortModeStorage);
           SameLine(); HelpMarker("Tri automatique des Storages personnel à la prochaine ouverture.");
-          TriCombo("Tri Storage Guilde", tri_gstorage_, kSettingTriGstorage);
+          TriCombo("Tri Storage Guilde", sort_mode_guild_storage_, kSettingSortModeGuildStorage);
           SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
         }
           ImGui::EndTabItem();
@@ -121,35 +121,35 @@ void MoonlightUi::DrawCommandsPanel() {
         }
         Separator();
         { // @autolootpognon
-          int pognon = aloot_pognon_;
+          int min_zeny = aloot_min_zeny_;
           ImGui::SetNextItemWidth(130.0f);
-          if (ImGui::InputInt("@autolootpognon (z)", &pognon, 100, 10000)) {
-            if (pognon < 0) pognon = 0;
-            if (pognon > 1000000) pognon = 1000000;
-            pognon = (pognon / 100) * 100;
-            aloot_pognon_ = pognon;
-            SendSetting(kSettingAlootPognon, static_cast<uint16_t>(pognon / 100));
+          if (ImGui::InputInt("@autolootpognon (z)", &min_zeny, 100, 10000)) {
+            if (min_zeny < 0) min_zeny = 0;
+            if (min_zeny > 1000000) min_zeny = 1000000;
+            min_zeny = (min_zeny / 100) * 100;
+            aloot_min_zeny_ = min_zeny;
+            SendSetting(kSettingAlootMinZenyDiv100, static_cast<uint16_t>(min_zeny / 100));
           }
         SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
-          auto apply_pognon_delta = [this](int delta) {
-            int v = aloot_pognon_ + delta;
-            if (v < 0) v = 0;
-            if (v > 1000000) v = 1000000;
-            v = (v / 100) * 100;
-            aloot_pognon_ = v;
-            SendSetting(kSettingAlootPognon, static_cast<uint16_t>(v / 100));
+          auto apply_min_zeny_delta = [this](int delta) {
+            int min_zeny = aloot_min_zeny_ + delta;
+            if (min_zeny < 0) min_zeny = 0;
+            if (min_zeny > 1000000) min_zeny = 1000000;
+            min_zeny = (min_zeny / 100) * 100;
+            aloot_min_zeny_ = min_zeny;
+            SendSetting(kSettingAlootMinZenyDiv100, static_cast<uint16_t>(min_zeny / 100));
           };
-          if (ImGui::Button("-10kz"))  apply_pognon_delta(-10000);
+          if (ImGui::Button("-10kz"))  apply_min_zeny_delta(-10000);
           SameLine();
-          if (ImGui::Button("-1kz"))   apply_pognon_delta(-1000);
+          if (ImGui::Button("-1kz"))   apply_min_zeny_delta(-1000);
           SameLine();
-          if (ImGui::Button("+1kz"))   apply_pognon_delta(1000);
+          if (ImGui::Button("+1kz"))   apply_min_zeny_delta(1000);
           SameLine();
-          if (ImGui::Button("+10kz"))  apply_pognon_delta(10000);
+          if (ImGui::Button("+10kz"))  apply_min_zeny_delta(10000);
           SameLine();
           if (ImGui::SmallButton("Reset##pognon")) {
-            aloot_pognon_ = 0;
-            SendSetting(kSettingAlootPognon, 0);
+            aloot_min_zeny_ = 0;
+            SendSetting(kSettingAlootMinZenyDiv100, 0);
           }
         }
         Separator();

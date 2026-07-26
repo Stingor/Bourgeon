@@ -726,7 +726,7 @@ void MoonlightUi::PostLoadApply() {
   if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks())
     chat_tweaks->ApplySettings();
   LogConsole::instance().SetLevel(log_level_);
-  apply_collapse_ = true;
+  pending_collapse_restore_ = true;
 
   // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/entrepôt/barres/
   // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
@@ -1037,9 +1037,9 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         show_mob_info_ = (value != 0);
         // LogInfo("[MoonlightUi] show_mob_info={}", show_mob_info_);
         break;
-      case kSettingSeparate:
-        separate_ = (value != 0);
-        // LogInfo("[MoonlightUi] separate={}", separate_);
+      case kSettingSeparateKills:
+        separate_kills_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] separate={}", separate_kills_enabled_);
         break;
       case kSettingBlockExp:
         block_exp_ = (value != 0);
@@ -1053,9 +1053,9 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         aloot_rate_ = static_cast<int>(value);
         // LogInfo("[MoonlightUi] aloot_rate={}", aloot_rate_);
         break;
-      case kSettingAlootPognon:
-        aloot_pognon_ = static_cast<int>(value) * 100;
-        // LogInfo("[MoonlightUi] aloot_pognon={}", aloot_pognon_);
+      case kSettingAlootMinZenyDiv100:
+        aloot_min_zeny_ = static_cast<int>(value) * 100;
+        // LogInfo("[MoonlightUi] aloot_pognon={}", aloot_min_zeny_);
         break;
       case kSettingAlootType:
         aloot_type_mask_ = static_cast<int>(value);
@@ -1066,33 +1066,33 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         // LogInfo("[MoonlightUi] discord_chat={}", discord_chat_);
         UpdateRelay();
         break;
-      case kSettingShowDelay:
-        show_delay_ = (value != 0);
-        // LogInfo("[MoonlightUi] show_delay={}", show_delay_);
+      case kSettingShowAttackDelay:
+        show_attack_delay_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] show_delay={}", show_attack_delay_enabled_);
         break;
-      case kSettingShowSpeed:
-        show_speed_ = (value != 0);
-        // LogInfo("[MoonlightUi] show_speed={}", show_speed_);
+      case kSettingShowMoveSpeed:
+        show_move_speed_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] show_speed={}", show_move_speed_enabled_);
         break;
       case kSettingSellStuff:
-        sell_stuff_ = (value != 0);
-        // LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_);
+        sell_stuff_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] sell_stuff={}", sell_stuff_enabled_);
         break;
       case kSettingSellItem:
-        sell_item_ = (value != 0);
-        // LogInfo("[MoonlightUi] sell_item={}", sell_item_);
+        sell_item_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] sell_item={}", sell_item_enabled_);
         break;
       case kSettingNoAsk:
-        no_ask_ = (value != 0);
-        // LogInfo("[MoonlightUi] no_ask={}", no_ask_);
+        no_ask_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] no_ask={}", no_ask_enabled_);
         break;
-      case kSettingNoks:
-        noks_ = static_cast<int>(value);
-        // LogInfo("[MoonlightUi] noks={}", noks_);
+      case kSettingNoksMode:
+        noks_mode_ = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] noks={}", noks_mode_);
         break;
       case kSettingWings:
-        wings_ = (value != 0);
-        // LogInfo("[MoonlightUi] wings={}", wings_);
+        wings_enabled_ = (value != 0);
+        // LogInfo("[MoonlightUi] wings={}", wings_enabled_);
         break;
       case kSettingAlootMvp:
         aloot_mvp_ = (value != 0);
@@ -1102,21 +1102,21 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         aloot_mvp_rwd_ = (value != 0);
         // LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
         break;
-      case kSettingTriInv:
-        tri_inv_ = static_cast<int>(value);
-        // LogInfo("[MoonlightUi] tri_inv={}", tri_inv_);
+      case kSettingSortModeInventory:
+        sort_mode_inventory_ = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] tri_inv={}", sort_mode_inventory_);
         break;
-      case kSettingTriCart:
-        tri_cart_ = static_cast<int>(value);
-        // LogInfo("[MoonlightUi] tri_cart={}", tri_cart_);
+      case kSettingSortModeCart:
+        sort_mode_cart_ = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] tri_cart={}", sort_mode_cart_);
         break;
-      case kSettingTriStorage:
-        tri_storage_ = static_cast<int>(value);
-        // LogInfo("[MoonlightUi] tri_storage={}", tri_storage_);
+      case kSettingSortModeStorage:
+        sort_mode_storage_ = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] tri_storage={}", sort_mode_storage_);
         break;
-      case kSettingTriGstorage:
-        tri_gstorage_ = static_cast<int>(value);
-        // LogInfo("[MoonlightUi] tri_gstorage={}", tri_gstorage_);
+      case kSettingSortModeGuildStorage:
+        sort_mode_guild_storage_ = static_cast<int>(value);
+        // LogInfo("[MoonlightUi] tri_gstorage={}", sort_mode_guild_storage_);
         break;
       case kSettingAlootId:
         if (value == 0) {
@@ -1218,12 +1218,12 @@ void MoonlightUi::OpenInterfaceSection(int section) {
   // entrée à l'enum suffit, il n'y a plus rien à penser ici.
   if (section < 0 || section >= kIfaceCount) return;
   iface_nav_ = section;
-  iface_jump_ = true;
+  pending_iface_jump_ = true;
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
-  // la restauration au login (apply_collapse_ -> SetNextWindowCollapsed).
+  // la restauration au login (pending_collapse_restore_ -> SetNextWindowCollapsed).
   if (ui_collapsed_) {
     ui_collapsed_ = false;
-    apply_collapse_ = true;
+    pending_collapse_restore_ = true;
   }
   ImGui::SetWindowFocus("Moonlight-Destiny");
 }
@@ -1263,15 +1263,15 @@ void MoonlightUi::OnRenderUI() {
   }
 
   // Persist the collapsed state of the main window (set on any collapse/expand).
-  if (apply_collapse_) {
+  if (pending_collapse_restore_) {
     ImGui::SetNextWindowCollapsed(ui_collapsed_, ImGuiCond_Always);
-    apply_collapse_ = false;
+    pending_collapse_restore_ = false;
   }
 
   // Échap a demandé le repli (fenêtre principale = dernière avant le jeu) : on force le
   // repli ce frame ; la détection is_collapsed ci-dessous met à jour ui_collapsed_ + persiste.
-  if (collapse_requested_) {
-    collapse_requested_ = false;
+  if (pending_collapse_request_) {
+    pending_collapse_request_ = false;
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Always);
   }
 
@@ -1292,7 +1292,7 @@ void MoonlightUi::OnRenderUI() {
   // Fenêtre principale = cible « minimiser » d'Échap, en DERNIER recours (seulement
   // dépliée, seulement s'il ne reste aucune autre fenêtre fermable) : Échap la replie
   // avant d'être rendu au jeu pour ses fenêtres natives.
-  if (!is_collapsed) ro::RegisterEscapeMinimizeWindow(&collapse_requested_);
+  if (!is_collapsed) ro::RegisterEscapeMinimizeWindow(&pending_collapse_request_);
 
   if (!is_collapsed) {
     moonlight_ui::DrawRules();
