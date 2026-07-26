@@ -60,11 +60,11 @@
 
 namespace {
 
-// Les trois helpers de couleur persistée vivent avec les moteurs de la table
+// Les helpers de couleur persistée vivent avec les moteurs de la table
 // (moonlight_ui/settings_table.h) : ce sont eux qui connaissent la dualité
-// « hex ARGB » / « ImU32 décimal » des yaml déjà chez les joueurs.
-using moonlight_ui::HexArgb;
-using moonlight_ui::ReadArgbKey;
+// « hex ARGB » / « ImU32 décimal » des yaml déjà chez les joueurs. Il n'en reste
+// qu'un ici, pour les fonds de chat — dont les clés sont portées par les groupes
+// eux-mêmes (ChatBgGroup::yaml_key), pas par des littéraux.
 using moonlight_ui::WriteArgbKey;
 
 // ── Réglages décrits une fois, lus et écrits par la table ────────────────────
