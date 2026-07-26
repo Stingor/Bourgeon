@@ -473,6 +473,53 @@ void EmitSkinCfg(YAML::Emitter& out, const ro::RoSkinConfig& cfg,
 
 }  // namespace
 
+// ── Réglages qui appartiennent à MoonlightUi elle-même ───────────────────────
+// Struct-amie déclarée dans moonlight_ui.h (cf. le commentaire là-bas) : un
+// descripteur pointe l'ADRESSE du champ, et ceux-ci sont privés. Elle ne porte
+// que les deux tables, pas de code — c'est le strict minimum d'ouverture.
+//
+// Ces réglages n'ont pas de « plugin absent » possible… sauf en théorie : le
+// résolveur passe quand même par Bourgeon::Instance().moonlight_ui(), qui rend
+// nullptr si l'instance n'est pas (encore) enregistrée.
+#define MLUI_SELF(member)                                 \
+  []() -> void* {                                         \
+    auto* self = Bourgeon::Instance().moonlight_ui();     \
+    return self ? &self->member : nullptr;                \
+  }
+struct MoonlightUiOwnSettings {
+  using SType = moonlight_ui::SettingType;
+
+  // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
+  static const moonlight_ui::SettingDesc kHeader[3];
+  // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
+  // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
+  static const moonlight_ui::SettingDesc kChat[5];
+};
+
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[3] = {
+    {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
+     MLUI_LITERAL(bool, false)},
+    {"log_level", SType::kString, MLUI_SELF(log_level_),
+     MLUI_LITERAL(std::string, "info")},
+    {"alootid_overlay", SType::kBool, MLUI_SELF(show_alootid_overlay_),
+     MLUI_LITERAL(bool, false)},
+};
+
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kChat[5] = {
+    {"mainchat_preset_bar", SType::kBool, MLUI_SELF(mainchat_preset_bar_),
+     MLUI_LITERAL(bool, false)},
+    {"chat_width_enabled", SType::kBool, MLUI_SELF(chat_width_enabled_),
+     MLUI_LITERAL(bool, false)},
+    // La largeur est BORNÉE à 320..1200 après lecture (cf. PostLoadApply) : un
+    // yaml édité à la main ne doit pas pouvoir rendre le chat inutilisable.
+    {"chat_width", SType::kInt, MLUI_SELF(chat_width_px_), MLUI_LITERAL(int, 800)},
+    {"chat_timestamps", SType::kBool, MLUI_SELF(chat_timestamps_),
+     MLUI_LITERAL(bool, false)},
+    {"chat_item_icons", SType::kBool, MLUI_SELF(chat_item_icons_),
+     MLUI_LITERAL(bool, true)},
+};
+#undef MLUI_SELF
+
 // Item-link icon injection moved to plugins/chat.cc (ChatTweaks).
 
 // ── Item description window hook ──────────────────────────────────────────
@@ -655,25 +702,11 @@ void MoonlightUi::LoadSettings() {
     }
 
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
-    ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
-    show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
+    moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
     moonlight_ui::ReadSettings(ui, kBugReportSettings);
     moonlight_ui::ReadSettings(ui, kWeaponSpriteSettings);
-    mainchat_preset_bar_  = ui["mainchat_preset_bar"].as<bool>(false);
-    log_level_            = ui["log_level"].as<std::string>("info");
-
-    chat_width_enabled_ = ui["chat_width_enabled"].as<bool>(false);
-    chat_width_px_      = ui["chat_width"].as<int>(800);
-    if (chat_width_px_ < 320)  chat_width_px_ = 320;
-    if (chat_width_px_ > 1200) chat_width_px_ = 1200;
-    chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
-    chat_timestamps_ = ui["chat_timestamps"].as<bool>(false);
-    chat::SetTimestamps(chat_timestamps_);
-    chat_item_icons_ = ui["chat_item_icons"].as<bool>(true);
-    chat::SetItemIcons(chat_item_icons_);
-    LogConsole::instance().SetLevel(log_level_);
-    apply_collapse_ = true;
+    moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kChat);
 
     moonlight_ui::ReadSettings(ui, kDpsSettings);
 
@@ -821,31 +854,9 @@ void MoonlightUi::LoadSettings() {
     }
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
 
-    // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/storage/barres/
-    // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
-    // mixé — on réconcilie en OR (au moins une moderne => toutes modernes ; tout
-    // natif sinon), puis les cases restent synchronisées à l'exécution.
-    {
-      auto* iv  = Bourgeon::Instance().inventory_viewer();
-      auto* stg = Bourgeon::Instance().storage_tweaks();
-      auto* sb2 = Bourgeon::Instance().skill_bar();
-      auto* tt2 = Bourgeon::Instance().trade_tweaks();
-      const bool modern = (iv  && iv->imgui_enabled_)  ||
-                          (stg && stg->imgui_enabled_) ||
-                          (sb2 && sb2->enabled_)       ||
-                          (tt2 && tt2->imgui_enabled_);
-      SetModernInterface(modern);
-    }
-
     moonlight_ui::ReadSettings(ui, kStatusIconSettings);
-    if (auto* si = Bourgeon::Instance().status_icons()) si->MarkDirty();
-
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
-
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
-    if (auto* st = Bourgeon::Instance().settings_tweaks())
-      st->Apply();  // pousse le post-traitement vers la couche d3d9
-
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
 
     chat_bg_presets_.clear();
@@ -889,12 +900,51 @@ void MoonlightUi::LoadSettings() {
         }
       }
     }
+
+    PostLoadApply();
   } catch (const std::exception& e) {
     settings_load_failed_ = true;
     LogError("[MoonlightUi] lecture de {} interrompue : {} — SAUVEGARDE SUSPENDUE "
              "pour ne pas écraser la configuration existante (elle reprendra après "
              "un chargement complet ; corriger ou supprimer le fichier)", path, e.what());
   }
+}
+
+// ── Effets de bord d'un chargement ───────────────────────────────────────────
+// Lire un réglage ne suffit pas toujours : certains doivent être BORNÉS, ou
+// poussés vers une couche qui en garde une copie (chat natif, journal, d3d9,
+// barre d'icônes de statut). Ces gestes étaient dispersés dans LoadSettings,
+// chacun collé à sa lecture ; ils tiennent ici, après que TOUT a été lu.
+//
+// Appelé en DERNIER dans le try : si la lecture s'interrompt, on n'applique rien
+// d'une configuration à moitié lue — même raison que le drapeau
+// settings_load_failed_ qui suspend la sauvegarde.
+void MoonlightUi::PostLoadApply() {
+  // Bornage : un yaml édité à la main ne doit pas rendre le chat inutilisable.
+  if (chat_width_px_ < 320)  chat_width_px_ = 320;
+  if (chat_width_px_ > 1200) chat_width_px_ = 1200;
+  chat::SetCustomWidth(chat_width_enabled_, chat_width_px_);
+  chat::SetTimestamps(chat_timestamps_);
+  chat::SetItemIcons(chat_item_icons_);
+  LogConsole::instance().SetLevel(log_level_);
+  apply_collapse_ = true;
+
+  // « Tout-ImGui ou tout-natif » : ces 4 fenêtres (inventaire/entrepôt/barres/
+  // échange) s'activent ensemble. Un yaml antérieur au regroupement pouvait être
+  // mixé — on réconcilie en OU (au moins une moderne => toutes modernes ; tout
+  // natif sinon), puis les cases restent synchronisées à l'exécution.
+  auto* inventory = Bourgeon::Instance().inventory_viewer();
+  auto* storage   = Bourgeon::Instance().storage_tweaks();
+  auto* skill_bar = Bourgeon::Instance().skill_bar();
+  auto* trade     = Bourgeon::Instance().trade_tweaks();
+  SetModernInterface((inventory && inventory->imgui_enabled_) ||
+                     (storage && storage->imgui_enabled_) ||
+                     (skill_bar && skill_bar->enabled_) ||
+                     (trade && trade->imgui_enabled_));
+
+  if (auto* si = Bourgeon::Instance().status_icons()) si->MarkDirty();
+  if (auto* st = Bourgeon::Instance().settings_tweaks())
+    st->Apply();  // pousse le post-traitement vers la couche d3d9
 }
 
 void MoonlightUi::WriteSettingsFile() {
@@ -924,17 +974,11 @@ void MoonlightUi::WriteSettingsFile() {
       << YAML::Value << YAML::BeginMap;
   for (const ChatBgGroup& g : chat_bg_) WriteArgbKey(out, g.yaml_key, g.color);
   moonlight_ui::WriteSettings(out, kGroundPaintSettings);
-  out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
-        << YAML::Key << "log_level"            << YAML::Value << log_level_
-        << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_;
+  moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kHeader);
   moonlight_ui::WriteSettings(out, kItemDescSettings);
   moonlight_ui::WriteSettings(out, kBugReportSettings);
   moonlight_ui::WriteSettings(out, kWeaponSpriteSettings);
-  out   << YAML::Key << "mainchat_preset_bar"  << YAML::Value << mainchat_preset_bar_
-        << YAML::Key << "chat_width_enabled"   << YAML::Value << chat_width_enabled_
-        << YAML::Key << "chat_width"           << YAML::Value << chat_width_px_
-        << YAML::Key << "chat_timestamps"      << YAML::Value << chat_timestamps_
-        << YAML::Key << "chat_item_icons"      << YAML::Value << chat_item_icons_;
+  moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kChat);
   moonlight_ui::WriteSettings(out, kDpsSettings);
 
   // Barres EXP/HP/SP (BasicInfoTweaks)

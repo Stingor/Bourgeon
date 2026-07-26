@@ -87,6 +87,15 @@ class MoonlightUi : public Plugin {
   void OpenInterfaceSection(int section);
 
  private:
+  // Les réglages qui appartiennent à MoonlightUi elle-même (et non à un plugin)
+  // sont décrits, comme tous les autres, par des tables de descripteurs — mais
+  // un descripteur pointe l'ADRESSE du champ, or ceux-ci sont privés. Cette
+  // struct-amie ne porte QUE ces tables (définies dans moonlight_ui.cc) : c'est
+  // le strict minimum d'ouverture, à comparer aux membres qu'il aurait fallu
+  // rendre publics. Elle disparaîtra à l'étape C, quand chaque plugin portera
+  // son propre LoadConfig/SaveConfig.
+  friend struct MoonlightUiOwnSettings;
+
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
   void SendSetting(uint16_t id, uint32_t value);
@@ -257,6 +266,11 @@ class MoonlightUi : public Plugin {
   // directory.  Called after FindChatBgSites so it can immediately apply the
   // saved colours.  (SaveSettings is declared public above.)
   void LoadSettings();
+
+  // Effets de bord d'un chargement : bornage des valeurs, et poussée vers les
+  // couches qui en gardent une copie (chat natif, journal, d3d9, icônes de
+  // statut). Appelée en dernier par LoadSettings, une fois TOUT lu.
+  void PostLoadApply();
 
   // Shared colour presets, applicable to any group's picker.
   struct ChatBgPreset { std::string name; uint32_t argb; };
