@@ -99,6 +99,10 @@ class MoonlightAuth : public Plugin {
     int char_count = 0;
     std::string last_login;
     bool banned = false;
+    // Un perso du compte est actuellement en jeu (char.online côté serveur, vu
+    // au moment de l'appel /auth). Sert à ne PAS proposer par défaut un compte
+    // déjà connecté : le rejouer déconnecterait la session en cours.
+    bool online = false;
   };
 
   void LoadConfig();
@@ -200,14 +204,16 @@ class MoonlightAuth : public Plugin {
   // uniquement sur un vrai (re)login. Cf. moonlight_auth.cc.
   bool charsel_reached_ = false;
 
-  // Service-select (liste <connection> clientinfo) : auto-passé par nav clavier
-  // AVANT d'afficher le formulaire (n'apparaît que si >1 connexion — dev).
+  // Service-select (liste <connection> clientinfo) : franchi nativement AVANT
+  // d'afficher le formulaire (n'apparaît que si >1 connexion).
   int server_index_ = 0;              // connexion cible (défaut 0 = Moonlight-Destiny)
-  int server_count_ = 0;              // nb de <connection> dans clientinfo.xml
+  int server_count_ = 0;              // nb de <connection> vues (0 = pas encore résolu)
   std::string server_name_;           // valeur --server (envoyée au site -> DB cible)
   bool server_select_done_ = false;   // sélection native (0x2723) déjà envoyée
   bool svc_kbd_fallback_ = false;     // repli clavier déjà tenté cette session
   unsigned long login_enter_tick_ = 0;  // GetTickCount() à l'entrée en mode login
+  unsigned long svc_select_tick_ = 0;   // GetTickCount() au tir du 0x2723 (0 = jamais
+                                        // tiré -> pas de repli clavier à armer)
   // Vrai dès qu'un login Moonlight a été déclenché et tant que la session
   // char-server est vivante. Survit à un re-OnModeSwitch(kLogin) (retour au
   // char-select depuis le jeu) pour NE PAS reforcer une ré-authentification web.

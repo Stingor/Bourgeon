@@ -37,6 +37,12 @@ constexpr float kFormW = 340.0f;
 // `moonlight_auth:` ne sert qu'à SURCHARGER (dev/local, ou désactiver).
 constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
+// Délai au-delà duquel « mode login SANS fenêtre de login » vaut service-select,
+// quand le nombre de connexions n'a pas pu être déterminé. Assez long pour couvrir
+// la construction de UILoginWnd (chargement des textures au 1er lancement) : le
+// prix d'un faux positif est une transition d'état rejouée, pas un blocage.
+constexpr unsigned long kSvcSelectProbeMs = 1500;
+
 // (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
 // Identifiant web mémorisé — fichier dédié pour NE PAS réécrire (et abîmer) le
@@ -447,7 +453,13 @@ void MoonlightAuth::SavePref(const char* password) {
 }
 
 void MoonlightAuth::ResolveServer() {
-  const std::vector<std::string> names = ReadConnectionNames(ClientInfoPath());
+  // Source PRIMAIRE = l'arbre XML natif (clientinfo.xml lu par le client via son
+  // VFS, GRF compris). La lecture DISQUE ne sert que de repli si l'arbre n'est pas
+  // encore parsé : chez les joueurs clientinfo.xml n'existe QUE dans moonlight.grf,
+  // donc `data\clientinfo.xml` est absent -> 0 connexion -> le service-select
+  // n'était jamais franchi (le formulaire Moonlight restait derrière lui).
+  std::vector<std::string> names = native_login::ClientInfoConnectionNames();
+  if (names.empty()) names = ReadConnectionNames(ClientInfoPath());
   server_count_ = static_cast<int>(names.size());
   server_index_ = 0;  // défaut = 1ʳᵉ connexion (Moonlight-Destiny, base clientinfo)
   server_name_ = ParseServerArg();  // envoyé au site pour cibler la bonne DB
@@ -517,6 +529,11 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     login_enter_tick_ = GetTickCount();
     server_select_done_ = false;
     svc_kbd_fallback_ = false;
+    svc_select_tick_ = 0;
+    // Le constructeur du plugin tourne AVANT que le client ne parse clientinfo.xml
+    // (LoadClientInfoXml) : la liste des connexions y était alors vide. On la
+    // re-résout ici — en mode login, l'arbre XML natif est forcément prêt.
+    if (server_count_ == 0) ResolveServer();
     // Retour au char-select DEPUIS LE JEU (changement de perso) : c'est un
     // kGame->kLogin, mais la session char-server est toujours vivante et on est
     // déjà authentifié. Il ne faut PAS reforcer le formulaire web (sinon le
@@ -570,6 +587,7 @@ void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
   login_enter_tick_ = GetTickCount();
   server_select_done_ = !service_select_pending;
   svc_kbd_fallback_ = false;
+  svc_select_tick_ = 0;
   state_ = State::kWebLogin;
 }
 
@@ -673,8 +691,8 @@ void MoonlightAuth::OnRenderLoginUI() {
 
   // Service-select (liste <connection>) : tant que la fenêtre de LOGIN n'est pas
   // là, on ne dessine PAS le formulaire (sinon il apparaît par-dessus le
-  // service-select, qui capte alors le clavier). Avec 0/1 connexion il n'y a pas de
-  // service-select : la fenêtre de login arrive directement.
+  // service-select, qui capte alors le clavier). Avec une seule connexion il n'y a
+  // pas de service-select : la fenêtre de login arrive directement.
   //
   // Franchissement : commit NATIF instantané de la connexion cible via
   // CLoginMode_SendMsg cmd 0x2723 (Apply_ClientInfoConnection -> état login). C'est
@@ -684,14 +702,34 @@ void MoonlightAuth::OnRenderLoginUI() {
   // initiale, d'où les IP garbage et le « Failed to Connect ».
   // Repli clavier (éprouvé) si le natif n'a pas fait apparaître l'écran de login.
   if (!native_login::LoginWindowPresent()) {
-    // Init paresseuse au cas où OnModeSwitch n'aurait pas été émis à la 1ʳᵉ entrée.
-    if (login_enter_tick_ == 0) login_enter_tick_ = GetTickCount();
+    // Init paresseuse au cas où OnModeSwitch n'aurait pas été émis à la 1ʳᵉ entrée
+    // (c'est aussi la seule occasion de résoudre les connexions dans ce cas).
+    if (login_enter_tick_ == 0) {
+      login_enter_tick_ = GetTickCount();
+      if (server_count_ == 0) ResolveServer();
+    }
     const unsigned long now = GetTickCount();
-    if (server_count_ > 1 && !server_select_done_) {
-      if (native_login::SelectClientInfoConnection(server_index_))
+    // Écran de login absent alors qu'on est dans le mode login = service-select.
+    // On tire dès qu'on SAIT qu'il y a plusieurs connexions ; si le compte reste
+    // introuvable (clientinfo illisible même nativement), on tranche à l'usure :
+    // au-delà de kSvcSelectProbeMs sans fenêtre de login, c'est bien lui, et on
+    // franchit sur la connexion 0. Sans ce repli, un client dont le clientinfo
+    // n'est pas lisible restait bloqué sur le service-select, formulaire caché.
+    const bool at_service_select =
+        server_count_ > 1 || (now - login_enter_tick_) > kSvcSelectProbeMs;
+    if (at_service_select && !server_select_done_) {
+      if (native_login::SelectClientInfoConnection(server_index_)) {
         server_select_done_ = true;
-    } else if (server_count_ > 1 && server_select_done_ && !svc_kbd_fallback_ &&
-               (now - login_enter_tick_) > 1500) {
+        svc_select_tick_ = now;
+        if (server_count_ <= 1) {
+          LogDiag("[MoonlightAuth] service-select détecté après {} ms alors que "
+                  "clientinfo.xml n'a donné que {} connexion(s) -> franchi sur "
+                  "l'index {}",
+                  now - login_enter_tick_, server_count_, server_index_);
+        }
+      }
+    } else if (server_select_done_ && svc_select_tick_ != 0 && !svc_kbd_fallback_ &&
+               (now - svc_select_tick_) > 1500) {
       // Toujours pas d'écran de login 1,5 s après le 0x2723 -> il n'a pas pris.
       LogDiag("[MoonlightAuth] service-select : 0x2723 sans effet -> REPLI clavier");
       DriveServerSelect();
@@ -940,16 +978,22 @@ void MoonlightAuth::DrawPickAccount() {
     ImGui::PushID(i);
     if (a.banned) ImGui::BeginDisabled();
     char line[192];
-    std::snprintf(line, sizeof(line), "%s  (%d perso%s)%s%s%s", a.label.c_str(),
+    std::snprintf(line, sizeof(line), "%s  (%d perso%s)%s%s%s%s", a.label.c_str(),
                   a.char_count, a.char_count > 1 ? "s" : "",
                   a.banned ? "  [banni]" : "",
+                  a.online ? "  [en ligne]" : "",
                   a.last_login.empty() ? "" : "   ",
                   a.last_login.empty() ? "" : a.last_login.c_str());
+    // Compte déjà connecté : sélectionnable (le joueur peut vouloir reprendre la
+    // main) mais visuellement estompé, pour qu'on ne le choisisse pas par réflexe.
+    if (a.online && !a.banned)
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(200, 170, 110, 255));
     if (ImGui::Selectable(line, selected_ == i,
                           ImGuiSelectableFlags_AllowDoubleClick)) {
       selected_ = i;
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) confirm = true;
     }
+    if (a.online && !a.banned) ImGui::PopStyleColor();
     // Amène le compte sélectionné dans la vue : au 1er affichage, et à chaque
     // déplacement aux flèches (sinon la sélection sortirait de la zone visible).
     if (selected_ == i && (ImGui::IsWindowAppearing() || pick_scroll_to_sel_))
@@ -963,6 +1007,19 @@ void MoonlightAuth::DrawPickAccount() {
   ImGui::Spacing();
   const bool can_play =
       selected_ >= 0 && selected_ < n && !accounts_[selected_].banned;
+
+  // Avertissement explicite : jouer un compte déjà connecté déconnecte l'autre
+  // session (le serveur ne tolère qu'une connexion par compte).
+  if (can_play && accounts_[selected_].online) {
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 190, 110, 255));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
+    ImGui::TextWrapped(
+        "Ce compte est déjà connecté : le choisir déconnectera la session en "
+        "cours.");
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+  }
 
   // Entrée (ou pavé num.) = jouer le compte focus.
   if (can_play && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
@@ -1036,6 +1093,7 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
       a.char_count = e.value("char_count", 0);
       a.last_login = e.value("last_login", std::string());
       a.banned = e.value("banned", false);
+      a.online = e.value("online", false);
       accounts_.push_back(std::move(a));
     }
     if (accounts_.empty()) {
@@ -1043,12 +1101,29 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
       state_ = State::kError;
       return false;
     }
+    // Range les comptes indisponibles EN BAS de la liste (tri stable, l'ordre
+    // serveur est conservé à l'intérieur de chaque groupe) : d'abord ceux qu'on
+    // peut jouer, puis ceux déjà en ligne (les rejouer déconnecterait la session
+    // en cours), puis les bannis. Le multi-client reste possible : ils sont
+    // relégués, pas interdits.
+    std::stable_sort(accounts_.begin(), accounts_.end(),
+                     [](const Account& lhs, const Account& rhs) {
+                       auto rank = [](const Account& a) {
+                         return a.banned ? 2 : (a.online ? 1 : 0);
+                       };
+                       return rank(lhs) < rank(rhs);
+                     });
     // Pré-sélectionne le compte joué le plus récemment (last_login "YYYY-MM-DD"
-    // → max lexicographique), sinon le premier. Ainsi « Entrée » suffit.
+    // → max lexicographique) PARMI ceux réellement jouables, sinon le premier.
+    // Ainsi « Entrée » suffit, et jamais sur un compte déjà connecté.
     selected_ = 0;
-    for (int i = 1; i < static_cast<int>(accounts_.size()); ++i)
-      if (accounts_[i].last_login > accounts_[selected_].last_login)
+    for (int i = 0; i < static_cast<int>(accounts_.size()); ++i) {
+      const Account& candidate = accounts_[i];
+      if (candidate.banned || candidate.online) continue;
+      if (accounts_[selected_].banned || accounts_[selected_].online ||
+          candidate.last_login > accounts_[selected_].last_login)
         selected_ = i;
+    }
     pass_buf_[0] = '\0';
     state_ = State::kPickAccount;
     return true;
