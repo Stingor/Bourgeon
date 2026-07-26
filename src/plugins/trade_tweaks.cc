@@ -1,5 +1,9 @@
 #include "plugins/trade_tweaks.h"
 
+// Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
+// magenta et l'invalidation au reset de device y sont partagés — ce fichier en
+// gardait sa propre copie, comme cinq autres plugins.
+#include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -220,72 +224,11 @@ const char* ItemName(uint32_t id) {
   return (g_name_cache[id] = buf).c_str();
 }
 
-// ── Icônes ImGui (cache id -> texture) — identique à ShopTweaks ──
-struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
-std::unordered_map<uint32_t, IconTex> g_icon_cache;
 
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;  // __stdcall(id_str, out[128], identified)
-constexpr uintptr_t kTexMgr  = 0x00a90350;
-constexpr uintptr_t kMakeKey = 0x00a9f030;
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using BuildIconPath_t = void*(__stdcall*)(const char*, char*, int);
-using TexMgr_t  = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 
-struct RawTex { const uint8_t* bgra; int w; int h; };
-bool GetRawTex(const char* path, RawTex* out) {
-  __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
-    if (!t) return false;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
-bool BuildIconPathSafe(uint32_t id, char* out) {
-  char idstr[16];
-  std::snprintf(idstr, sizeof(idstr), "%u", id);
-  out[0] = '\0';
-  __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, 1);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
-IconTex LoadItemIcon(uint32_t id) {
-  char path[192];
-  if (!BuildIconPathSafe(id, path)) return {};
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
 
-IconTex ResolveIcon(uint32_t id) {
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();  // device reset -> textures mortes
-  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
-  auto it = g_icon_cache.find(id);
-  if (it != g_icon_cache.end()) return it->second;
-  return g_icon_cache[id] = LoadItemIcon(id);
-}
 
 // Lit le tableau d'objets du deal (ItemSkillInfo ×10) à l'adresse globale `arrayBase`.
 void ReadDealItems(uintptr_t arrayBase, std::vector<TradeTweaks::TradeItem>* out);
@@ -577,7 +520,7 @@ void TradeTweaks::OnRenderUI() {
     for (int i = 0; i < static_cast<int>(items.size()); ++i) {
       const TradeItem& it = items[i];
       ImGui::PushID(i);
-      IconTex ic = ResolveIcon(it.id);
+      ro::IconTex ic = ro::ItemIcon(it.id);
       if (ic.tex) {
         ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
         ImGui::SameLine();

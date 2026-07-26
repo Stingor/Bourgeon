@@ -1,5 +1,9 @@
 #include "plugins/inventory_viewer.h"
 
+// Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
+// magenta et l'invalidation au reset de device y sont partagés — ce fichier en
+// gardait sa propre copie, comme cinq autres plugins.
+#include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -98,12 +102,10 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
 }
 
 // Icône d'item : BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc).
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;
 constexpr uintptr_t kTexMgr  = 0x00a90350;
 constexpr uintptr_t kMakeKey = 0x00a9f030;
 constexpr uintptr_t kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using BuildIconPath_t = void(__stdcall*)(const char*, char*, int);
 using TexMgr_t  = void*(__cdecl*)();
 using MakeKey_t = void*(__cdecl*)(const char*);
 using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
@@ -516,9 +518,6 @@ void CloseInventory() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// ── Icônes ImGui (recette storage/item_desc) ────────────────────────────────
-struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
-std::unordered_map<uint32_t, IconTex> g_icon_cache;
 
 struct RawTex { const uint8_t* bgra; int w; int h; };
 bool GetRawTex(const char* path, RawTex* out) {
@@ -539,43 +538,8 @@ bool GetRawTex(const char* path, RawTex* out) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-bool BuildIconPathSafe(uint32_t id, char* out, int identified) {
-  char idstr[16];
-  std::snprintf(idstr, sizeof(idstr), "%u", id);
-  out[0] = '\0';
-  __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, identified);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
-IconTex LoadItemIcon(uint32_t id, int identified) {
-  char path[160];
-  if (!BuildIconPathSafe(id, path, identified)) return {};
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
 
-IconTex ResolveIcon(uint32_t id, int identified) {
-  // Les textures cachées meurent avec le device (D3DPOOL_DEFAULT) : on jette le
-  // cache si le device a été reset/recréé, sinon AddImage() plante dans ddraw.
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
-  auto it = g_icon_cache.find(id);
-  if (it != g_icon_cache.end()) return it->second;
-  IconTex t = LoadItemIcon(id, identified);
-  g_icon_cache[id] = t;
-  return t;
-}
 
 // ── Description (clic-droit) : passe l'ItemSkillInfo COMPLET du nœud à OnMsg 0x18 ──
 // On re-parcourt la liste session (0x015fbab0) pour retrouver le nœud par id (comme
@@ -1084,7 +1048,6 @@ void MaybeFlushTextures() {
   const unsigned e = Overlay_DeviceEpoch();
   if (e == g_tex_epoch) return;
   g_tex_epoch = e;
-  g_icon_cache.clear();
   for (auto& b : g_bar) b = BarTex{};
   g_tile = g_tile_lock = g_ico_weight = g_ico_num = BarTex{};
   for (auto& row : g_tab) for (auto& b : row) b = BarTex{};
@@ -1425,7 +1388,7 @@ void InventoryViewer::RenderCardInsert() {
   if (begun) {
     // En-tête : la carte que l'on sertit + son total en inventaire.
     if (has_card) {
-      IconTex ic = ResolveIcon(card.id, card.identified);
+      ro::IconTex ic = ro::ItemIcon(card.id, card.identified);
       if (ic.tex) {
         ImGui::Image(TexId(ic.tex), ImVec2(24, 24));
         ImGui::SameLine();
@@ -1473,7 +1436,7 @@ void InventoryViewer::RenderCardInsert() {
 
           ImDrawList* dl = ImGui::GetWindowDrawList();
           float tx = scr.x + 2.0f;
-          IconTex ic = ResolveIcon(it.id, it.identified);
+          ro::IconTex ic = ro::ItemIcon(it.id, it.identified);
           if (ic.tex) {
             dl->AddImage(TexId(ic.tex), ImVec2(tx, scr.y + 1.0f),
                          ImVec2(tx + 24.0f, scr.y + 25.0f));
@@ -1949,7 +1912,7 @@ void InventoryViewer::OnRenderUI() {
 
       // Icône à sa taille NATIVE (comme le natif : bmp dessiné 1:1, ~24px dans une
       // tuile 32px), centrée ; réduite seulement si plus grande que la tuile.
-      const IconTex ic = ResolveIcon(it.id, it.identified);
+      const ro::IconTex ic = ro::ItemIcon(it.id, it.identified);
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         float dw = static_cast<float>(ic.w), dh = static_cast<float>(ic.h);
         if (dw > cell || dh > cell) {
@@ -2328,7 +2291,7 @@ void InventoryViewer::OnRenderUI() {
     const bool over = m.x >= win_x_ && m.y >= win_y_ &&
                       m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
     if (did != 0 && over) {
-      const IconTex ic = ResolveIcon(did, 1);
+      const ro::IconTex ic = ro::ItemIcon(did, 1);
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
         ImGui::GetForegroundDrawList()->AddImage(

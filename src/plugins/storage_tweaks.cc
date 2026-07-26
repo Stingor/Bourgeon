@@ -1,5 +1,9 @@
 #include "plugins/storage_tweaks.h"
 
+// Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
+// magenta et l'invalidation au reset de device y sont partagés — ce fichier en
+// gardait sa propre copie, comme cinq autres plugins.
+#include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -72,20 +76,14 @@ using GameFree_t  = void(__cdecl*)(void*);
 // BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc, 3 args) :
 // atoi(id) -> ResolveItemResNameById -> sprintf "유저인터페이스\item\<res>.bmp"
 // (identified!=0 -> resname [rec+8], sinon [rec+0x1c]). On passe identified=1.
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;
 constexpr uintptr_t kTexMgr  = 0x00a90350;
 constexpr uintptr_t kMakeKey = 0x00a9f030;
 constexpr uintptr_t kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using BuildIconPath_t = void(__stdcall*)(const char*, char*, int);
 using TexMgr_t  = void*(__cdecl*)();
 using MakeKey_t = void*(__cdecl*)(const char*);
 using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 
-// Texture ImGui d'une icône + dimensions natives (ratio préservé).
-struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
-// Cache id -> IconTex (tex null = miss connu, pas de reload chaque frame).
-std::unordered_map<uint32_t, IconTex> g_icon_cache;
 
 // Résout le .bmp en pixels bruts BGRA via le TexMgr natif. SEH (POD only) ; la
 // conversion C++ est faite hors __try par l'appelant.
@@ -108,49 +106,8 @@ bool GetRawTex(const char* path, RawTex* out) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// SEH isolé (POD only, pas d'objet C++ à dérouler -> évite C2712) : construit le
-// chemin d'icône `유저인터페이스\item\<res>.bmp` depuis l'id.
-bool BuildIconPathSafe(uint32_t id, char* out, int identified) {
-  char idstr[16];
-  std::snprintf(idstr, sizeof(idstr), "%u", id);
-  out[0] = '\0';
-  __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, identified);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
-// Charge l'icône d'un item (par id) en texture ImGui (colorkey magenta -> alpha 0).
-IconTex LoadItemIcon(uint32_t id, int identified) {
-  char path[160];
-  if (!BuildIconPathSafe(id, path, identified)) return {};
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1],
-                  r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
 
-// Résout (cache + charge) l'icône d'un item. Appelé au rendu (création de
-// texture D3D à EndScene, comme item_desc_tweaks).
-IconTex ResolveIcon(uint32_t id, int identified) {
-  // Textures D3DPOOL_DEFAULT : mortes après un reset/recréation du device -> on
-  // vide le cache si l'epoch a changé (sinon AddImage plante dans ddraw).
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
-  auto it = g_icon_cache.find(id);
-  if (it != g_icon_cache.end()) return it->second;
-  IconTex t = LoadItemIcon(id, identified);
-  g_icon_cache[id] = t;
-  return t;
-}
 
 // ── Ouverture de la description d'item (clic-droit) ─────────────────────────
 // FIDÈLE AU NATIF : le clic-droit du storage passe l'ItemSkillInfo COMPLET du
@@ -1455,7 +1412,7 @@ void StorageTweaks::OnRenderUI() {
       }
       // ── Colonne Item : icône + nom cliquable (clic-droit = description) ──
       ImGui::TableNextColumn();
-      const IconTex ic = ResolveIcon(items_[idx].id, items_[idx].identified);
+      const ro::IconTex ic = ro::ItemIcon(items_[idx].id, items_[idx].identified);
       const ImVec2 icon_pos = ImGui::GetCursorScreenPos();
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float w = kIcon * static_cast<float>(ic.w) / ic.h;
@@ -1681,7 +1638,7 @@ void StorageTweaks::OnRenderUI() {
     const bool over = m.x >= win_x_ && m.y >= win_y_ &&
                       m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
     if (did != 0 && over) {
-      const IconTex ic = ResolveIcon(did, 1);
+      const ro::IconTex ic = ro::ItemIcon(did, 1);
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
         ImGui::GetForegroundDrawList()->AddImage(

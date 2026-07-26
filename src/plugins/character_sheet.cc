@@ -1,5 +1,8 @@
 #include "plugins/character_sheet.h"
 
+// Icônes d'item : ro::ItemIcon (ui/icon_cache.h) — cache partagé. Les caches
+// de skill et d'emblème restent locaux : chemins et clés différents.
+#include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
 #include <Windows.h>
@@ -145,10 +148,8 @@ using EnsureLoaded_t = char (__thiscall*)(void*, int);
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 
 //  Icone d'item (item\<resname>.bmp)
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;
 constexpr uintptr_t kTexMgr = 0x00a90350, kMakeKey = 0x00a9f030, kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using BuildIconPath_t = void*(__stdcall*)(const char*, char*, int);
 // Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
 // "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar_tweaks).
@@ -467,9 +468,6 @@ const char* ItemName(uint32_t id) {
   return (g_name_cache[id] = buf).c_str();
 }
 
-//  Icones ImGui (cache id -> texture)
-struct IconTex { void* tex = nullptr; int w = 0, h = 0; };
-std::unordered_map<uint32_t, IconTex> g_icon_cache;
 struct RawTex { const uint8_t* bgra; int w; int h; };
 bool GetRawTex(const char* path, RawTex* out) {
   __try {
@@ -488,41 +486,9 @@ bool GetRawTex(const char* path, RawTex* out) {
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-bool BuildIconPathSafe(uint32_t id, char* out) {
-  char idstr[16];
-  std::snprintf(idstr, sizeof(idstr), "%u", id);
-  out[0] = '\0';
-  __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, 1);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-IconTex LoadItemIcon(uint32_t id) {
-  char path[192];
-  if (!BuildIconPathSafe(id, path)) return {};
-  RawTex rt{};
-  if (!GetRawTex(path, &rt)) return {};
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
-IconTex ResolveIcon(uint32_t id) {
-  // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> vider.
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
-  auto it = g_icon_cache.find(id);
-  if (it != g_icon_cache.end()) return it->second;
-  return g_icon_cache[id] = LoadItemIcon(id);
-}
 
 // ── Icône de skill (case compagnon) ──────────────────────────────────────────
-std::unordered_map<uint32_t, IconTex> g_skill_icon_cache;
+std::unordered_map<uint32_t, ro::IconTex> g_skill_icon_cache;
 // Le .bmp d'icône de skill est nommé par l'idname Lua (rejet des sentinelles
 // "Unknown"/"Zero Skill" qui spamment la console de chargement).
 bool BuildSkillIconPathSafe(int skillId, char* out, int n) {
@@ -535,7 +501,7 @@ bool BuildSkillIconPathSafe(int skillId, char* out, int n) {
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
-IconTex LoadSkillIcon(int skillId) {
+ro::IconTex LoadSkillIcon(int skillId) {
   char path[192];
   if (!BuildSkillIconPathSafe(skillId, path, sizeof(path))) return {};
   RawTex rt{};
@@ -549,7 +515,7 @@ IconTex LoadSkillIcon(int skillId) {
   }
   return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
 }
-IconTex ResolveSkillIcon(int skillId) {
+ro::IconTex ResolveSkillIcon(int skillId) {
   if (skillId <= 0) return {};
   static unsigned s_epoch = 0;
   const unsigned e = Overlay_DeviceEpoch();
@@ -586,7 +552,7 @@ void GetEmblemPathSafe(int guildId, char* out, int outCap) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 // Lit un .ebm (BMP 24x24 24-bit compressé zlib) et le convertit en texture ImGui.
-IconTex LoadEmblemFromFile(const char* fullPath) {
+ro::IconTex LoadEmblemFromFile(const char* fullPath) {
   FILE* fp = nullptr;
   if (fopen_s(&fp, fullPath, "rb") != 0 || !fp) return {};  // pas encore téléchargé
   std::fseek(fp, 0, SEEK_END);
@@ -622,9 +588,9 @@ IconTex LoadEmblemFromFile(const char* fullPath) {
   }
   return {Overlay_CreateTextureARGB(argb.data(), w, h), w, h};
 }
-IconTex ResolveEmblem(int guildId) {
+ro::IconTex ResolveEmblem(int guildId) {
   static unsigned s_epoch = 0;
-  struct Entry { IconTex tex; DWORD lastTry = 0; };
+  struct Entry { ro::IconTex tex; DWORD lastTry = 0; };
   static std::unordered_map<int, Entry> s_cache;
   const unsigned e = Overlay_DeviceEpoch();
   if (e != s_epoch) { s_cache.clear(); s_epoch = e; }
@@ -958,7 +924,7 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddRectFilled(p0, p1, SlotBgCol(), 3.0f);
   dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 3.0f);
-  IconTex ic = ResolveIcon(pi.nameid);
+  ro::IconTex ic = ro::ItemIcon(pi.nameid);
   if (ic.tex)
     dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + 2, p0.y + 2),
                  ImVec2(p1.x - 2, p1.y - 2));
@@ -1673,7 +1639,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   dl->AddRectFilled(p0, p1, SlotBgCol(), 4.0f);     // fond de case (réglable skin RO)
   dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);  // bordure
   if (has) {
-    IconTex ic = ResolveIcon(it.nameid);
+    ro::IconTex ic = ro::ItemIcon(it.nameid);
     if (ic.tex) {
       const float pad = 3.0f;
       dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
@@ -1702,7 +1668,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   if (has && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
     int inv = it.invIndex;
     ImGui::SetDragDropPayload("BGN_EQUIP", &inv, sizeof(inv));
-    IconTex ic = ResolveIcon(it.nameid);  // aperçu du drag (icône + nom complet)
+    ro::IconTex ic = ro::ItemIcon(it.nameid);  // aperçu du drag (icône + nom complet)
     if (ic.tex) {
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24, 24));
       ImGui::SameLine();
@@ -1776,7 +1742,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
   dl->AddRectFilled(p0, p1, SlotBgCol(), 4.0f);
   dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);
   if (has) {
-    IconTex ic = ResolveIcon(am.nameid);
+    ro::IconTex ic = ro::ItemIcon(am.nameid);
     if (ic.tex) {
       const float pad = 3.0f;
       dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
@@ -1869,7 +1835,7 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
               active ? 1.5f : 1.0f);
   // Icône du skill (chariot/peco/faucon) ; repli sur le libellé texte si absente.
   // Grisée quand le compagnon est inactif (tint alpha réduit via le canal de couleur).
-  IconTex ic = ResolveSkillIcon(skillId);
+  ro::IconTex ic = ResolveSkillIcon(skillId);
   if (ic.tex) {
     const float pad = 4.0f;
     const ImU32 tint = active ? IM_COL32(255, 255, 255, 255) : IM_COL32(255, 255, 255, 140);
@@ -1979,7 +1945,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   // du texte, dimensionné pour laisser une marge égale en haut et en bas (draw list après coup
   // -> n'affecte ni le curseur ni le centrage du texte).
   if (has_guild) {
-    IconTex em = ResolveEmblem(gi.guildId);
+    ro::IconTex em = ResolveEmblem(gi.guildId);
     if (em.tex) {
       ImDrawList* dl = ImGui::GetWindowDrawList();
       const float esz = std::clamp(hdr_h - 12.0f, 24.0f, 24.0f);  // ~6px de marge haut/bas

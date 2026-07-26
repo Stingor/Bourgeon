@@ -1,5 +1,9 @@
 #include "plugins/cashshop_tweaks.h"
 
+// Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
+// magenta et l'invalidation au reset de device y sont partagés — ce fichier en
+// gardait sa propre copie, comme cinq autres plugins.
+#include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -61,17 +65,8 @@ using EnsureLoaded_t = char (__thiscall*)(void*, int);
 // Cash shop = image "collection" (art de preview, plus grande) plutôt que la
 // petite icône d'inventaire. Chemin = μ μ μΈν°νμ΄μ€\collection\<resname>.bmp ;
 // repli sur μ μ μΈν°νμ΄μ€\item\<resname>.bmp si la collection manque.
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;  // __stdcall(id_str, out[128], identified) -> item\ path
 constexpr uintptr_t kGetResName    = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> resname C-str
-constexpr uintptr_t kTexMgr  = 0x00a90350;
-constexpr uintptr_t kMakeKey = 0x00a9f030;
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-using BuildIconPath_t = void*(__stdcall*)(const char*, char*, int);
 using GetResName_t = char*(__fastcall*)(void*);
-using TexMgr_t  = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 
 // PrΓ©fixes CP949 (2 littΓ©raux concatΓ©nΓ©s pour Γ©viter que \xba avale le \ suivant).
 static const char kCollectionPrefix[] =
@@ -154,38 +149,8 @@ const char* ItemName(uint32_t id) {
   return (g_name_cache[id] = nm).c_str();
 }
 
-//  IcΓ΄nes ImGui (cache id -> texture) 
-struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
-std::unordered_map<uint32_t, IconTex> g_icon_cache;
 
-struct RawTex { const uint8_t* bgra; int w; int h; };
-bool GetRawTex(const char* path, RawTex* out) {
-  __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
-    if (!t) return false;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
-bool BuildIconPathSafe(uint32_t id, char* out) {
-  char idstr[16];
-  std::snprintf(idstr, sizeof(idstr), "%u", id);
-  out[0] = '\0';
-  __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, 1);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
 // RΓ©sout le resname d'un item par id (ItemSkillInfo standalone -> GetResName).
 // SEH (POD only). Sert au chemin de l'image "collection".
@@ -202,40 +167,7 @@ void ResolveResNameSEH(uint32_t id, char* out, size_t cap) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
-IconTex LoadItemIcon(uint32_t id) {
-  char path[192];
-  // 1) image "collection" (preview) par resname ; 2) repli icΓ΄ne d'inventaire.
-  char res[64];
-  ResolveResNameSEH(id, res, sizeof(res));
-  RawTex rt{};
-  bool ok = false;
-  if (res[0]) {
-    std::snprintf(path, sizeof(path), "%s%s.bmp", kCollectionPrefix, res);
-    ok = GetRawTex(path, &rt);
-  }
-  if (!ok) {
-    if (!BuildIconPathSafe(id, path)) return {};
-    if (!GetRawTex(path, &rt)) return {};
-  }
-  std::vector<uint8_t> argb(static_cast<size_t>(rt.w) * rt.h * 4);
-  for (int i = 0; i < rt.w * rt.h; ++i) {
-    const uint8_t b = rt.bgra[i * 4], g = rt.bgra[i * 4 + 1], r = rt.bgra[i * 4 + 2];
-    const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
-    argb[i * 4] = b; argb[i * 4 + 1] = g; argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = ck ? 0 : 0xFF;
-  }
-  return {Overlay_CreateTextureARGB(argb.data(), rt.w, rt.h), rt.w, rt.h};
-}
 
-IconTex ResolveIcon(uint32_t id) {
-  // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> vider.
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_icon_cache.clear(); s_epoch = e; }
-  auto it = g_icon_cache.find(id);
-  if (it != g_icon_cache.end()) return it->second;
-  return g_icon_cache[id] = LoadItemIcon(id);
-}
 
 // Ouvre la fenΓͺtre de description native (id 0xc) pour l'item `id` Γ  (mx,my).
 // ItemSkillInfo standalone renseignΓ© pour que OnMsg 0x18 (UIItemSkillDescWnd_OnMsg
@@ -755,7 +687,7 @@ void CashShopTweaks::OnRenderUI() {
       const float frameH = ImGui::GetFrameHeight();
       const float sp = ImGui::GetStyle().ItemSpacing.y;
       const float gap2 = 8.0f;
-      IconTex ic = ResolveIcon(ci.id);
+      ro::IconTex ic = ro::ItemIcon(ci.id);
       const float img = LH - 10.0f;              // image un peu plus petite -> marges
       float iw = img, ih = img;
       if (ic.tex && ic.w > 0 && ic.h > 0) {
