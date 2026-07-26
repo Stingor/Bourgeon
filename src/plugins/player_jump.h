@@ -1,11 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "plugins/plugin.h"
 
-// Saut à la barre espace — visible par les autres joueurs.
+// Saut à la barre espace (touche remappable) — visible par les autres joueurs.
 //
 // RO est un vrai moteur 3D (terrain 3D + sprites billboardés). La hauteur du
 // sprite au sol est RECALCULÉE chaque frame depuis la heightmap (.gnd) dans
@@ -45,6 +46,11 @@
 // espace vers ProcessPushButton (d'où vient OnKeyDown) que HORS focus chat —
 // taper une espace dans le chat ne déclenche donc aucun saut, même garantie que
 // les hotkeys de skill. Adresses spécifiques au client 20250716.
+//
+// La touche est REMAPPABLE (panneau Mini-jeux de moonlight_ui, persistée dans le
+// yaml). Le combo choisi passe par le contrôle de conflit partagé de
+// plugins/hotkey_util.h : presets d'équipement, raccourcis natifs de la barre de
+// skills et Alt+F sont refusés, pour ne pas déclencher deux actions d'un coup.
 class PlayerJumpTweaks : public Plugin {
  public:
   PlayerJumpTweaks();
@@ -62,6 +68,18 @@ class PlayerJumpTweaks : public Plugin {
   float* p_height()      { return &jump_height_; }   // amplitude (unités monde)
   int*   p_duration_ms() { return &jump_ms_; }        // durée de l'arc (ms)
 
+  // Touche de saut, persistée par MoonlightUi (yaml « jump_key_* »). Accesseurs
+  // par référence : la table de persistance décrit chaque réglage par l'ADRESSE
+  // de sa valeur, comme pour tous les autres plugins.
+  int&  key_vk()    { return key_vk_; }
+  bool& key_ctrl()  { return key_ctrl_; }
+  bool& key_alt()   { return key_alt_; }
+  bool& key_shift() { return key_shift_; }
+  // Capture d'un nouveau combo, pilotée par le panneau de réglages : tant
+  // qu'elle dure, la touche pressée REMAPPE au lieu de faire sauter.
+  bool&        key_capturing()   { return key_capturing_; }
+  std::string& key_conflict_msg() { return key_conflict_msg_; }
+
  private:
   // Un saut en cours. gid == 0 => le joueur local (évite d'avoir à lire son
   // propre GID ; l'acteur local est résolu directement via l'actorMgr).
@@ -76,5 +94,11 @@ class PlayerJumpTweaks : public Plugin {
   bool  enabled_     = true;
   float jump_height_ = 10.0f;  // hauteur de crête, en unités monde
   int   jump_ms_     = 600;    // durée montée+descente
+  // Combo de déclenchement (VK Windows + modificateurs). 0x20 = VK_SPACE ; on
+  // évite d'inclure Windows.h ici pour une constante.
+  int   key_vk_      = 0x20;
+  bool  key_ctrl_ = false, key_alt_ = false, key_shift_ = false;
+  bool  key_capturing_ = false;   // remappage en cours (panneau de réglages)
+  std::string key_conflict_msg_;  // dernier refus affiché sous la ligne de capture
   std::vector<Jump> jumps_;    // sauts actifs (local + distants)
 };

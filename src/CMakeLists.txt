@@ -104,6 +104,8 @@ set(BOURGEON_FILES
 	"plugins/fps_view.h"
 	"plugins/player_jump.cc"
 	"plugins/player_jump.h"
+	"plugins/hotkey_util.cc"
+	"plugins/hotkey_util.h"
 	"plugins/keyboard_move.cc"
 	"plugins/keyboard_move.h"
 	"plugins/doom_tweaks.cc"

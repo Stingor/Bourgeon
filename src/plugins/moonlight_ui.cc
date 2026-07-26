@@ -316,6 +316,20 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
 };
 
+// Touche de saut (PlayerJumpTweaks). Le reste du plugin (activation, hauteur,
+// durée) reste vif et non persisté ; seul le remappage doit survivre au
+// redémarrage, sinon le joueur le referait à chaque session. 0x20 = VK_SPACE.
+const moonlight_ui::SettingDesc kJumpKeySettings[] = {
+    {"jump_key_vk",    SType::kInt,  MLUI_FIELD(player_jump, key_vk()),
+     MLUI_LITERAL(int, 0x20)},
+    {"jump_key_ctrl",  SType::kBool, MLUI_FIELD(player_jump, key_ctrl()),
+     MLUI_LITERAL(bool, false)},
+    {"jump_key_alt",   SType::kBool, MLUI_FIELD(player_jump, key_alt()),
+     MLUI_LITERAL(bool, false)},
+    {"jump_key_shift", SType::kBool, MLUI_FIELD(player_jump, key_shift()),
+     MLUI_LITERAL(bool, false)},
+};
+
 // Barres EXP/HP/SP et portrait de statut (BasicInfoTweaks). Les barres et les
 // éléments du portrait sont indexés (expbar_<barre>_*, portrait_<élément>_*) :
 // leurs clés se construisent à l'exécution, elles restent en boucle.
@@ -698,6 +712,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
+    moonlight_ui::ReadSettings(ui, kJumpKeySettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     moonlight_ui::ReadSkillBarLayout(ui);
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
@@ -804,6 +819,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
+  moonlight_ui::WriteSettings(out, kJumpKeySettings);
 
   moonlight_ui::WriteSettings(out, kSkillBarSettings);
   moonlight_ui::WriteSkillBarLayout(out);

@@ -9,6 +9,7 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "plugins/bourgeon_opcodes.h"
+#include "plugins/hotkey_util.h"  // capture d'un combo en cours (remappage)
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
@@ -174,12 +175,23 @@ void PlayerJumpTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 void PlayerJumpTweaks::OnKeyDown(unsigned long vkey, int, int) {
   if (!enabled_) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
-  if (vkey != VK_SPACE) return;
+  if (key_vk_ == 0 || static_cast<int>(vkey) != key_vk_) return;
+  // Modificateurs : ProcessPushButton ne transmet que la touche principale, on
+  // lit donc l'état clavier du message en cours (GetKeyState, pas Async).
+  const bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+  const bool alt   = (GetKeyState(VK_MENU) & 0x8000) != 0;
+  const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+  if (ctrl != key_ctrl_ || alt != key_alt_ || shift != key_shift_) return;
+  // Un remappage est en cours (ici ou dans la fiche de perso) : la touche sert à
+  // choisir le raccourci, pas à sauter. On interroge le drapeau PARTAGÉ, qui
+  // expire tout seul, et non key_capturing_ : un panneau replié en pleine
+  // capture laisse ce dernier armé et tuerait le saut jusqu'au redémarrage.
+  if (hotkeys::CaptureInProgress()) return;
   if (!Bourgeon::Instance().IsGameActive()) return;
   if (Bourgeon::Instance().IsMapLoading()) return;
 
   // Le clavier appartient à une saisie ImGui ou à une textbox native (chat,
-  // message privé, montant de vente…) : l'espace est un caractère, pas un saut.
+  // message privé, montant de vente…) : la touche est un caractère, pas un saut.
   if (ImGui::GetCurrentContext() != nullptr &&
       ImGui::GetIO().WantCaptureKeyboard)
     return;

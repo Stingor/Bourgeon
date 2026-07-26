@@ -1,5 +1,7 @@
 #include "plugins/moonlight_ui/internal.h"
 
+#include <string>
+
 #include "bourgeon.h"
 #include "imgui.h"
 #include "plugins/moonlight_ui.h"
@@ -11,6 +13,7 @@
 // type COMPLET de chacun de ceux qu'on pilote ici.
 #include "plugins/doom_tweaks.h"
 #include "plugins/dps_meter.h"
+#include "plugins/hotkey_util.h"
 #include "plugins/keyboard_move.h"
 #include "plugins/login_parade.h"
 #include "plugins/player_jump.h"
@@ -18,6 +21,68 @@
 #include "plugins/rojeweled_tweaks.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
+namespace {
+
+// Ligne « Touche : Espace [Redéfinir] » du saut, avec capture du nouveau combo.
+// Le combo passe par le contrôle de conflit PARTAGÉ (hotkeys::Conflict) : il est
+// refusé, en nommant son propriétaire, s'il appartient déjà à un preset
+// d'équipement, à un raccourci natif de la barre de skills ou à Alt+F — même
+// contrôle que les raccourcis de preset de la fiche de personnage.
+// Renvoie true quand la touche a changé (l'appelant persiste).
+bool DrawJumpKeyBinding(PlayerJumpTweaks* player_jump) {
+  bool changed = false;
+  ImGui::AlignTextToFramePadding();
+  GrayText("Touche :");
+  SameLine();
+
+  if (player_jump->key_capturing()) {
+    // Gèle les raccourcis (saut ET presets) le temps du choix : la touche
+    // pressée doit remapper, pas déclencher l'action qu'elle porte encore.
+    hotkeys::PingCapture();
+    Text("appuie sur une touche…  (Échap : annuler)");
+    ImGuiIO& io = ImGui::GetIO();
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+      player_jump->key_capturing() = false;
+      player_jump->key_conflict_msg().clear();
+    } else if (const int vkey = hotkeys::CaptureMainVk()) {
+      const bool ctrl = io.KeyCtrl, alt = io.KeyAlt, shift = io.KeyShift;
+      char what[64];
+      if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kJump, -1, what,
+                            sizeof(what))) {
+        player_jump->key_conflict_msg() =
+            std::string("Déjà utilisé par ") + what + " — choisis une autre touche";
+      } else {  // libre : on assigne, l'appelant persiste
+        player_jump->key_vk()    = vkey;
+        player_jump->key_ctrl()  = ctrl;
+        player_jump->key_alt()   = alt;
+        player_jump->key_shift() = shift;
+        player_jump->key_capturing() = false;
+        player_jump->key_conflict_msg().clear();
+        changed = true;
+      }
+    }
+    if (!player_jump->key_conflict_msg().empty())
+      RedText(player_jump->key_conflict_msg().c_str());
+    return changed;
+  }
+
+  char label[48];
+  hotkeys::Label(player_jump->key_vk(), player_jump->key_ctrl(), player_jump->key_alt(),
+                 player_jump->key_shift(), label, sizeof(label));
+  Text("%s", label);
+  SameLine(0.0f, 6.0f);
+  if (ro::RoButton("Redéfinir")) {
+    player_jump->key_capturing() = true;
+    player_jump->key_conflict_msg().clear();
+  }
+  Tooltip("Lettres, chiffres, F1-F12 et Espace (avec Ctrl/Alt/Maj si tu veux).\n"
+          "Une touche déjà prise par un preset d'équipement ou par la barre de "
+          "skills est refusée.");
+  return changed;
+}
+
+}  // namespace
 
 // « DPS Meter » et « Mini-jeux » : deux en-têtes de premier niveau qui pilotent
 // des plugins frères (DpsMeter, Doom, LoginParade, Roggle, RoJeweled, PlayerJump,
@@ -100,17 +165,19 @@ void MoonlightUi::DrawFunPanels() {
     } else
       GrayText(kPluginUnavailable);
 
-    SeparatorText("Saut (barre espace)");
+    SeparatorText("Saut");
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       bool on = player_jump->enabled();
-      if (ro::RoCheckbox("Sauter avec Espace", &on))
+      if (ro::RoCheckbox("Sauter au clavier", &on))
         player_jump->SetEnabled(on);
       SameLine(); HelpMarker(
-          "Appuie sur Espace pour faire bondir ton personnage : un petit arc "
-          "parabolique (montée puis retombée) purement visuel.\n\n"
+          "Appuie sur la touche de saut (Espace par défaut) pour faire bondir "
+          "ton personnage : un petit arc parabolique (montée puis retombée) "
+          "purement visuel.\n\n"
           "Le serveur ne voit rien — c'est un simple décalage de hauteur du "
           "sprite, ré-appliqué chaque frame (tu peux même sauter en marchant). "
-          "Taper une espace dans le chat ne déclenche PAS de saut.");
+          "Taper cette touche dans le chat ne déclenche PAS de saut.");
+      if (on && DrawJumpKeyBinding(player_jump)) SaveSettings();
       // Réglages fins de l'arc de saut : réservés au staff (cf. IsStaff, group
       // level serveur >= 80). Mal réglés ils donnent un saut grotesque ou
       // invisible — les valeurs par défaut restent actives pour tout le monde.
@@ -124,7 +191,7 @@ void MoonlightUi::DrawFunPanels() {
     } else
       GrayText(kPluginUnavailable);
 
-    SeparatorText("Déplacement au clavier");
+    SeparatorText("Déplacement au clavier (Expérimental)");
     if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
       bool on = keyboard_move->enabled();
       if (ro::RoCheckbox("Marcher avec ZQSD / flèches", &on))
