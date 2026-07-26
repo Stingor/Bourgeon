@@ -318,12 +318,17 @@ void MoonlightUi::LoadSettings() {
       uint32_t argb = 0;
       if (!ro::ParseHex8(ui[g.yaml_key].as<std::string>(""), &argb)) continue;
       ro::PickerFromArgb(g.color, argb);
-      // walk_heap = FALSE ici, à dessein : LoadSettings tourne au login, pendant
-      // le chargement de map, alors qu'AUCUNE fenêtre de chat n'existe encore.
-      // Le parcours du tas — trois fois par login, sous HeapLock — ne trouvait
-      // donc jamais rien. Patcher les immédiats .text suffit : les fenêtres
-      // créées ensuite prendront la couleur à leur construction.
-      if (!g.instrs.empty()) ApplyChatBg(g, argb, false);
+      // walk_heap = TRUE, et il le faut. L'audit affirmait qu'aucune fenêtre de
+      // chat n'existe à ce moment et que le parcours du tas ne trouvait jamais
+      // rien : c'est FAUX, vérifié depuis. LoadSettings n'est appelé que par
+      // OnModeSwitch à l'ENTRÉE EN JEU (in_game_ && !was_in_game), donc une fois
+      // le HUD construit — la fenêtre de chat principale est déjà là.
+      //
+      // Le patch des immédiats .text ne vaut que pour les fenêtres créées APRÈS.
+      // Sans le parcours, le chat principal gardait sa couleur par défaut à
+      // chaque login, en donnant l'impression que le réglage n'était pas
+      // sauvegardé alors qu'il était correctement écrit et relu.
+      if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
     }
 
     // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention
