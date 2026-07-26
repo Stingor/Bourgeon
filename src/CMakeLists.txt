@@ -197,7 +197,16 @@ target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSIO
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
 # winmm: timeGetTime for the DOOM 35 Hz clock (doom_tweaks).
-target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt crypt32 shell32 winmm comdlg32 ole32)
+# dxguid: définitions des IID DirectX (IID_IDirect3D7, IID_IDirect3DHALDevice,
+#   IID_IDirect3DTnLHalDevice…). Elles provenaient jusqu'ici du seul ddraw.cc, qui
+#   pose `#define INITGUID` avant <d3d.h>/<ddraw.h> — un mécanisme qui exige que RIEN
+#   n'ait tiré guiddef.h auparavant, sinon son include guard fige DEFINE_GUID en mode
+#   « déclaration seule » et les symboles manquent au link. Cette condition est trop
+#   fragile (tout en-tête ajouté en amont la casse — l'en-tête précompilé l'a fait) :
+#   on prend les GUID dans la bibliothèque officielle, ce qui rend le lien indépendant
+#   de l'ordre d'inclusion. Sans risque de doublon : le linker n'extrait d'une lib
+#   statique que les symboles restés non résolus.
+target_link_libraries(bourgeon PRIVATE spdlog yaml-cpp imgui doomgeneric winhttp bcrypt crypt32 shell32 winmm comdlg32 ole32 dxguid)
 
 # Emit the SHA-256 of the freshly-built DLL (prints it and writes a sidecar
 # ddraw.dll.sha256). Use it to fill the `hash:` line in the server's
