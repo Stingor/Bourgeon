@@ -1908,7 +1908,7 @@ void MoonlightUi::OnRenderUI() {
   if (!is_collapsed) {
     moonlight_ui::DrawRules();
 
-    // ── DPS Meter ────────────────────────────────────────────────────────
+    // ── DPS Meter, Doom, Roggle, Rojeweled, Jump, QSDZ ───────────────────
     DrawFunPanels();
 
     // Saut demandé (bullet de barre de titre d'une fenêtre Bourgeon) : on force
