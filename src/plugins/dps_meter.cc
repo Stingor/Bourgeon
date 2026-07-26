@@ -14,6 +14,8 @@
 #include "ui/ro_widgets.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Packet layouts (after stripping the 2-byte opcode) ───────────────────────
 //
 // ZC_NOTIFY_ACT (0x08c8, PACKETVER >= 20131223) — 32 bytes:

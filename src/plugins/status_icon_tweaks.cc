@@ -12,6 +12,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ===========================================================================
 // Status-icon BAR reimplementation (20250716 client / Moonlight-Destiny.exe,
 // base 0x400000).  See status_icon_tweaks.h for the high-level design.

@@ -11,6 +11,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Sonde de la fenêtre de description d'item ────────────────────────────────
 // Détour de la fenêtre native pour capter le nameid de l'item affiché, plus
 // l'overlay flottant « alootid » qui s'y accroche. Extraits d'OnRenderUI et du

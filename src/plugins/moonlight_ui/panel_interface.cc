@@ -28,6 +28,8 @@
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/storage_tweaks.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── En-tête « Interface de jeu » ─────────────────────────────────────────────
 // Navigation latérale + les 11 sections de configuration. C'était le bloc dominant
 // d'OnRenderUI (742 lignes sur 1702) : une nav, puis une cascade de 11 tests sur

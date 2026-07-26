@@ -15,6 +15,8 @@
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 #include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace ro {
 namespace {
 

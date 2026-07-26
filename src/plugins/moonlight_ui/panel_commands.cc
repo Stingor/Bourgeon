@@ -7,6 +7,8 @@
 #include "ui/ro_widgets.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // « Commands Settings » : bascules serveur (onglet Général) et listes d'autoloot
 // (onglet Autoloots). Extrait d'OnRenderUI — 435 lignes qui n'écrivaient que des
 // membres de MoonlightUi et appelaient SendSetting / SendPresetCmd.

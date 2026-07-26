@@ -12,6 +12,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ===========================================================================
 // On-screen quest tracker — native hide + ImGui reimplementation.
 // See quest_tracker_tweaks.h / project_quest_tracking_re for the design & RE.

@@ -22,6 +22,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 #pragma comment(lib, "winmm.lib")  // timeGetTime (matche l'horloge cooldown du jeu)
 
 // ===========================================================================

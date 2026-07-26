@@ -26,6 +26,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // DX9 vs DX7 active backend (defined in ragnarok_client.cc) — picks the
 // CTexture native-handle offset, like the RO cursor capture.
 extern bool g_imgui_dx7_active;

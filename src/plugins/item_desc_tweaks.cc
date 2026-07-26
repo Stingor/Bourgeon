@@ -26,6 +26,8 @@
 #include "plugins/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Constantes RE (cf. mémoire project_item_skill_desc_window_re, CORRECTION
 //    LIVE 2026-07-01 : DEUX fenêtres distinctes, pas une unifiée) ─────────────
 namespace {

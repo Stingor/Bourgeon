@@ -14,6 +14,14 @@
 // Rien ici ne connaît Bourgeon : uniquement de l'ImGui. Le pendant « habillé RO »
 // (fenêtres, boutons, combos, scrollbars, CP949) est dans ui/ro_imgui.h.
 
+// -- namespace mui -----------------------------------------------------------
+// « Text », « Separator », « SameLine » sont des noms extrêmement génériques,
+// et ce header est tiré par pch.h : ils vivaient donc dans le namespace GLOBAL
+// de CHAQUE unité de compilation du projet. Le namespace les isole sans rien
+// renommer — les .cc concernés ouvrent simplement `using namespace mui;`, ce qui
+// laisse intacts les centaines de sites d'appel.
+namespace mui {
+
 // Affiche un petit « (?) » qui montre `desc` en infobulle au survol.
 void HelpMarker(const char* desc);
 
@@ -115,3 +123,5 @@ inline bool ColorEdit4WithAlphaBar(const char* label, float rgba[4]) {
                                 ImGuiColorEditFlags_NoColorMarkers;
     return ImGui::ColorEdit4(label, rgba, flags);
 }
+
+}  // namespace mui

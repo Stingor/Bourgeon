@@ -58,6 +58,8 @@
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace {
 
 // Les helpers de couleur persistée vivent avec les moteurs de la table

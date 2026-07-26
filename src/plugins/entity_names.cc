@@ -12,6 +12,8 @@
 #include "plugins/moonlight_ui.h"
 #include "ui/ro_imgui.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Adresses natives (client 20250716, no-ASLR : Ghidra == live) ─────────────
 // Documenté dans docs/entity_nameplate_re.md.
 namespace {

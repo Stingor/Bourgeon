@@ -28,6 +28,8 @@
 #include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
 #include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_storage_window_re)
 namespace {
 

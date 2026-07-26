@@ -13,6 +13,8 @@
 #include "plugins/moonlight_ui.h"  // ColorEdit4WithAlphaBar() (helper standardisé)
 #include "utils/hooking/hook_manager.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // Backend actif (DX9 vs DX7) — le « Sol uni » n'existe que sur le chemin de rendu DX9.
 // Défini ailleurs.
 extern bool g_imgui_dx7_active;

@@ -3,6 +3,8 @@
 #include "imgui.h"
 #include "ui/ro_widgets.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace moonlight_ui {
 
 // Charte du serveur : 134 lignes de TEXTE PUR — aucun état, aucun réglage, aucun

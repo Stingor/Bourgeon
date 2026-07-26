@@ -13,6 +13,8 @@
 #include "plugins/moonlight_ui.h"
 #include "ui/ro_imgui.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace {
 
 // ── Native UIWindow flicker-free position restore ────────────────────────────

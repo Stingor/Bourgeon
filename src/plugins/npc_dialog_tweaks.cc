@@ -24,6 +24,8 @@
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
 #include "ui/ro_widgets.h"   // ro::HelpMarker (section de réglages)
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/npc_dialog_re.md) ──
 namespace {
 

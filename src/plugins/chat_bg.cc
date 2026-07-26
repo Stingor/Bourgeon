@@ -13,6 +13,8 @@
 #include "utils/byte_pattern.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Fonds des fenêtres de chat ───────────────────────────────────────────────
 // Recherche par motif des sites natifs qui peignent le fond des fenêtres de chat,
 // puis réécriture de la couleur — dans le code (immédiats) et dans les objets déjà

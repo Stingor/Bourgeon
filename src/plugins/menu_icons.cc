@@ -17,6 +17,8 @@
 #include "plugins/moonlight_ui.h"  // shared AlignGrid (snap)
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace {
 // ── Game texture loader (conventions per status_tweaks.cc) ─────────────────
 constexpr uintptr_t kTexMgr  = 0x00a90350;  // __cdecl()           -> tex mgr

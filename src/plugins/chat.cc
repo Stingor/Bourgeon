@@ -12,6 +12,8 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Item link icon injection ──────────────────────────────────────────────
 // Item icons are drawn next to each <ITEML> equipment link in chat via THREE
 // hooks: inject a short ^i{<base62 id>} token before the tag (AppendLineHook),

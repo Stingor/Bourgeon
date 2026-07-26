@@ -26,6 +26,8 @@
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // skin RO (BeginRoWindow / RoButton / RoCheckbox / DrawBar)
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // ── Constantes RE (client 20250716, base 0x400000) ─────────────────────────────
 // Voir project_inventory_viewer_wip + project_inventory_window + workflow slim RE.
 namespace {

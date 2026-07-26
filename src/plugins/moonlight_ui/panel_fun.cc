@@ -17,6 +17,8 @@
 #include "plugins/roggle_tweaks.h"
 #include "plugins/rojeweled_tweaks.h"
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 // « DPS Meter » et « Mini-jeux » : deux en-têtes de premier niveau qui pilotent
 // des plugins frères (DpsMeter, Doom, LoginParade, Roggle, RoJeweled, PlayerJump,
 // KeyboardMove). Extraits d'OnRenderUI — 180 lignes.
