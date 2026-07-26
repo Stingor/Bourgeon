@@ -406,6 +406,18 @@ const moonlight_ui::SettingDesc kSkillBarColorSettings[] = {
      MLUI_LITERAL_ARGB(0xFFFFFFFF)},
 };
 
+// « Sol uni » du SPR Lab (fond de capture). Son état n'appartient pas à un
+// plugin enregistré mais à deux globales de spr_lab, atteintes par des fonctions
+// libres : le résolveur s'écrit à la main, il ne peut jamais rendre nullptr.
+const moonlight_ui::SettingDesc kGroundPaintSettings[] = {
+    {"ground_paint", SType::kBool,
+     []() -> void* { return &spr_lab::ground_paint_enabled(); },
+     MLUI_LITERAL(bool, false)},
+    {"ground_paint_color", SType::kColorHex,
+     []() -> void* { return spr_lab::ground_color(); },
+     MLUI_LITERAL_ARGB(0xFF000000)},  // noir opaque
+};
+
 // Les 14 couleurs du skin RO, dans l'ordre d'émission du yaml. Elles étaient
 // épelées QUATRE fois — lecture ro_skin_*, lecture preset, écriture ro_skin_*,
 // écriture preset — sans que rien ne garantisse que les quatre listes restent
@@ -642,10 +654,7 @@ void MoonlightUi::LoadSettings() {
       if (!g.instrs.empty()) ApplyChatBg(g, argb, true);
     }
 
-    // « Sol uni » du SPR Lab (fond de capture) : couleur en ARGB hex, même convention
-    // que les autres couleurs persistées ici.
-    spr_lab::ground_paint_enabled() = ui["ground_paint"].as<bool>(false);
-    ReadArgbKey(ui, "ground_paint_color", spr_lab::ground_color());
+    moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
     ui_collapsed_         = ui["ui_collapsed"].as<bool>(false);
     show_alootid_overlay_ = ui["alootid_overlay"].as<bool>(false);
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
@@ -914,9 +923,7 @@ void MoonlightUi::WriteSettingsFile() {
       << YAML::Key << "moonlight_ui"
       << YAML::Value << YAML::BeginMap;
   for (const ChatBgGroup& g : chat_bg_) WriteArgbKey(out, g.yaml_key, g.color);
-  out     << YAML::Key << "ground_paint"         << YAML::Value
-              << spr_lab::ground_paint_enabled();
-  WriteArgbKey(out, "ground_paint_color", spr_lab::ground_color());
+  moonlight_ui::WriteSettings(out, kGroundPaintSettings);
   out     << YAML::Key << "ui_collapsed"          << YAML::Value << ui_collapsed_
         << YAML::Key << "log_level"            << YAML::Value << log_level_
         << YAML::Key << "alootid_overlay"      << YAML::Value << show_alootid_overlay_;
