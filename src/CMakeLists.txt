@@ -20,6 +20,9 @@ set(BOURGEON_FILES
 	"plugins/status_tweaks.h"
 	"plugins/moonlight_ui.cc"
 	"plugins/moonlight_ui.h"
+	# Panneaux extraits d'OnRenderUI (en-tête privé au dossier)
+	"plugins/moonlight_ui/internal.h"
+	"plugins/moonlight_ui/panel_rules.cc"
 	"plugins/discord_relay.cc"
 	"plugins/discord_relay.h"
 	"plugins/auto_login.cc"
