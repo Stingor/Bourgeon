@@ -11,22 +11,14 @@
 
 #include "ragnarok/ragnarok_client.h"
 #include "utils/log_console.h"
+#include "utils/game_paths.h"
 #include "yaml-cpp/yaml.h"
 
 namespace {
 
-// Directory of the game executable (with trailing separator).
-std::string GameDir() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string path(buf);
-  const auto sep = path.find_last_of("\\/");
-  if (sep != std::string::npos) path.resize(sep + 1);
-  return path;
-}
+// (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
-std::string SettingsPath() { return GameDir() + "bourgeon_settings.yaml"; }
-std::string ClientInfoPath() { return GameDir() + "data\\clientinfo.xml"; }
+std::string ClientInfoPath() { return paths::InGameDir("data\\clientinfo.xml"); }
 
 // Narrow a wide command-line argument. Credentials are ASCII in practice, so a
 // plain byte-truncation is sufficient here.
@@ -137,7 +129,7 @@ bool AutoLogin::ParseCommandLine() {
 }
 
 void AutoLogin::LoadFromYaml() {
-  std::ifstream f(SettingsPath());
+  std::ifstream f(paths::SettingsPath());
   if (!f) return;  // no settings file — nothing to load
   try {
     const YAML::Node root = YAML::Load(f);

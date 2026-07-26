@@ -48,6 +48,7 @@
 #include "plugins/spr_effect_lab.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
+#include "utils/game_paths.h"
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
@@ -186,22 +187,8 @@ bool IsStaff() { return g_staff_level >= kStaffMinGroupLevel; }
 
 
 
-// Returns the path to bourgeon_settings.yaml next to the game executable.
-static std::string GetSettingsPath() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string path(buf);
-  const auto sep = path.find_last_of("\\/");
-  if (sep != std::string::npos) path.resize(sep + 1);
-  return path + "bourgeon_settings.yaml";
-}
-
 void MoonlightUi::LoadItemNames() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string base(buf);
-  const auto sep = base.find_last_of("\\/");
-  if (sep != std::string::npos) base.resize(sep + 1);
+  const std::string& base = paths::GameDir();
 
   // Try common RO client layouts in order.
   static const char* kCandidates[] = {
@@ -292,7 +279,7 @@ void SetModernInterface(bool on) {
 // ── Settings persistence ──────────────────────────────────────────────────
 
 void MoonlightUi::LoadSettings() {
-  const std::string path = GetSettingsPath();
+  const std::string path = paths::SettingsPath();
   // Horodatage de COMPILATION, gardé volontairement (une ligne par login) : le
   // déploiement POST_BUILD est best-effort et SILENCIEUSEMENT sauté quand le jeu tient
   // ddraw.dll ouvert (cf. src/CMakeLists.txt) — le build passe au vert sans rien
@@ -1168,7 +1155,7 @@ void MoonlightUi::WriteSettingsFile() {
       << YAML::EndMap
       << YAML::EndMap;
 
-  const std::string path = GetSettingsPath();
+  const std::string path = paths::SettingsPath();
 
   // bourgeon_settings.yaml est PARTAGÉ : AutoLogin (section « auto_login »), CharSelect
   // (« char_select ») et MoonlightAuth (« moonlight_auth ») y lisent chacun leur propre

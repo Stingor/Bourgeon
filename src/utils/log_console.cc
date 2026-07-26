@@ -1,4 +1,5 @@
 #include "utils/log_console.h"
+#include "utils/game_paths.h"
 
 #include <Windows.h>
 
@@ -30,14 +31,7 @@ class UiLogSink : public spdlog::sinks::base_sink<std::mutex> {
   void flush_() override {}
 };
 
-// Returns the directory of the running module (with trailing separator).
-std::string ModuleDir() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string path(buf);
-  const auto sep = path.find_last_of("\\/");
-  return sep == std::string::npos ? std::string() : path.substr(0, sep + 1);
-}
+// (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
 // Returns the --loglevel=<name> value from the command line, or "" if absent.
 std::string CmdlineLevelName() {
@@ -53,7 +47,7 @@ std::string CmdlineLevelName() {
 // Returns the "log_level: <name>" value from bourgeon_settings.yaml (any
 // nesting), or "" if absent.
 std::string FileLevelName() {
-  std::ifstream f(ModuleDir() + "bourgeon_settings.yaml");
+  std::ifstream f(paths::SettingsPath());
   std::string line;
   while (std::getline(f, line)) {
     const auto key = line.find("log_level:");

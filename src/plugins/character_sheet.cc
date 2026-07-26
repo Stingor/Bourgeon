@@ -1,6 +1,7 @@
 #include "plugins/character_sheet.h"
 
 #include "ragnarok/uiwnd.h"
+#include "utils/game_paths.h"
 #include <Windows.h>
 #include <commdlg.h>  // GetSaveFileNameA (dialogue « Enregistrer sous »)
 #include <objbase.h>  // CoInitializeEx pour le thread du dialogue
@@ -637,12 +638,9 @@ IconTex ResolveEmblem(int guildId) {
   char rel[264] = {0};
   GetEmblemPathSafe(guildId, rel, sizeof(rel));  // nom relatif du .ebm (+ déclenche download)
   if (!rel[0]) return {};
-  char exe[MAX_PATH] = {0};  // chemin complet : <dossier du jeu>\_tmpEmblem\<nom>.ebm
-  GetModuleFileNameA(nullptr, exe, MAX_PATH);
-  if (char* slash = std::strrchr(exe, '\\')) *slash = '\0';
-  char full[MAX_PATH];
-  std::snprintf(full, sizeof(full), "%s\\_tmpEmblem\\%s", exe, rel);
-  en.tex = LoadEmblemFromFile(full);
+  // chemin complet : <dossier du jeu>\_tmpEmblem\<nom>.ebm
+  const std::string full = paths::InGameDir("_tmpEmblem\\") + rel;
+  en.tex = LoadEmblemFromFile(full.c_str());
   return en.tex;
 }
 
@@ -2183,11 +2181,7 @@ void CharacterSheet::RequestGifSave() {
                 PoseLabel(gif_export_anim_), gif_export_dir_);
 
   // Dossier initial proposé : <jeu>\screenshot (créé s'il manque).
-  char exe[MAX_PATH] = {0};
-  GetModuleFileNameA(nullptr, exe, MAX_PATH);
-  char* slash = std::strrchr(exe, '\\');
-  if (slash) *slash = '\0';
-  std::string initdir = std::string(exe) + "\\screenshot";
+  const std::string initdir = paths::InGameDir("screenshot");
   CreateDirectoryA(initdir.c_str(), nullptr);
 
   std::thread([this, def = std::string(defname), initdir]() {

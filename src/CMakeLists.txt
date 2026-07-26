@@ -161,6 +161,8 @@ set(BOURGEON_FILES
 	"utils/frame_profiler.h"
 	"utils/gif_writer.cc"
 	"utils/gif_writer.h"
+	"utils/game_paths.cc"
+	"utils/game_paths.h"
 	"utils/log_console.cc"
 	"utils/log_console.h"
 	"utils/tinf_inflate.h"

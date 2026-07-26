@@ -23,6 +23,7 @@
 #include "ragnarok/ragnarok_client.h"  // GameWindow (nav clavier service-select)
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"
+#include "utils/game_paths.h"
 #include "yaml-cpp/yaml.h"
 
 namespace {
@@ -36,24 +37,15 @@ constexpr float kFormW = 340.0f;
 // `moonlight_auth:` ne sert qu'à SURCHARGER (dev/local, ou désactiver).
 constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
-// Répertoire de l'exe (avec séparateur final).
-std::string GameDir() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string path(buf);
-  const auto sep = path.find_last_of("\\/");
-  if (sep != std::string::npos) path.resize(sep + 1);
-  return path;
-}
+// (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
-std::string SettingsPath() { return GameDir() + "bourgeon_settings.yaml"; }
 // Identifiant web mémorisé — fichier dédié pour NE PAS réécrire (et abîmer) le
 // yaml de config, qui est souvent édité à la main et lu seul par AutoLogin.
-std::string RememberPath() { return GameDir() + "bourgeon_moonlight_user.txt"; }
+std::string RememberPath() { return paths::MoonlightUserPath(); }
 // Mot de passe web mémorisé — chiffré DPAPI (lié au compte Windows courant :
 // illisible par un autre utilisateur/machine, aucune clé à gérer).
-std::string PwPath() { return GameDir() + "bourgeon_moonlight_pw.bin"; }
-std::string ClientInfoPath() { return GameDir() + "data\\clientinfo.xml"; }
+std::string PwPath() { return paths::MoonlightPwPath(); }
+std::string ClientInfoPath() { return paths::InGameDir("data\\clientinfo.xml"); }
 
 bool DpapiEncryptToFile(const std::string& path, const std::string& plain) {
   DATA_BLOB in{static_cast<DWORD>(plain.size()),
@@ -387,7 +379,7 @@ void MoonlightAuth::LoadConfig() {
   // est OPTIONNEL et ne fait que surcharger (dev/local, ou enabled:false).
   base_url_ = kDefaultBaseUrl;
   enabled_ = true;
-  std::ifstream f(SettingsPath());
+  std::ifstream f(paths::SettingsPath());
   if (f) {
     try {
       const YAML::Node root = YAML::Load(f);

@@ -1,6 +1,7 @@
 #include "plugins/char_select.h"
 
 #include "ragnarok/uiwnd.h"
+#include "utils/game_paths.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -559,15 +560,7 @@ const char* JobName(int job, int sex) {
   return (n && *n) ? n : nullptr;
 }
 
-// Répertoire de l'exe (pour la config yaml).
-std::string SettingsPath() {
-  char buf[MAX_PATH];
-  GetModuleFileNameA(nullptr, buf, MAX_PATH);
-  std::string p(buf);
-  const auto s = p.find_last_of("\\/");
-  if (s != std::string::npos) p.resize(s + 1);
-  return p + "bourgeon_settings.yaml";
-}
+// (Chemin du yaml : paths::SettingsPath(), utils/game_paths.h.)
 
 // ── Table des PLACES (scène banquet) ──────────────────────────────────────────
 // L'utilisateur a numéroté le décor (1..25) : le slot i occupe la place n°(i+1).
@@ -745,7 +738,7 @@ void* LoadHallTexture() {
 }  // namespace
 
 CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
-  std::ifstream f(SettingsPath());
+  std::ifstream f(paths::SettingsPath());
   if (f) {
     try {
       const YAML::Node root = YAML::Load(f);
