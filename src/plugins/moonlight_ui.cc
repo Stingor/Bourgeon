@@ -1799,7 +1799,9 @@ void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
 // ouvrir l'en-tête + sélectionner l'entrée). Sûr à appeler pendant le rendu d'une
 // AUTRE fenêtre (le bullet de barre de titre du storage, p. ex.).
 void MoonlightUi::OpenInterfaceSection(int section) {
-  if (section < 0 || section > kIfaceInventory) return;
+  // Borne sur kIfaceCount plutôt que sur la dernière section nommée : ajouter une
+  // entrée à l'enum suffit, il n'y a plus rien à penser ici.
+  if (section < 0 || section >= kIfaceCount) return;
   iface_nav_ = section;
   iface_jump_ = true;
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
@@ -2256,38 +2258,55 @@ void MoonlightUi::OnRenderUI() {
       // Navigation latérale (liste à gauche, contenu à droite). L'entrée active est
       // un MEMBRE (iface_nav_) : OpenInterfaceSection la pilote depuis le bullet de
       // barre de titre d'une autre fenêtre Bourgeon.
-      int& s_iface_nav = iface_nav_;
-      static const char* kIfaceCats[] = {
-          "Barre d'action",
-          "Basic Info",
-          "Chat",
-          "Icônes du menu",
-          "Icônes de statut",
-          "Suivi de quête",
-          "Descriptions",
-          "Skin RO",
-          "Fenêtre NPC",
-          "Storage",
-          "Inventaire"};
+      // Source UNIQUE des sections : chaque ligne porte son identifiant d'enum ET
+      // son libellé. Insérer/déplacer une entrée ne peut donc plus désaligner
+      // silencieusement le libellé et le contenu — la panne muette que produisait
+      // la paire « enum + tableau de chaînes » maintenue à la main.
+      struct IfaceEntry { IfaceSection id; const char* label; };
+      static constexpr IfaceEntry kIfaceSections[] = {
+          {kIfaceSkillBar,    "Barre d'action"},
+          {kIfaceBasicInfo,   "Basic Info"},
+          {kIfaceChat,        "Chat"},
+          {kIfaceMenuIcons,   "Icônes du menu"},
+          {kIfaceStatusIcons, "Icônes de statut"},
+          {kIfaceQuest,       "Suivi de quête"},
+          {kIfaceDesc,        "Descriptions"},
+          {kIfaceSkin,        "Skin RO"},
+          {kIfaceNpc,         "Fenêtre NPC"},
+          {kIfaceStorage,     "Storage"},
+          {kIfaceInventory,   "Inventaire"},
+      };
+      static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
+                    "kIfaceSections doit couvrir exactement l'enum IfaceSection");
 
       // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
       // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
       // rester lisible sur fenêtre étroite.
+      // La mesure des 11 libellés ne dépend que de la POLICE : on la garde en cache
+      // au lieu de refaire 11 CalcTextSize à chaque frame, et on la réinvalide quand
+      // la police change (bascule du skin RO, taille de police).
       const ImGuiStyle& st = ImGui::GetStyle();
-      float nav_w = 0.0f;
-      for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
-        nav_w = (std::max)(nav_w, ImGui::CalcTextSize(kIfaceCats[i]).x);
-      nav_w += st.WindowPadding.x * 2.0f + st.FramePadding.x * 2.0f;
+      static float s_labels_w    = 0.0f;   // largeur du plus long libellé, en px
+      static ImFont* s_labels_font = nullptr;
+      static float s_labels_size = 0.0f;
+      if (s_labels_font != ImGui::GetFont() || s_labels_size != ImGui::GetFontSize()) {
+        s_labels_w = 0.0f;
+        for (const IfaceEntry& entry : kIfaceSections)
+          s_labels_w = (std::max)(s_labels_w, ImGui::CalcTextSize(entry.label).x);
+        s_labels_font = ImGui::GetFont();
+        s_labels_size = ImGui::GetFontSize();
+      }
+      float nav_w = s_labels_w + st.WindowPadding.x * 2.0f + st.FramePadding.x * 2.0f;
       const float nav_w_min = ImGui::GetFontSize() * 5.0f;
       const float nav_w_max =
           (std::max)(nav_w_min, ImGui::GetContentRegionAvail().x * 0.4f);
       nav_w = (std::min)((std::max)(nav_w, nav_w_min), nav_w_max);
-      const float nav_h = ImGui::GetTextLineHeightWithSpacing() * IM_ARRAYSIZE(kIfaceCats)
+      const float nav_h = ImGui::GetTextLineHeightWithSpacing() * kIfaceCount
                         + st.WindowPadding.y * 2.0f;
 
       ImGui::BeginChild("iface_nav", ImVec2(nav_w, nav_h), ImGuiChildFlags_Borders);
-      for (int i = 0; i < IM_ARRAYSIZE(kIfaceCats); ++i)
-        if (ImGui::Selectable(kIfaceCats[i], s_iface_nav == i)) s_iface_nav = i;
+      for (const IfaceEntry& entry : kIfaceSections)
+        if (ImGui::Selectable(entry.label, iface_nav_ == entry.id)) iface_nav_ = entry.id;
       ImGui::EndChild();
 
       SameLine();
@@ -2301,7 +2320,7 @@ void MoonlightUi::OnRenderUI() {
         PushItemWidth(160.0f);
 
         // ── Barre d'action ───────────────────────────────────────────────────
-        if (s_iface_nav == 0)
+        if (iface_nav_ == kIfaceSkillBar)
         {
           if (auto* sb = Bourgeon::Instance().skill_bar())
             sb->DrawSettings();
@@ -2311,7 +2330,7 @@ void MoonlightUi::OnRenderUI() {
 
         // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
         // ── Status Portrait (head + pseudo + classe + niveau, indépendants) ──
-        if (s_iface_nav == 1) {
+        if (iface_nav_ == kIfaceBasicInfo) {
           bool changed = false;
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
@@ -2467,7 +2486,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Chat Settings ────────────────────────────────────────────────────
-        if (s_iface_nav == 2) {
+        if (iface_nav_ == kIfaceChat) {
           bool changed = false;
           if (auto* eb = Bourgeon::Instance().basic_info()) {
             PushStyleCompact();
@@ -2604,7 +2623,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Menu icons (ImGui replacement) ───────────────────────────────────
-        if (s_iface_nav == 3) {
+        if (iface_nav_ == kIfaceMenuIcons) {
           bool changed = false;
           if (auto* mi = Bourgeon::Instance().menu_icons()) {
             SeparatorText("Réglages généraux");
@@ -2643,7 +2662,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Status icons (StatusIconTweaks) ──────────────────────────────────
-        if (s_iface_nav == 4) {
+        if (iface_nav_ == kIfaceStatusIcons) {
           if (auto* si = Bourgeon::Instance().status_icons())
             si->DrawSettings();
           else
@@ -2651,7 +2670,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
-        if (s_iface_nav == 5) {
+        if (iface_nav_ == kIfaceQuest) {
           if (auto* qt = Bourgeon::Instance().quest_tracker())
             qt->DrawSettings();
           else
@@ -2659,7 +2678,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
-        if (s_iface_nav == 6) {
+        if (iface_nav_ == kIfaceDesc) {
           bool changed = false;
           if (auto* idt = Bourgeon::Instance().item_desc()) {
             TextUnformatted("Descriptions modernes des items et skills.");
@@ -2695,7 +2714,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Skin RO (police + habillage des fenêtres ImGui) ──────────────────
-        if (s_iface_nav == 7) {
+        if (iface_nav_ == kIfaceSkin) {
           bool changed = false;
           bool font_on = ro::IsFontEnabled();
           if (ro::RoCheckbox("Police Malgun (UI)", &font_on)) {
@@ -2750,7 +2769,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
-        if (s_iface_nav == 8) {
+        if (iface_nav_ == kIfaceNpc) {
           if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
             if (ro::RoCheckbox("Dialogue NPC ImGui", &nd->imgui_enabled_))
               SaveSettings();
@@ -2769,7 +2788,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Storage (StorageTweaks : viewer ImGui + colonnes/filtre/survol) ───
-        if (s_iface_nav == 9) {
+        if (iface_nav_ == kIfaceStorage) {
           if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
             bool changed = false;
             // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
@@ -2842,7 +2861,7 @@ void MoonlightUi::OnRenderUI() {
         }
 
         // ── Inventaire (InventoryViewer : viewer ImGui + filtre/onglets) ──────
-        if (s_iface_nav == 10) {
+        if (iface_nav_ == kIfaceInventory) {
           if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
             bool changed = false;
             // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les

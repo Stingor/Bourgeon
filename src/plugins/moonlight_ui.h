@@ -68,12 +68,16 @@ class MoonlightUi : public Plugin {
   const char* ItemName(uint32_t id) const;  // nom via itemInfoMerged.lua (ou nullptr)
 
   // ── Accès direct à une section de config ────────────────────────────────────
-  // Sections de l'en-tête « Interface de jeu » (ordre de kIfaceCats dans le .cc :
-  // les deux listes DOIVENT rester alignées).
+  // Sections de l'en-tête « Interface de jeu ». Les LIBELLÉS vivent dans la table
+  // kIfaceSections du .cc, où chaque ligne porte explicitement son identifiant :
+  // il n'y a donc plus deux listes à garder alignées, et insérer une section ne
+  // peut plus décaler silencieusement les suivantes. kIfaceCount ferme l'enum et
+  // sert de borne (OpenInterfaceSection) et de contrôle de taille à la compilation.
   enum IfaceSection {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
     kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
     kIfaceStorage, kIfaceInventory,
+    kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,
   // ouvre l'en-tête « Interface de jeu », sélectionne l'entrée de nav et scrolle
