@@ -252,6 +252,10 @@ MoonlightUi::MoonlightUi() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodeFromServer);
   Bourgeon::Instance().RegisterRecvOpcode(kOpcodePresetList);
   // Observe the standard map-move packet to learn the current map name.
+  // ⚠ Le second argument est la longueur DÉCLARÉE du champ observé, et c'est
+  // elle que OnRecvPacket recevra dans `len` — jamais le nombre d'octets
+  // réellement reçus. Pour un opcode observé, `len` ne prouve donc rien sur ce
+  // qui est lisible : borner le champ soi-même (cf. le strnlen côté réception).
   Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
   FindChatBgSites();
   LoadItemNames();
@@ -1326,10 +1330,21 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
 //   [char_id:4][count:2][{id:2, value:4} * count]
 void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (opcode == kOpcodeMapMove) {
-    // 0x0091 ZC_NPCACK_MAPMOVE: data points at mapname[16] (e.g. "gonryun.gat").
+    // 0x0091 ZC_NPCACK_MAPMOVE : `data` pointe sur mapname[16] (ex. « gonryun.gat »).
+    //
+    // ⚠ `len` ne vaut RIEN pour un opcode OBSERVÉ : rag_connection transmet la
+    // longueur ENREGISTRÉE au RegisterObserveOpcode (kMapNameLen), pas le nombre
+    // d'octets réellement reçus. Un `if (len < 7) return;` donnerait donc une
+    // fausse assurance — c'est le champ lui-même qu'il faut borner.
+    //
+    // Le nom n'est pas garanti terminé par un zéro : strnlen le borne à la taille
+    // déclarée du champ, puis on ne compare que ce qu'on a réellement.
+    if (!data) return;
     const char* map_name = reinterpret_cast<const char*>(data);
-    in_gonryun_ = in_game_ &&
-                  (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
+    const size_t name_len = strnlen(map_name, kMapNameLen);
+    constexpr size_t kDiscordMapLen = sizeof(kDiscordMap) - 1;
+    in_gonryun_ = in_game_ && name_len >= kDiscordMapLen &&
+                  (strncmp(map_name, kDiscordMap, kDiscordMapLen) == 0);
     // LogInfo("[MoonlightUi] map move -> '{}' in_gonryun={}",
             // std::string(map_name, strnlen(map_name, len)), in_gonryun_);
     UpdateRelay();

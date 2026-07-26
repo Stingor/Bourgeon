@@ -110,16 +110,24 @@ void MoonlightUi::DrawAlootOverlay() {
 
   if (show_alootid_overlay_ && !enriched_item &&
       g_last_viewed_item != 0 && g_item_desc_visible) {
-    // Try to read the tooltip window position from the stored object pointer.
-    // Offsets found via CheatEngine: [ptr+0x18]=Y, [ptr+0x20]=X.
-    // If the pointer doesn't match the right object the values will be garbage
-    // and we fall back to the cursor position captured at open time.
+    // Position de la fenêtre native, lue dans l'objet dont on a gardé le pointeur.
+    // Offsets confirmés : [ptr+0x1C] = X, [ptr+0x20] = Y. (Le commentaire d'avant
+    // annonçait « +0x18=Y, +0x20=X » — il ne correspondait pas au code, qui lui
+    // était juste.) À défaut, on retombe sur la position du curseur au moment de
+    // l'ouverture.
     float overlay_x = static_cast<float>(g_item_desc_cursor.x) + 12.0f;
     float overlay_y = static_cast<float>(g_item_desc_cursor.y) + 12.0f;
-    if (g_item_desc_wnd_ptr != nullptr) {
+    // Le pointeur est conservé D'UNE FRAME À L'AUTRE : avant de le déréférencer,
+    // vérifier qu'il DÉSIGNE TOUJOURS la fenêtre de description vivante. Le garde
+    // du dessus ne couvre que la fermeture (global remis à zéro) ; si le jeu
+    // alloue une autre fenêtre à la place, le global redevient non nul mais
+    // pointe ailleurs — on lisait alors +0x1C/+0x20 dans un objet étranger. Le
+    // test de plausibilité qui suit valide les VALEURS, jamais le pointeur.
+    const void* live_wnd = *reinterpret_cast<void* const*>(kItemDescWndGlobalPtr);
+    if (g_item_desc_wnd_ptr != nullptr && g_item_desc_wnd_ptr == live_wnd) {
       const auto* base = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
-      const int wx = *reinterpret_cast<const int*>(base + 0x1C);  // X (confirmed)
-      const int wy = *reinterpret_cast<const int*>(base + 0x20);  // Y (confirmed)
+      const int wx = *reinterpret_cast<const int*>(base + 0x1C);  // X (confirmé)
+      const int wy = *reinterpret_cast<const int*>(base + 0x20);  // Y (confirmé)
       if (wx > 0 && wx < 4096 && wy > 0 && wy < 4096) {
         overlay_x = static_cast<float>(wx);
         overlay_y = static_cast<float>(wy) - 24.0f;
