@@ -236,28 +236,31 @@ void MoonlightUi::DrawCommandsPanel() {
             const bool dirty = (alootid_active_preset_ != 0) &&
                                (sorted_copy(aloot_ids_) != sorted_copy(alootid_saved_ids_));
 
-            static char hdr[96];
+            // Recomposé et consommé DANS LE MÊME frame : il était `static`, ce qui
+            // faisait croire à un état persistant d'une frame à l'autre.
+            char preset_header_text[96];
             if (alootid_active_preset_ != 0) {
               const char* preset_name = nullptr;
-              char no_buf[8];
+              char slot_no_buf[8];
               for (const auto& p : alootid_presets_) {
-                if (p.no == alootid_active_preset_) {
+                if (p.slot_no == alootid_active_preset_) {
                   preset_name = p.name.empty()
-                    ? (std::snprintf(no_buf, sizeof(no_buf), "#%u", p.no), no_buf)
+                    ? (std::snprintf(slot_no_buf, sizeof(slot_no_buf), "#%u", p.slot_no), slot_no_buf)
                     : p.name.c_str();
                   break;
                 }
               }
               if (dirty)
-                std::snprintf(hdr, sizeof(hdr), "%s (non sauvegardé)",
-                              preset_name ? preset_name : "?");
+                std::snprintf(preset_header_text, sizeof(preset_header_text),
+                              "%s (non sauvegardé)", preset_name ? preset_name : "?");
               else
-                std::snprintf(hdr, sizeof(hdr), "%s",
-                              preset_name ? preset_name : "?");
+                std::snprintf(preset_header_text, sizeof(preset_header_text),
+                              "%s", preset_name ? preset_name : "?");
             } else {
-              std::strncpy(hdr, "Liste courante", sizeof(hdr));
+              std::strncpy(preset_header_text, "Liste courante",
+                           sizeof(preset_header_text));
             }
-            TextUnformatted(hdr);
+            TextUnformatted(preset_header_text);
           }
           ImGui::BeginChild("##alootid_list", ImVec2(0, 160), true);
           if (ImGui::BeginTable("##alootid_tbl", 2, ImGuiTableFlags_SizingStretchSame)) {
@@ -322,16 +325,16 @@ void MoonlightUi::DrawCommandsPanel() {
             // Find the selected preset to know what toggling autoload does.
             const AlootPreset* sel_for_al = nullptr;
             for (const auto& p : alootid_presets_)
-              if (p.no == alootid_selected_preset_) { sel_for_al = &p; break; }
+              if (p.slot_no == alootid_selected_preset_) { sel_for_al = &p; break; }
             bool al = sel_for_al && sel_for_al->autoload;
             if (!sel_for_al) ImGui::BeginDisabled();
             if (ro::RoCheckbox("Autoload##preset", &al))
-              SendPresetCmd(5, al ? alootid_selected_preset_ : 0);
+              SendPresetCmd(kAlootPresetAutoload, al ? alootid_selected_preset_ : 0);
             if (!sel_for_al) ImGui::EndDisabled();
             SameLine();
             if (autoload_preset) {
               if (autoload_preset->name.empty())
-                ImGui::TextDisabled("(#%u)", autoload_preset->no);
+                ImGui::TextDisabled("(#%u)", autoload_preset->slot_no);
               else
                 ImGui::TextDisabled("(%s)", autoload_preset->name.c_str());
             } else {
@@ -353,7 +356,7 @@ void MoonlightUi::DrawCommandsPanel() {
           {
             const AlootPreset* sel_for_rename = nullptr;
             for (const auto& p : alootid_presets_)
-              if (p.no == alootid_selected_preset_) { sel_for_rename = &p; break; }
+              if (p.slot_no == alootid_selected_preset_) { sel_for_rename = &p; break; }
 
             // Find existing preset matching the typed name (for delete-on-empty).
             const AlootPreset* named_preset = nullptr;
@@ -374,21 +377,22 @@ void MoonlightUi::DrawCommandsPanel() {
               ? "Supprimer##preset_save" : "Sauvegarder##preset";
             if (ImGui::SmallButton(btn_label)) {
               if (is_rename && sel_for_rename) {
-                SendPresetCmd(6, alootid_selected_preset_, alootid_rename_input_);
+                SendPresetCmd(kAlootPresetRename, alootid_selected_preset_,
+                              alootid_rename_input_);
                 alootid_rename_open_ = false;
               } else if (!is_rename && list_empty && named_preset) {
-                SendPresetCmd(4, named_preset->no);
+                SendPresetCmd(kAlootPresetDelete, named_preset->slot_no);
               } else {
                 uint8_t save_no = 0;
                 bool used[11] = {};
                 for (const auto& p : alootid_presets_) {
-                  if (p.name == alootid_preset_input_) { save_no = p.no; break; }
-                  if (p.no <= 10) used[p.no] = true;
+                  if (p.name == alootid_preset_input_) { save_no = p.slot_no; break; }
+                  if (p.slot_no <= 10) used[p.slot_no] = true;
                 }
                 if (save_no == 0)
                   for (uint8_t n = 1; n <= 10; ++n) if (!used[n]) { save_no = n; break; }
                 if (save_no > 0)
-                  SendPresetCmd(2, save_no, alootid_preset_input_);
+                  SendPresetCmd(kAlootPresetSave, save_no, alootid_preset_input_);
               }
             }
             if (!can_act) ImGui::EndDisabled();
@@ -398,11 +402,11 @@ void MoonlightUi::DrawCommandsPanel() {
           {
             const AlootPreset* sel_preset = nullptr;
             for (const auto& p : alootid_presets_)
-              if (p.no == alootid_selected_preset_) { sel_preset = &p; break; }
+              if (p.slot_no == alootid_selected_preset_) { sel_preset = &p; break; }
 
             auto preset_label = [](const AlootPreset& p, char* buf, size_t sz, bool mark_active) {
               if (p.name.empty())
-                std::snprintf(buf, sz, "#%u%s", p.no, mark_active ? " *" : "");
+                std::snprintf(buf, sz, "#%u%s", p.slot_no, mark_active ? " *" : "");
               else
                 std::snprintf(buf, sz, "%s%s", p.name.c_str(), mark_active ? " *" : "");
             };
@@ -417,11 +421,11 @@ void MoonlightUi::DrawCommandsPanel() {
             ImGui::SetNextItemWidth(120.0f);
             if (ImGui::BeginCombo("##preset_select", preview)) {
               for (const auto& p : alootid_presets_) {
-                const bool sel = (p.no == alootid_selected_preset_);
+                const bool sel = (p.slot_no == alootid_selected_preset_);
                 char label[66];
-                preset_label(p, label, sizeof(label), p.no == alootid_active_preset_);
+                preset_label(p, label, sizeof(label), p.slot_no == alootid_active_preset_);
                 if (ImGui::Selectable(label, sel))
-                  alootid_selected_preset_ = p.no;
+                  alootid_selected_preset_ = p.slot_no;
                 if (sel) ImGui::SetItemDefaultFocus();
               }
               ImGui::EndCombo();
@@ -430,10 +434,10 @@ void MoonlightUi::DrawCommandsPanel() {
             const bool has_sel = sel_preset != nullptr;
             if (!has_sel) ImGui::BeginDisabled();
             if (ImGui::SmallButton("Charger##preset"))
-              SendPresetCmd(3, alootid_selected_preset_);
+              SendPresetCmd(kAlootPresetLoad, alootid_selected_preset_);
             SameLine();
             if (ImGui::SmallButton("Supprimer##preset"))
-              SendPresetCmd(4, alootid_selected_preset_);
+              SendPresetCmd(kAlootPresetDelete, alootid_selected_preset_);
             if (!has_sel) ImGui::EndDisabled();
 
           }

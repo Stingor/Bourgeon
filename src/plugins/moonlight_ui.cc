@@ -895,7 +895,7 @@ void MoonlightUi::OnTick() {
 
 void MoonlightUi::UpdateRelay() {
   if (auto* relay = Bourgeon::Instance().discord_relay()) {
-    relay->set_chat_active(discord_chat_ && in_gonryun_);
+    relay->set_chat_active(discord_chat_ && on_discord_relay_map_);
   }
 }
 
@@ -904,13 +904,15 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
   const bool was_in_game = in_game_;
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
 
-  // Only update in_gonryun_ when we have a real map name. OnUpdateHook fires
-  // FireModeSwitch(kGame, "") on every tick for in_game_ tracking; that empty
-  // call must not override the map we learned from a real CModeMgr::Switch.
+  // Only update on_discord_relay_map_ when we have a real map name. OnUpdateHook
+  // fires FireModeSwitch(kGame, "") on every tick for in_game_ tracking; that
+  // empty call must not override the map we learned from a real CModeMgr::Switch.
   if (map_name && map_name[0] != '\0') {
-    in_gonryun_ = in_game_ && (strncmp(map_name, kDiscordMap, sizeof(kDiscordMap) - 1) == 0);
+    on_discord_relay_map_ =
+        in_game_ && (strncmp(map_name, kDiscordRelayMapPrefix,
+                             sizeof(kDiscordRelayMapPrefix) - 1) == 0);
   } else if (!in_game_) {
-    in_gonryun_ = false;
+    on_discord_relay_map_ = false;
   }
 
   if (in_game_ && !was_in_game) {
@@ -955,11 +957,11 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
     if (!data) return;
     const char* map_name = reinterpret_cast<const char*>(data);
     const size_t name_len = strnlen(map_name, kMapNameLen);
-    constexpr size_t kDiscordMapLen = sizeof(kDiscordMap) - 1;
-    in_gonryun_ = in_game_ && name_len >= kDiscordMapLen &&
-                  (strncmp(map_name, kDiscordMap, kDiscordMapLen) == 0);
-    // LogInfo("[MoonlightUi] map move -> '{}' in_gonryun={}",
-            // std::string(map_name, strnlen(map_name, len)), in_gonryun_);
+    constexpr size_t kPrefixLen = sizeof(kDiscordRelayMapPrefix) - 1;
+    on_discord_relay_map_ = in_game_ && name_len >= kPrefixLen &&
+                  (strncmp(map_name, kDiscordRelayMapPrefix, kPrefixLen) == 0);
+    // LogInfo("[MoonlightUi] map move -> '{}' on_discord_relay_map={}",
+            // std::string(map_name, strnlen(map_name, len)), on_discord_relay_map_);
     UpdateRelay();
     return;
   }
@@ -975,7 +977,7 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
     uint16_t off = 2;
     for (uint8_t i = 0; i < count && off + 3 <= len; ++i) {
       AlootPreset p;
-      p.no       = data[off];
+      p.slot_no  = data[off];
       p.autoload = data[off + 1] != 0;
       const uint8_t namelen = data[off + 2];
       off += 3;
@@ -988,7 +990,7 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
     // updates it directly instead of creating a new slot.
     if (alootid_active_preset_ != 0) {
       for (const auto& p : alootid_presets_) {
-        if (p.no == alootid_active_preset_) {
+        if (p.slot_no == alootid_active_preset_) {
           std::strncpy(alootid_preset_input_, p.name.c_str(),
                        sizeof(alootid_preset_input_) - 1);
           alootid_preset_input_[sizeof(alootid_preset_input_) - 1] = '\0';
@@ -1125,7 +1127,7 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         break;
       case kSettingAlootIdRemove:
         break;
-      case kSettingStaff:
+      case kSettingGroupLevel:
         // Niveau de groupe serveur (pc_get_group_level). > 0 => staff/GM ; active
         // les fonctionnalités réservées (IsStaff), sans édition manuelle du yaml.
         g_staff_level = static_cast<int>(value);
@@ -1184,16 +1186,18 @@ const char* MoonlightUi::ItemName(uint32_t id) const {
 
 // Send a preset command to the server (save/load/delete).
 // The server will echo it back in a ZC_BOURGEON_PRESET_CMD packet.
-void MoonlightUi::SendPresetCmd(uint8_t cmd, uint8_t no, const char* name) {
-  const uint16_t namelen = name ? static_cast<uint16_t>(strnlen(name, 50)) : 0;
-  const uint16_t total   = static_cast<uint16_t>(6 + namelen);
-  std::vector<uint8_t> buf(total);
-  *reinterpret_cast<uint16_t*>(buf.data())     = kOpcodePresetCmd;
-  *reinterpret_cast<uint16_t*>(buf.data() + 2) = total;
-  buf[4] = cmd;
-  buf[5] = no;
-  if (namelen > 0) std::memcpy(buf.data() + 6, name, namelen);
-  Bourgeon::Instance().SendPacket(buf.data(), total);
+void MoonlightUi::SendPresetCmd(AlootPresetCmd command, uint8_t preset_no,
+                                const char* preset_name) {
+  const uint16_t name_len =
+      preset_name ? static_cast<uint16_t>(strnlen(preset_name, 50)) : 0;
+  const uint16_t total_len = static_cast<uint16_t>(6 + name_len);
+  std::vector<uint8_t> packet(total_len);
+  *reinterpret_cast<uint16_t*>(packet.data())     = kOpcodePresetCmd;
+  *reinterpret_cast<uint16_t*>(packet.data() + 2) = total_len;
+  packet[4] = static_cast<uint8_t>(command);
+  packet[5] = preset_no;
+  if (name_len > 0) std::memcpy(packet.data() + 6, preset_name, name_len);
+  Bourgeon::Instance().SendPacket(packet.data(), total_len);
 }
 
 // HelpMarker, WheelSliderFloat/Int, PushStyleCompact/PopStyleCompact ont été

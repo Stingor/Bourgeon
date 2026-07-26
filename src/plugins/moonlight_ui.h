@@ -138,15 +138,22 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingTriGstorage   = 22;
   static constexpr uint16_t kSettingAlootId       = 23;  // add item ID to autolootid list (0=clear)
   static constexpr uint16_t kSettingAlootIdRemove = 24;  // remove item ID from list
-  static constexpr uint16_t kSettingStaff         = 26;  // niveau de groupe serveur (pc_get_group_level), lecture seule
+  // ⚠ Ce n'est PAS un booléen « est staff » : la valeur est le NIVEAU de groupe
+  // serveur (pc_get_group_level, 0 pour un joueur). Le seuil staff est appliqué
+  // ailleurs, par IsStaff() (staff_gate.h). Un `if (kSettingGroupLevel)` écrit de
+  // bonne foi serait donc toujours vrai — d'où le nom, qui dit la valeur.
+  static constexpr uint16_t kSettingGroupLevel    = 26;  // lecture seule
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
 
-  static constexpr char kDiscordMap[] = "gonryun";  // sizeof - 1 = 7, correct prefix length
+  // PRÉFIXE de nom de carte, comparé au strncmp : « gonryun_in » matche aussi.
+  static constexpr char kDiscordRelayMapPrefix[] = "gonryun";  // sizeof - 1 = 7
 
-  bool in_game_    = false;
-  bool in_gonryun_ = false;
+  bool in_game_ = false;
+  // « Je suis sur la carte qui active le relais Discord » — et non « je suis à
+  // Gonryun » : la carte vient de kDiscordRelayMapPrefix, plus du dur.
+  bool on_discord_relay_map_ = false;
 
   // Server-synced (ID 9); restored from globalreg on login.
   bool discord_chat_ = false;
@@ -180,7 +187,9 @@ class MoonlightUi : public Plugin {
   std::vector<uint32_t> alootid_saved_ids_; // snapshot at last preset load/save
   int                   aloot_id_input_ = 0;
 
-  struct AlootPreset { uint8_t no; std::string name; bool autoload; };
+  // `slot_no` (et non `no`, qui se lit comme une négation) : NUMÉRO d'emplacement
+  // de preset côté serveur, 0 = aucun.
+  struct AlootPreset { uint8_t slot_no; std::string name; bool autoload; };
   std::vector<AlootPreset> alootid_presets_;   // received from server (ZC 0x0F07)
   uint8_t alootid_active_preset_   = 0;        // currently loaded preset no (0=none)
   uint8_t alootid_selected_preset_ = 0;        // selected in combo (may differ from active)
@@ -188,14 +197,28 @@ class MoonlightUi : public Plugin {
   char    alootid_rename_input_[64] = {};       // name field for rename (cmd 6)
   bool    alootid_rename_open_      = false;    // checkbox: show rename field
 
+  // Opération demandée au serveur sur un preset autolootid (CZ 0x0F06, octet de
+  // commande). Les valeurs sont celles qu'attend clif_parse_bourgeon_preset_cmd :
+  // ne pas les renuméroter. Un enum plutôt que des littéraux nus parce que
+  // `SendPresetCmd(4, …)` supprimait un preset sans que rien ne le dise.
+  enum AlootPresetCmd : uint8_t {
+    kAlootPresetSave     = 2,
+    kAlootPresetLoad     = 3,
+    kAlootPresetDelete   = 4,
+    kAlootPresetAutoload = 5,  // preset_no 0 = désactiver le chargement auto
+    kAlootPresetRename   = 6,
+  };
   // Sends a preset management command to the server (CZ 0x0F06).
-  void SendPresetCmd(uint8_t cmd, uint8_t no = 0, const char* name = nullptr);
+  void SendPresetCmd(AlootPresetCmd command, uint8_t preset_no = 0,
+                     const char* preset_name = nullptr);
   bool                  show_alootid_overlay_ = false;  // floating Add/Remove overlay on right-click
 
   // Address of the item description window message handler (FUN_008c18b0,
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
   static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
-  static constexpr uintptr_t kSkillDescWndAddr = 0x008ca900;  // UIItemTooltipWnd_OnMsg (skill 0x2e)
+  // (Le pendant SKILL, UIItemTooltipWnd_OnMsg 0x008ca900 pour le message 0x2e, a
+  //  été retiré avec son hook — cf. le chemin enrichi d'ItemDescTweaks. L'adresse
+  //  reste notée ici, en commentaire, pour qui voudrait le refaire.)
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by
   // the game independently of our hook, so polling it catches silent closes
