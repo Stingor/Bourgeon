@@ -59,13 +59,13 @@ inline bool ValidPos(int x, int y) {
 struct TrackedWindow {
   int         id;                    // FindWindow / MakeWindow key (UIWindow id)
   const char* key;                   // yaml key prefix
-  int         posX = INT_MIN;        // saved x (INT_MIN = unset)
-  int         posY = INT_MIN;        // saved y
+  int         pos_x = INT_MIN;        // saved x (INT_MIN = unset)
+  int         pos_y = INT_MIN;        // saved y
   // OnTick runtime state:
-  int         trackedX = INT_MIN;    // last position we persisted
-  int         trackedY = INT_MIN;
-  bool        wasOpen = false;       // window was open on the previous tick
-  DWORD       lastSave = 0;          // GetTickCount of the last persist (throttle)
+  int         tracked_x = INT_MIN;    // last position we persisted
+  int         tracked_y = INT_MIN;
+  bool        was_open = false;       // window was open on the previous tick
+  DWORD       last_save_ms = 0;          // GetTickCount of the last persist (throttle)
 };
 
 // ── THE TABLE ───────────────────────────────────────────────────────────────
@@ -112,9 +112,9 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
   if (win) {
     for (auto& w : g_windows) {
       if (w.id != windowID) continue;
-      if (ValidPos(w.posX, w.posY)) {
+      if (ValidPos(w.pos_x, w.pos_y)) {
         __try {
-          SetWinPos(win, w.posX, w.posY);
+          SetWinPos(win, w.pos_x, w.pos_y);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
         }
       }
@@ -296,32 +296,32 @@ void WindowPosTweaks::OnTick() {
   for (auto& w : g_windows) {
     void* win = FindWin(w.id);
     if (!win) {            // closed: force a re-baseline on the next open
-      w.wasOpen = false;
+      w.was_open = false;
       continue;
     }
 
     const int liveX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
     const int liveY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
 
-    if (!w.wasOpen) {  // just opened — the hook already positioned it; baseline
-      w.trackedX = liveX;
-      w.trackedY = liveY;
-      if (!ValidPos(w.posX, w.posY)) {  // first-ever use: seed the yaml with the spot
-        w.posX = liveX;
-        w.posY = liveY;
+    if (!w.was_open) {  // just opened — the hook already positioned it; baseline
+      w.tracked_x = liveX;
+      w.tracked_y = liveY;
+      if (!ValidPos(w.pos_x, w.pos_y)) {  // first-ever use: seed the yaml with the spot
+        w.pos_x = liveX;
+        w.pos_y = liveY;
       }
-      w.wasOpen = true;
+      w.was_open = true;
       continue;
     }
 
     // Persist genuine moves (drag), throttled to 200ms.
-    if ((liveX != w.trackedX || liveY != w.trackedY) &&
-        GetTickCount() - w.lastSave >= 200) {
-      w.posX = liveX;
-      w.posY = liveY;
-      w.trackedX = liveX;
-      w.trackedY = liveY;
-      w.lastSave = GetTickCount();
+    if ((liveX != w.tracked_x || liveY != w.tracked_y) &&
+        GetTickCount() - w.last_save_ms >= 200) {
+      w.pos_x = liveX;
+      w.pos_y = liveY;
+      w.tracked_x = liveX;
+      w.tracked_y = liveY;
+      w.last_save_ms = GetTickCount();
       dirty = true;
     }
   }
@@ -333,11 +333,11 @@ void WindowPosTweaks::OnTick() {
 // ── Enumeration API for MoonlightUi Save/LoadSettings ───────────────────────
 int         WindowPosTweaks_Count() { return kWindowCount; }
 const char* WindowPosTweaks_Key(int i) { return g_windows[i].key; }
-int         WindowPosTweaks_X(int i) { return g_windows[i].posX; }
-int         WindowPosTweaks_Y(int i) { return g_windows[i].posY; }
+int         WindowPosTweaks_X(int i) { return g_windows[i].pos_x; }
+int         WindowPosTweaks_Y(int i) { return g_windows[i].pos_y; }
 
 void WindowPosTweaks_SetSavedPos(int i, int x, int y) {
   // Just load the saved position. The MakeWindow hook applies it on the next open.
-  g_windows[i].posX = x;
-  g_windows[i].posY = y;
+  g_windows[i].pos_x = x;
+  g_windows[i].pos_y = y;
 }

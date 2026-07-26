@@ -258,21 +258,22 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h) {
 // so it saves/restores the render target + viewport + all render state around the
 // draw. Creates the RT + a system-memory readback surface per call (a handful of
 // small frames per export — not hot). DX9 only.
-bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
+bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int quad_count,
+                             int width_px, int height_px,
                              void* out_argb) {
     if (g_imgui_dx7_active) return false;
     IDirect3DDevice9* dev = g_imgui_device;
-    if (!dev || !out_argb || w <= 0 || h <= 0) return false;
+    if (!dev || !out_argb || width_px <= 0 || height_px <= 0) return false;
 
     IDirect3DTexture9* rt = nullptr;
-    if (FAILED(dev->CreateTexture(static_cast<UINT>(w), static_cast<UINT>(h), 1,
+    if (FAILED(dev->CreateTexture(static_cast<UINT>(width_px), static_cast<UINT>(height_px), 1,
                                   D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
                                   D3DPOOL_DEFAULT, &rt, nullptr)))
         return false;
     IDirect3DSurface9* rtSurf = nullptr;
     IDirect3DSurface9* sysSurf = nullptr;
     rt->GetSurfaceLevel(0, &rtSurf);
-    dev->CreateOffscreenPlainSurface(static_cast<UINT>(w), static_cast<UINT>(h),
+    dev->CreateOffscreenPlainSurface(static_cast<UINT>(width_px), static_cast<UINT>(height_px),
                                      D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &sysSurf,
                                      nullptr);
 
@@ -285,7 +286,7 @@ bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
 
     bool ok = false;
     if (rtSurf && sysSurf && SUCCEEDED(dev->SetRenderTarget(0, rtSurf))) {
-        D3DVIEWPORT9 vp{0, 0, static_cast<DWORD>(w), static_cast<DWORD>(h), 0.0f, 1.0f};
+        D3DVIEWPORT9 vp{0, 0, static_cast<DWORD>(width_px), static_cast<DWORD>(height_px), 0.0f, 1.0f};
         dev->SetViewport(&vp);
         dev->Clear(0, nullptr, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 0, 0), 1.0f, 0);
 
@@ -318,7 +319,7 @@ bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
         dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
 
         struct V { float x, y, z, rhw; DWORD c; float u, v; };
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < quad_count; ++i) {
             const D3D9TexQuad& q = quads[i];
             if (!q.tex) continue;
             dev->SetTexture(0, static_cast<IDirect3DBaseTexture9*>(q.tex));
@@ -337,10 +338,10 @@ bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
             if (SUCCEEDED(sysSurf->LockRect(&lr, nullptr, D3DLOCK_READONLY))) {
                 auto* dst = static_cast<unsigned char*>(out_argb);
                 const auto* src = static_cast<const unsigned char*>(lr.pBits);
-                for (int y = 0; y < h; ++y)
-                    std::memcpy(dst + static_cast<size_t>(y) * w * 4,
+                for (int y = 0; y < height_px; ++y)
+                    std::memcpy(dst + static_cast<size_t>(y) * width_px * 4,
                                 src + static_cast<size_t>(y) * lr.Pitch,
-                                static_cast<size_t>(w) * 4);
+                                static_cast<size_t>(width_px) * 4);
                 sysSurf->UnlockRect();
                 ok = true;
             }

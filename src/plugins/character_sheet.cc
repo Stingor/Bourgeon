@@ -41,17 +41,17 @@ constexpr int kEquipBase   = 0x17d0;   // equipement normal
 constexpr int kCostumeBase = 0x2b30;   // costume
 constexpr int kSlotStride  = 0xf8;
 // Offsets d'une entree (ItemSkillInfo).
-constexpr int keInvIndex = 0x04;   // index inventaire (a envoyer pour desequiper)
-constexpr int keLocation = 0x08;   // masque EQP
-constexpr int kePresent  = 0x10;   // ==1 si occupe
-constexpr int keResname  = 0x2c;   // std::string (SSO) : itemId en texte
-constexpr int keResCap   = 0x40;   // capacite SSO (>15 => heap)
-constexpr int keRefine   = 0x60;
-constexpr int keView     = 0x70;
-constexpr int keType     = 0x00;   // type d'item (equip 4/5/8/9/0xb-0xf)
-constexpr int keCards    = 0x1c;   // 4 u32 (nameid des cartes / forge)
-constexpr int keGrade    = 0x88;   // i16 : grade d'enchant
-constexpr int keWear     = 0x0c;   // etat porte (!=0 => equipe)
+constexpr int kOffEquipInvIndex = 0x04;   // index inventaire (a envoyer pour desequiper)
+constexpr int kOffEquipLocation = 0x08;   // masque EQP
+constexpr int kOffEquipPresent  = 0x10;   // ==1 si occupe
+constexpr int kOffEquipResname  = 0x2c;   // std::string (SSO) : itemId en texte
+constexpr int kOffEquipResCap   = 0x40;   // capacite SSO (>15 => heap)
+constexpr int kOffEquipRefine   = 0x60;
+constexpr int kOffEquipView     = 0x70;
+constexpr int kOffEquipType     = 0x00;   // type d'item (equip 4/5/8/9/0xb-0xf)
+constexpr int kOffEquipCards    = 0x1c;   // 4 u32 (nameid des cartes / forge)
+constexpr int kOffEquipGrade    = 0x88;   // i16 : grade d'enchant
+constexpr int kOffEquipWear     = 0x0c;   // etat porte (!=0 => equipe)
 constexpr int kNormalSlots = 10;   // slots equip normaux 0..9 (cf. disposition doll)
 constexpr int kEqpHandR    = 0x2;  // masque EQP main droite (arme) -> detecte le dual-wield
 constexpr int kMaxPresetsPerChar = 5;  // plafond de presets par personnage
@@ -84,7 +84,7 @@ constexpr uint32_t kEqpHandL  = 0x20;    // EQP main GAUCHE (bouclier / arme dua
 //  Munition : PAS un slot du tableau equip -> invIndex dans un global dédié (cf. RE 2026-07-12).
 //  On lit l'item par cet invIndex dans la liste inventaire (in-place, donne la quantité).
 constexpr uintptr_t kAmmoInvIndex = 0x015fba8c;  // g_AmmoEquippedInvIndex (0 = aucune)
-constexpr int keAmount = 0x10;   // quantité (item d'inventaire) ; == present pour un equip
+constexpr int kOffEquipAmount = 0x10;   // quantité (item d'inventaire) ; == present pour un equip
 
 //  Compagnons : CZ_BOURGEON_COMPANION (bopcodes::kCompanion 0x0F15) {kind, action, arg}.
 //  Miroir des enums serveur e_bourgeon_companion_kind / _action.
@@ -180,17 +180,17 @@ bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
     const uintptr_t base =
         kSession + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride;
     const uint8_t* e = reinterpret_cast<const uint8_t*>(base);
-    const int invIndex = *reinterpret_cast<const int*>(e + keInvIndex);
-    const int present  = *reinterpret_cast<const int*>(e + kePresent);
+    const int invIndex = *reinterpret_cast<const int*>(e + kOffEquipInvIndex);
+    const int present  = *reinterpret_cast<const int*>(e + kOffEquipPresent);
     if (invIndex == 0 || present != 1) return false;  // slot vide
     out->present  = true;
     out->invIndex = invIndex;
-    out->location = *reinterpret_cast<const int*>(e + keLocation);
-    out->refine   = *reinterpret_cast<const int*>(e + keRefine);
-    out->viewId   = *reinterpret_cast<const int*>(e + keView);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + keResCap);
-    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + keResname)
-                                : reinterpret_cast<const char*>(e + keResname);
+    out->location = *reinterpret_cast<const int*>(e + kOffEquipLocation);
+    out->refine   = *reinterpret_cast<const int*>(e + kOffEquipRefine);
+    out->viewId   = *reinterpret_cast<const int*>(e + kOffEquipView);
+    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffEquipResCap);
+    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + kOffEquipResname)
+                                : reinterpret_cast<const char*>(e + kOffEquipResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -217,15 +217,15 @@ bool ReadEquippedAmmo(AmmoItem* out) {
     void* node = *reinterpret_cast<void* const*>(sentinel);  // sentinelle->next = 1er noeud
     for (int i = 0; i < count && node && node != sentinel; ++i) {
       const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
-      if (*reinterpret_cast<const int*>(info + keInvIndex) == ammoIdx) {
+      if (*reinterpret_cast<const int*>(info + kOffEquipInvIndex) == ammoIdx) {
         out->present  = true;
         out->invIndex = ammoIdx;
-        out->amount   = *reinterpret_cast<const int*>(info + keAmount);
-        out->location = *reinterpret_cast<const int*>(info + keLocation);
-        out->viewId   = *reinterpret_cast<const int*>(info + keView);
-        const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + keResCap);
-        const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(info + keResname)
-                                    : reinterpret_cast<const char*>(info + keResname);
+        out->amount   = *reinterpret_cast<const int*>(info + kOffEquipAmount);
+        out->location = *reinterpret_cast<const int*>(info + kOffEquipLocation);
+        out->viewId   = *reinterpret_cast<const int*>(info + kOffEquipView);
+        const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + kOffEquipResCap);
+        const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(info + kOffEquipResname)
+                                    : reinterpret_cast<const char*>(info + kOffEquipResname);
         out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
         return out->nameid != 0;
       }
@@ -259,17 +259,17 @@ int ReadInventoryLite(InvItemLite* out, int cap) {
     for (int i = 0; i < count && n < cap && node && node != sentinel; ++i) {
       const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
       InvItemLite& it = out[n];
-      it.type     = *reinterpret_cast<const int*>(info + keType);
-      it.index    = *reinterpret_cast<const int*>(info + keInvIndex);
-      it.loc      = *reinterpret_cast<const int*>(info + keLocation);
-      it.equipped = *reinterpret_cast<const int*>(info + keWear) != 0;
-      it.refine   = *reinterpret_cast<const int*>(info + keRefine);
-      it.grade    = *reinterpret_cast<const short*>(info + keGrade);
+      it.type     = *reinterpret_cast<const int*>(info + kOffEquipType);
+      it.index    = *reinterpret_cast<const int*>(info + kOffEquipInvIndex);
+      it.loc      = *reinterpret_cast<const int*>(info + kOffEquipLocation);
+      it.equipped = *reinterpret_cast<const int*>(info + kOffEquipWear) != 0;
+      it.refine   = *reinterpret_cast<const int*>(info + kOffEquipRefine);
+      it.grade    = *reinterpret_cast<const short*>(info + kOffEquipGrade);
       for (int c = 0; c < 4; ++c)
-        it.cards[c] = *reinterpret_cast<const uint32_t*>(info + keCards + c * 4);
-      const uint32_t capS = *reinterpret_cast<const uint32_t*>(info + keResCap);
-      const char* rn = (capS > 15) ? *reinterpret_cast<const char* const*>(info + keResname)
-                                   : reinterpret_cast<const char*>(info + keResname);
+        it.cards[c] = *reinterpret_cast<const uint32_t*>(info + kOffEquipCards + c * 4);
+      const uint32_t capS = *reinterpret_cast<const uint32_t*>(info + kOffEquipResCap);
+      const char* rn = (capS > 15) ? *reinterpret_cast<const char* const*>(info + kOffEquipResname)
+                                   : reinterpret_cast<const char*>(info + kOffEquipResname);
       it.nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
       ++n;
       node = *reinterpret_cast<void* const*>(node);  // node->next
@@ -291,20 +291,20 @@ bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
   __try {
     const uint8_t* e = reinterpret_cast<const uint8_t*>(
         kSession + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride);
-    if (*reinterpret_cast<const int*>(e + keInvIndex) == 0 ||
-        *reinterpret_cast<const int*>(e + kePresent) != 1)
+    if (*reinterpret_cast<const int*>(e + kOffEquipInvIndex) == 0 ||
+        *reinterpret_cast<const int*>(e + kOffEquipPresent) != 1)
       return false;
-    out->index    = *reinterpret_cast<const int*>(e + keInvIndex);
-    out->type     = *reinterpret_cast<const int*>(e + keType);
-    out->loc      = *reinterpret_cast<const int*>(e + keLocation);
+    out->index    = *reinterpret_cast<const int*>(e + kOffEquipInvIndex);
+    out->type     = *reinterpret_cast<const int*>(e + kOffEquipType);
+    out->loc      = *reinterpret_cast<const int*>(e + kOffEquipLocation);
     out->equipped = true;
-    out->refine   = *reinterpret_cast<const int*>(e + keRefine);
-    out->grade    = *reinterpret_cast<const short*>(e + keGrade);
+    out->refine   = *reinterpret_cast<const int*>(e + kOffEquipRefine);
+    out->grade    = *reinterpret_cast<const short*>(e + kOffEquipGrade);
     for (int c = 0; c < 4; ++c)
-      out->cards[c] = *reinterpret_cast<const uint32_t*>(e + keCards + c * 4);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + keResCap);
-    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + keResname)
-                                : reinterpret_cast<const char*>(e + keResname);
+      out->cards[c] = *reinterpret_cast<const uint32_t*>(e + kOffEquipCards + c * 4);
+    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffEquipResCap);
+    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + kOffEquipResname)
+                                : reinterpret_cast<const char*>(e + kOffEquipResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -854,12 +854,12 @@ int CaptureMainVk() {
 }
 // Étiquette d'un combo : "Ctrl+Maj+F1" / "(aucun)".
 void HotkeyLabel(const EquipPreset& ep, char* out, int cap) {
-  if (ep.hotkeyVk == 0) { std::snprintf(out, cap, "(aucun)"); return; }
+  if (ep.hotkey_vk == 0) { std::snprintf(out, cap, "(aucun)"); return; }
   char mods[24] = {0};
-  if (ep.hkCtrl)  std::strncat(mods, "Ctrl+", sizeof(mods) - std::strlen(mods) - 1);
-  if (ep.hkAlt)   std::strncat(mods, "Alt+",  sizeof(mods) - std::strlen(mods) - 1);
-  if (ep.hkShift) std::strncat(mods, "Maj+",  sizeof(mods) - std::strlen(mods) - 1);
-  const char* kn = ImGui::GetKeyName(VkToImGuiKey(ep.hotkeyVk));
+  if (ep.hotkey_ctrl)  std::strncat(mods, "Ctrl+", sizeof(mods) - std::strlen(mods) - 1);
+  if (ep.hotkey_alt)   std::strncat(mods, "Alt+",  sizeof(mods) - std::strlen(mods) - 1);
+  if (ep.hotkey_shift) std::strncat(mods, "Maj+",  sizeof(mods) - std::strlen(mods) - 1);
+  const char* kn = ImGui::GetKeyName(VkToImGuiKey(ep.hotkey_vk));
   std::snprintf(out, cap, "%s%s", mods, (kn && kn[0]) ? kn : "?");
 }
 // Lit le raccourci natif d'un slot de la barre (via GetHotKey Lua, rebind-aware). mainVk + le VK
@@ -1232,7 +1232,7 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
     pi.grade  = li.grade;
     for (int c = 0; c < 4; ++c) pi.cards[c] = li.cards[c];
     // Slot 5 = bouclier / main gauche : une ARME (loc EQP_HAND_R) qui y siege = dual-wield.
-    pi.leftHand = (s == 5) && (li.loc & kEqpHandR) != 0;
+    pi.left_hand = (s == 5) && (li.loc & kEqpHandR) != 0;
     p.items.push_back(pi);
   }
   // Ecrase un preset existant de MEME nom pour ce perso, sinon ajoute.
@@ -1282,7 +1282,7 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
       if (FindInvLiteByIndex(inv, n, idx, &li)) {
         // Position = masque EQP de l'item (info+8, comme le natif) ; forcee a la main GAUCHE
         // pour une arme dual-wield (sinon le serveur pre-renewal la remettrait a droite).
-        const uint32_t pos = pi.leftHand ? kEqpHandL : static_cast<uint32_t>(li.loc);
+        const uint32_t pos = pi.left_hand ? kEqpHandL : static_cast<uint32_t>(li.loc);
         toEquip[neq++] = {idx, pos};
       }
     }
@@ -1335,8 +1335,8 @@ bool CharacterSheet::HotkeyConflict(int vk, bool ctrl, bool alt, bool shift, int
   for (int i = 0; i < static_cast<int>(equip_presets_.size()); ++i) {
     if (i == selfIdx) continue;
     const EquipPreset& e = equip_presets_[i];
-    if (e.cid == cid && e.hotkeyVk == vk && e.hkCtrl == ctrl && e.hkAlt == alt &&
-        e.hkShift == shift) {
+    if (e.cid == cid && e.hotkey_vk == vk && e.hotkey_ctrl == ctrl && e.hotkey_alt == alt &&
+        e.hotkey_shift == shift) {
       std::snprintf(what, cap, "le preset « %s »", e.name.c_str());
       return true;
     }
@@ -1363,9 +1363,9 @@ void CharacterSheet::ProcessPresetHotkeys() {
   if (io.WantTextInput) return;    // saisie de texte (chat…) : ne pas déclencher
   const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
   for (const EquipPreset& ep : equip_presets_) {
-    if (ep.cid != cid || ep.hotkeyVk == 0) continue;
-    if (io.KeyCtrl != ep.hkCtrl || io.KeyAlt != ep.hkAlt || io.KeyShift != ep.hkShift) continue;
-    const ImGuiKey k = VkToImGuiKey(ep.hotkeyVk);
+    if (ep.cid != cid || ep.hotkey_vk == 0) continue;
+    if (io.KeyCtrl != ep.hotkey_ctrl || io.KeyAlt != ep.hotkey_alt || io.KeyShift != ep.hotkey_shift) continue;
+    const ImGuiKey k = VkToImGuiKey(ep.hotkey_vk);
     if (k != ImGuiKey_None && ImGui::IsKeyPressed(k, false)) { ApplyPreset(ep); break; }
   }
 }
@@ -1448,7 +1448,7 @@ void CharacterSheet::DrawPresetsTab() {
           hk_conflict_msg_ = std::string("Déjà utilisé par ") + what + " — choisis un autre combo";
         } else {  // libre : on assigne + persiste
           EquipPreset& e = equip_presets_[mine[mi]];
-          e.hotkeyVk = vk; e.hkCtrl = c; e.hkAlt = a; e.hkShift = sh;
+          e.hotkey_vk = vk; e.hotkey_ctrl = c; e.hotkey_alt = a; e.hotkey_shift = sh;
           hk_capturing_ = -1;
           hk_conflict_msg_.clear();
           if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
@@ -1466,11 +1466,11 @@ void CharacterSheet::DrawPresetsTab() {
         hk_capturing_ = mine[mi];
         hk_conflict_msg_.clear();
       }
-      if (ep.hotkeyVk != 0) {
+      if (ep.hotkey_vk != 0) {
         ImGui::SameLine(0.0f, 4.0f);
         if (ro::RoButton("Effacer", bw("Effacer"))) {
           EquipPreset& e = equip_presets_[mine[mi]];
-          e.hotkeyVk = 0; e.hkCtrl = e.hkAlt = e.hkShift = false;
+          e.hotkey_vk = 0; e.hotkey_ctrl = e.hotkey_alt = e.hotkey_shift = false;
           if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
         }
       }

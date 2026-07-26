@@ -60,7 +60,7 @@ constexpr int kInfoLoc    = 0x08;  // masque d'emplacement d'équip (arg2 du msg
 constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
 constexpr int kInfoIdCap  = 0x40;  // capacité SSO de la std::string id (+0x2c+0x14)
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
-constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet keRefine
+constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet kOffEquipRefine
 
 // Poids / zeny / compteur.
 constexpr uintptr_t kWeightCur     = 0x015fbaa0;
@@ -355,9 +355,9 @@ void SendCmd(int cmd, int index, int arg2) {
 // Utiliser ou équiper l'item selon son type (miroir du double-clic natif 0x00949fc0).
 // arg2 = masque d'emplacement (info+8, `loc`) pour ÉQUIP/MUNITION — le natif le passe ;
 // arg2=0 => le serveur reçoit position 0 => l'équip échoue (c'était LE bug). arg2=0 pour
-// conso/carte (le natif le force à 0). leftHand (Ctrl+double-clic) = cmd 0x12e (main
+// conso/carte (le natif le force à 0). left_hand (Ctrl+double-clic) = cmd 0x12e (main
 // gauche dual-wield) si l'option client DAT_01602278 est active.
-void UseOrEquip(int index, int type, uint32_t loc, bool leftHand) {
+void UseOrEquip(int index, int type, uint32_t loc, bool left_hand) {
   int cmd = 0, arg2 = 0;
   switch (type) {
     case 0: case 1: case 2: case 0x12: cmd = kCmdUse; break;  // consommables (arg2=0)
@@ -370,7 +370,7 @@ void UseOrEquip(int index, int type, uint32_t loc, bool leftHand) {
     default: return;  // etc/divers : le double-clic ne fait rien
   }
   // Ctrl = main gauche (équip/munition), si l'option client est active (comme le natif).
-  if (leftHand && (cmd == kCmdEquip || cmd == kCmdAmmo)) {
+  if (left_hand && (cmd == kCmdEquip || cmd == kCmdAmmo)) {
     bool opt = false;
     __try { opt = *reinterpret_cast<uint8_t*>(kLeftHandEquipOpt) != 0; }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -1225,9 +1225,9 @@ bool InventoryViewer::HandleNativeDrop(int mx, int my) {
 // drag dont l'ID est semé par l'index stable) -> robuste à une renumérotation d'items_
 // pendant le glisser, et indépendant de l'ordre de rendu des fenêtres. Utilisé par le
 // drag-drop cross-plugin de character_sheet.
-bool InventoryViewer::EquipDraggedItem(bool leftHand) {
+bool InventoryViewer::EquipDraggedItem(bool left_hand) {
   if (!drag_active_ || !IsEquippable(drag_type_)) return false;
-  UseOrEquip(drag_index_, drag_type_, drag_loc_, leftHand);
+  UseOrEquip(drag_index_, drag_type_, drag_loc_, left_hand);
   return true;
 }
 

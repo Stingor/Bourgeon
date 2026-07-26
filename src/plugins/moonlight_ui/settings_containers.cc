@@ -218,17 +218,17 @@ void ReadEquipPresets(const YAML::Node& ui) {
     preset.cid  = node["cid"].as<uint32_t>(0);
     preset.name = node["name"].as<std::string>("");
     if (preset.name.empty()) continue;
-    preset.hotkeyVk = node["hkvk"].as<int>(0);
-    preset.hkCtrl   = node["hkc"].as<bool>(false);
-    preset.hkAlt    = node["hka"].as<bool>(false);
-    preset.hkShift  = node["hks"].as<bool>(false);
+    preset.hotkey_vk    = node["hkvk"].as<int>(0);
+    preset.hotkey_ctrl  = node["hkc"].as<bool>(false);
+    preset.hotkey_alt   = node["hka"].as<bool>(false);
+    preset.hotkey_shift = node["hks"].as<bool>(false);
     if (const YAML::Node items = node["items"]) {
       for (const YAML::Node& item : items) {
         EquipPresetItem entry;
         entry.nameid   = item["id"].as<uint32_t>(0);
         entry.refine   = item["refine"].as<int>(0);
         entry.grade    = item["grade"].as<int>(0);
-        entry.leftHand = item["left"].as<bool>(false);
+        entry.left_hand = item["left"].as<bool>(false);
         if (const YAML::Node cards = item["cards"])
           for (int slot = 0; slot < 4 && slot < static_cast<int>(cards.size()); ++slot)
             entry.cards[slot] = cards[slot].as<uint32_t>(0);
@@ -246,17 +246,17 @@ void WriteEquipPresets(YAML::Emitter& out) {
       out << YAML::BeginMap
           << YAML::Key << "cid"  << YAML::Value << preset.cid
           << YAML::Key << "name" << YAML::Value << preset.name
-          << YAML::Key << "hkvk" << YAML::Value << preset.hotkeyVk
-          << YAML::Key << "hkc"  << YAML::Value << preset.hkCtrl
-          << YAML::Key << "hka"  << YAML::Value << preset.hkAlt
-          << YAML::Key << "hks"  << YAML::Value << preset.hkShift
+          << YAML::Key << "hkvk" << YAML::Value << preset.hotkey_vk
+          << YAML::Key << "hkc"  << YAML::Value << preset.hotkey_ctrl
+          << YAML::Key << "hka"  << YAML::Value << preset.hotkey_alt
+          << YAML::Key << "hks"  << YAML::Value << preset.hotkey_shift
           << YAML::Key << "items" << YAML::Value << YAML::BeginSeq;
       for (const EquipPresetItem& entry : preset.items) {
         out << YAML::BeginMap
             << YAML::Key << "id"     << YAML::Value << entry.nameid
             << YAML::Key << "refine" << YAML::Value << entry.refine
             << YAML::Key << "grade"  << YAML::Value << entry.grade
-            << YAML::Key << "left"   << YAML::Value << entry.leftHand
+            << YAML::Key << "left"   << YAML::Value << entry.left_hand
             << YAML::Key << "cards"  << YAML::Value << YAML::Flow << YAML::BeginSeq;
         for (int slot = 0; slot < 4; ++slot) out << entry.cards[slot];
         out << YAML::EndSeq << YAML::EndMap;

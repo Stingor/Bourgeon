@@ -146,8 +146,8 @@ void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len)
 // point the buffer has not yet been processed by FUN_00b1e920, so the data is
 // still the original packet bytes.  We save a copy for registered opcodes so
 // the dispatch handler can read it without racing against later writes.
-uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
-  const uint16_t opcode = *reinterpret_cast<const uint16_t*>(param_1);
+uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
+  const uint16_t opcode = *reinterpret_cast<const uint16_t*>(packet_buf);
   // Map-load start: ZC_NPCACK_MAPMOVE (0x0091, same-server warp/@load) or
   // ZC_NPCACK_SERVERMOVE (0x0092, cross-server) begins a map transition. Hold the
   // loading gate until the client reports ready (CZ_NOTIFY_ACTORINIT 0x007d, see
@@ -155,7 +155,7 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
   if (opcode == 0x0091 || opcode == 0x0092)
     Bourgeon::Instance().SetMapLoading(true);
   // Call the original (just returns opcode = *(uint16_t*)param_1).
-  const uint16_t result = PacketBufReaderRef(this, param_1);
+  const uint16_t result = PacketBufReaderRef(this, packet_buf);
 
   // Si c'est un de NOS opcodes hors-plage (reader-dispatch), la boucle recv va
   // appeler RecvBuffer_ResetAll juste après -> on arme le skip pour éviter que le
@@ -164,9 +164,9 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
   g_suppress_buffer_reset = s_reader_dispatch_opcodes_.count(opcode) != 0;
 
   if (s_registered_opcodes_.count(opcode)) {
-    const uint16_t total_len = *reinterpret_cast<const uint16_t*>(param_1 + 2);
+    const uint16_t total_len = *reinterpret_cast<const uint16_t*>(packet_buf + 2);
     if (total_len >= 4 && total_len <= sizeof(g_saved_packet)) {
-      std::memcpy(g_saved_packet, param_1, total_len);
+      std::memcpy(g_saved_packet, packet_buf, total_len);
       g_saved_packet_len = total_len;
       // Opcodes au-dessus de la dispatch table : leur handler natif n'est PAS
       // appelé (hors bornes) -> on déclenche OnRecvPacket ICI (comme
@@ -186,7 +186,7 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* param_1) {
   // game's own handler still runs — we only peek (e.g. mapname from 0x0091).
   const auto obs = s_observe_opcodes_.find(opcode);
   if (obs != s_observe_opcodes_.end()) {
-    Bourgeon::Instance().FireRecvPacket(opcode, param_1 + 2, obs->second);
+    Bourgeon::Instance().FireRecvPacket(opcode, packet_buf + 2, obs->second);
   }
   return result;
 }

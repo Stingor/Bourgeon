@@ -299,7 +299,7 @@ void EquipTweaks_SetSavedPos(int x, int y) {
 // returns null, so g_posX keeps the last spot for the next restore.
 void EquipTweaks::OnTick() {
   static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
-  static DWORD lastSave = 0;                       // GetTickCount of the last save
+  static DWORD last_save_ms = 0;                       // GetTickCount of the last save
   static bool init = false;
   void* win = uiwnd::FindWindow(kEquipId);
   if (!win) return;                               // equip window not open
@@ -321,10 +321,10 @@ void EquipTweaks::OnTick() {
   if (!init) {  // no saved pos to restore: baseline off the current spot
     savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
   }
-  if ((liveX != savedX || liveY != savedY) && GetTickCount() - lastSave >= 200) {
+  if ((liveX != savedX || liveY != savedY) && GetTickCount() - last_save_ms >= 200) {
     g_posX = liveX; g_posY = liveY;
     if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
     savedX = liveX; savedY = liveY;
-    lastSave = GetTickCount();
+    last_save_ms = GetTickCount();
   }
 }

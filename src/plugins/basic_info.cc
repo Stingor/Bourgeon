@@ -825,9 +825,9 @@ void EmitWeaponShieldLayers(int anim, int dir, int frameIdx, float body_scale) {
 constexpr int kOffChildPrimary = 0x380;  // acteur -> pointeur enfant PERSISTANT (stable tout le frame)
 constexpr int kOffChildHead    = 0x3a8;  // acteur -> std::list enfants de RENDU (souvent VIDE en EndScene)
 constexpr int kOffChildCount   = 0x3ac;  // acteur -> _Mysize de la liste ci-dessus
-constexpr int kcPose = 0x38, kcFrame = 0x3c, kcActive = 0xa0;
-constexpr int kcSpr = 0x104, kcAct = 0x108, kcVisible = 0x158, kcParent = 0x15c;
-constexpr int kcSprPath = 0x14;  // ressource SPR -> chemin GRF (char buffer null-terminé)
+constexpr int kOffChildPose = 0x38, kOffChildFrame = 0x3c, kOffChildActive = 0xa0;
+constexpr int kOffChildSpr = 0x104, kOffChildAct = 0x108, kOffChildVisible = 0x158, kOffChildParent = 0x15c;
+constexpr int kOffChildSprPath = 0x14;  // ressource SPR -> chemin GRF (char buffer null-terminé)
 const char kCartMark[]   = "\xBC\xD5\xBC\xF6\xB7\xB9";  // 손수레 (CP949) = chariot
 const char kFalconMark[] = "\xB8\xC5";                   // 매 (CP949) = faucon
 // Nudge d'ancrage (espace acteur, scalé par body_scale) — à régler à l'œil si le chariot/faucon
@@ -841,7 +841,7 @@ constexpr int kCartDirOffset = 0, kFalconDirOffset = 0;
 // Le chemin GRF du SPR (spr+0x14) contient-il `needle` (bytes CP949) ? SEH (POD).
 bool ChildSprPathHas(void* spr, const char* needle, int nlen) {
   __try {
-    const char* p = reinterpret_cast<const char*>(spr) + kcSprPath;
+    const char* p = reinterpret_cast<const char*>(spr) + kOffChildSprPath;
     for (int i = 0; i < 256 && p[i]; ++i) {
       int j = 0;
       for (; j < nlen && p[i + j]; ++j)
@@ -919,11 +919,11 @@ void EmitCompanionLayers(int pose, bool animate, float body_scale) {
     void* falcSpr = nullptr; void* falcAct = nullptr;
     for (int i = 0; i < nk; ++i) {
       void* c = kids[i];
-      if (*reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcParent) != actor) continue;
-      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kcActive) == 0) continue;
-      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kcVisible) == 0) continue;
-      void* spr = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcSpr);
-      void* act = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kcAct);
+      if (*reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kOffChildParent) != actor) continue;
+      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kOffChildActive) == 0) continue;
+      if (*reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(c) + kOffChildVisible) == 0) continue;
+      void* spr = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kOffChildSpr);
+      void* act = *reinterpret_cast<void**>(reinterpret_cast<char*>(c) + kOffChildAct);
       if (!spr || !act) continue;
       // On NE lit PAS pose/frame live de l'enfant (ils défilent quand le joueur bouge → doll
       // qui vibre) : la fiche est FIGÉE, on reconstruit pose (base idle + dir affichée) et frame
@@ -1773,14 +1773,14 @@ const char* HatOrdinalToResName(int ordinal) {
 }
 
 // Paramètres d'un hat effect (Lua, AUCUN hardcode) :
-//   posX  = GetHatEfPosX(ord)           : décalage horizontal (HatEffectInfo.lub)
+//   pos_x  = GetHatEfPosX(ord)           : décalage horizontal (HatEffectInfo.lub)
 //   before= IsRenderBeforeCharacter(ord): effet DERRIÈRE le perso (true) ou devant (false)
 // (Le décalage VERTICAL des effets "tête/scène" vient d'un nudge ÉCRAN -80 natif
 //  (CActorSprite_ComputeStrScreenAnchor), NON reproductible à plat sans l'échelle de rendu en jeu S.
 //  On ancre donc tous les effets sur l'ORIGINE de l'acteur (pieds) et le .str se place lui-même :
 //  cercle magique au sol, pièces au-dessus, etc. -> correct pour les effets sol, un peu bas pour
 //  les effets tête/scène qui voudraient le -80.)
-struct HatEffectParams { float posX = 0.0f; bool before = false; };
+struct HatEffectParams { float pos_x = 0.0f; bool before = false; };
 
 // Appel brut d'un global Lua getter(ord). Nombre : lua_tolstring+atof (le natif convertit les
 // nombres en place, cf. GetHatEfResName). Booléen : lua_toboolean. POD/SEH. `def` si Lua KO.
@@ -1828,7 +1828,7 @@ const HatEffectParams& HatOrdinalParams(int ordinal) {
   void* M = *reinterpret_cast<void**>(kLuaStateB);     // simple lecture (global toujours mappé)
   if (!M || !*reinterpret_cast<void**>(M)) return s_fallback;  // Lua pas prêt -> pas de cache
   HatEffectParams p;
-  p.posX   = HatLuaNum(ordinal, "GetHatEfPosX", 0.0f);
+  p.pos_x   = HatLuaNum(ordinal, "GetHatEfPosX", 0.0f);
   p.before = HatLuaBool(ordinal, "IsRenderBeforeCharacter", false);
   return cache[ordinal] = p;
 }
@@ -2383,7 +2383,7 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
     hat_diag_concrete_ = hat_ordinal;
     hat_diag_layers_   = g_str_count;
     // Ancre = ORIGINE de l'acteur (oy) comme l'avatar : le .str se place lui-même (sol/tête/centré).
-    DrawStrCapLayers(dl, ox + hp.posX * s, oy, s);
+    DrawStrCapLayers(dl, ox + hp.pos_x * s, oy, s);
   };
   // DERRIÈRE le perso
   if (hp.before) drawPreviewHat();                                             // .str derrière
@@ -2578,7 +2578,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       // seule ancre pour tous, pose-suivie (oy = pieds recadrés par pose). + hatEffectPosX horizontal.
       // (Le lift écran -80 natif des effets "tête/scène" n'est PAS reproductible à plat sans l'échelle
       //  de rendu en jeu S ; l'ancre origine reste juste au sol et sous la tête.)
-      const float hox = ox + hp.posX * s;
+      const float hox = ox + hp.pos_x * s;
       DrawStrCapLayers(dl, hox, oy, s);      // contenu .str -> écran via DepthScale = s
     }
   };

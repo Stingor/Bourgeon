@@ -8,23 +8,23 @@
 #include "plugins/plugin.h"
 
 // Un item d'un preset d'equipement : identite suffisante pour le RETROUVER en
-// inventaire lors de l'application (nameid + refine + cartes + grade). leftHand =
+// inventaire lors de l'application (nameid + refine + cartes + grade). left_hand =
 // arme equipee en main gauche (dual-wield, slot bouclier).
 struct EquipPresetItem {
   uint32_t nameid = 0;
   int      refine = 0;
   uint32_t cards[4] = {0, 0, 0, 0};
   int      grade = 0;
-  bool     leftHand = false;
+  bool     left_hand = false;
 };
 // Un preset = un jeu d'equipement nomme, propre a UN personnage (cid = g_Own_CharId).
 struct EquipPreset {
   uint32_t                     cid = 0;
   std::string                  name;
   std::vector<EquipPresetItem> items;
-  // Raccourci clavier optionnel (VK Windows + modificateurs). hotkeyVk==0 => aucun.
-  int  hotkeyVk = 0;
-  bool hkCtrl = false, hkAlt = false, hkShift = false;
+  // Raccourci clavier optionnel (VK Windows + modificateurs). hotkey_vk==0 => aucun.
+  int  hotkey_vk = 0;
+  bool hotkey_ctrl = false, hotkey_alt = false, hotkey_shift = false;
 };
 
 // Feuille de personnage facon WoW : un avatar central entoure des slots

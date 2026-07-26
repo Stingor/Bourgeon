@@ -98,7 +98,8 @@ struct D3D9TexQuad {
 // A8R8G8B8 = 0xAARRGGBB per pixel). The canvas alpha becomes the cut-out coverage.
 // Used by the character-sheet avatar GIF export. Returns false if the D3D9 device
 // isn't ready or a resource/lock fails. DX9 only (no-op under the DX7 proxy).
-bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int n, int w, int h,
+bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int quad_count,
+                             int width_px, int height_px,
                              void* out_argb);
 
 // Global texture min/mag filter override for the GAME's rendering (not the

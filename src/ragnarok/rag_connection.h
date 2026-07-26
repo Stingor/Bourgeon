@@ -41,7 +41,7 @@ class RagConnection {
   // Hook on FUN_00c144b0 — fires immediately after FUN_00c147d0 copies a
   // packet into the shared recv buffer, before FUN_00b1e920 can overwrite it.
   // Saves a copy of any registered packet so the dispatch handler can read it.
-  uint16_t PacketBufReaderHook(uint8_t *param_1);
+  uint16_t PacketBufReaderHook(uint8_t *packet_buf);
 
   // Installed in the dispatch table via RegisterRecvOpcode.  FUN_00c9df00
   // (20250716) reaches handlers via `JMP [table+idx*4]` — a tail call, not

@@ -35,45 +35,45 @@ uint8_t* HookManager::PrepareHook(uint8_t* hook_addr) {
     size = next - hook_addr;
   }
 
-  // Put JMP from original+size to hookAddr+size
-  INT32 jmpSrc = (INT32)(original + size + 5);
-  INT32 jmpDst = (INT32)(hook_addr + size);
+  // Put JMP from original+size to hook_addr+size
+  INT32 jmp_src = (INT32)(original + size + 5);
+  INT32 jmp_dst = (INT32)(hook_addr + size);
   *(original + size) = 0xE9;
-  *((PINT32)(original + size + 1)) = (INT32)(jmpDst - jmpSrc);
+  *((PINT32)(original + size + 1)) = (INT32)(jmp_dst - jmp_src);
 
   return original;
 }
 
 bool HookManager::ActivateHook(uint8_t* hook_addr, uint8_t* destination) {
   MEMORY_BASIC_INFORMATION mbi;
-  DWORD oldProtection;
+  DWORD old_protection;
 
   if (!VirtualQuery(hook_addr, &mbi, sizeof(mbi))) return false;
-  if (!VirtualProtect(hook_addr, 0x5, PAGE_EXECUTE_READWRITE, &oldProtection))
+  if (!VirtualProtect(hook_addr, 0x5, PAGE_EXECUTE_READWRITE, &old_protection))
     return false;
 
-  // Put JMP from hookAddr to destination
-  INT32 jmpSrc = (INT32)(hook_addr + 5);
-  INT32 jmpDst = (INT32)(destination);
+  // Put JMP from hook_addr to destination
+  INT32 jmp_src = (INT32)(hook_addr + 5);
+  INT32 jmp_dst = (INT32)(destination);
   *(hook_addr) = 0xE9;
-  *((PINT32)(hook_addr + 1)) = (INT32)(jmpDst - jmpSrc);
+  *((PINT32)(hook_addr + 1)) = (INT32)(jmp_dst - jmp_src);
 
-  VirtualProtect(hook_addr, 0x5, oldProtection, &oldProtection);
+  VirtualProtect(hook_addr, 0x5, old_protection, &old_protection);
   FlushInstructionCache(GetCurrentProcess(), hook_addr, 0x5);
 
   return true;
 }
 
-void* HookManager::SetHook(HookType hookType, uint8_t* hookAddr,
+void* HookManager::SetHook(HookType hook_type, uint8_t* hook_addr,
                            uint8_t* destination) {
   PBYTE original = nullptr;
 
-  switch (hookType) {
+  switch (hook_type) {
     case HookType::kJmpHook:
-      original = SetJmpHook(hookAddr, destination);
+      original = SetJmpHook(hook_addr, destination);
       break;
     case HookType::kHwbpHook:
-      original = SetHwbpHook(hookAddr, destination);
+      original = SetHwbpHook(hook_addr, destination);
       break;
     default:
       return nullptr;
@@ -81,35 +81,35 @@ void* HookManager::SetHook(HookType hookType, uint8_t* hookAddr,
   if (!original) return nullptr;
 
   // REGISTER THE HOOK
-  auto hookInfo = std::make_shared<HookInfo>();
+  auto hook_info = std::make_shared<HookInfo>();
 
-  hookInfo->hookType = hookType;
-  hookInfo->destination = destination;
-  hookInfo->original = original;
+  hook_info->hook_type = hook_type;
+  hook_info->destination = destination;
+  hook_info->original = original;
 
-  hook_map_[hookAddr] = std::move(hookInfo);
+  hook_map_[hook_addr] = std::move(hook_info);
 
   return original;
 }
 
-bool HookManager::UnsetHook(uint8_t* hookAddr) {
-  std::shared_ptr<HookInfo> hookInfo;
+bool HookManager::UnsetHook(uint8_t* hook_addr) {
+  std::shared_ptr<HookInfo> hook_info;
   bool result = false;
 
   try {
-    auto it = hook_map_.find(hookAddr);
-    hookInfo = it->second;
+    auto it = hook_map_.find(hook_addr);
+    hook_info = it->second;
     hook_map_.erase(it);
   } catch (const std::out_of_range&) {
     return false;
   }
 
-  switch (hookInfo->hookType) {
+  switch (hook_info->hook_type) {
     case HookType::kJmpHook:
-      result = UnsetJmpHook(hookAddr, hookInfo->original);
+      result = UnsetJmpHook(hook_addr, hook_info->original);
       break;
     case HookType::kHwbpHook:
-      result = UnsetHwbpHook(hookAddr, hookInfo->original);
+      result = UnsetHwbpHook(hook_addr, hook_info->original);
       break;
   }
 
@@ -120,15 +120,15 @@ bool HookManager::UnsetHook(uint8_t* hookAddr) {
 //============= PRIVATE METHODS =============
 //===========================================
 
-uint8_t* HookManager::SetJmpHook(uint8_t* hookAddr, uint8_t* destination) {
-  uint8_t* original = PrepareHook(hookAddr);
-  if (ActivateHook(hookAddr, destination)) return original;
+uint8_t* HookManager::SetJmpHook(uint8_t* hook_addr, uint8_t* destination) {
+  uint8_t* original = PrepareHook(hook_addr);
+  if (ActivateHook(hook_addr, destination)) return original;
   VirtualFree(original, 0, MEM_RELEASE);
 
   return nullptr;
 }
 
-uint8_t* HookManager::SetHwbpHook(uint8_t* hookAddr, uint8_t* destination) {
+uint8_t* HookManager::SetHwbpHook(uint8_t* hook_addr, uint8_t* destination) {
   if (hwbp_hooks_.size() > 3) return NULL;
 
   if (!handler_added_) {
@@ -136,54 +136,55 @@ uint8_t* HookManager::SetHwbpHook(uint8_t* hookAddr, uint8_t* destination) {
 
     handler_added_ = true;
   }
-  hwbp_hooks_.push_back(hookAddr);
+  hwbp_hooks_.push_back(hook_addr);
 
   PBYTE original =
       (PBYTE)VirtualAlloc(NULL, 14, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
   if (NULL == original) return NULL;
   DWORD size = 0;
   // Copy the original function
-  PBYTE next = (PBYTE)DetourCopyInstructionEx(original + size, hookAddr + size,
+  PBYTE next = (PBYTE)DetourCopyInstructionEx(original + size, hook_addr + size,
                                               NULL, NULL);
-  size = next - hookAddr;
+  size = next - hook_addr;
 
-  // Put JMP from original + size to hookAddr + size
-  INT32 jmpSrc = (INT32)(original + size + 5);
-  INT32 jmpDst = (INT32)(hookAddr + size);
+  // Put JMP from original + size to hook_addr + size
+  INT32 jmp_src = (INT32)(original + size + 5);
+  INT32 jmp_dst = (INT32)(hook_addr + size);
   *(original + size) = 0xE9;
-  *((PINT32)(original + size + 1)) = (INT32)(jmpDst - jmpSrc);
+  *((PINT32)(original + size + 1)) = (INT32)(jmp_dst - jmp_src);
 
   if (!UpdateThreadsContexts()) return NULL;
 
   return original;
 }
 
-bool HookManager::UnsetJmpHook(uint8_t* hookAddr, uint8_t* original) {
-  DWORD oldProtection;
+bool HookManager::UnsetJmpHook(uint8_t* hook_addr, uint8_t* original_trampoline) {
+  DWORD old_protection;
 
-  if (!VirtualProtect(hookAddr, 0x5, PAGE_EXECUTE_READWRITE, &oldProtection))
+  if (!VirtualProtect(hook_addr, 0x5, PAGE_EXECUTE_READWRITE, &old_protection))
     return false;
 
   DWORD size = 0;
   while (size < 5) {
-    PBYTE next =
-        (PBYTE)DetourCopyInstruction(hookAddr + size, original + size, NULL);
-    size = next - original;
+    PBYTE next = (PBYTE)DetourCopyInstruction(hook_addr + size,
+                                              original_trampoline + size, NULL);
+    size = next - original_trampoline;
   }
-  FlushInstructionCache(GetCurrentProcess(), hookAddr, 0x5);
+  FlushInstructionCache(GetCurrentProcess(), hook_addr, 0x5);
 
-  VirtualFree(original, 23, MEM_RELEASE);
+  VirtualFree(original_trampoline, 23, MEM_RELEASE);
 
-  VirtualProtect(hookAddr, 0x5, oldProtection, &oldProtection);
+  VirtualProtect(hook_addr, 0x5, old_protection, &old_protection);
   return true;
 }
 
-bool HookManager::UnsetHwbpHook(uint8_t* hookAddr, uint8_t* original) {
+bool HookManager::UnsetHwbpHook(uint8_t* hook_addr,
+                                uint8_t* /*original_trampoline*/) {
   if (hwbp_hooks_.empty()) return false;
 
   DWORD index = 0;
   while (index < hwbp_hooks_.size()) {
-    if (hwbp_hooks_[index] == hookAddr) break;
+    if (hwbp_hooks_[index] == hook_addr) break;
     index++;
   }
   if (index > 3) return false;

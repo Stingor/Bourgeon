@@ -9,7 +9,7 @@ namespace hooking {
 enum class HookType { kJmpHook = 0, kHwbpHook };
 
 struct HookInfo {
-  HookType hookType;
+  HookType hook_type;
   uint8_t* destination;
   uint8_t* original;
 };
@@ -33,14 +33,17 @@ class HookManager {
 
   void* SetHook(HookType hook_type, uint8_t* hook_addr,
                 uint8_t* hook_destination);
-  bool UnsetHook(uint8_t*);
+  bool UnsetHook(uint8_t* hook_addr);
 
  private:
   HookManager();
-  uint8_t* SetJmpHook(uint8_t*, uint8_t*);
-  uint8_t* SetHwbpHook(uint8_t*, uint8_t*);
-  bool UnsetJmpHook(uint8_t*, uint8_t*);
-  bool UnsetHwbpHook(uint8_t*, uint8_t*);
+  // ⚠ Le 2e argument CHANGE DE SENS entre poser et retirer : à la pose c'est la
+  // DESTINATION du détour, au retrait c'est le TRAMPOLINE original à restaurer.
+  // Ils étaient anonymes dans ces déclarations, ce qui rendait l'écart invisible.
+  uint8_t* SetJmpHook(uint8_t* hook_addr, uint8_t* destination);
+  uint8_t* SetHwbpHook(uint8_t* hook_addr, uint8_t* destination);
+  bool UnsetJmpHook(uint8_t* hook_addr, uint8_t* original_trampoline);
+  bool UnsetHwbpHook(uint8_t* hook_addr, uint8_t* original_trampoline);
   bool UpdateThreadsContexts();
 
  private:

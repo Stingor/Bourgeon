@@ -115,7 +115,7 @@ class InventoryViewer : public Plugin {
   // ou item non équipable. Renvoie true si équipé. Utilisé par le drag-drop cross-plugin
   // de character_sheet (lâcher un item d'inventaire sur le doll) ; robuste à une
   // renumérotation d'items_ en cours de glisser (l'index utilisé est stable).
-  bool EquipDraggedItem(bool leftHand);
+  bool EquipDraggedItem(bool left_hand);
 
   // Ajoute l'item ACTUELLEMENT GLISSÉ à l'échange en cours (cible de drop « Mon offre »
   // de trade_tweaks). Une PILE ouvre le prompt de quantité, un item seul part direct.
