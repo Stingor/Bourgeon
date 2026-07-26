@@ -2,6 +2,7 @@ set(BOURGEON_FILES
 	"main.cc"
 	"bourgeon.cc"
 	"bourgeon.h"
+	"pch.h"
 
         # DDRAW Wrapper
         "ddraw/ddraw.def"
@@ -174,6 +175,23 @@ target_include_directories(bourgeon PRIVATE
     "${CMAKE_SOURCE_DIR}/thirdparty/json/include")
 target_compile_options(bourgeon PRIVATE "/MT")
 target_link_options(bourgeon PRIVATE "/MAP")
+
+# Compilation parallèle MSVC : un process cl.exe par cœur au lieu d'un seul, pour
+# les 66 unités de compilation de la cible. Aucun effet sur le binaire produit.
+target_compile_options(bourgeon PRIVATE "/MP")
+
+# En-tête précompilé (voir src/pch.h : tiers stable UNIQUEMENT). Injecté par CMake,
+# donc aucun fichier source ne l'inclut et chacun reste autonome sans lui.
+# En cas de doute sur une erreur de compilation inattendue, isoler avec :
+#   cmake -S . -B build -DBOURGEON_USE_PCH=OFF
+# NOTE : le unity build a été délibérément ÉCARTÉ ici — 43 fichiers de src/plugins
+# ouvrent un `namespace {` anonyme avec ~237 noms en collision (kMakeKey dans 16
+# fichiers, kTexMgr/kUIWindowMgr dans 13) ; le fusionner produirait des ODR, que ce
+# projet a déjà payés en crashes. /MP + PCH donnent le même gain sans ce risque.
+option(BOURGEON_USE_PCH "Utiliser l'en-tête précompilé src/pch.h" ON)
+if(BOURGEON_USE_PCH)
+    target_precompile_headers(bourgeon PRIVATE "pch.h")
+endif()
 target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
