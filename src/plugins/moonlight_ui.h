@@ -296,6 +296,13 @@ class MoonlightUi : public Plugin {
   bool     settings_dirty_    = false;  // une écriture est en attente
   unsigned settings_dirty_ms_ = 0;      // GetTickCount() de la DERNIÈRE demande
 
+  // Vrai quand la dernière lecture du yaml s'est interrompue en cours de route.
+  // L'état en mémoire ne reflète alors qu'une PARTIE du fichier — le reste est
+  // aux défauts — et WriteSettingsFile refuse d'écrire tant qu'il est posé :
+  // réémettre depuis cet état rendrait la perte définitive. Remis à false par une
+  // lecture menée à son terme (LoadSettings, à chaque changement de carte).
+  bool settings_load_failed_ = false;
+
   // Écrit réellement le fichier. Tout le corps historique de SaveSettings ; n'est
   // plus appelé que par FlushSettings, jamais depuis un widget.
   void WriteSettingsFile();

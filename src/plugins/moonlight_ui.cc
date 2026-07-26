@@ -286,7 +286,13 @@ void MoonlightUi::LoadSettings() {
   // déployer. Cette ligne dit immédiatement quelle DLL tourne réellement.
   LogInfo("[Bourgeon] build " __DATE__ " " __TIME__);
   std::ifstream f(path);
-  if (!f) return;  // first run — no file yet
+  if (!f) return;  // premier lancement : pas encore de fichier
+
+  // Un chargement qui échoue à mi-parcours laisse la moitié des réglages aux
+  // défauts. Écrire dans cet état GRAVERAIT la perte, puisque WriteSettingsFile
+  // réémet tout depuis l'état courant. Le drapeau interdit donc d'écrire tant
+  // qu'on n'a pas relu le fichier correctement (au prochain changement de carte).
+  settings_load_failed_ = false;
 
   try {
     const YAML::Node root = YAML::Load(f);
@@ -753,11 +759,24 @@ void MoonlightUi::LoadSettings() {
       }
     }
   } catch (const std::exception& e) {
-    LogError("[MoonlightUi] failed to parse {}: {}", path, e.what());
+    settings_load_failed_ = true;
+    LogError("[MoonlightUi] lecture de {} interrompue : {} — SAUVEGARDE SUSPENDUE "
+             "pour ne pas écraser la configuration existante (elle reprendra après "
+             "un chargement complet ; corriger ou supprimer le fichier)", path, e.what());
   }
 }
 
 void MoonlightUi::WriteSettingsFile() {
+  // Refus d'écrire après un chargement interrompu : l'état en mémoire ne
+  // représente alors qu'une PARTIE du fichier, le reste étant aux défauts.
+  // Réémettre depuis là rendrait la perte définitive — c'est le second volet du
+  // bug B9, le premier étant les std::stoul qui provoquaient l'interruption.
+  if (settings_load_failed_) {
+    LogError("[MoonlightUi] sauvegarde refusée : la dernière lecture de "
+             "bourgeon_settings.yaml avait échoué, écrire écraserait la config");
+    return;
+  }
+
   // Ces trois-là gardent une chaîne pré-calculée : elles ont un repli littéral à
   // écrire quand le plugin propriétaire est absent, que WriteArgbKey ne sait pas
   // exprimer (il part forcément d'un picker).
