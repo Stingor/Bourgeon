@@ -23,8 +23,8 @@
 void MoonlightUi::DrawFunPanels() {
   if (CollapsingHeader("DPS Meter")) {
     PushStyleCompact();
-    if (auto* dps = Bourgeon::Instance().dps_meter()) {
-      if (dps->DrawSettings()) SaveSettings();
+    if (auto* dps_meter = Bourgeon::Instance().dps_meter()) {
+      if (dps_meter->DrawSettings()) SaveSettings();
     } else {
       GrayText(kPluginUnavailable);
     }
@@ -54,10 +54,10 @@ void MoonlightUi::DrawFunPanels() {
       GrayText(kPluginUnavailable);
 
     SeparatorText("Parade de Porings (login)");
-    if (auto* lp = Bourgeon::Instance().login_parade()) {
-      bool on = lp->enabled_;
+    if (auto* login_parade = Bourgeon::Instance().login_parade()) {
+      bool on = login_parade->enabled_;
       if (ro::RoCheckbox("Porings sur l'écran de login", &on)) {
-        lp->enabled_ = on;
+        login_parade->enabled_ = on;
         SaveSettings();
       }
       SameLine(); HelpMarker(
@@ -84,10 +84,10 @@ void MoonlightUi::DrawFunPanels() {
       GrayText(kPluginUnavailable);
 
     SeparatorText("Rojeweled");
-    if (auto* rj = Bourgeon::Instance().rojeweled()) {
-      bool on = rj->enabled();
+    if (auto* rojeweled = Bourgeon::Instance().rojeweled()) {
+      bool on = rojeweled->enabled();
       if (ro::RoCheckbox("Ouvrir Rojeweled", &on))
-        rj->SetEnabled(on);
+        rojeweled->SetEnabled(on);
       SameLine(); HelpMarker(
           "Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
           "monstres RO (famille Poring : Poring, Drops, Metaling, Poporing, "
@@ -99,10 +99,10 @@ void MoonlightUi::DrawFunPanels() {
       GrayText(kPluginUnavailable);
 
     SeparatorText("Saut (barre espace)");
-    if (auto* pj = Bourgeon::Instance().player_jump()) {
-      bool on = pj->enabled();
+    if (auto* player_jump = Bourgeon::Instance().player_jump()) {
+      bool on = player_jump->enabled();
       if (ro::RoCheckbox("Sauter avec Espace", &on))
-        pj->SetEnabled(on);
+        player_jump->SetEnabled(on);
       SameLine(); HelpMarker(
           "Appuie sur Espace pour faire bondir ton personnage : un petit arc "
           "parabolique (montée puis retombée) purement visuel.\n\n"
@@ -115,18 +115,18 @@ void MoonlightUi::DrawFunPanels() {
       // Live, non persistés (comme FpsView).
       if (on && IsStaff()) {
         PushItemWidth(160.0f);
-        WheelSliderFloat("Hauteur", pj->p_height(), 2.0f, 40.0f);
-        WheelSliderInt("Durée (ms)", pj->p_duration_ms(), 200, 1500);
+        WheelSliderFloat("Hauteur", player_jump->p_height(), 2.0f, 40.0f);
+        WheelSliderInt("Durée (ms)", player_jump->p_duration_ms(), 200, 1500);
         PopItemWidth();
       }
     } else
       GrayText(kPluginUnavailable);
 
     SeparatorText("Déplacement au clavier");
-    if (auto* km = Bourgeon::Instance().keyboard_move()) {
-      bool on = km->enabled();
+    if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+      bool on = keyboard_move->enabled();
       if (ro::RoCheckbox("Marcher avec ZQSD / flèches", &on))
-        km->SetEnabled(on);
+        keyboard_move->SetEnabled(on);
       SameLine(); HelpMarker(
           "Déplace ton personnage au clavier : Z/S pour avancer et reculer, "
           "Q/D pour aller à gauche et à droite (les flèches font pareil). "
@@ -138,11 +138,11 @@ void MoonlightUi::DrawFunPanels() {
           "Attention si tu as des raccourcis de compétence sur Z, Q, S ou D : "
           "ils se déclencheront aussi.");
       if (on) {
-        ro::RoCheckbox("Suivre la rotation de la caméra", km->p_camera_relative());
+        ro::RoCheckbox("Suivre la rotation de la caméra", keyboard_move->p_camera_relative());
         SameLine(); HelpMarker(
             "« Haut » = le haut de l'écran, même après avoir fait pivoter la "
             "caméra. Décoché : les directions restent celles de la carte.");
-        ro::RoCheckbox("S'arrêter au relâchement", km->p_stop_on_release());
+        ro::RoCheckbox("S'arrêter au relâchement", keyboard_move->p_stop_on_release());
         SameLine(); HelpMarker(
             "Coupe la marche dès que tu lâches la touche, au lieu de laisser "
             "le personnage finir le trajet demandé.");
@@ -152,8 +152,8 @@ void MoonlightUi::DrawFunPanels() {
         // actives pour tout le monde. Live, non persistés (comme FpsView).
         if (IsStaff()) {
           PushItemWidth(160.0f);
-          WheelSliderInt("Anticipation (cases)", km->p_look_ahead(), 1, 6);
-          WheelSliderInt("Cadence (ms)", km->p_refresh_ms(), 60, 400);
+          WheelSliderInt("Anticipation (cases)", keyboard_move->p_look_ahead(), 1, 6);
+          WheelSliderInt("Cadence (ms)", keyboard_move->p_refresh_ms(), 60, 400);
           PopItemWidth();
         }
       }

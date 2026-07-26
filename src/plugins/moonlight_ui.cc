@@ -628,10 +628,14 @@ MoonlightUi::MoonlightUi() {
 // barres de skill, échange). Chaque plugin garde son propre flag, mais il n'est plus
 // jamais basculé isolément.
 void SetModernInterface(bool on) {
-  if (auto* iv  = Bourgeon::Instance().inventory_viewer()) iv->imgui_enabled_ = on;
-  if (auto* stg = Bourgeon::Instance().storage_tweaks())   stg->imgui_enabled_ = on;
-  if (auto* sb  = Bourgeon::Instance().skill_bar())        sb->enabled_ = on;
-  if (auto* tt  = Bourgeon::Instance().trade_tweaks())     tt->imgui_enabled_ = on;
+  if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
+    inventory_viewer->imgui_enabled_ = on;
+  if (auto* storage_tweaks = Bourgeon::Instance().storage_tweaks())
+    storage_tweaks->imgui_enabled_ = on;
+  if (auto* skill_bar = Bourgeon::Instance().skill_bar())
+    skill_bar->enabled_ = on;
+  if (auto* trade_tweaks = Bourgeon::Instance().trade_tweaks())
+    trade_tweaks->imgui_enabled_ = on;
 }
 
 // ── Settings persistence ──────────────────────────────────────────────────
@@ -737,9 +741,9 @@ void MoonlightUi::PostLoadApply() {
                      (skill_bar && skill_bar->enabled_) ||
                      (trade && trade->imgui_enabled_));
 
-  if (auto* si = Bourgeon::Instance().status_icons()) si->MarkDirty();
-  if (auto* st = Bourgeon::Instance().settings_tweaks())
-    st->Apply();  // pousse le post-traitement vers la couche d3d9
+  if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
+  if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())
+    settings_tweaks->Apply();  // pousse le post-traitement vers la couche d3d9
 }
 
 void MoonlightUi::WriteSettingsFile() {
@@ -1238,20 +1242,23 @@ void MoonlightUi::OnRenderUI() {
   spr_lab::RenderFrame();
 
   // Persist bars geometry once, the frame after the user finishes a drag.
-  if (auto* eb = Bourgeon::Instance().basic_info(); eb && eb->geometry_dirty_) {
-    eb->geometry_dirty_ = false;
+  if (auto* basic_info = Bourgeon::Instance().basic_info();
+      basic_info && basic_info->geometry_dirty_) {
+    basic_info->geometry_dirty_ = false;
     SaveSettings();
   }
 
   // Same for menu-icon positions (set on drag-end in MenuIconTweaks).
-  if (auto* mi = Bourgeon::Instance().menu_icons(); mi && mi->geometry_dirty_) {
-    mi->geometry_dirty_ = false;
+  if (auto* menu_icons = Bourgeon::Instance().menu_icons();
+      menu_icons && menu_icons->geometry_dirty_) {
+    menu_icons->geometry_dirty_ = false;
     SaveSettings();
   }
 
   // Skill-bar config (set on any panel change / drag-end in SkillBarTweaks).
-  if (auto* sb = Bourgeon::Instance().skill_bar(); sb && sb->dirty_) {
-    sb->dirty_ = false;
+  if (auto* skill_bar = Bourgeon::Instance().skill_bar();
+      skill_bar && skill_bar->dirty_) {
+    skill_bar->dirty_ = false;
     SaveSettings();
   }
 
@@ -1297,11 +1304,11 @@ void MoonlightUi::OnRenderUI() {
     // ── Graphismes (color grading post-process, SettingsTweaks plugin) ───────
     if (CollapsingHeader("Graphismes")) {
       PushStyleCompact();
-      if (auto* st = Bourgeon::Instance().settings_tweaks())
-        st->DrawSettings();
+      if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())
+        settings_tweaks->DrawSettings();
 
-      if (auto* wds = Bourgeon::Instance().weapon_dual_sprites()) {
-        if (ro::RoCheckbox("Sprites d'armes doubles", &wds->enabled()))
+      if (auto* weapon_dual_sprites = Bourgeon::Instance().weapon_dual_sprites()) {
+        if (ro::RoCheckbox("Sprites d'armes doubles", &weapon_dual_sprites->enabled()))
           SaveSettings();
         SameLine(); HelpMarker(
             "Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
@@ -1321,8 +1328,8 @@ void MoonlightUi::OnRenderUI() {
       PushStyleCompact();
 
       SeparatorText("Noms des entités");
-      if (auto* en = Bourgeon::Instance().entity_names())
-        en->DrawSettings();
+      if (auto* entity_names = Bourgeon::Instance().entity_names())
+        entity_names->DrawSettings();
 
       SeparatorText("SPR Lab");
       spr_lab::DrawDebugControls();
