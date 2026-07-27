@@ -721,9 +721,9 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Barres d'action\n"
       "  • Échange joueur-joueur\n"
       "  • Courrier (RODEX)\n"
-      "  • Échoppe joueur (vente et échoppe d'achat)\n"
+      "  • Shop joueur (vending, buying store et achat chez un vendeur)\n"
       "  • Feuille de personnage (Alt+F)\n"
-      "  • Cash shop et boutiques PNJ\n"
+      "  • Cash shop et shops PNJ\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;
   ImGui::SameLine();

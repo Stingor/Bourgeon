@@ -23,6 +23,7 @@
 #include "plugins/berserk_chat_unlock.h"
 #include "plugins/inventory_tweaks.h"
 #include "plugins/inventory_viewer.h"
+#include "plugins/cart_viewer.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
@@ -43,6 +44,7 @@
 #include "plugins/storage_tweaks.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/vending_tweaks.h"
 #include "plugins/trade_tweaks.h"
 #include "plugins/rodex_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
@@ -76,8 +78,10 @@ SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 ChatTweaks* Bourgeon::chat_tweaks() { return chat_tweaks_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
+CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
+VendingTweaks* Bourgeon::vending_tweaks() { return vending_tweaks_; }
 TradeTweaks* Bourgeon::trade_tweaks() { return trade_tweaks_; }
 RodexTweaks* Bourgeon::rodex_tweaks() { return rodex_tweaks_; }
 NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
@@ -219,6 +223,14 @@ void Bourgeon::OnProcessInput() {
   // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
   // windows (world map) crash intermittently.
   if (auto* mi = menu_icons()) mi->FlushPending();
+  // ⚠ Échoppe joueur : MÊME raison, mais pour un danger plus sévère que du
+  // flicker. Ses boutons pilotent des commandes natives dont certaines ouvrent
+  // une modale BLOQUANTE (UIWndMgr_ShowMessageBoxModal 0x00A31A30), qui ne rend
+  // pas la main : elle boucle en RELANÇANT le tick/rendu du mode courant. La
+  // déclencher depuis OnRenderUI — donc entre ImGui::NewFrame() et Render() —
+  // relance le rendu en pleine frame ImGui. Les commandes sont donc empilées
+  // pendant le rendu et rejouées ICI, hors de toute frame ImGui.
+  if (auto* vt = vending_tweaks()) vt->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -495,6 +507,13 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(inventory_viewer));
   }
   {
+    // Cart : même famille que l'inventaire (fenêtre sœur côté client), et même
+    // interrupteur de groupe « Interface moderne ».
+    auto cart_viewer = std::make_unique<CartViewer>();
+    cart_viewer_ = cart_viewer.get();
+    plugins_.emplace_back(std::move(cart_viewer));
+  }
+  {
     auto storage_tweaks = std::make_unique<StorageTweaks>();
     storage_tweaks_ = storage_tweaks.get();
     plugins_.emplace_back(std::move(storage_tweaks));
@@ -508,6 +527,12 @@ void Bourgeon::LoadPlugins() {
     auto shop_tweaks = std::make_unique<ShopTweaks>();
     shop_tweaks_ = shop_tweaks.get();
     plugins_.emplace_back(std::move(shop_tweaks));
+  }
+  {
+    // Échoppe joueur (vente ET achat : même classe native, cf. vending_tweaks.h).
+    auto vending_tweaks = std::make_unique<VendingTweaks>();
+    vending_tweaks_ = vending_tweaks.get();
+    plugins_.emplace_back(std::move(vending_tweaks));
   }
   {
     auto trade_tweaks = std::make_unique<TradeTweaks>();

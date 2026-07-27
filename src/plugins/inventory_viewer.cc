@@ -24,6 +24,7 @@
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
 #include "plugins/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "plugins/cart_viewer.h"     // PointOverViewer (dépôt par glisser vers le viewer cart)
+#include "plugins/vending_tweaks.h"  // IsComposing (échoppe en cours -> transferts figés)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/qty_prompt.h"   // ro::QuantityPrompt (dialogue « combien ? » partagé)
@@ -358,7 +359,17 @@ int WornItemCount() {
 }
 
 // Envoie une commande UI native (use/equip/transfer...) via le dispatcher.
+// Défini plus bas (il dépend des lecteurs de fenêtres) ; déclaré ici pour le
+// garde-fou de SendCmd.
+bool VendingComposing();
+
 void SendCmd(int cmd, int index, int arg2) {
+  // Garde-fou pour les seuls TRANSFERTS (les raccourcis double-clic / Alt+clic
+  // droit ne passent pas par un widget désactivé). Volontairement limité à ces
+  // trois commandes : utiliser ou équiper reste permis pendant une composition.
+  if ((cmd == kCmdToCart || cmd == kCmdCartToBody || cmd == kCmdToStorage) &&
+      VendingComposing())
+    return;
   __try {
     void* d = Dispatcher();
     if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, arg2, 0, 0);
@@ -646,9 +657,12 @@ bool ReadCompItemByIndex(int index, void* namewnd, CompItem* out) {
 // Aperçu de description RO au survol (le MÊME que la grille d'inventaire) : tooltip
 // couche-avant, fond blanc arrondi + cadre sysbox peint derrière via un split de
 // canaux. `cards`/`opts` = données d'instance du stack survolé (la DB ne les connaît
-// pas). No-op si id == 0. Appelé À L'EXTÉRIEUR de toute fenêtre (crée son popup).
+// pas), `name` = nom déjà décoré par BuildDisplayName (préfixes/suffixes de cartes),
+// pour que le titre soit celui de la description complète.
+// No-op si id == 0. Appelé À L'EXTÉRIEUR de toute fenêtre (crée son popup).
 void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
-                       const itemdesc::SimpleOpt* opts, int nopts, int refine = 0) {
+                       const itemdesc::SimpleOpt* opts, int nopts, int refine = 0,
+                       const char* name = nullptr) {
   if (id == 0) return;
   constexpr float kW = 330.0f;  // largeur max (wrap du texte)
   const float edge = ro::DescPanelEdge();
@@ -663,7 +677,8 @@ void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
   ImDrawList* ddl = ImGui::GetWindowDrawList();
   ddl->ChannelsSplit(2);
   ddl->ChannelsSetCurrent(1);
-  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine);
+  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine,
+                             name);
   ddl->ChannelsSetCurrent(0);
   const ImVec2 dwp = ImGui::GetWindowPos(), dws = ImGui::GetWindowSize();
   ro::DrawDescPanelFrame(ddl, dwp.x, dwp.y, dwp.x + dws.x, dwp.y + dws.y, false);
@@ -757,6 +772,16 @@ bool MouseOverCart(float x, float y) {
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
 bool CartOpen()    { return CartWnd() != nullptr; }
 bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
+// Composition d'échoppe en cours (cf. VendingTweaks::IsComposing).
+//   - inventaire <-> chariot : REFUSÉ par le serveur (sd->state.prevend, testé
+//     par pc_putitemtocart / pc_getitemfromcart et par pc_cant_act2()).
+//   - inventaire <-> entrepôt : le serveur, lui, l'AUTORISE (clif_parse_MoveToKafra
+//     ne teste que pc_istrading). On le bloque quand même, côté client, pour ne
+//     rien laisser bouger sous une composition en cours — les tooltips le disent.
+bool VendingComposing() {
+  auto* vending = Bourgeon::Instance().vending_tweaks();
+  return vending && vending->IsComposing();
+}
 // Échange joueur-joueur ImGui actif (TradeTweaks) : cible de « Vers l'échange ».
 bool TradeOpen() {
   auto* tt = Bourgeon::Instance().trade_tweaks();
@@ -1593,7 +1618,8 @@ void InventoryViewer::RenderCardInsert() {
         sopts[k].param = hover->opts[k].param;
       }
       DrawRoDescTooltip(hover->id, hover->forged ? nullptr : hover->cards,
-                        hover->forged ? 0 : 4, sopts, hover->opt_count, hover->refine);
+                        hover->forged ? 0 : 4, sopts, hover->opt_count, hover->refine,
+                        hover->name);
     } else {
       ImGui::BeginTooltip();
       const char* hn = hover->name[0] ? hover->name : "(?)";
@@ -1746,6 +1772,14 @@ void InventoryViewer::OnRenderUI() {
   // X du viewer -> ferme l'inventaire natif (client-side). Réarme show_panel_.
   if (!show_panel_) { CloseInventory(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
+
+  // Bandeau pendant la composition d'un shop, comme dans les viewers cart et
+  // storage. Il est ENCORE plus nécessaire ici : les entrées grisées « Vers le
+  // cart » / « Vers le storage » n'existent que si la fenêtre correspondante est
+  // ouverte, donc sans lui l'inventaire n'avertissait de rien du tout.
+  if (VendingComposing())
+    ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                       "Shop en composition : les transferts sont figés.");
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
@@ -2171,13 +2205,16 @@ void InventoryViewer::OnRenderUI() {
         ImGui::SetDragDropPayload("INV_ITEM", &idx, sizeof(idx));
         if (ic.tex) { ImGui::Image(TexId(ic.tex), ImVec2(24, 24)); ImGui::SameLine(); }
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
-        // Survol d'une cible que le serveur refusera : on le dit PENDANT le glisser,
-        // seul moment où l'on peut encore renoncer (entrepôt ouvert = pas de
-        // inventaire -> cart).
+        // Survol d'une cible qui sera refusée : on le dit PENDANT le glisser, seul
+        // moment où l'on peut encore renoncer (storage ouvert = pas de
+        // inventaire -> cart ; shop en composition = plus rien ne bouge).
         const ImVec2 drag_mouse = ImGui::GetMousePos();
-        if (StorageOpen() && MouseOverCart(drag_mouse.x, drag_mouse.y))
+        if (VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             "Entrepôt ouvert : vers le cart impossible");
+                             "Shop en composition : les transferts sont figés");
+        else if (StorageOpen() && MouseOverCart(drag_mouse.x, drag_mouse.y))
+          ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                             "Storage ouvert : vers le cart impossible");
         ImGui::EndDragDropSource();
       }
       // Placement libre : une case OCCUPÉE est aussi une cible -> lâcher dessus
@@ -2289,29 +2326,44 @@ void InventoryViewer::OnRenderUI() {
           // mouvement inventaire <-> cart — clif_parse_PutItemToCart (CZ 0x0126)
           // passe par pc_cant_act2(), qui inclut state.storage_flag. Le paquet part
           // mais est jeté en silence : on grise l'entrée en le disant.
+          const bool vending_lock = VendingComposing();
           const bool blocked_by_storage = StorageOpen();
+          const bool to_cart_off = blocked_by_storage || vending_lock;
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers le cart", nullptr, false, !blocked_by_storage))
+            if (ImGui::MenuItem("Vers le cart", nullptr, false, !to_cart_off))
               SendCmd(kCmdToCart, it.index, 1);
           } else if (ImGui::MenuItem("Vers le cart...", nullptr, false,
-                                     !blocked_by_storage)) {
+                                     !to_cart_off)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToCart; pend_open_prompt_ = true;
           }
-          if (blocked_by_storage &&
+          if (to_cart_off &&
               ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip(
-                "Impossible tant que l'entrepôt est ouvert (règle du serveur).\n"
-                "Fermez l'entrepôt, ou faites transiter l'objet par l'entrepôt.");
+                vending_lock
+                    ? "Impossible pendant la composition d'un shop (règle du\n"
+                      "serveur). Ouvrez ou annulez le shop d'abord."
+                    : "Impossible tant que le storage est ouvert (règle du serveur).\n"
+                      "Fermez le storage, ou faites transiter l'objet par le storage.");
         }
         if (StorageOpen()) {
+          // Ici le serveur accepterait : c'est NOUS qui figeons, pour qu'une
+          // composition en cours ne voie pas son stock bouger. Le tooltip ne
+          // prétend donc pas à une règle serveur.
+          const bool vending_lock = VendingComposing();
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers le storage"))
+            if (ImGui::MenuItem("Vers le storage", nullptr, false, !vending_lock))
               SendCmd(kCmdToStorage, it.index, 1);
-          } else if (ImGui::MenuItem("Vers le storage...")) {
+          } else if (ImGui::MenuItem("Vers le storage...", nullptr, false,
+                                     !vending_lock)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToStorage; pend_open_prompt_ = true;
           }
+          if (vending_lock &&
+              ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip(
+                "Figé pendant la composition d'un shop, pour que le stock\n"
+                "ne bouge pas sous la fenêtre en cours.");
         }
         // Échange joueur-joueur : stack -> prompt quantité (comme « Jeter... »),
         // sinon ajout direct d'1 unité.
@@ -2556,6 +2608,7 @@ void InventoryViewer::OnRenderUI() {
     // items_ est reconstruit à chaque tick.
     itemdesc::SimpleOpt sopts[5];
     const uint32_t* pcards = nullptr;
+    const char* hname = nullptr;
     int ncards = 0, nopts = 0, hrefine = 0;
     if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
       const Item& hit = items_[hover_desc_idx_];
@@ -2563,12 +2616,13 @@ void InventoryViewer::OnRenderUI() {
       ncards = 4;
       nopts = hit.opt_count;
       hrefine = hit.refine;
+      hname = hit.name;  // nom décoré (BuildDisplayName) : préfixes/suffixes de cartes
       for (int k = 0; k < nopts && k < 5; ++k) {
         sopts[k].index = hit.opts[k].index;
         sopts[k].value = hit.opts[k].value;
         sopts[k].param = hit.opts[k].param;
       }
     }
-    DrawRoDescTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine);
+    DrawRoDescTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine, hname);
   }
 }

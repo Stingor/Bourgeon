@@ -18,6 +18,7 @@
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"      // OpenInterfaceSection + HelpMarker
 #include "plugins/storage_tweaks.h"    // PointOverViewer (dépôt vers le viewer storage)
+#include "plugins/vending_tweaks.h"    // IsComposing (échoppe en cours -> chariot figé)
 #include "d3d9/d3d9_hook.h"            // Overlay_DeviceEpoch
 #include "imgui.h"
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
@@ -181,6 +182,16 @@ uint8_t* CartWnd() {
 bool InventoryOpen() { return ReadValidWnd(kInvWndGlobal, kInvVTable) != nullptr; }
 bool StorageOpen()   { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
 
+// Composition d'échoppe en cours. Le serveur lève alors `sd->state.prevend` et
+// REFUSE EN SILENCE tout mouvement touchant le chariot : pc_getitemfromcart /
+// pc_putitemtocart et storage_storageaddfromcart / storage_storagegettocart le
+// testent explicitement, et pc_cant_act2() l'inclut. Autrement dit, TOUT ce que
+// cette fenêtre sait faire est mort tant qu'une échoppe se compose.
+bool VendingComposing() {
+  auto* vending = Bourgeon::Instance().vending_tweaks();
+  return vending && vending->IsComposing();
+}
+
 // Cibles de dépôt : la fenêtre NATIVE ou, si elle est remplacée par son viewer
 // ImGui (native cachée => rect invalide), le rect du viewer.
 bool OverInventory(float x, float y) {
@@ -204,6 +215,11 @@ void* Dispatcher() {
 // Envoie une commande UI native (transfert) via le dispatcher.
 void SendCmd(int cmd, int index, int amount) {
   if (amount <= 0) return;
+  // Garde-fou : l'UI grise déjà ces actions pendant une composition d'échoppe,
+  // mais un raccourci (double-clic, Alt+clic droit) ne passe pas par un widget
+  // désactivé. Le serveur jetterait la requête sans un mot ; autant ne pas la
+  // faire partir.
+  if (VendingComposing()) return;
   __try {
     void* d = Dispatcher();
     if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, amount, 0, 0);
@@ -449,7 +465,8 @@ void MaybeFlushTextures() {
 // couche-avant, fond blanc arrondi + cadre sysbox peint derrière via un split de
 // canaux. Appelé À L'EXTÉRIEUR de toute fenêtre (il crée son popup).
 void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
-                       const itemdesc::SimpleOpt* opts, int nopts, int refine) {
+                       const itemdesc::SimpleOpt* opts, int nopts, int refine,
+                       const char* name) {
   if (id == 0) return;
   constexpr float kW = 330.0f;
   const float edge = ro::DescPanelEdge();
@@ -464,7 +481,8 @@ void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
   ImDrawList* ddl = ImGui::GetWindowDrawList();
   ddl->ChannelsSplit(2);
   ddl->ChannelsSetCurrent(1);
-  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine);
+  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine,
+                             name);
   ddl->ChannelsSetCurrent(0);
   const ImVec2 dwp = ImGui::GetWindowPos(), dws = ImGui::GetWindowSize();
   ro::DrawDescPanelFrame(ddl, dwp.x, dwp.y, dwp.x + dws.x, dwp.y + dws.y, false);
@@ -610,6 +628,12 @@ void CartViewer::OnRenderUI() {
   // X du viewer -> ferme le cart natif (client-side). Réarme show_panel_.
   if (!show_panel_) { CloseCart(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
+
+  // Pendant la composition d'un shop, le serveur refuse TOUT mouvement touchant
+  // le cart : autant l'annoncer une fois en clair, en plus des entrées grisées.
+  if (VendingComposing())
+    ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                       "Shop en composition : les transferts sont figés.");
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
@@ -874,9 +898,12 @@ void CartViewer::OnRenderUI() {
         // seul moment où l'on peut encore renoncer (entrepôt ouvert = pas de
         // cart -> inventaire).
         const ImVec2 drag_mouse = ImGui::GetMousePos();
-        if (StorageOpen() && OverInventory(drag_mouse.x, drag_mouse.y))
+        if (VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             "Entrepôt ouvert : vers l'inventaire impossible");
+                             "Shop en composition : le cart est figé");
+        else if (StorageOpen() && OverInventory(drag_mouse.x, drag_mouse.y))
+          ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                             "Storage ouvert : vers l'inventaire impossible");
         ImGui::EndDragDropSource();
       }
 
@@ -897,24 +924,31 @@ void CartViewer::OnRenderUI() {
         // mais est jeté en silence. On grise donc l'entrée en le disant, plutôt que
         // de laisser un clic sans effet (le natif fait la même chose autrement :
         // son ALT+clic droit bascule sur « vers le storage » dès qu'il est ouvert).
+        // Même nature que `storage_open` : une règle SERVEUR qu'on rend visible
+        // au lieu de laisser un clic sans effet.
+        const bool vending_lock = VendingComposing();
         const bool storage_open = StorageOpen();
+        const bool to_body_off = storage_open || vending_lock;
         // Retrait vers l'inventaire : une PILE ouvre le prompt de quantité.
         if (it.amount <= 1) {
-          if (ImGui::MenuItem("Vers l'inventaire", nullptr, false, !storage_open))
+          if (ImGui::MenuItem("Vers l'inventaire", nullptr, false, !to_body_off))
             SendCmd(kCmdCartToBody, it.index, 1);
-        } else if (ImGui::MenuItem("Vers l'inventaire...", nullptr, false, !storage_open)) {
+        } else if (ImGui::MenuItem("Vers l'inventaire...", nullptr, false, !to_body_off)) {
           pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
           pend_action_ = kPendToBody; pend_open_prompt_ = true;
         }
-        if (storage_open && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        if (to_body_off && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
           ImGui::SetTooltip(
-              "Impossible tant que l'entrepôt est ouvert (règle du serveur).\n"
-              "Fermez l'entrepôt, ou faites transiter l'objet par l'entrepôt.");
+              vending_lock
+                  ? "Impossible pendant la composition d'un shop (règle du\n"
+                    "serveur). Ouvrez ou annulez le shop d'abord."
+                  : "Impossible tant que le storage est ouvert (règle du serveur).\n"
+                    "Fermez le storage, ou faites transiter l'objet par le storage.");
         if (storage_open) {
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers le storage"))
+            if (ImGui::MenuItem("Vers le storage", nullptr, false, !vending_lock))
               SendCmd(kCmdCartToStorage, it.index, 1);
-          } else if (ImGui::MenuItem("Vers le storage...")) {
+          } else if (ImGui::MenuItem("Vers le storage...", nullptr, false, !vending_lock)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToStorage; pend_open_prompt_ = true;
           }
@@ -1044,7 +1078,7 @@ void CartViewer::OnRenderUI() {
       sopts[i].value = hit.opts[i].value;
       sopts[i].param = hit.opts[i].param;
     }
-    DrawRoDescTooltip(hit.id, hit.cards, 4, sopts, hit.opt_count, hit.refine);
+    DrawRoDescTooltip(hit.id, hit.cards, 4, sopts, hit.opt_count, hit.refine, hit.name);
   }
 }
 

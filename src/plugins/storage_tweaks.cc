@@ -26,6 +26,7 @@
 #include "plugins/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer cart)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
+#include "plugins/vending_tweaks.h"    // IsComposing (shop en cours -> transferts figés)
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
 
@@ -152,8 +153,11 @@ constexpr uintptr_t kUICmdDisp   = 0x0121333c;  // *(void**) = g_UICommandDispat
 constexpr int       kCmdWithdraw = 0x38;         // storage -> body/inventaire
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
+// Défini plus bas, avec les autres émetteurs.
+bool VendingComposing();
+
 void WithdrawItem(int index, int amount) {
-  if (amount <= 0) return;
+  if (amount <= 0 || VendingComposing()) return;
   __try {
     void* disp = *reinterpret_cast<void**>(kUICmdDisp);
     if (disp)
@@ -530,8 +534,19 @@ void CancelNativeDrag(void* obj) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Composition d'un shop en cours (cf. VendingTweaks::IsComposing).
+//   - cart <-> storage : REFUSÉ par le serveur (storage_storageaddfromcart /
+//     storage_storagegettocart testent sd->state.prevend).
+//   - inventaire <-> storage : le serveur l'AUTORISE (clif_parse_MoveToKafra ne
+//     teste que pc_istrading). On le fige quand même côté client pour que rien ne
+//     bouge sous une composition en cours ; un bandeau le dit dans la fenêtre.
+bool VendingComposing() {
+  auto* vending = Bourgeon::Instance().vending_tweaks();
+  return vending && vending->IsComposing();
+}
+
 void SendDeposit(int index, int amount) {
-  if (amount <= 0) return;
+  if (amount <= 0 || VendingComposing()) return;
   uint8_t pkt[8];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpDeposit;
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
@@ -549,7 +564,7 @@ void SendCloseStorage() {
 // storage -> cart : envoie un item de l'entrepôt vers le cart. index = index
 // storage CLIENT (items_[idx].index) ; le serveur applique server_storage_index (-1).
 void SendStorageToCart(int index, int amount) {
-  if (amount <= 0) return;
+  if (amount <= 0 || VendingComposing()) return;
   uint8_t pkt[8];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpStorageToCart;
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
@@ -560,7 +575,7 @@ void SendStorageToCart(int index, int amount) {
 // cart -> storage : envoie un item du cart vers l'entrepôt. index = index cart
 // CLIENT (lu du payload de drag natif) ; le serveur applique server_index (-2).
 void SendCartToStorage(int index, int amount) {
-  if (amount <= 0) return;
+  if (amount <= 0 || VendingComposing()) return;
   uint8_t pkt[8];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpCartToStorage;
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
@@ -995,6 +1010,14 @@ void StorageTweaks::OnRenderUI() {
     ro::EndRoWindow();
     return;
   }
+
+  // Bandeau : pendant la composition d'un shop, TOUS les mouvements de cette
+  // fenêtre sont bloqués (cf. VendingComposing). Les émetteurs refusent déjà,
+  // mais un refus muet passerait pour un bug — on le dit une fois, en clair,
+  // plutôt que de griser une trentaine de cases et de cibles de glisser.
+  if (VendingComposing())
+    ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                       "Shop en composition : les transferts sont figés.");
 
   // Rect écran du viewer (pour tester le drop d'un drag natif dessus).
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
@@ -1752,6 +1775,7 @@ void StorageTweaks::OnRenderUI() {
     // reconstruit à chaque tick).
     itemdesc::SimpleOpt sopts[5];
     const uint32_t* pcards = nullptr;
+    const char* hname = nullptr;
     int ncards = 0, nopts = 0, hrefine = 0;
     if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
       const Item& hit = items_[hover_desc_idx_];
@@ -1759,6 +1783,7 @@ void StorageTweaks::OnRenderUI() {
       ncards = 4;
       nopts = hit.opt_count;
       hrefine = hit.refine;
+      hname = hit.name;  // nom décoré (BuildDisplayName) + « [N] » ajouté par OnTick
       for (int k = 0; k < nopts && k < 5; ++k) {
         sopts[k].index = hit.opts[k].index;
         sopts[k].value = hit.opts[k].value;
@@ -1766,7 +1791,7 @@ void StorageTweaks::OnRenderUI() {
       }
     }
     itemdesc::RenderSimpleDesc(hover_desc_id_, kW - 2.0f * edge, pcards, ncards,
-                               sopts, nopts, hrefine);
+                               sopts, nopts, hrefine, hname);
     dl->ChannelsSetCurrent(0);
     // Art sysbox SANS son fond (fill_bg=false) : le fond blanc arrondi est déjà
     // peint par ImGui, et celui de DrawDescPanelFrame est à angles droits — il

@@ -52,9 +52,15 @@ struct SimpleOpt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
 // ne sont pas dans la DB, l'appelant les lit dans SON ItemSkillInfo et les passe
 // ici. Passer nullptr/0 pour n'afficher que la description de base.
 // `refine` (0 = aucun) préfixe le titre par « +N », comme le nom natif complet.
+// `display_name` = nom DÉCORÉ composé par le name-builder natif BuildDisplayName
+// (préfixes/suffixes de cartes, refine, forge) — seul l'appelant a l'ItemSkillInfo
+// nécessaire. Fourni, il remplace « +N <nom de base> » et le titre devient celui de
+// la fenêtre de description complète ; le suffixe d'emplacements « [N] » est ajouté
+// ici (BuildDisplayName ne le compose pas). nullptr = repli sur le nom de la DB.
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int card_count = 0, const SimpleOpt* opts = nullptr,
-                      int opt_count = 0, int refine = 0);
+                      int opt_count = 0, int refine = 0,
+                      const char* display_name = nullptr);
 }  // namespace itemdesc
 
 class ItemDescTweaks : public Plugin {

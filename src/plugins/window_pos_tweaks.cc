@@ -169,11 +169,13 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     // fermeture de la boutique.
     // 0x2B / 0x2C = côté ACHETEUR (UIMerchantItemShopWnd = l'offre du vendeur,
     // UIMerchantItemPurchaseWnd = le panier), ouvertes en cliquant sur l'échoppe
-    // d'un autre joueur. Masquées d'office ; le plugin les réaffiche s'il tombe
-    // sur le mode « échoppe d'achat », qu'il ne remplace pas encore.
+    // d'un autre joueur.
+    // 0xB1 / 0xB2 / 0xB3 = les MÊMES classes quand on VEND à un buying store
+    // (recherche / vente / stock proposable) — trois fenêtres cette fois.
     if (windowID == 0x29 || windowID == 0x2A || windowID == 0xAE ||
         windowID == 0xAF || windowID == 0x2D || windowID == 0xB0 ||
         windowID == 0x2B || windowID == 0x2C ||
+        windowID == 0xB1 || windowID == 0xB2 || windowID == 0xB3 ||
         windowID == 0x101 || windowID == 0x102) {
       if (auto* vt = Bourgeon::Instance().vending_tweaks())
         vt->HideNativeAtCreation(win);

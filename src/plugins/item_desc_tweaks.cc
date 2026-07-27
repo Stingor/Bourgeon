@@ -366,6 +366,7 @@ struct ItemExtract {
 // (markup ^RRGGBB/<URL>..). Chargée une fois, mise en cache par id.
 struct CardDesc {
   char name[64] = {};
+  int  card_slots = 0;  // record+0x30 : nb d'emplacements de carte (0 = non sloté)
   int  line_count = 0;
   char lines[kMaxLines][kLineLen] = {};
   char icon_path[288]   = {};  // 유저인터페이스\item\<resname>.bmp (petite icône liste)
@@ -1198,6 +1199,11 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
     if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) std::strncpy(cd->name, nm, sizeof(cd->name) - 1);
+      // 2bis) Nombre d'emplacements de carte = record+0x30 (le natif le formate
+      // « [%d] » via FUN_006a4c40 ; 0 = non sloté). Même source que le titre de la
+      // fenêtre de description complète (cf. ExtractItem). Guard 1..kMaxCards.
+      const int slots = *reinterpret_cast<int*>(reinterpret_cast<char*>(rec) + 0x30);
+      if (slots > 0 && slots <= kMaxCards) cd->card_slots = slots;
     }
 
     // 3) Lignes de desc : info standalone (+0x5c=1) -> GetDescLines -> rec+0x0c.
@@ -2158,18 +2164,45 @@ namespace itemdesc {
 constexpr float kSimpleIllustH = 110.0f;
 
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
-                      int card_count, const SimpleOpt* opts, int opt_count, int refine) {
+                      int card_count, const SimpleOpt* opts, int opt_count, int refine,
+                      const char* display_name) {
   if (id == 0) return;
   const CardDesc* cd = GetCardDesc(id);
   const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme la fenêtre desc)
-  // Titre = nom de base préfixé du refine « +N » (cd->name ne contient pas le refine,
-  // qui est une donnée d'instance passée par l'appelant).
-  if (cd->name[0]) {
-    if (refine > 0) ImGui::TextColored(hdr, "+%d %s", refine, cd->name);
-    else            ImGui::TextColored(hdr, "%s", cd->name);
+
+  // Item FORGÉ/CRÉÉ : card[0] PETIT NON NUL (<= 500) = données du forgeron (charid
+  // scindé, star crumbs, élément), PAS des cartes. Même critère que la fenêtre de
+  // description complète (cf. ExtractItem) : ni section « Cartes », ni suffixe [N].
+  const uint32_t card0 = (cards && card_count > 0) ? cards[0] : 0u;
+  const bool forged = (card0 != 0 && card0 <= 500);
+
+  // Titre = celui de la fenêtre de description COMPLÈTE : nom décoré par le
+  // name-builder natif (refine « +7 », préfixes/suffixes des cartes serties, forge)
+  // que l'appelant a composé depuis SON ItemSkillInfo, puis le nombre
+  // d'emplacements « [N] » — que BuildDisplayName ne compose pas, le natif le
+  // formate à part. Sans nom décoré : repli sur le nom de base de la DB + « +N ».
+  char title[160];
+  if (display_name && display_name[0]) {
+    std::snprintf(title, sizeof(title), "%s", display_name);
+  } else if (cd->name[0]) {
+    if (refine > 0) std::snprintf(title, sizeof(title), "+%d %s", refine, cd->name);
+    else            std::snprintf(title, sizeof(title), "%s", cd->name);
   } else {
-    ImGui::TextColored(hdr, "#%u", id);
+    std::snprintf(title, sizeof(title), "#%u", id);
   }
+  // « [N] » seulement si le nom n'en porte pas déjà un : le viewer storage ajoute
+  // le sien depuis la meta serveur, et un nom d'enchant peut contenir un crochet —
+  // sinon on doublerait le suffixe.
+  if (!forged && cd->card_slots > 0 && std::strchr(title, '[') == nullptr) {
+    const size_t len = strnlen(title, sizeof(title));
+    std::snprintf(title + len, sizeof(title) - len, " [%d]", cd->card_slots);
+  }
+  // Titre WRAPPÉ : un nom décoré (« +7 Vadon's Sword of Rage [4] ») dépasse
+  // largement la largeur du tooltip, qui est bornée — sans wrap il déborderait du
+  // cadre au lieu de passer à la ligne.
+  if (wrap > 0.0f) ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
+  ImGui::TextColored(hdr, "%s", title);
+  if (wrap > 0.0f) ImGui::PopTextWrapPos();
 
   // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
   const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
@@ -2208,8 +2241,9 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
 
   // ── Cartes / enchants insérés (données d'INSTANCE, pas de la DB) ───────────
   int ncards = 0;
-  for (int i = 0; i < card_count; ++i)
-    if (cards && cards[i]) ++ncards;
+  if (!forged)
+    for (int i = 0; i < card_count; ++i)
+      if (cards && cards[i]) ++ncards;
   if (ncards > 0) {
     ImGui::Separator();
     ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), "Cartes / Enchants");

@@ -62,6 +62,9 @@ class ShopTweaks : public Plugin {
   // Setting PERSISTANT (bourgeon_settings.yaml "shop_imgui", géré par MoonlightUi) :
   // ON = viewer ImGui + natif caché ; OFF = shop natif d'origine (chooser inclus).
   // Défaut OFF : opt-in — on n'impose pas un changement de gameplay aux joueurs.
+  // Basculé en GROUPE par SetModernInterface (moonlight_ui.h) — PLUS de case isolée
+  // dans le panneau : l'onglet Vendre travaille DEPUIS l'inventaire, moderne d'un
+  // côté et natif de l'autre les objets ne se glissent plus.
   bool imgui_enabled_ = false;
 
  private:

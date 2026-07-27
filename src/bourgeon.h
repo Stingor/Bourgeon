@@ -22,8 +22,10 @@ class SkillBarTweaks;
 class ChatTweaks;
 class StorageTweaks;
 class InventoryViewer;
+class CartViewer;
 class CashShopTweaks;
 class ShopTweaks;
+class VendingTweaks;
 class TradeTweaks;
 class RodexTweaks;
 class CharacterSheet;
@@ -63,8 +65,10 @@ class Bourgeon {
   ChatTweaks* chat_tweaks();
   StorageTweaks* storage_tweaks();
   InventoryViewer* inventory_viewer();
+  CartViewer* cart_viewer();
   CashShopTweaks* cashshop_tweaks();
   ShopTweaks* shop_tweaks();
+  VendingTweaks* vending_tweaks();
   TradeTweaks* trade_tweaks();
   RodexTweaks* rodex_tweaks();
   NpcDialogTweaks* npc_dialog_tweaks();
@@ -149,8 +153,10 @@ class Bourgeon {
   ChatTweaks* chat_tweaks_ = nullptr;         // non-owning, lifetime tied to plugins_
   StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
+  CartViewer* cart_viewer_ = nullptr;            // non-owning, lifetime tied to plugins_
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
+  VendingTweaks* vending_tweaks_ = nullptr;    // non-owning, lifetime tied to plugins_
   TradeTweaks* trade_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
   RodexTweaks* rodex_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogTweaks* npc_dialog_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
