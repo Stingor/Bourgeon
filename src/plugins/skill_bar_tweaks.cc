@@ -1033,14 +1033,20 @@ void SkillBarTweaks::DrawSettings() {
   // l'accès aux deux autres plugins (déclarée dans moonlight_ui.h). La case reste
   // câblée sur enabled_ ; la persistance passe par dirty_ (drainé par MoonlightUi,
   // dont le SaveSettings écrit aussi inventory_imgui/storage_imgui à jour).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)", &enabled_)) {
+  if (ro::RoCheckbox("Interface moderne", &enabled_)) {
     SetModernInterface(enabled_);
     changed = true;
   }
   SameLine(); HelpMarker(
-      "Interrupteur GLOBAL : inventaire, storage et barres d'action modernes "
-      "s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout natif). Les cases "
-      "des sections Inventaire et Storage reflètent le même état.\n\n"
+      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
+      "ImGui ou tout natif) :\n"
+      "  • Inventaire (et le sertissage de cartes)\n"
+      "  • Chariot\n"
+      "  • Storage (Kafra, guilde, premium)\n"
+      "  • Barres d'action\n"
+      "  • Échange joueur-joueur\n"
+      "  • Courrier (RODEX)\n"
+      "La case des autres sections reflète donc le même état.\n\n"
       "Désactivé = barres classiques.\nActivé = barres modernes entièrement customisables.");
 
   SeparatorText("Réglages généraux");

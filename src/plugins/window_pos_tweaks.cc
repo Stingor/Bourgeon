@@ -10,8 +10,10 @@
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
 #include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
+#include "plugins/cart_viewer.h"  // hide-native-at-creation (chariot id 0x28)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
+#include "plugins/vending_tweaks.h"  // hide-native-at-creation (id 0x29/0xAE)
 #include "plugins/trade_tweaks.h"  // hide-native-at-creation (échange, par vtable)
 #include "plugins/rodex_tweaks.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "plugins/npc_dialog_tweaks.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
@@ -134,6 +136,11 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HideNativeAtCreation(win);
     }
+    // Chariot (UICartWnd id 0x28) : fenêtre sœur de l'inventaire, même traitement.
+    if (windowID == 0x28) {
+      if (auto* cv = Bourgeon::Instance().cart_viewer())
+        cv->HideNativeAtCreation(win);
+    }
     // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : ce popup est créé par le
     // handler du paquet ZC 0x017B, donc entre deux OnTick -> sans ce hook une frame
     // native passerait à l'écran avant que le viewer ne la masque.
@@ -152,6 +159,13 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
         windowID == 0x19) {
       if (auto* sh = Bourgeon::Instance().shop_tweaks())
         sh->HideNativeAtCreation(win);
+    }
+    // Échoppe joueur : la fenêtre de COMPOSITION (vente 0x29, achat 0xAE) est
+    // remplacée par VendingTweaks. La grille « objets disponibles » (0x2A/0xAF)
+    // reste native — c'est elle qui porte le glisser-déposer.
+    if (windowID == 0x29 || windowID == 0xAE) {
+      if (auto* vt = Bourgeon::Instance().vending_tweaks())
+        vt->HideNativeAtCreation(win);
     }
     // Dialogue NPC (say 0x10 / secondaire 0xe2, menu 0x11, input nombre 0x38 /
     // texte 0x64) : NpcDialogTweaks les cache dès la création -> pas de flicker

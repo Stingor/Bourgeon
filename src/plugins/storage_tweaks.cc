@@ -23,6 +23,7 @@
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "plugins/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
+#include "plugins/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer chariot)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
 #include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
@@ -180,14 +181,21 @@ bool MouseOverInventory(float x, float y) {
 }
 
 // Fenêtre CART (chariot marchand) : MÊME framework générique que l'inventaire
-// (vtable sœur 0x0103d538, rect aux mêmes offsets). Global 0x0131f6a0 trouvé en
-// RE live (contient le ptr fenêtre cart quand ouvert, 0 sinon). Utilisé pour le
-// hit-test « lâcher un item storage sur le cart » (storage->cart).
-constexpr uintptr_t kCartWndGlobal = 0x0131f6a0;
-constexpr uintptr_t kCartVTable    = 0x0103d538;
+// (vtable sœur 0x0103d538, rect aux mêmes offsets), id 0x28.
+// ⚠ CORRECTION 2026-07-27 : elle se cherche par ID au GESTIONNAIRE. L'ancien
+// global 0x0131f6a0 (« trouvé en RE live ») n'a AUCUNE référence dans le binaire
+// (xrefs IDA) et ne porte pas la fenêtre chariot — ce hit-test ne répondait donc
+// jamais, et « lâcher un item storage sur le chariot » était silencieusement mort.
+constexpr int kWinCart          = 0x28;
+constexpr uintptr_t kCartVTable = 0x0103d538;
 bool MouseOverCart(float x, float y) {
+  // Chariot MODERNE (CartViewer) : sa fenêtre native est cachée, donc le rect natif
+  // ci-dessous ne veut plus rien dire -> on teste d'abord le rect du viewer (même
+  // traitement que MouseOverInventory).
+  if (auto* cv = Bourgeon::Instance().cart_viewer())
+    if (cv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
   __try {
-    uint8_t* cart = *reinterpret_cast<uint8_t**>(kCartWndGlobal);
+    auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
     if (!cart || *reinterpret_cast<uintptr_t*>(cart) != kCartVTable) return false;
     const int cx = *reinterpret_cast<int*>(cart + 0x1c);
     const int cy = *reinterpret_cast<int*>(cart + 0x20);
@@ -847,18 +855,23 @@ bool StorageTweaks::DescPendingBlocksHover() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool StorageTweaks::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et les
-  // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)",
-                     &imgui_enabled_)) {
+  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) :
+  // la liste des fenêtres du groupe vit dans SetModernInterface (moonlight_ui.h),
+  // on ne la recopie pas ici.
+  if (ro::RoCheckbox("Interface moderne", &imgui_enabled_)) {
     SetModernInterface(imgui_enabled_);
     changed = true;
   }
   SameLine(); HelpMarker(
-      "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
-      "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
-      "natif). Les cases des sections Inventaire et Barre d'action "
-      "reflètent le même état.\n\n"
+      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
+      "ImGui ou tout natif) :\n"
+      "  • Inventaire (et le sertissage de cartes)\n"
+      "  • Chariot\n"
+      "  • Storage (Kafra, guilde, premium)\n"
+      "  • Barres d'action\n"
+      "  • Échange joueur-joueur\n"
+      "  • Courrier (RODEX)\n"
+      "La case des autres sections reflète donc le même état.\n\n"
       "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
       "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
       "viewer.");

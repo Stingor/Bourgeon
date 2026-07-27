@@ -32,8 +32,10 @@
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
 #include "plugins/inventory_viewer.h"
+#include "plugins/cart_viewer.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
+#include "plugins/vending_tweaks.h"
 #include "plugins/trade_tweaks.h"
 #include "plugins/rodex_tweaks.h"
 #include "plugins/npc_dialog_tweaks.h"
@@ -265,6 +267,20 @@ const moonlight_ui::SettingDesc kInventorySettings[] = {
      MLUI_LITERAL(bool, false)},
 };
 
+// Chariot ImGui (fenêtre sœur de l'inventaire côté client, mêmes réglages).
+const moonlight_ui::SettingDesc kCartSettings[] = {
+    {"cart_imgui",   SType::kBool, MLUI_FIELD(cart_viewer, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"cart_filter",  SType::kBool, MLUI_FIELD(cart_viewer, show_filter()),
+     MLUI_LITERAL(bool, true)},
+    {"cart_desc_tooltip", SType::kBool, MLUI_FIELD(cart_viewer, desc_tooltip()),
+     MLUI_LITERAL(bool, false)},
+    {"cart_tabs_vertical", SType::kBool, MLUI_FIELD(cart_viewer, tabs_vertical()),
+     MLUI_LITERAL(bool, true)},
+    {"cart_lock_size", SType::kBool, MLUI_FIELD(cart_viewer, lock_size()),
+     MLUI_LITERAL(bool, false)},
+};
+
 // Entrepôt (Kafra / guilde / premium : la même fenêtre). storage_favorites est
 // un CONTENEUR, écrit à la main après cette table.
 const moonlight_ui::SettingDesc kStorageSettings[] = {
@@ -297,6 +313,8 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
     {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"shop_imgui",  SType::kBool, MLUI_FIELD(shop_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"vending_imgui", SType::kBool, MLUI_FIELD(vending_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"trade_imgui", SType::kBool, MLUI_FIELD(trade_tweaks, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
@@ -645,12 +663,15 @@ MoonlightUi::MoonlightUi() {
 
 
 // « Tout-ImGui ou tout-natif » (cf. déclaration dans moonlight_ui.h) : synchronise
-// les 4 fenêtres modernes interdépendantes en un point unique (inventaire, storage,
-// barres de skill, échange). Chaque plugin garde son propre flag, mais il n'est plus
-// jamais basculé isolément.
+// en un point unique toutes les fenêtres modernes interdépendantes. Chaque plugin
+// garde son propre flag, mais il n'est plus jamais basculé isolément.
 void SetModernInterface(bool on) {
   if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
     inventory_viewer->imgui_enabled_ = on;
+  // Le chariot suit l'inventaire : les deux s'échangent des objets par glisser, et
+  // un chariot natif ne sait pas déposer chez nous (ni l'inverse).
+  if (auto* cart_viewer = Bourgeon::Instance().cart_viewer())
+    cart_viewer->imgui_enabled_ = on;
   if (auto* storage_tweaks = Bourgeon::Instance().storage_tweaks())
     storage_tweaks->imgui_enabled_ = on;
   if (auto* skill_bar = Bourgeon::Instance().skill_bar())
@@ -662,6 +683,52 @@ void SetModernInterface(bool on) {
   // modernes en même temps (un inventaire natif ne sait pas déposer chez nous).
   if (auto* rodex_tweaks = Bourgeon::Instance().rodex_tweaks())
     rodex_tweaks->imgui_enabled_ = on;
+  // L'échoppe joueur (vente ET achat) suit aussi : elle se monte à partir du
+  // CHARIOT, qui est déjà du lot. Un formulaire d'échoppe moderne au-dessus d'un
+  // chariot natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
+  if (auto* vending_tweaks = Bourgeon::Instance().vending_tweaks())
+    vending_tweaks->imgui_enabled_ = on;
+  // La feuille de personnage est un COMPLÉMENT (les fenêtres natives Status et
+  // Équipement restent là), mais elle vit du même écosystème : ses slots reçoivent
+  // les objets glissés depuis l'inventaire ImGui, et son onglet Presets équipe en
+  // s'appuyant dessus. Elle n'a donc plus de case isolée non plus.
+  if (auto* character_sheet = Bourgeon::Instance().character_sheet())
+    character_sheet->imgui_enabled_ = on;
+  // Boutiques (cash shop et PNJ) : elles achètent VERS l'inventaire et vendent
+  // DEPUIS lui — un panier moderne au-dessus d'un inventaire natif (ou l'inverse)
+  // remet exactement le mixe qu'on a supprimé.
+  if (auto* cashshop_tweaks = Bourgeon::Instance().cashshop_tweaks())
+    cashshop_tweaks->imgui_enabled_ = on;
+  if (auto* shop_tweaks = Bourgeon::Instance().shop_tweaks())
+    shop_tweaks->imgui_enabled_ = on;
+}
+
+// Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
+bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
+  bool changed = false;
+  if (ro::RoCheckbox("Interface moderne", enabled)) {
+    SetModernInterface(*enabled);
+    changed = true;
+  }
+  // Liste du groupe : SOURCE UNIQUE de l'infobulle (le code, lui, a la sienne
+  // juste au-dessus, dans SetModernInterface).
+  std::string help =
+      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
+      "ImGui ou tout natif) :\n"
+      "  • Inventaire (et le sertissage de cartes)\n"
+      "  • Chariot\n"
+      "  • Storage (Kafra, guilde, premium)\n"
+      "  • Barres d'action\n"
+      "  • Échange joueur-joueur\n"
+      "  • Courrier (RODEX)\n"
+      "  • Échoppe joueur (vente et échoppe d'achat)\n"
+      "  • Feuille de personnage (Alt+F)\n"
+      "  • Cash shop et boutiques PNJ\n"
+      "La case des autres sections reflète donc le même état.\n\n";
+  help += window_help;
+  ImGui::SameLine();
+  HelpMarker(help.c_str());
+  return changed;
 }
 
 // ── Settings persistence ──────────────────────────────────────────────────
@@ -713,6 +780,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSkinAndPresets(ui);
     moonlight_ui::ReadSettings(ui, kInventorySettings);
     moonlight_ui::ReadInventoryLayout(ui);
+    moonlight_ui::ReadSettings(ui, kCartSettings);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
@@ -755,20 +823,33 @@ void MoonlightUi::PostLoadApply() {
   LogConsole::instance().SetLevel(log_level_);
   pending_collapse_restore_ = true;
 
-  // « Tout-ImGui ou tout-natif » : ces 5 fenêtres (inventaire/entrepôt/barres/
-  // échange/courrier) s'activent ensemble. Un yaml antérieur au regroupement
-  // pouvait être mixé — on réconcilie en OU (au moins une moderne => toutes
-  // modernes ; tout natif sinon), puis les cases restent synchronisées.
-  auto* inventory = Bourgeon::Instance().inventory_viewer();
-  auto* storage   = Bourgeon::Instance().storage_tweaks();
-  auto* skill_bar = Bourgeon::Instance().skill_bar();
-  auto* trade     = Bourgeon::Instance().trade_tweaks();
-  auto* rodex     = Bourgeon::Instance().rodex_tweaks();
+  // « Tout-ImGui ou tout-natif » : la liste complète du groupe est celle de
+  // SetModernInterface (moonlight_ui.h) — on ne la recopie PAS ici, elle a déjà
+  // rouillé une fois. Un yaml antérieur au regroupement pouvait être mixé : on
+  // réconcilie en OU (au moins une moderne => toutes modernes ; tout natif sinon),
+  // puis les cases restent synchronisées.
+  // Seules les fenêtres qui ont EU une case isolée par le passé sont testées : les
+  // membres arrivés déjà groupés (chariot, échoppe) n'ont jamais pu être activés
+  // seuls, donc les lire n'apporterait rien à la réconciliation. En revanche la
+  // feuille de perso et les deux boutiques, elles, ont eu la leur : les OMETTRE
+  // ne serait pas neutre, SetModernInterface les ÉTEINDRAIT au chargement chez
+  // qui les avait activées seules.
+  auto* inventory      = Bourgeon::Instance().inventory_viewer();
+  auto* storage        = Bourgeon::Instance().storage_tweaks();
+  auto* skill_bar      = Bourgeon::Instance().skill_bar();
+  auto* trade          = Bourgeon::Instance().trade_tweaks();
+  auto* rodex          = Bourgeon::Instance().rodex_tweaks();
+  auto* character_sheet = Bourgeon::Instance().character_sheet();
+  auto* cashshop       = Bourgeon::Instance().cashshop_tweaks();
+  auto* shop           = Bourgeon::Instance().shop_tweaks();
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||
                      (trade && trade->imgui_enabled_) ||
-                     (rodex && rodex->imgui_enabled_));
+                     (rodex && rodex->imgui_enabled_) ||
+                     (character_sheet && character_sheet->imgui_enabled_) ||
+                     (cashshop && cashshop->imgui_enabled_) ||
+                     (shop && shop->imgui_enabled_));
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())
@@ -820,6 +901,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSkinAndPresets(out);
   moonlight_ui::WriteSettings(out, kInventorySettings);
   moonlight_ui::WriteInventoryLayout(out);
+  moonlight_ui::WriteSettings(out, kCartSettings);
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);

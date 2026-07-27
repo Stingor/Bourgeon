@@ -22,6 +22,7 @@
 #include "plugins/character_sheet.h"
 #include "plugins/chat.h"
 #include "plugins/inventory_viewer.h"
+#include "plugins/cart_viewer.h"
 #include "plugins/item_desc_tweaks.h"
 #include "plugins/menu_icons.h"
 #include "plugins/npc_dialog_tweaks.h"
@@ -72,35 +73,14 @@ void MoonlightUi::DrawInterfacePanel() {
 
     // (Storage : tout est regroupé dans la section « Storage » ci-dessous.)
 
-    // Cash shop : redraw ImGui moderne OU fenêtre native
-    if (auto* cs = Bourgeon::Instance().cashshop_tweaks()) {
-      changed |= ro::RoCheckbox("Cash Shop Moonlight®", &cs->imgui_enabled_);
-      SameLine(); HelpMarker(
-          "ON : cash shop ImGui moderne (icônes, catégories, panier) et la "
-          "fenêtre native est cachée.\nOFF : cash shop natif classique.");
-    }
-
-    // Shop NPC : fenêtre achat/vente ImGui unifiée OU natif
-    if (auto* sh = Bourgeon::Instance().shop_tweaks()) {
-      changed |= ro::RoCheckbox("Shop NPC Moonlight®", &sh->imgui_enabled_);
-      SameLine(); HelpMarker(
-          "ON : fenêtre boutique ImGui unifiée (onglets Acheter/Vendre, saut "
-          "du choix Acheter/Vendre natif).\nOFF : boutique NPC native classique.");
-    }
-
-    // (Courrier RODEX : PAS de case ici — il fait partie de l'interrupteur
-    // GLOBAL « Interface moderne », avec l'inventaire, l'entrepôt, les barres et
-    // l'échange, parce que ses pièces jointes se glissent depuis l'inventaire
-    // ImGui. Une case isolée rouvrirait la porte au mixe.)
-
-    // Feuille de personnage (agrege Status + Equipement)
-    if (auto* cse = Bourgeon::Instance().character_sheet()) {
-      changed |= ro::RoCheckbox("Feuille de perso Moonlight® (Alt+F)", &cse->imgui_enabled_);
-      SameLine(); HelpMarker(
-          "Fenêtre façon WoW : avatar + slots équipement/costume + stats, en "
-          "COMPLÉMENT des fenêtres natives (conservées). Ouvre/ferme avec Alt+F.\n"
-          "Clic gauche slot = description, clic droit = déséquiper, boutons +stat.");
-    }
+    // (Cash shop, boutiques PNJ, échoppe joueur — vente ET échoppe d'achat —,
+    // courrier RODEX et feuille de personnage (Alt+F) : AUCUNE case ici. Tous font
+    // partie de l'interrupteur GLOBAL « Interface moderne » (liste dans
+    // SetModernInterface, moonlight_ui.h), porté par les sections Inventaire,
+    // Chariot, Storage et Barre d'action.
+    // Ils achètent, vendent, joignent ou équipent VERS et DEPUIS l'inventaire :
+    // moderne d'un côté et natif de l'autre, les objets ne se glissent plus. Une
+    // case isolée rouvrirait donc exactement le mixe qu'on a supprimé.)
 
     // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
     if (auto* br = Bourgeon::Instance().bug_report()) {
@@ -133,6 +113,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceNpc,         "Fenêtre NPC"},
         {kIfaceStorage,     "Storage"},
         {kIfaceInventory,   "Inventaire"},
+        {kIfaceCart,        "Chariot"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -320,6 +301,15 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceInventory) {
         if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
           if (iv->DrawSettings()) SaveSettings();
+        } else {
+          GrayText(kPluginUnavailable);
+        }
+      }
+
+      // ── Chariot (CartViewer : viewer ImGui + filtre/onglets) ──────────────
+      if (iface_nav_ == kIfaceCart) {
+        if (auto* cv = Bourgeon::Instance().cart_viewer()) {
+          if (cv->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
         }

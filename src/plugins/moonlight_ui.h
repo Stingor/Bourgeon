@@ -18,14 +18,31 @@
 #include "ui/align_grid.h"
 #include "ui/ro_widgets.h"
 
-// « Tout-ImGui ou tout-natif » : l'inventaire (InventoryViewer::imgui_enabled_),
-// le storage (StorageTweaks::imgui_enabled_) et les barres d'action
-// (SkillBarTweaks::enabled_) modernes s'activent ENSEMBLE — plus de mixe possible.
-// Force les 3 flags à `on`. Appelée par chacune des 3 cases synchronisées et par
-// LoadSettings (réconciliation d'un yaml hérité mixé). Encapsule l'accès aux
-// plugins pour que SkillBarTweaks::DrawSettings bascule l'ensemble sans inclure
-// les headers des deux autres. Sûre si un plugin manque.
+// « Tout-ImGui ou tout-natif » — SOURCE UNIQUE du groupe « Interface moderne ».
+// Les fenêtres qui s'activent ENSEMBLE (plus de mixe possible) :
+//   inventaire (InventoryViewer::imgui_enabled_, sertissage de cartes inclus),
+//   chariot (CartViewer::imgui_enabled_), storage (StorageTweaks::imgui_enabled_),
+//   barres d'action (SkillBarTweaks::enabled_), échange (TradeTweaks::imgui_enabled_),
+//   courrier RODEX (RodexTweaks::imgui_enabled_), échoppe joueur — vente ET
+//   échoppe d'achat (VendingTweaks::imgui_enabled_), feuille de personnage
+//   (CharacterSheet::imgui_enabled_), cash shop (CashShopTweaks::imgui_enabled_) et
+//   boutique PNJ (ShopTweaks::imgui_enabled_).
+// C'est la définition du corps de la fonction qui fait foi : les panneaux qui
+// portent la case s'y RÉFÈRENT au lieu de recopier la liste (elle a déjà rouillé
+// une fois — le libellé annonçait trois fenêtres sur six).
+// Appelée par chacune des cases synchronisées et par LoadSettings (réconciliation
+// d'un yaml hérité mixé). Encapsule l'accès aux plugins pour qu'un panneau bascule
+// l'ensemble sans inclure les headers des autres. Sûre si un plugin manque.
 void SetModernInterface(bool on);
+
+// Dessine la case « Interface moderne » (skin RO) suivie de son point d'aide, et
+// applique déjà SetModernInterface() au clic. Renvoie true si l'état a changé —
+// au panneau appelant de persister.
+// `window_help` décrit ce que la bascule change POUR CETTE fenêtre-là ; la LISTE du
+// groupe, elle, est écrite une seule fois dans le corps de cette fonction. Les
+// quatre panneaux porteurs la recopiaient chacun dans leur infobulle, et les trois
+// derniers membres (échoppe, feuille de perso, boutiques) n'y figuraient nulle part.
+bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help);
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
@@ -87,7 +104,7 @@ class MoonlightUi : public Plugin {
   enum IfaceSection {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
     kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
-    kIfaceStorage, kIfaceInventory,
+    kIfaceStorage, kIfaceInventory, kIfaceCart,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

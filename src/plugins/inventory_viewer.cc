@@ -23,6 +23,7 @@
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
 #include "plugins/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
+#include "plugins/cart_viewer.h"     // PointOverViewer (dépôt par glisser vers le viewer chariot)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // skin RO (BeginRoWindow / RoButton / RoCheckbox / DrawBar)
@@ -155,7 +156,9 @@ constexpr uint16_t kOpFavorite = 0x0907;
 constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex} : dés-équiper.
 
 // Fenêtres cible d'un transfert (chariot / storage), pour le drag-out + menu.
-constexpr uintptr_t kCartWndGlobal = 0x0131f6a0;
+// Le chariot se cherche par ID au gestionnaire (cf. CartWnd plus bas) ; le storage
+// garde son global dédié, lui bien référencé par le client.
+constexpr int kWinCart             = 0x28;   // UICartWnd (SaveWindowRect(40))
 constexpr uintptr_t kCartVTable    = 0x0103d538;
 constexpr uintptr_t kStorageSlot   = 0x0131f770;
 constexpr uintptr_t kStorageVTable = 0x0103ca40;
@@ -713,9 +716,39 @@ bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-bool MouseOverCart(float x, float y)    { return MouseOverWnd(kCartWndGlobal, kCartVTable, x, y); }
+// Fenêtre CHARIOT (id 0x28) via le GESTIONNAIRE. ⚠ kCartWndGlobal 0x0131f6a0,
+// hérité d'une RE live, n'a AUCUNE référence dans le binaire (xrefs IDA
+// 2026-07-27) : il ne porte pas la fenêtre chariot, donc CartOpen() était
+// TOUJOURS faux (« Vers le chariot » n'apparaissait jamais dans le menu) et le
+// dépôt par glisser sur le chariot ne partait jamais. FindWindow est la source
+// autoritaire : le client détruit ses fenêtres à la fermeture.
+uint8_t* CartWnd() {
+  __try {
+    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
+    if (!w) return nullptr;
+    if (*reinterpret_cast<uintptr_t*>(w) != kCartVTable) return nullptr;
+    return w;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Chariot MODERNE (CartViewer) : sa fenêtre native est cachée — son rect ne vaut
+// plus rien, comme pour le storage. On teste donc d'abord le rect du viewer, puis
+// la fenêtre native (chariot resté natif).
+bool MouseOverCart(float x, float y) {
+  if (auto* cv = Bourgeon::Instance().cart_viewer())
+    if (cv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
+  uint8_t* w = CartWnd();
+  if (!w) return false;
+  __try {
+    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
+    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
+    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
-bool CartOpen()    { return ReadValidWnd(kCartWndGlobal, kCartVTable) != nullptr; }
+bool CartOpen()    { return CartWnd() != nullptr; }
 bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
 // Échange joueur-joueur ImGui actif (TradeTweaks) : cible de « Vers l'échange ».
 bool TradeOpen() {
@@ -1575,18 +1608,23 @@ void InventoryViewer::RenderCardInsert() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool InventoryViewer::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé : bascule aussi le storage et les
-  // barres d'action (tout-ImGui ou tout-natif, plus de mixe).
-  if (ro::RoCheckbox("Interface moderne (inventaire + storage + barres + échange + courrier)",
-                     &imgui_enabled_)) {
+  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) :
+  // la liste des fenêtres du groupe vit dans SetModernInterface (moonlight_ui.h),
+  // on ne la recopie pas ici.
+  if (ro::RoCheckbox("Interface moderne", &imgui_enabled_)) {
     SetModernInterface(imgui_enabled_);
     changed = true;
   }
   SameLine(); HelpMarker(
-      "Interrupteur GLOBAL : inventaire, storage, barres d'action et "
-      "échange modernes s'activent ENSEMBLE — pas de mixe (tout ImGui ou tout "
-      "natif). Les cases des sections Storage et Barre d'action reflètent "
-      "le même état.\n\n"
+      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
+      "ImGui ou tout natif) :\n"
+      "  • Inventaire (et le sertissage de cartes)\n"
+      "  • Chariot\n"
+      "  • Storage (Kafra, guilde, premium)\n"
+      "  • Barres d'action\n"
+      "  • Échange joueur-joueur\n"
+      "  • Courrier (RODEX)\n"
+      "La case des autres sections reflète donc le même état.\n\n"
       "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
       "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
@@ -1648,12 +1686,10 @@ bool InventoryViewer::DrawSettings() {
   // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
   // (aucun réglage yaml de CE plugin n'a bougé).
   SeparatorText("Tri serveur");
-  if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
-    ImGui::BeginDisabled(free_layout());
+  ImGui::BeginDisabled(free_layout());
+  if (auto* mu = Bourgeon::Instance().moonlight_ui())
     mu->DrawSortModeCombo(MoonlightUi::kSortInventory);
-    ImGui::EndDisabled();
-    mu->DrawSortModeCombo(MoonlightUi::kSortCart);
-  }
+  ImGui::EndDisabled();
 
   return changed;
 }
