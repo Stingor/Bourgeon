@@ -1652,7 +1652,7 @@ void SendStatUp(int statType, int amount = 1) {
   pkt[4] = static_cast<uint8_t>(amount);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
-// Invoquer/basculer un compagnon (chariot/peco/faucon) : CZ_BOURGEON_COMPANION (0x0F15),
+// Invoquer/basculer un compagnon (cart/peco/faucon) : CZ_BOURGEON_COMPANION (0x0F15),
 // paquet FIXE 7 o {op:2, len:2, kind:1, action:1, arg:1}. Le serveur re-valide le skill.
 void SendCompanionPkt(int kind, int action, int arg) {
   uint8_t pkt[7];
@@ -1824,7 +1824,7 @@ CharacterSheet::CharacterSheet() {
   // Apport équip/cartes poussé par le serveur à chaque status_calc_pc. Opcode zone
   // custom sûre (>0x0C35) => livré par le reader-hook. cf. bourgeon_opcodes.h.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStatBonus);
-  // État des compagnons (chariot/peco/faucon) poussé par le serveur au login + à chaque
+  // État des compagnons (cart/peco/faucon) poussé par le serveur au login + à chaque
   // changement (pc_setcart/riding/falcon). Gate/affiche les cases sans RE côté client.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kCompanionState);
   // Postes de guilde : le client ne les garde QUE dans la fenêtre native (liste
@@ -4625,7 +4625,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
   ImGui::PopID();
 }
 
-// Colonne COMPAGNONS (à gauche de l'arme) : chariot/peco/faucon, chacun affiché SEULEMENT
+// Colonne COMPAGNONS (à gauche de l'arme) : cart/peco/faucon, chacun affiché SEULEMENT
 // si son skill est appris (état poussé par le serveur). Renvoie le nombre de cases dessinées.
 int CharacterSheet::DrawCompanions(float x, float y0, float sz, float gap) {
   if (!companion_.valid) return 0;
@@ -4641,14 +4641,14 @@ int CharacterSheet::DrawCompanions(float x, float y0, float sz, float gap) {
 }
 
 // Une case compagnon : fond vert si actif. Clic gauche = basculer (invoquer/ranger).
-// Chariot : clic droit = menu {Ouvrir, Changer la déco (si MC_CHANGECART), Retirer}.
+// Cart : clic droit = menu {Ouvrir, Changer la déco (si MC_CHANGECART), Retirer}.
 void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
   bool active = false;
   const char* label = "";
   const char* name = "";
   int skillId = 0;  // skill dont on affiche l'icône (id envoyé par le serveur)
   switch (kind) {
-    case kCompCart:   active = companion_.cart_active > 0; label = "Cart";   name = "Chariot";        skillId = companion_.pushcart_id; break;
+    case kCompCart:   active = companion_.cart_active > 0; label = "Cart";   name = "Cart";        skillId = companion_.pushcart_id; break;
     case kCompPeco:   active = companion_.riding_active;   label = "Peco";   name = "Monture (Peco)"; skillId = companion_.riding_id;   break;
     case kCompFalcon: active = companion_.falcon_active;   label = "Falcon"; name = "Faucon";         skillId = companion_.falcon_id;   break;
   }
@@ -4664,7 +4664,7 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
   dl->AddRectFilled(p0, p1, bg, 4.0f);
   dl->AddRect(p0, p1, active ? IM_COL32(30, 110, 30, 220) : IM_COL32(0, 0, 0, 80), 4.0f, 0,
               active ? 1.5f : 1.0f);
-  // Icône du skill (chariot/peco/faucon) ; repli sur le libellé texte si absente.
+  // Icône du skill (cart/peco/faucon) ; repli sur le libellé texte si absente.
   // Grisée quand le compagnon est inactif (tint alpha réduit via le canal de couleur).
   ro::IconTex ic = ResolveSkillIcon(skillId);
   if (ic.tex) {
@@ -4691,11 +4691,11 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
     }
   }
 
-  // Menu contextuel (chariot uniquement).
+  // Menu contextuel (cart uniquement).
   if (kind == kCompCart) {
     if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("cart_ctx");
     if (ImGui::BeginPopup("cart_ctx")) {
-      if (ImGui::MenuItem("Ouvrir le chariot", nullptr, false, active)) OpenCartWindow();
+      if (ImGui::MenuItem("Ouvrir le cart", nullptr, false, active)) OpenCartWindow();
       const bool canDeco = companion_.changecart_lv > 0 && active;
       if (ImGui::MenuItem("Changer la décoration", nullptr, false, canDeco)) {
         int next = companion_.cart_active + 1;
@@ -4703,7 +4703,7 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
         SendCompanionPkt(kCompCart, kCompDeco, next);
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Retirer le chariot", nullptr, false, active))
+      if (ImGui::MenuItem("Retirer le cart", nullptr, false, active))
         SendCompanionPkt(kCompCart, kCompOff, 0);
       ImGui::EndPopup();
     }
@@ -4721,12 +4721,12 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
   ImGui::PopID();
 }
 
-// Ouvre la fenêtre d'inventaire du chariot. MakeWindow crée/affiche par id (RE 2026-07-12 :
+// Ouvre la fenêtre d'inventaire du cart. MakeWindow crée/affiche par id (RE 2026-07-12 :
 // id 0x28 = UIMerchantItemWnd, vtable 0x0103d538 ; même appel que la fenêtre de description).
 // Le case a un gate de contexte UI (IsWindowAllowedInContext) qui passe en jeu normal ;
 // OnCreate ne dépend pas de l'état cart (au pire fenêtre vide), le serveur pousse le contenu.
 void CharacterSheet::OpenCartWindow() {
-  constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire chariot)
+  constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire cart)
   __try {
     reinterpret_cast<MakeWindow_t>(kMakeWindow)(
         uiwnd::Mgr(), nullptr,
@@ -4833,7 +4833,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
     DrawSlot(1, costume_, ax, wpn_y, sz);                    // arme -> bas gauche
     DrawSlot(5, costume_, ax + avatar_w - sz, wpn_y, sz);    // bouclier -> bas droite
     DrawAmmoSlot(rx, wpn_y, sz);                             // munition -> à droite du bouclier
-    // Compagnons (chariot/peco/faucon) à GAUCHE de l'arme, empilés vers le bas. Seules les
+    // Compagnons (cart/peco/faucon) à GAUCHE de l'arme, empilés vers le bas. Seules les
     // cases dont le skill est appris apparaissent (état poussé par le serveur).
     const int nComp = DrawCompanions(lx, wpn_y, sz, gap);
     content_bottom = wpn_y + sz;  // arme/bouclier/munition

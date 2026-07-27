@@ -88,6 +88,15 @@ void SetWindowCollapseAllowed(bool allowed);
 bool BeginRoPopupModal(const char* title, int imgui_window_flags = 64);
 void EndRoPopupModal();
 
+// Placement et voile de la PROCHAINE modale RO, à appeler JUSTE AVANT
+// BeginRoPopupModal. Sans appel : centrée sur l'écran, avec le voile ImGui qui
+// assombrit l'arrière-plan. Avec : coin haut-gauche à (x, y) — à l'apparition
+// seulement, la modale reste déplaçable — et voile optionnel (`dim_background` à
+// false pour un petit dialogue contextuel, où assombrir tout l'écran pour saisir
+// un nombre serait disproportionné). Comme le bullet de titre, la demande est
+// CONSOMMÉE par BeginRoPopupModal (pas de fuite sur la modale suivante).
+void SetNextRoModalPos(float x, float y, bool dim_background = true);
+
 // ── Bullet de la barre de titre, cliquable ────────────────────────────────────
 // Le petit blit sys_base à gauche du titre est décoratif par défaut (comme dans le
 // client). Appeler ceci JUSTE AVANT BeginRoWindow le rend interactif pour cette

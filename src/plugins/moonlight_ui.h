@@ -21,7 +21,7 @@
 // « Tout-ImGui ou tout-natif » — SOURCE UNIQUE du groupe « Interface moderne ».
 // Les fenêtres qui s'activent ENSEMBLE (plus de mixe possible) :
 //   inventaire (InventoryViewer::imgui_enabled_, sertissage de cartes inclus),
-//   chariot (CartViewer::imgui_enabled_), storage (StorageTweaks::imgui_enabled_),
+//   cart (CartViewer::imgui_enabled_), storage (StorageTweaks::imgui_enabled_),
 //   barres d'action (SkillBarTweaks::enabled_), échange (TradeTweaks::imgui_enabled_),
 //   courrier RODEX (RodexTweaks::imgui_enabled_), échoppe joueur — vente ET
 //   échoppe d'achat (VendingTweaks::imgui_enabled_), feuille de personnage
@@ -88,7 +88,7 @@ class MoonlightUi : public Plugin {
   // Les combos « Tri … » de « Commands Settings » pilotent un réglage SERVEUR
   // (settings 19-22 -> sort_inventory_items / sort_storage_items côté moonlight),
   // pas un tri de vue. Ils sont exposés ici pour que les panneaux des fenêtres
-  // concernées (inventaire/chariot, storage/guilde) affichent LE MÊME combo :
+  // concernées (inventaire/cart, storage/guilde) affichent LE MÊME combo :
   // même état, même envoi, aucune copie locale à resynchroniser.
   enum SortTarget { kSortInventory = 0, kSortCart, kSortStorage, kSortGuildStorage };
   // Dessine le combo (skin RO) + son point d'aide, et envoie le réglage au serveur

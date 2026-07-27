@@ -449,8 +449,8 @@ bool MoonlightUi::DrawSortModeCombo(SortTarget target) {
       break;
     case kSortCart:
       value = &sort_mode_cart_; setting_id = kSettingSortModeCart;
-      label = "Tri Chariot";
-      help = "Tri automatique du chariot.";
+      label = "Tri Cart";
+      help = "Tri automatique du cart.";
       break;
     case kSortStorage:
       value = &sort_mode_storage_; setting_id = kSettingSortModeStorage;

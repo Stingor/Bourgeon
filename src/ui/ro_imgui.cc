@@ -203,6 +203,10 @@ bool g_bullet_clicked = false;
 // Couleur de corps demandée pour la PROCHAINE fenêtre RO (SetNextWindowBodyColor).
 bool g_next_body_set = false;
 unsigned int g_next_body_col = 0;
+// Placement/voile demandés pour la PROCHAINE modale RO (SetNextRoModalPos).
+bool g_next_modal_pos_set = false;
+float g_next_modal_x = 0.0f, g_next_modal_y = 0.0f;
+bool g_next_modal_dim = true;
 SkinTex g_btn_out_l, g_btn_out_m, g_btn_out_r;
 SkinTex g_btn_over_l, g_btn_over_m, g_btn_over_r;
 SkinTex g_btn_press_l, g_btn_press_m, g_btn_press_r;
@@ -850,8 +854,29 @@ static int g_modal_vars = 0;
 static_assert(ImGuiWindowFlags_AlwaysAutoResize == 64,
               "MAJ le défaut de BeginRoPopupModal dans ro_imgui.h");
 
+void SetNextRoModalPos(float x, float y, bool dim_background) {
+  g_next_modal_pos_set = true;
+  g_next_modal_x = x;
+  g_next_modal_y = y;
+  g_next_modal_dim = dim_background;
+}
+
 bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
+  // Consommé quoi qu'il arrive (comme le bullet de BeginRoWindow) : la demande ne
+  // doit pas fuiter sur la modale suivante si celle-ci n'est pas ouverte.
+  const bool pos_set = g_next_modal_pos_set;
+  const float pos_x = g_next_modal_x, pos_y = g_next_modal_y;
+  const bool dim_bg = !pos_set || g_next_modal_dim;
+  g_next_modal_pos_set = false;
+  g_next_modal_dim = true;
+
   g_modal_colors = PushSkinColors();
+  // ImGui fige la couleur du voile dans Begin (window->DC.ModalDimBgColor) : la
+  // pousser ICI suffit, et elle se dépile avec les couleurs du skin.
+  if (!dim_bg) {
+    ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, IM_COL32(0, 0, 0, 0));
+    ++g_modal_colors;
+  }
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
@@ -864,8 +889,11 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
   g_modal_vars = 6;
 
-  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
-                          ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (pos_set)
+    ImGui::SetNextWindowPos(ImVec2(pos_x, pos_y), ImGuiCond_Appearing);
+  else
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   const bool open = ImGui::BeginPopupModal(title, nullptr, imgui_window_flags);
   if (!open) {
     ImGui::PopStyleVar(g_modal_vars);     g_modal_vars = 0;

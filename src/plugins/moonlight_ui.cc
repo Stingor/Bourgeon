@@ -267,7 +267,7 @@ const moonlight_ui::SettingDesc kInventorySettings[] = {
      MLUI_LITERAL(bool, false)},
 };
 
-// Chariot ImGui (fenêtre sœur de l'inventaire côté client, mêmes réglages).
+// Cart ImGui (fenêtre sœur de l'inventaire côté client, mêmes réglages).
 const moonlight_ui::SettingDesc kCartSettings[] = {
     {"cart_imgui",   SType::kBool, MLUI_FIELD(cart_viewer, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
@@ -668,8 +668,8 @@ MoonlightUi::MoonlightUi() {
 void SetModernInterface(bool on) {
   if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
     inventory_viewer->imgui_enabled_ = on;
-  // Le chariot suit l'inventaire : les deux s'échangent des objets par glisser, et
-  // un chariot natif ne sait pas déposer chez nous (ni l'inverse).
+  // Le cart suit l'inventaire : les deux s'échangent des objets par glisser, et
+  // un cart natif ne sait pas déposer chez nous (ni l'inverse).
   if (auto* cart_viewer = Bourgeon::Instance().cart_viewer())
     cart_viewer->imgui_enabled_ = on;
   if (auto* storage_tweaks = Bourgeon::Instance().storage_tweaks())
@@ -685,7 +685,7 @@ void SetModernInterface(bool on) {
     rodex_tweaks->imgui_enabled_ = on;
   // L'échoppe joueur (vente ET achat) suit aussi : elle se monte à partir du
   // CHARIOT, qui est déjà du lot. Un formulaire d'échoppe moderne au-dessus d'un
-  // chariot natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
+  // cart natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
   if (auto* vending_tweaks = Bourgeon::Instance().vending_tweaks())
     vending_tweaks->imgui_enabled_ = on;
   // La feuille de personnage est un COMPLÉMENT (les fenêtres natives Status et
@@ -716,7 +716,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
       "ImGui ou tout natif) :\n"
       "  • Inventaire (et le sertissage de cartes)\n"
-      "  • Chariot\n"
+      "  • Cart\n"
       "  • Storage (Kafra, guilde, premium)\n"
       "  • Barres d'action\n"
       "  • Échange joueur-joueur\n"
@@ -829,7 +829,7 @@ void MoonlightUi::PostLoadApply() {
   // réconcilie en OU (au moins une moderne => toutes modernes ; tout natif sinon),
   // puis les cases restent synchronisées.
   // Seules les fenêtres qui ont EU une case isolée par le passé sont testées : les
-  // membres arrivés déjà groupés (chariot, échoppe) n'ont jamais pu être activés
+  // membres arrivés déjà groupés (cart, échoppe) n'ont jamais pu être activés
   // seuls, donc les lire n'apporterait rien à la réconciliation. En revanche la
   // feuille de perso et les deux boutiques, elles, ont eu la leur : les OMETTRE
   // ne serait pas neutre, SetModernInterface les ÉTEINDRAIT au chargement chez

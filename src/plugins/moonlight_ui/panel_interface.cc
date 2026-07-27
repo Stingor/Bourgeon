@@ -18,8 +18,6 @@
 // que des déclarations anticipées).
 #include "plugins/basic_info.h"
 #include "plugins/bug_report.h"
-#include "plugins/cashshop_tweaks.h"
-#include "plugins/character_sheet.h"
 #include "plugins/chat.h"
 #include "plugins/inventory_viewer.h"
 #include "plugins/cart_viewer.h"
@@ -28,7 +26,6 @@
 #include "plugins/npc_dialog_tweaks.h"
 #include "plugins/quest_tracker_tweaks.h"
 #include "plugins/rodex_tweaks.h"
-#include "plugins/shop_tweaks.h"
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/status_icon_tweaks.h"
 #include "plugins/storage_tweaks.h"
@@ -69,15 +66,14 @@ void MoonlightUi::DrawInterfacePanel() {
         "pendant le déplacement et le redimensionnement.");
     changed |= ColorEdit4WithAlphaBar("Couleur grille", grid_.color);
 
-    // (Inventaire et Storage : tout est regroupé dans leurs sections dédiées.)
-
-    // (Storage : tout est regroupé dans la section « Storage » ci-dessous.)
+    // (Inventaire, Cart et Storage : tout est regroupé dans leurs sections
+    // dédiées, sous la navigation latérale ci-dessous.)
 
     // (Cash shop, boutiques PNJ, échoppe joueur — vente ET échoppe d'achat —,
     // courrier RODEX et feuille de personnage (Alt+F) : AUCUNE case ici. Tous font
     // partie de l'interrupteur GLOBAL « Interface moderne » (liste dans
     // SetModernInterface, moonlight_ui.h), porté par les sections Inventaire,
-    // Chariot, Storage et Barre d'action.
+    // Cart, Storage et Barre d'action.
     // Ils achètent, vendent, joignent ou équipent VERS et DEPUIS l'inventaire :
     // moderne d'un côté et natif de l'autre, les objets ne se glissent plus. Une
     // case isolée rouvrirait donc exactement le mixe qu'on a supprimé.)
@@ -113,7 +109,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceNpc,         "Fenêtre NPC"},
         {kIfaceStorage,     "Storage"},
         {kIfaceInventory,   "Inventaire"},
-        {kIfaceCart,        "Chariot"},
+        {kIfaceCart,        "Cart"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -306,7 +302,7 @@ void MoonlightUi::DrawInterfacePanel() {
         }
       }
 
-      // ── Chariot (CartViewer : viewer ImGui + filtre/onglets) ──────────────
+      // ── Cart (CartViewer : viewer ImGui + filtre/onglets) ──────────────
       if (iface_nav_ == kIfaceCart) {
         if (auto* cv = Bourgeon::Instance().cart_viewer()) {
           if (cv->DrawSettings()) SaveSettings();

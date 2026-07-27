@@ -1028,25 +1028,12 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
 void SkillBarTweaks::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé : bascule aussi l'inventaire et le storage
-  // (tout-ImGui ou tout-natif, plus de mixe). SetModernInterface() encapsule
-  // l'accès aux deux autres plugins (déclarée dans moonlight_ui.h). La case reste
+  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
+  // case, la liste du groupe et son application vivent dans un seul endroit
+  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h). Elle reste
   // câblée sur enabled_ ; la persistance passe par dirty_ (drainé par MoonlightUi,
-  // dont le SaveSettings écrit aussi inventory_imgui/storage_imgui à jour).
-  if (ro::RoCheckbox("Interface moderne", &enabled_)) {
-    SetModernInterface(enabled_);
-    changed = true;
-  }
-  SameLine(); HelpMarker(
-      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
-      "ImGui ou tout natif) :\n"
-      "  • Inventaire (et le sertissage de cartes)\n"
-      "  • Chariot\n"
-      "  • Storage (Kafra, guilde, premium)\n"
-      "  • Barres d'action\n"
-      "  • Échange joueur-joueur\n"
-      "  • Courrier (RODEX)\n"
-      "La case des autres sections reflète donc le même état.\n\n"
+  // dont le SaveSettings réécrit tous les flags du groupe à jour).
+  changed |= DrawModernInterfaceCheckbox(&enabled_,
       "Désactivé = barres classiques.\nActivé = barres modernes entièrement customisables.");
 
   SeparatorText("Réglages généraux");

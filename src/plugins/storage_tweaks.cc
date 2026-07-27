@@ -23,11 +23,11 @@
 #include "plugins/imgui_escape.h"
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "plugins/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
-#include "plugins/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer chariot)
+#include "plugins/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer cart)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "plugins/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
-#include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
-#include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
+#include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
+#include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -172,6 +172,9 @@ bool MouseOverInventory(float x, float y) {
   __try {
     uint8_t* inv = *reinterpret_cast<uint8_t**>(kInvWndGlobal);
     if (!inv || *reinterpret_cast<uintptr_t*>(inv) != kInvVTable) return false;
+    // Native CACHÉE (mode moderne) : son rect fantôme ne doit PAS capter les drops
+    // faits sur les viewers ImGui posés par-dessus (cf. kOffVisible).
+    if (*reinterpret_cast<int*>(inv + kOffVisible) == 0) return false;
     const int ix = *reinterpret_cast<int*>(inv + 0x1c);
     const int iy = *reinterpret_cast<int*>(inv + 0x20);
     const int iw = *reinterpret_cast<int*>(inv + 0x14);
@@ -180,16 +183,16 @@ bool MouseOverInventory(float x, float y) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Fenêtre CART (chariot marchand) : MÊME framework générique que l'inventaire
+// Fenêtre CART (cart marchand) : MÊME framework générique que l'inventaire
 // (vtable sœur 0x0103d538, rect aux mêmes offsets), id 0x28.
 // ⚠ CORRECTION 2026-07-27 : elle se cherche par ID au GESTIONNAIRE. L'ancien
 // global 0x0131f6a0 (« trouvé en RE live ») n'a AUCUNE référence dans le binaire
-// (xrefs IDA) et ne porte pas la fenêtre chariot — ce hit-test ne répondait donc
-// jamais, et « lâcher un item storage sur le chariot » était silencieusement mort.
+// (xrefs IDA) et ne porte pas la fenêtre cart — ce hit-test ne répondait donc
+// jamais, et « lâcher un item storage sur le cart » était silencieusement mort.
 constexpr int kWinCart          = 0x28;
 constexpr uintptr_t kCartVTable = 0x0103d538;
 bool MouseOverCart(float x, float y) {
-  // Chariot MODERNE (CartViewer) : sa fenêtre native est cachée, donc le rect natif
+  // Cart MODERNE (CartViewer) : sa fenêtre native est cachée, donc le rect natif
   // ci-dessous ne veut plus rien dire -> on teste d'abord le rect du viewer (même
   // traitement que MouseOverInventory).
   if (auto* cv = Bourgeon::Instance().cart_viewer())
@@ -197,11 +200,23 @@ bool MouseOverCart(float x, float y) {
   __try {
     auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
     if (!cart || *reinterpret_cast<uintptr_t*>(cart) != kCartVTable) return false;
+    if (*reinterpret_cast<int*>(cart + kOffVisible) == 0) return false;  // cachée = pas une cible
     const int cx = *reinterpret_cast<int*>(cart + 0x1c);
     const int cy = *reinterpret_cast<int*>(cart + 0x20);
     const int cw = *reinterpret_cast<int*>(cart + 0x14);
     const int ch = *reinterpret_cast<int*>(cart + 0x18);
     return x >= cx && y >= cy && x < cx + cw && y < cy + ch;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Le chariot est-il OUVERT (natif classique OU remplacé par son viewer ImGui) ?
+// ⚠ Ne teste PAS la visibilité, contrairement aux hit-tests ci-dessus : en
+// « Interface moderne » la native est cachée alors que le chariot est bel et bien
+// ouvert. Sert à proposer « Vers le cart » dans le menu contextuel.
+bool CartOpen() {
+  __try {
+    auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
+    return cart && *reinterpret_cast<uintptr_t*>(cart) == kCartVTable;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -531,7 +546,7 @@ void SendCloseStorage() {
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
 }
 
-// storage -> cart : envoie un item de l'entrepôt vers le chariot. index = index
+// storage -> cart : envoie un item de l'entrepôt vers le cart. index = index
 // storage CLIENT (items_[idx].index) ; le serveur applique server_storage_index (-1).
 void SendStorageToCart(int index, int amount) {
   if (amount <= 0) return;
@@ -542,7 +557,7 @@ void SendStorageToCart(int index, int amount) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// cart -> storage : envoie un item du chariot vers l'entrepôt. index = index cart
+// cart -> storage : envoie un item du cart vers l'entrepôt. index = index cart
 // CLIENT (lu du payload de drag natif) ; le serveur applique server_index (-2).
 void SendCartToStorage(int index, int amount) {
   if (amount <= 0) return;
@@ -855,23 +870,11 @@ bool StorageTweaks::DescPendingBlocksHover() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool StorageTweaks::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) :
-  // la liste des fenêtres du groupe vit dans SetModernInterface (moonlight_ui.h),
-  // on ne la recopie pas ici.
-  if (ro::RoCheckbox("Interface moderne", &imgui_enabled_)) {
-    SetModernInterface(imgui_enabled_);
-    changed = true;
-  }
-  SameLine(); HelpMarker(
-      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
-      "ImGui ou tout natif) :\n"
-      "  • Inventaire (et le sertissage de cartes)\n"
-      "  • Chariot\n"
-      "  • Storage (Kafra, guilde, premium)\n"
-      "  • Barres d'action\n"
-      "  • Échange joueur-joueur\n"
-      "  • Courrier (RODEX)\n"
-      "La case des autres sections reflète donc le même état.\n\n"
+  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
+  // case, la liste du groupe et son application vivent dans un seul endroit
+  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h) ; ici on ne
+  // dit que ce que la bascule change POUR LE STORAGE.
+  changed |= DrawModernInterfaceCheckbox(&imgui_enabled_,
       "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
       "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
       "viewer.");
@@ -1010,53 +1013,24 @@ void StorageTweaks::OnRenderUI() {
   };
   if (pend_id_ != 0) {
     if (pend_open_prompt_) {
-      ImGui::OpenPopup("Quantite");
+      ro::OpenQuantityPrompt(this);
       pend_open_prompt_ = false;
     } else if (pend_max_ <= 1) {
       do_move(1);  // 1 seul item -> direct
       pend_id_ = 0;
     }
   }
-  // Pas de voile (dim) derrière la modale, et prompt au curseur.
-  ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0, 0, 0, 0));
-  ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Appearing);
-  const bool popen =
-      ImGui::BeginPopupModal("Quantite", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-  ImGui::PopStyleColor();
-  if (popen) {
+  // Dialogue « combien ? » PARTAGÉ (ui/qty_prompt) : habillé RO, identique dans
+  // l'inventaire, le storage et le cart.
+  {
     const char* verb = pend_action_ == kPendWithdraw ? "Retirer"
-                     : pend_action_ == kPendStoToCart ? "Vers le chariot"
-                     : pend_action_ == kPendCartToSto ? "Depuis le chariot"
-                     : "Deposer";
-    ImGui::Text("%s combien ? (max %d)", verb, pend_max_);
-    static int dq = 1;
-    ImGui::SetNextItemWidth(140);
-    // À l'ouverture : défaut = stack ENTIER (le cas courant) + focus l'input (le
-    // texte est sélectionné -> taper un nombre remplace pour une quantité partielle).
-    if (ImGui::IsWindowAppearing()) {
-      dq = pend_max_;
-      ImGui::SetKeyboardFocusHere();
-    }
-    ImGui::InputInt("##dq", &dq);
-    if (dq < 1) dq = 1;
-    if (dq > pend_max_) dq = pend_max_;
-    // Entrée (ou pavé numérique) valide comme le bouton OK.
-    const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-                       ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
-    if (ImGui::Button("OK") || enter) {
-      do_move(dq);
-      pend_id_ = 0; dq = 1;
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Tout")) {
-      do_move(pend_max_);
-      pend_id_ = 0; dq = 1;
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Annuler")) { pend_id_ = 0; dq = 1; ImGui::CloseCurrentPopup(); }
-    ImGui::EndPopup();
+                     : pend_action_ == kPendStoToCart ? "Vers le cart"
+                     : pend_action_ == kPendCartToSto ? "Depuis le cart"
+                     : "Déposer";
+    bool cancelled = false;
+    const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
+    if (qty > 0) { do_move(qty); pend_id_ = 0; }
+    else if (cancelled) pend_id_ = 0;
   }
 
   // Onglets de catégorie (filtre par type d'item). Changer d'onglet remet la
@@ -1304,8 +1278,8 @@ void StorageTweaks::OnRenderUI() {
                      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
                      "- Ctrl + clic droit : description\n"
                      "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
-                     "- Glisser un item du viewer -> inventaire : retrait ; -> chariot : storage vers cart\n"
-                     "- Glisser un item d'inventaire / chariot sur le viewer : depot / cart vers storage\n"
+                     "- Glisser un item du viewer -> inventaire : retrait ; -> cart : storage vers cart\n"
+                     "- Glisser un item d'inventaire / cart sur le viewer : depot / cart vers storage\n"
                      "- Glisser un item sur l'onglet Favoris : l'y ajoute ; sur un autre onglet : l'en retire\n"
                      "- Entree : valide la quantite (defaut = stack entier)\n"
                      "- Survol d'un item : description (si active dans Interface > Storage)\n"
@@ -1559,19 +1533,42 @@ void StorageTweaks::OnRenderUI() {
         ImGui::Separator();
         const int amt = items_[idx].amount;
         const int index = items_[idx].index;
-        if (ImGui::MenuItem("Retirer 1")) WithdrawItem(index, 1);
+        // Destination NOMMÉE : « Retirer » seul ne disait pas où l'objet partait,
+        // alors que le chariot est une destination tout aussi légitime (et la seule
+        // que le menu ne proposait pas du tout).
+        if (ImGui::MenuItem("Vers l'inventaire (1)")) WithdrawItem(index, 1);
         if (amt > 1) {
-          char lbl[40];
-          std::snprintf(lbl, sizeof(lbl), "Retirer tout (%d)", amt);
+          char lbl[48];
+          std::snprintf(lbl, sizeof(lbl), "Vers l'inventaire (tout : %d)", amt);
           if (ImGui::MenuItem(lbl)) WithdrawItem(index, amt);
-          static int qty = 1;
-          ImGui::SetNextItemWidth(90);
-          ImGui::InputInt("##qty", &qty);
-          ImGui::SameLine();
-          if (ImGui::SmallButton("Retirer")) {
-            int q = qty < 1 ? 1 : (qty > amt ? amt : qty);
-            WithdrawItem(index, q);
-            ImGui::CloseCurrentPopup();
+          // Quantité libre : on ARME le prompt partagé (ui/qty_prompt) au lieu de
+          // saisir dans le menu — un champ + un bouton en plein menu contextuel,
+          // c'était le seul endroit du storage resté en widgets ImGui bruts.
+          if (ImGui::MenuItem("Vers l'inventaire...")) {
+            pend_id_ = index;
+            pend_index_ = index;
+            pend_max_ = amt;
+            pend_action_ = kPendWithdraw;
+            pend_open_prompt_ = true;
+          }
+        }
+        // Chariot ouvert : même offre que pour l'inventaire. Le serveur AUTORISE
+        // storage <-> cart pendant que l'entrepôt est ouvert (CZ 0x0128/0x0129,
+        // hors pc_cant_act2) — contrairement à inventaire <-> cart.
+        if (CartOpen()) {
+          ImGui::Separator();
+          if (ImGui::MenuItem("Vers le cart (1)")) SendStorageToCart(index, 1);
+          if (amt > 1) {
+            char lbl[48];
+            std::snprintf(lbl, sizeof(lbl), "Vers le cart (tout : %d)", amt);
+            if (ImGui::MenuItem(lbl)) SendStorageToCart(index, amt);
+            if (ImGui::MenuItem("Vers le cart...")) {
+              pend_id_ = index;
+              pend_index_ = index;
+              pend_max_ = amt;
+              pend_action_ = kPendStoToCart;
+              pend_open_prompt_ = true;
+            }
           }
         }
         ImGui::EndPopup();
@@ -1672,8 +1669,16 @@ void StorageTweaks::OnRenderUI() {
     } else {  // drag terminé ce frame
       int action = -1;
       if (drag_index_ > 0) {
-        if (MouseOverInventory(drag_mx_, drag_my_))   action = kPendWithdraw;
-        else if (MouseOverCart(drag_mx_, drag_my_))   action = kPendStoToCart;
+        // Lâcher DANS l'entrepôt = rangement interne, rien à router. Testé EN
+        // PREMIER pour qu'une fenêtre posée dessous ne capte pas le drop (même
+        // garde que l'inventaire et le cart).
+        const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
+                               drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
+        if (over_self) {
+          // rien
+        }
+        else if (MouseOverInventory(drag_mx_, drag_my_)) action = kPendWithdraw;
+        else if (MouseOverCart(drag_mx_, drag_my_))      action = kPendStoToCart;
       }
       if (action != -1) {
         pend_id_ = drag_index_;

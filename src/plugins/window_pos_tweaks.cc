@@ -10,7 +10,7 @@
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
 #include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
-#include "plugins/cart_viewer.h"  // hide-native-at-creation (chariot id 0x28)
+#include "plugins/cart_viewer.h"  // hide-native-at-creation (cart id 0x28)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "plugins/vending_tweaks.h"  // hide-native-at-creation (id 0x29/0xAE)
@@ -136,7 +136,7 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HideNativeAtCreation(win);
     }
-    // Chariot (UICartWnd id 0x28) : fenêtre sœur de l'inventaire, même traitement.
+    // Cart (UICartWnd id 0x28) : fenêtre sœur de l'inventaire, même traitement.
     if (windowID == 0x28) {
       if (auto* cv = Bourgeon::Instance().cart_viewer())
         cv->HideNativeAtCreation(win);
@@ -160,10 +160,21 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* sh = Bourgeon::Instance().shop_tweaks())
         sh->HideNativeAtCreation(win);
     }
-    // Échoppe joueur : la fenêtre de COMPOSITION (vente 0x29, achat 0xAE) est
-    // remplacée par VendingTweaks. La grille « objets disponibles » (0x2A/0xAF)
-    // reste native — c'est elle qui porte le glisser-déposer.
-    if (windowID == 0x29 || windowID == 0xAE) {
+    // Échoppe joueur : la COMPOSITION (vente 0x29, achat 0xAE) ET la grille des
+    // objets disponibles (0x2A/0xAF) sont remplacées par VendingTweaks, qui les
+    // fusionne en une seule fenêtre ImGui.
+    // 0x2D / 0xB0 = « My Shop » (UIMerchantItemMyShopWnd), ouverte APRÈS le
+    // lancement de l'échoppe — elle a son propre cycle de vie dans le plugin.
+    // 0x101 / 0x102 = « Item Sell History » (UIMerchantItemLogWnd), ouverte par la
+    // fermeture de la boutique.
+    // 0x2B / 0x2C = côté ACHETEUR (UIMerchantItemShopWnd = l'offre du vendeur,
+    // UIMerchantItemPurchaseWnd = le panier), ouvertes en cliquant sur l'échoppe
+    // d'un autre joueur. Masquées d'office ; le plugin les réaffiche s'il tombe
+    // sur le mode « échoppe d'achat », qu'il ne remplace pas encore.
+    if (windowID == 0x29 || windowID == 0x2A || windowID == 0xAE ||
+        windowID == 0xAF || windowID == 0x2D || windowID == 0xB0 ||
+        windowID == 0x2B || windowID == 0x2C ||
+        windowID == 0x101 || windowID == 0x102) {
       if (auto* vt = Bourgeon::Instance().vending_tweaks())
         vt->HideNativeAtCreation(win);
     }

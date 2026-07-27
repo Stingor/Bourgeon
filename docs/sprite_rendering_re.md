@@ -230,7 +230,7 @@ Famille cohérente, vérifiée par représentants (structures de nœud d'effet m
   angles recalés sur caméra +0x3ec/+0x4a0, pos owner +0x140).
 - **Draw** : `EzEffect_DrawSub_*` — un sprite `.act` billboard par nœud attaché ; projette sol
   (`Terrain_GetHeightAt`) → écran, boucle couches → `Actor_SubmitQuad_RenderQueue`.
-- **ChildSprite** : sprite-enfant (chariot/faucon/warg/pet). `ChildSprite_DrawIfActive` → ombre +
+- **ChildSprite** : sprite-enfant (cart/faucon/warg/pet). `ChildSprite_DrawIfActive` → ombre +
   `Actor_DrawSingleActLayers`.
 
 | Adresse | Nom | Rôle vérifié |

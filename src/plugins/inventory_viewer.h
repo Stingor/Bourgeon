@@ -23,7 +23,7 @@
 // Layout : GRILLE d'icônes (proche du natif), onglets Use/Eqp/Etc/Card/Fav par
 // type d'item, recherche, poids/zeny/compteur en bas, clic-droit = description.
 // Interactif : utiliser (conso) / équiper / jeter / (dés)favori / trier +
-// drag-out + transfert ALT vers chariot/entrepôt. (Les opcodes/commandes exacts
+// drag-out + transfert ALT vers cart/entrepôt. (Les opcodes/commandes exacts
 // sont finalisés par la RE en cours ; cf. project_inventory_viewer_wip.)
 //
 // Réutilise de storage_tweaks.cc : cache d'icônes, BuildDisplayName, OpenItemDesc
@@ -204,7 +204,7 @@ class InventoryViewer : public Plugin {
   bool  win_valid_ = false;
   bool  mousedown_over_viewer_ = false;
   bool  mousedown_over_equip_ = false;  // le drag natif a démarré sur la fenêtre Équipement
-  bool  mousedown_over_cart_ = false;   // le drag natif a démarré sur la fenêtre Chariot
+  bool  mousedown_over_cart_ = false;   // le drag natif a démarré sur la fenêtre Cart
 
   // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
   enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage,
@@ -215,7 +215,7 @@ class InventoryViewer : public Plugin {
   bool pend_open_prompt_ = false;
   int  pend_action_ = kPendUse;
 
-  // Drag d'un item du viewer (-> équip/sol/chariot selon la cible).
+  // Drag d'un item du viewer (-> équip/sol/cart selon la cible).
   bool  drag_active_ = false;
   int   drag_index_ = 0, drag_amount_ = 0, drag_type_ = 0;
   uint32_t drag_id_ = 0;   // nameid de l'item glissé (drag-drop vers la barre d'action)

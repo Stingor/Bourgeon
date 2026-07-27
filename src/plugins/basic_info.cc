@@ -143,7 +143,7 @@ struct CapLayer {
   float  cx, cy, w, h;        // sprite centre + scaled size (actor space)
   bool   mirror;
   bool   head_region;         // true = face/hair/head-gear (RGBA), false = body/garment
-  bool   companion;           // true = chariot/faucon (sous-acteur) : rendu MAIS exclu de
+  bool   companion;           // true = cart/faucon (sous-acteur) : rendu MAIS exclu de
                               // l'ancrage (ne doit PAS tirer le centre/pieds du corps)
 };
 CapLayer g_caps[48];
@@ -292,7 +292,7 @@ void EmitCapLayer(void* p3, short* spr_frame, int* act_layer, float x, float y,
     // (==0) are the body/garment/weapon. Used to frame head vs head+body.
     L.head_region = (act_layer[8] != 0);
     // Par défaut PAS un compagnon (le slot est réutilisé d'une frame à l'autre : il faut
-    // effacer un éventuel `true` laissé par un chariot/faucon). EmitCompanionLayers le
+    // effacer un éventuel `true` laissé par un cart/faucon). EmitCompanionLayers le
     // repasse à true APRÈS coup pour ses propres couches.
     L.companion = false;
   }
@@ -760,10 +760,10 @@ void EmitWeaponShieldLayers(int anim, int dir, int frameIdx, float body_scale) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// ── Compagnons (chariot / faucon) sur l'avatar ───────────────────────────────
+// ── Compagnons (cart / faucon) sur l'avatar ───────────────────────────────
 // Le CHARIOT et le FAUCON ne sont PAS des slots du composite 9-parts : ce sont des
 // SOUS-ACTEURS enfants du joueur (std::list @actor+0x3a8, count @+0x3ac ; nœud MSVC
-// {+0 next, +4 prev, +8 subActor}). RE live 2026-07-12 (x32 sur un perso en chariot).
+// {+0 next, +4 prev, +8 subActor}). RE live 2026-07-12 (x32 sur un perso en cart).
 // Chaque enfant a la MÊME base CActorSprite que les slots -> EmitSlotLayers le dessine
 // tel quel : SPR(cellules @+0x510) = child+0x104, ACT(frames) = child+0x108, pose @+0x38,
 // frame @+0x3c. Le SPR stocke son chemin GRF à spr+0x14 -> on filtre cart (손수레) / faucon
@@ -775,9 +775,9 @@ constexpr int kOffChildCount   = 0x3ac;  // acteur -> _Mysize de la liste ci-des
 constexpr int kOffChildPose = 0x38, kOffChildFrame = 0x3c, kOffChildActive = 0xa0;
 constexpr int kOffChildSpr = 0x104, kOffChildAct = 0x108, kOffChildVisible = 0x158, kOffChildParent = 0x15c;
 constexpr int kOffChildSprPath = 0x14;  // ressource SPR -> chemin GRF (char buffer null-terminé)
-const char kCartMark[]   = "\xBC\xD5\xBC\xF6\xB7\xB9";  // 손수레 (CP949) = chariot
+const char kCartMark[]   = "\xBC\xD5\xBC\xF6\xB7\xB9";  // 손수레 (CP949) = cart
 const char kFalconMark[] = "\xB8\xC5";                   // 매 (CP949) = faucon
-// Nudge d'ancrage (espace acteur, scalé par body_scale) — à régler à l'œil si le chariot/faucon
+// Nudge d'ancrage (espace acteur, scalé par body_scale) — à régler à l'œil si le cart/faucon
 // est décalé. +X = droite, +Y = bas.
 constexpr float kCartNudgeX = 0.0f, kCartNudgeY = 0.0f;
 constexpr float kFalconNudgeX = 0.0f, kFalconNudgeY = 0.0f;
@@ -801,7 +801,7 @@ bool ChildSprPathHas(void* spr, const char* needle, int nlen) {
 
 int g_av_companion_present = 0;  // bit0=cart, bit1=faucon (posé ici, lu par la sig d'apparence)
 
-// Placement du chariot dans le doll À PLAT (aucune projection perspective live). RE de la
+// Placement du cart dans le doll À PLAT (aucune projection perspective live). RE de la
 // matrice de vue (`cam+0x98`, lue live, caméra standard camYaw=0) : la carte monde→écran est
 // DÉCOUPLÉE (termes croisés = 0) → world +X ⇒ écran X (×1), world +Z ⇒ écran Y (×0.766 =
 // sin~50°, l'inclinaison caméra), world +Y(hauteur) ⇒ écran Y (×0.643). Le hat-effect RE
@@ -817,15 +817,15 @@ int g_av_companion_present = 0;  // bit0=cart, bit1=faucon (posé ici, lu par la
 // en Y sur les cardinales, trop loin dans les 2 en diagonale » quand il est mal réglé.
 constexpr float kCartTilePx = 32.0f;   // entre 20 (fidèle, trop près) et 46 (trop loin) — régler
 constexpr float kCamPitch   = 0.766f;  // écrasement vertical axe Z (vm[7], mesuré) — NE PAS toucher
-// En pose COMBAT (anim 4) le sprite d'attaque LUNGE en diagonale (45°) ; le chariot doit suivre
+// En pose COMBAT (anim 4) le sprite d'attaque LUNGE en diagonale (45°) ; le cart doit suivre
 // ce visuel → direction de placement décalée d'1 pas (±45°). +1 par défaut ; passer à -1 si le
-// chariot part du mauvais côté diagonal en combat.
+// cart part du mauvais côté diagonal en combat.
 constexpr int   kCartCombatShift = 1;
 // Faucon MASQUÉ sur l'avatar (choix utilisateur 2026-07-13). Mettre à true pour le réafficher :
 // la détection le peuple alors et le reste du pipeline (présence, émission) le prend en charge.
 constexpr bool  kShowFalcon = false;
 
-// Dessine le chariot (derrière le corps) et le faucon (devant) de l'acteur joueur dans
+// Dessine le cart (derrière le corps) et le faucon (devant) de l'acteur joueur dans
 // le buffer avatar actif, à la DIRECTION de l'avatar. On lit les sprites DÉJÀ résolus par
 // le jeu sur les sous-acteurs enfants (aucune résolution de chemin). SEH-gardé.
 void EmitCompanionLayers(int pose, bool animate, float body_scale) {
@@ -860,7 +860,7 @@ void EmitCompanionLayers(int pose, bool animate, float body_scale) {
     }
     if (nk == 0) return;
 
-    // Retient le chariot / le faucon appartenant à CE joueur (parent==actor, actif, visible),
+    // Retient le cart / le faucon appartenant à CE joueur (parent==actor, actif, visible),
     // avec leur ACTION+frame LIVE (valides pour LEUR .act).
     void* cartSpr = nullptr; void* cartAct = nullptr;
     void* falcSpr = nullptr; void* falcAct = nullptr;
@@ -881,39 +881,39 @@ void EmitCompanionLayers(int pose, bool animate, float body_scale) {
     if (!cartSpr && !falcSpr) return;
     g_av_companion_present = (cartSpr ? 1 : 0) | (falcSpr ? 2 : 0);
 
-    // POSITION : voir kCartTilePx/kCamPitch plus haut. Le chariot traîne ~1 tuile derrière le
+    // POSITION : voir kCartTilePx/kCamPitch plus haut. Le cart traîne ~1 tuile derrière le
     // joueur dans le MONDE (RE `ChildSprite_UpdatePoseAndPos` case 3 : rattrape si dist>seuil
     // DAT_0100ec3c=5.0, sinon FIGE — il ne converge PAS et reflète le DERNIER déplacement, pas le
     // cap courant). On NE LIT donc PAS sa position live ; on place « 1 tuile derrière la dir
-    // AFFICHÉE » à plat (bloc chariot). `CActorSprite_SetFacingTowardXZ 0x00c40ac0` (ex-mal nommée
+    // AFFICHÉE » à plat (bloc cart). `CActorSprite_SetFacingTowardXZ 0x00c40ac0` (ex-mal nommée
     // "SetWorldPosXZ") ne pose que le CAP, pas la position.
     const int d = pose & 7;
     const int anim = pose >> 3;
-    // COMBAT (anim 4) : le sprite d'attaque lunge en DIAGONALE → direction EFFECTIVE du chariot
+    // COMBAT (anim 4) : le sprite d'attaque lunge en DIAGONALE → direction EFFECTIVE du cart
     // décalée de kCartCombatShift (45°). Hors combat, dEff == d.
     const int dEff = (anim == 4) ? ((d + kCartCombatShift) & 7) : d;
-    // Z-order : le chariot passe DEVANT le corps UNIQUEMENT pour les 3 directions « de dos »
-    // {3,4,5} (perso face à l'opposé → chariot PLUS PRÈS de la caméra, bz=cos(dEff·45)<0) ; il est
+    // Z-order : le cart passe DEVANT le corps UNIQUEMENT pour les 3 directions « de dos »
+    // {3,4,5} (perso face à l'opposé → cart PLUS PRÈS de la caméra, bz=cos(dEff·45)<0) ; il est
     // DERRIÈRE pour les 5 autres {0,1,2,6,7}. (Ancien test asymétrique {0,1,6,7} oubliait d=2.)
     const bool behindBody = (dEff < 3 || dEff > 5);
     // Le CHARIOT est en action idle (base 0) + direction ; le corps garde sa dir `d`, mais pour la
-    // FICHE on aligne le chariot sur `dEff` (= d hors combat, d±1 en combat pour suivre la diagonale
+    // FICHE on aligne le cart sur `dEff` (= d hors combat, d±1 en combat pour suivre la diagonale
     // d'attaque perçue — l'utilisateur l'exige). Frame = 0 (ou défilé si Marche). Position à plat
     // ~1 tuile derrière `dEff` (kCartTilePx) ; z-order = behindBody. Réglage fin : kCart*Nudge.
     // FAUCON : dir `d` non décalée, toujours dessiné en DERNIER = devant.
     const int cartDir = (dEff + kCartDirOffset) & 7;  // sprite + placement suivent la diagonale combat
     const int falcDir = (d + kFalconDirOffset) & 7;
     if (cartSpr) {
-      // Image du chariot : au REPOS = image 0 (figée) ; quand l'avatar S'ANIME on fait
+      // Image du cart : au REPOS = image 0 (figée) ; quand l'avatar S'ANIME on fait
       // DÉFILER les frames du .act — c'est ÇA la « vibration » qui simule le déplacement.
       // RE .act (GRF editor) : le châssis (layer 0) reste fixe, le layer 1 oscille offY
       // −18 → −20 → −18 d'une frame à l'autre ; cycler l'image rejoue ce rebond tel quel,
       // sans autre sprite ni autre action. Cadence = même horloge que le corps
-      // (g_av_frame_delay × 25 ms, clampé). Nb d'images du chariot via kActFramesFn (stride 0x44).
+      // (g_av_frame_delay × 25 ms, clampé). Nb d'images du cart via kActFramesFn (stride 0x44).
       // Gate = Marche (anim 1) SEULE : la RE (case 3, frame avancé si dist>seuil) prouve que le
-      // chariot ne défile QUE quand le joueur se DÉPLACE ; en Combat sur place il reste figé.
+      // cart ne défile QUE quand le joueur se DÉPLACE ; en Combat sur place il reste figé.
       // ⚠ DÉFAUT = 0 (image figée), PAS `cartFrame` (frame LIVE) : le jeu fait défiler le frame
-      // live du chariot quand le PERSO se déplace sur la map → lire `cartFrame` faisait VIBRER le
+      // live du cart quand le PERSO se déplace sur la map → lire `cartFrame` faisait VIBRER le
       // doll figé (bug signalé). La fiche ne défile QUE via son horloge propre (Marche animée).
       int cartFrameUse = 0;
       if (animate && (pose >> 3) == 1) {
@@ -932,7 +932,7 @@ void EmitCompanionLayers(int pose, bool animate, float body_scale) {
       const int s = *g_cap_num;
       EmitSlotLayers(cartSpr, cartAct, cartDir, cartFrameUse, body_scale, nullptr);  // base 0 idle
       const int e = *g_cap_num;
-      // Marque AVANT le reorder (le flag voyage avec la couche copiée) : le chariot est
+      // Marque AVANT le reorder (le flag voyage avec la couche copiée) : le cart est
       // rendu mais NE tire PAS l'ancrage corps (sinon il décentre/rapetisse l'avatar).
       for (int i = s; i < e; ++i) g_av_caps[i].companion = true;
       // POSITION À PLAT = 1 tuile derrière la dir AFFICHÉE `d` — 100% STATIQUE, zéro lecture live
@@ -1061,7 +1061,7 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
           static_cast<unsigned>(garment),
           static_cast<unsigned>(EquipSlotNameId(1)),   // nameid arme
           static_cast<unsigned>(EquipSlotNameId(5)),   // nameid bouclier
-          static_cast<unsigned>(g_av_companion_present),  // chariot/faucon (frame précédente)
+          static_cast<unsigned>(g_av_companion_present),  // cart/faucon (frame précédente)
           static_cast<unsigned>(show_costume)};        // costumes affichés ou non
       unsigned sig = 2166136261u;
       for (unsigned p : parts) sig = (sig ^ p) * 16777619u;
@@ -1112,10 +1112,10 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
         g_av_count = m;
       }
     }
-    // Compagnons (chariot / faucon) : sous-acteurs enfants du joueur, à la MÊME direction que
-    // le corps (child+0x38 = action propre + ScreenDir, cf. RE). Le chariot a sa PROPRE horloge
+    // Compagnons (cart / faucon) : sous-acteurs enfants du joueur, à la MÊME direction que
+    // le corps (child+0x38 = action propre + ScreenDir, cf. RE). Le cart a sa PROPRE horloge
     // d'image : figé au repos, il « vibre » (frames .act) en Marche pour simuler le déplacement.
-    // Chariot derrière le corps en vue de face, faucon devant. APRÈS le reorder arme/bouclier.
+    // Cart derrière le corps en vue de face, faucon devant. APRÈS le reorder arme/bouclier.
     EmitCompanionLayers(pose, animate, g_av_body_scale);
   } __except (EXCEPTION_EXECUTE_HANDLER) { g_cap_active = false; }
   g_cap_buf = g_caps;              // restaurer la cible portrait (toujours)
@@ -2406,13 +2406,13 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
       CaptureAvatarActor(anim, dir, true, f, show_costume);  // force l'image f
       for (int i = 0; i < g_av_count; ++i) {
         const CapLayer& L = g_av_caps[i];
-        // Chariot / faucon : DESSINÉS (boucle de rendu plus bas) mais EXCLUS de tout le
+        // Cart / faucon : DESSINÉS (boucle de rendu plus bas) mais EXCLUS de tout le
         // cadrage — ni l'échelle (bbox totale ax), ni l'ancrage corps (bx)/tête (hx). Sinon
-        // un chariot large tire le centre X / les pieds et décentre/rapetisse l'avatar : le
+        // un cart large tire le centre X / les pieds et décentre/rapetisse l'avatar : le
         // corps reste le seul « noyau », le compagnon peut déborder (clip du rect). C'est la
-        // cause du « position fausse en Repos » (direction OK) : la RE prouve que le chariot
+        // cause du « position fausse en Repos » (direction OK) : la RE prouve que le cart
         // est bien placé RELATIVEMENT au corps ; c'est l'ancrage global qui dérivait.
-        if (L.companion) continue;  // chariot/faucon dessinés mais hors cadrage/ancrage
+        if (L.companion) continue;  // cart/faucon dessinés mais hors cadrage/ancrage
         const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
         const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
         if (lx0 < ax0) ax0 = lx0;  if (lx1 > ax1) ax1 = lx1;

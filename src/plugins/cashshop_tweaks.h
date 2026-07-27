@@ -44,6 +44,9 @@ class CashShopTweaks : public Plugin {
 
   // Setting PERSISTANT (bourgeon_settings.yaml "cashshop_imgui", géré par
   // MoonlightUi) : ON = viewer ImGui + natif caché ; OFF = cash shop natif seul.
+  // Basculé en GROUPE par SetModernInterface (moonlight_ui.h) — PLUS de case isolée
+  // dans le panneau : ce qu'on achète atterrit dans l'inventaire, un panier moderne
+  // au-dessus d'un inventaire natif (ou l'inverse) est le mixe qu'on a supprimé.
   bool imgui_enabled_ = false;
 
  private:

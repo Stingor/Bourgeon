@@ -20,6 +20,7 @@
 #include "plugins/storage_tweaks.h"    // PointOverViewer (dépôt vers le viewer storage)
 #include "d3d9/d3d9_hook.h"            // Overlay_DeviceEpoch
 #include "imgui.h"
+#include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // skin RO (BeginRoWindow / RoCheckbox / …)
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -146,10 +147,17 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
+// ⚠ Une fenêtre native CACHÉE (kOffVisible = 0) n'est PAS une cible de dépôt : en
+// « Interface moderne » les natives inventaire/storage/cart sont masquées mais
+// gardent leur rect, et sans ce test leur emplacement fantôme capturait les drops
+// faits sur les viewers ImGui posés par-dessus (un lâcher sur l'inventaire partait
+// au storage). Le flag porte exactement ce sens côté client : hors rendu ET hors
+// hit-test.
 bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
   uint8_t* w = ReadValidWnd(slot, vt);
   if (!w) return false;
   __try {
+    if (*reinterpret_cast<int*>(w + kOffVisible) == 0) return false;
     const int wx = *reinterpret_cast<int*>(w + kOffPosX);
     const int wy = *reinterpret_cast<int*>(w + kOffPosY);
     const int ww = *reinterpret_cast<int*>(w + kOffWidth);
@@ -616,32 +624,18 @@ void CartViewer::OnRenderUI() {
     }
   };
   if (pend_id_ != 0) {
-    if (pend_open_prompt_) { ImGui::OpenPopup("Quantité"); pend_open_prompt_ = false; }
+    if (pend_open_prompt_) { ro::OpenQuantityPrompt(this); pend_open_prompt_ = false; }
     else if (pend_max_ <= 1) { do_move(1); pend_id_ = 0; }
   }
-  ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0, 0, 0, 0));
-  ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Appearing);
-  const bool popen =
-      ImGui::BeginPopupModal("Quantité", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-  ImGui::PopStyleColor();
-  if (popen) {
+  // Dialogue « combien ? » PARTAGÉ (ui/qty_prompt) : habillé RO, identique dans
+  // l'inventaire, le storage et le cart.
+  {
     const char* verb = pend_action_ == kPendToStorage ? "Vers le storage"
                                                       : "Vers l'inventaire";
-    ImGui::Text("%s combien ? (max %d)", verb, pend_max_);
-    static int dq = 1;
-    if (ImGui::IsWindowAppearing()) { dq = pend_max_; ImGui::SetKeyboardFocusHere(); }
-    ImGui::SetNextItemWidth(140);
-    ImGui::InputInt("##dq", &dq);
-    if (dq < 1) dq = 1;
-    if (dq > pend_max_) dq = pend_max_;
-    const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-                       ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
-    if (ImGui::Button("OK") || enter) { do_move(dq); pend_id_ = 0; dq = 1; ImGui::CloseCurrentPopup(); }
-    ImGui::SameLine();
-    if (ImGui::Button("Tout")) { do_move(pend_max_); pend_id_ = 0; dq = 1; ImGui::CloseCurrentPopup(); }
-    ImGui::SameLine();
-    if (ImGui::Button("Annuler")) { pend_id_ = 0; dq = 1; ImGui::CloseCurrentPopup(); }
-    ImGui::EndPopup();
+    bool cancelled = false;
+    const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
+    if (qty > 0) { do_move(qty); pend_id_ = 0; }
+    else if (cancelled) pend_id_ = 0;
   }
 
   // Aide raccourcis : le texte est construit ici, le « (?) » est émis dans le FOOTER
@@ -751,6 +745,13 @@ void CartViewer::OnRenderUI() {
     // du strip vient d'insérer.
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y);
   }
+  // Style du MENU CONTEXTUEL, mémorisé AVANT les push de la grille : celle-ci
+  // tourne en WindowPadding 0 / ItemSpacing jointif (tuiles collées), et un popup
+  // ouvert dans ce scope en hérite — entrées serrées, sans marge. Le menu du
+  // storage, lui, est rendu au style normal de la fenêtre : c'est cette référence
+  // qu'on repousse autour du popup (cf. plus bas).
+  const ImVec2 menu_pad = style.WindowPadding;
+  const ImVec2 menu_spacing = style.ItemSpacing;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::BeginChild("cartgrid", ImVec2(0.0f, childH), true,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
@@ -838,8 +839,12 @@ void CartViewer::OnRenderUI() {
         // Double-clic = retirer vers l'inventaire. La native n'a PAS de double-clic
         // (slot vtable par défaut) ; c'est un confort du viewer, symétrique du
         // double-clic « utiliser/équiper » de l'inventaire.
+        // Entrepôt ouvert : le serveur refuse cart -> inventaire, on bascule donc
+        // vers le storage — exactement l'arbitrage du natif (ALT + clic droit
+        // envoie au storage dès qu'il est ouvert, sinon à l'inventaire).
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-          SendCmd(kCmdCartToBody, it.index, it.amount);
+          SendCmd(StorageOpen() ? kCmdCartToStorage : kCmdCartToBody, it.index,
+                  it.amount);
       }
 
       // Raccourcis (miroir de UICartWnd_OnRButtonDown) :
@@ -865,9 +870,20 @@ void CartViewer::OnRenderUI() {
         ImGui::SetDragDropPayload("CART_ITEM", &idx, sizeof(idx));
         if (ic.tex) { ImGui::Image(TexId(ic.tex), ImVec2(24, 24)); ImGui::SameLine(); }
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");
+        // Survol d'une cible que le serveur refusera : on le dit PENDANT le glisser,
+        // seul moment où l'on peut encore renoncer (entrepôt ouvert = pas de
+        // cart -> inventaire).
+        const ImVec2 drag_mouse = ImGui::GetMousePos();
+        if (StorageOpen() && OverInventory(drag_mouse.x, drag_mouse.y))
+          ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                             "Entrepôt ouvert : vers l'inventaire impossible");
         ImGui::EndDragDropSource();
       }
 
+      // Menu au style NORMAL de la fenêtre (marges + espacement), pas au style
+      // jointif de la grille dans laquelle il est ouvert.
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, menu_pad);
+      ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, menu_spacing);
       if (ImGui::BeginPopup("ctx")) {
         ImGui::TextDisabled("%s", it.name[0] ? it.name : "(?)");
         ImGui::Separator();
@@ -875,15 +891,26 @@ void CartViewer::OnRenderUI() {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
         }
         ImGui::Separator();
+        // ⚠ RÈGLE SERVEUR : tant que l'entrepôt est ouvert, le serveur REFUSE tout
+        // mouvement cart <-> inventaire — clif_parse_GetItemFromCart (CZ 0x0127)
+        // passe par pc_cant_act2(), qui inclut state.storage_flag. Le paquet part
+        // mais est jeté en silence. On grise donc l'entrée en le disant, plutôt que
+        // de laisser un clic sans effet (le natif fait la même chose autrement :
+        // son ALT+clic droit bascule sur « vers le storage » dès qu'il est ouvert).
+        const bool storage_open = StorageOpen();
         // Retrait vers l'inventaire : une PILE ouvre le prompt de quantité.
         if (it.amount <= 1) {
-          if (ImGui::MenuItem("Vers l'inventaire"))
+          if (ImGui::MenuItem("Vers l'inventaire", nullptr, false, !storage_open))
             SendCmd(kCmdCartToBody, it.index, 1);
-        } else if (ImGui::MenuItem("Vers l'inventaire...")) {
+        } else if (ImGui::MenuItem("Vers l'inventaire...", nullptr, false, !storage_open)) {
           pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
           pend_action_ = kPendToBody; pend_open_prompt_ = true;
         }
-        if (StorageOpen()) {
+        if (storage_open && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+          ImGui::SetTooltip(
+              "Impossible tant que l'entrepôt est ouvert (règle du serveur).\n"
+              "Fermez l'entrepôt, ou faites transiter l'objet par l'entrepôt.");
+        if (storage_open) {
           if (it.amount <= 1) {
             if (ImGui::MenuItem("Vers le storage"))
               SendCmd(kCmdCartToStorage, it.index, 1);
@@ -902,6 +929,7 @@ void CartViewer::OnRenderUI() {
         }
         ImGui::EndPopup();
       }
+      ImGui::PopStyleVar(2);  // WindowPadding + ItemSpacing du menu
 
       ImGui::PopID();
     }
@@ -937,7 +965,11 @@ void CartViewer::OnRenderUI() {
                                drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
         if (!over_self) {
           if (OverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
-          else if (OverInventory(drag_mx_, drag_my_)) action = kPendToBody;
+          // Entrepôt ouvert => le serveur refuse cart -> inventaire (storage_flag,
+          // cf. le menu contextuel) : on n'arme RIEN, plutôt que d'ouvrir un prompt
+          // de quantité dont la validation partirait à la poubelle.
+          else if (OverInventory(drag_mx_, drag_my_) && !StorageOpen())
+            action = kPendToBody;
         }
       }
       if (action != -1) {
@@ -978,7 +1010,7 @@ void CartViewer::OnRenderUI() {
 
     // Ligne 1 = POIDS, ligne 2 = COMPTEUR : l'ordre de l'inventaire, pour que les
     // deux fenêtres se lisent pareil quand elles sont ouvertes côte à côte. (Le
-    // natif du chariot met les deux sur une seule ligne, compteur d'abord — il n'y
+    // natif du cart met les deux sur une seule ligne, compteur d'abord — il n'y
     // a donc pas d'ordre natif à respecter sur deux lignes.)
     float x = fx0 + 6.0f;
     x += DrawFooterIcon(dl, g_ico_weight, x, cy1) + 3.0f;
@@ -1019,23 +1051,11 @@ void CartViewer::OnRenderUI() {
 // ── Section « Cart » du panneau Moonlight ──────────────────────────────────
 bool CartViewer::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) :
-  // la liste des fenêtres du groupe vit dans SetModernInterface (moonlight_ui.h),
-  // on ne la recopie pas ici.
-  if (ro::RoCheckbox("Interface moderne", &imgui_enabled_)) {
-    SetModernInterface(imgui_enabled_);
-    changed = true;
-  }
-  SameLine(); HelpMarker(
-      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
-      "ImGui ou tout natif) :\n"
-      "  • Inventaire (et le sertissage de cartes)\n"
-      "  • Cart\n"
-      "  • Storage (Kafra, guilde, premium)\n"
-      "  • Barres d'action\n"
-      "  • Échange joueur-joueur\n"
-      "  • Courrier (RODEX)\n"
-      "La case des autres sections reflète donc le même état.\n\n"
+  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
+  // case, la liste du groupe et son application vivent dans un seul endroit
+  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h) ; ici on ne
+  // dit que ce que la bascule change POUR LE CHARIOT.
+  changed |= DrawModernInterfaceCheckbox(&imgui_enabled_,
       "ON : cart ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic pour retirer, clic droit, glisser vers l'inventaire ou le "
       "storage) et la fenêtre native est cachée.\n"
