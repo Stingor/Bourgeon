@@ -318,3 +318,329 @@ the grimoire → should never hit.
 | open: menu cmd `0xC4` → | `FUN_00814A70` → `FUN_00812E60(0x25)` |
 | `UITextureMgr_Load` / `MakeKeyFromPath` | `0x00A8D4A0` / `0x00A9F030` |
 | Old `UISkillListWnd` id / vtable / ctor | `0x105` / `0x0103F3EC` / `0x00970D30` |
+
+---
+---
+
+# Partie II — Le MODÈLE DE DONNÉES du grimoire (pour le réimplémenter)
+
+> **Révision 2026-07-28** — RE complémentaire (IDA, décompilation fonction par fonction) mené
+> pour écrire le **remplaçant ImGui Moonlight** (onglet « Grimoire » de la feuille de personnage).
+> La partie I ci-dessus décrit la FENÊTRE native et son bug de FPS ; cette partie-ci décrit **d'où
+> viennent les données**, ce qui permet d'afficher l'arbre **sans la fenêtre native du tout**.
+> À partir d'ici la rédaction est en français (convention des docs récentes).
+
+## 9. La vraie source : `CPlayerSkillBundle` @ `0x015FA3CC`
+
+La fenêtre `UINewSkillListWnd` **ne possède rien** : elle recopie ses 4 listes d'onglets depuis un
+objet global. Cet objet est le **champ `+0x0C` de la session** `0x015FA3C0`, donc à l'adresse fixe
+**`0x015FA3CC`**. Le nom de classe vient du RTTI croisé dans `sub_738590`
+(`CPlayerSkillBundle::lcEXCInfo`) — on l'appellera **`g_SkillBundle`**.
+
+```
+  g_SkillBundle = 0x015FA3CC
+   +0x00  std::list<CSkillInfo>          (liste secondaire, cf. sub_737D00)
+   +0x0C  std::map<int tab, std::list<CSkillInfo>>   <- LES 4 ONGLETS  (GetTabList)
+   +0x14  std::list<CSkillInfo>          <- liste PLATE = le DERNIER onglet (= 0x015FA3E0)
+   +0x28  std::list<...>                 (annexe, vidée avec l'arbre)
+   +0x30  std::map<...>                  (annexe)
+   +0x38/+0x3C  std::vector<int>         (tampon de travail de sub_738590)
+   +0x44  int* g_UseSkillLevel           <- TABLEAU des « niveaux d'utilisation », indexé par skill id
+```
+
+- **`GetTabList(tab)` = `0x00738370`** — `__thiscall(ECX = g_SkillBundle, push tab)` -> `std::list*`
+  (renvoie une liste vide statique `0x01318A28` si l'onglet n'existe pas). C'est **la** porte d'entrée.
+- `sub_00976B60` (le « reset ») recopie ces 4 listes dans la fenêtre (`+0x278 + tab*8`) et remet
+  `this+0x26C = g_Own_SkillPoints` (`0x015FB9FC`). **La copie est identique** : lire le bundle
+  directement donne exactement ce que la fenêtre affiche.
+- Le **dernier onglet** (index `nbOnglets-1`) n'affiche PAS une liste du map mais la liste plate
+  `0x015FA3E0` (= `bundle+0x14`), dont les index de grille sont réattribués séquentiellement par
+  `sub_00737CE0`.
+
+### 9.1 `CSkillInfo` — 0x44 octets, vtable `0x01012968`
+
+C'est LA structure : les nœuds de liste sont des `std::list` MSVC (`{next, prev, valeur}`), donc
+**valeur = nœud + 8**.
+
+| offset | type | champ | écrit par |
+|---|---|---|---|
+| `+0x00` | ptr | vtable `CSkillInfo` (`0x01012968`) | ctor `0x00739780` |
+| `+0x04` | int | **valide** (1) — testé partout avant usage | ctor / `c_AddSkillList` |
+| `+0x08` | int | **skill id** | Lua / paquet |
+| `+0x0C` | int | `inf` (masque `skill_get_inf` ; 0 = passif) | paquet serveur |
+| `+0x10` | int | **niveau appris** (0 = non apprise) | paquet serveur (`level`) |
+| `+0x14` | int | coût SP au niveau courant | paquet serveur |
+| `+0x18` | int | `upgradable` (le serveur dit « il reste du niveau ») | paquet serveur |
+| `+0x1C` | int | portée (`range2`) | paquet serveur |
+| `+0x20` | char* | **idname** (`"SM_BASH"`) -> nom du .bmp d'icône | Lua `GetSkillIdName` |
+| `+0x24` | int | **index de case** dans la grille (`-1` = non placée) | Lua (`skillPos`) |
+| `+0x28` | int | **NIVEAU MAX** | Lua (`MaxLv`) |
+| `+0x2C` | int | **`UserUpgradable`** — `<= 0` => le joueur ne peut pas la monter | Lua |
+| `+0x30` | int16 | `level2` = niveau appris (vérité serveur, jamais bidouillée en local) | paquet serveur |
+| `+0x34` | int | coût en AP (Lua `GetLevelUseApAmount`) | Lua |
+| `+0x38` | vector | **`std::vector<{u32 skillId, u32 level}>` = PRÉREQUIS** | Lua `c_AddNeedSkillList` |
+
+⚠️ **`+0x10` vs `+0x30`** : les deux valent le niveau appris à l'arrivée du paquet. La différence est
+qu'en **vue compacte** la réservation d'un point incrémente `+0x10` *en local* (dans la copie de la
+fenêtre), pas `+0x30`. D'où :
+- `sub_00737FA0(id)` = `+0x10 > +0x30` -> affiche la pastille « montable » `item_skill.bmp` ;
+- `sub_00974530` (Apply, vue compacte) renvoie la différence des deux.
+
+En **vue grille**, la réservation ne touche à rien : elle vit dans une liste séparée (§11.1).
+
+⚠️ `+0x20` est un **`char*` rendu par Lua** — il peut pendre. Pour notre code : rappeler
+`GetSkillIdName(id)` soi-même plutôt que déréférencer ce pointeur.
+
+### 9.2 Accesseurs natifs prêts à l'emploi (`ECX = g_SkillBundle`)
+
+| adresse | prototype | rôle |
+|---|---|---|
+| `0x00738370` | `list* GetTabList(int tab)` | la liste d'un onglet |
+| `0x00738320` | `CSkillInfo* FindInTree(int id)` | cherche dans **tous** les onglets du map |
+| `0x00737CB0` | `CSkillInfo* FindInFlat(int id)` | cherche dans la liste plate `+0x14` |
+| `0x00738550` | `int GetLevel(int id)` | `record+0x10` (0 si absente) |
+| `0x00737FA0` | `bool CanShowUpMark(int id)` | `record+0x10 > record+0x30` |
+| `0x00738500` | `int GetTabCount(int tab)` | taille de la liste de l'onglet (0 => onglet masqué) |
+| `0x00738570` | `void SetUseLevel(int id, int lv)` | écrit `g_UseSkillLevel[id]` (id dans [1, 7998]) |
+| `0x00D5E3C0` | `int GetUseLevel(int id)` | `__thiscall(ECX = 0x015FA3C0 !)` — lit le même tableau |
+
+> `SetUseLevel` prend `ECX = bundle (0x015FA3CC)` et `GetUseLevel` prend `ECX = session
+> (0x015FA3C0)` : **c'est le même tableau** (`bundle+0x44` == `session+0x50`), pas une incohérence.
+
+### 9.3 Wrappers Lua utiles
+
+| adresse | Lua appelé | renvoie |
+|---|---|---|
+| `0x0073A1F0` | `GetSkillName(id)` | nom localisé, `"Unknown-Skill"` sinon (`__cdecl(id)`) |
+| `0x0073A090` | `GetSkillIdName()` | idname (`"SM_BASH"`), `"Zero Skill"` sinon — **`ECX = &CSkillInfo`**, lit `+0x08` |
+| `0x0073ADB0` | `IsLevelUseSkill(id)` | vrai si l'effet dépend du niveau => affichage « n / m » |
+| `0x00739E20` | `GetLevelUseApAmount(lv)` | coût AP |
+| `0x00739FC0` | `GetSkillName(rec+0x08)` | idem, mais **`ECX = &CSkillInfo`** (+ remap 5042->5028, 5043->5036) |
+
+Chemin d'icône : `sprintf(buf, "유저인터페이스\\item\\%s.bmp", idname)` (`0x00D5E3A0`, format
+`0x00FE07D4`). Repli du natif si le .bmp manque : `유저인터페이스\item\am_berserkpitcher.bmp`
+(oui, en dur — `0x01039364`).
+
+## 10. D'où vient l'arbre : le Lua, pas le serveur
+
+Le serveur n'envoie que **ce que le personnage a appris** (`ZC_SKILLINFO_LIST 0x010F` / `0x0B32`,
+`ZC_ADD_SKILL 0x0111` / `0x0B31`). **La forme de l'arbre — cases, niveaux max, prérequis — vient
+des fichiers Lua du client.**
+
+### 10.1 Construction (changement de job -> `sub_00D96790`)
+
+```
+FUN_00DA8ED0 (changement de job)
+  +- FUN_00D70D60
+       +- sub_00D96790 :
+            n = Lua GetInheritJob()             -- profondeur de la chaîne d'héritage
+            vide le bundle (0x007382F0 / 0x00737BA0 / 0x007377C0)
+            pour i = n .. 1 :
+                job = InheritJob[i]
+                tab = 0 si i est le sommet de la chaîne (ou job 4218/4220)
+                      2 si aura spéciale / 4239..4242 / 4304..4307
+                      3 si 4e classe / 4302 / 4303
+                      1 sinon (dont 4308)
+                Lua InitSkillTreeView(job, tab)
+       +- msg 0x3C à la fenêtre (relayout des onglets)
+```
+
+`InitSkillTreeView` (Lua, `data\luafiles514\lua files\skillinfoz\skillinfo_f.lub`) itère
+`SKILL_TREEVIEW_FOR_JOB[job]` et appelle, pour chaque entrée, **deux bindings C** :
+
+| binding | adresse | signature réelle |
+|---|---|---|
+| **`c_AddSkillList`** | `0x00A9CC30` | `(tab, skillID, strSkillID, skillPos, MaxLv, UserUpgradable)` |
+| **`c_AddNeedSkillList`** | `0x00A9CB80` | `(skillID, needSkillID, needLevel)` |
+
+`c_AddSkillList` monte un `CSkillInfo` neuf (`+0x04=1`, `+0x08=id`, `+0x20=idname`, `+0x24=skillPos`,
+`+0x28=MaxLv`, `+0x2C=UserUpgradable`, `+0x10..+0x1F` à zéro) et l'insère dans l'onglet `tab`
+(`sub_007381D0`). Il **jette** l'entrée si l'idname est vide ou si `skillPos`/`MaxLv` valent `-1`.
+`c_AddNeedSkillList` retrouve la fiche (`sub_00D871B0`) et pousse `{needSkillID, needLevel}` dans le
+vecteur `+0x38`.
+
+### 10.2 Les fichiers Lua (LISIBLES, non compilés dans ce client)
+
+`E:\...\Moonlight-Destiny\data\luafiles514\lua files\skillinfoz\` :
+
+```lua
+-- skilltreeview.lub : la GRILLE, index de case -> skill
+SKILL_TREEVIEW_FOR_JOB = {
+  [JOBID.JT_SWORDMAN] = { [1] = SKID.SM_SWORD, [3] = SKID.SM_BASH, [8] = SKID.SM_TWOHAND, ... }
+}
+
+-- skillinfolist.lub : la FICHE de chaque skill
+SKILL_INFO_LIST = {
+  [SKID.SM_MAGNUM] = {
+    "SM_MAGNUM",                       -- [1] = idname (icône)
+    SkillName   = "Magnum Break",
+    MaxLv       = 10,
+    SpAmount    = { 30, 30, ... },     -- coût SP PAR NIVEAU
+    AttackRange = { 1, 1, ... },
+    bSeperateLv = false,
+    _NeedSkillList = { { SKID.SM_BASH, 5 } },   -- PRÉREQUIS
+  },
+}
+```
+
+Autres champs vus : `IsPassive`, `ApAmount`, `Type`, `Quest`, `Soul`, `SkillScale`, `UserUpgradable`.
+`skilldescript.lub` porte les descriptions. **`UserUpgradable` n'est défini par aucune entrée du
+fichier livré** -> toutes les compétences sont montables par le joueur sur ce serveur.
+
+> Conséquence pratique : tout ce qu'affiche le grimoire est lisible **soit** dans le bundle en
+> mémoire (rapide, déjà fusionné avec l'état serveur), **soit** dans ces .lub (utile pour un outil
+> hors-jeu). Le plugin lit le bundle.
+
+## 11. Interactions — ce que fait le natif, exactement
+
+### 11.1 Monter un niveau = RÉSERVER puis APPLIQUER
+
+Les deux vues partagent les boutons `btn_apply` (cmd **271** = `0x10F`) et `btn_reset`
+(cmd **363** = `0x16B`), posés à `(w-100, h-27)` et `(w-50, h-27)`.
+
+**Réserver — `sub_00979BA0(this, skillId)`** — sort tout de suite si `this+0x26C <= 0` (plus de
+points) ou si `this+0x2A8` (épinglage) est posé. Puis **deux algorithmes distincts** :
+
+- **Vue GRILLE (`Simplicity_SkillList == 0`)** — parcourt la liste `this+0x298` (le skill survolé
+  **et ses prérequis directs**, cf. §11.2) et, pour chacun :
+  - cible = `niveau requis` du prérequis, ou `max(appris, réservé) + 1` pour le skill cliqué ;
+  - refuse si `record+0x30 >= record+0x28` (déjà au max) ;
+  - refuse si `record+0x2C <= 0` -> message de chat `MsgStringTable[0xDCB]` avec le nom du skill ;
+  - dépense `min(cible - courant, points restants)` et écrit `{id, niveau}` dans la liste des
+    **réservations `this+0x2A0`**.
+
+  => **cliquer sur un skill verrouillé réserve automatiquement ses prérequis directs**, dans la
+  limite des points disponibles. C'est le comportement à reproduire.
+- **Vue COMPACTE** — trouve le nœud dans la copie locale de l'onglet et fait `node+0x10 += 1` ;
+  refuse si `node+0x10 >= node+0x28`. Aucune liste de réservation.
+
+**Appliquer — `sub_00974530`** — pour chaque réservation `{id, cible}` : envoie
+`CGameMode::SendMsg(msg 67 = 0x43, id)` **une fois par niveau** entre `record+0x30 + 1` et `cible`,
+puis vide la liste. Le client sérialise ça en **`CZ_UPGRADE_SKILLLEVEL 0x0112` (4 o :
+`12 01 <skillId:u16>`)**. La vue compacte fait la même chose en diffant sa copie locale.
+
+Le modal de confirmation (`MsgStringTable[0x561]`, retour attendu `0xBB`) et son piège de détour
+sont décrits en partie I §3.4.
+
+**Bouton Reset (`363`)** = `sub_00976B60` : recopie les 4 listes depuis le bundle, remet les points
+et jette les réservations.
+
+`sub_00978EB0` grise/dégrise Apply et Reset : `bouton+0xAC = (this+0x272 == 0)`.
+
+### 11.2 Survol -> liste des prérequis (`this+0x298`)
+
+`sub_009789C0`, appelé quand l'index survolé change (`OnMouseMove 0x00978600`) et au double-clic :
+1. vide `this+0x298` ;
+2. remet à `-1` la couleur de chaque onglet ;
+3. trouve le nœud dont `+0x24` == index survolé ;
+4. y pousse `{id, 0}`, puis **chaque entrée du vecteur `+0x38`** (`{prereqId, niveauRequis}`), en
+   dédupliquant (niveau max gagné) ;
+5. pour chaque prérequis, **colorie l'onglet où il vit** (`0xE1E7FC`) — l'onglet est deviné par
+   **plage d'id, en dur** : `1..54`, `142..157`, `411..444`, `500..544` -> onglet 0 ;
+   `2000..2532` -> onglet 2 ; tout le reste -> onglet 1.
+
+⚠️ **Un seul niveau de profondeur** : le natif ne remonte pas la chaîne récursivement.
+
+### 11.3 Le « niveau d'utilisation » (les `+` / `−` de chaque case)
+
+Chaque case porte deux boutons : ids **0..41** (`+`) et **42..83** (`−`), gérés par le `default:` du
+`case 6` de `OnMsg` :
+
+```
+SkillMgr_SetOption(session, 7, 1, 0)              -- marque « à sauvegarder »
+n = GetUseLevel(id) +/- 1  ->  borné à [1, niveau appris]
+SetUseLevel(id, n)                                 -- 0x00738570
+```
+
+Ce niveau **ne va pas au serveur** : il est persisté dans le JSON par personnage
+(`CCharacterLinkedUserDataMgr`, clés **`UseSkillInfo` / `SKID` / `SKLv`**, écrit par `sub_005C4DA0`,
+relu par `sub_005C49F0`), et c'est lui que la barre de raccourcis envoie au lancement du sort.
+La case n'affiche « n / m » que si **`IsLevelUseSkill(id)`** est vrai ; sinon un seul nombre.
+
+### 11.4 Le reste des gestes
+
+| geste | code natif | effet |
+|---|---|---|
+| clic gauche | `0x009782B0` -> msg `0x3A` | ouvre la description (dispatcher cmd `0x71`) |
+| clic droit | `0x00978520` | **réserve** un point (gate : `+0x04` et `+0x2C`) |
+| double-clic | `0x009786F0` | épingle la surbrillance des prérequis **et** ouvre/ferme la fenêtre `0x2E` via `OnMsg(0, 0x3D, id, upgradable, niveau, 1)` |
+| glisser | `0x009783E0` | pose le skill dans la barre d'action (catégorie 8) |
+| survol | `0x00978600` | infobulle = **nom du skill** seulement |
+| molette | `0x00978970` | scroll (`this+0x258` en LIGNES) |
+
+### 11.5 Les onglets
+
+`sub_009765F0` (aussi appelé par `OnMsg 0x3C` = changement de job) :
+1. Lua **`JobSkillTab_GetTabName(0)`** -> 4 noms par défaut ; puis
+   `JobSkillTab_GetTabName(indexClasseDeBase)` -> 4 noms spécifiques (`in_1sttab`..`in_4thtab`) ;
+   l'index de classe vient d'une grosse table `jobid -> 0..25` (montures et 3e/4e classes repliées
+   sur leur classe de base).
+2. pour `tab` de 0 à 3 : si `GetTabCount(tab) > 0`, ajoute l'onglet (nom spécifique, sinon défaut).
+3. à la **première** construction seulement, ajoute un **dernier onglet** nommé
+   `MsgStringTable[0x445]` — c'est celui qui affiche la **liste plate** `0x015FA3E0`.
+
+Donc : **au plus 4 onglets de job (ceux qui ont des skills) + 1 onglet « divers »**.
+
+## 12. Recette de réimplémentation ImGui (onglet Grimoire de `character_sheet`)
+
+**Lecture — 100 % passive, aucune fenêtre native requise :**
+
+```
+pour tab de 0 à 3 :
+    head = GetTabList(0x00738370)(g_SkillBundle, tab)      -- ECX = 0x015FA3CC
+    pour chaque nœud de la std::list (nœud->valeur = nœud + 8) :
+        id      = *(int*)  (v + 0x08)
+        inf     = *(int*)  (v + 0x0C)      -- 0 = passif
+        appris  = *(int16*)(v + 0x30)      -- vérité serveur
+        sp      = *(int*)  (v + 0x14)
+        portee  = *(int*)  (v + 0x1C)
+        pos     = *(int*)  (v + 0x24)      -- index de case (tri d'affichage)
+        maxlv   = *(int*)  (v + 0x28)
+        gate    = *(int*)  (v + 0x2C)      -- 0 => non montable par le joueur
+        prereqs = vector<{u32 id, u32 lv}> à (v + 0x38) .. (v + 0x3C)
+    -- + la liste plate 0x015FA3E0 pour l'onglet « divers »
+points = *(int*)0x015FB9FC  (g_Own_SkillPoints)
+nom    = GetSkillName(0x0073A1F0)(id)   ·   icône = GetSkillIdName -> ...\item\<idname>.bmp
+```
+
+Tout sous SEH, POD uniquement, **jamais** de `std::string`/vecteur natif recopié.
+
+**Écriture — un seul paquet, revalidé serveur :**
+`CZ_UPGRADE_SKILLLEVEL 0x0112` = `{u16 0x0112, u16 skillId}`, **un paquet par niveau**, envoyé via
+`Bourgeon::SendPacket` (même voie que les autres plugins). Le serveur applique `pc_skillup`, puis
+renvoie `ZC_SKILLINFO_UPDATE` + les points restants : **aucun état local à maintenir**, on peut
+donc se passer complètement du mécanisme « réserver puis appliquer » (qui n'existait que pour
+grouper les envois) — ou le reproduire pour garder l'ergonomie « je prépare, je valide ».
+
+`SetUseLevel(0x00738570)` reste appelable tel quel pour le niveau d'utilisation (ECX = bundle).
+
+**Ce qu'on ne réimplémente PAS** : la fenêtre `0x2E` (double-clic) — la description passe par le
+chemin déjà en place dans Bourgeon (`MakeWindow(0xC)` + `OnMsg 0x18`, cf.
+`project_skill_description_window_re`), enrichi par `item_desc_tweaks`.
+
+**Cohabitation avec le natif** : quand « Interface moderne » est ON, `window_pos_tweaks`
+(hook `MakeWindow`) masque la fenêtre `0x25` dès sa création (`win+0x28 = 0`) et ouvre la feuille
+de personnage sur l'onglet Grimoire — même schéma que l'inventaire `8` ou l'entrepôt `0x21`.
+Le plugin `skill_tree_tweaks` (gate de repaint) reste utile pour le mode natif.
+
+### Fiche d'adresses — partie II
+
+| symbole | VA |
+|---|---|
+| `g_SkillBundle` (session+0x0C) | **`0x015FA3CC`** |
+| liste plate (dernier onglet) | `0x015FA3E0` (= bundle+0x14) |
+| `g_UseSkillLevel` (int*) | `0x015FA410` (= bundle+0x44 = session+0x50) |
+| `g_Own_SkillPoints` | `0x015FB9FC` |
+| `GetTabList(tab)` | `0x00738370` |
+| `FindInTree(id)` / `FindInFlat(id)` | `0x00738320` / `0x00737CB0` |
+| `GetLevel(id)` / `GetTabCount(tab)` | `0x00738550` / `0x00738500` |
+| `SetUseLevel(id,lv)` / `GetUseLevel(id)` | `0x00738570` / `0x00D5E3C0` |
+| `GetSkillName` / `GetSkillIdName` / `IsLevelUseSkill` | `0x0073A1F0` / `0x0073A090` / `0x0073ADB0` |
+| `c_AddSkillList` / `c_AddNeedSkillList` | `0x00A9CC30` / `0x00A9CB80` |
+| construction de l'arbre (job change) | `0x00D96790` (<- `0x00D70D60` <- `0x00DA8ED0`) |
+| maj d'un skill depuis un paquet | `0x00D7E730` |
+| handler `ZC_SKILLINFO_LIST` (0x010F/0x0B32) | `0x00C9C6E0` (entrée de 15 o) |
+| réserver / appliquer / reset | `0x00979BA0` / `0x00974530` / `0x00976B60` |
+| liste des prérequis (survol) | `0x009789C0` -> `this+0x298` |
+| noms d'onglets | `0x009765F0` (Lua `JobSkillTab_GetTabName`) |
+| vtable `CSkillInfo` / ctor / copie / dtor | `0x01012968` / `0x00739780` / `0x007368F0` / `0x00739CD0` |

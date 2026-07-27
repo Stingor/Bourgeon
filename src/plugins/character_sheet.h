@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "plugins/plugin.h"
@@ -47,6 +48,10 @@ class CharacterSheet : public Plugin {
   const char* name() const override { return "CharacterSheet"; }
 
   void OnRenderUI() override;
+  // Suit l'état de la fenêtre native du grimoire (id 0x25) pour que l'icône « Skill »
+  // et Alt+S pilotent l'onglet Grimoire : ouverture -> on bascule dessus, fermeture ->
+  // on referme la feuille si c'est bien cet onglet qu'on regardait.
+  void OnTick() override;
   // Reçoit ZC_BOURGEON_STAT_BONUS (0x0F10) : apport équip/cartes compilé par
   // status_calc_pc côté serveur, poussé à chaque recalc.
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
@@ -70,6 +75,16 @@ class CharacterSheet : public Plugin {
   // décrit chaque réglage par l'ADRESSE de sa valeur, comme pour tous les autres
   // plugins. is_open/set_open restent l'API des appelants ordinaires.
   bool& open() { return show_; }
+
+  // Ouvre la feuille sur l'onglet GRIMOIRE. Appelée quand le joueur demande le
+  // grimoire (icône « Skill » ou Alt+S) alors que l'interface moderne est active :
+  // la fenêtre native 0x25 est masquée et c'est cet onglet qui la remplace.
+  void OpenSkillsTab();
+  // Masque la fenêtre native du grimoire (UINewSkillListWnd, id 0x25) DÈS sa
+  // création — même schéma que l'inventaire ou l'entrepôt (cf. window_pos_tweaks) :
+  // sans ça une frame native passerait à l'écran avant le premier OnRenderUI.
+  // No-op quand l'interface moderne est éteinte.
+  void HideSkillWndAtCreation(void* win);
 
   // Pose de l'avatar (pose + direction + animation on/off), persistee par MoonlightUi
   // (yaml "charsheet_pose"/"charsheet_dir"/"charsheet_pose_anim") pour retrouver le
@@ -171,7 +186,22 @@ class CharacterSheet : public Plugin {
   int  hk_capturing_ = -1;         // index (dans equip_presets_) du preset en capture de touche
   std::string hk_conflict_msg_;    // message de conflit affiché pendant la capture
   bool show_    = true;   // fenetre visible (bascule Alt+F)
-  int  tab_     = 0;      // onglet actif : 0=Equipement, 1=Costume, 2=Presets, 3=Titres, 4=Guilde
+  // onglet actif : 0=Equipement, 1=Costume, 2=Presets, 3=Titres, 4=Guilde, 5=Grimoire
+  int  tab_     = 0;
+  // Onglet demandé pour la PROCHAINE frame (OpenSkillsTab) : ImGui choisit l'onglet
+  // au moment où il le dessine, on ne peut donc pas le forcer depuis un hook.
+  int  tab_request_ = -1;
+
+  // ── Onglet Grimoire (arbre de compétences, remplace la fenêtre native 0x25) ──
+  int  skill_tab_ = 0;              // onglet de job actif (0..3), 4 = « divers » (liste plate)
+  bool skill_grid_ = true;          // grille d'icônes (vue « moderne ») / liste détaillée
+  char skill_filter_buf_[32] = {};  // filtre par nom
+  uint16_t skill_hover_ = 0;        // compétence survolée à la frame PRÉCÉDENTE (surlignage)
+  // Points RÉSERVÉS mais pas encore envoyés : {id, niveau cible}. Comme le natif, on
+  // prépare puis on valide en un coup — un clic ne dépense donc jamais tout seul.
+  std::vector<std::pair<uint16_t, int>> skill_pending_;
+  std::string skill_status_;        // retour UI de la dernière action (Appliquer, refus…)
+  bool skill_wnd_was_open_ = false; // état de la fenêtre native 0x25 au tick précédent
 
   // ── Onglet Guilde (fenêtre de guilde native refaite en ImGui) ──────────────
   int      guild_sub_tab_ = 0;      // 0 = Membres, 1 = Relations
@@ -295,6 +325,16 @@ class CharacterSheet : public Plugin {
   void DrawPresetsTab();
   // Onglet Titres : titres d'achievement possedes + titre equipe ; clic = equiper (CZ 0x0A2E).
   void DrawTitlesTab();
+  // Onglet Grimoire : l'arbre de compétences du personnage, lu dans CPlayerSkillBundle
+  // (docs/skill_tree_re.md partie II). Grille 7 colonnes comme la vue « moderne » native,
+  // ou liste détaillée. Monter un niveau se RÉSERVE puis s'applique (CZ 0x0112).
+  void DrawSkillsTab();
+  // Réserve un point sur `id` et, comme le natif, sur ses PRÉREQUIS DIRECTS manquants
+  // (dans la limite des points disponibles). Renvoie false + remplit skill_status_ si
+  // rien n'a pu être réservé.
+  bool ReserveSkillPoint(uint16_t id);
+  // Niveau réservé pour `id` (0 = aucune réservation).
+  int  PendingLevel(uint16_t id) const;
   // Onglet Guilde : infos, annonce, roster (tri + actions) et relations, tout en ImGui.
   // Lecture des globals CGuild/g_GuildInfo_* ; actions en paquets bruts (0x014f/0x0155/
   // 0x0159/0x015b/0x016e/0x0916), revalidées par le serveur.

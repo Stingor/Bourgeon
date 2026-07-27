@@ -692,6 +692,9 @@ void SetModernInterface(bool on) {
   // Équipement restent là), mais elle vit du même écosystème : ses slots reçoivent
   // les objets glissés depuis l'inventaire ImGui, et son onglet Presets équipe en
   // s'appuyant dessus. Elle n'a donc plus de case isolée non plus.
+  // ⚠ Son onglet Grimoire, lui, REMPLACE bel et bien la fenêtre native 0x25 : quand
+  // ce groupe est actif, celle-ci est masquée dès sa création et l'onglet prend sa
+  // place (cf. window_pos_tweaks + docs/skill_tree_re.md partie II).
   if (auto* character_sheet = Bourgeon::Instance().character_sheet())
     character_sheet->imgui_enabled_ = on;
   // Boutiques (cash shop et PNJ) : elles achètent VERS l'inventaire et vendent
@@ -722,7 +725,8 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Échange joueur-joueur\n"
       "  • Courrier (RODEX)\n"
       "  • Shop joueur (vending, buying store et achat chez un vendeur)\n"
-      "  • Feuille de personnage (Alt+F)\n"
+      "  • Feuille de personnage (Alt+F), grimoire compris : l'icône « Skill » et\n"
+      "    Alt+S ouvrent son onglet Grimoire au lieu de la fenêtre native\n"
       "  • Cash shop et shops PNJ\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;

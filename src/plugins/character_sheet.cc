@@ -859,6 +859,138 @@ ro::IconTex ResolveSkillIcon(int skillId) {
   return g_skill_icon_cache[k] = LoadSkillIcon(skillId);
 }
 
+// ═══ Grimoire (arbre de compétences) ════════════════════════════════════════
+// La fenêtre native 0x25 ne POSSÈDE rien : elle recopie ses quatre listes d'onglets
+// depuis CPlayerSkillBundle, un objet global (= session+0x0C). On lit donc la MÊME
+// source qu'elle, ce qui rend l'onglet Grimoire indépendant du natif — fenêtre
+// fermée ou masquée, les données sont là. Détail complet du modèle et de chaque
+// offset : docs/skill_tree_re.md, partie II.
+constexpr uintptr_t kSkillBundle      = 0x015fa3cc;  // CPlayerSkillBundle (session+0x0C)
+constexpr uintptr_t kSkillFlatList    = 0x015fa3e0;  // bundle+0x14 : l'onglet « divers »
+constexpr uintptr_t kSkillGetTabList  = 0x00738370;  // __thiscall(bundle, tab) -> std::list*
+constexpr uintptr_t kSkillSetUseLevel = 0x00738570;  // __thiscall(bundle, id, lv)
+constexpr uintptr_t kSkillGetUseLevel = 0x00d5e3c0;  // __thiscall(SESSION, id) — même tableau
+constexpr uintptr_t kIsLevelUseSkill  = 0x0073adb0;  // __cdecl(id) : l'effet dépend-il du niveau ?
+constexpr uintptr_t kSkillPointsAddr  = 0x015fb9fc;  // g_Own_SkillPoints
+using GetTabList_t  = void* (__fastcall*)(void*, void*, int);
+using SetUseLevel_t = void  (__fastcall*)(void*, void*, int, int);
+using GetUseLevel_t = int   (__fastcall*)(void*, void*, int);
+using IsLevelUse_t  = char  (__cdecl*)(int);
+
+// Offsets dans CSkillInfo. ⚠ Les nœuds sont des std::list MSVC {next, prev, valeur} :
+// la VALEUR commence au nœud + 8.
+constexpr int kSkNodeValue    = 0x08;
+constexpr int kSkOffValid     = 0x04;  // 1 = fiche utilisable
+constexpr int kSkOffId        = 0x08;
+constexpr int kSkOffInf       = 0x0c;  // masque skill_get_inf ; 0 = passive
+constexpr int kSkOffLvLocal   = 0x10;  // niveau appris (la vue compacte native le bidouille)
+constexpr int kSkOffSp        = 0x14;  // coût SP au niveau courant
+constexpr int kSkOffUpgrade   = 0x18;  // le serveur dit « il reste du niveau »
+constexpr int kSkOffRange     = 0x1c;
+constexpr int kSkOffPos       = 0x24;  // index de case dans la grille (-1 = non placée)
+constexpr int kSkOffMaxLv     = 0x28;  // niveau MAX (source : Lua)
+constexpr int kSkOffUserUp    = 0x2c;  // UserUpgradable : <= 0 = le joueur ne peut pas la monter
+constexpr int kSkOffLearned   = 0x30;  // int16, VÉRITÉ SERVEUR (jamais modifiée en local)
+constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = prérequis
+
+// Fenêtre native du grimoire (UINewSkillListWnd id 0x25) : le gestionnaire garde son
+// instance à mgr+0x2C4 et VIDE cet emplacement à la fermeture — c'est donc la source
+// fiable de « le joueur a-t-il demandé le grimoire ? ». +0x28 = drapeau de visibilité.
+constexpr uintptr_t kSkillWndSlot   = 0x0131f7ac;  // mgr(0x0131f4e8)+0x2C4
+constexpr int       kWndVisibleFlag = 0x28;
+
+constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
+constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
+constexpr int kSkillMaxNodes = 256;  // garde-fou de parcours
+constexpr int kSkillMaxNeed  = 6;    // prérequis retenus par compétence (le jeu en a <= 3)
+
+// Fiche lue, POD pur : remplie sous SEH, consommée à l'extérieur.
+struct SkillRaw {
+  int id, inf, learned, sp, range, pos, maxlv, user_up, upgradable;
+  int need_count;
+  int need_id[kSkillMaxNeed], need_lv[kSkillMaxNeed];
+};
+
+// Parcourt la liste d'un onglet ; `tab < 0` = la liste plate (onglet « divers »).
+// POD only (C2712) et SEH : un nœud abîmé arrête le parcours sans perdre les
+// précédents, exactement comme le fait l'extracteur d'inventaire.
+int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
+  int n = 0;
+  __try {
+    uint8_t* list_obj = reinterpret_cast<uint8_t*>(kSkillFlatList);
+    if (tab >= 0)
+      list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(kSkillGetTabList)(
+          reinterpret_cast<void*>(kSkillBundle), nullptr, tab));
+    if (!list_obj) return 0;
+    uint8_t* head = *reinterpret_cast<uint8_t**>(list_obj);
+    if (!head) return 0;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head);
+    int guard = 0;
+    while (node && node != head && n < cap && guard++ < kSkillMaxNodes) {
+      const uint8_t* v = node + kSkNodeValue;
+      node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire la valeur
+      if (*reinterpret_cast<const int*>(v + kSkOffValid) == 0) continue;
+      const int id = *reinterpret_cast<const int*>(v + kSkOffId);
+      if (id <= 0) continue;
+      SkillRaw& s = out[n];
+      s.id         = id;
+      s.inf        = *reinterpret_cast<const int*>(v + kSkOffInf);
+      s.sp         = *reinterpret_cast<const int*>(v + kSkOffSp);
+      s.range      = *reinterpret_cast<const int*>(v + kSkOffRange);
+      s.pos        = *reinterpret_cast<const int*>(v + kSkOffPos);
+      s.maxlv      = *reinterpret_cast<const int*>(v + kSkOffMaxLv);
+      s.user_up    = *reinterpret_cast<const int*>(v + kSkOffUserUp);
+      s.upgradable = *reinterpret_cast<const int*>(v + kSkOffUpgrade);
+      // Niveau appris : +0x30 fait foi (le serveur), +0x10 sert de repli.
+      s.learned    = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
+      if (s.learned <= 0) s.learned = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
+      s.need_count = 0;
+      const uint8_t* first = *reinterpret_cast<const uint8_t* const*>(v + kSkOffNeedVec);
+      const uint8_t* last  = *reinterpret_cast<const uint8_t* const*>(v + kSkOffNeedVec + 4);
+      for (const uint8_t* p = first; p && p + 8 <= last && s.need_count < kSkillMaxNeed;
+           p += 8) {
+        s.need_id[s.need_count] = *reinterpret_cast<const int*>(p);
+        s.need_lv[s.need_count] = *reinterpret_cast<const int*>(p + 4);
+        ++s.need_count;
+      }
+      ++n;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return n;
+}
+
+// Points de compétence restants (globale de session, la même que lit le natif).
+int SkillPointsSEH() {
+  __try { return *reinterpret_cast<const int*>(kSkillPointsAddr); }
+  __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// « Niveau d'utilisation » : le niveau auquel la compétence part quand on la lance.
+// Purement CLIENT (persisté dans le JSON du personnage), et c'est ce que la barre de
+// raccourcis envoie. Écriture par le bundle, lecture par la session : c'est le même
+// tableau (bundle+0x44 == session+0x50), pas une incohérence.
+int GetUseLevelSEH(int skillId) {
+  __try {
+    return reinterpret_cast<GetUseLevel_t>(kSkillGetUseLevel)(
+        reinterpret_cast<void*>(kSession), nullptr, skillId);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+void SetUseLevelSEH(int skillId, int level) {
+  __try {
+    reinterpret_cast<SetUseLevel_t>(kSkillSetUseLevel)(
+        reinterpret_cast<void*>(kSkillBundle), nullptr, skillId, level);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// L'effet de la compétence dépend-il du niveau ? Le natif n'affiche « n / m » que
+// dans ce cas (sinon un seul nombre) : même règle ici.
+bool IsLevelUseSkillSEH(int skillId) {
+  __try { return reinterpret_cast<IsLevelUse_t>(kIsLevelUseSkill)(skillId) != 0; }
+  __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// (Les noms d'onglets viennent du Lua : ReadSkillTabNamesSEH est plus bas, après les
+//  constantes de l'API Lua brute dont il dépend.)
+
 // ── Emblème de guilde ────────────────────────────────────────────────────────
 // L'emblème est un fichier <jeu>\_tmpEmblem\<nom>_<guildId>_<ver>.ebm = un BMP 24x24
 // 24-bit COMPRESSÉ ZLIB. Le TexMgr générique ne le décompresse pas -> on lit le fichier,
@@ -1928,6 +2060,39 @@ using LuaPCall_t    = int         (__cdecl*)(void*, int, int, int);
 using LuaToLStr_t   = const char* (__cdecl*)(void*, int, size_t*);
 using LuaSetTop_t   = void        (__cdecl*)(void*, int);
 
+// ── Grimoire : noms des onglets ──────────────────────────────────────────────
+// Lua JobSkillTab_GetTabName(classe) rend QUATRE chaînes — « 1st » / « 2nd »… pour la
+// plupart des classes, « Ninja », « Gunslinger », « Summoner »… pour celles qui ont
+// leur propre libellé (skilltreeview.lub, appels ChangeSkillTabName). C'est la source
+// du natif (sub_9765F0) ; l'appelant traduit ce qui reste générique.
+void ReadSkillTabNamesSEH(int jobId, char out[4][32]) {
+  for (int i = 0; i < 4; ++i) out[i][0] = '\0';
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaState);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    if (!L) return;
+    reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "JobSkillTab_GetTabName");
+    reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(jobId));
+    if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 4, 0) == 0) {
+      for (int i = 0; i < 4; ++i) {
+        const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -4 + i, nullptr);
+        if (s && s[0]) { std::strncpy(out[i], s, 31); out[i][31] = '\0'; }
+      }
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -5);  // dépile les 4 résultats
+    } else {
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // dépile le message d'erreur
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// Job du personnage (le même getter que ClassNameSEH), clé de la table des libellés.
+int OwnJobIdSEH() {
+  __try {
+    using GetJobId_t = int (__fastcall*)(void*, void*);
+    return reinterpret_cast<GetJobId_t>(0x00d5b580)(reinterpret_cast<void*>(kSession),
+                                                    nullptr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 // ── Arbre des compétences de guilde (fichier client) ─────────────────────────
 // Le serveur ne l'envoie pas : ZC 0x0162 omet le niveau max, et clif_guild_skillinfo
 // filtre par guild_check_skill_require — une compétence verrouillée n'arrive JAMAIS.
@@ -2654,6 +2819,475 @@ void CharacterSheet::DrawTitlesTab() {
   }
 
   if (to_equip >= 0 && to_equip != ot.equipped) SendChangeTitle(to_equip);
+}
+
+// ═══ Onglet Grimoire ════════════════════════════════════════════════════════
+// Remplaçant de la fenêtre native UINewSkillListWnd (id 0x25) — sa vue « moderne »,
+// celle en grille d'icônes. Les données viennent du MÊME objet que celui que le natif
+// recopie (CPlayerSkillBundle, cf. docs/skill_tree_re.md partie II), donc rien ici ne
+// dépend de la fenêtre native : elle peut rester masquée.
+
+int CharacterSheet::PendingLevel(uint16_t id) const {
+  for (const auto& p : skill_pending_)
+    if (p.first == id) return p.second;
+  return 0;
+}
+
+// Réserve un point sur `id`. Comme la vue grille native (sub_979BA0), on réserve
+// AUSSI les prérequis directs qui manquent : cliquer sur une compétence verrouillée
+// prépare la chaîne au lieu de refuser sèchement. Rien n'est envoyé ici — c'est
+// « Appliquer » qui parle au serveur.
+bool CharacterSheet::ReserveSkillPoint(uint16_t id) {
+  // Tampon PROPRE à cette fonction : DrawSkillsTab l'appelle en plein parcours de SON
+  // tableau, et partager le même buffer statique invaliderait la fiche qu'il tient.
+  static SkillRaw scan[kSkillMaxNodes];
+  // Chercher la fiche dans TOUS les onglets : un prérequis vit souvent dans un autre.
+  auto find = [](uint16_t want, SkillRaw& out) -> bool {
+    for (int tab = -1; tab < kSkillJobTabs; ++tab) {
+      const int n = ReadSkillTabSEH(tab, scan, kSkillMaxNodes);
+      for (int i = 0; i < n; ++i)
+        if (scan[i].id == static_cast<int>(want)) { out = scan[i]; return true; }
+    }
+    return false;
+  };
+  SkillRaw target{};
+  if (!find(id, target)) { skill_status_ = "Compétence introuvable dans l'arbre."; return false; }
+
+  int spent = 0;
+  for (const auto& p : skill_pending_) {
+    SkillRaw fiche{};
+    if (find(p.first, fiche)) spent += p.second - fiche.learned;
+  }
+  int left = SkillPointsSEH() - spent;
+  if (left <= 0) { skill_status_ = "Plus de point de compétence disponible."; return false; }
+
+  // Poser (ou relever) une réservation ; renvoie ce qui a réellement été dépensé.
+  auto reserve = [&](const SkillRaw& fiche, int target_level) -> int {
+    const int current = std::max(fiche.learned, PendingLevel(static_cast<uint16_t>(fiche.id)));
+    if (target_level > fiche.maxlv) target_level = fiche.maxlv;
+    if (target_level <= current) return 0;
+    const int take = std::min(target_level - current, left);
+    if (take <= 0) return 0;
+    const int lvl = current + take;
+    for (auto& p : skill_pending_)
+      if (static_cast<int>(p.first) == fiche.id) { p.second = lvl; left -= take; return take; }
+    skill_pending_.emplace_back(static_cast<uint16_t>(fiche.id), lvl);
+    left -= take;
+    return take;
+  };
+
+  // 1) les prérequis directs manquants, dans l'ordre où le Lua les a posés ;
+  for (int i = 0; i < target.need_count; ++i) {
+    SkillRaw req{};
+    if (!find(static_cast<uint16_t>(target.need_id[i]), req)) continue;
+    if (req.user_up <= 0) continue;  // le joueur ne peut pas la monter (compétence de quête)
+    reserve(req, target.need_lv[i]);
+  }
+  // 2) la compétence demandée elle-même.
+  if (target.user_up <= 0) {
+    skill_status_ = "Cette compétence ne se monte pas avec des points.";
+    return false;
+  }
+  const int current = std::max(target.learned, PendingLevel(id));
+  if (current >= target.maxlv) { skill_status_ = "Déjà au niveau maximum."; return false; }
+  if (reserve(target, current + 1) == 0) {
+    skill_status_ = "Points insuffisants pour les prérequis.";
+    return false;
+  }
+  skill_status_.clear();
+  return true;
+}
+
+void CharacterSheet::DrawSkillsTab() {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kAmber(0.85f, 0.65f, 0.20f, 1.0f);
+  const ImVec4 kGreen(0.30f, 0.75f, 0.35f, 1.0f);
+
+  // ── Onglets de job : le natif ne montre que ceux qui ont des compétences ──
+  static SkillRaw nodes[kSkillMaxNodes];
+  int counts[kSkillJobTabs + 1] = {};
+  for (int t = 0; t < kSkillJobTabs; ++t) counts[t] = ReadSkillTabSEH(t, nodes, kSkillMaxNodes);
+  counts[kSkillJobTabs] = ReadSkillTabSEH(-1, nodes, kSkillMaxNodes);  // liste plate
+
+  // Libellés : le Lua donne « 1st »/« 2nd »… (ou « Ninja »… pour quelques classes).
+  // On traduit le générique, on garde tel quel ce qui est spécifique à la classe.
+  char lua_names[4][32];
+  ReadSkillTabNamesSEH(OwnJobIdSEH(), lua_names);
+  static const char* kFallback[4] = {"1re classe", "2e classe", "3e classe", "4e classe"};
+  auto tab_label = [&](int t) -> const char* {
+    if (t >= kSkillJobTabs) return "Divers";
+    const char* n = lua_names[t];
+    if (!n[0]) return kFallback[t];
+    if (std::strcmp(n, "1st") == 0) return kFallback[0];
+    if (std::strcmp(n, "2nd") == 0) return kFallback[1];
+    if (std::strcmp(n, "3rd") == 0) return kFallback[2];
+    if (std::strcmp(n, "4th") == 0) return kFallback[3];
+    return n;
+  };
+
+  // ── En-tête : points, réservations, filtre, mode d'affichage ──
+  // Au passage, on JETTE les réservations devenues sans objet : compétence absente de
+  // l'arbre (changement de job) ou déjà montée par le serveur. Sans ça une réservation
+  // périmée resterait à compter des points pour rien.
+  int reserved_points = 0;
+  for (size_t k = 0; k < skill_pending_.size();) {
+    int learned = -1;
+    for (int t = -1; t < kSkillJobTabs && learned < 0; ++t) {
+      const int n = ReadSkillTabSEH(t, nodes, kSkillMaxNodes);
+      for (int i = 0; i < n; ++i)
+        if (nodes[i].id == static_cast<int>(skill_pending_[k].first)) {
+          learned = nodes[i].learned;
+          break;
+        }
+    }
+    if (learned < 0 || skill_pending_[k].second <= learned) {
+      skill_pending_.erase(skill_pending_.begin() + static_cast<int>(k));
+      continue;
+    }
+    reserved_points += skill_pending_[k].second - learned;
+    ++k;
+  }
+  const int points_total = SkillPointsSEH();
+  const int points_left  = points_total - reserved_points;
+
+  ImGui::TextColored(points_left > 0 ? kGreen : kGray, "Points : %d", points_left);
+  if (reserved_points > 0) {
+    ImGui::SameLine();
+    ImGui::TextColored(kAmber, "(%d réservé%s)", reserved_points,
+                       reserved_points > 1 ? "s" : "");
+  }
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(120.0f);
+  ImGui::InputTextWithHint("##skfilter", "Rechercher…", skill_filter_buf_,
+                           sizeof(skill_filter_buf_));
+  ImGui::SameLine();
+  if (ro::RoButton(skill_grid_ ? "Grille" : "Liste", 58.0f, 0.0f))
+    skill_grid_ = !skill_grid_;
+  mui::Tooltip("Bascule entre la grille d'icônes (vue « moderne » du client) et la\n"
+               "liste détaillée (niveau, SP, portée, prérequis).");
+
+  if (!skill_pending_.empty()) {
+    if (ro::RoSmallButton("Appliquer", 80.0f, 0.0f)) {
+      // Un paquet CZ_UPGRADE_SKILLLEVEL PAR NIVEAU, exactement comme le natif
+      // (sub_974530) ; le serveur revalide chaque montée (pc_skillup).
+      int sent = 0;
+      for (const auto& p : skill_pending_) {
+        SkillRaw fiche{};
+        bool ok = false;
+        for (int t = -1; t < kSkillJobTabs && !ok; ++t) {
+          const int n = ReadSkillTabSEH(t, nodes, kSkillMaxNodes);
+          for (int i = 0; i < n; ++i)
+            if (nodes[i].id == static_cast<int>(p.first)) { fiche = nodes[i]; ok = true; break; }
+        }
+        if (!ok) continue;
+        for (int lv = fiche.learned + 1; lv <= p.second; ++lv) { SendSkillUp(p.first); ++sent; }
+      }
+      skill_pending_.clear();
+      skill_status_ = sent > 0 ? "Envoyé au serveur." : "Rien à envoyer.";
+    }
+    ImGui::SameLine();
+    if (ro::RoSmallButton("Annuler", 70.0f, 0.0f)) {
+      skill_pending_.clear();
+      skill_status_.clear();
+    }
+    mui::Tooltip("Abandonne les points réservés (rien n'a encore été envoyé).");
+  }
+  if (!skill_status_.empty()) {
+    ImGui::SameLine();
+    ImGui::TextColored(kGray, "%s", skill_status_.c_str());
+  }
+
+  if (ImGui::BeginTabBar("cs_skill_tabs")) {
+    for (int t = 0; t <= kSkillJobTabs; ++t) {
+      if (counts[t] == 0) continue;  // onglet vide : le natif ne l'affiche pas non plus
+      char label[48];
+      std::snprintf(label, sizeof(label), "%s###sktab%d", tab_label(t), t);
+      if (ImGui::BeginTabItem(label)) { skill_tab_ = t; ImGui::EndTabItem(); }
+    }
+    ImGui::EndTabBar();
+  }
+  if (skill_tab_ > kSkillJobTabs || counts[skill_tab_] == 0) {
+    // L'onglet retenu s'est vidé (changement de job) : retomber sur le premier plein.
+    skill_tab_ = 0;
+    for (int t = 0; t <= kSkillJobTabs; ++t)
+      if (counts[t] > 0) { skill_tab_ = t; break; }
+  }
+
+  const int list_tab = (skill_tab_ >= kSkillJobTabs) ? -1 : skill_tab_;
+  const int count = ReadSkillTabSEH(list_tab, nodes, kSkillMaxNodes);
+  if (count == 0) {
+    ImGui::TextColored(kGray, "Aucune compétence dans cet onglet.");
+    return;
+  }
+
+  // Filtre par nom (le libellé localisé, pas l'idname).
+  const bool filtering = skill_filter_buf_[0] != '\0';
+  auto skill_name = [](int id) -> const char* {
+    const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    return (n && n[0]) ? n : "?";
+  };
+  auto icontains = [](const char* hay, const char* needle) {
+    if (!hay || !needle || !needle[0]) return true;
+    for (const char* h = hay; *h; ++h) {
+      const char* a = h;
+      const char* b = needle;
+      while (*a && *b && std::tolower(static_cast<unsigned char>(*a)) ==
+                             std::tolower(static_cast<unsigned char>(*b))) { ++a; ++b; }
+      if (!*b) return true;
+    }
+    return false;
+  };
+
+  // Infobulle commune aux deux vues : tout ce que le natif éparpille entre la case,
+  // son survol et sa fenêtre de description.
+  const uint16_t focus = skill_hover_;
+  uint16_t hovered_now = 0;
+  auto tooltip_for = [&](const SkillRaw& s, int effective) {
+    std::string tip = skill_name(s.id);
+    if (s.maxlv > 0) {
+      tip += "\nNiveau " + std::to_string(effective) + " / " + std::to_string(s.maxlv);
+      const int pending = PendingLevel(static_cast<uint16_t>(s.id));
+      if (pending > 0) tip += "  (+" + std::to_string(pending - s.learned) + " réservé)";
+    }
+    tip += s.inf == 0 ? "\nPassive (toujours active)" : "\nActive";
+    if (s.learned > 0 && s.sp > 0)    tip += "\nSP : " + std::to_string(s.sp);
+    if (s.learned > 0 && s.range > 0) tip += "\nPortée : " + std::to_string(s.range);
+    if (s.need_count > 0) {
+      tip += "\nRequiert : ";
+      for (int i = 0; i < s.need_count; ++i) {
+        if (i) tip += ", ";
+        tip += skill_name(s.need_id[i]);
+        tip += " Niv ";
+        tip += std::to_string(s.need_lv[i]);
+      }
+    }
+    if (s.user_up <= 0) tip += "\n\nNe se monte pas avec des points (quête / lien).";
+    tip += "\n\nClic : description — clic droit : menu";
+    if (s.learned > 0 && s.inf != 0) tip += " — glisser vers une barre";
+    ImGui::SetTooltip("%s", tip.c_str());
+  };
+
+  // Menu contextuel commun : monter, lancer, niveau d'utilisation, description.
+  auto context_menu = [&](const SkillRaw& s, int effective) {
+    if (!ImGui::BeginPopupContextItem("skctx")) return;
+    const bool can_raise = s.user_up > 0 && effective < s.maxlv;
+    if (ImGui::MenuItem("Monter d'un niveau", nullptr, false, can_raise && points_left > 0))
+      ReserveSkillPoint(static_cast<uint16_t>(s.id));
+    if (ImGui::MenuItem("Lancer", nullptr, false, s.learned > 0 && s.inf != 0))
+      SendUseSkill(static_cast<uint16_t>(s.id), std::max(1, GetUseLevelSEH(s.id)));
+    // Niveau d'utilisation : réglage 100 % client (le natif l'expose par les
+    // « + / − » de chaque case), borné au niveau APPRIS, et c'est lui que la barre
+    // de raccourcis envoie au lancement.
+    if (s.learned > 0 && IsLevelUseSkillSEH(s.id)) {
+      ImGui::Separator();
+      int use = GetUseLevelSEH(s.id);
+      if (use <= 0 || use > s.learned) use = s.learned;
+      ImGui::TextColored(kGray, "Lancer au niveau %d / %d", use, s.learned);
+      if (ImGui::MenuItem("  niveau −", nullptr, false, use > 1))
+        SetUseLevelSEH(s.id, use - 1);
+      if (ImGui::MenuItem("  niveau +", nullptr, false, use < s.learned))
+        SetUseLevelSEH(s.id, use + 1);
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Description")) {
+      const ImVec2 mp = ImGui::GetIO().MousePos;
+      OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+    }
+    ImGui::EndPopup();
+  };
+
+  // Gestes partagés par la case et la ligne : ils suivent le DERNIER widget soumis.
+  auto common_item_actions = [&](const SkillRaw& s, int effective, ro::IconTex ic) {
+    if (s.learned > 0 && s.inf != 0 && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+      // Même charge utile que l'onglet Guilde : la barre d'action ImGui l'accepte déjà.
+      const int payload[2] = {s.id, std::max(1, GetUseLevelSEH(s.id))};
+      ImGui::SetDragDropPayload("BGN_SKILL", payload, sizeof(payload));
+      if (ic.tex) { ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+                    ImGui::SameLine(); }
+      ImGui::TextUnformatted(skill_name(s.id));
+      ImGui::EndDragDropSource();
+    }
+    const bool dragging = ImGui::IsDragDropActive();
+    if (ImGui::IsItemHovered() && !dragging) {
+      hovered_now = static_cast<uint16_t>(s.id);
+      tooltip_for(s, effective);
+      // Description au RELÂCHÉ, et seulement si la souris n'a pas voyagé : le même
+      // bouton sert à démarrer un glisser vers la barre d'action, et un test au
+      // PRESSÉ ouvrirait la description à chaque début de glisser.
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+          !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left)) {
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      }
+    }
+    context_menu(s, effective);
+  };
+
+  // Une compétence est-elle prérequis (ou suite) de celle qui est survolée ?
+  auto linked_to_focus = [&](const SkillRaw& s) {
+    if (focus == 0 || s.id == static_cast<int>(focus)) return false;
+    for (int i = 0; i < s.need_count; ++i)
+      if (s.need_id[i] == static_cast<int>(focus)) return true;
+    for (int i = 0; i < count; ++i) {
+      if (nodes[i].id != static_cast<int>(focus)) continue;
+      for (int k = 0; k < nodes[i].need_count; ++k)
+        if (nodes[i].need_id[k] == s.id) return true;
+    }
+    return false;
+  };
+
+  ImGui::BeginChild("cs_skill_body", ImVec2(0, 0), false);
+  if (skill_grid_) {
+    // ── Vue GRILLE : 7 colonnes, la disposition exacte du client (l'index de case
+    //    vient du Lua, SKILL_TREEVIEW_FOR_JOB) — une compétence sans case (-1) est
+    //    poussée à la suite pour ne jamais disparaître. ──
+    const float cell_w = 72.0f;
+    const float cell_h = 74.0f;
+    const float icon   = 32.0f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    // Les compétences sans case (index -1 : le Lua ne les a pas placées) sont rangées
+    // à la suite de la dernière ligne occupée, plutôt que disparaître comme au natif.
+    int max_pos = -1;
+    for (int i = 0; i < count; ++i) max_pos = std::max(max_pos, nodes[i].pos);
+    int next_free = (max_pos < 0) ? 0 : ((max_pos / kSkillGridCols) + 1) * kSkillGridCols;
+    int used_max_row = 0;
+    for (int i = 0; i < count; ++i) {
+      const SkillRaw& s = nodes[i];
+      if (filtering && !icontains(skill_name(s.id), skill_filter_buf_)) continue;
+      const int pos = (s.pos >= 0) ? s.pos : next_free++;
+      used_max_row = std::max(used_max_row, pos / kSkillGridCols);
+      const int col = pos % kSkillGridCols;
+      const int row = pos / kSkillGridCols;
+      const ImVec2 p(origin.x + col * cell_w, origin.y + row * cell_h);
+
+      const int pending   = PendingLevel(static_cast<uint16_t>(s.id));
+      const int effective = std::max(s.learned, pending);
+      const bool learned  = effective > 0;
+      const bool raisable = s.user_up > 0 && effective < s.maxlv && points_left > 0;
+
+      ImGui::PushID(s.id);
+      ImGui::SetCursorScreenPos(p);
+      ImGui::InvisibleButton("cell", ImVec2(cell_w - 4.0f, cell_h - 4.0f));
+      const bool hot = ImGui::IsItemHovered();
+
+      // Fond : la case elle-même (le natif blitte no_skill.bmp), plus un liseré
+      // ambre quand la compétence est montable et un bleu quand elle est liée à
+      // celle qu'on survole.
+      const ImVec2 q(p.x + cell_w - 4.0f, p.y + cell_h - 4.0f);
+      dl->AddRectFilled(p, q, hot ? IM_COL32(70, 70, 90, 190) : IM_COL32(30, 30, 40, 140), 4.0f);
+      if (s.id == static_cast<int>(focus))            dl->AddRect(p, q, IM_COL32(255, 205, 105, 220), 4.0f, 0, 2.0f);
+      else if (linked_to_focus(s))  dl->AddRect(p, q, IM_COL32(120, 160, 255, 200), 4.0f, 0, 2.0f);
+      else if (raisable)            dl->AddRect(p, q, IM_COL32(120, 200, 130, 170), 4.0f, 0, 1.5f);
+
+      // Icône centrée, assombrie tant que la compétence n'est pas apprise — c'est
+      // ce que fait le natif (mode de blit grisé quand le niveau vaut 0).
+      const ro::IconTex ic = ResolveSkillIcon(s.id);
+      const ImVec2 ip(p.x + (cell_w - 4.0f - icon) * 0.5f, p.y + 16.0f);
+      if (ic.tex)
+        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
+                     ImVec2(ip.x + icon, ip.y + icon), ImVec2(0, 0), ImVec2(1, 1),
+                     learned ? IM_COL32_WHITE : IM_COL32(105, 105, 115, 165));
+
+      // Nom au-dessus (tronqué à la case), niveau en dessous — même ordre que le natif.
+      char short_name[24];
+      std::snprintf(short_name, sizeof(short_name), "%s", skill_name(s.id));
+      const ImVec2 nsz = ImGui::CalcTextSize(short_name);
+      dl->AddText(ImVec2(p.x + std::max(1.0f, (cell_w - 4.0f - nsz.x) * 0.5f), p.y + 2.0f),
+                  learned ? IM_COL32(225, 225, 235, 255) : IM_COL32(140, 140, 150, 255),
+                  short_name);
+      char lvl[24];
+      if (s.maxlv > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", effective, s.maxlv);
+      else             std::snprintf(lvl, sizeof(lvl), "%d", effective);
+      const ImVec2 lsz = ImGui::CalcTextSize(lvl);
+      dl->AddText(ImVec2(p.x + (cell_w - 4.0f - lsz.x) * 0.5f, p.y + cell_h - 20.0f),
+                  pending > 0 ? IM_COL32(255, 205, 105, 255)
+                              : (effective >= s.maxlv && s.maxlv > 0
+                                     ? IM_COL32(120, 200, 130, 255)
+                                     : IM_COL32(210, 210, 220, 255)),
+                  lvl);
+
+      common_item_actions(s, effective, ic);
+
+      // Bouton « + » : le chemin DÉCOUVRABLE pour dépenser un point (le natif ne
+      // l'offre qu'au clic droit, invisible pour qui ne le sait pas).
+      if (raisable) {
+        ImGui::SetCursorScreenPos(ImVec2(q.x - 16.0f, p.y + 2.0f));
+        if (ro::RoSmallButton("+##up", 14.0f, 14.0f))
+          ReserveSkillPoint(static_cast<uint16_t>(s.id));
+        mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
+      }
+      ImGui::PopID();
+    }
+    // Réserver la hauteur consommée : la grille est dessinée en absolu, ImGui ne
+    // connaîtrait sinon aucune étendue et le scroll serait mort.
+    ImGui::SetCursorScreenPos(origin);
+    ImGui::Dummy(ImVec2(kSkillGridCols * cell_w, (used_max_row + 1) * cell_h));
+  } else {
+    // ── Vue LISTE : tout ce que la grille doit résumer, en clair ──
+    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                  ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
+    if (ImGui::BeginTable("cs_skill_tbl", 5, flags)) {
+      ImGui::TableSetupColumn("Compétence", ImGuiTableColumnFlags_WidthStretch);
+      ImGui::TableSetupColumn("Niveau", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+      ImGui::TableSetupColumn("SP", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+      ImGui::TableSetupColumn("Portée", ImGuiTableColumnFlags_WidthFixed, 46.0f);
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+      ImGui::TableHeadersRow();
+      const float icon = ImGui::GetTextLineHeight();
+      for (int i = 0; i < count; ++i) {
+        const SkillRaw& s = nodes[i];
+        if (filtering && !icontains(skill_name(s.id), skill_filter_buf_)) continue;
+        const int pending   = PendingLevel(static_cast<uint16_t>(s.id));
+        const int effective = std::max(s.learned, pending);
+        ImGui::PushID(s.id);
+        ImGui::TableNextRow();
+        if (s.id == static_cast<int>(focus))           ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1,
+                                                            IM_COL32(120, 95, 35, 90));
+        else if (linked_to_focus(s)) ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1,
+                                                            IM_COL32(70, 75, 120, 80));
+        ImGui::TableNextColumn();
+        const ro::IconTex ic = ResolveSkillIcon(s.id);
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        if (ic.tex)
+          ImGui::GetWindowDrawList()->AddImage(
+              reinterpret_cast<ImTextureID>(ic.tex), p, ImVec2(p.x + icon, p.y + icon),
+              ImVec2(0, 0), ImVec2(1, 1),
+              effective > 0 ? IM_COL32_WHITE : IM_COL32(110, 110, 110, 160));
+        ImGui::Dummy(ImVec2(icon, icon));
+        ImGui::SameLine();
+        if (effective == 0) ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+        ImGui::Selectable(skill_name(s.id), false, ImGuiSelectableFlags_AllowDoubleClick);
+        if (effective == 0) ImGui::PopStyleColor();
+        common_item_actions(s, effective, ic);
+
+        ImGui::TableNextColumn();
+        if (pending > 0) ImGui::TextColored(kAmber, "%d/%d", effective, s.maxlv);
+        else if (effective > 0) ImGui::Text("%d/%d", effective, s.maxlv);
+        else ImGui::TextColored(kGray, "-/%d", s.maxlv);
+
+        ImGui::TableNextColumn();
+        if (s.inf == 0)          ImGui::TextColored(kGray, "passif");
+        else if (s.learned > 0)  ImGui::Text("%d", s.sp);
+        else                     ImGui::TextColored(kGray, "-");
+
+        ImGui::TableNextColumn();
+        if (s.learned > 0 && s.range > 0) ImGui::Text("%d", s.range);
+        else                              ImGui::TextColored(kGray, "-");
+
+        ImGui::TableNextColumn();
+        if (s.user_up > 0 && effective < s.maxlv && points_left > 0) {
+          if (ro::RoSmallButton("+", 22.0f, 0.0f))
+            ReserveSkillPoint(static_cast<uint16_t>(s.id));
+          mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
+        }
+        ImGui::PopID();
+      }
+      ImGui::EndTable();
+    }
+  }
+  ImGui::EndChild();
+  skill_hover_ = hovered_now;  // consommé à la frame suivante (surlignage des liens)
 }
 
 // Onglet Guilde : la fenêtre de guilde native (les 7 panneaux UIGuildWnd) refaite en
@@ -5420,6 +6054,50 @@ void CharacterSheet::DrawStatsPanel() {
   }
 }
 
+// Ouvre (ou déplie) la feuille sur l'onglet Grimoire. Appelée depuis le hook
+// MakeWindow quand le joueur demande le grimoire natif : on ne fait que POSER la
+// demande, la sélection d'onglet se joue au rendu suivant.
+void CharacterSheet::OpenSkillsTab() {
+  show_ = true;
+  tab_ = 5;
+  tab_request_ = 5;
+}
+
+// Masque la fenêtre native du grimoire (UINewSkillListWnd, id 0x25) dès sa création,
+// avant son premier rendu — sinon une frame native passe à l'écran. Le flag de
+// visibilité vit à window+0x28 (UIWnd_SetVisible 0x009030c0 l'y écrit) ; on le pose
+// nous-mêmes plutôt que d'appeler la vtable, comme le font l'inventaire et l'entrepôt.
+// La fenêtre reste ENREGISTRÉE : le natif la « rouvrira » (donc la re-masquera) et
+// c'est notre onglet qui s'affiche à la place.
+void CharacterSheet::HideSkillWndAtCreation(void* win) {
+  if (!win || !imgui_enabled_) return;
+  __try {
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWndVisibleFlag) = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  OpenSkillsTab();
+}
+
+// L'icône « Skill » et Alt+S ne font qu'ouvrir/fermer la fenêtre native 0x25 : on
+// suit son existence (le gestionnaire vide son emplacement à la fermeture) pour que
+// ces deux entrées pilotent NOTRE onglet. Le masquage est reposé à chaque tick, comme
+// pour l'inventaire : un relayout natif peut remettre le drapeau de visibilité à 1.
+void CharacterSheet::OnTick() {
+  if (!imgui_enabled_) { skill_wnd_was_open_ = false; return; }
+  void* wnd = nullptr;
+  __try {
+    wnd = *reinterpret_cast<void**>(kSkillWndSlot);
+    if (wnd)
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kWndVisibleFlag) = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { wnd = nullptr; }
+  const bool open = wnd != nullptr;
+  if (open && !skill_wnd_was_open_) {
+    OpenSkillsTab();
+  } else if (!open && skill_wnd_was_open_ && tab_ == 5) {
+    show_ = false;  // le joueur vient de refermer le grimoire : la feuille suit
+  }
+  skill_wnd_was_open_ = open;
+}
+
 void CharacterSheet::OnRenderUI() {
   if (!imgui_enabled_) return;
 
@@ -5445,9 +6123,10 @@ void CharacterSheet::OnRenderUI() {
   g_win_snap.narrow = kDollW + chrome_w_;
   g_win_snap.wide   = kDollW + gap + kStatsW + chrome_w_;
   g_win_snap.valid  = true;
-  // L'onglet Guilde a besoin de toute la largeur (table des membres) : on y
-  // interdit le repli étroit plutôt que de laisser la table déborder.
-  g_win_snap.force_wide = (tab_ == 4);
+  // Les onglets Guilde (table des membres) et Grimoire (grille de 7 colonnes) ont
+  // besoin de toute la largeur : on y interdit le repli étroit plutôt que de laisser
+  // le contenu déborder.
+  g_win_snap.force_wide = (tab_ == 4 || tab_ == 5);
   ImGui::SetNextWindowSizeConstraints(
       ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow, 450.0f),
       ImVec2(g_win_snap.wide, 10000.0f), SnapCharSheetWidth);
@@ -5466,15 +6145,22 @@ void CharacterSheet::OnRenderUI() {
   bourgeon::CloseWindowOnEscape(show_);
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
-  // Onglets Equipement / Costume / Presets / Titres / Guilde.
+  // Onglets Equipement / Costume / Presets / Titres / Guilde / Grimoire.
+  // `tab_request_` (posé par OpenSkillsTab) force la sélection UNE frame : ImGui
+  // choisit l'onglet au moment où il le dessine, un hook ne peut pas l'imposer.
   if (ImGui::BeginTabBar("cs_tabs")) {
-    if (ImGui::BeginTabItem("Équipement")) { tab_ = 0; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem("Costume"))    { tab_ = 1; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem("Presets"))    { tab_ = 2; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem("Titres"))     { tab_ = 3; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem("Guilde"))     { tab_ = 4; ImGui::EndTabItem(); }
+    auto flag = [this](int idx) {
+      return tab_request_ == idx ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+    };
+    if (ImGui::BeginTabItem("Équipement", nullptr, flag(0))) { tab_ = 0; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Costume",    nullptr, flag(1))) { tab_ = 1; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Presets",    nullptr, flag(2))) { tab_ = 2; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Titres",     nullptr, flag(3))) { tab_ = 3; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Guilde",     nullptr, flag(4))) { tab_ = 4; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Grimoire",   nullptr, flag(5))) { tab_ = 5; ImGui::EndTabItem(); }
     ImGui::EndTabBar();
   }
+  tab_request_ = -1;
   costume_ = (tab_ == 1);
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -5493,6 +6179,11 @@ void CharacterSheet::OnRenderUI() {
     // Onglet Guilde : pleine largeur (infos + roster + relations).
     ImGui::BeginChild("cs_guild", ImVec2(0, 0), true);
     DrawGuildTab();
+    ImGui::EndChild();
+  } else if (tab_ == 5) {
+    // Onglet Grimoire : pleine largeur (grille 7 colonnes ou liste détaillée).
+    ImGui::BeginChild("cs_skills", ImVec2(0, 0), true);
+    DrawSkillsTab();
     ImGui::EndChild();
   } else {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).

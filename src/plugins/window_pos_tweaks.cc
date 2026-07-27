@@ -17,6 +17,7 @@
 #include "plugins/trade_tweaks.h"  // hide-native-at-creation (échange, par vtable)
 #include "plugins/rodex_tweaks.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "plugins/npc_dialog_tweaks.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
+#include "plugins/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -147,6 +148,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x4A) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HideCardInsertAtCreation(win);
+    }
+    // Grimoire (UINewSkillListWnd id 0x25) : remplacé par l'onglet « Grimoire » de la
+    // feuille de personnage. On masque la native dès sa création et on bascule la
+    // feuille sur cet onglet — l'icône « Skill » et Alt+S continuent donc de marcher,
+    // mais atterrissent sur l'interface moderne (cf. docs/skill_tree_re.md partie II).
+    if (windowID == 0x25) {
+      if (auto* cs = Bourgeon::Instance().character_sheet())
+        cs->HideSkillWndAtCreation(win);
     }
     // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
     if (windowID == 0x13e) {
