@@ -1248,15 +1248,30 @@ bool RoSmallButton(const char* label, float w, float h) {
   if (w <= 0.0f) w = ts.x + capL + capR; // +12px pour RoButton, pas pour le petit bouton
   if (h <= 0.0f) h = nativeH;
 
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 3.0f); // décale le bouton vers la gauche
-  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.0f); // décale le bouton vers le bas pour mieux centrer le bouton sur la ligne
+  // Resserre le bouton contre le widget qui le précède SUR LA MÊME LIGNE (le skin
+  // RO a déjà sa propre marge dans l'art, l'ItemSpacing d'ImGui l'éloigne trop).
+  // Uniquement en SameLine : quand le bouton OUVRE la ligne, il n'y a rien à
+  // resserrer et ces 3 px le font mordre sur la marge gauche — hors clip rect de
+  // la fenêtre (ou de la colonne), donc rogné à gauche.
+  if (ImGui::GetCurrentWindow()->DC.IsSameLine)
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 3.0f);
+
+  // Le petit bouton est plus court que du texte : on le pose 3 px sous le haut
+  // de la ligne pour le recentrer. Surtout PAS en déplaçant le curseur Y : quand
+  // le bouton OUVRE la ligne, ce décalage devient l'origine de la ligne, et les
+  // boutons suivants (posés en SameLine, qui les ramène à cette origine) se
+  // décalent encore de 3 px — le premier bouton apparaissait alors 3 px plus
+  // haut que ses voisins. On réserve donc un item 3 px plus haut que l'art et on
+  // dessine l'art dans sa partie basse : l'origine de la ligne reste intacte.
+  const float art_drop_y = 3.0f;
 
   ImGui::PushID(label);
-  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
+  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h + art_drop_y));
   const bool hovered = ImGui::IsItemHovered();
   const bool held = ImGui::IsItemActive() || g_force_button_active;
   if (hovered) SetHoverCursor(kRoCursorHand);
-  const ImVec2 p0 = ImGui::GetItemRectMin();
+  const ImVec2 p0(ImGui::GetItemRectMin().x,
+                  ImGui::GetItemRectMin().y + art_drop_y);
   const ImVec2 p1 = ImGui::GetItemRectMax();
   ImDrawList* dl = ImGui::GetWindowDrawList();
 
