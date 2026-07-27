@@ -118,6 +118,13 @@ void SetNextWindowBodyColor(unsigned int argb);
 bool RoButton(const char* label, float w = 0.0f, float h = 0.0f);
 bool RoSmallButton(const char* label, float w = 0.0f, float h = 0.0f);
 
+// Bouton d'état (outil courant, option retenue…) : quand `active` est vrai, il se
+// dessine ENFONCÉ et son libellé passe en gras — l'art « press » seul se confond
+// avec le survol. Renvoie true au clic, comme RoButton ; c'est à l'appelant de
+// tenir l'état. Le gras est un faux-gras (re-dessin décalé d'un pixel) : ImGui n'a
+// qu'une seule graisse chargée.
+bool RoToggleButton(const char* label, bool active, float w = 0.0f, float h = 0.0f);
+
 // Slider habillé en SCROLLBAR HORIZONTALE RO (pièces natives scroll1left|mid|right
 // pour la piste/les flèches, scroll1bar_left|mid|right pour le curseur) : c'est le
 // vocabulaire visuel du client, qui n'a pas de « slider » à proprement parler.
@@ -294,5 +301,10 @@ float SkinImageBrightness();
 // `imgui_input_flags` = ImGuiInputTextFlags optionnels. Renvoie true quand édité.
 bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
                     int imgui_input_flags = 0);
+
+// Idem, avec un indice affiché tant que le champ est VIDE. `hint` est de l'UTF-8
+// (du texte à nous, jamais envoyé au client) : il ne passe PAS par le CP949.
+bool InputTextCp949WithHint(const char* label, const char* hint, char* cp949_buf,
+                            size_t buf_size, int imgui_input_flags = 0);
 
 }  // namespace ro

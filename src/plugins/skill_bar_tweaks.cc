@@ -292,7 +292,7 @@ void SendHotkeyChange(int tab, int index, uint8_t type, uint32_t id, int level) 
   p.op = 0x0b21;
   p.tab = static_cast<uint16_t>(tab);
   p.index = static_cast<uint16_t>(index);
-  p.isSkill = type;            // record type BRUT (NATIF : 0=SKILL, 1=OBJET) ; round-trip serveur (chargt = copie brute)
+  p.isSkill = type;            // 0=OBJET, 1=SKILL (hotkey_data.isSkill côté serveur) ; round-trip brut
   p.id = id;
   p.count = static_cast<uint16_t>(level);
   Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&p), sizeof(p));
@@ -1258,6 +1258,7 @@ void SkillBarTweaks::DrawBar(int bar) {
 
   int move_from = -1, move_to = -1, move_region = -1;  // glisser-déposer différé hors de la boucle
   int inv_drop_slot = -1; uint32_t inv_drop_id = 0;    // item d'inventaire lâché sur une case (différé)
+  int skill_drop_slot = -1, skill_drop_id = 0, skill_drop_level = 0;  // skill lâché depuis un panneau ImGui
 
   for (int k = 0; k < count; ++k) {
     const int slot = bc.first_slot + k;
@@ -1305,6 +1306,13 @@ void SkillBarTweaks::DrawBar(int bar) {
           if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
             const uint32_t nameid = iv->DraggedItemNameId();
             if (nameid != 0) { inv_drop_slot = slot; inv_drop_id = nameid; }
+          }
+        } else if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("BGN_SKILL")) {
+          // Skill glissé depuis un panneau ImGui (feuille de perso : compétences de guilde).
+          // La barre d'ITEMS (région 2) ne stocke que des nameid -> elle le refuse.
+          if (!RegionIsItems(region)) {
+            const int* d = static_cast<const int*>(pl->Data);
+            skill_drop_slot = slot; skill_drop_id = d[0]; skill_drop_level = d[1];
           }
         }
         ImGui::EndDragDropTarget();
@@ -1423,6 +1431,16 @@ void SkillBarTweaks::DrawBar(int bar) {
       SendHotkeyChange(kRegions[region].tab, inv_drop_slot, /*isSkill*/ 0, inv_drop_id, 0);
     else
       dirty_ = true;
+  }
+
+  // Idem pour un SKILL venu d'un panneau ImGui (payload "BGN_SKILL") : record type 1 +
+  // persistance serveur. Écriture directe comme ci-dessus — passer par
+  // SkillMgr_SetShortCutSlot notifierait le dispatcher 0x139 pendant le drag.
+  if (skill_drop_slot >= 0 && skill_drop_id != 0) {
+    WriteSlotRecord(region, skill_drop_slot, /*is_item*/ false,
+                    static_cast<uint32_t>(skill_drop_id), skill_drop_level);
+    SendHotkeyChange(kRegions[region].tab, skill_drop_slot, /*isSkill*/ 1,
+                     static_cast<uint32_t>(skill_drop_id), skill_drop_level);
   }
 
   // ── Verrouillé, slot survolé : clic molette = vider, clic droit = description ──

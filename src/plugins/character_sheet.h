@@ -168,7 +168,105 @@ class CharacterSheet : public Plugin {
   int  hk_capturing_ = -1;         // index (dans equip_presets_) du preset en capture de touche
   std::string hk_conflict_msg_;    // message de conflit affiché pendant la capture
   bool show_    = true;   // fenetre visible (bascule Alt+F)
-  int  tab_     = 0;      // onglet actif : 0=Equipement, 1=Costume, 2=Presets, 3=Titres
+  int  tab_     = 0;      // onglet actif : 0=Equipement, 1=Costume, 2=Presets, 3=Titres, 4=Guilde
+
+  // ── Onglet Guilde (fenêtre de guilde native refaite en ImGui) ──────────────
+  int      guild_sub_tab_ = 0;      // 0 = Membres, 1 = Relations
+  uint32_t guild_sel_cid_ = 0;      // membre sélectionné dans la table (char id)
+  unsigned long guild_last_req_ = 0;  // GetTickCount de la dernière demande (CZ 0x014f)
+  bool     guild_notice_edit_ = false;  // édition de l'annonce en cours (maître)
+  char     guild_notice_subj_[60] = {};
+  char     guild_notice_body_[120] = {};
+  char     guild_invite_buf_[24] = {};  // nom du joueur à inviter
+  char     guild_reason_buf_[40] = {};  // motif de départ / d'expulsion
+  bool     guild_expel_ask_ = false;    // ouverture différée du modal d'expulsion
+  uint32_t guild_expel_aid_ = 0, guild_expel_cid_ = 0;
+  char     guild_expel_name_[32] = {};
+  // Nom de guilde retapé pour confirmer la dissolution : @breakguild ne demande AUCUNE
+  // confirmation côté serveur, la seule barrière est celle qu'on met ici.
+  char     guild_break_confirm_[32] = {};
+  std::string guild_status_;            // retour UI de la dernière action guilde
+  // Création de guilde (sans guilde) : nom saisi + dernier code renvoyé par le serveur
+  // (ZC 0x0167 ; -1 = pas de réponse en attente).
+  char guild_create_buf_[24] = {};
+  int  guild_create_result_ = -1;
+  // Rupture d'une relation (alliance/hostilité) : cible en attente de confirmation.
+  bool guild_rel_del_ask_ = false;      // ouverture différée du modal
+  int  guild_rel_del_id_ = 0;           // guild id de l'autre guilde
+  int  guild_rel_del_kind_ = 0;         // 0 = allié, 1 = ennemi
+  char guild_rel_del_name_[32] = {};
+  // Changement d'emblème : les .bmp sont pris dans <jeu>\emblem\, comme le fait la
+  // fenêtre native. La liste (avec ses aperçus) vit dans le .cc ; ici l'état d'UI.
+  bool guild_emblem_ask_ = false;   // ouverture différée du modal (depuis un bouton)
+  int  guild_emblem_sel_ = -1;      // index du fichier choisi dans la liste
+  std::string guild_emblem_error_;  // refus local (dimensions, taille, format…)
+  // Compte rendu du dernier envoi, affiché DANS le modal : le serveur jette un
+  // emblème sans rien journaliser quand l'expéditeur n'est pas maître de guilde,
+  // et la console du jeu n'est pas toujours accessible.
+  std::string guild_emblem_diag_;
+  bool guild_emblem_goto_paint_ = false;  // basculer sur l'onglet « Dessiner » au prochain frame
+  int  guild_emblem_item_id_ = 0;         // item dont l'icône sert de base au dessin
+  bool guild_emblem_gallery_ = false;     // galerie des icônes de l'inventaire dépliée
+
+  // Postes de guilde. Le client ne les conserve QUE dans la fenêtre native (liste
+  // interne à UIGuildPositionManageWnd) : on lit donc nous-mêmes ZC_POSITION_ID_NAME_INFO
+  // (0x0166), ZC_POSITION_INFO (0x0160) et ZC_ACK_CHANGE_GUILD_POSITIONINFO (0x0174).
+  static constexpr int kGuildPositionSlots = 20;  // MAX_GUILDPOSITION côté serveur
+  struct GuildPositionRow {
+    char name[24] = {};
+    int  mode = 0;      // droits : 0x001 inviter, 0x010 expulser, 0x100 entrepôt
+    int  pay_rate = 0;  // part d'exp (%)
+    bool has_name = false;  // un nom est arrivé (0x0166/0x0174)
+    bool has_info = false;  // droits + part d'exp sont arrivés (0x0160/0x0174)
+  };
+  GuildPositionRow guild_positions_[kGuildPositionSlots];       // dernier état serveur
+  GuildPositionRow guild_positions_edit_[kGuildPositionSlots];  // copie éditée
+  bool guild_positions_editing_ = false;  // saisie en cours : la copie ne se resynchronise plus
+
+  // Compétences de guilde (ZC_GUILD_SKILLINFO 0x0162, type 3 de CZ_REQ_GUILD_MENUINTERFACE).
+  // Le paquet ne porte pas le niveau MAX, seulement `upgradable` (1 = maître ET max non
+  // atteint) : c'est lui qui active le bouton, pas une table de maxima recopiée ici.
+  struct GuildSkillRow {
+    uint16_t id = 0;
+    int      inf = 0;         // masque skill_get_inf (passif / actif…)
+    int      level = 0;
+    int      sp = 0;          // coût au niveau courant
+    int      range = 0;
+    char     name[24] = {};   // nom TECHNIQUE (« GD_APPROVAL ») ; l'affichage passe par Lua
+    bool     upgradable = false;
+  };
+  std::vector<GuildSkillRow> guild_skills_;
+  int  guild_skill_points_ = 0;
+  bool guild_skills_known_ = false;  // un 0x0162 est arrivé (sinon « en attente »)
+
+  // Arbre des compétences de guilde, lu dans skilltreeguild.lub (miroir client de
+  // db/guild_skill_tree.yml, généré par tools/gen/gen_guild_skill_tree_lub.py).
+  // Indispensable pour afficher ce que le serveur ne dit PAS : il n'envoie ni le
+  // niveau max, ni les compétences dont les prérequis manquent.
+  struct GuildSkillReq { uint16_t id = 0; int level = 0; };
+  struct GuildSkillTreeNode {
+    uint16_t id = 0;
+    int      max_level = 0;
+    int      depth = 0;      // 0 = racine ; calculé depuis les prérequis, pour l'affichage
+    char     name[40] = {};  // libellé lisible : le Lua du client ne nomme pas les GD_,
+                             // et une compétence verrouillée n'a aucun paquet à nommer
+    std::vector<GuildSkillReq> need;
+  };
+  std::vector<GuildSkillTreeNode> guild_skill_tree_;
+  int guild_skill_tree_state_ = 0;  // 0 = pas encore tenté, 1 = chargé, -1 = indisponible
+  // Compétence survolée à la frame PRÉCÉDENTE : quand on apprend qu'une ligne est
+  // survolée, ses prérequis sont déjà dessinés au-dessus, trop tard pour les allumer.
+  uint16_t guild_skill_hover_ = 0;
+
+  // Expulsions passées (ZC_BAN_LIST 0x0b7c, type 4). Le serveur ne conserve ni date
+  // ni auteur : seulement qui, et pourquoi.
+  struct GuildBanRow {
+    uint32_t char_id = 0;
+    char     name[24] = {};
+    char     reason[41] = {};
+  };
+  std::vector<GuildBanRow> guild_bans_;
+  bool guild_bans_known_ = false;
   bool costume_ = false;  // == (tab_==1) ; garde pour DrawDoll/DrawSlot
   char title_filter_buf_[32] = {};  // filtre de recherche de l'onglet Titres (par libellé)
   bool need_pos_ = true;  // 1er placement de la fenetre
@@ -194,6 +292,29 @@ class CharacterSheet : public Plugin {
   void DrawPresetsTab();
   // Onglet Titres : titres d'achievement possedes + titre equipe ; clic = equiper (CZ 0x0A2E).
   void DrawTitlesTab();
+  // Onglet Guilde : infos, annonce, roster (tri + actions) et relations, tout en ImGui.
+  // Lecture des globals CGuild/g_GuildInfo_* ; actions en paquets bruts (0x014f/0x0155/
+  // 0x0159/0x015b/0x016e/0x0916), revalidées par le serveur.
+  void DrawGuildTab();
+  // Sous-onglet « Postes » : nom, droits et part d'exp des 20 postes. Édition réservée
+  // au maître (le serveur exige le drapeau gmaster) ; envoi groupé en CZ 0x0161.
+  void DrawGuildPositionsTab(bool can_edit);
+  // Sous-onglet « Compétences » : liste ZC 0x0162 + montée (CZ 0x0112, maître seul).
+  void DrawGuildSkillsTab();
+  // Charge une fois skilltreeguild.lub et remplit guild_skill_tree_. Sans lui, l'onglet
+  // se limite à ce que le serveur envoie (pas de niveau max, pas de verrouillés).
+  void EnsureGuildSkillTree();
+  // Cooldown restant en ms (0 = prête), lu dans la table partagée
+  // ragnarok/skill_cooldowns.h.
+  unsigned long SkillCooldownRemaining(uint16_t skill_id) const;
+  // Sous-onglet « Expulsions » : historique des membres exclus (ZC 0x0b7c).
+  void DrawGuildBansTab();
+  // Modal « Changer l'emblème » : choix d'un .bmp de <jeu>\emblem\ (aperçu + contrôles
+  // locaux) puis envoi du BMP compressé zlib en CZ_REGISTER_GUILD_EMBLEM_IMG (0x0153).
+  void DrawGuildEmblemModal(int guildId, bool is_master);
+  // Onglet « Dessiner » du même modal : canvas 24x24 peint en jeu, converti en BMP
+  // 24 bits au moment de l'envoi (aucun fichier requis).
+  void DrawGuildEmblemPaintTab(int guildId, bool is_master);
   // Sauve l'equipement porte actuellement comme preset nomme (perso courant).
   void SaveCurrentEquipAsPreset(const char* name);
   // Applique un preset : desequipe les slots hors preset, equipe les items manquants.
@@ -204,9 +325,6 @@ class CharacterSheet : public Plugin {
   // Declenche l'application d'un preset dont le raccourci clavier est pressé (en jeu, hors
   // saisie texte). Actif même fenêtre fermée.
   void ProcessPresetHotkeys();
-  // Conflit du combo (vk+mods) avec un AUTRE preset (self exclu) ou un raccourci natif de la
-  // barre de skills/items. Renvoie true + décrit le conflit dans `what`.
-  bool HotkeyConflict(int vk, bool ctrl, bool alt, bool shift, int selfIdx, char* what, int cap);
   // Dessine un slot d'equipement a (x,y) taille sz dans le draw courant.
   void DrawSlot(int slot, bool costume, float x, float y, float sz);
   // Case MUNITION (à côté du bouclier) : lit la munition équipée (invIndex global, hors

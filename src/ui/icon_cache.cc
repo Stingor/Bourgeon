@@ -112,6 +112,12 @@ IconTex ItemIcon(uint32_t nameid, int identified) {
   return g_icon_cache[key] = icon;
 }
 
+bool ItemIconPixels(uint32_t nameid, std::vector<uint8_t>* argb, int* w, int* h) {
+  char path[192];
+  if (!BuildIconPathSafe(nameid, path, /*identified=*/1) || !path[0]) return false;
+  return GameFilePixels(path, argb, w, h);
+}
+
 IconTex ItemCollectionIcon(uint32_t nameid) {
   DropCachesOnDeviceReset();
 

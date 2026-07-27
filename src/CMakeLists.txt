@@ -135,6 +135,8 @@ set(BOURGEON_FILES
 	"ui/game_texture.h"
 	"ui/icon_cache.cc"
 	"ui/icon_cache.h"
+	"ui/head_icon.cc"
+	"ui/head_icon.h"
 	"ui/color_codec.cc"
 	"ui/color_codec.h"
 	"ui/skin_panel.cc"

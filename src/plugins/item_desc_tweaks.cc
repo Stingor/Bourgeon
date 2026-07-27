@@ -183,6 +183,20 @@ constexpr int kCmdProbability = 0x157;  // « View Probability Info » -> wnd 0x
 constexpr uintptr_t kProbDbPtr = 0x01255108;  // ptr vers le mgr (lazy-new)
 constexpr uintptr_t kProbFetch = 0x0069f480;  // ItemProbabilityDB_Fetch
 using ProbFetch_t = void(__thiscall*)(void*, int*, int);
+// Boutons « Read » / « Auto Read » des LIVRES (enfants natifs +0x1b8/+0x1bc de la
+// fenêtre desc, libellés msg 0x50e/0x50f). Le cmd ouvre book\<id>.txt via
+// ResFileStream puis MakeWindow(0x6a) + OnMsg 0x5e (RE 2026-07-27).
+constexpr int kCmdReadBook     = 0x11f;  // « Read »
+constexpr int kCmdAutoReadBook = 0x120;  // « Auto Read » (tourne les pages seul)
+// Les 2 gates du natif (mêmes que le repositionnement des boutons à y=6, sinon
+// y=-94 = hors cadre) : l'item est un LIVRE et le joueur le POSSÈDE.
+// BookItemDB_Contains(id) : appartenance à g_BookItemNameMap (0x01255120, chargée
+// depuis data\BookItemNameTable.txt). Inventory_OwnsItemById(id) : présent dans
+// l'inventaire avec une quantité > 0.
+constexpr uintptr_t kBookDbContains = 0x006a5db0;  // BookItemDB_Contains
+constexpr uintptr_t kOwnsItemById   = 0x00c6b1e0;  // Inventory_OwnsItemById
+using BookContains_t = char(__cdecl*)(int);
+using OwnsItem_t     = char(__stdcall*)(int);
 using TexMgr_t       = void* (__cdecl*)();
 using MakeKey_t      = void* (__cdecl*)(const char*);
 using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
@@ -938,6 +952,29 @@ bool ItemHasProbability(uint32_t id) {
     found = (out[1] & 0xff) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { found = false; }
   return found;
+}
+
+// L'item est-il un LIVRE lisible ET possédé (=> boutons « Lire » éligibles) ?
+// Reproduit à l'identique les 2 gates natifs. Le test de possession parcourt
+// l'inventaire (recherche linéaire + copie d'ItemSkillInfo) : trop lourd pour
+// chaque frame -> résultat mémorisé ~500 ms pour l'item courant (assez court pour
+// suivre un drop/consommation du livre). SEH (POD only).
+bool ItemIsReadableBook(uint32_t id) {
+  static uint32_t s_id = 0;
+  static uint32_t s_checked_at = 0;
+  static bool     s_readable = false;
+  const uint32_t now = GetTickCount();
+  if (id == s_id && (now - s_checked_at) < 500) return s_readable;
+  bool readable = false;
+  __try {
+    const int item_id = static_cast<int>(id);
+    if (reinterpret_cast<BookContains_t>(kBookDbContains)(item_id))
+      readable = reinterpret_cast<OwnsItem_t>(kOwnsItemById)(item_id) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { readable = false; }
+  s_id = id;
+  s_checked_at = now;
+  s_readable = readable;
+  return readable;
 }
 
 // Déclenche une commande bouton (msg 6) sur une fenêtre desc via son OnMsg. SEH.
@@ -2458,6 +2495,19 @@ void ItemDescTweaks::RenderItemWindow() {
       char pb[48];
       std::snprintf(pb, sizeof(pb), "Probabilités%s", selId);
       if (ImGui::SmallButton(pb)) CallDescButton(wnd, kCmdProbability);
+    }
+
+    // Boutons « Lire » / « Lecture auto » des LIVRES (rejouent les 2 boutons
+    // natifs +0x1b8/+0x1bc : ouvrent book\<id>.txt dans la fenêtre livre 0x6a).
+    // ⚠️ Cette fenêtre-là reste NATIVE : elle se compose avant ImGui, donc elle
+    // passera SOUS la desc si les deux se recouvrent (repro ImGui = TODO).
+    if (ItemIsReadableBook(snap.id)) {
+      char rb[48];
+      std::snprintf(rb, sizeof(rb), "Lire%s", selId);
+      if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdReadBook);
+      ImGui::SameLine();
+      std::snprintf(rb, sizeof(rb), "Lecture auto%s", selId);
+      if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
     }
     ImGui::EndGroup();
 

@@ -16,6 +16,7 @@
 // référer sans la redéclarer, même quand TextureFromGameFile ne leur convient pas.
 
 #include <cstdint>
+#include <vector>
 
 namespace ro {
 
@@ -51,5 +52,14 @@ constexpr int kPixels = 0x11c;  // BGRA brut
 // Sûr à appeler même si le device ou la session ne sont pas prêts : rend une
 // texture nulle plutôt que de lever (le chemin natif est gardé par un SEH).
 GameTexture TextureFromGameFile(const char* path);
+
+// Mêmes pixels, mais rendus à l'APPELANT au lieu d'être téléversés au GPU : pour
+// les traitements côté CPU (l'éditeur d'emblème importe ainsi une icône d'item,
+// qui fait justement 24x24 comme un emblème).
+//
+// `argb` reçoit w*h pixels en B, G, R, A — l'alpha vaut 0 sur le magenta pur
+// (color-key RO), 255 ailleurs, exactement comme la texture rendue. false si le
+// fichier est absent ou hors format.
+bool GameFilePixels(const char* path, std::vector<uint8_t>* argb, int* w, int* h);
 
 }  // namespace ro

@@ -16,6 +16,7 @@
 // redemander à chaque frame est gratuit sur un hit.
 
 #include <cstdint>
+#include <vector>
 
 #include "ui/game_texture.h"
 
@@ -45,5 +46,12 @@ IconTex ItemIcon(uint32_t nameid, int identified = 1);
 // vaut la petite icône que rien. Le repli est mémorisé ici aussi, sinon un item
 // sans collection referait la résolution du resname à chaque frame.
 IconTex ItemCollectionIcon(uint32_t nameid);
+
+// Pixels de l'icône d'item, côté CPU (B, G, R, A par pixel — alpha 0 sur le
+// magenta transparent). Les icônes d'inventaire du client font 24x24, la taille
+// exacte d'un emblème de guilde : c'est ce qui permet d'en importer une dans
+// l'éditeur d'emblème. Renvoie false si l'item n'a pas d'icône.
+// Rien n'est mémorisé ici (usage ponctuel, contrairement à l'affichage).
+bool ItemIconPixels(uint32_t nameid, std::vector<uint8_t>* argb, int* w, int* h);
 
 }  // namespace ro

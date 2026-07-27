@@ -4,7 +4,9 @@
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h) — cache partagé. Les caches
 // de skill et d'emblème restent locaux : chemins et clés différents.
 #include "ui/icon_cache.h"
+#include "ui/head_icon.h"  // miniature de tête des membres de guilde
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/skill_cooldowns.h"  // table de cooldowns partagée (ZC 0x043D)
 #include "utils/game_paths.h"
 #include <Windows.h>
 #include <commdlg.h>  // GetSaveFileNameA (dialogue « Enregistrer sous »)
@@ -13,11 +15,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <ctime>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
@@ -26,10 +30,13 @@
 #include "imgui.h"
 #include "plugins/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
 #include "plugins/inventory_viewer.h"  // LinkItemToChat / EquipDraggedItem (drag-drop, chat)
+#include "plugins/rodex_tweaks.h"      // ComposeTo : « Envoyer un courrier » sur un membre
 #include "plugins/moonlight_ui.h"      // SaveSettings (persistance des presets)
+#include "plugins/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
 #include "plugins/imgui_escape.h"
 #include "ui/ro_imgui.h"
 #include "utils/tinf_inflate.h"  // inflate zlib pour les emblèmes de guilde (.ebm)
+#include "utils/log_console.h"   // LogDiag : diagnostic de l'envoi d'emblème
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -97,6 +104,9 @@ constexpr uintptr_t kUICmdDisp       = 0x0121333c;  // *ptr = dispatcher CMode (
 constexpr int       kVfDispCmd       = 0x18;
 constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
 constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
+constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur soi / toggle
+// g_Own_AccountId : notre AID, qui est aussi le GID de notre acteur (cible d'un self-cast).
+constexpr uintptr_t kOwnAccountId    = 0x015fb9a4;
 constexpr uintptr_t kShowEquipFlag   = 0x015ffd14;  // 1 = équip visible des autres (validé live)
 constexpr uintptr_t kCostumeHideFlag = 0x016024c0;  // 0 = costumes affichés (validé live)
 constexpr uint16_t kOpStatUp  = 0x00BB;  // CZ_STATUS_CHANGE {op, statType, amount}
@@ -375,6 +385,115 @@ constexpr uintptr_t kGuildIdAddr   = 0x0159c230;
 constexpr int       kMemAid    = 0x08;   // node+8    = AID du membre
 constexpr int       kMemPosStr = 0x3c;   // node+0x3c = nom de poste (std::string)
 
+//  ── Guilde : globals étendus + roster complet (RE 2026-07-26, IDA) ───────────
+//  Le serveur (moonlight, PACKETVER 20250716) envoie ZC_GUILD_INFO 0x0b7b et
+//  ZC_MEMBERMGR_INFO 0x0b7d ; côté client ce sont GuildNet_OnGuildInfoEx2
+//  (0x00ce1f40) et GuildNet_OnMemberList_v58 (0x00ce37c0) qui les décodent. Les
+//  labels Ghidra/IDA de ces globals sont DÉCALÉS d'un champ (ils viennent du
+//  parseur legacy 0x01b6, qui lit deux fois userNum) : la carte ci-dessous est
+//  celle des handlers réellement appelés, recoupée avec
+//  UIGuildTotalInfoWnd_DrawContent (0x00923a10).
+constexpr uintptr_t kGuildMasterName = 0x0159c1a0;  // std::string : nom du maître
+constexpr uintptr_t kGuildOnlineNum  = 0x0159c1f0;  // connect_member (membres en ligne)
+constexpr uintptr_t kGuildMemberMax  = 0x0159c1f4;  // max_member
+constexpr uintptr_t kGuildAvgLevel   = 0x0159c1f8;  // niveau moyen
+constexpr uintptr_t kGuildManageLand = 0x0159c1fc;  // std::string : territoire (nb de forts)
+constexpr uintptr_t kGuildExp        = 0x0159c214;  // exp courante
+constexpr uintptr_t kGuildNextExp    = 0x0159c218;  // exp du niveau suivant
+constexpr uintptr_t kGuildNoticeSubj = 0x0159c1b8;  // std::string : sujet de l'annonce (ZC 0x016f)
+constexpr uintptr_t kGuildNoticeBody = 0x0159c1d0;  // std::string : corps de l'annonce
+constexpr uintptr_t kGuildRelHead    = 0x0159c26c;  // CGuild+0xe4 : liste alliés/ennemis
+
+//  Enregistrement d'un membre, offsets NODE-relatifs (payload = node+8 ; cf.
+//  GuildNet_OnMemberList_v58 -> CGuild_AppendMemberRecord).
+constexpr int kMemCid       = 0x0c;  // char id
+constexpr int kMemName      = 0x10;  // std::string : nom du personnage
+constexpr int kMemHair      = 0x28;  // coiffure (style)
+constexpr int kMemHairColor = 0x2c;  // couleur de cheveux (palette)
+constexpr int kMemJob       = 0x30;  // classe (job id)
+constexpr int kMemSex       = 0x34;  // genre (0 = femme, 1 = homme)
+constexpr int kMemPosId     = 0x38;  // id de poste (0 = maître de guilde)
+constexpr int kMemLevel     = 0x54;  // niveau de base
+constexpr int kMemContrib   = 0x74;  // exp contribuée à la guilde
+constexpr int kMemOnline    = 0x78;  // état de connexion (!=0 = en ligne)
+constexpr int kMemLastLogin = 0x7c;  // dernière connexion (timestamp Unix)
+
+//  Relation (ZC_MYGUILD_BASIC_INFO 0x014c) : node+8 = guildId, node+0xc = relation
+//  (0 = allié, 1 = ennemi), node+0x10 = nom de la guilde (std::string).
+constexpr int kRelGuildId  = 0x08;
+constexpr int kRelRelation = 0x0c;
+constexpr int kRelName     = 0x10;
+
+//  Opcodes guilde (paquets bruts, envoyés comme les autres via SendPacket ; les
+//  structures sont celles de moonlight/src/map/packets.hpp pour ce PACKETVER).
+constexpr uint16_t kOpGuildRequest   = 0x014F;  // CZ_REQ_GUILD_MENUINTERFACE {op, type.L}
+constexpr uint16_t kOpGuildLeave     = 0x0159;  // CZ_REQ_LEAVE_GUILD {op, gid, aid, cid, msg[40]}
+constexpr uint16_t kOpGuildExpel     = 0x015B;  // CZ_REQ_BAN_GUILD, même forme
+constexpr uint16_t kOpGuildChangePos = 0x0155;  // CZ_REQ_CHANGE_MEMBERPOS {op, len, {aid,cid,pos}*}
+constexpr uint16_t kOpGuildInvite    = 0x0916;  // CZ_REQ_JOIN_GUILD2 {op, name[24]}
+constexpr uint16_t kOpGuildNotice    = 0x016E;  // CZ_GUILD_NOTICE {op, gid, sujet[60], texte[120]}
+constexpr uint16_t kOpGuildSetPos    = 0x0161;  // CZ_REG_CHANGE_GUILD_POSITIONINFO (var, 40 o/poste)
+constexpr uint16_t kOpGuildDelRel    = 0x0183;  // CZ_REQ_DELETE_RELATED_GUILD {op, gid.L, relation.L}
+constexpr uint16_t kOpGuildCreate    = 0x0165;  // CZ_REQ_MAKE_GUILD {op, cid.L, nom[24]} (30 o)
+constexpr uint16_t kOpGuildCreateAck = 0x0167;  // ZC_RESULT_MAKE_GUILD {op, résultat.B}
+//  Image d'emblème envoyée par le serveur (ZC_GUILD_EMBLEM_IMG). Le client natif
+//  l'écrit en _tmpEmblem\<nom>_<guilde>_<version>.ebm ; on l'observe pour jeter notre
+//  texture en cache. Elle n'arrive QUE sur les serveurs qui utilisent l'ancien chemin
+//  (0x0153) — d'où le suivi de version, qui couvre les deux protocoles.
+constexpr uint16_t kOpGuildEmblemImg = 0x0152;  // {op, len, guildId.L, emblemId.L, données}
+
+//  Contraintes de l'emblème. Le service web accepte jusqu'à 50 ko, mais le jeu ne
+//  rend que du 24x24 (UIGuildTotalInfoWnd_OnMsg vérifie les dimensions avant l'envoi)
+//  et le contrôle de transparence du serveur porte sur des pixels 24 bits. Un BMP
+//  24x24 24 bits fait 1782 octets : le plafond ci-dessous ne sert qu'à écarter un
+//  fichier manifestement hors format.
+constexpr size_t kEmblemMaxRawBytes  = 1800;  // BMP 24x24 24 bits = 1782
+constexpr int    kEmblemSide         = 24;    // seule taille rendue par le client
+
+//  Postes de guilde REÇUS (observés dans le flux : le client ne les stocke que dans
+//  la fenêtre native). Toutes ces listes couvrent les MAX_GUILDPOSITION postes.
+constexpr uint16_t kOpPositionNames   = 0x0166;  // ZC_POSITION_ID_NAME_INFO, 28 o/entrée
+constexpr uint16_t kOpPositionInfo    = 0x0160;  // ZC_POSITION_INFO, 16 o/entrée
+constexpr uint16_t kOpPositionChanged = 0x0174;  // ZC_ACK_CHANGE_GUILD_POSITIONINFO, 40 o/entrée
+
+//  Droits d'un poste (e_guild_permission côté serveur ; masqués par GUILD_PERM_ALL).
+constexpr int kGuildPermInvite  = 0x001;
+constexpr int kGuildPermExpel   = 0x010;
+constexpr int kGuildPermStorage = 0x100;
+//  Part d'exp maximale : battle_config.guild_exp_limit (50 par défaut ; le serveur
+//  clampe de toute façon).
+constexpr int kGuildPayRateMax = 50;
+
+//  Types de rafraîchissement de CZ_REQ_GUILD_MENUINTERFACE (clif_parse_GuildRequestInfo).
+enum {
+  kGuildReqBasic = 0, kGuildReqMembers = 1, kGuildReqPositions = 2,
+  kGuildReqSkills = 3, kGuildReqBans = 4
+};
+
+//  Liste des expulsions (ZC_BAN_LIST). L'opcode ET la forme de l'entrée dépendent du
+//  PACKETVER : en 20250716 c'est 0x0b7c, {charId.L, raison[40], nom[24]}.
+constexpr uint16_t kOpGuildBanList = 0x0b7c;
+constexpr int      kGuildBanEntry  = 68;
+
+//  Compétences de guilde : liste reçue (variable, 37 o/entrée après [len.W][points.W]) et
+//  montée de niveau. 0x0112 est le MÊME paquet que pour les skills du perso — c'est le
+//  serveur qui aiguille sur guild_skillup quand l'id est dans la plage guilde (>= 10000).
+constexpr uint16_t kOpGuildSkills = 0x0162;  // ZC_GUILD_SKILLINFO
+constexpr uint16_t kOpSkillUp     = 0x0112;  // CZ_UPGRADE_SKILLLEVEL {op, skillId.W}
+constexpr int      kGuildSkillEntry = 37;    // id.W inf.L lv.W sp.W range.W name[24] up.B
+
+//  Chat (CZ_GlobalMessage, variable) : [op.W][longueur TOTALE.W][« nom : texte »\0].
+//  ⚠ 0x00f3 a servi à autre chose sur d'anciens packetvers (déplacement vers l'entrepôt,
+//  cf. storage_tweaks) ; pour 20250716 c'est bien le chat, confirmé des DEUX côtés : table
+//  de longueurs du client (docs/opcode_map.csv) et clif_parse_GlobalMessage serveur.
+constexpr uint16_t kOpChatMessage     = 0x00f3;
+constexpr char     kCmdGuildStorage[] = "@guildstorage";
+//  ⚠ Sans argument NI confirmation serveur : appelle guild_break() immédiatement, et
+//  refuse si le joueur n'a pas gmaster_flag. Toute la prudence est donc côté client.
+constexpr char     kCmdBreakGuild[]   = "@breakguild";
+
+constexpr int kMaxGuildMembers = 128;  // MAX_GUILD serveur = 76 ; marge confortable
+
 // Copie une std::string MSVC (SSO/heap) de `addr` vers un buffer C (null-terminé). SEH.
 void ReadStdStringSEH(uintptr_t addr, char* out, int outCap) {
   out[0] = '\0';
@@ -394,10 +513,19 @@ void ReadStdStringSEH(uintptr_t addr, char* out, int outCap) {
 struct GuildInfo {
   bool present = false;
   char name[32] = {0};
-  char pos[32] = {0};   // nom de poste (« rang »)
+  char pos[32] = {0};   // nom de poste (« rang ») du joueur
   int  level = 0;
   bool master = false;
   int  guildId = 0;
+  // Champs étendus (onglet Guilde) — cf. la carte des globals ci-dessus.
+  char master_name[32] = {0};
+  char land[32] = {0};          // territoire (« N forts »)
+  char notice_subject[64] = {0};
+  char notice_body[128] = {0};
+  int  online = 0, member_max = 0, avg_level = 0;
+  int  exp = 0, next_exp = 0;
+  int  position_id = 0;         // id de poste du joueur (0 = maître)
+  bool position_found = false;  // vrai si le joueur a été retrouvé dans le roster
 };
 bool ReadGuild(GuildInfo* g) {
   __try {
@@ -406,6 +534,15 @@ bool ReadGuild(GuildInfo* g) {
     if (g->guildId <= 0 || g->name[0] == '\0') return false;  // pas en guilde
     g->level   = *reinterpret_cast<const int*>(kGuildLevel);
     g->master  = *reinterpret_cast<const int*>(kGuildIsMaster) != 0;
+    g->online     = *reinterpret_cast<const int*>(kGuildOnlineNum);
+    g->member_max = *reinterpret_cast<const int*>(kGuildMemberMax);
+    g->avg_level  = *reinterpret_cast<const int*>(kGuildAvgLevel);
+    g->exp        = *reinterpret_cast<const int*>(kGuildExp);
+    g->next_exp   = *reinterpret_cast<const int*>(kGuildNextExp);
+    ReadStdStringSEH(kGuildMasterName, g->master_name, sizeof(g->master_name));
+    ReadStdStringSEH(kGuildManageLand, g->land, sizeof(g->land));
+    ReadStdStringSEH(kGuildNoticeSubj, g->notice_subject, sizeof(g->notice_subject));
+    ReadStdStringSEH(kGuildNoticeBody, g->notice_body, sizeof(g->notice_body));
     g->present = true;
     // Position : parcourir le roster (liste chaînée) et matcher mon AID.
     const int aid = Bourgeon::Instance().client().session().aid();
@@ -417,6 +554,8 @@ bool ReadGuild(GuildInfo* g) {
         if (*reinterpret_cast<const int*>(node + kMemAid) == aid) {
           ReadStdStringSEH(reinterpret_cast<uintptr_t>(node) + kMemPosStr, g->pos,
                            sizeof(g->pos));
+          g->position_id = *reinterpret_cast<const int*>(node + kMemPosId);
+          g->position_found = true;
           break;
         }
         node = *reinterpret_cast<uint8_t* const*>(node);  // ->next
@@ -424,6 +563,209 @@ bool ReadGuild(GuildInfo* g) {
     }
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+//  ── Guilde : roster complet, relations et commandes ──────────────────────────
+struct GuildMember {
+  uint32_t aid = 0, cid = 0;
+  char     name[32] = {0};
+  char     position[32] = {0};
+  int      job = 0, level = 0, position_id = 0, contribution = 0;
+  int      hair = 0, hair_color = 0, sex = 0;  // apparence (miniature de tête)
+  bool     online = false;
+  uint32_t last_login = 0;
+};
+struct GuildRoster {
+  GuildMember members[kMaxGuildMembers];
+  int         count = 0;
+};
+// Parcourt la liste chaînée du roster (CGuild+0xdc) et copie chaque membre. POD +
+// SEH : aucun objet à destructeur ici (contrainte C2712).
+void ReadGuildRosterSEH(GuildRoster* out) {
+  out->count = 0;
+  __try {
+    const uint8_t* sentinel =
+        *reinterpret_cast<uint8_t* const*>(kGuildObj + kGuildListHead);
+    if (!sentinel) return;
+    const uint8_t* node = *reinterpret_cast<uint8_t* const*>(sentinel);
+    for (int guard = 0; node && node != sentinel && guard < kMaxGuildMembers; ++guard) {
+      GuildMember& m = out->members[out->count];
+      const uintptr_t base = reinterpret_cast<uintptr_t>(node);
+      m.aid          = *reinterpret_cast<const uint32_t*>(node + kMemAid);
+      m.cid          = *reinterpret_cast<const uint32_t*>(node + kMemCid);
+      m.job          = *reinterpret_cast<const int*>(node + kMemJob);
+      m.hair         = *reinterpret_cast<const int*>(node + kMemHair);
+      m.hair_color   = *reinterpret_cast<const int*>(node + kMemHairColor);
+      m.sex          = *reinterpret_cast<const int*>(node + kMemSex);
+      m.position_id  = *reinterpret_cast<const int*>(node + kMemPosId);
+      m.level        = *reinterpret_cast<const int*>(node + kMemLevel);
+      m.contribution = *reinterpret_cast<const int*>(node + kMemContrib);
+      m.online       = *reinterpret_cast<const int*>(node + kMemOnline) != 0;
+      m.last_login   = *reinterpret_cast<const uint32_t*>(node + kMemLastLogin);
+      ReadStdStringSEH(base + kMemName, m.name, sizeof(m.name));
+      ReadStdStringSEH(base + kMemPosStr, m.position, sizeof(m.position));
+      if (m.aid != 0 || m.name[0]) ++out->count;
+      node = *reinterpret_cast<uint8_t* const*>(node);  // ->next
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Postes connus (id -> libellé). La liste des membres (ZC_MEMBERMGR_INFO) recrée
+// chaque enregistrement avec un nom de poste VIDE : seul le paquet « noms de postes »
+// (ZC_POSITION_ID_NAME_INFO) le remplit, et rien ne garantit qu'il arrive après.
+// On mémorise donc le dernier libellé vu pour chaque id et on s'en sert en repli,
+// pour que la colonne Poste ne clignote pas à chaque rafraîchissement.
+std::unordered_map<int, std::string> g_guild_position_names;
+void RememberGuildPosition(int positionId, const char* label) {
+  if (positionId < 0 || !label || !label[0]) return;
+  g_guild_position_names[positionId] = label;
+}
+// Libellé à afficher : celui de l'enregistrement s'il est rempli, sinon le mémorisé,
+// sinon nullptr (l'appelant affiche un tiret).
+const char* GuildPositionLabel(int positionId, const char* live) {
+  if (live && live[0]) return live;
+  auto it = g_guild_position_names.find(positionId);
+  return (it != g_guild_position_names.end()) ? it->second.c_str() : nullptr;
+}
+
+struct GuildRelation {
+  int  guild_id = 0;
+  int  relation = 0;  // 0 = allié, 1 = ennemi
+  char name[32] = {0};
+};
+struct GuildRelations {
+  GuildRelation entries[64];
+  int           count = 0;
+};
+void ReadGuildRelationsSEH(GuildRelations* out) {
+  out->count = 0;
+  __try {
+    const uint8_t* sentinel = *reinterpret_cast<uint8_t* const*>(kGuildRelHead);
+    if (!sentinel) return;
+    const uint8_t* node = *reinterpret_cast<uint8_t* const*>(sentinel);
+    for (int guard = 0; node && node != sentinel && guard < 64; ++guard) {
+      GuildRelation& r = out->entries[out->count];
+      r.guild_id = *reinterpret_cast<const int*>(node + kRelGuildId);
+      r.relation = *reinterpret_cast<const int*>(node + kRelRelation);
+      ReadStdStringSEH(reinterpret_cast<uintptr_t>(node) + kRelName, r.name, sizeof(r.name));
+      if (r.name[0]) ++out->count;
+      node = *reinterpret_cast<uint8_t* const*>(node);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Demande au serveur un rafraîchissement (infos de base, liste des membres…).
+void SendGuildRequest(int type) {
+  uint8_t pkt[6];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildRequest;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(type);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Monte d'un niveau une compétence (de guilde ici) : CZ_UPGRADE_SKILLLEVEL.
+void SendSkillUp(uint16_t skillId) {
+  uint8_t pkt[4];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpSkillUp;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = skillId;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Quitter la guilde / expulser un membre : MÊME forme de paquet (54 o), seul
+// l'opcode change. `reason` est tronqué à 39 caractères + terminateur.
+void SendGuildLeaveOrExpel(uint16_t opcode, int guildId, uint32_t aid, uint32_t cid,
+                           const char* reason) {
+  uint8_t pkt[54];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0)  = opcode;
+  *reinterpret_cast<uint32_t*>(pkt + 2)  = static_cast<uint32_t>(guildId);
+  *reinterpret_cast<uint32_t*>(pkt + 6)  = aid;
+  *reinterpret_cast<uint32_t*>(pkt + 10) = cid;
+  if (reason && reason[0])
+    std::strncpy(reinterpret_cast<char*>(pkt + 14), reason, 39);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Change le poste d'UN membre. position 0 est INTERDIT ici : côté serveur il
+// déclenche guild_gm_change (transfert de la direction de la guilde), qui n'a rien
+// à faire dans un menu contextuel.
+void SendGuildChangePosition(uint32_t aid, uint32_t cid, int positionId) {
+  if (positionId <= 0) return;
+  uint8_t pkt[16];
+  *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpGuildChangePos;
+  *reinterpret_cast<uint16_t*>(pkt + 2)  = 16;  // longueur totale (en-tête 4 + 1 entrée de 12)
+  *reinterpret_cast<uint32_t*>(pkt + 4)  = aid;
+  *reinterpret_cast<uint32_t*>(pkt + 8)  = cid;
+  *reinterpret_cast<uint32_t*>(pkt + 12) = static_cast<uint32_t>(positionId);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Crée une guilde. Le serveur ignore le char id transmis (il utilise la session) mais
+// le natif le remplit : on fait pareil. Il exige un Emperium en inventaire
+// (battle_config.guild_emperium_check) et refuse sur une carte « guildlock » ; la
+// réponse arrive en ZC_RESULT_MAKE_GUILD (0x0167).
+void SendCreateGuild(const char* guildName) {
+  if (!guildName || !guildName[0]) return;
+  uint8_t pkt[30];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildCreate;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(ReadInt(kOwnCharId));
+  std::strncpy(reinterpret_cast<char*>(pkt + 6), guildName, 23);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// Rompt une alliance (relation 0) ou une hostilité (relation 1) avec une autre guilde.
+// Réservé au maître côté serveur, refusé pendant la WoE et sur carte « guildlock » ;
+// la réponse ZC_DELETE_RELATED_GUILD (0x0184) retire l'entrée de la liste du client.
+void SendGuildDeleteRelation(int otherGuildId, int relation) {
+  if (otherGuildId <= 0) return;
+  uint8_t pkt[10];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildDelRel;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(otherGuildId);
+  *reinterpret_cast<uint32_t*>(pkt + 6) = static_cast<uint32_t>(relation);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
+// Invite un joueur PAR SON NOM (le serveur résout le nick ; le joueur doit être en ligne).
+void SendGuildInvite(const char* charName) {
+  if (!charName || !charName[0]) return;
+  uint8_t pkt[26];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildInvite;
+  std::strncpy(reinterpret_cast<char*>(pkt + 2), charName, 23);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Une entrée de CZ_REG_CHANGE_GUILD_POSITIONINFO, telle qu'elle part sur le fil :
+// {id.L, droits.L, rang.L, part d'exp.L, nom[24]} = 40 octets. Le serveur ignore
+// `ranking` (il relit la part d'exp en +12) mais le natif y remet l'id : on fait pareil.
+#pragma pack(push, 1)
+struct GuildPositionWire {
+  int32_t id;
+  int32_t mode;
+  int32_t ranking;
+  int32_t pay_rate;
+  char    name[24];
+};
+#pragma pack(pop)
+static_assert(sizeof(GuildPositionWire) == 40, "entrée de poste = 40 octets");
+// Envoie les postes MODIFIÉS (le serveur applique chaque entrée telle quelle et
+// rediffuse un ZC 0x0174 ; il exige le drapeau maître de guilde).
+void SendGuildPositions(const GuildPositionWire* rows, int count) {
+  if (!rows || count <= 0) return;
+  uint8_t pkt[4 + 20 * sizeof(GuildPositionWire)];
+  const int total = 4 + count * static_cast<int>(sizeof(GuildPositionWire));
+  if (total > static_cast<int>(sizeof(pkt))) return;
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildSetPos;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(total);
+  std::memcpy(pkt + 4, rows, count * sizeof(GuildPositionWire));
+  Bourgeon::Instance().SendPacket(pkt, static_cast<size_t>(total));
+}
+
+// Met à jour l'annonce de guilde (réservé au maître côté serveur).
+void SendGuildNotice(int guildId, const char* subject, const char* body) {
+  uint8_t pkt[186];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildNotice;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(guildId);
+  if (subject) std::strncpy(reinterpret_cast<char*>(pkt + 6), subject, 59);
+  if (body)    std::strncpy(reinterpret_cast<char*>(pkt + 66), body, 119);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
 // Nom de classe (comme UIBasicInfoWnd), SEH-garde (renvoie POD const char*).
@@ -437,6 +779,28 @@ const char* ClassNameSEH() {
         reinterpret_cast<void*>(kSession), nullptr, static_cast<unsigned>(jobid), -1);
     return n ? n : "";
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
+}
+
+// Nom de classe d'un job id ARBITRAIRE (membres de guilde) : même résolveur natif
+// que ClassNameSEH, qui prend le job en paramètre. Cache local (le résolveur passe
+// par la table Lua des classes).
+std::unordered_map<int, std::string> g_job_name_cache;
+const char* JobNameSEH(int jobId) {
+  __try {
+    using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
+    const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
+        reinterpret_cast<void*>(kSession), nullptr, static_cast<unsigned>(jobId), -1);
+    return n ? n : "";
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
+}
+const char* JobName(int jobId) {
+  auto it = g_job_name_cache.find(jobId);
+  if (it != g_job_name_cache.end()) return it->second.c_str();
+  const char* n = JobNameSEH(jobId);
+  char buf[64];
+  if (n && n[0]) { std::strncpy(buf, n, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0'; }
+  else           std::snprintf(buf, sizeof(buf), "Classe %d", jobId);
+  return (g_job_name_cache[jobId] = buf).c_str();
 }
 
 //  Cache nom d'item (id -> nom)
@@ -520,36 +884,40 @@ void GetEmblemPathSafe(int guildId, char* out, int outCap) {
     if (p) { int i = 0; for (; i < outCap - 1 && p[i]; ++i) out[i] = p[i]; out[i] = '\0'; }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
-// Lit un .ebm (BMP 24x24 24-bit compressé zlib) et le convertit en texture ImGui.
-ro::IconTex LoadEmblemFromFile(const char* fullPath) {
-  FILE* fp = nullptr;
-  if (fopen_s(&fp, fullPath, "rb") != 0 || !fp) return {};  // pas encore téléchargé
-  std::fseek(fp, 0, SEEK_END);
-  const long fsz = std::ftell(fp);
-  std::fseek(fp, 0, SEEK_SET);
-  if (fsz <= 2 || fsz > (1 << 20)) { std::fclose(fp); return {}; }
-  std::vector<uint8_t> comp(static_cast<size_t>(fsz));
-  const size_t rd = std::fread(comp.data(), 1, static_cast<size_t>(fsz), fp);
-  std::fclose(fp);
-  if (rd != static_cast<size_t>(fsz)) return {};
-  std::vector<uint8_t> bmp;
-  if (!tinf::zlib_uncompress(comp.data(), comp.size(), bmp) || bmp.size() < 54) return {};
-  if (bmp[0] != 'B' || bmp[1] != 'M') return {};
-  const int32_t  w       = *reinterpret_cast<const int32_t*>(&bmp[0x12]);
-  const int32_t  hraw    = *reinterpret_cast<const int32_t*>(&bmp[0x16]);
-  const int16_t  bpp     = *reinterpret_cast<const int16_t*>(&bmp[0x1c]);
-  const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
+// Décode un BMP d'emblème (24x24) en texture ImGui. 24-bit et 8-bit palettisé : le
+// premier est ce que produit l'éditeur d'emblème habituel, le second ce que rendent
+// beaucoup de convertisseurs — et le serveur accepte les deux (clif_validate_emblem
+// ne regarde que l'en-tête BMP). Le magenta pur devient transparent, comme dans le jeu.
+ro::IconTex DecodeEmblemBmp(const uint8_t* bmp, size_t size) {
+  if (size < 54 || bmp[0] != 'B' || bmp[1] != 'M') return {};
+  const int32_t  w       = *reinterpret_cast<const int32_t*>(bmp + 0x12);
+  const int32_t  hraw    = *reinterpret_cast<const int32_t*>(bmp + 0x16);
+  const int16_t  bpp     = *reinterpret_cast<const int16_t*>(bmp + 0x1c);
+  const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(bmp + 0x0a);
   const int  h        = (hraw < 0) ? -hraw : hraw;
   const bool bottomUp = hraw > 0;  // BMP standard = bottom-up
-  if (w <= 0 || w > 64 || h <= 0 || h > 64 || bpp != 24) return {};  // 24-bit uniquement
-  const size_t rowSize = static_cast<size_t>((w * 3 + 3) & ~3);  // lignes alignées 4 octets
-  if (static_cast<size_t>(dataOff) + rowSize * h > bmp.size()) return {};
+  if (w <= 0 || w > 64 || h <= 0 || h > 64) return {};
+  if (bpp != 24 && bpp != 8) return {};
+  // Palette (8-bit) : BGRA0 x 256, juste après l'en-tête d'info de 40 octets.
+  const uint8_t* palette = nullptr;
+  if (bpp == 8) {
+    if (size < 54u + 256u * 4u) return {};
+    palette = bmp + 54;
+  }
+  const size_t rowSize = static_cast<size_t>((w * (bpp / 8) + 3) & ~3);  // lignes alignées 4
+  if (static_cast<size_t>(dataOff) + rowSize * h > size) return {};
   std::vector<uint8_t> argb(static_cast<size_t>(w) * h * 4);
   for (int y = 0; y < h; ++y) {
     const int srcY = bottomUp ? (h - 1 - y) : y;
-    const uint8_t* row = &bmp[dataOff + static_cast<size_t>(srcY) * rowSize];
+    const uint8_t* row = bmp + dataOff + static_cast<size_t>(srcY) * rowSize;
     for (int x = 0; x < w; ++x) {
-      const uint8_t b = row[x * 3], g = row[x * 3 + 1], r = row[x * 3 + 2];
+      uint8_t b, g, r;
+      if (bpp == 24) {
+        b = row[x * 3]; g = row[x * 3 + 1]; r = row[x * 3 + 2];
+      } else {
+        const uint8_t* entry = palette + static_cast<size_t>(row[x]) * 4;
+        b = entry[0]; g = entry[1]; r = entry[2];
+      }
       const bool ck = (r == 0xFF && g == 0 && b == 0xFF);  // magenta -> transparent
       const size_t o = (static_cast<size_t>(y) * w + x) * 4;
       argb[o] = b; argb[o + 1] = g; argb[o + 2] = r; argb[o + 3] = ck ? 0 : 0xFF;
@@ -557,14 +925,64 @@ ro::IconTex LoadEmblemFromFile(const char* fullPath) {
   }
   return {Overlay_CreateTextureARGB(argb.data(), w, h), w, h};
 }
+// Lit un fichier entier (petit : emblèmes et .ebm). Vide si absent ou trop gros.
+std::vector<uint8_t> ReadWholeFile(const char* fullPath, long maxBytes) {
+  std::vector<uint8_t> out;
+  FILE* fp = nullptr;
+  if (fopen_s(&fp, fullPath, "rb") != 0 || !fp) return out;
+  std::fseek(fp, 0, SEEK_END);
+  const long fsz = std::ftell(fp);
+  std::fseek(fp, 0, SEEK_SET);
+  if (fsz <= 2 || fsz > maxBytes) { std::fclose(fp); return out; }
+  out.resize(static_cast<size_t>(fsz));
+  const size_t rd = std::fread(out.data(), 1, out.size(), fp);
+  std::fclose(fp);
+  if (rd != out.size()) out.clear();
+  return out;
+}
+// Lit un .ebm (BMP 24x24 compressé zlib) et le convertit en texture ImGui.
+ro::IconTex LoadEmblemFromFile(const char* fullPath) {
+  const std::vector<uint8_t> comp = ReadWholeFile(fullPath, 1 << 20);  // pas encore téléchargé
+  if (comp.empty()) return {};
+  std::vector<uint8_t> bmp;
+  if (!tinf::zlib_uncompress(comp.data(), comp.size(), bmp)) return {};
+  return DecodeEmblemBmp(bmp.data(), bmp.size());
+}
+// Cache d'emblèmes par guilde. Hors de ResolveEmblem : après un changement d'emblème
+// il faut pouvoir jeter l'entrée pour que le nouveau .ebm soit relu (le nom du fichier
+// change à chaque version, mais la texture déjà chargée, elle, ne se périme pas seule).
+struct EmblemCacheEntry { ro::IconTex tex; DWORD lastTry = 0; int version = -1; };
+std::unordered_map<int, EmblemCacheEntry> g_emblem_cache;
+
+// Version d'emblème connue du gestionnaire natif (map guildId -> version, remplie
+// quelle que soit la voie empruntée : image reçue en ZC 0x0152 comme téléchargement
+// par le service web). C'est le seul indicateur fiable qu'un emblème a changé —
+// guetter un paquet précis raterait l'autre chemin.
+constexpr uintptr_t kGetEmblemVersion = 0x0061d560;  // __thiscall(this, guildId) -> version
+using GetEmblemVersion_t = int(__thiscall*)(void*, unsigned);
+int EmblemVersionSEH(int guildId) {
+  __try {
+    void* mgr = *reinterpret_cast<void* const*>(kCGuildMgrPtr);
+    if (!mgr) return 0;
+    return reinterpret_cast<GetEmblemVersion_t>(kGetEmblemVersion)(
+        mgr, static_cast<unsigned>(guildId));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 ro::IconTex ResolveEmblem(int guildId) {
   static unsigned s_epoch = 0;
-  struct Entry { ro::IconTex tex; DWORD lastTry = 0; };
-  static std::unordered_map<int, Entry> s_cache;
   const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { s_cache.clear(); s_epoch = e; }
+  if (e != s_epoch) { g_emblem_cache.clear(); s_epoch = e; }
   if (guildId <= 0) return {};
-  Entry& en = s_cache[guildId];
+  EmblemCacheEntry& en = g_emblem_cache[guildId];
+  // Nouvelle version côté jeu = notre texture est périmée, quel que soit le chemin
+  // par lequel l'emblème est arrivé.
+  const int live_version = EmblemVersionSEH(guildId);
+  if (live_version != en.version) {
+    en.version = live_version;
+    en.tex = {};
+    en.lastTry = 0;
+  }
   if (en.tex.tex) return en.tex;  // déjà chargé
   const DWORD now = GetTickCount();
   // Retry throttlé (3 s) : l'.ebm peut ne pas être encore téléchargé au 1er appel.
@@ -577,6 +995,481 @@ ro::IconTex ResolveEmblem(int guildId) {
   const std::string full = paths::InGameDir("_tmpEmblem\\") + rel;
   en.tex = LoadEmblemFromFile(full.c_str());
   return en.tex;
+}
+void ForgetEmblem(int guildId) { g_emblem_cache.erase(guildId); }
+
+// ── Changement d'emblème ─────────────────────────────────────────────────────
+// Le chemin historique (CZ 0x0153, BMP compressé zlib) est UN CUL-DE-SAC sur ce
+// serveur : le paquet part bien (vérifié octet par octet dans le journal) mais rien
+// ne se passe, alors que la fenêtre native change l'emblème aussitôt. Or elle
+// n'envoie PAS 0x0153 : elle passe par le service web du serveur
+// (CEmblemDataMgr_RequestUpload 0x005c8950 -> POST multipart), après quoi le client
+// notifie lui-même le map-server. On emprunte donc exactement ce chemin — cf.
+// RequestEmblemUploadSEH plus bas. RE + essais en jeu 2026-07-26.
+
+// Taux de transparence tel que le SERVEUR le calcule (clif_validate_emblem) : il
+// compte les triplets de pixels magenta consécutifs et compare
+// `transcount * 300 / taille_des_pixels` à `inter_config.emblem_transparency_limit`.
+// La formule est approximative côté serveur ; on la reproduit telle quelle, sinon
+// l'avertissement ne correspondrait pas au verdict réel.
+// Le service web applique EXACTEMENT le même contrôle que le map-server
+// (emblem_controller.cpp reprend la formule mot pour mot) : l'avertissement reste
+// valable maintenant que l'envoi passe par le web.
+constexpr int kEmblemTransparencyWarn = 80;  // valeur de conf/inter_athena.conf (moonlight)
+int EmblemTransparencyPercent(const std::vector<uint8_t>& bmp) {
+  if (bmp.size() < 54) return 0;
+  const uint32_t offset = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
+  if (offset >= bmp.size()) return 0;
+  int transcount = 1;
+  int32_t window[3] = {0, 0, 0};
+  for (size_t i = offset; i + 4 <= bmp.size(); ++i) {
+    const int slot = static_cast<int>(i % 3);  // indexé sur i ABSOLU, comme le serveur
+    window[slot] = *reinterpret_cast<const int32_t*>(&bmp[i]);
+    if (slot == 2 && window[0] == static_cast<int32_t>(0xFFFF00FF) && window[1] == 0xFFFF00 &&
+        window[2] == static_cast<int32_t>(0xFF00FFFF))
+      ++transcount;
+  }
+  return (transcount * 300) / static_cast<int>(bmp.size() - offset);
+}
+
+// Contrôles locaux sur un BMP candidat, dans l'ordre où le serveur (ou le jeu) le
+// refuserait. `why` reçoit le motif exact — un emblème rejeté en silence par le
+// serveur est indiscernable d'un serveur muet.
+bool EmblemBmpIsUsable(const std::vector<uint8_t>& bmp, std::string* why) {
+  auto fail = [why](const char* text) { if (why) *why = text; return false; };
+  if (bmp.size() < 54) return fail("Fichier trop court pour un BMP.");
+  if (bmp[0] != 'B' || bmp[1] != 'M') return fail("Ce n'est pas un BMP (signature « BM » absente).");
+  const uint32_t declared = *reinterpret_cast<const uint32_t*>(&bmp[2]);
+  // Le serveur compare bfSize à la taille réellement reçue : un en-tête menteur
+  // (fréquent après une conversion) est rejeté sans le moindre message en jeu.
+  if (declared != bmp.size()) return fail("En-tête BMP incohérent (taille déclarée ≠ taille du fichier).");
+  const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
+  if (dataOff >= bmp.size()) return fail("En-tête BMP incohérent (offset des pixels hors fichier).");
+  const int32_t w    = *reinterpret_cast<const int32_t*>(&bmp[0x12]);
+  const int32_t hraw = *reinterpret_cast<const int32_t*>(&bmp[0x16]);
+  const int32_t h    = (hraw < 0) ? -hraw : hraw;
+  if (w != kEmblemSide || h != kEmblemSide) {
+    if (why) {
+      char text[96];
+      std::snprintf(text, sizeof(text), "Dimensions %ldx%ld : le jeu n'affiche que du %dx%d.",
+                    static_cast<long>(w), static_cast<long>(h), kEmblemSide, kEmblemSide);
+      *why = text;
+    }
+    return false;
+  }
+  const int16_t bpp = *reinterpret_cast<const int16_t*>(&bmp[0x1c]);
+  if (bpp != 24 && bpp != 8) return fail("Profondeur non gérée : utilise du 24 bits ou du 256 couleurs.");
+  const uint32_t compression = *reinterpret_cast<const uint32_t*>(&bmp[0x1e]);
+  if (compression != 0) return fail("BMP compressé (RLE) : enregistre-le sans compression.");
+  if (bmp.size() > kEmblemMaxRawBytes) {
+    if (why) {
+      char text[96];
+      std::snprintf(text, sizeof(text), "Fichier de %zu octets : le serveur en accepte %zu au plus.",
+                    bmp.size(), kEmblemMaxRawBytes);
+      *why = text;
+    }
+    return false;
+  }
+  if (why) why->clear();
+  return true;
+}
+
+// ── Envoi par le chemin NATIF (service web) ──────────────────────────────────
+// C'est ce que fait le bouton « Emblem » de la fenêtre de guilde : pas de paquet
+// 0x0153, mais un POST multipart vers le service web (AID/AuthToken/WorldName/GDID/
+// ImgType/IMG), après quoi le client notifie lui-même le map-server de la nouvelle
+// version. Vérifié en jeu : ce chemin fonctionne là où 0x0153 reste sans effet.
+//
+// On appelle donc la MÊME fonction que la fenêtre native — token d'authentification,
+// nom de monde et URL du service sont déjà dans le manager, rien à reconstituer.
+// UIGuildTotalInfoWnd_OnMsg (case 39) fait exactement : RequestUpload(guildId,
+// std::string("emblem\\<fichier>")). Le fichier doit exister dans <jeu>\emblem\.
+constexpr uintptr_t kEmblemDataMgrPtr    = 0x012517b8;  // *ptr = CEmblemDataMgr
+constexpr uintptr_t kEmblemRequestUpload = 0x005c8950;  // __thiscall(this, guildId, std::string)
+constexpr uintptr_t kStdStringFromFmt    = 0x00a94930;  // (dst, fmt, …) -> std::string du jeu
+// std::string MSVC telle que la passe le natif : 16 octets de SSO, taille, capacité.
+// Construite PAR LE JEU (kStdStringFromFmt) pour que son allocateur soit le bon : le
+// callee la détruit lui-même en sortie.
+struct MsvcString24 { uint8_t raw[24]; };
+using StrFromFmt_t    = void*(__cdecl*)(void*, const char*, ...);
+using RequestUpload_t = bool(__thiscall*)(void*, int, MsvcString24);
+bool RequestEmblemUploadSEH(int guildId, const char* fileName) {
+  __try {
+    void* mgr = *reinterpret_cast<void* const*>(kEmblemDataMgrPtr);
+    if (!mgr || guildId <= 0 || !fileName || !fileName[0]) return false;
+    MsvcString24 path;
+    std::memset(&path, 0, sizeof(path));
+    reinterpret_cast<StrFromFmt_t>(kStdStringFromFmt)(&path, "emblem\\%s", fileName);
+    // Renvoie false quand un envoi est DÉJÀ en cours (le manager n'en accepte qu'un).
+    return reinterpret_cast<RequestUpload_t>(kEmblemRequestUpload)(mgr, guildId, path);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Écrit le BMP dans <jeu>\emblem\<nom>.bmp — l'upload natif prend un CHEMIN, pas des
+// octets : le fichier doit être sur le disque avant l'appel.
+bool WriteEmblemFile(const char* fileName, const std::vector<uint8_t>& bmp) {
+  if (!fileName || !fileName[0] || bmp.empty()) return false;
+  CreateDirectoryA(paths::InGameDir("emblem").c_str(), nullptr);
+  const std::string full = paths::InGameDir("emblem\\") + fileName;
+  FILE* fp = nullptr;
+  if (fopen_s(&fp, full.c_str(), "wb") != 0 || !fp) return false;
+  const size_t written = std::fwrite(bmp.data(), 1, bmp.size(), fp);
+  std::fclose(fp);
+  return written == bmp.size();
+}
+
+// Un .bmp du dossier <jeu>\emblem\, prêt à être présenté dans le modal.
+struct EmblemCandidate {
+  std::string name;          // nom de fichier seul
+  std::vector<uint8_t> bmp;  // contenu brut (petit : 1782 octets au plus)
+  ro::IconTex preview;       // aperçu, ou texture nulle si indécodable
+  bool        usable = false;
+  std::string why;           // motif de refus quand !usable
+  int         transparency = 0;  // % de magenta, au sens du contrôle serveur
+};
+std::vector<EmblemCandidate> g_emblem_files;
+// Aperçus gardés PAR NOM DE FICHIER, pour qu'un re-scan ne recrée pas une texture à
+// chaque fois (rien ne les libère). Vidé au changement de device, comme tous les
+// caches de textures du plugin, sinon on dessine des handles morts.
+std::unordered_map<std::string, ro::IconTex> g_emblem_preview_cache;
+ro::IconTex EmblemPreview(const std::string& name, const std::vector<uint8_t>& bmp) {
+  static unsigned s_epoch = 0;
+  const unsigned e = Overlay_DeviceEpoch();
+  if (e != s_epoch) { g_emblem_preview_cache.clear(); s_epoch = e; }
+  auto it = g_emblem_preview_cache.find(name);
+  if (it != g_emblem_preview_cache.end()) return it->second;
+  return g_emblem_preview_cache[name] = DecodeEmblemBmp(bmp.data(), bmp.size());
+}
+
+// Scanne <jeu>\emblem\*.bmp — le même dossier que la fenêtre native, qui y cherche
+// aussi des .gif (réservés au service web, inutilisables par ce chemin : ignorés).
+void ScanEmblemFolder() {
+  g_emblem_files.clear();
+  const std::string dir = paths::InGameDir("emblem\\");
+  WIN32_FIND_DATAA fd{};
+  HANDLE h = FindFirstFileA((dir + "*.bmp").c_str(), &fd);
+  if (h == INVALID_HANDLE_VALUE) return;
+  do {
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+    EmblemCandidate cand;
+    cand.name = fd.cFileName;
+    cand.bmp = ReadWholeFile((dir + cand.name).c_str(), 1 << 16);
+    if (cand.bmp.empty()) {
+      cand.why = "Fichier illisible ou vide.";
+    } else {
+      cand.usable = EmblemBmpIsUsable(cand.bmp, &cand.why);
+      cand.preview = EmblemPreview(cand.name, cand.bmp);
+      cand.transparency = EmblemTransparencyPercent(cand.bmp);
+    }
+    g_emblem_files.push_back(std::move(cand));
+  } while (FindNextFileA(h, &fd));
+  FindClose(h);
+  std::sort(g_emblem_files.begin(), g_emblem_files.end(),
+            [](const EmblemCandidate& a, const EmblemCandidate& b) {
+              return _stricmp(a.name.c_str(), b.name.c_str()) < 0;
+            });
+}
+
+// ── Éditeur d'emblème (canvas 24x24 dessiné en jeu) ──────────────────────────
+// Pas de fichier à préparer : on peint les 576 pixels, on fabrique le BMP 24 bits
+// en mémoire et on l'envoie par le même chemin que les fichiers du dossier. Le
+// magenta pur est la couleur « vide » — c'est la teinte que le jeu rend transparente.
+constexpr uint32_t kEmblemClear = 0xFF00FFu;  // magenta pur = transparent en jeu
+constexpr int kEmblemPixels = kEmblemSide * kEmblemSide;
+
+// Outils. Les trois premiers peignent au fil du geste, les trois suivants se tirent
+// d'un point à l'autre et ne s'appliquent qu'au relâchement (aperçu entre-temps).
+enum {
+  kToolPencil = 0,
+  kToolEraser,
+  kToolFill,
+  kToolLine,
+  kToolRect,
+  kToolEllipse,
+};
+
+struct EmblemCanvas {
+  uint32_t pixel[kEmblemPixels];   // 0xRRGGBB, kEmblemClear = transparent
+  bool     started = false;        // canvas déjà initialisé (sinon : tout vide)
+  int      tool = kToolPencil;     // cf. kToolPencil…kToolEllipse
+  int      brush = 1;              // épaisseur du trait (1..3)
+  bool     mirror = false;         // symétrie gauche/droite pendant le tracé
+  bool     filled = false;         // rectangle / ellipse pleins plutôt qu'en contour
+  float    color[3] = {0.85f, 0.15f, 0.15f};
+  // La transparence est une COULEUR, pas un outil : sans ça, « remplir de vide » ou
+  // « tracer une forme vide » obligeraient à passer par la gomme, qui ne sait que
+  // peindre à main levée.
+  bool     color_clear = false;
+  bool     stroke_open = false;    // un coup de souris est en cours (pour l'annulation)
+  int      last_x = -1, last_y = -1;  // dernière cellule peinte (pour relier le trait)
+  // Forme en cours de tirage : rien n'est peint tant que le bouton n'est pas relâché.
+  bool     shape_active = false;
+  int      shape_x0 = 0, shape_y0 = 0;
+  bool     shape_erase = false;    // tirée au clic droit = efface
+  int      revision = 0;           // incrémenté à chaque modification (cache du BMP)
+  std::vector<std::vector<uint32_t>> undo;  // états précédents (plafonnés)
+  char     save_name[32] = "mon_embleme";
+};
+EmblemCanvas g_emblem_canvas;
+
+uint32_t PackColor(const float rgb[3]) {
+  auto to8 = [](float v) {
+    return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
+  };
+  return (to8(rgb[0]) << 16) | (to8(rgb[1]) << 8) | to8(rgb[2]);
+}
+
+// Couleur qu'appliquent le crayon, le remplissage et les formes : la teinte choisie,
+// ou le « vide » quand la transparence est la couleur courante.
+uint32_t CurrentInk() {
+  return g_emblem_canvas.color_clear ? kEmblemClear : PackColor(g_emblem_canvas.color);
+}
+
+void EmblemCanvasClear() {
+  for (int i = 0; i < kEmblemPixels; ++i) g_emblem_canvas.pixel[i] = kEmblemClear;
+  g_emblem_canvas.started = true;
+  ++g_emblem_canvas.revision;
+}
+
+// Empile l'état courant avant un coup de pinceau : « Annuler » remonte coup par coup
+// (et non pixel par pixel), ce qui est le comportement attendu d'un éditeur.
+void EmblemCanvasPushUndo() {
+  if (!g_emblem_canvas.started) return;
+  g_emblem_canvas.undo.emplace_back(g_emblem_canvas.pixel, g_emblem_canvas.pixel + kEmblemPixels);
+  if (g_emblem_canvas.undo.size() > 40) g_emblem_canvas.undo.erase(g_emblem_canvas.undo.begin());
+}
+
+// Étendue du pinceau autour de la cellule pointée, pour que « N px » dessine bien un
+// carré de N pixels de côté : un rayon symétrique donnerait 2N-1 (1, 3, 5…), ce qui
+// ne correspond plus au réglage dès qu'il dépasse 1. Pour une épaisseur PAIRE le
+// carré ne peut pas être centré : il déborde d'un pixel vers la droite et le bas.
+void BrushExtent(int* lo, int* hi) {
+  const int size = std::clamp(g_emblem_canvas.brush, 1, 3);
+  *lo = -((size - 1) / 2);
+  *hi = size / 2;
+}
+
+void EmblemCanvasPaint(int cx, int cy, uint32_t color) {
+  ++g_emblem_canvas.revision;
+  int lo = 0, hi = 0;
+  BrushExtent(&lo, &hi);
+  for (int dy = lo; dy <= hi; ++dy) {
+    for (int dx = lo; dx <= hi; ++dx) {
+      const int x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= kEmblemSide || y < 0 || y >= kEmblemSide) continue;
+      g_emblem_canvas.pixel[y * kEmblemSide + x] = color;
+      if (g_emblem_canvas.mirror) {
+        const int mx = kEmblemSide - 1 - x;
+        g_emblem_canvas.pixel[y * kEmblemSide + mx] = color;
+      }
+    }
+  }
+}
+
+// Relie deux cellules (Bresenham) : à 60 images/s la souris saute plusieurs pixels
+// entre deux frames, et un trait rapide laisserait sinon des pointillés.
+void EmblemCanvasStroke(int x0, int y0, int x1, int y1, uint32_t color) {
+  int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+  int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+  const int sx = (x0 < x1) ? 1 : -1;
+  const int sy = (y0 < y1) ? 1 : -1;
+  dy = -dy;
+  int err = dx + dy;
+  for (;;) {
+    EmblemCanvasPaint(x0, y0, color);
+    if (x0 == x1 && y0 == y1) break;
+    const int err2 = 2 * err;
+    if (err2 >= dy) { err += dy; x0 += sx; }
+    if (err2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+// Remplissage par proximité (4-connexité), sur la couleur pointée.
+void EmblemCanvasFill(int sx, int sy, uint32_t color) {
+  const uint32_t target = g_emblem_canvas.pixel[sy * kEmblemSide + sx];
+  if (target == color) return;
+  ++g_emblem_canvas.revision;
+  std::vector<int> stack{sy * kEmblemSide + sx};
+  while (!stack.empty()) {
+    const int idx = stack.back();
+    stack.pop_back();
+    if (g_emblem_canvas.pixel[idx] != target) continue;
+    g_emblem_canvas.pixel[idx] = color;
+    const int x = idx % kEmblemSide, y = idx / kEmblemSide;
+    if (x > 0)                 stack.push_back(idx - 1);
+    if (x < kEmblemSide - 1)   stack.push_back(idx + 1);
+    if (y > 0)                 stack.push_back(idx - kEmblemSide);
+    if (y < kEmblemSide - 1)   stack.push_back(idx + kEmblemSide);
+  }
+}
+
+// ── Formes (ligne, rectangle, ellipse) ───────────────────────────────────────
+// Une forme est d'abord calculée en MASQUE de cellules : le même masque sert à
+// l'aperçu pendant le tirage et à la peinture au relâchement, donc ce qu'on voit
+// est exactement ce qu'on obtient.
+void MaskSet(bool* mask, int cx, int cy) {
+  int lo = 0, hi = 0;
+  BrushExtent(&lo, &hi);  // même carré N×N que le crayon
+  for (int dy = lo; dy <= hi; ++dy) {
+    for (int dx = lo; dx <= hi; ++dx) {
+      const int x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= kEmblemSide || y < 0 || y >= kEmblemSide) continue;
+      mask[y * kEmblemSide + x] = true;
+      if (g_emblem_canvas.mirror) mask[y * kEmblemSide + (kEmblemSide - 1 - x)] = true;
+    }
+  }
+}
+void MaskLine(bool* mask, int x0, int y0, int x1, int y1) {
+  int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+  int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+  const int sx = (x0 < x1) ? 1 : -1;
+  const int sy = (y0 < y1) ? 1 : -1;
+  dy = -dy;
+  int err = dx + dy;
+  for (;;) {
+    MaskSet(mask, x0, y0);
+    if (x0 == x1 && y0 == y1) break;
+    const int err2 = 2 * err;
+    if (err2 >= dy) { err += dy; x0 += sx; }
+    if (err2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+// `tool` vaut kToolLine / kToolRect / kToolEllipse ; (x0,y0)-(x1,y1) = coins tirés.
+void EmblemShapeMask(int tool, bool filled, int x0, int y0, int x1, int y1, bool* mask) {
+  std::fill(mask, mask + kEmblemPixels, false);
+  if (tool == kToolLine) {
+    MaskLine(mask, x0, y0, x1, y1);
+    return;
+  }
+  const int left = std::min(x0, x1), right = std::max(x0, x1);
+  const int top = std::min(y0, y1), bottom = std::max(y0, y1);
+  if (tool == kToolRect) {
+    if (filled) {
+      for (int y = top; y <= bottom; ++y)
+        for (int x = left; x <= right; ++x) MaskSet(mask, x, y);
+    } else {
+      MaskLine(mask, left, top, right, top);
+      MaskLine(mask, left, bottom, right, bottom);
+      MaskLine(mask, left, top, left, bottom);
+      MaskLine(mask, right, top, right, bottom);
+    }
+    return;
+  }
+  // Ellipse inscrite dans le rectangle tiré. Le contour = les cases DANS l'ellipse
+  // dont un voisin est dehors : sur 24x24 c'est plus net qu'un tracé paramétrique.
+  const float cx = (left + right) * 0.5f, cy = (top + bottom) * 0.5f;
+  const float rx = std::max((right - left) * 0.5f, 0.5f);
+  const float ry = std::max((bottom - top) * 0.5f, 0.5f);
+  auto inside = [&](int x, int y) {
+    const float nx = (x - cx) / rx, ny = (y - cy) / ry;
+    return nx * nx + ny * ny <= 1.0f;
+  };
+  for (int y = top; y <= bottom; ++y) {
+    for (int x = left; x <= right; ++x) {
+      if (!inside(x, y)) continue;
+      if (filled || !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) ||
+          !inside(x, y + 1))
+        MaskSet(mask, x, y);
+    }
+  }
+}
+void EmblemApplyMask(const bool* mask, uint32_t color) {
+  ++g_emblem_canvas.revision;
+  for (int i = 0; i < kEmblemPixels; ++i)
+    if (mask[i]) g_emblem_canvas.pixel[i] = color;
+}
+
+// Importe une icône d'item dans le canvas. Les icônes d'inventaire du client font
+// 24x24 — exactement la taille d'un emblème —, donc la copie est pixel pour pixel ;
+// une icône d'un autre format est simplement centrée. Les pixels transparents
+// (magenta color-key) deviennent du vide, pas du noir.
+bool EmblemCanvasLoadItemIcon(uint32_t nameid) {
+  std::vector<uint8_t> argb;
+  int w = 0, h = 0;
+  if (!ro::ItemIconPixels(nameid, &argb, &w, &h) || w <= 0 || h <= 0) return false;
+  EmblemCanvasPushUndo();
+  for (int i = 0; i < kEmblemPixels; ++i) g_emblem_canvas.pixel[i] = kEmblemClear;
+  const int offset_x = (kEmblemSide - w) / 2;  // négatif si l'icône est plus grande
+  const int offset_y = (kEmblemSide - h) / 2;
+  for (int y = 0; y < h; ++y) {
+    const int dst_y = y + offset_y;
+    if (dst_y < 0 || dst_y >= kEmblemSide) continue;
+    for (int x = 0; x < w; ++x) {
+      const int dst_x = x + offset_x;
+      if (dst_x < 0 || dst_x >= kEmblemSide) continue;
+      const uint8_t* px = &argb[(static_cast<size_t>(y) * w + x) * 4];
+      if (px[3] == 0) continue;  // transparent : on laisse le vide
+      g_emblem_canvas.pixel[dst_y * kEmblemSide + dst_x] =
+          (static_cast<uint32_t>(px[2]) << 16) | (static_cast<uint32_t>(px[1]) << 8) | px[0];
+    }
+  }
+  g_emblem_canvas.started = true;
+  ++g_emblem_canvas.revision;
+  return true;
+}
+
+// Reprend un BMP existant (24 ou 8 bits) dans le canvas, pour retoucher un emblème
+// déjà fait plutôt que de repartir d'une page blanche.
+bool EmblemCanvasLoadBmp(const std::vector<uint8_t>& bmp) {
+  if (bmp.size() < 54 || bmp[0] != 'B' || bmp[1] != 'M') return false;
+  const int32_t  w       = *reinterpret_cast<const int32_t*>(&bmp[0x12]);
+  const int32_t  hraw    = *reinterpret_cast<const int32_t*>(&bmp[0x16]);
+  const int16_t  bpp     = *reinterpret_cast<const int16_t*>(&bmp[0x1c]);
+  const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
+  const int  h        = (hraw < 0) ? -hraw : hraw;
+  const bool bottomUp = hraw > 0;
+  if (w != kEmblemSide || h != kEmblemSide || (bpp != 24 && bpp != 8)) return false;
+  const uint8_t* palette = (bpp == 8) ? bmp.data() + 54 : nullptr;
+  if (bpp == 8 && bmp.size() < 54u + 256u * 4u) return false;
+  const size_t rowSize = static_cast<size_t>((w * (bpp / 8) + 3) & ~3);
+  if (static_cast<size_t>(dataOff) + rowSize * h > bmp.size()) return false;
+  for (int y = 0; y < kEmblemSide; ++y) {
+    const int srcY = bottomUp ? (kEmblemSide - 1 - y) : y;
+    const uint8_t* row = bmp.data() + dataOff + static_cast<size_t>(srcY) * rowSize;
+    for (int x = 0; x < kEmblemSide; ++x) {
+      uint8_t b, g, r;
+      if (bpp == 24) {
+        b = row[x * 3]; g = row[x * 3 + 1]; r = row[x * 3 + 2];
+      } else {
+        const uint8_t* entry = palette + static_cast<size_t>(row[x]) * 4;
+        b = entry[0]; g = entry[1]; r = entry[2];
+      }
+      g_emblem_canvas.pixel[y * kEmblemSide + x] =
+          (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
+    }
+  }
+  g_emblem_canvas.started = true;
+  g_emblem_canvas.undo.clear();
+  ++g_emblem_canvas.revision;
+  return true;
+}
+
+// Fabrique le BMP 24 bits bottom-up attendu par le serveur : 54 octets d'en-tête +
+// 24 lignes de 72 octets (déjà alignées sur 4) = 1782, sous le plafond de 1800.
+std::vector<uint8_t> BuildEmblemBmp() {
+  constexpr uint32_t kRowSize   = kEmblemSide * 3;
+  constexpr uint32_t kPixelSize = kRowSize * kEmblemSide;
+  constexpr uint32_t kFileSize  = 54 + kPixelSize;
+  std::vector<uint8_t> bmp(kFileSize, 0);
+  bmp[0] = 'B'; bmp[1] = 'M';
+  *reinterpret_cast<uint32_t*>(&bmp[2])    = kFileSize;   // bfSize (le serveur le compare !)
+  *reinterpret_cast<uint32_t*>(&bmp[0x0a]) = 54;          // bfOffBits
+  *reinterpret_cast<uint32_t*>(&bmp[0x0e]) = 40;          // biSize
+  *reinterpret_cast<int32_t*>(&bmp[0x12])  = kEmblemSide; // biWidth
+  *reinterpret_cast<int32_t*>(&bmp[0x16])  = kEmblemSide; // biHeight (>0 = bottom-up)
+  *reinterpret_cast<uint16_t*>(&bmp[0x1a]) = 1;           // biPlanes
+  *reinterpret_cast<uint16_t*>(&bmp[0x1c]) = 24;          // biBitCount
+  *reinterpret_cast<uint32_t*>(&bmp[0x22]) = kPixelSize;  // biSizeImage
+  for (int y = 0; y < kEmblemSide; ++y) {
+    uint8_t* row = &bmp[54 + static_cast<size_t>(kEmblemSide - 1 - y) * kRowSize];
+    for (int x = 0; x < kEmblemSide; ++x) {
+      const uint32_t c = g_emblem_canvas.pixel[y * kEmblemSide + x];
+      row[x * 3 + 0] = static_cast<uint8_t>(c & 0xFF);         // B
+      row[x * 3 + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);  // G
+      row[x * 3 + 2] = static_cast<uint8_t>((c >> 16) & 0xFF); // R
+    }
+  }
+  return bmp;
 }
 
 // Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my). `src` = l'item
@@ -616,6 +1509,31 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
                                   0, 0, 0);
       Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
     }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Description d'un SKILL : fenêtre 0x2e (≠ 0xc, qui est celle des objets), pilotée par
+// l'id BRUT — pas par un ItemSkillInfo. Re-clic sur le même skill = referme, comme le
+// natif (l'id affiché vit à +0x104).
+constexpr int kWinSkillDesc    = 0x2e;
+constexpr int kMsgSetSkill     = 0x3d;
+constexpr int kSkillWinShownId = 0x104;
+constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
+using CloseWindow_t = void (__fastcall*)(void*, void*, int);
+
+void OpenSkillDesc(int skillId, int mx, int my) {
+  if (skillId <= 0) return;
+  __try {
+    void* mgr = uiwnd::Mgr();
+    void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
+        mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+    if (!wnd) return;
+    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == skillId) {
+      reinterpret_cast<CloseWindow_t>(kCloseWindow)(mgr, nullptr, kWinSkillDesc);
+      return;
+    }
+    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill, skillId, 0, 0, 0);
+    Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -685,6 +1603,43 @@ void SendConfigToggle(int cmd, int value) {
     void* d = *reinterpret_cast<void**>(kUICmdDisp);
     if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// Lance une compétence par le chemin NATIF, celui du bouton « use » de la fenêtre de
+// compétences : cmd 0x45 du même dispatcher. Le client fait ses propres contrôles (SP,
+// cooldowns partagés), affiche la barre de cast, puis envoie CZ_USE_SKILL 0x0438
+// {op, niv, id, cibleGID}. Fabriquer ce paquet nous-mêmes sauterait tout cela — une
+// compétence à 10 s de cast (GD_RESTORE) partirait sans le moindre retour à l'écran.
+// RE du bloc : 0x00c8d9ad..0x00c8de53 ; arguments (cmd, skillId, cibleGID, niveau, 0).
+void SendUseSkill(uint16_t skillId, int level) {
+  __try {
+    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
+    const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
+    if (d && self)
+      Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
+                                   level, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// Envoie une commande @ par le canal de chat (CZ_GlobalMessage 0x00f3), c'est-à-dire
+// EXACTEMENT ce que fait le joueur en la tapant : mêmes droits de groupe, mêmes refus,
+// même journalisation. Sert à l'entrepôt de guilde, que le serveur n'expose par AUCUN
+// paquet — storage_guild_storageopen() n'est atteignable que par script NPC, par
+// @guildstorage, ou par la réponse du char-server.
+void SendAtCommand(const char* command) {
+  // ⚠ rAthena EXIGE « <nom du perso> : <texte> » (clif_process_message) : un nom qui
+  // ne correspond pas est traité comme un client trafiqué et COUPE la session.
+  const std::string own = Bourgeon::Instance().client().session().GetCharName();
+  if (own.empty() || !command) return;
+  char text[128];
+  const int text_len =
+      std::snprintf(text, sizeof(text), "%s : %s", own.c_str(), command);
+  if (text_len <= 0 || text_len >= static_cast<int>(sizeof(text))) return;
+  uint8_t pkt[4 + sizeof(text)];
+  const uint16_t total = static_cast<uint16_t>(4 + text_len + 1);  // + le zéro final
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpChatMessage;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = total;  // paquet variable : longueur TOTALE
+  std::memcpy(pkt + 4, text, static_cast<size_t>(text_len) + 1);
+  Bourgeon::Instance().SendPacket(pkt, total);
 }
 // amount = nb de points à monter en UN paquet (le serveur pc_statusup clampe au coût
 // abordable + au plafond de la stat). L'octet amount est lu NON signé (RFIFOB) -> [1,255].
@@ -815,74 +1770,24 @@ ImU32 DollBgCol() {
 //  la scrollbar "dans le vide").
 constexpr float kDollW  = 280.0f;   // largeur zone doll (contenu)
 constexpr float kStatsW = 240.0f;   // largeur zone stats (contenu)
-struct WinSnap { float narrow = 0.0f, wide = 0.0f; bool valid = false; };
+struct WinSnap {
+  float narrow = 0.0f, wide = 0.0f;
+  bool  valid = false;
+  bool  force_wide = false;  // onglets pleine largeur (Guilde) : pas de repli étroit
+};
 WinSnap g_win_snap;
 void SnapCharSheetWidth(ImGuiSizeCallbackData* d) {
   if (!g_win_snap.valid) return;
+  if (g_win_snap.force_wide) { d->DesiredSize.x = g_win_snap.wide; return; }
   const float mid = (g_win_snap.narrow + g_win_snap.wide) * 0.5f;
   d->DesiredSize.x = (d->DesiredSize.x < mid) ? g_win_snap.narrow : g_win_snap.wide;
 }
 
 // ── Raccourcis clavier de preset ─────────────────────────────────────────────
-constexpr uintptr_t kGetHotKey = 0x00d80950;  // GetHotKey(out, category, slot) __stdcall RET 0xc
-constexpr uintptr_t kStrFree   = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
-using GetHotKey_t = void* (__stdcall*)(void*, int, int);
-using StrFree_t   = void (__fastcall*)(void*);
-
-// Conversions ImGuiKey <-> VK Windows (lettres, chiffres, F1-F12 = combos réalistes de preset).
-int ImGuiKeyToVk(ImGuiKey k) {
-  if (k >= ImGuiKey_A && k <= ImGuiKey_Z)    return 0x41 + (k - ImGuiKey_A);
-  if (k >= ImGuiKey_0 && k <= ImGuiKey_9)    return 0x30 + (k - ImGuiKey_0);
-  if (k >= ImGuiKey_F1 && k <= ImGuiKey_F12) return 0x70 + (k - ImGuiKey_F1);
-  return 0;
-}
-ImGuiKey VkToImGuiKey(int vk) {
-  if (vk >= 0x41 && vk <= 0x5A) return static_cast<ImGuiKey>(ImGuiKey_A + (vk - 0x41));
-  if (vk >= 0x30 && vk <= 0x39) return static_cast<ImGuiKey>(ImGuiKey_0 + (vk - 0x30));
-  if (vk >= 0x70 && vk <= 0x7B) return static_cast<ImGuiKey>(ImGuiKey_F1 + (vk - 0x70));
-  return ImGuiKey_None;
-}
-// Première touche PRINCIPALE pressée cette frame (hors modificateurs), en VK. 0 si aucune.
-int CaptureMainVk() {
-  for (ImGuiKey k = ImGuiKey_A; k <= ImGuiKey_Z; k = static_cast<ImGuiKey>(k + 1))
-    if (ImGui::IsKeyPressed(k, false)) return ImGuiKeyToVk(k);
-  for (ImGuiKey k = ImGuiKey_0; k <= ImGuiKey_9; k = static_cast<ImGuiKey>(k + 1))
-    if (ImGui::IsKeyPressed(k, false)) return ImGuiKeyToVk(k);
-  for (ImGuiKey k = ImGuiKey_F1; k <= ImGuiKey_F12; k = static_cast<ImGuiKey>(k + 1))
-    if (ImGui::IsKeyPressed(k, false)) return ImGuiKeyToVk(k);
-  return 0;
-}
-// Étiquette d'un combo : "Ctrl+Maj+F1" / "(aucun)".
-void HotkeyLabel(const EquipPreset& ep, char* out, int cap) {
-  if (ep.hotkey_vk == 0) { std::snprintf(out, cap, "(aucun)"); return; }
-  char mods[24] = {0};
-  if (ep.hotkey_ctrl)  std::strncat(mods, "Ctrl+", sizeof(mods) - std::strlen(mods) - 1);
-  if (ep.hotkey_alt)   std::strncat(mods, "Alt+",  sizeof(mods) - std::strlen(mods) - 1);
-  if (ep.hotkey_shift) std::strncat(mods, "Maj+",  sizeof(mods) - std::strlen(mods) - 1);
-  const char* kn = ImGui::GetKeyName(VkToImGuiKey(ep.hotkey_vk));
-  std::snprintf(out, cap, "%s%s", mods, (kn && kn[0]) ? kn : "?");
-}
-// Lit le raccourci natif d'un slot de la barre (via GetHotKey Lua, rebind-aware). mainVk + le VK
-// du modificateur (0 si aucun). SEH (touche Lua + libère les 2 std::string du wrapper).
-bool ReadNativeHotkey(int cat, int slot, int* mainVk, int* modVk) {
-  *mainVk = 0; *modVk = 0;
-  bool ok = false;
-  __try {
-    alignas(4) uint8_t buf[0x40];
-    std::memset(buf, 0, sizeof(buf));
-    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, cat, slot);
-    const int kc1 = *reinterpret_cast<int*>(buf + 0x00);
-    const int kc2 = *reinterpret_cast<int*>(buf + 0x04);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
-    auto isMod = [](int k) { return k == VK_CONTROL || k == VK_SHIFT || k == VK_MENU; };
-    if (isMod(kc1))      { *modVk = kc1; *mainVk = kc2; }
-    else if (isMod(kc2)) { *modVk = kc2; *mainVk = kc1; }
-    else                 { *mainVk = kc1; }
-    ok = (*mainVk != 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
-  return ok;
-}
+// Conversions VK <-> ImGuiKey, capture, libellé et contrôle de conflit vivent
+// dans plugins/hotkey_util.h : ils sont partagés avec la touche de saut, qui est
+// elle aussi remappable — c'est ce qui permet aux deux de se refuser mutuellement
+// un combo déjà pris.
 
 // Mini-icone d'un item de preset (icone + refine, survol = nom). Affichage seul.
 void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
@@ -922,6 +1827,26 @@ CharacterSheet::CharacterSheet() {
   // État des compagnons (chariot/peco/faucon) poussé par le serveur au login + à chaque
   // changement (pc_setcart/riding/falcon). Gate/affiche les cases sans RE côté client.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kCompanionState);
+  // Postes de guilde : le client ne les garde QUE dans la fenêtre native (liste
+  // interne à UIGuildPositionManageWnd), donc on lit les paquets nous-mêmes. Ce sont
+  // des paquets à longueur variable : on ne demande que le champ longueur (2 o) et on
+  // parcourt les entrées dans le buffer live (même approche que la liste du cash shop).
+  Bourgeon::Instance().RegisterObserveOpcode(kOpPositionNames, 2);  // ZC 0x0166
+  Bourgeon::Instance().RegisterObserveOpcode(kOpPositionInfo, 2);   // ZC 0x0160
+  Bourgeon::Instance().RegisterObserveOpcode(kOpPositionChanged, 2);// ZC 0x0174
+  // Résultat d'une création de guilde (1 octet) : le client affiche déjà sa propre
+  // boîte, on veut en plus le retour dans l'onglet.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpGuildCreateAck, 1);  // ZC 0x0167
+  // Image d'emblème renvoyée par le serveur : c'est l'accusé de réception d'un
+  // changement (guild_emblem_changed la pousse à tous les membres). Paquet variable :
+  // on ne demande que le champ longueur et on lit le reste dans le buffer live.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpGuildEmblemImg, 2);  // ZC 0x0152
+  // Compétences de guilde : même situation que les postes (rien de conservé hors de la
+  // fenêtre native), paquet variable -> on ne demande que le champ longueur.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpGuildSkills, 2);   // ZC 0x0162
+  Bourgeon::Instance().RegisterObserveOpcode(kOpGuildBanList, 2);  // ZC 0x0b7c
+  // Les cooldowns (ZC 0x043D) sont observés par le service partagé
+  // ragnarok/skill_cooldowns.h, installé avant les plugins.
 }
 
 // Payload de ZC_BOURGEON_STAT_BONUS APRÈS le header [type:2][len:2] (le reader-hook
@@ -1002,6 +1927,62 @@ using LuaPushNum_t  = void        (__cdecl*)(void*, double);
 using LuaPCall_t    = int         (__cdecl*)(void*, int, int, int);
 using LuaToLStr_t   = const char* (__cdecl*)(void*, int, size_t*);
 using LuaSetTop_t   = void        (__cdecl*)(void*, int);
+
+// ── Arbre des compétences de guilde (fichier client) ─────────────────────────
+// Le serveur ne l'envoie pas : ZC 0x0162 omet le niveau max, et clif_guild_skillinfo
+// filtre par guild_check_skill_require — une compétence verrouillée n'arrive JAMAIS.
+// skilltreeguild.lub (dans le GRF, généré depuis db/guild_skill_tree.yml) comble ce
+// trou. Il est purement informatif : le serveur reste seul juge d'un skillup.
+//
+// Lua_ExecuteScriptFile(this=holder, nom, sousData, sansPrefixe) : `sousData`=1 ajoute
+// « data\ », `sansPrefixe`=0 ajoute « LuaFiles514\ » — soit
+// data\luafiles514\lua files\skillinfoz\skilltreeguild.lub, et la lecture passe par le
+// VFS (disque puis GRF). Rend 1 si le fichier a été chargé ET exécuté.
+constexpr uintptr_t kLuaExecFile = 0x00a9bc90;
+using LuaExecFile_t = char(__thiscall*)(void*, const char*, char, char);
+constexpr char kGuildTreeLuaFile[] = "Lua Files\\SkillInfoz\\skilltreeguild";
+
+constexpr uintptr_t kLuaToBool = 0x0051abf0;  // lua_toboolean(L,idx) : nil/false -> 0
+using LuaToBool_t = int(__cdecl*)(void*, int);
+
+// Charge le fichier puis appelle son GdDump() ; `out` reçoit la table sérialisée
+// (« id,maxLv,prereq:lvl|prereq:lvl; » répété), `err` le message Lua en cas d'échec.
+// POD only : SEH (C2712). Codes distincts pour que la console dise QUELLE étape a
+// lâché — « absent » et « erreur d'exécution » se soignent différemment.
+enum {
+  kTreeOk = 1,          // table lue
+  kTreeNoFile = 0,      // Lua_ExecuteScriptFile a rendu 0 : introuvable, ou erreur Lua à l'exécution
+  kTreeNoLua = -1,      // état Lua pas encore prêt -> retenter
+  kTreeNoDumper = -2,   // fichier chargé mais GdDump absent (fichier d'une autre version ?)
+  kTreeCallFailed = -3, // GdDump a levé -> `err`
+  kTreeEmpty = -4,      // appel OK mais chaîne vide
+};
+int GuildTreeDumpSEH(char* out, size_t cap, char* err, size_t err_cap) {
+  out[0] = '\0';
+  err[0] = '\0';
+  __try {
+    void* M = *reinterpret_cast<void**>(kLuaState);
+    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    if (!L) return kTreeNoLua;
+    if (!reinterpret_cast<LuaExecFile_t>(kLuaExecFile)(M, kGuildTreeLuaFile, 1, 0))
+      return kTreeNoFile;
+    reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "GdDump");
+    if (!reinterpret_cast<LuaToBool_t>(kLuaToBool)(L, -1)) {  // nil = pas de fonction
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);
+      return kTreeNoDumper;
+    }
+    if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 0, 1, 0) != 0) {
+      const char* msg = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+      if (msg && msg[0]) std::strncpy(err, msg, err_cap - 1);
+      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);
+      return kTreeCallFailed;
+    }
+    const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+    if (s && s[0]) std::strncpy(out, s, cap - 1);
+    reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // dépile le résultat
+    return out[0] ? kTreeOk : kTreeEmpty;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return kTreeNoFile; }
+}
 
 // GetStateIconDescript(efst) renvoie la desc du statut (multi-ligne, markup ^RRGGBB) ;
 // on garde la 1re ligne nettoyée = le nom. SEH-gardé, caché. Repli « Statut #id ».
@@ -1097,7 +2078,130 @@ static const char* const kRace2Name[] = {
     "Battlefield", "Treasure", "Biolab", "Manuk", "Splendid", "Scaraba",
 };
 
+// Temps restant sur une compétence. La table vit dans ragnarok/skill_cooldowns.h :
+// la barre d'action moderne l'affiche aussi, et une seconde copie du même paquet
+// dérivait dès qu'un des deux consommateurs manquait un envoi.
+unsigned long CharacterSheet::SkillCooldownRemaining(uint16_t skill_id) const {
+  return ro::SkillCooldownRemainingMs(skill_id);
+}
+
 void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // ZC_SKILL_POSTDELAY (0x043D) n'est PAS traité ici : la table de cooldowns est
+  // partagée et remplie en amont, dans Bourgeon::FireRecvPacket.
+
+  // Résultat d'une demande de création de guilde (codes documentés côté serveur :
+  // 0 créée, 1 déjà en guilde, 2 nom pris, 3 Emperium manquant).
+  if (opcode == kOpGuildCreateAck) {
+    if (len >= 1) guild_create_result_ = data[0];
+    return;
+  }
+
+  // Emblème renvoyé par le serveur (ZC 0x0152) : preuve que le changement est passé.
+  // Le client natif écrit alors _tmpEmblem\<nom>_<guilde>_<version>.ebm ; on jette
+  // notre texture pour que l'en-tête relise le fichier de la NOUVELLE version.
+  if (opcode == kOpGuildEmblemImg) {
+    // Même piège que plus bas : l'observation ne transmet que 2 octets (`len`), le
+    // reste vit dans le buffer live. Un test sur `len` ici tuait le handler.
+    if (len < 2) return;
+    const int packet_len = *reinterpret_cast<const uint16_t*>(data);
+    if (packet_len < 12) return;
+    const int guild_id   = *reinterpret_cast<const int32_t*>(data + 2);
+    const int emblem_id  = *reinterpret_cast<const int32_t*>(data + 6);
+    LogDiag("[Emblème] ZC 0x0152 reçu : guilde {}, version {}, {} octets d'image",
+            guild_id, emblem_id, packet_len - 12);
+    ForgetEmblem(guild_id);
+    return;
+  }
+
+  // Compétences de guilde (ZC 0x0162) : [len.W][points.W] puis 37 o/entrée. La liste
+  // envoyée est déjà FILTRÉE par le serveur (guild_check_skill_require) : ce qui n'y
+  // est pas n'a pas ses prérequis, on remplace donc la liste entière à chaque paquet.
+  if (opcode == kOpGuildSkills) {
+    // `len` = les octets DEMANDÉS à l'observation (2 ici), pas la taille du paquet :
+    // tout le reste se lit dans le buffer live, borné par la longueur annoncée.
+    if (len < 2) return;
+    const int packet_len = *reinterpret_cast<const uint16_t*>(data);
+    if (packet_len < 6) return;
+    guild_skill_points_ = *reinterpret_cast<const int16_t*>(data + 2);
+    guild_skills_known_ = true;
+    guild_skills_.clear();
+    for (int off = 6; off + kGuildSkillEntry <= packet_len; off += kGuildSkillEntry) {
+      const uint8_t* entry = data + (off - 2);
+      GuildSkillRow row;
+      row.id    = *reinterpret_cast<const uint16_t*>(entry);
+      row.inf   = *reinterpret_cast<const int32_t*>(entry + 2);
+      row.level = *reinterpret_cast<const uint16_t*>(entry + 6);
+      row.sp    = *reinterpret_cast<const uint16_t*>(entry + 8);
+      row.range = *reinterpret_cast<const uint16_t*>(entry + 10);
+      std::strncpy(row.name, reinterpret_cast<const char*>(entry + 12), sizeof(row.name) - 1);
+      row.upgradable = entry[36] != 0;
+      if (row.id != 0) guild_skills_.push_back(row);
+    }
+    LogDiag("[Guilde] ZC 0x0162 : {} octets, {} point(s), {} compétence(s)", packet_len,
+            guild_skill_points_, guild_skills_.size());
+    return;
+  }
+
+  // Expulsions passées (ZC 0x0b7c) : [len.W] puis 68 o/entrée.
+  if (opcode == kOpGuildBanList) {
+    if (len < 2) return;
+    const int packet_len = *reinterpret_cast<const uint16_t*>(data);
+    guild_bans_known_ = true;
+    guild_bans_.clear();
+    for (int off = 4; off + kGuildBanEntry <= packet_len; off += kGuildBanEntry) {
+      const uint8_t* entry = data + (off - 2);
+      GuildBanRow row;
+      row.char_id = *reinterpret_cast<const uint32_t*>(entry);
+      std::strncpy(row.reason, reinterpret_cast<const char*>(entry + 4), sizeof(row.reason) - 1);
+      std::strncpy(row.name, reinterpret_cast<const char*>(entry + 44), sizeof(row.name) - 1);
+      guild_bans_.push_back(row);
+    }
+    LogDiag("[Guilde] ZC 0x0b7c : {} octets, {} expulsion(s)", packet_len, guild_bans_.size());
+    return;
+  }
+
+  // ── Postes de guilde (paquets STANDARD observés) ───────────────────────────
+  // Pour un opcode observé, `data` pointe juste après l'opcode : ici sur le champ
+  // longueur du paquet. Les trois paquets sont à longueur variable, donc on relit
+  // cette longueur et on parcourt les entrées directement dans le buffer live ; les
+  // décalages ci-dessous sont ceux du PAQUET moins 2 (l'opcode).
+  if (opcode == kOpPositionNames || opcode == kOpPositionInfo ||
+      opcode == kOpPositionChanged) {
+    if (len < 2) return;
+    const int packet_len = *reinterpret_cast<const uint16_t*>(data);
+    const int entry_size = (opcode == kOpPositionNames)   ? 28
+                           : (opcode == kOpPositionInfo)  ? 16
+                                                          : 40;
+    // Garde-fou : au plus MAX_GUILDPOSITION entrées, quelle que soit la longueur
+    // annoncée (on lit dans le buffer live, pas dans une copie bornée).
+    int parsed = 0;
+    for (int off = 4; off + entry_size <= packet_len && parsed < kGuildPositionSlots;
+         off += entry_size, ++parsed) {
+      const uint8_t* entry = data + (off - 2);
+      const int id = *reinterpret_cast<const int32_t*>(entry);
+      if (id < 0 || id >= kGuildPositionSlots) continue;
+      GuildPositionRow& row = guild_positions_[id];
+      if (opcode == kOpPositionNames) {
+        std::strncpy(row.name, reinterpret_cast<const char*>(entry + 4), sizeof(row.name) - 1);
+        row.name[sizeof(row.name) - 1] = '\0';
+        row.has_name = true;
+      } else if (opcode == kOpPositionInfo) {
+        row.mode     = *reinterpret_cast<const int32_t*>(entry + 4);
+        row.pay_rate = *reinterpret_cast<const int32_t*>(entry + 12);
+        row.has_info = true;
+      } else {  // 0x0174 : nom + droits + part d'exp d'un poste modifié
+        row.mode     = *reinterpret_cast<const int32_t*>(entry + 4);
+        row.pay_rate = *reinterpret_cast<const int32_t*>(entry + 12);
+        std::strncpy(row.name, reinterpret_cast<const char*>(entry + 16), sizeof(row.name) - 1);
+        row.name[sizeof(row.name) - 1] = '\0';
+        row.has_name = row.has_info = true;
+      }
+      // Alimente aussi le repli id -> libellé de la colonne « Poste » du roster.
+      if (row.has_name) RememberGuildPosition(id, row.name);
+    }
+    return;
+  }
+
   // État des compagnons (ZC 0x0F16) : 8 octets APRÈS le header (le reader-hook nous
   // passe data = post-header, len = payload). Miroir de PACKET_ZC_BOURGEON_COMPANION_STATE.
   if (opcode == bopcodes::kCompanionState) {
@@ -1321,51 +2425,17 @@ int CharacterSheet::UnequipAll(bool with_costumes) {
   return freed;
 }
 
-bool CharacterSheet::HotkeyConflict(int vk, bool ctrl, bool alt, bool shift, int selfIdx,
-                                    char* what, int cap) {
-  if (cap > 0) what[0] = '\0';
-  if (vk == 0) return false;
-  // Réservé : Alt+F ouvre/ferme la fiche elle-même.
-  if (vk == 0x46 && alt && !ctrl && !shift) {
-    std::snprintf(what, cap, "l'ouverture de la fiche (Alt+F)");
-    return true;
-  }
-  const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
-  // a) Un AUTRE preset du même perso a déjà ce combo.
-  for (int i = 0; i < static_cast<int>(equip_presets_.size()); ++i) {
-    if (i == selfIdx) continue;
-    const EquipPreset& e = equip_presets_[i];
-    if (e.cid == cid && e.hotkey_vk == vk && e.hotkey_ctrl == ctrl && e.hotkey_alt == alt &&
-        e.hotkey_shift == shift) {
-      std::snprintf(what, cap, "le preset « %s »", e.name.c_str());
-      return true;
-    }
-  }
-  // b) Un raccourci natif de la barre de skills (onglet 1 = cat 0, onglet 2 = cat 3, 36 slots).
-  const int cats[2] = {0, 3};
-  for (int ci = 0; ci < 2; ++ci)
-    for (int s = 0; s < 36; ++s) {
-      int mvk, modvk;
-      if (!ReadNativeHotkey(cats[ci], s, &mvk, &modvk) || mvk != vk) continue;
-      const bool nCtrl = (modvk == VK_CONTROL), nAlt = (modvk == VK_MENU),
-                 nShift = (modvk == VK_SHIFT);
-      if (nCtrl == ctrl && nAlt == alt && nShift == shift) {
-        std::snprintf(what, cap, "un raccourci natif (barre de skills)");
-        return true;
-      }
-    }
-  return false;
-}
-
 void CharacterSheet::ProcessPresetHotkeys() {
-  if (hk_capturing_ >= 0) return;  // en pleine capture d'un combo : ne pas déclencher
+  // Une capture de combo est en cours (ici ou ailleurs : touche de saut) : la
+  // touche pressée sert à remapper, elle ne doit rien déclencher.
+  if (hk_capturing_ >= 0 || hotkeys::CaptureInProgress()) return;
   ImGuiIO& io = ImGui::GetIO();
   if (io.WantTextInput) return;    // saisie de texte (chat…) : ne pas déclencher
   const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
   for (const EquipPreset& ep : equip_presets_) {
     if (ep.cid != cid || ep.hotkey_vk == 0) continue;
     if (io.KeyCtrl != ep.hotkey_ctrl || io.KeyAlt != ep.hotkey_alt || io.KeyShift != ep.hotkey_shift) continue;
-    const ImGuiKey k = VkToImGuiKey(ep.hotkey_vk);
+    const ImGuiKey k = hotkeys::VkToImGuiKey(ep.hotkey_vk);
     if (k != ImGuiKey_None && ImGui::IsKeyPressed(k, false)) { ApplyPreset(ep); break; }
   }
 }
@@ -1436,15 +2506,17 @@ void CharacterSheet::DrawPresetsTab() {
     ImGui::TextColored(kGray, "Raccourci :");
     ImGui::SameLine();
     if (hk_capturing_ == mine[mi]) {
+      hotkeys::PingCapture();  // gèle les raccourcis (saut compris) le temps du choix
       ImGui::TextColored(kBlack, "appuie sur une touche…  (Échap : annuler)");
       ImGuiIO& io = ImGui::GetIO();
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         hk_capturing_ = -1;
         hk_conflict_msg_.clear();
-      } else if (const int vk = CaptureMainVk()) {
+      } else if (const int vk = hotkeys::CaptureMainVk()) {
         const bool c = io.KeyCtrl, a = io.KeyAlt, sh = io.KeyShift;
         char what[64];
-        if (HotkeyConflict(vk, c, a, sh, mine[mi], what, sizeof(what))) {
+        if (hotkeys::Conflict(vk, c, a, sh, hotkeys::Owner::kEquipPreset, mine[mi], what,
+                              sizeof(what))) {
           hk_conflict_msg_ = std::string("Déjà utilisé par ") + what + " — choisis un autre combo";
         } else {  // libre : on assigne + persiste
           EquipPreset& e = equip_presets_[mine[mi]];
@@ -1459,7 +2531,8 @@ void CharacterSheet::DrawPresetsTab() {
       }
     } else {
       char hkl[48];
-      HotkeyLabel(ep, hkl, sizeof(hkl));
+      hotkeys::Label(ep.hotkey_vk, ep.hotkey_ctrl, ep.hotkey_alt, ep.hotkey_shift, hkl,
+                     sizeof(hkl));
       ImGui::TextColored(kBlack, "%s", hkl);
       ImGui::SameLine(0.0f, 6.0f);
       if (ro::RoButton("Définir", bw("Définir"))) {
@@ -1588,6 +2661,1806 @@ void CharacterSheet::DrawTitlesTab() {
   }
 
   if (to_equip >= 0 && to_equip != ot.equipped) SendChangeTitle(to_equip);
+}
+
+// Onglet Guilde : la fenêtre de guilde native (les 7 panneaux UIGuildWnd) refaite en
+// ImGui dans la feuille de perso. Tout est lu LIVE des globals du client (CGuild +
+// g_GuildInfo_*, cf. project_guild_window_re) ; les actions partent en paquets bruts,
+// exactement comme le natif, et le serveur revalide chaque droit.
+void CharacterSheet::DrawGuildTab() {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kGreen(0.10f, 0.50f, 0.15f, 1.0f);
+  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
+  const ImVec4 kBlue(0.15f, 0.25f, 0.60f, 1.0f);
+
+  GuildInfo gi{};
+  if (!ReadGuild(&gi)) {
+    // Sans guilde : même service que le « Guild Companion » natif (Alt+G), à savoir
+    // la création directe, sans passer par ses deux fenêtres.
+    ImGui::TextColored(kGray, "Tu n'appartiens à aucune guilde.");
+    ImGui::Spacing();
+    ImGui::TextWrapped(
+        "Rejoins-en une (invitation d'un maître de guilde) ou crée la tienne "
+        "ici : cet onglet affichera ensuite membres, postes et relations.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextColored(kBlack, "Créer une guilde");
+    ImGui::TextColored(kGray,
+                       "Un Emperium dans l'inventaire est nécessaire, et la carte ne "
+                       "doit pas interdire les guildes.");
+    ImGui::SetNextItemWidth(220.0f);
+    const bool name_submitted =
+        ro::InputTextCp949("##cs_guild_create", guild_create_buf_, sizeof(guild_create_buf_),
+                           ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    const bool create_clicked = ro::RoButton("Créer");
+    if ((name_submitted || create_clicked) && guild_create_buf_[0]) {
+      SendCreateGuild(guild_create_buf_);
+      guild_create_result_ = -1;  // en attente de la réponse serveur
+      guild_status_ = std::string("Demande envoyée : ") + guild_create_buf_;
+    }
+    // Retour du serveur (ZC 0x0167). Le client affiche déjà sa propre boîte ; on
+    // double l'information ici pour ne pas laisser l'onglet muet.
+    if (guild_create_result_ >= 0) {
+      const char* result_text = "Résultat inconnu.";
+      switch (guild_create_result_) {
+        case 0: result_text = "Guilde créée."; break;
+        case 1: result_text = "Tu es déjà dans une guilde."; break;
+        case 2: result_text = "Ce nom de guilde est déjà pris."; break;
+        case 3: result_text = "Il te faut un Emperium pour créer une guilde."; break;
+        default: break;
+      }
+      ImGui::TextColored(guild_create_result_ == 0 ? ImVec4(0.10f, 0.50f, 0.15f, 1.0f)
+                                                   : ImVec4(0.60f, 0.12f, 0.12f, 1.0f),
+                         "%s", result_text);
+    } else if (!guild_status_.empty()) {
+      ImGui::TextColored(kGray, "%s", guild_status_.c_str());
+    }
+    return;
+  }
+
+  // La liste des membres n'est PAS poussée spontanément par le serveur : elle
+  // arrive sur demande (CZ_REQ_GUILD_MENUINTERFACE), comme quand on ouvre la
+  // fenêtre native. On la redemande à l'ouverture de l'onglet puis toutes les 30 s.
+  // Les membres d'abord, les postes ENSUITE : la liste des membres recrée les
+  // enregistrements avec un nom de poste vide, que le type 2 (noms + droits des
+  // postes) vient justement remplir. Le type 0 termine par les infos de base.
+  const unsigned long now_tick = GetTickCount();
+  if (guild_last_req_ == 0 || now_tick - guild_last_req_ > 30000) {
+    SendGuildRequest(kGuildReqMembers);
+    SendGuildRequest(kGuildReqPositions);
+    SendGuildRequest(kGuildReqSkills);
+    SendGuildRequest(kGuildReqBans);
+    SendGuildRequest(kGuildReqBasic);
+    guild_last_req_ = now_tick;
+  }
+
+  static GuildRoster roster;  // POD (~76 entrées) relu à chaque frame : lecture pure
+  ReadGuildRosterSEH(&roster);
+  for (int i = 0; i < roster.count; ++i)
+    RememberGuildPosition(roster.members[i].position_id, roster.members[i].position);
+
+  // ── Droits du joueur ──────────────────────────────────────────────────────
+  // Le serveur ne regarde PAS le drapeau maître pour expulser/inviter, mais le
+  // masque de droits du POSTE occupé (guild_has_permission). On reproduit la même
+  // règle ; tant que les droits ne sont pas connus, on retombe sur « maître ».
+  // Le drapeau natif 0x0159c23c est « collant » (posé une fois, jamais remis à 0),
+  // donc on préfère comparer les noms quand le maître est connu.
+  const std::string own_name = Bourgeon::Instance().client().session().GetCharName();
+  const bool is_master = (gi.master_name[0] && !own_name.empty())
+                             ? _stricmp(own_name.c_str(), gi.master_name) == 0
+                             : gi.master;
+  const bool my_mode_known = gi.position_found && gi.position_id >= 0 &&
+                             gi.position_id < kGuildPositionSlots &&
+                             guild_positions_[gi.position_id].has_info;
+  const int  my_mode   = my_mode_known ? guild_positions_[gi.position_id].mode : 0;
+  const bool can_expel = my_mode_known ? (my_mode & kGuildPermExpel) != 0 : is_master;
+  const bool can_invite = my_mode_known ? (my_mode & kGuildPermInvite) != 0 : is_master;
+
+  // ── En-tête : emblème + identité + jauge d'expérience ──────────────────────
+  const ImVec2 header_pos = ImGui::GetCursorScreenPos();
+  // « Actualiser » ancré en haut à droite : on pose le bouton avant l'en-tête puis
+  // on remet le curseur où il était, si bien que l'en-tête se dessine ensuite comme
+  // si le bouton n'occupait aucune place.
+  {
+    const float  refresh_width = 90.0f;
+    const ImVec2 saved_cursor = ImGui::GetCursorPos();
+    ImGui::SetCursorPosX(saved_cursor.x + ImGui::GetContentRegionAvail().x - refresh_width);
+    if (ro::RoButton("Actualiser", refresh_width, 0.0f)) guild_last_req_ = 0;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Redemande au serveur membres, postes et infos de guilde.");
+    ImGui::SetCursorPos(saved_cursor);
+  }
+  const float  emblem_size = 48.0f;
+  ro::IconTex  emblem = ResolveEmblem(gi.guildId);
+  const ImVec2 emblem_min(header_pos.x, header_pos.y + 2.0f);
+  const ImVec2 emblem_max(emblem_min.x + emblem_size, emblem_min.y + emblem_size);
+  if (emblem.tex) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(emblem_min, emblem_max, IM_COL32(0, 0, 0, 30), 4.0f);
+    dl->AddImage(reinterpret_cast<ImTextureID>(emblem.tex), emblem_min, emblem_max);
+    dl->AddRect(emblem_min, emblem_max, IM_COL32(90, 90, 110, 220), 4.0f, 0, 1.5f);
+  }
+  // L'emblème lui-même ouvre le changement d'emblème (réservé au maître, comme côté
+  // serveur). Bouton posé AVANT les lignes de texte puis curseur restauré : l'en-tête
+  // se dispose ensuite comme si la zone cliquable n'existait pas.
+  if (is_master) {
+    const ImVec2 saved_cursor = ImGui::GetCursorPos();
+    ImGui::SetCursorScreenPos(emblem_min);
+    if (ImGui::InvisibleButton("##cs_guild_emblem_click", ImVec2(emblem_size, emblem_size)))
+      guild_emblem_ask_ = true;
+    if (ImGui::IsItemHovered()) {
+      ImGui::GetWindowDrawList()->AddRect(emblem_min, emblem_max, IM_COL32(255, 220, 120, 255),
+                                          4.0f, 0, 2.0f);
+      ImGui::SetTooltip("Changer l'emblème de la guilde…");
+    }
+    ImGui::SetCursorPos(saved_cursor);
+  }
+  ImGui::Indent(emblem_size + 10.0f);
+  ImGui::TextColored(kBlack, "%s", gi.name);
+  ImGui::TextColored(kGray, "Niveau %d  ·  Maître : %s", gi.level,
+                     gi.master_name[0] ? gi.master_name : "?");
+  // Membres : le total vient du roster (une entrée par membre), le nombre de
+  // connectés du paquet d'infos (connect_member).
+  ImGui::TextColored(kGray, "Membres : %d / %d  ·  En ligne : %d  ·  Niveau moyen : %d",
+                     roster.count, gi.member_max, gi.online, gi.avg_level);
+  // Poste occupé + droits qui en découlent : explique la présence (ou l'absence)
+  // des actions plus bas, au lieu de laisser le serveur refuser en silence.
+  if (gi.position_found) {
+    const char* my_position = GuildPositionLabel(gi.position_id, gi.pos);
+    char rights[80];
+    if (my_mode_known) {
+      std::snprintf(rights, sizeof(rights), "%s%s%s",
+                    (my_mode & kGuildPermInvite) ? "inviter " : "",
+                    (my_mode & kGuildPermExpel) ? "expulser " : "",
+                    (my_mode & kGuildPermStorage) ? "storage" : "");
+      if (rights[0] == '\0') std::snprintf(rights, sizeof(rights), "aucun droit");
+    } else {
+      std::snprintf(rights, sizeof(rights), "droits inconnus");
+    }
+    ImGui::TextColored(kGray, "Ton poste : %s  ·  %s",
+                       my_position ? my_position : "?", rights);
+  }
+  ImGui::Unindent(emblem_size + 10.0f);
+  if (gi.land[0]) ImGui::TextColored(kGray, "Territoire : %s", gi.land);
+
+  // Jauge d'EXP de guilde (exp / exp du niveau suivant).
+  if (gi.next_exp > 0) {
+    char exp_label[64];
+    const float ratio = std::clamp(static_cast<float>(gi.exp) /
+                                       static_cast<float>(gi.next_exp), 0.0f, 1.0f);
+    std::snprintf(exp_label, sizeof(exp_label), "EXP %d / %d  (%.1f %%)", gi.exp,
+                  gi.next_exp, ratio * 100.0f);
+    ImGui::ProgressBar(ratio, ImVec2(-1.0f, 14.0f), exp_label);
+  }
+
+  // ── Annonce (sujet + message), éditable par le maître ─────────────────────
+  ImGui::Spacing();
+  if (guild_notice_edit_) {
+    // Le rappel « titre, puis message » vaut aussi en RÉÉDITION : les indices ne
+    // s'affichent que sur un champ vide, donc ils ne diraient rien sur une annonce
+    // déjà remplie — exactement le cas où l'on hésite.
+    ImGui::TextColored(kBlack, "Annonce de la guilde — titre, puis message");
+    // Deux champs identiques l'un au-dessus de l'autre : rien ne disait lequel est le
+    // titre. L'indice le dit là où on tape, sans voler une ligne de libellé.
+    ImGui::SetNextItemWidth(-1.0f);
+    ro::InputTextCp949WithHint("##cs_guild_subj", "Titre de l'annonce",
+                               guild_notice_subj_, sizeof(guild_notice_subj_));
+    ImGui::SetNextItemWidth(-1.0f);
+    ro::InputTextCp949WithHint("##cs_guild_body", "Contenu du message",
+                               guild_notice_body_, sizeof(guild_notice_body_));
+    if (ro::RoButton("Enregistrer", 110.0f, 0.0f)) {
+      SendGuildNotice(gi.guildId, guild_notice_subj_, guild_notice_body_);
+      guild_notice_edit_ = false;
+      guild_status_ = "Annonce envoyée.";
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 90.0f, 0.0f)) guild_notice_edit_ = false;
+  } else if (gi.notice_subject[0] || gi.notice_body[0]) {
+    ImGui::TextColored(kBlue, "%s", gi.notice_subject[0] ? gi.notice_subject : "Annonce");
+    if (gi.notice_body[0]) ImGui::TextWrapped("%s", gi.notice_body);
+  }
+  if (!guild_notice_edit_ && is_master) {
+    if (ro::RoButton("Modifier l'annonce")) {
+      std::strncpy(guild_notice_subj_, gi.notice_subject, sizeof(guild_notice_subj_) - 1);
+      guild_notice_subj_[sizeof(guild_notice_subj_) - 1] = '\0';
+      std::strncpy(guild_notice_body_, gi.notice_body, sizeof(guild_notice_body_) - 1);
+      guild_notice_body_[sizeof(guild_notice_body_) - 1] = '\0';
+      guild_notice_edit_ = true;
+    }
+    ImGui::SameLine();
+    // Doublon volontaire du clic sur l'emblème : personne ne devine qu'une image est
+    // cliquable, et c'est ici que se trouvent les autres actions de maître.
+    if (ro::RoButton("Changer l'emblème…")) guild_emblem_ask_ = true;
+  }
+
+  // ── Entrepôt de guilde ─────────────────────────────────────────────────────
+  // Alias de @guildstorage, et rien d'autre : le serveur n'a AUCUN paquet pour
+  // l'ouvrir, et la commande est déjà accordée au groupe 0 (conf/import/groups.yml).
+  // Ce bouton ne donne donc aucun droit nouveau — il évite juste d'aller taper.
+  // Comme la commande, il BASCULE : un 2e appel referme l'entrepôt ouvert.
+  if (!guild_notice_edit_) {
+    // Droits inconnus (paquet de postes pas encore reçu) : on laisse cliquer, le
+    // serveur revérifie GUILD_PERM_STORAGE et répond son propre refus.
+    const bool may_storage = !my_mode_known || (my_mode & kGuildPermStorage) != 0;
+    ImGui::BeginDisabled(!may_storage);
+    ImGui::SameLine();
+    if (ro::RoButton("Storage de guilde")) {
+      SendAtCommand(kCmdGuildStorage);
+      guild_status_ = "Storage de guilde : ouverture demandée.";
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip(may_storage
+                            ? "Ouvre — ou referme — le Storage de guilde (@guildstorage)."
+                            : "Ton poste n'a pas le droit « storage ».");
+  }
+
+  ImGui::Separator();
+
+  // ── Sous-onglets Membres / Postes / Relations ─────────────────────────────
+  if (ImGui::BeginTabBar("cs_guild_sub")) {
+    if (ImGui::BeginTabItem("Membres"))     { guild_sub_tab_ = 0; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Postes"))      { guild_sub_tab_ = 2; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Compétences")) { guild_sub_tab_ = 3; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Relations"))   { guild_sub_tab_ = 1; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Expulsions"))  { guild_sub_tab_ = 4; ImGui::EndTabItem(); }
+    ImGui::EndTabBar();
+  }
+
+  // Hauteur laissée à la liste : tout sauf la barre d'actions du bas.
+  const float actions_h = ImGui::GetFrameHeightWithSpacing() +
+                          ImGui::GetTextLineHeightWithSpacing() + 6.0f;
+  const float list_h = std::max(80.0f, ImGui::GetContentRegionAvail().y - actions_h);
+
+  if (guild_sub_tab_ == 0) {
+    // Postes proposés dans le menu « Changer de poste », pris dans la mémoire des
+    // libellés vus (cf. g_guild_position_names). Le poste 0 (maître) en est EXCLU :
+    // côté serveur, l'affecter déclenche guild_gm_change, c'est-à-dire le TRANSFERT
+    // de la direction de la guilde — pas un simple changement de rang.
+    struct KnownPosition { int id; const char* label; };
+    KnownPosition known_positions[32];
+    int known_count = 0;
+    for (int id = 1; id < kGuildPositionSlots && known_count < 32; ++id) {
+      if (!guild_positions_[id].has_name || !guild_positions_[id].name[0]) continue;
+      known_positions[known_count++] = {id, guild_positions_[id].name};
+    }
+    if (known_count == 0) {  // repli : aucun paquet de postes reçu pour l'instant
+      for (const auto& entry : g_guild_position_names) {
+        if (entry.first <= 0 || known_count >= 32) continue;
+        known_positions[known_count++] = {entry.first, entry.second.c_str()};
+      }
+    }
+    std::sort(known_positions, known_positions + known_count,
+              [](const KnownPosition& a, const KnownPosition& b) { return a.id < b.id; });
+
+    // Vue triable (indices sur le roster) : le tri suit les en-têtes de colonnes.
+    static std::vector<int> order;
+    order.resize(roster.count);
+    for (int i = 0; i < roster.count; ++i) order[i] = i;
+
+    const ImGuiTableFlags table_flags =
+        ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInnerV |
+        ImGuiTableFlags_ScrollY;
+    if (ImGui::BeginTable("cs_guild_members", 6, table_flags, ImVec2(0.0f, list_h))) {
+      ImGui::TableSetupScrollFreeze(0, 1);
+      ImGui::TableSetupColumn("Nom", ImGuiTableColumnFlags_WidthStretch |
+                                         ImGuiTableColumnFlags_DefaultSort);
+      ImGui::TableSetupColumn("Classe", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+      ImGui::TableSetupColumn("Nv", ImGuiTableColumnFlags_WidthFixed, 32.0f);
+      ImGui::TableSetupColumn("Poste", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+      ImGui::TableSetupColumn("Contrib.", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+      ImGui::TableSetupColumn("Connexion", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+      ImGui::TableHeadersRow();
+
+      if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+        if (specs->SpecsCount > 0) {
+          const int  column = specs->Specs[0].ColumnIndex;
+          const bool ascending = specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending;
+          std::sort(order.begin(), order.end(), [&](int lhs, int rhs) {
+            const GuildMember& a = roster.members[lhs];
+            const GuildMember& b = roster.members[rhs];
+            int cmp = 0;
+            switch (column) {
+              case 1: cmp = std::strcmp(JobName(a.job), JobName(b.job)); break;
+              case 2: cmp = a.level - b.level; break;
+              case 3: cmp = a.position_id - b.position_id; break;
+              case 4: cmp = (a.contribution > b.contribution) - (a.contribution < b.contribution);
+                      break;
+              case 5: cmp = (a.online != b.online)
+                                ? (a.online ? 1 : -1)
+                                : ((a.last_login > b.last_login) - (a.last_login < b.last_login));
+                      break;
+              default: cmp = _stricmp(a.name, b.name); break;
+            }
+            if (cmp == 0) cmp = _stricmp(a.name, b.name);
+            return ascending ? cmp < 0 : cmp > 0;
+          });
+        }
+      }
+
+      // Comme le natif : ligne teintée en vert et miniature de tête pour les membres
+      // CONNECTÉS uniquement (le rendu natif d'une ligne fait les deux sous le même
+      // test `record+0x70 == 1`).
+      const float head_box = ImGui::GetTextLineHeight() + 6.0f;
+      for (int slot = 0; slot < static_cast<int>(order.size()); ++slot) {
+        const GuildMember& m = roster.members[order[slot]];
+        ImGui::PushID(static_cast<int>(m.cid ? m.cid : m.aid));
+        ImGui::TableNextRow(ImGuiTableRowFlags_None, head_box);
+        if (m.online)
+          ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(198, 232, 198, 160));
+        ImGui::TableSetColumnIndex(0);
+        const ImVec2 name_cell = ImGui::GetCursorScreenPos();
+        const bool selected = (guild_sel_cid_ != 0 && guild_sel_cid_ == m.cid);
+        // Retrait en tête du libellé : la tête est peinte PAR-DESSUS en coordonnées
+        // écran (jamais de SetCursorPos sur un Selectable large).
+        char row_label[64];
+        std::snprintf(row_label, sizeof(row_label), "%s%s", m.online ? "      " : "",
+                      m.name);
+        if (ImGui::Selectable(row_label, selected, ImGuiSelectableFlags_SpanAllColumns))
+          guild_sel_cid_ = m.cid;
+        if (m.online)
+          ro::DrawHeadIcon(ImGui::GetWindowDrawList(), name_cell.x, name_cell.y - 2.0f,
+                           head_box, m.hair, m.sex, m.hair_color);
+
+        // Menu contextuel : actions sur CE membre (le serveur revérifie les droits).
+        if (ImGui::BeginPopupContextItem("cs_guild_member_ctx")) {
+          guild_sel_cid_ = m.cid;
+          ImGui::TextColored(kGray, "%s", m.name);
+          ImGui::Separator();
+          if (ImGui::MenuItem("Copier le nom")) ImGui::SetClipboardText(m.name);
+          // « Envoyer un courrier », comme le « Send a mail... » du menu natif : le
+          // destinataire part déjà rempli. Jamais vers soi-même (le serveur refuse).
+          {
+            const bool self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
+            if (!self && ImGui::MenuItem("Envoyer un courrier…")) {
+              if (RodexTweaks* rodex = Bourgeon::Instance().rodex_tweaks())
+                rodex->ComposeTo(m.name);
+              guild_status_ = std::string("Courrier à ") + m.name;
+            }
+          }
+          if (is_master && known_count > 0 && m.position_id != 0) {
+            if (ImGui::BeginMenu("Changer de poste")) {
+              for (int k = 0; k < known_count; ++k) {
+                // PushID sur l'id du poste : deux postes peuvent porter le MÊME
+                // libellé, et MenuItem dérive son ID du libellé (conflit d'ID ImGui).
+                ImGui::PushID(known_positions[k].id);
+                const bool current = known_positions[k].id == m.position_id;
+                if (ImGui::MenuItem(known_positions[k].label, nullptr, current) && !current) {
+                  SendGuildChangePosition(m.aid, m.cid, known_positions[k].id);
+                  guild_status_ = std::string(m.name) + " -> " + known_positions[k].label;
+                  guild_last_req_ = 0;  // force un rafraîchissement à la frame suivante
+                }
+                ImGui::PopID();
+              }
+              ImGui::EndMenu();
+            }
+          }
+          // « Expulser » n'apparaît que si le POSTE du joueur porte le droit
+          // correspondant (le serveur teste guild_has_permission, pas le drapeau
+          // maître), et jamais sur le maître de guilde (refusé) ni sur soi-même
+          // (c'est « Quitter » qu'il faut, pas une auto-expulsion).
+          const bool target_is_master =
+              gi.master_name[0] && _stricmp(m.name, gi.master_name) == 0;
+          const bool target_is_self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
+          if (can_expel && !target_is_master && !target_is_self) {
+            ImGui::Separator();
+            // L'ouverture du modal est DIFFÉRÉE : ici la pile d'ID est celle du menu
+            // contextuel (+ le PushID de la ligne), donc un OpenPopup ne matcherait pas
+            // le BeginRoPopupModal ouvert au niveau de l'onglet.
+            if (ImGui::MenuItem("Expulser…")) {
+              guild_expel_aid_ = m.aid;
+              guild_expel_cid_ = m.cid;
+              std::strncpy(guild_expel_name_, m.name, sizeof(guild_expel_name_) - 1);
+              guild_expel_name_[sizeof(guild_expel_name_) - 1] = '\0';
+              guild_reason_buf_[0] = '\0';
+              guild_expel_ask_ = true;
+              ImGui::CloseCurrentPopup();
+            }
+          }
+          ImGui::EndPopup();
+        }
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextColored(kBlack, "%s", JobName(m.job));
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextColored(kBlack, "%d", m.level);
+        ImGui::TableSetColumnIndex(3);
+        const char* position_label = GuildPositionLabel(m.position_id, m.position);
+        if (m.position_id == 0)
+          ImGui::TextColored(kBlue, "%s", position_label ? position_label : "Maître");
+        else
+          ImGui::TextColored(kBlack, "%s", position_label ? position_label : "—");
+        ImGui::TableSetColumnIndex(4);
+        ImGui::TextColored(kBlack, "%d", m.contribution);
+        ImGui::TableSetColumnIndex(5);
+        if (m.online) {
+          ImGui::TextColored(kGreen, "En ligne");
+        } else {
+          char seen[32] = "—";
+          if (m.last_login != 0) {
+            const time_t stamp = static_cast<time_t>(m.last_login);
+            struct tm local_time = {};
+            if (localtime_s(&local_time, &stamp) == 0)
+              std::strftime(seen, sizeof(seen), "%d/%m/%y %H:%M", &local_time);
+          }
+          ImGui::TextColored(kGray, "%s", seen);
+        }
+        ImGui::PopID();
+      }
+      ImGui::EndTable();
+    }
+  } else if (guild_sub_tab_ == 2) {
+    ImGui::BeginChild("cs_guild_positions", ImVec2(0.0f, list_h), true);
+    DrawGuildPositionsTab(is_master);
+    ImGui::EndChild();
+  } else if (guild_sub_tab_ == 3) {
+    ImGui::BeginChild("cs_guild_skills", ImVec2(0.0f, list_h), true);
+    DrawGuildSkillsTab();
+    ImGui::EndChild();
+  } else if (guild_sub_tab_ == 4) {
+    ImGui::BeginChild("cs_guild_bans", ImVec2(0.0f, list_h), true);
+    DrawGuildBansTab();
+    ImGui::EndChild();
+  } else {
+    // ── Relations : alliés et ennemis (même liste, champ `relation`) ─────────
+    static GuildRelations relations;
+    ReadGuildRelationsSEH(&relations);
+    ImGui::BeginChild("cs_guild_rel", ImVec2(0.0f, list_h), true);
+    // Rompre une relation exige le drapeau maître côté serveur : la croix et le menu
+    // contextuel n'apparaissent donc que pour le maître (comme le « Delete » du natif).
+    const bool can_break = is_master;
+    for (int pass = 0; pass < 2; ++pass) {
+      ImGui::TextColored(pass == 0 ? kGreen : kRed, pass == 0 ? "Alliés" : "Ennemis");
+      int shown = 0;
+      for (int i = 0; i < relations.count; ++i) {
+        const GuildRelation& rel = relations.entries[i];
+        if (rel.relation != pass) continue;
+        const char* break_label =
+            (pass == 0) ? "Rompre l'alliance…" : "Retirer l'hostilité…";
+        // Mémorise la cible et demande la confirmation (ouverture différée du modal :
+        // ici la pile d'ID est celle de la ligne / du menu contextuel).
+        auto ask_break = [&] {
+          guild_rel_del_id_   = rel.guild_id;
+          guild_rel_del_kind_ = pass;
+          std::strncpy(guild_rel_del_name_, rel.name, sizeof(guild_rel_del_name_) - 1);
+          guild_rel_del_name_[sizeof(guild_rel_del_name_) - 1] = '\0';
+          guild_rel_del_ask_ = true;
+        };
+        ImGui::PushID(i);
+        const float cross_w = 20.0f;
+        const float row_w = std::max(60.0f, ImGui::GetContentRegionAvail().x -
+                                                (can_break ? cross_w + 6.0f : 0.0f));
+        ImGui::Selectable(rel.name, false, 0, ImVec2(row_w, 0.0f));
+        if (can_break) {
+          if (ImGui::BeginPopupContextItem("cs_guild_rel_ctx")) {
+            ImGui::TextColored(kGray, "%s", rel.name);
+            ImGui::Separator();
+            if (ImGui::MenuItem(break_label)) {
+              ask_break();
+              ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+          }
+          ImGui::SameLine();
+          if (ro::RoSmallButton("x", cross_w, 0.0f)) ask_break();
+          if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", break_label);
+        }
+        ImGui::PopID();
+        ++shown;
+      }
+      if (shown == 0) ImGui::TextColored(kGray, "   aucune");
+      ImGui::Spacing();
+    }
+    ImGui::EndChild();
+  }
+
+  // ── Barre d'actions ───────────────────────────────────────────────────────
+  // (« Actualiser » vit en haut à droite de l'en-tête, pas ici.)
+  // Invitation : soumise au droit « inviter » du poste, comme côté serveur.
+  if (can_invite) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(kBlack, "Inviter :");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ro::InputTextCp949("##cs_guild_invite", guild_invite_buf_, sizeof(guild_invite_buf_));
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Nom exact du personnage à inviter (il doit être connecté).");
+    ImGui::SameLine();
+    if (ro::RoButton("Inviter") && guild_invite_buf_[0]) {
+      SendGuildInvite(guild_invite_buf_);
+      guild_status_ = std::string("Invitation envoyée à ") + guild_invite_buf_;
+      guild_invite_buf_[0] = '\0';
+    }
+    ImGui::SameLine();
+  }
+  // Libellé différent du titre du modal : bouton et popup partagent sinon le même ID.
+  if (ro::RoButton("Quitter…")) {
+    guild_reason_buf_[0] = '\0';
+    ImGui::OpenPopup("Quitter la guilde");
+  }
+  // Dissolution : réservée au maître, comme la commande (gmaster_flag côté serveur).
+  if (is_master) {
+    ImGui::SameLine();
+    if (ro::RoButton("Dissoudre…")) {
+      guild_break_confirm_[0] = '\0';
+      ImGui::OpenPopup("Dissoudre la guilde");
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Supprime définitivement la guilde (@breakguild).");
+  }
+  if (!guild_status_.empty()) ImGui::TextColored(kGray, "%s", guild_status_.c_str());
+
+  // ── Confirmations ─────────────────────────────────────────────────────────
+  // Demande d'expulsion venue du menu contextuel : on ouvre ICI, au niveau de
+  // l'onglet, pour que l'ID matche celui du modal.
+  if (guild_expel_ask_) {
+    guild_expel_ask_ = false;
+    ImGui::OpenPopup("Expulser de la guilde");
+  }
+  if (guild_rel_del_ask_) {
+    guild_rel_del_ask_ = false;
+    ImGui::OpenPopup("Rompre la relation");
+  }
+  // Le dossier est relu à CHAQUE ouverture : on y dépose justement un fichier juste
+  // avant de venir le choisir.
+  if (guild_emblem_ask_) {
+    guild_emblem_ask_ = false;
+    ScanEmblemFolder();
+    guild_emblem_sel_ = -1;
+    guild_emblem_error_.clear();
+    ImGui::OpenPopup("Changer l'emblème");
+  }
+  DrawGuildEmblemModal(gi.guildId, is_master);
+
+  if (ro::BeginRoPopupModal("Rompre la relation")) {
+    if (guild_rel_del_kind_ == 0)
+      ImGui::Text("Rompre l'alliance avec %s ?", guild_rel_del_name_);
+    else
+      ImGui::Text("Retirer %s de la liste des ennemis ?", guild_rel_del_name_);
+    ImGui::TextColored(kGray,
+                       "Refusé par le serveur pendant une guerre de guildes\n"
+                       "et sur les cartes verrouillées.");
+    ImGui::Spacing();
+    if (ro::RoButton(guild_rel_del_kind_ == 0 ? "Rompre" : "Retirer", 110.0f, 0.0f)) {
+      SendGuildDeleteRelation(guild_rel_del_id_, guild_rel_del_kind_);
+      guild_status_ = std::string(guild_rel_del_name_) + " : demande envoyée.";
+      guild_last_req_ = 0;  // rafraîchit la liste des relations
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  if (ro::BeginRoPopupModal("Quitter la guilde")) {
+    ImGui::TextUnformatted("Quitter définitivement la guilde ?");
+    ImGui::TextColored(kGray, "Il faudra une nouvelle invitation pour y revenir.");
+    ImGui::Spacing();
+    ImGui::TextColored(kGray, "Motif (facultatif) :");
+    ImGui::SetNextItemWidth(240.0f);
+    ro::InputTextCp949("##cs_guild_leave_reason", guild_reason_buf_,
+                       sizeof(guild_reason_buf_));
+    ImGui::Spacing();
+    if (ro::RoButton("Quitter", 110.0f, 0.0f)) {
+      SendGuildLeaveOrExpel(kOpGuildLeave, gi.guildId,
+                            static_cast<uint32_t>(
+                                Bourgeon::Instance().client().session().aid()),
+                            static_cast<uint32_t>(ReadInt(kOwnCharId)), guild_reason_buf_);
+      guild_status_ = "Départ envoyé.";
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  // ⚠ @breakguild n'a NI argument NI confirmation : il appelle guild_break() sur-le-champ.
+  // Le serveur ne posera donc aucune question — le garde-fou du nom retapé est le seul
+  // qui existe, à l'image de ce que demande la fenêtre native pour dissoudre.
+  if (ro::BeginRoPopupModal("Dissoudre la guilde")) {
+    ImGui::TextColored(kRed, "Dissoudre « %s » ?", gi.name);
+    ImGui::TextColored(kGray, "Irréversible : la guilde, ses postes, son storage et ses\n"
+                              "compétences disparaissent.");
+    ImGui::Spacing();
+    // Conditions RÉELLES de guild_break() : les dire AVANT évite un clic qui échoue,
+    // d'autant que deux des trois refus sont peu bavards côté client.
+    ImGui::TextColored(kBlack, "Le serveur refusera si :");
+    ImGui::BulletText("tu n'es pas le maître de guilde ;");
+    ImGui::BulletText("il reste un autre membre — il faut être SEUL ;");
+    ImGui::BulletText("la carte interdit les modifications de guilde\n(mapflag guildlock) ;");
+    ImGui::BulletText("une instance de guilde est en cours.");
+    ImGui::TextColored(kGray, "L'instance fait échouer la dissolution SANS aucun message.");
+    ImGui::Spacing();
+    ImGui::TextColored(kGray, "Retape le nom de la guilde pour confirmer :");
+    ImGui::SetNextItemWidth(240.0f);
+    // Indice STATIQUE, pas gi.name : le nom vient du client en CP949, et l'indice est
+    // rendu en UTF-8. La comparaison, elle, se fait bien CP949 contre CP949.
+    ro::InputTextCp949WithHint("##cs_guild_break", "Nom exact de la guilde",
+                               guild_break_confirm_, sizeof(guild_break_confirm_));
+    ImGui::Spacing();
+    const bool name_matches = gi.name[0] && std::strcmp(guild_break_confirm_, gi.name) == 0;
+    ImGui::BeginDisabled(!name_matches);
+    if (ro::RoButton("Dissoudre", 110.0f, 0.0f)) {
+      SendAtCommand(kCmdBreakGuild);
+      guild_status_ = "Dissolution demandée.";
+      guild_break_confirm_[0] = '\0';
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  if (ro::BeginRoPopupModal("Expulser de la guilde")) {
+    ImGui::Text("Expulser %s de la guilde ?", guild_expel_name_);
+    ImGui::Spacing();
+    ImGui::TextColored(kGray, "Motif (facultatif) :");
+    ImGui::SetNextItemWidth(240.0f);
+    ro::InputTextCp949("##cs_guild_expel_reason", guild_reason_buf_,
+                       sizeof(guild_reason_buf_));
+    ImGui::Spacing();
+    if (ro::RoButton("Expulser", 110.0f, 0.0f)) {
+      SendGuildLeaveOrExpel(kOpGuildExpel, gi.guildId, guild_expel_aid_, guild_expel_cid_,
+                            guild_reason_buf_);
+      guild_status_ = std::string(guild_expel_name_) + " : expulsion envoyée.";
+      guild_last_req_ = 0;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton("Annuler", 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+}
+
+// Sous-onglet « Expulsions » : les exclusions mémorisées par le serveur (ZC 0x0b7c).
+// Purement informatif : rien ne permet de réintégrer quelqu'un depuis le client.
+void CharacterSheet::DrawGuildBansTab() {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  if (!guild_bans_known_) {
+    ImGui::TextColored(kGray, "Liste non encore reçue — clic sur « Actualiser ».");
+    return;
+  }
+  if (guild_bans_.empty()) {
+    ImGui::TextColored(kGray, "Aucune expulsion enregistrée.");
+    return;
+  }
+
+  const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                      ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
+  if (!ImGui::BeginTable("cs_guild_bans_tbl", 2, table_flags)) return;
+  ImGui::TableSetupColumn("Personnage", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+  ImGui::TableSetupColumn("Motif", ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableHeadersRow();
+  for (const GuildBanRow& ban : guild_bans_) {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(ban.name[0] ? ban.name : "?");
+    ImGui::TableNextColumn();
+    if (ban.reason[0]) ImGui::TextUnformatted(ban.reason);
+    else               ImGui::TextColored(kGray, "(aucun motif)");
+  }
+  ImGui::EndTable();
+}
+
+// Charge l'arbre UNE fois par session (un échec est mémorisé : sans le fichier dans le
+// GRF, l'onglet retombe simplement sur ce que le serveur envoie).
+void CharacterSheet::EnsureGuildSkillTree() {
+  if (guild_skill_tree_state_ != 0) return;
+  char dump[4096];
+  char err[512];
+  const int read = GuildTreeDumpSEH(dump, sizeof(dump), err, sizeof(err));
+  if (read == kTreeNoLua) return;  // pas encore prêt : on retentera à la frame suivante
+  if (read != kTreeOk) {
+    guild_skill_tree_state_ = -1;
+    switch (read) {
+      case kTreeNoFile:
+        LogDiag("[Guilde] {} : introuvable dans le VFS, ou erreur Lua à l'exécution "
+                "(SKID absent de cet état ?) — arbre désactivé.", kGuildTreeLuaFile);
+        break;
+      case kTreeNoDumper:
+        LogDiag("[Guilde] fichier chargé mais GdDump() absent — version obsolète du .lub ?");
+        break;
+      case kTreeCallFailed:
+        LogDiag("[Guilde] GdDump() a échoué : {}", err);
+        break;
+      default:
+        LogDiag("[Guilde] GdDump() a rendu une table vide.");
+        break;
+    }
+    return;
+  }
+
+  char head[160] = {};  // début du dump BRUT, avant découpage : sert au diagnostic
+  std::strncpy(head, dump, sizeof(head) - 1);
+
+  guild_skill_tree_.clear();
+  int link_count = 0;
+  for (char* cursor = dump; *cursor;) {
+    char* const entry_start = cursor;
+    // Découpage en champs ',' jusqu'au ';'. Le NOMBRE de champs distingue les deux
+    // formats du dumper : 4 = « id,maxLv,nom,prérequis », 3 = ancien « id,maxLv,prérequis ».
+    // Le .lub voyage par patch, il peut être en retard d'une version sur la DLL : lu de
+    // travers, l'ancien format fait passer les prérequis pour un nom, et TOUS les liens
+    // disparaissent en silence.
+    char* field[4] = {cursor, nullptr, nullptr, nullptr};
+    int fields = 1;
+    while (*cursor && *cursor != ';') {
+      if (*cursor == ',' && fields < 4) {
+        *cursor = '\0';
+        field[fields++] = cursor + 1;
+      }
+      ++cursor;
+    }
+    if (*cursor == ';') *cursor++ = '\0';
+
+    GuildSkillTreeNode node;
+    node.id = static_cast<uint16_t>(std::strtoul(field[0], nullptr, 10));
+    if (fields >= 2) node.max_level = static_cast<int>(std::strtol(field[1], nullptr, 10));
+    const char* name = (fields >= 4) ? field[2] : "";
+    const char* reqs = (fields >= 4) ? field[3] : (fields == 3 ? field[2] : "");
+    std::strncpy(node.name, name, sizeof(node.name) - 1);
+    for (const char* r = reqs; *r;) {  // prérequis : « id:lvl » séparés par |
+      char* end = nullptr;
+      GuildSkillReq req;
+      req.id = static_cast<uint16_t>(std::strtoul(r, &end, 10));
+      if (end == r) break;  // rien de lisible : champ vide ou corrompu
+      r = end;
+      if (*r == ':') ++r;
+      req.level = static_cast<int>(std::strtol(r, &end, 10));
+      r = end;
+      if (req.id != 0) { node.need.push_back(req); ++link_count; }
+      if (*r == '|') ++r;
+    }
+    if (node.id != 0) guild_skill_tree_.push_back(node);
+    if (cursor == entry_start) break;  // aucune entrée consommée : chaîne inexploitable
+  }
+
+  // Profondeur = 1 + celle du prérequis le plus profond. Résolu par passes successives
+  // (l'ordre de pairs() côté Lua est arbitraire) ; le nombre de nœuds borne les passes,
+  // ce qui protège aussi d'un cycle si la DB serveur en contenait un.
+  for (size_t pass = 0; pass < guild_skill_tree_.size(); ++pass) {
+    bool changed = false;
+    for (GuildSkillTreeNode& node : guild_skill_tree_) {
+      int depth = 0;
+      for (const GuildSkillReq& req : node.need)
+        for (const GuildSkillTreeNode& other : guild_skill_tree_)
+          if (other.id == req.id && other.depth + 1 > depth) depth = other.depth + 1;
+      if (depth != node.depth) { node.depth = depth; changed = true; }
+    }
+    if (!changed) break;
+  }
+  std::stable_sort(guild_skill_tree_.begin(), guild_skill_tree_.end(),
+                   [](const GuildSkillTreeNode& a, const GuildSkillTreeNode& b) {
+                     if (a.depth != b.depth) return a.depth < b.depth;
+                     return a.id < b.id;
+                   });
+  guild_skill_tree_state_ = 1;
+  LogDiag("[Guilde] arbre chargé : {} compétences, {} lien(s).",
+          guild_skill_tree_.size(), link_count);
+  // Un arbre SANS aucun lien n'existe pas dans la DB : c'est forcément le dump qui n'a
+  // pas été compris. Montrer son début plutôt que d'afficher une liste plate en silence.
+  if (link_count == 0)
+    LogDiag("[Guilde] aucun prérequis lu — .lub d'une autre version ? dump : « {} »", head);
+}
+
+// Sous-onglet « Compétences » : ce que le serveur a envoyé en ZC 0x0162. Le bouton
+// « + » suit `upgradable` (déjà restreint au maître côté serveur) ET les points
+// restants : inutile d'y remettre un test de maître, le serveur a tranché.
+void CharacterSheet::DrawGuildSkillsTab() {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  EnsureGuildSkillTree();
+  if (!guild_skills_known_) {
+    ImGui::TextColored(kGray, "Compétences non encore reçues — clic sur « Actualiser ».");
+    return;
+  }
+
+  ImGui::Text("Points de compétence : %d", guild_skill_points_);
+  // Sans l'arbre on ne peut montrer que ce que le serveur envoie ; avec, les
+  // verrouillées apparaissent aussi, donc la liste n'est jamais vide.
+  if (guild_skill_tree_state_ != 1 && guild_skills_.empty()) {
+    ImGui::TextColored(kGray, "Aucune compétence disponible (prérequis non remplis).");
+    return;
+  }
+
+  // Lignes affichées : l'ARBRE quand il est disponible (il contient aussi les
+  // compétences verrouillées, que le serveur n'envoie pas), sinon la seule liste
+  // serveur. `live` = état réel reçu, nul pour une compétence encore verrouillée.
+  struct SkillRowView {
+    uint16_t id;
+    int depth;
+    int max_level;                // 0 = inconnu (pas d'arbre)
+    const GuildSkillRow*      live;
+    const GuildSkillTreeNode* node;
+  };
+  std::vector<SkillRowView> rows;
+  auto find_live = [this](uint16_t id) -> const GuildSkillRow* {
+    for (const GuildSkillRow& sk : guild_skills_)
+      if (sk.id == id) return &sk;
+    return nullptr;
+  };
+  if (guild_skill_tree_state_ == 1) {
+    for (const GuildSkillTreeNode& node : guild_skill_tree_)
+      rows.push_back({node.id, node.depth, node.max_level, find_live(node.id), &node});
+  } else {
+    for (const GuildSkillRow& sk : guild_skills_)
+      rows.push_back({sk.id, 0, 0, &sk, nullptr});
+  }
+
+  const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                      ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
+  // Pas de colonne « Requiert » : les prérequis sont déjà dans le tooltip et dessinés
+  // en liens ; une 3e redite volait la largeur au nom, qui se retrouvait tronqué.
+  if (!ImGui::BeginTable("cs_guild_skills_tbl", 5, table_flags)) return;
+  ImGui::TableSetupColumn("Compétence", ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, 54.0f);
+  // Assez large pour « Passif » : cette colonne porte le coût OU la nature de la
+  // compétence, exactement comme le natif qui écrit « Passive » à la place du SP.
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+  // Colonne « lancer » élargie : elle porte aussi le décompte de cooldown (« 4:12 »).
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 46.0f);  // lancer
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 30.0f);  // monter
+  ImGui::TableHeadersRow();
+
+  auto tree_node = [this](uint16_t id) -> const GuildSkillTreeNode* {
+    for (const GuildSkillTreeNode& node : guild_skill_tree_)
+      if (node.id == id) return &node;
+    return nullptr;
+  };
+  // Nom : d'abord le Lua du client (localisé), qui ne connaît PAS les compétences de
+  // guilde ; puis le libellé du fichier d'arbre — seule source pour une verrouillée,
+  // dont aucun paquet n'arrive ; enfin le nom technique du paquet.
+  auto skill_label = [&](uint16_t id, const char* packet_name) -> const char* {
+    const char* lua_name = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    if (lua_name && *lua_name && std::strcmp(lua_name, "Unknown-Skill") != 0) return lua_name;
+    const GuildSkillTreeNode* node = tree_node(id);
+    if (node && node->name[0]) return node->name;
+    return (packet_name && packet_name[0]) ? packet_name : "?";
+  };
+  // « Battle Orders Niv 1, Guild Extension Niv 2 » — même texte en colonne et en
+  // tooltip, pour ne pas décrire deux fois la même chose de deux façons.
+  auto requirements_text = [&](const GuildSkillTreeNode* node) -> std::string {
+    std::string text;
+    if (!node) return text;
+    for (const GuildSkillReq& req : node->need) {
+      if (!text.empty()) text += ", ";
+      text += skill_label(req.id, nullptr);
+      text += " Niv ";
+      text += std::to_string(req.level);
+    }
+    return text;
+  };
+
+  const float icon = ImGui::GetTextLineHeight();
+  constexpr float kTreeStep   = 20.0f;  // décalage par niveau de profondeur
+  constexpr float kTreeGutter = 16.0f;  // marge de gauche commune : la place des liens
+  // Liens de dépendance, tracés dans la gouttière d'indentation : le prérequis est
+  // toujours dessiné AVANT sa suite (tri par profondeur), donc son ancre est connue.
+  const uint16_t focus = guild_skill_hover_;
+  uint16_t hovered_now = 0;
+  auto depends_on = [&](uint16_t id, uint16_t req_id) {
+    const GuildSkillTreeNode* node = tree_node(id);
+    if (!node) return false;
+    for (const GuildSkillReq& req : node->need)
+      if (req.id == req_id) return true;
+    return false;
+  };
+  auto linked_to_focus = [&](uint16_t id) {
+    return focus != 0 && id != focus && (depends_on(id, focus) || depends_on(focus, id));
+  };
+  // Ancre = bord gauche de l'icône, milieu vertical. x < 0 : ligne pas encore dessinée.
+  std::vector<ImVec2> anchors(rows.size(), ImVec2(-1.0f, -1.0f));
+  auto row_index = [&](uint16_t id) -> int {
+    for (size_t i = 0; i < rows.size(); ++i)
+      if (rows[i].id == id) return static_cast<int>(i);
+    return -1;
+  };
+  for (size_t i = 0; i < rows.size(); ++i) {
+    const SkillRowView& row = rows[i];
+    const GuildSkillRow* live = row.live;
+    const bool locked = live == nullptr;  // prérequis non remplis : jamais envoyée
+    const int  level  = live ? live->level : 0;
+    ImGui::PushID(static_cast<int>(row.id));
+    ImGui::TableNextRow();
+    // Survol : la ligne pointée et ses voisines directes (prérequis / suites) ressortent.
+    if (row.id == focus)
+      ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(120, 95, 35, 90));
+    else if (linked_to_focus(row.id))
+      ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(70, 75, 120, 80));
+
+    // ── Colonne 1 : profondeur -> indentation, c'est l'arbre lui-même ──
+    ImGui::TableNextColumn();
+    // La marge de gauche N'EST PAS décorative : c'est la place des liens. Sans elle la
+    // verticale tombait à 1 px du bord de la colonne, confondue avec la bordure du
+    // tableau — des traits bien présents, mais invisibles.
+    const float row_indent = kTreeGutter + row.depth * kTreeStep;
+    ImGui::Indent(row_indent);
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    anchors[i] = ImVec2(p.x, p.y + icon * 0.5f);
+    // Coude vers chaque prérequis : dire le lien plutôt que le laisser deviner de
+    // l'indentation, et allumer la branche quand un de ses deux bouts est survolé.
+    if (row.node) {
+      ImDrawList* dl = ImGui::GetWindowDrawList();
+      for (const GuildSkillReq& req : row.node->need) {
+        const int src = row_index(req.id);
+        if (src < 0 || anchors[src].x < 0.0f) continue;
+        const bool hot = focus != 0 && (focus == row.id || focus == req.id);
+        const ImU32 col = hot ? IM_COL32(255, 205, 105, 255) : IM_COL32(150, 155, 190, 100);
+        const float thickness = hot ? 2.5f : 0.1f;
+        // Descente À GAUCHE de l'icône source, pas sous son centre : entre les deux
+        // lignes il y a des voisines de même profondeur, dont la verticale traverserait
+        // l'icône. Décalée d'un demi-pas, elle passe dans leur gouttière.
+        const float x = anchors[src].x - kTreeStep * 0.5f;
+        dl->AddLine(ImVec2(anchors[src].x - 2.0f, anchors[src].y), ImVec2(x, anchors[src].y),
+                    col, thickness);  // amorce, pour que le lien parte visiblement du parent
+        dl->AddLine(ImVec2(x, anchors[src].y), ImVec2(x, anchors[i].y), col, thickness);
+        dl->AddLine(ImVec2(x, anchors[i].y), ImVec2(anchors[i].x - 2.0f, anchors[i].y),
+                    col, thickness);
+        dl->AddCircleFilled(ImVec2(anchors[i].x - 3.0f, anchors[i].y), hot ? 3.0f : 2.0f, col);
+      }
+    }
+    const ro::IconTex ic = ResolveSkillIcon(row.id);
+    if (ic.tex) {
+      // Verrouillée : icône assombrie, comme le natif grise ce qui n'est pas accessible.
+      ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(ic.tex), p,
+                                           ImVec2(p.x + icon, p.y + icon), ImVec2(0, 0),
+                                           ImVec2(1, 1),
+                                           locked ? IM_COL32(110, 110, 110, 160)
+                                                  : IM_COL32_WHITE);
+    }
+    ImGui::Dummy(ImVec2(icon, icon));
+    ImGui::SameLine();
+    const char* label = skill_label(row.id, live ? live->name : nullptr);
+    if (locked) ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+    // Selectable (widget À ID) plutôt qu'un simple texte : c'est ce qui donne l'ActiveId
+    // nécessaire au drag, et la zone cliquable pour le clic droit.
+    ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowDoubleClick);
+    if (locked) ImGui::PopStyleColor();
+    // `inf` = skill_get_inf : 0 = PASSIF, donc rien à mettre dans une barre de raccourcis.
+    const bool active_skill = live && live->inf != 0 && level > 0;
+    // Bit 0x04 = INF_SELF_SKILL : lançable sur soi, sans curseur de ciblage. Toutes les
+    // compétences de guilde le sont ; on ne propose « lancer » que dans ce cas, faute de
+    // quoi il faudrait entrer dans le mode ciblage natif (cmd 0x48), une autre histoire.
+    const bool can_use = active_skill && (live->inf & 0x04) != 0;
+    // Double-clic = lancer, comme un objet dans l'inventaire.
+    if (can_use && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+      SendUseSkill(row.id, level);
+    if (active_skill && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+      const int payload[2] = {static_cast<int>(row.id), level};
+      ImGui::SetDragDropPayload("BGN_SKILL", payload, sizeof(payload));
+      if (ic.tex) {
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+        ImGui::SameLine();
+      }
+      ImGui::TextUnformatted(label);
+      ImGui::EndDragDropSource();
+    }
+    // Clic droit = description native (fenêtre 0x2e), au curseur, comme dans la barre.
+    // Vaut aussi pour une compétence verrouillée : savoir ce qu'elle fait aide à décider.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      const ImVec2 mp = ImGui::GetIO().MousePos;
+      OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+    }
+    if (ImGui::IsItemHovered()) {
+      hovered_now = row.id;  // consommé à la frame suivante (liens + surlignage)
+      std::string tip = label;
+      if (live && live->name[0]) { tip += "  ("; tip += live->name; tip += ")"; }
+      if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
+                                    std::to_string(row.max_level);
+      if (live && live->range > 0) tip += "\nPortée : " + std::to_string(live->range);
+      // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
+      // là où le joueur regarde quand il se demande pourquoi elle est grisée.
+      const std::string reqs = requirements_text(row.node);
+      if (!reqs.empty()) tip += "\nRequiert : " + reqs;
+      if (live) tip += live->inf == 0 ? "\nPassive (toujours active)" : "\nActive";
+      tip += locked      ? "\n\nVerrouillée : prérequis non remplis."
+           : can_use     ? "\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre"
+           : active_skill ? "\n\nClic droit : description — glisser vers une barre"
+                          : "\n\nClic droit : description";
+      ImGui::SetTooltip("%s", tip.c_str());
+    }
+    ImGui::Unindent(row_indent);
+
+    // ── Niveau : « 3/10 » dès que le max est connu (il vient du fichier, pas du paquet) ──
+    ImGui::TableNextColumn();
+    if (row.max_level > 0) {
+      if (level > 0) ImGui::Text("%d/%d", level, row.max_level);
+      else           ImGui::TextColored(kGray, "-/%d", row.max_level);
+    } else if (level > 0) {
+      ImGui::Text("%d", level);
+    } else {
+      ImGui::TextColored(kGray, "-");
+    }
+
+    // ── SP, ou « Passif » ──────────────────────────────────────────────────────
+    // `inf` (skill_get_inf, envoyé par le serveur) vaut 0 pour une passive. C'était
+    // jusqu'ici invisible : rien ne distinguait une passive d'une active, il fallait
+    // ouvrir la description ou tenter le drag pour le découvrir.
+    ImGui::TableNextColumn();
+    if (live && live->inf == 0)    ImGui::TextColored(kGray, "Passif");
+    else if (live && live->sp > 0) ImGui::Text("%d", live->sp);
+    else                           ImGui::TextColored(kGray, "-");
+
+    // ── Lancer : l'équivalent du bouton « use » de la fenêtre native ───────────
+    // Sous cooldown, le bouton porte le décompte plutôt qu'un « > » mort : c'est là que
+    // le joueur clique, donc là qu'il faut lui dire pourquoi ça ne part pas.
+    ImGui::TableNextColumn();
+    const unsigned long cd_ms = SkillCooldownRemaining(row.id);
+    char use_label[16] = ">";
+    if (cd_ms > 0) {
+      const unsigned long secs = (cd_ms + 999) / 1000;  // arrondi au-dessus : jamais « 0s »
+      if (secs >= 60) std::snprintf(use_label, sizeof(use_label), "%lu:%02lu", secs / 60, secs % 60);
+      else            std::snprintf(use_label, sizeof(use_label), "%lus", secs);
+    }
+    ImGui::BeginDisabled(!can_use || cd_ms > 0);
+    if (ro::RoSmallButton(use_label, 40.0f, 0.0f)) SendUseSkill(row.id, level);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered()) {
+      if (cd_ms > 0)
+        ImGui::SetTooltip("Encore %lu s.\nLancer une compétence de guilde les bloque toutes les quatre.",
+                          (cd_ms + 999) / 1000);
+      else if (can_use)                 ImGui::SetTooltip("Lancer (ou double-clic sur le nom).");
+      else if (live && live->inf == 0)  ImGui::SetTooltip("Compétence passive : rien à lancer.");
+      else if (locked || level == 0)    ImGui::SetTooltip("Non apprise.");
+      else                              ImGui::SetTooltip("Se lance sur une cible : à glisser dans une barre.");
+    }
+
+    ImGui::TableNextColumn();
+    const bool can_up = live && live->upgradable && guild_skill_points_ > 0;
+    ImGui::BeginDisabled(!can_up);
+    if (ro::RoSmallButton("+", 24.0f, 0.0f)) {
+      SendSkillUp(row.id);
+      // Le serveur renvoie un 0x0162 complet après guild_skillupack : on le laisse
+      // corriger niveau et points plutôt que de les avancer à l'aveugle ici.
+      guild_last_req_ = 0;
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered()) {
+      if (can_up)                        ImGui::SetTooltip("Monter d'un niveau.");
+      else if (locked)                   ImGui::SetTooltip("Prérequis non remplis.");
+      else if (guild_skill_points_ <= 0) ImGui::SetTooltip("Aucun point de compétence disponible.");
+      else                               ImGui::SetTooltip("Niveau maximum, ou réservé au maître de guilde.");
+    }
+    ImGui::PopID();
+  }
+  guild_skill_hover_ = hovered_now;
+  ImGui::EndTable();
+}
+
+// Sous-onglet « Postes » : les 20 postes de la guilde (nom, droits, part d'exp).
+// Le maître peut tout éditer d'un coup et envoyer le lot (CZ 0x0161) ; les autres
+// voient la grille en lecture seule. Tant qu'une saisie est en cours, la copie
+// éditée n'est plus resynchronisée sur les paquets reçus (sinon la frappe serait
+// écrasée par le prochain rafraîchissement).
+void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+
+  if (!guild_positions_editing_) {
+    for (int i = 0; i < kGuildPositionSlots; ++i) guild_positions_edit_[i] = guild_positions_[i];
+  }
+
+  bool any_info = false;
+  for (int i = 0; i < kGuildPositionSlots; ++i)
+    if (guild_positions_[i].has_name || guild_positions_[i].has_info) { any_info = true; break; }
+  if (!any_info) {
+    ImGui::TextColored(kGray, "Postes non encore reçus — clic sur « Actualiser ».");
+    return;
+  }
+
+  if (can_edit)
+    ImGui::TextColored(kGray,
+                       "Nom, droits et part d'exp de chaque poste. Le serveur plafonne "
+                       "la part d'exp à %d %%.", kGuildPayRateMax);
+  else
+    ImGui::TextColored(kGray, "Seul le maître de guilde peut modifier les postes.");
+
+  const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                      ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY;
+  // Place réservée aux boutons du bas (uniquement pour le maître).
+  const float rows_h = std::max(80.0f, ImGui::GetContentRegionAvail().y -
+                                           (can_edit ? ImGui::GetFrameHeightWithSpacing() + 4.0f
+                                                     : 0.0f));
+  if (ImGui::BeginTable("cs_guild_positions_tbl", 6, table_flags, ImVec2(0.0f, rows_h))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 22.0f);
+    ImGui::TableSetupColumn("Nom", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Inviter", ImGuiTableColumnFlags_WidthFixed, 54.0f);
+    ImGui::TableSetupColumn("Expulser", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+    ImGui::TableSetupColumn("Storage", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+    ImGui::TableSetupColumn("Part exp", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+    ImGui::TableHeadersRow();
+
+    for (int id = 0; id < kGuildPositionSlots; ++id) {
+      GuildPositionRow& row = guild_positions_edit_[id];
+      // Une ligne n'est éditable que si ses DROITS sont connus : sans le paquet
+      // 0x0160, envoyer la ligne écraserait le masque de droits par 0.
+      const bool row_editable = can_edit && guild_positions_[id].has_info;
+      ImGui::PushID(id);
+      ImGui::TableNextRow();
+      ImGui::TableSetColumnIndex(0);
+      ImGui::TextColored(kBlack, "%d", id);
+
+      ImGui::TableSetColumnIndex(1);
+      if (row_editable) {
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ro::InputTextCp949("##nom", row.name, sizeof(row.name)))
+          guild_positions_editing_ = true;
+      } else {
+        ImGui::TextColored(kBlack, "%s", row.name[0] ? row.name : "—");
+      }
+
+      // Droits : un bit chacun (0x001 inviter, 0x010 expulser, 0x100 Storage).
+      const int perm_bits[3] = {kGuildPermInvite, kGuildPermExpel, kGuildPermStorage};
+      for (int p = 0; p < 3; ++p) {
+        ImGui::TableSetColumnIndex(2 + p);
+        bool on = (row.mode & perm_bits[p]) != 0;
+        ImGui::PushID(p);
+        if (row_editable) {
+          if (ro::RoCheckbox("##droit", &on)) {
+            row.mode = on ? (row.mode | perm_bits[p]) : (row.mode & ~perm_bits[p]);
+            guild_positions_editing_ = true;
+          }
+        } else {
+          ImGui::TextColored(kBlack, "%s", on ? "oui" : "-");
+        }
+        ImGui::PopID();
+      }
+
+      ImGui::TableSetColumnIndex(5);
+      if (row_editable) {
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ro::RoSliderInt("##part", &row.pay_rate, 0, kGuildPayRateMax, "%d %%"))
+          guild_positions_editing_ = true;
+      } else {
+        ImGui::TextColored(kBlack, "%d %%", row.pay_rate);
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+  }
+
+  if (!can_edit) return;
+
+  // Envoi : uniquement les lignes qui DIFFÈRENT de l'état serveur (le serveur
+  // rediffuse un ZC 0x0174 par poste modifié, qui remettra la table à jour).
+  const bool has_changes = [&] {
+    for (int i = 0; i < kGuildPositionSlots; ++i) {
+      const GuildPositionRow& live = guild_positions_[i];
+      const GuildPositionRow& edited = guild_positions_edit_[i];
+      if (!live.has_info) continue;  // ligne non éditable (droits inconnus)
+      if (live.mode != edited.mode || live.pay_rate != edited.pay_rate ||
+          std::strncmp(live.name, edited.name, sizeof(live.name)) != 0)
+        return true;
+    }
+    return false;
+  }();
+
+  ImGui::BeginDisabled(!has_changes);
+  if (ro::RoButton("Enregistrer les postes")) {
+    GuildPositionWire rows[kGuildPositionSlots];
+    int count = 0;
+    for (int i = 0; i < kGuildPositionSlots; ++i) {
+      const GuildPositionRow& live = guild_positions_[i];
+      const GuildPositionRow& edited = guild_positions_edit_[i];
+      if (!live.has_info) continue;  // droits inconnus : ne jamais réécrire cette ligne
+      if (live.mode == edited.mode && live.pay_rate == edited.pay_rate &&
+          std::strncmp(live.name, edited.name, sizeof(live.name)) == 0)
+        continue;
+      GuildPositionWire& wire = rows[count++];
+      std::memset(&wire, 0, sizeof(wire));
+      wire.id       = i;
+      wire.mode     = edited.mode & (kGuildPermInvite | kGuildPermExpel | kGuildPermStorage);
+      wire.ranking  = i;
+      wire.pay_rate = std::clamp(edited.pay_rate, 0, kGuildPayRateMax);
+      std::strncpy(wire.name, edited.name, sizeof(wire.name) - 1);
+    }
+    SendGuildPositions(rows, count);
+    guild_positions_editing_ = false;
+    char done[64];
+    std::snprintf(done, sizeof(done), "%d poste(s) envoyé(s).", count);
+    guild_status_ = done;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!guild_positions_editing_);
+  if (ro::RoButton("Annuler les modifications")) guild_positions_editing_ = false;
+  ImGui::EndDisabled();
+}
+
+// Choix d'un nouvel emblème parmi les .bmp de <jeu>\emblem\ — le dossier où la
+// fenêtre native va lire les siens, pour que les deux voient les mêmes fichiers.
+// L'envoi est réservé au maître (le serveur exige gmaster_flag) et refusé pendant
+// une guerre de guildes selon la configuration du serveur.
+void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
+  if (!ro::BeginRoPopupModal("Changer l'emblème")) return;
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
+  const std::string dir = paths::InGameDir("emblem\\");
+
+  ImGui::TextColored(kGray, "Format envoyé : %dx%d, magenta pur (255, 0, 255) = transparent.",
+                     kEmblemSide, kEmblemSide);
+  // Le serveur (clif_parse_GuildChangeEmblem) sort SANS RIEN DIRE quand l'expéditeur
+  // n'a pas le drapeau gmaster : autant l'annoncer avant de laisser dessiner.
+  if (!is_master)
+    ImGui::TextColored(kRed, "Tu n'es pas maître de guilde : le serveur ignorera l'envoi.");
+  ImGui::Spacing();
+  if (!ImGui::BeginTabBar("cs_emblem_tabs")) {
+    ro::EndRoPopupModal();
+    return;
+  }
+  // « Reprendre au dessin » a chargé un fichier dans le canvas : l'onglet doit suivre,
+  // sinon le clic n'a aucun effet visible (ImGui ne bascule pas tout seul).
+  const ImGuiTabItemFlags paint_flags =
+      guild_emblem_goto_paint_ ? ImGuiTabItemFlags_SetSelected : 0;
+  guild_emblem_goto_paint_ = false;
+  if (ImGui::BeginTabItem("Dessiner", nullptr, paint_flags)) {
+    DrawGuildEmblemPaintTab(guildId, is_master);
+    ImGui::EndTabItem();
+  }
+  if (!ImGui::BeginTabItem("Choisir un fichier")) {
+    ImGui::EndTabBar();
+    ImGui::Separator();
+    if (ro::RoButton("Fermer", 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    if (!guild_emblem_diag_.empty()) ImGui::TextColored(kGray, "%s", guild_emblem_diag_.c_str());
+    ro::EndRoPopupModal();
+    return;
+  }
+
+  // Chemin affiché avec des « / » : la police du client est une police CP949, où
+  // l'octet 0x5C (l'antislash) se dessine comme le symbole won coréen ₩.
+  std::string shown_dir = dir;
+  std::replace(shown_dir.begin(), shown_dir.end(), '\\', '/');
+  ImGui::TextColored(kGray, "Fichiers .bmp de %s", shown_dir.c_str());
+  ImGui::TextColored(kGray, "Attendu : 24 bits ou 256 couleurs, non compressé.");
+  ImGui::Spacing();
+
+  if (g_emblem_files.empty()) {
+    ImGui::TextColored(kRed, "Aucun .bmp dans ce dossier.");
+  } else {
+    const float row_h = std::max(ImGui::GetTextLineHeight() + 8.0f, 32.0f);
+    // Hauteur EXACTE du contenu (lignes + interlignes + marges + bordure) : la calculer
+    // « au jugé » faisait apparaître une barre de défilement dès la première ligne, ce
+    // qui décalait tout le contenu vers le bas.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float row_item_h = row_h - 4.0f;  // hauteur du Selectable d'une ligne
+    const int   visible_rows =
+        std::min(6, static_cast<int>(g_emblem_files.size()));
+    const float list_h = visible_rows * row_item_h +
+                         (visible_rows - 1) * style.ItemSpacing.y +
+                         style.WindowPadding.y * 2.0f + style.ChildBorderSize * 2.0f;
+    // Largeur 0 = tout l'espace restant : le modal est déjà dimensionné par l'éditeur.
+    ImGui::BeginChild("cs_emblem_list", ImVec2(0.0f, list_h), true);
+    const float thumb = row_h - 10.0f;        // vignette carrée
+    const float text_x = thumb + 12.0f;       // le texte commence APRÈS la vignette
+    for (int i = 0; i < static_cast<int>(g_emblem_files.size()); ++i) {
+      const EmblemCandidate& cand = g_emblem_files[i];
+      ImGui::PushID(i);
+      const ImVec2 row_pos = ImGui::GetCursorScreenPos();
+      // Ligne = un Selectable VIDE occupant toute la largeur (donc cliquable partout) ;
+      // vignette et nom sont peints par-dessus, chacun à sa place. Indenter le libellé
+      // avec des espaces ne marchait pas : la largeur d'un espace n'a rien à voir avec
+      // celle de la vignette, qui finissait par recouvrir le nom.
+      if (ImGui::Selectable("##ligne", guild_emblem_sel_ == i, 0, ImVec2(0.0f, row_h - 4.0f))) {
+        guild_emblem_sel_ = i;
+        guild_emblem_error_ = cand.usable ? std::string() : cand.why;
+      }
+      if (!cand.usable && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", cand.why.c_str());
+      ImDrawList* rdl = ImGui::GetWindowDrawList();
+      if (cand.preview.tex) {
+        const ImVec2 p0(row_pos.x + 4.0f, row_pos.y + (row_h - 4.0f - thumb) * 0.5f);
+        rdl->AddImage(reinterpret_cast<ImTextureID>(cand.preview.tex), p0,
+                      ImVec2(p0.x + thumb, p0.y + thumb));
+        rdl->AddRect(p0, ImVec2(p0.x + thumb, p0.y + thumb), IM_COL32(90, 90, 110, 160));
+      }
+      char label[160];
+      std::snprintf(label, sizeof(label), "%s%s", cand.name.c_str(),
+                    cand.usable ? "" : "   (refusé)");
+      const float text_y = row_pos.y + (row_h - 4.0f - ImGui::GetTextLineHeight()) * 0.5f;
+      rdl->AddText(ImVec2(row_pos.x + text_x, text_y),
+                   ImGui::GetColorU32(cand.usable ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
+      ImGui::PopID();
+    }
+    ImGui::EndChild();
+  }
+
+  // Détail du fichier retenu : ce que le serveur va réellement recevoir.
+  const EmblemCandidate* chosen =
+      (guild_emblem_sel_ >= 0 && guild_emblem_sel_ < static_cast<int>(g_emblem_files.size()))
+          ? &g_emblem_files[guild_emblem_sel_]
+          : nullptr;
+  if (chosen && chosen->usable) {
+    ImGui::TextColored(kGray, "%zu octets, prêt à être envoyé.", chosen->bmp.size());
+    if (chosen->transparency > kEmblemTransparencyWarn)
+      ImGui::TextColored(kRed, "Transparence ~%d %% : au-delà de %d %% le serveur refuse.",
+                         chosen->transparency, kEmblemTransparencyWarn);
+  } else if (!guild_emblem_error_.empty()) {
+    ImGui::TextColored(kRed, "%s", guild_emblem_error_.c_str());
+  } else {
+    ImGui::TextColored(kGray, "Choisis un fichier dans la liste.");
+  }
+
+  ImGui::Spacing();
+  const bool can_send = chosen && chosen->usable && guildId > 0;
+  ImGui::BeginDisabled(!can_send);
+  // Envoi par le chemin NATIF (service web) : le seul qui fonctionne sur ce serveur.
+  if (ro::RoButton("Envoyer", 110.0f, 0.0f)) {
+    LogDiag("[Emblème] upload natif du fichier « {} » : {} o, guildId {}, maître {}",
+            chosen->name, chosen->bmp.size(), guildId, is_master ? "oui" : "NON");
+    const bool started = RequestEmblemUploadSEH(guildId, chosen->name.c_str());
+    guild_emblem_diag_ = started
+                             ? "Envoi au service web lancé (" + chosen->name + ")."
+                             : "Refusé : un envoi est déjà en cours, ou service indisponible.";
+    if (started) guild_status_ = "Emblème envoyé : " + chosen->name;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  if (ro::RoButton("Relire le dossier", 140.0f, 0.0f)) {
+    ScanEmblemFolder();
+    guild_emblem_sel_ = -1;
+    guild_emblem_error_.clear();
+  }
+  ImGui::SameLine();
+  // Passerelle vers l'éditeur : retoucher un emblème existant plutôt que de le refaire.
+  ImGui::BeginDisabled(!chosen || chosen->bmp.empty());
+  if (ro::RoButton("Reprendre au dessin", 160.0f, 0.0f)) {
+    if (EmblemCanvasLoadBmp(chosen->bmp)) {
+      guild_emblem_goto_paint_ = true;  // bascule sur l'éditeur, sinon rien ne se voit
+      guild_emblem_error_.clear();
+      guild_status_ = "Dessin repris de " + chosen->name;
+    } else {
+      guild_emblem_error_ = "Ce fichier n'est pas reprenable (dimensions ou profondeur).";
+    }
+  }
+  ImGui::EndDisabled();
+  ImGui::EndTabItem();
+  ImGui::EndTabBar();
+
+  ImGui::Separator();
+  if (ro::RoButton("Fermer", 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
+  ImGui::SameLine();
+  ImGui::SameLine();
+  ImGui::TextColored(kGray,
+                     "L'envoi passe par le service web du serveur, comme la fenêtre native.\n"
+                     "L'emblème se met à jour dès que le serveur a publié la nouvelle version.");
+  // Compte rendu du dernier envoi (aussi écrit dans bourgeon.log et la console).
+  if (!guild_emblem_diag_.empty()) ImGui::TextColored(kGray, "%s", guild_emblem_diag_.c_str());
+  ro::EndRoPopupModal();
+}
+
+// Canvas 24x24 : clic gauche = couleur courante, clic droit = gomme. Le rendu est un
+// simple ImDrawList (576 rectangles) plutôt qu'une texture — pas de cache à invalider
+// au reset du device, et le damier de fond montre où l'emblème sera transparent.
+void CharacterSheet::DrawGuildEmblemPaintTab(int guildId, bool is_master) {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
+  if (!g_emblem_canvas.started) EmblemCanvasClear();
+
+  // Palette de départ : les teintes franches passent mieux sur 24x24 qu'un dégradé.
+  // Le magenta n'y figure PAS : il vaut « transparent » et a son sélecteur dédié.
+  static const uint32_t kSwatches[] = {
+      0x000000, 0x404040, 0x808080, 0xC0C0C0, 0xFFFFFF, 0x7F0000, 0xD92B2B, 0xFF7F27,
+      0xFFC90E, 0xFFF200, 0x0F5A0F, 0x22B14C, 0x7FE817, 0x0B2C6B, 0x2B6FD9, 0x59C7F0,
+      0x4B0082, 0x9B30FF, 0xD94BC0, 0x8B5A2B, 0xC69C6D, 0x5A3A1A,
+  };
+  const float cell = 14.0f;  // 24 x 14 = 336 px de côté
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const ImVec2 canvas_size(cell * kEmblemSide, cell * kEmblemSide);
+  ImGui::InvisibleButton("##cs_emblem_canvas", canvas_size,
+                         ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+  const bool hovered = ImGui::IsItemHovered();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  for (int y = 0; y < kEmblemSide; ++y) {
+    for (int x = 0; x < kEmblemSide; ++x) {
+      const uint32_t c = g_emblem_canvas.pixel[y * kEmblemSide + x];
+      const ImVec2 p0(origin.x + x * cell, origin.y + y * cell);
+      const ImVec2 p1(p0.x + cell, p0.y + cell);
+      if (c == kEmblemClear) {
+        // Damier = « rien ici » ; c'est exactement ce que le jeu rendra transparent.
+        const bool dark = ((x + y) & 1) != 0;
+        dl->AddRectFilled(p0, p1, dark ? IM_COL32(150, 150, 156, 255) : IM_COL32(190, 190, 196, 255));
+      } else {
+        dl->AddRectFilled(p0, p1, IM_COL32((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 255));
+      }
+    }
+  }
+  // Grille tous les 4 pixels + cadre : repères pour centrer un motif à la main.
+  for (int i = 0; i <= kEmblemSide; i += 4) {
+    const float p = i * cell;
+    dl->AddLine(ImVec2(origin.x + p, origin.y), ImVec2(origin.x + p, origin.y + canvas_size.y),
+                IM_COL32(0, 0, 0, 40));
+    dl->AddLine(ImVec2(origin.x, origin.y + p), ImVec2(origin.x + canvas_size.x, origin.y + p),
+                IM_COL32(0, 0, 0, 40));
+  }
+  dl->AddRect(origin, ImVec2(origin.x + canvas_size.x, origin.y + canvas_size.y),
+              IM_COL32(60, 60, 70, 220));
+
+  // Tracé. Un « coup » = de l'appui au relâchement : une seule entrée d'annulation.
+  // On peint tant que le bouton reste enfoncé APRÈS un appui dans le canvas (IsItemActive),
+  // et non tant que la souris le survole : sortir d'un pixel du cadre en pleine ligne
+  // ne doit pas couper le trait.
+  const bool left = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+  const bool right = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+  const bool drawing = ImGui::IsItemActive() || (hovered && (left || right));
+  const ImVec2 mouse = ImGui::GetIO().MousePos;
+  const int cx = std::clamp(static_cast<int>((mouse.x - origin.x) / cell), 0, kEmblemSide - 1);
+  const int cy = std::clamp(static_cast<int>((mouse.y - origin.y) / cell), 0, kEmblemSide - 1);
+  const bool shape_tool = g_emblem_canvas.tool >= kToolLine;
+  const uint32_t ink = right ? kEmblemClear : CurrentInk();
+
+  if (!shape_tool) {
+    if (drawing && (left || right)) {
+      if (!g_emblem_canvas.stroke_open) {
+        EmblemCanvasPushUndo();
+        g_emblem_canvas.stroke_open = true;
+        g_emblem_canvas.last_x = cx;
+        g_emblem_canvas.last_y = cy;
+      }
+      if (g_emblem_canvas.tool == kToolFill && !right) {
+        EmblemCanvasFill(cx, cy, ink);
+      } else {
+        const uint32_t stroke_ink =
+            (g_emblem_canvas.tool == kToolEraser || right) ? kEmblemClear : ink;
+        EmblemCanvasStroke(g_emblem_canvas.last_x, g_emblem_canvas.last_y, cx, cy, stroke_ink);
+      }
+      g_emblem_canvas.last_x = cx;
+      g_emblem_canvas.last_y = cy;
+    }
+    if (!left && !right) g_emblem_canvas.stroke_open = false;
+  } else {
+    // Formes : on mémorise le point de départ, on montre l'aperçu, on peint au
+    // relâchement. Tant que le bouton est tenu, le dessin sous-jacent est intact.
+    if (!g_emblem_canvas.shape_active && drawing && (left || right)) {
+      g_emblem_canvas.shape_active = true;
+      g_emblem_canvas.shape_erase = right;
+      g_emblem_canvas.shape_x0 = cx;
+      g_emblem_canvas.shape_y0 = cy;
+    }
+    if (g_emblem_canvas.shape_active) {
+      static bool mask[kEmblemPixels];
+      EmblemShapeMask(g_emblem_canvas.tool, g_emblem_canvas.filled, g_emblem_canvas.shape_x0,
+                      g_emblem_canvas.shape_y0, cx, cy, mask);
+      if (!left && !right) {  // relâché : la forme devient définitive
+        EmblemCanvasPushUndo();
+        EmblemApplyMask(mask, g_emblem_canvas.shape_erase ? kEmblemClear
+                                                          : CurrentInk());
+        g_emblem_canvas.shape_active = false;
+      } else {
+        // Aperçu : couleur visée en semi-transparent + liseré, pour rester lisible
+        // sur un fond de la même teinte. Une forme « transparente » s'y montre en
+        // damier, comme le sera le résultat — surtout pas en magenta, que l'éditeur
+        // n'affiche jamais tel quel.
+        const uint32_t c = g_emblem_canvas.shape_erase ? kEmblemClear
+                                                       : CurrentInk();
+        for (int i = 0; i < kEmblemPixels; ++i) {
+          if (!mask[i]) continue;
+          const int x = i % kEmblemSide, y = i / kEmblemSide;
+          const ImVec2 p0(origin.x + x * cell, origin.y + y * cell);
+          const ImVec2 p1(p0.x + cell, p0.y + cell);
+          if (c == kEmblemClear) {
+            const bool dark = ((x + y) & 1) != 0;
+            dl->AddRectFilled(p0, p1, dark ? IM_COL32(150, 150, 156, 200)
+                                           : IM_COL32(190, 190, 196, 200));
+            dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 120));
+            continue;
+          }
+          dl->AddRectFilled(p0, p1,
+                            IM_COL32((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 170));
+          dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 120));
+        }
+      }
+    }
+  }
+
+  // Aperçu 1:1 (ce que verront les autres joueurs) à droite du canvas.
+  const ImVec2 preview(origin.x + canvas_size.x + 16.0f, origin.y);
+  for (int y = 0; y < kEmblemSide; ++y) {
+    for (int x = 0; x < kEmblemSide; ++x) {
+      const uint32_t c = g_emblem_canvas.pixel[y * kEmblemSide + x];
+      if (c == kEmblemClear) continue;
+      dl->AddRectFilled(ImVec2(preview.x + x, preview.y + y),
+                        ImVec2(preview.x + x + 1, preview.y + y + 1),
+                        IM_COL32((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 255));
+    }
+  }
+  dl->AddRect(ImVec2(preview.x - 1, preview.y - 1),
+              ImVec2(preview.x + kEmblemSide + 1, preview.y + kEmblemSide + 1),
+              IM_COL32(60, 60, 70, 220));
+
+  // ── Outils ────────────────────────────────────────────────────────────────
+  ImGui::Spacing();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kGray, "Outil :");
+  ImGui::SameLine();
+  const char* tool_names[6] = {"Crayon", "Gomme", "Remplir", "Ligne", "Rectangle", "Ellipse"};
+  const char* tool_hints[6] = {
+      "Peint à main levée.",
+      "Efface (rend transparent).",
+      "Remplit la zone de même couleur.",
+      "Tire une ligne d'un point à l'autre.",
+      "Tire un rectangle entre deux coins.",
+      "Tire une ellipse inscrite dans le rectangle tiré.",
+  };
+  for (int t = 0; t < 6; ++t) {
+    ImGui::PushID(t);
+    // L'outil courant reste enfoncé, libellé en gras (ro::RoToggleButton).
+    if (ro::RoToggleButton(tool_names[t], g_emblem_canvas.tool == t, 80.0f, 0.0f))
+      g_emblem_canvas.tool = t;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tool_hints[t]);
+    ImGui::PopID();
+    if (t != 2 && t != 5) ImGui::SameLine();
+  }
+  ImGui::SameLine();
+  ImGui::TextColored(kGray, "(clic droit = efface)");
+
+  ImGui::SetNextItemWidth(140.0f);
+  ro::RoSliderInt("Épaisseur", &g_emblem_canvas.brush, 1, 3, "%d px");
+  ImGui::SameLine();
+  ro::RoCheckbox("Symétrie", &g_emblem_canvas.mirror);
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Chaque trait est répété en miroir gauche/droite.");
+  ImGui::SameLine();
+  // Ne concerne que le rectangle et l'ellipse : grisé ailleurs plutôt que caché, pour
+  // que la barre d'outils ne saute pas d'un outil à l'autre.
+  ImGui::BeginDisabled(g_emblem_canvas.tool != kToolRect && g_emblem_canvas.tool != kToolEllipse);
+  ro::RoCheckbox("Forme pleine", &g_emblem_canvas.filled);
+  ImGui::EndDisabled();
+
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kGray, "Couleur :");
+  ImGui::SameLine();
+  if (ImGui::ColorEdit3("##cs_emblem_color", g_emblem_canvas.color, ImGuiColorEditFlags_NoInputs)) {
+    g_emblem_canvas.color_clear = false;  // choisir une teinte, c'est quitter le « vide »
+    if (g_emblem_canvas.tool == kToolEraser) g_emblem_canvas.tool = kToolPencil;
+  }
+  ImGui::SameLine();
+  // « Transparence » = le magenta pur, et c'est une COULEUR comme une autre : on doit
+  // pouvoir en remplir une zone ou en tracer une forme, ce que la gomme (à main levée)
+  // ne permet pas. Elle laisse donc l'outil courant tel quel.
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kGray, "Transparence :");
+  ImGui::SameLine();
+  const ImVec4 magenta(1.0f, 0.0f, 1.0f, 1.0f);
+  const float swatch_h = ImGui::GetFrameHeight();
+  if (ImGui::ColorButton("##cs_emblem_transparent", magenta,
+                         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop,
+                         ImVec2(swatch_h * 1.6f, swatch_h)))
+    g_emblem_canvas.color_clear = true;
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Magenta pur (255, 0, 255) : ces pixels sont transparents en jeu.\n"
+                      "S'utilise avec n'importe quel outil (remplissage, formes…).");
+  if (g_emblem_canvas.color_clear) {
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.10f, 0.35f, 0.70f, 1.0f), "couleur active");
+  }
+  ImGui::TextColored(kGray, "Palette :");
+  ImGui::SameLine();
+  // Nuancier : une case pose la couleur courante (et sort du « vide » comme de la gomme).
+  const float swatch = ImGui::GetFrameHeight() - 2.0f;
+  const int swatch_count = static_cast<int>(sizeof(kSwatches) / sizeof(kSwatches[0]));
+  for (int i = 0; i < swatch_count; ++i) {
+    const uint32_t c = kSwatches[i];
+    ImGui::PushID(1000 + i);
+    if (i % 11 != 0) ImGui::SameLine();
+    const ImVec2 sp = ImGui::GetCursorScreenPos();
+    if (ImGui::InvisibleButton("##sw", ImVec2(swatch, swatch))) {
+      if (g_emblem_canvas.tool == kToolEraser) g_emblem_canvas.tool = kToolPencil;
+      g_emblem_canvas.color_clear = false;
+      g_emblem_canvas.color[0] = ((c >> 16) & 0xFF) / 255.0f;
+      g_emblem_canvas.color[1] = ((c >> 8) & 0xFF) / 255.0f;
+      g_emblem_canvas.color[2] = (c & 0xFF) / 255.0f;
+    }
+    ImDrawList* sdl = ImGui::GetWindowDrawList();
+    const ImVec2 sp1(sp.x + swatch, sp.y + swatch);
+    sdl->AddRectFilled(sp, sp1, IM_COL32((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 255));
+    sdl->AddRect(sp, sp1, IM_COL32(40, 40, 48, 220));
+    ImGui::PopID();
+  }
+
+  ImGui::Spacing();
+  ImGui::BeginDisabled(g_emblem_canvas.undo.empty());
+  if (ro::RoButton("Annuler", 90.0f, 0.0f)) {
+    std::copy(g_emblem_canvas.undo.back().begin(), g_emblem_canvas.undo.back().end(),
+              g_emblem_canvas.pixel);
+    g_emblem_canvas.undo.pop_back();
+    ++g_emblem_canvas.revision;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  if (ro::RoButton("Tout effacer", 110.0f, 0.0f)) {
+    EmblemCanvasPushUndo();
+    EmblemCanvasClear();
+  }
+
+  // ── Point de départ : une icône d'item ────────────────────────────────────
+  // Les icônes d'inventaire du client font 24x24, la taille exacte d'un emblème :
+  // elles font d'excellentes bases (potion, carte, arme…) à retoucher ensuite.
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextColored(kGray, "Partir d'une icône d'item :");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(90.0f);
+  ImGui::InputInt("##cs_emblem_itemid", &guild_emblem_item_id_, 0, 0);
+  if (guild_emblem_item_id_ < 0) guild_emblem_item_id_ = 0;
+  // Aperçu à côté du champ : on voit ce qu'on va importer avant de perdre le dessin.
+  ro::IconTex preview_icon =
+      guild_emblem_item_id_ > 0
+          ? ro::ItemIcon(static_cast<uint32_t>(guild_emblem_item_id_))
+          : ro::IconTex{};
+  ImGui::SameLine();
+  const float icon_box = ImGui::GetFrameHeight();
+  const ImVec2 icon_pos = ImGui::GetCursorScreenPos();
+  ImGui::Dummy(ImVec2(icon_box, icon_box));
+  if (preview_icon.tex) {
+    ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(preview_icon.tex), icon_pos,
+                                         ImVec2(icon_pos.x + icon_box, icon_pos.y + icon_box));
+  }
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!preview_icon.tex);
+  if (ro::RoButton("Importer", 110.0f, 0.0f)) {
+    if (EmblemCanvasLoadItemIcon(static_cast<uint32_t>(guild_emblem_item_id_))) {
+      guild_emblem_diag_.clear();
+    } else {
+      guild_emblem_diag_ = "Icône introuvable pour cet item.";
+    }
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Remplace le dessin par l'icône de l'item (annulable).");
+  if (guild_emblem_item_id_ > 0 && !preview_icon.tex) {
+    ImGui::SameLine();
+    ImGui::TextColored(kRed, "aucune icône");
+  }
+  ImGui::SameLine();
+  if (ro::RoToggleButton("Inventaire", guild_emblem_gallery_, 110.0f, 0.0f))
+    guild_emblem_gallery_ = !guild_emblem_gallery_;
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Choisir l'icône dans son sac, sans connaître les numéros.");
+
+  if (guild_emblem_gallery_) {
+    // Un balayage par seconde suffit : le sac bouge (loot, vente), mais pas à la
+    // fréquence d'affichage — et ReadInventoryLite parcourt toute la liste native.
+    static std::vector<uint32_t> s_gallery_ids;
+    static DWORD s_gallery_scan = 0;
+    const DWORD now = GetTickCount();
+    if (s_gallery_scan == 0 || now - s_gallery_scan > 1000) {
+      s_gallery_scan = now;
+      InvItemLite inv[512];
+      const int inv_count = ReadInventoryLite(inv, 512);
+      s_gallery_ids.clear();
+      for (int i = 0; i < inv_count; ++i) {
+        const uint32_t id = inv[i].nameid;
+        // Une pile de 50 potions, ou la même arme en double, c'est UNE icône.
+        if (id && std::find(s_gallery_ids.begin(), s_gallery_ids.end(), id) == s_gallery_ids.end())
+          s_gallery_ids.push_back(id);
+      }
+      // Trié par id : l'ordre de la liste native change au fil des ramassages, et une
+      // grille qui se réorganise sous le curseur est impossible à parcourir.
+      std::sort(s_gallery_ids.begin(), s_gallery_ids.end());
+    }
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float cell = 32.0f;  // icônes 24x24 agrandies : cliquables sans loupe
+    const float inner_w = ImGui::GetContentRegionAvail().x - style.WindowPadding.x * 2.0f -
+                          style.ChildBorderSize * 2.0f;
+    int per_row = static_cast<int>((inner_w + style.ItemSpacing.x) / (cell + style.ItemSpacing.x));
+    if (per_row < 1) per_row = 1;
+    const int rows_visible = 3;
+    const float child_h = rows_visible * cell + (rows_visible - 1) * style.ItemSpacing.y +
+                          style.WindowPadding.y * 2.0f + style.ChildBorderSize * 2.0f;
+    ImGui::BeginChild("##cs_emblem_gallery", ImVec2(0.0f, child_h), true);
+    if (s_gallery_ids.empty()) {
+      ImGui::TextColored(kGray, "Aucun item dans le sac.");
+    } else {
+      ImDrawList* dl = ImGui::GetWindowDrawList();
+      for (size_t i = 0; i < s_gallery_ids.size(); ++i) {
+        const uint32_t id = s_gallery_ids[i];
+        if ((i % static_cast<size_t>(per_row)) != 0) ImGui::SameLine();
+        ImGui::PushID(static_cast<int>(id));
+        const ImVec2 cell_pos = ImGui::GetCursorScreenPos();
+        const ImVec2 cell_end(cell_pos.x + cell, cell_pos.y + cell);
+        const bool clicked = ImGui::InvisibleButton("##ic", ImVec2(cell, cell));
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered) dl->AddRectFilled(cell_pos, cell_end, IM_COL32(255, 255, 255, 40));
+        const ro::IconTex ic = ro::ItemIcon(id);
+        if (ic.tex)
+          dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), cell_pos, cell_end);
+        else
+          dl->AddRect(cell_pos, cell_end, IM_COL32(120, 120, 120, 120));
+        if (hovered) {
+          const char* nm = ItemName(id);
+          ImGui::SetTooltip("%s (%u)", (nm && nm[0]) ? nm : "?", id);
+        }
+        if (clicked) {
+          guild_emblem_item_id_ = static_cast<int>(id);
+          if (EmblemCanvasLoadItemIcon(id)) guild_emblem_diag_.clear();
+          else guild_emblem_diag_ = "Icône introuvable pour cet item.";
+        }
+        ImGui::PopID();
+      }
+    }
+    ImGui::EndChild();
+  }
+
+  // ── Envoi / enregistrement ────────────────────────────────────────────────
+  // Le BMP n'est refabriqué que quand le dessin a bougé : le modal est redessiné à
+  // chaque frame, et rien ne justifie de le reconstruire 60 fois par seconde.
+  static int s_built_revision = -1;
+  static std::vector<uint8_t> s_bmp;
+  static bool s_has_ink = false;
+  static int s_transparency = 0;
+  if (s_built_revision != g_emblem_canvas.revision) {
+    s_built_revision = g_emblem_canvas.revision;
+    s_bmp = BuildEmblemBmp();
+    s_transparency = EmblemTransparencyPercent(s_bmp);
+    s_has_ink = false;
+    for (int i = 0; i < kEmblemPixels && !s_has_ink; ++i)
+      s_has_ink = g_emblem_canvas.pixel[i] != kEmblemClear;
+  }
+  const std::vector<uint8_t>& bmp = s_bmp;
+  const bool has_ink = s_has_ink;
+
+  ImGui::TextColored(kGray, "%zu octets (BMP %dx%d, 24 bits).", bmp.size(), kEmblemSide,
+                     kEmblemSide);
+  // Le serveur refuse un emblème trop vide (inter_config.emblem_transparency_limit) :
+  // mieux vaut le dire pendant qu'on dessine qu'après un envoi rejeté.
+  if (s_transparency > kEmblemTransparencyWarn)
+    ImGui::TextColored(kRed, "Transparence ~%d %% : au-delà de %d %% le serveur refuse — "
+                             "remplis davantage le fond.",
+                       s_transparency, kEmblemTransparencyWarn);
+  const bool can_send = has_ink && guildId > 0;
+  ImGui::BeginDisabled(!can_send);
+  // Le dessin part par le chemin NATIF : on l'écrit d'abord dans <jeu>\emblem\, car
+  // l'upload du jeu prend un CHEMIN de fichier (curl lit le fichier lui-même).
+  if (ro::RoButton("Envoyer ce dessin", 160.0f, 0.0f)) {
+    const std::string file_name = std::string(g_emblem_canvas.save_name[0]
+                                                  ? g_emblem_canvas.save_name
+                                                  : "mon_embleme") + ".bmp";
+    LogDiag("[Emblème] upload natif du dessin « {} » : BMP {} o, guildId {}, maître {}", file_name,
+            bmp.size(), guildId, is_master ? "oui" : "NON");
+    if (!WriteEmblemFile(file_name.c_str(), bmp)) {
+      guild_emblem_diag_ = "Écriture impossible : emblem/" + file_name;
+    } else {
+      g_emblem_preview_cache.erase(file_name);  // la vignette du fichier a changé
+      const bool started = RequestEmblemUploadSEH(guildId, file_name.c_str());
+      guild_emblem_diag_ = started
+                               ? "Envoi au service web lancé (" + file_name + ")."
+                               : "Refusé : un envoi est déjà en cours, ou service indisponible.";
+      if (started) guild_status_ = "Emblème dessiné envoyé (" + file_name + ").";
+    }
+  }
+  ImGui::EndDisabled();
+  // Bouton grisé : dire POURQUOI plutôt que de laisser deviner.
+  if (!can_send) {
+    ImGui::SameLine();
+    const char* why = has_ink ? "guilde inconnue du client" : "dessin vide";
+    ImGui::TextColored(kRed, "Envoi impossible : %s.", why);
+  }
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(150.0f);
+  ro::InputTextCp949("##cs_emblem_savename", g_emblem_canvas.save_name,
+                     sizeof(g_emblem_canvas.save_name));
+  ImGui::SameLine();
+  // Garder le .bmp sous la main : il rejoint le dossier que lit aussi la fenêtre native.
+  if (ro::RoButton("Enregistrer dans emblem", 190.0f, 0.0f) && g_emblem_canvas.save_name[0]) {
+    const std::string path =
+        paths::InGameDir("emblem\\") + g_emblem_canvas.save_name + std::string(".bmp");
+    CreateDirectoryA(paths::InGameDir("emblem").c_str(), nullptr);
+    FILE* fp = nullptr;
+    const std::string file_name = std::string(g_emblem_canvas.save_name) + ".bmp";
+    if (fopen_s(&fp, path.c_str(), "wb") == 0 && fp) {
+      std::fwrite(bmp.data(), 1, bmp.size(), fp);
+      std::fclose(fp);
+      // Nom seul, sans le chemin : la police CP949 du client dessine l'antislash en ₩.
+      guild_status_ = "Emblème enregistré : emblem/" + file_name;
+      // Réécrire sous un nom déjà vu : la vignette en cache montrerait l'ancien dessin.
+      g_emblem_preview_cache.erase(file_name);
+      ScanEmblemFolder();
+    } else {
+      guild_emblem_error_ = "Écriture impossible : emblem/" + file_name;
+    }
+  }
 }
 
 void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz) {
@@ -1894,8 +4767,11 @@ void CharacterSheet::DrawDoll(float avail_w) {
   const bool has_guild = ReadGuild(&gi);
   if (has_guild) {
     char gline[80];
-    if (gi.pos[0]) std::snprintf(gline, sizeof(gline), "%s [%s]", gi.name, gi.pos);
-    else           std::snprintf(gline, sizeof(gline), "%s", gi.name);
+    // Repli sur le dernier libellé de poste connu : la liste des membres remet ce
+    // champ à vide tant que les noms de postes ne sont pas revenus (cf. DrawGuildTab).
+    const char* my_position = GuildPositionLabel(gi.position_id, gi.pos);
+    if (my_position) std::snprintf(gline, sizeof(gline), "%s [%s]", gi.name, my_position);
+    else             std::snprintf(gline, sizeof(gline), "%s", gi.name);
     centered(gline);
   }
   Stats s{};
@@ -2580,9 +5456,12 @@ void CharacterSheet::OnRenderUI() {
   g_win_snap.narrow = kDollW + chrome_w_;
   g_win_snap.wide   = kDollW + gap + kStatsW + chrome_w_;
   g_win_snap.valid  = true;
-  ImGui::SetNextWindowSizeConstraints(ImVec2(g_win_snap.narrow, 450.0f),
-                                      ImVec2(g_win_snap.wide, 10000.0f),
-                                      SnapCharSheetWidth);
+  // L'onglet Guilde a besoin de toute la largeur (table des membres) : on y
+  // interdit le repli étroit plutôt que de laisser la table déborder.
+  g_win_snap.force_wide = (tab_ == 4);
+  ImGui::SetNextWindowSizeConstraints(
+      ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow, 450.0f),
+      ImVec2(g_win_snap.wide, 10000.0f), SnapCharSheetWidth);
   ImGui::SetNextWindowSize(ImVec2(g_win_snap.wide, 490.0f), ImGuiCond_FirstUseEver);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -2598,12 +5477,13 @@ void CharacterSheet::OnRenderUI() {
   bourgeon::CloseWindowOnEscape(show_);
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
-  // Onglets Equipement / Costume / Presets.
+  // Onglets Equipement / Costume / Presets / Titres / Guilde.
   if (ImGui::BeginTabBar("cs_tabs")) {
     if (ImGui::BeginTabItem("Équipement")) { tab_ = 0; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem("Costume"))    { tab_ = 1; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem("Presets"))    { tab_ = 2; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem("Titres"))     { tab_ = 3; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Guilde"))     { tab_ = 4; ImGui::EndTabItem(); }
     ImGui::EndTabBar();
   }
   costume_ = (tab_ == 1);
@@ -2619,6 +5499,11 @@ void CharacterSheet::OnRenderUI() {
     // Onglet Titres : pleine largeur, liste des titres possédés + titre équipé.
     ImGui::BeginChild("cs_titles", ImVec2(0, 0), true);
     DrawTitlesTab();
+    ImGui::EndChild();
+  } else if (tab_ == 4) {
+    // Onglet Guilde : pleine largeur (infos + roster + relations).
+    ImGui::BeginChild("cs_guild", ImVec2(0, 0), true);
+    DrawGuildTab();
     ImGui::EndChild();
   } else {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).

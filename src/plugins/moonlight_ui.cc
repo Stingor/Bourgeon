@@ -668,7 +668,7 @@ void MoonlightUi::LoadSettings() {
   // déploiement POST_BUILD est best-effort et SILENCIEUSEMENT sauté quand le jeu tient
   // ddraw.dll ouvert (cf. src/CMakeLists.txt) — le build passe au vert sans rien
   // déployer. Cette ligne dit immédiatement quelle DLL tourne réellement.
-  LogInfo("[Bourgeon] build " __DATE__ " " __TIME__);
+  // LogInfo("[Bourgeon] build " __DATE__ " " __TIME__);
   std::ifstream f(path);
   if (!f) return;  // premier lancement : pas encore de fichier
 

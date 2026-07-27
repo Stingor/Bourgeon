@@ -1128,6 +1128,29 @@ void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
   dl->PopClipRect();
 }
 
+// Faux-gras : ImGui n'a qu'une graisse chargée, on re-dessine le texte décalé d'un
+// pixel. Même recette que les textes du chatbox NPC et de la barre de skills.
+namespace {
+// Posé par RoToggleButton le temps d'un appel : le bouton se dessine alors enfoncé
+// (art « press » + libellé gras) sans que la souris ait à le tenir.
+bool g_force_button_active = false;
+
+void DrawButtonLabel(ImDrawList* dl, ImVec2 pos, ImU32 color, const char* label, bool bold) {
+  const char* end = ImGui::FindRenderedTextEnd(label);
+  dl->AddText(pos, color, label, end);
+  if (bold) dl->AddText(ImVec2(pos.x + 1.0f, pos.y), color, label, end);
+}
+}  // namespace
+
+// `active` = bouton « enclenché » (outil courant, option retenue…) : le libellé passe
+// en gras et le fond garde l'art « pressé », même quand la souris est ailleurs.
+bool RoToggleButton(const char* label, bool active, float w, float h) {
+  g_force_button_active = active;
+  const bool clicked = RoButton(label, w, h);
+  g_force_button_active = false;
+  return clicked;
+}
+
 bool RoButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\btn_out_left.bmp",    skin::kBtnOutLeft,    g_btn_out_l);
   EnsureTex("basic_interface\\btn_out_mid.bmp",     skin::kBtnOutMid,     g_btn_out_m);
@@ -1149,7 +1172,7 @@ bool RoButton(const char* label, float w, float h) {
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
   const bool hovered = ImGui::IsItemHovered();
-  const bool held = ImGui::IsItemActive();
+  const bool held = ImGui::IsItemActive() || g_force_button_active;
   if (hovered) SetHoverCursor(kRoCursorHand);
   const ImVec2 p0 = ImGui::GetItemRectMin();
   const ImVec2 p1 = ImGui::GetItemRectMax();
@@ -1183,10 +1206,12 @@ bool RoButton(const char* label, float w, float h) {
 
   const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
                   p0.y + (h - ts.y) * 0.5f + (held ? 1.0f : 0.0f));
-  dl->AddText(tp,
-              disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
-                       : ImGui::GetColorU32(ImGuiCol_Text),
-              label, ImGui::FindRenderedTextEnd(label));
+  // Bouton enfoncé : libellé en gras. L'art « press » se distingue mal de l'état
+  // survolé sur les petites tailles, la graisse tranche tout de suite.
+  DrawButtonLabel(dl, tp,
+                  disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                           : ImGui::GetColorU32(ImGuiCol_Text),
+                  label, held && !disabled);
   ImGui::PopID();
   return clicked;
 }
@@ -1215,7 +1240,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
   const bool hovered = ImGui::IsItemHovered();
-  const bool held = ImGui::IsItemActive();
+  const bool held = ImGui::IsItemActive() || g_force_button_active;
   if (hovered) SetHoverCursor(kRoCursorHand);
   const ImVec2 p0 = ImGui::GetItemRectMin();
   const ImVec2 p1 = ImGui::GetItemRectMax();
@@ -1249,10 +1274,10 @@ bool RoSmallButton(const char* label, float w, float h) {
 
   const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
                   p0.y + (h - ts.y) * 0.5f + (held ? 0.0f : 0.0f) - 2.0f);  // -2 pour centre le texte correctement dans la case
-  dl->AddText(tp,
-              disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
-                       : ImGui::GetColorU32(ImGuiCol_Text),
-              label, ImGui::FindRenderedTextEnd(label));
+  DrawButtonLabel(dl, tp,
+                  disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                           : ImGui::GetColorU32(ImGuiCol_Text),
+                  label, held && !disabled);
   ImGui::PopID();
   return clicked;
 }
@@ -1707,8 +1732,9 @@ float DrawIconNum(float x, float y) {
   return (float)g_iconnum.w;
 }
 
-bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
-                    int imgui_input_flags) {
+// Shared body of both CP949 input widgets: `hint` null selects plain InputText.
+static bool InputTextCp949Impl(const char* label, const char* hint, char* cp949_buf,
+                               size_t buf_size, int imgui_input_flags) {
   if (!cp949_buf || buf_size == 0) return false;
 
   // One persistent UTF-8 edit buffer per widget id. Kept across frames so the
@@ -1720,13 +1746,25 @@ bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
   if (ImGui::GetActiveID() != id) utf8 = Cp949ToUtf8(cp949_buf);
 
   InputTextUserData ud{&utf8};
-  const bool edited = ImGui::InputText(
-      label, utf8.data(), utf8.capacity() + 1,
-      imgui_input_flags | ImGuiInputTextFlags_CallbackResize, InputTextResizeCb,
-      &ud);
+  const int flags = imgui_input_flags | ImGuiInputTextFlags_CallbackResize;
+  const bool edited =
+      hint ? ImGui::InputTextWithHint(label, hint, utf8.data(), utf8.capacity() + 1,
+                                      flags, InputTextResizeCb, &ud)
+           : ImGui::InputText(label, utf8.data(), utf8.capacity() + 1, flags,
+                              InputTextResizeCb, &ud);
 
   if (edited) Utf8ToCp949(utf8.c_str(), cp949_buf, buf_size);
   return edited;
+}
+
+bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
+                    int imgui_input_flags) {
+  return InputTextCp949Impl(label, nullptr, cp949_buf, buf_size, imgui_input_flags);
+}
+
+bool InputTextCp949WithHint(const char* label, const char* hint, char* cp949_buf,
+                            size_t buf_size, int imgui_input_flags) {
+  return InputTextCp949Impl(label, hint, cp949_buf, buf_size, imgui_input_flags);
 }
 
 }  // namespace ro
