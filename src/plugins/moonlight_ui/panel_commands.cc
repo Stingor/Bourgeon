@@ -62,7 +62,7 @@ void MoonlightUi::DrawCommandsPanel() {
         {
           static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
           ImGui::SetNextItemWidth(100.0f);
-          if (ImGui::BeginCombo("@noks", kNoksLabels[noks_mode_ < 4 ? noks_mode_ : 0])) {
+          if (ro::RoBeginCombo("@noks", kNoksLabels[noks_mode_ < 4 ? noks_mode_ : 0])) {
             for (int i = 0; i < 4; ++i) {
               const bool selected = (noks_mode_ == i);
               if (ImGui::Selectable(kNoksLabels[i], selected)) {
@@ -75,33 +75,7 @@ void MoonlightUi::DrawCommandsPanel() {
           }
           SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
         }
-        // Tri inventaires — combo 7 options (0=Par ID … 6=Aucun)
-        {
-          static const char* kTriLabels[] = { "Par ID", "Par type", "Par quantité", "Par poids", "Par prix", "Par nom", "Aucun" };
-          auto TriCombo = [&](const char* label, int& value, uint16_t setting_id) {
-            ImGui::SetNextItemWidth(130.0f);
-            if (ImGui::BeginCombo(label, kTriLabels[value >= 0 && value < 7 ? value : 0])) {
-              for (int i = 0; i < 7; ++i) {
-                const bool selected = (value == i);
-                if (ImGui::Selectable(kTriLabels[i], selected)) {
-                  value = i;
-                  SendSetting(setting_id, static_cast<uint16_t>(i));
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-              }
-              ImGui::EndCombo();
-            }
-          };
-          TriCombo("Tri Inventaire", sort_mode_inventory_, kSettingSortModeInventory);
-          SameLine(); HelpMarker("Tri automatique de l'inventaire.");
-          TriCombo("Tri Chariot",    sort_mode_cart_, kSettingSortModeCart);
-          SameLine(); HelpMarker("Tri automatique du chariot.");
-          TriCombo("Tri Storages",     sort_mode_storage_, kSettingSortModeStorage);
-          SameLine(); HelpMarker("Tri automatique des Storages personnel à la prochaine ouverture.");
-          TriCombo("Tri Storage Guilde", sort_mode_guild_storage_, kSettingSortModeGuildStorage);
-          SameLine(); HelpMarker("Tri automatique du Storage de guilde à la prochaine ouverture.");
-        }
-          ImGui::EndTabItem();
+        ImGui::EndTabItem();
       }
       // (« SPR Lab » a été déplacé dans le CollapsingHeader « Staff Tools »,
       // gaté sur le group level serveur — cf. IsStaff.)
@@ -116,7 +90,7 @@ void MoonlightUi::DrawCommandsPanel() {
             SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
           }
           SameLine();
-          if (ImGui::SmallButton("Reset##rate")) {
+          if (ro::RoSmallButton("Reset##rate")) {
             aloot_rate_ = 0;
             SendSetting(kSettingAlootRate, 0);
           }
@@ -141,15 +115,15 @@ void MoonlightUi::DrawCommandsPanel() {
             aloot_min_zeny_ = min_zeny;
             SendSetting(kSettingAlootMinZenyDiv100, static_cast<uint16_t>(min_zeny / 100));
           };
-          if (ImGui::Button("-10kz"))  apply_min_zeny_delta(-10000);
+          if (ro::RoSmallButton("-10kz"))  apply_min_zeny_delta(-10000);
           SameLine();
-          if (ImGui::Button("-1kz"))   apply_min_zeny_delta(-1000);
+          if (ro::RoSmallButton("-1kz"))   apply_min_zeny_delta(-1000);
           SameLine();
-          if (ImGui::Button("+1kz"))   apply_min_zeny_delta(1000);
+          if (ro::RoSmallButton("+1kz"))   apply_min_zeny_delta(1000);
           SameLine();
-          if (ImGui::Button("+10kz"))  apply_min_zeny_delta(10000);
+          if (ro::RoSmallButton("+10kz"))  apply_min_zeny_delta(10000);
           SameLine();
-          if (ImGui::SmallButton("Reset##pognon")) {
+          if (ro::RoSmallButton("Reset##pognon")) {
             aloot_min_zeny_ = 0;
             SendSetting(kSettingAlootMinZenyDiv100, 0);
           }
@@ -159,7 +133,7 @@ void MoonlightUi::DrawCommandsPanel() {
           TextUnformatted("@autoloottype :");
           SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
           SameLine();
-          if (ImGui::SmallButton("Reset##type")) {
+          if (ro::RoSmallButton("Reset##type")) {
             aloot_type_mask_ = 0;
             SendSetting(kSettingAlootType, 0);
           }
@@ -209,7 +183,7 @@ void MoonlightUi::DrawCommandsPanel() {
             SaveSettings();
           SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
           SameLine();
-          if (ImGui::SmallButton("Clear##alootid")) {
+          if (ro::RoSmallButton("Clear##alootid")) {
             aloot_ids_.clear();
             SendSetting(kSettingAlootId, 0);
           }
@@ -219,7 +193,7 @@ void MoonlightUi::DrawCommandsPanel() {
           SameLine();
           const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 50);
           if (!can_add) ImGui::BeginDisabled();
-          if (ImGui::Button("Add##alootid")) {
+          if (ro::RoButton("Add##alootid")) {
             const uint32_t id = static_cast<uint32_t>(aloot_id_input_);
             bool found = false;
             for (uint32_t x : aloot_ids_) if (x == id) { found = true; break; }
@@ -271,7 +245,7 @@ void MoonlightUi::DrawCommandsPanel() {
               const uint32_t id = aloot_ids_[i];
               char lbl[32];
               std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
-              if (ImGui::SmallButton(lbl)) {
+              if (ro::RoSmallButton(lbl)) {
                 SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
                 aloot_ids_.erase(aloot_ids_.begin() + i);
                 --i;
@@ -301,14 +275,14 @@ void MoonlightUi::DrawCommandsPanel() {
             for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
               if (aloot_ids_[k] == g_last_viewed_item) { vu_idx = k; break; }
             if (vu_idx >= 0) {
-              if (ImGui::SmallButton("Remove##alootid_vu")) {
+              if (ro::RoSmallButton("Remove##alootid_vu")) {
                 SendSetting(kSettingAlootIdRemove, aloot_ids_[vu_idx]);
                 aloot_ids_.erase(aloot_ids_.begin() + vu_idx);
               }
             } else {
               const bool can_add_vu = (aloot_ids_.size() < 50);
               if (!can_add_vu) ImGui::BeginDisabled();
-              if (ImGui::SmallButton("Add##alootid_vu")) {
+              if (ro::RoSmallButton("Add##alootid_vu")) {
                 aloot_ids_.push_back(g_last_viewed_item);
                 SendSetting(kSettingAlootId, g_last_viewed_item);
               }
@@ -377,7 +351,7 @@ void MoonlightUi::DrawCommandsPanel() {
             if (!can_act) ImGui::BeginDisabled();
             const char* btn_label = (!is_rename && list_empty && named_preset)
               ? "Supprimer##preset_save" : "Sauvegarder##preset";
-            if (ImGui::SmallButton(btn_label)) {
+            if (ro::RoSmallButton(btn_label)) {
               if (is_rename && sel_for_rename) {
                 SendPresetCmd(kAlootPresetRename, alootid_selected_preset_,
                               alootid_rename_input_);
@@ -435,10 +409,10 @@ void MoonlightUi::DrawCommandsPanel() {
             SameLine();
             const bool has_sel = sel_preset != nullptr;
             if (!has_sel) ImGui::BeginDisabled();
-            if (ImGui::SmallButton("Charger##preset"))
+            if (ro::RoSmallButton("Charger##preset"))
               SendPresetCmd(kAlootPresetLoad, alootid_selected_preset_);
             SameLine();
-            if (ImGui::SmallButton("Supprimer##preset"))
+            if (ro::RoSmallButton("Supprimer##preset"))
               SendPresetCmd(kAlootPresetDelete, alootid_selected_preset_);
             if (!has_sel) ImGui::EndDisabled();
 
@@ -454,4 +428,49 @@ void MoonlightUi::DrawCommandsPanel() {
     }
     PopStyleCompact();
   }
+}
+
+// Combo « Tri … » d'un réglage SERVEUR (e_sort_mode 0-6). Partagé entre « Commands
+// Settings » et les panneaux des fenêtres concernées (InventoryViewer, StorageTweaks) :
+// libellé, aide, état et envoi vivent ICI, donc les points d'entrée ne peuvent pas
+// diverger. Skin RO (ro::RoCombo) comme le reste du panneau.
+bool MoonlightUi::DrawSortModeCombo(SortTarget target) {
+  static const char* const kSortLabels[] = {
+      "Par ID", "Par type", "Par quantité", "Par poids", "Par prix", "Par nom", "Aucun" };
+  int* value = nullptr;
+  uint16_t setting_id = 0;
+  const char* label = nullptr;
+  const char* help = nullptr;
+  switch (target) {
+    case kSortInventory:
+      value = &sort_mode_inventory_; setting_id = kSettingSortModeInventory;
+      label = "Tri Inventaire";
+      help = "Tri automatique de l'inventaire.";
+      break;
+    case kSortCart:
+      value = &sort_mode_cart_; setting_id = kSettingSortModeCart;
+      label = "Tri Chariot";
+      help = "Tri automatique du chariot.";
+      break;
+    case kSortStorage:
+      value = &sort_mode_storage_; setting_id = kSettingSortModeStorage;
+      label = "Tri Storages";
+      help = "Tri automatique des Storages personnel à la prochaine ouverture.";
+      break;
+    case kSortGuildStorage:
+      value = &sort_mode_guild_storage_; setting_id = kSettingSortModeGuildStorage;
+      label = "Tri Storage Guilde";
+      help = "Tri automatique du Storage de guilde à la prochaine ouverture.";
+      break;
+    default:
+      return false;
+  }
+  // RoCombo indexe kSortLabels sans garde : une valeur hors table (mode ajouté côté
+  // moonlight, yaml bidouillé) lirait à côté.
+  if (*value < 0 || *value >= IM_ARRAYSIZE(kSortLabels)) *value = 0;
+  ImGui::SetNextItemWidth(130.0f);
+  const bool changed = ro::RoCombo(label, value, kSortLabels, IM_ARRAYSIZE(kSortLabels));
+  if (changed) SendSetting(setting_id, static_cast<uint16_t>(*value));
+  SameLine(); HelpMarker(help);
+  return changed;
 }

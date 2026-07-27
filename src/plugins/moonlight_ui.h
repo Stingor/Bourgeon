@@ -67,6 +67,17 @@ class MoonlightUi : public Plugin {
   bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
   const char* ItemName(uint32_t id) const;  // nom via itemInfoMerged.lua (ou nullptr)
 
+  // ── Tri serveur (e_sort_mode 0-6) ───────────────────────────────────────────
+  // Les combos « Tri … » de « Commands Settings » pilotent un réglage SERVEUR
+  // (settings 19-22 -> sort_inventory_items / sort_storage_items côté moonlight),
+  // pas un tri de vue. Ils sont exposés ici pour que les panneaux des fenêtres
+  // concernées (inventaire/chariot, storage/guilde) affichent LE MÊME combo :
+  // même état, même envoi, aucune copie locale à resynchroniser.
+  enum SortTarget { kSortInventory = 0, kSortCart, kSortStorage, kSortGuildStorage };
+  // Dessine le combo (skin RO) + son point d'aide, et envoie le réglage au serveur
+  // si la sélection change. Renvoie true dans ce cas.
+  bool DrawSortModeCombo(SortTarget target);
+
   // ── Accès direct à une section de config ────────────────────────────────────
   // Sections de l'en-tête « Interface de jeu ». Les LIBELLÉS vivent dans la table
   // kIfaceSections du .cc, où chaque ligne porte explicitement son identifiant :

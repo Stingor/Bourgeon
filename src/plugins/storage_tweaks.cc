@@ -24,7 +24,7 @@
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "plugins/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
-#include "plugins/moonlight_ui.h"      // HelpMarker (tooltip)
+#include "plugins/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
 #include "ui/ro_imgui.h"               // ro::RoButton (bouton skin RO)
 #include "ui/ro_imgui.h"               // BeginRoWindow (skin RO)
 
@@ -910,6 +910,22 @@ bool StorageTweaks::DrawSettings() {
       "Colonne avec le prix de revente NPC × la quantité du stack.");
 
   ImGui::EndDisabled();
+
+  // ── Tri serveur (mêmes combos que « Commands Settings ») ────────────────────
+  // HORS du BeginDisabled ci-dessus : ce n'est pas un réglage du viewer mais un
+  // réglage SERVEUR (@tri_storage / @tri_gstorage), qui vaut aussi pour la
+  // fenêtre native. Il s'applique à la PROCHAINE ouverture du storage (le
+  // serveur trie au moment où il envoie la liste).
+  // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
+  // (aucun réglage yaml de CE plugin n'a bougé).
+  SeparatorText("Tri serveur");
+  ImGui::BeginDisabled(imgui_enabled_);
+  if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
+    mu->DrawSortModeCombo(MoonlightUi::kSortStorage);
+    mu->DrawSortModeCombo(MoonlightUi::kSortGuildStorage);
+  }
+  ImGui::EndDisabled();
+
   return changed;
 }
 

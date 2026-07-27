@@ -21,7 +21,7 @@
 #include "plugins/rodex_tweaks.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
 #include "plugins/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
-#include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
+#include "plugins/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
 #include "plugins/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
@@ -1639,6 +1639,22 @@ bool InventoryViewer::DrawSettings() {
   ImGui::EndDisabled();
 
   ImGui::EndDisabled();
+
+  // ── Tri serveur (mêmes combos que « Commands Settings ») ────────────────────
+  // HORS du BeginDisabled ci-dessus : ce n'est pas un réglage du viewer mais un
+  // réglage SERVEUR (@tri_inventaire / @tri_cart), qui vaut aussi pour les
+  // fenêtres natives. Le serveur retrie et renvoie la liste ; le viewer comme le
+  // natif l'affichent dans l'ordre reçu.
+  // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
+  // (aucun réglage yaml de CE plugin n'a bougé).
+  SeparatorText("Tri serveur");
+  if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
+    ImGui::BeginDisabled(free_layout());
+    mu->DrawSortModeCombo(MoonlightUi::kSortInventory);
+    ImGui::EndDisabled();
+    mu->DrawSortModeCombo(MoonlightUi::kSortCart);
+  }
+
   return changed;
 }
 
@@ -1861,7 +1877,16 @@ void InventoryViewer::OnRenderUI() {
   ImGui::EndChild();
   ImGui::PopStyleVar();  // WindowPadding (strip)
 
-  // ── Vue filtrée (onglet courant + recherche), triée par type puis nom ──
+  // ── Vue filtrée (onglet courant + recherche) ──
+  // ORDRE D'AFFICHAGE : par défaut on garde l'ORDRE DE LA LISTE SESSION, tel quel.
+  // C'est exactement ce que fait le natif (UIInventoryWnd_BuildFavList 0x0095af80
+  // parcourt la liste 0..count-1 via Inventory_CopyItemAt et ne la trie QUE si
+  // g_inv_sortEnabled). Cet ordre est celui d'arrivée des paquets : le serveur
+  // moonlight vide la liste (ZC_INVENTORY_START type 0 -> 0x00cd8d10) puis la
+  // renvoie triée à chaque @tri_inventaire / changement du réglage « Tri
+  // Inventaire ». Re-trier par index d'inventaire, comme on le faisait, écrasait
+  // ce tri (les non-empilables arrivent APRÈS les empilables, donc index croissant
+  // != ordre serveur) et l'inventaire moderne semblait ignorer le réglage.
   auto in_tab = [](int tab, const Item& it) -> bool {
     const Cat& c = kCats[tab];
     if (c.fav) return it.favorite != 0;   // onglet Favoris : uniquement les favoris
@@ -1875,15 +1900,31 @@ void InventoryViewer::OnRenderUI() {
   for (int i = 0; i < item_count_; ++i)
     if (in_tab(cur_tab_, items_[i]) && filter.PassFilter(items_[i].name))
       view.push_back(i);
-  if (sort_enabled_) {  // bouton Tri (footer, onglet Favoris)
+  // L'onglet « Tout » est EXCLU du placement libre : il mélange toutes les
+  // catégories, donc une même case n'y désigne pas le même emplacement que dans
+  // l'onglet d'origine de l'item (détail plus bas, à la construction de cell_of).
+  const bool tabAll = (kCats[cur_tab_].types == nullptr && !kCats[cur_tab_].fav);
+  const bool freeLayoutActive = free_layout_ && lock_size_ && !tabAll;
+  // Tri CLIENT (bouton « T » du footer) : uniquement là où le bouton existe, comme
+  // le natif — g_inv_sortEnabled ne gouverne QUE la liste des Favoris
+  // (UIInventoryWnd_BuildFavList), pas les autres onglets. Même condition que
+  // `showSort` plus bas (Favoris + taille non verrouillée), sinon un tri invisible
+  // continuerait d'écraser l'ordre serveur sur tous les onglets.
+  const bool clientSort = sort_enabled_ && kCats[cur_tab_].fav && !lock_size_;
+  if (clientSort) {
     std::sort(view.begin(), view.end(), [this](int a, int b) {
       if (items_[a].type != items_[b].type) return items_[a].type < items_[b].type;
       return _stricmp(items_[a].name, items_[b].name) < 0;
     });
-  } else {
+  } else if (freeLayoutActive) {
+    // Placement libre : la disposition appartient au joueur (layout_), donc c'est
+    // le SEUL mode où l'ordre serveur est ignoré. Les items sans case attribuée
+    // sont rangés par index d'inventaire — ordre stable, qu'un tri serveur ne
+    // fera pas sauter d'une case à l'autre.
     std::sort(view.begin(), view.end(),
               [this](int a, int b) { return items_[a].index < items_[b].index; });
   }
+  // Sinon : aucun tri — l'ordre de la liste session est conservé tel quel.
 
   // ── Grille de tuiles 32px (fond itemwin_mid) : à DROITE des onglets en
   //    disposition verticale, EN DESSOUS en horizontale. Défile. ──
@@ -1929,12 +1970,12 @@ void InventoryViewer::OnRenderUI() {
     // pose d'abord ceux qui ont une case libre, puis les autres dans les premières
     // cases restantes -> un item nouvellement ramassé ne bouscule personne. Sans
     // l'option : remplissage séquentiel comme avant (cell_of[k] = k).
-    // L'onglet « Tout » est EXCLU du placement libre : il mélange toutes les
-    // catégories, donc une même case n'y désigne pas le même emplacement que dans
-    // l'onglet d'origine de l'item — y déplacer quoi que ce soit casserait la
-    // disposition des autres onglets. Il garde le remplissage automatique.
-    const bool tabAll = (kCats[cur_tab_].types == nullptr && !kCats[cur_tab_].fav);
-    const bool freeGrid = free_layout_ && lock_size_ && !tabAll;
+    // L'onglet « Tout » est EXCLU du placement libre (tabAll, calculé plus haut avec
+    // l'ordre d'affichage) : il mélange toutes les catégories, donc une même case
+    // n'y désigne pas le même emplacement que dans l'onglet d'origine de l'item — y
+    // déplacer quoi que ce soit casserait la disposition des autres onglets. Il
+    // garde le remplissage automatique.
+    const bool freeGrid = freeLayoutActive;
     std::vector<int> cell_of;  // case -> rang dans `view` (-1 = case vide)
     if (freeGrid) {
       const int nitems = static_cast<int>(view.size());
@@ -2393,7 +2434,7 @@ void InventoryViewer::OnRenderUI() {
   }
   if (showSort) {
     if (FooterImgToggle("##inv_sort", bx, cyc, g_btn_sort[1], g_btn_sort[0], sort_enabled_, "T",
-                        "Trier la vue (type puis nom) ; sinon ordre d'inventaire", &bwOut))
+                        "Trier la vue (type puis nom) ; sinon ordre du serveur", &bwOut))
       sort_enabled_ = !sort_enabled_;
   }
 

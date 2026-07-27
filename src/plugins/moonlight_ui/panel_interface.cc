@@ -223,7 +223,7 @@ void MoonlightUi::DrawInterfacePanel() {
               "Ton avatar Discord : le panneau utilisateur du site génère "
               "l'image de ton personnage à la bonne dimension pour Discord, en "
               "un clic.");
-          if (ro::RoSmallButton("Générer mon avatar Discord")) {
+          if (ro::RoButton("Générer mon avatar Discord")) {
             ShellExecuteA(nullptr, "open", kDiscordAvatarUrl, nullptr, nullptr,
                           SW_SHOWNORMAL);
           }
