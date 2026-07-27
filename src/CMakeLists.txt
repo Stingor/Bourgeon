@@ -154,6 +154,8 @@ set(BOURGEON_FILES
 	"ragnarok/item_info.h"
 	"ragnarok/rag_connection.cc"
 	"ragnarok/rag_connection.h"
+	"ragnarok/skill_cooldowns.cc"
+	"ragnarok/skill_cooldowns.h"
 	"ragnarok/ui_window_mgr.cc"
 	"ragnarok/ui_window_mgr.h"
 	"ragnarok/mode_mgr.cc"

@@ -18,14 +18,13 @@
 #include "plugins/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "plugins/inventory_viewer.h"  // DraggedItemNameId (drag inventaire -> case de barre)
 #include "plugins/imgui_escape.h"
+#include "ragnarok/skill_cooldowns.h"  // cooldowns serveur (ZC_SKILL_POSTDELAY)
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (barre déplacée à la main)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
-
-#pragma comment(lib, "winmm.lib")  // timeGetTime (matche l'horloge cooldown du jeu)
 
 // ===========================================================================
 // Barre d'action ImGui remplaçant UIShortCutWnd (id 0x24). DESSIN PUR (pas de
@@ -100,18 +99,12 @@ constexpr int kItemNameEn  = 0x04;  // record+0x04 = nom anglais (ASCII, propre 
 constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli)
 constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
 
-// ---- cooldown (g_ShortCutCooldownList 0x015ff7e0) --------------------------
-constexpr uintptr_t kCooldownList  = 0x015ff7e0;   // sentinelle (la liste EST la sentinelle)
-constexpr uintptr_t kUseGameClock  = 0x015beecc;   // 0 -> timeGetTime(), sinon horloge jeu
-constexpr uintptr_t kGameClockGet  = 0x00b1fac0;   // -> ptr, DWORD horloge à +0x20
-
 using OnMsg_t      = int   (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using SetVisible_t = void  (__fastcall*)(void*, void*, int);
 using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
 using SetSlot_t    = void  (__fastcall*)(void*, void*, int, int, int, int, int);
 using GetOption_t  = int   (__thiscall*)(void*, int);
 using SetOption_t  = void  (__thiscall*)(void*, int, int, int);  // (mgr,key,val,0)
-using GameClock_t  = void* (__cdecl*)();
 using GetSkillInfo_t = void (__fastcall*)(void*, void*, void*, int, int);  // (mgr,edx,out,id,gate)
 using StrFree_t      = void (__fastcall*)(void*);                          // (ecx=std::string base)
 using CloseWin_t     = char (__fastcall*)(void*, void*, int);             // (mgr,edx,id)
@@ -121,15 +114,6 @@ using ItemDbGet_t    = void* (__cdecl*)(int, void*);                       // (n
 using GetSkillNameLua_t = char* (__cdecl*)(int);                          // GetSkillName(id) -> nom skill / "Unknown-Skill"
 using ItemSkillInfoCtor_t  = void* (__fastcall*)(void*);                  // (ecx=this) -> this
 using ItemSkillInfoSetId_t = void  (__thiscall*)(void*, int);             // (this, id)
-
-struct CooldownNode {       // 0x24 octets
-  CooldownNode* next;       // +0x00
-  CooldownNode* prev;       // +0x04
-  uint32_t      skillId;    // +0x08
-  uint32_t      endTick;    // +0x0C = clock + duration
-  uint32_t      duration;   // +0x10 (ms)
-  // ... listes d'animation imbriquées +0x14.. (inutiles ici)
-};
 
 struct SlotRec { bool valid; uint8_t type; uint32_t id; int16_t level; };
 
@@ -463,39 +447,19 @@ void RebuildKeyCache() {
   }
 }
 
-DWORD ShortCutNow() {  // même sélection d'horloge que OnDraw/OnMsg 0x8f
-  if (*reinterpret_cast<int*>(kUseGameClock) == 0) return timeGetTime();
-  void* clk = reinterpret_cast<GameClock_t>(kGameClockGet)();
-  return clk ? *reinterpret_cast<DWORD*>(reinterpret_cast<uint8_t*>(clk) + 0x20)
-             : timeGetTime();
-}
 // Fraction de cooldown restante [0,1] (0 = prêt). Match exact par id (les
 // pseudo-ids de groupe 0x241/9999 = polish v2).
 //
-// IMPORTANT : 0x015ff7e0 est l'OBJET std::list MSVC, pas la sentinelle. La
-// sentinelle (_Myhead, sur le tas) = *(0x015ff7e0). Le natif (OnDraw) itère
-// `head=*(0x015ff7e0); n=head->next; tant que n!=head`. Comparer contre
-// l'adresse 0x015ff7e0 (mon 1er bug) bouclait à l'infini (freeze). Garde
-// d'itérations + SEH = anti-freeze/anti-crash définitif.
+// La source est ro::SkillCooldownFraction, alimentée par le paquet serveur
+// ZC_SKILL_POSTDELAY. Lire la liste native g_ShortCutCooldownList — ce que
+// faisait cette fonction — ne pouvait PAS marcher ici : le handler natif du
+// paquet (0x00cd60b0) ne crée un nœud que si le skill figure dans la liste
+// d'icônes reconstruite à chaque dessin de la barre NATIVE, or on la cache. La
+// liste restait donc vide et aucune case ne s'assombrissait jamais — visible
+// surtout sur les compétences de guilde, aux cooldowns de plusieurs minutes.
+// Détails du RE dans ragnarok/skill_cooldowns.h.
 float CooldownFraction(uint32_t skillId) {
-  __try {
-    CooldownNode* head = *reinterpret_cast<CooldownNode**>(kCooldownList);  // _Myhead
-    if (!head) return 0.0f;
-    const DWORD now = ShortCutNow();
-    int guard = 0;
-    for (CooldownNode* n = head->next; n && n != head && guard < 256;
-         n = n->next, ++guard) {
-      if (n->skillId != skillId) continue;
-      if (n->duration == 0) return 0.0f;
-      const int remain = static_cast<int>(n->endTick - now);   // unsigned-safe
-      if (remain <= 0) return 0.0f;                            // expiré
-      DWORD r = static_cast<DWORD>(remain);
-      if (r > n->duration) r = n->duration;
-      return static_cast<float>(r) / static_cast<float>(n->duration);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-  return 0.0f;
+  return ro::SkillCooldownFraction(static_cast<uint16_t>(skillId));
 }
 
 // ── Icônes (recette menu_icons.cc : TexMgr -> BGRA -> Overlay_CreateTextureARGB) ──
@@ -1381,8 +1345,10 @@ void SkillBarTweaks::DrawBar(int bar) {
         const ImVec2 ls = font->CalcTextSizeA(ns, 1.0e30f, 0.0f, lv);
         boldAddF(font, ns, ImVec2(p1.x - ls.x - 1, p1.y - ls.y - 1), cCount, lv);
       }
-      // Overlay de cooldown : indexé par skill id ; un objet n'y figure pas -> 0.
-      const float f = CooldownFraction(r.id);
+      // Overlay de cooldown : la table est indexée par SKILL id, donc réservée aux
+      // cases de type skill — l'id d'un objet est un nameid, qui tombe dans la
+      // même plage numérique et désignerait un cooldown au hasard.
+      const float f = isItem ? 0.0f : CooldownFraction(r.id);
       if (f > 0.0f) {
         const float h = icon_size_ * f;
         dl->AddRectFilled(ImVec2(p0.x, p1.y - h), p1, IM_COL32(0, 0, 0, 150), 3.0f);
@@ -1390,6 +1356,27 @@ void SkillBarTweaks::DrawBar(int bar) {
       // Case INUTILISABLE (objet épuisé / skill non appris) : voile gris sombre par-dessus.
       if (!usable)
         dl->AddRectFilled(p0, p1, IM_COL32(10, 10, 15, 165), 3.0f);
+      // Décompte au centre, par-dessus les voiles. Le voile seul ne dit rien d'un
+      // cooldown de guilde de plusieurs minutes : il bouge d'un pixel par seconde.
+      // (`ms` == 0 alors que le voile est là = cooldown venu du repli natif, sans
+      // durée exploitable côté table : on garde le voile, sans chiffre.)
+      const unsigned long ms =
+          f > 0.0f ? ro::SkillCooldownRemainingMs(static_cast<uint16_t>(r.id)) : 0;
+      if (ms > 0) {
+        char left[16];
+        if (ms >= 60000)  // au-delà de la minute, m:ss ; en deçà, la seconde suffit
+          std::snprintf(left, sizeof(left), "%lu:%02lu", ms / 60000,
+                        (ms / 1000) % 60);
+        else
+          std::snprintf(left, sizeof(left), "%lu", (ms + 999) / 1000);
+        ImFont* font = ImGui::GetFont();
+        const float cs = std::max(8.0f, icon_size_ * 0.42f);
+        const ImVec2 cz = font->CalcTextSizeA(cs, 1.0e30f, 0.0f, left);
+        boldAddF(font, cs,
+                 ImVec2(p0.x + (icon_size_ - cz.x) * 0.5f,
+                        p0.y + (icon_size_ - cz.y) * 0.5f),
+                 IM_COL32(255, 235, 150, 255), left);
+      }
     }
 
     dl->AddRect(p0, p1, (hover == k) ? cBordHi : cBorder, 3.0f);

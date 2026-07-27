@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include "imgui.h"
+#include "ragnarok/skill_cooldowns.h"
 #include "ui/ro_imgui.h"
 #include "ui/window_clamp.h"
 #include "plugins/auto_login.h"
@@ -369,7 +370,12 @@ void Bourgeon::FireModeSwitch(ModeMgr::ModeType mode_type,
   // heartbeat so RenderUI hides every plugin window this very frame, instead of
   // waiting up to a second for it to go stale. Entering the game re-arms it via
   // NotifyGameUpdate() from GameMode::OnUpdateHook.
-  if (mode_type != ModeMgr::ModeType::kGame) last_game_update_ms_.store(0);
+  if (mode_type != ModeMgr::ModeType::kGame) {
+    last_game_update_ms_.store(0);
+    // Les cooldowns appartiennent au personnage quitté ; ceux qui courent encore
+    // sont réémis par le serveur à l'entrée en jeu (skill_blockpc_start).
+    ro::ClearSkillCooldowns();
+  }
   for (auto& plugin : plugins_) {
     try {
       plugin->OnModeSwitch(mode_type, map_name);
@@ -411,6 +417,10 @@ void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
 
 void Bourgeon::FireRecvPacket(uint16_t opcode, const uint8_t* data,
                               uint16_t len) {
+  // Table de cooldowns partagée : alimentée ici, en un seul point, avant les
+  // plugins. Ceux qui l'affichent (barre d'action, feuille de perso) ne
+  // dépendent donc ni de leur ordre de chargement ni de leur présence.
+  ro::FeedSkillCooldownPacket(opcode, data, len);
   for (auto& plugin : plugins_) {
     try {
       plugin->OnRecvPacket(opcode, data, len);
@@ -434,6 +444,10 @@ void Bourgeon::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
 }
 
 void Bourgeon::LoadPlugins() {
+  // Services partagés, avant les plugins : ils observent des paquets pour le
+  // compte de plusieurs d'entre eux (voir ragnarok/skill_cooldowns.h).
+  ro::InstallSkillCooldowns();
+
   AutoLogin* auto_login = nullptr;
   {
     auto al = std::make_unique<AutoLogin>();
