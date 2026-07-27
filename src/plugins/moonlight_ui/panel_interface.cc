@@ -1,5 +1,8 @@
 #include "plugins/moonlight_ui/internal.h"
 
+#include <windows.h>
+#include <shellapi.h>  // ShellExecuteA (lien « avatar Discord » vers l'UCP)
+
 #include <algorithm>
 
 #include "bourgeon.h"
@@ -30,6 +33,12 @@
 #include "plugins/storage_tweaks.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
+// Page du panneau utilisateur (UCP) du site qui génère l'avatar Discord du
+// personnage au bon format. Mentionnée dans la section « Chat », à côté du
+// réglage du relais Discord.
+constexpr const char* kDiscordAvatarUrl =
+    "https://moonlight-destiny.fr/ucp.php?i=profile&mode=avatar";
 
 // ── En-tête « Interface de jeu » ─────────────────────────────────────────────
 // Navigation latérale + les 11 sections de configuration. C'était le bloc dominant
@@ -202,6 +211,23 @@ void MoonlightUi::DrawInterfacePanel() {
             UpdateRelay();
             SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
           }
+          SameLine(); HelpMarker(
+              "Relaie le canal Discord du serveur dans le chat du jeu, et tes "
+              "messages vers Discord — uniquement sur la carte Gonryun.");
+
+          // Avatar Discord : la page UCP du site génère l'image du personnage
+          // déjà recadrée/dimensionnée pour Discord. C'est la MÊME identité que
+          // le relais ci-dessus (le pseudo affiché côté Discord), d'où la place
+          // de la mention ici plutôt que dans un panneau « compte ».
+          GrayText(
+              "Ton avatar Discord : le panneau utilisateur du site génère "
+              "l'image de ton personnage à la bonne dimension pour Discord, en "
+              "un clic.");
+          if (ro::RoSmallButton("Générer mon avatar Discord")) {
+            ShellExecuteA(nullptr, "open", kDiscordAvatarUrl, nullptr, nullptr,
+                          SW_SHOWNORMAL);
+          }
+          SameLine(); HelpMarker(kDiscordAvatarUrl);
 
           if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
             changed |= chat_tweaks->DrawSettings();
