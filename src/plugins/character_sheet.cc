@@ -36,7 +36,7 @@
 #include "plugins/imgui_escape.h"
 #include "ui/ro_imgui.h"
 #include "utils/tinf_inflate.h"  // inflate zlib pour les emblèmes de guilde (.ebm)
-#include "utils/log_console.h"   // LogDiag : diagnostic de l'envoi d'emblème
+#include "utils/log_console.h"   // LogDiag : échecs de chargement de l'arbre de guilde
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -2105,11 +2105,7 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
     if (len < 2) return;
     const int packet_len = *reinterpret_cast<const uint16_t*>(data);
     if (packet_len < 12) return;
-    const int guild_id   = *reinterpret_cast<const int32_t*>(data + 2);
-    const int emblem_id  = *reinterpret_cast<const int32_t*>(data + 6);
-    LogDiag("[Emblème] ZC 0x0152 reçu : guilde {}, version {}, {} octets d'image",
-            guild_id, emblem_id, packet_len - 12);
-    ForgetEmblem(guild_id);
+    ForgetEmblem(*reinterpret_cast<const int32_t*>(data + 2));
     return;
   }
 
@@ -2137,8 +2133,6 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
       row.upgradable = entry[36] != 0;
       if (row.id != 0) guild_skills_.push_back(row);
     }
-    LogDiag("[Guilde] ZC 0x0162 : {} octets, {} point(s), {} compétence(s)", packet_len,
-            guild_skill_points_, guild_skills_.size());
     return;
   }
 
@@ -2156,7 +2150,6 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
       std::strncpy(row.name, reinterpret_cast<const char*>(entry + 44), sizeof(row.name) - 1);
       guild_bans_.push_back(row);
     }
-    LogDiag("[Guilde] ZC 0x0b7c : {} octets, {} expulsion(s)", packet_len, guild_bans_.size());
     return;
   }
 
@@ -3439,8 +3432,6 @@ void CharacterSheet::EnsureGuildSkillTree() {
                      return a.id < b.id;
                    });
   guild_skill_tree_state_ = 1;
-  LogDiag("[Guilde] arbre chargé : {} compétences, {} lien(s).",
-          guild_skill_tree_.size(), link_count);
   // Un arbre SANS aucun lien n'existe pas dans la DB : c'est forcément le dump qui n'a
   // pas été compris. Montrer son début plutôt que d'afficher une liste plate en silence.
   if (link_count == 0)
@@ -3897,7 +3888,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
       guild_emblem_goto_paint_ ? ImGuiTabItemFlags_SetSelected : 0;
   guild_emblem_goto_paint_ = false;
   if (ImGui::BeginTabItem("Dessiner", nullptr, paint_flags)) {
-    DrawGuildEmblemPaintTab(guildId, is_master);
+    DrawGuildEmblemPaintTab(guildId);
     ImGui::EndTabItem();
   }
   if (!ImGui::BeginTabItem("Choisir un fichier")) {
@@ -3987,8 +3978,6 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   ImGui::BeginDisabled(!can_send);
   // Envoi par le chemin NATIF (service web) : le seul qui fonctionne sur ce serveur.
   if (ro::RoButton("Envoyer", 110.0f, 0.0f)) {
-    LogDiag("[Emblème] upload natif du fichier « {} » : {} o, guildId {}, maître {}",
-            chosen->name, chosen->bmp.size(), guildId, is_master ? "oui" : "NON");
     const bool started = RequestEmblemUploadSEH(guildId, chosen->name.c_str());
     guild_emblem_diag_ = started
                              ? "Envoi au service web lancé (" + chosen->name + ")."
@@ -4033,7 +4022,9 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
 // Canvas 24x24 : clic gauche = couleur courante, clic droit = gomme. Le rendu est un
 // simple ImDrawList (576 rectangles) plutôt qu'une texture — pas de cache à invalider
 // au reset du device, et le damier de fond montre où l'emblème sera transparent.
-void CharacterSheet::DrawGuildEmblemPaintTab(int guildId, bool is_master) {
+// Le statut de maître n'est PAS un paramètre : l'avertissement « tu n'es pas maître »
+// est affiché une fois pour tout le modal, et le serveur reste seul juge de l'envoi.
+void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
   if (!g_emblem_canvas.started) EmblemCanvasClear();
@@ -4417,8 +4408,6 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId, bool is_master) {
     const std::string file_name = std::string(g_emblem_canvas.save_name[0]
                                                   ? g_emblem_canvas.save_name
                                                   : "mon_embleme") + ".bmp";
-    LogDiag("[Emblème] upload natif du dessin « {} » : BMP {} o, guildId {}, maître {}", file_name,
-            bmp.size(), guildId, is_master ? "oui" : "NON");
     if (!WriteEmblemFile(file_name.c_str(), bmp)) {
       guild_emblem_diag_ = "Écriture impossible : emblem/" + file_name;
     } else {

@@ -106,29 +106,11 @@ bool RagConnection::SendPacket(int packet_len, char* packet) {
   // Le pointeur n'est capturé qu'au PREMIER envoi natif : tant qu'aucun paquet du
   // client n'est passé par le hook (juste après l'entrée en jeu, par exemple), nos
   // propres envois partiraient sur un `this` nul et seraient perdus en silence.
-  if (connection == nullptr) {
-    LogDiag("RagConnection: SendPacket ignoré (singleton pas encore capturé), opcode 0x{:04x}",
-            packet_len >= 2 && packet ? *reinterpret_cast<uint16_t*>(packet) : 0);
-    return false;
-  }
-  // CRagConnection::SendPacket (0x00c14920) renvoie TOUJOURS 1, même quand il ne met
-  // rien en file : son « ok » ne prouve donc rien. Trois champs décident du sort réel
-  // du paquet — on les relit ici pour que le journal dise ce qui s'est passé.
-  //   +0x6C : quand il est posé, la fonction sort sans rien faire (connexion close)
-  //   +0x04 : le socket ; -1 = pas de connexion, le paquet est jeté
-  //   +0x18 : bascule vers un buffer d'attente (this+0x54) au lieu du buffer d'envoi
-  const uint8_t* fields = reinterpret_cast<const uint8_t*>(connection);
-  __try {
-    const uint8_t closed  = fields[0x6C];
-    const int     socket  = *reinterpret_cast<const int*>(fields + 0x04);
-    const uint8_t deferred = fields[0x18];
-    if (closed || socket == -1 || deferred) {
-      LogDiag("RagConnection: opcode 0x{:04x} ({} o) NON envoyé — close={} socket={} différé={}",
-              packet_len >= 2 && packet ? *reinterpret_cast<uint16_t*>(packet) : 0, packet_len,
-              closed, socket, deferred);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
+  if (connection == nullptr) return false;
+  // ⚠ CRagConnection::SendPacket (0x00c14920) renvoie TOUJOURS 1, même quand il ne met
+  // rien en file : son « ok » ne prouve rien. Trois champs décident du sort réel du
+  // paquet, à relire si un envoi disparaît sans trace — +0x6C connexion close (sortie
+  // immédiate), +0x04 socket (-1 = paquet jeté), +0x18 bascule vers le buffer d'attente.
   return SendPacketRef(connection, packet_len, packet);
 }
 

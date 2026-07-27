@@ -314,7 +314,7 @@ class CharacterSheet : public Plugin {
   void DrawGuildEmblemModal(int guildId, bool is_master);
   // Onglet « Dessiner » du même modal : canvas 24x24 peint en jeu, converti en BMP
   // 24 bits au moment de l'envoi (aucun fichier requis).
-  void DrawGuildEmblemPaintTab(int guildId, bool is_master);
+  void DrawGuildEmblemPaintTab(int guildId);
   // Sauve l'equipement porte actuellement comme preset nomme (perso courant).
   void SaveCurrentEquipAsPreset(const char* name);
   // Applique un preset : desequipe les slots hors preset, equipe les items manquants.
