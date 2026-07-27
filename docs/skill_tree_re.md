@@ -170,13 +170,48 @@ Grid (modern mode): cell `0x44 × 0x38`, origin `(0x4C, 0x2C)`, **42 cells** (`0
 | **6 / `0xCA`** (@`0x00979520`) | **view toggle**: `DAT_015fa454 = (== 0)` then resize `0x14a=330` (compact) or `0x230=560`×400 (grid) |
 | 6 / `0xD5` (@`0x0097956F`) | `DAT_015fa458 = (==0)` = **Show_SkillDescript** |
 | 6 / `0xC9` | `SaveWindowRect(0x25)` (self-close) |
-| 6 / `0xD8` | cycle tab · `0x16B` reset+refresh · `0x10F` reset-all confirm · `0xEF..0xF8` direct level-up |
+| 6 / `0xD8` | cycle tab |
+| **6 / `0x10F`** (@`0x0097945F`) | **`btn_apply`** — commit the reserved points (see §3.4) |
+| 6 / `0x16B` (@`0x009794D4`) | **`btn_reset`** — drop the reservations (`sub_976B60` + self-msg `0x17`) |
+| 6 / `0xEF..0xF8` | the 10 per-row `skill_up_*.bmp` "+" buttons (compact mode) → **reserve** a point |
+| 6 / `0x00..0x29` · `0x2A..0x53` | the 42 grid cells (level-up / level-down) → `sub_738570(skill, lvl)` |
 | `0x0E` | resize (clamps height ≤ 400 in grid mode) |
 | `0x16` | change active tab (`this+0x254`) |
 | **`0x17`** | rebuild (FUN_00976b60 + FUN_00737ce0(DB) + relayout + repaint) |
 | **`0x3C`** | job-change (FUN_009765f0) |
 | `0x22` | (re)anchor to parent (`+0x24C`) + initial resize |
 | `0x3A` | open desc (dispatcher cmd `0x71`) · `0xA1` re-fit tab |
+
+### 3.4 Spending skill points — reserve, then apply
+
+Points are **staged client-side first**, then committed in one go. Both view modes share the
+same two buttons, created in `OnCreate` with `btn_apply_*.bmp` / `btn_reset_*.bmp` at
+`(width-100, height-27)` and `(width-50, height-27)`.
+
+1. **Reserve** — `sub_979BA0(this, skillId)` (`0x00979BA0`), reached from the "+" buttons
+   (`OnMsg 6/0xEF..0xF8`) or from `OnRButtonDown 0x00978520`. Bails out returning `0` when
+   `this+0x26C` (remaining points) `<= 0`, when `this+0x2A8` is set, when the skill isn't in
+   the active tab's list, or when the node is already at max (`node+0x18 >= node+0x30`).
+   On success it bumps the node level, decrements `this+0x26C` and the caller writes
+   `*(WORD*)(this+0x271) = 0x0101`.
+2. **Enable** — `sub_978EB0` (`0x00978EB0`) runs after every action and does
+   `btn[0xAC] = (*(BYTE*)(this+0x272) == 0)` for **both** buttons. `+0xAC` is the *disabled*
+   flag, so Apply/Reset are greyed until at least one point is reserved.
+3. **Confirm** — `OnMsg` case `271` calls `UIWndMgr_ShowMessageBoxModal 0x00A31A30`
+   (text `MsgStringTable` **`0x561`**) and **requires the return to be `0xBB`**; anything else
+   jumps to `loc_9798DF` and the click is silently dropped.
+4. **Commit** — `sub_974530` (`0x00974530`) diffs the window's list against the skill DB and
+   emits `CGameMode::SendMsg(msg **67 / 0x43**, skillId)` once per pending level, which the
+   client serialises as **`CZ_UPGRADE_SKILLLEVEL 0x0112`** (4 bytes: `12 01 <skillId:u16>`).
+
+⚠️ **Trap (cost a debugging session).** Step 3 is the only fragile link: `0x00A31A30` returns
+`185` (`0xB9`) — *without ever showing a box* — when a message box is already open, when
+`g_pCurrentMode+0x624 == 1`, **or when something detours it**. Bourgeon's `char_select`
+plugin does exactly that (`Detour_ShowModal`, suppresses modals hidden under the ImGui
+char-select). Its `g_cover_active` flag used to stay stuck at `true` after entering the world,
+which killed *every* native modal in game — Apply included. Fixed by also requiring
+`!Bourgeon::IsGameActive()`. **If a native confirmation ever "does nothing", check
+`0x00A31A30` for a `jmp` into `ddraw.dll` before suspecting the window.**
 
 ---
 
