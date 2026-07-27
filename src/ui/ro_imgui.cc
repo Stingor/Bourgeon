@@ -123,8 +123,22 @@ ImFont* LoadKoreanFont(float size_px) {
     cfg.PixelSnapH = true;
     // Explicit ranges = glyphs are baked into the static atlas at build time,
     // which is what the DX7 backend needs (it has no dynamic-texture path).
-    g_font_malgun = io.Fonts->AddFontFromFileTTF(kKoreanFontPath, size_px, &cfg,
-                                                 io.Fonts->GetGlyphRangesKorean());
+    // = GetGlyphRangesKorean() + la PONCTUATION TYPOGRAPHIQUE (0x2010-0x203A),
+    // qu'ImGui n'inclut pas dans ses plages coréennes : les textes du jeu (livres,
+    // descriptions) contiennent des « … », tirets cadratins et apostrophes
+    // courbes, qui sortaient en losange « glyphe manquant ». 43 glyphes de plus,
+    // négligeable à côté des 11 172 syllabes hangul déjà bakées.
+    static const ImWchar kRanges[] = {
+        0x0020, 0x00FF,  // latin de base + supplément (accents)
+        0x2010, 0x203A,  // tirets, apostrophes/guillemets courbes, points de
+                         // suspension (U+2026), puce, pour mille
+        0x3131, 0x3163,  // jamos coréens
+        0xAC00, 0xD7A3,  // syllabes coréennes
+        0xFFFD, 0xFFFD,  // glyphe « caractère manquant »
+        0,
+    };
+    g_font_malgun =
+        io.Fonts->AddFontFromFileTTF(kKoreanFontPath, size_px, &cfg, kRanges);
   }
   ApplyFontSelection();
   return io.FontDefault;

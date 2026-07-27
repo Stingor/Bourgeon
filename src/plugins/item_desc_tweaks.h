@@ -75,6 +75,10 @@ class ItemDescTweaks : public Plugin {
   // et/ou panneau skill peuvent être désactivés séparément.
   bool& show_item_panel()  { return show_item_panel_; }
   bool& show_skill_panel() { return show_skill_panel_; }
+  // Fenêtre de LIVRE reproduite en ImGui (sinon : fenêtre native, sous l'overlay).
+  bool& show_book_panel()  { return show_book_panel_; }
+  // Ouvrir les livres à la page 1 plutôt qu'au signet de page natif.
+  bool& book_reset_page()  { return book_reset_page_; }
   // État de la checkbox « Comparer » (persisté par MoonlightUi).
   bool& cmp_show_equipped() { return cmp_show_equipped_; }
   // Ouverture de la desc : true = près de la souris, false = dernière position
@@ -102,6 +106,19 @@ class ItemDescTweaks : public Plugin {
     uint32_t  id = 0;
     bool      is_skill = false;
     int       x = 0, y = 0, w = 0, h = 0;  // pos/taille écran (base UIWindow)
+  };
+
+  // Instantané read-only de la fenêtre LIVRE native (UIBookWnd, id 0x6a), celle
+  // qu'ouvrent les boutons « Lire » / « Lecture auto » de la description.
+  // `open` = ouverte ET en mode lecture normale : en mode LECTURE AUTO le client
+  // cache lui-même la fenêtre et récite le texte dans le chat, il n'y a alors
+  // rien à reproduire.
+  struct BookWindow {
+    bool open = false;
+    bool auto_read = false;
+    int  page = 1;
+    int  pages = 1;
+    char title[64] = {};  // nom du livre (wnd+0xbc), = le titre natif
   };
 
  private:
@@ -196,6 +213,9 @@ class ItemDescTweaks : public Plugin {
   void RenderItemWindow();
   // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui.
   void RenderSkillWindow();
+  // Reproduit la fenêtre LIVRE (UIBookWnd 0x6a) en ImGui : page courante, texte
+  // coloré sélectionnable, pagination rejouée sur la fenêtre native.
+  void RenderBookWindow();
   // Onglets d'infos techniques (émis dans le TabBar de la fenêtre, après
   // l'onglet Description). Aucune requête tant qu'un onglet data n'est pas actif.
   void RenderTechTabs(const DescWindow& w);
@@ -206,6 +226,8 @@ class ItemDescTweaks : public Plugin {
 
   bool       show_item_panel_  = true;  // panneau technique pour les items
   bool       show_skill_panel_ = true;  // panneau technique pour les skills
+  bool       show_book_panel_  = true;  // fenêtre de livre reproduite en ImGui
+  bool       book_reset_page_  = true;  // livre ouvert page 1 (sinon : signet natif)
   bool       cmp_show_equipped_ = true; // toggle : afficher la colonne « Équipé »
   bool       desc_spawn_at_cursor_ = true;  // ouverture : true = près de la souris,
                                             // false = dernière position connue
@@ -224,6 +246,9 @@ class ItemDescTweaks : public Plugin {
   bool       skill_was_open_ = false;
   bool       skill_need_pos_ = false;
   int        skill_spawn_x_ = 0, skill_spawn_y_ = 0;
+  BookWindow book_;             // fenêtre livre (classe 0x6a)
+  bool       book_need_pos_ = false;
+  int        book_spawn_x_ = 0, book_spawn_y_ = 0;
 
   std::unordered_map<uint32_t, TechData> cache_;  // clé = CacheKey(id,is_skill)
   std::unordered_map<uint32_t, DamageEst> dmg_cache_;  // clé = skill_id

@@ -197,6 +197,30 @@ constexpr uintptr_t kBookDbContains = 0x006a5db0;  // BookItemDB_Contains
 constexpr uintptr_t kOwnsItemById   = 0x00c6b1e0;  // Inventory_OwnsItemById
 using BookContains_t = char(__cdecl*)(int);
 using OwnsItem_t     = char(__stdcall*)(int);
+
+// ── Fenêtre LIVRE (UIBookWnd, id 0x6a) ───────────────────────────────────────
+// Celle qu'ouvrent les boutons ci-dessus. Reproduite en ImGui (Option A : native
+// cachée, données relues). Offsets VÉRIFIÉS live (x32, « Potion Creation Guide »,
+// 2026-07-27). Le manager la range dans sa map générique (pas de slot fixe) ->
+// détection par uiwnd::FindWindow(0x6a) + contrôle de vtable.
+constexpr int       kBookWndId  = 0x6a;
+constexpr uintptr_t kBookVTable = 0x0103517c;
+constexpr int kBookTitle     = 0xbc;   // char[] INLINE : nom du livre (= titre natif)
+constexpr int kBookLineTotal = 0x120;  // nb total de lignes déjà wrappées par le client
+constexpr int kBookPageCount = 0x124;  // nb de pages
+constexpr int kBookPage      = 0x128;  // page courante (1-based)
+constexpr int kBookAutoFlag  = 0x134;  // byte : lecture auto EN COURS
+constexpr int kBookBgR       = 0x138;  // couleur de FOND R/G/B (en-tête %RRGGBB du .txt)
+constexpr int kBookBgG       = 0x13c;
+constexpr int kBookBgB       = 0x140;
+constexpr int kBookLines     = 0x144;  // std::vector<std::string> : begin (end à +0x148)
+                                       // (élément = kStdStringSize, cf. plus haut)
+constexpr int kBookLinesPerPage = 19;  // pagination native (OnMsg case 92)
+// Commandes du case 6 de la fenêtre livre + message de saut de page.
+constexpr int kCmdBookClose = 0xc9;   // sauve le SIGNET (msg 356) puis ferme
+constexpr int kCmdBookPrev  = 0x162;  // page précédente
+constexpr int kCmdBookNext  = 0x163;  // page suivante
+constexpr int kMsgBookGoto  = 92;     // aller à la page param_3 (0 = signet registre)
 using TexMgr_t       = void* (__cdecl*)();
 using MakeKey_t      = void* (__cdecl*)(const char*);
 using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
@@ -680,6 +704,46 @@ inline void AnalyzeDescLine(const char* s, int* out_len, char* out_last) {
   if (out_last) *out_last = last;
 }
 
+// Longueur d'une séquence UTF-8 d'après son octet de tête (1 = ASCII, ou octet
+// isolé/invalide qu'on laisse passer tel quel).
+inline int Utf8SeqLen(unsigned char c) {
+  if (c < 0x80) return 1;
+  if ((c & 0xe0) == 0xc0) return 2;
+  if ((c & 0xf0) == 0xe0) return 3;
+  if ((c & 0xf8) == 0xf0) return 4;
+  return 1;
+}
+
+// Code-page EFFECTIVE du client (949 Corée / 1252 Europe / 0 = CP_ACP), posée
+// d'après g_ServiceType. Même recette que char_select : on la LIT au lieu de coder
+// 949 en dur, donc correct quel que soit le servicetype.
+constexpr uintptr_t kClientCodePage = 0x0159b818;
+
+// Convertit SUR PLACE des lignes de texte du jeu vers l'UTF-8 attendu par ImGui.
+// Sans ça, tout octet >= 0x80 (les « … » et les accents des .txt de livre, encodés
+// dans la code-page du client) est lu comme de l'UTF-8 invalide et sort en losange.
+// Ligne purement ASCII = laissée telle quelle, aucune conversion.
+void LocalizeLines(char lines[][kLineLen], int count) {
+  UINT cp;
+  __try { cp = *reinterpret_cast<const UINT*>(kClientCodePage); }
+  __except (EXCEPTION_EXECUTE_HANDLER) { cp = CP_ACP; }
+  for (int i = 0; i < count; ++i) {
+    bool ascii = true;
+    for (const char* p = lines[i]; *p; ++p)
+      if (static_cast<unsigned char>(*p) >= 0x80) { ascii = false; break; }
+    if (ascii) continue;
+    wchar_t wide[kLineLen];
+    const int wlen =
+        MultiByteToWideChar(cp, 0, lines[i], -1, wide, kLineLen);
+    if (wlen <= 0) continue;  // code-page refusée -> on garde les octets bruts
+    char utf8[kLineLen];
+    const int ulen = WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, kLineLen,
+                                         nullptr, nullptr);
+    if (ulen <= 0) continue;  // ne tient pas dans la ligne -> on garde l'original
+    std::memcpy(lines[i], utf8, static_cast<size_t>(ulen));
+  }
+}
+
 // reflow=true (skills) : les lignes viennent des rich-text box natifs DÉJÀ wrappés par
 // le jeu, qui coupe en plein mot (il compte les tokens ^RRGGBB dans la largeur) -> on
 // fusionne les lignes « pleines » (== colonne de wrap) non terminées par une ponctuation
@@ -701,7 +765,10 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
   const ImU32 kLinkUrl  = IM_COL32(64, 132, 224, 255);  // liens <URL>  (bleu)
   const ImU32 kLinkNavi = IM_COL32(60, 175, 90, 255);   // liens <NAVI> (vert)
 
-  struct Box { float x0, x1, y; int row; int idx; ImU32 col; int link; };
+  // Une « boîte » = UN glyphe affiché. `len` = sa taille en octets dans `buf` : un
+  // caractère non-ASCII (UTF-8 multi-octets) reste un seul glyphe, sinon il serait
+  // dessiné et sélectionné octet par octet (= losanges).
+  struct Box { float x0, x1, y; int row; int idx; int len; ImU32 col; int link; };
   static std::vector<Box> boxes;   // réutilisés (UI mono-thread)
   static std::string buf;
   static std::vector<std::string> hrefs;  // charge des liens (index = Box.link)
@@ -714,10 +781,10 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
   float penX = 0.0f, penY = 0.0f;
   int   row = 0;
   int   curLink = -1;              // lien courant (index dans hrefs) ou -1
-  auto putVisible = [&](char c, float w, ImU32 col) {
+  auto putVisible = [&](const char* s, int len, float w, ImU32 col) {
     boxes.push_back({p0.x + penX, p0.x + penX + w, p0.y + penY, row,
-                     static_cast<int>(buf.size()), col, curLink});
-    buf.push_back(c);
+                     static_cast<int>(buf.size()), len, col, curLink});
+    buf.append(s, static_cast<size_t>(len));
     penX += w;
   };
 
@@ -754,12 +821,18 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
         buf.push_back(' ');
         penX = 0.0f; penY += lineH; ++row;
       } else {
-        putVisible(' ', spaceW, useCol);     // espace visible entre mots
+        putVisible(" ", 1, spaceW, useCol);  // espace visible entre mots
       }
     }
-    for (char ch : word) {
-      const char tmp[2] = {ch, '\0'};
-      putVisible(ch, ImGui::CalcTextSize(tmp).x, useCol);
+    // Découpe par CARACTÈRE (séquence UTF-8), pas par octet.
+    for (size_t i = 0; i < word.size();) {
+      int len = Utf8SeqLen(static_cast<unsigned char>(word[i]));
+      if (i + static_cast<size_t>(len) > word.size())
+        len = static_cast<int>(word.size() - i);
+      const char* seq = word.c_str() + i;
+      putVisible(seq, len,
+                 ImGui::CalcTextSize(seq, seq + len).x, useCol);
+      i += static_cast<size_t>(len);
     }
     word.clear();
   };
@@ -832,10 +905,10 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
       rowHas = true;
       if (m.x < bx.x0) { result = bx.idx; break; }
       if (m.x <= bx.x1) {
-        result = (m.x < (bx.x0 + bx.x1) * 0.5f) ? bx.idx : bx.idx + 1;
+        result = (m.x < (bx.x0 + bx.x1) * 0.5f) ? bx.idx : bx.idx + bx.len;
         break;
       }
-      result = bx.idx + 1;  // après ce glyphe (continue -> fin de ligne)
+      result = bx.idx + bx.len;  // après ce glyphe (continue -> fin de ligne)
     }
     if (!rowHas) {  // ligne vide : cale sur le 1er glyphe d'une ligne >= r
       for (const Box& bx : boxes)
@@ -934,7 +1007,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
   // Texte (par glyphe, couleur d'origine) + soulignement des liens.
   for (const Box& bx : boxes) {
     const char* c = &buf[static_cast<size_t>(bx.idx)];
-    dl->AddText(font, fsz, ImVec2(bx.x0, bx.y), bx.col, c, c + 1);
+    dl->AddText(font, fsz, ImVec2(bx.x0, bx.y), bx.col, c, c + bx.len);
     if (bx.link >= 0)
       dl->AddLine(ImVec2(bx.x0, bx.y + fsz), ImVec2(bx.x1, bx.y + fsz), bx.col);
   }
@@ -975,6 +1048,95 @@ bool ItemIsReadableBook(uint32_t id) {
   s_checked_at = now;
   s_readable = readable;
   return readable;
+}
+
+// ── Fenêtre LIVRE : accès natif ──────────────────────────────────────────────
+// La fenêtre livre si elle est ouverte, sinon null. Contrairement aux descs, elle
+// n'a pas de slot manager dédié (FindWindow tombe sur la map générique). SEH.
+uint8_t* FindBookWindow() {
+  __try {
+    auto* wnd = static_cast<uint8_t*>(uiwnd::FindWindow(kBookWndId));
+    if (wnd == nullptr) return nullptr;
+    if (*reinterpret_cast<uintptr_t*>(wnd) != kBookVTable) return nullptr;
+    return wnd;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Cache le rendu natif de la fenêtre livre sans la détruire (elle reste la source
+// des données et le destinataire des commandes de page). SEH.
+void HideBookWindow(uint8_t* wnd) {
+  if (!wnd) return;
+  __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 0); }
+  __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Rend la fenêtre au client. Sans ça, désactiver le panneau moderne pendant
+// qu'un livre est ouvert le laisserait invisible (on l'avait masqué, et le natif
+// ne se ré-affiche qu'au chargement d'une page). SEH.
+void ShowBookWindow(uint8_t* wnd) {
+  if (!wnd) return;
+  __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 1); }
+  __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Envoie un message à la fenêtre livre. Le natif se les envoie avec param_1 = this
+// (cf. case 94 : `OnMsg(a1, a1, 92, page, …)`) -> on fait pareil. SEH.
+void CallBookMsg(uint8_t* wnd, int msg, int p3) {
+  if (!wnd) return;
+  __try {
+    void** vt = *reinterpret_cast<void***>(wnd);
+    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+    onmsg(wnd, static_cast<int>(reinterpret_cast<uintptr_t>(wnd)), msg, p3, 0, 0,
+          0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Une page de livre extraite du natif : ses lignes (déjà wrappées par le client,
+// markup ^RRGGBB inclus) + la couleur de fond déclarée par le fichier.
+struct BookExtract {
+  int      page = 1;
+  int      pages = 1;
+  int      line_count = 0;
+  char     lines[kBookLinesPerPage][kLineLen] = {};
+  uint32_t bg = IM_COL32(250, 240, 230, 255);
+};
+
+// Remplit BookExtract depuis la fenêtre native. La page courante est relue à
+// CHAQUE frame (pas depuis le snapshot d'OnTick, qui est throttlé : après un
+// changement de page l'affichage doit suivre immédiatement). Le vector natif
+// porte TOUTES les lignes du livre ; la page N couvre [19*(N-1), 19*N).
+// POD only (SEH).
+bool ExtractBookPage(uint8_t* wnd, BookExtract* e) {
+  __try {
+    int page = *reinterpret_cast<int*>(wnd + kBookPage);
+    if (page < 1) page = 1;
+    e->page  = page;
+    e->pages = *reinterpret_cast<int*>(wnd + kBookPageCount);
+    if (e->pages < 1) e->pages = 1;
+    e->bg = IM_COL32(*reinterpret_cast<int*>(wnd + kBookBgR) & 0xff,
+                     *reinterpret_cast<int*>(wnd + kBookBgG) & 0xff,
+                     *reinterpret_cast<int*>(wnd + kBookBgB) & 0xff, 255);
+    auto* first = *reinterpret_cast<uint8_t**>(wnd + kBookLines);
+    auto* last  = *reinterpret_cast<uint8_t**>(wnd + kBookLines + 4);
+    if (!first || !last || last < first) return false;
+    const ptrdiff_t capacity = (last - first) / kStdStringSize;
+    if (capacity <= 0 || capacity > 100000) return false;
+    // Le compteur natif (+0x120) fait foi : il exclut la ligne d'en-tête %RRGGBB
+    // que OnMsg retire du vecteur.
+    int total = *reinterpret_cast<int*>(wnd + kBookLineTotal);
+    if (total > static_cast<int>(capacity)) total = static_cast<int>(capacity);
+    const int start = (e->page - 1) * kBookLinesPerPage;
+    for (int i = 0; i < kBookLinesPerPage; ++i) {
+      const int idx = start + i;
+      if (idx < 0 || idx >= total) break;
+      const uint8_t* str = first + idx * kStdStringSize;
+      const uint32_t cap = *reinterpret_cast<const uint32_t*>(str + 0x14);
+      const char* txt = MsvcStr(str, cap);
+      std::strncpy(e->lines[e->line_count], txt ? txt : "", kLineLen - 1);
+      ++e->line_count;
+    }
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // Déclenche une commande bouton (msg 6) sur une fenêtre desc via son OnMsg. SEH.
@@ -1386,6 +1548,50 @@ void ItemDescTweaks::OnTick() {
   // Repro skill désactivée (kSkillWindowEnabled) : on NE cache PAS le natif.
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)
     HideDescSlot(kSkillWndSlot, kSkillVTable);
+
+  // ── Fenêtre LIVRE (0x6a), ouverte par les boutons « Lire » / « Lecture auto »
+  // ⚠️ En mode LECTURE AUTO le natif cache LUI-MÊME la fenêtre (OnMsg case 93 :
+  // SetVisible(0)) et récite le livre ligne par ligne dans le chat, via son slot
+  // d'update (qui tourne donc bien fenêtre cachée). Il n'y a alors rien à
+  // reproduire : on laisse faire et on n'affiche pas de panneau.
+  const bool book_was = book_.open;
+  book_ = BookWindow{};
+  if (uint8_t* bwnd = FindBookWindow()) {
+    __try {
+      book_.auto_read = *reinterpret_cast<uint8_t*>(bwnd + kBookAutoFlag) != 0;
+      book_.page      = *reinterpret_cast<int*>(bwnd + kBookPage);
+      book_.pages     = *reinterpret_cast<int*>(bwnd + kBookPageCount);
+      std::strncpy(book_.title, reinterpret_cast<const char*>(bwnd + kBookTitle),
+                   sizeof(book_.title) - 1);
+      book_.open = !book_.auto_read;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { book_ = BookWindow{}; }
+    if (show_book_panel_ && book_.open) HideBookWindow(bwnd);
+    // Panneau moderne coupé : on rend la fenêtre au client (sauf en lecture auto,
+    // où le natif la veut masquée).
+    else if (!show_book_panel_ && !book_.auto_read) ShowBookWindow(bwnd);
+  }
+  // Front montant -> pose la fenêtre reproduite près du curseur (même réglage
+  // d'ancrage que les descs).
+  if (book_.open && !book_was) {
+    // ⚠️ Le client NE rouvre PAS un livre au début : il restaure un SIGNET de page
+    // stocké par personnage dans le registre (HKLM\…\Gravity Soft\Ragnarok\BookMark\
+    // <serveur>\<perso>\<nom du livre>, écrit à la fermeture ; défaut 1 si absent).
+    // C'est ce qui fait « démarrer page 2 » après une lecture précédente. Option
+    // (défaut ON) : revenir à la première page à chaque ouverture.
+    if (book_reset_page_ && book_.page > 1) {
+      if (uint8_t* bwnd = FindBookWindow()) {
+        CallBookMsg(bwnd, kMsgBookGoto, 1);
+        if (show_book_panel_) HideBookWindow(bwnd);  // msg 92 ré-affiche la native
+        book_.page = 1;
+      }
+    }
+    POINT pt;
+    if (GetCursorPos(&pt)) {
+      book_spawn_x_  = pt.x + desc_offset_x_;
+      book_spawn_y_  = pt.y + desc_offset_y_;
+      book_need_pos_ = true;
+    }
+  }
 
   // Front montant d'ouverture -> pose la fenêtre reproduite près du curseur.
   // Aucune requête serveur automatique : elles partent quand le joueur active
@@ -2504,10 +2710,21 @@ void ItemDescTweaks::RenderItemWindow() {
     if (ItemIsReadableBook(snap.id)) {
       char rb[48];
       std::snprintf(rb, sizeof(rb), "Lire%s", selId);
-      if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdReadBook);
+      if (ImGui::SmallButton(rb)) {
+        CallDescButton(wnd, kCmdReadBook);
+        // La fenêtre livre vient d'être créée + affichée : on la cache DANS LA
+        // MÊME frame (avant EndScene) -> zéro flicker, comme le hook OnMsg des
+        // descs. Le prochain OnTick prendra le relais.
+        if (show_book_panel_) HideBookWindow(FindBookWindow());
+      }
       ImGui::SameLine();
       std::snprintf(rb, sizeof(rb), "Lecture auto%s", selId);
+      // Lecture auto = le personnage récite le livre dans le chat (le client
+      // n'affiche alors AUCUNE fenêtre) — pas de panneau à reproduire.
       if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Le personnage lit le livre à voix haute, ligne par "
+                          "ligne, dans le chat.");
     }
     ImGui::EndGroup();
 
@@ -2872,6 +3089,113 @@ void ItemDescTweaks::RenderSkillWindow() {
   if (!open) SafeCloseWindowId(0x2e);
 }
 
+// Reproduit la fenêtre LIVRE (UIBookWnd 0x6a) en ImGui. Même principe que la desc :
+// la fenêtre native reste vivante (elle charge book\<id>.txt, wrappe le texte,
+// tient la pagination et le signet) mais son rendu est masqué, et on redessine la
+// page courante à EndScene, donc AU-DESSUS de l'overlay.
+void ItemDescTweaks::RenderBookWindow() {
+  uint8_t* wnd = FindBookWindow();
+  if (!wnd) return;
+
+  BookExtract be{};
+  ExtractBookPage(wnd, &be);
+  // Les .txt de livre sont écrits dans la code-page du client (« … », accents) :
+  // conversion en UTF-8, sinon ImGui affiche un losange à leur place.
+  LocalizeLines(be.lines, be.line_count);
+
+  ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 240.0f),
+                                      ImVec2(1800.0f, 1000.0f));
+  ImGui::SetNextWindowSize(ImVec2(620.0f, 460.0f), ImGuiCond_FirstUseEver);
+  if (book_need_pos_) {
+    if (desc_spawn_at_cursor_)  // sinon : dernière position mémorisée par ImGui
+      ImGui::SetNextWindowPos(ImVec2(static_cast<float>(book_spawn_x_),
+                                     static_cast<float>(book_spawn_y_)),
+                              ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
+    ImGui::SetNextWindowFocus();
+    book_need_pos_ = false;
+  }
+  ImGui::SetNextWindowBgAlpha(1.0f);
+  // Fond = la couleur déclarée par le livre lui-même (en-tête %RRGGBB du .txt,
+  // lue dans la fenêtre native) — le texte RO est écrit pour ce fond pâle.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, be.bg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
+
+  char title[160];
+  std::snprintf(title, sizeof(title), "%s ( %d / %d )###itemdesc_book",
+                book_.title[0] ? book_.title : "Livre", be.page, be.pages);
+
+  bool open = true;
+  const bool visible = ro::BeginRoDescWindow(
+      title, &open,
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing);
+  {  // clamp anti-hors-écran (comme les autres fenêtres reproduites)
+    const ImVec2 disp = ImGui::GetIO().DisplaySize;
+    const ImVec2 pos  = ImGui::GetWindowPos();
+    const ImVec2 sz   = ImGui::GetWindowSize();
+    float nx = pos.x, ny = pos.y;
+    if (nx + sz.x > disp.x) nx = disp.x - sz.x;
+    if (ny + sz.y > disp.y) ny = disp.y - sz.y;
+    if (nx < 0.0f) nx = 0.0f;
+    if (ny < 0.0f) ny = 0.0f;
+    if (nx != pos.x || ny != pos.y) ImGui::SetWindowPos(ImVec2(nx, ny));
+  }
+  // Commande de page demandée cette frame (jouée après End : le natif re-affiche
+  // sa fenêtre en changeant de page, on la recache dans la FOULÉE = zéro flicker).
+  int  page_cmd  = 0;    // commande case 6 (précédent/suivant)
+  int  goto_page = 0;    // saut direct (msg 92)
+  bool wheel_ok  = false;  // molette libre (pas de scroll à consommer)
+  if (visible) {
+    const bool first = (be.page <= 1);
+    const bool last  = (be.page >= be.pages);
+    ImGui::BeginDisabled(first);
+    if (ImGui::SmallButton("<< Début")) goto_page = 1;
+    ImGui::SameLine();
+    if (ImGui::SmallButton("< Précédente")) page_cmd = kCmdBookPrev;
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::Text("Page %d / %d", be.page, be.pages);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(last);
+    if (ImGui::SmallButton("Suivante >")) page_cmd = kCmdBookNext;
+    ImGui::EndDisabled();
+    ImGui::Separator();
+
+    // Lignes DÉJÀ wrappées par le client (à la largeur de la fenêtre native) : on
+    // les re-fusionne et re-wrappe à la nôtre (reflow), comme la desc de skill.
+    SelectableColoredText("##seltext_book", be.lines, be.line_count,
+                          IM_COL32(0, 0, 0, 255), 0.0f, /*reflow=*/true);
+    // Molette = tourner les pages, MAIS seulement si la fenêtre n'a rien à faire
+    // défiler (sinon on volerait le scroll d'une page trop haute pour le cadre).
+    wheel_ok = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+               ImGui::GetScrollMaxY() <= 0.0f;
+  }
+  ro::EndRoDescWindow();
+  ImGui::PopStyleColor(4);
+  ImGui::PopStyleVar(3);
+
+  if (wheel_ok && page_cmd == 0 && goto_page == 0) {
+    const float wheel = ImGui::GetIO().MouseWheel;
+    if (wheel < 0.0f && be.page < be.pages) page_cmd = kCmdBookNext;
+    else if (wheel > 0.0f && be.page > 1)   page_cmd = kCmdBookPrev;
+  }
+
+  if (page_cmd != 0) {
+    CallDescButton(wnd, page_cmd);   // case 6 : le natif change de page ET se ré-affiche
+    HideBookWindow(wnd);             // -> recaché dans la même frame
+  } else if (goto_page != 0) {
+    CallBookMsg(wnd, kMsgBookGoto, goto_page);
+    HideBookWindow(wnd);
+  }
+  // X ImGui -> commande de fermeture NATIVE (elle sauve le signet de page dans le
+  // registre avant de fermer, comme le bouton natif).
+  if (!open) CallDescButton(wnd, kCmdBookClose);
+}
+
 // ── Section « ItemDescTweaks » du panneau Moonlight ──────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
@@ -2889,6 +3213,19 @@ bool ItemDescTweaks::DrawSettings() {
   SameLine(); HelpMarker(
       "Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
       "Clic droit dans le grimoire");
+
+  changed |= ro::RoCheckbox("Fenêtre de livre moderne", &show_book_panel());
+  SameLine(); HelpMarker(
+      "Redessine la fenêtre de lecture des livres en ImGui (texte "
+      "sélectionnable, pages à la molette).\n"
+      "OFF : fenêtre native, qui s'affiche SOUS l'interface moderne.");
+
+  changed |= ro::RoCheckbox("Livres : ouvrir à la première page",
+                            &book_reset_page());
+  SameLine(); HelpMarker(
+      "ON : un livre s'ouvre toujours page 1.\n"
+      "OFF : comportement d'origine du client, qui reprend à la dernière page "
+      "lue (signet enregistré par personnage dans le registre Windows).");
 
   changed |= ro::RoCheckbox("Ouvrir près de la souris", &desc_spawn_at_cursor());
   SameLine(); HelpMarker(
@@ -2912,4 +3249,6 @@ void ItemDescTweaks::OnRenderUI() {
   if (show_item_panel_  && item_.open)  RenderItemWindow();
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)
     RenderSkillWindow();
+  // Fenêtre LIVRE (0x6a) : ouverte depuis le bouton « Lire » de la desc.
+  if (show_book_panel_ && book_.open) RenderBookWindow();
 }
