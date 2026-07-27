@@ -492,6 +492,16 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Insère une fermeture de couleur ^000000 en tête de `line` (buffer de kLineLen) :
+// marque le début d'un nouveau FLUX de couleur, la couleur laissée ouverte par les
+// lignes précédentes ne déborde donc pas dessus.
+inline void PrefixColorReset(char* line) {
+  const size_t len = strnlen(line, kLineLen);
+  if (len + 7 >= kLineLen) return;  // pas la place : on laisse tel quel
+  std::memmove(line + 7, line, len + 1);
+  std::memcpy(line, "^000000", 7);
+}
+
 // Lit les lignes d'un rich-text box natif (std::vector<std::string> @ box+0x88)
 // et les ajoute à e->lines (lignes BRUTES avec markup ^RRGGBB/<..>). SEH (POD).
 void ReadRichTextLines(uint8_t* box, ItemExtract* e) {
@@ -539,7 +549,12 @@ void ExtractSkill(uint8_t* wnd, uint32_t /*id*/, ItemExtract* e) {
     uint8_t* body = *reinterpret_cast<uint8_t**>(wnd + kSkillBoxBody);
     uint8_t* head = *reinterpret_cast<uint8_t**>(wnd + kSkillBoxHead);
     ReadRichTextLines(body, e);
+    // Chaque box est un flux de couleur INDÉPENDANT : une couleur laissée ouverte par
+    // la box corps ne doit pas déborder sur la box id/max-level (qui est rendue à la
+    // suite dans le même bloc ImGui) -> fermeture explicite sur sa 1re ligne.
+    const int head_first = e->line_count;
     ReadRichTextLines(head, e);
+    if (e->line_count > head_first) PrefixColorReset(e->lines[head_first]);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -705,9 +720,12 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     if (v > wrapCol) wrapCol = v;
   }
 
-  // État PERSISTANT à travers une fusion de lignes (couleur/lien/mot en cours) : reset
-  // seulement en vraie fin de paragraphe (sinon la continuation perdrait sa couleur ou
-  // couperait le mot fusionné).
+  // État PERSISTANT à travers une fusion de lignes (lien/mot en cours) : reset seulement
+  // en vraie fin de paragraphe (sinon la continuation perdrait son lien ou couperait le
+  // mot fusionné). `cur` (couleur) est persistant à travers TOUTES les lignes du bloc :
+  // le rich-text natif traite la source comme un FLUX, un ^RRGGBB ouvert reste actif sur
+  // les lignes suivantes jusqu'à ^000000 (les .lub écrivent la couleur une seule fois, en
+  // tête de paragraphe, et la ferment plusieurs lignes plus bas).
   ImU32       cur = default_col;
   bool        inHref = false;   // on lit l'URL entre <INFO> et </INFO> (non affichée)
   std::string word;
@@ -771,7 +789,8 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     flushWord(cur);
     curLink = -1;
     inHref  = false;
-    cur     = default_col;
+    // `cur` N'EST PAS réinitialisé ici : la couleur en cours se propage à la ligne
+    // suivante, comme dans le rich-text natif (fermeture explicite par ^000000).
     buf.push_back('\n');            // fin de ligne (dans le buffer, non visible)
     penX = 0.0f; penY += lineH; ++row;
   }
