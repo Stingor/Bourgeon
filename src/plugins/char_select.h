@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "plugins/plugin.h"
 
@@ -143,6 +144,11 @@ class CharSelect : public Plugin {
   // serait ré-armé à chaque frame si on la rejouait. Réarmé au retour à l'écran.
   bool entering_ = false;
   unsigned long enter_tick_ = 0;  // GetTickCount() à l'instant de l'entrée en jeu (fondu)
+  // CID des derniers personnages joués, le plus récent en tête (persistés dans
+  // paths::LastCharsPath()). Sert l'autofocus : après une déco/reco on retombe sur
+  // le perso quitté au lieu du slot 0. Indexé par CID et non par slot — un
+  // déplacement de slot ou un autre compte RO rendrait le numéro de slot faux.
+  std::vector<uint32_t> recent_chars_;
   // Tick d'ARRIVÉE sur l'écran (première frame où la table est dessinée). Sert à
   // ignorer les Entrées encore en file, destinées aux écrans précédents (spam du
   // joueur, auto-confirm char-server) : sans ça elles jouaient le perso aussitôt.

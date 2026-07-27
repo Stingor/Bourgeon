@@ -24,6 +24,7 @@ const std::string& GameDir() {
 std::string SettingsPath()       { return GameDir() + "bourgeon_settings.yaml"; }
 std::string MoonlightUserPath()  { return GameDir() + "bourgeon_moonlight_user.txt"; }
 std::string MoonlightPwPath()    { return GameDir() + "bourgeon_moonlight_pw.bin"; }
+std::string LastCharsPath()      { return GameDir() + "bourgeon_last_chars.txt"; }
 
 std::string InGameDir(const std::string& relative) { return GameDir() + relative; }
 

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fstream>
@@ -239,7 +240,17 @@ char g_suppressed_modal_msg[256] = {0};
 
 int __fastcall Detour_ShowModal(void* ecx, void* edx, char* msg, int p2, int* p3, int p4,
                                 int p5, char* p6, int p7, int p8, int* p9) {
-  if (g_cover_active) {
+  // ⚠ g_cover_active SEUL ne suffit pas : il n'est remis à false qu'en tête de
+  // OnRenderLoginUI, qui cesse d'être appelé dès l'entrée en jeu. Il restait donc
+  // collé à true pour toute la session, et CE détour supprimait TOUTES les modales
+  // natives EN JEU. Symptôme observé : le bouton « Apply » du grimoire sans effet —
+  // UINewSkillListWnd::OnMsg case 271 exige que la modale de confirmation renvoie
+  // 0xBB, elle rendait 185 (notre no-op), donc sub_974530 n'était jamais appelé et
+  // aucun CZ_UPGRADE_SKILLLEVEL 0x0112 n'était émis.
+  // Notre char-select n'existe QUE hors monde : on exige explicitement d'être hors
+  // jeu pour supprimer quoi que ce soit. Ceinture et bretelles avec le reset posé
+  // dans OnModeSwitch.
+  if (g_cover_active && !Bourgeon::Instance().IsGameActive()) {
     __try {
       if (msg) {
         std::strncpy(g_suppressed_modal_msg, msg, sizeof(g_suppressed_modal_msg) - 1);
@@ -280,7 +291,7 @@ const char* DeleteRejectMsg(int result) {
       return "Suppression refusée : ce personnage est dans un GROUPE. "
              "Quitte-le d'abord, puis réessaie.";
     case 6:
-      return "Suppression impossible : ce personnage tient une échoppe.";
+      return "Suppression impossible : ce personnage tient un shop.";
     case 3:
       return "Suppression impossible : erreur base de données ou personnage "
              "introuvable.";
@@ -748,9 +759,46 @@ void* LoadHallTexture() {
   return s_tex;
 }
 
+// ── Derniers personnages joués (reprise après déco/reco) ─────────────────────
+// Le natif replace toujours la sélection sur le slot 0 : après une déconnexion
+// suivie d'une reconnexion rapide, le joueur devait re-désigner son personnage.
+//
+// On mémorise le **CID** (identifiant serveur du perso), pas le numéro de slot :
+// un déplacement de slot (CH_REQ_CHANGE_CHARACTER_SLOT) ou un autre compte RO
+// rendrait le slot faux, alors que le CID reste juste. La liste garde les
+// derniers personnages, le plus récent en tête — un compte Moonlight portant
+// PLUSIEURS comptes RO, chacun doit retrouver le sien : au char-select on
+// présélectionne le premier CID de la liste qui est effectivement présent.
+constexpr size_t kRecentCharsMax = 16;
+
+std::vector<uint32_t> LoadRecentChars() {
+  std::vector<uint32_t> cids;
+  std::ifstream f(paths::LastCharsPath());
+  if (!f) return cids;
+  std::string line;
+  while (std::getline(f, line) && cids.size() < kRecentCharsMax) {
+    const unsigned long long cid = std::strtoull(line.c_str(), nullptr, 10);
+    if (cid > 0 && cid <= 0xFFFFFFFFull)
+      cids.push_back(static_cast<uint32_t>(cid));
+  }
+  return cids;
+}
+
+// Repousse `gid` en tête de `cids` (dédupliqué, borné) et réécrit le fichier.
+void SaveRecentChars(std::vector<uint32_t>& cids, uint32_t gid) {
+  if (gid == 0) return;
+  cids.erase(std::remove(cids.begin(), cids.end(), gid), cids.end());
+  cids.insert(cids.begin(), gid);
+  if (cids.size() > kRecentCharsMax) cids.resize(kRecentCharsMax);
+  std::ofstream f(paths::LastCharsPath(), std::ios::trunc);
+  if (!f) return;  // disque en lecture seule : la reprise dégrade, rien de plus
+  for (const uint32_t cid : cids) f << cid << "\n";
+}
+
 }  // namespace
 
 CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
+  recent_chars_ = LoadRecentChars();
   std::ifstream f(paths::SettingsPath());
   if (f) {
     try {
@@ -838,6 +886,10 @@ bool CharSelect::ReadSlot(int slot, CharView* out) const {
 
 void CharSelect::EnterGame(int slot) {
   if (entering_) return;  // une seule entrée par passage à l'écran (edge-trigger)
+  // CID lu AVANT de piloter le natif : l'entrée en jeu VIDE les CHARACTER_INFO
+  // (cf. le gel d'affichage plus bas), le slot ne serait alors plus lisible.
+  CharView entering_view;
+  const uint32_t gid = ReadSlot(slot, &entering_view) ? entering_view.gid : 0;
   // ⚠ NE PAS envoyer CH_SELECT_CHAR (0x0066) à la main. Le bouton « OK » natif fait
   // bien plus que d'émettre un paquet, et il ne l'émet même pas lui-même :
   //
@@ -879,6 +931,9 @@ void CharSelect::EnterGame(int slot) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception pendant l'entrée en jeu (slot {})", slot);
   }
+  // Mémorise le personnage joué -> il sera présélectionné à la reconnexion.
+  // HORS du __try : std::ofstream a un destructeur (SEH + unwinding = C2712).
+  if (entering_ && gid != 0) SaveRecentChars(recent_chars_, gid);
 }
 
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
@@ -1053,6 +1108,11 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     enter_failed_until_ = 0;
     del_reject_until_ = 0;
     del_reject_seq_seen_ = g_del_reject_seq;  // ne pas ressortir un refus d'avant
+  } else {
+    // On quitte le login (entrée en jeu) : notre scène ne couvre plus rien. Sans ce
+    // reset, g_cover_active reste collé à true — OnRenderLoginUI, seul endroit qui
+    // le remettait à false, n'est plus appelé une fois en jeu. Voir Detour_ShowModal.
+    g_cover_active = false;
   }
 }
 
@@ -1237,8 +1297,17 @@ void CharSelect::OnRenderLoginUI() {
   // par ImGui), partout. Posé chaque frame (le latch expire seul au retour au jeu).
   ro::SetFullscreenCursorActive();
 
-  // Autofocus : à l'arrivée, présélectionne le 1er personnage -> Entrée joue
-  // immédiatement, sans clic préalable.
+  // Autofocus : à l'arrivée, présélectionne le DERNIER personnage joué s'il est
+  // là (déco/reco rapide : on retombe sur son perso, pas sur le slot 0), sinon le
+  // premier personnage. Dans les deux cas Entrée joue tout de suite, sans clic.
+  if (selected_ < 0) {
+    for (const uint32_t cid : recent_chars_) {  // du plus récent au plus ancien
+      for (int i = 0; i < cap && i < 128; ++i) {
+        if (views[i].occupied && views[i].gid == cid) { selected_ = i; break; }
+      }
+      if (selected_ >= 0) break;
+    }
+  }
   if (selected_ < 0) {
     for (int i = 0; i < cap && i < 128; ++i) {
       if (views[i].occupied) { selected_ = i; break; }

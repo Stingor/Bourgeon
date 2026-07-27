@@ -28,6 +28,7 @@ const std::string& GameDir();
 std::string SettingsPath();
 std::string MoonlightUserPath();  // identifiant web mémorisé (texte clair)
 std::string MoonlightPwPath();    // mot de passe web chiffré DPAPI
+std::string LastCharsPath();      // CID des derniers persos joués (récence)
 
 // `relative` résolu depuis le dossier du jeu. Le séparateur est déjà fourni par
 // GameDir(), donc passer "data\\clientinfo.xml" et non "\\data\\clientinfo.xml".
