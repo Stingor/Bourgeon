@@ -21,6 +21,7 @@ constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
 constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
+constexpr int       kCharServerWndId = 2;          // « Select Service » (choix du char-server)
 
 // Offsets UILoginWnd (tous prouvés au désasm — cf. login_connect_re.md).
 constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler natif)
@@ -208,6 +209,18 @@ bool native_login::CharListLoaded() {
       if (fn(d, 8, slot, 0, 0, 0) != nullptr) return true;
     }
     return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+bool native_login::CharServerWindowPresent() {
+  // Fenêtre « Select Service » (liste des char-servers, boutons OK/Cancel),
+  // construite par l'état 6 du mode login — atteint uniquement quand
+  // Net_OnAcceptLogin_ParseAccount (AC_ACCEPT_LOGIN 0x0ac4) pose `mode+0xc = 6`.
+  // Sa présence vaut donc « login ACCEPTÉ par le serveur ».
+  __try {
+    return uiwnd::FindWindow(kCharServerWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

@@ -88,6 +88,9 @@ class MoonlightAuth : public Plugin {
     kDiscordWait,   // navigateur ouvert : polling discord_poll jusqu'à résolution
     kPickAccount,   // sélecteur de compte RO
     kSelecting,     // attente de la réponse HTTP /select
+    kKickWait,      // compte encore en ligne : on laisse le serveur fermer la
+                    // session (kick demandé par le login-server) avant de
+                    // redemander un OTP — le premier essai est toujours refusé
     kDriveLogin,    // AutoLogin pilote le login natif (pas d'UI focusable ici)
     kError,         // message d'erreur + réessayer
   };
@@ -103,6 +106,11 @@ class MoonlightAuth : public Plugin {
     // au moment de l'appel /auth). Sert à ne PAS proposer par défaut un compte
     // déjà connecté : le rejouer déconnecterait la session en cours.
     bool online = false;
+    // La session en ligne est un marchand automatique (@autotrade : ligne
+    // `vendings`/`buyingstores` avec autotrade=1). Implique `online` — c'est une
+    // précision sur la nature de la session, pas un état distinct : reprendre le
+    // compte ferme la boutique.
+    bool autotrade = false;
   };
 
   void LoadConfig();
@@ -137,6 +145,11 @@ class MoonlightAuth : public Plugin {
 
   // Login via compte Discord (OAuth2 dans le navigateur, cf. site oauth_discord.php).
   void StartDiscordLogin();  // POST discord_start -> ouvre le navigateur
+
+  // POST action=select du compte `selected_` : demande un OTP frais au site et
+  // passe en kSelecting. Appelé au clic « Jouer » ET à la re-tentative après le
+  // refus « compte déjà connecté » (l'OTP précédent est brûlé, cf. kKickWait).
+  void StartAccountSelect();
 
   // Renseigne accounts_/web_ticket_ à partir d'un JSON {web_ticket, accounts} et
   // passe à kPickAccount ; renvoie false (+ error_msg_/kError) si invalide/vide.
@@ -196,6 +209,15 @@ class MoonlightAuth : public Plugin {
   // envoie Entrée par intervalles tant que la liste de persos n'est pas chargée.
   unsigned long charsrv_tick_ = 0;
   int charsrv_tries_ = 0;
+  // Compte choisi alors qu'il était déjà en jeu (joueur actif ou autotrade). Le
+  // login-server REFUSE forcément ce premier essai (code 8 « Server still
+  // recognizes your last login ») après avoir demandé aux char-servers de kicker
+  // la session — et il a déjà régénéré le web_auth_token au passage, donc l'OTP
+  // est brûlé. On enchaîne alors kKickWait -> nouvel OTP -> nouvel essai, au lieu
+  // d'afficher « OTP invalide » à un joueur qui n'a rien fait de mal.
+  bool selected_online_ = false;
+  int relogin_tries_ = 0;             // essais consommés par ce rattrapage
+  unsigned long kick_wait_tick_ = 0;  // début de l'attente de fermeture
   // Latch « char-select ATTEINT » : posé dès que la liste de persos est chargée. Une
   // fois vrai, le DRIVE de login est TERMINÉ -> on n'auto-confirme plus (sinon l'Entrée
   // fuit au char-select et déclenche une entrée en jeu parasite) et on désarme la

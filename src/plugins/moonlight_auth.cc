@@ -43,6 +43,19 @@ constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 // prix d'un faux positif est une transition d'état rejouée, pas un blocage.
 constexpr unsigned long kSvcSelectProbeMs = 1500;
 
+// Auto-confirmation du char-server : délai APRÈS LE TIR du login au-delà duquel
+// on poste l'Entrée même sans avoir vu la fenêtre « Select Service » (id 2).
+// Repli de sûreté si un parcours ne la construit pas ; la détection d'échec
+// s'arme à 1,2 s, donc ce repli ne peut plus tirer sur un login refusé.
+constexpr unsigned long kCharSrvProbeMs = 1500;
+
+// Rattrapage « compte encore en ligne » (joueur actif ou autotrade) : le premier
+// essai est TOUJOURS refusé, le login-server ayant seulement DEMANDÉ le kick de
+// la session en cours. Temps laissé à la chaîne login->char->map pour fermer la
+// session (map_quit + sauvegarde), puis nombre d'essais de rattrapage.
+constexpr unsigned long kKickWaitMs = 3000;
+constexpr int kMaxRelogins = 2;
+
 // (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
 // Identifiant web mémorisé — fichier dédié pour NE PAS réécrire (et abîmer) le
@@ -576,6 +589,8 @@ void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
   fired_ = false;                  // réarme le déclencheur de login natif
   socket_seen_ = false;
   charsrv_tries_ = 0;
+  selected_online_ = false;        // rattrapage « compte en ligne » désarmé
+  relogin_tries_ = 0;
   charsel_reached_ = false;        // vrai (re)login -> le drive reprend à zéro
   authenticated_ = false;
   // Service-select (fenêtre de choix de <connection>) : à repasser seulement si le
@@ -638,14 +653,58 @@ void MoonlightAuth::OnRenderLoginUI() {
       charsel_reached_ = true;
     if (charsel_reached_) return;
 
+    // ÉCHEC — testé AVANT l'auto-confirmation, pour que la moindre Entrée cesse
+    // d'être postée dès qu'un refus est avéré (sinon elles tombent sur les boîtes
+    // d'erreur natives et relancent des logins parasites).
+    // Succès -> char-select (fenêtre login détruite). Échec (OTP refusé/timeout)
+    // -> le mode revient à l'écran de login, la fenêtre UILoginWnd est RECRÉÉE.
+    // Grâce ~1,2 s (destruction async) puis timeout dur si la socket ne monte pas.
+    const unsigned long dt = GetTickCount() - fire_tick_;
+    if (((dt > 1200) && native_login::LoginWindowPresent()) ||
+        ((dt > 15000) && (native_login::SocketFd() == -1))) {
+      LogDiag("[MoonlightAuth] ÉCHEC login détecté (dt={}ms, login_wnd={}, "
+              "socket_fd={}, was_online={}, relogin_tries={})",
+              dt, native_login::LoginWindowPresent(), native_login::SocketFd(),
+              selected_online_, relogin_tries_);
+      drove_moonlight_login_ = false;
+      authenticated_ = false;
+      fired_ = false;
+      // Compte qui était encore en jeu (joueur ou autotrade) : ce refus était
+      // ATTENDU. Le login-server valide l'OTP (et régénère donc le token, ce qui
+      // brûle notre OTP) PUIS refuse avec le code 8 parce que le compte est dans
+      // online_db, après avoir demandé aux char-servers de kicker la session. Le
+      // kick est en cours : on attend, on redemande un OTP frais, on rejoue.
+      if (selected_online_ && relogin_tries_ < kMaxRelogins &&
+          !web_ticket_.empty()) {
+        kick_wait_tick_ = GetTickCount();
+        state_ = State::kKickWait;
+        return;
+      }
+      error_msg_ =
+          selected_online_
+              ? "La session précédente de ce compte ne s'est pas fermée à temps. "
+                "Réessaie dans quelques secondes."
+              : "Connexion refusée : compte encore connecté, OTP expiré ou "
+                "serveur injoignable. Réessaie.";
+      state_ = State::kError;  // re-masque le natif + réaffiche le formulaire
+      return;
+    }
+
     // Auto-confirmation du char-server. AC_ACCEPT_LOGIN 0x0ac4 amène le client à
     // l'état 6, qui CONSTRUIT la fenêtre id 2 « Select Service » (liste des
     // char-servers, boutons OK/cancel) : elle attend une validation, d'où cette
-    // Entrée. On tire IMMÉDIATEMENT dès le login réussi (fenêtre de login détruite),
-    // et on s'ARRÊTE dès que la fenêtre du char-select (0x115) est
-    // là -> jamais d'Entrée au char-select. Gaté sur
-    // "login réussi" (pas de fenêtre de login présente) pour ne pas taper sur un
-    // écran d'échec. La latence restante login->char-select = RÉSEAU (2 RTT).
+    // Entrée. On s'ARRÊTE dès que la fenêtre du char-select (0x115) est là ->
+    // jamais d'Entrée au char-select.
+    //
+    // ⚠ Gate = la fenêtre id 2 elle-même, PAS « la fenêtre de login est absente ».
+    // Ce dernier test ne prouvait rien : après un login REFUSÉ, la fenêtre de
+    // login est détruite (OnMsg 0xBA l'a fermée au tir) et pas encore recréée
+    // pendant que le client affiche sa boîte d'erreur — la rafale partait donc en
+    // plein échec, chaque Entrée validant une popup puis relançant un login avec
+    // un OTP déjà brûlé : cascade de « Incorrect User ID or Password ». Repli
+    // temporel conservé (kCharSrvProbeMs) au cas où l'écran id 2 ne serait pas
+    // construit sur certains parcours : la détection d'échec ci-dessus s'arme
+    // avant (1,2 s), donc ce repli ne peut plus tirer sur un refus.
     //
     // ⚠ Rythme VOLONTAIREMENT lent (200 ms, 10 essais = 2 s de couverture, contre
     // 50 ms/20 essais avant) : chaque essai POSTE une Entrée dans la file Win32, que
@@ -653,7 +712,12 @@ void MoonlightAuth::OnRenderLoginUI() {
     // 50 ms on chargeait la file d'une vingtaine de munitions qui retombaient sur le
     // char-select. Le char-select ImGui s'en protège aussi de son côté (fenêtre
     // d'insensibilité à l'arrivée), mais mieux vaut ne pas les tirer du tout.
-    if (socket_seen_ && !native_login::LoginWindowPresent() &&
+    // ⚠ Repli mesuré depuis le TIR (fire_tick_), pas depuis charsrv_tick_ : ce
+    // dernier est réécrit à chaque Entrée postée, la condition serait donc
+    // rearmée/désarmée par ses propres tirs.
+    const bool login_accepted = native_login::CharServerWindowPresent() ||
+                                (dt > kCharSrvProbeMs);
+    if (socket_seen_ && login_accepted && !native_login::LoginWindowPresent() &&
         !native_login::CharSelectWindowPresent() && charsrv_tries_ < 10 &&
         (charsrv_tries_ == 0 || (GetTickCount() - charsrv_tick_) > 200)) {
       HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
@@ -664,26 +728,19 @@ void MoonlightAuth::OnRenderLoginUI() {
       charsrv_tick_ = GetTickCount();
       ++charsrv_tries_;
     }
-
-    // Déjà tiré : détecter un ÉCHEC pour ne pas rester bloqué sur un écran mort.
-    // Succès -> char-select (fenêtre login détruite). Échec (OTP refusé/timeout)
-    // -> le mode revient à l'écran de login, la fenêtre UILoginWnd est RECRÉÉE.
-    // Grâce ~1,2 s (destruction async) puis timeout dur si la socket ne monte pas.
-    const unsigned long dt = GetTickCount() - fire_tick_;
-    if (((dt > 1200) && native_login::LoginWindowPresent()) ||
-        ((dt > 15000) && (native_login::SocketFd() == -1))) {
-      LogDiag("[MoonlightAuth] ÉCHEC login détecté (dt={}ms, login_wnd={}, "
-              "socket_fd={}) -> kError",
-              dt, native_login::LoginWindowPresent(), native_login::SocketFd());
-      error_msg_ =
-          "Connexion refusée (identifiants/OTP invalides ou serveur "
-          "injoignable). Réessaie.";
-      drove_moonlight_login_ = false;
-      authenticated_ = false;
-      fired_ = false;
-      state_ = State::kError;  // re-masque le natif + réaffiche le formulaire
-    }
     return;
+  }
+
+  // Attente de la fermeture de la session précédente (kick demandé par le
+  // login-server au refus), puis nouvel OTP et nouvel essai. Aucune UI focusable
+  // n'est nécessaire ici : le spinner est dessiné par le chemin normal plus bas.
+  if (state_ == State::kKickWait &&
+      (GetTickCount() - kick_wait_tick_) > kKickWaitMs) {
+    ++relogin_tries_;
+    LogDiag("[MoonlightAuth] compte encore en ligne : nouvel OTP et re-login "
+            "(essai {}/{})",
+            relogin_tries_, kMaxRelogins);
+    StartAccountSelect();  // -> kSelecting -> HandleSelectResponse -> kDriveLogin
   }
 
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
@@ -801,6 +858,9 @@ void MoonlightAuth::OnRenderLoginUI() {
       case State::kDiscordWait:  DrawDiscordWait(); break;
       case State::kPickAccount:  DrawPickAccount(); break;
       case State::kSelecting:    DrawSpinner("Préparation du compte…"); break;
+      case State::kKickWait:
+        DrawSpinner("Fermeture de la session en cours sur ce compte…");
+        break;
       case State::kError:        DrawError(); break;
       default: break;
     }
@@ -978,22 +1038,28 @@ void MoonlightAuth::DrawPickAccount() {
     ImGui::PushID(i);
     if (a.banned) ImGui::BeginDisabled();
     char line[192];
+    // Un compte en autotrade est aussi « en ligne » : on n'affiche que le badge
+    // le plus précis des deux.
     std::snprintf(line, sizeof(line), "%s  (%d perso%s)%s%s%s%s", a.label.c_str(),
                   a.char_count, a.char_count > 1 ? "s" : "",
                   a.banned ? "  [banni]" : "",
-                  a.online ? "  [en ligne]" : "",
+                  a.autotrade ? "  [autotrade]" : (a.online ? "  [en ligne]" : ""),
                   a.last_login.empty() ? "" : "   ",
                   a.last_login.empty() ? "" : a.last_login.c_str());
     // Compte déjà connecté : sélectionnable (le joueur peut vouloir reprendre la
     // main) mais visuellement estompé, pour qu'on ne le choisisse pas par réflexe.
-    if (a.online && !a.banned)
-      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(200, 170, 110, 255));
+    // Teinte distincte pour l'autotrade (session marchande, pas un joueur actif).
+    const bool busy_session = (a.online || a.autotrade) && !a.banned;
+    if (busy_session)
+      ImGui::PushStyleColor(ImGuiCol_Text, a.autotrade
+                                               ? IM_COL32(120, 195, 165, 255)
+                                               : IM_COL32(200, 170, 110, 255));
     if (ImGui::Selectable(line, selected_ == i,
                           ImGuiSelectableFlags_AllowDoubleClick)) {
       selected_ = i;
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) confirm = true;
     }
-    if (a.online && !a.banned) ImGui::PopStyleColor();
+    if (busy_session) ImGui::PopStyleColor();
     // Amène le compte sélectionné dans la vue : au 1er affichage, et à chaque
     // déplacement aux flèches (sinon la sélection sortirait de la zone visible).
     if (selected_ == i && (ImGui::IsWindowAppearing() || pick_scroll_to_sel_))
@@ -1009,13 +1075,20 @@ void MoonlightAuth::DrawPickAccount() {
       selected_ >= 0 && selected_ < n && !accounts_[selected_].banned;
 
   // Avertissement explicite : jouer un compte déjà connecté déconnecte l'autre
-  // session (le serveur ne tolère qu'une connexion par compte).
-  if (can_play && accounts_[selected_].online) {
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 190, 110, 255));
+  // session (le serveur ne tolère qu'une connexion par compte). Cas autotrade :
+  // ce qu'on perd est une boutique en cours de vente, on le dit tel quel.
+  if (can_play && (accounts_[selected_].online || accounts_[selected_].autotrade)) {
+    const bool is_autotrade = accounts_[selected_].autotrade;
+    ImGui::PushStyleColor(ImGuiCol_Text, is_autotrade
+                                             ? IM_COL32(140, 215, 185, 255)
+                                             : IM_COL32(230, 190, 110, 255));
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
     ImGui::TextWrapped(
-        "Ce compte est déjà connecté : le choisir déconnectera la session en "
-        "cours.");
+        is_autotrade
+            ? "Ce compte tient une boutique en autotrade : le choisir fermera "
+              "la boutique et déconnectera le marchand."
+            : "Ce compte est déjà connecté : le choisir déconnectera la session "
+              "en cours.");
     ImGui::PopTextWrapPos();
     ImGui::PopStyleColor();
     ImGui::Spacing();
@@ -1040,14 +1113,23 @@ void MoonlightAuth::DrawPickAccount() {
 
   if (confirm && can_play) {
     const Account& a = accounts_[selected_];
-    char aid[32];
-    std::snprintf(aid, sizeof(aid), "%ld", a.account_id);
-    const std::string form = "action=select&web_ticket=" +
-                             UrlEncode(web_ticket_) + "&account_id=" + aid +
-                             "&server=" + UrlEncode(server_name_);
-    StartPost(form);
-    state_ = State::kSelecting;
+    // Mémorisé AVANT le départ : conditionne le rattrapage « session encore
+    // ouverte » quand le premier essai se fera refuser (cf. kKickWait).
+    selected_online_ = a.online || a.autotrade;
+    relogin_tries_ = 0;
+    StartAccountSelect();
   }
+}
+
+void MoonlightAuth::StartAccountSelect() {
+  if (selected_ < 0 || selected_ >= static_cast<int>(accounts_.size())) return;
+  char aid[32];
+  std::snprintf(aid, sizeof(aid), "%ld", accounts_[selected_].account_id);
+  const std::string form = "action=select&web_ticket=" + UrlEncode(web_ticket_) +
+                           "&account_id=" + aid + "&server=" +
+                           UrlEncode(server_name_);
+  StartPost(form);
+  state_ = State::kSelecting;
 }
 
 void MoonlightAuth::DrawError() {
@@ -1057,6 +1139,15 @@ void MoonlightAuth::DrawError() {
   ImGui::PopTextWrapPos();
   ImGui::PopStyleColor();
   ImGui::Spacing();
+  // Retour direct au choix du compte quand la session web tient encore : après un
+  // refus « compte déjà connecté », rien ne justifie de retaper son mot de passe
+  // Moonlight — le ticket signé suffit à redemander un OTP. (Ticket périmé =
+  // /select répondra une erreur, on retombera ici.)
+  if (!accounts_.empty() && !web_ticket_.empty() &&
+      ro::RoButton("Choisir un compte", kFormW, 0.0f)) {
+    error_msg_.clear();
+    state_ = State::kPickAccount;
+  }
   if (ro::RoButton("Réessayer", kFormW, 0.0f)) {
     error_msg_.clear();
     state_ = State::kWebLogin;
@@ -1094,6 +1185,8 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
       a.last_login = e.value("last_login", std::string());
       a.banned = e.value("banned", false);
       a.online = e.value("online", false);
+      a.autotrade = e.value("autotrade", false);
+      if (a.autotrade) a.online = true;  // l'autotrade est une session en jeu
       accounts_.push_back(std::move(a));
     }
     if (accounts_.empty()) {
@@ -1103,13 +1196,15 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
     }
     // Range les comptes indisponibles EN BAS de la liste (tri stable, l'ordre
     // serveur est conservé à l'intérieur de chaque groupe) : d'abord ceux qu'on
-    // peut jouer, puis ceux déjà en ligne (les rejouer déconnecterait la session
-    // en cours), puis les bannis. Le multi-client reste possible : ils sont
-    // relégués, pas interdits.
+    // peut jouer, puis ceux en autotrade (on ne perd qu'une boutique), puis ceux
+    // dont un joueur tient la session, puis les bannis. Le multi-client reste
+    // possible : ils sont relégués, pas interdits.
     std::stable_sort(accounts_.begin(), accounts_.end(),
                      [](const Account& lhs, const Account& rhs) {
                        auto rank = [](const Account& a) {
-                         return a.banned ? 2 : (a.online ? 1 : 0);
+                         if (a.banned) return 3;
+                         if (a.autotrade) return 1;
+                         return a.online ? 2 : 0;
                        };
                        return rank(lhs) < rank(rhs);
                      });

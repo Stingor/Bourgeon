@@ -77,6 +77,15 @@ int SocketFd();
 // CharSelectWindowPresent().
 bool CharListLoaded();
 
+// True si la fenêtre NATIVE « Select Service » (choix du char-server, id 2) est
+// vivante. Elle n'est construite QUE par l'état 6 du mode login, atteint sur
+// AC_ACCEPT_LOGIN — donc sa présence PROUVE que l'auth serveur a réussi. C'est la
+// seule sonde fiable pour n'auto-confirmer (Entrée) qu'après un login accepté :
+// « la fenêtre de login n'est pas là » ne prouve rien, elle est aussi absente
+// pendant les boîtes d'erreur natives d'un login REFUSÉ, où les Entrées postées
+// enchaînent les popups et relancent des logins parasites.
+bool CharServerWindowPresent();
+
 // True si la fenêtre NATIVE du char-select (UINewSelectCharWnd, id 0x115) est
 // vivante. Sonde fiable de « on est arrivé au char-select » : les fenêtres sont
 // toutes purgées à chaque changement d'état du mode (aucun résidu, contrairement aux
