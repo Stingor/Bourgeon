@@ -679,6 +679,27 @@ du survol. Chaque arête passe par la **réduction transitive** ci-dessus — la
 client est aplatie, la tracer telle quelle doublerait chaque chemin. Le test de réduction est
 identique dans les deux sens : c'est la même arête.
 
+**Vue LISTE = le même arbre, lu comme un arbre.** Profondeur = 1 + celle du prérequis le plus profond
+**présent dans l'onglet**, calculée par passes successives (bornées par le nombre de nœuds : ça
+converge en 3-4 tours et ça protège d'un cycle), puis tri par profondeur. Un prérequis est donc
+toujours affiché AVANT ce qu'il débloque, ce qui permet de tracer les **coudes** de liaison dans la
+gouttière — l'ancre du parent est déjà connue. Même dispositif que l'onglet Compétences de guilde,
+plus la réduction transitive (sans elle, la liste aplatie du client doublerait les chemins).
+
+⚠ **L'indentation est plafonnée à 5 niveaux** (pas de 14 px). Mesure faite sur les `.lub` du client,
+arbres **1re + 2e classe fusionnés** :
+
+| classe | profondeur max | classe | profondeur max |
+|---|---|---|---|
+| Bard / Dancer | 2 | Alchemist | 5 |
+| Knight, Wizard, Assassin, Blacksmith | 3 | **Rogue** | **8** |
+| Crusader, Priest, Sage, Hunter | 4 | **Monk** | **9** |
+
+11 classes pré-renewal sur 13 tiennent en ≤ 5 niveaux ; Monk et Rogue partent loin, mais avec **une
+seule compétence par palier profond**. Indenter linéairement mangerait la colonne du nom pour une
+poignée de lignes — au-delà du plafond le décalage se fige et c'est le coude qui dit le parent.
+(Hors sujet ici mais bon à savoir : le Doram monte à **15**, et les 4e classes à 6-7.)
+
 **Onglets fusionnés + séparateur.** « 1re classe » et « 2e classe » partagent un onglet ; chaque arbre
 gardant ses propres index de case (ils viennent du Lua), le second est décalé d'un nombre entier de
 lignes et un **trait rouge titré** marque la frontière, avec sa propre bande de 22 px (sans quoi le

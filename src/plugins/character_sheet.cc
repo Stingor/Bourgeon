@@ -3246,6 +3246,33 @@ void CharacterSheet::DrawSkillsTab() {
     context_menu(s, effective);
   };
 
+  // ── Graphe de prérequis : prédicats partagés par la grille ET la liste ───────
+  auto find_node = [&](int id) -> const SkillRaw* {
+    for (int i = 0; i < count; ++i)
+      if (nodes[i].id == id) return &nodes[i];
+    return nullptr;
+  };
+  auto requires_skill = [&](const SkillRaw* n, int id) {
+    if (!n) return false;
+    for (int k = 0; k < n->need_count; ++k)
+      if (n->need_id[k] == id) return true;
+    return false;
+  };
+  // RÉDUCTION TRANSITIVE, pour un lien `prereq_id -> dependent`. La liste de
+  // prérequis du client n'est pas limitée aux liens directs : elle est aplatie (c'est
+  // ce qui permet au natif de réserver toute une chaîne d'un coup, et pourquoi il la
+  // déduplique en gardant le niveau le plus haut). Tracée telle quelle, Bowling Bash
+  // pointerait vers Bash à la fois directement ET via Magnum Break. On saute donc le
+  // trait direct quand un AUTRE prérequis de `dependent` réclame déjà `prereq_id` :
+  // le chemin est de toute façon à l'écran.
+  auto redundant_edge = [&](const SkillRaw& dependent, int prereq_id) {
+    for (int k = 0; k < dependent.need_count; ++k) {
+      if (dependent.need_id[k] == prereq_id) continue;
+      if (requires_skill(find_node(dependent.need_id[k]), prereq_id)) return true;
+    }
+    return false;
+  };
+
   // Une compétence est-elle prérequis (ou suite) de celle qui est survolée ?
   auto linked_to_focus = [&](const SkillRaw& s) {
     if (focus == 0 || s.id == static_cast<int>(focus)) return false;
@@ -3418,33 +3445,6 @@ void CharacterSheet::DrawSkillsTab() {
             ImVec2(b.x - d.x * head - n.x * head * 0.5f, b.y - d.y * head - n.y * head * 0.5f),
             col);
       };
-      auto find_node = [&](int id) -> const SkillRaw* {
-        for (int i = 0; i < count; ++i)
-          if (nodes[i].id == id) return &nodes[i];
-        return nullptr;
-      };
-      auto requires_skill = [&](const SkillRaw* n, int id) {
-        if (!n) return false;
-        for (int k = 0; k < n->need_count; ++k)
-          if (n->need_id[k] == id) return true;
-        return false;
-      };
-      // RÉDUCTION TRANSITIVE, pour un lien `prereq_id -> dependent`. La liste de
-      // prérequis du client n'est pas limitée aux liens directs : elle est aplatie
-      // (c'est ce qui permet au natif de réserver toute une chaîne d'un coup, et
-      // pourquoi il la déduplique en gardant le niveau le plus haut). Tracée telle
-      // quelle, Bowling Bash pointerait vers Bash à la fois directement ET via Magnum
-      // Break. On saute donc le trait direct quand un AUTRE prérequis de `dependent`
-      // réclame déjà `prereq_id` : le chemin est de toute façon à l'écran.
-      // Le même test vaut dans les deux sens de parcours — c'est la même arête.
-      auto redundant_edge = [&](const SkillRaw& dependent, int prereq_id) {
-        for (int k = 0; k < dependent.need_count; ++k) {
-          if (dependent.need_id[k] == prereq_id) continue;
-          if (requires_skill(find_node(dependent.need_id[k]), prereq_id)) return true;
-        }
-        return false;
-      };
-
       // Parcours de la BRANCHE, en largeur, depuis la case survolée — en amont
       // (« ce qu'il faut avant ») comme en aval (« ce que ça ouvre »). S'arrêter au
       // premier rang ne montrait qu'un bout du chemin, or c'est le chemin ENTIER
@@ -3498,7 +3498,55 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::Dummy(ImVec2(kSkillGridCols * cell_w,
                         (used_max_row + 1) * cell_h + split_count * split_gap));
   } else {
-    // ── Vue LISTE : tout ce que la grille doit résumer, en clair ──
+    // ── Vue LISTE : le même arbre, mais lu comme un arbre ─────────────────────
+    // Profondeur = 1 + celle du prérequis le plus profond PRÉSENT dans l'onglet, puis
+    // tri par profondeur : un prérequis est donc toujours affiché AVANT ce qu'il
+    // débloque, ce qui permet de tracer les coudes de liaison (même dispositif que
+    // l'onglet Compétences de guilde) — l'ancre du parent est déjà connue.
+    //
+    // ⚠ L'INDENTATION EST PLAFONNÉE. Mesuré sur les .lub du client, arbres 1re + 2e
+    // classe fusionnés : 11 des 13 classes pré-renewal tiennent en 5 niveaux, mais
+    // Monk monte à 9 et Rogue à 8 (une seule compétence à chaque palier profond).
+    // Indenter linéairement mangerait la colonne du nom pour une poignée de lignes ;
+    // au-delà du plafond le décalage se fige et c'est le COUDE qui dit le parent.
+    constexpr int   kTreeIndentCap = 5;
+    constexpr float kTreeStep      = 14.0f;
+    constexpr float kTreeGutter    = 14.0f;  // place des traits, à gauche de l'icône
+    static int   depth_of[kSkillMaxNodes];
+    static int   need_idx[kSkillMaxNodes][kSkillMaxNeed];  // prérequis -> index local
+    static int   order[kSkillMaxNodes];
+    static ImVec2 anchor[kSkillMaxNodes];
+    // Table de correspondance construite UNE fois : sans elle, chaque passe de calcul
+    // de profondeur relancerait une recherche linéaire par prérequis (O(n²) par passe).
+    for (int i = 0; i < count; ++i) {
+      depth_of[i] = 0;
+      order[i] = i;
+      anchor[i] = ImVec2(-1.0f, -1.0f);
+      for (int k = 0; k < nodes[i].need_count; ++k) {
+        need_idx[i][k] = -1;
+        for (int j = 0; j < count; ++j)
+          if (nodes[j].id == nodes[i].need_id[k]) { need_idx[i][k] = j; break; }
+      }
+    }
+    // Passes successives, bornées par le nombre de nœuds : ça converge en 3-4 tours
+    // et ça protège d'un cycle si les données en contenaient un.
+    for (int pass = 0; pass < count; ++pass) {
+      bool changed = false;
+      for (int i = 0; i < count; ++i) {
+        int d = 0;
+        for (int k = 0; k < nodes[i].need_count; ++k) {
+          const int j = need_idx[i][k];
+          if (j >= 0 && depth_of[j] + 1 > d) d = depth_of[j] + 1;
+        }
+        if (d != depth_of[i]) { depth_of[i] = d; changed = true; }
+      }
+      if (!changed) break;
+    }
+    std::stable_sort(order, order + count, [&](int a, int b) {
+      if (depth_of[a] != depth_of[b]) return depth_of[a] < depth_of[b];
+      return disp_pos[a] < disp_pos[b];  // à profondeur égale, l'ordre de la grille
+    });
+
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                   ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
     if (ImGui::BeginTable("cs_skill_tbl", 5, flags)) {
@@ -3509,7 +3557,8 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 28.0f);
       ImGui::TableHeadersRow();
       const float icon = ImGui::GetTextLineHeight();
-      for (int i = 0; i < count; ++i) {
+      for (int oi = 0; oi < count; ++oi) {
+        const int i = order[oi];
         const SkillRaw& s = nodes[i];
         if (filtering && !icontains(skill_name(s.id), skill_filter_buf_)) continue;
         const int pending   = PendingLevel(static_cast<uint16_t>(s.id));
@@ -3521,10 +3570,35 @@ void CharacterSheet::DrawSkillsTab() {
         else if (linked_to_focus(s)) ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1,
                                                             IM_COL32(70, 75, 120, 80));
         ImGui::TableNextColumn();
+        const float row_indent =
+            kTreeGutter + std::min(depth_of[i], kTreeIndentCap) * kTreeStep;
+        ImGui::Indent(row_indent);
         const ro::IconTex ic = ResolveSkillIcon(s.id);
         const ImVec2 p = ImGui::GetCursorScreenPos();
+        anchor[i] = ImVec2(p.x, p.y + icon * 0.5f);
+        // Coude vers chaque prérequis (réduction transitive appliquée : la liste du
+        // client est aplatie, tout tracer doublerait les chemins). La verticale passe
+        // à un demi-pas à GAUCHE de l'icône du parent, dans la gouttière — sous son
+        // centre elle traverserait les icônes des lignes de même profondeur.
+        ImDrawList* row_dl = ImGui::GetWindowDrawList();
+        for (int k = 0; k < s.need_count; ++k) {
+          const int src = need_idx[i][k];
+          if (src < 0 || anchor[src].x < 0.0f) continue;
+          if (redundant_edge(s, s.need_id[k])) continue;
+          const bool hot = focus != 0 && (static_cast<int>(focus) == s.id ||
+                                          static_cast<int>(focus) == s.need_id[k]);
+          const ImU32 col = hot ? IM_COL32(255, 205, 105, 255) : IM_COL32(150, 155, 190, 110);
+          const float thickness = hot ? 2.5f : 1.0f;
+          const float x = anchor[src].x - kTreeStep * 0.5f;
+          row_dl->AddLine(ImVec2(anchor[src].x - 2.0f, anchor[src].y), ImVec2(x, anchor[src].y),
+                          col, thickness);
+          row_dl->AddLine(ImVec2(x, anchor[src].y), ImVec2(x, anchor[i].y), col, thickness);
+          row_dl->AddLine(ImVec2(x, anchor[i].y), ImVec2(anchor[i].x - 2.0f, anchor[i].y),
+                          col, thickness);
+          row_dl->AddCircleFilled(ImVec2(anchor[i].x - 3.0f, anchor[i].y), hot ? 3.0f : 2.0f, col);
+        }
         if (ic.tex)
-          ImGui::GetWindowDrawList()->AddImage(
+          row_dl->AddImage(
               reinterpret_cast<ImTextureID>(ic.tex), p, ImVec2(p.x + icon, p.y + icon),
               ImVec2(0, 0), ImVec2(1, 1),
               effective > 0 ? IM_COL32_WHITE : IM_COL32(110, 110, 110, 160));
@@ -3536,6 +3610,7 @@ void CharacterSheet::DrawSkillsTab() {
         ImGui::Selectable(skill_name(s.id));
         if (effective == 0) ImGui::PopStyleColor();
         common_item_actions(s, effective, ic);
+        ImGui::Unindent(row_indent);
 
         ImGui::TableNextColumn();
         if (pending > 0) ImGui::TextColored(kAmber, "%d/%d", effective, s.maxlv);
