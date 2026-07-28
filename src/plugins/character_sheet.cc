@@ -3326,7 +3326,7 @@ void CharacterSheet::DrawSkillsTab() {
       press_id = static_cast<uint16_t>(s.id);
       // Pas au SECOND clic d'un double : il effacerait le verdict du premier relâché,
       // dont le double-clic a justement besoin pour savoir qu'on n'a pas glissé.
-      if (io.MouseClickedLastCount <= 1) press_clean = false;
+      if (io.MouseClickedLastCount[ImGuiMouseButton_Left] <= 1) press_clean = false;
     }
     if (press_id == static_cast<uint16_t>(s.id)) {
       // ⚠ GetMouseDragDelta ne vaut plus rien après la frame du relâché : on retient
@@ -3346,7 +3346,7 @@ void CharacterSheet::DrawSkillsTab() {
         press_id = 0;
       } else if (ImGui::IsMouseReleasedWithDelay(ImGuiMouseButton_Left,
                                                  io.MouseDoubleClickTime) &&
-                 io.MouseClickedLastCount == 1 && press_clean) {
+                 io.MouseClickedLastCount[ImGuiMouseButton_Left] == 1 && press_clean) {
         ReserveSkillPoint(static_cast<uint16_t>(s.id), press_ctrl);
         press_id = 0;
       }
@@ -4774,7 +4774,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
       static bool g_press_clean = false;
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         g_press_id = row.id;
-        if (gio.MouseClickedLastCount <= 1) g_press_clean = false;
+        if (gio.MouseClickedLastCount[ImGuiMouseButton_Left] <= 1) g_press_clean = false;
       }
       if (g_press_id == row.id) {
         // GetMouseDragDelta ne vaut plus rien passé la frame du relâché : verdict pris ici.
@@ -4788,7 +4788,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
           g_press_id = 0;
         } else if (ImGui::IsMouseReleasedWithDelay(ImGuiMouseButton_Left,
                                                    gio.MouseDoubleClickTime) &&
-                   gio.MouseClickedLastCount == 1 && g_press_clean && live &&
+                   gio.MouseClickedLastCount[ImGuiMouseButton_Left] == 1 && g_press_clean && live &&
                    live->upgradable && guild_skill_points_ > 0) {
           SendSkillUp(row.id);
           guild_last_req_ = 0;  // on laisse le 0x0162 suivant corriger niveau et points
