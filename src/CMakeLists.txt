@@ -22,6 +22,8 @@ set(BOURGEON_FILES
 	#   minigames/ jeux embarqués
 	"features/plugin.h"
 	"features/staff_gate.h"
+	"features/item_cell.cc"
+	"features/item_cell.h"
 	"features/hotkey_util.cc"
 	"features/hotkey_util.h"
 

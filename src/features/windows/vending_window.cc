@@ -1,3 +1,4 @@
+#include "features/item_cell.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/vending_window.h"
@@ -181,36 +182,10 @@ constexpr uint16_t kCzVendingListReq = 0x0130;
 // Le nom brut de la DB ne dit rien d'une arme +10 sertie : c'est
 // BuildDisplayName qui compose « +10 Hydra Sword [3] ». Même appel que les
 // viewers inventaire / cart / storage, avec la fenêtre native pour contexte.
-constexpr uintptr_t kGameFree    = 0x00DBBC7F;
-using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
-struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
-using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
-                                     char**, char, char);
-using GameFree_t  = void(__cdecl*)(void*);
 
 // SEH ISOLÉ : un item dont BuildDisplayName plante ne doit pas avorter TOUTE
 // l'énumération (leçon de l'inventaire, où un seul item fautif faisait
 // disparaître la moitié de la liste).
-inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
-  out[0] = '\0';
-  __try {
-    char nbuf[128]; nbuf[0] = '\0';
-    char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
-    int colorOut = 0; char* hlptr = nullptr;
-    GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
-                                              &bufptr, &ncap, &hlptr, 0, 0);
-    size_t k = 0;
-    while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
-    out[k] = '\0';
-    if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
-    if (out[0] == '\0') {
-      size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out, &cap, 0);
-      out[outsz - 1] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 // ── Description d'objet ──────────────────────────────────────────────────────
 // Le nœud porte un ItemSkillInfo à +0x08 ; cartes, raffinage et options
@@ -503,7 +478,7 @@ uint64_t DisplayNameKey(const RawRow& r) {
 
 // Passe de nommage, VOLONTAIREMENT hors du __try de ReadRows : la table est un
 // conteneur C++, et MSVC interdit les objets à destructeur dans une fonction qui
-// contient __try. SafeBuildName porte sa propre garde.
+// contient __try. itemcell::BuildDisplayName porte sa propre garde.
 void ResolveDisplayNames(void* wnd, RawRow* rows, int count) {
   for (int i = 0; i < count; ++i) {
     if (rows[i].id == 0 || !rows[i].node) continue;
@@ -514,7 +489,7 @@ void ResolveDisplayNames(void* wnd, RawRow* rows, int count) {
       // rien ne garantit qu'un serveur exotique n'en génère pas beaucoup plus.
       if (g_display_name_cache.size() > 2048) g_display_name_cache.clear();
       char buf[64];
-      SafeBuildName(wnd, reinterpret_cast<uint8_t*>(rows[i].node) + 0x08, buf,
+      itemcell::BuildDisplayName(wnd, reinterpret_cast<uint8_t*>(rows[i].node) + 0x08, buf,
                     sizeof(buf));
       it = g_display_name_cache.emplace(key, buf).first;
     }
@@ -839,33 +814,6 @@ void OpenDescFromList(void* wnd, int list_off, uint32_t id, int mx, int my) {
 
 // Aperçu RO au survol : tooltip fond blanc + cadre sysbox peint derrière via un
 // split de canaux. À appeler HORS de toute fenêtre ImGui (il crée son popup).
-void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
-                       const itemdesc::SimpleOpt* opts, int nopts, int refine,
-                       const char* name) {
-  if (id == 0) return;
-  constexpr float kW = 330.0f;
-  const float edge = ro::DescPanelEdge();
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));
-  ImGui::SetNextWindowSizeConstraints(
-      ImVec2(0.0f, 0.0f), ImVec2(kW, ImGui::GetIO().DisplaySize.y * 0.8f));
-  ImGui::BeginTooltip();
-  ImDrawList* ddl = ImGui::GetWindowDrawList();
-  ddl->ChannelsSplit(2);
-  ddl->ChannelsSetCurrent(1);
-  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts,
-                             refine, name);
-  ddl->ChannelsSetCurrent(0);
-  const ImVec2 dwp = ImGui::GetWindowPos(), dws = ImGui::GetWindowSize();
-  ro::DrawDescPanelFrame(ddl, dwp.x, dwp.y, dwp.x + dws.x, dwp.y + dws.y, false);
-  ddl->ChannelsMerge();
-  ImGui::EndTooltip();
-  ImGui::PopStyleVar(3);
-  ImGui::PopStyleColor(2);
-}
 
 // Sépare les milliers, comme le client (« 666,666 »).
 void FormatZeny(long long v, char* out, size_t cap) {
@@ -2451,6 +2399,6 @@ void VendingWindow::OnRenderUI() {
 // clipperait dans la fenêtre courante.
 void VendingWindow::DrawHoverDesc() {
   if (!hover_valid_) return;
-  DrawRoDescTooltip(hover_desc_.id, hover_desc_.cards, 4, hover_desc_.opts,
+  itemcell::DrawTooltip(hover_desc_.id, hover_desc_.cards, 4, hover_desc_.opts,
                     hover_desc_.opt_count, hover_desc_.refine, hover_desc_.name);
 }

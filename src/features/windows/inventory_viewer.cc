@@ -1,3 +1,4 @@
+#include "features/item_cell.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/inventory_viewer.h"
@@ -73,36 +74,11 @@ constexpr uintptr_t kInvExpansion  = 0x01602354;  // extension serveur (capacit�
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
 
 // Nom de base + nom complet (refine/cartes/enchant), comme le storage.
-constexpr uintptr_t kGameFree    = 0x00dbbc7f;
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
-struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
-using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
-                                     char**, char, char);
-using GameFree_t  = void(__cdecl*)(void*);
 
 // Construit le nom d'affichage d'un item sous SEH ISOLÉ. Un item dont BuildDisplayName
 // plante avortait TOUT l'Extract (d'où des items manquants vs le natif) ; ici le
 // plantage est confiné -> l'énumération continue (repli GetBaseName / nom vide).
-inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
-  out[0] = '\0';
-  __try {
-    char nbuf[128]; nbuf[0] = '\0';
-    char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
-    int colorOut = 0; char* hlptr = nullptr;
-    GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
-                                              &bufptr, &ncap, &hlptr, 0, 0);
-    size_t k = 0;
-    while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
-    out[k] = '\0';
-    if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
-    if (out[0] == '\0') {
-      size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out, &cap, 0);
-      out[outsz - 1] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 // Icône d'item : BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc).
 using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateur milliers
@@ -621,7 +597,7 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
     for (int k = 0; k < out->total_slots && k < 4; ++k)
       if (out->cards[k] != 0) ++out->used_slots;
   }
-  if (namewnd) SafeBuildName(namewnd, info, out->name, sizeof(out->name));
+  if (namewnd) itemcell::BuildDisplayName(namewnd, info, out->name, sizeof(out->name));
   if (out->name[0] == '\0') {
     __try {
       size_t cap = sizeof(out->name);
@@ -645,33 +621,6 @@ bool ReadCompItemByIndex(int index, void* namewnd, CompItem* out) {
 // pas), `name` = nom déjà décoré par BuildDisplayName (préfixes/suffixes de cartes),
 // pour que le titre soit celui de la description complète.
 // No-op si id == 0. Appelé À L'EXTÉRIEUR de toute fenêtre (crée son popup).
-void DrawRoDescTooltip(uint32_t id, const uint32_t* cards, int ncards,
-                       const itemdesc::SimpleOpt* opts, int nopts, int refine = 0,
-                       const char* name = nullptr) {
-  if (id == 0) return;
-  constexpr float kW = 330.0f;  // largeur max (wrap du texte)
-  const float edge = ro::DescPanelEdge();
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));   // sur fond clair
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));
-  ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
-                                      ImVec2(kW, ImGui::GetIO().DisplaySize.y * 0.8f));
-  ImGui::BeginTooltip();
-  ImDrawList* ddl = ImGui::GetWindowDrawList();
-  ddl->ChannelsSplit(2);
-  ddl->ChannelsSetCurrent(1);
-  itemdesc::RenderSimpleDesc(id, kW - 2.0f * edge, cards, ncards, opts, nopts, refine,
-                             name);
-  ddl->ChannelsSetCurrent(0);
-  const ImVec2 dwp = ImGui::GetWindowPos(), dws = ImGui::GetWindowSize();
-  ro::DrawDescPanelFrame(ddl, dwp.x, dwp.y, dwp.x + dws.x, dwp.y + dws.y, false);
-  ddl->ChannelsMerge();
-  ImGui::EndTooltip();
-  ImGui::PopStyleVar(3);
-  ImGui::PopStyleColor(2);
-}
 
 // Shift+clic G : insère le LIEN de l'item dans l'input de la fenêtre qui a le FOCUS
 // (chat), comme le natif UIInventoryWnd_OnLButtonDown (0x0094afb0, branche SHIFT) :
@@ -1270,7 +1219,7 @@ void InventoryViewer::Extract() {
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];
       }
-      SafeBuildName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
+      itemcell::BuildDisplayName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -1659,7 +1608,7 @@ void InventoryViewer::RenderCardInsert() {
         sopts[k].value = hover->opts[k].value;
         sopts[k].param = hover->opts[k].param;
       }
-      DrawRoDescTooltip(hover->id, hover->forged ? nullptr : hover->cards,
+      itemcell::DrawTooltip(hover->id, hover->forged ? nullptr : hover->cards,
                         hover->forged ? 0 : 4, sopts, hover->opt_count, hover->refine,
                         hover->name);
     } else {
@@ -2684,6 +2633,6 @@ void InventoryViewer::OnRenderUI() {
         sopts[k].param = hit.opts[k].param;
       }
     }
-    DrawRoDescTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine, hname);
+    itemcell::DrawTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine, hname);
   }
 }
