@@ -1,0 +1,66 @@
+# Fins de ligne — pourquoi ce fichier existe
+#
+# Le dépôt a longtemps vécu sans .gitattributes : neuf fichiers étaient stockés
+# en CRLF dans l'index et le reste en LF, au gré de la config de la machine qui
+# les avait ajoutés. Conséquence concrète, payée plusieurs fois : tout script
+# qui réécrit une source doit lire/écrire en BINAIRE, sinon il « corrige »
+# silencieusement les fins de ligne et transforme une retouche d'une ligne en
+# réécriture du fichier entier (cf. docs/source_layout.md).
+#
+# Règle unique : LF dans le dépôt, fins de ligne natives dans la copie de
+# travail. Sur Windows, core.autocrlf=true rend donc des CRLF à Visual Studio ;
+# ce fichier rend ce comportement indépendant de la config locale.
+
+* text=auto
+
+# ── Sources et configuration ────────────────────────────────────────────────
+*.c      text
+*.cc     text
+*.h      text
+*.hpp    text
+*.def    text
+*.cmake  text
+*.txt    text
+*.md     text
+*.py     text
+*.yml    text
+*.yaml   text
+*.json   text
+*.csv    text
+*.clang-format text
+
+# ── Doivent rester en CRLF sur disque ───────────────────────────────────────
+# Les .bat sont lus par cmd.exe, qui se comporte mal sur un LF isolé dans une
+# ligne de continuation ou un label.
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# Fichiers projet Visual Studio : l'IDE les réécrit en CRLF de toute façon,
+# autant ne pas se battre avec lui à chaque ouverture.
+*.vcxproj         text eol=crlf
+*.vcxproj.filters text eol=crlf
+*.sln             text eol=crlf
+
+# ── Binaires : aucune conversion, aucun diff textuel ────────────────────────
+*.png  binary
+*.bmp  binary
+*.ico  binary
+*.gif  binary
+*.jpg  binary
+*.spr  binary
+*.act  binary
+*.grf  binary
+*.wad  binary
+*.dll  binary
+*.exe  binary
+*.lib  binary
+*.pdb  binary
+
+# ── Code tiers vendu ────────────────────────────────────────────────────────
+# AUCUNE règle particulière ici, volontairement : thirdparty/doomgeneric et
+# thirdparty/json sont DÉJÀ stockés en LF, donc la règle générale ci-dessus ne
+# les touche pas. Ne PAS écrire `thirdparty/** -text` en croyant les protéger :
+# `-text` désactive toute conversion et fait donc entrer dans le dépôt les CRLF
+# de la copie de travail — essayé, ça réécrit 216 fichiers et 76 000 lignes de
+# code vendu. (spdlog, yaml-cpp et imgui sont des sous-modules : leurs propres
+# attributs s'appliquent, ce fichier ne les concerne pas.)
