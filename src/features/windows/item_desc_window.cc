@@ -1,3 +1,4 @@
+#include "ragnarok/lua.h"
 #include "ragnarok/item_db.h"
 #include "ui/game_texture.h"
 #include "features/windows/item_desc_window.h"
@@ -113,18 +114,10 @@ constexpr uintptr_t kNaviMgr   = 0x015c3090;  // &DAT_015c3090 (nav manager)
 // Lua : appel d'un global via wrapper varargs. __cdecl(luaStatePtr, std::string
 // funcName BYVAL, const char* fmt "d>s", <args in> , <ptrs out>). Renvoie 1 si OK.
 // (RE 0x00a9a7d0 : fmt 'd'=int in / 's'=char* out ; '>' sépare in/out.)
-constexpr uintptr_t kLuaCall  = 0x00a9a7d0;  // Lua_CallGlobal_va (varargs, string BYVAL)
-constexpr uintptr_t kLuaState = 0x015ffd78;  // *=M (arg byval wrapper) ; **=vrai lua_State
 // API C Lua BRUTE (Lua 5.1, __cdecl) extraite du wrapper Lua_CallGlobal_va : permet
 // d'appeler un global avec un nom STATIQUE const char* (pas de std::string BYVAL
 // que le wrapper détruit => pas de heap/free/crash d'allocateur). Sert à
 // GetVarOptionName(id) pour les noms de random options (dynamique = suit le lub).
-constexpr uintptr_t kLuaGetField  = 0x00519df0;  // lua_getfield(L,idx,k)
-constexpr uintptr_t kLuaPushNum   = 0x0051a4b0;  // lua_pushnumber(L,double)
-constexpr uintptr_t kLuaPCall     = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int(0=ok)
-constexpr uintptr_t kLuaToLStr    = 0x0051aca0;  // lua_tolstring(L,idx,&len)->const char*
-constexpr uintptr_t kLuaSetTop    = 0x0051aab0;  // lua_settop(L,idx)
-constexpr int       kLuaGlobalsIdx = -10002;     // LUA_GLOBALSINDEX (5.1)
 constexpr uintptr_t kSkillIntStr = 0xec;     // (0x2e) std::string nom + coût SP (SSO/heap)
 // Fenêtre skill (0x2e) : 2 rich-text box enfants portant les lignes de desc.
 // this+0x108 (ptr box "haut" = id/max level) et this+0xb8 (ptr box "corps").
@@ -209,10 +202,6 @@ using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
 // std::string MSVC en mode HEAP (nom Lua de 16 car. = pas de SSO) : ptr + size + cap.
 struct LuaStr { const char* ptr; char pad[12]; uint32_t size; uint32_t cap; };
 static_assert(sizeof(LuaStr) == 0x18, "LuaStr = std::string MSVC (0x18)");
-using LuaCall_t = char(__cdecl*)(void*, LuaStr, const char*, int, char**);
-using LuaGetField_t  = void       (__cdecl*)(void*, int, const char*);
-using LuaPushNum_t   = void       (__cdecl*)(void*, double);
-using LuaPCall_t     = int        (__cdecl*)(void*, int, int, int);
 using LuaToLStr_t    = const char*(__cdecl*)(void*, int, size_t*);
 using LuaSetTop_t    = void       (__cdecl*)(void*, int);
 using GameMalloc_t = void* (__cdecl*)(size_t);
@@ -1352,18 +1341,17 @@ bool ResolveOptName(int id, int value, char* out, size_t cap) {
     // 0x015ffd78 -> M (ptr passé byval au wrapper) -> *M = vrai lua_State. Le
     // client fait `push [0x015ffd78]` puis `lua_getfield(*param_1,..)` : DOUBLE
     // déréférencement (confirmé x32 : *M a tt=8 LUA_TTHREAD).
-    void* M = *reinterpret_cast<void**>(kLuaState);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;    // **(0x015ffd78)
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobalsIdx,
+      lua::GetField(L, lua::kGlobalsIndex,
                                                     "GetVarOptionName");
-      reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(id));
-      if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 1, 0) == 0) {
+      lua::PushNumber(L, static_cast<double>(id));
+      if (lua::PCall(L, 1, 1, 0) == 0) {
         const char* s =
-            reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+            lua::ToLString(L, -1, nullptr);
         if (s && s[0]) std::strncpy(lua_fmt, s, sizeof(lua_fmt) - 1);
       }
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);       // pop résultat/erreur
+      lua::SetTop(L, -2);       // pop résultat/erreur
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { lua_fmt[0] = '\0'; }
   if (!lua_fmt[0]) return false;

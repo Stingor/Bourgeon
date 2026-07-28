@@ -1,3 +1,4 @@
+#include "ragnarok/lua.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/character_sheet.h"
@@ -2097,17 +2098,6 @@ using GetSkillNameLua_t = char* (__cdecl*)(int);
 // appelé par l'API C Lua 5.1 BRUTE (nom statique => pas de std::string BYVAL détruit
 // par le wrapper varargs, cf. item_desc_window ResolveOptName). RE : le tooltip natif
 // FUN_00c93cb0 utilise ce même global via Lua_CallGlobal_va.
-constexpr uintptr_t kLuaState    = 0x015ffd78;  // *=M ; **=vrai lua_State
-constexpr uintptr_t kLuaGetField = 0x00519df0;  // lua_getfield(L,idx,k)
-constexpr uintptr_t kLuaPushNum  = 0x0051a4b0;  // lua_pushnumber(L,double)
-constexpr uintptr_t kLuaPCall    = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int(0=ok)
-constexpr uintptr_t kLuaToLStr   = 0x0051aca0;  // lua_tolstring(L,idx,&len)->const char*
-constexpr uintptr_t kLuaSetTop   = 0x0051aab0;  // lua_settop(L,idx)
-constexpr int       kLuaGlobals  = -10002;      // LUA_GLOBALSINDEX (5.1)
-using LuaGetField_t = void        (__cdecl*)(void*, int, const char*);
-using LuaPushNum_t  = void        (__cdecl*)(void*, double);
-using LuaPCall_t    = int         (__cdecl*)(void*, int, int, int);
-using LuaToLStr_t   = const char* (__cdecl*)(void*, int, size_t*);
 using LuaSetTop_t   = void        (__cdecl*)(void*, int);
 
 // ── Grimoire : noms des onglets ──────────────────────────────────────────────
@@ -2118,19 +2108,18 @@ using LuaSetTop_t   = void        (__cdecl*)(void*, int);
 void ReadSkillTabNamesSEH(int jobId, char out[4][32]) {
   for (int i = 0; i < 4; ++i) out[i][0] = '\0';
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaState);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    void* L = lua::State();
     if (!L) return;
-    reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "JobSkillTab_GetTabName");
-    reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(jobId));
-    if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 4, 0) == 0) {
+    lua::GetField(L, lua::kGlobalsIndex, "JobSkillTab_GetTabName");
+    lua::PushNumber(L, static_cast<double>(jobId));
+    if (lua::PCall(L, 1, 4, 0) == 0) {
       for (int i = 0; i < 4; ++i) {
-        const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -4 + i, nullptr);
+        const char* s = lua::ToLString(L, -4 + i, nullptr);
         if (s && s[0]) { std::strncpy(out[i], s, 31); out[i][31] = '\0'; }
       }
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -5);  // dépile les 4 résultats
+      lua::SetTop(L, -5);  // dépile les 4 résultats
     } else {
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // dépile le message d'erreur
+      lua::SetTop(L, -2);  // dépile le message d'erreur
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -2153,11 +2142,9 @@ int OwnJobIdSEH() {
 // « data\ », `sansPrefixe`=0 ajoute « LuaFiles514\ » — soit
 // data\luafiles514\lua files\skillinfoz\skilltreeguild.lub, et la lecture passe par le
 // VFS (disque puis GRF). Rend 1 si le fichier a été chargé ET exécuté.
-constexpr uintptr_t kLuaExecFile = 0x00a9bc90;
 using LuaExecFile_t = char(__thiscall*)(void*, const char*, char, char);
 constexpr char kGuildTreeLuaFile[] = "Lua Files\\SkillInfoz\\skilltreeguild";
 
-constexpr uintptr_t kLuaToBool = 0x0051abf0;  // lua_toboolean(L,idx) : nil/false -> 0
 using LuaToBool_t = int(__cdecl*)(void*, int);
 
 // Charge le fichier puis appelle son GdDump() ; `out` reçoit la table sérialisée
@@ -2176,25 +2163,27 @@ int GuildTreeDumpSEH(char* out, size_t cap, char* err, size_t err_cap) {
   out[0] = '\0';
   err[0] = '\0';
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaState);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    void* L = lua::State();
     if (!L) return kTreeNoLua;
-    if (!reinterpret_cast<LuaExecFile_t>(kLuaExecFile)(M, kGuildTreeLuaFile, 1, 0))
+    // ⚠ kExecFileAddr est __thiscall sur le GESTIONNAIRE Lua (lua::Manager()),
+    // pas sur le lua_State : les deux ne sont pas interchangeables.
+    if (!reinterpret_cast<LuaExecFile_t>(lua::kExecFileAddr)(
+            lua::Manager(), kGuildTreeLuaFile, 1, 0))
       return kTreeNoFile;
-    reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "GdDump");
-    if (!reinterpret_cast<LuaToBool_t>(kLuaToBool)(L, -1)) {  // nil = pas de fonction
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);
+    lua::GetField(L, lua::kGlobalsIndex, "GdDump");
+    if (!lua::ToBoolean(L, -1)) {  // nil = pas de fonction
+      lua::SetTop(L, -2);
       return kTreeNoDumper;
     }
-    if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 0, 1, 0) != 0) {
-      const char* msg = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+    if (lua::PCall(L, 0, 1, 0) != 0) {
+      const char* msg = lua::ToLString(L, -1, nullptr);
       if (msg && msg[0]) std::strncpy(err, msg, err_cap - 1);
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);
+      lua::SetTop(L, -2);
       return kTreeCallFailed;
     }
-    const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+    const char* s = lua::ToLString(L, -1, nullptr);
     if (s && s[0]) std::strncpy(out, s, cap - 1);
-    reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // dépile le résultat
+    lua::SetTop(L, -2);  // dépile le résultat
     return out[0] ? kTreeOk : kTreeEmpty;
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return kTreeNoFile; }
 }
@@ -2207,16 +2196,15 @@ const char* StatusName(uint16_t efst) {
   if (it != g_status_name_cache.end()) return it->second.c_str();
   char raw[256] = {0};
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaState);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;  // **(0x015ffd78)
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<LuaGetField_t>(kLuaGetField)(L, kLuaGlobals, "GetStateIconDescript");
-      reinterpret_cast<LuaPushNum_t>(kLuaPushNum)(L, static_cast<double>(efst));
-      if (reinterpret_cast<LuaPCall_t>(kLuaPCall)(L, 1, 1, 0) == 0) {
-        const char* s = reinterpret_cast<LuaToLStr_t>(kLuaToLStr)(L, -1, nullptr);
+      lua::GetField(L, lua::kGlobalsIndex, "GetStateIconDescript");
+      lua::PushNumber(L, static_cast<double>(efst));
+      if (lua::PCall(L, 1, 1, 0) == 0) {
+        const char* s = lua::ToLString(L, -1, nullptr);
         if (s && s[0]) std::strncpy(raw, s, sizeof(raw) - 1);
       }
-      reinterpret_cast<LuaSetTop_t>(kLuaSetTop)(L, -2);  // pop résultat/erreur
+      lua::SetTop(L, -2);  // pop résultat/erreur
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { raw[0] = '\0'; }
   // 1re ligne, codes couleur ^RRGGBB retirés.

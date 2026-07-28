@@ -183,6 +183,7 @@ set(BOURGEON_FILES
 	"ragnarok/globals.h"
 	"ragnarok/item_db.h"
 	"ragnarok/render.h"
+	"ragnarok/lua.h"
 	"ragnarok/configuration.h"
 	"ragnarok/ragnarok_client.cc"
 	"ragnarok/ragnarok_client.h"

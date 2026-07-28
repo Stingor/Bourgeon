@@ -1,3 +1,4 @@
+#include "ragnarok/lua.h"
 #include "ragnarok/globals.h"
 #include "features/fx/spr_effect_lab.h"
 
@@ -35,15 +36,6 @@ constexpr int       kHatOrdinalBase   = 0x98a;       // id unifié d'un hat effe
 // (ordinal -> id d'effet interne). Mêmes adresses/mécanique que basic_info.cc (HatLuaNum) :
 // double-deref de g_pLuaStateMgr, lua_checkstack AVANT push (le natif le fait), résultat via
 // lua_tonumber. Évite tout hardcode de l'id concret (cf. règle « jamais hardcoder, appeler le natif »).
-constexpr uintptr_t kLuaStateB    = 0x015ffd78;  // g_pLuaStateMgr : *=mgr ; **=lua_State
-constexpr uintptr_t kLuaGetFieldB = 0x00519df0;  // lua_getfield(L,idx,k)
-constexpr uintptr_t kLuaPushNumB  = 0x0051a4b0;  // lua_pushnumber(L,double)
-constexpr uintptr_t kLuaPCallB    = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int
-constexpr uintptr_t kLuaToNumB    = 0x0051ad20;  // lua_tonumber(L,idx)->double
-constexpr uintptr_t kLuaToLStrB   = 0x0051aca0;  // lua_tolstring(L,idx,&len)->const char*
-constexpr uintptr_t kLuaCheckStk  = 0x0051b570;  // lua_checkstack(L,n)
-constexpr uintptr_t kLuaSetTopB   = 0x0051aab0;  // lua_settop(L,idx)
-constexpr int       kLuaGlobalsB  = -10002;      // LUA_GLOBALSINDEX (5.1)
 
 // ── Cas de test par défaut : Digital_Space ────────────────────────────────────
 // Ordinal 87 (HatEffectIDs.lub) -> on SPAWN via Actor_ToggleEffectId(actor, 87+0x98a, 1).
@@ -106,16 +98,15 @@ void* GetOwnActor() {
 int ResolveConcreteId(int ordinal) {
   int r = 0;
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaStateB);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaCheckStk)(L, 3);
-      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(
-          L, kLuaGlobalsB, "GetHatEffectID");
-      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
-      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0)
-        r = static_cast<int>(reinterpret_cast<double(__cdecl*)(void*, int)>(kLuaToNumB)(L, -1));
-      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+      lua::CheckStack(L, 3);
+      lua::GetField(
+          L, lua::kGlobalsIndex, "GetHatEffectID");
+      lua::PushNumber(L, static_cast<double>(ordinal));
+      if (lua::PCall(L, 1, 1, 0) == 0)
+        r = static_cast<int>(lua::ToNumber(L, -1));
+      lua::SetTop(L, -2);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { r = 0; }
   return r;
@@ -127,19 +118,18 @@ void ResolveResName(int ordinal, char* out, int cap) {
   if (cap <= 0) return;
   out[0] = '\0';
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaStateB);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaCheckStk)(L, 3);
-      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(
-          L, kLuaGlobalsB, "GetHatEfResName");
-      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
-      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
-        const char* s = reinterpret_cast<const char*(__cdecl*)(void*, int, size_t*)>(kLuaToLStrB)(
+      lua::CheckStack(L, 3);
+      lua::GetField(
+          L, lua::kGlobalsIndex, "GetHatEfResName");
+      lua::PushNumber(L, static_cast<double>(ordinal));
+      if (lua::PCall(L, 1, 1, 0) == 0) {
+        const char* s = lua::ToLString(
             L, -1, nullptr);
         if (s && s[0]) { std::strncpy(out, s, cap - 1); out[cap - 1] = '\0'; }
       }
-      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+      lua::SetTop(L, -2);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }

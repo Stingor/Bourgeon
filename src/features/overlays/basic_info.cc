@@ -1,3 +1,4 @@
+#include "ragnarok/lua.h"
 #include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
@@ -1638,16 +1639,6 @@ constexpr unsigned kStrFrameMs = 16;  // ms par frame .str (pas fixe natif, non 
 
 // Bridge Lua brut (Lua 5.1) — même mécanique que StatusName (character_sheet) : évite
 // le wrapper varargs (string BYVAL). Adresses partagées avec les autres plugins.
-constexpr uintptr_t kLuaStateB   = 0x015ffd78;  // g_pLuaStateMgr : *=mgr ; **=lua_State (double deref)
-constexpr uintptr_t kLuaGetFieldB= 0x00519df0;  // lua_getfield(L,idx,k)
-constexpr uintptr_t kLuaPushNumB = 0x0051a4b0;  // lua_pushnumber(L,double)
-constexpr uintptr_t kLuaPCallB   = 0x0051a290;  // lua_pcall(L,nargs,nres,errf)->int
-constexpr uintptr_t kLuaToLStrB  = 0x0051aca0;  // lua_tolstring(L,idx,&len) (convertit un nombre)
-constexpr uintptr_t kLuaToNumB   = 0x0051ad20;  // lua_tonumber(L,idx)->double (retour numérique fiable)
-constexpr uintptr_t kLuaCheckStk = 0x0051b570;  // lua_checkstack(L,n) : le natif l'appelle avant chaque push
-constexpr uintptr_t kLuaSetTopB  = 0x0051aab0;  // lua_settop(L,idx)
-constexpr uintptr_t kLuaToBoolB  = 0x0051abf0;  // lua_toboolean(L,idx)->int (RE : !l_isfalse)
-constexpr int       kLuaGlobalsB = -10002;      // LUA_GLOBALSINDEX (5.1)
 
 // Un nœud d'effet en cache : le nœud lui-même + son tick de départ (horloge relative :
 // node+0x178 = GetTickCount()-start, sinon un tick absolu dépasserait toutes les
@@ -1684,19 +1675,17 @@ void HatOrdinalToResNameRaw(int ordinal, char* out, int cap) {
   if (cap <= 0) return;
   out[0] = '\0';
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaStateB);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(
-          L, kLuaGlobalsB, "GetHatEfResName");
-      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(
+      lua::GetField(
+          L, lua::kGlobalsIndex, "GetHatEfResName");
+      lua::PushNumber(
           L, static_cast<double>(ordinal));
-      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
-        const char* s = reinterpret_cast<const char*(__cdecl*)(void*, int, size_t*)>(
-            kLuaToLStrB)(L, -1, nullptr);
+      if (lua::PCall(L, 1, 1, 0) == 0) {
+        const char* s = lua::ToLString(L, -1, nullptr);
         if (s && s[0]) { std::strncpy(out, s, cap - 1); out[cap - 1] = '\0'; }
       }
-      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+      lua::SetTop(L, -2);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
@@ -1728,19 +1717,18 @@ struct HatEffectParams { float pos_x = 0.0f; bool before = false; };
 float HatLuaNum(int ordinal, const char* fn, float def) {
   float r = def;
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaStateB);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaCheckStk)(L, 3);  // comme le natif : garantit la place
-      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(L, kLuaGlobalsB, fn);
-      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
-      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0) {
+      lua::CheckStack(L, 3);  // comme le natif : garantit la place
+      lua::GetField(L, lua::kGlobalsIndex, fn);
+      lua::PushNumber(L, static_cast<double>(ordinal));
+      if (lua::PCall(L, 1, 1, 0) == 0) {
         // Résultat NUMÉRIQUE lu via lua_tonumber (comme le natif Lua_CallGlobal_va pour 'd'/'l').
         // lua_tolstring convertissait aussi mais on évite le round-trip string+atof (fragile).
-        const double d = reinterpret_cast<double(__cdecl*)(void*, int)>(kLuaToNumB)(L, -1);
+        const double d = lua::ToNumber(L, -1);
         r = static_cast<float>(d);
       }
-      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+      lua::SetTop(L, -2);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
   return r;
@@ -1748,14 +1736,13 @@ float HatLuaNum(int ordinal, const char* fn, float def) {
 bool HatLuaBool(int ordinal, const char* fn, bool def) {
   bool r = def;
   __try {
-    void* M = *reinterpret_cast<void**>(kLuaStateB);
-    void* L = M ? *reinterpret_cast<void**>(M) : nullptr;
+    void* L = lua::State();
     if (L) {
-      reinterpret_cast<void(__cdecl*)(void*, int, const char*)>(kLuaGetFieldB)(L, kLuaGlobalsB, fn);
-      reinterpret_cast<void(__cdecl*)(void*, double)>(kLuaPushNumB)(L, static_cast<double>(ordinal));
-      if (reinterpret_cast<int(__cdecl*)(void*, int, int, int)>(kLuaPCallB)(L, 1, 1, 0) == 0)
-        r = reinterpret_cast<int(__cdecl*)(void*, int)>(kLuaToBoolB)(L, -1) != 0;
-      reinterpret_cast<void(__cdecl*)(void*, int)>(kLuaSetTopB)(L, -2);
+      lua::GetField(L, lua::kGlobalsIndex, fn);
+      lua::PushNumber(L, static_cast<double>(ordinal));
+      if (lua::PCall(L, 1, 1, 0) == 0)
+        r = lua::ToBoolean(L, -1) != 0;
+      lua::SetTop(L, -2);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
   return r;
@@ -1766,8 +1753,7 @@ const HatEffectParams& HatOrdinalParams(int ordinal) {
   static const HatEffectParams s_fallback;
   auto it = cache.find(ordinal);
   if (it != cache.end()) return it->second;
-  void* M = *reinterpret_cast<void**>(kLuaStateB);     // simple lecture (global toujours mappé)
-  if (!M || !*reinterpret_cast<void**>(M)) return s_fallback;  // Lua pas prêt -> pas de cache
+  if (!lua::State()) return s_fallback;  // Lua pas prêt -> pas de cache, on réessaiera
   HatEffectParams p;
   p.pos_x   = HatLuaNum(ordinal, "GetHatEfPosX", 0.0f);
   p.before = HatLuaBool(ordinal, "IsRenderBeforeCharacter", false);
