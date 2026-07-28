@@ -115,6 +115,16 @@ Utiliser des lookarounds plutôt que `\b` : `(?<![A-Za-z0-9_])X(_?)(?![A-Za-z0-9
 évite que la règle `shop_tweaks` morde dans `cashshop_tweaks`, et le groupe `(_?)`
 traite d'un coup l'accesseur, le membre `_` et le chemin d'include.
 
+🔴 **Supprimer une LIGNE ≠ supprimer un NOM.** Une déclaration groupée
+(`constexpr int kWinItemDesc = 0xc, kMsgSetItem = 0x18, kVfOnMsg = 0x94;`) fait
+qu'un script qui constate la mort de `kVfOnMsg` et retire la ligne emporte deux
+constantes bien vivantes avec elle. Ça s'est produit une fois, dans
+`character_sheet.cc`, et aucune des vérifications ci-dessous ne l'a vu : elles
+contrôlaient les noms VISÉS, jamais les autres noms présents sur la ligne
+retirée. La règle qui manque : **relever tous les identificateurs de chaque
+ligne supprimée, et vérifier pour chacun qu'il est soit encore déclaré, soit
+plus utilisé nulle part.**
+
 Les trois vérifications qui remplacent un compilateur :
 
 ```

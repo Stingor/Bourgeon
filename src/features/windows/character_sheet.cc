@@ -145,6 +145,11 @@ const char* PoseLabelFull(int anim, bool animate) {
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
 //  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_window)
+// Une seule déclaration par ligne : ces deux-là partageaient une ligne avec
+// kVfOnMsg/kVfSetPos, et la migration vers uiwnd:: a emporté la ligne entière
+// en ne constatant la mort que des deux derniers.
+constexpr int kWinItemDesc = 0xc;   // fenêtre desc OBJET
+constexpr int kMsgSetItem  = 0x18;  // OnMsg 0xc : montre l'objet (p2 = &ItemSkillInfo)
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;
 constexpr uintptr_t kInfoSetId = 0x006a6570;
 constexpr uintptr_t kEnsureLoaded = 0x006a06b0, kEnsureCache = 0x0125510c;
