@@ -63,7 +63,7 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
       }
     }
     if (!player_jump->key_conflict_msg().empty())
-      RedText(player_jump->key_conflict_msg().c_str());
+      ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", player_jump->key_conflict_msg().c_str());
     return changed;
   }
 
