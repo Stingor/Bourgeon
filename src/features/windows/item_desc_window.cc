@@ -2182,6 +2182,14 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   ImGui::TextColored(hdr, "%s", title);
   if (wrap > 0.0f) ImGui::PopTextWrapPos();
 
+  // ── L'id de l'objet ──────────────────────────────────────────────────────
+  // Même formulation que la fenêtre de description COMPLÈTE, qui écrit « ID : N »
+  // en grisé quand elle n'a pas le lien database. Ici on saute toujours ce lien
+  // (cf. juste en dessous) : sans cette ligne, l'aperçu au survol serait le seul
+  // endroit de l'UI où l'id n'apparaît plus. Posée AVANT le corps, elle précède
+  // donc la ligne « ViewID : N », qui ouvre celui-ci.
+  ImGui::TextDisabled("ID : %u", id);
+
   // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
   const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
                     std::strstr(cd->lines[0], "ItemID")) ? 1 : 0;
