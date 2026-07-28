@@ -906,7 +906,6 @@ int FooterBarHeight() { return g_bar[1].h > 0 ? g_bar[1].h : 22; }
 
 // Teinte skin (luminosité + opacité) pour les AddImage. Définie plus bas (avant
 // DrawTiledBg) ; déclarée ici pour que DrawFooterBar/DrawFooterIcon la voient.
-inline ImU32 SkinImgTint();
 
 // Dessine la barre 3-slice dans [x0..x1] à y0 (hauteur barH). Repli rect plein RO.
 void DrawFooterBar(ImDrawList* dl, float x0, float y0, float x1, float barH) {
@@ -914,7 +913,7 @@ void DrawFooterBar(ImDrawList* dl, float x0, float y0, float x1, float barH) {
   const float lw = g_bar[0].w > 0 ? static_cast<float>(g_bar[0].w) : 0.0f;
   const float rw = g_bar[2].w > 0 ? static_cast<float>(g_bar[2].w) : 0.0f;
   if (g_bar[1].tex) {
-    const ImU32 t = SkinImgTint();
+    const ImU32 t = ro::SkinImageTint();
     if (g_bar[0].tex) dl->AddImage(TexId(g_bar[0].tex), ImVec2(x0, y0), ImVec2(x0 + lw, y1), ImVec2(0, 0), ImVec2(1, 1), t);
     dl->AddImage(TexId(g_bar[1].tex), ImVec2(x0 + lw, y0), ImVec2(x1 - rw, y1), ImVec2(0, 0), ImVec2(1, 1), t);  // étiré
     if (g_bar[2].tex) dl->AddImage(TexId(g_bar[2].tex), ImVec2(x1 - rw, y0), ImVec2(x1, y1), ImVec2(0, 0), ImVec2(1, 1), t);
@@ -928,7 +927,7 @@ void DrawFooterBar(ImDrawList* dl, float x0, float y0, float x1, float barH) {
 float DrawFooterIcon(ImDrawList* dl, const BarTex& ic, float x, float cy) {
   if (!ic.tex || ic.w <= 0 || ic.h <= 0) return 0.0f;
   dl->AddImage(TexId(ic.tex), ImVec2(x, cy - ic.h * 0.5f),
-               ImVec2(x + ic.w, cy + ic.h * 0.5f), ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+               ImVec2(x + ic.w, cy + ic.h * 0.5f), ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
   return static_cast<float>(ic.w);
 }
 
@@ -949,7 +948,7 @@ bool FooterImgToggle(const char* id, float x, float cyc, const BarTex& on,
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 p0(x, y), p1(x + w, y + h);
   if (haveTex) {
-    const ImU32 tint = hov ? IM_COL32(255, 255, 255, 255) : SkinImgTint();
+    const ImU32 tint = hov ? IM_COL32(255, 255, 255, 255) : ro::SkinImageTint();
     dl->AddImage(TexId(t.tex), p0, p1, ImVec2(0, 0), ImVec2(1, 1), tint);
   } else {  // repli glyphe (bmp absent)
     const ImU32 bg = active ? IM_COL32(120, 165, 225, 220)
@@ -995,7 +994,7 @@ bool FooterImgButton3(const char* id, float x, float cyc, float bar_y0, float ba
     const BarTex& shown = (held && states[2].tex)  ? states[2]
                         : (hov  && states[1].tex)  ? states[1]
                                                    : out_tex;
-    dl->AddImage(TexId(shown.tex), p0, p1, ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+    dl->AddImage(TexId(shown.tex), p0, p1, ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
   } else {  // repli glyphe (bmp absent du GRF)
     dl->AddRectFilled(p0, p1,
                       held ? IM_COL32(150, 150, 150, 220)
@@ -1034,13 +1033,6 @@ float TabStripHeightH() {
 // Teinte des AddImage (icônes/tuiles/onglets/footer) = luminosité + opacité du skin RO,
 // pour que ces réglages s'appliquent AUSSI aux images du jeu (dessinées en draw-list
 // brut). b>1 ne peut pas sur-exposer via col -> capé à 1 ; a = style.Alpha du skin.
-inline ImU32 SkinImgTint() {
-  float b = ro::SkinImageBrightness();
-  if (b > 1.0f) b = 1.0f;
-  const int c = static_cast<int>(b * 255.0f + 0.5f);
-  const int a = static_cast<int>(ImGui::GetStyle().Alpha * 255.0f + 0.5f);
-  return IM_COL32(c, c, c, a);
-}
 
 // Dessine itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], clippé — le fond
 // continu du natif (au lieu d'étirer une copie par tuile). Repli rect plein sinon.
@@ -1063,7 +1055,7 @@ void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, I
   for (float y = sy; y < mx.y; y += th)
     for (float x = sx; x < mx.x; x += tw)
       dl->AddImage(TexId(tile.tex), ImVec2(x, y), ImVec2(x + tw, y + th),
-                   ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+                   ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
   dl->PopClipRect();
 }
 
@@ -1882,7 +1874,7 @@ void InventoryViewer::OnRenderUI() {
         if (ImGui::InvisibleButton("tab", ImVec2(iw, ih))) cur_tab_ = c;
         const ImVec2 pe(p.x + iw, p.y + ih);
         // L'image active/inactive indique déjà la sélection -> pas de cadre jaune.
-        tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+        tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
         if (!sel && ImGui::IsItemHovered())
           tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol : éclaircir (pas de bleu)
       } else {
@@ -2113,36 +2105,10 @@ void InventoryViewer::OnRenderUI() {
       if (hovered)  // survol : léger éclaircissement (le HeaderHovered du skin est BLEU)
         dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 55), 0.0f);
 
-      // Icône à sa taille NATIVE (comme le natif : bmp dessiné 1:1, ~24px dans une
-      // tuile 32px), centrée ; réduite seulement si plus grande que la tuile.
+      // Tuile de grille (icône centrée + badge coin) : brique partagée,
+      // cf. features/item_cell.h — même rendu ici et dans le chariot.
       const ro::IconTex ic = ro::ItemIcon(it.id, it.identified);
-      if (ic.tex && ic.w > 0 && ic.h > 0) {
-        float dw = static_cast<float>(ic.w), dh = static_cast<float>(ic.h);
-        if (dw > cell || dh > cell) {
-          const float s = cell / (dw > dh ? dw : dh);
-          dw *= s; dh *= s;
-        }
-        const ImVec2 ip(p0.x + (cell - dw) * 0.5f, p0.y + (cell - dh) * 0.5f);
-        dl->AddImage(TexId(ic.tex), ip, ImVec2(ip.x + dw, ip.y + dh), ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
-      } else {
-        dl->AddText(ImVec2(p0.x + cell * 0.5f - 4, p0.y + cell * 0.5f - 7),
-                    ImGui::GetColorU32(ImGuiCol_TextDisabled), "?");
-      }
-
-      // Coin bas-droit : refine "+N" (équipement) OU quantité (pile) — exclusifs (un
-      // équipement ne s'empile pas). Texte NOIR cerné de BLANC (lisible sur tout fond).
-      char q[16] = {0};
-      if (it.refine > 0)      std::snprintf(q, sizeof(q), "+%d", it.refine);
-      else if (it.amount > 1) std::snprintf(q, sizeof(q), "%d", it.amount);
-      if (q[0]) {
-        const ImVec2 ts = ImGui::CalcTextSize(q);
-        const ImVec2 qp(p1.x - ts.x - 2, p1.y - ts.y - 1);
-        const ImU32 white = IM_COL32(255, 255, 255, 255);
-        for (int oy = -1; oy <= 1; ++oy)
-          for (int ox = -1; ox <= 1; ++ox)
-            if (ox || oy) dl->AddText(ImVec2(qp.x + ox, qp.y + oy), white, q);
-        dl->AddText(qp, IM_COL32(0, 0, 0, 255), q);
-      }
+      itemcell::DrawTile(dl, p0, p1, cell, ic, it.refine, it.amount);
 
       // Survol : tooltip + double-clic = utiliser/équiper.
       if (hovered) {

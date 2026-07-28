@@ -529,6 +529,14 @@ float SkinImageBrightness() {
   return b;
 }
 
+ImU32 SkinImageTint() {
+  float b = SkinImageBrightness();
+  if (b > 1.0f) b = 1.0f;  // AddImage ne sur-expose pas : borné à 1 comme les copies
+  const int c = static_cast<int>(b * 255.0f + 0.5f);
+  const int a = static_cast<int>(ImGui::GetStyle().Alpha * 255.0f + 0.5f);
+  return IM_COL32(c, c, c, a);
+}
+
 void SetHoverCursor(int ro_cursor_type) { g_hover_cursor = ro_cursor_type; }
 int TakeHoverCursor() {
   const int t = g_hover_cursor;

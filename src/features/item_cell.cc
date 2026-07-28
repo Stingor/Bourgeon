@@ -81,4 +81,37 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
   ImGui::PopStyleColor(2);
 }
 
+void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
+              float cell, const ro::IconTex& icon, int refine, int amount) {
+  if (!draw_list) return;
+
+  if (icon.tex && icon.w > 0 && icon.h > 0) {
+    float dw = static_cast<float>(icon.w), dh = static_cast<float>(icon.h);
+    if (dw > cell || dh > cell) {  // réduire seulement, jamais agrandir
+      const float s = cell / (dw > dh ? dw : dh);
+      dw *= s; dh *= s;
+    }
+    const ImVec2 ip(p0.x + (cell - dw) * 0.5f, p0.y + (cell - dh) * 0.5f);
+    draw_list->AddImage(reinterpret_cast<ImTextureID>(icon.tex), ip,
+                        ImVec2(ip.x + dw, ip.y + dh), ImVec2(0, 0), ImVec2(1, 1),
+                        ro::SkinImageTint());
+  } else {
+    draw_list->AddText(ImVec2(p0.x + cell * 0.5f - 4, p0.y + cell * 0.5f - 7),
+                       ImGui::GetColorU32(ImGuiCol_TextDisabled), "?");
+  }
+
+  char badge[16] = {0};
+  if (refine > 0)      std::snprintf(badge, sizeof(badge), "+%d", refine);
+  else if (amount > 1) std::snprintf(badge, sizeof(badge), "%d", amount);
+  if (badge[0]) {
+    const ImVec2 ts = ImGui::CalcTextSize(badge);
+    const ImVec2 bp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    for (int oy = -1; oy <= 1; ++oy)      // cerne : les 8 voisins en blanc…
+      for (int ox = -1; ox <= 1; ++ox)
+        if (ox || oy) draw_list->AddText(ImVec2(bp.x + ox, bp.y + oy), white, badge);
+    draw_list->AddText(bp, IM_COL32(0, 0, 0, 255), badge);  // …puis le noir dessus
+  }
+}
+
 }  // namespace itemcell

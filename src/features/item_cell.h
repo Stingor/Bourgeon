@@ -24,8 +24,26 @@
 #include <cstdint>
 
 #include "features/windows/item_desc_window.h"  // itemdesc::SimpleOpt
+#include "imgui.h"
+#include "ui/icon_cache.h"  // ro::IconTex
 
 namespace itemcell {
+
+// Une TUILE de grille : l'icône à sa taille NATIVE (le natif dessine le bmp 1:1,
+// ~24 px dans une tuile de 32), centrée, et réduite SEULEMENT si elle déborde ;
+// un « ? » grisé si l'icône manque ; puis, en bas à droite, le raffinage « +N »
+// OU la quantité — jamais les deux, un équipement ne s'empile pas. Ce badge est
+// écrit en noir cerné de blanc pour rester lisible sur n'importe quel fond,
+// comme le fait le client.
+//
+// ⚠ C'est la présentation GRILLE. Les viewers en LISTE (vending_window,
+// inventory_viewer en mode liste) composent leur ligne autrement — icône +
+// libellé en widgets ImGui ou en texte à coordonnées. Les deux ne se ramènent
+// pas l'une à l'autre, et ce n'est pas un défaut : ce sont deux mises en page.
+//
+// `p0`/`p1` sont les coins de la tuile, `cell` son côté.
+void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
+              float cell, const ro::IconTex& icon, int refine, int amount);
 
 // Nom d'AFFICHAGE composé par le name-builder natif : raffinage, préfixes de
 // cartes, forge. `wnd` est la fenêtre native qui sert de contexte au builder,

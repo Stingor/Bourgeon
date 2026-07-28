@@ -318,13 +318,6 @@ float TabStripHeight() {
 // Teinte des AddImage d'onglets = luminosité du skin RO (l'opacité vient déjà de
 // style.Alpha), pour que les réglages du skin s'appliquent aussi à ces images
 // dessinées en draw-list brute. Même recette que inventory_viewer.
-inline ImU32 SkinImgTint() {
-  float b = ro::SkinImageBrightness();
-  if (b > 1.0f) b = 1.0f;
-  const int c = static_cast<int>(b * 255.0f + 0.5f);
-  const int a = static_cast<int>(ImGui::GetStyle().Alpha * 255.0f + 0.5f);
-  return IM_COL32(c, c, c, a);
-}
 
 // Largeur du strip = largeur NATIVE des images d'onglet (repli 22 px). Surtout pas
 // élargie par les libellés : à 60 px de large les .bmp partent en tuiles géantes
@@ -1117,7 +1110,7 @@ void StorageWindow::OnRenderUI() {
           const ImVec2 pe(p.x + tabW, p.y + ih);
           // L'image active/inactive porte déjà la sélection -> pas de cadre ajouté.
           tdl->AddImage(reinterpret_cast<ImTextureID>(img.tex), p, pe,
-                        ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+                        ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
           // Sigle des catégories qui partagent un art (Ar/Am/Cs/Mu/$/Et) : sans lui,
           // trois tuiles « équipement » d'affilée sont indistinguables.
           if (kStgCats[c].tag) {
@@ -1209,7 +1202,7 @@ void StorageWindow::OnRenderUI() {
         if (ImGui::InvisibleButton("tabh", ImVec2(iw, tabH))) select_tab(c);
         const ImVec2 pe(p.x + iw, p.y + tabH);
         tdl->AddImage(reinterpret_cast<ImTextureID>(img.tex), p, pe,
-                      ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+                      ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
         if (kStgCats[c].tag) {  // sigle des catégories qui partagent un art
           const ImVec2 ts = ImGui::CalcTextSize(kStgCats[c].tag);
           const ImVec2 tp((p.x + pe.x - ts.x) * 0.5f, (p.y + pe.y - ts.y) * 0.5f);

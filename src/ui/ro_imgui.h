@@ -303,6 +303,14 @@ bool ShowRoSkinSettings();
 //         ImGui::Image(tex, size, ImVec2(0,0), ImVec2(1,1), ImVec4(b, b, b, 1.0f));
 float SkinImageBrightness();
 
+// La même luminosité, déjà prête à servir de teinte à ImDrawList::AddImage — qui
+// prend un ImU32 et non un ImVec4, et n'applique PAS style.Alpha de lui-même
+// (contrairement à ImGui::Image). L'alpha courant est donc intégré ici.
+//
+// Ce petit calcul était recopié à l'identique dans cart_viewer, inventory_viewer
+// et storage_window, chacun sous le nom `SkinImgTint` dans son namespace anonyme.
+ImU32 SkinImageTint();
+
 
 // InputText dont le buffer est du CP949 en entrée ET en sortie : la saisie
 // (coréen via IME, latin) est éditée en UTF-8 en interne puis re-convertie en
