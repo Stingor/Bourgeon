@@ -7,7 +7,7 @@
 #include <vector>
 #include <cstddef>
 
-#include "plugins/plugin.h"
+#include "features/plugin.h"
 #include "ragnarok/ragnarok_client.h"
 
 class DiscordRelay;

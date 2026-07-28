@@ -7,7 +7,7 @@
 // (barres EXP/HP/SP, icônes de menu, portrait…). Une instance vit sur MoonlightUi ;
 // les consommateurs y accèdent via Bourgeon::Instance().moonlight_ui()->grid_.
 //
-// Extrait de plugins/moonlight_ui.h : c'est un service d'UI générique, pas une
+// Extrait de features/moonlight_ui/moonlight_ui.h : c'est un service d'UI générique, pas une
 // partie du panneau de réglages.
 struct AlignGrid {
   bool  show = false;

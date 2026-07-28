@@ -5,7 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
-#include "plugins/npc_dialog_tweaks.h"
+#include "features/windows/npc_dialog_tweaks.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 

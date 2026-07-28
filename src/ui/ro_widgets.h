@@ -5,11 +5,11 @@
 #include "imgui.h"
 
 // ── ro_widgets : helpers ImGui génériques, partagés par tous les plugins ──────
-// Extraits de plugins/moonlight_ui.h, où ils avaient été écrits faute d'un endroit
+// Extraits de features/moonlight_ui/moonlight_ui.h, où ils avaient été écrits faute d'un endroit
 // mieux placé. Ils n'ont RIEN à voir avec le panneau de réglages : ce sont des
 // widgets d'usage général. Les laisser dans le plugin obligeait 18 unités de
 // compilation à inclure un en-tête de 400 lignes pour un tooltip, et forçait même
-// le toolkit ui/ro_imgui.cc à dépendre de plugins/ — une inversion de couches.
+// le toolkit ui/ro_imgui.cc à dépendre de features/ — une inversion de couches.
 //
 // Rien ici ne connaît Bourgeon : uniquement de l'ImGui. Le pendant « habillé RO »
 // (fenêtres, boutons, combos, scrollbars, CP949) est dans ui/ro_imgui.h.

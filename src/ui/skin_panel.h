@@ -8,7 +8,7 @@
 // ── skin_panel : le panneau de réglage du skin RO, côté TOOLKIT ──────────────
 // Cette section ne pilote aucun plugin : elle configure le socle ImGui lui-même
 // (ro::SkinConfig, la police Malgun, les presets de couleurs). Elle vivait dans
-// plugins/moonlight_ui/panel_interface.cc pour la seule raison qu'elle s'affiche
+// features/moonlight_ui/panel_interface.cc pour la seule raison qu'elle s'affiche
 // dans le panneau Moonlight — mais un panneau n'appartient pas à la fenêtre qui
 // le dessine, il appartient à la couche dont il règle l'état.
 //
