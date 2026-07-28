@@ -31,9 +31,14 @@ bool GetRawTex(const char* path, RawTex* out) {
     const int h = *reinterpret_cast<int*>(bytes + ro::texmgr::kHeight);
     const uint8_t* bgra =
         *reinterpret_cast<const uint8_t**>(bytes + ro::texmgr::kPixels);
-    // Garde-fou : au-delà de 256×256 ce n'est pas une ressource d'interface, et
-    // une taille absurde signale surtout qu'on lit un objet qui n'en est pas une.
-    if (w <= 0 || h <= 0 || w > 256 || h > 256 || !bgra) return false;
+    // Garde-fou : une taille absurde signale qu'on lit un objet qui n'est pas une
+    // texture (pointeur bancal). La borne était à 256, taillée pour les icônes et
+    // les petits boutons — elle rejetait donc EN SILENCE tout fond de fenêtre
+    // (bg_bank.bmp fait 345x187, bg_styling.bmp et w_statwin_bg sont du même ordre),
+    // et l'appelant ne voyait qu'une texture nulle sans savoir pourquoi.
+    // 4096 = la même borne que LoadClientBmp (ui/ro_imgui.cc), l'autre chargeur de
+    // bmp d'interface du toolkit : les deux attrapent le même genre de valeur folle.
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return false;
     out->bgra = bgra; out->w = w; out->h = h;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }

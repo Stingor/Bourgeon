@@ -14,9 +14,10 @@
 #include "ui/ro_widgets.h"
 #include "ui/skin_panel.h"
 
-// Types COMPLETS des plugins pilotés par les 11 sections (bourgeon.h n'en donne
+// Types COMPLETS des plugins pilotés par les 13 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
 #include "plugins/basic_info.h"
+#include "plugins/bank_tweaks.h"
 #include "plugins/bug_report.h"
 #include "plugins/chat.h"
 #include "plugins/inventory_viewer.h"
@@ -39,7 +40,7 @@ constexpr const char* kDiscordAvatarUrl =
     "https://moonlight-destiny.fr/ucp.php?i=profile&mode=avatar";
 
 // ── En-tête « Interface de jeu » ─────────────────────────────────────────────
-// Navigation latérale + les 11 sections de configuration. C'était le bloc dominant
+// Navigation latérale + les 13 sections de configuration. C'était le bloc dominant
 // d'OnRenderUI (742 lignes sur 1702) : une nav, puis une cascade de 11 tests sur
 // iface_nav_, chacun avec sa propre variable changed homonyme.
 // La table kIfaceSections (source unique libellé + identifiant, cf. chantier 5)
@@ -110,6 +111,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceStorage,     "Storage"},
         {kIfaceInventory,   "Inventaire"},
         {kIfaceCart,        "Cart"},
+        {kIfaceBank,        "Banque"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -117,8 +119,8 @@ void MoonlightUi::DrawInterfacePanel() {
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
     // rester lisible sur fenêtre étroite.
-    // La mesure des 11 libellés ne dépend que de la POLICE : on la garde en cache
-    // au lieu de refaire 11 CalcTextSize à chaque frame, et on la réinvalide quand
+    // La mesure des 13 libellés ne dépend que de la POLICE : on la garde en cache
+    // au lieu de refaire 13 CalcTextSize à chaque frame, et on la réinvalide quand
     // la police change (bascule du skin RO, taille de police).
     const ImGuiStyle& st = ImGui::GetStyle();
     static float s_labels_w    = 0.0f;   // largeur du plus long libellé, en px
@@ -306,6 +308,15 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceCart) {
         if (auto* cv = Bourgeon::Instance().cart_viewer()) {
           if (cv->DrawSettings()) SaveSettings();
+        } else {
+          GrayText(kPluginUnavailable);
+        }
+      }
+
+      // ── Banque de zeny (BankTweaks : Ctrl+B, phase 1 = coexistence) ─────
+      if (iface_nav_ == kIfaceBank) {
+        if (auto* bt = Bourgeon::Instance().bank_tweaks()) {
+          if (bt->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
         }

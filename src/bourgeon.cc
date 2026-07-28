@@ -23,6 +23,7 @@
 #include "plugins/berserk_chat_unlock.h"
 #include "plugins/inventory_tweaks.h"
 #include "plugins/inventory_viewer.h"
+#include "plugins/bank_tweaks.h"
 #include "plugins/cart_viewer.h"
 #include "plugins/equip_tweaks.h"
 #include "plugins/window_pos_tweaks.h"
@@ -79,6 +80,7 @@ ChatTweaks* Bourgeon::chat_tweaks() { return chat_tweaks_; }
 StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
+BankTweaks* Bourgeon::bank_tweaks() { return bank_tweaks_; }
 CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
 ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
 VendingTweaks* Bourgeon::vending_tweaks() { return vending_tweaks_; }
@@ -517,6 +519,13 @@ void Bourgeon::LoadPlugins() {
     auto storage_tweaks = std::make_unique<StorageTweaks>();
     storage_tweaks_ = storage_tweaks.get();
     plugins_.emplace_back(std::move(storage_tweaks));
+  }
+  {
+    // Banque de zeny (Ctrl+B) : remplace la fenêtre native (masquée) quand le
+    // groupe « Interface moderne » est actif.
+    auto bank_tweaks = std::make_unique<BankTweaks>();
+    bank_tweaks_ = bank_tweaks.get();
+    plugins_.emplace_back(std::move(bank_tweaks));
   }
   {
     auto cashshop_tweaks = std::make_unique<CashShopTweaks>();

@@ -32,6 +32,7 @@
 #include "plugins/skill_bar_tweaks.h"
 #include "plugins/storage_tweaks.h"
 #include "plugins/inventory_viewer.h"
+#include "plugins/bank_tweaks.h"
 #include "plugins/cart_viewer.h"
 #include "plugins/cashshop_tweaks.h"
 #include "plugins/shop_tweaks.h"
@@ -306,6 +307,17 @@ const moonlight_ui::SettingDesc kStorageSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"storage_tab", SType::kInt, MLUI_FIELD(storage_tweaks, cur_tab()),
      MLUI_LITERAL(int, 0)},
+};
+
+// Banque de zeny (Ctrl+B). « bank_imgui » est basculé en GROUPE par
+// SetModernInterface : défaut OFF, comme tous les membres du groupe.
+const moonlight_ui::SettingDesc kBankSettings[] = {
+    {"bank_imgui", SType::kBool, MLUI_FIELD(bank_tweaks, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"bank_quick_amounts", SType::kBool, MLUI_FIELD(bank_tweaks, quick_amounts()),
+     MLUI_LITERAL(bool, true)},
+    {"bank_show_total", SType::kBool, MLUI_FIELD(bank_tweaks, show_total()),
+     MLUI_LITERAL(bool, true)},
 };
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
@@ -720,6 +732,12 @@ void SetModernInterface(bool on) {
     cashshop_tweaks->imgui_enabled_ = on;
   if (auto* shop_tweaks = Bourgeon::Instance().shop_tweaks())
     shop_tweaks->imgui_enabled_ = on;
+  // La banque échange des zeny avec la POCHE, dont le montant est affiché par le
+  // footer de l'inventaire moderne — et c'est le bouton « sac de zeny » de ce
+  // footer qui l'ouvre. Une banque moderne au-dessus d'un inventaire natif (ou
+  // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
+  if (auto* bank_tweaks = Bourgeon::Instance().bank_tweaks())
+    bank_tweaks->imgui_enabled_ = on;
 }
 
 // Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
@@ -744,6 +762,8 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Feuille de personnage (Alt+F), grimoire compris : l'icône « Skill » et\n"
       "    Alt+S ouvrent son onglet Grimoire au lieu de la fenêtre native\n"
       "  • Cash shop et shops PNJ\n"
+      "  • Banque de zeny (Ctrl+B), ouverte aussi par le sac de zeny du footer\n"
+      "    de l'inventaire\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;
   ImGui::SameLine();
@@ -802,6 +822,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadInventoryLayout(ui);
     moonlight_ui::ReadSettings(ui, kCartSettings);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
+    moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
@@ -924,6 +945,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteInventoryLayout(out);
   moonlight_ui::WriteSettings(out, kCartSettings);
   moonlight_ui::WriteSettings(out, kStorageSettings);
+  moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);

@@ -58,6 +58,8 @@ set(BOURGEON_FILES
 	"plugins/inventory_tweaks.h"
 	"plugins/inventory_viewer.cc"
 	"plugins/inventory_viewer.h"
+	"plugins/bank_tweaks.cc"
+	"plugins/bank_tweaks.h"
 	"plugins/cart_viewer.cc"
 	"plugins/cart_viewer.h"
 	"plugins/storage_tweaks.cc"

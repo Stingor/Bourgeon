@@ -23,6 +23,7 @@ class ChatTweaks;
 class StorageTweaks;
 class InventoryViewer;
 class CartViewer;
+class BankTweaks;
 class CashShopTweaks;
 class ShopTweaks;
 class VendingTweaks;
@@ -66,6 +67,7 @@ class Bourgeon {
   StorageTweaks* storage_tweaks();
   InventoryViewer* inventory_viewer();
   CartViewer* cart_viewer();
+  BankTweaks* bank_tweaks();
   CashShopTweaks* cashshop_tweaks();
   ShopTweaks* shop_tweaks();
   VendingTweaks* vending_tweaks();
@@ -154,6 +156,7 @@ class Bourgeon {
   StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CartViewer* cart_viewer_ = nullptr;            // non-owning, lifetime tied to plugins_
+  BankTweaks* bank_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
   CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
   ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
   VendingTweaks* vending_tweaks_ = nullptr;    // non-owning, lifetime tied to plugins_

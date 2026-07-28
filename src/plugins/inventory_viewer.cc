@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "plugins/bank_tweaks.h"   // ToggleFromUi (bouton banque du footer)
 #include "plugins/trade_tweaks.h"  // « Vers l'échange » (AddItemToTrade / active)
 #include "plugins/rodex_tweaks.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "plugins/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
@@ -876,6 +877,10 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 constexpr uintptr_t kBtnbarPath     = 0x010357b8;  // "유저인터페이스\basic_interface\btnbar_left.bmp"
 constexpr uintptr_t kIconWeightPath = 0x0103db00;  // "유저인터페이스\inventory\icon_weight.bmp"
 constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // "유저인터페이스\inventory\icon_num.bmp"
+// Le bouton « banque » du footer est de l'art AJOUTÉ (styleshop\btn_bank_*.bmp) :
+// il n'a donc pas de string dans l'exe. On emprunte le préfixe CP949 à une string
+// styleshop native plutôt que de le réécrire à la main.
+constexpr uintptr_t kStyleshopPath  = 0x010265e8;  // "유저인터페이스\styleshop\btn_buy_out.bmp"
 
 using BarTex = ro::GameTexture;  // (même forme ; le chargeur est partagé)
 BarTex g_bar[3];       // btnbar 3-slice : 0=left, 1=mid, 2=right
@@ -888,28 +893,32 @@ BarTex g_tabh[kNumCats][2];  // onglets HORIZONTAUX : mêmes noms en tabh_* (jeu
 BarTex g_btn_drop[2];  // item_drop_lock [0=off/déverrouillé, 1=on/verrouillé]
 BarTex g_btn_deal[2];  // bt_itemDeal_lock [0=off, 1=on/verrouillé (anti-vente NPC)]
 BarTex g_btn_sort[2];  // bt_sort [0=off (_off.bmp), 1=on (.bmp) = vue triée]
+BarTex g_btn_bank[3];  // styleshop\btn_bank_* [0=out, 1=over, 2=down] — 19x24
 bool   g_assets_tried = false;
 
 
-// Construit `<préfixe basic_interface\> + <file>` depuis la string exe du btnbar.
-void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+// Remplace le nom de fichier d'un chemin exe par `file`, en gardant son dossier.
+// C'est ce qui permet de ne JAMAIS réécrire le préfixe CP949 « 유저인터페이스\ » :
+// on part d'une string du binaire et on n'en change que la dernière composante.
+void PathWithFileName(uintptr_t exe_path, const char* file, char* out, size_t out_sz) {
+  const char* base = reinterpret_cast<const char*>(exe_path);
   const char* slash = std::strrchr(base, '\\');
   const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
   if (n && n < out_sz) std::memcpy(out, base, n);
   std::snprintf(out + n, out_sz - n, "%s", file);
 }
 
-// Idem pour \inventory\ : base = string exe icon_weight (kIconWeightPath, préfixe CP949
-// 유저인터페이스\inventory\ + nom de fichier), on remplace le nom -> réutilise le préfixe
-// natif (pas de hardcode). Sert aux bmps de boutons du footer, qui sont stockés SANS
-// préfixe dans l'exe (le code natif le prépend).
+// `basic_interface\` (barre 3-slice, tuile), `inventory\` (icônes et boutons du
+// footer — stockés SANS préfixe dans l'exe, le code natif le prépend) et
+// `styleshop\` (bouton banque, art ajouté).
+void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
+  PathWithFileName(kBtnbarPath, file, out, out_sz);
+}
 void InventoryPath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(kIconWeightPath);
-  const char* slash = std::strrchr(base, '\\');
-  const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
-  if (n && n < out_sz) std::memcpy(out, base, n);
-  std::snprintf(out + n, out_sz - n, "%s", file);
+  PathWithFileName(kIconWeightPath, file, out, out_sz);
+}
+void StyleshopPath(const char* file, char* out, size_t out_sz) {
+  PathWithFileName(kStyleshopPath, file, out, out_sz);
 }
 
 void LoadFooterAssets() {
@@ -954,6 +963,9 @@ void LoadFooterAssets() {
   InventoryPath("bt_itemdeal_lock_on.bmp",  path, sizeof(path)); g_btn_deal[1] = ro::TextureFromGameFile(path);
   InventoryPath("bt_sort_off.bmp", path, sizeof(path)); g_btn_sort[0] = ro::TextureFromGameFile(path);
   InventoryPath("bt_sort.bmp",     path, sizeof(path)); g_btn_sort[1] = ro::TextureFromGameFile(path);
+  StyleshopPath("btn_bank_out.bmp",  path, sizeof(path)); g_btn_bank[0] = ro::TextureFromGameFile(path);
+  StyleshopPath("btn_bank_over.bmp", path, sizeof(path)); g_btn_bank[1] = ro::TextureFromGameFile(path);
+  StyleshopPath("btn_bank_down.bmp", path, sizeof(path)); g_btn_bank[2] = ro::TextureFromGameFile(path);
 }
 
 // Hauteur de la barre = hauteur du morceau milieu (repli 22 px si non chargé).
@@ -1015,6 +1027,51 @@ bool FooterImgToggle(const char* id, float x, float cyc, const BarTex& on,
     const ImVec2 ts = ImGui::CalcTextSize(glyph);
     dl->AddText(ImVec2(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f),
                 active ? IM_COL32(255, 255, 255, 255) : IM_COL32(45, 45, 45, 255), glyph);
+  }
+  if (hov && tip) ImGui::SetTooltip(" %s ", tip);
+  if (out_w) *out_w = w;
+  return clicked;
+}
+
+// Bouton IMAGE à TROIS états (out / over / down), à la mode des boutons du client.
+// FooterImgToggle, lui, est une BASCULE à deux images (on/off) : il n'a pas d'état
+// « enfoncé », et son image dépend d'un booléen d'état qu'un simple bouton d'action
+// n'a pas. Centré verticalement sur `cyc` mais BORNÉ dans la barre [bar_y0, bar_y1] :
+// les bmps natifs (24 px) sont plus hauts qu'une demi-ligne de footer et déborderaient.
+// `scale` réduit l'image par rapport à sa taille native, en gardant le ratio (1 =
+// taille native). Renvoie true au clic ; *out_w = largeur posée (déjà mise à l'échelle).
+bool FooterImgButton3(const char* id, float x, float cyc, float bar_y0, float bar_y1,
+                      const BarTex states[3], const char* glyph, const char* tip,
+                      float* out_w, float scale = 1.0f) {
+  const BarTex& out_tex = states[0];
+  const bool haveTex = out_tex.tex && out_tex.w > 0 && out_tex.h > 0;
+  // `scale` ne s'applique qu'à l'ART : le repli glyphe garde ses 18 px, sinon un
+  // bmp manquant laisserait une pastille trop petite pour être cliquée ou lue.
+  const float w = haveTex ? static_cast<float>(out_tex.w) * scale : 18.0f;
+  const float h = haveTex ? static_cast<float>(out_tex.h) * scale : 18.0f;
+  float y = cyc - h * 0.5f;
+  if (y < bar_y0 + 1.0f) y = bar_y0 + 1.0f;
+  if (y + h > bar_y1 - 1.0f) y = bar_y1 - 1.0f - h;
+  ImGui::SetCursorScreenPos(ImVec2(x, y));
+  const bool clicked = ImGui::InvisibleButton(id, ImVec2(w, h));
+  const bool hov = ImGui::IsItemHovered();
+  const bool held = ImGui::IsItemActive();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 p0(x, y), p1(x + w, y + h);
+  if (haveTex) {
+    const BarTex& shown = (held && states[2].tex)  ? states[2]
+                        : (hov  && states[1].tex)  ? states[1]
+                                                   : out_tex;
+    dl->AddImage(TexId(shown.tex), p0, p1, ImVec2(0, 0), ImVec2(1, 1), SkinImgTint());
+  } else {  // repli glyphe (bmp absent du GRF)
+    dl->AddRectFilled(p0, p1,
+                      held ? IM_COL32(150, 150, 150, 220)
+                           : (hov ? IM_COL32(205, 205, 205, 210)
+                                  : IM_COL32(185, 185, 185, 140)), 2.0f);
+    dl->AddRect(p0, p1, IM_COL32(110, 110, 110, 220), 2.0f);
+    const ImVec2 ts = ImGui::CalcTextSize(glyph);
+    dl->AddText(ImVec2(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f),
+                IM_COL32(45, 45, 45, 255), glyph);
   }
   if (hov && tip) ImGui::SetTooltip(" %s ", tip);
   if (out_w) *out_w = w;
@@ -1107,6 +1164,7 @@ void MaybeFlushTextures() {
   for (auto& b : g_btn_drop) b = BarTex{};
   for (auto& b : g_btn_deal) b = BarTex{};
   for (auto& b : g_btn_sort) b = BarTex{};
+  for (auto& b : g_btn_bank) b = BarTex{};
   g_assets_tried = false;
 }
 
@@ -2541,7 +2599,26 @@ void InventoryViewer::OnRenderUI() {
   char zline[56];
   std::snprintf(zline, sizeof(zline), "%sz", zbuf);
   const float zw = ImGui::CalcTextSize(zline).x;
-  fdl->AddText(ImVec2(fx1 - gripM - zw, cy1 - th * 0.5f), colText, zline);  // plein droite
+  const float zx = fx1 - gripM - zw;                                        // plein droite
+  // Bouton BANQUE (sac de zeny, styleshop\btn_bank_*) collé à gauche du montant :
+  // le zeny déjà affiché devient le point d'entrée de la banque, sans coûter ni une
+  // ligne de footer ni une fenêtre de plus. Même effet que Ctrl+B (cf. ToggleFromUi :
+  // c'est le SERVEUR qui ouvre la fenêtre, le client se contente de demander).
+  if (auto* bank = Bourgeon::Instance().bank_tweaks()) {
+    // Demi-taille : l'art fait 19x24, plus haut que la ligne de footer (~21 px) et
+    // franchement plus gros que les boutons natifs voisins (~18 px). À 0.5 il
+    // redevient une pastille discrète à côté du montant — et le facteur exact ½
+    // donne un sous-échantillonnage propre (moyenne de 2x2) au filtrage bilinéaire.
+    constexpr float kBankBtnScale = 0.5f;
+    const float bankW = (g_btn_bank[0].tex && g_btn_bank[0].w > 0)
+                            ? static_cast<float>(g_btn_bank[0].w) * kBankBtnScale
+                            : 18.0f * kBankBtnScale;
+    if (FooterImgButton3("##inv_bank", zx - bankW - 4.0f, cy1, fy0, fy1, g_btn_bank,
+                         "Z", "Ouvrir la banque de zeny (Ctrl+B)", nullptr,
+                         kBankBtnScale))
+      bank->ToggleFromUi();
+  }
+  fdl->AddText(ImVec2(zx, cy1 - th * 0.5f), colText, zline);
   // Ligne 2 : compteur d'items (icône + N/max).
   char cbuf[32];
   std::snprintf(cbuf, sizeof(cbuf), "%d/%d", item_count_ + WornItemCount(), maxSlots);
