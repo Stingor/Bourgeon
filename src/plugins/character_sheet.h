@@ -246,6 +246,9 @@ class CharacterSheet : public Plugin {
   // et la console du jeu n'est pas toujours accessible.
   std::string guild_emblem_diag_;
   bool guild_emblem_goto_paint_ = false;  // basculer sur l'onglet « Dessiner » au prochain frame
+  // Clic sur l'emblème de l'en-tête : charger l'emblème EN PLACE dans l'éditeur à
+  // l'ouverture du modal (le bouton « Changer l'emblème… », lui, garde le dessin en cours).
+  bool guild_emblem_load_current_ = false;
   int  guild_emblem_item_id_ = 0;         // item dont l'icône sert de base au dessin
   bool guild_emblem_gallery_ = false;     // galerie des icônes de l'inventaire dépliée
 

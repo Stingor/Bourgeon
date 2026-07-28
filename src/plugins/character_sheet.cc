@@ -1173,6 +1173,24 @@ ro::IconTex ResolveEmblem(int guildId) {
 }
 void ForgetEmblem(int guildId) { g_emblem_cache.erase(guildId); }
 
+// Octets BMP de l'emblème que porte ACTUELLEMENT la guilde : le .ebm du client, une
+// fois inflaté, est exactement le BMP 24x24 d'origine. C'est ce qui permet d'ouvrir
+// l'éditeur sur l'emblème en place au lieu d'une page blanche. Vide si le fichier
+// n'est pas encore descendu (GetEmblemPathSafe déclenche alors le téléchargement) ou
+// s'il n'est pas décompressible.
+std::vector<uint8_t> CurrentEmblemBmp(int guildId) {
+  std::vector<uint8_t> bmp;
+  if (guildId <= 0) return bmp;
+  char rel[264] = {0};
+  GetEmblemPathSafe(guildId, rel, sizeof(rel));
+  if (!rel[0]) return bmp;
+  const std::string full = paths::InGameDir("_tmpEmblem\\") + rel;
+  const std::vector<uint8_t> comp = ReadWholeFile(full.c_str(), 1 << 20);
+  if (comp.empty()) return bmp;
+  if (!tinf::zlib_uncompress(comp.data(), comp.size(), bmp)) bmp.clear();
+  return bmp;
+}
+
 // ── Changement d'emblème ─────────────────────────────────────────────────────
 // Le chemin historique (CZ 0x0153, BMP compressé zlib) est UN CUL-DE-SAC sur ce
 // serveur : le paquet part bien (vérifié octet par octet dans le journal) mais rien
@@ -1598,6 +1616,11 @@ bool EmblemCanvasLoadBmp(const std::vector<uint8_t>& bmp) {
   if (bpp == 8 && bmp.size() < 54u + 256u * 4u) return false;
   const size_t rowSize = static_cast<size_t>((w * (bpp / 8) + 3) & ~3);
   if (static_cast<size_t>(dataOff) + rowSize * h > bmp.size()) return false;
+  // Toutes les validations sont passées : le dessin en cours va être remplacé, on le
+  // met dans la pile d'annulation (comme l'import d'icône d'item) plutôt que de le
+  // perdre — l'éditeur peut s'ouvrir directement sur l'emblème de la guilde, et il ne
+  // faut pas que ce chargement automatique jette un travail commencé.
+  EmblemCanvasPushUndo();
   for (int y = 0; y < kEmblemSide; ++y) {
     const int srcY = bottomUp ? (kEmblemSide - 1 - y) : y;
     const uint8_t* row = bmp.data() + dataOff + static_cast<size_t>(srcY) * rowSize;
@@ -1614,7 +1637,6 @@ bool EmblemCanvasLoadBmp(const std::vector<uint8_t>& bmp) {
     }
   }
   g_emblem_canvas.started = true;
-  g_emblem_canvas.undo.clear();
   ++g_emblem_canvas.revision;
   return true;
 }
@@ -3877,12 +3899,16 @@ void CharacterSheet::DrawGuildTab() {
   if (is_master) {
     const ImVec2 saved_cursor = ImGui::GetCursorPos();
     ImGui::SetCursorScreenPos(emblem_min);
-    if (ImGui::InvisibleButton("##cs_guild_emblem_click", ImVec2(emblem_size, emblem_size)))
+    if (ImGui::InvisibleButton("##cs_guild_emblem_click", ImVec2(emblem_size, emblem_size))) {
       guild_emblem_ask_ = true;
+      // Cliquer l'emblème, c'est vouloir MODIFIER celui-là : l'éditeur s'ouvre dessus
+      // (chargé plus bas, à l'ouverture du modal), pas sur une toile vide.
+      guild_emblem_load_current_ = true;
+    }
     if (ImGui::IsItemHovered()) {
       ImGui::GetWindowDrawList()->AddRect(emblem_min, emblem_max, IM_COL32(255, 220, 120, 255),
                                           4.0f, 0, 2.0f);
-      ImGui::SetTooltip("Changer l'emblème de la guilde…");
+      ImGui::SetTooltip("Modifier cet emblème dans l'éditeur…");
     }
     ImGui::SetCursorPos(saved_cursor);
   }
@@ -4300,6 +4326,20 @@ void CharacterSheet::DrawGuildTab() {
     ScanEmblemFolder();
     guild_emblem_sel_ = -1;
     guild_emblem_error_.clear();
+    // Ouverture par un clic sur l'emblème : on repart de celui qui est en place. Un
+    // échec (fichier pas encore descendu, format inattendu) laisse le dessin en cours
+    // et le dit, plutôt que d'ouvrir un éditeur muet.
+    if (guild_emblem_load_current_) {
+      guild_emblem_load_current_ = false;
+      const std::vector<uint8_t> current = CurrentEmblemBmp(gi.guildId);
+      if (!current.empty() && EmblemCanvasLoadBmp(current)) {
+        guild_emblem_goto_paint_ = true;  // sinon le modal s'ouvre sur la liste de fichiers
+        guild_emblem_diag_ = "Emblème actuel de la guilde chargé dans l'éditeur.";
+      } else {
+        guild_emblem_diag_ =
+            "Emblème actuel illisible (pas encore téléchargé ?) : le dessin en cours est gardé.";
+      }
+    }
     ImGui::OpenPopup("Changer l'emblème");
   }
   DrawGuildEmblemModal(gi.guildId, is_master);
@@ -5604,6 +5644,20 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     EmblemCanvasPushUndo();
     EmblemCanvasClear();
   }
+  ImGui::SameLine();
+  // Reprendre l'emblème en place sans refermer le modal : le clic sur l'emblème de
+  // l'en-tête fait la même chose, mais seulement à l'ouverture.
+  ImGui::BeginDisabled(guildId <= 0);
+  if (ro::RoButton("Emblème actuel", 150.0f, 0.0f)) {
+    const std::vector<uint8_t> current = CurrentEmblemBmp(guildId);
+    if (!current.empty() && EmblemCanvasLoadBmp(current))
+      guild_emblem_diag_ = "Emblème actuel de la guilde chargé dans l'éditeur.";
+    else
+      guild_emblem_diag_ = "Emblème actuel illisible (pas encore téléchargé ?).";
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Repart de l'emblème que porte la guilde (annulable).");
 
   // ── Point de départ : une icône d'item ────────────────────────────────────
   // Les icônes d'inventaire du client font 24x24, la taille exacte d'un emblème :
