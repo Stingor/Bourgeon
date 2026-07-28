@@ -3107,15 +3107,18 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::TextUnformatted(skill_name(s.id));
       ImGui::EndDragDropSource();
     }
-    const bool dragging = ImGui::IsDragDropActive();
+    const bool dragging = ImGui::GetDragDropPayload() != nullptr;
     if (ImGui::IsItemHovered() && !dragging) {
       hovered_now = static_cast<uint16_t>(s.id);
       tooltip_for(s, effective);
       // Description au RELÂCHÉ, et seulement si la souris n'a pas voyagé : le même
       // bouton sert à démarrer un glisser vers la barre d'action, et un test au
-      // PRESSÉ ouvrirait la description à chaque début de glisser.
+      // PRESSÉ ouvrirait la description à chaque début de glisser. GetMouseDragDelta
+      // reste à (0,0) tant que le seuil de glisser n'est pas franchi, et vaut encore
+      // le déplacement à la frame du relâché — c'est exactement le test voulu.
+      const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
       if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-          !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left)) {
+          travel.x == 0.0f && travel.y == 0.0f) {
         const ImVec2 mp = ImGui::GetIO().MousePos;
         OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
       }
@@ -3176,9 +3179,11 @@ void CharacterSheet::DrawSkillsTab() {
       // celle qu'on survole.
       const ImVec2 q(p.x + cell_w - 4.0f, p.y + cell_h - 4.0f);
       dl->AddRectFilled(p, q, hot ? IM_COL32(70, 70, 90, 190) : IM_COL32(30, 30, 40, 140), 4.0f);
-      if (s.id == static_cast<int>(focus))            dl->AddRect(p, q, IM_COL32(255, 205, 105, 220), 4.0f, 0, 2.0f);
-      else if (linked_to_focus(s))  dl->AddRect(p, q, IM_COL32(120, 160, 255, 200), 4.0f, 0, 2.0f);
-      else if (raisable)            dl->AddRect(p, q, IM_COL32(120, 200, 130, 170), 4.0f, 0, 1.5f);
+      // ⚠ AddRect ici, c'est (rounding, thickness) — le paramètre `flags` vient APRÈS
+      // (l'ordre inverse est l'ancienne signature, gardée en surcharge obsolète).
+      if (s.id == static_cast<int>(focus)) dl->AddRect(p, q, IM_COL32(255, 205, 105, 220), 4.0f, 2.0f);
+      else if (linked_to_focus(s))         dl->AddRect(p, q, IM_COL32(120, 160, 255, 200), 4.0f, 2.0f);
+      else if (raisable)                   dl->AddRect(p, q, IM_COL32(120, 200, 130, 170), 4.0f, 1.5f);
 
       // Icône centrée, assombrie tant que la compétence n'est pas apprise — c'est
       // ce que fait le natif (mode de blit grisé quand le niveau vaut 0).
