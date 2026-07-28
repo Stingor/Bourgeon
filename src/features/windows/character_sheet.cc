@@ -6840,6 +6840,17 @@ void CharacterSheet::HideSkillWndAtCreation(void* win) {
   // l'étaient. On masque la native (toujours), mais on ne touche pas à l'état de
   // la feuille — sinon elle s'ouvrirait sur le Grimoire à chaque warp.
   if (Bourgeon::Instance().IsMapLoading()) return;
+  // Alt+S (et l'icône « Skill ») est un BASCULEUR : si la feuille montre déjà le
+  // grimoire, cette demande le REFERME. Sans ça, arriver sur l'onglet Grimoire par
+  // les onglets puis presser Alt+S ne faisait rien de visible (on ouvrait une native
+  // aussitôt masquée) et il fallait un second appui pour fermer.
+  // On se contente de rabattre la feuille : la native créée juste au-dessus de nous
+  // sera fermée par OnTick (règle « feuille fermée -> plus de témoin »). Surtout pas
+  // ici — le natif manipule encore la fenêtre qu'il vient de créer.
+  if (show_ && tab_ == 5) {
+    show_ = false;
+    return;
+  }
   OpenSkillsTab();
 }
 
