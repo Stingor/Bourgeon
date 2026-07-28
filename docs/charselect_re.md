@@ -321,7 +321,7 @@ Notes :
 
 # Rendu du paperdoll dans le char-select ImGui
 
-Implémenté par `BasicInfoTweaks::RenderDoll` (basic_info.cc), appelé par
+Implémenté par `BasicInfo::RenderDoll` (basic_info.cc), appelé par
 `CharSelect::DrawDoll`. Même séquence que le natif `RenderSlots` 0x0079d170 :
 `Actor_Init` 0x007ac210 → `Actor_DrawSprites` 0x007ac820 (param 1 = chemin quad) →
 `Actor_Dtor` 0x0079a6a0, avec capture de chaque couche via le hook **unique** sur
@@ -473,7 +473,7 @@ Les personnages sont posés aux **places** d'une table (table `g_seats`, 25 entr
 coords **normalisées** [0..1] sur le fond). Ordre = numérotation de l'image :
 slot i → place n°(i+1) (slot 0 = grand trône). Chaque place = pieds (nx,ny) + échelle
 (hauteur du pantin / hauteur écran, perspective). Rendu du pantin par
-`BasicInfoTweaks::RenderDoll` (coords écran). Coords estimées à l'œil ⇒ **éditeur de
+`BasicInfo::RenderDoll` (coords écran). Coords estimées à l'œil ⇒ **éditeur de
 layout** (glisser = position, molette = taille, « Dump layout » journalise la table +
 les points `Anchor`, prêts à recoller dans `g_seats`).
 

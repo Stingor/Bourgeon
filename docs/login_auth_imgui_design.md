@@ -25,7 +25,7 @@ Ce qui rend (2) réalisable sans réécrire le moteur (vérifié, cf. login_flow
 
 | Levier | Fait établi |
 |--------|-------------|
-| **Frame ImGui hors-jeu** | `OnRenderLoginUI` est dispatché sur l'écran login/char-select ([plugin.h:45](../src/plugins/plugin.h#L45)). |
+| **Frame ImGui hors-jeu** | `OnRenderLoginUI` est dispatché sur l'écran login/char-select ([plugin.h:45](../src/features/plugin.h#L45)). |
 | **Capture clavier** | Le hook WndProc alimente ImGui **et avale** le clavier quand `WantCaptureKeyboard` ([ragnarok_client.cc:617](../src/ragnarok/ragnarok_client.cc#L617)) → `InputText` marche, sans conflit avec les champs natifs. |
 | **Pilotage du login RO** | Input synthétique éprouvé dans les champs natifs (`AutoLogin`) → `CA_LOGIN` classique, **zéro modif serveur**. |
 | **HTTP** | Wrapper libcurl natif (`g_CurlApiTable`) *ou* WinHTTP thread worker (recommandé, autonome). |
@@ -57,7 +57,7 @@ sequenceDiagram
 
 Trois composants :
 
-- **A. Plugin client `MoonlightAuth`** (`src/plugins/moonlight_auth.{h,cc}`) —
+- **A. Plugin client `MoonlightAuth`** (`src/features/systems/moonlight_auth.{h,cc}`) —
   fenêtre ImGui sur l'écran de login (login web + sélecteur de compte), HTTP
   worker, pilotage du login RO choisi.
 - **B. Endpoint site `api/game_login.php`** — valide le compte web, liste les
@@ -164,7 +164,7 @@ Points d'implémentation (repris des patterns validés) :
   masquer/estomper la parade Poring pendant le formulaire (coordination avec
   `LoginParade`). Champ mot de passe = `ImGuiInputTextFlags_Password`.
 - **Pilotage login** : réutiliser `AutoLogin::TypeString/PressKey`
-  ([auto_login.cc:279](../src/plugins/auto_login.cc#L279)) — ou factoriser ces
+  ([auto_login.cc:279](../src/features/systems/auto_login.cc#L279)) — ou factoriser ces
   deux helpers dans un util partagé. `userid`+`Tab`+`otp`+`Entrée`.
   ⚠ La **case « Save ID »** native change le focus initial : forcer un état connu
   (décochée) ou gérer l'ordre comme `AutoLogin` (`save_id_`).
@@ -250,7 +250,7 @@ passe et un vrai SSO.
 Le MVP Phase 1 est **codé** (build + déploiement laissés à l'utilisateur, cf.
 `feedback_dont_relaunch_game` / `feedback_no_integrity_edits`) :
 
-- **Client** — `src/plugins/moonlight_auth.{h,cc}` : formulaire ImGui, worker
+- **Client** — `src/features/systems/moonlight_auth.{h,cc}` : formulaire ImGui, worker
   WinHTTP non bloquant, sélecteur de compte, délégation à
   `AutoLogin::DriveWithCredentials(userid, otp, save_id)` (nouvelle méthode
   publique). Enregistré dans `Bourgeon::LoadPlugins()` (reçoit le `AutoLogin*`) et

@@ -249,7 +249,7 @@ which killed *every* native modal in game — Apply included. Fixed by also requ
 ## 6. Fix — repaint only when the grid changes (implemented & validated)
 
 The grid is static unless the player hovers / scrolls / switches tab / spends a point, yet `DrawContent`
-rebuilds it every frame. **`skill_tree_tweaks`** (`src/plugins/skill_tree_tweaks.cc`) hooks `DrawContent`
+rebuilds it every frame. **`skill_tree_tweaks`** (`src/features/patches/skill_tree_tweaks.cc`) hooks `DrawContent`
 and skips the heavy original when no render input changed since the last real paint:
 
 ```

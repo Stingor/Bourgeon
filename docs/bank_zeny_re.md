@@ -332,9 +332,9 @@ elle est reconfigurable dans la fenêtre de réglage des raccourcis.
 
 ---
 
-## 12. Conversion ImGui — `BankTweaks`
+## 12. Conversion ImGui — `BankWindow`
 
-Plugin [src/plugins/bank_tweaks.cc](../src/plugins/bank_tweaks.cc). La fenêtre ImGui
+Plugin [src/features/windows/bank_window.cc](../src/features/windows/bank_window.cc). La fenêtre ImGui
 **remplace** la native : celle-ci est masquée (`+0x28 = 0`, hors rendu ET hors
 hit-test) tant que le viewer est actif. Elle continue de recevoir les paquets et de
 tenir `g_BankVault` à jour — elle ne se voit simplement plus.
@@ -361,7 +361,7 @@ Choix d'implémentation qui découlent directement de la RE :
 - **Le X ferme la native**, via `OnMsg(6, 201)` — le chemin exact du bouton natif,
   pas un appel direct au gestionnaire.
 - **La native est masquée DÈS SA CRÉATION**, par le hook `MakeWindow` de
-  `WindowPosTweaks` (`BankTweaks::HideNativeAtCreation`, id 275). Elle est créée par
+  `WindowPosTweaks` (`BankWindow::HideNativeAtCreation`, id 275). Elle est créée par
   le handler de `ZC_BANKING_CHECK`, donc **entre deux `OnTick`** : masquer au tick
   suivant laissait passer une frame native à l'écran — le flicker.
   On la masque plutôt que d'empêcher sa création, parce qu'elle reste :
@@ -413,7 +413,7 @@ Conséquences dans le code :
 ### Bouton banque dans le footer de l'inventaire
 
 `InventoryViewer` pose un bouton **sac de zeny** (`유저인터페이스\styleshop\btn_bank_{out,over,down}.bmp`,
-19 × 24) juste à gauche du montant de zeny du footer. Clic → `BankTweaks::ToggleFromUi()`,
+19 × 24) juste à gauche du montant de zeny du footer. Clic → `BankWindow::ToggleFromUi()`,
 qui reproduit exactement le behavior 146 (Ctrl+B) : fenêtre ouverte → fermeture
 client ; sinon `CZ_REQ_BANKING_CHECK 0x09AB`, et c'est le serveur qui ouvre.
 

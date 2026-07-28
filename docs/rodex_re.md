@@ -457,7 +457,7 @@ vrai (session ouverte par CZ 0x0A08), sinon l'envoi est ignoré **en silence**.
 
 ---
 
-## 7. Remplacement ImGui — `src/plugins/rodex_tweaks.{h,cc}` (LIVRÉ)
+## 7. Remplacement ImGui — `src/features/windows/rodex_window.{h,cc}` (LIVRÉ)
 
 **Principe** : *state-driven*, aucun parsing de paquet. Tout l'état des 3 boîtes est déjà agrégé
 dans `g_RodexMgr` par le natif ; le plugin **copie** ces maps à chaque tick et **émet** les mêmes

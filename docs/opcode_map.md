@@ -32,7 +32,7 @@
 
 ## Opcodes Bourgeon — les nôtres [X]  (migrés en zone sûre 0x0F00+ le 2026-07-03)
 
-> **Consolidation** : tous nos opcodes vivent désormais dans **0x0F00..0x0FFF**, au-dessus de l'opcode max du client (0x0C35). Conséquence : chacun est `flag=-1` (variable, inconnu) dans la table client => **zéro collision** (ni maintenant ni sur un client plus récent) et **plus de contrainte de longueur fixe**. Côté client, les ZC sont livrés par le **reader-hook** (RagConnection). Côté serveur, `MAX_PACKET_DB` remonté à 0xFFF pour enregistrer les CZ. Source unique : `src/plugins/bourgeon_opcodes.h`.
+> **Consolidation** : tous nos opcodes vivent désormais dans **0x0F00..0x0FFF**, au-dessus de l'opcode max du client (0x0C35). Conséquence : chacun est `flag=-1` (variable, inconnu) dans la table client => **zéro collision** (ni maintenant ni sur un client plus récent) et **plus de contrainte de longueur fixe**. Côté client, les ZC sont livrés par le **reader-hook** (RagConnection). Côté serveur, `MAX_PACKET_DB` remonté à 0xFFF pour enregistrer les CZ. Source unique : `src/features/systems/bourgeon_opcodes.h`.
 
 | Opcode | Dir | Nom Bourgeon | Ancien | Table client | Statut | Code |
 |---|---|---|---|---|---|---|

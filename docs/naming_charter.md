@@ -2,6 +2,11 @@
 
 > Issue de l'audit de nommage de `src/plugins/moonlight_ui.cc` (3542 l.) et de l'extraction de la convention réellement en vigueur dans le code déjà bien tenu (`ro_imgui.h`, `plugin.h`, `session.h`, `keyboard_move`, `entity_names`).
 
+> ⚠️ Les chemins et noms de classes cités dans le JOURNAL d'audit (tout ce qui
+> suit les règles) datent d'avant le rangement de `src/plugins/` en
+> `src/features/<nature>/` — cf. `docs/source_layout.md`. Ils sont conservés en
+> l'état : ce sont des observations datées, pas des instructions.
+
 ## ✅ État d'application (2026-07-26)
 
 **Les 15 renommages prioritaires et les 16 noms trompeurs sont traités.** Les RÈGLES (R1-R16) restent la référence pour tout nouveau code ; le reste du document est conservé comme journal de l'audit.

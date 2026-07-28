@@ -8,8 +8,8 @@ sources des valeurs live, et comment Bourgeon masque/réimplémente le tout.
 Client `20250716` (Moonlight-Destiny), base `0x00400000`, **pas de rebase ASLR**
 (Ghidra == live). Adresses/offsets renommés + commentés dans Ghidra, plusieurs
 points vérifiés en live avec x32dbg. Réimplémentation ImGui côté client dans
-[`src/plugins/basic_info.cc`](../src/plugins/basic_info.cc) et
-[`src/plugins/menu_icons.cc`](../src/plugins/menu_icons.cc).
+[`src/features/overlays/basic_info.cc`](../src/features/overlays/basic_info.cc) et
+[`src/features/overlays/menu_icons.cc`](../src/features/overlays/menu_icons.cc).
 
 > **TL;DR** — La fenêtre est la `UIWindow` **ID 0** (`vtbl 0x0103e35c`). Son
 > `DrawContent` (`0x0095e620`) lit directement des **globals de session** (HP/SP,
@@ -183,9 +183,9 @@ brute de `+0x1c/+0x20` à `-10000`. Attraper à la création évite le flicker d
   l'écran. Fix (`menu_icons.cc`) : à chaque transition on/off, `pending_refresh_`
   drainé en `OnTick` → `RequestServerRefresh()` envoie CZ `0x0BFD` id
   `BOURGEON_SETTING_REFRESH = 25` → moonlight `clif_refresh(sd)` → ZC `0x91` →
-  le client re-composite. Voir [`../src/plugins/menu_icons.cc`](../src/plugins/menu_icons.cc).
+  le client re-composite. Voir [`../src/features/overlays/menu_icons.cc`](../src/features/overlays/menu_icons.cc).
 
-### Déclencher une commande d'icône depuis l'ImGui (MenuIconTweaks)
+### Déclencher une commande d'icône depuis l'ImGui (MenuIcons)
 1. `FindWindow(0x133)` (`UIWindowMgr_FindWindow` @ `0x00a47b90`), puis parcourir la
    map `wnd+0xb4` (MSVC `_Tree` : key `@+0x10`, valeur `UIMenuIcon*` `@+0x14`).
 2. Ouvrir les 2 gates de `OnLButtonDown` puis restaurer :
@@ -205,7 +205,7 @@ brute de `+0x1c/+0x20` à `-10000`. Attraper à la création évite le flicker d
 ## Portée & suivi
 Voir la mémoire projet `project_basic_info_menu_icons` (source de cette doc). La
 réimplémentation Basic Info (barres exp/HUD, portrait/avatar sprite, aperçu d'items)
-vit dans [`basic_info.cc`](../src/plugins/basic_info.cc) ; le portrait capture le
+vit dans [`basic_info.cc`](../src/features/overlays/basic_info.cc) ; le portrait capture le
 sprite du perso via le renderer d'acteur natif (hook du submit de quad `0x00a1b7c0`)
 — documenté séparément avec le système sprite/rendu.
 

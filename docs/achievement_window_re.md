@@ -395,7 +395,7 @@ en dur**, on garde la traduction du client.
 | Fichier | Rôle |
 |---|---|
 | `src/ragnarok/achievements.h/.cc` | **accès natif** : itération des deux `std::map` (catalogue + progression), structs POD miroir, `Info(achID)`, `Progress(achID)`, `Tabs()`, `Rank()`, `IsTracked()`, `ToggleTracking()`, `ClaimReward()` |
-| `src/plugins/achievement_viewer.h/.cc` | plugin ImGui (`OnRenderUI`), opt-in via les réglages comme `InventoryViewer` |
+| `src/features/windows/achievement_viewer.h/.cc` | plugin ImGui (`OnRenderUI`), opt-in via les réglages comme `InventoryViewer` |
 
 Aucune donnée dupliquée : le plugin lit les structures du client (cf.
 [`feedback_never_hardcode_use_native`]). Un simple compteur de version

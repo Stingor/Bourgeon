@@ -81,7 +81,7 @@ login-server d'après service/server type + la connexion sélectionnée.
 
 - Alimenté par les `<connection><display>…</display>` de `clientinfo.xml`.
 - `AutoLogin` lit ces `<display>` dans l'ordre (`ReadConnectionNames`,
-  [auto_login.cc:76](../src/plugins/auto_login.cc#L76)) pour mapper `--server:<nom>`
+  [auto_login.cc:76](../src/features/systems/auto_login.cc#L76)) pour mapper `--server:<nom>`
   → index de liste.
 - **Le client mémorise la dernière connexion utilisée** : l'entrée surlignée n'est
   pas forcément la première. `AutoLogin` force le haut de liste (N × `VK_UP`) puis
@@ -216,7 +216,7 @@ Pour un launcher/patcher custom. `WinMain` parse la cmdline via `strstr` :
 Vérifié dans le code Bourgeon — **c'est ce qui rend le formulaire ImGui moderne
 faisable** :
 
-- **Dispatch dédié `OnRenderLoginUI`** ([plugin.h:45](../src/plugins/plugin.h#L45)) :
+- **Dispatch dédié `OnRenderLoginUI`** ([plugin.h:45](../src/features/plugin.h#L45)) :
   appelé par `Bourgeon::RenderUI` ([bourgeon.cc:285](../src/bourgeon.cc#L285))
   **uniquement** hors-jeu (login/char-select), dans un frame ImGui vivant, sauf
   pendant un chargement de map. C'est le hook qu'utilise déjà `LoginParade`.

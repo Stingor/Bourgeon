@@ -186,7 +186,7 @@ Le test discriminant est le simple `case 6:` (label `LAB_0094a2b2`), qui exécut
 (`GameMode_GetActive(0x1213338)`). **Aucune vérification de compatibilité à ce niveau.**
 
 Côté Bourgeon, ce chemin est **déjà emprunté** : `InventoryViewer::UseOrEquip()`
-(`src/plugins/inventory_viewer.cc:201-221`) fait `case 6: → kCmdCard (0x7b)`
+(`src/features/windows/inventory_viewer.cc:201-221`) fait `case 6: → kCmdCard (0x7b)`
 (`inventory_viewer.cc:135`, `cc:208`).
 
 ---
@@ -365,7 +365,7 @@ l'unique « Sword » affiché dans le popup. ✔
 Sur un item **forgé ou créé**, les 4 mêmes `u32` (`+0x1c`..`+0x28`) ne contiennent pas des
 cartes mais les données du créateur (charid scindé en deux, star crumbs, élément) —
 cf. `ItemInfo_IsForgedOrCreated` @ `0x006a5e30` et le commentaire détaillé
-`src/plugins/item_desc_tweaks.cc:419-427`.
+`src/features/windows/item_desc_window.cc:419-427`.
 
 Heuristique déjà retenue dans le projet : `card[0] != 0 && card[0] <= 500` ⇒ item forgé,
 on n'affiche ni cartes, ni emplacements, ni suffixe `[N]`. Les vraies cartes et enchants
@@ -412,7 +412,7 @@ Le code vit dans le plugin **`InventoryViewer`** (pas de plugin séparé : même
 
 | Élément | Emplacement |
 |---|---|
-| Constantes RE + lecteurs POD | `src/plugins/inventory_viewer.cc` (namespace anonyme) |
+| Constantes RE + lecteurs POD | `src/features/windows/inventory_viewer.cc` (namespace anonyme) |
 | Fenêtre ImGui | `InventoryViewer::RenderCardInsert()` |
 | Masquage natif (chaque tick) | `InventoryViewer::OnTick()` |
 | Masquage natif (à la création) | `InventoryViewer::HideCardInsertAtCreation()`, appelé depuis `MakeWindowHook` (`window_pos_tweaks.cc`, cas `0x4A`) |

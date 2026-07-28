@@ -1,5 +1,11 @@
 # Audit de src/plugins/moonlight_ui.cc
 
+> ⚠️ **Document historique, conservé tel quel.** Les chemins et les noms de
+> classes cités décrivent l'arborescence de juillet 2026, avant le rangement de
+> `src/plugins/` en `src/features/<nature>/` (cf. `docs/source_layout.md`). Ne
+> pas les « corriger » : les numéros de ligne, les noms et les chemins forment un
+> tout daté qui n'a de sens qu'ensemble.
+
 > 3542 lignes, 88 commits (fichier le plus modifie du repo). Audit mene par 6 analyses paralleles (structure, persistance, couplage, duplication, performance, risques), chacune passee a un verificateur adversarial, puis synthetisee.
 
 ## Verdict global

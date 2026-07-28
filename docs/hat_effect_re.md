@@ -158,7 +158,7 @@ On applique **exactement le même patron** aux effets STR :
 
 1. **Acquisition de l'id d'effet.**
    - *Fiche perso* (propre joueur) : `own_hat_effects_` suivi via l'observation de
-     0x0A3B (fait, `BasicInfoTweaks::OnRecvPacket`). Aucune RE supplémentaire.
+     0x0A3B (fait, `BasicInfo::OnRecvPacket`). Aucune RE supplémentaire.
    - *Cashshop / item_desc* (item quelconque) : `GetHatEffectID(itemID)` (Lua natif,
      via le bridge Lua brut déjà utilisé pour `GetStateIconDescript`) → id, 0 si
      aucun. Prérequis data : nos costumes custom présents dans `EffectHatItemTable.lua`
@@ -283,7 +283,7 @@ et effet joueur COMPACT. Reste à investiguer pourquoi le walk `+0x140`->`+0x138
       (view + ordinal). Costumes view==0 : perso de base + effet superposé.
 - [x] **Calibrage LIVE en jeu** : section « Effet costume (calibrage) » dans la fiche perso
       (DrawDoll, visible si un hat effect est actif) — sliders échelle/décalage X-Y/winding/
-      rotation (membres `hat_*` de BasicInfoTweaks) + DIAGNOSTIC (actifs / couches capturées /
+      rotation (membres `hat_*` de BasicInfo) + DIAGNOSTIC (actifs / couches capturées /
       id concret). `couches 0` = spawn/capture STR KO. Défaut d'échelle = s×g_av_body_scale
       (principe : les coords sprite intègrent l'échelle acteur, pas les coords .str).
 - [x] **Persistance** des réglages : sauvés dans bourgeon_settings.yaml (clés `hat_scale`/

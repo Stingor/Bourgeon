@@ -4,7 +4,7 @@
 > Objectif : documenter de fond en comble la chatbox native (logchat / logbattle)
 > depuis le `MakeWindow` manager jusqu'aux feuilles, pour préparer une **réécriture
 > ImGui complète**. Les adresses sont celles du projet Ghidra ; les noms en
-> `CamelCase` sont les renommages Ghidra. Cf. plugin existant `src/plugins/chat.cc`.
+> `CamelCase` sont les renommages Ghidra. Cf. plugin existant `src/features/patches/chat.cc`.
 
 Statut de rédaction : **en cours** (RE approfondie 2026-07-09).
 
