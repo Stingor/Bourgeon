@@ -128,7 +128,7 @@ class InventoryViewer : public Plugin {
   bool MailDraggedItem();
 
   // Nameid de l'item ACTUELLEMENT GLISSÉ (0 si aucun drag en cours). Utilisé par
-  // skill_bar_tweaks pour assigner l'item glissé à une case de la barre d'action
+  // skill_bar pour assigner l'item glissé à une case de la barre d'action
   // (drag-drop cross-plugin, comme EquipDraggedItem pour le doll de character_sheet).
   // Le nameid est la donnée stockée par un slot d'item de la barre (WriteSlotRecord).
   uint32_t DraggedItemNameId() const { return drag_active_ ? drag_id_ : 0; }

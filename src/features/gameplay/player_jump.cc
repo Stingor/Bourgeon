@@ -141,38 +141,38 @@ bool NativeTextInputHasFocus() {
 }
 }  // namespace
 
-PlayerJumpTweaks::PlayerJumpTweaks() {
+PlayerJump::PlayerJump() {
   // Saut d'un autre joueur (ZC 0x0F1B) : zone custom sûre (>0x0C35) => livré par
   // le reader-hook de RagConnection. cf. bourgeon_opcodes.h.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kJumpNotify);
 }
 
-void PlayerJumpTweaks::SetEnabled(bool on) {
+void PlayerJump::SetEnabled(bool on) {
   if (on == enabled_) return;
   enabled_ = on;
   if (!enabled_) ClearAll();  // coupe les sauts en cours et repose les sprites
 }
 
-void PlayerJumpTweaks::ClearAll() {
+void PlayerJump::ClearAll() {
   const WorldRefs refs = GetWorldRefs();
   for (const Jump& j : jumps_)
     ApplyJumpHeight(ResolveActor(refs, j.gid), refs.world, 0.0f);
   jumps_.clear();
 }
 
-void PlayerJumpTweaks::StartJump(uint32_t gid) {
+void PlayerJump::StartJump(uint32_t gid) {
   for (const Jump& j : jumps_)
     if (j.gid == gid) return;  // déjà en l'air : on laisse l'arc en cours finir
   jumps_.push_back({gid, GetTickCount()});
 }
 
-void PlayerJumpTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+void PlayerJump::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Les acteurs (et donc leurs offsets) sont détruits/recréés au changement de
   // map ; on oublie simplement l'état. Les nouveaux acteurs naissent à +0x3f4=0.
   if (mode_type != ModeMgr::ModeType::kGame) jumps_.clear();
 }
 
-void PlayerJumpTweaks::OnKeyDown(unsigned long vkey, int, int) {
+void PlayerJump::OnKeyDown(unsigned long vkey, int, int) {
   if (!enabled_) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   if (key_vk_ == 0 || static_cast<int>(vkey) != key_vk_) return;
@@ -215,7 +215,7 @@ void PlayerJumpTweaks::OnKeyDown(unsigned long vkey, int, int) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-void PlayerJumpTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void PlayerJump::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                     uint16_t len) {
   if (opcode != bopcodes::kJumpNotify) return;
   if (!enabled_ || data == nullptr || len < 4) return;
@@ -236,7 +236,7 @@ void PlayerJumpTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   StartJump(gid);
 }
 
-void PlayerJumpTweaks::OnRenderUI() {
+void PlayerJump::OnRenderUI() {
   // OnRenderUI n'est dispatché qu'en jeu et jamais pendant un chargement de map,
   // donc pas de garde supplémentaire nécessaire ici.
   if (jumps_.empty()) return;

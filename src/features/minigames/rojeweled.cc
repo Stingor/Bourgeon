@@ -1,4 +1,4 @@
-#include "features/minigames/rojeweled_tweaks.h"
+#include "features/minigames/rojeweled.h"
 
 #include <Windows.h>
 
@@ -50,7 +50,7 @@ Mon g_mon[kTypes] = {
   {"deviling", IM_COL32(180,  85, 225, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // purple
 };
 
-// ── Engine glue (20250716) — same monster-sprite pipeline as RoggleTweaks ──────
+// ── Engine glue (20250716) — same monster-sprite pipeline as Roggle ──────
 constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
 constexpr uintptr_t kTexMgrGet      = 0x00a90350;  // __cdecl() -> mgr
@@ -115,7 +115,7 @@ void LoadMon(Mon& m) {
 }
 
 // Resolve a monster's idle body cell to a native texture + atlas UVs. Same logic
-// as RoggleTweaks::ResolvePoringQuad (largest-area layer = body).
+// as Roggle::ResolvePoringQuad (largest-area layer = body).
 bool ResolveMonQuad(Mon& m, void** out_tex, ImVec2* uv0, ImVec2* uv1) {
   if (!m.spr || !m.act) return false;
   bool ok = false;
@@ -366,11 +366,11 @@ void UpdateGame() {
 }  // namespace
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
-void RojeweledTweaks::OnModeSwitch(ModeMgr::ModeType, const char*) {
+void Rojeweled::OnModeSwitch(ModeMgr::ModeType, const char*) {
   for (auto& m : g_mon) { m.spr = m.act = nullptr; m.fails = 0; m.gaveup = false; }
 }
 
-void RojeweledTweaks::OnRenderUI() {
+void Rojeweled::OnRenderUI() {
   if (!enabled_) return;
   if (!g.inited) { std::srand(GetTickCount()); NewGame(); }
   for (auto& m : g_mon) LoadMon(m);  // load monster sprites (retry until in-world)

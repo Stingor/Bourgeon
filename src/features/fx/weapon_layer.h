@@ -12,9 +12,9 @@
 // paints over it. We raise the weapon's key (front-facing only) so it flushes
 // last = on top. Two trampoline hooks installed once in the ctor; see
 // project_char_portrait_re memory for the full RE.
-class WeaponLayerTweaks : public Plugin {
+class WeaponLayer : public Plugin {
  public:
-  WeaponLayerTweaks();
+  WeaponLayer();
 
   const char* name() const override { return "WeaponLayer"; }
 };

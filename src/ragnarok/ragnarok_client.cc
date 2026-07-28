@@ -10,10 +10,10 @@
 #include "bourgeon.h"
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
-#include "features/overlays/skill_bar_tweaks.h"
+#include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
-#include "features/minigames/doom_tweaks.h"
+#include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
@@ -642,12 +642,12 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       }
     }
 
-    // DoomTweaks::WantsKeyboard() backstops io.WantCaptureKeyboard for the one
+    // Doom::WantsKeyboard() backstops io.WantCaptureKeyboard for the one
     // frame between a click that focuses the DOOM window and ImGui's own
     // capture flag taking effect (SetNextFrameWantCaptureKeyboard only applies
     // at the NEXT NewFrame) — without it, a key pressed in that gap reaches
     // the game too (e.g. Escape opening both DOOM's and the RO menu).
-    if (io.WantCaptureKeyboard || DoomTweaks::WantsKeyboard()) {
+    if (io.WantCaptureKeyboard || Doom::WantsKeyboard()) {
       switch (uMsg) {
         case WM_KEYDOWN: case WM_KEYUP:
         case WM_SYSKEYDOWN: case WM_SYSKEYUP:

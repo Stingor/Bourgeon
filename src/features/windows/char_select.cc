@@ -961,8 +961,8 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   const float y = chair_y - dh;
 
   bool drawn = false;
-  if (BasicInfoTweaks* bi = Bourgeon::Instance().basic_info()) {
-    BasicInfoTweaks::DollLook look;
+  if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
+    BasicInfo::DollLook look;
     look.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
     look.job           = v.job;
     look.body          = v.body;
@@ -1007,8 +1007,8 @@ void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
   // debout de face. Même moteur de capture partagé que DrawDollAt ; la capture est
   // re-clé par apparence -> changer un curseur met l'aperçu à jour à la frame suivante.
   bool drawn = false;
-  if (BasicInfoTweaks* bi = Bourgeon::Instance().basic_info()) {
-    BasicInfoTweaks::DollLook look;  // tout à 0 par défaut = Novice sans équipement
+  if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
+    BasicInfo::DollLook look;  // tout à 0 par défaut = Novice sans équipement
     look.sex        = create_sex_;
     look.hair       = create_hair_;
     look.hair_color = create_hair_color_;

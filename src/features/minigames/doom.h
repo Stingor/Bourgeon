@@ -4,7 +4,7 @@
 
 // DOOM (1993) running inside Ragnarok Online, because we can. Embeds the
 // vendored doomgeneric port (thirdparty/doomgeneric) compiled as a static C lib:
-// we implement its DG_* platform callbacks (video/timing/input) in doom_tweaks.cc
+// we implement its DG_* platform callbacks (video/timing/input) in doom.cc
 // and pump the engine ourselves — doomgeneric_Create() once on first enable, then
 // doomgeneric_Tick() paced at DOOM's native 35 Hz from OnRenderUI (the engine
 // NEVER runs its own blocking loop, so the RO render thread is never stalled).
@@ -19,7 +19,7 @@
 // one DOOM per client run.
 //
 // Needs doom1.wad (shareware) next to the client exe. DX9 only.
-class DoomTweaks : public Plugin {
+class Doom : public Plugin {
  public:
   const char* name() const override { return "DOOM"; }
 

@@ -1,4 +1,4 @@
-#include "features/overlays/status_icon_tweaks.h"
+#include "features/overlays/status_icon_bar.h"
 
 #include <Windows.h>
 
@@ -16,7 +16,7 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 // ===========================================================================
 // Status-icon BAR reimplementation (20250716 client / Moonlight-Destiny.exe,
-// base 0x400000).  See status_icon_tweaks.h for the high-level design.
+// base 0x400000).  See status_icon_bar.h for the high-level design.
 //
 // Original build/layout function (replaced via JMP hook):
 //   FUN_00bd4230(scene)  __thiscall(ECX = scene)
@@ -691,7 +691,7 @@ void DrawRemainingTime() {
 
 }  // namespace
 
-StatusIconTweaks::StatusIconTweaks() {
+StatusIconBar::StatusIconBar() {
   // Verify the expected prologue before hooking (55 8B EC 83 EC 28 = push ebp;
   // mov ebp,esp; sub esp,0x28) so a client mismatch fails safe.
   const auto* p = reinterpret_cast<const uint8_t*>(kBuildFn);
@@ -749,21 +749,21 @@ StatusIconTweaks::StatusIconTweaks() {
   }
 }
 
-void StatusIconTweaks::OnTick() {
+void StatusIconBar::OnTick() {
   if (g_dirty && g_in_game) {
     ForceRebuild();
     g_dirty = false;
   }
 }
 
-void StatusIconTweaks::OnModeSwitch(ModeMgr::ModeType mode_type,
+void StatusIconBar::OnModeSwitch(ModeMgr::ModeType mode_type,
                                     const char* /*map_name*/) {
   g_in_game = (mode_type == ModeMgr::ModeType::kGame);
   if (!g_in_game) g_scene = nullptr;  // don't poke a stale scene from login
 }
 
 // The settings controls (no window) — hosted by moonlight_ui's settings panel.
-void StatusIconTweaks::DrawSettings() {
+void StatusIconBar::DrawSettings() {
   bool changed = false;
 
   changed |= ro::RoCheckbox("Disposition personnalisée", &g_cfg.enabled);
@@ -852,7 +852,7 @@ void StatusIconTweaks::DrawSettings() {
   if (changed) { g_dirty = true; g_needs_save = true; }  // rebuild + persist
 }
 
-void StatusIconTweaks::OnRenderUI() {
+void StatusIconBar::OnRenderUI() {
   const bool active = g_cfg.enabled && g_in_game;
 
   // Game-world overlays (independent of the settings panel, which now lives in
@@ -869,6 +869,6 @@ void StatusIconTweaks::OnRenderUI() {
   }
 }
 
-StatusIconConfig& StatusIconTweaks::config() { return g_cfg; }
+StatusIconConfig& StatusIconBar::config() { return g_cfg; }
 
-void StatusIconTweaks::MarkDirty() { g_dirty = true; }
+void StatusIconBar::MarkDirty() { g_dirty = true; }

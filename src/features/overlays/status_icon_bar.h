@@ -51,9 +51,9 @@ struct StatusIconConfig {
 // KNOWN LIMITATION (v1): the mouseover tooltip hit-test (FUN_00c93cb0) keeps its
 // own copy of the stock right-anchored layout constants, so when the bar is
 // moved the icon tooltips will be offset.  Syncing the hit-test is a follow-up.
-class StatusIconTweaks : public Plugin {
+class StatusIconBar : public Plugin {
  public:
-  StatusIconTweaks();
+  StatusIconBar();
 
   const char* name() const override { return "StatusIcons"; }
 

@@ -33,11 +33,11 @@ constexpr int       kEyeYIndex       = 1;           // float index of the up (Y)
 // File scope (NOT namespaced) so the naked __asm can resolve them by name.
 static void* g_fpscam_pcam    = nullptr;  // last-seen camera object (captured live)
 static void* g_tramp_camclamp = nullptr;  // -> relocated prologue + original body
-static FpsViewTweaks* g_fps_owner = nullptr;  // to read enabled()/eye_height() in the hook
+static FpsView* g_fps_owner = nullptr;  // to read enabled()/eye_height() in the hook
 static void* g_setview_orig       = nullptr;  // stock SetView (vtable+4)
 
 // SetView(eye, lookat, up) — __thiscall emulated as __fastcall (same trick as
-// SettingsTweaks' SetPos hook). When FPS is on, lift the eye and the look-at
+// ScreenFx' SetPos hook). When FPS is on, lift the eye and the look-at
 // point up the Y axis so the camera sits at head height instead of at the feet.
 void __fastcall Hooked_SetView(void* self, void* edx, float* eye, float* lookat,
                                float* up) {
@@ -71,7 +71,7 @@ void __fastcall FpsCamCapture(void* gamemode) {
 
 // Naked entry stub: ECX = param_1 (CGameMode) at entry; forward it to the
 // __fastcall capture fn (ecx untouched by the pushes), then continue into the
-// original via the trampoline. Mirrors WeaponLayerTweaks' DeferEntryStub.
+// original via the trampoline. Mirrors WeaponLayer' DeferEntryStub.
 __declspec(naked) static void CamClampEntryStub() {
   __asm {
     push eax
@@ -85,9 +85,9 @@ __declspec(naked) static void CamClampEntryStub() {
   }
 }
 
-FpsViewTweaks::FpsViewTweaks() {
+FpsView::FpsView() {
   g_fps_owner = this;
-  // Install the capture hook unconditionally (like WeaponLayerTweaks): the client
+  // Install the capture hook unconditionally (like WeaponLayer): the client
   // timestamp is NOT yet known at LoadPlugins() time — it's set later in
   // RagnarokClient::Initialize — so gating the ctor on it would skip the install
   // forever. Runtime methods (OnTick/SetEnabled) keep the timestamp
@@ -100,7 +100,7 @@ FpsViewTweaks::FpsViewTweaks() {
           // g_tramp_camclamp != nullptr);
 }
 
-void FpsViewTweaks::SetEnabled(bool on) {
+void FpsView::SetEnabled(bool on) {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   if (on == enabled_) return;
   enabled_ = on;
@@ -108,7 +108,7 @@ void FpsViewTweaks::SetEnabled(bool on) {
   // LogInfo("[FpsView] {}", enabled_ ? "ON" : "OFF");
 }
 
-void FpsViewTweaks::Apply() {
+void FpsView::Apply() {
   if (!g_fpscam_pcam) return;  // not in-world yet; retry next tick
   auto* pcam = reinterpret_cast<char*>(g_fpscam_pcam);
 
@@ -134,7 +134,7 @@ void FpsViewTweaks::Apply() {
   }
 }
 
-void FpsViewTweaks::Restore() {
+void FpsView::Restore() {
   if (!base_ok_) return;
   if (g_fpscam_pcam) {
     auto* pcam = reinterpret_cast<char*>(g_fpscam_pcam);
@@ -146,7 +146,7 @@ void FpsViewTweaks::Restore() {
   last_dist_  = -99999.0f;
 }
 
-void FpsViewTweaks::OnTick() {
+void FpsView::OnTick() {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
 
   // Install the SetView vtable hook once, the moment the renderer object exists.

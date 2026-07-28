@@ -12,13 +12,13 @@
 
 class DiscordRelay;
 class DpsMeter;
-class BasicInfoTweaks;
-class MenuIconTweaks;
-class StatusIconTweaks;
-class QuestTrackerTweaks;
-class SettingsTweaks;
+class BasicInfo;
+class MenuIcons;
+class StatusIconBar;
+class QuestTracker;
+class ScreenFx;
 class MoonlightUi;
-class SkillBarTweaks;
+class SkillBar;
 class ChatTweaks;
 class StorageWindow;
 class InventoryViewer;
@@ -32,16 +32,16 @@ class RodexWindow;
 class CharacterSheet;
 class LoginParade;
 class ItemDescWindow;
-class FpsViewTweaks;
-class PlayerJumpTweaks;
-class KeyboardMoveTweaks;
-class DoomTweaks;
-class RoggleTweaks;
-class RojeweledTweaks;
+class FpsView;
+class PlayerJump;
+class KeyboardMove;
+class Doom;
+class Roggle;
+class Rojeweled;
 class NpcDialogWindow;
-class BugReportTweaks;
+class BugReport;
 class WeaponDualSprites;
-class EntityNamesTweaks;
+class EntityNames;
 
 class Bourgeon {
  public:
@@ -56,13 +56,13 @@ class Bourgeon {
   RagnarokClient& client();
   DiscordRelay* discord_relay();
   DpsMeter* dps_meter();
-  BasicInfoTweaks* basic_info();
-  MenuIconTweaks* menu_icons();
-  StatusIconTweaks* status_icons();
-  QuestTrackerTweaks* quest_tracker();
-  SettingsTweaks* settings_tweaks();
+  BasicInfo* basic_info();
+  MenuIcons* menu_icons();
+  StatusIconBar* status_icons();
+  QuestTracker* quest_tracker();
+  ScreenFx* screen_fx();
   MoonlightUi* moonlight_ui();
-  SkillBarTweaks* skill_bar();
+  SkillBar* skill_bar();
   ChatTweaks* chat_tweaks();
   StorageWindow* storage_window();
   InventoryViewer* inventory_viewer();
@@ -74,18 +74,18 @@ class Bourgeon {
   TradeWindow* trade_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
-  BugReportTweaks* bug_report();
+  BugReport* bug_report();
   CharacterSheet* character_sheet();
   LoginParade* login_parade();
   ItemDescWindow* item_desc();
-  FpsViewTweaks* fps_view();
-  PlayerJumpTweaks* player_jump();
-  KeyboardMoveTweaks* keyboard_move();
-  DoomTweaks* doom();
-  RoggleTweaks* roggle();
-  RojeweledTweaks* rojeweled();
+  FpsView* fps_view();
+  PlayerJump* player_jump();
+  KeyboardMove* keyboard_move();
+  Doom* doom();
+  Roggle* roggle();
+  Rojeweled* rojeweled();
   WeaponDualSprites* weapon_dual_sprites();
-  EntityNamesTweaks* entity_names();
+  EntityNames* entity_names();
 
   bool Initialize();
   void OnTick();
@@ -119,7 +119,7 @@ class Bourgeon {
   // rebuilt (CGameMode::EnterWorld), so acting on it is unsafe — that race is
   // what freed a UIShortCutWnd while it was still in the native window-snap
   // manager and produced a use-after-free. While loading we stand down: hide the
-  // plugin UI (which also stops SkillBarTweaks from MakeWindow'ing the shortcut
+  // plugin UI (which also stops SkillBar from MakeWindow'ing the shortcut
   // bar every frame) and swallow keyboard input.
   bool IsMapLoading() const;
   void SetMapLoading(bool loading);
@@ -145,13 +145,13 @@ class Bourgeon {
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
   DpsMeter*     dps_meter_     = nullptr;  // non-owning, lifetime tied to plugins_
-  BasicInfoTweaks* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
-  MenuIconTweaks* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
-  StatusIconTweaks* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
-  QuestTrackerTweaks* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
-  SettingsTweaks* settings_tweaks_ = nullptr; // non-owning, lifetime tied to plugins_
+  BasicInfo* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MenuIcons* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
+  StatusIconBar* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
+  QuestTracker* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
+  ScreenFx* screen_fx_ = nullptr; // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
-  SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
+  SkillBar* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
   ChatTweaks* chat_tweaks_ = nullptr;         // non-owning, lifetime tied to plugins_
   StorageWindow* storage_window_ = nullptr;   // non-owning, lifetime tied to plugins_
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
@@ -163,18 +163,18 @@ class Bourgeon {
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_
-  BugReportTweaks* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
+  BugReport* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_
-  FpsViewTweaks* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
-  PlayerJumpTweaks* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
-  KeyboardMoveTweaks* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
-  DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
-  RoggleTweaks* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
-  RojeweledTweaks* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
+  FpsView* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
+  PlayerJump* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
+  KeyboardMove* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
+  Doom* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
+  Roggle* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
+  Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
-  EntityNamesTweaks* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
+  EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start

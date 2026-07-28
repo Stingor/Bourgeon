@@ -12,12 +12,12 @@
 // temperature), filters (B&W / sepia / negative / colourblind), vignette, film
 // grain, chromatic aberration, sharpen, and FXAA. Plus a clean PNG screenshot
 // (no overlay) and an FPS/frametime overlay. Config persists through MoonlightUi's
-// shared bourgeon_settings.yaml (same pattern as StatusIconTweaks). DX9 only.
-class SettingsTweaks : public Plugin {
+// shared bourgeon_settings.yaml (same pattern as StatusIconBar). DX9 only.
+class ScreenFx : public Plugin {
  public:
-  SettingsTweaks();
+  ScreenFx();
 
-  const char* name() const override { return "SettingsTweaks"; }
+  const char* name() const override { return "ScreenFx"; }
 
   // Persisted config access (used by moonlight_ui's settings save/load).
   D3D9PostFx& fx() { return fx_; }

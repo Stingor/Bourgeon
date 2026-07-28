@@ -121,7 +121,7 @@ __declspec(naked) static void KeyWriteStub() {
   }
 }
 
-WeaponLayerTweaks::WeaponLayerTweaks() {
+WeaponLayer::WeaponLayer() {
   using namespace hooking;
   g_tramp_defer = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kDeferEntry),

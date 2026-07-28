@@ -928,8 +928,8 @@ void VendingWindow::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
     // à MakeWindow/OnMsg ne suit pas forcément le chemin qui déclenche son hook,
     // et une native laissée visible se dessine SOUS l'overlay — donc derrière
     // cette fenêtre.
-    if (auto* desc_tweaks = Bourgeon::Instance().item_desc())
-      desc_tweaks->HideNativeDescWindows();
+    if (auto* desc_window = Bourgeon::Instance().item_desc())
+      desc_window->HideNativeDescWindows();
     // Le clic vient de focaliser NOTRE fenêtre : sans ça, le panneau de
     // description qui apparaît le même frame passe derrière.
     ImGui::SetWindowFocus(nullptr);

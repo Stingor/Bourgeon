@@ -13,7 +13,7 @@
 // bitmap, clickable (routes the command to the game's UI dispatcher) and with
 // the native tooltip text. Phase 2a: load + draw + click + tooltip + hide grid.
 // Phase 2b will add per-icon move/snap/show-hide/persistence (edit mode).
-class MenuIconTweaks : public Plugin {
+class MenuIcons : public Plugin {
  public:
 
   // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage

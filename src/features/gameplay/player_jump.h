@@ -51,9 +51,9 @@
 // yaml). Le combo choisi passe par le contrôle de conflit partagé de
 // features/hotkey_util.h : presets d'équipement, raccourcis natifs de la barre de
 // skills et Alt+F sont refusés, pour ne pas déclencher deux actions d'un coup.
-class PlayerJumpTweaks : public Plugin {
+class PlayerJump : public Plugin {
  public:
-  PlayerJumpTweaks();
+  PlayerJump();
 
   const char* name() const override { return "PlayerJump"; }
 

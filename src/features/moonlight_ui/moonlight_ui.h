@@ -22,7 +22,7 @@
 // Les fenêtres qui s'activent ENSEMBLE (plus de mixe possible) :
 //   inventaire (InventoryViewer::imgui_enabled_, sertissage de cartes inclus),
 //   cart (CartViewer::imgui_enabled_), storage (StorageWindow::imgui_enabled_),
-//   barres d'action (SkillBarTweaks::enabled_), échange (TradeWindow::imgui_enabled_),
+//   barres d'action (SkillBar::enabled_), échange (TradeWindow::imgui_enabled_),
 //   courrier RODEX (RodexWindow::imgui_enabled_), échoppe joueur — vente ET
 //   échoppe d'achat (VendingWindow::imgui_enabled_), feuille de personnage
 //   (CharacterSheet::imgui_enabled_), cash shop (CashShopWindow::imgui_enabled_) et
@@ -73,8 +73,8 @@ class MoonlightUi : public Plugin {
   // opération qui pourrait faire perdre la fenêtre d'anti-rebond.
   void FlushSettings();
 
-  // Shared HUD alignment grid. Public so sibling plugins (BasicInfoTweaks bars,
-  // MenuIconTweaks) can read it for snapping while dragging/resizing.
+  // Shared HUD alignment grid. Public so sibling plugins (BasicInfo bars,
+  // MenuIcons) can read it for snapping while dragging/resizing.
   AlignGrid grid_;
 
   // ── Liste autolootid (partagée) : le panneau de description enrichi

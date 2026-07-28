@@ -1,4 +1,4 @@
-#include "features/minigames/roggle_tweaks.h"
+#include "features/minigames/roggle.h"
 
 #include <Windows.h>  // GetTickCount (seed)
 
@@ -446,7 +446,7 @@ bool ResolvePoringQuad(void** out_tex, ImVec2* uv0, ImVec2* uv1) {
 
 }  // namespace
 
-void RoggleTweaks::OnModeSwitch(ModeMgr::ModeType, const char*) {
+void Roggle::OnModeSwitch(ModeMgr::ModeType, const char*) {
   // The D3D device may have been reset/recreated across the switch — our cached
   // D3DPOOL_DEFAULT icon textures could now be dangling pointers. Drop them
   // (don't Release — the underlying object may already be gone); EnsureTextures
@@ -455,7 +455,7 @@ void RoggleTweaks::OnModeSwitch(ModeMgr::ModeType, const char*) {
   g_tex_blue   = IconTex{};
 }
 
-void RoggleTweaks::OnRenderUI() {
+void Roggle::OnRenderUI() {
   if (!enabled_) return;
   if (!g.inited) { std::srand(GetTickCount()); NewGame(); }
   EnsureTextures();       // load the RO item icons (retries until in-world)

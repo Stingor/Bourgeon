@@ -28,9 +28,9 @@
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
-#include "features/overlays/status_icon_tweaks.h"
-#include "features/overlays/quest_tracker_tweaks.h"
-#include "features/fx/settings_tweaks.h"
+#include "features/overlays/status_icon_bar.h"
+#include "features/overlays/quest_tracker.h"
+#include "features/fx/screen_fx.h"
 #include "features/fx/weapon_layer.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/hat_effect_depth.h"
@@ -38,10 +38,10 @@
 #include "features/gameplay/fps_view.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/player_jump.h"
-#include "features/minigames/doom_tweaks.h"
-#include "features/minigames/roggle_tweaks.h"
-#include "features/minigames/rojeweled_tweaks.h"
-#include "features/overlays/skill_bar_tweaks.h"
+#include "features/minigames/doom.h"
+#include "features/minigames/roggle.h"
+#include "features/minigames/rojeweled.h"
+#include "features/overlays/skill_bar.h"
 #include "features/windows/item_desc_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
@@ -63,20 +63,20 @@ Bourgeon::Bourgeon()
 RagnarokClient& Bourgeon::client() { return client_; }
 DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
 DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
-BasicInfoTweaks* Bourgeon::basic_info() { return basic_info_; }
-MenuIconTweaks* Bourgeon::menu_icons()  { return menu_icons_; }
-StatusIconTweaks* Bourgeon::status_icons() { return status_icons_; }
-QuestTrackerTweaks* Bourgeon::quest_tracker() { return quest_tracker_; }
-SettingsTweaks* Bourgeon::settings_tweaks() { return settings_tweaks_; }
-FpsViewTweaks* Bourgeon::fps_view() { return fps_view_; }
-PlayerJumpTweaks* Bourgeon::player_jump() { return player_jump_; }
-KeyboardMoveTweaks* Bourgeon::keyboard_move() { return keyboard_move_; }
-DoomTweaks* Bourgeon::doom() { return doom_; }
-RoggleTweaks* Bourgeon::roggle() { return roggle_; }
-RojeweledTweaks* Bourgeon::rojeweled() { return rojeweled_; }
+BasicInfo* Bourgeon::basic_info() { return basic_info_; }
+MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
+StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
+QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
+ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
+FpsView* Bourgeon::fps_view() { return fps_view_; }
+PlayerJump* Bourgeon::player_jump() { return player_jump_; }
+KeyboardMove* Bourgeon::keyboard_move() { return keyboard_move_; }
+Doom* Bourgeon::doom() { return doom_; }
+Roggle* Bourgeon::roggle() { return roggle_; }
+Rojeweled* Bourgeon::rojeweled() { return rojeweled_; }
 WeaponDualSprites* Bourgeon::weapon_dual_sprites() { return weapon_dual_sprites_; }
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
-SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
+SkillBar* Bourgeon::skill_bar() { return skill_bar_; }
 ChatTweaks* Bourgeon::chat_tweaks() { return chat_tweaks_; }
 StorageWindow* Bourgeon::storage_window() { return storage_window_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
@@ -88,11 +88,11 @@ VendingWindow* Bourgeon::vending_window() { return vending_window_; }
 TradeWindow* Bourgeon::trade_window() { return trade_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
 NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
-BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
+BugReport* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
-EntityNamesTweaks* Bourgeon::entity_names() { return entity_names_; }
+EntityNames* Bourgeon::entity_names() { return entity_names_; }
 
 namespace {
 // Silence le message chat "Successfully purchased emotion." (EMSG_EMOTION_
@@ -313,7 +313,7 @@ void Bourgeon::RenderUI() {
   // ci-dessus : après NewFrame, avant le premier Begin. Voir ui/window_zorder.h.
   ro::SendBackgroundWindowsToBack();
   // Stand down while a map is loading: hide all plugin UI. This also stops
-  // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
+  // SkillBar::EnsureCreated() from MakeWindow'ing the native shortcut bar
   // every frame while the HUD is being torn down/rebuilt — the race that freed a
   // UIShortCutWnd while it was still in the native window-snap manager and caused
   // the use-after-free crash (WinSnap edge-adjacency deref at 0x007a85c4).
@@ -358,7 +358,7 @@ void Bourgeon::RenderUI() {
   //
   // Les trois tests locaux sont donc retirés : gardés, ils auraient de nouveau
   // laissé croire que chaque plugin gère le cas lui-même. Un seul survit,
-  // MenuIconTweaks::FlushPending — il ne filtre pas un rendu mais un CLIC, et
+  // MenuIcons::FlushPending — il ne filtre pas un rendu mais un CLIC, et
   // s'exécute hors de cette boucle.
   if (uiwnd::IsHudReplaced()) return;
   // if (strstr(GetCommandLineA(), "--console") != nullptr) { // Render Bourgeon's main window
@@ -496,7 +496,7 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(moonlight_ui));
   }
   {
-    auto bug_report = std::make_unique<BugReportTweaks>();
+    auto bug_report = std::make_unique<BugReport>();
     bug_report_ = bug_report.get();
     plugins_.emplace_back(std::move(bug_report));
   }
@@ -573,41 +573,41 @@ void Bourgeon::LoadPlugins() {
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
-  plugins_.emplace_back(std::make_unique<WeaponLayerTweaks>());
+  plugins_.emplace_back(std::make_unique<WeaponLayer>());
   {
     auto weapon_dual = std::make_unique<WeaponDualSprites>();
     weapon_dual_sprites_ = weapon_dual.get();
     plugins_.emplace_back(std::move(weapon_dual));
   }
-  plugins_.emplace_back(std::make_unique<HatEffectDepthTweaks>());
+  plugins_.emplace_back(std::make_unique<HatEffectDepth>());
   plugins_.emplace_back(std::make_unique<SkillTreeTweaks>());
   {
-    auto fps_view = std::make_unique<FpsViewTweaks>();
+    auto fps_view = std::make_unique<FpsView>();
     fps_view_ = fps_view.get();
     plugins_.emplace_back(std::move(fps_view));
   }
   {
-    auto player_jump = std::make_unique<PlayerJumpTweaks>();
+    auto player_jump = std::make_unique<PlayerJump>();
     player_jump_ = player_jump.get();
     plugins_.emplace_back(std::move(player_jump));
   }
   {
-    auto keyboard_move = std::make_unique<KeyboardMoveTweaks>();
+    auto keyboard_move = std::make_unique<KeyboardMove>();
     keyboard_move_ = keyboard_move.get();
     plugins_.emplace_back(std::move(keyboard_move));
   }
   {
-    auto doom = std::make_unique<DoomTweaks>();
+    auto doom = std::make_unique<Doom>();
     doom_ = doom.get();
     plugins_.emplace_back(std::move(doom));
   }
   {
-    auto roggle = std::make_unique<RoggleTweaks>();
+    auto roggle = std::make_unique<Roggle>();
     roggle_ = roggle.get();
     plugins_.emplace_back(std::move(roggle));
   }
   {
-    auto rojeweled = std::make_unique<RojeweledTweaks>();
+    auto rojeweled = std::make_unique<Rojeweled>();
     rojeweled_ = rojeweled.get();
     plugins_.emplace_back(std::move(rojeweled));
   }
@@ -617,24 +617,24 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(item_desc));
   }
   {
-    auto skill_bar = std::make_unique<SkillBarTweaks>();
+    auto skill_bar = std::make_unique<SkillBar>();
     skill_bar_ = skill_bar.get();
     plugins_.emplace_back(std::move(skill_bar));
   }
   {
-    auto status_icons = std::make_unique<StatusIconTweaks>();
+    auto status_icons = std::make_unique<StatusIconBar>();
     status_icons_ = status_icons.get();
     plugins_.emplace_back(std::move(status_icons));
   }
   {
-    auto quest_tracker = std::make_unique<QuestTrackerTweaks>();
+    auto quest_tracker = std::make_unique<QuestTracker>();
     quest_tracker_ = quest_tracker.get();
     plugins_.emplace_back(std::move(quest_tracker));
   }
   {
-    auto settings_tweaks = std::make_unique<SettingsTweaks>();
-    settings_tweaks_ = settings_tweaks.get();
-    plugins_.emplace_back(std::move(settings_tweaks));
+    auto screen_fx = std::make_unique<ScreenFx>();
+    screen_fx_ = screen_fx.get();
+    plugins_.emplace_back(std::move(screen_fx));
   }
   {
     auto dps = std::make_unique<DpsMeter>();
@@ -642,12 +642,12 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(dps));
   }
   {
-    auto basic_info = std::make_unique<BasicInfoTweaks>();
+    auto basic_info = std::make_unique<BasicInfo>();
     basic_info_ = basic_info.get();
     plugins_.emplace_back(std::move(basic_info));
   }
   {
-    auto menu_icons = std::make_unique<MenuIconTweaks>();
+    auto menu_icons = std::make_unique<MenuIcons>();
     menu_icons_ = menu_icons.get();
     plugins_.emplace_back(std::move(menu_icons));
   }
@@ -657,7 +657,7 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(relay));
   }
   {
-    auto entity_names = std::make_unique<EntityNamesTweaks>();
+    auto entity_names = std::make_unique<EntityNames>();
     entity_names_ = entity_names.get();
     plugins_.emplace_back(std::move(entity_names));
   }

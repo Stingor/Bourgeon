@@ -21,7 +21,7 @@ namespace moonlight_ui {
 
 // Positions et visibilité par icône de menu, sous « menu_icons: { <nom>: {…} } ».
 // Rangées à la lecture parce que la liste d'icônes vivante n'existe qu'en jeu :
-// MenuIconTweaks::BuildIconList les applique plus tard.
+// MenuIcons::BuildIconList les applique plus tard.
 void ReadMenuIcons(const YAML::Node& ui);
 void WriteMenuIcons(YAML::Emitter& out);
 

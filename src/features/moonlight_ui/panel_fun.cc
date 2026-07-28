@@ -11,14 +11,14 @@
 
 // bourgeon.h ne donne que des déclarations anticipées des plugins : il faut le
 // type COMPLET de chacun de ceux qu'on pilote ici.
-#include "features/minigames/doom_tweaks.h"
+#include "features/minigames/doom.h"
 #include "features/overlays/dps_meter.h"
 #include "features/hotkey_util.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/overlays/login_parade.h"
 #include "features/gameplay/player_jump.h"
-#include "features/minigames/roggle_tweaks.h"
-#include "features/minigames/rojeweled_tweaks.h"
+#include "features/minigames/roggle.h"
+#include "features/minigames/rojeweled.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -30,7 +30,7 @@ namespace {
 // d'équipement, à un raccourci natif de la barre de skills ou à Alt+F — même
 // contrôle que les raccourcis de preset de la fiche de personnage.
 // Renvoie true quand la touche a changé (l'appelant persiste).
-bool DrawJumpKeyBinding(PlayerJumpTweaks* player_jump) {
+bool DrawJumpKeyBinding(PlayerJump* player_jump) {
   bool changed = false;
   ImGui::AlignTextToFramePadding();
   GrayText("Touche :");
@@ -99,7 +99,7 @@ void MoonlightUi::DrawFunPanels() {
   }
 
   // ── Interface de jeu  ────────────────────────────────────────────────────
-  // NB: la vue caméra FPS (FpsViewTweaks) reste dans le code (toggle F9) mais
+  // NB: la vue caméra FPS (FpsView) reste dans le code (toggle F9) mais
   // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
   if (CollapsingHeader("Mini-jeux")) {
     SeparatorText("DOOM");

@@ -2259,7 +2259,7 @@ void InventoryViewer::OnRenderUI() {
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         drag_active_ = true;
         drag_index_ = it.index; drag_amount_ = it.amount; drag_type_ = it.type; drag_loc_ = it.loc;
-        drag_id_ = it.id;  // nameid : cible d'un dépôt sur la barre d'action (skill_bar_tweaks)
+        drag_id_ = it.id;  // nameid : cible d'un dépôt sur la barre d'action (skill_bar)
         ImGui::SetDragDropPayload("INV_ITEM", &idx, sizeof(idx));
         if (ic.tex) { ImGui::Image(TexId(ic.tex), ImVec2(24, 24)); ImGui::SameLine(); }
         ImGui::TextUnformatted(it.name[0] ? it.name : "(?)");

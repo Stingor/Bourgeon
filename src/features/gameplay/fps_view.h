@@ -23,10 +23,10 @@
 //  - Outdoor is clean; INDOOR maps flicker (the clamp function re-forces tilt=45
 //    every frame indoors, fighting our write).
 //  - Your own character sprite is not hidden yet, so its back can block the view
-//    (TODO: hook CActorSprite_RenderLayered like WeaponLayerTweaks).
-class FpsViewTweaks : public Plugin {
+//    (TODO: hook CActorSprite_RenderLayered like WeaponLayer).
+class FpsView : public Plugin {
  public:
-  FpsViewTweaks();
+  FpsView();
 
   const char* name() const override { return "FpsView"; }
 

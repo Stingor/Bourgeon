@@ -21,7 +21,7 @@ struct ImVec2;
 // liste, entrée map -> jeu seamless).
 //
 // INCRÉMENT 1 : lecture de la liste + grille + sélection -> entrée en jeu.
-// INCRÉMENT 2 : rendu du DOLL (paperdoll) par slot (BasicInfoTweaks::RenderDoll).
+// INCRÉMENT 2 : rendu du DOLL (paperdoll) par slot (BasicInfo::RenderDoll).
 // INCRÉMENT 3 (ici) : reskin « scène banquet » — un décor plein écran (BMP chargé
 //   par le loader natif) et les personnages assis aux PLACES d'une table. Les 25
 //   places sont pilotées par données (table kSeats, coords normalisées extraites
@@ -98,7 +98,7 @@ class CharSelect : public Plugin {
 
   // Dessine le paperdoll du slot ancré sur son siège : pieds au point (cx, chair_y),
   // corps de hauteur `box_h` (px écran) étendu vers le haut, centré en X. Moteur de
-  // capture partagé (BasicInfoTweaks::RenderDoll) ; placeholder si la capture n'est
+  // capture partagé (BasicInfo::RenderDoll) ; placeholder si la capture n'est
   // pas prête (budget par frame) ou échoue.
   void DrawDollAt(const CharView& v, float cx, float chair_y, float box_h);
 

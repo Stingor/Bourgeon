@@ -5,7 +5,7 @@
 // LoginParade — fait flâner une petite bande de monstres de la famille Poring
 // sur l'écran de login. Purement cosmétique : les sprites .spr/.act sont chargés
 // via le système de ressources natif (même chemin éprouvé que le Poring de
-// [[roggle_tweaks]]) et dessinés en ImGui par-dessus le fond de login natif —
+// [[roggle]]) et dessinés en ImGui par-dessus le fond de login natif —
 // aucun acteur en scène, aucun monde/terrain requis (l'atlas de sprites est
 // valide dès le boot, pas seulement en jeu).
 //

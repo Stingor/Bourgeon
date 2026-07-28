@@ -1,4 +1,4 @@
-#include "features/minigames/doom_tweaks.h"
+#include "features/minigames/doom.h"
 
 #include <Windows.h>
 #include <mmsystem.h>  // timeGetTime (winmm)
@@ -63,7 +63,7 @@ static unsigned     g_key_head = 0;  // write index
 static unsigned     g_key_tail = 0;  // read index
 
 // True while the DOOM window wants exclusive keyboard input this frame — set
-// from DrawWindow (see below) and read by DoomTweaks::WantsKeyboard(). Backs
+// from DrawWindow (see below) and read by Doom::WantsKeyboard(). Backs
 // the RO WndProc gate in addition to ImGui's own WantCaptureKeyboard, closing
 // the 1-frame gap left by SetNextFrameWantCaptureKeyboard (which only takes
 // effect at the NEXT NewFrame — a key pressed right after the focusing click
@@ -238,7 +238,7 @@ static void PumpDoomMouse(bool over_image) {
 }
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
-void DoomTweaks::SetEnabled(bool on) {
+void Doom::SetEnabled(bool on) {
   // Retry the WAD check when re-enabling after "not found": Create was never
   // called in kNoWad, so this is safe (unlike kDead/kQuit, which stay
   // terminal — the engine cannot restart in-process once it has run).
@@ -246,9 +246,9 @@ void DoomTweaks::SetEnabled(bool on) {
   enabled_ = on;
 }
 
-bool DoomTweaks::WantsKeyboard() { return g_doom_wants_keys; }
+bool Doom::WantsKeyboard() { return g_doom_wants_keys; }
 
-void DoomTweaks::Start() {
+void Doom::Start() {
   if (GetFileAttributesA(kWad) == INVALID_FILE_ATTRIBUTES) {
     state_ = State::kNoWad;
     // LogInfo("[DOOM] {} not found in the client folder — not starting", kWad);
@@ -271,7 +271,7 @@ void DoomTweaks::Start() {
   }
 }
 
-void DoomTweaks::PumpEngine() {
+void Doom::PumpEngine() {
   if (g_doom_user_quit) {
     state_ = State::kQuit;
     // LogInfo("[DOOM] user quit from the DOOM menu");
@@ -319,7 +319,7 @@ void DoomTweaks::PumpEngine() {
   }
 }
 
-void DoomTweaks::DrawWindow() {
+void Doom::DrawWindow() {
   bool open = true;
   // Default OFF; only the kRunning branch below turns it on. Every other
   // state (or the window being closed) must not hold the game's keyboard
@@ -395,7 +395,7 @@ void DoomTweaks::DrawWindow() {
   if (!open) enabled_ = false;  // window closed = pause + hide
 }
 
-void DoomTweaks::OnRenderUI() {
+void Doom::OnRenderUI() {
   if (!enabled_) {
     // Hidden while running: release held keys/buttons once so nothing stays
     // pressed for the (paused) engine when it resumes, and stop hogging the
@@ -420,7 +420,7 @@ void DoomTweaks::OnRenderUI() {
   DrawWindow();
 }
 
-const char* DoomTweaks::StatusText() const {
+const char* Doom::StatusText() const {
   switch (state_) {
     case State::kIdle:    return "prêt (nécessite doom1.wad à côté du client)";
     case State::kNoWad:   return "doom1.wad INTROUVABLE dans le dossier du client";

@@ -1,4 +1,4 @@
-#include "features/overlays/quest_tracker_tweaks.h"
+#include "features/overlays/quest_tracker.h"
 
 #include <Windows.h>
 
@@ -16,7 +16,7 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 // ===========================================================================
 // On-screen quest tracker — native hide + ImGui reimplementation.
-// See quest_tracker_tweaks.h / project_quest_tracking_re for the design & RE.
+// See quest_tracker.h / project_quest_tracking_re for the design & RE.
 // ===========================================================================
 
 namespace {
@@ -181,7 +181,7 @@ void __fastcall DrawContentHook(void* self, void* edx) {
 
 }  // namespace
 
-QuestTrackerTweaks::QuestTrackerTweaks() {
+QuestTracker::QuestTracker() {
   // Verify the SEH prologue (55 8B EC 6A FF = push ebp; mov ebp,esp; push -1)
   // before hooking so a client mismatch fails safe.
   const auto* p = reinterpret_cast<const uint8_t*>(kDrawContent);
@@ -201,12 +201,12 @@ QuestTrackerTweaks::QuestTrackerTweaks() {
     LogError("[QuestTracker] failed to install draw hook");
 }
 
-void QuestTrackerTweaks::OnModeSwitch(ModeMgr::ModeType mode_type,
+void QuestTracker::OnModeSwitch(ModeMgr::ModeType mode_type,
                                       const char* /*map_name*/) {
   g_in_game = (mode_type == ModeMgr::ModeType::kGame);
 }
 
-void QuestTrackerTweaks::OnRenderUI() {
+void QuestTracker::OnRenderUI() {
   if (!g_cfg.enabled || !g_in_game) return;
 
   QuestEntry quests[kMaxCollect];
@@ -314,7 +314,7 @@ void QuestTrackerTweaks::OnRenderUI() {
   }
 }
 
-void QuestTrackerTweaks::DrawSettings() {
+void QuestTracker::DrawSettings() {
   g_needs_save |= ro::RoCheckbox("Suivi de quête personnalisé", &g_cfg.enabled);
   SameLine(); HelpMarker("Activé = overlay personnalisable\nDésactivé = overlay d'origine.");
 
@@ -373,4 +373,4 @@ void QuestTrackerTweaks::DrawSettings() {
   ImGui::EndDisabled();
 }
 
-QuestTrackerConfig& QuestTrackerTweaks::config() { return g_cfg; }
+QuestTrackerConfig& QuestTracker::config() { return g_cfg; }

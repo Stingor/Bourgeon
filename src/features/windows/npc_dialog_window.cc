@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
-#include "features/systems/bug_report.h"  // BugReportTweaks::NpcContext
+#include "features/systems/bug_report.h"  // BugReport::NpcContext
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch (icônes)
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
@@ -803,7 +803,7 @@ void NpcDialogWindow::OnRenderUI() {
       const std::string npc_name =
           (nit != npc_names_.end()) ? nit->second : std::string();
       if (shown) ImGui::SameLine();
-      br->Button(BugReportTweaks::NpcContext(gid_, npc_name), "npc_bug");
+      br->Button(BugReport::NpcContext(gid_, npc_name), "npc_bug");
     }
   }
   ro::EndRoDescWindow();

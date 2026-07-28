@@ -45,9 +45,9 @@ struct QuestTrackerConfig {
 // (node+0x4c is an internal category tag, e.g. "QUEST" — NOT the objective.)
 // The hunt-target monster name is not a plain field (native builds it from
 // level-range/format logic); TODO once REd against a live hunt quest.
-class QuestTrackerTweaks : public Plugin {
+class QuestTracker : public Plugin {
  public:
-  QuestTrackerTweaks();
+  QuestTracker();
 
   const char* name() const override { return "QuestTracker"; }
 

@@ -162,7 +162,7 @@ using DescLookup_t   = void*(__cdecl*)(int, void*);
 //  Icone d'item (item\<resname>.bmp)
 // Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
-// "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar_tweaks).
+// "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar).
 constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;  // char* GetSkillIdName(int) __cdecl
 using GetSkillIdNameLua_t = char*(__cdecl*)(int);
 const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
@@ -888,7 +888,7 @@ void DrawSkillCooldownOverlay(ImDrawList* dl, uint16_t skillId, const ImVec2& ic
 }
 
 // Filtre d'échantillonnage des icônes du grimoire, posé par un callback de draw list
-// comme la barre de raccourcis (cf. skill_bar_tweaks). Le natif ne filtre RIEN (les
+// comme la barre de raccourcis (cf. skill_bar). Le natif ne filtre RIEN (les
 // .bmp d'icônes font 24 px et sont blités tels quels) : le mode NET est donc le
 // défaut, et c'est LUI qu'il faut imposer — l'état ambiant d'une draw list ImGui est
 // LINEAR (le backend DX9 le remet dans SetupRenderState, imgui_impl_dx9.cpp:139).
@@ -2104,7 +2104,7 @@ struct ItemWire {          // miroir de PACKET_BOURGEON_STAT_ITEM
 };
 #pragma pack(pop)
 
-// Résolveur de nom de skill localisé (wrapper Lua natif, cf. skill_bar_tweaks) :
+// Résolveur de nom de skill localisé (wrapper Lua natif, cf. skill_bar) :
 // char* GetSkillName(int id) — renvoie « Unknown-Skill » si l'id est inconnu.
 constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
 using GetSkillNameLua_t = char* (__cdecl*)(int);

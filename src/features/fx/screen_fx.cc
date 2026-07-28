@@ -1,4 +1,4 @@
-#include "features/fx/settings_tweaks.h"
+#include "features/fx/screen_fx.h"
 
 #include "ragnarok/uiwnd.h"
 #include <windows.h>
@@ -33,7 +33,7 @@ namespace {
 using SetPosFn = void  (__fastcall*)(void*, void*, int, int);
 using DtorFn   = void* (__fastcall*)(void*, void*, char);
 
-SettingsTweaks* g_owner          = nullptr;  // to read the saved positions
+ScreenFx* g_owner          = nullptr;  // to read the saved positions
 void*           g_orig_setpos    = nullptr;  // shared stock SetPos (0x00874af0)
 void*           g_esc_positioned = nullptr;  // armed token: ESC window
 void*           g_gs_positioned  = nullptr;  // armed token: Game Settings window
@@ -90,9 +90,9 @@ void PatchVtableSlot(uintptr_t vtable, int off, void* expected, void* hook, void
 
 }  // namespace
 
-SettingsTweaks::SettingsTweaks() { g_owner = this; }
+ScreenFx::ScreenFx() { g_owner = this; }
 
-void SettingsTweaks::Apply() {
+void ScreenFx::Apply() {
   D3D9_SetPostFx(fx_);
   D3D9_SetTextureFilter(tex_filter_);
 }
@@ -112,7 +112,7 @@ void PatchFloatRO(float* addr, float value) {
 
 }  // namespace
 
-void SettingsTweaks::DrawSettings() {
+void ScreenFx::DrawSettings() {
   bool apply = false;  // push to the renderer this frame (live preview)
   bool save  = false;  // persist to disk (on release, not every drag frame)
   if (ro::RoCheckbox("Overlay FPS", &fps_overlay_)) save = true;
@@ -199,7 +199,7 @@ void SettingsTweaks::DrawSettings() {
   }
 }
 
-void SettingsTweaks::OnRenderUI() {
+void ScreenFx::OnRenderUI() {
   if (!fps_overlay_) return;
   const ImGuiIO& io = ImGui::GetIO();
   fps_hist_[fps_head_] = io.DeltaTime * 1000.0f;  // ms
@@ -217,7 +217,7 @@ void SettingsTweaks::OnRenderUI() {
   ImGui::End();
 }
 
-void SettingsTweaks::OnTick() {
+void ScreenFx::OnTick() {
   // Extended camera zoom-out: keep the engine's max view-distance clamp globals
   // (read every camera update by Camera_ApplyViewDistanceClamp @ 0x00c82340)
   // raised to default * zoom_factor_. 20250716-specific addresses.

@@ -17,7 +17,7 @@ namespace {
 
 // ── Adresses / offsets natifs (client 20250716, base 0x400000) ────────────────
 // Chaîne de chargement + rendu d'un sprite de MONSTRE, identique à celle validée
-// dans roggle_tweaks.cc (RE dédiée, renommée/commentée dans Ghidra). Toutes les
+// dans roggle.cc (RE dédiée, renommée/commentée dans Ghidra). Toutes les
 // fonctions de la chaîne sont __thiscall (émulées en __fastcall, EDX ignoré) et
 // gardées SEH ; tout échec bascule sur le blob dessiné à la main.
 constexpr uintptr_t kMonResName     = 0x00d824c0;  // Mob_ClassIdToResName(classId) -> resname
@@ -34,7 +34,7 @@ constexpr uintptr_t kSceneCtxPtr    = 0x012515f8;  // *ptr + 0xc0 = l'atlas de s
 constexpr int       kCTexDX9Handle  = 0x12c;       // CTexture -> IDirect3DTexture9*
 constexpr int       kCTexDX7Handle  = 0x128;       // CTexture -> handle GPU (chemin DX7)
 
-// ⚠ Mob_ClassIdToResName est __stdcall (RET 4), PAS __cdecl : roggle_tweaks le
+// ⚠ Mob_ClassIdToResName est __stdcall (RET 4), PAS __cdecl : roggle le
 // déclare __cdecl et ne « marche » que parce que l'épilogue restaure esp=ebp
 // (déséquilibre de pile masqué). On le déclare correctement ici.
 using MonResNameFn  = const char* (__stdcall*)(int);
@@ -70,7 +70,7 @@ using GetSndNameFn   = const char* (__fastcall*)(void*, void*, unsigned);  // (a
 // Repli : la plupart des mobs de la famille Poring n'ont AUCUN wav dans leur .act
 // (tableau son vide), donc au clic il n'y aurait rien à jouer. On joue alors le son
 // de COUP générique — comme quand on tape un vrai mob (le son qu'on entend en jeu).
-// Nom validé chargeable (roggle_tweaks joue déjà ce wav). Les mobs qui ONT un son
+// Nom validé chargeable (roggle joue déjà ce wav). Les mobs qui ONT un son
 // dans leur .act (ex. certaines morts) utilisent le leur, pas ce repli.
 constexpr const char* kPokeFallbackWav = "effect\\EF_hit2.wav";
 

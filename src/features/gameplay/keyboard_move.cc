@@ -31,7 +31,7 @@ constexpr int kOffActorState = 0x70;   // acteur -> état (6 = pas de pathfindin
 constexpr int kMsgWalkTo    = 0x11;  // Actor_OnMsg : « marche vers (x,y) »
 constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 
-// Acteur joueur live, ou nullptr hors-jeu (même chaîne que PlayerJumpTweaks).
+// Acteur joueur live, ou nullptr hors-jeu (même chaîne que PlayerJump).
 void* GetGameMode() {
   void* gm = nullptr;
   __try {
@@ -177,7 +177,7 @@ bool ScreenDirToCellDelta(void* gm, bool camera_relative, int screen_x,
         // (dx, 0, dy) -> écran (dot avec axeX, dot avec axeY).
         right_x = m[0]; right_y = m[6];   // droite écran pour +X / +Y en cellules
         // L'axe Y du repère caméra pointe visuellement vers le BAS : le monde RO
-        // a son Y vers le bas (cf. FpsViewTweaks, « monter = soustraire ») et le
+        // a son Y vers le bas (cf. FpsView, « monter = soustraire ») et le
         // vecteur « up » passé au builder suit cette convention. D'où le signe -,
         // sinon Z/S et flèches haut/bas sont inversés (constaté en jeu).
         up_x    = -m[1]; up_y   = -m[7];  // haut écran pour +X / +Y en cellules
@@ -236,24 +236,24 @@ void RequestWalk(void* gm, void* actor, int x, int y, bool validate) {
 }
 }  // namespace
 
-void KeyboardMoveTweaks::SetEnabled(bool on) {
+void KeyboardMove::SetEnabled(bool on) {
   if (on == enabled_) return;
   enabled_ = on;
   Reset();
 }
 
-void KeyboardMoveTweaks::Reset() {
+void KeyboardMove::Reset() {
   last_dx_ = last_dy_ = 0;
   was_moving_ = false;
 }
 
-void KeyboardMoveTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+void KeyboardMove::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   if (mode_type != ModeMgr::ModeType::kGame) Reset();
 }
 
-void KeyboardMoveTweaks::OnRenderUI() { Update(); }
+void KeyboardMove::OnRenderUI() { Update(); }
 
-void KeyboardMoveTweaks::Update() {
+void KeyboardMove::Update() {
   if (!enabled_) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   // Appelable hors passe de rendu (OnProcessInput) : contexte ImGui obligatoire,

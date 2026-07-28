@@ -264,9 +264,9 @@ Emit BuildDepthBridge(uint32_t bridge_va, uint32_t flag_va, uint32_t contact_va,
 
 }  // namespace
 
-HatEffectDepthTweaks::HatEffectDepthTweaks() { InstallDepthPatch(); }
+HatEffectDepth::HatEffectDepth() { InstallDepthPatch(); }
 
-void HatEffectDepthTweaks::InstallDepthPatch() {
+void HatEffectDepth::InstallDepthPatch() {
   const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
   const intptr_t delta = static_cast<intptr_t>(base) - kBuildBase;
 

@@ -1,4 +1,4 @@
-#include "features/overlays/skill_bar_tweaks.h"
+#include "features/overlays/skill_bar.h"
 
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
@@ -187,12 +187,12 @@ void __fastcall SetVisibleHook(void* self, void* /*edx*/, int visible) {
 //              nos slots d'items n'ont pas de raccourci clavier & sont persistés client -> on en offre
 //              kItemSlotMax). Records au MÊME format 7o -> tout le code base+i*7 marche à l'identique.
 struct RegionDef { uintptr_t base; int count; int tab; int hotkeyCat; const char* name; };
-uint8_t g_itemStore[SkillBarTweaks::kItemSlotMax * 7] = {};  // records 7o (type/id/level), plugin-owned
+uint8_t g_itemStore[SkillBar::kItemSlotMax * 7] = {};  // records 7o (type/id/level), plugin-owned
 void WriteSlotRecord(int region, int slot, bool is_item, uint32_t id, int level);  // fwd (défini plus bas)
 const RegionDef kRegions[3] = {  // const (pas constexpr) : la base items = adresse runtime de g_itemStore
     {0x015fa850, 36,  0,  0, "Onglet 1"},
     {0x015fa94c, 36,  1,  3, "Onglet 2"},
-    {reinterpret_cast<uintptr_t>(g_itemStore), SkillBarTweaks::kItemSlotMax, -1, -1, "Items"},
+    {reinterpret_cast<uintptr_t>(g_itemStore), SkillBar::kItemSlotMax, -1, -1, "Items"},
 };
 inline bool RegionIsItems(int r) { return r == 2; }
 
@@ -816,7 +816,7 @@ bool ColorSwatch(const char* label, float col[4]) {
 
 }  // namespace
 
-SkillBarTweaks::SkillBarTweaks() {
+SkillBar::SkillBar() {
   // Anti-flicker au ré-affichage (@refresh/@load). Voir le bloc de commentaire sur SetVisibleHook /
   // ShortCutDrawHook. Adresses statiques dans l'exe -> installables au load.
   auto& hm = hooking::HookManager::Instance();
@@ -830,7 +830,7 @@ SkillBarTweaks::SkillBarTweaks() {
                  reinterpret_cast<uint8_t*>(&ShortCutDrawHook)));
 }
 
-void SkillBarTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
   if (!in_game_) {
     native_hidden_ = false; last_tab_ = -1; items_restored_ = false;
@@ -841,7 +841,7 @@ void SkillBarTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 
 // Lit les slots d'items du store plugin (g_itemStore) -> item_slots_ (pour la sauvegarde yaml). SEH.
 // Garde : avant la restauration en jeu le store est vide -> on garde la valeur chargée du yaml.
-void SkillBarTweaks::SnapshotItemSlots() {
+void SkillBar::SnapshotItemSlots() {
   if (!in_game_ || !items_restored_) return;
   __try {
     for (int i = 0; i < kItemSlotMax; ++i) {
@@ -853,7 +853,7 @@ void SkillBarTweaks::SnapshotItemSlots() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-void SkillBarTweaks::OnKeyDown(unsigned long vkey, int, int) {
+void SkillBar::OnKeyDown(unsigned long vkey, int, int) {
   if (!enabled_ || !native_hidden_ || !in_game_) return;
 
   // Le natif ne dispatche qu'à l'onglet ACTIF (DispatchHotkeyBehavior : behavior<0x2d -> singleton
@@ -887,7 +887,7 @@ void SkillBarTweaks::OnKeyDown(unsigned long vkey, int, int) {
   if (s != -1) ActivateSlot(other, s);
 }
 
-void SkillBarTweaks::OnRenderUI() {
+void SkillBar::OnRenderUI() {
   if (!in_game_) return;
 
   void* w = ShortCutWnd();
@@ -984,7 +984,7 @@ void SkillBarTweaks::OnRenderUI() {
 // traverse (pas de clic-au-sol) ; ici on le solde sur la case survolée. Aucune
 // fonction du jeu appelée hors les getters de décodage (sûrs, cf. RE). Géométrie =
 // celle de DrawBar (marge intérieure pad=spacing/2). (mx,my en coords client == coords écran ImGui.)
-bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
+bool SkillBar::HandleNativeDrop(int mx, int my) {
   if (!enabled_ || !native_hidden_) return false;
   if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui interne
   void* w = ShortCutWnd();
@@ -1027,7 +1027,7 @@ bool SkillBarTweaks::HandleNativeDrop(int mx, int my) {
 }
 
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
-void SkillBarTweaks::DrawSettings() {
+void SkillBar::DrawSettings() {
   bool changed = false;
   // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
   // case, la liste du groupe et son application vivent dans un seul endroit
@@ -1102,7 +1102,7 @@ void SkillBarTweaks::DrawSettings() {
 }
 
 // ---- la barre d'action elle-même -------------------------------------------
-void SkillBarTweaks::DrawBar(int bar) {
+void SkillBar::DrawBar(int bar) {
   if (bar < 0 || bar >= kBarCount) return;
   BarCfg& bc = bars_[bar];
   const float icon_size_ = bc.icon_size;  // taille/espacement PAR BARRE (locals = alias des champs bc)

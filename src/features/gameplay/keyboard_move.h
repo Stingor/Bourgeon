@@ -39,7 +39,7 @@
 // que UIWindowMgr_OnKeyDown 0x00a471e0 pour les hotkeys « lettre »), si ImGui
 // capture le clavier, hors jeu ou pendant un chargement de carte.
 // Adresses spécifiques au client 20250716.
-class KeyboardMoveTweaks : public Plugin {
+class KeyboardMove : public Plugin {
  public:
   const char* name() const override { return "KeyboardMove"; }
 

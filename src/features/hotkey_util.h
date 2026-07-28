@@ -22,7 +22,7 @@ namespace hotkeys {
 enum class Owner {
   kNone,         // rien à exclure
   kEquipPreset,  // preset d'équipement ; self_index = son index dans equip_presets()
-  kJump,         // touche de saut (PlayerJumpTweaks)
+  kJump,         // touche de saut (PlayerJump)
 };
 
 int      ImGuiKeyToVk(ImGuiKey key);

@@ -66,7 +66,7 @@ inline T Read(const void* base, int off) {
 
 }  // namespace
 
-void EntityNamesTweaks::OnRenderUI() {
+void EntityNames::OnRenderUI() {
   if (!enabled_) return;
   // Réservé au staff : niveau de groupe serveur >= 80 reçu au login (setting id
   // 26). Gate de confiance côté client — de toute façon le client possède déjà
@@ -83,7 +83,7 @@ void EntityNamesTweaks::OnRenderUI() {
   }
 }
 
-void EntityNamesTweaks::DrawNames() {
+void EntityNames::DrawNames() {
   void* gm = reinterpret_cast<GetActiveFn>(kGameMode_GetActive)(kModeMgrKey);
   if (!gm) return;
   void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
@@ -171,7 +171,7 @@ void EntityNamesTweaks::DrawNames() {
   }
 }
 
-void EntityNamesTweaks::DrawSettings() {
+void EntityNames::DrawSettings() {
   bool save = false;
   if (ro::RoCheckbox("Afficher les noms en permanence", &enabled_)) save = true;
   GrayText("Affiche le nom au-dessus des entités sans avoir à les survoler.");

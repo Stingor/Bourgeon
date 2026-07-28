@@ -16,7 +16,7 @@
 #pragma comment(lib, "shell32.lib")
 
 #include "bourgeon.h"
-#include "features/systems/bug_report.h"  // BugReportTweaks::ItemContext/SkillContext
+#include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/imgui_escape.h"
@@ -148,7 +148,7 @@ constexpr uintptr_t kRichLinesBegin = 0x88;  // vector<std::string> begin
 constexpr uintptr_t kRichLinesEnd   = 0x8c;  // vector<std::string> end
 constexpr int       kStdStringSize  = 0x18;  // taille d'un std::string MSVC élément
 
-// Recette texture (identique à skill_bar_tweaks / menu_icons).
+// Recette texture (identique à skill_bar / menu_icons).
 constexpr uintptr_t kTexMgr  = 0x00a90350;
 constexpr uintptr_t kMakeKey = 0x00a9f030;
 constexpr uintptr_t kLoadTex = 0x00a8d4a0;
@@ -2574,8 +2574,8 @@ static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill,
   if (!br || !br->enabled()) return;  // opt-out : pas de bouton ni de marge basse
   const char* nm = name ? name : "";
   ImGui::Spacing();
-  br->Button(is_skill ? BugReportTweaks::SkillContext(id, nm)
-                      : BugReportTweaks::ItemContext(id, nm),
+  br->Button(is_skill ? BugReport::SkillContext(id, nm)
+                      : BugReport::ItemContext(id, nm),
              imgui_id);
   // Marge basse OBLIGATOIRE : la fenêtre desc a un cadre décoratif (~14px) en bas
   // + un clip à -10px. Sans réserve, le bouton (dernier item) est tronqué par le
@@ -2703,7 +2703,7 @@ void ItemDescWindow::RenderItemWindow() {
           e.view_id != 0 && bi && bi->CanPreview(e.emplacement);
       if (previewable) {
         // ViewID en lien bleu (signale l'interaction) + hint molette. Survol ->
-        // aperçu du perso portant l'item (sprites capturés, cf. BasicInfoTweaks).
+        // aperçu du perso portant l'item (sprites capturés, cf. BasicInfo).
         ImGui::TextColored(ImVec4(0.16f, 0.42f, 0.88f, 1.0f), "ViewID : %d",
                            e.view_id);
         const bool hov = ImGui::IsItemHovered();

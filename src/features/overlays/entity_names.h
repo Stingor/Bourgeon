@@ -2,7 +2,7 @@
 
 #include "features/plugin.h"
 
-// EntityNamesTweaks — affiche EN PERMANENCE le nom flottant au-dessus des
+// EntityNames — affiche EN PERMANENCE le nom flottant au-dessus des
 // entités (joueurs / monstres / NPC), pas seulement au survol de la souris.
 //
 // Le client natif ne dessine le label de nom que pour l'entité SURVOLÉE (un
@@ -15,7 +15,7 @@
 //
 // Lecture seule côté moteur : aucun hook, aucun état natif modifié. Tout est
 // gardé par __try et par le timestamp du client (20250716).
-class EntityNamesTweaks : public Plugin {
+class EntityNames : public Plugin {
  public:
   const char* name() const override { return "Entity Names"; }
 

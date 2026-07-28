@@ -5,7 +5,7 @@
 
 #include "features/plugin.h"
 
-// ── BugReportTweaks ─────────────────────────────────────────────────────────
+// ── BugReport ─────────────────────────────────────────────────────────
 //
 // Système de rapport de bug CONTEXTUEL et partagé. N'importe quel plugin peut
 // poser un petit bouton « 🐛 Signaler » dans sa fenêtre ImGui via
@@ -22,7 +22,7 @@
 // Points d'entrée v1 : description item, description skill, dialogue NPC, et un
 // raccourci global (Ctrl+Alt+B) qui ouvre un rapport générique.
 
-class BugReportTweaks : public Plugin {
+class BugReport : public Plugin {
  public:
   // Catégorie de rapport (mirrorée côté serveur : e_bug_report_category).
   enum Category : uint8_t {
@@ -41,9 +41,9 @@ class BugReportTweaks : public Plugin {
     std::string json;    // ex. {"item_id":501,"refine":7}
   };
 
-  BugReportTweaks();
+  BugReport();
 
-  const char* name() const override { return "BugReportTweaks"; }
+  const char* name() const override { return "BugReport"; }
 
   void OnRenderUI() override;   // dessine la modale + le toast d'accusé
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;

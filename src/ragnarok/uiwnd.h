@@ -45,7 +45,7 @@ inline void* FindWindow(int window_id) {
 //
 // Ce test était copié caractère pour caractère dans trois plugins, chacun dans
 // son namespace anonyme — la duplication était même documentée en commentaire
-// (« Mirrors MenuIconTweaks::HudReplaced ») plutôt que corrigée, parce qu'une
+// (« Mirrors MenuIcons::HudReplaced ») plutôt que corrigée, parce qu'une
 // fonction libre non qualifiée aurait rendu leurs appels ambigus. Qualifiée,
 // elle ne pose plus ce problème.
 inline bool IsHudReplaced() { return FindWindow(kWorldMapWndId) != nullptr; }

@@ -9,7 +9,7 @@
 // dessiné soit par le proxy DirectDraw (ddraw/proxy_idirectdraw, chemin DX7),
 // soit par le hook Direct3D9 (d3d9/d3d9_hook). Mais le chemin DX7 n'a ni shaders
 // ni render target : tout ce qui en dépend est désactivé (post-traitement et
-// FXAA de SettingsTweaks, capture d'écran propre, filtrage de textures, sprites
+// FXAA de ScreenFx, capture d'écran propre, filtrage de textures, sprites
 // réels des mini-jeux, SPR Effect Lab, DOOM...). Les joueurs restés en DX7
 // remontent donc des « bugs » qui sont en réalité des fonctionnalités hors
 // service.

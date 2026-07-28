@@ -52,7 +52,7 @@ class NpcDialogWindow : public Plugin {
   //
   // Ces widgets vivaient dans panel_interface.cc, à sept cents lignes du code
   // qu'ils pilotent : quelqu'un qui travaille sur NpcDialogWindow ne les y
-  // trouvait pas. Même patron que SkillBarTweaks::DrawSettings et les quatre
+  // trouvait pas. Même patron que SkillBar::DrawSettings et les quatre
   // autres plugins qui délèguent déjà.
   bool DrawSettings();
 

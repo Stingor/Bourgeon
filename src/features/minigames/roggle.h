@@ -12,7 +12,7 @@
 // Mouse over the window is already captured by ImGui (the WndProc gate blocks
 // the game's click-to-move while the cursor is over an ImGui window), so playing
 // never moves your RO character. DX9 or DX7 — it's just ImGui drawing.
-class RoggleTweaks : public Plugin {
+class Roggle : public Plugin {
  public:
   const char* name() const override { return "Roggle"; }
 

@@ -23,9 +23,9 @@
 //
 // Tout est protégé par vérification de signature d'octets : sur tout autre
 // build — ou si l'exe est DÉJÀ patché par WARP — le plugin ne fait rien.
-class HatEffectDepthTweaks : public Plugin {
+class HatEffectDepth : public Plugin {
  public:
-  HatEffectDepthTweaks();
+  HatEffectDepth();
 
   const char* name() const override { return "HatEffectDepth"; }
 

@@ -167,11 +167,11 @@ void RequestServerRefresh() {
 }
 }  // namespace
 
-void MenuIconTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+void MenuIcons::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
 }
 
-void MenuIconTweaks::BuildIconList() {
+void MenuIcons::BuildIconList() {
   icons_.clear();
   int shown = 0;
   for (const auto& d : kIconTable) {
@@ -195,7 +195,7 @@ void MenuIconTweaks::BuildIconList() {
   icons_built_ = true;
 }
 
-float MenuIconTweaks::SnapIcon(float v, float ext, int self, bool y_axis) const {
+float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
   constexpr float kSnap = 10.0f;  // px magnetism radius
   float best = v, best_dist = kSnap;
   for (int j = 0; j < static_cast<int>(icons_.size()); ++j) {
@@ -214,7 +214,7 @@ float MenuIconTweaks::SnapIcon(float v, float ext, int self, bool y_axis) const 
   return best;
 }
 
-void MenuIconTweaks::HideNativeGrid(bool hide) {
+void MenuIcons::HideNativeGrid(bool hide) {
   if (hide && !grid_hidden_) {
     if (*reinterpret_cast<uintptr_t*>(kGridDrawSlot) == kGridDrawOrig) {
       PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(&GridClear));
@@ -237,7 +237,7 @@ void MenuIconTweaks::HideNativeGrid(bool hide) {
   }
 }
 
-void MenuIconTweaks::DispatchCommand(int cmd_id) {
+void MenuIcons::DispatchCommand(int cmd_id) {
   void* wnd = uiwnd::FindWindow(kMenuIconWndId);
   if (!wnd) {
     LogDiag("[MenuIcons] menu-icon window not found for cmd 0x{:X}", cmd_id);
@@ -247,7 +247,7 @@ void MenuIconTweaks::DispatchCommand(int cmd_id) {
   reinterpret_cast<CmdHandlerFn>(kCmdHandler)(wnd, 0, 6, cmd_id, 0, 0, 0);
 }
 
-void MenuIconTweaks::FlushPending() {
+void MenuIcons::FlushPending() {
   if (pending_cmd_ == 0) return;
   const int cmd = pending_cmd_;
   pending_cmd_ = 0;
@@ -259,7 +259,7 @@ void MenuIconTweaks::FlushPending() {
 
 // Fallback only: OnTick is throttled to ~100ms, so ProcessInput (which runs
 // first each frame) normally drains pending_cmd_ before this ever sees it.
-void MenuIconTweaks::OnTick() {
+void MenuIcons::OnTick() {
   // Drain a queued server-refresh request here (update phase, never mid-Present)
   // so the client re-composites and the stale native-grid ghost vanishes.
   if (pending_refresh_ && in_game_) {
@@ -269,11 +269,11 @@ void MenuIconTweaks::OnTick() {
   FlushPending();
 }
 
-// ── Section « MenuIconTweaks » du panneau Moonlight ──────────────────────────
+// ── Section « MenuIcons » du panneau Moonlight ──────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
 // de sauvegarder. Rend true si un réglage a changé.
-bool MenuIconTweaks::DrawSettings() {
+bool MenuIcons::DrawSettings() {
   bool changed = false;
   SeparatorText("Réglages généraux");
   changed |= ro::RoCheckbox("Rendre les icônes déplaçables", &enabled_);
@@ -311,7 +311,7 @@ bool MenuIconTweaks::DrawSettings() {
   return changed;
 }
 
-void MenuIconTweaks::OnRenderUI() {
+void MenuIcons::OnRenderUI() {
   if (!enabled_ || !in_game_) {
     HideNativeGrid(false);  // restore native grid when disabled
     return;

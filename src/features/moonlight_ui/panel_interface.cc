@@ -25,10 +25,10 @@
 #include "features/windows/item_desc_window.h"
 #include "features/overlays/menu_icons.h"
 #include "features/windows/npc_dialog_window.h"
-#include "features/overlays/quest_tracker_tweaks.h"
+#include "features/overlays/quest_tracker.h"
 #include "features/windows/rodex_window.h"
-#include "features/overlays/skill_bar_tweaks.h"
-#include "features/overlays/status_icon_tweaks.h"
+#include "features/overlays/skill_bar.h"
+#include "features/overlays/status_icon_bar.h"
 #include "features/windows/storage_window.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -245,7 +245,7 @@ void MoonlightUi::DrawInterfacePanel() {
         }
       }
 
-      // ── Status icons (StatusIconTweaks) ──────────────────────────────────
+      // ── Status icons (StatusIconBar) ──────────────────────────────────
       if (iface_nav_ == kIfaceStatusIcons) {
         if (auto* si = Bourgeon::Instance().status_icons())
           si->DrawSettings();
@@ -253,7 +253,7 @@ void MoonlightUi::DrawInterfacePanel() {
           GrayText(kPluginUnavailable);
       }
 
-      // ── Suivi de quête (QuestTrackerTweaks) ──────────────────────────────
+      // ── Suivi de quête (QuestTracker) ──────────────────────────────
       if (iface_nav_ == kIfaceQuest) {
         if (auto* qt = Bourgeon::Instance().quest_tracker())
           qt->DrawSettings();

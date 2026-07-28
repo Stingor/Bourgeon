@@ -25,11 +25,11 @@
 #include "features/overlays/basic_info.h"
 #include "features/overlays/dps_meter.h"
 #include "features/overlays/menu_icons.h"
-#include "features/overlays/status_icon_tweaks.h"
-#include "features/overlays/quest_tracker_tweaks.h"
-#include "features/fx/settings_tweaks.h"
+#include "features/overlays/status_icon_bar.h"
+#include "features/overlays/quest_tracker.h"
+#include "features/fx/screen_fx.h"
 #include "features/overlays/entity_names.h"
-#include "features/overlays/skill_bar_tweaks.h"
+#include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
@@ -43,9 +43,9 @@
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
-#include "features/minigames/doom_tweaks.h"
-#include "features/minigames/roggle_tweaks.h"
-#include "features/minigames/rojeweled_tweaks.h"
+#include "features/minigames/doom.h"
+#include "features/minigames/roggle.h"
+#include "features/minigames/rojeweled.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/player_jump.h"
 #include "features/patches/status_tweaks.h"
@@ -152,11 +152,11 @@ const moonlight_ui::SettingDesc kEntityNameSettings[] = {
      MLUI_LITERAL(float, 1.0f)},
 };
 
-// Post-traitement D3D9 + réglages graphiques divers (SettingsTweaks). Les 13
+// Post-traitement D3D9 + réglages graphiques divers (ScreenFx). Les 13
 // premières vivent dans la structure fx() ; les 9 suivantes sont des accesseurs
 // sur des membres privés, d'où les littéraux.
 #define POSTFX(member) \
-  MLUI_FIELD(settings_tweaks, fx().member), MLUI_DEFAULT(D3D9PostFx, member)
+  MLUI_FIELD(screen_fx, fx().member), MLUI_DEFAULT(D3D9PostFx, member)
 const moonlight_ui::SettingDesc kGraphicsSettings[] = {
     {"fx_enabled",       SType::kBool,  POSTFX(enabled)},
     {"fx_brightness",    SType::kFloat, POSTFX(brightness)},
@@ -171,24 +171,24 @@ const moonlight_ui::SettingDesc kGraphicsSettings[] = {
     {"fx_sharpen",       SType::kFloat, POSTFX(sharpen)},
     {"fx_fxaa",          SType::kBool,  POSTFX(fxaa)},
     {"fx_fxaa_strength", SType::kFloat, POSTFX(fxaa_strength)},
-    {"fps_overlay",       SType::kBool,  MLUI_FIELD(settings_tweaks, fps_overlay()),
+    {"fps_overlay",       SType::kBool,  MLUI_FIELD(screen_fx, fps_overlay()),
      MLUI_LITERAL(bool, false)},
-    {"cam_zoom_enabled",  SType::kBool,  MLUI_FIELD(settings_tweaks, zoom_enabled()),
+    {"cam_zoom_enabled",  SType::kBool,  MLUI_FIELD(screen_fx, zoom_enabled()),
      MLUI_LITERAL(bool, false)},
-    {"cam_zoom_factor",   SType::kFloat, MLUI_FIELD(settings_tweaks, zoom_factor()),
+    {"cam_zoom_factor",   SType::kFloat, MLUI_FIELD(screen_fx, zoom_factor()),
      MLUI_LITERAL(float, 1.0f)},
-    {"cam_zoom_speed",    SType::kFloat, MLUI_FIELD(settings_tweaks, zoom_speed()),
+    {"cam_zoom_speed",    SType::kFloat, MLUI_FIELD(screen_fx, zoom_speed()),
      MLUI_LITERAL(float, 1.0f)},
-    {"tex_filter",        SType::kInt,   MLUI_FIELD(settings_tweaks, tex_filter()),
+    {"tex_filter",        SType::kInt,   MLUI_FIELD(screen_fx, tex_filter()),
      MLUI_LITERAL(int, 0)},
     // INT_MIN = « aucune position mémorisée » : la fenêtre garde son placement natif.
-    {"game_option_pos_x", SType::kInt,   MLUI_FIELD(settings_tweaks, gopt_x()),
+    {"game_option_pos_x", SType::kInt,   MLUI_FIELD(screen_fx, gopt_x()),
      MLUI_LITERAL(int, INT_MIN)},
-    {"game_option_pos_y", SType::kInt,   MLUI_FIELD(settings_tweaks, gopt_y()),
+    {"game_option_pos_y", SType::kInt,   MLUI_FIELD(screen_fx, gopt_y()),
      MLUI_LITERAL(int, INT_MIN)},
-    {"esc_option_pos_x",  SType::kInt,   MLUI_FIELD(settings_tweaks, esc_x()),
+    {"esc_option_pos_x",  SType::kInt,   MLUI_FIELD(screen_fx, esc_x()),
      MLUI_LITERAL(int, INT_MIN)},
-    {"esc_option_pos_y",  SType::kInt,   MLUI_FIELD(settings_tweaks, esc_y()),
+    {"esc_option_pos_y",  SType::kInt,   MLUI_FIELD(screen_fx, esc_y()),
      MLUI_LITERAL(int, INT_MIN)},
 };
 #undef POSTFX
@@ -352,7 +352,7 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
 };
 
-// Saut (PlayerJumpTweaks) : activation + touche. Seuls la hauteur et la durée
+// Saut (PlayerJump) : activation + touche. Seuls la hauteur et la durée
 // de l'arc restent vives et non persistées (réglages staff, cf. panel_fun).
 // 0x20 = VK_SPACE.
 const moonlight_ui::SettingDesc kJumpKeySettings[] = {
@@ -368,7 +368,7 @@ const moonlight_ui::SettingDesc kJumpKeySettings[] = {
      MLUI_LITERAL(bool, false)},
 };
 
-// Déplacement au clavier (KeyboardMoveTweaks) : activation + les deux options
+// Déplacement au clavier (KeyboardMove) : activation + les deux options
 // visibles par tous. L'anticipation et la cadence restent vives et non
 // persistées (réglages staff, cf. panel_fun).
 const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
@@ -380,7 +380,7 @@ const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
      MLUI_FIELD(keyboard_move, stop_on_release()), MLUI_LITERAL(bool, true)},
 };
 
-// Barres EXP/HP/SP et portrait de statut (BasicInfoTweaks). Les barres et les
+// Barres EXP/HP/SP et portrait de statut (BasicInfo). Les barres et les
 // éléments du portrait sont indexés (expbar_<barre>_*, portrait_<élément>_*) :
 // leurs clés se construisent à l'exécution, elles restent en boucle.
 const moonlight_ui::SettingDesc kBasicInfoSettings[] = {
@@ -462,7 +462,7 @@ const moonlight_ui::SettingDesc kSkillBarSettings[] = {
 };
 
 // Couleurs des barres. Les ARGB ci-dessous sont la conversion EXACTE (formule de
-// ro::ArgbFromPicker) des flottants déclarés dans skill_bar_tweaks.h ; la couleur
+// ro::ArgbFromPicker) des flottants déclarés dans skill_bar.h ; la couleur
 // étant de toute façon quantifiée sur 8 bits dès la première sauvegarde, le
 // défaut est identique à ce que le plugin porte.
 const moonlight_ui::SettingDesc kSkillBarColorSettings[] = {
@@ -894,8 +894,8 @@ void MoonlightUi::PostLoadApply() {
                      (shop && shop->imgui_enabled_));
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
-  if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())
-    settings_tweaks->Apply();  // pousse le post-traitement vers la couche d3d9
+  if (auto* screen_fx = Bourgeon::Instance().screen_fx())
+    screen_fx->Apply();  // pousse le post-traitement vers la couche d3d9
 }
 
 void MoonlightUi::WriteSettingsFile() {
@@ -922,7 +922,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kChat);
   moonlight_ui::WriteSettings(out, kDpsSettings);
 
-  // Barres EXP/HP/SP (BasicInfoTweaks)
+  // Barres EXP/HP/SP (BasicInfo)
   moonlight_ui::WriteSettings(out, kBasicInfoSettings);
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kGrid);
   moonlight_ui::WriteWindowPositions(out);
@@ -1405,14 +1405,14 @@ void MoonlightUi::OnRenderUI() {
     SaveSettings();
   }
 
-  // Same for menu-icon positions (set on drag-end in MenuIconTweaks).
+  // Same for menu-icon positions (set on drag-end in MenuIcons).
   if (auto* menu_icons = Bourgeon::Instance().menu_icons();
       menu_icons && menu_icons->geometry_dirty_) {
     menu_icons->geometry_dirty_ = false;
     SaveSettings();
   }
 
-  // Skill-bar config (set on any panel change / drag-end in SkillBarTweaks).
+  // Skill-bar config (set on any panel change / drag-end in SkillBar).
   if (auto* skill_bar = Bourgeon::Instance().skill_bar();
       skill_bar && skill_bar->dirty_) {
     skill_bar->dirty_ = false;
@@ -1458,11 +1458,11 @@ void MoonlightUi::OnRenderUI() {
     DrawFunPanels();
 
     DrawInterfacePanel();
-    // ── Graphismes (color grading post-process, SettingsTweaks plugin) ───────
+    // ── Graphismes (color grading post-process, ScreenFx plugin) ───────
     if (CollapsingHeader("Graphismes")) {
       PushStyleCompact();
-      if (auto* settings_tweaks = Bourgeon::Instance().settings_tweaks())
-        settings_tweaks->DrawSettings();
+      if (auto* screen_fx = Bourgeon::Instance().screen_fx())
+        screen_fx->DrawSettings();
 
       if (auto* weapon_dual_sprites = Bourgeon::Instance().weapon_dual_sprites()) {
         if (ro::RoCheckbox("Sprites d'armes doubles", &weapon_dual_sprites->enabled()))

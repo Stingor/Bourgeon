@@ -96,12 +96,12 @@ set(BOURGEON_FILES
 	"features/overlays/login_parade.h"
 	"features/overlays/menu_icons.cc"
 	"features/overlays/menu_icons.h"
-	"features/overlays/quest_tracker_tweaks.cc"
-	"features/overlays/quest_tracker_tweaks.h"
-	"features/overlays/skill_bar_tweaks.cc"
-	"features/overlays/skill_bar_tweaks.h"
-	"features/overlays/status_icon_tweaks.cc"
-	"features/overlays/status_icon_tweaks.h"
+	"features/overlays/quest_tracker.cc"
+	"features/overlays/quest_tracker.h"
+	"features/overlays/skill_bar.cc"
+	"features/overlays/skill_bar.h"
+	"features/overlays/status_icon_bar.cc"
+	"features/overlays/status_icon_bar.h"
 
 	# gameplay/
 	"features/gameplay/fps_view.cc"
@@ -116,8 +116,8 @@ set(BOURGEON_FILES
 	"features/fx/ez_effect_capture.h"
 	"features/fx/hat_effect_depth.cc"
 	"features/fx/hat_effect_depth.h"
-	"features/fx/settings_tweaks.cc"
-	"features/fx/settings_tweaks.h"
+	"features/fx/screen_fx.cc"
+	"features/fx/screen_fx.h"
 	"features/fx/spr_effect_lab.cc"
 	"features/fx/spr_effect_lab.h"
 	"features/fx/weapon_dual_sprites.cc"
@@ -145,12 +145,12 @@ set(BOURGEON_FILES
 	"features/systems/native_login.h"
 
 	# minigames/
-	"features/minigames/doom_tweaks.cc"
-	"features/minigames/doom_tweaks.h"
-	"features/minigames/roggle_tweaks.cc"
-	"features/minigames/roggle_tweaks.h"
-	"features/minigames/rojeweled_tweaks.cc"
-	"features/minigames/rojeweled_tweaks.h"
+	"features/minigames/doom.cc"
+	"features/minigames/doom.h"
+	"features/minigames/roggle.cc"
+	"features/minigames/roggle.h"
+	"features/minigames/rojeweled.cc"
+	"features/minigames/rojeweled.h"
 
 	# UI toolkit (socle ImGui « façon RO »)
 	"ui/ro_imgui.cc"
@@ -271,7 +271,7 @@ target_compile_definitions(bourgeon PUBLIC -DNOMINMAX)
 target_compile_definitions(bourgeon PRIVATE -DBOURGEON_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(bourgeon PRIVATE $<$<CONFIG:RelWithDebInfo>:BOURGEON_DEBUG>)
 
-# winmm: timeGetTime for the DOOM 35 Hz clock (doom_tweaks).
+# winmm: timeGetTime for the DOOM 35 Hz clock (doom).
 # dxguid: définitions des IID DirectX (IID_IDirect3D7, IID_IDirect3DHALDevice,
 #   IID_IDirect3DTnLHalDevice…). Elles provenaient jusqu'ici du seul ddraw.cc, qui
 #   pose `#define INITGUID` avant <d3d.h>/<ddraw.h> — un mécanisme qui exige que RIEN

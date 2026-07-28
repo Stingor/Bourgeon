@@ -23,9 +23,9 @@
 //
 // v1 : une barre configurable (colonnes, taille, espacement, position, nb slots).
 // NON câblé dans MoonlightUi (persistance yaml + multi-barres = étape suivante).
-class SkillBarTweaks : public Plugin {
+class SkillBar : public Plugin {
  public:
-  SkillBarTweaks();
+  SkillBar();
 
   const char* name() const override { return "Skill Bar"; }
 

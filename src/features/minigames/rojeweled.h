@@ -10,14 +10,14 @@
 // falls back to a coloured tile if its sprite can't load. Swap two adjacent
 // monsters to line up 3+ of a kind; matches clear, columns collapse, and the
 // board refills (cascades chain). Toggle from the Moonlight menu. DX9 only.
-class RojeweledTweaks : public Plugin {
+class Rojeweled : public Plugin {
  public:
   const char* name() const override { return "Rojeweled"; }
 
   void OnRenderUI() override;
 
   // A mode/map switch can recreate the D3D device; drop cached sprite handles so
-  // they reload on the new device (mirrors RoggleTweaks::OnModeSwitch).
+  // they reload on the new device (mirrors Roggle::OnModeSwitch).
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
   bool enabled() const { return enabled_; }

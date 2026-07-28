@@ -17,7 +17,7 @@
 #include "features/windows/inventory_viewer.h"
 #include "features/overlays/menu_icons.h"
 #include "features/moonlight_ui/settings_table.h"  // ReadArgbKey / WriteArgbKey
-#include "features/overlays/skill_bar_tweaks.h"
+#include "features/overlays/skill_bar.h"
 #include "features/patches/status_tweaks.h"
 #include "features/windows/storage_window.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -93,7 +93,7 @@ void ReadMenuIcons(const YAML::Node& ui) {
   for (auto it = icons.begin(); it != icons.end(); ++it) {
     const std::string name = it->first.as<std::string>("");
     if (name.empty()) continue;
-    MenuIconTweaks::IconSave saved;
+    MenuIcons::IconSave saved;
     saved.x      = it->second["x"].as<int>(-1);
     saved.y      = it->second["y"].as<int>(-1);
     saved.hidden = it->second["hidden"].as<bool>(false);
@@ -324,9 +324,9 @@ void WriteChatBgPresets(YAML::Emitter& out) {
 void ReadBarLayout(const YAML::Node& ui) {
   auto* basic_info = Bourgeon::Instance().basic_info();
   if (!basic_info) return;
-  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+  for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     const std::string prefix =
-        std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+        std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     auto& bar = basic_info->bars_[i];
     bar.show = ui[prefix + "show"].as<bool>(true);
     bar.x = ui[prefix + "x"].as<int>(bar.x);
@@ -340,9 +340,9 @@ void ReadBarLayout(const YAML::Node& ui) {
 void WriteBarLayout(YAML::Emitter& out) {
   auto* basic_info = Bourgeon::Instance().basic_info();
   if (!basic_info) return;
-  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+  for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     const std::string prefix =
-        std::string("expbar_") + BasicInfoTweaks::kBarKeys[i] + "_";
+        std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     const auto& bar = basic_info->bars_[i];
     out << YAML::Key << (prefix + "show") << YAML::Value << bar.show
         << YAML::Key << (prefix + "x")    << YAML::Value << bar.x
@@ -358,9 +358,9 @@ void ReadPortraitLayout(const YAML::Node& ui) {
   if (!basic_info) return;
   // Effets de chapeau (.str) : rendu automatique et toujours actif, aucun
   // réglage persisté.
-  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+  for (int i = 0; i < BasicInfo::kPortCount; ++i) {
     const std::string prefix =
-        std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+        std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     auto& element = basic_info->ports_[i];
     element.show     = ui[prefix + "show"].as<bool>(element.show);
     element.x        = ui[prefix + "x"].as<int>(element.x);
@@ -376,9 +376,9 @@ void ReadPortraitLayout(const YAML::Node& ui) {
 void WritePortraitLayout(YAML::Emitter& out) {
   auto* basic_info = Bourgeon::Instance().basic_info();
   if (!basic_info) return;
-  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+  for (int i = 0; i < BasicInfo::kPortCount; ++i) {
     const std::string prefix =
-        std::string("portrait_") + BasicInfoTweaks::kPortKeys[i] + "_";
+        std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     const auto& element = basic_info->ports_[i];
     out << YAML::Key << (prefix + "show")     << YAML::Value << element.show
         << YAML::Key << (prefix + "x")        << YAML::Value << element.x
@@ -395,7 +395,7 @@ void ReadSkillBarLayout(const YAML::Node& ui) {
   auto* skill_bar = Bourgeon::Instance().skill_bar();
   if (!skill_bar) return;
   // 3 barres fixes (0 = Onglet 1, 1 = Onglet 2, 2 = Items).
-  for (int index = 0; index < SkillBarTweaks::kBarCount; ++index) {
+  for (int index = 0; index < SkillBar::kBarCount; ++index) {
     auto& bar = skill_bar->bars_[index];
     const std::string prefix = "skillbar" + std::to_string(index) + "_";
     bar.visible    = ui[prefix + "visible"].as<bool>(bar.visible);
@@ -408,7 +408,7 @@ void ReadSkillBarLayout(const YAML::Node& ui) {
     bar.spacing    = ui[prefix + "spacing"].as<float>(bar.spacing);
   }
   // Contenu persisté de la barre d'items (nameids).
-  for (int slot = 0; slot < SkillBarTweaks::kItemSlotMax; ++slot)
+  for (int slot = 0; slot < SkillBar::kItemSlotMax; ++slot)
     skill_bar->item_slots_[slot] =
         ui["skillbar_item" + std::to_string(slot)].as<uint32_t>(
             skill_bar->item_slots_[slot]);
@@ -417,7 +417,7 @@ void ReadSkillBarLayout(const YAML::Node& ui) {
 void WriteSkillBarLayout(YAML::Emitter& out) {
   auto* skill_bar = Bourgeon::Instance().skill_bar();
   if (!skill_bar) return;
-  for (int index = 0; index < SkillBarTweaks::kBarCount; ++index) {
+  for (int index = 0; index < SkillBar::kBarCount; ++index) {
     const auto& bar = skill_bar->bars_[index];
     const std::string prefix = "skillbar" + std::to_string(index) + "_";
     out << YAML::Key << (prefix + "visible") << YAML::Value << bar.visible
@@ -432,7 +432,7 @@ void WriteSkillBarLayout(YAML::Emitter& out) {
   // Capture le contenu VIVANT de la barre d'items avant de l'écrire : c'est le
   // jeu qui le modifie (drag&drop), pas nous.
   skill_bar->SnapshotItemSlots();
-  for (int slot = 0; slot < SkillBarTweaks::kItemSlotMax; ++slot)
+  for (int slot = 0; slot < SkillBar::kItemSlotMax; ++slot)
     out << YAML::Key << ("skillbar_item" + std::to_string(slot))
         << YAML::Value << skill_bar->item_slots_[slot];
 }

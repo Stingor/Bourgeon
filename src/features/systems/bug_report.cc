@@ -68,7 +68,7 @@ std::string JsonEscape(const std::string& in) {
 
 }  // namespace
 
-BugReportTweaks::BugReportTweaks() {
+BugReport::BugReport() {
   // ACK serveur (ZC 0x0F14) : zone custom sûre (>0x0C35) => livré par le
   // reader-hook. cf. bourgeon_opcodes.h.
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kBugReportAck);
@@ -76,7 +76,7 @@ BugReportTweaks::BugReportTweaks() {
 
 // --- Constructeurs de contexte ---------------------------------------------
 
-BugReportTweaks::Context BugReportTweaks::ItemContext(uint32_t item_id,
+BugReport::Context BugReport::ItemContext(uint32_t item_id,
                                                       const std::string& name,
                                                       int refine) {
   Context c;
@@ -96,7 +96,7 @@ BugReportTweaks::Context BugReportTweaks::ItemContext(uint32_t item_id,
   return c;
 }
 
-BugReportTweaks::Context BugReportTweaks::SkillContext(uint32_t skill_id,
+BugReport::Context BugReport::SkillContext(uint32_t skill_id,
                                                        const std::string& name,
                                                        int level) {
   Context c;
@@ -117,7 +117,7 @@ BugReportTweaks::Context BugReportTweaks::SkillContext(uint32_t skill_id,
   return c;
 }
 
-BugReportTweaks::Context BugReportTweaks::NpcContext(uint32_t gid,
+BugReport::Context BugReport::NpcContext(uint32_t gid,
                                                      const std::string& name) {
   Context c;
   c.category = kNpc;
@@ -132,7 +132,7 @@ BugReportTweaks::Context BugReportTweaks::NpcContext(uint32_t gid,
   return c;
 }
 
-BugReportTweaks::Context BugReportTweaks::GenericContext() {
+BugReport::Context BugReport::GenericContext() {
   Context c;
   c.category = kGeneric;
   c.label = "Rapport général (aucun contexte spécifique)";
@@ -142,7 +142,7 @@ BugReportTweaks::Context BugReportTweaks::GenericContext() {
 
 // --- API partagée ----------------------------------------------------------
 
-void BugReportTweaks::Button(const Context& ctx, const char* imgui_id) {
+void BugReport::Button(const Context& ctx, const char* imgui_id) {
   if (!enabled_) return;  // opt-out via MoonlightUi
   ImGui::PushID(imgui_id);
   // Bouton habillé RO (pièces btn_* du client) : se fond dans les fenêtres desc /
@@ -154,7 +154,7 @@ void BugReportTweaks::Button(const Context& ctx, const char* imgui_id) {
   ImGui::PopID();
 }
 
-void BugReportTweaks::Open(const Context& ctx) {
+void BugReport::Open(const Context& ctx) {
   ctx_ = ctx;
   msg_buf_[0] = '\0';
   want_open_ = true;
@@ -162,7 +162,7 @@ void BugReportTweaks::Open(const Context& ctx) {
 
 // --- Envoi -----------------------------------------------------------------
 
-void BugReportTweaks::SendReport(const Context& ctx, const std::string& message) {
+void BugReport::SendReport(const Context& ctx, const std::string& message) {
   // CZ_BOURGEON_BUG_REPORT (0x0F13), variable :
   //   [type:2][len:2][category:1][ctx_len:2][ctx:ctx_len][message: reste]
   // Identité/map/position ajoutées côté serveur depuis la session.
@@ -193,7 +193,7 @@ void BugReportTweaks::SendReport(const Context& ctx, const std::string& message)
 
 // --- Rendu -----------------------------------------------------------------
 
-void BugReportTweaks::OnRenderUI() {
+void BugReport::OnRenderUI() {
   // Raccourci global Ctrl+Alt+B : rapport générique (uniquement si le jeu a le
   // focus clavier ImGui et qu'aucune modale n'est déjà ouverte).
   ImGuiIO& io = ImGui::GetIO();
@@ -212,7 +212,7 @@ void BugReportTweaks::OnRenderUI() {
   RenderAckToast();
 }
 
-void BugReportTweaks::RenderModal() {
+void BugReport::RenderModal() {
   // Centre la modale au premier affichage.
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
@@ -277,7 +277,7 @@ void BugReportTweaks::RenderModal() {
   ImGui::EndPopup();
 }
 
-void BugReportTweaks::RenderAckToast() {
+void BugReport::RenderAckToast() {
   if (ack_status_ == 0xFF) return;
   const uint32_t now = GetTickCount();
   const uint32_t elapsed = now - ack_tick_;
@@ -351,7 +351,7 @@ void BugReportTweaks::RenderAckToast() {
               IM_COL32(236, 236, 236, A), text);
 }
 
-void BugReportTweaks::OnRecvPacket(uint16_t opcode, 
+void BugReport::OnRecvPacket(uint16_t opcode, 
                                    const uint8_t* data,
                                    uint16_t len) {
   if (opcode != bopcodes::kBugReportAck) return;

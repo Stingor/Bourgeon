@@ -54,7 +54,7 @@ struct Src {
 // has no in-memory max, but the client stores it signed 32-bit, so its bar fills
 // relative to the INT32 hard cap (kZenyMax) and shows the amount thousands-grouped.
 constexpr long long kZenyMax = 2147483647LL;  // INT32_MAX = client hard zeny cap
-const Src kSrc[BasicInfoTweaks::kBarCount] = {
+const Src kSrc[BasicInfo::kBarCount] = {
   {0x015fb9d0, 0x015fb9d8, 0,        true,  false, "Base",  "###BIBaseExp"},
   {0x015fb9e8, 0x015fb9e0, 0,        true,  false, "Job",   "###BIJobExp"},
   {0x015ff908, 0x015ff90c, 0,        false, false, "HP",    "###BIHp"},
@@ -166,7 +166,7 @@ int       g_av_frame_count = 1;
 // => ~100 ms). Sert à animer le doll à la VITESSE native (délai constant par image).
 float     g_av_frame_delay = 4.0f;
 // Scratch pour réordonner arme+bouclier DEVANT/DERRIÈRE le corps selon la direction,
-// comme le natif (cf. project_weapon_zorder / WeaponLayerTweaks) : FRONT {0,1,6,7} =
+// comme le natif (cf. project_weapon_zorder / WeaponLayer) : FRONT {0,1,6,7} =
 // devant (ordre coiffes<arme<bouclier) ; BACK {2,3,4,5} = derrière le corps.
 // g_av_wpn_start = index de début du bloc arme/bouclier dans g_av_caps (= body_count),
 // posé par EmitWeaponShieldLayers. File-scope (static local + __try => C2712).
@@ -2044,7 +2044,7 @@ bool DollTakeBudget() {
 // Signature d'apparence (FNV-1a) : clé du cache. Jamais 0 (0 = entrée libre).
 // `anim` (type d'action) fait partie de la clé : debout et assis d'un MÊME perso
 // sont deux vignettes distinctes -> deux entrées de cache.
-unsigned DollKey(const BasicInfoTweaks::DollLook& k, int dir, int anim) {
+unsigned DollKey(const BasicInfo::DollLook& k, int dir, int anim) {
   const unsigned parts[] = {
       static_cast<unsigned>(k.sex),      static_cast<unsigned>(k.job),
       static_cast<unsigned>(k.body),     static_cast<unsigned>(k.hair),
@@ -2061,7 +2061,7 @@ unsigned DollKey(const BasicInfoTweaks::DollLook& k, int dir, int anim) {
 // SEH-gardé : un échec laisse g_doll_count à 0 (l'appelant affichera un
 // placeholder). Restaure la cible de capture du portrait à la sortie, comme les
 // autres captures.
-void CaptureDollActor(const BasicInfoTweaks::DollLook& k, int dir, int anim) {
+void CaptureDollActor(const BasicInfo::DollLook& k, int dir, int anim) {
   InstallActorCapture();
   if (!g_orig_actor_quad) return;
   void* render_ctx = DollRenderCtx();
@@ -2203,7 +2203,7 @@ void DollCacheFill(DollCacheEntry* e, unsigned key, unsigned epoch, DWORD now) {
 }
 }  // namespace
 
-void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+void BasicInfo::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
   // Dolls du char-select : le cache retient des pages d'atlas de sprites, et la scène
   // est reconstruite à chaque changement de mode -> on repart de zéro (les entrées
@@ -2219,11 +2219,11 @@ void BasicInfoTweaks::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 // survol de « ViewID : N »). Capture le perso + l'item (viewID dans le slot) via
 // le moteur du portrait, puis composite les sprites dans un tooltip ImGui. Ne
 // fait rien si l'item n'est pas un headgear/garment (slot PV_NONE).
-bool BasicInfoTweaks::CanPreview(int emplacement) const {
+bool BasicInfo::CanPreview(int emplacement) const {
   return MapEmplacementToSlot(emplacement) != PV_NONE;
 }
 
-void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
+void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
                                                int hat_ordinal) {
   // Rien à montrer si ni sprite (viewid) ni effet (hat effect) : sortie.
   if (view_id == 0 && hat_ordinal == 0) return;
@@ -2354,7 +2354,7 @@ void BasicInfoTweaks::RenderItemPreviewTooltip(int view_id, int emplacement,
 // pas de hat effect (ou table pas encore reçue). Le natif ne mappe PAS item->ordinal :
 // effectHatItemTable côté client n'est qu'une appartenance, et GetHatEffectID prend
 // l'ordinal (pas l'itemId) -> d'où le push serveur.
-int BasicInfoTweaks::ItemToHatOrdinal(int item_id) {
+int BasicInfo::ItemToHatOrdinal(int item_id) {
   if (item_id <= 0) return 0;
   auto it = g_hat_item_ord.find(static_cast<uint32_t>(item_id));
   return (it != g_hat_item_ord.end()) ? static_cast<int>(it->second) : 0;
@@ -2370,7 +2370,7 @@ int BasicInfoTweaks::ItemToHatOrdinal(int item_id) {
 // pas rognée). Pieds ancrés en bas façon WoW, CORPS centré en X -> clip -> AddImage (U
 // swap si mirror). No-op hors-jeu ou capture vide. À appeler entre Begin/End.
 // anim=animType, dir=0..7 (0=face), animate=joue.
-void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
+void BasicInfo::RenderPlayerAvatar(float x, float y, float w, float h,
                                          int anim, int dir, bool animate, bool show_costume) {
   if (Bourgeon::Instance().client().session().aid() == 0) return;
 
@@ -2549,7 +2549,7 @@ void BasicInfoTweaks::RenderPlayerAvatar(float x, float y, float w, float h,
 // n'a pas besoin d'une UIWindow -> utilisable hors jeu. Cache par apparence +
 // budget de captures par frame : renvoie false quand rien n'a pu être dessiné
 // (budget épuisé cette frame, ou capture vide) -> l'appelant met son placeholder.
-bool BasicInfoTweaks::RenderDoll(const DollLook& look, float x, float y, float w,
+bool BasicInfo::RenderDoll(const DollLook& look, float x, float y, float w,
                                  float h, int dir, int anim, uint32_t tint) {
   if (w <= 4.0f || h <= 4.0f) return false;
   const unsigned key   = DollKey(look, dir, anim);
@@ -2615,7 +2615,7 @@ bool BasicInfoTweaks::RenderDoll(const DollLook& look, float x, float y, float w
 // une bbox union (perso stable), composite chaque image dans un render target
 // hors-écran (D3D9_CompositeQuadsRGBA) puis encode (GifWrite) au délai natif. Toutes
 // les poses sont animées dans le GIF (même Repos/Assis, figés seulement dans la vue).
-bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath,
+bool BasicInfo::ExportAvatarGif(int anim, int dir, const char* filepath,
                                      bool show_costume) {
   if (!filepath || Bourgeon::Instance().client().session().aid() == 0) return false;
   const int CW = 256, CH = 340;  // canvas GIF (agrandi pour la qualité ; LZW compressé)
@@ -2679,7 +2679,7 @@ bool BasicInfoTweaks::ExportAvatarGif(int anim, int dir, const char* filepath,
   return ok;
 }
 
-float BasicInfoTweaks::SnapValue(float v, float ext, int self_id,
+float BasicInfo::SnapValue(float v, float ext, int self_id,
                                  bool y_axis) const {
   float best = v, best_dist = kSnapThreshold;
   for (int j = 0; j < kBarCount; ++j) {
@@ -2699,7 +2699,7 @@ float BasicInfoTweaks::SnapValue(float v, float ext, int self_id,
   return best;
 }
 
-bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
+bool BasicInfo::DrawBar(BarId id, long long cur, long long max) {
   Bar& bar = bars_[id];
   const bool frozen = locked_;
 
@@ -2923,17 +2923,17 @@ namespace {
 // head element, which draws a sprite placeholder instead of text).
 void PortraitText(int id, char* out, size_t n) {
   switch (id) {
-    case BasicInfoTweaks::kPortName: {
+    case BasicInfo::kPortName: {
       const std::string nm = Bourgeon::Instance().client().session().GetCharName();
       std::snprintf(out, n, "%s", nm.empty() ? "?" : nm.c_str());
       break;
     }
-    case BasicInfoTweaks::kPortClass: {
+    case BasicInfo::kPortClass: {
       const char* cls = ClassName();
       std::snprintf(out, n, "%s", (cls && cls[0]) ? cls : "");
       break;
     }
-    case BasicInfoTweaks::kPortLevel:
+    case BasicInfo::kPortLevel:
       // base/job merged, simply "%d/%d" as requested.
       std::snprintf(out, n, "%d/%d", RDi(kBaseLevel), RDi(kJobLevel));
       break;
@@ -2947,7 +2947,7 @@ void PortraitText(int id, char* out, size_t n) {
 // Connected group of SHOWN portrait elements whose frames touch/overlap `seed`
 // (transitive closure, 2px tolerance so edge-adjacent frames count). Returns a
 // PortId bitmask. Used by CTRL block-move to drag a cluster of frames as one.
-int BasicInfoTweaks::PortraitTouchGroup(int seed) const {
+int BasicInfo::PortraitTouchGroup(int seed) const {
   const int T = 2;  // touch tolerance (px)
   auto touch = [&](const PortraitElem& a, const PortraitElem& b) {
     return a.x - T < b.x + b.w && b.x - T < a.x + a.w &&
@@ -2972,7 +2972,7 @@ int BasicInfoTweaks::PortraitTouchGroup(int seed) const {
 // (drag anywhere) and resize (bottom-right grip); we pin the window to the
 // stored geometry, snap to the shared alignment grid, and read the result back.
 // Returns true if the geometry changed this frame.
-bool BasicInfoTweaks::DrawPortraitElem(PortId id) {
+bool BasicInfo::DrawPortraitElem(PortId id) {
   PortraitElem& e = ports_[id];
   const bool frozen = portrait_locked_;
 
@@ -3220,7 +3220,7 @@ bool BasicInfoTweaks::DrawPortraitElem(PortId id) {
 
 // Draws every shown portrait element (each its own movable frame), persisting
 // the layout once on drag-end.
-void BasicInfoTweaks::DrawPortrait() {
+void BasicInfo::DrawPortrait() {
   if (!portrait_visible_) return;
   // Session globals are only populated once a character is in the world.
   if (Bourgeon::Instance().client().session().aid() == 0) return;
@@ -3240,11 +3240,11 @@ void BasicInfoTweaks::DrawPortrait() {
   }
 }
 
-// ── Section « BasicInfoTweaks » du panneau Moonlight ──────────────────────────
+// ── Section « BasicInfo » du panneau Moonlight ──────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
 // de sauvegarder. Rend true si un réglage a changé.
-bool BasicInfoTweaks::DrawSettings() {
+bool BasicInfo::DrawSettings() {
   bool changed = false;
   PushStyleCompact();
 
@@ -3255,9 +3255,9 @@ bool BasicInfoTweaks::DrawSettings() {
   changed |= ro::RoCheckbox("Afficher les barres", &visible_);
   ImGui::BeginDisabled(!visible_);
   Indent();
-    for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+    for (int i = 0; i < BasicInfo::kBarCount; ++i) {
       if (i) SameLine();
-      changed |= ro::RoCheckbox(BasicInfoTweaks::kBarLabels[i], &bars_[i].show);
+      changed |= ro::RoCheckbox(BasicInfo::kBarLabels[i], &bars_[i].show);
     }
     SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
   Unindent();
@@ -3292,9 +3292,9 @@ bool BasicInfoTweaks::DrawSettings() {
   changed |= WheelSliderFloat("Arrondi", &rounding_, 0.0f, 16.0f);
   SameLine(); HelpMarker("Arrondi des coins des barres.");
 
-  for (int i = 0; i < BasicInfoTweaks::kBarCount; ++i) {
+  for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     char lbl[32];
-    std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfoTweaks::kBarLabels[i]);
+    std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfo::kBarLabels[i]);
     changed |= ColorEdit4WithAlphaBar(lbl, bars_[i].fill);
   }
   changed |= ColorEdit4WithAlphaBar("Fond / Opacité", bg_color_);
@@ -3305,7 +3305,7 @@ bool BasicInfoTweaks::DrawSettings() {
   auto bar_size_button = [&](const char* label, int width_px, int height_px) {
     SameLine();
     if (ro::RoButton(label)) {
-      for (int j = 0; j < BasicInfoTweaks::kBarCount; ++j) {
+      for (int j = 0; j < BasicInfo::kBarCount; ++j) {
         bars_[j].w = width_px;
         bars_[j].h = height_px;
       }
@@ -3379,13 +3379,13 @@ bool BasicInfoTweaks::DrawSettings() {
 
   // Per-element config: show / background colour+opacity / rounding /
   // text colour.  Each element is independent.
-  for (int i = 0; i < BasicInfoTweaks::kPortCount; ++i) {
+  for (int i = 0; i < BasicInfo::kPortCount; ++i) {
     auto& e = ports_[i];
     ImGui::PushID(i);
-    changed |= ro::RoCheckbox(BasicInfoTweaks::kPortLabels[i], &e.show);
+    changed |= ro::RoCheckbox(BasicInfo::kPortLabels[i], &e.show);
     Indent();
     changed |= ColorEdit4WithAlphaBar("Fond / Opacité", e.bg);
-    if (i != BasicInfoTweaks::kPortHead) {
+    if (i != BasicInfo::kPortHead) {
       SameLine();
       changed |= ColorEdit4WithAlphaBar("Texte", e.fg);
     }
@@ -3399,7 +3399,7 @@ bool BasicInfoTweaks::DrawSettings() {
   return changed;
 }
 
-void BasicInfoTweaks::OnRenderUI() {
+void BasicInfo::OnRenderUI() {
   if (!in_game_) return;
   // The alignment grid is drawn by MoonlightUi (shared overlay), not here.
 
@@ -3486,7 +3486,7 @@ void BIPatchPtr(uintptr_t addr, T val) {
 }
 }  // namespace
 
-BasicInfoTweaks::BasicInfoTweaks() {
+BasicInfo::BasicInfo() {
   // Install the msg-0x22 hide hook at DLL load (before any Basic Info is created),
   // so the very first HUD creation at login is caught pre-render (no flicker).
   void* cur = *reinterpret_cast<void**>(kBIMsgSlot);
@@ -3512,7 +3512,7 @@ BasicInfoTweaks::BasicInfoTweaks() {
 // propre joueur (aid == propre aid). `data` = buffer juste après l'opcode :
 // data[0..1]=packetLength (inclut l'opcode), data[2..5]=aid, data[6]=status,
 // data[7..]=liste d'effectId (2 o. chacun).
-void BasicInfoTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void BasicInfo::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                    uint16_t len) {
   // ZC_BOURGEON_HATEFFECT_MAP (custom recv) : data = APRÈS le header [type:2][len:2]
   // -> [count:2] puis count × {itemId:4, ordinal:2}. Remplace la table en cache.
@@ -3559,7 +3559,7 @@ void BasicInfoTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // re-hide if the game re-shows it, and restore visibility when the option is off.
 //   BasicInfo singleton ptr = *(g_UIWindowMgr 0x0131f4e8 + 0x1dc) (vtable
 //   0x0103e35c); null until the HUD is created.
-void BasicInfoTweaks::OnTick() {
+void BasicInfo::OnTick() {
   // Regenerate the head sprite from the game's actor renderer (update phase is a
   // safer place to call it than the Present hook). DrawPortrait reads g_caps.
   if (portrait_visible_ && portrait_head_sprite_ && ports_[kPortHead].show &&
