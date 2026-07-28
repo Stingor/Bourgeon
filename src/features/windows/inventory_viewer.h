@@ -155,6 +155,7 @@ class InventoryViewer : public Plugin {
     // au survol, mêmes offsets que la fenêtre de description native (cf. storage).
     uint32_t cards[4] = {0};  // info+0x1c : 4 slots carte/enchant (0 = vide)
     int      opt_count = 0;   // info+0x98 : nb de random options
+    int      total_slots = 0; // emplacements de carte (itemcell::SlotCount)
     struct Opt { int16_t index; int16_t value; uint8_t param; };
     Opt      opts[5] = {};    // info+0x9c : entrées de 5 octets
   };

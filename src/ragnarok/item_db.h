@@ -47,6 +47,13 @@ constexpr uintptr_t kInfoSetIdAddr = 0x006a6570;
 constexpr uintptr_t kBuildDisplayNameAddr  = 0x008a0570;
 constexpr uintptr_t kBaseNameFallbackAddr  = 0x006a2b50;
 
+// Nombre TOTAL d'emplacements de carte : __fastcall(ItemSkillInfo*) -> lit
+// descRecord+0x30 ; 0 pour l'enregistrement nul. C'est la source UNIVERSELLE du
+// « [N] » — les viewers qui lisent leurs emplacements ailleurs (storage : champ
+// d'un paquet serveur ; vending : nœud+kNodeSlots) n'ont ces données que dans
+// LEUR contexte, alors que cet appel marche partout où l'on tient un info.
+constexpr uintptr_t kSlotCountAddr = 0x006a4c10;
+
 // ── Les deux fenêtres de description ─────────────────────────────────────────
 // ⚠ Ce sont DEUX fenêtres distinctes, et leur appariement id/message a été
 // établi à la dure — ne pas les intervertir (skill_bar l'avait fait, cf. le

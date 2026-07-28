@@ -243,16 +243,6 @@ bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Nombre TOTAL d'emplacements de carte d'un item : ItemSkillDB_GetSlotCount(info),
-// __fastcall(ItemSkillInfo*) -> lit descRecord+0x30. 0 pour l'enregistrement nul.
-constexpr uintptr_t kGetSlotCount = 0x006a4c10;
-using GetSlotCount_t = int(__fastcall*)(void*);
-
-int SlotCountOf(void* info) {
-  __try {
-    return reinterpret_cast<GetSlotCount_t>(kGetSlotCount)(info);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 
 // Fiche POD d'un candidat, extraite sous SEH pour un rendu hors __try.
 // (Le lecteur ReadCompItem vit plus bas : il a besoin de FindInfoByIndex.)
@@ -586,7 +576,7 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
       out->opts[k].param = e[4];
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-  out->total_slots = SlotCountOf(info);  // hors __try (appel natif, déjà SEH-gardé)
+  out->total_slots = itemcell::SlotCount(info);  // hors __try (appel natif, déjà SEH-gardé)
   // Emplacements réellement OCCUPÉS PAR UNE CARTE : seules les `total_slots` premières
   // entrées de info+0x1c comptent. Les enchantements (type carte, sous-type enchant)
   // sont écrits par le serveur dans les entrées HAUTES (card[3], puis card[2]…) même
@@ -1212,6 +1202,7 @@ void InventoryViewer::Extract() {
         it.opts[k].param = e[4];
       }
       itemcell::BuildDisplayName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
+      it.total_slots = itemcell::SlotCount(info);
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -2121,7 +2112,9 @@ void InventoryViewer::OnRenderUI() {
           hover_desc_idx_ = idx;
         } else if (!show_desc_tooltip_) {
           ImGui::BeginTooltip();
-          ImGui::Text(" %s [%d] ", it.name[0] ? it.name : "(?)", it.id);
+          char lbl[96];
+          ImGui::Text(" %s ", itemcell::Label(lbl, sizeof(lbl), it.name,
+                                              it.total_slots));
           if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
           ImGui::EndTooltip();
         }
@@ -2185,7 +2178,9 @@ void InventoryViewer::OnRenderUI() {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, menu_pad);
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, menu_spacing);
       if (ImGui::BeginPopup("ctx")) {
-        ImGui::TextDisabled("%s", it.name[0] ? it.name : "(?)");
+        char lbl[96];
+        ImGui::TextDisabled("%s", itemcell::Label(lbl, sizeof(lbl), it.name,
+                                                 it.total_slots));
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
@@ -2213,7 +2208,7 @@ void InventoryViewer::OnRenderUI() {
         if (it.type == 4 || it.type == 5) {
           const bool forged = (it.cards[0] != 0 && it.cards[0] <= 500);
           void* einfo = FindInfoByIndex(it.index);
-          const int total = einfo ? SlotCountOf(einfo) : 0;
+          const int total = einfo ? itemcell::SlotCount(einfo) : 0;
           // Ne compter QUE les `total` premières entrées : les enchantements occupent
           // les entrées hautes (card[3], card[2]…) sans consommer d'emplacement de
           // carte. Cf. ReadCompItemFromInfo pour le détail.

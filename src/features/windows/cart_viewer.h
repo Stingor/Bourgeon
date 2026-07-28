@@ -76,6 +76,7 @@ class CartViewer : public Plugin {
     // Données d'INSTANCE du stack, pour l'aperçu de description au survol.
     uint32_t cards[4] = {0};  // info+0x1c
     int      opt_count = 0;   // info+0x98
+    int      total_slots = 0; // emplacements de carte (itemcell::SlotCount)
     struct Opt { int16_t index; int16_t value; uint8_t param; };
     Opt      opts[5] = {};    // info+0x9c
   };

@@ -1,3 +1,4 @@
+#include "features/item_cell.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/storage_window.h"
@@ -1519,6 +1520,8 @@ void StorageWindow::OnRenderUI() {
         }
       }
       if (ImGui::BeginPopup("ctx")) {
+        // `name` porte DÉJÀ « [N] » : le suffixe est cuit à l'extraction, avec
+        // garde anti-doublon (cf. le bloc « Suffixe [N] » d'OnTick).
         ImGui::TextDisabled("%s", items_[idx].name[0] ? items_[idx].name : "(?)");
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {

@@ -51,6 +51,21 @@ void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
+int SlotCount(void* info) {
+  if (!info) return 0;
+  __try {
+    return reinterpret_cast<int(__fastcall*)(void*)>(itemdb::kSlotCountAddr)(info);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+const char* Label(char* out, size_t out_size, const char* name, int slots) {
+  if (!out || out_size == 0) return "";
+  const char* base = (name && name[0]) ? name : "(?)";
+  if (slots > 0) std::snprintf(out, out_size, "%s [%d]", base, slots);
+  else           std::snprintf(out, out_size, "%s", base);
+  return out;
+}
+
 void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
                  const itemdesc::SimpleOpt* opts, int opt_count, int refine,
                  const char* name) {

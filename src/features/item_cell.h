@@ -57,6 +57,24 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
 // initialisé ne doit pas tuer le client.
 void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size);
 
+// Nombre TOTAL d'emplacements de carte de l'item décrit par `info`, 0 si aucun
+// ou si la lecture échoue. Appel natif sous SEH.
+int SlotCount(void* info);
+
+// ── Le libellé d'un objet, UNE bonne fois ────────────────────────────────────
+// Convention du projet, identique partout : `+refine préfixe_carte nom
+// suffixe_carte [emplacements]`.
+//
+// Le début est déjà composé par le name-builder natif (cf. BuildDisplayName) :
+// raffinage et affixes de cartes sont DANS `name`, il ne faut surtout pas les
+// re-préfixer. Seul le suffixe « [N] » manque — le builder ne le compose pas —
+// et c'est ce que cette fonction ajoute, quand N > 0.
+//
+// Écrit dans `out` et le renvoie, pour s'utiliser directement dans un
+// `ImGui::TextUnformatted(itemcell::Label(buf, sizeof(buf), it.name, n))`.
+// `name` vide ou nul -> « (?) », le repli déjà employé partout.
+const char* Label(char* out, size_t out_size, const char* name, int slots);
+
 // Aperçu RO au survol : tooltip fond blanc + cadre sysbox peint derrière par un
 // split de canaux. À appeler HORS de toute fenêtre ImGui (il crée son popup).
 //

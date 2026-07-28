@@ -481,6 +481,7 @@ void CartViewer::Extract() {
         it.opts[k].param = e[4];
       }
       itemcell::BuildDisplayName(wnd, info, it.name, sizeof(it.name));
+      it.total_slots = itemcell::SlotCount(info);
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -757,7 +758,9 @@ void CartViewer::OnRenderUI() {
           hover_desc_idx_ = idx;
         } else if (!show_desc_tooltip_) {
           ImGui::BeginTooltip();
-          ImGui::Text(" %s [%d] ", it.name[0] ? it.name : "(?)", it.id);
+          char lbl[96];
+          ImGui::Text(" %s ", itemcell::Label(lbl, sizeof(lbl), it.name,
+                                              it.total_slots));
           if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
           ImGui::EndTooltip();
         }
@@ -813,7 +816,9 @@ void CartViewer::OnRenderUI() {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, menu_pad);
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, menu_spacing);
       if (ImGui::BeginPopup("ctx")) {
-        ImGui::TextDisabled("%s", it.name[0] ? it.name : "(?)");
+        char lbl[96];
+        ImGui::TextDisabled("%s", itemcell::Label(lbl, sizeof(lbl), it.name,
+                                                 it.total_slots));
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
