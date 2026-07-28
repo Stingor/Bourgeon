@@ -119,6 +119,18 @@ constexpr unsigned long kEnterTimeoutMs = 2500;
 // la file de messages contient encore les Entrées de l'écran précédent.
 constexpr unsigned long kEnterGraceMs = 400;
 
+// ── Fraîcheur de la liste de personnages (cf. char_select.h, list_tick_) ──────
+// Opcodes de LISTE, seulement observés : c'est leur arrivée qui prouve que les
+// CHARACTER_INFO appartiennent à la session courante.
+constexpr uint16_t kOpCharList     = 0x006B;  // HC_ACCEPT_ENTER (variable)
+constexpr uint16_t kOpCharListPage = 0x0B72;  // HC_ACK_CHARINFO_PER_PAGE (variable)
+// Repli de sûreté : au-delà de ce délai sans avoir vu de paquet de liste, on
+// s'arme quand même (et on le SIGNALE une fois). Sans ce repli, un opcode qui ne
+// serait pas celui de ce client rendrait la table définitivement invisible — une
+// régression bien pire que le bug corrigé. Le message de log est aussi ce qui
+// nous dira que le fait-générateur ne se déclenche pas.
+constexpr unsigned long kListWaitMs = 3000;
+
 // Comptes de slots renseignés par HC_ACCEPT_ENTER2 (serveur). Capacité = somme.
 constexpr uintptr_t kNormalSlots   = 0x015ffd60;
 constexpr uintptr_t kPremiumSlots  = 0x015ffd64;
@@ -791,6 +803,14 @@ void SaveRecentChars(std::vector<uint32_t>& cids, uint32_t gid) {
 
 CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
   recent_chars_ = LoadRecentChars();
+  // Liste de personnages : on OBSERVE (jamais on n'intercepte), le handler natif
+  // doit continuer à peupler les CHARACTER_INFO. Aucun payload ne nous intéresse,
+  // seulement le fait qu'un paquet de liste soit arrivé -> forward_len = 0.
+  // 0x006B = HC_ACCEPT_ENTER (liste complète, variable) ;
+  // 0x0B72 = HC_ACK_CHARINFO_PER_PAGE (liste paginée, variable).
+  // Cf. docs/charselect_re.md.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpCharList, 0);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpCharListPage, 0);
   std::ifstream f(paths::SettingsPath());
   if (f) {
     try {
@@ -1084,6 +1104,16 @@ void CharSelect::DriveModeCmd(int cmd) {
   }
 }
 
+void CharSelect::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
+                              uint16_t /*len*/) {
+  // Purement passif : on ne lit AUCUN octet du paquet (forward_len = 0), on note
+  // seulement l'instant. Le handler natif fait tout le travail de décodage.
+  if (opcode == kOpCharList || opcode == kOpCharListPage) {
+    list_tick_ = GetTickCount();
+    if (list_tick_ == 0) list_tick_ = 1;  // 0 = « jamais reçu », réservé
+  }
+}
+
 void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Réarme à chaque arrivée sur l'écran login/char-select.
   if (mode_type == ModeMgr::ModeType::kLogin) {
@@ -1100,11 +1130,22 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     enter_failed_until_ = 0;
     del_reject_until_ = 0;
     del_reject_seq_seen_ = g_del_reject_seq;  // ne pas ressortir un refus d'avant
+    wait_since_ = 0;
+    list_warned_ = false;
   } else {
     // On quitte le login (entrée en jeu) : notre scène ne couvre plus rien. Sans ce
     // reset, g_cover_active reste collé à true — OnRenderLoginUI, seul endroit qui
     // le remettait à false, n'est plus appelé une fois en jeu. Voir Detour_ShowModal.
     g_cover_active = false;
+    // ⚠ Et c'est AUSSI ici qu'il faut marquer la sortie d'écran pour la fraîcheur
+    // de la liste : le front « présent -> absent » est détecté dans
+    // OnRenderLoginUI, or celui-ci n'est plus appelé une fois en jeu. Sans cette
+    // ligne, screen_gone_tick_ resterait figé à une date antérieure au paquet de
+    // liste de la session précédente, qui repasserait donc pour « fraîche » au
+    // retour au char-select — exactement le bug qu'on corrige.
+    screen_gone_tick_ = GetTickCount();
+    screen_was_alive_ = false;
+    wait_since_ = 0;
   }
 }
 
@@ -1229,10 +1270,48 @@ void CharSelect::OnRenderLoginUI() {
   // entrée en jeu sur un écran qui n'existait pas encore -> écran mort. Les fenêtres,
   // elles, sont purgées à chaque changement d'état du mode : FindWindow(0x115) ne
   // répond que si le char-select natif est RÉELLEMENT à l'écran.
-  if (!NativeCharSelectAlive()) {
+  const bool screen_alive = NativeCharSelectAlive();
+  // FRONT présent -> absent : c'est l'instant de référence de la fraîcheur. On ne
+  // l'enregistre QUE sur le front — le rafraîchir à chaque frame d'absence rendrait
+  // toute liste « périmée », puisque le paquet arrive justement pendant l'absence.
+  if (screen_was_alive_ && !screen_alive) screen_gone_tick_ = GetTickCount();
+  screen_was_alive_ = screen_alive;
+  if (!screen_alive) {
     active_ = false;
     active_since_ = 0;
     return;
+  }
+
+  // ── La liste affichée appartient-elle à CETTE session ? ─────────────────────
+  // Le natif ouvre sa fenêtre dès l'entrée sur l'écran, mais les CHARACTER_INFO
+  // de la session PRÉCÉDENTE sont encore lisibles : sans ce test, la table
+  // s'affiche avec les mauvais personnages, et l'auto-confirm de MoonlightAuth
+  // peut faire entrer en jeu dessus (le natif, lui, relit le vrai slot -> job et
+  // sexe incohérents). La liste est fraîche si son paquet est arrivé APRÈS la
+  // dernière sortie de l'écran.
+  const unsigned long now = GetTickCount();
+  const bool list_fresh =
+      list_tick_ != 0 &&
+      static_cast<long>(list_tick_ - screen_gone_tick_) >= 0;
+  if (!list_fresh) {
+    // Repli de sûreté : on ne bloque JAMAIS durablement. Passé kListWaitMs on
+    // s'arme quand même — le char-select natif reste visible entre-temps, donc
+    // le joueur n'est pas coincé — et on le signale une fois.
+    if (wait_since_ == 0) wait_since_ = now;
+    if (now - wait_since_ < kListWaitMs) {
+      active_ = false;
+      active_since_ = 0;
+      return;  // on laisse le char-select NATIF à l'écran
+    }
+    if (!list_warned_) {
+      list_warned_ = true;
+      LogError("[CharSelect] aucun paquet de liste (0x{:04X}/0x{:04X}) vu en {} ms "
+              "-> table armée sans confirmation. Si ça se répète, l'opcode de "
+              "liste de ce client n'est pas celui observé.",
+              kOpCharList, kOpCharListPage, kListWaitMs);
+    }
+  } else {
+    wait_since_ = 0;
   }
 
   const int cap = SlotCapacity();

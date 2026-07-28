@@ -44,6 +44,10 @@ class CharSelect : public Plugin {
 
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnRenderLoginUI() override;
+  // Observe (jamais n'intercepte) les paquets de LISTE de personnages : c'est le
+  // seul FAIT qui prouve que les CHARACTER_INFO en mémoire sont ceux de la
+  // session courante. Voir list_tick_.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   bool enabled() const { return enabled_; }
 
@@ -166,6 +170,25 @@ class CharSelect : public Plugin {
   // re-login ne change pas de MODE : OnModeSwitch ne repasse pas, et les
   // CHARACTER_INFO restent lisibles un moment après la déconnexion.
   bool left_ = false;
+  // ── Fraîcheur de la liste de personnages ────────────────────────────────────
+  // Les CHARACTER_INFO SURVIVENT à la déconnexion : à la session suivante elles
+  // sont encore lisibles, et la table s'affichait donc avec les personnages de la
+  // session PRÉCÉDENTE. La seule protection était kEnterGraceMs (400 ms) — un
+  // pari sur la latence du char-server, pas une garantie ; avec l'auto-confirm de
+  // MoonlightAuth qui poste des Entrées, on pouvait entrer en jeu sur cette table
+  // périmée. On s'arme désormais sur un FAIT : le paquet de liste de la session
+  // courante a été reçu.
+  //
+  // Comparaison de TICKS et non un simple booléen, pour rester correct quel que
+  // soit l'ordre des événements : le paquet arrive AVANT que la fenêtre native
+  // n'existe, donc remettre un drapeau à zéro « quand l'écran est absent »
+  // l'effacerait aussitôt après réception. La règle est donc : la liste est
+  // fraîche si elle est arrivée APRÈS la dernière fois qu'on a quitté l'écran.
+  unsigned long list_tick_ = 0;        // dernier paquet de liste reçu
+  unsigned long screen_gone_tick_ = 0; // FRONT écran présent -> absent
+  bool screen_was_alive_ = false;      // pour détecter ce front
+  unsigned long wait_since_ = 0;       // début de l'attente d'une liste fraîche
+  bool list_warned_ = false;           // le repli de sûreté n'alerte qu'une fois
   // Éditeur de sièges/layout : glisser les marqueurs pour caler les positions sur le
   // décor, molette = taille, bouton « Dump layout » -> bourgeon.log. Outil d'auteur.
   // ⚠ DÉSACTIVÉ : le layout est calé, plus aucun déclencheur ne met ce flag à true
