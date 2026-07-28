@@ -27,7 +27,7 @@
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
 
-// UICashShopWnd : id 0x13e (318), vtable 0x0101ca18. TrouvΓ©e par FindWindow.
+// UICashShopWnd : id 0x13e (318), vtable 0x0101ca18. Trouvée par FindWindow.
 constexpr int       kWinCashShop  = 0x13e;
 constexpr uintptr_t kCashVTable   = 0x0101ca18;
 
@@ -35,7 +35,6 @@ constexpr uintptr_t kCashVTable   = 0x0101ca18;
 
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
 
-// ItemSkillInfo standalone (ctor + SetId par id) β indΓ©pendant de l'inventaire.
 // Nom d'item par id : DB de description (map id->record), name = *(rec+4) 
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -45,14 +44,14 @@ using EnsureLoaded_t = char (__thiscall*)(void*, int);
 // partagé, ro::ItemCollectionIcon (ui/icon_cache.h), avec le repli sur la petite
 // icône quand l'art n'existe pas.
 
-// DΓ©truit la fenΓͺtre native du cash shop (id 0x13e). SEH-gardΓ© (POD only).
+// Détruit la fenêtre native du cash shop (id 0x13e). SEH-gardé (POD only).
 void CloseNativeCashShop() {
   __try {
     uiwnd::CloseWindow(kWinCashShop);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Lit le pointeur de fenΓͺtre valide (vtable vΓ©rifiΓ©e). SEH-gardΓ©.
+// Lit le pointeur de fenêtre valide (vtable vérifiée). SEH-gardé.
 void* FindCashWnd() {
   __try {
     void* w = uiwnd::FindWindow(kWinCashShop);
@@ -88,7 +87,7 @@ void SnapWindowSize(ImGuiSizeCallbackData* d) {
 //  Cache nom d'item (id -> nom)
 std::unordered_map<uint32_t, std::string> g_name_cache;
 
-// SEH isolΓ© (POD only, pas de std::string -> Γ©vite C2712) : Γ©crit le nom dans out.
+// SEH isolé (POD only, pas de std::string -> évite C2712) : écrit le nom dans out.
 void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
   out[0] = '\0';
   __try {
@@ -131,18 +130,18 @@ const char* ItemName(uint32_t id) {
 // « identifié » que pose OpenDescById, il pointe sur
 // 유저인터페이스\collection\<resname>.bmp.
 
-// Labels des catΓ©gories (e_cash_shop_tab, serveur cashshop.hpp).
-const char* kTabLabels[] = {"Nouveautes", "Populaire", "Limite", "Location",
+// Labels des catégories (e_cash_shop_tab, serveur cashshop.hpp).
+const char* kTabLabels[] = {"Nouveautés", "Populaire", "Limité", "Location",
                             "Permanent", "Parchemins", "Consommables",
                             "Divers",     "Soldes"};
-// Onglets AFFICHΓS (l'index serveur reste 0..8 pour la rΓ©ception 0x08ca / l'achat
-// 0x848 ; on masque juste ceux toujours vides). CachΓ©s : Limite/Location/Permanent/
+// Onglets AFFICHÉS (l'index serveur reste 0..8 pour la réception 0x08ca / l'achat
+// 0x848 ; on masque juste ceux toujours vides). Cachés : Limite/Location/Permanent/
 // Parchemins/Soldes.
 const bool kTabShown[] = {true, true, false, false, false, false, true, true, false};
 
-// Emplacement d'Γ©quipement d'un item depuis son masque `location` (EQP_*, =
-// pc_equippoint). Renvoie {clΓ© d'ordre stable, label} ; {99,"Autre"} = non
-// Γ©quipable (consommable...) ou slot inconnu. Costumes prioritaires (les items
+// Emplacement d'équipement d'un item depuis son masque `location` (EQP_*, =
+// pc_equippoint). Renvoie {clé d'ordre stable, label} ; {99,"Autre"} = non
+// équipable (consommable...) ou slot inconnu. Costumes prioritaires (les items
 // cash sont majoritairement des costumes/coiffes).
 // Clé de filtre virtuelle : "Costumes hat-effect" = costumes sans viewID rendus
 // via effet .str (ItemToHatOrdinal != 0). N'existe pas dans SlotOf (dérivé de
@@ -153,10 +152,10 @@ struct Slot { int key; const char* label; };
 Slot SlotOf(uint32_t e) {
   if (e & 0x2000)            return {13, "Costume cape"};       // COSTUME_GARMENT
   if (e & (0x0400 | 0x0800 | 0x1000))
-                            return {10, "Costume tete"};        // COSTUME_HEAD_*
-  if (e & 0x0100)            return {0,  "Tete haut"};          // HEAD_TOP
-  if (e & 0x0200)            return {1,  "Tete milieu"};        // HEAD_MID
-  if (e & 0x0001)            return {2,  "Tete bas"};           // HEAD_LOW
+                            return {10, "Costume tête"};        // COSTUME_HEAD_*
+  if (e & 0x0100)            return {0,  "Tête haut"};          // HEAD_TOP
+  if (e & 0x0200)            return {1,  "Tête milieu"};        // HEAD_MID
+  if (e & 0x0001)            return {2,  "Tête bas"};           // HEAD_LOW
   if (e & 0x0010)            return {3,  "Armure"};             // ARMOR
   if (e & 0x0004)            return {4,  "Cape"};               // GARMENT
   if (e & 0x0040)            return {5,  "Chaussures"};         // SHOES
@@ -171,23 +170,23 @@ Slot SlotOf(uint32_t e) {
 
 //  Opcodes cash shop (vanilla, < 0x0C35 -> handler natif intact, on OBSERVE) 
 // NOTE (RE 2026-07-05) : sur ce packetver (20250716) le peuplement se fait par
-// **ZC_ACK_SCHEDULER_CASHITEM 0x08ca** (un paquet par onglet), dΓ©clenchΓ© par la
-// list-request **0x08c9** (2 octets) que le client natif envoie Γ  l'ouverture.
+// **ZC_ACK_SCHEDULER_CASHITEM 0x08ca** (un paquet par onglet), déclenché par la
+// list-request **0x08c9** (2 octets) que le client natif envoie à l'ouverture.
 // Le couple CZ_REQ_SE_CASH_TAB_CODE 0x846 / ZC_ACK_SE_CASH_ITEM_LIST2 0x8c0 est
 // du code serveur mort ici (#if PACKETVER 2011 uniquement) -> ne rien en attendre.
 constexpr uint16_t kOpOpen     = 0x0b6e;  // ZC_SE_CASHSHOP_OPEN (points)
 constexpr uint16_t kOpItemList = 0x08ca;  // ZC_ACK_SCHEDULER_CASHITEM (items/onglet)
 constexpr uint16_t kOpResult   = 0x0849;  // ZC_SE_PC_BUY_CASHITEM_RESULT
 // Envois (CZ).
-constexpr uint16_t kOpListReq  = 0x08c9;  // list request -> dΓ©clenche les 0x08ca
+constexpr uint16_t kOpListReq  = 0x08c9;  // list request -> déclenche les 0x08ca
 constexpr uint16_t kOpBuy      = 0x0848;  // CZ_SE_PC_BUY_CASHITEM_LIST
 constexpr uint16_t kOpClose    = 0x084a;  // CZ cashshop close (2 octets)
 
 CashShopWindow::CashShopWindow() {
-  // ZC_SE_CASHSHOP_OPEN : [cash:4][kafra:4][tab:4] = 12 octets aprΓ¨s l'opcode.
+  // ZC_SE_CASHSHOP_OPEN : [cash:4][kafra:4][tab:4] = 12 octets après l'opcode.
   Bourgeon::Instance().RegisterObserveOpcode(kOpOpen, 12);
   // ZC_ACK_SCHEDULER_CASHITEM (var) : [len:2][count:2][tabNum:2] = 6 octets pour
-  // atteindre l'en-tΓͺte ; les items sont lus directement dans le buffer live.
+  // atteindre l'en-tête ; les items sont lus directement dans le buffer live.
   Bourgeon::Instance().RegisterObserveOpcode(kOpItemList, 6);
   // ZC_SE_PC_BUY_CASHITEM_RESULT : [itemId:4][result:2][cash:4][kafra:4] = 14 o.
   Bourgeon::Instance().RegisterObserveOpcode(kOpResult, 14);
@@ -203,10 +202,10 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   }
   if (opcode == kOpItemList) {
     // data = [packetLength:2][count:2][tabNum:2][items...] (ZC_ACK_SCHEDULER_CASHITEM,
-    // un paquet par onglet). packetLength inclut l'en-tΓͺte [opcode:2] -> le pas d'un
+    // un paquet par onglet). packetLength inclut l'en-tête [opcode:2] -> le pas d'un
     // item = (packetLength - 8) / count : robuste au ENABLE_CASHSHOP_PREVIEW_PATCH
     // (item = itemId:4 + price:4 [+ viewSprite:2 + location:4]). data pointe dans le
-    // buffer recv live (paquet complet prΓ©sent) -> on lit au-delΓ  des `len` forwardΓ©s.
+    // buffer recv live (paquet complet présent) -> on lit au-delà des `len` forwardés.
     if (len < 6) return;
     const uint16_t plen  = *reinterpret_cast<const uint16_t*>(data);
     int32_t        count = *reinterpret_cast<const int16_t*>(data + 2);
@@ -217,8 +216,8 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     const int32_t stride = body / count;
     if (stride < 8) return;  // au moins itemId(4)+price(4)
     if (count > 8192) count = 8192;
-    // 1er paquet de CET onglet (tabNum != prΓ©cΓ©dent) -> on repart de zΓ©ro ;
-    // sinon = continuation d'un onglet dΓ©coupΓ© -> on APPEND (ne pas Γ©craser).
+    // 1er paquet de CET onglet (tabNum != précédent) -> on repart de zéro ;
+    // sinon = continuation d'un onglet découpé -> on APPEND (ne pas écraser).
     if (last_recv_tab_ != static_cast<int>(tab)) {
       tabs_[tab].clear();
       last_recv_tab_ = static_cast<int>(tab);
@@ -245,15 +244,15 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       cash_points_  = *reinterpret_cast<const uint32_t*>(data + 6);
       kafra_points_ = *reinterpret_cast<const uint32_t*>(data + 10);
     }
-    if (last_result_ == 0) cart_.clear();  // succΓ¨s -> panier vidΓ©
+    if (last_result_ == 0) cart_.clear();  // succès -> panier vidé
     return;
   }
 }
 
 // Demande la liste des items du cash shop (2 octets = juste l'opcode). Le serveur
-// rΓ©pond par une sΓ©rie de ZC_ACK_SCHEDULER_CASHITEM 0x08ca (un par onglet rempli),
+// répond par une série de ZC_ACK_SCHEDULER_CASHITEM 0x08ca (un par onglet rempli),
 // mais UNE SEULE FOIS par session (flag cashshop_sent) : le client natif l'envoie
-// dΓ©jΓ  Γ  l'ouverture, donc c'est surtout un filet de sΓ©curitΓ©.
+// déjà à l'ouverture, donc c'est surtout un filet de sécurité.
 void CashShopWindow::RequestTab(int /*tab*/) {
   uint16_t op = kOpListReq;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
@@ -272,10 +271,10 @@ void CashShopWindow::SendBuy() {
   if (cart_.empty()) return;
   const int count = static_cast<int>(cart_.size());
   const int plen = 10 + 10 * count;
-  // kafraPoints = montant EXACT de points d'Event Γ  dΓ©penser (le serveur paie le
+  // kafraPoints = montant EXACT de points d'Event à dépenser (le serveur paie le
   // reste `price - kafraPoints` en points de Vote : cash = price - points, SANS
   // borner points au prix). Donc envoyer tout le solde draine tout + fausse le
-  // Vote. On dΓ©pense au plus le total du panier (min(total, solde)).
+  // Vote. On dépense au plus le total du panier (min(total, solde)).
   long long total = 0;
   for (const auto& e : cart_)
     total += static_cast<long long>(e.price) * e.amount;
@@ -344,15 +343,15 @@ void CashShopWindow::OnTick() {
         need_pos_ = true;
       }
       // Master switch : viewer ON -> cache le natif chaque tick (le natif peut
-      // remettre +0x28=1 sur Γ©vΓ©nement) ; OFF -> laisse le natif visible.
+      // remettre +0x28=1 sur événement) ; OFF -> laisse le natif visible.
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffVisible) =
           imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
   }
-  // Γ la 1re ouverture : demander la liste (filet de sΓ©curitΓ© ; le natif l'a dΓ©jΓ 
-  // demandΓ©e -> le serveur peut ne rien renvoyer si cashshop_sent est dΓ©jΓ  posΓ©,
-  // auquel cas notre observe a captΓ© les 0x08ca du natif).
+  // À la 1re ouverture : demander la liste (filet de sécurité ; le natif l'a déjà
+  // demandée -> le serveur peut ne rien renvoyer si cashshop_sent est déjà posé,
+  // auquel cas notre observe a capté les 0x08ca du natif).
   if (open_ && !was_open_) {
     last_result_ = -1;
     last_recv_tab_ = -1;  // nouvelle salve de listes -> le 1er paquet videra son onglet
@@ -379,7 +378,7 @@ void CashShopWindow::OnRenderUI() {
         ImVec2(10000.0f, 10000.0f), SnapWindowSize);
   }
 
-  // MΓͺme style de fenΓͺtre que MoonlightUi (cadre arrondi / roundframe).
+  // Même style de fenêtre que MoonlightUi (cadre arrondi / roundframe).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
@@ -389,10 +388,10 @@ void CashShopWindow::OnRenderUI() {
       ro::BeginRoWindow("Vote Shop###bourgeon_cashshop", &show_panel_,
                         ImGuiWindowFlags_NoCollapse);
   if (!show_panel_) {
-    // X (ou Γchap) -> on FERME rΓ©ellement le cash shop : paquet de fermeture serveur
-    // (CZ 0x084a, reset npc_shopid) + destruction de la fenΓͺtre native (id 0x13e).
-    // Ensuite FindWindow(0x13e) rend null -> open_ passe Γ  false -> le viewer
-    // disparaΓ�t. On remet show_panel_ Γ  true pour la prochaine ouverture.
+    // X (ou Échap) -> on FERME réellement le cash shop : paquet de fermeture serveur
+    // (CZ 0x084a, reset npc_shopid) + destruction de la fenêtre native (id 0x13e).
+    // Ensuite FindWindow(0x13e) rend null -> open_ passe à false -> le viewer
+    // disparaît. On remet show_panel_ à true pour la prochaine ouverture.
     uint16_t op = kOpClose;
     Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
     CloseNativeCashShop();
@@ -400,7 +399,7 @@ void CashShopWindow::OnRenderUI() {
   }
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
-  //  En-tΓͺte : points du compte 
+  //  En-tête : points du compte 
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
   ImGui::TextColored(kBlack, "Vote: %u", cash_points_);
   ImGui::SameLine();
@@ -417,15 +416,15 @@ void CashShopWindow::OnRenderUI() {
   }
   ImGui::Separator();
 
-  //  Onglets de catΓ©gorie 
+  //  Onglets de catégorie 
   if (ImGui::BeginTabBar("cashshop_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
     for (int t = 0; t < kNumTabs; ++t) {
-      if (!kTabShown[t]) continue;  // onglet toujours vide -> masquΓ©
+      if (!kTabShown[t]) continue;  // onglet toujours vide -> masqué
       char lbl[48];
       std::snprintf(lbl, sizeof(lbl), "%s (%d)###cstab%d", kTabLabels[t],
                     static_cast<int>(tabs_[t].size()), t);
       if (ImGui::BeginTabItem(lbl)) {
-        if (cur_tab_ != t) cur_slot_ = -1;  // changer d'onglet -> filtre slot remis Γ  Tous
+        if (cur_tab_ != t) cur_slot_ = -1;  // changer d'onglet -> filtre slot remis à Tous
         cur_tab_ = t;
         ImGui::EndTabItem();
       }
@@ -442,7 +441,7 @@ void CashShopWindow::OnRenderUI() {
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
 
-  //  Filtre par emplacement d'Γ©quipement (slots prΓ©sents dans l'onglet)
+  //  Filtre par emplacement d'équipement (slots présents dans l'onglet)
   // Prédicat "costume hat-effect" : rendu par effet .str (ItemToHatOrdinal != 0),
   // typiquement un costume SANS viewID propre. O(1) (lookup map dans basic_info).
   auto* bi = Bourgeon::Instance().basic_info();
@@ -457,7 +456,7 @@ void CashShopWindow::OnRenderUI() {
     bool seen = false;
     for (const auto& x : slots) if (x.key == s.key) { seen = true; break; }
     if (!seen) {
-      size_t p = slots.size();  // insertion triΓ©e par clΓ©
+      size_t p = slots.size();  // insertion triée par clé
       while (p > 0 && slots[p - 1].key > s.key) --p;
       slots.insert(slots.begin() + p, s);
     }
@@ -465,7 +464,7 @@ void CashShopWindow::OnRenderUI() {
   // Entrée virtuelle "Costumes hat-effect" (clé 100 > toutes les clés réelles ->
   // en fin de liste), présente seulement si l'onglet en contient.
   if (has_hateffect) slots.push_back({kSlotHatEffect, "Costumes hat-effect"});
-  // Un seul slot "Autre" (99) => onglet non-Γ©quipable : pas de filtre utile.
+  // Un seul slot "Autre" (99) => onglet non-équipable : pas de filtre utile.
   const bool slot_filter_useful = slots.size() > 1;
   if (slot_filter_useful) {
     const char* cur_label = "Emplacement: tous";
@@ -500,7 +499,7 @@ void CashShopWindow::OnRenderUI() {
   ImGui::SameLine();
   if (ro::RoButton(sort_asc_ ? "Asc" : "Desc")) sort_asc_ = !sort_asc_;
 
-  //  Disposition : grille Γ  gauche, panier Γ  droite (comme le cash shop natif) 
+  //  Disposition : grille à gauche, panier à droite (comme le cash shop natif) 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   // Panier auto-masqué quand il est vide -> la grille prend toute la largeur. Il
   // réapparaît dès qu'on ajoute un item et se re-masque après achat/vidage. (Avec
@@ -513,8 +512,8 @@ void CashShopWindow::OnRenderUI() {
   const float  main_win_w = ImGui::GetWindowWidth();
   const float  main_win_h = ImGui::GetWindowHeight();
 
-  //  Grille d'items : cartes Γ  TAILLE FIXE (child) -> le texte est bornΓ© Γ  la
-  // carte (sinon TextWrapped s'Γ©tale sur toute la fenΓͺtre et casse la grille) 
+  //  Grille d'items : cartes à TAILLE FIXE (child) -> le texte est borné à la
+  // carte (sinon TextWrapped s'étale sur toute la fenêtre et casse la grille) 
   // Si un aperçu était survolé la frame précédente, on gèle le scroll-molette de la
   // grille -> la molette reste libre pour tourner le perso (rotation dans basic_info).
   ImGui::BeginChild("cs_grid", ImVec2(grid_w, 0), true,
@@ -533,8 +532,8 @@ void CashShopWindow::OnRenderUI() {
     g_snap.valid = true;
     const int cols =
         std::max(1, static_cast<int>((grid_inner_w + gap) / (card_w + gap)));
-    // Liste filtrΓ©e (ptrs) : une catΓ©gorie peut avoir 2500+ items -> on CLIPPE par
-    // rangΓ©e (ImGuiListClipper) pour ne dessiner que les cartes visibles (sinon
+    // Liste filtrée (ptrs) : une catégorie peut avoir 2500+ items -> on CLIPPE par
+    // rangée (ImGuiListClipper) pour ne dessiner que les cartes visibles (sinon
     // 2500 child-windows/frame = chute de FPS).
     std::vector<const CashItem*> vis;
     vis.reserve(tabs_[cur_tab_].size());
@@ -578,7 +577,7 @@ void CashShopWindow::OnRenderUI() {
       ImGui::BeginChild("card", ImVec2(card_w, card_h), true,
                         ImGuiWindowFlags_NoScrollbar |
                             ImGuiWindowFlags_NoScrollWithMouse);
-      // 1) Nom EN HAUT (texte foncΓ©, coupΓ© Γ  la largeur de la carte).
+      // 1) Nom EN HAUT (texte foncé, coupé à la largeur de la carte).
       // Nom EN HAUT dans un BANDEAU plus fonce que la carte (isole du corps) :
       // bande remplie sur toute la largeur, du haut jusqu'au debut de la rangee du
       // bas, texte clair par-dessus.
@@ -602,7 +601,7 @@ void CashShopWindow::OnRenderUI() {
         const ImVec2 tp(wp.x + 4.0f, wp.y + (header_h - fsz) * 0.5f);
         dl->AddText(font, fsz, tp, card_txt, nm);
       }
-      // 2) RangΓ©e du bas ancrΓ©e : image Γ  GAUCHE, prix + Buy Γ  DROITE.
+      // 2) Rangée du bas ancrée : image à GAUCHE, prix + Buy à DROITE.
       // Bloc du bas [image | prix+boutons] CENTRE sur tous les bords (coords contenu).
       const float pad_x = 5.0f, pad_y = 3.0f;   // = WindowPadding de la carte
       const float cont_w = card_w - 2.0f * pad_x;
@@ -686,7 +685,7 @@ void CashShopWindow::OnRenderUI() {
       if (ro::RoButton("Achat 1-Click", colw, frameH))
         BuyNow(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(afford ? "Achat immediat d'1 unite, puis fermeture du shop"
+        ImGui::SetTooltip(afford ? "Achat immédiat d'1 unité, puis fermeture du shop"
                                  : why);
       if (!afford) ImGui::EndDisabled();
       ImGui::EndChild();
@@ -716,12 +715,12 @@ void CashShopWindow::OnRenderUI() {
     }
     clipper.End();
     ImGui::PopStyleVar();
-    if (n == 0) ImGui::TextDisabled("(aucun item dans cette categorie)");
+    if (n == 0) ImGui::TextDisabled("(aucun item dans cette catégorie)");
   }
   ImGui::EndChild();
   preview_active_ = preview_now;  // gele le scroll grille tant qu'on survole un apercu
 
-  //  Panier (Γ  droite) 
+  //  Panier (à droite) 
   if (show_cart) {  // panier masqué quand vide -> grille pleine largeur
   ImGui::SameLine();
   ImGui::BeginChild("cs_cart", ImVec2(cart_w, 0), true);
