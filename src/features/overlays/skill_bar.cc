@@ -66,11 +66,17 @@ constexpr int kMaxSlots     = 36;     // 0x24
 constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé
 constexpr uintptr_t kStrFree       = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
 constexpr uintptr_t kCloseWindow   = 0x00a2e770;  // UIWindowMgr_Close(mgr,id)
-constexpr int kWinSkillDesc   = 0xc;   // fenêtre description (skill : OnMsg 0x18 + &SkillInfo)
-constexpr int kWinItemDesc    = 0x2e;  // fenêtre tooltip objet (OnMsg 0x3d + nameid brut)
-constexpr int kMsgSetSkill    = 0x18;  // OnMsg fenêtre 0xc : montre le skill (p3=&SkillInfo)
-constexpr int kMsgSetItem     = 0x3d;  // OnMsg fenêtre 0x2e : montre l'objet (p3=nameid)
-constexpr int kItemWinShownId = 0x104; // (fenêtre 0x2e)+0x104 = nameid affiché (bascule ouvrir/fermer)
+// ⚠ Ces quatre-là étaient INTERVERTIS (corrigé le 2026-07-28) : la branche SKILL
+// ouvrait un « kWinItemDesc » et la branche OBJET un « kWinSkillDesc ». Le
+// comportement était juste — c'est l'appariement id/message qui compte, et il
+// n'a pas bougé — mais les noms disaient le contraire du code, à rebours des
+// huit autres fichiers du projet et de character_sheet.cc:1713 qui documente
+// explicitement « 0x2e ≠ 0xc, qui est celle des objets ».
+constexpr int kWinItemDesc     = 0xc;   // desc OBJET : OnMsg 0x18 + &ItemSkillInfo (struct)
+constexpr int kWinSkillDesc    = 0x2e;  // desc SKILL : OnMsg 0x3d + id BRUT
+constexpr int kMsgSetItem      = 0x18;  // OnMsg fenêtre 0xc  : montre l'objet (p2=&ItemSkillInfo)
+constexpr int kMsgSetSkill     = 0x3d;  // OnMsg fenêtre 0x2e : montre le skill (p2=id)
+constexpr int kSkillWinShownId = 0x104; // (fenêtre 0x2e)+0x104 = id affiché (bascule ouvrir/fermer)
 constexpr int kVfSetPos       = 0x10;  // vtable+0x10 = SetPos(x,y)
 constexpr int kSkillInfoSize  = 0x100; // SkillInfo ~0xf8 o (2 std::string @ +0x2c / +0x44)
 constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
@@ -714,12 +720,12 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
       void* mgr = uiwnd::Mgr();
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
         void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-            mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+            mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
         if (wnd) {
-          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kItemWinShownId) == id) {
-            reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinItemDesc);  // bascule
+          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == id) {
+            reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinSkillDesc);  // bascule
           } else {
-            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem, id, 0, 0, 0);
+            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill, id, 0, 0, 0);
             Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
           }
         }
@@ -728,9 +734,9 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
         void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-            mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+            mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
         if (wnd) {
-          Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill,
+          Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
           Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
         }
