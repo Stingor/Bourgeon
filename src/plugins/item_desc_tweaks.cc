@@ -811,20 +811,29 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
   ImU32       cur = default_col;
   bool        inHref = false;   // on lit l'URL entre <INFO> et </INFO> (non affichée)
   std::string word;
+  // Un flush est déclenché aussi bien par un vrai espace que par un token ^RRGGBB /
+  // une balise EN PLEIN MOT (« Knight^777777s »). Seul le premier doit produire un
+  // séparateur : sans ce drapeau, chaque token couleur intercalé injectait un espace
+  // parasite (« Knight s »). Posé UNIQUEMENT à la consommation d'un ' ' de la source.
+  bool        pendingSpace = false;
   auto flushWord = [&](ImU32 c) {
-    if (word.empty()) return;
+    if (word.empty()) return;   // early-out : ne consomme pas `pendingSpace`
     ImU32 useCol = c;
     if (curLink >= 0)
       useCol = (linkKind[curLink] == 1) ? kLinkNavi : kLinkUrl;
     const float ww = ImGui::CalcTextSize(word.c_str()).x;
     if (penX > 0.0f) {
-      if (penX + spaceW + ww > wrap) {       // wrap doux -> espace logique
-        buf.push_back(' ');
+      // Le mot doit wrapper même sans séparateur en attente (suite d'un mot coupé par
+      // un token couleur qui déborde) -> le test de largeur est indépendant.
+      const float sep = pendingSpace ? spaceW : 0.0f;
+      if (penX + sep + ww > wrap) {           // wrap doux -> espace logique
+        if (pendingSpace) buf.push_back(' ');
         penX = 0.0f; penY += lineH; ++row;
-      } else {
-        putVisible(" ", 1, spaceW, useCol);  // espace visible entre mots
+      } else if (pendingSpace) {
+        putVisible(" ", 1, spaceW, useCol);   // espace visible entre mots
       }
     }
+    pendingSpace = false;
     // Découpe par CARACTÈRE (séquence UTF-8), pas par octet.
     for (size_t i = 0; i < word.size();) {
       int len = Utf8SeqLen(static_cast<unsigned char>(word[i]));
@@ -861,7 +870,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
           continue;
         }
       }
-      if (*p == ' ') { flushWord(cur); ++p; }
+      if (*p == ' ') { flushWord(cur); pendingSpace = true; ++p; }
       else           { word.push_back(*p); ++p; }
     }
     // Ligne PLEINE (== colonne de wrap) NON terminée par une ponctuation de phrase et
@@ -881,6 +890,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     // suivante, comme dans le rich-text natif (fermeture explicite par ^000000).
     buf.push_back('\n');            // fin de ligne (dans le buffer, non visible)
     penX = 0.0f; penY += lineH; ++row;
+    pendingSpace = false;           // le '\n' fait office de séparateur
   }
   flushWord(cur);   // garde-fou : résidu si la dernière ligne était « pleine »
   float totalH = penY;
