@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ui/game_texture.h"
 #include "features/overlays/login_parade.h"
 
@@ -24,11 +25,7 @@ namespace {
 constexpr uintptr_t kMonResName     = 0x00d824c0;  // Mob_ClassIdToResName(classId) -> resname
 constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __thiscall(act, action, frameIdx) -> frame*
 constexpr uintptr_t kActFrameCount  = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
-constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __thiscall(atlas, cell, pal, geom) -> ctex|0
-constexpr uintptr_t kAtlasBuild     = 0x005663d0;  // __thiscall(atlas, cell, pal, geom) -> ctex
-constexpr uintptr_t kSceneCtxPtr    = 0x012515f8;  // *ptr + 0xc0 = l'atlas de sprites
 constexpr int       kCTexDX9Handle  = 0x12c;       // CTexture -> IDirect3DTexture9*
 constexpr int       kCTexDX7Handle  = 0x128;       // CTexture -> handle GPU (chemin DX7)
 
@@ -158,7 +155,7 @@ void PlayMobSound(const char* name) {
 bool MaybePlayFrameSound(void* act, unsigned action, unsigned frameIdx) {
   bool played = false;
   __try {
-    void* frame = reinterpret_cast<ActGetFrameFn>(kActGetFrame)(
+    void* frame = reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(
         act, nullptr, action, frameIdx);
     if (frame) {
       const unsigned sidx =
@@ -218,7 +215,7 @@ bool ResolveQuad(int idx, unsigned action, unsigned frameIdx, void** out_tex,
   const int handle_off = g_imgui_dx7_active ? kCTexDX7Handle : kCTexDX9Handle;
   bool ok = false;
   __try {
-    void* frame = reinterpret_cast<ActGetFrameFn>(kActGetFrame)(
+    void* frame = reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(
         s.act, nullptr, action, frameIdx);
     if (!frame) return false;
     char* fr = reinterpret_cast<char*>(frame);
@@ -229,7 +226,7 @@ bool ResolveQuad(int idx, unsigned action, unsigned frameIdx, void** out_tex,
 
     char* spr = reinterpret_cast<char*>(s.spr);
     void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
+        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
 
     // Plus grande cellule valide = le corps (on saute la petite ombre).
     void*  best = nullptr;
@@ -248,9 +245,9 @@ bool ResolveQuad(int idx, unsigned action, unsigned frameIdx, void** out_tex,
       if (!cell) continue;
       const int palette = static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
       int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(kAtlasGetCached)(
+      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(
           atlas, nullptr, cell, palette, geom);
-      if (!ctex) ctex = reinterpret_cast<AtlasFn>(kAtlasBuild)(
+      if (!ctex) ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(
           atlas, nullptr, cell, palette, geom);
       if (!ctex) continue;
       const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);

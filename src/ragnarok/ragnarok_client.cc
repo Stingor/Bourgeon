@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ragnarok/ragnarok_client.h"
 
 #include <Windows.h>
@@ -66,7 +67,6 @@ extern bool g_imgui_dx7_active;
 
 namespace {
 constexpr uintptr_t kCursorRenderFn = 0x00a74410;  // CursorMgr_RenderSprite
-constexpr uintptr_t kAtlasGetFn     = 0x00566b70;  // SpriteAtlas_GetCachedTexture
 // CTexture -> native GPU handle. The concrete CTexture class is renderer-
 // specific (different vtable + field offset): DX9 stores an IDirect3DTexture9*
 // at +0x12c, DX7 an IDirectDrawSurface7* at +0x128 (both confirmed live). ImGui's
@@ -181,7 +181,7 @@ void InstallCursorCapture() {
           reinterpret_cast<uint8_t*>(&Hooked_CursorRender)));
   g_orig_atlas_get = reinterpret_cast<AtlasGetFn>(
       HookManager::Instance().SetHook(HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kAtlasGetFn),
+          reinterpret_cast<uint8_t*>(render::kAtlasGetCachedAddr),
           reinterpret_cast<uint8_t*>(&Hooked_AtlasGet)));
   // LogInfo("[Cursor] capture hooks installed (render_orig={:x} atlas_orig={:x})",
           // reinterpret_cast<uintptr_t>(g_orig_cursor_render),

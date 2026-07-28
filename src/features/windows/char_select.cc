@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/windows/char_select.h"
@@ -372,10 +373,6 @@ constexpr uintptr_t kFmtSprF = 0x0108F9BC;  // 인간족\머리통\여\%d_여.sp
 constexpr uintptr_t kFmtActF = 0x0108F9A0;  // …\여\%d_여.act
 constexpr uintptr_t kFmtSprM = 0x0108F9F4;  // 인간족\머리통\남\%d_남.spr (mâle)
 constexpr uintptr_t kFmtActM = 0x0108F9D8;  // …\남\%d_남.act
-constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __fastcall(act, edx, action, frame) -> frame*
-constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __fastcall(atlas, edx, cell, pal, geom) -> ctex
-constexpr uintptr_t kAtlasBuild     = 0x005663d0;
-constexpr uintptr_t kSceneCtxPtr    = 0x012515f8;  // *ptr + 0xc0 = atlas de sprites
 constexpr int       kCTexDX9Handle  = 0x12c;
 constexpr int       kCTexDX7Handle  = 0x128;
 using TexMgrGetFn   = void* (__cdecl*)();
@@ -430,7 +427,7 @@ bool Resolve(Entry* e, void** out_tex, ImVec2* uv0, ImVec2* uv1, float* cw, floa
   bool ok = false;
   __try {
     void* frame =
-        reinterpret_cast<ActGetFrameFn>(kActGetFrame)(e->act, nullptr, 0, 0);
+        reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(e->act, nullptr, 0, 0);
     if (!frame) return false;
     char* fr = reinterpret_cast<char*>(frame);
     char* lbegin = *reinterpret_cast<char**>(fr + 0x20);
@@ -439,7 +436,7 @@ bool Resolve(Entry* e, void** out_tex, ImVec2* uv0, ImVec2* uv1, float* cw, floa
     if (nlayers <= 0 || nlayers > 64) return false;
     char* spr = reinterpret_cast<char*>(e->spr);
     void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
+        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
     void* best = nullptr;
     ImVec2 b0, b1;
     float bw = 0.0f, bh = 0.0f;
@@ -461,10 +458,10 @@ bool Resolve(Entry* e, void** out_tex, ImVec2* uv0, ImVec2* uv1, float* cw, floa
           ? static_cast<int>(reinterpret_cast<uintptr_t>(pal_override))
           : static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
       int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(kAtlasGetCached)(atlas, nullptr, cell,
+      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(atlas, nullptr, cell,
                                                              palette, geom);
       if (!ctex)
-        ctex = reinterpret_cast<AtlasFn>(kAtlasBuild)(atlas, nullptr, cell, palette,
+        ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(atlas, nullptr, cell, palette,
                                                      geom);
       if (!ctex) continue;
       const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);

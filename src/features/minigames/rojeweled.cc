@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ui/game_texture.h"
 #include "features/minigames/rojeweled.h"
 
@@ -54,11 +55,7 @@ Mon g_mon[kTypes] = {
 // ── Engine glue (20250716) — same monster-sprite pipeline as Roggle ──────
 constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __thiscall(act, action, frameIdx) -> frame*
 constexpr uintptr_t kActFrameCount  = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
-constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __thiscall(atlas, cell, pal, geom) -> ctex|0
-constexpr uintptr_t kAtlasBuild     = 0x005663d0;  // __thiscall(atlas, cell, pal, geom) -> ctex
-constexpr uintptr_t kSceneCtxPtr    = 0x012515f8;  // *ptr + 0xc0 = sprite atlas
 constexpr int       kCTexDX9Handle  = 0x12c;
 
 using TexMgrGetFn   = void* (__cdecl*)();
@@ -118,7 +115,7 @@ bool ResolveMonQuad(Mon& m, void** out_tex, ImVec2* uv0, ImVec2* uv1) {
   if (!m.spr || !m.act) return false;
   bool ok = false;
   __try {
-    void* frame = reinterpret_cast<ActGetFrameFn>(kActGetFrame)(
+    void* frame = reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(
         m.act, nullptr, 0, IdleFrame(m.act));
     if (!frame) return false;
     char* fr = reinterpret_cast<char*>(frame);
@@ -128,7 +125,7 @@ bool ResolveMonQuad(Mon& m, void** out_tex, ImVec2* uv0, ImVec2* uv1) {
     if (nlayers <= 0 || nlayers > 64) return false;
     char* spr = reinterpret_cast<char*>(m.spr);
     void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
+        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
     void*  best = nullptr;
     ImVec2 b0, b1;
     long   best_area = -1;
@@ -144,8 +141,8 @@ bool ResolveMonQuad(Mon& m, void** out_tex, ImVec2* uv0, ImVec2* uv1) {
       if (!cell) continue;
       const int palette = static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
       int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(kAtlasGetCached)(atlas, nullptr, cell, palette, geom);
-      if (!ctex) ctex = reinterpret_cast<AtlasFn>(kAtlasBuild)(atlas, nullptr, cell, palette, geom);
+      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(atlas, nullptr, cell, palette, geom);
+      if (!ctex) ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(atlas, nullptr, cell, palette, geom);
       if (!ctex) continue;
       const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);
       if (area > best_area) {

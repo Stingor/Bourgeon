@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "features/overlays/status_icon_bar.h"
 
@@ -46,7 +47,6 @@ constexpr uintptr_t kSpriteRef   = 0x00568760;  // __thiscall(cache,path,0,0,1,0
 constexpr uintptr_t kAlloc       = 0x00dbbc4f;  // __cdecl(size) -> void* (engine allocator)
 
 constexpr uintptr_t kSpriteCache = 0x0125161c;  // &DAT_0125161c (sprite-ref cache)
-constexpr uintptr_t kViewportPtr = 0x012515f8;  // void** ; (*vp)+0x28=W, +0x2c=H
 constexpr uintptr_t kVecBegin    = 0x0136e6c8;  // std::vector<StatusIcon>::begin (raw bytes)
 constexpr uintptr_t kVecEnd      = 0x0136e6cc;  // ::end
 constexpr uintptr_t kGridIds     = 0x015ffd80;  // int[100] laid-out ids (-1 empty)
@@ -369,7 +369,7 @@ void __fastcall BuildHook(void* scene, void* edx) {
     return;
   }
   __try {
-    void* vp = *reinterpret_cast<void**>(kViewportPtr);
+    void* vp = *reinterpret_cast<void**>(render::kContextPtr);
     if (!vp) return;
 
     int gate = SceneI(scene, kSceneGate);
@@ -425,7 +425,7 @@ void __fastcall HitTestHook(void* scene, void* /*edx*/, int mx, int my) {
     return;
   }
   __try {
-    void* vp = *reinterpret_cast<void**>(kViewportPtr);
+    void* vp = *reinterpret_cast<void**>(render::kContextPtr);
     if (!vp) { g_hittest_orig(scene, nullptr, mx, my); return; }
     const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
     const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);
@@ -504,7 +504,7 @@ bool ColorSwatch(const char* label, float col[4]) {
 // Dragging it updates the corner margins (so Marge X/Y stay in sync) and flags
 // a rebuild.  The icons are engine-drawn, so this is an overlay, not the bar.
 void DrawDragOverlay() {
-  void* vp = *reinterpret_cast<void**>(kViewportPtr);
+  void* vp = *reinterpret_cast<void**>(render::kContextPtr);
   if (!vp) return;
   const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);
@@ -650,7 +650,7 @@ void TimeTextPos(float cx, float cy, int half, const ImVec2& ts,
 // glyph / shadow colours, an 8-way halo, and optional faux-bold. All colours
 // fade with the icon opacity so the text tracks the bar.
 void DrawRemainingTime() {
-  void* vp = *reinterpret_cast<void**>(kViewportPtr);
+  void* vp = *reinterpret_cast<void**>(render::kContextPtr);
   if (!vp) return;
   const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);

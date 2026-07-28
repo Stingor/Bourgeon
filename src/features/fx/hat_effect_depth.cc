@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "features/fx/hat_effect_depth.h"
 
 #include <Windows.h>
@@ -30,7 +31,6 @@ constexpr uint32_t kDepthConvertedContinueVa = 0x00AD93E2;  // path converti
 // Depth_NormalizeToClip : normalise la profondeur monde en profondeur clip.
 constexpr uint32_t kWorldDepthConvertVa = 0x00554040;
 // Contexte de rendu (matrice de projection à +0x08/+0x24) et constantes SSE.
-constexpr uint32_t kRenderContextPtrVa = 0x012515F8;
 constexpr uint32_t kNativeDepthQuantumVa = 0x00FD6AE4;
 constexpr uint32_t kNativeAbsMaskVa = 0x00FD5D60;
 
@@ -311,7 +311,7 @@ void HatEffectDepth::InstallDepthPatch() {
       wrapper_va, flag_va, static_cast<uint32_t>(kScreenLayerLoopVa + delta));
   const Emit bridge = BuildDepthBridge(
       bridge_va, flag_va, contact_va,
-      static_cast<uint32_t>(kRenderContextPtrVa + delta),
+      static_cast<uint32_t>(render::kContextPtr + delta),
       static_cast<uint32_t>(kNativeAbsMaskVa + delta),
       static_cast<uint32_t>(kNativeDepthQuantumVa + delta),
       static_cast<uint32_t>(kWorldDepthConvertVa + delta),

@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
@@ -130,8 +131,6 @@ constexpr uintptr_t kActorDraw   = 0x007ac820;  // actor draw (param 1 = quad pa
 constexpr uintptr_t kActorDtor   = 0x0079a6a0;  // actor-object destructor
 constexpr uintptr_t kGetSex      = 0x00d84760;  // GetSex(session)
 constexpr uintptr_t kActorQuadFn = 0x00a1b7c0;  // textured-quad submit (hooked)
-constexpr uintptr_t kAtlasGetFn  = 0x00566b70;  // SpriteAtlas_GetCachedTexture
-constexpr uintptr_t kSceneCtxPtr = 0x012515f8;  // -> scene render ctx (atlas @+0xc0)
 constexpr uintptr_t kRenderCtxPtr = 0x0131f6c4;  // BasicInfo window = a valid renderCtx
 constexpr uintptr_t kHair        = 0x015fb278;  // DAT_015fb278 hair style
 constexpr uintptr_t kClothesCol  = 0x015fb28c;  // DAT_015fb28c clothes palette
@@ -237,8 +236,8 @@ void EmitCapLayer(void* p3, short* spr_frame, int* act_layer, float x, float y,
     // sprite atlas; UVs are the atlas sub-rect (geom[3..6]).
     int geom[12] = {0};
     void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
-    void* ctex = reinterpret_cast<AtlasGetFn>(kAtlasGetFn)(
+        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
+    void* ctex = reinterpret_cast<AtlasGetFn>(render::kAtlasGetCachedAddr)(
         atlas, nullptr, static_cast<int>(reinterpret_cast<intptr_t>(spr_frame)),
         static_cast<int>(reinterpret_cast<intptr_t>(palette)), geom);
     if (ctex) {
@@ -613,10 +612,8 @@ constexpr uintptr_t kJobWpnSpr    = 0x00d8a160;  // -> .spr (pousse 1)
 constexpr uintptr_t kJobWpnAct    = 0x00d8a010;  // -> .act (pousse 0)
 constexpr uintptr_t kJobShieldSpr = 0x00d8a0f0;  // -> .spr (pousse 1)
 constexpr uintptr_t kJobShieldAct = 0x00d8a080;  // -> .act (pousse 0)
-constexpr uintptr_t kActGetFrame  = 0x0070f4b0;  // Act_GetFrame(actObj, action, frame)
 constexpr uintptr_t kActFrameLayer= 0x0070f390;  // Act_GetFrameLayer(frame, idx)
 constexpr uintptr_t kStrDtor      = 0x004e78c0;  // std::string::~string (game alloc)
-constexpr uintptr_t kAtlasBuild   = 0x005663d0;  // SpriteAtlas_BuildTexture(spr,pal,geom)
 // ── Réglages LIVE (à ajuster à l'œil, sans re-RE) ────────────────────────────
 // Nudge d'alignement (repli si décalage constant observé : cf. anchor +0x4dc/+0x4e0
 // de SetSlotSprite, non consommé au draw -> auto-align par offsets layer supposé).
@@ -659,7 +656,7 @@ void EmitSlotLayers(void* sprObj, void* actObj, int pose, int frameIdx, float sc
   using AtlasBuildFn = void*(__fastcall*)(void*, void*, short*, int, int*);
   // sprObj = *(actor+0x4ac)[slot] (cellules @+0x510) ; actObj = *(actor+0x4b8)[slot]
   // (frames). Séparés — cf. CActorSprite_BuildPartMap (noms Ghidra SPR/ACT inversés).
-  void* frame = reinterpret_cast<ActFrameFn>(kActGetFrame)(
+  void* frame = reinterpret_cast<ActFrameFn>(render::kActionGetFrameAddr)(
       actObj, nullptr, static_cast<unsigned>(pose), static_cast<unsigned>(frameIdx));
   if (!frame) { if (pd) pd->bail = 2; return; }
   const int lbeg = *reinterpret_cast<int*>(reinterpret_cast<char*>(frame) + 0x20);
@@ -681,12 +678,12 @@ void EmitSlotLayers(void* sprObj, void* actObj, int pose, int frameIdx, float sc
     if (L[8] == 0) {  // pré-remplir l'atlas pour que le Get dans EmitCapLayer hit
       int g2[12] = {0};
       void* atlas = reinterpret_cast<void*>(
-          *reinterpret_cast<uintptr_t*>(kSceneCtxPtr) + 0xc0);
-      void* c = reinterpret_cast<AtlasGetFn>(kAtlasGetFn)(
+          *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
+      void* c = reinterpret_cast<AtlasGetFn>(render::kAtlasGetCachedAddr)(
           atlas, nullptr, static_cast<int>(reinterpret_cast<intptr_t>(spr_frame)),
           static_cast<int>(reinterpret_cast<intptr_t>(palette)), g2);
       if (!c)
-        reinterpret_cast<AtlasBuildFn>(kAtlasBuild)(
+        reinterpret_cast<AtlasBuildFn>(render::kAtlasBuildAddr)(
             atlas, nullptr, spr_frame,
             static_cast<int>(reinterpret_cast<intptr_t>(palette)), g2);
     }

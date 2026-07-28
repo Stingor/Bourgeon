@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "features/gameplay/fps_view.h"
 
 #include <Windows.h>
@@ -25,7 +26,6 @@ constexpr uintptr_t kCamClamp        = 0x00c82340;  // Camera_ApplyViewDistanceC
 // lookat = pCam+0x20; in both, index 1 (the Y component, +0x84 / +0x24) is the
 // height (the one with the anti-ground clamp). Raising both by fps_height_ lifts
 // the whole view to eye level without changing the gaze direction.
-constexpr uintptr_t kRendererObjPtr  = 0x012515f8;  // -> renderer object (has the SetView vtable)
 constexpr int       kSetViewVtSlot   = 0x04;        // vtable+4 = SetView(eye,lookat,up)
 constexpr int       kEyeYIndex       = 1;           // float index of the up (Y) axis
 }  // namespace
@@ -154,7 +154,7 @@ void FpsView::OnTick() {
   // guarded), saving the original. Runtime-resolved because the object is a heap
   // singleton, not a fixed .data address.
   if (!g_setview_orig) {
-    auto* obj = *reinterpret_cast<void***>(kRendererObjPtr);  // [0x012515f8] -> object
+    auto* obj = *reinterpret_cast<void***>(render::kContextPtr);  // [0x012515f8] -> object
     if (obj) {
       void** vtable = *reinterpret_cast<void***>(obj);        // *object = vtable
       if (vtable) {

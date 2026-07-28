@@ -1,3 +1,4 @@
+#include "ragnarok/render.h"
 #include "features/fx/weapon_dual_sprites.h"
 
 #include <Windows.h>
@@ -17,7 +18,6 @@
 namespace {
 constexpr uintptr_t kBuildWeaponLayers = 0x00D403A0;  // CActorSprite_BuildWeaponLayers
 constexpr uintptr_t kActFrameCall      = 0x00D36EE4;  // CALL Act_GetFrame (E8 rel32)
-constexpr uintptr_t kActGetFrame       = 0x0070F4B0;  // Act_GetFrame (bridge passthrough)
 constexpr uintptr_t kResAddRef         = 0x00A8E800;  // resource AddRef (ECX = res)
 constexpr uintptr_t kResRelease        = 0x00A8F910;  // resource Release (ECX = res)
 constexpr uintptr_t kItemIdToWeaponClass = 0x00D8A1D0;  // Weapon_ItemIdToWeaponClass
@@ -49,7 +49,7 @@ typedef int(__cdecl* ItemClassFn)(int item_view);
 static bool    g_dual_enabled = false;              // live toggle read by both hooks
 static void*   g_tramp_build  = nullptr;            // -> stock BuildWeaponLayers
 static BuildFn g_stock_build  = nullptr;
-static void*   g_act_get_frame = reinterpret_cast<void*>(kActGetFrame);
+static void*   g_act_get_frame = reinterpret_cast<void*>(render::kActionGetFrameAddr);
 
 static const RefFn Res_AddRef  = reinterpret_cast<RefFn>(kResAddRef);
 static const RefFn Res_Release = reinterpret_cast<RefFn>(kResRelease);
@@ -280,7 +280,7 @@ WeaponDualSprites::WeaponDualSprites() {
   const uint8_t call_op = *reinterpret_cast<uint8_t*>(kActFrameCall);
   const int32_t call_rel = *reinterpret_cast<int32_t*>(kActFrameCall + 1);
   if (call_op != 0xE8 ||
-      static_cast<uintptr_t>(kActFrameCall + 5 + call_rel) != kActGetFrame) {
+      static_cast<uintptr_t>(kActFrameCall + 5 + call_rel) != render::kActionGetFrameAddr) {
     // LogWarn("[WeaponDualSprites] ACT-frame call mismatch; not installing");
     return;
   }
