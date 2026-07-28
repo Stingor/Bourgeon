@@ -3062,8 +3062,8 @@ void CharacterSheet::DrawSkillsTab() {
       }
     }
     if (s.user_up <= 0) tip += "\n\nNe se monte pas avec des points (quête / lien).";
-    tip += "\n\nClic : description — clic droit : menu";
-    if (s.learned > 0 && s.inf != 0) tip += " — glisser vers une barre";
+    tip += "\n\nClic droit : menu (monter, lancer, description)";
+    if (s.learned > 0 && s.inf != 0) tip += "\nGlisser : poser sur une barre d'action";
     ImGui::SetTooltip("%s", tip.c_str());
   };
 
@@ -3107,21 +3107,13 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::TextUnformatted(skill_name(s.id));
       ImGui::EndDragDropSource();
     }
-    const bool dragging = ImGui::GetDragDropPayload() != nullptr;
-    if (ImGui::IsItemHovered() && !dragging) {
+    // Le clic GAUCHE ne déclenche rien : il est réservé au glisser vers une barre
+    // d'action. La description s'ouvre par le menu contextuel (clic droit), pas au
+    // clic — un clic qui ouvre une fenêtre alors que le même bouton sert à attraper
+    // l'icône, c'est une fenêtre qui s'ouvre à chaque tentative de glisser.
+    if (ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr) {
       hovered_now = static_cast<uint16_t>(s.id);
       tooltip_for(s, effective);
-      // Description au RELÂCHÉ, et seulement si la souris n'a pas voyagé : le même
-      // bouton sert à démarrer un glisser vers la barre d'action, et un test au
-      // PRESSÉ ouvrirait la description à chaque début de glisser. GetMouseDragDelta
-      // reste à (0,0) tant que le seuil de glisser n'est pas franchi, et vaut encore
-      // le déplacement à la frame du relâché — c'est exactement le test voulu.
-      const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-          travel.x == 0.0f && travel.y == 0.0f) {
-        const ImVec2 mp = ImGui::GetIO().MousePos;
-        OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
-      }
     }
     context_menu(s, effective);
   };
@@ -3262,7 +3254,9 @@ void CharacterSheet::DrawSkillsTab() {
         ImGui::Dummy(ImVec2(icon, icon));
         ImGui::SameLine();
         if (effective == 0) ImGui::PushStyleColor(ImGuiCol_Text, kGray);
-        ImGui::Selectable(skill_name(s.id), false, ImGuiSelectableFlags_AllowDoubleClick);
+        // Selectable (widget À ID) plutôt qu'un simple texte : c'est lui qui donne
+        // l'ActiveId nécessaire au glisser et la zone de clic du menu contextuel.
+        ImGui::Selectable(skill_name(s.id));
         if (effective == 0) ImGui::PopStyleColor();
         common_item_actions(s, effective, ic);
 
