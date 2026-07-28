@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>  // longueur d'un segment : flèches de prérequis du grimoire
 #include <cstdio>
 #include <ctime>
 #include <cstdlib>
@@ -3184,11 +3185,23 @@ void CharacterSheet::DrawSkillsTab() {
     //    plus large qu'elle et les voisines se chevauchaient — il est dans l'infobulle,
     //    là où on va le chercher. Pas de fond de case non plus : l'icône se suffit,
     //    seuls le survol et les liserés d'état posent de la couleur. ──
-    const float cell_w = 46.0f;
-    const float cell_h = 52.0f;
-    const float icon   = 32.0f;
+    // Taille des cases : la fenêtre ne descend pas sous la largeur « doll + stats »
+    // (l'onglet Grimoire force le mode large), soit ~520 px de contenu — 7 colonnes de
+    // 72 px les remplissent, autant en profiter pour de grosses icônes bien aérées.
+    const float cell_w = 72.0f;
+    const float cell_h = 78.0f;
+    const float icon   = 40.0f;  // le .bmp fait 24 px : au-delà ça ramollit visiblement
+    const float pad    = 10.0f;  // marge entre la case dessinée et sa voisine
+    const float icon_y = 7.0f;   // hauteur du haut de l'icône dans la case
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
+    // Centre de chaque case dessinée + case survolée : les FLÈCHES de prérequis sont
+    // tracées après la boucle (elles doivent passer par-dessus les icônes, et une
+    // flèche relie deux cases dont l'une peut n'être dessinée que plus tard).
+    static ImVec2 cell_center[kSkillMaxNodes];
+    static bool   cell_drawn[kSkillMaxNodes];
+    int hover_idx = -1;
+    for (int i = 0; i < count; ++i) cell_drawn[i] = false;
     int used_max_row = 0;
     for (int i = 0; i < count; ++i) {
       const SkillRaw& s = nodes[i];
@@ -3206,13 +3219,20 @@ void CharacterSheet::DrawSkillsTab() {
 
       ImGui::PushID(s.id);
       ImGui::SetCursorScreenPos(p);
-      ImGui::InvisibleButton("cell", ImVec2(cell_w - 4.0f, cell_h - 4.0f));
-      const ImVec2 q(p.x + cell_w - 4.0f, p.y + cell_h - 4.0f);
-      // ⚠ Survol testé sur le RECTANGLE, pas par IsItemHovered() : le bouton « + »
-      // est soumis APRÈS la case, donc dès que la souris passe dessus il lui prend le
-      // survol — la case se croirait quittée, le bouton disparaîtrait, et il
-      // clignoterait une frame sur deux.
+      // ⚠ SANS AllowOverlap, la case invisible — soumise AVANT le bouton « + » qui la
+      // recouvre — capte le clic à sa place : le bouton ne réservait donc jamais rien
+      // en grille (il marchait en liste, où il a sa propre cellule), et le curseur
+      // repassait en flèche pendant l'appui.
+      ImGui::SetNextItemAllowOverlap();
+      ImGui::InvisibleButton("cell", ImVec2(cell_w - pad, cell_h - pad));
+      const ImVec2 q(p.x + cell_w - pad, p.y + cell_h - pad);
+      // Survol testé sur le RECTANGLE, pas par IsItemHovered() : le bouton « + » prend
+      // le survol dès que la souris passe dessus, et la case se croirait quittée — le
+      // bouton disparaîtrait, donc clignoterait une frame sur deux.
       const bool hot = ImGui::IsMouseHoveringRect(p, q);
+      cell_drawn[i]  = true;
+      cell_center[i] = ImVec2((p.x + q.x) * 0.5f, (p.y + q.y) * 0.5f);
+      if (hot) hover_idx = i;
       // Le survol pose un voile léger — c'est un retour de curseur, pas un fond.
       if (hot) dl->AddRectFilled(p, q, IM_COL32(255, 255, 255, 28), 4.0f);
       // ⚠ AddRect ici, c'est (rounding, thickness) — le paramètre `flags` vient APRÈS
@@ -3224,7 +3244,7 @@ void CharacterSheet::DrawSkillsTab() {
       // Icône centrée, assombrie tant que la compétence n'est pas apprise — c'est
       // ce que fait le natif (mode de blit grisé quand le niveau vaut 0).
       const ro::IconTex ic = ResolveSkillIcon(s.id);
-      const ImVec2 ip(p.x + (cell_w - 4.0f - icon) * 0.5f, p.y + 2.0f);
+      const ImVec2 ip(p.x + (cell_w - pad - icon) * 0.5f, p.y + icon_y);
       if (ic.tex)
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
                      ImVec2(ip.x + icon, ip.y + icon), ImVec2(0, 0), ImVec2(1, 1),
@@ -3235,7 +3255,7 @@ void CharacterSheet::DrawSkillsTab() {
       if (s.maxlv > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", effective, s.maxlv);
       else             std::snprintf(lvl, sizeof(lvl), "%d", effective);
       const ImVec2 lsz = ImGui::CalcTextSize(lvl);
-      dl->AddText(ImVec2(p.x + (cell_w - 4.0f - lsz.x) * 0.5f, p.y + icon + 3.0f),
+      dl->AddText(ImVec2(p.x + (cell_w - pad - lsz.x) * 0.5f, p.y + icon_y + icon + 2.0f),
                   pending > 0 ? IM_COL32(255, 205, 105, 255)
                               : (effective >= s.maxlv && s.maxlv > 0
                                      ? IM_COL32(120, 200, 130, 255)
@@ -3248,13 +3268,60 @@ void CharacterSheet::DrawSkillsTab() {
       // l'offre qu'au clic droit, invisible pour qui ne le sait pas). Au SURVOL
       // seulement : posé en permanence, il mangeait le coin de chaque icône.
       if (raisable && hot) {
-        ImGui::SetCursorScreenPos(ImVec2(q.x - 13.0f, p.y));
-        if (ro::RoSmallButton("+##up", 13.0f, 13.0f))
+        ImGui::SetCursorScreenPos(ImVec2(q.x - 16.0f, p.y));
+        if (ro::RoSmallButton("+##up", 16.0f, 16.0f))
           ReserveSkillPoint(static_cast<uint16_t>(s.id));
         mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
       }
       ImGui::PopID();
     }
+
+    // ── Flèches de dépendance, seulement autour de la case survolée ──────────
+    // Les tracer en permanence ferait un plat de spaghettis ; au survol, elles
+    // répondent exactement à la question qu'on se pose à ce moment-là : « d'où vient
+    // cette compétence, et qu'ouvre-t-elle ? ». Ambre = ce qu'il FAUT avant (le
+    // prérequis pointe vers la survolée), bleu = ce qu'elle ouvre.
+    if (hover_idx >= 0) {
+      // La flèche part du BORD des cases, pas de leur centre : sous l'icône elle
+      // serait cachée, et sa pointe doit rester lisible.
+      auto draw_arrow = [&](const ImVec2& from, const ImVec2& to, ImU32 col,
+                            float thickness) {
+        ImVec2 d(to.x - from.x, to.y - from.y);
+        const float len = std::sqrt(d.x * d.x + d.y * d.y);
+        const float trim = (cell_w - pad) * 0.45f;  // rayon approché de la case
+        if (len <= trim * 2.0f + 8.0f) return;      // cases voisines : rien à tracer
+        d.x /= len;
+        d.y /= len;
+        const ImVec2 a(from.x + d.x * trim, from.y + d.y * trim);
+        const ImVec2 b(to.x - d.x * trim, to.y - d.y * trim);
+        dl->AddLine(a, b, col, thickness);
+        const float head = 8.0f;
+        const ImVec2 n(-d.y, d.x);  // normale, pour écarter les deux ailes
+        dl->AddTriangleFilled(
+            b, ImVec2(b.x - d.x * head + n.x * head * 0.5f, b.y - d.y * head + n.y * head * 0.5f),
+            ImVec2(b.x - d.x * head - n.x * head * 0.5f, b.y - d.y * head - n.y * head * 0.5f),
+            col);
+      };
+      const SkillRaw& h = nodes[hover_idx];
+      // 1) ce qu'il faut AVANT elle : chaque prérequis pointe vers la survolée.
+      for (int k = 0; k < h.need_count; ++k) {
+        for (int i = 0; i < count; ++i) {
+          if (!cell_drawn[i] || nodes[i].id != h.need_id[k]) continue;
+          draw_arrow(cell_center[i], cell_center[hover_idx], IM_COL32(255, 205, 105, 235), 2.5f);
+          break;
+        }
+      }
+      // 2) ce qu'elle OUVRE : la survolée pointe vers celles qui la réclament.
+      for (int i = 0; i < count; ++i) {
+        if (i == hover_idx || !cell_drawn[i]) continue;
+        for (int k = 0; k < nodes[i].need_count; ++k) {
+          if (nodes[i].need_id[k] != h.id) continue;
+          draw_arrow(cell_center[hover_idx], cell_center[i], IM_COL32(120, 160, 255, 200), 2.0f);
+          break;
+        }
+      }
+    }
+
     // Réserver la hauteur consommée : la grille est dessinée en absolu, ImGui ne
     // connaîtrait sinon aucune étendue et le scroll serait mort.
     ImGui::SetCursorScreenPos(origin);
