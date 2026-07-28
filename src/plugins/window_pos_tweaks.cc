@@ -10,6 +10,7 @@
 #include "plugins/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
 #include "plugins/storage_tweaks.h"  // hide-native-at-creation (id 0x21)
 #include "plugins/inventory_viewer.h"  // hide-native-at-creation (id 8)
+#include "plugins/bank_tweaks.h"  // hide-native-at-creation (banque id 275)
 #include "plugins/cart_viewer.h"  // hide-native-at-creation (cart id 0x28)
 #include "plugins/cashshop_tweaks.h"  // hide-native-at-creation (id 0x13e)
 #include "plugins/shop_tweaks.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
@@ -141,6 +142,13 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x28) {
       if (auto* cv = Bourgeon::Instance().cart_viewer())
         cv->HideNativeAtCreation(win);
+    }
+    // Banque de zeny (UIBank_NewWnd id 275) : créée par le handler de
+    // ZC_BANKING_CHECK, donc ENTRE deux OnTick — sans ce hook une frame native
+    // passait à l'écran avant que le viewer ne la masque (cf. le sertissage 0x4A).
+    if (windowID == 275) {
+      if (auto* bt = Bourgeon::Instance().bank_tweaks())
+        bt->HideNativeAtCreation(win);
     }
     // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : ce popup est créé par le
     // handler du paquet ZC 0x017B, donc entre deux OnTick -> sans ce hook une frame

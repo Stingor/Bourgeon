@@ -120,6 +120,18 @@ void SetNativeVisible(uint8_t* wnd, bool visible) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Masque `win` APRÈS avoir vérifié sa vtable. Le hook MakeWindow nous passe la
+// fenêtre par son seul id : on ne peut pas encore la retrouver par le gestionnaire
+// (elle n'y est pas enregistrée à cet instant), donc c'est la vtable qui sert de
+// contrôle de classe. Renvoie true si on l'a bien masquée.
+bool HideIfBankWindow(void* win) {
+  __try {
+    if (*reinterpret_cast<uintptr_t*>(win) != kBankVTable) return false;
+    *reinterpret_cast<int*>(static_cast<uint8_t*>(win) + kOffVisible) = 0;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // Soldes. Lecture SEH isolée : OnTick/OnRenderUI manipulent des objets C++ et ne
 // peuvent pas héberger de __try (C2712).
 struct Balances { long long vault = 0; int zeny = 0; };
@@ -296,6 +308,13 @@ void BankTweaks::OnTick() {
   const Balances balances = ReadBalances();
   vault_ = balances.vault;
   zeny_  = balances.zeny;
+}
+
+void BankTweaks::HideNativeAtCreation(void* win) {
+  if (!win || !imgui_enabled_) return;
+  // OnTick ne remettra la native visible qu'une fois, et seulement si c'est bien
+  // nous qui l'avions baissée : on le lui dit dès maintenant.
+  if (HideIfBankWindow(win)) native_hidden_ = true;
 }
 
 void BankTweaks::ToggleFromUi() {

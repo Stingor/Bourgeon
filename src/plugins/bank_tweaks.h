@@ -54,6 +54,22 @@ class BankTweaks : public Plugin {
   // Public : appelé par le bouton « sac de zeny » du footer de l'InventoryViewer.
   void ToggleFromUi();
 
+  // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
+  // 275 : masque la native (win+0x28 = 0) AVANT son premier rendu.
+  //
+  // Sans ça, la fenêtre est créée par le handler de ZC_BANKING_CHECK, c'est-à-dire
+  // ENTRE deux OnTick : le masquage du tick suivant arrive trop tard et une frame
+  // native passe à l'écran — le flicker. Ici on est encore à l'intérieur de
+  // MakeWindow, avant que quoi que ce soit ne soit dessiné.
+  //
+  // On MASQUE au lieu d'empêcher la création : la fenêtre native reste notre
+  // signal « la banque est ouverte » (FindWindow(275)), elle porte les gardes
+  // d'ouverture du client (raffinage, enchant, runes…) qui vivent dans le case 275
+  // de MakeWindow, et elle alimente g_pUIBankWnd, que le raccourci natif Ctrl+B
+  // lit pour choisir entre fermer et redemander au serveur. No-op si le viewer est
+  // désactivé (banque native classique).
+  void HideNativeAtCreation(void* win);
+
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, chargés/sauvés par MoonlightUi)
   // « bank_imgui » : fenêtre ImGui + native masquée. Basculé en GROUPE par
   // SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.

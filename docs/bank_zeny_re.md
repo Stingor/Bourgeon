@@ -360,6 +360,16 @@ Choix d'implémentation qui découlent directement de la RE :
   contrôle de vtable.
 - **Le X ferme la native**, via `OnMsg(6, 201)` — le chemin exact du bouton natif,
   pas un appel direct au gestionnaire.
+- **La native est masquée DÈS SA CRÉATION**, par le hook `MakeWindow` de
+  `WindowPosTweaks` (`BankTweaks::HideNativeAtCreation`, id 275). Elle est créée par
+  le handler de `ZC_BANKING_CHECK`, donc **entre deux `OnTick`** : masquer au tick
+  suivant laissait passer une frame native à l'écran — le flicker.
+  On la masque plutôt que d'empêcher sa création, parce qu'elle reste :
+  le signal « la banque est ouverte » (`FindWindow(275)`), la porteuse des gardes
+  d'ouverture du client (§7, qui vivent dans le `case 275` de `MakeWindow`, avant la
+  construction), et la source de `g_pUIBankWnd` que le raccourci natif lit pour
+  choisir entre fermer et redemander. Le flag `+0x28` la sort du rendu **et** du
+  hit-test : elle est totalement inerte.
 - **Les montants sont formatés par les fonctions du client**
   (`Cstr_FormatInt64Grouped` / `…Int32Grouped`) : mêmes séparateurs que le natif.
 - **Les refus reprennent les msgstrings natifs** (`MSI_BANK_*`, §7) au lieu d'un
