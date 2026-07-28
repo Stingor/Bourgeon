@@ -669,12 +669,15 @@ la réservation est testée **au relâché** et seulement si `GetMouseDragDelta`
 repassait en flèche pendant l'appui). Le clic gauche direct remplace tout ça. La vue LISTE garde son
 « + », qui a sa propre cellule de tableau — aucun recouvrement.
 
-**Flèches en chaîne.** Le bleu (« ce que cette compétence ouvre ») se propage en **largeur** sur tout
-le sous-arbre, pas seulement au premier rang : c'est justement la suite du chemin qu'on cherche en
-survolant une compétence de départ. Chaque case n'est développée qu'une fois (le graphe a des
-raccourcis), profondeur bornée à 6, et le trait pâlit/s'affine avec la distance. Chaque arête passe
-par la **réduction transitive** décrite plus haut — la liste de prérequis du client est aplatie, la
-tracer telle quelle doublerait chaque chemin.
+**Flèches en chaîne, dans les deux sens.** Ambre (« ce qu'il faut avant ») et bleu (« ce que ça
+ouvre ») se propagent en **largeur** sur toute la branche, pas seulement au rang voisin : c'est le
+chemin entier qu'on cherche en survolant une compétence. Un seul parcours paramétré par le sens
+(`walk_chain(upstream)`) — chaque case développée une fois (le graphe a des raccourcis), profondeur
+bornée à 6, trait qui pâlit/s'affine avec la distance. La flèche va **toujours du prérequis vers ce
+qu'il débloque**, quel que soit le sens de parcours : c'est le sens de lecture de l'arbre, pas celui
+du survol. Chaque arête passe par la **réduction transitive** ci-dessus — la liste de prérequis du
+client est aplatie, la tracer telle quelle doublerait chaque chemin. Le test de réduction est
+identique dans les deux sens : c'est la même arête.
 
 **Onglets fusionnés + séparateur.** « 1re classe » et « 2e classe » partagent un onglet ; chaque arbre
 gardant ses propres index de case (ils viennent du Lua), le second est décalé d'un nombre entier de

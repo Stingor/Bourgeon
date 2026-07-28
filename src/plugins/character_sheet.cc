@@ -3389,8 +3389,9 @@ void CharacterSheet::DrawSkillsTab() {
     // ── Flèches de dépendance, seulement autour de la case survolée ──────────
     // Les tracer en permanence ferait un plat de spaghettis ; au survol, elles
     // répondent exactement à la question qu'on se pose à ce moment-là : « d'où vient
-    // cette compétence, et qu'ouvre-t-elle ? ». Ambre = ce qu'il FAUT avant (le
-    // prérequis pointe vers la survolée), bleu = ce qu'elle ouvre.
+    // cette compétence, et qu'ouvre-t-elle ? ». Ambre = la BRANCHE qui y mène (toute
+    // la chaîne de prérequis, pas seulement le rang précédent), bleu = la branche
+    // qu'elle ouvre. Les deux sont tracées par le même parcours, en sens inverse.
     if (hover_idx >= 0) {
       // La flèche part du BORD des cases, pas de leur centre : sous l'icône elle
       // serait cachée, et sa pointe doit rester lisible.
@@ -3412,7 +3413,6 @@ void CharacterSheet::DrawSkillsTab() {
             ImVec2(b.x - d.x * head - n.x * head * 0.5f, b.y - d.y * head - n.y * head * 0.5f),
             col);
       };
-      const SkillRaw& h = nodes[hover_idx];
       auto find_node = [&](int id) -> const SkillRaw* {
         for (int i = 0; i < count; ++i)
           if (nodes[i].id == id) return &nodes[i];
@@ -3424,75 +3424,67 @@ void CharacterSheet::DrawSkillsTab() {
           if (n->need_id[k] == id) return true;
         return false;
       };
-      // RÉDUCTION TRANSITIVE. La liste de prérequis du client n'est pas limitée aux
-      // liens directs : elle est aplatie (c'est ce qui permet au natif de réserver
-      // toute une chaîne d'un coup, et pourquoi il la déduplique en gardant le niveau
-      // le plus haut). Tracée telle quelle, Bowling Bash pointerait vers Bash à la fois
-      // directement et via Magnum Break. On saute donc P -> survolée quand un AUTRE
-      // prérequis de la survolée réclame déjà P : le chemin est déjà à l'écran.
-      auto redundant_before = [&](int prereq_id) {
-        for (int a = 0; a < h.need_count; ++a) {
-          if (h.need_id[a] == prereq_id) continue;
-          if (requires_skill(find_node(h.need_id[a]), prereq_id)) return true;
-        }
-        return false;
-      };
-      // Même raisonnement dans l'autre sens, pour un lien `prereq_id -> dependent` :
-      // si `dependent` réclame aussi une compétence qui réclame déjà `prereq_id`, le
-      // trait direct doublerait un chemin déjà tracé.
-      auto redundant_after = [&](const SkillRaw& dependent, int prereq_id) {
+      // RÉDUCTION TRANSITIVE, pour un lien `prereq_id -> dependent`. La liste de
+      // prérequis du client n'est pas limitée aux liens directs : elle est aplatie
+      // (c'est ce qui permet au natif de réserver toute une chaîne d'un coup, et
+      // pourquoi il la déduplique en gardant le niveau le plus haut). Tracée telle
+      // quelle, Bowling Bash pointerait vers Bash à la fois directement ET via Magnum
+      // Break. On saute donc le trait direct quand un AUTRE prérequis de `dependent`
+      // réclame déjà `prereq_id` : le chemin est de toute façon à l'écran.
+      // Le même test vaut dans les deux sens de parcours — c'est la même arête.
+      auto redundant_edge = [&](const SkillRaw& dependent, int prereq_id) {
         for (int k = 0; k < dependent.need_count; ++k) {
           if (dependent.need_id[k] == prereq_id) continue;
           if (requires_skill(find_node(dependent.need_id[k]), prereq_id)) return true;
         }
         return false;
       };
-      // 1) ce qu'il faut AVANT elle : chaque prérequis pointe vers la survolée.
-      for (int k = 0; k < h.need_count; ++k) {
-        if (redundant_before(h.need_id[k])) continue;
-        for (int i = 0; i < count; ++i) {
-          if (!cell_drawn[i] || nodes[i].id != h.need_id[k]) continue;
-          draw_arrow(cell_center[i], cell_center[hover_idx], IM_COL32(255, 205, 105, 235), 2.5f);
-          break;
-        }
-      }
-      // 2) ce qu'elle OUVRE, en CHAÎNE : la survolée pointe vers celles qui la
-      //    réclament, puis celles-ci vers leurs propres suites, etc. S'arrêter au
-      //    premier rang ne montrait qu'un bout de la branche — or c'est justement la
-      //    suite du chemin qu'on cherche en survolant une compétence de départ.
-      //    Parcours en largeur, chaque case n'étant développée qu'une fois (le graphe
-      //    a des raccourcis : sans marquage, une même case serait redéveloppée à
-      //    chaque profondeur). Le trait pâlit et s'affine avec la distance, pour que
-      //    l'ordre de la chaîne se lise d'un coup d'œil.
+
+      // Parcours de la BRANCHE, en largeur, depuis la case survolée — en amont
+      // (« ce qu'il faut avant ») comme en aval (« ce que ça ouvre »). S'arrêter au
+      // premier rang ne montrait qu'un bout du chemin, or c'est le chemin ENTIER
+      // qu'on cherche en survolant une compétence. Chaque case n'est développée
+      // qu'une fois : le graphe a des raccourcis, sans marquage une même case serait
+      // redéveloppée à chaque profondeur. Le trait pâlit et s'affine avec la
+      // distance, pour que l'ordre de la chaîne se lise d'un coup d'œil.
+      // La flèche va TOUJOURS du prérequis vers ce qu'il débloque, quel que soit le
+      // sens de parcours : c'est le sens de lecture de l'arbre, pas celui du survol.
       static int  bfs_queue[kSkillMaxNodes];
       static int  bfs_depth[kSkillMaxNodes];
       static bool bfs_seen[kSkillMaxNodes];
-      for (int i = 0; i < count; ++i) bfs_seen[i] = false;
-      int head_q = 0, tail_q = 0;
-      bfs_queue[tail_q] = hover_idx;
-      bfs_depth[tail_q++] = 0;
-      bfs_seen[hover_idx] = true;
-      while (head_q < tail_q) {
-        const int cur   = bfs_queue[head_q];
-        const int depth = bfs_depth[head_q];
-        ++head_q;
-        if (depth >= 6) continue;  // garde-fou : un arbre de job n'est jamais si profond
-        for (int i = 0; i < count; ++i) {
-          if (i == cur || !requires_skill(&nodes[i], nodes[cur].id)) continue;
-          if (redundant_after(nodes[i], nodes[cur].id)) continue;
-          if (cell_drawn[i] && cell_drawn[cur]) {
-            const int fade = depth * 35;
-            draw_arrow(cell_center[cur], cell_center[i],
-                       IM_COL32(120, 160, 255, std::max(90, 200 - fade)),
-                       std::max(1.2f, 2.0f - depth * 0.25f));
-          }
-          if (!bfs_seen[i]) {
-            bfs_seen[i] = true;
-            bfs_queue[tail_q] = i;
-            bfs_depth[tail_q++] = depth + 1;
+      auto walk_chain = [&](bool upstream, int cr, int cg, int cb, int alpha0,
+                            float thick0) {
+        for (int i = 0; i < count; ++i) bfs_seen[i] = false;
+        int head_q = 0, tail_q = 0;
+        bfs_queue[tail_q] = hover_idx;
+        bfs_depth[tail_q++] = 0;
+        bfs_seen[hover_idx] = true;
+        while (head_q < tail_q) {
+          const int cur   = bfs_queue[head_q];
+          const int depth = bfs_depth[head_q];
+          ++head_q;
+          if (depth >= 6) continue;  // garde-fou : aucun arbre de job n'est si profond
+          for (int i = 0; i < count; ++i) {
+            if (i == cur) continue;
+            // Amont : `i` est un prérequis de `cur`. Aval : `i` réclame `cur`.
+            const int dep = upstream ? cur : i;  // celui qui réclame
+            const int req = upstream ? i : cur;  // celui qui est réclamé
+            if (!requires_skill(&nodes[dep], nodes[req].id)) continue;
+            if (redundant_edge(nodes[dep], nodes[req].id)) continue;
+            if (cell_drawn[dep] && cell_drawn[req])
+              draw_arrow(cell_center[req], cell_center[dep],
+                         IM_COL32(cr, cg, cb, std::max(85, alpha0 - depth * 35)),
+                         std::max(1.2f, thick0 - depth * 0.25f));
+            if (!bfs_seen[i]) {
+              bfs_seen[i] = true;
+              bfs_queue[tail_q] = i;
+              bfs_depth[tail_q++] = depth + 1;
+            }
           }
         }
-      }
+      };
+      walk_chain(true, 255, 205, 105, 235, 2.5f);   // ambre : ce qu'il faut avant
+      walk_chain(false, 120, 160, 255, 200, 2.0f);  // bleu  : ce que ça ouvre
     }
 
     // Réserver la hauteur consommée : la grille est dessinée en absolu, ImGui ne
