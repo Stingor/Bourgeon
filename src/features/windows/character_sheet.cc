@@ -172,13 +172,18 @@ int ReadInt(uintptr_t addr) {
 }
 
 //  Lecture in-place d'un slot equipe (SEH, POD)
+// ⚠ `viewId` et `location` sont typés à leur largeur SÉMANTIQUE, pas à celle du
+// champ natif : un viewID tient sur 16 bits, `location` est un masque EQP_* et
+// n'a pas de signe. C'est ce qu'attendent les consommateurs (itemcell::
+// OpenDescById, l'aperçu porté), donc la conversion se fait UNE fois ici, à la
+// frontière avec le natif, plutôt qu'à chaque site d'appel.
 struct EquipItem {
   bool     present = false;
   uint32_t nameid = 0;
   int      invIndex = 0;
   int      refine = 0;
-  int      viewId = 0;
-  int      location = 0;
+  uint16_t viewId = 0;
+  uint32_t location = 0;
 };
 bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
   __try {
@@ -190,9 +195,11 @@ bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
     if (invIndex == 0 || present != 1) return false;  // slot vide
     out->present  = true;
     out->invIndex = invIndex;
-    out->location = *reinterpret_cast<const int*>(e + kOffEquipLocation);
+    out->location = *reinterpret_cast<const uint32_t*>(e + kOffEquipLocation);
     out->refine   = *reinterpret_cast<const int*>(e + kOffEquipRefine);
-    out->viewId   = *reinterpret_cast<const int*>(e + kOffEquipView);
+    // 16 bits SUFFISENT : le champ natif en fait 4, mais tout ce qui consomme un
+    // viewID le tronque à 16 — autant le dire ici. Little-endian : mêmes bits.
+    out->viewId   = *reinterpret_cast<const uint16_t*>(e + kOffEquipView);
     const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffEquipResCap);
     const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + kOffEquipResname)
                                 : reinterpret_cast<const char*>(e + kOffEquipResname);
@@ -204,13 +211,13 @@ bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
 //  Munition équipée : lue par son invIndex (global g_AmmoEquippedInvIndex), retrouvée
 //  dans la liste inventaire (node next@+0, ItemSkillInfo@+8, mêmes offsets). La munition
 //  reste un item d'inventaire (consommé au tir) -> présente dans la liste, quantité @+0x10.
-struct AmmoItem {
+struct AmmoItem {  // largeurs sémantiques, cf. EquipItem
   bool     present = false;
   uint32_t nameid = 0;
   int      invIndex = 0;
   int      amount = 0;
-  int      viewId = 0;
-  int      location = 0;
+  uint16_t viewId = 0;
+  uint32_t location = 0;
 };
 bool ReadEquippedAmmo(AmmoItem* out) {
   __try {
@@ -226,8 +233,8 @@ bool ReadEquippedAmmo(AmmoItem* out) {
         out->present  = true;
         out->invIndex = ammoIdx;
         out->amount   = *reinterpret_cast<const int*>(info + kOffEquipAmount);
-        out->location = *reinterpret_cast<const int*>(info + kOffEquipLocation);
-        out->viewId   = *reinterpret_cast<const int*>(info + kOffEquipView);
+        out->location = *reinterpret_cast<const uint32_t*>(info + kOffEquipLocation);
+        out->viewId   = *reinterpret_cast<const uint16_t*>(info + kOffEquipView);
         const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + kOffEquipResCap);
         const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(info + kOffEquipResname)
                                     : reinterpret_cast<const char*>(info + kOffEquipResname);
@@ -5879,8 +5886,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
         const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                               static_cast<uintptr_t>(slot) * kSlotStride;
-        itemcell::OpenDescById(it.nameid, static_cast<uint16_t>(it.viewId),
-                               static_cast<uint32_t>(it.location),
+        itemcell::OpenDescById(it.nameid, it.viewId, it.location,
                                static_cast<int>(mp.x), static_cast<int>(mp.y),
                                reinterpret_cast<const void*>(src));
       }
@@ -5948,8 +5954,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
                         ItemName(am.nameid), am.amount);
       const ImVec2 mp = ImGui::GetMousePos();
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-        itemcell::OpenDescById(am.nameid, static_cast<uint16_t>(am.viewId),
-                               static_cast<uint32_t>(am.location),
+        itemcell::OpenDescById(am.nameid, am.viewId, am.location,
                                static_cast<int>(mp.x), static_cast<int>(mp.y));
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         SendUnequip(am.invIndex);
