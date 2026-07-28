@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/overlays/status_icon_bar.h"
 
 #include <Windows.h>
@@ -44,7 +45,6 @@ constexpr uintptr_t kGetEFSTImg  = 0x00d87380;  // __thiscall(session,id,layer) 
 constexpr uintptr_t kSpriteRef   = 0x00568760;  // __thiscall(cache,path,0,0,1,0) -> ref (5 args!)
 constexpr uintptr_t kAlloc       = 0x00dbbc4f;  // __cdecl(size) -> void* (engine allocator)
 
-constexpr uintptr_t kSession     = 0x015fa3c0;  // &g_session
 constexpr uintptr_t kSpriteCache = 0x0125161c;  // &DAT_0125161c (sprite-ref cache)
 constexpr uintptr_t kViewportPtr = 0x012515f8;  // void** ; (*vp)+0x28=W, +0x2c=H
 constexpr uintptr_t kVecBegin    = 0x0136e6c8;  // std::vector<StatusIcon>::begin (raw bytes)
@@ -293,7 +293,7 @@ void BuildCustom(void* scene, void* vp) {
   // 1) Collect drawable icons in engine priority order (layer 0..5), deduped.
   Pending list[100];
   int n = 0;
-  void* session = reinterpret_cast<void*>(kSession);
+  void* session = reinterpret_cast<void*>(rag::kSessionAddr);
   for (int layer = 0; layer <= 5; ++layer) {
     uint8_t* begin = *reinterpret_cast<uint8_t**>(kVecBegin);
     uint8_t* end   = *reinterpret_cast<uint8_t**>(kVecEnd);

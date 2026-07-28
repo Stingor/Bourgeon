@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/overlays/entity_names.h"
 
 #include <windows.h>
@@ -21,8 +22,6 @@ namespace {
 // GameMode_GetActive(mgr) __fastcall : renvoie le CGameMode actif, ou 0 hors
 // jeu (login/char-select) — donc jamais de pointeur périmé.
 using GetActiveFn = void*(__fastcall*)(int);
-constexpr uintptr_t kGameMode_GetActive = 0x00a75340;
-constexpr int       kModeMgrKey         = 0x1213338;
 
 // CNameDict_GetEntryOrRequest(dict, gid) __thiscall : renvoie le bloc CNameInfo
 // pour ce GID si connu+valide, sinon met le GID en file de requête serveur et
@@ -84,7 +83,7 @@ void EntityNames::OnRenderUI() {
 }
 
 void EntityNames::DrawNames() {
-  void* gm = reinterpret_cast<GetActiveFn>(kGameMode_GetActive)(kModeMgrKey);
+  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
   if (!gm) return;
   void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
   if (!actor_mgr) return;

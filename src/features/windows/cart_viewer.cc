@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/cart_viewer.h"
 
 #include "ui/game_texture.h"
@@ -115,8 +116,6 @@ constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg c
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) -> objet mode actif (0 hors jeu).
 // Son vtbl+0x18 = CMode::SendMsg. Commandes de transfert RE'ées sur la fenêtre
 // cart elle-même (UICartWnd_OnRButtonDown branche ALT / OnMsg case 38).
-constexpr uintptr_t kGetMode = 0x00a75340;
-constexpr uintptr_t kModeArg = 0x1213338;
 constexpr int kVfDispCmd     = 0x18;
 constexpr int kCmdCartToBody    = 0x4d;  // cart -> inventaire
 constexpr int kCmdCartToStorage = 0x4f;  // cart -> storage (storage ouvert)
@@ -199,7 +198,7 @@ bool OverStorage(float x, float y) {
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
 void* Dispatcher() {
   __try {
-    return reinterpret_cast<GetMode_t>(kGetMode)(static_cast<int>(kModeArg));
+    return reinterpret_cast<GetMode_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 

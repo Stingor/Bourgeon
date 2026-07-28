@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/overlays/skill_bar.h"
 
@@ -48,7 +49,6 @@ constexpr int       kMgrShortCutPtr = 0x1e8;       // mgr+0x1e8 = instance UISho
 constexpr int       kShortCutId     = 0x24;
 
 // ---- skill manager / données slots -----------------------------------------
-constexpr uintptr_t kSkillInfoMgr = 0x015fa3c0;    // g_SkillInfoMgr (this des setters)
 constexpr uintptr_t kSetShortCut  = 0x00d96c20;    // SkillMgr_SetShortCutSlot
 constexpr uintptr_t kGetOption    = 0x008e1d50;    // SkillInfoMgr_GetOption(mgr,key) ; key10=onglet courant
 constexpr uintptr_t kSetOption    = 0x005c5950;    // SkillMgr_SetOption(mgr,key,val,0) ; key5=UI-lock (≥1 bloque OnMsg 0x29)
@@ -140,7 +140,7 @@ void ShowNative(void* w) {
 }
 int CurrentTab() {
   return reinterpret_cast<GetOption_t>(kGetOption)(
-             reinterpret_cast<void*>(kSkillInfoMgr), 10) ? 1 : 0;
+             reinterpret_cast<void*>(rag::kSessionAddr), 10) ? 1 : 0;
 }
 
 // ── Anti-flicker : empêcher tout RÉ-AFFICHAGE de la native (barre + boutons) ──
@@ -200,7 +200,6 @@ using SetItemSlot_t = void  (__thiscall*)(void*, int, int);
 using DispUse_t     = void  (__thiscall*)(void*, int, void*, int, int, int);
 using GetInvItemU_t = void* (__stdcall*)(void*, int);   // 0x00d7fa90 (out, id) ; found out+0x04, qty out+0x10
 constexpr uintptr_t kSetItemSlot    = 0x00da8f90;
-constexpr uintptr_t kUICmdDisp      = 0x0121333c;        // *(void**) = g_UICommandDispatcher
 constexpr uintptr_t kGetInvItemAddr = 0x00d7fa90;
 
 // Lit le slot logique i de la région `region` directement dans le store global (record 7 o). SEH.
@@ -236,7 +235,7 @@ void UseItemSlot(int slot) {
     uint32_t id;
     std::memcpy(&id, itemRec + 1, 4);
     if (id == 0) return;
-    void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+    void* mgr = reinterpret_cast<void*>(rag::kSessionAddr);
     const int lock = reinterpret_cast<GetOption_t>(kGetOption)(mgr, 5);
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
     uint8_t** arr = reinterpret_cast<uint8_t**>(reinterpret_cast<uint8_t*>(w) + kSlotArr);  // this+0xc4
@@ -256,7 +255,7 @@ void ActivateSlot(int region, int slot) {
   if (RegionIsItems(region)) { UseItemSlot(slot); return; }
   void* w = ShortCutWnd();
   if (!w) return;
-  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  void* mgr = reinterpret_cast<void*>(rag::kSessionAddr);
   const int tab = kRegions[region].tab;
   const int cur = CurrentTab();
   const int lock = reinterpret_cast<GetOption_t>(kGetOption)(mgr, 5);
@@ -298,7 +297,7 @@ void SendHotkeyChange(int tab, int index, uint8_t type, uint32_t id, int level) 
 
 // Vide le slot i de la région (skills -> SetShortCutSlot + persist serveur ; items -> store plugin).
 void ClearSlot(int region, int i) {
-  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  void* mgr = reinterpret_cast<void*>(rag::kSessionAddr);
   if (RegionIsItems(region)) {
     WriteSlotRecord(region, i, /*is_item*/ true, 0, 0);  // vide le store plugin (persist client)
     return;
@@ -310,7 +309,7 @@ void ClearSlot(int region, int i) {
 // Écrit un slot (id==0 => efface). Skills via SkillMgr_SetShortCutSlot (+ persist serveur) ; items
 // dans le store plugin (type/level ignorés : un slot d'item ne porte qu'un nameid, type=0).
 void SetSlot(int region, int i, uint8_t type, uint32_t id, int level) {
-  void* mgr = reinterpret_cast<void*>(kSkillInfoMgr);
+  void* mgr = reinterpret_cast<void*>(rag::kSessionAddr);
   if (RegionIsItems(region)) {
     WriteSlotRecord(region, i, /*is_item*/ true, id, 0);  // écrit le store plugin (persist client)
     return;
@@ -350,7 +349,7 @@ int GetItemLiveCount(uint32_t nameid) {
   __try {
     alignas(8) uint8_t info[kSkillInfoSize] = {};
     reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
-        reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, static_cast<int>(nameid), 1);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, static_cast<int>(nameid), 1);
     if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0)
       cnt = *reinterpret_cast<int*>(info + 0x10);
     reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
@@ -603,8 +602,6 @@ bool SkillKnown(uint32_t id) {
 using GetDragObj_t  = void* (__fastcall*)(void*);                    // FUN_00a75340(mgr)
 using LookupSkill_t = void  (__fastcall*)(void*, void*, void*, int); // FUN_00d5aa40(mgr,edx,out,id)
 using SkillId_t     = int   (__fastcall*)(void*);                    // FUN_005d98a0(&info) -> skill id
-constexpr uintptr_t kDragMgr      = 0x1213338;
-constexpr uintptr_t kGetDragObj   = 0x00a75340;
 constexpr uintptr_t kLookupSkill  = 0x00d5aa40;
 constexpr uintptr_t kSkillIdAtoi  = 0x005d98a0;
 constexpr uintptr_t kGetInvItem   = 0x00d7fa90;  // ItemMgr_GetInvItemById(out,id) ; nameid=out+0x8
@@ -623,7 +620,7 @@ inline const char* PayloadStr(uint8_t* p, int off) {
 }
 
 inline void* DragObj() {  // objet de drag en cours, ou null
-  return reinterpret_cast<GetDragObj_t>(kGetDragObj)(reinterpret_cast<void*>(kDragMgr));
+  return reinterpret_cast<GetDragObj_t>(rag::kModeMgrGetActiveAddr)(reinterpret_cast<void*>(rag::kModeMgrAddr));
 }
 // Décode la charge -> {isItem, id assignable, level, srcSlot}. SEH-protégé.
 bool DecodeDrag(void* obj, NativeDrag* d) {
@@ -719,7 +716,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
       } else {            // ── OBJET (rec[0]==0) ──
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
-            reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
+            reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, id, 1);
         void* wnd = uiwnd::MakeWindow(kWinItemDesc);
         if (wnd) {
           uiwnd::OnMsg(wnd, kMsgSetItem,

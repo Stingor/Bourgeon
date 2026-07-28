@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/fx/ez_effect_capture.h"
 
 #include <Windows.h>
@@ -15,8 +16,6 @@ namespace ez_capture {
 namespace {
 
 // ── Adresses natives (client 20250716, base 0x400000) ─────────────────────────
-constexpr uintptr_t kGameModeGet       = 0x00a75340;  // GameMode_GetActive(mgr)
-constexpr uintptr_t kModeMgr           = 0x1213338;   // CModeMgr (arg)
 constexpr int       kOffActorMgr       = 0xcc;        // CMode -> actorMgr
 constexpr int       kOffOwnActor       = 0x2c;        // actorMgr -> acteur joueur
 constexpr int       kOffCamera         = 0xd0;        // CMode -> caméra
@@ -185,7 +184,7 @@ bool IsOurNode(void* ez, int* out_id) {
 void RefreshOwnerActor() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(static_cast<int>(kModeMgr));
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
@@ -535,7 +534,7 @@ bool ProjectAnchor(const DrawOpts& o, float* ax, float* ay, float* screen_scale)
   float x = 0.0f, y = 0.0f, inv_w = 0.0f, s = 0.0f;
   bool ok = false;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(static_cast<int>(kModeMgr));
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera) : nullptr;
     float* view =
         cam ? reinterpret_cast<float*>(reinterpret_cast<char*>(cam) + kOffViewMtx) : nullptr;

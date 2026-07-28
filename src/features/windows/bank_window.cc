@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/bank_window.h"
 
 #include <Windows.h>
@@ -32,7 +33,6 @@ constexpr int kOffHeight  = 0x18;
 // stocke un int32 (MAX_BANK_ZENY = SINT32_MAX) : on lit bien les 8 octets, mais
 // tous les plafonds restent à INT32_MAX.
 constexpr uintptr_t kBankVault  = 0x015fffc0;  // s64
-constexpr uintptr_t kPlayerZeny = 0x015fba90;  // s32
 constexpr long long kZenyMax    = 2147483647LL;  // INT32_MAX = plafond client ET serveur
 
 // Formateurs à séparateurs de milliers du client (ceux qu'emploie la fenêtre
@@ -129,7 +129,7 @@ Balances ReadBalances() {
   Balances b;
   __try {
     b.vault = *reinterpret_cast<long long*>(kBankVault);
-    b.zeny  = *reinterpret_cast<int*>(kPlayerZeny);
+    b.zeny  = *reinterpret_cast<int*>(rag::kZenyAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return b;
 }

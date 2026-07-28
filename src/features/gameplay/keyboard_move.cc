@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/gameplay/keyboard_move.h"
 
 #include "ragnarok/uiwnd.h"
@@ -11,8 +12,6 @@
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
-constexpr uintptr_t kGameModeGet  = 0x00a75340;  // GameMode_GetActive(mgr)
-constexpr uintptr_t kModeMgr      = 0x1213338;   // arg (CModeMgr)
 constexpr uintptr_t kWorldToTile  = 0x00c6aa80;  // MapCoord_WorldToTileAndSub
 constexpr uintptr_t kCellValid    = 0x00c6cf80;  // Cell_IsMoveTargetValid
 constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
@@ -35,8 +34,8 @@ constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 void* GetGameMode() {
   void* gm = nullptr;
   __try {
-    gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(
-        static_cast<int>(kModeMgr));
+    gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     gm = nullptr;
   }

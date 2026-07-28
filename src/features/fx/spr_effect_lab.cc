@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/fx/spr_effect_lab.h"
 
 #include <Windows.h>
@@ -24,8 +25,6 @@ namespace {
 
 // ── Adresses / offsets natifs (client 20250716, base 0x400000) ────────────────
 // Réutilisés à l'identique de la RE existante (cf. basic_info.cc, docs/hat_effect_re.md).
-constexpr uintptr_t kGameModeGet      = 0x00a75340;  // GameMode_GetActive(mgr)
-constexpr uintptr_t kModeMgr          = 0x1213338;   // CModeMgr (arg)
 constexpr int       kOffActorMgr      = 0xcc;        // CMode -> actorMgr
 constexpr int       kOffOwnActor      = 0x2c;        // actorMgr -> acteur joueur
 
@@ -92,7 +91,7 @@ bool IsOurs(const ez_capture::Prim& p) {
 void* GetOwnActor() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(static_cast<int>(kModeMgr));
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);

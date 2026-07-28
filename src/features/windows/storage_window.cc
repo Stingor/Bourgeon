@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/storage_window.h"
 #include "ui/game_texture.h"
 
@@ -139,7 +140,6 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
 // amount = quantité à retirer. Le serveur renvoie l'update -> le modèle et le
 // viewer se rafraîchissent seuls (synchro). Le flag natif disp+0x5ce est un
 // simple anti-rebond côté appelant, pas requis par la commande.
-constexpr uintptr_t kUICmdDisp   = 0x0121333c;  // *(void**) = g_UICommandDispatcher
 constexpr int       kCmdWithdraw = 0x38;         // storage -> body/inventaire
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
@@ -149,7 +149,7 @@ bool VendingComposing();
 void WithdrawItem(int index, int amount) {
   if (amount <= 0 || VendingComposing()) return;
   __try {
-    void* disp = *reinterpret_cast<void**>(kUICmdDisp);
+    void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (disp)
       Vf<DispCmd_t>(disp, 0x18)(disp, kCmdWithdraw, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -497,8 +497,6 @@ constexpr uint16_t  kOpCloseStorage = 0x0193;
 constexpr uint16_t  kOpStorageToCart = 0x0128;
 // cart -> storage : CZ_MOVE_ITEM_FROM_CART_TO_STORE, fixe 8 octets, serveur server_index -> -2.
 constexpr uint16_t  kOpCartToStorage = 0x0129;
-constexpr uintptr_t kDragMgr    = 0x01213338;
-constexpr uintptr_t kGetDragObj = 0x00a75340;
 constexpr uintptr_t kGetInvItem = 0x00d7fa90;
 constexpr int kPayloadOff = 0x308;
 constexpr int kPL_type = 0x80, kPL_nameid = 0x18, kPL_id = 0x04, kPL_cat = 0x00;
@@ -508,8 +506,8 @@ using GetInvItem_t = void*(__stdcall*)(void*, int);
 
 void* DragObj() {
   __try {
-    return reinterpret_cast<GetDragObj_t>(kGetDragObj)(
-        reinterpret_cast<void*>(kDragMgr));
+    return reinterpret_cast<GetDragObj_t>(rag::kModeMgrGetActiveAddr)(
+        reinterpret_cast<void*>(rag::kModeMgrAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 

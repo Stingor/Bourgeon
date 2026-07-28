@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/npc_shop_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -321,7 +322,7 @@ void NpcShopWindow::RequestList(Mode mode) {
     // cmd 0x25 sur CMode::SendMsg = bouton "Vendre" natif -> pose l'état vente +
     // envoie 0xc5(1) -> le client crée la fenêtre native de vente (qu'on lit).
     __try {
-      void* disp = *reinterpret_cast<void**>(0x0121333c);  // g_UICommandDispatcher
+      void* disp = rag::ActiveMode();
       if (disp) {
         void** vtbl = *reinterpret_cast<void***>(disp);
         using CmdDispatch_t = int(__thiscall*)(void*, int, int, int, int, int);
@@ -460,14 +461,14 @@ void NpcShopWindow::CloseNativeShop() {
   // qui réinitialise l'état dialogue client (débloque) + notifie le serveur.
   // CZ_CLOSE_DIALOG seul ne suffit pas (blocage client, et gate serveur sur npc_id).
   __try {
-    void* disp = *reinterpret_cast<void**>(0x0121333c);  // g_UICommandDispatcher
+    void* disp = rag::ActiveMode();
     if (disp) {
       void** vtbl = *reinterpret_cast<void***>(disp);
       using CmdDispatch_t = int(__thiscall*)(void*, int, int, int, int, int);
       reinterpret_cast<CmdDispatch_t>(vtbl[6])(disp, 0x28, 0, 0, 0, 0);  // vtable+0x18
     }
     // ShopCart_ResetAll(session) — le natif le fait juste après cmd 0x28.
-    reinterpret_cast<void(__fastcall*)(int)>(0x00d55f80)(0x15fa3c0);
+    reinterpret_cast<void(__fastcall*)(int)>(0x00d55f80)(static_cast<int>(rag::kSessionAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   // Filet serveur : CZ_CLOSE_DIALOG (no-op côté serveur si npc_id déjà nettoyé).
   if (npc_id_ != 0) {
@@ -626,7 +627,7 @@ void NpcShopWindow::OnRenderUI() {
 
   // Bandeau : zeny du joueur + résultat de la dernière transaction.
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
-  const uint32_t zeny = *reinterpret_cast<uint32_t*>(0x015fba90);  // g_PlayerZeny
+  const uint32_t zeny = static_cast<uint32_t>(rag::Zeny());
   ImGui::TextColored(kBlack, "Zeny: %uz", zeny);
   if (last_result_ == 0) {
     ImGui::SameLine();

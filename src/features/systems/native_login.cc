@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/systems/native_login.h"
 
 #include "ragnarok/uiwnd.h"
@@ -12,7 +13,6 @@ namespace {
 
 // Adresses natives (client 20250716, base 0x400000, pas d'ASLR).
 // Voir docs/login_connect_re.md pour la RE complète (workflow + vérif adversariale).
-constexpr uintptr_t kPCurrentMode   = 0x0121333C;  // void** -> CMode actif
 constexpr uintptr_t kVtblCLoginMode = 0x010932F0;  // garde de mode
 constexpr uintptr_t kVtblUILoginWnd = 0x01030168;  // garde de validité de la fenêtre
 constexpr uintptr_t kPLoginWnd      = 0x0131F6B4;  // UILoginWnd* (== mgr+0x1cc, FindWindow id 3)
@@ -101,7 +101,7 @@ int ReadConnectionDisplaysRaw(char out[kMaxConnections][kNameCap]) {
 // Renvoie le CMode courant s'il s'agit bien de CLoginMode, sinon nullptr.
 void* CurrentLoginMode() {
   __try {
-    void* mode = *reinterpret_cast<void**>(kPCurrentMode);
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (mode && *reinterpret_cast<uintptr_t*>(mode) == kVtblCLoginMode) return mode;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -200,7 +200,7 @@ bool native_login::CharListLoaded() {
   // au char-select). Dès qu'UN slot répond non-null, la liste est là.
   using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
   __try {
-    void* d = *reinterpret_cast<void**>(kPCurrentMode);
+    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d) return false;
     auto fn = reinterpret_cast<DispCmd_t>(
         (*reinterpret_cast<uintptr_t**>(d))[0x18 / 4]);

@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/trade_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -46,9 +47,8 @@ constexpr int kOffWidgetLock  = 0xC4;   // (widget liste) octet : côté verroui
 // (g_session 0x015fa3c0), lu par les getters FUN_00d59cd0 (moi) / FUN_00d5cfd0
 // (partenaire) : ItemSkillInfo_CopyFull(out, session + slot*0xF8 + base). Source
 // UI-INDÉPENDANTE (adresses globales fixes), bien plus robuste que les widgets.
-constexpr uintptr_t kSession     = 0x015fa3c0;
-constexpr uintptr_t kMyDealItems = kSession + 0x3e90;  // = 0x015fe250
-constexpr uintptr_t kPtDealItems = kSession + 0x4840;  // = 0x015fec00
+constexpr uintptr_t kMyDealItems = rag::kSessionAddr + 0x3e90;  // = 0x015fe250
+constexpr uintptr_t kPtDealItems = rag::kSessionAddr + 0x4840;  // = 0x015fec00
 constexpr int kDealStride = 0xF8;
 constexpr int kDealSlots  = 10;
 // Offsets DANS l'ItemSkillInfo (identiques à character_sheet / inventory_viewer).
@@ -60,12 +60,10 @@ constexpr int kInfoRefine = 0x60;   // int : refine
 // Zeny du deal (globals) + zeny du joueur.
 constexpr uintptr_t kMyDealZeny = 0x015ff5b0;  // int32 : zeny que j'offre
 constexpr uintptr_t kPtDealZeny = 0x015ff5b4;  // int32 : zeny offert par le partenaire
-constexpr uintptr_t kPlayerZeny = 0x015fba90;  // uint32 : mon zeny total
 
 // Bus de commandes = CMode::SendMsg. Réplique GameMode_GetActive(0x1213338) :
 // mode courant = *(0x1213338+4) [= *(0x121333c)] SEULEMENT si *(0x1213338+0x58)==1
 // (mode actif). vf+0x18 (slot 6) = le dispatcher use/equip/transfert/deal.
-constexpr uintptr_t kModeMgr = 0x01213338;
 // Commandes de l'échange — TOUTES vérifiées live sur les handlers de boutons natifs
 // (OK = CUIExchangeUI_OnOkButton 0x009ce140, trade = FUN_009ce040, cancel = FUN_009ce000).
 constexpr int kCmdAck      = 0x32; // (type 3=accept / 4=reject) -> CZ_ACK 0x00e6
@@ -174,7 +172,7 @@ void* FindTradeWnd(int* out_id) {
 // principal UNIQUEMENT (jamais depuis OnRecvPacket).
 void ModeCmd(int cmd, int a, int b, int c, int d) {
   __try {
-    uint8_t* mgr = reinterpret_cast<uint8_t*>(kModeMgr);
+    uint8_t* mgr = reinterpret_cast<uint8_t*>(rag::kModeMgrAddr);
     if (*reinterpret_cast<int*>(mgr + 0x58) != 1) return;  // aucun mode actif
     void* disp = *reinterpret_cast<void**>(mgr + 4);        // = *(0x121333c)
     if (disp) {
@@ -317,7 +315,7 @@ void TradeWindow::TradeAck(int type) {
 }
 void TradeWindow::SetZeny(int amount) {
   if (amount < 0) amount = 0;
-  const uint32_t zmax = *reinterpret_cast<uint32_t*>(kPlayerZeny);
+  const uint32_t zmax = *reinterpret_cast<uint32_t*>(rag::kZenyAddr);
   if (static_cast<uint32_t>(amount) > zmax) amount = static_cast<int>(zmax);
   // index 0 = zeny ; le serveur pose deal.zeny = amount (valeur ABSOLUE, clampée).
   ModeCmd(kCmdAdd, 0, amount, 0, 0);

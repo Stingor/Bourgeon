@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/windows/char_select.h"
 
@@ -35,7 +36,6 @@ namespace {
 // Dispatcher CMode : *(0x0121333c) -> objet ; vtbl+0x18, cmd 8 = get CHARACTER_INFO
 // par slot (renvoie nullptr si slot vide). Convention __thiscall confirmée dans
 // character_sheet.cc (SendConfigToggle). Carte des champs = docs/charselect_re.md.
-constexpr uintptr_t kUICmdDisp = 0x0121333c;
 constexpr int       kVfDispCmd = 0x18;
 constexpr int       kCmdGetChar = 8;
 
@@ -571,7 +571,7 @@ const char* JobName(int job, int sex) {
   const char* n = nullptr;
   __try {
     n = reinterpret_cast<GetJobName_t>(0x00d5bb40)(
-        reinterpret_cast<void*>(0x015fa3c0), nullptr,
+        rag::Session(), nullptr,
         static_cast<unsigned>(job), sex);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return nullptr;
@@ -829,7 +829,7 @@ bool CharSelect::ReadSlot(int slot, CharView* out) const {
   *out = CharView{};
   out->slot = slot;
   __try {
-    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d) return false;
     auto fn = reinterpret_cast<DispCmd_t>(
         (*reinterpret_cast<uintptr_t**>(d))[kVfDispCmd / 4]);
@@ -1074,7 +1074,7 @@ void CharSelect::DriveModeCmd(int cmd) {
   // même point d'entrée que ReadSlot (cmd 8) et que le natif quand il quitte l'écran.
   // 5 args pile : DispCmd_t est le typedef partagé (aucun ne sert ici, tous à 0).
   __try {
-    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d) {
       LogError("[CharSelect] dispatcher de mode absent -> commande {} ignorée", cmd);
       return;

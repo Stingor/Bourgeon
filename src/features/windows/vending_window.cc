@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/vending_window.h"
 
 #include <Windows.h>
@@ -233,8 +234,6 @@ constexpr int       kMsgSetItem  = 0x18;
 // Résolution GID -> nom, pour le titre (cf. docs/entity_nameplate_re.md).
 using GameModeGetActive_t = void*(__fastcall*)(int);
 using NameDictGetEntry_t  = void*(__thiscall*)(void*, unsigned);
-constexpr uintptr_t kGameModeGetActive = 0x00A75340;
-constexpr int       kModeMgrKey        = 0x1213338;
 constexpr uintptr_t kNameDictGetEntry  = 0x005A1460;
 constexpr int       kGmNameDict        = 0x160;  // objet EMBARQUÉ, pas un pointeur
 constexpr int       kNameInfoStr       = 0x04;   // std::string du nom
@@ -297,7 +296,6 @@ constexpr int kNodeSlots = 0x90;  // short : nombre de cartes
 // TOUTES __thiscall avec ecx = &g_session. Conventions relevées sur des sites
 // d'appel réels (UIMerchantShopMakeWnd_ImportSavedShop, les deux OnMsg case 38),
 // pas déduites : c'est ce qui autorise à les appeler sans crasher.
-constexpr uintptr_t kSession = 0x015FA3C0;
 using SessGetAt_t   = void(__thiscall*)(void*, void*, int);
 using SessAmount_t  = int (__thiscall*)(void*, int);
 using SessMerge_t   = char(__thiscall*)(void*, void*, int, int);
@@ -372,7 +370,6 @@ constexpr int kCmdSafeChk  = 213;  // bascule « safe check for over 10 mil zeny
 constexpr int kVfEditSetText = 212;  // UIEdit::SetText(const char*)
 
 // Globals.
-constexpr uintptr_t kPlayerZeny    = 0x015FBA90;
 constexpr uintptr_t kSafeCheckFlag = 0x015FFFA1;  // octet, persistant
 
 using EditSetText_t = void(__thiscall*)(void*, const char*);
@@ -414,7 +411,7 @@ int ReadInt(void* base, int off, int fallback = 0) {
 
 int PlayerZeny() {
   __try {
-    return *reinterpret_cast<int*>(kPlayerZeny);
+    return *reinterpret_cast<int*>(rag::kZenyAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
@@ -613,7 +610,7 @@ void SendRebuild(void* wnd) {
 // GetAt (un std::string tout-à-zéro est un SSO vide valide) et on détruit ses deux
 // chaînes après usage.
 
-void* Session() { return reinterpret_cast<void*>(kSession); }
+void* Session() { return reinterpret_cast<void*>(rag::kSessionAddr); }
 
 void RecDtor(uint8_t* rec) {
   __try {
@@ -782,7 +779,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
   if (!gid || cap < 2) return;
   __try {
     void* game_mode =
-        reinterpret_cast<GameModeGetActive_t>(kGameModeGetActive)(kModeMgrKey);
+        reinterpret_cast<GameModeGetActive_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (!game_mode) return;
     void* name_dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
     void* info =

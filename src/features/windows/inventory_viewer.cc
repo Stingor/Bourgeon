@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/inventory_viewer.h"
 #include "ui/game_texture.h"
 
@@ -48,7 +49,6 @@ constexpr int kOffHeight  = 0x18;
 // std::list @ g_session+0x16f0. g_session = 0x015fa3c0.
 constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list (head)
 constexpr uintptr_t kInvCount    = 0x015fbab4;  // nb d'items
-constexpr uintptr_t kSessionObj  = 0x015fa3c0;  // g_session (base) — pour les compteurs natifs
 constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)
 constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
 constexpr int kNodeNext = 0x00;  // nœud : next
@@ -67,7 +67,6 @@ constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_shee
 // Poids / zeny / compteur.
 constexpr uintptr_t kWeightCur     = 0x015fbaa0;
 constexpr uintptr_t kWeightMax     = 0x015fba9c;
-constexpr uintptr_t kZeny          = 0x015fba90;
 constexpr uintptr_t kOverweightPct = 0x01602324;
 constexpr uintptr_t kInvExpansion  = 0x01602354;  // extension serveur (capacité = +200)
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
@@ -122,8 +121,6 @@ using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fe
 // Commandes (confirmées via le double-clic natif 0x00949fc0 et le clic-droit 0x0094f380) :
 //   use conso 0x1b / équiper 0x13 / carte 0x7b / munition-costume-ombre 0x57 ;
 //   transfert vers cart 0x4c / vers storage Kafra 0x37 (0x33 = guilde, fenêtre 0x271b).
-constexpr uintptr_t kGetMode = 0x00a75340;
-constexpr uintptr_t kModeArg = 0x1213338;
 constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdUse       = 0x1b;
 constexpr int kCmdEquip     = 0x13;
@@ -334,7 +331,7 @@ inline Fn Vf(void* self, int off) {
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
 void* Dispatcher() {
   __try {
-    return reinterpret_cast<GetMode_t>(kGetMode)(static_cast<int>(kModeArg));
+    return reinterpret_cast<GetMode_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -345,8 +342,8 @@ void* Dispatcher() {
 using WornCountFn_t = int(__fastcall*)(int);
 int WornItemCount() {
   __try {
-    return reinterpret_cast<WornCountFn_t>(kCntEquipped)(static_cast<int>(kSessionObj)) +
-           reinterpret_cast<WornCountFn_t>(kCntCostume)(static_cast<int>(kSessionObj));
+    return reinterpret_cast<WornCountFn_t>(kCntEquipped)(static_cast<int>(rag::kSessionAddr)) +
+           reinterpret_cast<WornCountFn_t>(kCntCostume)(static_cast<int>(rag::kSessionAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
@@ -824,7 +821,7 @@ FooterVals ReadFooterVals() {
   __try {
     v.wmax = *reinterpret_cast<int*>(kWeightMax);
     v.wcur = *reinterpret_cast<int*>(kWeightCur);
-    v.zeny = *reinterpret_cast<int*>(kZeny);
+    v.zeny = *reinterpret_cast<int*>(rag::kZenyAddr);
     v.expansion = *reinterpret_cast<int*>(kInvExpansion);
     v.overPct = *reinterpret_cast<int*>(kOverweightPct);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

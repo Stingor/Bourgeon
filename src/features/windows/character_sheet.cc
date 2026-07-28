@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/character_sheet.h"
 #include "ui/game_texture.h"
 
@@ -42,7 +43,6 @@
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
 
-constexpr uintptr_t kSession = 0x015fa3c0;
 
 //  Tableau equip : session + base + slot*0xf8 (in-place, aucun appel C++)
 constexpr int kEquipBase   = 0x17d0;   // equipement normal
@@ -101,7 +101,6 @@ enum { kCompOff = 0, kCompOn = 1, kCompDeco = 2 };
 
 // Toggles de config natifs (fenêtre équip case 0xd5) via le dispatcher CMode *(0x0121333c)->vf+0x18.
 // RE live 2026-07-11 : cmd 0xFD = « Show Equip » (config 0), cmd 0x148 = « View Costumes » (config 5).
-constexpr uintptr_t kUICmdDisp       = 0x0121333c;  // *ptr = dispatcher CMode (en jeu)
 constexpr int       kVfDispCmd       = 0x18;
 constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
 constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
@@ -189,7 +188,7 @@ struct EquipItem {
 bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
   __try {
     const uintptr_t base =
-        kSession + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride;
+        rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride;
     const uint8_t* e = reinterpret_cast<const uint8_t*>(base);
     const int invIndex = *reinterpret_cast<const int*>(e + kOffEquipInvIndex);
     const int present  = *reinterpret_cast<const int*>(e + kOffEquipPresent);
@@ -301,7 +300,7 @@ bool FindInvLiteByIndex(const InvItemLite* inv, int n, int index, InvItemLite* o
 bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
   __try {
     const uint8_t* e = reinterpret_cast<const uint8_t*>(
-        kSession + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride);
+        rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride);
     if (*reinterpret_cast<const int*>(e + kOffEquipInvIndex) == 0 ||
         *reinterpret_cast<const int*>(e + kOffEquipPresent) != 1)
       return false;
@@ -775,9 +774,9 @@ const char* ClassNameSEH() {
     using GetJobId_t     = int (__fastcall*)(void*, void*);
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
     const int jobid = reinterpret_cast<GetJobId_t>(0x00d5b580)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
-        reinterpret_cast<void*>(kSession), nullptr, static_cast<unsigned>(jobid), -1);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
     return n ? n : "";
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
 }
@@ -790,7 +789,7 @@ const char* JobNameSEH(int jobId) {
   __try {
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
     const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
-        reinterpret_cast<void*>(kSession), nullptr, static_cast<unsigned>(jobId), -1);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobId), -1);
     return n ? n : "";
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
 }
@@ -1016,7 +1015,7 @@ int SkillPointsSEH() {
 int GetUseLevelSEH(int skillId) {
   __try {
     return reinterpret_cast<GetUseLevel_t>(kSkillGetUseLevel)(
-        reinterpret_cast<void*>(kSession), nullptr, skillId);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, skillId);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 void SetUseLevelSEH(int skillId, int level) {
@@ -1793,7 +1792,7 @@ void SendEquip(int invIndex, uint32_t position) {
 using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
 void SendConfigToggle(int cmd, int value) {
   __try {
-    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1805,7 +1804,7 @@ void SendConfigToggle(int cmd, int value) {
 // RE du bloc : 0x00c8d9ad..0x00c8de53 ; arguments (cmd, skillId, cibleGID, niveau, 0).
 void SendUseSkill(uint16_t skillId, int level) {
   __try {
-    void* d = *reinterpret_cast<void**>(kUICmdDisp);
+    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
     const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
     if (d && self)
@@ -1902,7 +1901,7 @@ void ResolveTitleSEH(int id, char* out, size_t cap) {
     uint8_t sbuf[0x18];
     std::memset(sbuf, 0, sizeof(sbuf));
     reinterpret_cast<TitleGetStr_t>(kTitleGetStr)(
-        reinterpret_cast<void*>(kSession), nullptr, sbuf, id);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, sbuf, id);
     const uint32_t scap = *reinterpret_cast<const uint32_t*>(sbuf + 0x14);
     const char* p = (scap > 15) ? *reinterpret_cast<char* const*>(sbuf)
                                 : reinterpret_cast<const char*>(sbuf);
@@ -2149,7 +2148,7 @@ void ReadSkillTabNamesSEH(int jobId, char out[4][32]) {
 int OwnJobIdSEH() {
   __try {
     using GetJobId_t = int (__fastcall*)(void*, void*);
-    return reinterpret_cast<GetJobId_t>(0x00d5b580)(reinterpret_cast<void*>(kSession),
+    return reinterpret_cast<GetJobId_t>(0x00d5b580)(reinterpret_cast<void*>(rag::kSessionAddr),
                                                     nullptr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
@@ -5894,7 +5893,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24, 24));
       ImGui::SameLine();
     }
-    const uintptr_t dsrc = kSession + (costume ? kCostumeBase : kEquipBase) +
+    const uintptr_t dsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                            static_cast<uintptr_t>(slot) * kSlotStride;
     char dnm[128];
     DecoratedItemName(reinterpret_cast<const void*>(dsrc), dnm, sizeof(dnm));
@@ -5921,7 +5920,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
         "(clic droit : desc, Maj+clic droit : lien chat, double-clic : déséquip, glisser : inv.)";
     // Nom COMPLET (refine + [slots] + cartes/enchant/forge) via BuildDisplayName, comme la
     // description ; ItemName seul rendrait le nom NU. Repli sur ItemName si vide.
-    const uintptr_t hsrc = kSession + (costume ? kCostumeBase : kEquipBase) +
+    const uintptr_t hsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                            static_cast<uintptr_t>(slot) * kSlotStride;
     char nm[128];
     DecoratedItemName(reinterpret_cast<const void*>(hsrc), nm, sizeof(nm));
@@ -5933,7 +5932,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
         if (auto* iv = Bourgeon::Instance().inventory_viewer())
           iv->LinkItemToChat(it.invIndex);
       } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
-        const uintptr_t src = kSession + (costume ? kCostumeBase : kEquipBase) +
+        const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                               static_cast<uintptr_t>(slot) * kSlotStride;
         OpenItemDesc(it.nameid, static_cast<uint16_t>(it.viewId),
                      static_cast<uint32_t>(it.location), static_cast<int>(mp.x),

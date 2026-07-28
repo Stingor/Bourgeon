@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
@@ -60,7 +61,7 @@ const Src kSrc[BasicInfo::kBarCount] = {
   {0x015fb9e8, 0x015fb9e0, 0,        true,  false, "Job",   "###BIJobExp"},
   {0x015ff908, 0x015ff90c, 0,        false, false, "HP",    "###BIHp"},
   {0x015ff910, 0x015ff914, 0,        false, false, "SP",    "###BISp"},
-  {0x015fba90, 0x015fba90, kZenyMax, false, true,  "Zeny",  "###BIZeny"},
+  {rag::kZenyAddr, rag::kZenyAddr, kZenyMax, false, true,  "Zeny",  "###BIZeny"},
   {0x015fbaa0, 0x015fba9c, 0,        false, false, "Poids", "###BIWeight"},
 };
 
@@ -98,7 +99,6 @@ inline float ExpFrac(long long cur, long long max) {
 // ── Status-portrait value sources (20250716 client) ──────────────────────────
 constexpr uintptr_t kBaseLevel = 0x015fb9f0;  // DAT_015fb9f0 (UIBasicInfoWnd "Base Lv.")
 constexpr uintptr_t kJobLevel  = 0x015fb9f8;  // DAT_015fb9f8 (UIBasicInfoWnd "Job Lv.")
-constexpr uintptr_t kSession   = 0x015fa3c0;  // g_session
 
 inline int RDi(uintptr_t a) { return *reinterpret_cast<volatile int*>(a); }
 
@@ -111,9 +111,9 @@ const char* ClassName() {
   using GetClassName_t = const char* (__fastcall*)(void* ecx, void* edx,
                                                    unsigned jobid, int sex);
   const int jobid = reinterpret_cast<GetJobId_t>(0x00d5b580)(
-      reinterpret_cast<void*>(kSession), nullptr);
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
   const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
-      reinterpret_cast<void*>(kSession), nullptr, static_cast<unsigned>(jobid), -1);
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
   return n ? n : "";
 }
 
@@ -373,8 +373,8 @@ void ResolveHeadgearViews(bool show_costume, int* hg_top, int* hg_mid, int* hg_l
   const int slots[3] = {0, 8, 9};  // ordre de lecture ; [k] -> couche assignée plus bas
   int rtag[3], rview[3], ctag[3], cview[3], etag[3], eview[3];
   for (int k = 0; k < 3; ++k) {
-    const uintptr_t gen = kSession + 0x17d0 + static_cast<uintptr_t>(slots[k]) * 0xf8;
-    const uintptr_t cos = kSession + 0x2b30 + static_cast<uintptr_t>(slots[k]) * 0xf8;
+    const uintptr_t gen = rag::kSessionAddr + 0x17d0 + static_cast<uintptr_t>(slots[k]) * 0xf8;
+    const uintptr_t cos = rag::kSessionAddr + 0x2b30 + static_cast<uintptr_t>(slots[k]) * 0xf8;
     rtag[k]  = *reinterpret_cast<int*>(gen + 4);
     rview[k] = *reinterpret_cast<int*>(gen + 0x70);
     ctag[k]  = show_costume ? *reinterpret_cast<int*>(cos + 4) : 0;
@@ -407,7 +407,7 @@ void ResolveHeadgearViews(bool show_costume, int* hg_top, int* hg_mid, int* hg_l
 // se peuplent que via un ZC_SPRITE_CHANGE en jeu (cf. World_Spawn... / seed).
 int EquipSlotNameId(int slot) {
   __try {
-    const uintptr_t e = kSession + 0x17d0 + static_cast<uintptr_t>(slot) * 0xf8;
+    const uintptr_t e = rag::kSessionAddr + 0x17d0 + static_cast<uintptr_t>(slot) * 0xf8;
     if (*reinterpret_cast<int*>(e + 0x04) == 0 ||   // invIndex 0 = vide
         *reinterpret_cast<int*>(e + 0x10) != 1)     // present != 1
       return 0;
@@ -432,9 +432,9 @@ void CapturePortraitActor() {
     using GetSexFn = int(__fastcall*)(void*, void*);
     using GetJobFn = int(__fastcall*)(void*, void*);
     const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int hair = *reinterpret_cast<int*>(kHair);
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
@@ -532,9 +532,9 @@ void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
     using GetSexFn = int(__fastcall*)(void*, void*);
     using GetJobFn = int(__fastcall*)(void*, void*);
     const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int hair = *reinterpret_cast<int*>(kHair);
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
@@ -594,8 +594,6 @@ void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
 // 0-4 corps/tête/coiffes, **5 = arme**, 6 = trail arme (souvent null), **7 = bouclier**
 // (SEUL le slot 7 change quand on change de bouclier ; le slot 6 reste null). On
 // dessine ce que le jeu a mis -> le doll identique au monde, zéro résolution.
-constexpr uintptr_t kGameModeGet   = 0x00a75340;  // GameMode_GetActive(mgr)
-constexpr uintptr_t kModeMgr       = 0x1213338;   // arg (CModeMgr)
 constexpr int kOffActorMgr = 0xcc;   // CMode -> actorMgr
 constexpr int kOffOwnActor = 0x2c;   // actorMgr -> acteur joueur
 constexpr int kOffSlotArr    = 0x4ac;  // acteur -> vector CELLULES (base @+0x4ac, end @+0x4b0)
@@ -715,8 +713,8 @@ void EmitSlotLayers(void* sprObj, void* actObj, int pose, int frameIdx, float sc
 void EmitWeaponShieldLayers(int anim, int dir, int frameIdx, float body_scale) {
   __try {
     using GameModeFn = void*(__fastcall*)(int);
-    void* gameMode = reinterpret_cast<GameModeFn>(kGameModeGet)(
-        static_cast<int>(kModeMgr));
+    void* gameMode = reinterpret_cast<GameModeFn>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
     if (!gameMode) return;
     void* actorMgr = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(gameMode) + kOffActorMgr);
@@ -832,7 +830,7 @@ void EmitCompanionLayers(int pose, bool animate, float body_scale) {
   g_av_companion_present = 0;
   __try {
     using GameModeFn = void*(__fastcall*)(int);
-    void* gameMode = reinterpret_cast<GameModeFn>(kGameModeGet)(static_cast<int>(kModeMgr));
+    void* gameMode = reinterpret_cast<GameModeFn>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (!gameMode) return;
     void* actorMgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gameMode) + kOffActorMgr);
     if (!actorMgr) return;
@@ -1028,9 +1026,9 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
     using GetSexFn = int(__fastcall*)(void*, void*);
     using GetJobFn = int(__fastcall*)(void*, void*);
     const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
-        reinterpret_cast<void*>(kSession), nullptr);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     const int hair = *reinterpret_cast<int*>(kHair);
     const int clo  = *reinterpret_cast<int*>(kClothesCol);
     const int hc   = *reinterpret_cast<int*>(kHairCol);
@@ -1043,7 +1041,7 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
     // sinon le garment EFFECTIF (kGarmentView, déjà config-aware -> réel si costumes off).
     int garment;
     if (show_costume) {
-      const uintptr_t cosG = kSession + 0x2b30 + 2 * 0xf8;  // slot cape/garment costume
+      const uintptr_t cosG = rag::kSessionAddr + 0x2b30 + 2 * 0xf8;  // slot cape/garment costume
       garment = (*reinterpret_cast<int*>(cosG + 4) != 0) ? *reinterpret_cast<int*>(cosG + 0x70)
                                                          : *reinterpret_cast<int*>(kGarmentView);
     } else {
@@ -1401,8 +1399,8 @@ void InstallEzCapture() {
 void* GetOwnActorLive() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(
-        static_cast<int>(kModeMgr));
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
@@ -1931,7 +1929,7 @@ void CaptureHatEffectOrdinal(int ordinal) {
 // ── Paperdoll d'un personnage ARBITRAIRE (char-select) ───────────────────────
 // Les trois captures ci-dessus (portrait / aperçu / avatar) rendent TOUJOURS le
 // personnage CONNECTÉ : elles lisent l'apparence dans les globals de session
-// (kSession, g_OwnLook_*) et prennent la fenêtre BasicInfo (0x0131f6c4) comme
+// (rag::kSessionAddr, g_OwnLook_*) et prennent la fenêtre BasicInfo (0x0131f6c4) comme
 // contexte de rendu. Au char-select, ni l'un ni l'autre n'existe -> capture vide.
 // Ce chemin-ci est donc AUTONOME :
 //   (a) apparence passée en paramètre (DollLook) au lieu des globals ;

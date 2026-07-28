@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/gameplay/player_jump.h"
 
 #include "ragnarok/uiwnd.h"
@@ -13,8 +14,6 @@
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
-constexpr uintptr_t kGameModeGet   = 0x00a75340;  // GameMode_GetActive(mgr)
-constexpr uintptr_t kModeMgr       = 0x1213338;   // arg (CModeMgr)
 constexpr uintptr_t kTerrainHeight = 0x007110c0;  // Terrain_GetHeightAt(world,x,z)->float
 constexpr uintptr_t kFindByGID     = 0x00a69eb0;  // ActorList_FindByGID(actorMgr,gid)->acteur
 constexpr int kOffActorMgr  = 0xcc;   // CMode    -> actorMgr
@@ -40,8 +39,8 @@ struct WorldRefs {
 WorldRefs GetWorldRefs() {
   WorldRefs refs;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(kGameModeGet)(
-        static_cast<int>(kModeMgr));
+    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
       void* mgr =
           *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);

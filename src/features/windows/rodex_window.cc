@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/rodex_window.h"
 
 #include <Windows.h>
@@ -51,8 +52,7 @@ constexpr int kEditText = 0xd8;
 // (vérifié live : slot 0 à 0x01600008, index inventaire +4, quantité +0x10, itemId
 // en TEXTE +0x2c). Même source que la fenêtre native, qui les recopie dans sa liste
 // à chaque msg 0x17 ; c'est aussi ce que `sub_D7F480` remet à zéro à chaque lecture.
-constexpr uintptr_t kSession        = 0x015fa3c0;  // g_UIWindowContextKey
-constexpr uintptr_t kMailAttachSlot = kSession + 23624;
+constexpr uintptr_t kMailAttachSlot = rag::kSessionAddr + 23624;
 constexpr int kAttachStride = 248;  // 0xF8 : taille d'un ItemSkillInfo
 constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
 constexpr int kInfoIndex  = 0x04;   // int : index d'inventaire
@@ -147,7 +147,6 @@ constexpr int kMailBodyMax  = 499;  // MAIL_BODY_LENGTH 500, idem
 // Bus de commandes = CMode::SendMsg, réplique de GameMode_GetActive(0x1213338) :
 // le mode courant est *(0x1213338+4), et seulement si *(0x1213338+0x58) == 1.
 // vtable+0x18 (slot 6) est le dispatcher de commandes (identique à TradeWindow).
-constexpr uintptr_t kModeMgr = 0x01213338;
 constexpr int kCmdReadMail   = 0xc2;   // (mailID_lo, openType) -> CZ_REQ_READ_RODEX 0x09EA
 constexpr int kCmdDeleteMail = 0xc4;   // (mailID_lo, openType) -> CZ_REQ_DELETE_MAIL 0x09F5
 constexpr int kCmdBeginWrite = 0x10c;  // (char* destinataire ou 0) -> CZ 0x0A08
@@ -310,7 +309,7 @@ bool JobNameAnsi(int job_class, char* out, size_t cap) {
   out[0] = '\0';
   __try {
     const char* name = reinterpret_cast<JobDisplayName_t>(kJobDisplayName)(
-        reinterpret_cast<void*>(kSession), static_cast<unsigned int>(job_class), 99);
+        reinterpret_cast<void*>(rag::kSessionAddr), static_cast<unsigned int>(job_class), 99);
     if (!name || !*name) return false;
     std::strncpy(out, name, cap - 1);
     out[cap - 1] = '\0';
@@ -492,7 +491,7 @@ void PurgeStaleMails() {
 // CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
 void ModeCmd(int cmd, int a, int b, int c, int d) {
   __try {
-    uint8_t* mgr = reinterpret_cast<uint8_t*>(kModeMgr);
+    uint8_t* mgr = reinterpret_cast<uint8_t*>(rag::kModeMgrAddr);
     if (*reinterpret_cast<int*>(mgr + 0x58) != 1) return;  // aucun mode actif
     void* disp = *reinterpret_cast<void**>(mgr + 4);
     if (disp) {

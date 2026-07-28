@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/minigames/roggle.h"
 
@@ -205,7 +206,6 @@ void StepPhysics(float dt) {
 // hand the buffer to D3D9_CreateTextureARGB. Item icons: 512=Apple (ball),
 // 502=Orange Potion (orange pegs), 505=Blue Potion (blue pegs).
 constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __fastcall(session, 0, idstr, outbuf, 0)
-constexpr uintptr_t kEngSession   = 0x015fa3c0;  // session object (ecx)
 using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
 using TexMgr_t    = void* (__cdecl*)();
 using MakeKey_t   = void* (__cdecl*)(const char*);
@@ -252,7 +252,7 @@ bool LoadItemIcon(uint32_t id, IconTex* out) {
     std::snprintf(idbuf, sizeof(idbuf), "%u", id);
     char path[260] = {0};
     reinterpret_cast<BuildPath_t>(kEngBuildPath)(
-        reinterpret_cast<void*>(kEngSession), nullptr, idbuf, path, 0);
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, idbuf, path, 0);
     void* mgr  = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     void* key  = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
     void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);

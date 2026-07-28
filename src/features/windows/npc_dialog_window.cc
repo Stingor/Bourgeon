@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "features/windows/npc_dialog_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -31,10 +32,9 @@ namespace {
 
 // UIWindowMgr + factory (SEH-gardé, comme npc_shop_window).
 
-// Dispatcher CMode::SendMsg : *(kDispatcherPtr) = mode zone actif (ou 0). vtbl+0x18
+// Dispatcher CMode::SendMsg : *(rag::kActiveModePtr) = mode zone actif (ou 0). vtbl+0x18
 // (= index 6) = CMode::SendMsg. cmd 0x28 = ferme l'UI NPC et DÉBLOQUE l'état
 // dialogue CLIENT (CZ_CLOSE_DIALOG seul laisse le perso bloqué).
-constexpr uintptr_t kDispatcherPtr = 0x0121333c;
 constexpr int kGameModeDialogFlag  = 0x24c;   // CGameMode+0x24C = dialogue actif
 constexpr int kSelClose            = 0x28;
 using Dispatch_t = int (__thiscall*)(void*, int, int, int, int, int);
@@ -96,7 +96,7 @@ void ShowWnd(void* w) {  // dé-cache (remet le flag visibilité)
 // ── Dispatcher CMode + flag dialogue (SEH-gardé) ──
 void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0x18
   __try {
-    void* disp = *reinterpret_cast<void**>(kDispatcherPtr);
+    void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (disp) {
       void** vtbl = *reinterpret_cast<void***>(disp);
       reinterpret_cast<Dispatch_t>(vtbl[6])(disp, cmd, 0, 0, 0, 0);
@@ -105,7 +105,7 @@ void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0
 }
 void ForceClearDialogFlag() {  // GameMode+0x24C = 0 (débloque le client, garantie)
   __try {
-    void* mode = *reinterpret_cast<void**>(kDispatcherPtr);
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (mode)
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) + kGameModeDialogFlag) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -935,7 +935,7 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
 
 bool NpcDialogWindow::DialogActiveNative() const {
   __try {
-    void* mode = *reinterpret_cast<void**>(kDispatcherPtr);
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!mode) return false;
     return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
                                    kGameModeDialogFlag) != 0;

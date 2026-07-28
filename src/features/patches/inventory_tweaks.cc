@@ -1,3 +1,4 @@
+#include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/patches/inventory_tweaks.h"
 
@@ -54,7 +55,6 @@ constexpr uintptr_t kFmtComma  = 0x00a948d0;  // __cdecl(value,buf,size) -> thou
 constexpr uintptr_t kWeightCur     = 0x015fbaa0;  // current weight (raw)
 constexpr uintptr_t kWeightMax     = 0x015fba9c;  // max weight (raw)
 constexpr uintptr_t kOverweightPct = 0x01602324;  // red-tint % threshold
-constexpr uintptr_t kZeny          = 0x015fba90;  // player zeny (int32, next to weight)
 
 // ---- inventory slot-count "X / max" readout (drawn by the native FUN_00946da0) --
 // The native draw computes max = 100 + DAT_01602354 (the client hardcodes a 100-slot
@@ -513,7 +513,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 
     // Zeny, right-aligned, comma-formatted like the basic-info window.
     char zbuf[40];
-    reinterpret_cast<FmtComma_t>(kFmtComma)(RD(kZeny), zbuf, sizeof(zbuf));
+    reinterpret_cast<FmtComma_t>(kFmtComma)(RD(rag::kZenyAddr), zbuf, sizeof(zbuf));
     char zline[64];
     std::snprintf(zline, sizeof(zline), "%sz", zbuf);
     const int zW = reinterpret_cast<MeasureW_t>(kMeasureW)(
