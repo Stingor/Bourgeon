@@ -139,6 +139,8 @@ set(BOURGEON_FILES
 	"ui/align_grid.h"
 	"ui/window_clamp.cc"
 	"ui/window_clamp.h"
+	"ui/window_zorder.cc"
+	"ui/window_zorder.h"
 	"ui/game_texture.cc"
 	"ui/game_texture.h"
 	"ui/icon_cache.cc"

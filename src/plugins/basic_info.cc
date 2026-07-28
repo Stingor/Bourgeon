@@ -2,6 +2,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (barres/portrait déplacés à la main)
+#include "ui/window_zorder.h"  // HUD maintenu sous les vraies fenêtres
 
 #include "ragnarok/uiwnd.h"
 
@@ -2713,7 +2714,8 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
                            ImGuiWindowFlags_NoSavedSettings |
                            ImGuiWindowFlags_NoBackground |  // we draw our own bg
                            ImGuiWindowFlags_NoNav |
-                           ImGuiWindowFlags_NoFocusOnAppearing;
+                           ImGuiWindowFlags_NoFocusOnAppearing |
+                           ro::kBackgroundWindowFlags;  // décor : jamais devant une vraie fenêtre
   if (frozen) {
     flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
              ImGuiWindowFlags_NoInputs;  // freeze + click-through
@@ -2736,6 +2738,7 @@ bool BasicInfoTweaks::DrawBar(BarId id, long long cur, long long max) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0f, 8.0f));
 
   bool changed = false;
+  ro::MarkBackgroundWindow(kSrc[id].win_id);
   if (ImGui::Begin(kSrc[id].win_id, nullptr, flags)) {
     const ImVec2 p0 = ImGui::GetWindowPos();
     const ImVec2 sz = ImGui::GetWindowSize();
@@ -2983,7 +2986,8 @@ bool BasicInfoTweaks::DrawPortraitElem(PortId id) {
                            ImGuiWindowFlags_NoBackground |
                            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                            ImGuiWindowFlags_NoNav |
-                           ImGuiWindowFlags_NoFocusOnAppearing;
+                           ImGuiWindowFlags_NoFocusOnAppearing |
+                           ro::kBackgroundWindowFlags;  // décor : jamais devant une vraie fenêtre
   if (frozen) flags |= ImGuiWindowFlags_NoInputs;  // click-through when locked
 
   ImGui::SetNextWindowPos(ImVec2(static_cast<float>(e.x), static_cast<float>(e.y)),
@@ -2999,6 +3003,7 @@ bool BasicInfoTweaks::DrawPortraitElem(PortId id) {
   std::snprintf(id_buf, sizeof(id_buf), "###Port%d", static_cast<int>(id));
 
   bool changed = false;
+  ro::MarkBackgroundWindow(id_buf);
   if (ImGui::Begin(id_buf, nullptr, flags)) {
     const ImVec2 p0 = ImGui::GetWindowPos();
     const ImVec2 sz = ImGui::GetWindowSize();

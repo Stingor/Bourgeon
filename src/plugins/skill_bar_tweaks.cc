@@ -20,6 +20,7 @@
 #include "plugins/imgui_escape.h"
 #include "ragnarok/skill_cooldowns.h"  // cooldowns serveur (ZC_SKILL_POSTDELAY)
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (barre déplacée à la main)
+#include "ui/window_zorder.h"  // HUD maintenu sous les vraies fenêtres
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -1131,7 +1132,8 @@ void SkillBarTweaks::DrawBar(int bar) {
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse |
       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground;  // on dessine notre propre fond
+      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground |  // on dessine notre propre fond
+      ro::kBackgroundWindowFlags;  // décor : jamais devant une vraie fenêtre
 
   // Capture souris. Par défaut la barre intercepte ; on la rend "click-through"
   // (NoMouseInputs -> le WndProc laisse passer au jeu) dans 2 cas :
@@ -1169,6 +1171,7 @@ void SkillBarTweaks::DrawBar(int bar) {
 
   char winName[32];
   std::snprintf(winName, sizeof(winName), "##SkillActionBar%d", bar);
+  ro::MarkBackgroundWindow(winName);
   ImGui::Begin(winName, nullptr, flags);
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 wp = ImGui::GetWindowPos();

@@ -7,6 +7,7 @@
 #include "ragnarok/skill_cooldowns.h"
 #include "ui/ro_imgui.h"
 #include "ui/window_clamp.h"
+#include "ui/window_zorder.h"
 #include "plugins/auto_login.h"
 #include "plugins/moonlight_auth.h"
 #include "plugins/char_select.h"
@@ -307,6 +308,10 @@ void Bourgeon::RenderUI() {
   // corrigée est celle qui sera dessinée. Écrans de login inclus (le bloc
   // OnRenderLoginUI ci-dessous dessine aussi des fenêtres). Voir ui/window_clamp.h.
   ro::KeepWindowsOnScreen();
+  // Le HUD (barre de skills, barres HP/SP/XP/zeny/poids, portrait) reste sous
+  // toutes les vraies fenêtres. Même endroit et mêmes raisons que le clamp
+  // ci-dessus : après NewFrame, avant le premier Begin. Voir ui/window_zorder.h.
+  ro::SendBackgroundWindowsToBack();
   // Stand down while a map is loading: hide all plugin UI. This also stops
   // SkillBarTweaks::EnsureCreated() from MakeWindow'ing the native shortcut bar
   // every frame while the HUD is being torn down/rebuilt — the race that freed a
