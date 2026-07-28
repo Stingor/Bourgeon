@@ -2919,12 +2919,53 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
     return take;
   };
 
-  // 1) les prérequis directs manquants, dans l'ordre où le Lua les a posés ;
-  for (int i = 0; i < target.need_count; ++i) {
-    SkillRaw req{};
-    if (!find(static_cast<uint16_t>(target.need_id[i]), req)) continue;
-    if (req.user_up <= 0) continue;  // le joueur ne peut pas la monter (compétence de quête)
-    reserve(req, target.need_lv[i]);
+  // 1) TOUTE la chaîne de prérequis, pas seulement le rang précédent.
+  // La liste portée par une compétence n'est PAS la fermeture transitive : Cart
+  // Termination réclame Cart Boost, qui réclame Pushcart 5, qui réclame Enlarge Weight
+  // Limit 5 — et cette dernière n'apparaît nulle part dans la liste de Cart Termination.
+  // S'arrêter au rang direct (ce que fait le natif) laissait donc des trous dans l'arbre.
+  // Ils passent quand même côté serveur, parce que `player_skillfree: yes` y désactive
+  // toute vérification de prérequis (pc_calc_skilltree) — raison de plus pour que ce soit
+  // le client qui tienne l'arbre cohérent.
+  struct PendingReq { int id; int lvl; int depth; };
+  PendingReq chain[64];
+  int chain_count = 0;
+  // Parcours en largeur des prérequis. Un même prérequis peut être réclamé par
+  // plusieurs branches : on garde le niveau LE PLUS HAUT et la profondeur LA PLUS
+  // GRANDE (c'est elle qui décide de l'ordre de réservation).
+  auto push_req = [&](int req_id, int req_lvl, int depth) {
+    for (int i = 0; i < chain_count; ++i) {
+      if (chain[i].id != req_id) continue;
+      chain[i].lvl = std::max(chain[i].lvl, req_lvl);
+      chain[i].depth = std::max(chain[i].depth, depth);
+      return;
+    }
+    if (chain_count < 64) chain[chain_count++] = {req_id, req_lvl, depth};
+  };
+  for (int i = 0; i < target.need_count; ++i)
+    push_req(target.need_id[i], target.need_lv[i], 1);
+  // `chain_count` grandit pendant la boucle : c'est le parcours lui-même. Profondeur
+  // bornée à 8 — aucun arbre de job n'est si profond, et un cycle dans les données ne
+  // doit pas faire tourner l'UI en rond.
+  for (int i = 0; i < chain_count; ++i) {
+    if (chain[i].depth >= 8) continue;
+    SkillRaw fiche{};
+    if (!find(static_cast<uint16_t>(chain[i].id), fiche)) continue;
+    for (int k = 0; k < fiche.need_count; ++k)
+      push_req(fiche.need_id[k], fiche.need_lv[k], chain[i].depth + 1);
+  }
+  // Réservation des PLUS PROFONDS d'abord : les points restants doivent aller à la
+  // base de la chaîne, sinon on paie le sommet et le pied reste verrouillé.
+  int max_depth = 0;
+  for (int i = 0; i < chain_count; ++i) max_depth = std::max(max_depth, chain[i].depth);
+  for (int d = max_depth; d >= 1; --d) {
+    for (int i = 0; i < chain_count; ++i) {
+      if (chain[i].depth != d) continue;
+      SkillRaw req{};
+      if (!find(static_cast<uint16_t>(chain[i].id), req)) continue;
+      if (req.user_up <= 0) continue;  // pas montable avec des points (quête / lien)
+      reserve(req, chain[i].lvl);
+    }
   }
   // 2) la compétence demandée elle-même.
   if (target.user_up <= 0) {
@@ -3325,13 +3366,13 @@ void CharacterSheet::DrawSkillsTab() {
       if (n->need_id[k] == id) return true;
     return false;
   };
-  // RÉDUCTION TRANSITIVE, pour un lien `prereq_id -> dependent`. La liste de
-  // prérequis du client n'est pas limitée aux liens directs : elle est aplatie (c'est
-  // ce qui permet au natif de réserver toute une chaîne d'un coup, et pourquoi il la
-  // déduplique en gardant le niveau le plus haut). Tracée telle quelle, Bowling Bash
-  // pointerait vers Bash à la fois directement ET via Magnum Break. On saute donc le
-  // trait direct quand un AUTRE prérequis de `dependent` réclame déjà `prereq_id` :
-  // le chemin est de toute façon à l'écran.
+  // RÉDUCTION TRANSITIVE, pour un lien `prereq_id -> dependent`. La liste de prérequis
+  // du client contient des RACCOURCIS : 136 arêtes redondantes mesurées dans
+  // skillinfolist.lub, dont Bowling Bash qui réclame Bash ET Magnum Break, alors que
+  // Magnum Break réclame déjà Bash. Tracé tel quel, le même chemin serait doublé. On
+  // saute donc le trait direct quand un AUTRE prérequis de `dependent` réclame déjà
+  // `prereq_id`. (⚠ Ces raccourcis ne font PAS de la liste une fermeture transitive —
+  // cf. ReserveSkillPoint, qui doit remonter la chaîne lui-même.)
   auto redundant_edge = [&](const SkillRaw& dependent, int prereq_id) {
     for (int k = 0; k < dependent.need_count; ++k) {
       if (dependent.need_id[k] == prereq_id) continue;

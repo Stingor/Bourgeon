@@ -692,16 +692,39 @@ chemin entier qu'on cherche en survolant une compétence. Un seul parcours param
 (`walk_chain(upstream)`) — chaque case développée une fois (le graphe a des raccourcis), profondeur
 bornée à 6, trait qui pâlit/s'affine avec la distance. La flèche va **toujours du prérequis vers ce
 qu'il débloque**, quel que soit le sens de parcours : c'est le sens de lecture de l'arbre, pas celui
-du survol. Chaque arête passe par la **réduction transitive** ci-dessus — la liste de prérequis du
-client est aplatie, la tracer telle quelle doublerait chaque chemin. Le test de réduction est
+du survol. Chaque arête passe par la **réduction transitive** ci-dessus. Le test de réduction est
 identique dans les deux sens : c'est la même arête.
+
+⚠ **La liste de prérequis du client a des raccourcis, MAIS n'est pas la fermeture transitive.** Les
+deux moitiés de cette phrase comptent, et chacune commande un traitement :
+- **136 arêtes redondantes** mesurées dans `skillinfolist.lub` — `KN_BOWLINGBASH` réclame `SM_BASH`
+  *et* `SM_MAGNUM`, alors que `SM_MAGNUM` réclame déjà `SM_BASH`. D'où la réduction, sans quoi le
+  même chemin serait tracé deux fois.
+- Et pourtant elle est **incomplète** : `WS_CARTTERMINATION` réclame `WS_CARTBOOST`, qui réclame
+  `MC_PUSHCART 5`, qui réclame `MC_INCCARRY 5` — et `MC_INCCARRY` n'apparaît nulle part dans la
+  liste de `WS_CARTTERMINATION`. D'où la réservation **récursive** (cf. plus bas).
+
+Bref : ces données sont écrites à la main, sans invariant. Ne rien supposer de leur forme.
 
 **Vue LISTE = le même arbre, lu comme un arbre.** Profondeur = 1 + celle du prérequis le plus profond
 **présent dans l'onglet**, calculée par passes successives (bornées par le nombre de nœuds : ça
 converge en 3-4 tours et ça protège d'un cycle), puis tri par profondeur. Un prérequis est donc
 toujours affiché AVANT ce qu'il débloque, ce qui permet de tracer les **coudes** de liaison dans la
 gouttière — l'ancre du parent est déjà connue. Même dispositif que l'onglet Compétences de guilde,
-plus la réduction transitive (sans elle, la liste aplatie du client doublerait les chemins).
+plus la réduction transitive (sans elle, les raccourcis du client doubleraient les chemins).
+
+**Réservation RÉCURSIVE (2026-07-28).** Un clic réserve **toute la chaîne** de prérequis, pas le seul
+rang direct comme le natif : parcours en largeur sur les listes `+0x38`, dédoublonné en gardant le
+niveau le plus haut, puis réservation **des plus profonds d'abord** (sinon les points partent au
+sommet et le pied de la chaîne reste verrouillé). Profondeur bornée à 8, 64 nœuds max.
+Constaté en jeu sans ça : monter Cart Termination posait Pushcart 5 mais laissait Enlarge Weight
+Limit à 0. ⚠ **Le serveur ne rattrape pas l'erreur** : `player_skillfree: yes`
+(`conf/import/battle_conf.txt:385`, qui écrase le `no` de `conf/battle/player.conf:31`) désactive
+TOUTE vérification de prérequis — `pc_calc_skilltree` enferme le contrôle dans
+`if (!battle_config.skillfree)` (`src/map/pc.cpp:2740`) et `pc_check_skilltree` sort d'entrée
+(ligne 2857). C'est donc au client de tenir l'arbre cohérent. (Les deux arbres, eux, CONCORDENT :
+`db/pre-re/skill_tree.yml` et `skillinfolist.lub` donnent les mêmes prérequis, vérifié sur la
+chaîne du cart.)
 
 ⚠ **L'indentation est plafonnée à 5 niveaux** (pas de 14 px). Mesure faite sur les `.lub` du client,
 arbres **1re + 2e classe fusionnés** :
