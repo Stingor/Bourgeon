@@ -714,9 +714,19 @@ texte déborde parfois sur le bas d'une icône.
 classe. Différence de fond : elles n'ont **pas d'index de case** — le Lua du client ne les connaît
 pas — donc la grille est construite depuis l'arbre lui-même : **une ligne par palier de profondeur**,
 les compétences d'un même palier côte à côte. C'est la disposition que l'indentation de la liste
-dessinait déjà, en deux dimensions. Autre différence, de sécurité : **Ctrl est EXIGÉ** pour monter
-(`Ctrl + clic gauche`), parce qu'une compétence de guilde n'a pas de mécanisme de réservation — le
-paquet part et le point est dépensé, alors que dans le Grimoire un clic ne fait que réserver.
+dessinait déjà, en deux dimensions. Autre différence : le **clic gauche monte d'un niveau tout de
+suite** (pas de réservation ni de « Appliquer » côté guilde, le paquet part). Le clic simple suffit
+quand même : une guilde au niveau max apprend de toute façon l'arbre entier, donc un point posé au
+mauvais endroit n'est jamais définitivement perdu.
+
+**Cooldown dans la grille** (les deux onglets) : voile noir qui MONTE du bas au fil du temps +
+décompte au centre, exactement la convention de `skill_bar_tweaks` — un joueur qui connaît la barre
+lit la grille sans rien réapprendre. Source : `ro::SkillCooldownFraction` /
+`ro::SkillCooldownRemainingMs` (table alimentée par **ZC_SKILL_POSTDELAY 0x043D**, cf.
+`ragnarok/skill_cooldowns.h`) — surtout PAS la liste native `g_ShortCutCooldownList`. Le voile seul
+ne dirait rien d'un cooldown de guilde de plusieurs minutes : il avance d'un pixel par seconde, d'où
+le chiffre. `ms == 0` avec un voile présent = cooldown venu du repli natif, sans durée exploitable :
+voile gardé, pas de chiffre.
 
 **Lissage des icônes (opt-in).** Les .bmp d'icônes font 24 px et sont agrandis à 40 px : le natif ne
 filtre rien, on garde ce défaut. Case « Lisser les icônes » en haut de page (yaml

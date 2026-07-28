@@ -860,6 +860,33 @@ ro::IconTex ResolveSkillIcon(int skillId) {
   return g_skill_icon_cache[k] = LoadSkillIcon(skillId);
 }
 
+// Voile de cooldown sur une icône de grille (Grimoire et compétences de guilde),
+// exactement la convention de la barre de raccourcis : un fond noir qui MONTE du bas
+// à mesure que le temps passe, plus le décompte au centre. Le voile seul ne dit rien
+// d'un cooldown de guilde de plusieurs minutes — il bouge d'un pixel par seconde.
+// Table alimentée par ZC_SKILL_POSTDELAY (0x043D), cf. ragnarok/skill_cooldowns.h.
+void DrawSkillCooldownOverlay(ImDrawList* dl, uint16_t skillId, const ImVec2& icon_tl,
+                              float icon_size) {
+  const float fraction = ro::SkillCooldownFraction(skillId);
+  if (fraction <= 0.0f) return;
+  const float veil_h = icon_size * fraction;
+  dl->AddRectFilled(ImVec2(icon_tl.x, icon_tl.y + icon_size - veil_h),
+                    ImVec2(icon_tl.x + icon_size, icon_tl.y + icon_size),
+                    IM_COL32(0, 0, 0, 150), 3.0f);
+  // ms == 0 alors que le voile est là = cooldown issu du repli natif, sans durée
+  // exploitable : on garde le voile, sans chiffre.
+  const unsigned long ms = ro::SkillCooldownRemainingMs(skillId);
+  if (ms == 0) return;
+  char left[16];
+  if (ms >= 60000) std::snprintf(left, sizeof(left), "%lu:%02lu", ms / 60000, (ms / 1000) % 60);
+  else             std::snprintf(left, sizeof(left), "%lu", (ms + 999) / 1000);
+  const ImVec2 sz = ImGui::CalcTextSize(left);
+  const ImVec2 at(icon_tl.x + (icon_size - sz.x) * 0.5f,
+                  icon_tl.y + (icon_size - sz.y) * 0.5f);
+  dl->AddText(ImVec2(at.x + 1.0f, at.y + 1.0f), IM_COL32(0, 0, 0, 200), left);  // ombre portée
+  dl->AddText(at, IM_COL32(255, 235, 150, 255), left);
+}
+
 // Filtre d'échantillonnage des icônes du grimoire, posé par un callback de draw list
 // comme la barre de raccourcis (cf. skill_bar_tweaks). Le natif ne filtre RIEN (les
 // .bmp d'icônes font 24 px et sont blités tels quels) : le mode NET est donc le
@@ -3157,6 +3184,9 @@ void CharacterSheet::DrawSkillsTab() {
     tip += s.inf == 0 ? "\nPassive (toujours active)" : "\nActive";
     if (s.learned > 0 && s.sp > 0)    tip += "\nSP : " + std::to_string(s.sp);
     if (s.learned > 0 && s.range > 0) tip += "\nPortée : " + std::to_string(s.range);
+    const unsigned long cd_ms = SkillCooldownRemaining(static_cast<uint16_t>(s.id));
+    if (cd_ms > 0)
+      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) + " s de cooldown";
     if (s.need_count > 0) {
       tip += "\nRequiert : ";
       for (int i = 0; i < s.need_count; ++i) {
@@ -3376,6 +3406,8 @@ void CharacterSheet::DrawSkillsTab() {
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
                      ImVec2(ip.x + icon, ip.y + icon), ImVec2(0, 0), ImVec2(1, 1),
                      learned ? IM_COL32_WHITE : IM_COL32(105, 105, 115, 165));
+      // Cooldown en cours : même voile montant + décompte que la barre de raccourcis.
+      if (learned) DrawSkillCooldownOverlay(dl, static_cast<uint16_t>(s.id), ip, icon);
 
       // Niveau sous l'icône : la seule information qu'on ne peut pas deviner du dessin.
       // NOIR dès qu'elle est apprise (le vert « niveau max » se noyait dans le fond
@@ -4448,14 +4480,14 @@ void CharacterSheet::DrawGuildSkillsTab() {
   ImGui::SameLine();
   ImGui::TextDisabled("Raccourcis");
   mui::Tooltip(
-      "Double-clic            lancer la compétence\n"
-      "Ctrl + clic gauche     monter d'un niveau (le serveur dépense le point)\n"
-      "Clic droit             description de la compétence\n"
-      "Glisser                pose la compétence sur une barre d'action\n"
-      "Survol                 flèches de prérequis (ambre) et de suites (bleu)\n"
+      "Clic gauche      monter d'un niveau (envoyé aussitôt au serveur)\n"
+      "Double-clic      lancer la compétence\n"
+      "Clic droit       description de la compétence\n"
+      "Glisser          pose la compétence sur une barre d'action\n"
+      "Survol           flèches de prérequis (ambre) et de suites (bleu)\n"
       "\n"
-      "⚠ Une compétence de guilde se monte IMMÉDIATEMENT : pas de réservation\n"
-      "comme dans le Grimoire, d'où le Ctrl exigé sur le clic.");
+      "Pas de « Appliquer » ici : contrairement au Grimoire, une compétence de\n"
+      "guilde se monte immédiatement.");
   // Même préférence que le Grimoire (une seule « icônes de skill »), et seulement en
   // grille : en liste l'icône fait une hauteur de ligne, le filtre ne se voit pas.
   if (guild_skill_grid_) {
@@ -4558,6 +4590,10 @@ void CharacterSheet::DrawGuildSkillsTab() {
     if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
                                   std::to_string(row.max_level);
     if (live && live->range > 0) tip += "\nPortée : " + std::to_string(live->range);
+    const unsigned long cd_ms = SkillCooldownRemaining(row.id);
+    if (cd_ms > 0)
+      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) +
+             " s (lancer une compétence de guilde les bloque toutes les quatre)";
     // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
     // là où le joueur regarde quand il se demande pourquoi elle est grisée.
     const std::string reqs = requirements_text(row.node);
@@ -4568,7 +4604,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
          : active_skill ? "\n\nClic droit : description — glisser vers une barre"
                         : "\n\nClic droit : description";
     if (live && live->upgradable && guild_skill_points_ > 0)
-      tip += "\nCtrl + clic : monter d'un niveau";
+      tip += "\nClic gauche : monter d'un niveau";
     ImGui::SetTooltip("%s", tip.c_str());
   };
 
@@ -4623,6 +4659,9 @@ void CharacterSheet::DrawGuildSkillsTab() {
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
                      ImVec2(ip.x + icon_sz, ip.y + icon_sz), ImVec2(0, 0), ImVec2(1, 1),
                      locked ? IM_COL32(105, 105, 115, 165) : IM_COL32_WHITE);
+      // Cooldown en cours (les compétences de guilde se bloquent toutes les quatre
+      // ensemble, plusieurs minutes durant : c'est LE cas où le voile sert).
+      if (!locked) DrawSkillCooldownOverlay(dl, row.id, ip, icon_sz);
 
       char lvl[24];
       if (row.max_level > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", level, row.max_level);
@@ -4652,10 +4691,12 @@ void CharacterSheet::DrawGuildSkillsTab() {
         tooltip_for(row, live, level, locked);
         if (can_use && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
           SendUseSkill(row.id, level);
-        // ⚠ Ctrl EXIGÉ pour monter, contrairement au Grimoire où le clic seul suffit :
-        // ici il n'y a pas de réservation, le paquet part et le point est dépensé.
+        // Clic gauche = monter d'un niveau, comme le « + » de la liste. Le paquet part
+        // TOUT DE SUITE (pas de réservation ici, contrairement au Grimoire), mais la
+        // faute est bénigne : une guilde au niveau max apprend de toute façon l'arbre
+        // entier, un point posé au mauvais endroit n'est jamais définitivement perdu.
         const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
             travel.x == 0.0f && travel.y == 0.0f && live && live->upgradable &&
             guild_skill_points_ > 0) {
           SendSkillUp(row.id);
