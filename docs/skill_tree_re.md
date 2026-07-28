@@ -653,10 +653,27 @@ Ce que le remplaçant ImGui expose, et **pourquoi** ça diverge du natif quand �
 |---|---|---|
 | clic gauche (sans glisser) | **réserve un point** + ses prérequis directs manquants | clic DROIT (`0x00978520`) |
 | Ctrl + clic gauche | réserve **jusqu'au niveau max** (dans la limite des points) | aucun |
+| **double-clic** | **lance** la compétence (au niveau d'utilisation), sans rien réserver | aucun (le natif ouvre la fenêtre `0x2E`) |
 | clic droit | menu : monter, lancer, niveau d'utilisation ±, description | aucun (le natif n'a pas de menu) |
 | Ctrl + clic droit | ouvre la **description** (`MakeWindow 0xC`) | clic GAUCHE (`0x009782B0` -> msg `0x3A`) |
 | glisser | charge utile `BGN_SKILL` vers une barre d'action | glisser natif vers `UIShortCutWnd` |
 | survol | infobulle + **flèches** de prérequis (ambre) et de suites (bleu, en chaîne) | surbrillance `0x009789C0` |
+
+⚠ **Clic simple et double-clic commencent pareil : il faut attendre de savoir.** Sans ça, un
+double-clic pour lancer Vending réserve d'abord un point au passage (constaté en jeu). L'action du
+clic simple est donc **différée** par l'idiome ImGui prévu pour cette levée d'ambiguïté —
+`IsMouseReleasedWithDelay(bouton, io.MouseDoubleClickTime)` **+** `io.MouseClickedLastCount == 1`
+(cf. le commentaire de `imgui.h`, exemple donné : le renommage au clic simple de l'explorateur
+Windows). Deux pièges à l'implémentation :
+1. `GetMouseDragDelta` **ne vaut plus rien passé la frame du relâché** (il ne renvoie une valeur que
+   pendant l'appui et à la frame du release) : le verdict « relâché sans avoir glissé » doit être
+   RETENU au relâché, pas relu 0,3 s plus tard.
+2. `IsItemClicked` est vrai **aussi au second clic** d'un double : réinitialiser l'état du clic à ce
+   moment-là efface le verdict dont le double-clic a besoin. Ne le réinitialiser que si
+   `io.MouseClickedLastCount <= 1`.
+
+C'est encore plus nécessaire côté **guilde**, où « monter » part aussitôt au serveur : là, un
+double-clic non désambiguïsé dépenserait un point à chaque lancement.
 
 Les boutons gauche/droite sont donc **inversés par rapport au natif**, exprès : le clic gauche est le
 geste courant (dépenser un point), et Ctrl + clic droit reprend le standard déjà en place dans

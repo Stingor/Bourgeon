@@ -3049,6 +3049,7 @@ void CharacterSheet::DrawSkillsTab() {
   mui::Tooltip(
       "Clic gauche          réserve un point (et ses prérequis manquants)\n"
       "Ctrl + clic gauche   réserve jusqu'au niveau maximum\n"
+      "Double-clic          lance la compétence (aucun point réservé)\n"
       "Clic droit           menu (monter, lancer, niveau d'utilisation, description)\n"
       "Ctrl + clic droit    description de la compétence\n"
       "Glisser              pose la compétence sur une barre d'action\n"
@@ -3207,6 +3208,7 @@ void CharacterSheet::DrawSkillsTab() {
       tip += "\n\nClic : réserver un point — Ctrl + clic : jusqu'au max";
     else
       tip += "\n";
+    if (s.learned > 0 && s.inf != 0) tip += "\nDouble-clic : lancer";
     tip += "\nClic droit : menu — Ctrl + clic droit : description";
     if (s.learned > 0 && s.inf != 0) tip += "\nGlisser : poser sur une barre d'action";
     ImGui::SetTooltip("%s", tip.c_str());
@@ -3266,16 +3268,47 @@ void CharacterSheet::DrawSkillsTab() {
     if (ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr) {
       hovered_now = static_cast<uint16_t>(s.id);
       tooltip_for(s, effective);
-      // Clic gauche = réserver un point (Ctrl = jusqu'au niveau max). Testé au
-      // RELÂCHÉ et seulement si la souris n'a PAS voyagé : le même bouton sert à
-      // attraper l'icône pour la barre d'action, et un test au pressé réserverait à
-      // chaque début de glisser. GetMouseDragDelta reste à (0,0) tant que le seuil
-      // de glisser n'est pas franchi, et vaut encore le déplacement à la frame du
-      // relâché — c'est exactement le test voulu.
-      const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-          travel.x == 0.0f && travel.y == 0.0f)
-        ReserveSkillPoint(static_cast<uint16_t>(s.id), ImGui::GetIO().KeyCtrl);
+    }
+    // ── Clic simple = réserver, double-clic = LANCER ────────────────────────────
+    // Les deux gestes commencent pareil : il faut donc ATTENDRE de savoir. Sans ça,
+    // un double-clic pour lancer Vending réserve d'abord un point au passage (vécu).
+    // `IsMouseReleasedWithDelay` + `MouseClickedLastCount == 1` est l'idiome ImGui
+    // prévu exactement pour cette levée d'ambiguïté (cf. imgui.h) : l'action simple
+    // ne part qu'une fois le délai de double-clic écoulé sans second clic.
+    const ImGuiIO& io = ImGui::GetIO();
+    // Cellule où le bouton a été ENFONCÉ : l'action différée arrive 0,3 s plus tard,
+    // le curseur peut avoir bougé, et c'est bien la case visée qui doit agir.
+    static uint16_t press_id = 0;
+    static bool press_clean = false;  // relâchée sans avoir glissé (sinon c'était un drag)
+    static bool press_ctrl  = false;  // Ctrl AU MOMENT du clic, pas 0,3 s après
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+      press_id = static_cast<uint16_t>(s.id);
+      // Pas au SECOND clic d'un double : il effacerait le verdict du premier relâché,
+      // dont le double-clic a justement besoin pour savoir qu'on n'a pas glissé.
+      if (io.MouseClickedLastCount <= 1) press_clean = false;
+    }
+    if (press_id == static_cast<uint16_t>(s.id)) {
+      // ⚠ GetMouseDragDelta ne vaut plus rien après la frame du relâché : on retient
+      // le verdict ICI, pas au moment de l'action différée.
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+        press_clean = travel.x == 0.0f && travel.y == 0.0f &&
+                      ImGui::GetDragDropPayload() == nullptr;
+        press_ctrl = io.KeyCtrl;
+      }
+      const bool castable = s.learned > 0 && s.inf != 0;
+      if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && press_clean) {
+        // Lancer au niveau d'utilisation choisi, comme la barre de raccourcis.
+        if (castable) SendUseSkill(static_cast<uint16_t>(s.id),
+                                   std::max(1, GetUseLevelSEH(s.id)));
+        else          ReserveSkillPoint(static_cast<uint16_t>(s.id), press_ctrl);
+        press_id = 0;
+      } else if (ImGui::IsMouseReleasedWithDelay(ImGuiMouseButton_Left,
+                                                 io.MouseDoubleClickTime) &&
+                 io.MouseClickedLastCount == 1 && press_clean) {
+        ReserveSkillPoint(static_cast<uint16_t>(s.id), press_ctrl);
+        press_id = 0;
+      }
     }
     context_menu(s, effective);
   };
@@ -4689,18 +4722,36 @@ void CharacterSheet::DrawGuildSkillsTab() {
       if (hot && ImGui::GetDragDropPayload() == nullptr) {
         hovered_now = row.id;
         tooltip_for(row, live, level, locked);
-        if (can_use && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-          SendUseSkill(row.id, level);
-        // Clic gauche = monter d'un niveau, comme le « + » de la liste. Le paquet part
-        // TOUT DE SUITE (pas de réservation ici, contrairement au Grimoire), mais la
-        // faute est bénigne : une guilde au niveau max apprend de toute façon l'arbre
-        // entier, un point posé au mauvais endroit n'est jamais définitivement perdu.
-        const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-            travel.x == 0.0f && travel.y == 0.0f && live && live->upgradable &&
-            guild_skill_points_ > 0) {
+      }
+      // Clic simple = monter d'un niveau, double-clic = lancer. Ici le « monter » part
+      // AUSSITÔT au serveur (pas de réservation comme au Grimoire), donc la levée
+      // d'ambiguïté n'est pas un confort mais une nécessité : sans elle, un double-clic
+      // pour lancer dépenserait un point au passage. `IsMouseReleasedWithDelay` +
+      // `MouseClickedLastCount == 1` est l'idiome ImGui prévu pour ça.
+      const ImGuiIO& gio = ImGui::GetIO();
+      static uint16_t g_press_id = 0;
+      static bool g_press_clean = false;
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        g_press_id = row.id;
+        if (gio.MouseClickedLastCount <= 1) g_press_clean = false;
+      }
+      if (g_press_id == row.id) {
+        // GetMouseDragDelta ne vaut plus rien passé la frame du relâché : verdict pris ici.
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+          const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+          g_press_clean = travel.x == 0.0f && travel.y == 0.0f &&
+                          ImGui::GetDragDropPayload() == nullptr;
+        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && g_press_clean) {
+          if (can_use) SendUseSkill(row.id, level);
+          g_press_id = 0;
+        } else if (ImGui::IsMouseReleasedWithDelay(ImGuiMouseButton_Left,
+                                                   gio.MouseDoubleClickTime) &&
+                   gio.MouseClickedLastCount == 1 && g_press_clean && live &&
+                   live->upgradable && guild_skill_points_ > 0) {
           SendSkillUp(row.id);
           guild_last_req_ = 0;  // on laisse le 0x0162 suivant corriger niveau et points
+          g_press_id = 0;
         }
       }
       // Clic droit = description (avec ou sans Ctrl : ici il n'y a pas de menu
