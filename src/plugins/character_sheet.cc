@@ -3106,6 +3106,12 @@ void CharacterSheet::DrawSkillsTab() {
         tip += skill_name(s.need_id[i]);
         tip += " Niv ";
         tip += std::to_string(s.need_lv[i]);
+        // Un prérequis peut vivre dans un AUTRE onglet (une 3e classe en réclame
+        // souvent une de 2e) : aucune flèche ne peut alors le désigner, autant le
+        // dire — c'est ce que le natif signale en coloriant l'onglet concerné.
+        bool here = false;
+        for (int k = 0; k < count && !here; ++k) here = nodes[k].id == s.need_id[i];
+        if (!here) tip += " (autre onglet)";
       }
     }
     if (s.user_up <= 0) tip += "\n\nNe se monte pas avec des points (quête / lien).";
@@ -3303,8 +3309,42 @@ void CharacterSheet::DrawSkillsTab() {
             col);
       };
       const SkillRaw& h = nodes[hover_idx];
+      auto find_node = [&](int id) -> const SkillRaw* {
+        for (int i = 0; i < count; ++i)
+          if (nodes[i].id == id) return &nodes[i];
+        return nullptr;
+      };
+      auto requires_skill = [&](const SkillRaw* n, int id) {
+        if (!n) return false;
+        for (int k = 0; k < n->need_count; ++k)
+          if (n->need_id[k] == id) return true;
+        return false;
+      };
+      // RÉDUCTION TRANSITIVE. La liste de prérequis du client n'est pas limitée aux
+      // liens directs : elle est aplatie (c'est ce qui permet au natif de réserver
+      // toute une chaîne d'un coup, et pourquoi il la déduplique en gardant le niveau
+      // le plus haut). Tracée telle quelle, Bowling Bash pointerait vers Bash à la fois
+      // directement et via Magnum Break. On saute donc P -> survolée quand un AUTRE
+      // prérequis de la survolée réclame déjà P : le chemin est déjà à l'écran.
+      auto redundant_before = [&](int prereq_id) {
+        for (int a = 0; a < h.need_count; ++a) {
+          if (h.need_id[a] == prereq_id) continue;
+          if (requires_skill(find_node(h.need_id[a]), prereq_id)) return true;
+        }
+        return false;
+      };
+      // Même raisonnement dans l'autre sens : si une compétence qui réclame la survolée
+      // en réclame une autre qui la réclame aussi, son lien direct est déjà couvert.
+      auto redundant_after = [&](const SkillRaw& dependent) {
+        for (int k = 0; k < dependent.need_count; ++k) {
+          if (dependent.need_id[k] == h.id) continue;
+          if (requires_skill(find_node(dependent.need_id[k]), h.id)) return true;
+        }
+        return false;
+      };
       // 1) ce qu'il faut AVANT elle : chaque prérequis pointe vers la survolée.
       for (int k = 0; k < h.need_count; ++k) {
+        if (redundant_before(h.need_id[k])) continue;
         for (int i = 0; i < count; ++i) {
           if (!cell_drawn[i] || nodes[i].id != h.need_id[k]) continue;
           draw_arrow(cell_center[i], cell_center[hover_idx], IM_COL32(255, 205, 105, 235), 2.5f);
@@ -3314,11 +3354,9 @@ void CharacterSheet::DrawSkillsTab() {
       // 2) ce qu'elle OUVRE : la survolée pointe vers celles qui la réclament.
       for (int i = 0; i < count; ++i) {
         if (i == hover_idx || !cell_drawn[i]) continue;
-        for (int k = 0; k < nodes[i].need_count; ++k) {
-          if (nodes[i].need_id[k] != h.id) continue;
-          draw_arrow(cell_center[hover_idx], cell_center[i], IM_COL32(120, 160, 255, 200), 2.0f);
-          break;
-        }
+        if (!requires_skill(&nodes[i], h.id)) continue;
+        if (redundant_after(nodes[i])) continue;
+        draw_arrow(cell_center[hover_idx], cell_center[i], IM_COL32(120, 160, 255, 200), 2.0f);
       }
     }
 
