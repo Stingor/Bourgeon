@@ -94,7 +94,6 @@ constexpr int kBtnDropLock = 0x114;  // item_drop_lock
 constexpr int kBtnCompare  = 0x11c;  // item_compare (loupe)
 constexpr int kBtnDealLock = 0x124;  // bt_itemDeal_lock (block NPC sell)
 constexpr int kBtnSort     = 0x12c;  // bt_sort
-constexpr int kVfSetPos    = 0x10;   // UIWindow::SetPos(x,y)
 constexpr int kVfSetCmd    = 0xb4;   // button::SetCommandId(id)
 constexpr uintptr_t kSetName = 0x00831a50;  // UIItemLinkBtn_SetName(this, char*)
 constexpr int kRows        = 0xdc;   // grid row count (UIItemWnd this+0xdc)

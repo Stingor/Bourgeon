@@ -88,12 +88,12 @@ void CloseWnd(int id) {
 }
 void HideWnd(void* w) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 0;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void ShowWnd(void* w) {  // dé-cache (remet le flag visibilité)
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 1;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 1;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -133,7 +133,6 @@ constexpr uintptr_t kItemInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this)
 constexpr uintptr_t kItemInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) : id-string @0x2c
 constexpr int kWinItemDesc = 0x0c;
 constexpr int kMsgSetItem  = 0x18;
-constexpr int kVfOnMsg     = 0x94;  // vtable+0x94 = OnMsg
 constexpr int kInfoFlag    = 0x5c;  // ItemSkillInfo+0x5c=1 : desc « standalone » lue depuis la DB
 using MakeWindow_t    = void*(__fastcall*)(void*, void*, void*);
 using ItemInfoCtor_t  = void*(__fastcall*)(void*);
@@ -935,7 +934,7 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
         reinterpret_cast<void*>(static_cast<uintptr_t>(kWinItemDesc)));
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);
-      reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4])(
+      reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4])(
           dwnd, nullptr, 0, kMsgSetItem,
           static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
     }

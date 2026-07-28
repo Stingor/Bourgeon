@@ -44,9 +44,6 @@ constexpr uintptr_t kCartVTable = 0x0103d538;
 constexpr int kWinCart    = 0x28;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
-constexpr int kOffPosX    = 0x1c;
-constexpr int kOffPosY    = 0x20;
-constexpr int kOffVisible = 0x28;  // flag visibilité (0 = caché, hors rendu ET hit-test)
 
 // Modèle SESSION du cart (indépendant de la fenêtre => marche natif caché).
 // RE : Cart_GetCount = *(g_session+0x1724) ; Cart_CopyItemAt parcourt la std::list
@@ -110,16 +107,10 @@ inline Fn Vf(void* self, int off) {
   return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
 }
 
-using MakeWindow_t = void*(__fastcall*)(void*, void*, void*);
-using OnMsg_t      = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t     = void(__fastcall*)(void*, void*, int, int);
-constexpr uintptr_t kMakeWindow = 0x00a39340;  // __fastcall(mgr, edx, id)
 constexpr int kWinItemDesc = 0xc;
 constexpr int kMsgSetItem  = 0x18;   // OnMsg : « affiche cet ItemSkillInfo »
 constexpr int kMsgUiAction = 0x06;   // OnMsg : action de contrôle…
 constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg case 6)
-constexpr int kVfOnMsg     = 0x94;
-constexpr int kVfSetPos    = 0x10;
 
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) -> objet mode actif (0 hors jeu).
 // Son vtbl+0x18 = CMode::SendMsg. Commandes de transfert RE'ées sur la fenêtre
@@ -148,7 +139,7 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-// ⚠ Une fenêtre native CACHÉE (kOffVisible = 0) n'est PAS une cible de dépôt : en
+// ⚠ Une fenêtre native CACHÉE (uiwnd::kOffVisible = 0) n'est PAS une cible de dépôt : en
 // « Interface moderne » les natives inventaire/storage/cart sont masquées mais
 // gardent leur rect, et sans ce test leur emplacement fantôme capturait les drops
 // faits sur les viewers ImGui posés par-dessus (un lâcher sur l'inventaire partait
@@ -158,9 +149,9 @@ bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
   uint8_t* w = ReadValidWnd(slot, vt);
   if (!w) return false;
   __try {
-    if (*reinterpret_cast<int*>(w + kOffVisible) == 0) return false;
-    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;
+    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
     const int ww = *reinterpret_cast<int*>(w + kOffWidth);
     const int wh = *reinterpret_cast<int*>(w + kOffHeight);
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
@@ -234,7 +225,7 @@ void CloseCart() {
   uint8_t* wnd = CartWnd();
   if (!wnd) return;
   __try {
-    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgUiAction, kActionClose, 0, 0, 0);
+    uiwnd::OnMsg(wnd, kMsgUiAction, kActionClose, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -258,13 +249,12 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -501,7 +491,7 @@ void CartViewer::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kCartVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -568,13 +558,13 @@ void CartViewer::OnTick() {
   if (wnd) {
     __try {
       if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + kOffPosY);
+        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
         need_pos_ = true;
       }
       // Master switch : ON -> native masquée (hors rendu ET hit-test) + viewer ;
       // OFF -> native seule, aucun viewer. Forcé chaque tick (le natif remet à 1).
-      *reinterpret_cast<int*>(wnd + kOffVisible) = imgui_enabled_ ? 0 : 1;
+      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
     if (open_) Extract();

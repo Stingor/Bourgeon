@@ -55,7 +55,6 @@ constexpr uintptr_t kSetOption    = 0x005c5950;    // SkillMgr_SetOption(mgr,key
 
 // ---- vtable / champs UIShortCutWnd -----------------------------------------
 constexpr int kVfSetVisible = 0x38;   // FUN_009030c0(this, vis) -> this+0x28
-constexpr int kVfOnMsg      = 0x94;   // UIShortCutWnd::OnMsg
 constexpr int kSlotArr      = 0xc4;   // this+0xc4 = 36 pointeurs de record
 constexpr int kVisFlag      = 0x28;   // flag visibilité (0=caché) écrit par vtable+0x38
 constexpr int kMsgUseSlot   = 0x29;   // OnMsg : active le slot (p3=col, p4=row)
@@ -65,7 +64,6 @@ constexpr int kMaxSlots     = 36;     // 0x24
 // ---- description / tooltip clic-droit (réplique UIShortCutWnd OnRButtonDown 0x008f91a0) ----
 constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé
 constexpr uintptr_t kStrFree       = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
-constexpr uintptr_t kCloseWindow   = 0x00a2e770;  // UIWindowMgr_Close(mgr,id)
 // ⚠ Ces quatre-là étaient INTERVERTIS (corrigé le 2026-07-28) : la branche SKILL
 // ouvrait un « kWinItemDesc » et la branche OBJET un « kWinSkillDesc ». Le
 // comportement était juste — c'est l'appariement id/message qui compte, et il
@@ -77,7 +75,6 @@ constexpr int kWinSkillDesc    = 0x2e;  // desc SKILL : OnMsg 0x3d + id BRUT
 constexpr int kMsgSetItem      = 0x18;  // OnMsg fenêtre 0xc  : montre l'objet (p2=&ItemSkillInfo)
 constexpr int kMsgSetSkill     = 0x3d;  // OnMsg fenêtre 0x2e : montre le skill (p2=id)
 constexpr int kSkillWinShownId = 0x104; // (fenêtre 0x2e)+0x104 = id affiché (bascule ouvrir/fermer)
-constexpr int kVfSetPos       = 0x10;  // vtable+0x10 = SetPos(x,y)
 constexpr int kSkillInfoSize  = 0x100; // SkillInfo ~0xf8 o (2 std::string @ +0x2c / +0x44)
 constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
@@ -106,7 +103,6 @@ constexpr int kItemNameEn  = 0x04;  // record+0x04 = nom anglais (ASCII, propre 
 constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli)
 constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
 
-using OnMsg_t      = int   (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using SetVisible_t = void  (__fastcall*)(void*, void*, int);
 using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
 using SetSlot_t    = void  (__fastcall*)(void*, void*, int, int, int, int, int);
@@ -114,8 +110,6 @@ using GetOption_t  = int   (__thiscall*)(void*, int);
 using SetOption_t  = void  (__thiscall*)(void*, int, int, int);  // (mgr,key,val,0)
 using GetSkillInfo_t = void (__fastcall*)(void*, void*, void*, int, int);  // (mgr,edx,out,id,gate)
 using StrFree_t      = void (__fastcall*)(void*);                          // (ecx=std::string base)
-using CloseWin_t     = char (__fastcall*)(void*, void*, int);             // (mgr,edx,id)
-using SetPos_t       = void (__fastcall*)(void*, void*, int, int);        // (wnd,edx,x,y)
 using ShowTip_t      = void (__fastcall*)(void*, void*, const char*, int, int, unsigned, unsigned char, char);
 using ItemDbGet_t    = void* (__cdecl*)(int, void*);                       // (nameid, table) -> record / sentinelle
 using GetSkillNameLua_t = char* (__cdecl*)(int);                          // GetSkillName(id) -> nom skill / "Unknown-Skill"
@@ -139,7 +133,7 @@ void EnsureCreated() {
       reinterpret_cast<void*>(kShortCutId));
 }
 void RebuildSlotPtrs(void* w) {  // OnMsg 0x17 : reconstruit this+0xc4 depuis les globals
-  Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+  uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
 }
 void HideNative(void* w) {  // this+0x28 = 0 + délink draw-list ; ne détruit PAS l'objet
   Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 0);
@@ -251,7 +245,7 @@ void UseItemSlot(int slot) {
     uint8_t** arr = reinterpret_cast<uint8_t**>(reinterpret_cast<uint8_t*>(w) + kSlotArr);  // this+0xc4
     uint8_t* saved = arr[0];
     arr[0] = itemRec;                                                  // détourne le slot 0 -> item
-    Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, 0, 0, 0, 0);  // OnMsg 0x29 col=0,row=0 -> arr[0]
+    uiwnd::OnMsg(w, kMsgUseSlot, 0, 0, 0, 0);  // OnMsg 0x29 col=0,row=0 -> arr[0]
     arr[0] = saved;                                                    // restaure
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -273,12 +267,12 @@ void ActivateSlot(int region, int slot) {
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
     if (tab != cur) {  // bascule sur l'onglet de la barre + reconstruit this+0xc4
       reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, tab, 0);
-      Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+      uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
     }
-    Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgUseSlot, slot % 9, slot / 9, 0, 0);
+    uiwnd::OnMsg(w, kMsgUseSlot, slot % 9, slot / 9, 0, 0);
     if (tab != cur) {  // restaure l'onglet d'origine
       reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, cur, 0);
-      Vf<OnMsg_t>(w, kVfOnMsg)(w, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+      uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
     }
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -719,26 +713,24 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
     if (id != 0) {
       void* mgr = uiwnd::Mgr();
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
-        void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-            mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+        void* wnd = uiwnd::MakeWindow(kWinSkillDesc);
         if (wnd) {
           if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == id) {
-            reinterpret_cast<CloseWin_t>(kCloseWindow)(mgr, nullptr, kWinSkillDesc);  // bascule
+            uiwnd::CloseWindow(kWinSkillDesc);  // bascule
           } else {
-            Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill, id, 0, 0, 0);
-            Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+            uiwnd::OnMsg(wnd, kMsgSetSkill, id, 0, 0, 0);
+            uiwnd::SetPos(wnd, mx, my);
           }
         }
       } else {            // ── OBJET (rec[0]==0) ──
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(kSkillInfoMgr), nullptr, info, id, 1);
-        void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-            mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+        void* wnd = uiwnd::MakeWindow(kWinItemDesc);
         if (wnd) {
-          Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetItem,
+          uiwnd::OnMsg(wnd, kMsgSetItem,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
-          Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+          uiwnd::SetPos(wnd, mx, my);
         }
         reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
         reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);

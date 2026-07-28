@@ -227,13 +227,8 @@ constexpr int kMaxOpts      = 5;
 // Fenêtre de description native (id 0xC) : MakeWindow puis OnMsg 0x18 avec le
 // POINTEUR vers l'ItemSkillInfo — c'est le chemin du clic droit natif, et
 // item_desc_window reconnaît la fenêtre pour en rendre sa version enrichie.
-using MakeWindow_t = void*(__fastcall*)(void*, void*, void*);
-using DescOnMsg_t  = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using DescSetPos_t = void(__fastcall*)(void*, void*, int, int);
-constexpr uintptr_t kMakeWindow  = 0x00A39340;
 constexpr int       kWinItemDesc = 0xC;
 constexpr int       kMsgSetItem  = 0x18;
-constexpr int       kVfSetPos    = 0x10;
 
 // Résolution GID -> nom, pour le titre (cf. docs/entity_nameplate_re.md).
 using GameModeGetActive_t = void*(__fastcall*)(int);
@@ -282,7 +277,6 @@ constexpr int kSnapPrice  = 0x14;
 constexpr int kSnapId     = 0x2C;  // std::string = itemId en texte (cf. nœuds)
 
 // Champs de UIMerchantShopMakeWnd.
-constexpr int kOffVisible   = 0x28;   // flag de visibilité (commun UIWindow)
 constexpr int kOffNameEdit  = 0xCC;   // UIEdit nom de la boutique
 constexpr int kOffPrice0    = 0xE0;   // UIEdit prix, tableau de `slots` entrées
 constexpr int kOffQty0      = 0x114;  // UIEdit quantité (échoppe d'achat seule)
@@ -375,14 +369,12 @@ constexpr int kMsgRebuild  = 23;  // reconstruit la liste d'affichage depuis la 
 constexpr int kCmdOk       = 184;  // valide et ouvre l'échoppe
 constexpr int kCmdCancel   = 185;
 constexpr int kCmdSafeChk  = 213;  // bascule « safe check for over 10 mil zeny »
-constexpr int kVfOnMsg     = 0x94;
 constexpr int kVfEditSetText = 212;  // UIEdit::SetText(const char*)
 
 // Globals.
 constexpr uintptr_t kPlayerZeny    = 0x015FBA90;
 constexpr uintptr_t kSafeCheckFlag = 0x015FFFA1;  // octet, persistant
 
-using OnMsg_t       = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using EditSetText_t = void(__thiscall*)(void*, const char*);
 
 template <typename Fn>
@@ -400,7 +392,7 @@ void* FindWnd(int id) {
 
 void HideWnd(void* w) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 0;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -410,7 +402,7 @@ void HideWnd(void* w) {
 // natif si on tombe sur le mode qu'on ne sait pas encore remplacer.
 void ShowWnd(void* w) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 1;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 1;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -602,7 +594,7 @@ void SetEditText(void* wnd, int edit_off, const char* text) {
 
 void SendButton(void* wnd, int cmd) {
   __try {
-    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgButton, cmd, 0, 0, 0);
+    uiwnd::OnMsg(wnd, kMsgButton, cmd, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -612,7 +604,7 @@ void SendButton(void* wnd, int cmd) {
 // veut pas, nos prix sont à nous).
 void SendRebuild(void* wnd) {
   __try {
-    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgRebuild, 0, 0, 0, 0);
+    uiwnd::OnMsg(wnd, kMsgRebuild, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -847,13 +839,11 @@ void OpenDescFromList(void* wnd, int list_off, uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
-      Vf<DescOnMsg_t>(dwnd, kVfOnMsg)(
-          dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
           static_cast<int>(reinterpret_cast<uintptr_t>(found)), 0, 0, 0);
-      Vf<DescSetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

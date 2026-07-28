@@ -32,7 +32,6 @@ constexpr int kInboxId = 0x107;  // UIRodexWnd     — la LISTE
 constexpr int kReadId  = 0x109;  // UIRodexReadWnd — la LECTURE
 constexpr uintptr_t kInboxVTable = 0x01022170;  // vérifiée live (g_RodexInboxWnd+0)
 constexpr uintptr_t kReadVTable  = 0x01021fbc;
-constexpr int kOffVisible = 0x28;  // flag de visibilité de la famille UIWindow
 constexpr int kOffWndPosX = 0x1c;  // position écran (reprise pour placer l'ImGui)
 constexpr int kOffWndPosY = 0x20;
 
@@ -439,7 +438,7 @@ uintptr_t VTableOf(void* w) {
 }
 void SetWndVisible(void* w, int visible) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = visible;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = visible;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void HideWnd(void* w) { SetWndVisible(w, 0); }

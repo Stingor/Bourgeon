@@ -51,7 +51,6 @@ constexpr uintptr_t kDrawOrig  = 0x008b66a0;  // original UIStatusWnd::DrawConte
 // Position persistence (the engine never saves window id 0xb — see workflow RE).
 constexpr uintptr_t kMsgSlot   = 0x01032a68;  // UIStatusWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008cb7c0;  // FUN_008cb7c0 status msg handler (ret 0x18 = SIX stack args!)
-constexpr int kVfSetPos  = 0x10;   // UIWindow::SetPos(x,y) (vtable+0x10)
 constexpr int kWinX      = 0x1c;   // window live x
 constexpr int kWinY      = 0x20;   // window live y
 constexpr int kMsgCmd    = 6;      // command message
@@ -300,7 +299,7 @@ int __fastcall StatusMsgHook(void* self, void* edx, int p1, int msg, int p3,
     // throttled 200ms) + this close-save cover drag-end and every close path.
     if (msg == kMsgRestore && g_posX != INT_MIN && g_posX >= 0 && g_posY >= 0) {
       reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-          *reinterpret_cast<uintptr_t*>(self) + kVfSetPos))(self, nullptr, g_posX, g_posY);
+          *reinterpret_cast<uintptr_t*>(self) + uiwnd::kVfSetPos))(self, nullptr, g_posX, g_posY);
     }
     return r;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -418,7 +417,7 @@ void StatusTweaks::OnTick() {
   // what makes the position survive a full client restart.
   if (g_restorePending) {
     reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-        *reinterpret_cast<uintptr_t*>(win) + kVfSetPos))(win, nullptr, g_posX, g_posY);
+        *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, g_posX, g_posY);
     savedX = g_posX; savedY = g_posY;
     g_restorePending = false;
     init = true;

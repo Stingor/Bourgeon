@@ -44,7 +44,6 @@ constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 constexpr int kOffPosX    = 0x1c;
 constexpr int kOffPosY    = 0x20;
-constexpr int kOffVisible = 0x28;  // flag visibilité (0=caché, hors rendu+hit-test)
 
 // Modèle SESSION de l'inventaire (indépendant de la fenêtre => marche natif caché).
 // RE : FUN_00d5ce30(g_session)=*(g_session+0x16f4)=count ; FUN_00d5acb0 parcourt la
@@ -114,7 +113,6 @@ using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateu
 constexpr uintptr_t kFmtComma = 0x00a948d0;
 
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
-constexpr uintptr_t kMakeWindow  = 0x00a39340;   // __fastcall(mgr, edx, id)
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
 constexpr int kWinItemDesc = 0xc;
 constexpr int kWinInventory = 8;
@@ -276,8 +274,8 @@ int ReadInfoIndex(uint8_t* info) {
 // Position écran d'une fenêtre native (pour aligner notre fenêtre ImGui dessus).
 bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
   __try {
-    *x = *reinterpret_cast<int*>(wnd + kOffPosX);
-    *y = *reinterpret_cast<int*>(wnd + kOffPosY);
+    *x = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+    *y = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -564,13 +562,12 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -722,7 +719,7 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-// ⚠ Une fenêtre native CACHÉE (kOffVisible = 0) n'est PAS une cible de dépôt : en
+// ⚠ Une fenêtre native CACHÉE (uiwnd::kOffVisible = 0) n'est PAS une cible de dépôt : en
 // « Interface moderne » les natives storage/cart sont masquées mais gardent leur
 // rect, et sans ce test leur emplacement fantôme capturait les drops faits sur les
 // viewers ImGui posés par-dessus (un lâcher DANS l'inventaire partait au storage).
@@ -730,9 +727,9 @@ bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
   uint8_t* w = ReadValidWnd(slot, vt);
   if (!w) return false;
   __try {
-    if (*reinterpret_cast<int*>(w + kOffVisible) == 0) return false;
-    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;
+    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
     const int ww = *reinterpret_cast<int*>(w + kOffWidth);
     const int wh = *reinterpret_cast<int*>(w + kOffHeight);
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
@@ -762,9 +759,9 @@ bool MouseOverCart(float x, float y) {
   uint8_t* w = CartWnd();
   if (!w) return false;
   __try {
-    if (*reinterpret_cast<int*>(w + kOffVisible) == 0) return false;  // cachée = pas une cible
-    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;  // cachée = pas une cible
+    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
     const int ww = *reinterpret_cast<int*>(w + kOffWidth);
     const int wh = *reinterpret_cast<int*>(w + kOffHeight);
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
@@ -809,7 +806,7 @@ constexpr int kEquipWndId = 0xa;
 uint8_t* EquipWnd() {
   __try {
     auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kEquipWndId));
-    if (!w || *reinterpret_cast<int*>(w + kOffVisible) == 0) return nullptr;
+    if (!w || *reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return nullptr;
     return w;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
@@ -818,8 +815,8 @@ bool MouseOverEquip(float x, float y) {
   uint8_t* w = EquipWnd();
   if (!w) return false;
   __try {
-    const int wx = *reinterpret_cast<int*>(w + kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + kOffPosY);
+    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
+    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
     const int ww = *reinterpret_cast<int*>(w + kOffWidth);
     const int wh = *reinterpret_cast<int*>(w + kOffHeight);
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
@@ -1215,7 +1212,7 @@ void InventoryViewer::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kInvVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1225,7 +1222,7 @@ void InventoryViewer::HideCardInsertAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kCompVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1301,13 +1298,13 @@ void InventoryViewer::OnTick() {
   if (wnd) {
     __try {
       if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + kOffPosY);
+        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
         need_pos_ = true;
       }
       // Master switch : ON -> cache le natif (hors rendu+hit-test) + viewer ; OFF ->
       // natif seul, aucun viewer. Forcé chaque tick (le natif peut remettre à 1).
-      *reinterpret_cast<int*>(wnd + kOffVisible) = imgui_enabled_ ? 0 : 1;
+      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
     if (open_) Extract();
@@ -1323,7 +1320,7 @@ void InventoryViewer::OnTick() {
   uint8_t* ci = ReadValidWnd(kCompWndSlot, kCompVTable);
   if (ci) {
     __try {
-      *reinterpret_cast<int*>(ci + kOffVisible) = imgui_enabled_ ? 0 : 1;
+      *reinterpret_cast<int*>(ci + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
   } else {
     // Popup fermé : on oublie la sélection ET on réarme le front montant, pour que

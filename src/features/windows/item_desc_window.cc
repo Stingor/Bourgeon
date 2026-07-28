@@ -44,8 +44,6 @@ constexpr uintptr_t kSkillVTable  = 0x01032e0c;  // classe 0x2e
 // Offsets communs (base UIWindow, identiques aux 2 classes).
 constexpr uintptr_t kOffWidth   = 0x14;   // int  largeur
 constexpr uintptr_t kOffHeight  = 0x18;   // int  hauteur
-constexpr uintptr_t kOffPosX    = 0x1c;   // int  x écran
-constexpr uintptr_t kOffPosY    = 0x20;   // int  y écran
 
 // Fenêtre de COMPARAISON d'équipement (id 0xea) : 2e instance parallèle à 0xc.
 // MÊME layout que l'item (id string @+0xe4, struct +0xb8, icône +0x1c4, DrawContent
@@ -113,7 +111,6 @@ constexpr int       kMaxOpts      = 5;
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vector alloué côté jeu)
 constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
 constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr,edx,id)
-constexpr uintptr_t kMakeWindow   = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,edx,id) -> wnd
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
@@ -163,7 +160,6 @@ using InfoSetId_t    = void  (__thiscall*)(void*, int);  // ItemSkillInfo_SetId
 using EnsureLoaded_t = char  (__thiscall*)(void*, int);  // ItemSkillDescDB_EnsureLoaded
 using GetResName_t   = char* (__fastcall*)(void*);       // ItemSkillDB_GetResName -> resname C-str
 using CardResName_t  = void* (__cdecl*)(int);            // GetCardResName -> record (*record=resname)
-using MakeWindow_t   = void* (__fastcall*)(void*, void*, void*);  // UIWindowMgr_MakeWindow
 using GameFree_t     = void  (__cdecl*)(void*);
 // std::vector<int> MSVC (begin/last/end) — grossi par l'allocateur du JEU.
 struct GVec { int* first; int* last; int* end; };
@@ -174,7 +170,6 @@ using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
 using CloseWin_t     = char  (__fastcall*)(void*, void*, int);
 // OnMsg des fenêtres desc (vtable+0x94) : __thiscall(this, p1, msg, p3, p4, p5, p6).
 using DescOnMsg_t    = int   (__thiscall*)(void*, int, int, int, int, int, int);
-constexpr int kVfOnMsg        = 0x94;   // slot vtable OnMsg
 constexpr int kMsgButton      = 6;      // message "commande bouton"
 constexpr int kCmdProbability = 0x157;  // « View Probability Info » -> wnd 0x271c
 // Éligibilité du bouton Probabilité : l'item a-t-il un enregistrement dans la DB
@@ -1096,7 +1091,7 @@ void CallBookMsg(uint8_t* wnd, int msg, int p3) {
   if (!wnd) return;
   __try {
     void** vt = *reinterpret_cast<void***>(wnd);
-    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
     onmsg(wnd, static_cast<int>(reinterpret_cast<uintptr_t>(wnd)), msg, p3, 0, 0,
           0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -1156,7 +1151,7 @@ void CallDescButton(uint8_t* wnd, int cmd) {
   if (!wnd) return;
   __try {
     void** vt = *reinterpret_cast<void***>(wnd);
-    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+    auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
     onmsg(wnd, 0, kMsgButton, cmd, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1474,11 +1469,10 @@ void OpenCardDescWindow(uint32_t id) {
     reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> +0x2c
     *(info + kInfoFlag) = 1;                                  // => desc lues de rec+0x0c
     void* mgr = uiwnd::Mgr();        // objet manager embarqué
-    void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(0xc));
+    void* wnd = uiwnd::MakeWindow(0xc);
     if (wnd) {
       void** vt = *reinterpret_cast<void***>(wnd);
-      auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[kVfOnMsg / 4]);
+      auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
       onmsg(wnd, 0, kMsgSetItem, static_cast<int>(reinterpret_cast<uintptr_t>(info)),
             0, 0, 0);
     }
@@ -1518,8 +1512,8 @@ void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
         out->open     = true;
         out->is_skill = false;
         out->id       = static_cast<uint32_t>(id);
-        out->x        = *reinterpret_cast<int*>(wnd + kOffPosX);
-        out->y        = *reinterpret_cast<int*>(wnd + kOffPosY);
+        out->x        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+        out->y        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
         out->w        = *reinterpret_cast<int*>(wnd + kOffWidth);
         out->h        = *reinterpret_cast<int*>(wnd + kOffHeight);
       }
@@ -1554,8 +1548,8 @@ void ItemDescWindow::OnTick() {
         skill_.open     = true;
         skill_.is_skill = true;
         skill_.id       = static_cast<uint32_t>(id);
-        skill_.x        = *reinterpret_cast<int*>(wnd + kOffPosX);
-        skill_.y        = *reinterpret_cast<int*>(wnd + kOffPosY);
+        skill_.x        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+        skill_.y        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
         skill_.w        = *reinterpret_cast<int*>(wnd + kOffWidth);
         skill_.h        = *reinterpret_cast<int*>(wnd + kOffHeight);
       }

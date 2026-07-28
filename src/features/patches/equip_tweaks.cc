@@ -109,7 +109,6 @@ constexpr uint32_t  kSwapStockRightName = 0xad;  // 173
 constexpr uintptr_t kMsgSlot   = 0x010322d0;  // UIEquipWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008bf7d0;  // FUN_008bf7d0 equip msg handler (ret 0x18 = SIX stack args!)
 constexpr int kModeFlag   = 0xb4;  // own=0, other-player view=1
-constexpr int kVfSetPos   = 0x10;  // UIWindow::SetPos(x,y) (vtable+0x10)
 constexpr int kWinX       = 0x1c;  // window live x
 constexpr int kWinY       = 0x20;  // window live y
 constexpr int kMsgCmd     = 6;     // command message
@@ -151,7 +150,7 @@ int __fastcall EquipMsgHook(void* self, void* edx, int p1, int msg, int p3,
     if (msg == kMsgRestore && IsOwnEquip(self) &&
         g_posX != INT_MIN && g_posX >= 0 && g_posY >= 0) {
       reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-          *reinterpret_cast<uintptr_t*>(self) + kVfSetPos))(self, nullptr, g_posX, g_posY);
+          *reinterpret_cast<uintptr_t*>(self) + uiwnd::kVfSetPos))(self, nullptr, g_posX, g_posY);
     }
     return r;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -309,7 +308,7 @@ void EquipTweaks::OnTick() {
   // the position survive a full client restart, when the window re-opens at its native spot.
   if (g_restorePending) {
     reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-        *reinterpret_cast<uintptr_t*>(win) + kVfSetPos))(win, nullptr, g_posX, g_posY);
+        *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, g_posX, g_posY);
     savedX = g_posX; savedY = g_posY;
     g_restorePending = false;
     init = true;

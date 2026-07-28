@@ -43,7 +43,6 @@ namespace {
 // UIWindow base field layout (universal for every window class).
 constexpr int kWinX     = 0x1c;  // live x
 constexpr int kWinY     = 0x20;  // live y
-constexpr int kVfSetPos = 0x10;  // UIWindow::SetPos(x,y) — vtable slot +0x10
 
 constexpr uintptr_t kMakeWindow  = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,id) -> win (factory)
 
@@ -102,7 +101,7 @@ inline void* FindWin(int id) {
 
 inline void SetWinPos(void* win, int x, int y) {
   reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-      *reinterpret_cast<uintptr_t*>(win) + kVfSetPos))(win, nullptr, x, y);
+      *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, x, y);
 }
 
 MakeWindow_t g_orig_makewindow = nullptr;  // trampoline to the real MakeWindow

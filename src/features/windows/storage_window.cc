@@ -45,7 +45,6 @@ constexpr int kOffWidth  = 0x14;
 constexpr int kOffHeight = 0x18;
 constexpr int kOffPosX   = 0x1c;
 constexpr int kOffPosY   = 0x20;
-constexpr int kOffVisible = 0x28;  // flag visibilité (Show/Hide 0x005aad80 : wnd+0x28=flag)
 constexpr int kOffList   = 0xe8;   // std::list _Myhead (sentinelle)
 constexpr int kOffCount  = 0xec;   // std::list _Mysize
 constexpr int kOffUsed   = 0x188;  // items utilisés
@@ -94,11 +93,8 @@ using GameFree_t  = void(__cdecl*)(void*);
 // Donc on re-parcourt la liste live au clic pour retrouver le nœud par id et
 // passer SON info (node+8). OnMsg 0x18 copie ce qu'il faut (on ne possède pas
 // l'info -> aucun free). item_desc_window détecte 0xc et rend sa version enrichie.
-constexpr uintptr_t kMakeWindow  = 0x00a39340;  // __fastcall(mgr, edx, id) -> wnd
 constexpr int kWinItemDesc = 0xc;    // fenêtre desc ITEM (OnMsg 0x18 + &ItemSkillInfo)
 constexpr int kMsgSetItem  = 0x18;
-constexpr int kVfOnMsg     = 0x94;   // vtable+0x94 = OnMsg
-constexpr int kVfSetPos    = 0x10;   // vtable+0x10 = SetPos(x,y)
 using MakeWindow_t = void*(__fastcall*)(void*, void*, void*);
 using OnMsg_t      = int  (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using SetPos_t     = void (__fastcall*)(void*, void*, int, int);
@@ -131,13 +127,12 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -177,8 +172,8 @@ bool MouseOverInventory(float x, float y) {
     uint8_t* inv = *reinterpret_cast<uint8_t**>(kInvWndGlobal);
     if (!inv || *reinterpret_cast<uintptr_t*>(inv) != kInvVTable) return false;
     // Native CACHÉE (mode moderne) : son rect fantôme ne doit PAS capter les drops
-    // faits sur les viewers ImGui posés par-dessus (cf. kOffVisible).
-    if (*reinterpret_cast<int*>(inv + kOffVisible) == 0) return false;
+    // faits sur les viewers ImGui posés par-dessus (cf. uiwnd::kOffVisible).
+    if (*reinterpret_cast<int*>(inv + uiwnd::kOffVisible) == 0) return false;
     const int ix = *reinterpret_cast<int*>(inv + 0x1c);
     const int iy = *reinterpret_cast<int*>(inv + 0x20);
     const int iw = *reinterpret_cast<int*>(inv + 0x14);
@@ -204,7 +199,7 @@ bool MouseOverCart(float x, float y) {
   __try {
     auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
     if (!cart || *reinterpret_cast<uintptr_t*>(cart) != kCartVTable) return false;
-    if (*reinterpret_cast<int*>(cart + kOffVisible) == 0) return false;  // cachée = pas une cible
+    if (*reinterpret_cast<int*>(cart + uiwnd::kOffVisible) == 0) return false;  // cachée = pas une cible
     const int cx = *reinterpret_cast<int*>(cart + 0x1c);
     const int cy = *reinterpret_cast<int*>(cart + 0x20);
     const int cw = *reinterpret_cast<int*>(cart + 0x14);
@@ -770,14 +765,14 @@ void StorageWindow::OnTick() {
       // Placement à la 1re ouverture : le viewer prend la place du natif (nx, ny),
       // que le natif soit caché ou non (pas de cohabitation).
       if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + kOffPosY);
+        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
         need_pos_ = true;
       }
       // Master switch : imgui_enabled_ ON -> cache le natif (wnd+0x28=0, hors rendu +
       // hit-test) et affiche le viewer ; OFF -> laisse le natif (=1), aucun viewer.
       // Forcé chaque tick car le natif peut remettre le flag à 1 sur certains events.
-      *reinterpret_cast<int*>(wnd + kOffVisible) = imgui_enabled_ ? 0 : 1;
+      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       open_ = false;
@@ -823,7 +818,7 @@ void StorageWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kStorageVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

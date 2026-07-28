@@ -36,7 +36,6 @@ using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 // Offsets UIWindow.
 constexpr int kOffPosX    = 0x1c;
 constexpr int kOffPosY    = 0x20;
-constexpr int kOffVisible = 0x28;  // flag visibilitΓ© (Show/Hide : wnd+0x28=flag)
 
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
 constexpr int kWinItemDesc = 0xc;
@@ -178,10 +177,10 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
         uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -384,7 +383,7 @@ void CashShopWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kCashVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -394,13 +393,13 @@ void CashShopWindow::OnTick() {
   if (wnd) {
     __try {
       if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kOffPosY);
+        spawn_x_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffPosX);
+        spawn_y_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffPosY);
         need_pos_ = true;
       }
       // Master switch : viewer ON -> cache le natif chaque tick (le natif peut
       // remettre +0x28=1 sur Γ©vΓ©nement) ; OFF -> laisse le natif visible.
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kOffVisible) =
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffVisible) =
           imgui_enabled_ ? 0 : 1;
       open_ = true;
     } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }

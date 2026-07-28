@@ -27,9 +27,6 @@ constexpr int       kWinBank    = 275;         // 0x113
 constexpr uintptr_t kBankVTable = 0x01030fd4;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
-constexpr int kOffPosX    = 0x1c;
-constexpr int kOffPosY    = 0x20;
-constexpr int kOffVisible = 0x28;  // 0 = caché (hors rendu ET hors hit-test)
 
 // Globales des soldes. g_BankVault est un s64 côté client alors que le serveur
 // stocke un int32 (MAX_BANK_ZENY = SINT32_MAX) : on lit bien les 8 octets, mais
@@ -71,10 +68,8 @@ constexpr uint16_t kOpCheck    = 0x09AB;  // CZ_REQ_BANKING_CHECK (= ce que fait
 
 // OnMsg natif : rejouer le chemin du X plutôt que d'appeler nous-mêmes une
 // fonction du gestionnaire (aucune convention d'appel à deviner).
-constexpr int kVfOnMsg     = 0x94;
 constexpr int kMsgUiAction = 0x06;  // OnMsg : action de contrôle…
 constexpr int kActionClose = 201;   // …201 = fermeture (RE UIBankWnd_OnMsg case 6)
-using OnMsg_t = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
 
 template <typename Fn>
 inline Fn Vf(void* self, int off) {
@@ -97,7 +92,7 @@ void CloseBank() {
   uint8_t* wnd = BankWnd();
   if (!wnd) return;
   __try {
-    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgUiAction, kActionClose, 0, 0, 0);
+    uiwnd::OnMsg(wnd, kMsgUiAction, kActionClose, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -106,8 +101,8 @@ void CloseBank() {
 struct NativeRect { int x = 0, y = 0, w = 0, h = 0; };
 bool ReadNativeRect(uint8_t* wnd, NativeRect* out) {
   __try {
-    out->x = *reinterpret_cast<int*>(wnd + kOffPosX);
-    out->y = *reinterpret_cast<int*>(wnd + kOffPosY);
+    out->x = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
+    out->y = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
     out->w = *reinterpret_cast<int*>(wnd + kOffWidth);
     out->h = *reinterpret_cast<int*>(wnd + kOffHeight);
     return true;
@@ -116,7 +111,7 @@ bool ReadNativeRect(uint8_t* wnd, NativeRect* out) {
 
 void SetNativeVisible(uint8_t* wnd, bool visible) {
   __try {
-    *reinterpret_cast<int*>(wnd + kOffVisible) = visible ? 1 : 0;
+    *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = visible ? 1 : 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -127,7 +122,7 @@ void SetNativeVisible(uint8_t* wnd, bool visible) {
 bool HideIfBankWindow(void* win) {
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kBankVTable) return false;
-    *reinterpret_cast<int*>(static_cast<uint8_t*>(win) + kOffVisible) = 0;
+    *reinterpret_cast<int*>(static_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

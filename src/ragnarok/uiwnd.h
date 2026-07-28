@@ -66,8 +66,19 @@ inline void* MakeWindow(int window_id) {
       Mgr(), nullptr, reinterpret_cast<void*>(static_cast<uintptr_t>(window_id)));
 }
 
-// Ferme et DÉTRUIT la fenêtre `window_id`. ⚠ Le destructeur natif retire la
-// fenêtre des slots dédiés du manager : ne jamais garder un pointeur au-delà.
+// Ferme la fenêtre `window_id` en PERSISTANT sa position, exactement comme un
+// clic sur son bouton X. ⚠ Le destructeur natif retire la fenêtre des slots
+// dédiés du manager : ne jamais garder un pointeur au-delà.
+//
+// ⚠ NOM À TRANCHER : le registre RE du projet se contredit sur cette adresse.
+// Six fichiers la documentent `UIWindowMgr::Close(mgr, edx, id)`, deux
+// (rodex_window, trade_window) `UIWindowMgr::SaveWindowRect(mgr, id)` — et
+// rodex précise « fermeture propre (persiste la position, comme le X) ». Les
+// huit appellent la même chose avec les mêmes arguments et en attendent le même
+// effet, donc rien n'est cassé ; c'est le NOM qui n'est pas établi. Le nommer
+// d'après son effet observé en attendant un désassemblage : si elle s'avère
+// n'être QUE SaveWindowRect, la fermeture viendrait d'ailleurs et ce helper
+// serait à renommer, pas à corriger.
 inline void CloseWindow(int window_id) {
   using CloseWindowFn = void(__fastcall*)(void*, void*, int);
   reinterpret_cast<CloseWindowFn>(kCloseWindowAddr)(Mgr(), nullptr, window_id);
@@ -107,19 +118,27 @@ inline void SetPos(void* wnd, int x, int y) {
 // ⚠ NE PAS confondre kOffPosX/Y avec les offsets homonymes d'un ACTEUR
 // (player_jump.cc : +0x10/+0x14, position MONDE en float). Même nom, structure
 // différente : c'est précisément pour ça qu'ils sont qualifiés `uiwnd::` ici.
-constexpr int kOffVisible = 0x28;  // BYTE  : 0 = hors rendu ET hors hit-test
-constexpr int kOffPosX    = 0x1c;  // int   : x écran
-constexpr int kOffPosY    = 0x20;  // int   : y écran
+constexpr int kOffVisible = 0x28;  // int : 0 = hors rendu ET hors hit-test
+constexpr int kOffPosX    = 0x1c;  // int : x écran
+constexpr int kOffPosY    = 0x20;  // int : y écran
 
 // Visibilité. C'est le drapeau que les modules de features/windows/ mettent à 0
 // pour cacher la native sans la détruire : elle continue de recevoir ses paquets
 // et de tenir son modèle à jour, elle ne se voit et ne se clique simplement plus.
+//
+// ⚠ Accès en `int`, PAS en octet. Ce n'est pas un choix esthétique : les 28
+// sites du projet déréfèrent tous `*reinterpret_cast<int*>(wnd + 0x28)`, et
+// c'est cette forme-là qui est éprouvée en jeu. Une écriture d'un seul octet
+// laisserait +0x29..+0x2b intacts — comportement différent si le champ fait
+// bien 4 octets, ce que le désassemblage de Show/Hide (0x005aad80) reste à
+// confirmer. Tant que ce n'est pas tranché, on copie ce qui marche.
 inline bool IsVisible(const void* wnd) {
-  return *reinterpret_cast<const uint8_t*>(
+  return *reinterpret_cast<const int*>(
              reinterpret_cast<const uint8_t*>(wnd) + kOffVisible) != 0;
 }
 inline void SetVisible(void* wnd, bool visible) {
-  *(reinterpret_cast<uint8_t*>(wnd) + kOffVisible) = visible ? 1 : 0;
+  *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kOffVisible) =
+      visible ? 1 : 0;
 }
 
 inline int PosX(const void* wnd) {

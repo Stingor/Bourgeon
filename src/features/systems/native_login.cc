@@ -28,7 +28,6 @@ constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler
 constexpr int kOffEditPw    = 0xB8;  // édit MOT DE PASSE (SendMsg 0x2717 ; masque +0x84==0x2a)
 constexpr int kOffBg        = 0xBC;  // fond (fenêtre id 0x145, non enfant)
 constexpr int kOffAcctClass = 0xEC;
-constexpr int kOffVisible   = 0x28;  // flag visibilité UIWindow
 
 using SetText_t = void(__thiscall*)(void* edit, const char* text);
 // ⚠ 6 ARGS PILE (la fonction fait RET 0x18) — un typedef à 5 args corrompt ESP
@@ -124,7 +123,7 @@ void* ValidLoginWnd() {
 }
 
 inline void SetVis(void* w, int v) {
-  if (w) *reinterpret_cast<int*>(reinterpret_cast<char*>(w) + kOffVisible) = v;
+  if (w) *reinterpret_cast<int*>(reinterpret_cast<char*>(w) + uiwnd::kOffVisible) = v;
 }
 
 }  // namespace

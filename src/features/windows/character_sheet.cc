@@ -152,8 +152,6 @@ constexpr uintptr_t kInfoSetId = 0x006a6570;
 constexpr uintptr_t kEnsureLoaded = 0x006a06b0, kEnsureCache = 0x0125510c;
 constexpr uintptr_t kDescDbLookup = 0x006a0d40, kDescDb = 0x01255130, kDescDbNil = 0x01255138;
 using MakeWindow_t   = void* (__fastcall*)(void*, void*, void*);
-using OnMsg_t        = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
 using InfoCtor_t     = void(__fastcall*)(void*);
 using InfoSetId_t    = void(__thiscall*)(void*, int);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -1702,10 +1700,10 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
         uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1723,15 +1721,14 @@ void OpenSkillDesc(int skillId, int mx, int my) {
   if (skillId <= 0) return;
   __try {
     void* mgr = uiwnd::Mgr();
-    void* wnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        mgr, nullptr, reinterpret_cast<void*>(kWinSkillDesc));
+    void* wnd = uiwnd::MakeWindow(kWinSkillDesc);
     if (!wnd) return;
     if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == skillId) {
-      reinterpret_cast<CloseWindow_t>(kCloseWindow)(mgr, nullptr, kWinSkillDesc);
+      uiwnd::CloseWindow(kWinSkillDesc);
       return;
     }
-    Vf<OnMsg_t>(wnd, kVfOnMsg)(wnd, nullptr, 0, kMsgSetSkill, skillId, 0, 0, 0);
-    Vf<SetPos_t>(wnd, kVfSetPos)(wnd, nullptr, mx, my);
+    uiwnd::OnMsg(wnd, kMsgSetSkill, skillId, 0, 0, 0);
+    uiwnd::SetPos(wnd, mx, my);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

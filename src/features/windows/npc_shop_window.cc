@@ -45,7 +45,6 @@ constexpr uintptr_t kDetailVTable = 0x010323ec;  // UIItemParamChangeDisplayWnd
                                                  // (comparateur ATK/DEF, id variable)
 
 // Offsets UIWindow.
-constexpr int kOffVisible = 0x28;  // flag visibilité (Show/Hide)
 constexpr int kOffList    = 0xe8;  // std::list<ItemSkillInfo> (buy/sell display)
 
 // Nœud de la liste d'affichage (std::list) : value=node+8, puis dans le payload
@@ -104,7 +103,7 @@ void CloseWnd(int id) {
 }
 void HideWnd(void* w) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 0;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -161,10 +160,10 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
         uiwnd::Mgr(), nullptr,
         reinterpret_cast<void*>(kWinItemDesc));
     if (dwnd) {
-      Vf<OnMsg_t>(dwnd, kVfOnMsg)(dwnd, nullptr, 0, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                   0, 0, 0);
-      Vf<SetPos_t>(dwnd, kVfSetPos)(dwnd, nullptr, mx, my);
+      uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -509,7 +508,7 @@ void NpcShopWindow::HideDetailWindow(void* win) {
   if (!win || !imgui_enabled_ || !open_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) == kDetailVTable)
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kOffVisible) = 0;
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -572,7 +571,7 @@ void NpcShopWindow::OnTick() {
     __try {
       void* sl = *reinterpret_cast<void**>(kSellListGlobal);
       if (sl && *reinterpret_cast<uintptr_t*>(sl) == kSellListVTable)
-        *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(sl) + kOffVisible) = 0;
+        *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(sl) + uiwnd::kOffVisible) = 0;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
     if (!was_open_) need_pos_ = true;
     // Demande la liste du mode courant si pas encore faite (envoi thread principal).

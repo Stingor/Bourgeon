@@ -40,7 +40,6 @@ constexpr uintptr_t kAcceptVTable   = 0x01033754;  // popup requête (best-effor
 constexpr int       kAcceptId       = 0x20;        // id popup (best-effort)
 
 // Offsets CUIExchangeUI (RE FUN_009ce450 / FUN_009cecd0).
-constexpr int kOffVisible     = 0x28;   // flag visibilité (gate du render mgr)
 constexpr int kOffMyListW     = 0xE4;   // widget liste MES objets
 constexpr int kOffPtListW     = 0xF8;   // widget liste objets PARTENAIRE
 constexpr int kOffWidgetLock  = 0xC4;   // (widget liste) octet : côté verrouillé (>0)
@@ -114,7 +113,7 @@ void* FindWnd(int id) {
 }
 void HideWnd(void* w) {
   __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + kOffVisible) = 0;
+    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Détruit une fenêtre native par id (persiste sa position + close), comme le X natif.
