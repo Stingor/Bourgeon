@@ -291,7 +291,7 @@ bool MenuIcons::DrawSettings() {
   // elle est issue (elle le faisait, via mi->icons() une fois le préfixe retiré).
   auto& icon_list = icons();
   if (icon_list.empty()) {
-    GrayText("(disponible une fois en jeu)");
+    ImGui::TextDisabled("(disponible une fois en jeu)");
   } else {
     for (auto& ic : icon_list) {
       bool shown = !ic.hidden;

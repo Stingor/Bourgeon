@@ -126,7 +126,7 @@ void ScreenFx::DrawSettings() {
     apply = true;
     save  = true;
   }
-  GrayText("Affecte le rendu du moteur (monde + UI native), pas l'overlay.");
+  ImGui::TextDisabled("Affecte le rendu du moteur (monde + UI native), pas l'overlay.");
 
   if (fx_.enabled) {
     // ── Presets ──

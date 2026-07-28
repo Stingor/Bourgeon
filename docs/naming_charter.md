@@ -179,7 +179,7 @@ Un nom vague ralentit ; un nom qui ment fait écrire un bug.
 - **Usages** : 23 occurrences mot-entier
 - **Pourquoi** : Redéclaré pour sept couleurs différentes (chat, sol du SPR Lab, DPS, barres, grille, skillbar, groupes de chat) sans jamais dire quel encodage ni quelle couleur. Le mettre au format `argb_hex` applique la R2 et fait apparaître d'un coup d'œil les endroits où l'on lit du ImU32 au lieu de l'ARGB.
 
-### 15. `Text, Spacing, Separator, SameLine, Indent, Unindent, OpenPopup, BeginPopup, Tooltip, IsHovered, ColorPicker, GrayText, RedText, TextWrapped, TextUnformatted, CollapsingHeader, PushItemWidth, PopItemWidth, BulletWrapped, SeparatorText` -> `les enfermer dans un `namespace mui { … }` SANS les renommer, et ajouter `using namespace mui;` en tête des .cc concernés`
+### 15. `Text, Spacing, Separator, SameLine, Indent, Unindent, OpenPopup, BeginPopup, Tooltip, IsHovered, ColorPicker, TextWrapped, TextUnformatted, CollapsingHeader, PushItemWidth, PopItemWidth, BulletWrapped, SeparatorText` -> `les enfermer dans un `namespace mui { … }` SANS les renommer, et ajouter `using namespace mui;` en tête des .cc concernés`
 
 - **Où** : moonlight_ui.h:70-141
 - **Usages** : plusieurs centaines de sites d'appel (Tooltip 95, HelpMarker 119, ColorPicker 28, WheelSliderInt 29, WheelSliderFloat 17…)

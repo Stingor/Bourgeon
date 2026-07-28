@@ -72,15 +72,6 @@ inline void Text(const char* fmt, ...) {
 inline void TextUnformatted(const char* text) {
     ImGui::TextUnformatted(text);
 }
-inline void GrayText(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    ImGui::TextDisabledV(fmt, args);
-    va_end(args);
-}
-inline void RedText(const char* text) {
-    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", text);
-}
 inline bool CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0) {
     return ImGui::CollapsingHeader(label, flags);
 }

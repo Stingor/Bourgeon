@@ -173,7 +173,7 @@ void EntityNames::DrawNames() {
 void EntityNames::DrawSettings() {
   bool save = false;
   if (ro::RoCheckbox("Afficher les noms en permanence", &enabled_)) save = true;
-  GrayText("Affiche le nom au-dessus des entités sans avoir à les survoler.");
+  ImGui::TextDisabled("Affiche le nom au-dessus des entités sans avoir à les survoler.");
 
   if (enabled_) {
     Spacing();
@@ -192,7 +192,7 @@ void EntityNames::DrawSettings() {
     if (WheelSliderFloat("Taille du texte", &font_scale_, 0.7f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
 
-    GrayText("Les monstres déclenchent une requête de nom au serveur : sur une "
+    ImGui::TextDisabled("Les monstres déclenchent une requête de nom au serveur : sur une "
              "map très peuplée, cela génère du trafic réseau.");
   }
 

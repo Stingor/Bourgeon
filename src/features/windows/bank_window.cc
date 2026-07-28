@@ -638,7 +638,7 @@ bool BankWindow::DrawSettings() {
   ImGui::EndDisabled();
 
   ImGui::Spacing();
-  GrayText(
+  ImGui::TextDisabled(
       "La banque ne s'ouvre JAMAIS depuis le client : Ctrl+B envoie une demande "
       "et c'est le serveur qui l'ouvre. Cette fenêtre suit donc la native — il "
       "n'y a volontairement pas de bouton « ouvrir » ni « rafraîchir » (une "
