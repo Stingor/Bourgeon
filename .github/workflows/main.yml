@@ -32,29 +32,68 @@ jobs:
           jq -c '.[]' /tmp/commits.json > /tmp/commits.jsonl
 
       - name: Send commits to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
+          set -euo pipefail
+
+          # Discord limite une description d'embed à 4096 caractères :
+          # on découpe en plusieurs messages plutôt que d'échouer en 400.
+          MAX_DESC=3800
+
+          send_embed() {
+            local description="$1"
+            local title="$2"
+            [ -n "$description" ] || return 0
+
+            jq -n --arg description "$description" --arg title "$title" '{
+              embeds: [{
+                title: $title,
+                description: $description,
+                color: 5814783
+              }]
+            }' > /tmp/payload.json
+
+            curl -fsSL -H "Content-Type: application/json" \
+                 -X POST \
+                 -d @/tmp/payload.json \
+                 "$DISCORD_WEBHOOK"
+            sleep 1
+          }
+
+          title="Nouveaux commits poussés (Bourgeon Plugins):"
           msg=""
+
           while IFS= read -r commit; do
             ts=$(echo "$commit" | jq -r .timestamp)
-            msgtxt=$(echo "$commit" | jq -r .message)
+            # le titre seul va dans le lien : un lien markdown ne supporte
+            # pas les retours à la ligne
+            subject=$(echo "$commit" | jq -r '.message | split("\n")[0] | .[0:150]')
+            # le corps est indenté sous le titre, l'ensemble borné à 800 caractères
+            body=$(echo "$commit" | jq -r '
+              .message
+              | .[0:800]
+              | rtrimstr("\n")
+              | split("\n")
+              | .[1:]
+              | map("\n  " + .)
+              | join("")
+            ')
             sha=$(echo "$commit" | jq -r .id)
             url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}"
             formatted=$(TZ="Europe/Paris" date -d "$ts" "+%d/%m/%Y %H:%M")
-            msg="${msg}- \`${formatted}\` — [${msgtxt}](${url})"$'\n'
+            line="- \`${formatted}\` — [${subject}](${url})${body}"
+
+            if [ -n "$msg" ] && [ $(( ${#msg} + ${#line} + 1 )) -gt "$MAX_DESC" ]; then
+              send_embed "$msg" "$title"
+              title="… (suite)"
+              msg=""
+            fi
+
+            msg="${msg}${line}"$'\n'
           done < /tmp/commits.jsonl
 
-          jq -n --arg description "$msg" '{
-            embeds: [{
-              title: "Nouveaux commits poussés (Bourgeon Plugins):",
-              description: $description,
-              color: 5814783
-            }]
-          }' > /tmp/payload.json
-
-          curl -fsSL -H "Content-Type: application/json" \
-               -X POST \
-               -d @/tmp/payload.json \
-               "${{ secrets.DISCORD_WEBHOOK }}"
+          send_embed "$msg" "$title"
 
       - name: Send commits to changelog
         run: |
