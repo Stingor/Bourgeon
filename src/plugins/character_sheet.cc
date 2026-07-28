@@ -860,12 +860,13 @@ ro::IconTex ResolveSkillIcon(int skillId) {
   return g_skill_icon_cache[k] = LoadSkillIcon(skillId);
 }
 
-// Filtre d'échantillonnage des icônes du grimoire. Le natif ne filtre RIEN (les
-// .bmp d'icônes font 24 px et sont blités tels quels) ; agrandies à 40 px dans la
-// grille, elles restent donc crénelées. Le lissage est un OPT-IN, posé par un
-// callback de draw list comme la barre de raccourcis (cf. skill_bar_tweaks).
-// ⚠ Restaurer POINT après coup, pas ImDrawCallback_ResetRenderState : le backend
-// DX9 y remet LINEAR, ce qui ramollirait les blits de skin dessinés ensuite.
+// Filtre d'échantillonnage des icônes du grimoire, posé par un callback de draw list
+// comme la barre de raccourcis (cf. skill_bar_tweaks). Le natif ne filtre RIEN (les
+// .bmp d'icônes font 24 px et sont blités tels quels) : le mode NET est donc le
+// défaut, et c'est LUI qu'il faut imposer — l'état ambiant d'une draw list ImGui est
+// LINEAR (le backend DX9 le remet dans SetupRenderState, imgui_impl_dx9.cpp:139).
+// ⚠ Même raison pour la restauration : un ImDrawCallback_ResetRenderState rendrait
+// la main en LINEAR et ramollirait les blits de skin dessinés ensuite.
 bool g_skill_icon_bilinear = false;
 void CbSkillIconFilter(const ImDrawList*, const ImDrawCmd*) {
   Overlay_SetTextureFilter(g_skill_icon_bilinear);
@@ -3293,10 +3294,14 @@ void CharacterSheet::DrawSkillsTab() {
     for (int i = 0; i < count; ++i) cell_drawn[i] = false;
     int used_max_row = 0;
 
-    // Lissage des icônes : un seul basculement pour toute la grille (le callback
-    // coupe le lot de draws en deux, autant ne pas le faire par case).
+    // Filtre des icônes : un seul basculement pour toute la grille (le callback coupe
+    // le lot de draws en deux, autant ne pas le faire par case).
+    // ⚠ Callback posé dans les DEUX cas, pas seulement quand le lissage est demandé :
+    // l'état ambiant à cet endroit de la draw list est LINEAR (le backend DX9 le remet
+    // dans SetupRenderState), donc ne rien faire = icônes déjà lissées et la case à
+    // cocher semblait morte. C'est le mode NET qui doit être imposé.
     g_skill_icon_bilinear = skill_bilinear_;
-    if (skill_bilinear_) dl->AddCallback(CbSkillIconFilter, nullptr);
+    dl->AddCallback(CbSkillIconFilter, nullptr);
 
     for (int i = 0; i < count; ++i) {
       const SkillRaw& s = nodes[i];
@@ -3370,7 +3375,7 @@ void CharacterSheet::DrawSkillsTab() {
 
     // Restaurer le filtre net : la suite (skin, scrollbar) est dessinée dans la même
     // draw list et hériterait sinon du lissage.
-    if (skill_bilinear_) dl->AddCallback(CbSkillIconFilterOff, nullptr);
+    dl->AddCallback(CbSkillIconFilterOff, nullptr);
 
     // ── Séparateur entre deux arbres fusionnés (trait rouge + libellé) ────────
     for (int k = 0; k < split_count; ++k) {
