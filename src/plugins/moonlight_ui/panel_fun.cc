@@ -168,8 +168,10 @@ void MoonlightUi::DrawFunPanels() {
     SeparatorText("Saut");
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       bool on = player_jump->enabled();
-      if (ro::RoCheckbox("Sauter au clavier", &on))
+      if (ro::RoCheckbox("Sauter au clavier", &on)) {
         player_jump->SetEnabled(on);
+        SaveSettings();
+      }
       SameLine(); HelpMarker(
           "Appuie sur la touche de saut (Espace par défaut) pour faire bondir "
           "ton personnage : un petit arc parabolique (montée puis retombée) "
@@ -194,8 +196,10 @@ void MoonlightUi::DrawFunPanels() {
     SeparatorText("Déplacement au clavier (Expérimental)");
     if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
       bool on = keyboard_move->enabled();
-      if (ro::RoCheckbox("Marcher avec ZQSD / flèches", &on))
+      if (ro::RoCheckbox("Marcher avec ZQSD / flèches", &on)) {
         keyboard_move->SetEnabled(on);
+        SaveSettings();
+      }
       SameLine(); HelpMarker(
           "Déplace ton personnage au clavier : Z/S pour avancer et reculer, "
           "Q/D pour aller à gauche et à droite (les flèches font pareil). "
@@ -207,11 +211,15 @@ void MoonlightUi::DrawFunPanels() {
           "Attention si tu as des raccourcis de compétence sur Z, Q, S ou D : "
           "ils se déclencheront aussi.");
       if (on) {
-        ro::RoCheckbox("Suivre la rotation de la caméra", keyboard_move->p_camera_relative());
+        if (ro::RoCheckbox("Suivre la rotation de la caméra",
+                           keyboard_move->p_camera_relative()))
+          SaveSettings();
         SameLine(); HelpMarker(
             "« Haut » = le haut de l'écran, même après avoir fait pivoter la "
             "caméra. Décoché : les directions restent celles de la carte.");
-        ro::RoCheckbox("S'arrêter au relâchement", keyboard_move->p_stop_on_release());
+        if (ro::RoCheckbox("S'arrêter au relâchement",
+                           keyboard_move->p_stop_on_release()))
+          SaveSettings();
         SameLine(); HelpMarker(
             "Coupe la marche dès que tu lâches la touche, au lieu de laisser "
             "le personnage finir le trajet demandé.");

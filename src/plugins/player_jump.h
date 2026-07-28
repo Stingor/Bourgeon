@@ -64,6 +64,9 @@ class PlayerJumpTweaks : public Plugin {
 
   // Toggle + réglages exposés au menu moonlight_ui.
   bool enabled() const { return enabled_; }
+  // Surcharge non-const : la table de persistance décrit un réglage par
+  // l'ADRESSE de sa valeur, il lui faut donc une lvalue (cf. jump_enabled).
+  bool& enabled() { return enabled_; }
   void SetEnabled(bool on);
   float* p_height()      { return &jump_height_; }   // amplitude (unités monde)
   int*   p_duration_ms() { return &jump_ms_; }        // durée de l'arc (ms)

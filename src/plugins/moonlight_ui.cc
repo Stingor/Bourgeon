@@ -340,10 +340,12 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
 };
 
-// Touche de saut (PlayerJumpTweaks). Le reste du plugin (activation, hauteur,
-// durée) reste vif et non persisté ; seul le remappage doit survivre au
-// redémarrage, sinon le joueur le referait à chaque session. 0x20 = VK_SPACE.
+// Saut (PlayerJumpTweaks) : activation + touche. Seuls la hauteur et la durée
+// de l'arc restent vives et non persistées (réglages staff, cf. panel_fun).
+// 0x20 = VK_SPACE.
 const moonlight_ui::SettingDesc kJumpKeySettings[] = {
+    {"jump_enabled",   SType::kBool, MLUI_FIELD(player_jump, enabled()),
+     MLUI_LITERAL(bool, true)},
     {"jump_key_vk",    SType::kInt,  MLUI_FIELD(player_jump, key_vk()),
      MLUI_LITERAL(int, 0x20)},
     {"jump_key_ctrl",  SType::kBool, MLUI_FIELD(player_jump, key_ctrl()),
@@ -352,6 +354,18 @@ const moonlight_ui::SettingDesc kJumpKeySettings[] = {
      MLUI_LITERAL(bool, false)},
     {"jump_key_shift", SType::kBool, MLUI_FIELD(player_jump, key_shift()),
      MLUI_LITERAL(bool, false)},
+};
+
+// Déplacement au clavier (KeyboardMoveTweaks) : activation + les deux options
+// visibles par tous. L'anticipation et la cadence restent vives et non
+// persistées (réglages staff, cf. panel_fun).
+const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
+    {"kbmove_enabled", SType::kBool, MLUI_FIELD(keyboard_move, enabled()),
+     MLUI_LITERAL(bool, true)},
+    {"kbmove_camera_relative", SType::kBool,
+     MLUI_FIELD(keyboard_move, camera_relative()), MLUI_LITERAL(bool, true)},
+    {"kbmove_stop_on_release", SType::kBool,
+     MLUI_FIELD(keyboard_move, stop_on_release()), MLUI_LITERAL(bool, true)},
 };
 
 // Barres EXP/HP/SP et portrait de statut (BasicInfoTweaks). Les barres et les
@@ -791,6 +805,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
+    moonlight_ui::ReadSettings(ui, kKeyboardMoveSettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     moonlight_ui::ReadSkillBarLayout(ui);
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
@@ -912,6 +927,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
+  moonlight_ui::WriteSettings(out, kKeyboardMoveSettings);
 
   moonlight_ui::WriteSettings(out, kSkillBarSettings);
   moonlight_ui::WriteSkillBarLayout(out);

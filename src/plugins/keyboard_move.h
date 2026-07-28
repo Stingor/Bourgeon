@@ -55,11 +55,17 @@ class KeyboardMoveTweaks : public Plugin {
 
   // Toggle + réglages exposés au menu moonlight_ui.
   bool enabled() const { return enabled_; }
+  // Surcharge non-const : la table de persistance décrit un réglage par
+  // l'ADRESSE de sa valeur, il lui faut donc une lvalue (cf. kbmove_enabled).
+  bool& enabled() { return enabled_; }
   void SetEnabled(bool on);
   int*  p_look_ahead()      { return &look_ahead_; }
   int*  p_refresh_ms()      { return &refresh_ms_; }
   bool* p_stop_on_release() { return &stop_on_release_; }
   bool* p_camera_relative() { return &camera_relative_; }
+  // Mêmes deux réglages, en lvalue, pour la table de persistance.
+  bool& stop_on_release() { return stop_on_release_; }
+  bool& camera_relative() { return camera_relative_; }
 
  private:
   void Reset();  // oublie la direction en cours (changement de map, hors jeu…)
