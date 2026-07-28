@@ -644,3 +644,51 @@ Le plugin `skill_tree_tweaks` (gate de repaint) reste utile pour le mode natif.
 | liste des prérequis (survol) | `0x009789C0` -> `this+0x298` |
 | noms d'onglets | `0x009765F0` (Lua `JobSkillTab_GetTabName`) |
 | vtable `CSkillInfo` / ctor / copie / dtor | `0x01012968` / `0x00739780` / `0x007368F0` / `0x00739CD0` |
+
+### §13 — Gestes et réglages de l'onglet Grimoire (livré, 2026-07-28)
+
+Ce que le remplaçant ImGui expose, et **pourquoi** ça diverge du natif quand ça diverge.
+
+| geste | effet | natif correspondant |
+|---|---|---|
+| clic gauche (sans glisser) | **réserve un point** + ses prérequis directs manquants | clic DROIT (`0x00978520`) |
+| Ctrl + clic gauche | réserve **jusqu'au niveau max** (dans la limite des points) | aucun |
+| clic droit | menu : monter, lancer, niveau d'utilisation ±, description | aucun (le natif n'a pas de menu) |
+| Ctrl + clic droit | ouvre la **description** (`MakeWindow 0xC`) | clic GAUCHE (`0x009782B0` -> msg `0x3A`) |
+| glisser | charge utile `BGN_SKILL` vers une barre d'action | glisser natif vers `UIShortCutWnd` |
+| survol | infobulle + **flèches** de prérequis (ambre) et de suites (bleu, en chaîne) | surbrillance `0x009789C0` |
+
+Les boutons gauche/droite sont donc **inversés par rapport au natif**, exprès : le clic gauche est le
+geste courant (dépenser un point), et Ctrl + clic droit reprend le standard déjà en place dans
+l'inventaire, l'entrepôt et le cart (« Ctrl + clic droit = description »). Un clic gauche qui
+ouvrirait une fenêtre est par ailleurs incompatible avec le glisser vers la barre : c'est pour ça que
+la réservation est testée **au relâché** et seulement si `GetMouseDragDelta` vaut encore `(0,0)`.
+
+⚠ **Pas de bouton « + » par case.** Il en a existé un, dessiné au survol par-dessus la case : la case
+étant soumise AVANT lui, elle captait le clic (il fallait `SetNextItemAllowOverlap`, et le curseur
+repassait en flèche pendant l'appui). Le clic gauche direct remplace tout ça. La vue LISTE garde son
+« + », qui a sa propre cellule de tableau — aucun recouvrement.
+
+**Flèches en chaîne.** Le bleu (« ce que cette compétence ouvre ») se propage en **largeur** sur tout
+le sous-arbre, pas seulement au premier rang : c'est justement la suite du chemin qu'on cherche en
+survolant une compétence de départ. Chaque case n'est développée qu'une fois (le graphe a des
+raccourcis), profondeur bornée à 6, et le trait pâlit/s'affine avec la distance. Chaque arête passe
+par la **réduction transitive** décrite plus haut — la liste de prérequis du client est aplatie, la
+tracer telle quelle doublerait chaque chemin.
+
+**Onglets fusionnés + séparateur.** « 1re classe » et « 2e classe » partagent un onglet ; chaque arbre
+gardant ses propres index de case (ils viennent du Lua), le second est décalé d'un nombre entier de
+lignes et un **trait rouge titré** marque la frontière, avec sa propre bande de 22 px (sans quoi le
+trait mordrait sur les icônes). 3e classe, 4e classe et « divers » restent séparés.
+
+**Lisibilité du niveau.** Le « n / max » sous l'icône est écrit en **noir** dès que la compétence est
+apprise (le vert « niveau max » se noyait dans le fond clair du skin), gris sinon, ambre foncé si un
+point est réservé — et toujours avec un **liseré blanc de 1 px** (4 passes décalées), parce que le
+texte déborde parfois sur le bas d'une icône.
+
+**Lissage des icônes (opt-in).** Les .bmp d'icônes font 24 px et sont agrandis à 40 px : le natif ne
+filtre rien, on garde ce défaut. Case « Lisser les icônes » en haut de page (yaml
+`charsheet_grimoire_bilinear`), qui pose un `ImDrawList::AddCallback` -> `Overlay_SetTextureFilter(true)`
+avant la grille — même schéma que `skill_bar_tweaks`.
+⚠ Restaurer avec un callback **POINT explicite**, pas `ImDrawCallback_ResetRenderState` : le backend
+DX9 y remet `D3DTEXF_LINEAR` (imgui_impl_dx9.cpp:139), ce qui ramollirait les blits de skin suivants.

@@ -860,6 +860,20 @@ ro::IconTex ResolveSkillIcon(int skillId) {
   return g_skill_icon_cache[k] = LoadSkillIcon(skillId);
 }
 
+// Filtre d'échantillonnage des icônes du grimoire. Le natif ne filtre RIEN (les
+// .bmp d'icônes font 24 px et sont blités tels quels) ; agrandies à 40 px dans la
+// grille, elles restent donc crénelées. Le lissage est un OPT-IN, posé par un
+// callback de draw list comme la barre de raccourcis (cf. skill_bar_tweaks).
+// ⚠ Restaurer POINT après coup, pas ImDrawCallback_ResetRenderState : le backend
+// DX9 y remet LINEAR, ce qui ramollirait les blits de skin dessinés ensuite.
+bool g_skill_icon_bilinear = false;
+void CbSkillIconFilter(const ImDrawList*, const ImDrawCmd*) {
+  Overlay_SetTextureFilter(g_skill_icon_bilinear);
+}
+void CbSkillIconFilterOff(const ImDrawList*, const ImDrawCmd*) {
+  Overlay_SetTextureFilter(false);
+}
+
 // ═══ Grimoire (arbre de compétences) ════════════════════════════════════════
 // La fenêtre native 0x25 ne POSSÈDE rien : elle recopie ses quatre listes d'onglets
 // depuis CPlayerSkillBundle, un objet global (= session+0x0C). On lit donc la MÊME
@@ -2834,11 +2848,11 @@ int CharacterSheet::PendingLevel(uint16_t id) const {
   return 0;
 }
 
-// Réserve un point sur `id`. Comme la vue grille native (sub_979BA0), on réserve
-// AUSSI les prérequis directs qui manquent : cliquer sur une compétence verrouillée
-// prépare la chaîne au lieu de refuser sèchement. Rien n'est envoyé ici — c'est
-// « Appliquer » qui parle au serveur.
-bool CharacterSheet::ReserveSkillPoint(uint16_t id) {
+// Réserve un point sur `id` (ou tout ce qui reste jusqu'au niveau max si `to_max`).
+// Comme la vue grille native (sub_979BA0), on réserve AUSSI les prérequis directs qui
+// manquent : cliquer sur une compétence verrouillée prépare la chaîne au lieu de
+// refuser sèchement. Rien n'est envoyé ici — c'est « Appliquer » qui parle au serveur.
+bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
   // Tampon PROPRE à cette fonction : DrawSkillsTab l'appelle en plein parcours de SON
   // tableau, et partager le même buffer statique invaliderait la fiche qu'il tient.
   static SkillRaw scan[kSkillMaxNodes];
@@ -2891,7 +2905,9 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id) {
   }
   const int current = std::max(target.learned, PendingLevel(id));
   if (current >= target.maxlv) { skill_status_ = "Déjà au niveau maximum."; return false; }
-  if (reserve(target, current + 1) == 0) {
+  // `reserve` borne déjà au niveau max ET aux points restants : viser le max revient
+  // à demander tout ce qui reste, sans boucler ni recompter les prérequis.
+  if (reserve(target, to_max ? target.maxlv : current + 1) == 0) {
     skill_status_ = "Points insuffisants pour les prérequis.";
     return false;
   }
@@ -2998,6 +3014,28 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::TextColored(kGray, "%s", skill_status_.c_str());
   }
 
+  // ── Seconde ligne : rappel des gestes + lissage des icônes ────────────────
+  // « Raccourcis » en texte discret plutôt qu'un pavé permanent : les gestes se
+  // découvrent une fois, la place au-dessus de la grille sert tous les jours.
+  ImGui::TextDisabled("Raccourcis");
+  mui::Tooltip(
+      "Clic gauche          réserve un point (et ses prérequis manquants)\n"
+      "Ctrl + clic gauche   réserve jusqu'au niveau maximum\n"
+      "Clic droit           menu (monter, lancer, niveau d'utilisation, description)\n"
+      "Ctrl + clic droit    description de la compétence\n"
+      "Glisser              pose la compétence sur une barre d'action\n"
+      "Survol               flèches de prérequis (ambre) et de suites (bleu)\n"
+      "\n"
+      "Rien n'est envoyé au serveur tant que « Appliquer » n'est pas cliqué.");
+  ImGui::SameLine();
+  ImGui::TextDisabled("|");
+  ImGui::SameLine();
+  if (ro::RoCheckbox("Lisser les icônes", &skill_bilinear_)) {
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  }
+  mui::Tooltip("Filtrage bilinéaire des icônes de la grille.\n"
+               "Décoché (défaut) = pixels nets, comme le client natif, qui ne filtre pas.");
+
   // ── Groupes d'onglets ────────────────────────────────────────────────────────
   // Le natif en fait un par palier de classe ; on FUSIONNE la 1re et la 2e, qui
   // tiennent largement sur un écran et qu'on consulte ensemble (une 2e classe se lit
@@ -3044,10 +3082,25 @@ void CharacterSheet::DrawSkillsTab() {
   static int disp_pos[kSkillMaxNodes];
   int count = 0;
   int base = 0;
+  // Frontière entre deux arbres fusionnés : la ligne où commence la source suivante,
+  // et son libellé. Sans ce repère, « 1re classe » et « 2e classe » se lisent comme un
+  // seul arbre continu (cf. la vue native, qui les met dans deux onglets distincts).
+  int split_row[1] = {};
+  const char* split_label[1] = {};
+  int split_count = 0;
   for (int gi = 0; gi < groups[skill_tab_].nsrc; ++gi) {
     const int n = ReadSkillTabSEH(groups[skill_tab_].src[gi], nodes + count,
                                   kSkillMaxNodes - count);
     if (n <= 0) continue;
+    // `count > 0` et pas `gi > 0` : si la source précédente était vide, celle-ci est
+    // la première à l'écran — un trait au-dessus de la toute première ligne n'aurait
+    // rien à séparer.
+    if (count > 0 && split_count < 1) {
+      const int src = groups[skill_tab_].src[gi];
+      split_row[split_count]   = base / kSkillGridCols;
+      split_label[split_count] = (src >= 0) ? tab_label(src) : "Divers";
+      ++split_count;
+    }
     int local_max = -1;
     for (int i = 0; i < n; ++i) local_max = std::max(local_max, nodes[count + i].pos);
     // Les compétences sans case (index -1 : le Lua ne les a pas placées) sont rangées
@@ -3115,14 +3168,29 @@ void CharacterSheet::DrawSkillsTab() {
       }
     }
     if (s.user_up <= 0) tip += "\n\nNe se monte pas avec des points (quête / lien).";
-    tip += "\n\nClic droit : menu (monter, lancer, description)";
+    if (s.user_up > 0 && effective < s.maxlv)
+      tip += "\n\nClic : réserver un point — Ctrl + clic : jusqu'au max";
+    else
+      tip += "\n";
+    tip += "\nClic droit : menu — Ctrl + clic droit : description";
     if (s.learned > 0 && s.inf != 0) tip += "\nGlisser : poser sur une barre d'action";
     ImGui::SetTooltip("%s", tip.c_str());
   };
 
   // Menu contextuel commun : monter, lancer, niveau d'utilisation, description.
   auto context_menu = [&](const SkillRaw& s, int effective) {
-    if (!ImGui::BeginPopupContextItem("skctx")) return;
+    // Ouverture MANUELLE (au lieu de BeginPopupContextItem, qui ouvre sur tout clic
+    // droit) : Ctrl + clic droit va droit à la description, comme dans l'inventaire,
+    // l'entrepôt et le cart — sans quoi le menu s'ouvrirait DERRIÈRE elle.
+    if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+      if (ImGui::GetIO().KeyCtrl) {
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      } else {
+        ImGui::OpenPopup("skctx");
+      }
+    }
+    if (!ImGui::BeginPopup("skctx")) return;
     const bool can_raise = s.user_up > 0 && effective < s.maxlv;
     if (ImGui::MenuItem("Monter d'un niveau", nullptr, false, can_raise && points_left > 0))
       ReserveSkillPoint(static_cast<uint16_t>(s.id));
@@ -3160,13 +3228,19 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::TextUnformatted(skill_name(s.id));
       ImGui::EndDragDropSource();
     }
-    // Le clic GAUCHE ne déclenche rien : il est réservé au glisser vers une barre
-    // d'action. La description s'ouvre par le menu contextuel (clic droit), pas au
-    // clic — un clic qui ouvre une fenêtre alors que le même bouton sert à attraper
-    // l'icône, c'est une fenêtre qui s'ouvre à chaque tentative de glisser.
     if (ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr) {
       hovered_now = static_cast<uint16_t>(s.id);
       tooltip_for(s, effective);
+      // Clic gauche = réserver un point (Ctrl = jusqu'au niveau max). Testé au
+      // RELÂCHÉ et seulement si la souris n'a PAS voyagé : le même bouton sert à
+      // attraper l'icône pour la barre d'action, et un test au pressé réserverait à
+      // chaque début de glisser. GetMouseDragDelta reste à (0,0) tant que le seuil
+      // de glisser n'est pas franchi, et vaut encore le déplacement à la frame du
+      // relâché — c'est exactement le test voulu.
+      const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+          travel.x == 0.0f && travel.y == 0.0f)
+        ReserveSkillPoint(static_cast<uint16_t>(s.id), ImGui::GetIO().KeyCtrl);
     }
     context_menu(s, effective);
   };
@@ -3199,8 +3273,17 @@ void CharacterSheet::DrawSkillsTab() {
     const float icon   = 40.0f;  // le .bmp fait 24 px : au-delà ça ramollit visiblement
     const float pad    = 10.0f;  // marge entre la case dessinée et sa voisine
     const float icon_y = 7.0f;   // hauteur du haut de l'icône dans la case
+    const float split_gap = 22.0f;  // hauteur réservée au trait de séparation
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
+    // Ordonnée d'une ligne : les arbres fusionnés sont écartés par un trait, qui a
+    // besoin de sa propre bande — sinon il mordrait sur les icônes voisines.
+    auto row_y = [&](int row) {
+      float y = origin.y + row * cell_h;
+      for (int k = 0; k < split_count; ++k)
+        if (row >= split_row[k]) y += split_gap;
+      return y;
+    };
     // Centre de chaque case dessinée + case survolée : les FLÈCHES de prérequis sont
     // tracées après la boucle (elles doivent passer par-dessus les icônes, et une
     // flèche relie deux cases dont l'une peut n'être dessinée que plus tard).
@@ -3209,6 +3292,12 @@ void CharacterSheet::DrawSkillsTab() {
     int hover_idx = -1;
     for (int i = 0; i < count; ++i) cell_drawn[i] = false;
     int used_max_row = 0;
+
+    // Lissage des icônes : un seul basculement pour toute la grille (le callback
+    // coupe le lot de draws en deux, autant ne pas le faire par case).
+    g_skill_icon_bilinear = skill_bilinear_;
+    if (skill_bilinear_) dl->AddCallback(CbSkillIconFilter, nullptr);
+
     for (int i = 0; i < count; ++i) {
       const SkillRaw& s = nodes[i];
       if (filtering && !icontains(skill_name(s.id), skill_filter_buf_)) continue;
@@ -3216,7 +3305,7 @@ void CharacterSheet::DrawSkillsTab() {
       used_max_row = std::max(used_max_row, pos / kSkillGridCols);
       const int col = pos % kSkillGridCols;
       const int row = pos / kSkillGridCols;
-      const ImVec2 p(origin.x + col * cell_w, origin.y + row * cell_h);
+      const ImVec2 p(origin.x + col * cell_w, row_y(row));
 
       const int pending   = PendingLevel(static_cast<uint16_t>(s.id));
       const int effective = std::max(s.learned, pending);
@@ -3225,17 +3314,13 @@ void CharacterSheet::DrawSkillsTab() {
 
       ImGui::PushID(s.id);
       ImGui::SetCursorScreenPos(p);
-      // ⚠ SANS AllowOverlap, la case invisible — soumise AVANT le bouton « + » qui la
-      // recouvre — capte le clic à sa place : le bouton ne réservait donc jamais rien
-      // en grille (il marchait en liste, où il a sa propre cellule), et le curseur
-      // repassait en flèche pendant l'appui.
-      ImGui::SetNextItemAllowOverlap();
+      // La case EST le widget : c'est elle qui prend le clic (réserver), le clic droit
+      // (menu / description) et le glisser. Rien ne se superpose plus à elle, donc
+      // IsItemHovered() suffit — et lui, contrairement à IsMouseHoveringRect, sait
+      // qu'un menu ouvert par-dessus n'est pas la case.
       ImGui::InvisibleButton("cell", ImVec2(cell_w - pad, cell_h - pad));
       const ImVec2 q(p.x + cell_w - pad, p.y + cell_h - pad);
-      // Survol testé sur le RECTANGLE, pas par IsItemHovered() : le bouton « + » prend
-      // le survol dès que la souris passe dessus, et la case se croirait quittée — le
-      // bouton disparaîtrait, donc clignoterait une frame sur deux.
-      const bool hot = ImGui::IsMouseHoveringRect(p, q);
+      const bool hot = ImGui::IsItemHovered();
       cell_drawn[i]  = true;
       cell_center[i] = ImVec2((p.x + q.x) * 0.5f, (p.y + q.y) * 0.5f);
       if (hot) hover_idx = i;
@@ -3257,29 +3342,48 @@ void CharacterSheet::DrawSkillsTab() {
                      learned ? IM_COL32_WHITE : IM_COL32(105, 105, 115, 165));
 
       // Niveau sous l'icône : la seule information qu'on ne peut pas deviner du dessin.
+      // NOIR dès qu'elle est apprise (le vert « niveau max » se noyait dans le fond
+      // clair du skin), gris quand elle ne l'est pas, ambre quand un point est réservé.
+      // Dans tous les cas un LISERÉ clair de 1 px : le texte passe parfois sur le bas
+      // d'une icône, et sans contour il devient illisible pile à cet endroit.
       char lvl[24];
       if (s.maxlv > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", effective, s.maxlv);
       else             std::snprintf(lvl, sizeof(lvl), "%d", effective);
       const ImVec2 lsz = ImGui::CalcTextSize(lvl);
-      dl->AddText(ImVec2(p.x + (cell_w - pad - lsz.x) * 0.5f, p.y + icon_y + icon + 2.0f),
-                  pending > 0 ? IM_COL32(255, 205, 105, 255)
-                              : (effective >= s.maxlv && s.maxlv > 0
-                                     ? IM_COL32(120, 200, 130, 255)
-                                     : IM_COL32(210, 210, 220, 255)),
-                  lvl);
+      const ImVec2 lp(p.x + (cell_w - pad - lsz.x) * 0.5f, p.y + icon_y + icon + 2.0f);
+      const ImU32 lvl_col = pending > 0      ? IM_COL32(150, 95, 0, 255)
+                            : effective > 0  ? IM_COL32(20, 20, 25, 255)
+                                             : IM_COL32(110, 110, 122, 255);
+      const ImU32 halo = IM_COL32(255, 255, 255, 190);
+      dl->AddText(ImVec2(lp.x - 1.0f, lp.y), halo, lvl);
+      dl->AddText(ImVec2(lp.x + 1.0f, lp.y), halo, lvl);
+      dl->AddText(ImVec2(lp.x, lp.y - 1.0f), halo, lvl);
+      dl->AddText(ImVec2(lp.x, lp.y + 1.0f), halo, lvl);
+      dl->AddText(lp, lvl_col, lvl);
 
       common_item_actions(s, effective, ic);
-
-      // Bouton « + » : le chemin DÉCOUVRABLE pour dépenser un point (le natif ne
-      // l'offre qu'au clic droit, invisible pour qui ne le sait pas). Au SURVOL
-      // seulement : posé en permanence, il mangeait le coin de chaque icône.
-      if (raisable && hot) {
-        ImGui::SetCursorScreenPos(ImVec2(q.x - 16.0f, p.y));
-        if (ro::RoSmallButton("+##up", 16.0f, 16.0f))
-          ReserveSkillPoint(static_cast<uint16_t>(s.id));
-        mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
-      }
+      // Plus de bouton « + » ici : le clic gauche sur la case réserve désormais un
+      // point (Ctrl = jusqu'au max). Un bouton posé PAR-DESSUS la case obligeait à
+      // AllowOverlap, et son clic passait quand même à la case en dessous.
       ImGui::PopID();
+    }
+
+    // Restaurer le filtre net : la suite (skin, scrollbar) est dessinée dans la même
+    // draw list et hériterait sinon du lissage.
+    if (skill_bilinear_) dl->AddCallback(CbSkillIconFilterOff, nullptr);
+
+    // ── Séparateur entre deux arbres fusionnés (trait rouge + libellé) ────────
+    for (int k = 0; k < split_count; ++k) {
+      const float y  = row_y(split_row[k]) - split_gap * 0.5f;
+      const float x0 = origin.x;
+      const float x1 = origin.x + kSkillGridCols * cell_w - pad;
+      const ImU32 line_col = IM_COL32(200, 60, 60, 200);
+      const char* txt = split_label[k] ? split_label[k] : "Suite";
+      const ImVec2 tsz = ImGui::CalcTextSize(txt);
+      const float tx = x0 + 14.0f;
+      dl->AddLine(ImVec2(x0, y), ImVec2(tx - 6.0f, y), line_col, 2.0f);
+      dl->AddLine(ImVec2(tx + tsz.x + 6.0f, y), ImVec2(x1, y), line_col, 2.0f);
+      dl->AddText(ImVec2(tx, y - tsz.y * 0.5f), IM_COL32(170, 40, 40, 255), txt);
     }
 
     // ── Flèches de dépendance, seulement autour de la case survolée ──────────
@@ -3333,12 +3437,13 @@ void CharacterSheet::DrawSkillsTab() {
         }
         return false;
       };
-      // Même raisonnement dans l'autre sens : si une compétence qui réclame la survolée
-      // en réclame une autre qui la réclame aussi, son lien direct est déjà couvert.
-      auto redundant_after = [&](const SkillRaw& dependent) {
+      // Même raisonnement dans l'autre sens, pour un lien `prereq_id -> dependent` :
+      // si `dependent` réclame aussi une compétence qui réclame déjà `prereq_id`, le
+      // trait direct doublerait un chemin déjà tracé.
+      auto redundant_after = [&](const SkillRaw& dependent, int prereq_id) {
         for (int k = 0; k < dependent.need_count; ++k) {
-          if (dependent.need_id[k] == h.id) continue;
-          if (requires_skill(find_node(dependent.need_id[k]), h.id)) return true;
+          if (dependent.need_id[k] == prereq_id) continue;
+          if (requires_skill(find_node(dependent.need_id[k]), prereq_id)) return true;
         }
         return false;
       };
@@ -3351,19 +3456,50 @@ void CharacterSheet::DrawSkillsTab() {
           break;
         }
       }
-      // 2) ce qu'elle OUVRE : la survolée pointe vers celles qui la réclament.
-      for (int i = 0; i < count; ++i) {
-        if (i == hover_idx || !cell_drawn[i]) continue;
-        if (!requires_skill(&nodes[i], h.id)) continue;
-        if (redundant_after(nodes[i])) continue;
-        draw_arrow(cell_center[hover_idx], cell_center[i], IM_COL32(120, 160, 255, 200), 2.0f);
+      // 2) ce qu'elle OUVRE, en CHAÎNE : la survolée pointe vers celles qui la
+      //    réclament, puis celles-ci vers leurs propres suites, etc. S'arrêter au
+      //    premier rang ne montrait qu'un bout de la branche — or c'est justement la
+      //    suite du chemin qu'on cherche en survolant une compétence de départ.
+      //    Parcours en largeur, chaque case n'étant développée qu'une fois (le graphe
+      //    a des raccourcis : sans marquage, une même case serait redéveloppée à
+      //    chaque profondeur). Le trait pâlit et s'affine avec la distance, pour que
+      //    l'ordre de la chaîne se lise d'un coup d'œil.
+      static int  bfs_queue[kSkillMaxNodes];
+      static int  bfs_depth[kSkillMaxNodes];
+      static bool bfs_seen[kSkillMaxNodes];
+      for (int i = 0; i < count; ++i) bfs_seen[i] = false;
+      int head_q = 0, tail_q = 0;
+      bfs_queue[tail_q] = hover_idx;
+      bfs_depth[tail_q++] = 0;
+      bfs_seen[hover_idx] = true;
+      while (head_q < tail_q) {
+        const int cur   = bfs_queue[head_q];
+        const int depth = bfs_depth[head_q];
+        ++head_q;
+        if (depth >= 6) continue;  // garde-fou : un arbre de job n'est jamais si profond
+        for (int i = 0; i < count; ++i) {
+          if (i == cur || !requires_skill(&nodes[i], nodes[cur].id)) continue;
+          if (redundant_after(nodes[i], nodes[cur].id)) continue;
+          if (cell_drawn[i] && cell_drawn[cur]) {
+            const int fade = depth * 35;
+            draw_arrow(cell_center[cur], cell_center[i],
+                       IM_COL32(120, 160, 255, std::max(90, 200 - fade)),
+                       std::max(1.2f, 2.0f - depth * 0.25f));
+          }
+          if (!bfs_seen[i]) {
+            bfs_seen[i] = true;
+            bfs_queue[tail_q] = i;
+            bfs_depth[tail_q++] = depth + 1;
+          }
+        }
       }
     }
 
     // Réserver la hauteur consommée : la grille est dessinée en absolu, ImGui ne
     // connaîtrait sinon aucune étendue et le scroll serait mort.
     ImGui::SetCursorScreenPos(origin);
-    ImGui::Dummy(ImVec2(kSkillGridCols * cell_w, (used_max_row + 1) * cell_h));
+    ImGui::Dummy(ImVec2(kSkillGridCols * cell_w,
+                        (used_max_row + 1) * cell_h + split_count * split_gap));
   } else {
     // ── Vue LISTE : tout ce que la grille doit résumer, en clair ──
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
@@ -3421,8 +3557,9 @@ void CharacterSheet::DrawSkillsTab() {
         ImGui::TableNextColumn();
         if (s.user_up > 0 && effective < s.maxlv && points_left > 0) {
           if (ro::RoSmallButton("+", 22.0f, 0.0f))
-            ReserveSkillPoint(static_cast<uint16_t>(s.id));
-          mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
+            ReserveSkillPoint(static_cast<uint16_t>(s.id), ImGui::GetIO().KeyCtrl);
+          mui::Tooltip("Réserve un point (et ses prérequis) ; Ctrl = jusqu'au niveau\n"
+                       "maximum. « Appliquer » valide.");
         }
         ImGui::PopID();
       }

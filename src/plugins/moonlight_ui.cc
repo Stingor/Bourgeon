@@ -334,6 +334,8 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(int, 0)},
     {"charsheet_pose_anim", SType::kBool,
      MLUI_FIELD(character_sheet, avatar_animate()), MLUI_LITERAL(bool, true)},
+    {"charsheet_grimoire_bilinear", SType::kBool,
+     MLUI_FIELD(character_sheet, skill_bilinear()), MLUI_LITERAL(bool, false)},
     {"login_parade", SType::kBool, MLUI_FIELD(login_parade, enabled_),
      MLUI_LITERAL(bool, true)},
 };

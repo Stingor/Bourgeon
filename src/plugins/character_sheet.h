@@ -93,6 +93,11 @@ class CharacterSheet : public Plugin {
   int&  avatar_dir()     { return avatar_dir_; }
   bool& avatar_animate() { return avatar_animate_; }
 
+  // Lissage bilinéaire des icônes de l'onglet Grimoire (yaml
+  // « charsheet_grimoire_bilinear »). Défaut OFF : le natif ne filtre rien, les
+  // icônes 24 px agrandies restent nettes.
+  bool& skill_bilinear() { return skill_bilinear_; }
+
  private:
   // Apport ÉQUIPEMENT + CARTES aux stats, poussé par le serveur (ZC 0x0F10),
   // compilé par status_calc_pc. Le natif ne donne que le TOTAL par stat primaire ;
@@ -202,6 +207,9 @@ class CharacterSheet : public Plugin {
   std::vector<std::pair<uint16_t, int>> skill_pending_;
   std::string skill_status_;        // retour UI de la dernière action (Appliquer, refus…)
   bool skill_wnd_was_open_ = false; // état de la fenêtre native 0x25 au tick précédent
+  // Lissage des icônes de la grille (OFF = pixels nets, comme le natif qui ne filtre
+  // rien). Persisté par MoonlightUi (yaml « charsheet_grimoire_bilinear »).
+  bool skill_bilinear_ = false;
 
   // ── Onglet Guilde (fenêtre de guilde native refaite en ImGui) ──────────────
   int      guild_sub_tab_ = 0;      // 0 = Membres, 1 = Relations
@@ -330,9 +338,10 @@ class CharacterSheet : public Plugin {
   // ou liste détaillée. Monter un niveau se RÉSERVE puis s'applique (CZ 0x0112).
   void DrawSkillsTab();
   // Réserve un point sur `id` et, comme le natif, sur ses PRÉREQUIS DIRECTS manquants
-  // (dans la limite des points disponibles). Renvoie false + remplit skill_status_ si
-  // rien n'a pu être réservé.
-  bool ReserveSkillPoint(uint16_t id);
+  // (dans la limite des points disponibles). `to_max` monte d'un coup jusqu'au niveau
+  // maximum au lieu d'un seul niveau (Ctrl + clic). Renvoie false + remplit
+  // skill_status_ si rien n'a pu être réservé.
+  bool ReserveSkillPoint(uint16_t id, bool to_max = false);
   // Niveau réservé pour `id` (0 = aucune réservation).
   int  PendingLevel(uint16_t id) const;
   // Onglet Guilde : infos, annonce, roster (tri + actions) et relations, tout en ImGui.
