@@ -15,10 +15,10 @@
 
 #include "bourgeon.h"                  // Bourgeon::Instance()
 #include "features/windows/inventory_viewer.h"  // PointOverViewer (dépôt vers le viewer inventaire)
-#include "features/windows/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
+#include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "features/moonlight_ui/moonlight_ui.h"      // OpenInterfaceSection + HelpMarker
-#include "features/windows/storage_tweaks.h"    // PointOverViewer (dépôt vers le viewer storage)
-#include "features/windows/vending_tweaks.h"    // IsComposing (échoppe en cours -> chariot figé)
+#include "features/windows/storage_window.h"    // PointOverViewer (dépôt vers le viewer storage)
+#include "features/windows/vending_window.h"    // IsComposing (échoppe en cours -> chariot figé)
 #include "d3d9/d3d9_hook.h"            // Overlay_DeviceEpoch
 #include "imgui.h"
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
@@ -34,7 +34,7 @@ namespace {
 
 // Fenêtre cart native : id 40 (0x28), vtable 0x0103d538.
 // ⚠ On la retrouve par le GESTIONNAIRE (uiwnd::FindWindow), PAS par un global.
-// 0x0131f6a0, hérité d'une RE live et recopié dans inventory_viewer/storage_tweaks,
+// 0x0131f6a0, hérité d'une RE live et recopié dans inventory_viewer/storage_window,
 // n'a AUCUNE référence dans le binaire (xrefs IDA 2026-07-27) : il ne porte pas la
 // fenêtre cart. C'est ce qui donnait « ni le viewer ni la native » au premier
 // essai — le hook de création masquait la native pendant que le viewer, aveugle,
@@ -188,7 +188,7 @@ bool StorageOpen()   { return ReadValidWnd(kStorageSlot, kStorageVTable) != null
 // testent explicitement, et pc_cant_act2() l'inclut. Autrement dit, TOUT ce que
 // cette fenêtre sait faire est mort tant qu'une échoppe se compose.
 bool VendingComposing() {
-  auto* vending = Bourgeon::Instance().vending_tweaks();
+  auto* vending = Bourgeon::Instance().vending_window();
   return vending && vending->IsComposing();
 }
 
@@ -200,7 +200,7 @@ bool OverInventory(float x, float y) {
   return MouseOverWnd(kInvWndGlobal, kInvVTable, x, y);
 }
 bool OverStorage(float x, float y) {
-  if (auto* st = Bourgeon::Instance().storage_tweaks())
+  if (auto* st = Bourgeon::Instance().storage_window())
     if (st->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
   return MouseOverWnd(kStorageSlot, kStorageVTable, x, y);
 }
@@ -240,7 +240,7 @@ void CloseCart() {
 
 // Description (clic droit) : passe l'ItemSkillInfo COMPLET du nœud à OnMsg 0x18, en
 // re-parcourant la liste CHARIOT pour retrouver le nœud par id (comme l'inventaire).
-// item_desc_tweaks détecte la fenêtre 0xc et rend sa version enrichie.
+// item_desc_window détecte la fenêtre 0xc et rend sa version enrichie.
 void OpenItemDesc(uint32_t id, int mx, int my) {
   if (id == 0) return;
   __try {

@@ -31,7 +31,7 @@
 #include "imgui.h"
 #include "features/overlays/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
 #include "features/windows/inventory_viewer.h"  // LinkItemToChat / EquipDraggedItem (drag-drop, chat)
-#include "features/windows/rodex_tweaks.h"      // ComposeTo : « Envoyer un courrier » sur un membre
+#include "features/windows/rodex_window.h"      // ComposeTo : « Envoyer un courrier » sur un membre
 #include "features/moonlight_ui/moonlight_ui.h"      // SaveSettings (persistance des presets)
 #include "features/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
 #include "ui/imgui_escape.h"
@@ -144,7 +144,7 @@ const char* PoseLabelFull(int anim, bool animate) {
 }
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
-//  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_tweaks)
+//  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_window)
 constexpr uintptr_t kMakeWindow  = 0x00a39340;
 constexpr int kWinItemDesc = 0xc, kMsgSetItem = 0x18, kVfOnMsg = 0x94, kVfSetPos = 0x10;
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;
@@ -485,7 +485,7 @@ constexpr int      kGuildSkillEntry = 37;    // id.W inf.L lv.W sp.W range.W nam
 
 //  Chat (CZ_GlobalMessage, variable) : [op.W][longueur TOTALE.W][« nom : texte »\0].
 //  ⚠ 0x00f3 a servi à autre chose sur d'anciens packetvers (déplacement vers l'entrepôt,
-//  cf. storage_tweaks) ; pour 20250716 c'est bien le chat, confirmé des DEUX côtés : table
+//  cf. storage_window) ; pour 20250716 c'est bien le chat, confirmé des DEUX côtés : table
 //  de longueurs du client (docs/opcode_map.csv) et clif_parse_GlobalMessage serveur.
 constexpr uint16_t kOpChatMessage     = 0x00f3;
 constexpr char     kCmdGuildStorage[] = "@guildstorage";
@@ -2110,7 +2110,7 @@ using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 // Résolution du nom de STATUT (EFST) via le global Lua GetStateIconDescript(efst),
 // appelé par l'API C Lua 5.1 BRUTE (nom statique => pas de std::string BYVAL détruit
-// par le wrapper varargs, cf. item_desc_tweaks ResolveOptName). RE : le tooltip natif
+// par le wrapper varargs, cf. item_desc_window ResolveOptName). RE : le tooltip natif
 // FUN_00c93cb0 utilise ce même global via Lua_CallGlobal_va.
 constexpr uintptr_t kLuaState    = 0x015ffd78;  // *=M ; **=vrai lua_State
 constexpr uintptr_t kLuaGetField = 0x00519df0;  // lua_getfield(L,idx,k)
@@ -4131,7 +4131,7 @@ void CharacterSheet::DrawGuildTab() {
           {
             const bool self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
             if (!self && ImGui::MenuItem("Envoyer un courrier…")) {
-              if (RodexTweaks* rodex = Bourgeon::Instance().rodex_tweaks())
+              if (RodexWindow* rodex = Bourgeon::Instance().rodex_window())
                 rodex->ComposeTo(m.name);
               guild_status_ = std::string("Courrier à ") + m.name;
             }

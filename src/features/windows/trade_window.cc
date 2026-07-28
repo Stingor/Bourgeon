@@ -1,4 +1,4 @@
-#include "features/windows/trade_tweaks.h"
+#include "features/windows/trade_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
@@ -189,7 +189,7 @@ void ModeCmd(int cmd, int a, int b, int c, int d) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// ── Résolution nom d'item (id -> nom) — identique à ShopTweaks ──
+// ── Résolution nom d'item (id -> nom) — identique à NpcShopWindow ──
 constexpr uintptr_t kDescDbLookup = 0x006a0d40;
 constexpr uintptr_t kDescDb       = 0x01255130;
 constexpr uintptr_t kDescDbNil    = 0x01255138;
@@ -231,14 +231,14 @@ const char* ItemName(uint32_t id) {
 
 
 // Lit le tableau d'objets du deal (ItemSkillInfo ×10) à l'adresse globale `arrayBase`.
-void ReadDealItems(uintptr_t arrayBase, std::vector<TradeTweaks::TradeItem>* out);
+void ReadDealItems(uintptr_t arrayBase, std::vector<TradeWindow::TradeItem>* out);
 
 }  // namespace
 
-// Rendu ici pour accéder au type privé TradeTweaks::TradeItem.
+// Rendu ici pour accéder au type privé TradeWindow::TradeItem.
 namespace {
 void ReadDealItems(uintptr_t arrayBase,
-                   std::vector<TradeTweaks::TradeItem>* out) {
+                   std::vector<TradeWindow::TradeItem>* out) {
   out->clear();
   __try {
     for (int slot = 0; slot < kDealSlots; ++slot) {
@@ -246,7 +246,7 @@ void ReadDealItems(uintptr_t arrayBase,
                                               static_cast<uintptr_t>(slot) * kDealStride);
       const int amount = *reinterpret_cast<int*>(e + kInfoAmount);
       if (amount < 1) continue;  // slot vide (ItemSkillInfo+0x10 < 1)
-      TradeTweaks::TradeItem it;
+      TradeWindow::TradeItem it;
       it.amount = amount;
       // itemId EN TEXTE : std::string SSO à +0x2c (heap si capacité +0x40 > 15) -> atoi.
       const char* sbase = reinterpret_cast<const char*>(e + kInfoIdStr);
@@ -261,7 +261,7 @@ void ReadDealItems(uintptr_t arrayBase,
 }
 }  // namespace
 
-TradeTweaks::TradeTweaks() {
+TradeWindow::TradeWindow() {
   // TOUT en OBSERVE (jamais RegisterRecvOpcode) : le handler natif doit TOUJOURS
   // tourner (il peuple la fenêtre native qu'on lit, et le natif reste correct quand
   // le toggle est OFF). On lit juste ces paquets pour l'ouverture/fermeture et les
@@ -273,7 +273,7 @@ TradeTweaks::TradeTweaks() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpExec, 1);    // result
 }
 
-void TradeTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (!imgui_enabled_) return;
   // Thread recv : on ne fait qu'écrire des membres (jamais de SendPacket / CMode ici).
   switch (opcode) {
@@ -310,7 +310,7 @@ void TradeTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
 }
 
 // ── Actions (CMode::SendMsg — thread principal uniquement) ──
-void TradeTweaks::TradeAck(int type) {
+void TradeWindow::TradeAck(int type) {
   // Réplique la réponse native : SaveWindowRect(0x20) qui persiste ET FERME la popup
   // native (qu'on avait seulement cachée), puis cmd 0x32(type). Sans cette fermeture,
   // OnTick retrouve la fenêtre native 0x20 et rouvre la popup ImGui (échange refusé
@@ -319,17 +319,17 @@ void TradeTweaks::TradeAck(int type) {
   ModeCmd(kCmdAck, type, 0, 0, 0);
   req_open_ = false;
 }
-void TradeTweaks::SetZeny(int amount) {
+void TradeWindow::SetZeny(int amount) {
   if (amount < 0) amount = 0;
   const uint32_t zmax = *reinterpret_cast<uint32_t*>(kPlayerZeny);
   if (static_cast<uint32_t>(amount) > zmax) amount = static_cast<int>(zmax);
   // index 0 = zeny ; le serveur pose deal.zeny = amount (valeur ABSOLUE, clampée).
   ModeCmd(kCmdAdd, 0, amount, 0, 0);
 }
-void TradeTweaks::Lock()   { ModeCmd(kCmdConclude, 0, 0, 0, 0); }
-void TradeTweaks::Cancel() { ModeCmd(kCmdCancel, 0, 0, 0, 0); }
+void TradeWindow::Lock()   { ModeCmd(kCmdConclude, 0, 0, 0, 0); }
+void TradeWindow::Cancel() { ModeCmd(kCmdCancel, 0, 0, 0, 0); }
 
-void TradeTweaks::Commit() {
+void TradeWindow::Commit() {
   // Réplique EXACTEMENT le bouton « trade » natif (FUN_009ce040) : si la case
   // Screenshot est cochée, cmd 0x44(texte natif) AVANT le commit, puis cmd 0x36.
   // ⚠ Le serveur n'exécute l'échange que quand les DEUX joueurs ont validé.
@@ -344,7 +344,7 @@ void TradeTweaks::Commit() {
   committed_ = true;
 }
 
-void TradeTweaks::AddItemToTrade(int invIndex, int amount) {
+void TradeWindow::AddItemToTrade(int invIndex, int amount) {
   if (!imgui_enabled_ || !open_ || my_locked_) return;
   if (amount < 1) amount = 1;
   // Le drop natif (OnMsg case 0x26) fait cmd 0x33 PUIS cmd 0x12 : sans le 0x12
@@ -353,7 +353,7 @@ void TradeTweaks::AddItemToTrade(int invIndex, int amount) {
   ModeCmd(kCmdApplyAdd, 0, 0, 0, 0);
 }
 
-void TradeTweaks::CloseTrade() {
+void TradeWindow::CloseTrade() {
   // Ferme le deal côté serveur ET débloque l'état dialogue client : cmd 0x35 (annule)
   // = exactement ce que fait le bouton Annuler natif.
   Cancel();
@@ -371,7 +371,7 @@ void TradeTweaks::CloseTrade() {
   committed_ = false;
 }
 
-void TradeTweaks::ReadNativeState(void* w) {
+void TradeWindow::ReadNativeState(void* w) {
   // Objets : tableaux ItemSkillInfo globaux de la session (indépendant de la fenêtre).
   ReadDealItems(kMyDealItems, &my_items_);
   ReadDealItems(kPtDealItems, &partner_items_);
@@ -390,7 +390,7 @@ void TradeTweaks::ReadNativeState(void* w) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-void TradeTweaks::HideNativeAtCreation(void* win, int windowID) {
+void TradeWindow::HideNativeAtCreation(void* win, int windowID) {
   if (!win || !imgui_enabled_) return;
   const uintptr_t vt = VTableOf(win);
   if (vt == kExchangeVTable) {
@@ -407,7 +407,7 @@ void TradeTweaks::HideNativeAtCreation(void* win, int windowID) {
   }
 }
 
-void TradeTweaks::OnTick() {
+void TradeWindow::OnTick() {
   if (!imgui_enabled_) { open_ = false; was_open_ = false; req_open_ = false; return; }
 
   // Popup de requête : présente tant que la fenêtre native 0x20 existe.
@@ -454,7 +454,7 @@ void TradeTweaks::OnTick() {
   was_open_ = open_;
 }
 
-void TradeTweaks::OnRenderUI() {
+void TradeWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
 
   // ── Popup de requête « X souhaite échanger » ──

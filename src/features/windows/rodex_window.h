@@ -6,7 +6,7 @@
 
 #include "features/plugin.h"
 
-// ── RodexTweaks ──────────────────────────────────────────────────────────────
+// ── RodexWindow ──────────────────────────────────────────────────────────────
 //
 // Remplacement ImGui (skin RO) du courrier RODEX : la fenêtre LISTE (UIRodexWnd,
 // id 0x107) et la fenêtre LECTURE (UIRodexReadWnd, id 0x109) natives sont cachées
@@ -38,9 +38,9 @@
 //
 // Défaut OFF (opt-in, setting « rodex_imgui » géré par MoonlightUi).
 
-class RodexTweaks : public Plugin {
+class RodexWindow : public Plugin {
  public:
-  const char* name() const override { return "RodexTweaks"; }
+  const char* name() const override { return "RodexWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;

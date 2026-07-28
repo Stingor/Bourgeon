@@ -6,7 +6,7 @@
 
 #include "features/plugin.h"
 
-// ── TradeTweaks ──────────────────────────────────────────────────────────────
+// ── TradeWindow ──────────────────────────────────────────────────────────────
 //
 // Remplacement ImGui (skin RO) de l'échange joueur-joueur (« Deal »). En
 // REMPLACEMENT du natif : les fenêtres natives sont cachées dès leur création
@@ -38,11 +38,11 @@
 // Défaut OFF (opt-in, setting « trade_imgui » géré par MoonlightUi) : on n'impose
 // pas un changement de gameplay.
 
-class TradeTweaks : public Plugin {
+class TradeWindow : public Plugin {
  public:
-  TradeTweaks();  // enregistre les opcodes observés (0x01f4/0x01f5/0x00ea/0x00f0)
+  TradeWindow();  // enregistre les opcodes observés (0x01f4/0x01f5/0x00ea/0x00f0)
 
-  const char* name() const override { return "TradeTweaks"; }
+  const char* name() const override { return "TradeWindow"; }
 
   // Un objet offert (résolu depuis la liste native). Public : la lecture de liste
   // (fonction libre) et l'intégration inventaire y accèdent.

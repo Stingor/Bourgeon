@@ -8,7 +8,7 @@
 // ── InventoryViewer ──────────────────────────────────────────────────────────
 //
 // Re-implémentation ImGui COMPLÈTE de la fenêtre inventaire native (UIItemWnd,
-// window id 8), calquée sur StorageTweaks. Elle REMPLACE le natif (caché via le
+// window id 8), calquée sur StorageWindow. Elle REMPLACE le natif (caché via le
 // flag de visibilité wnd+0x28) quand imgui_enabled_ ; sinon on laisse la fenêtre
 // native intacte (avec les patches de inventory_tweaks.cc : poids, onglet Cards,
 // resize). Pas de cohabitation — un master switch, comme le storage.
@@ -26,7 +26,7 @@
 // drag-out + transfert ALT vers cart/entrepôt. (Les opcodes/commandes exacts
 // sont finalisés par la RE en cours ; cf. project_inventory_viewer_wip.)
 //
-// Réutilise de storage_tweaks.cc : cache d'icônes, BuildDisplayName, OpenItemDesc
+// Réutilise de storage_window.cc : cache d'icônes, BuildDisplayName, OpenItemDesc
 // (MakeWindow 0xc + OnMsg 0x18), skin ro::, lecture du payload de drag natif.
 
 class InventoryViewer : public Plugin {
@@ -118,12 +118,12 @@ class InventoryViewer : public Plugin {
   bool EquipDraggedItem(bool left_hand);
 
   // Ajoute l'item ACTUELLEMENT GLISSÉ à l'échange en cours (cible de drop « Mon offre »
-  // de trade_tweaks). Une PILE ouvre le prompt de quantité, un item seul part direct.
+  // de trade_window). Une PILE ouvre le prompt de quantité, un item seul part direct.
   // No-op si aucun glisser en cours ou si aucun échange n'est ouvert.
   bool TradeDraggedItem();
 
   // Idem pour le COURRIER : joint l'item glissé au courrier en cours d'écriture
-  // (cible de drop « Pièces jointes » de rodex_tweaks). Même politique de quantité.
+  // (cible de drop « Pièces jointes » de rodex_window). Même politique de quantité.
   // No-op si aucun glisser en cours ou si aucune écriture n'est ouverte.
   bool MailDraggedItem();
 
@@ -228,7 +228,7 @@ class InventoryViewer : public Plugin {
   int  spawn_x_ = 0, spawn_y_ = 0;
   int  item_count_ = 0;       // nb d'items valides dans items_
   // Case survolée ce frame pour l'aperçu de description (0 = aucune) ; l'aperçu est
-  // dessiné APRÈS la fenêtre, en tooltip (cf. storage_tweaks).
+  // dessiné APRÈS la fenêtre, en tooltip (cf. storage_window).
   uint32_t hover_desc_id_ = 0;
   int      hover_desc_idx_ = -1;
 

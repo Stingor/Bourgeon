@@ -1,4 +1,4 @@
-#include "features/windows/shop_tweaks.h"
+#include "features/windows/npc_shop_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
@@ -141,7 +141,7 @@ const char* ItemName(uint32_t id) {
 
 
 // Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my), via un
-// ItemSkillInfo standalone (comme cashshop_tweaks) : ctor + SetId + EnsureLoaded +
+// ItemSkillInfo standalone (comme cashshop_window) : ctor + SetId + EnsureLoaded +
 // flag identifie. view/location = gate du bouton apercu (0 pour la vente = pas
 // d'apercu, la description reste correcte). SEH-garde (POD only).
 void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my) {
@@ -192,7 +192,7 @@ constexpr uint16_t kOpCloseNpc = 0x0146;  // CZ_CLOSE_DIALOG {GID:4} -> ferme la
 
 }  // namespace
 
-ShopTweaks::ShopTweaks() {
+NpcShopWindow::NpcShopWindow() {
   // TOUT en OBSERVE (jamais RegisterRecvOpcode) : le handler natif doit TOUJOURS
   // tourner, sinon le shop natif est cassé quand le toggle est OFF (l'interception
   // patche la table de dispatch en permanence, sans dé-registration possible).
@@ -213,7 +213,7 @@ ShopTweaks::ShopTweaks() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
 }
 
-void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                               uint16_t len) {
   if (!imgui_enabled_) return;
 
@@ -316,7 +316,7 @@ void ShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // Re-selectionne le deal (CZ_ACK_SELECT_DEALTYPE 0xc5) pour RE-ARMER sd->npc_shopid
 // que le serveur efface apres chaque 0xc8/0xc9. A envoyer JUSTE AVANT chaque
 // transaction (l'ordre TCP garantit : arme puis achete/vend). type 0=achat, 1=vente.
-void ShopTweaks::SendDealSelect(uint8_t type) {
+void NpcShopWindow::SendDealSelect(uint8_t type) {
   if (npc_id_ == 0) return;
   uint8_t pkt[7];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpDealAck;  // CZ_ACK_SELECT_DEALTYPE 0xc5
@@ -325,7 +325,7 @@ void ShopTweaks::SendDealSelect(uint8_t type) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-void ShopTweaks::RequestList(Mode mode) {
+void NpcShopWindow::RequestList(Mode mode) {
   if (npc_id_ == 0) return;
   if (mode == kBuy) {
     // Achat : requête brute CZ_ACK_SELECT_DEALTYPE(0) suffit — on parse 0x0b77
@@ -350,7 +350,7 @@ void ShopTweaks::RequestList(Mode mode) {
   }
 }
 
-void ShopTweaks::AddToCart(uint32_t id, int index, int32_t price, int max, int qty) {
+void NpcShopWindow::AddToCart(uint32_t id, int index, int32_t price, int max, int qty) {
   if (max < 1) max = 1;
   if (qty < 1) qty = 1;
   for (auto& e : cart_) {
@@ -364,7 +364,7 @@ void ShopTweaks::AddToCart(uint32_t id, int index, int32_t price, int max, int q
 }
 
 // CZ_PC_PURCHASE_ITEMLIST 0xc8 : [op:2][len:2][ {amount:2, itemId:4} *count ]
-void ShopTweaks::SendBuy() {
+void NpcShopWindow::SendBuy() {
   if (cart_.empty()) return;
   SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
   const int count = static_cast<int>(cart_.size());
@@ -383,7 +383,7 @@ void ShopTweaks::SendBuy() {
 }
 
 // CZ_PC_SELL_ITEMLIST 0xc9 : [op:2][len:2][ {index:2, amount:2} *count ]
-void ShopTweaks::SendSell() {
+void NpcShopWindow::SendSell() {
   if (cart_.empty()) return;
   SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
   const int count = static_cast<int>(cart_.size());
@@ -403,7 +403,7 @@ void ShopTweaks::SendSell() {
 
 // Achat IMMEDIAT de `qty` unites de `id` (bypass panier) : CZ_PC_PURCHASE_ITEMLIST
 // 0xc8 a 1 item. Le serveur calcule le cout (discount inclus) et valide.
-void ShopTweaks::QuickBuy(uint32_t id, int qty) {
+void NpcShopWindow::QuickBuy(uint32_t id, int qty) {
   if (npc_id_ == 0 || qty < 1) return;
   SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
   uint8_t pkt[10];
@@ -417,7 +417,7 @@ void ShopTweaks::QuickBuy(uint32_t id, int qty) {
 
 // Vente IMMEDIATE de `qty` unites de l'item a l'index inventaire `index` (bypass
 // panier) : CZ_PC_SELL_ITEMLIST 0xc9 a 1 item. Le serveur calcule le gain (overcharge).
-void ShopTweaks::QuickSell(int index, int qty) {
+void NpcShopWindow::QuickSell(int index, int qty) {
   if (npc_id_ == 0 || qty < 1) return;
   SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
   uint8_t pkt[8];
@@ -434,7 +434,7 @@ void ShopTweaks::QuickSell(int index, int qty) {
 // Nœud MSVC std::list : {next, prev, value@+8}. Offsets CONFIRMÉS live (jellopy) :
 // +0x0c index inv, +0x18 qté, +0x1c/+0x20 prix (overcharge), +0x34 std::string =
 // itemId EN TEXTE ("909"), +0x90 slots. SEH (POD only).
-void ShopTweaks::RefreshSellFromNative() {
+void NpcShopWindow::RefreshSellFromNative() {
   sell_items_.clear();
   void* wnd = nullptr;
   __try { wnd = *reinterpret_cast<void**>(kSellListGlobal); }
@@ -470,7 +470,7 @@ void ShopTweaks::RefreshSellFromNative() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { /* liste incohérente : on garde ce qu'on a */ }
 }
 
-void ShopTweaks::CloseNativeShop() {
+void NpcShopWindow::CloseNativeShop() {
   // Le perso reste BLOQUÉ (état "dialogue NPC" CÔTÉ CLIENT) tant qu'on ne réplique
   // pas le CANCEL natif : le bouton Annuler du chooser dispatche cmd 0x28 sur
   // CMode::SendMsg (g_UICommandDispatcher @[0x0121333c], vtable+0x18) — c'est LUI
@@ -500,12 +500,12 @@ void ShopTweaks::CloseNativeShop() {
   sell_all_close_ = false;  // desarme la fermeture auto
 }
 
-void ShopTweaks::HideNativeAtCreation(void* win) {
+void NpcShopWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   HideWnd(win);  // l'appelant a déjà filtré sur l'id (0x16/0x17/0x18/0x19)
 }
 
-void ShopTweaks::HideDetailWindow(void* win) {
+void NpcShopWindow::HideDetailWindow(void* win) {
   if (!win || !imgui_enabled_ || !open_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) == kDetailVTable)
@@ -513,7 +513,7 @@ void ShopTweaks::HideDetailWindow(void* win) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-void ShopTweaks::OnTick() {
+void NpcShopWindow::OnTick() {
   if (!imgui_enabled_) { open_ = false; was_open_ = false; return; }
 
   // Fermeture AUTO demandee (vente d'un "Tout ajouter au panier" reussie) : on ferme
@@ -586,7 +586,7 @@ void ShopTweaks::OnTick() {
   was_open_ = open_;
 }
 
-void ShopTweaks::OnRenderUI() {
+void NpcShopWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {

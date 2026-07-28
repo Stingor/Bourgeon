@@ -21,12 +21,12 @@
 // « Tout-ImGui ou tout-natif » — SOURCE UNIQUE du groupe « Interface moderne ».
 // Les fenêtres qui s'activent ENSEMBLE (plus de mixe possible) :
 //   inventaire (InventoryViewer::imgui_enabled_, sertissage de cartes inclus),
-//   cart (CartViewer::imgui_enabled_), storage (StorageTweaks::imgui_enabled_),
-//   barres d'action (SkillBarTweaks::enabled_), échange (TradeTweaks::imgui_enabled_),
-//   courrier RODEX (RodexTweaks::imgui_enabled_), échoppe joueur — vente ET
-//   échoppe d'achat (VendingTweaks::imgui_enabled_), feuille de personnage
-//   (CharacterSheet::imgui_enabled_), cash shop (CashShopTweaks::imgui_enabled_) et
-//   boutique PNJ (ShopTweaks::imgui_enabled_).
+//   cart (CartViewer::imgui_enabled_), storage (StorageWindow::imgui_enabled_),
+//   barres d'action (SkillBarTweaks::enabled_), échange (TradeWindow::imgui_enabled_),
+//   courrier RODEX (RodexWindow::imgui_enabled_), échoppe joueur — vente ET
+//   échoppe d'achat (VendingWindow::imgui_enabled_), feuille de personnage
+//   (CharacterSheet::imgui_enabled_), cash shop (CashShopWindow::imgui_enabled_) et
+//   boutique PNJ (NpcShopWindow::imgui_enabled_).
 // C'est la définition du corps de la fonction qui fait foi : les panneaux qui
 // portent la case s'y RÉFÈRENT au lieu de recopier la liste (elle a déjà rouillé
 // une fois — le libellé annonçait trois fenêtres sur six).
@@ -78,7 +78,7 @@ class MoonlightUi : public Plugin {
   AlignGrid grid_;
 
   // ── Liste autolootid (partagée) : le panneau de description enrichi
-  // (ItemDescTweaks) réintègre le bouton +/- alootid. ─────────────────────────
+  // (ItemDescWindow) réintègre le bouton +/- alootid. ─────────────────────────
   bool IsAlootId(uint32_t id) const;   // l'item est-il dans la liste ?
   bool AddAlootId(uint32_t id);        // ajoute + notifie serveur (false si plein/déjà)
   bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
@@ -247,7 +247,7 @@ class MoonlightUi : public Plugin {
   // 20250716 client).  We hook it to capture the nameid of right-clicked items.
   static constexpr uintptr_t kItemDescWndAddr = 0x008c18b0;
   // (Le pendant SKILL, UIItemTooltipWnd_OnMsg 0x008ca900 pour le message 0x2e, a
-  //  été retiré avec son hook — cf. le chemin enrichi d'ItemDescTweaks. L'adresse
+  //  été retiré avec son hook — cf. le chemin enrichi d'ItemDescWindow. L'adresse
   //  reste notée ici, en commentaire, pour qui voudrait le refaire.)
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by

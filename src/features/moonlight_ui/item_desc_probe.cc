@@ -4,7 +4,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
-#include "features/windows/item_desc_tweaks.h"
+#include "features/windows/item_desc_window.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"

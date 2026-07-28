@@ -8,7 +8,7 @@
 
 #include "features/plugin.h"
 
-// ── ItemDescTweaks (SQUELETTE / placeholder, non-intrusif) ──────────────────
+// ── ItemDescWindow (SQUELETTE / placeholder, non-intrusif) ──────────────────
 //
 // But final : enrichir DRASTIQUEMENT la fenêtre de description item/skill avec
 // des données techniques récupérées du serveur moonlight (stats réelles, bonus
@@ -63,15 +63,15 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       const char* display_name = nullptr);
 }  // namespace itemdesc
 
-class ItemDescTweaks : public Plugin {
+class ItemDescWindow : public Plugin {
  public:
 
   // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
   // a changé — l'appelant décide de sauvegarder, une seule fois.
   bool DrawSettings();
-  ItemDescTweaks();
+  ItemDescWindow();
 
-  const char* name() const override { return "ItemDescTweaks"; }
+  const char* name() const override { return "ItemDescWindow"; }
 
   void OnTick() override;       // capture item ET skill courants (polling read-only)
   void OnRenderUI() override;   // dessine un panneau placeholder par fenêtre ouverte

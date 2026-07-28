@@ -7,7 +7,7 @@
 
 #include "features/plugin.h"
 
-// ── ShopTweaks ───────────────────────────────────────────────────────────────
+// ── NpcShopWindow ───────────────────────────────────────────────────────────────
 //
 // Remplacement ImGui COMPLET de l'interaction shop NPC (achat / vente). En
 // REMPLACEMENT du natif : on SAUTE la fenêtre "Acheter / Vendre / Annuler" et on
@@ -38,13 +38,13 @@
 //     id (client itemdb, comme cashshop/item_desc).
 //   - VENTE  : on lit la liste RÉSOLUE de la fenêtre native de vente cachée
 //     (UIItemSellWnd id 0x17, std::list @+0xe8 : nom/qté/prix/index déjà calculés
-//     par le handler natif) — pattern StorageTweaks, réutilise la résolution native.
+//     par le handler natif) — pattern StorageWindow, réutilise la résolution native.
 
-class ShopTweaks : public Plugin {
+class NpcShopWindow : public Plugin {
  public:
-  ShopTweaks();  // enregistre les opcodes observés (0xc4/0x0b77/0xc7/0xca/0xcb)
+  NpcShopWindow();  // enregistre les opcodes observés (0xc4/0x0b77/0xc7/0xca/0xcb)
 
-  const char* name() const override { return "ShopTweaks"; }
+  const char* name() const override { return "NpcShopWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;

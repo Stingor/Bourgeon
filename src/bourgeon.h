@@ -20,25 +20,25 @@ class SettingsTweaks;
 class MoonlightUi;
 class SkillBarTweaks;
 class ChatTweaks;
-class StorageTweaks;
+class StorageWindow;
 class InventoryViewer;
 class CartViewer;
-class BankTweaks;
-class CashShopTweaks;
-class ShopTweaks;
-class VendingTweaks;
-class TradeTweaks;
-class RodexTweaks;
+class BankWindow;
+class CashShopWindow;
+class NpcShopWindow;
+class VendingWindow;
+class TradeWindow;
+class RodexWindow;
 class CharacterSheet;
 class LoginParade;
-class ItemDescTweaks;
+class ItemDescWindow;
 class FpsViewTweaks;
 class PlayerJumpTweaks;
 class KeyboardMoveTweaks;
 class DoomTweaks;
 class RoggleTweaks;
 class RojeweledTweaks;
-class NpcDialogTweaks;
+class NpcDialogWindow;
 class BugReportTweaks;
 class WeaponDualSprites;
 class EntityNamesTweaks;
@@ -64,20 +64,20 @@ class Bourgeon {
   MoonlightUi* moonlight_ui();
   SkillBarTweaks* skill_bar();
   ChatTweaks* chat_tweaks();
-  StorageTweaks* storage_tweaks();
+  StorageWindow* storage_window();
   InventoryViewer* inventory_viewer();
   CartViewer* cart_viewer();
-  BankTweaks* bank_tweaks();
-  CashShopTweaks* cashshop_tweaks();
-  ShopTweaks* shop_tweaks();
-  VendingTweaks* vending_tweaks();
-  TradeTweaks* trade_tweaks();
-  RodexTweaks* rodex_tweaks();
-  NpcDialogTweaks* npc_dialog_tweaks();
+  BankWindow* bank_window();
+  CashShopWindow* cashshop_window();
+  NpcShopWindow* npc_shop_window();
+  VendingWindow* vending_window();
+  TradeWindow* trade_window();
+  RodexWindow* rodex_window();
+  NpcDialogWindow* npc_dialog_window();
   BugReportTweaks* bug_report();
   CharacterSheet* character_sheet();
   LoginParade* login_parade();
-  ItemDescTweaks* item_desc();
+  ItemDescWindow* item_desc();
   FpsViewTweaks* fps_view();
   PlayerJumpTweaks* player_jump();
   KeyboardMoveTweaks* keyboard_move();
@@ -153,16 +153,16 @@ class Bourgeon {
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBarTweaks* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
   ChatTweaks* chat_tweaks_ = nullptr;         // non-owning, lifetime tied to plugins_
-  StorageTweaks* storage_tweaks_ = nullptr;   // non-owning, lifetime tied to plugins_
+  StorageWindow* storage_window_ = nullptr;   // non-owning, lifetime tied to plugins_
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CartViewer* cart_viewer_ = nullptr;            // non-owning, lifetime tied to plugins_
-  BankTweaks* bank_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
-  CashShopTweaks* cashshop_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
-  ShopTweaks* shop_tweaks_ = nullptr;          // non-owning, lifetime tied to plugins_
-  VendingTweaks* vending_tweaks_ = nullptr;    // non-owning, lifetime tied to plugins_
-  TradeTweaks* trade_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
-  RodexTweaks* rodex_tweaks_ = nullptr;        // non-owning, lifetime tied to plugins_
-  NpcDialogTweaks* npc_dialog_tweaks_ = nullptr;  // non-owning, lifetime tied to plugins_
+  BankWindow* bank_window_ = nullptr;          // non-owning, lifetime tied to plugins_
+  CashShopWindow* cashshop_window_ = nullptr;  // non-owning, lifetime tied to plugins_
+  NpcShopWindow* npc_shop_window_ = nullptr;          // non-owning, lifetime tied to plugins_
+  VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_
+  TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
+  RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
+  NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   BugReportTweaks* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_
@@ -172,7 +172,7 @@ class Bourgeon {
   DoomTweaks* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
   RoggleTweaks* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
   RojeweledTweaks* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
-  ItemDescTweaks* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
+  ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNamesTweaks* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;

@@ -19,7 +19,7 @@
 #include "features/moonlight_ui/settings_table.h"  // ReadArgbKey / WriteArgbKey
 #include "features/overlays/skill_bar_tweaks.h"
 #include "features/patches/status_tweaks.h"
-#include "features/windows/storage_tweaks.h"
+#include "features/windows/storage_window.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
@@ -149,7 +149,7 @@ void WriteInventoryLayout(YAML::Emitter& out) {
 }
 
 void ReadStorageFavorites(const YAML::Node& ui) {
-  auto* storage = Bourgeon::Instance().storage_tweaks();
+  auto* storage = Bourgeon::Instance().storage_window();
   if (!storage) return;
   const YAML::Node favorites = ui["storage_favorites"];
   if (!favorites) return;
@@ -161,7 +161,7 @@ void ReadStorageFavorites(const YAML::Node& ui) {
 }
 
 void WriteStorageFavorites(YAML::Emitter& out) {
-  auto* storage = Bourgeon::Instance().storage_tweaks();
+  auto* storage = Bourgeon::Instance().storage_window();
   // Triés pour un yaml stable, comme le placement libre de l'inventaire.
   out << YAML::Key << "storage_favorites" << YAML::Value << YAML::Flow << YAML::BeginSeq;
   if (storage) {

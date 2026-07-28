@@ -1,4 +1,4 @@
-#include "features/windows/item_desc_tweaks.h"
+#include "features/windows/item_desc_window.h"
 #include "ui/ro_widgets.h"
 
 #include "ragnarok/uiwnd.h"
@@ -1431,7 +1431,7 @@ IconTex ResolveIcon(uint32_t id, const ItemExtract& e) {
 
 }  // namespace
 
-ItemDescTweaks::ItemDescTweaks() {
+ItemDescWindow::ItemDescWindow() {
   if (kEnableServerFetch) {
     Bourgeon::Instance().RegisterRecvOpcode(kOpcodeTechData);
     Bourgeon::Instance().RegisterRecvOpcode(kOpcodeDamage);
@@ -1488,7 +1488,7 @@ void OpenCardDescWindow(uint32_t id) {
 }
 }  // namespace
 
-void ItemDescTweaks::HideNativeDescWindows() {
+void ItemDescWindow::HideNativeDescWindows() {
   if (!show_item_panel_) return;
   // Cache la fenêtre item (0xc) ET la fenêtre de comparaison (0xea) — cette
   // dernière est créée dans le même OnMsg 0x18, donc déjà présente ici.
@@ -1496,7 +1496,7 @@ void ItemDescTweaks::HideNativeDescWindows() {
   HideDescSlot(kCompareWndSlot, kCompareVTable);
 }
 
-void ItemDescTweaks::HideNativeSkillWindow() {
+void ItemDescWindow::HideNativeSkillWindow() {
   if (!kSkillWindowEnabled || !show_skill_panel_) return;
   HideDescSlot(kSkillWndSlot, kSkillVTable);
 }
@@ -1504,8 +1504,8 @@ void ItemDescTweaks::HideNativeSkillWindow() {
 namespace {
 // Lit une fenêtre au layout ITEM (0xc ou 0xea : id = chaîne décimale @+0xe4).
 void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
-                          ItemDescTweaks::DescWindow* out) {
-  *out = ItemDescTweaks::DescWindow{};
+                          ItemDescWindow::DescWindow* out) {
+  *out = ItemDescWindow::DescWindow{};
   if (uint8_t* wnd = ReadValidWnd(slot, vtable)) {
     __try {
       const char* idstr;
@@ -1523,12 +1523,12 @@ void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
         out->w        = *reinterpret_cast<int*>(wnd + kOffWidth);
         out->h        = *reinterpret_cast<int*>(wnd + kOffHeight);
       }
-    } __except (EXCEPTION_EXECUTE_HANDLER) { *out = ItemDescTweaks::DescWindow{}; }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { *out = ItemDescWindow::DescWindow{}; }
   }
 }
 }  // namespace
 
-void ItemDescTweaks::OnTick() {
+void ItemDescWindow::OnTick() {
   // Clic droit sur une carte au frame précédent -> ouvre sa desc complète MAINTENANT
   // (hors rendu ImGui). Navigue la fenêtre 0xc vers la carte ; les lectures de slot
   // ci-dessous prennent aussitôt le nouvel id.
@@ -1632,7 +1632,7 @@ void ItemDescTweaks::OnTick() {
   skill_was_open_ = skill_.open;
 }
 
-void ItemDescTweaks::RequestTechData(uint32_t id, bool is_skill, uint8_t scope) {
+void ItemDescWindow::RequestTechData(uint32_t id, bool is_skill, uint8_t scope) {
   if (!kEnableServerFetch) return;
   auto& entry = cache_[CacheKey(id, is_skill, scope)];
   const uint32_t now = GetTickCount();
@@ -1659,7 +1659,7 @@ void ItemDescTweaks::RequestTechData(uint32_t id, bool is_skill, uint8_t scope) 
   entry.requested_tick = now;
 }
 
-void ItemDescTweaks::RequestDamage(uint32_t skill_id, uint32_t target_mob_id) {
+void ItemDescWindow::RequestDamage(uint32_t skill_id, uint32_t target_mob_id) {
   if (!kEnableServerFetch) return;
   auto& e = dmg_cache_[skill_id];
   const uint32_t now = GetTickCount();
@@ -1680,7 +1680,7 @@ void ItemDescTweaks::RequestDamage(uint32_t skill_id, uint32_t target_mob_id) {
   e.target         = target_mob_id;
 }
 
-void ItemDescTweaks::RequestItemScript(uint32_t id) {
+void ItemDescWindow::RequestItemScript(uint32_t id) {
   if (!kEnableServerFetch) return;
   auto& e = script_cache_[id];
   const uint32_t now = GetTickCount();
@@ -1699,7 +1699,7 @@ void ItemDescTweaks::RequestItemScript(uint32_t id) {
   e.requested_tick = now;
 }
 
-void ItemDescTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void ItemDescWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   // Réponse script + combos (0x0F12). Payload (après [id:4][status:1] déjà retiré
   // du header par le reader-hook -> data pointe sur [id:4]) :
@@ -1831,7 +1831,7 @@ void ItemDescTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 
 // Rend une table de sources (filtre + tri + liens bestiaire). show_type ajoute
 // une colonne mécanisme (drop normal / MVP reward).
-void ItemDescTweaks::RenderDropTable(const TechData& td, const char* table_id,
+void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
                                      uint32_t filter_key, bool show_type) {
   if (td.drops.empty()) {
     ImGui::TextDisabled("Aucune source.");
@@ -2294,7 +2294,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
 // Description). L'onglet Description étant actif par défaut, aucune requête n'est
 // lancée tant que le joueur ne sélectionne pas un onglet data.
-void ItemDescTweaks::RenderTechTabs(const DescWindow& w) {
+void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   if (!kEnableServerFetch) return;
   const bool panel_on = w.is_skill ? show_skill_panel_ : show_item_panel_;
   if (!panel_on) return;
@@ -2586,7 +2586,7 @@ static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill,
 // Reproduit la fenêtre de description d'ITEM en ImGui (Option A). Le pointeur
 // natif est relu FRAIS + validé ici (indépendant de OnTick). SEH sur les
 // lectures/appels natifs ; le rendu ImGui reste hors __try (objets C++).
-void ItemDescTweaks::RenderItemWindow() {
+void ItemDescWindow::RenderItemWindow() {
   uint8_t* iwnd = ReadValidWnd(kItemWndSlot, kItemVTable);
   if (!iwnd) return;
   // Fenêtre de comparaison (équipé) éventuelle (id 0xea).
@@ -3059,7 +3059,7 @@ void ItemDescTweaks::RenderItemWindow() {
 
 // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui : nom+SP
 // (this+0xec) + description via Lua GetSkillDescript (markup rendu comme l'item).
-void ItemDescTweaks::RenderSkillWindow() {
+void ItemDescWindow::RenderSkillWindow() {
   uint8_t* wnd = ReadValidWnd(kSkillWndSlot, kSkillVTable);
   if (!wnd) return;
 
@@ -3137,7 +3137,7 @@ void ItemDescTweaks::RenderSkillWindow() {
 // la fenêtre native reste vivante (elle charge book\<id>.txt, wrappe le texte,
 // tient la pagination et le signet) mais son rendu est masqué, et on redessine la
 // page courante à EndScene, donc AU-DESSUS de l'overlay.
-void ItemDescTweaks::RenderBookWindow() {
+void ItemDescWindow::RenderBookWindow() {
   uint8_t* wnd = FindBookWindow();
   if (!wnd) return;
 
@@ -3240,11 +3240,11 @@ void ItemDescTweaks::RenderBookWindow() {
   if (!open) CallDescButton(wnd, kCmdBookClose);
 }
 
-// ── Section « ItemDescTweaks » du panneau Moonlight ──────────────────────────
+// ── Section « ItemDescWindow » du panneau Moonlight ──────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
 // de sauvegarder. Rend true si un réglage a changé.
-bool ItemDescTweaks::DrawSettings() {
+bool ItemDescWindow::DrawSettings() {
   bool changed = false;
   TextUnformatted("Descriptions modernes des items et skills.");
 
@@ -3288,7 +3288,7 @@ bool ItemDescTweaks::DrawSettings() {
   return changed;
 }
 
-void ItemDescTweaks::OnRenderUI() {
+void ItemDescWindow::OnRenderUI() {
   // ITEM (0xc/0xea) + SKILL (0x2e) reproduits en ImGui (Option A).
   if (show_item_panel_  && item_.open)  RenderItemWindow();
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)

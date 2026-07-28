@@ -1780,7 +1780,7 @@ const HatEffectParams& HatOrdinalParams(int ordinal) {
   return cache[ordinal] = p;
 }
 
-// Adresses de chargement de ressource (comme cashshop_tweaks) + AddRef (0x00a8e800).
+// Adresses de chargement de ressource (comme cashshop_window) + AddRef (0x00a8e800).
 constexpr uintptr_t kTexGet2   = 0x00a90350;  // UITextureMgr_Get()
 constexpr uintptr_t kMakeKey2  = 0x00a9f030;  // UITextureMgr_MakeKey(path)->key
 constexpr uintptr_t kTexLoad2  = 0x00a8d4a0;  // UITextureMgr_Load(mgr, edx, key)

@@ -7,10 +7,10 @@
 
 #include "features/plugin.h"
 
-// ── NpcDialogTweaks ──────────────────────────────────────────────────────────
+// ── NpcDialogWindow ──────────────────────────────────────────────────────────
 //
 // Ré-implémentation ImGui des INTERACTIONS NPC (dialogue / menu / prompts),
-// calquée sur ShopTweaks (project_npc_dialog_re.md, doc docs/npc_dialog_re.md).
+// calquée sur NpcShopWindow (project_npc_dialog_re.md, doc docs/npc_dialog_re.md).
 //
 // Modèle « capture recv → état → overlay → send » :
 //  - CAPTURE (OBSERVE, le handler natif tourne toujours) : ZC_SAY_DIALOG 0xB4 /
@@ -22,7 +22,7 @@
 //  - SEND (thread principal) : requêtes brutes CZ_REQ_NEXT_SCRIPT 0xB9 /
 //    CZ_CHOOSE_MENU 0xB8 / CZ_INPUT_EDITDLG 0x143 / CZ_INPUT_EDITDLGSTR 0x1D5.
 //    FERMETURE via CMode::SendMsg cmd 0x28 (débloque l'état dialogue CLIENT ;
-//    CZ_CLOSE_DIALOG seul laisse le perso bloqué — cf. ShopTweaks::CloseNativeShop).
+//    CZ_CLOSE_DIALOG seul laisse le perso bloqué — cf. NpcShopWindow::CloseNativeShop).
 //
 // OPT-IN : imgui_enabled_ = false par défaut ; quand ON, on cache les fenêtres
 // natives (0x10/0x11/0x38/0x64/0xE2, flag wnd+0x28) et on rend notre overlay.
@@ -33,11 +33,11 @@
 // dialog, honorer ALIGN/SIZE/POS. Validation mots-interdits de l'input texte
 // (le serveur re-valide de toute façon).
 
-class NpcDialogTweaks : public Plugin {
+class NpcDialogWindow : public Plugin {
  public:
-  NpcDialogTweaks();
+  NpcDialogWindow();
 
-  const char* name() const override { return "NpcDialogTweaks"; }
+  const char* name() const override { return "NpcDialogWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;
@@ -51,7 +51,7 @@ class NpcDialogTweaks : public Plugin {
   // réglage a changé — c'est l'appelant qui décide de sauvegarder, une seule fois.
   //
   // Ces widgets vivaient dans panel_interface.cc, à sept cents lignes du code
-  // qu'ils pilotent : quelqu'un qui travaille sur NpcDialogTweaks ne les y
+  // qu'ils pilotent : quelqu'un qui travaille sur NpcDialogWindow ne les y
   // trouvait pas. Même patron que SkillBarTweaks::DrawSettings et les quatre
   // autres plugins qui délèguent déjà.
   bool DrawSettings();

@@ -1,4 +1,4 @@
-#include "features/windows/rodex_tweaks.h"
+#include "features/windows/rodex_window.h"
 
 #include <Windows.h>
 
@@ -149,7 +149,7 @@ constexpr int kMailBodyMax  = 499;  // MAIL_BODY_LENGTH 500, idem
 
 // Bus de commandes = CMode::SendMsg, réplique de GameMode_GetActive(0x1213338) :
 // le mode courant est *(0x1213338+4), et seulement si *(0x1213338+0x58) == 1.
-// vtable+0x18 (slot 6) est le dispatcher de commandes (identique à TradeTweaks).
+// vtable+0x18 (slot 6) est le dispatcher de commandes (identique à TradeWindow).
 constexpr uintptr_t kModeMgr = 0x01213338;
 constexpr int kCmdReadMail   = 0xc2;   // (mailID_lo, openType) -> CZ_REQ_READ_RODEX 0x09EA
 constexpr int kCmdDeleteMail = 0xc4;   // (mailID_lo, openType) -> CZ_REQ_DELETE_MAIL 0x09F5
@@ -157,7 +157,7 @@ constexpr int kCmdBeginWrite = 0x10c;  // (char* destinataire ou 0) -> CZ 0x0A08
 constexpr int kCmdAttach     = 0xc3;   // (index, amount) -> CZ_REQ_ADD_ITEM_TO_MAIL 0x0A04
 // Le drop natif (UIMailWriteWnd OnMsg case 0x26) enchaîne cmd 0xc3 puis cmd 0x12 :
 // sans ce second appel l'objet n'est pas réellement poussé — même piège que l'ajout
-// à l'échange (cf. TradeTweaks::AddItemToTrade).
+// à l'échange (cf. TradeWindow::AddItemToTrade).
 constexpr int kCmdApply      = 0x12;
 
 // ── Registre « le contenu de ce courrier est arrivé » ────────────────────────
@@ -768,7 +768,7 @@ std::string ExpiryLabel(int64_t expire) {
 // Parcours des trois std::map du manager. Les nœuds sont COPIÉS dans mails_ : on
 // ne garde jamais un pointeur de nœud d'une frame à l'autre, le natif effaçant et
 // réallouant les siens à chaque ack serveur.
-void RodexTweaks::ReadState() {
+void RodexWindow::ReadState() {
   mails_.clear();
   const uint8_t* mgr = RodexMgr();
   if (!mgr) return;
@@ -825,7 +825,7 @@ void RodexTweaks::ReadState() {
             [](const Mail& a, const Mail& b) { return a.id > b.id; });
 }
 
-const RodexTweaks::Mail* RodexTweaks::Selected() const {
+const RodexWindow::Mail* RodexWindow::Selected() const {
   if (!selected_id_) return nullptr;
   for (const Mail& mail : mails_)
     if (mail.id == selected_id_ && mail.box == selected_box_) return &mail;
@@ -834,7 +834,7 @@ const RodexTweaks::Mail* RodexTweaks::Selected() const {
 
 // ── Actions ─────────────────────────────────────────────────────────────────
 
-void RodexTweaks::RequestRefresh() {
+void RodexWindow::RequestRefresh() {
   const uint8_t* mgr = RodexMgr();
   if (!mgr) return;
   // Même séquence que le bouton « rafraîchir » natif (OnMsg 0x19f) : purge des
@@ -851,13 +851,13 @@ void RodexTweaks::RequestRefresh() {
   list_requested_ms_ = GetTickCount();
 }
 
-void RodexTweaks::OpenMail(const Mail& mail) {
+void RodexWindow::OpenMail(const Mail& mail) {
   // Le natif ne transmet que les 32 bits bas du mailID (clic sur le sujet d'une
   // ligne, OnMsg 0x62 / ctrl 0x143) : on réplique à l'identique.
   ModeCmd(kCmdReadMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
 }
 
-void RodexTweaks::ClaimAttachments(const Mail& mail) {
+void RodexWindow::ClaimAttachments(const Mail& mail) {
   // Réplique de Rodex_ClaimAttachments (0x007d0110) : les objets d'abord, le zeny
   // ensuite, et uniquement si le type du courrier annonce la pièce jointe
   // correspondante — le serveur rejetterait les autres demandes.
@@ -877,12 +877,12 @@ void RodexTweaks::ClaimAttachments(const Mail& mail) {
   }
 }
 
-void RodexTweaks::DeleteMail(const Mail& mail) {
+void RodexWindow::DeleteMail(const Mail& mail) {
   ModeCmd(kCmdDeleteMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
   if (selected_id_ == mail.id) selected_id_ = 0;
 }
 
-void RodexTweaks::ReturnMail(const Mail& mail) {
+void RodexWindow::ReturnMail(const Mail& mail) {
   // CZ 0x0B98 n'emporte que les 32 bits bas du mailID : c'est le paquet natif,
   // pas un raccourci de notre part.
   uint8_t packet[6] = {0};
@@ -893,13 +893,13 @@ void RodexTweaks::ReturnMail(const Mail& mail) {
   if (selected_id_ == mail.id) selected_id_ = 0;
 }
 
-void RodexTweaks::ComposeTo(const char* recipient) {
+void RodexWindow::ComposeTo(const char* recipient) {
   // Rien de plus que Compose : l'intérêt est d'ouvrir cette porte aux autres plugins
   // sans exposer toute la mécanique d'écriture.
   Compose(recipient && recipient[0] ? recipient : nullptr);
 }
 
-void RodexTweaks::Compose(const char* recipient) {
+void RodexWindow::Compose(const char* recipient) {
   // La fenêtre de composition reste NATIVE : le serveur répond au cmd 0x10c par
   // un ack qui la crée lui-même (MakeWindow 0x108). `recipient` non nul
   // pré-remplit le destinataire (bouton « Répondre »).
@@ -909,7 +909,7 @@ void RodexTweaks::Compose(const char* recipient) {
 
 // ── Écriture d'un courrier ──────────────────────────────────────────────────
 
-void RodexTweaks::ReadComposeState() {
+void RodexWindow::ReadComposeState() {
   compose_items_.clear();
   uint8_t* wnd = ComposeWnd();
   if (!wnd) return;
@@ -926,7 +926,7 @@ void RodexTweaks::ReadComposeState() {
   }
 }
 
-void RodexTweaks::AttachItem(int index, int amount) {
+void RodexWindow::AttachItem(int index, int amount) {
   if (!imgui_enabled_ || !compose_open_) return;
   if (amount < 1) amount = 1;
   // Séquence EXACTE du drop natif (OnMsg case 0x26) : la commande d'ajout puis la
@@ -936,7 +936,7 @@ void RodexTweaks::AttachItem(int index, int amount) {
   ModeCmd(kCmdApply, 0, 0, 0, 0);
 }
 
-void RodexTweaks::RemoveAttachment(int index, int amount) {
+void RodexWindow::RemoveAttachment(int index, int amount) {
   if (index <= 0) return;
   uint8_t packet[6] = {0};
   *reinterpret_cast<uint16_t*>(packet) = kCzRemoveItem;
@@ -945,7 +945,7 @@ void RodexTweaks::RemoveAttachment(int index, int amount) {
   Bourgeon::Instance().SendPacket(packet, sizeof(packet));
 }
 
-void RodexTweaks::CheckRecipient() {
+void RodexWindow::CheckRecipient() {
   char name[24] = {0};
   Utf8ToAnsi(to_, name, sizeof(name));
   if (name[0] == '\0') return;
@@ -966,7 +966,7 @@ void RodexTweaks::CheckRecipient() {
 
 // Consomme la dernière réponse de vérification, s'il en est arrivé une depuis le
 // dernier passage. Appelé sur le thread principal (OnTick).
-void RodexTweaks::PollRecipientCheck() {
+void RodexWindow::PollRecipientCheck() {
   const long seq = g_check_seq;
   if (seq == check_seq_) return;
   check_seq_ = seq;
@@ -989,7 +989,7 @@ void RodexTweaks::PollRecipientCheck() {
     checked_job_.clear();
 }
 
-void RodexTweaks::SendMail() {
+void RodexWindow::SendMail() {
   send_error_.clear();
   // Conversion en ANSI d'abord : c'est la longueur ANSI qui compte pour le serveur
   // (un « é » fait 2 octets en UTF-8 et 1 en CP1252).
@@ -1039,7 +1039,7 @@ void RodexTweaks::SendMail() {
   // fenêtre native qui referme la nôtre.
 }
 
-void RodexTweaks::CloseCompose() {
+void RodexWindow::CloseCompose() {
   // On DÉLÈGUE au natif : fermer sa fenêtre lui fait annuler la session d'écriture
   // côté serveur (CZ 0x0A03) et libérer les objets attachés. Le refaire nous-mêmes
   // dupliquerait un nettoyage qu'on ne maîtrise qu'à moitié.
@@ -1049,7 +1049,7 @@ void RodexTweaks::CloseCompose() {
   send_error_.clear();
 }
 
-void RodexTweaks::CloseAll() {
+void RodexWindow::CloseAll() {
   // Ferme la lecture AVANT la liste (ordre du natif) et efface le courrier
   // sélectionné dans le manager, exactement comme le bouton de fermeture natif.
   if (FindWnd(kReadId)) CloseWnd(kReadId);
@@ -1065,7 +1065,7 @@ void RodexTweaks::CloseAll() {
 
 // ── Masquage du natif ───────────────────────────────────────────────────────
 
-void RodexTweaks::HideNativeAtCreation(void* win, int window_id) {
+void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   if (window_id != kInboxId && window_id != kReadId && window_id != kWriteId) return;
   const uintptr_t vt = VTableOf(win);
@@ -1079,7 +1079,7 @@ void RodexTweaks::HideNativeAtCreation(void* win, int window_id) {
   HideWnd(win);
 }
 
-void RodexTweaks::OnTick() {
+void RodexWindow::OnTick() {
   if (!imgui_enabled_) {
     // Réglage décoché alors que la boîte est ouverte : les fenêtres natives sont
     // cachées, pas détruites — il faut les rendre au joueur, sinon il se retrouve
@@ -1204,7 +1204,7 @@ void RodexTweaks::OnTick() {
 
 // ── Rendu ───────────────────────────────────────────────────────────────────
 
-void RodexTweaks::OnRenderUI() {
+void RodexWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
   // La fenêtre d'écriture vit sa vie : elle peut être ouverte sans la boîte (réponse
   // depuis un courrier, puis fermeture de la liste) et se dessine donc à part.
@@ -1285,7 +1285,7 @@ void RodexTweaks::OnRenderUI() {
   ImGui::PopStyleVar(3);
 }
 
-void RodexTweaks::DrawMailList() {
+void RodexWindow::DrawMailList() {
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   EnsureAttachIcons();
 
@@ -1449,7 +1449,7 @@ void RodexTweaks::DrawMailList() {
   ImGui::EndChild();
 }
 
-void RodexTweaks::DrawMailDetail() {
+void RodexWindow::DrawMailDetail() {
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   const Mail* mail = Selected();
   if (!mail) {
@@ -1539,7 +1539,7 @@ void RodexTweaks::DrawMailDetail() {
 // Surcouche de la fenêtre native (masquée) : la saisie est à nous, mais l'ouverture,
 // les pièces jointes et l'annulation restent des commandes natives — le serveur ne
 // distingue pas notre client d'un client vanilla.
-void RodexTweaks::DrawComposeWindow() {
+void RodexWindow::DrawComposeWindow() {
   if (!compose_open_) return;
 
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1681,7 +1681,7 @@ void RodexTweaks::DrawComposeWindow() {
 
 // Confirmation modale partagée par « Supprimer » et « Retourner » (le natif en
 // passe une aussi : ces deux actions sont irréversibles).
-void RodexTweaks::DrawConfirmPopup() {
+void RodexWindow::DrawConfirmPopup() {
   const Mail* mail = Selected();
   if (!mail) return;
   if (confirm_ != kConfirmNone) {

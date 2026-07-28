@@ -4,7 +4,7 @@
 
 #include "features/plugin.h"
 
-// ── BankTweaks ───────────────────────────────────────────────────────────────
+// ── BankWindow ───────────────────────────────────────────────────────────────
 //
 // Banque de zeny (Ctrl+B) en ImGui, skin RO, en REMPLACEMENT de la fenêtre native :
 // celle-ci est masquée (hors rendu ET hors hit-test) tant que le viewer est actif.
@@ -35,9 +35,9 @@
 //   CZ_REQ_BANKING_DEPOSIT  0x09A7 { u16 op; u32 AID; u32 montant }  len 10
 //   CZ_REQ_BANKING_WITHDRAW 0x09A9 { u16 op; u32 AID; u32 montant }  len 10
 
-class BankTweaks : public Plugin {
+class BankWindow : public Plugin {
  public:
-  const char* name() const override { return "BankTweaks"; }
+  const char* name() const override { return "BankWindow"; }
 
   void OnTick() override;      // suit la fenêtre native + relit les soldes
   void OnRenderUI() override;  // dessine la fenêtre ImGui si la banque est ouverte

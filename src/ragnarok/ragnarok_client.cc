@@ -11,7 +11,7 @@
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
 #include "features/overlays/skill_bar_tweaks.h"
-#include "features/windows/storage_tweaks.h"
+#include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/minigames/doom_tweaks.h"
 #include "ragnarok/configuration.h"
@@ -582,7 +582,7 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     if (uMsg == WM_LBUTTONUP) {
       if (auto* sb = Bourgeon::Instance().skill_bar())
         sb->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
-      if (auto* st = Bourgeon::Instance().storage_tweaks())
+      if (auto* st = Bourgeon::Instance().storage_window())
         st->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
@@ -591,7 +591,7 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // router correctement un drop sur les viewers (storage : cart->storage ; inventaire :
     // équip->inventaire = dés-équiper).
     if (uMsg == WM_LBUTTONDOWN) {
-      if (auto* st = Bourgeon::Instance().storage_tweaks())
+      if (auto* st = Bourgeon::Instance().storage_window())
         st->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));

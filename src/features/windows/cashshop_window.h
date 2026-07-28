@@ -6,7 +6,7 @@
 
 #include "features/plugin.h"
 
-// ── CashShopTweaks ───────────────────────────────────────────────────────────
+// ── CashShopWindow ───────────────────────────────────────────────────────────
 //
 // Redraw COMPLET et moderne du cash shop natif ("Simple Cash Shop" =
 // UICashShopWnd, id 0x13e, vtable 0x0101ca18). En REMPLACEMENT du natif : dès
@@ -28,11 +28,11 @@
 //
 // Noms/icônes d'item résolus par id (client itemdb) comme item_desc/storage.
 
-class CashShopTweaks : public Plugin {
+class CashShopWindow : public Plugin {
  public:
-  CashShopTweaks();
+  CashShopWindow();
 
-  const char* name() const override { return "CashShopTweaks"; }
+  const char* name() const override { return "CashShopWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;

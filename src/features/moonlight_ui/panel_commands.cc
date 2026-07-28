@@ -431,7 +431,7 @@ void MoonlightUi::DrawCommandsPanel() {
 }
 
 // Combo « Tri … » d'un réglage SERVEUR (e_sort_mode 0-6). Partagé entre « Commands
-// Settings » et les panneaux des fenêtres concernées (InventoryViewer, StorageTweaks) :
+// Settings » et les panneaux des fenêtres concernées (InventoryViewer, StorageWindow) :
 // libellé, aide, état et envoi vivent ICI, donc les points d'entrée ne peuvent pas
 // diverger. Skin RO (ro::RoCombo) comme le reste du panneau.
 bool MoonlightUi::DrawSortModeCombo(SortTarget target) {

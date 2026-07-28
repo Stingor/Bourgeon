@@ -5,7 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
-#include "features/windows/npc_dialog_tweaks.h"
+#include "features/windows/npc_dialog_window.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -276,7 +276,7 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
   // L'opcode est en clair ici (le XOR natif n'agit qu'APRÈS nous, sur le 1er mot).
   if (packet_len >= 2 && packet != nullptr) {
     const uint16_t op = *reinterpret_cast<uint16_t*>(packet);
-    if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks();
+    if (auto* nd = Bourgeon::Instance().npc_dialog_window();
         nd && nd->ShouldSuppressNativeDialogSend(op)) {
       return true;  // envoi natif supprimé (on simule le succès)
     }

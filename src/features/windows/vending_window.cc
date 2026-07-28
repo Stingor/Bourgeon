@@ -1,4 +1,4 @@
-#include "features/windows/vending_tweaks.h"
+#include "features/windows/vending_window.h"
 
 #include <Windows.h>
 
@@ -226,7 +226,7 @@ constexpr int kMaxOpts      = 5;
 
 // Fenêtre de description native (id 0xC) : MakeWindow puis OnMsg 0x18 avec le
 // POINTEUR vers l'ItemSkillInfo — c'est le chemin du clic droit natif, et
-// item_desc_tweaks reconnaît la fenêtre pour en rendre sa version enrichie.
+// item_desc_window reconnaît la fenêtre pour en rendre sa version enrichie.
 using MakeWindow_t = void*(__fastcall*)(void*, void*, void*);
 using DescOnMsg_t  = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
 using DescSetPos_t = void(__fastcall*)(void*, void*, int, int);
@@ -808,7 +808,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
 
 // Recopie ce qui sert à décrire l'objet. Les cartes/options viennent du nœud, pas
 // de la DB : sans elles l'aperçu d'un équipement serti serait faux.
-void FillDesc(VendingTweaks::DescInfo& out, const RawRow& raw) {
+void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
   out.id = raw.id;
   std::strncpy(out.name, raw.name, sizeof(out.name) - 1);
   out.name[sizeof(out.name) - 1] = '\0';
@@ -906,7 +906,7 @@ void FormatZeny(long long v, char* out, size_t cap) {
 
 // ── Cycle de vie ─────────────────────────────────────────────────────────────
 
-void VendingTweaks::HideNativeAtCreation(void* win) {
+void VendingWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   // L'appelant a déjà filtré sur l'id — il n'y a plus rien à discriminer ici :
   // chacune des familles (composition, « Mon shop », historique, achat chez un
@@ -914,7 +914,7 @@ void VendingTweaks::HideNativeAtCreation(void* win) {
   HideWnd(win);
 }
 
-void VendingTweaks::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
+void VendingWindow::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
   if (desc.id == 0 || !ImGui::IsItemHovered()) return;
   hover_desc_ = desc;
   hover_valid_ = true;
@@ -923,7 +923,7 @@ void VendingTweaks::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
   if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && wnd) {
     POINT pt;
     if (GetCursorPos(&pt)) OpenDescFromList(wnd, list_off, desc.id, pt.x, pt.y);
-    // La fenêtre de description est reprise en ImGui par ItemDescTweaks, qui
+    // La fenêtre de description est reprise en ImGui par ItemDescWindow, qui
     // masque la native au passage. On le redemande explicitement : notre appel
     // à MakeWindow/OnMsg ne suit pas forcément le chemin qui déclenche son hook,
     // et une native laissée visible se dessine SOUS l'overlay — donc derrière
@@ -936,7 +936,7 @@ void VendingTweaks::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
   }
 }
 
-void VendingTweaks::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
+void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
                                  int list_off) {
   ro::IconTex ic = ro::ItemIcon(desc.id);
   if (ic.tex) {
@@ -953,12 +953,12 @@ void VendingTweaks::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
   ItemHover(desc, wnd, list_off);
 }
 
-bool VendingTweaks::IsComposing() const {
+bool VendingWindow::IsComposing() const {
   // Sans état exprès : la fenêtre native fait foi, qu'on la remplace ou non.
   return FindWnd(kWinVending) != nullptr || FindWnd(kWinBuyingStore) != nullptr;
 }
 
-void VendingTweaks::OnTick() {
+void VendingWindow::OnTick() {
   if (!imgui_enabled_) {
     wnd_ = nullptr;
     mirror_ = nullptr;
@@ -1105,7 +1105,7 @@ void VendingTweaks::OnTick() {
   }
 }
 
-void VendingTweaks::Refresh() {
+void VendingWindow::Refresh() {
   // Objets POSÉS dans l'échoppe (fenêtre de composition).
   RawRow raw[kMaxRows];
   const int n = wnd_ ? ReadRows(wnd_, kOffList, raw, kMaxRows) : 0;
@@ -1146,7 +1146,7 @@ void VendingTweaks::Refresh() {
   }
 }
 
-void VendingTweaks::RefreshMyShop() {
+void VendingWindow::RefreshMyShop() {
   RawRow raw[kMaxAvail];
   const int n =
       myshop_wnd_ ? ReadRows(myshop_wnd_, kOffMyShopList, raw, kMaxAvail) : 0;
@@ -1167,7 +1167,7 @@ void VendingTweaks::RefreshMyShop() {
       myshop_wnd_ && ReadInt(myshop_wnd_, kOffMyShopMode) != 0;
 }
 
-void VendingTweaks::RefreshSellLog() {
+void VendingWindow::RefreshSellLog() {
   RawRow raw[kMaxAvail];
   const int n =
       log_wnd_ ? ReadRows(log_wnd_, kOffSellLogList, raw, kMaxAvail) : 0;
@@ -1185,7 +1185,7 @@ void VendingTweaks::RefreshSellLog() {
   }
 }
 
-void VendingTweaks::RefreshVendorShop() {
+void VendingWindow::RefreshVendorShop() {
   RawRow raw[kMaxAvail];
   const int n =
       vendor_wnd_ ? ReadRows(vendor_wnd_, kOffVendorList, raw, kMaxAvail) : 0;
@@ -1220,7 +1220,7 @@ void VendingTweaks::RefreshVendorShop() {
 
 // ── Vente à un buying store ──────────────────────────────────────────────────
 
-void VendingTweaks::RefreshBuyingStoreSell() {
+void VendingWindow::RefreshBuyingStoreSell() {
   RawRow raw[kMaxAvail];
 
   // Ce que l'acheteur recherche (0xB1). `amount` y est la quantité qu'il veut
@@ -1292,7 +1292,7 @@ void VendingTweaks::RefreshBuyingStoreSell() {
 // Ce que l'acheteur veut ENCORE de cet objet, borné par ce que j'en ai et par le
 // plafond natif. Reproduit le clamp de UIMerchantItemPurchaseWnd_OnMsg msg 38 :
 // sans lui on proposerait des quantités que le natif rognerait en silence.
-int VendingTweaks::BsSellableQty(int avail_index) const {
+int VendingWindow::BsSellableQty(int avail_index) const {
   if (avail_index < 0 || avail_index >= static_cast<int>(bs_avail_.size()))
     return 0;
   const Row& a = bs_avail_[avail_index];
@@ -1310,13 +1310,13 @@ int VendingTweaks::BsSellableQty(int avail_index) const {
 }
 
 // Prix unitaire proposé par l'acheteur pour cet objet, 0 s'il n'en veut pas.
-int VendingTweaks::BsPriceOf(uint32_t item_id) const {
+int VendingWindow::BsPriceOf(uint32_t item_id) const {
   for (const BuyRow& w : bs_wanted_rows_)
     if (w.id == item_id) return w.price;
   return 0;
 }
 
-void VendingTweaks::BsAddToSellList(int avail_index, int qty) {
+void VendingWindow::BsAddToSellList(int avail_index, int qty) {
   if (avail_index < 0 || avail_index >= static_cast<int>(bs_avail_.size()))
     return;
   if (!SessionBsAdd(avail_index, qty)) return;
@@ -1328,7 +1328,7 @@ void VendingTweaks::BsAddToSellList(int avail_index, int qty) {
   RefreshBuyingStoreSell();
 }
 
-void VendingTweaks::BsRemoveFromSellList(int sell_index) {
+void VendingWindow::BsRemoveFromSellList(int sell_index) {
   if (sell_index < 0 || sell_index >= static_cast<int>(bs_sell_rows_.size()))
     return;
   if (!SessionBsRemove(sell_index)) return;
@@ -1338,7 +1338,7 @@ void VendingTweaks::BsRemoveFromSellList(int sell_index) {
   RefreshBuyingStoreSell();
 }
 
-void VendingTweaks::SendPurchase(const BasketLine* lines, int count) {
+void VendingWindow::SendPurchase(const BasketLine* lines, int count) {
   if (!lines || count <= 0 || vendor_gid_ == 0) return;
   const int len = kPurchaseHdr + 4 * count;
   if (len > kPurchaseMaxLen) return;  // même refus que le constructeur natif
@@ -1365,7 +1365,7 @@ void VendingTweaks::SendPurchase(const BasketLine* lines, int count) {
   RequestVendorList();
 }
 
-void VendingTweaks::RequestVendorList() {
+void VendingWindow::RequestVendorList() {
   if (vendor_gid_ == 0) return;
   uint8_t pkt[6];
   std::memcpy(pkt + 0, &kCzVendingListReq, 2);
@@ -1373,13 +1373,13 @@ void VendingTweaks::RequestVendorList() {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-void VendingTweaks::SendVendingBuy() {
+void VendingWindow::SendVendingBuy() {
   if (basket_.empty()) return;
   SendPurchase(basket_.data(), static_cast<int>(basket_.size()));
   basket_.clear();
 }
 
-void VendingTweaks::QuickBuy(const BuyRow& offer, int qty) {
+void VendingWindow::QuickBuy(const BuyRow& offer, int qty) {
   if (qty <= 0) return;
   BasketLine line;
   line.id = offer.id;
@@ -1390,11 +1390,11 @@ void VendingTweaks::QuickBuy(const BuyRow& offer, int qty) {
   SendPurchase(&line, 1);
 }
 
-void VendingTweaks::FireCommand(int cmd) {
+void VendingWindow::FireCommand(int cmd) {
   if (wnd_) SendButton(wnd_, cmd);
 }
 
-void VendingTweaks::QueueCommand(int win_id, int cmd) {
+void VendingWindow::QueueCommand(int win_id, int cmd) {
   if (pending_count_ >= kMaxPending) return;  // saturée : le clic est perdu,
                                               // jamais un débordement
   pending_[pending_count_].win_id = win_id;
@@ -1406,7 +1406,7 @@ void VendingTweaks::QueueCommand(int win_id, int cmd) {
 // d'input du jeu — donc hors frame ImGui, ce qui est TOUT l'intérêt : une
 // commande native peut ouvrir une modale bloquante qui relance le rendu, et la
 // déclencher entre NewFrame() et Render() fige le client (cf. l'en-tête).
-void VendingTweaks::FlushPending() {
+void VendingWindow::FlushPending() {
   if (pending_submit_) {
     pending_submit_ = false;
     // Re-résolution : la fenêtre a pu être détruite depuis le clic.
@@ -1422,7 +1422,7 @@ void VendingTweaks::FlushPending() {
   }
 }
 
-void VendingTweaks::RefreshNativeLists() {
+void VendingWindow::RefreshNativeLists() {
   // Les deux fenêtres reconstruisent leur liste d'affichage depuis la session ;
   // sans ça nos lectures POD montreraient l'état d'avant la mutation.
   if (wnd_) SendRebuild(wnd_);
@@ -1431,14 +1431,14 @@ void VendingTweaks::RefreshNativeLists() {
   Refresh();
 }
 
-void VendingTweaks::PlaceItem(int avail_index, int qty) {
+void VendingWindow::PlaceItem(int avail_index, int qty) {
   if (avail_index < 0 || avail_index >= static_cast<int>(avail_.size())) return;
   if (static_cast<int>(rows_.size()) >= slots_) return;  // plus d'emplacement
   SessionPlace(avail_index, qty, buying_);
   RefreshNativeLists();
 }
 
-void VendingTweaks::TakeBackItem(int row) {
+void VendingWindow::TakeBackItem(int row) {
   if (row < 0 || row >= static_cast<int>(rows_.size())) return;
   if (!SessionTakeBack(row, buying_)) return;
   // Nos prix/quantités sont indexés par ligne : on décale comme le natif décale
@@ -1452,7 +1452,7 @@ void VendingTweaks::TakeBackItem(int row) {
   RefreshNativeLists();
 }
 
-void VendingTweaks::SubmitToNative() {
+void VendingWindow::SubmitToNative() {
   if (!wnd_) return;
 
   // Nom de la boutique. Le natif refuse un nom vide (MsgString 0xE1) et filtre les
@@ -1485,7 +1485,7 @@ void VendingTweaks::SubmitToNative() {
 
 // ── Rendu ────────────────────────────────────────────────────────────────────
 
-void VendingTweaks::OnRenderUI() {
+void VendingWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
   // Le survol est réévalué à chaque frame ; l'aperçu lui-même est dessiné TOUT à
   // la fin, hors de toute fenêtre (un tooltip crée son propre popup).
@@ -2470,7 +2470,7 @@ void VendingTweaks::OnRenderUI() {
 // Aperçu de l'objet survolé. Rendu APRÈS toutes les fenêtres, et hors de
 // n'importe quel Begin/End : un tooltip crée son propre popup, l'imbriquer le
 // clipperait dans la fenêtre courante.
-void VendingTweaks::DrawHoverDesc() {
+void VendingWindow::DrawHoverDesc() {
   if (!hover_valid_) return;
   DrawRoDescTooltip(hover_desc_.id, hover_desc_.cards, 4, hover_desc_.opts,
                     hover_desc_.opt_count, hover_desc_.refine, hover_desc_.name);

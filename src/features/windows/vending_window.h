@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "features/windows/item_desc_tweaks.h"  // itemdesc::SimpleOpt / RenderSimpleDesc
+#include "features/windows/item_desc_window.h"  // itemdesc::SimpleOpt / RenderSimpleDesc
 #include "features/plugin.h"
 
-// ── VendingTweaks ────────────────────────────────────────────────────────────
+// ── VendingWindow ────────────────────────────────────────────────────────────
 //
 // Remplacement ImGui de la fenêtre de COMPOSITION d'échoppe joueur, dans ses
 // DEUX modes — vente (« Opening a stall ») et achat (« Buying Store Window »).
@@ -99,7 +99,7 @@
 // 0x2C UIMerchantItemPurchaseWnd (le panier + Total/buy/cancel). Ids et classes
 // confirmés par RTTI sur session vivante.
 //
-// Modèle ShopTweaks (shop NPC) : on LIT la liste déjà résolue par le natif
+// Modèle NpcShopWindow (shop NPC) : on LIT la liste déjà résolue par le natif
 // (noms, slots, prix), et on ÉMET la transaction soi-même. Le panier natif n'est
 // jamais touché — pas besoin de simuler un glisser-déposer, dont la charge utile
 // vit dans gameMode+0x308 et n'est pas reproductible proprement.
@@ -134,9 +134,9 @@
 //    itemId lu par atoi sur la chaîne du nœud) : pas encore décodé, donc les
 //    fenêtres natives sont RENDUES au joueur plutôt que remplacées à moitié.
 
-class VendingTweaks : public Plugin {
+class VendingWindow : public Plugin {
  public:
-  const char* name() const override { return "VendingTweaks"; }
+  const char* name() const override { return "VendingWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;
@@ -340,7 +340,7 @@ class VendingTweaks : public Plugin {
 
   // ── Côté ACHETEUR : on clique sur l'échoppe d'un autre joueur ──────────────
   // Deux fenêtres natives : 0x2B = l'offre du vendeur, 0x2C = le panier.
-  // Modèle ShopTweaks : on LIT la liste résolue par le natif (noms, slots et
+  // Modèle NpcShopWindow : on LIT la liste résolue par le natif (noms, slots et
   // prix déjà calculés) et on ÉMET la transaction nous-mêmes (CZ 0x0801). Le
   // panier natif n'est donc jamais touché — le nôtre vit dans `basket_`.
   // ⚠ Les deux structures sont déclarées AVANT les méthodes qui les prennent en

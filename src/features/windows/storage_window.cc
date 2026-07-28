@@ -1,4 +1,4 @@
-#include "features/windows/storage_tweaks.h"
+#include "features/windows/storage_window.h"
 #include "ui/game_texture.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -24,9 +24,9 @@
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "features/windows/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
 #include "features/windows/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer cart)
-#include "features/windows/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
+#include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "features/moonlight_ui/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
-#include "features/windows/vending_tweaks.h"    // IsComposing (shop en cours -> transferts figés)
+#include "features/windows/vending_window.h"    // IsComposing (shop en cours -> transferts figés)
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
 
@@ -93,7 +93,7 @@ using GameFree_t  = void(__cdecl*)(void*);
 // Un ItemSkillInfo reconstruit (ctor+SetId) pose l'id mais PAS la desc -> vide.
 // Donc on re-parcourt la liste live au clic pour retrouver le nœud par id et
 // passer SON info (node+8). OnMsg 0x18 copie ce qu'il faut (on ne possède pas
-// l'info -> aucun free). item_desc_tweaks détecte 0xc et rend sa version enrichie.
+// l'info -> aucun free). item_desc_window détecte 0xc et rend sa version enrichie.
 constexpr uintptr_t kMakeWindow  = 0x00a39340;  // __fastcall(mgr, edx, id) -> wnd
 constexpr int kWinItemDesc = 0xc;    // fenêtre desc ITEM (OnMsg 0x18 + &ItemSkillInfo)
 constexpr int kMsgSetItem  = 0x18;
@@ -231,7 +231,7 @@ enum SubDim { kSubNone = 0, kSubWeapon, kSubArmor, kSubCard, kSubAmmo, kSubCostu
 // Un item avec un de ces bits = costume -> onglet Costumes, exclu des Armures.
 constexpr uint32_t kCostumeMask = 0x3C00;
 // `fav` = onglet spécial « Favoris » : filtré non par type mais par le set client
-// favorites_ (cf. StorageTweaks::IsFavorite). Les autres champs sont ignorés.
+// favorites_ (cf. StorageWindow::IsFavorite). Les autres champs sont ignorés.
 // `img` = base des .bmp d'onglet du client (basic_interface\<img>1.bmp actif /
 // <img>2.bmp inactif), comme inventory_viewer : sert à la disposition VERTICALE,
 // qui reprend les vrais onglets images du natif. Le client n'a que 6 arts d'onglet
@@ -534,14 +534,14 @@ void CancelNativeDrag(void* obj) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Composition d'un shop en cours (cf. VendingTweaks::IsComposing).
+// Composition d'un shop en cours (cf. VendingWindow::IsComposing).
 //   - cart <-> storage : REFUSÉ par le serveur (storage_storageaddfromcart /
 //     storage_storagegettocart testent sd->state.prevend).
 //   - inventaire <-> storage : le serveur l'AUTORISE (clif_parse_MoveToKafra ne
 //     teste que pc_istrading). On le fige quand même côté client pour que rien ne
 //     bouge sous une composition en cours ; un bandeau le dit dans la fenêtre.
 bool VendingComposing() {
-  auto* vending = Bourgeon::Instance().vending_tweaks();
+  auto* vending = Bourgeon::Instance().vending_window();
   return vending && vending->IsComposing();
 }
 
@@ -653,14 +653,14 @@ void DrawFavStar(ImDrawList* dl, float cx, float cy, float r, ImU32 fill,
 constexpr uint16_t kOpInventoryStart = 0x0b08;
 constexpr int      kInvTypeStorage   = 2;  // e_inventory_type INVTYPE_STORAGE
 
-StorageTweaks::StorageTweaks() {
+StorageWindow::StorageWindow() {
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStoragePrices);
   Bourgeon::Instance().RegisterObserveOpcode(kOpInventoryStart, 27);
 }
 
 // Prix de vente NPC du storage (ZC_BOURGEON_STORAGE_PRICES). data = payload après
 // [op:2][len:2] : [count:2] puis count * [id:4][sell:4].
-void StorageTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+void StorageWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   // ZC_INVENTORY_START (observé) : data = [len:2][invType:1][name:≤24]. On garde le
   // nom seulement pour un entrepôt (invType STORAGE) -> titre du viewer.
   if (opcode == kOpInventoryStart) {
@@ -694,7 +694,7 @@ void StorageTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t 
 // Remplit items_/item_count_ depuis le MODÈLE COMPLET (g_session+0x1718), pas la
 // vue filtrée de la fenêtre : le viewer voit TOUS les items et fait son propre
 // filtrage par onglet. POD-only sous SEH.
-void StorageTweaks::Extract(uint8_t* wnd) {
+void StorageWindow::Extract(uint8_t* wnd) {
   item_count_ = 0;
   __try {
     // 0x015fbad8 = g_session+0x1718 : sentinelle de la std::list storage complète.
@@ -760,7 +760,7 @@ void StorageTweaks::Extract(uint8_t* wnd) {
   }
 }
 
-void StorageTweaks::OnTick() {
+void StorageWindow::OnTick() {
   open_ = false;
   uint8_t* wnd = ReadValidWnd(kStorageSlot, kStorageVTable);
   if (wnd) {
@@ -809,7 +809,7 @@ void StorageTweaks::OnTick() {
 
 // Mémorise si le clic a démarré sur la fenêtre cart (routage du drop) et sur le
 // viewer (un vrai drag natif entrant démarre HORS du viewer).
-void StorageTweaks::OnMouseDown(int mx, int my) {
+void StorageWindow::OnMouseDown(int mx, int my) {
   mousedown_over_cart_ =
       MouseOverCart(static_cast<float>(mx), static_cast<float>(my));
   mousedown_over_viewer_ =
@@ -819,7 +819,7 @@ void StorageTweaks::OnMouseDown(int mx, int my) {
 
 // Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
 // Vérifie la vtable storage par sûreté (le hook passe l'id 0x21, mais on confirme).
-void StorageTweaks::HideNativeAtCreation(void* win) {
+void StorageWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kStorageVTable) return;
@@ -831,7 +831,7 @@ void StorageTweaks::HideNativeAtCreation(void* win) {
 // natif (inventaire OU cart) au-dessus du viewer -> pose un déplacement en attente +
 // annule le drag. Le paquet réel part de OnRenderUI (sûr, + prompt pour les piles).
 // Source = mousedown_over_cart_ (le payload n'expose pas la source de façon fiable).
-bool StorageTweaks::HandleNativeDrop(int mx, int my) {
+bool StorageWindow::HandleNativeDrop(int mx, int my) {
   if (!open_ || !imgui_enabled_ || !win_valid_) return false;
   if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui
   void* obj = DragObj();
@@ -859,7 +859,7 @@ bool StorageTweaks::HandleNativeDrop(int mx, int my) {
 // se rouvrait puis disparaissait (flicker). Le verrou tient jusqu'au prochain
 // VRAI mouvement du curseur (le geste souris/menu est alors terminé), avec un
 // garde-fou de temps au cas où la fenêtre n'arriverait jamais.
-void StorageTweaks::MarkDescPending() {
+void StorageWindow::MarkDescPending() {
   const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
   desc_pending_ = true;
   desc_pending_x_ = mouse_pos.x;
@@ -867,7 +867,7 @@ void StorageTweaks::MarkDescPending() {
   desc_pending_tick_ = GetTickCount();
 }
 
-bool StorageTweaks::DescPendingBlocksHover() {
+bool StorageWindow::DescPendingBlocksHover() {
   if (!desc_pending_) return false;
   constexpr float kMoveThreshold = 6.0f;   // px : ignore le micro-jitter de la souris
   constexpr uint32_t kMaxHoldMs = 1500;    // garde-fou : jamais bloqué indéfiniment
@@ -879,11 +879,11 @@ bool StorageTweaks::DescPendingBlocksHover() {
   return desc_pending_;
 }
 
-// ── Section « StorageTweaks » du panneau Moonlight ───────────────────────────
+// ── Section « StorageWindow » du panneau Moonlight ───────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
 // de sauvegarder. Rend true si un réglage a changé.
-bool StorageTweaks::DrawSettings() {
+bool StorageWindow::DrawSettings() {
   bool changed = false;
   // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
   // case, la liste du groupe et son application vivent dans un seul endroit
@@ -960,7 +960,7 @@ bool StorageTweaks::DrawSettings() {
   return changed;
 }
 
-void StorageTweaks::OnRenderUI() {
+void StorageWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {

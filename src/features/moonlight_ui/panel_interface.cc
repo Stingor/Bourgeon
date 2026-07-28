@@ -17,19 +17,19 @@
 // Types COMPLETS des plugins pilotés par les 13 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
-#include "features/windows/bank_tweaks.h"
+#include "features/windows/bank_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/cart_viewer.h"
-#include "features/windows/item_desc_tweaks.h"
+#include "features/windows/item_desc_window.h"
 #include "features/overlays/menu_icons.h"
-#include "features/windows/npc_dialog_tweaks.h"
+#include "features/windows/npc_dialog_window.h"
 #include "features/overlays/quest_tracker_tweaks.h"
-#include "features/windows/rodex_tweaks.h"
+#include "features/windows/rodex_window.h"
 #include "features/overlays/skill_bar_tweaks.h"
 #include "features/overlays/status_icon_tweaks.h"
-#include "features/windows/storage_tweaks.h"
+#include "features/windows/storage_window.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -261,7 +261,7 @@ void MoonlightUi::DrawInterfacePanel() {
           GrayText(kPluginUnavailable);
       }
 
-      // ── Descriptions (ItemDescTweaks : panneaux techniques item/skill) ───
+      // ── Descriptions (ItemDescWindow : panneaux techniques item/skill) ───
       if (iface_nav_ == kIfaceDesc) {
         if (auto* idt = Bourgeon::Instance().item_desc()) {
           if (idt->DrawSettings()) SaveSettings();
@@ -279,16 +279,16 @@ void MoonlightUi::DrawInterfacePanel() {
 
       // ── Fenêtre NPC (dialogue / menu / prompt ImGui) ─────────────────────
       if (iface_nav_ == kIfaceNpc) {
-        if (auto* nd = Bourgeon::Instance().npc_dialog_tweaks()) {
+        if (auto* nd = Bourgeon::Instance().npc_dialog_window()) {
           if (nd->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
         }
       }
 
-      // ── Storage (StorageTweaks : viewer ImGui + colonnes/filtre/survol) ───
+      // ── Storage (StorageWindow : viewer ImGui + colonnes/filtre/survol) ───
       if (iface_nav_ == kIfaceStorage) {
-        if (auto* stg = Bourgeon::Instance().storage_tweaks()) {
+        if (auto* stg = Bourgeon::Instance().storage_window()) {
           if (stg->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);
@@ -313,9 +313,9 @@ void MoonlightUi::DrawInterfacePanel() {
         }
       }
 
-      // ── Banque de zeny (BankTweaks : Ctrl+B, phase 1 = coexistence) ─────
+      // ── Banque de zeny (BankWindow : Ctrl+B, phase 1 = coexistence) ─────
       if (iface_nav_ == kIfaceBank) {
-        if (auto* bt = Bourgeon::Instance().bank_tweaks()) {
+        if (auto* bt = Bourgeon::Instance().bank_window()) {
           if (bt->DrawSettings()) SaveSettings();
         } else {
           GrayText(kPluginUnavailable);

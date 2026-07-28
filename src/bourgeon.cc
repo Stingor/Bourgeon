@@ -24,7 +24,7 @@
 #include "features/patches/berserk_chat_unlock.h"
 #include "features/patches/inventory_tweaks.h"
 #include "features/windows/inventory_viewer.h"
-#include "features/windows/bank_tweaks.h"
+#include "features/windows/bank_window.h"
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -42,14 +42,14 @@
 #include "features/minigames/roggle_tweaks.h"
 #include "features/minigames/rojeweled_tweaks.h"
 #include "features/overlays/skill_bar_tweaks.h"
-#include "features/windows/item_desc_tweaks.h"
-#include "features/windows/storage_tweaks.h"
-#include "features/windows/cashshop_tweaks.h"
-#include "features/windows/shop_tweaks.h"
-#include "features/windows/vending_tweaks.h"
-#include "features/windows/trade_tweaks.h"
-#include "features/windows/rodex_tweaks.h"
-#include "features/windows/npc_dialog_tweaks.h"
+#include "features/windows/item_desc_window.h"
+#include "features/windows/storage_window.h"
+#include "features/windows/cashshop_window.h"
+#include "features/windows/npc_shop_window.h"
+#include "features/windows/vending_window.h"
+#include "features/windows/trade_window.h"
+#include "features/windows/rodex_window.h"
+#include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
@@ -78,20 +78,20 @@ WeaponDualSprites* Bourgeon::weapon_dual_sprites() { return weapon_dual_sprites_
 MoonlightUi* Bourgeon::moonlight_ui() { return moonlight_ui_; }
 SkillBarTweaks* Bourgeon::skill_bar() { return skill_bar_; }
 ChatTweaks* Bourgeon::chat_tweaks() { return chat_tweaks_; }
-StorageTweaks* Bourgeon::storage_tweaks() { return storage_tweaks_; }
+StorageWindow* Bourgeon::storage_window() { return storage_window_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
-BankTweaks* Bourgeon::bank_tweaks() { return bank_tweaks_; }
-CashShopTweaks* Bourgeon::cashshop_tweaks() { return cashshop_tweaks_; }
-ShopTweaks* Bourgeon::shop_tweaks() { return shop_tweaks_; }
-VendingTweaks* Bourgeon::vending_tweaks() { return vending_tweaks_; }
-TradeTweaks* Bourgeon::trade_tweaks() { return trade_tweaks_; }
-RodexTweaks* Bourgeon::rodex_tweaks() { return rodex_tweaks_; }
-NpcDialogTweaks* Bourgeon::npc_dialog_tweaks() { return npc_dialog_tweaks_; }
+BankWindow* Bourgeon::bank_window() { return bank_window_; }
+CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
+NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
+VendingWindow* Bourgeon::vending_window() { return vending_window_; }
+TradeWindow* Bourgeon::trade_window() { return trade_window_; }
+RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
+NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
 BugReportTweaks* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
-ItemDescTweaks* Bourgeon::item_desc() { return item_desc_; }
+ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 EntityNamesTweaks* Bourgeon::entity_names() { return entity_names_; }
 
 namespace {
@@ -233,7 +233,7 @@ void Bourgeon::OnProcessInput() {
   // déclencher depuis OnRenderUI — donc entre ImGui::NewFrame() et Render() —
   // relance le rendu en pleine frame ImGui. Les commandes sont donc empilées
   // pendant le rendu et rejouées ICI, hors de toute frame ImGui.
-  if (auto* vt = vending_tweaks()) vt->FlushPending();
+  if (auto* vt = vending_window()) vt->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -521,45 +521,45 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(cart_viewer));
   }
   {
-    auto storage_tweaks = std::make_unique<StorageTweaks>();
-    storage_tweaks_ = storage_tweaks.get();
-    plugins_.emplace_back(std::move(storage_tweaks));
+    auto storage_window = std::make_unique<StorageWindow>();
+    storage_window_ = storage_window.get();
+    plugins_.emplace_back(std::move(storage_window));
   }
   {
     // Banque de zeny (Ctrl+B) : remplace la fenêtre native (masquée) quand le
     // groupe « Interface moderne » est actif.
-    auto bank_tweaks = std::make_unique<BankTweaks>();
-    bank_tweaks_ = bank_tweaks.get();
-    plugins_.emplace_back(std::move(bank_tweaks));
+    auto bank_window = std::make_unique<BankWindow>();
+    bank_window_ = bank_window.get();
+    plugins_.emplace_back(std::move(bank_window));
   }
   {
-    auto cashshop_tweaks = std::make_unique<CashShopTweaks>();
-    cashshop_tweaks_ = cashshop_tweaks.get();
-    plugins_.emplace_back(std::move(cashshop_tweaks));
+    auto cashshop_window = std::make_unique<CashShopWindow>();
+    cashshop_window_ = cashshop_window.get();
+    plugins_.emplace_back(std::move(cashshop_window));
   }
   {
-    auto shop_tweaks = std::make_unique<ShopTweaks>();
-    shop_tweaks_ = shop_tweaks.get();
-    plugins_.emplace_back(std::move(shop_tweaks));
+    auto npc_shop_window = std::make_unique<NpcShopWindow>();
+    npc_shop_window_ = npc_shop_window.get();
+    plugins_.emplace_back(std::move(npc_shop_window));
   }
   {
-    // Échoppe joueur (vente ET achat : même classe native, cf. vending_tweaks.h).
-    auto vending_tweaks = std::make_unique<VendingTweaks>();
-    vending_tweaks_ = vending_tweaks.get();
-    plugins_.emplace_back(std::move(vending_tweaks));
+    // Échoppe joueur (vente ET achat : même classe native, cf. vending_window.h).
+    auto vending_window = std::make_unique<VendingWindow>();
+    vending_window_ = vending_window.get();
+    plugins_.emplace_back(std::move(vending_window));
   }
   {
-    auto trade_tweaks = std::make_unique<TradeTweaks>();
-    trade_tweaks_ = trade_tweaks.get();
-    plugins_.emplace_back(std::move(trade_tweaks));
+    auto trade_window = std::make_unique<TradeWindow>();
+    trade_window_ = trade_window.get();
+    plugins_.emplace_back(std::move(trade_window));
 
-    auto rodex_tweaks = std::make_unique<RodexTweaks>();
-    rodex_tweaks_ = rodex_tweaks.get();
-    plugins_.emplace_back(std::move(rodex_tweaks));
+    auto rodex_window = std::make_unique<RodexWindow>();
+    rodex_window_ = rodex_window.get();
+    plugins_.emplace_back(std::move(rodex_window));
 
-    auto npc_dialog_tweaks = std::make_unique<NpcDialogTweaks>();
-    npc_dialog_tweaks_ = npc_dialog_tweaks.get();
-    plugins_.emplace_back(std::move(npc_dialog_tweaks));
+    auto npc_dialog_window = std::make_unique<NpcDialogWindow>();
+    npc_dialog_window_ = npc_dialog_window.get();
+    plugins_.emplace_back(std::move(npc_dialog_window));
   }
   {
     auto character_sheet = std::make_unique<CharacterSheet>();
@@ -612,7 +612,7 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(rojeweled));
   }
   {
-    auto item_desc = std::make_unique<ItemDescTweaks>();
+    auto item_desc = std::make_unique<ItemDescWindow>();
     item_desc_ = item_desc.get();
     plugins_.emplace_back(std::move(item_desc));
   }

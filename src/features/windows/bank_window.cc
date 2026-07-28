@@ -1,4 +1,4 @@
-#include "features/windows/bank_tweaks.h"
+#include "features/windows/bank_window.h"
 
 #include <Windows.h>
 
@@ -258,19 +258,19 @@ const ro::GameTexture& BackgroundTexture() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-void BankTweaks::SetStatus(const char* utf8, bool is_error) {
+void BankWindow::SetStatus(const char* utf8, bool is_error) {
   std::snprintf(status_, sizeof(status_), "%s", utf8 ? utf8 : "");
   status_error_ = is_error;
 }
 
-void BankTweaks::SetStatusFromMsgString(int msg_id, bool is_error) {
+void BankWindow::SetStatusFromMsgString(int msg_id, bool is_error) {
   const char* cp949 = MsgStringCp949(msg_id);
   // Les libellés du client sont en CP949 ; ImGui veut de l'UTF-8. Le buffer rendu
   // par Cp949ToUtf8 est rotatif -> on RECOPIE tout de suite.
   SetStatus(cp949 ? ro::Cp949ToUtf8(cp949) : nullptr, is_error);
 }
 
-void BankTweaks::OnTick() {
+void BankWindow::OnTick() {
   open_ = false;
   uint8_t* wnd = BankWnd();
   if (wnd) {
@@ -310,14 +310,14 @@ void BankTweaks::OnTick() {
   zeny_  = balances.zeny;
 }
 
-void BankTweaks::HideNativeAtCreation(void* win) {
+void BankWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   // OnTick ne remettra la native visible qu'une fois, et seulement si c'est bien
   // nous qui l'avions baissée : on le lui dit dès maintenant.
   if (HideIfBankWindow(win)) native_hidden_ = true;
 }
 
-void BankTweaks::ToggleFromUi() {
+void BankWindow::ToggleFromUi() {
   // Anti-double-clic : 0x09A6 BASCULE la fenêtre, donc deux demandes coup sur coup
   // l'ouvriraient puis la refermeraient.
   const unsigned long now = GetTickCount();
@@ -336,7 +336,7 @@ void BankTweaks::ToggleFromUi() {
   Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
-void BankTweaks::SendTransfer(bool deposit) {
+void BankWindow::SendTransfer(bool deposit) {
   // Anti-double-envoi (double-clic sur le bouton).
   const unsigned long now = GetTickCount();
   if (last_send_tick_ != 0 && now - last_send_tick_ < 300) return;
@@ -375,7 +375,7 @@ void BankTweaks::SendTransfer(bool deposit) {
   SetStatus(deposit ? "Dépôt envoyé..." : "Retrait envoyé...", false);
 }
 
-void BankTweaks::OnRenderUI() {
+void BankWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {
@@ -616,7 +616,7 @@ void BankTweaks::OnRenderUI() {
   ro::EndRoWindow();
 }
 
-bool BankTweaks::DrawSettings() {
+bool BankWindow::DrawSettings() {
   bool changed = false;
 
   // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif) : la case, la liste

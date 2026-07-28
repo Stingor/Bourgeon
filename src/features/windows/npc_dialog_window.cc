@@ -1,4 +1,4 @@
-#include "features/windows/npc_dialog_tweaks.h"
+#include "features/windows/npc_dialog_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
@@ -29,7 +29,7 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/npc_dialog_re.md) ──
 namespace {
 
-// UIWindowMgr + factory (SEH-gardé, comme shop_tweaks).
+// UIWindowMgr + factory (SEH-gardé, comme npc_shop_window).
 constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
 using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
@@ -188,7 +188,7 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-NpcDialogTweaks::NpcDialogTweaks() {
+NpcDialogWindow::NpcDialogWindow() {
   // TOUT en OBSERVE (jamais RegisterRecvOpcode) : le handler natif doit TOUJOURS
   // tourner (fenêtres créées puis cachées) ; sinon le dialogue natif est cassé
   // quand le toggle est OFF. VAR : on forwarde de quoi lire [len:2][GID:4] et on
@@ -208,7 +208,7 @@ NpcDialogTweaks::NpcDialogTweaks() {
   b.RegisterObserveOpcode(kZcServerMove, 4);
 }
 
-void NpcDialogTweaks::Reset() {
+void NpcDialogWindow::Reset() {
   lines_.clear();
   choices_.clear();
   has_next_ = has_close_ = false;
@@ -219,7 +219,7 @@ void NpcDialogTweaks::Reset() {
   menu_hot_ = -1;
 }
 
-void NpcDialogTweaks::PushText(const char* s) {
+void NpcDialogWindow::PushText(const char* s) {
   if (!s) return;
   // Découpe sur les '\n' bruts (le natif fait pareil via preprocess_escapes).
   std::string cur;
@@ -235,7 +235,7 @@ void NpcDialogTweaks::PushText(const char* s) {
     lines_.erase(lines_.begin(), lines_.begin() + (lines_.size() - kMaxLines));
 }
 
-void NpcDialogTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                    uint16_t len) {
   if (!imgui_enabled_) return;
 
@@ -361,7 +361,7 @@ void NpcDialogTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 }
 
 // ── Parsing d'une ligne en runs (couleur ^RRGGBB, gras/italique, liens) ──
-void NpcDialogTweaks::ParseLine(const std::string& raw, std::vector<Run>* out) {
+void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
   Run cur;
   cur.color = 0;
   bool in_info = false;  // dans <INFO>…</INFO> : on capture l'id item (pas d'affichage)
@@ -435,7 +435,7 @@ void NpcDialogTweaks::ParseLine(const std::string& raw, std::vector<Run>* out) {
 }
 
 // ── Rendu word-wrap multi-couleur (ImDrawList) ──
-void NpcDialogTweaks::DrawRichLines() {
+void NpcDialogWindow::DrawRichLines() {
   ImDrawList* dl = ImGui::GetWindowDrawList();
   ImFont* font = ImGui::GetFont();
   const float fsize = ImGui::GetFontSize();
@@ -516,7 +516,7 @@ void NpcDialogTweaks::DrawRichLines() {
   ImGui::Dummy(ImVec2(wrap, y));  // réserve la hauteur (scroll)
 }
 
-void NpcDialogTweaks::DrawMenu(float group_h) {
+void NpcDialogWindow::DrawMenu(float group_h) {
   if (choices_.empty()) return;
   // Groupe menu à hauteur FIXE (barre de recherche + liste) : ne pousse pas les
   // boutons hors de la fenêtre.
@@ -632,7 +632,7 @@ void NpcDialogTweaks::DrawMenu(float group_h) {
   if (chosen > 0 && menu_gen_ != menu_answered_gen_) SendMenuChoice(chosen);
 }
 
-void NpcDialogTweaks::DrawInput() {
+void NpcDialogWindow::DrawInput() {
   if (input_mode_ == kInputNone) return;
   if (input_need_focus_) {  // 1re frame : SetKeyboardFocusHere cible le prochain widget = le champ
     ImGui::SetKeyboardFocusHere();
@@ -658,7 +658,7 @@ void NpcDialogTweaks::DrawInput() {
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent que
 // l'état de CE plugin, ils appartiennent donc à ce fichier. MoonlightUi ne garde
 // que l'appel et la décision de sauvegarder.
-bool NpcDialogTweaks::DrawSettings() {
+bool NpcDialogWindow::DrawSettings() {
   bool changed = false;
   changed |= ro::RoCheckbox("Dialogue NPC ImGui", &imgui_enabled_);
   ImGui::SameLine();
@@ -677,7 +677,7 @@ bool NpcDialogTweaks::DrawSettings() {
   return changed;
 }
 
-void NpcDialogTweaks::OnRenderUI() {
+void NpcDialogWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
   // Rien à afficher (transitoire entre paquets) : pas de fenêtre vide, sauf si un
   // bouton Next/Close est demandé (pour pouvoir cliquer Fermer).
@@ -810,7 +810,7 @@ void NpcDialogTweaks::OnRenderUI() {
 }
 
 // ── Envois (thread principal uniquement) ──
-bool NpcDialogTweaks::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
+bool NpcDialogWindow::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
   if (!imgui_enabled_) return false;  // toggle OFF : le natif garde la main
   switch (opcode) {
     case kCzNext:         // 0x00B9 CZ_REQ_NEXT_SCRIPT
@@ -824,7 +824,7 @@ bool NpcDialogTweaks::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
   }
 }
 
-void NpcDialogTweaks::SendNext() {
+void NpcDialogWindow::SendNext() {
   if (gid_ == 0) return;
   uint8_t pkt[6];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kCzNext;
@@ -834,7 +834,7 @@ void NpcDialogTweaks::SendNext() {
   start_fresh_ = true;  // `next` = saut de PAGE -> le prochain mes vide l'ancienne page
 }
 
-void NpcDialogTweaks::SendMenuChoice(int one_based) {
+void NpcDialogWindow::SendMenuChoice(int one_based) {
   if (gid_ == 0 || one_based <= 0 || one_based > 0xFF) return;
   uint8_t pkt[7];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kCzChoose;
@@ -851,7 +851,7 @@ void NpcDialogTweaks::SendMenuChoice(int one_based) {
   start_fresh_ = true;  // un choix de menu = saut de PAGE -> vide l'ancienne page
 }
 
-void NpcDialogTweaks::SendMenuCancel() {
+void NpcDialogWindow::SendMenuCancel() {
   if (gid_ == 0) return;
   uint8_t pkt[7];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kCzChoose;
@@ -861,7 +861,7 @@ void NpcDialogTweaks::SendMenuCancel() {
   choices_.clear();
 }
 
-void NpcDialogTweaks::SendNumber(int value) {
+void NpcDialogWindow::SendNumber(int value) {
   if (gid_ == 0) return;
   uint8_t pkt[10];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kCzInputN;
@@ -871,7 +871,7 @@ void NpcDialogTweaks::SendNumber(int value) {
   input_mode_ = kInputNone;
 }
 
-void NpcDialogTweaks::SendString(const char* text) {
+void NpcDialogWindow::SendString(const char* text) {
   if (gid_ == 0) return;
   const char* s = text ? text : "";
   size_t tlen = std::strlen(s) + 1;  // le serveur attend le \0 final
@@ -886,7 +886,7 @@ void NpcDialogTweaks::SendString(const char* text) {
   input_mode_ = kInputNone;
 }
 
-void NpcDialogTweaks::CloseDialog() {
+void NpcDialogWindow::CloseDialog() {
   const uint32_t gid = gid_;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
@@ -917,7 +917,7 @@ void NpcDialogTweaks::CloseDialog() {
   Reset();
 }
 
-void NpcDialogTweaks::OpenItemDescById(uint32_t id) {
+void NpcDialogWindow::OpenItemDescById(uint32_t id) {
   if (id == 0) return;
   __try {
     // ItemSkillInfo minimal sur la pile (comme FUN_00803e10 : info[0]=id ; les 2
@@ -942,7 +942,7 @@ void NpcDialogTweaks::OpenItemDescById(uint32_t id) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-bool NpcDialogTweaks::DialogActiveNative() const {
+bool NpcDialogWindow::DialogActiveNative() const {
   __try {
     void* mode = *reinterpret_cast<void**>(kDispatcherPtr);
     if (!mode) return false;
@@ -951,7 +951,7 @@ bool NpcDialogTweaks::DialogActiveNative() const {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-void NpcDialogTweaks::HideNativeWindows() {
+void NpcDialogWindow::HideNativeWindows() {
   HideWnd(FindWnd(kWinSay));
   HideWnd(FindWnd(kWinMenu));
   HideWnd(FindWnd(kWinEditN));
@@ -959,7 +959,7 @@ void NpcDialogTweaks::HideNativeWindows() {
   HideWnd(FindWnd(kWinSay2));
 }
 
-void NpcDialogTweaks::ShowNativeWindows() {
+void NpcDialogWindow::ShowNativeWindows() {
   ShowWnd(FindWnd(kWinSay));
   ShowWnd(FindWnd(kWinMenu));
   ShowWnd(FindWnd(kWinEditN));
@@ -967,14 +967,14 @@ void NpcDialogTweaks::ShowNativeWindows() {
   ShowWnd(FindWnd(kWinSay2));
 }
 
-void NpcDialogTweaks::HideNativeAtCreation(void* win, int window_id) {
+void NpcDialogWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   if (window_id == kWinSay || window_id == kWinMenu || window_id == kWinEditN ||
       window_id == kWinEditS || window_id == kWinSay2)
     HideWnd(win);
 }
 
-void NpcDialogTweaks::OnTick() {
+void NpcDialogWindow::OnTick() {
   // Clic sur un lien d'item (<ITEM>) posé pendant le rendu : ouvre la desc au tick
   // (hors de l'arbre ImGui, plus sûr pour créer une fenêtre native).
   if (pending_link_cmd_ != 0) {

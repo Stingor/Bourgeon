@@ -53,7 +53,7 @@ class BasicInfoTweaks : public Plugin {
   const std::vector<uint16_t>& own_hat_effects() const { return own_hat_effects_; }
 
   // Tooltip d'aperçu (perso portant l'item) au survol de « ViewID : N » dans
-  // item_desc_tweaks / cashshop. Réutilise le moteur de capture sprite du portrait.
+  // item_desc_window / cashshop. Réutilise le moteur de capture sprite du portrait.
   // hat_ordinal != 0 : superpose EN PLUS l'effet .str du hat effect (ordinal
   // e_hat_effects) sur la tête — permet de prévisualiser les costumes SANS viewid
   // (view_id==0 + hat_ordinal!=0 = perso de base + effet). No-op si rien à montrer.

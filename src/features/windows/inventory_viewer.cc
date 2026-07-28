@@ -17,15 +17,15 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
-#include "features/windows/bank_tweaks.h"   // ToggleFromUi (bouton banque du footer)
-#include "features/windows/trade_tweaks.h"  // « Vers l'échange » (AddItemToTrade / active)
-#include "features/windows/rodex_tweaks.h"  // « Joindre au courrier » (AttachItem / composing)
+#include "features/windows/bank_window.h"   // ToggleFromUi (bouton banque du footer)
+#include "features/windows/trade_window.h"  // « Vers l'échange » (AddItemToTrade / active)
+#include "features/windows/rodex_window.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
-#include "features/windows/item_desc_tweaks.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
+#include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "features/moonlight_ui/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
-#include "features/windows/storage_tweaks.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
+#include "features/windows/storage_window.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "features/windows/cart_viewer.h"     // PointOverViewer (dépôt par glisser vers le viewer cart)
-#include "features/windows/vending_tweaks.h"  // IsComposing (échoppe en cours -> transferts figés)
+#include "features/windows/vending_window.h"  // IsComposing (échoppe en cours -> transferts figés)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/qty_prompt.h"   // ro::QuantityPrompt (dialogue « combien ? » partagé)
@@ -454,7 +454,7 @@ void SendDrop(int index, int amount) {
 
 // ── Drag NATIF entrant (fenêtre Équipement -> viewer = dés-équiper) ──────────────
 // Le drag natif est porté par l'objet mode (Dispatcher(), charge à +0x308) : payload
-// +0x80=0 (FullPayload item), +0x04 = index inventaire client. Repris de StorageTweaks.
+// +0x80=0 (FullPayload item), +0x04 = index inventaire client. Repris de StorageWindow.
 constexpr int kDragPayloadOff = 0x308;
 constexpr int kDragPL_type = 0x80, kDragPL_index = 0x04, kDragPL_id = 0x04, kDragPL_cat = 0x00;
 constexpr int kDragPL_count = 0x10;  // quantité (pile) du drag natif
@@ -546,7 +546,7 @@ void CloseInventory() {
 
 // ── Description (clic-droit) : passe l'ItemSkillInfo COMPLET du nœud à OnMsg 0x18 ──
 // On re-parcourt la liste session (0x015fbab0) pour retrouver le nœud par id (comme
-// storage). item_desc_tweaks détecte la fenêtre 0xc et rend sa version enrichie.
+// storage). item_desc_window détecte la fenêtre 0xc et rend sa version enrichie.
 void OpenItemDesc(uint32_t id, int mx, int my) {
   if (id == 0) return;
   __try {
@@ -606,7 +606,7 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
     out->identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
     // Slots cartes : info+0x1c, 4 entrées. ⚠ Sur un item FORGÉ/CRÉÉ ces mêmes mots
     // portent les données du forgeron (charid scindé, star crumbs, élément) et non
-    // des cartes — même critère que item_desc_tweaks.cc:419 (id <= 500).
+    // des cartes — même critère que item_desc_window.cc:419 (id <= 500).
     const uint32_t c0 = *reinterpret_cast<uint32_t*>(info + 0x1c);
     out->forged = (c0 != 0 && c0 <= 500);
     if (!out->forged) {
@@ -773,25 +773,25 @@ bool MouseOverCart(float x, float y) {
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
 bool CartOpen()    { return CartWnd() != nullptr; }
 bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
-// Composition d'échoppe en cours (cf. VendingTweaks::IsComposing).
+// Composition d'échoppe en cours (cf. VendingWindow::IsComposing).
 //   - inventaire <-> chariot : REFUSÉ par le serveur (sd->state.prevend, testé
 //     par pc_putitemtocart / pc_getitemfromcart et par pc_cant_act2()).
 //   - inventaire <-> entrepôt : le serveur, lui, l'AUTORISE (clif_parse_MoveToKafra
 //     ne teste que pc_istrading). On le bloque quand même, côté client, pour ne
 //     rien laisser bouger sous une composition en cours — les tooltips le disent.
 bool VendingComposing() {
-  auto* vending = Bourgeon::Instance().vending_tweaks();
+  auto* vending = Bourgeon::Instance().vending_window();
   return vending && vending->IsComposing();
 }
-// Échange joueur-joueur ImGui actif (TradeTweaks) : cible de « Vers l'échange ».
+// Échange joueur-joueur ImGui actif (TradeWindow) : cible de « Vers l'échange ».
 bool TradeOpen() {
-  auto* tt = Bourgeon::Instance().trade_tweaks();
+  auto* tt = Bourgeon::Instance().trade_window();
   return tt && tt->active();
 }
-// Écriture d'un courrier ImGui en cours (RodexTweaks) : cible de « Joindre au
+// Écriture d'un courrier ImGui en cours (RodexWindow) : cible de « Joindre au
 // courrier ». Les pièces jointes n'existent QUE pendant une écriture.
 bool MailComposing() {
-  auto* rodex = Bourgeon::Instance().rodex_tweaks();
+  auto* rodex = Bourgeon::Instance().rodex_window();
   return rodex && rodex->composing();
 }
 
@@ -799,7 +799,7 @@ bool MailComposing() {
 // storage) sont des viewers ImGui, le rect natif du storage est caché donc MouseOverStorage
 // échoue -> on teste le rect du viewer storage pour router le dépôt par glisser.
 bool StorageViewerOver(float x, float y) {
-  auto* st = Bourgeon::Instance().storage_tweaks();
+  auto* st = Bourgeon::Instance().storage_window();
   return st && st->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 
@@ -1134,7 +1134,7 @@ void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, I
   dl->PopClipRect();
 }
 
-// ── Resize par PALIER de tuile (repris de cashshop_tweaks) ─────────────────────
+// ── Resize par PALIER de tuile (repris de cashshop_window) ─────────────────────
 // La fenêtre saute d'une COLONNE / LIGNE de tuiles à la fois -> jamais de colonne
 // partielle ni d'espace vide (le vrai fix d'overflow). Le chrome (fenêtre - zone de
 // grille) est mesuré la frame précédente et stocké dans g_snap.
@@ -1382,7 +1382,7 @@ bool InventoryViewer::EquipDraggedItem(bool left_hand) {
 // quantité, un item seul part directement. No-op si aucun glisser ou aucun échange.
 bool InventoryViewer::TradeDraggedItem() {
   if (!drag_active_) return false;
-  auto* tt = Bourgeon::Instance().trade_tweaks();
+  auto* tt = Bourgeon::Instance().trade_window();
   if (!tt || !tt->active()) return false;
   if (drag_amount_ > 1) {  // pile -> demander combien (chemin « Vers l'échange... »)
     pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
@@ -1397,7 +1397,7 @@ bool InventoryViewer::TradeDraggedItem() {
 // serveur borne à 5 pièces jointes, on ne double donc pas ce contrôle ici.
 bool InventoryViewer::MailDraggedItem() {
   if (!drag_active_) return false;
-  auto* rodex = Bourgeon::Instance().rodex_tweaks();
+  auto* rodex = Bourgeon::Instance().rodex_window();
   if (!rodex || !rodex->composing()) return false;
   if (drag_amount_ > 1) {  // pile -> prompt de quantité (« Joindre au courrier... »)
     pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
@@ -1850,11 +1850,11 @@ void InventoryViewer::OnRenderUI() {
       case kPendToCart:    SendCmd(kCmdToCart, pend_index_, amount); break;
       case kPendToStorage: SendCmd(kCmdToStorage, pend_index_, amount); break;
       case kPendToTrade:
-        if (auto* tt = Bourgeon::Instance().trade_tweaks())
+        if (auto* tt = Bourgeon::Instance().trade_window())
           tt->AddItemToTrade(pend_index_, amount);
         break;
       case kPendToMail:
-        if (auto* rodex = Bourgeon::Instance().rodex_tweaks())
+        if (auto* rodex = Bourgeon::Instance().rodex_window())
           rodex->AttachItem(pend_index_, amount);
         break;
       default: break;
@@ -2248,7 +2248,7 @@ void InventoryViewer::OnRenderUI() {
           if (StorageOpen())   SendCmd(kCmdToStorage, it.index, it.amount);
           else if (CartOpen()) SendCmd(kCmdToCart, it.index, it.amount);
           else if (TradeOpen())
-            if (auto* tt = Bourgeon::Instance().trade_tweaks())
+            if (auto* tt = Bourgeon::Instance().trade_window())
               tt->AddItemToTrade(it.index, it.amount);
         } else {
           ImGui::OpenPopup("ctx");
@@ -2428,7 +2428,7 @@ void InventoryViewer::OnRenderUI() {
         if (TradeOpen()) {
           if (it.amount <= 1) {
             if (ImGui::MenuItem("Vers l'échange"))
-              if (auto* tt = Bourgeon::Instance().trade_tweaks())
+              if (auto* tt = Bourgeon::Instance().trade_window())
                 tt->AddItemToTrade(it.index, 1);
           } else if (ImGui::MenuItem("Vers l'échange...")) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
@@ -2439,7 +2439,7 @@ void InventoryViewer::OnRenderUI() {
         if (MailComposing()) {
           if (it.amount <= 1) {
             if (ImGui::MenuItem("Joindre au courrier"))
-              if (auto* rodex = Bourgeon::Instance().rodex_tweaks())
+              if (auto* rodex = Bourgeon::Instance().rodex_window())
                 rodex->AttachItem(it.index, 1);
           } else if (ImGui::MenuItem("Joindre au courrier...")) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
@@ -2604,7 +2604,7 @@ void InventoryViewer::OnRenderUI() {
   // le zeny déjà affiché devient le point d'entrée de la banque, sans coûter ni une
   // ligne de footer ni une fenêtre de plus. Même effet que Ctrl+B (cf. ToggleFromUi :
   // c'est le SERVEUR qui ouvre la fenêtre, le client se contente de demander).
-  if (auto* bank = Bourgeon::Instance().bank_tweaks()) {
+  if (auto* bank = Bourgeon::Instance().bank_window()) {
     // Demi-taille : l'art fait 19x24, plus haut que la ligne de footer (~21 px) et
     // franchement plus gros que les boutons natifs voisins (~18 px). À 0.5 il
     // redevient une pastille discrète à côté du montant — et le facteur exact ½

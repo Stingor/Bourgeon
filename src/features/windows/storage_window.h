@@ -6,7 +6,7 @@
 
 #include "features/plugin.h"
 
-// ── StorageTweaks ───────────────────────────────────────────────────────────
+// ── StorageWindow ───────────────────────────────────────────────────────────
 //
 // Viewer ImGui de l'entrepôt (Kafra / guilde / premium), en COEXISTENCE avec la
 // fenêtre native : les deux affichent le même modèle, donc la synchro est
@@ -25,15 +25,15 @@
 // et on la rend en table ImGui recherchable/triable. Le natif reste 100 %
 // fonctionnel pour déposer/retirer ; l'ImGui valide la synchro à côté.
 
-class StorageTweaks : public Plugin {
+class StorageWindow : public Plugin {
  public:
 
   // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
   // a changé — l'appelant décide de sauvegarder, une seule fois.
   bool DrawSettings();
-  StorageTweaks();  // enregistre l'opcode ZC_BOURGEON_STORAGE_PRICES
+  StorageWindow();  // enregistre l'opcode ZC_BOURGEON_STORAGE_PRICES
 
-  const char* name() const override { return "StorageTweaks"; }
+  const char* name() const override { return "StorageWindow"; }
 
   void OnTick() override;      // capture l'état de l'entrepôt (polling read-only)
   void OnRenderUI() override;  // dessine le viewer ImGui si l'entrepôt est ouvert

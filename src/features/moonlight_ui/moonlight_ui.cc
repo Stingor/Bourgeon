@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "bourgeon.h"
-#include "features/windows/item_desc_tweaks.h"
+#include "features/windows/item_desc_window.h"
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "ui/skin_panel.h"
@@ -30,16 +30,16 @@
 #include "features/fx/settings_tweaks.h"
 #include "features/overlays/entity_names.h"
 #include "features/overlays/skill_bar_tweaks.h"
-#include "features/windows/storage_tweaks.h"
+#include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
-#include "features/windows/bank_tweaks.h"
+#include "features/windows/bank_window.h"
 #include "features/windows/cart_viewer.h"
-#include "features/windows/cashshop_tweaks.h"
-#include "features/windows/shop_tweaks.h"
-#include "features/windows/vending_tweaks.h"
-#include "features/windows/trade_tweaks.h"
-#include "features/windows/rodex_tweaks.h"
-#include "features/windows/npc_dialog_tweaks.h"
+#include "features/windows/cashshop_window.h"
+#include "features/windows/npc_shop_window.h"
+#include "features/windows/vending_window.h"
+#include "features/windows/trade_window.h"
+#include "features/windows/rodex_window.h"
+#include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
@@ -218,7 +218,7 @@ const moonlight_ui::SettingDesc kDpsSettings[] = {
 };
 
 // Fenêtre de description (item + skill). Le défaut d'ancrage vaut 3 = bas-droite,
-// la valeur déclarée dans item_desc_tweaks.h : il valait 0 dans le repli
+// la valeur déclarée dans item_desc_window.h : il valait 0 dans le repli
 // d'écriture, ce qui ramenait silencieusement l'ancrage en haut-gauche.
 const moonlight_ui::SettingDesc kItemDescSettings[] = {
     {"itemdesc_show_item",  SType::kBool, MLUI_FIELD(item_desc, show_item_panel()),
@@ -285,56 +285,56 @@ const moonlight_ui::SettingDesc kCartSettings[] = {
 // Entrepôt (Kafra / guilde / premium : la même fenêtre). storage_favorites est
 // un CONTENEUR, écrit à la main après cette table.
 const moonlight_ui::SettingDesc kStorageSettings[] = {
-    {"storage_imgui", SType::kBool, MLUI_FIELD(storage_tweaks, imgui_enabled_),
+    {"storage_imgui", SType::kBool, MLUI_FIELD(storage_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"storage_desc_tooltip", SType::kBool, MLUI_FIELD(storage_tweaks, desc_tooltip()),
+    {"storage_desc_tooltip", SType::kBool, MLUI_FIELD(storage_window, desc_tooltip()),
      MLUI_LITERAL(bool, false)},
-    {"storage_filter", SType::kBool, MLUI_FIELD(storage_tweaks, show_filter()),
+    {"storage_filter", SType::kBool, MLUI_FIELD(storage_window, show_filter()),
      MLUI_LITERAL(bool, true)},
-    {"storage_tabs_vertical", SType::kBool, MLUI_FIELD(storage_tweaks, tabs_vertical()),
+    {"storage_tabs_vertical", SType::kBool, MLUI_FIELD(storage_window, tabs_vertical()),
      MLUI_LITERAL(bool, false)},
-    {"storage_tab_images", SType::kBool, MLUI_FIELD(storage_tweaks, tab_images()),
+    {"storage_tab_images", SType::kBool, MLUI_FIELD(storage_window, tab_images()),
      MLUI_LITERAL(bool, true)},
-    {"storage_col_index", SType::kBool, MLUI_FIELD(storage_tweaks, show_index_col()),
+    {"storage_col_index", SType::kBool, MLUI_FIELD(storage_window, show_index_col()),
      MLUI_LITERAL(bool, false)},
-    {"storage_col_id", SType::kBool, MLUI_FIELD(storage_tweaks, show_id_col()),
+    {"storage_col_id", SType::kBool, MLUI_FIELD(storage_window, show_id_col()),
      MLUI_LITERAL(bool, false)},
-    {"storage_col_slots", SType::kBool, MLUI_FIELD(storage_tweaks, show_slots_col()),
+    {"storage_col_slots", SType::kBool, MLUI_FIELD(storage_window, show_slots_col()),
      MLUI_LITERAL(bool, false)},
-    {"storage_col_value", SType::kBool, MLUI_FIELD(storage_tweaks, show_value_col()),
+    {"storage_col_value", SType::kBool, MLUI_FIELD(storage_window, show_value_col()),
      MLUI_LITERAL(bool, true)},
-    {"storage_total_value", SType::kBool, MLUI_FIELD(storage_tweaks, show_total_value()),
+    {"storage_total_value", SType::kBool, MLUI_FIELD(storage_window, show_total_value()),
      MLUI_LITERAL(bool, true)},
-    {"storage_tab", SType::kInt, MLUI_FIELD(storage_tweaks, cur_tab()),
+    {"storage_tab", SType::kInt, MLUI_FIELD(storage_window, cur_tab()),
      MLUI_LITERAL(int, 0)},
 };
 
 // Banque de zeny (Ctrl+B). « bank_imgui » est basculé en GROUPE par
 // SetModernInterface : défaut OFF, comme tous les membres du groupe.
 const moonlight_ui::SettingDesc kBankSettings[] = {
-    {"bank_imgui", SType::kBool, MLUI_FIELD(bank_tweaks, imgui_enabled_),
+    {"bank_imgui", SType::kBool, MLUI_FIELD(bank_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"bank_quick_amounts", SType::kBool, MLUI_FIELD(bank_tweaks, quick_amounts()),
+    {"bank_quick_amounts", SType::kBool, MLUI_FIELD(bank_window, quick_amounts()),
      MLUI_LITERAL(bool, true)},
-    {"bank_show_total", SType::kBool, MLUI_FIELD(bank_tweaks, show_total()),
+    {"bank_show_total", SType::kBool, MLUI_FIELD(bank_window, show_total()),
      MLUI_LITERAL(bool, true)},
 };
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
 const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
-    {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_tweaks, imgui_enabled_),
+    {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"shop_imgui",  SType::kBool, MLUI_FIELD(shop_tweaks, imgui_enabled_),
+    {"shop_imgui",  SType::kBool, MLUI_FIELD(npc_shop_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"vending_imgui", SType::kBool, MLUI_FIELD(vending_tweaks, imgui_enabled_),
+    {"vending_imgui", SType::kBool, MLUI_FIELD(vending_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"trade_imgui", SType::kBool, MLUI_FIELD(trade_tweaks, imgui_enabled_),
+    {"trade_imgui", SType::kBool, MLUI_FIELD(trade_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_tweaks, imgui_enabled_),
+    {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"npc_dialog_imgui", SType::kBool, MLUI_FIELD(npc_dialog_tweaks, imgui_enabled_),
+    {"npc_dialog_imgui", SType::kBool, MLUI_FIELD(npc_dialog_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"npc_menu_search",  SType::kBool, MLUI_FIELD(npc_dialog_tweaks, menu_search_),
+    {"npc_menu_search",  SType::kBool, MLUI_FIELD(npc_dialog_window, menu_search_),
      MLUI_LITERAL(bool, true)},
     {"charsheet_imgui", SType::kBool, MLUI_FIELD(character_sheet, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
@@ -700,22 +700,22 @@ void SetModernInterface(bool on) {
   // un cart natif ne sait pas déposer chez nous (ni l'inverse).
   if (auto* cart_viewer = Bourgeon::Instance().cart_viewer())
     cart_viewer->imgui_enabled_ = on;
-  if (auto* storage_tweaks = Bourgeon::Instance().storage_tweaks())
-    storage_tweaks->imgui_enabled_ = on;
+  if (auto* storage_window = Bourgeon::Instance().storage_window())
+    storage_window->imgui_enabled_ = on;
   if (auto* skill_bar = Bourgeon::Instance().skill_bar())
     skill_bar->enabled_ = on;
-  if (auto* trade_tweaks = Bourgeon::Instance().trade_tweaks())
-    trade_tweaks->imgui_enabled_ = on;
+  if (auto* trade_window = Bourgeon::Instance().trade_window())
+    trade_window->imgui_enabled_ = on;
   // Le courrier fait partie du lot : sa fenêtre d'écriture reçoit les objets
   // glissés depuis l'inventaire ImGui, ce qui n'a de sens que si les deux sont
   // modernes en même temps (un inventaire natif ne sait pas déposer chez nous).
-  if (auto* rodex_tweaks = Bourgeon::Instance().rodex_tweaks())
-    rodex_tweaks->imgui_enabled_ = on;
+  if (auto* rodex_window = Bourgeon::Instance().rodex_window())
+    rodex_window->imgui_enabled_ = on;
   // L'échoppe joueur (vente ET achat) suit aussi : elle se monte à partir du
   // CHARIOT, qui est déjà du lot. Un formulaire d'échoppe moderne au-dessus d'un
   // cart natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
-  if (auto* vending_tweaks = Bourgeon::Instance().vending_tweaks())
-    vending_tweaks->imgui_enabled_ = on;
+  if (auto* vending_window = Bourgeon::Instance().vending_window())
+    vending_window->imgui_enabled_ = on;
   // La feuille de personnage est un COMPLÉMENT (les fenêtres natives Status et
   // Équipement restent là), mais elle vit du même écosystème : ses slots reçoivent
   // les objets glissés depuis l'inventaire ImGui, et son onglet Presets équipe en
@@ -728,16 +728,16 @@ void SetModernInterface(bool on) {
   // Boutiques (cash shop et PNJ) : elles achètent VERS l'inventaire et vendent
   // DEPUIS lui — un panier moderne au-dessus d'un inventaire natif (ou l'inverse)
   // remet exactement le mixe qu'on a supprimé.
-  if (auto* cashshop_tweaks = Bourgeon::Instance().cashshop_tweaks())
-    cashshop_tweaks->imgui_enabled_ = on;
-  if (auto* shop_tweaks = Bourgeon::Instance().shop_tweaks())
-    shop_tweaks->imgui_enabled_ = on;
+  if (auto* cashshop_window = Bourgeon::Instance().cashshop_window())
+    cashshop_window->imgui_enabled_ = on;
+  if (auto* npc_shop_window = Bourgeon::Instance().npc_shop_window())
+    npc_shop_window->imgui_enabled_ = on;
   // La banque échange des zeny avec la POCHE, dont le montant est affiché par le
   // footer de l'inventaire moderne — et c'est le bouton « sac de zeny » de ce
   // footer qui l'ouvre. Une banque moderne au-dessus d'un inventaire natif (ou
   // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
-  if (auto* bank_tweaks = Bourgeon::Instance().bank_tweaks())
-    bank_tweaks->imgui_enabled_ = on;
+  if (auto* bank_window = Bourgeon::Instance().bank_window())
+    bank_window->imgui_enabled_ = on;
 }
 
 // Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
@@ -877,13 +877,13 @@ void MoonlightUi::PostLoadApply() {
   // ne serait pas neutre, SetModernInterface les ÉTEINDRAIT au chargement chez
   // qui les avait activées seules.
   auto* inventory      = Bourgeon::Instance().inventory_viewer();
-  auto* storage        = Bourgeon::Instance().storage_tweaks();
+  auto* storage        = Bourgeon::Instance().storage_window();
   auto* skill_bar      = Bourgeon::Instance().skill_bar();
-  auto* trade          = Bourgeon::Instance().trade_tweaks();
-  auto* rodex          = Bourgeon::Instance().rodex_tweaks();
+  auto* trade          = Bourgeon::Instance().trade_window();
+  auto* rodex          = Bourgeon::Instance().rodex_window();
   auto* character_sheet = Bourgeon::Instance().character_sheet();
-  auto* cashshop       = Bourgeon::Instance().cashshop_tweaks();
-  auto* shop           = Bourgeon::Instance().shop_tweaks();
+  auto* cashshop       = Bourgeon::Instance().cashshop_window();
+  auto* shop           = Bourgeon::Instance().npc_shop_window();
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||

@@ -1,4 +1,4 @@
-#include "features/windows/cashshop_tweaks.h"
+#include "features/windows/cashshop_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
@@ -238,7 +238,7 @@ constexpr uint16_t kOpListReq  = 0x08c9;  // list request -> dΓ©clenche les 0x
 constexpr uint16_t kOpBuy      = 0x0848;  // CZ_SE_PC_BUY_CASHITEM_LIST
 constexpr uint16_t kOpClose    = 0x084a;  // CZ cashshop close (2 octets)
 
-CashShopTweaks::CashShopTweaks() {
+CashShopWindow::CashShopWindow() {
   // ZC_SE_CASHSHOP_OPEN : [cash:4][kafra:4][tab:4] = 12 octets aprΓ¨s l'opcode.
   Bourgeon::Instance().RegisterObserveOpcode(kOpOpen, 12);
   // ZC_ACK_SCHEDULER_CASHITEM (var) : [len:2][count:2][tabNum:2] = 6 octets pour
@@ -248,7 +248,7 @@ CashShopTweaks::CashShopTweaks() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpResult, 14);
 }
 
-void CashShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   if (opcode == kOpOpen) {
     if (len < 8) return;
@@ -309,12 +309,12 @@ void CashShopTweaks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // rΓ©pond par une sΓ©rie de ZC_ACK_SCHEDULER_CASHITEM 0x08ca (un par onglet rempli),
 // mais UNE SEULE FOIS par session (flag cashshop_sent) : le client natif l'envoie
 // dΓ©jΓ  Γ  l'ouverture, donc c'est surtout un filet de sΓ©curitΓ©.
-void CashShopTweaks::RequestTab(int /*tab*/) {
+void CashShopWindow::RequestTab(int /*tab*/) {
   uint16_t op = kOpListReq;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
 }
 
-void CashShopTweaks::AddToCart(uint32_t id, int tab, int32_t price) {
+void CashShopWindow::AddToCart(uint32_t id, int tab, int32_t price) {
   for (auto& e : cart_) {
     if (e.id == id && e.tab == tab) { ++e.amount; return; }
   }
@@ -323,7 +323,7 @@ void CashShopTweaks::AddToCart(uint32_t id, int tab, int32_t price) {
 
 // CZ_SE_PC_BUY_CASHITEM_LIST 0x848 :
 //   [type:2][packetLength:2][count:2][kafraPoints:4][ {id:4,amount:4,tab:2} *count ]
-void CashShopTweaks::SendBuy() {
+void CashShopWindow::SendBuy() {
   if (cart_.empty()) return;
   const int count = static_cast<int>(cart_.size());
   const int plen = 10 + 10 * count;
@@ -358,7 +358,7 @@ void CashShopTweaks::SendBuy() {
 // Achat 1-clic : 1 unité de `id` (tab `tab`), puis fermeture du shop. Paquet 0x848
 // à 1 item (indépendant du panier) + fermeture (CZ 0x084a + destruction native),
 // comme le bouton X. kafraPoints = min(prix, solde Event) si l'option est cochée.
-void CashShopTweaks::BuyNow(uint32_t id, int tab, int32_t price) {
+void CashShopWindow::BuyNow(uint32_t id, int tab, int32_t price) {
   uint8_t pkt[20];
   const uint16_t plen = 20;  // 10 (en-tête) + 10 (1 item)
   uint32_t kafra_to_spend = 0;
@@ -380,7 +380,7 @@ void CashShopTweaks::BuyNow(uint32_t id, int tab, int32_t price) {
   CloseNativeCashShop();
 }
 
-void CashShopTweaks::HideNativeAtCreation(void* win) {
+void CashShopWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kCashVTable) return;
@@ -388,7 +388,7 @@ void CashShopTweaks::HideNativeAtCreation(void* win) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-void CashShopTweaks::OnTick() {
+void CashShopWindow::OnTick() {
   open_ = false;
   void* wnd = FindCashWnd();
   if (wnd) {
@@ -416,7 +416,7 @@ void CashShopTweaks::OnTick() {
   was_open_ = open_;
 }
 
-void CashShopTweaks::OnRenderUI() {
+void CashShopWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {
