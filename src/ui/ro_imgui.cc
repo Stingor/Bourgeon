@@ -1330,7 +1330,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   }
 
   const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
-                  p0.y + (h - ts.y) * 0.5f + (held ? 0.0f : 0.0f) - 2.0f);  // -2 pour centre le texte correctement dans la case
+                  p0.y + (h - ts.y) * 0.5f - 1.0f);  // -1 pour centrer le texte correctement dans la case
   DrawButtonLabel(dl, tp,
                   disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
                            : ImGui::GetColorU32(ImGuiCol_Text),
