@@ -941,6 +941,7 @@ constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = pr
 // fiable de « le joueur a-t-il demandé le grimoire ? ». +0x28 = drapeau de visibilité.
 constexpr uintptr_t kSkillWndSlot   = 0x0131f7ac;  // mgr(0x0131f4e8)+0x2C4
 constexpr int       kWndVisibleFlag = 0x28;
+constexpr int       kWinSkillList   = 0x25;  // id de la fenêtre (MakeWindow / Close)
 
 constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
 constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
@@ -6834,8 +6835,25 @@ void CharacterSheet::HideSkillWndAtCreation(void* win) {
   __try {
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWndVisibleFlag) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  // Une création survenue PENDANT un changement de map n'est pas une demande du
+  // joueur : c'est l'interface qui se reconstruit et rouvre les fenêtres qui
+  // l'étaient. On masque la native (toujours), mais on ne touche pas à l'état de
+  // la feuille — sinon elle s'ouvrirait sur le Grimoire à chaque warp.
+  if (Bourgeon::Instance().IsMapLoading()) return;
   OpenSkillsTab();
 }
+
+// Ferme la fenêtre native du grimoire comme le ferait son X : UIWindowMgr_Close
+// enregistre son rectangle puis la DÉTRUIT (le gestionnaire vide kSkillWndSlot).
+// Hors frame ImGui uniquement (appelée depuis OnTick), cf. la règle « pas de
+// commande native pendant une frame ImGui ».
+namespace {
+void CloseSkillWnd() {
+  __try {
+    reinterpret_cast<CloseWindow_t>(kCloseWindow)(uiwnd::Mgr(), nullptr, kWinSkillList);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+}  // namespace
 
 // L'icône « Skill » et Alt+S ne font qu'ouvrir/fermer la fenêtre native 0x25 : on
 // suit son existence (le gestionnaire vide son emplacement à la fermeture) pour que
@@ -6843,13 +6861,27 @@ void CharacterSheet::HideSkillWndAtCreation(void* win) {
 // pour l'inventaire : un relayout natif peut remettre le drapeau de visibilité à 1.
 void CharacterSheet::OnTick() {
   if (!imgui_enabled_) { skill_wnd_was_open_ = false; return; }
+  // Pendant un changement de map le HUD natif est démonté puis reconstruit : on ne
+  // touche à aucune fenêtre native et on ne lit AUCUN front (la disparition puis la
+  // réapparition de 0x25 n'est pas une action du joueur). L'état d'avant le warp est
+  // conservé tel quel.
+  if (Bourgeon::Instance().IsMapLoading()) return;
   void* wnd = nullptr;
   __try {
     wnd = *reinterpret_cast<void**>(kSkillWndSlot);
     if (wnd)
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kWndVisibleFlag) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { wnd = nullptr; }
-  const bool open = wnd != nullptr;
+  bool open = wnd != nullptr;
+  // La native 0x25 n'est qu'un TÉMOIN de « le joueur veut le grimoire » : masquée en
+  // permanence, elle ne sert plus à rien dès que la feuille est fermée (croix, Échap,
+  // Alt+F) ou regarde un autre onglet. On la ferme alors pour de bon, sinon elle reste
+  // ENREGISTRÉE et la reconstruction de l'interface au changement de map la recrée —
+  // front « ouverte » -> la feuille se rouvrait toute seule sur le Grimoire à chaque warp.
+  if (open && (!show_ || tab_ != 5)) {
+    CloseSkillWnd();
+    open = false;
+  }
   if (open && !skill_wnd_was_open_) {
     OpenSkillsTab();
   } else if (!open && skill_wnd_was_open_ && tab_ == 5) {
