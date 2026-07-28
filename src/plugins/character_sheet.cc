@@ -2997,24 +2997,70 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::TextColored(kGray, "%s", skill_status_.c_str());
   }
 
+  // ── Groupes d'onglets ────────────────────────────────────────────────────────
+  // Le natif en fait un par palier de classe ; on FUSIONNE la 1re et la 2e, qui
+  // tiennent largement sur un écran et qu'on consulte ensemble (une 2e classe se lit
+  // toujours à la lumière de la 1re). La 3e, la 4e et « divers » restent à part :
+  // ce sont des arbres entiers, les mélanger ne ferait qu'un mur d'icônes.
+  constexpr int kNoSource = -99;  // « ce groupe n'a pas de seconde source »
+  struct SkillGroup { char label[72]; int src[2]; int nsrc; };
+  SkillGroup groups[4] = {};
+  int group_count = 0;
+  auto add_group = [&](const char* a, const char* b, int s0, int s1) {
+    SkillGroup& g = groups[group_count];
+    g.nsrc = 0;
+    if (counts[s0 < 0 ? kSkillJobTabs : s0] > 0) g.src[g.nsrc++] = s0;
+    if (s1 != kNoSource && counts[s1] > 0)       g.src[g.nsrc++] = s1;
+    if (g.nsrc == 0) return;
+    // Libellé : les deux sources quand elles sont là toutes les deux, sinon la seule.
+    if (g.nsrc == 2) std::snprintf(g.label, sizeof(g.label), "%s / %s", a, b);
+    else             std::snprintf(g.label, sizeof(g.label), "%s",
+                                   g.src[0] == s0 ? a : b);
+    ++group_count;
+  };
+  add_group(tab_label(0), tab_label(1), 0, 1);        // 1re + 2e classe fusionnées
+  add_group(tab_label(2), nullptr, 2, kNoSource);     // 3e classe
+  add_group(tab_label(3), nullptr, 3, kNoSource);     // 4e classe
+  add_group("Divers", nullptr, -1, kNoSource);        // liste plate
+
+  if (group_count == 0) {
+    ImGui::TextColored(kGray, "Aucune compétence.");
+    return;
+  }
   if (ImGui::BeginTabBar("cs_skill_tabs")) {
-    for (int t = 0; t <= kSkillJobTabs; ++t) {
-      if (counts[t] == 0) continue;  // onglet vide : le natif ne l'affiche pas non plus
-      char label[48];
-      std::snprintf(label, sizeof(label), "%s###sktab%d", tab_label(t), t);
-      if (ImGui::BeginTabItem(label)) { skill_tab_ = t; ImGui::EndTabItem(); }
+    for (int g = 0; g < group_count; ++g) {
+      char label[96];
+      std::snprintf(label, sizeof(label), "%s###skgrp%d", groups[g].label, g);
+      if (ImGui::BeginTabItem(label)) { skill_tab_ = g; ImGui::EndTabItem(); }
     }
     ImGui::EndTabBar();
   }
-  if (skill_tab_ > kSkillJobTabs || counts[skill_tab_] == 0) {
-    // L'onglet retenu s'est vidé (changement de job) : retomber sur le premier plein.
-    skill_tab_ = 0;
-    for (int t = 0; t <= kSkillJobTabs; ++t)
-      if (counts[t] > 0) { skill_tab_ = t; break; }
-  }
+  if (skill_tab_ >= group_count) skill_tab_ = 0;  // le groupe retenu a disparu (job change)
 
-  const int list_tab = (skill_tab_ >= kSkillJobTabs) ? -1 : skill_tab_;
-  const int count = ReadSkillTabSEH(list_tab, nodes, kSkillMaxNodes);
+  // Lecture du groupe : chaque source garde SES index de case (ils viennent du Lua),
+  // donc on décale la suivante d'un multiple de la largeur de grille — sinon deux
+  // arbres fusionnés s'écriraient l'un sur l'autre.
+  static int disp_pos[kSkillMaxNodes];
+  int count = 0;
+  int base = 0;
+  for (int gi = 0; gi < groups[skill_tab_].nsrc; ++gi) {
+    const int n = ReadSkillTabSEH(groups[skill_tab_].src[gi], nodes + count,
+                                  kSkillMaxNodes - count);
+    if (n <= 0) continue;
+    int local_max = -1;
+    for (int i = 0; i < n; ++i) local_max = std::max(local_max, nodes[count + i].pos);
+    // Les compétences sans case (index -1 : le Lua ne les a pas placées) sont rangées
+    // à la suite de la dernière ligne occupée, plutôt que disparaître comme au natif.
+    int next_free = (local_max < 0) ? 0 : ((local_max / kSkillGridCols) + 1) * kSkillGridCols;
+    int group_max = 0;
+    for (int i = 0; i < n; ++i) {
+      const int p = (nodes[count + i].pos >= 0) ? nodes[count + i].pos : next_free++;
+      disp_pos[count + i] = base + p;
+      group_max = std::max(group_max, p);
+    }
+    base += ((group_max / kSkillGridCols) + 1) * kSkillGridCols;
+    count += n;
+  }
   if (count == 0) {
     ImGui::TextColored(kGray, "Aucune compétence dans cet onglet.");
     return;
@@ -3133,24 +3179,21 @@ void CharacterSheet::DrawSkillsTab() {
 
   ImGui::BeginChild("cs_skill_body", ImVec2(0, 0), false);
   if (skill_grid_) {
-    // ── Vue GRILLE : 7 colonnes, la disposition exacte du client (l'index de case
-    //    vient du Lua, SKILL_TREEVIEW_FOR_JOB) — une compétence sans case (-1) est
-    //    poussée à la suite pour ne jamais disparaître. ──
-    const float cell_w = 72.0f;
-    const float cell_h = 74.0f;
+    // ── Vue GRILLE : 7 colonnes, la disposition du client (l'index de case vient du
+    //    Lua, SKILL_TREEVIEW_FOR_JOB). ICÔNES SEULES : le nom sous chaque case était
+    //    plus large qu'elle et les voisines se chevauchaient — il est dans l'infobulle,
+    //    là où on va le chercher. Pas de fond de case non plus : l'icône se suffit,
+    //    seuls le survol et les liserés d'état posent de la couleur. ──
+    const float cell_w = 46.0f;
+    const float cell_h = 52.0f;
     const float icon   = 32.0f;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    // Les compétences sans case (index -1 : le Lua ne les a pas placées) sont rangées
-    // à la suite de la dernière ligne occupée, plutôt que disparaître comme au natif.
-    int max_pos = -1;
-    for (int i = 0; i < count; ++i) max_pos = std::max(max_pos, nodes[i].pos);
-    int next_free = (max_pos < 0) ? 0 : ((max_pos / kSkillGridCols) + 1) * kSkillGridCols;
     int used_max_row = 0;
     for (int i = 0; i < count; ++i) {
       const SkillRaw& s = nodes[i];
       if (filtering && !icontains(skill_name(s.id), skill_filter_buf_)) continue;
-      const int pos = (s.pos >= 0) ? s.pos : next_free++;
+      const int pos = disp_pos[i];
       used_max_row = std::max(used_max_row, pos / kSkillGridCols);
       const int col = pos % kSkillGridCols;
       const int row = pos / kSkillGridCols;
@@ -3164,13 +3207,14 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::PushID(s.id);
       ImGui::SetCursorScreenPos(p);
       ImGui::InvisibleButton("cell", ImVec2(cell_w - 4.0f, cell_h - 4.0f));
-      const bool hot = ImGui::IsItemHovered();
-
-      // Fond : la case elle-même (le natif blitte no_skill.bmp), plus un liseré
-      // ambre quand la compétence est montable et un bleu quand elle est liée à
-      // celle qu'on survole.
       const ImVec2 q(p.x + cell_w - 4.0f, p.y + cell_h - 4.0f);
-      dl->AddRectFilled(p, q, hot ? IM_COL32(70, 70, 90, 190) : IM_COL32(30, 30, 40, 140), 4.0f);
+      // ⚠ Survol testé sur le RECTANGLE, pas par IsItemHovered() : le bouton « + »
+      // est soumis APRÈS la case, donc dès que la souris passe dessus il lui prend le
+      // survol — la case se croirait quittée, le bouton disparaîtrait, et il
+      // clignoterait une frame sur deux.
+      const bool hot = ImGui::IsMouseHoveringRect(p, q);
+      // Le survol pose un voile léger — c'est un retour de curseur, pas un fond.
+      if (hot) dl->AddRectFilled(p, q, IM_COL32(255, 255, 255, 28), 4.0f);
       // ⚠ AddRect ici, c'est (rounding, thickness) — le paramètre `flags` vient APRÈS
       // (l'ordre inverse est l'ancienne signature, gardée en surcharge obsolète).
       if (s.id == static_cast<int>(focus)) dl->AddRect(p, q, IM_COL32(255, 205, 105, 220), 4.0f, 2.0f);
@@ -3180,24 +3224,18 @@ void CharacterSheet::DrawSkillsTab() {
       // Icône centrée, assombrie tant que la compétence n'est pas apprise — c'est
       // ce que fait le natif (mode de blit grisé quand le niveau vaut 0).
       const ro::IconTex ic = ResolveSkillIcon(s.id);
-      const ImVec2 ip(p.x + (cell_w - 4.0f - icon) * 0.5f, p.y + 16.0f);
+      const ImVec2 ip(p.x + (cell_w - 4.0f - icon) * 0.5f, p.y + 2.0f);
       if (ic.tex)
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
                      ImVec2(ip.x + icon, ip.y + icon), ImVec2(0, 0), ImVec2(1, 1),
                      learned ? IM_COL32_WHITE : IM_COL32(105, 105, 115, 165));
 
-      // Nom au-dessus (tronqué à la case), niveau en dessous — même ordre que le natif.
-      char short_name[24];
-      std::snprintf(short_name, sizeof(short_name), "%s", skill_name(s.id));
-      const ImVec2 nsz = ImGui::CalcTextSize(short_name);
-      dl->AddText(ImVec2(p.x + std::max(1.0f, (cell_w - 4.0f - nsz.x) * 0.5f), p.y + 2.0f),
-                  learned ? IM_COL32(225, 225, 235, 255) : IM_COL32(140, 140, 150, 255),
-                  short_name);
+      // Niveau sous l'icône : la seule information qu'on ne peut pas deviner du dessin.
       char lvl[24];
       if (s.maxlv > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", effective, s.maxlv);
       else             std::snprintf(lvl, sizeof(lvl), "%d", effective);
       const ImVec2 lsz = ImGui::CalcTextSize(lvl);
-      dl->AddText(ImVec2(p.x + (cell_w - 4.0f - lsz.x) * 0.5f, p.y + cell_h - 20.0f),
+      dl->AddText(ImVec2(p.x + (cell_w - 4.0f - lsz.x) * 0.5f, p.y + icon + 3.0f),
                   pending > 0 ? IM_COL32(255, 205, 105, 255)
                               : (effective >= s.maxlv && s.maxlv > 0
                                      ? IM_COL32(120, 200, 130, 255)
@@ -3207,10 +3245,11 @@ void CharacterSheet::DrawSkillsTab() {
       common_item_actions(s, effective, ic);
 
       // Bouton « + » : le chemin DÉCOUVRABLE pour dépenser un point (le natif ne
-      // l'offre qu'au clic droit, invisible pour qui ne le sait pas).
-      if (raisable) {
-        ImGui::SetCursorScreenPos(ImVec2(q.x - 16.0f, p.y + 2.0f));
-        if (ro::RoSmallButton("+##up", 14.0f, 14.0f))
+      // l'offre qu'au clic droit, invisible pour qui ne le sait pas). Au SURVOL
+      // seulement : posé en permanence, il mangeait le coin de chaque icône.
+      if (raisable && hot) {
+        ImGui::SetCursorScreenPos(ImVec2(q.x - 13.0f, p.y));
+        if (ro::RoSmallButton("+##up", 13.0f, 13.0f))
           ReserveSkillPoint(static_cast<uint16_t>(s.id));
         mui::Tooltip("Réserve un point (et ses prérequis) ; « Appliquer » valide.");
       }
