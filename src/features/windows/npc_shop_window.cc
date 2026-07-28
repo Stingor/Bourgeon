@@ -19,6 +19,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
+#include "features/item_cell.h"  // itemcell::OpenDescById (description au clic droit)
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
@@ -58,11 +59,6 @@ constexpr int kNodePrice2 = 0x20;  // overcharge (prix de vente réel)
 constexpr int kNodeName  = 0x34;   // std::string (MSVC : +0x10 size, +0x14 cap)
 constexpr int kNodeSlots = 0x90;   // short
 
-// ItemSkillInfo standalone (résolution nom/icône par id) — comme cashshop.
-using InfoCtor_t  = void(__fastcall*)(void*);
-using InfoSetId_t = void(__thiscall*)(void*, int);
-
-// Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 (comme cashshop).
 // Nom par id : DB de description (map id->record), name = *(rec+4).
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -118,32 +114,10 @@ const char* ItemName(uint32_t id) {
 
 
 
-// Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my), via un
-// ItemSkillInfo standalone (comme cashshop_window) : ctor + SetId + EnsureLoaded +
-// flag identifie. view/location = gate du bouton apercu (0 pour la vente = pas
-// d'apercu, la description reste correcte). SEH-garde (POD only).
-void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my) {
-  if (id == 0) return;
-  __try {
-    uint8_t info[0x100];
-    std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
-    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
-    info[0x5c] = 1;                                        // identifie
-    *reinterpret_cast<uint32_t*>(info + 0x8)  = location;  // equip point (gate apercu)
-    *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID (gate apercu)
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(info)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// La description passe par itemcell::OpenDescById : la boutique n'a que des ids
+// (les items ne sont pas encore à nous), donc pas de nœud d'inventaire à passer.
+// À la VENTE on transmet view/location = 0 : le bouton « aperçu » reste
+// verrouillé, ce qui est voulu, et la description elle-même reste correcte.
 
 // Résout l'itemId d'un payload ItemSkillInfo (pour l'icône côté vente). Le
 // payload porte l'id sous forme resname -> on relit son nom via la DB par id
@@ -650,7 +624,8 @@ void NpcShopWindow::OnRenderUI() {
   auto rclick_desc = [&](uint32_t id, uint16_t view, uint32_t loc) {
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       const ImVec2 mp = ImGui::GetMousePos();
-      OpenItemDesc(id, view, loc, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      itemcell::OpenDescById(id, view, loc, static_cast<int>(mp.x),
+                             static_cast<int>(mp.y));
     }
   };
 

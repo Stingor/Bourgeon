@@ -32,6 +32,7 @@
 #include "features/systems/bourgeon_opcodes.h"  // kStatBonus (ZC 0x0F10)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "features/item_cell.h"              // itemcell::OpenDescById (description au clic droit)
 #include "features/overlays/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
 #include "features/windows/inventory_viewer.h"  // LinkItemToChat / EquipDraggedItem (drag-drop, chat)
 #include "features/windows/rodex_window.h"      // ComposeTo : « Envoyer un courrier » sur un membre
@@ -145,12 +146,10 @@ const char* PoseLabelFull(int anim, bool animate) {
 }
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
-//  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_window)
-// Une seule déclaration par ligne : ces deux-là partageaient une ligne avec
+//  Nom d'item par id : DB de description (chargement paresseux + map id->record)
+// Une seule déclaration par ligne : ces typedefs partageaient une ligne avec
 // kVfOnMsg/kVfSetPos, et la migration vers uiwnd:: a emporté la ligne entière
 // en ne constatant la mort que des deux derniers.
-using InfoCtor_t     = void(__fastcall*)(void*);
-using InfoSetId_t    = void(__thiscall*)(void*, int);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 
@@ -1665,43 +1664,11 @@ std::vector<uint8_t> BuildEmblemBmp() {
   return bmp;
 }
 
-// Ouvre la fenetre de description native (id 0xc) pour l'item `id` a (mx,my). `src` = l'item
-// SOURCE (ItemSkillInfo du slot equip) : ses cartes/refine/grade/options aleatoires sont
-// COPIEES dans l'info, sinon la description montre l'item de BASE (sans cartes/enchants).
-void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
-                  const void* src = nullptr) {
-  if (id == 0) return;
-  __try {
-    uint8_t info[0x100];
-    std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
-    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
-    if (src) {
-      // Copie TOUS les champs non-string du vrai item : le name-builder natif
-      // (ItemSkillInfo_BuildDisplayName 0x008a0570) décore le nom (préfixe/suffixe) à partir de
-      // type@0, cartes@0x1c-0x28, refine@0x60, grade@0x88, forge/options + IsDecoratedType. Sans
-      // ces champs (surtout le TYPE) il rend le nom NU. On saute les 2 std::string @0x2c (id) /
-      // @0x44 (resname) que InfoSetId construit -> pas de partage/corruption de heap.
-      const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
-      std::memcpy(info + 0x00, s + 0x00, 0x2c);         // type..cartes (avant l'id-string @0x2c)
-      std::memcpy(info + 0x5c, s + 0x5c, 0xf8 - 0x5c);  // identified/refine/view/grade/options...
-    } else {
-      *reinterpret_cast<uint32_t*>(info + 0x8)  = location;  // equip point
-      *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID
-    }
-    info[0x5c] = 1;                                                  // identifie
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(info)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// La description passe par itemcell::OpenDescById. La fiche de perso est le cas
+// MIXTE : elle a de vrais items — les slots d'équipement de la session — mais pas
+// de nœud de liste à passer. Elle utilise donc le paramètre `src` d'OpenDescById,
+// qui recopie cartes/raffinage/grade/options du slot source ; sans lui la fenêtre
+// montrerait l'item de BASE, nu.
 
 // Description d'un SKILL : fenêtre 0x2e (≠ 0xc, qui est celle des objets), pilotée par
 // l'id BRUT — pas par un ItemSkillInfo. Re-clic sur le même skill = referme, comme le
@@ -5912,9 +5879,10 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
         const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                               static_cast<uintptr_t>(slot) * kSlotStride;
-        OpenItemDesc(it.nameid, static_cast<uint16_t>(it.viewId),
-                     static_cast<uint32_t>(it.location), static_cast<int>(mp.x),
-                     static_cast<int>(mp.y), reinterpret_cast<const void*>(src));
+        itemcell::OpenDescById(it.nameid, static_cast<uint16_t>(it.viewId),
+                               static_cast<uint32_t>(it.location),
+                               static_cast<int>(mp.x), static_cast<int>(mp.y),
+                               reinterpret_cast<const void*>(src));
       }
     }
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -5980,9 +5948,9 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
                         ItemName(am.nameid), am.amount);
       const ImVec2 mp = ImGui::GetMousePos();
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-        OpenItemDesc(am.nameid, static_cast<uint16_t>(am.viewId),
-                     static_cast<uint32_t>(am.location), static_cast<int>(mp.x),
-                     static_cast<int>(mp.y), nullptr);
+        itemcell::OpenDescById(am.nameid, static_cast<uint16_t>(am.viewId),
+                               static_cast<uint32_t>(am.location),
+                               static_cast<int>(mp.x), static_cast<int>(mp.y));
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         SendUnequip(am.invIndex);
     } else {

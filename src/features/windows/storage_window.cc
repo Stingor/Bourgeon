@@ -99,36 +99,16 @@ inline Fn Vf(void* self, int off) {
   return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
 }
 
+// Liste STORAGE du modèle session. ⚠ C'est bien elle qu'on parcourt, et pas la
+// liste d'affichage de la fenêtre (wnd+0xe8) : quand on cache le natif
+// (wnd+0x28=0) sa liste d'affichage n'est plus peuplée, alors que le modèle
+// session l'est toujours — c'est déjà lui que lit Extract.
+constexpr uintptr_t kStorageListHead = 0x015fbad8;
+
 // Ouvre la fenêtre de description native (id 0xc) pour l'item `id` du storage,
-// à (mx,my) écran. Re-parcourt la liste live pour passer l'info COMPLÈTE du nœud.
+// à (mx,my) écran, avec l'info COMPLÈTE du nœud (cartes, raffinage, enchants).
 void OpenItemDesc(uint32_t id, int mx, int my) {
-  if (id == 0) return;
-  __try {
-    // Parcourir le MODÈLE SESSION (0x015fbad8), PAS la liste de la fenêtre (wnd+0xe8) :
-    // quand on cache le natif (wnd+0x28=0), sa liste d'affichage n'est plus peuplée,
-    // mais le modèle session l'est toujours (c'est ce que lit Extract). Même struct.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(0x015fbad8);
-    if (!head) return;
-    uint8_t* found = nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < 1000; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
-      if (ids && static_cast<uint32_t>(atoi(ids)) == id) { found = info; break; }
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-    if (!found) return;
-    void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(found)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kStorageListHead, id), mx, my);
 }
 
 // ── Retrait d'un item vers l'inventaire (interactif) ────────────────────────

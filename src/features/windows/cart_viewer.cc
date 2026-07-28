@@ -200,34 +200,12 @@ void CloseCart() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Description (clic droit) : passe l'ItemSkillInfo COMPLET du nœud à OnMsg 0x18, en
-// re-parcourant la liste CHARIOT pour retrouver le nœud par id (comme l'inventaire).
-// item_desc_window détecte la fenêtre 0xc et rend sa version enrichie.
+// Description (clic droit) : on retrouve le nœud CHARIOT par id et on passe son
+// ItemSkillInfo — celui que le serveur a rempli — à la fenêtre 0xc, qui rend
+// alors cartes, raffinage et enchantements. item_desc_window détecte cette
+// fenêtre et lui substitue sa version enrichie.
 void OpenItemDesc(uint32_t id, int mx, int my) {
-  if (id == 0) return;
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kCartListHead);
-    if (!head) return;
-    uint8_t* found = nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < 500; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
-      if (ids && static_cast<uint32_t>(atoi(ids)) == id) { found = info; break; }
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-    if (!found) return;
-    void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(found)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kCartListHead, id), mx, my);
 }
 
 // Lecture SEH (POD only) des compteurs du footer -> hors OnRenderUI, qui contient

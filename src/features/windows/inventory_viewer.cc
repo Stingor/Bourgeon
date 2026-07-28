@@ -495,50 +495,17 @@ void CloseInventory() {
 
 
 
-// ── Description (clic-droit) : passe l'ItemSkillInfo COMPLET du nœud à OnMsg 0x18 ──
-// On re-parcourt la liste session (0x015fbab0) pour retrouver le nœud par id (comme
-// storage). item_desc_window détecte la fenêtre 0xc et rend sa version enrichie.
+// ── Description (clic-droit) : l'ItemSkillInfo COMPLET du nœud à la fenêtre 0xc ──
+// On retrouve le nœud par id dans la liste session, et on passe SON info — celle
+// que le serveur a remplie, avec cartes/raffinage/enchants. item_desc_window
+// détecte la fenêtre 0xc et rend sa version enrichie.
 void OpenItemDesc(uint32_t id, int mx, int my) {
-  if (id == 0) return;
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
-    if (!head) return;
-    uint8_t* found = nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < 2000; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
-      if (ids && static_cast<uint32_t>(atoi(ids)) == id) { found = info; break; }
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-    if (!found) return;
-    void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(found)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kInvListHead, id), mx, my);
 }
 
-// Retrouve le pointeur ItemSkillInfo (node+8) d'un item par son INDEX inventaire, en
-// re-parcourant la liste session (comme OpenItemDesc, mais par index). nullptr si absent.
+// Le même nœud, mais retrouvé par son INDEX inventaire.
 void* FindInfoByIndex(int index) {
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
-    if (!head) return nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < 2000; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      if (*reinterpret_cast<int*>(info + kInfoIndex) == index) return info;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return nullptr;
+  return itemcell::FindInfoByIndex(kInvListHead, index);
 }
 
 // Remplit une fiche CompItem depuis un ItemSkillInfo. `namewnd` = fenêtre servant de

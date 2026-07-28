@@ -13,12 +13,9 @@
 // interdit (ui/ ne connaît pas features/). Il vit donc à la racine de features/,
 // comme plugin.h, staff_gate.h et hotkey_util.h.
 //
-// ⚠ Ce qui n'est PAS ici, délibérément : l'ouverture de la description. Elle
-// existe en deux familles irréductibles — l'une repasse sur la liste VIVANTE
-// pour transmettre l'ItemSkillInfo complet rempli par le serveur, l'autre en
-// reconstruit un faute de nœud (et n'obtient alors qu'un id, sans texte). Les
-// unifier demande de trancher ce que chaque appelant possède ; c'est la tranche
-// suivante.
+// L'ouverture de la description est ici aussi, en DEUX entrées (cf. plus bas) :
+// ce que l'appelant possède — un ItemSkillInfo vivant, ou un simple id — change
+// ce que la fenêtre peut rendre, et l'API le dit au lieu de le cacher.
 
 #include <cstddef>
 #include <cstdint>
@@ -84,5 +81,61 @@ const char* Label(char* out, size_t out_size, const char* name, int slots);
 void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
                  const itemdesc::SimpleOpt* opts, int opt_count,
                  int refine = 0, const char* name = nullptr);
+
+// ── Ouvrir la fenêtre de description native (0x0c) ───────────────────────────
+// DEUX entrées, et la distinction n'est pas cosmétique : elle dit ce que la
+// fenêtre POURRA rendre.
+//
+//   OpenDescFromInfo — on tient l'ItemSkillInfo que le SERVEUR a rempli (nœud de
+//     liste inventaire/chariot/storage, slot d'équipement). Description
+//     COMPLÈTE : cartes, raffinage, enchantements, options aléatoires.
+//
+//   OpenDescById — on n'a qu'un id (boutique NPC, cash shop, case munition).
+//     La fenêtre reconstruit l'item de BASE depuis la DB client : le texte est
+//     bon, mais il ne peut pas y avoir de cartes ni de raffinage, l'appelant
+//     n'en connaît pas.
+//
+// ⚠ OnMsg 0x18 COPIE l'info qu'on lui passe (dans wnd+0xb8) : on ne cède la
+// propriété de rien, et le tampon pile d'OpenDescById peut mourir au retour.
+
+// Ouvre la description sur un ItemSkillInfo VIVANT. `info` nul = ne fait rien
+// (c'est le cas normal quand la recherche dans la liste n'a rien trouvé, p. ex.
+// l'item vient d'être consommé) — d'où l'usage direct
+// `OpenDescFromInfo(FindInfoById(head, id), mx, my)`.
+void OpenDescFromInfo(const void* info, int mx, int my);
+
+// Ouvre la description à partir d'un id seul, en FABRIQUANT un ItemSkillInfo sur
+// la pile (ctor + SetId + EnsureLoaded + « identifié »).
+//
+// `view` (viewID) et `location` (equip point, masque EQP_*) ne servent qu'à
+// déverrouiller le bouton « aperçu » de la fenêtre — la description est correcte
+// sans eux ; 0/0 pour un item non portable.
+//
+// `src`, si fourni, est un ItemSkillInfo vivant dont on recopie les champs
+// non-string (type, cartes, raffinage, grade, options) : c'est le pont entre les
+// deux familles, pour l'appelant qui a un vrai item mais préfère ne pas exposer
+// l'objet du jeu. Il rend alors la même chose qu'OpenDescFromInfo. Les deux
+// std::string membres (id @0x2c, resname @0x44) sont volontairement SAUTÉES —
+// celles que SetId vient de construire sont gardées, sans quoi deux
+// ItemSkillInfo partageraient un même tampon heap.
+void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
+                  const void* src = nullptr);
+
+// ── Retrouver un ItemSkillInfo dans une liste de session ─────────────────────
+// Inventaire (0x015fbab0), chariot (0x015fbae0) et storage (0x015fbad8) sont
+// TROIS std::list<ItemSkillInfo> de même forme ; `list_head` est l'adresse du
+// global qui porte la sentinelle. On parcourt le MODÈLE SESSION et non la liste
+// d'affichage de la fenêtre (wnd+0xe8) : cacher le natif vide la seconde, jamais
+// le premier. Renvoient nullptr si absent ; SEH-gardées.
+void* FindInfoById(uintptr_t list_head, uint32_t id);
+void* FindInfoByIndex(uintptr_t list_head, int index);
+
+// ⚠ Un septième site N'EST PAS passé par ici, et c'est délibéré :
+// NpcDialogWindow::OpenItemDescById (lien <ITEM> dans un dialogue) écrit l'id
+// ENTIER en info+0x00 — le champ que le name-builder lit comme un TYPE — et se
+// passe d'EnsureLoaded comme de SetPos. C'est un chemin natif distinct, établi
+// par RE sur ce cas précis ; l'aligner sur OpenDescById changerait ce qui part
+// au natif sans qu'on sache encore pourquoi il diffère. À reprendre quand ce
+// « pourquoi » sera désassemblé, pas avant.
 
 }  // namespace itemcell

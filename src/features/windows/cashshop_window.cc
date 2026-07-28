@@ -19,6 +19,7 @@
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+#include "features/item_cell.h"             // itemcell::OpenDescById (description au clic droit)
 #include "features/overlays/basic_info.h"   // aperçu porté (RenderItemPreviewTooltip / CanPreview)
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
@@ -35,9 +36,6 @@ constexpr uintptr_t kCashVTable   = 0x0101ca18;
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
 
 // ItemSkillInfo standalone (ctor + SetId par id) β indΓ©pendant de l'inventaire.
-using InfoCtor_t  = void(__fastcall*)(void*);
-using InfoSetId_t = void(__thiscall*)(void*, int);
-
 // Nom d'item par id : DB de description (map id->record), name = *(rec+4) 
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -124,40 +122,14 @@ const char* ItemName(uint32_t id) {
 
 
 
-// Ouvre la fenΓͺtre de description native (id 0xc) pour l'item `id` Γ  (mx,my).
-// ItemSkillInfo standalone renseignΓ© pour que OnMsg 0x18 (UIItemSkillDescWnd_OnMsg
-// 0x008c18b0) reconstruise TOUT depuis l'info (qu'il COPIE dans wnd+0xb8) :
-//   - ctor + SetId       -> id @info+0x2c (base de GetResName/GetDescLines) ;
-//   - EnsureLoaded(id)   -> parse rec+0x0c dans le cache (desc) ;
-//   - info+0x5c = 1      -> "identifiΓ©" : resname/desc lus dans rec + gate preview ;
-//   - info+0x8  = location  (equip point) : gate du bouton PREVIEW (doit Γͺtre dans
-//     l'ensemble coiffe/costume) ;
-//   - info+0x70 = viewID  : gate du bouton PREVIEW (!=0) + modΓ¨le 3D (wnd 0x126).
-// Offsets confirmΓ©s par dΓ©sasm (local_230[2]=+0x8, [0x17]=+0x5c, [0x1c]=+0x70).
-// Le chemin collection (wnd+0x1c4) est bΓ’ti par GetResName(info) -> avec le flag
-// identifiΓ© il pointe sur μ μ μΈν°νμ΄μ€\collection\<resname>.bmp.
-void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my) {
-  if (id == 0) return;
-  __try {
-    uint8_t info[0x100];
-    std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
-    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
-    info[0x5c] = 1;                                                  // identifiΓ©
-    *reinterpret_cast<uint32_t*>(info + 0x8)  = location;            // equip point
-    *reinterpret_cast<uint32_t*>(info + 0x70) = view;                // viewID
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
-    if (dwnd) {
-      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
-                                  static_cast<int>(reinterpret_cast<uintptr_t>(info)),
-                                  0, 0, 0);
-      uiwnd::SetPos(dwnd, mx, my);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// La description passe par itemcell::OpenDescById : les items du cash shop ne
+// sont pas encore à nous, il n'y a donc pas de nœud d'inventaire à passer.
+// `view` (viewID) et `location` (equip point) sont ce qui déverrouille le bouton
+// APERÇU de la fenêtre — ici on les a, et ils comptent : c'est tout l'intérêt de
+// pouvoir se voir porter un costume avant de l'acheter.
+// Le chemin collection (wnd+0x1c4) est bâti par GetResName(info) : avec le flag
+// « identifié » que pose OpenDescById, il pointe sur
+// 유저인터페이스\collection\<resname>.bmp.
 
 // Labels des catΓ©gories (e_cash_shop_tab, serveur cashshop.hpp).
 const char* kTabLabels[] = {"Nouveautes", "Populaire", "Limite", "Location",
@@ -722,8 +694,8 @@ void CashShopWindow::OnRenderUI() {
       ImGui::PopStyleColor();  // ChildBg
       if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         const ImVec2 mp = ImGui::GetMousePos();
-        OpenItemDesc(ci.id, ci.view, ci.location, static_cast<int>(mp.x),
-                     static_cast<int>(mp.y));
+        itemcell::OpenDescById(ci.id, ci.view, ci.location,
+                               static_cast<int>(mp.x), static_cast<int>(mp.y));
       }
       ImGui::PopID();
     };

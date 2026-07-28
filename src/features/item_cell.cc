@@ -2,10 +2,13 @@
 
 #include <windows.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "imgui.h"
 #include "ragnarok/item_db.h"
+#include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 
 namespace itemcell {
@@ -22,6 +25,27 @@ using BuildName_t   = int   (__thiscall*)(void*, void*, int*, GVec*, char**,
                                           size_t*, char**, char, char);
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 using GameFree_t    = void  (__cdecl*)(void*);
+
+using InfoCtor_t     = void(__fastcall*)(void*);
+using InfoSetId_t    = void(__thiscall*)(void*, int);
+using EnsureLoaded_t = char(__thiscall*)(void*, int);
+
+// ── std::list<ItemSkillInfo> de session : nœud et champs lus ──────────────────
+// Nœud MSVC : next@+0, prev@+4, value@+8 — `value` EST l'ItemSkillInfo.
+constexpr int kNodeNext  = 0x00;
+constexpr int kNodeInfo  = 0x08;
+constexpr int kInfoIndex = 0x04;  // int : index client (arg des commandes)
+constexpr int kInfoIdStr = 0x2c;  // std::string : l'itemId EN TEXTE (le jeu fait atoi)
+constexpr int kInfoIdCap = 0x40;  // capacité SSO (= +0x2c+0x14) ; >15 => heap
+
+// Plafond du parcours : simple garde-fou anti-boucle (la liste s'arrête sur sa
+// sentinelle). Une seule valeur pour les trois listes — la plus grosse, celle du
+// storage premium, plafonne à 600 côté serveur.
+constexpr int kWalkGuard = 4000;
+
+// ItemSkillInfo tel que le natif le passe à OnMsg 0x18. 0x100 octets : la
+// structure en fait 0xf8, on arrondit (cf. le memcpy 0x5c..0xf8 du pont `src`).
+constexpr size_t kInfoSize = 0x100;
 
 }  // namespace
 
@@ -94,6 +118,91 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
   ImGui::EndTooltip();
   ImGui::PopStyleVar(3);
   ImGui::PopStyleColor(2);
+}
+
+// ── Ouverture de la fenêtre de description (0x0c) ────────────────────────────
+
+void OpenDescFromInfo(const void* info, int mx, int my) {
+  if (!info) return;
+  __try {
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    if (!dwnd) return;
+    // OnMsg 0x18 COPIE l'info dans wnd+0xb8 : on ne cède rien, et l'objet du jeu
+    // n'est pas modifié. C'est ce qui rend l'appel sûr sur un nœud vivant.
+    uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
+                 static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+    uiwnd::SetPos(dwnd, mx, my);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
+                  const void* src) {
+  if (id == 0) return;
+  __try {
+    uint8_t info[kInfoSize];
+    std::memset(info, 0, sizeof(info));
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
+    if (src) {
+      // Le name-builder natif (0x008a0570) décore le nom à partir du TYPE @0,
+      // des cartes @0x1c-0x28, du raffinage @0x60, du grade @0x88 : sans ces
+      // champs il rend le nom NU. On saute les deux std::string (@0x2c id,
+      // @0x44 resname) que SetId vient de construire — les recopier ferait
+      // partager un tampon heap entre deux ItemSkillInfo.
+      const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
+      std::memcpy(info + 0x00, s + 0x00, 0x2c);         // type .. cartes
+      std::memcpy(info + 0x5c, s + 0x5c, 0xf8 - 0x5c);  // identifié/refine/view/grade/options
+    } else {
+      *reinterpret_cast<uint32_t*>(info + 0x08) = location;  // equip point : gate « aperçu »
+      *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID      : gate « aperçu »
+    }
+    info[0x5c] = 1;  // identifié : resname/desc lus dans l'enregistrement DB
+    // Chargement paresseux du DB : sans ça la description serait vide au premier
+    // affichage d'un item jamais consulté.
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
+    if (cache)
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    if (dwnd) {
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
+                   static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+      uiwnd::SetPos(dwnd, mx, my);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// ── Parcours des listes de session ───────────────────────────────────────────
+
+void* FindInfoById(uintptr_t list_head, uint32_t id) {
+  if (id == 0) return nullptr;
+  __try {
+    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
+    if (!head) return nullptr;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
+      uint8_t* info = node + kNodeInfo;
+      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
+      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
+                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
+      if (ids && static_cast<uint32_t>(atoi(ids)) == id) return info;
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return nullptr;
+}
+
+void* FindInfoByIndex(uintptr_t list_head, int index) {
+  __try {
+    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
+    if (!head) return nullptr;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
+      uint8_t* info = node + kNodeInfo;
+      if (*reinterpret_cast<int*>(info + kInfoIndex) == index) return info;
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return nullptr;
 }
 
 void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
