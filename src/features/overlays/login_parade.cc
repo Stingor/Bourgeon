@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/overlays/login_parade.h"
 
 #include <Windows.h>
@@ -23,9 +24,6 @@ namespace {
 constexpr uintptr_t kMonResName     = 0x00d824c0;  // Mob_ClassIdToResName(classId) -> resname
 constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kTexMgrGet      = 0x00a90350;  // __cdecl() -> resource mgr
-constexpr uintptr_t kMakeKey        = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadRes        = 0x00a8d4a0;  // __thiscall(mgr, key) -> CSprite*/CAction*
 constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __thiscall(act, action, frameIdx) -> frame*
 constexpr uintptr_t kActFrameCount  = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
 constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __thiscall(atlas, cell, pal, geom) -> ctex|0
@@ -139,8 +137,8 @@ void PlayMobSound(const char* name) {
       mgr = *reinterpret_cast<void**>(kSoundMgrPtr);
     }
     if (!mgr) return;
-    void* tex = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    void* res = reinterpret_cast<LoadResFn>(kLoadRes)(
+    void* tex = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    void* res = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
         tex, nullptr, const_cast<char*>(name));  // wav chargé par NOM (comme Sound_Play3D)
     if (!res) return;
     void* handle = *reinterpret_cast<void**>(
@@ -191,11 +189,11 @@ void EnsureSprite(int idx) {
                   reinterpret_cast<const char*>(kFmtSpr), res);
     std::snprintf(actpath, sizeof(actpath),
                   reinterpret_cast<const char*>(kFmtAct), res);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    void* sk  = reinterpret_cast<MakeKeyFn>(kMakeKey)(sprpath);
-    void* ak  = reinterpret_cast<MakeKeyFn>(kMakeKey)(actpath);
-    s.spr = reinterpret_cast<LoadResFn>(kLoadRes)(mgr, nullptr, sk);
-    s.act = reinterpret_cast<LoadResFn>(kLoadRes)(mgr, nullptr, ak);
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    void* sk  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sprpath);
+    void* ak  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(actpath);
+    s.spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, sk);
+    s.act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, ak);
     ok = (s.spr && s.act);
     if (!ok) s.spr = s.act = nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {

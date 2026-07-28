@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "ui/head_icon.h"
 
 #include <Windows.h>
@@ -18,9 +19,6 @@ constexpr uintptr_t kFmtSprFemale = 0x0108F9BC;  // …\여\%d_여.spr
 constexpr uintptr_t kFmtActMale   = 0x0108F9D8;  // 인간족\머리통\남\%d_남.act
 constexpr uintptr_t kFmtSprMale   = 0x0108F9F4;  // …\남\%d_남.spr
 
-constexpr uintptr_t kTexMgrGet      = 0x00a90350;  // __cdecl() -> gestionnaire
-constexpr uintptr_t kMakeKey        = 0x00a9f030;  // __cdecl(path) -> clé de ressource
-constexpr uintptr_t kLoadRes        = 0x00a8d4a0;  // __fastcall(mgr, edx, key) -> CSprite*/CAction*
 constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __fastcall(act, edx, action, frame)
 constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __fastcall(atlas, edx, cell, pal, geom)
 constexpr uintptr_t kAtlasBuild     = 0x005663d0;  // idem, construit la page si absente
@@ -68,11 +66,11 @@ SpriteEntry* EnsureSprite(int hair, int sex) {
   void* spr = nullptr;
   void* act = nullptr;
   __try {
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    spr = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(spr_path));
-    act = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(act_path));
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(spr_path));
+    act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(act_path));
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     spr = nullptr;
     act = nullptr;
@@ -104,9 +102,9 @@ void* EnsurePalette(int color) {
     char path[64];
     // "palette\" + 머리 (CP949 B8 D3 B8 AE) + "\head_<N>.pal"
     std::snprintf(path, sizeof(path), "palette\\\xB8\xD3\xB8\xAE\\head_%d.pal", color);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    void* res = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(path));
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    void* res = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(path));
     if (res) data = reinterpret_cast<char*>(res) + kPalConverted;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     data = nullptr;

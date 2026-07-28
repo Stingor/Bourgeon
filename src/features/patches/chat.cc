@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/patches/chat.h"
 
 #include <Windows.h>
@@ -94,9 +95,6 @@ namespace {
 // the engine composites as part of the owning window's draw pass.
 constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __thiscall(session, idstr, outbuf, byte)
 constexpr uintptr_t kEngSession   = 0x015fa3c0;  // session object (ecx for BuildPath)
-constexpr uintptr_t kEngTexMgr    = 0x00a90350;  // __cdecl() -> tex mgr
-constexpr uintptr_t kEngMakeKey   = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kEngLoadTex   = 0x00a8d4a0;  // __thiscall(mgr, key) -> tex
 
 using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
 using TexMgr_t    = void* (__cdecl*)();
@@ -451,9 +449,9 @@ static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
     char path[260] = {0};
     reinterpret_cast<BuildPath_t>(kEngBuildPath)(
         reinterpret_cast<void*>(kEngSession), nullptr, idbuf, path, 0);
-    void* mgr = reinterpret_cast<TexMgr_t>(kEngTexMgr)();
-    void* key = reinterpret_cast<MakeKey_t>(kEngMakeKey)(path);
-    void* texv = reinterpret_cast<LoadTex_t>(kEngLoadTex)(mgr, nullptr, key);
+    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
+    void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (!texv) return;
     auto* t = reinterpret_cast<uint8_t*>(texv);
     const int sw = *reinterpret_cast<int*>(t + 0x114);

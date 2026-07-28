@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/minigames/rojeweled.h"
 
 #include <Windows.h>
@@ -53,9 +54,6 @@ Mon g_mon[kTypes] = {
 // ── Engine glue (20250716) — same monster-sprite pipeline as Roggle ──────
 constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kTexMgrGet      = 0x00a90350;  // __cdecl() -> mgr
-constexpr uintptr_t kMakeKey        = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadRes        = 0x00a8d4a0;  // __thiscall(mgr, key) -> CSprite*/CAction*
 constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __thiscall(act, action, frameIdx) -> frame*
 constexpr uintptr_t kActFrameCount  = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
 constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __thiscall(atlas, cell, pal, geom) -> ctex|0
@@ -102,11 +100,11 @@ void LoadMon(Mon& m) {
     char sp[160], ap[160];
     std::snprintf(sp, sizeof(sp), reinterpret_cast<const char*>(kFmtSpr), m.resname);
     std::snprintf(ap, sizeof(ap), reinterpret_cast<const char*>(kFmtAct), m.resname);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    m.spr = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(sp));
-    m.act = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(ap));
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    m.spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sp));
+    m.act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(ap));
     ok = (m.spr && m.act);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     m.spr = m.act = nullptr;

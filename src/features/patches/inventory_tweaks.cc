@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/patches/inventory_tweaks.h"
 
 #include <Windows.h>
@@ -42,9 +43,6 @@ constexpr uint32_t kNewMaxH   = 0x400;  // 1024
 // ---- engine functions ------------------------------------------------------
 constexpr uintptr_t kDrawText  = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)
 constexpr uintptr_t kMeasureW  = 0x00a21c90;  // __thiscall(this,str,len,face,size,_,_) -> width
-constexpr uintptr_t kTexMgr    = 0x00a90350;  // __cdecl() -> tex mgr
-constexpr uintptr_t kMakeKey   = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadTex   = 0x00a8d4a0;  // __thiscall(mgr, key) -> UITexture*
 constexpr uintptr_t kBlit      = 0x00a1d260;  // __thiscall(this,x,y,img,flag)
 constexpr uintptr_t kFill      = 0x00a1d460;  // __thiscall(this,x,y,w,h,color) filled rect
 constexpr uintptr_t kIconPath  = 0x0103db00;  // "유저인터페이스\inventory\icon_weight.bmp"
@@ -335,12 +333,12 @@ void LoadTabImages() {
                       "%s%d.bmp", kTabImgName[i], v + 1);
       }
   }
-  void* ttmgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+  void* ttmgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
   for (int i = 0; i < kTabCount; ++i) {
-    g_tabTexA[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
-        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][0]));
-    g_tabTexB[i] = reinterpret_cast<LoadTex_t>(kLoadTex)(
-        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(kMakeKey)(s_paths[i][1]));
+    g_tabTexA[i] = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(
+        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(s_paths[i][0]));
+    g_tabTexB[i] = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(
+        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(s_paths[i][1]));
   }
 }
 
@@ -468,10 +466,10 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     {
       const bool fav = *reinterpret_cast<int*>(w + kTabCat) == 3 &&
                        *reinterpret_cast<uint8_t*>(kFavFlag) == 1;
-      void* bmgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-      void* bkey = reinterpret_cast<MakeKey_t>(kMakeKey)(
+      void* bmgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
+      void* bkey = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
           reinterpret_cast<const char*>(kBtnbarPath));
-      void* btex = reinterpret_cast<LoadTex_t>(kLoadTex)(bmgr, nullptr, bkey);
+      void* btex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(bmgr, nullptr, bkey);
       const int btnbarH = btex
           ? *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btex) + kTexH)
           : kBarHeight;
@@ -492,10 +490,10 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     const unsigned color = (pct >= RD(kOverweightPct)) ? kColorOver : kColorNormal;
 
     // The cart's weight scale icon (texture manager caches by key per frame).
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(
+    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
         reinterpret_cast<const char*>(kIconPath));
-    void* tex = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+    void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     int iconW = 0, iconH = 0;
     if (tex) {
       iconW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + kTexW);

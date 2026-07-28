@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -604,8 +605,6 @@ constexpr int kSlotWeapon  = 5, kSlotShield = 7;  // cells=*(0x4ac)[s], act=*(0x
 constexpr uintptr_t kWeaponView   = 0x015fb280;  // g_OwnLook_WeaponViewId (0 = rien)
 constexpr uintptr_t kShieldView   = 0x015fb284;  // g_OwnLook_ShieldViewId (0 = rien)
 constexpr uintptr_t kWeaponView2  = 0x015fb288;  // g_OwnLook_WeaponViewId2 (arme seed login)
-constexpr uintptr_t kTexMgrGet    = 0x00a90350;  // UITextureMgr_Get()
-constexpr uintptr_t kTexMgrLoad   = 0x00a8d4a0;  // UITextureMgr_Load(mgr, char* path)
 constexpr uintptr_t kTexExists    = 0x00a8e500;  // UITextureMgr_ResourceExists(mgr, path)->bool
 constexpr uintptr_t kWpnItemClass = 0x00d8a1d0;  // Weapon_ItemIdToWeaponClass(viewId)
 // ⚠ Le sélecteur (2e arg du builder) est INVERSÉ vs le nom Ghidra — PROUVÉ live
@@ -1781,9 +1780,6 @@ const HatEffectParams& HatOrdinalParams(int ordinal) {
 }
 
 // Adresses de chargement de ressource (comme cashshop_window) + AddRef (0x00a8e800).
-constexpr uintptr_t kTexGet2   = 0x00a90350;  // UITextureMgr_Get()
-constexpr uintptr_t kMakeKey2  = 0x00a9f030;  // UITextureMgr_MakeKey(path)->key
-constexpr uintptr_t kTexLoad2  = 0x00a8d4a0;  // UITextureMgr_Load(mgr, edx, key)
 constexpr uintptr_t kTexAddRef = 0x00a8e800;  // UITexture_AddRef(obj) (__fastcall, ecx=obj)
 constexpr int       kEffDummyId = 0x59;       // StormGust : id concret bidon (setup natif complet)
 
@@ -1801,10 +1797,10 @@ void* StrNode_CreateByName(const char* strName) {
     reinterpret_cast<void(__fastcall*)(void*)>(kEffCtor)(node);
     reinterpret_cast<void(__fastcall*)(void*, void*, void*, int, float, float, float)>(
         kEffLoadStr)(node, nullptr, g_str_srcpos, kEffDummyId, 0.0f, 0.0f, 0.0f);
-    void* mgr = reinterpret_cast<void*(__cdecl*)()>(kTexGet2)();
-    void* key = reinterpret_cast<void*(__cdecl*)(const char*)>(kMakeKey2)(strName);
+    void* mgr = reinterpret_cast<void*(__cdecl*)()>(ro::texmgr::kGet)();
+    void* key = reinterpret_cast<void*(__cdecl*)(const char*)>(ro::texmgr::kMakeKey)(strName);
     void* strObj = (mgr && key)
-        ? reinterpret_cast<void*(__fastcall*)(void*, void*, void*)>(kTexLoad2)(mgr, nullptr, key)
+        ? reinterpret_cast<void*(__fastcall*)(void*, void*, void*)>(ro::texmgr::kLoad)(mgr, nullptr, key)
         : nullptr;
     if (strObj) {
       *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffCStr) = strObj;

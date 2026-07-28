@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/minigames/roggle.h"
 
 #include <Windows.h>  // GetTickCount (seed)
@@ -205,9 +206,6 @@ void StepPhysics(float dt) {
 // 502=Orange Potion (orange pegs), 505=Blue Potion (blue pegs).
 constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __fastcall(session, 0, idstr, outbuf, 0)
 constexpr uintptr_t kEngSession   = 0x015fa3c0;  // session object (ecx)
-constexpr uintptr_t kEngTexMgr    = 0x00a90350;  // __cdecl() -> tex mgr
-constexpr uintptr_t kEngMakeKey   = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kEngLoadTex   = 0x00a8d4a0;  // __fastcall(mgr, 0, key) -> tex
 using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
 using TexMgr_t    = void* (__cdecl*)();
 using MakeKey_t   = void* (__cdecl*)(const char*);
@@ -255,9 +253,9 @@ bool LoadItemIcon(uint32_t id, IconTex* out) {
     char path[260] = {0};
     reinterpret_cast<BuildPath_t>(kEngBuildPath)(
         reinterpret_cast<void*>(kEngSession), nullptr, idbuf, path, 0);
-    void* mgr  = reinterpret_cast<TexMgr_t>(kEngTexMgr)();
-    void* key  = reinterpret_cast<MakeKey_t>(kEngMakeKey)(path);
-    void* texv = reinterpret_cast<LoadTex_t>(kEngLoadTex)(mgr, nullptr, key);
+    void* mgr  = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
+    void* key  = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
+    void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (!texv) return false;
     auto* t = reinterpret_cast<uint8_t*>(texv);
     const int sw = *reinterpret_cast<int*>(t + 0x114);
@@ -326,9 +324,6 @@ void DrawPoring(ImDrawList* dl, ImVec2 c, float r) {
 constexpr uintptr_t kMonResName    = 0x00d824c0;  // __cdecl(classId) -> resname ("poring")
 constexpr uintptr_t kFmtSpr        = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct        = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kTexMgrGet     = 0x00a90350;  // __cdecl() -> resource mgr
-constexpr uintptr_t kMakeKey       = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadRes       = 0x00a8d4a0;  // __thiscall(mgr, key) -> CSprite*/CAction*
 constexpr uintptr_t kActGetFrame   = 0x0070f4b0;  // __thiscall(act, action, frameIdx) -> frame*
 constexpr uintptr_t kActFrameCount = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
 constexpr uintptr_t kAtlasGetCached = 0x00566b70; // __thiscall(atlas, cell, pal, geom) -> ctex|0
@@ -364,11 +359,11 @@ void EnsurePoringSprite() {
                   reinterpret_cast<const char*>(kFmtSpr), res);
     std::snprintf(actpath, sizeof(actpath),
                   reinterpret_cast<const char*>(kFmtAct), res);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    void* sk  = reinterpret_cast<MakeKeyFn>(kMakeKey)(sprpath);
-    void* ak  = reinterpret_cast<MakeKeyFn>(kMakeKey)(actpath);
-    g_poring.spr = reinterpret_cast<LoadResFn>(kLoadRes)(mgr, nullptr, sk);
-    g_poring.act = reinterpret_cast<LoadResFn>(kLoadRes)(mgr, nullptr, ak);
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    void* sk  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sprpath);
+    void* ak  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(actpath);
+    g_poring.spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, sk);
+    g_poring.act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, ak);
     ok = (g_poring.spr && g_poring.act);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     g_poring.spr = g_poring.act = nullptr;

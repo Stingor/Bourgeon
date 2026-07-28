@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/windows/char_select.h"
 
 #include "ragnarok/uiwnd.h"
@@ -41,9 +42,6 @@ constexpr int       kCmdGetChar = 8;
 // ── Loader de texture natif (fond banquet, BMP côté client) ───────────────────
 // Même chemin que les icônes d'items (character_sheet.cc) : UITextureMgr_Get ->
 // MakeKey(path) -> LoadTex ; la texture expose largeur/hauteur/pixels BGRA.
-constexpr uintptr_t kTexMgrGet  = 0x00a90350;  // UITextureMgr_Get() __cdecl -> mgr
-constexpr uintptr_t kTexMakeKey = 0x00a9f030;  // MakeKey(path) __cdecl -> key
-constexpr uintptr_t kTexLoad    = 0x00a8d4a0;  // LoadTex(mgr, edx, key) __fastcall
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 // Chemin VFS du décor : à déposer dans le GRF/data du client (via le patcher).
 // Préfixe 유저인터페이스\ (CP949) = racine UI où le loader résout à coup sûr, comme
@@ -374,9 +372,6 @@ constexpr uintptr_t kFmtSprF = 0x0108F9BC;  // 인간족\머리통\여\%d_여.sp
 constexpr uintptr_t kFmtActF = 0x0108F9A0;  // …\여\%d_여.act
 constexpr uintptr_t kFmtSprM = 0x0108F9F4;  // 인간족\머리통\남\%d_남.spr (mâle)
 constexpr uintptr_t kFmtActM = 0x0108F9D8;  // …\남\%d_남.act
-constexpr uintptr_t kTexMgrGet      = 0x00a90350;  // __cdecl() -> mgr
-constexpr uintptr_t kMakeKey        = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadRes        = 0x00a8d4a0;  // __fastcall(mgr, edx, key) -> CSprite*/CAction*
 constexpr uintptr_t kActGetFrame    = 0x0070f4b0;  // __fastcall(act, edx, action, frame) -> frame*
 constexpr uintptr_t kAtlasGetCached = 0x00566b70;  // __fastcall(atlas, edx, cell, pal, geom) -> ctex
 constexpr uintptr_t kAtlasBuild     = 0x005663d0;
@@ -407,11 +402,11 @@ Entry* Ensure(int hair, int sex) {
   void* spr = nullptr;
   void* act = nullptr;
   __try {
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    spr = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(sp));
-    act = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(ap));
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sp));
+    act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(ap));
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     spr = nullptr;
     act = nullptr;
@@ -501,7 +496,7 @@ bool Resolve(Entry* e, void** out_tex, ImVec2* uv0, ImVec2* uv1, float* cw, floa
 // ── Palette de COULEUR de cheveux N ─────────────────────────────────────────────
 // Fichier GRF `palette\머리\head_<N>.pal` (머리 = octets CP949 B8 D3 B8 AE), une palette
 // 256×RGBA par couleur. Chargé via le MÊME resource manager que les .spr/.act
-// (kMakeKey/kLoadRes) -> objet CPaletteRes dont la table est à +0x110 (RE
+// (ro::texmgr::kMakeKey/ro::texmgr::kLoad) -> objet CPaletteRes dont la table est à +0x110 (RE
 // CPaletteRes_Load 0x00725b60 : lit 0x400 o dans this+0x110). On renvoie l'adresse de
 // cette table, à passer comme `palette` à l'atlas (exactement comme spr+0x110) pour
 // RECOLORER la coupe. ⚠ Chemin bâti au snprintf, ZÉRO std::string / builder natif —
@@ -522,9 +517,9 @@ void* ColorPalette(int color) {
     char path[64];
     // "palette\" + 머리(B8 D3 B8 AE) + "\head_<N>.pal"
     std::snprintf(path, sizeof(path), "palette\\\xB8\xD3\xB8\xAE\\head_%d.pal", color);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(kTexMgrGet)();
-    void* res = reinterpret_cast<LoadResFn>(kLoadRes)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(kMakeKey)(path));
+    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
+    void* res = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
+        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(path));
     // ⚠ CPaletteRes garde le BRUT (RGBA) à +0x110 et la palette CONVERTIE (format
     // 16-bit du moteur, via sub_566770 à la charge) à +0x510. L'atlas/le sprite
     // utilisent la CONVERTIE (spr+0x110 d'un CSprite EST déjà convertie). On pointe
@@ -698,11 +693,11 @@ const uint8_t* FetchHallBgra(int* out_w, int* out_h) {
     using TexMgr_t  = void*(__cdecl*)();
     using MakeKey_t = void*(__cdecl*)(const char*);
     using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgrGet)();
+    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     if (!mgr) return nullptr;
-    void* key = reinterpret_cast<MakeKey_t>(kTexMakeKey)(kHallBmpPath);
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(kHallBmpPath);
     if (!key) return nullptr;
-    void* t = reinterpret_cast<LoadTex_t>(kTexLoad)(mgr, nullptr, key);
+    void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (!t) return nullptr;
     const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
     const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);

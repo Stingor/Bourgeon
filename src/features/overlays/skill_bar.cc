@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/overlays/skill_bar.h"
 
 #include "ragnarok/uiwnd.h"
@@ -460,9 +461,6 @@ float CooldownFraction(uint32_t skillId) {
 }
 
 // ── Icônes (recette menu_icons.cc : TexMgr -> BGRA -> Overlay_CreateTextureARGB) ──
-constexpr uintptr_t kTexMgr  = 0x00a90350;
-constexpr uintptr_t kMakeKey = 0x00a9f030;
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
 using TexMgr_t  = void* (__cdecl*)();
@@ -528,11 +526,11 @@ bool SkillPath(int id, char* out, int n) {
   return false;
 }
 void* UploadBmp(const char* path) {
-  void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+  void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
   if (!mgr) return nullptr;
-  void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
+  void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
   if (!key) return nullptr;
-  void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+  void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
   if (!t) return nullptr;
   const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
   const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);

@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/overlays/menu_icons.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -22,9 +23,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
 // ── Game texture loader (conventions per status_tweaks.cc) ─────────────────
-constexpr uintptr_t kTexMgr  = 0x00a90350;  // __cdecl()           -> tex mgr
-constexpr uintptr_t kMakeKey = 0x00a9f030;  // __cdecl(path)       -> key
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;  // __thiscall(mgr,key) -> UITexture*
 constexpr uintptr_t kGetMsg  = 0x00a9ed30;  // __cdecl(uint id)    -> char*
 using TexMgr_t  = void* (__cdecl*)();
 using MakeKey_t = void* (__cdecl*)(const char*);
@@ -88,11 +86,11 @@ bool IconShown(int cmd_id) {
 }
 
 void* LoadGameTexture(const char* path) {
-  void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+  void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
   if (!mgr) return nullptr;
-  void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
+  void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
   if (!key) return nullptr;
-  return reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+  return reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
 }
 
 // Loads \menu_icon\bt_<name>.bmp via the game, decodes BGRA->A8R8G8B8 with

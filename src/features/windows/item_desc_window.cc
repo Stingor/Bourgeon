@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/windows/item_desc_window.h"
 #include "ui/ro_widgets.h"
 
@@ -145,9 +146,6 @@ constexpr uintptr_t kRichLinesEnd   = 0x8c;  // vector<std::string> end
 constexpr int       kStdStringSize  = 0x18;  // taille d'un std::string MSVC élément
 
 // Recette texture (identique à skill_bar / menu_icons).
-constexpr uintptr_t kTexMgr  = 0x00a90350;
-constexpr uintptr_t kMakeKey = 0x00a9f030;
-constexpr uintptr_t kLoadTex = 0x00a8d4a0;
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 
 using HideNative_t   = void  (__fastcall*)(void*, void*, int);
@@ -283,11 +281,11 @@ const char* MsvcStr(const uint8_t* base, uint32_t cap) {
 struct RawTex { const uint8_t* bgra; int w; int h; void* ctex; };
 bool GetRawTex(const char* path, RawTex* out) {
   __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
+    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(path);
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
     if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+    void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (!t) return false;
     const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
     const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);

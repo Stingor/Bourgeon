@@ -1,3 +1,4 @@
+#include "ui/game_texture.h"
 #include "features/patches/status_tweaks.h"
 
 #include "ragnarok/uiwnd.h"
@@ -66,9 +67,6 @@ constexpr uintptr_t kDrawTitleBar = 0x00898bc0;  // __thiscall(this, char hasClo
 constexpr uintptr_t kDrawText     = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)  LEFT
 constexpr uintptr_t kDrawTextR    = 0x00a27b50;  // __thiscall(this,x,y,str,len,face,size,color,bold) RIGHT@x
 constexpr uintptr_t kBlit         = 0x00a1d260;  // __thiscall(this,x,y,img,flag)
-constexpr uintptr_t kTexMgr       = 0x00a90350;  // __cdecl() -> tex mgr
-constexpr uintptr_t kMakeKey      = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoadTex      = 0x00a8d4a0;  // __thiscall(mgr, key) -> tex
 constexpr uintptr_t kGetMsg       = 0x00a9ed30;  // __cdecl(uint id) -> char*
 constexpr uintptr_t kBgNormalPath = 0x010361b4;  // "...\statuswnd\w_statwin_bg.bmp"
 
@@ -267,10 +265,10 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     const int blitY = RDo(wnd, 0xd4);
     if (RDo(wnd, 0x18) == blitY || RDo(wnd, 0x30) != 0) return;  // minimized/guard
 
-    void* mgr = reinterpret_cast<TexMgr_t>(kTexMgr)();
-    void* key = reinterpret_cast<MakeKey_t>(kMakeKey)(
+    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
         reinterpret_cast<const char*>(kBgNormalPath));
-    void* tex = reinterpret_cast<LoadTex_t>(kLoadTex)(mgr, nullptr, key);
+    void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (tex) reinterpret_cast<Blit_t>(kBlit)(wnd, nullptr, 0, blitY, tex, 1);
 
     DrawNormal(wnd, blitY);
