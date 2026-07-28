@@ -710,10 +710,19 @@ apprise (le vert « niveau max » se noyait dans le fond clair du skin), gris si
 point est réservé — et toujours avec un **liseré blanc de 1 px** (4 passes décalées), parce que le
 texte déborde parfois sur le bas d'une icône.
 
+**La même grille sert aux compétences de GUILDE** (onglet Guilde > Compétences), sans onglets de
+classe. Différence de fond : elles n'ont **pas d'index de case** — le Lua du client ne les connaît
+pas — donc la grille est construite depuis l'arbre lui-même : **une ligne par palier de profondeur**,
+les compétences d'un même palier côte à côte. C'est la disposition que l'indentation de la liste
+dessinait déjà, en deux dimensions. Autre différence, de sécurité : **Ctrl est EXIGÉ** pour monter
+(`Ctrl + clic gauche`), parce qu'une compétence de guilde n'a pas de mécanisme de réservation — le
+paquet part et le point est dépensé, alors que dans le Grimoire un clic ne fait que réserver.
+
 **Lissage des icônes (opt-in).** Les .bmp d'icônes font 24 px et sont agrandis à 40 px : le natif ne
 filtre rien, on garde ce défaut. Case « Lisser les icônes » en haut de page (yaml
 `charsheet_grimoire_bilinear`), qui pose un `ImDrawList::AddCallback` -> `Overlay_SetTextureFilter(...)`
-avant la grille — même schéma que `skill_bar_tweaks`.
+avant la grille — même schéma que `skill_bar_tweaks`. La case n'apparaît **qu'en vue grille** (en
+liste l'icône fait une hauteur de ligne, le filtre ne s'y voit pas) et sert aux deux onglets.
 ⚠ Le callback est posé **dans les deux cas**, pas seulement quand le lissage est demandé : l'état
 ambiant d'une draw list ImGui est **LINEAR** (le backend DX9 le remet dans `SetupRenderState`,
 imgui_impl_dx9.cpp:139). Ne rien faire = icônes déjà lissées, et la case à cocher semble morte —

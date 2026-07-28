@@ -298,6 +298,10 @@ class CharacterSheet : public Plugin {
   // Compétence survolée à la frame PRÉCÉDENTE : quand on apprend qu'une ligne est
   // survolée, ses prérequis sont déjà dessinés au-dessus, trop tard pour les allumer.
   uint16_t guild_skill_hover_ = 0;
+  // Vue du sous-onglet Compétences : grille d'icônes (défaut, comme le Grimoire) ou
+  // liste détaillée. L'arbre de guilde n'a pas d'index de case côté Lua : la grille
+  // est construite depuis la profondeur (une ligne par palier de prérequis).
+  bool guild_skill_grid_ = true;
 
   // Expulsions passées (ZC_BAN_LIST 0x0b7c, type 4). Le serveur ne conserve ni date
   // ni auteur : seulement qui, et pourquoi.

@@ -3028,14 +3028,18 @@ void CharacterSheet::DrawSkillsTab() {
       "Survol               flèches de prérequis (ambre) et de suites (bleu)\n"
       "\n"
       "Rien n'est envoyé au serveur tant que « Appliquer » n'est pas cliqué.");
-  ImGui::SameLine();
-  ImGui::TextDisabled("|");
-  ImGui::SameLine();
-  if (ro::RoCheckbox("Lisser les icônes", &skill_bilinear_)) {
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  // Le lissage ne se voit QUE sur les grosses icônes de la grille : en liste elles
+  // font une hauteur de ligne, la case n'y servirait qu'à encombrer l'en-tête.
+  if (skill_grid_) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    if (ro::RoCheckbox("Lisser les icônes", &skill_bilinear_)) {
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    }
+    mui::Tooltip("Filtrage bilinéaire des icônes de la grille.\n"
+                 "Décoché (défaut) = pixels nets, comme le client natif, qui ne filtre pas.");
   }
-  mui::Tooltip("Filtrage bilinéaire des icônes de la grille.\n"
-               "Décoché (défaut) = pixels nets, comme le client natif, qui ne filtre pas.");
 
   // ── Groupes d'onglets ────────────────────────────────────────────────────────
   // Le natif en fait un par palier de classe ; on FUSIONNE la 1re et la 2e, qui
@@ -4436,6 +4440,35 @@ void CharacterSheet::DrawGuildSkillsTab() {
   }
 
   ImGui::Text("Points de compétence : %d", guild_skill_points_);
+  ImGui::SameLine();
+  if (ro::RoButton(guild_skill_grid_ ? "Grille" : "Liste", 58.0f, 0.0f))
+    guild_skill_grid_ = !guild_skill_grid_;
+  mui::Tooltip("Bascule entre la grille d'icônes et la liste détaillée\n"
+               "(niveau, SP, lancer, monter) — comme le Grimoire.");
+  ImGui::SameLine();
+  ImGui::TextDisabled("Raccourcis");
+  mui::Tooltip(
+      "Double-clic            lancer la compétence\n"
+      "Ctrl + clic gauche     monter d'un niveau (le serveur dépense le point)\n"
+      "Clic droit             description de la compétence\n"
+      "Glisser                pose la compétence sur une barre d'action\n"
+      "Survol                 flèches de prérequis (ambre) et de suites (bleu)\n"
+      "\n"
+      "⚠ Une compétence de guilde se monte IMMÉDIATEMENT : pas de réservation\n"
+      "comme dans le Grimoire, d'où le Ctrl exigé sur le clic.");
+  // Même préférence que le Grimoire (une seule « icônes de skill »), et seulement en
+  // grille : en liste l'icône fait une hauteur de ligne, le filtre ne se voit pas.
+  if (guild_skill_grid_) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    if (ro::RoCheckbox("Lisser les icônes", &skill_bilinear_)) {
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    }
+    mui::Tooltip("Filtrage bilinéaire des icônes de la grille.\n"
+                 "Décoché (défaut) = pixels nets, comme le client natif, qui ne filtre pas.");
+  }
+
   // Sans l'arbre on ne peut montrer que ce que le serveur envoie ; avec, les
   // verrouillées apparaissent aussi, donc la liste n'est jamais vide.
   if (guild_skill_tree_state_ != 1 && guild_skills_.empty()) {
@@ -4466,21 +4499,6 @@ void CharacterSheet::DrawGuildSkillsTab() {
     for (const GuildSkillRow& sk : guild_skills_)
       rows.push_back({sk.id, 0, 0, &sk, nullptr});
   }
-
-  const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
-                                      ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
-  // Pas de colonne « Requiert » : les prérequis sont déjà dans le tooltip et dessinés
-  // en liens ; une 3e redite volait la largeur au nom, qui se retrouvait tronqué.
-  if (!ImGui::BeginTable("cs_guild_skills_tbl", 5, table_flags)) return;
-  ImGui::TableSetupColumn("Compétence", ImGuiTableColumnFlags_WidthStretch);
-  ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, 54.0f);
-  // Assez large pour « Passif » : cette colonne porte le coût OU la nature de la
-  // compétence, exactement comme le natif qui écrit « Passive » à la place du SP.
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 56.0f);
-  // Colonne « lancer » élargie : elle porte aussi le décompte de cooldown (« 4:12 »).
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 46.0f);  // lancer
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 30.0f);  // monter
-  ImGui::TableHeadersRow();
 
   auto tree_node = [this](uint16_t id) -> const GuildSkillTreeNode* {
     for (const GuildSkillTreeNode& node : guild_skill_tree_)
@@ -4528,6 +4546,223 @@ void CharacterSheet::DrawGuildSkillsTab() {
   auto linked_to_focus = [&](uint16_t id) {
     return focus != 0 && id != focus && (depends_on(id, focus) || depends_on(focus, id));
   };
+  // Infobulle commune aux deux vues : la grille n'affiche que l'icône, tout le reste
+  // (niveau, portée, prérequis manquants, nature) se lit ici.
+  auto tooltip_for = [&](const SkillRowView& row, const GuildSkillRow* live, int level,
+                         bool locked) {
+    const char* label = skill_label(row.id, live ? live->name : nullptr);
+    const bool active_skill = live && live->inf != 0 && level > 0;
+    const bool can_use = active_skill && (live->inf & 0x04) != 0;
+    std::string tip = label;
+    if (live && live->name[0]) { tip += "  ("; tip += live->name; tip += ")"; }
+    if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
+                                  std::to_string(row.max_level);
+    if (live && live->range > 0) tip += "\nPortée : " + std::to_string(live->range);
+    // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
+    // là où le joueur regarde quand il se demande pourquoi elle est grisée.
+    const std::string reqs = requirements_text(row.node);
+    if (!reqs.empty()) tip += "\nRequiert : " + reqs;
+    if (live) tip += live->inf == 0 ? "\nPassive (toujours active)" : "\nActive";
+    tip += locked       ? "\n\nVerrouillée : prérequis non remplis."
+         : can_use      ? "\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre"
+         : active_skill ? "\n\nClic droit : description — glisser vers une barre"
+                        : "\n\nClic droit : description";
+    if (live && live->upgradable && guild_skill_points_ > 0)
+      tip += "\nCtrl + clic : monter d'un niveau";
+    ImGui::SetTooltip("%s", tip.c_str());
+  };
+
+  // ── Vue GRILLE : la même que le Grimoire, sans onglets de classe ─────────────
+  // Les compétences de guilde n'ont PAS d'index de case (le Lua du client ne les
+  // connaît pas) : la grille est donc construite depuis l'arbre lui-même — une ligne
+  // par palier de profondeur, les compétences d'un même palier côte à côte. C'est la
+  // disposition que l'indentation de la liste dessinait déjà, en deux dimensions.
+  if (guild_skill_grid_) {
+    // Zone à part, comme le Grimoire : la grille est peinte en coordonnées absolues,
+    // c'est l'enfant qui lui donne un cadre et un scroll.
+    ImGui::BeginChild("cs_guild_skill_grid", ImVec2(0, 0), false);
+    const float cell_w = 72.0f, cell_h = 78.0f, icon_sz = 40.0f, pad = 10.0f, icon_y = 7.0f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const int n = static_cast<int>(rows.size());
+    std::vector<ImVec2> center(rows.size(), ImVec2(-1.0f, -1.0f));
+    int hover_idx = -1, used_rows = 0;
+
+    // Filtre d'échantillonnage : même réglage que le Grimoire (une seule préférence
+    // « icônes de skill »), et posé dans les deux cas — l'ambiant est LINEAR.
+    g_skill_icon_bilinear = skill_bilinear_;
+    dl->AddCallback(CbSkillIconFilter, nullptr);
+
+    int col_of_depth[16] = {};
+    for (int i = 0; i < n; ++i) {
+      const SkillRowView& row = rows[i];
+      const GuildSkillRow* live = row.live;
+      const bool locked = live == nullptr;
+      const int  level  = live ? live->level : 0;
+      const int  d      = (row.depth >= 0 && row.depth < 16) ? row.depth : 15;
+      const int  col    = col_of_depth[d]++;
+      used_rows = std::max(used_rows, d + 1);
+      const ImVec2 p(origin.x + col * cell_w, origin.y + d * cell_h);
+      const ImVec2 q(p.x + cell_w - pad, p.y + cell_h - pad);
+      center[i] = ImVec2((p.x + q.x) * 0.5f, (p.y + q.y) * 0.5f);
+
+      ImGui::PushID(static_cast<int>(row.id));
+      ImGui::SetCursorScreenPos(p);
+      ImGui::InvisibleButton("gcell", ImVec2(cell_w - pad, cell_h - pad));
+      const bool hot = ImGui::IsItemHovered();
+      if (hot) hover_idx = i;
+      if (hot) dl->AddRectFilled(p, q, IM_COL32(255, 255, 255, 28), 4.0f);
+      if (row.id == focus)              dl->AddRect(p, q, IM_COL32(255, 205, 105, 220), 4.0f, 2.0f);
+      else if (linked_to_focus(row.id)) dl->AddRect(p, q, IM_COL32(120, 160, 255, 200), 4.0f, 2.0f);
+      else if (live && live->upgradable && guild_skill_points_ > 0)
+        dl->AddRect(p, q, IM_COL32(120, 200, 130, 170), 4.0f, 1.5f);
+
+      const ro::IconTex ic = ResolveSkillIcon(row.id);
+      const ImVec2 ip(p.x + (cell_w - pad - icon_sz) * 0.5f, p.y + icon_y);
+      if (ic.tex)
+        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
+                     ImVec2(ip.x + icon_sz, ip.y + icon_sz), ImVec2(0, 0), ImVec2(1, 1),
+                     locked ? IM_COL32(105, 105, 115, 165) : IM_COL32_WHITE);
+
+      char lvl[24];
+      if (row.max_level > 0) std::snprintf(lvl, sizeof(lvl), "%d/%d", level, row.max_level);
+      else                   std::snprintf(lvl, sizeof(lvl), "%d", level);
+      const ImVec2 lsz = ImGui::CalcTextSize(lvl);
+      const ImVec2 lp(p.x + (cell_w - pad - lsz.x) * 0.5f, p.y + icon_y + icon_sz + 2.0f);
+      const ImU32 halo = IM_COL32(255, 255, 255, 190);
+      const ImU32 lvl_col = level > 0 ? IM_COL32(20, 20, 25, 255) : IM_COL32(110, 110, 122, 255);
+      dl->AddText(ImVec2(lp.x - 1.0f, lp.y), halo, lvl);
+      dl->AddText(ImVec2(lp.x + 1.0f, lp.y), halo, lvl);
+      dl->AddText(ImVec2(lp.x, lp.y - 1.0f), halo, lvl);
+      dl->AddText(ImVec2(lp.x, lp.y + 1.0f), halo, lvl);
+      dl->AddText(lp, lvl_col, lvl);
+
+      const bool active_skill = live && live->inf != 0 && level > 0;
+      const bool can_use = active_skill && (live->inf & 0x04) != 0;
+      if (active_skill && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+        const int payload[2] = {static_cast<int>(row.id), level};
+        ImGui::SetDragDropPayload("BGN_SKILL", payload, sizeof(payload));
+        if (ic.tex) { ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+                      ImGui::SameLine(); }
+        ImGui::TextUnformatted(skill_label(row.id, live ? live->name : nullptr));
+        ImGui::EndDragDropSource();
+      }
+      if (hot && ImGui::GetDragDropPayload() == nullptr) {
+        hovered_now = row.id;
+        tooltip_for(row, live, level, locked);
+        if (can_use && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+          SendUseSkill(row.id, level);
+        // ⚠ Ctrl EXIGÉ pour monter, contrairement au Grimoire où le clic seul suffit :
+        // ici il n'y a pas de réservation, le paquet part et le point est dépensé.
+        const ImVec2 travel = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+        if (ImGui::GetIO().KeyCtrl && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+            travel.x == 0.0f && travel.y == 0.0f && live && live->upgradable &&
+            guild_skill_points_ > 0) {
+          SendSkillUp(row.id);
+          guild_last_req_ = 0;  // on laisse le 0x0162 suivant corriger niveau et points
+        }
+      }
+      // Clic droit = description (avec ou sans Ctrl : ici il n'y a pas de menu
+      // contextuel à départager, contrairement au Grimoire).
+      if (hot && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      }
+      ImGui::PopID();
+    }
+    dl->AddCallback(CbSkillIconFilterOff, nullptr);
+
+    // ── Flèches au survol, en chaîne dans les deux sens (comme le Grimoire) ────
+    if (hover_idx >= 0) {
+      auto draw_arrow = [&](const ImVec2& from, const ImVec2& to, ImU32 col, float thickness) {
+        ImVec2 d(to.x - from.x, to.y - from.y);
+        const float len = std::sqrt(d.x * d.x + d.y * d.y);
+        const float trim = (cell_w - pad) * 0.45f;
+        if (len <= trim * 2.0f + 8.0f) return;
+        d.x /= len;
+        d.y /= len;
+        const ImVec2 a(from.x + d.x * trim, from.y + d.y * trim);
+        const ImVec2 b(to.x - d.x * trim, to.y - d.y * trim);
+        dl->AddLine(a, b, col, thickness);
+        const float head = 8.0f;
+        const ImVec2 nrm(-d.y, d.x);
+        dl->AddTriangleFilled(
+            b,
+            ImVec2(b.x - d.x * head + nrm.x * head * 0.5f, b.y - d.y * head + nrm.y * head * 0.5f),
+            ImVec2(b.x - d.x * head - nrm.x * head * 0.5f, b.y - d.y * head - nrm.y * head * 0.5f),
+            col);
+      };
+      // Réduction transitive : le trait direct saute si un autre prérequis du même
+      // nœud réclame déjà celui-là — le chemin est de toute façon à l'écran.
+      auto redundant_edge = [&](uint16_t dep_id, uint16_t req_id) {
+        const GuildSkillTreeNode* node = tree_node(dep_id);
+        if (!node) return false;
+        for (const GuildSkillReq& other : node->need) {
+          if (other.id == req_id) continue;
+          if (depends_on(other.id, req_id)) return true;
+        }
+        return false;
+      };
+      std::vector<int> queue, depth_q;
+      std::vector<bool> seen(rows.size(), false);
+      auto walk_chain = [&](bool upstream, int cr, int cg, int cb, int alpha0, float thick0) {
+        std::fill(seen.begin(), seen.end(), false);
+        queue.clear();
+        depth_q.clear();
+        queue.push_back(hover_idx);
+        depth_q.push_back(0);
+        seen[hover_idx] = true;
+        for (size_t qi = 0; qi < queue.size(); ++qi) {
+          const int cur = queue[qi];
+          const int depth = depth_q[qi];
+          if (depth >= 6) continue;
+          for (int i = 0; i < n; ++i) {
+            if (i == cur) continue;
+            const int dep = upstream ? cur : i;  // celui qui réclame
+            const int req = upstream ? i : cur;  // celui qui est réclamé
+            if (!depends_on(rows[dep].id, rows[req].id)) continue;
+            if (redundant_edge(rows[dep].id, rows[req].id)) continue;
+            draw_arrow(center[req], center[dep],
+                       IM_COL32(cr, cg, cb, std::max(85, alpha0 - depth * 35)),
+                       std::max(1.2f, thick0 - depth * 0.25f));
+            if (!seen[i]) {
+              seen[i] = true;
+              queue.push_back(i);
+              depth_q.push_back(depth + 1);
+            }
+          }
+        }
+      };
+      walk_chain(true, 255, 205, 105, 235, 2.5f);   // ambre : ce qu'il faut avant
+      walk_chain(false, 120, 160, 255, 200, 2.0f);  // bleu  : ce que ça ouvre
+    }
+
+    // Étendue réservée : la grille est peinte en absolu, sans ça pas de scroll.
+    ImGui::SetCursorScreenPos(origin);
+    int widest = 1;
+    for (int d = 0; d < 16; ++d) widest = std::max(widest, col_of_depth[d]);
+    ImGui::Dummy(ImVec2(widest * cell_w, used_rows * cell_h));
+    ImGui::EndChild();
+    guild_skill_hover_ = hovered_now;
+    return;
+  }
+
+  // ── Vue LISTE : l'arbre indenté, avec ses coudes de liaison ─────────────────
+  const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                      ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
+  // Pas de colonne « Requiert » : les prérequis sont déjà dans le tooltip et dessinés
+  // en liens ; une 3e redite volait la largeur au nom, qui se retrouvait tronqué.
+  if (!ImGui::BeginTable("cs_guild_skills_tbl", 5, table_flags)) return;
+  ImGui::TableSetupColumn("Compétence", ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, 54.0f);
+  // Assez large pour « Passif » : cette colonne porte le coût OU la nature de la
+  // compétence, exactement comme le natif qui écrit « Passive » à la place du SP.
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+  // Colonne « lancer » élargie : elle porte aussi le décompte de cooldown (« 4:12 »).
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 46.0f);  // lancer
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 30.0f);  // monter
+  ImGui::TableHeadersRow();
+
   // Ancre = bord gauche de l'icône, milieu vertical. x < 0 : ligne pas encore dessinée.
   std::vector<ImVec2> anchors(rows.size(), ImVec2(-1.0f, -1.0f));
   auto row_index = [&](uint16_t id) -> int {
@@ -4623,21 +4858,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     }
     if (ImGui::IsItemHovered()) {
       hovered_now = row.id;  // consommé à la frame suivante (liens + surlignage)
-      std::string tip = label;
-      if (live && live->name[0]) { tip += "  ("; tip += live->name; tip += ")"; }
-      if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
-                                    std::to_string(row.max_level);
-      if (live && live->range > 0) tip += "\nPortée : " + std::to_string(live->range);
-      // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
-      // là où le joueur regarde quand il se demande pourquoi elle est grisée.
-      const std::string reqs = requirements_text(row.node);
-      if (!reqs.empty()) tip += "\nRequiert : " + reqs;
-      if (live) tip += live->inf == 0 ? "\nPassive (toujours active)" : "\nActive";
-      tip += locked      ? "\n\nVerrouillée : prérequis non remplis."
-           : can_use     ? "\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre"
-           : active_skill ? "\n\nClic droit : description — glisser vers une barre"
-                          : "\n\nClic droit : description";
-      ImGui::SetTooltip("%s", tip.c_str());
+      tooltip_for(row, live, level, locked);
     }
     ImGui::Unindent(row_indent);
 
