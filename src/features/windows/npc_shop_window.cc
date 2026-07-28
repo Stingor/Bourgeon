@@ -25,8 +25,6 @@
 namespace {
 
 // UIWindowMgr + factory.
-constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Fenêtres shop NPC (cf. project_npc_shop_re).
 constexpr int kWinBuy    = 0x16;  // UIItemPurchaseWnd (vtable 0x0103cda0)
@@ -67,17 +65,6 @@ using InfoSetId_t = void(__thiscall*)(void*, int);
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 (comme cashshop).
 constexpr int kWinItemDesc = 0xc;
 constexpr int kMsgSetItem  = 0x18;
-constexpr int kVfOnMsg     = 0x94;
-constexpr int kVfSetPos    = 0x10;
-constexpr uintptr_t kMakeWindow = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr, edx, id)
-using OnMsg_t      = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t     = void(__fastcall*)(void*, void*, int, int);
-using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
-
 // Nom par id : DB de description (map id->record), name = *(rec+4).
 constexpr uintptr_t kDescDbLookup = 0x006a0d40;
 constexpr uintptr_t kDescDb       = 0x01255130;
@@ -97,8 +84,7 @@ void* FindWnd(int id) {
 }
 void CloseWnd(int id) {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        uiwnd::Mgr(), nullptr, id);
+    uiwnd::CloseWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void HideWnd(void* w) {
@@ -156,9 +142,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
     void* cache = *reinterpret_cast<void**>(kEnsureCache);
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        uiwnd::Mgr(), nullptr,
-        reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),

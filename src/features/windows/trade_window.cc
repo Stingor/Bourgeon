@@ -26,8 +26,6 @@
 namespace {
 
 // UIWindowMgr + factory.
-constexpr uintptr_t kCloseWindow = 0x00a2e770;  // SaveWindowRect+close (mgr, edx, id)
-using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Fenêtre d'échange — RE LIVE 2026-07-23 : c'est la NOUVELLE classe CUIExchangeUI
 // (famille « CUI », comme CUIGameSettingsUI 0x271e), et PAS l'ancienne UIExchangeWnd
@@ -119,8 +117,7 @@ void HideWnd(void* w) {
 // Détruit une fenêtre native par id (persiste sa position + close), comme le X natif.
 void CloseWnd(int id) {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        uiwnd::Mgr(), nullptr, id);
+    uiwnd::CloseWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 uintptr_t VTableOf(void* w) {

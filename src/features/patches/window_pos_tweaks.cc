@@ -44,8 +44,6 @@ namespace {
 constexpr int kWinX     = 0x1c;  // live x
 constexpr int kWinY     = 0x20;  // live y
 
-constexpr uintptr_t kMakeWindow  = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr,id) -> win (factory)
-
 // MakeWindow is __thiscall(mgr, int windowID) returning the window (id = [ebp+8]).
 using MakeWindow_t = void* (__fastcall*)(void*, void*, int);
 using SetPos_t     = void  (__fastcall*)(void*, void*, int, int);  // SetPos(this,,x,y)
@@ -283,7 +281,7 @@ WindowPosTweaks::WindowPosTweaks() {
   using namespace hooking;
   g_orig_makewindow = reinterpret_cast<MakeWindow_t>(
       HookManager::Instance().SetHook(HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kMakeWindow),
+          reinterpret_cast<uint8_t*>(uiwnd::kMakeWindowAddr),
           reinterpret_cast<uint8_t*>(&MakeWindowHook)));
   // LogInfo("[WinPos] tracking {} window(s); MakeWindow restore hook {}",
           // kWindowCount, g_orig_makewindow ? "installed" : "FAILED");

@@ -145,13 +145,10 @@ const char* PoseLabelFull(int anim, bool animate) {
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
 //  Description d'item : MakeWindow(0xc) + OnMsg 0x18 (cf. cashshop_window)
-constexpr uintptr_t kMakeWindow  = 0x00a39340;
-constexpr int kWinItemDesc = 0xc, kMsgSetItem = 0x18, kVfOnMsg = 0x94, kVfSetPos = 0x10;
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;
 constexpr uintptr_t kInfoSetId = 0x006a6570;
 constexpr uintptr_t kEnsureLoaded = 0x006a06b0, kEnsureCache = 0x0125510c;
 constexpr uintptr_t kDescDbLookup = 0x006a0d40, kDescDb = 0x01255130, kDescDbNil = 0x01255138;
-using MakeWindow_t   = void* (__fastcall*)(void*, void*, void*);
 using InfoCtor_t     = void(__fastcall*)(void*);
 using InfoSetId_t    = void(__thiscall*)(void*, int);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -1696,9 +1693,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
     void* cache = *reinterpret_cast<void**>(kEnsureCache);
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        uiwnd::Mgr(), nullptr,
-        reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
@@ -1714,8 +1709,6 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
 constexpr int kWinSkillDesc    = 0x2e;
 constexpr int kMsgSetSkill     = 0x3d;
 constexpr int kSkillWinShownId = 0x104;
-constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 void OpenSkillDesc(int skillId, int mx, int my) {
   if (skillId <= 0) return;
@@ -6120,9 +6113,7 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
 void CharacterSheet::OpenCartWindow() {
   constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire cart)
   __try {
-    reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        uiwnd::Mgr(), nullptr,
-        reinterpret_cast<void*>(static_cast<uintptr_t>(kCartWndId)));
+    uiwnd::MakeWindow(kCartWndId);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -6858,7 +6849,7 @@ void CharacterSheet::HideSkillWndAtCreation(void* win) {
 namespace {
 void CloseSkillWnd() {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(uiwnd::Mgr(), nullptr, kWinSkillList);
+    uiwnd::CloseWindow(kWinSkillList);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 }  // namespace

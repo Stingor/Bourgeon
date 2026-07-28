@@ -44,7 +44,6 @@ namespace {
 
 // ---- gestionnaire de fenêtres / instance singleton -------------------------
 constexpr int       kMgrShortCutPtr = 0x1e8;       // mgr+0x1e8 = instance UIShortCutWnd cachée
-constexpr uintptr_t kMakeWindow     = 0x00a39340;  // UIWindowMgr_MakeWindow(mgr, id) -> wnd (idempotent)
 constexpr int       kShortCutId     = 0x24;
 
 // ---- skill manager / données slots -----------------------------------------
@@ -104,7 +103,6 @@ constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli
 constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
 
 using SetVisible_t = void  (__fastcall*)(void*, void*, int);
-using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
 using SetSlot_t    = void  (__fastcall*)(void*, void*, int, int, int, int, int);
 using GetOption_t  = int   (__thiscall*)(void*, int);
 using SetOption_t  = void  (__thiscall*)(void*, int, int, int);  // (mgr,key,val,0)
@@ -128,9 +126,7 @@ inline Fn Vf(void* self, int off) {
 
 void EnsureCreated() {
   if (ShortCutWnd()) return;  // déjà créée (cas normal) ou recréée ci-dessous
-  reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-      uiwnd::Mgr(), nullptr,
-      reinterpret_cast<void*>(kShortCutId));
+  uiwnd::MakeWindow(kShortCutId);
 }
 void RebuildSlotPtrs(void* w) {  // OnMsg 0x17 : reconstruit this+0xc4 depuis les globals
   uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);

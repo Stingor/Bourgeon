@@ -43,8 +43,6 @@ constexpr uintptr_t kStorageVTable = 0x0103ca40;  // UIItemStoreWnd
 // Offsets UIWindow / UIItemStoreWnd.
 constexpr int kOffWidth  = 0x14;
 constexpr int kOffHeight = 0x18;
-constexpr int kOffPosX   = 0x1c;
-constexpr int kOffPosY   = 0x20;
 constexpr int kOffList   = 0xe8;   // std::list _Myhead (sentinelle)
 constexpr int kOffCount  = 0xec;   // std::list _Mysize
 constexpr int kOffUsed   = 0x188;  // items utilisés
@@ -95,9 +93,6 @@ using GameFree_t  = void(__cdecl*)(void*);
 // l'info -> aucun free). item_desc_window détecte 0xc et rend sa version enrichie.
 constexpr int kWinItemDesc = 0xc;    // fenêtre desc ITEM (OnMsg 0x18 + &ItemSkillInfo)
 constexpr int kMsgSetItem  = 0x18;
-using MakeWindow_t = void*(__fastcall*)(void*, void*, void*);
-using OnMsg_t      = int  (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t     = void (__fastcall*)(void*, void*, int, int);
 
 // Appelle une méthode virtuelle (offset en octets) de `self`.
 template <typename Fn>

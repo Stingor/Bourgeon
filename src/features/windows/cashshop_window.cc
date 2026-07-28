@@ -28,22 +28,12 @@ namespace {
 // UICashShopWnd : id 0x13e (318), vtable 0x0101ca18. TrouvΓ©e par FindWindow.
 constexpr int       kWinCashShop  = 0x13e;
 constexpr uintptr_t kCashVTable   = 0x0101ca18;
-constexpr uintptr_t kMakeWindow   = 0x00a39340;  // __fastcall(mgr, edx, id) -> wnd
-constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using MakeWindow_t = void* (__fastcall*)(void*, void*, void*);
-using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Offsets UIWindow.
-constexpr int kOffPosX    = 0x1c;
-constexpr int kOffPosY    = 0x20;
 
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
 constexpr int kWinItemDesc = 0xc;
 constexpr int kMsgSetItem  = 0x18;
-constexpr int kVfOnMsg     = 0x94;
-constexpr int kVfSetPos    = 0x10;
-using OnMsg_t  = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t = void(__fastcall*)(void*, void*, int, int);
 
 // ItemSkillInfo standalone (ctor + SetId par id) β indΓ©pendant de l'inventaire.
 constexpr uintptr_t kInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
@@ -65,16 +55,10 @@ using EnsureLoaded_t = char (__thiscall*)(void*, int);
 // partagé, ro::ItemCollectionIcon (ui/icon_cache.h), avec le repli sur la petite
 // icône quand l'art n'existe pas.
 
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
-
 // DΓ©truit la fenΓͺtre native du cash shop (id 0x13e). SEH-gardΓ© (POD only).
 void CloseNativeCashShop() {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        uiwnd::Mgr(), nullptr, kWinCashShop);
+    uiwnd::CloseWindow(kWinCashShop);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -173,9 +157,7 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
     void* cache = *reinterpret_cast<void**>(kEnsureCache);
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        uiwnd::Mgr(), nullptr,
-        reinterpret_cast<void*>(kWinItemDesc));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, kMsgSetItem,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),

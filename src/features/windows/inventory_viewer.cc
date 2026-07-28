@@ -42,8 +42,6 @@ constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;
 constexpr uintptr_t kInvVTable    = 0x0103d460;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
-constexpr int kOffPosX    = 0x1c;
-constexpr int kOffPosY    = 0x20;
 
 // Modèle SESSION de l'inventaire (indépendant de la fenêtre => marche natif caché).
 // RE : FUN_00d5ce30(g_session)=*(g_session+0x16f4)=count ; FUN_00d5acb0 parcourt la
@@ -117,12 +115,7 @@ constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall 
 constexpr int kWinItemDesc = 0xc;
 constexpr int kWinInventory = 8;
 constexpr int kMsgSetItem  = 0x18;
-constexpr int kVfOnMsg     = 0x94;
-constexpr int kVfSetPos    = 0x10;
-using MakeWindow_t   = void*(__fastcall*)(void*, void*, void*);
 using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fenêtre si ouverte
-using OnMsg_t        = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
-using SetPos_t       = void(__fastcall*)(void*, void*, int, int);
 
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) renvoie l'objet mode actif (ou 0 hors
 // jeu — c'est *(0x0121333c) gardé). Son vtbl+0x18 = CMode::SendMsg (le gros switch).

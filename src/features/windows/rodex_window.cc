@@ -25,8 +25,6 @@
 namespace {
 
 // Fenêtres natives à masquer + fermeture propre (persiste la position, comme le X).
-constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr::SaveWindowRect(mgr, id)
-using CloseWindow_t = void(__fastcall*)(void*, void*, int);
 
 constexpr int kInboxId = 0x107;  // UIRodexWnd     — la LISTE
 constexpr int kReadId  = 0x109;  // UIRodexReadWnd — la LECTURE
@@ -444,7 +442,7 @@ void SetWndVisible(void* w, int visible) {
 void HideWnd(void* w) { SetWndVisible(w, 0); }
 void CloseWnd(int id) {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(uiwnd::Mgr(), nullptr, id);
+    uiwnd::CloseWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 uint8_t* RodexMgr() {

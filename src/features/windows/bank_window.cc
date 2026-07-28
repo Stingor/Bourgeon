@@ -71,11 +71,6 @@ constexpr uint16_t kOpCheck    = 0x09AB;  // CZ_REQ_BANKING_CHECK (= ce que fait
 constexpr int kMsgUiAction = 0x06;  // OnMsg : action de contrôle…
 constexpr int kActionClose = 201;   // …201 = fermeture (RE UIBankWnd_OnMsg case 6)
 
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
-
 // La fenêtre banque ouverte, ou nullptr. Le client DÉTRUIT ses fenêtres à la
 // fermeture, donc non-nul == « ouverte en ce moment ».
 uint8_t* BankWnd() {

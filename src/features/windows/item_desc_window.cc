@@ -110,7 +110,6 @@ constexpr int       kMaxCards     = 4;
 constexpr int       kMaxOpts      = 5;
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vector alloué côté jeu)
 constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
-constexpr uintptr_t kCloseWindow  = 0x00a2e770;  // UIWindowMgr_Close(mgr,edx,id)
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
@@ -167,7 +166,6 @@ static_assert(sizeof(GVec) == 12, "GVec = std::vector layout");
 // BuildDisplayName(this=wnd, info, &colorOut, &offsetsVec, &bufptr, &cap, &hlptr, f7, f8)
 using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
                                      char**, char, char);
-using CloseWin_t     = char  (__fastcall*)(void*, void*, int);
 // OnMsg des fenêtres desc (vtable+0x94) : __thiscall(this, p1, msg, p3, p4, p5, p6).
 using DescOnMsg_t    = int   (__thiscall*)(void*, int, int, int, int, int, int);
 constexpr int kMsgButton      = 6;      // message "commande bouton"
@@ -1447,8 +1445,7 @@ void HideDescSlot(uintptr_t slot, uintptr_t vtable) {
 // déroulement (temporaires std::string du bouton bug-report) sans C2712.
 void SafeCloseWindowId(int id) {
   __try {
-    reinterpret_cast<CloseWin_t>(kCloseWindow)(
-        uiwnd::Mgr(), nullptr, id);
+    uiwnd::CloseWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

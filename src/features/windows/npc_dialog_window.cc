@@ -30,8 +30,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 namespace {
 
 // UIWindowMgr + factory (SEH-gardé, comme npc_shop_window).
-constexpr uintptr_t kCloseWindow = 0x00a2e770;  // UIWindowMgr_Close(mgr, edx, id)
-using CloseWindow_t = void (__fastcall*)(void*, void*, int);
 
 // Dispatcher CMode::SendMsg : *(kDispatcherPtr) = mode zone actif (ou 0). vtbl+0x18
 // (= index 6) = CMode::SendMsg. cmd 0x28 = ferme l'UI NPC et DÉBLOQUE l'état
@@ -47,7 +45,6 @@ constexpr int kWinMenu  = 0x11;
 constexpr int kWinEditN = 0x38;
 constexpr int kWinEditS = 0x64;
 constexpr int kWinSay2  = 0xe2;
-constexpr int kOffVisible = 0x28;
 
 // Opcodes reçus (ZC).
 constexpr uint16_t kZcSay        = 0x00b4;
@@ -82,8 +79,7 @@ void* FindWnd(int id) {
 }
 void CloseWnd(int id) {
   __try {
-    reinterpret_cast<CloseWindow_t>(kCloseWindow)(
-        uiwnd::Mgr(), nullptr, id);
+    uiwnd::CloseWindow(id);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void HideWnd(void* w) {
@@ -128,13 +124,11 @@ void OpenUrl(const std::string& url) {
 // Reproduit le clic lien natif FUN_00803e10 : construit un ItemSkillInfo minimal
 // (info[0]=id ; nom laissé vide) et l'envoie à MakeWindow(0xc)->OnMsg(0x18). La
 // fenêtre complète le reste depuis la DB client — donc marche pour un item NON possédé.
-constexpr uintptr_t kMakeWindow    = 0x00a39340;  // __fastcall(mgr, edx, id)
 constexpr uintptr_t kItemInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this)
 constexpr uintptr_t kItemInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) : id-string @0x2c
 constexpr int kWinItemDesc = 0x0c;
 constexpr int kMsgSetItem  = 0x18;
 constexpr int kInfoFlag    = 0x5c;  // ItemSkillInfo+0x5c=1 : desc « standalone » lue depuis la DB
-using MakeWindow_t    = void*(__fastcall*)(void*, void*, void*);
 using ItemInfoCtor_t  = void*(__fastcall*)(void*);
 using ItemInfoSetId_t = void(__thiscall*)(void*, int);
 using DescOnMsg_t     = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
@@ -929,9 +923,7 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
     reinterpret_cast<ItemInfoSetId_t>(kItemInfoSetId)(info, static_cast<int>(id));  // id-str @0x2c
     *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
     info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
-    void* dwnd = reinterpret_cast<MakeWindow_t>(kMakeWindow)(
-        uiwnd::Mgr(), nullptr,
-        reinterpret_cast<void*>(static_cast<uintptr_t>(kWinItemDesc)));
+    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);
       reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4])(
