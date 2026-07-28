@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
 #include "features/overlays/skill_bar.h"
@@ -65,16 +66,11 @@ constexpr int kMaxSlots     = 36;     // 0x24
 constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé
 constexpr uintptr_t kStrFree       = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
 // ⚠ Ces quatre-là étaient INTERVERTIS (corrigé le 2026-07-28) : la branche SKILL
-// ouvrait un « kWinItemDesc » et la branche OBJET un « kWinSkillDesc ». Le
+// ouvrait un « itemdb::kItemDescWndId » et la branche OBJET un « itemdb::kSkillDescWndId ». Le
 // comportement était juste — c'est l'appariement id/message qui compte, et il
 // n'a pas bougé — mais les noms disaient le contraire du code, à rebours des
 // huit autres fichiers du projet et de character_sheet.cc:1713 qui documente
 // explicitement « 0x2e ≠ 0xc, qui est celle des objets ».
-constexpr int kWinItemDesc     = 0xc;   // desc OBJET : OnMsg 0x18 + &ItemSkillInfo (struct)
-constexpr int kWinSkillDesc    = 0x2e;  // desc SKILL : OnMsg 0x3d + id BRUT
-constexpr int kMsgSetItem      = 0x18;  // OnMsg fenêtre 0xc  : montre l'objet (p2=&ItemSkillInfo)
-constexpr int kMsgSetSkill     = 0x3d;  // OnMsg fenêtre 0x2e : montre le skill (p2=id)
-constexpr int kSkillWinShownId = 0x104; // (fenêtre 0x2e)+0x104 = id affiché (bascule ouvrir/fermer)
 constexpr int kSkillInfoSize  = 0x100; // SkillInfo ~0xf8 o (2 std::string @ +0x2c / +0x44)
 constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
@@ -84,8 +80,6 @@ constexpr int kSkillStr1      = 0x44;  // std::string nom
 // de kGetSkillInfo/FUN_00d5a980 qui exige une quantité inventaire > 0). Utilisé pour la description
 // d'un OBJET grisé (épuisé) dans la barre : cf. project_item_skill_desc_window_re, section
 // "Accès STANDALONE". +0x5c = flag skill (laissé à 0 = objet par le ctor / FUN_006a5ff0).
-constexpr uintptr_t kItemSkillInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
-constexpr uintptr_t kItemSkillInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall (itoa->resname)
 constexpr int kItemSkillInfoSize = 0x100;  // struct ~0xf4 o
 
 // ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50) ----
@@ -96,9 +90,6 @@ constexpr int kItemSkillInfoSize = 0x100;  // struct ~0xf4 o
 //   nom vient de Lua GetSkillName(id) via le wrapper __cdecl FUN_0073a1f0 (format "d>s", renvoie
 //   "Unknown-Skill" si l'id est inconnu). C'est exactement la source de la barre native pour les
 //   skills standard (les skills custom ~12622 sont, eux, aussi dans la DB item).
-constexpr uintptr_t kItemDbGet      = 0x006a0d40;  // ItemDB_GetRecordById(__cdecl nameid, table)
-constexpr uintptr_t kItemDbTable    = 0x01255130;  // table std::map du DB item (arg)
-constexpr uintptr_t kItemDbSentinel = 0x01255138;  // retour si id inconnu -> NE PAS déréf
 constexpr int kItemNameEn  = 0x04;  // record+0x04 = nom anglais (ASCII, propre à l'affichage)
 constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli)
 constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
@@ -704,12 +695,12 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
     if (id != 0) {
       void* mgr = uiwnd::Mgr();
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
-        void* wnd = uiwnd::MakeWindow(kWinSkillDesc);
+        void* wnd = uiwnd::MakeWindow(itemdb::kSkillDescWndId);
         if (wnd) {
-          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == id) {
-            uiwnd::CloseWindow(kWinSkillDesc);  // bascule
+          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + itemdb::kSkillDescShownId) == id) {
+            uiwnd::CloseWindow(itemdb::kSkillDescWndId);  // bascule
           } else {
-            uiwnd::OnMsg(wnd, kMsgSetSkill, id, 0, 0, 0);
+            uiwnd::OnMsg(wnd, itemdb::kSkillDescMsgSet, id, 0, 0, 0);
             uiwnd::SetPos(wnd, mx, my);
           }
         }
@@ -717,9 +708,9 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, id, 1);
-        void* wnd = uiwnd::MakeWindow(kWinItemDesc);
+        void* wnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
         if (wnd) {
-          uiwnd::OnMsg(wnd, kMsgSetItem,
+          uiwnd::OnMsg(wnd, itemdb::kItemDescMsgSet,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
           uiwnd::SetPos(wnd, mx, my);
         }
@@ -751,8 +742,8 @@ void ShowSlotTooltip(int region, int slot) {
         if (is_item) {
           // OBJET : DB item (chargée au boot) ; record+0x04 = nom EN, +0x08 = localisé.
           char* dbrec = static_cast<char*>(
-              reinterpret_cast<ItemDbGet_t>(kItemDbGet)(id, reinterpret_cast<void*>(kItemDbTable)));
-          if (dbrec && reinterpret_cast<uintptr_t>(dbrec) != kItemDbSentinel) {
+              reinterpret_cast<ItemDbGet_t>(itemdb::kLookupAddr)(id, reinterpret_cast<void*>(itemdb::kTableAddr)));
+          if (dbrec && reinterpret_cast<uintptr_t>(dbrec) != itemdb::kNilAddr) {
             const char* en  = *reinterpret_cast<const char**>(dbrec + kItemNameEn);
             const char* loc = *reinterpret_cast<const char**>(dbrec + kItemNameLoc);
             const char* name = (en && *en) ? en : loc;

@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/trade_window.h"
 
@@ -184,11 +185,6 @@ void ModeCmd(int cmd, int a, int b, int c, int d) {
 }
 
 // ── Résolution nom d'item (id -> nom) — identique à NpcShopWindow ──
-constexpr uintptr_t kDescDbLookup = 0x006a0d40;
-constexpr uintptr_t kDescDb       = 0x01255130;
-constexpr uintptr_t kDescDbNil    = 0x01255138;
-constexpr uintptr_t kEnsureLoaded = 0x006a06b0;
-constexpr uintptr_t kEnsureCache  = 0x0125510c;
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
 
@@ -197,12 +193,12 @@ std::unordered_map<uint32_t, std::string> g_name_cache;
 void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
-    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
     }

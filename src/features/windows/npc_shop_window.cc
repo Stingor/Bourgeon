@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/npc_shop_window.h"
 
@@ -58,20 +59,11 @@ constexpr int kNodeName  = 0x34;   // std::string (MSVC : +0x10 size, +0x14 cap)
 constexpr int kNodeSlots = 0x90;   // short
 
 // ItemSkillInfo standalone (résolution nom/icône par id) — comme cashshop.
-constexpr uintptr_t kInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
-constexpr uintptr_t kInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall
 using InfoCtor_t  = void(__fastcall*)(void*);
 using InfoSetId_t = void(__thiscall*)(void*, int);
 
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 (comme cashshop).
-constexpr int kWinItemDesc = 0xc;
-constexpr int kMsgSetItem  = 0x18;
 // Nom par id : DB de description (map id->record), name = *(rec+4).
-constexpr uintptr_t kDescDbLookup = 0x006a0d40;
-constexpr uintptr_t kDescDb       = 0x01255130;
-constexpr uintptr_t kDescDbNil    = 0x01255138;
-constexpr uintptr_t kEnsureLoaded = 0x006a06b0;
-constexpr uintptr_t kEnsureCache  = 0x0125510c;
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
 
@@ -100,12 +92,12 @@ std::unordered_map<uint32_t, std::string> g_name_cache;
 void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
-    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
     }
@@ -135,17 +127,17 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my)
   __try {
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
     info[0x5c] = 1;                                        // identifie
     *reinterpret_cast<uint32_t*>(info + 0x8)  = location;  // equip point (gate apercu)
     *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID (gate apercu)
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                   0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);

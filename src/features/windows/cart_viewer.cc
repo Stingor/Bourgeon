@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/cart_viewer.h"
 
@@ -69,8 +70,6 @@ constexpr uintptr_t kCartWeight    = 0x015fb2dc;
 constexpr uintptr_t kCartMaxWeight = 0x015fb2e0;
 
 // Nom d'affichage (refine/cartes/enchant), comme l'inventaire et le storage.
-constexpr uintptr_t kGetBaseName = 0x006a2b50;  // __thiscall(info, out, &cap, flag)
-constexpr uintptr_t kBuildName   = 0x008a0570;  // BuildDisplayName
 constexpr uintptr_t kGameFree    = 0x00dbbc7f;
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
@@ -88,7 +87,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
     int colorOut = 0; char* hlptr = nullptr;
     GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(kBuildName)(wnd, info, &colorOut, &off,
+    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
                                               &bufptr, &ncap, &hlptr, 0, 0);
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
@@ -96,7 +95,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
     if (out[0] == '\0') {
       size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, out, &cap, 0);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out, &cap, 0);
       out[outsz - 1] = '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
@@ -108,8 +107,6 @@ inline Fn Vf(void* self, int off) {
   return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
 }
 
-constexpr int kWinItemDesc = 0xc;
-constexpr int kMsgSetItem  = 0x18;   // OnMsg : « affiche cet ItemSkillInfo »
 constexpr int kMsgUiAction = 0x06;   // OnMsg : action de contrôle…
 constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg case 6)
 
@@ -248,9 +245,9 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);

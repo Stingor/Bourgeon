@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/storage_window.h"
 #include "ui/game_texture.h"
@@ -62,13 +63,11 @@ constexpr int kInfoIdCap = 0x40;  // capacité de la std::string id (= +0x2c+0x1
 constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
 
 // Nom de base de l'item : __thiscall(info, char* out, size_t* cap, char flag).
-constexpr uintptr_t kGetBaseName = 0x006a2b50;
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 
 // Nom COMPLET (raffinement +N / [slots] / cartes / enchant) : BuildDisplayName.
 // (this=wnd, info, &colorOut, &offVec, &bufptr, &cap, &hlptr, f7, f8). offVec est
 // alloué par le jeu -> à libérer avec game_free.
-constexpr uintptr_t kBuildName = 0x008a0570;
 constexpr uintptr_t kGameFree  = 0x00dbbc7f;
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
 using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
@@ -92,8 +91,6 @@ using GameFree_t  = void(__cdecl*)(void*);
 // Donc on re-parcourt la liste live au clic pour retrouver le nœud par id et
 // passer SON info (node+8). OnMsg 0x18 copie ce qu'il faut (on ne possède pas
 // l'info -> aucun free). item_desc_window détecte 0xc et rend sa version enrichie.
-constexpr int kWinItemDesc = 0xc;    // fenêtre desc ITEM (OnMsg 0x18 + &ItemSkillInfo)
-constexpr int kMsgSetItem  = 0x18;
 
 // Appelle une méthode virtuelle (offset en octets) de `self`.
 template <typename Fn>
@@ -123,9 +120,9 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);
@@ -727,7 +724,7 @@ void StorageWindow::Extract(uint8_t* wnd) {
         char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
         int colorOut = 0; char* hlptr = nullptr;
         GVec off = {nullptr, nullptr, nullptr};
-        reinterpret_cast<BuildName_t>(kBuildName)(wnd, info, &colorOut, &off,
+        reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
                                                   &bufptr, &ncap, &hlptr, 0, 0);
         size_t k = 0;
         while (k < sizeof(it.name) - 1 && nbuf[k]) { it.name[k] = nbuf[k]; ++k; }
@@ -736,7 +733,7 @@ void StorageWindow::Extract(uint8_t* wnd) {
       }
       if (it.name[0] == '\0') {
         size_t cap = sizeof(it.name);
-        reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, it.name, &cap, 0);
+        reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, it.name, &cap, 0);
         it.name[sizeof(it.name) - 1] = '\0';
       }
       ++item_count_;

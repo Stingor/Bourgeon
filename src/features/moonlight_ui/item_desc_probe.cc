@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "features/moonlight_ui/internal.h"
 
 #include <Windows.h>
@@ -22,7 +23,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 // Messages reçus par l'OnMsg de la fenêtre de description native.
 constexpr int kMsgClose       = 0x06;  // bouton X
-constexpr int kMsgSetItem     = 0x18;  // pose l'item à décrire (porte le nameid)
 constexpr int kMsgRestorePos  = 0x22;  // repositionnement après restauration
 
 using ItemDescWndFn = int (__fastcall*)(void*, void*, uint32_t, int, int*, int, int, int);
@@ -42,7 +42,7 @@ static void*         g_item_desc_wnd_ptr   = nullptr; // ecx of the desc window 
 static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
                                       uint32_t wparam, int msg_id, int* item_data,
                                       int arg4, int arg5, int arg6) {
-  if (msg_id == kMsgSetItem && item_data != nullptr) {
+  if (msg_id == itemdb::kItemDescMsgSet && item_data != nullptr) {
     // Ignore 0x18 from secondary windows (e.g. equipment comparison window).
     // Lock onto the first ecx that sends 0x18 while no tooltip is open.
     if (g_item_desc_visible && ecx != g_item_desc_wnd_ptr)
@@ -83,7 +83,7 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
   // Enriched descriptions (Option A) : cacher la fenêtre native DÈS qu'elle est
   // posée/affichée (msg 0x18 set-item, 0x22 restore-pos) -> l'utilisateur ne voit
   // jamais la native (sinon flicker de ~100ms le temps du OnTick throttlé).
-  if (msg_id == kMsgSetItem || msg_id == kMsgRestorePos) {
+  if (msg_id == itemdb::kItemDescMsgSet || msg_id == kMsgRestorePos) {
     if (auto* item_desc = Bourgeon::Instance().item_desc())
       item_desc->HideNativeDescWindows();  // item 0xc + comparaison 0xea (déjà créée)
   }

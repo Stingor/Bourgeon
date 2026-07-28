@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/vending_window.h"
 
@@ -180,8 +181,6 @@ constexpr uint16_t kCzVendingListReq = 0x0130;
 // Le nom brut de la DB ne dit rien d'une arme +10 sertie : c'est
 // BuildDisplayName qui compose « +10 Hydra Sword [3] ». Même appel que les
 // viewers inventaire / cart / storage, avec la fenêtre native pour contexte.
-constexpr uintptr_t kGetBaseName = 0x006A2B50;  // __thiscall(info, out, &cap, flag)
-constexpr uintptr_t kBuildName   = 0x008A0570;  // BuildDisplayName
 constexpr uintptr_t kGameFree    = 0x00DBBC7F;
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
@@ -199,7 +198,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
     int colorOut = 0; char* hlptr = nullptr;
     GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(kBuildName)(wnd, info, &colorOut, &off,
+    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
                                               &bufptr, &ncap, &hlptr, 0, 0);
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
@@ -207,7 +206,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
     if (out[0] == '\0') {
       size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, out, &cap, 0);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out, &cap, 0);
       out[outsz - 1] = '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
@@ -228,8 +227,6 @@ constexpr int kMaxOpts      = 5;
 // Fenêtre de description native (id 0xC) : MakeWindow puis OnMsg 0x18 avec le
 // POINTEUR vers l'ItemSkillInfo — c'est le chemin du clic droit natif, et
 // item_desc_window reconnaît la fenêtre pour en rendre sa version enrichie.
-constexpr int       kWinItemDesc = 0xC;
-constexpr int       kMsgSetItem  = 0x18;
 
 // Résolution GID -> nom, pour le titre (cf. docs/entity_nameplate_re.md).
 using GameModeGetActive_t = void*(__fastcall*)(int);
@@ -735,11 +732,6 @@ bool SessionBsRemove(int index) {
 }
 
 // ── Nom d'item par id (même DB que les autres viewers) ───────────────────────
-constexpr uintptr_t kDescDbLookup = 0x006a0d40;
-constexpr uintptr_t kDescDb       = 0x01255130;
-constexpr uintptr_t kDescDbNil    = 0x01255138;
-constexpr uintptr_t kEnsureLoaded = 0x006a06b0;
-constexpr uintptr_t kEnsureCache  = 0x0125510c;
 using DescLookup_t   = void*(__cdecl*)(int, void*);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
 
@@ -748,12 +740,12 @@ std::unordered_map<uint32_t, std::string> g_name_cache;
 void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
-    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
     }
@@ -836,9 +828,9 @@ void OpenDescFromList(void* wnd, int list_off, uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
           static_cast<int>(reinterpret_cast<uintptr_t>(found)), 0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);
     }

@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/character_sheet.h"
 #include "ui/game_texture.h"
@@ -147,12 +148,6 @@ constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinal
 // Une seule déclaration par ligne : ces deux-là partageaient une ligne avec
 // kVfOnMsg/kVfSetPos, et la migration vers uiwnd:: a emporté la ligne entière
 // en ne constatant la mort que des deux derniers.
-constexpr int kWinItemDesc = 0xc;   // fenêtre desc OBJET
-constexpr int kMsgSetItem  = 0x18;  // OnMsg 0xc : montre l'objet (p2 = &ItemSkillInfo)
-constexpr uintptr_t kInfoCtor  = 0x006a1b20;
-constexpr uintptr_t kInfoSetId = 0x006a6570;
-constexpr uintptr_t kEnsureLoaded = 0x006a06b0, kEnsureCache = 0x0125510c;
-constexpr uintptr_t kDescDbLookup = 0x006a0d40, kDescDb = 0x01255130, kDescDbNil = 0x01255138;
 using InfoCtor_t     = void(__fastcall*)(void*);
 using InfoSetId_t    = void(__thiscall*)(void*, int);
 using EnsureLoaded_t = char (__thiscall*)(void*, int);
@@ -808,12 +803,12 @@ std::unordered_map<uint32_t, std::string> g_name_cache;
 void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
-    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
     }
@@ -1678,8 +1673,8 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
   __try {
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
     if (src) {
       // Copie TOUS les champs non-string du vrai item : le name-builder natif
       // (ItemSkillInfo_BuildDisplayName 0x008a0570) décore le nom (préfixe/suffixe) à partir de
@@ -1694,12 +1689,12 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
       *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID
     }
     info[0x5c] = 1;                                                  // identifie
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                   0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);
@@ -1710,21 +1705,18 @@ void OpenItemDesc(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
 // Description d'un SKILL : fenêtre 0x2e (≠ 0xc, qui est celle des objets), pilotée par
 // l'id BRUT — pas par un ItemSkillInfo. Re-clic sur le même skill = referme, comme le
 // natif (l'id affiché vit à +0x104).
-constexpr int kWinSkillDesc    = 0x2e;
-constexpr int kMsgSetSkill     = 0x3d;
-constexpr int kSkillWinShownId = 0x104;
 
 void OpenSkillDesc(int skillId, int mx, int my) {
   if (skillId <= 0) return;
   __try {
     void* mgr = uiwnd::Mgr();
-    void* wnd = uiwnd::MakeWindow(kWinSkillDesc);
+    void* wnd = uiwnd::MakeWindow(itemdb::kSkillDescWndId);
     if (!wnd) return;
-    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + kSkillWinShownId) == skillId) {
-      uiwnd::CloseWindow(kWinSkillDesc);
+    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + itemdb::kSkillDescShownId) == skillId) {
+      uiwnd::CloseWindow(itemdb::kSkillDescWndId);
       return;
     }
-    uiwnd::OnMsg(wnd, kMsgSetSkill, skillId, 0, 0, 0);
+    uiwnd::OnMsg(wnd, itemdb::kSkillDescMsgSet, skillId, 0, 0, 0);
     uiwnd::SetPos(wnd, mx, my);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1732,8 +1724,6 @@ void OpenSkillDesc(int skillId, int mx, int my) {
 // Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
 // name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
 // source (slot equip). ItemName() ne rend que le nom de BASE ; ceci décore comme la description.
-constexpr uintptr_t kBuildName    = 0x008a0570;  // ItemSkillInfo_BuildDisplayName
-constexpr uintptr_t kGetBaseName  = 0x006a2b50;  // repli nom de base
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // libère le std::vector<int> alloué par le jeu
 constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // *ptr = fenêtre inventaire native (contexte)
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
@@ -1753,7 +1743,7 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
     int colorOut = 0;
     char* hlptr = nullptr;
     GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(kBuildName)(wnd, const_cast<void*>(info), &colorOut, &off,
+    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, const_cast<void*>(info), &colorOut, &off,
                                               &bufptr, &ncap, &hlptr, 0, 0);
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
@@ -1761,7 +1751,7 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
     if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
     if (out[0] == '\0') {  // repli : nom de base
       size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(const_cast<void*>(info), out, &cap, 0);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(const_cast<void*>(info), out, &cap, 0);
       out[outsz - 1] = '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }

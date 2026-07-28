@@ -181,6 +181,7 @@ set(BOURGEON_FILES
 	# Ragnarok
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
+	"ragnarok/item_db.h"
 	"ragnarok/configuration.h"
 	"ragnarok/ragnarok_client.cc"
 	"ragnarok/ragnarok_client.h"

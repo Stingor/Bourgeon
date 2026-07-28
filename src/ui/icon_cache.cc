@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ui/icon_cache.h"
 
 #include <Windows.h>
@@ -47,8 +48,6 @@ bool BuildIconPathSafe(uint32_t nameid, char* out, int identified) {
 // ── Image de collection ──────────────────────────────────────────────────────
 // Le client la nomme par le RESNAME de l'item, pas par son id : il faut donc
 // monter un ItemSkillInfo autonome, lui poser l'id, et lui demander son resname.
-constexpr uintptr_t kInfoCtor   = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
-constexpr uintptr_t kInfoSetId  = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall
 constexpr uintptr_t kGetResName = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> C-str
 using InfoCtor_t   = void(__fastcall*)(void*);
 using InfoSetId_t  = void(__thiscall*)(void*, int);
@@ -65,8 +64,8 @@ void ResolveResName(uint32_t nameid, char* out, size_t capacity) {
   __try {
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(nameid));
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(nameid));
     info[0x5c] = 1;  // « identifié » : le resname est alors lu dans rec+8
     const char* resname = reinterpret_cast<GetResName_t>(kGetResName)(info);
     if (resname && resname[0]) {

@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/npc_dialog_window.h"
 
@@ -124,10 +125,6 @@ void OpenUrl(const std::string& url) {
 // Reproduit le clic lien natif FUN_00803e10 : construit un ItemSkillInfo minimal
 // (info[0]=id ; nom laissé vide) et l'envoie à MakeWindow(0xc)->OnMsg(0x18). La
 // fenêtre complète le reste depuis la DB client — donc marche pour un item NON possédé.
-constexpr uintptr_t kItemInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this)
-constexpr uintptr_t kItemInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) : id-string @0x2c
-constexpr int kWinItemDesc = 0x0c;
-constexpr int kMsgSetItem  = 0x18;
 constexpr int kInfoFlag    = 0x5c;  // ItemSkillInfo+0x5c=1 : desc « standalone » lue depuis la DB
 using ItemInfoCtor_t  = void*(__fastcall*)(void*);
 using ItemInfoSetId_t = void(__thiscall*)(void*, int);
@@ -919,15 +916,15 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
     // reste depuis la DB client par id (marche même sans posséder l'item).
     uint8_t info[256];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<ItemInfoCtor_t>(kItemInfoCtor)(info);            // init std::string SSO
-    reinterpret_cast<ItemInfoSetId_t>(kItemInfoSetId)(info, static_cast<int>(id));  // id-str @0x2c
+    reinterpret_cast<ItemInfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init std::string SSO
+    reinterpret_cast<ItemInfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // id-str @0x2c
     *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
     info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);
       reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4])(
-          dwnd, nullptr, 0, kMsgSetItem,
+          dwnd, nullptr, 0, itemdb::kItemDescMsgSet,
           static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

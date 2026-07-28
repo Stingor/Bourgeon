@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ui/game_texture.h"
 #include "features/windows/item_desc_window.h"
 #include "ui/ro_widgets.h"
@@ -67,27 +68,17 @@ constexpr uintptr_t kItemIconCap  = 0x1d8;  // capacité de la std::string chemi
 // Fonctions natives (base 0x400000, no-ASLR).
 constexpr uintptr_t kHideNative   = 0x009030c0;  // UIWnd_SetVisible(this,edx,vis) : cache sans détruire
 constexpr uintptr_t kGetDescLines = 0x006a2a70;  // ItemSkillDB_GetDescLines(info) -> &vector<char*>
-constexpr uintptr_t kGetBaseName  = 0x006a2b50;  // ItemSkillInfo_GetBaseName(info,out,&cap,flag)
 constexpr uintptr_t kGetResName   = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> resname C-str (icône)
-constexpr uintptr_t kBuildName    = 0x008a0570;  // ItemSkillInfo_BuildDisplayName (titre COMPLET)
-// DB de description (map id->record). Lookup(id,&db) -> record, ou nil(&kDescDbNil).
+// DB de description (map id->record). Lookup(id,&db) -> record, ou nil(&itemdb::kNilAddr).
 // nom d'item affiché = *(char**)(record+4) (cf. GetBaseName). Sert à résoudre les
 // noms de cartes/enchants par id.
-constexpr uintptr_t kDescDbLookup = 0x006a0d40;  // ItemSkillDescDB_Lookup(id,&db)
-constexpr uintptr_t kDescDb       = 0x01255130;  // &DAT_01255130 (la map)
-constexpr uintptr_t kDescDbNil    = 0x01255138;  // &DAT_01255138 (sentinelle "absent")
 // Construction standalone d'une ItemSkillInfo (pour ouvrir/lire la desc d'une
 // carte par id) : ctor puis SetId. La fenêtre 0xc courante reçoit OnMsg 0x18.
-constexpr uintptr_t kInfoCtor  = 0x006a1b20;  // ItemSkillInfo_ctor(this) __fastcall
-constexpr uintptr_t kInfoSetId = 0x006a6570;  // ItemSkillInfo_SetId(this,id) __thiscall
-constexpr int       kMsgSetItem = 0x18;       // OnMsg "SET ITEM/SKILL" (p3 = ItemSkillInfo*)
 // Chargement paresseux d'une desc par id (RE live 2026-07-05) : dans CE client,
 // TOUTES les descs (item ET skill) vivent dans rec+0x0c, lu par GetDescLines quand
 // info+0x5c==1 (rec+0x20, le champ "item", est toujours vide). EnsureLoaded parse
 // rec+0x0c dans le cache (comme OnMsg 0x18) avant lecture — indispensable pour une
 // carte compound jamais ouverte seule.
-constexpr uintptr_t kEnsureLoaded = 0x006a06b0;  // ItemSkillDescDB_EnsureLoaded(cache,id) __thiscall
-constexpr uintptr_t kEnsureCache  = 0x0125510c;  // *(void**) = cache (this d'EnsureLoaded)
 constexpr uintptr_t kInfoFlag     = 0x5c;        // info+0x5c : 1 => GetDescLines lit rec+0x0c
 // Icône (item\) + illustration (cardBmp\) d'une carte. resname icône = GetResName
 // (rec+0x08 quand +0x5c=1) ; resname illustration = GetCardResName (DB carte
@@ -378,7 +369,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       int    colorOut = 0;
       char*  hlptr  = nullptr;
       GVec   off = {nullptr, nullptr, nullptr};
-      reinterpret_cast<BuildName_t>(kBuildName)(
+      reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(
           wnd, wnd + kItemStruct, &colorOut, &off, &bufptr, &ncap, &hlptr, 0, 0);
       size_t n = 0;
       while (n < sizeof(e->name) - 1 && nbuf[n]) { e->name[n] = nbuf[n]; ++n; }
@@ -420,7 +411,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // Repli : nom de base si BuildDisplayName n'a rien produit.
     if (e->name[0] == '\0') {
       size_t cap = sizeof(e->name);
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(
           wnd + kItemStruct, e->name, &cap, 0);
     }
 
@@ -465,9 +456,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       e->cards[i] = cid;
       e->card_names[i][0] = '\0';
       if (cid != 0) {
-        void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-            static_cast<int>(cid), reinterpret_cast<void*>(kDescDb));
-        if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+        void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+            static_cast<int>(cid), reinterpret_cast<void*>(itemdb::kTableAddr));
+        if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
           const char* nm = *reinterpret_cast<char**>(
               reinterpret_cast<char*>(rec) + 4);
           if (nm) {
@@ -486,9 +477,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
       const int item_id = idstr ? atoi(idstr) : 0;
       if (!forged && item_id > 0) {  // forgé -> pas d'emplacements ni de suffixe [N]
-        void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-            item_id, reinterpret_cast<void*>(kDescDb));
-        if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+        void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+            item_id, reinterpret_cast<void*>(itemdb::kTableAddr));
+        if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
           const int sc =
               *reinterpret_cast<int*>(reinterpret_cast<char*>(rec) + 0x30);
           if (sc > 0 && sc <= kMaxCards) e->card_slots = sc;
@@ -1190,14 +1181,14 @@ static const char kCollectionPrefix[] =
 void LoadCardDesc(uint32_t id, CardDesc* cd) {
   __try {
     // 1) Parse paresseux -> peuple rec+0x0c.
-    void* cache = *reinterpret_cast<void**>(kEnsureCache);
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
-      reinterpret_cast<EnsureLoaded_t>(kEnsureLoaded)(cache, static_cast<int>(id));
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
 
     // 2) Nom affiché = record+4 (comme GetBaseName).
-    void* rec = reinterpret_cast<DescLookup_t>(kDescDbLookup)(
-        static_cast<int>(id), reinterpret_cast<void*>(kDescDb));
-    if (rec && rec != reinterpret_cast<void*>(kDescDbNil)) {
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
       if (nm) std::strncpy(cd->name, nm, sizeof(cd->name) - 1);
       // 2bis) Nombre d'emplacements de carte = record+0x30 (le natif le formate
@@ -1210,8 +1201,8 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
     // 3) Lignes de desc : info standalone (+0x5c=1) -> GetDescLines -> rec+0x0c.
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);            // init les std::string
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> info+0x2c
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init les std::string
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // -> info+0x2c
     *(info + kInfoFlag) = 1;                                  // => lit rec+0x0c
     char*** vec = reinterpret_cast<GetDescLines_t>(kGetDescLines)(info);
     if (vec) {
@@ -1460,15 +1451,15 @@ void OpenCardDescWindow(uint32_t id) {
   __try {
     uint8_t info[0x100];
     std::memset(info, 0, sizeof(info));
-    reinterpret_cast<InfoCtor_t>(kInfoCtor)(info);            // init les std::string
-    reinterpret_cast<InfoSetId_t>(kInfoSetId)(info, static_cast<int>(id));  // -> +0x2c
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init les std::string
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // -> +0x2c
     *(info + kInfoFlag) = 1;                                  // => desc lues de rec+0x0c
     void* mgr = uiwnd::Mgr();        // objet manager embarqué
     void* wnd = uiwnd::MakeWindow(0xc);
     if (wnd) {
       void** vt = *reinterpret_cast<void***>(wnd);
       auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
-      onmsg(wnd, 0, kMsgSetItem, static_cast<int>(reinterpret_cast<uintptr_t>(info)),
+      onmsg(wnd, 0, itemdb::kItemDescMsgSet, static_cast<int>(reinterpret_cast<uintptr_t>(info)),
             0, 0, 0);
     }
     // Pas de dtor sur `info` : toutes ses std::string sont en SSO (id décimal court),

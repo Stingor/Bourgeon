@@ -1,3 +1,4 @@
+#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/inventory_viewer.h"
 #include "ui/game_texture.h"
@@ -72,8 +73,6 @@ constexpr uintptr_t kInvExpansion  = 0x01602354;  // extension serveur (capacit�
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
 
 // Nom de base + nom complet (refine/cartes/enchant), comme le storage.
-constexpr uintptr_t kGetBaseName = 0x006a2b50;  // __thiscall(info, out, &cap, flag)
-constexpr uintptr_t kBuildName   = 0x008a0570;  // BuildDisplayName
 constexpr uintptr_t kGameFree    = 0x00dbbc7f;
 using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
@@ -91,7 +90,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
     int colorOut = 0; char* hlptr = nullptr;
     GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(kBuildName)(wnd, info, &colorOut, &off,
+    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
                                               &bufptr, &ncap, &hlptr, 0, 0);
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
@@ -99,7 +98,7 @@ inline void SafeBuildName(void* wnd, void* info, char* out, size_t outsz) {
     if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
     if (out[0] == '\0') {
       size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, out, &cap, 0);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out, &cap, 0);
       out[outsz - 1] = '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
@@ -111,9 +110,7 @@ constexpr uintptr_t kFmtComma = 0x00a948d0;
 
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
-constexpr int kWinItemDesc = 0xc;
 constexpr int kWinInventory = 8;
-constexpr int kMsgSetItem  = 0x18;
 using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fenêtre si ouverte
 
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) renvoie l'objet mode actif (ou 0 hors
@@ -552,9 +549,9 @@ void OpenItemDesc(uint32_t id, int mx, int my) {
     }
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(kWinItemDesc);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
     if (dwnd) {
-      uiwnd::OnMsg(dwnd, kMsgSetItem,
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                                   static_cast<int>(reinterpret_cast<uintptr_t>(found)),
                                   0, 0, 0);
       uiwnd::SetPos(dwnd, mx, my);
@@ -628,7 +625,7 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
   if (out->name[0] == '\0') {
     __try {
       size_t cap = sizeof(out->name);
-      reinterpret_cast<GetBaseName_t>(kGetBaseName)(info, out->name, &cap, 0);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out->name, &cap, 0);
       out->name[sizeof(out->name) - 1] = '\0';
     } __except (EXCEPTION_EXECUTE_HANDLER) { out->name[0] = '\0'; }
   }
