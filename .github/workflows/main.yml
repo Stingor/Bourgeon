@@ -40,6 +40,8 @@ jobs:
           # Discord limite une description d'embed à 4096 caractères :
           # on découpe en plusieurs messages plutôt que d'échouer en 400.
           MAX_DESC=3800
+          # borne par commit, en gardant de la marge pour les préfixes "> "
+          MAX_MSG=3000
 
           send_embed() {
             local description="$1"
@@ -68,17 +70,23 @@ jobs:
             ts=$(echo "$commit" | jq -r .timestamp)
             # le titre seul va dans le lien : un lien markdown ne supporte
             # pas les retours à la ligne
-            subject=$(echo "$commit" | jq -r '.message | split("\n")[0] | .[0:150]')
-            # le corps est indenté sous le titre, l'ensemble borné à 800 caractères
-            body=$(echo "$commit" | jq -r '
+            subject=$(echo "$commit" | jq -r '.message | split("\n")[0] | .[0:200]')
+            # corps en citation : une ligne indentée serait recollée à la
+            # précédente par Discord, "> " préserve les retours à la ligne
+            body=$(echo "$commit" | jq -r --argjson max "$MAX_MSG" '
               .message
-              | .[0:800]
+              | (if (length > $max) then .[0:$max] + "\n…" else . end)
               | rtrimstr("\n")
               | split("\n")
               | .[1:]
-              | map("\n  " + .)
+              | map(select(test("^\\s*Co-Authored-By:"; "i") | not))
+              | map("\n> " + .)
               | join("")
             ')
+            # lignes de citation vides laissées en fin par les trailers filtrés
+            while [[ "$body" == *$'\n> ' ]]; do
+              body="${body%$'\n> '}"
+            done
             sha=$(echo "$commit" | jq -r .id)
             url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}"
             formatted=$(TZ="Europe/Paris" date -d "$ts" "+%d/%m/%Y %H:%M")
