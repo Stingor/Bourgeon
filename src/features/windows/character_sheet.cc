@@ -107,7 +107,16 @@ enum { kCompOff = 0, kCompOn = 1, kCompDeco = 2 };
 constexpr int       kVfDispCmd       = 0x18;
 constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
 constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
-constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur soi / toggle
+constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur une CIBLE DONNÉE (GID)
+// cmd 0x71 = « lancer la compétence du slot » : c'est LUI qui lit l'INF et décide entre
+// envoi immédiat (self) et passage en mode ciblage (cible / sol / support / piège).
+constexpr int       kCmdUseSkillSlot = 0x71;
+// Struct d'info compétence remplie par le natif : __stdcall(out, skillId). Champs utiles
+// +0x04 trouvée, +0x08 id, +0x0C INF, +0x10 niveau appris. À DÉTRUIRE (2 std::string).
+constexpr uintptr_t kSkillEntryFill  = 0x00d7fa90;
+constexpr uintptr_t kSkillEntryDtor  = 0x00739cd0;
+constexpr int       kSkillEntryFound = 0x04;
+constexpr int       kSkillEntryLevel = 0x10;
 // g_Own_AccountId : notre AID, qui est aussi le GID de notre acteur (cible d'un self-cast).
 constexpr uintptr_t kOwnAccountId    = 0x015fb9a4;
 constexpr uintptr_t kShowEquipFlag   = 0x015ffd14;  // 1 = équip visible des autres (validé live)
@@ -1674,7 +1683,7 @@ std::vector<uint8_t> BuildEmblemBmp() {
 // La description passe par itemcell::OpenDescById. La fiche de perso est le cas
 // MIXTE : elle a de vrais items — les slots d'équipement de la session — mais pas
 // de nœud de liste à passer. Elle utilise donc le paramètre `src` d'OpenDescById,
-// qui recopie cartes/raffinage/grade/options du slot source ; sans lui la fenêtre
+// qui recopie cartes/refine/grade/options du slot source ; sans lui la fenêtre
 // montrerait l'item de BASE, nu.
 
 // Description d'un SKILL : fenêtre 0x2e (≠ 0xc, qui est celle des objets), pilotée par
@@ -1761,20 +1770,54 @@ void SendConfigToggle(int cmd, int value) {
     if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
-// Lance une compétence par le chemin NATIF, celui du bouton « use » de la fenêtre de
-// compétences : cmd 0x45 du même dispatcher. Le client fait ses propres contrôles (SP,
-// cooldowns partagés), affiche la barre de cast, puis envoie CZ_USE_SKILL 0x0438
-// {op, niv, id, cibleGID}. Fabriquer ce paquet nous-mêmes sauterait tout cela — une
-// compétence à 10 s de cast (GD_RESTORE) partirait sans le moindre retour à l'écran.
-// RE du bloc : 0x00c8d9ad..0x00c8de53 ; arguments (cmd, skillId, cibleGID, niveau, 0).
+// Lance une compétence par le chemin NATIF, EXACTEMENT celui d'une touche de la barre de
+// raccourcis : cmd 0x71 du dispatcher, avec la struct d'info de la compétence et le niveau
+// — c'est la réplique de la branche SKILL de UIShortCutWnd::OnMsg 0x29 (0x00901310), qui
+// fait `ItemMgr_GetInvItemById(&info, id)` puis `SendMsg(0x71, &info, niveau, 0, 0)`.
+//
+// ⚠ POURQUOI PAS 0x45 : le 0x45 lance sur une CIBLE DONNÉE (arg3 = GID) — on lui passait
+// notre propre GID, donc TOUTE compétence partait sur soi-même, ciblées comprises (Arrow
+// Vulcan lancé sur le lanceur, sans curseur de visée). Le tri par INF est fait par le
+// 0x71 (RE 0x00c8d6bd) : il lit info+0x0C et route vers
+//   INF 4  (soi)     -> 0x45 lui-même, avec le bon GID (soi, ou l'homoncule/mercenaire)
+//   INF 1  (cible)   -> 0x48 mode 2   |  INF 2  (sol)   -> 0x48 mode 1
+//   INF 16 (support) -> 0x48 mode 4   |  INF 8          -> 0x48 mode 3
+//   INF 32 (piège)   -> 0x48 mode 5
+// 0x48 = « entrer en mode ciblage » (curseur de visée, le clic suivant choisit la cible),
+// 0x48 mode 0 = annuler. Le natif détruit la struct dès le retour : le mode ciblage copie
+// ce dont il a besoin, on fait pareil.
+//
+// Repli sur l'ancien 0x45-sur-soi si le natif ne connaît pas l'id (compétences de guilde,
+// hors de la liste apprise) — c'est le cas de l'onglet Guilde, qui marchait ainsi.
 void SendUseSkill(uint16_t skillId, int level) {
   __try {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
-    const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
-    if (d && self)
-      Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
-                                   level, 0);
+    if (!d) return;
+    bool dispatched = false;
+    {
+      alignas(8) uint8_t entry[0xC0] = {};
+      reinterpret_cast<void(__stdcall*)(void*, int)>(kSkillEntryFill)(entry, skillId);
+      const int found = *reinterpret_cast<const int*>(entry + kSkillEntryFound);
+      const int owned = *reinterpret_cast<const int*>(entry + kSkillEntryLevel);
+      // Le natif refuse de lancer au-dessus du niveau appris (garde `owned >= niveau`
+      // de OnMsg 0x29) : on borne au lieu de refuser, l'appelant a déjà borné au appris.
+      int lv = level < 1 ? 1 : level;
+      if (owned > 0 && lv > owned) lv = owned;
+      if (found) {
+        Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkillSlot,
+                                     static_cast<int>(reinterpret_cast<uintptr_t>(entry)),
+                                     lv, 0, 0);
+        dispatched = true;
+      }
+      reinterpret_cast<void(__fastcall*)(void*)>(kSkillEntryDtor)(entry);
+    }
+    if (!dispatched) {
+      // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
+      const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
+      if (self)
+        Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
+                                     level, 0);
+    }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Envoie une commande @ par le canal de chat (CZ_GlobalMessage 0x00f3), c'est-à-dire
@@ -2041,7 +2084,7 @@ struct StatBonusPayload {   // bloc FIXE (miroir de PACKET_ZC_BOURGEON_STAT_BONU
   // Lot G — très niche
   int32_t break_weapon_pct, break_armor_pct, zeny_bonus_pct, classchange_pct;
   int32_t dmg_ret_reduce, magic_hp_gain, magic_sp_gain;
-  // Part du raffinage dans l'ATK / la DEF
+  // Part du refine dans l'ATK / la DEF
   int32_t refine_atk, refine_def;
 };
 struct CondWire {          // miroir de PACKET_BOURGEON_STAT_COND
@@ -3251,7 +3294,9 @@ void CharacterSheet::DrawSkillsTab() {
       int use = GetUseLevelSEH(s.id);
       if (use <= 0 || use > s.learned) use = s.learned;
       ImGui::TextColored(kGray, "Lancer au niveau %d / %d", use, s.learned);
-      if (ImGui::MenuItem("  niveau −", nullptr, false, use > 1))
+      // « - » ASCII, pas le signe moins U+2212 : la police de l'UI ne le porte pas
+      // et il sortait en tofu dans le menu.
+      if (ImGui::MenuItem("  niveau -", nullptr, false, use > 1))
         SetUseLevelSEH(s.id, use - 1);
       if (ImGui::MenuItem("  niveau +", nullptr, false, use < s.learned))
         SetUseLevelSEH(s.id, use + 1);
@@ -3451,6 +3496,28 @@ void CharacterSheet::DrawSkillsTab() {
                      learned ? IM_COL32_WHITE : IM_COL32(105, 105, 115, 165));
       // Cooldown en cours : même voile montant + décompte que la barre de raccourcis.
       if (learned) DrawSkillCooldownOverlay(dl, static_cast<uint16_t>(s.id), ip, icon);
+
+      // Niveau d'utilisation BRIDÉ sous le niveau appris : c'est à ce niveau-là que la
+      // compétence part (double-clic, barre de raccourcis), et rien ne le montrait —
+      // d'où la pastille au centre de l'icône, absente quand le réglage est au maximum
+      // (cas normal). IsLevelUseSkill n'est interrogé qu'après le test de bridage :
+      // c'est un appel natif, inutile de le payer sur chaque case de la grille.
+      if (s.learned > 0) {
+        const int use_lv = GetUseLevelSEH(s.id);
+        if (use_lv > 0 && use_lv < s.learned && IsLevelUseSkillSEH(s.id)) {
+          char use_txt[8];
+          std::snprintf(use_txt, sizeof(use_txt), "%d", use_lv);
+          const ImVec2 usz = ImGui::CalcTextSize(use_txt);
+          const ImVec2 up(ip.x + (icon - usz.x) * 0.5f, ip.y + (icon - usz.y) * 0.5f);
+          dl->AddRectFilled(ImVec2(up.x - 4.0f, up.y - 2.0f),
+                            ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
+                            IM_COL32(15, 15, 20, 205), 4.0f);
+          dl->AddRect(ImVec2(up.x - 4.0f, up.y - 2.0f),
+                      ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
+                      IM_COL32(255, 205, 105, 220), 4.0f, 0, 1.0f);
+          dl->AddText(up, IM_COL32(255, 215, 130, 255), use_txt);
+        }
+      }
 
       // Niveau sous l'icône : la seule information qu'on ne peut pas deviner du dessin.
       // NOIR dès qu'elle est apprise (le vert « niveau max » se noyait dans le fond
@@ -4972,7 +5039,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     }
     // Clic droit = description native (fenêtre 0x2e), au curseur, comme dans la barre.
     // Vaut aussi pour une compétence verrouillée : savoir ce qu'elle fait aide à décider.
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+    if (mui::IsLastItemRightClicked()) {
       const ImVec2 mp = ImGui::GetIO().MousePos;
       OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
     }
@@ -6471,7 +6538,7 @@ void CharacterSheet::DrawStatsPanel() {
   stat("MATK", b, "Attaque magique : détermine les dégâts des sorts.");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.def_s, s.def_h);
   appendPct("refine", bonus_.refine_def);
-  stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du raffinage des armures (dans la réduction %).");
+  stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du refine des armures (dans la réduction %).");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.mdef_s, s.mdef_h);
   stat("MDEF", b, "Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2).");
   std::snprintf(b, sizeof(b), "%d", s.hit);
