@@ -61,6 +61,19 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int card_count = 0, const SimpleOpt* opts = nullptr,
                       int opt_count = 0, int refine = 0,
                       const char* display_name = nullptr);
+
+// Remonte le panneau de description au premier plan.
+//
+// À appeler APRÈS itemcell::OpenDesc*, et SEULEMENT sur un geste délibéré (clic
+// sur un item, sur un lien) — jamais depuis un survol.
+//
+// Pourquoi c'est nécessaire : le panneau porte `ImGuiWindowFlags_NoFocusOnAppearing`,
+// donc il ne prend pas le focus en apparaissant et ImGui ne le remonte pas. Ouvert
+// depuis une fenêtre qui a le focus, il se retrouve DERRIÈRE elle. Ce flag est
+// voulu — l'aperçu au survol du viewer storage ouvre le même panneau et volerait
+// le focus à chaque changement de ligne — d'où ce geste explicite plutôt qu'un
+// changement de comportement global.
+void FocusDescWindow();
 }  // namespace itemdesc
 
 class ItemDescWindow : public Plugin {

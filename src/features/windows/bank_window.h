@@ -64,7 +64,7 @@ class BankWindow : public Plugin {
   //
   // On MASQUE au lieu d'empêcher la création : la fenêtre native reste notre
   // signal « la banque est ouverte » (FindWindow(275)), elle porte les gardes
-  // d'ouverture du client (raffinage, enchant, runes…) qui vivent dans le case 275
+  // d'ouverture du client (refine, enchant, runes…) qui vivent dans le case 275
   // de MakeWindow, et elle alimente g_pUIBankWnd, que le raccourci natif Ctrl+B
   // lit pour choisir entre fermer et redemander au serveur. No-op si le viewer est
   // désactivé (banque native classique).

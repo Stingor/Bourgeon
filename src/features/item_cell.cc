@@ -145,7 +145,7 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
     if (src) {
       // Le name-builder natif (0x008a0570) décore le nom à partir du TYPE @0,
-      // des cartes @0x1c-0x28, du raffinage @0x60, du grade @0x88 : sans ces
+      // des cartes @0x1c-0x28, du refine @0x60, du grade @0x88 : sans ces
       // champs il rend le nom NU. On saute les deux std::string (@0x2c id,
       // @0x44 resname) que SetId vient de construire — les recopier ferait
       // partager un tampon heap entre deux ItemSkillInfo.

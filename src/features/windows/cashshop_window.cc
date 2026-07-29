@@ -23,6 +23,7 @@
 #include "features/overlays/basic_info.h"   // aperçu porté (RenderItemPreviewTooltip / CanPreview)
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
+#include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
@@ -691,7 +692,7 @@ void CashShopWindow::OnRenderUI() {
       ImGui::EndChild();
       ImGui::PopStyleVar();    // WindowPadding (carte)
       ImGui::PopStyleColor();  // ChildBg
-      if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      if (mui::IsLastItemRightClicked()) {
         const ImVec2 mp = ImGui::GetMousePos();
         itemcell::OpenDescById(ci.id, ci.view, ci.location,
                                static_cast<int>(mp.x), static_cast<int>(mp.y));

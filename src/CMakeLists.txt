@@ -69,6 +69,8 @@ set(BOURGEON_FILES
 	"features/windows/trade_window.h"
 	"features/windows/vending_window.cc"
 	"features/windows/vending_window.h"
+	"features/windows/weapon_refine_window.cc"
+	"features/windows/weapon_refine_window.h"
 
 	# patches/
 	"features/patches/berserk_chat_unlock.cc"

@@ -15,6 +15,7 @@
 #include "features/windows/cashshop_window.h"  // hide-native-at-creation (id 0x13e)
 #include "features/windows/npc_shop_window.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "features/windows/vending_window.h"  // hide-native-at-creation (id 0x29/0xAE)
+#include "features/windows/weapon_refine_window.h"  // hide-native-at-creation (id 111)
 #include "features/windows/trade_window.h"  // hide-native-at-creation (échange, par vtable)
 #include "features/windows/rodex_window.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "features/windows/npc_dialog_window.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
@@ -201,6 +202,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
         windowID == 0x64 || windowID == 0xe2) {
       if (auto* nd = Bourgeon::Instance().npc_dialog_window())
         nd->HideNativeAtCreation(win, windowID);
+    }
+    // Refine d'arme Whitesmith (UIWeaponRefineWnd id 111) : cette fenêtre est
+    // créée par le handler de ZC_NOTIFY_WEAPONITEMLIST (0x0221), donc ENTRE deux
+    // OnTick -> sans ce hook une frame native passerait à l'écran avant que le
+    // plugin ne la masque (même cas que la banque et le sertissage).
+    if (windowID == 111) {
+      if (auto* wr = Bourgeon::Instance().weapon_refine_window())
+        wr->HideNativeAtCreation(win);
     }
     // Comparateur ATK/DEF (UIItemParamChangeDisplayWnd) : id variable, créé par le
     // handler d'achat natif -> détecté par vtable (no-op hors session shop).

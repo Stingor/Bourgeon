@@ -47,6 +47,7 @@
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
+#include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
@@ -85,6 +86,7 @@ BankWindow* Bourgeon::bank_window() { return bank_window_; }
 CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
 NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
 VendingWindow* Bourgeon::vending_window() { return vending_window_; }
+WeaponRefineWindow* Bourgeon::weapon_refine_window() { return weapon_refine_window_; }
 TradeWindow* Bourgeon::trade_window() { return trade_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
 NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
@@ -234,6 +236,12 @@ void Bourgeon::OnProcessInput() {
   // relance le rendu en pleine frame ImGui. Les commandes sont donc empilées
   // pendant le rendu et rejouées ICI, hors de toute frame ImGui.
   if (auto* vt = vending_window()) vt->FlushPending();
+  // Refine Whitesmith : MÊME raison. Ses actions rejouent des chemins
+  // natifs (CMode::SendMsg cmd 182, destruction de la fenêtre 111, relance du
+  // skill) qui peuvent déclencher une modale BLOQUANTE — laquelle relance le
+  // tick/rendu du mode et gèlerait le client si on l'atteignait depuis une
+  // frame ImGui (cf. docs/weapon_refine_re.md §6).
+  if (auto* wr = weapon_refine_window()) wr->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -547,6 +555,12 @@ void Bourgeon::LoadPlugins() {
     auto vending_window = std::make_unique<VendingWindow>();
     vending_window_ = vending_window.get();
     plugins_.emplace_back(std::move(vending_window));
+    // Refine d'arme Whitesmith : remplace « Upgradeable weapons » (id 111).
+    // Doit exister AVANT tout paquet 0x0221 — son constructeur enregistre
+    // l'observation de l'opcode et pose le détour de la modale « liste vide ».
+    auto weapon_refine_window = std::make_unique<WeaponRefineWindow>();
+    weapon_refine_window_ = weapon_refine_window.get();
+    plugins_.emplace_back(std::move(weapon_refine_window));
   }
   {
     auto trade_window = std::make_unique<TradeWindow>();

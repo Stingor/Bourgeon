@@ -28,7 +28,7 @@ namespace itemcell {
 
 // Une TUILE de grille : l'icône à sa taille NATIVE (le natif dessine le bmp 1:1,
 // ~24 px dans une tuile de 32), centrée, et réduite SEULEMENT si elle déborde ;
-// un « ? » grisé si l'icône manque ; puis, en bas à droite, le raffinage « +N »
+// un « ? » grisé si l'icône manque ; puis, en bas à droite, le refine « +N »
 // OU la quantité — jamais les deux, un équipement ne s'empile pas. Ce badge est
 // écrit en noir cerné de blanc pour rester lisible sur n'importe quel fond,
 // comme le fait le client.
@@ -42,7 +42,7 @@ namespace itemcell {
 void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
               float cell, const ro::IconTex& icon, int refine, int amount);
 
-// Nom d'AFFICHAGE composé par le name-builder natif : raffinage, préfixes de
+// Nom d'AFFICHAGE composé par le name-builder natif : refine, préfixes de
 // cartes, forge. `wnd` est la fenêtre native qui sert de contexte au builder,
 // `info` l'ItemSkillInfo de l'objet. Écrit toujours une chaîne terminée dans
 // `out` — vide si tout échoue, jamais d'indéterminé.
@@ -63,7 +63,7 @@ int SlotCount(void* info);
 // suffixe_carte [emplacements]`.
 //
 // Le début est déjà composé par le name-builder natif (cf. BuildDisplayName) :
-// raffinage et affixes de cartes sont DANS `name`, il ne faut surtout pas les
+// refine et affixes de cartes sont DANS `name`, il ne faut surtout pas les
 // re-préfixer. Seul le suffixe « [N] » manque — le builder ne le compose pas —
 // et c'est ce que cette fonction ajoute, quand N > 0.
 //
@@ -88,11 +88,11 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
 //
 //   OpenDescFromInfo — on tient l'ItemSkillInfo que le SERVEUR a rempli (nœud de
 //     liste inventaire/chariot/storage, slot d'équipement). Description
-//     COMPLÈTE : cartes, raffinage, enchantements, options aléatoires.
+//     COMPLÈTE : cartes, refine, enchantements, options aléatoires.
 //
 //   OpenDescById — on n'a qu'un id (boutique NPC, cash shop, case munition).
 //     La fenêtre reconstruit l'item de BASE depuis la DB client : le texte est
-//     bon, mais il ne peut pas y avoir de cartes ni de raffinage, l'appelant
+//     bon, mais il ne peut pas y avoir de cartes ni de refine, l'appelant
 //     n'en connaît pas.
 //
 // ⚠ OnMsg 0x18 COPIE l'info qu'on lui passe (dans wnd+0xb8) : on ne cède la
@@ -112,7 +112,7 @@ void OpenDescFromInfo(const void* info, int mx, int my);
 // sans eux ; 0/0 pour un item non portable.
 //
 // `src`, si fourni, est un ItemSkillInfo vivant dont on recopie les champs
-// non-string (type, cartes, raffinage, grade, options) : c'est le pont entre les
+// non-string (type, cartes, refine, grade, options) : c'est le pont entre les
 // deux familles, pour l'appelant qui a un vrai item mais préfère ne pas exposer
 // l'objet du jeu. Il rend alors la même chose qu'OpenDescFromInfo. Les deux
 // std::string membres (id @0x2c, resname @0x44) sont volontairement SAUTÉES —

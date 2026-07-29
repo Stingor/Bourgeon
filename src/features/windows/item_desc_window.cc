@@ -2295,6 +2295,19 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   }
 }
 
+void FocusDescWindow() {
+  // Le « ### » est l'identifiant STABLE du panneau : son titre visible change à
+  // chaque item (et devient « Comparaison » en mode comparatif), mais ImGui hache
+  // à partir du ###, donc cette chaîne seule suffit à le retrouver. Elle doit
+  // rester alignée sur les deux std::snprintf qui composent ce titre, un peu plus
+  // bas dans ce même fichier.
+  //
+  // Panneau pas encore créé (première ouverture) : SetWindowFocus ne trouve rien
+  // et ne fait rien — c'est le bon comportement, une fenêtre neuve est de toute
+  // façon empilée au premier plan.
+  ImGui::SetWindowFocus("###itemdesc_item");
+}
+
 }  // namespace itemdesc
 
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
@@ -2525,7 +2538,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           }
           if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
             OpenCardDbLink(mem.first);      // base de données du site (page itemdb)
-          if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+          if (IsLastItemRightClicked())
             pending_card_open_ = mem.first; // desc complète au prochain OnTick
         };
         for (size_t i = 0; i < sd->combos.size(); ++i) {
@@ -2923,7 +2936,7 @@ void ItemDescWindow::RenderItemWindow() {
           // Clic droit -> ouvre la description COMPLÈTE de la carte/enchant dans la
           // fenêtre desc (remplace l'item courant, comme un lien de carte natif). On
           // diffère l'appel natif au prochain OnTick (hors rendu ImGui).
-          if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+          if (IsLastItemRightClicked())
             pending_card_open_ = e.cards[i];
         }
         ImGui::PopStyleVar(1);

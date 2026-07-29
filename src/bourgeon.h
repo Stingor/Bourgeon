@@ -27,6 +27,7 @@ class BankWindow;
 class CashShopWindow;
 class NpcShopWindow;
 class VendingWindow;
+class WeaponRefineWindow;
 class TradeWindow;
 class RodexWindow;
 class CharacterSheet;
@@ -71,6 +72,7 @@ class Bourgeon {
   CashShopWindow* cashshop_window();
   NpcShopWindow* npc_shop_window();
   VendingWindow* vending_window();
+  WeaponRefineWindow* weapon_refine_window();
   TradeWindow* trade_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
@@ -160,6 +162,7 @@ class Bourgeon {
   CashShopWindow* cashshop_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   NpcShopWindow* npc_shop_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_
+  WeaponRefineWindow* weapon_refine_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_

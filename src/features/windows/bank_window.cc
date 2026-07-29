@@ -56,7 +56,7 @@ constexpr int kMsgMaxMoney        = 2768;  // MSI_BANK_MAX_MONEY
 constexpr int kMsgZeroMoney       = 2770;  // MSI_BANK_0_MONEY
 
 // Fenêtres qui BLOQUENT dépôt/retrait côté client (RE Bank_IsBlockedByOpenWindow
-// 0x00c86150) : raffinage, grade-enchant, enchant, barter étendu, runes.
+// 0x00c86150) : refine, grade-enchant, enchant, barter étendu, runes.
 // ⚠ Garde PUREMENT client : le serveur, lui, accepterait. On la reproduit pour
 // rester fidèle au natif, pas parce qu'elle protège quoi que ce soit.
 constexpr int kBlockingWindows[] = {290, 302, 348, 10006, 361};

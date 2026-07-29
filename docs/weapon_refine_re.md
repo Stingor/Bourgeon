@@ -1,10 +1,10 @@
-# Raffinage d'arme Whitesmith (« Upgradeable weapons ») — RE de `UIWeaponRefineWnd`
+# Refine d'arme Whitesmith (« Upgradeable weapons ») — RE de `UIWeaponRefineWnd`
 
 Client cible : `Moonlight-Destiny.exe` (base `0x400000`, build 20250716).
 Serveur : fork `moonlight` de rAthena (`src/map/skill.cpp`, `src/map/clif.cpp`).
 
 Objectif du document : décrire **exhaustivement** le chemin natif qui va du lancement du
-skill `WS_WEAPONREFINE` jusqu'à l'arme raffinée (ou détruite), afin de pouvoir remplacer la
+skill `WS_WEAPONREFINE` jusqu'au refine effectif (ou l'arme détruite), afin de pouvoir remplacer la
 fenêtre native par une fenêtre ImGui — et documenter au passage **la modale bloquante** qui
 apparaît quand la liste revient vide.
 
@@ -47,17 +47,17 @@ ZC_ACK_WEAPONREFINE (0x0223)   Recv_ZC_ACK_WEAPONREFINE @ 0x00CDF6C0
 ### Les trois points cruciaux pour le portage
 
 > **1. Le client jette la moitié du paquet.** Chaque entrée de `0x0221` porte le niveau de
-> raffinage courant **et les 4 cartes** de l'arme. Le natif ne lit que `index` et `nameid` :
+> refine courant **et les 4 cartes** de l'arme. Le natif ne lit que `index` et `nameid` :
 > la liste affiche un nom nu, sans `+7`, sans carte, sans slot. Tout est déjà là, gratuit.
 
-> **2. Un lancement de skill = UN seul raffinage.** Le serveur fait
+> **2. Un lancement de skill = UN seul refine.** Le serveur fait
 > `clif_menuskill_clear(sd)` juste après `skill_weaponrefine()`, et le client
 > `SaveRectAndCloseWindow(111)` juste après l'envoi. Pour enchaîner, il faut **relancer le
 > skill à la main** à chaque fois. C'est le principal irritant du natif.
 
 > **3. Un échec DÉTRUIT l'arme.** `pc_delitem(&sd, idx, 1, 0, 2, LOG_TYPE_OTHER)` — le
 > `item->refine = 0` qui précède est purement cosmétique. Le natif ne prévient de rien, ne
-> demande aucune confirmation, et n'affiche même pas le raffinage courant de l'arme qu'on
+> demande aucune confirmation, et n'affiche même pas le refine courant de l'arme qu'on
 > s'apprête à jouer.
 
 ---
@@ -130,7 +130,7 @@ octets on lirait `44647`, qui n'existe dans aucune base de la branche.
 | `OnCreate` | `0x00968BE0` (vt+0x3C) |
 | `OnDraw` / titre | `0x00969AE0` (vt+0x50) |
 | **`OnMsg`** | **`0x0096AAB0`** (vt+0x94) |
-| vt+0xB0 | `0x009665D0` |
+| vt+0xB0 (sérialisation replay) | `0x009665D0` `UIWeaponRefineWnd_SerializeForReplay` |
 | Pointeur singleton | `g_UIWindowMgr + 0x204` (posé par `MakeWindow`) |
 | Taille fenêtre | **280 × 150** (`UIWindow_SetSize(0x118, 0x96)`) |
 
@@ -176,7 +176,7 @@ Membres propres à la classe (posés à 0 par le ctor, remplis par `OnMsg(0x1F)`
 
 > **Conséquence pratique** : les deux vecteurs sont lisibles directement depuis l'instance.
 > Un plugin peut donc reconstruire la liste **sans hooker le paquet** — mais il n'aura ni le
-> raffinage ni les cartes, qui ne sont nulle part ailleurs que dans `0x0221`.
+> refine ni les cartes, qui ne sont nulle part ailleurs que dans `0x0221`.
 
 ### `OnCreate` (0x00968BE0)
 
@@ -200,8 +200,8 @@ La liste reçoit aussi ses trois couleurs à `240, 240, 240` (offsets +0x7C/+0x8
 case 0x1F:  // AJOUT D'UNE LIGNE — Value = itemId, param_2 = index inventaire
     vecA.push_back(Value);          // itemId
     vecB.push_back(param_2);        // index inventaire
-    ItemSkillInfo_SetId(info, Value);
-    listbox->AddString( BuildDisplayName(info) );   // vt+0xD8
+    ItemSkillInfo_SetId(info, Value);               // info fabriqué du seul nameid
+    listbox->AddString( ItemSkillInfo_ComposeDisplayName(info) );   // vt+0xD8
 
 case 0x06:  // CLIC BOUTON
     Replay_RecordUIEvent(this, id, ..., listbox->selIndex);
@@ -223,6 +223,7 @@ case 0x06:  // CLIC BOUTON
 case 0x12:  // 18 — relayé tel quel à la listbox (défilement)
 case 0x13:  // 19 — idem
 case 0x7B:  // 123 — restitution replay : TLV tags 22200 / 22201 / 22202, rejoue des 0x1F
+            //       (l'inverse exact de UIWeaponRefineWnd_SerializeForReplay, vt+0xB0)
 default:    UIWindow_OnMsg_Default(...)               // 0x008841D0
 ```
 
@@ -283,7 +284,7 @@ Côté serveur (`clif_parse_WeaponRefine`) :
 if (sd->menuskill_id != WS_WEAPONREFINE) return;   // hors contexte = no-op silencieux
 if (pc_istrading(sd)) { clif_skill_fail(...); clif_menuskill_clear(sd); return; }
 skill_weaponrefine(*sd, server_index(RFIFOL(fd, 2)));
-clif_menuskill_clear(sd);                          // ← UN SEUL raffinage par lancement
+clif_menuskill_clear(sd);                          // ← UN SEUL refine par lancement
 ```
 
 > Envoyer `0x0222` en dehors du contexte est donc **sans effet** : aucun exploit possible
@@ -302,6 +303,15 @@ struct ZC_ACK_WEAPONREFINE {
     uint32 itemId;       // +6
 };
 ```
+
+> ⚠ **Piège à la lecture côté plugin.** `RegisterObserveOpcode` passe les octets qui suivent
+> l'opcode : le `data` du callback vaut **paquet + 2**. Les offsets ci-dessus sont ceux du
+> PAQUET, il faut donc leur retrancher 2 — `result` en `data+0`, `itemId` en `data+4`. Écrit
+> avec les offsets du paquet, `result` se lit à cheval sur les deux champs et vaut l'`itemId`
+> décalé de 16 bits : jamais 0..3, donc le `switch` tombe dans son `default` et le journal de
+> session reste vide **sans le moindre signe d'erreur**. C'est ce qui s'est produit, et le
+> `0x0221` juste au-dessus ne le trahissait pas — son parseur, lui, part bien de `data+0` pour
+> le champ longueur.
 
 Le handler ne fait **qu'écrire une ligne de chat** — aucune fenêtre, aucune modale :
 
@@ -356,8 +366,8 @@ C'est le chemin `count == 0` du handler `0x0221`, à `0x00CA60E6` :
 | Taille | 280 × 120 |
 
 > **Le libellé est un recyclage.** `MSI_CANT_MAKE_ITEM` est le message générique de
-> fabrication ; le client le réutilise tel quel pour « aucune arme raffinable ». D'où un
-> message qui ne parle ni d'arme, ni de raffinage, ni de minerai — alors que le serveur, lui,
+> fabrication ; le client le réutilise tel quel pour « aucune arme refinable ». D'où un
+> message qui ne parle ni d'arme, ni de refine, ni de minerai — alors que le serveur, lui,
 > sait exactement pourquoi la liste est vide (cf. §7).
 
 > 🔴 **Piège pour le portage.** `ShowMessageBoxModal` est **bloquante** : elle ne rend pas la
@@ -396,7 +406,7 @@ Si `count == 0` : le paquet part quand même (vide) → **la modale du §6**.
 | 3 | Oridecon | 984 |
 | 4 | Oridecon | 984 |
 
-### Le raffinage lui-même
+### Le refine lui-même
 
 ```c
 if (ditem->flag.no_refine || ditem->weapon_level < 1)  → clif_skill_fail
@@ -470,18 +480,70 @@ CP949, ids valides `0..0x1102`). Source : `data/msgstringtable.csv` (base64 `cl�
 | `UIWindowMgr_MakeWindow` | `0x00A39340` (case 111 @ `0x00A3DB41`) |
 | `UIWindowMgr_FindWindow` | `0x00A47B90` |
 | `UIWindowMgr_SaveRectAndCloseWindow` ⚠ détruit | `0x00A2E770` |
-| `BuildDisplayName` / `ItemSkillInfo_SetId` | `0x008A0570` / `0x006A6570` |
+| `ItemSkillInfo_BuildDisplayName` / `ItemSkillInfo_SetId` | `0x008A0570` / `0x006A6570` |
+| `ItemSkillInfo_ComposeDisplayName` (nom composé, SANS contexte) | `0x006A2CE0` |
+
+### `ItemSkillInfo_ComposeDisplayName` — une RE-découverte, et sa leçon
+
+`0x006A2CE0` n'est pas une trouvaille de cette campagne : elle était **déjà décrite par au
+moins trois campagnes antérieures** — les liens `<ITEML>` du chat (`docs/chatbox_re.md`), le
+tooltip de la fenêtre d'équipement, et la barre de raccourcis. Simplement, elle n'avait
+jamais été **renommée** dans l'IDB : elle y ressortait en `FUN_006a2ce0` à chaque fois, donc
+elle a été re-dérivée à chaque fois.
+
+C'est le cas d'école de la règle « renommer ET commenter dès qu'on identifie » : le coût
+d'un renommage est de dix secondes, celui de son absence se paie en re-RE à chaque campagne
+qui recroise la fonction.
+
+Ce qu'elle fait : `__thiscall(ItemSkillInfo* info, std::string* out, char decorate)`, où
+`this` est **l'ItemSkillInfo lui-même**. Elle compose le nom complet (préfixe `+N`, grade,
+affixes de cartes, nom de base, suffixe `[N]`) et n'a besoin d'**aucun contexte extérieur** —
+ni fenêtre, ni gestionnaire. C'est elle que la fenêtre native emploie pour ses libellés de
+liste (§3, `OnMsg` case `0x1F`) : si cette liste paraît nue, ce n'est donc pas la faute du
+composeur, mais du fait que la fenêtre lui passe un `ItemSkillInfo` fabriqué à partir du seul
+`nameid`.
+| `UIWindowMgr_FindOrQueueNameRequest` (file de résolution du nom de créateur) | `0x00A2C8B0` |
+
+### Le `this` de `BuildDisplayName` est le GESTIONNAIRE, pas une fenêtre
+
+Trouvaille faite en corrigeant un bug de ce plugin, et **valable pour tout le projet** :
+`ItemSkillInfo_BuildDisplayName` (`0x008A0570`) n'utilise son `this` qu'à un seul endroit —
+`UIWindowMgr_FindOrQueueNameRequest(this)`, dans les branches « objet forgé dont le nom de créateur est
+introuvable ». Or le seul appel **direct** de `UIWindowMgr_FindOrQueueNameRequest` dans le client,
+`UIMerchantItemShopWnd_DrawContent` @`0x00948041`, charge explicitement :
+
+```asm
+00948040  push edi
+00948041  mov  ecx, offset 0131F4E8h   ; g_UIWindowMgr
+00948046  call UIWindowMgr_FindOrQueueNameRequest
+```
+
+`UIWindowMgr_FindOrQueueNameRequest` lit `this+0x18C` et y pousse une entrée : c'est une `std::list` du
+**gestionnaire**. Vérifié en mémoire — `g_UIWindowMgr+0x18C` = `{0x03CDDFC8, 0}`, une liste
+vide bien formée.
+
+Deux conséquences :
+
+- Passer `uiwnd::Mgr()` est correct **et toujours disponible**. Passer la fenêtre inventaire
+  marche aussi… mais seulement quand elle est OUVERTE, sinon le nom se dégrade en nom de
+  base — les préfixes de cartes disparaissent sous les yeux du joueur.
+- ⚠ Passer une PETITE fenêtre est dangereux : `UIWeaponRefineWnd` fait `0xD0` octets, donc
+  `+0x18C` est hors de ses bornes. Les six autres viewers du projet (inventaire, chariot,
+  storage, échoppe, boutique PNJ, cash shop) passent chacun **leur propre fenêtre** : ça ne
+  tient que tant que ces objets dépassent `0x190` octets et que la branche « forgé sans nom
+  de créateur » reste rare. À reprendre, mais ce n'est pas l'objet de ce document.
 
 ---
 
 ## 10. Ce que le natif ne sait pas faire
 
-Inventaire des manques, établi à partir du RE ci-dessus — c'est le cahier des charges du
-futur remplacement ImGui.
+Inventaire des manques, établi à partir du RE ci-dessus. C'était le cahier des charges du
+remplacement ImGui : les onze points sont traités par le plugin du §11 — sauf le taux de
+réussite, qui n'est pas accessible au client (voir la fin de cette section).
 
 **Données déjà reçues mais jetées** (aucun paquet supplémentaire nécessaire) :
 
-1. **Le raffinage courant** de chaque arme (`+6` de l'entrée). Le natif affiche
+1. **Le refine courant** de chaque arme (`+6` de l'entrée). Le natif affiche
    « Twin Edge of Naght Sieger » qu'elle soit +0 ou +6.
 2. **Les 4 cartes** (`+7`, 16 octets). Deux armes identiques dont une sertie sont
    indistinguables dans la liste native — un moyen très efficace de détruire la mauvaise.
@@ -489,15 +551,15 @@ futur remplacement ImGui.
 **Manques ergonomiques** :
 
 3. **Pas d'icône, pas de couleur, pas de slot** : une `UIListBox` de texte nu.
-4. **Un raffinage = un lancement de skill.** Fermeture forcée après chaque OK, plus
-   `clif_menuskill_clear` côté serveur. Enchaîner 5 raffinages = 5 lancements manuels.
+4. **Un refine = un lancement de skill.** Fermeture forcée après chaque OK, plus
+   `clif_menuskill_clear` côté serveur. Enchaîner 5 refines = 5 lancements manuels.
 5. **Aucun avertissement de destruction**, aucune confirmation, alors que l'échec détruit
    l'arme.
 6. **Succès et échec portent le même texte** (911 = 912) et ne diffèrent que par la couleur.
 7. **Aucun compte de minerai** : ni « il te reste N Oridecon », ni le minerai attendu par
    l'arme sélectionnée.
 8. **Aucun plafond affiché** : le joueur ne voit pas que son skill niveau N borne le
-   raffinage à +N.
+   refine à +N.
 9. **Pas de recherche, pas de tri, pas de filtre** — liste brute dans l'ordre d'inventaire.
 10. **Le message « liste vide » est un recyclage hors sujet** (« You can't create items
     yet. ») livré dans une modale bloquante, au lieu d'expliquer la vraie cause (aucune arme
@@ -511,24 +573,321 @@ opcode custom si l'on veut ces informations, plutôt que par une table codée en
 
 ---
 
-## 11. Points d'accroche pour le portage (à valider à l'implémentation)
+## 11. Le remplacement ImGui livré
 
-- **Source des données** : hooker `0x0221` via `RegisterObserveOpcode(0x0221, …)` est
-  **indispensable** — c'est le seul endroit où vivent `refine` et les cartes. Les deux
-  vecteurs de la fenêtre native (+0xB8 / +0xC4) ne servent que de repli.
-- **Signal d'ouverture/fermeture** : présence de la fenêtre 111 dans la map du gestionnaire,
-  contrôlée par la vtable `0x0103EE00` (modèle `BankWindow::BankWnd()`).
-- **Masquage** : baisser `+0x28` **à la création** (hook `MakeWindow`, modèle
-  `BankWindow::HideNativeAtCreation`) pour éviter une frame native visible. Jamais de
-  déplacement hors écran (mémoire `feedback_no_offscreen_hide`).
-- **Validation** : `CMode::SendMsg(182, index)` — rejouer le chemin natif plutôt que
-  fabriquer le paquet, comme partout ailleurs dans le projet.
-- **Fermeture** : impérativement `CMode::SendMsg(182, -1)` pour désarmer le `menuskill`
-  serveur, puis `OnMsg(6, 185)` sur la native.
-- **Cas liste vide** : intercepter **avant** `ShowMessageBoxModal`, sinon freeze si l'on est
-  dans une frame ImGui. Si l'interception s'avère impossible, différer toute action native
-  via `OnProcessInput` (modèle `VendingWindow::FlushPending`).
-- **Relance du skill** (pour enchaîner les raffinages) : `CMode::SendMsg` cmd `0x45`
-  (id skill, GID, niveau) — cf. mémoire `reference_cmode_sendmsg_use_skill`, avec
-  `WS_WEAPONREFINE = 477`. ⚠ À garder **déclenché par un clic** : le projet refuse
-  délibérément l'automatisation non supervisée (mémoire `project_plugin_architecture`).
+`src/features/windows/weapon_refine_window.{h,cc}` — membre du groupe « Interface moderne »
+(`SetModernInterface`), section « Refine » du panneau Moonlight. Cette section remplace
+les « points d'accroche à valider » d'origine : ce qui suit est ce qui a été FAIT, et ce que
+l'implémentation a corrigé du plan initial.
+
+### Ce qui s'est confirmé
+
+- **Source des données** : `RegisterObserveOpcode(0x0221, 2)` en observation pure (le handler
+  natif continue de tourner, sinon désactiver le plugin laisserait le skill sans fenêtre).
+  ⚠ L'API ne transmet qu'un nombre FIXE d'octets alors que `0x0221` est à longueur variable :
+  on n'en demande que 2 — le champ `packetLength` — et on lit le reste en se bornant à la
+  longueur annoncée, qui est la vraie borne.
+- **Masquage** : `+0x28` baissé dans le hook `MakeWindow` (`window_pos_tweaks`), sinon une
+  frame native passe (la fenêtre naît entre deux `OnTick`).
+- **Validation / fermeture** : `CMode::SendMsg(182, index)` puis `182, -1`, différés hors
+  frame ImGui via `FlushPending` (`OnProcessInput`).
+- **Modale « liste vide »** : escamotée par un détour ONE-SHOT sur `0x00A31A30`, doublement
+  verrouillé (drapeau armé au seul `0x0221` vide **et** égalité du pointeur de texte 424),
+  désarmé à chaque appel. Remplacée par l'énumération des vraies causes (§7).
+
+### Ce que l'implémentation a corrigé du plan
+
+1. **La fenêtre ImGui ne suit PAS la native.** Le plan disait « signal d'ouverture = présence
+   de la fenêtre 111 ». Faux en pratique : le client la DÉTRUIT dès la tentative envoyée, donc
+   la fenêtre disparaissait pile au moment où le résultat arrive et où l'on veut enchaîner —
+   c'est-à-dire l'apport principal. Un `ui_open_` propre, ouvert par le paquet et fermé sur
+   demande explicite, remplace ce calquage.
+2. **Le `-1` de fermeture est CONDITIONNEL.** Après un refine le serveur a déjà fait son
+   `clif_menuskill_clear` : on ne l'envoie que si la fenêtre native vit encore.
+3. **« Relancer » n'est affiché que sans liste vivante.** Côte à côte, « Refine » et
+   « Relancer » se lisaient comme deux façons de faire la même chose, alors que ce sont deux
+   ÉTAPES successives — et relancer sur une liste vivante ne ferait que la redemander en
+   payant le SP. Les rendre mutuellement exclusifs supprime l'ambiguïté à la racine.
+4. **Le comptage de cartes est borné aux emplacements réels.** Les 4 entrées brutes du paquet
+   incluent les ENCHANTEMENTS (posés depuis `card[3]` par les scripts serveur) : une arme 2
+   slots portant 1 carte et 3 enchantements affichait « 4/2 ». `card[0]` valant 254/255/256
+   (CREATE/FORGE/PET) signale en outre une forge, pas des cartes.
+5. **Le contexte du name-builder est le GESTIONNAIRE** (cf. §9). Passer la fenêtre inventaire
+   marchait… seulement quand elle était ouverte : les préfixes de cartes disparaissaient sous
+   les yeux du joueur. Passer la fenêtre 111 aurait été pire — `0xD0` octets, `+0x18C` hors
+   bornes.
+6. **Les `__try` vivent dans des fonctions séparées.** C2712 se juge sur la fonction ENTIÈRE :
+   `OnRenderUI` parcourt des `std::vector`, dont les itérateurs ont un destructeur non trivial
+   dès que `_ITERATOR_DEBUG_LEVEL > 0`.
+7. **Le nom décoré porte DÉJÀ son « +N », et la liste doit le retirer.** Conséquence directe
+   du point 5 : une fois le contexte corrigé, `BuildDisplayName` compose enfin le vrai nom
+   d'affichage — donc `« +2 Triple Explosive Twin Edge of Naght Sieger »`, préfixe de refine
+   compris. Avec la colonne « +N » à sa gauche, le refine s'affichait deux fois. La liste
+   saute donc le préfixe (`SkipRefinePrefix`), mais **uniquement** s'il correspond exactement au
+   `refine` de l'entrée du paquet ; le nom mémorisé, lui, reste décoré, parce que l'aperçu au
+   survol doit porter le MÊME titre que la fenêtre de description native. Le tri « Nom »
+   s'aligne sur le nom affiché : trié sur le nom décoré, tout ce qui porte un refine remontait en
+   tête (`+` précède toute lettre), ce qui doublait le tri « Refine » au lieu de trier par
+   ordre alphabétique.
+8. **Clic gauche = sélectionner, clic DROIT = consulter.** La description complète était
+   d'abord câblée sur le clic gauche ; c'est le clic droit qui ouvre une description partout
+   ailleurs dans le client (inventaire, chariot, storage, équipement), et l'ouvrir à gauche
+   volait le geste de sélection. Le test s'écrivait en quatre orthographes dans le projet ;
+   il est désormais dit une fois, par `mui::IsLastItemRightClicked()` (`ui/ro_widgets.h`), et
+   les neuf sites strictement équivalents y ont été ramenés.
+9. **Le tri est passé du combo à l'EN-TÊTE de table.** Un combo à trois entrées figées ne dit
+   pas le sens du tri, et il faut le déplier pour savoir ce qu'il propose. Une
+   `ImGuiTableFlags_Sortable` montre les colonnes triables en permanence et donne le
+   croissant/décroissant au second clic. `ImGuiTableFlags_SortTristate` fait mieux encore :
+   un troisième clic retire le tri, et l'ordre redevient celui du paquet — l'« ordre
+   d'inventaire » que le combo devait porter comme une entrée à part n'a plus besoin
+   d'exister. Deux détails non évidents :
+   - le `Selectable` de la ligne est posé dans la colonne du NOM avec `SpanAllColumns` ;
+     ImGui bascule alors son fond dans le canal d'arrière-plan de la table, ce qui fait
+     passer le surlignage DERRIÈRE l'icône (colonne 0, soumise avant) au lieu de la couvrir.
+     C'est ce qui permet de se passer complètement du dessin `ImDrawList` d'origine ;
+   - le comparateur départage les égalités par `index` d'inventaire. `std::sort` n'étant pas
+     stable, deux armes identiques échangeaient leur place d'une frame à l'autre et la ligne
+     sautait sous le curseur ;
+   - **un changement de tri ramène la sélection sur la première ligne**, défilement compris
+     (`SpecsDirty`, remis à faux par l'appelant). C'est un geste EXPLICITE du joueur sur la
+     table : il réordonne ce qu'il a sous les yeux, et la ligne désignée est visible.
+     `SpecsDirty` couvre aussi le troisième clic, qui ne trie rien mais réordonne bel et bien
+     l'affichage.
+
+13. 🔴 **Aucun refine ne peut viser une ligne qu'on ne VOIT pas.** Le pire défaut trouvé sur
+    cette fenêtre, et il ne se voyait pas : la sélection était cherchée dans `entries_`,
+    c'est-à-dire dans TOUTE la liste du serveur, alors que le filtre n'en montre qu'une
+    partie. Scénario réel — filtrer sur « kn » pour monter un Knife, refine, la liste revient,
+    la sélection par défaut retombe sur la première entrée du SERVEUR (masquée par le
+    filtre) : plus rien n'est surligné à l'écran, et Entrée joue quand même cette arme
+    fantôme. Un échec la détruit sans que le joueur ait jamais vu ce qu'il visait.
+
+    Deux règles en réponse, et **aucun re-ciblage automatique** :
+    - `sel_visible_`, recalculé chaque frame sur les lignes RÉELLEMENT rendues, verrouille
+      tout ce qui déclenche un refine (bouton « Refine », Entrée). Invisible = grisé et
+      inerte, avec la raison écrite à l'écran ;
+    - à l'arrivée d'une nouvelle liste, la sélection est reconduite **si et seulement si**
+      son index y figure encore. Sinon elle est VIDÉE — pas de repli sur la première entrée.
+      Déplacer silencieusement la cible d'une action destructrice est exactement ce qu'il ne
+      faut pas faire ; c'est au joueur de re-désigner. Seule exception : la toute première
+      liste d'une session, où il n'y avait aucune arme visée, donc rien à perdre.
+
+    ⚠ **L'index est STABLE, la reconduction est donc légitime** — vérifié dans les sources
+    serveur, pas supposé. `clif_item_refine_list` pose `index = client_index(i)` où `i` est
+    la position INVENTAIRE (`clif.cpp:9404`), et `skill_weaponrefine` fait `item->refine++`
+    **sur place** (`skill.cpp:11177`) : l'objet ne change pas de slot, son index revient à
+    l'identique dans la liste suivante. Seul un échec le fait disparaître (`pc_delitem`).
+
+    🔴 Le piège qui a fait échouer la reconduction est ailleurs, et il est instructif :
+    `OnTick` remettait `sel_index_ = -1` en constatant la disparition de la fenêtre native.
+    Or celle-ci meurt **dès la tentative envoyée**, donc bien avant l'arrivée du nouveau
+    `0x0221` — qui ne trouvait alors plus aucune arme visée et retombait sur la première
+    entrée. Le joueur qui montait la 4e arme se retrouvait pointé sur la 1re. Garder
+    `sel_index_` ne réarme rien : sans liste, `sel_visible_` est faux.
+10. **Entrée valide la sélection, et le jeu ne doit pas la voir.** Entrée ouvre la saisie de
+    chat côté client : sans précaution, le raccourci refine l'aurait ouverte par-dessus. Le
+    hook de `WndProc` l'avale, exactement comme il avale déjà Échap via
+    `ro::AnyEscapeWindowOpen()`.
+
+    ⚠ **Confisquer la touche et autoriser l'action sont deux questions distinctes**, et les
+    confondre est un vrai piège. `WantsEnterKey()` ne regarde QUE l'ouverture de la fenêtre ;
+    calqué au départ sur l'état du bouton, il laissait repasser la touche dans tous les creux
+    du cycle — tentative en vol, liste consommée, relance en cours — si bien qu'enchaîner les
+    refines à coups d'Entrée ouvrait et refermait le chat sans arrêt. C'est la règle d'Échap :
+    une fenêtre RO ouverte s'approprie la touche, point. Contrepartie assumée : pas de chat à
+    Entrée tant que la fenêtre est là.
+
+    Le prédicat est **sans état de rendu** (`imgui_enabled_ && ui_open_` + les portes
+    monde-de-jeu). Un drapeau posé à la frame précédente deviendrait faux dès que le rendu
+    s'arrête sans que la fenêtre se ferme — un chargement de carte — et la touche resterait
+    avalée pour un client qui n'affiche plus rien.
+
+    L'ACTION, elle, garde ses verrous : sélection visible, aucune tentative en vol, aucune
+    confirmation ouverte, et hors saisie — tant que le champ de filtre a le focus Entrée lui
+    appartient (`IsAnyItemActive()`), elle le referme et l'action attend la frappe suivante.
+    Sur un geste qui peut DÉTRUIRE l'arme, cette friction est voulue.
+
+11. **La relance de la compétence peut être automatique — le refine, non.** Demandé après
+    coup, et ça touche à une règle de fond du projet (`project_plugin_architecture` : l'API
+    Python a été retirée pour empêcher l'automatisation non supervisée). La ligne tenue est
+    celle-ci : ce qui se relance seul, c'est le **lancement de la compétence**, la seule chose
+    que le serveur oblige à refaire entre deux tentatives (`clif_menuskill_clear`). La liste
+    revient ; le choix de l'arme et le déclenchement restent des clics. Aucune tentative ne
+    part sans geste du joueur.
+
+    Opt-in (`refine_auto_recast`, défaut OFF), et **trois conditions d'arrêt**, toutes tirées
+    de l'état réel plutôt que d'une devinette :
+    - une liste `0x0221` **vide** — c'est le vrai « il ne reste plus d'arme », dit par le
+      serveur ;
+    - `result` 2 ou 3 (niveau insuffisant / minerai manquant), ou un refus par `0x0110` : ce
+      ne sont pas des tentatives mais des refus de condition, et cette condition ne changera
+      pas d'elle-même — relancer tournerait en rond en brûlant du SP ;
+    - plus aucun des trois minerais en inventaire.
+
+    **Aucun plafond de relances**, et c'est délibéré. Un compteur avait été posé par réflexe
+    défensif ; il ne protégeait de rien. Une relance ne peut suivre qu'un `0x0223` répondant
+    à une tentative de nous, et cette tentative ne part que sur un geste du joueur : la
+    chaîne avance au rythme d'un clic, d'un minerai et d'un cast par tour. Rien ne peut
+    s'emballer, et le plafond n'aurait fait qu'interrompre une session légitime. La garde
+    utile est ailleurs, dans la **causalité** : `ScheduleAutoRecast` n'est appelée que si
+    `awaiting_result_` était vrai, donc jamais sur un `0x0223` qu'on n'a pas provoqué.
+
+    L'état est affiché pendant qu'il a lieu (« Relance automatique… (n) ») et la raison de
+    l'arrêt reste à l'écran : une action que le client prend de lui-même doit se voir.
+12. **Les trois minerais sont des LIENS d'item.** Icône + nom + stock, soulignés au survol,
+    curseur main, aperçu au survol et ouverture de la description au clic — le pendant ImGui
+    d'un `<ITEM>` de chat. Deux choses à retenir :
+    - le nom vient de la **DB client** (`itemInfoMerged.lua`, via `MoonlightUi::ItemName`),
+      jamais d'une constante. « Phracon » était écrit en dur : ça aurait menti sur tout
+      serveur qui renomme ses objets ou tourne dans une autre langue. Sans DB chargée on
+      affiche l'id — faux jamais, muet parfois ;
+    - la description s'ouvre **par ID** (`OpenDescById`), pas depuis un `ItemSkillInfo` : à
+      stock 0 le minerai n'est pas en inventaire, il n'y a donc pas toujours d'instance
+      vivante. C'est exactement la distinction que documente `features/item_cell.h`.
+
+    Le curseur main passe par `ro::SetHoverCursor` : `ImGui::SetMouseCursor` est un no-op
+    dans ce client, `io.ConfigFlags` portant `NoMouseCursorChange`.
+
+14. 🔴 **Deux sorties serveur MUETTES, et le blocage qu'elles provoquaient.** Symptôme :
+    en enchaînant les refines à coups d'Entrée, la fenêtre restait sur « Tentative
+    envoyée — en attente du serveur… » et plus rien ne partait ensuite. Les deux causes sont
+    dans les sources, pas dans le client :
+
+    - `clif_parse_WeaponRefine` commence par `if (sd->menuskill_id != WS_WEAPONREFINE) return;`
+      (`clif.cpp:15657`) et se **termine** par `clif_menuskill_clear` (`clif.cpp:15666`). Une
+      seconde tentative pour la même liste est donc jetée **sans le moindre paquet de
+      réponse** ;
+    - plusieurs sorties de `skill_weaponrefine` répondent par `clif_skill_fail`, c'est-à-dire
+      **ZC_ACK_TOUSESKILL 0x0110** et non 0x0223 : arme non affinable (`skill.cpp:11131`),
+      entrée `refine.yml` absente, coût introuvable, échange en cours.
+
+    Trois corrections, chacune indépendante :
+    - **la liste est vidée à l'ENVOI**, plus en constatant après coup la disparition de la
+      fenêtre native. Le serveur efface son `menuskill` à cet instant précis ; l'observation
+      indirecte, elle, rate sa cible dès qu'un nouveau `0x0221` recrée la fenêtre avant le
+      tick suivant — et la liste fantôme laissait envoyer dans le vide indéfiniment ;
+    - **0x0110 est observé** (12 octets, `skillId` en `data+0`), filtré sur
+      `WS_WEAPONREFINE` et sur une attente réellement en cours. Une tentative refusée se dit
+      maintenant à l'écran au lieu d'attendre le délai de garde ;
+    - **un seul point d'entrée**, `RequestRefine`, pour le bouton, le double-clic et Entrée.
+      Chacun portait sa copie des conditions et **seul le bouton** avait la garde
+      anti-rafale — d'où une touche maintenue qui expédiait deux tentatives pour une liste.
+
+15. **Le journal nomme l'arme par son INDEX, pas par son `itemId`.** `ZC_ACK_WEAPONREFINE` ne
+    porte qu'un id : le résoudre dans l'inventaire retombait sur le PREMIER objet de ce type,
+    si bien qu'avec quatre Knife le journal citait toujours le même, jamais celui joué. On
+    retient donc l'index envoyé et le nom composé **juste avant l'envoi** — le dernier
+    instant où l'arme existe à coup sûr, un échec la détruisant. À la journalisation :
+    l'index d'abord (état à jour, refine incrémenté), ce nom en repli si l'objet a disparu.
+
+    ⚠ Et le `nameid` du paquet **ne désigne pas la même chose selon le résultat** : pour 0,
+    1 et 2 c'est l'ARME (`clif_upgrademessage(&sd, r, item->nameid)`), mais pour 3 c'est le
+    **MINERAI manquant** (`…, material[weapon_level - 1]`). Les confondre faisait dire
+    « Knife is required to upgrade this weapon » au lieu de nommer l'Oridecon. Ce minerai
+    n'étant par définition pas en inventaire, son nom vient de la DB client.
+
+16. 🔴 **`TextWrapped` dans une fenêtre `AlwaysAutoResize` : la taille ne converge pas.**
+    C'est LA cause du feuilleton de la modale de confirmation, et elle n'était pas dans le
+    placement — quatre correctifs de position n'y ont rien changé, forcément.
+
+    `BeginRoPopupModal` crée la fenêtre en `AlwaysAutoResize`. `TextWrapped` s'y replie sur la
+    largeur de la région de contenu, laquelle dépend de la largeur de la fenêtre, laquelle
+    dépend du contenu : la boucle ne converge pas et **la taille change à chaque frame**. Tout
+    centrage appuyé sur cette taille fait alors dériver la fenêtre — symptôme observé en jeu :
+    la modale apparaît en bas de l'écran puis **remonte jusqu'en haut en quelques frames**.
+
+    Le correctif est une largeur de repli EXPLICITE (`PushTextWrapPos`), qui ferme la boucle.
+    C'est ce que faisait déjà la seule autre modale de texte du projet
+    (`features/systems/dx7_warning.cc`), et c'est la recommandation d'ImGui pour toute fenêtre
+    auto-dimensionnée. Le nom de l'arme passe lui aussi en `TextWrapped` : en
+    `TextUnformatted`, un nom décoré élargissait la modale à sa seule mesure.
+
+    Une trace `LogDiag` (pos + taille, écrite seulement sur CHANGEMENT) reste en place : la
+    taille doit se figer dès la 2ᵉ frame. Si elle continue de bouger, c'est qu'une boucle de
+    repli traîne encore quelque part dans le contenu.
+
+    Le placement, lui, se fait par `ImGui::SetWindowPos()` **depuis l'intérieur du popup**.
+    `SetNextWindowPos` — et donc `ro::SetNextRoModalPos` — s'applique sous
+    `ImGuiCond_Appearing`, et un popup a des chemins de placement **automatique** (recentrage
+    modal, `FindBestWindowPosForPopup`) qui reprennent la main dès que la condition ne mord
+    pas. Depuis l'intérieur, l'appel agit sur la fenêtre courante, immédiatement.
+
+    ⚠ **La frame d'apparition ne connaît pas la taille**, et la trace l'a montré noir sur
+    blanc : `(16,33)` sur celle-ci contre `(300,133)` sur la suivante, avec
+    **`appearing` déjà faux** dès la seconde — il n'y a donc aucune « seconde chance » à
+    saisir, contrairement à ce que je supposais. Centrer sur la taille de la frame
+    d'apparition posait le coin haut-gauche pile au centre au lieu de la fenêtre elle-même.
+
+    D'où le report : la taille stabilisée est mémorisée pour l'ouverture **suivante**.
+    Corriger à la frame 2 serait pire — ImGui y a déjà émis le fond de la fenêtre, et le
+    déplacer après coup le fait « baver » une frame (c'est écrit tel quel dans le code
+    d'ImGui). La frame d'apparition, elle, n'est pas dessinée du tout : on peut y placer sans
+    rien salir. Seule la toute première ouverture de la session est donc approximative.
+
+    La modale ne retient **pas** sa position : elle est recentrée à chaque ouverture. Pour un
+    dialogue de confirmation c'est suffisant, et c'est déterministe.
+
+18. **La position de la fenêtre est persistée** (`refine_pos_x` / `refine_pos_y`). Elle ne
+    l'était pas : le placement sur la fenêtre native s'appliquait en `ImGuiCond_Appearing`,
+    donc **à chaque ouverture**, et la fenêtre retournait se poser sur la native à chaque
+    lancement du skill. Le calage sur la native n'est désormais qu'un défaut de première
+    utilisation.
+
+    `INT_MIN` marque « jamais posée », comme `game_option_pos_*` — pas `-1` : une fenêtre
+    tirée à cheval sur le bord gauche a une abscisse négative légitime. L'écriture du yaml a
+    lieu à la FERMETURE (et à la sortie du monde de jeu), pas à chaque frame de glissement.
+
+17. **La description ouverte depuis un lien passait DERRIÈRE la fenêtre.** Le panneau de
+    `ItemDescWindow` porte `ImGuiWindowFlags_NoFocusOnAppearing` : il ne prend pas le focus
+    en apparaissant, donc ImGui ne le remonte pas — ouvert depuis une fenêtre qui a le focus,
+    il reste dessous. Ce flag est **voulu** (l'aperçu au survol du viewer storage ouvre le
+    même panneau et volerait le focus à chaque changement de ligne), on ne le touche donc
+    pas : `itemdesc::FocusDescWindow()` remonte le panneau à la demande, et n'est appelée que
+    sur un geste délibéré — clic sur une ligne d'arme, clic sur un lien de minerai.
+
+    L'identifiant utilisé est le `###itemdesc_item` du titre : celui-ci change à chaque item
+    (et devient « Comparaison » en mode comparatif), mais `ImHashStr` hache à partir du
+    `###`, donc cette seule chaîne retrouve la fenêtre.
+
+    Tant qu'elle n'a jamais été rendue, elle s'ouvre **centrée sur la fenêtre de refine**, pas
+    au milieu de l'écran : elle parle de la ligne qu'on vient d'y désigner, c'est là que le
+    regard est. Ça demande une largeur estimée (`kConfirmW`), la modale étant en
+    `AlwaysAutoResize` — sa vraie taille n'existe qu'après son premier rendu. Quelques pixels
+    d'erreur, et seulement à la toute première ouverture.
+
+    ⚠ Le « jamais placée » est un **drapeau à part**, pas un `-1` sentinelle dans la
+    coordonnée : une modale tirée à cheval sur le bord gauche a une abscisse négative
+    parfaitement légitime.
+
+19. 🔴 **Le journal manquait exactement là où il servait.** Il était dessiné dans deux
+    branches d'affichage sur trois, et l'oubliée était « aucune arme refinable » — c'est-à-dire
+    la fin de partie, le moment même où l'on veut relire ce qui vient de se passer.
+
+    Le cas le plus grave en découlait : un **échec sur la dernière arme**. La ligne
+    « ÉCHEC — arme détruite » était bel et bien écrite dans le journal, mais la relance
+    ramenait une liste vide, donc cette branche, donc aucun journal — le seul message qui
+    comptait ne s'affichait jamais. Le journal est sorti des branches et dessiné après le
+    pied dans tous les cas : ça supprime la classe de bug plutôt que d'ajouter un troisième
+    appel qu'une quatrième branche oublierait à son tour.
+
+### Ce qui n'est PAS fait, et pourquoi
+
+- **Aucun taux de réussite affiché.** Il vit dans `db/pre-re/refine.yml` (`Rate`/10000 + bonus
+  de job level) : hors de portée du client. Le coder en dur contredirait la règle « jamais de
+  données codées en dur » et mentirait dès que le serveur ajuste sa table. Ça demande un
+  opcode custom.
+- **Aucun refine automatique.** Même avec la relance automatique activée, chaque tentative
+  demande un clic (ou Entrée). C'est la limite explicite du point 11 ci-dessus.
+
+### Réglages persistants
+
+`refine_imgui` (basculé en groupe), `refine_confirm`, `refine_show_cards`, `refine_filter`,
+`refine_desc_tooltip`, `refine_history` (OFF), `refine_log_time`, `refine_auto_recast` (OFF).
+
+L'horodatage du journal est **calculé à l'insertion et toujours stocké** ; seul son affichage
+suit le réglage. Ne le composer qu'à la demande priverait de leur heure toutes les lignes déjà
+écrites au moment où on l'active.
+
+Le tri, lui, n'est **pas** persisté : il vit dans les `ImGuiTableSortSpecs` de la table,
+c'est-à-dire dans l'en-tête sur lequel le joueur vient de cliquer.

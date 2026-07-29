@@ -156,7 +156,7 @@ class CharacterSheet : public Plugin {
     // Lot G — très niche
     int  break_weapon_pct = 0, break_armor_pct = 0, zeny_bonus_pct = 0, classchange_pct = 0;
     int  dmg_ret_reduce = 0, magic_hp_gain = 0, magic_sp_gain = 0;
-    // Part du raffinage dans l'ATK / la DEF
+    // Part du refine dans l'ATK / la DEF
     int  refine_atk = 0, refine_def = 0;
     std::vector<CondBonus>  cond;    // conditionnels non nuls (vs race/élément/taille)
     std::vector<SkillBonus> skills;  // bonus liés à un skill (autocast, +dégâts skill)

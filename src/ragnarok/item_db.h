@@ -41,7 +41,7 @@ constexpr uintptr_t kInfoCtorAddr  = 0x006a1b20;
 constexpr uintptr_t kInfoSetIdAddr = 0x006a6570;
 
 // ── Noms d'affichage ─────────────────────────────────────────────────────────
-// kBuildDisplayNameAddr compose le nom complet (préfixes de cartes, raffinage,
+// kBuildDisplayNameAddr compose le nom complet (préfixes de cartes, refine,
 // grade…) ; kBaseNameFallbackAddr est le repli quand il échoue. Les appels sont
 // à protéger par SEH — cf. les copies de `SafeBuildName`.
 constexpr uintptr_t kBuildDisplayNameAddr  = 0x008a0570;

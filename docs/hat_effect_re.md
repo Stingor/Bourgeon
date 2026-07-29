@@ -192,7 +192,7 @@ On applique **exactement le même patron** aux effets STR :
 - Live client → tout hook/capture STR **SEH-gardé** ; échec ⇒ 0 couche (pas d'overlay).
 - Durée de vie du nœud standalone (alloc/dtor), taille de l'objet — **recette agent**.
 - Blend non-additif de certaines couches (rare pour les hat effects glow) : v1 tout
-  additif, raffinable par-couche via le blend capturé.
+  additif, refinable par-couche via le blend capturé.
 - DX7 : callback additif DX9-only ; overlay effet dégradé sous le proxy DX7 (legacy).
 
 ## ⚠ Deuxième famille : hat effects `hatEffectID` (EZ-particle, PAS `.str`) — RE 2026-07-13

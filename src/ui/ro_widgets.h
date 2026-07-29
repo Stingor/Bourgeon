@@ -15,11 +15,16 @@
 // (fenêtres, boutons, combos, scrollbars, CP949) est dans ui/ro_imgui.h.
 
 // -- namespace mui -----------------------------------------------------------
-// « Text », « Separator », « SameLine » sont des noms extrêmement génériques,
-// et ce header est tiré par pch.h : ils vivaient donc dans le namespace GLOBAL
-// de CHAQUE unité de compilation du projet. Le namespace les isole sans rien
-// renommer — les .cc concernés ouvrent simplement `using namespace mui;`, ce qui
-// laisse intacts les centaines de sites d'appel.
+// « Text », « Separator », « SameLine » sont des noms extrêmement génériques, et
+// ce header est très largement inclus : ils vivaient donc dans le namespace
+// GLOBAL de presque chaque unité de compilation. Le namespace les isole sans
+// rien renommer — les .cc concernés ouvrent simplement `using namespace mui;`,
+// ce qui laisse intacts les centaines de sites d'appel.
+//
+// ⚠ Ce header n'est PAS dans le PCH, et ne doit pas y entrer : pch.h s'interdit
+// tout en-tête interne (il serait reconstruit à chaque retouche, avec les 66
+// unités derrière). Il n'arrive pas non plus par ui/ro_imgui.h, qui n'inclut que
+// <cstddef> — un fichier qui veut `mui::` doit inclure CELUI-CI.
 namespace mui {
 
 // Affiche un petit « (?) » qui montre `desc` en infobulle au survol.
@@ -92,6 +97,30 @@ inline bool BeginPopup(const char* str_id) {
 // du widget concerné, où il répondrait sur autre chose.
 inline bool IsLastItemHovered() {
     return ImGui::IsItemHovered();
+}
+
+// Clic DROIT sur le dernier widget soumis. Dans Ragnarok le clic droit sur un
+// item ouvre sa description — c'est la convention du client, respectée par tous
+// les viewers (inventaire, chariot, storage, boutiques, échoppe, refine), et le
+// clic gauche reste libre pour sélectionner/glisser.
+//
+// Ça existait en quatre orthographes différentes dans le projet :
+//   IsItemClicked(ImGuiMouseButton_Right)
+//   IsItemHovered() && IsMouseClicked(ImGuiMouseButton_Right)   ← le MÊME test
+//   hovered && IsMouseClicked(ImGuiMouseButton_Right)           ← rect à la main
+// Les deux premières sont strictement équivalentes (IsItemClicked n'est que
+// `IsItemHovered(None) && IsMouseClicked(b)`) et se disent maintenant ici.
+//
+// ⚠ Ne convient QU'À un vrai widget ImGui. Pour une zone hit-testée à la main
+// (motif overlay : ImDrawList + rectangle calculé), l'« item » n'existe pas —
+// il faut y écrire `hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)`.
+//
+// ⚠ Ne remplace PAS un `IsMouseReleased(Right)`. Relâchement ≠ enfoncement : sur
+// un widget dont le clic droit ouvre un menu contextuel, déclencher au
+// relâchement laisse le temps de sortir de la zone pour annuler. Là où le projet
+// teste le relâchement, c'est délibéré.
+inline bool IsLastItemRightClicked() {
+    return ImGui::IsItemClicked(ImGuiMouseButton_Right);
 }
 
 inline void Tooltip(const char* text) {

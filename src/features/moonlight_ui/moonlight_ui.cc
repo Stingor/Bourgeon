@@ -37,6 +37,7 @@
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
+#include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
@@ -318,6 +319,33 @@ const moonlight_ui::SettingDesc kBankSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"bank_show_total", SType::kBool, MLUI_FIELD(bank_window, show_total()),
      MLUI_LITERAL(bool, true)},
+};
+
+// Refine d'arme Whitesmith (fenêtre « Upgradeable weapons », id 111).
+// « refine_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kRefineSettings[] = {
+    {"refine_imgui", SType::kBool, MLUI_FIELD(weapon_refine_window, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"refine_confirm", SType::kBool, MLUI_FIELD(weapon_refine_window, confirm()),
+     MLUI_LITERAL(bool, true)},
+    {"refine_show_cards", SType::kBool, MLUI_FIELD(weapon_refine_window, show_cards()),
+     MLUI_LITERAL(bool, true)},
+    {"refine_filter", SType::kBool, MLUI_FIELD(weapon_refine_window, show_filter()),
+     MLUI_LITERAL(bool, true)},
+    {"refine_desc_tooltip", SType::kBool, MLUI_FIELD(weapon_refine_window, desc_tooltip()),
+     MLUI_LITERAL(bool, true)},
+    {"refine_history", SType::kBool, MLUI_FIELD(weapon_refine_window, show_history()),
+     MLUI_LITERAL(bool, false)},
+    {"refine_auto_recast", SType::kBool, MLUI_FIELD(weapon_refine_window, auto_recast()),
+     MLUI_LITERAL(bool, false)},
+    {"refine_log_time", SType::kBool, MLUI_FIELD(weapon_refine_window, log_time()),
+     MLUI_LITERAL(bool, true)},
+    // INT_MIN = « aucune position mémorisée » : la fenêtre se cale alors sur la
+    // native, comme au premier lancement. Même convention que game_option_pos_*.
+    {"refine_pos_x", SType::kInt, MLUI_FIELD(weapon_refine_window, pos_x()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"refine_pos_y", SType::kInt, MLUI_FIELD(weapon_refine_window, pos_y()),
+     MLUI_LITERAL(int, INT_MIN)},
 };
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
@@ -738,6 +766,13 @@ void SetModernInterface(bool on) {
   // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
   if (auto* bank_window = Bourgeon::Instance().bank_window())
     bank_window->imgui_enabled_ = on;
+  // Le refine Whitesmith rejoint le lot : sa liste d'armes se lit dans le
+  // MÊME modèle d'inventaire que le viewer moderne (noms composés, icônes,
+  // aperçu de description), et il ferme/rouvre la fenêtre native à chaque
+  // tentative. Moderne au-dessus d'un inventaire natif, il retomberait sur le
+  // repli « nom de base » de SafeName, faute de contexte de composition.
+  if (auto* weapon_refine_window = Bourgeon::Instance().weapon_refine_window())
+    weapon_refine_window->imgui_enabled_ = on;
 }
 
 // Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
@@ -764,6 +799,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Cash shop et shops PNJ\n"
       "  • Banque de zeny (Ctrl+B), ouverte aussi par le sac de zeny du footer\n"
       "    de l'inventaire\n"
+      "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;
   ImGui::SameLine();
@@ -823,6 +859,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kCartSettings);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
+    moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
@@ -946,6 +983,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kCartSettings);
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
+  moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);

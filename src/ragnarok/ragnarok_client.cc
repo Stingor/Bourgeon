@@ -14,6 +14,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
+#include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
 #include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
@@ -564,6 +565,18 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
         ro::AnyEscapeWindowOpen())
       return 0;
+
+    // Même principe pour Entrée, que la fenêtre de refine utilise comme raccourci
+    // de validation : sans ça le jeu ouvrirait AUSSI sa saisie de chat par-dessus.
+    // La touche est confisquée tant que cette fenêtre est OUVERTE, pas seulement
+    // quand l'action est possible — sinon, en enchaînant les refines à coups
+    // d'Entrée, chaque creux du cycle (tentative en vol, liste consommée) laissait
+    // passer la frappe et faisait clignoter le chat. Fenêtre fermée, la touche
+    // revient intégralement au jeu.
+    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
+      if (auto* refine = Bourgeon::Instance().weapon_refine_window())
+        if (refine->WantsEnterKey()) return 0;
+    }
 
     ImGuiIO& io = ImGui::GetIO();
 

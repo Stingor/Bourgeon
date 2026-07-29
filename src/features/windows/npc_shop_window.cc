@@ -23,6 +23,7 @@
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
+#include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
@@ -622,7 +623,7 @@ void NpcShopWindow::OnRenderUI() {
 
   // Clic-droit sur le DERNIER item dessine (icone ou nom) -> description native.
   auto rclick_desc = [&](uint32_t id, uint16_t view, uint32_t loc) {
-    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    if (mui::IsLastItemRightClicked()) {
       const ImVec2 mp = ImGui::GetMousePos();
       itemcell::OpenDescById(id, view, loc, static_cast<int>(mp.x),
                              static_cast<int>(mp.y));

@@ -18,6 +18,7 @@
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
 #include "features/windows/bank_window.h"
+#include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
 #include "features/windows/inventory_viewer.h"
@@ -112,6 +113,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceInventory,   "Inventaire"},
         {kIfaceCart,        "Cart"},
         {kIfaceBank,        "Banque"},
+        {kIfaceRefine,      "Refine"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -317,6 +319,15 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceBank) {
         if (auto* bt = Bourgeon::Instance().bank_window()) {
           if (bt->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(kPluginUnavailable);
+        }
+      }
+
+      // ── Refine d'arme (WeaponRefineWindow : compétence Upgrade Weapon) ─
+      if (iface_nav_ == kIfaceRefine) {
+        if (auto* wr = Bourgeon::Instance().weapon_refine_window()) {
+          if (wr->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(kPluginUnavailable);
         }

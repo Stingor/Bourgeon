@@ -199,7 +199,7 @@ Chacune abandonne l'ouverture avec un message en chat :
 
 | Fenêtre ouverte | Message |
 |---|---|
-| 295 (`0x127`) raffinage | `MSI_CANNOT_OPEN_BANKING_DURING_REFINING` (3014) |
+| 295 (`0x127`) refine | `MSI_CANNOT_OPEN_BANKING_DURING_REFINING` (3014) |
 | 343 (`0x157`) | `MSI_CANNOT_OPEN_BANKING_DURING_GRADE_ENCHANT` (3717) |
 | 10006 (`0x2716`) enchant | `MSI_CANNOT_OPEN_BANKING_DURING_ENCHANT` (3845) |
 | 341 (`0x155`) barter étendu | `MSI_CANNOT_OPEN_BANKING_DURING_EXPANDED_BARTERMARKET` (3967) |
@@ -324,7 +324,7 @@ elle est reconfigurable dans la fenêtre de réglage des raccourcis.
    puis fermeture.
 3. `g_BankVault` est un **`s64`** côté client mais un `int32` côté serveur ; ne
    pas lire seulement le dword de poids faible.
-4. Les gardes de blocage (raffinage, enchant, runes, barter) sont **purement
+4. Les gardes de blocage (refine, enchant, runes, barter) sont **purement
    client** : le serveur accepte le dépôt/retrait même si l'une de ces fenêtres
    est ouverte.
 5. Le layout de `Reason`/`Money` diffère entre `0x09A6` et `0x09A8`/`0x09AA` (§2).
