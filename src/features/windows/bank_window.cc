@@ -106,7 +106,7 @@ bool ReadNativeRect(uint8_t* wnd, NativeRect* out) {
 
 void SetNativeVisible(uint8_t* wnd, bool visible) {
   __try {
-    *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = visible ? 1 : 0;
+    uiwnd::SetVisible(wnd, visible);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -117,7 +117,7 @@ void SetNativeVisible(uint8_t* wnd, bool visible) {
 bool HideIfBankWindow(void* win) {
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kBankVTable) return false;
-    *reinterpret_cast<int*>(static_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
+    uiwnd::SetVisible(win, false);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -408,13 +408,14 @@ void BankWindow::OnRenderUI() {
     const ImVec2 win_pos = ImGui::GetWindowPos();
     const float body_top =
         ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y;
-    const float brightness = ro::SkinImageBrightness();
+    // ⚠ ro::SkinImageTint() et NON une teinte reconstruite ici : le helper
+    // multiplie aussi par ImGui::GetStyle().Alpha. Une teinte à alpha = 1 en dur
+    // laissait ce fond OPAQUE pendant que le reste de l'UI s'estompait.
     ImGui::GetWindowDrawList()->AddImage(
         static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(bg.tex)),
         ImVec2(win_pos.x, body_top),
         ImVec2(win_pos.x + bg.w, body_top + bg.h), ImVec2(0.0f, 0.0f),
-        ImVec2(1.0f, 1.0f),
-        ImGui::GetColorU32(ImVec4(brightness, brightness, brightness, 1.0f)));
+        ImVec2(1.0f, 1.0f), ro::SkinImageTint());
   }
 
   // Relecture par FRAME (et pas seulement au tick de 100 ms) : après un dépôt, le
