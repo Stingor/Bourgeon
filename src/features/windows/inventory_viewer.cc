@@ -496,11 +496,16 @@ void CloseInventory() {
 
 
 // ── Description (clic-droit) : l'ItemSkillInfo COMPLET du nœud à la fenêtre 0xc ──
-// On retrouve le nœud par id dans la liste session, et on passe SON info — celle
-// que le serveur a remplie, avec cartes/raffinage/enchants. item_desc_window
-// détecte la fenêtre 0xc et rend sa version enrichie.
-void OpenItemDesc(uint32_t id, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kInvListHead, id), mx, my);
+// On retrouve le nœud par son INDEX inventaire dans la liste session, et on passe
+// SON info — celle que le serveur a remplie, avec cartes/refine/enchants.
+// item_desc_window détecte la fenêtre 0xc et rend sa version enrichie.
+//
+// ⚠ Par INDEX, jamais par id : l'id ne distingue pas deux exemplaires du même
+// objet. Trois Knife (une avec carte, une +1, une +3) sont trois nœuds de même id
+// et une recherche par id rendrait toujours le PREMIER — la description complète
+// se figeait sur lui pour les trois cases. L'index, lui, est unique par slot.
+void OpenItemDesc(int index, int mx, int my) {
+  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kInvListHead, index), mx, my);
 }
 
 // Le même nœud, mais retrouvé par son INDEX inventaire.
@@ -2097,10 +2102,10 @@ void InventoryViewer::OnRenderUI() {
       const ImGuiIO& mods = ImGui::GetIO();
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
         PostItemLinkToChat(it.index);  // Shift+clic G : lien item -> input chat focus
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      if (IsLastItemRightClicked()) {
         if (mods.KeyCtrl) {
           MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
-          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
+          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         } else if (mods.KeyShift) {
           SendFavoriteToggle(it.index, it.favorite != 0);
         } else if (mods.KeyAlt) {
@@ -2153,7 +2158,7 @@ void InventoryViewer::OnRenderUI() {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
           MarkDescPending();
-          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
+          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         }
         // Une carte (type 6) n'est ni « utilisée » ni « équipée » : le double-clic
         // natif ouvre le sertissage (UseOrEquip -> kCmdCard 0x7b). On l'étiquette donc

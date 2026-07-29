@@ -17,6 +17,7 @@
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 
 // ── Constantes RE (client 20250716, base 0x400000) ───────────────────────────
 // Source : docs/vending_window_re.md. Tout ce qui suit a été relu sur objet
@@ -178,7 +179,7 @@ constexpr int      kPurchaseMaxLen   = 0x800;
 // ouverte pour enchaîner les achats, c'est à nous de redemander la liste.
 constexpr uint16_t kCzVendingListReq = 0x0130;
 
-// ── Nom d'affichage complet (raffinage, cartes, slots, enchant) ──────────────
+// ── Nom d'affichage complet (refine, cartes, slots, enchant) ──────────────
 // Le nom brut de la DB ne dit rien d'une arme +10 sertie : c'est
 // BuildDisplayName qui compose « +10 Hydra Sword [3] ». Même appel que les
 // viewers inventaire / cart / storage, avec la fenêtre native pour contexte.
@@ -188,7 +189,7 @@ constexpr uint16_t kCzVendingListReq = 0x0130;
 // disparaître la moitié de la liste).
 
 // ── Description d'objet ──────────────────────────────────────────────────────
-// Le nœud porte un ItemSkillInfo à +0x08 ; cartes, raffinage et options
+// Le nœud porte un ItemSkillInfo à +0x08 ; cartes, refine et options
 // d'INSTANCE n'existent que là (pas dans la DB client), il faut donc les lire au
 // nœud pour un aperçu fidèle. Offsets identiques à ceux des autres viewers, ici
 // exprimés en NŒUD (= ItemSkillInfo + 0x08).
@@ -463,7 +464,7 @@ struct RawRow {
 // Cache des noms composés. BuildDisplayName alloue et compose : le rappeler pour
 // chaque ligne à chaque frame, sur une liste qui peut faire 128 objets, c'est le
 // même piège que les mesures GDI qui gelaient le chat. La clé est la signature
-// d'INSTANCE (id, raffinage, cartes, slots, identifié) — tout ce dont le nom
+// d'INSTANCE (id, refine, cartes, slots, identifié) — tout ce dont le nom
 // dépend ; les options aléatoires n'y entrent pas.
 std::unordered_map<uint64_t, std::string> g_display_name_cache;
 
@@ -766,6 +767,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
 // de la DB : sans elles l'aperçu d'un équipement serti serait faux.
 void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
   out.id = raw.id;
+  out.index = raw.index;  // ce qui identifie l'EXEMPLAIRE (cf. OpenDescFromList)
   std::strncpy(out.name, raw.name, sizeof(out.name) - 1);
   out.name[sizeof(out.name) - 1] = '\0';
   for (int c = 0; c < 4; ++c) out.cards[c] = raw.cards[c];
@@ -778,17 +780,31 @@ void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
   }
 }
 
-// Ouvre la description COMPLÈTE du client pour l'objet `id` de la liste
-// `wnd + list_off`. On repasse le POINTEUR de l'ItemSkillInfo du nœud, comme le
-// clic droit natif : c'est ce qui donne cartes, options et raffinage exacts —
-// une description reconstruite depuis l'id seul serait forcément appauvrie.
-void OpenDescFromList(void* wnd, int list_off, uint32_t id, int mx, int my) {
+// Ouvre la description COMPLÈTE du client pour l'objet d'index `index` (id `id`)
+// de la liste `wnd + list_off`. On repasse le POINTEUR de l'ItemSkillInfo du
+// nœud, comme le clic droit natif : c'est ce qui donne cartes, options et refine
+// exacts — une description reconstruite depuis l'id seul serait forcément
+// appauvrie.
+//
+// ⚠ On identifie le nœud par le COUPLE (index, id), pas par l'id seul : plusieurs
+// exemplaires du même objet coexistent dans une échoppe (même id, refines ou
+// cartes différents) et l'id seul rendait toujours le premier — la description
+// se figeait sur lui pour toutes leurs lignes. L'id reste dans le critère comme
+// garde : si la liste a muté depuis l'extraction, l'index seul pourrait désigner
+// un tout autre objet.
+//
+// Repli sur le premier nœud de même id si le couple ne matche pas : les listes
+// natives ne portent pas toutes un index significatif à +0x0c (l'historique de
+// ventes, notamment), et mieux vaut la description approchée d'avant que rien.
+void OpenDescFromList(void* wnd, int list_off, int index, uint32_t id, int mx,
+                      int my) {
   if (!wnd || id == 0) return;
   __try {
     auto* base = reinterpret_cast<uint8_t*>(wnd);
     uint8_t* head = *reinterpret_cast<uint8_t**>(base + list_off);
     if (!head) return;
     uint8_t* found = nullptr;
+    uint8_t* first_by_id = nullptr;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head);
     for (int guard = 0; node && node != head && guard < 512; ++guard) {
       const char* sbase = reinterpret_cast<const char*>(node + kNodeName);
@@ -796,11 +812,15 @@ void OpenDescFromList(void* wnd, int list_off, uint32_t id, int mx, int my) {
       const char* str = (cap > 15) ? *reinterpret_cast<const char* const*>(sbase)
                                    : sbase;
       if (str && static_cast<uint32_t>(atoi(str)) == id) {
-        found = node + 0x08;  // le nœud porte l'ItemSkillInfo à +0x08
-        break;
+        if (!first_by_id) first_by_id = node + 0x08;  // ISI à nœud+0x08
+        if (*reinterpret_cast<int*>(node + kNodeIndex) == index) {
+          found = node + 0x08;
+          break;
+        }
       }
       node = *reinterpret_cast<uint8_t**>(node);
     }
+    if (!found) found = first_by_id;
     if (!found) return;
     void* mgr = uiwnd::Mgr();
     void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
@@ -847,9 +867,10 @@ void VendingWindow::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
   hover_valid_ = true;
   // Clic DROIT = description complète, comme partout ailleurs dans le client et
   // dans les autres viewers. Le gauche reste libre pour les actions de la ligne.
-  if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && wnd) {
+  if (mui::IsLastItemRightClicked() && wnd) {
     POINT pt;
-    if (GetCursorPos(&pt)) OpenDescFromList(wnd, list_off, desc.id, pt.x, pt.y);
+    if (GetCursorPos(&pt))
+      OpenDescFromList(wnd, list_off, desc.index, desc.id, pt.x, pt.y);
     // La fenêtre de description est reprise en ImGui par ItemDescWindow, qui
     // masque la native au passage. On le redemande explicitement : notre appel
     // à MakeWindow/OnMsg ne suit pas forcément le chemin qui déclenche son hook,
@@ -871,7 +892,7 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
     ItemHover(desc, wnd, list_off);  // l'icône réagit comme le nom
     ImGui::SameLine();
   }
-  // ⚠ BuildDisplayName compose le raffinage et le préfixe de carte, mais PAS le
+  // ⚠ BuildDisplayName compose le refine et le préfixe de carte, mais PAS le
   // suffixe d'emplacements (cf. itemdesc::RenderSimpleDesc, qui l'ajoute de son
   // côté pour la même raison). On l'ajoute donc dans les deux cas.
   const char* label = desc.name[0] != '\0' ? desc.name : ItemName(desc.id);

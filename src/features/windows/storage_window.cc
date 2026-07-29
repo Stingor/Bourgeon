@@ -105,10 +105,15 @@ inline Fn Vf(void* self, int off) {
 // session l'est toujours — c'est déjà lui que lit Extract.
 constexpr uintptr_t kStorageListHead = 0x015fbad8;
 
-// Ouvre la fenêtre de description native (id 0xc) pour l'item `id` du storage,
-// à (mx,my) écran, avec l'info COMPLÈTE du nœud (cartes, raffinage, enchants).
-void OpenItemDesc(uint32_t id, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kStorageListHead, id), mx, my);
+// Ouvre la fenêtre de description native (id 0xc) pour l'item d'index storage
+// `index`, à (mx,my) écran, avec l'info COMPLÈTE du nœud (cartes, refine,
+// enchants).
+//
+// ⚠ Par INDEX, jamais par id : deux exemplaires du même objet (même id, refines
+// ou cartes différents) sont deux nœuds distincts, et une recherche par id
+// rendrait toujours le PREMIER pour toutes leurs cases.
+void OpenItemDesc(int index, int mx, int my) {
+  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kStorageListHead, index), mx, my);
 }
 
 // ── Retrait d'un item vers l'inventaire (interactif) ────────────────────────
@@ -1487,12 +1492,12 @@ void StorageWindow::OnRenderUI() {
       }
       // Clic DROIT : Ctrl -> description directe ; Alt/Maj -> retrait rapide du
       // stack COMPLET vers l'inventaire ; sinon -> menu contextuel.
-      if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      if (IsLastItemRightClicked()) {
         const ImGuiIO& io = ImGui::GetIO();
         if (io.KeyCtrl) {
           MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
           POINT pt;
-          if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].id, pt.x, pt.y);
+          if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].index, pt.x, pt.y);
         } else if (io.KeyAlt || io.KeyShift) {
           WithdrawItem(items_[idx].index, items_[idx].amount);
         } else {
@@ -1509,7 +1514,7 @@ void StorageWindow::OnRenderUI() {
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
           MarkDescPending();
           POINT pt;
-          if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].id, pt.x, pt.y);
+          if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].index, pt.x, pt.y);
         }
         if (ImGui::MenuItem(IsFavorite(items_[idx].id) ? "Retirer des favoris"
                                                        : "Ajouter aux favoris"))

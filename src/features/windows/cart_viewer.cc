@@ -200,12 +200,16 @@ void CloseCart() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Description (clic droit) : on retrouve le nœud CHARIOT par id et on passe son
-// ItemSkillInfo — celui que le serveur a rempli — à la fenêtre 0xc, qui rend
-// alors cartes, raffinage et enchantements. item_desc_window détecte cette
+// Description (clic droit) : on retrouve le nœud CHARIOT par son INDEX cart et on
+// passe son ItemSkillInfo — celui que le serveur a rempli — à la fenêtre 0xc, qui
+// rend alors cartes, refine et enchantements. item_desc_window détecte cette
 // fenêtre et lui substitue sa version enrichie.
-void OpenItemDesc(uint32_t id, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoById(kCartListHead, id), mx, my);
+//
+// ⚠ Par INDEX, jamais par id : deux exemplaires du même objet (même id, refines
+// ou cartes différents) sont deux nœuds distincts, et une recherche par id
+// rendrait toujours le PREMIER pour toutes leurs cases.
+void OpenItemDesc(int index, int mx, int my) {
+  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kCartListHead, index), mx, my);
 }
 
 // Lecture SEH (POD only) des compteurs du footer -> hors OnRenderUI, qui contient
@@ -758,9 +762,9 @@ void CartViewer::OnRenderUI() {
       //   Alt  + clic DROIT = transfert rapide (storage ouvert -> 0x4f, sinon 0x4d) ;
       //   clic DROIT seul   = menu contextuel.
       const ImGuiIO& mods = ImGui::GetIO();
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      if (IsLastItemRightClicked()) {
         if (mods.KeyCtrl) {
-          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
+          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         } else if (mods.KeyAlt) {
           if (StorageOpen())        SendCmd(kCmdCartToStorage, it.index, it.amount);
           else if (InventoryOpen()) SendCmd(kCmdCartToBody, it.index, it.amount);
@@ -799,7 +803,7 @@ void CartViewer::OnRenderUI() {
                                                  it.total_slots));
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
-          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.id, pt.x, pt.y);
+          POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         }
         ImGui::Separator();
         // ⚠ RÈGLE SERVEUR : tant que l'entrepôt est ouvert, le serveur REFUSE tout

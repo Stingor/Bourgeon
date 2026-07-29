@@ -190,17 +190,22 @@ class VendingWindow : public Plugin {
   bool imgui_enabled_ = false;  // OPT-IN : formulaire natif par défaut
 
   // Ce qu'il faut pour décrire un objet : ni la DB ni l'id ne suffisent, cartes,
-  // raffinage et options d'instance vivent dans l'ItemSkillInfo du nœud. Mêmes
+  // refine et options d'instance vivent dans l'ItemSkillInfo du nœud. Mêmes
   // champs que les autres viewers, pour alimenter itemdesc::RenderSimpleDesc.
   // Public seulement pour que le remplisseur local au .cc puisse y écrire.
   struct DescInfo {
     uint32_t id = 0;
+    // nœud+0x0c (= ItemSkillInfo+0x04) : l'index de l'objet DANS SA LISTE. C'est
+    // lui, et non l'id, qui distingue deux exemplaires du même objet — trois
+    // Knife dont une sertie, une +1 et une +3 partagent le même id, et une
+    // recherche par id seul rendrait toujours la première pour les trois.
+    int      index = 0;
     uint32_t cards[4] = {0, 0, 0, 0};
     int      refine = 0;
     int      opt_count = 0;
     itemdesc::SimpleOpt opts[5];
     // Nom d'AFFICHAGE composé par le client (BuildDisplayName) : « +10 Hydra
-    // Sword [3] ». Le nom de la DB, lui, ignore raffinage, cartes et slots — il
+    // Sword [3] ». Le nom de la DB, lui, ignore refine, cartes et slots — il
     // ne sert que de repli si la composition échoue.
     char     name[64] = {0};
   };
