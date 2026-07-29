@@ -1041,6 +1041,16 @@ bool IsLevelUseSkillSEH(int skillId) {
   __try { return reinterpret_cast<IsLevelUse_t>(kIsLevelUseSkill)(skillId) != 0; }
   __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
+// Niveau de lancement EFFECTIF. ⚠ Le getter renvoie 0 tant que le joueur n'a JAMAIS
+// touché au réglage — 0 veut dire « pas réglé », pas « niveau 1 ». Le borner par
+// max(1, ...) faisait partir et GLISSER les compétences au niveau 1 ; le défaut est le
+// niveau APPRIS, c'est-à-dire le maximum. Même repli pour un réglage devenu trop haut
+// (compétence montée puis rebaissée par un changement de classe).
+int EffectiveUseLevelSEH(int skillId, int learned) {
+  int use = GetUseLevelSEH(skillId);
+  if (use <= 0 || (learned > 0 && use > learned)) use = learned;
+  return use < 1 ? 1 : use;
+}
 
 // (Les noms d'onglets viennent du Lua : ReadSkillTabNamesSEH est plus bas, après les
 //  constantes de l'API Lua brute dont il dépend.)
@@ -3262,6 +3272,10 @@ void CharacterSheet::DrawSkillsTab() {
     else
       tip += "\n";
     if (s.learned > 0 && s.inf != 0) tip += "\nDouble-clic : lancer";
+    if (s.learned > 1 && IsLevelUseSkillSEH(s.id))
+      tip += "\nMolette : niveau de lancement (" +
+             std::to_string(EffectiveUseLevelSEH(s.id, s.learned)) + " / " +
+             std::to_string(s.learned) + ")";
     tip += "\nClic droit : menu — Ctrl + clic droit : description";
     if (s.learned > 0 && s.inf != 0) tip += "\nGlisser : poser sur une barre d'action";
     ImGui::SetTooltip("%s", tip.c_str());
@@ -3285,14 +3299,13 @@ void CharacterSheet::DrawSkillsTab() {
     if (ImGui::MenuItem("Monter d'un niveau", nullptr, false, can_raise && points_left > 0))
       ReserveSkillPoint(static_cast<uint16_t>(s.id));
     if (ImGui::MenuItem("Lancer", nullptr, false, s.learned > 0 && s.inf != 0))
-      SendUseSkill(static_cast<uint16_t>(s.id), std::max(1, GetUseLevelSEH(s.id)));
+      SendUseSkill(static_cast<uint16_t>(s.id), EffectiveUseLevelSEH(s.id, s.learned));
     // Niveau d'utilisation : réglage 100 % client (le natif l'expose par les
     // « + / − » de chaque case), borné au niveau APPRIS, et c'est lui que la barre
     // de raccourcis envoie au lancement.
     if (s.learned > 0 && IsLevelUseSkillSEH(s.id)) {
       ImGui::Separator();
-      int use = GetUseLevelSEH(s.id);
-      if (use <= 0 || use > s.learned) use = s.learned;
+      const int use = EffectiveUseLevelSEH(s.id, s.learned);
       ImGui::TextColored(kGray, "Lancer au niveau %d / %d", use, s.learned);
       // « - » ASCII, pas le signe moins U+2212 : la police de l'UI ne le porte pas
       // et il sortait en tofu dans le menu.
@@ -3309,18 +3322,82 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::EndPopup();
   };
 
+  // Pastille « niveau de lancement » au centre de l'icône, GRILLE ET LISTE : elle ne
+  // paraît que si le réglage est BRIDÉ sous le niveau appris (cas anormal), sinon rien —
+  // le lancement, le double-clic et le glisser partent tous à ce niveau-là et il faut
+  // pouvoir le voir sans ouvrir le menu. `size` = côté de l'icône déjà dessinée.
+  // `always` = pendant un glisser : là on montre le niveau MÊME au maximum, c'est celui
+  // qui va être posé sur la barre et la molette le règle à la volée.
+  auto draw_use_level_badge = [](ImDrawList* dl, const SkillRaw& s, const ImVec2& ip,
+                                 float size, bool always = false) {
+    if (s.learned <= 0) return;
+    // IsLevelUseSkill n'est interrogé qu'après le test de bridage : c'est un appel
+    // natif, inutile de le payer sur chaque case de la grille.
+    const int use_lv = EffectiveUseLevelSEH(s.id, s.learned);
+    if ((use_lv >= s.learned && !always) || !IsLevelUseSkillSEH(s.id)) return;
+    char use_txt[8];
+    std::snprintf(use_txt, sizeof(use_txt), "%d", use_lv);
+    const ImVec2 usz = ImGui::CalcTextSize(use_txt);
+    const ImVec2 up(ip.x + (size - usz.x) * 0.5f, ip.y + (size - usz.y) * 0.5f);
+    dl->AddRectFilled(ImVec2(up.x - 4.0f, up.y - 2.0f),
+                      ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
+                      IM_COL32(15, 15, 20, 205), 4.0f);
+    dl->AddRect(ImVec2(up.x - 4.0f, up.y - 2.0f),
+                ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
+                IM_COL32(255, 205, 105, 220), 4.0f, 0, 1.0f);
+    dl->AddText(up, IM_COL32(255, 215, 130, 255), use_txt);
+  };
+
   // Gestes partagés par la case et la ligne : ils suivent le DERNIER widget soumis.
   auto common_item_actions = [&](const SkillRaw& s, int effective, ro::IconTex ic) {
+    // ── Molette = niveau de lancement ───────────────────────────────────────────
+    // AU SURVOL et PENDANT LE GLISSER : dans les deux cas c'est cette case qui doit
+    // posséder la molette, sinon le panneau défile sous le curseur au lieu de régler
+    // le niveau. SetItemKeyOwner couvre justement « survolée OU active » — et il faut
+    // l'appeler ICI, tant que le dernier item soumis est bien la case : après
+    // BeginDragDropSource ce serait l'infobulle de glisser. La possession vaut pour la
+    // frame SUIVANTE (le défilement est appliqué dans NewFrame), d'où le rappel à
+    // chaque frame tant qu'on survole / qu'on glisse.
+    // Réservée aux compétences qu'on peut vraiment doser (effet dépendant du niveau ET
+    // au moins 2 niveaux appris) : ailleurs la molette garde son rôle de défilement.
+    const bool level_tunable = s.learned > 1 && IsLevelUseSkillSEH(s.id);
+    const bool dragging_this = ImGui::IsItemActive();
+    const bool hovering_this =
+        ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr;
+    if (level_tunable && (hovering_this || dragging_this)) {
+      ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+      const float wheel = ImGui::GetIO().MouseWheel;
+      if (wheel != 0.0f) {
+        const int use = EffectiveUseLevelSEH(s.id, s.learned);
+        // Un cran = un niveau, quel que soit le pas de la molette (les souris à
+        // défilement libre envoient des fractions : on ne veut pas 0 niveau de plus).
+        const int next = std::min(s.learned, std::max(1, use + (wheel > 0.0f ? 1 : -1)));
+        if (next != use) SetUseLevelSEH(s.id, next);
+      }
+    }
     if (s.learned > 0 && s.inf != 0 && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
       // Même charge utile que l'onglet Guilde : la barre d'action ImGui l'accepte déjà.
-      const int payload[2] = {s.id, std::max(1, GetUseLevelSEH(s.id))};
+      // Niveau EFFECTIF, RELU À CHAQUE FRAME : la molette peut encore le changer en plein
+      // vol, et sans réglage explicite on pose la compétence au MAXIMUM appris (le getter
+      // renvoie 0 dans ce cas, et un max(1, 0) la posait au niveau 1).
+      const int payload[2] = {s.id, EffectiveUseLevelSEH(s.id, s.learned)};
       ImGui::SetDragDropPayload("BGN_SKILL", payload, sizeof(payload));
-      if (ic.tex) { ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
-                    ImGui::SameLine(); }
+      if (ic.tex) {
+        // Pastille sur l'icône de l'infobulle : on voit le niveau qui sera posé AVANT
+        // de lâcher (affichée même au maximum, contrairement à la grille).
+        const ImVec2 drag_ip = ImGui::GetCursorScreenPos();
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+        draw_use_level_badge(ImGui::GetWindowDrawList(), s, drag_ip, 24.0f, true);
+        ImGui::SameLine();
+      }
       ImGui::TextUnformatted(skill_name(s.id));
+      if (level_tunable) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(molette : niveau)");
+      }
       ImGui::EndDragDropSource();
     }
-    if (ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr) {
+    if (hovering_this) {
       hovered_now = static_cast<uint16_t>(s.id);
       tooltip_for(s, effective);
     }
@@ -3355,7 +3432,7 @@ void CharacterSheet::DrawSkillsTab() {
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && press_clean) {
         // Lancer au niveau d'utilisation choisi, comme la barre de raccourcis.
         if (castable) SendUseSkill(static_cast<uint16_t>(s.id),
-                                   std::max(1, GetUseLevelSEH(s.id)));
+                                   EffectiveUseLevelSEH(s.id, s.learned));
         else          ReserveSkillPoint(static_cast<uint16_t>(s.id), press_ctrl);
         press_id = 0;
       } else if (ImGui::IsMouseReleasedWithDelay(ImGuiMouseButton_Left,
@@ -3497,27 +3574,7 @@ void CharacterSheet::DrawSkillsTab() {
       // Cooldown en cours : même voile montant + décompte que la barre de raccourcis.
       if (learned) DrawSkillCooldownOverlay(dl, static_cast<uint16_t>(s.id), ip, icon);
 
-      // Niveau d'utilisation BRIDÉ sous le niveau appris : c'est à ce niveau-là que la
-      // compétence part (double-clic, barre de raccourcis), et rien ne le montrait —
-      // d'où la pastille au centre de l'icône, absente quand le réglage est au maximum
-      // (cas normal). IsLevelUseSkill n'est interrogé qu'après le test de bridage :
-      // c'est un appel natif, inutile de le payer sur chaque case de la grille.
-      if (s.learned > 0) {
-        const int use_lv = GetUseLevelSEH(s.id);
-        if (use_lv > 0 && use_lv < s.learned && IsLevelUseSkillSEH(s.id)) {
-          char use_txt[8];
-          std::snprintf(use_txt, sizeof(use_txt), "%d", use_lv);
-          const ImVec2 usz = ImGui::CalcTextSize(use_txt);
-          const ImVec2 up(ip.x + (icon - usz.x) * 0.5f, ip.y + (icon - usz.y) * 0.5f);
-          dl->AddRectFilled(ImVec2(up.x - 4.0f, up.y - 2.0f),
-                            ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
-                            IM_COL32(15, 15, 20, 205), 4.0f);
-          dl->AddRect(ImVec2(up.x - 4.0f, up.y - 2.0f),
-                      ImVec2(up.x + usz.x + 4.0f, up.y + usz.y + 2.0f),
-                      IM_COL32(255, 205, 105, 220), 4.0f, 0, 1.0f);
-          dl->AddText(up, IM_COL32(255, 215, 130, 255), use_txt);
-        }
-      }
+      draw_use_level_badge(dl, s, ip, icon);
 
       // Niveau sous l'icône : la seule information qu'on ne peut pas deviner du dessin.
       // NOIR dès qu'elle est apprise (le vert « niveau max » se noyait dans le fond
@@ -3743,18 +3800,24 @@ void CharacterSheet::DrawSkillsTab() {
                           col, thickness);
           row_dl->AddCircleFilled(ImVec2(anchor[i].x - 3.0f, anchor[i].y), hot ? 3.0f : 2.0f, col);
         }
+        // Selectable posé EN PREMIER et sur TOUTE la ligne, ICÔNE COMPRISE : c'est lui
+        // qui porte le survol, le clic, le glisser et le menu. Avec l'icône dessinée
+        // AVANT lui puis un Selectable réduit au nom, l'icône était une zone morte —
+        // survolée, elle ne donnait ni infobulle ni molette, alors que c'est justement
+        // là qu'on vise. Le visuel se pose PAR-DESSUS en ImDrawList, jamais en
+        // repositionnant le curseur.
+        ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(0.0f, icon));
         if (ic.tex)
           row_dl->AddImage(
               reinterpret_cast<ImTextureID>(ic.tex), p, ImVec2(p.x + icon, p.y + icon),
               ImVec2(0, 0), ImVec2(1, 1),
               effective > 0 ? IM_COL32_WHITE : IM_COL32(110, 110, 110, 160));
-        ImGui::Dummy(ImVec2(icon, icon));
-        ImGui::SameLine();
-        if (effective == 0) ImGui::PushStyleColor(ImGuiCol_Text, kGray);
-        // Selectable (widget À ID) plutôt qu'un simple texte : c'est lui qui donne
-        // l'ActiveId nécessaire au glisser et la zone de clic du menu contextuel.
-        ImGui::Selectable(skill_name(s.id));
-        if (effective == 0) ImGui::PopStyleColor();
+        draw_use_level_badge(row_dl, s, p, icon);  // même repère qu'en grille
+        const ImU32 name_col =
+            effective == 0 ? ImGui::GetColorU32(kGray) : ImGui::GetColorU32(ImGuiCol_Text);
+        row_dl->AddText(ImVec2(p.x + icon + ImGui::GetStyle().ItemSpacing.x,
+                               p.y + (icon - ImGui::GetTextLineHeight()) * 0.5f),
+                        name_col, skill_name(s.id));
         common_item_actions(s, effective, ic);
         ImGui::Unindent(row_indent);
 
