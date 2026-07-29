@@ -676,6 +676,22 @@ inline void AnalyzeDescLine(const char* s, int* out_len, char* out_last) {
   if (out_last) *out_last = last;
 }
 
+// Premier caractère VISIBLE d'une ligne (ignore les tokens couleur ^RRGGBB), '\0'
+// si la ligne n'a aucun texte. Sert au reflow skill : le wrap natif coupe à la
+// largeur PIXEL, donc EN PLEIN MOT -> la ligne de continuation reprend le mot coupé
+// et commence par une lettre minuscule. Un nouveau bloc écrit par l'auteur du .lub
+// commence par tout autre chose (« [Lv 2] », « Comments: », ligne vide).
+inline char FirstVisibleChar(const char* s) {
+  for (const char* p = s; *p;) {
+    if (p[0] == '^' && Hex2(p + 1) >= 0 && Hex2(p + 3) >= 0 && Hex2(p + 5) >= 0) {
+      p += 7;  // token couleur : non visible
+      continue;
+    }
+    return *p;
+  }
+  return '\0';
+}
+
 // Longueur d'une séquence UTF-8 d'après son octet de tête (1 = ASCII, ou octet
 // isolé/invalide qu'on laisse passer tel quel).
 inline int Utf8SeqLen(unsigned char c) {
@@ -851,8 +867,22 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     int vlen = 0; char last = '\0';
     AnalyzeDescLine(s, &vlen, &last);
     const bool sentence_end = (last == '.' || last == '!' || last == '?');
+    // La seule longueur ne suffit PAS à distinguer une coupure du wrap natif d'une
+    // ligne d'auteur qui atteint fortuitement la même colonne : dans « [Lv 1]: 300%
+    // damage, 0.8 sec After Cast Delay », chaque niveau fait pile la longueur max du
+    // bloc et se retrouvait recollé au suivant. On exige donc la SIGNATURE d'une
+    // coupure en plein mot : la ligne finit sur un caractère de mot ET la suivante
+    // reprend en minuscule (suite du mot). Un « [Lv 2] », un « Comments: » ou une
+    // ligne vide gardent leur saut de ligne.
+    const bool word_cut = (last >= 'a' && last <= 'z') ||
+                          (last >= 'A' && last <= 'Z') ||
+                          (last >= '0' && last <= '9');
+    const char next_first =
+        (li + 1 < count) ? FirstVisibleChar(lines[li + 1]) : '\0';
+    const bool word_continues = (next_first >= 'a' && next_first <= 'z');
     const bool merge = reflow && (li + 1 < count) && wrapCol >= 40 &&
-                       vlen >= wrapCol && !sentence_end;
+                       vlen >= wrapCol && !sentence_end && word_cut &&
+                       word_continues;
     if (merge) continue;          // fusionne : garde word/cur/curLink/inHref/penX
     flushWord(cur);
     curLink = -1;
