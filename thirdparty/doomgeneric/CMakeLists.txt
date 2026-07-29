@@ -95,7 +95,10 @@ target_include_directories(doomgeneric PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Vanilla 1993 C: silence the deprecation/sign-compare flood, keep our own
 # warning level clean. /MT is inherited from CMAKE_MSVC_RUNTIME_LIBRARY.
-target_compile_options(doomgeneric PRIVATE /w)
+# /W0 (et non /w) : le generateur VS le traduit en <WarningLevel>TurnOffAllWarnings,
+# alors que /w partirait en AdditionalOptions et entrerait en conflit avec le
+# WarningLevel implicite de MSBuild (warning D9025 a chaque compilation).
+target_compile_options(doomgeneric PRIVATE /W0)
 # FEATURE_SOUND routes sfx through our DirectSound backend (i_dsound.c, which
 # provides the DG_sound_module/DG_music_module the dispatcher expects).
 target_compile_definitions(doomgeneric PRIVATE
