@@ -313,65 +313,16 @@ const char* DeleteRejectMsg(int result) {
   }
 }
 
-// Code-page EFFECTIVE du client (949 Corée / 1252 Europe / 0 = CP_ACP), posée par
-// FUN_00a72440 selon g_ServiceType. Le natif rend les noms via
-// MultiByteToWideChar(CodePage_0159b818) + TextOutW (UIText_GdiTextOut 0x00547600).
-constexpr uintptr_t kClientCodePage = 0x0159b818;
+// Texte du jeu -> UTF-8 pour ImGui. Le corps — lecture de la code-page EFFECTIVE
+// du client, SEH, repli sur les octets bruts — est parti dans ro::LocalToUtf8 :
+// il était recopié à l'identique dans item_desc_window, et l'adresse de la
+// code-page déclarée dans les deux fichiers. Cf. ui/ro_imgui.h et
+// rag::kClientCodePageAddr.
+const char* LocalToUtf8(const char* s) { return ro::LocalToUtf8(s); }
 
-// Convertit un texte du jeu (noms, maps) vers UTF-8 pour ImGui, en MIROIR du natif :
-// on lit la code-page effective du client au lieu de coder 949 en dur, donc correct
-// quel que soit le servicetype de la connexion. Sans ça, ImGui interprète les octets
-// code-page comme de l'UTF-8 invalide -> « ????? ».
-// Buffer rotatif : consommer le résultat tout de suite, ne pas le stocker.
-const char* LocalToUtf8(const char* s) {
-  static char bufs[4][256];
-  static int idx = 0;
-  char* out = bufs[idx];
-  idx = (idx + 1) & 3;
-  out[0] = '\0';
-  if (!s || !*s) return out;
-  UINT cp;
-  __try {
-    cp = *reinterpret_cast<const UINT*>(kClientCodePage);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    cp = CP_ACP;
-  }
-  wchar_t wide[128];
-  const int wlen = MultiByteToWideChar(cp, 0, s, -1, wide, 128);
-  if (wlen <= 0) {  // code-page refusée -> repli sur les octets bruts
-    lstrcpynA(out, s, sizeof(bufs[0]));
-    return out;
-  }
-  WideCharToMultiByte(CP_UTF8, 0, wide, -1, out, sizeof(bufs[0]), nullptr, nullptr);
-  return out;
-}
-
-// Inverse de LocalToUtf8 : une saisie ImGui (UTF-8) -> code-page du client, pour
-// l'ENVOYER sur le fil (ex. nom à la création). Sans ça, un nom accentué partirait en
-// octets UTF-8 et s'afficherait « mojibake » (le natif rend les noms en code-page).
-// Buffer rotatif : consommer tout de suite.
-const char* Utf8ToLocal(const char* s) {
-  static char bufs[2][256];
-  static int idx = 0;
-  char* out = bufs[idx];
-  idx = (idx + 1) & 1;
-  out[0] = '\0';
-  if (!s || !*s) return out;
-  UINT cp;
-  __try {
-    cp = *reinterpret_cast<const UINT*>(kClientCodePage);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    cp = CP_ACP;
-  }
-  wchar_t wide[128];
-  const int wlen = MultiByteToWideChar(CP_UTF8, 0, s, -1, wide, 128);
-  if (wlen <= 0) {  // UTF-8 invalide -> repli sur les octets bruts
-    lstrcpynA(out, s, sizeof(bufs[0]));
-    return out;
-  }
-  WideCharToMultiByte(cp, 0, wide, -1, out, sizeof(bufs[0]), nullptr, nullptr);
-  return out;
-}
+// Saisie ImGui (UTF-8) -> code-page du client, pour ce qui PART au natif ou sur
+// le fil (le nom à la création). Même mutualisation que ci-dessus.
+const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 
 // ── Icônes de coiffure : rendu DIRECT du .spr (comme le make-char natif) ─────────
 // Recette RE (agent IDA + capture x32dbg sur make_character_ver2) : le natif ne fait

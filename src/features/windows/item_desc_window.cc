@@ -338,6 +338,57 @@ struct CardDesc {
   char illust_path[288] = {};  // 유저인터페이스\cardBmp\<resname>.bmp (illustration tooltip)
 };
 
+// ── Encodage : du texte du CLIENT vers l'UTF-8 d'ImGui ──────────────────────
+// Ces trois helpers sont ICI, avant les extracteurs, parce que TOUT texte lu
+// du natif y passe : nom d'objet, lignes de description, noms de cartes
+// serties, nom et description de skill, pages de livre.
+
+// Longueur d'une séquence UTF-8 d'après son octet de tête (1 = ASCII, ou octet
+// isolé/invalide qu'on laisse passer tel quel).
+inline int Utf8SeqLen(unsigned char c) {
+  if (c < 0x80) return 1;
+  if ((c & 0xe0) == 0xc0) return 2;
+  if ((c & 0xf0) == 0xe0) return 3;
+  if ((c & 0xf8) == 0xf0) return 4;
+  return 1;
+}
+
+// Une chaîne est-elle purement ASCII ? Alors la convertir ne changerait pas un
+// octet, et on s'épargne l'aller-retour UTF-16. C'est le cas de l'immense
+// majorité des textes de ce client.
+bool IsPureAscii(const char* s) {
+  for (const char* p = s; *p; ++p)
+    if (static_cast<unsigned char>(*p) >= 0x80) return false;
+  return true;
+}
+
+// Convertit SUR PLACE un texte du jeu vers l'UTF-8 attendu par ImGui.
+//
+// Sans ça, tout octet >= 0x80 — les accents et les « … » des .txt de livre, mais
+// aussi les descriptions et les noms restés en coréen dans la DB — est lu comme
+// de l'UTF-8 invalide et sort en losanges.
+//
+// ⚠ La conversion ALLONGE : un caractère coréen fait 2 octets dans la code-page
+// du client et 3 en UTF-8. Quand le résultat ne tient pas, on coupe sur une
+// FRONTIÈRE de caractère — une coupe au milieu d'une séquence UTF-8 rendrait
+// exactement les losanges qu'on cherche à supprimer.
+void LocalizeInPlace(char* buf, size_t buf_size) {
+  if (!buf || buf_size == 0 || IsPureAscii(buf)) return;
+  const char* utf8 = ro::LocalToUtf8(buf);
+  size_t n = 0;
+  while (utf8[n]) {
+    const int seq = Utf8SeqLen(static_cast<unsigned char>(utf8[n]));
+    if (n + static_cast<size_t>(seq) > buf_size - 1) break;
+    n += static_cast<size_t>(seq);
+  }
+  std::memcpy(buf, utf8, n);
+  buf[n] = 0;
+}
+
+void LocalizeLines(char lines[][kLineLen], int count) {
+  for (int i = 0; i < count; ++i) LocalizeInPlace(lines[i], kLineLen);
+}
+
 // Remplit ItemExtract depuis la fenêtre item (POD only, SEH-gardé).
 bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
   __try {
@@ -356,6 +407,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       size_t n = 0;
       while (n < sizeof(e->name) - 1 && nbuf[n]) { e->name[n] = nbuf[n]; ++n; }
       e->name[n] = '\0';
+      // Le nom reste ICI en octets client : sa conversion en UTF-8 se fait plus
+      // bas, une fois hs/he calculés, parce que ce sont des index d'OCTETS dans
+      // nbuf — les convertir d'abord les décalerait sur tout nom non-ASCII.
       // Segment coloré (enchant/inconnu) : hlptr = début, fin = 1er offset > début.
       if (hlptr && colorOut != 0) {
         int hs = static_cast<int>(hlptr - nbuf);
@@ -396,6 +450,27 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(
           wnd + kItemStruct, e->name, &cap, 0);
     }
+    // Le nom passe en UTF-8 MAINTENANT, et les bornes du segment coloré avec
+    // lui : hl_start/hl_end comptent des OCTETS, et un préfixe non-ASCII n'en
+    // fait plus le même nombre une fois converti. On reconvertit donc chaque
+    // préfixe pour lire sa longueur d'arrivée. Nom ASCII — le cas courant — :
+    // rien ne bouge, et la conversion n'a même pas lieu.
+    if (!IsPureAscii(e->name)) {
+      char prefix[sizeof(e->name)];
+      if (e->hl_start > 0) {
+        const size_t k = static_cast<size_t>(e->hl_start);
+        std::memcpy(prefix, e->name, k);
+        prefix[k] = '\0';
+        e->hl_start = static_cast<int>(std::strlen(ro::LocalToUtf8(prefix)));
+      }
+      if (e->hl_end > 0) {
+        const size_t k = static_cast<size_t>(e->hl_end);
+        std::memcpy(prefix, e->name, k);
+        prefix[k] = '\0';
+        e->hl_end = static_cast<int>(std::strlen(ro::LocalToUtf8(prefix)));
+      }
+      LocalizeInPlace(e->name, sizeof(e->name));
+    }
 
     const uint32_t iconcap = *reinterpret_cast<uint32_t*>(wnd + kItemIconCap);
     const uint32_t iconlen = *reinterpret_cast<uint32_t*>(wnd + kItemIconLen);
@@ -417,6 +492,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           std::strncpy(e->lines[e->line_count], line ? line : "", kLineLen - 1);
           ++e->line_count;
         }
+        LocalizeLines(e->lines, e->line_count);
       }
     }
 
@@ -446,6 +522,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           if (nm) {
             std::strncpy(e->card_names[i], nm, sizeof(e->card_names[i]) - 1);
             e->card_names[i][sizeof(e->card_names[i]) - 1] = '\0';
+            LocalizeInPlace(e->card_names[i], sizeof(e->card_names[i]));
           }
         }
       }
@@ -548,6 +625,7 @@ void ReadSkillName(uint8_t* wnd, char* out, int outsz) {
 void ExtractSkill(uint8_t* wnd, uint32_t /*id*/, ItemExtract* e) {
   *e = ItemExtract{};
   ReadSkillName(wnd, e->name, sizeof(e->name));
+  LocalizeInPlace(e->name, sizeof(e->name));
   __try {
     uint8_t* body = *reinterpret_cast<uint8_t**>(wnd + kSkillBoxBody);
     uint8_t* head = *reinterpret_cast<uint8_t**>(wnd + kSkillBoxHead);
@@ -558,6 +636,7 @@ void ExtractSkill(uint8_t* wnd, uint32_t /*id*/, ItemExtract* e) {
     const int head_first = e->line_count;
     ReadRichTextLines(head, e);
     if (e->line_count > head_first) PrefixColorReset(e->lines[head_first]);
+    LocalizeLines(e->lines, e->line_count);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -685,45 +764,6 @@ inline char FirstVisibleChar(const char* s) {
   return '\0';
 }
 
-// Longueur d'une séquence UTF-8 d'après son octet de tête (1 = ASCII, ou octet
-// isolé/invalide qu'on laisse passer tel quel).
-inline int Utf8SeqLen(unsigned char c) {
-  if (c < 0x80) return 1;
-  if ((c & 0xe0) == 0xc0) return 2;
-  if ((c & 0xf0) == 0xe0) return 3;
-  if ((c & 0xf8) == 0xf0) return 4;
-  return 1;
-}
-
-// Code-page EFFECTIVE du client (949 Corée / 1252 Europe / 0 = CP_ACP), posée
-// d'après g_ServiceType. Même recette que char_select : on la LIT au lieu de coder
-// 949 en dur, donc correct quel que soit le servicetype.
-constexpr uintptr_t kClientCodePage = 0x0159b818;
-
-// Convertit SUR PLACE des lignes de texte du jeu vers l'UTF-8 attendu par ImGui.
-// Sans ça, tout octet >= 0x80 (les « … » et les accents des .txt de livre, encodés
-// dans la code-page du client) est lu comme de l'UTF-8 invalide et sort en losange.
-// Ligne purement ASCII = laissée telle quelle, aucune conversion.
-void LocalizeLines(char lines[][kLineLen], int count) {
-  UINT cp;
-  __try { cp = *reinterpret_cast<const UINT*>(kClientCodePage); }
-  __except (EXCEPTION_EXECUTE_HANDLER) { cp = CP_ACP; }
-  for (int i = 0; i < count; ++i) {
-    bool ascii = true;
-    for (const char* p = lines[i]; *p; ++p)
-      if (static_cast<unsigned char>(*p) >= 0x80) { ascii = false; break; }
-    if (ascii) continue;
-    wchar_t wide[kLineLen];
-    const int wlen =
-        MultiByteToWideChar(cp, 0, lines[i], -1, wide, kLineLen);
-    if (wlen <= 0) continue;  // code-page refusée -> on garde les octets bruts
-    char utf8[kLineLen];
-    const int ulen = WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, kLineLen,
-                                         nullptr, nullptr);
-    if (ulen <= 0) continue;  // ne tient pas dans la ligne -> on garde l'original
-    std::memcpy(lines[i], utf8, static_cast<size_t>(ulen));
-  }
-}
 
 // reflow=true (skills) : les lignes viennent des rich-text box natifs DÉJÀ wrappés par
 // le jeu, qui coupe en plein mot (il compte les tokens ^RRGGBB dans la largeur) -> on
@@ -1202,7 +1242,10 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
         static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
     if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
       const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) std::strncpy(cd->name, nm, sizeof(cd->name) - 1);
+      if (nm) {
+        std::strncpy(cd->name, nm, sizeof(cd->name) - 1);
+        LocalizeInPlace(cd->name, sizeof(cd->name));
+      }
       // 2bis) Nombre d'emplacements de carte = record+0x30 (le natif le formate
       // « [%d] » via FUN_006a4c40 ; 0 = non sloté). Même source que le titre de la
       // fenêtre de description complète (cf. ExtractItem). Guard 1..kMaxCards.
@@ -1227,6 +1270,7 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
           std::strncpy(cd->lines[cd->line_count], line ? line : "", kLineLen - 1);
           ++cd->line_count;
         }
+        LocalizeLines(cd->lines, cd->line_count);
       }
     }
 

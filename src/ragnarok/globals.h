@@ -103,4 +103,17 @@ constexpr uintptr_t kJobLevelAddr  = 0x015fb9f8;
 inline int BaseLevel() { return *reinterpret_cast<int*>(kBaseLevelAddr); }
 inline int JobLevel()  { return *reinterpret_cast<int*>(kJobLevelAddr); }
 
+// ── Code-page EFFECTIVE du client ────────────────────────────────────────────
+// 949 (Corée), 1252 (Europe) ou 0 (= CP_ACP), posée au démarrage par
+// FUN_00a72440 d'après g_ServiceType. C'est ELLE que le natif passe à
+// MultiByteToWideChar avant de dessiner (UIText_GdiTextOut 0x00547600) : tout
+// texte venant du client — noms d'objets, descriptions, noms de personnages,
+// libellés — est encodé là-dedans, pas en UTF-8.
+//
+// ⚠ La LIRE plutôt que coder 949 en dur. Le client tourne aussi bien en
+// servicetype européen, où la même constante en dur donnerait du mojibake sur
+// tout ce qui porte un accent. La conversion elle-même est ro::LocalToUtf8
+// (ui/ro_imgui.h), qui garde cette adresse pour source.
+constexpr uintptr_t kClientCodePageAddr = 0x0159b818;
+
 }  // namespace rag

@@ -19,8 +19,11 @@ const char* Cp949(int id) {
 }
 
 const char* Utf8(int id) {
-  // Cp949ToUtf8 accepte la chaîne vide et rend « » : pas de cas particulier.
-  return ro::Cp949ToUtf8(Cp949(id));
+  // ⚠ LocalToUtf8, pas Cp949ToUtf8 : la MsgStringTable est du texte du CLIENT,
+  // donc dans SA code-page — 949 en Corée, 1252 en Europe. La décoder autrement
+  // que lui ferait dire à nos fenêtres autre chose qu'aux siennes.
+  // LocalToUtf8 accepte la chaîne vide et rend « » : pas de cas particulier.
+  return ro::LocalToUtf8(Cp949(id));
 }
 
 }  // namespace msgstr

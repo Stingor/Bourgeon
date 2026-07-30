@@ -29,6 +29,32 @@ const char* Cp949ToUtf8(const char* cp949);
 // d'octets écrits (hors '\0'), ou -1 si `out` est trop petit / conversion ratée.
 int Utf8ToCp949(const char* utf8, char* out, size_t out_size);
 
+// ── Texte venu du CLIENT, dans SA code-page ─────────────────────────────────
+// À préférer aux deux fonctions ci-dessus pour tout ce qui vient du jeu — noms
+// d'objets, descriptions, noms de personnages, libellés de la MsgStringTable.
+//
+// La différence n'est pas cosmétique : le client ne parle pas toujours CP949. Il
+// pose sa code-page effective au démarrage d'après son servicetype
+// (rag::kClientCodePageAddr : 949 en Corée, 1252 en Europe) et c'est ELLE qu'il
+// passe à MultiByteToWideChar avant de dessiner. Coder 949 en dur donne du
+// mojibake sur tout ce qui porte un accent en servicetype européen. On lit donc
+// la même valeur que lui, et nos fenêtres disent exactement ce que disent les
+// siennes.
+//
+// Cp949ToUtf8 reste juste là où l'encodage est connu par CONSTRUCTION : un
+// littéral CP949 écrit dans nos sources (les chemins « 유저인터페이스\… »), un
+// fichier dont on sait qu'il est coréen.
+//
+// Buffer thread-local rotatif, même contrat que Cp949ToUtf8 : à consommer tout
+// de suite, jamais à stocker. Jamais nul.
+const char* LocalToUtf8(const char* local);
+
+// Le retour : une saisie ImGui (UTF-8) vers la code-page du client, pour ce qui
+// PART au natif ou sur le fil (un nom de personnage à la création, par exemple).
+// Sans ça, un nom accentué partirait en octets UTF-8 et s'afficherait en
+// mojibake partout ailleurs. Mêmes garanties de tampon.
+const char* Utf8ToLocal(const char* utf8);
+
 // Charge DEUX polices dans l'atlas : la police intégrée d'ImGui (repli) et Malgun
 // Gothic (glyphes hangul + latin, présente sur tout Windows 10/11). Puis
 // sélectionne l'active selon l'état du toggle (voir SetFontEnabled), sans jamais

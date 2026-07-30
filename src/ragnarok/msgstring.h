@@ -32,7 +32,7 @@ const char* Cp949(int id);
 
 // Le même, converti pour ImGui. Jamais nul : « » si absent.
 //
-// ⚠ Le tampon rendu est celui de ro::Cp949ToUtf8 : thread-local et ROTATIF sur
+// ⚠ Le tampon rendu est celui de ro::LocalToUtf8 : thread-local et ROTATIF sur
 // huit emplacements. Bon pour un affichage immédiat, à recopier si la chaîne
 // doit survivre à la frame.
 const char* Utf8(int id);

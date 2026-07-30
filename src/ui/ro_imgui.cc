@@ -13,6 +13,7 @@
 #include "imgui_internal.h"  // ImGui::GetActiveID, GetCurrentWindow, TitleBarRect
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
+#include "ragnarok/globals.h"  // rag::kClientCodePageAddr (code-page du client)
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 #include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
 
@@ -74,6 +75,43 @@ const char* Cp949ToUtf8(const char* cp949) {
   WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, out.data(), ulen, nullptr,
                       nullptr);
   return out.c_str();
+}
+
+// La code-page que le client s'est posée d'après son servicetype. SEH : appelée
+// depuis des chemins de rendu, et l'adresse n'est peuplée qu'après FUN_00a72440.
+static UINT ClientCodePage() {
+  __try {
+    return *reinterpret_cast<const UINT*>(rag::kClientCodePageAddr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return CP_ACP; }
+}
+
+// Corps commun des deux sens : `from` -> UTF-16 -> `to`. Repli sur les octets
+// bruts si une des deux code-pages refuse la chaîne — mieux vaut du texte
+// douteux qu'une chaîne vide, on perdrait l'information.
+static const char* Recode(const char* in, UINT from, UINT to) {
+  std::string& out = NextScratch();
+  out.clear();
+  if (!in || !*in) return out.c_str();
+
+  const int wlen = MultiByteToWideChar(from, 0, in, -1, nullptr, 0);
+  if (wlen <= 1) { out = in; return out.c_str(); }
+  std::wstring wide(wlen, L'\0');
+  MultiByteToWideChar(from, 0, in, -1, wide.data(), wlen);
+
+  const int olen =
+      WideCharToMultiByte(to, 0, wide.data(), -1, nullptr, 0, nullptr, nullptr);
+  if (olen <= 1) { out = in; return out.c_str(); }
+  out.resize(olen - 1);
+  WideCharToMultiByte(to, 0, wide.data(), -1, out.data(), olen, nullptr, nullptr);
+  return out.c_str();
+}
+
+const char* LocalToUtf8(const char* local) {
+  return Recode(local, ClientCodePage(), CP_UTF8);
+}
+
+const char* Utf8ToLocal(const char* utf8) {
+  return Recode(utf8, CP_UTF8, ClientCodePage());
 }
 
 int Utf8ToCp949(const char* utf8, char* out, size_t out_size) {
