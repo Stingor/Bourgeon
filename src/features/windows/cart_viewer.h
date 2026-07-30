@@ -72,6 +72,7 @@ class CartViewer : public Plugin {
     int      refine = 0;      // info+0x60
     int      type = 0;        // info+0 : type d'item (onglets)
     uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
+    uint8_t  damaged = 0;     // info+0x5d : équipement cassé (rendu rouge)
     char     name[64] = {0};
     // Données d'INSTANCE du stack, pour l'aperçu de description au survol.
     uint32_t cards[4] = {0};  // info+0x1c

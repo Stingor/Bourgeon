@@ -61,6 +61,7 @@ constexpr int kInfoIndex  = 0x04;  // index CHARIOT (arg des commandes de transf
 constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
 constexpr int kInfoIdCap  = 0x40;  // capacité SSO de la std::string id
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
+constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;
 
 // Compteurs du footer NATIF (RE UICartWnd_DrawContent) : nb d'items et poids, avec
@@ -440,6 +441,7 @@ void CartViewer::Extract() {
                                       : reinterpret_cast<const char*>(info + kInfoIdStr);
       it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
+      it.damaged = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
       it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
       it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
       it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
@@ -725,7 +727,8 @@ void CartViewer::OnRenderUI() {
       // Tuile de grille (icône centrée + badge coin) : brique partagée,
       // cf. features/item_cell.h — même rendu ici et dans le chariot.
       const ro::IconTex ic = ro::ItemIcon(it.id, it.identified);
-      itemcell::DrawTile(dl, p0, p1, cell, ic, it.refine, it.amount);
+      itemcell::DrawTile(dl, p0, p1, cell, ic, it.refine, it.amount,
+                         it.damaged != 0);
 
       if (hovered) {
         if (show_desc_tooltip_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
@@ -734,9 +737,11 @@ void CartViewer::OnRenderUI() {
           hover_desc_idx_ = idx;
         } else if (!show_desc_tooltip_) {
           ImGui::BeginTooltip();
-          char lbl[96];
-          ImGui::Text(" %s ", itemcell::Label(lbl, sizeof(lbl), it.name,
-                                              it.total_slots));
+          char lbl[96], padded[100];
+          std::snprintf(padded, sizeof(padded), " %s ",
+                        itemcell::Label(lbl, sizeof(lbl), it.name,
+                                        it.total_slots));
+          itemcell::NameText(padded, it.damaged != 0);
           if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
           ImGui::EndTooltip();
         }
@@ -793,8 +798,13 @@ void CartViewer::OnRenderUI() {
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, menu_spacing);
       if (ImGui::BeginPopup("ctx")) {
         char lbl[96];
-        ImGui::TextDisabled("%s", itemcell::Label(lbl, sizeof(lbl), it.name,
-                                                 it.total_slots));
+        // En-tête grisé, avec l'ombre rouge du natif si l'item est cassé.
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        itemcell::NameText(itemcell::Label(lbl, sizeof(lbl), it.name,
+                                           it.total_slots),
+                           it.damaged != 0);
+        ImGui::PopStyleColor();
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);

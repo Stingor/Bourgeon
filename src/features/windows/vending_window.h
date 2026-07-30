@@ -202,6 +202,7 @@ class VendingWindow : public Plugin {
     int      index = 0;
     uint32_t cards[4] = {0, 0, 0, 0};
     int      refine = 0;
+    uint8_t  damaged = 0;  // ISI+0x5D : équipement cassé (rendu rouge)
     int      opt_count = 0;
     itemdesc::SimpleOpt opts[5];
     // Nom d'AFFICHAGE composé par le client (BuildDisplayName) : « +10 Hydra

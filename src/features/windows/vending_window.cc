@@ -195,6 +195,7 @@ constexpr uint16_t kCzVendingListReq = 0x0130;
 // exprimés en NŒUD (= ItemSkillInfo + 0x08).
 constexpr int kNodeCards    = 0x24;  // ISI+0x1C : 4 cartes
 constexpr int kNodeIdent    = 0x64;  // ISI+0x5C : identifié ? (change le nom)
+constexpr int kNodeDamaged  = 0x65;  // ISI+0x5D : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kNodeRefine   = 0x68;  // ISI+0x60
 constexpr int kNodeOptCount = 0xA0;  // ISI+0x98
 constexpr int kNodeOpts     = 0xA4;  // ISI+0x9C, entrées de 5 octets
@@ -445,6 +446,7 @@ struct RawRow {
   int16_t  opt_value[kMaxOpts];
   uint8_t  opt_param[kMaxOpts];
   int      ident;      // identifié ? (change le nom affiché)
+  uint8_t  damaged;    // ISI+0x5D : équipement cassé (rendu rouge)
   void*    node;       // nœud d'origine, pour composer le nom hors du __try
   char     name[64];   // nom d'AFFICHAGE complet (BuildDisplayName)
 };
@@ -532,6 +534,7 @@ int ReadRows(void* wnd, int list_off, RawRow* out, int max) {
       // Le nom composé se fait APRÈS, hors du __try (cf. ResolveDisplayNames) :
       // il passe par un cache, donc par un conteneur C++.
       r.ident = *reinterpret_cast<uint8_t*>(p + kNodeIdent);
+      r.damaged = *reinterpret_cast<uint8_t*>(p + kNodeDamaged);
       r.node = node;
       out[n++] = r;
       node = *reinterpret_cast<void**>(node);
@@ -734,6 +737,7 @@ void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
   out.name[sizeof(out.name) - 1] = '\0';
   for (int c = 0; c < 4; ++c) out.cards[c] = raw.cards[c];
   out.refine = raw.refine;
+  out.damaged = raw.damaged;
   out.opt_count = raw.opt_count;
   for (int k = 0; k < raw.opt_count && k < kMaxOpts; ++k) {
     out.opts[k].index = raw.opt_index[k];
@@ -853,7 +857,12 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
                                  int list_off) {
   ro::IconTex ic = ro::ItemIcon(desc.id);
   if (ic.tex) {
-    ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
+    // Cassé = icône teintée du rouge natif (cf. itemcell::kDamagedShadow).
+    const ImVec4 tint = desc.damaged
+                            ? ImGui::ColorConvertU32ToFloat4(itemcell::kDamagedShadow)
+                            : ImVec4(1, 1, 1, 1);
+    ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20),
+                 ImVec2(0, 0), ImVec2(1, 1), tint);
     ItemHover(desc, wnd, list_off);  // l'icône réagit comme le nom
     ImGui::SameLine();
   }
@@ -861,8 +870,12 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
   // suffixe d'emplacements (cf. itemdesc::RenderSimpleDesc, qui l'ajoute de son
   // côté pour la même raison). On l'ajoute donc dans les deux cas.
   const char* label = desc.name[0] != '\0' ? desc.name : itemcell::NameById(desc.id);
-  if (slots > 0) ImGui::Text("%s [%d]", label, slots);
-  else           ImGui::TextUnformatted(label);
+  char lbl[96];
+  if (slots > 0) {
+    std::snprintf(lbl, sizeof(lbl), "%s [%d]", label, slots);
+    label = lbl;
+  }
+  itemcell::NameText(label, desc.damaged != 0);
   ItemHover(desc, wnd, list_off);
 }
 

@@ -306,8 +306,21 @@ void* FindInfoByIndex(uintptr_t list_head, int index) {
   return nullptr;
 }
 
+void NameText(const char* utf8, bool damaged) {
+  if (!utf8) utf8 = "";
+  // L'ombre se soumet AVANT le texte au même draw list : elle reste dessous,
+  // comme dans DrawName natif (+1,+1, texte inchangé par-dessus).
+  if (damaged && utf8[0]) {
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+                                        kDamagedShadow, utf8);
+  }
+  ImGui::TextUnformatted(utf8);
+}
+
 void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
-              float cell, const ro::IconTex& icon, int refine, int amount) {
+              float cell, const ro::IconTex& icon, int refine, int amount,
+              bool damaged) {
   if (!draw_list) return;
 
   if (icon.tex && icon.w > 0 && icon.h > 0) {
@@ -317,9 +330,11 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
       dw *= s; dh *= s;
     }
     const ImVec2 ip(p0.x + (cell - dw) * 0.5f, p0.y + (cell - dh) * 0.5f);
+    // Cassé = icône TEINTÉE du rouge de l'ombre native (la tinte multiplie la
+    // texture : l'icône reste reconnaissable, mais rougie).
     draw_list->AddImage(reinterpret_cast<ImTextureID>(icon.tex), ip,
                         ImVec2(ip.x + dw, ip.y + dh), ImVec2(0, 0), ImVec2(1, 1),
-                        ro::SkinImageTint());
+                        damaged ? kDamagedShadow : ro::SkinImageTint());
   } else {
     draw_list->AddText(ImVec2(p0.x + cell * 0.5f - 4, p0.y + cell * 0.5f - 7),
                        ImGui::GetColorU32(ImGuiCol_TextDisabled), "?");

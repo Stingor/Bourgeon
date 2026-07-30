@@ -26,12 +26,31 @@
 
 namespace itemcell {
 
+// ── Équipement CASSÉ ─────────────────────────────────────────────────────────
+// Le flag d'instance vit à ItemSkillInfo+0x5d (octet, entre « identifié » +0x5c
+// et le refine +0x60). Le rendu natif de référence (DrawName 0x008972c0) est une
+// OMBRE rouge 0x5050fa (COLORREF BGR → RGB 250,80,80) décalée +1,+1 SOUS le nom,
+// le texte lui-même inchangé — c'est l'ombre qui fait « paraître » le nom rouge.
+// item_desc_window reproduit déjà ce rendu ; ces briques le portent dans les
+// viewers (nom ombré + icône teintée).
+inline constexpr unsigned int kDamagedShadow = IM_COL32(0xFA, 0x50, 0x50, 0xFF);
+
+// Le nom d'un item en widget texte, avec l'ombre « cassé » du natif si
+// `damaged`. Remplace un ImGui::TextUnformatted — la couleur du texte reste
+// celle du style courant (PushStyleColor(ImGuiCol_Text, …) autour pour un nom
+// grisé/noir).
+void NameText(const char* utf8, bool damaged);
+
 // Une TUILE de grille : l'icône à sa taille NATIVE (le natif dessine le bmp 1:1,
 // ~24 px dans une tuile de 32), centrée, et réduite SEULEMENT si elle déborde ;
 // un « ? » grisé si l'icône manque ; puis, en bas à droite, le refine « +N »
 // OU la quantité — jamais les deux, un équipement ne s'empile pas. Ce badge est
 // écrit en noir cerné de blanc pour rester lisible sur n'importe quel fond,
 // comme le fait le client.
+//
+// `damaged` teinte l'icône en rouge (décision d'affichage des viewers ImGui,
+// plus lisible en grille que la seule ombre du nom — le natif, lui, ne marque
+// que le nom).
 //
 // ⚠ C'est la présentation GRILLE. Les viewers en LISTE (vending_window,
 // inventory_viewer en mode liste) composent leur ligne autrement — icône +
@@ -40,7 +59,8 @@ namespace itemcell {
 //
 // `p0`/`p1` sont les coins de la tuile, `cell` son côté.
 void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
-              float cell, const ro::IconTex& icon, int refine, int amount);
+              float cell, const ro::IconTex& icon, int refine, int amount,
+              bool damaged = false);
 
 // Nom d'AFFICHAGE composé par le name-builder natif : refine, préfixes de
 // cartes, forge. `wnd` est la fenêtre native qui sert de contexte au builder,

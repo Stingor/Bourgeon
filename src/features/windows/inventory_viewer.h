@@ -149,6 +149,7 @@ class InventoryViewer : public Plugin {
     int      refine = 0;      // info+0x60 : niveau de refine (affiché "+N" à la place de la qté)
     int      type = 0;        // info+0 : type d'item (onglets)
     uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
+    uint8_t  damaged = 0;     // info+0x5d : équipement cassé (rendu rouge)
     uint8_t  favorite = 0;    // node+0x90 (onglet favoris)
     char     name[64] = {0};
     // Données d'INSTANCE du stack (pas de la DB) : lues pour l'aperçu de description

@@ -51,6 +51,7 @@ class TradeWindow : public Plugin {
     int      amount = 0;
     int      slots = 0;
     int      refine = 0;
+    uint8_t  damaged = 0;  // ItemSkillInfo+0x5d : équipement cassé (rendu rouge)
   };
 
   void OnTick() override;

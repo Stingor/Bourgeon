@@ -58,6 +58,7 @@ constexpr int kDealSlots  = 10;
 constexpr int kInfoAmount = 0x10;   // int : quantité (< 1 => slot vide)
 constexpr int kInfoIdStr  = 0x2c;   // std::string SSO : itemId EN TEXTE (atoi)
 constexpr int kInfoIdCap  = 0x40;   // capacité SSO (+0x2c+0x14 ; >15 => heap)
+constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;   // int : refine
 
 // Zeny du deal (globals) + zeny du joueur.
@@ -194,6 +195,7 @@ void ReadDealItems(uintptr_t arrayBase,
                                    : sbase;
       it.id     = str ? static_cast<uint32_t>(std::atoi(str)) : 0;
       it.refine = *reinterpret_cast<int*>(e + kInfoRefine);
+      it.damaged = *reinterpret_cast<uint8_t*>(e + kInfoDamaged);
       if (it.id) out->push_back(it);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { /* array incohérent : on garde l'acquis */ }
@@ -466,10 +468,16 @@ void TradeWindow::OnRenderUI() {
         ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
         ImGui::SameLine();
       }
+      // Nom en noir (fond parchemin), avec l'ombre rouge du natif si l'objet
+      // offert est cassé — exactement le rendu de la fenêtre de description.
+      char nb[96];
       if (it.refine > 0)
-        ImGui::TextColored(kBlack, "+%d %s", it.refine, itemcell::NameById(it.id));
+        std::snprintf(nb, sizeof(nb), "+%d %s", it.refine, itemcell::NameById(it.id));
       else
-        ImGui::TextColored(kBlack, "%s", itemcell::NameById(it.id));
+        std::snprintf(nb, sizeof(nb), "%s", itemcell::NameById(it.id));
+      ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+      itemcell::NameText(nb, it.damaged != 0);
+      ImGui::PopStyleColor();
       if (it.amount > 1) { ImGui::SameLine(); ImGui::TextDisabled("x%d", it.amount); }
       if (it.slots > 0) { ImGui::SameLine(); ImGui::TextDisabled("[%d]", it.slots); }
       ImGui::PopID();

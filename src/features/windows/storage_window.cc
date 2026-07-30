@@ -677,6 +677,7 @@ void StorageWindow::Extract(uint8_t* wnd) {
       for (int k = 0; k < 4; ++k)
         it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
       it.refine = *reinterpret_cast<int*>(info + 0x60);  // niveau de refine (aperçu)
+      it.damaged = *reinterpret_cast<uint8_t*>(info + 0x5d);  // cassé (rendu rouge)
       int nopt = *reinterpret_cast<int*>(info + 0x98);
       if (nopt < 0) nopt = 0;
       if (nopt > 5) nopt = 5;
@@ -1436,7 +1437,12 @@ void StorageWindow::OnRenderUI() {
       const ImVec2 icon_pos = ImGui::GetCursorScreenPos();
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float w = kIcon * static_cast<float>(ic.w) / ic.h;
-        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, kIcon));
+        // Cassé = icône teintée du rouge natif (cf. itemcell::kDamagedShadow).
+        const ImVec4 tint = items_[idx].damaged
+                                ? ImGui::ColorConvertU32ToFloat4(itemcell::kDamagedShadow)
+                                : ImVec4(1, 1, 1, 1);
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, kIcon),
+                     ImVec2(0, 0), ImVec2(1, 1), tint);
       } else {
         ImGui::Dummy(ImVec2(kIcon, kIcon));  // garde l'alignement si pas d'icône
       }
@@ -1446,6 +1452,15 @@ void StorageWindow::OnRenderUI() {
                     5.0f, IM_COL32(255, 205, 40, 255), IM_COL32(60, 40, 0, 220));
       ImGui::SameLine();
       ImGui::PushID(idx);
+      // Équipement cassé : l'ombre rouge du natif sous le nom. Soumise AVANT le
+      // Selectable, elle reste sous son texte ; le fond de survol la recouvre le
+      // temps du hover (ordre de dessin), défaut cosmétique accepté.
+      if (items_[idx].damaged && items_[idx].name[0]) {
+        const ImVec2 rp = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddText(ImVec2(rp.x + 1.0f, rp.y + 1.0f),
+                                            itemcell::kDamagedShadow,
+                                            items_[idx].name);
+      }
       // Clic GAUCHE : Ctrl -> (dé)favori ; Shift -> tout retirer (hotkey native) ;
       // 1 seul item -> retrait direct ; sinon (pile) -> menu de choix de quantité.
       if (ImGui::Selectable(items_[idx].name[0] ? items_[idx].name : "(?)")) {
@@ -1501,7 +1516,11 @@ void StorageWindow::OnRenderUI() {
       if (ImGui::BeginPopup("ctx")) {
         // `name` porte DÉJÀ « [N] » : le suffixe est cuit à l'extraction, avec
         // garde anti-doublon (cf. le bloc « Suffixe [N] » d'OnTick).
-        ImGui::TextDisabled("%s", items_[idx].name[0] ? items_[idx].name : "(?)");
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        itemcell::NameText(items_[idx].name[0] ? items_[idx].name : "(?)",
+                           items_[idx].damaged != 0);
+        ImGui::PopStyleColor();
         ImGui::Separator();
         if (ImGui::MenuItem("Description")) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
