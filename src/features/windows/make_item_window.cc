@@ -1646,8 +1646,8 @@ void MakeItemWindow::OnTick() {
       last_result_       = line;
       last_result_color_ = kColWarn;
       Log(line, kColWarn);
-      LogDiag("[make] echec CONSTATE (aucun paquet) : produit {} inchange, "
-              "materiau {} -{}",
+      LogDiag("[make] échec CONSTATÉ (aucun paquet) : produit {} inchangé, "
+              "matériau {} -{}",
               last_sent_id_, sent_mat_id_, spent);
       sent_mat_id_    = 0;
       sent_mat_owned_ = -1;

@@ -1918,7 +1918,7 @@ const char* SlotAbbrev(int slot) {
     case 8: return "Head\ntop";
     case 9: return "Head\nmid";
     case 4: return "Armor";
-    case 2: return "Cape";
+    case 2: return "Garment";
     case 1: return "Weapon";
     case 5: return "Shield";
     case 6: return "Shoes";

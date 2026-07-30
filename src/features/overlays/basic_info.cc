@@ -2652,7 +2652,7 @@ bool BasicInfo::ExportAvatarGif(int anim, int dir, const char* filepath,
   int delay_cs = static_cast<int>(g_av_frame_delay * 2.5f + 0.5f);  // *25ms /10 = cs
   if (delay_cs < 2) delay_cs = 2;
   const bool ok = GifWrite(filepath, ptrs.data(), CW, CH, nframes, delay_cs);
-  if (!ok) LogError("Avatar GIF echec: {}", filepath);
+  if (!ok) LogError("Avatar GIF échec : {}", filepath);
   return ok;
 }
 
