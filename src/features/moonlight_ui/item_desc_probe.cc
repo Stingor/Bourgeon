@@ -70,6 +70,13 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
           g_item_desc_visible = true;
           g_item_desc_wnd_ptr = ecx;
           GetCursorPos(&g_item_desc_cursor);
+          // Vraie ouverture (ou chargement d'un AUTRE objet dans une desc déjà
+          // ouverte) : la description doit repasser devant. C'est ici, et nulle part
+          // ailleurs, que toutes les ouvertures convergent — clic droit natif comme
+          // itemcell::OpenDesc* de nos fenêtres ImGui, lesquelles ont le focus et
+          // recouvriraient la desc. Un simple drapeau, consommé au rendu.
+          if (auto* item_desc = Bourgeon::Instance().item_desc())
+            item_desc->RaiseItemWindow();
         }
       }
     }

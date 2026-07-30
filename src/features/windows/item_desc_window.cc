@@ -1599,6 +1599,7 @@ void ItemDescWindow::OnTick() {
         book_.page = 1;
       }
     }
+    book_need_raise_ = true;  // hors du if : le z-order ne dépend pas du curseur
     POINT pt;
     if (GetCursorPos(&pt)) {
       book_spawn_x_  = pt.x + desc_offset_x_;
@@ -1618,6 +1619,15 @@ void ItemDescWindow::OnTick() {
       item_need_pos_ = true;
     }
   }
+  // Remontée au 1er plan : à l'ouverture ET sur un changement d'objet dans une desc
+  // DÉJÀ ouverte — clic droit sur un autre item pendant qu'elle est affichée. Ce
+  // second cas n'a aucun front montant à offrir : sans lui, la desc changeait de
+  // contenu en restant enterrée sous la fenêtre d'où venait le clic (elle, focus).
+  // Le hook OnMsg 0x18 (RaiseItemWindow) pose déjà le drapeau, sans attendre le
+  // prochain tick ; ce test-ci reste le filet si le détour n'a pas pu être posé.
+  if (item_.open && (!item_was_open_ || item_.id != item_last_id_))
+    item_need_raise_ = true;
+  item_last_id_  = item_.open ? item_.id : 0;
   item_was_open_ = item_.open;
   if (skill_.open && !skill_was_open_) {
     POINT pt;
@@ -1627,6 +1637,11 @@ void ItemDescWindow::OnTick() {
       skill_need_pos_ = true;
     }
   }
+  // Même règle pour le skill (pas de hook côté 0x2e : c'est le polling qui voit
+  // l'ouverture comme le passage d'une compétence à l'autre).
+  if (skill_.open && (!skill_was_open_ || skill_.id != skill_last_id_))
+    skill_need_raise_ = true;
+  skill_last_id_  = skill_.open ? skill_.id : 0;
   skill_was_open_ = skill_.open;
 }
 
@@ -2295,19 +2310,6 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   }
 }
 
-void FocusDescWindow() {
-  // Le « ### » est l'identifiant STABLE du panneau : son titre visible change à
-  // chaque item (et devient « Comparaison » en mode comparatif), mais ImGui hache
-  // à partir du ###, donc cette chaîne seule suffit à le retrouver. Elle doit
-  // rester alignée sur les deux std::snprintf qui composent ce titre, un peu plus
-  // bas dans ce même fichier.
-  //
-  // Panneau pas encore créé (première ouverture) : SetWindowFocus ne trouve rien
-  // et ne fait rien — c'est le bon comportement, une fenêtre neuve est de toute
-  // façon empilée au premier plan.
-  ImGui::SetWindowFocus("###itemdesc_item");
-}
-
 }  // namespace itemdesc
 
 // Onglets d'infos techniques, émis DANS le TabBar de la fenêtre (après l'onglet
@@ -2631,14 +2633,26 @@ void ItemDescWindow::RenderItemWindow() {
   if (item_need_pos_) {
     // Mode « près de la souris » : on force la position au curseur. Mode « dernière
     // position » : on NE touche PAS la position (ImGui réutilise celle mémorisée
-    // via le ###id). Dans les 2 cas on remonte au 1er plan à l'ouverture.
+    // via le ###id).
     if (desc_spawn_at_cursor_)
       ImGui::SetNextWindowPos(
           ImVec2(static_cast<float>(item_spawn_x_),
                  static_cast<float>(item_spawn_y_)),
           ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
-    ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     item_need_pos_ = false;
+  }
+  // Remontée au 1er plan, DÉCOUPLÉE du placement (elle était conditionnée au bloc
+  // ci-dessus, donc perdue dès que GetCursorPos échouait, et jamais demandée quand
+  // la desc déjà ouverte ne faisait que changer d'objet). Le drapeau est posé par
+  // OnTick (ouverture / changement d'objet) et, plus tôt et plus sûrement, par le
+  // hook OnMsg 0x18 — le seul point qui voit TOUTES les ouvertures, y compris
+  // celles déclenchées par nos propres fenêtres (inventaire, storage, chariot,
+  // boutique, fiche de perso…), d'où la desc sortait sinon DERRIÈRE la fenêtre
+  // d'où venait le clic.
+  const bool raising = item_need_raise_;
+  if (raising) {
+    ImGui::SetNextWindowFocus();
+    item_need_raise_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(245, 243, 232, 255));
@@ -3059,9 +3073,13 @@ void ItemDescWindow::RenderItemWindow() {
     // desc => desc au-dessus, panneaux juste en dessous, le tout au-dessus des
     // autres fenêtres). Uniquement sur la transition -> aucune bagarre de focus par
     // frame. Corrige « les panneaux passent sous l'inventaire ».
+    // `raising` : même réordonnancement sur une ouverture. Le SetNextWindowFocus de
+    // la desc ne concerne QU'ELLE ; les satellites, eux, apparaissent à cette frame
+    // et ImGui les empile au-dessus (fenêtres neuves) -> sans ce passage, les
+    // panneaux cartes/options recouvraient la desc qu'ils accompagnent.
     static bool s_grp_foc_prev = false;
     const bool grp_foc = desc_foc || sat_foc;
-    if (grp_foc && !s_grp_foc_prev) {
+    if ((grp_foc && !s_grp_foc_prev) || raising) {
       for (int i = 0; i < sat_name_count; ++i) ImGui::SetWindowFocus(sat_names[i]);
       ImGui::SetWindowFocus(title);
     }
@@ -3098,8 +3116,14 @@ void ItemDescWindow::RenderSkillWindow() {
       ImGui::SetNextWindowPos(ImVec2(static_cast<float>(skill_spawn_x_),
                                      static_cast<float>(skill_spawn_y_)),
                               ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
-    ImGui::SetNextWindowFocus();  // au 1er plan à l'ouverture
     skill_need_pos_ = false;
+  }
+  // Au 1er plan à chaque ouverture, y compris un changement de skill dans une desc
+  // déjà ouverte (clic droit sur une autre icône du grimoire). Découplé du
+  // placement, cf. RenderItemWindow.
+  if (skill_need_raise_) {
+    ImGui::SetNextWindowFocus();
+    skill_need_raise_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
   ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(245, 243, 232, 255));
@@ -3174,8 +3198,13 @@ void ItemDescWindow::RenderBookWindow() {
       ImGui::SetNextWindowPos(ImVec2(static_cast<float>(book_spawn_x_),
                                      static_cast<float>(book_spawn_y_)),
                               ImGuiCond_Always, DescAnchorPivot(desc_anchor_));
-    ImGui::SetNextWindowFocus();
     book_need_pos_ = false;
+  }
+  // Au 1er plan à l'ouverture, découplé du placement (cf. RenderItemWindow) : le
+  // livre s'ouvre depuis le bouton « Lire » de la desc, qui a le focus.
+  if (book_need_raise_) {
+    ImGui::SetNextWindowFocus();
+    book_need_raise_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
   // Fond = la couleur déclarée par le livre lui-même (en-tête %RRGGBB du .txt,

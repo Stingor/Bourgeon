@@ -62,18 +62,16 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int opt_count = 0, int refine = 0,
                       const char* display_name = nullptr);
 
-// Remonte le panneau de description au premier plan.
+// ⚠️ Une fenêtre qui ouvre une description n'a RIEN à faire pour le z-order.
 //
-// À appeler APRÈS itemcell::OpenDesc*, et SEULEMENT sur un geste délibéré (clic
-// sur un item, sur un lien) — jamais depuis un survol.
-//
-// Pourquoi c'est nécessaire : le panneau porte `ImGuiWindowFlags_NoFocusOnAppearing`,
-// donc il ne prend pas le focus en apparaissant et ImGui ne le remonte pas. Ouvert
-// depuis une fenêtre qui a le focus, il se retrouve DERRIÈRE elle. Ce flag est
-// voulu — l'aperçu au survol du viewer storage ouvre le même panneau et volerait
-// le focus à chaque changement de ligne — d'où ce geste explicite plutôt qu'un
-// changement de comportement global.
-void FocusDescWindow();
+// Il exista ici un `FocusDescWindow()` que chaque appelant devait penser à appeler
+// après itemcell::OpenDesc* — et l'oubli était la règle : une seule des huit
+// fenêtres qui ouvrent une desc le faisait. La remontée est désormais réclamée par
+// ItemDescWindow lui-même (ItemDescWindow::RaiseItemWindow, posée depuis le hook
+// OnMsg 0x18 de la fenêtre native, que TOUTES les ouvertures traversent). N'ajoutez
+// pas de second appel de focus à côté : la desc porte
+// `ImGuiWindowFlags_NoFocusOnAppearing` et c'est ce drapeau différé, appliqué à la
+// frame suivante donc APRÈS tout le monde, qui la remonte.
 }  // namespace itemdesc
 
 class ItemDescWindow : public Plugin {
@@ -117,6 +115,18 @@ class ItemDescWindow : public Plugin {
   // Cache la fenêtre skill (0x2e) — appelée depuis le hook OnMsg 0x3d (zéro
   // flicker). No-op si le panneau skill est désactivé. SEH-gardé.
   void HideNativeSkillWindow();
+
+  // Demande que la fenêtre de description d'ITEM repasse au premier plan à la
+  // prochaine frame rendue (elle et ses panneaux satellites).
+  //
+  // Appelée par le hook OnMsg de la fenêtre native sur le message « set item »
+  // (0x18) : c'est le seul point qui voit TOUTES les ouvertures — clic droit natif
+  // comme itemcell::OpenDesc* de nos propres fenêtres — et le seul qui voie le
+  // chargement d'un autre objet dans une desc DÉJÀ ouverte, cas sans front montant
+  // où elle restait sous la fenêtre d'où venait le clic.
+  //
+  // Simple drapeau : aucun appel ImGui ici, le hook tourne hors frame de rendu.
+  void RaiseItemWindow() { item_need_raise_ = true; }
 
   // Instantané read-only d'une fenêtre native de description (public : lu par
   // un helper libre dans le .cc).
@@ -261,13 +271,21 @@ class ItemDescWindow : public Plugin {
   bool       item_was_open_ = false;
   bool       item_need_pos_ = false;
   int        item_spawn_x_ = 0, item_spawn_y_ = 0;
+  // Remontée au 1er plan demandée (consommée par un SetNextWindowFocus au rendu).
+  // DISTINCTE de `*_need_pos_` : elle vaut aussi pour un changement d'objet dans une
+  // desc déjà ouverte, et ne doit pas être perdue quand GetCursorPos échoue.
+  bool       item_need_raise_ = false;
+  uint32_t   item_last_id_ = 0;   // id affiché au tick précédent (0 = fermée)
   DescWindow skill_;            // fenêtre skill (classe 0x2e)
   bool       skill_was_open_ = false;
   bool       skill_need_pos_ = false;
   int        skill_spawn_x_ = 0, skill_spawn_y_ = 0;
+  bool       skill_need_raise_ = false;
+  uint32_t   skill_last_id_ = 0;
   BookWindow book_;             // fenêtre livre (classe 0x6a)
   bool       book_need_pos_ = false;
   int        book_spawn_x_ = 0, book_spawn_y_ = 0;
+  bool       book_need_raise_ = false;
 
   std::unordered_map<uint32_t, TechData> cache_;  // clé = CacheKey(id,is_skill)
   std::unordered_map<uint32_t, DamageEst> dmg_cache_;  // clé = skill_id

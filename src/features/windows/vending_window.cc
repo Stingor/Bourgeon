@@ -878,9 +878,12 @@ void VendingWindow::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
     // cette fenêtre.
     if (auto* desc_window = Bourgeon::Instance().item_desc())
       desc_window->HideNativeDescWindows();
-    // Le clic vient de focaliser NOTRE fenêtre : sans ça, le panneau de
-    // description qui apparaît le même frame passe derrière.
-    ImGui::SetWindowFocus(nullptr);
+    // (Il y avait ici un ImGui::SetWindowFocus(nullptr) censé « défocaliser notre
+    // fenêtre pour que la description ne passe pas derrière ». Il ne pouvait pas
+    // marcher : FocusWindow(NULL) sort AVANT BringWindowToDisplayFront, donc il ne
+    // touche à aucun z-order — il ne faisait que vider le focus clavier et fermer
+    // les popups ouverts. La remontée est désormais réclamée par ItemDescWindow
+    // lui-même, depuis le hook OnMsg 0x18 que cette ouverture traverse.)
   }
 }
 
