@@ -611,10 +611,16 @@ natif ne concerne que la fenêtre native).
    le parse des liens, les filtres.
 2. **Phase 2 (bascule)** — interrupteur « interface moderne » : bloque
    MakeWindow(1)/0x84, ChatAction dévié, envoi Option B, ENTER-focus ImGui.
-3. **Phase 3 (nettoyage)** — retirer de chat.cc tout ce qui ne sert que la
-   fenêtre native (largeur custom, icônes `^i`, timestamps natifs, clear
-   history, cache de mesure GDI du wrap) — **tout ça devient sans objet** ;
-   extras : recherche, copie, filtres par type par-dessus le routage canal.
+3. **Phase 3 (réorganisation)** — `chat.cc` devient **`chat_tweaks.cc`** : les
+   retouches de la fenêtre native (largeur custom, icônes `^i`, timestamps,
+   clear history, cache de mesure GDI, fonds) ne sont PAS retirées — elles
+   deviennent **les options des joueurs qui restent en chat natif**
+   (interface moderne désactivée). Deux modes exclusifs :
+   - interface moderne ON → chat ImGui, natif jamais créé, hooks de
+     chat_tweaks inactifs (ou inoffensifs : leurs cibles ne tournent plus) ;
+   - interface moderne OFF → chat natif + tweaks, comme aujourd'hui.
+   Extras côté ImGui : recherche, copie, filtres par type par-dessus le
+   routage canal.
 
 ### 8.8 Anciennes questions ouvertes — TOUTES RÉSOLUES (2026-07-30)
 | Question | Réponse |
