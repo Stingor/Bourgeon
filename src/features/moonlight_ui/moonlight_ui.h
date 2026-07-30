@@ -35,13 +35,28 @@
 // l'ensemble sans inclure les headers des autres. Sûre si un plugin manque.
 void SetModernInterface(bool on);
 
+// État du groupe. Lu sur son ANCRE, l'inventaire : `SetModernInterface` écrit tous
+// les membres d'un seul geste, donc n'importe lequel est représentatif — et c'est
+// déjà cet ancrage qu'emploie LoadSettings pour réconcilier un yaml hérité mixé.
+// Faux si le plugin d'ancrage manque (rien à activer, donc rien de moderne).
+//
+// Sert à GRISER les sections de réglages qui ne concernent que les fenêtres
+// modernes : leurs options n'ont aucun effet quand le groupe est coupé, et un
+// réglage sans effet est un piège à support.
+bool ModernInterfaceEnabled();
+
 // Dessine la case « Interface moderne » (skin RO) suivie de son point d'aide, et
 // applique déjà SetModernInterface() au clic. Renvoie true si l'état a changé —
 // au panneau appelant de persister.
-// `window_help` décrit ce que la bascule change POUR CETTE fenêtre-là ; la LISTE du
-// groupe, elle, est écrite une seule fois dans le corps de cette fonction. Les
-// quatre panneaux porteurs la recopiaient chacun dans leur infobulle, et les trois
-// derniers membres (échoppe, feuille de perso, boutiques) n'y figuraient nulle part.
+//
+// ⚠ UN SEUL site d'appel, dans l'en-tête « Interface de jeu ». Elle a longtemps été
+// recopiée dans cinq sections (Barre d'action, Storage, Inventaire, Cart, Banque) :
+// cinq cases synchronisées pour un seul état, chacune donnant l'impression de ne
+// concerner que sa fenêtre alors qu'elle en basculait douze. Les sections ne portent
+// plus que ce qui leur est propre, et sont grisées quand le groupe est coupé.
+//
+// `window_help` est annexé à la liste du groupe, écrite une seule fois dans le corps
+// de cette fonction.
 bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help);
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
@@ -83,6 +98,11 @@ class MoonlightUi : public Plugin {
   bool AddAlootId(uint32_t id);        // ajoute + notifie serveur (false si plein/déjà)
   bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
   const char* ItemName(uint32_t id) const;  // nom via itemInfoMerged.lua (ou nullptr)
+  // Recherche INVERSE, insensible à la casse : nom -> id, 0 si inconnu. Index
+  // construit paresseusement au premier appel. Sert à la fenêtre de fabrication,
+  // dont les recettes ne sont disponibles que sous forme de texte
+  // (« 10 Green Live ») et qui a besoin de l'id pour l'icône et la description.
+  uint32_t ItemIdByName(const char* name) const;
 
   // ── Tri serveur (e_sort_mode 0-6) ───────────────────────────────────────────
   // Les combos « Tri … » de « Commands Settings » pilotent un réglage SERVEUR
@@ -105,6 +125,7 @@ class MoonlightUi : public Plugin {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
     kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
     kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceBank, kIfaceRefine,
+    kIfaceMakeItem,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,
@@ -256,6 +277,9 @@ class MoonlightUi : public Plugin {
   static constexpr uintptr_t kItemDescWndGlobalPtr = 0x0131F700;
 
   std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
+  // Index inverse (nom minuscule → ID), construit à la demande par ItemIdByName.
+  // `mutable` : c'est un cache, il ne change pas l'état observable de l'objet.
+  mutable std::unordered_map<std::string, uint32_t> ids_by_name_;
   void LoadItemNames();
 
   // ── Chat ─────────────────────────────────────────────────────────────────

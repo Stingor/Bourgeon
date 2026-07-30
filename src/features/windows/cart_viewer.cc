@@ -973,11 +973,13 @@ void CartViewer::OnRenderUI() {
 // ── Section « Cart » du panneau Moonlight ──────────────────────────────────
 bool CartViewer::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
-  // case, la liste du groupe et son application vivent dans un seul endroit
-  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h) ; ici on ne
-  // dit que ce que la bascule change POUR LE CHARIOT.
-  changed |= DrawModernInterfaceCheckbox(&imgui_enabled_,
+  // Fenêtre membre du groupe « Interface moderne » (tout-ImGui ou tout-natif, plus
+  // de mixe) : `SetModernInterface` écrit `imgui_enabled_` avec les autres. Ce qui
+  // suit ne dit que ce que la bascule change pour le cart.
+  // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
+  // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
+  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  SameLine(); HelpMarker(
       "ON : cart ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic pour retirer, clic droit, glisser vers l'inventaire ou le "
       "storage) et la fenêtre native est cachée.\n"

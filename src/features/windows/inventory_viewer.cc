@@ -1587,11 +1587,17 @@ void InventoryViewer::RenderCardInsert() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool InventoryViewer::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
-  // case, la liste du groupe et son application vivent dans un seul endroit
-  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h) ; ici on ne
-  // dit que ce que la bascule change POUR L'INVENTAIRE.
-  changed |= DrawModernInterfaceCheckbox(&imgui_enabled_,
+  // Fenêtre membre du groupe « Interface moderne » (tout-ImGui ou tout-natif, plus
+  // de mixe) : `SetModernInterface` écrit `imgui_enabled_` avec les autres. Ce qui
+  // suit ne dit que ce que la bascule change pour l'inventaire.
+  // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
+  // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
+  //
+  // ⚠ Cette fenêtre reste l'ANCRE du groupe — `ModernInterfaceEnabled()` lit
+  // `imgui_enabled_` ici. Ne pas renommer ni supprimer ce membre sans reprendre
+  // cette fonction.
+  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  SameLine(); HelpMarker(
       "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
       "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"

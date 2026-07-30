@@ -1009,13 +1009,20 @@ bool SkillBar::HandleNativeDrop(int mx, int my) {
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
 void SkillBar::DrawSettings() {
   bool changed = false;
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif, plus de mixe) : la
-  // case, la liste du groupe et son application vivent dans un seul endroit
-  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h). Elle reste
-  // câblée sur enabled_ ; la persistance passe par dirty_ (drainé par MoonlightUi,
-  // dont le SaveSettings réécrit tous les flags du groupe à jour).
-  changed |= DrawModernInterfaceCheckbox(&enabled_,
-      "Désactivé = barres classiques.\nActivé = barres modernes entièrement customisables.");
+  // Cette barre est membre du groupe « Interface moderne » (tout-ImGui ou
+  // tout-natif, plus de mixe) : `SetModernInterface` écrit `enabled_` avec les
+  // autres, et la persistance passe par dirty_ (drainé par MoonlightUi, dont le
+  // SaveSettings réécrit tous les flags du groupe à jour).
+  //
+  // 🔴 Plus de CASE ici : l'interrupteur du groupe vit uniquement en tête de
+  // l'en-tête « Interface de jeu ». Cinq sections en portaient une copie
+  // synchronisée, ce qui laissait croire à un réglage local alors qu'il en basculait
+  // douze. Ce que la bascule apporte ICI reste dit — mais comme une DESCRIPTION :
+  // section grisée ou non, elle doit donner envie d'essayer.
+  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  SameLine(); HelpMarker(
+      "Désactivé = barres classiques.\nActivé = barres modernes entièrement "
+      "customisables.");
 
   SeparatorText("Réglages généraux");
   ImGui::BeginDisabled(!enabled_);

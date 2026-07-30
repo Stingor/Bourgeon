@@ -18,6 +18,7 @@
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
 #include "features/windows/bank_window.h"
+#include "features/windows/make_item_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
@@ -56,6 +57,21 @@ void MoonlightUi::DrawInterfacePanel() {
     if (jump_requested) ImGui::SetScrollHereY(0.0f);
     PushStyleCompact();
     bool changed = false;
+
+    // ── L'interrupteur du groupe, ICI et nulle part ailleurs ─────────────────
+    // Il vivait dans cinq sections à la fois (Barre d'action, Storage, Inventaire,
+    // Cart, Banque) : cinq cases synchronisées pour un seul état, chacune donnant
+    // l'impression de ne concerner que sa fenêtre alors qu'elle en basculait douze.
+    // Sa place est en tête de l'en-tête, au-dessus de la navigation — c'est le
+    // réglage dont dépendent sept des quinze sections.
+    bool modern = ModernInterfaceEnabled();
+    changed |= DrawModernInterfaceCheckbox(
+        &modern,
+        "Les réglages propres à chaque fenêtre restent dans leur section "
+        "ci-dessous (Inventaire, Cart, Storage, Banque, Refine, Fabrication, "
+        "Barre d'action). Ils sont grisés tant que cette case est décochée : "
+        "sans elle, ces fenêtres n'existent pas.");
+
     changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);
     SameLine(); HelpMarker(
         "Affiche une grille plein écran pour aligner ton interface "
@@ -114,6 +130,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceCart,        "Cart"},
         {kIfaceBank,        "Banque"},
         {kIfaceRefine,      "Refine"},
+        {kIfaceMakeItem,    "Fabrication"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -157,6 +174,47 @@ void MoonlightUi::DrawInterfacePanel() {
     ImGui::PushTextWrapPos(0.0f);  // wrap le texte à la largeur du child
     {
       PushItemWidth(160.0f);
+
+      // ── Sections qui n'existent QUE si le groupe « Interface moderne » l'est ─
+      //
+      // Ces sept-là ne règlent que des fenêtres ImGui : groupe coupé, elles
+      // n'existent pas et leurs options ne changent rien. Un réglage sans effet est
+      // un piège — on le grise, plutôt que de laisser croire qu'il agit.
+      //
+      // Le test est fait ICI, au site d'appel unique, et non dans chacun des sept
+      // DrawSettings() : un BeginDisabled/EndDisabled à apparier dans sept plugins
+      // finit toujours par se dépareiller sur un chemin de sortie.
+      const bool needs_modern =
+          iface_nav_ == kIfaceSkillBar  || iface_nav_ == kIfaceStorage ||
+          iface_nav_ == kIfaceInventory || iface_nav_ == kIfaceCart    ||
+          iface_nav_ == kIfaceBank      || iface_nav_ == kIfaceRefine  ||
+          iface_nav_ == kIfaceMakeItem;
+      const bool locked = needs_modern && !ModernInterfaceEnabled();
+      if (locked) {
+        // 🔴 Un APERÇU, pas un cimetière. Ces sections sont la meilleure vitrine de
+        // l'interface moderne : le joueur qui les parcourt doit pouvoir LIRE ce
+        // qu'elle apporte et avoir envie d'essayer. On bloque donc l'interaction —
+        // un réglage sans effet est un piège — mais sans éteindre le texte.
+        //
+        // Volontairement AVANT le BeginDisabled, pour rester pleinement lisible, et
+        // avec l'interrupteur À PORTÉE : renvoyer le joueur chercher une case en
+        // haut de page, c'est le perdre.
+        // Ocre d'avertissement du projet, celui de la fabrication et du refine
+        // (`IM_COL32(166, 102, 0)`) : le jaune vif d'une première rédaction passait
+        // mal sur le gris clair du skin RO — trop criard pour une invitation, et
+        // moins lisible qu'un ton sourd sur fond pâle.
+        ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f),
+                           "Aperçu — ces réglages appartiennent à l'interface "
+                           "moderne, qui est désactivée.");
+        if (ro::RoButton("Activer l'interface moderne")) {
+          SetModernInterface(true);
+          SaveSettings();
+        }
+        ImGui::Spacing();
+      }
+      // Seule l'INTERACTION est coupée : les libellés et leurs infobulles restent
+      // lisibles, la section garde donc sa valeur de vitrine.
+      ImGui::BeginDisabled(locked);
 
       // ── Barre d'action ───────────────────────────────────────────────────
       if (iface_nav_ == kIfaceSkillBar)
@@ -332,6 +390,17 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::TextDisabled(kPluginUnavailable);
         }
       }
+
+      // ── Fabrication (MakeItemWindow : « LIST » 94 + « Manufacturing List » 79) ─
+      if (iface_nav_ == kIfaceMakeItem) {
+        if (auto* mk = Bourgeon::Instance().make_item_window()) {
+          if (mk->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(kPluginUnavailable);
+        }
+      }
+
+      ImGui::EndDisabled();  // apparié au BeginDisabled(locked) au-dessus
       PopItemWidth();
     }
     ImGui::PopTextWrapPos();
