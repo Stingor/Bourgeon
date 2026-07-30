@@ -25,6 +25,11 @@ class RagnarokClient {
   UIWindowMgr& window_mgr() const;
 
   // High level methods implemented by the client
+  // 🔴 FAIT PLANTER LE CLIENT 20250716 — NE PAS APPELER (cf. Session::
+  // GetItemInfoById, dont l'offset de liste est faux sur ce build). Le paquet
+  // qu'elle compose est juste ; c'est la résolution de l'index qui plante.
+  // Pour ré-utiliser un objet : résoudre l'index sur le global d'inventaire
+  // 0x015FBAB0 puis envoyer soi-même (exemple dans make_item_window.cc).
   bool UseItemById(int item_id) const;
 
   // Raw HWND of the main game window, captured when the client creates it.

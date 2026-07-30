@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +34,31 @@ class RagConnection {
   // 0x0091 ZC_NPCACK_MAPMOVE, forward_len = 16 to cover mapname[16]).
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
 
+  // ── RegisterReplaceOpcode : le handler natif ne tourne PAS ─────────────────
+  //
+  // Troisième régime, entre les deux précédents. `RegisterObserveOpcode` laisse
+  // le handler natif faire son travail (et donc ouvrir sa fenêtre, qu'on doit
+  // ensuite masquer puis détruire) ; `RegisterRecvOpcode` le remplace mais ne
+  // vise que NOS opcodes custom, ceux dont aucun handler natif n'existe. Ici on
+  // remplace un handler natif EXISTANT, de façon RÉVOCABLE.
+  //
+  // `claim` est interrogé À CHAQUE PAQUET, sur le fil réseau :
+  //   - vrai  -> le paquet part vers Bourgeon::FireRecvPacket et le handler natif
+  //              est purement et simplement sauté ;
+  //   - faux  -> on saute (JMP, pas CALL : cf. RecvPacketHandler) vers le handler
+  //              natif d'origine, qui se déroule exactement comme sans nous.
+  //
+  // 🔴 C'est ce prédicat, et lui seul, qui doit décider — pas un drapeau recopié
+  // ailleurs. Le pire scénario n'est pas « notre fenêtre est cassée » mais
+  // « ni la nôtre ni la native ne prend le paquet » : le joueur lance sa
+  // compétence et rien n'apparaît.
+  //
+  // ⚠ Réservé aux paquets à longueur VARIABLE (`[opcode:2][total_len:2]…`) : les
+  // octets transmis commencent au champ de longueur (+2), comme le fait déjà
+  // RegisterObserveOpcode, pour qu'un plugin puisse passer d'un régime à l'autre
+  // sans toucher à son parseur.
+  void RegisterReplaceOpcode(uint16_t opcode, std::function<bool()> claim);
+
   // Hooks
   void ConnectionHook();
   bool SendPacketHook(int packet_len, char *packet);
@@ -48,7 +74,10 @@ class RagConnection {
   // a CALL — so no return address is pushed.  The function is naked and
   // performs FUN_00c9df00's epilogue itself before returning.
   static void RecvPacketHandler();
-  static void RecvPacketHandlerImpl();  // called from the naked wrapper
+  // Appelée depuis le wrapper naked. Renvoie l'adresse du handler NATIF quand il
+  // faut lui rendre la main (opcode enregistré en « replace » dont le prédicat dit
+  // non), ou nullptr quand le paquet a été consommé par nous.
+  static void* RecvPacketHandlerImpl();
 
   // Hook on RecvBuffer_ResetAll_OnUnknownOpcode (0x00c148b0). Les 2 boucles recv
   // (map + login/char) appellent cette fn pour TOUT opcode HORS-PLAGE (> 0x0C35) :
@@ -77,6 +106,13 @@ class RagConnection {
   // Opcodes observed via RegisterObserveOpcode (opcode -> bytes to forward after
   // the 2-byte opcode).  Checked in PacketBufReaderHook; dispatch is untouched.
   static std::unordered_map<uint16_t, uint16_t> s_observe_opcodes_;
+
+  // Opcodes STANDARD dont on a pris la place dans la dispatch table
+  // (RegisterReplaceOpcode) : prédicat de revendication, et adresse du handler
+  // natif d'origine relevée AVANT d'écrire dans le slot — c'est elle qui rend le
+  // régime révocable.
+  static std::unordered_map<uint16_t, std::function<bool()>> s_replace_opcodes_;
+  static std::unordered_map<uint16_t, void*> s_native_handlers_;
 
   // Opcodes ABOVE the dispatch-table bound (can't patch the table without going
   // out of bounds) — dispatched directly from PacketBufReaderHook instead, which

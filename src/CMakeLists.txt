@@ -24,6 +24,11 @@ set(BOURGEON_FILES
 	"features/staff_gate.h"
 	"features/item_cell.cc"
 	"features/item_cell.h"
+	# Données serveur embarquées (SystemEN\bourgeon_recipes.yaml) : niveaux d'arme,
+	# taux de refine, recettes étendues. Partagé — le refine et la fabrication en
+	# dépendent, l'Atlas suivra.
+	"features/craft_data.cc"
+	"features/craft_data.h"
 	"features/hotkey_util.cc"
 	"features/hotkey_util.h"
 
@@ -71,6 +76,8 @@ set(BOURGEON_FILES
 	"features/windows/vending_window.h"
 	"features/windows/weapon_refine_window.cc"
 	"features/windows/weapon_refine_window.h"
+	"features/windows/make_item_window.cc"
+	"features/windows/make_item_window.h"
 
 	# patches/
 	"features/patches/berserk_chat_unlock.cc"
@@ -185,6 +192,8 @@ set(BOURGEON_FILES
 	# Ragnarok
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
+	"ragnarok/player_skills.cc"
+	"ragnarok/player_skills.h"
 	"ragnarok/item_db.h"
 	"ragnarok/render.h"
 	"ragnarok/lua.h"

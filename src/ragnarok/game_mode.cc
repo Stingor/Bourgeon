@@ -33,11 +33,51 @@ struct SendMsgDepthGuard {
   ~SendMsgDepthGuard() { --g_send_msg_depth; }
 };
 
+// Commandes de LANCEMENT de compétence. 0x45 impose la cible, 0x71 route par
+// l'INF de la compétence ; dans les deux cas p1 est l'identifiant de compétence.
+// (cf. la mémoire reference_cmode_sendmsg_use_skill)
+static constexpr int kSendMsgUseSkillTargeted = 0x45;
+static constexpr int kSendMsgUseSkillByInf    = 0x71;
+
+// 🔴 Les deux commandes ne passent PAS la même chose en p1, et les confondre
+// donnait un identifiant absurde (⏱ vu en jeu : « skill_id=1760536 » pour
+// SA_CREATECON, qui vaut 1007 — 1760536 = 0x001AD858, une adresse de PILE).
+//   0x45 : p1 = skillId, p2 = cible GID, p3 = niveau ;
+//   0x71 : p1 = POINTEUR sur une CSkillInfo, p2 = niveau. L'id est à +8, l'INF à
+//          +0xC, le niveau appris à +0x10 (cf. reference_cmode_sendmsg_use_skill).
+// La barre de raccourcis emprunte 0x71 : c'était donc le cas le plus courant qui
+// tombait à côté.
+//
+// ⚠ Lecture déportée dans sa propre fonction : le hook contient un
+// SendMsgDepthGuard, un objet à destructeur — MSVC refuse tout __try dans une
+// fonction qui exige un déroulement (C2712).
+static int ReadSkillIdFromInfo(int info_ptr) {
+  if (!info_ptr) return 0;
+  __try {
+    return *reinterpret_cast<const int*>(
+        static_cast<uintptr_t>(static_cast<unsigned>(info_ptr)) + 8);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 static int __fastcall Hooked_ProcessInputMsg(void* ecx, void* edx, int msg,
                                              int p1, int p2, int p3, int p4) {
   SendMsgDepthGuard depth;
-  if (g_send_msg_depth == 1)  // top-level call only
+  if (g_send_msg_depth == 1) {  // top-level call only
     Bourgeon::Instance().OnProcessInput();  // dispatch queued icon clicks
+    // Observation PURE des lancements de compétence — on ne modifie rien, on
+    // note. C'est la seule source possible pour savoir quelle compétence a
+    // ouvert une liste de fabrication : aucun des paquets de liste ne la porte,
+    // et un même ZC 0x01AD sert quatre métiers différents
+    // (cf. docs/make_item_list_re.md §2.2).
+    // Le NIVEAU compte autant que l'id : c'est lui que le serveur range dans
+    // `menuskill_val` et qui décide du contenu de la liste (une pharmacie de
+    // niveau 5 ne propose pas la même chose qu'au niveau 1). Relancer à 1 une
+    // compétence connue à 5 appauvrirait la liste sans rien dire.
+    if (msg == kSendMsgUseSkillTargeted)
+      Bourgeon::Instance().NotifySkillCast(p1, p3);
+    else if (msg == kSendMsgUseSkillByInf)
+      Bourgeon::Instance().NotifySkillCast(ReadSkillIdFromInfo(p1), p2);
+  }
   return g_orig_process_input_msg(ecx, edx, msg, p1, p2, p3, p4);
 }
 

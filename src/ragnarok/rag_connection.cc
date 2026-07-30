@@ -21,6 +21,20 @@ std::unordered_map<uint16_t, uint16_t> RagConnection::s_observe_opcodes_;
 // Opcodes au-dessus de la dispatch table (dispatchés depuis le reader-hook).
 std::unordered_set<uint16_t> RagConnection::s_reader_dispatch_opcodes_;
 
+// Opcodes STANDARD dont on a pris la place (RegisterReplaceOpcode).
+std::unordered_map<uint16_t, std::function<bool()>> RagConnection::s_replace_opcodes_;
+std::unordered_map<uint16_t, void*> RagConnection::s_native_handlers_;
+
+// Cible du renvoi vers le handler natif, posée par RecvPacketHandlerImpl et lue
+// par le stub naked APRÈS son `popad` — qui écrase EAX, d'où le passage par une
+// globale plutôt que par la valeur de retour.
+//
+// Pas de course : tout le chemin recv est séquentiel sur le fil réseau (même
+// raisonnement que g_suppress_buffer_reset), et la valeur est RÉÉCRITE à chaque
+// dispatch avant d'être lue — un reliquat ne peut donc pas être pris pour une
+// décision.
+static void* g_forward_native_handler = nullptr;
+
 // Packet saved by PacketBufReaderHook: captured right after FUN_00c147d0
 // fills the shared buffer, before anything downstream overwrites it.
 // The dispatch handler (RecvPacketHandlerImpl) reads from here.
@@ -150,6 +164,48 @@ void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len)
   // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
 }
 
+void RagConnection::RegisterReplaceOpcode(uint16_t opcode,
+                                          std::function<bool()> claim) {
+  if (!recv_dispatch_table_) {
+    LogError("RagConnection: RegisterReplaceOpcode(0x{:04x}) sans dispatch table",
+             opcode);
+    return;
+  }
+  if (!claim) {
+    LogError("RagConnection: RegisterReplaceOpcode(0x{:04x}) sans predicat", opcode);
+    return;
+  }
+  const int idx = static_cast<int>(opcode) - static_cast<int>(recv_opcode_base_);
+  // 🔴 Hors de la table, il n'y a AUCUN handler natif à remplacer ni à qui rendre
+  // la main : ce régime n'a pas de sens là, et patcher écrirait hors bornes.
+  if (idx < 0 || (recv_dispatch_table_size_ != 0 &&
+                  idx >= static_cast<int>(recv_dispatch_table_size_))) {
+    LogError("RagConnection: opcode 0x{:04x} hors dispatch table (idx {}) — "
+             "replace impossible", opcode, idx);
+    return;
+  }
+
+  s_replace_opcodes_[opcode] = std::move(claim);
+  // Le paquet doit être RECOPIÉ par le reader-hook pour que le handler puisse le
+  // lire : c'est ce set qui commande la copie.
+  s_registered_opcodes_.insert(opcode);
+
+  void** slot = &recv_dispatch_table_[idx];
+  // Idempotent : deux appels pour le même opcode ne doivent pas enregistrer NOTRE
+  // stub comme « handler natif d'origine » — ce serait une boucle infinie au
+  // premier renvoi.
+  if (s_native_handlers_.find(opcode) != s_native_handlers_.end()) return;
+
+  DWORD old;
+  VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old);
+  s_native_handlers_[opcode] = *slot;   // relevé AVANT l'écrasement
+  *slot = reinterpret_cast<void*>(&RagConnection::RecvPacketHandler);
+  VirtualProtect(slot, sizeof(void*), old, &old);
+  LogInfo("RagConnection: opcode 0x{:04x} remplace (handler natif 0x{:x} garde "
+          "en renvoi)", opcode,
+          reinterpret_cast<uintptr_t>(s_native_handlers_[opcode]));
+}
+
 // Called by the game's packet-read loop (FUN_00c9df00) right after
 // FUN_00c147d0 copies the incoming packet into the shared buffer.  At this
 // point the buffer has not yet been processed by FUN_00b1e920, so the data is
@@ -200,15 +256,56 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
   return result;
 }
 
-void RagConnection::RecvPacketHandlerImpl() {
+void* RagConnection::RecvPacketHandlerImpl() {
   if (g_saved_packet_len < 4) {
     // LogInfo("RecvPacketHandlerImpl: no saved packet (dispatch_opcode=0x{:04x})", g_dispatch_opcode);
-    return;
+    // 🔴 Rien de sauvé alors qu'un slot NOUS a été confié : si cet opcode est un
+    // « replace », rendre la main au natif est la seule issue sûre — le sauter ici
+    // ferait disparaître le paquet pour tout le monde.
+    const auto native = s_native_handlers_.find(g_dispatch_opcode);
+    if (native != s_native_handlers_.end()) {
+      LogError("RecvPacketHandlerImpl: 0x{:04x} sans paquet sauve -> renvoi natif",
+               g_dispatch_opcode);
+      return native->second;
+    }
+    return nullptr;
   }
   const uint16_t opcode   = *reinterpret_cast<const uint16_t*>(g_saved_packet);
   const uint16_t data_len = static_cast<uint16_t>(g_saved_packet_len) - 4;
   g_saved_packet_len = 0;
+
+  // ── Opcode STANDARD remplacé : le prédicat décide, paquet par paquet ────────
+  const auto replaced = s_replace_opcodes_.find(opcode);
+  if (replaced != s_replace_opcodes_.end()) {
+    bool claimed = false;
+    try {
+      claimed = replaced->second();
+    } catch (...) {
+      // Un prédicat qui lève ne doit PAS faire disparaître le paquet : on rend la
+      // main au natif, qui est exactement le comportement « plugin absent ».
+      claimed = false;
+    }
+    // Trace de VALIDATION : ces paquets n'arrivent qu'au lancement d'une
+    // compétence (quelques-uns par session), donc aucun coût en volume — et c'est
+    // la seule façon de voir, en jeu, quel régime a pris le paquet.
+    LogDiag("[recv] 0x{:04x} {} (len {})", opcode,
+            claimed ? "revendique -> ImGui, natif saute" : "rendu au natif",
+            data_len + 2);
+    if (!claimed) {
+      const auto native = s_native_handlers_.find(opcode);
+      return (native != s_native_handlers_.end()) ? native->second : nullptr;
+    }
+    // Revendiqué : mêmes octets que RegisterObserveOpcode, c'est-à-dire à partir du
+    // champ de LONGUEUR (+2) et non des données (+4). Ces paquets sont à longueur
+    // variable et nos parseurs lisent cette borne eux-mêmes ; la faire sauter ici
+    // obligerait chaque plugin à deux lectures différentes selon le régime.
+    Bourgeon::Instance().FireRecvPacket(
+        opcode, g_saved_packet + 2, static_cast<uint16_t>(data_len + 2));
+    return nullptr;
+  }
+
   Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 4, data_len);
+  return nullptr;
 }
 
 // FUN_00c9df00 (20250716) dispatches via `JMP [table+idx*4]` — a tail call
@@ -231,6 +328,16 @@ void RagConnection::RecvPacketHandlerImpl() {
 //
 // auStack_44c4[0] (the dispatch opcode) lives at [EBP-0x44C0] in
 // FUN_00c9df00's frame; we snapshot it for diagnostic use.
+// ── Le RENVOI vers le handler natif (RegisterReplaceOpcode) ──────────────────
+//
+// Quand l'impl rend une adresse, on y SAUTE au lieu de faire l'épilogue. Trois
+// raisons de sauter plutôt que d'appeler :
+//   - le handler natif est lui-même une cible de tail-call : il fait l'épilogue de
+//     FUN_00c9df00 et rend la main à SON appelant, pas à nous ;
+//   - il lit son paquet dans la frame de FUN_00c9df00 par des offsets EBP-relatifs
+//     — la frame doit donc être intacte, ce que `jmp` garantit ;
+//   - `pushad`/`popad` encadrent le seul moment où l'on touche aux registres, si
+//     bien qu'au `jmp` l'état est bit pour bit celui du dispatch natif.
 #pragma warning(push)
 #pragma warning(disable: 4733)  // intentional: restoring FUN_00c9df00's SEH chain in its own epilogue
 __declspec(naked) void RagConnection::RecvPacketHandler() {
@@ -239,7 +346,10 @@ __declspec(naked) void RagConnection::RecvPacketHandler() {
     mov word ptr [g_dispatch_opcode], ax
     pushad
     call RagConnection::RecvPacketHandlerImpl
+    mov dword ptr [g_forward_native_handler], eax
     popad
+    cmp dword ptr [g_forward_native_handler], 0
+    jne forward_to_native
     mov ecx, [ebp - 0x0c]  ; restore SEH chain
     mov fs:[0], ecx
     pop ecx                  ; XOR'd cookie (discarded)
@@ -248,6 +358,10 @@ __declspec(naked) void RagConnection::RecvPacketHandler() {
     mov esp, ebp
     pop ebp
     ret
+  forward_to_native:
+    ; Frame, SEH et registres inchangés : le handler natif ne peut pas voir la
+    ; différence avec un dispatch direct depuis la table.
+    jmp dword ptr [g_forward_native_handler]
   }
 }
 #pragma warning(pop)
@@ -265,6 +379,20 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
   if (packet_len == 2 && packet != nullptr &&
       *reinterpret_cast<uint16_t*>(packet) == 0x007d) {
     Bourgeon::Instance().SetMapLoading(false);
+  }
+
+  // [fabrication] Observation PURE des usages d'objet. CZ_USE_ITEM2 (0x0439,
+  // 8 octets : <index>.W <aid>.L) est le SEUL point commun à tous les chemins
+  // d'usage — double-clic dans l'inventaire, barre de raccourcis, touche — là où
+  // hooker une seule fenêtre en raterait deux. Les listes de fabrication en ont
+  // besoin : un Mini Furnace ou un marteau ouvre la liste par un script d'objet
+  // (`produce N;`), et RIEN dans le paquet de liste ne dit lequel.
+  // L'opcode est en clair ici (le XOR natif n'agit qu'APRÈS nous), et nos propres
+  // envois passent par SendPacketRef en contournant ce hook : ce qu'on voit ici
+  // est donc forcément un geste du JOUEUR.
+  if (packet_len == 8 && packet != nullptr &&
+      *reinterpret_cast<uint16_t*>(packet) == 0x0439) {
+    Bourgeon::Instance().NotifyItemUse(*reinterpret_cast<uint16_t*>(packet + 2));
   }
 
   // [NPC dialog ImGui] Quand l'overlay NPC est actif, on JETTE les CZ de dialogue

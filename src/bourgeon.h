@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,6 +29,7 @@ class CashShopWindow;
 class NpcShopWindow;
 class VendingWindow;
 class WeaponRefineWindow;
+class MakeItemWindow;
 class TradeWindow;
 class RodexWindow;
 class CharacterSheet;
@@ -73,6 +75,7 @@ class Bourgeon {
   NpcShopWindow* npc_shop_window();
   VendingWindow* vending_window();
   WeaponRefineWindow* weapon_refine_window();
+  MakeItemWindow* make_item_window();
   TradeWindow* trade_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
@@ -92,7 +95,29 @@ class Bourgeon {
   bool Initialize();
   void OnTick();
   void OnProcessInput();  // per-frame input-phase dispatch (NOT throttled)
+
+  // Relayé depuis le hook de CMode::SendMsg à chaque lancement de compétence
+  // (commandes 0x45 / 0x71, p1 = identifiant). Observation pure : rien n'est
+  // modifié. Les listes de fabrication en dépendent — la compétence qui les
+  // ouvre n'est dans aucun paquet (docs/make_item_list_re.md §2.2).
+  void NotifySkillCast(int skill_id, int skill_lv);
+  // Relayé depuis RagConnection::SendPacketHook à chaque CZ_USE_ITEM (0x0439).
+  // Reçoit l'INDEX d'inventaire — le seul champ du paquet — et le résout en
+  // identifiant d'objet ici, tant que l'objet existe encore : il est sur le point
+  // d'être consommé par le serveur. Sert aux listes de fabrication ouvertes par
+  // un script d'objet (Mini Furnace, marteaux).
+  void NotifyItemUse(unsigned item_index);
   void AddLogLine(std::string log_line);
+  // Fenêtre de logs en jeu — RÉSERVÉE AU STAFF (IsStaff(), group level >= 80).
+  // Elle expose tout ce que le client journalise ; ce n'est pas une information
+  // à mettre entre toutes les mains, et c'est aussi la surface qui remplace la
+  // console Windows (que le joueur ne veut pas voir s'ouvrir).
+  //
+  // PERSISTÉ par MoonlightUi sous la clé « staff_log_window ». Le champ vit ici
+  // et non dans un plugin : la table de réglages y accède par un résolveur écrit
+  // à la main, puisque Bourgeon::Instance() ne peut pas être nul. Persister est
+  // sans risque, l'affichage restant gaté par IsStaff() à chaque frame.
+  bool& show_log_window() { return show_log_window_; }
   void RenderUI();
 
   // Plugin event dispatch, called from the game hooks.
@@ -114,6 +139,17 @@ class Bourgeon {
   // 2-byte opcode are passed as `data`.  Use for reading fields off packets the
   // client already handles (e.g. mapname from 0x0091 ZC_NPCACK_MAPMOVE).
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
+
+  // RegisterReplaceOpcode: prend la place du handler NATIF d'un paquet standard,
+  // de façon révocable — `claim` est interrogé à chaque paquet et un « non » rend
+  // la main au handler d'origine, à l'octet près. Détails et garde-fous dans
+  // RagConnection::RegisterReplaceOpcode.
+  //
+  // Sert à empêcher une fenêtre native de NAÎTRE, au lieu de la masquer puis de la
+  // détruire après coup : une native masquée reste vivante et garde le clavier
+  // (Entrée/Espace valident son bouton par défaut, cf.
+  // docs/make_item_list_re.md §12.5).
+  void RegisterReplaceOpcode(uint16_t opcode, std::function<bool()> claim);
 
   // Map-loading gate. True from the ZC_NPCACK_MAPMOVE (0x0091) that begins a
   // warp/@load until the CZ_NOTIFY_ACTORINIT (0x007d) the client sends once the
@@ -142,7 +178,7 @@ class Bourgeon {
   Bourgeon();
 
   void LoadPlugins();
-  void ShowBourgeonWindow() const;
+  void ShowBourgeonWindow();
 
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
@@ -163,6 +199,7 @@ class Bourgeon {
   NpcShopWindow* npc_shop_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_
   WeaponRefineWindow* weapon_refine_window_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MakeItemWindow* make_item_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_
@@ -183,5 +220,6 @@ class Bourgeon {
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
   std::atomic<uint32_t> last_game_update_ms_{0};   // GetTickCount of last CGameMode update (0 = never)
   std::vector<std::string> log_lines_;
+  bool show_log_window_ = false;
   RagnarokClient client_;
 };

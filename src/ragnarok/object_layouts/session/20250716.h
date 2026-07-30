@@ -14,7 +14,22 @@
 //   CONFIRMED: stats block STR/AGI/VIT/INT/DEX/LUK (+0x1664-0x1678)
 //   CONFIRMED: aid_ (+0x15E4, DAT_015fb9a4 used as AID in network calls)
 //   CONFIRMED: talk_type_table_ (+0x51F8)
-//   LIKELY:    item_list_ (+0x16D8, xref pattern matches std::list usage)
+//   🔴 WRONG:  item_list_ (+0x16D8) — était noté « LIKELY, xref pattern matches
+//              std::list usage ». C'EST FAUX, prouvé en jeu (2026-07-29) : la
+//              tête de liste lue vaut 0 et le premier parcours réel a planté le
+//              client (`mov eax,[esi]`, esi = 0). L'erreur est restée invisible
+//              parce que le seul consommateur (Session::GetItemInfoById) n'était
+//              appelé que par RagnarokClient::UseItemById, qui n'avait aucun
+//              appelant : du code mort de bout en bout.
+//              La VRAIE tête de l'inventaire est le global 0x015FBAB0 (liste
+//              circulaire, nœud : next+0x00, ItemInfo+0x08, amount+0x18) — cf.
+//              features/windows/make_item_window.cc, vérifié en jeu.
+//              ⚠ Le layout d'ItemInfo est lui aussi PARTIELLEMENT faux : num_
+//              (+0x10) et item_name_ (+0x2C) sont bons, mais l'index d'inventaire
+//              est à **+0x04** et non +0x08 — les deux premiers champs sont
+//              intervertis (vérifié en jeu 2026-07-29 : node+0x0C, soit info+0x04,
+//              a rendu l'index 20 attendu ; +0x08 lisait 0).
+//              L'emplacement de la liste DANS la session reste à retrouver.
 //   ESTIMATE:  mkcount_ block (+0xAFC, stable across versions)
 //
 // NOTE: Fields are listed in ascending offset order (correct memory layout).

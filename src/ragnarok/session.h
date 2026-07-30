@@ -24,6 +24,17 @@ class Session {
   virtual const char *char_name() const = 0;
 
   std::string GetCharName() const;
+  // 🔴 CES DEUX-LÀ FONT PLANTER LE CLIENT 20250716 — NE PAS APPELER.
+  // Elles parcourent `item_list()`, dont l'offset est marqué « LIKELY » dans
+  // object_layouts/session/20250716.h (+0x16D8) et est FAUX : la tête de liste
+  // lue vaut 0, d'où un `mov eax,[esi]` avec esi = 0. Le défaut est resté
+  // invisible des années parce que toute la chaîne était morte (GetItemInfoById
+  // n'était appelée que par RagnarokClient::UseItemById, elle-même sans aucun
+  // appelant) ; le premier usage réel, en juillet 2026, a planté immédiatement.
+  // Pour parcourir l'inventaire, utiliser le GLOBAL 0x015FBAB0 (tête de la liste
+  // circulaire), comme le fait features/windows/make_item_window.cc — ce chemin,
+  // lui, est vérifié en jeu. À rétablir seulement quand l'offset aura été
+  // CONFIRMÉ (et non « déduit d'un motif d'xref »).
   bool GetItemInfoById(int id, ItemInfo &item_info) const;
   std::string GetItemNameById(int id) const;
 

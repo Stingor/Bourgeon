@@ -12,6 +12,7 @@
 #include "features/windows/inventory_viewer.h"  // hide-native-at-creation (id 8)
 #include "features/windows/bank_window.h"  // hide-native-at-creation (banque id 275)
 #include "features/windows/cart_viewer.h"  // hide-native-at-creation (cart id 0x28)
+#include "features/windows/make_item_window.h"  // hide-native-at-creation (94 / 79)
 #include "features/windows/cashshop_window.h"  // hide-native-at-creation (id 0x13e)
 #include "features/windows/npc_shop_window.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
 #include "features/windows/vending_window.h"  // hide-native-at-creation (id 0x29/0xAE)
@@ -162,6 +163,18 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x25) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
         cs->HideSkillWndAtCreation(win);
+    }
+    // Fabrication : les DEUX listes natives (UIMakingArrowListWnd id 94 « LIST »
+    // et UIMakeTargetListWnd id 79 « Manufacturing List »). Elles naissent dans un
+    // handler de paquet, donc ENTRE deux OnTick — sans ce hook une frame native
+    // passerait à l'écran.
+    // La 80 (choix des matériaux) est masquée DEPUIS QU'ON NE L'OUVRE PLUS : la
+    // commande 130 prend les trois matériaux en paramètre, le plugin les
+    // collecte lui-même, et toute apparition de cette fenêtre est désormais un
+    // résidu qui venait s'intercaler entre deux fabrications d'une série.
+    if (windowID == 94 || windowID == 79 || windowID == 80) {
+      if (auto* mk = Bourgeon::Instance().make_item_window())
+        mk->HideNativeAtCreation(win);
     }
     // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
     if (windowID == 0x13e) {

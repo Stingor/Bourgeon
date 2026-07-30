@@ -37,6 +37,7 @@
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
+#include "features/windows/make_item_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
 #include "features/windows/rodex_window.h"
@@ -312,13 +313,14 @@ const moonlight_ui::SettingDesc kStorageSettings[] = {
 
 // Banque de zeny (Ctrl+B). « bank_imgui » est basculé en GROUPE par
 // SetModernInterface : défaut OFF, comme tous les membres du groupe.
+// ⚠ `bank_quick_amounts` et `bank_show_total` ont été RETIRÉS : le fond de cette
+// fenêtre est un bitmap du client à hauteur fixe, et masquer l'un de ces deux blocs
+// décalait tout le contenu hors du fond peint. Les deux sont désormais permanents.
+// Les clés éventuellement présentes dans un fichier de réglages existant sont
+// simplement ignorées au chargement — aucune migration n'est nécessaire.
 const moonlight_ui::SettingDesc kBankSettings[] = {
     {"bank_imgui", SType::kBool, MLUI_FIELD(bank_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    {"bank_quick_amounts", SType::kBool, MLUI_FIELD(bank_window, quick_amounts()),
-     MLUI_LITERAL(bool, true)},
-    {"bank_show_total", SType::kBool, MLUI_FIELD(bank_window, show_total()),
-     MLUI_LITERAL(bool, true)},
 };
 
 // Refine d'arme Whitesmith (fenêtre « Upgradeable weapons », id 111).
@@ -338,6 +340,14 @@ const moonlight_ui::SettingDesc kRefineSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"refine_auto_recast", SType::kBool, MLUI_FIELD(weapon_refine_window, auto_recast()),
      MLUI_LITERAL(bool, false)},
+    // Défaut OFF : Entrée ne déclenche pas le refine et reste au CHAT. Le bouton et
+    // le double-clic font le travail.
+    // (Elle a été confisquée dans les deux réglages pendant un temps, tant que la
+    // native 111 vivait masquée derrière : une native invisible garde le clavier et
+    // son bouton par défaut est un refine réel. Cette fenêtre ne naît plus — cf.
+    // WeaponRefineWindow::WantsEnterKey.)
+    {"refine_enter_key", SType::kBool, MLUI_FIELD(weapon_refine_window, enter_key()),
+     MLUI_LITERAL(bool, false)},
     {"refine_log_time", SType::kBool, MLUI_FIELD(weapon_refine_window, log_time()),
      MLUI_LITERAL(bool, true)},
     // INT_MIN = « aucune position mémorisée » : la fenêtre se cale alors sur la
@@ -345,6 +355,39 @@ const moonlight_ui::SettingDesc kRefineSettings[] = {
     {"refine_pos_x", SType::kInt, MLUI_FIELD(weapon_refine_window, pos_x()),
      MLUI_LITERAL(int, INT_MIN)},
     {"refine_pos_y", SType::kInt, MLUI_FIELD(weapon_refine_window, pos_y()),
+     MLUI_LITERAL(int, INT_MIN)},
+};
+
+// « makeitem_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kMakeItemSettings[] = {
+    {"makeitem_imgui", SType::kBool, MLUI_FIELD(make_item_window, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"makeitem_show_owned", SType::kBool, MLUI_FIELD(make_item_window, show_owned()),
+     MLUI_LITERAL(bool, true)},
+    {"makeitem_filter", SType::kBool, MLUI_FIELD(make_item_window, show_filter()),
+     MLUI_LITERAL(bool, true)},
+    {"makeitem_desc_tooltip", SType::kBool, MLUI_FIELD(make_item_window, desc_tooltip()),
+     MLUI_LITERAL(bool, true)},
+    {"makeitem_history", SType::kBool, MLUI_FIELD(make_item_window, show_history()),
+     MLUI_LITERAL(bool, false)},
+    {"makeitem_log_time", SType::kBool, MLUI_FIELD(make_item_window, log_time()),
+     MLUI_LITERAL(bool, true)},
+    {"makeitem_auto_recast", SType::kBool, MLUI_FIELD(make_item_window, auto_recast()),
+     MLUI_LITERAL(bool, false)},
+    {"makeitem_enter_key", SType::kBool, MLUI_FIELD(make_item_window, enter_key()),
+     MLUI_LITERAL(bool, false)},
+    // Relance par OBJET : clé SÉPARÉE de makeitem_auto_recast, et défaut OFF. Elle
+    // autorise une dépense de stock (chaque relance détruit un exemplaire), ce
+    // qu'un réglage déjà coché ne doit jamais pouvoir accorder à sa place.
+    {"makeitem_auto_reuse_item", SType::kBool,
+     MLUI_FIELD(make_item_window, auto_reuse_item()), MLUI_LITERAL(bool, false)},
+    // 0 = ILLIMITÉ (défaut) : la chaîne s'arrête sur une condition réelle (stock
+    // épuisé, liste vide, refus serveur), pas sur un compte arbitraire.
+    {"makeitem_auto_reuse_max", SType::kInt,
+     MLUI_FIELD(make_item_window, auto_reuse_max()), MLUI_LITERAL(int, 0)},
+    {"makeitem_pos_x", SType::kInt, MLUI_FIELD(make_item_window, pos_x()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"makeitem_pos_y", SType::kInt, MLUI_FIELD(make_item_window, pos_y()),
      MLUI_LITERAL(int, INT_MIN)},
 };
 
@@ -545,7 +588,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[3];
+  static const moonlight_ui::SettingDesc kHeader[4];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -555,12 +598,24 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[3] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[4] = {
     {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
      MLUI_LITERAL(bool, false)},
     {"log_level", SType::kString, MLUI_SELF(log_level_),
      MLUI_LITERAL(std::string, "info")},
     {"alootid_overlay", SType::kBool, MLUI_SELF(show_alootid_overlay_),
+     MLUI_LITERAL(bool, false)},
+    // Fenêtre de logs en jeu. Le champ ne vit pas dans un plugin mais dans
+    // Bourgeon lui-même — d'où un résolveur écrit à la main plutôt que
+    // MLUI_SELF/MLUI_FIELD : ceux-ci gèrent un propriétaire NULLABLE (un plugin
+    // peut ne pas être enregistré), alors que Bourgeon::Instance() existe
+    // toujours. Le résolveur ne peut donc pas rendre nullptr.
+    //
+    // Persister une clé « staff » est sans risque : l'affichage reste gaté par
+    // IsStaff() à CHAQUE frame. Un compte non-staff qui hériterait de la clé à
+    // true ne verrait toujours rien.
+    {"staff_log_window", SType::kBool,
+     []() -> void* { return &Bourgeon::Instance().show_log_window(); },
      MLUI_LITERAL(bool, false)},
 };
 
@@ -773,6 +828,20 @@ void SetModernInterface(bool on) {
   // repli « nom de base » de SafeName, faute de contexte de composition.
   if (auto* weapon_refine_window = Bourgeon::Instance().weapon_refine_window())
     weapon_refine_window->imgui_enabled_ = on;
+  // Les fenêtres de FABRICATION (94 « LIST » et 79 « Manufacturing List ») pour la
+  // même raison que le refine : elles listent des objets dont le nom, l'icône et
+  // le stock sont lus dans le même modèle d'inventaire que le viewer moderne, et
+  // elles se détruisent à chaque validation. Cf. docs/make_item_list_re.md.
+  if (auto* make_item_window = Bourgeon::Instance().make_item_window())
+    make_item_window->imgui_enabled_ = on;
+}
+
+bool ModernInterfaceEnabled() {
+  // L'inventaire est l'ancre du groupe : SetModernInterface les écrit tous
+  // ensemble, et c'est déjà sur lui que LoadSettings réconcilie un yaml mixé.
+  if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
+    return inventory_viewer->imgui_enabled_;
+  return false;
 }
 
 // Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
@@ -860,6 +929,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
+    moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
@@ -984,6 +1054,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kRefineSettings);
+  moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
@@ -1383,6 +1454,31 @@ const char* MoonlightUi::ItemName(uint32_t id) const {
   return (it != item_names_.end()) ? it->second.c_str() : nullptr;
 }
 
+uint32_t MoonlightUi::ItemIdByName(const char* name) const {
+  if (!name || !*name) return 0;
+  // Index inverse construit PARESSEUSEMENT, une seule fois : `item_names_` fait
+  // plusieurs milliers d'entrées et l'appelant (la recette de fabrication, qui ne
+  // dispose que de noms) interroge à chaque arrivée de liste. Un balayage linéaire
+  // y serait invisible une fois, ruineux en boucle.
+  if (ids_by_name_.empty() && !item_names_.empty()) {
+    for (const auto& kv : item_names_) {
+      std::string key = kv.second;
+      std::transform(key.begin(), key.end(), key.begin(),
+                     [](unsigned char c) { return static_cast<char>(::tolower(c)); });
+      // ⚠ On garde la PREMIÈRE occurrence. Les homonymes sont fréquents (les
+      // quatre « Elemental Converter »…) et aucun choix n'est meilleur qu'un
+      // autre ici : cette recherche ne sert qu'à retrouver un MATÉRIAU, dont on
+      // veut l'icône et la description — pas à désigner un objet précis.
+      ids_by_name_.emplace(std::move(key), kv.first);
+    }
+  }
+  std::string needle(name);
+  std::transform(needle.begin(), needle.end(), needle.begin(),
+                 [](unsigned char c) { return static_cast<char>(::tolower(c)); });
+  const auto it = ids_by_name_.find(needle);
+  return (it != ids_by_name_.end()) ? it->second : 0;
+}
+
 // Send a preset command to the server (save/load/delete).
 // The server will echo it back in a ZC_BOURGEON_PRESET_CMD packet.
 void MoonlightUi::SendPresetCmd(AlootPresetCmd command, uint8_t preset_no,
@@ -1528,6 +1624,25 @@ void MoonlightUi::OnRenderUI() {
 
       SeparatorText("SPR Lab");
       spr_lab::DrawDebugControls();
+
+      // ── Journal Bourgeon ────────────────────────────────────────────────────
+      // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/
+      // LogError y arrive, sélectionnable et copiable. PERSISTÉ
+      // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
+      // rouvrir à chaque lancement serait une corvée quotidienne.
+      SeparatorText("Journal");
+      if (ro::RoCheckbox("Fenêtre de logs",
+                         &Bourgeon::Instance().show_log_window()))
+        SaveSettings();
+      ImGui::SameLine();
+      HelpMarker(
+          "Miroir en jeu de tout ce que le client journalise "
+          "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
+          "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
+          "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
+          "restreint l'affichage à une sous-chaîne.\n\n"
+          "Réservé au staff, et le droit est revérifié à chaque frame : la "
+          "fenêtre disparaît si le niveau de groupe change en cours de session.");
 
       PopStyleCompact();
     }

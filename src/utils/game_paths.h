@@ -29,6 +29,19 @@ std::string SettingsPath();
 std::string MoonlightUserPath();  // identifiant web mémorisé (texte clair)
 std::string MoonlightPwPath();    // mot de passe web chiffré DPAPI
 std::string LastCharsPath();      // CID des derniers persos joués (récence)
+// Recettes de fabrication, générées depuis les DB serveur par
+// moonlight/tools/gen_metalprocess.py.
+//
+// ⚠ À NE PAS confondre avec data\MetalProcessItemList.txt : celui-là est le
+// fichier que le CLIENT NATIF lit (fenêtre 80), au format contraint de Gravity.
+// Celui-ci est le nôtre, et il porte ce que l'autre ne peut pas exprimer —
+// itemlv, compétence requise, rendements des flèches, index par compétence.
+//
+// Il vit dans SystemEN\ (ou System\) auprès d'itemInfoMerged.lua, et non à côté
+// de l'exe : c'est de la DONNÉE DE PATCH, versionnée avec le client et livrée aux
+// joueurs, pas un réglage utilisateur comme bourgeon_settings.yaml. Les deux
+// dispositions de client sont essayées, comme dans MoonlightUi::LoadItemNames.
+std::string RecipesPath();
 
 // `relative` résolu depuis le dossier du jeu. Le séparateur est déjà fourni par
 // GameDir(), donc passer "data\\clientinfo.xml" et non "\\data\\clientinfo.xml".

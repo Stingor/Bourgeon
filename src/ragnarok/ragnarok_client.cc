@@ -14,6 +14,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
+#include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
 #include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
@@ -361,6 +362,10 @@ RagConnection& RagnarokClient::rag_connection() const {
 UIWindowMgr& RagnarokClient::window_mgr() const { return *window_mgr_; }
 
 bool RagnarokClient::UseItemById(int item_id) const {
+  // 🔴 NE PAS APPELER sur le client 20250716 : GetItemInfoById parcourt
+  // `item_list()`, dont l'offset est FAUX (cf. l'en-tête de
+  // object_layouts/session/20250716.h) — tête de liste nulle, crash immédiat.
+  // Cette fonction n'a jamais eu d'appelant, c'est pourquoi le défaut a survécu.
   PACKET_CZ_USE_ITEM packet;
   ItemInfo iinfo;
 
@@ -573,9 +578,25 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // d'Entrée, chaque creux du cycle (tentative en vol, liste consommée) laissait
     // passer la frappe et faisait clignoter le chat. Fenêtre fermée, la touche
     // revient intégralement au jeu.
-    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
+    //
+    // 🔴 ESPACE AUSSI, et ce n'est pas un raffinement : les deux touches sont le
+    // MÊME évènement pour le client.
+    //   UIWindowMgr_OnKeyDown  @0x00A471E0 :  if (key == 13 || key == 32)
+    //                                            -> UIWindowMgr_ActivateDefault @0x00A2E270
+    //   celui-ci appelle OnMsg(msg = 0) sur la fenêtre prioritaire, et
+    //   UIWindow_OnMsg_Default @0x008841D0 traduit msg 0 en
+    //   OnMsg(6, this+0x8C) — c'est-à-dire un CLIC RÉEL sur le bouton par défaut
+    //   (msg 1 fait de même avec +0x90, le bouton Annuler).
+    // Aucune de ces étapes ne regarde la visibilité (le prédicat vt+8 des fenêtres
+    // est un `return 1` en dur, @0x005A5D90) : une fenêtre masquée par son +0x28
+    // reçoit la frappe et agit. Confisquer Entrée sans confisquer Espace laisserait
+    // donc la moitié du trou ouvert.
+    if (uMsg == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_SPACE)) {
       if (auto* refine = Bourgeon::Instance().weapon_refine_window())
         if (refine->WantsEnterKey()) return 0;
+      // Même règle pour la fenêtre de fabrication (94 « LIST » / 79).
+      if (auto* make_item = Bourgeon::Instance().make_item_window())
+        if (make_item->WantsEnterKey()) return 0;
     }
 
     ImGuiIO& io = ImGui::GetIO();

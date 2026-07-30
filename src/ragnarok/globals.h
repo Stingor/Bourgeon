@@ -66,4 +66,41 @@ inline void* ActiveMode() { return *reinterpret_cast<void**>(kActiveModePtr); }
 // nullité ou appel virtuel.
 constexpr uintptr_t kModeMgrGetActiveAddr = 0x00a75340;
 
+// ── Stats du personnage, et le TOTAL que le serveur utilise ──────────────────
+// Deux blocs de six entiers, pas de pas de 4, dans l'ordre STR AGI VIT INT DEX LUK.
+// Déjà lus par la feuille de personnage (donc éprouvés en jeu) — c'est de là qu'ils
+// viennent, et ils étaient sur le point d'être recopiés une troisième fois.
+//
+// 🔴 LE TOTAL EST BASE + BONUS, et c'est cette somme-là qu'il faut pour rejouer un
+// calcul serveur : `status->dex` côté rAthena est la stat effective, équipement et
+// cartes comprises. Le bloc « base » seul donnerait systématiquement trop bas.
+//
+// ⚠ NE PAS employer `dex_base_` / `luk_base_` du layout de session (+0x1674/+0x1678) :
+// ce sont les bases, et ce fichier de layout porte déjà un offset marqué « CONFIRMED »
+// qui a fait planter le client (cf. son entête). Ces deux globales-ci sont lues par du
+// code vivant, ce qui est une garantie d'un autre ordre.
+constexpr uintptr_t kStatBaseAddr  = 0x015fba24;
+constexpr uintptr_t kStatBonusAddr = 0x015fba0c;
+
+enum Stat { kStr = 0, kAgi, kVit, kInt, kDex, kLuk, kStatCount };
+
+inline int StatBase(Stat s) {
+  return *reinterpret_cast<int*>(kStatBaseAddr + static_cast<int>(s) * 4);
+}
+inline int StatBonus(Stat s) {
+  return *reinterpret_cast<int*>(kStatBonusAddr + static_cast<int>(s) * 4);
+}
+// La stat EFFECTIVE — celle que la fenêtre Status affiche comme « base + bonus » et
+// que le serveur nomme `status->dex`.
+inline int StatTotal(Stat s) { return StatBase(s) + StatBonus(s); }
+
+// ── Niveaux de base et de job ────────────────────────────────────────────────
+// Recopiés sous les noms kJobLvl / kBaseLvl (feuille de personnage) et kJobLevel
+// (refine, pour les chances de refine).
+constexpr uintptr_t kBaseLevelAddr = 0x015fb9f0;
+constexpr uintptr_t kJobLevelAddr  = 0x015fb9f8;
+
+inline int BaseLevel() { return *reinterpret_cast<int*>(kBaseLevelAddr); }
+inline int JobLevel()  { return *reinterpret_cast<int*>(kJobLevelAddr); }
+
 }  // namespace rag
