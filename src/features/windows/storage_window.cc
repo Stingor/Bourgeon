@@ -418,16 +418,16 @@ const char* AmmoLabel(uint8_t st) {
 struct SubCat { int key; const char* label; };
 SubCat PrimaryEquipSlot(uint32_t e) {
   // Coiffe séparée en 3 slots distincts (priorité haut > milieu > bas si multi-slot).
-  if (e & 0x100)                    return {0,  "Tête haut"};   // HEAD_TOP
-  if (e & 0x200)                    return {1,  "Tête milieu"}; // HEAD_MID
-  if (e & 0x001)                    return {2,  "Tête bas"};    // HEAD_LOW
-  if (e & 0x010)                    return {3,  "Body armor"};       // ARMOR
+  if (e & 0x100)                    return {0,  "Head top"};    // HEAD_TOP
+  if (e & 0x200)                    return {1,  "Head mid"};    // HEAD_MID
+  if (e & 0x001)                    return {2,  "Head bot"};    // HEAD_LOW
+  if (e & 0x010)                    return {3,  "Armor"};       // ARMOR
   if (e & 0x004)                    return {4,  "Garment"};     // GARMENT
-  if (e & 0x040)                    return {5,  "Shoes"};  // SHOES
-  if (e & (0x008 | 0x080))          return {6,  "Accessory"};  // ACC L/R
-  if (e & 0x020)                    return {7,  "Shield"};    // HAND_L
-  if (e & 0x002)                    return {8,  "Weapon"};        // HAND_R (cartes d'arme)
-  if (e & 0x8000)                   return {9,  "Ammunition"};    // AMMO
+  if (e & 0x040)                    return {5,  "Shoes"};       // SHOES
+  if (e & (0x008 | 0x080))          return {6,  "Accessory"};   // ACC L/R
+  if (e & 0x020)                    return {7,  "Shield"};      // HAND_L
+  if (e & 0x002)                    return {8,  "Weapon"};      // HAND_R (cartes d'arme)
+  if (e & 0x8000)                   return {9,  "Ammunition"};  // AMMO
   if (e & 0x3C00)                   return {10, "Costume"};     // COSTUME_*
   if (e & 0x3F0000)                 return {11, "Shadow"};      // SHADOW_*
   return {99, "Other"};  // pas de slot principal connu (ex: cartes d'arme, cartes de costume)
@@ -435,10 +435,10 @@ SubCat PrimaryEquipSlot(uint32_t e) {
 // Slot d'un COSTUME depuis le masque equip (bits COSTUME_* distincts des slots
 // normaux). Labels alignés sur PrimaryEquipSlot pour la cohérence visuelle.
 SubCat CostumeSlot(uint32_t e) {
-  if (e & 0x0400) return {0, "Tête haut"};    // COSTUME_HEAD_TOP
-  if (e & 0x0800) return {1, "Tête milieu"};  // COSTUME_HEAD_MID
-  if (e & 0x1000) return {2, "Tête bas"};     // COSTUME_HEAD_LOW
-  if (e & 0x2000) return {3, "Garment"};      // COSTUME_GARMENT
+  if (e & 0x0400) return {0, "Head top"};  // COSTUME_HEAD_TOP
+  if (e & 0x0800) return {1, "Head mid"};  // COSTUME_HEAD_MID
+  if (e & 0x1000) return {2, "Head bot"};  // COSTUME_HEAD_LOW
+  if (e & 0x2000) return {3, "Garment"};   // COSTUME_GARMENT
   return {99, "Other"};
 }
 // Sous-catégorie d'un item pour la dimension `dim` de l'onglet courant.

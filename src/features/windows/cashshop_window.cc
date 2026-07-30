@@ -127,20 +127,20 @@ constexpr int kSlotHatEffect = 100;
 
 struct Slot { int key; const char* label; };
 Slot SlotOf(uint32_t e) {
-  if (e & 0x2000)            return {13, "Costume cape"};       // COSTUME_GARMENT
+  if (e & 0x2000)            return {13, "Costume garment"};    // COSTUME_GARMENT
   if (e & (0x0400 | 0x0800 | 0x1000))
-                            return {10, "Costume tête"};        // COSTUME_HEAD_*
-  if (e & 0x0100)            return {0,  "Tête haut"};          // HEAD_TOP
-  if (e & 0x0200)            return {1,  "Tête milieu"};        // HEAD_MID
-  if (e & 0x0001)            return {2,  "Tête bas"};           // HEAD_LOW
-  if (e & 0x0010)            return {3,  "Armure"};             // ARMOR
-  if (e & 0x0004)            return {4,  "Cape"};               // GARMENT
-  if (e & 0x0040)            return {5,  "Chaussures"};         // SHOES
-  if (e & (0x0008 | 0x0080)) return {6,  "Accessoire"};        // ACC L/R
-  if (e & 0x0020)            return {7,  "Bouclier"};           // HAND_L
-  if (e & 0x0002)            return {8,  "Arme"};               // HAND_R
-  if (e & 0x8000)            return {9,  "Munition"};           // AMMO
-  return {99, "Autre"};
+                            return {10, "Costume head"};        // COSTUME_HEAD_*
+  if (e & 0x0100)            return {0,  "Head top"};           // HEAD_TOP
+  if (e & 0x0200)            return {1,  "Head mid"};           // HEAD_MID
+  if (e & 0x0001)            return {2,  "Head bot"};           // HEAD_LOW
+  if (e & 0x0010)            return {3,  "Armor"};              // ARMOR
+  if (e & 0x0004)            return {4,  "Garment"};            // GARMENT
+  if (e & 0x0040)            return {5,  "Shoes"};              // SHOES
+  if (e & (0x0008 | 0x0080)) return {6,  "Accessory"};          // ACC L/R
+  if (e & 0x0020)            return {7,  "Shield"};             // HAND_L
+  if (e & 0x0002)            return {8,  "Weapon"};             // HAND_R
+  if (e & 0x8000)            return {9,  "Ammunition"};         // AMMO
+  return {99, "Other"};
 }
 
 }  // namespace
