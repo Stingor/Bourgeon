@@ -119,12 +119,24 @@ int SlotCount(void* info) {
 const char* NameById(uint32_t id) {
   auto it = g_name_cache.find(id);
   if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
+  // 128 et non 64 : la conversion se fait sur des octets CP949, et couper au
+  // milieu d'une paire d'octets donnerait une séquence UTF-8 invalide.
+  char buf[128];
   ResolveNameSEH(id, buf, sizeof(buf));
   if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  // On mémorise même l'échec : un id absent de la DB le restera, et réessayer à
-  // chaque frame relancerait le chargement paresseux pour rien.
-  return (g_name_cache[id] = buf).c_str();
+  // Les noms de la DB sont en CP949 et ImGui attend de l'UTF-8. C'est identique
+  // pour l'immense majorité d'entre eux — sur les 27 219 noms d'itemInfoMerged
+  // .lua, 27 199 sont en ASCII, où la conversion ne change pas un octet — mais
+  // pas pour les 20 restants (reliquats coréens : « 수라 Shadow Cube »…), que
+  // rendre bruts donnerait de l'UTF-8 invalide. Même traitement que
+  // MoonlightUi::LoadItemNames, qui lit ce même fichier.
+  //
+  // Converti ICI, une fois à l'insertion : le tampon de ro::Cp949ToUtf8 est
+  // thread-local et ROTATIF sur huit emplacements, la copie dans la std::string
+  // le met hors de portée. On mémorise même l'échec — un id absent de la DB le
+  // restera, et réessayer à chaque frame relancerait le chargement paresseux
+  // pour rien.
+  return (g_name_cache[id] = ro::Cp949ToUtf8(buf)).c_str();
 }
 
 const char* Label(char* out, size_t out_size, const char* name, int slots) {

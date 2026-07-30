@@ -68,8 +68,9 @@ int SlotCount(void* info);
 // À utiliser quand on ne tient QU'un id : boutique NPC, cash shop, pièces
 // jointes de courrier, matériaux de fabrication.
 //
-// Le résultat est mémorisé dans un cache de processus et reste valide jusqu'à
-// la fin de la session : le pointeur peut être gardé d'une frame à l'autre.
+// Le nom est converti de CP949 vers UTF-8, prêt pour ImGui. Le résultat est
+// mémorisé dans un cache de processus et reste valide jusqu'à la fin de la
+// session : le pointeur peut être gardé d'une frame à l'autre.
 //
 // ⚠ Ne pas confondre avec `MoonlightUi::ItemName`, qui lit l'AUTRE source —
 // `itemInfoMerged.lua` reparsé par nos soins, en CP949 — et qui rend nullptr

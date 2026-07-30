@@ -714,13 +714,12 @@ int Utf8ToAnsi(const char* utf8, char* out, size_t out_size) {
 // partagé).
 //
 // ⚠ Cette copie-ci faisait passer le nom par AnsiToUtf8, contrairement aux cinq
-// autres fenêtres. Ce n'était pas un choix : AnsiToUtf8 est indispensable pour ce
-// qui arrive PAR LE FIL (expéditeur, titre, corps — le serveur parle ANSI) et la
-// ligne du nom d'item avait suivi. La DB, elle, n'est pas du réseau, et
-// item_desc_window lit le même champ sans conversion. Vérifié sur la donnée :
-// les 29 256 noms d'affichage de SystemEN\LuaFiles514\itemInfo.lua sont tous en
-// ASCII pur (le CP949 du fichier ne concerne que les resourceName, c'est-à-dire
-// les noms de sprites). L'écart n'était donc pas observable.
+// autres fenêtres. Elle avait raison de convertir et tort sur le codage :
+// AnsiToUtf8 (CP_ACP, donc 1252 ici) est ce qu'il faut pour ce qui arrive PAR LE
+// FIL — expéditeur, titre, corps, le serveur parle ANSI — mais la DB item, elle,
+// est en CP949. Sur les 27 219 noms de SystemEN\itemInfoMerged.lua, 20 sont
+// non-ASCII : ni la conversion 1252 ni la lecture brute ne les rendaient. C'est
+// itemcell::NameById qui convertit désormais, en CP949.
 
 // Date d'expiration -> « J-3 » / « expiré ». La valeur est un horodatage Unix ;
 // à 0 (courrier sans expiration) on n'affiche rien plutôt qu'une date absurde.
