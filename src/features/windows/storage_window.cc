@@ -94,10 +94,6 @@ using GameFree_t  = void(__cdecl*)(void*);
 // l'info -> aucun free). item_desc_window détecte 0xc et rend sa version enrichie.
 
 // Appelle une méthode virtuelle (offset en octets) de `self`.
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 // Liste STORAGE du modèle session. ⚠ C'est bien elle qu'on parcourt, et pas la
 // liste d'affichage de la fenêtre (wnd+0xe8) : quand on cache le natif
@@ -134,7 +130,7 @@ void WithdrawItem(int index, int amount) {
   __try {
     void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (disp)
-      Vf<DispCmd_t>(disp, 0x18)(disp, kCmdWithdraw, index, amount, 0, 0);
+      uiwnd::Vf<DispCmd_t>(disp, 0x18)(disp, kCmdWithdraw, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -580,14 +576,7 @@ uint32_t ReadDragItemId(void* obj) {
 
 // Lit un pointeur de fenêtre valide depuis le slot (vtable vérifiée). SEH-gardé.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  __try {
-    auto* wnd = *reinterpret_cast<uint8_t**>(slot);
-    if (wnd == nullptr) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
-    return wnd;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return nullptr;
-  }
+  return uiwnd::WndAtSlot(slot, expected_vtable);
 }
 
 // Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices

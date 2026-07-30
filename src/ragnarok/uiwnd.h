@@ -17,6 +17,7 @@
 // dérivée du manager natif — un autre sujet, et un en-tête bien plus lourd.
 
 #include <cstdint>
+#include <excpt.h>  // __try/__except (cf. la section « variantes gardées »)
 
 namespace uiwnd {
 
@@ -148,6 +149,77 @@ inline int PosX(const void* wnd) {
 inline int PosY(const void* wnd) {
   return *reinterpret_cast<const int*>(
       reinterpret_cast<const uint8_t*>(wnd) + kOffPosY);
+}
+
+// ── Variantes GARDÉES ────────────────────────────────────────────────────────
+// Les fonctions ci-dessus touchent le natif sans filet : c'est voulu, elles sont
+// aussi appelées depuis des chemins où une exception doit remonter. Mais les
+// modules de features/windows/ tournent, eux, dans une frame de rendu — un
+// manager pas encore construit ou une fenêtre détruite entre deux ticks ne doit
+// pas tuer le client, seulement rendre « pas là ».
+//
+// Chacun de ces modules s'était donc écrit son propre `__try/__except` autour du
+// même appel : `FindWnd` dans cinq fichiers, `CloseWnd` dans quatre, `HideWnd`
+// dans cinq, `ReadValidWnd` dans quatre, `VTableOf` dans deux. Vingt copies du
+// même geste. Les voici une fois.
+//
+// Ces fonctions restent volontairement PAUVRES en types (pointeurs nus, entiers)
+// : le SEH de MSVC est interdit dans une fonction qui doit dérouler des objets
+// C++, et c'est cette contrainte-là, pas l'esthétique, qui dicte leur signature.
+
+// FindWindow, mais « pas là » plutôt qu'une exception.
+//
+// ⚠ Le test `window_id < 0` vient de trade_window, seul appelant à en avoir eu
+// besoin : sa fenêtre d'échange a un id -1 tant qu'il n'est pas retrouvé dans la
+// map du manager. Généralisé ici parce qu'un id négatif ne désigne jamais une
+// fenêtre valide — le natif, lui, irait le chercher dans son arbre.
+inline void* SafeFindWindow(int window_id) {
+  if (window_id < 0) return nullptr;
+  __try {
+    return FindWindow(window_id);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// CloseWindow, sans propager. Comme la version nue, elle DÉTRUIT la fenêtre :
+// aucun pointeur vers elle ne survit à l'appel.
+inline void SafeCloseWindow(int window_id) {
+  __try {
+    CloseWindow(window_id);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// SetVisible, sans propager, et tolérante au pointeur nul — c'est le cas normal
+// quand la fenêtre à masquer n'est pas ouverte.
+inline void SafeSetVisible(void* wnd, bool visible) {
+  __try {
+    if (wnd) SetVisible(wnd, visible);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// La vtable d'une fenêtre, 0 si illisible. Sert à IDENTIFIER une fenêtre dont on
+// tient le pointeur mais pas l'id.
+inline uintptr_t SafeVTableOf(const void* wnd) {
+  __try {
+    return wnd ? *reinterpret_cast<const uintptr_t*>(wnd) : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// La fenêtre publiée dans un GLOBAL dédié, validée par sa vtable.
+//
+// ⚠ C'est un chemin DIFFÉRENT de FindWindow, pas un raccourci : certaines
+// fenêtres (inventaire, chariot, storage, sertissage…) sont publiées par le
+// client dans un global à elles, et `slot_addr` est l'adresse de ce global —
+// donc un pointeur VERS un pointeur. La vtable attendue est ce qui distingue
+// « la fenêtre est ouverte » de « le global porte encore un vestige ».
+//
+// Renvoie nullptr si le global est vide ou si la vtable ne correspond pas.
+inline uint8_t* WndAtSlot(uintptr_t slot_addr, uintptr_t expected_vtable) {
+  __try {
+    auto* wnd = *reinterpret_cast<uint8_t**>(slot_addr);
+    if (!wnd) return nullptr;
+    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
+    return wnd;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
 }  // namespace uiwnd

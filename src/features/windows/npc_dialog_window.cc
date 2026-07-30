@@ -73,26 +73,10 @@ constexpr uint16_t kCzCloseDialog = 0x0146;  // CZ_CLOSE_DIALOG     {op,GID} 6o
 constexpr uint32_t kLinkColor = IM_COL32(0x2E, 0x74, 0xD8, 0xFF);
 
 // ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) {
-  __try {
-    return uiwnd::FindWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-void CloseWnd(int id) {
-  __try {
-    uiwnd::CloseWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-void HideWnd(void* w) {
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-void ShowWnd(void* w) {  // dé-cache (remet le flag visibilité)
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 1;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
+void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
+void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
+void ShowWnd(void* w) { uiwnd::SafeSetVisible(w, true); }  // dé-cache
 
 // ── Dispatcher CMode + flag dialogue (SEH-gardé) ──
 void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0x18

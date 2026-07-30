@@ -239,14 +239,7 @@ std::unordered_map<uint32_t, IconTex> g_icon_cache;
 // Lit un pointeur de fenêtre valide depuis un slot manager, en vérifiant sa
 // vtable. Renvoie null si slot vide ou vtable inattendue. SEH-gardé.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  __try {
-    auto* wnd = *reinterpret_cast<uint8_t**>(slot);
-    if (wnd == nullptr) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
-    return wnd;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return nullptr;
-  }
+  return uiwnd::WndAtSlot(slot, expected_vtable);
 }
 
 // c_str d'une std::string MSVC embarquée à base (SSO : heap si cap>0xf).

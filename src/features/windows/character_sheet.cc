@@ -163,10 +163,6 @@ constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;  // char* GetSkillIdName(in
 using GetSkillIdNameLua_t = char*(__cdecl*)(int);
 const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
 
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 int ReadInt(uintptr_t addr) {
   __try { return *reinterpret_cast<const int*>(addr); }
@@ -1748,7 +1744,7 @@ using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
 void SendConfigToggle(int cmd, int value) {
   __try {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
+    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Lance une compétence par le chemin NATIF, EXACTEMENT celui d'une touche de la barre de
@@ -1785,7 +1781,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;
       if (found) {
-        Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkillSlot,
+        uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkillSlot,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(entry)),
                                      lv, 0, 0);
         dispatched = true;
@@ -1796,7 +1792,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
       const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
       if (self)
-        Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
+        uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
                                      level, 0);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

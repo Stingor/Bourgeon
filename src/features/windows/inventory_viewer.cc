@@ -286,10 +286,6 @@ int CountCardStock(uint32_t id) {
 }
 
 // ── Helpers vtable ──────────────────────────────────────────────────────────
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
 void* Dispatcher() {
@@ -324,7 +320,7 @@ void SendCmd(int cmd, int index, int arg2) {
     return;
   __try {
     void* d = Dispatcher();
-    if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, arg2, 0, 0);
+    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, arg2, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -609,12 +605,7 @@ void PostItemLinkToChat(int index) {
 
 // Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  __try {
-    auto* wnd = *reinterpret_cast<uint8_t**>(slot);
-    if (!wnd) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
-    return wnd;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+  return uiwnd::WndAtSlot(slot, expected_vtable);
 }
 
 // ⚠ Une fenêtre native CACHÉE (uiwnd::kOffVisible = 0) n'est PAS une cible de dépôt : en

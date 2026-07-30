@@ -63,21 +63,9 @@ constexpr int kNodeSlots = 0x90;   // short
 // Icône d'item (image d'inventaire).
 
 // ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) {
-  __try {
-    return uiwnd::FindWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-void CloseWnd(int id) {
-  __try {
-    uiwnd::CloseWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-void HideWnd(void* w) {
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
+void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
+void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
 
 // Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
 // partagé). La boutique NPC ne tient QUE des ids — pas d'ItemSkillInfo, donc pas

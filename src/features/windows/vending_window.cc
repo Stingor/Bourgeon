@@ -347,24 +347,12 @@ constexpr uintptr_t kSafeCheckFlag = 0x015FFFA1;  // octet, persistant
 
 using EditSetText_t = void(__thiscall*)(void*, const char*);
 
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 // ── Accès natif, tout sous SEH et POD uniquement ─────────────────────────────
 
-void* FindWnd(int id) {
-  __try {
-    return uiwnd::FindWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 
-void HideWnd(void* w) {
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
 
 // Rend une fenêtre qu'on avait masquée. Nécessaire côté acheteur : le mode
 // (achat chez un vendeur / vente à une échoppe d'achat) n'est connu qu'APRÈS la
@@ -558,7 +546,7 @@ void SetEditText(void* wnd, int edit_off, const char* text) {
   __try {
     void* edit = *reinterpret_cast<void**>(
         reinterpret_cast<uint8_t*>(wnd) + edit_off);
-    if (edit) Vf<EditSetText_t>(edit, kVfEditSetText)(edit, text);
+    if (edit) uiwnd::Vf<EditSetText_t>(edit, kVfEditSetText)(edit, text);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

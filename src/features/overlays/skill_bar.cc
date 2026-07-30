@@ -111,10 +111,6 @@ struct SlotRec { bool valid; uint8_t type; uint32_t id; int16_t level; };
 inline void* ShortCutWnd() {
   return *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + kMgrShortCutPtr);
 }
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 void EnsureCreated() {
   if (ShortCutWnd()) return;  // déjà créée (cas normal) ou recréée ci-dessous
@@ -124,10 +120,10 @@ void RebuildSlotPtrs(void* w) {  // OnMsg 0x17 : reconstruit this+0xc4 depuis le
   uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
 }
 void HideNative(void* w) {  // this+0x28 = 0 + délink draw-list ; ne détruit PAS l'objet
-  Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 0);
+  uiwnd::Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 0);
 }
 void ShowNative(void* w) {
-  Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 1);
+  uiwnd::Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 1);
 }
 int CurrentTab() {
   return reinterpret_cast<GetOption_t>(kGetOption)(

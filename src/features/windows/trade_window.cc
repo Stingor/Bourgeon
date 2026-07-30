@@ -94,27 +94,11 @@ constexpr uint16_t kOpCancel = 0x00ee;  // ZC_CANCEL_EXCHANGE_ITEM
 constexpr uint16_t kOpExec   = 0x00f0;  // ZC_EXEC_EXCHANGE_ITEM {result:1}
 
 // ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) {
-  if (id < 0) return nullptr;
-  __try {
-    return uiwnd::FindWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-void HideWnd(void* w) {
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
+void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
 // Détruit une fenêtre native par id (persiste sa position + close), comme le X natif.
-void CloseWnd(int id) {
-  __try {
-    uiwnd::CloseWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-uintptr_t VTableOf(void* w) {
-  __try { return w ? *reinterpret_cast<uintptr_t*>(w) : 0; }
-  __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
+void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
+uintptr_t VTableOf(void* w) { return uiwnd::SafeVTableOf(w); }
 
 // Cherche la fenêtre d'échange (vtable CUIExchangeUI) dans la std::map du window-mgr
 // (mgr+8 ; nœud MSVC {L@0, P@4, R@8, color@0xc, isnil@0xd, key@0x10, value@0x14}).

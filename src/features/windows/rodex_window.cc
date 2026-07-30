@@ -426,26 +426,13 @@ struct RawMail {
 
 // ── Accès natifs, tous SEH-gardés (les structures peuvent disparaître entre
 // deux frames : changement de carte, déconnexion, fermeture par le serveur).
-void* FindWnd(int id) {
-  __try {
-    return uiwnd::FindWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-uintptr_t VTableOf(void* w) {
-  __try { return w ? *reinterpret_cast<uintptr_t*>(w) : 0; }
-  __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
+uintptr_t VTableOf(void* w) { return uiwnd::SafeVTableOf(w); }
 void SetWndVisible(void* w, int visible) {
-  __try {
-    if (w) *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(w) + uiwnd::kOffVisible) = visible;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  uiwnd::SafeSetVisible(w, visible != 0);
 }
 void HideWnd(void* w) { SetWndVisible(w, 0); }
-void CloseWnd(int id) {
-  __try {
-    uiwnd::CloseWindow(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 uint8_t* RodexMgr() {
   __try { return *reinterpret_cast<uint8_t**>(kRodexMgrPtr); }
   __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }

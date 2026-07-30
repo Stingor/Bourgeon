@@ -77,10 +77,6 @@ constexpr uintptr_t kCartMaxWeight = 0x015fb2e0;
 // l'inventaire, où un seul item fautif faisait disparaître la moitié de la liste).
 
 // ── Helpers vtable / fenêtres ────────────────────────────────────────────────
-template <typename Fn>
-inline Fn Vf(void* self, int off) {
-  return reinterpret_cast<Fn>((*reinterpret_cast<uintptr_t**>(self))[off / 4]);
-}
 
 constexpr int kMsgUiAction = 0x06;   // OnMsg : action de contrôle…
 constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg case 6)
@@ -102,12 +98,7 @@ constexpr uintptr_t kStorageVTable = 0x0103ca40;
 
 // Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  __try {
-    auto* wnd = *reinterpret_cast<uint8_t**>(slot);
-    if (!wnd) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
-    return wnd;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+  return uiwnd::WndAtSlot(slot, expected_vtable);
 }
 
 // ⚠ Une fenêtre native CACHÉE (uiwnd::kOffVisible = 0) n'est PAS une cible de dépôt : en
@@ -184,7 +175,7 @@ void SendCmd(int cmd, int index, int amount) {
   if (VendingComposing()) return;
   __try {
     void* d = Dispatcher();
-    if (d) Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, amount, 0, 0);
+    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
