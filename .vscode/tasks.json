@@ -2,13 +2,24 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Release",
+            "label": "Build Release (clean)",
             "type": "shell",
-            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20",
+            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --clean-first --target ALL_BUILD -j 20",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Build Release",
+            "type": "shell",
+            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20",
+            "group": "build",
             "problemMatcher": "$msCompile",
             "presentation": {
                 "reveal": "always",
