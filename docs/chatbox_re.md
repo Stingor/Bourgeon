@@ -501,83 +501,120 @@ onglets + à toutes les flottantes.
 
 ---
 
-## 8. Blueprint de conversion ImGui
+## 8. Blueprint de conversion ImGui — REMPLACEMENT TOTAL
 
-### 8.1 Stratégie retenue : « natif vivant mais MUET + rendu direct ImGui »
-On garde toute la logique native (routage, envoi réseau, commandes, filtres,
-liens, config) **vivante et alimentée**, on supprime **seulement son dessin**,
-et on rend en ImGui à partir de ses propres structures.
+### 8.1 Stratégie retenue (décision 2026-07-30) : le natif devient CODE MORT
+Quand « l'interface moderne » est active, la chatbox native n'est **pas
+masquée : elle n'existe plus**. `UINewChatWnd` / `UISubChatWnd` / `UIChatWnd` /
+`UIBattleMsgOptionWnd` ne sont **jamais créées** ; toute la pile de rendu natif
+(wrap 94c, RebuildFromHistory, TrimHistoryHalf, scroll-ctrls…) devient inerte —
+la classe entière de freezes disparaît avec elle (cf. project-chat-trim-freeze).
+Ce qu'on **garde** du natif, parce que c'est hors-fenêtre : le pipeline d'ENVOI
+complet (`SendMsg` + `Chat_HandleChatMessage` + tables de commandes + gates
+berserk/mots interdits), les **registres de canaux** et leur persistance, et les
+macros EmotionHotkey.
 
-- ✅ **Confirmé statiquement** : ni `ChatAction` ni le case 0x25 ne testent la
-  visibilité — une fenêtre non peinte **continue de recevoir les lignes** et de
-  remplir l'historique brut.
+> (Historique : l'ancienne stratégie « natif vivant mais muet » — early-return
+> sur Paint/Draw, lecture des vecteurs RAW — reste documentée par le §2 et les
+> vtables §2.3 ; elle peut servir de phase de validation intermédiaire, mais la
+> cible est le remplacement.)
 
-### 8.2 Source de données ImGui (lecture directe, par frame)
-1. Fenêtre = `mgr+0x1C8` **ou le global `g_pNewChatWnd 0x0131f6b0`** (plus
-   besoin de pêcher `ecx` dans un hook).
-2. Onglets = vector `[main+0xF4, main+0xF8)` ; noms + **filtres 25 octets** dans
-   `g_ChatChannelRegistry` (`node+0x14` nom, `node+0x2C` filtres) ; onglet actif
-   `main+0x114`.
-3. Par onglet : RAW texte `+0x100` / couleurs `+0x10C` / senders `+0x118`,
-   cap `+0xF0`.
-4. Détachées : set `0x0131f510` (onglet `wnd+0xB4`, caption `+0x114`, index
-   `+0xF4`).
-5. **Catégorie/type par ligne** : le natif ne stocke PAS le type dans l'onglet
-   (il route puis l'oublie). Pour des filtres ImGui par type : hooker
-   `WndProc case 0x25` (p5 = type) et mirrorer (type, index-ligne) — hook léger,
-   ou re-router soi-même en lisant les 25 octets de filtre par canal.
+### 8.2 Ingestion : hooker `UIWindowMgr_ChatAction` — LE chokepoint
+**⚠ Piège central** : si la fenêtre n'existe pas (`mgr+0x1C8 == 0`),
+`ChatAction` action 1 **empile chaque ligne dans la file `mgr+0x4C4` sans
+limite** (elle n'est drainée qu'à la création de la fenêtre). Supprimer la
+fenêtre SANS intercepter `ChatAction` = fuite mémoire illimitée.
+→ Le remplacement se fait donc **au niveau de `UIWindowMgr_ChatAction
+0x00a4ad20`** (hook, actions 1/0x13 déviées vers notre modèle) :
+- On y reçoit directement **(texte, couleurRGB, sender, TYPE)** — le type que
+  l'ancienne stratégie devait aller repêcher dans le case 0x25. Enum §3.1.1.
+- Extraction du sender « Nom : msg » pour les types {1,3,4,0x15} : à refaire
+  chez nous (word ` :` 0x3A20, ≤24c, blanchi si == own name) — trivial.
+- Broadcast : type 0x19 ou (type 0 && couleur 0xFF).
+- Respecter le gate replay (`g_ReplayActive`) comme l'original.
+- Actions à conserver/décider : 3 (ouvrir → focus ImGui), 6 (/savechat → notre
+  export), 8/9/10 (IME, cf. 8.5), 0xE/0x9A (popup nom : natif indépendant,
+  peut vivre), 2/4/5/7 (fenêtres annexes non-chat : forward inchangé).
 
-### 8.3 Rendu ImGui — à répliquer depuis le RAW
-- Word-wrap ImGui (mieux que le splitter 94c natif).
-- Codes `^RRGGBB` inline → runs colorés (cf. `UIText_DrawColored`).
-- Liens `<ITEML>…</ITEML>` → nom (API native `0x006a2ce0`) + icône
-  (loader déjà en place dans chat.cc) ; clic → desc fenêtre 0xC.
-- Sender déjà séparé (`+0x118`) ; couleur par ligne (`+0x10C`).
-- Timestamps : déjà injectés dans le RAW par chat.cc (ou ajout ImGui pur).
-- Scrollback/autoscroll : ImGuiListClipper + éviction O(1) → supprime la classe
-  entière de freezes (cf. project-chat-trim-freeze).
+### 8.3 Supprimer la fenêtre native
+- Bloquer **`UIWindowMgr_MakeWindow(mgr, 1)`** (et 0x84) quand l'interface
+  moderne est active — hook du factory `0x00a39340` (ou de `UINewChatWnd_ctor`).
+  Le chat est recréé par le « case 0 » (entrée en jeu) : c'est ce chemin qu'il
+  faut couper.
+- `ToggleWindow(mgr, 1, …)` et le focus natif (`0x00a4b760`) ne trouveront
+  rien : la **touche ENTER** (donner le focus au chat) doit être réimplémentée
+  côté ImGui (interception clavier avant le jeu, cf. hooks input existants).
+- Fenêtres annexes chat : 0x84 morte (remplacée §8.6) ; 0x1A `UIComboBoxWnd`
+  morte (nos combos ImGui) ; le popup nom (0xE) peut rester natif.
+- `/savechat` (`ChatLog_SaveAllToFiles`) itère `mgr+0x1C8` (null → no-op
+  propre) : réimplémenter l'export depuis notre modèle si on veut le garder.
+- **Bascule runtime de l'interrupteur** : même filet que make_item_window —
+  ON pendant qu'une native existe → la détruire proprement via le manager
+  (jamais mid-frame ImGui, cf. [[feedback_no_native_cmd_during_imgui_frame]]) ;
+  OFF → laisser `MakeWindow(1)` revivre (la file `mgr+0x4C4` se draine seule).
 
-### 8.4 Saisie & envoi ImGui — options classées
-- **Option A (recommandée, robuste)** : écrire dans l'input natif `main+0xBC`
-  puis poster `WndProc(msg 6, ctrl 0xB8)` → commandes, whisper, préfixes,
-  filtres, modes, macros : tout gratuit.
-- **Option B (répliquer l'envoi, désormais entièrement documentée)** :
-  - texte simple : `std_string_assign(g_ChatPendingSendText, txt)` puis
-    `CMode::SendMsg(0x2A, 0, 0, 0, 0)` (préfixes %/$/# gérés par le case 0) ;
-  - whisper : pending text + `SendMsg(11, nomCible)` ;
-  - commande : `ChatCmd_LookupSlashCommandTable(txt, &id, args)` (callable
-    directement) puis `SendMsg(0x2A, id, args)` ;
-  - ⚠ passer par `Chat_ContainsForbiddenWord` si on veut le même comportement.
-- **Mode d'envoi** : lire/écrire `g_ChatInputTargetMode` (recolorer l'input
-  ImGui pareil : violet groupe, cyan guilde…). Whisper-cible : box `+0xC0`.
-- Émotes/macros : `SendMsg(0x149, "ET_x")` / `ChatMacro_SendEmotionHotkeySlot`.
+### 8.4 Modèle de données ImGui (le nôtre, plus de lecture RAW)
+- **Ring buffer** par ligne : {texte, couleurRGB, type, sender, timestamp} —
+  éviction O(1), ImGuiListClipper, wrap local. Le cap devient un réglage.
+- **Canaux + filtres** : notre modèle s'amorce depuis **`g_ChatChannelRegistry`
+  / `g_ChatDetachedChannelRegistry`** — ✅ vérifié : les registres sont peuplés
+  au boot par `ChatWndInfo_U.lua` (C-funcs Lua) **indépendamment des fenêtres**,
+  et portent nom (+0x14), filtres 25 o (+0x2C) **et géométrie des détachées**
+  (valeur : x/y/w/h à +0x34/+0x38/+0x3C/+0x40). Onglets ImGui dockés
+  (« TabState On ») + fenêtres ImGui flottantes (« Off »).
+- Le routage par canal = re-jouer `filtre[type]` chez nous (même sémantique,
+  même table).
+- Liens `<ITEML>` : parse chez nous → nom (`0x006a2ce0`) + icône (loader de
+  chat.cc) ; clic → desc fenêtre 0xC. Codes `^RRGGBB` → runs colorés.
 
-### 8.5 Masquer le natif (sans casser la logique)
-Cibles **vérifiées dans les vtables** (early-return gardé) :
-- `UINewChatWnd_Paint 0x008f3340` (vtbl+0x50) et/ou `UINewChatWnd_Draw
-  0x008de120` (vtbl+0xAC) ;
-- `UISubChatWnd_OnDraw 0x0085f630` (vtbl+0x04) / `UISubChatWnd_DrawContent
-  0x0085e120` (vtbl+0xE0).
-- NE PAS déplacer hors-écran ([[feedback_no_offscreen_hide]]) ; le masquage
-  natif `vtbl+0x38` (`0x00902f30`) cache aussi les détachées si besoin.
+### 8.5 Envoi = Option B (répliquer — l'input natif n'existe plus)
+- Texte simple : `std_string_assign(g_ChatPendingSendText, txt)` puis
+  `CMode::SendMsg(0x2A, 0, 0, 0, 0)` — les préfixes %/$/#, le mode
+  (`g_ChatInputTargetMode`) et le battle-chat sont gérés par le case 0 natif.
+- Whisper : pending text + `SendMsg(11, nomCible)` ; notre propre historique de
+  destinataires (l'équivalent de la box `+0xC0`).
+- Commandes : `ChatCmd_LookupSlashCommandTable(txt, &id, args)` (callable
+  directement) → `SendMsg(0x2A, id, args)` ; ou plus simple : TOUT envoyer via
+  le même chemin que l'ENTER natif reproduit (lookup + fallback id 0).
+- Word-filter : appeler `Chat_ContainsForbiddenWord` si `g_ChatWordFilterEnabled`
+  pour iso-comportement (modale 0xE53).
+- Mode d'envoi : lire/écrire `g_ChatInputTargetMode` + recolorer l'input ImGui
+  (violet groupe / cyan guilde / violet clan — mêmes RGB que le natif §5.3).
+- Macros : `ChatMacro_SendEmotionHotkeySlot` marche **sans** fenêtre (vérifié :
+  ne touche que les globaux + SendMsg). Émotes : `SendMsg(0x149, "ET_x")`.
+- **IME (la seule vraie perte)** : `UICandidateWnd` était pilotée par l'edit
+  natif (ChatAction 8/9/10). Saisie CJK dans l'input ImGui → utiliser le
+  support IME Win32 de Dear ImGui (`io.PlatformImeData`/imm32). À traiter si le
+  besoin CP949 existe réellement côté joueurs.
 
-### 8.6 Config / fenêtres annexes en mode ImGui
-- **Filtres par onglet** : plus besoin de la fenêtre 0x84 — écrire directement
-  les octets `node+0x2C+type` (persistés automatiquement par le dtor natif via
-  ChatWndInfo_U.lua). L'UI ImGui peut réutiliser l'enum §3.1.1.
-- **Canaux** : création/suppression = répliquer les cases 0x176/0xCA (ou les
-  poster au WndProc). Renommage détachée = case 0 du HandleMsg.
-- **UICandidateWnd (IME)** : la laisser vivre (saisie CJK) tant que l'input
-  natif est piloté (Option A) ; en Option B il faudra ImGui IME.
+### 8.6 Filtres & config (remplace UIBattleMsgOptionWnd)
+- UI ImGui de filtres par canal = 25 checkboxes (enum §3.1.1), qui écrivent
+  **directement `node+0x2C+type`** dans le registre (source de vérité conservée).
+- Création/suppression/renommage de canaux = manipuler les registres (mêmes
+  invariants : ≤10 canaux, index compacts) — plus aucun WndProc à poster.
 
-### 8.7 Plan de migration progressif
-1. **Phase 1** — rendu ImGui read-only en parallèle (valider lecture RAW +
-   onglets + liens). Aucun masquage.
-2. **Phase 2** — early-return sur les 2 Paint/Draw ; saisie ImGui → Option A ;
-   onglets + scroll + liens + icônes + modes d'envoi.
-3. **Phase 3** — retirer les hooks chat.cc devenus redondants (largeur, icônes
-   natives, timestamps natifs — `chat::ClearHistory` reste) ; extras : fenêtres
-   flottantes ImGui, filtres par type, recherche, copie.
+### 8.7 Persistance (le dtor natif ne tournera plus)
+`SaveChatWndInfo 0x008f9d00` est **indépendante des fenêtres** (elle ne lit que
+les registres) mais elle était appelée par le dtor → **c'est à nous de
+l'appeler** (logout/quit/changement de mode). Deux options :
+- **Compat totale (recommandée)** : maintenir les registres à jour (8.4/8.6) et
+  appeler `SaveChatWndInfo()` (__stdcall sans args) aux mêmes moments que le
+  natif → `ChatWndInfo_U.lua` reste lisible par un client sans plugin.
+- Bourgeon-only : yaml via MoonlightUi (positions des flottantes ImGui, réglages
+  d'affichage — de toute façon nécessaires pour ce que le .lua ne couvre pas).
+Position de la fenêtre principale ImGui : notre yaml (le `g_ChatSavedPosX/Y`
+natif ne concerne que la fenêtre native).
+
+### 8.7bis Plan de migration
+1. **Phase 1 (validation)** — rendu ImGui read-only alimenté par un hook
+   ChatAction *en écoute* (le natif continue de tourner) : valide le modèle,
+   le parse des liens, les filtres.
+2. **Phase 2 (bascule)** — interrupteur « interface moderne » : bloque
+   MakeWindow(1)/0x84, ChatAction dévié, envoi Option B, ENTER-focus ImGui.
+3. **Phase 3 (nettoyage)** — retirer de chat.cc tout ce qui ne sert que la
+   fenêtre native (largeur custom, icônes `^i`, timestamps natifs, clear
+   history, cache de mesure GDI du wrap) — **tout ça devient sans objet** ;
+   extras : recherche, copie, filtres par type par-dessus le routage canal.
 
 ### 8.8 Anciennes questions ouvertes — TOUTES RÉSOLUES (2026-07-30)
 | Question | Réponse |
