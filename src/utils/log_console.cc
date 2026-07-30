@@ -162,3 +162,8 @@ void LogLineBuffer::Snapshot(std::vector<std::string> *out) const {
   std::lock_guard<std::mutex> lock(mutex_);
   out->assign(lines_.begin(), lines_.end());
 }
+
+void LogLineBuffer::Clear() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  lines_.clear();
+}

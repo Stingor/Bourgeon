@@ -28,6 +28,9 @@ class LogLineBuffer {
   void Push(std::string line);
   // Replace |out| with a snapshot of the buffered lines, oldest first.
   void Snapshot(std::vector<std::string>* out) const;
+  // Drop every buffered line (« Vider » in the in-game log window). Useful to
+  // isolate what a single action logs, without restarting the client.
+  void Clear();
 
  private:
   LogLineBuffer() = default;

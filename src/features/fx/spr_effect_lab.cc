@@ -546,7 +546,7 @@ void DrawDebugControls() {
     ImGui::SetTooltip("Les instances CEZ2STREffect sont normalement écartées (autre pipeline).\n"
                       "Coche pour vérifier si un effet non capturé appartient à cette famille :\n"
                       "s'il apparaît alors dans « effect_id capturés », c'est le cas.\n"
-                      "⚠ Peut provoquer un double dessin ailleurs : diagnostic uniquement.");
+                      "/!\\ Peut provoquer un double dessin ailleurs : diagnostic uniquement.");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Sert à isoler une régression : coche, puis regarde si le rendu NATIF\n"
                       "(z-order des chapeaux/costumes) redevient correct.\n"
@@ -707,7 +707,7 @@ void DrawDebugControls() {
                       "effet mélange additif et alpha dans la même frame.\n"
                       "Alpha normal : les primitives additives sortent en CARRÉS NOIRS.\n"
                       "Additif global : les primitives alpha CRAMENT en blanc.\n"
-                      "⚠ Le mode natif agit sur le device D3D9 : inopérant sous DX7.");
+                      "/!\\ Le mode natif agit sur le device D3D9 : inopérant sous DX7.");
   ImGui::SameLine();
   if (bl_n > 0) {
     char b[96]; int o = 0;
