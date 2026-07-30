@@ -441,7 +441,10 @@ void BankWindow::OnRenderUI() {
   ImGui::SameLine(value_col);
   ImGui::Text("%s z", Grouped32(zeny_, buf, sizeof(buf)));
 
-  if (show_total_) {
+  {
+    // 🔴 INCONDITIONNEL, et ce n'est pas un oubli : le fond de cette fenêtre est
+    // un bitmap du client pré-composé à hauteur FIXE. Un contenu qu'on peut
+    // masquer ferait glisser tout ce qui suit hors du fond peint. Cf. DrawSettings.
     const long long total = vault_ + static_cast<long long>(zeny_);
     ImGui::TextUnformatted("Total");
     ImGui::SameLine(value_col);
@@ -509,7 +512,9 @@ void BankWindow::OnRenderUI() {
   const long long max_deposit  = MaxDeposit(vault_, zeny_);
   const long long max_withdraw = MaxWithdraw(vault_, zeny_);
 
-  if (quick_amounts_) {
+  {
+    // Inconditionnel pour la même raison que le bloc « Total » plus haut : la
+    // hauteur du contenu doit rester constante, le fond bitmap ne s'adapte pas.
     // Les incréments du natif (btn_10mil/100mil/1000mil valent en réalité 1e5/1e6/1e7)
     // plus les paliers intermédiaires. Pas de « +1k » : Moonlight est un serveur
     // high rate, mille zeny n'y représente rien.
@@ -610,11 +615,13 @@ void BankWindow::OnRenderUI() {
 bool BankWindow::DrawSettings() {
   bool changed = false;
 
-  // Interrupteur GLOBAL synchronisé (tout-ImGui ou tout-natif) : la case, la liste
-  // du groupe et son application vivent en un seul endroit
-  // (DrawModernInterfaceCheckbox / SetModernInterface, moonlight_ui.h) ; ici on ne
-  // dit que ce que la bascule change POUR LA BANQUE.
-  changed |= DrawModernInterfaceCheckbox(&imgui_enabled_,
+  // Fenêtre membre du groupe « Interface moderne » (tout-ImGui ou tout-natif, plus
+  // de mixe) : `SetModernInterface` écrit `imgui_enabled_` avec les autres. Ce qui
+  // suit ne dit que ce que la bascule change pour la banque.
+  // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
+  // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
+  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  SameLine(); HelpMarker(
       "ON : banque ImGui au skin RO (fond du client, incréments rapides, "
       "« tout déposer / tout retirer », plafond INT32 affiché), et la fenêtre "
       "native est cachée.\n"
@@ -622,22 +629,20 @@ bool BankWindow::DrawSettings() {
       "Dans les deux cas c'est le SERVEUR qui ouvre la banque : Ctrl+B (ou le "
       "bouton sac de zeny du footer de l'inventaire) lui envoie une demande.");
 
-  ImGui::BeginDisabled(!imgui_enabled_);
-
-  changed |= ro::RoCheckbox("Boutons d'incrément rapide", &quick_amounts_);
-  SameLine(); HelpMarker(
-      "Rangée +10k / +100k / +1M / +10M / +100M au-dessus des actions.\n"
-      "Le natif n'offre que +100 000, +1 000 000 et +10 000 000 (ses images "
-      "s'appellent btn_10mil/100mil/1000mil, mais les montants réels sont "
-      "ceux-là).");
-
-  changed |= ro::RoCheckbox("Total et jauge de plafond", &show_total_);
-  SameLine(); HelpMarker(
-      "Ajoute la ligne « Total » (banque + poche) et une jauge de remplissage "
-      "vis-à-vis du plafond de 2 147 483 647 z.");
-
-  ImGui::EndDisabled();
-
+  // 🔴 AUCUN réglage de contenu ici, et c'est une contrainte de la fenêtre, pas un
+  // manque d'idées.
+  //
+  // Cette banque n'est pas dessinée sur un fond ImGui : elle est peinte sur le
+  // BITMAP du client, pré-composé et teinté (ro::SkinImageTint), donc à hauteur
+  // FIXE. Tout élément qu'on pourrait masquer — la ligne « Total », la rangée
+  // d'incréments — décalerait verticalement tout ce qui le suit et ferait sortir
+  // les actions du fond peint. Le réglage n'aurait pas simplement « moins
+  // d'options » comme effet : il casserait l'habillage.
+  //
+  // Les deux anciennes cases (`bank_quick_amounts`, `bank_show_total`) ont donc
+  // été retirées, et leur contenu rendu PERMANENT. Une fenêtre dont la géométrie
+  // est imposée par une image ne peut pas offrir de contenu optionnel — c'est le
+  // prix du skin natif, et il est assumé.
   ImGui::Spacing();
   ImGui::TextDisabled(
       "La banque ne s'ouvre JAMAIS depuis le client : Ctrl+B envoie une demande "

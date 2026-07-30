@@ -74,10 +74,6 @@ class BankWindow : public Plugin {
   // « bank_imgui » : fenêtre ImGui + native masquée. Basculé en GROUPE par
   // SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.
   bool imgui_enabled_ = false;
-  // « bank_quick_amounts » : rangée de boutons d'incrément rapide.
-  bool& quick_amounts() { return quick_amounts_; }
-  // « bank_show_total » : ligne « Total » (banque + poche) et jauge de plafond.
-  bool& show_total()   { return show_total_; }
 
  private:
   // Envoie 0x09A7 / 0x09A9 après avoir revalidé côté client (mêmes règles que le
@@ -88,8 +84,10 @@ class BankWindow : public Plugin {
   void SetStatusFromMsgString(int msg_id, bool is_error);
   void SetStatus(const char* utf8, bool is_error);
 
-  bool quick_amounts_  = true;   // setting : boutons +10k/+100k/…
-  bool show_total_     = true;   // setting : ligne Total + jauge de plafond
+  // (Plus de `quick_amounts_` ni de `show_total_` : le fond de cette fenêtre est un
+  // bitmap du client à hauteur FIXE, donc rien de son contenu ne peut être masqué
+  // sans faire glisser le reste hors du fond peint. Les deux blocs sont désormais
+  // permanents — cf. le pavé de BankWindow::DrawSettings.)
 
   // C'est NOUS qui avons baissé le flag de visibilité de la native ? Sert à ne le
   // remettre à 1 qu'une seule fois, quand imgui_enabled_ repasse à false — forcer 1
