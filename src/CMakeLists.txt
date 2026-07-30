@@ -195,6 +195,8 @@ set(BOURGEON_FILES
 	"ragnarok/player_skills.cc"
 	"ragnarok/player_skills.h"
 	"ragnarok/item_db.h"
+	"ragnarok/msgstring.cc"
+	"ragnarok/msgstring.h"
 	"ragnarok/render.h"
 	"ragnarok/lua.h"
 	"ragnarok/configuration.h"

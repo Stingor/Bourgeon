@@ -14,6 +14,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_DeviceEpoch (invalidation des textures)
+#include "features/item_cell.h"  // itemcell::NameById (nom d'item par id)
 #include "imgui.h"
 #include "features/windows/inventory_viewer.h"  // MailDraggedItem (cible de drag-drop « INV_ITEM »)
 #include "ragnarok/uiwnd.h"  // uiwnd::FindWindow / uiwnd::Mgr
@@ -709,37 +710,17 @@ int Utf8ToAnsi(const char* utf8, char* out, size_t out_size) {
   return n;
 }
 
-// ── Résolution nom d'item (id -> nom), même chemin natif que les autres fenêtres
-// ImGui (boutique, échange, feuille de perso) : la DB de descriptions du client,
-// chargée paresseusement puis mémorisée ici.
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-using EnsureLoaded_t = char(__thiscall*)(void*, int);
-
-std::unordered_map<uint32_t, std::string> g_name_cache;
-
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  std::string name = (buf[0] == '\0') ? ("#" + std::to_string(id)) : AnsiToUtf8(buf);
-  return (g_name_cache[id] = name).c_str();
-}
+// Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
+// partagé).
+//
+// ⚠ Cette copie-ci faisait passer le nom par AnsiToUtf8, contrairement aux cinq
+// autres fenêtres. Ce n'était pas un choix : AnsiToUtf8 est indispensable pour ce
+// qui arrive PAR LE FIL (expéditeur, titre, corps — le serveur parle ANSI) et la
+// ligne du nom d'item avait suivi. La DB, elle, n'est pas du réseau, et
+// item_desc_window lit le même champ sans conversion. Vérifié sur la donnée :
+// les 29 256 noms d'affichage de SystemEN\LuaFiles514\itemInfo.lua sont tous en
+// ASCII pur (le CP949 du fichier ne concerne que les resourceName, c'est-à-dire
+// les noms de sprites). L'écart n'était donc pas observable.
 
 // Date d'expiration -> « J-3 » / « expiré ». La valeur est un horodatage Unix ;
 // à 0 (courrier sans expiration) on n'affiche rien plutôt qu'une date absurde.
@@ -1491,9 +1472,9 @@ void RodexWindow::DrawMailDetail() {
         ImGui::SameLine();
       }
       if (attach.refine > 0)
-        ImGui::TextColored(kBlack, "+%d %s", attach.refine, ItemName(attach.id));
+        ImGui::TextColored(kBlack, "+%d %s", attach.refine, itemcell::NameById(attach.id));
       else
-        ImGui::TextColored(kBlack, "%s", ItemName(attach.id));
+        ImGui::TextColored(kBlack, "%s", itemcell::NameById(attach.id));
       if (attach.amount > 1) {
         ImGui::SameLine();
         ImGui::TextDisabled("x%d", attach.amount);
@@ -1629,9 +1610,9 @@ void RodexWindow::DrawComposeWindow() {
       ImGui::SameLine();
     }
     if (attach.refine > 0)
-      ImGui::TextColored(kBlack, "+%d %s", attach.refine, ItemName(attach.id));
+      ImGui::TextColored(kBlack, "+%d %s", attach.refine, itemcell::NameById(attach.id));
     else
-      ImGui::TextColored(kBlack, "%s", ItemName(attach.id));
+      ImGui::TextColored(kBlack, "%s", itemcell::NameById(attach.id));
     if (attach.amount > 1) {
       ImGui::SameLine();
       ImGui::TextDisabled("x%d", attach.amount);

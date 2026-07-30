@@ -12,6 +12,7 @@
 #include "d3d9/d3d9_hook.h"        // Overlay_DeviceEpoch (invalidation du fond)
 #include "imgui.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker
+#include "ragnarok/msgstring.h"    // msgstr::Utf8 (libellés natifs du client)
 #include "ragnarok/uiwnd.h"        // uiwnd::FindWindow
 #include "ui/game_texture.h"       // ro::TextureFromGameFile (fond bg_bank_moon.bmp)
 #include "ui/ro_imgui.h"           // skin RO (BeginRoWindow / RoButton / RoCheckbox)
@@ -42,10 +43,7 @@ constexpr uintptr_t kFmtComma32 = 0x00a948d0;
 using FmtComma64_t = char*(__cdecl*)(long long, char*, int);
 using FmtComma32_t = char*(__cdecl*)(int, char*, int);
 
-// MsgStringTable : source des libellés/erreurs du client (CP949).
-constexpr uintptr_t kMsgStringGet = 0x00a9ed30;
-using MsgStringGet_t = const char*(__cdecl*)(int);
-
+// MsgStringTable : les libellés/erreurs du client, via msgstr:: (ragnarok/).
 // Ids MsgStringTable utilisés par la banque native (cf. docs/bank_zeny_re.md §7-8).
 constexpr int kMsgDepositNoMoney  = 2456;  // MSI_BANK_DEPOSIT_NO_MONEY
 constexpr int kMsgOverIntMax      = 2459;  // MSI_BANK_OVER_INT_MAX
@@ -160,13 +158,6 @@ const char* Grouped32(int value, char* buf, int size) {
   return buf;
 }
 
-// Libellé natif (CP949), ou nullptr. L'appelant convertit en UTF-8.
-const char* MsgStringCp949(int id) {
-  __try {
-    return reinterpret_cast<MsgStringGet_t>(kMsgStringGet)(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
 // Paquet de transfert, tel qu'il part sur le fil (10 octets, cf. §2 de la doc).
 #pragma pack(push, 1)
 struct BankTransferWire {
@@ -254,10 +245,9 @@ void BankWindow::SetStatus(const char* utf8, bool is_error) {
 }
 
 void BankWindow::SetStatusFromMsgString(int msg_id, bool is_error) {
-  const char* cp949 = MsgStringCp949(msg_id);
-  // Les libellés du client sont en CP949 ; ImGui veut de l'UTF-8. Le buffer rendu
-  // par Cp949ToUtf8 est rotatif -> on RECOPIE tout de suite.
-  SetStatus(cp949 ? ro::Cp949ToUtf8(cp949) : nullptr, is_error);
+  // msgstr::Utf8 rend un tampon ROTATIF : SetStatus recopie aussitôt dans
+  // status_, ce qui règle la question.
+  SetStatus(msgstr::Utf8(msg_id), is_error);
 }
 
 void BankWindow::OnTick() {
@@ -494,8 +484,8 @@ void BankWindow::OnRenderUI() {
   bool banner_is_error = false;
   if (blocked) {
     // Libellé EXACT du client (MSI_BANK_PROHIBIT), pas une paraphrase à nous.
-    const char* cp949 = MsgStringCp949(kMsgProhibit);
-    if (cp949) { banner = ro::Cp949ToUtf8(cp949); banner_is_error = true; }
+    const char* label = msgstr::Utf8(kMsgProhibit);
+    if (label[0]) { banner = label; banner_is_error = true; }
   } else if (status_[0]) {
     banner = status_;
     banner_is_error = status_error_;

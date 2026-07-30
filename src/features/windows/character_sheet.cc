@@ -155,13 +155,6 @@ const char* PoseLabelFull(int anim, bool animate) {
 }
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
 
-//  Nom d'item par id : DB de description (chargement paresseux + map id->record)
-// Une seule déclaration par ligne : ces typedefs partageaient une ligne avec
-// kVfOnMsg/kVfSetPos, et la migration vers uiwnd:: a emporté la ligne entière
-// en ne constatant la mort que des deux derniers.
-using EnsureLoaded_t = char (__thiscall*)(void*, int);
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-
 //  Icone d'item (item\<resname>.bmp)
 // Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
@@ -814,31 +807,9 @@ const char* JobName(int jobId) {
   return (g_job_name_cache[jobId] = buf).c_str();
 }
 
-//  Cache nom d'item (id -> nom)
-std::unordered_map<uint32_t, std::string> g_name_cache;
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  return (g_name_cache[id] = buf).c_str();
-}
-
+// Le nom NU d'un item par id passe par itemcell::NameById (cache partagé). Pour
+// un item ÉQUIPÉ dont on tient le slot, préférer DecoratedItemName plus bas :
+// elle compose refine et cartes, que le nom nu ne porte pas.
 
 // ── Icône de skill (case compagnon) ──────────────────────────────────────────
 std::unordered_map<uint32_t, ro::IconTex> g_skill_icon_cache;
@@ -1717,7 +1688,7 @@ void OpenSkillDesc(int skillId, int mx, int my) {
 
 // Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
 // name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
-// source (slot equip). ItemName() ne rend que le nom de BASE ; ceci décore comme la description.
+// source (slot equip). itemcell::NameById() ne rend que le nom de BASE ; ceci décore comme la description.
 constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // libère le std::vector<int> alloué par le jeu
 constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // *ptr = fenêtre inventaire native (contexte)
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
@@ -2023,8 +1994,8 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
     dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
   }
   if (hov) {
-    if (pi.refine > 0) ImGui::SetTooltip("+%d %s", pi.refine, ItemName(pi.nameid));
-    else               ImGui::SetTooltip("%s", ItemName(pi.nameid));
+    if (pi.refine > 0) ImGui::SetTooltip("+%d %s", pi.refine, itemcell::NameById(pi.nameid));
+    else               ImGui::SetTooltip("%s", itemcell::NameById(pi.nameid));
   }
 }
 
@@ -5831,7 +5802,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
         else
           dl->AddRect(cell_pos, cell_end, IM_COL32(120, 120, 120, 120));
         if (hovered) {
-          const char* nm = ItemName(id);
+          const char* nm = itemcell::NameById(id);
           ImGui::SetTooltip("%s (%u)", (nm && nm[0]) ? nm : "?", id);
         }
         if (clicked) {
@@ -5979,7 +5950,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
                            static_cast<uintptr_t>(slot) * kSlotStride;
     char dnm[128];
     DecoratedItemName(reinterpret_cast<const void*>(dsrc), dnm, sizeof(dnm));
-    ImGui::TextUnformatted(dnm[0] ? dnm : ItemName(it.nameid));
+    ImGui::TextUnformatted(dnm[0] ? dnm : itemcell::NameById(it.nameid));
     ImGui::EndDragDropSource();
   }
   // CIBLE (tout slot) : lâcher un item d'inventaire (payload "INV_ITEM") sur le doll =
@@ -6001,12 +5972,12 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     const char* hint =
         "(clic droit : desc, Maj+clic droit : lien chat, double-clic : déséquip, glisser : inv.)";
     // Nom COMPLET (refine + [slots] + cartes/enchant/forge) via BuildDisplayName, comme la
-    // description ; ItemName seul rendrait le nom NU. Repli sur ItemName si vide.
+    // description ; NameById seul rendrait le nom NU. Repli sur NameById si vide.
     const uintptr_t hsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                            static_cast<uintptr_t>(slot) * kSlotStride;
     char nm[128];
     DecoratedItemName(reinterpret_cast<const void*>(hsrc), nm, sizeof(nm));
-    if (nm[0] == '\0') std::snprintf(nm, sizeof(nm), "%s", ItemName(it.nameid));
+    if (nm[0] == '\0') std::snprintf(nm, sizeof(nm), "%s", itemcell::NameById(it.nameid));
     ImGui::SetTooltip("%s\n%s", nm, hint);
     const ImVec2 mp = ImGui::GetMousePos();
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -6081,7 +6052,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
     ro::SetHoverCursor(2);
     if (has) {
       ImGui::SetTooltip("%s  x%d\n(clic droit : desc, double-clic : déséquiper, glisser ici : équiper)",
-                        ItemName(am.nameid), am.amount);
+                        itemcell::NameById(am.nameid), am.amount);
       const ImVec2 mp = ImGui::GetMousePos();
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
         itemcell::OpenDescById(am.nameid, am.viewId, am.location,
@@ -6874,14 +6845,14 @@ void CharacterSheet::DrawStatsPanel() {
       bonusStat(label, vb, tip);
     }
 
-    // Bonus liés à un item : nom résolu via le DB item (ItemName, caché + SEH).
+    // Bonus liés à un item : nom résolu via le DB item (itemcell::NameById).
     if (!bonus_.items.empty() && ImGui::CollapsingHeader("Objets", kSec))
     for (const auto& it : bonus_.items) {
       char label[96];
       if (it.code == kBsiAddDropGroup)  // nameid porte l'id de GROUPE, pas d'item
         std::snprintf(label, sizeof(label), "Drop groupe #%u", it.nameid);
       else
-        std::snprintf(label, sizeof(label), "Drop %s", ItemName(it.nameid));
+        std::snprintf(label, sizeof(label), "Drop %s", itemcell::NameById(it.nameid));
       std::snprintf(vb, sizeof(vb), "%d,%02d%%", it.rate / 100, std::abs(it.rate) % 100);  // 1~10000 -> %
       bonusStat(label, vb, "Chance de drop bonus de cet objet en tuant un monstre.");
     }

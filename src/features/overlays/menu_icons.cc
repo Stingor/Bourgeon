@@ -3,6 +3,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 
+#include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/uiwnd.h"
 
 #include <Windows.h>
@@ -23,11 +24,9 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
 // ── Game texture loader (conventions per status_tweaks.cc) ─────────────────
-constexpr uintptr_t kGetMsg  = 0x00a9ed30;  // __cdecl(uint id)    -> char*
 using TexMgr_t  = void* (__cdecl*)();
 using MakeKey_t = void* (__cdecl*)(const char*);
 using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
-using GetMsg_t  = char* (__cdecl*)(unsigned);
 
 // UITexture field offsets: +0x114 width, +0x118 height, +0x11c BGRA32 top-down.
 constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;
@@ -404,9 +403,10 @@ void MenuIcons::OnRenderUI() {
     } else {
       if (clicked) pending_cmd_ = ic.cmd_id;  // dispatched from OnTick/input phase
       if (hovered) {
-        const char* tip = reinterpret_cast<GetMsg_t>(kGetMsg)(
-            static_cast<unsigned>(ic.msg_id));
-        if (tip && *tip) ImGui::SetTooltip("%s", tip);
+        // Utf8 et non Cp949 : cette infobulle est dessinee par ImGui, pas par
+        // le moteur de texte natif.
+        const char* tip = msgstr::Utf8(ic.msg_id);
+        if (*tip) ImGui::SetTooltip("%s", tip);
       }
     }
     ImGui::End();

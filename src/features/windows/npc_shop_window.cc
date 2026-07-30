@@ -60,10 +60,6 @@ constexpr int kNodePrice2 = 0x20;  // overcharge (prix de vente réel)
 constexpr int kNodeName  = 0x34;   // std::string (MSVC : +0x10 size, +0x14 cap)
 constexpr int kNodeSlots = 0x90;   // short
 
-// Nom par id : DB de description (map id->record), name = *(rec+4).
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-using EnsureLoaded_t = char (__thiscall*)(void*, int);
-
 // Icône d'item (image d'inventaire).
 
 // ── Fenêtres natives (SEH-gardé) ──
@@ -83,36 +79,9 @@ void HideWnd(void* w) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// ── Cache nom d'item (id -> nom) ──
-std::unordered_map<uint32_t, std::string> g_name_cache;
-
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  return (g_name_cache[id] = buf).c_str();
-}
-
-
-
-
+// Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
+// partagé). La boutique NPC ne tient QUE des ids — pas d'ItemSkillInfo, donc pas
+// de refine ni de cartes à composer.
 
 
 // La description passe par itemcell::OpenDescById : la boutique n'a que des ids
@@ -688,7 +657,7 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
-        const char* nm = ItemName(b.id);
+        const char* nm = itemcell::NameById(b.id);
         if (!filter.PassFilter(nm)) continue;
         ImGui::TableNextRow();
         ImGui::PushID(static_cast<int>(b.id));
@@ -735,7 +704,7 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
       ImGui::TableHeadersRow();
       for (const auto& s : sell_items_) {
-        const char* nm = ItemName(s.id);
+        const char* nm = itemcell::NameById(s.id);
         if (!filter.PassFilter(nm)) continue;
         ImGui::TableNextRow();
         ImGui::PushID(s.index);
@@ -778,7 +747,7 @@ void NpcShopWindow::OnRenderUI() {
     CartEntry& e = cart_[i];
     total += static_cast<long long>(e.price) * e.amount;
     ImGui::PushID(2000 + i);
-    ImGui::TextWrapped("%s", ItemName(e.id));
+    ImGui::TextWrapped("%s", itemcell::NameById(e.id));
     // Controle quantite : [-] [champ] [+], petits boutons RO carres (comme le
     // cashshop). InputInt en step=0 -> pas de +/- natifs non skinnes.
     const float step = ImGui::GetFrameHeight();

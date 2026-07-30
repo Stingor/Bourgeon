@@ -36,10 +36,6 @@ constexpr uintptr_t kCashVTable   = 0x0101ca18;
 
 // Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
 
-// Nom d'item par id : DB de description (map id->record), name = *(rec+4) 
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-using EnsureLoaded_t = char (__thiscall*)(void*, int);
-
 // Icône d'item : le cash shop affiche l'image de COLLECTION (art de preview,
 // bien plus grande que l'icône d'inventaire). Sa résolution vit dans le cache
 // partagé, ro::ItemCollectionIcon (ui/icon_cache.h), avec le repli sur la petite
@@ -85,40 +81,20 @@ void SnapWindowSize(ImGuiSizeCallbackData* d) {
   d->DesiredSize.y = s.chromeh + rows * sy - s.gap;
 }
 
-//  Cache nom d'item (id -> nom)
-std::unordered_map<uint32_t, std::string> g_name_cache;
-
-// SEH isolé (POD only, pas de std::string -> évite C2712) : écrit le nom dans out.
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  // Retire le prefixe "Costume " (redondant : l'onglet/le contexte l'indique deja).
-  const char* nm = buf;
+// Nom d'affichage du cash shop : le nom de la DB (itemcell::NameById, cache
+// partagé) AMPUTÉ de son préfixe « Costume », redondant ici — l'onglet et la
+// vignette disent déjà qu'on est dans les costumes.
+//
+// Ce raccourcissement reste LOCAL, et c'est délibéré : c'est une décision de
+// présentation propre à cette fenêtre, pas une propriété du nom. Le mettre dans
+// itemcell::NameById le servirait aux cinq autres fenêtres, qui, elles, veulent
+// le nom exact. Simple arithmétique de pointeur sur une chaîne déjà en cache :
+// rien à mémoriser en plus.
+const char* ShortName(uint32_t id) {
+  const char* nm = itemcell::NameById(id);
   if (std::strncmp(nm, "Costume ", 8) == 0) nm += 8;
-  return (g_name_cache[id] = nm).c_str();
+  return nm;
 }
-
-
-
-
 
 
 
@@ -544,7 +520,7 @@ void CashShopWindow::OnRenderUI() {
       } else if (cur_slot_ != -1 && SlotOf(ci.location).key != cur_slot_) {
         continue;
       }
-      if (filter.PassFilter(ItemName(ci.id))) vis.push_back(&ci);
+      if (filter.PassFilter(ShortName(ci.id))) vis.push_back(&ci);
     }
     // Tri (Nom / ID / Cout, asc/desc).
     std::sort(vis.begin(), vis.end(),
@@ -555,7 +531,7 @@ void CashShopWindow::OnRenderUI() {
                 else if (cur_sort_ == 2)
                   c = (a->price < b->price) ? -1 : (a->price > b->price ? 1 : 0);
                 else
-                  c = std::strcmp(ItemName(a->id), ItemName(b->id));
+                  c = std::strcmp(ShortName(a->id), ShortName(b->id));
                 return sort_asc_ ? c < 0 : c > 0;
               });
 
@@ -592,7 +568,7 @@ void CashShopWindow::OnRenderUI() {
       // dans la largeur de la carte (draw-list a taille custom). Centre verticalement
       // dans le bandeau. Plancher a 55% pour rester lisible (leger debord au pire).
       {
-        const char* nm = ItemName(ci.id);
+        const char* nm = ShortName(ci.id);
         ImFont* font = ImGui::GetFont();
         const float base = ImGui::GetFontSize();
         const float availw = card_w - 8.0f;
@@ -736,7 +712,7 @@ void CashShopWindow::OnRenderUI() {
     CartEntry& e = cart_[i];
     total += static_cast<long long>(e.price) * e.amount;
     ImGui::PushID(1000 + i);
-    ImGui::TextWrapped("%s", ItemName(e.id));
+    ImGui::TextWrapped("%s", ShortName(e.id));
     // Controle quantite : [-] [champ] [+], petits boutons RO carres (skin bouton,
     // police inchangee). InputInt en step=0 -> pas de +/- natifs (non skinnes).
     const float step = ImGui::GetFrameHeight();  // bouton carre = hauteur de ligne

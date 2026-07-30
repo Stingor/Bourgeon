@@ -19,6 +19,8 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / RegisterObserveOpcode
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
+#include "features/item_cell.h"  // itemcell::NameById (nom d'item par id)
+#include "ragnarok/msgstring.h"  // msgstr::Cp949 / msgstr::Utf8
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "features/windows/inventory_viewer.h"  // TradeDraggedItem (cible de drag-drop "INV_ITEM")
@@ -79,20 +81,10 @@ constexpr int kCmdApplyAdd = 0x12;
 // avec le texte MsgStringTable(0x728) AVANT le cmd 0x36 (cf. FUN_009ce040).
 constexpr int kCmdScreenshot = 0x44;
 
-// Table de messages localisés du client (JAMAIS de texte en dur : on lit le natif).
-constexpr uintptr_t kMsgStringGet   = 0x00a9ed30;  // __cdecl(id) -> const char*
+// Table de messages localisés du client (JAMAIS de texte en dur : on lit le
+// natif) — msgstr::, dans ragnarok/.
 constexpr int       kMsgScrLabel    = 0x727;       // libellé de la case « Screenshot Trade »
 constexpr int       kMsgScrPayload  = 0x728;       // texte envoyé avec le cmd 0x44
-using MsgStringGet_t = const char* (__cdecl*)(int);
-
-// Libellé natif par id (SEH : la table peut ne pas être chargée). Renvoie "" si absent.
-const char* MsgString(int id) {
-  __try {
-    const char* s = reinterpret_cast<MsgStringGet_t>(kMsgStringGet)(id);
-    return s ? s : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
-}
-
 // Opcodes observés (vanilla ; handler natif intact -> on OBSERVE, jamais Register-
 // RecvOpcode). data = payload après l'opcode 2 octets ; len = forward_len.
 constexpr uint16_t kOpReq    = 0x01f4;  // ZC_REQ_EXCHANGE_ITEM {name[24],targetId:4,targetLv:2}
@@ -184,36 +176,9 @@ void ModeCmd(int cmd, int a, int b, int c, int d) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// ── Résolution nom d'item (id -> nom) — identique à NpcShopWindow ──
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-using EnsureLoaded_t = char (__thiscall*)(void*, int);
-
-std::unordered_map<uint32_t, std::string> g_name_cache;
-
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  return (g_name_cache[id] = buf).c_str();
-}
-
+// Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
+// partagé). L'échange ne voit que des ids et un refine — le paquet ne porte pas
+// d'ItemSkillInfo — d'où le « +N » composé à la main à l'affichage.
 
 
 
@@ -324,7 +289,9 @@ void TradeWindow::Commit() {
   // Screenshot est cochée, cmd 0x44(texte natif) AVANT le commit, puis cmd 0x36.
   // ⚠ Le serveur n'exécute l'échange que quand les DEUX joueurs ont validé.
   if (screenshot_) {
-    const char* txt = MsgString(kMsgScrPayload);
+    // Ce texte PART au natif (cmd 0x44) : il doit rester en CP949, d'où Cp949
+    // et non Utf8 — c'est toute la raison d'être des deux entrées.
+    const char* txt = msgstr::Cp949(kMsgScrPayload);
     ModeCmd(kCmdScreenshot,
             static_cast<int>(reinterpret_cast<uintptr_t>(txt)), 0, 0, 0);
   }
@@ -516,9 +483,9 @@ void TradeWindow::OnRenderUI() {
         ImGui::SameLine();
       }
       if (it.refine > 0)
-        ImGui::TextColored(kBlack, "+%d %s", it.refine, ItemName(it.id));
+        ImGui::TextColored(kBlack, "+%d %s", it.refine, itemcell::NameById(it.id));
       else
-        ImGui::TextColored(kBlack, "%s", ItemName(it.id));
+        ImGui::TextColored(kBlack, "%s", itemcell::NameById(it.id));
       if (it.amount > 1) { ImGui::SameLine(); ImGui::TextDisabled("x%d", it.amount); }
       if (it.slots > 0) { ImGui::SameLine(); ImGui::TextDisabled("[%d]", it.slots); }
       ImGui::PopID();
@@ -566,7 +533,7 @@ void TradeWindow::OnRenderUI() {
   if (zeny_input_ < 0) zeny_input_ = 0;
   // Case « Screenshot Trade » du natif — libellé lu dans la table de messages du
   // client (jamais en dur), repli si la table n'est pas encore chargée.
-  const char* scr_label = MsgString(kMsgScrLabel);
+  const char* scr_label = msgstr::Utf8(kMsgScrLabel);
   ro::RoCheckbox(scr_label[0] ? scr_label : "Screenshot Trade", &screenshot_);
   ImGui::EndDisabled();
   ImGui::TextDisabled("Le zeny est validé en cliquant sur « Verrouiller (OK) ».");

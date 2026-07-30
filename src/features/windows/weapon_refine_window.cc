@@ -14,6 +14,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker
 #include "features/windows/item_desc_window.h"   // RenderSimpleDesc
 #include "imgui.h"
+#include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
@@ -136,9 +137,7 @@ constexpr int      kMaxRecastRetries   = 3;
 constexpr unsigned kMinSendIntervalMs = 400;
 
 // MsgStringTable : on affiche les libellés EXACTS du client, jamais une
-// paraphrase (règle du projet). CP949 -> ro::Cp949ToUtf8 au moment du rendu.
-constexpr uintptr_t kMsgStringGet = 0x00a9ed30;
-using MsgStringGet_t = const char*(__cdecl*)(int);
+// paraphrase (règle du projet). Conversion CP949 -> UTF-8 dans msgstr::Utf8.
 constexpr int kMsgRefineSuccess  = 911;  // MSI_ITEM_REFINE_SUCCEESS
 constexpr int kMsgRefineFail     = 912;  // MSI_ITEM_REFINE_FAIL
 constexpr int kMsgFailLevel      = 913;  // MSI_ITEM_REFINE_FAIL_LEVEL
@@ -270,13 +269,6 @@ int CountRealCards(const uint32_t card[4], int slots) {
 void OpenItemDesc(int inventory_index, int mx, int my) {
   itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kInvListHead, inventory_index),
                              mx, my);
-}
-
-const char* MsgString(int id) {
-  __try {
-    const char* s = reinterpret_cast<MsgStringGet_t>(kMsgStringGet)(id);
-    return s ? s : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
 }
 
 // (L'escamotage de la modale native « liste vide » a été SUPPRIMÉ avec son module
@@ -756,7 +748,7 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
     std::snprintf(subject, sizeof(subject), "%s", name);
   }
 
-  const char* tmpl = ro::Cp949ToUtf8(MsgString(msg_id));
+  const char* tmpl = msgstr::Utf8(msg_id);
   char body[288];
   const char* slot = std::strstr(tmpl, "%s");
   if (slot) {

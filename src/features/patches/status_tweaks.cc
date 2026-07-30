@@ -1,6 +1,7 @@
 #include "ui/game_texture.h"
 #include "features/patches/status_tweaks.h"
 
+#include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -67,7 +68,6 @@ constexpr uintptr_t kDrawTitleBar = 0x00898bc0;  // __thiscall(this, char hasClo
 constexpr uintptr_t kDrawText     = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)  LEFT
 constexpr uintptr_t kDrawTextR    = 0x00a27b50;  // __thiscall(this,x,y,str,len,face,size,color,bold) RIGHT@x
 constexpr uintptr_t kBlit         = 0x00a1d260;  // __thiscall(this,x,y,img,flag)
-constexpr uintptr_t kGetMsg       = 0x00a9ed30;  // __cdecl(uint id) -> char*
 constexpr uintptr_t kBgNormalPath = 0x010361b4;  // "...\statuswnd\w_statwin_bg.bmp"
 
 // ---- GLOBAL title-bar text offset (shared UIWindow_DrawTitleBar 0x00898bc0) -
@@ -90,7 +90,6 @@ using Blit_t   = void (__fastcall*)(void*, void*, int, int, void*, int);
 using TexMgr_t = void* (__cdecl*)();
 using MakeKey_t = void* (__cdecl*)(const char*);
 using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
-using GetMsg_t  = char* (__cdecl*)(unsigned);
 using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
 using SetPos_t    = void (__fastcall*)(void*, void*, int, int);                       // UIWindow SetPos(this,x,y)
 
@@ -259,7 +258,9 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
       return;
     }
 
-    char* title = reinterpret_cast<GetMsg_t>(kGetMsg)(0x69);
+    // Cp949 et non Utf8 : ce titre repart au dessinateur de texte NATIF, qui
+    // attend justement du CP949.
+    const char* title = msgstr::Cp949(0x69);
     reinterpret_cast<TitleBar_t>(kDrawTitleBar)(wnd, nullptr, 1, title, 0);
 
     const int blitY = RDo(wnd, 0xd4);

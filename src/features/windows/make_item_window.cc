@@ -18,6 +18,7 @@
 #include "features/windows/weapon_refine_window.h"
 #include "imgui.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/player_skills.h"    // LearnedSkillLevel (bonus de maîtrise)
 #include "ragnarok/ragnarok_client.h"  // UseItemById (relance par OBJET)
 #include "ragnarok/uiwnd.h"
@@ -231,9 +232,7 @@ using InfoCtor_t = void*(__thiscall*)(void*);
 using InfoDtor_t = void (__thiscall*)(void*);
 
 // MsgStringTable : on affiche les libellés EXACTS du client, jamais une
-// paraphrase (règle du projet). CP949 -> ro::Cp949ToUtf8 au moment du rendu.
-constexpr uintptr_t kMsgStringGet = 0x00a9ed30;
-using MsgStringGet_t = const char*(__cdecl*)(int);
+// paraphrase (règle du projet). Conversion CP949 -> UTF-8 dans msgstr::Utf8.
 constexpr int kMsgCantMakeItem = 424;  // MSI_CANT_MAKE_ITEM
 constexpr int kMsgMakeList     = 425;  // MSI_MAKE_LIST « Manufacturing List »
 constexpr int kMsgRequireForMake = 427;  // MSI_REQUIRE_FOR_MAKE_TARGET « 's required materials »
@@ -348,12 +347,6 @@ constexpr float kMatIcon = 18.0f;
 
 // ImU32 -> ImVec4, pour les widgets qui prennent une couleur flottante.
 inline ImVec4 V4(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
-
-const char* MsgString(int id) {
-  __try {
-    return reinterpret_cast<MsgStringGet_t>(kMsgStringGet)(id);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
 
 // Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
 void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
@@ -2395,8 +2388,8 @@ void MakeItemWindow::LogResult(int result, uint32_t nameid) {
   // Libellé EXACT du client, jamais une paraphrase. Le natif compose la même
   // chaîne… puis la JETTE sans l'afficher (§3.7) — c'est précisément ce trou
   // qu'on bouche ici.
-  const char* raw = MsgString(success ? kMsgMakeSuccess : kMsgMakeFail);
-  const char* tmpl = raw ? ro::Cp949ToUtf8(raw) : nullptr;
+  const char* utf8 = msgstr::Utf8(success ? kMsgMakeSuccess : kMsgMakeFail);
+  const char* tmpl = utf8[0] ? utf8 : nullptr;
 
   // Le nom : l'id du paquet d'abord, le nom mémorisé à l'envoi en repli.
   char item_name[128];
@@ -2438,8 +2431,8 @@ const char* MakeItemWindow::ProtoTitle() const {
   // À défaut de l'avoir captée, on titre par ce que le paquet dit vraiment —
   // jamais par une devinette sur le contenu de la liste.
   if (proto_ == Proto::kProduce) {
-    const char* raw = MsgString(kMsgMakeList);  // « Manufacturing List »
-    if (raw) return ro::Cp949ToUtf8(raw);
+    const char* label = msgstr::Utf8(kMsgMakeList);  // « Manufacturing List »
+    if (label[0]) return label;
     return "Fabrication";
   }
   return "Fabrication";
@@ -2523,10 +2516,10 @@ void MakeItemWindow::DrawList() {
     // Le natif n'a qu'un message, recyclé et hors sujet (« You can't create
     // items yet. »), et seulement sur 0x018D — sur 0x01AD/0x025A il ouvre une
     // fenêtre vide sans un mot. On énumère les vraies causes (§7.2).
-    const char* raw = MsgString(kMsgCantMakeItem);
-    if (raw) {
+    const char* warn = msgstr::Utf8(kMsgCantMakeItem);
+    if (warn[0]) {
       ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
-      TextWrapped(ro::Cp949ToUtf8(raw));
+      TextWrapped(warn);
       ImGui::PopStyleColor();
     }
     Spacing();
@@ -3358,8 +3351,8 @@ void MakeItemWindow::DrawRecipe() {
   } else {
     // Libellé EXACT du client : MsgString 427 = « 's required materials », que le
     // natif accole au nom du produit dans sa fenêtre 80.
-    const char* raw_suffix = MsgString(kMsgRequireForMake);
-    const char* suffix = raw_suffix ? ro::Cp949ToUtf8(raw_suffix) : nullptr;
+    const char* raw_suffix = msgstr::Utf8(kMsgRequireForMake);
+    const char* suffix = raw_suffix[0] ? raw_suffix : nullptr;
     if (suffix)
       SeparatorText((std::string(chosen->name) + suffix).c_str());
     else

@@ -58,6 +58,25 @@ void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size);
 // ou si la lecture échoue. Appel natif sous SEH.
 int SlotCount(void* info);
 
+// Nom de BASE d'un item par son id, lu dans la DB de descriptions du client
+// (chargement paresseux + recherche, cf. ragnarok/item_db.h). Jamais nul :
+// « #<id> » quand la DB ne connaît pas l'objet, ce qui vaut mieux qu'un vide
+// pour diagnostiquer.
+//
+// ⚠ C'est le nom NU. Il n'a ni refine, ni préfixes de cartes, ni suffixe
+// « [N] » — pour ça il faut un ItemSkillInfo et BuildDisplayName ci-dessus.
+// À utiliser quand on ne tient QU'un id : boutique NPC, cash shop, pièces
+// jointes de courrier, matériaux de fabrication.
+//
+// Le résultat est mémorisé dans un cache de processus et reste valide jusqu'à
+// la fin de la session : le pointeur peut être gardé d'une frame à l'autre.
+//
+// ⚠ Ne pas confondre avec `MoonlightUi::ItemName`, qui lit l'AUTRE source —
+// `itemInfoMerged.lua` reparsé par nos soins, en CP949 — et qui rend nullptr
+// pour un id inconnu. Celle-ci interroge la DB que le client a lui-même
+// chargée ; c'est elle qu'il faut, sauf à vouloir précisément le fichier.
+const char* NameById(uint32_t id);
+
 // ── Le libellé d'un objet, UNE bonne fois ────────────────────────────────────
 // Convention du projet, identique partout : `+refine préfixe_carte nom
 // suffixe_carte [emplacements]`.

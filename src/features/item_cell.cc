@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 
 #include "imgui.h"
 #include "ragnarok/item_db.h"
@@ -29,6 +31,38 @@ using GameFree_t    = void  (__cdecl*)(void*);
 using InfoCtor_t     = void(__fastcall*)(void*);
 using InfoSetId_t    = void(__thiscall*)(void*, int);
 using EnsureLoaded_t = char(__thiscall*)(void*, int);
+using DescLookup_t   = void*(__cdecl*)(int, void*);
+
+// Décalage du nom de base dans l'enregistrement de la DB de descriptions.
+constexpr int kDescRecName = 0x04;
+
+// Cache de noms, un seul pour tout le client. Il remplace six caches privés qui
+// résolvaient et stockaient chacun les mêmes chaînes.
+std::unordered_map<uint32_t, std::string> g_name_cache;
+
+// SEH ISOLÉ et POD SEULEMENT : aucune std::string dans cette portée, sinon MSVC
+// refuse le __try (C2712, objet à destructeur déroulable). D'où le passage par
+// `out` plutôt qu'un retour de chaîne.
+void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
+  out[0] = '\0';
+  __try {
+    // La DB n'est peuplée qu'à la demande : sans ce coup de pouce, le premier
+    // affichage d'un item jamais consulté rendrait « #<id> ».
+    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
+    if (cache)
+      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(
+          cache, static_cast<int>(id));
+    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
+        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
+    // kNilAddr est la sentinelle de l'arbre : y aboutir signifie « absent », la
+    // déréférencer lirait le nœud bidon.
+    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
+      const char* nm =
+          *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + kDescRecName);
+      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
 
 // ── std::list<ItemSkillInfo> de session : nœud et champs lus ──────────────────
 // Nœud MSVC : next@+0, prev@+4, value@+8 — `value` EST l'ItemSkillInfo.
@@ -80,6 +114,17 @@ int SlotCount(void* info) {
   __try {
     return reinterpret_cast<int(__fastcall*)(void*)>(itemdb::kSlotCountAddr)(info);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+const char* NameById(uint32_t id) {
+  auto it = g_name_cache.find(id);
+  if (it != g_name_cache.end()) return it->second.c_str();
+  char buf[64];
+  ResolveNameSEH(id, buf, sizeof(buf));
+  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
+  // On mémorise même l'échec : un id absent de la DB le restera, et réessayer à
+  // chaque frame relancerait le chargement paresseux pour rien.
+  return (g_name_cache[id] = buf).c_str();
 }
 
 const char* Label(char* out, size_t out_size, const char* name, int slots) {

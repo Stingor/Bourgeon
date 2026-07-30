@@ -707,35 +707,9 @@ bool SessionBsRemove(int index) {
   return ok;
 }
 
-// ── Nom d'item par id (même DB que les autres viewers) ───────────────────────
-using DescLookup_t   = void*(__cdecl*)(int, void*);
-using EnsureLoaded_t = char (__thiscall*)(void*, int);
-
-std::unordered_map<uint32_t, std::string> g_name_cache;
-
-void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
-    if (cache)
-      reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
-        static_cast<int>(id), reinterpret_cast<void*>(itemdb::kTableAddr));
-    if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
-      const char* nm = *reinterpret_cast<char**>(reinterpret_cast<char*>(rec) + 4);
-      if (nm) { std::strncpy(out, nm, cap - 1); out[cap - 1] = '\0'; }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-const char* ItemName(uint32_t id) {
-  auto it = g_name_cache.find(id);
-  if (it != g_name_cache.end()) return it->second.c_str();
-  char buf[64];
-  ResolveNameSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "#%u", id);
-  return (g_name_cache[id] = buf).c_str();
-}
+// Le nom composé (refine + cartes) vient de BuildDisplayName et se cache dans
+// g_display_name_cache plus haut ; itemcell::NameById n'est que le REPLI, pour
+// une ligne dont la composition a échoué.
 
 // Nom du vendeur pour la barre de titre. Le titre natif passe par un buffer
 // GLOBAL partagé (0x00FCE968) réécrit avant chaque dessin : inexploitable ici,
@@ -898,7 +872,7 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
   // ⚠ BuildDisplayName compose le refine et le préfixe de carte, mais PAS le
   // suffixe d'emplacements (cf. itemdesc::RenderSimpleDesc, qui l'ajoute de son
   // côté pour la même raison). On l'ajoute donc dans les deux cas.
-  const char* label = desc.name[0] != '\0' ? desc.name : ItemName(desc.id);
+  const char* label = desc.name[0] != '\0' ? desc.name : itemcell::NameById(desc.id);
   if (slots > 0) ImGui::Text("%s [%d]", label, slots);
   else           ImGui::TextUnformatted(label);
   ItemHover(desc, wnd, list_off);
