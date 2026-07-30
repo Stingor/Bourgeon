@@ -11,7 +11,7 @@
 #include "bourgeon.h"              // Bourgeon::Instance().SendPacket / session
 #include "d3d9/d3d9_hook.h"        // Overlay_DeviceEpoch (invalidation du fond)
 #include "imgui.h"
-#include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection + HelpMarker
+#include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker
 #include "ragnarok/uiwnd.h"        // uiwnd::FindWindow
 #include "ui/game_texture.h"       // ro::TextureFromGameFile (fond bg_bank_moon.bmp)
 #include "ui/ro_imgui.h"           // skin RO (BeginRoWindow / RoButton / RoCheckbox)
@@ -387,15 +387,13 @@ void BankWindow::OnRenderUI() {
                                : (std::max)(300.0f, ImGui::GetFontSize() * 23.0f);
   ImGui::SetNextWindowSize(ImVec2(window_w, 0.0f), ImGuiCond_Always);
 
-  ro::SetNextWindowTitleBullet("Options de la banque");
+  // (Pas de puce « Options » dans le titre : cette fenêtre n'a plus aucun réglage,
+  // donc plus de section vers laquelle pointer. Cf. le retrait de kIfaceBank.)
   // Ni poignée de redimensionnement ni bouton « réduire » : la fenêtre n'a qu'une
   // taille utile, et un repli n'apporterait rien sur trois lignes de contenu.
   const bool begun = ro::BeginRoWindow(
       "Banque###bourgeon_bank", &show_panel_,
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-  if (ro::TitleBulletClicked())
-    if (auto* mu = Bourgeon::Instance().moonlight_ui())
-      mu->OpenInterfaceSection(MoonlightUi::kIfaceBank);
   // X du viewer -> ferme la banque native (les deux fenêtres partent ensemble).
   if (!show_panel_) { CloseBank(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
@@ -612,43 +610,8 @@ void BankWindow::OnRenderUI() {
   ro::EndRoWindow();
 }
 
-bool BankWindow::DrawSettings() {
-  bool changed = false;
-
-  // Fenêtre membre du groupe « Interface moderne » (tout-ImGui ou tout-natif, plus
-  // de mixe) : `SetModernInterface` écrit `imgui_enabled_` avec les autres. Ce qui
-  // suit ne dit que ce que la bascule change pour la banque.
-  // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
-  // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
-  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
-  SameLine(); HelpMarker(
-      "ON : banque ImGui au skin RO (fond du client, incréments rapides, "
-      "« tout déposer / tout retirer », plafond INT32 affiché), et la fenêtre "
-      "native est cachée.\n"
-      "OFF (défaut) : banque native classique, aucun viewer.\n\n"
-      "Dans les deux cas c'est le SERVEUR qui ouvre la banque : Ctrl+B (ou le "
-      "bouton sac de zeny du footer de l'inventaire) lui envoie une demande.");
-
-  // 🔴 AUCUN réglage de contenu ici, et c'est une contrainte de la fenêtre, pas un
-  // manque d'idées.
-  //
-  // Cette banque n'est pas dessinée sur un fond ImGui : elle est peinte sur le
-  // BITMAP du client, pré-composé et teinté (ro::SkinImageTint), donc à hauteur
-  // FIXE. Tout élément qu'on pourrait masquer — la ligne « Total », la rangée
-  // d'incréments — décalerait verticalement tout ce qui le suit et ferait sortir
-  // les actions du fond peint. Le réglage n'aurait pas simplement « moins
-  // d'options » comme effet : il casserait l'habillage.
-  //
-  // Les deux anciennes cases (`bank_quick_amounts`, `bank_show_total`) ont donc
-  // été retirées, et leur contenu rendu PERMANENT. Une fenêtre dont la géométrie
-  // est imposée par une image ne peut pas offrir de contenu optionnel — c'est le
-  // prix du skin natif, et il est assumé.
-  ImGui::Spacing();
-  ImGui::TextDisabled(
-      "La banque ne s'ouvre JAMAIS depuis le client : Ctrl+B envoie une demande "
-      "et c'est le serveur qui l'ouvre. Cette fenêtre suit donc la native — il "
-      "n'y a volontairement pas de bouton « ouvrir » ni « rafraîchir » (une "
-      "demande de rafraîchissement refermerait la banque).");
-
-  return changed;
-}
+// (Plus de `DrawSettings` : la banque n'a AUCUN réglage à offrir. Son contenu est
+// imposé par un fond bitmap à hauteur fixe — rien n'y est masquable sans décaler le
+// reste hors du fond peint — et son interrupteur de fenêtre est celui du groupe
+// « Interface moderne », piloté par SetModernInterface. Une section qui n'aurait
+// contenu qu'un paragraphe descriptif n'a pas sa place dans un panneau de réglages.)

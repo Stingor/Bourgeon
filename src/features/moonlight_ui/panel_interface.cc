@@ -128,7 +128,6 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceStorage,     "Storage"},
         {kIfaceInventory,   "Inventaire"},
         {kIfaceCart,        "Cart"},
-        {kIfaceBank,        "Banque"},
         {kIfaceRefine,      "Refine"},
         {kIfaceMakeItem,    "Fabrication"},
     };
@@ -187,8 +186,7 @@ void MoonlightUi::DrawInterfacePanel() {
       const bool needs_modern =
           iface_nav_ == kIfaceSkillBar  || iface_nav_ == kIfaceStorage ||
           iface_nav_ == kIfaceInventory || iface_nav_ == kIfaceCart    ||
-          iface_nav_ == kIfaceBank      || iface_nav_ == kIfaceRefine  ||
-          iface_nav_ == kIfaceMakeItem;
+          iface_nav_ == kIfaceRefine    || iface_nav_ == kIfaceMakeItem;
       const bool locked = needs_modern && !ModernInterfaceEnabled();
       if (locked) {
         // 🔴 Un APERÇU, pas un cimetière. Ces sections sont la meilleure vitrine de
@@ -373,14 +371,12 @@ void MoonlightUi::DrawInterfacePanel() {
         }
       }
 
-      // ── Banque de zeny (BankWindow : Ctrl+B, phase 1 = coexistence) ─────
-      if (iface_nav_ == kIfaceBank) {
-        if (auto* bt = Bourgeon::Instance().bank_window()) {
-          if (bt->DrawSettings()) SaveSettings();
-        } else {
-          ImGui::TextDisabled(kPluginUnavailable);
-        }
-      }
+      // (Pas de section « Banque » : elle n'avait plus aucun réglage à offrir. Son
+      // contenu est imposé par un fond bitmap à hauteur fixe — rien n'y est
+      // masquable — et elle suit le groupe « Interface moderne » comme les autres.
+      // Il ne restait qu'un paragraphe descriptif, qui n'a pas sa place dans un
+      // panneau de réglages. `bank_imgui` continue d'être persisté et basculé par
+      // SetModernInterface : c'est la SECTION qui disparaît, pas le réglage.)
 
       // ── Refine d'arme (WeaponRefineWindow : compétence Upgrade Weapon) ─
       if (iface_nav_ == kIfaceRefine) {

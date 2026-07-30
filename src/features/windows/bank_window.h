@@ -42,10 +42,6 @@ class BankWindow : public Plugin {
   void OnTick() override;      // suit la fenêtre native + relit les soldes
   void OnRenderUI() override;  // dessine la fenêtre ImGui si la banque est ouverte
 
-  // Contenu de la section « Banque » du panneau Moonlight. Rend true si un
-  // réglage a changé (l'appelant sauvegarde une seule fois).
-  bool DrawSettings();
-
   // Ouvre — ou referme — la banque, exactement comme Ctrl+B. C'est le chemin du
   // behavior 146 natif, reproduit à l'identique : si la fenêtre 275 est ouverte on
   // la ferme côté client, sinon on DEMANDE au serveur de l'ouvrir
@@ -87,7 +83,7 @@ class BankWindow : public Plugin {
   // (Plus de `quick_amounts_` ni de `show_total_` : le fond de cette fenêtre est un
   // bitmap du client à hauteur FIXE, donc rien de son contenu ne peut être masqué
   // sans faire glisser le reste hors du fond peint. Les deux blocs sont désormais
-  // permanents — cf. le pavé de BankWindow::DrawSettings.)
+  // permanents, et la fenêtre n'a plus de section de réglages du tout.)
 
   // C'est NOUS qui avons baissé le flag de visibilité de la native ? Sert à ne le
   // remettre à 1 qu'une seule fois, quand imgui_enabled_ repasse à false — forcer 1

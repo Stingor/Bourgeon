@@ -124,7 +124,11 @@ class MoonlightUi : public Plugin {
   enum IfaceSection {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
     kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
-    kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceBank, kIfaceRefine,
+    // (Pas de section « Banque » : elle n'a plus AUCUN réglage. Son contenu est
+    // imposé par un fond bitmap à hauteur fixe, et elle suit le groupe
+    // « Interface moderne » comme les autres — il ne restait qu'un paragraphe
+    // descriptif, qui n'a rien à faire dans un panneau de réglages.)
+    kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceRefine,
     kIfaceMakeItem,
     kIfaceCount,
   };
