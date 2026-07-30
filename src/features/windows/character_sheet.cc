@@ -5981,11 +5981,14 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
         if (auto* iv = Bourgeon::Instance().inventory_viewer())
           iv->LinkItemToChat(it.invIndex);
       } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
+        // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le
+        // clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
+        // `src` survit au différé : c'est une adresse FIXE du bloc session.
         const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                               static_cast<uintptr_t>(slot) * kSlotStride;
-        itemcell::OpenDescById(it.nameid, it.viewId, it.location,
-                               static_cast<int>(mp.x), static_cast<int>(mp.y),
-                               reinterpret_cast<const void*>(src));
+        itemcell::DeferDescById(it.nameid, it.viewId, it.location,
+                                static_cast<int>(mp.x), static_cast<int>(mp.y),
+                                reinterpret_cast<const void*>(src));
       }
     }
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -6050,9 +6053,10 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
       ImGui::SetTooltip("%s  x%d\n(clic droit : desc, double-clic : déséquiper, glisser ici : équiper)",
                         itemcell::NameById(am.nameid), am.amount);
       const ImVec2 mp = ImGui::GetMousePos();
+      // Différée au relâchement, comme les slots d'équipement ci-dessus.
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-        itemcell::OpenDescById(am.nameid, am.viewId, am.location,
-                               static_cast<int>(mp.x), static_cast<int>(mp.y));
+        itemcell::DeferDescById(am.nameid, am.viewId, am.location,
+                                static_cast<int>(mp.x), static_cast<int>(mp.y));
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         SendUnequip(am.invIndex);
     } else {

@@ -500,8 +500,11 @@ void CloseInventory() {
 // objet. Trois Knife (une avec carte, une +1, une +3) sont trois nœuds de même id
 // et une recherche par id rendrait toujours le PREMIER — la description complète
 // se figeait sur lui pour les trois cases. L'index, lui, est unique par slot.
+//
+// DIFFÉRÉE au relâchement du bouton (itemcell::FlushDeferredDesc) : ouverte dès
+// le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kInvListHead, index), mx, my);
+  itemcell::DeferDescFromIndex(kInvListHead, index, mx, my);
 }
 
 // Le même nœud, mais retrouvé par son INDEX inventaire.

@@ -499,21 +499,7 @@ class MakeItemWindow : public Plugin {
   uint32_t pending_id_    = 0;
   bool     pos_dirty_     = false;
 
-  // Ouverture de la description native, DIFFÉRÉE elle aussi — champ à part, pour
-  // qu'un clic droit ne chasse pas une fabrication en attente.
-  //
-  // Deux raisons, et la seconde n'est pas cosmétique :
-  //  1. `itemcell::OpenDesc*` appelle un OnMsg NATIF ; le faire entre
-  //     ImGui::NewFrame() et Render() est exactement ce que le projet proscrit
-  //     (feedback_no_native_cmd_during_imgui_frame) ;
-  //  2. c'est ce qui faisait sortir la description DERRIÈRE nous. La remontée
-  //     passe par un drapeau posé par le hook OnMsg 0x18 et consommé au rendu
-  //     SUIVANT (ItemDescWindow::RaiseItemWindow -> SetNextWindowFocus). Ouvrir
-  //     depuis notre propre rendu, c'est poser ce drapeau pendant la frame où le
-  //     clic vient de nous donner le focus : la description remontait, puis notre
-  //     fenêtre repassait devant dans la même frame. Différer d'une frame remet
-  //     les deux dans l'ordre.
-  uint32_t pending_desc_id_ = 0;
-  int      pending_desc_x_  = 0;
-  int      pending_desc_y_  = 0;
+  // (L'ouverture de description différée au relâchement — diagnostiquée sur
+  //  cette fenêtre — vit désormais dans itemcell::DeferDescById /
+  //  FlushDeferredDesc, partagée par tous les viewers.)
 };

@@ -579,11 +579,13 @@ void NpcShopWindow::OnRenderUI() {
   };
 
   // Clic-droit sur le DERNIER item dessine (icone ou nom) -> description native.
+  // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le clic,
+  // un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
   auto rclick_desc = [&](uint32_t id, uint16_t view, uint32_t loc) {
     if (mui::IsLastItemRightClicked()) {
       const ImVec2 mp = ImGui::GetMousePos();
-      itemcell::OpenDescById(id, view, loc, static_cast<int>(mp.x),
-                             static_cast<int>(mp.y));
+      itemcell::DeferDescById(id, view, loc, static_cast<int>(mp.x),
+                              static_cast<int>(mp.y));
     }
   };
 

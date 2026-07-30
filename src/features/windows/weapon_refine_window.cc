@@ -262,15 +262,6 @@ int CountRealCards(const uint32_t card[4], int slots) {
   return cards;
 }
 
-// Description complète de l'item (fenêtre native 0x0c), depuis l'ItemSkillInfo
-// VIVANT de l'inventaire : cartes, refine et enchantements compris.
-// La remontée au premier plan n'est PAS à demander ici : ItemDescWindow la réclame
-// pour toute ouverture, depuis le hook OnMsg 0x18 que ce chemin traverse.
-void OpenItemDesc(int inventory_index, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kInvListHead, inventory_index),
-                             mx, my);
-}
-
 // (L'escamotage de la modale native « liste vide » a été SUPPRIMÉ avec son module
 // `ui/native_modal` : cette modale venait du handler natif du 0x0221, qui ne tourne
 // plus. Le mécanisme — détour sur 0x00A31A30, renvoi de 185, deux verrous — est
@@ -997,34 +988,13 @@ void WeaponRefineWindow::OnTick() {
 // ── Actions différées (hors frame ImGui) ─────────────────────────────────────
 
 void WeaponRefineWindow::FlushPending() {
-  // ── Ouverture de description : hors frame ImGui, ET bouton RELÂCHÉ ─────────
-  // 🔴 Le « bouton relâché » est la clé, et c'est une observation de terrain : un
-  // clic BREF sortait la description devant, un appui PROLONGÉ la faisait passer
-  // DERRIÈRE. Le focus de fenêtre reste acquis à la nôtre tant que le bouton est
-  // enfoncé : la description remontait à la frame suivante
-  // (ItemDescWindow -> SetNextWindowFocus), puis le geste toujours en cours nous
-  // rendait le dessus. En attendant la fin du geste, il n'y a plus de course.
-  // Bénéfice second : l'appel natif OnMsg 0x18 sort de la frame ImGui, ce que le
-  // projet impose de toute façon.
-  // ⚠ Placé AVANT le retour anticipé sur kActNone : ce n'est pas une
-  // PendingAction, et l'y soumettre l'aurait rendu muet la plupart du temps.
-  if ((pending_desc_index_ >= 0 || pending_desc_id_ != 0) &&
-      !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-      !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-    const int      desc_index = pending_desc_index_;
-    const uint32_t desc_id    = pending_desc_id_;
-    pending_desc_index_ = -1;
-    pending_desc_id_    = 0;
-    if (desc_index >= 0)
-      OpenItemDesc(desc_index, pending_desc_x_, pending_desc_y_);
-    else
-      itemcell::OpenDescById(desc_id, 0, 0, pending_desc_x_, pending_desc_y_);
-  }
+  // (L'ouverture de description différée au relâchement qui ouvrait cette
+  //  fonction a été GÉNÉRALISÉE : c'est désormais itemcell::FlushDeferredDesc,
+  //  appelé par Bourgeon::OnProcessInput pour les huit viewers.)
 
   // ── Rendre toute session NATIVE encore vivante ────────────────────────────
   // ⚠ Placé AVANT le retour anticipé sur kActNone : ce n'est pas une PendingAction,
-  // et l'y soumettre l'aurait rendu muet la plupart du temps (même raison que
-  // l'ouverture de description ci-dessus).
+  // et l'y soumettre l'aurait rendu muet la plupart du temps.
   //
   // SANS ÉTAT, et c'est tout l'intérêt : une native vivante alors que nous sommes
   // actifs est forcément une session que nous n'avons PAS ouverte — depuis le
@@ -1840,15 +1810,12 @@ void WeaponRefineWindow::DrawList(float list_h) {
         sel_visible_ = true;
         // Description complète : fenêtre native 0x0c, enrichie par
         // item_desc_window — c'est elle qui dit ce qu'on risque à jouer l'arme.
-        // DIFFÉRÉE jusqu'au relâchement du bouton — cf. FlushPending. Ouverte
-        // ici, un appui PROLONGÉ faisait ressortir la description DERRIÈRE nous.
+        // Par INDEX (l'ItemSkillInfo vivant rend cartes/refine/enchants), et
+        // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte ici,
+        // un appui PROLONGÉ faisait ressortir la description DERRIÈRE nous.
         POINT pt;
-        if (GetCursorPos(&pt)) {
-          pending_desc_index_ = e.index;
-          pending_desc_id_    = 0;
-          pending_desc_x_     = pt.x;
-          pending_desc_y_     = pt.y;
-        }
+        if (GetCursorPos(&pt))
+          itemcell::DeferDescFromIndex(kInvListHead, e.index, pt.x, pt.y);
       }
       if (ImGui::IsItemHovered()) {
         // On MÉMORISE, on ne peint pas : l'aperçu crée son propre popup et doit
@@ -1966,13 +1933,9 @@ void WeaponRefineWindow::DrawOreLinks() {
       POINT pt;
       // Par ID : le minerai peut ne pas être en inventaire (stock 0), il n'y a
       // donc pas toujours d'ItemSkillInfo vivant à passer.
-      // Différée comme les lignes d'arme (cf. FlushPending).
-      if (GetCursorPos(&pt)) {
-        pending_desc_index_ = -1;
-        pending_desc_id_    = id;
-        pending_desc_x_     = pt.x;
-        pending_desc_y_     = pt.y;
-      }
+      // Différée comme les lignes d'arme (itemcell::FlushDeferredDesc).
+      if (GetCursorPos(&pt))
+        itemcell::DeferDescById(id, 0, 0, pt.x, pt.y);
     }
   }
 }

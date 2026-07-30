@@ -199,8 +199,11 @@ void CloseCart() {
 // ⚠ Par INDEX, jamais par id : deux exemplaires du même objet (même id, refines
 // ou cartes différents) sont deux nœuds distincts, et une recherche par id
 // rendrait toujours le PREMIER pour toutes leurs cases.
+//
+// DIFFÉRÉE au relâchement du bouton (itemcell::FlushDeferredDesc) : ouverte dès
+// le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
-  itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kCartListHead, index), mx, my);
+  itemcell::DeferDescFromIndex(kCartListHead, index, mx, my);
 }
 
 // Lecture SEH (POD only) des compteurs du footer -> hors OnRenderUI, qui contient

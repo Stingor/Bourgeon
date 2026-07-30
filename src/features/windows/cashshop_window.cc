@@ -669,9 +669,11 @@ void CashShopWindow::OnRenderUI() {
       ImGui::PopStyleVar();    // WindowPadding (carte)
       ImGui::PopStyleColor();  // ChildBg
       if (mui::IsLastItemRightClicked()) {
+        // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le
+        // clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
         const ImVec2 mp = ImGui::GetMousePos();
-        itemcell::OpenDescById(ci.id, ci.view, ci.location,
-                               static_cast<int>(mp.x), static_cast<int>(mp.y));
+        itemcell::DeferDescById(ci.id, ci.view, ci.location,
+                                static_cast<int>(mp.x), static_cast<int>(mp.y));
       }
       ImGui::PopID();
     };

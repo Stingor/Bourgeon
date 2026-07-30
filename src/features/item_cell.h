@@ -141,6 +141,39 @@ void OpenDescFromInfo(const void* info, int mx, int my);
 void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
                   const void* src = nullptr);
 
+// ── Ouverture DIFFÉRÉE au relâchement du bouton ──────────────────────────────
+// Les viewers n'appellent PAS OpenDesc* pendant leur rendu : ils ARMENT ici, et
+// Bourgeon::OnProcessInput consomme via FlushDeferredDesc(), hors frame ImGui.
+// Deux raisons, aucune cosmétique :
+//  1. OpenDesc* rejoue un OnMsg NATIF ; l'appeler entre ImGui::NewFrame() et
+//     Render() est proscrit (feedback_no_native_cmd_during_imgui_frame) ;
+//  2. le focus de fenêtre reste acquis à la fenêtre CLIQUÉE tant que le bouton
+//     est enfoncé. La remontée de la description est différée d'une frame
+//     (drapeau posé par le hook OnMsg 0x18, consommé par ItemDescWindow →
+//     SetNextWindowFocus) : ouvrir dès le clic, c'est remonter PUIS se faire
+//     repasser devant si l'appui dure. Un clic BREF sortait la description
+//     devant, un appui PROLONGÉ la faisait passer DERRIÈRE — c'est cette
+//     asymétrie qui a longtemps rendu le bug insaisissable. En attendant la fin
+//     du geste il n'y a plus de course, et un clic bref part immédiatement.
+//
+// Une seule demande en vol (une souris, un geste) : la dernière gagne.
+
+// Par INDEX dans une liste de session (inventaire/chariot/storage, cf.
+// FindInfoByIndex) : description COMPLÈTE, cartes/refine/enchants compris.
+// L'ItemSkillInfo est re-résolu AU FLUSH, pas au clic — le nœud peut mourir
+// entre les deux (consommation, transfert), un pointeur mémorisé serait périmé.
+void DeferDescFromIndex(uintptr_t list_head, int index, int mx, int my);
+
+// Par ID seul (`view`/`location`/`src` : mêmes rôles que dans OpenDescById).
+// ⚠ `src` doit rester valide jusqu'au relâchement : un slot d'équipement de la
+// session convient (adresse fixe), un tampon de pile non.
+void DeferDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
+                   const void* src = nullptr);
+
+// Joue la demande en vol dès que les DEUX boutons sont relâchés. Appelé chaque
+// frame par Bourgeon::OnProcessInput — nulle part ailleurs.
+void FlushDeferredDesc();
+
 // ── Retrouver un ItemSkillInfo dans une liste de session ─────────────────────
 // Inventaire (0x015fbab0), chariot (0x015fbae0) et storage (0x015fbad8) sont
 // TROIS std::list<ItemSkillInfo> de même forme ; `list_head` est l'adresse du

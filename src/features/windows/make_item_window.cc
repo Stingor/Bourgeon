@@ -2166,20 +2166,10 @@ void MakeItemWindow::FlushPending() {
     if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
   }
 
-  // ── Ouverture de description : hors frame ImGui, ET bouton RELÂCHÉ ─────────
-  // 🔴 Le « bouton relâché » est la clé, et c'est une observation de terrain : un
-  // clic BREF ouvrait la description devant, un appui PROLONGÉ la faisait passer
-  // derrière. La raison est que le focus de fenêtre reste acquis à la nôtre tant
-  // que le bouton est enfoncé : la description remontait (SetNextWindowFocus au
-  // rendu suivant), puis le geste toujours en cours nous rendait le dessus. En
-  // attendant la fin du geste, il n'y a plus de course — et un clic bref part
-  // immédiatement, donc rien n'est perdu.
-  if (pending_desc_id_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-      !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-    const uint32_t id = pending_desc_id_;
-    pending_desc_id_ = 0;
-    itemcell::OpenDescById(id, 0, 0, pending_desc_x_, pending_desc_y_);
-  }
+  // (L'ouverture de description différée qui vivait ici a été GÉNÉRALISÉE :
+  //  c'est désormais itemcell::FlushDeferredDesc, appelé par
+  //  Bourgeon::OnProcessInput pour les huit viewers — la course de focus de
+  //  l'appui long, diagnostiquée ici, est expliquée dans item_cell.h.)
 
   const Pending todo = pending_;
   if (todo == Pending::kNone) return;
@@ -2761,9 +2751,8 @@ void MakeItemWindow::DrawList() {
       // ferait doublon — c'est écrit tel quel dans item_desc_window.h.
       if (IsLastItemRightClicked()) {
         const ImVec2 m = ImGui::GetMousePos();
-        pending_desc_id_ = e->id;
-        pending_desc_x_  = static_cast<int>(m.x);
-        pending_desc_y_  = static_cast<int>(m.y);
+        itemcell::DeferDescById(e->id, 0, 0, static_cast<int>(m.x),
+                                static_cast<int>(m.y));
       }
       if (IsLastItemHovered()) ro::SetHoverCursor(kRoCursorHand);
       if (selected) sel_visible_ = true;
@@ -3444,9 +3433,8 @@ void MakeItemWindow::DrawRecipe() {
     // intéressant — donc il n'y a pas toujours d'ItemSkillInfo vivant à passer.
     if (ImGui::IsItemClicked() || IsLastItemRightClicked()) {
       const ImVec2 mouse = ImGui::GetMousePos();
-      pending_desc_id_ = m.id;
-      pending_desc_x_  = static_cast<int>(mouse.x);
-      pending_desc_y_  = static_cast<int>(mouse.y);
+      itemcell::DeferDescById(m.id, 0, 0, static_cast<int>(mouse.x),
+                              static_cast<int>(mouse.y));
     }
   }
 }

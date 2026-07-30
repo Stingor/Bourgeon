@@ -241,15 +241,6 @@ class WeaponRefineWindow : public Plugin {
   std::string last_result_;
   uint32_t    last_result_color_ = 0;
 
-  // Ouverture de description DIFFÉRÉE au relâchement du bouton (cf. FlushPending).
-  // Deux cibles possibles : une arme par son INDEX d'inventaire (cartes, refine
-  // et enchantements réels) ou un minerai par son ID (il peut ne pas être en
-  // sac). -1 / 0 = rien en attente.
-  int      pending_desc_index_ = -1;
-  uint32_t pending_desc_id_    = 0;
-  int      pending_desc_x_     = 0;
-  int      pending_desc_y_     = 0;
-
   bool open_      = false;  // la fenêtre native 111 est ouverte ce frame ?
   bool was_open_  = false;  // front montant (placement + premier plan)
   bool need_focus_ = false;

@@ -81,6 +81,20 @@ constexpr int kWalkGuard = 4000;
 // structure en fait 0xf8, on arrondit (cf. le memcpy 0x5c..0xf8 du pont `src`).
 constexpr size_t kInfoSize = 0x100;
 
+// La demande d'ouverture en vol (cf. l'en-tête pour le pourquoi du différé).
+// `list_head` != 0 => par index ; sinon `id` != 0 => par id ; les deux nuls =>
+// rien en attente. Écrasée par toute nouvelle demande : une souris, un geste.
+struct DeferredDesc {
+  uintptr_t   list_head;
+  int         index;
+  uint32_t    id;
+  uint16_t    view;
+  uint32_t    location;
+  const void* src;
+  int         mx, my;
+};
+DeferredDesc g_deferred = {};
+
 }  // namespace
 
 void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size) {
@@ -229,6 +243,33 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
       uiwnd::SetPos(dwnd, mx, my);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// ── Ouverture différée au relâchement (cf. l'en-tête pour le pourquoi) ───────
+
+void DeferDescFromIndex(uintptr_t list_head, int index, int mx, int my) {
+  g_deferred = {list_head, index, 0, 0, 0, nullptr, mx, my};
+}
+
+void DeferDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
+                   const void* src) {
+  g_deferred = {0, 0, id, view, location, src, mx, my};
+}
+
+void FlushDeferredDesc() {
+  if (g_deferred.list_head == 0 && g_deferred.id == 0) return;
+  // Le « bouton relâché » est LA condition — pas seulement « hors frame ImGui ».
+  // Tant qu'un bouton est enfoncé, la fenêtre cliquée garde le focus et
+  // repasserait devant la description à la frame suivante (cf. l'en-tête).
+  if (ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+      ImGui::IsMouseDown(ImGuiMouseButton_Right))
+    return;
+  const DeferredDesc d = g_deferred;
+  g_deferred = DeferredDesc{};
+  if (d.list_head != 0)
+    OpenDescFromInfo(FindInfoByIndex(d.list_head, d.index), d.mx, d.my);
+  else
+    OpenDescById(d.id, d.view, d.location, d.mx, d.my, d.src);
 }
 
 // ── Parcours des listes de session ───────────────────────────────────────────

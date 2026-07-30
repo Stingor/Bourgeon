@@ -42,6 +42,7 @@
 #include "features/minigames/roggle.h"
 #include "features/minigames/rojeweled.h"
 #include "features/overlays/skill_bar.h"
+#include "features/item_cell.h"  // itemcell::FlushDeferredDesc (desc au relâchement)
 #include "features/windows/item_desc_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
@@ -253,6 +254,12 @@ void Bourgeon::OnProcessInput() {
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
   if (auto* km = keyboard_move()) km->Update();
+  // Description d'item : les viewers ARMENT au clic (itemcell::DeferDesc*), on
+  // OUVRE ici — hors frame ImGui ET bouton relâché. Ouverte au clic, un appui
+  // PROLONGÉ faisait passer la description DERRIÈRE la fenêtre cliquée (course
+  // de focus détaillée dans item_cell.h). Avant HideNativeDescWindows, pour que
+  // la fenêtre native qui vient de naître soit cachée dans la même passe.
+  itemcell::FlushDeferredDesc();
   // Cache les fenêtres de description natives DANS LA PHASE INPUT (par frame, non
   // throttlé) -> flicker ~nul à l'ouverture d'un skill (dont l'OnMsg n'est PAS
   // hookée, contrairement à l'item). Idempotent/sûr (re-cache chaque frame).
