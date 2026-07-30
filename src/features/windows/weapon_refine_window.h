@@ -89,6 +89,31 @@ class WeaponRefineWindow : public Plugin {
   // se ferme d'un clic, et le champ de chat reste cliquable.
   bool WantsEnterKey() const;
 
+  // ── Une AUTRE session de fabrication vient de s'ouvrir ────────────────────
+  //
+  // 🔴 Le serveur ne garde QU'UN `menuskill` par personnage. Une liste de
+  // fabrication (Mini Furnace, marteau, kit…) écrase donc `menuskill_id` et détruit
+  // la session de refine **en silence** : la fenêtre resterait à l'écran avec sa
+  // liste et son bouton actifs, sur une session qui n'existe plus. Le joueur
+  // cliquerait « Refine » dans le vide.
+  //
+  // 🔴 Et on ENVOIE le `182 / -1`, contrairement à ce qu'une première rédaction
+  // supposait. « La fabrication a écrasé notre menuskill » n'est vrai que si SA liste
+  // est pleine (le serveur n'arme que `if (count > 0)`). Et elle arrive vide
+  // précisément dans ce cas de figure, par un enchaînement circulaire :
+  // `skill_can_produce_mix` écarte toute recette dont le `req_skill` ne correspond
+  // pas à un `menuskill_id` positif déjà en place. Notre refine encore armé vidait
+  // donc la liste, qui n'armait rien, qui ne nous désarmait pas — blocage définitif
+  // des deux compétences. ⏱ Constaté en jeu, deux fois.
+  //
+  // ⚠ Personne d'autre ne peut le faire : l'annulation de la fabrication (CZ 0x018E,
+  // itemId 0) sort par le `default:` de `clif_parse_ProduceMix` sans rien effacer.
+  // Seul `clif_parse_WeaponRefine` efface un `WS_WEAPONREFINE`.
+  //
+  // Appelée par MakeItemWindow à l'arrivée de sa liste. L'inverse n'existe pas : le
+  // serveur refuse déjà de lancer le refine pendant une session de fabrication.
+  void CloseForOtherCraft();
+
   // Contenu de la section « Refine » du panneau Moonlight. Rend true si un
   // réglage a changé (l'appelant sauvegarde une seule fois).
   bool DrawSettings();
@@ -127,6 +152,7 @@ class WeaponRefineWindow : public Plugin {
   // serveur. Le choix de l'arme et le déclenchement restent des clics. La
   // distinction est le cœur du garde-fou — cf. le pavé dans le .cc.
   bool& auto_recast()  { return auto_recast_; }
+  bool& enter_key()    { return enter_key_; }
 
  private:
   // Une entrée de ZC_NOTIFY_WEAPONITEMLIST, telle qu'elle arrive sur le fil.
@@ -176,6 +202,11 @@ class WeaponRefineWindow : public Plugin {
   // N'envoie rien : c'est FlushPending qui joue le chemin natif.
   void ScheduleAutoRecast(int result);
 
+  // Ré-arme une relance dont le LANCEMENT n'a rien donné — la compétence a été jetée
+  // par le délai de cast, ou rien n'est revenu. Distinct de ScheduleAutoRecast, qui
+  // traite le RÉSULTAT d'une tentative ; ici il n'y a jamais eu de tentative.
+  void RetryRecast();
+
   void PushLog(const char* text, uint32_t color);
   // Journalise le résultat d'un ZC_ACK_WEAPONREFINE avec le libellé EXACT du
   // client (MsgStringTable 911..914), pas une paraphrase.
@@ -190,12 +221,34 @@ class WeaponRefineWindow : public Plugin {
   // seul instant où l'arme est encore sûre d'exister, un échec la détruisant.
   // Au moment de journaliser : l'index d'abord (état à jour, refine incrémenté),
   // ce nom-là en repli quand l'objet n'est plus là.
+  //
+  // Le refine d'AVANT est retenu lui aussi : sans lui, une réussite ne pouvait
+  // qu'énoncer un état, jamais un passage. « Refined weapon: +4 Knife » se lit
+  // « on a raté, elle est restée à +4 » alors que l'arme est à +5 — l'ambiguïté
+  // venait de là. Il faut les DEUX bornes, et le paquet n'en porte aucune.
   int  sent_index_ = -1;
   char sent_name_[128] = {0};
+  int  sent_refine_ = -1;   // -1 = inconnu (ne rien affirmer plutôt que « +0 »)
 
   // ── Modèle (bâti par OnRecvPacket, lu par OnRenderUI) ──
   std::vector<Entry>   entries_;
   std::vector<LogLine> history_;
+
+  // Dernier résultat de tentative, affiché en pied jusqu'à la liste suivante.
+  // Il n'existait que dans `history_`, panneau OPT-IN et replié par défaut :
+  // sur une chaîne de relances, « ÉCHEC — arme détruite » était donc la seule
+  // information vraiment importante… et la seule qui ne s'affichait pas.
+  std::string last_result_;
+  uint32_t    last_result_color_ = 0;
+
+  // Ouverture de description DIFFÉRÉE au relâchement du bouton (cf. FlushPending).
+  // Deux cibles possibles : une arme par son INDEX d'inventaire (cartes, refine
+  // et enchantements réels) ou un minerai par son ID (il peut ne pas être en
+  // sac). -1 / 0 = rien en attente.
+  int      pending_desc_index_ = -1;
+  uint32_t pending_desc_id_    = 0;
+  int      pending_desc_x_     = 0;
+  int      pending_desc_y_     = 0;
 
   bool open_      = false;  // la fenêtre native 111 est ouverte ce frame ?
   bool was_open_  = false;  // front montant (placement + premier plan)
@@ -213,6 +266,60 @@ class WeaponRefineWindow : public Plugin {
   // Les entrées ont été consommées (tentative partie) : la liste affichée
   // n'existe plus côté serveur, on n'a plus qu'un résultat à montrer.
   bool consumed_ = false;
+
+  // ── « Le SERVEUR attend-il encore une réponse ? » ─────────────────────────
+  //
+  // 🔴 Un seul drapeau pour cette question, et il ne parle QUE du serveur — pas de
+  // notre fenêtre, pas de la fenêtre native, pas de ce qui est affiché. C'est lui,
+  // et lui seul, qui décide si la fermeture doit envoyer le `182 / -1` qui désarme
+  // le `menuskill`.
+  //
+  // Trois bugs sont venus d'avoir répondu à cette question autrement :
+  //   1. par la présence de la fenêtre NATIVE (`RefineWnd()`) — cassé net dès
+  //      qu'on a empêché cette fenêtre de naître : plus de -1, personnage bloqué ;
+  //   2. par `entries_.empty()` — un parseur qui échoue rend un vecteur vide sur un
+  //      paquet peuplé, et prétend donc que rien n'est armé ;
+  //   3. par rien du tout à la bascule de l'interrupteur « Interface moderne », qui
+  //      jetait la session sans prévenir le serveur.
+  //
+  // Posé sur le COMPTE du paquet (`count > 0`, exactement le critère de
+  // `clif_upgrade_list`), retiré dès qu'une tentative part (le serveur fait alors
+  // son propre `clif_menuskill_clear`) ou qu'une annulation est envoyée.
+  //
+  // ⚠ NON remis à zéro par ResetSession : celui-ci referme NOTRE interface, ce qui
+  // ne dit rien de l'état du serveur. C'est précisément la confusion qui a produit
+  // le bug n°3.
+  bool session_armed_ = false;
+
+  // ── Une relance de compétence est-elle EN VOL ? ────────────────────────────
+  // Tick du dernier CZ_USE_SKILL de relance, 0 = aucune en vol. Remis à zéro dès
+  // qu'une liste revient : c'est la preuve que la compétence est bien partie.
+  //
+  // 🔴 Sans ce suivi, une relance jetée par le serveur (délai de cast, `canact_tick`)
+  // arrêtait la chaîne SANS UN MOT : `auto_recast_at_` déjà consommé, `pending_`
+  // revenu à `kActNone`, `consumed_` toujours vrai — fenêtre grisée sur « Session
+  // terminée » alors que l'arme était intacte et les conditions réunies. ⏱ Constaté
+  // en jeu, et seulement avec Entrée MAINTENUE : `IsKeyPressed` répète ~20 fois par
+  // seconde, c'est le seul régime assez rapide pour que la relance tombe dans le
+  // délai de cast de la tentative précédente.
+  unsigned recast_sent_at_ = 0;
+  int      recast_retries_ = 0;  // relances consécutives sans liste en retour
+
+  // ── Natif -> moderne avec la native DÉJÀ ouverte : AUCUN drapeau ───────────
+  //
+  // Cette fenêtre tient une session que le JOUEUR a lancée et que nous n'avons
+  // jamais vue (le paquet est passé quand nous étions coupés) : nous ne pouvons donc
+  // pas l'afficher, faute de données. On PILOTE son bouton Annuler — `OnMsg(6, 185)`
+  // — le seul chemin qui désarme sans que nous ayons à connaître le protocole de
+  // réponse : la fenêtre, elle, le connaît, elle envoie son paquet puis se détruit.
+  //
+  // 🔴 Et cela se fait SANS ÉTAT, à chaque `FlushPending`. Un drapeau posé depuis
+  // `OnTick` — limité à 100 ms — est une course perdue d'avance face à un
+  // FlushPending par frame : c'est ce qui a cassé la fabrication (la fenêtre était
+  // escamotée avant que le tick ne l'ait vue vivante). Il n'y a rien à retenir : une
+  // native vivante pendant que nous sommes actifs est forcément une session qui n'est
+  // pas la nôtre, puisque le remplacement du 0x0221 empêche toute naissance sous
+  // notre garde.
 
   // Ligne survolée au frame courant. L'aperçu de description doit être peint
   // HORS de toute fenêtre ImGui (il crée son propre popup), donc APRÈS
@@ -285,9 +392,8 @@ class WeaponRefineWindow : public Plugin {
   // Sauve la position si elle a bougé. Appelée à la fermeture de la fenêtre.
   void FlushWindowPos();
 
-  // C'est NOUS qui avons baissé le flag de visibilité de la native ? Sert à ne
-  // le remettre qu'une fois, quand imgui_enabled_ repasse à false.
-  bool native_hidden_ = false;
+  // (Plus de `native_hidden_` : on ne masque plus jamais la native, donc il n'y a
+  // plus de visibilité à lui restituer. Elle est ANNULÉE, pas escamotée.)
   bool prev_enabled_  = false;
 
   // Anti-double-envoi (un double-clic enverrait deux tentatives).
@@ -312,4 +418,9 @@ class WeaponRefineWindow : public Plugin {
   bool show_history_ = false;
   bool log_time_     = true;
   bool auto_recast_  = false;
+  // Entrée déclenche-t-elle le refine ? Décoché (défaut) = la touche n'est PAS
+  // confisquée et le chat reste accessible pendant qu'on refine. ⚠ La modale de
+  // confirmation, elle, garde la touche quoi qu'il arrive (cf. WantsEnterKey) :
+  // « Entrée = OK » y est la convention, et elle valide une action destructrice.
+  bool enter_key_    = false;
 };

@@ -9,13 +9,16 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/craft_data.h"  // niveau d'arme + taux de refine (données serveur)
 #include "features/item_cell.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker
-#include "features/windows/item_desc_window.h"   // RenderSimpleDesc, FocusDescWindow
+#include "features/windows/item_desc_window.h"   // RenderSimpleDesc
 #include "imgui.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
+// (Le module ui/native_modal a été SUPPRIMÉ : la modale « liste vide » venait du
+// handler NATIF, qui ne tourne plus. Cf. RefineWnd et docs §3.1 bis.)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 
@@ -31,6 +34,16 @@ namespace {
 // renumérote les fenêtres.
 constexpr int       kWinRefine    = 111;         // 0x6F
 constexpr uintptr_t kRefineVTable = 0x0103ee00;
+
+// Piloter les BOUTONS de la fenêtre native : `OnMsg(6, id)` est un clic réel.
+// C'est le `case 6` de son OnMsg (`0x0096AAB0`) qui les reçoit, et les deux
+// identifiants sont ceux du code natif — pas des suppositions :
+//   184 = OK      -> SendMsg(182, sélection de SA listbox) puis fermeture
+//   185 = Annuler -> SendMsg(182, -1) = le désarmement, puis fermeture
+// (Ce sont aussi les valeurs de `+0x8C` / `+0x90`, les boutons « par défaut » que
+// le gestionnaire déclenche sur Entrée / Échap.)
+constexpr int kMsgUiAction = 6;
+constexpr int kBtnCancelId = 185;
 
 // CMode::SendMsg : le dispatcher du mode actif, vtable+0x18. La commande 182
 // envoie CZ_REQ_WEAPONREFINE (§4). On rejoue ce chemin natif plutôt que de
@@ -49,6 +62,17 @@ constexpr int kSkillWeaponRefine = 477;  // WS_WEAPONREFINE, MaxLevel 10
 
 // Modèle SESSION de l'inventaire : la std::list que le client tient à jour, quel
 // que soit l'état de ses fenêtres. Même source que InventoryViewer.
+// Job level du personnage. Le MÊME global que celui dont UIBasicInfoWnd tire son
+// « Job Lv. » (déjà employé par features/overlays/basic_info.cc) : c'est le
+// dernier terme qui manquait pour calculer une chance de refine côté client.
+constexpr uintptr_t kOwnJobLevel = 0x015fb9f8;
+
+int OwnJobLevel() {
+  __try {
+    return *reinterpret_cast<const int*>(kOwnJobLevel);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 constexpr uintptr_t kInvListHead = 0x015fbab0;
 constexpr int kNodeNext  = 0x00;  // nœud std::list : next
 constexpr int kNodeInfo  = 0x08;  // nœud : value = ItemSkillInfo
@@ -82,18 +106,39 @@ constexpr uint32_t kOreOridecon     = 984;
 // refine, et un refine ne part que sur un clic — la chaîne avance au rythme du
 // joueur, pas du client. Un compteur n'aurait protégé de rien et aurait coupé
 // une session légitime au 21e refine.
-constexpr unsigned kAutoRecastDelayMs = 450;  // laisse passer le délai de cast
+constexpr unsigned kAutoRecastDelayMs = 400; // laisse passer le délai de cast
+// Relance JETÉE par le serveur (ou restée sans réponse) : on réessaie, un nombre
+// borné de fois. Même délai que l'armement normal — c'est le RÉESSAI qui compte, pas
+// un délai plus long : le refus vient d'une collision ponctuelle avec le délai de
+// lancement de la tentative précédente, pas d'un état durable.
+constexpr unsigned kRecastRetryDelayMs = 400;
+constexpr unsigned kRecastNoListMs     = 1000;  // chien de garde : rien n'est revenu
+constexpr int      kMaxRecastRetries   = 3;
+
+// ⏱ VALEURS RÉGLÉES EN JEU (2026-07-30). À 300 ms, la chaîne se coupait par moments
+// avec Entrée maintenue ; à 400 ms, plus du tout.
+//
+// 🔴 Et le facteur qu'on oublie en lisant ces constantes : `OnTick` est LIMITÉ À
+// ~100 ms. L'échéance n'est donc pas « 400 ms » mais « 400 à 500 ms » selon la frame
+// où le tick tombe. À 300, l'attente réelle oscillait entre 300 et 400 ms et
+// chevauchait la limite du serveur — d'où un défaut INTERMITTENT, la signature d'un
+// seuil frôlé plutôt que d'une valeur fausse.
+//
+// Côté serveur, `WS_WEAPONREFINE` ne déclare aucun `AfterCastActDelay` dans
+// `db/pre-re/skill_db.yml` : c'est donc le plancher global qui s'applique
+// (`min_skill_delay_limit: 100` dans `conf/battle/skill.conf`), auquel s'ajoutent
+// l'aller-retour du `menuskill` et la latence. Baisser ces constantes en dessous de
+// 400 demande de remonter ces deux leviers ensemble, pas l'un sans l'autre.
 
 // Intervalle minimal entre deux demandes de refine, tous gestes confondus. Une
 // touche maintenue répète à la cadence du clavier — bien plus vite qu'un
 // aller-retour serveur.
-constexpr unsigned kMinSendIntervalMs = 300;
+constexpr unsigned kMinSendIntervalMs = 400;
 
 // MsgStringTable : on affiche les libellés EXACTS du client, jamais une
 // paraphrase (règle du projet). CP949 -> ro::Cp949ToUtf8 au moment du rendu.
 constexpr uintptr_t kMsgStringGet = 0x00a9ed30;
 using MsgStringGet_t = const char*(__cdecl*)(int);
-constexpr int kMsgCantMakeItem   = 424;  // MSI_CANT_MAKE_ITEM (texte de la modale)
 constexpr int kMsgRefineSuccess  = 911;  // MSI_ITEM_REFINE_SUCCEESS
 constexpr int kMsgRefineFail     = 912;  // MSI_ITEM_REFINE_FAIL
 constexpr int kMsgFailLevel      = 913;  // MSI_ITEM_REFINE_FAIL_LEVEL
@@ -220,13 +265,11 @@ int CountRealCards(const uint32_t card[4], int slots) {
 
 // Description complète de l'item (fenêtre native 0x0c), depuis l'ItemSkillInfo
 // VIVANT de l'inventaire : cartes, refine et enchantements compris.
+// La remontée au premier plan n'est PAS à demander ici : ItemDescWindow la réclame
+// pour toute ouverture, depuis le hook OnMsg 0x18 que ce chemin traverse.
 void OpenItemDesc(int inventory_index, int mx, int my) {
   itemcell::OpenDescFromInfo(itemcell::FindInfoByIndex(kInvListHead, inventory_index),
                              mx, my);
-  // Sinon le panneau s'ouvre DERRIÈRE notre fenêtre, qui a le focus : il porte
-  // NoFocusOnAppearing, donc ImGui ne le remonte pas de lui-même. Ici c'est un
-  // clic délibéré, on le demande explicitement (cf. itemdesc::FocusDescWindow).
-  itemdesc::FocusDescWindow();
 }
 
 const char* MsgString(int id) {
@@ -236,43 +279,11 @@ const char* MsgString(int id) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
 }
 
-// ── Escamotage ONE-SHOT de la modale native « liste vide » ───────────────────
-// UIWndMgr_ShowMessageBoxModal a ~250 sites d'appel dans le client : un détour
-// qui se tromperait de cible casserait tout, du login aux boutiques. D'où DEUX
-// verrous cumulés, et un désarmement inconditionnel :
-//
-//   1. le drapeau n'est armé QUE dans OnRecvPacket(0x0221) quand la liste est
-//      vide — et le handler natif appelle la modale synchroniquement juste
-//      après, sur le même thread, sans rien exécuter entre les deux ;
-//   2. on exige en plus que le TEXTE reçu soit exactement le pointeur que
-//      MsgStringTable_GetById(424) vient de rendre (la table rend un pointeur
-//      stable par id) : même armé, un autre message passe.
-//
-// Le drapeau est remis à faux à CHAQUE appel, armé ou non : il ne peut donc
-// jamais survivre à la fenêtre d'une seule réception. Et le détour reste
-// transparent tant que rien ne l'arme — c'est-à-dire toujours, si le joueur
-// garde l'interface native.
-constexpr uintptr_t kShowMessageBoxModal = 0x00a31a30;
-using ShowModal_t = int(__fastcall*)(void*, void*, const char*, int, int*, int,
-                                     int, const char*, int, int, int*);
-ShowModal_t g_orig_show_modal = nullptr;
-bool        g_swallow_next_modal = false;
-const char* g_swallow_text = nullptr;
-
-// 185 est ce que le natif renvoie quand il n'affiche RIEN (mode inhibé, ou une
-// modale déjà à l'écran) : c'est donc le « rien ne s'est passé » que ses
-// appelants savent déjà encaisser.
-constexpr int kModalNotShown = 185;
-
-int __fastcall ShowMessageBoxModalHook(void* self, void* edx, const char* text,
-                                       int p2, int* p3, int p4, int p5,
-                                       const char* title, int w, int h, int* p9) {
-  const bool swallow = g_swallow_next_modal && text && text == g_swallow_text;
-  g_swallow_next_modal = false;
-  g_swallow_text = nullptr;
-  if (swallow) return kModalNotShown;
-  return g_orig_show_modal(self, edx, text, p2, p3, p4, p5, title, w, h, p9);
-}
+// (L'escamotage de la modale native « liste vide » a été SUPPRIMÉ avec son module
+// `ui/native_modal` : cette modale venait du handler natif du 0x0221, qui ne tourne
+// plus. Le mécanisme — détour sur 0x00A31A30, renvoi de 185, deux verrous — est
+// conservé dans docs/make_item_list_re.md §3.1 bis au cas où un autre chemin en
+// aurait besoin.)
 
 // La fenêtre native de refine, ou nullptr. Le client DÉTRUIT ses fenêtres à
 // la fermeture : non-nul == « ouverte en ce moment ».
@@ -283,6 +294,19 @@ uint8_t* RefineWnd() {
     if (*reinterpret_cast<uintptr_t*>(w) != kRefineVTable) return nullptr;
     return w;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Pilote le bouton Annuler de la fenêtre native de refine (id 185).
+//
+// Fonction SÉPARÉE pour la même raison que ReadWndPos juste en dessous : elle porte
+// un `__try`, interdit dans toute fonction abritant un objet à destructeur non
+// trivial (C2712), et FlushPending en manipule.
+void CancelNativeRefine() {
+  uint8_t* wnd = RefineWnd();  // vérifie déjà la vtable
+  if (!wnd) return;
+  __try {
+    uiwnd::OnMsg(wnd, kMsgUiAction, kBtnCancelId);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 // Position écran de la fenêtre native.
@@ -382,26 +406,33 @@ uint32_t InfoId(const uint8_t* info) {
 }  // namespace
 
 WeaponRefineWindow::WeaponRefineWindow() {
-  // OBSERVATION, pas remplacement : le handler natif continue de tourner, sinon
-  // désactiver le plugin laisserait le skill sans aucune fenêtre.
+  // ── La liste : on prend la place du handler natif ──────────────────────────
   //
-  // ⚠ 0x0221 est un paquet à longueur VARIABLE et RegisterObserveOpcode ne sait
-  // transmettre qu'un nombre FIXE d'octets. On n'en demande donc que 2 : le
-  // champ `packetLength` lui-même, qui est la vraie borne. `data` pointe dans le
-  // tampon de réception juste après l'opcode, et le paquet entier y est déjà —
-  // lire jusqu'à `packetLength` reste dans les octets que le client vient de
-  // recevoir. Le `len` du callback est donc IGNORÉ pour cet opcode, et c'est
-  // délibéré (cf. le commentaire du parseur dans OnRecvPacket).
-  Bourgeon::Instance().RegisterObserveOpcode(kOpRefineList, 2);
+  // 🔴 REMPLACEMENT, plus observation — et ici l'enjeu n'est pas le confort mais
+  // l'ARME. Observer laissait naître la fenêtre native 111, qu'on masquait
+  // ensuite ; or une native masquée garde le clavier, et son bouton par défaut
+  // (`+0x8C = 184` = OK) envoie `SendMsg(182)` sur la sélection de SA listbox.
+  // Entrée ou Espace refinaient donc une arme que le joueur n'avait pas choisie,
+  // qu'un échec DÉTRUIT (docs/weapon_refine_re.md §10). La fenêtre ne naît plus.
+  //
+  // Le prédicat est relu à chaque paquet et vaut exactement ce qui gate notre
+  // fenêtre : plugin coupé, le handler natif reprend la main à l'octet près.
+  //
+  // ⚠ Effet de bord assumé : la position « là où la native se serait ouverte »
+  // (repli de première utilisation dans OnRenderUI) devient inatteignable, puisque
+  // la native ne s'ouvre plus. ImGui place alors la fenêtre lui-même, et la
+  // position est persistée dès le premier déplacement — perte cosmétique, et
+  // seulement au tout premier usage.
+  //
+  // ⚠ 0x0221 est un paquet à longueur VARIABLE. Les deux régimes transmettent les
+  // octets à partir du champ `packetLength` (+2), qui est la vraie borne : le
+  // parseur ne change donc pas d'un régime à l'autre, et le `len` du callback
+  // reste IGNORÉ pour cet opcode (cf. le commentaire du parseur dans
+  // OnRecvPacket).
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpRefineList,
+                                             [this] { return imgui_enabled_; });
   Bourgeon::Instance().RegisterObserveOpcode(kOpRefineAck, kRefineAckLen);
   Bourgeon::Instance().RegisterObserveOpcode(kOpSkillFail, kSkillFailLen);
-
-  // Détour de la modale (voir le pavé au-dessus de ShowMessageBoxModalHook).
-  g_orig_show_modal = reinterpret_cast<ShowModal_t>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kShowMessageBoxModal),
-          reinterpret_cast<uint8_t*>(&ShowMessageBoxModalHook)));
 }
 
 // ── Capture ──────────────────────────────────────────────────────────────────
@@ -433,14 +464,38 @@ void WeaponRefineWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       }
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
-    empty_list_      = entries_.empty();
+    // 🔴 Calé sur le COMPTE DU PAQUET, pas sur `entries_.empty()`.
+    //
+    // Ce drapeau ne dit pas « la table est vide à l'écran », il dit « le serveur
+    // n'a rien armé » — et il porte cette responsabilité parce que c'est lui qui
+    // décide d'envoyer ou non l'annulation à la fermeture. Or le serveur arme
+    // exactement sur `if (count > 0)` (clif_upgrade_list, et à l'identique dans
+    // clif_skill_produce_mix_list / la liste de flèches) : se caler sur le même
+    // compte, c'est ne PAS pouvoir se désynchroniser de lui.
+    //
+    // `entries_.empty()` pouvait, lui : une exception dans la boucle de parsing
+    // au tout premier élément laisse le vecteur vide alors que le serveur a bel et
+    // bien armé — on n'enverrait alors jamais le -1, et le personnage resterait
+    // bloqué (aucune compétence ne passe plus).
+    empty_list_      = (count <= 0);
+    // Le serveur vient d'armer son menuskill si et seulement si count > 0.
+    session_armed_   = (count > 0);
     awaiting_result_ = false;
     consumed_        = false;
+    // Le résultat précédent ne survit qu'à une liste que la CHAÎNE a provoquée :
+    // pendant un enchaînement les listes se succèdent en une demi-seconde, et
+    // l'effacer à chaque tour ne laissait pas le temps de lire ce qui venait
+    // d'arriver à l'arme. Une session ouverte à la main, elle, repart propre.
+    if (auto_chain_ == 0) last_result_.clear();
     // La liste est revenue : la relance armée a fait son office (ou le serveur a
     // devancé le délai). Une liste VIDE termine naturellement la chaîne — c'est
     // le vrai « tant qu'il reste des armes », dit par le serveur lui-même plutôt
     // que deviné côté client.
     auto_recast_at_ = 0;
+    // La liste EST la preuve que la compétence est repartie : plus de relance en
+    // vol, et le compteur d'essais repart de zéro pour le tour suivant.
+    recast_sent_at_ = 0;
+    recast_retries_ = 0;
     if (empty_list_ && auto_chain_ > 0)
       auto_stop_reason_ = "Plus aucune arme à refine : relance arrêtée.";
     // ── Que devient la sélection quand une nouvelle liste arrive ? ────────────
@@ -472,12 +527,16 @@ void WeaponRefineWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     // elle nous survit ensuite à chaque tentative (cf. ui_open_).
     ui_open_         = true;
 
-    // Liste vide : le natif s'apprête à afficher sa modale recyclée. On l'arme
-    // pour l'escamoter — mais seulement si on prend la main sur cette fenêtre.
-    if (empty_list_ && imgui_enabled_) {
-      g_swallow_text       = MsgString(kMsgCantMakeItem);
-      g_swallow_next_modal = (g_swallow_text != nullptr);
-    }
+    // 🔴 Plus d'escamotage de modale ICI, et c'est le remplacement du handler qui
+    // le permet : la modale « liste vide » était affichée par le handler NATIF,
+    // qui ne tourne plus quand on prend la main. Il n'y a donc plus rien à
+    // escamoter.
+    //
+    // Le garder aurait même été NUISIBLE : l'escamotage se désarmait au prochain
+    // appel de la fonction native, escamoté ou non — sans appel, le drapeau restait
+    // armé et guettait la prochaine modale portant ce même texte. Un armement qui ne
+    // peut plus être consommé est un piège en attente. C'est pourquoi le module a
+    // été supprimé (docs make_item_list_re.md §3.1 bis le conserve).
     return;
   }
 
@@ -509,18 +568,37 @@ void WeaponRefineWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   // réagit que si on attendait VRAIMENT un résultat de refine et que c'est bien
   // notre compétence — 0x0110 sert à tous les skills du jeu.
   if (opcode == kOpSkillFail) {
-    if (!awaiting_result_ || len < 2) return;
+    if (len < 2) return;
     uint16_t skill_id = 0;
     __try {
       skill_id = *reinterpret_cast<const uint16_t*>(data);
     } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
     if (skill_id != kSkillWeaponRefine) return;
-    awaiting_result_ = false;
-    PushLog("Tentative refusée par le serveur (aucun minerai consommé).",
-            kColWarn);
-    // Chaîne coupée : un refus de condition ne se règle pas en relançant.
-    auto_recast_at_   = 0;
-    auto_stop_reason_ = "Le serveur a refusé la tentative : relance arrêtée.";
+
+    // 🔴 DEUX refus très différents portent le même paquet, et les confondre coûtait
+    // la chaîne.
+    if (awaiting_result_) {
+      // (a) La TENTATIVE de refine est refusée. Une condition manque, et elle ne
+      // changera pas d'elle-même : relancer tournerait en rond en brûlant du SP.
+      awaiting_result_ = false;
+      PushLog("Tentative refusée par le serveur (aucun minerai consommé).",
+              kColWarn);
+      auto_recast_at_   = 0;
+      auto_stop_reason_ = "Le serveur a refusé la tentative : relance arrêtée.";
+      return;
+    }
+    // (b) C'est notre RELANCE de compétence que le serveur a jetée — délai de cast,
+    // `canact_tick`. Rien à voir avec une condition manquante : il suffit
+    // d'attendre un peu plus et de recommencer.
+    //
+    // ⏱ C'était le bogue « Entrée maintenue » : le handler sortait sur
+    // `!awaiting_result_` et IGNORAIT ce paquet. La chaîne s'arrêtait alors sans un
+    // mot, fenêtre grisée sur « Session terminée », alors que l'arme était intacte
+    // et toutes les conditions réunies — seul un clic sur « Relancer le skill »
+    // repartait. Et cela n'arrivait QU'avec Entrée maintenue, parce que
+    // `IsKeyPressed` répète ~20 fois par seconde : c'est le seul régime assez rapide
+    // pour que la relance tombe dans le délai de cast de la tentative précédente.
+    RetryRecast();
   }
 }
 
@@ -557,6 +635,38 @@ void WeaponRefineWindow::ScheduleAutoRecast(int result) {
   ++auto_chain_;
   auto_recast_at_ = GetTickCount() + kAutoRecastDelayMs;
   if (auto_recast_at_ == 0) auto_recast_at_ = 1;  // 0 = « rien d'armé »
+}
+
+// Ré-arme une relance dont le LANCEMENT n'a rien donné : soit le serveur l'a jetée
+// (ZC 0x0110 hors tentative), soit rien n'est revenu du tout (chien de garde).
+//
+// À ne pas confondre avec ScheduleAutoRecast, qui traite le RÉSULTAT d'une tentative.
+// Ici la tentative n'a jamais eu lieu : la compétence elle-même n'est pas partie.
+void WeaponRefineWindow::RetryRecast() {
+  recast_sent_at_ = 0;
+  // Le joueur reste prioritaire, exactement comme pour l'armement initial.
+  if (!auto_recast_ || !imgui_enabled_ || !ui_open_ || !consumed_) return;
+  if (pending_ != kActNone) return;  // une action est déjà posée
+
+  // Borné, et pas par le compteur de chaîne : celui-ci compte les tours RÉUSSIS.
+  // Un délai de cast se résorbe en une ou deux tentatives ; au-delà, c'est autre
+  // chose et insister ne ferait que masquer le vrai motif d'arrêt.
+  if (++recast_retries_ > kMaxRecastRetries) {
+    auto_stop_reason_ =
+        "La compétence ne repart pas (délai de lancement) : relance arrêtée.";
+    PushLog(auto_stop_reason_, kColWarn);
+    return;
+  }
+  // Délai PLUS LONG que l'armement normal : la cause est précisément qu'on est
+  // arrivé trop tôt. Réessayer au même rythme rejouerait le même refus.
+  auto_recast_at_ = GetTickCount() + kRecastRetryDelayMs;
+  if (auto_recast_at_ == 0) auto_recast_at_ = 1;
+  auto_stop_reason_ = nullptr;
+  char line[128];
+  std::snprintf(line, sizeof(line),
+                "Relance jetée par le délai de lancement : nouvel essai (%d/%d).",
+                recast_retries_, kMaxRecastRetries);
+  PushLog(line, kColWarn);
 }
 
 void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
@@ -624,8 +734,27 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
   // placé y ferait lire la pile. On substitue à la main, littéralement, la
   // PREMIÈRE occurrence de « %s » — et on ignore les suivantes.
   char subject[160];
-  if (name[0]) std::snprintf(subject, sizeof(subject), "%s", name);
-  else         std::snprintf(subject, sizeof(subject), "id %u", nameid);
+  if (!name[0]) {
+    std::snprintf(subject, sizeof(subject), "id %u", nameid);
+  } else if (result == 0 && sent_refine_ >= 0) {
+    // 🔴 Une réussite doit énoncer un PASSAGE, pas un état. « Refined weapon:
+    // +4 Knife » est lu comme « elle est à +4 » — donc comme un échec — alors que
+    // l'arme vient de passer à +5. On écrit les deux bornes.
+    //
+    // ⚠ De quel refine le nom est-il décoré ? Indécidable : selon que
+    // l'inventaire a déjà été rafraîchi ou qu'on soit retombé sur le nom capturé
+    // à l'envoi, son préfixe porte l'ANCIEN ou le NOUVEAU niveau. On tente donc
+    // les deux, et le pire cas est un préfixe conservé — jamais un nom tronqué
+    // (cf. SkipRefinePrefix, qui ne coupe que sur correspondance exacte).
+    const char* bare = SkipRefinePrefix(name, sent_refine_);
+    if (bare == name) bare = SkipRefinePrefix(name, sent_refine_ + 1);
+    std::snprintf(subject, sizeof(subject), "%s +%d -> +%d", bare, sent_refine_,
+                  sent_refine_ + 1);
+  } else {
+    // Échec, mauvais niveau, minerai manquant : le nom décoré suffit et dit vrai
+    // (l'arme détruite l'était bien à ce refine-là).
+    std::snprintf(subject, sizeof(subject), "%s", name);
+  }
 
   const char* tmpl = ro::Cp949ToUtf8(MsgString(msg_id));
   char body[288];
@@ -643,6 +772,11 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
   char line[320];
   std::snprintf(line, sizeof(line), "%s%s", prefix, body);
   PushLog(line, color);
+  // Gardé aussi hors du journal : le pied de fenêtre l'affiche jusqu'à la liste
+  // suivante. Sans ça, le seul endroit où lire « arme détruite » était un panneau
+  // optionnel, replié par défaut.
+  last_result_       = line;
+  last_result_color_ = color;
 }
 
 void WeaponRefineWindow::PushLog(const char* text, uint32_t color) {
@@ -664,6 +798,7 @@ void WeaponRefineWindow::PushLog(const char* text, uint32_t color) {
 
 void WeaponRefineWindow::ResetSession() {
   entries_.clear();
+  last_result_.clear();
   ui_open_         = false;
   consumed_        = false;
   hover_valid_     = false;
@@ -678,6 +813,8 @@ void WeaponRefineWindow::ResetSession() {
   auto_recast_at_   = 0;
   auto_chain_       = 0;
   auto_stop_reason_ = nullptr;
+  recast_sent_at_   = 0;
+  recast_retries_   = 0;
 }
 
 void WeaponRefineWindow::OnModeSwitch(ModeMgr::ModeType mode_type,
@@ -689,31 +826,96 @@ void WeaponRefineWindow::OnModeSwitch(ModeMgr::ModeType mode_type,
     // Écrire AVANT de refermer : quitter le monde de jeu est aussi une fin de
     // session, et une position déplacée puis jamais « fermée » se perdrait.
     FlushWindowPos();
+    // Ici on n'envoie RIEN, et c'est la différence avec la bascule d'interrupteur :
+    // quitter le monde de jeu passe par `unit_remove_map_`, qui remet lui-même
+    // `menuskill_id` à zéro côté serveur. Un -1 partirait dans le vide, sur une
+    // connexion qui n'a d'ailleurs peut-être plus de socket.
+    session_armed_ = false;
     ResetSession();
     history_.clear();
   }
 }
 
-void WeaponRefineWindow::HideNativeAtCreation(void* win) {
-  if (!imgui_enabled_ || !win) return;
-  __try {
-    // La fenêtre n'est pas encore enregistrée au gestionnaire à cet instant : la
-    // vtable est le seul contrôle de classe possible (même patron que BankWindow).
-    if (*reinterpret_cast<uintptr_t*>(win) != kRefineVTable) return;
-    uiwnd::SetVisible(win, false);
-    native_hidden_ = true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+// 🔴 NE FAIT PLUS RIEN, et c'est le bon comportement — pas un oubli.
+//
+// Le point d'entrée est conservé parce qu'il est la convention du projet : le hook
+// MakeWindow de window_pos_tweaks appelle le `HideNativeAtCreation` de douze plugins.
+// Mais pour CETTE fenêtre il ne peut plus rien faire d'utile :
+//
+//  1. Il ne peut plus être atteint. La 111 n'est créée que par le handler natif du
+//     0x0221, or ce handler ne tourne QUE si nous sommes coupés — et alors la
+//     première ligne sort. Vérifié en remontant `RegisterReplaceOpcode`.
+//  2. Masquer serait NUISIBLE si jamais il l'était : une native invisible garde le
+//     clavier et sa session (docs/weapon_refine_re.md §10). C'est le fantôme qu'on a
+//     corrigé deux fois.
+//  3. Annuler ici est IMPOSSIBLE : l'appelant natif se sert encore du pointeur que
+//     MakeWindow vient de lui rendre — ce serait un use-after-free.
+//
+// Ne rien faire est donc l'unique bonne réponse : FlushPending, une frame plus tard,
+// pilotera son bouton Annuler. Ce qui reste ici est le commentaire.
+void WeaponRefineWindow::HideNativeAtCreation(void* /*win*/) {}
+
+void WeaponRefineWindow::CloseForOtherCraft() {
+  // Rien d'ouvert ni d'armé : il n'y a rien à évincer, et poser un message serait du
+  // bruit à chaque fabrication.
+  if (!ui_open_ && !session_armed_) return;
+
+  // 🔴 ON DÉSARME POUR DE VRAI — `182 / -1`. Une première rédaction ne faisait que
+  // fermer, en supposant que la liste de fabrication avait écrasé notre `menuskill`.
+  // C'est vrai quand cette liste est PLEINE… et faux quand elle est VIDE, puisque le
+  // serveur n'arme que `if (count > 0)`. Or elle arrive justement vide dans ce cas,
+  // et pour une raison en boucle : `skill_can_produce_mix` écarte TOUTE recette dont
+  // le `req_skill` ne correspond pas à un `menuskill_id` positif déjà en place
+  // (skill.cpp, `// special case`). Notre session de refine encore armée vidait donc
+  // la liste de fabrication, qui du coup n'armait rien, qui du coup ne nous
+  // désarmait pas… et plus rien ne repartait jamais.
+  //
+  // ⚠ Et c'est BIEN à nous de l'envoyer : l'annulation de la fabrication (CZ 0x018E,
+  // itemId 0) ne peut PAS effacer un menuskill de refine — `clif_parse_ProduceMix`
+  // sort par son `default:` sans rien toucher. Seul `clif_parse_WeaponRefine` efface
+  // un `WS_WEAPONREFINE`.
+  //
+  // On POSE l'action (FlushPending l'enverra hors frame ImGui) et on ne touche PAS à
+  // `session_armed_` : c'est lui que FlushPending consulte pour décider d'envoyer,
+  // et ResetSession juste en dessous ne l'écrase pas — c'est écrit dans son
+  // commentaire d'en-tête, et c'est exactement pour ce genre de cas.
+  //
+  // Un `182 / -1` de trop est inoffensif : si le serveur a déjà autre chose d'armé,
+  // `clif_parse_WeaponRefine` sort immédiatement, sans rien effacer.
+  pending_ = kActCancel;
+  auto_recast_at_ = 0;
+  recast_sent_at_ = 0;
+
+  PushLog("Session de refine abandonnée : une fabrication a été lancée (le serveur "
+          "n'en garde qu'une).", kColWarn);
+  FlushWindowPos();  // la fenêtre se referme : c'est le moment d'écrire sa position
+  ResetSession();
 }
 
 void WeaponRefineWindow::OnTick() {
-  // Bascule du toggle : on rend sa visibilité à la native une seule fois, sinon
-  // on se battrait chaque tick avec le « tout masquer » natif (behavior 116).
   if (prev_enabled_ != imgui_enabled_) {
     prev_enabled_ = imgui_enabled_;
-    if (!imgui_enabled_ && native_hidden_) {
-      if (uint8_t* w = RefineWnd()) uiwnd::SetVisible(w, true);
-      native_hidden_ = false;
-    }
+    // (Plus rien à « rendre visible » à la coupure : on ne masque plus jamais cette
+    // fenêtre — cf. HideNativeAtCreation et le bloc supprimé plus bas.)
+    //
+    // 🔴 DÉSARMER AVANT DE JETER. La bascule referme notre interface, mais le
+    // serveur, lui, garde son `menuskill` : sans ce -1 le personnage ne peut plus
+    // lancer AUCUNE compétence, ni en moderne ni en natif, et rebasculer n'y change
+    // rien puisque le blocage n'est pas chez nous.
+    //
+    // ⏱ Constaté en jeu : « j'ai lancé refine, désactivé l'interface moderne, le
+    // skill ne part plus ». Avant le remplacement d'opcode le cas était masqué — la
+    // fenêtre native existait encore et reprenait la main ; elle ne naît plus.
+    //
+    // On POSE l'action (FlushPending l'enverra hors frame ImGui) et on ne se fie
+    // qu'à `session_armed_`, qui parle du serveur : ResetSession, juste après, remet
+    // à zéro tout le reste sans y toucher.
+    if (!imgui_enabled_ && session_armed_) pending_ = kActCancel;
+
+    // (Le sens INVERSE — natif -> moderne, native déjà ouverte — n'a RIEN à faire
+    // ici : c'est FlushPending qui rend cette session, à chaque frame et sans
+    // drapeau. L'armer depuis ce tick était le bogue de la fabrication : limité à
+    // 100 ms, il arrivait après FlushPending, qui avait déjà escamoté la fenêtre.)
     ResetSession();
   }
 
@@ -722,20 +924,24 @@ void WeaponRefineWindow::OnTick() {
 
   if (!imgui_enabled_) return;
 
-  if (wnd) {
-    // Re-masquage idempotent : la fenêtre peut avoir été rendue visible par un
-    // chemin natif (behavior « tout afficher »), et le hook MakeWindow ne joue
-    // qu'à la création.
-    if (uiwnd::IsVisible(wnd)) {
-      uiwnd::SetVisible(wnd, false);
-      native_hidden_ = true;
-    }
-  } else if (was_open_) {
+  // 🔴 PLUS DE MASQUAGE DE LA NATIVE, nulle part. Une fenêtre invisible garde le
+  // clavier ET sa session : c'est le fantôme qui a bloqué le personnage deux fois
+  // (§10 du doc). Elle ne peut de toute façon plus vivre qu'une frame, celle qui
+  // sépare sa découverte du `CancelNativeRefine()` de FlushPending. Et des deux
+  // échecs possibles, une native VISIBLE une frame de trop est cosmétique.
+  if (!wnd && was_open_) {
     // La native a disparu — mais surtout PAS notre fenêtre. Le client la détruit
     // dès la tentative envoyée, et c'est précisément là que le joueur veut voir
     // le résultat et enchaîner (cf. le commentaire de ui_open_ dans l'en-tête).
     // On invalide donc la LISTE (elle n'existe plus côté serveur) sans toucher à
     // ui_open_.
+    //
+    // ⚠ Cette branche ne s'atteint pratiquement plus : la native ne naissant plus,
+    // `open_` reste faux et `was_open_` avec lui. Ce n'est PAS une perte — la
+    // véritable invalidation est posée à l'ENVOI (`consumed_ = true` dans
+    // FlushPending), de façon déterministe, et le `entries_.clear()` d'ici est même
+    // contraire à ce qu'on veut désormais (« on MARQUE, on ne VIDE PLUS » : la table
+    // reste à l'écran, grisée, le temps de lire le résultat).
     entries_.clear();
     consumed_      = true;
     confirm_index_ = -1;
@@ -775,8 +981,22 @@ void WeaponRefineWindow::OnTick() {
     // déjà posée entre-temps, la relance est simplement abandonnée. Et si une
     // liste est déjà revenue (le serveur peut devancer le délai), il n'y a rien
     // à relancer.
-    if (auto_recast_ && ui_open_ && entries_.empty() && pending_ == kActNone)
+    // `consumed_` et non `entries_.empty()` : la table reste maintenant affichée
+    // après une tentative, donc sa présence ne dit plus rien de l'état serveur.
+    if (auto_recast_ && ui_open_ && consumed_ && pending_ == kActNone)
       pending_ = kActRecast;
+  }
+
+  // ── Chien de garde de la relance ───────────────────────────────────────────
+  // La compétence est partie mais AUCUNE liste n'est revenue. Deux cas : le serveur
+  // l'a jetée sans le dire (tous les refus n'envoient pas de ZC 0x0110), ou le
+  // chemin natif de lancement l'a refusée côté client — dans les deux cas, aucun
+  // paquet ne nous l'apprendra. Sans ce garde-fou la chaîne restait bloquée sur
+  // « Session terminée », arme intacte, jusqu'à un clic manuel.
+  if (recast_sent_at_ &&
+      static_cast<int>(GetTickCount() - recast_sent_at_) >
+          static_cast<int>(kRecastNoListMs)) {
+    RetryRecast();
   }
 
   was_open_ = open_;
@@ -785,6 +1005,50 @@ void WeaponRefineWindow::OnTick() {
 // ── Actions différées (hors frame ImGui) ─────────────────────────────────────
 
 void WeaponRefineWindow::FlushPending() {
+  // ── Ouverture de description : hors frame ImGui, ET bouton RELÂCHÉ ─────────
+  // 🔴 Le « bouton relâché » est la clé, et c'est une observation de terrain : un
+  // clic BREF sortait la description devant, un appui PROLONGÉ la faisait passer
+  // DERRIÈRE. Le focus de fenêtre reste acquis à la nôtre tant que le bouton est
+  // enfoncé : la description remontait à la frame suivante
+  // (ItemDescWindow -> SetNextWindowFocus), puis le geste toujours en cours nous
+  // rendait le dessus. En attendant la fin du geste, il n'y a plus de course.
+  // Bénéfice second : l'appel natif OnMsg 0x18 sort de la frame ImGui, ce que le
+  // projet impose de toute façon.
+  // ⚠ Placé AVANT le retour anticipé sur kActNone : ce n'est pas une
+  // PendingAction, et l'y soumettre l'aurait rendu muet la plupart du temps.
+  if ((pending_desc_index_ >= 0 || pending_desc_id_ != 0) &&
+      !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+      !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+    const int      desc_index = pending_desc_index_;
+    const uint32_t desc_id    = pending_desc_id_;
+    pending_desc_index_ = -1;
+    pending_desc_id_    = 0;
+    if (desc_index >= 0)
+      OpenItemDesc(desc_index, pending_desc_x_, pending_desc_y_);
+    else
+      itemcell::OpenDescById(desc_id, 0, 0, pending_desc_x_, pending_desc_y_);
+  }
+
+  // ── Rendre toute session NATIVE encore vivante ────────────────────────────
+  // ⚠ Placé AVANT le retour anticipé sur kActNone : ce n'est pas une PendingAction,
+  // et l'y soumettre l'aurait rendu muet la plupart du temps (même raison que
+  // l'ouverture de description ci-dessus).
+  //
+  // SANS ÉTAT, et c'est tout l'intérêt : une native vivante alors que nous sommes
+  // actifs est forcément une session que nous n'avons PAS ouverte — depuis le
+  // remplacement du 0x0221, aucune ne peut plus naître sous notre garde. Son Annuler
+  // est donc toujours le bon geste, et l'appeler à chaque frame supprime la course
+  // qui a cassé la fabrication (drapeau posé par OnTick, limité à 100 ms, contre un
+  // FlushPending par frame).
+  //
+  // `OnMsg(6, 185)` = un clic RÉEL sur son bouton Annuler. La fenêtre envoie alors
+  // elle-même `SendMsg(182, -1)` — donc `clif_menuskill_clear` côté serveur — puis
+  // `SaveRectAndCloseWindow(111)`. Vérifié dans son `OnMsg` (`0x0096AAB0`,
+  // `case 6` / `Value == 185`) : l'identifiant du bouton vient du code natif, pas
+  // d'une supposition. `CancelNativeRefine` vérifie la vtable avant d'agir, donc
+  // l'appel est inoffensif quand il n'y a rien.
+  if (imgui_enabled_) CancelNativeRefine();
+
   const PendingAction act = pending_;
   const int idx = pending_index_;
   pending_ = kActNone;
@@ -799,6 +1063,12 @@ void WeaponRefineWindow::FlushPending() {
       sent_index_ = idx;
       SafeName(itemcell::FindInfoByIndex(kInvListHead, idx), sent_name_,
                sizeof(sent_name_));
+      // Le refine d'avant vient de la LISTE SERVEUR, pas du nom : le préfixe
+      // décoratif peut manquer (+0) et l'inventaire, lui, aura déjà bougé quand
+      // le résultat arrivera.
+      sent_refine_ = -1;
+      for (const Entry& e : entries_)
+        if (e.index == idx) { sent_refine_ = e.refine; break; }
       // Le chemin EXACT du bouton OK natif : cmd 182 avec l'index reçu du
       // serveur, tel quel, puis fermeture de la fenêtre (le natif enchaîne les
       // deux dans son OnMsg case 6).
@@ -816,10 +1086,21 @@ void WeaponRefineWindow::FlushPending() {
       // On ne s'en remettait qu'à OnTick, qui vide la liste en CONSTATANT la
       // disparition de la fenêtre native : une observation indirecte, qui rate
       // sa cible dès qu'un nouveau 0x0221 recrée la fenêtre avant le tick
-      // suivant. Le vider ICI est déterministe et dit la même chose que le
+      // suivant. Le marquer ICI est déterministe et dit la même chose que le
       // serveur.
-      entries_.clear();
+      //
+      // ⚠ On MARQUE, on ne VIDE PLUS. « La liste est morte » veut dire « on n'a
+      // plus le droit d'envoyer », pas « il n'y a plus rien à montrer » — et
+      // `consumed_` porte déjà exactement cette règle. Vider `entries_` faisait
+      // en plus disparaître la table, rétracter la fenêtre, puis tout revenir
+      // ~500 ms plus tard : un clignotement à chaque tentative, sans le temps de
+      // lire le résultat. La table reste donc à l'écran, GRISÉE, et c'est
+      // `consumed_` qui verrouille l'envoi (RequestRefine, bouton, OnTick).
       consumed_ = true;
+      // Et le serveur, lui, vient de faire son propre `clif_menuskill_clear` en
+      // recevant cette tentative (un seul refine par lancement) : il n'attend donc
+      // plus rien, et une annulation ultérieure serait un paquet pour personne.
+      session_armed_ = false;
       break;
 
     case kActCancel:
@@ -827,15 +1108,37 @@ void WeaponRefineWindow::FlushPending() {
       // clif_menuskill_clear côté serveur. Sans lui le personnage reste avec un
       // menuskill armé (cf. l'en-tête, piège n°2).
       //
-      // …mais SEULEMENT si une session est encore armée, c'est-à-dire si la
-      // fenêtre native vit toujours. Après un refine, le serveur a déjà fait
-      // son clif_menuskill_clear et le client a détruit la 111 : un -1 de plus
-      // serait un paquet inutile, et notre fenêtre reste ouverte bien après ce
-      // moment-là (c'est tout l'intérêt de ui_open_).
-      if (RefineWnd()) {
+      // …mais SEULEMENT si une session est encore armée. Après un refine, le
+      // serveur a déjà fait son clif_menuskill_clear : un -1 de plus serait un
+      // paquet inutile, et notre fenêtre reste ouverte bien après ce moment-là
+      // (c'est tout l'intérêt de ui_open_).
+      //
+      // 🔴 Ce critère était `RefineWnd()` — la PRÉSENCE de la fenêtre native.
+      // ⏱ Cassé net par le remplacement d'opcode : la native ne naît plus, donc le
+      // -1 ne partait plus JAMAIS, le serveur gardait son menuskill armé, et plus
+      // aucune compétence ne passait ensuite. Constaté en jeu (« j'ai fermé la
+      // fenêtre, maintenant le skill ne part plus »).
+      //
+      // Le critère est donc NOTRE état, `consumed_`, qui dit exactement la même
+      // chose sans dépendre du client : faux = le serveur attend encore une
+      // réponse, vrai = il a déjà refermé sa session lui-même.
+      //
+      // ⚠ Et l'asymétrie compte : un -1 en trop est INOFFENSIF
+      // (`clif_parse_WeaponRefine` sort aussitôt quand `menuskill_id` ne
+      // correspond pas), un -1 manquant BLOQUE le personnage. En cas de doute, on
+      // envoie.
+      //
+      // `!empty_list_` en second : le serveur envoie la liste MÊME vide
+      // (`clif_send` inconditionnel) mais ne l'arme que `if (count > 0)` — vérifié
+      // dans clif_upgrade_list. Sur une liste vide il n'y a donc rien à désarmer, et
+      // `empty_list_` est justement calé sur ce même compte (cf. OnRecvPacket).
+      if (session_armed_) {
         SendModeCmd(kCmdRefine, -1);
-        uiwnd::CloseWindow(kWinRefine);
+        session_armed_ = false;
       }
+      // Filet du basculement d'interrupteur : si une native traîne (elle n'est
+      // créée que quand le plugin était coupé au moment du paquet), on la referme.
+      if (RefineWnd()) uiwnd::CloseWindow(kWinRefine);
       break;
 
     case kActRecast: {
@@ -844,9 +1147,15 @@ void WeaponRefineWindow::FlushPending() {
       // sauterait tous.
       const int level = std::max(1, RefineSkillLevel());
       const uint32_t self = OwnAid();
-      if (self)
+      if (self) {
         SendModeCmd(kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
                     level);
+        // Relance EN VOL. Le serveur peut la jeter (délai de cast) sans qu'aucune
+        // liste ne revienne : c'est ce marqueur qui permet de s'en apercevoir, via
+        // le ZC 0x0110 s'il en envoie un, ou via le chien de garde d'OnTick sinon.
+        recast_sent_at_ = GetTickCount();
+        if (recast_sent_at_ == 0) recast_sent_at_ = 1;
+      }
       break;
     }
     default:
@@ -911,9 +1220,40 @@ int WeaponRefineWindow::RefineSkillLevel() {
 // fenêtre se ferme — pendant un chargement de carte, typiquement — et la touche
 // resterait avalée pour un client qui n'affiche plus rien.
 bool WeaponRefineWindow::WantsEnterKey() const {
-  return imgui_enabled_ && ui_open_ &&
-         !Bourgeon::Instance().IsMapLoading() &&
-         Bourgeon::Instance().IsGameActive();
+  const bool alive = imgui_enabled_ && ui_open_ &&
+                     !Bourgeon::Instance().IsMapLoading() &&
+                     Bourgeon::Instance().IsGameActive();
+  if (!alive) return false;
+  // ⚠ La CONFIRMATION garde la touche quoi qu'il arrive : « Entrée = OK » est la
+  // convention d'une modale, et la laisser passer au jeu ouvrirait le chat en
+  // même temps qu'elle valide une action qui peut DÉTRUIRE l'arme. La
+  // confiscation est donc limitée au moment où elle se justifie.
+  if (confirm_index_ >= 0) return true;
+
+  // Hors modale : décoché, la touche n'est PAS confisquée et le chat reste
+  // accessible pendant qu'on refine.
+  //
+  // ⏱ Cette ligne a été, un temps, un `return true` inconditionnel — et c'était
+  // justifié À L'ÉPOQUE : la native 111 vivait masquée derrière nous, et une native
+  // invisible garde le CLAVIER. La chaîne est établie sur le binaire :
+  //     UIWindowMgr_OnKeyDown @0x00A471E0   Entrée (13) ou Espace (32)
+  //  -> @0x00A2E270                          OnMsg(msg = 0) sur la prioritaire
+  //  -> UIWindow_OnMsg_Default @0x008841D0   OnMsg(6, this+0x8C)
+  //  -> la 111 a `+0x8C = default_id = 184` = son bouton OK
+  //  -> OnMsg case 6 / 184 : SendMsg(182, liste_native[sélection native])
+  // …soit un refine RÉEL sur l'arme choisie par le CLIENT, qu'un échec DÉTRUIT.
+  // Aucune étape ne consulte la visibilité (le prédicat vt+8 est un `return 1` en
+  // dur, @0x005A5D90).
+  //
+  // 🔴 Ce qui a changé : cette fenêtre ne NAÎT PLUS (`RegisterReplaceOpcode` sur
+  // 0x0221) et celle qu'on hérite d'un basculement d'interrupteur est ANNULÉE dans
+  // la frame (`CancelNativeRefine`). Il n'y a donc plus de fenêtre fantôme à qui la
+  // touche pourrait profiter, et confisquer coûterait le chat pour rien.
+  //
+  // ⚠ Si un jour on remet une native masquée en vie derrière cette fenêtre, il
+  // faudra RÉTABLIR le `return true`. Le danger n'est pas théorique : il a été
+  // constaté en jeu sur la fabrication (79), dont l'OnMsg a la même structure.
+  return enter_key_;
 }
 
 void WeaponRefineWindow::OnRenderUI() {
@@ -1011,7 +1351,11 @@ void WeaponRefineWindow::OnRenderUI() {
       // Tentative partie : la liste n'existe plus côté serveur (menuskill
       // effacé) et le client a détruit sa fenêtre. C'est l'écran que le natif
       // n'a pas du tout — il se contente de tout refermer.
-      if (!awaiting_result_ && consumed_) {
+      // Même règle qu'au pied : muet tant qu'une relance est armée (cf. le pavé
+      // de DrawFooter). Sans ça le message clignotait entre deux refines
+      // enchaînés, en annonçant une fin qui n'arrivait pas.
+      if (!awaiting_result_ && consumed_ && auto_recast_at_ == 0 &&
+          pending_ != kActRecast) {
         ImGui::TextWrapped(
             "Session terminée : le serveur n'autorise qu'un refine par "
             "lancement de la compétence.");
@@ -1025,7 +1369,16 @@ void WeaponRefineWindow::OnRenderUI() {
       // changement de thème.
       const float row_h  = kIconSize + style.CellPadding.y * 2.0f;
       const float head_h = ImGui::GetTextLineHeight() + style.CellPadding.y * 2.0f;
+      // Liste morte côté serveur mais toujours affichée : GRISÉE. Ce n'est pas un
+      // ornement — c'est ce qui distingue « actionnable » de « là pour
+      // référence ». Sans le signal, garder la table laisserait croire qu'une
+      // seconde tentative peut partir, alors que le serveur la jetterait sans
+      // même répondre.
+      const bool stale = consumed_;
+      if (stale)
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
       DrawList(head_h + row_h * kVisibleRows);
+      if (stale) ImGui::PopStyleVar();
       DrawFooter();
     }
 
@@ -1061,7 +1414,7 @@ void WeaponRefineWindow::OnRenderUI() {
     // celle-là ne regarde que l'ouverture de la fenêtre (cf. WantsEnterKey). Les
     // avoir confondus faisait clignoter le chat entre deux refines enchaînés.
     const bool can_refine =
-        sel_visible_ && !ImGui::IsAnyItemActive() &&
+        enter_key_ && sel_visible_ && !ImGui::IsAnyItemActive() &&
         ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (can_refine && (ImGui::IsKeyPressed(ImGuiKey_Enter) ||
                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) {
@@ -1195,7 +1548,12 @@ void WeaponRefineWindow::RequestRefine(int inventory_index) {
   // Une action déjà posée, ou une tentative en vol : on ne superpose pas. Le
   // serveur n'accepte qu'UN refine par lancement de compétence, tout envoi
   // supplémentaire est jeté en silence.
-  if (awaiting_result_ || pending_ != kActNone || confirm_index_ >= 0) return;
+  // `consumed_` : depuis que la table survit à la tentative, une liste affichée
+  // ne prouve plus que le serveur attend une réponse — c'est ce drapeau, et lui
+  // seul, qui dit si le `menuskill` est encore armé.
+  if (awaiting_result_ || consumed_ || pending_ != kActNone ||
+      confirm_index_ >= 0)
+    return;
   // Garde anti-rafale, désormais sur TOUS les chemins : une touche maintenue
   // répète à la cadence du clavier, bien plus vite qu'un aller-retour serveur.
   const unsigned now = GetTickCount();
@@ -1312,8 +1670,8 @@ void WeaponRefineWindow::DrawList(float list_h) {
   // 0/1/2/3 en dur donnerait un tri sur la mauvaise colonne dès qu'on la masque.
   int col = 0;
   const int kColIcon = col++;
-  const int kColName = col++;
   const int kColRef  = col++;
+  const int kColName = col++;
   const int kColSlot = show_cards_ ? col++ : -1;
   // Ces deux-là ne sont pas testés (l'icône ne trie pas, le nom est le cas par
   // défaut) : nommés quand même pour que la numérotation se lise d'un bloc.
@@ -1331,12 +1689,17 @@ void WeaponRefineWindow::DrawList(float list_h) {
                                           ImGuiTableColumnFlags_NoSort |
                                           ImGuiTableColumnFlags_NoHeaderLabel,
                             kIconSize + 2.0f);
-    ImGui::TableSetupColumn("Arme", ImGuiTableColumnFlags_WidthStretch);
+    // « + » AVANT le nom : c'est le refine qui distingue deux lignes portant la
+    // même arme, et il se lit du même côté que l'icône — la colonne étirable,
+    // elle, doit rester la dernière avant les emplacements pour ne pas repousser
+    // les chiffres au loin.
+    //
     // Le refine et les emplacements se lisent « du plus au moins » : premier clic
     // décroissant, c'est ce qu'on cherche (quelle arme est la plus montée).
     ImGui::TableSetupColumn("+", ImGuiTableColumnFlags_WidthFixed |
                                      ImGuiTableColumnFlags_PreferSortDescending,
                             26.0f);
+    ImGui::TableSetupColumn("Arme", ImGuiTableColumnFlags_WidthStretch);
     if (show_cards_)
       ImGui::TableSetupColumn("Slots",
                               ImGuiTableColumnFlags_WidthFixed |
@@ -1442,7 +1805,23 @@ void WeaponRefineWindow::DrawList(float list_h) {
       else
         ImGui::Dummy(ImVec2(kIconSize, kIconSize));  // garde la hauteur de ligne
 
+      // ── Refine courant : l'information que le natif reçoit et jette ──
+      // Rien d'affiché à +0 : « +0 » est du bruit, la colonne ne parle que quand
+      // elle a quelque chose à dire.
+      ImGui::TableNextColumn();
+      if (e.refine > 0) {
+        AlignCellTextMiddle();
+        // Ambre quand la tentative atteindrait le plafond : au-delà, l'arme ne
+        // sera plus proposée au prochain lancement de la compétence.
+        const bool at_cap = cap > 0 && e.refine + 1 >= cap;
+        ImGui::TextColored(at_cap ? col_cap : col_ref, "+%d", e.refine);
+      }
+
       // ── Nom : c'est LUI qui porte le Selectable de toute la ligne ──
+      // Le Selectable est soumis APRÈS l'icône et le « + », et pourtant il ne les
+      // recouvre pas : `SpanAllColumns` bascule son fond dans le canal d'arrière-
+      // plan de la table (TablePushBackgroundChannel), quelle que soit la colonne
+      // d'où il part.
       ImGui::TableNextColumn();
       // Nom SANS son « +N » de tête : la colonne « + » le porte déjà.
       // r.name reste décoré, lui — c'est ce qu'attendent l'aperçu au survol (dont
@@ -1469,8 +1848,15 @@ void WeaponRefineWindow::DrawList(float list_h) {
         sel_visible_ = true;
         // Description complète : fenêtre native 0x0c, enrichie par
         // item_desc_window — c'est elle qui dit ce qu'on risque à jouer l'arme.
+        // DIFFÉRÉE jusqu'au relâchement du bouton — cf. FlushPending. Ouverte
+        // ici, un appui PROLONGÉ faisait ressortir la description DERRIÈRE nous.
         POINT pt;
-        if (GetCursorPos(&pt)) OpenItemDesc(e.index, pt.x, pt.y);
+        if (GetCursorPos(&pt)) {
+          pending_desc_index_ = e.index;
+          pending_desc_id_    = 0;
+          pending_desc_x_     = pt.x;
+          pending_desc_y_     = pt.y;
+        }
       }
       if (ImGui::IsItemHovered()) {
         // On MÉMORISE, on ne peint pas : l'aperçu crée son propre popup et doit
@@ -1487,18 +1873,6 @@ void WeaponRefineWindow::DrawList(float list_h) {
         sel_index_   = e.index;
         sel_visible_ = true;
         RequestRefine(e.index);
-      }
-
-      // ── Refine courant : l'information que le natif reçoit et jette ──
-      // Rien d'affiché à +0 : « +0 » est du bruit, la colonne ne parle que quand
-      // elle a quelque chose à dire.
-      ImGui::TableNextColumn();
-      if (e.refine > 0) {
-        AlignCellTextMiddle();
-        // Ambre quand la tentative atteindrait le plafond : au-delà, l'arme ne
-        // sera plus proposée au prochain lancement de la compétence.
-        const bool at_cap = cap > 0 && e.refine + 1 >= cap;
-        ImGui::TextColored(at_cap ? col_cap : col_ref, "+%d", e.refine);
       }
 
       // ── Cartes / emplacements ──
@@ -1600,22 +1974,23 @@ void WeaponRefineWindow::DrawOreLinks() {
       POINT pt;
       // Par ID : le minerai peut ne pas être en inventaire (stock 0), il n'y a
       // donc pas toujours d'ItemSkillInfo vivant à passer.
+      // Différée comme les lignes d'arme (cf. FlushPending).
       if (GetCursorPos(&pt)) {
-        itemcell::OpenDescById(id, 0, 0, pt.x, pt.y);
-        itemdesc::FocusDescWindow();  // sinon elle s'ouvre derrière nous
+        pending_desc_index_ = -1;
+        pending_desc_id_    = id;
+        pending_desc_x_     = pt.x;
+        pending_desc_y_     = pt.y;
       }
     }
   }
 }
 
 void WeaponRefineWindow::DrawFooter() {
-  ImGui::Separator();
 
   // Stock de minerai. Le serveur ne propose une arme que si SON minerai est là :
   // ces trois compteurs disent lesquels manquent, ce que le natif ne montre nulle
   // part. On ne DÉCIDE rien avec — le serveur reste seul juge.
-  ImGui::TextDisabled("Minerai :");
-  ImGui::SameLine();
+  ImGui::SeparatorText("Minerais");
   DrawOreLinks();
 
   const int cap = RefineSkillLevel();
@@ -1626,6 +2001,45 @@ void WeaponRefineWindow::DrawFooter() {
         "Le niveau appris de la compétence Upgrade Weapon EST le plafond : le "
         "serveur refuse toute arme déjà à ce refine (et jamais au-delà de "
         "+10).");
+  }
+
+  // ── La CHANCE de la tentative, à côté du plafond ───────────────────────────
+  // 🔴 C'est le seul taux du jeu qu'on puisse annoncer FERMEMENT. Le serveur fait
+  //     per = Rate/100 + (classe 3 ? +10 : (job_level - 50) / 2)
+  //     succès si per > rnd() % 100
+  // et `rnd()%100` étant uniforme sur 0..99, la probabilité de succès EST `per` %.
+  // Aucun tirage n'entre dans le calcul — là où `make_per` de la forge contient un
+  // `rnd_value(1, 100) * 10`, ce qui interdit d'y afficher autre chose qu'une
+  // fourchette. Ici, un chiffre exact est honnête.
+  //
+  // Les deux données qui manquaient au client (le Rate par niveau d'arme, et le
+  // niveau d'arme de l'objet — absent du paquet 0x0221 comme de l'itemInfo)
+  // viennent du fichier généré. Sans lui, on se TAIT : afficher 0 % ferait passer
+  // une absence pour une certitude.
+  const Entry* aimed = nullptr;
+  for (const Entry& e : entries_)
+    if (e.index == sel_index_) { aimed = &e; break; }
+
+  if (aimed && craftdata::Available()) {
+    const int chance = craftdata::RefineChancePercent(
+        aimed->nameid, aimed->refine, OwnJobLevel(), false);
+    if (chance >= 0) {
+      const uint32_t col =
+          (chance >= 90) ? kColOk : (chance >= 50 ? kColWarn : kColBad);
+      ImGui::SameLine();
+      ImGui::TextColored(V4(col), "· Chances : %d %%", chance);
+      ImGui::SameLine();
+      HelpMarker(
+          "Probabilité EXACTE de cette tentative, pas une estimation.\n"
+          "\n"
+          "Le serveur calcule per = Rate/100 + (job_level - 50) / 2, puis réussit "
+          "si per > rnd()%%100. Comme le tirage est uniforme sur 0..99, la "
+          "probabilité vaut exactement per.\n"
+          "\n"
+          "Le Rate de base vient de la table de refine du serveur (niveau d'arme "
+          "× refine visé). Un job level inférieur à 50 donne un bonus NÉGATIF : "
+          "ce n'est pas une erreur, le serveur fait bien cela.");
+    }
   }
 
   if (awaiting_result_) {
@@ -1649,7 +2063,36 @@ void WeaponRefineWindow::DrawFooter() {
   // masquée par le filtre = bouton grisé, jusqu'à ce que le joueur re-désigne une
   // ligne. Rien ne re-cible à sa place sur une action qui détruit l'arme.
   const bool has_sel = sel_visible_;
-  const bool busy    = awaiting_result_;
+  // `consumed_` compte comme occupé : la liste est encore à l'écran mais le
+  // serveur ne l'honore plus. Un bouton actionnable sur une liste morte
+  // enverrait dans le vide — c'est le défaut d'origine, sous une autre forme.
+  const bool busy    = awaiting_result_ || consumed_;
+
+  // Le résultat de la dernière tentative, gardé à l'écran tant qu'une nouvelle
+  // liste n'est pas arrivée. Il était jusqu'ici relégué au journal de session
+  // (opt-in) : sur une chaîne automatique, la seule chose que le joueur voulait
+  // lire — « Succès » ou « arme détruite » — était précisément celle qui ne
+  // s'affichait pas.
+  if (!last_result_.empty() && !awaiting_result_) {
+    ImGui::TextColored(V4(last_result_color_), "%s", last_result_.c_str());
+    ImGui::Spacing();
+  }
+
+  // ── « Session terminée » : seulement si RIEN ne va relancer ────────────────
+  // 🔴 Le critère n'est pas « la relance auto est-elle cochée » mais « une relance
+  // est-elle ARMÉE » (`auto_recast_at_`). C'est plus juste dans les deux sens :
+  //  - relance armée → la liste revient dans quelques centaines de ms, le message
+  //    ne ferait que clignoter en annonçant une fin qui n'arrive pas ;
+  //  - chaîne STOPPÉE alors que le réglage reste coché (refus serveur, plus
+  //    d'arme, fermeture) → `auto_recast_at_` est remis à zéro, et le message
+  //    reparaît, ce qu'un test sur le seul réglage aurait empêché.
+  const bool relaunch_coming = auto_recast_at_ != 0 || pending_ == kActRecast;
+  if (consumed_ && !awaiting_result_ && !relaunch_coming) {
+    ImGui::TextDisabled(
+        "Session terminée : le serveur n'autorise qu'un refine par lancement de "
+        "la compétence.");
+    ImGui::Spacing();
+  }
 
   if (!entries_.empty()) {
     // Dire POURQUOI le bouton est gris, sinon il a juste l'air cassé.
@@ -1677,14 +2120,23 @@ void WeaponRefineWindow::DrawFooter() {
   // Un BOUTON par défaut. La relance automatique, elle, est opt-in et ne
   // relance que la COMPÉTENCE — jamais le refine, qui reste un clic (cf. le pavé
   // au-dessus de ScheduleAutoRecast).
-  if (entries_.empty()) {
-    ImGui::BeginDisabled(busy);
+  // `|| consumed_` : la liste reste affichée après une tentative, mais elle est
+  // morte côté serveur — c'est exactement le moment où « Relancer » doit
+  // apparaître. L'exclusivité avec « Refine » est préservée, puisque celui-ci est
+  // grisé par `busy` dès que `consumed_`.
+  // Et le bouton suit la même règle : inutile de proposer un geste que la relance
+  // automatique est en train de faire — il n'aurait pas le temps d'être cliqué et
+  // ne ferait que clignoter. Il reparaît dès que la chaîne s'arrête.
+  if ((entries_.empty() || consumed_) && !relaunch_coming) {
+    ImGui::BeginDisabled(awaiting_result_);
     if (ro::RoButton("Relancer le skill", kBtnRecastW)) {
       pending_ = kActRecast;
-      // Relance MANUELLE : nouvelle chaîne, compteur remis à zéro.
+      // Relance MANUELLE : nouvelle chaîne, compteurs remis à zéro — y compris les
+      // essais de relance, sinon un blocage précédent laisserait le quota épuisé.
       auto_chain_       = 0;
       auto_recast_at_   = 0;
       auto_stop_reason_ = nullptr;
+      recast_retries_   = 0;
     }
     ImGui::EndDisabled();
     // Infobulle SUR le bouton (pas un « (?) » à côté) : c'est le bouton qui a
@@ -1753,6 +2205,20 @@ bool WeaponRefineWindow::DrawSettings() {
       "prendre une ligne. Le décocher efface aussi le filtre en cours, pour "
       "qu'aucune arme ne reste masquée par un champ invisible.");
   changed |= ro::RoCheckbox("Description au survol", &desc_tooltip_);
+
+  changed |= ro::RoCheckbox("Entrée lance le refine", &enter_key_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Cochée, Entrée refine l'arme sélectionnée, et la maintenir enchaîne. La "
+      "fenêtre confisque alors la touche tant qu'elle est ouverte : impossible "
+      "d'ouvrir la saisie du chat.\n"
+      "\n"
+      "Décoché (défaut), la touche Entrée reste au CHAT.\n"
+      "\n"
+      "La fenêtre de CONFIRMATION garde Entrée dans tous les cas : « Entrée = "
+      "OK » y est la convention, et elle valide une action qui peut détruire "
+      "l'arme.");
+
   changed |= ro::RoCheckbox("Relancer la compétence automatiquement",
                             &auto_recast_);
   ImGui::SameLine();
@@ -1762,8 +2228,12 @@ bool WeaponRefineWindow::DrawSettings() {
       "\n"
       "Ne refine RIEN tout seul : le choix de l'arme et le déclenchement "
       "restent des clics. La chaîne s'arrête d'elle-même quand la liste revient "
-      "vide, quand il n'y a plus de minerai, quand le serveur refuse une "
-      "condition, ou au bout de 20 relances.");
+      "vide, quand il n'y a plus de minerai, ou quand le serveur refuse une "
+      "condition.\n"
+      "\n"
+      "Si la compétence est jetée par son délai de lancement, la relance est "
+      "réessayée un peu plus tard (3 fois au plus) au lieu de s'arrêter en "
+      "silence.");
   changed |= ro::RoCheckbox("Journal de session", &show_history_);
   ImGui::SameLine();
   HelpMarker(

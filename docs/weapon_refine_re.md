@@ -234,6 +234,38 @@ Détails qui comptent :
   `clif_menuskill_clear(sd)` s'exécute quand même : c'est **le désarmement propre** du
   `menuskill`. Un remplacement ImGui doit reproduire ce `182 / -1` à la fermeture, sinon le
   joueur reste avec un `menuskill_id` armé côté serveur.
+
+  🔴 **Et le critère de « faut-il l'envoyer ? » ne doit RIEN devoir au client.** Il était
+  `RefineWnd()` — la présence de la fenêtre native — ce qui marchait tant qu'on la laissait
+  naître. Le passage de `0x0221` en remplacement d'opcode (§12.5 de `make_item_list_re.md`)
+  l'a cassé net : plus de native, donc plus jamais de `-1`, donc un `menuskill` armé pour
+  toujours. ⏱ Constaté en jeu — « j'ai fermé la fenêtre, maintenant le skill ne part plus ».
+
+  Le critère est désormais **un seul drapeau**, `session_armed_`, qui ne répond qu'à la
+  question « le SERVEUR attend-il encore une réponse ? » :
+  - **posé** sur le compte du paquet (`count > 0`, exactement le critère de
+    `clif_upgrade_list`) — jamais sur `entries_.empty()`, car un parseur qui échoue rend
+    un vecteur vide sur un paquet peuplé et prétendrait donc que rien n'est armé ;
+  - **retiré** dès qu'une tentative part (le serveur fait alors son propre
+    `clif_menuskill_clear` : un seul refine par lancement) ou qu'une annulation est envoyée ;
+  - **non touché par `ResetSession`**, qui referme notre interface — ce qui ne dit rien de
+    l'état du serveur. Cette confusion-là a produit le troisième bug, ci-dessous.
+
+  Trois régressions sont venues d'avoir répondu autrement à cette question :
+  1. par la présence de la native (`RefineWnd()`) → plus de native, plus de `-1` ;
+  2. par `entries_.empty()` → désynchronisable par un échec de parsing ;
+  3. **par rien du tout à la bascule de l'interrupteur « Interface moderne »** : la session
+     était jetée sans prévenir le serveur. ⏱ Constaté en jeu — « j'ai lancé refine,
+     désactivé l'interface moderne, le skill ne part plus », et rebasculer n'aide pas
+     puisque le blocage n'est pas côté client. Le gestionnaire de bascule (`OnTick`) poste
+     donc l'annulation **avant** `ResetSession`. Même correctif appliqué à la fabrication,
+     qui n'avait aucun gestionnaire de bascule du tout.
+
+  Asymétrie à garder en tête : un `-1` **en trop** est inoffensif (`clif_parse_WeaponRefine`
+  sort aussitôt si `menuskill_id` ne correspond pas), un `-1` **manquant** bloque le
+  personnage. En cas de doute, on envoie. Récupération côté joueur si ça arrive :
+  changement de carte, déconnexion ou mort — les trois seuls sites qui remettent
+  `menuskill_id` à zéro (`unit.cpp` `unit_remove_map_`, `pc.cpp` `pc_dead`).
 - **OK sans sélection ne fait rien.** `sel < 0` sort sans fermer ni envoyer.
 - `UIListBox_GetItemCount` (`0x0089F9B0`) = `(list+0x8C − list+0x88) / 24`.
 - ⚠ `UIWindowMgr_SaveRectAndCloseWindow` (`0x00A2E770`) **détruit** la fenêtre (elle
@@ -708,6 +740,29 @@ l'implémentation a corrigé du plan initial.
     appartient (`IsAnyItemActive()`), elle le referme et l'action attend la frappe suivante.
     Sur un geste qui peut DÉTRUIRE l'arme, cette friction est voulue.
 
+    🔴 **Et ce n'est pas seulement le chat qu'il faut protéger : c'est l'arme.** Un réglage
+    opt-in a existé pour « rendre Entrée au chat » (défaut décoché). Il était **dangereux**,
+    et la touche est désormais confisquée dans les deux réglages, **Espace comprise** :
+
+    | Étape | Adresse | Ce qui se passe |
+    |---|---|---|
+    | `UIWindowMgr_OnKeyDown` | `0x00A471E0` | `if (key == 13 \|\| key == 32)` |
+    | `UIWindowMgr_ActivateDefaultButton` | `0x00A2E270` | `OnMsg(msg = 0)` sur la fenêtre prioritaire |
+    | `UIWindow_OnMsg_Default` | `0x008841D0` | `msg 0` → `OnMsg(6, this+0x8C)` |
+    | notre §« champs » | — | la **111** a `+0x8C = 184` = le bouton **OK** |
+    | `OnMsg` case 6 / 184 | `0x0096AAB0` | `SendMsg(182, liste_native[sél. native])` |
+
+    Aucune de ces étapes ne consulte la visibilité — le prédicat `vt+8` interrogé par le
+    gestionnaire est un `return 1` en dur (`0x005A5D90`). Notre fenêtre native masquée
+    recevait donc la frappe et lançait un **refine réel sur l'arme sélectionnée par le
+    CLIENT**, pas par le joueur. Le même trou a été constaté en jeu sur la fabrication (79),
+    dont l'`OnMsg` a exactement la même structure (cf. `make_item_list_re.md` §12.5).
+
+    La fabrication s'en sort en **détruisant** sa native ; ici on ne peut pas, elle porte la
+    position d'ouverture et la présence de session. D'où la confiscation inconditionnelle.
+    La sortie définitive est le **chat en ImGui** : Entrée pourra alors être bloquée
+    globalement pour le jeu et distribuée côté ImGui.
+
 11. **La relance de la compétence peut être automatique — le refine, non.** Demandé après
     coup, et ça touche à une règle de fond du projet (`project_plugin_architecture` : l'API
     Python a été retirée pour empêcher l'automatisation non supervisée). La ligne tenue est
@@ -841,14 +896,16 @@ l'implémentation a corrigé du plan initial.
 17. **La description ouverte depuis un lien passait DERRIÈRE la fenêtre.** Le panneau de
     `ItemDescWindow` porte `ImGuiWindowFlags_NoFocusOnAppearing` : il ne prend pas le focus
     en apparaissant, donc ImGui ne le remonte pas — ouvert depuis une fenêtre qui a le focus,
-    il reste dessous. Ce flag est **voulu** (l'aperçu au survol du viewer storage ouvre le
-    même panneau et volerait le focus à chaque changement de ligne), on ne le touche donc
-    pas : `itemdesc::FocusDescWindow()` remonte le panneau à la demande, et n'est appelée que
-    sur un geste délibéré — clic sur une ligne d'arme, clic sur un lien de minerai.
+    il reste dessous. Ce flag est **voulu** (rien ne doit voler le focus à une desc qui
+    réapparaît sans qu'on l'ait demandé), on ne le touche donc pas.
 
-    L'identifiant utilisé est le `###itemdesc_item` du titre : celui-ci change à chaque item
-    (et devient « Comparaison » en mode comparatif), mais `ImHashStr` hache à partir du
-    `###`, donc cette seule chaîne retrouve la fenêtre.
+    Cette fenêtre appelait donc `itemdesc::FocusDescWindow()` après chaque ouverture. **Ce
+    n'est plus à faire — et il ne faut PAS le refaire** : la remontée est centralisée dans
+    `ItemDescWindow`, qui pose `RaiseItemWindow()` depuis le hook `OnMsg 0x18` de la fenêtre
+    native (le point que traversent *toutes* les ouvertures, natives comme
+    `itemcell::OpenDesc*`) et le consomme en `SetNextWindowFocus` à la frame suivante — donc
+    après tout focus posé par qui que ce soit dans la frame du clic. Une demande de focus
+    ajoutée ici en doublon ne ferait que courir contre celle-là.
 
     Tant qu'elle n'a jamais été rendue, elle s'ouvre **centrée sur la fenêtre de refine**, pas
     au milieu de l'écran : elle parle de la ligne qu'on vient d'y désigner, c'est là que le
