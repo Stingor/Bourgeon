@@ -418,9 +418,9 @@ const char* AmmoLabel(uint8_t st) {
 struct SubCat { int key; const char* label; };
 SubCat PrimaryEquipSlot(uint32_t e) {
   // Coiffe séparée en 3 slots distincts (priorité haut > milieu > bas si multi-slot).
-  if (e & 0x100)                    return {0,  "Tete haut"};   // HEAD_TOP
-  if (e & 0x200)                    return {1,  "Tete milieu"}; // HEAD_MID
-  if (e & 0x001)                    return {2,  "Tete bas"};    // HEAD_LOW
+  if (e & 0x100)                    return {0,  "Tête haut"};   // HEAD_TOP
+  if (e & 0x200)                    return {1,  "Tête milieu"}; // HEAD_MID
+  if (e & 0x001)                    return {2,  "Tête bas"};    // HEAD_LOW
   if (e & 0x010)                    return {3,  "Body armor"};       // ARMOR
   if (e & 0x004)                    return {4,  "Garment"};     // GARMENT
   if (e & 0x040)                    return {5,  "Shoes"};  // SHOES
@@ -435,9 +435,9 @@ SubCat PrimaryEquipSlot(uint32_t e) {
 // Slot d'un COSTUME depuis le masque equip (bits COSTUME_* distincts des slots
 // normaux). Labels alignés sur PrimaryEquipSlot pour la cohérence visuelle.
 SubCat CostumeSlot(uint32_t e) {
-  if (e & 0x0400) return {0, "Tete haut"};    // COSTUME_HEAD_TOP
-  if (e & 0x0800) return {1, "Tete milieu"};  // COSTUME_HEAD_MID
-  if (e & 0x1000) return {2, "Tete bas"};     // COSTUME_HEAD_LOW
+  if (e & 0x0400) return {0, "Tête haut"};    // COSTUME_HEAD_TOP
+  if (e & 0x0800) return {1, "Tête milieu"};  // COSTUME_HEAD_MID
+  if (e & 0x1000) return {2, "Tête bas"};     // COSTUME_HEAD_LOW
   if (e & 0x2000) return {3, "Garment"};      // COSTUME_GARMENT
   return {99, "Other"};
 }

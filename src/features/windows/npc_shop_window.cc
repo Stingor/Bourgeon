@@ -571,7 +571,7 @@ void NpcShopWindow::OnRenderUI() {
                        last_result_sell_ ? "Vente" : "Achat");
   } else if (last_result_ > 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "  Echec (%d)", last_result_);
+    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "  Échec (%d)", last_result_);
   }
 
   // Rend une cellule prix facon natif : "base -> final" (base grise, final en

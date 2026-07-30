@@ -467,7 +467,7 @@ void CashShopWindow::OnRenderUI() {
   ImGui::TextUnformatted("Tri");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(90.0f);
-  const char* kSortLabels[] = {"Nom", "ID", "Cout"};
+  const char* kSortLabels[] = {"Nom", "ID", "Coût"};
   if (ro::RoBeginCombo("##cs_sort", kSortLabels[cur_sort_])) {
     for (int s = 0; s < 3; ++s)
       if (ImGui::Selectable(kSortLabels[s], cur_sort_ == s)) cur_sort_ = s;
