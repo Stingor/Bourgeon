@@ -2225,7 +2225,7 @@ constexpr float kSimpleIllustH = 110.0f;
 
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
                       int card_count, const SimpleOpt* opts, int opt_count, int refine,
-                      const char* display_name) {
+                      const char* display_name, bool damaged) {
   if (id == 0) return;
   const CardDesc* cd = GetCardDesc(id);
   const ImVec4 hdr(0.30f, 0.24f, 0.10f, 1.0f);  // brun (comme la fenêtre desc)
@@ -2257,10 +2257,26 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     const size_t len = strnlen(title, sizeof(title));
     std::snprintf(title + len, sizeof(title) - len, " [%d]", cd->card_slots);
   }
+  // Item CASSÉ : même rendu que le titre de la fenêtre de description complète —
+  // suffixe « - Broken » et ombre rouge sous le nom.
+  if (damaged) {
+    const size_t len = strnlen(title, sizeof(title));
+    std::snprintf(title + len, sizeof(title) - len, " - Broken");
+  }
   // Titre WRAPPÉ : un nom décoré (« +7 Vadon's Sword of Rage [4] ») dépasse
   // largement la largeur du tooltip, qui est bornée — sans wrap il déborderait du
   // cadre au lieu de passer à la ligne.
   if (wrap > 0.0f) ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
+  if (damaged) {
+    // L'ombre = le MÊME texte wrappé, décalé +1,+1, dessiné AVANT le titre qui
+    // repasse dessus. 0xFA5050 = le 0x5050fa COLORREF du DrawName natif (pas de
+    // constante partagée ici : itemcell inclut CE header, l'inverse boucle).
+    const ImVec2 pos = ImGui::GetCursorPos();
+    ImGui::SetCursorPos(ImVec2(pos.x + 1.0f, pos.y + 1.0f));
+    ImGui::TextColored(ImVec4(0xFA / 255.0f, 0x50 / 255.0f, 0x50 / 255.0f, 1.0f),
+                       "%s", title);
+    ImGui::SetCursorPos(pos);
+  }
   ImGui::TextColored(hdr, "%s", title);
   if (wrap > 0.0f) ImGui::PopTextWrapPos();
 

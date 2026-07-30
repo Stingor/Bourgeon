@@ -1758,12 +1758,14 @@ void StorageWindow::OnRenderUI() {
     const uint32_t* pcards = nullptr;
     const char* hname = nullptr;
     int ncards = 0, nopts = 0, hrefine = 0;
+    bool hdamaged = false;
     if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
       const Item& hit = items_[hover_desc_idx_];
       pcards = hit.cards;
       ncards = 4;
       nopts = hit.opt_count;
       hrefine = hit.refine;
+      hdamaged = hit.damaged != 0;
       hname = hit.name;  // nom décoré (BuildDisplayName) + « [N] » ajouté par OnTick
       for (int k = 0; k < nopts && k < 5; ++k) {
         sopts[k].index = hit.opts[k].index;
@@ -1772,7 +1774,7 @@ void StorageWindow::OnRenderUI() {
       }
     }
     itemdesc::RenderSimpleDesc(hover_desc_id_, kW - 2.0f * edge, pcards, ncards,
-                               sopts, nopts, hrefine, hname);
+                               sopts, nopts, hrefine, hname, hdamaged);
     dl->ChannelsSetCurrent(0);
     // Art sysbox SANS son fond (fill_bg=false) : le fond blanc arrondi est déjà
     // peint par ImGui, et celui de DrawDescPanelFrame est à angles droits — il

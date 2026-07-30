@@ -2401,5 +2401,6 @@ void VendingWindow::OnRenderUI() {
 void VendingWindow::DrawHoverDesc() {
   if (!hover_valid_) return;
   itemcell::DrawTooltip(hover_desc_.id, hover_desc_.cards, 4, hover_desc_.opts,
-                    hover_desc_.opt_count, hover_desc_.refine, hover_desc_.name);
+                    hover_desc_.opt_count, hover_desc_.refine, hover_desc_.name,
+                    hover_desc_.damaged != 0);
 }

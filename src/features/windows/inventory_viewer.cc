@@ -2564,12 +2564,14 @@ void InventoryViewer::OnRenderUI() {
     const uint32_t* pcards = nullptr;
     const char* hname = nullptr;
     int ncards = 0, nopts = 0, hrefine = 0;
+    bool hdamaged = false;
     if (hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
       const Item& hit = items_[hover_desc_idx_];
       pcards = hit.cards;
       ncards = 4;
       nopts = hit.opt_count;
       hrefine = hit.refine;
+      hdamaged = hit.damaged != 0;
       hname = hit.name;  // nom décoré (BuildDisplayName) : préfixes/suffixes de cartes
       for (int k = 0; k < nopts && k < 5; ++k) {
         sopts[k].index = hit.opts[k].index;
@@ -2577,6 +2579,7 @@ void InventoryViewer::OnRenderUI() {
         sopts[k].param = hit.opts[k].param;
       }
     }
-    itemcell::DrawTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine, hname);
+    itemcell::DrawTooltip(hover_desc_id_, pcards, ncards, sopts, nopts, hrefine, hname,
+                          hdamaged);
   }
 }

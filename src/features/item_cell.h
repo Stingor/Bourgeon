@@ -118,9 +118,12 @@ const char* Label(char* out, size_t out_size, const char* name, int slots);
 // `cards` (4 max, 0 = vide) et `opts` sont des données d'INSTANCE : elles ne
 // sont pas dans la DB client, l'appelant les lit dans SON ItemSkillInfo.
 // `name` = nom déjà composé (cf. BuildDisplayName) ; nullptr = repli sur la DB.
+// `damaged` = équipement cassé : titre « - Broken » + ombre rouge (cf. la
+// section « Équipement CASSÉ » ci-dessus), comme la desc complète.
 void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
                  const itemdesc::SimpleOpt* opts, int opt_count,
-                 int refine = 0, const char* name = nullptr);
+                 int refine = 0, const char* name = nullptr,
+                 bool damaged = false);
 
 // ── Ouvrir la fenêtre de description native (0x0c) ───────────────────────────
 // DEUX entrées, et la distinction n'est pas cosmétique : elle dit ce que la

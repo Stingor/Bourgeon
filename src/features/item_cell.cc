@@ -166,7 +166,7 @@ const char* Label(char* out, size_t out_size, const char* name, int slots) {
 
 void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
                  const itemdesc::SimpleOpt* opts, int opt_count, int refine,
-                 const char* name) {
+                 const char* name, bool damaged) {
   if (id == 0) return;
   constexpr float kWidth = 330.0f;  // largeur max (wrap du texte)
   const float edge = ro::DescPanelEdge();
@@ -184,7 +184,7 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
   dl->ChannelsSplit(2);
   dl->ChannelsSetCurrent(1);
   itemdesc::RenderSimpleDesc(id, kWidth - 2.0f * edge, cards, card_count, opts,
-                             opt_count, refine, name);
+                             opt_count, refine, name, damaged);
   dl->ChannelsSetCurrent(0);
   const ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
   ro::DrawDescPanelFrame(dl, pos.x, pos.y, pos.x + size.x, pos.y + size.y, false);

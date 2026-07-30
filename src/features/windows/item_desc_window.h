@@ -57,10 +57,13 @@ struct SimpleOpt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
 // nécessaire. Fourni, il remplace « +N <nom de base> » et le titre devient celui de
 // la fenêtre de description complète ; le suffixe d'emplacements « [N] » est ajouté
 // ici (BuildDisplayName ne le compose pas). nullptr = repli sur le nom de la DB.
+// `damaged` (ItemSkillInfo+0x5d) = équipement CASSÉ : le titre prend le suffixe
+// « - Broken » et l'ombre rouge native 0x5050fa, comme le titre de la fenêtre de
+// description complète.
 void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int card_count = 0, const SimpleOpt* opts = nullptr,
                       int opt_count = 0, int refine = 0,
-                      const char* display_name = nullptr);
+                      const char* display_name = nullptr, bool damaged = false);
 
 // ⚠️ Une fenêtre qui ouvre une description n'a RIEN à faire pour le z-order.
 //

@@ -970,7 +970,8 @@ void CartViewer::OnRenderUI() {
       sopts[i].value = hit.opts[i].value;
       sopts[i].param = hit.opts[i].param;
     }
-    itemcell::DrawTooltip(hit.id, hit.cards, 4, sopts, hit.opt_count, hit.refine, hit.name);
+    itemcell::DrawTooltip(hit.id, hit.cards, 4, sopts, hit.opt_count, hit.refine, hit.name,
+                          hit.damaged != 0);
   }
 }
 
