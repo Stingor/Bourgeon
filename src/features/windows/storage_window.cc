@@ -1438,11 +1438,13 @@ void StorageWindow::OnRenderUI() {
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float w = kIcon * static_cast<float>(ic.w) / ic.h;
         // Cassé = icône teintée du rouge natif (cf. itemcell::kDamagedShadow).
+        // ImageWithBg et non Image : depuis ImGui 1.91.9 c'est elle qui porte
+        // le paramètre tint_col.
         const ImVec4 tint = items_[idx].damaged
                                 ? ImGui::ColorConvertU32ToFloat4(itemcell::kDamagedShadow)
                                 : ImVec4(1, 1, 1, 1);
-        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, kIcon),
-                     ImVec2(0, 0), ImVec2(1, 1), tint);
+        ImGui::ImageWithBg(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, kIcon),
+                           ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), tint);
       } else {
         ImGui::Dummy(ImVec2(kIcon, kIcon));  // garde l'alignement si pas d'icône
       }

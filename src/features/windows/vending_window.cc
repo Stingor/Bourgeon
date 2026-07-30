@@ -858,11 +858,13 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
   ro::IconTex ic = ro::ItemIcon(desc.id);
   if (ic.tex) {
     // Cassé = icône teintée du rouge natif (cf. itemcell::kDamagedShadow).
+    // ImageWithBg et non Image : depuis ImGui 1.91.9 c'est elle qui porte le
+    // paramètre tint_col.
     const ImVec4 tint = desc.damaged
                             ? ImGui::ColorConvertU32ToFloat4(itemcell::kDamagedShadow)
                             : ImVec4(1, 1, 1, 1);
-    ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20),
-                 ImVec2(0, 0), ImVec2(1, 1), tint);
+    ImGui::ImageWithBg(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20),
+                       ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), tint);
     ItemHover(desc, wnd, list_off);  // l'icône réagit comme le nom
     ImGui::SameLine();
   }
