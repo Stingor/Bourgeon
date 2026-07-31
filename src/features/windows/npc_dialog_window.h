@@ -69,6 +69,13 @@ class NpcDialogWindow : public Plugin {
   // par SendPacketRef et contournent ce hook). Neutralise « got 1, valid [1..0] ».
   bool ShouldSuppressNativeDialogSend(uint16_t opcode) const;
 
+  // Appelé par le hook WndProc (ragnarok_client) : vrai si cette touche pilote le
+  // dialogue ImGui et doit être avalée avant le jeu (Entrée/Espace/Échap, plus
+  // flèches et 1-9 quand un menu est affiché). Volontairement CIBLÉ : F1-F9 et le
+  // reste du clavier passent au jeu -> skillbar/hotkeys utilisables pendant un
+  // dialogue, comme en natif. (msg, wparam) = paramètres bruts du WndProc.
+  static bool EatsKey(unsigned msg, unsigned long wparam);
+
  private:
   enum InputMode { kInputNone, kInputNumber, kInputString };
 

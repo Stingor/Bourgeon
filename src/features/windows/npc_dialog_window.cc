@@ -72,6 +72,12 @@ constexpr uint16_t kCzCloseDialog = 0x0146;  // CZ_CLOSE_DIALOG     {op,GID} 6o
 // ^RRGGBB du contexte), en RGBA ImGui.
 constexpr uint32_t kLinkColor = IM_COL32(0x2E, 0x74, 0xD8, 0xFF);
 
+// Portée du clavier consommé par le dialogue (lue par EatsKey depuis le WndProc).
+// Posées chaque frame par OnRenderUI : le WndProc tourne entre deux frames, il voit
+// donc l'état de la frame qui vient d'être rendue.
+bool g_kbd_dialog_open = false;  // overlay dialogue rendu cette frame
+bool g_kbd_menu_open   = false;  // un menu de choix est affiché (flèches + 1-9 actifs)
+
 // ── Fenêtres natives (SEH-gardé) ──
 void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
@@ -662,13 +668,41 @@ bool NpcDialogWindow::DrawSettings() {
   return changed;
 }
 
+// Appelé par le hook WndProc (ragnarok_client) : vrai si cette touche pilote le
+// dialogue et ne doit PAS atteindre le jeu (Entrée ouvrirait le chat, Échap le menu
+// RO). Tout le reste — F1-F9, lettres… — passe au jeu, comme en natif : la skillbar
+// et les hotkeys restent utilisables pendant un dialogue NPC.
+bool NpcDialogWindow::EatsKey(unsigned msg, unsigned long wparam) {
+  if (!g_kbd_dialog_open) return false;
+  // Combo avec modificateur = hotkey jeu (skillbar, macro…) : on laisse passer.
+  if ((GetKeyState(VK_CONTROL) & 0x8000) || (GetKeyState(VK_MENU) & 0x8000) ||
+      (GetKeyState(VK_SHIFT) & 0x8000))
+    return false;
+  switch (msg) {
+    case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+      if (wparam == VK_RETURN || wparam == VK_SPACE || wparam == VK_ESCAPE)
+        return true;  // Next/Close/annulation
+      return g_kbd_menu_open &&
+             (wparam == VK_UP || wparam == VK_DOWN ||
+              (wparam >= '1' && wparam <= '9'));
+    case WM_CHAR: case WM_UNICHAR:
+      // TranslateMessage émet le WM_CHAR même quand le WM_KEYDOWN est avalé.
+      if (wparam == '\r' || wparam == ' ') return true;
+      return g_kbd_menu_open && wparam >= '1' && wparam <= '9';
+  }
+  return false;
+}
+
 void NpcDialogWindow::OnRenderUI() {
+  g_kbd_dialog_open = g_kbd_menu_open = false;  // recalculé chaque frame
   if (!open_ || !imgui_enabled_) return;
   // Rien à afficher (transitoire entre paquets) : pas de fenêtre vide, sauf si un
   // bouton Next/Close est demandé (pour pouvoir cliquer Fermer).
   if (lines_.empty() && choices_.empty() && input_mode_ == kInputNone && !has_next_ &&
       !has_close_)
     return;
+  g_kbd_dialog_open = true;
+  g_kbd_menu_open = !choices_.empty();
 
   const bool opening = need_pos_;  // 1re frame de cette ouverture (z-order à forcer)
   if (need_pos_) {
@@ -720,16 +754,12 @@ void NpcDialogWindow::OnRenderUI() {
     return;
   }
   if (begun) {
-    // Capture le clavier pour l'overlay tant qu'il est ouvert : Entrée/Espace/1-9/flèches
-    // servent à piloter le dialogue et NE DOIVENT PAS fuir vers le JEU (sinon Entrée ouvre
-    // le chat). Le hook WndProc (ragnarok_client) avale les touches quand
-    // io.WantCaptureKeyboard est vrai ; une fenêtre à boutons ne le pose pas seule.
-    // EXCEPTION : si un modificateur est tenu (Ctrl/Alt/Shift), on NE capture PAS -> les
-    // combos (skillbar, macros) passent au jeu. La saisie d'un champ garde sa propre
-    // capture via WantTextInput, donc Maj+lettre y fonctionne toujours.
-    const ImGuiIO& io_kb = ImGui::GetIO();
-    if (!io_kb.KeyCtrl && !io_kb.KeyAlt && !io_kb.KeyShift)
-      ImGui::SetNextFrameWantCaptureKeyboard(true);
+    // Clavier : PAS de capture ImGui globale (elle avalait AUSSI F1-F9 -> skillbar
+    // morte pendant un dialogue, contrairement au natif). Le WndProc consulte
+    // EatsKey() et n'avale que les touches que le dialogue pilote (Entrée/Espace/
+    // Échap, + flèches/1-9 quand un menu est affiché) — cf. g_kbd_dialog_open posé
+    // en tête d'OnRenderUI. La saisie d'un champ (input/filtre) garde sa propre
+    // capture via WantTextInput (ImGui pose WantCaptureKeyboard tout seul).
 
     // Layout à FOOTER FIXE : texte (flexible, scroll interne) + menu (borné, scroll
     // interne) + input, puis les boutons ÉPINGLÉS en bas. La fenêtre est NoScrollbar

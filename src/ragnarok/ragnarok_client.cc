@@ -15,6 +15,7 @@
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
+#include "features/windows/npc_dialog_window.h"     // EatsKey (touches du dialogue NPC)
 #include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
 #include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
@@ -688,6 +689,11 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
         case WM_CHAR: case WM_UNICHAR:
           return 0;
       }
+    } else if (NpcDialogWindow::EatsKey(uMsg, wParam)) {
+      // Dialogue NPC ImGui : avalage CIBLÉ (Entrée/Espace/Échap, flèches + 1-9 si
+      // menu) — le reste du clavier (F1-F9, hotkeys skillbar…) atteint le jeu,
+      // comme pendant un dialogue natif.
+      return 0;
     }
   }
 
