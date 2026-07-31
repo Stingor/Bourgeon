@@ -757,12 +757,13 @@ void MoonlightAuth::OnRenderLoginUI() {
   // initiale, d'où les IP garbage et le « Failed to Connect ».
   // Repli clavier (éprouvé) si le natif n'a pas fait apparaître l'écran de login.
   if (!native_login::LoginWindowPresent()) {
-    // Init paresseuse au cas où OnModeSwitch n'aurait pas été émis à la 1ʳᵉ entrée
-    // (c'est aussi la seule occasion de résoudre les connexions dans ce cas).
-    if (login_enter_tick_ == 0) {
-      login_enter_tick_ = GetTickCount();
-      if (server_count_ == 0) ResolveServer();
-    }
+    // Init paresseuse au cas où OnModeSwitch n'aurait pas été émis à la 1ʳᵉ entrée.
+    if (login_enter_tick_ == 0) login_enter_tick_ = GetTickCount();
+    // Re-résoudre TANT QUE la liste est vide : la 1ʳᵉ résolution peut tomber avant
+    // LoadClientInfoXml (arbre natif pas encore parsé, et sans data\clientinfo.xml
+    // sur disque le repli ifstream échoue aussi). Dès que l'arbre devient lisible,
+    // server_count_ est connu et on franchit sans attendre kSvcSelectProbeMs.
+    if (server_count_ == 0 && !server_select_done_) ResolveServer();
     const unsigned long now = GetTickCount();
     // Écran de login absent alors qu'on est dans le mode login = service-select.
     // On tire dès qu'on SAIT qu'il y a plusieurs connexions ; si le compte reste
