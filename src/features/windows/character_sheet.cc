@@ -2235,6 +2235,7 @@ enum : uint16_t {
   kBscDefsetRace = 20, kBscMdefsetRace = 21, kBscHpVanishRace = 22, kBscSpVanishRace = 23,
   kBscComaRace = 24, kBscComaClass = 25, kBscIgnResRace = 26, kBscIgnMresRace = 27,
   kBscMAddRace2 = 28, kBscIgnMdefRace2 = 29, kBscSpGainRace = 30,
+  kBscIgnDefClass = 31, kBscIgnMdefClass = 32,  // bonus1 bitmask replié en 100 % par le serveur
 };
 // Codes des bonus liés à un skill — MIROIR de e_bourgeon_stat_skill (serveur).
 enum : uint16_t {
@@ -6716,6 +6717,8 @@ void CharacterSheet::DrawStatsPanel() {
         case kBscCritRace:    kind = "Crit vs";       who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         case kBscIgnDefRace:  kind = "Ignore DEF vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         case kBscIgnMdefRace: kind = "Ignore MDEF vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnDefClass:  kind = "Ignore DEF vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscIgnMdefClass: kind = "Ignore MDEF vs"; who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
         case kBscSubdefEle:   kind = "Résist. arme";   who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
         case kBscSubClass:    kind = "Réduc. vs";      who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
         case kBscSubRace2:  kind = "Réduc. vs";  who = rc2(c.idx); break;
