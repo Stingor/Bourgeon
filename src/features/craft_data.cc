@@ -115,7 +115,7 @@ const Tables& Get() {
         }
       }
       t.ok = true;
-      LogInfo("[craftdata] {} : {} armes, {} recettes, table de refine chargee",
+      LogInfo("[craftdata] {} : {} armes, {} recettes, table de refine chargée",
               path, t.weapon_lv.size(), t.recipe_skill.size());
     } catch (const std::exception& error) {
       // ⚠ Absence NON fatale, et surtout NON silencieuse : le fichier est livré
@@ -123,7 +123,7 @@ const Tables& Get() {
       // fonctions rendront alors « inconnu », et l'interface se taira au lieu
       // d'afficher un zéro qui passerait pour une vraie valeur.
       LogError("[craftdata] {} illisible ({}) — chances de refine et recettes "
-               "etendues indisponibles", path, error.what());
+               "étendues indisponibles", path, error.what());
     }
     return t;
   }();

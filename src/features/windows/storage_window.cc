@@ -1255,17 +1255,17 @@ void StorageWindow::OnRenderUI() {
   }
   std::string desc = "Raccourcis storage\n\n"
                      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
-                     "  pile = menu contextuel : Retirer 1 / tout / quantite)\n"
-                     "- Ctrl + clic gauche : (de)marquer l'item comme favori (onglet Favoris)\n"
+                     "  pile = menu contextuel : Retirer 1 / tout / quantité)\n"
+                     "- Ctrl + clic gauche : (dé)marquer l'item comme favori (onglet Favoris)\n"
                      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
                      "- Ctrl + clic droit : description\n"
                      "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
                      "- Glisser un item du viewer -> inventaire : retrait ; -> cart : storage vers cart\n"
-                     "- Glisser un item d'inventaire / cart sur le viewer : depot / cart vers storage\n"
+                     "- Glisser un item d'inventaire / cart sur le viewer : dépôt / cart vers storage\n"
                      "- Glisser un item sur l'onglet Favoris : l'y ajoute ; sur un autre onglet : l'en retire\n"
-                     "- Entree : valide la quantite (defaut = stack entier)\n"
-                     "- Survol d'un item : description (si active dans Interface > Storage)\n"
-                     "- Clic sur un en-tete de colonne : tri ; combo Sous-type : filtre fin\n"
+                     "- Entrée : valide la quantité (défaut = stack entier)\n"
+                     "- Survol d'un item : description (si activé dans Interface > Storage)\n"
+                     "- Clic sur un en-tête de colonne : tri ; combo Sous-type : filtre fin\n"
                      "- Colonnes, filtre et survol : Moonlight > Interface de jeu > Storage\n"
                      "- Bouton Quitter / X : ferme le storage";
 
@@ -1632,7 +1632,7 @@ void StorageWindow::OnRenderUI() {
   // Compteur UNIQUE (plus de doublon en tête) : occupation de l'entrepôt + nombre
   // d'items réellement affichés (onglet + sous-type + filtre).
   char cnt[48];
-  std::snprintf(cnt, sizeof(cnt), "%d/%d  (%d affiches)", used_, max_,
+  std::snprintf(cnt, sizeof(cnt), "%d/%d  (%d affichés)", used_, max_,
                 static_cast<int>(view.size()));
 
   // ── Footer btnbar (épinglé en bas de la fenêtre) : icône + compteur + Quitter.

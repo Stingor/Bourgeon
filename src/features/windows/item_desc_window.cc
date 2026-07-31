@@ -2409,7 +2409,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::TableSetupColumn("Niv");
           ImGui::TableSetupColumn("Cast");
           ImGui::TableSetupColumn("Cooldown");
-          ImGui::TableSetupColumn("Delai");
+          ImGui::TableSetupColumn("Délai");
           ImGui::TableHeadersRow();
           auto sec = [](int32_t ms) { return ms / 1000.0f; };
           for (size_t i = 0; i < td->levels.size(); ++i) {

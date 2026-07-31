@@ -30,7 +30,7 @@ void MoonlightUi::DrawCommandsPanel() {
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche la RACE et l'ELEMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
+          SameLine(); HelpMarker("Affiche la RACE et l'ÉLÉMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Separate Kills", &separate_kills_enabled_)) SendSetting(kSettingSeparateKills, separate_kills_enabled_ ? 1 : 0);
           SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);

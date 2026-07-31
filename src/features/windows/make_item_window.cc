@@ -1613,7 +1613,7 @@ void MakeItemWindow::OnTick() {
       last_result_       = line;
       last_result_color_ = kColOk;
       Log(line, kColOk);
-      LogDiag("[make] succes CONSTATE (aucun 0x018F) : id={} {} -> {} (+{})",
+      LogDiag("[make] succès CONSTATÉ (aucun 0x018F) : id={} {} -> {} (+{})",
               last_sent_id_, before, now_owned, gained);
       // 🔴 Décompter la série ICI AUSSI. Le décompte ne vivait que dans le
       // handler de 0x018F — or ce paquet n'arrive JAMAIS sur ces compétences :
@@ -1704,7 +1704,7 @@ void MakeItemWindow::OnTick() {
     Log(is_dish ? "Échec probable — la cuisine ne dit rien quand elle rate."
                 : "Aucune réponse du serveur — échec probable.",
         kColWarn);
-    LogDiag("[make] TIMEOUT: aucun 0x018F ni 0x0110 apres {} ms (produit {})",
+    LogDiag("[make] TIMEOUT: aucun 0x018F ni 0x0110 après {} ms (produit {})",
             kAwaitResultTimeoutMs, last_sent_id_);
   }
 
@@ -1867,7 +1867,7 @@ void MakeItemWindow::NotifyItemUse(unsigned item_index) {
     if (found >= 0) {
       g_index_offset = found;
       item_id = InvIdByIndex(item_index);
-      LogDiag("[make] offset d'index DETECTE : node+0x{:02X} (index {} -> id {})",
+      LogDiag("[make] offset d'index DÉTECTÉ : node+0x{:02X} (index {} -> id {})",
               found, item_index, item_id);
     } else {
       LogDiag("[make] offset d'index INTROUVABLE pour index={} — occurrences "
@@ -1950,13 +1950,13 @@ void MakeItemWindow::SendReuseItem() {
                   source_item_name_, auto_items_used_);
     auto_stop_reason_ = msg;
     auto_ours_        = false;
-    LogDiag("[make] SendReuseItem: stock epuise pour id={}", source_item_id_);
+    LogDiag("[make] SendReuseItem: stock épuisé pour id={}", source_item_id_);
     return;
   }
 
   const unsigned idx  = InvIndexById(source_item_id_);
   const bool     sent = SendUseItemPacket(idx, OwnAid());
-  LogDiag("[make] SendReuseItem: id={} -> index={} aid={} envoye={}",
+  LogDiag("[make] SendReuseItem: id={} -> index={} aid={} envoyé={}",
           source_item_id_, idx, OwnAid(), sent ? 1 : 0);
   if (!sent) {
     // Stock épuisé : c'est la fin NORMALE d'une chaîne par objet, et le seul

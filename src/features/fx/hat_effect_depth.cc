@@ -283,8 +283,8 @@ void HatEffectDepth::InstallDepthPatch() {
   };
   for (const SigCheck& s : sigs) {
     if (!VerifySig(delta, s)) {
-      LogError("[HatEffectDepth] signature '{}' absente (build non supporte ou "
-               "deja patche) — plugin inactif", s.label);
+      LogError("[HatEffectDepth] signature '{}' absente (build non supporté ou "
+               "déjà patché) — plugin inactif", s.label);
       return;
     }
   }
@@ -293,7 +293,7 @@ void HatEffectDepth::InstallDepthPatch() {
   void* cave = VirtualAlloc(nullptr, kCaveSize, MEM_COMMIT | MEM_RESERVE,
                             PAGE_EXECUTE_READWRITE);
   if (!cave) {
-    LogError("[HatEffectDepth] VirtualAlloc du code cave a echoue — plugin inactif");
+    LogError("[HatEffectDepth] VirtualAlloc du code cave a échoué — plugin inactif");
     return;
   }
   const uint32_t cave_va = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(cave));
@@ -349,6 +349,6 @@ void HatEffectDepth::InstallDepthPatch() {
 
   // Silencieux quand tout est en place : seul un patch raté vaut une ligne de log.
   if (!ok)
-    LogError("[HatEffectDepth] ECHEC patch (cave=0x{:08X}) — profondeur monde "
+    LogError("[HatEffectDepth] ÉCHEC patch (cave=0x{:08X}) — profondeur monde "
              "inactive sur les hat-effects .str", cave_va);
 }

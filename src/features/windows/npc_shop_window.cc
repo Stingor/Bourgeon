@@ -624,7 +624,7 @@ void NpcShopWindow::OnRenderUI() {
   if (ImGui::InputTextWithHint("##shop_filter", "Filtrer...", filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
-  ImGui::TextDisabled("Clic = panier   -   Ctrl+clic = achat/vente immediat");
+  ImGui::TextDisabled("Clic = panier   -   Ctrl+clic = achat/vente immédiat");
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -685,7 +685,7 @@ void NpcShopWindow::OnRenderUI() {
     }
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Ajoute tout l'inventaire vendable ; le shop se fermera "
-                        "automatiquement apres la vente.");
+                        "automatiquement après la vente.");
     if (ImGui::BeginTable("selltbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {

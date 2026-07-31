@@ -249,7 +249,7 @@ void QuestTracker::OnRenderUI() {
   // stable while the visible label changes. The (X) close button turns the
   // custom tracker off (re-enable from the settings panel).
   char titlebuf[64];
-  snprintf(titlebuf, sizeof(titlebuf), "Suivi de quete (%d)###quest_tracker", n);
+  snprintf(titlebuf, sizeof(titlebuf), "Suivi de quête (%d)###quest_tracker", n);
   bool open = true;
   bool* p_open = g_cfg.show_titlebar ? &open : nullptr;
 
@@ -269,7 +269,7 @@ void QuestTracker::OnRenderUI() {
 
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w);
     if (n == 0) {
-      ImGui::TextDisabled("(aucune quete suivie)");
+      ImGui::TextDisabled("(aucune quête suivie)");
     }
     for (int i = 0; i < n; ++i) {
       const QuestEntry& q = quests[i];
@@ -361,10 +361,10 @@ void QuestTracker::DrawSettings() {
 
   g_needs_save |= ImGui::Checkbox("Fond translucide", &g_cfg.show_bg);
   ImGui::BeginDisabled(!g_cfg.show_bg);
-  g_needs_save |= WheelSliderInt("Opacite du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
+  g_needs_save |= WheelSliderInt("Opacité du fond", &g_cfg.bg_alpha, 0, 100, "%d%%");
   ImGui::EndDisabled();
 
-  if (ro::RoButton("Reinitialiser")) {
+  if (ro::RoButton("Réinitialiser")) {
     g_cfg = QuestTrackerConfig{};
     g_cfg.enabled = true;  // keep it on after a reset from the panel
     g_needs_save = true;
