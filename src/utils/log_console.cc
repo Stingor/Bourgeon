@@ -79,6 +79,11 @@ LogConsole::LogConsole() {
       freopen_s(&out, "CONOUT$", "w", stdout);
       setvbuf(stdout, nullptr, _IONBF, 0);
     }
+    // Les logs sont en UTF-8 (sources UTF-8) mais la console démarre sur le
+    // codepage OEM (CP850 en fr-FR) : chaque accent sortait en « ├® ». Hors du
+    // if : AllocConsole échoue si une console est déjà attachée au processus,
+    // et le codepage doit être corrigé dans ce cas aussi.
+    SetConsoleOutputCP(CP_UTF8);
   }
 
   auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
