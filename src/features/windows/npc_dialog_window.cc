@@ -291,6 +291,11 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       if (mlen > 0) {
         std::string m(reinterpret_cast<const char*>(data + 6),
                       static_cast<size_t>(mlen));
+        // Le corps est une chaîne C : rAthena copie strlen+1 octets, donc mlen
+        // INCLUT le NUL final. Sans troncature, une option vide en DERNIÈRE
+        // position devient "\0" (non vide) et s'affiche en ligne blanche.
+        const size_t nul = m.find('\0');
+        if (nul != std::string::npos) m.resize(nul);
         // Séparateur RO = ':' (découpe fidèle au natif). NB : un ':' DANS un libellé
         // scinde l'option (limite RO côté serveur, le natif aussi) -> ne pas mettre de
         // ':' dans un nom d'option/map (à corriger dans la SQL).
