@@ -322,14 +322,21 @@ void DrawPoring(ImDrawList* dl, ImVec2 c, float r) {
 // SpriteAtlas — no on-screen actor, no submit hook needed. All chain functions
 // are __thiscall (emulated as __fastcall, EDX ignored), heavily SEH-guarded;
 // any failure falls back to the hand-drawn Poring above.
-constexpr uintptr_t kMonResName    = 0x00d824c0;  // __cdecl(classId) -> resname ("poring")
+constexpr uintptr_t kMonResName    = 0x00d824c0;  // __stdcall(classId) -> resname ("poring")
 constexpr uintptr_t kFmtSpr        = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr uintptr_t kFmtAct        = 0x0103182c;  // "몬스터\\%s.act" (CP949)
 constexpr uintptr_t kActFrameCount = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
 constexpr int       kPoringClassId = 1002;        // Poring
 constexpr int       kCTexDX9Handle = 0x12c;       // CTexture -> IDirect3DTexture9*
 
-using MonResNameFn = const char* (__cdecl*)(int);
+// ⚠ Mob_ClassIdToResName est __stdcall (RET 4), PAS __cdecl : la fonction
+// dépile déjà son argument. Déclarée __cdecl, l'appelant dépilait une SECONDE
+// fois — déséquilibre de 4 octets que seul l'épilogue `esp = ebp` de la
+// fonction appelante masquait. Ça « marchait » par chance ; ça ne tiendrait plus
+// dès qu'une build sans frame pointer, ou un appel depuis une autre fonction,
+// changerait cette hypothèse. Corrigé ici comme dans login_parade.cc, qui avait
+// levé le lièvre.
+using MonResNameFn = const char* (__stdcall*)(int);
 using TexMgrGetFn  = void* (__cdecl*)();
 using MakeKeyFn    = void* (__cdecl*)(const char*);
 using LoadResFn    = void* (__fastcall*)(void*, void*, void*);            // (mgr, edx, key)
