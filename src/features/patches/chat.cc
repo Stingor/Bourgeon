@@ -685,14 +685,18 @@ static void ReassertTabWidthsSEH(void* wnd) {
   }
 }
 
-uint32_t __fastcall ChatWndProcHook(void* ecx, void* edx, void* p1, int msg,
-                                    int mode, int new_w, int new_h, int p6) {
+// Mêmes positions que uiwnd::OnMsg (`msg` est le DEUXIÈME des six arguments
+// natifs), à ceci près que ce handler-ci porte un POINTEUR en premier : `arg0`
+// n'est pas un entier ici. Les trois suivants sont connus pour cette fenêtre
+// (mode, largeur, hauteur) ; le dernier n'a pas de rôle établi.
+uint32_t __fastcall ChatWndProcHook(void* ecx, void* edx, void* arg0, int msg,
+                                    int mode, int new_w, int new_h, int p5) {
   g_chat_wnd = ecx;  // the WndProc 'this' is always the main chat window
   // BEFORE the stock handler: re-assert the per-tab wrap width so an incoming new
   // line (msg 0x25 pixel-wraps to tab+0x14 inside this call) uses the custom width.
   if (g_chat_width > 0 && !g_in_apply)
     ReassertTabWidthsSEH(ecx);
-  uint32_t r = g_chat_wndproc_orig(ecx, edx, p1, msg, mode, new_w, new_h, p6);
+  uint32_t r = g_chat_wndproc_orig(ecx, edx, arg0, msg, mode, new_w, new_h, p5);
   // Keep the chat at the user-chosen width: the stock layout only reflows on a
   // relayout (resize / tab switch / new line), so whenever one runs and the width
   // has drifted from g_chat_width, re-apply it.  Also widens the chat from the

@@ -887,6 +887,10 @@ void CharSelect::EnterGame(int slot) {
     }
     // ⚠ RET 0x18 = 6 args pile (même piège que UILoginWnd_OnMsg : un typedef à
     // 5 args corromprait ESP).
+    // Positions = celles de uiwnd::OnMsg : (this, arg0=0, msg=6, p2=0xB8 la
+    // sous-commande « entrer en jeu », p3..p5=0). On n'appelle PAS uiwnd::OnMsg
+    // ici : lui résout le handler par la vtable, alors qu'on vise l'adresse
+    // FIXE kCharSelOnMsg.
     using WndOnMsg_t = int(__thiscall*)(void*, int, int, int, int, int, int);
     reinterpret_cast<WndOnMsg_t>(kCharSelOnMsg)(wnd, 0, 6, 0xB8, 0, 0, 0);
     entering_ = true;
@@ -1030,6 +1034,8 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
       return;
     }
     // RET 0x18 = 6 args pile (cf. EnterGame) : typedef à 6 args obligatoire.
+    // Positions = celles de uiwnd::OnMsg : (this, arg0=0, msg=6, p2=ctrl,
+    // p3..p5=0). Adresse FIXE (pas la vtable) -> pas d'uiwnd::OnMsg, cf. EnterGame.
     using WndOnMsg_t = int(__thiscall*)(void*, int, int, int, int, int, int);
     reinterpret_cast<WndOnMsg_t>(kCharSelOnMsg)(wnd, 0, 6, ctrl, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {

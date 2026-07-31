@@ -133,17 +133,20 @@ inline bool IsOwnEquip(void* self) {
 // restore. SIX stack args / ret 0x18 — a wrong arg count corrupts the stack. The
 // handler re-dispatches msg 6/0xca to itself inside case 0x22; our specific guards
 // (0xc9 / 0x22) ignore it, so the re-entrancy is harmless.
-int __fastcall EquipMsgHook(void* self, void* edx, int p1, int msg, int p3,
-                            int p4, int p5, int p6) {
+// Noms des paramètres alignés sur uiwnd::OnMsg : `msg` est le DEUXIÈME des six
+// entiers natifs, `p2` le suivant (ici la sous-commande du msg 6), et `arg0` le
+// premier, dont le rôle n'est pas établi (0 partout).
+int __fastcall EquipMsgHook(void* self, void* edx, int arg0, int msg, int p2,
+                            int p3, int p4, int p5) {
   __try {
-    if (msg == kMsgCmd && p3 == kSubClose && IsOwnEquip(self)) {  // X close -> persist
+    if (msg == kMsgCmd && p2 == kSubClose && IsOwnEquip(self)) {  // X close -> persist
       g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinX);
       g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinY);
-      const int r = g_equip_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+      const int r = g_equip_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
       if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
       return r;
     }
-    const int r = g_equip_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+    const int r = g_equip_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
     // After the native layout-restore, override with the saved position (we
     // override, so the native validator/default are irrelevant). OnTick (live
     // FindWindow read, throttled) + this close-save cover drag-end and closes.

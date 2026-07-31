@@ -3441,10 +3441,13 @@ inline void BIPinOffscreen(void* w) {
   *py = kBIOffScreen;
 }
 
-int __fastcall BIMsgHook(void* self, void* edx, int p1, int msg, int p3, int p4,
-                         int p5, int p6) {
+// Noms des paramètres alignés sur uiwnd::OnMsg : le natif prend SIX entiers dont
+// `msg` est le DEUXIÈME ; le premier (`arg0`) vaut 0 sur tous les sites d'appel
+// connus et son rôle n'est pas établi. On relaie tout tel quel.
+int __fastcall BIMsgHook(void* self, void* edx, int arg0, int msg, int p2, int p3,
+                         int p4, int p5) {
   __try {
-    const int r = g_bi_orig_msg(self, edx, p1, msg, p3, p4, p5, p6);
+    const int r = g_bi_orig_msg(self, edx, arg0, msg, p2, p3, p4, p5);
     if (msg == kBIMsgRestore && g_bi_hide) BIPinOffscreen(self);  // pre-render off-screen
     return r;
   } __except (EXCEPTION_EXECUTE_HANDLER) {

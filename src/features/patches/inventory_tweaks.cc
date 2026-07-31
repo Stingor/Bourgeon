@@ -633,7 +633,10 @@ void DoRefresh(void* self, void* edx) {
 //    refresh (cards-aware).
 //  - 0x17 (refresh, e.g. item add/remove while a tab is open): cards-aware rebuild.
 //  - 0x22 (layout restore): native sets inv+0x10c = saved visual slot; remap it.
-int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, int p5, int p6) {
+// Noms des paramètres alignés sur uiwnd::OnMsg : `msg` est le DEUXIÈME des six
+// entiers natifs, `p2` le suivant (ici l'index d'onglet cliqué), et `arg0` le
+// premier, dont le rôle n'est pas établi (0 partout).
+int __fastcall MsgHook(void* self, void* edx, int arg0, int msg, int p2, int p3, int p4, int p5) {
   __try {
     // Ensure the 5th tab exists BEFORE any message is handled — especially the
     // layout-restore (0x22): with only 4 tabs the saved tab index is out of range
@@ -641,7 +644,7 @@ int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, i
     if (void* tab = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(self) + kTabCtrl))
       EnsureExtraTab(tab);
     if (msg == kMsgSelectTab) {
-      const int cat = (p3 >= 0 && p3 < kTabCount) ? kSlotCategory[p3] : p3;
+      const int cat = (p2 >= 0 && p2 < kTabCount) ? kSlotCategory[p2] : p2;
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kTabCat) = cat;
       DoRefresh(self, edx);
       return 0;
@@ -662,7 +665,7 @@ int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, i
         LoadTabImages();
         SizeTabsToImages(tab);
       }
-      const int r = g_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+      const int r = g_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
       // The save persists the CATEGORY (inv+0x10c); native restore copied it into BOTH
       // inv+0x10c AND tabctrl+0x7c. Keep the category (the internal 0x17 already built
       // its list); just move the highlighted SLOT to the tab that shows that category
@@ -674,7 +677,7 @@ int __fastcall MsgHook(void* self, void* edx, int p1, int msg, int p3, int p4, i
       }
       return r;
     }
-    return g_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+    return g_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return 0;
   }

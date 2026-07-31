@@ -282,17 +282,20 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 // sub 0xc9) + trigger a settings save, and on layout-restore (msg 0x22) override SetPos
 // with the saved x/y AFTER the native restore (we override, so the native validator/
 // default are irrelevant). SIX stack args / ret 0x18 — a 5-arg hook corrupts the stack.
-int __fastcall StatusMsgHook(void* self, void* edx, int p1, int msg, int p3,
-                             int p4, int p5, int p6) {
+// Noms des paramètres alignés sur uiwnd::OnMsg : `msg` est le DEUXIÈME des six
+// entiers natifs, `p2` le suivant (ici la sous-commande du msg 6), et `arg0` le
+// premier, dont le rôle n'est pas établi (0 partout).
+int __fastcall StatusMsgHook(void* self, void* edx, int arg0, int msg, int p2,
+                             int p3, int p4, int p5) {
   __try {
-    if (msg == kMsgCmd && p3 == kSubClose) {  // X close -> persist immediately
+    if (msg == kMsgCmd && p2 == kSubClose) {  // X close -> persist immediately
       g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinX);
       g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinY);
-      const int r = g_status_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+      const int r = g_status_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
       if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
       return r;
     }
-    const int r = g_status_msg_orig(self, edx, p1, msg, p3, p4, p5, p6);
+    const int r = g_status_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
     // After the native layout-restore, override with the saved position (we override,
     // so the native validator/default are irrelevant). OnTick (live FindWindow read,
     // throttled 200ms) + this close-save cover drag-end and every close path.
