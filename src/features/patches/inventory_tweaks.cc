@@ -1,4 +1,5 @@
 #include "ragnarok/globals.h"
+#include "ragnarok/uiwnd.h"  // uiwnd::kInventoryWndSlot (identifie NOTRE tab control)
 #include "ui/game_texture.h"
 #include "features/patches/inventory_tweaks.h"
 
@@ -154,7 +155,6 @@ constexpr uintptr_t kTabRecompute = 0x0085fca0;  // FUN_0085fca0(tabctrl): recom
 // The tab class is shared (chat/skill/etc.), so the hook filters on OUR control.
 constexpr uintptr_t kTabDrawSlot  = 0x0102dd94;  // tab control vtable +0x50 slot (static .rdata)
 constexpr uintptr_t kTabDrawOrig  = 0x00857910;  // FUN_00857910 tab DrawContent
-constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // inventory UIWindow* global (identifies our tab control)
 
 // ---- NEW "Cards" category (client-side; players asked for a cards tab) --------
 // The inventory message handler FUN_00955530 (inv vtable +0x94) owns the category
@@ -287,7 +287,7 @@ inline void VCall1(void* obj, int vf, int a) {
 // shared by chat/skill/other windows (FUN_00864690 has many callers), so the
 // shared-vtable DrawContent hook must only theme ours.
 inline bool IsInventoryTab(void* tabobj) {
-  void* inv = *reinterpret_cast<void**>(kInvWndGlobal);
+  void* inv = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);
   return inv && *reinterpret_cast<void**>(
                     reinterpret_cast<uint8_t*>(inv) + kTabCtrl) == tabobj;
 }
@@ -802,7 +802,7 @@ InventoryTweaks::InventoryTweaks() {
 void InventoryTweaks::OnTick() {
   if (!kEnableCardsTab) return;
   __try {
-    void* inv = *reinterpret_cast<void**>(kInvWndGlobal);
+    void* inv = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);
     if (!inv) return;
     if (void* tabobj = *reinterpret_cast<void**>(
             reinterpret_cast<uint8_t*>(inv) + kTabCtrl))

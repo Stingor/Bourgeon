@@ -614,7 +614,6 @@ constexpr uintptr_t kJobWpnAct    = 0x00d8a010;  // -> .act (pousse 0)
 constexpr uintptr_t kJobShieldSpr = 0x00d8a0f0;  // -> .spr (pousse 1)
 constexpr uintptr_t kJobShieldAct = 0x00d8a080;  // -> .act (pousse 0)
 constexpr uintptr_t kActFrameLayer= 0x0070f390;  // Act_GetFrameLayer(frame, idx)
-constexpr uintptr_t kStrDtor      = 0x004e78c0;  // std::string::~string (game alloc)
 // ── Réglages LIVE (à ajuster à l'œil, sans re-RE) ────────────────────────────
 // Nudge d'alignement (repli si décalage constant observé : cf. anchor +0x4dc/+0x4e0
 // de SetSlotSprite, non consommé au draw -> auto-align par offsets layer supposé).

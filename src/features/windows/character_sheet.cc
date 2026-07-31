@@ -1685,8 +1685,6 @@ void OpenSkillDesc(int skillId, int mx, int my) {
 // Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
 // name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
 // source (slot equip). itemcell::NameById() ne rend que le nom de BASE ; ceci décore comme la description.
-constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // libère le std::vector<int> alloué par le jeu
-constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;  // *ptr = fenêtre inventaire native (contexte)
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
 using BuildName_t   = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*, char**, char,
                                        char);
@@ -1696,7 +1694,7 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
   if (outsz == 0) return;
   out[0] = '\0';
   __try {
-    void* wnd = *reinterpret_cast<void**>(kInvWndGlobal);  // contexte (repli créateur ; peut être null)
+    void* wnd = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);  // contexte (repli créateur ; peut être null)
     char nbuf[128];
     nbuf[0] = '\0';
     char* bufptr = nbuf;
@@ -1709,7 +1707,7 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
     out[k] = '\0';
-    if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
+    if (off.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(off.first);
     if (out[0] == '\0') {  // repli : nom de base
       size_t cap = outsz;
       reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(const_cast<void*>(info), out, &cap, 0);
@@ -1849,7 +1847,6 @@ constexpr uintptr_t kOwnTitleEnd   = 0x01600504;  // .. end
 // Title_GetStringById : __thiscall(this=session 0x015fa3c0, out_str, titleId) -> std::string* (out).
 // Résout l'id en libellé via l'appel Lua global GetTitleString. RET 0x8 (thiscall, 2 args pile).
 constexpr uintptr_t kTitleGetStr   = 0x00d89ed0;
-constexpr uintptr_t kStrDtor       = 0x004f08f0;  // std::string dtor (__thiscall, libère le heap SSO+)
 constexpr uint16_t  kOpChangeTitle = 0x0A2E;      // CZ_REQ_CHANGE_TITLE {op, title_id.L} (équiper)
 using TitleGetStr_t = void*(__fastcall*)(void* thisSession, void* edx, void* out, int titleId);
 using StrDtor_t     = void(__fastcall*)(void* thisStr, void* edx);
@@ -1891,7 +1888,7 @@ void ResolveTitleSEH(int id, char* out, size_t cap) {
     const char* p = (scap > 15) ? *reinterpret_cast<char* const*>(sbuf)
                                 : reinterpret_cast<const char*>(sbuf);
     if (p) { size_t i = 0; for (; i + 1 < cap && p[i]; ++i) out[i] = p[i]; out[i] = '\0'; }
-    reinterpret_cast<StrDtor_t>(kStrDtor)(sbuf, nullptr);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(sbuf, nullptr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 const char* TitleName(int id) {

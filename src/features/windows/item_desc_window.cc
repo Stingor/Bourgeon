@@ -4,6 +4,7 @@
 #include "features/windows/item_desc_window.h"
 #include "ui/ro_widgets.h"
 
+#include "ragnarok/globals.h"  // rag::rag::kGameOperatorDeleteAddrAddr
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (ouvrir les liens <URL>)
@@ -101,8 +102,6 @@ constexpr uintptr_t kInfoOptCount = 0x98;   // int : nombre de random options
 constexpr uintptr_t kInfoOpts     = 0x9c;   // entrées 5o : [index:2][value:2][param:1]
 constexpr int       kMaxCards     = 4;
 constexpr int       kMaxOpts      = 5;
-constexpr uintptr_t kGameFree     = 0x00dbbc7f;  // free() du jeu (pour le vector alloué côté jeu)
-constexpr uintptr_t kGameMalloc   = 0x00dbbc4f;  // malloc() du jeu (pairé avec game_free)
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
@@ -434,7 +433,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
           }
         }
       }
-      if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
+      if (off.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(off.first);
     }
     // Ombre ROUGE du nom : le natif (DrawName 0x008972c0) dessine l'ombre du nom en
     // 0x5050fa (COLORREF BGR -> RGB 250,80,80 = ROUGE) quand info+0x5d != 0 (branche

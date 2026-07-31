@@ -332,7 +332,6 @@ constexpr int    kRecSrcIdx  = 0x04;  // index source (cart / inventaire)
 constexpr int    kRecQty     = 0x10;  // quantité — modifiable AVANT de poser
 constexpr int    kRecString1 = 0x2C;
 constexpr int    kRecString2 = 0x44;
-constexpr uintptr_t kStdStringDtor = 0x004F08F0;
 using StrDtor_t = void(__fastcall*)(void*);
 
 // Commandes du msg 6 (clic bouton) — cf. §5 de la doc.
@@ -600,8 +599,8 @@ void* Session() { return reinterpret_cast<void*>(rag::kSessionAddr); }
 
 void RecDtor(uint8_t* rec) {
   __try {
-    reinterpret_cast<StrDtor_t>(kStdStringDtor)(rec + kRecString2);
-    reinterpret_cast<StrDtor_t>(kStdStringDtor)(rec + kRecString1);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + kRecString2);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + kRecString1);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

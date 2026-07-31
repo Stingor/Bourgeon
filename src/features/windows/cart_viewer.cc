@@ -91,11 +91,8 @@ constexpr int kCmdCartToStorage = 0x4f;  // cart -> storage (storage ouvert)
 using GetMode_t = void*(__fastcall*)(int);
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
-// Autres fenêtres, pour router un transfert (cible ouverte ou non).
-constexpr uintptr_t kInvWndGlobal  = 0x0131f6bc;
-constexpr uintptr_t kInvVTable     = 0x0103d460;
-constexpr uintptr_t kStorageSlot   = 0x0131f770;
-constexpr uintptr_t kStorageVTable = 0x0103ca40;
+// Autres fenêtres, pour router un transfert (cible ouverte ou non) :
+// uiwnd::kInventoryWndSlot / kStorageWndSlot et leurs vtables.
 
 // Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
@@ -133,8 +130,8 @@ uint8_t* CartWnd() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-bool InventoryOpen() { return ReadValidWnd(kInvWndGlobal, kInvVTable) != nullptr; }
-bool StorageOpen()   { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
+bool InventoryOpen() { return ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable) != nullptr; }
+bool StorageOpen()   { return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr; }
 
 // Composition d'échoppe en cours. Le serveur lève alors `sd->state.prevend` et
 // REFUSE EN SILENCE tout mouvement touchant le chariot : pc_getitemfromcart /
@@ -151,12 +148,12 @@ bool VendingComposing() {
 bool OverInventory(float x, float y) {
   if (auto* iv = Bourgeon::Instance().inventory_viewer())
     if (iv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  return MouseOverWnd(kInvWndGlobal, kInvVTable, x, y);
+  return MouseOverWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable, x, y);
 }
 bool OverStorage(float x, float y) {
   if (auto* st = Bourgeon::Instance().storage_window())
     if (st->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  return MouseOverWnd(kStorageSlot, kStorageVTable, x, y);
+  return MouseOverWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable, x, y);
 }
 
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.

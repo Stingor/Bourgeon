@@ -56,14 +56,13 @@ inline void* ActiveMode() { return *reinterpret_cast<void**>(kActiveModePtr); }
 // Accesseur natif « objet actif du manager ». Dix fichiers l'appellent, sous les
 // noms kGameModeGet, kGetMode et kGetDragObj, TOUJOURS sur kModeMgrAddr.
 //
-// ⚠ HYPOTHÈSE NON VÉRIFIÉE, à confirmer au désassemblage avant d'agir dessus :
-// kActiveModePtr valant exactement kModeMgrAddr + 4, cette fonction pourrait
-// n'être qu'un `return *(mgr + 4)` — auquel cas l'appel et la lecture directe
-// donnent la même valeur, ce que suggère le commentaire d'un des appelants
-// (« *(kDispatcherPtr) = mode zone actif (ou 0) »). Les deux formes sont donc
-// CONSERVÉES telles quelles : tant que le corps de 0x00a75340 n'a pas été lu,
-// remplacer l'appel par la lecture ferait disparaître un éventuel test de
-// nullité ou appel virtuel.
+// Hypothèse « = *(mgr+4) » RÉFUTÉE au désassemblage (2026-07-31) : le corps est
+// `return *(mgr+0x58) == 1 ? *(mgr+4) : 0`. L'appel et la lecture directe de
+// kActiveModePtr ne sont donc PAS équivalents — le getter rend 0 tant que l'état
+// du manager (+0x58) n'est pas 1 (transitions de mode : login, chargement de
+// map…), là où la lecture directe rend le pointeur brut. NE PAS remplacer l'un
+// par l'autre : un site qui lit directement pendant un changement de map verrait
+// un mode que le getter considère indisponible.
 constexpr uintptr_t kModeMgrGetActiveAddr = 0x00a75340;
 
 // ── Stats du personnage, et le TOTAL que le serveur utilise ──────────────────
@@ -115,5 +114,29 @@ inline int JobLevel()  { return *reinterpret_cast<int*>(kJobLevelAddr); }
 // tout ce qui porte un accent. La conversion elle-même est ro::LocalToUtf8
 // (ui/ro_imgui.h), qui garde cette adresse pour source.
 constexpr uintptr_t kClientCodePageAddr = 0x0159b818;
+
+// ── Allocateur CRT du client ─────────────────────────────────────────────────
+// L'operator new / operator delete du CRT STATIQUE de l'exe (désassemblés :
+// 0x00dbbc4f = boucle malloc + _callnewh — ne rend JAMAIS nullptr, il boucle ou
+// aborte ; 0x00dbbc7f = free). Tout bloc alloué PAR le client — le vecteur de
+// décalages que BuildDisplayName remplit, par exemple — doit être rendu au MÊME
+// allocateur, jamais au free() du DLL. Redéclarés dans cinq fichiers sous les
+// noms kGameFree, kGameMalloc et kAlloc.
+constexpr uintptr_t kGameOperatorNewAddr    = 0x00dbbc4f;  // __cdecl(size) -> void*, jamais nul
+constexpr uintptr_t kGameOperatorDeleteAddr = 0x00dbbc7f;  // __cdecl(ptr)
+
+// « Destructeur » d'une std::string MSVC du CLIENT — au sens _Tidy : libère le
+// heap au-delà du SSO (via l'operator delete ci-dessus, branche alignée pour
+// les capacités >= 0x1000) puis remet la string à l'état vide (size=0, cap=15,
+// buf[0]=0). Était déclarée dans QUATRE fichiers sous TROIS noms (kStrFree ×2,
+// kStrDtor, kStdStringDtor — dont une graphie 0x004F08F0 en majuscules,
+// invisible à un grep sensible à la casse). `this` en ecx ; edx ignoré, les
+// appelants passent __fastcall ou __thiscall indifféremment.
+//
+// Contradiction RE TRANCHÉE au désassemblage (2026-07-31) : 0x004e78c0, que
+// basic_info documentait comme un second dtor, est un simple THUNK vers
+// celle-ci. Une seule fonction, deux portes d'entrée — tout le monde passe
+// désormais par l'adresse réelle.
+constexpr uintptr_t kStdStringDtorAddr = 0x004f08f0;
 
 }  // namespace rag

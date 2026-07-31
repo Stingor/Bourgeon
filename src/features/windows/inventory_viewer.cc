@@ -40,9 +40,7 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // Voir project_inventory_viewer_wip + project_inventory_window + workflow slim RE.
 namespace {
 
-// Fenêtre inventaire native (id 8) : global + vtable. Non-nul <=> ouverte.
-constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;
-constexpr uintptr_t kInvVTable    = 0x0103d460;
+// Fenêtre inventaire native (id 8) : uiwnd::kInventoryWndSlot / kInventoryWndVTable.
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
@@ -125,8 +123,6 @@ constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 // garde son global dédié, lui bien référencé par le client.
 constexpr int kWinCart             = 0x28;   // UICartWnd (SaveWindowRect(40))
 constexpr uintptr_t kCartVTable    = 0x0103d538;
-constexpr uintptr_t kStorageSlot   = 0x0131f770;
-constexpr uintptr_t kStorageVTable = 0x0103ca40;
 
 // ── Sertissage de cartes : popup natif UIItemCompositionWnd (id 0x4A) ────────
 // RE complète : docs/card_insert_re.md. Ces offsets ont été VÉRIFIÉS en mémoire
@@ -660,9 +656,9 @@ bool MouseOverCart(float x, float y) {
     return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-bool MouseOverStorage(float x, float y) { return MouseOverWnd(kStorageSlot, kStorageVTable, x, y); }
+bool MouseOverStorage(float x, float y) { return MouseOverWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable, x, y); }
 bool CartOpen()    { return CartWnd() != nullptr; }
-bool StorageOpen() { return ReadValidWnd(kStorageSlot, kStorageVTable) != nullptr; }
+bool StorageOpen() { return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr; }
 // Composition d'échoppe en cours (cf. VendingWindow::IsComposing).
 //   - inventaire <-> chariot : REFUSÉ par le serveur (sd->state.prevend, testé
 //     par pc_putitemtocart / pc_getitemfromcart et par pc_cant_act2()).
@@ -1096,7 +1092,7 @@ void InventoryViewer::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_
 void InventoryViewer::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kInvVTable) return;
+    if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kInventoryWndVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1124,7 +1120,7 @@ void InventoryViewer::Extract() {
   // = la même source que le natif. Le "16 au lieu de 22" venait d'un try/except GLOBAL
   // qu'UN SEUL item fautif (id SSO corrompue / BuildDisplayName forgé) faisait avorter.
   __try {
-    wnd  = *reinterpret_cast<void**>(kInvWndGlobal);
+    wnd  = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);
     head = *reinterpret_cast<uint8_t**>(kInvListHead);
     if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
@@ -1181,7 +1177,7 @@ void InventoryViewer::Extract() {
 
 void InventoryViewer::OnTick() {
   open_ = false;
-  uint8_t* wnd = ReadValidWnd(kInvWndGlobal, kInvVTable);
+  uint8_t* wnd = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
   if (wnd) {
     __try {
       if (!was_open_) {
@@ -1352,7 +1348,7 @@ void InventoryViewer::RenderCardInsert() {
 
   // Contexte de nommage : la fenêtre inventaire native, même cachée (BuildDisplayName
   // s'en sert comme `this`). Absente => repli automatique sur le nom de base.
-  void* namewnd = ReadValidWnd(kInvWndGlobal, kInvVTable);
+  void* namewnd = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
 
   CompItem card{};
   const bool has_card = ReadCompItemByIndex(cardIndex, namewnd, &card);
@@ -2202,7 +2198,7 @@ void InventoryViewer::OnRenderUI() {
             if (ImGui::BeginMenu("Sertissage rapide")) {
               RequestCompatCards(it.index);  // no-op si déjà demandé pour cet équip
               if (qs_equip_index_ == it.index && qs_card_count_ > 0) {
-                void* nw = ReadValidWnd(kInvWndGlobal, kInvVTable);
+                void* nw = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
                 for (int c = 0; c < qs_card_count_; ++c) {
                   CompItem cd{};
                   if (!ReadCompItemByIndex(qs_cards_[c], nw, &cd)) continue;

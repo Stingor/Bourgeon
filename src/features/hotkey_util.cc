@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "ragnarok/globals.h"  // rag::kStdStringDtorAddr
 #include "features/windows/character_sheet.h"  // EquipPreset (presets d'équipement)
 #include "features/gameplay/player_jump.h"      // touche de saut
 
@@ -16,7 +17,6 @@ namespace {
 
 // ── Constantes RE (client 20250716, no-ASLR : addr Ghidra == live) ───────────
 constexpr uintptr_t kGetHotKey  = 0x00d80950;  // GetHotKey(out, category, slot) __stdcall RET 0xc
-constexpr uintptr_t kStrFree    = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
 constexpr uintptr_t kOwnCharId  = 0x015fb9a8;  // g_Own_CharId (cf. project_own_session_globals)
 using GetHotKey_t = void* (__stdcall*)(void*, int, int);
 using StrFree_t   = void (__fastcall*)(void*);
@@ -44,8 +44,8 @@ bool ReadNativeHotkey(int category, int slot, int* main_vk, int* mod_vk) {
     reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
     const int key_code1 = *reinterpret_cast<int*>(buf + 0x00);
     const int key_code2 = *reinterpret_cast<int*>(buf + 0x04);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
     auto is_modifier = [](int k) {
       return k == VK_CONTROL || k == VK_SHIFT || k == VK_MENU;
     };

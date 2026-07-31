@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "imgui.h"
+#include "ragnarok/globals.h"  // rag::rag::kGameOperatorDeleteAddrAddr
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
@@ -16,9 +17,8 @@
 namespace itemcell {
 namespace {
 
-// Le `free()` du jeu : BuildDisplayName alloue son vecteur de décalages avec
-// l'allocateur du client, on doit le rendre au même.
-constexpr uintptr_t kGameFree = 0x00dbbc7f;
+// BuildDisplayName alloue son vecteur de décalages avec l'allocateur du client :
+// à rendre au même (rag::rag::kGameOperatorDeleteAddrAddr).
 
 // std::vector MSVC tel que le jeu le passe (3 pointeurs).
 struct GVec { int* first; int* last; int* end; };
@@ -113,7 +113,7 @@ void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size) {
     size_t k = 0;
     while (k + 1 < out_size && nbuf[k]) { out[k] = nbuf[k]; ++k; }
     out[k] = '\0';
-    if (offsets.first) reinterpret_cast<GameFree_t>(kGameFree)(offsets.first);
+    if (offsets.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(offsets.first);
     if (out[0] == '\0') {
       size_t cap = out_size;
       reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out,

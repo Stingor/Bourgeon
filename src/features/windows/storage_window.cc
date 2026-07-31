@@ -40,8 +40,6 @@ namespace {
 
 // Slot manager de la fenêtre storage (id 0x21) : mgr+0x288. Non-nul <=> ouverte,
 // remis à 0 à la fermeture. = ce que FindWindow(0x21) renvoie. Relire FRAIS.
-constexpr uintptr_t kStorageSlot = 0x0131f770;
-constexpr uintptr_t kStorageVTable = 0x0103ca40;  // UIItemStoreWnd
 
 // Offsets UIWindow / UIItemStoreWnd.
 constexpr int kOffWidth  = 0x14;
@@ -69,7 +67,6 @@ using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 // Nom COMPLET (raffinement +N / [slots] / cartes / enchant) : BuildDisplayName.
 // (this=wnd, info, &colorOut, &offVec, &bufptr, &cap, &hlptr, f7, f8). offVec est
 // alloué par le jeu -> à libérer avec game_free.
-constexpr uintptr_t kGameFree  = 0x00dbbc7f;
 struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
 using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
                                      char**, char, char);
@@ -137,17 +134,16 @@ void WithdrawItem(int index, int amount) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Fenêtre inventaire (id 8) : global + vtable pour tester un drop dessus.
-constexpr uintptr_t kInvWndGlobal = 0x0131f6bc;
-constexpr uintptr_t kInvVTable    = 0x0103d460;
+// Fenêtre inventaire (id 8) : global + vtable pour tester un drop dessus
+// (uiwnd::kInventoryWndSlot / kInventoryWndVTable).
 bool MouseOverInventory(float x, float y) {
   // Viewer inventaire ImGui actif : son rect remplace la fenêtre native (cachée), donc
   // le test natif ci-dessous échoue -> on teste d'abord le rect du viewer.
   if (auto* iv = Bourgeon::Instance().inventory_viewer())
     if (iv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
   __try {
-    uint8_t* inv = *reinterpret_cast<uint8_t**>(kInvWndGlobal);
-    if (!inv || *reinterpret_cast<uintptr_t*>(inv) != kInvVTable) return false;
+    uint8_t* inv = *reinterpret_cast<uint8_t**>(uiwnd::kInventoryWndSlot);
+    if (!inv || *reinterpret_cast<uintptr_t*>(inv) != uiwnd::kInventoryWndVTable) return false;
     // Native CACHÉE (mode moderne) : son rect fantôme ne doit PAS capter les drops
     // faits sur les viewers ImGui posés par-dessus (cf. uiwnd::kOffVisible).
     if (*reinterpret_cast<int*>(inv + uiwnd::kOffVisible) == 0) return false;
@@ -701,7 +697,7 @@ void StorageWindow::Extract(uint8_t* wnd) {
         size_t k = 0;
         while (k < sizeof(it.name) - 1 && nbuf[k]) { it.name[k] = nbuf[k]; ++k; }
         it.name[k] = '\0';
-        if (off.first) reinterpret_cast<GameFree_t>(kGameFree)(off.first);
+        if (off.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(off.first);
       }
       if (it.name[0] == '\0') {
         size_t cap = sizeof(it.name);
@@ -719,7 +715,7 @@ void StorageWindow::Extract(uint8_t* wnd) {
 
 void StorageWindow::OnTick() {
   open_ = false;
-  uint8_t* wnd = ReadValidWnd(kStorageSlot, kStorageVTable);
+  uint8_t* wnd = ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable);
   if (wnd) {
     __try {
       used_ = *reinterpret_cast<int*>(wnd + kOffUsed);
@@ -779,7 +775,7 @@ void StorageWindow::OnMouseDown(int mx, int my) {
 void StorageWindow::HideNativeAtCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kStorageVTable) return;
+    if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kStorageWndVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

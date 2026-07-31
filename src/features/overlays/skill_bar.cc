@@ -64,7 +64,6 @@ constexpr int kMaxSlots     = 36;     // 0x24
 
 // ---- description / tooltip clic-droit (réplique UIShortCutWnd OnRButtonDown 0x008f91a0) ----
 constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé
-constexpr uintptr_t kStrFree       = 0x004f08f0;  // libère une std::string MSVC (ecx=base)
 // ⚠ Ces quatre-là étaient INTERVERTIS (corrigé le 2026-07-28) : la branche SKILL
 // ouvrait un « itemdb::kItemDescWndId » et la branche OBJET un « itemdb::kSkillDescWndId ». Le
 // comportement était juste — c'est l'appariement id/message qui compte, et il
@@ -339,8 +338,8 @@ int GetItemLiveCount(uint32_t nameid) {
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, static_cast<int>(nameid), 1);
     if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0)
       cnt = *reinterpret_cast<int*>(info + 0x10);
-    reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
-    reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr1);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr0);
   } __except (EXCEPTION_EXECUTE_HANDLER) { cnt = 0; }
   return cnt;
 }
@@ -356,7 +355,7 @@ int GetItemLiveCount(uint32_t nameid) {
 //     out+0x20 = std::string 2e touche.
 //   Source unique = UserKeys.lua -> touche RÉELLE (rebinds inclus) ET layout-aware (AZERTY/
 //   QWERTY, car le nom vient du jeu). Les 2 std::string créées par le wrapper DOIVENT être
-//   détruites (kStrFree, sinon fuite si nom > 15 car.). SEH : on touche Lua + globals.
+//   détruites (rag::kStdStringDtorAddr, sinon fuite si nom > 15 car.). SEH : on touche Lua + globals.
 constexpr uintptr_t kGetHotKey = 0x00d80950;
 using GetHotKey_t = void* (__stdcall*)(void* out, int category, int slot);
 
@@ -385,8 +384,8 @@ void GetSlotKeyLabel(int category, int slot, char* out, int n) {
     std::memset(buf, 0, sizeof(buf));
     reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
     CopyMsvcString(buf + 0x08, out, n);                  // out+0x08 = nom de la touche
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);   // détruit les 2 std::string du wrapper
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);   // détruit les 2 std::string du wrapper
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
@@ -403,8 +402,8 @@ bool GetSlotKeyCodes(int category, int slot, int* kc1, int* kc2) {
     reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
     *kc1 = *reinterpret_cast<int*>(buf + 0x00);
     *kc2 = *reinterpret_cast<int*>(buf + 0x04);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x08);
-    reinterpret_cast<StrFree_t>(kStrFree)(buf + 0x20);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
     ok = (*kc1 != 0 || *kc2 != 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
   return ok;
@@ -710,8 +709,8 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
           uiwnd::SetPos(wnd, mx, my);
         }
-        reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr1);
-        reinterpret_cast<StrFree_t>(kStrFree)(info + kSkillStr0);
+        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr1);
+        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr0);
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

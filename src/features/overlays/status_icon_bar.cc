@@ -44,7 +44,6 @@ constexpr uintptr_t kBuildFn     = 0x00bd4230;  // status-bar build/layout (hook
 constexpr uintptr_t kMakeNode    = 0x00bb5d10;  // __thiscall(scene,0,0.0(8),0.0f) -> node
 constexpr uintptr_t kGetEFSTImg  = 0x00d87380;  // __thiscall(session,id,layer) -> const char*
 constexpr uintptr_t kSpriteRef   = 0x00568760;  // __thiscall(cache,path,0,0,1,0) -> ref (5 args!)
-constexpr uintptr_t kAlloc       = 0x00dbbc4f;  // __cdecl(size) -> void* (engine allocator)
 
 constexpr uintptr_t kSpriteCache = 0x0125161c;  // &DAT_0125161c (sprite-ref cache)
 constexpr uintptr_t kVecBegin    = 0x0136e6c8;  // std::vector<StatusIcon>::begin (raw bytes)
@@ -86,7 +85,7 @@ constexpr uint8_t   kNodeMarkVal = 0x62;
 const auto MakeNode  = reinterpret_cast<MakeNode_t>(kMakeNode);
 const auto GetImg    = reinterpret_cast<GetImg_t>(kGetEFSTImg);
 const auto SpriteRef = reinterpret_cast<SpriteRef_t>(kSpriteRef);
-const auto Alloc     = reinterpret_cast<Alloc_t>(kAlloc);
+const auto Alloc     = reinterpret_cast<Alloc_t>(rag::kGameOperatorNewAddr);
 
 // ---- configurable layout ---------------------------------------------------
 // Named constants for the int fields of StatusIconConfig (see the header).

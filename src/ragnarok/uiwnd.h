@@ -71,19 +71,35 @@ inline void* MakeWindow(int window_id) {
 // clic sur son bouton X. ⚠ Le destructeur natif retire la fenêtre des slots
 // dédiés du manager : ne jamais garder un pointeur au-delà.
 //
-// ⚠ NOM À TRANCHER : le registre RE du projet se contredit sur cette adresse.
-// Six fichiers la documentent `UIWindowMgr::Close(mgr, edx, id)`, deux
-// (rodex_window, trade_window) `UIWindowMgr::SaveWindowRect(mgr, id)` — et
-// rodex précise « fermeture propre (persiste la position, comme le X) ». Les
-// huit appellent la même chose avec les mêmes arguments et en attendent le même
-// effet, donc rien n'est cassé ; c'est le NOM qui n'est pas établi. Le nommer
-// d'après son effet observé en attendant un désassemblage : si elle s'avère
-// n'être QUE SaveWindowRect, la fermeture viendrait d'ailleurs et ce helper
-// serait à renommer, pas à corriger.
+// Nom TRANCHÉ au désassemblage (2026-07-31) : les deux camps du registre RE
+// avaient chacun une moitié de raison. La fonction (IDB :
+// UIWindowMgr_SaveRectAndCloseWindow) sauve d'abord position/taille dans la map
+// des rects, PUIS appelle UIWindowMgr_QueueDestroyWindow (0x00a447d0) — la
+// fenêtre est bien DÉTRUITE. « SaveWindowRect » décrivait le prologue en
+// laissant croire à une opération inoffensive ; `CloseWindow` reste donc le bon
+// nom côté Bourgeon.
 inline void CloseWindow(int window_id) {
   using CloseWindowFn = void(__fastcall*)(void*, void*, int);
   reinterpret_cast<CloseWindowFn>(kCloseWindowAddr)(Mgr(), nullptr, window_id);
 }
+
+// ── Fenêtres publiées dans un global dédié ───────────────────────────────────
+// Le client publie certaines fenêtres dans un global à elles, en plus de
+// l'arbre du manager (cf. WndAtSlot pour la nuance slot/FindWindow). Chaque duo
+// global + vtable était redéclaré à l'identique dans plusieurs fichiers :
+//
+//   inventaire : CINQ fichiers (storage_window, inventory_viewer,
+//                character_sheet, cart_viewer, inventory_tweaks), sous les noms
+//                kInvWndGlobal/kInvVTable ;
+//   storage    : TROIS fichiers (storage_window, inventory_viewer, cart_viewer),
+//                sous kStorageSlot/kStorageVTable.
+//
+// La vtable sert à valider ce que porte le slot ; non-nul + vtable conforme
+// <=> fenêtre ouverte en ce moment.
+constexpr uintptr_t kInventoryWndSlot   = 0x0131f6bc;  // inventaire, id 8
+constexpr uintptr_t kInventoryWndVTable = 0x0103d460;
+constexpr uintptr_t kStorageWndSlot     = 0x0131f770;  // UIItemStoreWnd, id 0x21 (slot = mgr+0x288)
+constexpr uintptr_t kStorageWndVTable   = 0x0103ca40;
 
 // ── Méthodes virtuelles d'une UIWindow ───────────────────────────────────────
 constexpr int kVfSetPos = 0x10;  // vtable+0x10 : SetPos(x, y)
@@ -127,12 +143,10 @@ constexpr int kOffPosY    = 0x20;  // int : y écran
 // pour cacher la native sans la détruire : elle continue de recevoir ses paquets
 // et de tenir son modèle à jour, elle ne se voit et ne se clique simplement plus.
 //
-// ⚠ Accès en `int`, PAS en octet. Ce n'est pas un choix esthétique : les 28
-// sites du projet déréfèrent tous `*reinterpret_cast<int*>(wnd + 0x28)`, et
-// c'est cette forme-là qui est éprouvée en jeu. Une écriture d'un seul octet
-// laisserait +0x29..+0x2b intacts — comportement différent si le champ fait
-// bien 4 octets, ce que le désassemblage de Show/Hide (0x005aad80) reste à
-// confirmer. Tant que ce n'est pas tranché, on copie ce qui marche.
+// ⚠ Accès en `int`, PAS en octet — CONFIRMÉ au désassemblage (2026-07-31) :
+// UIWindow_SetVisible (0x005aad80) écrit `*((_DWORD*)this + 10)`, soit +0x28 en
+// DWORD entier. Une écriture d'un seul octet laisserait +0x29..+0x2b porter un
+// vestige non nul, que le natif relirait comme « visible ».
 inline bool IsVisible(const void* wnd) {
   return *reinterpret_cast<const int*>(
              reinterpret_cast<const uint8_t*>(wnd) + kOffVisible) != 0;
