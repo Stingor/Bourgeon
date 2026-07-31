@@ -294,12 +294,15 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
         // Séparateur RO = ':' (découpe fidèle au natif). NB : un ':' DANS un libellé
         // scinde l'option (limite RO côté serveur, le natif aussi) -> ne pas mettre de
         // ':' dans un nom d'option/map (à corriger dans la SQL).
+        // Les entrées VIDES sont GARDÉES : elles comptent dans l'index envoyé au
+        // serveur (menus dynamiques : select("a","","b") -> "b" = 3). Le natif les
+        // masque à l'affichage seulement -> DrawMenu les saute.
         size_t start = 0;
         while (start <= m.size()) {
           size_t sep = m.find(':', start);
           std::string opt = (sep == std::string::npos) ? m.substr(start)
                                                         : m.substr(start, sep - start);
-          if (!opt.empty()) choices_.push_back(opt);
+          choices_.push_back(opt);
           if (sep == std::string::npos) break;
           start = sep + 1;
         }
@@ -496,7 +499,9 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   // boutons hors de la fenêtre.
   ImGui::BeginChild("##menugrp", ImVec2(0, group_h), false, ImGuiWindowFlags_NoScrollbar);
 
-  const bool filterable = menu_search_ && choices_.size() > 8;  // barre de recherche (option)
+  const size_t shown_count = choices_.size() -  // options réellement affichées
+      static_cast<size_t>(std::count(choices_.begin(), choices_.end(), std::string()));
+  const bool filterable = menu_search_ && shown_count > 8;  // barre de recherche (option)
   bool enter_from_search = false;
   if (filterable) {
     ImGui::SetNextItemWidth(-1.0f);
@@ -532,6 +537,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   const float pad_x = ImGui::GetStyle().ItemSpacing.x;
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad_x, 0.0f));  // aucun espace vertical entre items
   for (int i = 0; i < static_cast<int>(choices_.size()); ++i) {
+    if (choices_[i].empty()) continue;  // entrée vide = masquée (mais son index compte)
     std::vector<Run> mruns;
     ParseLine(choices_[i], &mruns);  // découpe en runs colorés (^RRGGBB)
     std::string plain;               // texte brut pour le filtre
