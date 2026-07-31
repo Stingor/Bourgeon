@@ -949,7 +949,18 @@ void NpcDialogWindow::HideNativeAtCreation(void* win, int window_id) {
 void NpcDialogWindow::OnTick() {
   // Clic sur un lien d'item (<ITEM>) posé pendant le rendu : ouvre la desc au tick
   // (hors de l'arbre ImGui, plus sûr pour créer une fenêtre native).
-  if (pending_link_cmd_ != 0) {
+  //
+  // ⚠ ET seulement une fois le bouton RELÂCHÉ. Différer d'un tick ne suffisait
+  // pas : le focus de fenêtre reste acquis à la nôtre tant que le bouton est
+  // enfoncé, or la remontée du panneau de description est elle-même différée
+  // d'une frame (hook OnMsg 0x18 → SetNextWindowFocus). Un appui PROLONGÉ voyait
+  // donc la description remonter, puis repasser DERRIÈRE le dialogue ; un clic
+  // bref, non. C'est le même correctif que les autres viewers, cf.
+  // features/item_cell.h — mais posé ICI parce que ce site a son propre chemin
+  // natif (OpenItemDescById écrit l'id ENTIER en info+0x00), pas celui
+  // d'itemcell::OpenDescById.
+  if (pending_link_cmd_ != 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+      !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
     const int cmd = pending_link_cmd_;
     const std::string arg = pending_link_arg_;
     pending_link_cmd_ = 0;

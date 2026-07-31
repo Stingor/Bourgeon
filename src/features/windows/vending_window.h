@@ -252,6 +252,16 @@ class VendingWindow : public Plugin {
   PendingCmd pending_[kMaxPending];
   int  pending_count_ = 0;
   bool pending_submit_ = false;
+  // Ouverture de description DIFFÉRÉE au relâchement du bouton (jouée par
+  // FlushPending, cf. son commentaire et features/item_cell.h). `id` == 0 = rien
+  // en attente. ⚠ Le pointeur de fenêtre est revalidé à la consommation
+  // (IsLiveShopWnd) : l'échoppe peut fermer entre le clic et le relâchement.
+  void*    pending_desc_wnd_   = nullptr;
+  int      pending_desc_off_   = 0;
+  int      pending_desc_index_ = 0;
+  uint32_t pending_desc_id_    = 0;
+  int      pending_desc_x_     = 0;
+  int      pending_desc_y_     = 0;
   // Renvoie msg 23 aux deux fenêtres natives : elles reconstruisent leurs listes
   // depuis la session, donc nos lectures POD suivent la mutation.
   void RefreshNativeLists();

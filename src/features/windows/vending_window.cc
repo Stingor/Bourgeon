@@ -353,6 +353,28 @@ using EditSetText_t = void(__thiscall*)(void*, const char*);
 
 void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 
+// Le pointeur `p` est-il ENCORE l'une des fenêtres natives du plugin ?
+//
+// Sert à revalider un pointeur mémorisé pendant le rendu et consommé plus tard
+// (cf. l'ouverture de description différée dans FlushPending). Ici on ne peut
+// pas ranger un simple identifiant comme le fait QueueCommand : les cellules
+// reçoivent le pointeur DÉJÀ résolu par leur panneau, et plusieurs panneaux
+// partagent le même id selon le mode vente/achat. On revalide donc le pointeur
+// contre les fenêtres VIVANTES — une fenêtre détruite entre-temps n'est plus
+// dans la liste, et l'ouverture est simplement abandonnée (pas d'usage après
+// libération).
+bool IsLiveShopWnd(void* p) {
+  if (!p) return false;
+  static const int kAll[] = {
+      kWinVending,   kWinBuyingStore,   kWinVendingMirror, kWinBuyingMirror,
+      kWinMyShop,    kWinMyShopBuying,  kWinSellLog,       kWinSellLogBuying,
+      kWinVendorShop, kWinVendorBasket, kWinBsWanted,      kWinBsSellList,
+      kWinBsMirror};
+  for (int id : kAll)
+    if (FindWnd(id) == p) return true;
+  return false;
+}
+
 void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
 
 // Rend une fenêtre qu'on avait masquée. Nécessaire côté acheteur : le mode
@@ -833,17 +855,25 @@ void VendingWindow::ItemHover(const DescInfo& desc, void* wnd, int list_off) {
   hover_valid_ = true;
   // Clic DROIT = description complète, comme partout ailleurs dans le client et
   // dans les autres viewers. Le gauche reste libre pour les actions de la ligne.
+  //
+  // On MÉMORISE, on n'ouvre pas : l'appel part de FlushPending, hors frame ImGui
+  // et une fois le bouton RELÂCHÉ. Ouverte ici, un appui PROLONGÉ faisait sortir
+  // la description DERRIÈRE nous — le focus reste acquis à la fenêtre cliquée
+  // tant que le bouton est enfoncé, et la remontée du panneau est différée d'une
+  // frame (cf. features/item_cell.h, qui détaille la course).
+  // ⚠ Ce site ne peut pas utiliser itemcell::DeferDesc* : il ouvre la
+  // description depuis un nœud de la liste d'une fenêtre NATIVE (wnd+list_off),
+  // pas depuis une liste de session ni un simple id.
   if (mui::IsLastItemRightClicked() && wnd) {
     POINT pt;
-    if (GetCursorPos(&pt))
-      OpenDescFromList(wnd, list_off, desc.index, desc.id, pt.x, pt.y);
-    // La fenêtre de description est reprise en ImGui par ItemDescWindow, qui
-    // masque la native au passage. On le redemande explicitement : notre appel
-    // à MakeWindow/OnMsg ne suit pas forcément le chemin qui déclenche son hook,
-    // et une native laissée visible se dessine SOUS l'overlay — donc derrière
-    // cette fenêtre.
-    if (auto* desc_window = Bourgeon::Instance().item_desc())
-      desc_window->HideNativeDescWindows();
+    if (GetCursorPos(&pt)) {
+      pending_desc_wnd_   = wnd;
+      pending_desc_off_   = list_off;
+      pending_desc_index_ = desc.index;
+      pending_desc_id_    = desc.id;
+      pending_desc_x_     = pt.x;
+      pending_desc_y_     = pt.y;
+    }
     // (Il y avait ici un ImGui::SetWindowFocus(nullptr) censé « défocaliser notre
     // fenêtre pour que la description ne passe pas derrière ». Il ne pouvait pas
     // marcher : FocusWindow(NULL) sort AVANT BringWindowToDisplayFront, donc il ne
@@ -1335,6 +1365,34 @@ void VendingWindow::QueueCommand(int win_id, int cmd) {
 // commande native peut ouvrir une modale bloquante qui relance le rendu, et la
 // déclencher entre NewFrame() et Render() fige le client (cf. l'en-tête).
 void VendingWindow::FlushPending() {
+  // ── Description : hors frame ImGui, ET bouton RELÂCHÉ ──────────────────────
+  // Le « relâché » est la clé : tant qu'un bouton est enfoncé, le focus reste
+  // acquis à la fenêtre cliquée, qui repasserait devant la description remontée
+  // à la frame suivante — d'où le symptôme « clic bref devant, appui prolongé
+  // derrière ». ⚠ Le pointeur de fenêtre est REVALIDÉ (IsLiveShopWnd) : entre le
+  // clic et le relâchement, l'échoppe a pu être fermée et la fenêtre détruite.
+  if (pending_desc_id_ != 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+      !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+    void* const   dwnd  = pending_desc_wnd_;
+    const int     doff  = pending_desc_off_;
+    const int     didx  = pending_desc_index_;
+    const uint32_t did  = pending_desc_id_;
+    const int     dx    = pending_desc_x_;
+    const int     dy    = pending_desc_y_;
+    pending_desc_wnd_ = nullptr;
+    pending_desc_id_  = 0;
+    if (IsLiveShopWnd(dwnd)) {
+      OpenDescFromList(dwnd, doff, didx, did, dx, dy);
+      // La fenêtre de description est reprise en ImGui par ItemDescWindow, qui
+      // masque la native au passage. On le redemande explicitement : notre appel
+      // à MakeWindow/OnMsg ne suit pas forcément le chemin qui déclenche son
+      // hook, et une native laissée visible se dessine SOUS l'overlay — donc
+      // derrière cette fenêtre.
+      if (auto* desc_window = Bourgeon::Instance().item_desc())
+        desc_window->HideNativeDescWindows();
+    }
+  }
+
   if (pending_submit_) {
     pending_submit_ = false;
     // Re-résolution : la fenêtre a pu être détruite depuis le clic.
