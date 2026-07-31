@@ -766,22 +766,23 @@ void MoonlightAuth::OnRenderLoginUI() {
     if (server_count_ == 0 && !server_select_done_) ResolveServer();
     const unsigned long now = GetTickCount();
     // Écran de login absent alors qu'on est dans le mode login = service-select.
-    // On tire dès qu'on SAIT qu'il y a plusieurs connexions ; si le compte reste
-    // introuvable (clientinfo illisible même nativement), on tranche à l'usure :
-    // au-delà de kSvcSelectProbeMs sans fenêtre de login, c'est bien lui, et on
-    // franchit sur la connexion 0. Sans ce repli, un client dont le clientinfo
-    // n'est pas lisible restait bloqué sur le service-select, formulaire caché.
+    // On tire dès que la liste est connue NON VIDE : observé live (2026-07-31),
+    // même avec UNE seule connexion le client reste ~1,5 s sans UILoginWnd — le
+    // 0x2723 mène à l'état login dans tous les cas, et re-poser l'état 3 est sans
+    // effet si le natif y allait déjà. Si clientinfo reste illisible même
+    // nativement, on tranche à l'usure : au-delà de kSvcSelectProbeMs sans
+    // fenêtre de login, on franchit sur la connexion 0.
     const bool at_service_select =
-        server_count_ > 1 || (now - login_enter_tick_) > kSvcSelectProbeMs;
+        server_count_ > 0 || (now - login_enter_tick_) > kSvcSelectProbeMs;
     if (at_service_select && !server_select_done_) {
       if (native_login::SelectClientInfoConnection(server_index_)) {
         server_select_done_ = true;
         svc_select_tick_ = now;
-        if (server_count_ <= 1) {
-          LogDiag("[MoonlightAuth] service-select détecté après {} ms alors que "
-                  "clientinfo.xml n'a donné que {} connexion(s) -> franchi sur "
+        if (server_count_ == 0) {
+          LogDiag("[MoonlightAuth] service-select tranché à l'usure après {} ms "
+                  "(clientinfo illisible même nativement) -> franchi sur "
                   "l'index {}",
-                  now - login_enter_tick_, server_count_, server_index_);
+                  now - login_enter_tick_, server_index_);
         }
       }
     } else if (server_select_done_ && svc_select_tick_ != 0 && !svc_kbd_fallback_ &&
