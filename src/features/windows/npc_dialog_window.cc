@@ -80,6 +80,7 @@ bool g_kbd_dialog_open = false;  // overlay dialogue rendu cette frame
 bool g_kbd_menu_open   = false;  // un menu de choix est affiché (flèches + 1-9 actifs)
 
 // ── Fenêtres natives (SEH-gardé) ──
+void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 // (Plus de HideWnd/ShowWnd ici : ce plugin ne masque plus aucune native, il les
 // détruit — cf. PurgeNativeDialogWindows.)
@@ -117,6 +118,24 @@ void SetDialogActiveNative(uint32_t gid) {
     if (gid != 0)
       *reinterpret_cast<uint32_t*>(m + kGameModeNpcGid) = gid;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// GID du NPC avec qui le CLIENT se croit en conversation (CGameMode+0x2DC).
+//
+// 🔴 Indispensable au basculement d'interrupteur À CHAUD. Quand le joueur allume
+// l'interface moderne alors qu'un dialogue NATIF est à l'écran, notre `gid_` vaut
+// zéro : le plugin n'a vu aucun paquet de cette conversation (OnRecvPacket sortait
+// sur `!imgui_enabled_`). Or la fermeture est gardée par `gid != 0` — donc AUCUN
+// paquet ne partait, le client était nettoyé, et le serveur gardait `sd->npc_id` :
+// personnage bloqué en script, plus une seule compétence, jusqu'au changement de
+// carte. Le GID, lui, était là depuis le début : le handler natif venait de
+// l'écrire ici même.
+uint32_t ReadNativeNpcGid() {
+  __try {
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    if (!mode) return 0;
+    return *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(mode) +
+                                        kGameModeNpcGid);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 void ForceClearDialogFlag() {  // GameMode+0x24C = 0 (débloque le client, garantie)
   __try {
@@ -1008,12 +1027,21 @@ void NpcDialogWindow::SendString(const char* text) {
 }
 
 void NpcDialogWindow::CloseDialog() {
-  const uint32_t gid = gid_;
+  // Le GID de NOTRE modèle, ou à défaut celui que le CLIENT porte (+0x2DC). Le
+  // défaut n'est pas théorique : c'est le cas de l'interrupteur allumé en plein
+  // dialogue natif, où nous n'avons vu passer aucun paquet. Sans ce repli, la
+  // fermeture ne partait pas et le personnage restait bloqué en script serveur.
+  const uint32_t gid = gid_ != 0 ? gid_ : ReadNativeNpcGid();
+  // Un menu est-il en attente d'une réponse ? Le nôtre, ou — même cas que le GID —
+  // une fenêtre menu NATIVE encore à l'écran. Le distinguer compte : un script
+  // arrêté sur un `select` attend un CZ_CHOOSE_MENU, et c'est lui qui le termine
+  // proprement.
+  const bool menu_pending = !choices_.empty() || FindWnd(kWinMenu) != nullptr;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
   //    termine) ; sinon CZ_CLOSE_DIALOG.
   if (gid != 0) {
-    if (!choices_.empty()) {
+    if (menu_pending) {
       uint8_t pkt[7];
       *reinterpret_cast<uint16_t*>(pkt + 0) = kCzChoose;
       *reinterpret_cast<uint32_t*>(pkt + 2) = gid;
@@ -1070,6 +1098,11 @@ bool NpcDialogWindow::DialogActiveNative() const {
     return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
                                    kGameModeDialogFlag) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+bool NpcDialogWindow::AnyNativeDialogWindow() const {
+  return FindWnd(kWinSay) || FindWnd(kWinMenu) || FindWnd(kWinEditN) ||
+         FindWnd(kWinEditS) || FindWnd(kWinSay2);
 }
 
 void NpcDialogWindow::PurgeNativeDialogWindows() {
@@ -1132,7 +1165,16 @@ void NpcDialogWindow::OnTick() {
   // choisi — natif entier, ou overlay entier.
   if (imgui_enabled_ != prev_imgui_enabled_) {
     prev_imgui_enabled_ = imgui_enabled_;
-    if (open_ || DialogActiveNative()) CloseDialog();
+    // Trois signaux, parce qu'aucun ne suffit seul : notre session (rien à
+    // l'allumage à chaud, où nous n'avons vu passer aucun paquet), le flag client
+    // (qu'un prompt d'entrée sans `mes` préalable n'arme pas toujours), et les
+    // fenêtres natives elles-mêmes.
+    //
+    // 🔴 Rater ce test, c'est laisser le personnage bloqué en script côté serveur :
+    // plus aucune compétence ne part jusqu'au changement de carte. Et en régime
+    // moderne, les fenêtres natives survivantes ne sont pas une porte de sortie —
+    // ShouldSuppressNativeDialogSend jette justement ce qu'elles envoient.
+    if (open_ || DialogActiveNative() || AnyNativeDialogWindow()) CloseDialog();
   }
   if (!imgui_enabled_) {
     if (open_) { open_ = false; was_open_ = false; }

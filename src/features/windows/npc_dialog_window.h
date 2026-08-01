@@ -118,6 +118,10 @@ class NpcDialogWindow : public Plugin {
   void OpenItemDescById(uint32_t id); // clic sur un lien <ITEM> -> fenêtre desc 0xc
 
   bool DialogActiveNative() const;    // lit CGameMode+0x24C (flag dialogue actif)
+  // L'une des cinq fenêtres natives est-elle à l'écran ? Complète le flag ci-dessus
+  // pour reconnaître un dialogue natif en cours au moment où l'on allume
+  // l'interface moderne — le flag, lui, n'est pas armé par tous les chemins.
+  bool AnyNativeDialogWindow() const;
   // Détruit les fenêtres natives 0x10/0x11/0x38/0x64/0xE2 si l'une traîne. Elles ne
   // naissent plus (leurs handlers de paquet sont remplacés) : il n'en reste que
   // lorsqu'on allume l'interface moderne en plein dialogue natif. On les DÉTRUIT au
