@@ -3491,8 +3491,16 @@ BasicInfo::BasicInfo() {
 // propre joueur (aid == propre aid). `data` = buffer juste après l'opcode :
 // data[0..1]=packetLength (inclut l'opcode), data[2..5]=aid, data[6]=status,
 // data[7..]=liste d'effectId (2 o. chacun).
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). 0x0A3B est un
+// paquet à longueur ANNONCÉE dont le handler lit au-delà de `len` : PushAnnounced.
 void BasicInfo::OnRecvPacket(uint16_t opcode, const uint8_t* data,
-                                   uint16_t len) {
+                             uint16_t len) {
+  if (opcode == 0x0A3B) net_inbox_.PushAnnounced(opcode, data, len);
+  else                  net_inbox_.Push(opcode, data, len);
+}
+
+void BasicInfo::HandlePacket(uint16_t opcode, const uint8_t* data,
+                             uint16_t len) {
   // ZC_BOURGEON_HATEFFECT_MAP (custom recv) : data = APRÈS le header [type:2][len:2]
   // -> [count:2] puis count × {itemId:4, ordinal:2}. Remplace la table en cache.
   if (opcode == bopcodes::kHatEffectMap) {

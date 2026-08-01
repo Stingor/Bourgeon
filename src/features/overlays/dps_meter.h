@@ -41,6 +41,12 @@ class DpsMeter : public Plugin {
   bool DrawSettings();
 
  private:
+  // 🔴 Le fil RÉSEAU ne fait que copier les octets ; le décodage est rejoué en
+  // phase d'entrée. C'est le module le plus exposé de tous : sous une compétence de
+  // zone, chaque coup est un paquet, et `events_` (deque) comme `chat_queue_`
+  // étaient écrites pendant que le rendu les parcourait. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   static constexpr uint16_t kOpcodeNotifyAct    = 0x08c8;
   static constexpr uint16_t kOpcodeNotifySkill  = 0x01de;
   static constexpr uint16_t kOpcodeNotifySkill2 = 0x0115;

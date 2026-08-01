@@ -184,10 +184,21 @@ NpcShopWindow::NpcShopWindow() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
 }
 
+// Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). La liste d'achat
+// est à longueur ANNONCÉE et son décodage lit tout le corps, bien au-delà des
+// octets transmis : PushAnnounced.
 void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
-                              uint16_t len) {
+                                 uint16_t len) {
   if (!imgui_enabled_) return;
+  if (opcode == kOpBuyList || opcode == kOpSellList)
+    net_inbox_.PushAnnounced(opcode, data, len);
+  else
+    net_inbox_.Push(opcode, data, len);
+}
 
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
+                                 uint16_t len) {
   if (opcode == kOpMapChange || opcode == kOpServerMove) {
     // Warp / changement de map -> la session shop est morte cote serveur. On ferme
     // le viewer au prochain OnTick (thread principal ; jamais depuis le thread recv).

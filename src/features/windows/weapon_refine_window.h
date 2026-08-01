@@ -155,6 +155,12 @@ class WeaponRefineWindow : public Plugin {
   bool& enter_key()    { return enter_key_; }
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : `entries_` était vidée puis re-remplie pendant que le rendu la
+  // parcourait — sur une fenêtre où un clic détruit une arme.
+  // Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // Une entrée de ZC_NOTIFY_WEAPONITEMLIST, telle qu'elle arrive sur le fil.
   struct Entry {
     int      index  = 0;   // u16 du paquet, DÉJÀ i+2 (à renvoyer tel quel)

@@ -307,44 +307,43 @@ TradeWindow::TradeWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(kOpExec, claim);      // fin d'échange
 }
 
-// ── Fil RÉSEAU : décoder et empiler, RIEN d'autre ────────────────────────────
+// ── Fil RÉSEAU : COPIER, rien de plus ────────────────────────────────────────
 //
-// 🔴 Aucun état de l'échange n'est touché ici. Le rendu parcourt `partner_items_`
-// sur le fil principal ; un push_back concurrent qui réalloue lui laisse un
-// pointeur mort. On décode le paquet (son tampon ne survit pas au retour) et on
-// empile — DrainNet applique au tick.
-void TradeWindow::PushNet(const NetEvent& ev) {
-  std::lock_guard<std::mutex> lock(net_mutex_);
-  // Garde-fou : la file est vidée à chaque tick, elle ne peut grossir que si le
-  // fil principal s'est arrêté — auquel cas plus rien n'a d'importance.
-  if (net_queue_.size() >= 512) return;
-  net_queue_.push_back(ev);
-}
-
-void TradeWindow::ClearNet() {
-  std::lock_guard<std::mutex> lock(net_mutex_);
-  net_queue_.clear();
-}
-
+// 🔴 Aucun état de l'échange n'est touché ici, et c'est la règle du projet, pas une
+// précaution locale : le rendu parcourt `partner_items_` sur le fil principal, un
+// push_back concurrent qui réalloue lui laisse un pointeur mort. Tous les paquets
+// de l'échange sont de longueur FIXE — Push suffit, pas de PushAnnounced.
+// Cf. features/net_inbox.h.
 void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (!imgui_enabled_) return;
-  NetEvent ev;
+  net_inbox_.Push(opcode, data, len);
+}
+
+// ── Fil PRINCIPAL : le décodage, rejoué en phase d'entrée (ordre d'arrivée) ──
+void TradeWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   switch (opcode) {
     case kOpReq: {  // ZC_REQ_EXCHANGE_ITEM : quelqu'un demande un échange.
       if (len < 30) return;
-      ev.kind = NetEvent::kReq;
-      std::memcpy(ev.name, data, 24);
-      ev.name[24] = '\0';
-      ev.aid   = *reinterpret_cast<const uint32_t*>(data + 24);
-      ev.level = *reinterpret_cast<const uint16_t*>(data + 28);
-      break;
+      std::memcpy(req_name_, data, 24);
+      req_name_[24] = '\0';
+      req_aid_   = *reinterpret_cast<const uint32_t*>(data + 24);
+      req_level_ = *reinterpret_cast<const uint16_t*>(data + 28);
+      req_open_  = true;
+      return;
     }
     case kOpAck: {  // ZC_ACK_EXCHANGE_ITEM : réponse à la requête.
       if (len < 1) return;
+      req_open_ = false;
+      if (data[0] != 3) { last_result_ = -1; return; }  // 3 = accepté
       // 🔴 C'est CE paquet qui ouvre l'échange, plus l'apparition d'une fenêtre
-      // native. result 3 = accepté ; tout le reste est un refus.
-      ev.kind = (data[0] == 3) ? NetEvent::kOpen : NetEvent::kReqRefused;
-      break;
+      // native. Session repartie de zéro : les deux offres, les verrous, le zeny.
+      // Sans cette remise à zéro, l'échange précédent transparaîtrait dans le neuf.
+      ResetSession();
+      open_ = true;
+      need_pos_ = true;
+      show_panel_ = true;
+      last_result_ = -1;
+      return;
     }
     case kOpAddItem: {  // ZC_ADD_EXCHANGE_ITEM : ce que le PARTENAIRE dépose.
       if (len < kAddPayload) return;
@@ -353,12 +352,10 @@ void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
       if (id == 0) {
         // itemId nul = ZENY, et le montant voyage dans `amount` (clif_tradeadditem
         // envoie une structure vide dont seul ce champ est renseigné).
-        ev.kind = NetEvent::kPartnerZeny;
-        ev.zeny = amount;
-        break;
+        partner_zeny_ = amount;
+        return;
       }
-      ev.kind = NetEvent::kPartnerItem;
-      TradeItem& it = ev.item;
+      TradeItem it;
       it.id         = id;
       it.amount     = amount;
       it.type       = data[kAddType];
@@ -382,129 +379,73 @@ void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
         ++it.opt_count;
       }
       it.slots = CardSlotCount(it.cards);
-      // Le nom DÉCORÉ est composé au tick (le name-builder est natif : jamais depuis
-      // le fil réseau). Il reste vide ici, ResolveNames s'en charge.
-      break;
+      // Le nom DÉCORÉ reste vide ici : ResolveNames s'en charge, juste après.
+      //
+      // ⚠ Le serveur envoie un paquet par AJOUT, avec le DELTA — pas le total : un
+      // partenaire qui pose 20 puis réajuste à 49 en émet deux (20, puis 29). On
+      // fusionne les piles rigoureusement identiques pour montrer le vrai total.
+      //
+      // Le natif, lui, ne fusionne PAS : son Session_AddPartnerDealItem prend le
+      // premier emplacement libre et copie, d'où deux lignes à l'écran. C'est un
+      // écart ASSUMÉ — la somme est la même, l'affichage est simplement lisible.
+      //
+      // ⚠ Mais SEULEMENT ce qui s'empile. Un équipement est une INSTANCE : deux
+      // marteaux identiques sont deux objets, les afficher « x2 » laisserait croire
+      // à une pile alors qu'ils occuperont deux emplacements à l'arrivée.
+      bool merged = false;
+      if (TypeIsStackable(it.type)) {
+        for (TradeItem& e : partner_items_) {
+          if (e.id != it.id || e.refine != it.refine || e.grade != it.grade ||
+              e.identified != it.identified || e.damaged != it.damaged)
+            continue;
+          if (std::memcmp(e.cards, it.cards, sizeof(e.cards)) != 0) continue;
+          e.amount += it.amount;
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) partner_items_.push_back(it);
+      return;
     }
     case kOpAckAdd: {  // ZC_ACK_ADD_EXCHANGE_ITEM {index:2, result:1}
       if (len < 3) return;
-      ev.kind = NetEvent::kAckAdd;
-      ev.a = *reinterpret_cast<const uint16_t*>(data);  // index inventaire
-      ev.b = data[2];                                   // 0 = ok
-      break;
+      const uint16_t index = *reinterpret_cast<const uint16_t*>(data);
+      add_error_ = data[2];  // 0 = ok, sinon surpoids/plein/stack...
+      if (add_error_ != 0) { pending_adds_.clear(); return; }
+      // Succès : l'objet est bien dans MON offre. Le paquet ne dit QUE l'index —
+      // la quantité, on est seuls à la connaître (cf. ResolveMyAdds).
+      acked_adds_.push_back(index);
+      return;
     }
     case kOpConclude:  // ZC_CONCLUDE_EXCHANGE_ITEM {who:1}
-      if (len < 1) return;
-      ev.kind = NetEvent::kConclude;
-      ev.a = data[0];  // 0 = moi, sinon le partenaire
-      break;
+      // who = 0 -> MON offre est verrouillée ; 1 -> celle du partenaire. Vérifié
+      // serveur (trade.cpp : lock(*sd,false) à celui qui verrouille, lock(*tsd,true)
+      // à l'autre).
+      if (len >= 1) { if (data[0] == 0) my_locked_ = true; else partner_locked_ = true; }
+      return;
     case kOpCancel:  // ZC_CANCEL_EXCHANGE_ITEM : l'échange est annulé.
-      ev.kind = NetEvent::kEnd;
-      ev.a = 2;  // marqueur "annulé" (distinct de 0 = ok / 1 = échec)
-      break;
-    case kOpExec:  // ZC_EXEC_EXCHANGE_ITEM {result:1} : échange terminé.
-      ev.kind = NetEvent::kEnd;
-      ev.a = (len >= 1) ? data[0] : 0;
-      break;
+    case kOpExec: {  // ZC_EXEC_EXCHANGE_ITEM {result:1} : échange terminé.
+      // Fin d'échange : on ferme sans rien renvoyer, le deal est déjà défait côté
+      // serveur. Rien à défaire de notre côté non plus : les objets ont quitté le sac
+      // dès l'acquittement (cf. ResolveMyAdds) — sur ANNULATION le serveur les rend
+      // lui-même par clif_additem, sur COMMIT il ne dit rien, et c'est correct.
+      //
+      // ⚠ Les acquittements encore en attente sont résolus AVANT de fermer : le
+      // serveur peut acquitter un ajout et exécuter l'échange dans le même souffle,
+      // et l'objet doit alors quitter le sac — sans quoi il y reste en fantôme.
+      // 2 = annulé, distinct de 0 (succès) et 1 (échec).
+      const int result = (opcode == kOpCancel) ? 2 : ((len >= 1) ? data[0] : 0);
+      if (!acked_adds_.empty()) ResolveMyAdds();
+      open_ = false;
+      was_open_ = false;
+      show_panel_ = true;
+      committed_ = false;
+      ResetSession();
+      last_result_ = result;  // ResetSession n'y touche pas : le verdict survit
+      return;
+    }
     default:
       return;
-  }
-  PushNet(ev);
-}
-
-// ── Fil PRINCIPAL : application des événements, dans l'ordre d'arrivée ───────
-void TradeWindow::DrainNet() {
-  std::vector<NetEvent> events;
-  {
-    std::lock_guard<std::mutex> lock(net_mutex_);
-    if (net_queue_.empty()) return;
-    events.swap(net_queue_);
-  }
-  for (const NetEvent& ev : events) {
-    switch (ev.kind) {
-      case NetEvent::kReq:
-        std::memcpy(req_name_, ev.name, sizeof(req_name_));
-        req_aid_   = ev.aid;
-        req_level_ = ev.level;
-        req_open_  = true;
-        break;
-      case NetEvent::kReqRefused:
-        req_open_ = false;
-        last_result_ = -1;
-        break;
-      case NetEvent::kOpen:
-        // Session repartie de zéro : les deux offres, les verrous, le zeny. Sans
-        // cette remise à zéro, l'échange précédent transparaîtrait dans le neuf.
-        req_open_ = false;
-        ResetSession();
-        open_ = true;
-        need_pos_ = true;
-        show_panel_ = true;
-        last_result_ = -1;
-        break;
-      case NetEvent::kPartnerZeny:
-        partner_zeny_ = ev.zeny;
-        break;
-      case NetEvent::kPartnerItem: {
-        // ⚠ Le serveur envoie un paquet par AJOUT, avec le DELTA — pas le total : un
-        // partenaire qui pose 20 puis réajuste à 49 en émet deux (20, puis 29). On
-        // fusionne les piles rigoureusement identiques pour montrer le vrai total.
-        //
-        // Le natif, lui, ne fusionne PAS : son Session_AddPartnerDealItem prend le
-        // premier emplacement libre et copie, d'où deux lignes à l'écran. C'est un
-        // écart ASSUMÉ — la somme est la même, l'affichage est simplement lisible.
-        //
-        // ⚠ Mais SEULEMENT ce qui s'empile. Un équipement est une INSTANCE : deux
-        // marteaux identiques sont deux objets, les afficher « x2 » laisserait croire
-        // à une pile alors qu'ils occuperont deux emplacements à l'arrivée.
-        const TradeItem& it = ev.item;
-        bool merged = false;
-        if (TypeIsStackable(it.type)) {
-          for (TradeItem& e : partner_items_) {
-            if (e.id != it.id || e.refine != it.refine || e.grade != it.grade ||
-                e.identified != it.identified || e.damaged != it.damaged)
-              continue;
-            if (std::memcmp(e.cards, it.cards, sizeof(e.cards)) != 0) continue;
-            e.amount += it.amount;
-            merged = true;
-            break;
-          }
-        }
-        if (!merged) partner_items_.push_back(it);
-        break;
-      }
-      case NetEvent::kAckAdd:
-        add_error_ = ev.b;  // 0 = ok, sinon surpoids/plein/stack...
-        if (ev.b != 0) { pending_adds_.clear(); break; }
-        // Succès : l'objet est bien dans MON offre. Le paquet ne dit QUE l'index —
-        // la quantité, on est seuls à la connaître (cf. ResolveMyAdds).
-        acked_adds_.push_back(ev.a);
-        break;
-      case NetEvent::kConclude:
-        // a = 0 -> MON offre est verrouillée ; 1 -> celle du partenaire. Vérifié
-        // serveur (trade.cpp : lock(*sd,false) à celui qui verrouille, lock(*tsd,true)
-        // à l'autre).
-        if (ev.a == 0) my_locked_ = true; else partner_locked_ = true;
-        break;
-      case NetEvent::kEnd:
-        // Fin d'échange (annulation ou commit) : on ferme sans rien renvoyer, le deal
-        // est déjà défait côté serveur. Rien à défaire de notre côté non plus : les
-        // objets ont quitté le sac dès l'acquittement (cf. ResolveMyAdds) — sur
-        // ANNULATION le serveur les rend lui-même par clif_additem, sur COMMIT il ne
-        // dit rien, et c'est correct.
-        //
-        // ⚠ Les acquittements encore en attente sont résolus AVANT de fermer : le
-        // serveur peut acquitter un ajout et exécuter l'échange dans le même souffle,
-        // et l'objet doit alors quitter le sac — sans quoi il y reste en fantôme.
-        if (!acked_adds_.empty()) ResolveMyAdds();
-        open_ = false;
-        was_open_ = false;
-        show_panel_ = true;
-        committed_ = false;
-        ResetSession();
-        last_result_ = ev.a;  // ResetSession n'y touche pas : le verdict survit
-        break;
-    }
   }
 }
 
@@ -808,15 +749,10 @@ void TradeWindow::OnTick() {
     // Ce qui reste en file appartient à la session qu'on vient d'abandonner : on le
     // jette, sinon un dépôt du partenaire arrivé juste avant la bascule ressusciterait
     // dans la suivante.
-    ClearNet();
+    net_inbox_.Clear();
     ResetSession();
   }
   if (!imgui_enabled_) { open_ = false; was_open_ = false; req_open_ = false; return; }
-
-  // Tout ce que le fil réseau a décodé depuis le tick précédent : ouverture, dépôts
-  // du partenaire, acquittements, verrous, fin d'échange. Appliqué ICI, et nulle
-  // part ailleurs.
-  DrainNet();
 
   if (open_) {
     // Filet du basculement en pleine session : on DÉTRUIT ce qui traîne au lieu de

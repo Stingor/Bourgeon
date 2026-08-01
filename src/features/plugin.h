@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "features/net_inbox.h"  // bourgeon::PacketInbox
 #include "ragnarok/mode_mgr.h"
 
 // Base class for Bourgeon plugins. Plugins are written in C++ and compiled
@@ -9,7 +10,12 @@
 // plugin loading. To add a plugin, subclass Plugin, override the events you
 // need and register an instance in Bourgeon::LoadPlugins().
 //
-// All events are invoked from the game's main thread.
+// 🔴 TOUS les événements sont émis sur le fil PRINCIPAL — SAUF UN. `OnRecvPacket`
+// tourne sur le fil RÉSEAU, et la ligne qui prétendait le contraire ici a coûté
+// une famille entière de crashes irreproductibles : un module qui remplit ses
+// listes depuis ce fil-là écrit pendant que le rendu les parcourt. La réponse est
+// `HandlePacket` juste en dessous, et le raisonnement complet est dans
+// features/net_inbox.h.
 class Plugin {
  public:
   virtual ~Plugin() = default;
@@ -53,6 +59,36 @@ class Plugin {
   //     right after the 2-byte opcode, so a variable-length packet still begins
   //     with its own length field. Those two match on purpose: switching a
   //     plugin from observing to replacing must not rewrite its parser.
+  //
+  // 🔴 FIL RÉSEAU. Le seul événement qui ne soit pas sur le fil principal. La
+  // forme normale tient en une ligne — copier, et laisser HandlePacket décoder :
+  //     void X::OnRecvPacket(uint16_t op, const uint8_t* d, uint16_t n) {
+  //       net_inbox_.Push(op, d, n);        // ou PushAnnounced (longueur annoncée)
+  //     }
   virtual void OnRecvPacket(uint16_t opcode, const uint8_t* data,
                             uint16_t len) {}
+
+  // Le décodage du paquet, sur le FIL PRINCIPAL, une fois par frame dans la phase
+  // d'entrée (`Bourgeon::OnProcessInput`, non bridée — contrairement à OnTick et
+  // ses ~100 ms). C'est là que va le corps qu'on écrivait autrefois dans
+  // OnRecvPacket, INCHANGÉ : mêmes offsets, même parsing, mêmes membres.
+  //
+  // `data` pointe dans un tampon qui ne vit que le temps de l'appel — comme celui
+  // du client. On décode, on n'en garde rien.
+  virtual void HandlePacket(uint16_t opcode, const uint8_t* data,
+                            uint16_t len) {}
+
+  // Rejoue les paquets copiés depuis le dernier passage. Appelé par Bourgeon pour
+  // TOUS les modules, chaque frame : un module qui n'a rien empilé ne paie qu'un
+  // verrou non contesté.
+  void DrainNetInbox() {
+    net_inbox_.Drain([this](uint16_t opcode, const uint8_t* data, uint16_t len) {
+      HandlePacket(opcode, data, len);
+    });
+  }
+
+ protected:
+  // La file du module. Écrite par OnRecvPacket (fil réseau), vidée par
+  // DrainNetInbox (fil principal). Un module qui ne s'en sert pas ne paie rien.
+  bourgeon::PacketInbox net_inbox_;
 };

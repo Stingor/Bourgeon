@@ -233,6 +233,20 @@ void Bourgeon::OnProcessInput() {
   // menu-icon click dispatches with the same timing/context as a native click —
   // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
   // windows (world map) crash intermittently.
+
+  // 🔴 D'ABORD les paquets. `OnRecvPacket` tourne sur le fil RÉSEAU et ne fait plus
+  // que COPIER les octets ; le décodage de chaque module est rejoué ICI, sur le fil
+  // principal, dans l'ordre d'arrivée (cf. features/net_inbox.h). Ici et pas dans
+  // OnTick : le bridage à ~100 ms de ce dernier ajouterait un dixième de seconde à
+  // chaque dialogue, chaque dépôt d'échange et chaque coup porté.
+  for (auto& plugin : plugins_) {
+    try {
+      plugin->DrainNetInbox();
+    } catch (const std::exception& error) {
+      LogError("[{}] DrainNetInbox: {}", plugin->name(), error.what());
+    }
+  }
+
   if (auto* mi = menu_icons()) mi->FlushPending();
   // ⚠ Échoppe joueur : MÊME raison, mais pour un danger plus sévère que du
   // flicker. Ses boutons pilotent des commandes natives dont certaines ouvrent

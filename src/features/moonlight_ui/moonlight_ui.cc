@@ -1230,7 +1230,13 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
 
 // ZC packet layout (data points past [opcode:2][total_len:2]):
 //   [char_id:4][count:2][{id:2, value:4} * count]
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h).
 void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (opcode == kOpcodeMapMove) {
     // 0x0091 ZC_NPCACK_MAPMOVE : `data` pointe sur mapname[16] (ex. « gonryun.gat »).
     //

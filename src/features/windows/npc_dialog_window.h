@@ -128,7 +128,12 @@ class NpcDialogWindow : public Plugin {
   // lieu de les masquer — masquée, une native garde le clavier.
   void PurgeNativeDialogWindows();
 
-  // ── Modèle (bâti par OnRecvPacket, lu par OnRenderUI) ──
+  // 🔴 Le décodage des paquets, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne
+  // fait que copier les octets : `lines_`, `choices_` et le cache de noms étaient
+  // reconstruits pendant que le rendu les parcourait. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
+  // ── Modèle (bâti par HandlePacket, lu par OnRenderUI) ──
   std::vector<std::string> lines_;    // texte NPC accumulé (parsé au rendu)
   std::vector<std::string> choices_;  // menu courant (vide = pas de menu)
   bool       has_next_  = false;      // bouton [Next] demandé (WAIT)

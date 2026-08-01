@@ -94,6 +94,11 @@ class PlayerJump : public Plugin {
   void StartJump(uint32_t gid);   // idempotent : ignore si ce gid saute déjà
   void ClearAll();                // repose tous les sprites au sol et vide la liste
 
+  // 🔴 Le fil RÉSEAU ne fait que copier : `jumps_` est écrite par StartJump et
+  // parcourue par OnRenderUI, et la résolution d'acteur lit le monde — deux choses
+  // qui n'ont rien à faire hors du fil principal. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   bool  enabled_     = true;
   float jump_height_ = 10.0f;  // hauteur de crête, en unités monde
   int   jump_ms_     = 600;    // durée montée+descente

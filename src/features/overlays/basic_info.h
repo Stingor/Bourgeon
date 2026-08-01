@@ -45,6 +45,8 @@ class BasicInfo : public Plugin {
   void OnTick() override;  // enforces the "hide native Basic Info" option
   // Observe ZC 0x0A3B (ZC_EQUIPMENT_EFFECT / hat effects) pour SUIVRE les effets de
   // chapeau (.str) actifs sur le JOUEUR (aid == propre aid) : status=1 ajoute, 0 retire.
+  // 🔴 Ne fait que COPIER : `own_hat_effects_` et la table d'ordinaux sont écrites
+  // par HandlePacket, sur le fil principal (cf. features/net_inbox.h).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Effets de chapeau (hat effect ids = enum e_hat_effects serveur) actifs sur le
@@ -217,6 +219,10 @@ class BasicInfo : public Plugin {
   bool geometry_dirty_ = false;
 
  private:
+  // Fil réseau -> fil principal : on copie les octets, HandlePacket décode en phase
+  // d'entrée (cf. features/net_inbox.h).
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   bool in_game_      = false;
   bool drag_pending_ = false;  // geometry changed mid-drag, awaiting mouse-up
 

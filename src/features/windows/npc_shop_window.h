@@ -117,6 +117,12 @@ class NpcShopWindow : public Plugin {
   bool imgui_enabled_ = false;
 
  private:
+  // 🔴 Le décodage des paquets, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne
+  // fait que copier les octets : la liste d'achat, celle de vente et le panier
+  // étaient reconstruits pendant que le rendu les parcourait.
+  // Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   enum Mode { kBuy = 0, kSell = 1 };
 
   struct BuyItem {

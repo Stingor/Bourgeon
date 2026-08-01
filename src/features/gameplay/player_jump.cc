@@ -215,8 +215,15 @@ void PlayerJump::OnKeyDown(unsigned long vkey, int, int) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h).
 void PlayerJump::OnRecvPacket(uint16_t opcode, const uint8_t* data,
-                                    uint16_t len) {
+                              uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void PlayerJump::HandlePacket(uint16_t opcode, const uint8_t* data,
+                              uint16_t len) {
   if (opcode != bopcodes::kJumpNotify) return;
   if (!enabled_ || data == nullptr || len < 4) return;
   // data = octets APRÈS [type:2][len:2] -> [gid:4].

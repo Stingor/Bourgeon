@@ -42,8 +42,9 @@ fait au client natif ? »**.
 | `minigames/` | un **jeu embarqué** | `doom`, `roggle`, `rojeweled` |
 
 À la racine de `features/`, le socle partagé : `plugin.h` (la classe de base),
-`staff_gate.h` (le gate niveau de groupe ≥ 80) et `hotkey_util.{h,cc}` (capture
-de combo + contrôle de conflit). Et `features/moonlight_ui/`, qui est à part :
+`net_inbox.h` (le passage du fil réseau au fil principal — **obligatoire** dès
+qu'un module décode un paquet), `staff_gate.h` (le gate niveau de groupe ≥ 80) et
+`hotkey_util.{h,cc}` (capture de combo + contrôle de conflit). Et `features/moonlight_ui/`, qui est à part :
 c'est le sommaire des réglages **et** le propriétaire du fichier yaml — d'où le
 « persisté par MoonlightUi » qu'on lit dans les en-têtes des autres modules.
 

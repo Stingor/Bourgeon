@@ -169,7 +169,18 @@ CashShopWindow::CashShopWindow() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpResult, 14);
 }
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). La liste d'onglet
+// est à longueur ANNONCÉE et son décodage lit tout le corps : PushAnnounced.
 void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                  uint16_t len) {
+  if (opcode == kOpItemList) net_inbox_.PushAnnounced(opcode, data, len);
+  else                       net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Il compte ici : un onglet découpé en plusieurs paquets s'APPEND, un paquet rejoué
+// dans le désordre mélangerait deux onglets.
+void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   if (opcode == kOpOpen) {
     if (len < 8) return;

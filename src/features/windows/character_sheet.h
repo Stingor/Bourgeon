@@ -99,6 +99,12 @@ class CharacterSheet : public Plugin {
   bool& skill_bilinear() { return skill_bilinear_; }
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : le roster de guilde, ses compétences et ses postes étaient reconstruits
+  // pendant que l'onglet Guilde les affichait, et l'oubli d'emblème touchait au
+  // cache de textures. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // Apport ÉQUIPEMENT + CARTES aux stats, poussé par le serveur (ZC 0x0F10),
   // compilé par status_calc_pc. Le natif ne donne que le TOTAL par stat primaire ;
   // ceci fournit le SPLIT équip/carte + l'ATK/MATK issus de l'équip. Phase 1.

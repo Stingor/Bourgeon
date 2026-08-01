@@ -254,10 +254,29 @@ void NpcDialogWindow::PushText(const char* s) {
     lines_.erase(lines_.begin(), lines_.begin() + (lines_.size() - kMaxLines));
 }
 
+// Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). Les paquets de
+// dialogue (SAY, MENU) sont à longueur ANNONCÉE et leur décodage lit le corps
+// entier : PushAnnounced. Les autres sont fixes.
 void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                    uint16_t len) {
   if (!imgui_enabled_) return;
+  switch (opcode) {
+    case kZcSay:
+    case kZcSay2:
+    case kZcMenu:
+      net_inbox_.PushAnnounced(opcode, data, len);
+      break;
+    default:
+      net_inbox_.Push(opcode, data, len);
+      break;
+  }
+}
 
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// L'ordre compte ici plus qu'ailleurs — un dialogue est une CONVERSATION, et un
+// SAY rejoué après le MENU qui le suit afficherait le mauvais écran.
+void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
+                                   uint16_t len) {
   if (opcode == kZcMapChange || opcode == kZcServerMove) {
     map_changed_ = true;  // fermé au prochain OnTick (thread principal)
     return;

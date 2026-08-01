@@ -921,7 +921,19 @@ MakeItemWindow::MakeItemWindow() {
 
 // ── Capture ──────────────────────────────────────────────────────────────────
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Les trois listes
+// de fabrication sont à longueur ANNONCÉE — c'est elle qui fait foi, pas `len`.
 void MakeItemWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                  uint16_t len) {
+  if (opcode == kOpMakableList || opcode == kOpArrowList ||
+      opcode == kOpMakingList)
+    net_inbox_.PushAnnounced(opcode, data, len);
+  else
+    net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   // ── Maîtrise culinaire (ZC 0x0F1C) ────────────────────────────────────────
   // `[len:2][mastery:2]` — `data` commence APRÈS l'opcode, comme partout ici.

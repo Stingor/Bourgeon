@@ -612,7 +612,14 @@ StorageWindow::StorageWindow() {
 
 // Prix de vente NPC du storage (ZC_BOURGEON_STORAGE_PRICES). data = payload après
 // [op:2][len:2] : [count:2] puis count * [id:4][sell:4].
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Les deux paquets
+// se décodent dans les octets transmis — Push suffit.
 void StorageWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   // ZC_INVENTORY_START (observé) : data = [len:2][invType:1][name:≤24]. On garde le
   // nom seulement pour un entrepôt (invType STORAGE) -> titre du viewer.
   if (opcode == kOpInventoryStart) {

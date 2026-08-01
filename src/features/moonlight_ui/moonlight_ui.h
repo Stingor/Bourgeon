@@ -140,6 +140,12 @@ class MoonlightUi : public Plugin {
   void OpenInterfaceSection(int section);
 
  private:
+  // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
+  // HandlePacket décode en phase d'entrée. `alootid_presets_` (vecteur de
+  // std::string) était reconstruit depuis le fil réseau pendant que le panneau
+  // l'affichait. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // Les réglages qui appartiennent à MoonlightUi elle-même (et non à un plugin)
   // sont décrits, comme tous les autres, par des tables de descripteurs — mais
   // un descripteur pointe l'ADRESSE du champ, or ceux-ci sont privés. Cette

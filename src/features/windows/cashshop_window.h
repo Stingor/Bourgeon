@@ -50,6 +50,11 @@ class CashShopWindow : public Plugin {
   bool imgui_enabled_ = false;
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : les neuf listes d'onglets étaient vidées et re-remplies pendant que le
+  // rendu parcourait l'onglet courant. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   static constexpr int kNumTabs = 9;  // e_cash_shop_tab (NEW..SALE)
 
   struct CashItem {

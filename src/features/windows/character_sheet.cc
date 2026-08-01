@@ -2280,7 +2280,28 @@ unsigned long CharacterSheet::SkillCooldownRemaining(uint16_t skill_id) const {
   return ro::SkillCooldownRemainingMs(skill_id);
 }
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Les paquets de
+// guilde sont STANDARD et à longueur variable : leur décodage relit la longueur
+// annoncée et parcourt les entrées bien au-delà des octets transmis, d'où
+// PushAnnounced. Les customs (compagnons, bonus) tiennent dans `len`.
 void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  switch (opcode) {
+    case kOpGuildEmblemImg:
+    case kOpGuildSkills:
+    case kOpGuildBanList:
+    case kOpPositionNames:
+    case kOpPositionInfo:
+    case kOpPositionChanged:
+      net_inbox_.PushAnnounced(opcode, data, len);
+      break;
+    default:
+      net_inbox_.Push(opcode, data, len);
+      break;
+  }
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void CharacterSheet::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   // ZC_SKILL_POSTDELAY (0x043D) n'est PAS traité ici : la table de cooldowns est
   // partagée et remplie en amont, dans Bourgeon::FireRecvPacket.
 

@@ -107,6 +107,12 @@ class StorageWindow : public Plugin {
   void HideNativeAtCreation(void* win);
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : `prices_` et `meta_` sont des tables de hachage, et une insertion qui
+  // REHASHE pendant que le rendu y cherche un prix est un crash.
+  // Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // Un item de l'entrepôt, extrait en POD (sous SEH) pour rendre hors __try.
   struct Item {
     uint32_t id = 0;          // atoi(info+0x2c) — la SOURCE que le jeu utilise

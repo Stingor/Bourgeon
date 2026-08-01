@@ -1748,7 +1748,15 @@ void ItemDescWindow::RequestItemScript(uint32_t id) {
   e.requested_tick = now;
 }
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Ce sont des
+// opcodes CUSTOM (RegisterRecvOpcode) : `len` porte déjà le corps entier.
 void ItemDescWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                  uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void ItemDescWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   // Réponse script + combos (0x0F12). Payload (après [id:4][status:1] déjà retiré
   // du header par le reader-hook -> data pointe sur [id:4]) :

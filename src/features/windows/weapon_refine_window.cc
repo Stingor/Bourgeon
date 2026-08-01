@@ -420,7 +420,16 @@ WeaponRefineWindow::WeaponRefineWindow() {
 
 // ── Capture ──────────────────────────────────────────────────────────────────
 
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). La liste d'armes
+// est à longueur ANNONCÉE — c'est elle qui fait foi, pas `len` : PushAnnounced.
 void WeaponRefineWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                                      uint16_t len) {
+  if (opcode == kOpRefineList) net_inbox_.PushAnnounced(opcode, data, len);
+  else                         net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                       uint16_t len) {
   if (opcode == kOpRefineList) {
     // `data` = le paquet À PARTIR de son champ longueur (l'opcode est déjà

@@ -154,6 +154,12 @@ class ItemDescWindow : public Plugin {
   };
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : `script_cache_` est une table de hachage de chaînes et de vecteurs,
+  // remplie pendant que le rendu affichait l'entrée qu'on était en train de
+  // réécrire. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // État d'une entrée de cache de données techniques (par (is_skill,id)).
   enum class FetchState : uint8_t { kNone, kPending, kReady, kFailed };
 

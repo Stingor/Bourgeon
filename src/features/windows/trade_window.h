@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -173,41 +172,11 @@ class TradeWindow : public Plugin {
   int                     pending_zeny_ = -1;  // montant envoyé, en attente d'ack
 
   // ── Passage du fil RÉSEAU au fil PRINCIPAL ──────────────────────────────────
-  //
-  // 🔴 OnRecvPacket tourne sur le fil RÉSEAU, le rendu lit sur le fil PRINCIPAL.
-  // Écrire `partner_items_` depuis le premier pendant que le second le parcourt,
-  // c'est un pointeur mort dès que le push_back réalloue : le genre de crash qui ne
-  // se reproduit qu'en jeu, sur un partenaire qui dépose vite. Le fil réseau ne
-  // touche donc plus AUCUN état de l'échange — il DÉCODE et EMPILE, et DrainNet
-  // applique au tick, sur le fil principal, dans l'ordre d'arrivée.
-  //
-  // Décoder tout de suite (plutôt que copier les octets bruts) est délibéré : le
-  // tampon `data` appartient au lecteur de paquets et ne survit pas au retour.
-  struct NetEvent {
-    enum Kind {
-      kReq,          // ZC_REQ 0x01f4 : demande d'échange (name/aid/level)
-      kOpen,         // ZC_ACK 0x01f5 result 3 : l'échange démarre
-      kReqRefused,   // ZC_ACK 0x01f5 autre résultat : la requête a échoué
-      kPartnerItem,  // ZC_ADD 0x0b42 : le partenaire dépose un objet
-      kPartnerZeny,  // ZC_ADD 0x0b42 avec itemId 0 : il dépose du zeny
-      kAckAdd,       // ZC_ACK_ADD 0x00ea {a = index, b = résultat}
-      kConclude,     // ZC_CONCLUDE 0x00ec {a = qui}
-      kEnd,          // ZC_CANCEL 0x00ee / ZC_EXEC 0x00f0 {a = résultat}
-    };
-    Kind      kind = kReq;
-    TradeItem item;            // kPartnerItem
-    int64_t   zeny = 0;        // kPartnerZeny
-    int       a = 0, b = 0;    // cf. les commentaires ci-dessus
-    char      name[25] = {0};  // kReq
-    uint32_t  aid = 0;
-    int       level = 0;
-  };
-  void PushNet(const NetEvent& ev);  // fil RÉSEAU  : empile
-  void DrainNet();                   // fil PRINCIPAL : applique
-  void ClearNet();                   // jette ce qui reste (session abandonnée)
-
-  std::vector<NetEvent> net_queue_;
-  mutable std::mutex    net_mutex_;
+  // 🔴 OnRecvPacket ne fait que COPIER les octets ; le décodage entier est rejoué
+  // en phase d'entrée par HandlePacket, sur le fil principal. Écrire
+  // `partner_items_` depuis le fil réseau pendant que le rendu le parcourt, c'est
+  // un pointeur mort dès que le push_back réalloue. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Description au clic droit : ARMÉE ici, jouée par itemcell::FlushDeferredDesc au
   // RELÂCHEMENT du bouton (cf. features/item_cell.h). L'ItemSkillInfo reconstruit

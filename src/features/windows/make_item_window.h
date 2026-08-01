@@ -172,6 +172,12 @@ class MakeItemWindow : public Plugin {
   bool imgui_enabled_ = true;
 
  private:
+  // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
+  // copier : la table des recettes, le journal et le recomptage des matériaux (qui
+  // parcourt le modèle d'inventaire du client) n'ont rien à faire sur ce fil-là.
+  // Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
   // Valeur d'`imgui_enabled_` au tick précédent : sert UNIQUEMENT à détecter la
   // BASCULE de l'interrupteur « Interface moderne », qui doit désarmer le
   // `menuskill` serveur avant de jeter la session (cf. OnTick).
