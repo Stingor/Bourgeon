@@ -155,7 +155,14 @@ class Bourgeon {
   // détruire après coup : une native masquée reste vivante et garde le clavier
   // (Entrée/Espace valident son bouton par défaut, cf.
   // docs/make_item_list_re.md §12.5).
+  //
+  // La surcharge (data, len) est pour les opcodes MULTIPLEXÉS, dont un champ dit
+  // à quoi le paquet sert — ZC_INVENTORY_START (0x0b08) ouvre l'inventaire, le
+  // cart ou le storage selon son invType. Revendiquer l'opcode entier tuerait
+  // deux fenêtres pour en remplacer une.
   void RegisterReplaceOpcode(uint16_t opcode, std::function<bool()> claim);
+  void RegisterReplaceOpcode(
+      uint16_t opcode, std::function<bool(const uint8_t* data, uint16_t len)> claim);
 
   // Map-loading gate. True from the ZC_NPCACK_MAPMOVE (0x0091) that begins a
   // warp/@load until the CZ_NOTIFY_ACTORINIT (0x007d) the client sends once the

@@ -22,7 +22,8 @@ std::unordered_map<uint16_t, uint16_t> RagConnection::s_observe_opcodes_;
 std::unordered_set<uint16_t> RagConnection::s_reader_dispatch_opcodes_;
 
 // Opcodes STANDARD dont on a pris la place (RegisterReplaceOpcode).
-std::unordered_map<uint16_t, std::function<bool()>> RagConnection::s_replace_opcodes_;
+std::unordered_map<uint16_t, std::function<bool(const uint8_t*, uint16_t)>>
+    RagConnection::s_replace_opcodes_;
 std::unordered_map<uint16_t, void*> RagConnection::s_native_handlers_;
 
 // Résolveur de longueur du client (renseigné depuis la config).
@@ -205,8 +206,20 @@ void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len)
   // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
 }
 
+// Surcharge historique : le prédicat ne regarde pas le paquet. On l'adapte à la
+// forme générale plutôt que de dupliquer l'installation.
 void RagConnection::RegisterReplaceOpcode(uint16_t opcode,
                                           std::function<bool()> claim) {
+  if (!claim) {
+    LogError("RagConnection: RegisterReplaceOpcode(0x{:04x}) sans predicat", opcode);
+    return;
+  }
+  RegisterReplaceOpcode(
+      opcode, [claim = std::move(claim)](const uint8_t*, uint16_t) { return claim(); });
+}
+
+void RagConnection::RegisterReplaceOpcode(
+    uint16_t opcode, std::function<bool(const uint8_t*, uint16_t)> claim) {
   if (!recv_dispatch_table_) {
     LogError("RagConnection: RegisterReplaceOpcode(0x{:04x}) sans dispatch table",
              opcode);
@@ -344,7 +357,10 @@ void* RagConnection::RecvPacketHandlerImpl() {
   if (replaced != s_replace_opcodes_.end()) {
     bool claimed = false;
     try {
-      claimed = replaced->second();
+      // Le prédicat voit EXACTEMENT les octets qui lui seraient transmis (+2,
+      // after_opcode) : un opcode multiplexé se décide sur le même parsing que
+      // celui du handler, sans second jeu d'offsets à tenir à jour.
+      claimed = replaced->second(g_saved_packet + 2, after_opcode);
     } catch (...) {
       // Un prédicat qui lève ne doit PAS faire disparaître le paquet : on rend la
       // main au natif, qui est exactement le comportement « plugin absent ».

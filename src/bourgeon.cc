@@ -534,6 +534,11 @@ void Bourgeon::RegisterReplaceOpcode(uint16_t opcode,
   client_.rag_connection().RegisterReplaceOpcode(opcode, std::move(claim));
 }
 
+void Bourgeon::RegisterReplaceOpcode(
+    uint16_t opcode, std::function<bool(const uint8_t*, uint16_t)> claim) {
+  client_.rag_connection().RegisterReplaceOpcode(opcode, std::move(claim));
+}
+
 void Bourgeon::LoadPlugins() {
   // Services partagés, avant les plugins : ils observent des paquets pour le
   // compte de plusieurs d'entre eux (voir ragnarok/skill_cooldowns.h).

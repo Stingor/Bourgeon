@@ -56,7 +56,15 @@ class RagConnection {
   // Les octets transmis commencent JUSTE APRÈS l'opcode (+2), exactement comme
   // RegisterObserveOpcode : un plugin passe d'un régime à l'autre sans toucher à
   // son parseur. Longueur fixe comme variable — cf. NativeFixedPacketLen.
+  //
+  // La surcharge qui reçoit (data, len) sert aux opcodes MULTIPLEXÉS, dont un
+  // champ dit à quoi le paquet sert : ZC_INVENTORY_START (0x0b08) ouvre selon son
+  // invType l'inventaire, le cart OU le storage. Revendiquer l'opcode entier y
+  // tuerait deux fenêtres pour en remplacer une seule ; le prédicat doit donc
+  // pouvoir lire le champ. Mêmes octets que ceux qui seront transmis ensuite.
   void RegisterReplaceOpcode(uint16_t opcode, std::function<bool()> claim);
+  void RegisterReplaceOpcode(
+      uint16_t opcode, std::function<bool(const uint8_t* data, uint16_t len)> claim);
 
   // Longueur TOTALE du paquet (opcode compris) telle que le CLIENT la calcule,
   // ou 0 pour un paquet à longueur variable — dont la longueur se lit alors dans
@@ -122,7 +130,9 @@ class RagConnection {
   // (RegisterReplaceOpcode) : prédicat de revendication, et adresse du handler
   // natif d'origine relevée AVANT d'écrire dans le slot — c'est elle qui rend le
   // régime révocable.
-  static std::unordered_map<uint16_t, std::function<bool()>> s_replace_opcodes_;
+  static std::unordered_map<uint16_t,
+                            std::function<bool(const uint8_t*, uint16_t)>>
+      s_replace_opcodes_;
   static std::unordered_map<uint16_t, void*> s_native_handlers_;
 
   // Opcodes ABOVE the dispatch-table bound (can't patch the table without going

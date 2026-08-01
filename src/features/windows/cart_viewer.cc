@@ -131,7 +131,15 @@ uint8_t* CartWnd() {
 }
 
 bool InventoryOpen() { return ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable) != nullptr; }
-bool StorageOpen()   { return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr; }
+// ⚠ D'ABORD StorageWindow : en mode ImGui la fenêtre storage native ne naît
+// plus, donc le slot reste nul et le test natif seul rendrait « fermé » un
+// storage ouvert — ce qui ferait proposer cart -> inventaire là où le serveur
+// impose cart -> storage (sd->state.storage_flag).
+bool StorageOpen() {
+  if (auto* st = Bourgeon::Instance().storage_window())
+    if (st->IsOpen()) return true;
+  return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr;
+}
 
 // Composition d'échoppe en cours. Le serveur lève alors `sd->state.prevend` et
 // REFUSE EN SILENCE tout mouvement touchant le chariot : pc_getitemfromcart /

@@ -8,22 +8,29 @@
 
 // ── StorageWindow ───────────────────────────────────────────────────────────
 //
-// Viewer ImGui de l'entrepôt (Kafra / guilde / premium), en COEXISTENCE avec la
-// fenêtre native : les deux affichent le même modèle, donc la synchro est
-// automatique (l'ImGui relit la liste chaque tick ; déposer/retirer dans le
-// natif met à jour le modèle -> reflété au frame suivant).
+// Viewer ImGui du storage (Kafra / guilde / premium). Quand imgui_enabled_
+// est ON, la fenêtre NATIVE NE NAÎT PLUS : on prend la place de ses handlers de
+// paquets (RegisterReplaceOpcode) au lieu de la masquer après coup — une native
+// masquée reste vivante et garde le clavier.
 //
-// RE (cf. mémoire project_storage_window_re) :
+// RE (cf. mémoire project_storage_window_re et docs/storage_window_re.md) :
 //   - Fenêtre native = UIItemStoreWnd, id 0x21, vtable 0x0103ca40.
-//   - Slot manager (mgr+0x288 = 0x0131f770) : non-nul <=> fenêtre ouverte,
-//     remis à 0 à la fermeture (signal FIABLE, = ce que FindWindow(0x21) rend).
-//   - Liste AFFICHÉE = std::list à wnd+0xe8 (_Myhead sentinelle @+0xe8, taille
-//     @+0xec). Nœud : value=node+8, id=*(node+0xc), quantité=*(node+0x18).
-//   - Compteur used/max = wnd+0x188 / wnd+0x18c.
+//   - Modèle des items = g_session+0x1718 (0x015fbad8), peuplé par les listes
+//     0x0b09/0x0b39 INDÉPENDAMMENT de la fenêtre : leur ingesteur ne touche à
+//     g_StorageWnd_ptr que sous un test de nullité. C'est ce qui rend le
+//     remplacement possible — le modèle vit sans la fenêtre.
+//   - Compteur used/max : NON lu dans la fenêtre, reçu en 0x00f2.
 //
-// v1 = LECTURE SEULE (aucun hook, aucun paquet) : on lit la liste de la fenêtre
-// et on la rend en table ImGui recherchable/triable. Le natif reste 100 %
-// fonctionnel pour déposer/retirer ; l'ImGui valide la synchro à côté.
+// 🔴 DEUX opcodes créent la fenêtre 0x21 sur ce serveur, pas un :
+//   - 0x0b08 ZC_INVENTORY_START, mais seulement pour invType 2 (STORAGE) et 3
+//     (GUILD_STORAGE) — les invType 0 et 1 ouvrent l'inventaire et le cart,
+//     d'où le prédicat qui LIT le paquet ;
+//   - 0x00f2 ZC_NOTIFY_STOREITEM_COUNTINFO, qui appelle MakeWindow(0x21) puis
+//     déréférence le retour SANS test. Le laisser au natif ressusciterait la
+//     fenêtre juste après l'ouverture.
+// (Cinq autres cases du dispatcher la créent aussi — les listes storage des
+// packetvers anciens. moonlight n'envoie que 0x0b09/0x0b39 ; la purge de OnTick
+// est le filet si l'une d'elles arrivait quand même.)
 
 class StorageWindow : public Plugin {
  public:
@@ -35,12 +42,20 @@ class StorageWindow : public Plugin {
 
   const char* name() const override { return "StorageWindow"; }
 
-  void OnTick() override;      // capture l'état de l'entrepôt (polling read-only)
-  void OnRenderUI() override;  // dessine le viewer ImGui si l'entrepôt est ouvert
+  void OnTick() override;      // capture l'état du storage (polling read-only)
+  void OnRenderUI() override;  // dessine le viewer ImGui si le storage est ouvert
   // Reçoit les prix de vente du storage (ZC_BOURGEON_STORAGE_PRICES 0x0F0F).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   bool& show_panel() { return show_panel_; }
+
+  // Une session storage est-elle ouverte ? À interroger par les AUTRES modules
+  // (inventaire, cart) au lieu de chercher la fenêtre native : elle ne naît plus
+  // en mode ImGui, et un `FindWindow(0x21)` nul y passerait pour « storage
+  // fermé ». Or plusieurs de leurs règles en dépendent — le serveur refuse
+  // inventaire <-> cart tant qu'un storage est ouvert (sd->state.storage_flag),
+  // et ces modules n'arment le transfert que sur ce test.
+  bool IsOpen() const { return open_; }
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Storage » du
   // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
@@ -62,7 +77,7 @@ class StorageWindow : public Plugin {
   int&  cur_tab()        { return cur_tab_; }
 
   // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
-  // ON = viewer ImGui + fenêtre native cachée ; OFF = entrepôt natif seul, aucun viewer.
+  // ON = viewer ImGui + fenêtre native cachée ; OFF = storage natif seul, aucun viewer.
   // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
   bool imgui_enabled_ = false;
 
@@ -101,9 +116,9 @@ class StorageWindow : public Plugin {
            mx < win_x_ + win_w_ && my < win_y_ + win_h_;
   }
 
-  // Appelé par le hook MakeWindow de WindowPosTweaks à la création d'une fenêtre id
-  // 0x21 (entrepôt) : si imgui_enabled_, force le flag de visibilité (win+0x28) à 0
-  // AVANT le 1er rendu -> pas de flicker (le OnTick seul laissait 1 frame visible).
+  // NO-OP depuis que la native ne naît plus : il n'y a plus rien à masquer avant
+  // le 1er rendu. Conservé parce que le hook MakeWindow de WindowPosTweaks
+  // l'appelle pour douze plugins.
   void HideNativeAtCreation(void* win);
 
  private:
@@ -113,7 +128,7 @@ class StorageWindow : public Plugin {
   // Cf. features/net_inbox.h.
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Un item de l'entrepôt, extrait en POD (sous SEH) pour rendre hors __try.
+  // Un item du storage, extrait en POD (sous SEH) pour rendre hors __try.
   struct Item {
     uint32_t id = 0;          // atoi(info+0x2c) — la SOURCE que le jeu utilise
     int      amount = 0;
@@ -132,8 +147,17 @@ class StorageWindow : public Plugin {
   };
   static constexpr int kMaxItems = 700;  // MAX_STORAGE serveur (marge)
 
-  // Remplit items_/item_count_ depuis la liste de la fenêtre. SEH (POD only).
-  void Extract(uint8_t* wnd);
+  // Remplit items_/item_count_ depuis le MODÈLE de session (g_session+0x1718),
+  // qui existe que la fenêtre native soit là ou non. SEH (POD only).
+  void Extract();
+
+  // Ferme la session CÔTÉ CLIENT (viewer + état), sans rien envoyer : pour les
+  // fermetures dont le serveur nous informe (0x00f8) et celles qu'il fait en
+  // SILENCE. 🔴 Au warp, unit_remove_map_ appelle storage_storage_quit(), qui
+  // sauvegarde et remet storage_flag à 0 SANS envoyer 0x00f8 : le serveur
+  // suppose que le client ferme de lui-même. Sans le reset au changement de
+  // map, le viewer resterait ouvert sur un storage qui n'existe plus.
+  void CloseLocal();
 
   bool  show_panel_ = true;   // transitoire : détection du clic sur le X (ferme la session)
   bool  show_id_col_ = false; // setting : afficher une colonne avec l'id d'item
@@ -197,12 +221,16 @@ class StorageWindow : public Plugin {
   bool  drag_active_ = false;
   int   drag_index_ = 0, drag_amount_ = 0;
   float drag_mx_ = 0, drag_my_ = 0;  // dernière pos souris pendant le drag
-  bool  open_ = false;        // entrepôt ouvert ce frame ?
-  bool  was_open_ = false;    // pour le front montant (placement 1re ouverture)
-  bool  need_pos_ = false;    // repositionner près du natif à l'ouverture
-  int   spawn_x_ = 0, spawn_y_ = 0;
-  int   used_ = 0, max_ = 0;  // compteur used/max (wnd+0x188/+0x18c)
-  // Nom de l'entrepôt ouvert, envoyé par le serveur dans ZC_INVENTORY_START (0x0b08,
+  // Session storage ouverte ? Posé par le paquet d'ouverture (0x0b08 pour un
+  // invType de storage), levé par CloseLocal. Ne se déduit plus de la présence
+  // d'une fenêtre native.
+  bool  open_ = false;
+  // Valeur d'imgui_enabled_ au tick précédent : sert à voir la BASCULE de mode,
+  // qui doit être traitée pendant qu'une session est ouverte (cf. OnTick).
+  bool  prev_imgui_enabled_ = false;
+  bool  need_pos_ = false;    // poser la position par défaut à la 1re ouverture
+  int   used_ = 0, max_ = 0;  // compteur du serveur (ZC_NOTIFY_STOREITEM_COUNTINFO)
+  // Nom du storage ouvert, envoyé par le serveur dans ZC_INVENTORY_START (0x0b08,
   // invType STORAGE=2) : "Storage" / "Guild Storage" / nom premium. Sert de titre.
   char  storage_name_[32] = {0};
   int   item_count_ = 0;      // nb d'items valides dans items_

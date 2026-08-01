@@ -102,10 +102,12 @@ constexpr int kCmdEquipAlt  = 0x12e;  // Ctrl+double-clic : équipe en MAIN GAUC
 constexpr uintptr_t kLeftHandEquipOpt = 0x01602278;  // DAT_01602278 : option client "équip main gauche" active ?
 constexpr int kCmdToCart    = 0x4c;
 constexpr int kCmdCartToBody = 0x4d;  // cart -> inventaire (retrait) ; RE UIInventoryWnd_OnMsg case 0x26 (contexte cart).
-constexpr int kCmdToStorage = 0x37;  // storage KAFRA (g_StorageWnd_ptr 0x0131f770 ouvert).
+constexpr int kCmdToStorage = 0x37;  // storage KAFRA.
                                      // 0x33 = guilde (fenêtre 0x271b), 0x4c = cart.
                                      // RE UIInventoryWnd_OnRButtonDown : le natif choisit selon
-                                     // la fenêtre ouverte ; notre StorageOpen() lit 0x0131f770.
+                                     // la fenêtre ouverte ; nous, via StorageOpen() — qui
+                                     // interroge StorageWindow, la fenêtre native n'existant
+                                     // plus en mode ImGui.
 using GetMode_t = void*(__fastcall*)(int);
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
@@ -662,7 +664,16 @@ bool MouseOverCart(float x, float y) {
 }
 bool MouseOverStorage(float x, float y) { return MouseOverWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable, x, y); }
 bool CartOpen()    { return CartWnd() != nullptr; }
-bool StorageOpen() { return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr; }
+// ⚠ La session storage passe d'ABORD par StorageWindow : en mode ImGui sa
+// fenêtre native ne naît plus, donc le slot 0x0131f770 reste nul et le test
+// natif seul rendrait « fermé » un storage bel et bien ouvert. Ce n'est pas
+// qu'un détail d'affichage — plusieurs règles ci-dessous en dépendent, dont le
+// refus serveur de inventaire -> cart tant qu'un storage est ouvert.
+bool StorageOpen() {
+  if (auto* st = Bourgeon::Instance().storage_window())
+    if (st->IsOpen()) return true;
+  return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr;
+}
 // Composition d'échoppe en cours (cf. VendingWindow::IsComposing).
 //   - inventaire <-> chariot : REFUSÉ par le serveur (sd->state.prevend, testé
 //     par pc_putitemtocart / pc_getitemfromcart et par pc_cant_act2()).

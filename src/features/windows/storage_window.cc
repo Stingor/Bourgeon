@@ -41,13 +41,11 @@ namespace {
 // Slot manager de la fenêtre storage (id 0x21) : mgr+0x288. Non-nul <=> ouverte,
 // remis à 0 à la fermeture. = ce que FindWindow(0x21) renvoie. Relire FRAIS.
 
-// Offsets UIWindow / UIItemStoreWnd.
-constexpr int kOffWidth  = 0x14;
-constexpr int kOffHeight = 0x18;
-constexpr int kOffList   = 0xe8;   // std::list _Myhead (sentinelle)
-constexpr int kOffCount  = 0xec;   // std::list _Mysize
-constexpr int kOffUsed   = 0x188;  // items utilisés
-constexpr int kOffMax    = 0x18c;  // capacité max
+// Plus aucun offset de UIItemStoreWnd : la fenêtre native ne naît plus (cf. le
+// commentaire de tête du .h). Ce qu'ils servaient à lire vient maintenant des
+// paquets — used/max de 0x00f2 — ou du modèle de session pour les items. Les
+// seuls offsets de fenêtre qui restent plus bas portent sur l'inventaire et le
+// cart, dont les natives, elles, existent toujours.
 
 // Nœud de liste (std::list MSVC) : next@+0, prev@+4, value@+8.
 constexpr int kNodeNext = 0x00;
@@ -61,16 +59,18 @@ constexpr int kInfoIdStr = 0x2c;  // std::string id (SSO ; heap si cap>0xf)
 constexpr int kInfoIdCap = 0x40;  // capacité de la std::string id (= +0x2c+0x14)
 constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
 
-// Nom de base de l'item : __thiscall(info, char* out, size_t* cap, char flag).
-using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
+// Le nom d'affichage complet (raffinement / [slots] / cartes / enchant) passe par
+// itemcell::BuildDisplayName : mêmes appels natifs, mais un SEH par item.
 
-// Nom COMPLET (raffinement +N / [slots] / cartes / enchant) : BuildDisplayName.
-// (this=wnd, info, &colorOut, &offVec, &bufptr, &cap, &hlptr, f7, f8). offVec est
-// alloué par le jeu -> à libérer avec game_free.
-struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
-using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
-                                     char**, char, char);
-using GameFree_t  = void(__cdecl*)(void*);
+// Fenêtre native du storage. Elle ne naît plus (cf. le .h) ; l'id ne sert
+// qu'au filet de OnTick, qui la détruit si un chemin oublié la faisait naître.
+constexpr int kWinStorage = 0x21;  // UIItemStoreWnd
+
+// Placement et taille par défaut du viewer, à la toute 1re ouverture seulement.
+// (700, 85) = la position où la native se créait ; 320x420 = la taille posée
+// juste après par SetNextWindowSize, reprise ici pour le clamp à l'écran.
+constexpr float kSpawnX = 700.0f, kSpawnY = 85.0f;
+constexpr float kSpawnW = 320.0f, kSpawnH = 420.0f;
 
 // ── Icônes d'item (bmp inventaire) ──────────────────────────────────────────
 // BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc, 3 args) :
@@ -181,9 +181,9 @@ bool MouseOverCart(float x, float y) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Le chariot est-il OUVERT (natif classique OU remplacé par son viewer ImGui) ?
+// Le cart est-il OUVERT (natif classique OU remplacé par son viewer ImGui) ?
 // ⚠ Ne teste PAS la visibilité, contrairement aux hit-tests ci-dessus : en
-// « Interface moderne » la native est cachée alors que le chariot est bel et bien
+// « Interface moderne » la native est cachée alors que le cart est bel et bien
 // ouvert. Sert à proposer « Vers le cart » dans le menu contextuel.
 bool CartOpen() {
   __try {
@@ -457,7 +457,7 @@ SubCat SubCatOf(int dim, uint8_t subtype, uint32_t equip) {
 // Opcode ACTIF pour ce packetver (>= 20130320) = 0x08ac (MoveToKafra) ; 0x00f3
 // est réassigné à un autre paquet (48o) -> disconnect. Confirmé serveur.
 constexpr uint16_t  kOpDeposit  = 0x08ac;
-// Fermeture de l'entrepôt : CZ_CloseKafra, opcode fixe 2 octets (juste l'opcode).
+// Fermeture du storage : CZ_CloseKafra, opcode fixe 2 octets (juste l'opcode).
 // Confirmé client (opcode_map.md : 0x0193 CZ FIX 2 "CloseKafra") ET serveur moonlight
 // (clif_packetdb.hpp: parseable_packet(0x0193,2,clif_parse_CloseKafra) -> storage_storageclose).
 // PAS remappé par le shuffle 20130320 (contrairement à MoveToKafra 0x08ac / MoveFromKafra 0x0874).
@@ -513,14 +513,14 @@ void SendDeposit(int index, int amount) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// Demande au serveur de fermer l'entrepôt (CZ_CloseKafra, 2 octets = juste l'opcode).
+// Demande au serveur de fermer le storage (CZ_CloseKafra, 2 octets = juste l'opcode).
 // Le serveur ferme la session storage -> les DEUX fenêtres (native + viewer) se ferment.
 void SendCloseStorage() {
   uint16_t op = kOpCloseStorage;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
 }
 
-// storage -> cart : envoie un item de l'entrepôt vers le cart. index = index
+// storage -> cart : envoie un item du storage vers le cart. index = index
 // storage CLIENT (items_[idx].index) ; le serveur applique server_storage_index (-1).
 void SendStorageToCart(int index, int amount) {
   if (amount <= 0 || VendingComposing()) return;
@@ -531,7 +531,7 @@ void SendStorageToCart(int index, int amount) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// cart -> storage : envoie un item du cart vers l'entrepôt. index = index cart
+// cart -> storage : envoie un item du cart vers le storage. index = index cart
 // CLIENT (lu du payload de drag natif) ; le serveur applique server_index (-2).
 void SendCartToStorage(int index, int amount) {
   if (amount <= 0 || VendingComposing()) return;
@@ -573,11 +573,6 @@ uint32_t ReadDragItemId(void* obj) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-// Lit un pointeur de fenêtre valide depuis le slot (vtable vérifiée). SEH-gardé.
-uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  return uiwnd::WndAtSlot(slot, expected_vtable);
-}
-
 // Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices
 // chargées (ProggyClean = ASCII, Malgun = range coréen) -> tracé main via
 // ImDrawList : 10 triangles en éventail depuis le centre (l'étoile est concave,
@@ -599,36 +594,100 @@ void DrawFavStar(ImDrawList* dl, float cx, float cy, float r, ImU32 fill,
 
 }  // namespace
 
-// Opcode standard ZC_INVENTORY_START (0x0b08) : porte le nom de l'entrepôt ouvert
-// (invType STORAGE=2). On l'OBSERVE (le handler natif tourne toujours) pour lire le
-// nom -> titre du viewer. Forward : [len:2][invType:1][name:≤24] à partir de +2.
+// ── Paquets de la session « storage » ──────────────────────────────────────
+//
+// ZC_INVENTORY_START (0x0b08, variable) : [len:2][invType:1][name:≤24] à partir
+// de +2. C'est l'OUVERTURE, et elle est MULTIPLEXÉE — invType 0 = inventaire,
+// 1 = cart, 2 = storage, 3 = storage de guilde. On ne revendique donc que
+// 2 et 3, sinon on tuerait l'ouverture des deux autres fenêtres.
 constexpr uint16_t kOpInventoryStart = 0x0b08;
 constexpr int      kInvTypeStorage   = 2;  // e_inventory_type INVTYPE_STORAGE
+constexpr int      kInvTypeGuildStorage = 3;
+// ZC_NOTIFY_STOREITEM_COUNTINFO (0x00f2, fixe 6) : [amount:2][max:2] à partir de
+// +2. Le compteur « 114/600 ». Son handler natif appelle MakeWindow(0x21) et
+// déréférence le retour sans test : c'est un SECOND créateur de la fenêtre, à
+// remplacer sous peine de la voir renaître aussitôt après l'ouverture.
+constexpr uint16_t kOpStoreCount = 0x00f2;
+// ZC_CLOSE_STORE (0x00f8, fixe 2) : la fermeture. On l'OBSERVE seulement — son
+// handler natif détruit la fenêtre (inoffensif, elle n'existe pas) mais VIDE
+// aussi le modèle de session, et ce vidage-là, nous le voulons : sans lui les
+// items du précédent storage resteraient et se mélangeraient au suivant.
+constexpr uint16_t kOpStoreClose = 0x00f8;
+// Changement de map : le serveur ferme le storage sans le dire (cf. CloseLocal).
+constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
+constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 StorageWindow::StorageWindow() {
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStoragePrices);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpInventoryStart, 27);
+  // Ouverture : revendiquée seulement pour un ENTREPÔT, et seulement en mode
+  // ImGui. Le prédicat lit l'invType dans le paquet — même offset que le
+  // décodage plus bas, il n'y a qu'une lecture à tenir juste.
+  Bourgeon::Instance().RegisterReplaceOpcode(
+      kOpInventoryStart, [this](const uint8_t* data, uint16_t len) {
+        if (!imgui_enabled_ || !data || len < 3) return false;
+        return data[2] == kInvTypeStorage || data[2] == kInvTypeGuildStorage;
+      });
+  // Compteur : revendiqué dès que le mode ImGui est actif. Il ne concerne que
+  // le storage, donc pas de champ à discriminer.
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpStoreCount,
+                                             [this] { return imgui_enabled_; });
+  Bourgeon::Instance().RegisterObserveOpcode(kOpStoreClose, 2);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
 }
 
 // Prix de vente NPC du storage (ZC_BOURGEON_STORAGE_PRICES). data = payload après
 // [op:2][len:2] : [count:2] puis count * [id:4][sell:4].
-// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Les deux paquets
-// se décodent dans les octets transmis — Push suffit.
+// Fil RÉSEAU : on copie, rien de plus (cf. features/net_inbox.h). Tous ces
+// paquets se décodent dans les octets transmis — Push suffit.
 void StorageWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   net_inbox_.Push(opcode, data, len);
 }
 
+// Ferme la session côté client. N'envoie RIEN : soit le serveur vient de nous
+// dire qu'il a fermé, soit il a fermé en silence (warp).
+void StorageWindow::CloseLocal() {
+  open_ = false;
+  show_panel_ = true;   // le viewer doit réapparaître à la prochaine ouverture
+  item_count_ = 0;
+  used_ = max_ = 0;
+  pend_id_ = 0;         // une action en attente n'a plus de destinataire
+  drag_active_ = false;
+  hover_desc_id_ = 0;
+  storage_name_[0] = '\0';
+}
+
 // Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
 void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
-  // ZC_INVENTORY_START (observé) : data = [len:2][invType:1][name:≤24]. On garde le
-  // nom seulement pour un entrepôt (invType STORAGE) -> titre du viewer.
+  // OUVERTURE (revendiquée) : data = [len:2][invType:1][name:≤24]. Le prédicat a
+  // déjà filtré l'invType ; ici on prend le nom, qui devient le titre du viewer.
   if (opcode == kOpInventoryStart) {
-    if (len < 4 || data[2] != kInvTypeStorage) return;
+    if (len < 4) return;
     const char* name = reinterpret_cast<const char*>(data + 3);
     size_t i = 0;
     const size_t cap = sizeof(storage_name_) - 1;
     while (i < cap && i + 3 < len && name[i]) { storage_name_[i] = name[i]; ++i; }
     storage_name_[i] = '\0';
+    // C'est NOTRE ouverture : l'état ne se déduit plus de la présence d'une
+    // fenêtre native, qui ne naîtra pas.
+    if (!open_) need_pos_ = true;
+    open_ = true;
+    show_panel_ = true;
+    return;
+  }
+  // COMPTEUR (revendiqué) : [amount:2][max:2]. Le natif l'écrivait dans la
+  // fenêtre (+0x188/+0x18c), d'où on le relisait ; on le prend à la source.
+  if (opcode == kOpStoreCount) {
+    if (len < 4) return;
+    used_ = *reinterpret_cast<const uint16_t*>(data);
+    max_  = *reinterpret_cast<const uint16_t*>(data + 2);
+    return;
+  }
+  // FERMETURE (observée) : le handler natif a déjà vidé le modèle de session.
+  if (opcode == kOpStoreClose) { CloseLocal(); return; }
+  // Changement de map : fermeture SILENCIEUSE côté serveur (cf. CloseLocal).
+  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+    if (open_) CloseLocal();
     return;
   }
   // ZC_BOURGEON_STORAGE_PRICES : [count:2] puis
@@ -650,10 +709,11 @@ void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
   }
 }
 
-// Remplit items_/item_count_ depuis le MODÈLE COMPLET (g_session+0x1718), pas la
-// vue filtrée de la fenêtre : le viewer voit TOUS les items et fait son propre
-// filtrage par onglet. POD-only sous SEH.
-void StorageWindow::Extract(uint8_t* wnd) {
+// Remplit items_/item_count_ depuis le MODÈLE COMPLET (g_session+0x1718). Ce
+// modèle est peuplé par les paquets de liste (0x0b09/0x0b39) sans passer par la
+// fenêtre — leur ingesteur ne touche à g_StorageWnd_ptr que sous un test de
+// nullité. C'est précisément ce qui permet de tuer la native. POD-only sous SEH.
+void StorageWindow::Extract() {
   item_count_ = 0;
   __try {
     // 0x015fbad8 = g_session+0x1718 : sentinelle de la std::list storage complète.
@@ -691,26 +751,15 @@ void StorageWindow::Extract(uint8_t* wnd) {
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];
       }
-      // Nom COMPLET (refine/cartes/enchant) via BuildDisplayName ; repli sur le
-      // nom de base. offVec est game-alloué -> libéré par game_free.
-      it.name[0] = '\0';
-      {
-        char nbuf[128]; nbuf[0] = '\0';
-        char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
-        int colorOut = 0; char* hlptr = nullptr;
-        GVec off = {nullptr, nullptr, nullptr};
-        reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, info, &colorOut, &off,
-                                                  &bufptr, &ncap, &hlptr, 0, 0);
-        size_t k = 0;
-        while (k < sizeof(it.name) - 1 && nbuf[k]) { it.name[k] = nbuf[k]; ++k; }
-        it.name[k] = '\0';
-        if (off.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(off.first);
-      }
-      if (it.name[0] == '\0') {
-        size_t cap = sizeof(it.name);
-        reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, it.name, &cap, 0);
-        it.name[sizeof(it.name) - 1] = '\0';
-      }
+      // Nom COMPLET (refine/cartes/enchant), via la brique partagée : elle porte
+      // son PROPRE SEH, par item, ce qui compte ici — le __try d'Extract couvre
+      // toute la boucle, donc un seul item fautif y ferait disparaître tous les
+      // suivants (la leçon de l'inventaire, cf. features/item_cell.cc).
+      // Le 1er argument n'est lu que sur une branche « nom du forgeron pas encore
+      // résolu », où le jeu le traite comme une liste de demandes en attente : on
+      // passe le gestionnaire de fenêtres, comme weapon_refine_window, et non une
+      // fenêtre storage qui n'existe plus.
+      itemcell::BuildDisplayName(uiwnd::Mgr(), info, it.name, sizeof(it.name));
       ++item_count_;
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
       ++guard;
@@ -721,29 +770,42 @@ void StorageWindow::Extract(uint8_t* wnd) {
 }
 
 void StorageWindow::OnTick() {
-  open_ = false;
-  uint8_t* wnd = ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable);
-  if (wnd) {
-    __try {
-      used_ = *reinterpret_cast<int*>(wnd + kOffUsed);
-      max_  = *reinterpret_cast<int*>(wnd + kOffMax);
-      // Placement à la 1re ouverture : le viewer prend la place du natif (nx, ny),
-      // que le natif soit caché ou non (pas de cohabitation).
-      if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-        need_pos_ = true;
-      }
-      // Master switch : imgui_enabled_ ON -> cache le natif (wnd+0x28=0, hors rendu +
-      // hit-test) et affiche le viewer ; OFF -> laisse le natif (=1), aucun viewer.
-      // Forcé chaque tick car le natif peut remettre le flag à 1 sur certains events.
-      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
-      open_ = true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-      open_ = false;
-    }
-    if (open_) Extract(wnd);
+  // `open_` n'est PLUS déduit de la présence de la fenêtre native : elle ne naît
+  // plus. Il est posé par le paquet d'ouverture et levé par CloseLocal.
+  //
+  // 🔴 Basculer de mode PENDANT une session ouverte est le cas qui mord : la
+  // fenêtre qui affichait le storage disparaît, et l'autre ne s'ouvre pas de son
+  // propre chef (le paquet d'ouverture est passé). Le joueur se retrouverait
+  // sans rien devant une session bien vivante côté serveur — qui lui bloque au
+  // passage inventaire <-> cart. Les deux sens sont donc traités.
+  const bool mode_changed = (imgui_enabled_ != prev_imgui_enabled_);
+  prev_imgui_enabled_ = imgui_enabled_;
+
+  if (!imgui_enabled_) {
+    // Mode natif : la fenêtre native fait tout, on ne rend rien. `open_` reste
+    // faux — les prédicats ayant rendu la main, aucun paquet ne nous parvient.
+    // Retour au natif alors que NOTRE session était ouverte : le natif n'a pas
+    // de fenêtre à reprendre (on a empêché sa naissance) et n'en recevra plus
+    // l'ordre. Plus personne ne pourrait fermer la session : on la ferme.
+    if (mode_changed && open_) SendCloseStorage();
+    open_ = false;
+    return;
   }
+  // Filet : si une fenêtre 0x21 existe malgré tout, on la DÉTRUIT. Cinq cases du
+  // dispatcher la créent encore (les listes storage des packetvers anciens, que
+  // ce serveur n'envoie pas), et la bascule vers l'ImGui peut en trouver une
+  // déjà ouverte. La masquer ne suffirait pas — une native cachée garde le
+  // clavier et son bouton par défaut répond à Entrée/Espace.
+  if (uiwnd::SafeFindWindow(kWinStorage)) {
+    // Sa présence PROUVE qu'une session est ouverte : on l'adopte avant de la
+    // détruire. Le nom et le compteur manqueront jusqu'au prochain paquet — le
+    // titre retombe sur « Storage » et le compteur sur 0/0, le temps d'un
+    // mouvement d'item.
+    if (!open_) { open_ = true; need_pos_ = true; show_panel_ = true; }
+    uiwnd::SafeCloseWindow(kWinStorage);
+  }
+
+  if (open_) Extract();
   // Suffixe [N] (nb de slots de carte, meta serveur) sur le nom, hors SEH d'Extract.
   // BuildDisplayName n'affiche pas le compte de slots -> on l'ajoute si l'item a des
   // slots et que le nom n'a pas déjà de crochet (évite tout double [N]/enchant).
@@ -761,10 +823,9 @@ void StorageWindow::OnTick() {
   }
   // L'aperçu de description est une fenêtre ImGui à nous : elle disparaît d'elle-même
   // dès qu'on ne la dessine plus. On oublie juste l'item survolé quand le viewer ne
-  // rend plus (entrepôt fermé, viewer désactivé, option décochée), sinon l'aperçu
+  // rend plus (storage fermé, viewer désactivé, option décochée), sinon l'aperçu
   // resurgirait tel quel à la réouverture.
-  if (!open_ || !imgui_enabled_ || !show_desc_tooltip_) hover_desc_id_ = 0;
-  was_open_ = open_;
+  if (!open_ || !show_desc_tooltip_) hover_desc_id_ = 0;
 }
 
 // Mémorise si le clic a démarré sur la fenêtre cart (routage du drop) et sur le
@@ -777,15 +838,11 @@ void StorageWindow::OnMouseDown(int mx, int my) {
       mx < win_x_ + win_w_ && my < win_y_ + win_h_;
 }
 
-// Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
-// Vérifie la vtable storage par sûreté (le hook passe l'id 0x21, mais on confirme).
-void StorageWindow::HideNativeAtCreation(void* win) {
-  if (!win || !imgui_enabled_) return;
-  __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kStorageWndVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// Plus rien à cacher : la fenêtre native ne naît plus (ses deux créateurs sont
+// revendiqués). On garde le point d'entrée, appelé par le hook MakeWindow de
+// window_pos_tweaks pour douze plugins, comme l'ont fait les autres fenêtres du
+// même chantier (trade, npc_shop, cashshop, bank, npc_dialog, weapon_refine).
+void StorageWindow::HideNativeAtCreation(void* /*win*/) {}
 
 // Appelé par le hook WndProc au WM_LBUTTONUP (pré-input). Consomme un drop de drag
 // natif (inventaire OU cart) au-dessus du viewer -> pose un déplacement en attente +
@@ -852,9 +909,9 @@ bool StorageWindow::DrawSettings() {
   // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
   ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
   SameLine(); HelpMarker(
-      "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop) "
-      "et la fenêtre native est cachée.\nOFF : storage natif classique, aucun "
-      "viewer.");
+      "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop). La "
+      "fenêtre native ne s'ouvre plus du tout.\nOFF : storage natif "
+      "classique, aucun viewer.");
 
   ImGui::BeginDisabled(!imgui_enabled_);
 
@@ -926,13 +983,18 @@ void StorageWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {
-    // FirstUseEver (pas Appearing) : la position du natif n'est qu'un DÉFAUT pour la
-    // toute 1re ouverture. Ensuite ImGui garde la position déplacée par le joueur
-    // (en session + persistée dans imgui.ini via l'id stable ###bourgeon_storage) ;
+    // FirstUseEver (pas Appearing) : ce n'est qu'un DÉFAUT pour la toute 1re
+    // ouverture. Ensuite ImGui garde la position déplacée par le joueur (en
+    // session + persistée dans imgui.ini via l'id stable ###bourgeon_storage) ;
     // les appels suivants sont des no-op tant qu'une position existe déjà.
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(spawn_x_),
-                                   static_cast<float>(spawn_y_)),
-                            ImGuiCond_FirstUseEver);
+    //
+    // Ce défaut se lisait avant sur la fenêtre native, qui ne naît plus. On
+    // reprend donc SA position de création (700, 85), rabattue dans l'écran pour
+    // ne pas naître hors champ sur une petite résolution.
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+    const float x = std::min(kSpawnX, std::max(0.0f, screen.x - kSpawnW));
+    const float y = std::min(kSpawnY, std::max(0.0f, screen.y - kSpawnH));
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(320, 420), ImGuiCond_FirstUseEver);
@@ -941,7 +1003,7 @@ void StorageWindow::OnRenderUI() {
   ImGui::SetNextWindowSizeConstraints(ImVec2(320.0f, 420.0f),
                                       ImVec2(FLT_MAX, FLT_MAX));
 
-  // Titre = nom de l'entrepôt envoyé par le serveur (ZC_INVENTORY_START), ex.
+  // Titre = nom du storage envoyé par le serveur (ZC_INVENTORY_START), ex.
   // "Storage" / "Guild Storage" / nom premium. Repli "Storage" si pas encore reçu.
   // L'id ImGui (###) reste stable -> position/taille persistent malgré le nom variable.
   char title[64];
@@ -960,7 +1022,7 @@ void StorageWindow::OnRenderUI() {
     if (auto* mu = Bourgeon::Instance().moonlight_ui())
       mu->OpenInterfaceSection(MoonlightUi::kIfaceStorage);
   // Le X du viewer a été cliqué ce frame (show_panel_ était vrai à l'entrée, cf. le
-  // early-return en tête) -> on FERME l'entrepôt côté serveur (CZ_CloseKafra). Le
+  // early-return en tête) -> on FERME le storage côté serveur (CZ_CloseKafra). Le
   // serveur ferme la session -> native + viewer se ferment (open_ passe à false au
   // prochain OnTick). On remet show_panel_ à true pour que le viewer réapparaisse à
   // la prochaine ouverture (le masquage effectif vient de open_, pas de show_panel_).
@@ -1541,7 +1603,7 @@ void StorageWindow::OnRenderUI() {
         const int amt = items_[idx].amount;
         const int index = items_[idx].index;
         // Destination NOMMÉE : « Retirer » seul ne disait pas où l'objet partait,
-        // alors que le chariot est une destination tout aussi légitime (et la seule
+        // alors que le cart est une destination tout aussi légitime (et la seule
         // que le menu ne proposait pas du tout).
         if (ImGui::MenuItem("Vers l'inventaire (1)")) WithdrawItem(index, 1);
         if (amt > 1) {
@@ -1559,8 +1621,8 @@ void StorageWindow::OnRenderUI() {
             pend_open_prompt_ = true;
           }
         }
-        // Chariot ouvert : même offre que pour l'inventaire. Le serveur AUTORISE
-        // storage <-> cart pendant que l'entrepôt est ouvert (CZ 0x0128/0x0129,
+        // Cart ouvert : même offre que pour l'inventaire. Le serveur AUTORISE
+        // storage <-> cart pendant que le storage est ouvert (CZ 0x0128/0x0129,
         // hors pc_cant_act2) — contrairement à inventaire <-> cart.
         if (CartOpen()) {
           ImGui::Separator();
@@ -1632,7 +1694,7 @@ void StorageWindow::OnRenderUI() {
   hover_desc_id_ = hover_id;
   hover_desc_idx_ = hover_idx;
 
-  // Compteur UNIQUE (plus de doublon en tête) : occupation de l'entrepôt + nombre
+  // Compteur UNIQUE (plus de doublon en tête) : occupation du storage + nombre
   // d'items réellement affichés (onglet + sous-type + filtre).
   char cnt[48];
   std::snprintf(cnt, sizeof(cnt), "%d/%d  (%d affichés)", used_, max_,
@@ -1654,7 +1716,7 @@ void StorageWindow::OnRenderUI() {
     ImGui::GetWindowDrawList()->AddText(
         ImVec2(fx0 + 6.0f + iw + 4.0f, fy0 + (kFooterH - tsz.y) * 0.5f),
         ImGui::GetColorU32(ImGuiCol_Text), cnt);
-    // Bouton Quitter (RO) aligné à DROITE du footer -> ferme l'entrepôt (envoie
+    // Bouton Quitter (RO) aligné à DROITE du footer -> ferme le storage (envoie
     // CZ_CloseKafra). Marge à droite pour ne pas recouvrir le grip de resize du coin.
     const float bw = 48.0f;
     ImGui::SetCursorScreenPos(ImVec2(fx1 - bw - 18.0f, fy0));
@@ -1676,7 +1738,7 @@ void StorageWindow::OnRenderUI() {
     } else {  // drag terminé ce frame
       int action = -1;
       if (drag_index_ > 0) {
-        // Lâcher DANS l'entrepôt = rangement interne, rien à router. Testé EN
+        // Lâcher DANS le storage = rangement interne, rien à router. Testé EN
         // PREMIER pour qu'une fenêtre posée dessous ne capte pas le drop (même
         // garde que l'inventaire et le cart).
         const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
