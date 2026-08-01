@@ -160,9 +160,22 @@ rendu par le `UIWindowMgr`.
    overrides (cf. §7).
 6. `FUN_00c72ce0(widget, actor)` finalise/positionne.
 
-Variantes : `GameMode_BuildActorNameLabel_Alt` `0x00c6db30`,
-`GameMode_UpdateTargetInfoBar` `0x00c76890` (le **bandeau nom+HP+emblème de la
-CIBLE**, widgets `GameMode+0xac`/`+0xab`).
+Variantes : `GameMode_BuildActorNameLabel_Alt` `0x00c6db30`, et
+`GameMode_UpdateSelectedTargetNameLabel` `0x00c76890`.
+
+> 🔴 **CORRECTION (2026-08-01, décompilé + vérifié en live).** Cette dernière était
+> décrite ici comme « le **bandeau nom+HP+emblème de la CIBLE**, widgets
+> `GameMode+0xac`/`+0xab` » — **faux sur tous les points**, et l'erreur a essaimé
+> jusque dans les notes du projet.
+> Il n'existe **aucun bandeau de cible** et **aucun HP** dans ce client : la
+> fonction se contente de réafficher **le même `UIActorNameLabel`** que le survol,
+> simplement pour la **dernière entité cliquée** (`CGameMode+0xF4`) au lieu de
+> l'entité survolée. Les offsets étaient eux aussi erronés (`0xac`/`0xab`
+> confondent un index de dword avec un offset) : le pointeur du widget vérifié en
+> live est **`GameMode+0x2AC`** (un second pointeur voisin, `+0x2B0`, est manipulé
+> par la même fonction — non départagé, ne pas s'y fier sans mesure).
+> Le « HP » que l'on voit à l'écran ne vient pas du client : c'est **le serveur qui
+> l'injecte dans le NOM du mob** (cf. `docs/target_system_re.md` §4).
 
 ---
 
@@ -277,7 +290,7 @@ whisper/party/guilde/trade (via `MsgStringTable`).
 | `0x00c712b0` | `GameMode_ShowHoverNameLabel` |
 | `0x00c6d1d0` | `GameMode_BuildActorNameLabel` |
 | `0x00c6db30` | `GameMode_BuildActorNameLabel_Alt` |
-| `0x00c76890` | `GameMode_UpdateTargetInfoBar` (bandeau cible nom+HP+emblème) |
+| `0x00c76890` | `GameMode_UpdateSelectedTargetNameLabel` — ⚠ **pas** un bandeau, pas de HP : même `UIActorNameLabel`, pour la sélection `CGameMode+0xF4` (cf. §5) |
 | `0x00c68eb0` | `EntityName_ResolveColorByType` (palette des couleurs) |
 | `0x00d9d220` | `EntityName_IsHostileOrSpecialUnit` |
 | `0x00c714b0` | `GameMode_EnsureNameLabelWidget` |
