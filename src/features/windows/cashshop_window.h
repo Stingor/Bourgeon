@@ -15,16 +15,39 @@
 // serveur ne voit pas la différence) mais l'utilisateur n'interagit qu'avec le
 // viewer.
 //
-// Contenu = 100 % SERVEUR-driven (cf. mémoire project_cashshop_re). On OBSERVE
-// les paquets (le handler natif tourne toujours dessous) pour bâtir notre modèle :
-//   - ZC_SE_CASHSHOP_OPEN 0x0b6e  : cashPoints, kafraPoints (points du compte).
+// 🔴 La fenêtre native ne NAÎT PLUS : son unique paquet créateur est REMPLACÉ
+// (RegisterReplaceOpcode, révocable par l'interrupteur). Elle était auparavant
+// créée puis CACHÉE — or une native masquée garde le CLAVIER, et son bouton par
+// défaut agit : ici, ce bouton ACHÈTE.
+//
+// RE 2026-08-01 (`Recv_ZC_SE_CASHSHOP_OPEN` 0x00D0BC80) : ZC 0x0B6E est le seul
+// créateur vivant de la 0x13E. Les cases 0x0845 / 0x0A2B du dispatcher créent la
+// même fenêtre mais sont les opcodes HÉRITÉS — moonlight choisit 0x0B6E dès
+// PACKETVER_MAIN >= 20200129, il ne les envoie jamais.
+//
+// ⚠ TROIS choses que ce handler faisait et qu'on hérite :
+//   1. il BASCULE — une 0x13E déjà ouverte est DÉTRUITE et le paquet ne rouvre
+//      rien (SaveRectAndCloseWindow en tête). Même forme que la banque ;
+//   2. il ne pose AUCUNE globale : les points ne vivaient que dans la fenêtre ;
+//   3. il n'envoie rien — ni la list-request CZ 0x08C9 (qui partait de l'UI de la
+//      fenêtre), ni la fermeture CZ 0x084A. Les deux nous incombent désormais, et
+//      la seconde débloque le personnage (`npc_shopid`, cf. CloseShop).
+//
+// Contenu = 100 % SERVEUR-driven (cf. mémoire project_cashshop_re) :
+//   - ZC_SE_CASHSHOP_OPEN 0x0b6e  : cashPoints, kafraPoints, onglet — REMPLACÉ.
 //   - ZC_ACK_SCHEDULER_CASHITEM 0x08ca : {count, tabNum, items[]{id, price, ...}}
 //     — un paquet par onglet ; c'est le VRAI peuplement sur ce packetver (le
 //     couple 0x846/0x8c0 est du code serveur mort ici, cf. .cc).
 //   - ZC_SE_PC_BUY_CASHITEM_RESULT 0x0849 : result + points mis à jour.
-// La liste est déclenchée par la list-request 0x08c9 (2 octets) que le natif
-// envoie déjà à l'ouverture ; on l'émet aussi par sécurité. L'achat envoie
-// CZ_SE_PC_BUY_CASHITEM_LIST 0x848.
+// Les deux dernières restent OBSERVÉES : le résultat d'achat 0x0849
+// (`Recv_ZC_SE_PC_BUY_CASHITEM_RESULT` 0x00CD3B70) est INDÉPENDANT de la fenêtre —
+// son FindWindow rend nul et il saute juste le rafraîchissement des points, mais
+// il continue d'afficher les messages d'erreur EXACTS du serveur. Le remplacer
+// nous obligerait à les réécrire ; l'observer les garde gratuitement.
+//
+// La liste est déclenchée par la list-request 0x08c9 (2 octets), que le natif
+// n'envoie plus puisqu'elle partait de sa fenêtre : c'est CloseShop/l'ouverture qui
+// s'en chargent. L'achat envoie CZ_SE_PC_BUY_CASHITEM_LIST 0x848.
 //
 // Noms/icônes d'item résolus par id (client itemdb) comme item_desc/storage.
 
@@ -38,8 +61,8 @@ class CashShopWindow : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Cache la fenêtre native dès sa création (hook MakeWindow de WindowPosTweaks,
-  // id 0x13e) -> zéro flicker. No-op si le viewer est désactivé.
+  // Ne fait plus rien (la fenêtre ne naît plus). Gardée parce que le hook
+  // MakeWindow de WindowPosTweaks l'appelle pour toute fenêtre créée.
   void HideNativeAtCreation(void* win);
 
   // Setting PERSISTANT (bourgeon_settings.yaml "cashshop_imgui", géré par
@@ -80,12 +103,19 @@ class CashShopWindow : public Plugin {
   void BuyNow(uint32_t id, int tab, int32_t price);
   // Demande la liste d'items d'un onglet au serveur (CZ_REQ_SE_CASH_TAB_CODE 0x846).
   void RequestTab(int tab);
+  // Ferme la session d'achat côté SERVEUR (CZ 0x084A) puis chez nous. 🔴 Le paquet
+  // n'est pas décoratif : sans lui le personnage reste bloqué (cf. le .cc).
+  void CloseShop();
 
-  bool open_ = false;       // cash shop ouvert ce frame ?
-  bool was_open_ = false;   // front montant (placement + requêtes 1re ouverture)
+  bool open_ = false;       // cash shop ouvert ? (posé par ZC 0x0B6E, plus par la native)
+  bool was_open_ = false;
   bool need_pos_ = false;
   bool show_panel_ = true;  // transitoire : détection du clic sur le X
-  int  spawn_x_ = 0, spawn_y_ = 0;
+  // Position de départ. Elle venait de la fenêtre native, qui ne naît plus : ImGui
+  // retient la sienne dès la première ouverture (ImGuiCond_FirstUseEver).
+  int  spawn_x_ = 120, spawn_y_ = 80;
+  // Détection du basculement de l'interrupteur (les deux sens ferment le shop).
+  bool prev_imgui_enabled_ = false;
 
   int      cur_tab_ = 0;
   int      cur_slot_ = -1;  // filtre emplacement d'équipement (clé, -1 = tous)

@@ -158,10 +158,34 @@ constexpr uint16_t kOpResult   = 0x0849;  // ZC_SE_PC_BUY_CASHITEM_RESULT
 constexpr uint16_t kOpListReq  = 0x08c9;  // list request -> déclenche les 0x08ca
 constexpr uint16_t kOpBuy      = 0x0848;  // CZ_SE_PC_BUY_CASHITEM_LIST
 constexpr uint16_t kOpClose    = 0x084a;  // CZ cashshop close (2 octets)
+// Changement de map / de serveur. 🔴 Ce n'était pas notre affaire tant que le
+// viewer suivait la fenêtre NATIVE : le client la détruisait au warp, et notre
+// `open_` retombait tout seul. La native ne naissant plus, plus personne ne nous
+// dit que la session est morte — un warp en pleine boutique (téléporteur, @load,
+// carte de warp) laisserait le viewer à l'écran, à acheter dans le vide.
+constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
+constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 CashShopWindow::CashShopWindow() {
-  // ZC_SE_CASHSHOP_OPEN : [cash:4][kafra:4][tab:4] = 12 octets après l'opcode.
-  Bourgeon::Instance().RegisterObserveOpcode(kOpOpen, 12);
+  // ── ZC_SE_CASHSHOP_OPEN : on prend sa place ────────────────────────────────
+  //
+  // 🔴 REMPLACEMENT. Ce paquet est le SEUL créateur vivant de la fenêtre native
+  // (RE 2026-08-01 : `Recv_ZC_SE_CASHSHOP_OPEN` 0x00D0BC80 — MakeWindow(0x13E)
+  // puis OnMsg 0xA4 = onglet et OnMsg 0x78 = points). Les deux autres créateurs
+  // du dispatcher, cases 0x0845 et 0x0A2B @0x00CA4461, sont les opcodes HÉRITÉS :
+  // moonlight choisit 0x0B6E dès PACKETVER_MAIN >= 20200129 (packets_struct.hpp),
+  // ils ne partent jamais — les remplacer serait du code mort.
+  //
+  // Empêcher la fenêtre de NAÎTRE est le seul état sûr : masquée, une native garde
+  // le CLAVIER et son bouton par défaut agit — ici, ce bouton achète.
+  //
+  // Paquet de longueur FIXE (14 o) : le remplacement n'est possible que grâce au
+  // résolveur de longueur du client (cf. reference_native_packet_len_resolver).
+  Bourgeon::Instance().RegisterReplaceOpcode(
+      kOpOpen, [this] { return imgui_enabled_; });
+  // Warp / changement de serveur : la session d'achat est morte côté serveur.
+  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
   // ZC_ACK_SCHEDULER_CASHITEM (var) : [len:2][count:2][tabNum:2] = 6 octets pour
   // atteindre l'en-tête ; les items sont lus directement dans le buffer live.
   Bourgeon::Instance().RegisterObserveOpcode(kOpItemList, 6);
@@ -182,10 +206,58 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // dans le désordre mélangerait deux onglets.
 void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
+  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+    if (!open_) return;
+    // Warp : le BLOCAGE, lui, est déjà levé — `unit_remove_map_` remet
+    // `sd->npc_shopid` à zéro en quittant la carte (unit.cpp). Le personnage n'est
+    // donc pas coincé, et c'est le point important.
+    //
+    // On envoie quand même la fermeture sur un changement de CARTE, et c'est un
+    // écart ASSUMÉ avec le natif : `sd->state.cashshop_open`, lui, n'est remis à
+    // zéro QUE par `clif_parse_cashshop_close`. Le client officiel détruit sa
+    // fenêtre au warp sans rien envoyer et laisse donc ce drapeau en l'air — après
+    // quoi @cash et @points répondent « Please close the cashshop before using this
+    // command » jusqu'à la prochaine ouverture-fermeture. Deux octets le règlent.
+    //
+    // Pas sur un changement de SERVEUR (0x0092) : la socket est en train d'être
+    // défaite, et la session repart de zéro de l'autre côté.
+    if (opcode == kOpMapChange) {
+      uint16_t op = kOpClose;
+      Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
+    }
+    open_ = false;
+    was_open_ = false;
+    show_panel_ = true;
+    return;
+  }
   if (opcode == kOpOpen) {
     if (len < 8) return;
+    // 🔴 CE PAQUET EST UNE BASCULE, et c'est le piège de ce handler. Le natif
+    // (`Recv_ZC_SE_CASHSHOP_OPEN` 0x00D0BC80) commence par SaveRectAndCloseWindow
+    // (0x13E) : si une fenêtre existe, il la DÉTRUIT et SORT — le paquet ne rouvre
+    // rien. Même forme que la banque (0x09A6), et le bouton du menu, qui envoie
+    // toujours son CZ 0x0B6D, compte là-dessus pour refermer.
+    if (open_) { CloseShop(); return; }
     cash_points_  = *reinterpret_cast<const uint32_t*>(data);
     kafra_points_ = *reinterpret_cast<const uint32_t*>(data + 4);
+    // Onglet demandé (le natif le pose par OnMsg 0xA4). On ne le suit que s'il est
+    // AFFICHÉ : le serveur peut nommer un onglet qu'on masque, et atterrir sur une
+    // page vide sans un mot serait pire que d'ignorer sa préférence.
+    if (len >= 12) {
+      const uint32_t tab = *reinterpret_cast<const uint32_t*>(data + 8);
+      if (tab < static_cast<uint32_t>(kNumTabs) && kTabShown[tab])
+        cur_tab_ = static_cast<int>(tab);
+    }
+    open_ = true;
+    need_pos_ = true;
+    show_panel_ = true;
+    last_result_ = -1;
+    last_recv_tab_ = -1;  // nouvelle salve de listes -> le 1er paquet videra son onglet
+    // 🔴 DEVOIR HÉRITÉ. Le handler natif n'envoie PAS la list-request : elle part de
+    // l'UI de sa fenêtre, qui ne naît plus. Sans elle, les onglets restent vides à
+    // la toute première ouverture de la session (le serveur ne l'envoie qu'une fois,
+    // `cashshop_sent`). C'est donc à nous, maintenant.
+    RequestTab(cur_tab_);
     return;
   }
   if (opcode == kOpItemList) {
@@ -306,45 +378,54 @@ void CashShopWindow::BuyNow(uint32_t id, int tab, int32_t price) {
   *reinterpret_cast<uint32_t*>(pkt + 14) = 1;  // amount
   *reinterpret_cast<uint16_t*>(pkt + 18) = static_cast<uint16_t>(tab);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  // Fermeture (idem bouton X) : le serveur ferme la session, la fenêtre disparaît.
+  // Fermeture (idem bouton X) : le serveur clôt la session d'achat et débloque le
+  // personnage. L'ordre TCP garantit que l'achat part AVANT la fermeture.
+  CloseShop();
+}
+
+// Ferme le cash shop, côté serveur d'abord.
+//
+// 🔴 CZ_SE_CASHSHOP_CLOSE 0x084A n'est PAS décoratif : à l'ouverture, le serveur
+// pose `sd->npc_shopid = -1` (clif_parse_cashshop_open_request) — le même champ que
+// la boutique NPC, celui que teste `pc_cant_act2()`. Sans ce paquet, le joueur
+// reste BLOQUÉ après la fermeture : il ne peut plus ni marcher ni attaquer. Seul
+// `clif_parse_cashshop_close` le remet à zéro.
+void CashShopWindow::CloseShop() {
   uint16_t op = kOpClose;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
+  open_ = false;
+  was_open_ = false;
+  show_panel_ = true;
+  // Filet : une native peut traîner si l'interrupteur vient d'être allumé sur un
+  // shop natif déjà ouvert. On la DÉTRUIT — masquée, elle garderait le clavier.
   CloseNativeCashShop();
 }
 
-void CashShopWindow::HideNativeAtCreation(void* win) {
-  if (!win || !imgui_enabled_) return;
-  __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kCashVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// Ne fait plus rien : la fenêtre ne NAÎT plus (son unique paquet créateur est
+// remplacé). La cacher serait nuisible — une native invisible garde le clavier —
+// et la détruire ici est exclu : on est à l'intérieur de MakeWindow, dont
+// l'appelant déréférence le retour. La purge d'OnTick s'en charge.
+void CashShopWindow::HideNativeAtCreation(void* /*win*/) {}
 
 void CashShopWindow::OnTick() {
-  open_ = false;
-  void* wnd = FindCashWnd();
-  if (wnd) {
-    __try {
-      if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffPosY);
-        need_pos_ = true;
-      }
-      // Master switch : viewer ON -> cache le natif chaque tick (le natif peut
-      // remettre +0x28=1 sur événement) ; OFF -> laisse le natif visible.
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + uiwnd::kOffVisible) =
-          imgui_enabled_ ? 0 : 1;
-      open_ = true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
+  // ── Basculement de l'interrupteur, les DEUX sens ────────────────────────────
+  // Basculer FERME le shop. On ne reprend pas une session qu'on n'a pas vue naître
+  // (OFF -> ON : le paquet d'ouverture est passé au natif, on ne sait rien de ses
+  // points ni de son onglet) et on ne laisse pas non plus le natif finir. Fermer
+  // est ici l'issue neutre — et surtout, elle débloque le personnage.
+  if (imgui_enabled_ != prev_imgui_enabled_) {
+    prev_imgui_enabled_ = imgui_enabled_;
+    if (open_ || FindCashWnd()) CloseShop();
+    net_inbox_.Clear();  // ce qui reste appartient à la session abandonnée
+    open_ = false;
+    was_open_ = false;
   }
-  // À la 1re ouverture : demander la liste (filet de sécurité ; le natif l'a déjà
-  // demandée -> le serveur peut ne rien renvoyer si cashshop_sent est déjà posé,
-  // auquel cas notre observe a capté les 0x08ca du natif).
-  if (open_ && !was_open_) {
-    last_result_ = -1;
-    last_recv_tab_ = -1;  // nouvelle salve de listes -> le 1er paquet videra son onglet
-    RequestTab(0);
-  }
+  if (!imgui_enabled_) { open_ = false; was_open_ = false; return; }
+
+  // Filet du basculement en pleine session : on DÉTRUIT ce qui traîne au lieu de
+  // le masquer. Idempotent, et sans effet dans le cas normal (rien ne naît plus).
+  if (open_ && FindCashWnd()) CloseNativeCashShop();
+
   was_open_ = open_;
 }
 
@@ -376,14 +457,13 @@ void CashShopWindow::OnRenderUI() {
       ro::BeginRoWindow("Vote Shop###bourgeon_cashshop", &show_panel_,
                         ImGuiWindowFlags_NoCollapse);
   if (!show_panel_) {
-    // X (ou Échap) -> on FERME réellement le cash shop : paquet de fermeture serveur
-    // (CZ 0x084a, reset npc_shopid) + destruction de la fenêtre native (id 0x13e).
-    // Ensuite FindWindow(0x13e) rend null -> open_ passe à false -> le viewer
-    // disparaît. On remet show_panel_ à true pour la prochaine ouverture.
-    uint16_t op = kOpClose;
-    Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
-    CloseNativeCashShop();
-    show_panel_ = true;
+    // X (ou Échap) -> on FERME réellement le cash shop : CZ 0x084A, qui remet
+    // `npc_shopid` à zéro côté serveur et débloque le personnage. CloseShop remet
+    // show_panel_ à true pour la prochaine ouverture.
+    CloseShop();
+    ro::EndRoWindow();
+    ImGui::PopStyleVar(5);
+    return;
   }
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
