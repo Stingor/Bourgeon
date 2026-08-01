@@ -4,6 +4,23 @@
 > chargée (Ghidra == x32dbg). RE réalisée 2026-07-10 (Ghidra + x32dbg live).
 > Fonctions renommées et commentées dans le projet Ghidra (dépôt durable).
 
+> ⚠ **Statut du chemin natif décrit ici (2026-08-01).** Quand l'interface moderne est
+> active, les neuf handlers de dialogue (`0x00B4/B5/B6/B7`, `0x0142`, `0x01D4`,
+> `0x08D6`, `0x0972/0973`) **ne tournent plus** : `NpcDialogWindow` a pris leur place
+> dans la table de dispatch (`RegisterReplaceOpcode`, révocable par l'interrupteur).
+> Les cinq fenêtres — `0x10`, `0x11`, `0x38`, `0x64`, `0xE2` — ne naissent donc plus,
+> au lieu de naître puis d'être masquées : masquée, une native garde le clavier et
+> son bouton par défaut répond à Entrée. Ce document reste la référence du
+> comportement natif — c'est lui qui repasse aux commandes interrupteur éteint, et
+> c'est de lui que le plugin tient les deux écritures qu'il reprend à son compte
+> (`CGameMode+0x24C` dialogue actif, `+0x2DC` GID courant, §2).
+>
+> Le remplacement d'un handler à longueur **fixe** (`0x00B5`, `0x0142`…) a demandé
+> d'apprendre au reader-hook la longueur réelle des paquets : il la demande désormais
+> au résolveur du client, `PacketLenTable_Lookup` @ `0x00AA7B00` sur la table
+> `0x0159D68C` — celui-là même que consulte `RecvBuffer_ReadPacket` @ `0x00C147D0`
+> (`out[0] == 1` → longueur fixe `out[1]`, sinon variable).
+
 Ce document couvre **toute la chaîne d'interaction NPC** : réception des scripts envoyés par
 le serveur, la fenêtre de dialogue, les boutons **Next / Close**, le **menu**, les
 **prompts nombre / texte**, la **gestion des balises**, la **coloration des textes**, les

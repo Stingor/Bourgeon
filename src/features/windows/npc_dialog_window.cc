@@ -37,6 +37,7 @@ namespace {
 // (= index 6) = CMode::SendMsg. cmd 0x28 = ferme l'UI NPC et DÉBLOQUE l'état
 // dialogue CLIENT (CZ_CLOSE_DIALOG seul laisse le perso bloqué).
 constexpr int kGameModeDialogFlag  = 0x24c;   // CGameMode+0x24C = dialogue actif
+constexpr int kGameModeNpcGid      = 0x2dc;   // CGameMode+0x2DC = GID du NPC courant
 constexpr int kSelClose            = 0x28;
 using Dispatch_t = int (__thiscall*)(void*, int, int, int, int, int);
 
@@ -79,10 +80,9 @@ bool g_kbd_dialog_open = false;  // overlay dialogue rendu cette frame
 bool g_kbd_menu_open   = false;  // un menu de choix est affiché (flèches + 1-9 actifs)
 
 // ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
-void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
-void ShowWnd(void* w) { uiwnd::SafeSetVisible(w, true); }  // dé-cache
+// (Plus de HideWnd/ShowWnd ici : ce plugin ne masque plus aucune native, il les
+// détruit — cf. PurgeNativeDialogWindows.)
 
 // ── Dispatcher CMode + flag dialogue (SEH-gardé) ──
 void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0x18
@@ -92,6 +92,30 @@ void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0
       void** vtbl = *reinterpret_cast<void***>(disp);
       reinterpret_cast<Dispatch_t>(vtbl[6])(disp, cmd, 0, 0, 0, 0);
     }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+// Reprend à notre compte les DEUX écritures que faisait le handler natif qu'on
+// remplace (docs/npc_dialog_re.md §2 : `mov [edi+0x24C], 1` puis `mov [edi+0x2DC],
+// GID`, en tête du recv de ZC_SAY_DIALOG).
+//
+// 🔴 Les reproduire n'est pas de la cosmétique. Le flag « dialogue actif » est lu
+// AILLEURS dans le client, par des chemins qu'on n'a pas inventoriés ; ne plus
+// l'écrire aurait changé le comportement du jeu pendant une conversation, sans
+// qu'on sache lequel. On le pose donc là où le natif le posait, et le chemin de
+// fermeture (ForceClearDialogFlag) l'éteint déjà.
+//
+// Appelé depuis le fil RÉSEAU — exactement le contexte où le handler natif
+// l'écrivait : deux écritures d'entiers, aucun envoi ni opération de fenêtre. Le
+// différer au tick suivant laisserait passer une frame pendant laquelle le client
+// se croirait hors dialogue.
+void SetDialogActiveNative(uint32_t gid) {
+  __try {
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    if (!mode) return;
+    uint8_t* m = reinterpret_cast<uint8_t*>(mode);
+    *reinterpret_cast<int*>(m + kGameModeDialogFlag) = 1;
+    if (gid != 0)
+      *reinterpret_cast<uint32_t*>(m + kGameModeNpcGid) = gid;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 void ForceClearDialogFlag() {  // GameMode+0x24C = 0 (débloque le client, garantie)
@@ -164,25 +188,58 @@ std::string AnsiToUtf8(const std::string& in) {
 
 inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
+// ── Métrique du menu ────────────────────────────────────────────────────────
+// Hauteur d'une option. Volontairement plus serrée qu'une ligne ImGui standard :
+// un menu NPC est une liste, pas un formulaire. Une SEULE définition, parce que
+// deux endroits la lisent — le dessin (DrawMenu) et le calcul de la hauteur du
+// groupe (MenuNaturalHeight). Les voir diverger, c'est une boîte qui coupe sa
+// dernière option ou qui garde une bande vide sous elle.
+inline float MenuRowHeight() { return ImGui::GetFontSize() + 3.0f; }
+
+// Au-delà, la liste scrolle au lieu de grandir : dix options tiennent à l'écran
+// sans écraser le texte du NPC, et les menus de warp en comptent parfois trente.
+constexpr size_t kMenuMaxRows = 10;
+// Seuil d'apparition de la barre de recherche (options réellement affichées).
+constexpr size_t kMenuFilterThreshold = 8;
+
 }  // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 NpcDialogWindow::NpcDialogWindow() {
-  // TOUT en OBSERVE (jamais RegisterRecvOpcode) : le handler natif doit TOUJOURS
-  // tourner (fenêtres créées puis cachées) ; sinon le dialogue natif est cassé
-  // quand le toggle est OFF. VAR : on forwarde de quoi lire [len:2][GID:4] et on
-  // lit le corps (texte/menu) dans le buffer recv live (`data` pointe dedans).
+  // ── Les paquets de dialogue : on prend la PLACE du handler natif ─────────────
+  //
+  // 🔴 REMPLACEMENT, plus observation. En observant, les cinq fenêtres natives
+  // naissaient à chaque `mes` et on les masquait juste après ; or une native
+  // masquée garde le CLAVIER, et son bouton par défaut se déclenche à la touche
+  // Entrée ou Espace. C'est exactement ce qui détruisait une arme sur le refine
+  // (docs/weapon_refine_re.md §10), et ici le pansement coûtait deux détours : la
+  // destruction de la fenêtre menu après chaque choix, et le filtre
+  // ShouldSuppressNativeDialogSend, qui JETAIT les CZ émis dans notre dos par une
+  // fenêtre qu'on croyait éteinte. Aucune de ces fenêtres ne naît plus.
+  //
+  // Le prédicat est relu à chaque paquet et vaut exactement ce qui gate notre
+  // overlay : toggle coupé, le dialogue natif reprend la main à l'octet près.
+  //
+  // ⚠ Le PARSEUR ne change pas d'un régime à l'autre : les deux transmettent les
+  // octets qui suivent l'opcode (+2). Un paquet variable commence donc toujours
+  // par son champ de longueur, un paquet fixe par son GID — ce que le switch
+  // d'OnRecvPacket lit déjà. Seul `len` grandit : il vaut désormais le paquet
+  // entier au lieu des quelques octets qu'on se faisait forwarder.
   auto& b = Bourgeon::Instance();
-  b.RegisterObserveOpcode(kZcSay,   6);   // {len:2, GID:4, texte...}
-  b.RegisterObserveOpcode(kZcSay2,  7);   // {len:2, GID:4, resv:1, texte...}
-  b.RegisterObserveOpcode(kZcWait,  4);   // {GID:4}
-  b.RegisterObserveOpcode(kZcWait2, 4);   // {GID:4}
-  b.RegisterObserveOpcode(kZcClose, 4);   // {GID:4}
-  b.RegisterObserveOpcode(kZcMenu,  6);   // {len:2, GID:4, "a:b:c"...}
-  b.RegisterObserveOpcode(kZcEditN, 4);   // {GID:4} -> prompt nombre
-  b.RegisterObserveOpcode(kZcEditS, 4);   // {GID:4} -> prompt texte
-  b.RegisterObserveOpcode(kZcClear, 4);   // efface le texte
+  const auto claim = [this] { return imgui_enabled_; };
+  b.RegisterReplaceOpcode(kZcSay,   claim);  // {len:2, GID:4, texte...}     VAR
+  b.RegisterReplaceOpcode(kZcSay2,  claim);  // {len:2, GID:4, resv:1, txt}  VAR
+  b.RegisterReplaceOpcode(kZcMenu,  claim);  // {len:2, GID:4, "a:b:c"...}   VAR
+  b.RegisterReplaceOpcode(kZcWait,  claim);  // {GID:4}                      fixe
+  b.RegisterReplaceOpcode(kZcWait2, claim);  // {GID:4}                      fixe
+  b.RegisterReplaceOpcode(kZcClose, claim);  // {GID:4}                      fixe
+  b.RegisterReplaceOpcode(kZcEditN, claim);  // {GID:4} -> prompt nombre     fixe
+  b.RegisterReplaceOpcode(kZcEditS, claim);  // {GID:4} -> prompt texte      fixe
+  b.RegisterReplaceOpcode(kZcClear, claim);  // efface le texte              fixe
+  // Ces trois-là restent OBSERVÉS : leur handler natif fait un travail qui n'est
+  // pas le nôtre (le nom du NPC alimente aussi les nameplates ; le changement de
+  // map reconstruit tout le HUD). On ne fait que les lire au passage.
   b.RegisterObserveOpcode(kZcNpcName, 32);// gid:4 + groupId:4 + name[24]
   b.RegisterObserveOpcode(kZcMapChange, 4);
   b.RegisterObserveOpcode(kZcServerMove, 4);
@@ -252,6 +309,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       }
       has_next_ = has_close_ = false;  // (re)posés par le WAIT/CLOSE qui suit
       open_ = true;
+      SetDialogActiveNative(gid_);  // ce que le handler natif écrivait ici
       return;
     }
     case kZcSay2: {  // {len:2, GID:4, resv:1, texte(len-9)}
@@ -267,6 +325,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       }
       has_next_ = has_close_ = false;
       open_ = true;
+      SetDialogActiveNative(gid_);
       return;
     }
     case kZcWait:
@@ -324,6 +383,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       menu_filter_[0] = '\0';
       menu_hot_ = -1;
       open_ = true;
+      SetDialogActiveNative(gid_);  // §5.1 : le recv natif du menu posait +0x24C
       return;
     }
     case kZcEditN:
@@ -504,15 +564,44 @@ void NpcDialogWindow::DrawRichLines() {
   ImGui::Dummy(ImVec2(wrap, y));  // réserve la hauteur (scroll)
 }
 
+size_t NpcDialogWindow::MenuShownCount() const {
+  return choices_.size() -  // options réellement affichées (les vides sont masquées)
+         static_cast<size_t>(
+             std::count(choices_.begin(), choices_.end(), std::string()));
+}
+
+float NpcDialogWindow::MenuNaturalHeight() const {
+  if (choices_.empty()) return 0.0f;
+  const size_t shown = MenuShownCount();
+  // Nombre de lignes RÉELLEMENT à l'écran : sous filtre, c'est le compte de la frame
+  // précédente (DrawMenu ne l'apprend qu'en dessinant). La boîte suit donc la
+  // recherche au lieu de garder la taille du menu complet.
+  size_t rows = shown;
+  if (menu_filter_[0] != '\0' && menu_vis_count_ >= 0)
+    rows = static_cast<size_t>(menu_vis_count_);
+  if (rows < 1) rows = 1;                 // « aucun résultat » garde une ligne de haut
+  if (rows > kMenuMaxRows) rows = kMenuMaxRows;  // au-delà : scrollbar interne
+
+  const ImGuiStyle& st = ImGui::GetStyle();
+  // Le child liste est bordé : son padding compte deux fois. Les deux pixels de
+  // rabiot absorbent l'arrondi du cadre — les oublier rogne la dernière option
+  // d'un cheveu, ce qui fait apparaître une scrollbar sur un menu qui tenait.
+  float h = static_cast<float>(rows) * MenuRowHeight() +
+            st.WindowPadding.y * 2.0f + 2.0f;
+  if (menu_search_ && shown > kMenuFilterThreshold)  // barre de recherche au-dessus
+    h += ImGui::GetFrameHeight() + st.ItemSpacing.y;
+  return h;
+}
+
 void NpcDialogWindow::DrawMenu(float group_h) {
   if (choices_.empty()) return;
-  // Groupe menu à hauteur FIXE (barre de recherche + liste) : ne pousse pas les
-  // boutons hors de la fenêtre.
+  // Groupe menu à hauteur BORNÉE (barre de recherche + liste) : il s'ajuste au
+  // nombre d'options (cf. MenuNaturalHeight) et ne pousse jamais les boutons hors
+  // de la fenêtre.
   ImGui::BeginChild("##menugrp", ImVec2(0, group_h), false, ImGuiWindowFlags_NoScrollbar);
 
-  const size_t shown_count = choices_.size() -  // options réellement affichées
-      static_cast<size_t>(std::count(choices_.begin(), choices_.end(), std::string()));
-  const bool filterable = menu_search_ && shown_count > 8;  // barre de recherche (option)
+  const size_t shown_count = MenuShownCount();
+  const bool filterable = menu_search_ && shown_count > kMenuFilterThreshold;
   bool enter_from_search = false;
   if (filterable) {
     ImGui::SetNextItemWidth(-1.0f);
@@ -544,7 +633,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   ImFont* font = ImGui::GetFont();
   const float fsize = ImGui::GetFontSize();
   const ImU32 def_col = ImGui::GetColorU32(ImGuiCol_Text);
-  const float row_h = ImGui::GetFontSize() + 3.0f;  // lignes COMPACTES -> plus d'items visibles
+  const float row_h = MenuRowHeight();  // même mesure que MenuNaturalHeight
   const float pad_x = ImGui::GetStyle().ItemSpacing.x;
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad_x, 0.0f));  // aucun espace vertical entre items
   for (int i = 0; i < static_cast<int>(choices_.size()); ++i) {
@@ -769,12 +858,21 @@ void NpcDialogWindow::OnRenderUI() {
     const float sep = st.ItemSpacing.y + 1.0f;               // ~hauteur d'un Separator
     const float avail = ImGui::GetContentRegionAvail().y;
     const float btm_pad = 8.0f;                              // marge sous les boutons
-    const float footer_h = sep + row + btm_pad;              // séparateur + boutons + marge bas
+    // Le trait au-dessus des boutons n'est dessiné que SANS menu : la liste porte
+    // déjà son propre cadre, et deux lignes horizontales à quelques pixels l'une de
+    // l'autre se lisaient comme un défaut d'alignement. Hors menu, il sépare
+    // utilement le texte du NPC de ses boutons — d'où la condition plutôt que la
+    // suppression.
+    const bool  footer_sep = choices_.empty();
+    const float footer_h = (footer_sep ? sep : 0.0f) + row + btm_pad;
     const float input_h = (input_mode_ != kInputNone) ? (sep + row) : 0.0f;
     float menu_grp = 0.0f;                                    // hauteur du groupe menu
     if (!choices_.empty()) {
       const float body = avail - footer_h - input_h;
-      menu_grp = std::max(90.0f, std::min(body * 0.5f, 200.0f));
+      // La boîte prend la hauteur de ses options (bornée à kMenuMaxRows, au-delà
+      // elle scrolle) au lieu d'une fraction de la fenêtre : un menu de trois
+      // choix traînait sinon une grande zone vide sous lui.
+      menu_grp = MenuNaturalHeight();
       if (menu_grp > body - 48.0f) menu_grp = body - 48.0f;  // garde ~48px de texte
       if (menu_grp < 0.0f) menu_grp = 0.0f;
     }
@@ -793,7 +891,7 @@ void NpcDialogWindow::OnRenderUI() {
 
     // Footer ÉPINGLÉ : « Suivant » pour un `next` ; « Fermer »/« Annuler » seulement si
     // fermable (close/menu). Pas de fermeture pendant un `next` (le serveur avancerait).
-    ImGui::Separator();
+    if (footer_sep) ImGui::Separator();  // cf. le calcul de footer_h
     // Entrée/Espace valident le bouton principal — SEULEMENT hors menu (qui consomme
     // Entrée pour son option focus) et hors saisie (l'input a son propre OK). Sans
     // repeat pour qu'un appui maintenu ne re-déclenche pas.
@@ -825,6 +923,12 @@ void NpcDialogWindow::OnRenderUI() {
 }
 
 // ── Envois (thread principal uniquement) ──
+// Ce filtre a perdu son gros gibier : les fenêtres de dialogue ne naissant plus,
+// plus personne n'émet ces CZ dans notre dos en régime normal. Il est GARDÉ pour
+// la seule fenêtre de tir qui subsiste — l'interface moderne allumée alors qu'un
+// dialogue natif est déjà à l'écran : entre cet instant et la purge du tick
+// suivant, une native encore vivante peut répondre à une touche. Le coût est un
+// switch par paquet envoyé, la panne évitée est un « Invalid menu selection ».
 bool NpcDialogWindow::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
   if (!imgui_enabled_) return false;  // toggle OFF : le natif garde la main
   switch (opcode) {
@@ -857,9 +961,11 @@ void NpcDialogWindow::SendMenuChoice(int one_based) {
   pkt[6] = static_cast<uint8_t>(one_based);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
   menu_answered_gen_ = menu_gen_;  // cette génération de menu est désormais répondue
-  // Détruit la fenêtre menu native (0x11) qu'on a répondue : sinon elle reste vivante
-  // (cachée) et peut ré-émettre un CZ_CHOOSE_MENU parasite plus tard (via cmd 0x28) ->
-  // « Invalid menu selection ... got 1, valid [1..0] ».
+  // Reste de l'époque où la fenêtre menu native (0x11) naissait à chaque menu : une
+  // fois répondue elle survivait, cachée, et ré-émettait un CZ_CHOOSE_MENU parasite
+  // via cmd 0x28 -> « Invalid menu selection ... got 1, valid [1..0] ». Elle ne naît
+  // plus ; l'appel reste comme filet pour le menu déjà ouvert au moment où le joueur
+  // allume l'interface moderne, et ne coûte qu'un FindWindow à vide.
   CloseWnd(kWinMenu);
   choices_.clear();
   menu_filter_[0] = '\0';
@@ -922,9 +1028,11 @@ void NpcDialogWindow::CloseDialog() {
   }
   // 2. Détruit les fenêtres natives D'ABORD : sinon cmd 0x28 (ci-dessous) re-déclenche
   //    l'annulation d'une fenêtre menu native résiduelle -> CZ_CHOOSE_MENU parasite.
-  CloseWnd(kWinSay); CloseWnd(kWinMenu); CloseWnd(kWinEditN);
-  CloseWnd(kWinEditS); CloseWnd(kWinSay2);
-  // 3. CLIENT : débloque l'état dialogue (cmd 0x28 + garantie +0x24C=0).
+  //    Il n'y en a plus qu'après un basculement d'interrupteur en pleine
+  //    conversation ; l'ordre reste, il ne coûte rien.
+  PurgeNativeDialogWindows();
+  // 3. CLIENT : débloque l'état dialogue (cmd 0x28 + +0x24C=0 — c'est NOUS qui
+  //    l'avons posé à l'ouverture, cf. SetDialogActiveNative).
   DispatchNpcCmd(kSelClose);
   ForceClearDialogFlag();
   open_ = false;
@@ -964,28 +1072,29 @@ bool NpcDialogWindow::DialogActiveNative() const {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-void NpcDialogWindow::HideNativeWindows() {
-  HideWnd(FindWnd(kWinSay));
-  HideWnd(FindWnd(kWinMenu));
-  HideWnd(FindWnd(kWinEditN));
-  HideWnd(FindWnd(kWinEditS));
-  HideWnd(FindWnd(kWinSay2));
+void NpcDialogWindow::PurgeNativeDialogWindows() {
+  CloseWnd(kWinSay);
+  CloseWnd(kWinMenu);
+  CloseWnd(kWinEditN);
+  CloseWnd(kWinEditS);
+  CloseWnd(kWinSay2);
 }
 
-void NpcDialogWindow::ShowNativeWindows() {
-  ShowWnd(FindWnd(kWinSay));
-  ShowWnd(FindWnd(kWinMenu));
-  ShowWnd(FindWnd(kWinEditN));
-  ShowWnd(FindWnd(kWinEditS));
-  ShowWnd(FindWnd(kWinSay2));
-}
-
-void NpcDialogWindow::HideNativeAtCreation(void* win, int window_id) {
-  if (!win || !imgui_enabled_) return;
-  if (window_id == kWinSay || window_id == kWinMenu || window_id == kWinEditN ||
-      window_id == kWinEditS || window_id == kWinSay2)
-    HideWnd(win);
-}
+// Le hook MakeWindow de window_pos_tweaks appelle encore ce point d'entrée pour
+// les cinq ids de dialogue ; il ne fait plus rien, et c'est voulu :
+//
+//  1. ces fenêtres ne naissent plus — leurs handlers de paquet ne tournent plus
+//     (cf. le constructeur), et rien d'autre dans le client ne les crée ;
+//  2. si l'une reparaissait quand même (interface moderne allumée en plein
+//     dialogue natif), la MASQUER serait nuisible : invisible, elle garderait le
+//     clavier. C'est la purge d'OnTick qui la détruit ;
+//  3. détruire ICI est exclu : on est à l'INTÉRIEUR de MakeWindow, dont
+//     l'appelant natif va déréférencer le retour.
+//
+// La fonction est gardée plutôt que l'appel retiré : c'est ce que fait déjà
+// WeaponRefineWindow, pour que le hook garde une forme unique pour ses douze
+// plugins.
+void NpcDialogWindow::HideNativeAtCreation(void* /*win*/, int /*window_id*/) {}
 
 void NpcDialogWindow::OnTick() {
   // Clic sur un lien d'item (<ITEM>) posé pendant le rendu : ouvre la desc au tick
@@ -1014,14 +1123,16 @@ void NpcDialogWindow::OnTick() {
     // 0x1B6 <NAVI> / 0x21B <QUEST> : non gérés (P3)
   }
 
-  // Changement du toggle de config (ON<->OFF) EN COURS de dialogue : fermeture PROPRE
-  // (débloque serveur + client, détruit les fenêtres natives) + dé-masquage de
-  // sécurité. Sinon, OFF laisse les fenêtres natives CACHÉES + overlay éteint =
-  // interaction bloquée (reload obligatoire).
+  // Changement du toggle de config (ON<->OFF) EN COURS de dialogue : fermeture
+  // PROPRE (débloque serveur + client, détruit les fenêtres natives restantes).
+  //
+  // Le dé-masquage de sécurité qui suivait a disparu avec le masquage lui-même :
+  // on ne cache plus aucune native, donc il n'y en a plus à ré-afficher. La
+  // conversation est close des deux côtés, et la suivante repart sur le régime
+  // choisi — natif entier, ou overlay entier.
   if (imgui_enabled_ != prev_imgui_enabled_) {
     prev_imgui_enabled_ = imgui_enabled_;
     if (open_ || DialogActiveNative()) CloseDialog();
-    if (!imgui_enabled_) ShowNativeWindows();
   }
   if (!imgui_enabled_) {
     if (open_) { open_ = false; was_open_ = false; }
@@ -1035,8 +1146,7 @@ void NpcDialogWindow::OnTick() {
     // fenêtres orphelines, sinon la détection les verrait encore -> réouverture vide
     // en boucle.
     ForceClearDialogFlag();
-    CloseWnd(kWinSay); CloseWnd(kWinMenu); CloseWnd(kWinEditN);
-    CloseWnd(kWinEditS); CloseWnd(kWinSay2);
+    PurgeNativeDialogWindows();
     open_ = false; was_open_ = false;
     Reset();
     return;
@@ -1053,7 +1163,13 @@ void NpcDialogWindow::OnTick() {
   // que le dialogue doit RESTER affiché jusqu'au clic (le natif fait pareil). Un
   // `close` parasite hors session est déjà filtré au recv.
   if (open_) {
-    HideNativeWindows();
+    // 🔴 On DÉTRUIT les résidus au lieu de les masquer. Depuis le remplacement des
+    // handlers, ces fenêtres ne naissent plus du tout : il n'en reste que si le
+    // joueur a allumé l'interface moderne au milieu d'un dialogue déjà ouvert. Les
+    // masquer serait alors le pire choix — une native invisible garde le clavier,
+    // et Entrée ou Espace y cliqueraient le bouton par défaut, dans le dos du
+    // joueur (c'est le bug du refine, docs/weapon_refine_re.md §10).
+    PurgeNativeDialogWindows();
     if (!was_open_) need_pos_ = true;
   }
   was_open_ = open_;

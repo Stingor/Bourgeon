@@ -25,6 +25,10 @@ std::unordered_set<uint16_t> RagConnection::s_reader_dispatch_opcodes_;
 std::unordered_map<uint16_t, std::function<bool()>> RagConnection::s_replace_opcodes_;
 std::unordered_map<uint16_t, void*> RagConnection::s_native_handlers_;
 
+// Résolveur de longueur du client (renseigné depuis la config).
+uintptr_t RagConnection::s_packet_len_lookup_ = 0;
+uintptr_t RagConnection::s_packet_len_table_  = 0;
+
 // Cible du renvoi vers le handler natif, posée par RecvPacketHandlerImpl et lue
 // par le stub naked APRÈS son `popad` — qui écrase EAX, d'où le passage par une
 // globale plutôt que par la valeur de retour.
@@ -40,6 +44,13 @@ static void* g_forward_native_handler = nullptr;
 // The dispatch handler (RecvPacketHandlerImpl) reads from here.
 static uint8_t  g_saved_packet[65536];
 static uint32_t g_saved_packet_len = 0;
+
+// Régime du paquet sauvé : vrai quand sa longueur vient de la table du client
+// (paquet à longueur FIXE) et non de ses octets [+2]. Lu par
+// RecvPacketHandlerImpl, qui n'a que le buffer sous les yeux et ne peut donc pas
+// redécouvrir seul qu'un paquet de 6 octets n'annonce pas sa taille. Séquentiel
+// sur le fil réseau, comme les deux globales voisines.
+static bool g_saved_packet_fixed = false;
 
 // Opcode captured from FUN_00c9df00's stack frame at JMP time; used only to
 // verify the right packet was saved.
@@ -87,6 +98,15 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
         reinterpret_cast<void**>(table_addr.as<uint32_t>());
     recv_opcode_base_ =
         ragconnection_configuration["RecvOpcodeBase"].as<uint16_t>(0x73);
+
+    // Résolveur de longueur du client : optionnel, mais sans lui les paquets à
+    // longueur FIXE ne peuvent pas être remplacés (cf. NativeFixedPacketLen).
+    const auto lenlookup_addr = ragconnection_configuration["PacketLenLookup"];
+    const auto lentable_addr  = ragconnection_configuration["PacketLenTable"];
+    if (lenlookup_addr.IsDefined() && lentable_addr.IsDefined()) {
+      s_packet_len_lookup_ = lenlookup_addr.as<uint32_t>();
+      s_packet_len_table_  = lentable_addr.as<uint32_t>();
+    }
 
     const auto reader_addr = ragconnection_configuration["RecvOpcodeReader"];
     if (reader_addr.IsDefined()) {
@@ -159,6 +179,27 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
   // LogInfo("RagConnection: recv opcode 0x{:04x} → dispatch table slot [{}]", opcode, idx);
 }
 
+// Calqué sur RecvBuffer_ReadPacket (0x00c147d0), qui décide de la même façon
+// combien d'octets défiler du buffer : `out[0] == 1` -> longueur fixe `out[1]`
+// (plancher 2), tout le reste -> variable. Les deux opcodes 703/704 sont les
+// exceptions en dur du natif ; on les reproduit pour ne pas diverger de lui.
+uint16_t RagConnection::NativeFixedPacketLen(uint16_t opcode) {
+  if (s_packet_len_lookup_ == 0 || s_packet_len_table_ == 0) return 0;
+  using PacketLenLookup_t = int(__thiscall*)(void*, int*, int);
+  int out[2] = {0, 0};
+  __try {
+    reinterpret_cast<PacketLenLookup_t>(s_packet_len_lookup_)(
+        reinterpret_cast<void*>(s_packet_len_table_), out,
+        static_cast<int>(opcode));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;  // table illisible : on retombe sur le régime variable
+  }
+  if (out[0] != 1) return 0;  // variable : la longueur est dans les octets [+2]
+  if (opcode == 703) return 12;
+  if (opcode == 704) return 4;
+  return out[1] < 2 ? 2 : static_cast<uint16_t>(out[1]);
+}
+
 void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
   s_observe_opcodes_[opcode] = forward_len;
   // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
@@ -229,19 +270,34 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
   g_suppress_buffer_reset = s_reader_dispatch_opcodes_.count(opcode) != 0;
 
   if (s_registered_opcodes_.count(opcode)) {
-    const uint16_t total_len = *reinterpret_cast<const uint16_t*>(packet_buf + 2);
-    if (total_len >= 4 && total_len <= sizeof(g_saved_packet)) {
+    // Longueur FIXE d'abord : sur ces paquets, `[+2]` n'est pas une taille mais
+    // deux octets de données (un GID, un résultat…), et les lire comme une taille
+    // donnait une copie de longueur arbitraire.
+    const uint16_t fixed_len = NativeFixedPacketLen(opcode);
+    const uint16_t total_len =
+        fixed_len ? fixed_len : *reinterpret_cast<const uint16_t*>(packet_buf + 2);
+    // Un paquet fixe peut ne faire que 2 octets (opcode seul) ; un variable porte
+    // au moins son en-tête de 4.
+    const uint16_t min_len = fixed_len ? 2 : 4;
+    if (total_len >= min_len && total_len <= sizeof(g_saved_packet)) {
       std::memcpy(g_saved_packet, packet_buf, total_len);
       g_saved_packet_len = total_len;
+      g_saved_packet_fixed = fixed_len != 0;
       // Opcodes au-dessus de la dispatch table : leur handler natif n'est PAS
       // appelé (hors bornes) -> on déclenche OnRecvPacket ICI (comme
       // RecvPacketHandlerImpl le fait pour les opcodes de la table).
       if (s_reader_dispatch_opcodes_.count(opcode)) {
         const uint16_t data_len = static_cast<uint16_t>(g_saved_packet_len) - 4;
-        g_saved_packet_len = 0;
+        g_saved_packet_len   = 0;
+        g_saved_packet_fixed = false;
         Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 4, data_len);
       }
     } else {
+      // Rien de sauvé : on efface AUSSI le régime, sinon le « fixe » d'un paquet
+      // précédent survivrait et RecvPacketHandlerImpl prendrait le reliquat pour
+      // un paquet à lui.
+      g_saved_packet_len   = 0;
+      g_saved_packet_fixed = false;
       LogError("PacketBufReaderHook: opcode=0x{:04x} bad total_len={} (ignored)", opcode, total_len);
     }
   }
@@ -257,7 +313,12 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
 }
 
 void* RagConnection::RecvPacketHandlerImpl() {
-  if (g_saved_packet_len < 4) {
+  // Un paquet FIXE peut légitimement tenir en 2 octets : lui appliquer le plancher
+  // des variables (4) le ferait passer pour « rien de sauvé », et le paquet serait
+  // rendu au natif alors qu'il nous revient.
+  const bool     saved_fixed = g_saved_packet_fixed;
+  const uint32_t min_saved   = saved_fixed ? 2u : 4u;
+  if (g_saved_packet_len < min_saved) {
     // LogInfo("RecvPacketHandlerImpl: no saved packet (dispatch_opcode=0x{:04x})", g_dispatch_opcode);
     // 🔴 Rien de sauvé alors qu'un slot NOUS a été confié : si cet opcode est un
     // « replace », rendre la main au natif est la seule issue sûre — le sauter ici
@@ -270,9 +331,13 @@ void* RagConnection::RecvPacketHandlerImpl() {
     }
     return nullptr;
   }
-  const uint16_t opcode   = *reinterpret_cast<const uint16_t*>(g_saved_packet);
-  const uint16_t data_len = static_cast<uint16_t>(g_saved_packet_len) - 4;
-  g_saved_packet_len = 0;
+  const uint16_t opcode = *reinterpret_cast<const uint16_t*>(g_saved_packet);
+  // Ce que voit un plugin en régime « replace » : tout ce qui suit l'opcode. La
+  // formule vaut pour les deux régimes (un variable compte son en-tête de
+  // longueur dedans, exactement comme RegisterObserveOpcode le lui donnerait).
+  const uint16_t after_opcode = static_cast<uint16_t>(g_saved_packet_len) - 2;
+  g_saved_packet_len   = 0;
+  g_saved_packet_fixed = false;
 
   // ── Opcode STANDARD remplacé : le prédicat décide, paquet par paquet ────────
   const auto replaced = s_replace_opcodes_.find(opcode);
@@ -290,21 +355,26 @@ void* RagConnection::RecvPacketHandlerImpl() {
     // la seule façon de voir, en jeu, quel régime a pris le paquet.
     LogDiag("[recv] 0x{:04x} {} (len {})", opcode,
             claimed ? "revendique -> ImGui, natif saute" : "rendu au natif",
-            data_len + 2);
+            after_opcode);
     if (!claimed) {
       const auto native = s_native_handlers_.find(opcode);
       return (native != s_native_handlers_.end()) ? native->second : nullptr;
     }
-    // Revendiqué : mêmes octets que RegisterObserveOpcode, c'est-à-dire à partir du
-    // champ de LONGUEUR (+2) et non des données (+4). Ces paquets sont à longueur
-    // variable et nos parseurs lisent cette borne eux-mêmes ; la faire sauter ici
-    // obligerait chaque plugin à deux lectures différentes selon le régime.
-    Bourgeon::Instance().FireRecvPacket(
-        opcode, g_saved_packet + 2, static_cast<uint16_t>(data_len + 2));
+    // Revendiqué : mêmes octets que RegisterObserveOpcode, c'est-à-dire à partir de
+    // l'octet qui SUIT l'opcode (+2) et non des données d'un variable (+4). Sur un
+    // paquet variable ces deux octets sont sa longueur, que nos parseurs relisent
+    // eux-mêmes ; la faire sauter ici obligerait chaque plugin à deux lectures
+    // différentes selon le régime — et le passage observe -> replace, qui doit
+    // rester un changement d'une ligne, deviendrait une réécriture de parseur.
+    Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 2, after_opcode);
     return nullptr;
   }
 
-  Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 4, data_len);
+  // Opcodes CUSTOM (RegisterRecvOpcode) : toujours à longueur variable, donc les
+  // données commencent après l'en-tête complet.
+  if (after_opcode >= 2)
+    Bourgeon::Instance().FireRecvPacket(opcode, g_saved_packet + 4,
+                                        static_cast<uint16_t>(after_opcode - 2));
   return nullptr;
 }
 

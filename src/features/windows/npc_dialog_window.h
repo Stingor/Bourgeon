@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -13,10 +14,15 @@
 // calquée sur NpcShopWindow (project_npc_dialog_re.md, doc docs/npc_dialog_re.md).
 //
 // Modèle « capture recv → état → overlay → send » :
-//  - CAPTURE (OBSERVE, le handler natif tourne toujours) : ZC_SAY_DIALOG 0xB4 /
-//    WAIT 0xB5 / CLOSE 0xB6 / MENU_LIST 0xB7 / OPEN_EDITDLG 0x142 / EDITDLGSTR
-//    0x1D4 / CLEAR 0x8D6 / SAY2 0x972 / WAIT2 0x973. On ne fait que bâtir le
-//    modèle dans OnRecvPacket (jamais de send/opération fenêtre depuis le recv).
+//  - CAPTURE (REMPLACEMENT : le handler natif ne tourne PAS) : ZC_SAY_DIALOG 0xB4
+//    / WAIT 0xB5 / CLOSE 0xB6 / MENU_LIST 0xB7 / OPEN_EDITDLG 0x142 / EDITDLGSTR
+//    0x1D4 / CLEAR 0x8D6 / SAY2 0x972 / WAIT2 0x973. Les cinq fenêtres natives ne
+//    naissent donc plus du tout, au lieu de naître puis d'être masquées — une
+//    native masquée garde le clavier. On ne fait que bâtir le modèle dans
+//    OnRecvPacket (jamais de send/opération fenêtre depuis le recv), plus les deux
+//    écritures de CGameMode que faisait le handler remplacé (SetDialogActiveNative).
+//    Le régime est révocable : le prédicat vaut imgui_enabled_, relu à chaque
+//    paquet, donc l'interrupteur rend la main au dialogue natif entier.
 //  - RENDU : overlay ImGui (texte riche ^RRGGBB + liens ; menu avec recherche +
 //    touches 1-9 ; input nombre/texte). Meilleur que le natif sur typo/UX.
 //  - SEND (thread principal) : requêtes brutes CZ_REQ_NEXT_SCRIPT 0xB9 /
@@ -94,7 +100,12 @@ class NpcDialogWindow : public Plugin {
   void PushText(const char* s);       // ajoute une ligne de texte NPC
   static void ParseLine(const std::string& raw, std::vector<Run>* out);
   void DrawRichLines();               // rendu word-wrap multi-couleur (ImDrawList)
-  void DrawMenu(float group_h);       // liste de choix (hauteur fixe) : recherche + touches 1-9
+  void DrawMenu(float group_h);       // liste de choix (hauteur bornée) : recherche + touches 1-9
+  size_t MenuShownCount() const;      // options non vides (les vides comptent dans l'index, pas à l'écran)
+  // Hauteur que le groupe menu VOUDRAIT occuper : ses options, plafonnées à dix
+  // lignes (au-delà la liste scrolle) plus la barre de recherche si elle est là.
+  // C'est OnRenderUI qui la rabote ensuite pour garder de la place au texte du NPC.
+  float MenuNaturalHeight() const;
   void DrawInput();                   // prompt nombre / texte
 
   // Envois (thread principal uniquement).
@@ -107,8 +118,11 @@ class NpcDialogWindow : public Plugin {
   void OpenItemDescById(uint32_t id); // clic sur un lien <ITEM> -> fenêtre desc 0xc
 
   bool DialogActiveNative() const;    // lit CGameMode+0x24C (flag dialogue actif)
-  void HideNativeWindows();           // cache 0x10/0x11/0x38/0x64/0xE2 chaque tick
-  void ShowNativeWindows();           // dé-cache (toggle OFF / sécurité) -> +0x28=1
+  // Détruit les fenêtres natives 0x10/0x11/0x38/0x64/0xE2 si l'une traîne. Elles ne
+  // naissent plus (leurs handlers de paquet sont remplacés) : il n'en reste que
+  // lorsqu'on allume l'interface moderne en plein dialogue natif. On les DÉTRUIT au
+  // lieu de les masquer — masquée, une native garde le clavier.
+  void PurgeNativeDialogWindows();
 
   // ── Modèle (bâti par OnRecvPacket, lu par OnRenderUI) ──
   std::vector<std::string> lines_;    // texte NPC accumulé (parsé au rendu)

@@ -91,6 +91,13 @@ const std::string kYamlConfiguration = R"(
     RecvDispatchTableSize: 0xBC3
     RecvOpcodeReader: 0x00c144b0
     RecvBufferReset: 0x00c148b0
+    # Resolveur de longueur du client : PacketLenTable_Lookup(table, out[2], opcode)
+    # remplit out[0] = 1 (longueur FIXE, out[1] = octets, opcode compris) ou -1/0
+    # (VARIABLE : la longueur se lit dans les deux octets qui suivent l'opcode).
+    # C'est la table que la boucle recv consulte elle-meme (RecvBuffer_ReadPacket
+    # 0x00c147d0) : s'en servir evite de coder une longueur en dur par paquet.
+    PacketLenLookup: 0x00aa7b00
+    PacketLenTable: 0x0159d68c
   CModeMgr:
     Switch: 0x00a756e0
   CLoginMode:

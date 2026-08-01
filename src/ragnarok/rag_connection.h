@@ -53,11 +53,22 @@ class RagConnection {
   // « ni la nôtre ni la native ne prend le paquet » : le joueur lance sa
   // compétence et rien n'apparaît.
   //
-  // ⚠ Réservé aux paquets à longueur VARIABLE (`[opcode:2][total_len:2]…`) : les
-  // octets transmis commencent au champ de longueur (+2), comme le fait déjà
-  // RegisterObserveOpcode, pour qu'un plugin puisse passer d'un régime à l'autre
-  // sans toucher à son parseur.
+  // Les octets transmis commencent JUSTE APRÈS l'opcode (+2), exactement comme
+  // RegisterObserveOpcode : un plugin passe d'un régime à l'autre sans toucher à
+  // son parseur. Longueur fixe comme variable — cf. NativeFixedPacketLen.
   void RegisterReplaceOpcode(uint16_t opcode, std::function<bool()> claim);
+
+  // Longueur TOTALE du paquet (opcode compris) telle que le CLIENT la calcule,
+  // ou 0 pour un paquet à longueur variable — dont la longueur se lit alors dans
+  // les deux octets qui suivent l'opcode.
+  //
+  // 🔴 C'est ce résolveur qui rend `RegisterReplaceOpcode` utilisable sur les
+  // paquets à longueur FIXE. Sans lui, le reader-hook lisait `[+2]` comme une
+  // longueur : sur un paquet fixe ces deux octets sont des DONNÉES, et la copie
+  // partait sur une taille inventée. On interroge donc la table du client
+  // (celle que consulte sa propre boucle recv), plutôt que de tenir une liste de
+  // longueurs en dur qui dériverait au premier changement de client.
+  static uint16_t NativeFixedPacketLen(uint16_t opcode);
 
   // Hooks
   void ConnectionHook();
@@ -119,6 +130,13 @@ class RagConnection {
   // sees every packet.  Guaranteed-free zone for custom ZC packets (the client's
   // length parser handles them as unknown/variable).
   static std::unordered_set<uint16_t> s_reader_dispatch_opcodes_;
+
+  // Résolveur de longueur du client (PacketLenTable_Lookup + sa table). STATIQUES
+  // comme les tables ci-dessus : les hooks recv sont des méthodes dont le `this`
+  // est l'objet NATIF, pas notre RagConnection — un membre d'instance y serait
+  // illisible.
+  static uintptr_t s_packet_len_lookup_;
+  static uintptr_t s_packet_len_table_;
 
   // Per-client addresses read from YAML config.
   void**   recv_dispatch_table_      = nullptr;
