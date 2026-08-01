@@ -617,17 +617,16 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     if (uMsg == WM_LBUTTONUP) {
       if (auto* sb = Bourgeon::Instance().skill_bar())
         sb->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
-      if (auto* st = Bourgeon::Instance().storage_window())
-        st->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
+      // (Le storage ne figure plus ici : les seules sources d'un drag natif vers
+      // lui étaient l'inventaire et le cart, qui sont des viewers ImGui dès que
+      // lui-même l'est — « Interface moderne » est un groupe tout-ou-rien.)
     }
-    // Mémorise la source d'un drag natif dès le mousedown (cart/équip vs inventaire) pour
-    // router correctement un drop sur les viewers (storage : cart->storage ; inventaire :
-    // équip->inventaire = dés-équiper).
+    // Mémorise la source d'un drag natif dès le mousedown, pour router un drop sur
+    // le viewer inventaire (équip -> inventaire = dés-équiper). La fenêtre
+    // Équipement, elle, est encore native.
     if (uMsg == WM_LBUTTONDOWN) {
-      if (auto* st = Bourgeon::Instance().storage_window())
-        st->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
     }

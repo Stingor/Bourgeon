@@ -1,5 +1,4 @@
 #include "features/item_cell.h"
-#include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/storage_window.h"
 #include "ui/game_texture.h"
@@ -134,51 +133,22 @@ void WithdrawItem(int index, int amount) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Fenêtre inventaire (id 8) : global + vtable pour tester un drop dessus
-// (uiwnd::kInventoryWndSlot / kInventoryWndVTable).
+// ── Cibles d'un glisser PARTANT du viewer ───────────────────────────────────
+// Uniquement les rects des VIEWERS ImGui : « Interface moderne » est un groupe
+// tout-ou-rien (SetModernInterface), donc si ce viewer-ci est actif, ceux de
+// l'inventaire et du cart le sont aussi et leurs fenêtres natives sont masquées
+// — un rect natif ne peut plus être une cible ici.
 bool MouseOverInventory(float x, float y) {
-  // Viewer inventaire ImGui actif : son rect remplace la fenêtre native (cachée), donc
-  // le test natif ci-dessous échoue -> on teste d'abord le rect du viewer.
-  if (auto* iv = Bourgeon::Instance().inventory_viewer())
-    if (iv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  __try {
-    uint8_t* inv = *reinterpret_cast<uint8_t**>(uiwnd::kInventoryWndSlot);
-    if (!inv || *reinterpret_cast<uintptr_t*>(inv) != uiwnd::kInventoryWndVTable) return false;
-    // Native CACHÉE (mode moderne) : son rect fantôme ne doit PAS capter les drops
-    // faits sur les viewers ImGui posés par-dessus (cf. uiwnd::kOffVisible).
-    if (*reinterpret_cast<int*>(inv + uiwnd::kOffVisible) == 0) return false;
-    const int ix = *reinterpret_cast<int*>(inv + 0x1c);
-    const int iy = *reinterpret_cast<int*>(inv + 0x20);
-    const int iw = *reinterpret_cast<int*>(inv + 0x14);
-    const int ih = *reinterpret_cast<int*>(inv + 0x18);
-    return x >= ix && y >= iy && x < ix + iw && y < iy + ih;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  auto* inventory = Bourgeon::Instance().inventory_viewer();
+  return inventory &&
+         inventory->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 
-// Fenêtre CART (cart marchand) : MÊME framework générique que l'inventaire
-// (vtable sœur 0x0103d538, rect aux mêmes offsets), id 0x28.
-// ⚠ CORRECTION 2026-07-27 : elle se cherche par ID au GESTIONNAIRE. L'ancien
-// global 0x0131f6a0 (« trouvé en RE live ») n'a AUCUNE référence dans le binaire
-// (xrefs IDA) et ne porte pas la fenêtre cart — ce hit-test ne répondait donc
-// jamais, et « lâcher un item storage sur le cart » était silencieusement mort.
-constexpr int kWinCart          = 0x28;
+constexpr int kWinCart          = 0x28;   // UICartWnd
 constexpr uintptr_t kCartVTable = 0x0103d538;
 bool MouseOverCart(float x, float y) {
-  // Cart MODERNE (CartViewer) : sa fenêtre native est cachée, donc le rect natif
-  // ci-dessous ne veut plus rien dire -> on teste d'abord le rect du viewer (même
-  // traitement que MouseOverInventory).
-  if (auto* cv = Bourgeon::Instance().cart_viewer())
-    if (cv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  __try {
-    auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
-    if (!cart || *reinterpret_cast<uintptr_t*>(cart) != kCartVTable) return false;
-    if (*reinterpret_cast<int*>(cart + uiwnd::kOffVisible) == 0) return false;  // cachée = pas une cible
-    const int cx = *reinterpret_cast<int*>(cart + 0x1c);
-    const int cy = *reinterpret_cast<int*>(cart + 0x20);
-    const int cw = *reinterpret_cast<int*>(cart + 0x14);
-    const int ch = *reinterpret_cast<int*>(cart + 0x18);
-    return x >= cx && y >= cy && x < cx + cw && y < cy + ch;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  auto* cart = Bourgeon::Instance().cart_viewer();
+  return cart && cart->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 
 // Le cart est-il OUVERT (natif classique OU remplacé par son viewer ImGui) ?
@@ -449,14 +419,7 @@ SubCat SubCatOf(int dim, uint8_t subtype, uint32_t equip) {
   }
 }
 
-// ── Dépôt inventaire -> storage par drag natif ──────────────────────────────
-// Paquet CZ_MOVE_ITEM_FROM_BODY_TO_STORE 0x00f3 : [op:2][index:2][amount:4] (8o).
-// Lecture du drag natif (repris de skill_bar) : DragObj = FUN_00a75340(0x1213338),
-// charge à obj+0x308 (+0x80 format 0=item, +0x18 nameid). Index/qté inventaire via
-// ItemMgr_GetInvItemById (out+0x04 found, +0x08 index, +0x10 qty).
-// Opcode ACTIF pour ce packetver (>= 20130320) = 0x08ac (MoveToKafra) ; 0x00f3
-// est réassigné à un autre paquet (48o) -> disconnect. Confirmé serveur.
-constexpr uint16_t  kOpDeposit  = 0x08ac;
+// ── Paquets sortants ────────────────────────────────────────────────────────
 // Fermeture du storage : CZ_CloseKafra, opcode fixe 2 octets (juste l'opcode).
 // Confirmé client (opcode_map.md : 0x0193 CZ FIX 2 "CloseKafra") ET serveur moonlight
 // (clif_packetdb.hpp: parseable_packet(0x0193,2,clif_parse_CloseKafra) -> storage_storageclose).
@@ -466,32 +429,6 @@ constexpr uint16_t  kOpCloseStorage = 0x0193;
 // Confirmé client (opcode_map.md 0x0128 CZ FIX 8) + serveur (server_storage_index -> -1).
 // On envoie items_[idx].index (= index storage CLIENT, le serveur fait -1). PAS remappé.
 constexpr uint16_t  kOpStorageToCart = 0x0128;
-// cart -> storage : CZ_MOVE_ITEM_FROM_CART_TO_STORE, fixe 8 octets, serveur server_index -> -2.
-constexpr uint16_t  kOpCartToStorage = 0x0129;
-constexpr uintptr_t kGetInvItem = 0x00d7fa90;
-constexpr int kPayloadOff = 0x308;
-constexpr int kPL_type = 0x80, kPL_nameid = 0x18, kPL_id = 0x04, kPL_cat = 0x00;
-constexpr int kInvFound = 0x04, kInvIndex = 0x08, kInvQty = 0x10;
-using GetDragObj_t = void*(__fastcall*)(void*);
-using GetInvItem_t = void*(__stdcall*)(void*, int);
-
-void* DragObj() {
-  __try {
-    return reinterpret_cast<GetDragObj_t>(rag::kModeMgrGetActiveAddr)(
-        reinterpret_cast<void*>(rag::kModeMgrAddr));
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
-// Vide la charge du drag natif -> au relâché le jeu ne voit plus d'objet (pas de
-// drop au sol, curseur-suiveur natif disparaît). NE touche PAS le gate dispatcher.
-void CancelNativeDrag(void* obj) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
-    *reinterpret_cast<int*>(p + kPL_cat) = 0;
-    *reinterpret_cast<int*>(p + kPL_id)  = 0;
-    p[kPL_type] = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 // Composition d'un shop en cours (cf. VendingWindow::IsComposing).
 //   - cart <-> storage : REFUSÉ par le serveur (storage_storageaddfromcart /
@@ -504,17 +441,8 @@ bool VendingComposing() {
   return vending && vending->IsComposing();
 }
 
-void SendDeposit(int index, int amount) {
-  if (amount <= 0 || VendingComposing()) return;
-  uint8_t pkt[8];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpDeposit;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
-  *reinterpret_cast<uint32_t*>(pkt + 4) = static_cast<uint32_t>(amount);
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-}
-
 // Demande au serveur de fermer le storage (CZ_CloseKafra, 2 octets = juste l'opcode).
-// Le serveur ferme la session storage -> les DEUX fenêtres (native + viewer) se ferment.
+// Le serveur ferme la session et répond 0x00f8, qui lève `open_` (cf. CloseLocal).
 void SendCloseStorage() {
   uint16_t op = kOpCloseStorage;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
@@ -531,47 +459,6 @@ void SendStorageToCart(int index, int amount) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// cart -> storage : envoie un item du cart vers le storage. index = index cart
-// CLIENT (lu du payload de drag natif) ; le serveur applique server_index (-2).
-void SendCartToStorage(int index, int amount) {
-  if (amount <= 0 || VendingComposing()) return;
-  uint8_t pkt[8];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpCartToStorage;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
-  *reinterpret_cast<uint32_t*>(pkt + 4) = static_cast<uint32_t>(amount);
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-}
-
-// Lit l'item d'un drag natif d'inventaire -> {index inventaire, qté}. Confirmé
-// par dump live : payload+0x04 = index inventaire client, +0x10 = count, +0x80=0
-// (FullPayload item). SEH (POD). false si pas un item / index invalide.
-bool ReadDraggedInvItem(void* obj, int* index, int* qty) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
-    if (p[kPL_type] != 0) return false;  // FullPayload (item) uniquement
-    const int idx = *reinterpret_cast<int*>(p + 0x04);  // index inventaire client
-    if (idx <= 0) return false;
-    *index = idx;
-    const int c = *reinterpret_cast<int*>(p + 0x10);    // count (pile)
-    *qty = c > 0 ? c : 1;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// Lit l'id de l'item d'un drag natif : resname BRUT = std::string @payload+0x3c
-// (atoi -> nameid = id d'item, pour résoudre l'icône). SSO (heap si cap>0xf).
-// SEH (POD). 0 si ce n'est pas un item. Sert à redessiner l'icône du drag au-
-// dessus du viewer (le jeu la rend DERRIÈRE l'overlay ImGui).
-uint32_t ReadDragItemId(void* obj) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
-    if (p[kPL_type] != 0) return 0;  // FullPayload (item) uniquement
-    const uint32_t cap = *reinterpret_cast<uint32_t*>(p + 0x3c + 0x14);  // SSO cap
-    const char* s = (cap > 0xf) ? *reinterpret_cast<char**>(p + 0x3c)
-                                : reinterpret_cast<const char*>(p + 0x3c);
-    return (s && s[0]) ? static_cast<uint32_t>(std::atoi(s)) : 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 
 // Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices
 // chargées (ProggyClean = ASCII, Malgun = range coréen) -> tracé main via
@@ -828,46 +715,19 @@ void StorageWindow::OnTick() {
   if (!open_ || !show_desc_tooltip_) hover_desc_id_ = 0;
 }
 
-// Mémorise si le clic a démarré sur la fenêtre cart (routage du drop) et sur le
-// viewer (un vrai drag natif entrant démarre HORS du viewer).
-void StorageWindow::OnMouseDown(int mx, int my) {
-  mousedown_over_cart_ =
-      MouseOverCart(static_cast<float>(mx), static_cast<float>(my));
-  mousedown_over_viewer_ =
-      win_valid_ && mx >= win_x_ && my >= win_y_ &&
-      mx < win_x_ + win_w_ && my < win_y_ + win_h_;
-}
-
 // Plus rien à cacher : la fenêtre native ne naît plus (ses deux créateurs sont
 // revendiqués). On garde le point d'entrée, appelé par le hook MakeWindow de
 // window_pos_tweaks pour douze plugins, comme l'ont fait les autres fenêtres du
 // même chantier (trade, npc_shop, cashshop, bank, npc_dialog, weapon_refine).
 void StorageWindow::HideNativeAtCreation(void* /*win*/) {}
 
-// Appelé par le hook WndProc au WM_LBUTTONUP (pré-input). Consomme un drop de drag
-// natif (inventaire OU cart) au-dessus du viewer -> pose un déplacement en attente +
-// annule le drag. Le paquet réel part de OnRenderUI (sûr, + prompt pour les piles).
-// Source = mousedown_over_cart_ (le payload n'expose pas la source de façon fiable).
-bool StorageWindow::HandleNativeDrop(int mx, int my) {
-  if (!open_ || !imgui_enabled_ || !win_valid_) return false;
-  if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui
-  void* obj = DragObj();
-  if (!obj) return false;  // pas de drag natif -> silencieux (pas de spam à chaque clic)
-  const bool over = !(mx < win_x_ || my < win_y_ ||
-                      mx >= win_x_ + win_w_ || my >= win_y_ + win_h_);
-  int index = 0, qty = 0;
-  const bool read = ReadDraggedInvItem(obj, &index, &qty);
-  if (!over || !read) return false;
-  // Déplacement en attente (traité au prochain rendu) + annulation du drag natif.
-  // Clic parti du cart -> cart->storage (0x0129) ; sinon -> dépôt inventaire (0x08ac).
-  pend_id_ = index;  // != 0 => action en attente
-  pend_index_ = index;
-  pend_max_ = qty > 0 ? qty : 1;
-  pend_action_ = mousedown_over_cart_ ? kPendCartToSto : kPendDeposit;
-  pend_open_prompt_ = (pend_max_ > 1);  // pile -> prompt ; 1 seul -> direct
-  CancelNativeDrag(obj);
-  return true;
-}
+// (Le pont vers le DRAG NATIF entrant — HandleNativeDrop, OnMouseDown, la lecture
+// du payload et le redessin de l'icône — a été retiré. Il n'existait que pour un
+// drag parti d'un inventaire ou d'un cart NATIFS ; or « Interface moderne » est
+// un groupe tout-ou-rien, donc quand ce viewer est actif ces deux fenêtres sont
+// des viewers ImGui et leurs natives sont masquées, hors rendu ET hors hit-test.
+// Aucun drag natif ne peut donc plus en partir : les deux sens passent par le
+// glisser ImGui.)
 
 // ── Verrou « description en vol » (anti-flicker de l'aperçu au survol) ───────
 // Armé au moment où l'utilisateur DEMANDE une description (menu contextuel ou
@@ -1048,14 +908,14 @@ void StorageWindow::OnRenderUI() {
   win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
   win_valid_ = true;
 
-  // Action en attente (dépôt/retrait via HandleNativeDrop ou drag-end) : 1 seul =
-  // direct ; pile = prompt quantité. do_move applique le sens choisi.
+  // Action en attente (menu contextuel ou fin d'un glisser partant d'ici) : 1 seul
+  // = direct ; pile = prompt quantité. do_move applique le sens choisi. Les deux
+  // sens sont SORTANTS — ce qui ENTRE dans le storage est envoyé par la fenêtre
+  // d'où l'objet part (inventaire, cart), chacune émettant son propre paquet.
   auto do_move = [this](int amount) {
     switch (pend_action_) {
-      case kPendWithdraw:   WithdrawItem(pend_index_, amount); break;
-      case kPendStoToCart:  SendStorageToCart(pend_index_, amount); break;
-      case kPendCartToSto:  SendCartToStorage(pend_index_, amount); break;
-      default:              SendDeposit(pend_index_, amount); break;  // kPendDeposit
+      case kPendStoToCart: SendStorageToCart(pend_index_, amount); break;
+      default:             WithdrawItem(pend_index_, amount); break;  // kPendStoToInv
     }
   };
   if (pend_id_ != 0) {
@@ -1070,10 +930,11 @@ void StorageWindow::OnRenderUI() {
   // Dialogue « combien ? » PARTAGÉ (ui/qty_prompt) : habillé RO, identique dans
   // l'inventaire, le storage et le cart.
   {
-    const char* verb = pend_action_ == kPendWithdraw ? "Retirer"
-                     : pend_action_ == kPendStoToCart ? "Vers le cart"
-                     : pend_action_ == kPendCartToSto ? "Depuis le cart"
-                     : "Déposer";
+    // Destination NOMMÉE des deux côtés : « Retirer » ne disait pas où l'objet
+    // partait, alors que le cart est une destination tout aussi légitime — même
+    // formulation que les entrées du menu contextuel.
+    const char* verb =
+        pend_action_ == kPendStoToCart ? "Vers le cart" : "Vers l'inventaire";
     bool cancelled = false;
     const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
     if (qty > 0) { do_move(qty); pend_id_ = 0; }
@@ -1320,7 +1181,7 @@ void StorageWindow::OnRenderUI() {
   }
   std::string desc = "Raccourcis storage\n\n"
                      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
-                     "  pile = menu contextuel : Retirer 1 / tout / quantité)\n"
+                     "  pile = menu contextuel : Vers l'inventaire 1 / tout / quantité)\n"
                      "- Ctrl + clic gauche : (dé)marquer l'item comme favori (onglet Favoris)\n"
                      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
                      "- Ctrl + clic droit : description\n"
@@ -1617,7 +1478,7 @@ void StorageWindow::OnRenderUI() {
             pend_id_ = index;
             pend_index_ = index;
             pend_max_ = amt;
-            pend_action_ = kPendWithdraw;
+            pend_action_ = kPendStoToInv;
             pend_open_prompt_ = true;
           }
         }
@@ -1746,7 +1607,7 @@ void StorageWindow::OnRenderUI() {
         if (over_self) {
           // rien
         }
-        else if (MouseOverInventory(drag_mx_, drag_my_)) action = kPendWithdraw;
+        else if (MouseOverInventory(drag_mx_, drag_my_)) action = kPendStoToInv;
         else if (MouseOverCart(drag_mx_, drag_my_))      action = kPendStoToCart;
       }
       if (action != -1) {
@@ -1760,33 +1621,9 @@ void StorageWindow::OnRenderUI() {
     }
   }
 
-  // Icône du drag NATIF au-dessus du viewer : le jeu rend l'icône du drag AVANT
-  // l'overlay ImGui -> elle passe derrière le viewer quand on le survole. Quand un
-  // drag d'item natif est actif et que le curseur est sur le viewer, on la redessine
-  // au curseur dans le foreground (au-dessus de tout). Ailleurs, l'icône native suffit.
-  // Gate anti-fantôme (le payload natif reste "périmé" avec l'id du dernier drag) :
-  //   - bouton gauche ENFONCÉ (un drag = bouton tenu) ;
-  //   - le clic a démarré HORS du viewer (un vrai drag entrant vient de l'inventaire ;
-  //     un clic sur le viewer, lui, démarre dessus -> pas d'icône) ;
-  //   - pas de drag ImGui en cours (retrait d'un item du viewer = aperçu propre).
-  void* dobj = (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !mousedown_over_viewer_ &&
-                ImGui::GetDragDropPayload() == nullptr) ? DragObj() : nullptr;
-  if (dobj) {
-    const uint32_t did = ReadDragItemId(dobj);
-    const ImVec2 m = ImGui::GetMousePos();
-    const bool over = m.x >= win_x_ && m.y >= win_y_ &&
-                      m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
-    if (did != 0 && over) {
-      const ro::IconTex ic = ro::ItemIcon(did, 1);
-      if (ic.tex && ic.w > 0 && ic.h > 0) {
-        const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
-        ImGui::GetForegroundDrawList()->AddImage(
-            reinterpret_cast<ImTextureID>(ic.tex),
-            ImVec2(m.x - iw * 0.5f, m.y - ih * 0.5f),
-            ImVec2(m.x + iw * 0.5f, m.y + ih * 0.5f));
-      }
-    }
-  }
+  // (Le redessin de l'icône d'un drag NATIF survolant le viewer a disparu avec le
+  // reste du pont natif : le jeu rendait cette icône sous l'overlay ImGui, mais
+  // plus aucun drag natif ne peut atteindre cette fenêtre.)
 
   ro::EndRoWindow();
 

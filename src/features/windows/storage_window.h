@@ -77,8 +77,10 @@ class StorageWindow : public Plugin {
   int&  cur_tab()        { return cur_tab_; }
 
   // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
-  // ON = viewer ImGui + fenêtre native cachée ; OFF = storage natif seul, aucun viewer.
-  // Pas de cohabitation. Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
+  // ON = viewer ImGui, la fenêtre native ne s'ouvre plus ; OFF = storage natif
+  // seul, aucun viewer. Pas de cohabitation — et le réglage n'est jamais touché
+  // seul : SetModernInterface l'écrit avec tout le groupe « Interface moderne ».
+  // Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
   bool imgui_enabled_ = false;
 
   // Favoris 100 % CLIENT (aucun paquet, aucun flag serveur — le storage n'a pas de
@@ -95,22 +97,14 @@ class StorageWindow : public Plugin {
     else favorites_.insert(id);
   }
 
-  // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input, comme skill_bar) : si un
-  // drag NATIF d'un item d'inventaire est relâché au-dessus du viewer, capture un
-  // dépôt en attente et annule le drag natif (charge vidée avant que le jeu voie le
-  // up -> pas de drop au sol). Le dépôt réel part depuis OnRenderUI (SendPacket sûr,
-  // + prompt quantité pour les piles). Renvoie true si le drop est consommé.
-  bool HandleNativeDrop(int mx, int my);
+  // (Plus de HandleNativeDrop / OnMouseDown : ils accueillaient un drag NATIF venu
+  // de l'inventaire ou du cart. « Interface moderne » étant un groupe tout-ou-rien,
+  // ces deux fenêtres sont des viewers ImGui dès que celle-ci l'est, et leurs
+  // natives masquées sont hors hit-test — plus aucun drag natif ne peut en partir.)
 
-  // Appelé par le hook WndProc au WM_LBUTTONDOWN : mémorise si le clic a démarré
-  // au-dessus de la fenêtre CART. Sert à router un drag natif relâché sur le viewer :
-  // clic parti du cart -> cart->storage (0x0129) ; sinon -> dépôt inventaire (0x08ac).
-  // (Le payload de drag n'expose pas la source de façon fiable, cf. project mémoire.)
-  void OnMouseDown(int mx, int my);
-
-  // True si (mx,my) est au-dessus de la fenêtre du viewer storage (ImGui) ouverte. Sert
-  // au viewer INVENTAIRE pour router un dépôt par glisser quand les DEUX sont des viewers
-  // ImGui (le rect natif du storage est caché, donc MouseOverStorage échoue).
+  // True si (mx,my) est au-dessus de la fenêtre du viewer storage (ImGui) ouverte.
+  // Sert aux viewers INVENTAIRE et CART pour router un dépôt par glisser : c'est
+  // la SEULE cible possible, la fenêtre native n'existant plus.
   bool PointOverViewer(int mx, int my) const {
     return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
            mx < win_x_ + win_w_ && my < win_y_ + win_h_;
@@ -193,31 +187,27 @@ class StorageWindow : public Plugin {
   // Onglet persisté déjà ré-appliqué au TabBar ? (une seule fois par session)
   bool  tab_applied_ = false;
 
-  // Rect écran du viewer (capturé au rendu) pour tester le drop natif dessus.
+  // Rect écran du viewer (capturé au rendu) : sert aux AUTRES viewers pour tester
+  // qu'un glisser est relâché dessus (PointOverViewer).
   float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
   bool  win_valid_ = false;
-  // Le dernier WM_LBUTTONDOWN a-t-il démarré sur la fenêtre cart ? (routage du
-  // drag natif relâché sur le viewer : cart->storage vs dépôt inventaire).
-  bool  mousedown_over_cart_ = false;
-  // Le dernier WM_LBUTTONDOWN a-t-il démarré SUR le viewer ? (un vrai drag natif
-  // entrant démarre HORS du viewer -> sinon = simple clic, pas d'icône de drag).
-  bool  mousedown_over_viewer_ = false;
-  // Dépôt en attente (posé par HandleNativeDrop, traité en OnRenderUI).
   std::unordered_map<uint32_t, uint32_t> prices_;  // id -> prix de vente NPC (serveur)
   // Métadonnées item (serveur, statiques) pour les sous-catégories : subtype = type
   // d'arme (W_*) ou de munition (A_*) ; equip = masque de slot d'équipement.
   struct ItemMeta { uint8_t subtype = 0; uint32_t equip = 0; uint16_t slots = 0; };
   std::unordered_map<uint32_t, ItemMeta> meta_;    // id -> {subtype, equip}
   int cur_sub_ = -1;  // sous-catégorie sélectionnée (clé SubCat, -1 = Tout)
-  // Sens d'un déplacement en attente. L'index de pend_index_ dépend du sens :
-  // inventaire pour Deposit, storage pour Withdraw/StoToCart, cart pour CartToSto.
-  enum PendAction { kPendDeposit, kPendWithdraw, kPendStoToCart, kPendCartToSto };
+  // Sens d'un déplacement en attente — les deux sens SORTANTS, les seuls que
+  // cette fenêtre émette ; `pend_index_` est donc toujours un index STORAGE. Ce
+  // qui entre dans le storage part de la fenêtre d'origine (inventaire, cart),
+  // qui envoie son propre paquet.
+  enum PendAction { kPendStoToInv, kPendStoToCart };
   int   pend_id_ = 0;      // 0 = aucune action en attente
-  int   pend_index_ = 0;   // index (source, cf. PendAction)
+  int   pend_index_ = 0;   // index storage de la source
   int   pend_max_ = 0;     // quantité max (stack)
   bool  pend_open_prompt_ = false;  // ouvrir le prompt quantité au prochain rendu
-  int   pend_action_ = kPendDeposit;  // sens du déplacement en attente
-  // Retrait par drag (viewer -> inventaire natif) : suivi du drag en cours.
+  int   pend_action_ = kPendStoToInv;  // sens du déplacement en attente
+  // Retrait par drag (viewer -> viewer inventaire) : suivi du drag en cours.
   bool  drag_active_ = false;
   int   drag_index_ = 0, drag_amount_ = 0;
   float drag_mx_ = 0, drag_my_ = 0;  // dernière pos souris pendant le drag

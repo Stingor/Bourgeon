@@ -815,8 +815,9 @@ void SetModernInterface(bool on) {
   // cart natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
   if (auto* vending_window = Bourgeon::Instance().vending_window())
     vending_window->imgui_enabled_ = on;
-  // La feuille de personnage est un COMPLÉMENT (les fenêtres natives Status et
-  // Équipement restent là), mais elle vit du même écosystème : ses slots reçoivent
+  // La feuille de personnage REMPLACE désormais les feuilles natives Status et
+  // Équipement (⚠ celles-ci ne sont pas encore empêchées de NAÎTRE : chantier
+  // ouvert). Elle vit du même écosystème : ses slots reçoivent
   // les objets glissés depuis l'inventaire ImGui, et son onglet Presets équipe en
   // s'appuyant dessus. Elle n'a donc plus de case isolée non plus.
   // ⚠ Son onglet Grimoire, lui, REMPLACE bel et bien la fenêtre native 0x25 : quand
