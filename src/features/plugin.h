@@ -44,9 +44,15 @@ class Plugin {
   // frame; still skipped while a map is loading.
   virtual void OnRenderLoginUI() {}
 
-  // Fired when a server packet with a registered custom opcode is received.
-  // `data`/`len` cover the payload after the [opcode:2][total_len:2] header.
-  // Register the opcode first with Bourgeon::RegisterRecvOpcode(opcode).
+  // Fired when a registered server packet is received. Where `data` starts
+  // depends on HOW the opcode was registered — the three regimes do not agree,
+  // and reading the wrong one shifts every field:
+  //   · RegisterRecvOpcode (our custom opcodes) -> after the full
+  //     [opcode:2][total_len:2] header;
+  //   · RegisterObserveOpcode / RegisterReplaceOpcode (standard packets) ->
+  //     right after the 2-byte opcode, so a variable-length packet still begins
+  //     with its own length field. Those two match on purpose: switching a
+  //     plugin from observing to replacing must not rewrite its parser.
   virtual void OnRecvPacket(uint16_t opcode, const uint8_t* data,
                             uint16_t len) {}
 };

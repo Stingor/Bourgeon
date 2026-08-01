@@ -27,8 +27,8 @@ namespace {
 // la vtable : un id ne garantit pas la classe si un portage renumérote les fenêtres.
 constexpr int       kWinBank    = 275;         // 0x113
 constexpr uintptr_t kBankVTable = 0x01030fd4;
-constexpr int kOffWidth   = 0x14;
-constexpr int kOffHeight  = 0x18;
+// (Plus de kOffWidth/kOffHeight : ils ne servaient qu'à poser notre fenêtre à côté
+// de la native, qui ne naît plus.)
 
 // Globales des soldes. g_BankVault est un s64 côté client alors que le serveur
 // stocke un int32 (MAX_BANK_ZENY = SINT32_MAX) : on lit bien les 8 octets, mais
@@ -59,10 +59,37 @@ constexpr int kMsgZeroMoney       = 2770;  // MSI_BANK_0_MONEY
 // rester fidèle au natif, pas parce qu'elle protège quoi que ce soit.
 constexpr int kBlockingWindows[] = {290, 302, 348, 10006, 361};
 
+// Fenêtres qui BLOQUENT l'OUVERTURE, avec le message que le natif écrit en chat
+// (case 275 de MakeWindow, §7 de la doc). ⚠ Liste DIFFÉRENTE de celle des
+// transferts ci-dessus — quatre ids sur cinq changent. Ces gardes vivaient dans
+// MakeWindow(275), qui n'est plus appelé : c'est à nous de les jouer.
+struct OpenGuard { int window_id; int msg_id; };
+constexpr OpenGuard kOpenGuards[] = {
+    {295,   3014},  // refine          MSI_CANNOT_OPEN_BANKING_DURING_REFINING
+    {343,   3717},  // grade-enchant   ..._DURING_GRADE_ENCHANT
+    {10006, 3845},  // enchant         ..._DURING_ENCHANT
+    {341,   3967},  // barter étendu   ..._DURING_EXPANDED_BARTERMARKET
+    {361,   4055},  // runes           MSI_RUNESYSTEM_DURING_CANNOT_OPEN_BANKING
+};
+
 // Opcodes. Voir docs/bank_zeny_re.md §2 pour les layouts (celui de 0x09A6 diffère).
 constexpr uint16_t kOpDeposit  = 0x09A7;  // CZ_REQ_BANKING_DEPOSIT
 constexpr uint16_t kOpWithdraw = 0x09A9;  // CZ_REQ_BANKING_WITHDRAW
 constexpr uint16_t kOpCheck    = 0x09AB;  // CZ_REQ_BANKING_CHECK (= ce que fait Ctrl+B)
+// ZC_BANKING_CHECK : 12 octets FIXES { u16 op; s64 Money; u16 Reason }. ⚠ Le solde
+// est en +2 et la raison en +10 — l'INVERSE des deux ACK 0x09A8/0x09AA (§2 de la
+// doc). C'est bien le natif, pas une erreur de RE.
+constexpr uint16_t kOpBankCheck = 0x09A6;
+constexpr int      kCheckMoneyOff  = 0;  // dans `data` (qui commence APRÈS l'opcode)
+constexpr int      kCheckReasonOff = 8;
+constexpr int      kCheckDataLen   = 10;  // 12 - l'opcode
+
+// Raisons de 0x09A6 (§8). rAthena n'émet que 0 ; les deux autres sont des libellés
+// du client, gardés pour ne pas rester muet si le serveur change d'avis.
+constexpr uint16_t kReasonOk      = 0;
+constexpr uint16_t kReasonBusy    = 2;
+constexpr int kMsgSystemBusy  = 3031;  // MSI_BANK_SYSTEM_BUSY
+constexpr int kMsgSystemError = 2454;  // MSI_BANK_SYSTEM_ERROR
 
 // OnMsg natif : rejouer le chemin du X plutôt que d'appeler nous-mêmes une
 // fonction du gestionnaire (aucune convention d'appel à deviner).
@@ -89,35 +116,49 @@ void CloseBank() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Position/taille de la native (pour poser la nôtre à côté). Renvoie false si
-// illisible.
-struct NativeRect { int x = 0, y = 0, w = 0, h = 0; };
-bool ReadNativeRect(uint8_t* wnd, NativeRect* out) {
-  __try {
-    out->x = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
-    out->y = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-    out->w = *reinterpret_cast<int*>(wnd + kOffWidth);
-    out->h = *reinterpret_cast<int*>(wnd + kOffHeight);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
+// (Plus de lecture du rect natif pour poser la nôtre « à côté » : la fenêtre 275
+// ne naît plus, il n'y a plus de rect à lire. La position de première ouverture
+// est un centrage écran, et ImGui la persiste dès le premier déplacement.)
 
-void SetNativeVisible(uint8_t* wnd, bool visible) {
+// Écrit une ligne dans le chat du jeu, par la fonction du client — celle-là même
+// qu'appelle le handler natif de 0x09A6 pour ses deux messages d'erreur, et que
+// Bourgeon détourne déjà pour filtrer des messages système (bourgeon.cc,
+// kChatAddFn). `case = 1` est la ligne de chat ordinaire, 0xFF sa couleur.
+//
+// ⚠ Le texte doit être en CP949 — c'est l'encodage du client, d'où msgstr::Cp949
+// et non msgstr::Utf8 (qui, lui, sert à ce qu'on affiche NOUS, dans ImGui).
+//
+// ⚠ À n'appeler QUE hors frame ImGui (ici : le fil réseau, exactement où le natif
+// l'appelait). Une commande native lancée au milieu d'une frame peut ouvrir une
+// modale et figer le client sans un mot.
+constexpr uintptr_t kChatAddLine = 0x00a4ad20;  // = UIWindowMgr::SendMsg
+void ChatLineCp949(const char* cp949) {
+  if (!cp949 || !*cp949) return;
+  using ChatAdd_t = void(__thiscall*)(void*, int, const char*, int, int);
   __try {
-    uiwnd::SetVisible(wnd, visible);
+    reinterpret_cast<ChatAdd_t>(kChatAddLine)(uiwnd::Mgr(), 1, cp949, 0xFF, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Masque `win` APRÈS avoir vérifié sa vtable. Le hook MakeWindow nous passe la
-// fenêtre par son seul id : on ne peut pas encore la retrouver par le gestionnaire
-// (elle n'y est pas enregistrée à cet instant), donc c'est la vtable qui sert de
-// contrôle de classe. Renvoie true si on l'a bien masquée.
-bool HideIfBankWindow(void* win) {
+// Une fenêtre interdisant l'ouverture de la banque est-elle ouverte ? Renvoie l'id
+// du message à afficher, ou 0. Miroir des gardes du `case 275` de MakeWindow.
+int OpenBlockedMsgId() {
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kBankVTable) return false;
-    uiwnd::SetVisible(win, false);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    for (const OpenGuard& g : kOpenGuards)
+      if (uiwnd::FindWindow(g.window_id) != nullptr) return g.msg_id;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return 0;
+}
+
+// Reprend l'écriture que faisait le handler natif de 0x09A6. `g_BankVault` n'est
+// écrite que par les trois ZC de banque ; en remplacer un sans réécrire la globale
+// laisserait sur un solde périmé le reste du client qui la lit — notamment le shop
+// de styling, qui propose d'aller à la banque quand la poche seule ne suffit pas
+// (0x007F0380, cf. §4 de la doc). Appelé depuis le fil réseau, comme le natif.
+void WriteBankVault(long long money) {
+  __try {
+    *reinterpret_cast<long long*>(kBankVault) = money;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 // Soldes. Lecture SEH isolée : OnTick/OnRenderUI manipulent des objets C++ et ne
@@ -239,6 +280,63 @@ const ro::GameTexture& BackgroundTexture() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+BankWindow::BankWindow() {
+  // 🔴 REMPLACEMENT du seul chemin d'ouverture de la banque. Le client n'ouvre
+  // jamais la fenêtre 275 de lui-même : c'est la réception de ZC_BANKING_CHECK qui
+  // appelle MakeWindow(275). Prendre la place de ce handler, c'est donc empêcher la
+  // native de naître — au lieu de la laisser naître pour la masquer aussitôt, ce
+  // qui lui laissait le CLAVIER et son bouton par défaut sur une fenêtre qui
+  // déplace des zeny.
+  //
+  // Le prédicat est relu à chaque paquet : interrupteur éteint, le handler natif
+  // reprend la main et la banque classique s'ouvre comme avant.
+  //
+  // 0x09A6 est à longueur FIXE (12 octets) : c'est le résolveur de longueur du
+  // client qui le fait savoir au reader-hook (RagConnection::NativeFixedPacketLen).
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpBankCheck,
+                                             [this] { return imgui_enabled_; });
+}
+
+void BankWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode != kOpBankCheck || !imgui_enabled_) return;
+  if (len < kCheckDataLen) return;
+  const long long money =
+      *reinterpret_cast<const long long*>(data + kCheckMoneyOff);
+  const uint16_t reason =
+      *reinterpret_cast<const uint16_t*>(data + kCheckReasonOff);
+
+  // L'écriture de la globale d'abord, et sans condition de raison : le natif la
+  // fait pareil, et un solde à jour ne dépend pas de ce qu'on décide d'afficher.
+  WriteBankVault(money);
+
+  if (reason != kReasonOk) {
+    // Même sortie que le natif : une ligne en chat, et rien ne s'ouvre.
+    ChatLineCp949(msgstr::Cp949(reason == kReasonBusy ? kMsgSystemBusy
+                                                      : kMsgSystemError));
+    return;
+  }
+
+  // ⚠ Ce paquet BASCULE (§11 de la doc) : le natif ferme la fenêtre 275 si elle est
+  // déjà là, sinon il la crée. On bascule donc notre session sur le même critère,
+  // ce qui garde Ctrl+B fonctionnel — le raccourci natif ne voyant plus de fenêtre,
+  // il envoie toujours 0x09AB, et c'est ici que « ouvrir » devient « fermer ».
+  if (open_) {
+    open_ = false;
+    return;
+  }
+
+  // Gardes d'ouverture, testées dans l'ORDRE du natif : lui ferme d'abord
+  // (SaveRectAndCloseWindow) et n'arrive au `case 275` de MakeWindow, où vivent ces
+  // gardes, que s'il n'y avait rien à fermer. Elles n'empêchent donc que
+  // l'OUVERTURE — refermer la banque pendant un refine reste possible, et c'est
+  // pour ça que le test vient après la bascule ci-dessus, pas avant.
+  if (const int blocked = OpenBlockedMsgId()) {
+    ChatLineCp949(msgstr::Cp949(blocked));
+    return;
+  }
+  open_ = true;
+}
+
 void BankWindow::SetStatus(const char* utf8, bool is_error) {
   std::snprintf(status_, sizeof(status_), "%s", utf8 ? utf8 : "");
   status_error_ = is_error;
@@ -251,38 +349,35 @@ void BankWindow::SetStatusFromMsgString(int msg_id, bool is_error) {
 }
 
 void BankWindow::OnTick() {
-  open_ = false;
-  uint8_t* wnd = BankWnd();
-  if (wnd) {
-    open_ = true;
-    if (!was_open_) {
-      // 1re ouverture : on se pose là où la native se serait ouverte (elle est
-      // masquée, mais son rect reste renseigné).
-      NativeRect r;
-      if (ReadNativeRect(wnd, &r)) {
-        spawn_x_ = r.x + r.w + 8;
-        spawn_y_ = r.y;
-      }
-      need_pos_ = true;
-      amount_ = 0;
-      status_[0] = '\0';
-      status_error_ = false;
-    }
-    // La native est masquée tant que le viewer la remplace. On ne la REMET visible
-    // qu'une seule fois, quand le groupe « Interface moderne » repasse à OFF alors
-    // que c'est nous qui l'avions baissée : forcer le flag à 1 à chaque tick se
-    // battrait avec le « tout masquer » natif (behavior 116).
-    const bool want_hidden = imgui_enabled_;
-    if (want_hidden) {
-      SetNativeVisible(wnd, false);
-      native_hidden_ = true;
-    } else if (native_hidden_) {
-      SetNativeVisible(wnd, true);
-      native_hidden_ = false;
-    }
-  } else {
-    native_hidden_ = false;  // fenêtre détruite : le prochain create repart neuf
+  // Interrupteur éteint : la banque native a repris la main (le prédicat de
+  // remplacement l'a rendue au handler d'origine), on ne suit plus rien.
+  if (!imgui_enabled_) {
+    if (open_) { open_ = false; was_open_ = false; }
+    return;
   }
+
+  // Sortie du monde (char-select, déconnexion) : la session est finie. Sans ça,
+  // `open_` — qui n'est plus adossé à une fenêtre native que le client détruisait
+  // pour nous — survivrait au changement de personnage, et la banque du suivant
+  // s'ouvrirait toute seule sur le solde du précédent. Le rendu, lui, est déjà
+  // muselé hors jeu (Bourgeon::RenderUI) : c'est bien l'ÉTAT qu'on nettoie ici.
+  if (!Bourgeon::Instance().IsGameActive()) {
+    if (open_) { open_ = false; was_open_ = false; }
+    return;
+  }
+
+  if (open_ && !was_open_) {  // front montant : la session vient de s'ouvrir
+    need_pos_ = true;
+    amount_ = 0;
+    status_[0] = '\0';
+    status_error_ = false;
+  }
+  // 🔴 On DÉTRUIT une native résiduelle au lieu de la masquer. Elle ne naît plus
+  // (son handler est remplacé) : il n'en reste que si le joueur a allumé
+  // l'interface moderne alors que la banque native était déjà à l'écran. La
+  // masquer serait le pire choix — invisible, elle garderait le clavier, et son
+  // bouton par défaut transfère des zeny.
+  CloseBank();  // no-op quand il n'y a aucune fenêtre native, le cas normal
   was_open_ = open_;
 
   const Balances balances = ReadBalances();
@@ -290,15 +385,16 @@ void BankWindow::OnTick() {
   zeny_  = balances.zeny;
 }
 
-void BankWindow::HideNativeAtCreation(void* win) {
-  if (!win || !imgui_enabled_) return;
-  // OnTick ne remettra la native visible qu'une fois, et seulement si c'est bien
-  // nous qui l'avions baissée : on le lui dit dès maintenant.
-  if (HideIfBankWindow(win)) native_hidden_ = true;
+void BankWindow::HideNativeAtCreation(void* /*win*/) {}
+
+void BankWindow::CloseSession() {
+  open_ = false;
+  was_open_ = false;
+  CloseBank();  // filet : native restée d'un basculement d'interrupteur à chaud
 }
 
 void BankWindow::ToggleFromUi() {
-  // Anti-double-clic : 0x09A6 BASCULE la fenêtre, donc deux demandes coup sur coup
+  // Anti-double-clic : 0x09A6 BASCULE la session, donc deux demandes coup sur coup
   // l'ouvriraient puis la refermeraient.
   const unsigned long now = GetTickCount();
   if (last_toggle_tick_ != 0 && now - last_toggle_tick_ < 400) return;
@@ -306,7 +402,7 @@ void BankWindow::ToggleFromUi() {
 
   // Déjà ouverte : on ferme côté client, sans paquet — exactement ce que fait le
   // raccourci natif quand g_pUIBankWnd est non nul.
-  if (BankWnd()) { CloseBank(); return; }
+  if (open_) { CloseSession(); return; }
 
   const uint32_t aid = Bourgeon::Instance().client().session().aid();
   if (aid == 0) return;
@@ -359,9 +455,13 @@ void BankWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
 
   if (need_pos_) {
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(spawn_x_),
-                                   static_cast<float>(spawn_y_)),
-                            ImGuiCond_FirstUseEver);
+    // Première utilisation seulement : centrée. On se posait avant à côté de la
+    // fenêtre native, qui ne naît plus — et un coin arbitraire vaut moins que le
+    // centre pour une fenêtre qu'on ouvre à la demande. `FirstUseEver` laisse
+    // ensuite ImGui persister la position dès que le joueur la déplace.
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_FirstUseEver,
+                            ImVec2(0.5f, 0.5f));
     need_pos_ = false;
   }
   // Taille NON redimensionnable : largeur imposée, hauteur auto-ajustée à chaque
@@ -385,7 +485,7 @@ void BankWindow::OnRenderUI() {
       "Banque###bourgeon_bank", &show_panel_,
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
   // X du viewer -> ferme la banque native (les deux fenêtres partent ensemble).
-  if (!show_panel_) { CloseBank(); show_panel_ = true; }
+  if (!show_panel_) { CloseSession(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
 
   // Fond blitté 1:1, ancré en HAUT du corps (juste sous la barre de titre RO).

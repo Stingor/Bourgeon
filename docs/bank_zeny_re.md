@@ -335,9 +335,26 @@ elle est reconfigurable dans la fenêtre de réglage des raccourcis.
 ## 12. Conversion ImGui — `BankWindow`
 
 Plugin [src/features/windows/bank_window.cc](../src/features/windows/bank_window.cc). La fenêtre ImGui
-**remplace** la native : celle-ci est masquée (`+0x28 = 0`, hors rendu ET hors
-hit-test) tant que le viewer est actif. Elle continue de recevoir les paquets et de
-tenir `g_BankVault` à jour — elle ne se voit simplement plus.
+**remplace** la native, qui depuis le 2026-08-01 **ne naît plus** : le plugin a pris
+la place du handler de `ZC_BANKING_CHECK 0x09A6` (`RegisterReplaceOpcode`, révocable
+par l'interrupteur), et ce paquet était le seul chemin d'ouverture de la fenêtre 275.
+Elle était auparavant créée puis masquée — or une native masquée garde le **clavier**,
+et son bouton par défaut transfère des zeny (même piège que le refine).
+
+Ce que le plugin reprend donc à son compte, parce que le handler remplacé le faisait :
+
+| Effet du handler natif | Repris par |
+|---|---|
+| `g_BankVault = Money` | `WriteBankVault()` — §4 : d'autres chemins lisent cette globale, dont le shop de styling (`0x007F0380`) |
+| bascule ouvrir/fermer | le drapeau de session `open_`, basculé sur le même critère |
+| `Reason != 0` → ligne en chat | `ChatLineCp949()`, qui appelle la même fonction client (`0x00A4AD20`, `case 1`) |
+| gardes du `case 275` de MakeWindow (§7) | `kOpenGuards`, message en chat compris |
+
+Les deux ACK `0x09A8`/`0x09AA` restent au **natif** : ils tiennent les mêmes globales
+à jour et affichent leurs erreurs, et leur rafraîchissement d'UI est un no-op sans
+fenêtre native. Le raccourci **Ctrl+B** continue de fonctionner : `g_pUIBankWnd`
+restant nul, le behavior 146 envoie toujours `0x09AB`, et c'est la réception qui
+bascule — un aller-retour serveur de plus pour fermer, invisible à l'usage.
 
 Membre du groupe **« Interface moderne »** (`SetModernInterface`) : pas de case
 isolée. La banque échange des zeny avec la poche, dont le montant est affiché par le
@@ -355,21 +372,20 @@ Section « Banque » du panneau Moonlight (`MoonlightUi::kIfaceBank`).
 Choix d'implémentation qui découlent directement de la RE :
 
 - **Pas de bouton « ouvrir » ni « rafraîchir ».** Envoyer `0x09AB` alors que la
-  banque est ouverte la refermerait (§1). La fenêtre se contente donc de suivre
-  la présence de la native — masquée, mais bien vivante — via `FindWindow(275)` +
-  contrôle de vtable.
-- **Le X ferme la native**, via `OnMsg(6, 201)` — le chemin exact du bouton natif,
-  pas un appel direct au gestionnaire.
-- **La native est masquée DÈS SA CRÉATION**, par le hook `MakeWindow` de
-  `WindowPosTweaks` (`BankWindow::HideNativeAtCreation`, id 275). Elle est créée par
-  le handler de `ZC_BANKING_CHECK`, donc **entre deux `OnTick`** : masquer au tick
-  suivant laissait passer une frame native à l'écran — le flicker.
-  On la masque plutôt que d'empêcher sa création, parce qu'elle reste :
-  le signal « la banque est ouverte » (`FindWindow(275)`), la porteuse des gardes
-  d'ouverture du client (§7, qui vivent dans le `case 275` de `MakeWindow`, avant la
-  construction), et la source de `g_pUIBankWnd` que le raccourci natif lit pour
-  choisir entre fermer et redemander. Le flag `+0x28` la sort du rendu **et** du
-  hit-test : elle est totalement inerte.
+  banque est ouverte la refermerait (§1). L'ouverture vient donc toujours du
+  serveur, et le drapeau de session suit le paquet.
+- **Le X ferme la session**, sans paquet : le serveur ne tient aucun état de banque
+  ouverte (ce client n'envoie jamais `CZ_REQ_CLOSE_BANKING 0x09B8`, §2), exactement
+  comme le X natif qui se contentait d'un `SaveRectAndCloseWindow`.
+- **`HideNativeAtCreation` ne fait plus rien** (le hook `MakeWindow` de
+  `WindowPosTweaks` l'appelle toujours, forme commune à ses douze plugins). La
+  fenêtre 275 ne naît plus ; s'il en traîne une — interrupteur allumé alors que la
+  banque native était déjà à l'écran — c'est `OnTick` qui la **détruit**, au lieu de
+  la masquer : invisible, elle garderait le clavier.
+- **La fin de session est explicite** : `open_` n'étant plus adossé à une fenêtre
+  que le client détruisait pour nous, `OnTick` le remet à zéro dès que le monde
+  n'est plus actif (`IsGameActive`), sans quoi il survivrait à un changement de
+  personnage.
 - **Les montants sont formatés par les fonctions du client**
   (`Cstr_FormatInt64Grouped` / `…Int32Grouped`) : mêmes séparateurs que le natif.
 - **Les refus reprennent les msgstrings natifs** (`MSI_BANK_*`, §7) au lieu d'un

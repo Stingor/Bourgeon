@@ -7,9 +7,27 @@
 // ── BankWindow ───────────────────────────────────────────────────────────────
 //
 // Banque de zeny (Ctrl+B) en ImGui, skin RO, en REMPLACEMENT de la fenêtre native :
-// celle-ci est masquée (hors rendu ET hors hit-test) tant que le viewer est actif.
-// Elle continue de recevoir les paquets, donc rien n'est perdu — elle ne se voit
-// simplement plus.
+// celle-ci ne NAÎT PLUS. On a pris la place du handler de ZC_BANKING_CHECK 0x09A6
+// (RegisterReplaceOpcode, révocable par l'interrupteur), qui était le seul chemin
+// d'ouverture de la fenêtre 275 — le client ne l'ouvre jamais de lui-même.
+//
+// Auparavant elle naissait puis on la masquait. Une native masquée garde le
+// CLAVIER : Entrée y déclenchait le bouton par défaut, c'est-à-dire un transfert
+// de zeny décidé par personne. Le même piège que le refine (docs/weapon_refine_re.md
+// §10), sur une fenêtre qui manipule de l'argent.
+//
+// 🔴 Ce que le handler remplacé faisait et que NOUS faisons donc maintenant :
+// écrire `g_BankVault`. Cette globale n'est écrite que par 0x09A6/0x09A8/0x09AA, et
+// elle est lue AILLEURS dans le client (le shop de styling propose d'aller à la
+// banque quand `zeny < prix <= zeny + banque`, 0x007F0380). Ne plus l'écrire aurait
+// laissé ce chemin sur un solde périmé. Les deux ACK 0x09A8/0x09AA, eux, restent au
+// natif : ils tiennent les mêmes globales à jour et affichent leurs erreurs en chat,
+// gratuitement, et leur rafraîchissement d'UI est un no-op sans fenêtre native.
+//
+// Les gardes d'OUVERTURE du `case 275` de MakeWindow (refine, grade-enchant,
+// enchant, barter étendu, runes) sont rejouées ici, message en chat compris — ce
+// n'est plus MakeWindow qui les porte. ⚠ Leur liste d'ids DIFFÈRE de celle qui
+// bloque les transferts (Bank_IsBlockedByOpenWindow), les deux coexistent.
 //
 // Membre du groupe « Interface moderne » (SetModernInterface, moonlight_ui.h) :
 // PLUS de case isolée dans le panneau. La banque échange des zeny avec la poche,
@@ -37,41 +55,47 @@
 
 class BankWindow : public Plugin {
  public:
+  BankWindow();
+
   const char* name() const override { return "BankWindow"; }
 
-  void OnTick() override;      // suit la fenêtre native + relit les soldes
+  void OnTick() override;      // relit les soldes + purge une native résiduelle
   void OnRenderUI() override;  // dessine la fenêtre ImGui si la banque est ouverte
+  // ZC_BANKING_CHECK 0x09A6 : c'est LUI qui ouvre (et referme) la banque. Reprend
+  // aussi l'écriture de g_BankVault que faisait le handler natif remplacé.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Ouvre — ou referme — la banque, exactement comme Ctrl+B. C'est le chemin du
-  // behavior 146 natif, reproduit à l'identique : si la fenêtre 275 est ouverte on
-  // la ferme côté client, sinon on DEMANDE au serveur de l'ouvrir
-  // (CZ_REQ_BANKING_CHECK 0x09AB) — le client n'ouvre jamais la banque lui-même,
-  // et un MakeWindow(275) direct afficherait un solde périmé.
+  // behavior 146 natif : si la banque est ouverte on la ferme côté client, sinon on
+  // DEMANDE au serveur de l'ouvrir (CZ_REQ_BANKING_CHECK 0x09AB) — le client n'ouvre
+  // jamais la banque lui-même, et l'ouvrir sans aller-retour afficherait un solde
+  // périmé.
   // Public : appelé par le bouton « sac de zeny » du footer de l'InventoryViewer.
+  //
+  // Le raccourci NATIF continue de marcher : il lit `g_pUIBankWnd`, qui reste nul
+  // puisque la fenêtre 275 ne naît plus, donc il envoie toujours 0x09AB — et c'est
+  // notre handler qui fait la bascule à la réception. Un aller-retour serveur de
+  // plus pour fermer, invisible à l'usage.
   void ToggleFromUi();
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
-  // 275 : masque la native (win+0x28 = 0) AVANT son premier rendu.
-  //
-  // Sans ça, la fenêtre est créée par le handler de ZC_BANKING_CHECK, c'est-à-dire
-  // ENTRE deux OnTick : le masquage du tick suivant arrive trop tard et une frame
-  // native passe à l'écran — le flicker. Ici on est encore à l'intérieur de
-  // MakeWindow, avant que quoi que ce soit ne soit dessiné.
-  //
-  // On MASQUE au lieu d'empêcher la création : la fenêtre native reste notre
-  // signal « la banque est ouverte » (FindWindow(275)), elle porte les gardes
-  // d'ouverture du client (refine, enchant, runes…) qui vivent dans le case 275
-  // de MakeWindow, et elle alimente g_pUIBankWnd, que le raccourci natif Ctrl+B
-  // lit pour choisir entre fermer et redemander au serveur. No-op si le viewer est
-  // désactivé (banque native classique).
+  // 275. Ne fait plus rien, et c'est voulu — mêmes raisons que NpcDialogWindow :
+  // la fenêtre ne naît plus, la masquer serait nuisible (une native invisible garde
+  // le clavier), et la détruire ici est exclu puisqu'on est à l'intérieur de
+  // MakeWindow, dont l'appelant va déréférencer le retour. C'est OnTick qui purge.
   void HideNativeAtCreation(void* win);
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, chargés/sauvés par MoonlightUi)
-  // « bank_imgui » : fenêtre ImGui + native masquée. Basculé en GROUPE par
-  // SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.
+  // « bank_imgui » : fenêtre ImGui, handler de 0x09A6 remplacé. Basculé en GROUPE
+  // par SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.
   bool imgui_enabled_ = false;
 
  private:
+  // Ferme la SESSION banque côté client : notre fenêtre, plus une native résiduelle
+  // s'il en traîne une. Aucun paquet — le serveur ne tient aucun état de banque
+  // ouverte (ce client n'envoie jamais CZ_REQ_CLOSE_BANKING 0x09B8), exactement
+  // comme le X natif qui se contente d'un SaveRectAndCloseWindow.
+  void CloseSession();
   // Envoie 0x09A7 / 0x09A9 après avoir revalidé côté client (mêmes règles que le
   // natif). Pose le message d'état et vide le champ en cas de succès d'envoi.
   void SendTransfer(bool deposit);
@@ -85,17 +109,14 @@ class BankWindow : public Plugin {
   // sans faire glisser le reste hors du fond peint. Les deux blocs sont désormais
   // permanents, et la fenêtre n'a plus de section de réglages du tout.)
 
-  // C'est NOUS qui avons baissé le flag de visibilité de la native ? Sert à ne le
-  // remettre à 1 qu'une seule fois, quand imgui_enabled_ repasse à false — forcer 1
-  // à chaque tick se battrait avec le « tout masquer » natif (behavior 116).
-  bool native_hidden_ = false;
-
-  bool open_     = false;  // la banque native est ouverte ce frame ?
-  bool was_open_ = false;  // front montant (placement à la 1re ouverture)
-  bool need_pos_ = false;  // repositionner à côté de la native
+  // Session banque ouverte. C'est le PAQUET 0x09A6 qui la bascule (fil réseau), et
+  // notre fermeture qui l'éteint — plus la présence d'une fenêtre native, qui
+  // n'existe plus. Même choix que NpcDialogWindow : un état à nous, dont la source
+  // est le serveur, plutôt qu'une observation indirecte du client.
+  bool open_     = false;
+  bool was_open_ = false;  // front montant (réinitialisation à la 1re ouverture)
+  bool need_pos_ = false;  // (re)placer la fenêtre à l'ouverture
   bool show_panel_ = true; // transitoire : détection du clic sur le X
-
-  int  spawn_x_ = 0, spawn_y_ = 0;
 
   // Soldes lus dans les globales (rafraîchis chaque tick par les paquets ZC).
   long long vault_ = 0;  // g_BankVault  (s64)
