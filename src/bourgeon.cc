@@ -37,6 +37,7 @@
 #include "features/patches/skill_tree_tweaks.h"
 #include "features/gameplay/fps_view.h"
 #include "features/gameplay/keyboard_move.h"
+#include "features/gameplay/quick_cast.h"
 #include "features/gameplay/player_jump.h"
 #include "features/minigames/doom.h"
 #include "features/minigames/roggle.h"
@@ -75,6 +76,7 @@ ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
 FpsView* Bourgeon::fps_view() { return fps_view_; }
 PlayerJump* Bourgeon::player_jump() { return player_jump_; }
 KeyboardMove* Bourgeon::keyboard_move() { return keyboard_move_; }
+QuickCast* Bourgeon::quick_cast() { return quick_cast_; }
 Doom* Bourgeon::doom() { return doom_; }
 Roggle* Bourgeon::roggle() { return roggle_; }
 Rojeweled* Bourgeon::rojeweled() { return rojeweled_; }
@@ -254,6 +256,10 @@ void Bourgeon::OnProcessInput() {
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
   if (auto* km = keyboard_move()) km->Update();
+  // QuickCast : MÊME raison. Le client ignore l'auto-répétition clavier (le
+  // dispatch hotkey ne tourne que sur un appui frais), donc la répétition d'un
+  // sort touche maintenue est NOTRE boucle — elle doit survivre à F11.
+  if (auto* qc = quick_cast()) qc->Update();
   // Description d'item : les viewers ARMENT au clic (itemcell::DeferDesc*), on
   // OUVRE ici — hors frame ImGui ET bouton relâché. Ouverte au clic, un appui
   // PROLONGÉ faisait passer la description DERRIÈRE la fenêtre cliquée (course
@@ -273,6 +279,13 @@ void Bourgeon::NotifySkillCast(int skill_id, int skill_lv) {
   // Observation pure, sur un chemin TRÈS chaud et ré-entrant : on se contente de
   // relayer, sans allocation ni travail.
   if (auto* mk = make_item_window()) mk->NotifySkillCast(skill_id, skill_lv);
+}
+
+void Bourgeon::NotifySkillTargeting(void* cmode) {
+  // Simple relais depuis le hook de CMode::SendMsg (cmd 0x48). Chemin chaud et
+  // ré-entrant : QuickCast lit l'état de ciblage, émet le lancement par les
+  // messages d'acteur du clic natif, puis rappelle SendMsg(0x47) pour désarmer.
+  if (auto* qc = quick_cast()) qc->OnEnterTargeting(cmode);
 }
 
 void Bourgeon::NotifyItemUse(unsigned item_index) {
@@ -652,6 +665,11 @@ void Bourgeon::LoadPlugins() {
     auto keyboard_move = std::make_unique<KeyboardMove>();
     keyboard_move_ = keyboard_move.get();
     plugins_.emplace_back(std::move(keyboard_move));
+  }
+  {
+    auto quick_cast = std::make_unique<QuickCast>();
+    quick_cast_ = quick_cast.get();
+    plugins_.emplace_back(std::move(quick_cast));
   }
   {
     auto doom = std::make_unique<Doom>();

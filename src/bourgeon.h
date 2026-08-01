@@ -38,6 +38,7 @@ class ItemDescWindow;
 class FpsView;
 class PlayerJump;
 class KeyboardMove;
+class QuickCast;
 class Doom;
 class Roggle;
 class Rojeweled;
@@ -86,6 +87,7 @@ class Bourgeon {
   FpsView* fps_view();
   PlayerJump* player_jump();
   KeyboardMove* keyboard_move();
+  QuickCast* quick_cast();
   Doom* doom();
   Roggle* roggle();
   Rojeweled* rojeweled();
@@ -107,6 +109,10 @@ class Bourgeon {
   // d'être consommé par le serveur. Sert aux listes de fabrication ouvertes par
   // un script d'objet (Mini Furnace, marteaux).
   void NotifyItemUse(unsigned item_index);
+  // Relayé depuis le hook de CMode::SendMsg APRÈS chaque commande 0x48 « entrer
+  // en mode ciblage » (curseur de visée). `cmode` = l'objet receveur (CGameMode
+  // en jeu), porteur de l'état de ciblage à +0x408. Consommé par QuickCast.
+  void NotifySkillTargeting(void* cmode);
   void AddLogLine(std::string log_line);
   // Fenêtre de logs en jeu — RÉSERVÉE AU STAFF (IsStaff(), group level >= 80).
   // Elle expose tout ce que le client journalise ; ce n'est pas une information
@@ -209,6 +215,7 @@ class Bourgeon {
   FpsView* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
   PlayerJump* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
   KeyboardMove* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
+  QuickCast* quick_cast_ = nullptr;     // non-owning, lifetime tied to plugins_
   Doom* doom_ = nullptr;                // non-owning, lifetime tied to plugins_
   Roggle* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
   Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_

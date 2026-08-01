@@ -38,6 +38,11 @@ struct SendMsgDepthGuard {
 // (cf. la mémoire reference_cmode_sendmsg_use_skill)
 static constexpr int kSendMsgUseSkillTargeted = 0x45;
 static constexpr int kSendMsgUseSkillByInf    = 0x71;
+// Entrée en MODE CIBLAGE (curseur de visée) : le case 0x48 pose l'état dans le
+// CGameMode receveur (+0x408 mode, +0x40C id, +0x414 niveau) et attend le clic.
+// ⚠ Dispatché DEPUIS le case 0x71 (routage par INF), donc à profondeur >= 2 —
+// ne PAS le gater sur g_send_msg_depth == 1. Le pendant 0x47 annule le ciblage.
+static constexpr int kSendMsgEnterSkillTargeting = 0x48;
 
 // 🔴 Les deux commandes ne passent PAS la même chose en p1, et les confondre
 // donnait un identifiant absurde (⏱ vu en jeu : « skill_id=1760536 » pour
@@ -77,6 +82,18 @@ static int __fastcall Hooked_ProcessInputMsg(void* ecx, void* edx, int msg,
       Bourgeon::Instance().NotifySkillCast(p1, p3);
     else if (msg == kSendMsgUseSkillByInf)
       Bourgeon::Instance().NotifySkillCast(ReadSkillIdFromInfo(p1), p2);
+  }
+  // QuickCast : réagir APRÈS que le natif a armé le mode ciblage (0x48), l'état
+  // (+0x408…) étant posé par le case lui-même. Quelle que soit la profondeur :
+  // la barre de raccourcis y arrive via 0x71 -> 0x48 (depth 2).
+  // ⚠ Le plugin RE-RENTRE ici : après avoir émis le lancement il appelle
+  // SendMsg(0x47) pour quitter le ciblage, comme le fait le pipeline souris
+  // natif. C'est sans danger — 0x47 ne redéclenche pas de 0x48, donc pas de
+  // récursion — mais le compteur de profondeur doit rester en place.
+  if (msg == kSendMsgEnterSkillTargeting) {
+    const int ret = g_orig_process_input_msg(ecx, edx, msg, p1, p2, p3, p4);
+    Bourgeon::Instance().NotifySkillTargeting(ecx);
+    return ret;
   }
   return g_orig_process_input_msg(ecx, edx, msg, p1, p2, p3, p4);
 }

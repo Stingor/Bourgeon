@@ -119,6 +119,8 @@ set(BOURGEON_FILES
 	"features/gameplay/fps_view.h"
 	"features/gameplay/keyboard_move.cc"
 	"features/gameplay/keyboard_move.h"
+	"features/gameplay/quick_cast.cc"
+	"features/gameplay/quick_cast.h"
 	"features/gameplay/player_jump.cc"
 	"features/gameplay/player_jump.h"
 

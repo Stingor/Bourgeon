@@ -1,0 +1,436 @@
+#include "features/gameplay/quick_cast.h"
+
+#include <Windows.h>
+
+#include "bourgeon.h"
+#include "features/moonlight_ui/moonlight_ui.h"
+#include "features/staff_gate.h"
+#include "imgui.h"
+#include "ragnarok/globals.h"
+#include "ragnarok/skill_cooldowns.h"
+#include "ragnarok/uiwnd.h"
+#include "ui/ro_imgui.h"    // ro::RoCheckbox
+#include "ui/ro_widgets.h"  // mui::HelpMarker, mui::WheelSliderInt
+
+// ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
+namespace {
+// Raycast souris -> cellule sol la plus proche. bool __thiscall(gameMode,
+// int* outX, int* outY) — la fonction même qu'emprunte le clic-sol natif.
+constexpr uintptr_t kPickGroundCellAddr = 0x00c69a40;
+
+// Quadtree de picking des acteurs, reconstruit à chaque frame par le rendu des
+// sprites. QueryPoint : float* __thiscall(tree, float x, float y) -> quad
+// (10 floats) ou nullptr. C'est la source du survol natif.
+constexpr uintptr_t kQuadTreeQueryPointAddr = 0x00a797b0;
+constexpr uintptr_t kNameplateQuadTreeAddr  = 0x012135f0;
+constexpr int kQuadAid = 6;  // dword : AID de l'acteur
+constexpr int kQuadJob = 7;  // dword : job/classe (discrimine joueur/monstre)
+constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 = acteur)
+
+// Fenêtre native sous un point écran. void* __thiscall(g_UIWindowMgr, x, y) :
+// hit-test PUR (itère la liste de fenêtres, vtbl+0xC8), sans effet de bord.
+constexpr uintptr_t kWndAtPointAddr = 0x00a336d0;
+
+// Position écran de la souris, tenue par le WndProc du jeu.
+constexpr uintptr_t kMouseScreenXAddr = 0x011e40d4;
+constexpr uintptr_t kMouseScreenYAddr = 0x011e40d8;
+
+// AID de notre propre compte (= GID de notre acteur).
+constexpr uintptr_t kOwnAidAddr = 0x015fb9a4;
+
+// vtable de CGameMode. Sert de GARDE : CMode::SendMsg est aussi le dispatch des
+// autres modes (login, char-select), et +0x408 n'y voudrait rien dire. Relevée
+// en live (`[[*(0x0121333c)] + 0x18] == 0x00c86740` = CMode::SendMsg).
+constexpr uintptr_t kGameModeVtable = 0x010904b8;
+
+// État de ciblage dans CGameMode, posé par le case 0x48.
+constexpr int kOffTargetingMode  = 0x408;  // 1 sol, 2 cible, 4 soutien
+constexpr int kOffTargetingSkill = 0x40c;
+constexpr int kOffTargetingLevel = 0x414;
+
+constexpr int kOffScene    = 0xcc;  // CGameMode -> scène
+constexpr int kOffOwnActor = 0x2c;  // scène -> acteur joueur
+
+// Acteur -> état de mouvement/action. C'est la SEULE donnée « suis-je prêt ? »
+// que le client possède vraiment, et le natif s'en sert exactement ainsi : dans
+// Actor_ProcessPendingAction_Tick (0x00D43400), les cas 3 (skill sur cible) et 4
+// (skill au sol) n'exécutent la requête en attente que si
+// `état < 2 || état == 4 || état >= 16` — sinon la file patiente. On réplique ce
+// prédicat pour ne pas ré-émettre pendant une incantation ou une animation.
+constexpr int kOffActorState = 0x70;
+inline bool ActorStateAllowsCast(int state) {
+  return static_cast<unsigned>(state) < 2u || state == 4 || state >= 16;
+}
+
+// Messages d'acteur (vtable+8 = Actor_OnMsg), tels que les émet le clic natif.
+constexpr int kActorMsgCastOnGround = 0x41;  // (skillId, x, y)
+constexpr int kActorMsgCastOnTarget = 0x29;  // (GID, skillId)
+constexpr int kActorMsgSkillLevel   = 0x5a;  // (niveau)
+
+// CMode::SendMsg : sortie du mode ciblage (le pendant du 0x48).
+constexpr int kSendMsgLeaveTargeting = 0x47;
+constexpr int kVtblSendMsgIndex = 6;  // vtable+0x18
+
+constexpr unsigned kJobWarpPortal = 45;  // catégorie 0 mais non ciblable
+
+// Prédicat monstre réimplémenté d'après Job_IsMonsterId (0x00c44470, fonction
+// feuille) — même copie que features/overlays/entity_names.cc.
+inline bool IsMonsterJob(unsigned id) {
+  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
+         (id - 0x4e35u <= 0x2ecau);
+}
+
+// ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
+// Le natif empile TOUJOURS 13 dwords : un mot de tête à 0, le message en 64 bits,
+// puis CINQ paramètres 64 bits (les inutilisés restent à 0). Vérifié sur les
+// quatre messages employés ici et sur le 0x11 de KeyboardMove.
+// La convention de nettoyage exacte est inconnue (Ghidra ne récupère pas les 13
+// paramètres) : on restaure ESP soi-même, ce qui reste correct que la fonction
+// nettoie ou non. Pas de SEH ici — un __try ne cohabite pas avec un bloc __asm,
+// et l'appelant encadre déjà.
+__declspec(noinline) void ActorSendMsg(void* actor, int msg,
+                                       int p1lo, int p1hi,
+                                       int p2lo, int p2hi,
+                                       int p3lo, int p3hi) {
+  void** vtbl = *reinterpret_cast<void***>(actor);
+  void* fn = vtbl[2];  // vtable+8 = Actor_OnMsg
+  __asm {
+    push esi
+    mov  esi, esp
+    push 0            // params 4 et 5, inutilisés
+    push 0
+    push 0
+    push 0
+    mov  eax, p3hi
+    push eax
+    mov  eax, p3lo
+    push eax
+    mov  eax, p2hi
+    push eax
+    mov  eax, p2lo
+    push eax
+    mov  eax, p1hi
+    push eax
+    mov  eax, p1lo
+    push eax
+    push 0            // message, dword de poids fort
+    mov  eax, msg
+    push eax          // message, dword de poids faible
+    push 0            // mot de tête (toujours 0 chez le natif)
+    mov  ecx, actor
+    mov  eax, fn
+    call eax
+    mov  esp, esi
+    pop  esi
+  }
+}
+
+// Mode courant, pour la boucle de répétition (qui, elle, ne reçoit pas le `cmode`
+// du hook). Même chaîne que KeyboardMove/PlayerJump.
+void* GetGameMode() {
+  void* gm = nullptr;
+  __try {
+    gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    gm = nullptr;
+  }
+  return gm;
+}
+
+// Acteur joueur, ou nullptr. Valide d'abord que `cmode` est bien un CGameMode :
+// SendMsg sert aussi aux modes login/char-select, où +0xCC n'a aucun sens.
+void* GetOwnActor(void* cmode) {
+  void* actor = nullptr;
+  __try {
+    if (*reinterpret_cast<uintptr_t*>(cmode) != kGameModeVtable) return nullptr;
+    char* scene = *reinterpret_cast<char**>(reinterpret_cast<char*>(cmode) +
+                                            kOffScene);
+    if (scene) actor = *reinterpret_cast<void**>(scene + kOffOwnActor);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    actor = nullptr;
+  }
+  return actor;
+}
+
+// L'utilisateur vise-t-il le monde, ou une fenêtre native ? (Pas d'effet de bord :
+// simple hit-test.) Viser une fenêtre = il ne désigne pas le sol derrière.
+bool CursorOverNativeWindow() {
+  __try {
+    using WndAtPoint_t = void*(__thiscall*)(void*, int, int);
+    return reinterpret_cast<WndAtPoint_t>(kWndAtPointAddr)(
+               reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr),
+               *reinterpret_cast<int*>(kMouseScreenXAddr),
+               *reinterpret_cast<int*>(kMouseScreenYAddr)) != nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return true;  // dans le doute, on laisse le ciblage natif
+  }
+}
+
+// Résout la cible sous le curseur pour les modes 2 (offensif) et 4 (soutien).
+// Renvoie 0 si rien de compatible : le ciblage natif reste alors armé, ce qui est
+// le repli voulu (surtout ne rien lancer « à vide »).
+unsigned PickTargetGid(int mode) {
+  __try {
+    using QueryPoint_t = float*(__thiscall*)(void*, float, float);
+    const float* quad = reinterpret_cast<QueryPoint_t>(kQuadTreeQueryPointAddr)(
+        reinterpret_cast<void*>(kNameplateQuadTreeAddr),
+        static_cast<float>(*reinterpret_cast<int*>(kMouseScreenXAddr)),
+        static_cast<float>(*reinterpret_cast<int*>(kMouseScreenYAddr)));
+    if (!quad) return 0;
+    const int* q = reinterpret_cast<const int*>(quad);
+    if (q[kQuadCat] != 0) return 0;  // 1 NPC, 2 unité de skill, 3/4 spéciaux
+    const unsigned aid = static_cast<unsigned>(q[kQuadAid]);
+    const unsigned job = static_cast<unsigned>(q[kQuadJob]);
+    if (aid == 0 || job == kJobWarpPortal) return 0;
+    if (mode == 2) {
+      // Offensif : monstre uniquement, et jamais soi-même. C'est ICI que vit
+      // désormais la règle — le chemin natif qui la portait
+      // (CursorMgr_UpdateHover) n'est plus emprunté.
+      if (aid == *reinterpret_cast<unsigned*>(kOwnAidAddr)) return 0;
+      if (!IsMonsterJob(job)) return 0;  // joueur : PVP/GVG au clic manuel
+    }
+    return aid;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
+// Le cast est parti : on quitte le mode ciblage comme le fait le pipeline souris
+// natif après un lancement, sinon le curseur de visée resterait armé et le
+// prochain clic relancerait la compétence.
+void LeaveTargeting(void* cmode) {
+  __try {
+    using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
+    void** vtbl = *reinterpret_cast<void***>(cmode);
+    reinterpret_cast<SendMsg_t>(vtbl[kVtblSendMsgIndex])(
+        cmode, kSendMsgLeaveTargeting, 0, 0, 0, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// État de mouvement/action de l'acteur. Illisible -> on renvoie 0 (« au repos »),
+// donc laisser passer : dans le doute, ne pas ajouter de blocage.
+int ReadActorState(void* actor) {
+  __try {
+    return *reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
+                                   kOffActorState);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
+// Lit l'état de ciblage posé par le 0x48. false si rien d'exploitable.
+// POD uniquement -> le __try peut englober tout le natif (C2712 sinon).
+bool ReadTargetingState(void* cmode, int* mode, int* skill, int* level) {
+  __try {
+    char* m = reinterpret_cast<char*>(cmode);
+    *mode  = *reinterpret_cast<int*>(m + kOffTargetingMode);
+    *skill = *reinterpret_cast<int*>(m + kOffTargetingSkill);
+    *level = *reinterpret_cast<int*>(m + kOffTargetingLevel);
+    return *mode != 0 && *skill != 0;  // 0x48 natif parti en garde
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+// Corps réel : résout la visée et émet les messages d'acteur. Renvoie true si une
+// compétence est effectivement partie. Prend mode/id/niveau en paramètres plutôt
+// que de les relire dans `cmode` — la répétition les rejoue alors que le ciblage
+// natif a justement été désarmé par le premier lancement.
+bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
+              bool ground_on, bool target_on) {
+  __try {
+    // Compétence encore en cooldown : le serveur refuserait, inutile d'émettre.
+    // C'est la VRAIE donnée, préférable à un délai deviné — mais elle ne couvre
+    // que les compétences qui ont un cooldown (ZC_SKILL_POSTDELAY 0x043D). La
+    // plupart des sorts n'en ont pas : ils sont bornés par l'after-cast delay,
+    // que le serveur ne communique jamais au client. D'où la période de cadence
+    // en complément, cf. QuickCast::Update.
+    // L'identifiant convient : `+0x40C` est celui qui finit dans CZ_USE_SKILL
+    // (via la file d'acteur `+0x524`), donc l'identifiant SERVEUR, le même que
+    // celui porté par 0x043D.
+    if (ro::SkillCooldownRemainingMs(static_cast<uint16_t>(skill)) > 0)
+      return false;
+
+    if (mode == 1) {  // sol
+      if (!ground_on) return false;
+      int x = -1, y = -1;
+      using PickGround_t = uint8_t(__thiscall*)(void*, int*, int*);
+      if ((reinterpret_cast<PickGround_t>(kPickGroundCellAddr)(cmode, &x, &y) &
+           0xff) == 0)
+        return false;  // rien de visé (ciel, hors carte) -> ciblage laissé armé
+      ActorSendMsg(actor, kActorMsgCastOnGround, skill, skill >> 31,
+                   x, x >> 31, y, y >> 31);
+      ActorSendMsg(actor, kActorMsgSkillLevel, level, level >> 31, 0, 0, 0, 0);
+      return true;
+    }
+
+    if (mode == 2 || mode == 4) {  // cible offensive / soutien
+      if (!target_on) return false;
+      const unsigned gid = PickTargetGid(mode);
+      if (gid == 0) return false;
+      // ⚠ Le GID part en 64 bits avec un mot haut à ZÉRO, pas une extension de
+      // signe : c'est ce que fait le natif, et un AID au bit 31 armé deviendrait
+      // sinon négatif.
+      ActorSendMsg(actor, kActorMsgCastOnTarget, static_cast<int>(gid), 0,
+                   skill, skill >> 31, 0, 0);
+      ActorSendMsg(actor, kActorMsgSkillLevel, level, level >> 31, 0, 0, 0, 0);
+      return true;
+    }
+
+    return false;  // modes 3/5 : ciblage natif inchangé
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+}  // namespace
+
+// Conditions communes au premier lancement et à chaque répétition.
+bool QuickCast::CanCastNow() const {
+  if (!ground_enabled_ && !target_enabled_) return false;
+  if (!IsStaff()) return false;
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
+  if (!Bourgeon::Instance().IsGameActive() ||
+      Bourgeon::Instance().IsMapLoading())
+    return false;
+  // Curseur au-dessus de notre interface ou d'une fenêtre native : l'utilisateur
+  // ne désigne pas le monde derrière, on laisse le ciblage classique.
+  if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)
+    return false;
+  if (CursorOverNativeWindow()) return false;
+  return true;
+}
+
+void QuickCast::OnKeyDown(unsigned long vkey, int new_key, int accurate_key) {
+  // Seul un appui FRAIS peut mener à un 0x48 (le natif ignore l'auto-répétition,
+  // cf. l'en-tête). On retient la touche pour l'associer au lancement qui suit
+  // immédiatement, dans la même passe de message.
+  if (accurate_key) pending_vk_ = vkey;
+}
+
+void QuickCast::OnEnterTargeting(void* cmode) {
+  // Un 0x48 consomme la touche en attente, qu'il aboutisse ou non : sans cela,
+  // un déclenchement ultérieur À LA SOURIS hériterait d'une vieille touche et se
+  // répéterait tant qu'elle resterait enfoncée.
+  const unsigned long vk = pending_vk_;
+  pending_vk_ = 0;
+  repeat_vk_ = 0;  // un nouvel armement annule la répétition précédente
+
+  if (!CanCastNow()) return;
+
+  const uint32_t now = GetTickCount();
+  const uint32_t period = repeat_ms_ > 0 ? static_cast<uint32_t>(repeat_ms_) : 0;
+  if (last_cast_ms_ != 0 && now - last_cast_ms_ < period) return;
+
+  void* actor = GetOwnActor(cmode);
+  if (!actor) return;
+
+  int mode = 0, skill = 0, level = 0;
+  if (!ReadTargetingState(cmode, &mode, &skill, &level)) return;
+  if (!EmitCast(cmode, actor, mode, skill, level, ground_enabled_,
+                target_enabled_))
+    return;
+
+  last_cast_ms_ = now;
+  LeaveTargeting(cmode);
+
+  // Armer la répétition — mais seulement si la touche retenue est RÉELLEMENT
+  // enfoncée à cet instant : cela distingue un lancement au clavier d'un clic
+  // sur une case de la barre de raccourcis, qui ne doit rien répéter.
+  if (vk != 0 && (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) != 0) {
+    repeat_vk_    = vk;
+    repeat_mode_  = mode;
+    repeat_skill_ = skill;
+    repeat_level_ = level;
+  }
+}
+
+void QuickCast::Update() {
+  if (repeat_vk_ == 0) return;
+
+  // Touche relâchée : fin de la répétition. Testé AVANT tout le reste pour que
+  // l'état s'oublie même si une autre garde bloque le lancement.
+  if ((GetAsyncKeyState(static_cast<int>(repeat_vk_)) & 0x8000) == 0) {
+    repeat_vk_ = 0;
+    return;
+  }
+
+  const uint32_t now = GetTickCount();
+  const uint32_t period = repeat_ms_ > 0 ? static_cast<uint32_t>(repeat_ms_) : 0;
+  if (now - last_cast_ms_ < period) return;
+
+  if (!CanCastNow()) return;
+
+  void* cmode = GetGameMode();
+  if (!cmode) return;
+  void* actor = GetOwnActor(cmode);  // valide aussi la vtable du mode
+  if (!actor) return;
+
+  // Occupé (incantation, animation d'attaque…) : le natif ferait patienter la
+  // requête, autant ne rien émettre. Vraie donnée du client, contrairement à la
+  // période — mais elle ne connaît QUE l'état d'animation, pas le délai
+  // d'après-incantation du serveur. Uniquement sur la répétition : un appui
+  // volontaire n'est jamais bloqué par cette lecture.
+  if (!ActorStateAllowsCast(ReadActorState(actor))) return;
+
+  // La visée est ré-évaluée : au sol la cellule suit le curseur, sur cible le GID
+  // est re-résolu (donc suivre un monstre du curseur enchaîne dessus). Si plus
+  // rien n'est visé, on n'émet pas — mais on reste armé, le curseur peut revenir.
+  if (EmitCast(cmode, actor, repeat_mode_, repeat_skill_, repeat_level_,
+               ground_enabled_, target_enabled_))
+    last_cast_ms_ = now;
+}
+
+void QuickCast::OnRenderUI() { Update(); }
+
+void QuickCast::OnModeSwitch(ModeMgr::ModeType mode_type,
+                             const char* map_name) {
+  repeat_vk_  = 0;
+  pending_vk_ = 0;
+}
+
+void QuickCast::DrawSettings() {
+  bool save = false;
+  if (ro::RoCheckbox("Sort de zone : cast direct sous la souris",
+                     &ground_enabled_))
+    save = true;
+  ImGui::SameLine();
+  mui::HelpMarker(
+      "Une compétence de ZONE (Storm Gust, pièges…) part immédiatement sur la "
+      "cellule sous le curseur : plus besoin du clic de confirmation.\n\n"
+      "Si aucune cellule valide n'est visée (ciel, interface), le mode ciblage "
+      "classique reste armé. L'animation, la barre de cast et l'envoi restent "
+      "ceux du jeu : le serveur reste maître du lancement.");
+  if (ro::RoCheckbox("Sort ciblé : cast direct sur la cible survolée",
+                     &target_enabled_))
+    save = true;
+  ImGui::SameLine();
+  mui::HelpMarker(
+      "Une compétence CIBLÉE part immédiatement si une cible compatible est "
+      "sous le curseur : monstre pour un sort offensif ; joueur, monstre ou "
+      "soi-même pour un soutien.\n\n"
+      "Sans cible compatible sous le curseur (ou pour viser un joueur en "
+      "PVP/GVG), le mode ciblage classique reste armé — rien n'est perdu.");
+
+  if (ground_enabled_ || target_enabled_) {
+    ImGui::SetNextItemWidth(160.0f);
+    if (mui::WheelSliderInt("Cadence (ms)", &repeat_ms_, 50, 1000)) save = true;
+    if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
+    ImGui::SameLine();
+    mui::HelpMarker(
+        "Période de répétition quand tu MAINTIENS la touche : la compétence "
+        "s'enchaîne à ce rythme, en suivant le curseur.\n\n"
+        "Le jeu, lui, ignore l'auto-répétition du clavier — un appui maintenu "
+        "ne lance qu'une fois. Cette répétition est donc ajoutée par le "
+        "plugin. Valeur haute = un lancement par pression.\n\n"
+        "Le COOLDOWN réel de la compétence est de toute façon respecté : tant "
+        "qu'elle n'est pas prête, rien n'est envoyé. Ce réglage ne sert qu'aux "
+        "compétences SANS cooldown, dont le rythme est fixé par le délai "
+        "d'après-incantation — que le serveur ne communique pas au client.");
+  }
+
+  if (save) {
+    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+  }
+}

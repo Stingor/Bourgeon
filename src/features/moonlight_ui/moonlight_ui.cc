@@ -50,6 +50,7 @@
 #include "features/minigames/rojeweled.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/player_jump.h"
+#include "features/gameplay/quick_cast.h"
 #include "features/patches/status_tweaks.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -449,6 +450,21 @@ const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
      MLUI_FIELD(keyboard_move, camera_relative()), MLUI_LITERAL(bool, true)},
     {"kbmove_stop_on_release", SType::kBool,
      MLUI_FIELD(keyboard_move, stop_on_release()), MLUI_LITERAL(bool, true)},
+};
+
+// Quick cast (QuickCast, réservé staff) : cast en une action, opt-in, OFF par
+// défaut. Persister est sans risque : l'action reste gatée par IsStaff() à
+// chaque 0x48, comme la fenêtre de logs.
+// `quickcast_repeat_ms` = période de répétition touche maintenue. Il RESTE malgré
+// le cooldown réel (consulté avant, cf. quick_cast.cc) parce que le client ignore
+// le délai d'après-incantation du serveur, qui borne la plupart des sorts.
+const moonlight_ui::SettingDesc kQuickCastSettings[] = {
+    {"quickcast_ground", SType::kBool, MLUI_FIELD(quick_cast, ground_enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"quickcast_target", SType::kBool, MLUI_FIELD(quick_cast, target_enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"quickcast_repeat_ms", SType::kInt, MLUI_FIELD(quick_cast, repeat_ms()),
+     MLUI_LITERAL(int, 200)},
 };
 
 // Barres EXP/HP/SP et portrait de statut (BasicInfo). Les barres et les
@@ -934,6 +950,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
     moonlight_ui::ReadSettings(ui, kKeyboardMoveSettings);
+    moonlight_ui::ReadSettings(ui, kQuickCastSettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     moonlight_ui::ReadSkillBarLayout(ui);
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
@@ -1059,6 +1076,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
   moonlight_ui::WriteSettings(out, kKeyboardMoveSettings);
+  moonlight_ui::WriteSettings(out, kQuickCastSettings);
 
   moonlight_ui::WriteSettings(out, kSkillBarSettings);
   moonlight_ui::WriteSkillBarLayout(out);
@@ -1621,6 +1639,13 @@ void MoonlightUi::OnRenderUI() {
       SeparatorText("Noms des entités");
       if (auto* entity_names = Bourgeon::Instance().entity_names())
         entity_names->DrawSettings();
+
+      // Cast en une action : la touche du sort suffit, la visée est résolue sous
+      // le curseur et le lancement émis par les messages d'acteur du clic natif
+      // (cf. quick_cast.h pour les deux approches écartées).
+      SeparatorText("Quick cast");
+      if (auto* quick_cast = Bourgeon::Instance().quick_cast())
+        quick_cast->DrawSettings();
 
       SeparatorText("SPR Lab");
       spr_lab::DrawDebugControls();
