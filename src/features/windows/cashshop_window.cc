@@ -21,6 +21,7 @@
 #include "imgui.h"
 #include "features/item_cell.h"             // itemcell::OpenDescById (description au clic droit)
 #include "features/overlays/basic_info.h"   // aperçu porté (RenderItemPreviewTooltip / CanPreview)
+#include "ragnarok/msgstring.h"            // msgstr::Utf8 (messages EXACTS du client)
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
@@ -106,6 +107,35 @@ const char* ShortName(uint32_t id) {
 // Le chemin collection (wnd+0x1c4) est bâti par GetResName(info) : avec le flag
 // « identifié » que pose OpenDescById, il pointe sur
 // 유저인터페이스\collection\<resname>.bmp.
+
+// ── Le message d'un résultat d'achat, EXACTEMENT celui du client ─────────────
+//
+// La table result -> identifiant de message est relevée sur le handler natif
+// `Recv_ZC_SE_PC_BUY_CASHITEM_RESULT` (0x00CD3B70), qu'on continue d'OBSERVER : il
+// écrit déjà ces chaînes dans le chat (et une modale au-delà de 8). On les affiche
+// AUSSI dans la fenêtre, parce que c'est là que le joueur vient de cliquer — le
+// chat, il ne le regarde pas à ce moment-là.
+//
+// 🔴 Ce qu'il y avait avant : « Achat refuse (12) ». Un générique avec un code, à
+// côté du message exact que le client, lui, savait dire. C'est précisément ce que
+// la règle « message serveur EXACT » interdit.
+//
+// Rien en dur : msgstr lit la table du client (data\msgstringtable.txt), donc la
+// langue suit celle du client, comme partout ailleurs dans Bourgeon.
+int BuyResultMsgId(int result) {
+  switch (result) {
+    case 0:   return 0;      // succès : le natif ne dit rien, nous non plus
+    case 8:   return 0x716;
+    case 9:   return 0x798;
+    case 10:  return 0x799;
+    case 11:  return 0x79a;
+    case 12:  return 0x79b;
+    case 303: return 0xf64;  // le natif préfixe le nom d'item ; le nôtre est déjà
+    case 304: return 0xf65;  // à l'écran, juste au-dessus
+    // 1 à 7 et tout le reste : le repli du natif, son échec générique.
+    default:  return 0x39;
+  }
+}
 
 // Labels des catégories (e_cash_shop_tab, serveur cashshop.hpp).
 const char* kTabLabels[] = {"Nouveautés", "Populaire", "Limité", "Location",
@@ -478,9 +508,16 @@ void CashShopWindow::OnRenderUI() {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), " | Achat OK");
   } else if (last_result_ > 0) {
+    // Le message EXACT du client, pas un code (cf. BuyResultMsgId). Repli sur le
+    // code seulement si la table de messages ne rend rien — mieux vaut un numéro
+    // que rien du tout quand on doit diagnostiquer.
+    const char* why = msgstr::Utf8(BuyResultMsgId(last_result_));
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | Achat refuse (%d)",
-                       last_result_);
+    if (why && why[0])
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | %s", why);
+    else
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | Achat refusé (%d)",
+                         last_result_);
   }
   ImGui::Separator();
 
