@@ -446,6 +446,10 @@ uint32_t ReadDragItemId(void* obj) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
+// (Pas de déduction « échange en cours » ici : les objets mis en échange sont
+// RÉELLEMENT retirés du modèle de session dès l'acquittement du serveur, comme le
+// faisait le client officiel — le protocole l'exige, cf. trade_window.cc.)
+
 // Bascule le favori d'un item : envoie son état ACTUEL (le serveur toggle).
 void SendFavoriteToggle(int index, bool currently_fav) {
   uint8_t pkt[5];
