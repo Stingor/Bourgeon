@@ -31,15 +31,30 @@ namespace {
 // UIWindowMgr + factory.
 
 // Fenêtres shop NPC (cf. project_npc_shop_re).
-constexpr int kWinBuy    = 0x16;  // UIItemPurchaseWnd (vtable 0x0103cda0)
-constexpr int kWinSell   = 0x17;  // UIItemSellWnd     (vtable 0x0103ce78)
-constexpr int kWinDetail = 0x18;  // panneau détail item (ATK/DEF) — fermé nativement
-                                  // avec 0x16/0x17 par les OnMsg shop
-constexpr int kWinChoose = 0x19;  // UIChooseSellBuyWnd
+// ── Les fenêtres natives de la boutique, RELEVÉES LIVE ───────────────────────
+// (2026-08-01, marche de la std::map du window-mgr, boutique native ouverte dans
+// les DEUX onglets — le premier relevé, fait en achat seulement, avait conclu de
+// travers. Ce qui est écrit ici a été vu, pas déduit.)
+//
+//   onglet ACHAT : 0x16 + 0x17 + 0x19  [+ 0x32 à la sélection d'un équipement]
+//   onglet VENTE : 0x16 + 0x18 + 0x19  [pas de comparateur]
+//
+// 🔴 0x17 et 0x18 sont DEUX UIItemSellWnd (même vtable 0x0103ce78 ; case 23 et
+// case 24 de MakeWindow, ctor 0x00934730). Le client bascule de l'un à l'autre
+// selon l'onglet — d'où la nécessité de purger les DEUX. 0x18 portait ici
+// l'étiquette « panneau détail ATK/DEF », qui était fausse.
+constexpr int kWinBuy     = 0x16;  // UIItemPurchaseWnd (vtable 0x0103cda0)
+constexpr int kWinSell    = 0x17;  // UIItemSellWnd — présent en onglet ACHAT
+constexpr int kWinSell2   = 0x18;  // UIItemSellWnd — celui de l'onglet VENTE
+constexpr int kWinChoose  = 0x19;  // UIChooseSellBuyWnd
 // Champ du chooser où atterrit le npcId (RE : son OnMsg case 0x1C, cf. ChooserNpcId).
 constexpr int kChooserNpcId = 0xb4;
-constexpr uintptr_t kDetailVTable = 0x010323ec;  // UIItemParamChangeDisplayWnd
-                                                 // (comparateur ATK/DEF, id variable)
+
+// Comparateur ATK/DEF (« ATK 0 - 0   DEF 0 - 0 »), ouvert par la fenêtre d'ACHAT
+// quand on sélectionne un équipement. Son id est FIXE et vaut 0x32 (case 50 de
+// MakeWindow) — le commentaire « id variable » qu'il portait était faux lui aussi.
+constexpr int       kWinParamCompare    = 0x32;
+constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDisplayWnd
 
 // (Plus de kSellListVTable/kSellListGlobal ni d'offsets de nœud d'affichage : la
 // liste de vente ne se lit plus dans la fenêtre native — elle n'existe plus. Elle
@@ -605,20 +620,30 @@ void NpcShopWindow::HideNativeAtCreation(void* /*win*/) {}
 
 bool NpcShopWindow::AnyNativeShopWindow() const {
   return FindWnd(kWinChoose) || FindWnd(kWinBuy) || FindWnd(kWinSell) ||
-         FindWnd(kWinDetail);
+         FindWnd(kWinSell2) || FindWnd(kWinParamCompare);
 }
 
 void NpcShopWindow::PurgeNativeShopWindows() {
   CloseWnd(kWinChoose);
   CloseWnd(kWinBuy);
   CloseWnd(kWinSell);
-  CloseWnd(kWinDetail);
+  CloseWnd(kWinSell2);  // l'autre UIItemSellWnd, celui de l'onglet VENTE
+  // 🔴 Le comparateur ATK/DEF est DÉTRUIT, pas seulement masqué. Il ne l'était
+  // dans aucune liste de fermeture : on se contentait de le rendre invisible, et
+  // une native masquée garde le CLAVIER — la leçon du refine, celle qui a détruit
+  // une arme. Son créateur (la fenêtre d'achat native) ne naît plus, donc ce
+  // chemin ne devrait plus être emprunté ; c'est justement pour ça qu'il doit être
+  // correct sans qu'on ait à y repenser.
+  CloseWnd(kWinParamCompare);
 }
 
 void NpcShopWindow::HideDetailWindow(void* win) {
   if (!win || !imgui_enabled_ || !open_) return;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) == kDetailVTable)
+    // Masquage SEUL, et à dessein : on est à l'intérieur de MakeWindow, dont
+    // l'appelant déréférence le retour — détruire ici plante. Ça évite la frame de
+    // flash ; la destruction, elle, revient à PurgeNativeShopWindows au tick.
+    if (*reinterpret_cast<uintptr_t*>(win) == kParamCompareVTable)
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

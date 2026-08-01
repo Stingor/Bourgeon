@@ -103,9 +103,12 @@ class NpcShopWindow : public Plugin {
   // (achat), 0x17 (vente), 0x18, 0x19 (chooser). No-op si le viewer est désactivé.
   void HideNativeAtCreation(void* win);
 
-  // Cache le comparateur de stats ATK/DEF (UIItemParamChangeDisplayWnd), créé par
-  // le handler d'achat natif avec un id variable -> détecté par VTABLE. Appelé pour
-  // toute fenêtre créée pendant une session shop (hook MakeWindow).
+  // Masque le comparateur de stats ATK/DEF (UIItemParamChangeDisplayWnd, id 0x32),
+  // que la fenêtre d'ACHAT native ouvre quand on sélectionne un équipement. Détecté
+  // par VTABLE parce qu'on le voit passer dans le hook MakeWindow, avant qu'il ait
+  // un id dans la map. Appelé pour toute fenêtre créée pendant une session shop.
+  // ⚠ Ne fait que MASQUER (destruction impossible depuis MakeWindow) : c'est
+  // PurgeNativeShopWindows qui le détruit au tick.
   void HideDetailWindow(void* win);
 
   // Setting PERSISTANT (bourgeon_settings.yaml "shop_imgui", géré par MoonlightUi) :
