@@ -683,11 +683,34 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // at the NEXT NewFrame) — without it, a key pressed in that gap reaches
     // the game too (e.g. Escape opening both DOOM's and the RO menu).
     if (io.WantCaptureKeyboard || Doom::WantsKeyboard()) {
-      switch (uMsg) {
-        case WM_KEYDOWN: case WM_KEYUP:
-        case WM_SYSKEYDOWN: case WM_SYSKEYUP:
-        case WM_CHAR: case WM_UNICHAR:
-          return 0;
+      // 🔴 Une SAISIE DE TEXTE ImGui n'a besoin que des touches qui écrivent. Sans
+      // la nuance ci-dessous, cliquer dans un champ — le filtre d'une boutique, la
+      // quantité d'un panier — éteignait TOUT le clavier du jeu tant que le champ
+      // gardait le focus : plus de F1-F9 (skillbar), plus d'Alt+F. Le joueur le vit
+      // comme « la fenêtre bloque le clavier », et ne devine pas qu'il doit cliquer
+      // ailleurs pour le récupérer. Même principe que l'avalage ciblé du dialogue
+      // NPC juste en dessous, appliqué cette fois à la règle générale.
+      //
+      // On ne relâche QUE ce qu'aucun champ de saisie ne peut utiliser :
+      //   - F1 a F12 : hotkeys de barre d'action, inertes pour ImGui ;
+      //   - les combinaisons avec Alt : raccourcis du jeu (Alt+F...), qu'ImGui
+      //     n'utilise pas non plus. Ctrl reste avalé — c'est copier/coller/tout
+      //     sélectionner du champ.
+      //
+      // Et seulement quand la capture vient bien d'une saisie (`WantTextInput`) :
+      // les prises volontaires du clavier — char-select, DOOM, qui la demandent par
+      // SetNextFrameWantCaptureKeyboard — doivent rester TOTALES, elles remplacent
+      // un écran natif qu'on ne veut pas voir réagir derrière.
+      const bool typing = io.WantTextInput && !Doom::WantsKeyboard();
+      const bool game_only_key =
+          (wParam >= VK_F1 && wParam <= VK_F12) || (GetKeyState(VK_MENU) & 0x8000);
+      if (!(typing && game_only_key)) {
+        switch (uMsg) {
+          case WM_KEYDOWN: case WM_KEYUP:
+          case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+          case WM_CHAR: case WM_UNICHAR:
+            return 0;
+        }
       }
     } else if (NpcDialogWindow::EatsKey(uMsg, wParam)) {
       // Dialogue NPC ImGui : avalage CIBLÉ (Entrée/Espace/Échap, flèches + 1-9 si

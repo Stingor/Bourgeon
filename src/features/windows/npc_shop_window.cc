@@ -36,36 +36,64 @@ constexpr int kWinSell   = 0x17;  // UIItemSellWnd     (vtable 0x0103ce78)
 constexpr int kWinDetail = 0x18;  // panneau détail item (ATK/DEF) — fermé nativement
                                   // avec 0x16/0x17 par les OnMsg shop
 constexpr int kWinChoose = 0x19;  // UIChooseSellBuyWnd
-constexpr uintptr_t kSellVTable   = 0x0103ce78;  // UIItemSellWnd (conteneur, id 0x17)
-// La LISTE de vente n'est pas dans le conteneur 0x17 mais dans un sous-window
-// (vtable 0x0103cbf0) pointé par le global g_ShopSellMirrorWnd_ptr = DAT_0131f738.
-// Confirmé live : node = {index@+0x0c, qty@+0x18, prix@+0x1c/+0x20, itemId-en-texte
-// @+0x34 (std::string), slots@+0x90}.
-constexpr uintptr_t kSellListVTable = 0x0103cbf0;
-constexpr uintptr_t kSellListGlobal = 0x0131f738;
+// Champ du chooser où atterrit le npcId (RE : son OnMsg case 0x1C, cf. ChooserNpcId).
+constexpr int kChooserNpcId = 0xb4;
 constexpr uintptr_t kDetailVTable = 0x010323ec;  // UIItemParamChangeDisplayWnd
                                                  // (comparateur ATK/DEF, id variable)
 
-// Offsets UIWindow.
-constexpr int kOffList    = 0xe8;  // std::list<ItemSkillInfo> (buy/sell display)
+// (Plus de kSellListVTable/kSellListGlobal ni d'offsets de nœud d'affichage : la
+// liste de vente ne se lit plus dans la fenêtre native — elle n'existe plus. Elle
+// vient du paquet 0x00c7, croisé avec le modèle session ci-dessous.)
 
-// Nœud de la liste d'affichage (std::list) : value=node+8, puis dans le payload
-// ItemSkillInfo : +0x04 index inv, +0x10 qté, +0x14/+0x18 prix, +0x2c nom
-// (std::string), +0x88 slots (short). -> en offsets NŒUD : +0x0c/+0x18/+0x1c/
-// +0x20/+0x34/+0x90.
-constexpr int kNodeIndex = 0x0c;
-constexpr int kNodeQty   = 0x18;
-constexpr int kNodePrice = 0x1c;
-constexpr int kNodePrice2 = 0x20;  // overcharge (prix de vente réel)
-constexpr int kNodeName  = 0x34;   // std::string (MSVC : +0x10 size, +0x14 cap)
-constexpr int kNodeSlots = 0x90;   // short
+// ── Inventaire (modèle SESSION) ──────────────────────────────────────────────
+// La liste que le natif consultait lui-même pour remplir sa fenêtre de vente.
+// Cacher ou supprimer une fenêtre ne la touche pas : c'est la source stable.
+constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list<ItemSkillInfo>
+// Champs de l'ItemSkillInfo utilisés ici (mêmes offsets que l'InventoryViewer).
+constexpr int kInfoNum   = 0x10;  // quantité possédée
+constexpr int kInfoIdStr = 0x2c;  // std::string « itemId » (MSVC : +0x14 = capacité)
+constexpr int kInfoIdCap = kInfoIdStr + 0x14;
+constexpr int kInfoFav   = 0x74;  // flag « favori » (onglet Favoris de l'inventaire)
+
+// ── Verrou de vente des favoris ──────────────────────────────────────────────
+// Bouton « Deal » du pied de l'inventaire (onglet Favoris) : 100 % CLIENT, aucun
+// paquet, un simple octet. Le natif le consultait dans le constructeur de la liste
+// de vente — NpcSell_BuildSellableList 0x00CD0F00, celui-là même dont on a pris la
+// place : `if (trouve && (!favori || !g_inv_dealLock))`. En le remplaçant on a
+// emporté le filtre avec lui : le verrou basculait toujours, mais plus personne ne
+// le lisait, et les favoris réapparaissaient dans la liste — vendables.
+constexpr uintptr_t kDealLockGlobal = 0x01600553;
+bool DealLockOn() {
+  __try { return *reinterpret_cast<uint8_t*>(kDealLockGlobal) != 0; }
+  __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
 
 // Icône d'item (image d'inventaire).
 
 // ── Fenêtres natives (SEH-gardé) ──
+// Plus de masquage : ce plugin DÉTRUIT. Il ne cherche les fenêtres que pour
+// reconnaître une boutique native en cours au moment où l'on allume l'interface
+// moderne — sa session, elle, vient des paquets.
 void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
-void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
+
+// GID du NPC d'une session shop ouverte AVANT nous, lu dans le chooser natif.
+//
+// 🔴 RE 2026-08-01 (UIChooseSellBuyWnd_OnMsg 0x008BE7B0) : son `case 28` — le
+// message 0x1C que le handler de ZC_SELECT_DEALTYPE lui envoie juste après
+// MakeWindow — fait `*((_DWORD *)this + 45) = p3`, soit **fenêtre+0xB4 = npcId**.
+// C'est le même champ que relisent ses boutons Acheter (223) et Vendre (224).
+//
+// Sans cette lecture, fermer une boutique native ouverte avant l'allumage de
+// l'interface moderne obligeait à passer par le CANCEL natif (cmd 0x28) faute de
+// connaître le GID : on gardait donc du natif vivant pour se débarrasser du natif.
+uint32_t ChooserNpcId() {
+  __try {
+    uint8_t* w = reinterpret_cast<uint8_t*>(uiwnd::SafeFindWindow(kWinChoose));
+    if (!w) return 0;
+    return *reinterpret_cast<uint32_t*>(w + kChooserNpcId);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 
 // Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
 // partagé). La boutique NPC ne tient QUE des ids — pas d'ItemSkillInfo, donc pas
@@ -97,19 +125,54 @@ constexpr uint16_t kOpDealAck  = 0x00c5;  // CZ_ACK_SELECT_DEALTYPE {GID:4,type:
 constexpr uint16_t kOpBuyReq   = 0x00c8;  // CZ_PC_PURCHASE_ITEMLIST {amount:2,itemId:4}*
 constexpr uint16_t kOpSellReq  = 0x00c9;  // CZ_PC_SELL_ITEMLIST {index:2,amount:2}*
 constexpr uint16_t kOpCloseNpc = 0x0146;  // CZ_CLOSE_DIALOG {GID:4} -> ferme la session NPC serveur
+// CZ_NPC_TRADE_QUIT {op:2} — 2 octets, l'opcode seul. 🔴 C'EST LUI qui débloque le
+// personnage, et rien d'autre : côté serveur clif_parse_NPCShopClosed ne fait qu'une
+// chose, `sd->npc_shopid = 0`, et `pc_cant_act2()` teste `|| sd->npc_shopid` —
+// clif_parse_WalkToXY refuse donc tout déplacement tant qu'il est posé.
+// CZ_CLOSE_DIALOG ne touche JAMAIS ce champ. Côté client c'est le sélecteur 291 de
+// CMode::SendMsg (0x00C875E7) qui l'émet, à part de l'annulation du chooser.
+constexpr uint16_t kOpShopQuit = 0x09d4;
+
+// ShopCart_ResetAll(contexte de session) : vide le panier natif. Le chooser
+// l'appelle lui-même en fin de CANCEL (son OnMsg case 6).
+constexpr uintptr_t kShopCartResetAll = 0x00d55f80;
+
+// CZ_CLOSE_DIALOG pour un GID donné (0 = rien à fermer). Fonction libre, et pas une
+// lambda dans CloseNativeShop : celle-ci contient un __try, que MSVC refuse de voir
+// cohabiter avec un objet local à déroulement.
+void SendCloseDialog(uint32_t gid) {
+  if (gid == 0) return;
+  uint8_t pkt[6];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpCloseNpc;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = gid;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
 
 }  // namespace
 
 NpcShopWindow::NpcShopWindow() {
-  // TOUT en OBSERVE (jamais RegisterRecvOpcode) : le handler natif doit TOUJOURS
-  // tourner, sinon le shop natif est cassé quand le toggle est OFF (l'interception
-  // patche la table de dispatch en permanence, sans dé-registration possible).
-  // Quand ON, on lit les paquets pour bâtir notre modèle et on CACHE les fenêtres
-  // natives (dont le comparateur ATK/DEF). Listes variables : on forwarde 4 octets
-  // (assez pour packetLength @+0) et on lit le corps dans le buffer recv live.
-  Bourgeon::Instance().RegisterObserveOpcode(kOpChoose, 4);   // npcId
-  Bourgeon::Instance().RegisterObserveOpcode(kOpBuyList, 4);  // header (var)
-  Bourgeon::Instance().RegisterObserveOpcode(kOpSellList, 4); // header (var)
+  // ── Les trois paquets qui OUVRENT une fenêtre : on prend leur place ─────────
+  //
+  // 🔴 REMPLACEMENT. En observant, les quatre fenêtres natives (chooser 0x19,
+  // achat 0x16, vente 0x17, comparateur 0x18) naissaient à chaque visite chez un
+  // marchand et on les masquait ensuite ; or une native masquée garde le CLAVIER,
+  // et son bouton par défaut valide une transaction. Aucune ne naît plus.
+  //
+  // Le prédicat est relu à chaque paquet : interrupteur éteint, le shop natif
+  // reprend la main entièrement, chooser compris.
+  //
+  // ⚠ L'ancien commentaire disait ici que le remplacement était impossible parce
+  // que « l'interception patche la table de dispatch en permanence, sans
+  // dé-registration ». C'est ce que RegisterReplaceOpcode a résolu : le slot reste
+  // patché, mais le prédicat rend la main au handler natif d'origine, paquet par
+  // paquet.
+  const auto claim = [this] { return imgui_enabled_; };
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpChoose, claim);   // {npcId:4}
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpBuyList, claim);  // liste achat (var)
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpSellList, claim); // liste vente (var)
+  // Les deux RÉSULTATS restent OBSERVÉS : leur handler natif affiche les messages
+  // d'échec du client (« pas assez de zeny »…), qu'on aurait sinon à réécrire, et
+  // son rafraîchissement d'UI ne trouve aucune fenêtre — donc ne fait rien.
   Bourgeon::Instance().RegisterObserveOpcode(kOpBuyRes, 1);   // result
   Bourgeon::Instance().RegisterObserveOpcode(kOpSellRes, 1);  // result
   // Nom des NPC (pour le titre) : gid:4 + groupId:4 + name[24] = 32 octets utiles.
@@ -151,10 +214,34 @@ void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     // qui sera caché à sa création).
     if (len < 4) return;
     npc_id_ = *reinterpret_cast<const uint32_t*>(data);
+    // Ce que le handler remplacé écrivait en tête (`mov [edi+24Ch], 1`) : le client
+    // doit se savoir en interaction NPC, sinon il laisse le joueur marcher et
+    // attaquer pendant la boutique — et CloseNativeShop, qui débloque cet état,
+    // n'aurait plus rien à débloquer.
+    //
+    // 🔴 GID = 0 : on NE TOUCHE PAS à CGameMode+0x2DC, et c'est tout l'enjeu. Le
+    // handler natif (0x00CA0F02) pose le flag, crée le chooser et lui passe le
+    // npcId par OnMsg 0x1C (-> fenêtre+0xB4) — il n'écrit JAMAIS +0x2DC. Vérifié à
+    // l'échelle du dispatcher : sur les six sites qui posent +0x24C=1 dans
+    // RecvLoop_DispatchPackets, seuls quatre écrivent aussi +0x2DC, et ce sont les
+    // paquets de DIALOGUE.
+    //
+    // Ce champ porte le GID de la CONVERSATION en cours, pas celui de la boutique.
+    // Une boutique EST une interaction NPC : elle s'ouvre depuis un script, et
+    // c'est ce script que le serveur attend de voir fermé (sd->npc_id). En y
+    // écrivant le GID de la boutique, on effaçait l'identité du script : la
+    // fermeture partait au mauvais NPC, npc_scriptcont la rejetait, et le joueur
+    // restait bloqué — au clic sur la croix comme au basculement à chaud.
+    rag::SetNpcInteractionActive(0);
     open_ = true;
     cur_mode_ = kBuy;
     buy_items_.clear();
     sell_items_.clear();
+    // Les deux moitiés de la liste de vente partent ensemble : garder les entrées
+    // brutes d'une session précédente les ferait resurgir à la prochaine
+    // résolution, avec les index d'un inventaire qui a changé depuis.
+    sell_raw_.clear();
+    sell_dirty_ = false;
     cart_.clear();
     have_buy_ = false;
     buy_requested_ = false;
@@ -217,8 +304,38 @@ void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     buy_requested_ = false;
     return;
   }
-  // 0xc7 (sell list) : le handler natif peuple la fenêtre 0x17 (cachée) ; on lira
-  // sa liste résolue en OnTick (RefreshSellFromNative). Rien à parser ici.
+  if (opcode == kOpSellList) {
+    // ZC_PC_SELL_ITEMLIST : data = [packetLength:2][ {index:2, price:4,
+    // overcharge:4} * n ]. C'est le SERVEUR qui décide de ce qui est vendable —
+    // Moonlight y ajoute ses propres filtres (ni cartes, ni objets sertis, ni
+    // raffinés, groupes IG_SELLSTUFF/IG_SELLITEM, flèches selon la classe). La
+    // liste ne peut donc PAS être déduite de l'inventaire : elle se lit ici, et
+    // nulle part ailleurs.
+    if (len < 2) return;
+    const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
+    const int body = static_cast<int>(plen) - 4;
+    if (body <= 0) { sell_raw_.clear(); sell_dirty_ = true; return; }
+    constexpr int kSub = 10;
+    int count = body / kSub;
+    if (count <= 0) { sell_raw_.clear(); sell_dirty_ = true; return; }
+    if (count > 4096) count = 4096;
+    sell_raw_.clear();
+    sell_raw_.reserve(count);
+    const uint8_t* p = data + 2;
+    for (int i = 0; i < count; ++i) {
+      SellRaw r;
+      r.index      = *reinterpret_cast<const uint16_t*>(p + 0);
+      r.price      = *reinterpret_cast<const int32_t*>(p + 2);
+      r.overcharge = *reinterpret_cast<const int32_t*>(p + 6);
+      sell_raw_.push_back(r);
+      p += kSub;
+    }
+    // La RÉSOLUTION (nom composé, icône, quantité) attend le thread principal :
+    // elle appelle le name-builder natif, et on ne fait rien de tel depuis le fil
+    // réseau — c'est la règle de ce fichier depuis le début.
+    sell_dirty_ = true;
+    return;
+  }
 }
 
 // Re-selectionne le deal (CZ_ACK_SELECT_DEALTYPE 0xc5) pour RE-ARMER sd->npc_shopid
@@ -235,27 +352,18 @@ void NpcShopWindow::SendDealSelect(uint8_t type) {
 
 void NpcShopWindow::RequestList(Mode mode) {
   if (npc_id_ == 0) return;
-  if (mode == kBuy) {
-    // Achat : requête brute CZ_ACK_SELECT_DEALTYPE(0) suffit — on parse 0x0b77
-    // nous-mêmes, pas besoin de la fenêtre native.
-    SendDealSelect(0);  // 0xc5 type 0 = achat (arme npc_shopid + declenche 0x0b77)
-    buy_requested_ = true;
-  } else {
-    // Vente : la requête 0xc5(1) BRUTE ne crée PAS la fenêtre native (le client
-    // n'est pas en "mode vente" car on a zappé le clic du chooser). On dispatche
-    // cmd 0x25 sur CMode::SendMsg = bouton "Vendre" natif -> pose l'état vente +
-    // envoie 0xc5(1) -> le client crée la fenêtre native de vente (qu'on lit).
-    __try {
-      void* disp = rag::ActiveMode();
-      if (disp) {
-        void** vtbl = *reinterpret_cast<void***>(disp);
-        using CmdDispatch_t = int(__thiscall*)(void*, int, int, int, int, int);
-        reinterpret_cast<CmdDispatch_t>(vtbl[6])(
-            disp, 0x25, static_cast<int>(npc_id_), 0, 0, 0);  // vtable+0x18
-      }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-    sell_requested_ = true;
-  }
+  // Les DEUX modes tiennent désormais dans la même requête brute
+  // CZ_ACK_SELECT_DEALTYPE : on parse nous-mêmes les deux listes (0x0b77 et
+  // 0x00c7), donc aucune fenêtre native n'a besoin d'exister pour les recevoir.
+  //
+  // 🔴 La vente passait avant par un détour : la requête brute ne mettait pas le
+  // client en « mode vente », donc il ne créait pas la fenêtre 0x17 — et c'est
+  // d'ELLE qu'on lisait la liste résolue. On dispatchait donc cmd 0x25, le bouton
+  // « Vendre » natif, uniquement pour faire naître cette fenêtre. Le détour tombe
+  // avec elle : le serveur, lui, a toujours répondu au simple 0xc5(1).
+  SendDealSelect(mode == kBuy ? 0 : 1);
+  if (mode == kBuy) buy_requested_ = true;
+  else              sell_requested_ = true;
 }
 
 void NpcShopWindow::AddToCart(uint32_t id, int index, int32_t price, int max, int qty) {
@@ -342,75 +450,158 @@ void NpcShopWindow::QuickSell(int index, int qty) {
 // Nœud MSVC std::list : {next, prev, value@+8}. Offsets CONFIRMÉS live (jellopy) :
 // +0x0c index inv, +0x18 qté, +0x1c/+0x20 prix (overcharge), +0x34 std::string =
 // itemId EN TEXTE ("909"), +0x90 slots. SEH (POD only).
-void NpcShopWindow::RefreshSellFromNative() {
+// Complète les entrées brutes du paquet (index + les deux prix) avec ce que le
+// paquet ne porte PAS : l'objet lui-même. On croise donc chaque index avec le
+// MODÈLE SESSION de l'inventaire — la même source que le natif consultait pour
+// remplir sa fenêtre, et qui reste peuplée alors que cette fenêtre n'existe plus.
+//
+// Thread PRINCIPAL uniquement (appelée depuis OnTick) : le name-builder est natif.
+void NpcShopWindow::ResolveSellItems() {
   sell_items_.clear();
-  void* wnd = nullptr;
-  __try { wnd = *reinterpret_cast<void**>(kSellListGlobal); }
-  __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  if (!wnd) return;
-  __try {
-    if (*reinterpret_cast<uintptr_t*>(wnd) != kSellListVTable) return;
-    uint8_t* w = reinterpret_cast<uint8_t*>(wnd);
-    void* sentinel = *reinterpret_cast<void**>(w + kOffList);
-    if (!sentinel) return;
-    void* node = *reinterpret_cast<void**>(sentinel);
-    int guard = 0;
-    while (node && node != sentinel && guard < 4096) {
-      uint8_t* n = reinterpret_cast<uint8_t*>(node);
-      SellItem s;
-      s.index  = *reinterpret_cast<int*>(n + kNodeIndex);
-      s.amount = *reinterpret_cast<int*>(n + kNodeQty);
-      int32_t p2 = *reinterpret_cast<int32_t*>(n + kNodePrice2);
-      int32_t p1 = *reinterpret_cast<int32_t*>(n + kNodePrice);
-      s.price = (p2 != 0) ? p2 : p1;  // overcharge (prix réel) sinon prix de base
-      s.base_price = p1;              // base (avant Overcharge) pour l'affichage base->final
-      s.slots = *reinterpret_cast<int16_t*>(n + kNodeSlots);
-      // node+0x34 = std::string (MSVC : +0x14 cap) = itemId EN TEXTE -> atoi.
-      const char* base = reinterpret_cast<const char*>(n + kNodeName);
-      const uint32_t cap = *reinterpret_cast<const uint32_t*>(base + 0x14);
-      const char* str = (cap > 15) ? *reinterpret_cast<const char* const*>(base)
-                                   : base;
-      s.id = str ? static_cast<uint32_t>(atoi(str)) : 0;
-      if (s.amount > 0) sell_items_.push_back(s);
-      node = *reinterpret_cast<void**>(node);
-      ++guard;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { /* liste incohérente : on garde ce qu'on a */ }
+  sell_items_.reserve(sell_raw_.size());
+  // Contexte du name-builder : la fenêtre d'inventaire native si elle existe. Elle
+  // n'est PAS requise — BuildDisplayName retombe sur le nom de base sans elle, et
+  // l'inventaire moderne la fait justement disparaître.
+  void* inv_wnd = nullptr;
+  __try { inv_wnd = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot); }
+  __except (EXCEPTION_EXECUTE_HANDLER) { inv_wnd = nullptr; }
+
+  // Verrou « ne pas vendre les favoris » relu à chaque résolution : c'est un octet
+  // que le joueur bascule quand il veut, y compris la boutique ouverte.
+  const bool deal_lock = DealLockOn();
+
+  for (const SellRaw& r : sell_raw_) {
+    void* info = itemcell::FindInfoByIndex(kInvListHead, r.index);
+    if (!info) continue;  // vendu entre-temps : l'entrée n'a plus d'objet
+    SellItem s;
+    s.index = r.index;
+    // Le serveur envoie les DEUX prix : `price` est le tarif de base, `overcharge`
+    // ce que le marchand paiera vraiment (compétence Overcharge). L'un peut valoir
+    // l'autre. On garde les deux pour afficher « base -> final ».
+    s.base_price = r.price;
+    s.price      = (r.overcharge != 0) ? r.overcharge : r.price;
+    uint8_t favorite = 0;
+    __try {
+      uint8_t* p = reinterpret_cast<uint8_t*>(info);
+      const uint32_t idcap = *reinterpret_cast<uint32_t*>(p + kInfoIdCap);
+      const char* ids = (idcap > 0xf)
+                            ? *reinterpret_cast<char**>(p + kInfoIdStr)
+                            : reinterpret_cast<const char*>(p + kInfoIdStr);
+      s.id     = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
+      s.amount = *reinterpret_cast<int*>(p + kInfoNum);
+      favorite = *(p + kInfoFav);
+    } __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
+    // Le filtre du natif, à l'identique : favori + verrou posé = pas vendable. Le
+    // serveur, lui, ne connaît pas ce verrou (c'est un garde-fou purement client) —
+    // s'il n'est pas appliqué ICI, rien d'autre ne le fera.
+    if (deal_lock && favorite != 0) continue;
+    s.slots = itemcell::SlotCount(info);
+    itemcell::BuildDisplayName(inv_wnd, info, s.name, sizeof(s.name));
+    if (s.amount > 0) sell_items_.push_back(s);
+  }
+  sell_dirty_ = false;
+  PruneSellCart();
 }
 
-void NpcShopWindow::CloseNativeShop() {
-  // Le perso reste BLOQUÉ (état "dialogue NPC" CÔTÉ CLIENT) tant qu'on ne réplique
-  // pas le CANCEL natif : le bouton Annuler du chooser dispatche cmd 0x28 sur
-  // CMode::SendMsg (g_UICommandDispatcher @[0x0121333c], vtable+0x18) — c'est LUI
-  // qui réinitialise l'état dialogue client (débloque) + notifie le serveur.
-  // CZ_CLOSE_DIALOG seul ne suffit pas (blocage client, et gate serveur sur npc_id).
-  __try {
-    void* disp = rag::ActiveMode();
-    if (disp) {
-      void** vtbl = *reinterpret_cast<void***>(disp);
-      using CmdDispatch_t = int(__thiscall*)(void*, int, int, int, int, int);
-      reinterpret_cast<CmdDispatch_t>(vtbl[6])(disp, 0x28, 0, 0, 0, 0);  // vtable+0x18
+// Le panier de vente ne doit rien garder qui vient de sortir de la liste — cas
+// concret : on remplit le panier de favoris, PUIS on pose le verrou. Sans ce ménage,
+// le bouton « Vendre » les enverrait quand même, et le serveur, qui ne connaît pas
+// ce verrou (purement client), obéirait.
+//
+// ⚠ Fonction à part, et pas la fin de ResolveSellItems : celle-ci contient un __try,
+// que MSVC refuse de voir cohabiter avec un objet local à déroulement (C2712) — et
+// la purge a besoin d'un vecteur temporaire.
+void NpcShopWindow::PruneSellCart() {
+  if (cur_mode_ != kSell || cart_.empty()) return;
+  std::vector<CartEntry> kept;
+  kept.reserve(cart_.size());
+  for (const CartEntry& e : cart_) {
+    for (const SellItem& s : sell_items_) {
+      if (s.index == e.index) { kept.push_back(e); break; }
     }
-    // ShopCart_ResetAll(session) — le natif le fait juste après cmd 0x28.
-    reinterpret_cast<void(__fastcall*)(int)>(0x00d55f80)(static_cast<int>(rag::kSessionAddr));
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  // Filet serveur : CZ_CLOSE_DIALOG (no-op côté serveur si npc_id déjà nettoyé).
-  if (npc_id_ != 0) {
-    uint8_t pkt[6];
-    *reinterpret_cast<uint16_t*>(pkt + 0) = kOpCloseNpc;
-    *reinterpret_cast<uint32_t*>(pkt + 2) = npc_id_;
+  }
+  if (kept.size() == cart_.size()) return;
+  cart_.swap(kept);
+  if (cart_.empty()) sell_all_close_ = false;  // plus rien à vendre -> désarme
+}
+
+// Ferme la boutique des DEUX côtés, sans rien piloter du natif.
+//
+// 🔴 Le CANCEL natif (cmd 0x28 sur CMode::SendMsg) a disparu d'ici. Il faisait
+// trois choses — prévenir le serveur, éteindre l'état d'interaction du client,
+// vider le panier — et on les fait désormais nous-mêmes, explicitement. C'était la
+// dernière dépendance : se servir du natif pour se débarrasser du natif, alors
+// même qu'on lui a retiré les fenêtres sur lesquelles ce chemin s'appuie.
+//
+// Ce qui l'a rendu possible, c'est de savoir lire le GID d'une session ouverte
+// avant nous (ChooserNpcId, RE de UIChooseSellBuyWnd_OnMsg case 0x1C) : le
+// paquet de fermeture demande ce GID, et il ne nous parvenait pas dans ce cas-là.
+void NpcShopWindow::CloseNativeShop() {
+  // ⚠ DEUX GID, et ils ne se valent pas.
+  //
+  //   - la CONVERSATION (CGameMode+0x2DC) : le NPC dont le script tourne, donc
+  //     sd->npc_id côté serveur. C'est LUI que CZ_CLOSE_DIALOG doit nommer, sans
+  //     quoi npc_scriptcont rejette la fermeture et le personnage reste figé.
+  //   - la BOUTIQUE (ZC_SELECT_DEALTYPE, ou le chooser natif d'une session ouverte
+  //     avant nous) : le marchand nommé par le script. Souvent un AUTRE NPC.
+  //
+  // On envoie donc les deux quand ils diffèrent, et non l'un « au choix » : selon
+  // que la boutique vient d'un script ou d'un clic direct, ce n'est pas le même qui
+  // débloque, et le second paquet ne coûte rien (sd->npc_id déjà nul -> le serveur
+  // sort immédiatement). C'est exactement le partage que fait le natif, qui route
+  // son annulation vers le sélecteur 0x59 — CZ_CLOSE_DIALOG — quand une fenêtre de
+  // dialogue est encore vivante, et se contente de fermer ses fenêtres sinon.
+  const uint32_t shop_gid = npc_id_ != 0 ? npc_id_ : ChooserNpcId();
+  const uint32_t talk_gid = rag::NpcInteractionGid();
+
+  // 1. SERVEUR, la boutique : CZ_NPC_TRADE_QUIT remet sd->npc_shopid à zéro. C'est
+  //    LE paquet qui débloque le personnage — `pc_cant_act2()` teste ce champ, et
+  //    clif_parse_WalkToXY refuse tout déplacement tant qu'il est posé. Il part
+  //    d'ABORD, avant toute fermeture de dialogue.
+  {
+    uint8_t pkt[2];
+    *reinterpret_cast<uint16_t*>(pkt) = kOpShopQuit;
     Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
   }
+  // 2. SERVEUR, le script : sans ça, sd->npc_id reste posé et le dialogue qui a mené
+  //    à la boutique n'est jamais terminé.
+  SendCloseDialog(talk_gid);
+  if (shop_gid != talk_gid) SendCloseDialog(shop_gid);
+  // 3. CLIENT : l'état d'interaction retombe. Il ne débloque QUE le client (le
+  //    pipeline souris de CGameMode lit +0x24C) ; le serveur, lui, ne se libère que
+  //    sur les paquets ci-dessus.
+  rag::ClearNpcInteractionActive();
+  // 4. Panier natif : ShopCart_ResetAll, que le natif appelle au même moment (son
+  //    OnMsg case 6 / bouton 185). Fonction utilitaire sur la session, pas une
+  //    fenêtre : la laisser au natif ne maintient rien en vie. ⚠ Elle prend le
+  //    contexte de session, que le natif nomme g_UIWindowContextKey — c'est bien
+  //    rag::kSessionAddr, même adresse (0x015FA3C0), vérifié au désassemblage.
+  __try {
+    reinterpret_cast<void(__fastcall*)(int)>(kShopCartResetAll)(
+        static_cast<int>(rag::kSessionAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  // 5. Les fenêtres, s'il en reste une d'un basculement à chaud.
+  PurgeNativeShopWindows();
+  sell_all_close_ = false;  // desarme la fermeture auto
+}
+
+// Ne fait plus rien, comme chez NpcDialogWindow et BankWindow : ces fenêtres ne
+// naissent plus (leurs trois paquets d'ouverture sont remplacés), les masquer
+// serait nuisible (une native invisible garde le clavier), et les détruire ici est
+// exclu — on est à l'intérieur de MakeWindow, dont l'appelant natif déréférence le
+// retour. La purge d'OnTick s'en charge.
+void NpcShopWindow::HideNativeAtCreation(void* /*win*/) {}
+
+bool NpcShopWindow::AnyNativeShopWindow() const {
+  return FindWnd(kWinChoose) || FindWnd(kWinBuy) || FindWnd(kWinSell) ||
+         FindWnd(kWinDetail);
+}
+
+void NpcShopWindow::PurgeNativeShopWindows() {
   CloseWnd(kWinChoose);
   CloseWnd(kWinBuy);
   CloseWnd(kWinSell);
   CloseWnd(kWinDetail);
-  sell_all_close_ = false;  // desarme la fermeture auto
-}
-
-void NpcShopWindow::HideNativeAtCreation(void* win) {
-  if (!win || !imgui_enabled_) return;
-  HideWnd(win);  // l'appelant a déjà filtré sur l'id (0x16/0x17/0x18/0x19)
 }
 
 void NpcShopWindow::HideDetailWindow(void* win) {
@@ -422,10 +613,40 @@ void NpcShopWindow::HideDetailWindow(void* win) {
 }
 
 void NpcShopWindow::OnTick() {
+  // ── Basculement de l'interrupteur, les DEUX sens ────────────────────────────
+  //
+  // 🔴 Basculer FERME la boutique, quel que soit le sens. C'est tout l'objet du
+  // remplacement : dès qu'ImGui prend la main, plus rien de natif ne doit être
+  // vivant — une fenêtre native laissée à l'écran garde le CLAVIER, et son bouton
+  // par défaut valide une transaction.
+  //
+  // ON -> OFF : lâcher `open_` ne suffit pas. Avant le remplacement des handlers
+  // c'était sans conséquence — la native vivait derrière, masquée, et redevenait
+  // visible. Elle n'existe plus, et c'est NOUS qui posons l'état d'interaction du
+  // client : sans fermeture explicite, le joueur se retrouvait sans aucune fenêtre
+  // ET bloqué (npc_shopid armé serveur, +0x24C posé client).
+  //
+  // OFF -> ON en pleine boutique NATIVE : on ferme la sienne. On ne la REPREND pas
+  // — on ne rouvre jamais l'équivalent sur une bascule — et on ne la laisse pas
+  // finir non plus, ce serait garder vivant ce qu'on prétend avoir remplacé.
+  //
+  // ⚠ Fermer une session ouverte AVANT nous demande son npc_id, qui ne nous est
+  // jamais parvenu (le chooser le reçoit par OnMsg, il n'atterrit pas dans
+  // CGameMode+0x2DC comme le ferait un dialogue). On va donc le LIRE dans le
+  // chooser — cf. ChooserNpcId — au lieu de déléguer au CANCEL natif.
+  if (imgui_enabled_ != prev_imgui_enabled_) {
+    prev_imgui_enabled_ = imgui_enabled_;
+    if (open_ || AnyNativeShopWindow()) CloseNativeShop();
+    open_ = false;
+    was_open_ = false;
+    // Une demande de fermeture posée juste avant la bascule n'a plus d'objet — et
+    // la laisser traîner ferait fermer, plus tard, une boutique qui n'est pas elle.
+    want_close_ = false;
+  }
   if (!imgui_enabled_) { open_ = false; was_open_ = false; return; }
 
-  // Fermeture AUTO demandee (vente d'un "Tout ajouter au panier" reussie) : on ferme
-  // comme un clic X (cmd 0x28 + destruction native) depuis le thread principal.
+  // Fermeture AUTO demandee (vente d'un "Tout ajouter au panier" reussie) : meme
+  // chemin que le clic sur le X, depuis le thread principal.
   if (want_close_) {
     want_close_ = false;
     CloseNativeShop();
@@ -436,22 +657,25 @@ void NpcShopWindow::OnTick() {
   }
 
   // Changement de map (@load, warp...) recu : la session shop est invalidee cote
-  // serveur (pc_setpos remet npc_shopid=0 / npc_id=0). On ferme le viewer et on
-  // DETRUIT les fenetres natives orphelines (sinon, en cessant de les cacher, elles
-  // reapparaitraient). PAS de cmd 0x28 : le warp a deja reset le dialogue serveur.
+  // serveur (pc_setpos remet npc_shopid=0 / npc_id=0). Nettoyage CLIENT seulement,
+  // donc — AUCUN paquet : le serveur a deja tout defait, et un CZ_CLOSE_DIALOG
+  // arriverait apres la bataille.
   if (map_changed_) {
     map_changed_ = false;
     if (open_) {
-      CloseWnd(kWinChoose);
-      CloseWnd(kWinBuy);
-      CloseWnd(kWinSell);
-      CloseWnd(kWinDetail);
+      // Nettoyage CLIENT uniquement (pas de paquet : le warp a déjà tout remis à
+      // zéro côté serveur), flag d'interaction compris — c'est nous qui l'avons
+      // posé, personne d'autre ne l'éteindra.
+      rag::ClearNpcInteractionActive();
+      PurgeNativeShopWindows();
       open_ = false;
       was_open_ = false;
       show_panel_ = true;
       npc_id_ = 0;
       buy_items_.clear();
       sell_items_.clear();
+      sell_raw_.clear();
+      sell_dirty_ = false;
       cart_.clear();
       buy_requested_ = false;
       sell_requested_ = false;
@@ -462,32 +686,30 @@ void NpcShopWindow::OnTick() {
     return;
   }
 
-  // Le shop est "ouvert" tant qu'une de ses fenêtres natives existe (le serveur
-  // les crée ; on les cache). open_ posé aussi par 0xc4. Signal de fermeture :
-  // plus aucune fenêtre shop native + on a fermé le viewer.
-  const bool any_native = FindWnd(kWinChoose) || FindWnd(kWinBuy) ||
-                          FindWnd(kWinSell) || FindWnd(kWinDetail);
-  if (any_native) open_ = true;
-
+  // 🔴 La session n'est plus déduite de la présence d'une fenêtre native : c'est
+  // le paquet 0x00c4 qui l'ouvre et notre fermeture qui l'éteint. L'ancienne
+  // détection était même devenue trompeuse — les fenêtres ne naissant plus, elle
+  // n'aurait jamais rien vu.
   if (open_) {
-    // Cache les fenêtres natives chaque tick (le natif peut remettre +0x28=1).
-    HideWnd(FindWnd(kWinChoose));
-    HideWnd(FindWnd(kWinBuy));
-    HideWnd(FindWnd(kWinSell));
-    HideWnd(FindWnd(kWinDetail));
-    // Sous-window liste de vente (vtable 0x0103cbf0, via son global) : caché aussi
-    // au cas où il serait top-level (pas un enfant du conteneur 0x17).
-    __try {
-      void* sl = *reinterpret_cast<void**>(kSellListGlobal);
-      if (sl && *reinterpret_cast<uintptr_t*>(sl) == kSellListVTable)
-        *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(sl) + uiwnd::kOffVisible) = 0;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    // Filet du basculement d'interrupteur en pleine session : on DÉTRUIT ce qui
+    // traîne au lieu de le masquer (masquée, une native garde le clavier).
+    PurgeNativeShopWindows();
     if (!was_open_) need_pos_ = true;
     // Demande la liste du mode courant si pas encore faite (envoi thread principal).
     if (cur_mode_ == kBuy && !buy_requested_) RequestList(kBuy);
     if (cur_mode_ == kSell && !sell_requested_) RequestList(kSell);
-    // En mode Vente : recharge la liste depuis la fenêtre native cachée.
-    if (cur_mode_ == kSell) RefreshSellFromNative();
+    // Verrou de vente des favoris basculé pendant que la boutique est ouverte (le
+    // pied de l'inventaire moderne est à portée de clic) : la liste doit suivre,
+    // dans les deux sens — masquer les favoris, ou les faire réapparaître.
+    const bool deal_lock = DealLockOn();
+    if (deal_lock != prev_deal_lock_) {
+      prev_deal_lock_ = deal_lock;
+      sell_dirty_ = true;
+    }
+    // Résolution de la liste de vente reçue au réseau : ici, parce qu'elle appelle
+    // le name-builder natif. Une seule fois par salve, pas à chaque tick — l'ancien
+    // code relisait la fenêtre native en boucle faute d'événement.
+    if (sell_dirty_) ResolveSellItems();
   } else {
     npc_id_ = 0;
   }
@@ -594,23 +816,49 @@ void NpcShopWindow::OnRenderUI() {
   // mode immediat (Ctrl) : sans Ctrl on empile librement (le bouton Acheter/Vendre
   // gere la solvabilite du total). Immediat : achat grise si qty*prix > zeny ;
   // vente grisee si qty > quantite possedee.
-  static const int   kQty[4]    = {1, 10, 100, 1000};
-  static const char* kQtyLbl[4] = {"+1", "+10", "+100", "+1k"};
+  static const int kQty[4] = {1, 10, 100, 1000};
+  // Palier de quantites d'une ligne. A l'ACHAT le stock du marchand est illimite en
+  // pratique -> l'echelle fixe 1/10/100/1k. A la VENTE elle est absurde : proposer
+  // « +1k » sur un objet possede en 3 exemplaires n'offre que des boutons morts. On
+  // taille donc l'echelle sur ce qu'on POSSEDE — on garde les paliers strictement
+  // inferieurs au stack, et le dernier bouton est le stack ENTIER, etiquete de sa
+  // vraie valeur : 9 -> « +1 +9 » ; 650 -> « +1 +10 +100 +650 » ; 1 -> « +1 » seul.
+  // Plafonne a 4 boutons (largeur de colonne), le dernier restant toujours le total.
+  auto qty_steps = [](int max_avail, bool is_buy, int* out) -> int {
+    if (is_buy) { for (int k = 0; k < 4; ++k) out[k] = kQty[k]; return 4; }
+    if (max_avail < 1) max_avail = 1;
+    int n = 0;
+    for (int k = 0; k < 4 && n < 3; ++k) {
+      if (kQty[k] >= max_avail) break;
+      out[n++] = kQty[k];
+    }
+    if (n == 0 || out[n - 1] != max_avail) out[n++] = max_avail;  // le stack entier
+    return n;
+  };
   auto qty_buttons = [&](uint32_t id, int index, int32_t unit_price, int max_avail,
                          bool is_buy) {
     const bool ctrl = ImGui::GetIO().KeyCtrl;
-    for (int k = 0; k < 4; ++k) {
+    int steps[4] = {0, 0, 0, 0};
+    const int count = qty_steps(max_avail, is_buy, steps);
+    const float pad2 = ImGui::GetStyle().FramePadding.x * 2.0f;
+    for (int k = 0; k < count; ++k) {
       if (k) ImGui::SameLine(0.0f, 2.0f);
-      const int q = kQty[k];
+      const int q = steps[k];
+      // Libelle : « +1k » reste l'abrege consacre a l'achat ; a la vente on ecrit la
+      // valeur exacte, c'est tout l'interet (savoir qu'on a 650 sans compter).
+      char lbl[16];
+      if (is_buy && k == 3) std::snprintf(lbl, sizeof(lbl), "+1k");
+      else                  std::snprintf(lbl, sizeof(lbl), "+%d", q);
       // Sans Ctrl (ajout panier) : jamais grise. Avec Ctrl (transaction immediate) :
-      // grise si non abordable (achat) ou quantite insuffisante (vente).
-      bool ok = true;
-      if (ctrl)
-        ok = is_buy ? (static_cast<long long>(unit_price) * q <=
-                       static_cast<long long>(zeny))
-                    : (q <= max_avail);
+      // grise si non abordable (achat). A la vente le palier ne depasse jamais le
+      // stack par construction, il n'y a donc plus rien a griser.
+      const bool ok = !ctrl || !is_buy ||
+                      static_cast<long long>(unit_price) * q <=
+                          static_cast<long long>(zeny);
       if (!ok) ImGui::BeginDisabled();
-      if (ro::RoButton(kQtyLbl[k], 34.0f, 0.0f)) {
+      // Largeur au contenu, plancher a 34 : « +30000 » ne doit pas etre tronque.
+      const float bw = std::max(34.0f, ImGui::CalcTextSize(lbl).x + pad2);
+      if (ro::RoButton(lbl, bw, 0.0f)) {
         if (ctrl) { if (is_buy) QuickBuy(id, q); else QuickSell(index, q); }
         else      AddToCart(id, index, unit_price, max_avail, q);
       }
@@ -635,9 +883,13 @@ void NpcShopWindow::OnRenderUI() {
   const float cart_w = 200.0f;
   const float list_w =
       show_cart ? std::max(160.0f, avail.x - cart_w - 8.0f) : 0.0f;
+  // Hauteur réservée au pied de fenêtre (bouton « Fermer »), retirée aux deux
+  // colonnes : hauteur négative = « laisse ça libre en bas ».
+  const float footer_h =
+      ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
 
   // ── Liste (gauche) ──
-  ImGui::BeginChild("shop_list", ImVec2(list_w, 0), true);
+  ImGui::BeginChild("shop_list", ImVec2(list_w, -footer_h), true);
   if (cur_mode_ == kBuy) {
     if (ImGui::BeginTable("buytbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
@@ -691,10 +943,21 @@ void NpcShopWindow::OnRenderUI() {
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn("Objet");
       ImGui::TableSetupColumn("Vente", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+      // Plus large qu'a l'achat : le dernier bouton porte le stack en clair
+      // (« +30000 » au pire), pas l'abrege « +1k ».
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 172.0f);
       ImGui::TableHeadersRow();
       for (const auto& s : sell_items_) {
-        const char* nm = itemcell::NameById(s.id);
+        // Nom COMPOSÉ (+refine, préfixes/suffixes de cartes) quand on a pu le
+        // bâtir, sinon le nom nu de la DB. Le champ existait depuis toujours dans
+        // SellItem mais restait vide : la liste venait de la fenêtre native, où
+        // le nom stocké était l'itemId en texte. Il compte surtout chez un NPC en
+        // `sellstuff`, le seul qui accepte le raffiné et le serti — voir « +7 »
+        // avant de cliquer évite de vendre la mauvaise pièce.
+        char nm_buf[96];
+        const char* nm = itemcell::Label(
+            nm_buf, sizeof(nm_buf),
+            s.name[0] ? s.name : itemcell::NameById(s.id), s.slots);
         if (!filter.PassFilter(nm)) continue;
         ImGui::TableNextRow();
         ImGui::PushID(s.index);
@@ -725,7 +988,7 @@ void NpcShopWindow::OnRenderUI() {
   // ── Panier (droite) — masque automatiquement quand vide (cf. show_cart) ──
   if (show_cart) {
   ImGui::SameLine();
-  ImGui::BeginChild("shop_cart", ImVec2(cart_w, 0), true);
+  ImGui::BeginChild("shop_cart", ImVec2(cart_w, -footer_h), true);
   ImGui::TextUnformatted(cur_mode_ == kBuy ? "Panier d'achat" : "Panier de vente");
   ImGui::SameLine();
   if (!cart_.empty() && ro::RoButton("Vider")) { cart_.clear(); sell_all_close_ = false; }
@@ -781,6 +1044,24 @@ void NpcShopWindow::OnRenderUI() {
   }
   ImGui::EndChild();
   }  // if (show_cart) : panier masque quand vide
+
+  // ── Pied de fenêtre : quitter la boutique ───────────────────────────────────
+  //
+  // Présent dans les DEUX onglets, et volontairement pas seulement dans le panier
+  // (qui disparaît quand il est vide). La croix de la barre de titre fait la même
+  // chose, mais rien ne le dit : chez le natif, « Annuler » était un bouton bien
+  // visible, et fermer une boutique est l'action qu'un joueur cherche le plus
+  // souvent après avoir acheté.
+  //
+  // Passe par want_close_ plutôt que d'appeler CloseNativeShop ici : la fermeture
+  // touche des fonctions natives et se fait donc au tick suivant, hors de la frame
+  // ImGui — le chemin qu'emprunte déjà la fermeture automatique de « Tout ajouter
+  // au panier ».
+  ImGui::Separator();
+  if (ro::RoButton("Fermer", 90.0f, 0.0f)) want_close_ = true;
+  ImGui::SameLine();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextDisabled("Clic droit sur un objet : description");
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);

@@ -372,11 +372,21 @@ void BankWindow::OnTick() {
     status_[0] = '\0';
     status_error_ = false;
   }
-  // 🔴 On DÉTRUIT une native résiduelle au lieu de la masquer. Elle ne naît plus
-  // (son handler est remplacé) : il n'en reste que si le joueur a allumé
-  // l'interface moderne alors que la banque native était déjà à l'écran. La
-  // masquer serait le pire choix — invisible, elle garderait le clavier, et son
-  // bouton par défaut transfère des zeny.
+  // 🔴 Une native ici ne peut avoir qu'une origine : l'interface moderne allumée
+  // alors que la banque NATIVE était déjà à l'écran (son handler étant remplacé,
+  // elle ne naît plus autrement). On la DÉTRUIT — la masquer serait le pire choix,
+  // invisible elle garderait le clavier et son bouton par défaut transfère des
+  // zeny.
+  //
+  // Et on N'OUVRE PAS la nôtre à la place. Règle de conception : sur un
+  // basculement à chaud, laisser le joueur devant RIEN est plus sûr que lui
+  // rouvrir l'équivalent. Rouvrir voudrait dire fabriquer une session qu'on n'a
+  // jamais observée — ici ce serait peut-être défendable (les soldes sont dans les
+  // globales), mais la règle vaut par sa constance, pas par le cas facile. Un
+  // Ctrl+B suffit à rouvrir, proprement, en passant par le serveur.
+  //
+  // Rien n'est bloqué entre-temps : la banque ne pose aucun état, ni client ni
+  // serveur, dans un sens comme dans l'autre.
   CloseBank();  // no-op quand il n'y a aucune fenêtre native, le cas normal
   was_open_ = open_;
 

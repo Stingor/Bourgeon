@@ -13,6 +13,7 @@
 // un en-tête bien plus lourd.
 
 #include <cstdint>
+#include <excpt.h>  // __try/__except des accesseurs gardés (même choix que uiwnd.h)
 
 namespace rag {
 
@@ -52,6 +53,75 @@ constexpr uintptr_t kModeMgrAddr = 0x01213338;
 constexpr uintptr_t kActiveModePtr = 0x0121333c;
 
 inline void* ActiveMode() { return *reinterpret_cast<void**>(kActiveModePtr); }
+
+// ── L'état « une interaction NPC est en cours » du CLIENT ────────────────────
+// CGameMode+0x24C, posé à 1 par les handlers de paquet qui ouvrent une interaction
+// (ZC_SAY_DIALOG 0x00B4, ZC_MENU_LIST 0x00B7, ZC_SELECT_DEALTYPE 0x00C4…) et remis
+// à 0 quand elle se termine. +0x2DC porte le GID du NPC concerné.
+//
+// 🔴 Pourquoi ces deux champs sont ICI et pas dans un plugin : depuis qu'on prend
+// la place de ces handlers, c'est à NOUS de les écrire — sinon le client ne se sait
+// plus en conversation, et des chemins natifs qu'on n'a pas inventoriés changent de
+// comportement. Deux plugins le font déjà (dialogue NPC, boutique NPC) et un
+// troisième suivra ; la recette n'a pas à être recopiée une fois de plus.
+//
+// ⚠ Appeler depuis le fil RÉSEAU est correct — c'est exactement là que les
+// handlers natifs remplacés l'écrivaient.
+constexpr int kGameModeNpcDialogFlag = 0x24c;
+constexpr int kGameModeNpcGid        = 0x2dc;
+
+// Pose le flag, et le GID s'il est fourni (0 = ne pas y toucher).
+//
+// 🔴 Ne passer un GID que si le handler natif remplacé en écrivait un. +0x2DC est
+// l'identité de la CONVERSATION (le NPC dont le script tourne = sd->npc_id côté
+// serveur), pas celle de la fenêtre qu'on ouvre : l'écraser fait partir les
+// fermetures au mauvais NPC, le serveur les rejette et le joueur reste bloqué. Sur
+// les six sites de RecvLoop_DispatchPackets qui posent +0x24C=1, seuls les quatre
+// paquets de DIALOGUE écrivent aussi +0x2DC ; ZC_SELECT_DEALTYPE (boutique,
+// 0x00CA0F02) n'y touche pas — il range son npcId dans la fenêtre chooser (+0xB4).
+inline void SetNpcInteractionActive(uint32_t npc_gid) {
+  __try {
+    void* mode = ActiveMode();
+    if (!mode) return;
+    uint8_t* m = reinterpret_cast<uint8_t*>(mode);
+    *reinterpret_cast<int*>(m + kGameModeNpcDialogFlag) = 1;
+    if (npc_gid != 0)
+      *reinterpret_cast<uint32_t*>(m + kGameModeNpcGid) = npc_gid;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Éteint le flag. À faire à toute fermeture : c'est lui qui « débloque » le client.
+inline void ClearNpcInteractionActive() {
+  __try {
+    void* mode = ActiveMode();
+    if (mode)
+      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
+                              kGameModeNpcDialogFlag) = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Le flag est-il posé ? Sert à reconnaître une interaction NATIVE en cours au
+// moment où l'on allume l'interface moderne.
+inline bool NpcInteractionActive() {
+  __try {
+    void* mode = ActiveMode();
+    if (!mode) return false;
+    return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
+                                   kGameModeNpcDialogFlag) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// GID du NPC avec qui le CLIENT se croit en interaction, 0 si illisible. Le repli
+// quand notre propre modèle est vide — cas du basculement d'interrupteur à chaud,
+// où aucun paquet de la conversation n'est passé par nous.
+inline uint32_t NpcInteractionGid() {
+  __try {
+    void* mode = ActiveMode();
+    if (!mode) return 0;
+    return *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(mode) +
+                                        kGameModeNpcGid);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 
 // Accesseur natif « objet actif du manager ». Dix fichiers l'appellent, sous les
 // noms kGameModeGet, kGetMode et kGetDragObj, TOUJOURS sur kModeMgrAddr.

@@ -36,8 +36,9 @@ namespace {
 // Dispatcher CMode::SendMsg : *(rag::kActiveModePtr) = mode zone actif (ou 0). vtbl+0x18
 // (= index 6) = CMode::SendMsg. cmd 0x28 = ferme l'UI NPC et DÉBLOQUE l'état
 // dialogue CLIENT (CZ_CLOSE_DIALOG seul laisse le perso bloqué).
-constexpr int kGameModeDialogFlag  = 0x24c;   // CGameMode+0x24C = dialogue actif
-constexpr int kGameModeNpcGid      = 0x2dc;   // CGameMode+0x2DC = GID du NPC courant
+// (Les deux offsets de CGameMode — flag d'interaction +0x24C et GID +0x2DC — sont
+// passés dans ragnarok/globals.h, avec leurs accesseurs : la boutique NPC les écrit
+// désormais aussi.)
 constexpr int kSelClose            = 0x28;
 using Dispatch_t = int (__thiscall*)(void*, int, int, int, int, int);
 
@@ -95,55 +96,17 @@ void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
-// Reprend à notre compte les DEUX écritures que faisait le handler natif qu'on
-// remplace (docs/npc_dialog_re.md §2 : `mov [edi+0x24C], 1` puis `mov [edi+0x2DC],
-// GID`, en tête du recv de ZC_SAY_DIALOG).
+// Les trois accès à l'état « interaction NPC » du client (poser, effacer, relire le
+// GID) vivent dans ragnarok/globals.h : la boutique NPC a exactement le même besoin
+// depuis qu'elle remplace, elle aussi, le handler qui posait ce flag. Ce qui
+// suivait ici en était la première copie ; la seconde n'aura pas lieu.
 //
-// 🔴 Les reproduire n'est pas de la cosmétique. Le flag « dialogue actif » est lu
-// AILLEURS dans le client, par des chemins qu'on n'a pas inventoriés ; ne plus
-// l'écrire aurait changé le comportement du jeu pendant une conversation, sans
-// qu'on sache lequel. On le pose donc là où le natif le posait, et le chemin de
-// fermeture (ForceClearDialogFlag) l'éteint déjà.
-//
-// Appelé depuis le fil RÉSEAU — exactement le contexte où le handler natif
-// l'écrivait : deux écritures d'entiers, aucun envoi ni opération de fenêtre. Le
-// différer au tick suivant laisserait passer une frame pendant laquelle le client
-// se croirait hors dialogue.
-void SetDialogActiveNative(uint32_t gid) {
-  __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (!mode) return;
-    uint8_t* m = reinterpret_cast<uint8_t*>(mode);
-    *reinterpret_cast<int*>(m + kGameModeDialogFlag) = 1;
-    if (gid != 0)
-      *reinterpret_cast<uint32_t*>(m + kGameModeNpcGid) = gid;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-// GID du NPC avec qui le CLIENT se croit en conversation (CGameMode+0x2DC).
-//
-// 🔴 Indispensable au basculement d'interrupteur À CHAUD. Quand le joueur allume
-// l'interface moderne alors qu'un dialogue NATIF est à l'écran, notre `gid_` vaut
-// zéro : le plugin n'a vu aucun paquet de cette conversation (OnRecvPacket sortait
-// sur `!imgui_enabled_`). Or la fermeture est gardée par `gid != 0` — donc AUCUN
-// paquet ne partait, le client était nettoyé, et le serveur gardait `sd->npc_id` :
-// personnage bloqué en script, plus une seule compétence, jusqu'au changement de
-// carte. Le GID, lui, était là depuis le début : le handler natif venait de
-// l'écrire ici même.
-uint32_t ReadNativeNpcGid() {
-  __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (!mode) return 0;
-    return *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(mode) +
-                                        kGameModeNpcGid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-void ForceClearDialogFlag() {  // GameMode+0x24C = 0 (débloque le client, garantie)
-  __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (mode)
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) + kGameModeDialogFlag) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// 🔴 Pourquoi on les POSE au lieu de laisser tomber : cf. le commentaire de
+// globals.h. Le flag est lu ailleurs dans le client, par des chemins non
+// inventoriés.
+using rag::ClearNpcInteractionActive;
+using rag::NpcInteractionGid;
+using rag::SetNpcInteractionActive;
 
 // Ouvre une URL http(s) dans le navigateur (comme le clic <URL> natif cmd 0x1B5 ->
 // ShellExecute). Restreint à http/https (contenu piloté serveur) par sécurité.
@@ -328,7 +291,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       }
       has_next_ = has_close_ = false;  // (re)posés par le WAIT/CLOSE qui suit
       open_ = true;
-      SetDialogActiveNative(gid_);  // ce que le handler natif écrivait ici
+      SetNpcInteractionActive(gid_);  // ce que le handler natif écrivait ici
       return;
     }
     case kZcSay2: {  // {len:2, GID:4, resv:1, texte(len-9)}
@@ -344,7 +307,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       }
       has_next_ = has_close_ = false;
       open_ = true;
-      SetDialogActiveNative(gid_);
+      SetNpcInteractionActive(gid_);
       return;
     }
     case kZcWait:
@@ -402,7 +365,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
       menu_filter_[0] = '\0';
       menu_hot_ = -1;
       open_ = true;
-      SetDialogActiveNative(gid_);  // §5.1 : le recv natif du menu posait +0x24C
+      SetNpcInteractionActive(gid_);  // §5.1 : le recv natif du menu posait +0x24C
       return;
     }
     case kZcEditN:
@@ -946,10 +909,18 @@ void NpcDialogWindow::OnRenderUI() {
 // plus personne n'émet ces CZ dans notre dos en régime normal. Il est GARDÉ pour
 // la seule fenêtre de tir qui subsiste — l'interface moderne allumée alors qu'un
 // dialogue natif est déjà à l'écran : entre cet instant et la purge du tick
-// suivant, une native encore vivante peut répondre à une touche. Le coût est un
-// switch par paquet envoyé, la panne évitée est un « Invalid menu selection ».
+// suivant, une native encore vivante peut répondre à une touche.
+//
+// 🔴 Il ne se déclenche QUE pendant une de NOS conversations (`open_`), et pas en
+// permanence comme avant. La raison est un dégât croisé : CZ_CLOSE_DIALOG 0x0146
+// n'appartient pas au dialogue, la BOUTIQUE NPC s'en sert aussi pour se fermer.
+// Un joueur qui allumait l'interface moderne pendant une boutique NATIVE, puis la
+// fermait, voyait donc sa fermeture partir à la poubelle — et restait bloqué
+// serveur, npc_id jamais nettoyé. Hors session, ces paquets ne peuvent venir que
+// d'un chemin natif légitime : on les laisse passer.
 bool NpcDialogWindow::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
   if (!imgui_enabled_) return false;  // toggle OFF : le natif garde la main
+  if (!open_) return false;           // hors conversation : ce n'est pas pour nous
   switch (opcode) {
     case kCzNext:         // 0x00B9 CZ_REQ_NEXT_SCRIPT
     case kCzChoose:       // 0x00B8 CZ_CHOOSE_MENU  (dont le « choix 1 » parasite)
@@ -1031,7 +1002,7 @@ void NpcDialogWindow::CloseDialog() {
   // défaut n'est pas théorique : c'est le cas de l'interrupteur allumé en plein
   // dialogue natif, où nous n'avons vu passer aucun paquet. Sans ce repli, la
   // fermeture ne partait pas et le personnage restait bloqué en script serveur.
-  const uint32_t gid = gid_ != 0 ? gid_ : ReadNativeNpcGid();
+  const uint32_t gid = gid_ != 0 ? gid_ : NpcInteractionGid();
   // Un menu est-il en attente d'une réponse ? Le nôtre, ou — même cas que le GID —
   // une fenêtre menu NATIVE encore à l'écran. Le distinguer compte : un script
   // arrêté sur un `select` attend un CZ_CHOOSE_MENU, et c'est lui qui le termine
@@ -1060,9 +1031,9 @@ void NpcDialogWindow::CloseDialog() {
   //    conversation ; l'ordre reste, il ne coûte rien.
   PurgeNativeDialogWindows();
   // 3. CLIENT : débloque l'état dialogue (cmd 0x28 + +0x24C=0 — c'est NOUS qui
-  //    l'avons posé à l'ouverture, cf. SetDialogActiveNative).
+  //    l'avons posé à l'ouverture, cf. SetNpcInteractionActive).
   DispatchNpcCmd(kSelClose);
-  ForceClearDialogFlag();
+  ClearNpcInteractionActive();
   open_ = false;
   was_open_ = false;
   Reset();
@@ -1092,12 +1063,7 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
 }
 
 bool NpcDialogWindow::DialogActiveNative() const {
-  __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (!mode) return false;
-    return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
-                                   kGameModeDialogFlag) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return rag::NpcInteractionActive();
 }
 
 bool NpcDialogWindow::AnyNativeDialogWindow() const {
@@ -1187,7 +1153,7 @@ void NpcDialogWindow::OnTick() {
     // Nettoyage CLIENT uniquement (pas de paquet) : force le flag à 0 + détruit les
     // fenêtres orphelines, sinon la détection les verrait encore -> réouverture vide
     // en boucle.
-    ForceClearDialogFlag();
+    ClearNpcInteractionActive();
     PurgeNativeDialogWindows();
     open_ = false; was_open_ = false;
     Reset();
