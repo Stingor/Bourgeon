@@ -913,12 +913,16 @@ constexpr int kSkOffUserUp    = 0x2c;  // UserUpgradable : <= 0 = le joueur ne p
 constexpr int kSkOffLearned   = 0x30;  // int16, VÉRITÉ SERVEUR (jamais modifiée en local)
 constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = prérequis
 
-// Fenêtre native du grimoire (UINewSkillListWnd id 0x25) : le gestionnaire garde son
-// instance à mgr+0x2C4 et VIDE cet emplacement à la fermeture — c'est donc la source
-// fiable de « le joueur a-t-il demandé le grimoire ? ». +0x28 = drapeau de visibilité.
-constexpr uintptr_t kSkillWndSlot   = 0x0131f7ac;  // mgr(0x0131f4e8)+0x2C4
+// +0x28 = drapeau de visibilité d'une UIWindow (0 = hors rendu ET hors hit-test).
+// (L'emplacement mgr+0x2C4 qui portait la fenêtre du grimoire ne sert plus : on ne
+// SUIT plus son existence, on la détruit.)
 constexpr int       kWndVisibleFlag = 0x28;
-constexpr int       kWinSkillList   = 0x25;  // id de la fenêtre (MakeWindow / Close)
+// ── Les trois fenêtres natives que cette feuille REMPLACE ───────────────────
+// Ids relevés en live dans la map du gestionnaire (mgr 0x0131f4e8), vtables
+// recoupées avec status_tweaks.h et inventory_viewer.cc.
+constexpr int       kWinSkillList   = 0x25;  // UINewSkillListWnd  (Grimoire)
+constexpr int       kWinEquip       = 0x0a;  // Equipment, vtable 0x01022f68
+constexpr int       kWinStatus      = 0x0b;  // UIStatusWnd,  vtable 0x010329d4
 
 constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
 constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
@@ -6889,13 +6893,38 @@ void CharacterSheet::OpenSkillsTab() {
   tab_request_ = 5;
 }
 
-// Masque la fenêtre native du grimoire (UINewSkillListWnd, id 0x25) dès sa création,
-// avant son premier rendu — sinon une frame native passe à l'écran. Le flag de
-// visibilité vit à window+0x28 (UIWnd_SetVisible 0x009030c0 l'y écrit) ; on le pose
-// nous-mêmes plutôt que d'appeler la vtable, comme le font l'inventaire et l'entrepôt.
-// La fenêtre reste ENREGISTRÉE : le natif la « rouvrira » (donc la re-masquera) et
-// c'est notre onglet qui s'affiche à la place.
-void CharacterSheet::HideSkillWndAtCreation(void* win) {
+// Équipement : l'onglet du même nom, celui du mannequin.
+void CharacterSheet::OpenEquipTab() {
+  show_ = true;
+  tab_ = 0;
+  tab_request_ = 0;
+}
+
+// Status : le même onglet, mais avec le VOLET STATS déplié. Ce volet n'a pas de
+// drapeau propre — il s'affiche quand la fenêtre est assez large (cf. show_stats
+// dans OnRenderUI). On demande donc la largeur « wide » pour une frame, ce que
+// `want_wide_` fait en forçant la contrainte de taille au rendu suivant.
+void CharacterSheet::OpenStatusTab() {
+  OpenEquipTab();
+  want_wide_ = true;
+}
+
+// Ferme une fenêtre native comme le ferait son X : UIWindowMgr_Close enregistre son
+// rectangle puis la DÉTRUIT. Hors frame ImGui uniquement (appelée depuis OnTick),
+// cf. la règle « pas de commande native pendant une frame ImGui ».
+namespace {
+void DestroyNativeWindow(int window_id) {
+  __try {
+    uiwnd::CloseWindow(window_id);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+}  // namespace
+
+// Une des trois fenêtres natives que cette feuille remplace vient de naître : on la
+// masque SUR-LE-CHAMP (sans quoi une frame native passe à l'écran) et on route la
+// demande vers l'onglet correspondant. La destruction, elle, revient à OnTick — le
+// natif manipule encore la fenêtre qu'il vient de créer.
+void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   __try {
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWndVisibleFlag) = 0;
@@ -6903,67 +6932,48 @@ void CharacterSheet::HideSkillWndAtCreation(void* win) {
   // Une création survenue PENDANT un changement de map n'est pas une demande du
   // joueur : c'est l'interface qui se reconstruit et rouvre les fenêtres qui
   // l'étaient. On masque la native (toujours), mais on ne touche pas à l'état de
-  // la feuille — sinon elle s'ouvrirait sur le Grimoire à chaque warp.
+  // la feuille — sinon elle s'ouvrirait toute seule à chaque warp.
   if (Bourgeon::Instance().IsMapLoading()) return;
-  // Alt+S (et l'icône « Skill ») est un BASCULEUR : si la feuille montre déjà le
-  // grimoire, cette demande le REFERME. Sans ça, arriver sur l'onglet Grimoire par
-  // les onglets puis presser Alt+S ne faisait rien de visible (on ouvrait une native
-  // aussitôt masquée) et il fallait un second appui pour fermer.
-  // On se contente de rabattre la feuille : la native créée juste au-dessus de nous
-  // sera fermée par OnTick (règle « feuille fermée -> plus de témoin »). Surtout pas
-  // ici — le natif manipule encore la fenêtre qu'il vient de créer.
-  if (show_ && tab_ == 5) {
-    show_ = false;
-    return;
+  // Ces entrées sont des BASCULEURS : redemander la vue qu'on regarde déjà la
+  // referme. C'est nous qui portons cette bascule maintenant, puisque la native
+  // est détruite aussitôt — le natif, lui, ne la voit jamais exister.
+  switch (window_id) {
+    case kWinSkillList:
+      if (show_ && tab_ == 5) { show_ = false; return; }
+      OpenSkillsTab();
+      return;
+    case kWinStatus:
+      // Le volet stats est la marque de cette vue-là : ouverte SANS lui, la
+      // demande le déplie au lieu de tout refermer.
+      if (show_ && tab_ == 0 && stats_panel_shown_) { show_ = false; return; }
+      OpenStatusTab();
+      return;
+    case kWinEquip:
+      if (show_ && tab_ == 0) { show_ = false; return; }
+      OpenEquipTab();
+      return;
+    default:
+      return;
   }
-  OpenSkillsTab();
 }
 
-// Ferme la fenêtre native du grimoire comme le ferait son X : UIWindowMgr_Close
-// enregistre son rectangle puis la DÉTRUIT (le gestionnaire vide kSkillWndSlot).
-// Hors frame ImGui uniquement (appelée depuis OnTick), cf. la règle « pas de
-// commande native pendant une frame ImGui ».
-namespace {
-void CloseSkillWnd() {
-  __try {
-    uiwnd::CloseWindow(kWinSkillList);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-}  // namespace
-
-// L'icône « Skill » et Alt+S ne font qu'ouvrir/fermer la fenêtre native 0x25 : on
-// suit son existence (le gestionnaire vide son emplacement à la fermeture) pour que
-// ces deux entrées pilotent NOTRE onglet. Le masquage est reposé à chaque tick, comme
-// pour l'inventaire : un relayout natif peut remettre le drapeau de visibilité à 1.
+// Les trois natives remplacées sont DÉTRUITES, pas seulement masquées, et c'est ce
+// qui fait marcher le routage des raccourcis comme des boutons du menu d'icônes :
+// UIWindowMgr_ToggleWindowById (0x00812e60), leur chemin commun, FERME la fenêtre
+// si elle existe et ne la crée que sinon. Une native laissée vivante — même
+// invisible — avalerait donc un appui sur deux sans repasser par MakeWindow, en
+// plus de garder le clavier (Entrée/Espace activent son bouton par défaut).
 void CharacterSheet::OnTick() {
-  if (!imgui_enabled_) { skill_wnd_was_open_ = false; return; }
+  if (!imgui_enabled_) return;
   // Pendant un changement de map le HUD natif est démonté puis reconstruit : on ne
-  // touche à aucune fenêtre native et on ne lit AUCUN front (la disparition puis la
-  // réapparition de 0x25 n'est pas une action du joueur). L'état d'avant le warp est
-  // conservé tel quel.
+  // touche à aucune fenêtre native. L'état d'avant le warp est conservé tel quel.
   if (Bourgeon::Instance().IsMapLoading()) return;
-  void* wnd = nullptr;
-  __try {
-    wnd = *reinterpret_cast<void**>(kSkillWndSlot);
-    if (wnd)
-      *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kWndVisibleFlag) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { wnd = nullptr; }
-  bool open = wnd != nullptr;
-  // La native 0x25 n'est qu'un TÉMOIN de « le joueur veut le grimoire » : masquée en
-  // permanence, elle ne sert plus à rien dès que la feuille est fermée (croix, Échap,
-  // Alt+F) ou regarde un autre onglet. On la ferme alors pour de bon, sinon elle reste
-  // ENREGISTRÉE et la reconstruction de l'interface au changement de map la recrée —
-  // front « ouverte » -> la feuille se rouvrait toute seule sur le Grimoire à chaque warp.
-  if (open && (!show_ || tab_ != 5)) {
-    CloseSkillWnd();
-    open = false;
-  }
-  if (open && !skill_wnd_was_open_) {
-    OpenSkillsTab();
-  } else if (!open && skill_wnd_was_open_ && tab_ == 5) {
-    show_ = false;  // le joueur vient de refermer le grimoire : la feuille suit
-  }
-  skill_wnd_was_open_ = open;
+  // Filet : ces fenêtres ne devraient plus exister passé le hook de création, mais
+  // elles renaissent par des chemins qui ne demandent rien au joueur — la
+  // reconstruction de l'interface, ou l'activation du mode moderne alors qu'elles
+  // sont déjà à l'écran. Les détruire ici couvre les deux cas.
+  for (const int id : {kWinSkillList, kWinStatus, kWinEquip})
+    if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
 }
 
 void CharacterSheet::OnRenderUI() {
@@ -6994,7 +7004,11 @@ void CharacterSheet::OnRenderUI() {
   // Les onglets Guilde (table des membres) et Grimoire (grille de 7 colonnes) ont
   // besoin de toute la largeur : on y interdit le repli étroit plutôt que de laisser
   // le contenu déborder.
-  g_win_snap.force_wide = (tab_ == 4 || tab_ == 5);
+  // `want_wide_` (posé par OpenStatusTab) élargit la fenêtre UNE frame, le temps
+  // que le volet stats repasse au-dessus du seuil d'affichage. Le joueur peut la
+  // rétrécir juste après : on ne fait qu'imposer la largeur d'ouverture.
+  g_win_snap.force_wide = (tab_ == 4 || tab_ == 5) || want_wide_;
+  want_wide_ = false;
   ImGui::SetNextWindowSizeConstraints(
       ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow, 450.0f),
       ImVec2(g_win_snap.wide, 10000.0f), SnapCharSheetWidth);
@@ -7057,6 +7071,10 @@ void CharacterSheet::OnRenderUI() {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).
     const bool show_stats =
         avail.x >= kDollW + ImGui::GetStyle().ItemSpacing.x + kStatsW - 6.0f;
+    // Mémorisé pour la bascule du raccourci Status : c'est la présence de ce volet
+    // qui distingue « vue Status » de « vue Équipement », les deux partageant
+    // l'onglet du mannequin.
+    stats_panel_shown_ = show_stats;
     const float doll_w = show_stats ? kDollW : avail.x;
 
     ImGui::BeginChild("cs_doll", ImVec2(doll_w, 0), true);

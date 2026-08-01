@@ -156,13 +156,21 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
         iv->HideCardInsertAtCreation(win);
     }
-    // Grimoire (UINewSkillListWnd id 0x25) : remplacé par l'onglet « Grimoire » de la
-    // feuille de personnage. On masque la native dès sa création et on bascule la
-    // feuille sur cet onglet — l'icône « Skill » et Alt+S continuent donc de marcher,
-    // mais atterrissent sur l'interface moderne (cf. docs/skill_tree_re.md partie II).
-    if (windowID == 0x25) {
+    // Les TROIS fenêtres que la feuille de personnage remplace : Grimoire
+    // (UINewSkillListWnd 0x25), Équipement (0xa) et Status (UIStatusWnd 0xb). On
+    // masque la native dès sa création et on route la demande vers l'onglet
+    // correspondant ; OnTick la détruit ensuite. Raccourcis et boutons du menu
+    // d'icônes continuent donc de marcher, mais atterrissent sur l'interface
+    // moderne (cf. docs/skill_tree_re.md partie II).
+    //
+    // 🔴 C'est bien MakeWindow le point d'interception, et un seul suffit :
+    // UIWindowMgr_ToggleWindowById (0x00812e60) — le chemin commun au raccourci et
+    // au bouton — ferme la fenêtre si elle existe et ne la crée que sinon. Comme
+    // ces trois-là sont détruites, elles n'existent jamais : toute demande repasse
+    // donc forcément ici.
+    if (windowID == 0x25 || windowID == 0x0a || windowID == 0x0b) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
-        cs->HideSkillWndAtCreation(win);
+        cs->HandleReplacedNativeCreation(win, windowID);
     }
     // Fabrication : les DEUX listes natives (UIMakingArrowListWnd id 94 « LIST »
     // et UIMakeTargetListWnd id 79 « Manufacturing List »). Elles naissent dans un

@@ -76,15 +76,28 @@ class CharacterSheet : public Plugin {
   // plugins. is_open/set_open restent l'API des appelants ordinaires.
   bool& open() { return show_; }
 
-  // Ouvre la feuille sur l'onglet GRIMOIRE. Appelée quand le joueur demande le
-  // grimoire (icône « Skill » ou Alt+S) alors que l'interface moderne est active :
-  // la fenêtre native 0x25 est masquée et c'est cet onglet qui la remplace.
+  // ── Les TROIS fenêtres natives que cette feuille remplace ──────────────────
+  // Grimoire (0x25), Status (0xb) et Équipement (0xa). Quand l'interface moderne
+  // est active elles ne s'ouvrent plus : leurs raccourcis ET les boutons du menu
+  // d'icônes atterrissent ici, sur l'onglet correspondant.
+  //
+  // 🔴 Elles sont DÉTRUITES, pas seulement masquées — et c'est ce qui fait
+  // marcher le routage. Leur chemin commun, UIWindowMgr_ToggleWindowById
+  // (0x00812e60), FERME la fenêtre si elle existe et ne la crée que sinon : une
+  // native laissée vivante, même invisible, avalerait un appui sur deux sans
+  // jamais repasser par notre hook MakeWindow. Elle garderait de surcroît le
+  // clavier (Entrée/Espace activent son bouton par défaut).
   void OpenSkillsTab();
-  // Masque la fenêtre native du grimoire (UINewSkillListWnd, id 0x25) DÈS sa
-  // création — même schéma que l'inventaire ou l'entrepôt (cf. window_pos_tweaks) :
-  // sans ça une frame native passerait à l'écran avant le premier OnRenderUI.
-  // No-op quand l'interface moderne est éteinte.
-  void HideSkillWndAtCreation(void* win);
+  void OpenEquipTab();
+  // Status = l'onglet Équipement AVEC le volet stats déplié (ce volet n'a pas de
+  // drapeau propre : il apparaît quand la fenêtre est assez large).
+  void OpenStatusTab();
+  // Appelée par le hook MakeWindow (window_pos_tweaks) à la naissance d'une de ces
+  // trois fenêtres : masque tout de suite (pas de frame native à l'écran) et route
+  // la demande. La destruction revient à OnTick — le natif manipule encore la
+  // fenêtre qu'il vient de créer. No-op quand l'interface moderne est éteinte, où
+  // les trois natives reprennent leur service (StatusTweaks y relayoute la 0xb).
+  void HandleReplacedNativeCreation(void* win, int window_id);
 
   // Pose de l'avatar (pose + direction + animation on/off), persistee par MoonlightUi
   // (yaml "charsheet_pose"/"charsheet_dir"/"charsheet_pose_anim") pour retrouver le
@@ -202,6 +215,13 @@ class CharacterSheet : public Plugin {
   // Onglet demandé pour la PROCHAINE frame (OpenSkillsTab) : ImGui choisit l'onglet
   // au moment où il le dessine, on ne peut donc pas le forcer depuis un hook.
   int  tab_request_ = -1;
+  // Élargir la fenêtre à la prochaine frame, le temps que le volet stats repasse
+  // au-dessus de son seuil d'affichage (OpenStatusTab).
+  bool want_wide_ = false;
+  // Le volet stats était-il affiché à la dernière frame ? C'est lui qui distingue
+  // la « vue Status » de la « vue Équipement » — elles partagent le même onglet —
+  // et donc ce que le raccourci Status doit basculer.
+  bool stats_panel_shown_ = false;
 
   // ── Onglet Grimoire (arbre de compétences, remplace la fenêtre native 0x25) ──
   int  skill_tab_ = 0;              // onglet de job actif (0..3), 4 = « divers » (liste plate)
@@ -212,7 +232,6 @@ class CharacterSheet : public Plugin {
   // prépare puis on valide en un coup — un clic ne dépense donc jamais tout seul.
   std::vector<std::pair<uint16_t, int>> skill_pending_;
   std::string skill_status_;        // retour UI de la dernière action (Appliquer, refus…)
-  bool skill_wnd_was_open_ = false; // état de la fenêtre native 0x25 au tick précédent
   // Lissage des icônes de la grille (OFF = pixels nets, comme le natif qui ne filtre
   // rien). Persisté par MoonlightUi (yaml « charsheet_grimoire_bilinear »).
   bool skill_bilinear_ = false;
