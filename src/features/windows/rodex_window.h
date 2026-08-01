@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "features/net_inbox.h"
 #include "features/plugin.h"
 
 // ── RodexWindow ──────────────────────────────────────────────────────────────
@@ -17,7 +18,7 @@
 // Vtables (20250716, base 0x400000, pas de rebase) :
 //   UIRodexWnd     (LISTE)   vtable 0x01022170 — id 0x107, OnMsg 0x007d0520
 //   UIRodexReadWnd (LECTURE) vtable 0x01021fbc — id 0x109, OnMsg 0x007cb460
-//   UIMailWriteWnd (COMPOSE) vtable 0x01021b30 — id 0x108 : laissée NATIVE
+//   UIMailWriteWnd (COMPOSE) vtable 0x01021b30 — id 0x108 : ne naît plus
 // (l'ancien doc attribuait ces deux vtables à l'envers ; l'id lu live dans
 //  g_RodexInboxWnd+0x2c vaut bien 0x107 pour la vtable 0x01022170).
 //
@@ -40,10 +41,15 @@
 
 class RodexWindow : public Plugin {
  public:
+  RodexWindow();
   const char* name() const override { return "RodexWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;
+  // ZC_ACK_OPEN_WRITE_MAIL 0x0A12 (dont on a pris la place : c'était le seul
+  // créateur de la fenêtre d'écriture native) et ZC_ACK_WRITE_MAIL 0x09ED (observé :
+  // le résultat de l'envoi). Fil RÉSEAU — on copie, le décodage repart au tick.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Appelé pour CHAQUE fenêtre créée (hook MakeWindow de WindowPosTweaks) : masque
   // la native dès sa création, avant son premier rendu — sans ça elle clignote
@@ -131,6 +137,13 @@ class RodexWindow : public Plugin {
   void ReturnMail(const Mail& mail);      // CZ 0x0B98 (boîte Normal uniquement)
   void Compose(const char* recipient);    // cmd 0x10c (0 = destinataire vide)
   void CloseAll();                        // referme la session (+ filet natif)
+  // Décodage sur le fil PRINCIPAL, drainé depuis OnTick.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
+  bourgeon::PacketInbox net_inbox_;
+  // Oublie la rédaction côté UI SANS rien émettre. CloseCompose, lui, émet d'abord
+  // l'annulation — à ne pas confondre : après un envoi RÉUSSI, annuler serait un
+  // contresens (la session serveur est déjà close).
+  void ClearComposeState();
   // Oublie la session de boîte aux lettres SANS toucher au natif. Séparé de
   // CloseAll parce qu'on l'appelle depuis le hook de création, où détruire la
   // fenêtre que le client vient de créer serait un usage-après-libération.
@@ -148,7 +161,7 @@ class RodexWindow : public Plugin {
   void CheckRecipient();            // CZ 0x0B97 (confort : niveau/classe du destinataire)
   void PollRecipientCheck();        // consomme la réponse ZC 0x0A51 du détour
   void SendMail();                  // CZ 0x0A6E (construit ici, cf. .cc)
-  void CloseCompose();              // ferme la fenêtre native -> le natif annule côté serveur
+  void CloseCompose();              // émet CZ 0x0A03 : annule la rédaction côté serveur
 
   bool    open_ = false;       // la liste native (0x107) est ouverte ?
   bool    was_open_ = false;
@@ -189,14 +202,14 @@ class RodexWindow : public Plugin {
   float   pending_height_ = 0.0f;  // > 0 : hauteur à appliquer à cette frame
 
   // ── Écriture d'un courrier (fenêtre native 0x108 masquée) ──
-  bool    compose_open_ = false;   // la fenêtre native d'écriture existe ?
+  bool    compose_open_ = false;   // rédaction en cours (ouverte par ZC 0x0A12)
   bool    compose_pos_ = true;
   char    to_[32] = {0};           // saisie UTF-8 (convertie en ANSI à l'envoi)
   char    subject_[128] = {0};
   char    body_[1400] = {0};
   int64_t attach_zeny_ = 0;
-  int64_t tax_ = 0;                // frais d'envoi, lus dans la fenêtre native (+0xf8)
-  uint32_t recipient_char_id_ = 0; // posé par l'ack de vérification (fenêtre +0xcc)
+  int64_t tax_ = 0;                // frais d'envoi, recalculés (formule du client)
+  uint32_t recipient_char_id_ = 0; // posé par l'ack de vérification de nom (ZC 0x0A51)
 
   // Réponse du serveur à la vérification du destinataire (ZC 0x0A51). Le char id
   // ne sert qu'en interne — il ne dit rien à un joueur ; ce qui l'aide à confirmer

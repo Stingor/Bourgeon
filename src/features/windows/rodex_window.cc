@@ -36,19 +36,54 @@ constexpr uintptr_t kReadVTable  = 0x01021fbc;
 constexpr int kOffWndPosX = 0x1c;  // position écran (reprise pour placer l'ImGui)
 constexpr int kOffWndPosY = 0x20;
 
-// Fenêtre d'ÉCRITURE (UIMailWriteWnd) : masquée elle aussi, l'ImGui la remplace.
-// Elle reste VIVANTE parce qu'elle porte l'état que le natif met à jour pour nous
-// (frais d'envoi, char id du destinataire vérifié) et qu'elle annule proprement la
-// session d'écriture côté serveur quand on la ferme.
-constexpr uintptr_t kWriteWndPtr = 0x0131f940;  // g_MailWriteWnd
+// ── Fenêtre d'ÉCRITURE (UIMailWriteWnd 0x108) : elle ne naît PLUS ───────────
+// 🔴 Elle est le seul cas de la campagne qu'il ne fallait SURTOUT pas détruire :
+// elle émet CZ_REQ_CANCEL_WRITE_MAIL en se fermant (UIMailWriteWnd_OnMsg
+// @0x007ca3fd), ce dont le plugin se servait justement pour annuler. La détruire au
+// tick aurait annulé la rédaction une frame après son ouverture. On l'empêche donc
+// de NAÎTRE, en prenant la place de son unique créateur (ZC 0x0A12 ci-dessous).
+constexpr uintptr_t kWriteWndPtr = 0x0131f940;  // g_MailWriteWnd (filet : doit rester nul)
 constexpr int kWriteId = 0x108;
 constexpr uintptr_t kWriteVTable = 0x01021b30;
-constexpr int kWriteRecipientEdit = 0xb4;  // UIEdit* : destinataire (pré-rempli par « répondre »)
-constexpr int kWriteRecipientCid  = 0xcc;  // u32 : char id renvoyé par la vérification de nom
-constexpr int kWriteAttachCount   = 0xec;  // int : nombre de pièces jointes (liste +0xe8)
-constexpr int kWriteTax           = 0xf8;  // int64 : frais d'envoi calculés par le client
-// Texte d'un UIEdit : std::string à widget+0xd8 (cf. UIEdit_GetTextPtr 0x008210a0).
-constexpr int kEditText = 0xd8;
+
+// ZC_ACK_OPEN_WRITE_MAIL 0x0A12 (27 o) : {op:2, name[24], result:1}. SEUL créateur de
+// la fenêtre d'écriture (Recv_ZC_RodexBeginWriteResult 0x00cfcc80, result lu en
+// paquet+0x1a). En régime « replace », `data` = paquet+2 : nom en 0, result en 24.
+constexpr uint16_t kZcBeginWriteAck   = 0x0A12;
+constexpr int      kBeginWriteResult  = 24;
+constexpr int      kBeginWriteNameLen = 24;
+
+// ⚠ DEVOIRS CACHÉS de ce handler, à rejouer AVANT d'ouvrir notre rédaction — les
+// deux sont __thiscall(session) et ils NE SONT PAS cosmétiques :
+//   0x00d7f380 : pour chacun des 5 emplacements encore garni, REND l'objet à
+//                l'inventaire (Inventory_AddOrStackItem) puis rafraîchit les fenêtres
+//                d'items. Sans lui, une rédaction abandonnée fait disparaître ses
+//                pièces jointes du modèle jusqu'au prochain envoi serveur.
+//   0x00d7f480 : remet à zéro l'index d'inventaire des 5 emplacements (+ un u16).
+constexpr uintptr_t kMailReturnAttachments = 0x00d7f380;
+constexpr uintptr_t kMailClearAttachSlots  = 0x00d7f480;
+using SessionVoidFn_t = void(__thiscall*)(void*);
+
+// ZC_ACK_WRITE_MAIL 0x09ED (3 o) : {op:2, result:1}, 0 = envoyé. OBSERVÉ et non
+// remplacé — le handler natif fait aussi le ménage des emplacements après un envoi
+// réussi, et lui retirer ce travail ferait réapparaître les objets envoyés à la
+// rédaction suivante (via le « rend à l'inventaire » ci-dessus).
+constexpr uint16_t kZcSendResult = 0x09ED;
+
+// Frais d'envoi. Le client les calculait dans le DrawContent de sa fenêtre
+// (sub_7C8FC0) ; la formule est reproduite telle quelle, avec SES constantes :
+//   frais = nbPiècesJointes * 2500  +  (zeny * 2) / 100
+// soit `imul eax, 9C4h` @0x007c9395 et `__alldiv(zeny*2, 100)` @0x007c942f.
+// Recoupé avec l'observation en jeu : 666666 z + 3 objets = 20833.
+constexpr uintptr_t kMailAttachCountFn = 0x00d80140;  // __thiscall(session) -> int
+using MailAttachCount_t = int(__thiscall*)(void*);
+constexpr int64_t kFeePerItem  = 2500;
+constexpr int64_t kFeeZenyNum  = 2;
+constexpr int64_t kFeeZenyDen  = 100;
+
+// CZ_REQ_CANCEL_WRITE_MAIL : 2 octets, sans charge utile. Longueur confirmée dans la
+// table du SERVEUR (moonlight, clif_packetdb.hpp : parseable_packet(0x0A03,2,…)).
+constexpr uint16_t kCzCancelWrite = 0x0A03;
 
 // Pièces jointes du courrier en cours d'écriture : 5 ItemSkillInfo dans la SESSION
 // (vérifié live : slot 0 à 0x01600008, index inventaire +4, quantité +0x10, itemId
@@ -635,22 +670,32 @@ bool ReadAttachSlot(int slot, RawAttachSlot* out) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Frais d'envoi + char id du destinataire vérifié, lus dans la fenêtre native.
-void ReadComposeFields(const uint8_t* wnd, int64_t* out_tax, uint32_t* out_char_id) {
+// Nombre de pièces jointes en cours, par le getter NATIF de la session — celui-là
+// même qu'utilisait la fenêtre d'écriture pour ses frais.
+int MailAttachCount() {
   __try {
-    *out_tax     = *reinterpret_cast<const int64_t*>(wnd + kWriteTax);
-    *out_char_id = *reinterpret_cast<const uint32_t*>(wnd + kWriteRecipientCid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { *out_tax = 0; *out_char_id = 0; }
+    return reinterpret_cast<MailAttachCount_t>(kMailAttachCountFn)(
+        reinterpret_cast<void*>(rag::kSessionAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-// Texte d'un UIEdit de la fenêtre native (destinataire pré-rempli par « répondre »).
-void ReadEditText(const uint8_t* wnd, int field_offset, char* out, size_t cap) {
-  out[0] = '\0';
-  const uint8_t* edit = nullptr;
+// Frais d'envoi, formule du client (cf. les constantes plus haut). Le zeny joint est
+// le NÔTRE (c'est notre champ de saisie qui remplace l'UIEdit natif).
+int64_t ComputeMailFee(int64_t attached_zeny) {
+  if (attached_zeny < 0) attached_zeny = 0;
+  return static_cast<int64_t>(MailAttachCount()) * kFeePerItem +
+         (attached_zeny * kFeeZenyNum) / kFeeZenyDen;
+}
+
+// Les deux devoirs du handler de ZC 0x0A12 dont on a pris la place : rendre les
+// pièces jointes restées d'une rédaction précédente, puis vider les emplacements.
+// Ordre du natif, conservé — l'inverse jetterait les objets.
+void ResetMailAttachments() {
   __try {
-    edit = *reinterpret_cast<const uint8_t* const*>(wnd + field_offset);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  if (edit) CopyStdString(edit + kEditText, out, cap);
+    void* session = reinterpret_cast<void*>(rag::kSessionAddr);
+    reinterpret_cast<SessionVoidFn_t>(kMailReturnAttachments)(session);
+    reinterpret_cast<SessionVoidFn_t>(kMailClearAttachSlots)(session);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 bool ReadMgrCounters(const uint8_t* mgr, int* out_unread, bool* out_has_mail) {
@@ -859,9 +904,11 @@ void RodexWindow::ComposeTo(const char* recipient) {
 }
 
 void RodexWindow::Compose(const char* recipient) {
-  // La fenêtre de composition reste NATIVE : le serveur répond au cmd 0x10c par
-  // un ack qui la crée lui-même (MakeWindow 0x108). `recipient` non nul
-  // pré-remplit le destinataire (bouton « Répondre »).
+  // On demande au SERVEUR d'ouvrir une session de rédaction (cmd 0x10c -> CZ 0x0A08) :
+  // sans son accord, `sd->state.mail_writing` reste faux et l'envoi serait ignoré EN
+  // SILENCE. Sa réponse (ZC 0x0A12) ouvre notre fenêtre — elle ne crée plus la native.
+  // `recipient` non nul pré-remplit le destinataire (bouton « Répondre ») ; le serveur
+  // nous le renvoie dans l'ack, on n'a donc rien à mémoriser ici.
   ModeCmd(kCmdBeginWrite, static_cast<int>(reinterpret_cast<uintptr_t>(recipient)),
           0, 0, 0);
 }
@@ -870,9 +917,10 @@ void RodexWindow::Compose(const char* recipient) {
 
 void RodexWindow::ReadComposeState() {
   compose_items_.clear();
-  uint8_t* wnd = ComposeWnd();
-  if (!wnd) return;
-  ReadComposeFields(wnd, &tax_, &recipient_char_id_);
+  if (!compose_open_) return;
+  // Frais recalculés à chaque tick : ils dépendent du zeny saisi ET du nombre de
+  // pièces jointes, qui bouge à chaque ajout ou retrait.
+  tax_ = ComputeMailFee(attach_zeny_);
   for (int slot = 0; slot < kAttachSlots; ++slot) {
     RawAttachSlot raw;
     if (!ReadAttachSlot(slot, &raw)) continue;  // slot vide : les suivants peuvent être pleins
@@ -941,6 +989,9 @@ void RodexWindow::PollRecipientCheck() {
   }
   check_state_   = kCheckFound;
   checked_level_ = static_cast<int>(g_check_level);
+  // Le char id venait de la fenêtre native (+0xcc), que le natif remplissait depuis
+  // CE même ack. On le prend directement à la source, la fenêtre n'existant plus.
+  recipient_char_id_ = g_check_cid;
   char job[64] = {0};
   if (JobNameAnsi(static_cast<int>(g_check_class), job, sizeof(job)))
     checked_job_ = AnsiToUtf8(job);
@@ -993,19 +1044,86 @@ void RodexWindow::SendMail() {
   std::memcpy(packet + 68 + title_field, body, static_cast<size_t>(body_field));
   Bourgeon::Instance().SendPacket(packet, static_cast<size_t>(total));
 
-  // Le serveur répond par un ack que le natif traite (il ferme sa fenêtre en cas de
-  // succès) : on ne présume donc PAS de la réussite, c'est la disparition de la
-  // fenêtre native qui referme la nôtre.
+  // On ne présume PAS de la réussite : c'est l'ack ZC_ACK_WRITE_MAIL (0x09ED, observé)
+  // qui referme la fenêtre s'il vaut 0, et affiche un refus sinon. Le handler natif de
+  // cet ack tourne toujours — c'est lui qui vide les emplacements de pièces jointes
+  // après un envoi réussi, un ménage qu'on ne veut surtout pas lui retirer.
 }
 
+// Annulation d'une rédaction. C'est ce que faisait la fermeture de la fenêtre native :
+// elle émettait CZ_REQ_CANCEL_WRITE_MAIL, le serveur clôt la session et rend les
+// objets attachés. On l'émet donc nous-mêmes, puisqu'elle n'existe plus.
 void RodexWindow::CloseCompose() {
-  // On DÉLÈGUE au natif : fermer sa fenêtre lui fait annuler la session d'écriture
-  // côté serveur (CZ 0x0A03) et libérer les objets attachés. Le refaire nous-mêmes
-  // dupliquerait un nettoyage qu'on ne maîtrise qu'à moitié.
-  CloseWnd(kWriteId);
+  if (ComposeWnd()) {
+    // Filet : si une native traîne, la fermer émet l'annulation pour nous — ne pas
+    // envoyer les deux, le serveur verrait une seconde annulation sans session.
+    CloseWnd(kWriteId);
+  } else {
+    uint8_t packet[2] = {0};
+    *reinterpret_cast<uint16_t*>(packet) = kCzCancelWrite;
+    Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+  }
+  ClearComposeState();
+}
+
+// Oublie la rédaction côté UI, sans rien émettre. Utilisé par l'annulation (après
+// son paquet) comme par l'accusé d'envoi réussi (où annuler serait un contresens).
+void RodexWindow::ClearComposeState() {
   compose_open_ = false;
   compose_items_.clear();
   send_error_.clear();
+  tax_ = 0;
+}
+
+// ── Réception ───────────────────────────────────────────────────────────────
+// Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h).
+void RodexWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué au tick dans l'ordre d'arrivée.
+void RodexWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // ZC_ACK_OPEN_WRITE_MAIL (revendiqué) : le serveur autorise une rédaction. Le
+  // prédicat a déjà écarté les refus, qui restent au natif pour son message d'erreur.
+  if (opcode == kZcBeginWriteAck) {
+    if (len < kBeginWriteResult + 1) return;
+    if (compose_open_) return;  // même garde que le natif (g_MailWriteWnd == 0)
+    // Les devoirs du handler remplacé, AVANT tout le reste : rendre puis vider.
+    ResetMailAttachments();
+
+    compose_open_ = true;
+    compose_pos_ = true;
+    compose_items_.clear();
+    send_error_.clear();
+    subject_[0] = '\0';
+    body_[0] = '\0';
+    check_state_ = kCheckNone;  // le résultat du courrier précédent n'a plus cours
+    checked_name_.clear();
+    checked_job_.clear();
+    checked_level_ = 0;
+    recipient_char_id_ = 0;
+    attach_zeny_ = 0;
+    tax_ = 0;
+    // Destinataire : le serveur nous le renvoie dans l'ack (c'est celui qu'on lui a
+    // demandé pour « Répondre », vide sinon). On le lisait avant dans l'UIEdit natif.
+    char name[kBeginWriteNameLen + 1] = {0};
+    std::memcpy(name, data, kBeginWriteNameLen);
+    name[kBeginWriteNameLen] = '\0';
+    const std::string utf8 = AnsiToUtf8(name);
+    std::snprintf(to_, sizeof(to_), "%s", utf8.c_str());
+    return;
+  }
+
+  // ZC_ACK_WRITE_MAIL (observé) : résultat de l'envoi. 0 = parti. Le handler natif
+  // tourne toujours — c'est lui qui fait le ménage des emplacements après un succès.
+  if (opcode == kZcSendResult) {
+    if (len < 1) return;
+    if (data[0] == 0) {
+      ClearComposeState();  // surtout PAS CloseCompose : ce serait annuler après coup
+    } else {
+      send_error_ = "Le serveur a refusé l'envoi.";
+    }
+  }
 }
 
 // Oublie la session de boîte aux lettres, sans toucher au natif. Efface aussi le
@@ -1032,6 +1150,23 @@ void RodexWindow::CloseAll() {
 
 // ── Masquage du natif ───────────────────────────────────────────────────────
 
+RodexWindow::RodexWindow() {
+  // 🔴 On prend la place du SEUL créateur de la fenêtre d'écriture. Le prédicat voit
+  // le paquet : on ne revendique que les ACCORDS (result == 1). Les refus repartent
+  // au handler natif, qui affiche son message d'erreur — le remplacer entièrement
+  // aurait fait disparaître ce message, la fenêtre n'étant de toute façon pas créée
+  // dans ce cas-là.
+  Bourgeon::Instance().RegisterReplaceOpcode(
+      kZcBeginWriteAck, [this](const uint8_t* data, uint16_t len) {
+        if (!imgui_enabled_ || !data || len < kBeginWriteResult + 1) return false;
+        return data[kBeginWriteResult] == 1;
+      });
+  // Résultat d'envoi : OBSERVÉ, pas remplacé. Le handler natif doit continuer de
+  // tourner (c'est lui qui vide les emplacements de pièces jointes après un succès) ;
+  // on ne fait qu'écouter pour refermer notre fenêtre au bon moment.
+  Bourgeon::Instance().RegisterObserveOpcode(kZcSendResult, 1);
+}
+
 // Une des trois natives vient de naître. On la masque SUR-LE-CHAMP (sans quoi une
 // frame native passe à l'écran) ; c'est OnTick qui la détruira, le natif la
 // manipulant encore ici.
@@ -1045,8 +1180,13 @@ void RodexWindow::CloseAll() {
 // Vérifié avant de détruire aussi tôt : la liste (`UIRodexWnd_ctor` 0x007cda3b) émet
 // sa demande de courriers DÈS SA CONSTRUCTION — la requête est donc déjà partie quand
 // on arrive ici — et ni sa fermeture ni celle de la fenêtre de lecture n'émet quoi
-// que ce soit. La fenêtre d'ÉCRITURE, elle, émet CZ 0x0A03 en se fermant : elle n'est
-// donc pas détruite ici, voir OnTick.
+// que ce soit.
+//
+// 🔴 L'ÉCRITURE (0x108) ne doit JAMAIS être détruite : elle émet CZ 0x0A03 en se
+// fermant, c'est-à-dire l'annulation de la rédaction. Elle ne naît d'ailleurs plus du
+// tout (on a pris la place de son créateur, ZC 0x0A12) ; si elle apparaissait quand
+// même — bascule de mode en pleine rédaction — on se contente de la masquer, et
+// CloseCompose la fermera au bon moment, ce qui émettra l'annulation comme il faut.
 void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   if (window_id != kInboxId && window_id != kReadId && window_id != kWriteId) return;
@@ -1082,14 +1222,18 @@ void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
 }
 
 void RodexWindow::OnTick() {
+  // Décodage sur le fil PRINCIPAL, avant tout le reste : l'accord de rédaction arrive
+  // entre deux ticks et doit être vu par le rendu de CE frame.
+  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
+    HandlePacket(op, d, n);
+  });
+
   if (!imgui_enabled_) {
-    // Retour au natif. La liste et la lecture n'existent plus (détruites) : le
-    // client les recréera à la prochaine demande. Seule la fenêtre d'ÉCRITURE peut
-    // encore être là, masquée — on la rend au joueur, sinon il se retrouve avec une
-    // rédaction en cours invisible.
-    if (compose_open_) {
-      if (uint8_t* compose = ComposeWnd()) SetWndVisible(compose, 1);
-    }
+    // Retour au natif. Aucune des trois n'existe : le client les recréera à la
+    // prochaine demande. Une rédaction en cours, elle, n'a plus de fenêtre pour la
+    // porter — on l'annule comme le ferait la croix, sinon le serveur resterait à
+    // nous attendre avec les objets déjà mis de côté.
+    if (compose_open_) CloseCompose();
     open_ = false;
     was_open_ = false;
     compose_open_ = false;
@@ -1136,35 +1280,11 @@ void RodexWindow::OnTick() {
   // Réponse de vérification du destinataire : arrive entre deux ticks.
   PollRecipientCheck();
 
-  // Fenêtre d'écriture : créée par l'ack serveur de « commencer un courrier », donc
-  // entre deux ticks — le hook MakeWindow la masque déjà, on entretient l'état ici.
-  if (uint8_t* compose = ComposeWnd()) {
-    HideWnd(compose);
-    if (!compose_open_) {
-      compose_open_ = true;
-      compose_pos_ = true;
-      send_error_.clear();
-      subject_[0] = '\0';
-      body_[0] = '\0';
-      check_state_ = kCheckNone;  // le résultat du courrier précédent n'a plus cours
-      checked_name_.clear();
-      checked_job_.clear();
-      checked_level_ = 0;
-      attach_zeny_ = 0;
-      // « Répondre » pré-remplit le destinataire côté natif : on le récupère au lieu
-      // de le redemander au joueur.
-      ReadEditText(compose, kWriteRecipientEdit, to_, sizeof(to_));
-      if (to_[0]) {
-        const std::string utf8 = AnsiToUtf8(to_);
-        std::snprintf(to_, sizeof(to_), "%s", utf8.c_str());
-      }
-    }
-    ReadComposeState();
-  } else if (compose_open_) {
-    compose_open_ = false;
-    compose_items_.clear();
-    send_error_.clear();
-  }
+  // Rédaction : l'état est désormais le NÔTRE (HandlePacket l'ouvre sur ZC 0x0A12 et
+  // le referme sur ZC 0x09ED). La native ne naît plus ; si elle apparaissait quand
+  // même, on se contente de la masquer — la DÉTRUIRE émettrait l'annulation.
+  if (uint8_t* compose = ComposeWnd()) HideWnd(compose);
+  if (compose_open_) ReadComposeState();
 
   // 🔴 La liste native ne porte PLUS l'état « la boîte est ouverte » : c'est
   // HideNativeAtCreation qui l'a adopté, et on la détruit ici. Elle n'a rien à faire
