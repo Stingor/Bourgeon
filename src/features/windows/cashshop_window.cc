@@ -122,18 +122,48 @@ const char* ShortName(uint32_t id) {
 //
 // Rien en dur : msgstr lit la table du client (data\msgstringtable.txt), donc la
 // langue suit celle du client, comme partout ailleurs dans Bourgeon.
+// Les MSI_* du client (data\msgstringtable.txt ; les textes cités sont ceux de
+// moonlight, qui a sa propre table — d'où « Vote » plutôt que « Cash »).
+constexpr int kMsiCash                 = 0x51b;  // MSI_CASH               "Vote"
+constexpr int kMsiCashShop             = 0xc41;  // MSI_CASHSHOP           "Vote Shop"
+constexpr int kMsiCashShopFreePoint    = 0xce7;  // ..._FREE_POINT         "Event points"
+constexpr int kMsiCashShopFreePointToUse = 0xce8;  // ..._FREE_POINT_TO_USE "Use Event pts"
+constexpr int kMsiDealFail             = 0x039;  // "The deal has failed."
+constexpr int kMsiCashFailedBuySome    = 0x716;  // "Some items could not be purchased."
+constexpr int kMsiCashFailedRuneOver   = 0x798;  // "Failed purchase of runes, items exceed…"
+constexpr int kMsiCashFailedItemOver   = 0x799;  // "Exceeded the number of individual items…"
+constexpr int kMsiCashFailedUnknown    = 0x79a;  // "Purchase failed due to an unknown error."
+constexpr int kMsiCashFailedBusy       = 0x79b;  // "Please try again later."
+constexpr int kMsiResultErrorVtc303    = 0xf64;  // "Your billing session has expired…"
+constexpr int kMsiResultErrorVtc304    = 0xf65;  // "An error has occurred. please try again"
+
 int BuyResultMsgId(int result) {
+  // Les codes sont l'enum CASHSHOP_BUY_RESULT du serveur (cashshop.hpp) ; la
+  // correspondance vers les MSI_* est celle du natif, relevée sur son handler.
   switch (result) {
-    case 0:   return 0;      // succès : le natif ne dit rien, nous non plus
-    case 8:   return 0x716;
-    case 9:   return 0x798;
-    case 10:  return 0x799;
-    case 11:  return 0x79a;
-    case 12:  return 0x79b;
-    case 303: return 0xf64;  // le natif préfixe le nom d'item ; le nôtre est déjà
-    case 304: return 0xf65;  // à l'écran, juste au-dessus
-    // 1 à 7 et tout le reste : le repli du natif, son échec générique.
-    default:  return 0x39;
+    case 0x0: return 0;  // SUCCESS — le natif ne dit rien, nous non plus
+    case 0x8: return kMsiCashFailedBuySome;   // ERROR_SOME_BUY_FAILURE
+    case 0x9: return kMsiCashFailedRuneOver;  // ERROR_RUNE_OVERCOUNT
+    case 0xa: return kMsiCashFailedItemOver;  // ERROR_EACHITEM_OVERCOUNT
+    case 0xb: return kMsiCashFailedUnknown;   // ERROR_UNKNOWN
+    case 0xc: return kMsiCashFailedBusy;      // ERROR_BUSY
+    // Erreurs de facturation. Le natif préfixe le nom de l'objet ; le nôtre est
+    // déjà à l'écran, juste au-dessus de la ligne d'état.
+    case 303: return kMsiResultErrorVtc303;
+    case 304: return kMsiResultErrorVtc304;
+    // ⚠ 1 à 7 tombent TOUS sur « The deal has failed. », et cette imprécision est
+    // celle du CLIENT, pas la nôtre : son handler n'a pas d'autre message pour
+    // eux. Ce sont pourtant les cas les plus courants —
+    //   1 ERROR_SYSTEM · 2 ERROR_SHORTTAGE_CASH (pas assez de points) ·
+    //   3 ERROR_UNKONWN_ITEM · 4 ERROR_INVENTORY_WEIGHT (surpoids) ·
+    //   5 ERROR_INVENTORY_ITEMCNT (sac plein) · 6 ERROR_PC_STATE ·
+    //   7 ERROR_OVER_PRODUCT_TOTAL_CNT
+    // On garde quand même SON message : la table de messages n'a rien de plus
+    // précis pour ces codes (vérifié sur toute la famille MSI_CASH*), et notre
+    // fenêtre dirait alors autre chose que la ligne que ce même handler écrit
+    // dans le chat. Le jour où on voudra mieux, ça se règle en AJOUTANT des
+    // entrées à msgstringtable, pas en écrivant du texte ici.
+    default:  return kMsiDealFail;
   }
 }
 
@@ -483,9 +513,15 @@ void CashShopWindow::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);  // grille/panier/cartes arrondis
+  // Titre = MSI_CASHSHOP, lu dans la table du client. « Vote Shop » y était recopié
+  // à la main : moonlight a rebaptisé toute la famille (Cash -> Vote) dans SA table,
+  // et une prochaine retouche là-bas doit se voir ici sans recompiler.
+  char title[96];
+  const char* shop_name = msgstr::Utf8(kMsiCashShop);
+  std::snprintf(title, sizeof(title), "%s###bourgeon_cashshop",
+                (shop_name && shop_name[0]) ? shop_name : "Vote Shop");
   const bool begun =
-      ro::BeginRoWindow("Vote Shop###bourgeon_cashshop", &show_panel_,
-                        ImGuiWindowFlags_NoCollapse);
+      ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
   if (!show_panel_) {
     // X (ou Échap) -> on FERME réellement le cash shop : CZ 0x084A, qui remet
     // `npc_shopid` à zéro côté serveur et débloque le personnage. CloseShop remet
@@ -497,13 +533,24 @@ void CashShopWindow::OnRenderUI() {
   }
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
-  //  En-tête : points du compte 
+  //  En-tête : points du compte
+  // Les trois libellés sortent de la table du client (MSI_CASH,
+  // MSI_CASHSHOP_FREE_POINT, MSI_CASHSHOP_FREE_POINT_TO_USE) : ce sont les noms que
+  // MOONLIGHT donne à ses deux monnaies, pas des termes génériques. Les recopier ici
+  // aurait figé « Vote » et « Event points » dans le binaire.
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
-  ImGui::TextColored(kBlack, "Vote: %u", cash_points_);
+  const char* lbl_cash  = msgstr::Utf8(kMsiCash);
+  const char* lbl_free  = msgstr::Utf8(kMsiCashShopFreePoint);
+  const char* lbl_usef  = msgstr::Utf8(kMsiCashShopFreePointToUse);
+  ImGui::TextColored(kBlack, "%s: %u",
+                     (lbl_cash && lbl_cash[0]) ? lbl_cash : "Vote", cash_points_);
   ImGui::SameLine();
-  ImGui::TextColored(kBlack, " | Points d'Event: %u", kafra_points_);
+  ImGui::TextColored(kBlack, " | %s: %u",
+                     (lbl_free && lbl_free[0]) ? lbl_free : "Points d'Event",
+                     kafra_points_);
   ImGui::SameLine();
-  ro::RoCheckbox("Utiliser mes points d'Event d'abord", &use_kafra_);
+  ro::RoCheckbox((lbl_usef && lbl_usef[0]) ? lbl_usef : "Points d'Event d'abord",
+                 &use_kafra_);
   if (last_result_ == 0) {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), " | Achat OK");
