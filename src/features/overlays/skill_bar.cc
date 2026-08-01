@@ -574,84 +574,10 @@ bool SkillKnown(uint32_t id) {
   return known;
 }
 
-// ---- pont drag NATIF (grimoire/inventaire) -> slot ImGui (RE drag-drop) -----
-// FUN_00a75340(0x1213338) renvoie l'objet de drag en cours (gate +0x58==1) ou null.
-// Charge (== OnDrop param_3) à objet+0x308 : +0x00 catégorie, +0x80 OCTET DE FORMAT, +0x04 id,
-// +0x14 srcSlot (-1 si source externe), +0x18 nameid (FullPayload), +0x08 count (FullPayload),
-// +0x6c count/level (LitePayload).
-// ⚠️ L'octet +0x80 N'EST PAS "skill/objet" mais le FORMAT du payload (DragDropMgr_BeginDrag_*) :
-//   octet 0 = FullPayload  -> inventaire/cart/stockage = OBJET (nameid @+0x18, count @+0x08)
-//   octet 1 = LitePayload  -> grimoire de skills       = SKILL (id @+0x04, level @+0x6c)
-// (Les re-drags de la barre inversent ce mapping mais ont srcSlot>=0 -> rejetés par HandleNativeDrop.)
-//   OBJET : id = nameid @+0x18 (repli ItemMgr_GetInvItemById+0x8) ; level = count.
-//   SKILL : id = atoi(SkillInfo+0x2c) via FUN_00d5aa40 (repli rawid) ; level = count LitePayload.
-using GetDragObj_t  = void* (__fastcall*)(void*);                    // FUN_00a75340(mgr)
-using LookupSkill_t = void  (__fastcall*)(void*, void*, void*, int); // FUN_00d5aa40(mgr,edx,out,id)
-using SkillId_t     = int   (__fastcall*)(void*);                    // FUN_005d98a0(&info) -> skill id
-constexpr uintptr_t kLookupSkill  = 0x00d5aa40;
-constexpr uintptr_t kSkillIdAtoi  = 0x005d98a0;
-constexpr uintptr_t kGetInvItem   = 0x00d7fa90;  // ItemMgr_GetInvItemById(out,id) ; nameid=out+0x8
-constexpr int kPayloadOff = 0x308;
-constexpr int kPL_type = 0x80, kPL_id = 0x04, kPL_src = 0x14, kPL_cnt = 0x6c;
-constexpr int kPL_cat = 0x00;      // catégorie/source du drag
-constexpr int kPL_nameid = 0x18;   // FullPayload : nameid objet (param_2[0])
-constexpr int kPL_fullcnt = 0x08;  // FullPayload : count objet (param_2[5])
-
-struct NativeDrag { bool isItem; uint32_t id; int level; int srcSlot; };
-
-// c_str d'une std::string MSVC à p+off (SSO : si cap@+0x14 > 0xf -> heap *(char**), sinon inline).
-inline const char* PayloadStr(uint8_t* p, int off) {
-  const uint32_t cap = *reinterpret_cast<uint32_t*>(p + off + 0x14);
-  return (cap > 0xf) ? *reinterpret_cast<char**>(p + off) : reinterpret_cast<const char*>(p + off);
-}
-
-inline void* DragObj() {  // objet de drag en cours, ou null
-  return reinterpret_cast<GetDragObj_t>(rag::kModeMgrGetActiveAddr)(reinterpret_cast<void*>(rag::kModeMgrAddr));
-}
-// Décode la charge -> {isItem, id assignable, level, srcSlot}. SEH-protégé.
-bool DecodeDrag(void* obj, NativeDrag* d) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kPayloadOff;
-    const int rawid = *reinterpret_cast<int*>(p + kPL_id);
-    if (rawid == 0) return false;
-    // octet 0 = FullPayload (inventaire => OBJET) ; octet 1 = LitePayload (grimoire => SKILL).
-    d->isItem  = (p[kPL_type] == 0);
-    d->srcSlot = *reinterpret_cast<int*>(p + kPL_src);
-    if (d->isItem) {
-      // ID OBJET = atoi(resname BRUT @payload+0x3c) = nameid ; replis GetInvItemById(raw)+0x08 puis raw.
-      // (payload+0x24 = resname transformé pour l'icône ; +0x08 = INDEX inventaire -> repli seulement.)
-      int resId = 0, invIdx = 0;
-      { const char* s = PayloadStr(p, 0x3c); resId = (s && s[0]) ? std::atoi(s) : 0; }
-      { alignas(8) uint8_t inv[0xC0] = {};
-        reinterpret_cast<GetInvInfo_t>(kGetInvItem)(inv, rawid);
-        invIdx = *reinterpret_cast<int*>(inv + 0x08); }
-      d->id    = static_cast<uint32_t>(resId != 0 ? resId : (invIdx != 0 ? invIdx : rawid));
-      d->level = 0;  // OBJET : count NON stocké -> affiché LIVE via GetItemLiveCount (évite corruption 940->255)
-    } else {
-      // SKILL (LitePayload grimoire) : id = raw04 (payload+0x04) = l'id skill du grimoire. C'est ce que
-      // la barre NATIVE stocke aussi (vérifié par capture live : Angelus -> rec0=1, id=33). Convention
-      // record : rec[0]=is_item?0:1 -> SKILL=1. Le cast (OnMsg 0x29) et la desc passent par les handlers
-      // NATIFS qui branchent sur rec[0]=1 -> tout marche directement (pas de conversion d'id nécessaire).
-      d->id    = static_cast<uint32_t>(rawid);
-      d->level = *reinterpret_cast<int*>(p + kPL_cnt);       // LitePayload count = niveau skill
-    }
-    return d->id != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// Annule le drag natif en VIDANT la charge (dragobj+0x308) -> au release le jeu ne
-// voit plus d'objet -> pas de drop au sol, et le curseur-suiveur natif disparaît.
-// On NE touche PAS le gate 0x1213390 : ce n'est pas un flag de drag mais l'état du
-// dispatcher (FUN_00a75340) que le jeu requiert (le mettre à 0 -> null-deref dans
-// SkillMgr_SetShortCutSlot -> crash, cf. 3 crashes documentés). SEH (POD only).
-void CancelNativeDrag(void* dragobj) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(dragobj) + kPayloadOff;
-    *reinterpret_cast<int*>(p + 0x00)   = 0;  // catégorie
-    *reinterpret_cast<int*>(p + kPL_id) = 0;  // id
-    p[kPL_type] = 0;                          // type
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// (Le pont drag NATIF -> slot ImGui a disparu avec ses deux sources, le grimoire
+// et l'inventaire natifs : ils appartiennent au même groupe « Interface moderne »
+// que cette barre, donc leurs fenêtres ne naissent plus quand elle est active.
+// Le format de la charge de drag reste documenté dans docs/skill_tree_re.md.)
 
 // Écrit le record 7 octets (type/id/level) DIRECTEMENT dans le store global de la région
 // (= là où ReadSlot lit). AUCUN appel de fonction du jeu (SkillMgr_SetShortCutSlot notifie le
@@ -914,92 +840,16 @@ void SkillBar::OnRenderUI() {
     for (int b = 0; b < kBarCount; ++b)
       if (bars_[b].visible) DrawBar(b);  // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
 
-    // Icône du drag NATIF (grimoire de skills / inventaire natif) redessinée AU-DESSUS des
-    // barres : le jeu rend l'icône-curseur du drag AVANT l'overlay ImGui -> elle passe DERRIÈRE
-    // nos cases dès qu'elle survole une barre. On la recolle sur le curseur (ForegroundDrawList,
-    // au-dessus de tout) quand un drag natif est en cours ET survole une barre visible. Même
-    // recette que InventoryViewer::OnRenderUI. On saute pendant un drag ImGui interne (payload
-    // non-null : SBSLOT / INV_ITEM ont déjà leur propre aperçu).
-    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-        ImGui::GetDragDropPayload() == nullptr) {
-      void* obj = DragObj();
-      NativeDrag d{};
-      if (obj && DecodeDrag(obj, &d)) {
-        const ImVec2 m = ImGui::GetMousePos();
-        bool over = false;
-        for (int b = 0; b < kBarCount && !over; ++b) {
-          if (!bars_[b].visible) continue;
-          const BarCfg& bc = bars_[b];
-          const int cols  = std::max(1, bc.columns);
-          const int count = std::min(bc.slot_count, kRegions[b].count);
-          const int rows  = (count + cols - 1) / cols;
-          const float step = bc.icon_size + bc.spacing;
-          const float bw = cols * step, bh = rows * step;  // fenêtre = cols*step / rows*step (pad=spacing/2 des 2 côtés)
-          if (m.x >= bc.x && m.y >= bc.y && m.x < bc.x + bw && m.y < bc.y + bh) over = true;
-        }
-        if (over) {
-          // GetIconTex : type 0 = OBJET, !=0 = SKILL (convention record). d.isItem -> objet.
-          void* tex = GetIconTex(d.isItem ? 0 : 1, d.id);
-          if (tex) {
-            const float sz = 24.0f;  // taille bmp native d'icône (comme le redraw inventaire)
-            ImGui::GetForegroundDrawList()->AddImage(
-                (ImTextureID)(uintptr_t)tex,
-                ImVec2(m.x - sz * 0.5f, m.y - sz * 0.5f),
-                ImVec2(m.x + sz * 0.5f, m.y + sz * 0.5f));
-          }
-        }
-      }
-    }
-  }
+    // (Le redessin de l'icône d'un glisser NATIF au-dessus des barres a disparu :
+    // ses deux sources — le grimoire natif et l'inventaire natif — ne naissent
+    // plus, la barre étant membre du même groupe « Interface moderne » qu'eux.)
+}
 }
 
-// Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input). Si un drag natif est
-// relâché sur une case de la barre : écriture directe du record + vidage de la
-// charge, AVANT que le jeu ne traite le up. Le drag reste vivant pendant la
-// traverse (pas de clic-au-sol) ; ici on le solde sur la case survolée. Aucune
-// fonction du jeu appelée hors les getters de décodage (sûrs, cf. RE). Géométrie =
-// celle de DrawBar (marge intérieure pad=spacing/2). (mx,my en coords client == coords écran ImGui.)
-bool SkillBar::HandleNativeDrop(int mx, int my) {
-  if (!enabled_ || !native_hidden_) return false;
-  if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui interne
-  void* w = ShortCutWnd();
-  if (!w) return false;
-  void* obj = DragObj();
-  if (!obj) return false;
-  NativeDrag d{};
-  if (!DecodeDrag(obj, &d) || d.srcSlot >= 0) return false;  // pas de self-drag de la barre
-  (void)w;
-
-  // Cherche LAQUELLE des barres visibles couvre (mx,my). Géométrie = celle de DrawBar :
-  // marge intérieure pad=spacing/2 retirée pour retrouver les coords de la 1ère cellule icône.
-  for (int b = 0; b < kBarCount; ++b) {
-    if (!bars_[b].visible) continue;
-    const BarCfg& bc = bars_[b];
-    const float step = bc.icon_size + bc.spacing;  // taille/espacement PAR barre
-    const float pad  = bc.spacing * 0.5f;          // idem DrawBar : icônes centrées dans leur cellule
-    const int cols = (bc.columns < 1) ? 1 : bc.columns;
-    const float lx = static_cast<float>(mx) - static_cast<float>(bc.x) - pad;
-    const float ly = static_cast<float>(my) - static_cast<float>(bc.y) - pad;
-    if (lx < 0 || ly < 0) continue;
-    const int cc = static_cast<int>(lx / step), cr = static_cast<int>(ly / step);
-    if (cc >= cols) continue;
-    if ((lx - cc * step) >= bc.icon_size || (ly - cr * step) >= bc.icon_size) continue;  // gap
-    const int k = cr * cols + cc;
-    if (k < 0 || k >= bc.slot_count) continue;
-    const int slot = bc.first_slot + k;
-    if (slot < 0 || slot >= kRegions[b].count) continue;
-    if (RegionIsItems(b) && !d.isItem) continue;  // un slot d'item ne reçoit qu'un OBJET
-
-    WriteSlotRecord(b, slot, d.isItem, d.id, d.level);  // écriture directe (sûr en drag, 0 appel jeu)
-    if (!RegionIsItems(b))  // skills : persiste côté serveur (CZ_SHORTCUT_KEY_CHANGE)
-      SendHotkeyChange(kRegions[b].tab, slot, d.isItem ? 0 : 1, d.id, d.level);
-    else
-      dirty_ = true;  // items : persistance CLIENT (yaml) -> déclenche une sauvegarde
-    CancelNativeDrag(obj);
-    return true;
-  }
-  return false;
-}
+// (Plus de HandleNativeDrop : il accueillait un glisser NATIF venu du grimoire ou
+// de l'inventaire. Ces deux fenêtres appartiennent au même groupe « Interface
+// moderne » que cette barre — quand elle est active, elles le sont aussi et leurs
+// natives ne naissent plus. Remplir une case passe par le glisser ImGui.)
 
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
 void SkillBar::DrawSettings() {

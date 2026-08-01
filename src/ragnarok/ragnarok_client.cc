@@ -608,28 +608,10 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     float my = static_cast<float>(static_cast<short>(HIWORD(lParam)));
     bool over_imgui = io.WantCaptureMouse || IsMouseOverAnyImGuiWindow(mx, my);
 
-    // Drag natif (inventaire/grimoire) relâché sur la barre d'action ImGui : on
-    // assigne la case + on vide la charge du drag AVANT que le jeu ne traite le up
-    // (sinon l'objet tombe au sol). Le drag est resté vivant pendant la traverse,
-    // donc le jeu n'a jamais reclassé le bouton maintenu en clic-au-sol. On laisse
-    // ensuite le up suivre son cours : le jeu solde son drag à vide (pas de drop).
-    // No-op rapide si pas de drag natif en cours (DecodeDrag échoue).
-    if (uMsg == WM_LBUTTONUP) {
-      if (auto* sb = Bourgeon::Instance().skill_bar())
-        sb->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
-      if (auto* iv = Bourgeon::Instance().inventory_viewer())
-        iv->HandleNativeDrop(static_cast<int>(mx), static_cast<int>(my));
-      // (Le storage ne figure plus ici : les seules sources d'un drag natif vers
-      // lui étaient l'inventaire et le cart, qui sont des viewers ImGui dès que
-      // lui-même l'est — « Interface moderne » est un groupe tout-ou-rien.)
-    }
-    // Mémorise la source d'un drag natif dès le mousedown, pour router un drop sur
-    // le viewer inventaire (équip -> inventaire = dés-équiper). La fenêtre
-    // Équipement, elle, est encore native.
-    if (uMsg == WM_LBUTTONDOWN) {
-      if (auto* iv = Bourgeon::Instance().inventory_viewer())
-        iv->OnMouseDown(static_cast<int>(mx), static_cast<int>(my));
-    }
+    // (Plus aucun relais de glisser NATIF ici : les fenêtres qui pouvaient en
+    // émettre — inventaire, cart, storage, équipement, grimoire — sont toutes des
+    // viewers ImGui du groupe « Interface moderne », et leurs natives ne naissent
+    // plus. Tout se joue désormais en glisser ImGui.)
 
     // Let the game's Windows cursor (SetCursor) show through on top of ImGui.
     // ImGui's own software cursor is never drawn — the game controls the cursor

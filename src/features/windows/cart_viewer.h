@@ -52,8 +52,15 @@ class CartViewer : public Plugin {
   bool& lock_size()     { return lock_size_; }
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
-  // id 0x28 : masque la native AVANT son premier rendu (pas de flicker).
-  void HideNativeAtCreation(void* win);
+  // id 0x28 : c'est la DEMANDE du joueur. Masque la native avant son premier
+  // rendu (pas de flicker) et bascule le viewer ; OnTick la détruit ensuite.
+  // 🔴 Détruite, pas masquée : toute bascule du client fait « ferme si elle
+  // existe, sinon crée », donc une native vivante avalerait un appui sur deux.
+  void HandleNativeCreation(void* win);
+
+  // Le cart est-il ouvert ? À interroger par les AUTRES modules au lieu de
+  // chercher la fenêtre native : elle ne naît plus en mode ImGui.
+  bool IsOpen() const { return open_; }
 
   // True si (mx,my) est au-dessus du viewer cart ouvert. Sert aux AUTRES viewers
   // (inventaire, storage) pour router un dépôt par glisser : quand le cart est
@@ -111,9 +118,10 @@ class CartViewer : public Plugin {
   float drag_mx_ = 0, drag_my_ = 0;
 
   bool open_ = false;      // cart ouvert ce frame ?
-  bool was_open_ = false;  // front montant (placement à la 1re ouverture)
+  // Valeur d'imgui_enabled_ au tick précédent : détecte la BASCULE de mode, qui
+  // doit adopter un cart déjà ouvert au lieu de le faire disparaître.
+  bool prev_imgui_enabled_ = false;
   bool need_pos_ = false;  // repositionner sur la native à l'ouverture
-  int  spawn_x_ = 0, spawn_y_ = 0;
   int  item_count_ = 0;
   // Case survolée ce frame pour l'aperçu de description (0 = aucune).
   uint32_t hover_desc_id_ = 0;

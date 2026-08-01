@@ -86,6 +86,10 @@ constexpr uintptr_t kFmtComma = 0x00a948d0;
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
 constexpr int kWinInventory = 8;
+// Placement et taille par défaut du viewer, à la toute 1re ouverture seulement
+// (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
+constexpr float kSpawnX = 700.0f, kSpawnY = 400.0f;
+constexpr float kSpawnW = 300.0f, kSpawnH = 360.0f;
 using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fenêtre si ouverte
 
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) renvoie l'objet mode actif (ou 0 hors
@@ -398,33 +402,9 @@ void SendDrop(int index, int amount) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// ── Drag NATIF entrant (fenêtre Équipement -> viewer = dés-équiper) ──────────────
-// Le drag natif est porté par l'objet mode (Dispatcher(), charge à +0x308) : payload
-// +0x80=0 (FullPayload item), +0x04 = index inventaire client. Repris de StorageWindow.
-constexpr int kDragPayloadOff = 0x308;
-constexpr int kDragPL_type = 0x80, kDragPL_index = 0x04, kDragPL_id = 0x04, kDragPL_cat = 0x00;
-constexpr int kDragPL_count = 0x10;  // quantité (pile) du drag natif
+// (Le décodage du glisser NATIF — ReadDraggedItem, CancelNativeDrag et les
+// offsets de sa charge — a disparu avec les fenêtres qui pouvaient en émettre.)
 
-bool ReadDraggedItem(void* obj, int* index, int* qty) {  // false si pas un item / invalide
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
-    if (p[kDragPL_type] != 0) return false;  // FullPayload (item) uniquement
-    const int idx = *reinterpret_cast<int*>(p + kDragPL_index);
-    if (idx <= 0) return false;
-    *index = idx;
-    const int c = *reinterpret_cast<int*>(p + kDragPL_count);
-    *qty = c > 0 ? c : 1;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-void CancelNativeDrag(void* obj) {  // vide la charge -> le jeu ne drop rien au relâché
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
-    *reinterpret_cast<int*>(p + kDragPL_cat) = 0;
-    *reinterpret_cast<int*>(p + kDragPL_id)  = 0;
-    p[kDragPL_type] = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 // CZ_REQ_TAKEOFF_EQUIP 0x00AB {op, invIndex} : dés-équipe l'item à cet index inventaire.
 void SendUnequip(int index) {
   if (index <= 0) return;
@@ -434,19 +414,6 @@ void SendUnequip(int index) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// Lit l'id (nameid) de l'item d'un drag natif : resname = std::string @payload+0x3c (SSO,
-// heap si cap>0xf), atoi. Sert à redessiner l'icône du drag AU-DESSUS du viewer (le jeu la
-// rend DERRIÈRE l'overlay ImGui). 0 si ce n'est pas un item.
-uint32_t ReadDragItemId(void* obj) {
-  __try {
-    uint8_t* p = reinterpret_cast<uint8_t*>(obj) + kDragPayloadOff;
-    if (p[kDragPL_type] != 0) return 0;  // FullPayload (item) uniquement
-    const uint32_t cap = *reinterpret_cast<uint32_t*>(p + 0x3c + 0x14);  // capacité SSO
-    const char* s = (cap > 0xf) ? *reinterpret_cast<char**>(p + 0x3c)
-                                : reinterpret_cast<const char*>(p + 0x3c);
-    return (s && s[0]) ? static_cast<uint32_t>(atoi(s)) : 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 
 // (Pas de déduction « échange en cours » ici : les objets mis en échange sont
 // RÉELLEMENT retirés du modèle de session dès l'acquittement du serveur, comme le
@@ -475,19 +442,6 @@ inline void ToggleLock(uintptr_t g) {
   __try { *reinterpret_cast<uint8_t*>(g) ^= 1; } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Ferme l'inventaire natif côté client via le MÊME chemin que l'icône de menu :
-// FUN_00812e60(8) (__cdecl) bascule la fenêtre — ouverte -> SaveWindowRect la ferme
-// (0x0131f6bc = 0, viewer fermé au prochain tick).
-// CRASH RÉGLÉ : l'ancien ToggleWindow 0x00a4bf30 (a) ne gère PAS l'id 8 et surtout
-// (b) était appelé avec une mauvaise convention (la vraie fait `ret 8` = 2 args pile,
-// mon typedef 1 seul = `ret 4`) -> désync de pile de 4 o à CHAQUE fermeture ->
-// registre corrompu -> AV 0xC0000005 DIFFÉRÉE dans le rendu/hook (pas au site de
-// l'appel). FUN_00812e60 est __stdcall (RET 0x4, désasm vérifié) : callee nettoie.
-void CloseInventory() {
-  __try {
-    reinterpret_cast<ToggleById_t>(kToggleWndById)(kWinInventory);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 
 
@@ -618,61 +572,23 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
 // « Interface moderne » les natives storage/cart sont masquées mais gardent leur
 // rect, et sans ce test leur emplacement fantôme capturait les drops faits sur les
 // viewers ImGui posés par-dessus (un lâcher DANS l'inventaire partait au storage).
-bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
-  uint8_t* w = ReadValidWnd(slot, vt);
-  if (!w) return false;
-  __try {
-    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;
-    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
-    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
-    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
-    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-// Fenêtre CHARIOT (id 0x28) via le GESTIONNAIRE. ⚠ kCartWndGlobal 0x0131f6a0,
-// hérité d'une RE live, n'a AUCUNE référence dans le binaire (xrefs IDA
-// 2026-07-27) : il ne porte pas la fenêtre cart, donc CartOpen() était
-// TOUJOURS faux (« Vers le cart » n'apparaissait jamais dans le menu) et le
-// dépôt par glisser sur le cart ne partait jamais. FindWindow est la source
-// autoritaire : le client détruit ses fenêtres à la fermeture.
-uint8_t* CartWnd() {
-  __try {
-    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
-    if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != kCartVTable) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
-// Cart MODERNE (CartViewer) : sa fenêtre native est cachée — son rect ne vaut
-// plus rien, comme pour le storage. On teste donc d'abord le rect du viewer, puis
-// la fenêtre native (cart resté natif).
+// ── Cibles et états des fenêtres VOISINES ───────────────────────────────────
+// Toutes des viewers ImGui désormais : cart, storage, équipement (fondu dans la
+// feuille de personnage) — leurs fenêtres natives ne naissent plus. Il n'y a donc
+// plus aucun rect natif à interroger ici, ni aucune source de glisser natif.
 bool MouseOverCart(float x, float y) {
-  if (auto* cv = Bourgeon::Instance().cart_viewer())
-    if (cv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  uint8_t* w = CartWnd();
-  if (!w) return false;
-  __try {
-    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;  // cachée = pas une cible
-    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
-    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
-    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
-    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  auto* cart = Bourgeon::Instance().cart_viewer();
+  return cart && cart->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
-bool MouseOverStorage(float x, float y) { return MouseOverWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable, x, y); }
-bool CartOpen()    { return CartWnd() != nullptr; }
-// ⚠ La session storage passe d'ABORD par StorageWindow : en mode ImGui sa
-// fenêtre native ne naît plus, donc le slot 0x0131f770 reste nul et le test
-// natif seul rendrait « fermé » un storage bel et bien ouvert. Ce n'est pas
-// qu'un détail d'affichage — plusieurs règles ci-dessous en dépendent, dont le
-// refus serveur de inventaire -> cart tant qu'un storage est ouvert.
+bool CartOpen() {
+  auto* cart = Bourgeon::Instance().cart_viewer();
+  return cart && cart->IsOpen();
+}
+// Plusieurs règles en dépendent, dont le refus SERVEUR de inventaire -> cart tant
+// qu'un storage est ouvert (sd->state.storage_flag).
 bool StorageOpen() {
-  if (auto* st = Bourgeon::Instance().storage_window())
-    if (st->IsOpen()) return true;
-  return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr;
+  auto* storage = Bourgeon::Instance().storage_window();
+  return storage && storage->IsOpen();
 }
 // Composition d'échoppe en cours (cf. VendingWindow::IsComposing).
 //   - inventaire <-> chariot : REFUSÉ par le serveur (sd->state.prevend, testé
@@ -696,36 +612,16 @@ bool MailComposing() {
   return rodex && rodex->composing();
 }
 
-// True si le point est au-dessus du VIEWER storage ImGui : quand les DEUX (inventaire +
-// storage) sont des viewers ImGui, le rect natif du storage est caché donc MouseOverStorage
-// échoue -> on teste le rect du viewer storage pour router le dépôt par glisser.
+// Cible de glisser du viewer storage.
 bool StorageViewerOver(float x, float y) {
-  auto* st = Bourgeon::Instance().storage_window();
-  return st && st->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
+  auto* storage = Bourgeon::Instance().storage_window();
+  return storage && storage->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 
-// Fenêtre Équipement (id 0xa) via FindWindow ; nullptr si absente OU cachée (flag +0x28).
-// Sert au drop d'équip : glisser un item dessus l'équipe.
-constexpr int kEquipWndId = 0xa;
-uint8_t* EquipWnd() {
-  __try {
-    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kEquipWndId));
-    if (!w || *reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-bool EquipOpen() { return EquipWnd() != nullptr; }
-bool MouseOverEquip(float x, float y) {
-  uint8_t* w = EquipWnd();
-  if (!w) return false;
-  __try {
-    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
-    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
-    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
-    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
+// (Plus de MouseOverEquip / EquipWnd : la fenêtre Équipement native 0xa ne naît
+// plus, la feuille de personnage la remplace. Y déposer un objet pour l'équiper
+// reste possible — c'est la feuille elle-même qui accepte le payload « INV_ITEM »
+// sur ses slots, et qui renvoie ici par EquipDraggedItem.)
 
 // Lecture SEH (POD only) des globals du footer -> hors OnRenderUI, qui contient des
 // objets C++ (vector/filter) et ne peut donc pas héberger de __try (C2712).
@@ -1103,13 +999,25 @@ void InventoryViewer::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_
   qs_card_count_ = n;
 }
 
-// Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
-void InventoryViewer::HideNativeAtCreation(void* win) {
+// La fenêtre native de l'inventaire vient de naître : c'est une DEMANDE du joueur
+// (icône de menu, raccourci, ou le X de notre propre viewer). On la masque
+// sur-le-champ — sans quoi une frame native passe à l'écran — et on bascule le
+// viewer ; OnTick la détruira, le natif la manipulant encore ici.
+void InventoryViewer::HandleNativeCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kInventoryWndVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+  // Reconstruction du HUD au changement de map : ce n'est pas le joueur qui
+  // demande, on ne touche donc pas à l'état du viewer.
+  if (Bourgeon::Instance().IsMapLoading()) return;
+  // C'est NOUS qui portons la bascule : la native étant détruite, le client ne la
+  // voit jamais exister et redemande une création à chaque appui.
+  if (open_) { open_ = false; return; }
+  open_ = true;
+  show_panel_ = true;
+  need_pos_ = true;
 }
 
 // Idem pour le popup de sertissage (id 0x4A) : il est créé par le handler du paquet
@@ -1191,26 +1099,35 @@ void InventoryViewer::Extract() {
 }
 
 void InventoryViewer::OnTick() {
-  open_ = false;
-  uint8_t* wnd = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
-  if (wnd) {
-    __try {
-      if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-        need_pos_ = true;
-      }
-      // Master switch : ON -> cache le natif (hors rendu+hit-test) + viewer ; OFF ->
-      // natif seul, aucun viewer. Forcé chaque tick (le natif peut remettre à 1).
-      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
-      open_ = true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
-    if (open_) Extract();
+  // `open_` n'est plus déduit de la présence de la native : elle ne vit plus. Il
+  // est posé par HandleNativeCreation (la demande du joueur) et levé par elle.
+  const bool mode_changed = (imgui_enabled_ != prev_imgui_enabled_);
+  prev_imgui_enabled_ = imgui_enabled_;
+  if (!imgui_enabled_) {
+    // Retour au natif : le viewer s'efface. La native n'existe plus, le client la
+    // recréera donc à la prochaine demande.
+    open_ = false;
+    hover_desc_id_ = 0; hover_desc_idx_ = -1;
+    return;
   }
+  if (!Bourgeon::Instance().IsMapLoading()) {
+    // 🔴 DÉTRUIRE, pas masquer : toute bascule du client fait « ferme si elle
+    // existe, sinon crée » (cf. reference_native_window_toggle_router). Une native
+    // seulement masquée existe, donc la demande suivante la fermerait sans
+    // repasser par MakeWindow — un appui sur deux serait avalé — et elle
+    // garderait le clavier. Couvre aussi la bascule de mode et la
+    // reconstruction du HUD au changement de map.
+    if (ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable)) {
+      // Sa présence PROUVE que l'inventaire était ouvert : on adopte l'état avant
+      // de la détruire, sinon activer le mode moderne le ferait disparaître.
+      if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }
+      __try { uiwnd::CloseWindow(kWinInventory); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+  }
+  if (open_) Extract();
   // Aperçu de description : purgé dès que le viewer ne dessine plus (fenêtre fermée
   // ou viewer désactivé), sinon il resterait affiché sans rien pour l'effacer.
-  if (!open_ || !imgui_enabled_) { hover_desc_id_ = 0; hover_desc_idx_ = -1; }
-  was_open_ = open_;
+  if (!open_) { hover_desc_id_ = 0; hover_desc_idx_ = -1; }
 
   // Popup de sertissage : masquage du natif forcé chaque tick (comme l'inventaire),
   // et remise à zéro de la sélection dès qu'il disparaît — sinon une sélection
@@ -1228,37 +1145,12 @@ void InventoryViewer::OnTick() {
   }
 }
 
-void InventoryViewer::OnMouseDown(int mx, int my) {
-  mousedown_over_viewer_ =
-      win_valid_ && mx >= win_x_ && my >= win_y_ &&
-      mx < win_x_ + win_w_ && my < win_y_ + win_h_;
-  // Source d'un drag NATIF relâché sur le viewer : Équipement -> dés-équiper ; Cart
-  // -> retirer vers l'inventaire.
-  mousedown_over_equip_ =
-      MouseOverEquip(static_cast<float>(mx), static_cast<float>(my));
-  mousedown_over_cart_ =
-      MouseOverCart(static_cast<float>(mx), static_cast<float>(my));
-}
-
-// Appelé par le hook WndProc au WM_LBUTTONUP (pré-input). Un drag NATIF relâché sur le
-// viewer : depuis l'Équipement => dés-équiper (CZ_REQ_TAKEOFF_EQUIP) ; depuis le Cart
-// => retirer vers l'inventaire (cmd 0x4d). Puis vider la charge (pas de drop au sol).
-bool InventoryViewer::HandleNativeDrop(int mx, int my) {
-  if (!open_ || !imgui_enabled_ || !win_valid_) return false;
-  if (!mousedown_over_equip_ && !mousedown_over_cart_) return false;  // seules sources gérées
-  if (ImGui::GetDragDropPayload() != nullptr) return false;  // pas pendant un drag ImGui
-  const bool over = !(mx < win_x_ || my < win_y_ ||
-                      mx >= win_x_ + win_w_ || my >= win_y_ + win_h_);
-  if (!over) return false;
-  void* obj = Dispatcher();
-  if (!obj) return false;
-  int index = 0, qty = 0;
-  if (!ReadDraggedItem(obj, &index, &qty)) return false;
-  if (mousedown_over_equip_) SendUnequip(index);                   // équip -> inventaire
-  else                       SendCmd(kCmdCartToBody, index, qty);  // cart -> inventaire
-  CancelNativeDrag(obj);
-  return true;
-}
+// (Plus de OnMouseDown / HandleNativeDrop : ils accueillaient un glisser NATIF
+// venu de la fenêtre Équipement ou du cart. Les deux sont maintenant des viewers
+// ImGui — la feuille de personnage pour l'équipement, CartViewer pour le cart —
+// et leurs fenêtres natives ne naissent plus. Les deux gestes ont leur équivalent
+// ImGui : la feuille renvoie ici par EquipDraggedItem pour équiper, et détecte
+// elle-même le lâcher sur ce viewer pour déséquiper.)
 
 // Équipe l'item d'inventaire actuellement glissé : drag_index_/type_/loc_ sont les
 // valeurs SERVEUR stables (it.index/type/loc, rafraîchies chaque frame par la source du
@@ -1684,12 +1576,17 @@ void InventoryViewer::OnRenderUI() {
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
   if (need_pos_) {
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(spawn_x_),
-                                   static_cast<float>(spawn_y_)),
-                            ImGuiCond_FirstUseEver);
+    // FirstUseEver : simple DÉFAUT de première ouverture ; ensuite ImGui garde la
+    // position déplacée par le joueur. Ce défaut se lisait sur la fenêtre native,
+    // qui ne naît plus — on le fixe, rabattu dans l'écran sur petite résolution.
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(
+        ImVec2(std::min(kSpawnX, std::max(0.0f, screen.x - kSpawnW)),
+               std::min(kSpawnY, std::max(0.0f, screen.y - kSpawnH))),
+        ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
-  ImGui::SetNextWindowSize(ImVec2(300, 360), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(kSpawnW, kSpawnH), ImGuiCond_FirstUseEver);
   // Resize par PALIER de tuile (chrome mesuré la frame précédente) : largeur/hauteur
   // saute d'une colonne/ligne de tuiles -> jamais de colonne partielle (fix overflow).
   // Inutile quand la taille est verrouillée (plus aucun redimensionnement).
@@ -1728,8 +1625,9 @@ void InventoryViewer::OnRenderUI() {
   if (ro::TitleBulletClicked())
     if (auto* mu = Bourgeon::Instance().moonlight_ui())
       mu->OpenInterfaceSection(MoonlightUi::kIfaceInventory);
-  // X du viewer -> ferme l'inventaire natif (client-side). Réarme show_panel_.
-  if (!show_panel_) { CloseInventory(); show_panel_ = true; }
+  // X du viewer : l'état d'ouverture est le NÔTRE maintenant, il n'y a plus de
+  // fenêtre native à fermer. Réarme show_panel_ pour la prochaine ouverture.
+  if (!show_panel_) { open_ = false; show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
 
   // Bandeau pendant la composition d'un shop, comme dans les viewers cart et
@@ -2382,18 +2280,15 @@ void InventoryViewer::OnRenderUI() {
         if (over_self) {
           // rien
         }
-        else if (MouseOverEquip(drag_mx_, drag_my_)) {    // drop sur la fenêtre Équipement
-          if (IsEquippable(drag_type_))
-            UseOrEquip(drag_index_, drag_type_, drag_loc_, false);  // -> équiper (sinon no-op)
-        }
-        // Entrepôt ouvert => le serveur refuse inventaire -> cart (storage_flag, cf.
+        // (Le drop sur la fenêtre Équipement a disparu avec elle : c'est la feuille
+        // de personnage qui accepte désormais le payload sur ses slots.)
+        // Storage ouvert => le serveur refuse inventaire -> cart (storage_flag, cf.
         // le menu contextuel) : on n'arme RIEN, plutôt que d'ouvrir un prompt de
         // quantité dont la validation partirait à la poubelle.
         else if (MouseOverCart(drag_mx_, drag_my_)) {
           if (!StorageOpen()) action = kPendToCart;
         }
-        else if (MouseOverStorage(drag_mx_, drag_my_) ||
-                 StorageViewerOver(drag_mx_, drag_my_)) action = kPendToStorage;
+        else if (StorageViewerOver(drag_mx_, drag_my_)) action = kPendToStorage;
         // (over_self est déjà écarté plus haut : ici on est forcément HORS de la
         // fenêtre.) Verrou drop actif -> pas de jet au sol.
         else if (!ImGui::GetIO().WantCaptureMouse && !ReadLock(kDropLockGlobal))
@@ -2541,27 +2436,8 @@ void InventoryViewer::OnRenderUI() {
     HelpMarker(desc.c_str());
   }
 
-  // Icône du drag NATIF au-dessus du viewer : le jeu rend l'icône du drag AVANT l'overlay
-  // ImGui -> elle passe DERRIÈRE le viewer (ex. équip glissé depuis la fenêtre Équipement).
-  // Drag natif entrant = bouton gauche tenu + clic NON parti du viewer (sinon = notre drag
-  // ImGui) + pas de payload ImGui. Redessinée sur le curseur en taille tuile.
-  void* dobj = (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !mousedown_over_viewer_ &&
-                ImGui::GetDragDropPayload() == nullptr) ? Dispatcher() : nullptr;
-  if (dobj) {
-    const uint32_t did = ReadDragItemId(dobj);
-    const ImVec2 m = ImGui::GetMousePos();
-    const bool over = m.x >= win_x_ && m.y >= win_y_ &&
-                      m.x < win_x_ + win_w_ && m.y < win_y_ + win_h_;
-    if (did != 0 && over) {
-      const ro::IconTex ic = ro::ItemIcon(did, 1);
-      if (ic.tex && ic.w > 0 && ic.h > 0) {
-        const float ih = 24.0f, iw = ih * static_cast<float>(ic.w) / ic.h;
-        ImGui::GetForegroundDrawList()->AddImage(
-            TexId(ic.tex), ImVec2(m.x - iw * 0.5f, m.y - ih * 0.5f),
-            ImVec2(m.x + iw * 0.5f, m.y + ih * 0.5f));
-      }
-    }
-  }
+  // (Le redessin de l'icône d'un glisser NATIF survolant le viewer a disparu avec
+  // le reste du pont natif : plus aucune fenêtre native ne peut en émettre.)
 
   ro::EndRoWindow();
 

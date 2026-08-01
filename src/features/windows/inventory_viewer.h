@@ -74,9 +74,11 @@ class InventoryViewer : public Plugin {
   std::unordered_map<uint32_t, int> layout_;
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
-  // id 8 : si imgui_enabled_, force wnd+0x28 = 0 AVANT le 1er rendu -> pas de
-  // flicker (le OnTick seul laisserait passer une frame native visible).
-  void HideNativeAtCreation(void* win);
+  // id 8 : c'est la DEMANDE du joueur. Masque la native avant son premier rendu
+  // (pas de flicker) et bascule le viewer ; OnTick la détruit ensuite.
+  // 🔴 Détruite, pas masquée : toute bascule du client fait « ferme si elle
+  // existe, sinon crée », donc une native vivante avalerait un appui sur deux.
+  void HandleNativeCreation(void* win);
 
   // ── Sertissage de cartes (popup natif UIItemCompositionWnd, id 0x4A) ────────
   // Double-cliquer une carte envoie CZ_REQ_ITEMCOMPOSITION_LIST (0x017A) ; le
@@ -97,10 +99,13 @@ class InventoryViewer : public Plugin {
   // frame de flicker entre la création du popup natif et le premier OnTick.
   void HideCardInsertAtCreation(void* win);
 
-  // Hooks WndProc (pré-input, comme storage/skill_bar) : router un drag NATIF
-  // relâché sur le viewer, et mémoriser où le clic a démarré.
-  bool HandleNativeDrop(int mx, int my);
-  void OnMouseDown(int mx, int my);
+  // (Plus de HandleNativeDrop / OnMouseDown : aucune fenêtre native ne peut plus
+  // émettre un glisser vers ce viewer — équipement, cart et storage sont tous des
+  // viewers ImGui, et leurs natives ne naissent plus.)
+
+  // L'inventaire est-il ouvert ? À interroger par les AUTRES modules au lieu de
+  // chercher la fenêtre native : elle ne naît plus en mode ImGui.
+  bool IsOpen() const { return open_; }
 
   // True si (mx,my) est au-dessus de la fenêtre du viewer inventaire (ImGui) ouverte.
   // Sert au viewer STORAGE pour router un retrait par glisser quand les deux sont des
@@ -204,9 +209,6 @@ class InventoryViewer : public Plugin {
   // Rect écran du viewer (capturé au rendu) pour tester un drop natif dessus.
   float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
   bool  win_valid_ = false;
-  bool  mousedown_over_viewer_ = false;
-  bool  mousedown_over_equip_ = false;  // le drag natif a démarré sur la fenêtre Équipement
-  bool  mousedown_over_cart_ = false;   // le drag natif a démarré sur la fenêtre Cart
 
   // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
   enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage,
@@ -225,9 +227,10 @@ class InventoryViewer : public Plugin {
   float drag_mx_ = 0, drag_my_ = 0;
 
   bool open_ = false;         // inventaire ouvert ce frame ?
-  bool was_open_ = false;     // front montant (placement 1re ouverture)
+  // Valeur d'imgui_enabled_ au tick précédent : détecte la BASCULE de mode, qui
+  // doit adopter un inventaire déjà ouvert au lieu de le faire disparaître.
+  bool prev_imgui_enabled_ = false;
   bool need_pos_ = false;     // repositionner près du natif à l'ouverture
-  int  spawn_x_ = 0, spawn_y_ = 0;
   int  item_count_ = 0;       // nb d'items valides dans items_
   // Case survolée ce frame pour l'aperçu de description (0 = aucune) ; l'aperçu est
   // dessiné APRÈS la fenêtre, en tooltip (cf. storage_window).

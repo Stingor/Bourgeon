@@ -45,6 +45,10 @@ namespace {
 // (SaveWindowRect -> QueueDestroyWindow), donc FindWindow non-nul == ouverte.
 constexpr uintptr_t kCartVTable = 0x0103d538;
 constexpr int kWinCart    = 0x28;
+// Placement et taille par défaut du viewer, à la toute 1re ouverture seulement
+// (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
+constexpr float kSpawnX = 420.0f, kSpawnY = 160.0f;
+constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
@@ -99,28 +103,10 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   return uiwnd::WndAtSlot(slot, expected_vtable);
 }
 
-// ⚠ Une fenêtre native CACHÉE (uiwnd::kOffVisible = 0) n'est PAS une cible de dépôt : en
-// « Interface moderne » les natives inventaire/storage/cart sont masquées mais
-// gardent leur rect, et sans ce test leur emplacement fantôme capturait les drops
-// faits sur les viewers ImGui posés par-dessus (un lâcher sur l'inventaire partait
-// au storage). Le flag porte exactement ce sens côté client : hors rendu ET hors
-// hit-test.
-bool MouseOverWnd(uintptr_t slot, uintptr_t vt, float x, float y) {
-  uint8_t* w = ReadValidWnd(slot, vt);
-  if (!w) return false;
-  __try {
-    if (*reinterpret_cast<int*>(w + uiwnd::kOffVisible) == 0) return false;
-    const int wx = *reinterpret_cast<int*>(w + uiwnd::kOffPosX);
-    const int wy = *reinterpret_cast<int*>(w + uiwnd::kOffPosY);
-    const int ww = *reinterpret_cast<int*>(w + kOffWidth);
-    const int wh = *reinterpret_cast<int*>(w + kOffHeight);
-    return x >= wx && y >= wy && x < wx + ww && y < wy + wh;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// La fenêtre cart ouverte, ou nullptr. Passe par le gestionnaire (cf. la note
-// sur kCartVTable) et vérifie quand même la vtable : un id ne garantit pas la
-// classe si un portage de client renumérote les fenêtres.
+// La fenêtre cart ouverte, ou nullptr. Ne sert plus qu'au FILET de OnTick, qui la
+// détruit : elle ne naît plus qu'au moment d'une demande du joueur, aussitôt
+// interceptée. La vtable est vérifiée car un id ne garantit pas la classe si un
+// portage de client renumérote les fenêtres.
 uint8_t* CartWnd() {
   __try {
     auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
@@ -130,15 +116,16 @@ uint8_t* CartWnd() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-bool InventoryOpen() { return ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable) != nullptr; }
-// ⚠ D'ABORD StorageWindow : en mode ImGui la fenêtre storage native ne naît
-// plus, donc le slot reste nul et le test natif seul rendrait « fermé » un
-// storage ouvert — ce qui ferait proposer cart -> inventaire là où le serveur
-// impose cart -> storage (sd->state.storage_flag).
+// États des fenêtres voisines : toutes des viewers ImGui, plus aucun rect natif
+// à interroger. Le storage compte ici parce que le SERVEUR impose cart -> storage
+// tant qu'il est ouvert (sd->state.storage_flag).
+bool InventoryOpen() {
+  auto* inventory = Bourgeon::Instance().inventory_viewer();
+  return inventory && inventory->IsOpen();
+}
 bool StorageOpen() {
-  if (auto* st = Bourgeon::Instance().storage_window())
-    if (st->IsOpen()) return true;
-  return ReadValidWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable) != nullptr;
+  auto* storage = Bourgeon::Instance().storage_window();
+  return storage && storage->IsOpen();
 }
 
 // Composition d'échoppe en cours. Le serveur lève alors `sd->state.prevend` et
@@ -151,17 +138,14 @@ bool VendingComposing() {
   return vending && vending->IsComposing();
 }
 
-// Cibles de dépôt : la fenêtre NATIVE ou, si elle est remplacée par son viewer
-// ImGui (native cachée => rect invalide), le rect du viewer.
+// Cibles de dépôt : les rects des VIEWERS, les seuls qui existent encore.
 bool OverInventory(float x, float y) {
-  if (auto* iv = Bourgeon::Instance().inventory_viewer())
-    if (iv->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  return MouseOverWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable, x, y);
+  auto* inventory = Bourgeon::Instance().inventory_viewer();
+  return inventory && inventory->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 bool OverStorage(float x, float y) {
-  if (auto* st = Bourgeon::Instance().storage_window())
-    if (st->PointOverViewer(static_cast<int>(x), static_cast<int>(y))) return true;
-  return MouseOverWnd(uiwnd::kStorageWndSlot, uiwnd::kStorageWndVTable, x, y);
+  auto* storage = Bourgeon::Instance().storage_window();
+  return storage && storage->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
 }
 
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
@@ -405,13 +389,24 @@ void MaybeFlushTextures() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Cache la fenêtre native DÈS sa création (avant le 1er rendu) -> zéro flicker.
-void CartViewer::HideNativeAtCreation(void* win) {
+// La fenêtre native du cart vient de naître : c'est une DEMANDE du joueur. On la
+// masque sur-le-champ (sans quoi une frame native passe à l'écran) et on bascule
+// le viewer ; OnTick la détruira — le natif la manipule encore ici.
+void CartViewer::HandleNativeCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != kCartVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+  // Reconstruction du HUD au changement de map : ce n'est pas le joueur qui
+  // demande, on ne touche donc pas à l'état du viewer.
+  if (Bourgeon::Instance().IsMapLoading()) return;
+  // C'est NOUS qui portons la bascule maintenant : la native est détruite, donc
+  // le client ne la voit jamais exister et redemande une création à chaque fois.
+  if (open_) { open_ = false; return; }
+  open_ = true;
+  show_panel_ = true;
+  need_pos_ = true;
 }
 
 // Remplit items_/item_count_ depuis le MODÈLE SESSION du cart (0x015fbae0), donc
@@ -474,27 +469,38 @@ void CartViewer::Extract() {
 }
 
 void CartViewer::OnTick() {
-  open_ = false;
-  uint8_t* wnd = CartWnd();
-  if (wnd) {
-    __try {
-      if (!was_open_) {
-        spawn_x_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
-        spawn_y_ = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-        need_pos_ = true;
-      }
-      // Master switch : ON -> native masquée (hors rendu ET hit-test) + viewer ;
-      // OFF -> native seule, aucun viewer. Forcé chaque tick (le natif remet à 1).
-      *reinterpret_cast<int*>(wnd + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
-      open_ = true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) { open_ = false; }
-    if (open_) Extract();
+  // `open_` n'est plus déduit de la présence de la native : elle ne vit plus.
+  // Il est posé par HandleNativeCreation (la demande du joueur) et levé par elle.
+  const bool mode_changed = (imgui_enabled_ != prev_imgui_enabled_);
+  prev_imgui_enabled_ = imgui_enabled_;
+  if (!imgui_enabled_) {
+    // Retour au natif : le viewer s'efface, la native reprend son service à la
+    // prochaine demande (elle n'existe plus, donc le client la recréera).
+    open_ = false;
+    win_valid_ = false;
+    drag_active_ = false;
+    return;
   }
+  if (Bourgeon::Instance().IsMapLoading()) return;
+  // 🔴 DÉTRUIRE, pas masquer : toute bascule du client fait « ferme si elle
+  // existe, sinon crée » (cf. reference_native_window_toggle_router). Une native
+  // seulement masquée existe, donc la demande suivante la fermerait sans repasser
+  // par MakeWindow — un appui sur deux serait avalé — et elle garderait le
+  // clavier. Ce filet couvre aussi la bascule de mode alors qu'elle est ouverte,
+  // et la reconstruction du HUD.
+  if (CartWnd()) {
+    // Sa présence PROUVE que le joueur avait le cart ouvert : on adopte l'état
+    // avant de la détruire, sinon activer le mode moderne le ferait disparaître.
+    if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }
+    __try { uiwnd::CloseWindow(kWinCart); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  }
+  if (open_) Extract();
   // Aperçu de description : purgé dès que le viewer ne dessine plus, sinon il
   // resterait affiché sans rien pour l'effacer.
-  if (!open_ || !imgui_enabled_) { hover_desc_id_ = 0; hover_desc_idx_ = -1; }
-  if (!open_) { win_valid_ = false; drag_active_ = false; }
-  was_open_ = open_;
+  if (!open_) {
+    hover_desc_id_ = 0; hover_desc_idx_ = -1;
+    win_valid_ = false; drag_active_ = false;
+  }
 }
 
 void CartViewer::OnRenderUI() {
@@ -502,12 +508,17 @@ void CartViewer::OnRenderUI() {
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
   if (need_pos_) {
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(spawn_x_),
-                                   static_cast<float>(spawn_y_)),
-                            ImGuiCond_FirstUseEver);
+    // FirstUseEver : simple DÉFAUT de première ouverture ; ensuite ImGui garde la
+    // position déplacée par le joueur. Ce défaut se lisait sur la fenêtre native,
+    // qui ne naît plus — on le fixe, rabattu dans l'écran sur petite résolution.
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(
+        ImVec2(std::min(kSpawnX, std::max(0.0f, screen.x - kSpawnW)),
+               std::min(kSpawnY, std::max(0.0f, screen.y - kSpawnH))),
+        ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
-  ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(kSpawnW, kSpawnH), ImGuiCond_FirstUseEver);
   if (g_snap.valid && !lock_size_) {
     const float minGrid = 5.0f * (g_snap.cell + g_snap.gap) - g_snap.gap;  // min 5 tuiles
     ImGui::SetNextWindowSizeConstraints(
@@ -536,8 +547,9 @@ void CartViewer::OnRenderUI() {
   if (ro::TitleBulletClicked())
     if (auto* mu = Bourgeon::Instance().moonlight_ui())
       mu->OpenInterfaceSection(MoonlightUi::kIfaceCart);
-  // X du viewer -> ferme le cart natif (client-side). Réarme show_panel_.
-  if (!show_panel_) { CloseCart(); show_panel_ = true; }
+  // X du viewer : l'état d'ouverture est le NÔTRE maintenant, il n'y a plus de
+  // fenêtre native à fermer. Réarme show_panel_ pour la prochaine ouverture.
+  if (!show_panel_) { open_ = false; show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
 
   // Pendant la composition d'un shop, le serveur refuse TOUT mouvement touchant

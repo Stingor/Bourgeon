@@ -33,11 +33,10 @@ class SkillBar : public Plugin {
   void OnKeyDown(unsigned long vkey, int new_key, int accurate_key) override;
   void OnRenderUI() override;
 
-  // Appelé par le hook WndProc au WM_LBUTTONUP (PRÉ-input jeu). Si un drag natif
-  // (inventaire/grimoire) est relâché sur une case de la barre, assigne la case
-  // (écriture directe) + vide la charge du drag -> pas de drop au sol, pas de
-  // crash. Renvoie true si le drop a été traité. (mx,my = coords client.)
-  bool HandleNativeDrop(int mx, int my);
+  // (Plus de HandleNativeDrop : ses deux sources — l'inventaire et le grimoire
+  // natifs — appartiennent au même groupe « Interface moderne » que cette barre,
+  // donc quand elle est active leurs fenêtres ne naissent plus. Remplir une case
+  // passe par le glisser ImGui.)
 
   // ── Config GLOBALE (publique : câblage MoonlightUi / persistance yaml) ──────
   bool  enabled_       = false;  // remplacement ImGui actif (cache la barre native)

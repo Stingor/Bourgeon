@@ -131,16 +131,17 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* st = Bourgeon::Instance().storage_window())
         st->HideNativeAtCreation(win);
     }
-    // Remplacement complet de l'inventaire : InventoryViewer cache la fenetre
-    // native (id 8) des la creation -> pas de flicker (comme le storage 0x21).
+    // Inventaire (id 8) et cart (UICartWnd id 0x28) : remplacés par leurs viewers.
+    // Leur création EST la demande du joueur — ces deux fenêtres ne naissent que
+    // d'une action, jamais d'un paquet (ZC_INVENTORY_START ne fait que vider leurs
+    // listes). Le viewer bascule ici, et OnTick détruit la native.
     if (windowID == 8) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
-        iv->HideNativeAtCreation(win);
+        iv->HandleNativeCreation(win);
     }
-    // Cart (UICartWnd id 0x28) : fenêtre sœur de l'inventaire, même traitement.
     if (windowID == 0x28) {
       if (auto* cv = Bourgeon::Instance().cart_viewer())
-        cv->HideNativeAtCreation(win);
+        cv->HandleNativeCreation(win);
     }
     // Banque de zeny (UIBank_NewWnd id 275) : créée par le handler de
     // ZC_BANKING_CHECK, donc ENTRE deux OnTick — sans ce hook une frame native
