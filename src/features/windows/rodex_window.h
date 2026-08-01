@@ -45,11 +45,16 @@ class RodexWindow : public Plugin {
   void OnTick() override;
   void OnRenderUI() override;
 
-  // Appelé pour CHAQUE fenêtre créée (hook MakeWindow de WindowPosTweaks) :
-  // cache la liste (0x107) et la lecture (0x109) dès leur création, avant leur
-  // premier rendu — sans ça la fenêtre native clignote pendant les ~100 ms qui
-  // séparent deux OnTick (la lecture est créée par le handler du paquet 0x0B63,
-  // donc entre deux ticks). No-op si le plugin est désactivé.
+  // Appelé pour CHAQUE fenêtre créée (hook MakeWindow de WindowPosTweaks) : masque
+  // la native dès sa création, avant son premier rendu — sans ça elle clignote
+  // pendant les ~100 ms qui séparent deux OnTick (la lecture naît du handler de
+  // ZC 0x0B63, donc entre deux ticks). No-op si le plugin est désactivé.
+  //
+  // 🔴 Pour la LISTE (0x107), c'est aussi le point de bascule : sa création EST la
+  // demande du joueur (icône de menu, PNJ). Elle est détruite au tick suivant, donc
+  // n'existe jamais — et le « ferme si elle existe, sinon crée » du client repasse
+  // forcément par ici. Masquer ne suffirait pas : un appui sur deux serait avalé, et
+  // la native garderait le clavier.
   void HideNativeAtCreation(void* win, int window_id);
 
   // Attache l'objet d'inventaire `index` (quantité `amount`) au courrier en cours
@@ -125,7 +130,11 @@ class RodexWindow : public Plugin {
   void DeleteMail(const Mail& mail);      // cmd 0xc4 -> CZ 0x09F5
   void ReturnMail(const Mail& mail);      // CZ 0x0B98 (boîte Normal uniquement)
   void Compose(const char* recipient);    // cmd 0x10c (0 = destinataire vide)
-  void CloseAll();                        // ferme liste + lecture natives
+  void CloseAll();                        // referme la session (+ filet natif)
+  // Oublie la session de boîte aux lettres SANS toucher au natif. Séparé de
+  // CloseAll parce qu'on l'appelle depuis le hook de création, où détruire la
+  // fenêtre que le client vient de créer serait un usage-après-libération.
+  void ResetMailboxState();
 
   // Rendu des sous-parties (une fenêtre, deux zones) + la fenêtre d'écriture.
   void DrawMailList();

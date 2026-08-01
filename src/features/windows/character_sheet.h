@@ -76,22 +76,28 @@ class CharacterSheet : public Plugin {
   // plugins. is_open/set_open restent l'API des appelants ordinaires.
   bool& open() { return show_; }
 
-  // ── Les TROIS fenêtres natives que cette feuille remplace ──────────────────
-  // Grimoire (0x25), Status (0xb) et Équipement (0xa). Quand l'interface moderne
-  // est active elles ne s'ouvrent plus : leurs raccourcis ET les boutons du menu
-  // d'icônes atterrissent ici, sur l'onglet correspondant.
+  // ── Les fenêtres natives que cette feuille remplace ────────────────────────
+  // Grimoire (0x25), Status (0xb), Équipement (0xa) et la GUILDE (0x3b avec
+  // guilde, 0xd4 sans, plus les panneaux d'onglet 0x3c..0x42). Quand l'interface
+  // moderne est active elles ne s'ouvrent plus : leurs raccourcis ET les boutons
+  // du menu d'icônes atterrissent ici, sur l'onglet correspondant.
   //
   // 🔴 Elles sont DÉTRUITES, pas seulement masquées — et c'est ce qui fait
-  // marcher le routage. Leur chemin commun, UIWindowMgr_ToggleWindowById
-  // (0x00812e60), FERME la fenêtre si elle existe et ne la crée que sinon : une
-  // native laissée vivante, même invisible, avalerait un appui sur deux sans
-  // jamais repasser par notre hook MakeWindow. Elle garderait de surcroît le
-  // clavier (Entrée/Espace activent son bouton par défaut).
+  // marcher le routage. Les deux chemins d'ouverture, UIWindowMgr_ToggleWindowById
+  // (0x00812e60) pour les boutons et UIWindowMgr_DispatchHotkeyBehavior
+  // (0x00a451e0) pour les raccourcis, FERMENT la fenêtre si elle existe et ne la
+  // créent que sinon : une native laissée vivante, même invisible, avalerait un
+  // appui sur deux sans jamais repasser par notre hook MakeWindow. Elle garderait
+  // de surcroît le clavier (Entrée/Espace activent son bouton par défaut).
   void OpenSkillsTab();
   void OpenEquipTab();
   // Status = l'onglet Équipement AVEC le volet stats déplié (ce volet n'a pas de
   // drapeau propre : il apparaît quand la fenêtre est assez large).
   void OpenStatusTab();
+  // Guilde : les DEUX fenêtres natives de guilde (0x3B avec guilde, 0xD4 sans)
+  // mènent ici — l'onglet montre le roster quand on a une guilde, et la création
+  // quand on n'en a pas, exactement le partage que fait le client.
+  void OpenGuildTab();
   // Appelée par le hook MakeWindow (window_pos_tweaks) à la naissance d'une de ces
   // trois fenêtres : masque tout de suite (pas de frame native à l'écran) et route
   // la demande. La destruction revient à OnTick — le natif manipule encore la

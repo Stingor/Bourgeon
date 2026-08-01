@@ -924,6 +924,23 @@ constexpr int       kWinSkillList   = 0x25;  // UINewSkillListWnd  (Grimoire)
 constexpr int       kWinEquip       = 0x0a;  // Equipment, vtable 0x01022f68
 constexpr int       kWinStatus      = 0x0b;  // UIStatusWnd,  vtable 0x010329d4
 
+// ── Guilde : DEUX fenêtres, choisies selon qu'on a une guilde ou non ─────────
+// Les deux chemins d'ouverture le font pareil, et sur le MÊME critère —
+// `g_Own_GuildId` (0x0159c230, label Ghidra « ActiveTabIndex » FAUX) :
+//   - raccourci  : UIWindowMgr_DispatchHotkeyBehavior @0x00a455cf
+//   - icône menu : UIMenuIconWnd_OnMsg cmd 373 @0x00814c6d (`cmovl`)
+// guildId != 0 -> bascule 0x3B ; guildId == 0 -> bascule 0xD4 (fenêtre « pas de
+// guilde » / création). Notre onglet Guilde couvre les deux cas, création comprise.
+constexpr int       kWinGuild       = 0x3b;  // UIGuildWnd (conteneur à onglets)
+constexpr int       kWinGuildNone   = 0xd4;  // demandée quand on n'a pas de guilde
+// Panneaux enfants du conteneur (0x3c TotalInfo, MemberManage, PositionManage,
+// Skill, AllyGuild, InfoPopup, Banished) : id = 0x3c + rang. Le conteneur les crée
+// lui-même, il faut donc les détruire avec lui — chacun est une native de plus, et
+// une native masquée garde le clavier.
+constexpr int       kWinGuildPanelFirst = 0x3c;
+constexpr int       kWinGuildPanelLast  = 0x42;
+constexpr int       kTabGuild       = 4;     // onglet « Guilde » de la feuille
+
 constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
 constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
 constexpr int kSkillMaxNodes = 256;  // garde-fou de parcours
@@ -6909,6 +6926,15 @@ void CharacterSheet::OpenStatusTab() {
   want_wide_ = true;
 }
 
+// Guilde : l'onglet qui refait la fenêtre de guilde native (infos, roster, postes,
+// relations, emblème). Il est déjà large d'office (`force_wide` sur tab_ == 4), donc
+// rien à forcer ici.
+void CharacterSheet::OpenGuildTab() {
+  show_ = true;
+  tab_ = kTabGuild;
+  tab_request_ = kTabGuild;
+}
+
 // Ferme une fenêtre native comme le ferait son X : UIWindowMgr_Close enregistre son
 // rectangle puis la DÉTRUIT. Hors frame ImGui uniquement (appelée depuis OnTick),
 // cf. la règle « pas de commande native pendant une frame ImGui ».
@@ -6952,6 +6978,13 @@ void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
       if (show_ && tab_ == 0) { show_ = false; return; }
       OpenEquipTab();
       return;
+    case kWinGuild:
+    case kWinGuildNone:
+      // Les deux mènent au même onglet : il montre la guilde quand on en a une, et
+      // la création quand on n'en a pas — exactement le partage que fait le client.
+      if (show_ && tab_ == kTabGuild) { show_ = false; return; }
+      OpenGuildTab();
+      return;
     default:
       return;
   }
@@ -6972,7 +7005,14 @@ void CharacterSheet::OnTick() {
   // elles renaissent par des chemins qui ne demandent rien au joueur — la
   // reconstruction de l'interface, ou l'activation du mode moderne alors qu'elles
   // sont déjà à l'écran. Les détruire ici couvre les deux cas.
-  for (const int id : {kWinSkillList, kWinStatus, kWinEquip})
+  for (const int id : {kWinSkillList, kWinStatus, kWinEquip, kWinGuild, kWinGuildNone})
+    if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
+  // Les panneaux d'onglet de la fenêtre de guilde : le conteneur en crée un à
+  // l'ouverture (et un autre à chaque clic d'onglet). Ils ne portent aucune donnée
+  // qui nous manquerait — roster, relations et bannis vivent dans des globals, et
+  // les POSTES, seule donnée que le client ne gardait que dans sa fenêtre, sont
+  // parsés par cet onglet depuis les paquets (cf. guild_positions_).
+  for (int id = kWinGuildPanelFirst; id <= kWinGuildPanelLast; ++id)
     if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
 }
 

@@ -130,42 +130,28 @@ constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr int kWinCart             = 0x28;   // UICartWnd (SaveWindowRect(40))
 constexpr uintptr_t kCartVTable    = 0x0103d538;
 
-// ── Sertissage de cartes : popup natif UIItemCompositionWnd (id 0x4A) ────────
-// RE complète : docs/card_insert_re.md. Ces offsets ont été VÉRIFIÉS en mémoire
-// live (x32dbg, popup ouvert sur une Turtle General Card) — une première passe de
-// RE statique les donnait 4 octets plus bas, seule cette table est cohérente avec
-// les offsets UIWindow standards du projet (w +0x14 / h +0x18 / visible +0x28).
-constexpr uintptr_t kCompWndSlot = 0x0131f6f0;  // = g_UIWindowMgr + 0x208
-constexpr uintptr_t kCompVTable  = 0x01034684;
+// ── Sertissage de cartes : ex-popup natif UIItemCompositionWnd (id 0x4A) ─────
+// RE complète : docs/card_insert_re.md.
+//
+// 🔴 Le popup natif ne naît PLUS. On prend la place du handler de ZC 0x017B, qui
+// était son SEUL créateur (`MakeWindow(0x4A)` puis remplissage par OnMsg), et on
+// tient la liste des candidats nous-mêmes. Ce que faisait ce handler, et qui doit
+// donc être repris ici — ou constaté sans objet :
+//   - il ÉCRIT : uniquement dans la fenêtre 0x4A (vidage 0x4B, index de carte
+//     0x4D, une ligne par candidat 0x1F). Elle n'existe plus : rien à reprendre.
+//   - il EMPÊCHE : rien.
+//   - le SERVEUR suppose : rien non plus. Il attend un CZ 0x017C, ou rien.
+// L'index de la carte source, lui, N'EST PAS écrit par ce handler : c'est le
+// sélecteur 0x7B de CMode::SendMsg qui le pose en CMode+0x45c au moment où on
+// double-clique la carte (cf. §2.1 du doc). Il survit donc intact, et reste la
+// source de vérité — on le relit plutôt que d'en tenir une copie.
+constexpr uint16_t kOpCompList = 0x017B;  // ZC_ITEMCOMPOSITION_LIST (variable)
+constexpr int kOffModeCardIndex = 0x45c;  // CMode+0x45c : index inv. de la carte
+constexpr int kWinCardInsert = 0x4A;      // filet de sécurité : destruction en OnTick
 
-// ⚠ AMBIGUÏTÉ DE RE ASSUMÉE. Deux sources se contredisent de 4 octets sur ce bloc :
-//   - décompilation Ghidra de UIItemCompositionWnd_OnMsg (0x008c3590) : liste @+0xcc,
-//     cardinal @+0xd0, titre @+0xd4, rect @+0xf0, index carte @+0xf4 ;
-//   - dump mémoire live du popup ouvert : les mêmes champs 4 octets plus haut
-//     (la std::string du titre n'est cohérente — ptr/size/capacité — qu'à +0xd8).
-// Le delta est le MÊME pour tous les champs, donc un seul offset est à trancher.
-// Plutôt que de parier sur l'une des deux lectures, on résout à l'exécution en
-// validant la sentinelle de std::list (propriété structurelle, cf. LooksLikeListHead).
-// Les autres champs se déduisent du même delta :
-//   cardinal = liste + 4 ; index carte = liste + 0x28.
-constexpr int kCompListOffA = 0xd0;  // hypothèse « dump live »
-constexpr int kCompListOffB = 0xcc;  // hypothèse « décompilation »
-constexpr int kCompCountRel   = 0x04;
-constexpr int kCompCardIdxRel = 0x28;
-
-// Fermeture du popup. Le sélecteur 0x7C n'envoie QUE le paquet : c'est OnMsg qui
-// referme, via UIWindowMgr_SaveWindowRect(mgr, 0x4A) — vérifié dans le décompilé des
-// deux branches (bouton OK 0xB8 et bouton cancel 0xB9).
-constexpr uintptr_t kSaveWindowRect = 0x00a2e770;  // __thiscall(mgr, id)
-constexpr int kWinCardInsert = 0x4A;
-using SaveWindowRect_t = void(__thiscall*)(void*, int);
-
-void CloseCardInsert() {
-  __try {
-    reinterpret_cast<SaveWindowRect_t>(kSaveWindowRect)(
-        uiwnd::Mgr(), kWinCardInsert);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
+// Où la fenêtre apparaît la première fois (le natif donnait sa propre position ;
+// il n'y a plus de natif à interroger). Ensuite ImGui la garde où on la pose.
+constexpr float kCiSpawnX = 620.0f, kCiSpawnY = 200.0f;
 
 // Sélecteur CMode::SendMsg du sertissage : son bloc (0x00c8f59d) construit
 // CZ_REQ_ITEMCOMPOSITION — [op:2][cardIndex:2][equipIndex:2]. On passe par LUI plutôt
@@ -173,78 +159,10 @@ void CloseCardInsert() {
 // SertirTimes/CancelComposition sont définis plus bas : ils ont besoin de SendCmd.)
 constexpr int kCmdComposition = 0x7c;
 
-// Une sentinelle de std::list MSVC est circulaire : head->next->prev == head et
-// head->prev->next == head. Deux déréférencements croisés qu'une valeur quelconque
-// (un cardinal, un flottant, un bout de chaîne) ne satisfait quasiment jamais —
-// c'est ce qui rend la résolution d'offset ci-dessous fiable.
-bool LooksLikeListHead(uint8_t* head) {
-  __try {
-    uint8_t* next = *reinterpret_cast<uint8_t**>(head + 0x00);
-    uint8_t* prev = *reinterpret_cast<uint8_t**>(head + 0x04);
-    if (!next || !prev) return false;
-    return *reinterpret_cast<uint8_t**>(next + 0x04) == head &&
-           *reinterpret_cast<uint8_t**>(prev + 0x00) == head;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// Offset réel de la std::list des candidats dans CETTE build, ou -1 si aucun des deux
-// ne tient. Résolu à chaque appel (coût : deux lectures) plutôt que mis en cache : le
-// popup est éphémère et ce n'est pas un chemin chaud.
-int ResolveCompListOff(uint8_t* wnd) {
-  const int cands[2] = {kCompListOffA, kCompListOffB};
-  for (int i = 0; i < 2; ++i) {
-    uint8_t* head = nullptr;
-    __try {
-      head = *reinterpret_cast<uint8_t**>(wnd + cands[i]);
-    } __except (EXCEPTION_EXECUTE_HANDLER) { head = nullptr; }
-    if (head && LooksLikeListHead(head)) return cands[i];
-  }
-  return -1;
-}
-
-// Index d'inventaire de la carte en cours de sertissage (0 si illisible).
-int ReadCompCardIndex(uint8_t* wnd, int listOff) {
-  __try {
-    return *reinterpret_cast<int*>(wnd + listOff + kCompCardIdxRel);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-// Collecte les ItemSkillInfo des équipements candidats. Nœud de std::list MSVC :
-// {next@+0, prev@+4, value@+8} et value EST un ItemSkillInfo complet — on lit donc
-// directement le payload, sans repasser par la liste session (celle-ci EXCLUT les
-// items portés, ce qui ferait disparaître une arme déjà équipée de la liste).
-// La liste est remplie par le handler de ZC 0x017B : son contenu EST la réponse du
-// serveur. Renvoie le nombre d'entrées écrites. SEH, POD only.
-int CollectCompInfos(uint8_t* wnd, int listOff, uint8_t** out, int maxOut) {
-  int n = 0;
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(wnd + listOff);
-    if (!head) return 0;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < 1000 && n < maxOut; ++guard) {
-      out[n++] = node + kNodeInfo;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return n; }
-  return n;
-}
-
-// Index d'inventaire porté par un ItemSkillInfo (0 = entrée vide / illisible).
-int ReadInfoIndex(uint8_t* info) {
-  if (!info) return 0;
-  __try {
-    return *reinterpret_cast<int*>(info + kInfoIndex);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-// Position écran d'une fenêtre native (pour aligner notre fenêtre ImGui dessus).
-bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
-  __try {
-    *x = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
-    *y = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
+// Index d'inventaire de la carte en cours de sertissage, lu dans CMode+0x45c —
+// c'est-à-dire là où le natif l'a posé lui-même en émettant CZ 0x017A. 0 = aucun.
+// (Défini plus bas, il a besoin de Dispatcher().)
+int ReadModeCardIndex();
 
 
 // Fiche POD d'un candidat, extraite sous SEH pour un rendu hors __try.
@@ -295,6 +213,23 @@ void* Dispatcher() {
   __try {
     return reinterpret_cast<GetMode_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// CMode+0x45c : le sélecteur 0x7B y écrit l'index d'inventaire de la carte juste
+// avant d'émettre CZ 0x017A (`MOV [EDI+0x45c],EDX` @0x00c8f556), et le handler natif
+// de 0x017B le relit tel quel (@0x00ca5b15) pour titrer son popup.
+//
+// C'est BIEN le même objet que Dispatcher() : nos demandes de liste passent par
+// SendCmd, donc par `d->vf+0x18(d, 0x7B, index, …)` — l'`EDI` de l'écriture ci-dessus
+// EST le `d` que nous venons de passer. On lit donc exactement ce qu'on a écrit, y
+// compris pour la liste re-demandée après un lot de sertissages. D'où la lecture
+// plutôt qu'une copie locale, qui pourrait diverger.
+int ReadModeCardIndex() {
+  void* mode = Dispatcher();
+  if (!mode) return 0;
+  __try {
+    return *reinterpret_cast<int*>(static_cast<uint8_t*>(mode) + kOffModeCardIndex);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 // Items PORTÉS (équipés + costume) : la liste session 0x015fbab0 les EXCLUT, mais le
@@ -363,23 +298,24 @@ void UseOrEquip(int index, int type, uint32_t loc, bool left_hand) {
 // `stockBefore` = nb de cartes en stock AVANT ce lot ; l'appelant garantit
 // times <= min(slots libres, stockBefore), donc chaque paquet reste valide (un slot
 // libre + une carte à consommer). Une fois le stock épuisé, l'index de la carte
-// devient invalide -> on ferme au lieu de re-demander.
-void SertirTimes(int cardIndex, int equipIndex, int times, int stockBefore) {
+// devient invalide -> rien à re-demander.
+// Renvoie true si la session continue (une liste fraîche est en route), false si
+// l'appelant doit refermer.
+bool SertirTimes(int cardIndex, int equipIndex, int times, int stockBefore) {
   if (times < 1) times = 1;
   for (int i = 0; i < times; ++i)
     SendCmd(kCmdComposition, equipIndex, cardIndex);  // 0x017C ; ne ferme PAS
-  if (stockBefore - times > 0)
+  if (stockBefore - times > 0) {
     SendCmd(kCmdCard, cardIndex, 0);  // 0x017A : le serveur renvoie une liste à jour
-  else
-    CloseCardInsert();
+    return true;
+  }
+  return false;
 }
 
 // Annulation : même sélecteur avec (-1, -1) — le bloc natif n'émet alors aucun paquet
-// (c'est le chemin du bouton « cancel ») — puis fermeture, comme le natif.
-void CancelComposition() {
-  SendCmd(kCmdComposition, -1, -1);
-  CloseCardInsert();
-}
+// (c'est le chemin du bouton « cancel »). On l'appelle quand même plutôt que de ne
+// rien faire : c'est le geste exact du natif, et lui seul sait ce qu'il remet à zéro.
+void CancelComposition() { SendCmd(kCmdComposition, -1, -1); }
 
 // Type équipable (équipement OU munition/costume/ombre) : pour le drop sur la fenêtre
 // Équipement — un consommable lâché dessus ne doit PAS être consommé.
@@ -467,6 +403,45 @@ void OpenItemDesc(int index, int mx, int my) {
 // Le même nœud, mais retrouvé par son INDEX inventaire.
 void* FindInfoByIndex(int index) {
   return itemcell::FindInfoByIndex(kInvListHead, index);
+}
+
+// ── Retrouver un équipement PORTÉ par son index d'inventaire ────────────────
+// La liste session (0x015fbab0) EXCLUT les pièces portées, alors que le serveur les
+// propose bien au sertissage (on sertit couramment l'arme qu'on a en main). Le natif
+// s'en sortait en appelant Session_GetEquipInfoByInvIndex, qui remplit un
+// ItemSkillInfo — un objet C++ avec une std::string, qu'on ne peut pas fabriquer ici
+// sans risque. On va donc chercher la pièce là où le client la RANGE : le tableau
+// equip de la session, dont chaque entrée est un ItemSkillInfo au même layout. On
+// rend un pointeur VIVANT dessus, ce qui est mieux que l'instantané que la liste du
+// popup natif nous donnait (il ne reflétait plus l'item après un sertissage).
+constexpr uintptr_t kEquipArrayBase   = 0x17d0;  // équipement normal (session+)
+constexpr uintptr_t kCostumeArrayBase = 0x2b30;  // costume
+constexpr uintptr_t kEquipSlotStride  = 0xf8;
+constexpr int kEquipSlotCount = 10;   // slots 0..9 (cf. character_sheet.cc)
+constexpr int kOffEquipPresent = 0x10;  // == 1 si le slot est occupé
+
+void* FindWornInfoByIndex(int index) {
+  if (index <= 0) return nullptr;
+  __try {
+    for (int pass = 0; pass < 2; ++pass) {
+      const uintptr_t base = pass ? kCostumeArrayBase : kEquipArrayBase;
+      for (int slot = 0; slot < kEquipSlotCount; ++slot) {
+        uint8_t* e = reinterpret_cast<uint8_t*>(
+            rag::kSessionAddr + base + static_cast<uintptr_t>(slot) * kEquipSlotStride);
+        if (*reinterpret_cast<int*>(e + kOffEquipPresent) != 1) continue;
+        if (*reinterpret_cast<int*>(e + kInfoIndex) == index) return e;
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+  return nullptr;
+}
+
+// L'ItemSkillInfo VIVANT d'un index d'inventaire, porté ou non (nullptr si l'item
+// n'existe plus — vendu, consommé, ou index périmé d'une liste que le serveur n'a
+// pas rafraîchie).
+void* FindLiveInfoByIndex(int index) {
+  void* info = FindInfoByIndex(index);
+  return info ? info : FindWornInfoByIndex(index);
 }
 
 // Remplit une fiche CompItem depuis un ItemSkillInfo. `namewnd` = fenêtre servant de
@@ -963,6 +938,11 @@ void MaybeFlushTextures() {
 InventoryViewer::InventoryViewer() {
   // Sertissage rapide : on reçoit la liste des cartes compatibles (calculée serveur).
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kCompatCards);
+  // 🔴 Sertissage : on prend la place du handler natif de ZC_ITEMCOMPOSITION_LIST,
+  // SEUL créateur du popup 0x4A. Révocable : en mode natif le prédicat dit non et
+  // le paquet repart chez lui à l'octet près, popup compris.
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpCompList,
+                                             [this] { return imgui_enabled_; });
 }
 
 // Demande au serveur les cartes de l'inventaire sertissables sur `equipInvIndex`
@@ -979,12 +959,43 @@ void InventoryViewer::RequestCompatCards(int equipInvIndex) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// ZC_BOURGEON_COMPAT_CARDS : [op:2][len:2][equip:2][count:2] puis count*[cardIdx:2].
-// On ne garde la réponse que si elle concerne l'équipement encore demandé (une
-// réponse en retard pour un ancien équipement est ignorée).
+// Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). Décoder ici
+// écrirait dans nos tableaux pendant que le rendu les parcourt.
 void InventoryViewer::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // ⚠ PushAnnounced UNIQUEMENT sur l'opcode REMPLACÉ : là, `data` commence bien sur
+  // le champ longueur du paquet (régime « replace » = tout ce qui suit l'opcode).
+  // Sur un opcode CUSTOM le dispatcher a déjà consommé l'en-tête, donc ces deux
+  // premiers octets sont une DONNÉE (ici l'index d'équipement) — la prendre pour une
+  // longueur ferait copier n'importe quoi.
+  if (opcode == kOpCompList) net_inbox_.PushAnnounced(opcode, data, len);
+  else                       net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué au tick dans l'ordre d'arrivée.
+void InventoryViewer::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // ── ZC_ITEMCOMPOSITION_LIST 0x017B (revendiqué) ─────────────────────────────
+  // data = [len:2] puis count * [equipInvIndex:2]. Le SERVEUR a déjà appliqué
+  // toutes les règles de compatibilité : on prend sa liste telle quelle, on n'en
+  // filtre aucune entrée (le client ne connaît pas ces règles).
+  if (opcode == kOpCompList) {
+    ci_cand_count_ = 0;
+    for (int i = 0; i < kCiMaxCands; ++i) {
+      const size_t off = 2 + static_cast<size_t>(i) * 2;
+      if (off + 2 > len) break;
+      ci_cands_[ci_cand_count_++] = *reinterpret_cast<const uint16_t*>(data + off);
+    }
+    // La carte source vient de CMode+0x45c, posé par le sélecteur 0x7B — donc
+    // valable aussi pour la liste re-demandée après un lot de sertissages.
+    ci_card_ = ReadModeCardIndex();
+    ci_open_ = true;
+    ci_sel_ = -1;  // la liste a changé : une sélection d'avant n'a plus de sens
+    return;
+  }
+
+  // ── ZC_BOURGEON_COMPAT_CARDS : [equip:2][count:2] puis count*[cardIdx:2] ────
+  // On ne garde la réponse que si elle concerne l'équipement encore demandé (une
+  // réponse en retard pour un ancien équipement est ignorée).
   if (opcode != bopcodes::kCompatCards) return;
-  // data pointe APRÈS [op:2][len:2] -> [equip:2][count:2][cardIdx:2]...
   if (len < 4) return;
   const uint16_t equip = *reinterpret_cast<const uint16_t*>(data);
   if (static_cast<int>(equip) != qs_equip_index_) return;  // réponse périmée
@@ -1020,12 +1031,15 @@ void InventoryViewer::HandleNativeCreation(void* win) {
   need_pos_ = true;
 }
 
-// Idem pour le popup de sertissage (id 0x4A) : il est créé par le handler du paquet
-// ZC 0x017B, donc bien après le tick — sans ce hook une frame native passerait à l'écran.
-void InventoryViewer::HideCardInsertAtCreation(void* win) {
+// Popup de sertissage (id 0x4A) : FILET DE SÉCURITÉ. En mode moderne son unique
+// créateur — le handler de ZC 0x017B — ne tourne plus, donc on ne devrait jamais
+// passer ici. Si ça arrive (bascule de mode en plein sertissage, paquet arrivé
+// pendant que le prédicat disait encore non), on le masque avant sa première frame
+// et OnTick le détruit : masqué il resterait vivant et volerait le clavier — Entrée
+// validerait son bouton OK invisible.
+void InventoryViewer::HandleCardInsertCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kCompVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1099,6 +1113,12 @@ void InventoryViewer::Extract() {
 }
 
 void InventoryViewer::OnTick() {
+  // Décodage des paquets sur le fil PRINCIPAL, avant tout le reste (une liste de
+  // sertissage arrivée entre deux ticks doit être vue par le rendu de CE frame).
+  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
+    HandlePacket(op, d, n);
+  });
+
   // `open_` n'est plus déduit de la présence de la native : elle ne vit plus. Il
   // est posé par HandleNativeCreation (la demande du joueur) et levé par elle.
   const bool mode_changed = (imgui_enabled_ != prev_imgui_enabled_);
@@ -1108,6 +1128,10 @@ void InventoryViewer::OnTick() {
     // recréera donc à la prochaine demande.
     open_ = false;
     hover_desc_id_ = 0; hover_desc_idx_ = -1;
+    // Un sertissage en cours au moment de la bascule n'a plus de fenêtre pour le
+    // porter : on l'annule comme le ferait le bouton « cancel » du natif, sinon le
+    // serveur resterait à nous attendre.
+    if (mode_changed && ci_open_) { CancelComposition(); CloseCardInsert(); }
     return;
   }
   if (!Bourgeon::Instance().IsMapLoading()) {
@@ -1129,20 +1153,10 @@ void InventoryViewer::OnTick() {
   // ou viewer désactivé), sinon il resterait affiché sans rien pour l'effacer.
   if (!open_) { hover_desc_id_ = 0; hover_desc_idx_ = -1; }
 
-  // Popup de sertissage : masquage du natif forcé chaque tick (comme l'inventaire),
-  // et remise à zéro de la sélection dès qu'il disparaît — sinon une sélection
-  // périmée serait réappliquée au sertissage suivant.
-  uint8_t* ci = ReadValidWnd(kCompWndSlot, kCompVTable);
-  if (ci) {
-    __try {
-      *reinterpret_cast<int*>(ci + uiwnd::kOffVisible) = imgui_enabled_ ? 0 : 1;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  } else {
-    // Popup fermé : on oublie la sélection ET on réarme le front montant, pour que
-    // la prochaine ouverture repasse au premier plan.
-    ci_sel_ = -1;
-    ci_was_open_ = false;
-  }
+  // Popup de sertissage : son unique créateur natif ne tourne plus, mais s'il en
+  // naissait un (cf. HandleCardInsertCreation) on le DÉTRUIT — masqué, il garderait
+  // le clavier et validerait son bouton OK sur Entrée.
+  if (uiwnd::SafeFindWindow(kWinCardInsert)) uiwnd::SafeCloseWindow(kWinCardInsert);
 }
 
 // (Plus de OnMouseDown / HandleNativeDrop : ils accueillaient un glisser NATIF
@@ -1226,32 +1240,33 @@ bool InventoryViewer::DescPendingBlocksHover() {
   return desc_pending_;
 }
 
+// Fin de la session de sertissage. Il n'y a plus rien à fermer côté natif : le
+// popup 0x4A ne naît plus (son handler créateur est à nous). On oublie simplement
+// l'état, et le front montant se réarme pour la prochaine ouverture.
+void InventoryViewer::CloseCardInsert() {
+  ci_open_ = false;
+  ci_card_ = 0;
+  ci_cand_count_ = 0;
+  ci_sel_ = -1;
+  ci_was_open_ = false;
+}
+
 // ── Fenêtre de sertissage de cartes (remplace le popup natif id 0x4A) ─────────
-// On ne rejoue PAS le protocole : le popup natif est la source de vérité (il a été
-// peuplé par le handler de ZC 0x017B avec la liste que le SERVEUR a jugée
-// compatible). On le lit, on le dessine, et on émet CZ_REQ_ITEMCOMPOSITION à la
-// validation. Aucune règle de compatibilité n'est évaluée ici — ce serait
-// s'exposer à proposer des cibles que le serveur refusera.
+// On ne rejoue PAS les règles : la liste des candidats est celle que le SERVEUR a
+// envoyée dans ZC 0x017B, prise telle quelle (le client ne connaît AUCUNE règle de
+// compatibilité). On la dessine, et on émet CZ_REQ_ITEMCOMPOSITION à la validation.
 void InventoryViewer::RenderCardInsert() {
   if (!imgui_enabled_) return;
-  uint8_t* wnd = ReadValidWnd(kCompWndSlot, kCompVTable);
-  if (!wnd) {  // pas de sertissage en cours
-    // Réarmé ici aussi (pas seulement dans OnTick) : le rendu tourne à chaque frame,
-    // donc un cycle fermeture/réouverture entre deux ticks garde le premier plan.
+  if (!ci_open_) {  // pas de sertissage en cours
+    // Réarmé ici aussi (pas seulement à la fermeture) : le rendu tourne à chaque
+    // frame, donc un cycle fermeture/réouverture entre deux ticks garde le premier plan.
     ci_was_open_ = false;
     return;
   }
 
-  constexpr int kMaxCands = 64;  // bien au-delà de ce qu'un inventaire peut proposer
-  int listOff = ResolveCompListOff(wnd);
-  const bool layout_ok = (listOff >= 0);
-  // Repli : on dessine QUAND MÊME la fenêtre. Le popup natif étant caché, un `return`
-  // ici laisserait l'utilisateur sans aucune UI et sans moyen d'annuler.
-  if (!layout_ok) listOff = kCompListOffA;
-
-  const int cardIndex = ReadCompCardIndex(wnd, listOff);
-  uint8_t* infos[kMaxCands];
-  const int n = CollectCompInfos(wnd, listOff, infos, kMaxCands);
+  constexpr int kMaxCands = kCiMaxCands;
+  const int cardIndex = ci_card_;
+  const int n = ci_cand_count_;
 
   // Contexte de nommage : la fenêtre inventaire native, même cachée (BuildDisplayName
   // s'en sert comme `this`). Absente => repli automatique sur le nom de base.
@@ -1260,41 +1275,42 @@ void InventoryViewer::RenderCardInsert() {
   CompItem card{};
   const bool has_card = ReadCompItemByIndex(cardIndex, namewnd, &card);
 
-  // ⚠ Le payload d'un nœud de la liste native est un INSTANTANÉ : le handler de
-  // ZC 0x017B y a COPIÉ l'ItemSkillInfo au moment de la réponse serveur. Après un
-  // sertissage il est périmé (cartes serties, emplacements libres…) et il ne se
-  // rafraîchit que si le serveur renvoie une liste — ce qu'il NE fait pas quand plus
-  // aucun équipement n'est compatible (il envoie MSI_FAIL_ITEMCOMPOSITION_LIST à la
-  // place). On relit donc la fiche VIVANTE dans l'inventaire session par son index ;
-  // repli sur l'instantané pour un item PORTÉ (la liste session les exclut).
+  // Les fiches sont lues VIVANTES à chaque frame, jamais recopiées : le serveur
+  // n'envoie une nouvelle liste que s'il en a une à envoyer — quand plus aucun
+  // équipement n'est compatible il émet MSI_FAIL_ITEMCOMPOSITION_LIST à la place.
+  // Un instantané resterait donc figé sur l'état d'avant le sertissage.
+  // ⚠ FindLiveInfoByIndex, pas FindInfoByIndex : la liste session EXCLUT les pièces
+  // PORTÉES, et le serveur propose couramment l'arme qu'on a en main.
   CompItem cands[kMaxCands];
   int cn = 0;
+  int found = 0;  // entrées dont on a RETROUVÉ la fiche (pleines comprises)
   for (int i = 0; i < n; ++i) {
     // Remise à zéro obligatoire : la fiche est remplie EN PLACE et `used_slots` est
     // incrémenté, donc un `continue` qui laisse `cn` inchangé polluerait le candidat
     // suivant écrit au même rang.
     cands[cn] = CompItem{};
-    uint8_t* live = static_cast<uint8_t*>(FindInfoByIndex(ReadInfoIndex(infos[i])));
-    if (!ReadCompItemFromInfo(live ? live : infos[i], namewnd, &cands[cn])) continue;
+    uint8_t* live = static_cast<uint8_t*>(FindLiveInfoByIndex(ci_cands_[i]));
+    if (!live) continue;  // item disparu depuis la réponse serveur
+    if (!ReadCompItemFromInfo(live, namewnd, &cands[cn])) continue;
+    ++found;
     // Entrée PÉRIMÉE : plus un seul emplacement libre. Ce n'est pas un filtrage de
     // compatibilité (interdit — le serveur en est seul juge), c'est la MÊME borne que
-    // clif_use_card côté serveur : il ne proposerait plus cet item. On ne l'applique
-    // que sur une fiche vivante, jamais sur l'instantané.
-    if (live && !cands[cn].forged && cands[cn].total_slots > 0 &&
+    // clif_use_card côté serveur : il ne proposerait plus cet item.
+    if (!cands[cn].forged && cands[cn].total_slots > 0 &&
         cands[cn].used_slots >= cands[cn].total_slots)
       continue;
     ++cn;
   }
 
-  // Plus AUCUN candidat exploitable alors que la liste native en contenait : ils sont
-  // tous pleins. Le serveur ne renverra pas de liste vide (il émet
-  // MSI_FAIL_ITEMCOMPOSITION_LIST), donc personne ne refermera le popup à notre place —
-  // on le fait ici. Garde-fou : uniquement si la liste native était LISIBLE et NON VIDE,
-  // pour ne jamais fermer sur un simple échec de lecture (cf. le repli `layout_ok`).
-  if (layout_ok && n > 0 && cn == 0) {
+  // Plus AUCUN candidat exploitable alors qu'on a bien retrouvé leurs fiches : ils
+  // sont tous pleins. Le serveur ne renverra pas de liste vide (il émet
+  // MSI_FAIL_ITEMCOMPOSITION_LIST), donc personne ne refermera à notre place.
+  // ⚠ On exige `found > 0` et pas seulement `n > 0` : si on n'a retrouvé AUCUNE
+  // fiche, c'est un échec de lecture de notre côté, pas un « tout est plein » — on
+  // laisse alors la fenêtre ouverte pour que l'utilisateur puisse annuler lui-même.
+  if (found > 0 && cn == 0) {
+    CancelComposition();
     CloseCardInsert();
-    ci_was_open_ = false;
-    ci_sel_ = -1;
     return;
   }
 
@@ -1305,11 +1321,9 @@ void InventoryViewer::RenderCardInsert() {
     if (!still) ci_sel_ = -1;
   }
 
-  // Apparaît là où le natif se serait affiché, puis reste où l'utilisateur la pose.
-  int px = 0, py = 0;
-  if (ReadWndPos(wnd, &px, &py))
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(px), static_cast<float>(py)),
-                            ImGuiCond_Appearing);
+  // Position de départ à nous : il n'y a plus de fenêtre native dont on héritait la
+  // place. FirstUseEver, donc elle reste ensuite là où l'utilisateur la pose.
+  ImGui::SetNextWindowPos(ImVec2(kCiSpawnX, kCiSpawnY), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSize(ImVec2(300, 320), ImGuiCond_FirstUseEver);
   // Premier plan À L'OUVERTURE seulement : le double-clic vient de l'inventaire, qui
   // a donc le focus — sans ça le popup se retrouve DERRIÈRE lui. On ne le force pas
@@ -1347,12 +1361,13 @@ void InventoryViewer::RenderCardInsert() {
     }
     ImGui::Separator();
 
-    if (!layout_ok) {
-      ImGui::TextWrapped(
-          "Impossible de lire la liste du client (layout de fenêtre inattendu). "
-          "Annule et désactive « Inventaire Moonlight® » pour utiliser le popup natif.");
-    } else if (cn == 0) {
-      ImGui::TextWrapped("Aucun équipement compatible avec un emplacement libre.");
+    if (cn == 0) {
+      // On n'arrive ici qu'avec `found == 0` (le cas « tous pleins » a déjà refermé) :
+      // soit le serveur a listé des index qu'on ne retrouve pas, soit sa liste
+      // était vide.
+      ImGui::TextWrapped(n > 0
+          ? "Impossible de retrouver les équipements proposés par le serveur."
+          : "Aucun équipement compatible avec un emplacement libre.");
     } else {
       ImGui::TextDisabled("Choisissez l'équipement à sertir :");
       const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
@@ -1373,8 +1388,9 @@ void InventoryViewer::RenderCardInsert() {
                                 ImVec2(0, kRowH))) {
             ci_sel_ = it.index;
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && cardIndex > 0) {
-              SertirTimes(cardIndex, it.index, 1, stock);  // 1 sertissage, garde ouvert
-              ci_sel_ = -1;
+              // 1 sertissage ; la session continue tant qu'il reste des cartes.
+              if (!SertirTimes(cardIndex, it.index, 1, stock)) CloseCardInsert();
+              else ci_sel_ = -1;
             }
           }
           if (ImGui::IsItemHovered()) hover = &it;  // aperçu de description au survol
@@ -1429,8 +1445,8 @@ void InventoryViewer::RenderCardInsert() {
     const bool can_ok = (selItem != nullptr && cardIndex > 0 && maxK >= 1);
     if (!can_ok) ImGui::BeginDisabled();
     if (ro::RoButton("Sertir")) {
-      SertirTimes(cardIndex, ci_sel_, 1, stock);
-      ci_sel_ = -1;
+      if (!SertirTimes(cardIndex, ci_sel_, 1, stock)) CloseCardInsert();
+      else ci_sel_ = -1;
     }
     // Sertir 2× à maxK× d'affilée sur le même équipement (remplit plusieurs slots d'un
     // coup). Chaque bouton « xK » est proposé uniquement s'il est réalisable.
@@ -1439,15 +1455,15 @@ void InventoryViewer::RenderCardInsert() {
       char lbl[8];
       std::snprintf(lbl, sizeof(lbl), "x%d", k);
       if (ro::RoButton(lbl)) {
-        SertirTimes(cardIndex, ci_sel_, k, stock);
-        ci_sel_ = -1;
+        if (!SertirTimes(cardIndex, ci_sel_, k, stock)) CloseCardInsert();
+        else ci_sel_ = -1;
       }
     }
     if (!can_ok) ImGui::EndDisabled();
     ImGui::SameLine();
     if (ro::RoButton("Fermer")) {
       CancelComposition();
-      ci_sel_ = -1;
+      CloseCardInsert();
     }
   }
   ro::EndRoWindow();
@@ -1477,7 +1493,7 @@ void InventoryViewer::RenderCardInsert() {
   }
 
   // Croix de la barre de titre = même effet qu'Annuler (aucun paquet émis).
-  if (!open) { CancelComposition(); ci_sel_ = -1; }
+  if (!open) { CancelComposition(); CloseCardInsert(); }
 }
 
 // ── Section « InventoryViewer » du panneau Moonlight ───────────────────────────

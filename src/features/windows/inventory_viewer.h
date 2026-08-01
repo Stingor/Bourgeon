@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <unordered_map>
 
+#include "features/net_inbox.h"
 #include "features/plugin.h"
 
 // ── InventoryViewer ──────────────────────────────────────────────────────────
@@ -41,8 +42,9 @@ class InventoryViewer : public Plugin {
 
   void OnTick() override;      // capture l'état de l'inventaire (polling read-only)
   void OnRenderUI() override;  // dessine la grille ImGui si l'inventaire est ouvert
-  // Reçoit ZC_BOURGEON_COMPAT_CARDS (sertissage rapide) : liste des index de cartes
-  // sertissables sur l'équipement demandé.
+  // Reçoit ZC_ITEMCOMPOSITION_LIST (0x017B, dont on a pris la place du handler
+  // natif) et ZC_BOURGEON_COMPAT_CARDS (sertissage rapide). Fil RÉSEAU : on COPIE
+  // et rien d'autre, le décodage repart au tick (cf. features/net_inbox.h).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Setting PERSISTANT (bourgeon_settings.yaml "inventory_imgui", géré par
@@ -80,24 +82,27 @@ class InventoryViewer : public Plugin {
   // existe, sinon crée », donc une native vivante avalerait un appui sur deux.
   void HandleNativeCreation(void* win);
 
-  // ── Sertissage de cartes (popup natif UIItemCompositionWnd, id 0x4A) ────────
+  // ── Sertissage de cartes (ex-popup natif UIItemCompositionWnd, id 0x4A) ─────
   // Double-cliquer une carte envoie CZ_REQ_ITEMCOMPOSITION_LIST (0x017A) ; le
   // SERVEUR répond (0x017B) avec la liste des équipements compatibles à slot
-  // libre, et le client ouvre un popup pour choisir la cible.
+  // libre. Le filtrage est 100 % SERVEUR — le client n'évalue AUCUNE règle de
+  // compatibilité, et nous non plus. Cf. docs/card_insert_re.md.
   //
-  // Notre version ImGui ne rejoue PAS ce protocole : elle LIT le popup natif
-  // (slot 0x0131f6f0, vtable 0x01034684) qui contient déjà tout l'état — liste
-  // des candidats en +0xd0, carte source en +0xf8. Aucun état dupliqué, donc
-  // aucun risque de désynchro, et le filtrage reste 100 % serveur (le client
-  // n'évalue AUCUNE règle de compatibilité). Cf. docs/card_insert_re.md.
+  // 🔴 Le popup natif ne naît PLUS : on prend la place du handler de ZC 0x017B
+  // (RegisterReplaceOpcode, révocable sur `imgui_enabled_`) et on tient nous-mêmes
+  // la liste des candidats. Avant, on laissait le natif se créer pour LIRE sa
+  // std::list, ce qui imposait de le masquer — donc de vivre avec une fenêtre
+  // vivante qui garde le clavier (Entrée validait son bouton OK invisible) et avec
+  // un offset de liste ambigu résolu à l'exécution. Les deux ont disparu avec elle.
   //
   // PAS de réglage séparé : le sertissage suit `imgui_enabled_`. Les deux fenêtres
   // forment un tout — proposer un inventaire ImGui qui ouvre un popup natif (ou
   // l'inverse) serait incohérent à l'usage.
   //
-  // Pendant du HideNativeAtCreation ci-dessus, pour la fenêtre id 0x4A : évite la
-  // frame de flicker entre la création du popup natif et le premier OnTick.
-  void HideCardInsertAtCreation(void* win);
+  // Filet de sécurité, appelé par le hook MakeWindow sur l'id 0x4A : si le popup
+  // natif naissait quand même (bascule de mode en plein sertissage), on le masque
+  // ici avant sa première frame et OnTick le détruit.
+  void HandleCardInsertCreation(void* win);
 
   // (Plus de HandleNativeDrop / OnMouseDown : aucune fenêtre native ne peut plus
   // émettre un glisser vers ce viewer — équipement, cart et storage sont tous des
@@ -170,18 +175,32 @@ class InventoryViewer : public Plugin {
   // Remplit items_/item_count_ depuis le modèle session. SEH (POD only).
   void Extract();
 
-  // Dessine la fenêtre de sertissage si le popup natif 0x4A est ouvert. Appelée
-  // AVANT le early-return de OnRenderUI : le popup vit sa propre vie et peut
-  // rester ouvert alors que l'inventaire est refermé.
+  // Décodage des paquets, rejoué sur le fil PRINCIPAL depuis OnTick (le fil
+  // réseau ne fait que copier — cf. features/net_inbox.h).
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
+  bourgeon::PacketInbox net_inbox_;
+
+  // Dessine la fenêtre de sertissage si une session est en cours. Appelée AVANT
+  // le early-return de OnRenderUI : elle vit sa propre vie et peut rester ouverte
+  // alors que l'inventaire est refermé.
   void RenderCardInsert();
+  // Termine la session de sertissage (oublie carte, candidats et sélection).
+  void CloseCardInsert();
+
+  // ── État du sertissage, porté par NOUS depuis la mort du popup natif ────────
+  bool ci_open_ = false;   // une session est en cours (ZC 0x017B reçu, pas encore close)
+  int  ci_card_ = 0;       // index inventaire de la carte source (lu dans CMode+0x45c)
+  static constexpr int kCiMaxCands = 64;  // très au-delà de ce qu'un inventaire propose
+  int  ci_cands_[kCiMaxCands] = {0};      // index inventaire des équipements candidats
+  int  ci_cand_count_ = 0;                // tels que le SERVEUR les a listés
 
   // Candidat sélectionné dans la fenêtre de sertissage : index INVENTAIRE (pas un
   // rang de liste), donc stable si le serveur renvoie une liste différente.
-  // -1 = aucune sélection. Remis à -1 dès que le popup natif disparaît.
+  // -1 = aucune sélection. Remis à -1 à la fermeture de la session.
   int ci_sel_ = -1;
-  // Front montant du popup : sert à le placer ET à le mettre au premier plan la
-  // frame où il apparaît (sinon il s'ouvre derrière l'inventaire, qui a le focus
-  // puisque c'est de là que part le double-clic sur la carte).
+  // Front montant : sert à placer la fenêtre ET à la mettre au premier plan la
+  // frame où elle apparaît (sinon elle s'ouvre derrière l'inventaire, qui a le
+  // focus puisque c'est de là que part le double-clic sur la carte).
   bool ci_was_open_ = false;
 
   // ── Sertissage rapide (sous-menu du menu contextuel d'un équipement) ────────

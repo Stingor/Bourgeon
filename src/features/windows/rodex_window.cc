@@ -1008,12 +1008,10 @@ void RodexWindow::CloseCompose() {
   send_error_.clear();
 }
 
-void RodexWindow::CloseAll() {
-  // Ferme la lecture AVANT la liste (ordre du natif) et efface le courrier
-  // sélectionné dans le manager, exactement comme le bouton de fermeture natif.
-  if (FindWnd(kReadId)) CloseWnd(kReadId);
+// Oublie la session de boîte aux lettres, sans toucher au natif. Efface aussi le
+// courrier sélectionné DANS LE MANAGER, comme le faisait le bouton de fermeture natif.
+void RodexWindow::ResetMailboxState() {
   ClearSelectedMailId();
-  CloseWnd(kInboxId);
   open_ = false;
   was_open_ = false;
   show_panel_ = true;
@@ -1022,32 +1020,74 @@ void RodexWindow::CloseAll() {
   mails_.clear();
 }
 
+void RodexWindow::CloseAll() {
+  // Les deux natives sont normalement déjà détruites (OnTick) : ces fermetures sont
+  // des filets, pour le cas où l'une aurait survécu à un tick manqué. Lecture AVANT
+  // liste, l'ordre du natif. Ni l'une ni l'autre n'émet de paquet en se fermant
+  // (vérifié : aucun envoi hors de leurs OnMsg de boutons).
+  if (FindWnd(kReadId)) CloseWnd(kReadId);
+  if (FindWnd(kInboxId)) CloseWnd(kInboxId);
+  ResetMailboxState();
+}
+
 // ── Masquage du natif ───────────────────────────────────────────────────────
 
+// Une des trois natives vient de naître. On la masque SUR-LE-CHAMP (sans quoi une
+// frame native passe à l'écran) ; c'est OnTick qui la détruira, le natif la
+// manipulant encore ici.
+//
+// 🔴 DÉTRUIRE et pas seulement masquer : une native masquée reste vivante et garde
+// le CLAVIER — Entrée/Espace valident son bouton par défaut invisible (cf.
+// reference_native_window_toggle_router). Pour la LISTE s'ajoute la bascule
+// « ferme si elle existe, sinon crée » : détruite, elle n'existe jamais, donc toute
+// demande d'ouverture repasse forcément ici.
+//
+// Vérifié avant de détruire aussi tôt : la liste (`UIRodexWnd_ctor` 0x007cda3b) émet
+// sa demande de courriers DÈS SA CONSTRUCTION — la requête est donc déjà partie quand
+// on arrive ici — et ni sa fermeture ni celle de la fenêtre de lecture n'émet quoi
+// que ce soit. La fenêtre d'ÉCRITURE, elle, émet CZ 0x0A03 en se fermant : elle n'est
+// donc pas détruite ici, voir OnTick.
 void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   if (window_id != kInboxId && window_id != kReadId && window_id != kWriteId) return;
   const uintptr_t vt = VTableOf(win);
   if (vt != kInboxVTable && vt != kReadVTable && vt != kWriteVTable)
     return;  // id réutilisé par une autre classe : on s'abstient
-  if (window_id == kInboxId) {
-    // Reprend la position native : le client restaure la sienne à la création,
-    // la fenêtre ImGui apparaît donc là où le joueur avait laissé sa boîte.
-    if (WndScreenPos(win, &spawn_x_, &spawn_y_)) need_pos_ = true;
-  }
   HideWnd(win);
+  if (window_id != kInboxId) return;
+
+  // Reprend la position native : le client restaure la sienne à la création, la
+  // fenêtre ImGui apparaît donc là où le joueur avait laissé sa boîte.
+  if (WndScreenPos(win, &spawn_x_, &spawn_y_)) need_pos_ = true;
+
+  // Reconstruction du HUD au changement de carte : ce n'est pas le joueur qui
+  // demande, on ne touche donc pas à l'état.
+  if (Bourgeon::Instance().IsMapLoading()) return;
+
+  // C'est NOUS qui portons la bascule, la native étant détruite : le client ne la
+  // voit jamais exister et redemande donc une création à chaque appui.
+  if (open_) {
+    // Deuxième appui : le joueur referme. On ne détruit PAS ici — le natif manipule
+    // encore la fenêtre qu'il vient de créer ; OnTick s'en charge à la frame suivante.
+    ResetMailboxState();
+    return;
+  }
+  open_ = true;
+  show_panel_ = true;
+  selected_id_ = 0;
+  confirm_ = kConfirmNone;
+  // Le natif vient de demander la liste (son constructeur) : on date SA requête, pas
+  // la nôtre, pour que « Chargement… » couvre bien cet aller-retour-là.
+  list_requested_ms_ = GetTickCount();
 }
 
 void RodexWindow::OnTick() {
   if (!imgui_enabled_) {
-    // Réglage décoché alors que la boîte est ouverte : les fenêtres natives sont
-    // cachées, pas détruites — il faut les rendre au joueur, sinon il se retrouve
-    // avec une boîte aux lettres ouverte et invisible.
-    if (open_ || compose_open_) {
-      void* inbox = FindWnd(kInboxId);
-      if (inbox && VTableOf(inbox) == kInboxVTable) SetWndVisible(inbox, 1);
-      void* read = FindWnd(kReadId);
-      if (read && VTableOf(read) == kReadVTable) SetWndVisible(read, 1);
+    // Retour au natif. La liste et la lecture n'existent plus (détruites) : le
+    // client les recréera à la prochaine demande. Seule la fenêtre d'ÉCRITURE peut
+    // encore être là, masquée — on la rend au joueur, sinon il se retrouve avec une
+    // rédaction en cours invisible.
+    if (compose_open_) {
       if (uint8_t* compose = ComposeWnd()) SetWndVisible(compose, 1);
     }
     open_ = false;
@@ -1126,37 +1166,22 @@ void RodexWindow::OnTick() {
     send_error_.clear();
   }
 
-  // La liste native est la source de vérité « la boîte est ouverte » : c'est le
-  // natif qui la crée (icône du menu, PNJ, raccourci) et qui la détruit.
+  // 🔴 La liste native ne porte PLUS l'état « la boîte est ouverte » : c'est
+  // HideNativeAtCreation qui l'a adopté, et on la détruit ici. Elle n'a rien à faire
+  // vivante — le handler de liste (ZC 0x0AC2) ne la cherche qu'en fin de parcours,
+  // par un FindWindow qui rend nul sans rien perdre du modèle.
   void* inbox = FindWnd(kInboxId);
-  if (inbox && VTableOf(inbox) != kInboxVTable) inbox = nullptr;
-  if (inbox) {
-    HideWnd(inbox);
-    if (!open_) {
-      need_pos_ = true;
-      show_panel_ = true;
-      selected_id_ = 0;
-      confirm_ = kConfirmNone;
-      WndScreenPos(inbox, &spawn_x_, &spawn_y_);
-      // Le natif demande la liste en ouvrant la boîte : on date sa requête, pas la
-      // nôtre, pour que « Chargement… » couvre bien cet aller-retour-là.
-      list_requested_ms_ = GetTickCount();
-    }
-    open_ = true;
-  } else if (open_) {
-    open_ = false;
-    mails_.clear();
-    selected_id_ = 0;
-  }
-  was_open_ = open_;
+  if (inbox && VTableOf(inbox) == kInboxVTable) CloseWnd(kInboxId);
 
-  if (!open_) return;
-
-  // La fenêtre de lecture native est recréée par le serveur à CHAQUE lecture
-  // (handler ZC 0x0B63 -> MakeWindow 0x109) : on la garde masquée, son contenu
-  // étant déjà lisible dans la map du manager.
+  // Idem pour la lecture, recréée par le serveur à CHAQUE lecture (handler ZC 0x0B63
+  // -> MakeWindow 0x109). On la laisse naître — c'est ce handler-là qui remplit le
+  // courrier dans la map, on ne peut pas s'en passer — mais on la détruit aussitôt :
+  // son contenu est déjà lisible dans le manager, et masquée elle volerait le clavier.
   void* read = FindWnd(kReadId);
-  if (read && VTableOf(read) == kReadVTable) HideWnd(read);
+  if (read && VTableOf(read) == kReadVTable) CloseWnd(kReadId);
+
+  was_open_ = open_;
+  if (!open_) return;
 
   ReadState();
 }

@@ -150,26 +150,37 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* bt = Bourgeon::Instance().bank_window())
         bt->HideNativeAtCreation(win);
     }
-    // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : ce popup est créé par le
-    // handler du paquet ZC 0x017B, donc entre deux OnTick -> sans ce hook une frame
-    // native passerait à l'écran avant que le viewer ne la masque.
+    // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : FILET DE SÉCURITÉ. Son
+    // unique créateur était le handler de ZC 0x017B, dont le viewer a pris la place —
+    // en mode moderne ce popup ne naît donc plus du tout. S'il naissait quand même
+    // (bascule de mode en plein sertissage), on le masque avant sa première frame et
+    // OnTick le détruit.
     if (windowID == 0x4A) {
       if (auto* iv = Bourgeon::Instance().inventory_viewer())
-        iv->HideCardInsertAtCreation(win);
+        iv->HandleCardInsertCreation(win);
     }
-    // Les TROIS fenêtres que la feuille de personnage remplace : Grimoire
-    // (UINewSkillListWnd 0x25), Équipement (0xa) et Status (UIStatusWnd 0xb). On
-    // masque la native dès sa création et on route la demande vers l'onglet
-    // correspondant ; OnTick la détruit ensuite. Raccourcis et boutons du menu
-    // d'icônes continuent donc de marcher, mais atterrissent sur l'interface
-    // moderne (cf. docs/skill_tree_re.md partie II).
+    // Les fenêtres que la feuille de personnage remplace : Grimoire
+    // (UINewSkillListWnd 0x25), Équipement (0xa), Status (UIStatusWnd 0xb) et la
+    // GUILDE — 0x3B quand on en a une, 0xD4 quand on n'en a pas (les deux chemins
+    // d'ouverture tranchent sur `g_Own_GuildId`, cf. character_sheet.cc). On masque
+    // la native dès sa création et on route la demande vers l'onglet correspondant ;
+    // OnTick la détruit ensuite. Raccourcis et boutons du menu d'icônes continuent
+    // donc de marcher, mais atterrissent sur l'interface moderne (cf.
+    // docs/skill_tree_re.md partie II).
     //
-    // 🔴 C'est bien MakeWindow le point d'interception, et un seul suffit :
-    // UIWindowMgr_ToggleWindowById (0x00812e60) — le chemin commun au raccourci et
-    // au bouton — ferme la fenêtre si elle existe et ne la crée que sinon. Comme
-    // ces trois-là sont détruites, elles n'existent jamais : toute demande repasse
-    // donc forcément ici.
-    if (windowID == 0x25 || windowID == 0x0a || windowID == 0x0b) {
+    // 🔴 C'est bien MakeWindow le point d'interception, et un seul suffit : les deux
+    // chemins — UIWindowMgr_ToggleWindowById (0x00812e60) pour les boutons,
+    // UIWindowMgr_DispatchHotkeyBehavior (0x00a451e0) pour les raccourcis — ferment
+    // la fenêtre si elle existe et ne la créent que sinon. Comme celles-ci sont
+    // détruites, elles n'existent jamais : toute demande repasse forcément ici.
+    //
+    // Les panneaux d'onglet du conteneur de guilde (0x3c..0x42) passent aussi par
+    // ici : ils ne routent rien (le `default` de la fonction), mais il faut les
+    // masquer à la naissance comme les autres — le conteneur en crée un d'office,
+    // et sans ça sa frame native passe à l'écran.
+    if (windowID == 0x25 || windowID == 0x0a || windowID == 0x0b ||
+        windowID == 0x3b || windowID == 0xd4 ||
+        (windowID >= 0x3c && windowID <= 0x42)) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
         cs->HandleReplacedNativeCreation(win, windowID);
     }
