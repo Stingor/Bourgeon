@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -163,9 +164,6 @@ class TradeWindow : public Plugin {
   // deux sens : la fenêtre native qui reprenait la main autrefois ne naît plus, et
   // on ne reprend jamais une session qu'on n'a pas vue naître.
   bool     prev_imgui_enabled_ = false;
-  // Demandes venues du thread RÉSEAU, appliquées au tick suivant (thread principal).
-  bool     open_pending_ = false;   // ZC_ACK result 3 : l'échange démarre
-  bool     close_pending_ = false;  // ZC_CANCEL / ZC_EXEC : il est fini
 
   // Mes ajouts : envoyés, puis acquittés. L'acquittement ne porte que l'index, la
   // quantité n'est connue que de nous — d'où la file d'attente.
@@ -174,25 +172,63 @@ class TradeWindow : public Plugin {
   std::vector<int>        acked_adds_;   // index acquittés, à résoudre au tick
   int                     pending_zeny_ = -1;  // montant envoyé, en attente d'ack
 
-  // Description demandée au clic droit, ouverte au tick suivant (MakeWindow est une
-  // commande native : jamais au milieu d'une frame ImGui). L'entrée est COPIÉE, la
-  // liste pouvant changer entre les deux.
-  TradeItem desc_item_;
-  bool      desc_pending_ = false;
-  int       desc_x_ = 0, desc_y_ = 0;
+  // ── Passage du fil RÉSEAU au fil PRINCIPAL ──────────────────────────────────
+  //
+  // 🔴 OnRecvPacket tourne sur le fil RÉSEAU, le rendu lit sur le fil PRINCIPAL.
+  // Écrire `partner_items_` depuis le premier pendant que le second le parcourt,
+  // c'est un pointeur mort dès que le push_back réalloue : le genre de crash qui ne
+  // se reproduit qu'en jeu, sur un partenaire qui dépose vite. Le fil réseau ne
+  // touche donc plus AUCUN état de l'échange — il DÉCODE et EMPILE, et DrainNet
+  // applique au tick, sur le fil principal, dans l'ordre d'arrivée.
+  //
+  // Décoder tout de suite (plutôt que copier les octets bruts) est délibéré : le
+  // tampon `data` appartient au lecteur de paquets et ne survit pas au retour.
+  struct NetEvent {
+    enum Kind {
+      kReq,          // ZC_REQ 0x01f4 : demande d'échange (name/aid/level)
+      kOpen,         // ZC_ACK 0x01f5 result 3 : l'échange démarre
+      kReqRefused,   // ZC_ACK 0x01f5 autre résultat : la requête a échoué
+      kPartnerItem,  // ZC_ADD 0x0b42 : le partenaire dépose un objet
+      kPartnerZeny,  // ZC_ADD 0x0b42 avec itemId 0 : il dépose du zeny
+      kAckAdd,       // ZC_ACK_ADD 0x00ea {a = index, b = résultat}
+      kConclude,     // ZC_CONCLUDE 0x00ec {a = qui}
+      kEnd,          // ZC_CANCEL 0x00ee / ZC_EXEC 0x00f0 {a = résultat}
+    };
+    Kind      kind = kReq;
+    TradeItem item;            // kPartnerItem
+    int64_t   zeny = 0;        // kPartnerZeny
+    int       a = 0, b = 0;    // cf. les commentaires ci-dessus
+    char      name[25] = {0};  // kReq
+    uint32_t  aid = 0;
+    int       level = 0;
+  };
+  void PushNet(const NetEvent& ev);  // fil RÉSEAU  : empile
+  void DrainNet();                   // fil PRINCIPAL : applique
+  void ClearNet();                   // jette ce qui reste (session abandonnée)
+
+  std::vector<NetEvent> net_queue_;
+  mutable std::mutex    net_mutex_;
+
+  // Description au clic droit : ARMÉE ici, jouée par itemcell::FlushDeferredDesc au
+  // RELÂCHEMENT du bouton (cf. features/item_cell.h). L'ItemSkillInfo reconstruit
+  // doit survivre jusque-là — d'où ce tampon MEMBRE, et pas une variable de pile.
+  // Taille = kInfoSize (0x100), vérifié par static_assert à l'usage.
+  uint8_t   desc_info_[0x100] = {0};
 
   // Requête entrante (popup) : nom + niveau du demandeur (ZC_REQ 0x01f4).
   char     req_name_[25] = {0};
   int      req_level_ = 0;
   uint32_t req_aid_ = 0;
 
-  // État lu de la fenêtre native.
+  // État de la session, reconstruit depuis les paquets. 🔴 Fil PRINCIPAL EXCLUSIVEMENT
+  // (écrit par DrainNet / ResolveMyAdds, lu au rendu) : rien de tout ceci n'est touché
+  // depuis OnRecvPacket, c'est la raison d'être de la file ci-dessus.
   std::vector<TradeItem> my_items_;
   std::vector<TradeItem> partner_items_;
-  bool     my_locked_ = false;       // +0xCC (mon zeny/objets verrouillés)
-  bool     partner_locked_ = false;  // +0xD0 (partenaire verrouillé)
-  int64_t  my_zeny_ = 0;             // DAT_015ff5b0
-  int64_t  partner_zeny_ = 0;        // DAT_015ff5b4
+  bool     my_locked_ = false;       // mon offre verrouillée (ZC_CONCLUDE who = 0)
+  bool     partner_locked_ = false;  // celle du partenaire      (who = 1)
+  int64_t  my_zeny_ = 0;             // confirmé par l'acquittement d'index 0
+  int64_t  partner_zeny_ = 0;        // ZC_ADD 0x0b42 avec itemId 0
 
   int      zeny_input_ = 0;          // champ de saisie zeny (ImGui) — appliqué au verrou
   bool     screenshot_ = false;      // case « Screenshot Trade » (cmd 0x44 au commit)

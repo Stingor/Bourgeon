@@ -307,28 +307,43 @@ TradeWindow::TradeWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(kOpExec, claim);      // fin d'échange
 }
 
+// ── Fil RÉSEAU : décoder et empiler, RIEN d'autre ────────────────────────────
+//
+// 🔴 Aucun état de l'échange n'est touché ici. Le rendu parcourt `partner_items_`
+// sur le fil principal ; un push_back concurrent qui réalloue lui laisse un
+// pointeur mort. On décode le paquet (son tampon ne survit pas au retour) et on
+// empile — DrainNet applique au tick.
+void TradeWindow::PushNet(const NetEvent& ev) {
+  std::lock_guard<std::mutex> lock(net_mutex_);
+  // Garde-fou : la file est vidée à chaque tick, elle ne peut grossir que si le
+  // fil principal s'est arrêté — auquel cas plus rien n'a d'importance.
+  if (net_queue_.size() >= 512) return;
+  net_queue_.push_back(ev);
+}
+
+void TradeWindow::ClearNet() {
+  std::lock_guard<std::mutex> lock(net_mutex_);
+  net_queue_.clear();
+}
+
 void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (!imgui_enabled_) return;
-  // Thread recv : on ne fait qu'écrire des membres (jamais de SendPacket / CMode ici).
+  NetEvent ev;
   switch (opcode) {
     case kOpReq: {  // ZC_REQ_EXCHANGE_ITEM : quelqu'un demande un échange.
       if (len < 30) return;
-      std::memcpy(req_name_, data, 24);
-      req_name_[24] = '\0';
-      req_aid_   = *reinterpret_cast<const uint32_t*>(data + 24);
-      req_level_ = *reinterpret_cast<const uint16_t*>(data + 28);
-      req_open_  = true;
+      ev.kind = NetEvent::kReq;
+      std::memcpy(ev.name, data, 24);
+      ev.name[24] = '\0';
+      ev.aid   = *reinterpret_cast<const uint32_t*>(data + 24);
+      ev.level = *reinterpret_cast<const uint16_t*>(data + 28);
       break;
     }
     case kOpAck: {  // ZC_ACK_EXCHANGE_ITEM : réponse à la requête.
       if (len < 1) return;
-      const int result = data[0];  // 3 = accepté (l'échange démarre), sinon échec.
-      req_open_ = false;
-      if (result != 3) { last_result_ = -1; break; }
       // 🔴 C'est CE paquet qui ouvre l'échange, plus l'apparition d'une fenêtre
-      // native. Session repartie de zéro : les deux offres, les verrous, le zeny.
-      // Sans cette remise à zéro, l'échange précédent transparaîtrait dans le neuf.
-      open_pending_ = true;
+      // native. result 3 = accepté ; tout le reste est un refus.
+      ev.kind = (data[0] == 3) ? NetEvent::kOpen : NetEvent::kReqRefused;
       break;
     }
     case kOpAddItem: {  // ZC_ADD_EXCHANGE_ITEM : ce que le PARTENAIRE dépose.
@@ -338,10 +353,12 @@ void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
       if (id == 0) {
         // itemId nul = ZENY, et le montant voyage dans `amount` (clif_tradeadditem
         // envoie une structure vide dont seul ce champ est renseigné).
-        partner_zeny_ = amount;
+        ev.kind = NetEvent::kPartnerZeny;
+        ev.zeny = amount;
         break;
       }
-      TradeItem it;
+      ev.kind = NetEvent::kPartnerItem;
+      TradeItem& it = ev.item;
       it.id         = id;
       it.amount     = amount;
       it.type       = data[kAddType];
@@ -367,62 +384,127 @@ void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
       it.slots = CardSlotCount(it.cards);
       // Le nom DÉCORÉ est composé au tick (le name-builder est natif : jamais depuis
       // le fil réseau). Il reste vide ici, ResolveNames s'en charge.
-      // ⚠ Le serveur envoie un paquet par AJOUT, avec le DELTA — pas le total : un
-      // partenaire qui pose 20 puis réajuste à 49 en émet deux (20, puis 29). On
-      // fusionne les piles rigoureusement identiques pour montrer le vrai total.
-      //
-      // Le natif, lui, ne fusionne PAS : son Session_AddPartnerDealItem prend le
-      // premier emplacement libre et copie, d'où deux lignes à l'écran. C'est un
-      // écart ASSUMÉ — la somme est la même, l'affichage est simplement lisible.
-      //
-      // ⚠ Mais SEULEMENT ce qui s'empile. Un équipement est une INSTANCE : deux
-      // marteaux identiques sont deux objets, les afficher « x2 » laisserait croire
-      // à une pile alors qu'ils occuperont deux emplacements à l'arrivée.
-      bool merged = false;
-      if (TypeIsStackable(it.type)) {
-        for (TradeItem& e : partner_items_) {
-          if (e.id != it.id || e.refine != it.refine || e.grade != it.grade ||
-              e.identified != it.identified || e.damaged != it.damaged)
-            continue;
-          if (std::memcmp(e.cards, it.cards, sizeof(e.cards)) != 0) continue;
-          e.amount += it.amount;
-          merged = true;
-          break;
-        }
-      }
-      if (!merged) partner_items_.push_back(it);
       break;
     }
     case kOpAckAdd: {  // ZC_ACK_ADD_EXCHANGE_ITEM {index:2, result:1}
       if (len < 3) return;
-      const uint16_t index = *reinterpret_cast<const uint16_t*>(data);
-      const uint8_t result = data[2];
-      add_error_ = result;  // 0 = ok, sinon surpoids/plein/stack...
-      if (result != 0) { pending_adds_.clear(); break; }
-      // Succès : l'objet est bien dans MON offre. Le paquet ne dit QUE l'index —
-      // l'objet se retrouve dans l'inventaire, qui ne bouge pas avant le commit.
-      // La résolution attend le thread principal (elle lit le modèle de session).
-      acked_adds_.push_back(index);
+      ev.kind = NetEvent::kAckAdd;
+      ev.a = *reinterpret_cast<const uint16_t*>(data);  // index inventaire
+      ev.b = data[2];                                   // 0 = ok
       break;
     }
     case kOpConclude:  // ZC_CONCLUDE_EXCHANGE_ITEM {who:1}
-      // who = 0 -> MON offre est verrouillée ; 1 -> celle du partenaire. Vérifié
-      // serveur (trade.cpp : lock(*sd,false) à celui qui verrouille, lock(*tsd,true)
-      // à l'autre).
-      if (len >= 1) { if (data[0] == 0) my_locked_ = true; else partner_locked_ = true; }
+      if (len < 1) return;
+      ev.kind = NetEvent::kConclude;
+      ev.a = data[0];  // 0 = moi, sinon le partenaire
       break;
     case kOpCancel:  // ZC_CANCEL_EXCHANGE_ITEM : l'échange est annulé.
-      last_result_ = 2;   // marqueur "annulé" (distinct de 0=ok / 1=échec)
-      committed_ = false; // l'attente est terminée
-      close_pending_ = true;
+      ev.kind = NetEvent::kEnd;
+      ev.a = 2;  // marqueur "annulé" (distinct de 0 = ok / 1 = échec)
       break;
     case kOpExec:  // ZC_EXEC_EXCHANGE_ITEM {result:1} : échange terminé.
-      last_result_ = (len >= 1) ? data[0] : 0;
-      committed_ = false;
-      close_pending_ = true;
+      ev.kind = NetEvent::kEnd;
+      ev.a = (len >= 1) ? data[0] : 0;
       break;
     default:
-      break;
+      return;
+  }
+  PushNet(ev);
+}
+
+// ── Fil PRINCIPAL : application des événements, dans l'ordre d'arrivée ───────
+void TradeWindow::DrainNet() {
+  std::vector<NetEvent> events;
+  {
+    std::lock_guard<std::mutex> lock(net_mutex_);
+    if (net_queue_.empty()) return;
+    events.swap(net_queue_);
+  }
+  for (const NetEvent& ev : events) {
+    switch (ev.kind) {
+      case NetEvent::kReq:
+        std::memcpy(req_name_, ev.name, sizeof(req_name_));
+        req_aid_   = ev.aid;
+        req_level_ = ev.level;
+        req_open_  = true;
+        break;
+      case NetEvent::kReqRefused:
+        req_open_ = false;
+        last_result_ = -1;
+        break;
+      case NetEvent::kOpen:
+        // Session repartie de zéro : les deux offres, les verrous, le zeny. Sans
+        // cette remise à zéro, l'échange précédent transparaîtrait dans le neuf.
+        req_open_ = false;
+        ResetSession();
+        open_ = true;
+        need_pos_ = true;
+        show_panel_ = true;
+        last_result_ = -1;
+        break;
+      case NetEvent::kPartnerZeny:
+        partner_zeny_ = ev.zeny;
+        break;
+      case NetEvent::kPartnerItem: {
+        // ⚠ Le serveur envoie un paquet par AJOUT, avec le DELTA — pas le total : un
+        // partenaire qui pose 20 puis réajuste à 49 en émet deux (20, puis 29). On
+        // fusionne les piles rigoureusement identiques pour montrer le vrai total.
+        //
+        // Le natif, lui, ne fusionne PAS : son Session_AddPartnerDealItem prend le
+        // premier emplacement libre et copie, d'où deux lignes à l'écran. C'est un
+        // écart ASSUMÉ — la somme est la même, l'affichage est simplement lisible.
+        //
+        // ⚠ Mais SEULEMENT ce qui s'empile. Un équipement est une INSTANCE : deux
+        // marteaux identiques sont deux objets, les afficher « x2 » laisserait croire
+        // à une pile alors qu'ils occuperont deux emplacements à l'arrivée.
+        const TradeItem& it = ev.item;
+        bool merged = false;
+        if (TypeIsStackable(it.type)) {
+          for (TradeItem& e : partner_items_) {
+            if (e.id != it.id || e.refine != it.refine || e.grade != it.grade ||
+                e.identified != it.identified || e.damaged != it.damaged)
+              continue;
+            if (std::memcmp(e.cards, it.cards, sizeof(e.cards)) != 0) continue;
+            e.amount += it.amount;
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) partner_items_.push_back(it);
+        break;
+      }
+      case NetEvent::kAckAdd:
+        add_error_ = ev.b;  // 0 = ok, sinon surpoids/plein/stack...
+        if (ev.b != 0) { pending_adds_.clear(); break; }
+        // Succès : l'objet est bien dans MON offre. Le paquet ne dit QUE l'index —
+        // la quantité, on est seuls à la connaître (cf. ResolveMyAdds).
+        acked_adds_.push_back(ev.a);
+        break;
+      case NetEvent::kConclude:
+        // a = 0 -> MON offre est verrouillée ; 1 -> celle du partenaire. Vérifié
+        // serveur (trade.cpp : lock(*sd,false) à celui qui verrouille, lock(*tsd,true)
+        // à l'autre).
+        if (ev.a == 0) my_locked_ = true; else partner_locked_ = true;
+        break;
+      case NetEvent::kEnd:
+        // Fin d'échange (annulation ou commit) : on ferme sans rien renvoyer, le deal
+        // est déjà défait côté serveur. Rien à défaire de notre côté non plus : les
+        // objets ont quitté le sac dès l'acquittement (cf. ResolveMyAdds) — sur
+        // ANNULATION le serveur les rend lui-même par clif_additem, sur COMMIT il ne
+        // dit rien, et c'est correct.
+        //
+        // ⚠ Les acquittements encore en attente sont résolus AVANT de fermer : le
+        // serveur peut acquitter un ajout et exécuter l'échange dans le même souffle,
+        // et l'objet doit alors quitter le sac — sans quoi il y reste en fantôme.
+        if (!acked_adds_.empty()) ResolveMyAdds();
+        open_ = false;
+        was_open_ = false;
+        show_panel_ = true;
+        committed_ = false;
+        ResetSession();
+        last_result_ = ev.a;  // ResetSession n'y touche pas : le verdict survit
+        break;
+    }
   }
 }
 
@@ -723,32 +805,18 @@ void TradeWindow::OnTick() {
       PurgeNativeTradeWindows();
     }
     open_ = was_open_ = req_open_ = false;
-    open_pending_ = close_pending_ = false;
+    // Ce qui reste en file appartient à la session qu'on vient d'abandonner : on le
+    // jette, sinon un dépôt du partenaire arrivé juste avant la bascule ressusciterait
+    // dans la suivante.
+    ClearNet();
     ResetSession();
   }
   if (!imgui_enabled_) { open_ = false; was_open_ = false; req_open_ = false; return; }
 
-  // Ouverture demandée par ZC_ACK_EXCHANGE_ITEM (thread réseau) : appliquée ici.
-  if (open_pending_) {
-    open_pending_ = false;
-    ResetSession();
-    open_ = true;
-    need_pos_ = true;
-    show_panel_ = true;
-    last_result_ = -1;
-  }
-  // Fin d'échange annoncée par le serveur (annulation ou commit) : on ferme sans
-  // rien renvoyer — le deal est déjà défait côté serveur.
-  if (close_pending_) {
-    close_pending_ = false;
-    // Rien à défaire ici, dans un sens comme dans l'autre : les objets ont quitté le
-    // sac dès l'acquittement (cf. ResolveMyAdds). Sur ANNULATION le serveur les rend
-    // lui-même par clif_additem ; sur COMMIT il ne dit rien, et c'est correct.
-    open_ = false;
-    was_open_ = false;
-    show_panel_ = true;
-    ResetSession();
-  }
+  // Tout ce que le fil réseau a décodé depuis le tick précédent : ouverture, dépôts
+  // du partenaire, acquittements, verrous, fin d'échange. Appliqué ICI, et nulle
+  // part ailleurs.
+  DrainNet();
 
   if (open_) {
     // Filet du basculement en pleine session : on DÉTRUIT ce qui traîne au lieu de
@@ -758,13 +826,6 @@ void TradeWindow::OnTick() {
     ResolveNames();  // noms décorés des entrées neuves (name-builder natif)
   }
 
-  // Description demandée au clic droit : ouverte ICI, hors frame ImGui.
-  if (desc_pending_) {
-    desc_pending_ = false;
-    uint8_t info[kInfoSize];
-    BuildTradeInfo(desc_item_, info);
-    itemcell::OpenDescFromInfo(info, desc_x_, desc_y_);
-  }
   was_open_ = open_;
 }
 
@@ -911,14 +972,21 @@ void TradeWindow::OnRenderUI() {
                           hover->opt_count, hover->refine,
                           hover->name[0] ? hover->name : nullptr,
                           hover->damaged != 0);
-  // Clic droit : la fenêtre de description NATIVE, complète. DIFFÉRÉE d'un tick —
-  // elle passe par MakeWindow, et on n'appelle pas de commande native au milieu
-  // d'une frame ImGui. On copie l'entrée : la liste peut bouger d'ici là.
+  // Clic droit : la fenêtre de description NATIVE, complète. DIFFÉRÉE par la brique
+  // partagée, comme les huit autres viewers — elle s'ouvre au RELÂCHEMENT du bouton,
+  // pas au tick suivant. Les deux raisons sont dans features/item_cell.h : MakeWindow
+  // est une commande native (jamais au milieu d'une frame ImGui), et surtout le focus
+  // reste acquis à la fenêtre cliquée tant que le bouton est enfoncé — ouvrir avant le
+  // relâchement faisait passer la description DERRIÈRE sur un appui prolongé.
+  //
+  // ⚠ L'ItemSkillInfo doit vivre jusqu'au flush : on le reconstruit dans le tampon
+  // MEMBRE, pas sur la pile. C'est ce qui interdisait d'employer la brique jusqu'ici.
+  // Une seule demande en vol (une souris, un geste) : un tampon suffit.
   if (desc_for) {
-    desc_item_ = *desc_for;
-    desc_x_ = desc_x;
-    desc_y_ = desc_y;
-    desc_pending_ = true;
+    static_assert(sizeof(desc_info_) >= kInfoSize, "tampon de description trop petit");
+    BuildTradeInfo(*desc_for, desc_info_);
+    itemcell::DeferDescById(desc_for->id, desc_for->look, desc_for->location,
+                            desc_x, desc_y, desc_info_);
   }
 
   ImGui::Separator();
