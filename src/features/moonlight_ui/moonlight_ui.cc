@@ -294,6 +294,14 @@ const moonlight_ui::SettingDesc kStorageSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"storage_filter", SType::kBool, MLUI_FIELD(storage_window, show_filter()),
      MLUI_LITERAL(bool, true)},
+    // Onglets de storage : OPT-IN (défaut OFF). Un joueur qui n'a jamais utilisé
+    // les entrepôts alternatifs ne doit pas voir sa fenêtre changer de forme.
+    {"storage_tabs", SType::kBool, MLUI_FIELD(storage_window, show_storage_tabs()),
+     MLUI_LITERAL(bool, false)},
+    // Filtres par type (onglets de catégorie + sous-type) : ON par défaut, c'est
+    // le comportement historique de la fenêtre — la case sert à s'en passer.
+    {"storage_type_tabs", SType::kBool, MLUI_FIELD(storage_window, show_type_tabs()),
+     MLUI_LITERAL(bool, true)},
     {"storage_tabs_vertical", SType::kBool, MLUI_FIELD(storage_window, tabs_vertical()),
      MLUI_LITERAL(bool, false)},
     {"storage_tab_images", SType::kBool, MLUI_FIELD(storage_window, tab_images()),
@@ -952,6 +960,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadStorageFavorites(ui);
+    moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
     moonlight_ui::ReadSettings(ui, kKeyboardMoveSettings);
@@ -1078,6 +1087,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteStorageFavorites(out);
+  moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
   moonlight_ui::WriteSettings(out, kKeyboardMoveSettings);

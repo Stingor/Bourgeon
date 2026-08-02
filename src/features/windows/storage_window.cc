@@ -71,6 +71,18 @@ constexpr int kWinStorage = 0x21;  // UIItemStoreWnd
 constexpr float kSpawnX = 700.0f, kSpawnY = 85.0f;
 constexpr float kSpawnW = 320.0f, kSpawnH = 420.0f;
 
+// Délai au-delà duquel une bascule d'onglet de storage est considérée perdue.
+// Un storage alternatif est chargé de façon ASYNCHRONE (le map-server interroge
+// le char-server) : 5 s couvrent très largement l'aller-retour, tout en évitant
+// qu'un refus tardif laisse le viewer figé sur « Chargement… ».
+constexpr uint32_t kSwitchTimeoutMs = 5000;
+
+// Liseré des onglets de storage : 1 px, #ADADAD. En dur et NON pris au thème
+// (ImGuiCol_Border) : ces onglets sont peints sur le blanc de la liste, pas sur
+// le corps de la fenêtre, et la couleur de bordure du skin y passait tantôt
+// invisible tantôt trop dure selon le preset choisi.
+constexpr ImU32 kStgTabBorder = IM_COL32(0xAD, 0xAD, 0xAD, 255);
+
 // ── Icônes d'item (bmp inventaire) ──────────────────────────────────────────
 // BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc, 3 args) :
 // atoi(id) -> ResolveItemResNameById -> sprintf "유저인터페이스\item\<res>.bmp"
@@ -213,6 +225,12 @@ constexpr uintptr_t kBtnbarPath = 0x010357b8;  // "…\basic_interface\btnbar_le
 using BarTex = ro::GameTexture;  // (même forme ; le chargeur est partagé)
 BarTex g_tab[kNumStgCats][2];   // onglets VERTICAUX   : tab_<x>{1,2}.bmp
 BarTex g_tabh[kNumStgCats][2];  // onglets HORIZONTAUX : tabh_<x>{1,2}.bmp
+// Cadres des onglets de STORAGE. Même art, même grammaire que les onglets de
+// catégorie ci-dessus : <nom>1.bmp = ACTIF (bord ouvert du côté du contenu),
+// <nom>2.bmp = inactif (fermé). Un seul jeu pour tous les entrepôts — c'est
+// l'ICÔNE ou le libellé posé dessus qui les distingue, pas le cadre.
+BarTex g_stg_tab[2];   // strip VERTICAL    : tab_sto{1,2}.bmp   (23x27)
+BarTex g_stg_tabh[2];  // rangée HORIZONTALE : tabh_sto{1,2}.bmp (27x25)
 bool   g_tabs_tried = false;
 unsigned g_tab_epoch = 0;
 
@@ -254,6 +272,40 @@ void EnsureTabTextures() {
     std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
     BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
   }
+  // Cadres des onglets de storage (un seul jeu, indépendant des catégories).
+  BasicInterfacePath("tab_sto1.bmp", path, sizeof(path));
+  g_stg_tab[0] = ro::TextureFromGameFile(path);
+  BasicInterfacePath("tab_sto2.bmp", path, sizeof(path));
+  g_stg_tab[1] = ro::TextureFromGameFile(path);
+  BasicInterfacePath("tabh_sto1.bmp", path, sizeof(path));
+  g_stg_tabh[0] = ro::TextureFromGameFile(path);
+  BasicInterfacePath("tabh_sto2.bmp", path, sizeof(path));
+  g_stg_tabh[1] = ro::TextureFromGameFile(path);
+}
+
+// ── Cadres d'onglet de storage ──────────────────────────────────────────────
+// L'art est un CONTOUR (#ADADAD) à intérieur TRANSPARENT : le blanc de l'onglet
+// est celui du corps de la fenêtre, qui est déjà la couleur de liste. Rien à
+// remplir donc — et le skin continue de piloter cette couleur.
+//
+// L'état ACTIF est ouvert du côté du contenu (bas en rangée, droite en strip) ;
+// l'INACTIF s'y ferme 2 px avant le bord. Les deux images font la même taille,
+// c'est le dessin qui diffère — un onglet ne bouge donc pas d'un pixel quand il
+// devient actif.
+constexpr float kStgArtClosedInset = 2.0f;
+// Repli sur l'autre état si un seul des deux .bmp a pu être chargé (même règle
+// que les onglets de catégorie).
+const BarTex& StorageTabArt(BarTex (&art)[2], bool selected) {
+  const int want = selected ? 0 : 1;
+  return art[want].tex ? art[want] : art[want ^ 1];
+}
+
+// Largeur du strip d'onglets de storage = largeur NATIVE de l'art. Sert aussi à
+// la rangée de CATÉGORIES, qui s'indente d'autant pour démarrer à l'abscisse de
+// la table (le strip la précède). Appeler EnsureTabTextures avant.
+float StorageStripWidth() {
+  const BarTex& art = g_stg_tab[0].tex ? g_stg_tab[0] : g_stg_tab[1];
+  return art.tex && art.w > 0 ? static_cast<float>(art.w) : 23.0f;
 }
 
 // Hauteur du strip horizontal = hauteur NATIVE des images (repli 22 px). Même
@@ -479,6 +531,54 @@ void DrawFavStar(ImDrawList* dl, float cx, float cy, float r, ImU32 fill,
   dl->AddPolyline(p, 10, edge, ImDrawFlags_Closed, 1.0f);
 }
 
+// Callback ImDrawList : échantillonnage en POINT.
+//
+// 🔴 À poser AVANT les icônes des onglets, toujours. L'état ambiant d'une draw
+// list est LINEAR — le backend DX9 le repose dans SetupRenderState — et une
+// icône de 24x24 blittée en LINEAR ressort baveuse. Le mode NET doit être
+// IMPOSÉ, il ne s'obtient pas en s'abstenant (cf. ui/ro_imgui.cc, qui bascule
+// pareil pour chaque pièce de skin).
+void ImCbPointFilter(const ImDrawList*, const ImDrawCmd*) {
+  Overlay_SetTextureFilter(false);
+}
+
+// Icône d'item en NIVEAUX DE GRIS — l'onglet de storage INACTIF porte son icône
+// éteinte, l'actif la porte en couleur.
+//
+// Une teinte ne suffit PAS : `AddImage` multiplie, donc un gris ne fait
+// qu'assombrir l'icône en gardant ses couleurs. Il faut vraiment désaturer les
+// pixels, donc une seconde texture, construite une fois puis mémorisée — échec
+// de chargement compris, sinon on retenterait la résolution à chaque frame.
+//
+// ⚠ Ces textures vivent en D3DPOOL_DEFAULT : elles MEURENT à un reset de device
+// (ALT-TAB en plein écran). D'où le cache vidé sur changement d'epoch — sans
+// quoi on dessinerait des handles morts.
+ro::IconTex GrayItemIcon(uint32_t nameid) {
+  static std::unordered_map<uint32_t, ro::IconTex> cache;
+  static unsigned cache_epoch = 0;
+  const unsigned epoch = Overlay_DeviceEpoch();
+  if (epoch != cache_epoch) { cache.clear(); cache_epoch = epoch; }
+  auto it = cache.find(nameid);
+  if (it != cache.end()) return it->second;
+
+  ro::IconTex gray;
+  std::vector<uint8_t> pixels;
+  int w = 0, h = 0;
+  if (ro::ItemIconPixels(nameid, &pixels, &w, &h) && w > 0 && h > 0) {
+    // Pixels en B,G,R,A. Luminance perceptuelle (Rec. 601, en entiers) : une
+    // moyenne plate rendrait les rouges trop clairs et les bleus trop sombres.
+    for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
+      const int lum = (pixels[i + 2] * 77 + pixels[i + 1] * 150 + pixels[i] * 29) >> 8;
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = static_cast<uint8_t>(lum);
+    }
+    gray.tex = Overlay_CreateTextureARGB(pixels.data(), w, h);
+    gray.w = w;
+    gray.h = h;
+  }
+  cache[nameid] = gray;
+  return gray;
+}
+
 }  // namespace
 
 // ── Paquets de la session « storage » ──────────────────────────────────────
@@ -506,6 +606,12 @@ constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 StorageWindow::StorageWindow() {
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStoragePrices);
+  // Liste des storages accessibles : écoutée MÊME en mode natif. Le serveur
+  // l'envoie à chaque ouverture quelle qu'en soit l'origine ; ne pas l'écouter
+  // ne changerait rien au natif, mais l'écouter garantit que le jour où le
+  // joueur rebascule en ImGui la liste est déjà là. Aucun effet de bord : ce
+  // handler ne fait que remplir un tableau.
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStorageList);
   // Ouverture : revendiquée seulement pour un ENTREPÔT, et seulement en mode
   // ImGui. Le prédicat lit l'invType dans le paquet — même offset que le
   // décodage plus bas, il n'y a qu'une lecture à tenir juste.
@@ -531,17 +637,49 @@ void StorageWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t 
   net_inbox_.Push(opcode, data, len);
 }
 
+// Vide tout ce qui décrit le CONTENU du storage courant. Ne touche NI à la
+// fenêtre (position, taille, onglet de catégorie) NI aux réglages : c'est
+// exactement ce qu'il faut jeter quand on passe d'un storage à un autre.
+// `prices_` / `meta_` sont exclus À DESSEIN — ce sont des données d'itemdb
+// (prix de revente, slots, type d'arme), identiques quel que soit le storage.
+void StorageWindow::ClearStorageData() {
+  item_count_ = 0;
+  used_ = max_ = 0;
+  pend_id_ = 0;         // une action en attente n'a plus de destinataire
+  pend_open_prompt_ = false;
+  drag_active_ = false;
+  hover_desc_id_ = 0;
+  hover_desc_idx_ = -1;
+  storage_name_[0] = '\0';
+  reset_view_ = true;   // filtre par nom + sous-catégorie (cf. reset_view_)
+}
+
 // Ferme la session côté client. N'envoie RIEN : soit le serveur vient de nous
 // dire qu'il a fermé, soit il a fermé en silence (warp).
 void StorageWindow::CloseLocal() {
   open_ = false;
   show_panel_ = true;   // le viewer doit réapparaître à la prochaine ouverture
-  item_count_ = 0;
-  used_ = max_ = 0;
-  pend_id_ = 0;         // une action en attente n'a plus de destinataire
-  drag_active_ = false;
-  hover_desc_id_ = 0;
-  storage_name_[0] = '\0';
+  switching_ = false;   // une bascule qui n'aboutira plus
+  cur_storage_id_ = -1;
+  ClearStorageData();
+}
+
+// Demande au serveur d'ouvrir (ou de basculer vers) le storage `id`. Le serveur
+// ferme le courant puis ouvre le demandé ; nous, on note juste qu'une bascule
+// est en vol pour que la fermeture intermédiaire ne referme pas le viewer.
+void StorageWindow::SendOpenStorage(uint8_t id) {
+  uint8_t pkt[5];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = bopcodes::kOpenStorage;
+  *reinterpret_cast<uint16_t*>(pkt + 2) = sizeof(pkt);
+  pkt[4] = id;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  switching_ = true;
+  switch_target_ = id;
+  switch_tick_ = GetTickCount();
+  // Purge IMMÉDIATE : la liste affichée n'est déjà plus celle du storage
+  // demandé. Ce que le modèle natif contient encore sera vidé par le ZC 0x00f8
+  // de la fermeture serveur ; ici on coupe juste le rendu d'une liste périmée.
+  ClearStorageData();
 }
 
 // Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
@@ -560,6 +698,11 @@ void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
     if (!open_) need_pos_ = true;
     open_ = true;
     show_panel_ = true;
+    // Fin de bascule : le storage demandé est arrivé. `cur_storage_id_` n'est
+    // pas posé ici — il vient de ZC_BOURGEON_STORAGE_LIST, envoyé dans la
+    // foulée par le serveur, qui est le seul à savoir SUR QUOI on a atterri
+    // (le nom ne suffit pas : deux storages peuvent porter le même).
+    switching_ = false;
     return;
   }
   // COMPTEUR (revendiqué) : [amount:2][max:2]. Le natif l'écrivait dans la
@@ -571,10 +714,43 @@ void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
     return;
   }
   // FERMETURE (observée) : le handler natif a déjà vidé le modèle de session.
-  if (opcode == kOpStoreClose) { CloseLocal(); return; }
+  // 🔴 Pendant une BASCULE, cette fermeture est une ÉTAPE, pas une fin : c'est
+  // le serveur qui ferme le storage courant avant d'ouvrir le suivant, et c'est
+  // même précisément ce qu'on veut (c'est ce vidage qui empêche les deux
+  // contenus de se mélanger). On garde donc la fenêtre ouverte et on n'oublie
+  // que le contenu.
+  if (opcode == kOpStoreClose) {
+    if (switching_) ClearStorageData();
+    else            CloseLocal();
+    return;
+  }
   // Changement de map : fermeture SILENCIEUSE côté serveur (cf. CloseLocal).
   if (opcode == kOpMapChange || opcode == kOpServerMove) {
     if (open_) CloseLocal();
+    return;
+  }
+  // ZC_BOURGEON_STORAGE_LIST : [cur_id:1][count:1] puis count * [id:1][name:24].
+  // `cur_id` = 0xFF quand aucun storage n'est ouvert (envoi au login).
+  // REMPLACE la liste (pas de merge) : les droits peuvent changer en cours de
+  // session (@adjgroup), et un onglet qui survivrait à sa permission enverrait
+  // une demande que le serveur refuserait, sans que le joueur comprenne.
+  if (opcode == bopcodes::kStorageList) {
+    if (len < 2) return;
+    const uint8_t cur = data[0];
+    int count = data[1];
+    if (count > kMaxStorageTabs) count = kMaxStorageTabs;
+    stg_tab_count_ = 0;
+    size_t off = 2;
+    for (int i = 0; i < count && off + 25 <= len; ++i, off += 25) {
+      StorageTab& tab = stg_tabs_[stg_tab_count_];
+      tab.id = data[off];
+      const char* name = reinterpret_cast<const char*>(data + off + 1);
+      size_t n = 0;
+      while (n < sizeof(tab.name) - 1 && n < 24 && name[n]) { tab.name[n] = name[n]; ++n; }
+      tab.name[n] = '\0';
+      ++stg_tab_count_;
+    }
+    cur_storage_id_ = (cur == 0xFF) ? -1 : static_cast<int>(cur);
     return;
   }
   // ZC_BOURGEON_STORAGE_PRICES : [count:2] puis
@@ -692,7 +868,19 @@ void StorageWindow::OnTick() {
     uiwnd::SafeCloseWindow(kWinStorage);
   }
 
-  if (open_) Extract();
+  // BASCULE en vol : on ne lit PAS le modèle. Entre la demande et l'arrivée du
+  // nouveau storage, il contient encore l'ancien contenu (jusqu'au ZC 0x00f8 qui
+  // le vide) — l'afficher donnerait des items qu'on ne peut plus manipuler, et
+  // un clic dessus enverrait un index appartenant à un autre storage.
+  // Garde-fou : un storage alternatif se charge de façon ASYNCHRONE (le serveur
+  // interroge le char-server), et un refus tardif ou un char-server muet
+  // laisserait le viewer figé sur « Chargement… » pour toujours.
+  if (switching_ && GetTickCount() - switch_tick_ > kSwitchTimeoutMs) {
+    switching_ = false;
+    CloseLocal();
+    return;
+  }
+  if (open_ && !switching_) Extract();
   // Suffixe [N] (nb de slots de carte, meta serveur) sur le nom, hors SEH d'Extract.
   // BuildDisplayName n'affiche pas le compte de slots -> on l'ajoute si l'item a des
   // slots et que le nom n'a pas déjà de crochet (évite tout double [N]/enchant).
@@ -786,8 +974,13 @@ bool StorageWindow::DrawSettings() {
   changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &tabs_vertical());
   SameLine(); HelpMarker(
       "Dispose les catégories en liste verticale à gauche, comme la "
-      "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.");
+      "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.\n"
+      "Décide aussi de l'orientation des onglets de storage, qui restent "
+      "toujours PERPENDICULAIRES aux catégories.");
 
+  // Sans onglets de catégorie, il n'y a plus de tuile à dessiner : la case est
+  // grisée plutôt que laissée cliquable sans effet.
+  ImGui::BeginDisabled(!show_type_tabs_);
   changed |= ro::RoCheckbox("Images d'onglet", &tab_images());
   SameLine(); HelpMarker(
       "ON : tuiles images du client — jeu tab_* en disposition verticale, "
@@ -796,11 +989,37 @@ bool StorageWindow::DrawSettings() {
       "portent alors un sigle (Am, Cs, Et).\n"
       "OFF : onglets texte — TabBar classique en horizontal, libellé écrit "
       "à la verticale en vertical.");
+  ImGui::EndDisabled();
 
   changed |= ro::RoCheckbox("Champ de filtre", &show_filter());
   SameLine(); HelpMarker(
       "Affiche la barre de recherche par nom au-dessus de la liste.\n"
       "Décoche pour gagner une ligne (le filtre est alors vidé).");
+
+  changed |= ro::RoCheckbox("Filtres par type d'item", &show_type_tabs());
+  SameLine(); HelpMarker(
+      "Affiche les onglets de catégorie (Tout, Favoris, Consos, Armes...) et "
+      "le combo « Sous-type » qui en dépend.\n"
+      "Décoche pour une liste unique, sans filtre de type : la vue repasse à "
+      "« Tout » (rien ne reste masqué derrière) et « Images d'onglet » n'a "
+      "plus d'objet. « Onglets verticaux », lui, continue de décider de "
+      "l'orientation des onglets de STORAGE.\n"
+      "Les favoris restent marquables (Ctrl + clic gauche, menu contextuel) : "
+      "seul l'onglet qui les isole disparaît.");
+
+  changed |= ro::RoCheckbox("Onglets de storage", &show_storage_tabs());
+  SameLine(); HelpMarker(
+      "Affiche un onglet par entrepôt auquel vous avez accès (principal et "
+      "alternatifs) : un clic bascule de l'un à l'autre sans repasser par "
+      "@storage / @storagealtN.\n"
+      "Les onglets se placent PERPENDICULAIREMENT à ceux des catégories — "
+      "en colonne à gauche si les catégories sont horizontales, en rangée en "
+      "haut si elles sont verticales.\n"
+      "La liste vient du serveur : elle ne montre que ce que votre compte a le "
+      "droit d'ouvrir, et n'apparaît qu'à partir de deux entrepôts.\n"
+      "Chaque onglet porte son NUMÉRO par défaut ; clic droit dessus pour lui "
+      "donner un nom à vous et une icône d'item (ou glissez-y un item du "
+      "storage pour reprendre la sienne).");
 
   changed |= ro::RoCheckbox("Valeur estimée du storage", &show_total_value());
   SameLine(); HelpMarker(
@@ -903,6 +1122,40 @@ void StorageWindow::OnRenderUI() {
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                        "Shop en composition : les transferts sont figés.");
 
+  // ── Onglets de STORAGE (opt-in) ─────────────────────────────────────────────
+  // Ils basculent d'un entrepôt à l'autre — principal, alternatifs — sans passer
+  // par @storage / @storagealtN. La liste ET les droits viennent du serveur
+  // (ZC_BOURGEON_STORAGE_LIST) : le client ne connaît aucun id ni aucun nom à
+  // l'avance. En dessous de DEUX entrées il n'y a aucun choix à offrir, donc rien
+  // n'est dessiné — inutile de voler une ligne (ou une colonne) à la liste.
+  //
+  // ORIENTATION : toujours PERPENDICULAIRE aux onglets de catégorie. Deux
+  // rangées d'onglets parallèles et d'apparence proche se confondent ; avec des
+  // axes différents, on lit d'un coup d'œil laquelle change de storage et
+  // laquelle filtre par type.
+  //
+  // Déclaré ICI, avant les émetteurs d'onglets : ceux des CATÉGORIES en ont
+  // besoin aussi (leur rangée horizontale s'indente derrière le strip de
+  // storage), et une lambda [&] ne peut capturer qu'une variable déjà nommée.
+  const bool storage_tabs_on = show_storage_tabs_ && stg_tab_count_ > 1;
+
+  // Disposition VERTICALE des catégories RÉELLEMENT émise. Les onglets de type
+  // sont désactivables (setting « Filtres par type ») ; sans ce booléen, la
+  // table réserverait la place d'un child jamais ouvert et le EndChild final
+  // fermerait la fenêtre elle-même.
+  const bool vertical_cats = tabs_vertical_ && show_type_tabs_;
+  // Le strip de storage est-il posé à gauche de la table ? (Il l'est quand les
+  // catégories sont horizontales — orientations perpendiculaires.)
+  const bool storage_strip_left = storage_tabs_on && !tabs_vertical_;
+
+  // 🔴 Style relevé AVANT tout push. Les strips d'onglets écrasent
+  // `WindowPadding` (0,0) et `ItemSpacing` (-1,0) pour coller leurs tuiles — et
+  // le menu contextuel d'un onglet est émis DEDANS, donc il héritait de ces
+  // valeurs : contenu collé aux bords, lignes jointives. Il faut les vraies,
+  // relevées ici plutôt que codées en dur, pour que le popup suive le skin.
+  const ImVec2 popup_padding = ImGui::GetStyle().WindowPadding;
+  const ImVec2 popup_spacing = ImGui::GetStyle().ItemSpacing;
+
   // Rect écran du viewer (pour tester le drop d'un drag natif dessus).
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
@@ -983,6 +1236,20 @@ void StorageWindow::OnRenderUI() {
   // strip et le contenu (souligne l'onglet actif), comme inventory_viewer.
   ImVec2 active_tab_min(0, 0), active_tab_max(0, 0);
   bool   have_active_tab = false;
+  // Idem pour l'onglet de STORAGE actif, mais sur son bord BAS. Les deux pixels
+  // d'air qui le séparent du tableau sont déjà blancs (le corps de la fenêtre
+  // EST la couleur de liste, cf. SetNextWindowBodyColor) : il ne reste donc qu'à
+  // manger la BORDURE HAUTE du tableau sous cet onglet pour que le blanc coule
+  // sans rupture de l'un à l'autre.
+  ImVec2 stg_tab_min(0, 0), stg_tab_max(0, 0);
+  bool   have_stg_tab = false;
+  // Le sélecteur est une rangée EN HAUT ou un strip À GAUCHE : le pont vise donc
+  // la bordure haute du tableau dans un cas, sa bordure gauche dans l'autre.
+  bool   stg_tab_is_strip = false;
+  // Coin haut-gauche du tableau, relevé juste avant BeginTable : les onglets ne
+  // le touchent pas (4 px d'air, plus la marge du child « corps » en disposition
+  // verticale), le pont ne peut donc pas se déduire de leur seule position.
+  float  table_top_y = 0.0f, table_left_x = 0.0f;
 
   // Strip VERTICAL : émis non pas ici mais juste avant la table (cf. appel plus bas),
   // pour que le haut des onglets s'aligne sur l'EN-TÊTE DU TABLEAU et suive donc le
@@ -1088,6 +1355,11 @@ void StorageWindow::OnRenderUI() {
   // strip vertical), pour que le filtre et la valeur estimée passent AU-DESSUS et
   // que la rangée d'onglets reste collée à l'en-tête du tableau.
   auto emit_horizontal_tabs = [&]() {
+  // Le strip d'onglets de STORAGE, quand il est là, se pose à gauche de la table
+  // et la décale d'autant. La rangée de catégories démarre donc à la même
+  // abscisse qu'elle — symétrique exact de l'Indent de emit_storage_row, sans
+  // quoi elle pend à gauche, au-dessus de rien.
+  if (storage_strip_left) { EnsureTabTextures(); ImGui::Indent(StorageStripWidth()); }
   if (tab_images_) {
     // Disposition HORIZONTALE en IMAGES : jeu tabh_* (mêmes noms que le vertical
     // avec un « h » après « tab »). Rangée d'onglets jointifs, hauteur native de
@@ -1159,6 +1431,300 @@ void StorageWindow::OnRenderUI() {
       tab_applied_ = true;
     }
   }
+  if (storage_strip_left) ImGui::Unindent(StorageStripWidth());
+  };
+
+  // Clic sur un onglet. Sans effet sur celui qui est déjà ouvert : le serveur
+  // ignore aussi ce cas, mais autant ne pas envoyer le paquet — et surtout, les
+  // commandes @storagealt, elles, FERMENT dans ce cas, ce qui serait un piège.
+  auto select_storage = [this](uint8_t id) {
+    if (switching_ || static_cast<int>(id) == cur_storage_id_) return;
+    SendOpenStorage(id);
+  };
+
+  // Fond d'un onglet de storage : le BLANC de la liste (cf. SetNextWindowBodyColor
+  // plus haut), pour TOUS. Ce n'est pas le fond qui dit la sélection — c'est le
+  // bord du bas, ouvert sur le seul onglet actif, et son contenu en couleur.
+
+  // Libellé ÉCRIT sur l'onglet. Par défaut le NUMÉRO du storage : les noms du
+  // serveur (« Storage Alt 3 ») sont trop longs pour six onglets et se
+  // ressemblent tous — un chiffre se lit d'un coup d'œil et tient partout. Le
+  // nom complet reste en infobulle, et le joueur peut écrire ce qu'il veut à la
+  // place (clic droit sur l'onglet).
+  // `out` doit survivre à l'usage du retour : il porte le numéro quand il n'y a
+  // pas de nom personnalisé.
+  auto storage_label = [this](const StorageTab& tab, char* out, size_t cap) -> const char* {
+    auto it = tab_custom_.find(tab.id);
+    if (it != tab_custom_.end() && it->second.name[0]) return it->second.name;
+    std::snprintf(out, cap, "%u", static_cast<unsigned>(tab.id));
+    return out;
+  };
+  // Infobulle : le nom du SERVEUR, plus le nom choisi s'il y en a un. C'est la
+  // seule chose qui dit vraiment quel entrepôt est sous le curseur.
+  auto storage_tooltip = [this](const StorageTab& tab) {
+    auto it = tab_custom_.find(tab.id);
+    if (it != tab_custom_.end() && it->second.name[0])
+      ImGui::SetTooltip(" %s \n(%s)", it->second.name, tab.name);
+    else
+      ImGui::SetTooltip(" %s ", tab.name);
+  };
+  // Icône d'item choisie pour cet onglet (0 = aucune -> libellé texte).
+  auto storage_icon = [this](const StorageTab& tab) -> uint32_t {
+    auto it = tab_custom_.find(tab.id);
+    return it != tab_custom_.end() ? it->second.icon_id : 0;
+  };
+  auto save_settings = [] {
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  };
+
+  // Menu de personnalisation d'un onglet (clic DROIT). À appeler juste après le
+  // bouton de l'onglet, tant qu'il est le « dernier item » ImGui. L'id ImGui de
+  // l'onglet est déjà poussé par l'appelant : le popup est donc propre à l'onglet.
+  auto storage_tab_config = [&](const StorageTab& tab) {
+    // Glisser un item du viewer sur un onglet = lui donner SON icône. Il n'y a
+    // pas de transfert storage -> storage dans le protocole, donc ce geste ne
+    // peut rien vouloir dire d'autre ici.
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("STG_ITEM")) {
+        const int di = *static_cast<const int*>(pl->Data);
+        if (di >= 0 && di < item_count_ && items_[di].id != 0) {
+          tab_custom_[tab.id].icon_id = items_[di].id;
+          save_settings();
+        }
+      }
+      ImGui::EndDragDropTarget();
+    }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) ImGui::OpenPopup("stgtab_cfg");
+    // Marges rendues au popup (cf. popup_padding / popup_spacing) : celles du
+    // strip d'onglets sont à zéro, et elles s'appliqueraient à lui.
+    // `WindowPadding` n'est lu qu'à la CRÉATION de la fenêtre, `ItemSpacing` à
+    // chaque item : les deux restent donc poussés jusqu'à EndPopup.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, popup_padding);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, popup_spacing);
+    if (!ImGui::BeginPopup("stgtab_cfg")) {
+      ImGui::PopStyleVar(2);
+      return;
+    }
+    TabCustom& custom = tab_custom_[tab.id];
+    // Nom du SERVEUR toujours rappelé : c'est la seule façon de savoir quel
+    // entrepôt on est en train de renommer une fois le nom remplacé.
+    ImGui::TextDisabled("%s (id %u)", tab.name, static_cast<unsigned>(tab.id));
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(180.0f);
+    // Le hint montre le nom serveur : laisser vide, c'est le garder.
+    if (ImGui::InputTextWithHint("Nom", tab.name, custom.name, sizeof(custom.name)))
+      save_settings();
+    int icon = static_cast<int>(custom.icon_id);
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::InputInt("Icône (id d'item)", &icon)) {
+      custom.icon_id = icon > 0 ? static_cast<uint32_t>(icon) : 0;
+      save_settings();
+    }
+    if (custom.icon_id) {
+      const ro::IconTex ic = ro::ItemIcon(custom.icon_id);
+      if (ic.tex && ic.w > 0 && ic.h > 0)
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+      else
+        ImGui::TextDisabled("(icône introuvable pour cet id)");
+    } else {
+      ImGui::TextDisabled("Astuce : glissez un item du storage sur l'onglet.");
+    }
+    if (ro::RoButton("Réinitialiser", 110.0f, 20.0f)) {
+      tab_custom_.erase(tab.id);
+      save_settings();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+    ImGui::PopStyleVar(2);  // WindowPadding + ItemSpacing du popup
+  };
+
+  // RANGÉE HORIZONTALE (quand les catégories sont VERTICALES) : cadres tabh_sto*
+  // du client, posés au-dessus du tableau et ALIGNÉS SUR SON BORD GAUCHE.
+  // Contenu = icône d'item choisie par le joueur, sinon le numéro du storage ;
+  // le nom entier est en infobulle.
+  auto emit_storage_row = [&]() {
+    EnsureTabTextures();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    // Le tableau ne commence pas au bord de la fenêtre : le strip de catégories
+    // le précède. Les onglets démarrent donc à la même abscisse que lui, sinon
+    // la rangée pend à gauche, en dehors de ce qu'elle pilote.
+    if (vertical_cats)
+      ImGui::Indent(tab_images_ ? TabStripWidth() : TabStripWidthText());
+    // UN SEUL basculement pour toute la rangée : le callback coupe le lot de
+    // draws, un par onglet le fragmenterait pour rien.
+    dl->AddCallback(ImCbPointFilter, nullptr);
+    // 🔴 Recouvrement de 1 px par le STYLE, comme les onglets de catégorie —
+    // surtout pas par `SameLine(0, -1)` : quand l'offset est nul, ImGui remplace
+    // tout espacement négatif par `style.ItemSpacing.x`, et les onglets se
+    // retrouvaient écartés de l'espacement PAR DÉFAUT.
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(-1.0f, 0.0f));
+    for (int i = 0; i < stg_tab_count_; ++i) {
+      const StorageTab& tab = stg_tabs_[i];
+      const bool sel = (static_cast<int>(tab.id) == cur_storage_id_);
+      char numbuf[8];
+      const char* label = storage_label(tab, numbuf, sizeof(numbuf));
+      if (i) ImGui::SameLine();  // jointifs : les cadres partagent leur bord
+      ImGui::PushID(static_cast<int>(tab.id));
+      const BarTex& art = StorageTabArt(g_stg_tabh, sel);
+      const bool has_art = art.tex && art.w > 0 && art.h > 0;
+      // Gabarit = taille NATIVE de l'art, jamais étirée (repli sur ses mesures
+      // si les .bmp manquent, pour que la mise en page ne bouge pas).
+      const ImVec2 sz = has_art ? ImVec2(static_cast<float>(art.w),
+                                         static_cast<float>(art.h))
+                                : ImVec2(27.0f, 25.0f);
+      const ImVec2 cur = ImGui::GetCursorScreenPos();
+      // Icône EN COULEUR sur l'onglet actif — et au survol d'un inactif, qui
+      // annonce ainsi ce qu'on va activer. Sinon niveaux de gris : c'est le
+      // contenu, pas le cadre, qui distingue l'onglet éteint de l'allumé.
+      const bool lit =
+          sel || ImGui::IsMouseHoveringRect(cur, ImVec2(cur.x + sz.x, cur.y + sz.y));
+      const uint32_t icon_id = storage_icon(tab);
+      const ro::IconTex ic = icon_id ? (lit ? ro::ItemIcon(icon_id) : GrayItemIcon(icon_id))
+                                     : ro::IconTex{};
+      const bool use_icon = ic.tex && ic.w > 0 && ic.h > 0;
+      if (ImGui::InvisibleButton("stgsel", sz)) select_storage(tab.id);
+      const bool hov = ImGui::IsItemHovered();
+      // 🔴 GRILLE PIXEL : origine ENTIÈRE. La fenêtre peut être posée sur un
+      // demi-pixel, et un blit dont le coin est fractionnaire échantillonne
+      // entre deux texels — filtre POINT ou pas.
+      const ImVec2 p(std::floor(cur.x), std::floor(cur.y));
+      const ImVec2 pe(p.x + sz.x, p.y + sz.y);
+      if (has_art)
+        dl->AddImage(reinterpret_cast<ImTextureID>(art.tex), p, pe, ImVec2(0, 0),
+                     ImVec2(1, 1), ro::SkinImageTint());
+      else  // .bmp absents : un cadre minimal vaut mieux qu'un onglet invisible
+        dl->AddRect(p, pe, kStgTabBorder, 2.0f, ImDrawFlags_RoundCornersTop, 1.0f);
+      // Intérieur COMMUN aux deux états : l'inactif se ferme 2 px avant le bas,
+      // on centre donc sur la plus petite des deux boîtes — le contenu ne saute
+      // pas d'un pixel quand l'onglet devient actif.
+      const ImVec2 in_min(p.x + 1.0f, p.y + 1.0f);
+      const ImVec2 in_max(pe.x - 1.0f, pe.y - 1.0f - kStgArtClosedInset);
+      dl->PushClipRect(in_min, in_max, true);
+      if (use_icon) {
+        // Taille NATIVE, centrée : l'icône (24) déborde d'un pixel ou deux du
+        // cadre (23/25 utiles), et c'est sa marge transparente qui est rognée.
+        // La redimensionner la rendrait floue pour gagner ces deux pixels.
+        const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
+        const ImVec2 ip(std::floor(c.x - ic.w * 0.5f), std::floor(c.y - ic.h * 0.5f));
+        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
+                     ImVec2(ip.x + ic.w, ip.y + ic.h), ImVec2(0, 0), ImVec2(1, 1),
+                     ro::SkinImageTint());
+      } else {
+        // Libellé : couleur de texte pour l'actif (et le survolé), gris sinon —
+        // même règle que les icônes.
+        const ImVec2 lbl = ImGui::CalcTextSize(label);
+        dl->AddText(ImVec2(std::floor((in_min.x + in_max.x - lbl.x) * 0.5f),
+                           std::floor((in_min.y + in_max.y - lbl.y) * 0.5f)),
+                    lit ? ImGui::GetColorU32(ImGuiCol_Text)
+                        : ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                    label);
+      }
+      dl->PopClipRect();
+      if (hov) storage_tooltip(tab);
+      storage_tab_config(tab);
+      if (sel) { stg_tab_min = p; stg_tab_max = pe; have_stg_tab = true; }
+      ImGui::PopID();
+    }
+    // Rangée COLLÉE au tableau, GRATUITEMENT : l'ItemSpacing poussé pour le
+    // recouvrement vaut (-1, 0), donc le dernier onglet a avancé le curseur de 0
+    // — il est déjà au ras du bas des onglets. Rien à corriger ici : le faire
+    // APRÈS le Pop remonterait la table de 4 px SUR les onglets.
+    // (L'air nécessaire est déjà dans l'art, l'inactif s'y fermant 2 px avant le
+    // bas, pendant que l'actif doit toucher la bordure du tableau pour que le
+    // pont la prolonge.)
+    ImGui::PopStyleVar();  // ItemSpacing (recouvrement de 1 px)
+    if (vertical_cats)
+      ImGui::Unindent(tab_images_ ? TabStripWidth() : TabStripWidthText());
+  };
+
+  // STRIP VERTICAL (quand les catégories sont HORIZONTALES) : cadres tab_sto* du
+  // client, en colonne à gauche de la table. Ouvre la ligne qui contiendra la
+  // table : l'appelant enchaîne directement sur BeginTable.
+  auto emit_storage_strip = [&]() {
+    EnsureTabTextures();
+    // Largeur = taille NATIVE de l'art, jamais étirée (repli sur ses mesures si
+    // les .bmp manquent, pour que la mise en page ne bouge pas).
+    const BarTex& art_ref = g_stg_tab[0].tex ? g_stg_tab[0] : g_stg_tab[1];
+    const float w = art_ref.tex && art_ref.w > 0 ? static_cast<float>(art_ref.w) : 23.0f;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    // Même parti pris que le strip de catégories : pas de scrollbar dans une
+    // colonne de ~20 px, mais la molette scrolle si les onglets débordent.
+    ImGui::BeginChild("stgsel_strip", ImVec2(w, body_h), false,
+                      ImGuiWindowFlags_NoScrollbar);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, -1.0f));  // jointifs
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    // Échantillonnage POINT pour tout le strip (cf. ImCbPointFilter) : l'état
+    // ambiant est LINEAR, une icône de 24x24 y ressortirait baveuse.
+    dl->AddCallback(ImCbPointFilter, nullptr);
+    for (int i = 0; i < stg_tab_count_; ++i) {
+      const StorageTab& tab = stg_tabs_[i];
+      const bool sel = (static_cast<int>(tab.id) == cur_storage_id_);
+      char numbuf[8];
+      const char* label = storage_label(tab, numbuf, sizeof(numbuf));
+      ImGui::PushID(static_cast<int>(tab.id));
+      const BarTex& art = StorageTabArt(g_stg_tab, sel);
+      const bool has_art = art.tex && art.w > 0 && art.h > 0;
+      const ImVec2 sz = has_art ? ImVec2(static_cast<float>(art.w),
+                                         static_cast<float>(art.h))
+                                : ImVec2(w, 27.0f);
+      const ImVec2 cur = ImGui::GetCursorScreenPos();
+      // Couleur sur l'actif et sur le survolé, gris sinon — même règle que la
+      // rangée horizontale. Le survol est testé avant l'émission du bouton, la
+      // texture devant être choisie avant d'être dessinée.
+      const bool lit =
+          sel || ImGui::IsMouseHoveringRect(cur, ImVec2(cur.x + sz.x, cur.y + sz.y));
+      const uint32_t icon_id = storage_icon(tab);
+      const ro::IconTex ic = icon_id ? (lit ? ro::ItemIcon(icon_id) : GrayItemIcon(icon_id))
+                                     : ro::IconTex{};
+      const bool use_icon = ic.tex && ic.w > 0 && ic.h > 0;
+      if (ImGui::InvisibleButton("stgsel", sz)) select_storage(tab.id);
+      const bool hov = ImGui::IsItemHovered();
+      // Grille pixel, comme la rangée horizontale (cf. emit_storage_row).
+      const ImVec2 p(std::floor(cur.x), std::floor(cur.y));
+      const ImVec2 pe(p.x + sz.x, p.y + sz.y);
+      if (has_art)
+        dl->AddImage(reinterpret_cast<ImTextureID>(art.tex), p, pe, ImVec2(0, 0),
+                     ImVec2(1, 1), ro::SkinImageTint());
+      else
+        dl->AddRect(p, pe, kStgTabBorder, 2.0f, ImDrawFlags_RoundCornersLeft, 1.0f);
+      // Intérieur COMMUN aux deux états : ici c'est le bord DROIT que l'inactif
+      // ferme 2 px avant (l'actif s'ouvre par là, vers la table).
+      const ImVec2 in_min(p.x + 1.0f, p.y + 1.0f);
+      const ImVec2 in_max(pe.x - 1.0f - kStgArtClosedInset, pe.y - 1.0f);
+      dl->PushClipRect(in_min, in_max, true);
+      if (use_icon) {
+        const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
+        const ImVec2 ip(std::floor(c.x - ic.w * 0.5f), std::floor(c.y - ic.h * 0.5f));
+        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
+                     ImVec2(ip.x + ic.w, ip.y + ic.h), ImVec2(0, 0), ImVec2(1, 1),
+                     ro::SkinImageTint());
+      } else {
+        // Libellé À PLAT (plus tourné à 90°) : le cadre fait la taille d'une
+        // icône, un nom écrit en hauteur y serait illisible — c'est le numéro du
+        // storage qui tient, et l'infobulle qui porte le nom.
+        const ImVec2 lbl = ImGui::CalcTextSize(label);
+        dl->AddText(ImVec2(std::floor((in_min.x + in_max.x - lbl.x) * 0.5f),
+                           std::floor((in_min.y + in_max.y - lbl.y) * 0.5f)),
+                    lit ? ImGui::GetColorU32(ImGuiCol_Text)
+                        : ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                    label);
+      }
+      dl->PopClipRect();
+      if (hov) storage_tooltip(tab);
+      storage_tab_config(tab);
+      if (sel) {
+        stg_tab_min = p;
+        stg_tab_max = pe;
+        have_stg_tab = true;
+        stg_tab_is_strip = true;  // pont HORIZONTAL (vers le bord gauche de la table)
+      }
+      ImGui::PopID();
+    }
+    ImGui::PopStyleVar();  // ItemSpacing
+    ImGui::EndChild();
+    ImGui::PopStyleVar();  // WindowPadding
+    // Collé à la table (SameLine par défaut insérerait ItemSpacing.x).
+    ImGui::SameLine(0.0f, 0.0f);
   };
 
   // meta serveur d'un item (subtype/equip) pour les sous-catégories.
@@ -1170,6 +1736,15 @@ void StorageWindow::OnRenderUI() {
   // Barre de recherche (filtre par nom) — optionnelle (setting « Champ de filtre »).
   // Le "(?)" des raccourcis est sur la ligne du compteur, sous la table d'options.
   static ImGuiTextFilter filter;
+  // Changement de storage : on repart d'une vue NEUVE. Un filtre tapé pour
+  // l'entrepôt précédent masquerait tout dans le suivant, ce qui se lit comme
+  // « mon storage est vide » ; et une sous-catégorie n'a de sens que dans un
+  // onglet où elle existe encore.
+  if (reset_view_) {
+    filter.Clear();
+    cur_sub_ = -1;
+    reset_view_ = false;
+  }
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputTextWithHint("##storage_filter", "Filtrer...", filter.InputBuf,
@@ -1192,19 +1767,30 @@ void StorageWindow::OnRenderUI() {
                      "- Entrée : valide la quantité (défaut = stack entier)\n"
                      "- Survol d'un item : description (si activé dans Interface > Storage)\n"
                      "- Clic sur un en-tête de colonne : tri ; combo Sous-type : filtre fin\n"
+                     "  (onglets de catégorie et sous-type : désactivables dans les options)\n"
                      "- Colonnes, filtre et survol : Moonlight > Interface de jeu > Storage\n"
+                     "- Onglets de storage (option) : bascule vers un entrepôt alternatif\n"
+                     "- Clic droit sur un onglet de storage : le renommer / lui donner une icône\n"
+                     "- Glisser un item sur un onglet de storage : lui assigner SON icône\n"
                      "- Bouton Quitter / X : ferme le storage";
+
+  // Onglet EFFECTIF : « Tout » (index 0) quand les filtres par type sont
+  // désactivés. `cur_tab_` n'est PAS écrasé — le choix du joueur l'attend
+  // intact s'il réaffiche les onglets. kStgCats[0].sub valant kSubNone, ceci
+  // neutralise du même coup le combo « Sous-type » et son filtrage plus bas :
+  // il n'y a qu'un seul endroit à tenir juste.
+  const int active_tab = show_type_tabs_ ? cur_tab_ : 0;
 
   // Vue onglet+nom (avant sous-catégorie) : sert à connaître les sous-cats présentes.
   // Onglet Favoris : filtre par le set client (IsFavorite), pas par type d'item.
-  const int  sub_dim = kStgCats[cur_tab_].sub;
-  const bool fav_tab = kStgCats[cur_tab_].fav;
+  const int  sub_dim = kStgCats[active_tab].sub;
+  const bool fav_tab = kStgCats[active_tab].fav;
   std::vector<int> tabview;
   tabview.reserve(item_count_);
   for (int i = 0; i < item_count_; ++i) {
     const bool in_tab =
         fav_tab ? IsFavorite(items_[i].id)
-                : ItemInTab(cur_tab_, items_[i].type, submeta(items_[i].id).equip);
+                : ItemInTab(active_tab, items_[i].type, submeta(items_[i].id).equip);
     if (in_tab && filter.PassFilter(items_[i].name)) tabview.push_back(i);
   }
 
@@ -1265,11 +1851,30 @@ void StorageWindow::OnRenderUI() {
   // Compteurs et "(?)" sont dans le footer.
   if (show_total_value_) ImGui::Text("Valeur estimée: %lldz", total_val);
 
-  // Onglets : ICI, une fois le filtre et la valeur estimée émis, donc collés à
-  // l'en-tête du tableau et non plus en tête de fenêtre. En vertical, ceci ouvre
-  // aussi le child « corps » qui contient la table.
-  if (tabs_vertical_) emit_vertical_tabs();
-  else                emit_horizontal_tabs();
+  // Bascule en vol : la liste est vide À DESSEIN (cf. OnTick, on ne lit plus le
+  // modèle) et le storage demandé peut mettre un aller-retour char-server à
+  // arriver. Sans cette ligne, l'écran dirait « storage vide ».
+  if (switching_) ImGui::TextDisabled("Chargement du storage...");
+
+  // Catégories VERTICALES -> la rangée de storages est HORIZONTALE. Elle est
+  // émise ICI et pas en tête de fenêtre : au plus PRÈS de la table, juste
+  // au-dessus du strip de catégories. Posée tout en haut, elle flottait à trois
+  // lignes de la liste qu'elle pilote (filtre, sous-type et valeur estimée
+  // s'intercalaient) et on ne la rattachait plus à rien.
+  if (storage_tabs_on && tabs_vertical_) emit_storage_row();
+
+  // Onglets de catégorie : ICI, une fois le filtre et la valeur estimée émis,
+  // donc collés à l'en-tête du tableau et non plus en tête de fenêtre. En
+  // vertical, ceci ouvre aussi le child « corps » qui contient la table — d'où
+  // `vertical_cats`, qui doit rester VRAI aux trois autres endroits qui le
+  // testent (taille de table, EndChild, pont de l'onglet actif) et FAUX quand
+  // les onglets ne sont pas émis du tout.
+  if (vertical_cats)          emit_vertical_tabs();
+  else if (show_type_tabs_)   emit_horizontal_tabs();
+
+  // Catégories HORIZONTALES -> le sélecteur de storage est le strip VERTICAL, à
+  // gauche de la table (il ouvre la ligne, la table se pose juste à sa droite).
+  if (storage_tabs_on && !tabs_vertical_) emit_storage_strip();
 
   // Item survolé ce frame (0 = aucun) : pilote l'aperçu de description dessiné
   // après la fenêtre. `hover_idx` sert à retrouver cartes/options du stack.
@@ -1294,7 +1899,9 @@ void StorageWindow::OnRenderUI() {
   // En disposition verticale, c'est le child « corps » qui a déjà réservé la place
   // du footer : la table prend simplement toute sa hauteur.
   const ImVec2 table_size =
-      tabs_vertical_ ? ImVec2(0.0f, 0.0f) : ImVec2(0.0f, body_h);
+      vertical_cats ? ImVec2(0.0f, 0.0f) : ImVec2(0.0f, body_h);
+  table_top_y  = ImGui::GetCursorScreenPos().y;
+  table_left_x = ImGui::GetCursorScreenPos().x;
   if (ImGui::BeginTable("storage_items", ncols, tf, table_size)) {
     ImGui::TableSetupScrollFreeze(0, 1);
     if (show_index_col_)
@@ -1534,15 +2141,35 @@ void StorageWindow::OnRenderUI() {
     }
     ImGui::EndTable();
   }
+
+  // Pont de l'onglet de STORAGE actif : on mange la bordure HAUTE du tableau sur
+  // sa seule largeur. Le blanc de l'onglet, celui des deux pixels d'air et celui
+  // de la liste deviennent alors une seule surface — l'onglet ouvre le contenu
+  // au lieu d'être posé dessus. Les autres restent fermés par la bordure.
+  // 🔴 DESSINÉ ICI, après la table mais AVANT EndChild : en disposition verticale
+  // la table vit dans le child « corps », dont la draw-list passe APRÈS celle de
+  // la fenêtre. Tracé après EndChild — là où le pont des catégories l'est, parce
+  // que son voisin ne peint rien à cet endroit — il finirait SOUS la bordure.
+  if (have_stg_tab) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 body = ro::ListBodyColorU32();
+    if (stg_tab_is_strip)
+      dl->AddRectFilled(ImVec2(stg_tab_max.x - 1.0f, stg_tab_min.y + 1.0f),
+                        ImVec2(table_left_x + 1.0f, stg_tab_max.y - 1.0f), body);
+    else
+      dl->AddRectFilled(ImVec2(stg_tab_min.x + 1.0f, table_top_y - 1.0f),
+                        ImVec2(stg_tab_max.x - 1.0f, table_top_y + 1.0f), body);
+  }
+
   // Fin du child « corps » de la disposition verticale (ouvert au moment des onglets).
-  if (tabs_vertical_) ImGui::EndChild();
+  if (vertical_cats) ImGui::EndChild();
 
   // L'onglet actif « mange » le bord entre le strip et le contenu : petit pont sur
   // son bord droit -> passage continu, ce qui souligne la sélection (recette
   // inventory_viewer). VERTICAL SEULEMENT : en horizontal, ce qui suit la rangée
   // n'est pas un conteneur bordé mais la ligne « Sous-type » / le filtre, et le pont
   // débordait dessus. L'art actif/inactif suffit à marquer la sélection.
-  if (have_active_tab && tabs_vertical_) {
+  if (have_active_tab && vertical_cats) {
     // Mode texte : couleur de l'onglet actif du thème (le fond est peint par nous).
     // Mode images : corps de l'art actif — blanc, sauf Favoris (gris-bleu).
     const ImU32 pont =

@@ -136,3 +136,74 @@ le corriger : plusieurs de leurs règles en dépendent, dont le refus serveur de
 testé par `pc_putitemtocart` / `pc_getitemfromcart`). Les deux passent maintenant
 par `StorageWindow::IsOpen()`, avec repli sur le test natif pour le mode
 classique.
+
+## 8. Onglets de storage (ZC 0x0F1E / CZ 0x0F1D) — 02/08/2026
+
+Le serveur moonlight déclare **six** entrepôts personnels dans
+`conf/import/inter_server.yml` : id 0 « Storage » (table `storage`) et id 1..5
+« Storage Alt 1..5 » (tables `storagealt1..4`, `storagecard`). Ils étaient déjà
+ouvrables, mais **une commande à la fois** : `@storage` et `@storagealt1..5`
+(`src/custom/atcommand.inc`, `ACMD_FUNC(storagealt)` + `ACMD_DEF2`), autorisées
+au groupe `Player` (id 0), donc à tout le monde.
+
+🔴 Ces commandes **ferment** quand un storage est déjà ouvert
+(`storage_flag == 1` -> `storage_storageclose`, `== 3` ->
+`storage_premiumStorage_close`) : elles *togglent*, elles ne basculent pas.
+Changer d'entrepôt coûtait donc deux commandes. C'est ce que les onglets
+suppriment.
+
+### Protocole
+
+| Sens | Opcode | Format |
+|---|---|---|
+| ZC | **0x0F1E** `ZC_BOURGEON_STORAGE_LIST` | `[type:2][len:2][cur_id:1][count:1]` + `count * [id:1][name:24]` |
+| CZ | **0x0F1D** `CZ_BOURGEON_OPEN_STORAGE` | `[type:2][len:2][stor_id:1]`, fixe 5 |
+
+- `cur_id` = storage ouvert, **0xFF** = aucun (envoi au login vérifié).
+- La liste est **filtrée par les droits** : pour chaque id existant
+  (`storage_exists`), le serveur teste `pc_can_use_command(sd, "storage" /
+  "storagealt<N>", COMMAND_ATCOMMAND)`. Onglets et commandes partagent donc
+  exactement la même permission — il n'y a pas de seconde table à tenir.
+- Envoyée depuis `storage_storageopen` (cur=0), `storage_premiumStorage_open`
+  (cur=stor_id) et `clif_bourgeon_grant_verified` (cur=0xFF). Donc **aussi**
+  quand le storage natif est utilisé : le client se contente de mémoriser.
+- ⚠ Toujours émise **en dernier** de son flush : un client Bourgeon d'une version
+  antérieure ne connaît pas 0x0F1E et déclencherait
+  `RecvBuffer_ResetAll_OnUnknownOpcode` (cf. `project_opcode_system`).
+
+### Bascule : c'est la FERMETURE qui nettoie
+
+`clif_parse_bourgeon_open_storage` ferme **toujours** avant d'ouvrir. Deux
+raisons, et la seconde est la plus importante côté client :
+
+1. `storage_storageopen()` et `storage_premiumStorage_load()` refusent tant que
+   `sd->state.storage_flag != 0` (le premier *ferme* même, cf. §2 de
+   `storage.cpp`) ;
+2. la fermeture émet `ZC_CLOSE_STORE` (**0x00f8**), dont le handler NATIF —
+   qu'on laisse tourner, l'opcode est seulement *observé* — **vide le modèle
+   d'items de session** (`g_session+0x1718`). C'est le seul mécanisme qui
+   garantit qu'aucun item de l'entrepôt précédent ne se retrouve dans la liste
+   du suivant.
+
+Côté client, `StorageWindow::switching_` distingue « le serveur a fermé » de
+« je bascule » : pendant une bascule, 0x00f8 ne referme pas le viewer (il
+renaîtrait à sa position par défaut à chaque clic d'onglet), il ne fait
+qu'appeler `ClearStorageData()`. `OnTick` **n'extrait plus** le modèle tant que
+la bascule est en vol — un storage alternatif se charge de façon *asynchrone*
+(`intif_storage_request` vers le char-server), et le modèle contient encore
+l'ancien contenu jusqu'au 0x00f8. Garde-fou de 5 s (`kSwitchTimeoutMs`), sans
+quoi un chargement qui n'aboutit jamais figerait le viewer sur
+« Chargement… ».
+
+### Rendu
+
+Opt-in (`storage_tabs`, défaut OFF). Les onglets sont toujours
+**perpendiculaires** aux onglets de catégorie — colonne à gauche si les
+catégories sont horizontales, rangée en haut si elles sont verticales : deux
+rangées parallèles d'apparence proche se confondraient. Rien n'est dessiné en
+dessous de deux entrepôts accessibles.
+
+Libellé par défaut = le **numéro** du storage. Personnalisation 100 % client
+(clic droit sur l'onglet, ou glisser un item dessus pour reprendre son icône) :
+nom libre + icône d'item, persistés dans `bourgeon_settings.yaml`
+(`storage_tab_custom`). Aucun paquet, aucun état serveur.

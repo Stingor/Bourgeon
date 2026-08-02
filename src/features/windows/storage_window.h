@@ -68,6 +68,16 @@ class StorageWindow : public Plugin {
   bool& show_value_col() { return show_value_col_; }
   bool& show_total_value() { return show_total_value_; }
   bool& show_filter()    { return show_filter_; }
+  // Filtres par TYPE d'item : les onglets de catégorie (Tout / Favoris / Consos
+  // / Armes…) ET le combo « Sous-type » qui en dépend. Décoché, la fenêtre est
+  // une liste unique — comme le champ de filtre, on ne laisse rien de masqué
+  // derrière : la vue repasse à « Tout », sous-catégorie comprise.
+  bool& show_type_tabs() { return show_type_tabs_; }
+  // Onglets de STORAGE (principal / alternatifs) — OPT-IN. La liste vient du
+  // serveur (ZC 0x0F1E, filtrée par ses droits) ; cocher n'ouvre aucun droit, ça
+  // ne fait qu'afficher la rangée. Décoché, tout le reste de la fenêtre est
+  // strictement identique à avant.
+  bool& show_storage_tabs() { return show_storage_tabs_; }
   // Disposition des onglets de catégorie : false = horizontale (TabBar, défaut),
   // true = verticale à gauche (comme la fenêtre native).
   bool& tabs_vertical()  { return tabs_vertical_; }
@@ -96,6 +106,19 @@ class StorageWindow : public Plugin {
     if (it != favorites_.end()) favorites_.erase(it);
     else favorites_.insert(id);
   }
+
+  // Personnalisation 100 % CLIENT des onglets de storage (aucun paquet, aucun
+  // état serveur) : nom libre et icône d'item, par id de storage. Le serveur
+  // envoie « Storage Alt 3 » ; le joueur, lui, sait que c'est son entrepôt à
+  // consommables et veut le voir écrit — ou reconnu à une potion rouge.
+  // Un nom vide = on retombe sur celui du serveur ; icône 0 = libellé texte.
+  // Persisté par MoonlightUi (bourgeon_settings.yaml "storage_tab_custom"),
+  // d'où le public, comme favorites_.
+  struct TabCustom {
+    char     name[25] = {0};
+    uint32_t icon_id  = 0;
+  };
+  std::unordered_map<uint32_t, TabCustom> tab_custom_;
 
   // (Plus de HandleNativeDrop / OnMouseDown : ils accueillaient un drag NATIF venu
   // de l'inventaire ou du cart. « Interface moderne » étant un groupe tout-ou-rien,
@@ -161,6 +184,8 @@ class StorageWindow : public Plugin {
   bool  show_value_col_ = true;    // setting : colonne prix de revente (NPC * qté)
   bool  show_total_value_ = true;  // setting : valeur estimée du storage (en-tête)
   bool  show_filter_ = true;  // setting : afficher le champ de filtre par nom
+  bool  show_storage_tabs_ = false;  // setting (opt-in) : onglets de storage
+  bool  show_type_tabs_ = true;      // setting : onglets de catégorie + sous-type
   bool  tabs_vertical_ = false;  // setting : onglets verticaux à gauche (natif)
   bool  tab_images_ = true;      // setting (vertical) : tuiles images vs texte 90°
   int   cur_tab_ = 0;         // onglet catégorie sélectionné (0 = Tout), persisté
@@ -225,4 +250,41 @@ class StorageWindow : public Plugin {
   char  storage_name_[32] = {0};
   int   item_count_ = 0;      // nb d'items valides dans items_
   Item  items_[kMaxItems];
+
+  // ── Onglets de STORAGE (ZC 0x0F1E / CZ 0x0F1D) ──────────────────────────────
+  // La liste vient du SERVEUR, filtrée par les droits du joueur (les mêmes que
+  // les commandes @storage / @storagealtN). Rien n'est codé en dur ici : ni les
+  // ids, ni les noms, ni leur nombre — ajouter un storage dans inter_server.yml
+  // suffit à le faire apparaître.
+  // (Pas d'abréviation stockée : elle se dérive du nom AFFICHÉ, lequel peut être
+  // celui que le joueur s'est donné — deux sources de vérité pour rien.)
+  struct StorageTab {
+    uint8_t id = 0;
+    char    name[25] = {0};  // NAME_LENGTH serveur (24) + NUL
+  };
+  static constexpr int kMaxStorageTabs = 16;
+  StorageTab stg_tabs_[kMaxStorageTabs];
+  int stg_tab_count_ = 0;
+  int cur_storage_id_ = -1;  // id du storage ouvert (-1 = aucun / pas encore su)
+
+  // 🔴 Bascule en cours. Entre la demande et la nouvelle liste, le serveur FERME
+  // le storage courant (ZC 0x00f8) : c'est voulu — le handler natif de ce paquet
+  // VIDE le modèle d'items de session, seul moyen d'être sûr que rien de
+  // l'ancien storage ne se mélange au suivant. Mais CloseLocal, lui, fermerait
+  // le viewer, qui renaîtrait à sa position par défaut à chaque changement
+  // d'onglet. Ce drapeau distingue donc « le serveur a fermé » de « je bascule ».
+  bool     switching_ = false;
+  uint8_t  switch_target_ = 0;
+  uint32_t switch_tick_ = 0;  // garde-fou : au-delà, la bascule est abandonnée
+  // Envoie CZ_BOURGEON_OPEN_STORAGE et arme la bascule.
+  void SendOpenStorage(uint8_t id);
+  // Vide tout ce qui décrit le CONTENU du storage courant (items, compteur,
+  // action en attente, survol, glisser) sans toucher à la fenêtre ni aux
+  // réglages. Utilisée par la bascule ET par CloseLocal.
+  void ClearStorageData();
+  // Vue à réinitialiser au prochain rendu (filtre par nom + sous-catégorie) :
+  // un filtre tapé pour un storage masquerait tout dans le suivant, ce qui se
+  // lit comme un storage vide. Le filtre est un statique de OnRenderUI, d'où le
+  // drapeau plutôt qu'un appel direct.
+  bool reset_view_ = false;
 };

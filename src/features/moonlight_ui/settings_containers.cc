@@ -172,6 +172,48 @@ void WriteStorageFavorites(YAML::Emitter& out) {
   out << YAML::EndSeq;
 }
 
+void ReadStorageTabCustom(const YAML::Node& ui) {
+  auto* storage = Bourgeon::Instance().storage_window();
+  if (!storage) return;
+  const YAML::Node tabs = ui["storage_tab_custom"];
+  if (!tabs) return;
+  storage->tab_custom_.clear();
+  for (const YAML::Node& entry : tabs) {
+    const uint32_t id = entry["id"].as<uint32_t>(0xFFFFFFFFu);
+    if (id > 0xFF) continue;  // id de storage : un uint8 côté serveur
+    StorageWindow::TabCustom custom;
+    const std::string name = entry["name"].as<std::string>("");
+    std::snprintf(custom.name, sizeof(custom.name), "%s", name.c_str());
+    custom.icon_id = entry["icon"].as<uint32_t>(0);
+    // Entrée sans effet (ni nom ni icône) : ne pas la recharger, sinon le yaml
+    // accumule des lignes vides au fil des popups simplement ouverts.
+    if (!custom.name[0] && custom.icon_id == 0) continue;
+    storage->tab_custom_[id] = custom;
+  }
+}
+
+void WriteStorageTabCustom(YAML::Emitter& out) {
+  auto* storage = Bourgeon::Instance().storage_window();
+  out << YAML::Key << "storage_tab_custom" << YAML::Value << YAML::BeginSeq;
+  if (storage) {
+    // Triés par id : yaml stable d'une sauvegarde à l'autre (unordered_map).
+    std::vector<uint32_t> ids;
+    ids.reserve(storage->tab_custom_.size());
+    for (const auto& entry : storage->tab_custom_) ids.push_back(entry.first);
+    std::sort(ids.begin(), ids.end());
+    for (const uint32_t id : ids) {
+      const StorageWindow::TabCustom& custom = storage->tab_custom_[id];
+      if (!custom.name[0] && custom.icon_id == 0) continue;  // rien à retenir
+      out << YAML::Flow << YAML::BeginMap;
+      out << YAML::Key << "id" << YAML::Value << id;
+      out << YAML::Key << "name" << YAML::Value << custom.name;
+      out << YAML::Key << "icon" << YAML::Value << custom.icon_id;
+      out << YAML::EndMap;
+    }
+  }
+  out << YAML::EndSeq;
+}
+
 void ReadSkinAndPresets(const YAML::Node& ui) {
   ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
   // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une

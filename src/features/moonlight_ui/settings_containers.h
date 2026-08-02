@@ -33,6 +33,11 @@ void WriteInventoryLayout(YAML::Emitter& out);
 void ReadStorageFavorites(const YAML::Node& ui);
 void WriteStorageFavorites(YAML::Emitter& out);
 
+// Onglets d'entrepôt personnalisés : id de storage -> nom libre + icône d'item
+// (client seul ; le serveur, lui, n'envoie que ses propres noms).
+void ReadStorageTabCustom(const YAML::Node& ui);
+void WriteStorageTabCustom(YAML::Emitter& out);
+
 // Skin RO : la configuration vivante (clés « ro_skin_* ») ET les presets nommés.
 // Les deux partagent le même format, d'où la même paire de fonctions.
 // ⚠ `rounding` n'est PAS persisté dans les presets, et l'y ajouter changerait le
