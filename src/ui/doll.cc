@@ -1,5 +1,7 @@
 #include "ui/doll.h"
 
+#include <Windows.h>  // lstrcpynA + SEH autour de la table native
+
 #include <cstdio>
 #include <cstring>
 
@@ -90,16 +92,61 @@ bool LoadPiece(const char* base, const char* pal, Piece* p) {
   return p->loaded;
 }
 
-// Chemin d'une coiffe. `view_id` est l'id d'accessoire (0 = rien).
+// ── Nom de fichier d'un accessoire ───────────────────────────────────────────
 //
-// ⚠ NON IMPLÉMENTÉ pour l'instant : le nom de fichier d'un accessoire vient de
-// `accessoryid.lub` / `accname.lub`, que le client charge au boot. Il faut
-// passer par sa table Lua, pas par une copie figée — une liste recopiée
-// diverge au premier costume ajouté. Rend false en attendant, donc les coiffes
-// sont simplement absentes du pantin.
-bool HeadgearBasePath(int /*view_id*/, int /*sex*/, char* /*out*/,
-                      size_t /*out_size*/) {
-  return false;
+// Table peuplée au boot depuis `accessoryid.lub` / `accname.lub`. On la LIT
+// directement plutôt que d'appeler `Job_GetHeadgearResName` (0x00d81480), qui
+// n'est qu'un accès à ce même tableau enrobé dans un `std::string` — et
+// l'interop std::string avec le natif est ce qui plantait au char-select.
+//
+// La fonction fait `*(this + 5286*4)` / `*(this + 5287*4)` sur
+// g_UIWindowContextKey (0x015FA3C0), soit un `std::vector<char*>` dont les
+// bornes sont ci-dessous ; l'entrée est un `char*` CP949.
+//
+// 🔴 Rester sur la table NATIVE et ne jamais recopier la liste : elle vient des
+// .lub, qu'un patcheur peut remplacer. Une copie figée divergerait au premier
+// costume ajouté.
+constexpr uintptr_t kHeadgearNamesBegin = 0x015FF658;
+constexpr uintptr_t kHeadgearNamesEnd   = 0x015FF65C;
+
+bool HeadgearResName(int view_id, char* out, size_t out_size) {
+  if (view_id <= 0 || !out || out_size == 0) return false;
+  out[0] = '\0';
+  bool ok = false;
+  __try {
+    char** begin = *reinterpret_cast<char***>(kHeadgearNamesBegin);
+    char** end   = *reinterpret_cast<char***>(kHeadgearNamesEnd);
+    if (begin && end > begin && view_id < static_cast<int>(end - begin)) {
+      const char* name = begin[view_id];
+      if (name && *name) {
+        lstrcpynA(out, name, static_cast<int>(out_size));
+        ok = out[0] != '\0';
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  return ok;
+}
+
+// Gabarit du client : `악세사리\%s\%s%s.%s` = `악세사리\<sexe>\<sexe><nom>.<ext>`.
+// ⚠ Pas de séparateur entre le sexe et le nom : le nom de la table porte DÉJÀ
+// son « _ » initial (`_비틀눈` -> `여_비틀눈.spr`).
+constexpr uintptr_t kFmtHeadgear = 0x01088A9C;
+
+// Chemin VFS d'une coiffe, SANS extension. `view_id` = id d'accessoire.
+bool HeadgearBasePath(int view_id, int sex, char* out, size_t out_size) {
+  char name[128];
+  if (!HeadgearResName(view_id, name, sizeof(name))) return false;
+
+  const char* sex_tok = SexToken(sex);
+  char tail[256];
+  std::snprintf(tail, sizeof(tail),
+                reinterpret_cast<const char*>(kFmtHeadgear), sex_tok, sex_tok,
+                name, "spr");
+  const size_t n = std::strlen(tail);
+  if (n > 4) tail[n - 4] = '\0';  // retire « .spr »
+
+  std::snprintf(out, out_size, "data\\sprite\\%s\\%s", kRaceHuman, tail);
+  return true;
 }
 
 }  // namespace
