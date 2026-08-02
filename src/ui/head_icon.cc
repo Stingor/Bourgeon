@@ -61,7 +61,7 @@ void PalettePathFor(int color, char* out, size_t out_size) {
 }  // namespace
 
 bool DrawHeadIcon(ImDrawList* draw_list, float x, float y, float box, int hair,
-                  int sex, int hair_color) {
+                  int sex, int hair_color, bool allow_upscale) {
   if (!draw_list || box <= 1.0f || hair < 0) return false;
 
   char base[256];
@@ -77,12 +77,11 @@ bool DrawHeadIcon(ImDrawList* draw_list, float x, float y, float box, int hair,
   if (!LoadSpriteRecolored(base, pal[0] ? pal : nullptr, &res)) return false;
 
   // Action 0 = de face. Cadence nulle = figé sur la première image : c'est une
-  // vignette de liste, elle n'a pas à cligner des yeux. `allow_upscale` false :
-  // une tête RO fait ~30 px, l'étirer la rendrait floue — sprite_view la centre
-  // alors dans le carré en gardant ses proportions.
+  // vignette, elle n'a pas à cligner des yeux. sprite_view garde les proportions
+  // et centre dans le carré.
   return DrawSprite(draw_list, res, ImVec2(x, y), ImVec2(x + box, y + box),
                     /*anim_seconds=*/0.0f, /*action=*/0, /*ms_per_frame=*/0.0f,
-                    /*allow_upscale=*/false, /*alpha=*/1.0f);
+                    allow_upscale, /*alpha=*/1.0f);
 }
 
 }  // namespace ro

@@ -69,12 +69,16 @@ std::unordered_map<std::string, std::unique_ptr<Entry>> g_cache;
 std::deque<std::string> g_cache_order;  // entrées CHARGÉES, du plus ancien au plus récent
 size_t g_cache_bytes = 0;
 
-// ⚠ On borne les OCTETS, pas seulement le nombre d'entrées. Les deux extrêmes
-// existent : une tête de personnage fait quelques kilo-octets, un grand monstre
-// plusieurs méga-octets. Un plafond en nombre seul serait soit ruineux en RAM,
-// soit trop bas pour une liste de guilde — qui affiche vingt coiffures
-// différentes et re-analyserait un .spr par image à chaque déchargement.
-constexpr size_t kMaxCached   = 64;
+// ⚠ Le vrai garde-fou est le nombre d'OCTETS, pas celui des entrées. Les deux
+// extrêmes existent : une tête de personnage fait quelques kilo-octets, un grand
+// monstre plusieurs méga-octets — un plafond en nombre seul serait soit ruineux
+// en RAM, soit absurdement bas pour des sprites minuscules.
+//
+// Le compte ne sert donc que de borne de bon sens, et il est réglé large exprès :
+// la grille de coiffures du char-select en affiche 80, une liste de guilde une
+// vingtaine. Trop bas, il ferait re-analyser des .spr pendant un simple
+// défilement.
+constexpr size_t kMaxCached   = 128;
 constexpr size_t kCacheBudget = 48u * 1024u * 1024u;
 
 size_t DecodedBytes(const spract::Resource& r) {

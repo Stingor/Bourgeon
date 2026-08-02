@@ -1,6 +1,6 @@
-#include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
+#include "ui/head_icon.h"
 #include "features/windows/char_select.h"
 
 #include "ragnarok/uiwnd.h"
@@ -26,10 +26,6 @@
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
-
-// DX7/DX9 : le proxy ddraw pose ce flag ; il sélectionne l'offset du handle texture
-// natif dans CTexture (0x128 DX7 / 0x12c DX9). Défini dans proxy_idirectdraw.cc.
-extern bool g_imgui_dx7_active;
 
 namespace {
 
@@ -324,178 +320,9 @@ const char* LocalToUtf8(const char* s) { return ro::LocalToUtf8(s); }
 // le fil (le nom à la création). Même mutualisation que ci-dessus.
 const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 
-// ── Icônes de coiffure : rendu DIRECT du .spr (comme le make-char natif) ─────────
-// Recette RE (agent IDA + capture x32dbg sur make_character_ver2) : le natif ne fait
-// PAS de doll — il charge 인간족\머리통\<genre>\<id>_<genre>.spr/.act via le loader
-// ressource, prend une frame et la dessine. On réplique EXACTEMENT le mécanisme de
-// login_parade (spr+act -> Act_GetFrame -> plus grande cellule -> atlas -> texture DX9
-// -> AddImage). Léger, budget/cache gérés par l'atlas natif. Cf. login_parade.cc.
-namespace hairicon {
-// Format-strings NATIVES (CP949, adresses confirmées) : "%d" = id de coiffure brut.
-constexpr uintptr_t kFmtSprF = 0x0108F9BC;  // 인간족\머리통\여\%d_여.spr (femelle)
-constexpr uintptr_t kFmtActF = 0x0108F9A0;  // …\여\%d_여.act
-constexpr uintptr_t kFmtSprM = 0x0108F9F4;  // 인간족\머리통\남\%d_남.spr (mâle)
-constexpr uintptr_t kFmtActM = 0x0108F9D8;  // …\남\%d_남.act
-constexpr int       kCTexDX9Handle  = 0x12c;
-constexpr int       kCTexDX7Handle  = 0x128;
-using TexMgrGetFn   = void* (__cdecl*)();
-using MakeKeyFn     = void* (__cdecl*)(const char*);
-using LoadResFn     = void* (__fastcall*)(void*, void*, void*);
-using ActGetFrameFn = void* (__fastcall*)(void*, void*, unsigned, unsigned);
-using AtlasFn       = void* (__fastcall*)(void*, void*, void*, int, int*);
-
-struct Entry { int hair = -1, sex = -1; void* spr = nullptr; void* act = nullptr; };
-constexpr int kCacheN = 64;   // >= 43 styles : la grille tient sans thrash
-Entry g_cache[kCacheN];
-int   g_next = 0;
-
-// Charge (ou récupère) le sprite+action d'une coiffure. SEH : ressource manquante /
-// GRF -> spr/act nul (l'appelant met un placeholder), jamais de crash.
-Entry* Ensure(int hair, int sex) {
-  for (int i = 0; i < kCacheN; ++i)
-    if (g_cache[i].hair == hair && g_cache[i].sex == sex) return &g_cache[i];
-  char sp[160], ap[160];
-  std::snprintf(sp, sizeof(sp),
-                reinterpret_cast<const char*>(sex ? kFmtSprM : kFmtSprF), hair);
-  std::snprintf(ap, sizeof(ap),
-                reinterpret_cast<const char*>(sex ? kFmtActM : kFmtActF), hair);
-  void* spr = nullptr;
-  void* act = nullptr;
-  __try {
-    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
-    spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sp));
-    act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(ap));
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    spr = nullptr;
-    act = nullptr;
-  }
-  Entry& e = g_cache[g_next];
-  g_next = (g_next + 1) % kCacheN;
-  e.hair = hair;
-  e.sex = sex;
-  e.spr = spr;
-  e.act = act;
-  return &e;
-}
-
-// Résout la plus grande cellule de la frame 0 (action 0 = idle sud, de face) en
-// texture atlas + UV. Ré-résolu chaque frame (le handle de page survit au device
-// reset). Copie fidèle de login_parade::ResolveQuad, restreinte à la frame idle.
-bool Resolve(Entry* e, void** out_tex, ImVec2* uv0, ImVec2* uv1, float* cw, float* ch,
-             bool dx7, void* pal_override = nullptr) {
-  if (!e || !e->spr || !e->act) return false;
-  const int handle_off = dx7 ? kCTexDX7Handle : kCTexDX9Handle;
-  bool ok = false;
-  __try {
-    void* frame =
-        reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(e->act, nullptr, 0, 0);
-    if (!frame) return false;
-    char* fr = reinterpret_cast<char*>(frame);
-    char* lbegin = *reinterpret_cast<char**>(fr + 0x20);
-    char* lend = *reinterpret_cast<char**>(fr + 0x24);
-    const int nlayers = static_cast<int>((lend - lbegin) / 0x24);
-    if (nlayers <= 0 || nlayers > 64) return false;
-    char* spr = reinterpret_cast<char*>(e->spr);
-    void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
-    void* best = nullptr;
-    ImVec2 b0, b1;
-    float bw = 0.0f, bh = 0.0f;
-    long best_area = -1;
-    for (int i = 0; i < nlayers; ++i) {
-      int* L = reinterpret_cast<int*>(lbegin + i * 0x24);
-      const int sprNo = L[2], sprType = L[8];
-      if (sprNo < 0 || sprType >= 2) continue;
-      const int cellBase = *reinterpret_cast<int*>(spr + 0x510 + sprType * 0xc);
-      const int cellEnd = *reinterpret_cast<int*>(spr + 0x514 + sprType * 0xc);
-      if (static_cast<unsigned>(sprNo) >=
-          static_cast<unsigned>((cellEnd - cellBase) >> 2))
-        continue;
-      short* cell = *reinterpret_cast<short**>(cellBase + sprNo * 4);
-      if (!cell) continue;
-      // Palette de l'atlas : celle EMBARQUÉE du sprite (spr+0x110) par défaut, ou une
-      // palette de COULEUR fournie (head_<N>.pal, cf. ColorPalette) pour recolorer.
-      const int palette = pal_override
-          ? static_cast<int>(reinterpret_cast<uintptr_t>(pal_override))
-          : static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
-      int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(atlas, nullptr, cell,
-                                                             palette, geom);
-      if (!ctex)
-        ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(atlas, nullptr, cell, palette,
-                                                     geom);
-      if (!ctex) continue;
-      const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);
-      if (area > best_area) {
-        best_area = area;
-        best = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + handle_off);
-        bw = static_cast<float>(cell[0]);
-        bh = static_cast<float>(cell[1]);
-        b0 = ImVec2(*reinterpret_cast<float*>(&geom[3]),
-                    *reinterpret_cast<float*>(&geom[4]));
-        b1 = ImVec2(*reinterpret_cast<float*>(&geom[5]),
-                    *reinterpret_cast<float*>(&geom[6]));
-      }
-    }
-    if (best) {
-      *out_tex = best;
-      *uv0 = b0;
-      *uv1 = b1;
-      *cw = bw;
-      *ch = bh;
-      ok = true;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return false;
-  }
-  return ok;
-}
-
-// ── Palette de COULEUR de cheveux N ─────────────────────────────────────────────
-// Fichier GRF `palette\머리\head_<N>.pal` (머리 = octets CP949 B8 D3 B8 AE), une palette
-// 256×RGBA par couleur. Chargé via le MÊME resource manager que les .spr/.act
-// (ro::texmgr::kMakeKey/ro::texmgr::kLoad) -> objet CPaletteRes dont la table est à +0x110 (RE
-// CPaletteRes_Load 0x00725b60 : lit 0x400 o dans this+0x110). On renvoie l'adresse de
-// cette table, à passer comme `palette` à l'atlas (exactement comme spr+0x110) pour
-// RECOLORER la coupe. ⚠ Chemin bâti au snprintf, ZÉRO std::string / builder natif —
-// c'était l'interop std::string qui plantait (edi corrompu ; cf. mémoire charselect).
-// Cache par couleur (pointeur de ressource, comme hairicon::Ensure met en cache spr/act).
-struct PalEntry { int color = -1; void* pal = nullptr; };
-constexpr int kPalCacheN = 64;
-PalEntry g_palcache[kPalCacheN];
-int g_palnext = 0;
-
-void* ColorPalette(int color) {
-  if (color < 0) return nullptr;
-  for (int i = 0; i < kPalCacheN; ++i)
-    if (g_palcache[i].color == color) return g_palcache[i].pal;
-
-  void* paldata = nullptr;
-  __try {
-    char path[64];
-    // "palette\" + 머리(B8 D3 B8 AE) + "\head_<N>.pal"
-    std::snprintf(path, sizeof(path), "palette\\\xB8\xD3\xB8\xAE\\head_%d.pal", color);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
-    void* res = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(path));
-    // ⚠ CPaletteRes garde le BRUT (RGBA) à +0x110 et la palette CONVERTIE (format
-    // 16-bit du moteur, via sub_566770 à la charge) à +0x510. L'atlas/le sprite
-    // utilisent la CONVERTIE (spr+0x110 d'un CSprite EST déjà convertie). On pointe
-    // donc +0x510, sinon couleurs en bouillie.
-    if (res) paldata = reinterpret_cast<char*>(res) + 0x510;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    paldata = nullptr;
-  }
-
-  PalEntry& e = g_palcache[g_palnext];
-  g_palnext = (g_palnext + 1) % kPalCacheN;
-  e.color = color;
-  e.pal = paldata;
-  return paldata;
-}
-}  // namespace hairicon
+// Les icônes de coiffure sont désormais rendues par ui/head_icon.h — même
+// sprite, même table de remap des 12 coupes historiques, même palette de
+// couleur, mais via notre propre parseur .spr/.act. Cf. CharSelect::DrawHairIcon.
 
 template <typename T>
 T Read(const void* base, int off) {
@@ -993,33 +820,20 @@ void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
 }
 
 void CharSelect::DrawHairIcon(int hair, float x, float y, float sz, int color_override) {
-  // Icône de coiffure = frame du .spr natif (sexe courant), ajustée à la case en
-  // gardant le ratio, centrée. Rien dessiné tant que le sprite n'est pas prêt.
-  // `color_override` >= 0 : recolore la coupe avec la palette head_<N>.pal (swatches).
-  // Remap legacy des 12 coiffures historiques : id de coiffure -> n° de fichier .spr.
-  // Le rendu JEU applique cette table (préservée par le patch WARP Allow65kHairs pour les
-  // index < 43, identité au-delà) ; on la RÉPLIQUE ici pour que l'icône = le doll = le
-  // rendu en jeu (WYSIWYG). ⚠ On n'envoie JAMAIS ce fichier : create_hair_ (id brut) part
-  // au serveur, qui le stocke et laisse le client ré-appliquer la table. Vérifié à l'œil
-  // (1↔2, 3→7/6→3/7→6, 4↔5, 11↔12 ; 8/9/10 et 13+ identité). Cf. mémoire charselect_imgui.
-  static const int kHairFile[13] = {0, 2, 1, 7, 5, 4, 3, 6, 8, 9, 10, 12, 11};
-  const int file = (hair >= 1 && hair <= 12) ? kHairFile[hair] : hair;
-
-  void* tex = nullptr;
-  ImVec2 uv0, uv1;
-  float cw = 0.0f, ch = 0.0f;
-  hairicon::Entry* e = hairicon::Ensure(file, create_sex_);
-  void* pal_override =
-      (color_override >= 0) ? hairicon::ColorPalette(color_override) : nullptr;
-  if (hairicon::Resolve(e, &tex, &uv0, &uv1, &cw, &ch, g_imgui_dx7_active, pal_override) &&
-      tex && cw >= 1.0f && ch >= 1.0f) {
-    const float s = (sz / cw < sz / ch) ? sz / cw : sz / ch;
-    const float w = cw * s, h = ch * s;
-    ImGui::GetWindowDrawList()->AddImage(
-        reinterpret_cast<ImTextureID>(tex),
-        ImVec2(x + (sz - w) * 0.5f, y + (sz - h) * 0.5f),
-        ImVec2(x + (sz + w) * 0.5f, y + (sz + h) * 0.5f), uv0, uv1);
-  }
+  // Icône de coiffure = le sprite de tête, ajusté à la case en gardant le ratio
+  // et centré. Rien dessiné tant que le sprite n'est pas prêt.
+  // `color_override` >= 0 : recolore la coupe avec la palette head_<N>.pal.
+  //
+  // ⚠ `hair` part BRUT. Le remap des 12 coiffures historiques (id -> n° de
+  // FICHIER .spr) vit dans ro::DrawHeadIcon, qui le fait pour tous ses
+  // appelants — le dupliquer ici ferait diverger l'icône du reste de l'UI.
+  // Et on n'envoie JAMAIS de n° de fichier : create_hair_ (id brut) part au
+  // serveur, qui le stocke et laisse le client ré-appliquer la table.
+  //
+  // allow_upscale : une vignette de grille doit remplir sa case, contrairement
+  // à la tête d'une ligne de liste qu'on ne fait que réduire.
+  ro::DrawHeadIcon(ImGui::GetWindowDrawList(), x, y, sz, hair, create_sex_,
+                   color_override, /*allow_upscale=*/true);
 }
 
 void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
@@ -1975,9 +1789,10 @@ void CharSelect::OnRenderLoginUI() {
 
     // ── Couleur : grille de VIGNETTES « ma coupe en couleur N » ─────────────────
     // Chaque case = la coiffure SÉLECTIONNÉE, recolorée par la palette head_<N>.pal
-    // (GRF, cf. hairicon::ColorPalette) — WYSIWYG fidèle, pipeline d'icônes sûr (même
-    // chemin que la grille de coiffures, zéro std::string). Seules les cases VISIBLES
-    // chargent/recolorent (IsRectVisible) -> pas de saturation atlas. Clic = sélection.
+    // du GRF — WYSIWYG fidèle, même chemin que la grille de coiffures. Seules les
+    // cases VISIBLES chargent et recolorent (IsRectVisible) : le .spr n'est
+    // analysé qu'une fois, mais chaque teinte coûte ses propres textures.
+    // Clic = sélection.
     ImGui::Text("Couleur (%d)", create_hair_color_);
     const float sw = 22.0f;               // taille vignette (réduite)
     const int sw_cols = 20;               // 20 colonnes (fenêtre élargie d'autant)

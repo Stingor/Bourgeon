@@ -23,8 +23,14 @@ namespace ro {
 // cheveux `hair_color`, -1 = palette d'origine du sprite) tenant dans un carré de
 // `box` pixels dont le coin haut-gauche est (x, y) en coordonnées ÉCRAN. Le
 // sprite garde ses proportions et est centré dans le carré.
+//
+// `allow_upscale` autorise l'AGRANDISSEMENT quand la tête est plus petite que la
+// case. Les deux réglages ont leur emploi : sur une ligne de liste (hauteur de
+// texte) on ne fait que RÉDUIRE, tandis qu'une grille de sélection de coiffure
+// veut des vignettes qui remplissent leur case.
+//
 // Renvoie false si la ressource manque (rien n'est dessiné).
 bool DrawHeadIcon(ImDrawList* draw_list, float x, float y, float box, int hair,
-                  int sex, int hair_color);
+                  int sex, int hair_color, bool allow_upscale = false);
 
 }  // namespace ro
