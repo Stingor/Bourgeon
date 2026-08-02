@@ -231,12 +231,11 @@ const char* BossLabel(uint8_t boss) {
 }
 
 // ── Compétences de monstre ───────────────────────────────────────────────────
-// Le paquet ne transporte QUE (skill_id, skill_lv) : le nom et la description
-// sont côté client, et c'est très bien — ils y sont localisés.
-//
 // Nom : wrapper Lua natif `GetSkillName(id)` (`__cdecl`), la source qu'utilisent
-// la fenêtre de skills et le tooltip natif. Rend « Unknown-Skill » sur un id
-// inconnu — on retombe alors sur « #id », qui reste une information.
+// la fenêtre de skills et le tooltip natif — localisée, donc préférée. Mais elle
+// ne couvre que les compétences de JOUEUR et rend « Unknown-Skill » sur tout le
+// reste : les `NPC_*` d'un monstre n'y sont pas. 🔴 C'est pour cela que le
+// paquet transporte AUSSI le nom vu par skill_db (serveur), en repli.
 // Description : la fenêtre native 0x2E, pilotée par l'id BRUT (pas un
 // ItemSkillInfo, contrairement aux objets) — même chemin que la feuille de
 // personnage, cf. `CharacterSheet::OpenSkillDesc`.
@@ -447,21 +446,33 @@ void MonsterInfoWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   if (need(1)) {
     const uint8_t count = u8();
     for (uint8_t i = 0; i < count; ++i) {
-      if (!need(4)) break;
+      if (!need(5)) break;  // [id:2][lv:2][namelen:1]
       MobSkill s;
       s.id = u16();
       s.lv = u16();
-      // 🔴 Filtre à l'ENTRÉE : une compétence que le client ne sait pas nommer
-      // est écartée ici, pas au rendu. mob_db contient des entrées de contrôle
-      // d'IA (NPC_EMOTION, NPC_*_ATTACK…) et des skills custom sans entrée Lua ;
-      // les afficher sous forme d'« id brut » ne renseigne personne et laisse
-      // croire à un défaut d'affichage. Écarter ici garde aussi le compteur de
-      // l'onglet — « Skills (n) » — cohérent avec ce qu'on montre vraiment.
+      const uint8_t namelen = u8();
+      if (!need(namelen)) break;
+      // Nom du SERVEUR (skill_db : `desc`, sinon l'AegisName). ASCII, tel quel.
+      std::string from_server(reinterpret_cast<const char*>(p), namelen);
+      p += namelen;
+
+      // 🔴 AUCUNE compétence n'est écartée. Trois sources, par ordre de
+      // préférence : le nom du client (localisé, celui de la fenêtre de skills),
+      // puis celui du serveur, puis l'id brut. Le client ne sait nommer que les
+      // compétences de JOUEUR — les `NPC_*`, qui font l'essentiel de l'arsenal
+      // d'un monstre, ne vivent que dans skill_db côté serveur.
       char cp949[128] = {0};
-      if (!SkillNameCp949(s.id, cp949, sizeof(cp949))) continue;
-      const char* utf8 = ro::LocalToUtf8(cp949);
-      s.name = (utf8 && *utf8) ? utf8 : cp949;
-      if (s.name.empty()) continue;
+      s.client_named = SkillNameCp949(s.id, cp949, sizeof(cp949));
+      if (s.client_named) {
+        const char* utf8 = ro::LocalToUtf8(cp949);
+        s.name = (utf8 && *utf8) ? utf8 : cp949;
+      }
+      if (s.name.empty()) s.name = from_server;
+      if (s.name.empty()) {
+        char fallback[32];
+        _snprintf_s(fallback, sizeof(fallback), _TRUNCATE, "#%u", s.id);
+        s.name = fallback;
+      }
       m.skills.push_back(std::move(s));
     }
   }
@@ -1019,8 +1030,8 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
-    // Les noms sont déjà résolus (au décodage du paquet) et les compétences
-    // innommables déjà écartées : il ne reste ici qu'à trier et à afficher.
+    // Les noms sont déjà résolus (au décodage du paquet) : il ne reste ici qu'à
+    // trier et à afficher.
     std::vector<const MobSkill*> view;
     view.reserve(mob.skills.size());
     for (const MobSkill& s : mob.skills) view.push_back(&s);
@@ -1045,6 +1056,16 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
     for (const MobSkill* s : view) {
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
+      // Seules les compétences que le CLIENT connaît sont cliquables : la
+      // description vient de sa fenêtre native 0x2E, qui n'a rien à dire d'un id
+      // qu'elle ignore. Les autres s'affichent en texte simple — elles sont
+      // listées, elles ne mentent juste pas sur ce qu'un clic donnerait.
+      if (!s->client_named) {
+        ImGui::TextUnformatted(s->name.c_str());
+        ImGui::TableNextColumn(); ImGui::Text("%u", s->lv);
+        ImGui::TableNextColumn(); Label("%u", s->id);
+        continue;
+      }
       const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
       ImGui::TextColored(kLink, "%s", s->name.c_str());
       if (ImGui::IsItemHovered()) {

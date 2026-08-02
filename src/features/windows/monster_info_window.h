@@ -97,12 +97,15 @@ class MonsterInfoWindow : public Plugin {
   struct MobSkill {
     uint16_t    id = 0;
     uint16_t    lv = 0;
-    // Nom résolu par le client (Lua `GetSkillName`), en UTF-8. 🔴 Une entrée
-    // dont le nom ne se résout PAS n'entre jamais dans cette liste : afficher
-    // « compétence #482 » n'apprend rien au joueur et ne fait que l'interroger.
-    // La résolution a donc lieu au décodage du paquet, pas au rendu — c'est elle
-    // qui décide du contenu de l'onglet, donc de son compteur et de sa présence.
+    // Nom affiché, UTF-8, résolu au décodage du paquet. Trois sources par ordre
+    // de préférence : le client (Lua `GetSkillName`, localisé), le serveur
+    // (skill_db `desc`, qui voyage dans le paquet), l'id brut. 🔴 Aucune entrée
+    // n'est écartée : le client ne sait nommer que les compétences de JOUEUR, et
+    // les filtrer là-dessus faisait disparaître toutes les `NPC_*` de la fiche.
     std::string name;
+    // Le client connaît-il cette compétence ? Lui seul porte les descriptions
+    // (fenêtre native 0x2E) : sinon, la ligne n'est pas cliquable.
+    bool        client_named = false;
   };
 
   // La fiche renvoyée par ZC 0x0F20. Les champs suivent l'ordre du paquet.
