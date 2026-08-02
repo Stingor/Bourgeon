@@ -366,6 +366,13 @@ void* Overlay_CreateTextureARGB(const void* argb, int w, int h) {
     return D3D9_CreateTextureARGB(argb, w, h);
 }
 
+// Both backends hand back an IUnknown-derived object, so Release covers both
+// without having to remember which renderer created it.
+void Overlay_ReleaseTexture(void* tex) {
+    if (!tex) return;
+    static_cast<IUnknown*>(tex)->Release();
+}
+
 // ── Post-processing pipeline ──────────────────────────────────────────────────
 // Fullscreen post effects on the game's rendered frame, applied in Present before
 // the overlay. The client renders straight to the default backbuffer (X8R8G8B8,

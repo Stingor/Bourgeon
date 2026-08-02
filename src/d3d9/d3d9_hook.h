@@ -20,6 +20,14 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h);
 // both modes. Returns an ImTextureID-compatible void* (or nullptr).
 void* Overlay_CreateTextureARGB(const void* argb, int w, int h);
 
+// Releases a texture made by Overlay_CreateTextureARGB. Both backends return an
+// IUnknown-derived object (IDirect3DTexture9 / IDirectDrawSurface7), so one entry
+// point covers them. Call this when a CACHE drops an entry while the device is
+// still alive — a plugin that browses many sprites would otherwise leak a texture
+// per image it ever showed. Do NOT call it on entries dropped because
+// Overlay_DeviceEpoch() changed: those belong to a device that is already gone.
+void Overlay_ReleaseTexture(void* tex);
+
 // Monotonic counter bumped every time the D3D9 device is reset or recreated
 // (Reset / ResetEx / CreateDevice / CreateDeviceEx). Textures made via
 // Overlay_CreateTextureARGB live in D3DPOOL_DEFAULT and belong to a specific
