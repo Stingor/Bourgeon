@@ -336,13 +336,22 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
         !LoadPiece(list[i].alt, list[i].pal, &piece))
       continue;
 
+    // 🔴 Un accessoire joue son animation de REPOS, pas la pose du corps.
+    // Faire défiler les images de la pose assise d'une coiffe la fait TOURNER
+    // sur elle-même : ces images-là portent des angles de calque propres à la
+    // pose, ce n'est pas l'animation décorative attendue. On reste donc sur le
+    // mouvement 0 (repos), dans la direction courante — soit l'action 0 quand
+    // le pantin est de face.
+    const unsigned piece_pose =
+        list[i].animate ? static_cast<unsigned>(dir & 7) : pose;
+
     // Chaque accessoire suit SA propre cadence, déclarée par son .act : deux
     // coiffes n'ont aucune raison de battre au même rythme.
     unsigned pf = 0;
     if (list[i].animate && anim_seconds >= 0.0f)
-      pf = SpriteFrameIndex(piece.res, pose, anim_seconds,
+      pf = SpriteFrameIndex(piece.res, piece_pose, anim_seconds,
                             /*ms_per_frame=*/150.0f);
-    pf = PieceFrame(piece.res, pose, pf);
+    pf = PieceFrame(piece.res, piece_pose, pf);
 
     // L'ancre est celle de l'image DESSINÉE : sur une coiffe animée, elle peut
     // bouger d'une image à l'autre, et c'est ce qui fait vivre la pièce.
@@ -351,7 +360,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // c'est le test du natif, et sans lui on recale une pièce sur une ancre qui
     // ne la concerne pas.
     if (body_anchored &&
-        SpriteFrameAnchor(piece.res, pose, pf, &ax, &ay, &attr) &&
+        SpriteFrameAnchor(piece.res, piece_pose, pf, &ax, &ay, &attr) &&
         attr == body_attr) {
       last_dx = static_cast<float>(body_ax - ax);
       last_dy = static_cast<float>(body_ay - ay);
@@ -359,11 +368,12 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
 
     // Cadrage : on mesure la pièce sur son image 0, jamais sur l'image animée.
     SpriteQuad ref[kMaxQuads];
-    const int rn = SpriteResolveFrame(piece.res, pose, 0, ref, kMaxQuads);
+    const int rn = SpriteResolveFrame(piece.res, piece_pose, 0, ref, kMaxQuads);
     if (rn > 0) grow(ref, rn, last_dx, last_dy);
 
     SpriteQuad tmp[kMaxQuads];
-    const int m = SpriteResolveFrame(piece.res, pose, pf, tmp, kMaxQuads - n);
+    const int m =
+        SpriteResolveFrame(piece.res, piece_pose, pf, tmp, kMaxQuads - n);
     if (m <= 0) continue;
     for (int k = 0; k < m; ++k) {
       for (int c = 0; c < 4; ++c) {
