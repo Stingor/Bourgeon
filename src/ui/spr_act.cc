@@ -218,9 +218,16 @@ bool DecodePalette(const uint8_t* pal, size_t size, uint32_t out[256]) {
   // transparent — et lui seul. C'est la convention RO, et c'est
   // `Pal.FormatMode.NoTransparencyExceptFirstPixel` de la référence. S'en
   // remettre à l'alpha du fichier rendrait la plupart des sprites invisibles.
-  for (int i = 0; i < 256; ++i) {
-    const uint32_t a = (i == 0) ? 0u : 0xFFu;
-    out[i] = (a << 24) | (static_cast<uint32_t>(pal[4 * i + 0]) << 16) |
+  //
+  // 🔴 L'index 0 sort NOIR transparent, pas « sa couleur en transparent ».
+  // Son entrée de palette porte une couleur bien réelle — souvent un vert vif —
+  // et un texel transparent participe quand même au FILTRAGE : dès qu'un sprite
+  // est mis à une échelle non entière, cette couleur bave sur la silhouette et
+  // dessine un halo. Le halo était vert parce que la palette RO l'est ; le
+  // mettre à zéro le supprime pour tous les consommateurs à la fois.
+  out[0] = 0x00000000u;
+  for (int i = 1; i < 256; ++i) {
+    out[i] = 0xFF000000u | (static_cast<uint32_t>(pal[4 * i + 0]) << 16) |
              (static_cast<uint32_t>(pal[4 * i + 1]) << 8) |
              static_cast<uint32_t>(pal[4 * i + 2]);
   }

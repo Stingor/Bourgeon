@@ -180,9 +180,24 @@ bool HeadgearResName(int view_id, char* out, size_t out_size) {
 constexpr uintptr_t kFmtHeadgear = 0x01088A9C;
 
 // Chemin VFS d'une coiffe, SANS extension. `view_id` = id d'accessoire.
-bool HeadgearBasePath(int view_id, int sex, char* out, size_t out_size) {
+//
+// `lower` demande la variante en MINUSCULES du nom d'accessoire. La table donne
+// « _C_Avenger » mais le GRF contient « 남_c_avenger.spr » : la casse ne suit
+// aucune règle d'un costume à l'autre. L'implémentation de référence (le site
+// Moonlight) fait la même chose — nom tel quel, puis strtolower.
+//
+// ⚠ On n'abaisse QUE le nom d'accessoire, qui est de l'ASCII. Abaisser le
+// chemin entier corromprait les octets CP949 : le SECOND octet d'un caractère
+// coréen peut tomber dans la plage 'A'-'Z', et le passer en minuscule change le
+// caractère.
+bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
+                      size_t out_size) {
   char name[128];
   if (!HeadgearResName(view_id, name, sizeof(name))) return false;
+  if (lower) {
+    for (char* p = name; *p; ++p)
+      if (*p >= 'A' && *p <= 'Z') *p = static_cast<char>(*p - 'A' + 'a');
+  }
 
   const char* sex_tok = SexToken(sex);
   char tail[256];
@@ -225,13 +240,16 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // ── Les pièces rapportées, dans l'ordre de dessin ─────────────────────────
   // Tête puis coiffes : bas, milieu, haut. Chacune s'accroche au CORPS (pas en
   // cascade) — c'est ce que fait le natif pour les parties 1 à 3.
-  struct Attached { char base[352]; char pal[128]; };
+  // `alt` = chemin de SECOURS, essayé si le premier ne donne rien (casse du nom
+  // d'accessoire). Vide = pas de secours.
+  struct Attached { char base[352]; char alt[352]; char pal[128]; };
   Attached list[kMaxPieces];
   int list_n = 0;
 
   if (list_n < kMaxPieces &&
       HeadSpriteBasePath(look.hair, look.sex, list[list_n].base,
                          sizeof(list[list_n].base))) {
+    list[list_n].alt[0] = '\0';
     list[list_n].pal[0] = '\0';
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, list[list_n].pal,
@@ -241,9 +259,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   const int gear[3] = {look.head_low, look.head_mid, look.head_top};
   for (int g = 0; g < 3 && list_n < kMaxPieces; ++g) {
     if (gear[g] <= 0) continue;
-    if (!HeadgearBasePath(gear[g], look.sex, list[list_n].base,
+    if (!HeadgearBasePath(gear[g], look.sex, /*lower=*/false, list[list_n].base,
                           sizeof(list[list_n].base)))
       continue;
+    HeadgearBasePath(gear[g], look.sex, /*lower=*/true, list[list_n].alt,
+                     sizeof(list[list_n].alt));
     list[list_n].pal[0] = '\0';
     ++list_n;
   }
@@ -255,7 +275,9 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
 
   for (int i = 0; i < list_n && n < kMaxQuads; ++i) {
     Piece piece;
-    if (!LoadPiece(list[i].base, list[i].pal, &piece)) continue;
+    if (!LoadPiece(list[i].base, list[i].pal, &piece) &&
+        !LoadPiece(list[i].alt, list[i].pal, &piece))
+      continue;
 
     SpriteQuad tmp[kMaxQuads];
     const int m = SpriteResolveFrame(piece.res, pose, frame, tmp,
