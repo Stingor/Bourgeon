@@ -60,6 +60,20 @@ void PalettePathFor(int color, char* out, size_t out_size) {
 
 }  // namespace
 
+bool HeadSpriteBasePath(int hair, int sex, char* out, size_t out_size) {
+  if (!out || out_size == 0 || hair < 0) return false;
+  out[0] = '\0';
+  BasePathFor(HairFile(hair), sex ? 1 : 0, out, out_size);
+  return out[0] != '\0';
+}
+
+bool HairPalettePath(int color, char* out, size_t out_size) {
+  if (!out || out_size == 0 || color < 0) return false;
+  out[0] = '\0';
+  PalettePathFor(color, out, out_size);
+  return out[0] != '\0';
+}
+
 bool DrawHeadIcon(ImDrawList* draw_list, float x, float y, float box, int hair,
                   int sex, int hair_color, bool allow_upscale) {
   if (!draw_list || box <= 1.0f || hair < 0) return false;
