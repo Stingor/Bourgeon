@@ -48,6 +48,16 @@ int SpriteActionFrameCount(const SpriteRes& res, unsigned action);
 // constante en dur rend la plupart des sprites trop lents.
 float SpriteFrameIntervalMs(const SpriteRes& res, unsigned action);
 
+// Index de l'image affichée à l'instant `anim_seconds`, pour les MÊMES
+// paramètres que `DrawSprite` — et par le même calcul, donc la même image.
+//
+// C'est ce qu'il faut pour caler autre chose que le dessin sur l'animation : un
+// son d'image, par exemple, ne doit se déclencher qu'au CHANGEMENT d'image, et
+// sur celle qui est vraiment à l'écran. Recalculer la cadence de son côté ferait
+// dériver le son du dessin dès que le .act déclare la sienne.
+unsigned SpriteFrameIndex(const SpriteRes& res, unsigned action,
+                          float anim_seconds, float ms_per_frame = 130.0f);
+
 // Nom du fichier son attaché à (action, frame), ou nullptr s'il n'y en a pas.
 //
 // ⚠ La table de sons d'un .act contient AUSSI des marqueurs d'animation, pas

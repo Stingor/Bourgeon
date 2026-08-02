@@ -3,11 +3,11 @@
 #include "features/plugin.h"
 
 // LoginParade — fait flâner une petite bande de monstres de la famille Poring
-// sur l'écran de login. Purement cosmétique : les sprites .spr/.act sont chargés
-// via le système de ressources natif (même chemin éprouvé que le Poring de
-// [[roggle]]) et dessinés en ImGui par-dessus le fond de login natif —
-// aucun acteur en scène, aucun monde/terrain requis (l'atlas de sprites est
-// valide dès le boot, pas seulement en jeu).
+// sur l'écran de login. Purement cosmétique : les .spr/.act passent par
+// ui/mob_sprite.h (donc notre propre parseur, ui/spr_act.h) et sont dessinés en
+// ImGui par-dessus le fond de login natif — aucun acteur en scène, aucun
+// monde/terrain requis, et plus rien qui dépende de l'atlas de sprites du
+// client ni de la disposition mémoire de ses objets.
 //
 // Comportement : chaque Poring sautille d'un bord à l'autre à sa hauteur, fait
 // des pauses, se retourne aux bords ; un clic de souris dessus le fait sursauter

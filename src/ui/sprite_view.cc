@@ -104,6 +104,36 @@ Entry* Acquire(const char* base_path) {
   return raw;
 }
 
+// Cadence déclarée par le .act, en ms par image. 0 = absente ou aberrante.
+float DeclaredIntervalMs(const Entry* e, unsigned action) {
+  if (!e || action >= e->res.actions.size()) return 0.0f;
+  const float ms = e->res.actions[action].speed * kActDelayTickMs;
+  // Bornes de bon sens : un .act corrompu ne doit ni figer l'animation ni la
+  // faire clignoter à la fréquence de rafraîchissement.
+  return (ms > 1.0f && ms < 10000.0f) ? ms : 0.0f;
+}
+
+// L'image à afficher pour une horloge donnée. UN seul exemplaire de ce calcul :
+// le dessin et le son d'image doivent tomber sur la même.
+unsigned FrameIndexFor(const Entry* e, unsigned action, float anim_seconds,
+                       float ms_per_frame) {
+  if (!e || action >= e->res.actions.size()) return 0;
+  const int frames = static_cast<int>(e->res.actions[action].frames.size());
+  if (frames <= 1 || ms_per_frame <= 0.0f) return 0;  // cadence nulle = figé
+  // La cadence DÉCLARÉE par le .act prime sur celle demandée par l'appelant :
+  // elle est propre à l'action et varie beaucoup d'un sprite à l'autre. Le
+  // paramètre ne sert plus que d'interrupteur (0 = figé) et de repli.
+  if (const float declared = DeclaredIntervalMs(e, action))
+    ms_per_frame = declared;
+  const float cycle = frames * (ms_per_frame / 1000.0f);
+  float t = std::fmod(anim_seconds, cycle);
+  if (t < 0.0f) t += cycle;
+  int idx = static_cast<int>(t / cycle * frames);
+  if (idx < 0) idx = 0;
+  if (idx >= frames) idx = frames - 1;
+  return static_cast<unsigned>(idx);
+}
+
 // ── Un calque résolu, prêt à dessiner ────────────────────────────────────────
 //
 // On garde les QUATRE COINS, pas un rectangle : la rotation du calque fait
@@ -224,12 +254,13 @@ int SpriteActionFrameCount(const SpriteRes& res, unsigned action) {
 }
 
 float SpriteFrameIntervalMs(const SpriteRes& res, unsigned action) {
-  const Entry* e = static_cast<const Entry*>(res.res);
-  if (!e || action >= e->res.actions.size()) return 0.0f;
-  const float ms = e->res.actions[action].speed * kActDelayTickMs;
-  // Bornes de bon sens : un .act corrompu ne doit ni figer l'animation ni la
-  // faire clignoter à la fréquence de rafraîchissement.
-  return (ms > 1.0f && ms < 10000.0f) ? ms : 0.0f;
+  return DeclaredIntervalMs(static_cast<const Entry*>(res.res), action);
+}
+
+unsigned SpriteFrameIndex(const SpriteRes& res, unsigned action,
+                          float anim_seconds, float ms_per_frame) {
+  return FrameIndexFor(static_cast<const Entry*>(res.res), action, anim_seconds,
+                       ms_per_frame);
 }
 
 namespace {
@@ -275,21 +306,8 @@ bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
   if (frames <= 0) return false;
 
   // Image courante. Une cadence <= 0 fige l'animation sur la première image.
-  unsigned frame_index = 0;
-  if (frames > 1 && ms_per_frame > 0.0f) {
-    // La cadence DÉCLARÉE par le .act prime sur celle demandée par l'appelant :
-    // elle est propre à l'action et varie beaucoup d'un sprite à l'autre. Le
-    // paramètre ne sert plus que d'interrupteur (0 = figé) et de repli.
-    if (const float declared = SpriteFrameIntervalMs(res, action))
-      ms_per_frame = declared;
-    const float cycle = frames * (ms_per_frame / 1000.0f);
-    float t = std::fmod(anim_seconds, cycle);
-    if (t < 0.0f) t += cycle;
-    int idx = static_cast<int>(t / cycle * frames);
-    if (idx < 0) idx = 0;
-    if (idx >= frames) idx = frames - 1;
-    frame_index = static_cast<unsigned>(idx);
-  }
+  const unsigned frame_index =
+      FrameIndexFor(e, action, anim_seconds, ms_per_frame);
 
   ResolvedLayer layers[kMaxDrawLayers];
   const int n = ResolveFrameLayers(e, action, frame_index, layers,
