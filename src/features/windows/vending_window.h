@@ -323,6 +323,14 @@ class VendingWindow : public Plugin {
   // Quantité à poser, par ligne de `avail_`. Indexée comme `avail_` et recalée à
   // chaque Refresh (la liste bouge à chaque pose/retrait).
   std::vector<int> avail_qty_;
+  // Pose depuis la GRILLE : une tuile n'a pas de champ où saisir la quantité, on
+  // la demande dans une petite fenêtre surgissante — c'est aussi ce que fait le
+  // natif quand on glisse une pile. -1 = aucune demande en cours.
+  // On mémorise l'index SOURCE du lot (Row::index, l'index dans le cart) et non
+  // son rang : `avail_` est reconstruite à chaque Refresh, et une pose ou un
+  // retrait la réordonne — un rang mémorisé désignerait alors un autre objet.
+  int grid_ask_src_ = -1;
+  int grid_ask_qty_ = 0;
   int  prices_[kMaxRows] = {0};   // prix unitaire saisi, par ligne
   int  amounts_[kMaxRows] = {0};  // quantité voulue (échoppe d'achat uniquement)
   // Import en cours : le natif recharge le snapshot (lecture disque) et repose les

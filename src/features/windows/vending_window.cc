@@ -100,6 +100,9 @@ constexpr float kColQty   = 56.0f;   // échoppe d'achat uniquement
 constexpr float kAvailStock = 46.0f;
 constexpr float kAvailQty   = 56.0f;
 constexpr float kAvailAct   = 52.0f;
+// Champ « combien en poser » de la fenêtre surgissante du mode grille : assez
+// large pour un lot à quatre chiffres plus les deux flèches d'InputInt.
+constexpr float kAskFieldW  = 120.0f;
 constexpr float kNameLabelW = 45.0f;
 // Taille d'ouverture seulement (ImGuiCond_FirstUseEver) : ensuite c'est au joueur.
 constexpr float kComposeW = 560.0f;
@@ -2297,11 +2300,13 @@ void VendingWindow::OnRenderUI() {
         // Une tuile par lot, l'icône à sa taille naturelle et la quantité en
         // badge — c'est itemcell::DrawTile qui fait les deux, comme la grille de
         // l'inventaire.
-        // Pas de champ quantité ici : elle vaut le LOT ENTIER par défaut, ce qui
-        // est aussi ce que fait le natif (poser une pile la retire entièrement des
-        // disponibles — un index d'inventaire ne peut figurer qu'une fois dans une
-        // échoppe). Qui veut n'en vendre qu'une partie repasse en mode liste, où la
-        // quantité s'édite sur la ligne ; le glisser reprend alors cette valeur.
+        // La tuile n'a pas de champ quantité : on la DEMANDE après le geste (cf.
+        // grid_ask_src_), exactement comme le natif ouvre une boîte de saisie
+        // quand on y glisse une pile. En vente la pose est bien PARTIELLE — la
+        // liste des disponibles n'est décrémentée que de la quantité posée, le
+        // reste continue de s'afficher et peut être ajouté plus tard (le natif
+        // cumule alors dans la ligne existante). Le « une seule fois » ne vaut
+        // que pour l'échoppe d'ACHAT (kBsMirrorMode).
         constexpr float kTile = 32.0f;
         const float step = kTile + ImGui::GetStyle().ItemSpacing.x;
         const float availw = ImGui::GetContentRegionAvail().x;
@@ -2436,7 +2441,9 @@ void VendingWindow::OnRenderUI() {
       }
     }
     if (rows == 0) {
-      ImGui::TextDisabled("Choisis un objet ci-dessus et clique « Poser ».");
+      ImGui::TextDisabled(compose_grid_
+                              ? "Glisse un objet ci-dessus, ou double-clique-le."
+                              : "Choisis un objet ci-dessus et clique « Poser ».");
     } else {
       const int cols = buying_ ? 6 : 5;
       // Mêmes règles que le panneau du haut : « Objet » s'étire, les colonnes
@@ -2473,7 +2480,8 @@ void VendingWindow::OnRenderUI() {
           ImGui::Text("%d", r.amount);
 
           // En échoppe d'ACHAT le joueur choisit combien il veut acheter ; en
-          // vente c'est tout le lot posé (le natif n'a pas de champ quantité).
+          // vente la quantité est FIXÉE À LA POSE (comme le natif) : pour en
+          // vendre plus, on repose du même objet, la ligne cumule.
           if (buying_) {
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(-1.0f);
@@ -2506,11 +2514,65 @@ void VendingWindow::OnRenderUI() {
 
     // Application différée (voir plus haut) : une seule mutation par frame.
     if (place_index >= 0) {
-      const int q = (place_index < static_cast<int>(avail_qty_.size()))
-                        ? avail_qty_[place_index] : 0;
-      PlaceItem(place_index, q);
+      const Row& a = avail_[place_index];
+      // En GRILLE, le geste ne dit pas COMBIEN : on ouvre la demande, et la pose
+      // attend la réponse. Une unité seule ne mérite pas la question.
+      if (compose_grid_ && a.amount > 1) {
+        grid_ask_src_ = a.index;
+        grid_ask_qty_ = a.amount;
+        ImGui::OpenPopup("##qte_pose");
+      } else if (compose_grid_) {
+        PlaceItem(place_index, a.amount);
+      } else {
+        const int q = (place_index < static_cast<int>(avail_qty_.size()))
+                          ? avail_qty_[place_index] : 0;
+        PlaceItem(place_index, q);
+      }
     } else if (take_row >= 0) {
       TakeBackItem(take_row);
+    }
+
+    // ── Combien en poser ? (mode grille) ──────────────────────────────────────
+    // Le lot est retrouvé par son index SOURCE : entre l'ouverture et la
+    // validation, `avail_` a pu être reconstruite et réordonnée.
+    if (grid_ask_src_ >= 0) {
+      int rank = -1;
+      for (int i = 0; i < static_cast<int>(avail_.size()); ++i)
+        if (avail_[i].index == grid_ask_src_) { rank = i; break; }
+      if (rank < 0) {
+        grid_ask_src_ = -1;  // le lot a disparu du stock : plus rien à demander
+      } else if (ImGui::BeginPopup("##qte_pose")) {
+        const Row& a = avail_[rank];
+        ImGui::TextUnformatted(a.desc.name[0] ? a.desc.name
+                                              : itemcell::NameById(a.desc.id));
+        ImGui::TextDisabled("Reste : %d", a.amount);
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(kAskFieldW);
+        // Le champ prend le focus au premier passage : la quantité est la seule
+        // chose à saisir, et Entrée valide — le geste se termine au clavier.
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        const bool entered = ImGui::InputInt(
+            "##qte_grille", &grid_ask_qty_, 1, 10,
+            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (grid_ask_qty_ > a.amount) grid_ask_qty_ = a.amount;
+        if (grid_ask_qty_ < 1) grid_ask_qty_ = 1;
+        if (ro::RoSmallButton("Tout")) grid_ask_qty_ = a.amount;
+        ImGui::SameLine();
+        const bool ok = ro::RoSmallButton("Poser") || entered;
+        ImGui::SameLine();
+        if (ro::RoSmallButton("Annuler")) {
+          grid_ask_src_ = -1;
+          ImGui::CloseCurrentPopup();
+        } else if (ok) {
+          const int qty = grid_ask_qty_;
+          grid_ask_src_ = -1;
+          ImGui::CloseCurrentPopup();
+          PlaceItem(rank, qty);
+        }
+        ImGui::EndPopup();
+      } else {
+        grid_ask_src_ = -1;  // fermée en cliquant ailleurs = renoncement
+      }
     }
 
     // ── Totaux ──
