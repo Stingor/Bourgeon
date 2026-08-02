@@ -336,6 +336,10 @@ class VendingWindow : public Plugin {
   // non calculée, parce que le pied grandit avec les messages (plafond de zeny,
   // ligne de blocage, champ de limite en échoppe d'achat).
   float compose_footer_h_ = 0.0f;
+  // Hauteur dont le panneau des objets POSÉS a réellement besoin, mesurée elle
+  // aussi à la frame précédente : les lignes portent des icônes, leur hauteur ne
+  // se déduit pas du texte. Tout ce qu'il ne prend pas revient au stock.
+  float compose_rows_content_h_ = 0.0f;
   int  prices_[kMaxRows] = {0};   // prix unitaire saisi, par ligne
   int  amounts_[kMaxRows] = {0};  // quantité voulue (échoppe d'achat uniquement)
   // Import en cours : le natif recharge le snapshot (lecture disque) et repose les

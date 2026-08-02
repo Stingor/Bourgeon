@@ -53,9 +53,6 @@ constexpr int kOffMyShopList = 0xE8;   // même famille -> même offset de liste
 // d'ACHAT en revanche, c'est bien un état : ce qu'il reste à dépenser.
 constexpr int kOffMyShopLastSale = 0xF0;
 constexpr int kOffMyShopMode = 0x100;  // 0 = vente, != 0 = échoppe d'achat
-// Case « Notify when item sells out » : même commande que la case de la fenêtre de
-// composition (c'est le même widget de base), état dans son propre global.
-constexpr uintptr_t kNotifyFlag = 0x015FFFB4;
 // Bouton « close ». ⚠ Il ne se contente PAS de fermer : sauf cas particulier, il
 // dispatche CMode::SendMsg 81 (vente) / 270 (achat) — c'est-à-dire qu'il FERME LA
 // BOUTIQUE. D'où un libellé explicite et une confirmation côté ImGui.
@@ -107,6 +104,14 @@ constexpr float kNameLabelW = 45.0f;
 // Taille d'ouverture seulement (ImGuiCond_FirstUseEver) : ensuite c'est au joueur.
 constexpr float kComposeW = 560.0f;
 constexpr float kComposeH = 430.0f;
+// Plancher de redimensionnement. En dessous, la fenêtre ne peut plus rien
+// montrer d'utile : les colonnes chiffrées sont à largeur FIXE (prix, total,
+// bouton), donc sous ~430 px la colonne « Objet » se réduit à rien ; et en
+// hauteur il faut le nom, deux panneaux à quelques lignes, les totaux et la
+// rangée de boutons. La fenêtre ne défilant plus, trop petite = contenu perdu
+// et non plus simplement à faire défiler.
+constexpr float kComposeMinW = 430.0f;
+constexpr float kComposeMinH = 300.0f;
 
 // Vente à un buying store : MÊME raisonnement que la composition, et pour une
 // raison encore plus visible ici — les trois listes se vident et se remplissent
@@ -504,12 +509,6 @@ void ReadSnapshotName(char* out, size_t cap) {
       out[size] = '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-bool NotifyOn() {
-  __try {
-    return *reinterpret_cast<uint8_t*>(kNotifyFlag) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // Ligne brute lue dans la liste native. POD : traversable sous __try.
@@ -1667,36 +1666,16 @@ void VendingWindow::OnRenderUI() {
         ImGui::Text(myshop_buying_ ? "Fonds disponibles : %s z"
                                    : "Encaissé : %s z", zbuf);
 
-        // Case native, basculée PAR le natif (cmd 213) pour qu'il garde son état
-        // persistant cohérent, et relue chez lui.
-        //
-        // ⚠ LIBELLÉ CORRIGÉ. Le nom natif — MsgString 2642 « Notify when item
-        // sells out » en vente, 2698 « Notify when item purchased » en échoppe
-        // d'achat — décrit mal ce que fait le drapeau : les deux handlers de
-        // rapport de transaction (0x00C9D710 vente, 0x00C9DC60 achat) se
-        // contentent de jouer effect\ef_steal.wav à CHAQUE transaction, épuisé
-        // ou non. La clé de traduction le dit d'ailleurs : MSI_SOUNDEFFECT_*.
-        // D'où « son à chaque vente » : le joueur qui coche « prévenir quand un
-        // objet est épuisé » attend un message à l'épuisement, et n'en aura
-        // jamais — c'est ce qui donne l'impression que la case ne fait rien.
-        //
-        // ⚠ Le natif MASQUE cette case dans les DEUX modes depuis cette version
-        // (0x0095A9A0, appelée juste après MakeWindow 0x2D comme 0xB0 : elle
-        // fait SetVisible(case, false) ET remet le drapeau à 0), et pose à la
-        // place le bouton « fermer le shop ». On la ressuscite donc sciemment.
+        // ⛔ PAS de case « Notify when item sells out » ici, et ce n'est pas un
+        // oubli : le natif l'a lui-même RETIRÉE des deux modes (0x0095A9A0,
+        // appelée juste après MakeWindow 0x2D comme 0xB0, fait SetVisible(case
+        // +0x104, false) et remet g_MyShopNotifySellOut à 0). Son libellé mentait
+        // de surcroît — les deux handlers de rapport (0x00C9D710 vente,
+        // 0x00C9DC60 achat) ne font que jouer effect\ef_steal.wav à CHAQUE
+        // transaction, épuisé ou non, et aux coordonnées monde 0,0,0 plutôt qu'à
+        // la position du joueur. La ressusciter n'apportait qu'une promesse non
+        // tenue. Cf. project_vending_window_re.
         const int myshop_id = myshop_buying_ ? kWinMyShopBuying : kWinMyShop;
-        bool notify = NotifyOn();
-        if (ro::RoCheckbox(myshop_buying_ ? "Son à chaque achat"
-                                          : "Son à chaque vente", &notify))
-          QueueCommand(myshop_id, kCmdSafeChk);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(
-              "Option native « %s » : elle ne prévient de rien, elle joue\n"
-              "effect\\ef_steal.wav à chaque transaction.\n"
-              "⚠ Le client la joue aux coordonnées monde 0,0,0 et non à ta\n"
-              "position : si tu n'entends rien, c'est de là que ça vient.",
-              myshop_buying_ ? "Notify when item purchased"
-                             : "Notify when item sells out");
 
         // ⚠ Le « close » natif ne ferme pas que la fenêtre : il dispatche
         // CMode::SendMsg 81 (vente) / 270 (achat), c'est-à-dire qu'il MET FIN à la
@@ -2283,6 +2262,8 @@ void VendingWindow::OnRenderUI() {
   // sont les DEUX panneaux ci-dessous ; le nom, les totaux et les boutons
   // restent visibles en toute circonstance.
   ImGui::SetNextWindowSize(ImVec2(kComposeW, kComposeH), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(kComposeMinW, kComposeMinH),
+                                      ImVec2(FLT_MAX, FLT_MAX));
   if (ro::BeginRoWindow(title, &show_panel_,
                         ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_NoScrollbar |
@@ -2320,15 +2301,27 @@ void VendingWindow::OnRenderUI() {
         ImGui::SetTooltip("Affiche le stock en grille d'icônes, comme le client "
                           "d'origine.\nLe glisser fonctionne dans les deux modes.");
     }
-    // Panneau défilant : le stock proposable peut faire cent objets. Six lignes
-    // par défaut, mais jamais plus de la moitié de ce qui reste — sinon, sur une
-    // fenêtre rapetissée, il mangerait la place des objets posés, qui ne
-    // pourraient plus défiler nulle part (la fenêtre, elle, ne défile pas).
+    // Répartition de la hauteur entre les deux panneaux défilants.
+    //
+    // Le SURPLUS va au stock, pas aux objets posés : ces derniers sont bornés
+    // par les emplacements (12 en vente, 5 en achat) et n'ont donc jamais besoin
+    // de plus que leur contenu, tandis que le cart peut aligner cent lots. Une
+    // part fixe donnait le résultat inverse — quatre lignes de stock visibles au
+    // milieu d'un grand panneau « Dans le shop » vide.
+    //
+    // La hauteur qu'il FAUT aux objets posés est mesurée à la frame précédente
+    // (même procédé que le pied de page) : elle dépend de la hauteur réelle des
+    // lignes, qui portent des icônes et non du simple texte.
     const float line_h = ImGui::GetTextLineHeightWithSpacing();
-    const float body_h = ImGui::GetContentRegionAvail().y - compose_footer_h_;
-    float pane_h = line_h * 6.0f;
-    if (pane_h > body_h * 0.5f) pane_h = body_h * 0.5f;
-    if (pane_h < line_h * 2.0f) pane_h = line_h * 2.0f;
+    const float panes_h =
+        ImGui::GetContentRegionAvail().y - compose_footer_h_ - line_h;
+    const float pane_min = line_h * 4.0f;   // stock : moins, ça ne se consulte plus
+    const float rows_min = line_h * 3.0f;   // posés : de quoi voir l'invite
+    float rows_want = compose_rows_content_h_;
+    if (rows_want < rows_min) rows_want = rows_min;
+    if (rows_want > panes_h - pane_min) rows_want = panes_h - pane_min;
+    float pane_h = panes_h - rows_want;
+    if (pane_h < pane_min) pane_h = pane_min;
     if (ImGui::BeginChild("##dispo", ImVec2(-1.0f, pane_h),
                           ImGuiChildFlags_Borders)) {
       if (avail == 0) {
@@ -2557,6 +2550,10 @@ void VendingWindow::OnRenderUI() {
         ImGui::EndTable();
       }
     }
+    // Hauteur qu'il aurait fallu à ce panneau, pour la répartition de la frame
+    // suivante. Le cadre l'entoure des deux côtés, d'où la marge comptée deux fois.
+    compose_rows_content_h_ =
+        ImGui::GetCursorPosY() + ImGui::GetStyle().WindowPadding.y;
     ImGui::EndChild();
     // Tout ce qui suit est le PIED DE PAGE, mesuré ici pour la frame suivante.
     const float footer_y0 = ImGui::GetCursorPosY();
