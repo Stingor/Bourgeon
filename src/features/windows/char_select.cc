@@ -338,6 +338,19 @@ const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 // À passer à false pour comparer les deux rendus côte à côte.
 constexpr bool kUseOwnDollComposer = true;
 
+// ⚠ Sans ça, on ne peut PAS savoir lequel des deux a dessiné : quand le
+// composeur échoue, le repli rend un pantin correct et l'écran est identique.
+// Une ligne par chemin et par session, pas une par image (25 pantins par frame).
+void LogDollEngine(bool own, const char* what) {
+  static bool said_own = false, said_fallback = false;
+  bool& said = own ? said_own : said_fallback;
+  if (said) return;
+  said = true;
+  LogDiag("[CharSelect] pantin {} : {}", what,
+          own ? "composeur maison (ui/doll.h)"
+              : "REPLI capture (BasicInfo::RenderDoll)");
+}
+
 template <typename T>
 T Read(const void* base, int off) {
   T v{};
@@ -795,6 +808,7 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     dl.head_mid      = v.head_mid;
     drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
                          /*dir=*/0, /*anim=*/2, /*frame=*/0, tint);
+    if (drawn) LogDollEngine(true, "banquet");
   }
   if (!drawn) {
     if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
@@ -810,6 +824,7 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
       look.head_mid      = v.head_mid;
       look.garment       = v.garment;
       drawn = bi->RenderDoll(look, x, y, w, dh, /*dir=*/0, /*anim=*/2, tint);
+      if (drawn) LogDollEngine(false, "banquet");
     }
   }
   if (!drawn) {
