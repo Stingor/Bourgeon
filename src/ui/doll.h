@@ -35,6 +35,10 @@ namespace ro {
 struct DollLook {
   int sex = 0;            // 0 = femme, 1 = homme (DÉJÀ résolu, jamais 99)
   int job = 0;            // id de classe
+  // Style de corps (CHARACTER_INFO +0x58). 🔴 C'est LUI qui choisit le sprite
+  // de corps, pas `job` : le natif résout la paire (job, body) en une classe de
+  // corps, où `job` ne sert plus qu'à décider bébé / variante alternative.
+  int body = 0;
   int hair = 0;           // id de coiffure BRUT (le remap est fait ici)
   int hair_color = -1;    // -1 = palette d'origine du sprite
   int clothes_color = -1; // -1 = palette d'origine du sprite

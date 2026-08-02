@@ -800,6 +800,7 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     ro::DollLook dl;
     dl.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
     dl.job           = v.job;
+    dl.body          = v.body;  // 🔴 c'est LUI qui choisit le sprite de corps
     dl.hair          = v.hair;
     dl.hair_color    = v.hair_color;
     dl.clothes_color = v.clothes_color;

@@ -6,7 +6,6 @@
 #include <cstring>
 
 #include "ui/head_icon.h"
-#include "ui/mob_sprite.h"
 #include "ui/sprite_view.h"
 
 namespace ro {
@@ -47,6 +46,54 @@ constexpr const char kBodyPalFolder[] = "\xB8\xF6";  // 몸
 
 const char* SexToken(int sex) { return sex ? kSexMale : kSexFemale; }
 
+// ── Nom de SPRITE du corps ───────────────────────────────────────────────────
+//
+// 🔴 PAS `Job_GetDisplayNameOrResName`. Celui-là rend le nom de RESSOURCE pour
+// un monstre (sex = -1) mais le nom D'AFFICHAGE pour un personnage : on
+// obtenait « High Wizard », « White Smith », « Novice » — des libellés d'IHM,
+// avec espaces, qui ne désignent aucun fichier. Tous les pantins échouaient.
+//
+// Le bon chemin est celui de `Job_BuildBodySpritePath` (0x00b43af0) :
+//   1. `Job_ResolveBodyClass(job, body, 1)` -> index de classe de corps ;
+//   2. ce même index dans le tableau de noms lu par `sub_D81560` (0x00d81560).
+//
+// ⚠ C'est le BODY STYLE qui choisit le sprite ; `job` ne sert qu'à décider
+// bébé / variante alternative. Passer `job` comme index donnait déjà un nom
+// plausible pour les classes ordinaires, et faux dès qu'un style est posé.
+//
+// `sub_D81560` n'est qu'un accès à ce tableau enrobé dans un std::string — on
+// lit donc le tableau, comme pour les coiffes : pas d'interop std::string.
+// Bornes = g_UIWindowContextKey (0x015FA3C0) + 5277*4 et + 5278*4.
+constexpr uintptr_t kJobResolveBodyClass = 0x00D99150;
+constexpr uintptr_t kBodyResNamesBegin   = 0x015FF634;
+constexpr uintptr_t kBodyResNamesEnd     = 0x015FF638;
+
+using ResolveBodyClassFn = int(__stdcall*)(int job, int body, char sub3950);
+
+bool BodyResName(int job, int body, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  bool ok = false;
+  __try {
+    // Le 3e argument à 1 retranche 3950 au résultat : c'est ce qui transforme
+    // un id de classe 4xxx en index de tableau.
+    const int cls = reinterpret_cast<ResolveBodyClassFn>(kJobResolveBodyClass)(
+        job, body, 1);
+    char** begin = *reinterpret_cast<char***>(kBodyResNamesBegin);
+    char** end   = *reinterpret_cast<char***>(kBodyResNamesEnd);
+    // 🔴 `sub_D81560` ne borne PAS son index — on le fait, sinon une classe
+    // inconnue lit hors du vecteur.
+    if (begin && end > begin && cls >= 0 && cls < static_cast<int>(end - begin)) {
+      const char* name = begin[cls];
+      if (name && *name) {
+        lstrcpynA(out, name, static_cast<int>(out_size));
+        ok = out[0] != '\0';
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  return ok;
+}
+
 // Chemin VFS du corps, SANS extension.
 //
 // 🔴 `data\sprite\`, PAS `data\` : le gabarit du client est relatif à la racine
@@ -55,7 +102,7 @@ const char* SexToken(int sex) { return sex ? kSexMale : kSexFemale; }
 // puisqu'on les court-circuite.
 bool BodyBasePath(const DollLook& look, char* out, size_t out_size) {
   char job[128] = {0};
-  if (!JobResName(look.job, look.sex, job, sizeof(job))) return false;
+  if (!BodyResName(look.job, look.body, job, sizeof(job))) return false;
 
   const char* sex = SexToken(look.sex);
   char tail[256];
