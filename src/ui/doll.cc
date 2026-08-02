@@ -207,7 +207,11 @@ bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
   const size_t n = std::strlen(tail);
   if (n > 4) tail[n - 4] = '\0';  // retire « .spr »
 
-  std::snprintf(out, out_size, "data\\sprite\\%s\\%s", kRaceHuman, tail);
+  // 🔴 PAS de préfixe de race ici. Le corps vit sous `인간족\몸통\…`, mais les
+  // accessoires sont directement sous `sprite\악세사리\…` — vérifié dans le GRF.
+  // Le gabarit du client porte déjà tout ce qu'il faut ; lui ajouter `인간족\`
+  // rendait toutes les coiffes introuvables.
+  std::snprintf(out, out_size, "data\\sprite\\%s", tail);
   return true;
 }
 
