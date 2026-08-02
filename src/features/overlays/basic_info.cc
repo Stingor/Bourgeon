@@ -1,6 +1,7 @@
 #include "ragnarok/lua.h"
 #include "ragnarok/render.h"
 #include "ragnarok/globals.h"
+#include "ui/doll.h"  // aperçu d'article : pantin COMPOSÉ (remplace la capture)
 #include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
@@ -2218,48 +2219,66 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
     s_dir = (s_dir + (wheel > 0.0f ? 1 : 7)) & 7;  // +1 / -1 avec wrap
     ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenêtre
   }
-  CaptureItemPreviewActor(view_id, slot, s_dir);
-  if (g_pv_count <= 0) return;
-  // Régions TÊTE (visage/cheveux/hat, RGBA) et CORPS (palette), + bbox totale
-  // (pour l'échelle). head_region posé par le hook (act_layer[8]!=0).
-  float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
-  float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;
-  float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
-  bool has_head = false, has_body = false;
-  for (int i = 0; i < g_pv_count; ++i) {
-    const CapLayer& L = g_pv_caps[i];
-    const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
-    const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
-    if (lx0 < minx) minx = lx0;  if (lx1 > maxx) maxx = lx1;
-    if (ly0 < miny) miny = ly0;  if (ly1 > maxy) maxy = ly1;
-    if (L.head_region) {
-      has_head = true;
-      if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
-      if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
-    } else {
-      has_body = true;
-      if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
-      if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
+  // ── Quel moteur pour le pantin ? ─────────────────────────────────────────
+  // true  = ui/doll.h, qui COMPOSE le personnage à partir des fichiers.
+  // false = le moteur de CAPTURE ci-dessous, qui construit un acteur natif
+  //         complet à chaque image et intercepte ses quads.
+  // À passer à false pour comparer les deux rendus.
+  constexpr bool kUseComposerPreview = true;
+
+  // Carrousel d'animations, ~2,5 s chacune : marche -> repos -> assis. Le moteur
+  // de capture a le sien, à l'identique, dans CaptureItemPreviewActor.
+  static const int kPvAnims[3] = {1, 0, 2};
+  const int pv_anim = kPvAnims[(GetTickCount() / 2500u) % 3u];
+
+  // Hauteur du CORPS à l'écran. C'est une taille ABSOLUE et non un ajustement au
+  // cadre : le personnage doit garder exactement la même stature d'un article
+  // survolé au suivant, sinon la comparaison ne veut plus rien dire. D'où
+  // `fit_body_only` côté composeur, et le figeage sur la bbox du corps côté
+  // capture.
+  constexpr float kPvBodyPx = 120.0f;
+
+  // Échelle + ancrage FIGÉS du moteur de capture (calculés 1x, gardés) : le
+  // focal ne suit PLUS la bbox par frame, qui saute avec les membres ET les
+  // accessoires animés/volants (l'oiseau, rangé en « région tête »).
+  static float s_scale = 0.0f, s_fx = 0.0f, s_feet = 0.0f;
+  if (!kUseComposerPreview) {
+    CaptureItemPreviewActor(view_id, slot, s_dir);
+    if (g_pv_count <= 0) return;
+    // Régions TÊTE (visage/cheveux/hat, RGBA) et CORPS (palette), + bbox totale
+    // (pour l'échelle). head_region posé par le hook (act_layer[8]!=0).
+    float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+    float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;
+    float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
+    bool has_head = false, has_body = false;
+    for (int i = 0; i < g_pv_count; ++i) {
+      const CapLayer& L = g_pv_caps[i];
+      const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
+      const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
+      if (lx0 < minx) minx = lx0;  if (lx1 > maxx) maxx = lx1;
+      if (ly0 < miny) miny = ly0;  if (ly1 > maxy) maxy = ly1;
+      if (L.head_region) {
+        has_head = true;
+        if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
+        if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
+      } else {
+        has_body = true;
+        if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
+        if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
+      }
+    }
+    const float bw = maxx - minx, bh = maxy - miny;
+    if (bw <= 1.0f || bh <= 1.0f) return;
+    if (s_scale <= 0.0f) {
+      // Échelle basée sur la HAUTEUR DU CORPS (pas la bbox totale, qui inclut
+      // les costumes larges comme le cat) -> perso à taille CONSTANTE.
+      const float body_h = has_body ? (by1 - by0) : (maxy - miny);
+      s_scale = (body_h > 1.0f) ? (kPvBodyPx / body_h) : 1.0f;
+      if (has_body)      { s_fx = (bx0 + bx1) * 0.5f; s_feet = by1; }
+      else if (has_head) { s_fx = (hx0 + hx1) * 0.5f; s_feet = hy1; }
+      else               { s_fx = (minx + maxx) * 0.5f; s_feet = maxy; }
     }
   }
-  const float bw = maxx - minx, bh = maxy - miny;
-  if (bw <= 1.0f || bh <= 1.0f) return;
-  // Échelle + ancrage FIGÉS (calculés 1x, gardés) : le focal ne suit PLUS la bbox
-  // par frame (qui saute avec les membres ET les accessoires animés/volants comme
-  // l'oiseau, qui sont dans la « région tête »). Ancrage sur le CORPS seul
-  // (torse/jambes = noyau stable) : x = centre corps, y = pieds près du bas.
-  // -> perso stable, seule l'anim bouge autour.
-  static float s_scale = 0.0f, s_fx = 0.0f, s_feet = 0.0f;
-  if (s_scale <= 0.0f) {
-    // Échelle basée sur la HAUTEUR DU CORPS (pas la bbox totale, qui inclut les
-    // costumes larges comme le cat) -> perso à taille CONSTANTE, jamais rétréci.
-    const float body_h = has_body ? (by1 - by0) : (maxy - miny);
-    s_scale = (body_h > 1.0f) ? (120.0f / body_h) : 1.0f;
-    if (has_body)      { s_fx = (bx0 + bx1) * 0.5f; s_feet = by1; }
-    else if (has_head) { s_fx = (hx0 + hx1) * 0.5f; s_feet = hy1; }
-    else               { s_fx = (minx + maxx) * 0.5f; s_feet = maxy; }
-  }
-  const float s = s_scale;
   // Boîte large + haute : costumes larges (cat à côté) / hauts (hats) ne sont pas
   // cropés. Fond transparent -> l'espace vide est invisible.
   const float box_w = 260.0f, box_h = 240.0f;
@@ -2280,8 +2299,6 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   const ImVec2 p0 = ImGui::GetCursorScreenPos();
   ImGui::Dummy(ImVec2(box_w, box_h));
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const float ox = p0.x + box_w * 0.5f - s_fx * s;      // corps centré horizontalement
-  const float oy = p0.y + box_h - 14.0f - s_feet * s;   // pieds près du bas (figé)
   // Hat effect (.str) superposé : MÊME logique que l'avatar (ancre = ORIGINE + hatEffectPos(X) Lua ;
   // ordre derrière/devant = isRenderBeforeCharacter ; cf. RenderPlayerAvatar). Zéro hardcode.
   static const HatEffectParams s_hp_none_pv;
@@ -2299,28 +2316,104 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
       std::find(own_hat_effects_.begin(), own_hat_effects_.end(),
                 static_cast<uint16_t>(hat_ordinal)) != own_hat_effects_.end();
   if (hat_ordinal && !isStr && !alreadyEquipped) RequestEzPreview(hat_ordinal);  // « try before buy »
-  auto drawPreviewHat = [&]() {
-    if (hat_ordinal == 0 || !isStr) return;
-    CaptureHatEffectOrdinal(hat_ordinal);
-    hat_diag_concrete_ = hat_ordinal;
-    hat_diag_layers_   = g_str_count;
-    // Ancre = ORIGINE de l'acteur (oy) comme l'avatar : le .str se place lui-même (sol/tête/centré).
-    DrawStrCapLayers(dl, ox + hp.pos_x * s, oy, s);
+  // Les deux passes d'effets, regroupées : elles se posent toutes sur l'ORIGINE
+  // de l'acteur et à son échelle — exactement ce que rend `ro::DollPlacement`.
+  //
+  // ⚠ Structure et non lambdas : la passe ARRIÈRE doit être appelée depuis
+  // `ro::DrawDoll` par un pointeur de fonction NU (`doll.h` ne dépend d'aucun
+  // en-tête standard), donc rien ne peut être capturé — tout transite par ici.
+  struct PvHatPass {
+    BasicInfo*  self;
+    ImDrawList* dl;
+    int         ordinal;
+    bool        is_str;
+    bool        before;  // le .str se place-t-il DERRIÈRE le personnage ?
+    float       pos_x;   // décalage horizontal Lua, en unités sprite
+
+    void Str(float ox, float oy, float s) {
+      if (ordinal == 0 || !is_str) return;
+      CaptureHatEffectOrdinal(ordinal);
+      self->hat_diag_concrete_ = ordinal;
+      self->hat_diag_layers_   = g_str_count;
+      // Ancre = ORIGINE de l'acteur (oy) comme l'avatar : le .str se place
+      // lui-même (au sol, sur la tête, ou centré).
+      DrawStrCapLayers(dl, ox + pos_x * s, oy, s);
+    }
+    void Behind(float ox, float oy, float s) {
+      if (before) Str(ox, oy, s);
+      if (ordinal && !is_str)
+        DrawEzCapTris(dl, ox, oy, s, /*before=*/true, /*with_preview=*/true);
+    }
+    void Front(float ox, float oy, float s) {
+      if (!before) Str(ox, oy, s);
+      if (ordinal && !is_str)
+        DrawEzCapTris(dl, ox, oy, s, /*before=*/false, /*with_preview=*/true);
+    }
   };
-  // DERRIÈRE le perso
-  if (hp.before) drawPreviewHat();                                             // .str derrière
-  if (hat_ordinal && !isStr) DrawEzCapTris(dl, ox, oy, s, /*before=*/true, /*with_preview=*/true);   // EZ/CEffectMgr derrière (bit 0x8)
-  for (int i = 0; i < g_pv_count; ++i) {
-    const CapLayer& L = g_pv_caps[i];
-    const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
-    const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
-    const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
-    const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
-    dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+  PvHatPass hats{this, dl, hat_ordinal, isStr, hp.before, hp.pos_x};
+
+  float ox = 0.0f, oy = 0.0f, s = 1.0f;
+  bool drawn = false;
+  if (kUseComposerPreview) {
+    // Le personnage de BASE plus le SEUL article survolé : les autres
+    // emplacements restent vides, c'est déjà ce que fait le moteur de capture.
+    // ⚠ Pas de garde SEH ici, volontairement : `__try` interdirait tout objet à
+    // destructeur dans cette fonction (C2712), et ces mêmes lectures se font
+    // déjà sans garde ailleurs dans ce fichier (cf. ClassName). La fonction
+    // n'est de toute façon atteinte qu'avec une session ouverte.
+    using GetSexFn = int(__fastcall*)(void*, void*);
+    using GetJobFn = int(__fastcall*)(void*, void*);
+    ro::DollLook look;
+    look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+    look.job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+    look.hair          = *reinterpret_cast<int*>(kHair);
+    look.hair_color    = *reinterpret_cast<int*>(kHairCol);
+    look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+    // ⚠ `body` reste à 0 : aucune globale de STYLE DE CORPS du joueur n'est
+    // connue, et le moteur de capture ne le gère pas davantage (il passe le job).
+    // Un joueur qui a posé un style de corps se verra donc avec le corps
+    // standard de sa classe — écart assumé, identique à l'existant.
+    look.head_top = (slot == PV_TOP)     ? view_id : 0;
+    look.head_mid = (slot == PV_MID)     ? view_id : 0;
+    look.head_low = (slot == PV_LOW)     ? view_id : 0;
+    look.garment  = (slot == PV_GARMENT) ? view_id : 0;
+
+    ro::DollPlacement pl;
+    ro::DollDrawOpts o;
+    o.dir           = s_dir;
+    o.anim          = pv_anim;
+    o.anim_seconds  = static_cast<float>(ImGui::GetTime());
+    o.fit_body_only = true;  // stature CONSTANTE d'un article au suivant
+    o.out_placement = &pl;
+    o.underlay_ctx  = &hats;
+    o.underlay = [](void* c, const ro::DollPlacement& p) {
+      static_cast<PvHatPass*>(c)->Behind(p.origin_x, p.origin_y, p.scale);
+    };
+    // Rectangle calé pour que le CORPS fasse kPvBodyPx de haut, pieds à 14 px du
+    // bas de la boîte : `fit_body_only` rend l'échelle égale à hauteur/corps.
+    drawn = ro::DrawDoll(dl, look, p0.x, p0.y + box_h - 14.0f - kPvBodyPx,
+                         box_w, kPvBodyPx, o);
+    if (drawn) { ox = pl.origin_x; oy = pl.origin_y; s = pl.scale; }
+  } else {
+    s  = s_scale;
+    ox = p0.x + box_w * 0.5f - s_fx * s;      // corps centré horizontalement
+    oy = p0.y + box_h - 14.0f - s_feet * s;   // pieds près du bas (figé)
+    hats.Behind(ox, oy, s);
+    for (int i = 0; i < g_pv_count; ++i) {
+      const CapLayer& L = g_pv_caps[i];
+      const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
+      const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
+      const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
+      const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
+      dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+    }
+    drawn = true;
   }
-  // DEVANT le perso
-  if (!hp.before) drawPreviewHat();                                            // .str devant
-  if (hat_ordinal && !isStr) DrawEzCapTris(dl, ox, oy, s, /*before=*/false, /*with_preview=*/true);  // EZ/CEffectMgr devant
+  // DEVANT le personnage. 🔴 Conditionné au pantin : sans lui il n'y a pas
+  // d'ancre, et un effet ancré sur (0,0) atterrirait dans le coin de l'écran.
+  if (drawn) hats.Front(ox, oy, s);
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }

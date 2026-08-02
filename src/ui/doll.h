@@ -22,6 +22,7 @@
 // ── Ce qu'il ne fait pas ─────────────────────────────────────────────────────
 // Ni arme ni bouclier — comme le char-select natif, qui ne les montre pas non
 // plus. Les compagnons (cart, faucon) et les effets .str n'en sont pas non plus.
+// La CAPE, elle, est gérée (cf. `DollLook::garment`).
 
 #include <cstdint>
 
@@ -45,6 +46,63 @@ struct DollLook {
   int head_low = 0;       // accessoire du bas   (0 = aucun)
   int head_top = 0;       // accessoire du haut
   int head_mid = 0;       // accessoire du milieu
+  // Cape (garment), par son id de VUE. 0 = aucune.
+  //
+  // ⚠ Elle passe DEVANT ou DERRIÈRE le personnage selon l'orientation, et ce
+  // n'est pas nous qui en décidons : le client interroge le global Lua
+  // `DrawOnTop`. Voir le .cc.
+  int garment = 0;
+};
+
+// Où le pantin a atterri, une fois le cadrage résolu.
+//
+// `origin_x`/`origin_y` = le point où tombe l'origine (0,0) du repère sprite,
+// c'est-à-dire l'ORIGINE DE L'ACTEUR — ses pieds, pas le centre de sa boîte.
+// C'est exactement la convention `(ox, oy, s)` qu'attendent les couches d'effets
+// de costume (`DrawStrCapLayers`, `DrawEzCapTris`) : elles peuvent donc se poser
+// sur un pantin composé sans rien recalculer.
+struct DollPlacement {
+  float origin_x = 0.0f;
+  float origin_y = 0.0f;
+  float scale    = 1.0f;  // une unité .act -> pixels écran
+};
+
+// Rappel invoqué UNE fois, le cadrage résolu et AVANT le premier calque.
+//
+// 🔴 C'est le seul moment où l'on peut glisser quelque chose DERRIÈRE le pantin.
+// Il ne s'agit pas d'une commodité : un effet de costume marqué « avant le
+// personnage » doit passer sous TOUS ses calques, cape comprise, et le pantin se
+// dessine en un seul appel.
+//
+// ⚠ Pourquoi un rappel plutôt qu'une fonction de mesure séparée : mesurer
+// demanderait de rejouer tout le chargement, l'ancrage et le cadrage une
+// deuxième fois — donc de payer deux fois, et surtout de risquer que la mesure
+// et le dessin divergent. Une seule traversée, une seule vérité.
+using DollUnderlayFn = void (*)(void* ctx, const DollPlacement& placement);
+
+// Réglages optionnels. Ils ont leur structure parce qu'ils sont nombreux, rares,
+// et qu'une liste d'arguments à treize positions ne se relit pas.
+struct DollDrawOpts {
+  int      dir          = 0;       // orientation 0..7 (0 = de face)
+  int      anim         = 0;       // type d'action ; pose = anim*8 + dir
+  float    anim_seconds = -1.0f;   // horloge ; NÉGATIF = figé sur la 1ʳᵉ image
+  uint32_t tint         = 0xFFFFFFFFu;
+
+  // Cadrer sur le CORPS SEUL au lieu de la silhouette entière.
+  //
+  // 🔴 Par défaut, l'échelle est calculée pour que TOUT rentre — coiffes et cape
+  // comprises. C'est ce qu'on veut d'une vignette, où rien ne doit déborder.
+  // C'est faux dans un APERÇU de costume : un chapeau volumineux rétrécirait le
+  // personnage, et sa taille changerait d'un article survolé au suivant alors
+  // que c'est justement la référence de comparaison. Avec ce drapeau, l'échelle
+  // ET le centrage ne dépendent que du corps ; les pièces rapportées peuvent
+  // dépasser du rectangle — `DrawDoll` ne rogne rien, c'est à l'appelant de
+  // prévoir la marge (ou de poser son propre clip s'il veut couper).
+  bool fit_body_only = false;
+
+  DollUnderlayFn underlay      = nullptr;
+  void*          underlay_ctx  = nullptr;
+  DollPlacement* out_placement = nullptr;
 };
 
 // Dessine le pantin dans [x, y, w, h] de la fenêtre ImGui courante : ratio
@@ -58,9 +116,11 @@ struct DollLook {
 //
 // ⚠ DEUX horloges, et c'est là qu'est tout le piège.
 //
-// Le CORPS et la TÊTE restent sur leur image 0. En jeu, le compteur d'image de
-// l'acteur ne défile qu'en Marche et en Combat — vérifié au débogueur : sur un
-// personnage assis, `acteur+0x3c` reste à 0.
+// Le CORPS et la TÊTE ne défilent qu'en MARCHE (anim 1) et en COMBAT (anim 4) —
+// vérifié au débogueur (sur un personnage assis, `acteur+0x3c` reste à 0) et
+// confirmé en dur dans le client, qui force l'image à 0 pour les autres types
+// d'action. Partout ailleurs ils restent sur leur image 0 : leurs images sont
+// des poses et des expressions de visage, pas une décoration.
 //
 // Les ACCESSOIRES s'animent quand même, sur leur propre horloge : c'est
 // `Act_ResolveAltAnimFrame`, dont le portage vit dans le .cc. Une coiffe porte
@@ -70,6 +130,18 @@ struct DollLook {
 // Rend false si rien n'a pu être dessiné — à l'appelant de poser son
 // placeholder. Un membre manquant (coiffe absente du GRF) n'est PAS un échec :
 // il est simplement omis.
+//
+// ⚠ `underlay` et `out_placement` n'interviennent qu'une fois le cadrage
+// résolu — donc jamais sur les échecs précoces (corps introuvable, rectangle
+// dégénéré), mais bien dans le cas de bord où le cadrage aboutit et où aucun
+// calque ne se révèle dessinable. Un appelant qui superpose des effets doit
+// donc quand même tester le retour avant sa passe de devant : sans pantin, une
+// ancre seule ne veut rien dire.
+bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
+              float w, float h, const DollDrawOpts& opts);
+
+// Forme courte, pour les appelants qui n'ont besoin que de la pose — la grande
+// majorité. Strictement équivalente à la précédente avec des options par défaut.
 bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
               float w, float h, int dir = 0, int anim = 0,
               float anim_seconds = -1.0f, uint32_t tint = 0xFFFFFFFFu);

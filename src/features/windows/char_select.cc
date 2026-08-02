@@ -332,7 +332,7 @@ const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 //
 // 🔴 Les deux coexistent le temps de valider le composeur, et l'ordre compte :
 // le composeur passe EN PREMIER, la capture reste le REPLI. Un personnage qu'on
-// ne sait pas encore composer (Doram, monture, garment) s'affiche donc quand
+// ne sait pas encore composer (Doram, monture) s'affiche donc quand
 // même — la bascule ne peut pas faire disparaître un pantin.
 //
 // À passer à false pour comparer les deux rendus côte à côte.
@@ -794,6 +794,7 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     dl.head_low      = v.head_low;
     dl.head_top      = v.head_top;
     dl.head_mid      = v.head_mid;
+    dl.garment       = v.garment;
     // L'horloge n'anime QUE les accessoires — un masque dont les couleurs
     // changent, une mâchoire qui mordille. Le corps et la tête restent figés :
     // leurs images sont des poses et des expressions, pas une décoration.
@@ -832,9 +833,10 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
 }
 
 void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
-  // Aperçu de CRÉATION : un Novice (job/body 0) avec les cheveux/couleur/sexe choisis,
-  // debout de face. Même moteur de capture partagé que DrawDollAt ; la capture est
-  // re-clé par apparence -> changer un curseur met l'aperçu à jour à la frame suivante.
+  // Aperçu de CRÉATION : un Novice (job/body 0) avec les cheveux/couleur/sexe
+  // choisis, debout, orienté par la flèche de rotation. Même moteur que
+  // DrawDollAt ; l'apparence étant relue à chaque frame, changer un curseur met
+  // l'aperçu à jour immédiatement.
   bool drawn = false;
   if (kUseOwnDollComposer) {
     ro::DollLook dl;  // tout à 0 par défaut = Novice sans équipement

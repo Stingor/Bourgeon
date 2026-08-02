@@ -41,7 +41,20 @@ struct PaletteSet {
 };
 
 struct Entry {
-  std::string base;               // chemin sans extension, pour se recharger seul
+  std::string base;               // chemin du .spr sans extension, pour se recharger seul
+  // Base du .act quand elle DIFFÈRE de celle du .spr. Vide = les deux fichiers
+  // partagent le même chemin, ce qui est le cas général.
+  //
+  // 🔴 Le cas qui l'impose : la CAPE. `Job_BuildGarmentSpritePath_impl`
+  // (0x00b442f0) essaie pour le .spr une disposition « plate »
+  // (`로브\<robe>\<robe>.spr`) avant celle par job, mais prend TOUJOURS la
+  // disposition par job pour le .act. Une cape peut donc légitimement apparier
+  // un .spr partagé à un .act propre à la classe.
+  std::string act_base;
+  // Clé dans `g_cache`, et seule chose à mettre dans `g_cache_order`. Elle vaut
+  // `base` tant qu'il n'y a pas d'appariement, et `base|act_base` sinon : deux
+  // appariements du même .spr sont deux entrées distinctes.
+  std::string key;
   spract::Resource res;
   std::vector<PaletteSet> pals;   // [0] = palette d'origine, toujours présent
   std::vector<void*> tex_bgra;    // sans palette : partagé par toutes les teintes
@@ -189,7 +202,8 @@ void TrimFor(size_t incoming) {
 bool LoadInto(Entry* e) {
   char spr_path[352], act_path[352];
   std::snprintf(spr_path, sizeof(spr_path), "%s.spr", e->base.c_str());
-  std::snprintf(act_path, sizeof(act_path), "%s.act", e->base.c_str());
+  std::snprintf(act_path, sizeof(act_path), "%s.act",
+                e->act_base.empty() ? e->base.c_str() : e->act_base.c_str());
 
   spract::Resource res;
   if (!spract::Load(spr_path, act_path, &res)) {
@@ -209,7 +223,9 @@ bool LoadInto(Entry* e) {
   e->loaded = true;
   if (e->pals.empty()) e->pals.resize(1);  // slot 0 = palette d'origine du .spr
   g_cache_bytes += bytes;
-  g_cache_order.push_back(e->base);
+  // ⚠ La CLÉ, pas la base : `TrimFor` s'en sert pour retrouver l'entrée dans
+  // `g_cache`, et les deux diffèrent dès qu'il y a appariement .spr/.act.
+  g_cache_order.push_back(e->key);
   return true;
 }
 
@@ -220,13 +236,21 @@ bool EnsureLoaded(Entry* e) {
   return e->loaded || LoadInto(e);
 }
 
-Entry* Acquire(const char* base_path) {
-  auto it = g_cache.find(base_path);
+Entry* Acquire(const char* base_path, const char* act_base) {
+  const bool split = act_base && *act_base && std::strcmp(act_base, base_path) != 0;
+  std::string key = base_path;
+  if (split) {
+    key += '|';  // séparateur impossible dans un chemin VFS
+    key += act_base;
+  }
+  auto it = g_cache.find(key);
   if (it == g_cache.end()) {
     auto entry = std::make_unique<Entry>();
     entry->base = base_path;
+    if (split) entry->act_base = act_base;
+    entry->key = key;
     entry->pals.resize(1);
-    it = g_cache.emplace(base_path, std::move(entry)).first;
+    it = g_cache.emplace(std::move(key), std::move(entry)).first;
   }
   return EnsureLoaded(it->second.get()) ? it->second.get() : nullptr;
 }
@@ -377,8 +401,13 @@ bool LoadSprite(const char* base_path, SpriteRes* res) {
 
 bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
                          SpriteRes* res) {
-  if (!res || !base_path || !*base_path) return false;
-  Entry* e = Acquire(base_path);
+  return LoadSpritePair(base_path, nullptr, pal_path, res);
+}
+
+bool LoadSpritePair(const char* spr_base, const char* act_base,
+                    const char* pal_path, SpriteRes* res) {
+  if (!res || !spr_base || !*spr_base) return false;
+  Entry* e = Acquire(spr_base, act_base);
   res->res = e;
   res->failed = (e == nullptr);
   res->palette = e ? PaletteSlot(e, pal_path) : 0;

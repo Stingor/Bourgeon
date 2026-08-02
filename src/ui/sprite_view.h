@@ -51,6 +51,21 @@ bool LoadSprite(const char* base_path, SpriteRes* res);
 bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
                          SpriteRes* res);
 
+// Variante à DEUX bases : le `.spr` vient de `spr_base`, le `.act` de
+// `act_base`. `act_base` nul ou identique = comportement de `LoadSpriteRecolored`.
+//
+// 🔴 Ce n'est pas une commodité, c'est le cas de la CAPE. Le client
+// (`Job_BuildGarmentSpritePath_impl` 0x00b442f0) tente pour le `.spr` une
+// disposition « plate » — `로브\<robe>\<robe>.spr` — et ne retombe sur la
+// disposition par job que si ce fichier n'existe pas ; le `.act`, lui, est
+// TOUJOURS pris dans la disposition par job. Un même sprite de cape peut donc
+// être animé par un `.act` propre à la classe.
+//
+// Les deux bases forment ensemble la clé de cache : deux appariements du même
+// `.spr` restent deux ressources distinctes.
+bool LoadSpritePair(const char* spr_base, const char* act_base,
+                    const char* pal_path, SpriteRes* res);
+
 // Nombre d'ACTIONS du .act. Sert à replier une pose sur ce que le fichier
 // contient réellement : une pièce rapportée (coiffe) en a souvent moins que le
 // corps, et le rendu la replie au lieu de l'omettre.
