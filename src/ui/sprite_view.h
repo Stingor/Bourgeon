@@ -51,6 +51,11 @@ bool LoadSprite(const char* base_path, SpriteRes* res);
 bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
                          SpriteRes* res);
 
+// Nombre d'ACTIONS du .act. Sert à replier une pose sur ce que le fichier
+// contient réellement : une pièce rapportée (coiffe) en a souvent moins que le
+// corps, et le rendu la replie au lieu de l'omettre.
+int SpriteActionCount(const SpriteRes& res);
+
 // Nombre d'images de `action`. Les .act rangent les actions par
 // motion * 8 + direction ; 0 = première pose, orientation sud.
 // 0 si la ressource n'est pas chargée ou si l'action n'existe pas.
@@ -102,8 +107,17 @@ struct SpriteQuad {
 
 // Résout les calques de (action, frame) et téléverse leurs textures.
 // Rend le nombre de calques écrits dans `out` (0 si rien).
+//
+// `apply_rotation` : 🔴 à mettre à FALSE pour composer un PERSONNAGE. Le jeu
+// n'applique pas l'angle des calques aux sprites d'acteur —
+// `Actor_SubmitSpriteQuad` construit un rectangle aligné aux axes et ignore
+// l'angle qu'on lui passe. Des costumes ont pourtant un angle par image : les
+// faire tourner est fidèle au FICHIER mais infidèle au JEU, et donne un chapeau
+// qui pivote sur la tête. La rotation reste par défaut pour les usages où elle
+// est réelle (effets, aperçus fidèles au format).
 int SpriteResolveFrame(const SpriteRes& res, unsigned action, unsigned frame,
-                       SpriteQuad* out, int max_out);
+                       SpriteQuad* out, int max_out,
+                       bool apply_rotation = true);
 
 // Ancre de RÉFÉRENCE de (action, frame) — la première de l'image.
 //

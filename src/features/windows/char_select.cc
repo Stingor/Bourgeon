@@ -807,9 +807,9 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     dl.head_low      = v.head_low;
     dl.head_top      = v.head_top;
     dl.head_mid      = v.head_mid;
-    // L'horloge n'anime QUE les accessoires : ro::DrawDoll garde le corps et la
-    // tête sur leur première image, sinon les convives tourneraient la tête
-    // sans arrêt. Les coiffes animées, elles, doivent jouer leur animation.
+    // L'horloge n'anime QUE les accessoires — un masque dont les couleurs
+    // changent, une mâchoire qui mordille. Le corps et la tête restent figés :
+    // leurs images sont des poses et des expressions, pas une décoration.
     drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
                          /*dir=*/0, /*anim=*/2,
                          static_cast<float>(ImGui::GetTime()), tint);

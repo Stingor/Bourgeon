@@ -219,15 +219,12 @@ bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
 
 namespace {
 
-// Image à afficher pour une pièce donnée, bornée à SON nombre d'images.
-//
-// 🔴 Le modulo n'est pas une précaution de style : les pièces n'ont pas toutes
-// le même nombre d'images. Sans lui, une coiffe plus courte que le corps sort
-// des bornes et `SpriteResolveFrame` ne rend rien — elle DISPARAÎT en cours
-// d'animation au lieu de rejouer ses propres images.
-unsigned PieceFrame(const SpriteRes& res, unsigned pose, unsigned frame) {
-  const int n = SpriteActionFrameCount(res, pose);
-  return (n > 0) ? (frame % static_cast<unsigned>(n)) : 0u;
+// Action réellement jouable par une pièce : la pose demandée, REPLIÉE sur le
+// nombre d'actions du fichier. Une coiffe en a souvent moins que le corps, et
+// il faut la replier plutôt que l'omettre — `$action %= $action_count` du site.
+unsigned PieceAction(const SpriteRes& res, unsigned pose) {
+  const int n = SpriteActionCount(res);
+  return (n > 0) ? (pose % static_cast<unsigned>(n)) : 0u;
 }
 
 }  // namespace
@@ -239,6 +236,14 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
 
   const unsigned pose = static_cast<unsigned>(anim * 8 + (dir & 7));
 
+  // ⚠ L'image de l'ACTEUR ne bouge qu'en Marche (1) et Combat (4) — vérifié au
+  // débogueur : sur un personnage assis, `acteur+0x3c` reste à 0. Le corps et
+  // la tête sont donc figés ici.
+  //
+  // 🔴 Les ACCESSOIRES, eux, s'animent quand même : ils ont leur propre
+  // horloge. Voir AltAnimFrame ci-dessous.
+  const unsigned actor_frame = 0;
+
   // ── Le CORPS est la référence d'ancrage : sans lui, rien à composer ────────
   char base[352], pal[128] = {0};
   if (!BodyBasePath(look, base, sizeof(base))) return false;
@@ -248,14 +253,14 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   Piece body;
   if (!LoadPiece(base, pal, &body)) return false;
 
-  // 🔴 Le CORPS et la TÊTE restent sur leur première image, toujours. Les images
-  // d'un .act de tête sont des EXPRESSIONS de visage : les faire défiler donne
-  // un personnage qui tourne la tête sans arrêt. Seuls les ACCESSOIRES
-  // s'animent — c'est ce que fait le jeu, et c'est le seul mouvement attendu
-  // d'un pantin au repos. (Animer le corps relèverait des poses Marche/Combat,
-  // qui ne sont pas celles employées ici.)
+  const unsigned body_pose = PieceAction(body.res, pose);
+
+  // 🔴 Le CORPS et la TÊTE restent sur l'IMAGE 0. Leurs images sont des poses et
+  // des expressions de visage : les faire défiler fait tourner la tête des
+  // convives. Seuls les accessoires font défiler la leur.
   SpriteQuad quads[kMaxQuads];
-  int n = SpriteResolveFrame(body.res, pose, 0, quads, kMaxQuads);
+  int n = SpriteResolveFrame(body.res, body_pose, 0, quads, kMaxQuads,
+                             /*apply_rotation=*/false);
   if (n <= 0) return false;
 
   // Boîte englobante de CADRAGE, accumulée sur l'image 0 de chaque pièce.
@@ -281,7 +286,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
 
   int body_ax = 0, body_ay = 0, body_attr = 0;
   const bool body_anchored =
-      SpriteFrameAnchor(body.res, pose, 0, &body_ax, &body_ay, &body_attr);
+      SpriteFrameAnchor(body.res, body_pose, 0, &body_ax, &body_ay, &body_attr);
 
   // ── Les pièces rapportées, dans l'ordre de dessin ─────────────────────────
   // Tête puis coiffes : bas, milieu, haut. Chacune s'accroche au CORPS (pas en
@@ -330,50 +335,93 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // recollerait la pièce à l'origine du corps, donc visiblement de travers.
   float last_dx = 0.0f, last_dy = 0.0f;
 
+  // Nombre d'images de la TÊTE pour cette action : c'est la référence de
+  // l'animation alternative des accessoires (cf. Act_ResolveAltAnimFrame).
+  int ref_frames = 0;
+
   for (int i = 0; i < list_n && n < kMaxQuads; ++i) {
     Piece piece;
     if (!LoadPiece(list[i].base, list[i].pal, &piece) &&
         !LoadPiece(list[i].alt, list[i].pal, &piece))
       continue;
 
-    // 🔴 Un accessoire joue son animation de REPOS, pas la pose du corps.
-    // Faire défiler les images de la pose assise d'une coiffe la fait TOURNER
-    // sur elle-même : ces images-là portent des angles de calque propres à la
-    // pose, ce n'est pas l'animation décorative attendue. On reste donc sur le
-    // mouvement 0 (repos), dans la direction courante — soit l'action 0 quand
-    // le pantin est de face.
-    const unsigned piece_pose =
-        list[i].animate ? static_cast<unsigned>(dir & 7) : pose;
+    // 🔴 TOUTES les pièces partagent l'action du corps. C'est ce que fait le
+    // natif : `CActorSprite_RenderCompositeJobSprite` lit une seule action
+    // (this+14) et une seule image (this+15) pour ses huit parties.
+    //
+    // Leur faire jouer le mouvement de repos à la place semblait plus logique
+    // — une décoration vit pour elle-même — mais c'est faux : l'action de repos
+    // d'un costume peut être tout autre chose que son animation en pose assise.
+    const unsigned piece_pose = PieceAction(piece.res, pose);
 
-    // Chaque accessoire suit SA propre cadence, déclarée par son .act : deux
-    // coiffes n'ont aucune raison de battre au même rythme.
-    unsigned pf = 0;
-    if (list[i].animate && anim_seconds >= 0.0f)
-      pf = SpriteFrameIndex(piece.res, piece_pose, anim_seconds,
-                            /*ms_per_frame=*/150.0f);
-    pf = PieceFrame(piece.res, piece_pose, pf);
+    // ── Image de la pièce ────────────────────────────────────────────────────
+    //
+    // 🔴 Port de `Act_ResolveAltAnimFrame` (0x00d83a40). C'est LUI qui anime les
+    // costumes, et c'est pour ça que le pantin de la fiche de personnage
+    // « anime parfaitement » : il fait rendre un vrai acteur par le client, donc
+    // le client appelle cette fonction pour nous. En composant nous-mêmes, il
+    // faut la refaire.
+    //
+    //     nRef   = images de la TÊTE pour cette action
+    //     nPiece = images de la PIÈCE pour cette action
+    //     si nRef >= nPiece ou nPiece % nRef  ->  pas d'animation alternative
+    //     mult   = nPiece / nRef
+    //     image  = image_acteur * mult + ((écoulé / 24) / delay) % mult
+    //
+    // Une pièce porte donc un MULTIPLE exact des images de la tête, et parcourt
+    // son SOUS-GROUPE au fil du temps réel — pendant que l'acteur, lui, reste
+    // sur son image. D'où des coiffes qui vivent sur un personnage assis.
+    //
+    // ⚠ Le diviseur est 24, pas 25, et `delay` est la cadence BRUTE du .act (pas
+    // des millisecondes) : `c_angry_fish` dit 4.0 -> 96 ms par sous-image,
+    // `c_avenger` 8.0 -> 192 ms. Avec 24 images pour 3 de tête, mult = 8 : ils
+    // jouent 0..7, jamais les 24 — ce qui explique qu'ils ne « tournent » pas.
+    unsigned pf = actor_frame;
+    if (list[i].animate && anim_seconds >= 0.0f && ref_frames > 0) {
+      const int n_piece = SpriteActionFrameCount(piece.res, piece_pose);
+      if (n_piece > ref_frames && (n_piece % ref_frames) == 0) {
+        const int mult = n_piece / ref_frames;
+        float delay = SpriteFrameIntervalMs(piece.res, piece_pose) / 25.0f;
+        if (delay <= 0.0f) delay = 4.0f;  // le natif retombe sur 4
+        const float ticks = (anim_seconds * 1000.0f / 24.0f) / delay;
+        int sub = static_cast<int>(ticks) % mult;
+        if (sub < 0) sub += mult;
+        pf = actor_frame * static_cast<unsigned>(mult) +
+             static_cast<unsigned>(sub);
+      }
+    }
+    // La TÊTE sert de référence aux pièces suivantes — elle est en tête de
+    // liste, donc son compte est connu quand les coiffes arrivent.
+    if (!list[i].animate) ref_frames = SpriteActionFrameCount(piece.res, piece_pose);
 
-    // L'ancre est celle de l'image DESSINÉE : sur une coiffe animée, elle peut
-    // bouger d'une image à l'autre, et c'est ce qui fait vivre la pièce.
-    int ax = 0, ay = 0, attr = 0;
+    // 🔴 L'ancre est TOUJOURS celle de l'image 0, même pour une pièce animée.
+    // Seule son IMAGE défile, jamais son point d'attache : prendre l'ancre de
+    // l'image dessinée faisait dériver la pièce d'une image à l'autre — un
+    // accessoire sans animation, dont les trois images sont pourtant
+    // identiques, se mettait à bouger.
+    //
     // 🔴 L'attache ne s'applique que si les DEUX ancres portent le même `attr` :
     // c'est le test du natif, et sans lui on recale une pièce sur une ancre qui
     // ne la concerne pas.
+    int ax = 0, ay = 0, attr = 0;
     if (body_anchored &&
-        SpriteFrameAnchor(piece.res, piece_pose, pf, &ax, &ay, &attr) &&
+        SpriteFrameAnchor(piece.res, piece_pose, 0, &ax, &ay, &attr) &&
         attr == body_attr) {
       last_dx = static_cast<float>(body_ax - ax);
       last_dy = static_cast<float>(body_ay - ay);
     }
 
-    // Cadrage : on mesure la pièce sur son image 0, jamais sur l'image animée.
+    // Cadrage : image 0 de la pièce, à son ancre. Rien de ce qui varie d'une
+    // image à l'autre n'entre dans la boîte englobante.
     SpriteQuad ref[kMaxQuads];
-    const int rn = SpriteResolveFrame(piece.res, piece_pose, 0, ref, kMaxQuads);
+    const int rn = SpriteResolveFrame(piece.res, piece_pose, 0, ref, kMaxQuads,
+                                       /*apply_rotation=*/false);
     if (rn > 0) grow(ref, rn, last_dx, last_dy);
 
     SpriteQuad tmp[kMaxQuads];
     const int m =
-        SpriteResolveFrame(piece.res, piece_pose, pf, tmp, kMaxQuads - n);
+        SpriteResolveFrame(piece.res, piece_pose, pf, tmp, kMaxQuads - n,
+                           /*apply_rotation=*/false);
     if (m <= 0) continue;
     for (int k = 0; k < m; ++k) {
       for (int c = 0; c < 4; ++c) {

@@ -56,14 +56,15 @@ struct DollLook {
 //                 sur la première image, ce que veut une vignette.
 //   tint          multiplication de couleur (IM_COL32) ; 0xFFFFFFFF = aucune
 //
-// ⚠ Animer n'est pas toujours souhaitable. Les images d'un .act de TÊTE sont
-// des expressions de visage, pas des étapes d'animation : les faire défiler
-// donne un personnage qui cligne et regarde partout. Le rendu natif ne les
-// anime que sur Marche (1) et Combat (4), et gèle Repos (0) et Assis (2).
+// ⚠ SEULES les poses Marche (1) et Combat (4) s'animent — `anim_seconds` est
+// ignoré pour Repos (0) et Assis (2), qui restent sur l'image 0. Ce n'est pas
+// un choix esthétique : sur un personnage assis en jeu, le compteur d'image de
+// l'acteur ne bouge pas (vérifié au débogueur). Fabriquer une animation que le
+// jeu ne joue pas donne des costumes qui semblent tourner.
 //
-// La cadence vient du .act du CORPS et s'applique à toutes les pièces, sinon
-// elles se désynchronisent. Chaque pièce est bornée à SON nombre d'images : une
-// coiffe plus courte que le corps rejoue les siennes au lieu de disparaître.
+// Le corps et la tête restent de toute façon sur leur image 0 : leurs images
+// sont des poses et des expressions de visage. Seuls les accessoires défilent,
+// à la cadence que déclare LEUR .act.
 //
 // Rend false si rien n'a pu être dessiné — à l'appelant de poser son
 // placeholder. Un membre manquant (coiffe absente du GRF) n'est PAS un échec :

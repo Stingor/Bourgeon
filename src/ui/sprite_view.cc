@@ -289,7 +289,7 @@ const spract::Frame* FrameAt(const Entry* e, unsigned action, unsigned frame) {
 // monter en VRAM des images qui ne seront jamais dessinées.
 int ResolveFrameLayers(Entry* e, int pal_slot, unsigned action,
                        unsigned frame_index, ResolvedLayer* out, int max_out,
-                       bool upload) {
+                       bool upload, bool apply_rotation = true) {
   const spract::Frame* frame = FrameAt(e, action, frame_index);
   if (!frame) return 0;
 
@@ -333,7 +333,7 @@ int ResolveFrameLayers(Entry* e, int pal_slot, unsigned action,
     float px[4] = {cx0, cx0 + cw, cx0 + cw, cx0};        // TL, TR, BR, BL
     float py[4] = {cy0, cy0,      cy0 + ch, cy0 + ch};
     for (int k = 0; k < 4; ++k) { px[k] *= sx; py[k] *= sy; }
-    if (L.rotation != 0) {
+    if (apply_rotation && L.rotation != 0) {
       // `RotateZ(-rotation)` de la référence :
       //   x' = x*cos + y*sin ;  y' = -x*sin + y*cos
       const float rad = static_cast<float>(-L.rotation) * 3.14159265358979f / 180.0f;
@@ -349,9 +349,12 @@ int ResolveFrameLayers(Entry* e, int pal_slot, unsigned action,
     for (int k = 0; k < 4; ++k)
       r.corner[k] = ImVec2(L.off_x + px[k], L.off_y + py[k]);
 
-    // Texture dédiée par image : UV triviales. Le miroir est un simple échange
-    // des u — un retournement SUR PLACE, dans le même quad, ce qui est bien la
-    // sémantique du champ (ScaleX = -1 autour du centre de l'image).
+    // Texture dédiée par image : UV triviales. Le miroir est un échange des u.
+    //
+    // ⚠ La doc d'ActEditor dit « Mirror ≡ -1 * ScaleX », ce qui retournerait le
+    // calque autour de son ORIGINE et non sur place. Essayé : le pantin s'est
+    // mis à changer de taille. À reprendre avec un cas de test franc plutôt
+    // qu'en aveugle.
     r.uv0 = ImVec2(0.0f, 0.0f);
     r.uv1 = ImVec2(1.0f, 1.0f);
     if (L.mirror) { r.uv0.x = 1.0f; r.uv1.x = 0.0f; }
@@ -384,6 +387,11 @@ bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
 
 // ⚠ Toutes les fonctions publiques passent par `EnsureLoaded` : la poignée que
 // l'appelant garde peut désigner une entrée déchargée depuis son dernier usage.
+int SpriteActionCount(const SpriteRes& res) {
+  Entry* e = static_cast<Entry*>(res.res);
+  return EnsureLoaded(e) ? static_cast<int>(e->res.actions.size()) : 0;
+}
+
 int SpriteActionFrameCount(const SpriteRes& res, unsigned action) {
   Entry* e = static_cast<Entry*>(res.res);
   if (!EnsureLoaded(e) || action >= e->res.actions.size()) return 0;
@@ -433,13 +441,14 @@ const char* SpriteMainSound(const SpriteRes& res) {
 }
 
 int SpriteResolveFrame(const SpriteRes& res, unsigned action, unsigned frame,
-                       SpriteQuad* out, int max_out) {
+                       SpriteQuad* out, int max_out, bool apply_rotation) {
   Entry* e = static_cast<Entry*>(res.res);
   if (!out || max_out <= 0 || !EnsureLoaded(e)) return 0;
 
   ResolvedLayer layers[kMaxDrawLayers];
   const int n = ResolveFrameLayers(e, res.palette, action, frame, layers,
-                                   kMaxDrawLayers, /*upload=*/true);
+                                   kMaxDrawLayers, /*upload=*/true,
+                                   apply_rotation);
   int count = 0;
   for (int i = 0; i < n && count < max_out; ++i) {
     if (!layers[i].tex) continue;
