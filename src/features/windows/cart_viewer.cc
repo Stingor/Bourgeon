@@ -411,10 +411,9 @@ void CartViewer::HandleNativeCreation(void* win) {
 
 // Remplit items_/item_count_ depuis le MODÈLE SESSION du cart (0x015fbae0), donc
 // marche fenêtre native cachée. POD-only sous SEH ; le nom complet passe par
-// itemcell::BuildDisplayName, avec la fenêtre cart native comme contexte.
+// itemcell::BuildDisplayName, qui résout seul son contexte natif.
 void CartViewer::Extract() {
   item_count_ = 0;
-  void* wnd = CartWnd();  // contexte `this` de BuildDisplayName (peut être nullptr)
   uint8_t* head = nullptr;
   uint8_t* node = nullptr;
   __try {
@@ -458,7 +457,7 @@ void CartViewer::Extract() {
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];
       }
-      itemcell::BuildDisplayName(wnd, info, it.name, sizeof(it.name));
+      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));
       it.total_slots = itemcell::SlotCount(info);
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}

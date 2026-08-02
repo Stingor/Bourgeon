@@ -492,12 +492,9 @@ void NpcShopWindow::QuickSell(int index, int qty) {
 void NpcShopWindow::ResolveSellItems() {
   sell_items_.clear();
   sell_items_.reserve(sell_raw_.size());
-  // Contexte du name-builder : la fenêtre d'inventaire native si elle existe. Elle
-  // n'est PAS requise — BuildDisplayName retombe sur le nom de base sans elle, et
-  // l'inventaire moderne la fait justement disparaître.
-  void* inv_wnd = nullptr;
-  __try { inv_wnd = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot); }
-  __except (EXCEPTION_EXECUTE_HANDLER) { inv_wnd = nullptr; }
+  // (Plus de « contexte » à fournir au name-builder : il résout lui-même le
+  // gestionnaire de fenêtres, cf. itemcell::BuildDisplayName. On passait ici la
+  // fenêtre d'inventaire — que l'interface moderne fait justement disparaître.)
 
   // Verrou « ne pas vendre les favoris » relu à chaque résolution : c'est un octet
   // que le joueur bascule quand il veut, y compris la boutique ouverte.
@@ -529,7 +526,7 @@ void NpcShopWindow::ResolveSellItems() {
     // s'il n'est pas appliqué ICI, rien d'autre ne le fera.
     if (deal_lock && favorite != 0) continue;
     s.slots = itemcell::SlotCount(info);
-    itemcell::BuildDisplayName(inv_wnd, info, s.name, sizeof(s.name));
+    itemcell::BuildDisplayName(info, s.name, sizeof(s.name));
     if (s.amount > 0) sell_items_.push_back(s);
   }
   sell_dirty_ = false;

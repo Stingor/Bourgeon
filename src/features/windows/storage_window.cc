@@ -646,7 +646,7 @@ void StorageWindow::Extract() {
       // résolu », où le jeu le traite comme une liste de demandes en attente : on
       // passe le gestionnaire de fenêtres, comme weapon_refine_window, et non une
       // fenêtre storage qui n'existe plus.
-      itemcell::BuildDisplayName(uiwnd::Mgr(), info, it.name, sizeof(it.name));
+      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));
       ++item_count_;
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
       ++guard;

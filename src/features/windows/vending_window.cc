@@ -491,7 +491,7 @@ uint64_t DisplayNameKey(const RawRow& r) {
 // Passe de nommage, VOLONTAIREMENT hors du __try de ReadRows : la table est un
 // conteneur C++, et MSVC interdit les objets à destructeur dans une fonction qui
 // contient __try. itemcell::BuildDisplayName porte sa propre garde.
-void ResolveDisplayNames(void* wnd, RawRow* rows, int count) {
+void ResolveDisplayNames(RawRow* rows, int count) {
   for (int i = 0; i < count; ++i) {
     if (rows[i].id == 0 || !rows[i].node) continue;
     const uint64_t key = DisplayNameKey(rows[i]);
@@ -501,7 +501,7 @@ void ResolveDisplayNames(void* wnd, RawRow* rows, int count) {
       // rien ne garantit qu'un serveur exotique n'en génère pas beaucoup plus.
       if (g_display_name_cache.size() > 2048) g_display_name_cache.clear();
       char buf[64];
-      itemcell::BuildDisplayName(wnd, reinterpret_cast<uint8_t*>(rows[i].node) + 0x08, buf,
+      itemcell::BuildDisplayName(reinterpret_cast<uint8_t*>(rows[i].node) + 0x08, buf,
                     sizeof(buf));
       it = g_display_name_cache.emplace(key, buf).first;
     }
@@ -562,7 +562,7 @@ int ReadRows(void* wnd, int list_off, RawRow* out, int max) {
       ++guard;
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  ResolveDisplayNames(wnd, out, n);
+  ResolveDisplayNames(out, n);
   return n;
 }
 

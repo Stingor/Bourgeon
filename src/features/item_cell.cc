@@ -97,7 +97,7 @@ DeferredDesc g_deferred = {};
 
 }  // namespace
 
-void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size) {
+void BuildDisplayName(void* info, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
   out[0] = '\0';
   // SEH ISOLÉ, et c'est le point important : un item dont BuildDisplayName plante
@@ -108,8 +108,10 @@ void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size) {
     char* bufptr = nbuf; size_t ncap = sizeof(nbuf);
     int color_out = 0; char* hl_ptr = nullptr;
     GVec offsets = {nullptr, nullptr, nullptr};
+    // `this` = le GESTIONNAIRE, jamais une fenêtre : c'est lui qui porte la liste
+    // de requêtes de noms lue à +0x18C (raisonnement complet dans item_cell.h).
     reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(
-        wnd, info, &color_out, &offsets, &bufptr, &ncap, &hl_ptr, 0, 0);
+        uiwnd::Mgr(), info, &color_out, &offsets, &bufptr, &ncap, &hl_ptr, 0, 0);
     size_t k = 0;
     while (k + 1 < out_size && nbuf[k]) { out[k] = nbuf[k]; ++k; }
     out[k] = '\0';

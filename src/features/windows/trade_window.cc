@@ -696,14 +696,14 @@ void TradeWindow::ResolveNames() {
   for (size_t k = 0; k < my_items_.size(); ++k) {
     if (my_items_[k].name[0] || my_items_[k].id == 0) continue;
     BuildTradeInfo(my_items_[k], info);
-    itemcell::BuildDisplayName(nullptr, info, my_items_[k].name,
+    itemcell::BuildDisplayName(info, my_items_[k].name,
                                sizeof(my_items_[k].name));
     if (my_items_[k].slots == 0) my_items_[k].slots = itemcell::SlotCount(info);
   }
   for (size_t k = 0; k < partner_items_.size(); ++k) {
     if (partner_items_[k].name[0] || partner_items_[k].id == 0) continue;
     BuildTradeInfo(partner_items_[k], info);
-    itemcell::BuildDisplayName(nullptr, info, partner_items_[k].name,
+    itemcell::BuildDisplayName(info, partner_items_[k].name,
                                sizeof(partner_items_[k].name));
     // Le compte d'emplacements de la DB est plus juste que le nombre de cartes
     // posées : « [4] » doit s'afficher même sur une arme à 4 slots encore vide.

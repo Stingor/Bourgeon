@@ -1715,7 +1715,6 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
   if (outsz == 0) return;
   out[0] = '\0';
   __try {
-    void* wnd = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);  // contexte (repli créateur ; peut être null)
     char nbuf[128];
     nbuf[0] = '\0';
     char* bufptr = nbuf;
@@ -1723,7 +1722,11 @@ void DecoratedItemName(const void* info, char* out, size_t outsz) {
     int colorOut = 0;
     char* hlptr = nullptr;
     GVec off = {nullptr, nullptr, nullptr};
-    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(wnd, const_cast<void*>(info), &colorOut, &off,
+    // `this` = le GESTIONNAIRE de fenêtres, jamais une fenêtre : il ne sert qu'à la
+    // requête de nom de créateur, qui lit une std::list à +0x18C (cf. item_cell.h).
+    // On passait ici la fenêtre d'inventaire — devenue nulle depuis qu'elle est
+    // détruite, ce qui privait les items forgés de leur nom décoré.
+    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(uiwnd::Mgr(), const_cast<void*>(info), &colorOut, &off,
                                               &bufptr, &ncap, &hlptr, 0, 0);
     size_t k = 0;
     while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }

@@ -346,7 +346,7 @@ void SafeName(void* info, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
   out[0] = '\0';
   if (!info) return;
-  itemcell::BuildDisplayName(uiwnd::Mgr(), info, out, out_size);
+  itemcell::BuildDisplayName(info, out, out_size);
 }
 
 // Le nom rendu par le name-builder natif est DÉCORÉ : il porte déjà « +N » en

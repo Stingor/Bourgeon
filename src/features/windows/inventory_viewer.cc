@@ -444,10 +444,8 @@ void* FindLiveInfoByIndex(int index) {
   return info ? info : FindWornInfoByIndex(index);
 }
 
-// Remplit une fiche CompItem depuis un ItemSkillInfo. `namewnd` = fenêtre servant de
-// `this` à BuildDisplayName (la fenêtre inventaire native, même cachée) ; nullptr =>
-// repli sur le nom de base seul. Cf. struct CompItem plus haut.
-bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
+// Remplit une fiche CompItem depuis un ItemSkillInfo. Cf. struct CompItem plus haut.
+bool ReadCompItemFromInfo(uint8_t* info, CompItem* out) {
   if (!info) return false;
   __try {
     out->index = *reinterpret_cast<int*>(info + kInfoIndex);
@@ -490,7 +488,7 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
     for (int k = 0; k < out->total_slots && k < 4; ++k)
       if (out->cards[k] != 0) ++out->used_slots;
   }
-  if (namewnd) itemcell::BuildDisplayName(namewnd, info, out->name, sizeof(out->name));
+  itemcell::BuildDisplayName(info, out->name, sizeof(out->name));
   if (out->name[0] == '\0') {
     __try {
       size_t cap = sizeof(out->name);
@@ -503,9 +501,9 @@ bool ReadCompItemFromInfo(uint8_t* info, void* namewnd, CompItem* out) {
 
 // Variante « par index d'inventaire », pour la CARTE source (elle, est bien dans
 // l'inventaire puisqu'on vient de double-cliquer dessus).
-bool ReadCompItemByIndex(int index, void* namewnd, CompItem* out) {
+bool ReadCompItemByIndex(int index, CompItem* out) {
   if (index <= 0) return false;
-  return ReadCompItemFromInfo(static_cast<uint8_t*>(FindInfoByIndex(index)), namewnd, out);
+  return ReadCompItemFromInfo(static_cast<uint8_t*>(FindInfoByIndex(index)), out);
 }
 
 // Aperçu de description RO au survol (le MÊME que la grille d'inventaire) : tooltip
@@ -1046,7 +1044,7 @@ void InventoryViewer::HandleCardInsertCreation(void* win) {
 
 // Remplit items_/item_count_ depuis le MODÈLE SESSION (0x015fbab0), donc marche même
 // fenêtre native cachée. POD-only sous SEH ; le nom complet est bâti via BuildDisplayName
-// (repli GetBaseName), en passant la fenêtre inventaire native comme contexte.
+// (repli GetBaseName), qui résout seul son contexte natif.
 void InventoryViewer::Extract() {
   item_count_ = 0;
   void* wnd = nullptr;
@@ -1102,7 +1100,7 @@ void InventoryViewer::Extract() {
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];
       }
-      itemcell::BuildDisplayName(wnd, info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
+      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
       it.total_slots = itemcell::SlotCount(info);
       ++item_count_;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -1268,12 +1266,8 @@ void InventoryViewer::RenderCardInsert() {
   const int cardIndex = ci_card_;
   const int n = ci_cand_count_;
 
-  // Contexte de nommage : la fenêtre inventaire native, même cachée (BuildDisplayName
-  // s'en sert comme `this`). Absente => repli automatique sur le nom de base.
-  void* namewnd = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
-
   CompItem card{};
-  const bool has_card = ReadCompItemByIndex(cardIndex, namewnd, &card);
+  const bool has_card = ReadCompItemByIndex(cardIndex, &card);
 
   // Les fiches sont lues VIVANTES à chaque frame, jamais recopiées : le serveur
   // n'envoie une nouvelle liste que s'il en a une à envoyer — quand plus aucun
@@ -1291,7 +1285,7 @@ void InventoryViewer::RenderCardInsert() {
     cands[cn] = CompItem{};
     uint8_t* live = static_cast<uint8_t*>(FindLiveInfoByIndex(ci_cands_[i]));
     if (!live) continue;  // item disparu depuis la réponse serveur
-    if (!ReadCompItemFromInfo(live, namewnd, &cands[cn])) continue;
+    if (!ReadCompItemFromInfo(live, &cands[cn])) continue;
     ++found;
     // Entrée PÉRIMÉE : plus un seul emplacement libre. Ce n'est pas un filtrage de
     // compatibilité (interdit — le serveur en est seul juge), c'est la MÊME borne que
@@ -2135,10 +2129,9 @@ void InventoryViewer::OnRenderUI() {
             if (ImGui::BeginMenu("Sertissage rapide")) {
               RequestCompatCards(it.index);  // no-op si déjà demandé pour cet équip
               if (qs_equip_index_ == it.index && qs_card_count_ > 0) {
-                void* nw = ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable);
                 for (int c = 0; c < qs_card_count_; ++c) {
                   CompItem cd{};
-                  if (!ReadCompItemByIndex(qs_cards_[c], nw, &cd)) continue;
+                  if (!ReadCompItemByIndex(qs_cards_[c], &cd)) continue;
                   ImGui::PushID(qs_cards_[c]);
                   if (ImGui::MenuItem(cd.name[0] ? cd.name : "(carte)")) {
                     // Sertit directement (aucun popup en jeu) : juste le paquet 0x017C.

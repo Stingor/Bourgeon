@@ -401,8 +401,12 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       int    colorOut = 0;
       char*  hlptr  = nullptr;
       GVec   off = {nullptr, nullptr, nullptr};
+      // ⚠ 1er argument = le GESTIONNAIRE, pas `wnd`. Le `this` du builder ne sert
+      // qu'à une requête de nom de créateur, qui lit une std::list à `this+0x18C` —
+      // hors bornes sur une petite fenêtre (cf. item_cell.h). `wnd` reste bien la
+      // source de l'ItemSkillInfo, second argument.
       reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(
-          wnd, wnd + kItemStruct, &colorOut, &off, &bufptr, &ncap, &hlptr, 0, 0);
+          uiwnd::Mgr(), wnd + kItemStruct, &colorOut, &off, &bufptr, &ncap, &hlptr, 0, 0);
       size_t n = 0;
       while (n < sizeof(e->name) - 1 && nbuf[n]) { e->name[n] = nbuf[n]; ++n; }
       e->name[n] = '\0';

@@ -920,7 +920,7 @@ void RodexWindow::ResolveAttachDisplay(Attach* attach) {
   // (UIWindowMgr_FindOrQueueNameRequest) ; partout ailleurs il l'ignore. Le SEH
   // interne de BuildDisplayName couvre ce seul cas, avec repli sur le nom de base.
   char decorated[96];
-  itemcell::BuildDisplayName(nullptr, const_cast<void*>(info), decorated,
+  itemcell::BuildDisplayName(const_cast<void*>(info), decorated,
                              sizeof(decorated));
   attach->total_slots = itemcell::SlotCount(const_cast<void*>(info));
   // Le builder rend du texte dans la code-page du CLIENT ; ImGui veut de l'UTF-8.

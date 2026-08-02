@@ -63,16 +63,29 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
               bool damaged = false);
 
 // Nom d'AFFICHAGE composé par le name-builder natif : refine, préfixes de
-// cartes, forge. `wnd` est la fenêtre native qui sert de contexte au builder,
-// `info` l'ItemSkillInfo de l'objet. Écrit toujours une chaîne terminée dans
-// `out` — vide si tout échoue, jamais d'indéterminé.
+// cartes, forge. `info` = l'ItemSkillInfo de l'objet. Écrit toujours une chaîne
+// terminée dans `out` — vide si tout échoue, jamais d'indéterminé.
+//
+// 🔴 PLUS DE PARAMÈTRE `wnd`, et ce n'est pas un nettoyage cosmétique. Le `this`
+// du builder natif ne sert QU'À UN endroit : une requête de nom de créateur
+// (branche « objet forgé dont le créateur est inconnu ») qui va lire une
+// std::list à `this+0x18C`. Il lui faut donc le GESTIONNAIRE de fenêtres, pas
+// une fenêtre :
+//   - `uiwnd::Mgr()` est un objet statique — il marche toujours ;
+//   - une FENÊTRE ne marchait que tant qu'elle était ouverte (sinon le nom perd
+//     ses préfixes de cartes), et depuis que les natives sont détruites la
+//     plupart des appelants passaient un pointeur NUL ;
+//   - une PETITE fenêtre lit carrément hors de ses bornes (UIWeaponRefineWnd
+//     fait 0xD0 octets — le bug d'origine, cf. docs/weapon_refine_re.md §9).
+// Le contexte est donc résolu ICI, une fois pour toutes : aucun appelant n'a plus
+// à connaître cette subtilité, ni à pouvoir se tromper.
 //
 // ⚠ Le builder n'ajoute PAS le suffixe d'emplacements « [N] » : l'appelant le
 // compose lui-même (comme le fait itemdesc::RenderSimpleDesc, pour la même
 // raison). ⚠ Repli intégré : si la composition rend une chaîne vide, on retombe
 // sur le nom de base. L'ensemble est sous SEH — un ItemSkillInfo à moitié
 // initialisé ne doit pas tuer le client.
-void BuildDisplayName(void* wnd, void* info, char* out, size_t out_size);
+void BuildDisplayName(void* info, char* out, size_t out_size);
 
 // Nombre TOTAL d'emplacements de carte de l'item décrit par `info`, 0 si aucun
 // ou si la lecture échoue. Appel natif sous SEH.
