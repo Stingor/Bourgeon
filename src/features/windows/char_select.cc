@@ -21,7 +21,6 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"      // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
 #include "imgui.h"
-#include "features/overlays/basic_info.h"  // RenderDoll : moteur de capture sprite partagé
 #include "features/systems/moonlight_auth.h"
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
@@ -324,19 +323,6 @@ const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 // Les icônes de coiffure sont désormais rendues par ui/head_icon.h — même
 // sprite, même table de remap des 12 coupes historiques, même palette de
 // couleur, mais via notre propre parseur .spr/.act. Cf. CharSelect::DrawHairIcon.
-
-// ── Quel moteur pour les pantins ? ───────────────────────────────────────────
-// true  = ui/doll.h, qui COMPOSE le personnage à partir des fichiers.
-// false = BasicInfo::RenderDoll, qui laisse le client rendre un acteur et
-//         CAPTURE les quads (hook global + offsets de structure devinés).
-//
-// 🔴 Les deux coexistent le temps de valider le composeur, et l'ordre compte :
-// le composeur passe EN PREMIER, la capture reste le REPLI. Un personnage qu'on
-// ne sait pas encore composer (Doram, monture) s'affiche donc quand
-// même — la bascule ne peut pas faire disparaître un pantin.
-//
-// À passer à false pour comparer les deux rendus côte à côte.
-constexpr bool kUseOwnDollComposer = true;
 
 template <typename T>
 T Read(const void* base, int off) {
@@ -746,19 +732,17 @@ void CharSelect::EnterGame(int slot) {
 
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
                            float box_h) {
-  // Paperdoll (corps + tête + coiffes, palettes) : ui/doll.h le COMPOSE à partir
-  // des fichiers, avec BasicInfo::RenderDoll en repli (cf. kUseOwnDollComposer).
-  // Les deux prennent une apparence en paramètre, donc ne dépendent ni d'une
-  // session en jeu ni d'une UIWindow — indispensable ici, on est au char-select.
-  // Pieds ancrés en (cx, chair_y), corps centré en X, box de hauteur box_h vers le
-  // haut, en coords ÉCRAN.
+  // Paperdoll (corps + tête + coiffes + cape, palettes) : ui/doll.h le COMPOSE à
+  // partir des fichiers. Il prend une apparence en paramètre, donc ne dépend ni
+  // d'une session en jeu ni d'une UIWindow — indispensable ici, on est au
+  // char-select. Pieds ancrés en (cx, chair_y), corps centré en X, box de hauteur
+  // box_h vers le haut, en coords ÉCRAN.
   //
   // Échelle sprite par JOB : le client natif rétrécit les classes BÉBÉ
   // (Actor_GetJobSpriteScale 0x00d7fd30 -> 0.75 bébé 1re classe, 0.80/0.82 les
-  // autres, 1.0 non-bébé). Ce getter est DÉJÀ appliqué à notre capture (via
-  // Actor_DrawSprites 0x7ac820), mais le fit hauteur de RenderDoll le neutralise
-  // (il ré-étire le sprite bébé pour remplir la box). On RÉ-APPLIQUE donc le même
-  // facteur à la box : l'échelle interne `s` retombe sur celle d'un adulte et le
+  // autres, 1.0 non-bébé). Le composeur ne l'applique pas — son cadrage étire le
+  // sprite pour remplir la box, ce qui gommerait la différence. On RÉ-APPLIQUE
+  // donc le facteur à la BOX : l'échelle interne retombe sur celle d'un adulte et le
   // bébé rend bien `js` fois plus petit, pieds toujours ancrés au banc.
   using JobScaleFn = float(__stdcall*)(int);
   float js = reinterpret_cast<JobScaleFn>(0x00d7fd30)(v.job);
@@ -782,45 +766,26 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   // dir 0 = de face ; anim 2 = ASSIS (les convives sont attablés). La pose assise
   // pose aussi le perso SUR le banc (son point d'assise, pas ses pieds, arrive à
   // chair_y) -> corrige le « flottement » de la pose debout.
-  bool drawn = false;
-  if (kUseOwnDollComposer) {
-    ro::DollLook dl;
-    dl.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
-    dl.job           = v.job;
-    dl.body          = v.body;  // 🔴 c'est LUI qui choisit le sprite de corps
-    dl.hair          = v.hair;
-    dl.hair_color    = v.hair_color;
-    dl.clothes_color = v.clothes_color;
-    dl.head_low      = v.head_low;
-    dl.head_top      = v.head_top;
-    dl.head_mid      = v.head_mid;
-    dl.garment       = v.garment;
-    // L'horloge n'anime QUE les accessoires — un masque dont les couleurs
-    // changent, une mâchoire qui mordille. Le corps et la tête restent figés :
-    // leurs images sont des poses et des expressions, pas une décoration.
-    drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
-                         /*dir=*/0, /*anim=*/2,
-                         static_cast<float>(ImGui::GetTime()), tint);
-  }
+  ro::DollLook dl;
+  dl.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
+  dl.job           = v.job;
+  dl.body          = v.body;  // 🔴 c'est LUI qui choisit le sprite de corps
+  dl.hair          = v.hair;
+  dl.hair_color    = v.hair_color;
+  dl.clothes_color = v.clothes_color;
+  dl.head_low      = v.head_low;
+  dl.head_top      = v.head_top;
+  dl.head_mid      = v.head_mid;
+  dl.garment       = v.garment;
+  // L'horloge n'anime QUE les accessoires en pose assise — un masque dont les
+  // couleurs changent, une mâchoire qui mordille. Le corps et la tête restent
+  // figés : leurs images sont des poses et des expressions, pas une décoration.
+  const bool drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
+                                  /*dir=*/0, /*anim=*/2,
+                                  static_cast<float>(ImGui::GetTime()), tint);
   if (!drawn) {
-    if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
-      BasicInfo::DollLook look;
-      look.sex           = v.sex_eff;
-      look.job           = v.job;
-      look.body          = v.body;
-      look.hair          = v.hair;
-      look.hair_color    = v.hair_color;
-      look.clothes_color = v.clothes_color;
-      look.head_low      = v.head_low;
-      look.head_top      = v.head_top;
-      look.head_mid      = v.head_mid;
-      look.garment       = v.garment;
-      drawn = bi->RenderDoll(look, x, y, w, dh, /*dir=*/0, /*anim=*/2, tint);
-    }
-  }
-  if (!drawn) {
-    // Placeholder tant que la capture n'est pas prête (budget par frame, jusqu'à 25
-    // pantins) : une silhouette discrète, même encombrement -> zéro saut de scène.
+    // Placeholder tant que les fichiers ne sont pas chargés : une silhouette
+    // discrète, même encombrement -> zéro saut de scène.
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, chair_y),
                       IM_COL32(40, 44, 58, 120), 4.0f);
@@ -837,25 +802,13 @@ void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
   // choisis, debout, orienté par la flèche de rotation. Même moteur que
   // DrawDollAt ; l'apparence étant relue à chaque frame, changer un curseur met
   // l'aperçu à jour immédiatement.
-  bool drawn = false;
-  if (kUseOwnDollComposer) {
-    ro::DollLook dl;  // tout à 0 par défaut = Novice sans équipement
-    dl.sex        = create_sex_;
-    dl.hair       = create_hair_;
-    dl.hair_color = create_hair_color_;
-    drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, h,
-                         create_dir_, /*anim=*/0,
-                         static_cast<float>(ImGui::GetTime()));  // debout
-  }
-  if (!drawn) {
-    if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
-      BasicInfo::DollLook look;
-      look.sex        = create_sex_;
-      look.hair       = create_hair_;
-      look.hair_color = create_hair_color_;
-      drawn = bi->RenderDoll(look, x, y, w, h, create_dir_, /*anim=*/0);
-    }
-  }
+  ro::DollLook dl;  // tout à 0 par défaut = Novice sans équipement
+  dl.sex        = create_sex_;
+  dl.hair       = create_hair_;
+  dl.hair_color = create_hair_color_;
+  const bool drawn =
+      ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, h, create_dir_,
+                   /*anim=*/0, static_cast<float>(ImGui::GetTime()));  // debout
   if (!drawn) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h),

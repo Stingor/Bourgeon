@@ -10,14 +10,13 @@
 // coiffure, couleurs…), sans acteur en scène, sans session en jeu et sans
 // fenêtre native. Il marche donc au login comme au char-select.
 //
-// ── Pourquoi il existe à côté de BasicInfo::RenderDoll ───────────────────────
-// L'autre chemin laisse le CLIENT rendre l'acteur et CAPTURE les quads qu'il
-// aurait dessinés (hook sur Actor_SubmitSpriteQuad). C'est juste et complet,
-// mais ça exige un acteur vivant, un hook global, et une dizaine d'offsets de
-// structure devinés. Ici, rien de tout ça : on lit les fichiers.
-//
-// 🔴 Les deux coexistent volontairement le temps de comparer. Voir le TODO de
-// bascule dans char_select.cc.
+// ── Ce qu'il a remplacé ──────────────────────────────────────────────────────
+// Un moteur de CAPTURE : le client rendait l'acteur hors écran et on interceptait
+// les quads qu'il dessinait (hook sur Actor_SubmitSpriteQuad). C'était juste et
+// complet, mais ça exigeait un acteur vivant, un hook global, un cache de pages
+// d'atlas et une dizaine d'offsets de structure devinés. Ici, rien de tout ça :
+// on lit les fichiers. Le char-select et l'aperçu marchand y sont passés, et la
+// capture a été supprimée.
 //
 // ── Ce qu'il ne fait pas ─────────────────────────────────────────────────────
 // Ni arme ni bouclier — comme le char-select natif, qui ne les montre pas non

@@ -80,40 +80,6 @@ class BasicInfo : public Plugin {
   void RenderPlayerAvatar(float x, float y, float w, float h, int anim, int dir,
                           bool animate, bool show_costume = true);
 
-  // ── Paperdoll d'un personnage ARBITRAIRE (char-select) ────────────────────
-  // Apparence complète d'un perso QUELCONQUE (pas forcément celui connecté),
-  // telle que la lit le char-select natif dans CHARACTER_INFO
-  // (UINewSelectCharWnd_RenderSlots 0x0079d170) — offsets en commentaire.
-  struct DollLook {
-    int sex = 0;            // +0xae, DÉJÀ résolu (99 -> sexe du compte 0x015fb23c)
-    int job = 0;            // +0x54  class_
-    int body = 0;           // +0x58  body style (= un ID DE CLASSE côté serveur)
-    int hair = 0;           // +0x56
-    int hair_color = 0;     // +0x68
-    int clothes_color = 0;  // +0x6a
-    int head_low = 0;       // +0x60  head_bottom (accessory)
-    int head_top = 0;       // +0x64  head_top    (accessory2)
-    int head_mid = 0;       // +0x66  head_mid    (accessory3)
-    int garment = 0;        // +0xa2  robe
-  };
-
-  // Rend le paperdoll de `look` (pose STATIQUE de face, image 0) dans le rect
-  // [x,y,w,h] de la fenêtre ImGui courante : fit aspect, corps centré en X, pieds
-  // ancrés en bas, clip au rect. Contrairement à RenderPlayerAvatar, ce chemin ne
-  // dépend NI de la session en jeu NI d'une UIWindow -> il marche au LOGIN et au
-  // CHAR-SELECT (contexte de rendu factice, cf. .cc). Ni arme ni bouclier, comme
-  // le char-select natif. Cache interne + budget de captures par frame (une grille
-  // peut compter 60 slots) : renvoie false quand rien n'a été dessiné (capture pas
-  // encore disponible cette frame) — à l'appelant d'afficher son placeholder.
-  // À appeler entre Begin/End d'une frame UI.
-  // `anim` = type d'action du sprite : 0 = debout (repos), 2 = ASSIS (banquet).
-  // pose = anim*8 + dir. Image figée (vignette), donc pas d'animation jouée.
-  // `tint` = couleur de MULTIPLICATION du sprite (format IM_COL32 = 0xAABBGGRR) ;
-  // 0xFFFFFFFF = pas de teinte. Appliquée au DESSIN (pas cachée) -> l'appelant peut
-  // la faire varier chaque frame (ex. rouge pulsant pour un perso en suppression).
-  bool RenderDoll(const DollLook& look, float x, float y, float w, float h,
-                  int dir = 0, int anim = 0, uint32_t tint = 0xFFFFFFFFu);
-
   // Exporte le pantin (pose `anim` + direction `dir`) en GIF animé fond transparent
   // vers `filepath` (chemin complet ; le dossier doit exister). Toutes les images de
   // la pose sont capturées et compositées hors-écran. Renvoie true si écrit. À appeler

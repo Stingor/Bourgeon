@@ -152,11 +152,7 @@ struct CapLayer {
 CapLayer g_caps[48];
 int      g_cap_count   = 0;
 bool     g_cap_active  = false;  // set only during our actor render
-// Buffer SÉPARÉ pour l'aperçu d'équipement (ne doit PAS écraser g_caps du portrait
-// — les 2 rendus cohabitent). Le hook écrit vers la cible active g_cap_buf/g_cap_num.
-CapLayer  g_pv_caps[48];
-int       g_pv_count = 0;
-// Buffer DÉDIÉ à l'avatar plein-corps (character sheet). Comme g_pv_caps il
+// Buffer DÉDIÉ à l'avatar plein-corps (character sheet). Comme g_caps il
 // cohabite avec g_caps : la capture redirige g_cap_buf/g_cap_num/g_frame_dst
 // vers lui puis restaure. g_av_frame_count = nb d'images de l'action (wrap anim,
 // 1 frame de lag comme l'aperçu au tout premier passage).
@@ -213,7 +209,6 @@ bool  g_portrait_animate = true;    // cycle the action frames (vs freeze frame 
 bool  g_portrait_garment = false;   // feed the equipped garment/cape (full body)
 void* g_cur_actor = nullptr;        // our actor (read pose @+0x38 in the hook)
 int   g_body_frame_count = 1;       // frames in the chosen action (for wrap)
-int   g_pv_frame_count = 1;         // idem pour l'aperçu (anim marche)
 int*  g_frame_dst = &g_body_frame_count;  // cible du comptage (portrait par défaut)
 bool  g_first_layer = false;        // first layer of a pass = body (capture count)
 
@@ -515,67 +510,6 @@ PvSlot MapEmplacementToSlot(int emp) {
     case 0x4:   case 0x2000:                                    return PV_GARMENT;
     default:                                                    return PV_NONE;
   }
-}
-
-// Capture le perso (apparence live) portant l'item (viewID dans le slot), pose de
-// face statique, dans g_caps[]. SEH-gardé (g_cap_count=0 si échec).
-void CaptureItemPreviewActor(int view_id, PvSlot slot, int dir) {
-  InstallActorCapture();
-  if (!g_orig_actor_quad) return;
-  void* render_ctx = *reinterpret_cast<void**>(kRenderCtxPtr);
-  if (!render_ctx) return;
-  g_pv_count = 0;
-  g_cap_buf = g_pv_caps;   // rediriger le hook vers le buffer aperçu (pas g_caps)
-  g_cap_num = &g_pv_count;
-  g_frame_dst = &g_pv_frame_count;  // comptage de frames -> buffer aperçu
-  g_first_layer = true;   // capturer le nb de frames de l'anim marche
-  __try {
-    using GetSexFn = int(__fastcall*)(void*, void*);
-    using GetJobFn = int(__fastcall*)(void*, void*);
-    const int sex = reinterpret_cast<GetSexFn>(kGetSex)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    const int job = reinterpret_cast<GetJobFn>(0x00d5b580)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    const int hair = *reinterpret_cast<int*>(kHair);
-    const int clo  = *reinterpret_cast<int*>(kClothesCol);
-    const int hc   = *reinterpret_cast<int*>(kHairCol);
-    const int hg_top  = (slot == PV_TOP) ? view_id : 0;
-    const int hg_mid  = (slot == PV_MID) ? view_id : 0;
-    const int hg_low  = (slot == PV_LOW) ? view_id : 0;
-    const int garment = (slot == PV_GARMENT) ? view_id : 0;
-    using CtorFn = void*(__fastcall*)(void* self, void* edx, void* render_ctx,
-        int x, int y, int sex, int job_short, int job_full, int job_body, int hair,
-        int hg_top, int hg_mid, int hg_low, int garment, int p13, int p14,
-        int clothes_col, int hair_col, int pose, int frame, int p19);
-    using DrawFn = void(__fastcall*)(void* self, void* edx, char param);
-    using DtorFn = void(__fastcall*)(void* self, void* edx);
-    alignas(8) unsigned char actor[0x200];
-    std::memset(actor, 0, sizeof(actor));
-    // Carrousel d'animations (~2.5s chacune) : marche -> idle -> assis. dir via
-    // molette. (anim : 0=idle, 1=marche, 2=assis — ajustable si l'index diffère.)
-    static const int kAnims[3] = {1, 0, 2};
-    const int anim = kAnims[(GetTickCount() / 2500u) % 3u];
-    const int pose = anim * 8 + (dir & 7);
-    // Cyclage des frames de l'anim courante (~600ms/cycle). g_pv_frame_count est
-    // capturé par le hook au 1er passage (0 au tout premier -> frame 0, 1 fr lag).
-    const int nf = g_pv_frame_count > 0 ? g_pv_frame_count : 1;
-    const int frame = static_cast<int>(
-        static_cast<unsigned long long>(GetTickCount() % 600u) *
-        static_cast<unsigned>(nf) / 600u);
-    reinterpret_cast<CtorFn>(kActorCtor)(
-        actor, nullptr, render_ctx, 0, 0, sex, job & 0xffff, job,
-        job & 0xffff, hair, hg_top, hg_mid, hg_low, garment, 0, 0, clo, hc,
-        pose, frame, 0);
-    g_cur_actor = actor;
-    g_cap_active = true;
-    reinterpret_cast<DrawFn>(kActorDraw)(actor, nullptr, 1);
-    g_cap_active = false;
-    g_cur_actor = nullptr;
-    reinterpret_cast<DtorFn>(kActorDtor)(actor, nullptr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { g_cap_active = false; }
-  g_cap_buf = g_caps;      // restaurer la cible portrait (toujours)
-  g_cap_num = &g_cap_count;
-  g_frame_dst = &g_body_frame_count;
 }
 
 // ── Arme + bouclier sur l'avatar (approche A) ────────────────────────────────
@@ -1909,283 +1843,10 @@ void CaptureHatEffectOrdinal(int ordinal) {
   g_hatfx_dg_captured = g_str_count;
 }
 
-// ── Paperdoll d'un personnage ARBITRAIRE (char-select) ───────────────────────
-// Les trois captures ci-dessus (portrait / aperçu / avatar) rendent TOUJOURS le
-// personnage CONNECTÉ : elles lisent l'apparence dans les globals de session
-// (rag::kSessionAddr, g_OwnLook_*) et prennent la fenêtre BasicInfo (0x0131f6c4) comme
-// contexte de rendu. Au char-select, ni l'un ni l'autre n'existe -> capture vide.
-// Ce chemin-ci est donc AUTONOME :
-//   (a) apparence passée en paramètre (DollLook) au lieu des globals ;
-//   (b) contexte de rendu FACTICE (DollRenderCtx) au lieu d'une UIWindow ;
-//   (c) buffer de capture dédié (g_doll_caps) + cache (g_doll_cache).
-// Il réutilise en revanche le SEUL moteur de capture (hook sur
-// Actor_SubmitSpriteQuad 0x00a1b7c0 + EmitCapLayer) : ce hook est global, il ne
-// peut pas y en avoir un second.
-// Séquence par personnage = celle du char-select NATIF
-// (UINewSelectCharWnd_RenderSlots 0x0079d170) : Actor_Init -> Actor_DrawSprites(1)
-// -> Actor_Dtor, SANS arme (+0x5a) ni bouclier (+0x62) — le natif ne les rend pas.
-
-constexpr uintptr_t kUiWndFadeColor = 0x00a1edf0;  // UIWindow_GetFadeColor (vtbl+0xa0)
-
-// Contexte de rendu FACTICE. RE (Actor_Init 0x007ac210 + Actor_DrawSprites
-// 0x007ac820, chemin quad param=1) : le « render ctx » est seulement STOCKÉ dans
-// actor+0x04 par le ctor (aucun déréférencement), et sur le chemin quad il ne sert
-// qu'à deux choses :
-//   1. un appel virtuel vtbl+0xa0 == UIWindow_GetFadeColor, dont la couleur part
-//      dans le submit — et que notre capture IGNORE ;
-//   2. le `this` d'Actor_SubmitSpriteQuad — que le hook SUPPRIME pendant la capture.
-// (Le déréférencement ctx+0x24 du décompilé n'est QUE sur la branche NON-quad, qu'on
-// ne prend jamais.) Un objet de 0x100 octets dont seule l'entrée 40 de vtable est
-// renseignée suffit donc — et lui, il existe hors jeu.
-// UIWindow_GetFadeColor ne lit que +0x38 (alpha cible), +0x3c (tick du fondu) et
-// +0x40 (alpha courant, qu'il RÉÉCRIT) : cible == courant == 0xff -> il renvoie
-// 0xffffffff sans toucher à rien d'autre. Le reste à zéro = état vide légal.
-struct FakeRenderCtx {
-  void*         vtbl;
-  unsigned char pad[0xFC];
-};
-
-void* DollRenderCtx() {
-  static void*         s_vtbl[48] = {};  // 48 entrées = 0xc0 o > slot 40 (= +0xa0)
-  static FakeRenderCtx s_ctx = {};
-  s_vtbl[40] = reinterpret_cast<void*>(kUiWndFadeColor);
-  s_ctx.vtbl = s_vtbl;
-  unsigned char* p = reinterpret_cast<unsigned char*>(&s_ctx);
-  *reinterpret_cast<unsigned*>(p + 0x38) = 0xff;            // alpha cible
-  *reinterpret_cast<unsigned*>(p + 0x3c) = GetTickCount();  // tick du fondu
-  *reinterpret_cast<unsigned*>(p + 0x40) = 0xff;            // alpha courant
-  return &s_ctx;
-}
-
-// ── Cache de dolls ───────────────────────────────────────────────────────────
-// Une capture = un aller-retour NATIF complet (Actor_Init + résolution/chargement
-// des .spr/.act + Actor_DrawSprites) ; la grille du char-select peut afficher 45
-// slots (bientôt 60). On mémorise donc les couches par APPARENCE (clé = signature
-// des champs de DollLook + direction : deux persos identiques partagent l'entrée,
-// et tout changement d'apparence en crée une nouvelle) et on borne le nombre de
-// captures par frame.
-//
-// Pourquoi ré-capturer, puisque la pose est figée ? Parce qu'une couche capturée
-// référence une PAGE d'atlas + des UV, et l'atlas est un cache LRU (cellule,palette)
-// -> CTexture (cf. docs/sprite_rendering_re.md) : si la cellule est évincée puis
-// réallouée, les UV mémorisées pointeraient sur les mauvais pixels. Ré-capturer
-// ré-appelle SpriteAtlas_GetCachedTexture, ce qui remet la cellule en tête de LRU
-// et rafraîchit le handle de page — même raison que le « ré-résolu chaque frame »
-// de login_parade.
-// Et le device D3D9 ? Un reset détruit les textures : chaque entrée retient
-// l'Overlay_DeviceEpoch de sa capture et n'est JAMAIS dessinée si l'epoch a changé
-// (sinon on dessinerait un pointeur mort -> crash ddraw).
-constexpr int   kDollCacheSize  = 64;   // > 60 slots serveur : pas de thrash
-constexpr int   kDollMaxLayers  = 24;   // corps+tête+3 coiffes+garment ≈ 7 en pratique
-constexpr DWORD kDollRefreshMs  = 500;  // rafraîchissement souhaité (re-pin LRU atlas)
-// Péremption DURE : au-delà, une entrée n'est PLUS DESSINÉE tant qu'elle n'a pas été
-// re-capturée. Filet contre le seul scénario où un handle de texture peut réellement
-// mourir sous nous : le cache est statique, il survit à une session de jeu, et au
-// retour au char-select les pages d'atlas de la session précédente peuvent avoir été
-// libérées. 2 s >> le temps qu'il faut au budget (2/frame) pour rafraîchir tout
-// l'écran, donc en régime normal on ne refuse jamais de dessiner.
-constexpr DWORD kDollExpireMs   = 2000;
-constexpr int   kDollPerFrame   = 2;    // budget de captures NATIVES par frame
-
-CapLayer g_doll_caps[48];
-int      g_doll_count = 0;
-
-struct DollCacheEntry {
-  unsigned key   = 0;  // signature apparence+direction (0 = entrée libre)
-  unsigned epoch = 0;  // Overlay_DeviceEpoch() au moment de la capture
-  DWORD    stamp = 0;  // GetTickCount() de la capture (péremption)
-  DWORD    used  = 0;  // GetTickCount() du dernier usage (éviction LRU)
-  int      count = 0;  // couches valides (0 = capture vide : on retentera)
-  // Cadrage figé, en unités acteur : centre X + pieds du CORPS (ancrage stable,
-  // insensible aux coiffes larges), sommet de la bbox TOTALE et demi-largeur
-  // maximale depuis le centre (aucun côté ne sort du cadre).
-  float    cx = 0.0f, feet = 0.0f, top = 0.0f, half = 0.0f;
-  CapLayer layers[kDollMaxLayers];
-};
-DollCacheEntry g_doll_cache[kDollCacheSize];
-
-// Budget de captures par frame (frontière de frame = ImGui::GetFrameCount).
-int g_doll_budget = 0;
-int g_doll_budget_frame = -1;
-bool DollTakeBudget() {
-  const int f = ImGui::GetFrameCount();
-  if (f != g_doll_budget_frame) {
-    g_doll_budget_frame = f;
-    g_doll_budget = kDollPerFrame;
-  }
-  if (g_doll_budget <= 0) return false;
-  --g_doll_budget;
-  return true;
-}
-
-// Signature d'apparence (FNV-1a) : clé du cache. Jamais 0 (0 = entrée libre).
-// `anim` (type d'action) fait partie de la clé : debout et assis d'un MÊME perso
-// sont deux vignettes distinctes -> deux entrées de cache.
-unsigned DollKey(const BasicInfo::DollLook& k, int dir, int anim) {
-  const unsigned parts[] = {
-      static_cast<unsigned>(k.sex),      static_cast<unsigned>(k.job),
-      static_cast<unsigned>(k.body),     static_cast<unsigned>(k.hair),
-      static_cast<unsigned>(k.hair_color), static_cast<unsigned>(k.clothes_color),
-      static_cast<unsigned>(k.head_low), static_cast<unsigned>(k.head_top),
-      static_cast<unsigned>(k.head_mid), static_cast<unsigned>(k.garment),
-      static_cast<unsigned>(dir & 7),    static_cast<unsigned>(anim)};
-  unsigned h = 2166136261u;
-  for (unsigned p : parts) h = (h ^ p) * 16777619u;
-  return h ? h : 1u;
-}
-
-// Capture UNE image (pose de face, image 0) du paperdoll `k` dans g_doll_caps.
-// SEH-gardé : un échec laisse g_doll_count à 0 (l'appelant affichera un
-// placeholder). Restaure la cible de capture du portrait à la sortie, comme les
-// autres captures.
-void CaptureDollActor(const BasicInfo::DollLook& k, int dir, int anim) {
-  InstallActorCapture();
-  if (!g_orig_actor_quad) return;
-  void* render_ctx = DollRenderCtx();
-  g_doll_count = 0;
-  g_cap_buf = g_doll_caps;  // rediriger le hook vers le buffer doll
-  g_cap_num = &g_doll_count;
-  // g_first_layer reste FAUX exprès : le bloc « 1re couche » du hook écrit
-  // g_av_body_scale / g_av_frame_delay / *g_frame_dst, qui appartiennent au doll de
-  // la fiche perso. Notre pose est FIGÉE (une seule image) -> aucun de ces trois
-  // états ne nous sert, et on ne les pollue pas. (g_frame_dst n'est donc pas touché.)
-  g_first_layer = false;
-  __try {
-    using CtorFn = void*(__fastcall*)(void* self, void* edx, void* render_ctx,
-        int x, int y, int sex, int job_short, int job_full, int job_body, int hair,
-        int p9, int p10, int p11, int garment, int p13, int p14,
-        int clothes_col, int hair_col, int pose, int frame, int p19);
-    using DrawFn = void(__fastcall*)(void* self, void* edx, char param);
-    using DtorFn = void(__fastcall*)(void* self, void* edx);
-    alignas(8) unsigned char actor[0x200];
-    std::memset(actor, 0, sizeof(actor));
-    // job_body (actor+0x18) = CHARACTER_INFO+0x58 « body style ». Côté serveur
-    // (rAthena) ce champ contient un ID DE CLASSE — pc.cpp fait
-    // `status.body = status.class_` quand la valeur n'est pas dans job_db — et
-    // Job_ResolveBodyClass 0x00d99150 le consomme comme tel. S'il vaut 0, le corps
-    // retombe sur NOVICE : d'où le repli sur le job (garde ; le natif, lui, passe
-    // +0x58 brut car le serveur le remplit toujours).
-    const int body = (k.body != 0) ? k.body : k.job;
-    // ⚠ ORDRE DES COIFFES (vérifié dans RenderSlots 0x0079d170) : les paramètres 9,
-    // 10 et 11 reçoivent, DANS CET ORDRE, head LOW (+0x60), head TOP (+0x64) puis
-    // head MID (+0x66). Les noms hg_top/hg_mid/hg_low des autres captures sont des
-    // noms de COUCHE, pas des slots d'équipement — ne pas s'y fier ici.
-    // pose = animType*8 + dir. animType 0 (repos) = vignette debout ; animType 2 =
-    // ASSIS (pose 0x10 pour dir 0 = celle que le natif utilise pour un perso en
-    // attente de suppression). image 0 = figée (le natif n'anime que via
-    // rec[0x53]/[0x54], à 0 en temps normal).
-    // p19 (actor+0x40) = tick de base, consommé par Act_ResolveAltAnimFrame (images
-    // alternatives type clignement). On passe 0 — comme les autres captures — ce qui
-    // rend la capture DÉTERMINISTE : indispensable ici, sinon deux captures de la
-    // même apparence différeraient et le cache afficherait un état périmé.
-    const int pose = anim * 8 + (dir & 7);
-    reinterpret_cast<CtorFn>(kActorCtor)(
-        actor, nullptr, render_ctx, /*x*/ 0, /*y*/ 0, k.sex,
-        /*job_short*/ k.job & 0xffff, /*job_full*/ k.job, /*job_body*/ body,
-        k.hair, /*p9*/ k.head_low, /*p10*/ k.head_top, /*p11*/ k.head_mid,
-        k.garment, /*p13*/ 0, /*p14*/ 0, k.clothes_color, k.hair_color,
-        /*pose*/ pose, /*frame*/ 0, /*p19*/ 0);
-    g_cur_actor = actor;
-    g_cap_active = true;
-    reinterpret_cast<DrawFn>(kActorDraw)(actor, nullptr, 1);  // 1 => chemin quad
-    g_cap_active = false;
-    g_cur_actor = nullptr;
-    reinterpret_cast<DtorFn>(kActorDtor)(actor, nullptr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    g_cap_active = false;
-    g_cur_actor = nullptr;
-  }
-  g_cap_buf = g_caps;  // restaurer la cible portrait (contrat commun aux captures)
-  g_cap_num = &g_cap_count;
-}
-
-// Vide le cache de dolls. Appelé à chaque changement de mode : la scène (et donc les
-// pages de l'atlas de sprites) est reconstruite, les handles mémorisés n'ont plus
-// aucune raison d'être valides.
-void DollCacheInvalidateAll() {
-  for (int i = 0; i < kDollCacheSize; ++i) {
-    g_doll_cache[i].key = 0;
-    g_doll_cache[i].count = 0;
-    g_doll_cache[i].used = 0;
-  }
-}
-
-// Entrée du cache pour `key` sous l'epoch device courant, ou nullptr.
-DollCacheEntry* DollCacheFind(unsigned key, unsigned epoch) {
-  for (int i = 0; i < kDollCacheSize; ++i)
-    if (g_doll_cache[i].key == key && g_doll_cache[i].epoch == epoch)
-      return &g_doll_cache[i];
-  return nullptr;
-}
-
-// Entrée libre, sinon la moins récemment utilisée (LRU).
-DollCacheEntry* DollCacheEvict() {
-  DollCacheEntry* best = &g_doll_cache[0];
-  for (int i = 0; i < kDollCacheSize; ++i) {
-    if (g_doll_cache[i].key == 0) return &g_doll_cache[i];
-    if (g_doll_cache[i].used < best->used) best = &g_doll_cache[i];
-  }
-  return best;
-}
-
-// Range la capture courante (g_doll_caps) dans `e` et fige le cadrage. Une capture
-// VIDE est mémorisée telle quelle (count 0) : elle sera retentée à la péremption
-// (sprites pas encore chargés), sans re-tenter à chaque frame.
-void DollCacheFill(DollCacheEntry* e, unsigned key, unsigned epoch, DWORD now) {
-  const bool same = (e->key == key && e->epoch == epoch);
-  int n = g_doll_count;
-  if (n > kDollMaxLayers) n = kDollMaxLayers;
-  if (n < 0) n = 0;
-  // Rafraîchissement qui échoue alors qu'on avait déjà les couches : on GARDE le
-  // rendu précédent (aucun clignotement) et on retentera à la prochaine péremption.
-  // ⚠ Seulement si c'est la MÊME apparence : sur une entrée recyclée (autre clé) il
-  // faut écraser, sinon on afficherait le perso précédent.
-  if (n == 0 && same && e->count > 0) {
-    e->stamp = now;
-    e->used = now;
-    return;
-  }
-  e->key = key;
-  e->epoch = epoch;
-  e->stamp = now;
-  e->used = now;
-  e->count = n;
-  if (n > 0)
-    std::memcpy(e->layers, g_doll_caps, static_cast<size_t>(n) * sizeof(CapLayer));
-  // Cadrage (mêmes règles que l'avatar de la fiche, mais sur UNE image puisque la
-  // pose est figée) : bbox TOTALE pour la taille, bbox CORPS (couches non-tête =
-  // torse/jambes) pour centrer en X et poser les pieds. Une coiffe large ne
-  // décentre donc pas le perso.
-  float ax0 = 1e9f, ay0 = 1e9f, ax1 = -1e9f, ay1 = -1e9f;
-  float bx0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
-  bool has_body = false;
-  for (int i = 0; i < n; ++i) {
-    const CapLayer& L = e->layers[i];
-    const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
-    const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
-    if (lx0 < ax0) ax0 = lx0;  if (lx1 > ax1) ax1 = lx1;
-    if (ly0 < ay0) ay0 = ly0;  if (ly1 > ay1) ay1 = ly1;
-    if (!L.head_region) {
-      has_body = true;
-      if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
-      if (ly1 > by1) by1 = ly1;
-    }
-  }
-  if (n <= 0) { e->cx = e->feet = e->top = e->half = 0.0f; return; }
-  e->cx   = has_body ? (bx0 + bx1) * 0.5f : (ax0 + ax1) * 0.5f;
-  e->feet = has_body ? by1 : ay1;
-  e->top  = ay0;
-  const float hr = ax1 - e->cx, hl = e->cx - ax0;
-  e->half = (hr > hl) ? hr : hl;
-}
 }  // namespace
 
 void BasicInfo::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
-  // Dolls du char-select : le cache retient des pages d'atlas de sprites, et la scène
-  // est reconstruite à chaque changement de mode -> on repart de zéro (les entrées
-  // seront re-capturées à la demande).
-  DollCacheInvalidateAll();
   // Repart d'une liste vide à l'entrée en jeu : le serveur re-pousse la liste
   // complète des hat effects au spawn (0x0A3B status=1). Évite qu'un effet d'un
   // perso précédent persiste (aucun status=0 n'est émis à la déconnexion).
@@ -2219,66 +1880,16 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
     s_dir = (s_dir + (wheel > 0.0f ? 1 : 7)) & 7;  // +1 / -1 avec wrap
     ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenêtre
   }
-  // ── Quel moteur pour le pantin ? ─────────────────────────────────────────
-  // true  = ui/doll.h, qui COMPOSE le personnage à partir des fichiers.
-  // false = le moteur de CAPTURE ci-dessous, qui construit un acteur natif
-  //         complet à chaque image et intercepte ses quads.
-  // À passer à false pour comparer les deux rendus.
-  constexpr bool kUseComposerPreview = true;
-
-  // Carrousel d'animations, ~2,5 s chacune : marche -> repos -> assis. Le moteur
-  // de capture a le sien, à l'identique, dans CaptureItemPreviewActor.
+  // Carrousel d'animations, ~2,5 s chacune : marche -> repos -> assis.
   static const int kPvAnims[3] = {1, 0, 2};
   const int pv_anim = kPvAnims[(GetTickCount() / 2500u) % 3u];
 
   // Hauteur du CORPS à l'écran. C'est une taille ABSOLUE et non un ajustement au
   // cadre : le personnage doit garder exactement la même stature d'un article
   // survolé au suivant, sinon la comparaison ne veut plus rien dire. D'où
-  // `fit_body_only` côté composeur, et le figeage sur la bbox du corps côté
-  // capture.
+  // `fit_body_only` côté composeur.
   constexpr float kPvBodyPx = 120.0f;
 
-  // Échelle + ancrage FIGÉS du moteur de capture (calculés 1x, gardés) : le
-  // focal ne suit PLUS la bbox par frame, qui saute avec les membres ET les
-  // accessoires animés/volants (l'oiseau, rangé en « région tête »).
-  static float s_scale = 0.0f, s_fx = 0.0f, s_feet = 0.0f;
-  if (!kUseComposerPreview) {
-    CaptureItemPreviewActor(view_id, slot, s_dir);
-    if (g_pv_count <= 0) return;
-    // Régions TÊTE (visage/cheveux/hat, RGBA) et CORPS (palette), + bbox totale
-    // (pour l'échelle). head_region posé par le hook (act_layer[8]!=0).
-    float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
-    float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;
-    float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
-    bool has_head = false, has_body = false;
-    for (int i = 0; i < g_pv_count; ++i) {
-      const CapLayer& L = g_pv_caps[i];
-      const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
-      const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
-      if (lx0 < minx) minx = lx0;  if (lx1 > maxx) maxx = lx1;
-      if (ly0 < miny) miny = ly0;  if (ly1 > maxy) maxy = ly1;
-      if (L.head_region) {
-        has_head = true;
-        if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
-        if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
-      } else {
-        has_body = true;
-        if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
-        if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
-      }
-    }
-    const float bw = maxx - minx, bh = maxy - miny;
-    if (bw <= 1.0f || bh <= 1.0f) return;
-    if (s_scale <= 0.0f) {
-      // Échelle basée sur la HAUTEUR DU CORPS (pas la bbox totale, qui inclut
-      // les costumes larges comme le cat) -> perso à taille CONSTANTE.
-      const float body_h = has_body ? (by1 - by0) : (maxy - miny);
-      s_scale = (body_h > 1.0f) ? (kPvBodyPx / body_h) : 1.0f;
-      if (has_body)      { s_fx = (bx0 + bx1) * 0.5f; s_feet = by1; }
-      else if (has_head) { s_fx = (hx0 + hx1) * 0.5f; s_feet = hy1; }
-      else               { s_fx = (minx + maxx) * 0.5f; s_feet = maxy; }
-    }
-  }
   // Boîte large + haute : costumes larges (cat à côté) / hauts (hats) ne sont pas
   // cropés. Fond transparent -> l'espace vide est invisible.
   const float box_w = 260.0f, box_h = 240.0f;
@@ -2352,65 +1963,51 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   };
   PvHatPass hats{this, dl, hat_ordinal, isStr, hp.before, hp.pos_x};
 
-  float ox = 0.0f, oy = 0.0f, s = 1.0f;
-  bool drawn = false;
-  if (kUseComposerPreview) {
-    // Le personnage de BASE plus le SEUL article survolé : les autres
-    // emplacements restent vides, c'est déjà ce que fait le moteur de capture.
-    // ⚠ Pas de garde SEH ici, volontairement : `__try` interdirait tout objet à
-    // destructeur dans cette fonction (C2712), et ces mêmes lectures se font
-    // déjà sans garde ailleurs dans ce fichier (cf. ClassName). La fonction
-    // n'est de toute façon atteinte qu'avec une session ouverte.
-    using GetSexFn = int(__fastcall*)(void*, void*);
-    using GetJobFn = int(__fastcall*)(void*, void*);
-    ro::DollLook look;
-    look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    look.job = reinterpret_cast<GetJobFn>(0x00d5b580)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    look.hair          = *reinterpret_cast<int*>(kHair);
-    look.hair_color    = *reinterpret_cast<int*>(kHairCol);
-    look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
-    // ⚠ `body` reste à 0 : aucune globale de STYLE DE CORPS du joueur n'est
-    // connue, et le moteur de capture ne le gère pas davantage (il passe le job).
-    // Un joueur qui a posé un style de corps se verra donc avec le corps
-    // standard de sa classe — écart assumé, identique à l'existant.
-    look.head_top = (slot == PV_TOP)     ? view_id : 0;
-    look.head_mid = (slot == PV_MID)     ? view_id : 0;
-    look.head_low = (slot == PV_LOW)     ? view_id : 0;
-    look.garment  = (slot == PV_GARMENT) ? view_id : 0;
+  // Le personnage de BASE plus le SEUL article survolé : les autres
+  // emplacements restent vides.
+  //
+  // ⚠ Pas de garde SEH ici, volontairement : `__try` interdirait tout objet à
+  // destructeur dans cette fonction (C2712), et ces mêmes lectures se font déjà
+  // sans garde ailleurs dans ce fichier (cf. ClassName). La fonction n'est de
+  // toute façon atteinte qu'avec une session ouverte.
+  using GetSexFn = int(__fastcall*)(void*, void*);
+  using GetJobFn = int(__fastcall*)(void*, void*);
+  ro::DollLook look;
+  look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look.job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look.hair          = *reinterpret_cast<int*>(kHair);
+  look.hair_color    = *reinterpret_cast<int*>(kHairCol);
+  look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+  // ⚠ `body` reste à 0 : aucune globale de STYLE DE CORPS du joueur n'est
+  // connue. Un joueur qui a posé un style de corps se verra donc avec le corps
+  // standard de sa classe — écart assumé, l'ancien moteur ne le gérait pas non
+  // plus (il passait le job).
+  look.head_top = (slot == PV_TOP)     ? view_id : 0;
+  look.head_mid = (slot == PV_MID)     ? view_id : 0;
+  look.head_low = (slot == PV_LOW)     ? view_id : 0;
+  look.garment  = (slot == PV_GARMENT) ? view_id : 0;
 
-    ro::DollPlacement pl;
-    ro::DollDrawOpts o;
-    o.dir           = s_dir;
-    o.anim          = pv_anim;
-    o.anim_seconds  = static_cast<float>(ImGui::GetTime());
-    o.fit_body_only = true;  // stature CONSTANTE d'un article au suivant
-    o.out_placement = &pl;
-    o.underlay_ctx  = &hats;
-    o.underlay = [](void* c, const ro::DollPlacement& p) {
-      static_cast<PvHatPass*>(c)->Behind(p.origin_x, p.origin_y, p.scale);
-    };
-    // Rectangle calé pour que le CORPS fasse kPvBodyPx de haut, pieds à 14 px du
-    // bas de la boîte : `fit_body_only` rend l'échelle égale à hauteur/corps.
-    drawn = ro::DrawDoll(dl, look, p0.x, p0.y + box_h - 14.0f - kPvBodyPx,
-                         box_w, kPvBodyPx, o);
-    if (drawn) { ox = pl.origin_x; oy = pl.origin_y; s = pl.scale; }
-  } else {
-    s  = s_scale;
-    ox = p0.x + box_w * 0.5f - s_fx * s;      // corps centré horizontalement
-    oy = p0.y + box_h - 14.0f - s_feet * s;   // pieds près du bas (figé)
-    hats.Behind(ox, oy, s);
-    for (int i = 0; i < g_pv_count; ++i) {
-      const CapLayer& L = g_pv_caps[i];
-      const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
-      const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
-      const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
-      const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
-      dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
-    }
-    drawn = true;
-  }
+  ro::DollPlacement pl;
+  ro::DollDrawOpts o;
+  o.dir           = s_dir;
+  o.anim          = pv_anim;
+  o.anim_seconds  = static_cast<float>(ImGui::GetTime());
+  o.fit_body_only = true;  // stature CONSTANTE d'un article au suivant
+  o.out_placement = &pl;
+  o.underlay_ctx  = &hats;
+  o.underlay = [](void* c, const ro::DollPlacement& p) {
+    static_cast<PvHatPass*>(c)->Behind(p.origin_x, p.origin_y, p.scale);
+  };
+  // Rectangle calé pour que le CORPS fasse kPvBodyPx de haut, pieds à 14 px du
+  // bas de la boîte : `fit_body_only` rend l'échelle égale à hauteur/corps.
+  const bool drawn = ro::DrawDoll(dl, look, p0.x,
+                                  p0.y + box_h - 14.0f - kPvBodyPx, box_w,
+                                  kPvBodyPx, o);
+  const float ox = drawn ? pl.origin_x : 0.0f;
+  const float oy = drawn ? pl.origin_y : 0.0f;
+  const float s  = drawn ? pl.scale : 1.0f;
   // DEVANT le personnage. 🔴 Conditionné au pantin : sans lui il n'y a pas
   // d'ancre, et un effet ancré sur (0,0) atterrirait dans le coin de l'écran.
   if (drawn) hats.Front(ox, oy, s);
@@ -2611,72 +2208,6 @@ void BasicInfo::RenderPlayerAvatar(float x, float y, float w, float h,
   DrawEzCapTris(dl, ox, oy, s, /*before=*/false, /*with_preview=*/false);  // (c') quads EZ/CEffectMgr DEVANT le perso
   // (reset de la capture = frontière de frame, dans le module ez_capture)
   dl->PopClipRect();
-}
-
-// Paperdoll d'un personnage ARBITRAIRE (char-select), pose statique de face.
-// Chemin AUTONOME (voir CaptureDollActor) : ne lit AUCUN global de session et
-// n'a pas besoin d'une UIWindow -> utilisable hors jeu. Cache par apparence +
-// budget de captures par frame : renvoie false quand rien n'a pu être dessiné
-// (budget épuisé cette frame, ou capture vide) -> l'appelant met son placeholder.
-bool BasicInfo::RenderDoll(const DollLook& look, float x, float y, float w,
-                                 float h, int dir, int anim, uint32_t tint) {
-  if (w <= 4.0f || h <= 4.0f) return false;
-  const unsigned key   = DollKey(look, dir, anim);
-  const unsigned epoch = Overlay_DeviceEpoch();
-  const DWORD    now   = GetTickCount();
-
-  DollCacheEntry* e = DollCacheFind(key, epoch);
-  // Capture si (a) rien en cache, ou (b) l'entrée est périmée (re-pin de la cellule
-  // d'atlas + rafraîchissement du handle de page) — dans les deux cas seulement si
-  // le budget de la frame le permet. Sans budget et sans entrée : on ne dessine rien
-  // cette frame, le slot apparaîtra à la suivante (max kDollPerFrame nouveaux dolls
-  // par frame, donc pas de à-coup quand la grille s'ouvre sur 45 slots).
-  if (e == nullptr || (now - e->stamp) > kDollRefreshMs) {
-    if (DollTakeBudget()) {
-      CaptureDollActor(look, dir, anim);
-      DollCacheEntry* dst = e ? e : DollCacheEvict();
-      DollCacheFill(dst, key, epoch, now);
-      e = dst;
-    } else if (e == nullptr || (now - e->stamp) > kDollExpireMs) {
-      // Rien en cache, ou entrée trop vieille pour être dessinée sans avoir été
-      // revalidée (cf. kDollExpireMs) : placeholder, on retentera à la frame suivante.
-      return false;
-    }
-  }
-  e->used = now;
-  if (e->count <= 0) return false;  // capture vide (sprite pas encore chargé)
-
-  const float pad  = 2.0f;
-  const float vh   = e->feet - e->top;  // sommet (coiffe) -> pieds
-  const float half = e->half;
-  if (vh <= 1.0f || half <= 0.5f) return false;
-  // Échelle pilotée par la HAUTEUR du perso (pieds->sommet), corps centré en X,
-  // pieds collés au bas du rect. ⚠ On NE borne PAS par la largeur totale `half` :
-  // un compagnon/garment large (chat en costume, cape déployée) gonfle la bbox et,
-  // avec `min(sx, sy)`, RAPETISSAIT tout le personnage pour le faire tenir. On laisse
-  // désormais la largeur DÉBORDER (clip du rect) plutôt que de rétrécir le perso ;
-  // on ne bride que les cas pathologiques (débord > ~2,2x la largeur d'ajustement).
-  const float sx = (w - 2.0f * pad) / (2.0f * half);
-  const float sy = (h - 2.0f * pad) / vh;
-  const float wcap = sx * 2.2f;                 // débord latéral toléré avant bridage
-  const float s  = (sy < wcap) ? sy : wcap;
-  const float ox = x + w * 0.5f - e->cx * s;
-  const float oy = y + h - pad - e->feet * s;
-
-  // PAS de clip au rect : un compagnon/garment large (chat en costume) déborde de
-  // la case, et on le veut ENTIER (sans clip il peut mordre sur le siège voisin,
-  // acceptable pour la scène). Le dessin reste borné par la fenêtre plein écran.
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-  for (int i = 0; i < e->count; ++i) {  // ordre du tableau = z-order painter
-    const CapLayer& L = e->layers[i];
-    if (!L.tex) continue;
-    const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
-    const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
-    const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
-    const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
-    dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1, tint);
-  }
-  return true;
 }
 
 // Exporte le pantin (pose `anim` + direction `dir` courantes) en GIF animé à fond
