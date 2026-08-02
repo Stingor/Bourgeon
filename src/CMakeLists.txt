@@ -189,6 +189,8 @@ set(BOURGEON_FILES
 	"ui/sprite_view.h"
 	"ui/mob_sprite.cc"
 	"ui/mob_sprite.h"
+	"ui/doll.cc"
+	"ui/doll.h"
 	"ui/icon_cache.cc"
 	"ui/icon_cache.h"
 	"ui/head_icon.cc"

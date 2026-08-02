@@ -84,6 +84,40 @@ const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
 // a aucun, ce qui est le cas de la plupart des .act.
 const char* SpriteMainSound(const SpriteRes& res);
 
+// ── Composition de plusieurs sprites ─────────────────────────────────────────
+//
+// `DrawSprite` suffit quand on affiche UN sprite. Un personnage RO, lui, est un
+// ASSEMBLAGE : corps, tête, coiffes, chacun son .spr/.act, recalés les uns sur
+// les autres. Les deux fonctions ci-dessous donnent la matière première.
+
+// Un calque résolu : sa texture et ses quatre coins, en unités .act (repère du
+// sprite, origine = son point d'ancrage). C'est à l'appelant de translater,
+// mettre à l'échelle et dessiner.
+struct SpriteQuad {
+  void*  tex = nullptr;
+  ImVec2 uv0{0.0f, 0.0f}, uv1{1.0f, 1.0f};
+  ImVec2 corner[4];  // TL, TR, BR, BL — rotation déjà appliquée
+  ImU32  tint = IM_COL32_WHITE;
+};
+
+// Résout les calques de (action, frame) et téléverse leurs textures.
+// Rend le nombre de calques écrits dans `out` (0 si rien).
+int SpriteResolveFrame(const SpriteRes& res, unsigned action, unsigned frame,
+                       SpriteQuad* out, int max_out);
+
+// Ancre de RÉFÉRENCE de (action, frame) — la première de l'image.
+//
+// 🔴 C'est par elle que RO accroche une pièce à une autre : le décalage à
+// appliquer à l'enfant vaut `ancre_parent - ancre_enfant`, et UNIQUEMENT si les
+// deux `attr` sont égaux (le natif s'en assure ; sans ce test on attache des
+// pièces qui n'ont rien à voir). Rend false s'il n'y a pas d'ancre — l'appelant
+// traite alors le décalage comme nul.
+//
+// ⚠ Pour une action < 8, le natif lit l'ancre sur l'IMAGE 0 et non sur l'image
+// courante. Sans ça les pièces vibrent pendant l'animation d'attente.
+bool SpriteFrameAnchor(const SpriteRes& res, unsigned action, unsigned frame,
+                       int* x, int* y, int* attr);
+
 // Dessine le sprite dans le rectangle [rect_min, rect_max].
 //
 //   anim_seconds  horloge continue de l'appelant (ex. ImGui::GetTime()) ; c'est

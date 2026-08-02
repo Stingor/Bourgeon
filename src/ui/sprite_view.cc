@@ -432,6 +432,43 @@ const char* SpriteMainSound(const SpriteRes& res) {
   return nullptr;
 }
 
+int SpriteResolveFrame(const SpriteRes& res, unsigned action, unsigned frame,
+                       SpriteQuad* out, int max_out) {
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!out || max_out <= 0 || !EnsureLoaded(e)) return 0;
+
+  ResolvedLayer layers[kMaxDrawLayers];
+  const int n = ResolveFrameLayers(e, res.palette, action, frame, layers,
+                                   kMaxDrawLayers, /*upload=*/true);
+  int count = 0;
+  for (int i = 0; i < n && count < max_out; ++i) {
+    if (!layers[i].tex) continue;
+    SpriteQuad& q = out[count++];
+    q.tex  = layers[i].tex;
+    q.uv0  = layers[i].uv0;
+    q.uv1  = layers[i].uv1;
+    q.tint = layers[i].tint;
+    for (int k = 0; k < 4; ++k) q.corner[k] = layers[i].corner[k];
+  }
+  return count;
+}
+
+bool SpriteFrameAnchor(const SpriteRes& res, unsigned action, unsigned frame,
+                       int* x, int* y, int* attr) {
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!EnsureLoaded(e)) return false;
+  // ⚠ Actions < 8 : l'ancre de référence est celle de l'IMAGE 0 — c'est ce que
+  // fait le natif (Act_GetFrame(spr, action, 0) quand action < 8). Prendre celle
+  // de l'image courante ferait vibrer les pièces pendant l'animation d'attente.
+  const spract::Frame* f = FrameAt(e, action, action < 8 ? 0u : frame);
+  if (!f || f->anchors.empty()) return false;
+  const spract::Anchor& a = f->anchors[0];
+  if (x) *x = a.x;
+  if (y) *y = a.y;
+  if (attr) *attr = a.attr;
+  return true;
+}
+
 bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
                 ImVec2 rect_max, float anim_seconds, unsigned action,
                 float ms_per_frame, bool allow_upscale, float alpha) {

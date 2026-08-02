@@ -25,6 +25,15 @@ struct MobSpriteRes {
   SpriteRes sprite;
 };
 
+// Nom de RESSOURCE d'une classe, en CP949 — la brique commune à tout ce qui
+// nomme un fichier de sprite. `sex` vaut -1 pour un monstre (le client résout
+// lui-même, sa branche sort avant), 0 femme / 1 homme pour un personnage.
+//
+// Rend false si la classe n'a pas d'entrée `jobName` : aucun repli n'est
+// inventé. Retomber sur « poring » est exactement le défaut que ce module
+// corrige — l'appelant affiche son placeholder.
+bool JobResName(int class_id, int sex, char* out, size_t out_size);
+
 // Charge (ou retrouve en cache) les ressources du monstre `class_id`.
 // Rend true quand le .spr et le .act sont exploitables.
 bool LoadMobSprite(int class_id, MobSpriteRes* res);

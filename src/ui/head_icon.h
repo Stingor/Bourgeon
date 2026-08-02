@@ -33,4 +33,15 @@ namespace ro {
 bool DrawHeadIcon(ImDrawList* draw_list, float x, float y, float box, int hair,
                   int sex, int hair_color, bool allow_upscale = false);
 
+// ── Chemins, pour qui compose lui-même (ui/doll.cc) ──────────────────────────
+// Exposés pour que le pantin n'ait pas à recopier ni les gabarits CP949 ni le
+// remap des 12 coiffures historiques : deux copies finiraient par diverger.
+
+// Chemin VFS du sprite de tête, SANS extension. `hair` est l'id BRUT (le remap
+// vers le numéro de fichier est fait ici). false si l'écriture ne tient pas.
+bool HeadSpriteBasePath(int hair, int sex, char* out, size_t out_size);
+
+// Chemin VFS de la palette de couleur de cheveux. false si `color` < 0.
+bool HairPalettePath(int color, char* out, size_t out_size);
+
 }  // namespace ro

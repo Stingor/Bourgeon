@@ -33,16 +33,20 @@ constexpr uintptr_t kFmtSpr = 0x0103181c;
 
 using JobResNameFn = const char* (__fastcall*)(void*, void*, unsigned, int);
 
-// Nom de dossier du monstre, en CP949. Chaîne vide si l'id est hors table — et
-// on n'invente AUCUN repli : un monstre sans entrée jobName n'a pas de sprite,
+}  // namespace
+
+// Nom de ressource, en CP949. Chaîne vide si l'id est hors table — et on
+// n'invente AUCUN repli : une classe sans entrée jobName n'a pas de sprite,
 // l'appelant affiche son placeholder. Retomber sur « poring » serait justement
 // le défaut qu'on corrige ici.
-bool ResNameFor(int class_id, char* out, size_t out_size) {
+bool JobResName(int class_id, int sex, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
   const char* name = nullptr;
   __try {
     name = reinterpret_cast<JobResNameFn>(kJobResName)(
         reinterpret_cast<void*>(kJobNameCtx), nullptr,
-        static_cast<unsigned>(class_id), -1);
+        static_cast<unsigned>(class_id), sex);
   } __except (EXCEPTION_EXECUTE_HANDLER) { name = nullptr; }
   if (!name) return false;
   bool ok = false;
@@ -55,6 +59,8 @@ bool ResNameFor(int class_id, char* out, size_t out_size) {
   return ok;
 }
 
+namespace {
+
 // Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho`.
 //
 // 🔴 `data\sprite\`, PAS `data\`. Le gabarit du client est relatif à la racine
@@ -66,7 +72,9 @@ bool ResNameFor(int class_id, char* out, size_t out_size) {
 // monstres.
 bool BasePathFor(int class_id, char* out, size_t out_size) {
   char name[128] = {0};
-  if (!ResNameFor(class_id, name, sizeof(name))) return false;
+  // sex = -1 : le client le résout lui-même, et sa branche « monstre » sort
+  // avant d'en avoir besoin.
+  if (!JobResName(class_id, -1, name, sizeof(name))) return false;
 
   char tail[256];
   // ⚠ `std::snprintf` et non `_snprintf_s` : le gabarit n'est pas un littéral
