@@ -46,7 +46,11 @@ constexpr int kOffMyShopList = 0xE8;   // même famille -> même offset de liste
 //   buying store  -> zeny RESTANT de la cagnotte (part de la limite, descend)
 // D'où un libellé qui suit kOffMyShopMode ; « Encaissé » sur une échoppe d'achat
 // était un contresens (c'est ce qu'il reste À DÉPENSER, pas ce qui est rentré).
-constexpr int kOffMyShopZeny = 0xF0;
+// ⚠ CE N'EST PAS LE CUMUL EN VENTE. Le champ est POSÉ par OnMsg 119 à chaque
+// vente : il ne contient que le montant de la DERNIÈRE. Relevé en jeu — shop à
+// 30 555 z encaissés, champ à 7 (le prix du dernier objet vendu). En échoppe
+// d'ACHAT en revanche, c'est bien un état : ce qu'il reste à dépenser.
+constexpr int kOffMyShopLastSale = 0xF0;
 constexpr int kOffMyShopMode = 0x100;  // 0 = vente, != 0 = échoppe d'achat
 // Case « Notify when item sells out » : même commande que la case de la fenêtre de
 // composition (c'est le même widget de base), état dans son propre global.
@@ -1020,10 +1024,21 @@ void VendingWindow::OnTick() {
       log_shown_ = true;
     }
     HideWnd(log_wnd_);
+    // 🔴 Le CUMUL encaissé se somme ICI, et pas seulement quand le panneau
+    // d'historique s'affiche : c'est la seule source qui l'ait. La fenêtre
+    // « Mon shop » ne porte QUE la dernière vente (cf. kOffMyShopLastSale).
+    // ⚠ Dans l'historique, le prix du nœud est déjà le MONTANT DE LIGNE
+    // (quantité comprise) : ne pas le remultiplier.
+    RawRow raw[kMaxAvail];
+    const int rows = ReadRows(log_wnd_, kOffSellLogList, raw, kMaxAvail);
+    long long earned = 0;
+    for (int i = 0; i < rows; ++i) earned += raw[i].price;
+    myshop_earned_ = earned;
   } else {
     log_open_ = false;
     log_shown_ = false;
     log_.clear();
+    myshop_earned_ = 0;  // pas une seule vente : l'historique n'existe pas encore
   }
 
   // Côté acheteur : 0x2B (offre) + 0x2C (panier). 🔴 Elles ne portent PLUS l'état —
@@ -1159,7 +1174,7 @@ void VendingWindow::RefreshMyShop() {
     FillDesc(r.desc, raw[i]);
     myshop_.push_back(r);
   }
-  myshop_zeny_ = myshop_wnd_ ? ReadInt(myshop_wnd_, kOffMyShopZeny) : 0;
+  myshop_zeny_ = myshop_wnd_ ? ReadInt(myshop_wnd_, kOffMyShopLastSale) : 0;
   myshop_buying_ =
       myshop_wnd_ && ReadInt(myshop_wnd_, kOffMyShopMode) != 0;
 }
@@ -1618,7 +1633,12 @@ void VendingWindow::OnRenderUI() {
         }
         ImGui::Separator();
         char zbuf[32];
-        FormatZeny(myshop_zeny_, zbuf, sizeof(zbuf));
+        // Deux sens, deux SOURCES. En échoppe d'achat, +0xF0 est bien ce qu'il
+        // reste à dépenser — une valeur d'état, lue chez le natif. En VENTE, il ne
+        // porte que la DERNIÈRE vente : le cumul vient de l'historique, seul
+        // endroit où le client l'accumule.
+        FormatZeny(myshop_buying_ ? myshop_zeny_ : myshop_earned_, zbuf,
+                   sizeof(zbuf));
         ImGui::Text(myshop_buying_ ? "Fonds disponibles : %s z"
                                    : "Encaissé : %s z", zbuf);
 

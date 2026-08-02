@@ -342,7 +342,14 @@ class VendingWindow : public Plugin {
   void* myshop_wnd_ = nullptr;
   bool  myshop_open_ = false;
   bool  myshop_panel_ = true;   // clic sur le X de NOTRE fenêtre
-  int   myshop_zeny_ = 0;       // +0xF0 : encaissé (vente) OU reste à dépenser
+  // +0xF0. ⚠ En VENTE ce n'est QUE la dernière vente, pas le cumul (relevé en
+  // jeu) — d'où myshop_earned_ juste en dessous. En échoppe d'ACHAT, c'est bien
+  // l'état « ce qu'il reste à dépenser », et là ce champ fait foi.
+  int   myshop_zeny_ = 0;
+  // Cumul RÉELLEMENT encaissé, sommé sur l'historique des ventes (le seul endroit
+  // où le client l'accumule). En zeny, donc 64 bits : une grosse échoppe dépasse
+  // largement le milliard.
+  long long myshop_earned_ = 0;
                                 //         (buying store) — cf. myshop_buying_
   bool  myshop_buying_ = false; // +0x100 != 0 : c'est une échoppe d'ACHAT
   std::vector<Row> myshop_;
