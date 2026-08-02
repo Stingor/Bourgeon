@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
+#include "ui/doll.h"
 #include "ui/head_icon.h"
 #include "features/windows/char_select.h"
 
@@ -323,6 +324,19 @@ const char* Utf8ToLocal(const char* s) { return ro::Utf8ToLocal(s); }
 // Les icônes de coiffure sont désormais rendues par ui/head_icon.h — même
 // sprite, même table de remap des 12 coupes historiques, même palette de
 // couleur, mais via notre propre parseur .spr/.act. Cf. CharSelect::DrawHairIcon.
+
+// ── Quel moteur pour les pantins ? ───────────────────────────────────────────
+// true  = ui/doll.h, qui COMPOSE le personnage à partir des fichiers.
+// false = BasicInfo::RenderDoll, qui laisse le client rendre un acteur et
+//         CAPTURE les quads (hook global + offsets de structure devinés).
+//
+// 🔴 Les deux coexistent le temps de valider le composeur, et l'ordre compte :
+// le composeur passe EN PREMIER, la capture reste le REPLI. Un personnage qu'on
+// ne sait pas encore composer (Doram, monture, garment) s'affiche donc quand
+// même — la bascule ne peut pas faire disparaître un pantin.
+//
+// À passer à false pour comparer les deux rendus côte à côte.
+constexpr bool kUseOwnDollComposer = true;
 
 template <typename T>
 T Read(const void* base, int off) {
@@ -732,12 +746,12 @@ void CharSelect::EnterGame(int slot) {
 
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
                            float box_h) {
-  // Paperdoll composé (corps + coiffes + garment, palettes) rendu par le moteur de
-  // capture PARTAGÉ de basic_info : le hook de capture (Actor_SubmitSpriteQuad
-  // 0x00a1b7c0) est global, on passe donc par RenderDoll, seul chemin AUTONOME
-  // (apparence en paramètre, ni session en jeu ni UIWindow requises).
+  // Paperdoll (corps + tête + coiffes, palettes) : ui/doll.h le COMPOSE à partir
+  // des fichiers, avec BasicInfo::RenderDoll en repli (cf. kUseOwnDollComposer).
+  // Les deux prennent une apparence en paramètre, donc ne dépendent ni d'une
+  // session en jeu ni d'une UIWindow — indispensable ici, on est au char-select.
   // Pieds ancrés en (cx, chair_y), corps centré en X, box de hauteur box_h vers le
-  // haut. RenderDoll prend des coords ÉCRAN (cf. l'ancienne grille).
+  // haut, en coords ÉCRAN.
   //
   // Échelle sprite par JOB : le client natif rétrécit les classes BÉBÉ
   // (Actor_GetJobSpriteScale 0x00d7fd30 -> 0.75 bébé 1re classe, 0.80/0.82 les
@@ -754,33 +768,49 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   const float x = cx - w * 0.5f;
   const float y = chair_y - dh;
 
+  // Perso en attente de suppression : sprite teinté ROUGE PULSANT (multiplication
+  // au dessin, pas de re-capture). Les canaux vert/bleu descendent (rouge fort)
+  // puis remontent, en boucle douce (cosinus). 0xFFFFFFFF = pas de teinte sinon.
+  uint32_t tint = 0xFFFFFFFFu;
+  if (v.del_rev_date > 0) {
+    const float ph = (GetTickCount() % 1000) / 1000.0f;          // 0..1 sur 1 s
+    const float pulse = 0.5f - 0.5f * std::cos(ph * 6.2831853f);  // 0..1..0 doux
+    const int gb = 70 + static_cast<int>((1.0f - pulse) * 150.0f);  // 70 fort..220
+    tint = IM_COL32(255, gb, gb, 255);
+  }
+
+  // dir 0 = de face ; anim 2 = ASSIS (les convives sont attablés). La pose assise
+  // pose aussi le perso SUR le banc (son point d'assise, pas ses pieds, arrive à
+  // chair_y) -> corrige le « flottement » de la pose debout.
   bool drawn = false;
-  if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
-    BasicInfo::DollLook look;
-    look.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
-    look.job           = v.job;
-    look.body          = v.body;
-    look.hair          = v.hair;
-    look.hair_color    = v.hair_color;
-    look.clothes_color = v.clothes_color;
-    look.head_low      = v.head_low;
-    look.head_top      = v.head_top;
-    look.head_mid      = v.head_mid;
-    look.garment       = v.garment;
-    // Perso en attente de suppression : sprite teinté ROUGE PULSANT (multiplication
-    // au dessin, pas de re-capture). Les canaux vert/bleu descendent (rouge fort)
-    // puis remontent, en boucle douce (cosinus). 0xFFFFFFFF = pas de teinte sinon.
-    uint32_t tint = 0xFFFFFFFFu;
-    if (v.del_rev_date > 0) {
-      const float ph = (GetTickCount() % 1000) / 1000.0f;          // 0..1 sur 1 s
-      const float pulse = 0.5f - 0.5f * std::cos(ph * 6.2831853f);  // 0..1..0 doux
-      const int gb = 70 + static_cast<int>((1.0f - pulse) * 150.0f);  // 70 fort..220
-      tint = IM_COL32(255, gb, gb, 255);
+  if (kUseOwnDollComposer) {
+    ro::DollLook dl;
+    dl.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
+    dl.job           = v.job;
+    dl.hair          = v.hair;
+    dl.hair_color    = v.hair_color;
+    dl.clothes_color = v.clothes_color;
+    dl.head_low      = v.head_low;
+    dl.head_top      = v.head_top;
+    dl.head_mid      = v.head_mid;
+    drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
+                         /*dir=*/0, /*anim=*/2, /*frame=*/0, tint);
+  }
+  if (!drawn) {
+    if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
+      BasicInfo::DollLook look;
+      look.sex           = v.sex_eff;
+      look.job           = v.job;
+      look.body          = v.body;
+      look.hair          = v.hair;
+      look.hair_color    = v.hair_color;
+      look.clothes_color = v.clothes_color;
+      look.head_low      = v.head_low;
+      look.head_top      = v.head_top;
+      look.head_mid      = v.head_mid;
+      look.garment       = v.garment;
+      drawn = bi->RenderDoll(look, x, y, w, dh, /*dir=*/0, /*anim=*/2, tint);
     }
-    // dir 0 = de face ; anim 2 = ASSIS (les convives sont attablés). La pose assise
-    // pose aussi le perso SUR le banc (son point d'assise, pas ses pieds, arrive à
-    // chair_y) -> corrige le « flottement » de la pose debout.
-    drawn = bi->RenderDoll(look, x, y, w, dh, /*dir=*/0, /*anim=*/2, tint);
   }
   if (!drawn) {
     // Placeholder tant que la capture n'est pas prête (budget par frame, jusqu'à 25
@@ -801,12 +831,22 @@ void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
   // debout de face. Même moteur de capture partagé que DrawDollAt ; la capture est
   // re-clé par apparence -> changer un curseur met l'aperçu à jour à la frame suivante.
   bool drawn = false;
-  if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
-    BasicInfo::DollLook look;  // tout à 0 par défaut = Novice sans équipement
-    look.sex        = create_sex_;
-    look.hair       = create_hair_;
-    look.hair_color = create_hair_color_;
-    drawn = bi->RenderDoll(look, x, y, w, h, create_dir_, /*anim=*/0);  // debout
+  if (kUseOwnDollComposer) {
+    ro::DollLook dl;  // tout à 0 par défaut = Novice sans équipement
+    dl.sex        = create_sex_;
+    dl.hair       = create_hair_;
+    dl.hair_color = create_hair_color_;
+    drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, h,
+                         create_dir_, /*anim=*/0);  // debout
+  }
+  if (!drawn) {
+    if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {
+      BasicInfo::DollLook look;
+      look.sex        = create_sex_;
+      look.hair       = create_hair_;
+      look.hair_color = create_hair_color_;
+      drawn = bi->RenderDoll(look, x, y, w, h, create_dir_, /*anim=*/0);
+    }
   }
   if (!drawn) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
