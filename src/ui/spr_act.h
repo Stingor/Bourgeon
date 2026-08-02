@@ -66,8 +66,26 @@ struct Layer {
   int      h = 0;
 };
 
+// Point d'ancrage d'une image.
+//
+// 🔴 C'est ce qui permet d'ACCROCHER deux .act l'un à l'autre, et il n'y a pas
+// d'autre moyen : la tête se pose sur le corps par la DIFFÉRENCE entre l'ancre
+// du corps et celle de la tête — c'est tout ce que calcule
+// `Actor_ComputeHeadAttach` — et les coiffes se posent sur la tête pareil.
+// Sans ancres, une composition maison fait flotter la tête.
+//
+// ⚠ Absentes des .act < 2.3, et absentes aussi des quelques 2.3/2.4 qui
+// déclenchent le repli de lecture (cf. ParseAct). L'appelant doit traiter une
+// liste vide comme « pas de décalage », jamais comme une erreur.
+struct Anchor {
+  int x = 0;
+  int y = 0;
+  int attr = 0;
+};
+
 struct Frame {
   std::vector<Layer> layers;
+  std::vector<Anchor> anchors;
   // Index dans `Resource::sound_files`, ou -1. C'est le son joué QUAND cette
   // image passe (pas de la marche à l'attaque).
   //

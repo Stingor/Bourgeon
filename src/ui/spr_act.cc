@@ -446,7 +446,17 @@ static bool ParseActInner(const uint8_t* data, size_t size, Resource* out,
       if (load_anchors && v >= 23) {
         const int n_anchors = r.I32();
         if (r.bad() || n_anchors < 0 || n_anchors > kMaxAnchors) return false;
-        r.Skip(static_cast<size_t>(n_anchors) * 16);
+        frame.anchors.reserve(static_cast<size_t>(n_anchors));
+        for (int a = 0; a < n_anchors; ++a) {
+          // 16 octets : 4 réservés, puis x, y, attr.
+          r.Skip(4);
+          Anchor anchor;
+          anchor.x    = r.I32();
+          anchor.y    = r.I32();
+          anchor.attr = r.I32();
+          if (r.bad()) return false;
+          frame.anchors.push_back(anchor);
+        }
       }
       if (r.bad()) return false;
       action.frames.push_back(std::move(frame));
@@ -501,8 +511,11 @@ bool ParseAct(const uint8_t* data, size_t size, Resource* out) {
   // 🔴 Repli hérité de la référence (« Fix : 2015-04-06 ») : sur quelques .act
   // 2.3 et 2.4, le compte d'ancres vaut 0 alors que des octets d'ancre suivent
   // quand même. La lecture déraille alors en plein milieu. Le seul remède connu
-  // est de tout relire en IGNORANT les ancres — qu'on n'utilise de toute façon
-  // pas ici (elles servent à accrocher deux .act entre eux, coiffe sur tête).
+  // est de tout relire en IGNORANT les ancres.
+  //
+  // ⚠ Ces fichiers-là ressortent donc SANS ancres. Un composeur (tête sur corps,
+  // coiffe sur tête) doit traiter `Frame::anchors` vide comme un décalage nul —
+  // pièce mal attachée plutôt que rien du tout.
   if (out->act_version == 23 || out->act_version == 24) {
     out->actions.clear();
     return ParseActInner(data, size, out, /*load_anchors=*/false);
