@@ -141,6 +141,20 @@ constexpr int kOffVendorGid    = 0x100;  // 0x2B : GID du vendeur (posé par OnM
 // 0x0800 : le client ne dispatche que celui-là (l'autre n'a aucune entrée dans sa
 // table). En régime OBSERVÉ, `data` = paquet+2, donc len@0, AID@2, venderId@6.
 constexpr uint16_t kZcVendingList = 0x0b3d;
+
+// ── Rapport de VENTE (le seul endroit où le cumul encaissé existe) ──────────
+// Le serveur prévient le vendeur à CHAQUE vente : ZC_DELETEITEM_FROM_MCSTORE2,
+// 18 octets `{op, index:2, amount:2, buyerCID:4, date:4, zeny:4}`. C'est bien
+// 0x09E5 et pas 0x0137 pour ce PACKETVER (moonlight, packets.hpp : la variante
+// courte s'arrête à PACKETVER < 20141016). En régime OBSERVÉ, `data` = paquet+2,
+// donc le zeny de la vente est à data+12.
+//
+// 🔴 Pourquoi accumuler nous-mêmes plutôt que lire un champ : AUCUN champ de la
+// fenêtre « Mon shop » ne porte le cumul. `+0xF0`, longtemps pris pour lui, vaut
+// 7 en permanence — vérifié en jeu, inchangé après une vente à 250 000 z.
+constexpr uint16_t kZcVendingReport = 0x09E5;
+constexpr int      kVrZeny   = 12;  // dans `data`
+constexpr int      kVrMinLen = 16;
 constexpr int kVlAid    = 2;
 constexpr int kVlVender = 6;
 constexpr int kVlMinLen = 10;
@@ -995,7 +1009,10 @@ void VendingWindow::OnTick() {
   myshop_wnd_ = FindWnd(kWinMyShop);
   if (!myshop_wnd_) myshop_wnd_ = FindWnd(kWinMyShopBuying);
   if (myshop_wnd_) {
-    if (!myshop_open_) myshop_panel_ = true;  // front montant
+    if (!myshop_open_) {  // front montant
+      myshop_panel_ = true;
+      myshop_earned_ = 0;  // nouvelle échoppe : le compteur repart de zéro
+    }
     myshop_open_ = true;
     HideWnd(myshop_wnd_);
   } else {
@@ -1024,21 +1041,10 @@ void VendingWindow::OnTick() {
       log_shown_ = true;
     }
     HideWnd(log_wnd_);
-    // 🔴 Le CUMUL encaissé se somme ICI, et pas seulement quand le panneau
-    // d'historique s'affiche : c'est la seule source qui l'ait. La fenêtre
-    // « Mon shop » ne porte QUE la dernière vente (cf. kOffMyShopLastSale).
-    // ⚠ Dans l'historique, le prix du nœud est déjà le MONTANT DE LIGNE
-    // (quantité comprise) : ne pas le remultiplier.
-    RawRow raw[kMaxAvail];
-    const int rows = ReadRows(log_wnd_, kOffSellLogList, raw, kMaxAvail);
-    long long earned = 0;
-    for (int i = 0; i < rows; ++i) earned += raw[i].price;
-    myshop_earned_ = earned;
   } else {
     log_open_ = false;
     log_shown_ = false;
     log_.clear();
-    myshop_earned_ = 0;  // pas une seule vente : l'historique n'existe pas encore
   }
 
   // Côté acheteur : 0x2B (offre) + 0x2C (panier). 🔴 Elles ne portent PLUS l'état —
@@ -1411,6 +1417,8 @@ VendingWindow::VendingWindow() {
   // qui remplit la liste d'offres de la SESSION — celle qu'on lit maintenant à la
   // place de la fenêtre. On ne fait qu'écouter pour relever AID et UniqueID.
   Bourgeon::Instance().RegisterObserveOpcode(kZcVendingList, kVlMinLen);
+  // Rapport de vente : c'est LUI qui porte le zeny encaissé, vente par vente.
+  Bourgeon::Instance().RegisterObserveOpcode(kZcVendingReport, kVrMinLen);
 }
 
 // Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h).
@@ -1420,6 +1428,13 @@ void VendingWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t 
 
 // Fil PRINCIPAL : le décodage, rejoué au tick.
 void VendingWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  // Une vente vient d'avoir lieu : on cumule son montant. Le compteur est remis à
+  // zéro à l'ouverture d'une échoppe (front montant de `myshop_open_`).
+  if (opcode == kZcVendingReport) {
+    if (len < kVrMinLen) return;
+    myshop_earned_ += *reinterpret_cast<const int32_t*>(data + kVrZeny);
+    return;
+  }
   if (opcode != kZcVendingList || len < kVlMinLen) return;
   vendor_gid_ = *reinterpret_cast<const uint32_t*>(data + kVlAid);
   vendor_uid_ = *reinterpret_cast<const uint32_t*>(data + kVlVender);

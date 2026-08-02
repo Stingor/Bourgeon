@@ -346,9 +346,10 @@ class VendingWindow : public Plugin {
   // jeu) — d'où myshop_earned_ juste en dessous. En échoppe d'ACHAT, c'est bien
   // l'état « ce qu'il reste à dépenser », et là ce champ fait foi.
   int   myshop_zeny_ = 0;
-  // Cumul RÉELLEMENT encaissé, sommé sur l'historique des ventes (le seul endroit
-  // où le client l'accumule). En zeny, donc 64 bits : une grosse échoppe dépasse
-  // largement le milliard.
+  // Cumul RÉELLEMENT encaissé, accumulé par NOUS sur le rapport de vente que le
+  // serveur envoie à chaque objet vendu (ZC 0x09E5). Aucun champ natif ne le
+  // porte. Remis à zéro à l'ouverture d'une échoppe. 64 bits : une grosse
+  // échoppe dépasse largement le milliard.
   long long myshop_earned_ = 0;
                                 //         (buying store) — cf. myshop_buying_
   bool  myshop_buying_ = false; // +0x100 != 0 : c'est une échoppe d'ACHAT
