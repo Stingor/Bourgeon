@@ -2023,6 +2023,7 @@ void InventoryViewer::OnRenderUI() {
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
           UseOrEquip(it.index, it.type, it.loc, ImGui::GetIO().KeyCtrl);  // Ctrl = main gauche
       }
+
       // Raccourcis clavier+souris natifs (RE UIInventoryWnd_OnRButtonDown) :
       //   Shift + clic GAUCHE  = poster le lien de l'item dans le chat (0x14e) ;
       //   Ctrl  + clic DROIT   = ouvrir la description directement (sans menu) ;
@@ -2032,6 +2033,8 @@ void InventoryViewer::OnRenderUI() {
       const ImGuiIO& mods = ImGui::GetIO();
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
         PostItemLinkToChat(it.index);  // Shift+clic G : lien item -> input chat focus
+
+      // Menu contextuel : clic DROIT sur la case (pas sur le fond vide) -> popup
       if (IsLastItemRightClicked()) {
         if (mods.KeyCtrl) {
           MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
@@ -2050,6 +2053,10 @@ void InventoryViewer::OnRenderUI() {
       }
 
       // Source de drag (transfert cart/storage ou jet au sol selon la cible).
+      // Marge interne du fantôme : la grille pousse WindowPadding à 0 (tuiles
+      // jointives), et la tooltip de drag d'ImGui hérite de ce style au Begin ->
+      // on la surcharge le temps du bloc pour aérer l'icône + le nom.
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, 4.0f));
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         drag_active_ = true;
         drag_index_ = it.index; drag_amount_ = it.amount; drag_type_ = it.type; drag_loc_ = it.loc;
@@ -2069,6 +2076,7 @@ void InventoryViewer::OnRenderUI() {
                              "Storage ouvert : vers le cart impossible");
         ImGui::EndDragDropSource();
       }
+      ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
       // Placement libre : une case OCCUPÉE est aussi une cible -> lâcher dessus
       // échange les deux positions (drop_on_cell rend sa case à l'occupant).
       if (freeGrid) drop_on_cell(k);

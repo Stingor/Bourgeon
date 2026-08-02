@@ -1414,6 +1414,10 @@ void StorageWindow::OnRenderUI() {
       // Source de DRAG : glisser un item du viewer -> relâché sur l'inventaire
       // natif = retrait (le fantôme suit le curseur). Le drop est traité en fin
       // de OnRenderUI (MouseOverInventory).
+      // Marge interne du fantôme : la grille pousse WindowPadding à 0 (tuiles
+      // jointives), et la tooltip de drag d'ImGui hérite de ce style au Begin ->
+      // on la surcharge le temps du bloc pour aérer l'icône + le nom.
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, 4.0f));
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         drag_active_ = true;
         drag_index_ = items_[idx].index;
@@ -1427,6 +1431,7 @@ void StorageWindow::OnRenderUI() {
         ImGui::TextUnformatted(items_[idx].name[0] ? items_[idx].name : "(?)");
         ImGui::EndDragDropSource();
       }
+      ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
       // Clic DROIT : Ctrl -> description directe ; Alt/Maj -> retrait rapide du
       // stack COMPLET vers l'inventaire ; sinon -> menu contextuel.
       if (IsLastItemRightClicked()) {

@@ -790,6 +790,10 @@ void CartViewer::OnRenderUI() {
       }
 
       // Source de drag (inventaire / storage selon la cible du relâché).
+      // Marge interne du fantôme : la grille pousse WindowPadding à 0 (tuiles
+      // jointives), et la tooltip de drag d'ImGui hérite de ce style au Begin ->
+      // on la surcharge le temps du bloc pour aérer l'icône + le nom.
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, 4.0f));
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         drag_active_ = true;
         drag_index_ = it.index; drag_amount_ = it.amount;
@@ -808,6 +812,7 @@ void CartViewer::OnRenderUI() {
                              "Storage ouvert : vers l'inventaire impossible");
         ImGui::EndDragDropSource();
       }
+      ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
 
       // Menu au style NORMAL de la fenêtre (marges + espacement), pas au style
       // jointif de la grille dans laquelle il est ouvert.
