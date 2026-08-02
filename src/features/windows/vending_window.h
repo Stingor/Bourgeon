@@ -331,6 +331,11 @@ class VendingWindow : public Plugin {
   // retrait la réordonne — un rang mémorisé désignerait alors un autre objet.
   int grid_ask_src_ = -1;
   int grid_ask_qty_ = 0;
+  // Hauteur du pied de page de la composition, mesurée à la frame précédente :
+  // c'est la réserve que le panneau des objets posés laisse sous lui. Mesurée et
+  // non calculée, parce que le pied grandit avec les messages (plafond de zeny,
+  // ligne de blocage, champ de limite en échoppe d'achat).
+  float compose_footer_h_ = 0.0f;
   int  prices_[kMaxRows] = {0};   // prix unitaire saisi, par ligne
   int  amounts_[kMaxRows] = {0};  // quantité voulue (échoppe d'achat uniquement)
   // Import en cours : le natif recharge le snapshot (lecture disque) et repose les

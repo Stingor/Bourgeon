@@ -1667,13 +1667,36 @@ void VendingWindow::OnRenderUI() {
         ImGui::Text(myshop_buying_ ? "Fonds disponibles : %s z"
                                    : "Encaissé : %s z", zbuf);
 
-        // Case native « Notify when item sells out » : on la bascule PAR le natif
-        // (cmd 213) pour qu'il garde son état persistant cohérent, et on relit
-        // toujours la valeur chez lui.
+        // Case native, basculée PAR le natif (cmd 213) pour qu'il garde son état
+        // persistant cohérent, et relue chez lui.
+        //
+        // ⚠ LIBELLÉ CORRIGÉ. Le nom natif — MsgString 2642 « Notify when item
+        // sells out » en vente, 2698 « Notify when item purchased » en échoppe
+        // d'achat — décrit mal ce que fait le drapeau : les deux handlers de
+        // rapport de transaction (0x00C9D710 vente, 0x00C9DC60 achat) se
+        // contentent de jouer effect\ef_steal.wav à CHAQUE transaction, épuisé
+        // ou non. La clé de traduction le dit d'ailleurs : MSI_SOUNDEFFECT_*.
+        // D'où « son à chaque vente » : le joueur qui coche « prévenir quand un
+        // objet est épuisé » attend un message à l'épuisement, et n'en aura
+        // jamais — c'est ce qui donne l'impression que la case ne fait rien.
+        //
+        // ⚠ Le natif MASQUE cette case dans les DEUX modes depuis cette version
+        // (0x0095A9A0, appelée juste après MakeWindow 0x2D comme 0xB0 : elle
+        // fait SetVisible(case, false) ET remet le drapeau à 0), et pose à la
+        // place le bouton « fermer le shop ». On la ressuscite donc sciemment.
         const int myshop_id = myshop_buying_ ? kWinMyShopBuying : kWinMyShop;
         bool notify = NotifyOn();
-        if (ro::RoCheckbox("Prévenir quand un objet est épuisé", &notify))
+        if (ro::RoCheckbox(myshop_buying_ ? "Son à chaque achat"
+                                          : "Son à chaque vente", &notify))
           QueueCommand(myshop_id, kCmdSafeChk);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip(
+              "Option native « %s » : elle ne prévient de rien, elle joue\n"
+              "effect\\ef_steal.wav à chaque transaction.\n"
+              "⚠ Le client la joue aux coordonnées monde 0,0,0 et non à ta\n"
+              "position : si tu n'entends rien, c'est de là que ça vient.",
+              myshop_buying_ ? "Notify when item purchased"
+                             : "Notify when item sells out");
 
         // ⚠ Le « close » natif ne ferme pas que la fenêtre : il dispatche
         // CMode::SendMsg 81 (vente) / 270 (achat), c'est-à-dire qu'il MET FIN à la
@@ -2253,8 +2276,17 @@ void VendingWindow::OnRenderUI() {
   // étroit que son tableau, et du contenu rogné. En redimensionnable, WidthStretch
   // et « -1 » sont sûrs — l'oscillation n'existait qu'en auto-resize.
   // NoCollapse : rien à replier, et le toolkit retire alors le bouton sys_mini.
+  // 🔴 La fenêtre elle-même ne défile JAMAIS. Sans ces deux drapeaux, un contenu
+  // plus haut qu'elle lui donnait sa propre barre : la molette faisait alors
+  // sortir par le haut le champ Nom et l'en-tête du stock (avec sa case Grille),
+  // et deux barres imbriquées se disputaient le geste. Ce qui doit défiler, ce
+  // sont les DEUX panneaux ci-dessous ; le nom, les totaux et les boutons
+  // restent visibles en toute circonstance.
   ImGui::SetNextWindowSize(ImVec2(kComposeW, kComposeH), ImGuiCond_FirstUseEver);
-  if (ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse)) {
+  if (ro::BeginRoWindow(title, &show_panel_,
+                        ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_NoScrollbar |
+                        ImGuiWindowFlags_NoScrollWithMouse)) {
     // ── Nom du shop ──
     ImGui::TextUnformatted("Nom");
     ImGui::SameLine(kNameLabelW);
@@ -2288,9 +2320,15 @@ void VendingWindow::OnRenderUI() {
         ImGui::SetTooltip("Affiche le stock en grille d'icônes, comme le client "
                           "d'origine.\nLe glisser fonctionne dans les deux modes.");
     }
-    // Panneau à hauteur FIXE et défilant : le stock proposable peut faire cent
-    // objets, et une fenêtre auto-resize prendrait alors tout l'écran.
-    const float pane_h = ImGui::GetTextLineHeightWithSpacing() * 6.0f;
+    // Panneau défilant : le stock proposable peut faire cent objets. Six lignes
+    // par défaut, mais jamais plus de la moitié de ce qui reste — sinon, sur une
+    // fenêtre rapetissée, il mangerait la place des objets posés, qui ne
+    // pourraient plus défiler nulle part (la fenêtre, elle, ne défile pas).
+    const float line_h = ImGui::GetTextLineHeightWithSpacing();
+    const float body_h = ImGui::GetContentRegionAvail().y - compose_footer_h_;
+    float pane_h = line_h * 6.0f;
+    if (pane_h > body_h * 0.5f) pane_h = body_h * 0.5f;
+    if (pane_h < line_h * 2.0f) pane_h = line_h * 2.0f;
     if (ImGui::BeginChild("##dispo", ImVec2(-1.0f, pane_h),
                           ImGuiChildFlags_Borders)) {
       if (avail == 0) {
@@ -2440,6 +2478,14 @@ void VendingWindow::OnRenderUI() {
         }
       }
     }
+    // Second panneau défilant : il prend TOUT le reste, moins le pied de page.
+    // Cette hauteur-là est MESURÉE à la frame précédente (compose_footer_h_) :
+    // le pied varie — avertissement de plafond, ligne de blocage, champ propre à
+    // l'échoppe d'achat — et une réserve en dur finirait tôt ou tard par rogner
+    // le bouton « Ouvrir le shop » ou par laisser un trou.
+    float rows_h = ImGui::GetContentRegionAvail().y - compose_footer_h_;
+    if (rows_h < line_h * 3.0f) rows_h = line_h * 3.0f;
+    ImGui::BeginChild("##poses", ImVec2(-1.0f, rows_h));
     if (rows == 0) {
       ImGui::TextDisabled(compose_grid_
                               ? "Glisse un objet ci-dessus, ou double-clique-le."
@@ -2511,6 +2557,9 @@ void VendingWindow::OnRenderUI() {
         ImGui::EndTable();
       }
     }
+    ImGui::EndChild();
+    // Tout ce qui suit est le PIED DE PAGE, mesuré ici pour la frame suivante.
+    const float footer_y0 = ImGui::GetCursorPosY();
 
     // Application différée (voir plus haut) : une seule mutation par frame.
     if (place_index >= 0) {
@@ -2727,6 +2776,11 @@ void VendingWindow::OnRenderUI() {
     ImGui::SameLine();
     if (ro::RoButton("Annuler"))
       QueueCommand(buying_ ? kWinBuyingStore : kWinVending, kCmdCancel);
+
+    // Hauteur réelle du pied, pour la réserve de la frame suivante. Un seul
+    // frame de décalage à l'ouverture, invisible ; en échange le pied ne peut
+    // plus être rogné, quelle que soit la combinaison de messages affichés.
+    compose_footer_h_ = ImGui::GetCursorPosY() - footer_y0;
   }
   ro::EndRoWindow();
 
