@@ -400,6 +400,10 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"vending_imgui", SType::kBool, MLUI_FIELD(vending_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
+    // Pas de widget ici : la case vit dans la fenêtre de composition (c'est là
+    // qu'elle agit). Cette entrée ne sert qu'à la PERSISTER.
+    {"vending_compose_grid", SType::kBool,
+     MLUI_FIELD(vending_window, compose_grid_), MLUI_LITERAL(bool, false)},
     {"trade_imgui", SType::kBool, MLUI_FIELD(trade_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_window, imgui_enabled_),

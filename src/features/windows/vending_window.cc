@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "bourgeon.h"  // Bourgeon::Instance().SendPacket
+#include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case Grille)
 #include "imgui.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
@@ -384,6 +385,12 @@ using StrDtor_t = void(__fastcall*)(void*);
 // Commandes du msg 6 (clic bouton) — cf. §5 de la doc.
 constexpr int kMsgButton   = 6;
 constexpr int kMsgRebuild  = 23;  // reconstruit la liste d'affichage depuis la session
+// Charges de glisser INTERNES à cette fenêtre (ImGui, pas le drag natif — celui-ci
+// transporte un ItemSkillInfo complet dans le mode de jeu et n'est pas reproductible).
+// Elles ne portent qu'un INDEX de ligne, relu juste avant la mutation.
+constexpr const char* kDndAvail = "VEND_AVAIL";  // stock -> échoppe
+constexpr const char* kDndRow   = "VEND_ROW";    // échoppe -> stock
+
 constexpr int kCmdOk       = 184;  // valide et ouvre l'échoppe
 constexpr int kCmdCancel   = 185;
 constexpr int kCmdSafeChk  = 213;  // bascule « safe check for over 10 mil zeny »
@@ -2263,6 +2270,21 @@ void VendingWindow::OnRenderUI() {
     ImGui::TextUnformatted(buying_ ? "Objets achetables" : "Objets du cart");
     ImGui::SameLine();
     ImGui::TextDisabled("(%d)", avail);
+    // Bascule liste/grille, à DROITE de l'en-tête : le réglage ne concerne que ce
+    // panneau, il vit donc là où il agit plutôt que dans le panneau Moonlight (il
+    // y est seulement PERSISTÉ). La grille reprend la présentation du natif, où
+    // l'on glisse des icônes ; la liste garde les quantités éditables en ligne.
+    {
+      const char* kGridLabel = "Grille";
+      const float bw = ImGui::CalcTextSize(kGridLabel).x +
+                       ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+      ImGui::SameLine(ImGui::GetContentRegionAvail().x - bw);
+      if (ro::RoCheckbox(kGridLabel, &compose_grid_))
+        if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Affiche le stock en grille d'icônes, comme le client "
+                          "d'origine.\nLe glisser fonctionne dans les deux modes.");
+    }
     // Panneau à hauteur FIXE et défilant : le stock proposable peut faire cent
     // objets, et une fenêtre auto-resize prendrait alors tout l'écran.
     const float pane_h = ImGui::GetTextLineHeightWithSpacing() * 6.0f;
@@ -2270,6 +2292,52 @@ void VendingWindow::OnRenderUI() {
                           ImGuiChildFlags_Borders)) {
       if (avail == 0) {
         ImGui::TextDisabled("Aucun objet proposable.");
+      } else if (compose_grid_) {
+        // ── Présentation GRILLE (celle du natif) ──────────────────────────────
+        // Une tuile par lot, l'icône à sa taille naturelle et la quantité en
+        // badge — c'est itemcell::DrawTile qui fait les deux, comme la grille de
+        // l'inventaire.
+        // Pas de champ quantité ici : elle vaut le LOT ENTIER par défaut, ce qui
+        // est aussi ce que fait le natif (poser une pile la retire entièrement des
+        // disponibles — un index d'inventaire ne peut figurer qu'une fois dans une
+        // échoppe). Qui veut n'en vendre qu'une partie repasse en mode liste, où la
+        // quantité s'édite sur la ligne ; le glisser reprend alors cette valeur.
+        constexpr float kTile = 32.0f;
+        const float step = kTile + ImGui::GetStyle().ItemSpacing.x;
+        const float availw = ImGui::GetContentRegionAvail().x;
+        int per_row = static_cast<int>(availw / step);
+        if (per_row < 1) per_row = 1;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const bool full = rows >= slots_;
+        for (int i = 0; i < avail; ++i) {
+          const Row& a = avail_[i];
+          if (i % per_row != 0) ImGui::SameLine();
+          ImGui::PushID(20000 + i);
+          const ImVec2 p0 = ImGui::GetCursorScreenPos();
+          // Le bouton invisible porte le clic, le survol ET le glisser ; la tuile
+          // est peinte par-dessus au draw list (jamais de SetCursorPos, qui
+          // étendrait les limites de la fenêtre sans soumettre d'item).
+          ImGui::InvisibleButton("##tile", ImVec2(kTile, kTile));
+          const bool hovered = ImGui::IsItemHovered();
+          if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+            ImGui::SetDragDropPayload(kDndAvail, &i, sizeof(int));
+            ImGui::TextUnformatted(a.desc.name[0] ? a.desc.name
+                                                  : itemcell::NameById(a.desc.id));
+            ImGui::EndDragDropSource();
+          }
+          // Double-clic = poser, pour qui préfère ne pas glisser.
+          if (!full && a.amount > 0 &&
+              ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && hovered)
+            place_index = i;
+          const ImVec2 p1(p0.x + kTile, p0.y + kTile);
+          if (hovered)
+            dl->AddRectFilled(p0, p1, ImGui::GetColorU32(ImGuiCol_HeaderHovered));
+          ro::IconTex ic = ro::ItemIcon(a.desc.id);
+          itemcell::DrawTile(dl, p0, p1, kTile, ic, 0, a.amount,
+                             a.desc.damaged != 0);
+          if (hovered) ItemHover(a.desc, mirror_, kOffMirrorList);
+          ImGui::PopID();
+        }
       } else if (ImGui::BeginTable("##t_dispo", 4,
                                    ImGuiTableFlags_SizingStretchProp |
                                    ImGuiTableFlags_RowBg)) {
@@ -2296,6 +2364,14 @@ void VendingWindow::OnRenderUI() {
 
           ImGui::TableNextColumn();
           DrawItemCell(a.desc, a.slots, mirror_, kOffMirrorList);
+          // Le glisser marche AUSSI en mode liste : c'est le même geste, seule la
+          // présentation change. La source, c'est la cellule de nom.
+          if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+            ImGui::SetDragDropPayload(kDndAvail, &i, sizeof(int));
+            ImGui::TextUnformatted(a.desc.name[0] ? a.desc.name
+                                                  : itemcell::NameById(a.desc.id));
+            ImGui::EndDragDropSource();
+          }
 
           ImGui::TableNextColumn();
           ImGui::Text("%d", remaining);
@@ -2325,11 +2401,40 @@ void VendingWindow::OnRenderUI() {
       }
     }
     ImGui::EndChild();
+    // Lâcher une ligne de l'échoppe ICI = la retirer. Le panneau tout entier sert
+    // de cible : après EndChild, l'enfant se comporte comme un item ordinaire.
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload(kDndRow))
+        take_row = *static_cast<const int*>(pl->Data);
+      ImGui::EndDragDropTarget();
+    }
 
     // ── Objets posés dans l'échoppe ───────────────────────────────────────────
     ImGui::TextUnformatted("Dans le shop");
     ImGui::SameLine();
     ImGui::TextDisabled("(%d/%d)", rows, slots_);
+
+    // Zone de dépôt, affichée SEULEMENT pendant qu'on glisse un objet du stock.
+    // La faire apparaître en permanence coûterait une bande de vide dans une
+    // fenêtre déjà dense ; la montrer au bon moment la rend au contraire
+    // évidente. Le mode LISTE en profite autant que la grille.
+    {
+      const ImGuiPayload* drag = ImGui::GetDragDropPayload();
+      if (drag && drag->IsDataType(kDndAvail)) {
+        const bool full = rows >= slots_;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetColorU32(
+            full ? ImGuiCol_FrameBg : ImGuiCol_HeaderHovered));
+        ImGui::Button(full ? "Tous les emplacements sont pris"
+                           : "Déposer ici pour mettre en vente",
+                      ImVec2(-1.0f, ImGui::GetFrameHeight()));
+        ImGui::PopStyleColor();
+        if (!full && ImGui::BeginDragDropTarget()) {
+          if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload(kDndAvail))
+            place_index = *static_cast<const int*>(pl->Data);
+          ImGui::EndDragDropTarget();
+        }
+      }
+    }
     if (rows == 0) {
       ImGui::TextDisabled("Choisis un objet ci-dessus et clique « Poser ».");
     } else {
@@ -2356,6 +2461,13 @@ void VendingWindow::OnRenderUI() {
 
           ImGui::TableNextColumn();
           DrawItemCell(r.desc, r.slots, wnd_, kOffList);
+          // Glisser une ligne vers le panneau du haut = la retirer de l'échoppe.
+          if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+            ImGui::SetDragDropPayload(kDndRow, &i, sizeof(int));
+            ImGui::TextUnformatted(r.desc.name[0] ? r.desc.name
+                                                  : itemcell::NameById(r.desc.id));
+            ImGui::EndDragDropSource();
+          }
 
           ImGui::TableNextColumn();
           ImGui::Text("%d", r.amount);

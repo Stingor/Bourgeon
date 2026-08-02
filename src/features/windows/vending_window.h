@@ -195,6 +195,13 @@ class VendingWindow : public Plugin {
   // Public pour le chargement/sauvegarde par MoonlightUi.
   bool imgui_enabled_ = false;  // OPT-IN : formulaire natif par défaut
 
+  // Setting PERSISTANT (« vending_compose_grid »). Basculé par une case DANS la
+  // fenêtre de composition, pas par le panneau Moonlight : il ne concerne que la
+  // présentation de ce panneau-là. false = liste (quantités éditables en ligne),
+  // true = grille d'icônes, comme le client d'origine. Le glisser marche dans les
+  // deux : ce n'est qu'une mise en page.
+  bool compose_grid_ = false;
+
   // Ce qu'il faut pour décrire un objet : ni la DB ni l'id ne suffisent, cartes,
   // refine et options d'instance vivent dans l'ItemSkillInfo du nœud. Mêmes
   // champs que les autres viewers, pour alimenter itemdesc::RenderSimpleDesc.
