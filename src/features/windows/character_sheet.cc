@@ -2326,6 +2326,7 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
 
 // Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
 void CharacterSheet::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+
   // ZC_SKILL_POSTDELAY (0x043D) n'est PAS traité ici : la table de cooldowns est
   // partagée et remplie en amont, dans Bourgeon::FireRecvPacket.
 
@@ -6618,15 +6619,41 @@ void CharacterSheet::DrawStatsPanel() {
   stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du refine des armures (dans la réduction %).");
   std::snprintf(b, sizeof(b), "%d%% + %d", s.mdef_s, s.mdef_h);
   stat("MDEF", b, "Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2).");
+  // 🔴 HIT et FLEE valent « niveau de base + DEX/AGI », et la part du NIVEAU
+  // s'arrête à 600 (battle_config.maxstatlevelcalc, conf/import/battle_conf.txt).
+  // Rien ne le signale en jeu : un personnage niveau 999 a 400 points de HIT et
+  // de FLEE qui ne sont jamais arrivés. C'est ce que ces deux bulles disent.
+  //
+  // ⚠ 600 est écrit en dur : c'est une valeur de conf serveur. Si elle change
+  // là-bas, ces deux textes mentent — les mettre à jour en même temps.
   std::snprintf(b, sizeof(b), "%d", s.hit);
-  stat("HIT", b, "Précision : comparée au FLEE de la cible pour déterminer si vous touchez.");
+  stat("HIT", b,
+       "Précision : comparée au FLEE de la cible pour déterminer si vous "
+       "touchez.\n\nHIT = niveau de base + DEX. La part du niveau s'arrête au "
+       "niveau 600 : au-delà, seule la DEX fait encore monter le HIT.");
   std::snprintf(b, sizeof(b), "%d", s.flee);
-  stat("FLEE", b, "Esquive : comparée au HIT de la cible, réduit la probabilité d'être touché.");
-  std::snprintf(b, sizeof(b), "%d,%d%%", s.crit / 10, s.crit % 10);  // x10 -> virgule, précision .1
+  stat("FLEE", b,
+       "Esquive : comparée au HIT de la cible, réduit la probabilité d'être "
+       "touché.\n\nFLEE = niveau de base + AGI. La part du niveau s'arrête au "
+       "niveau 600 : au-delà, seule l'AGI fait encore monter le FLEE.");
+  // 🔴 CRI et Esq.P sont des POUR CENT ENTIERS, PAS des dixièmes. Les diviser
+  // encore par 10 divisait le vrai taux par dix.
+  //
+  // Preuve par la formule, indépendante de toute lecture d'adresse : en pré-RE
+  // `cri = 10 + LUK*10/3` et `flee2 = LUK + 10`, tous deux en dixièmes de %.
+  // À LUK 399 ça fait 1340 et 409 dixièmes, soit 134 % et 40,9 %. Le serveur
+  // envoie `cri/10` et `flee2/10` (clif.cpp, SP_CRITICAL / SP_FLEE2) : la
+  // globale vaut donc 134 et 40. L'affichage en « 13,4 % » et « 4,0 % » était
+  // faux d'un facteur 10 — et un joueur à 134 % de critique en fait bien un à
+  // chaque coup, ce qu'un « 13,4 % » ne laissait pas voir.
+  //
+  // ⚠ Oui, un taux peut dépasser 100 % : le jet est `rnd()%1000 < cri`, tout
+  // ce qui est au-dessus est simplement toujours vrai.
+  std::snprintf(b, sizeof(b), "%d%%", s.crit);
   stat("CRI", b, "Taux de coup critique (%) : un critique ignore la DEF et ne rate jamais.");
   std::snprintf(b, sizeof(b), "%d", (2000 - s.aspd_raw) / 10);
   stat("ASPD", b, "Vitesse d'attaque : plus elle est haute, plus vous frappez souvent.");
-  std::snprintf(b, sizeof(b), "%d,%d%%", s.pdodge / 10, s.pdodge % 10);  // x10 -> virgule, précision .1
+  std::snprintf(b, sizeof(b), "%d%%", s.pdodge);
   stat("Esq.P", b, "Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique.");
 
   // ── Bonus d'équipement/cartes (poussés par le serveur, ZC_BOURGEON_STAT_BONUS) ──
