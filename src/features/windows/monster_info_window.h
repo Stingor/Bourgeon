@@ -103,9 +103,14 @@ class MonsterInfoWindow : public Plugin {
     // n'est écartée : le client ne sait nommer que les compétences de JOUEUR, et
     // les filtrer là-dessus faisait disparaître toutes les `NPC_*` de la fiche.
     std::string name;
-    // Le client connaît-il cette compétence ? Lui seul porte les descriptions
-    // (fenêtre native 0x2E) : sinon, la ligne n'est pas cliquable.
+    // Le client sait-il NOMMER cette compétence (skillinfolist.lub) ? Décide
+    // seulement de la préférence de nom — le client est localisé, le serveur non.
     bool        client_named = false;
+    // Le client a-t-il une DESCRIPTION pour elle (skilldescript.lub, via le
+    // global Lua `GetSkillDescript`) ? 🔴 C'est un AUTRE fichier que le nom :
+    // une compétence peut avoir l'un sans l'autre, et c'est le cas courant des
+    // `NPC_*`. Seule cette réponse décide si la ligne est cliquable.
+    bool        has_desc = false;
   };
 
   // La fiche renvoyée par ZC 0x0F20. Les champs suivent l'ordre du paquet.

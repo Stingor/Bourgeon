@@ -13,6 +13,7 @@
 #include "features/systems/bourgeon_opcodes.h"
 #include "imgui.h"
 #include "ragnarok/item_db.h"   // itemdb::kSkillDesc* (fenêtre native 0x2E)
+#include "ragnarok/lua.h"       // lua::State / GetField / PCall (GetSkillDescript)
 #include "ragnarok/msgstring.h"
 #include "ragnarok/uiwnd.h"     // MakeWindow / OnMsg / SetPos (description de skill)
 #include "ui/icon_cache.h"
@@ -255,6 +256,57 @@ bool SkillNameCp949(int id, char* out, size_t out_size) {
   return ok;
 }
 
+// 🔴 DEUX FICHIERS, PAS UN. Le nom et la description d'une compétence ne vivent
+// pas au même endroit, et ajouter l'un n'ajoute pas l'autre :
+//   * le NOM         -> skillinfoz\skillinfolist.lub (`SKILL_INFO_LIST[..].SkillName`),
+//                       ce que lit `GetSkillName` ci-dessus ;
+//   * la DESCRIPTION -> skillinfoz\skilldescript.lub (`SKILL_DESCRIPT[..]`), ce que
+//                       lit le global Lua `GetSkillDescript`.
+// Les compétences ajoutées à la main — typiquement les `NPC_*` — n'ont souvent que
+// la seconde. Gater le lien sur le NOM les rendait donc muettes alors que leur
+// description existait.
+//
+// On interroge donc la source qui décide vraiment : la fenêtre native 0x2E
+// n'affiche que ce que ce global lui rend (RE sub_A198C0, qui l'appelle puis
+// découpe le résultat sur \r\n). Chaîne vide = rien à montrer, pas de lien.
+//
+// 🔴 ORDRE DES ARGUMENTS : `GetSkillDescript(jobId, skillId, 0)` — le JOB
+// D'ABORD, contrairement à ce que le nom laisse croire. Lu dans les push du
+// natif en 0x00A199[71..8D] (cdecl, donc droite→gauche : `push &out`, `push 0`,
+// `push <skillId>`, `push g_Own_JobId`, `push "ddd>s"`). Inverser les deux fait
+// chercher SKILL_DESCRIPT[<job>] : nil pour tout le monde, donc AUCUNE ligne
+// cliquable — et rien qui ressemble à une erreur.
+//
+// API C Lua BRUTE et nom STATIQUE : le wrapper varargs du client détruit la
+// std::string qu'on lui passe par valeur. Cf. `ResolveOptName` (item_desc_window).
+//
+// Le job : la MÊME source que le natif — le global qu'il pousse lui-même, pas le
+// getter de session. Répondre « la fenêtre 0x2E aura-t-elle quelque chose à
+// dire ? » n'a de sens que si on l'interroge avec ses propres entrées.
+constexpr uintptr_t kOwnJobIdAddr = 0x015fb9c8;  // g_Own_JobId
+
+// SEH ISOLÉ : pas de temporaire C++ dans cette fonction (C2712).
+bool SkillHasDescSEH(int skill_id) {
+  bool ok = false;
+  __try {
+    void* L = lua::State();
+    if (L) {
+      const int job = *reinterpret_cast<const int*>(kOwnJobIdAddr);
+      lua::GetField(L, lua::kGlobalsIndex, "GetSkillDescript");
+      lua::PushNumber(L, static_cast<double>(job));       // 1er : le JOB
+      lua::PushNumber(L, static_cast<double>(skill_id));  // 2e  : la compétence
+      lua::PushNumber(L, 0.0);
+      if (lua::PCall(L, 3, 1, 0) == 0) {
+        size_t len = 0;
+        const char* s = lua::ToLString(L, -1, &len);
+        ok = (s != nullptr && len > 0);
+      }
+      lua::SetTop(L, -2);  // dépile le résultat, ou le message d'erreur
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  return ok;
+}
+
 void OpenSkillDesc(int skill_id, int mx, int my) {
   if (skill_id <= 0) return;
   __try {
@@ -473,6 +525,9 @@ void MonsterInfoWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         _snprintf_s(fallback, sizeof(fallback), _TRUNCATE, "#%u", s.id);
         s.name = fallback;
       }
+      // Résolu ici, pas au rendu : c'est un appel Lua, il n'a rien à faire dans
+      // une frame ImGui — et il ne dépend que de l'id.
+      s.has_desc = SkillHasDescSEH(s.id);
       m.skills.push_back(std::move(s));
     }
   }
@@ -710,8 +765,8 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u ~ %u", mob.matk_min, mob.matk_max);
     row("ATK", a, "MATK", b);
 
-    _snprintf_s(a, sizeof(a), _TRUNCATE, "%u (+%u)", mob.def, mob.def2);
-    _snprintf_s(b, sizeof(b), _TRUNCATE, "%u (+%u)", mob.mdef, mob.mdef2);
+    _snprintf_s(a, sizeof(a), _TRUNCATE, "%u%% (+%u)", mob.def, mob.def2);
+    _snprintf_s(b, sizeof(b), _TRUNCATE, "%u%% (+%u)", mob.mdef, mob.mdef2);
     row(msgstr::Utf8(kMsiDef), a, msgstr::Utf8(kMsiMdef), b);
 
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u", mob.str);
@@ -1056,11 +1111,11 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
     for (const MobSkill* s : view) {
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      // Seules les compétences que le CLIENT connaît sont cliquables : la
-      // description vient de sa fenêtre native 0x2E, qui n'a rien à dire d'un id
-      // qu'elle ignore. Les autres s'affichent en texte simple — elles sont
-      // listées, elles ne mentent juste pas sur ce qu'un clic donnerait.
-      if (!s->client_named) {
+      // Cliquable = le client a une DESCRIPTION (skilldescript.lub), pas
+      // seulement un nom : la fenêtre native 0x2E n'affiche rien d'autre. Les
+      // autres s'affichent en texte simple — elles sont listées, elles ne
+      // mentent juste pas sur ce qu'un clic donnerait.
+      if (!s->has_desc) {
         ImGui::TextUnformatted(s->name.c_str());
         ImGui::TableNextColumn(); ImGui::Text("%u", s->lv);
         ImGui::TableNextColumn(); Label("%u", s->id);
