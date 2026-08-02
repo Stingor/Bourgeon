@@ -1,5 +1,4 @@
-#include "ragnarok/render.h"
-#include "ui/game_texture.h"
+#include "ui/sprite_view.h"
 #include "features/minigames/rojeweled.h"
 
 #include <Windows.h>
@@ -8,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -16,7 +16,9 @@
 
 #include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback
 
-extern bool g_imgui_dx7_active;  // sprite path is DX9 only (coloured-tile fallback under DX7)
+// Le mélange ADDITIF des explosions est propre au backend DX9 (les sprites, eux,
+// passent maintenant par notre parseur et s'affichent sous les deux moteurs).
+extern bool g_imgui_dx7_active;
 
 // ── Board / tunables ──────────────────────────────────────────────────────────
 namespace {
@@ -28,51 +30,53 @@ constexpr int   kBaseScore = 50;    // per gem cleared
 
 // ── Monster gem types (Poring family — distinct colours) ──────────────────────
 struct Mon {
-  const char* resname;  // 몬스터\<resname>.spr/.act
-  ImU32       fallback; // coloured-tile colour if the sprite can't load
-  void*       spr;      // CSprite* (cells @+0x510, palette @+0x110)
-  void*       act;      // CAction*
-  int         fails;
-  bool        gaveup;
-  // resolved this frame:
-  void*  tex;
-  ImVec2 uv0, uv1;
-  bool   ok;
+  const char*   resname;   // 몬스터\<resname>.spr/.act
+  ImU32         fallback;  // coloured-tile colour if the sprite can't load
+  ro::SpriteRes sprite;    // notre parseur : cf. ui/sprite_view.h
 };
 // Colours span the full spectrum (pink/orange/yellow/green/blue/purple) so the
 // per-cell pad makes every type unmistakable — several of these monsters share a
 // near-identical pale Poring sprite (Poring vs Angeling especially), so the PAD
 // colour, not the face, is the gem identity.
 Mon g_mon[kTypes] = {
-  {"poring",   IM_COL32(255,  95, 165, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // pink
-  {"drops",    IM_COL32(255, 140,  20, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // orange
-  {"metaling", IM_COL32(255, 215,  55, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // gold (metal sprite)
-  {"poporing", IM_COL32( 70, 205,  85, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // green
-  {"marin",    IM_COL32( 55, 150, 240, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // blue
-  {"deviling", IM_COL32(180,  85, 225, 255), nullptr, nullptr, 0, false, nullptr, {}, {}, false},  // purple
+  {"poring",   IM_COL32(255,  95, 165, 255), {}},  // pink
+  {"drops",    IM_COL32(255, 140,  20, 255), {}},  // orange
+  {"metaling", IM_COL32(255, 215,  55, 255), {}},  // gold (metal sprite)
+  {"poporing", IM_COL32( 70, 205,  85, 255), {}},  // green
+  {"marin",    IM_COL32( 55, 150, 240, 255), {}},  // blue
+  {"deviling", IM_COL32(180,  85, 225, 255), {}},  // purple
 };
 
-// ── Engine glue (20250716) — same monster-sprite pipeline as Roggle ──────
-constexpr uintptr_t kFmtSpr         = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
-constexpr uintptr_t kFmtAct         = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kActFrameCount  = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
-constexpr int       kCTexDX9Handle  = 0x12c;
+// ── Chargement des sprites ────────────────────────────────────────────────────
+// Le sprite passe par ui/sprite_view.h, donc par notre propre parseur .spr/.act.
+// Disparaissent : l'atlas et sa page, la cellule lue à spr+0x510, le pas de
+// calque 0x24, Act_GetFrame, et l'offset du handle GPU — qui réservait le vrai
+// sprite au DX9 (le repli en pastille colorée était le lot des joueurs DX7).
+//
+// 🔴 Ici on indexe par NOM DE DOSSIER, pas par id de classe : ui/mob_sprite.h ne
+// conviendrait pas. « metaling » et « deviling » n'ont d'entrée que dans les
+// .lub externes — un id de classe y retomberait sur « poring », et deux gemmes
+// sur six seraient le même monstre. Un dossier absent laisse simplement sa
+// pastille colorée, qui porte de toute façon l'identité de la gemme.
+constexpr uintptr_t kFmtSpr = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
+constexpr float kGemFrameMs = 130.0f;      // repli si le .act ne déclare rien
 
-using TexMgrGetFn   = void* (__cdecl*)();
-using MakeKeyFn     = void* (__cdecl*)(const char*);
-using LoadResFn     = void* (__fastcall*)(void*, void*, void*);
-using ActGetFrameFn = void* (__fastcall*)(void*, void*, unsigned, unsigned);
-using ActFrameCntFn = int   (__fastcall*)(void*, void*, unsigned);
-using AtlasFn       = void* (__fastcall*)(void*, void*, void*, int, int*);
-
-// Time-driven frame index for the idle action (0), so monsters animate (Porings
-// bob). Each type cycles independently over ~130 ms/frame.
-unsigned IdleFrame(void* act) {
-  int n = reinterpret_cast<ActFrameCntFn>(kActFrameCount)(act, nullptr, 0);
-  if (n < 1) n = 1;
-  if (n == 1) return 0;
-  const DWORD cyc = static_cast<DWORD>(n) * 130u;
-  return static_cast<unsigned>((GetTickCount() % cyc) * static_cast<DWORD>(n) / cyc);
+// Chemin VFS complet SANS extension. `data\sprite\` et pas `data\` : le gabarit
+// du client est relatif à la racine des SPRITES, et les deux préfixes que les
+// couches natives ajoutent (« sprite\ » selon l'extension, puis « data\ ») sont
+// à poser nous-mêmes puisqu'on les court-circuite.
+void LoadMon(Mon& m) {
+  if (m.sprite.res || m.sprite.failed) return;  // idempotent, échec définitif
+  char tail[192];
+  // ⚠ `std::snprintf` : le gabarit est lu dans le binaire, ce n'est pas un
+  // littéral — la famille sécurisée déclencherait C4774.
+  std::snprintf(tail, sizeof(tail), reinterpret_cast<const char*>(kFmtSpr),
+                m.resname);
+  const size_t n = std::strlen(tail);
+  if (n > 4) tail[n - 4] = '\0';  // retire « .spr » : sprite_view veut une base
+  char base[256];
+  std::snprintf(base, sizeof(base), "data\\sprite\\%s", tail);
+  ro::LoadSprite(base, &m.sprite);
 }
 
 // RO's positional sound player (FUN_00600770, __thiscall emulated as __fastcall;
@@ -88,75 +92,6 @@ void PlayRoSound(const char* name) {
           mgr, nullptr, name, 0.0f, 0.0f, 0.0f, 250, 40, 1.0f, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
-}
-
-void LoadMon(Mon& m) {
-  if (m.act || m.gaveup) return;
-  bool ok = false;
-  __try {
-    char sp[160], ap[160];
-    std::snprintf(sp, sizeof(sp), reinterpret_cast<const char*>(kFmtSpr), m.resname);
-    std::snprintf(ap, sizeof(ap), reinterpret_cast<const char*>(kFmtAct), m.resname);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
-    m.spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sp));
-    m.act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        mgr, nullptr, reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(ap));
-    ok = (m.spr && m.act);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    m.spr = m.act = nullptr;
-  }
-  if (!ok && ++m.fails >= 300) m.gaveup = true;
-}
-
-// Resolve a monster's idle body cell to a native texture + atlas UVs. Same logic
-// as Roggle::ResolvePoringQuad (largest-area layer = body).
-bool ResolveMonQuad(Mon& m, void** out_tex, ImVec2* uv0, ImVec2* uv1) {
-  if (!m.spr || !m.act) return false;
-  bool ok = false;
-  __try {
-    void* frame = reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(
-        m.act, nullptr, 0, IdleFrame(m.act));
-    if (!frame) return false;
-    char* fr = reinterpret_cast<char*>(frame);
-    char* lbegin = *reinterpret_cast<char**>(fr + 0x20);
-    char* lend   = *reinterpret_cast<char**>(fr + 0x24);
-    const int nlayers = static_cast<int>((lend - lbegin) / 0x24);
-    if (nlayers <= 0 || nlayers > 64) return false;
-    char* spr = reinterpret_cast<char*>(m.spr);
-    void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
-    void*  best = nullptr;
-    ImVec2 b0, b1;
-    long   best_area = -1;
-    for (int i = 0; i < nlayers; ++i) {
-      int* L = reinterpret_cast<int*>(lbegin + i * 0x24);
-      const int sprNo = L[2], sprType = L[8];
-      if (sprNo < 0 || sprType >= 2) continue;
-      const int cellBase = *reinterpret_cast<int*>(spr + 0x510 + sprType * 0xc);
-      const int cellEnd  = *reinterpret_cast<int*>(spr + 0x514 + sprType * 0xc);
-      if (static_cast<unsigned>(sprNo) >=
-          static_cast<unsigned>((cellEnd - cellBase) >> 2)) continue;
-      short* cell = *reinterpret_cast<short**>(cellBase + sprNo * 4);
-      if (!cell) continue;
-      const int palette = static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
-      int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(atlas, nullptr, cell, palette, geom);
-      if (!ctex) ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(atlas, nullptr, cell, palette, geom);
-      if (!ctex) continue;
-      const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);
-      if (area > best_area) {
-        best_area = area;
-        best = *reinterpret_cast<void**>(reinterpret_cast<char*>(ctex) + kCTexDX9Handle);
-        b0 = ImVec2(*reinterpret_cast<float*>(&geom[3]), *reinterpret_cast<float*>(&geom[4]));
-        b1 = ImVec2(*reinterpret_cast<float*>(&geom[5]), *reinterpret_cast<float*>(&geom[6]));
-      }
-    }
-    if (best) { *out_tex = best; *uv0 = b0; *uv1 = b1; ok = true; }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return false;
-  }
-  return ok;
 }
 
 // ── Match-3 game state ────────────────────────────────────────────────────────
@@ -362,7 +297,9 @@ void UpdateGame() {
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 void Rojeweled::OnModeSwitch(ModeMgr::ModeType, const char*) {
-  for (auto& m : g_mon) { m.spr = m.act = nullptr; m.fails = 0; m.gaveup = false; }
+  // Réarme le chargement. Les textures n'ont plus à être lâchées à la main :
+  // sprite_view suit Overlay_DeviceEpoch() et se recharge tout seul.
+  for (auto& m : g_mon) m.sprite = ro::SpriteRes{};
 }
 
 void Rojeweled::OnRenderUI() {
@@ -382,11 +319,6 @@ void Rojeweled::OnRenderUI() {
     ImGui::SameLine(0, 16);
     ImGui::TextDisabled("Clique 2 monstres voisins pour les échanger");
 
-    // Resolve each gem type's sprite once this frame (DX9 only).
-    for (auto& m : g_mon) {
-      m.ok = false;
-      if (!g_imgui_dx7_active) m.ok = ResolveMonQuad(m, &m.tex, &m.uv0, &m.uv1);
-    }
 
     UpdateGame();  // advance the slide/revert state machine + age explosions
 
@@ -470,9 +402,10 @@ void Rojeweled::OnRenderUI() {
         const ImVec2 pmn(mn.x + 2, mn.y + 2), pmx(mn.x + kCell - 2, mn.y + kCell - 2);
         dl->AddRectFilled(pmn, pmx, tc | 0x6e000000u, 6.0f);          // fill
         dl->AddRect(pmn, pmx, tc | 0xff000000u, 6.0f, 0, 2.5f);        // bright ring
-        if (m.ok && m.tex) {
-          dl->AddImage((ImTextureID)(uintptr_t)m.tex, gm, gx, m.uv0, m.uv1);
-        } else {
+        // allow_upscale : une case fait 44 px, le monstre doit la remplir.
+        if (!ro::DrawSprite(dl, m.sprite, gm, gx,
+                            static_cast<float>(ImGui::GetTime()), /*action=*/0,
+                            kGemFrameMs, /*allow_upscale=*/true)) {
           const ImVec2 ctr((gm.x + gx.x) * 0.5f, (gm.y + gx.y) * 0.5f);
           dl->AddCircleFilled(ctr, (gx.x - gm.x) * 0.42f, m.fallback);
           dl->AddCircle(ctr, (gx.x - gm.x) * 0.42f, IM_COL32(0, 0, 0, 80), 0, 1.5f);
