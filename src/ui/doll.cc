@@ -294,14 +294,14 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // `alt` = chemin de SECOURS, essayé si le premier ne donne rien (casse du nom
   // d'accessoire). Vide = pas de secours.
   //
-  // `animate` : les ACCESSOIRES ont leur animation propre (une coiffe qui
-  // scintille, des ailes qui battent) et doivent la jouer. La TÊTE non — ses
-  // images sont des expressions de visage.
+  // `accessory` : distingue une COIFFE de la TÊTE. Seules les coiffes ont une
+  // animation alternative ; la tête, elle, sert de RÉFÉRENCE à leur calcul
+  // (cf. AltAnimFrame plus bas), d'où sa place en tête de liste.
   struct Attached {
     char base[352];
     char alt[352];
     char pal[128];
-    bool animate;
+    bool accessory;
   };
   Attached list[kMaxPieces];
   int list_n = 0;
@@ -311,7 +311,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
                          sizeof(list[list_n].base))) {
     list[list_n].alt[0] = '\0';
     list[list_n].pal[0] = '\0';
-    list[list_n].animate = false;  // 🔴 jamais : ce sont des expressions
+    list[list_n].accessory = false;  // la TÊTE : référence, jamais animée
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, list[list_n].pal,
                       sizeof(list[list_n].pal));
@@ -326,7 +326,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     HeadgearBasePath(gear[g], look.sex, /*lower=*/true, list[list_n].alt,
                      sizeof(list[list_n].alt));
     list[list_n].pal[0] = '\0';
-    list[list_n].animate = true;
+    list[list_n].accessory = true;
     ++list_n;
   }
 
@@ -377,7 +377,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // `c_avenger` 8.0 -> 192 ms. Avec 24 images pour 3 de tête, mult = 8 : ils
     // jouent 0..7, jamais les 24 — ce qui explique qu'ils ne « tournent » pas.
     unsigned pf = actor_frame;
-    if (list[i].animate && anim_seconds >= 0.0f && ref_frames > 0) {
+    if (list[i].accessory && anim_seconds >= 0.0f && ref_frames > 0) {
       const int n_piece = SpriteActionFrameCount(piece.res, piece_pose);
       if (n_piece > ref_frames && (n_piece % ref_frames) == 0) {
         const int mult = n_piece / ref_frames;
@@ -392,7 +392,8 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     }
     // La TÊTE sert de référence aux pièces suivantes — elle est en tête de
     // liste, donc son compte est connu quand les coiffes arrivent.
-    if (!list[i].animate) ref_frames = SpriteActionFrameCount(piece.res, piece_pose);
+    if (!list[i].accessory)
+      ref_frames = SpriteActionFrameCount(piece.res, piece_pose);
 
     // 🔴 L'ancre est TOUJOURS celle de l'image 0, même pour une pièce animée.
     // Seule son IMAGE défile, jamais son point d'attache : prendre l'ancre de

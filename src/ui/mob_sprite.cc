@@ -6,8 +6,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "utils/log_console.h"
-
 namespace ro {
 namespace {
 
@@ -33,8 +31,6 @@ constexpr uintptr_t kFmtSpr = 0x0103181c;
 
 using JobResNameFn = const char* (__fastcall*)(void*, void*, unsigned, int);
 
-}  // namespace
-
 // Nom de ressource, en CP949. Chaîne vide si l'id est hors table — et on
 // n'invente AUCUN repli : une classe sans entrée jobName n'a pas de sprite,
 // l'appelant affiche son placeholder. Retomber sur « poring » serait justement
@@ -58,8 +54,6 @@ bool JobResName(int class_id, int sex, char* out, size_t out_size) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
   return ok;
 }
-
-namespace {
 
 // Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho`.
 //
@@ -104,11 +98,6 @@ bool LoadMobSprite(int class_id, MobSpriteRes* res) {
   }
   const bool ok = LoadSprite(base, &res->sprite);
   res->failed = !ok;
-  if (ok) {
-    // Une ligne par monstre : de quoi voir, sur un monstre qui s'afficherait
-    // mal, si le fichier a bien été lu.
-    LogDiag("[MobSprite] classe {} -> {}", class_id, base);
-  }
   return ok;
 }
 

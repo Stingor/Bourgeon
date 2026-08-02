@@ -56,15 +56,16 @@ struct DollLook {
 //                 sur la première image, ce que veut une vignette.
 //   tint          multiplication de couleur (IM_COL32) ; 0xFFFFFFFF = aucune
 //
-// ⚠ SEULES les poses Marche (1) et Combat (4) s'animent — `anim_seconds` est
-// ignoré pour Repos (0) et Assis (2), qui restent sur l'image 0. Ce n'est pas
-// un choix esthétique : sur un personnage assis en jeu, le compteur d'image de
-// l'acteur ne bouge pas (vérifié au débogueur). Fabriquer une animation que le
-// jeu ne joue pas donne des costumes qui semblent tourner.
+// ⚠ DEUX horloges, et c'est là qu'est tout le piège.
 //
-// Le corps et la tête restent de toute façon sur leur image 0 : leurs images
-// sont des poses et des expressions de visage. Seuls les accessoires défilent,
-// à la cadence que déclare LEUR .act.
+// Le CORPS et la TÊTE restent sur leur image 0. En jeu, le compteur d'image de
+// l'acteur ne défile qu'en Marche et en Combat — vérifié au débogueur : sur un
+// personnage assis, `acteur+0x3c` reste à 0.
+//
+// Les ACCESSOIRES s'animent quand même, sur leur propre horloge : c'est
+// `Act_ResolveAltAnimFrame`, dont le portage vit dans le .cc. Une coiffe porte
+// un MULTIPLE exact des images de la tête et parcourt son SOUS-GROUPE au fil du
+// temps réel. D'où des costumes qui vivent sur un personnage immobile.
 //
 // Rend false si rien n'a pu être dessiné — à l'appelant de poser son
 // placeholder. Un membre manquant (coiffe absente du GRF) n'est PAS un échec :
