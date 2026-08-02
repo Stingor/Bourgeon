@@ -807,8 +807,12 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     dl.head_low      = v.head_low;
     dl.head_top      = v.head_top;
     dl.head_mid      = v.head_mid;
+    // L'horloge n'anime QUE les accessoires : ro::DrawDoll garde le corps et la
+    // tête sur leur première image, sinon les convives tourneraient la tête
+    // sans arrêt. Les coiffes animées, elles, doivent jouer leur animation.
     drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
-                         /*dir=*/0, /*anim=*/2, /*frame=*/0, tint);
+                         /*dir=*/0, /*anim=*/2,
+                         static_cast<float>(ImGui::GetTime()), tint);
     if (drawn) LogDollEngine(true, "banquet");
   }
   if (!drawn) {
@@ -853,7 +857,8 @@ void CharSelect::DrawCreateDoll(float x, float y, float w, float h) {
     dl.hair       = create_hair_;
     dl.hair_color = create_hair_color_;
     drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, h,
-                         create_dir_, /*anim=*/0);  // debout
+                         create_dir_, /*anim=*/0,
+                         static_cast<float>(ImGui::GetTime()));  // debout
   }
   if (!drawn) {
     if (BasicInfo* bi = Bourgeon::Instance().basic_info()) {

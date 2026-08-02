@@ -50,16 +50,26 @@ struct DollLook {
 // Dessine le pantin dans [x, y, w, h] de la fenêtre ImGui courante : ratio
 // conservé, corps centré en X, pieds ancrés en BAS du rectangle.
 //
-//   dir    orientation 0..7 (0 = de face)
-//   anim   type d'action (0 = debout, 2 = assis…) ; la pose vaut anim*8 + dir
-//   frame  image dans l'action (0 = figée, ce que veut une vignette)
-//   tint   multiplication de couleur (IM_COL32) ; 0xFFFFFFFF = aucune
+//   dir           orientation 0..7 (0 = de face)
+//   anim          type d'action (0 = debout, 2 = assis…) ; pose = anim*8 + dir
+//   anim_seconds  horloge de l'appelant (ex. ImGui::GetTime()). NÉGATIF = figé
+//                 sur la première image, ce que veut une vignette.
+//   tint          multiplication de couleur (IM_COL32) ; 0xFFFFFFFF = aucune
+//
+// ⚠ Animer n'est pas toujours souhaitable. Les images d'un .act de TÊTE sont
+// des expressions de visage, pas des étapes d'animation : les faire défiler
+// donne un personnage qui cligne et regarde partout. Le rendu natif ne les
+// anime que sur Marche (1) et Combat (4), et gèle Repos (0) et Assis (2).
+//
+// La cadence vient du .act du CORPS et s'applique à toutes les pièces, sinon
+// elles se désynchronisent. Chaque pièce est bornée à SON nombre d'images : une
+// coiffe plus courte que le corps rejoue les siennes au lieu de disparaître.
 //
 // Rend false si rien n'a pu être dessiné — à l'appelant de poser son
 // placeholder. Un membre manquant (coiffe absente du GRF) n'est PAS un échec :
 // il est simplement omis.
 bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
-              float w, float h, int dir = 0, int anim = 0, unsigned frame = 0,
-              uint32_t tint = 0xFFFFFFFFu);
+              float w, float h, int dir = 0, int anim = 0,
+              float anim_seconds = -1.0f, uint32_t tint = 0xFFFFFFFFu);
 
 }  // namespace ro

@@ -217,8 +217,23 @@ bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
 
 }  // namespace
 
+namespace {
+
+// Image à afficher pour une pièce donnée, bornée à SON nombre d'images.
+//
+// 🔴 Le modulo n'est pas une précaution de style : les pièces n'ont pas toutes
+// le même nombre d'images. Sans lui, une coiffe plus courte que le corps sort
+// des bornes et `SpriteResolveFrame` ne rend rien — elle DISPARAÎT en cours
+// d'animation au lieu de rejouer ses propres images.
+unsigned PieceFrame(const SpriteRes& res, unsigned pose, unsigned frame) {
+  const int n = SpriteActionFrameCount(res, pose);
+  return (n > 0) ? (frame % static_cast<unsigned>(n)) : 0u;
+}
+
+}  // namespace
+
 bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
-              float w, float h, int dir, int anim, unsigned frame,
+              float w, float h, int dir, int anim, float anim_seconds,
               uint32_t tint) {
   if (!draw_list || w <= 1.0f || h <= 1.0f) return false;
 
@@ -233,20 +248,56 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   Piece body;
   if (!LoadPiece(base, pal, &body)) return false;
 
+  // 🔴 Le CORPS et la TÊTE restent sur leur première image, toujours. Les images
+  // d'un .act de tête sont des EXPRESSIONS de visage : les faire défiler donne
+  // un personnage qui tourne la tête sans arrêt. Seuls les ACCESSOIRES
+  // s'animent — c'est ce que fait le jeu, et c'est le seul mouvement attendu
+  // d'un pantin au repos. (Animer le corps relèverait des poses Marche/Combat,
+  // qui ne sont pas celles employées ici.)
   SpriteQuad quads[kMaxQuads];
-  int n = SpriteResolveFrame(body.res, pose, frame, quads, kMaxQuads);
+  int n = SpriteResolveFrame(body.res, pose, 0, quads, kMaxQuads);
   if (n <= 0) return false;
+
+  // Boîte englobante de CADRAGE, accumulée sur l'image 0 de chaque pièce.
+  //
+  // 🔴 Elle ne doit PAS être calculée sur les quads dessinés : une coiffe
+  // animée changerait la boîte à chaque image, donc l'échelle et le centrage —
+  // et tout le pantin se mettrait à bouger. C'est exactement le défaut connu
+  // des « hats animés qui font bouger les dolls ».
+  float min_x = quads[0].corner[0].x, max_x = min_x;
+  float min_y = quads[0].corner[0].y, max_y = min_y;
+  auto grow = [&](const SpriteQuad* q, int count, float dx, float dy) {
+    for (int i = 0; i < count; ++i) {
+      for (int c = 0; c < 4; ++c) {
+        const float px = q[i].corner[c].x + dx, py = q[i].corner[c].y + dy;
+        if (px < min_x) min_x = px;
+        if (px > max_x) max_x = px;
+        if (py < min_y) min_y = py;
+        if (py > max_y) max_y = py;
+      }
+    }
+  };
+  grow(quads, n, 0.0f, 0.0f);
 
   int body_ax = 0, body_ay = 0, body_attr = 0;
   const bool body_anchored =
-      SpriteFrameAnchor(body.res, pose, frame, &body_ax, &body_ay, &body_attr);
+      SpriteFrameAnchor(body.res, pose, 0, &body_ax, &body_ay, &body_attr);
 
   // ── Les pièces rapportées, dans l'ordre de dessin ─────────────────────────
   // Tête puis coiffes : bas, milieu, haut. Chacune s'accroche au CORPS (pas en
   // cascade) — c'est ce que fait le natif pour les parties 1 à 3.
   // `alt` = chemin de SECOURS, essayé si le premier ne donne rien (casse du nom
   // d'accessoire). Vide = pas de secours.
-  struct Attached { char base[352]; char alt[352]; char pal[128]; };
+  //
+  // `animate` : les ACCESSOIRES ont leur animation propre (une coiffe qui
+  // scintille, des ailes qui battent) et doivent la jouer. La TÊTE non — ses
+  // images sont des expressions de visage.
+  struct Attached {
+    char base[352];
+    char alt[352];
+    char pal[128];
+    bool animate;
+  };
   Attached list[kMaxPieces];
   int list_n = 0;
 
@@ -255,6 +306,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
                          sizeof(list[list_n].base))) {
     list[list_n].alt[0] = '\0';
     list[list_n].pal[0] = '\0';
+    list[list_n].animate = false;  // 🔴 jamais : ce sont des expressions
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, list[list_n].pal,
                       sizeof(list[list_n].pal));
@@ -269,6 +321,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     HeadgearBasePath(gear[g], look.sex, /*lower=*/true, list[list_n].alt,
                      sizeof(list[list_n].alt));
     list[list_n].pal[0] = '\0';
+    list[list_n].animate = true;
     ++list_n;
   }
 
@@ -283,21 +336,35 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
         !LoadPiece(list[i].alt, list[i].pal, &piece))
       continue;
 
-    SpriteQuad tmp[kMaxQuads];
-    const int m = SpriteResolveFrame(piece.res, pose, frame, tmp,
-                                     kMaxQuads - n);
-    if (m <= 0) continue;
+    // Chaque accessoire suit SA propre cadence, déclarée par son .act : deux
+    // coiffes n'ont aucune raison de battre au même rythme.
+    unsigned pf = 0;
+    if (list[i].animate && anim_seconds >= 0.0f)
+      pf = SpriteFrameIndex(piece.res, pose, anim_seconds,
+                            /*ms_per_frame=*/150.0f);
+    pf = PieceFrame(piece.res, pose, pf);
 
+    // L'ancre est celle de l'image DESSINÉE : sur une coiffe animée, elle peut
+    // bouger d'une image à l'autre, et c'est ce qui fait vivre la pièce.
     int ax = 0, ay = 0, attr = 0;
     // 🔴 L'attache ne s'applique que si les DEUX ancres portent le même `attr` :
     // c'est le test du natif, et sans lui on recale une pièce sur une ancre qui
     // ne la concerne pas.
-    if (body_anchored && SpriteFrameAnchor(piece.res, pose, frame, &ax, &ay,
-                                           &attr) &&
+    if (body_anchored &&
+        SpriteFrameAnchor(piece.res, pose, pf, &ax, &ay, &attr) &&
         attr == body_attr) {
       last_dx = static_cast<float>(body_ax - ax);
       last_dy = static_cast<float>(body_ay - ay);
     }
+
+    // Cadrage : on mesure la pièce sur son image 0, jamais sur l'image animée.
+    SpriteQuad ref[kMaxQuads];
+    const int rn = SpriteResolveFrame(piece.res, pose, 0, ref, kMaxQuads);
+    if (rn > 0) grow(ref, rn, last_dx, last_dy);
+
+    SpriteQuad tmp[kMaxQuads];
+    const int m = SpriteResolveFrame(piece.res, pose, pf, tmp, kMaxQuads - n);
+    if (m <= 0) continue;
     for (int k = 0; k < m; ++k) {
       for (int c = 0; c < 4; ++c) {
         tmp[k].corner[c].x += last_dx;
@@ -308,17 +375,6 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   }
 
   // ── Cadrage ───────────────────────────────────────────────────────────────
-  float min_x = quads[0].corner[0].x, max_x = min_x;
-  float min_y = quads[0].corner[0].y, max_y = min_y;
-  for (int i = 0; i < n; ++i) {
-    for (int c = 0; c < 4; ++c) {
-      const ImVec2& p = quads[i].corner[c];
-      if (p.x < min_x) min_x = p.x;
-      if (p.x > max_x) max_x = p.x;
-      if (p.y < min_y) min_y = p.y;
-      if (p.y > max_y) max_y = p.y;
-    }
-  }
   const float span_x = max_x - min_x, span_y = max_y - min_y;
   if (span_x <= 0.0f || span_y <= 0.0f) return false;
 
