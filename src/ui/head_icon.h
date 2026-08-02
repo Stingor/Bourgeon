@@ -2,15 +2,17 @@
 
 #include "imgui.h"
 
-// Miniature de TÊTE d'un personnage, rendue directement depuis le .spr natif —
-// exactement ce que fait la fenêtre « Member » de la guilde pour chaque ligne
-// (UIGuildMemberManageWnd, rendu de ligne 0x0091c7e0 : chemin de la coiffure ->
-// SPR + ACT via le gestionnaire de ressources -> cellule -> page d'atlas -> blit).
+// Miniature de TÊTE d'un personnage — ce que la fenêtre « Member » de la guilde
+// affiche sur chaque ligne (UIGuildMemberManageWnd, rendu de ligne 0x0091c7e0).
+//
+// Le sprite passe par ui/sprite_view.h, donc par notre propre parseur : plus
+// d'atlas, plus de cellule, plus de palette lue à un offset deviné dans
+// CPaletteRes. La couleur de cheveux est un simple .pal externe appliqué aux
+// index de l'image, exactement comme le fait le jeu.
 //
 // Sprites humains uniquement (인간족\머리통\<genre>\<id>_<genre>.spr). Une race
 // sans ce sprite (Doram…) renvoie simplement false, à l'appelant de ne rien
-// dessiner. Même mécanique que les icônes de coiffure du char-select, dont ce
-// module est l'extraction réutilisable.
+// dessiner.
 namespace ro {
 
 // `hair` est l'id de coiffure BRUT (celui du serveur / des paquets) : le remap
