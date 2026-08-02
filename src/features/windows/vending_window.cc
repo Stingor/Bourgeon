@@ -627,7 +627,11 @@ void SendRebuild(void* wnd) {
 // GetAt (un std::string tout-à-zéro est un SSO vide valide) et on détruit ses deux
 // chaînes après usage.
 
-void* Session() { return reinterpret_cast<void*>(rag::kSessionAddr); }
+// ⚠ `SessionBase` et surtout PAS `Session` : une CLASSE `Session` existe au niveau
+// global. Depuis une méthode de VendingWindow, elle et ce helper sont trouvés en
+// même temps -> « symbole ambigu ». Le nom court ne marchait que par chance, tant
+// qu'on ne l'appelait que depuis cet espace de noms anonyme.
+void* SessionBase() { return reinterpret_cast<void*>(rag::kSessionAddr); }
 
 void RecDtor(uint8_t* rec) {
   __try {
@@ -646,10 +650,10 @@ bool SessionPlace(int index, int qty, bool buying) {
   uint8_t rec[kRecSize];
   std::memset(rec, 0, sizeof(rec));
   __try {
-    reinterpret_cast<SessGetAt_t>(kAvailGetAt)(Session(), rec, index);
+    reinterpret_cast<SessGetAt_t>(kAvailGetAt)(SessionBase(), rec, index);
     const int src = *reinterpret_cast<int*>(rec + kRecSrcIdx);
     const int remaining =
-        reinterpret_cast<SessAmount_t>(kAvailAmountBySrc)(Session(), src);
+        reinterpret_cast<SessAmount_t>(kAvailAmountBySrc)(SessionBase(), src);
     if (remaining > 0) {
       const int want = (qty > 0 && qty < remaining) ? qty : remaining;
       *reinterpret_cast<int*>(rec + kRecQty) = want;
@@ -658,9 +662,9 @@ bool SessionPlace(int index, int qty, bool buying) {
       // piège de nommage). En ÉCHOPPE D'ACHAT, un retour 0 veut dire « cet objet
       // y est déjà » : le natif refuse alors, et ne consomme rien.
       const char added =
-          reinterpret_cast<SessMerge_t>(kShopAddOrMerge)(Session(), rec, mode, 1);
+          reinterpret_cast<SessMerge_t>(kShopAddOrMerge)(SessionBase(), rec, mode, 1);
       if (!buying || added) {
-        reinterpret_cast<SessConsume_t>(kAvailConsume)(Session(), rec, mode, 1);
+        reinterpret_cast<SessConsume_t>(kAvailConsume)(SessionBase(), rec, mode, 1);
         ok = true;
       }
     }
@@ -681,15 +685,15 @@ bool SessionTakeBack(int row, bool buying) {
   uint8_t rec[kRecSize];
   std::memset(rec, 0, sizeof(rec));
   __try {
-    reinterpret_cast<SessGetAt_t>(kShopGetAt)(Session(), rec, row);
+    reinterpret_cast<SessGetAt_t>(kShopGetAt)(SessionBase(), rec, row);
     const int src = *reinterpret_cast<int*>(rec + kRecSrcIdx);
     const int mode = buying ? 1 : 0;
     // Garde du natif : rien à rendre si cet index source n'est pas posé.
-    if (reinterpret_cast<SessAmount_t>(kShopAmountBySrc)(Session(), src) > 0) {
+    if (reinterpret_cast<SessAmount_t>(kShopAmountBySrc)(SessionBase(), src) > 0) {
       const char given =
-          reinterpret_cast<SessMerge_t>(kAvailAddOrMerge)(Session(), rec, mode, 1);
+          reinterpret_cast<SessMerge_t>(kAvailAddOrMerge)(SessionBase(), rec, mode, 1);
       if (!buying || given) {
-        reinterpret_cast<SessConsume2_t>(kShopConsume)(Session(), rec, mode);
+        reinterpret_cast<SessConsume2_t>(kShopConsume)(SessionBase(), rec, mode);
         ok = true;
       }
     }
@@ -711,15 +715,15 @@ bool SessionBsAdd(int index, int qty) {
   uint8_t rec[kRecSize];
   std::memset(rec, 0, sizeof(rec));
   __try {
-    reinterpret_cast<SessGetAt_t>(kAvailGetAt)(Session(), rec, index);
+    reinterpret_cast<SessGetAt_t>(kAvailGetAt)(SessionBase(), rec, index);
     const int have = *reinterpret_cast<int*>(rec + kRecQty);
     const int want = (qty > 0 && qty < have) ? qty : have;
     if (want > 0) {
       *reinterpret_cast<int*>(rec + kRecQty) = want;
-      reinterpret_cast<SessRec2_t>(kBasketAddOrMerge)(Session(), rec);
+      reinterpret_cast<SessRec2_t>(kBasketAddOrMerge)(SessionBase(), rec);
       // La quantité du rec sert AUSSI de décrément ici, mais kBsMirrorMode != 0
       // court-circuite ce chemin et supprime le nœud entier.
-      reinterpret_cast<SessConsume_t>(kAvailConsume)(Session(), rec,
+      reinterpret_cast<SessConsume_t>(kAvailConsume)(SessionBase(), rec,
                                                      kBsMirrorMode, 1);
       ok = true;
     }
@@ -739,11 +743,11 @@ bool SessionBsRemove(int index) {
   uint8_t rec[kRecSize];
   std::memset(rec, 0, sizeof(rec));
   __try {
-    reinterpret_cast<SessGetAt_t>(kBasketGetAt)(Session(), rec, index);
+    reinterpret_cast<SessGetAt_t>(kBasketGetAt)(SessionBase(), rec, index);
     if (*reinterpret_cast<int*>(rec + kRecQty) > 0) {
-      reinterpret_cast<SessMerge_t>(kAvailAddOrMerge)(Session(), rec,
+      reinterpret_cast<SessMerge_t>(kAvailAddOrMerge)(SessionBase(), rec,
                                                       kBsMirrorMode, 1);
-      reinterpret_cast<SessRec2_t>(kBasketRemove)(Session(), rec);
+      reinterpret_cast<SessRec2_t>(kBasketRemove)(SessionBase(), rec);
       ok = true;
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
@@ -794,7 +798,7 @@ void EndVendorDeal() {
       using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
       reinterpret_cast<SendMsg_t>(vt[6])(game_mode, kCmdEndDeal, 0, 0, 0, 0);
     }
-    reinterpret_cast<BasketClear_t>(kVendingBasketClear)(Session());
+    reinterpret_cast<BasketClear_t>(kVendingBasketClear)(SessionBase());
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1183,7 +1187,7 @@ void VendingWindow::RefreshVendorShop() {
   // Source = la liste de la SESSION, plus la fenêtre native (détruite). Même
   // structure de nœuds, mêmes offsets, et les DEUX prix y sont déjà (cf. la note
   // sur kOffSessOfferList).
-  const int n = ReadRows(Session(), kOffSessOfferList, raw, kMaxAvail);
+  const int n = ReadRows(SessionBase(), kOffSessOfferList, raw, kMaxAvail);
   offers_.clear();
   offers_.reserve(n);
   for (int i = 0; i < n; ++i) {
@@ -1783,7 +1787,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::PushID(static_cast<int>(i));
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            DrawItemCell(o.desc, o.slots, Session(), kOffSessOfferList);
+            DrawItemCell(o.desc, o.slots, SessionBase(), kOffSessOfferList);
 
             ImGui::TableNextColumn();
             ImGui::Text("%d", o.stock);
@@ -1870,7 +1874,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::TableNextColumn();
             // La ligne du panier décrit le MÊME objet que l'offre : on retrouve
             // donc son nœud dans la liste du vendeur.
-            DrawItemCell(b.desc, 0, Session(), kOffSessOfferList);
+            DrawItemCell(b.desc, 0, SessionBase(), kOffSessOfferList);
 
             ImGui::TableNextColumn();
             ImGui::Text("%d", b.amount);
