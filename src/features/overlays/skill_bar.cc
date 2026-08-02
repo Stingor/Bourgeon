@@ -645,8 +645,8 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
 // Survol d'un slot rempli -> tooltip ImGui avec le nom (réplique le NOM de la barre native
 // UIShortCutWnd::OnMouseMove 0x008f7f50) : OBJET = DB item (FUN_006a0d40) ; SKILL = Lua
 // GetSkillName(id) (FUN_0073a1f0) car les ids skills sont absents de la DB item (prouvé par
-// traversée RB live de 0x01255130). Rendu via ImGui::SetTooltip (le tooltip natif FUN_00a753d0
-// passait SOUS la barre ImGui + 1 frame de retard). SEH (POD only ; SetTooltip hors __try).
+// traversée RB live de 0x01255130). Rendu via ImGui::BeginTooltip (le tooltip natif FUN_00a753d0
+// passait SOUS la barre ImGui + 1 frame de retard). SEH (POD only ; le rendu hors __try).
 void ShowSlotTooltip(int region, int slot) {
   char nm[160] = {};  // nom extrait (POD)
   bool valid = false, is_item = false;
@@ -688,7 +688,21 @@ void ShowSlotTooltip(int region, int slot) {
   char out[224];
   if (is_item) std::snprintf(out, sizeof(out), "%s (ID: %d)", nm, id);
   else         std::snprintf(out, sizeof(out), "%s - Lv: %d (ID: %d)", nm, level, id);
-  ImGui::SetTooltip("%s", out);
+  // Habillage : le style ImGui par défaut donne un rectangle à angles vifs, à marge
+  // asymétrique (WindowPadding x != y). On force des coins arrondis, un liseré discret
+  // et un padding ÉGAL sur les deux axes -> même marge en haut/bas qu'à gauche/droite.
+  constexpr float kTipPad = 4.0f, kTipRound = 6.0f;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kTipPad, kTipPad));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kTipRound);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(18, 18, 22, 240));
+  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(95, 95, 105, 190));
+  if (ImGui::BeginTooltip()) {
+    ImGui::TextUnformatted(out);  // Unformatted : un nom d'objet peut contenir un '%'
+    ImGui::EndTooltip();
+  }
+  ImGui::PopStyleColor(2);
+  ImGui::PopStyleVar(3);
 }
 
 // Callback ImGui : applique le filtre texture choisi (POINT net / LINEAR flou)
