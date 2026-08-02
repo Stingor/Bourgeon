@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "features/net_inbox.h"
 #include "features/windows/item_desc_window.h"  // itemdesc::SimpleOpt / RenderSimpleDesc
 #include "features/plugin.h"
 
@@ -136,10 +137,15 @@
 
 class VendingWindow : public Plugin {
  public:
+  VendingWindow();
   const char* name() const override { return "VendingWindow"; }
 
   void OnTick() override;
   void OnRenderUI() override;
+  // ZC_PC_PURCHASE_ITEMLIST_FROMMC 0x0b3d (OBSERVÉ) : l'ouverture d'une échoppe.
+  // Il porte l'AID du vendeur et l'identifiant d'échoppe, que le natif rangeait
+  // dans sa fenêtre de panier — laquelle ne naît plus. Fil RÉSEAU : on copie.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Cache la fenêtre de composition dès sa création (hook MakeWindow de
   // WindowPosTweaks, ids 0x29 et 0xAE) -> pas de frame native visible.
@@ -393,8 +399,8 @@ class VendingWindow : public Plugin {
   // après un achat — le serveur ne pousse aucune mise à jour de lui-même.
   void RequestVendorList();
 
-  void* vendor_wnd_ = nullptr;  // 0x2B : offre du vendeur
-  void* basket_wnd_ = nullptr;  // 0x2C : panier natif (source du GID/UniqueID)
+  // 🔴 Plus de pointeurs vers 0x2B/0x2C : elles sont détruites au tick. L'état de
+  // la session d'achat est le NÔTRE — ouvert par le paquet, fermé par nous.
   bool  vendor_open_ = false;
   bool  vendor_panel_ = true;
   // Un achat au moins a été émis dans cette session. Sert à distinguer « liste
@@ -402,8 +408,14 @@ class VendingWindow : public Plugin {
   // arrivée » (-> on attend).
   bool  bought_once_ = false;
   char  vendor_name_[32] = {0};
-  uint32_t vendor_gid_ = 0;  // AID du vendeur   (0x2C +0xF8)
-  uint32_t vendor_uid_ = 0;  // UniqueID échoppe (0x2C +0x104)
+  uint32_t vendor_gid_ = 0;  // AID du vendeur       (paquet 0x0b3d +2)
+  uint32_t vendor_uid_ = 0;  // UniqueID de l'échoppe (paquet 0x0b3d +6)
+  // Termine la session d'achat : détruit les natives résiduelles ET rejoue les deux
+  // gestes que la cmd 185 native faisait en plus de fermer (cf. EndVendorDeal).
+  void CloseVendorSession();
+  // Décodage sur le fil PRINCIPAL, drainé depuis OnTick.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
+  bourgeon::PacketInbox net_inbox_;
   std::vector<BuyRow>     offers_;
   std::vector<BasketLine> basket_;
   std::vector<int>        offer_qty_;  // quantité saisie, indexée comme `offers_`

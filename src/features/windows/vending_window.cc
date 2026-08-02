@@ -121,11 +121,40 @@ constexpr int kWinVendorShop   = 0x2B;
 constexpr int kWinVendorBasket = 0x2C;
 constexpr int kOffVendorList   = 0xE8;   // offre (0x2B) ET panier (0x2C)
 constexpr int kOffVendorGid    = 0x100;  // 0x2B : GID du vendeur (posé par OnMsg 28)
-constexpr int kOffBasketGid    = 0xF8;   // 0x2C : idem
-constexpr int kOffBasketUid    = 0x104;  // 0x2C : identifiant d'échoppe (UniqueID)
-constexpr int kOffBasketMode   = 0x108;  // 0 = on achète ; != 0 = échoppe d'achat
-constexpr int kCmdBuyCancel    = 185;    // ferme proprement (rects + SendMsg 40 +
-                                         // vidage du panier de session)
+// (kOffBasketMode 0x108 retiré avec la fenêtre : le mode se lit sur les ids ouverts.)
+// (kCmdBuyCancel 185 n'est plus pilotable : sa fenêtre est détruite. Ses deux effets
+//  non-visuels sont rejoués par EndVendorDeal.)
+
+// ── 🔴 Côté ACHETEUR : les deux natives ne survivent plus au tick ────────────
+// Contrairement au reste de ce plugin — qui PILOTE ses natives et ne peut donc pas
+// s'en passer — l'achat chez un vendeur émet déjà son paquet lui-même. Il ne restait
+// que deux dépendances, toutes deux remplaçables :
+//   1. la liste d'offres, lue dans 0x2B+0xE8 -> lue dans la SESSION (voir plus bas) ;
+//   2. l'AID et l'identifiant d'échoppe, posés dans 0x2C par le handler du paquet
+//      d'ouverture -> lus dans CE paquet, à la source.
+//
+// Paquet d'ouverture : ZC_PC_PURCHASE_ITEMLIST_FROMMC. ⚠ C'est bien 0x0b3d et PAS
+// 0x0800 : le client ne dispatche que celui-là (l'autre n'a aucune entrée dans sa
+// table). En régime OBSERVÉ, `data` = paquet+2, donc len@0, AID@2, venderId@6.
+constexpr uint16_t kZcVendingList = 0x0b3d;
+constexpr int kVlAid    = 2;
+constexpr int kVlVender = 6;
+constexpr int kVlMinLen = 10;
+
+// Listes de la SESSION. Décodées sur les getters natifs VendingXxx_GetCount
+// (0x00d5ce40..0x00d5ce90), qui rendent tous `*(session + count)` : une std::list
+// MSVC étant {head, size}, la tête est 4 octets AVANT le compteur.
+// ⚠ Même contenu que la liste de la fenêtre, prix EFFECTIF compris :
+// VendingOffer_GetAt ne fait que COPIER le nœud (aucun calcul de remise au moment
+// de remplir la fenêtre), donc la remise est déjà dans la session.
+constexpr int kOffSessOfferList = 0x1728;  // offre du vendeur (compteur @0x172C)
+
+// Ce que la cmd 185 native faisait EN PLUS de fermer ses trois fenêtres — et qu'une
+// simple destruction ne déclencherait donc jamais (relevé à l'instruction près dans
+// UIMerchantItemPurchaseWnd_OnMsg @0x00956c70 et @0x00956c78) :
+constexpr int       kCmdEndDeal         = 0x28;        // CMode::SendMsg : fin d'interaction
+constexpr uintptr_t kVendingBasketClear = 0x00d56300;  // __thiscall(&session)
+using BasketClear_t = void(__thiscall*)(void*);
 
 // ── Côté VENDEUR : je vends à l'échoppe d'ACHAT d'un autre joueur ────────────
 // TROIS fenêtres ouvertes ensemble quand on clique sur un buying store. Ce sont
@@ -375,6 +404,9 @@ bool IsLiveShopWnd(void* p) {
 }
 
 void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
+// ⚠ DÉTRUIT la fenêtre (la destruction est mise en file, d'où l'intérêt de masquer
+// d'abord : sans ça une frame native passerait avant qu'elle ne disparaisse).
+void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 
 // Rend une fenêtre qu'on avait masquée. Nécessaire côté acheteur : le mode
 // (achat chez un vendeur / vente à une échoppe d'achat) n'est connu qu'APRÈS la
@@ -749,6 +781,23 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
+// Les DEUX gestes que la cmd 185 native faisait en plus de fermer ses fenêtres, et
+// qu'une destruction directe ne déclenche donc jamais (elle ne passe pas par OnMsg) :
+// la fin d'interaction marchande sur le bus du mode de jeu, puis le vidage du panier
+// de session. Sans le premier, le client se croit encore devant le vendeur.
+void EndVendorDeal() {
+  __try {
+    void* game_mode =
+        reinterpret_cast<GameModeGetActive_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    if (game_mode) {
+      void** vt = *reinterpret_cast<void***>(game_mode);
+      using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
+      reinterpret_cast<SendMsg_t>(vt[6])(game_mode, kCmdEndDeal, 0, 0, 0, 0);
+    }
+    reinterpret_cast<BasketClear_t>(kVendingBasketClear)(Session());
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // Recopie ce qui sert à décrire l'objet. Les cartes/options viennent du nœud, pas
 // de la DB : sans elles l'aperçu d'un équipement serti serait faux.
 void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
@@ -916,12 +965,16 @@ bool VendingWindow::IsComposing() const {
 }
 
 void VendingWindow::OnTick() {
+  // Décodage sur le fil PRINCIPAL, avant tout le reste : l'ouverture d'une échoppe
+  // arrive entre deux ticks et doit être vue par le rendu de CE frame.
+  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
+    HandlePacket(op, d, n);
+  });
+
   if (!imgui_enabled_) {
     wnd_ = nullptr;
     mirror_ = nullptr;
     myshop_wnd_ = nullptr;
-    vendor_wnd_ = nullptr;
-    basket_wnd_ = nullptr;
     open_ = false;
     myshop_open_ = false;
     vendor_open_ = false;
@@ -969,29 +1022,12 @@ void VendingWindow::OnTick() {
     log_.clear();
   }
 
-  // Côté acheteur : 0x2B (offre) + 0x2C (panier), ouvertes ensemble par un clic
-  // sur l'échoppe d'un autre joueur. Encore un cycle de vie distinct.
-  vendor_wnd_ = FindWnd(kWinVendorShop);
-  basket_wnd_ = FindWnd(kWinVendorBasket);
-  if (vendor_wnd_ && basket_wnd_) {
-    if (!vendor_open_) {  // front montant : nouvelle session d'achat
-      vendor_panel_ = true;
-      bought_once_ = false;
-      vendor_name_[0] = '\0';
-      basket_.clear();
-      offer_qty_.clear();
-    }
-    vendor_open_ = true;
-    HideWnd(vendor_wnd_);
-    HideWnd(basket_wnd_);
-  } else {
-    vendor_open_ = false;
-    vendor_wnd_ = nullptr;
-    basket_wnd_ = nullptr;
-    offers_.clear();
-    basket_.clear();
-    offer_qty_.clear();
-  }
+  // Côté acheteur : 0x2B (offre) + 0x2C (panier). 🔴 Elles ne portent PLUS l'état —
+  // c'est le paquet d'ouverture qui l'ouvre (HandlePacket) et notre fermeture qui le
+  // referme. On se contente de les détruire : masquées, elles resteraient vivantes,
+  // et le natif les recréerait sans repasser par nous.
+  if (void* w = FindWnd(kWinVendorShop))   { HideWnd(w); CloseWnd(kWinVendorShop); }
+  if (void* w = FindWnd(kWinVendorBasket)) { HideWnd(w); CloseWnd(kWinVendorBasket); }
 
   // Côté vendeur face à un buying store : TROIS fenêtres (0xB1 recherche, 0xB2
   // vente, 0xB3 stock proposable), ouvertes ensemble par un clic sur l'échoppe
@@ -1144,8 +1180,10 @@ void VendingWindow::RefreshSellLog() {
 
 void VendingWindow::RefreshVendorShop() {
   RawRow raw[kMaxAvail];
-  const int n =
-      vendor_wnd_ ? ReadRows(vendor_wnd_, kOffVendorList, raw, kMaxAvail) : 0;
+  // Source = la liste de la SESSION, plus la fenêtre native (détruite). Même
+  // structure de nœuds, mêmes offsets, et les DEUX prix y sont déjà (cf. la note
+  // sur kOffSessOfferList).
+  const int n = ReadRows(Session(), kOffSessOfferList, raw, kMaxAvail);
   offers_.clear();
   offers_.reserve(n);
   for (int i = 0; i < n; ++i) {
@@ -1164,11 +1202,9 @@ void VendingWindow::RefreshVendorShop() {
   }
   offer_qty_.resize(offers_.size(), 1);
 
-  // GID/UniqueID : c'est le panier natif qui les porte (posés par son OnMsg 28).
-  if (basket_wnd_) {
-    vendor_gid_ = static_cast<uint32_t>(ReadInt(basket_wnd_, kOffBasketGid));
-    vendor_uid_ = static_cast<uint32_t>(ReadInt(basket_wnd_, kOffBasketUid));
-  }
+  // (GID/UniqueID ne sont plus lus ici : ils viennent du paquet d'ouverture, à la
+  // source — c'est HandlePacket qui les pose. Le panier natif qui les portait
+  // n'existe plus.)
   // Le dictionnaire répond vide tant que le serveur n'a pas renvoyé le nom : on
   // ne réinterroge que tant qu'on n'a rien, sans écraser un nom déjà obtenu.
   if (vendor_name_[0] == '\0')
@@ -1349,6 +1385,48 @@ void VendingWindow::QuickBuy(const BuyRow& offer, int qty) {
 
 void VendingWindow::FireCommand(int cmd) {
   if (wnd_) SendButton(wnd_, cmd);
+}
+
+VendingWindow::VendingWindow() {
+  // OBSERVÉ et non remplacé : le handler natif doit continuer de tourner, c'est lui
+  // qui remplit la liste d'offres de la SESSION — celle qu'on lit maintenant à la
+  // place de la fenêtre. On ne fait qu'écouter pour relever AID et UniqueID.
+  Bourgeon::Instance().RegisterObserveOpcode(kZcVendingList, kVlMinLen);
+}
+
+// Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h).
+void VendingWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// Fil PRINCIPAL : le décodage, rejoué au tick.
+void VendingWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode != kZcVendingList || len < kVlMinLen) return;
+  vendor_gid_ = *reinterpret_cast<const uint32_t*>(data + kVlAid);
+  vendor_uid_ = *reinterpret_cast<const uint32_t*>(data + kVlVender);
+  if (!vendor_open_) {  // front montant : nouvelle session d'achat
+    vendor_panel_ = true;
+    bought_once_ = false;
+    vendor_name_[0] = '\0';
+    basket_.clear();
+    offer_qty_.clear();
+  }
+  vendor_open_ = true;
+}
+
+// Fermeture d'une session d'achat. Le natif passait par la cmd 185 de sa fenêtre de
+// panier ; elle ne se contentait PAS de fermer, et c'est tout l'enjeu ici.
+void VendingWindow::CloseVendorSession() {
+  // Filet : si une native avait survécu à un tick manqué, la détruire d'abord.
+  if (FindWnd(kWinVendorShop))   CloseWnd(kWinVendorShop);
+  if (FindWnd(kWinVendorBasket)) CloseWnd(kWinVendorBasket);
+  EndVendorDeal();
+  vendor_open_ = false;
+  vendor_gid_ = 0;
+  vendor_uid_ = 0;
+  offers_.clear();
+  basket_.clear();
+  offer_qty_.clear();
 }
 
 void VendingWindow::QueueCommand(int win_id, int cmd) {
@@ -1670,14 +1748,7 @@ void VendingWindow::OnRenderUI() {
 
   // ── Achat chez un vendeur (0x2B offre + 0x2C panier) ───────────────────────
   if (vendor_open_) {
-    vendor_wnd_ = FindWnd(kWinVendorShop);   // re-résolution par frame
-    basket_wnd_ = FindWnd(kWinVendorBasket);
-    if (!vendor_wnd_ || !basket_wnd_) {
-      vendor_open_ = false;
-      offers_.clear();
-      basket_.clear();
-      offer_qty_.clear();
-    } else if (vendor_panel_) {
+    if (vendor_panel_) {
       RefreshVendorShop();
       ro::SetNextWindowBodyColor(ro::ListBodyColorU32());
       ImGui::SetNextWindowSizeConstraints(ImVec2(kMinPanelW, 0.0f),
@@ -1712,7 +1783,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::PushID(static_cast<int>(i));
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            DrawItemCell(o.desc, o.slots, vendor_wnd_, kOffVendorList);
+            DrawItemCell(o.desc, o.slots, Session(), kOffSessOfferList);
 
             ImGui::TableNextColumn();
             ImGui::Text("%d", o.stock);
@@ -1799,7 +1870,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::TableNextColumn();
             // La ligne du panier décrit le MÊME objet que l'offre : on retrouve
             // donc son nœud dans la liste du vendeur.
-            DrawItemCell(b.desc, 0, vendor_wnd_, kOffVendorList);
+            DrawItemCell(b.desc, 0, Session(), kOffSessOfferList);
 
             ImGui::TableNextColumn();
             ImGui::Text("%d", b.amount);
@@ -1841,10 +1912,7 @@ void VendingWindow::OnRenderUI() {
       // — c'est aussi ce que fait le client natif quand tout est vendu. Le garde
       // `bought_once_` évite de fermer sur une liste simplement pas encore reçue.
       if (offers_.empty() && bought_once_) close_vendor = true;
-      // cmd 185 = annulation native : elle sauve les rects, dispatche SendMsg 40
-      // et vide le panier de session. C'est la vraie fermeture, croix comprise.
-      if (close_vendor || !keep_vendor)
-        QueueCommand(kWinVendorBasket, kCmdBuyCancel);
+      if (close_vendor || !keep_vendor) CloseVendorSession();
     }
   }
 
