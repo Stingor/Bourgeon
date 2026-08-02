@@ -21,6 +21,7 @@
 #include "ui/game_texture.h" // ro::TextureFromGameFile (icônes .bmp du GRF)
 #include "ui/icon_cache.h"   // ro::ItemIcon (chargement + epoch de device partagés)
 #include "ui/ro_imgui.h"     // BeginRoWindow / RoButton (skin RO)
+#include "ui/ro_widgets.h"   // mui::IsLastItemRightClicked (clic droit = description)
 #include "utils/hooking/hook_manager.h"  // détour du handler de contenu ZC 0x0B63
 #include "utils/log_console.h"
 
@@ -92,10 +93,23 @@ constexpr uint16_t kCzCancelWrite = 0x0A03;
 constexpr uintptr_t kMailAttachSlot = rag::kSessionAddr + 23624;
 constexpr int kAttachStride = 248;  // 0xF8 : taille d'un ItemSkillInfo
 constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
+// Ces offsets sont ceux de l'ItemSkillInfo, la structure COMMUNE au reste du client
+// (inventaire, chariot, entrepôt) : un slot de rédaction porte donc, tel quel, tout
+// ce qu'un item d'inventaire porte — cartes et enchants compris.
+constexpr int kInfoType   = 0x00;   // int : type d'item
 constexpr int kInfoIndex  = 0x04;   // int : index d'inventaire
+constexpr int kInfoLoc    = 0x08;   // int : masque d'emplacement d'équipement
 constexpr int kInfoAmount = 0x10;   // int : quantité (< 1 => slot vide)
+constexpr int kInfoCard0  = 0x1c;   // 4 × u32 : cartes / enchantements
 constexpr int kInfoIdStr  = 0x2c;   // std::string SSO : itemId EN TEXTE
+constexpr int kInfoIdent  = 0x5c;   // byte : identifié
+constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ
 constexpr int kInfoRefine = 0x60;   // int : refine
+constexpr int kInfoView   = 0x70;   // int : viewID
+constexpr int kInfoGrade  = 0x88;   // i16 : grade d'enchantement
+constexpr int kInfoOptCnt = 0x98;   // int : nombre d'options aléatoires
+constexpr int kInfoOpts   = 0x9c;   // entrées de 5 octets
+constexpr size_t kInfoSize = 0x100;  // ItemSkillInfo (0xf8), arrondi
 
 // Singleton d'état CRodexSystemMgr (POINTEUR vers l'objet de 0x38 octets).
 constexpr uintptr_t kRodexMgrPtr = 0x0131ecdc;
@@ -150,13 +164,25 @@ constexpr int kMailItems     = 0x6d;   // 1er bloc d'objet ; stride 60
 constexpr int kMailZeny      = 0x1a0;  // int64 : zeny joint
 constexpr int kMailNodeSize  = 0x1b0;
 constexpr int kItemStride    = 60;
-// Champs d'un bloc objet (offsets relatifs au bloc), déduits de la copie que le
-// handler ZC 0x0B63 fait vers un ItemSkillInfo : amount -> +0x10, refine -> +0x60.
-constexpr int kItAmount   = 0;   // u16
-constexpr int kItId       = 2;   // u32
-constexpr int kItIdentify = 6;   // u8
-constexpr int kItCard0    = 8;   // 4 × u32
-constexpr int kItRefine   = 58;  // u8
+// ── Champs d'un bloc objet (offsets relatifs au bloc) ────────────────────────
+// Relevés UN À UN dans la recopie que le handler ZC 0x0B63 fait vers un
+// ItemSkillInfo (0x00cfd0c0, désassemblage 0xcfd2ef-0xcfd46d) : chaque `mov` y
+// apparie un offset de bloc et un offset d'ItemSkillInfo. Le bloc porte donc TOUT
+// ce qu'il faut pour un nom complet et une description — y compris ce que le
+// plugin ignorait jusqu'ici : cassé, emplacement, type, viewID, enchants, grade.
+constexpr int kItAmount   = 0;   // u16 -> ISI+0x10
+constexpr int kItId       = 2;   // u32 -> ItemSkillInfo_SetId
+constexpr int kItIdentify = 6;   // u8  -> ISI+0x5c
+constexpr int kItDamaged  = 7;   // u8  -> ISI+0x5d : équipement CASSÉ
+constexpr int kItCard0    = 8;   // 4 × u32 -> ISI+0x1c
+constexpr int kItLocation = 24;  // u32 -> ISI+0x08 : emplacement d'équipement
+constexpr int kItType     = 28;  // u8  -> ISI+0x00 : type (le name-builder le lit)
+constexpr int kItView     = 29;  // u16 -> ISI+0x70 : viewID
+constexpr int kItOpts     = 33;  // 5 × {i16 index, i16 value, u8 param} -> ISI+0x9c
+constexpr int kItOptStride = 5;
+constexpr int kItOptMax    = 5;
+constexpr int kItRefine   = 58;  // u8  -> ISI+0x60
+constexpr int kItGrade    = 59;  // u8  -> ISI+0x88
 // Les 5 blocs d'objets tiennent entre l'en-tête et le zeny : c'est ce qui rend la
 // lecture bornée sans test par itération (et la taille de nœud le confirme).
 static_assert(kMailItems + 5 * kItemStride <= kMailZeny,
@@ -443,7 +469,14 @@ struct RawAttach {
   int      amount;
   int      refine;
   int      identified;
+  int      damaged;
+  int      grade;
+  uint32_t location;
+  int      type;
+  uint16_t view;
   uint32_t cards[4];
+  int      opt_count;
+  struct { int16_t index; int16_t value; uint8_t param; } opts[kItOptMax];
 };
 struct RawMail {
   int64_t   id;
@@ -582,8 +615,28 @@ bool ReadRawMail(const uint8_t* node, RawMail* out) {
         attach.id         = *reinterpret_cast<const uint32_t*>(blk + kItId);
         attach.refine     = *(blk + kItRefine);
         attach.identified = *(blk + kItIdentify) != 0;
+        attach.damaged    = *(blk + kItDamaged) != 0;
+        attach.grade      = *(blk + kItGrade);
+        attach.location   = *reinterpret_cast<const uint32_t*>(blk + kItLocation);
+        attach.type       = *(blk + kItType);
+        attach.view       = *reinterpret_cast<const uint16_t*>(blk + kItView);
         for (int c = 0; c < 4; ++c)
           attach.cards[c] = *reinterpret_cast<const uint32_t*>(blk + kItCard0 + 4 * c);
+        // Enchantements. Le natif, lui, COMPTE les entrées d'index non nul (cascade
+        // de `cmovz` en 0xcfd3a1) puis recopie les N PREMIÈRES — deux choses
+        // différentes, qui ne coïncident que parce que le serveur tasse ses options
+        // depuis l'entrée 0. On s'arrête donc au premier index nul : même résultat
+        // sur un paquet tassé, et pas d'option fantôme si jamais il ne l'est pas.
+        attach.opt_count = 0;
+        for (int o = 0; o < kItOptMax; ++o) {
+          const uint8_t* opt = blk + kItOpts + o * kItOptStride;
+          const int16_t index = *reinterpret_cast<const int16_t*>(opt);
+          if (index == 0) break;
+          attach.opts[o].index = index;
+          attach.opts[o].value = *reinterpret_cast<const int16_t*>(opt + 2);
+          attach.opts[o].param = opt[4];
+          ++attach.opt_count;
+        }
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -649,12 +702,23 @@ struct RawAttachSlot {
   uint32_t item_id;
   int      amount;
   int      refine;
+  int      identified;
+  int      damaged;
+  uint32_t cards[4];
+  int      opt_count;
+  struct { int16_t index; int16_t value; uint8_t param; } opts[kItOptMax];
 };
+// Adresse du slot `slot` dans la session. FIXE pour toute la partie : c'est ce qui
+// permet de la passer telle quelle comme `src` à itemcell::DeferDescById, dont le
+// contrat exige que la source survive jusqu'au relâchement du bouton.
+const uint8_t* AttachSlotAddr(int slot) {
+  return reinterpret_cast<const uint8_t*>(
+      kMailAttachSlot + static_cast<uintptr_t>(slot) * kAttachStride);
+}
 bool ReadAttachSlot(int slot, RawAttachSlot* out) {
   std::memset(out, 0, sizeof(*out));
   __try {
-    const uint8_t* base = reinterpret_cast<const uint8_t*>(
-        kMailAttachSlot + static_cast<uintptr_t>(slot) * kAttachStride);
+    const uint8_t* base = AttachSlotAddr(slot);
     const int amount = *reinterpret_cast<const int*>(base + kInfoAmount);
     if (amount < 1) return false;
     // itemId en TEXTE (std::string SSO : au-delà de 15 caractères, les 4 premiers
@@ -666,6 +730,20 @@ bool ReadAttachSlot(int slot, RawAttachSlot* out) {
     out->amount    = amount;
     out->inv_index = *reinterpret_cast<const int*>(base + kInfoIndex);
     out->refine    = *reinterpret_cast<const int*>(base + kInfoRefine);
+    out->identified = *(base + kInfoIdent) != 0;
+    out->damaged    = *(base + kInfoDamaged) != 0;
+    for (int c = 0; c < 4; ++c)
+      out->cards[c] = *reinterpret_cast<const uint32_t*>(base + kInfoCard0 + 4 * c);
+    int nopt = *reinterpret_cast<const int*>(base + kInfoOptCnt);
+    if (nopt < 0) nopt = 0;
+    if (nopt > kItOptMax) nopt = kItOptMax;
+    out->opt_count = nopt;
+    for (int o = 0; o < nopt; ++o) {
+      const uint8_t* opt = base + kInfoOpts + o * kItOptStride;
+      out->opts[o].index = *reinterpret_cast<const int16_t*>(opt);
+      out->opts[o].value = *reinterpret_cast<const int16_t*>(opt + 2);
+      out->opts[o].param = opt[4];
+    }
     return out->item_id != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -766,7 +844,89 @@ std::string ExpiryLabel(int64_t expire) {
   return std::to_string(hours > 0 ? hours : 1) + " h";
 }
 
+// Fabrication d'un ItemSkillInfo : mêmes appels que itemcell::OpenDescById, à ceci
+// près que la source est un bloc de courrier et non un item vivant.
+using InfoCtor_t  = void(__fastcall*)(void*);
+using InfoSetId_t = void(__thiscall*)(void*, int);
+
 }  // namespace
+
+// ── Pièces jointes : du bloc de 60 octets à un item que le client sait nommer ──
+//
+// Ni le name-builder ni la fenêtre de description ne savent partir d'un id : ils
+// veulent un ItemSkillInfo. Une pièce jointe n'en est pas un — c'est un bloc de 60
+// octets dans le RodexMail — mais la RE du handler de contenu (0x00cfd0c0) montre
+// que le natif fait exactement cette conversion avant d'afficher sa fenêtre de
+// lecture, champ par champ. On la refait donc à l'identique.
+//
+// ⚠ Aucune fuite : ItemSkillInfo_SetId n'écrit qu'un id NUMÉRIQUE dans la
+// std::string +0x2c (10 caractères au plus, donc SSO) et le ctor ne construit que
+// des chaînes vides. Le tampon peut mourir au retour, comme celui d'OpenDescById.
+bool RodexWindow::BuildAttachInfo(const Attach& attach, void* out_info) {
+  std::memset(out_info, 0, kInfoSize);
+  if (attach.id == 0) return false;
+  __try {
+    uint8_t* info = static_cast<uint8_t*>(out_info);
+    reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+    reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info,
+                                                          static_cast<int>(attach.id));
+    *reinterpret_cast<int*>(info + kInfoType)    = attach.type;
+    *reinterpret_cast<uint32_t*>(info + kInfoLoc) = attach.location;
+    *reinterpret_cast<int*>(info + kInfoAmount)  = attach.amount;
+    for (int c = 0; c < 4; ++c)
+      *reinterpret_cast<uint32_t*>(info + kInfoCard0 + 4 * c) = attach.cards[c];
+    info[kInfoIdent]   = attach.identified ? 1 : 0;
+    info[kInfoDamaged] = attach.damaged ? 1 : 0;
+    *reinterpret_cast<int*>(info + kInfoRefine) = attach.refine;
+    *reinterpret_cast<int*>(info + kInfoView)   = attach.view;
+    *reinterpret_cast<int16_t*>(info + kInfoGrade) = attach.grade;
+    *reinterpret_cast<int*>(info + kInfoOptCnt) = attach.opt_count;
+    for (int o = 0; o < attach.opt_count && o < kItOptMax; ++o) {
+      uint8_t* opt = info + kInfoOpts + o * kItOptStride;
+      *reinterpret_cast<int16_t*>(opt)     = attach.opts[o].index;
+      *reinterpret_cast<int16_t*>(opt + 2) = attach.opts[o].value;
+      opt[4] = attach.opts[o].param;
+    }
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+void RodexWindow::ResolveAttachDisplay(Attach* attach) {
+  attach->name[0] = '\0';
+  attach->total_slots = 0;
+  if (attach->id == 0) return;
+  // Nom de base : il sert de repli, et son effet de bord compte autant — c'est lui
+  // qui déclenche le chargement paresseux de la DB, sans quoi le name-builder ne
+  // trouverait rien pour un objet jamais consulté de la session.
+  const char* base_name = itemcell::NameById(attach->id);
+
+  // Slot de RÉDACTION : l'ItemSkillInfo existe déjà en session, à une adresse fixe.
+  // Le reconstruire serait moins fidèle (on perdrait ce que le natif y écrit).
+  uint8_t scratch[kInfoSize];
+  const void* info = nullptr;
+  if (attach->mail_slot >= 0) {
+    info = AttachSlotAddr(attach->mail_slot);
+  } else if (BuildAttachInfo(*attach, scratch)) {
+    info = scratch;
+  }
+  if (!info) {
+    std::snprintf(attach->name, sizeof(attach->name), "%s", base_name);
+    return;
+  }
+
+  // ⚠ Contexte `this` du builder = nullptr, et c'est délibéré : les trois fenêtres
+  // RODEX natives sont détruites, il n'y a plus de fenêtre à lui donner. Le natif ne
+  // s'en sert que pour mettre en file l'attente du nom d'un FORGERON non résolu
+  // (UIWindowMgr_FindOrQueueNameRequest) ; partout ailleurs il l'ignore. Le SEH
+  // interne de BuildDisplayName couvre ce seul cas, avec repli sur le nom de base.
+  char decorated[96];
+  itemcell::BuildDisplayName(nullptr, const_cast<void*>(info), decorated,
+                             sizeof(decorated));
+  attach->total_slots = itemcell::SlotCount(const_cast<void*>(info));
+  // Le builder rend du texte dans la code-page du CLIENT ; ImGui veut de l'UTF-8.
+  std::snprintf(attach->name, sizeof(attach->name), "%s",
+                decorated[0] ? ro::LocalToUtf8(decorated) : base_name);
+}
 
 // ── Lecture de l'état natif ─────────────────────────────────────────────────
 // Parcours des trois std::map du manager. Les nœuds sont COPIÉS dans mails_ : on
@@ -816,7 +976,19 @@ void RodexWindow::ReadState() {
         attach.amount     = src.amount;
         attach.refine     = src.refine;
         attach.identified = src.identified != 0;
+        attach.damaged    = src.damaged != 0;
+        attach.grade      = static_cast<uint8_t>(src.grade);
+        attach.type       = src.type;
+        attach.location   = src.location;
+        attach.view       = src.view;
         for (int c = 0; c < 4; ++c) attach.cards[c] = src.cards[c];
+        attach.opt_count = src.opt_count;
+        for (int o = 0; o < src.opt_count && o < kItOptMax; ++o) {
+          attach.opts[o].index = src.opts[o].index;
+          attach.opts[o].value = src.opts[o].value;
+          attach.opts[o].param = src.opts[o].param;
+        }
+        ResolveAttachDisplay(&attach);
         mail.items.push_back(attach);
       }
       mails_.push_back(std::move(mail));
@@ -928,7 +1100,20 @@ void RodexWindow::ReadComposeState() {
     attach.id        = raw.item_id;
     attach.amount    = raw.amount;
     attach.refine    = raw.refine;
+    attach.identified = raw.identified != 0;
+    attach.damaged    = raw.damaged != 0;
     attach.inv_index = raw.inv_index;  // porté par l'objet, pas par sa position
+    attach.mail_slot = slot;           // l'ItemSkillInfo vivant est à cette adresse
+    for (int c = 0; c < 4; ++c) attach.cards[c] = raw.cards[c];
+    attach.opt_count = raw.opt_count;
+    for (int o = 0; o < raw.opt_count && o < kItOptMax; ++o) {
+      attach.opts[o].index = raw.opts[o].index;
+      attach.opts[o].value = raw.opts[o].value;
+      attach.opts[o].param = raw.opts[o].param;
+    }
+    // type/location/view/grade ne sont pas recopiés : le nom et la description
+    // partent de l'ItemSkillInfo VIVANT du slot (cf. mail_slot), qui les porte déjà.
+    ResolveAttachDisplay(&attach);
     compose_items_.push_back(attach);
   }
 }
@@ -1310,9 +1495,21 @@ void RodexWindow::OnTick() {
 
 void RodexWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
+  // Recalculé par les cellules de pièce jointe des DEUX fenêtres : une seule peut
+  // être survolée à la fois, un seul état suffit donc.
+  hover_attach_valid_ = false;
   // La fenêtre d'écriture vit sa vie : elle peut être ouverte sans la boîte (réponse
   // depuis un courrier, puis fermeture de la liste) et se dessine donc à part.
   DrawComposeWindow();
+  DrawMailbox();
+  // L'aperçu de description est un TOOLTIP : il doit passer AU-DESSUS des fenêtres,
+  // et se dessine donc après elles, hors de tout Begin/End (même règle que les
+  // autres viewers). C'est aussi pourquoi la boîte est sortie d'ici : ses retours
+  // anticipés sautaient cette ligne.
+  DrawAttachTooltip();
+}
+
+void RodexWindow::DrawMailbox() {
   if (!open_) return;
 
   if (need_pos_) {
@@ -1553,6 +1750,79 @@ void RodexWindow::DrawMailList() {
   ImGui::EndChild();
 }
 
+// ── Une pièce jointe : icône + nom complet, survol, clic droit ───────────────
+// Même cellule pour la lecture et la rédaction — c'est le même objet, seul le
+// bouton « Retirer » distingue les deux. Le groupe englobe icône, nom et quantité
+// pour que la zone sensible couvre toute la ligne et pas le seul libellé.
+void RodexWindow::DrawAttachRow(const Attach& attach, bool removable) {
+  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
+
+  ImGui::BeginGroup();
+  const ro::IconTex icon = ro::ItemIcon(attach.id, attach.identified ? 1 : 0);
+  if (icon.tex) {
+    ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(20, 20));
+    ImGui::SameLine();
+  }
+  // Nom COMPLET : refine et affixes de cartes viennent du name-builder natif
+  // (déjà dans `name`), le suffixe « [N] » est ajouté ici — le builder ne le
+  // compose pas. L'ombre rouge marque l'équipement cassé, comme partout ailleurs.
+  char label[128];
+  itemcell::Label(label, sizeof(label), attach.name, attach.total_slots);
+  ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+  itemcell::NameText(label, attach.damaged);
+  ImGui::PopStyleColor();
+  if (attach.amount > 1) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("x%d", attach.amount);
+  }
+  ImGui::EndGroup();
+
+  if (ImGui::IsItemHovered()) {
+    // L'aperçu est un popup : on note seulement quoi afficher, le tooltip sera
+    // dessiné hors de toute fenêtre (cf. DrawAttachTooltip).
+    hover_attach_ = attach;
+    hover_attach_valid_ = true;
+  }
+  if (mui::IsLastItemRightClicked()) {
+    POINT pt;
+    if (GetCursorPos(&pt)) {
+      // `src` doit survivre jusqu'au relâchement du bouton (contrat de
+      // DeferDescById) : le slot de rédaction est à une adresse de session fixe,
+      // une pièce jointe reçue passe par le tampon membre. Quand `src` est fourni,
+      // view/location du paramètre sont ignorés — ils sont dans la structure.
+      if (attach.mail_slot >= 0)
+        itemcell::DeferDescById(attach.id, attach.view, attach.location, pt.x, pt.y,
+                                AttachSlotAddr(attach.mail_slot));
+      else if (BuildAttachInfo(attach, desc_scratch_))
+        itemcell::DeferDescById(attach.id, attach.view, attach.location, pt.x, pt.y,
+                                desc_scratch_);
+    }
+  }
+
+  if (removable) {
+    ImGui::SameLine();
+    if (ro::RoButton("Retirer")) RemoveAttachment(attach.inv_index, attach.amount);
+  }
+}
+
+void RodexWindow::DrawAttachTooltip() {
+  if (!hover_attach_valid_) return;
+  const Attach& attach = hover_attach_;
+  itemdesc::SimpleOpt opts[kItOptMax];
+  for (int i = 0; i < attach.opt_count && i < kItOptMax; ++i) {
+    opts[i].index = attach.opts[i].index;
+    opts[i].value = attach.opts[i].value;
+    opts[i].param = attach.opts[i].param;
+  }
+  // Sur un item FORGÉ, les quatre mots de cartes portent en fait les données du
+  // forgeron (charid scindé, star crumbs, élément) : les afficher comme des cartes
+  // inventerait quatre objets. Même critère que l'inventaire et la description.
+  const bool forged = (attach.cards[0] != 0 && attach.cards[0] <= 500);
+  itemcell::DrawTooltip(attach.id, attach.cards, forged ? 0 : 4, opts,
+                        attach.opt_count, attach.refine, attach.name,
+                        attach.damaged);
+}
+
 void RodexWindow::DrawMailDetail() {
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   const Mail* mail = Selected();
@@ -1595,21 +1865,8 @@ void RodexWindow::DrawMailDetail() {
     else if (has_zeny)
       ImGui::TextDisabled("%s", "Zeny joint (ouvre le courrier pour voir le montant)");
     for (size_t i = 0; i < mail->items.size(); ++i) {
-      const Attach& attach = mail->items[i];
       ImGui::PushID(static_cast<int>(i));
-      ro::IconTex icon = ro::ItemIcon(attach.id, attach.identified ? 1 : 0);
-      if (icon.tex) {
-        ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(20, 20));
-        ImGui::SameLine();
-      }
-      if (attach.refine > 0)
-        ImGui::TextColored(kBlack, "+%d %s", attach.refine, itemcell::NameById(attach.id));
-      else
-        ImGui::TextColored(kBlack, "%s", itemcell::NameById(attach.id));
-      if (attach.amount > 1) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("x%d", attach.amount);
-      }
+      DrawAttachRow(mail->items[i], false);
       ImGui::PopID();
     }
     if (has_items && !mail->content_ready)
@@ -1733,24 +1990,8 @@ void RodexWindow::DrawComposeWindow() {
                      static_cast<int>(compose_items_.size()), kAttachSlots);
   ImGui::BeginChild("rodex_attach", ImVec2(0, 92), true);
   for (size_t i = 0; i < compose_items_.size(); ++i) {
-    const Attach& attach = compose_items_[i];
     ImGui::PushID(static_cast<int>(i));
-    ro::IconTex icon = ro::ItemIcon(attach.id, 1);
-    if (icon.tex) {
-      ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(20, 20));
-      ImGui::SameLine();
-    }
-    if (attach.refine > 0)
-      ImGui::TextColored(kBlack, "+%d %s", attach.refine, itemcell::NameById(attach.id));
-    else
-      ImGui::TextColored(kBlack, "%s", itemcell::NameById(attach.id));
-    if (attach.amount > 1) {
-      ImGui::SameLine();
-      ImGui::TextDisabled("x%d", attach.amount);
-    }
-    ImGui::SameLine();
-    if (ro::RoButton("Retirer"))
-      RemoveAttachment(attach.inv_index, attach.amount);
+    DrawAttachRow(compose_items_[i], true);
     ImGui::PopID();
   }
   if (compose_items_.empty())

@@ -87,17 +87,47 @@ class RodexWindow : public Plugin {
   bool imgui_enabled_ = false;
 
  private:
-  // Une pièce jointe d'un courrier (bloc de 60 octets dans le RodexMail).
+  // Une pièce jointe d'un courrier (bloc de 60 octets dans le RodexMail, ou slot de
+  // rédaction — 0xF8, un vrai ItemSkillInfo de session).
   struct Attach {
     uint32_t id = 0;
     int      amount = 0;
     int      refine = 0;
     bool     identified = true;
+    // ISI+0x5d : équipement CASSÉ (nom ombré + icône teintée, cf. itemcell).
+    // RE ida 0x00cfd0c0 (Recv_ZC_AckReadRodex_0x0B63) pour le bloc réseau : le natif
+    // recopie lui-même l'octet du bloc +7 à cet offset avant d'ouvrir SA fenêtre de
+    // lecture — jusqu'ici cet octet n'était pas lu par le plugin.
+    bool     damaged = false;
+    uint8_t  grade = 0;   // ISI+0x88 : grade d'enchantement (décore le nom natif)
+    // ⚠ `type` n'est pas décoratif : le name-builder natif s'en sert pour décider
+    // si l'objet mérite des affixes (ItemTitle_IsDecoratedType). Sans lui, une arme
+    // cardée sort avec son nom nu. `location`/`view` ne servent, eux, qu'à
+    // déverrouiller le bouton « aperçu » de la fenêtre de description.
+    int      type = 0;        // ISI+0x00
+    uint32_t location = 0;    // ISI+0x08 : masque d'emplacement d'équipement
+    uint16_t view = 0;        // ISI+0x70 : viewID
     uint32_t cards[4] = {0, 0, 0, 0};
+    // Options aléatoires d'instance (enchants), ISI+0x9c : jusqu'à 5, tassées depuis
+    // l'entrée 0 par le serveur. Pour le bloc réseau : +33, stride 5 (même RE).
+    struct Opt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
+    int      opt_count = 0;
+    Opt      opts[5] = {};
+    // Nom complet (refine + affixes de cartes, name-builder natif) et emplacements
+    // totaux : résolus une fois à la lecture par ResolveAttachDisplay, à partir d'un
+    // ItemSkillInfo reconstruit (cf. BuildAttachInfo) — jamais du texte inventé.
+    char     name[96] = {0};
+    int      total_slots = 0;
     // Renseigné UNIQUEMENT pour les pièces jointes d'un courrier en cours
     // d'écriture (elles vivent encore dans l'inventaire du joueur) : c'est cet
     // index que la commande de retrait attend. 0 pour un courrier reçu.
     int      inv_index = 0;
+    // Emplacement (0..4) dans les slots de rédaction de la SESSION (kMailAttachSlot) :
+    // adresse FIXE qu'on peut passer telle quelle comme `src` à
+    // itemcell::DeferDescById, contrairement à un ItemSkillInfo de pile qui ne
+    // survivrait pas jusqu'au relâchement du clic. -1 pour un courrier reçu (dans ce
+    // cas la description passe par desc_scratch_).
+    int      mail_slot = -1;
   };
 
   // Un courrier, copié depuis la std::map du natif (jamais de pointeur conservé
@@ -123,6 +153,26 @@ class RodexWindow : public Plugin {
     std::string body;
     std::vector<Attach> items;
   };
+
+  // ── Pièces jointes : nom complet et description ──────────────────────────
+  // Une pièce jointe n'est PAS un item d'inventaire : elle vit dans un bloc de 60
+  // octets du RodexMail, que rien du client ne sait nommer ni décrire. Le
+  // name-builder et la fenêtre de description veulent tous deux un ItemSkillInfo ;
+  // on le fabrique donc à partir du bloc, dont la RE (0x00cfd0c0) montre qu'il
+  // porte exactement les mêmes champs.
+  //
+  // `out_info` = tampon d'au moins 0x100 octets. False si la fabrication échoue.
+  // ⚠ Les slots de RÉDACTION, eux, sont déjà de vrais ItemSkillInfo de session : on
+  // ne reconstruit rien pour eux, on pointe l'original (cf. `mail_slot`).
+  static bool BuildAttachInfo(const Attach& attach, void* out_info);
+  // Renseigne `name` (nom décoré, UTF-8) et `total_slots`. Repli sur le nom de base
+  // quand le builder natif ne rend rien — jamais de champ laissé indéterminé.
+  static void ResolveAttachDisplay(Attach* attach);
+  // Icône + nom composé + survol + clic droit, pour UNE pièce jointe. Partagée par
+  // la lecture et la rédaction : c'est la même cellule, seul « Retirer » diffère.
+  void DrawAttachRow(const Attach& attach, bool removable);
+  // L'aperçu au survol, dessiné hors de toute fenêtre (c'est un popup).
+  void DrawAttachTooltip();
 
   // Lit les trois boîtes de g_RodexMgr dans mails_ (thread principal, SEH).
   void ReadState();
@@ -150,6 +200,10 @@ class RodexWindow : public Plugin {
   void ResetMailboxState();
 
   // Rendu des sous-parties (une fenêtre, deux zones) + la fenêtre d'écriture.
+  // DrawMailbox porte la fenêtre « Courrier » elle-même : elle est séparée
+  // d'OnRenderUI parce que celle-ci doit encore dessiner l'aperçu de description
+  // APRÈS, hors de tout Begin/End — ce que les retours anticipés d'ici sautaient.
+  void DrawMailbox();
   void DrawMailList();
   void DrawMailDetail();
   void DrawConfirmPopup();   // modale « supprimer / retourner » (actions irréversibles)
@@ -222,4 +276,15 @@ class RodexWindow : public Plugin {
   int         checked_level_ = 0;
   std::vector<Attach> compose_items_;  // pièces jointes lues dans les slots de session
   std::string send_error_;         // dernier refus local (champs invalides)
+
+  // Pièce jointe survolée cette frame (COPIE : les vecteurs se reconstruisent à
+  // chaque tick, un pointeur ne passerait pas la frame). `valid` retombe à faux au
+  // début de chaque rendu ; c'est lui qui décide si l'aperçu se dessine.
+  Attach hover_attach_;
+  bool   hover_attach_valid_ = false;
+  // ItemSkillInfo fabriqué au clic droit sur une pièce jointe REÇUE, source de la
+  // description différée. Membre et non pile : itemcell::DeferDescById n'ouvre la
+  // fenêtre qu'au relâchement du bouton, et exige que la source vive jusque-là.
+  // Une seule demande en vol (une souris, un geste) : un tampon suffit.
+  uint8_t desc_scratch_[0x100] = {0};
 };

@@ -134,14 +134,26 @@ Le corps et les pièces jointes sont remplis à la lecture (**ZC_ACK_READ_RODEX 
 `Recv_ZC_AckReadRodex_0x0B63` **0x00cfd0c0**). Bloc d'une pièce jointe (offsets relatifs au bloc,
 déduits de la recopie vers un `ItemSkillInfo` : amount → ISI+0x10, refine → ISI+0x60) :
 
-| Offset bloc | type | rôle |
-|---|---|---|
-| +0 | u16 | quantité |
-| +2 | u32 | **itemId** |
-| +6 | u8 | identifié |
-| +8 / +12 / +16 / +20 | u32 ×4 | **cartes** |
-| +58 | u8 | **refine** |
-| +59 | u8 | grade (enchant grade) |
+Le bloc porte **tout** ce qu'un `ItemSkillInfo` porte — le handler en fait d'ailleurs
+littéralement un, champ par champ (`ItemSkillInfo_ctor` + `SetId` en **0x00cfd2ef**, puis les
+`mov` jusqu'en **0x00cfd46d**), avant de le passer à sa fenêtre de lecture. C'est ce qui permet
+de nommer et de décrire une pièce jointe **exactement** comme un item d'inventaire : on refait
+la même conversion, et le name-builder / la fenêtre de description acceptent le résultat.
+
+| Offset bloc | → ItemSkillInfo | type | rôle |
+|---|---|---|---|
+| +0 | +0x10 | u16 | quantité |
+| +2 | *`SetId`* | u32 | **itemId** |
+| +6 | +0x5c | u8 | identifié |
+| +7 | +0x5d | u8 | **équipement CASSÉ** (ombre rouge du nom) |
+| +8 / +12 / +16 / +20 | +0x1c | u32 ×4 | **cartes** (ou données de forge, cf. le critère `id ≤ 500`) |
+| +24 | +0x08 | u32 | emplacement d'équipement (masque `EQP_*`) |
+| +28 | +0x00 | u8 | **type d'item** — ⚠ le name-builder s'en sert pour décider s'il décore le nom (`ItemTitle_IsDecoratedType`) : sans lui, une arme cardée sort avec son nom nu |
+| +29 | +0x70 | u16 | viewID |
+| +31 | +0x64 | u16 | (posé par le handler, non exploité) |
+| +33 + 5·i | +0x9c | 5 × {i16 index, i16 value, u8 param} | **options aléatoires** (enchants). ⚠ Le natif *compte* les entrées d'`index` non nul (cascade de `cmovz` en **0x00cfd3a1**) puis recopie les **N premières** — ce n'est équivalent que parce que le serveur tasse ses options depuis l'entrée 0 |
+| +58 | +0x60 | u8 | **refine** |
+| +59 | +0x88 | u8 | grade (enchant grade) |
 
 ### ⚠ Le handler de liste actif est celui de **0x0AC2**, pas 0x09F0
 
