@@ -185,6 +185,8 @@ set(BOURGEON_FILES
 	"ui/game_texture.h"
 	"ui/spr_act.cc"
 	"ui/spr_act.h"
+	"ui/sprite_view.cc"
+	"ui/sprite_view.h"
 	"ui/mob_sprite.cc"
 	"ui/mob_sprite.h"
 	"ui/icon_cache.cc"

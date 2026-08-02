@@ -28,6 +28,7 @@
 // dans le projet — c'est une fonction standard, pas une structure interne.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace ro {
@@ -59,6 +60,12 @@ struct Layer {
 
 struct Frame {
   std::vector<Layer> layers;
+  // Index dans `Resource::sound_files`, ou -1. C'est le son joué QUAND cette
+  // image passe (pas de la marche à l'attaque).
+  //
+  // ⚠ La table contient aussi des marqueurs d'animation, pas seulement des noms
+  // de .wav : une entrée qui ne finit pas par « .wav » n'est PAS un son.
+  int sound_id = -1;
 };
 
 struct Action {
@@ -79,6 +86,9 @@ struct Resource {
   std::vector<Image>  indexed;
   std::vector<Image>  bgra;
   std::vector<Action> actions;
+  // Noms de fichiers son déclarés par le .act, indexés par `Frame::sound_id`.
+  // Souvent vide : la plupart des .act n'en portent aucun.
+  std::vector<std::string> sound_files;
 
   // L'image d'un calque, ou nullptr si l'index sort de sa section.
   const Image* Get(int index, int type) const;

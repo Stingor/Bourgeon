@@ -422,7 +422,7 @@ static bool ParseActInner(const uint8_t* data, size_t size, Resource* out,
         frame.layers.push_back(layer);
       }
 
-      if (v >= 20) r.I32();      // id de son (non utilisé ici)
+      if (v >= 20) frame.sound_id = r.I32();
       if (load_anchors && v >= 23) {
         const int n_anchors = r.I32();
         if (r.bad() || n_anchors < 0 || n_anchors > kMaxAnchors) return false;
@@ -441,8 +441,19 @@ static bool ParseActInner(const uint8_t* data, size_t size, Resource* out,
   // d'animation, et une valeur approchée vaut mieux que pas d'animation.
   if (v >= 21) {
     const int n_sounds = r.I32();
-    if (!r.bad() && n_sounds >= 0 && n_sounds <= kMaxSounds)
-      r.Skip(static_cast<size_t>(n_sounds) * 40);
+    if (!r.bad() && n_sounds >= 0 && n_sounds <= kMaxSounds) {
+      out->sound_files.clear();
+      out->sound_files.reserve(static_cast<size_t>(n_sounds));
+      for (int i = 0; i < n_sounds; ++i) {
+        // Champ de 40 octets terminé (ou non) par un zéro : on borne la longueur
+        // au champ plutôt que de faire confiance au contenu.
+        const uint8_t* raw = r.Raw(40);
+        if (!raw) break;
+        size_t n = 0;
+        while (n < 40 && raw[n] != 0) ++n;
+        out->sound_files.emplace_back(reinterpret_cast<const char*>(raw), n);
+      }
+    }
     if (v >= 22) {
       float speed = 1.0f;
       for (size_t i = 0; i < out->actions.size(); ++i) {
