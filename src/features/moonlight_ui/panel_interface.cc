@@ -19,6 +19,7 @@
 #include "features/overlays/basic_info.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/make_item_window.h"
+#include "features/windows/monster_info_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
@@ -130,6 +131,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceCart,        "Cart"},
         {kIfaceRefine,      "Refine"},
         {kIfaceMakeItem,    "Fabrication"},
+        {kIfaceMonsterInfo, "Fiche de monstre"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -186,7 +188,8 @@ void MoonlightUi::DrawInterfacePanel() {
       const bool needs_modern =
           iface_nav_ == kIfaceSkillBar  || iface_nav_ == kIfaceStorage ||
           iface_nav_ == kIfaceInventory || iface_nav_ == kIfaceCart    ||
-          iface_nav_ == kIfaceRefine    || iface_nav_ == kIfaceMakeItem;
+          iface_nav_ == kIfaceRefine    || iface_nav_ == kIfaceMakeItem  ||
+          iface_nav_ == kIfaceMonsterInfo;
       const bool locked = needs_modern && !ModernInterfaceEnabled();
       if (locked) {
         // 🔴 Un APERÇU, pas un cimetière. Ces sections sont la meilleure vitrine de
@@ -391,6 +394,22 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceMakeItem) {
         if (auto* mk = Bourgeon::Instance().make_item_window()) {
           if (mk->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(kPluginUnavailable);
+        }
+      }
+
+      // ── Fiche de monstre (MonsterInfoWindow : « Monster Info » 0x4D, Sense) ──
+      if (iface_nav_ == kIfaceMonsterInfo) {
+        if (auto* mi = Bourgeon::Instance().monster_info()) {
+          ImGui::TextWrapped(
+              "Remplace la fenêtre « Monster Info » qu'ouvre la compétence Sense. "
+              "Elle ajoute ce que le paquet du skill ne transporte pas : nom "
+              "fiable, EXP, ATK/MATK, stats de base, modes, drops, lieux "
+              "d'apparition et compétences. Le nom d'un monstre dans la table des "
+              "sources d'une fiche d'objet l'ouvre d'un clic.");
+          ImGui::Separator();
+          if (mi->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(kPluginUnavailable);
         }

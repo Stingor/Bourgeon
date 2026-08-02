@@ -20,6 +20,7 @@
 #pragma comment(lib, "shell32.lib")
 
 #include "bourgeon.h"
+#include "features/windows/monster_info_window.h"  // lien « nom de monstre » -> fiche
 #include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
@@ -1961,23 +1962,39 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
         ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "[Mini]");
         ImGui::SameLine();
       }
-      // Nom cliquable → bestiaire du site (lien externe).
+      // Nom cliquable. Clic GAUCHE : la fiche de monstre EN JEU (fenêtre
+      // MonsterInfoWindow), qui a désormais tout ce que le bestiaire du site
+      // affichait — stats, élément, race, drops, spawns — sans quitter le
+      // client. Clic DROIT : le bestiaire du site, conservé comme sortie de
+      // secours (et seul chemin si la fiche ImGui est coupée).
       const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
       ImGui::TextColored(kLink, "%s (%u)", d->name.c_str(), d->mob_id);
-      if (ImGui::IsItemHovered()) {
+      const bool link_hovered = ImGui::IsItemHovered();
+      if (link_hovered) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         const ImVec2 mn = ImGui::GetItemRectMin();
         const ImVec2 mx = ImGui::GetItemRectMax();
         ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
                                             ImVec2(mx.x, mx.y),
                                             ImGui::GetColorU32(kLink));
+        ImGui::SetTooltip("Clic : fiche du monstre\nClic droit : bestiaire du site");
       }
-      if (ImGui::IsItemClicked()) {
+      const bool open_site =
+          ImGui::IsItemClicked(ImGuiMouseButton_Right) ||
+          // Repli : sans fiche en jeu, le clic gauche garde l'ancien comportement.
+          (ImGui::IsItemClicked(ImGuiMouseButton_Left) &&
+           (Bourgeon::Instance().monster_info() == nullptr ||
+            !Bourgeon::Instance().monster_info()->imgui_enabled_));
+      if (open_site) {
         char url[192];
         _snprintf_s(url, sizeof(url), _TRUNCATE,
                     "https://moonlight-destiny.fr/index.php?page=bestiary&mobid=%u",
                     d->mob_id);
         ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
+      } else if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        // `d->mob_id` vient de mob_db (le serveur l'a pris dans son scan) : c'est
+        // bien un id de BASE, pas une classe de sprite -> by_view = false.
+        Bourgeon::Instance().monster_info()->Open(d->mob_id, /*by_view=*/false);
       }
       ImGui::TableNextColumn();
       ImGui::Text("%.2f%%", d->rate / 100.0f);  // rate en 0.01% (10000 = 100%)

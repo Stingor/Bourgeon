@@ -45,6 +45,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/item_cell.h"  // itemcell::FlushDeferredDesc (desc au relâchement)
 #include "features/windows/item_desc_window.h"
+#include "features/windows/monster_info_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
@@ -100,6 +101,7 @@ BugReport* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
+MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
 
 namespace {
@@ -266,6 +268,9 @@ void Bourgeon::OnProcessInput() {
   // et peuvent OUVRIR une fenêtre native (la 80, choix des matériaux) — deux
   // chemins qui n'ont rien à faire entre NewFrame() et Render().
   if (auto* mi = make_item_window()) mi->FlushPending();
+  // Fiche de monstre : le clic sur une compétence ouvre la fenêtre de description
+  // NATIVE (0x2E) — MakeWindow + OnMsg, à ne pas jouer depuis une frame ImGui.
+  if (auto* mif = monster_info()) mif->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -709,6 +714,14 @@ void Bourgeon::LoadPlugins() {
     auto item_desc = std::make_unique<ItemDescWindow>();
     item_desc_ = item_desc.get();
     plugins_.emplace_back(std::move(item_desc));
+
+    // Fiche de monstre : remplace « Monster Info » (id 0x4D, skill Sense) et
+    // sert de cible aux liens de monstre posés ailleurs (table des drops d'une
+    // fiche d'item). Son constructeur revendique le paquet 0x018C — il doit donc
+    // exister AVANT le premier Sense de la session.
+    auto monster_info = std::make_unique<MonsterInfoWindow>();
+    monster_info_ = monster_info.get();
+    plugins_.emplace_back(std::move(monster_info));
   }
   {
     auto skill_bar = std::make_unique<SkillBar>();

@@ -62,6 +62,8 @@ set(BOURGEON_FILES
 	"features/windows/inventory_viewer.h"
 	"features/windows/item_desc_window.cc"
 	"features/windows/item_desc_window.h"
+	"features/windows/monster_info_window.cc"
+	"features/windows/monster_info_window.h"
 	"features/windows/npc_dialog_window.cc"
 	"features/windows/npc_dialog_window.h"
 	"features/windows/npc_shop_window.cc"

@@ -40,6 +40,7 @@ constexpr uint16_t kCompanion   = 0x0F15;  // CZ_BOURGEON_COMPANION (invoquer/ba
 constexpr uint16_t kReqCompatCards = 0x0F18;  // CZ_BOURGEON_REQ_COMPAT_CARDS (cartes sertissables sur un équip)
 constexpr uint16_t kJump        = 0x0F1A;  // CZ_BOURGEON_JUMP (« j'ai sauté » ; sans payload)
 constexpr uint16_t kOpenStorage = 0x0F1D;  // CZ_BOURGEON_OPEN_STORAGE (ouvrir/basculer de storage)
+constexpr uint16_t kReqMobInfo  = 0x0F1F;  // CZ_BOURGEON_REQ_MOBINFO (fiche détaillée d'un monstre)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -59,13 +60,14 @@ constexpr uint16_t kCompatCards    = 0x0F19;  // ZC_BOURGEON_COMPAT_CARDS (liste
 constexpr uint16_t kJumpNotify     = 0x0F1B;  // ZC_BOURGEON_JUMP (AREA sans self : le GID a sauté)
 constexpr uint16_t kCookMastery    = 0x0F1C;  // ZC_BOURGEON_COOK_MASTERY (char reg COOK_MASTERY, [0,1999])
 constexpr uint16_t kStorageList    = 0x0F1E;  // ZC_BOURGEON_STORAGE_LIST (storages accessibles + ouvert)
+constexpr uint16_t kMobInfo        = 0x0F20;  // ZC_BOURGEON_MOBINFO (fiche monstre : stats, drops, spawns, skills)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F1F -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F21 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F1F;
+constexpr uint16_t kNextFree    = 0x0F21;
 
 }  // namespace bopcodes

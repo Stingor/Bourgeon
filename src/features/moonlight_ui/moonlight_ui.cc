@@ -38,6 +38,7 @@
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
 #include "features/windows/make_item_window.h"
+#include "features/windows/monster_info_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
 #include "features/windows/rodex_window.h"
@@ -398,6 +399,21 @@ const moonlight_ui::SettingDesc kMakeItemSettings[] = {
      MLUI_LITERAL(int, INT_MIN)},
     {"makeitem_pos_y", SType::kInt, MLUI_FIELD(make_item_window, pos_y()),
      MLUI_LITERAL(int, INT_MIN)},
+};
+
+// Fiche de monstre (remplace « Monster Info », id 0x4D, ouverte par Sense).
+// « monsterinfo_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kMonsterInfoSettings[] = {
+    {"monsterinfo_imgui", SType::kBool, MLUI_FIELD(monster_info, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    // Défaut ON : l'animation du sprite est l'apport principal sur le natif, qui
+    // fige la première image (docs/monster_info_re.md §4.4).
+    {"monsterinfo_animate", SType::kBool, MLUI_FIELD(monster_info, animate()),
+     MLUI_LITERAL(bool, true)},
+    // Défaut OFF : la liste noire des Gardiens de forteresse est une règle de jeu
+    // (Guerre d'Emperium), pas un défaut d'interface — on la reproduit.
+    {"monsterinfo_guardians", SType::kBool,
+     MLUI_FIELD(monster_info, show_guardians()), MLUI_LITERAL(bool, false)},
 };
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
@@ -863,6 +879,12 @@ void SetModernInterface(bool on) {
   // elles se détruisent à chaque validation. Cf. docs/make_item_list_re.md.
   if (auto* make_item_window = Bourgeon::Instance().make_item_window())
     make_item_window->imgui_enabled_ = on;
+  // La fiche de monstre suit le groupe : elle REVENDIQUE le paquet 0x018C, donc
+  // l'activer isolément tuerait la fenêtre native Monster Info alors que tout le
+  // reste de l'interface serait encore natif. Et son lien depuis la table des
+  // drops n'a de sens qu'avec la fiche d'item moderne, qui en fait partie.
+  if (auto* monster_info = Bourgeon::Instance().monster_info())
+    monster_info->imgui_enabled_ = on;
 }
 
 bool ModernInterfaceEnabled() {
@@ -898,6 +920,8 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Banque de zeny (Ctrl+B), ouverte aussi par le sac de zeny du footer\n"
       "    de l'inventaire\n"
       "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"
+      "  • Fiche de monstre (compétence Sense), avec sprite animé, drops et\n"
+      "    lieux d'apparition\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;
   ImGui::SameLine();
@@ -959,6 +983,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
+    moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
@@ -1086,6 +1111,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
+  moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);

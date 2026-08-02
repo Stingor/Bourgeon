@@ -35,6 +35,7 @@ class RodexWindow;
 class CharacterSheet;
 class LoginParade;
 class ItemDescWindow;
+class MonsterInfoWindow;
 class FpsView;
 class PlayerJump;
 class KeyboardMove;
@@ -84,6 +85,7 @@ class Bourgeon {
   CharacterSheet* character_sheet();
   LoginParade* login_parade();
   ItemDescWindow* item_desc();
+  MonsterInfoWindow* monster_info();
   FpsView* fps_view();
   PlayerJump* player_jump();
   KeyboardMove* keyboard_move();
@@ -227,6 +229,7 @@ class Bourgeon {
   Roggle* roggle_ = nullptr;            // non-owning, lifetime tied to plugins_
   Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
+  MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
