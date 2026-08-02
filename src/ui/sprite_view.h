@@ -31,12 +31,25 @@ namespace ro {
 struct SpriteRes {
   void* res    = nullptr;  // entrée du cache, nullptr tant que rien n'est chargé
   bool  failed = false;    // chargement tenté et raté (ne pas réessayer en boucle)
+  int   palette = 0;       // teinte à utiliser ; 0 = celle du .spr
 };
 
 // Charge (ou retrouve en cache) la paire `<base_path>.spr` / `<base_path>.act`.
 // Idempotent tant que la poignée porte déjà ce chemin.
 // Rend true quand les deux fichiers sont exploitables.
 bool LoadSprite(const char* base_path, SpriteRes* res);
+
+// Même chose, mais les images PALETTISÉES sont recolorées par le .pal de
+// `pal_path` (chemin VFS complet, `data\` compris — ex.
+// `data\palette\머리\head_3.pal`). C'est ainsi que RO teinte cheveux et
+// vêtements : le sprite ne porte qu'une couleur par défaut.
+//
+// Le .spr n'est analysé QU'UNE fois par chemin, quelle que soit la teinte : une
+// palette n'ajoute qu'un jeu de textures à l'entrée existante. Une palette
+// introuvable n'est pas une erreur — on retombe sur celle du .spr, comme le
+// fait le jeu.
+bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
+                         SpriteRes* res);
 
 // Nombre d'images de `action`. Les .act rangent les actions par
 // motion * 8 + direction ; 0 = première pose, orientation sud.

@@ -211,6 +211,34 @@ bool ReadFile(const char* path, std::vector<uint8_t>* out) {
   return ok;
 }
 
+bool DecodePalette(const uint8_t* pal, size_t size, uint32_t out[256]) {
+  if (!pal || !out || size < 1024) return false;
+  // 🔴 L'octet d'alpha stocké dans le fichier ne veut rien dire (la plupart des
+  // outils le laissent à 0) : on force 255 partout, PUIS on rend l'index 0
+  // transparent — et lui seul. C'est la convention RO, et c'est
+  // `Pal.FormatMode.NoTransparencyExceptFirstPixel` de la référence. S'en
+  // remettre à l'alpha du fichier rendrait la plupart des sprites invisibles.
+  for (int i = 0; i < 256; ++i) {
+    const uint32_t a = (i == 0) ? 0u : 0xFFu;
+    out[i] = (a << 24) | (static_cast<uint32_t>(pal[4 * i + 0]) << 16) |
+             (static_cast<uint32_t>(pal[4 * i + 1]) << 8) |
+             static_cast<uint32_t>(pal[4 * i + 2]);
+  }
+  return true;
+}
+
+bool RecolorIndexed(const Image& src, const uint32_t pal[256],
+                    std::vector<uint32_t>* out) {
+  if (!pal || !out) return false;
+  const size_t count = static_cast<size_t>(src.w) * src.h;
+  // Une image sans index est une Bgra32 : elle porte ses couleurs en propre et
+  // aucune palette ne s'y applique.
+  if (count == 0 || src.index.size() != count) return false;
+  out->resize(count);
+  for (size_t i = 0; i < count; ++i) (*out)[i] = pal[src.index[i]];
+  return true;
+}
+
 // ── .spr ─────────────────────────────────────────────────────────────────────
 //
 // "SP" | minor(u8) | major(u8)
@@ -270,21 +298,11 @@ bool ParseSpr(const uint8_t* data, size_t size, Resource* out) {
   }
 
   // ── Palette ────────────────────────────────────────────────────────────────
-  // 256 entrées RGBA. L'octet d'alpha stocké dans le fichier ne veut rien dire
-  // (il est laissé à 0 par la plupart des outils) : on force 255 partout, PUIS
-  // on rend l'index 0 transparent — et lui seul. C'est la convention RO, et
-  // c'est `Pal.FormatMode.NoTransparencyExceptFirstPixel` de la référence.
+  // Elle occupe le dernier kilo-octet du fichier. Un .spr sans image
+  // palettisée n'en a pas : on garde alors du noir opaque, jamais lu.
   uint32_t pal[256];
   for (int i = 0; i < 256; ++i) pal[i] = 0xFF000000u;
-  if (!raw_idx.empty()) {
-    const uint8_t* p = data + (size - 1024);
-    for (int i = 0; i < 256; ++i) {
-      const uint32_t a = (i == 0) ? 0u : 0xFFu;
-      pal[i] = (a << 24) | (static_cast<uint32_t>(p[4 * i + 0]) << 16) |
-               (static_cast<uint32_t>(p[4 * i + 1]) << 8) |
-               static_cast<uint32_t>(p[4 * i + 2]);
-    }
-  }
+  if (!raw_idx.empty()) DecodePalette(data + (size - 1024), 1024, pal);
 
   out->indexed.clear();
   out->indexed.reserve(raw_idx.size());
@@ -295,13 +313,15 @@ bool ParseSpr(const uint8_t* data, size_t size, Resource* out) {
     const size_t count = static_cast<size_t>(f.w) * f.h;
     img.argb.assign(count, 0);
     if (count != 0) {
-      std::vector<uint8_t> idx(count, 0);
+      // Les index sont CONSERVÉS dans l'image : ce sont eux qui permettent de
+      // la recolorer plus tard avec un .pal externe, sans relire le fichier.
+      img.index.assign(count, 0);
       if (v >= 21)
-        RleDecompress(f.data.data(), f.data.size(), idx.data(), count);
+        RleDecompress(f.data.data(), f.data.size(), img.index.data(), count);
       else
-        std::memcpy(idx.data(), f.data.data(),
+        std::memcpy(img.index.data(), f.data.data(),
                     f.data.size() < count ? f.data.size() : count);
-      for (size_t i = 0; i < count; ++i) img.argb[i] = pal[idx[i]];
+      for (size_t i = 0; i < count; ++i) img.argb[i] = pal[img.index[i]];
     }
     out->indexed.push_back(std::move(img));
   }

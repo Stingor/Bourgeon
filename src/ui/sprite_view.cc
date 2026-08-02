@@ -26,82 +26,205 @@ constexpr float kActDelayTickMs = 25.0f;
 // Une entrée porte les fichiers parsés, les textures téléversées PARESSEUSEMENT
 // (une vue n'affiche qu'une action : inutile de monter en VRAM les 8 directions
 // × 5 actions du .spr) et la boîte englobante mémoïsée par action.
+// Une TEINTE de l'entrée : la palette et les textures des images palettisées
+// vues sous cette palette. Le slot 0 existe toujours et porte la palette
+// d'origine du .spr (`path` vide, `pal` inutilisé).
+//
+// 🔴 C'est ici, et pas dans la clé du cache, que vit la couleur : les images
+// décodées et le .act sont partagés par toutes les teintes du même sprite. Une
+// clé par (chemin, palette) ferait ré-analyser le .spr pour chaque couleur de
+// cheveux d'une liste de guilde.
+struct PaletteSet {
+  std::string        path;      // vide = palette d'origine du .spr
+  uint32_t           pal[256];  // valide seulement si `path` non vide
+  std::vector<void*> tex;       // textures des images INDEXÉES sous cette palette
+};
+
 struct Entry {
+  std::string base;               // chemin sans extension, pour se recharger seul
   spract::Resource res;
-  std::vector<void*> tex_indexed;
-  std::vector<void*> tex_bgra;
+  std::vector<PaletteSet> pals;   // [0] = palette d'origine, toujours présent
+  std::vector<void*> tex_bgra;    // sans palette : partagé par toutes les teintes
   unsigned epoch = 0;
+  size_t   bytes = 0;             // pixels décodés retenus en RAM
+  bool     loaded = false;        // les pixels sont-ils là ? (voir Unload)
+  bool     failed = false;        // fichiers absents : ne pas réessayer en boucle
 
   int   box_action = -1;
   float box_min_x = 0, box_min_y = 0, box_max_x = 0, box_max_y = 0;
   bool  box_valid = false;
 };
 
+// 🔴 Les entrées ne sont JAMAIS retirées de cette table, et c'est délibéré : les
+// appelants gardent une `SpriteRes` d'une image à l'autre, parfois d'une session
+// de fenêtre à l'autre. Détruire une entrée sous leurs pieds leur laisserait un
+// pointeur pendant — un use-after-free, pas un simple sprite manquant.
+//
+// Ce qui est récupéré, c'est le POIDS : `Unload` rend les pixels et les textures
+// mais laisse l'entrée vivante, et `EnsureLoaded` la ré-analyse au prochain
+// usage. Ce qui reste est une coquille de quelques dizaines d'octets par sprite
+// jamais revu. Les pointeurs sont stables parce que la table possède des
+// `unique_ptr` : réhachage ou pas, l'objet ne bouge pas.
 std::unordered_map<std::string, std::unique_ptr<Entry>> g_cache;
-std::deque<std::string> g_cache_order;  // ordre d'arrivée, pour l'éviction
-// Un sprite coûte quelques centaines de kilo-octets de VRAM (2 à 6 images
-// téléversées). Seize entrées bornent la facture tout en couvrant largement le
-// va-et-vient entre plusieurs vues.
-constexpr size_t kMaxCached = 16;
+std::deque<std::string> g_cache_order;  // entrées CHARGÉES, du plus ancien au plus récent
+size_t g_cache_bytes = 0;
+
+// ⚠ On borne les OCTETS, pas seulement le nombre d'entrées. Les deux extrêmes
+// existent : une tête de personnage fait quelques kilo-octets, un grand monstre
+// plusieurs méga-octets. Un plafond en nombre seul serait soit ruineux en RAM,
+// soit trop bas pour une liste de guilde — qui affiche vingt coiffures
+// différentes et re-analyserait un .spr par image à chaque déchargement.
+constexpr size_t kMaxCached   = 64;
+constexpr size_t kCacheBudget = 48u * 1024u * 1024u;
+
+size_t DecodedBytes(const spract::Resource& r) {
+  size_t n = 0;
+  for (const spract::Image& i : r.indexed) n += i.argb.size() * 4 + i.index.size();
+  for (const spract::Image& i : r.bgra)    n += i.argb.size() * 4;
+  return n;
+}
 
 void ReleaseTextures(Entry* e) {
-  for (void* t : e->tex_indexed) Overlay_ReleaseTexture(t);
+  for (PaletteSet& p : e->pals)
+    for (void* t : p.tex) Overlay_ReleaseTexture(t);
   for (void* t : e->tex_bgra) Overlay_ReleaseTexture(t);
-  e->tex_indexed.clear();
+  for (PaletteSet& p : e->pals) p.tex.clear();
   e->tex_bgra.clear();
 }
 
-// Texture d'une image, créée au premier besoin.
-void* TextureFor(Entry* e, int index, int type) {
+// Texture d'une image sous une teinte donnée, créée au premier besoin.
+void* TextureFor(Entry* e, int pal_slot, int index, int type) {
   const unsigned epoch = Overlay_DeviceEpoch();
   if (epoch != e->epoch) {
     // ⚠ On LÂCHE sans Release : ces handles appartiennent à un device qui
     // n'existe plus (cf. [[feedback_texture_cache_device_epoch]]).
-    e->tex_indexed.clear();
+    for (PaletteSet& p : e->pals) p.tex.clear();
     e->tex_bgra.clear();
     e->epoch = epoch;
   }
   const std::vector<spract::Image>& imgs =
       (type == 0) ? e->res.indexed : e->res.bgra;
   if (index < 0 || static_cast<size_t>(index) >= imgs.size()) return nullptr;
-  std::vector<void*>& tex = (type == 0) ? e->tex_indexed : e->tex_bgra;
-  if (tex.size() != imgs.size()) tex.assign(imgs.size(), nullptr);
-  if (!tex[index]) {
-    const spract::Image& img = imgs[index];
-    if (img.w > 0 && img.h > 0 && !img.argb.empty())
-      tex[index] = Overlay_CreateTextureARGB(img.argb.data(), img.w, img.h);
+  const spract::Image& img = imgs[index];
+
+  // Les Bgra32 portent leurs couleurs en propre : aucune palette ne s'y
+  // applique, leurs textures sont partagées par toutes les teintes.
+  std::vector<void*>* tex = &e->tex_bgra;
+  if (type == 0) {
+    if (pal_slot < 0 || static_cast<size_t>(pal_slot) >= e->pals.size())
+      pal_slot = 0;
+    tex = &e->pals[pal_slot].tex;
   }
-  return tex[index];
+  if (tex->size() != imgs.size()) tex->assign(imgs.size(), nullptr);
+  if ((*tex)[index]) return (*tex)[index];
+  if (img.w <= 0 || img.h <= 0 || img.argb.empty()) return nullptr;
+
+  if (type == 0 && pal_slot > 0) {
+    std::vector<uint32_t> recolored;
+    if (spract::RecolorIndexed(img, e->pals[pal_slot].pal, &recolored))
+      (*tex)[index] =
+          Overlay_CreateTextureARGB(recolored.data(), img.w, img.h);
+  }
+  // Repli (et cas nominal du slot 0) : les pixels tels que le .spr les donne.
+  if (!(*tex)[index])
+    (*tex)[index] = Overlay_CreateTextureARGB(img.argb.data(), img.w, img.h);
+  return (*tex)[index];
+}
+
+// Slot de teinte pour ce .pal, créé au premier besoin. Rend 0 (palette
+// d'origine) quand le fichier manque ou n'est pas lisible : une couleur de
+// cheveux absente ne doit pas faire disparaître la tête.
+int PaletteSlot(Entry* e, const char* pal_path) {
+  if (!pal_path || !*pal_path) return 0;
+  for (size_t i = 0; i < e->pals.size(); ++i)
+    if (e->pals[i].path == pal_path) return static_cast<int>(i);
+
+  std::vector<uint8_t> bytes;
+  if (!spract::ReadFile(pal_path, &bytes)) return 0;
+  PaletteSet set;
+  if (!spract::DecodePalette(bytes.data(), bytes.size(), set.pal)) return 0;
+  set.path = pal_path;
+  e->pals.push_back(std::move(set));
+  return static_cast<int>(e->pals.size() - 1);
+}
+
+// Rend les pixels et les textures d'une entrée, mais PAS l'entrée : les
+// poignées que les appelants gardent restent valides et la ré-analyse aura lieu
+// toute seule au prochain usage.
+//
+// Les teintes (`pals`) sont conservées : un kilo-octet par couleur, et les
+// retrouver coûterait une relecture de .pal par ligne d'une liste de guilde.
+void Unload(Entry* e) {
+  if (!e->loaded) return;
+  // Le device est vivant ici (on est appelé depuis un chargement) : les textures
+  // se libèrent pour de bon, sinon parcourir beaucoup de sprites laisserait une
+  // texture en VRAM par image jamais revue.
+  ReleaseTextures(e);
+  e->res = spract::Resource{};
+  g_cache_bytes -= e->bytes;
+  e->bytes = 0;
+  e->box_valid = false;
+  e->loaded = false;
+}
+
+// Décharge les plus anciennes entrées tant que le cache dépasse ses bornes.
+// `incoming` est le poids de celle qu'on s'apprête à charger.
+void TrimFor(size_t incoming) {
+  while (!g_cache_order.empty() &&
+         (g_cache_order.size() >= kMaxCached ||
+          g_cache_bytes + incoming > kCacheBudget)) {
+    const std::string victim = g_cache_order.front();
+    g_cache_order.pop_front();
+    auto vit = g_cache.find(victim);
+    if (vit != g_cache.end()) Unload(vit->second.get());
+  }
+}
+
+// (Re)charge les fichiers d'une entrée. Appelée au premier usage comme après un
+// déchargement — les deux cas sont le même code.
+bool LoadInto(Entry* e) {
+  char spr_path[352], act_path[352];
+  std::snprintf(spr_path, sizeof(spr_path), "%s.spr", e->base.c_str());
+  std::snprintf(act_path, sizeof(act_path), "%s.act", e->base.c_str());
+
+  spract::Resource res;
+  if (!spract::Load(spr_path, act_path, &res)) {
+    // Fichiers absents : c'est définitif pour ce chemin. Sans cette marque, un
+    // appelant qui redemande à chaque image (les vignettes de tête le font)
+    // relancerait une recherche VFS soixante fois par seconde.
+    e->failed = true;
+    return false;
+  }
+  const size_t bytes = DecodedBytes(res);
+  TrimFor(bytes);  // `e` n'est pas dans la file tant qu'il n'est pas chargé
+
+  e->res = std::move(res);
+  e->bytes = bytes;
+  e->epoch = Overlay_DeviceEpoch();
+  e->box_valid = false;
+  e->loaded = true;
+  if (e->pals.empty()) e->pals.resize(1);  // slot 0 = palette d'origine du .spr
+  g_cache_bytes += bytes;
+  g_cache_order.push_back(e->base);
+  return true;
+}
+
+// Toute lecture de `e->res` passe par ici : l'entrée a pu être déchargée depuis
+// le dernier accès.
+bool EnsureLoaded(Entry* e) {
+  if (!e || e->failed) return false;
+  return e->loaded || LoadInto(e);
 }
 
 Entry* Acquire(const char* base_path) {
   auto it = g_cache.find(base_path);
-  if (it != g_cache.end()) return it->second.get();
-
-  char spr_path[352], act_path[352];
-  std::snprintf(spr_path, sizeof(spr_path), "%s.spr", base_path);
-  std::snprintf(act_path, sizeof(act_path), "%s.act", base_path);
-
-  auto entry = std::make_unique<Entry>();
-  if (!spract::Load(spr_path, act_path, &entry->res)) return nullptr;
-  entry->epoch = Overlay_DeviceEpoch();
-
-  if (g_cache_order.size() >= kMaxCached) {
-    const std::string victim = g_cache_order.front();
-    g_cache_order.pop_front();
-    auto vit = g_cache.find(victim);
-    if (vit != g_cache.end()) {
-      // Le device est vivant ici (on vient d'en créer une entrée) : les textures
-      // de la victime se libèrent pour de bon, sinon parcourir beaucoup de
-      // sprites laisserait une texture en VRAM par image jamais revue.
-      ReleaseTextures(vit->second.get());
-      g_cache.erase(vit);
-    }
+  if (it == g_cache.end()) {
+    auto entry = std::make_unique<Entry>();
+    entry->base = base_path;
+    entry->pals.resize(1);
+    it = g_cache.emplace(base_path, std::move(entry)).first;
   }
-  Entry* raw = entry.get();
-  g_cache[base_path] = std::move(entry);
-  g_cache_order.push_back(base_path);
-  return raw;
+  return EnsureLoaded(it->second.get()) ? it->second.get() : nullptr;
 }
 
 // Cadence déclarée par le .act, en ms par image. 0 = absente ou aberrante.
@@ -160,8 +283,9 @@ const spract::Frame* FrameAt(const Entry* e, unsigned action, unsigned frame) {
 // `upload` : à false, on calcule la seule géométrie sans créer de texture —
 // c'est ce dont le balayage de la boîte englobante a besoin, et ça évite de
 // monter en VRAM des images qui ne seront jamais dessinées.
-int ResolveFrameLayers(Entry* e, unsigned action, unsigned frame_index,
-                       ResolvedLayer* out, int max_out, bool upload) {
+int ResolveFrameLayers(Entry* e, int pal_slot, unsigned action,
+                       unsigned frame_index, ResolvedLayer* out, int max_out,
+                       bool upload) {
   const spract::Frame* frame = FrameAt(e, action, frame_index);
   if (!frame) return 0;
 
@@ -172,7 +296,7 @@ int ResolveFrameLayers(Entry* e, unsigned action, unsigned frame_index,
     if (!img || img->w <= 0 || img->h <= 0) continue;
 
     ResolvedLayer& r = out[count];
-    r.tex = upload ? TextureFor(e, L.index, L.type) : nullptr;
+    r.tex = upload ? TextureFor(e, pal_slot, L.index, L.type) : nullptr;
     if (upload && !r.tex) continue;
 
     const float sx = L.scale_x;
@@ -241,26 +365,37 @@ int ResolveFrameLayers(Entry* e, unsigned action, unsigned frame_index,
 }  // namespace
 
 bool LoadSprite(const char* base_path, SpriteRes* res) {
+  return LoadSpriteRecolored(base_path, nullptr, res);
+}
+
+bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
+                         SpriteRes* res) {
   if (!res || !base_path || !*base_path) return false;
-  res->res = Acquire(base_path);
-  res->failed = (res->res == nullptr);
+  Entry* e = Acquire(base_path);
+  res->res = e;
+  res->failed = (e == nullptr);
+  res->palette = e ? PaletteSlot(e, pal_path) : 0;
   return !res->failed;
 }
 
+// ⚠ Toutes les fonctions publiques passent par `EnsureLoaded` : la poignée que
+// l'appelant garde peut désigner une entrée déchargée depuis son dernier usage.
 int SpriteActionFrameCount(const SpriteRes& res, unsigned action) {
-  const Entry* e = static_cast<const Entry*>(res.res);
-  if (!e || action >= e->res.actions.size()) return 0;
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!EnsureLoaded(e) || action >= e->res.actions.size()) return 0;
   return static_cast<int>(e->res.actions[action].frames.size());
 }
 
 float SpriteFrameIntervalMs(const SpriteRes& res, unsigned action) {
-  return DeclaredIntervalMs(static_cast<const Entry*>(res.res), action);
+  Entry* e = static_cast<Entry*>(res.res);
+  return EnsureLoaded(e) ? DeclaredIntervalMs(e, action) : 0.0f;
 }
 
 unsigned SpriteFrameIndex(const SpriteRes& res, unsigned action,
                           float anim_seconds, float ms_per_frame) {
-  return FrameIndexFor(static_cast<const Entry*>(res.res), action, anim_seconds,
-                       ms_per_frame);
+  Entry* e = static_cast<Entry*>(res.res);
+  return EnsureLoaded(e) ? FrameIndexFor(e, action, anim_seconds, ms_per_frame)
+                         : 0u;
 }
 
 namespace {
@@ -276,8 +411,8 @@ bool IsWav(const std::string& s) {
 
 const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
                              unsigned frame) {
-  const Entry* e = static_cast<const Entry*>(res.res);
-  if (!e) return nullptr;
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!EnsureLoaded(e)) return nullptr;
   const spract::Frame* f = FrameAt(e, action, frame);
   if (!f || f->sound_id < 0) return nullptr;
   if (static_cast<size_t>(f->sound_id) >= e->res.sound_files.size()) return nullptr;
@@ -286,8 +421,8 @@ const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
 }
 
 const char* SpriteMainSound(const SpriteRes& res) {
-  const Entry* e = static_cast<const Entry*>(res.res);
-  if (!e) return nullptr;
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!EnsureLoaded(e)) return nullptr;
   for (const std::string& s : e->res.sound_files)
     if (IsWav(s)) return s.c_str();
   return nullptr;
@@ -297,7 +432,8 @@ bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
                 ImVec2 rect_max, float anim_seconds, unsigned action,
                 float ms_per_frame, bool allow_upscale, float alpha) {
   Entry* e = static_cast<Entry*>(res.res);
-  if (!draw_list || !e || action >= e->res.actions.size()) return false;
+  if (!draw_list || !EnsureLoaded(e) || action >= e->res.actions.size())
+    return false;
   const float box_w = rect_max.x - rect_min.x;
   const float box_h = rect_max.y - rect_min.y;
   if (box_w <= 1.0f || box_h <= 1.0f) return false;
@@ -310,7 +446,7 @@ bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
       FrameIndexFor(e, action, anim_seconds, ms_per_frame);
 
   ResolvedLayer layers[kMaxDrawLayers];
-  const int n = ResolveFrameLayers(e, action, frame_index, layers,
+  const int n = ResolveFrameLayers(e, res.palette, action, frame_index, layers,
                                    kMaxDrawLayers, /*upload=*/true);
   if (n <= 0) return false;
 
@@ -326,7 +462,8 @@ bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
     bool any = false;
     float bx0 = 0, by0 = 0, bx1 = 0, by1 = 0;
     for (int f = 0; f < frames; ++f) {
-      const int c = ResolveFrameLayers(e, action, static_cast<unsigned>(f),
+      // La géométrie ne dépend pas de la teinte : slot 0, et rien à téléverser.
+      const int c = ResolveFrameLayers(e, 0, action, static_cast<unsigned>(f),
                                        scratch, kMaxDrawLayers, /*upload=*/false);
       for (int i = 0; i < c; ++i) {
         for (int k = 0; k < 4; ++k) {

@@ -40,6 +40,14 @@ struct Image {
   int w = 0;
   int h = 0;
   std::vector<uint32_t> argb;  // 0xAARRGGBB, w*h entrées
+  // Index de palette d'origine, w*h entrées — renseigné pour les images
+  // PALETTISÉES seulement (vide pour les Bgra32, qui n'ont pas de palette).
+  //
+  // Il est conservé parce que la couleur n'est pas une propriété du sprite :
+  // cheveux et vêtements se recolorent avec un .pal externe. Sans les index, il
+  // faudrait re-analyser le fichier pour chaque teinte. Le surcoût est d'un
+  // octet par pixel contre quatre pour `argb`.
+  std::vector<uint8_t> index;
 };
 
 // Un calque d'une image d'animation. Champs bruts du .act, sans interprétation
@@ -107,6 +115,22 @@ bool ReadFile(const char* data_relative_path, std::vector<uint8_t>* out);
 // forme, et il les forme à partir des gabarits CP949 du client — nos sources
 // sont en UTF-8 et ne peuvent pas porter de littéral coréen.
 bool Load(const char* spr_path, const char* act_path, Resource* out);
+
+// ── Palettes externes ────────────────────────────────────────────────────────
+//
+// Un .pal du jeu, c'est exactement le kilo-octet final d'un .spr : 256 entrées
+// RGBA. C'est ainsi que RO teinte les cheveux (`palette\머리\head_<N>.pal`) et
+// les vêtements — le sprite ne porte qu'une couleur par défaut.
+
+// Convertit 1024 octets de palette en 256 pixels 0xAARRGGBB. Même convention
+// que la palette embarquée : l'octet d'alpha du fichier est ignoré (les outils
+// le laissent à 0), seul l'index 0 est transparent. false si `size` < 1024.
+bool DecodePalette(const uint8_t* pal, size_t size, uint32_t out[256]);
+
+// Recompose les pixels d'une image PALETTISÉE sous une autre palette.
+// false si l'image n'en est pas une (`index` vide : c'est une Bgra32).
+bool RecolorIndexed(const Image& src, const uint32_t pal[256],
+                    std::vector<uint32_t>* out);
 
 // ── Parseurs, exposés pour les tests et pour les appelants qui ont déjà les
 // octets en main (extraction, prévisualisation d'un fichier posé à la main).
