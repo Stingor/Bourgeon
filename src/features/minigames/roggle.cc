@@ -1,6 +1,6 @@
-#include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ui/game_texture.h"
+#include "ui/mob_sprite.h"
 #include "features/minigames/roggle.h"
 
 #include <Windows.h>  // GetTickCount (seed)
@@ -16,8 +16,6 @@
 #include "ui/imgui_escape.h"
 
 #include "d3d9/d3d9_hook.h"  // D3D9_CreateTextureARGB
-
-extern bool g_imgui_dx7_active;  // real-Poring path is DX9 only (fallback under DX7)
 
 // ── Tunables (board-local pixels; physics in px/second) ───────────────────────
 namespace {
@@ -295,8 +293,8 @@ void EnsureTextures() {
 }
 
 // A hand-drawn Poring for the ball — pink blob, two eyes with glints, a little
-// smile. Cheap, always works (pure ImDrawList), and unmistakably RO. (A real
-// animated .spr Poring is a much bigger job — future upgrade.)
+// smile. Pure ImDrawList, donc toujours disponible : c'est le repli quand le
+// vrai sprite ne se charge pas (fichier absent, GRF inhabituel).
 void DrawPoring(ImDrawList* dl, ImVec2 c, float r) {
   dl->AddCircleFilled(c, r, IM_COL32(255, 160, 200, 255));                 // body
   dl->AddCircleFilled(ImVec2(c.x - r * 0.30f, c.y - r * 0.35f),           // highlight
@@ -314,134 +312,20 @@ void DrawPoring(ImDrawList* dl, ImVec2 c, float r) {
   dl->PathStroke(IM_COL32(125, 45, 75, 255), 0, 2.0f);
 }
 
-// ── REAL Poring monster sprite (loaded through the game's own sprite system) ───
-// RE'd via a dedicated agent (renamed+commented in Ghidra). The monster sprite
-// path is entirely separate from the player body-actor: we resolve the resname
-// ("poring"), load 몬스터\poring.spr + .act through the resource manager, take
-// the idle frame's body layer, and build/fetch its atlas cell straight from
-// SpriteAtlas — no on-screen actor, no submit hook needed. All chain functions
-// are __thiscall (emulated as __fastcall, EDX ignored), heavily SEH-guarded;
-// any failure falls back to the hand-drawn Poring above.
-constexpr uintptr_t kMonResName    = 0x00d824c0;  // __stdcall(classId) -> resname ("poring")
-constexpr uintptr_t kFmtSpr        = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
-constexpr uintptr_t kFmtAct        = 0x0103182c;  // "몬스터\\%s.act" (CP949)
-constexpr uintptr_t kActFrameCount = 0x0070f6b0;  // __thiscall(act, action) -> int (#frames)
-constexpr int       kPoringClassId = 1002;        // Poring
-constexpr int       kCTexDX9Handle = 0x12c;       // CTexture -> IDirect3DTexture9*
+// ── REAL Poring monster sprite ───────────────────────────────────────────────
+// Le sprite de monstre passe par ui/mob_sprite.h, donc par notre propre parseur
+// .spr/.act. Ce qui a disparu ici : l'atlas de sprites et sa page, la cellule
+// lue à spr+0x510, le pas de calque 0x24, Act_GetFrame, et le résolveur de nom
+// Mob_ClassIdToResName — un switch en dur dont le `default:` renvoyait
+// « poring », ce qui masquait ses propres échecs.
+//
+// 🔴 Le chemin « vrai Poring » n'est plus réservé au DX9. Il l'était parce que
+// le handle GPU d'une CTexture native n'est pas au même offset sous DX7 ; nos
+// textures sont les nôtres, donc les deux moteurs affichent le même Poring.
+constexpr int   kPoringClassId  = 1002;
+constexpr float kPoringFrameMs  = 130.0f;  // repli si le .act ne déclare rien
 
-// ⚠ Mob_ClassIdToResName est __stdcall (RET 4), PAS __cdecl : la fonction
-// dépile déjà son argument. Déclarée __cdecl, l'appelant dépilait une SECONDE
-// fois — déséquilibre de 4 octets que seul l'épilogue `esp = ebp` de la
-// fonction appelante masquait. Ça « marchait » par chance ; ça ne tiendrait plus
-// dès qu'une build sans frame pointer, ou un appel depuis une autre fonction,
-// changerait cette hypothèse. Corrigé ici comme dans login_parade.cc, qui avait
-// levé le lièvre.
-using MonResNameFn = const char* (__stdcall*)(int);
-using TexMgrGetFn  = void* (__cdecl*)();
-using MakeKeyFn    = void* (__cdecl*)(const char*);
-using LoadResFn    = void* (__fastcall*)(void*, void*, void*);            // (mgr, edx, key)
-using ActGetFrameFn = void* (__fastcall*)(void*, void*, unsigned, unsigned);  // (act, edx, action, frame)
-using ActFrameCntFn = int   (__fastcall*)(void*, void*, unsigned);            // (act, edx, action)
-using AtlasFn      = void* (__fastcall*)(void*, void*, void*, int, int*); // (atlas, edx, cell, pal, geom)
-
-struct PoringSprite {
-  void* spr = nullptr;   // CSprite* (image cells @+0x510, palette @+0x110)
-  void* act = nullptr;   // CAction* (frames via Act_GetFrame)
-  int   fails = 0;
-  bool  gave_up = false;
-};
-PoringSprite g_poring;
-
-void EnsurePoringSprite() {
-  if (g_poring.act || g_poring.gave_up) return;
-  bool ok = false;
-  __try {
-    const char* res = reinterpret_cast<MonResNameFn>(kMonResName)(kPoringClassId);
-    if (!res || !*res) res = "poring";
-    char sprpath[160], actpath[160];
-    std::snprintf(sprpath, sizeof(sprpath),
-                  reinterpret_cast<const char*>(kFmtSpr), res);
-    std::snprintf(actpath, sizeof(actpath),
-                  reinterpret_cast<const char*>(kFmtAct), res);
-    void* mgr = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
-    void* sk  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(sprpath);
-    void* ak  = reinterpret_cast<MakeKeyFn>(ro::texmgr::kMakeKey)(actpath);
-    g_poring.spr = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, sk);
-    g_poring.act = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(mgr, nullptr, ak);
-    ok = (g_poring.spr && g_poring.act);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    g_poring.spr = g_poring.act = nullptr;
-  }
-  if (!ok && ++g_poring.fails >= 300) g_poring.gave_up = true;  // ~5 s then give up
-}
-
-// Resolve the Poring's body cell to a native DX9 texture + atlas UVs for the
-// current frame. Re-resolved each frame: the GetCached hit keeps the atlas cell
-// alive and returns the live page handle (survives device churn). Returns false
-// to fall back to the drawn Poring.
-bool ResolvePoringQuad(void** out_tex, ImVec2* uv0, ImVec2* uv1) {
-  if (!g_poring.spr || !g_poring.act) return false;
-  bool ok = false;
-  __try {
-    // Idle action 0, animated: cycle the frame index over ~130 ms/frame so the
-    // Poring bobs instead of freezing on frame 0.
-    unsigned fi = 0;
-    int nf = reinterpret_cast<ActFrameCntFn>(kActFrameCount)(g_poring.act, nullptr, 0);
-    if (nf > 1) {
-      const DWORD cyc = static_cast<DWORD>(nf) * 130u;
-      fi = static_cast<unsigned>((GetTickCount() % cyc) * static_cast<DWORD>(nf) / cyc);
-    }
-    void* frame = reinterpret_cast<ActGetFrameFn>(render::kActionGetFrameAddr)(
-        g_poring.act, nullptr, 0, fi);
-    if (!frame) return false;
-    char* fr = reinterpret_cast<char*>(frame);
-    char* lbegin = *reinterpret_cast<char**>(fr + 0x20);  // ActLayer vector
-    char* lend   = *reinterpret_cast<char**>(fr + 0x24);
-    const int nlayers = static_cast<int>((lend - lbegin) / 0x24);
-    if (nlayers <= 0 || nlayers > 64) return false;
-
-    char* spr = reinterpret_cast<char*>(g_poring.spr);
-    void* atlas = reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(render::kContextPtr) + 0xc0);
-
-    // Pick the largest-area valid layer = the body (skips the small shadow).
-    void*  best   = nullptr;
-    ImVec2 b0, b1;
-    long   best_area = -1;
-    for (int i = 0; i < nlayers; ++i) {
-      int* L = reinterpret_cast<int*>(lbegin + i * 0x24);
-      const int sprNo = L[2], sprType = L[8];
-      if (sprNo < 0 || sprType >= 2) continue;  // -1 = empty; >=2 = RGBA (not body)
-      const int cellBase = *reinterpret_cast<int*>(spr + 0x510 + sprType * 0xc);
-      const int cellEnd  = *reinterpret_cast<int*>(spr + 0x514 + sprType * 0xc);
-      if (static_cast<unsigned>(sprNo) >=
-          static_cast<unsigned>((cellEnd - cellBase) >> 2)) continue;
-      short* cell = *reinterpret_cast<short**>(cellBase + sprNo * 4);
-      if (!cell) continue;
-      const int palette = static_cast<int>(reinterpret_cast<uintptr_t>(spr + 0x110));
-      int geom[12] = {0};
-      void* ctex = reinterpret_cast<AtlasFn>(render::kAtlasGetCachedAddr)(
-          atlas, nullptr, cell, palette, geom);
-      if (!ctex) ctex = reinterpret_cast<AtlasFn>(render::kAtlasBuildAddr)(
-          atlas, nullptr, cell, palette, geom);
-      if (!ctex) continue;
-      const long area = static_cast<long>(cell[0]) * static_cast<long>(cell[1]);
-      if (area > best_area) {
-        best_area = area;
-        best = *reinterpret_cast<void**>(
-            reinterpret_cast<char*>(ctex) + kCTexDX9Handle);
-        b0 = ImVec2(*reinterpret_cast<float*>(&geom[3]),
-                    *reinterpret_cast<float*>(&geom[4]));
-        b1 = ImVec2(*reinterpret_cast<float*>(&geom[5]),
-                    *reinterpret_cast<float*>(&geom[6]));
-      }
-    }
-    if (best) { *out_tex = best; *uv0 = b0; *uv1 = b1; ok = true; }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return false;
-  }
-  return ok;
-}
+ro::MobSpriteRes g_poring;
 
 }  // namespace
 
@@ -458,7 +342,7 @@ void Roggle::OnRenderUI() {
   if (!enabled_) return;
   if (!g.inited) { std::srand(GetTickCount()); NewGame(); }
   EnsureTextures();       // load the RO item icons (retries until in-world)
-  EnsurePoringSprite();   // load the real Poring monster sprite (spr/act)
+  ro::LoadMobSprite(kPoringClassId, &g_poring);  // idempotent, cache derrière
 
   bool open = true;
   ImGui::SetNextWindowSize(ImVec2(kBoardW + 16.0f, kBoardH + 78.0f),
@@ -571,15 +455,14 @@ void Roggle::OnRenderUI() {
     // else the hand-drawn one. (Visual size a touch bigger than the collision.)
     if (g.state == kFlying) {
       constexpr float kBallDraw = 13.0f;
-      void* ptex = nullptr;
-      ImVec2 pu0, pu1;
-      if (!g_imgui_dx7_active && ResolvePoringQuad(&ptex, &pu0, &pu1) && ptex) {
-        dl->AddImage((ImTextureID)(uintptr_t)ptex,
-                     P(g.bx - kBallDraw, g.by - kBallDraw),
-                     P(g.bx + kBallDraw, g.by + kBallDraw), pu0, pu1);
-      } else {
+      // allow_upscale : la boîte de la balle fait quelques dizaines de pixels,
+      // le Poring doit la remplir quelle que soit l'échelle du plateau.
+      if (!ro::DrawMobSprite(dl, g_poring,
+                             P(g.bx - kBallDraw, g.by - kBallDraw),
+                             P(g.bx + kBallDraw, g.by + kBallDraw),
+                             static_cast<float>(ImGui::GetTime()), /*action=*/0,
+                             kPoringFrameMs, /*allow_upscale=*/true))
         DrawPoring(dl, P(g.bx, g.by), 11.0f);
-      }
     }
 
     // Win/lose overlay (the "Nouvelle partie" HUD button restarts).
