@@ -117,11 +117,36 @@ constexpr uintptr_t kSubmitQuad = 0x00c4a0d0;  // Actor_SubmitQuad_RenderQueue
 // et 64.7 px valent 1.7e-4 de profondeur. Le bouclier est plus étroit, donc
 // mécaniquement moins profond, donc devant.
 //
-// 3e-4 le passe sous le corps avec ~40 % de marge, tout en restant bien
-// au-dessus du décor — 🔴 mesuré : à 5e-4 le bouclier disparaît complètement,
-// il passe DERRIÈRE le sol. Cette profondeur est celle de la scène entière, pas
-// un rang local à l'acteur.
-constexpr float kShieldDepthSink = 0.0003f;
+// 🔴 L'abaissement se compte en PIXELS ÉCRAN, pas en profondeur.
+//
+// Une constante de profondeur ne marche qu'à un seul zoom, et c'est ce qui a
+// coûté deux régressions. La profondeur vaut `X * a + b`, où `a` est recalculé
+// par la caméra à chaque frame : en dézoomant, l'acteur se comprime dans une
+// plage plus étroite, `a` diminue, les écarts entre pièces aussi — mais une
+// constante fixe, non. Elle devient alors démesurée devant l'échelle de la
+// scène et le bouclier plonge DERRIÈRE LE SOL. Symptôme relevé par
+// l'utilisateur : il disparaît au dézoom et revient progressivement au zoom.
+//
+// En pixels, la conversion suit le zoom d'elle-même : c'est exactement ce que
+// `a` exprime.
+//
+// L'écart à combler, mesuré sur un Novice de dos : le corps s'étend jusqu'à
+// X 510.8, le bouclier s'arrête à 446.1 — 64.7 px. Le bouclier est plus étroit,
+// donc mécaniquement moins profond, donc devant.
+//
+// 100 px valent 2.6e-4 au zoom de référence (proche du 3e-4 fixe qu'on avait
+// calibré à la main) et gardent une marge de 1.55x sur l'écart à combler — la
+// même à tous les zooms, puisque l'écart suit le même facteur.
+constexpr float kShieldSinkPx = 100.0f;
+
+// Repli quand le facteur de profondeur n'est pas encore connu (première frame :
+// il n'est posé qu'au traitement du corps). Valeur mesurée au zoom par défaut.
+constexpr float kShieldSinkFallback = 0.0003f;
+
+// Garde-fou : `helper+0xA4` vaut 1.0 tant que la partie 0 n'est pas passée. À
+// 100 px cela ferait un abaissement de 100 — le bouclier partirait à l'infini.
+// Au-delà de ce seuil, la valeur n'est pas une échelle de profondeur.
+constexpr float kDepthScaleMax = 0.001f;
 
 // La clé forcée ne trie plus rien — elle ÉTIQUETTE. Le noeud porte sa clé à
 // node+16, et le flush passe node+20 comme param_1 : `param_1[-1]` rend donc
@@ -135,6 +160,15 @@ static unsigned char g_weapon_top_force = 0;
 static void* g_tramp_defer  = nullptr;         // -> relocated prologue + body
 static void* g_tramp_key    = nullptr;         // -> relocated key writes + rest
 static void* g_tramp_submit = nullptr;         // -> relocated submit prologue
+
+// Facteur de profondeur de l'acteur en cours (`helper+0xA4`), relevé pendant
+// l'insertion et lu au flush.
+//
+// 🔴 L'ordre le permet : TOUTES les parties sont insérées avant que la première
+// ne soit soumise. Quand le flush commence, ce facteur est donc celui de la
+// frame courante, corps compris — alors qu'au moment où le BOUCLIER est inséré
+// (il passe en premier) il ne l'est pas encore.
+static float g_depth_scale = 0.0f;
 
 // True only while the dual-weapon-sprites feature is on. The off-hand weapon is
 // drawn as an EXTRA layer at partIdx 6 (resource slot 6), which normally holds a
@@ -152,6 +186,11 @@ static bool OffhandWeaponActive() {
 void __fastcall WeaponDecide(void* helper, int partIdx) {
   g_weapon_top_force = 0;
   __try {
+    // Relevé à CHAQUE partie : la dernière écriture avant le flush est celle du
+    // corps, donc la bonne. Cf. `g_depth_scale`.
+    const float a =
+        *reinterpret_cast<float*>(reinterpret_cast<char*>(helper) + 0xa4);
+    g_depth_scale = a;
     char* cas = *reinterpret_cast<char**>(reinterpret_cast<char*>(helper) + 0x3c);
     if (cas) {
       // facing = CActorSprite+0x38 - +0x34 (the value Actor_SelectPartLayerByDir
@@ -256,8 +295,16 @@ void __fastcall SinkTaggedQuad(float* quad) {
   __try {
     if (!quad) return;
     if (reinterpret_cast<const int*>(quad)[-1] != kShieldTag) return;
-    quad[4] -= kShieldDepthSink;
-    quad[5] -= kShieldDepthSink;
+    // Combien de profondeur valent `kShieldSinkPx` pixels, à ce zoom-ci. Le
+    // facteur est négatif (X croissant = plus au fond) : c'est sa VALEUR ABSOLUE
+    // qui donne l'échelle, le sens venant de la soustraction.
+    float a = g_depth_scale;
+    if (a < 0.0f) a = -a;
+    const float sink = (a > 0.0f && a < kDepthScaleMax)
+                           ? kShieldSinkPx * a
+                           : kShieldSinkFallback;
+    quad[4] -= sink;
+    quad[5] -= sink;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
