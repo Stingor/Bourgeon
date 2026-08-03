@@ -24,30 +24,51 @@
 //  - The SHIELD renders at part 7, NOT 6: BuildShieldWeaponLayers clears slot 6
 //    when a shield is equipped (confirmed live via the partIdx bitmask 0xbf).
 //
-// The order we enforce is the one the doll composer draws (src/ui/doll.cc), so
-// that the world and the character sheet agree:
+// FRONT {0,1,6,7} — corrigé : au moment où la branche 1 écrit sa clé
+// (0x006049e4), on en force une grande, de sorte que l'ordre devienne
+// coiffes/cape < arme (partie 5 -> 0x40000000) < bouclier (partie 7 ->
+// 0x40000010). Ces clés écrasent n'importe quelle priorité lua, qui plafonne
+// dans les centaines.
 //
-//   BACK  {2,3,4,5} : shield · BODY · head · head-gears · weapon · garment
-//   FRONT {0,1,6,7} : BODY · head · head-gears · garment · weapon · shield
+// BACK {2,3,4,5} — laissé au NATIF. Le bouclier y passe devant le corps, ce qui
+// est faux (le personnage le porte de l'autre côté), mais c'est un défaut avec
+// lequel on vit sciemment. Voir ci-dessous.
 //
-// FRONT: at the branch-1 key write (0x006049e4) force a large key so the order
-// becomes head-gears/garment < weapon (part 5 -> 0x40000000) < shield (part 7 ->
-// 0x40000010). Both beat any lua priority, which tops out in the hundreds.
+// 🔴 POURQUOI ON NE CORRIGE PAS LA VUE DE DOS (tranché le 2026-08-03, après
+// quatre tentatives et autant de mesures).
 //
-// BACK: the weapon is already right natively — it sits under the head-gears,
-// which is where the table wants it — so it is left alone. The SHIELD is not:
-// it must sink below the BODY itself, since the character carries it on the far
-// side and its own back hides it.
+// L'ordre de l'arbre n'est PAS l'ordre de dessin. Le flush ne dessine pas : il
+// SOUMET, avec une profondeur. Juste avant, chaque noeud reçoit
+//     node[9]  = node[7] * helper[41] + helper[42]   (node[7] = X droit du quad)
+//     node[10] = node[5] * helper[41] + helper[42]   (node[5] = X gauche)
+// puis Actor_SubmitQuad_RenderQueue écrit z = node[9] + rang * 1e-6. La file
+// retrie par z croissant, et le rang ne pèse que 1e-6 là où les écarts entre
+// pièces valent 2e-4 : il départage, il n'ordonne pas.
 //
-// 🔴 Do NOT expect the emission order to deliver that on its own. Reading
-// Actor_SelectPartLayerByDir, part 7 comes out FIRST in the back group, which
-// ought to put the shield at the very bottom — measured in game, it still draws
-// ABOVE the body. Something between emission and flush lifts it, and until that
-// is pinned down the only trustworthy statement is the observed one. Hence a
-// forced key rather than a reliance on native order.
+// Ce qui ordonne est donc le X DROIT du quad, avec helper[41] NÉGATIF : plus une
+// pièce s'étend vers la droite, plus elle est au fond. Le bouclier est plus
+// ÉTROIT que le corps (mesuré : X 446 contre 511), donc mécaniquement moins
+// profond, donc devant. C'est structurel, pas accidentel.
 //
-// The branch-1 key is a plain insertion counter compared as a SIGNED int, so a
-// negative key (0x80000001) sorts below every natural key, body included.
+// Le faire passer derrière demande de le déplacer d'une profondeur du même ordre
+// que celle qui sépare le personnage du DÉCOR. Trois calibrages l'ont montré :
+//   - 5e-4 fixe        -> disparaît (derrière le sol) ;
+//   - 3e-4 fixe        -> correct au zoom de référence, disparaît au dézoom
+//                         (l'unité de profondeur suit la caméra, pas la
+//                          constante) ;
+//   - 100 px * |a|     -> suit le zoom, mais reste un forfait : au zoom fort il
+//                         replonge, et le quad ayant un gradient de profondeur,
+//                         un bord passe sous le sol avant l'autre — bouclier à
+//                         moitié disparu, sprite déformé au ras du sol.
+// Viser exactement le corps (X_droit_corps * a + b) donne un résultat constant
+// PAR RAPPORT AU CORPS mais pas par rapport au sol, dont la marge, elle, ne suit
+// pas le zoom.
+//
+// Conclusion : la profondeur ne permet pas les deux à la fois. Décision de
+// l'utilisateur — garder le défaut natif de dos plutôt qu'un sprite qui
+// disparaît ou se déforme. NE PAS retenter par ce chemin sans une idée neuve sur
+// ce qui trie réellement (l'état de rendu passé à RenderQueue_InsertPrimitive
+// n'a jamais été instrumenté).
 //
 // Two trampoline hooks on DeferQuadSorted: entry computes the force code into a
 // global; the key-write detour applies it to EDI.
@@ -64,111 +85,14 @@
 namespace {
 constexpr uintptr_t kDeferEntry = 0x006046e0;  // CActorSprite_DeferQuadSorted
 constexpr uintptr_t kKeyWrite   = 0x006049e4;  // branch-1 key write (MOV [EAX+0x10],EDI)
-constexpr uintptr_t kSubmitQuad = 0x00c4a0d0;  // Actor_SubmitQuad_RenderQueue
 
-// 🔴 NE PAS hooker AUSSI Actor_SubmitQuad_VerticalFlip (0x00c4a670).
-//
-// C'est bien l'autre branche du flush — `RenderLayered` la prend quand
-// `Scene_IsVerticalFlipMode()` (0x00d72d10) vaut 1 — mais elle ne soumet rien
-// elle-même : elle retourne les coordonnées, pose l'angle à 180 et DÉLÈGUE à
-// `Actor_SubmitQuad_RenderQueue` avec le MÊME `param_1`. Le détour ci-dessous
-// la couvre donc déjà.
-//
-// Le hooker en plus applique l'abaissement DEUX FOIS sur le même quad : -0,0006
-// au lieu de -0,0003, et le bouclier disparaît derrière le décor. Mesuré en jeu
-// le 2026-08-03, après l'avoir posé « pour être complet ».
-
-// 🔴 Ce que le tri regarde vraiment — mesuré, pas déduit. L'ordre de l'arbre
-// n'est PAS l'ordre de dessin.
-//
-// Le flush de RenderLayered ne dessine pas : il SOUMET, dans l'ordre des clés,
-// avec une profondeur. Juste avant, chaque noeud reçoit
-//     node[9]  = node[7] * helper[41] + helper[42]   (node[7] = X droit du quad)
-//     node[10] = node[5] * helper[41] + helper[42]   (node[5] = X gauche)
-// puis Actor_SubmitQuad_RenderQueue écrit dans le vertex
-//     z   = node[9] + rang * 0.000001
-//     rhw = node[9] + rang * 0.0002
-//
-// La file RETRIE ensuite, par z CROISSANT : petit z = dessiné en premier = au
-// fond. Le rang ne pèse que 1e-6 là où les écarts entre pièces valent ~2e-4 —
-// il départage, il n'ordonne pas. Ce qui ordonne, c'est le X DROIT du quad,
-// avec helper[41] NÉGATIF (~-2.6e-6) : plus une pièce s'étend vers la droite,
-// plus elle est au fond.
-//
-// ⚠ Ne PAS comparer les intervalles [node[9], node[10]] de deux pièces : `a` et
-// `b` sont communs à tout l'acteur, donc à un X donné toutes les pièces ont la
-// même profondeur. Les plages ne diffèrent que parce que chaque pièce couvre
-// une portion d'écran différente. C'est le X droit, seul, qui décide.
-//
-// Combien abaisser — calculé, pas tâtonné.
-//
-// Relevé à la soumission, sur un Novice de dos (les clés identifient les
-// pièces : 0x2 corps, 0x4 tête, 0x7 arme, 0xab/0xc8 coiffes par priorité lua,
-// 0x190 cape) :
-//     corps    0.00251     au fond
-//     cape     0.00255
-//     arme     0.00261     devant le corps
-//     coiffe   0.00267
-//     BOUCLIER 0.00269     devant le corps  <- le défaut
-//     coiffe   0.00277     recouvre le bouclier
-//
-// L'écart à combler est corps - bouclier = 1.8e-4, et il vient entièrement de
-// la largeur : le corps s'étend jusqu'à X 510.8, le bouclier s'arrête à 446.1,
-// et 64.7 px valent 1.7e-4 de profondeur. Le bouclier est plus étroit, donc
-// mécaniquement moins profond, donc devant.
-//
-// 🔴 L'abaissement se compte en PIXELS ÉCRAN, pas en profondeur.
-//
-// Une constante de profondeur ne marche qu'à un seul zoom, et c'est ce qui a
-// coûté deux régressions. La profondeur vaut `X * a + b`, où `a` est recalculé
-// par la caméra à chaque frame : en dézoomant, l'acteur se comprime dans une
-// plage plus étroite, `a` diminue, les écarts entre pièces aussi — mais une
-// constante fixe, non. Elle devient alors démesurée devant l'échelle de la
-// scène et le bouclier plonge DERRIÈRE LE SOL. Symptôme relevé par
-// l'utilisateur : il disparaît au dézoom et revient progressivement au zoom.
-//
-// En pixels, la conversion suit le zoom d'elle-même : c'est exactement ce que
-// `a` exprime.
-//
-// L'écart à combler, mesuré sur un Novice de dos : le corps s'étend jusqu'à
-// X 510.8, le bouclier s'arrête à 446.1 — 64.7 px. Le bouclier est plus étroit,
-// donc mécaniquement moins profond, donc devant.
-//
-// 100 px valent 2.6e-4 au zoom de référence (proche du 3e-4 fixe qu'on avait
-// calibré à la main) et gardent une marge de 1.55x sur l'écart à combler — la
-// même à tous les zooms, puisque l'écart suit le même facteur.
-constexpr float kShieldSinkPx = 100.0f;
-
-// Repli quand le facteur de profondeur n'est pas encore connu (première frame :
-// il n'est posé qu'au traitement du corps). Valeur mesurée au zoom par défaut.
-constexpr float kShieldSinkFallback = 0.0003f;
-
-// Garde-fou : `helper+0xA4` vaut 1.0 tant que la partie 0 n'est pas passée. À
-// 100 px cela ferait un abaissement de 100 — le bouclier partirait à l'infini.
-// Au-delà de ce seuil, la valeur n'est pas une échelle de profondeur.
-constexpr float kDepthScaleMax = 0.001f;
-
-// La clé forcée ne trie plus rien — elle ÉTIQUETTE. Le noeud porte sa clé à
-// node+16, et le flush passe node+20 comme param_1 : `param_1[-1]` rend donc
-// l'étiquette au moment de la soumission, seul endroit où la profondeur existe.
-constexpr int kShieldTag = static_cast<int>(0x80000001);
 }  // namespace
 
 // File scope (NOT namespaced) so the naked __asm can resolve them by name.
-// 0=none, 1=MID, 2=TOP, 3=OFF-HAND, 4=BOTTOM (per call)
+// 0=none, 1=MID, 2=TOP, 3=OFF-HAND (per call)
 static unsigned char g_weapon_top_force = 0;
 static void* g_tramp_defer  = nullptr;         // -> relocated prologue + body
 static void* g_tramp_key    = nullptr;         // -> relocated key writes + rest
-static void* g_tramp_submit = nullptr;         // -> relocated submit prologue
-
-// Facteur de profondeur de l'acteur en cours (`helper+0xA4`), relevé pendant
-// l'insertion et lu au flush.
-//
-// 🔴 L'ordre le permet : TOUTES les parties sont insérées avant que la première
-// ne soit soumise. Quand le flush commence, ce facteur est donc celui de la
-// frame courante, corps compris — alors qu'au moment où le BOUCLIER est inséré
-// (il passe en premier) il ne l'est pas encore.
-static float g_depth_scale = 0.0f;
 
 // True only while the dual-weapon-sprites feature is on. The off-hand weapon is
 // drawn as an EXTRA layer at partIdx 6 (resource slot 6), which normally holds a
@@ -181,16 +105,11 @@ static bool OffhandWeaponActive() {
 
 // Decision logic in clean C (no fragile naked asm). Called from the entry stub
 // with the render-helper + partIdx. Sets g_weapon_top_force: 1 = MID key (above
-// head-gears), 2 = TOP key (above the weapon), 4 = BOTTOM = l'étiquette du
-// bouclier de dos, relue à la soumission par SinkTaggedQuad.
+// head-gears), 2 = TOP key (above the weapon), 3 = OFF-HAND. Front-facing only —
+// la vue de dos est laissée au natif (cf. l'en-tête).
 void __fastcall WeaponDecide(void* helper, int partIdx) {
   g_weapon_top_force = 0;
   __try {
-    // Relevé à CHAQUE partie : la dernière écriture avant le flush est celle du
-    // corps, donc la bonne. Cf. `g_depth_scale`.
-    const float a =
-        *reinterpret_cast<float*>(reinterpret_cast<char*>(helper) + 0xa4);
-    g_depth_scale = a;
     char* cas = *reinterpret_cast<char**>(reinterpret_cast<char*>(helper) + 0x3c);
     if (cas) {
       // facing = CActorSprite+0x38 - +0x34 (the value Actor_SelectPartLayerByDir
@@ -200,14 +119,9 @@ void __fastcall WeaponDecide(void* helper, int partIdx) {
       const bool front = (facing == 0 || facing == 1 || facing == 6 ||
                           facing == 7);
       if (!front) {
-        // BACK view: the shield must be drawn FIRST — below the body, which
-        // then covers it. It natively draws above instead, and no key can fix
-        // that (cf. l'en-tête) — so this code only TAGS it, and the real work
-        // happens in SinkTaggedQuad.
-        //
-        // The weapon is deliberately left alone here: under the head-gears is
-        // exactly where the table wants it in this view.
-        if (partIdx == 7) g_weapon_top_force = 4;    // shield -> tag
+        // BACK view: laissée au NATIF, décision prise le 2026-08-03 après
+        // mesure. Cf. la note en tête de fichier — le bouclier y passe devant le
+        // corps, et on ne peut pas l'en déloger sans le heurter au sol.
       } else if (partIdx == 5) {
         g_weapon_top_force = 1;                      // weapon -> above head-gears
       } else if (partIdx == 7) {
@@ -239,14 +153,12 @@ __declspec(naked) static void DeferEntryStub() {
 
 // Branch-1 key write. If forced, overwrite EDI (the small build-seq key) with a
 // constant that places the part where the table wants it: 1 = MID (above the
-// head-gears, the weapon), 2 = TOP (above the weapon, the shield), 3 = OFF-HAND,
-// 4 = BOTTOM (below the body, the shield seen from behind). EAX/ESI are live
-// here (node ptr / tree link) — only EDI + flags may be touched.
+// head-gears, the weapon), 2 = TOP (above the weapon, the shield), 3 = OFF-HAND.
+// EAX/ESI are live here (node ptr / tree link) — only EDI + flags may be
+// touched.
 //
-// 🔴 The tree compares keys as SIGNED ints (`v11 < *(int*)(node+16)` at
-// 0x00604878), which is what makes 0x80000001 a floor rather than a ceiling. It
-// also DROPS any quad whose key collides with one already in the tree, hence the
-// spaced-out constants.
+// 🔴 DeferQuadSorted DROPS any quad whose key collides with one already in the
+// tree — d'où les constantes espacées (…00 / …08 / …10).
 __declspec(naked) static void KeyWriteStub() {
   __asm {
     cmp  byte ptr g_weapon_top_force, 0
@@ -255,12 +167,7 @@ __declspec(naked) static void KeyWriteStub() {
     je   sk_mid
     cmp  byte ptr g_weapon_top_force, 3
     je   sk_off
-    cmp  byte ptr g_weapon_top_force, 4
-    je   sk_bottom
     mov  edi, 0x40000010        // TOP: the shield, above the weapon
-    jmp  sk_done
-  sk_bottom:
-    mov  edi, 0x80000001        // BOTTOM: the shield seen from behind, under the body
     jmp  sk_done
   sk_off:
     mov  edi, 0x40000008        // OFF-HAND: the second weapon, just above the main
@@ -272,59 +179,6 @@ __declspec(naked) static void KeyWriteStub() {
   }
 }
 
-// Abaisse la profondeur du quad ÉTIQUETÉ, juste avant sa soumission. C'est la
-// seule prise possible : la profondeur n'existe qu'ici, et le tri de la file de
-// rendu ne connaît qu'elle.
-//
-// `param_1` pointe sur node+20 ; `param_1[4]` et `param_1[5]` sont les deux
-// bornes de profondeur que RenderLayered vient de calculer, et `param_1[-1]`
-// est la clé du noeud, donc notre étiquette.
-//
-// ⚠ Les noeuds sont recréés à chaque frame (operator_new dans DeferQuadSorted)
-// et leurs profondeurs recalculées avant chaque soumission : écrire en place ne
-// s'accumule pas d'une frame à l'autre.
-//
-// 🔴 __try obligatoire : cette fonction est appelée pour TOUS les quads
-// d'acteur, y compris ceux qui ne viennent pas d'un noeud d'arbre — lire
-// `param_1[-1]` sur ceux-là n'a pas de sens et peut sortir de la page.
-//
-// Les DEUX branches du flush finissent ici : la branche « flip vertical »
-// délègue à celle-ci (cf. la note en tête de fichier). Un seul détour suffit —
-// en poser un second abaisserait deux fois.
-void __fastcall SinkTaggedQuad(float* quad) {
-  __try {
-    if (!quad) return;
-    if (reinterpret_cast<const int*>(quad)[-1] != kShieldTag) return;
-    // Combien de profondeur valent `kShieldSinkPx` pixels, à ce zoom-ci. Le
-    // facteur est négatif (X croissant = plus au fond) : c'est sa VALEUR ABSOLUE
-    // qui donne l'échelle, le sens venant de la soustraction.
-    float a = g_depth_scale;
-    if (a < 0.0f) a = -a;
-    const float sink = (a > 0.0f && a < kDepthScaleMax)
-                           ? kShieldSinkPx * a
-                           : kShieldSinkFallback;
-    quad[4] -= sink;
-    quad[5] -= sink;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-}
-
-// Naked stub sur Actor_SubmitQuad_RenderQueue (__stdcall, 6 args) : param_1 est
-// à [esp+4] avant nos push.
-__declspec(naked) static void SubmitQuadStub() {
-  __asm {
-    push eax
-    push ecx
-    push edx
-    mov  ecx, [esp+0x10]       // param_1 ([esp]=edx,+4=ecx,+8=eax,+0xc=ret,+0x10=param_1)
-    call SinkTaggedQuad        // __fastcall(ecx=param_1)
-    pop  edx
-    pop  ecx
-    pop  eax
-    jmp  [g_tramp_submit]
-  }
-}
-
 WeaponLayer::WeaponLayer() {
   using namespace hooking;
   g_tramp_defer = HookManager::Instance().SetHook(
@@ -333,9 +187,6 @@ WeaponLayer::WeaponLayer() {
   g_tramp_key = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kKeyWrite),
       reinterpret_cast<uint8_t*>(&KeyWriteStub));
-  g_tramp_submit = HookManager::Instance().SetHook(
-      HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSubmitQuad),
-      reinterpret_cast<uint8_t*>(&SubmitQuadStub));
   // LogInfo("[WeaponLayer] z-order hooks installed (defer={} key={})",
           // g_tramp_defer != nullptr, g_tramp_key != nullptr);
 }
