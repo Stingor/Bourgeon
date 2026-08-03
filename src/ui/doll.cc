@@ -756,6 +756,18 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     list[list_n].accessory = false;  // la TÊTE : référence, jamais animée
     list[list_n].head_ref  = true;
     list[list_n].tag       = "tete";
+    // 🔴 De DOS, la tête passe DERRIÈRE le corps.
+    //
+    // Le natif ne traite pas la tête à part : `Actor_BuildLayerDrawOrder`
+    // (0x007ad0b0) construit l'empilement de ses huit parties, puis le parcourt
+    // À L'ENVERS quand le drapeau `acteur+0x45` est posé — tout bascule d'un
+    // coup, la tête comme le reste.
+    //
+    // Debout, l'inversion ne se voit pas : la tête est au-dessus des épaules,
+    // rien ne se recouvre. Elle saute aux yeux dès que le personnage se PENCHE
+    // — au ramassage, le buste doit masquer la nuque, et la tête dessinée en
+    // dernier passait par-dessus le dos.
+    list[list_n].behind = back_view;
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, list[list_n].pal,
                       sizeof(list[list_n].pal));
@@ -774,6 +786,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     list[list_n].pal[0] = '\0';
     list[list_n].accessory = true;
     list[list_n].on_head   = true;
+    // Les coiffes suivent la tête de part et d'autre du corps : elles s'y
+    // accrochent, et les séparer ferait flotter un chapeau devant un dos dont
+    // la tête est derrière. Placées APRÈS la tête dans le seau arrière, elles
+    // restent au-dessus d'elle — ce qu'on veut : de dos, on voit le chapeau.
+    list[list_n].behind    = back_view;
     list[list_n].tag       = (g == 0) ? "coiffe-bas"
                           : (g == 1) ? "coiffe-milieu"
                                      : "coiffe-haut";
