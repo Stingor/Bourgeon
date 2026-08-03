@@ -78,13 +78,6 @@ class BankWindow : public Plugin {
   // plus pour fermer, invisible à l'usage.
   void ToggleFromUi();
 
-  // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
-  // 275. Ne fait plus rien, et c'est voulu — mêmes raisons que NpcDialogWindow :
-  // la fenêtre ne naît plus, la masquer serait nuisible (une native invisible garde
-  // le clavier), et la détruire ici est exclu puisqu'on est à l'intérieur de
-  // MakeWindow, dont l'appelant va déréférencer le retour. C'est OnTick qui purge.
-  void HideNativeAtCreation(void* win);
-
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, chargés/sauvés par MoonlightUi)
   // « bank_imgui » : fenêtre ImGui, handler de 0x09A6 remplacé. Basculé en GROUPE
   // par SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.

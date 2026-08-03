@@ -69,12 +69,6 @@ class WeaponRefineWindow : public Plugin {
   // NewFrame() et Render() gèlerait le client (cf. docs/weapon_refine_re.md §6).
   void FlushPending();
 
-  // Appelé par le hook MakeWindow (WindowPosTweaks) à la création de la fenêtre
-  // 111 : masque la native (win+0x28 = 0) AVANT son premier rendu. Le seul
-  // OnTick laisserait passer une frame native — la fenêtre est créée par le
-  // handler de paquet, donc entre deux ticks. No-op si le plugin est désactivé.
-  void HideNativeAtCreation(void* win);
-
   // Le hook de WndProc demande ici s'il doit AVALER la touche Entrée avant que
   // le jeu ne la voie (elle y ouvre la saisie de chat).
   //

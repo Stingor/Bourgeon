@@ -64,11 +64,6 @@ class NpcDialogWindow : public Plugin {
 
   bool& show_panel() { return show_panel_; }
 
-  // Appelé par le hook MakeWindow (WindowPosTweaks) à la création d'une fenêtre
-  // de dialogue NPC : si imgui_enabled_, cache la fenêtre AVANT le 1er rendu
-  // (évite un flash natif que le seul OnTick laisserait passer).
-  void HideNativeAtCreation(void* win, int window_id);
-
   // Appelé par SendPacketHook : vrai si l'overlay ImGui est actif ET l'opcode est
   // un CZ de dialogue NPC (next/menu/nombre/texte/close). On JETTE alors l'envoi,
   // car il vient forcément de la fenêtre NATIVE résiduelle (nos propres CZ passent

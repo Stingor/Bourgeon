@@ -8,18 +8,12 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // full MoonlightUi type for SaveSettings()
-#include "features/windows/storage_window.h"  // hide-native-at-creation (id 0x21)
 #include "features/windows/inventory_viewer.h"  // hide-native-at-creation (id 8)
-#include "features/windows/bank_window.h"  // hide-native-at-creation (banque id 275)
 #include "features/windows/cart_viewer.h"  // hide-native-at-creation (cart id 0x28)
 #include "features/windows/make_item_window.h"  // hide-native-at-creation (94 / 79)
-#include "features/windows/cashshop_window.h"  // hide-native-at-creation (id 0x13e)
-#include "features/windows/npc_shop_window.h"  // hide-native-at-creation (id 0x16/0x17/0x19)
+#include "features/windows/npc_shop_window.h"  // comparateur ATK/DEF (id variable, par vtable)
 #include "features/windows/vending_window.h"  // hide-native-at-creation (id 0x29/0xAE)
-#include "features/windows/weapon_refine_window.h"  // hide-native-at-creation (id 111)
-#include "features/windows/trade_window.h"  // hide-native-at-creation (échange, par vtable)
 #include "features/windows/rodex_window.h"  // hide-native-at-creation (courrier 0x107/0x109)
-#include "features/windows/npc_dialog_window.h"  // hide-native-at-creation (dialogue 0x10/0x11/0x38/0x64/0xe2)
 #include "features/windows/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -124,13 +118,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       }
       break;
     }
-    // Remplacement complet de l'entrepôt : StorageWindow masque la fenêtre native
-    // (win+0x28=0) DÈS ici, avant son 1er rendu -> pas de flicker (le OnTick seul
-    // laissait passer la frame de création). No-op si imgui_enabled_ est off (natif).
-    if (windowID == 0x21) {
-      if (auto* st = Bourgeon::Instance().storage_window())
-        st->HideNativeAtCreation(win);
-    }
+    // 🔴 Ne routent RIEN ici, et c'est voulu : entrepôt (0x21), banque (275), cash
+    // shop (0x13e), shop NPC (0x16-0x19), dialogue NPC (0x10/0x11/0x38/0x64/0xe2),
+    // refine d'arme (111) et échange joueur. Leurs créateurs natifs sont tous
+    // revendiqués — ces fenêtres ne NAISSENT plus. Les masquer à la naissance serait
+    // même nuisible (une native invisible garde le clavier) et les détruire est
+    // exclu depuis l'intérieur de MakeWindow, dont l'appelant déréférence le retour.
+    // Ne restent donc ci-dessous que les fenêtres qui naissent encore pour de bon.
+    //
     // Inventaire (id 8) et cart (UICartWnd id 0x28) : remplacés par leurs viewers.
     // Leur création EST la demande du joueur — ces deux fenêtres ne naissent que
     // d'une action, jamais d'un paquet (ZC_INVENTORY_START ne fait que vider leurs
@@ -142,13 +137,6 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 0x28) {
       if (auto* cv = Bourgeon::Instance().cart_viewer())
         cv->HandleNativeCreation(win);
-    }
-    // Banque de zeny (UIBank_NewWnd id 275) : créée par le handler de
-    // ZC_BANKING_CHECK, donc ENTRE deux OnTick — sans ce hook une frame native
-    // passait à l'écran avant que le viewer ne la masque (cf. le sertissage 0x4A).
-    if (windowID == 275) {
-      if (auto* bt = Bourgeon::Instance().bank_window())
-        bt->HideNativeAtCreation(win);
     }
     // Sertissage de cartes (UIItemCompositionWnd id 0x4A) : FILET DE SÉCURITÉ. Son
     // unique créateur était le handler de ZC 0x017B, dont le viewer a pris la place —
@@ -196,18 +184,6 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* mk = Bourgeon::Instance().make_item_window())
         mk->HideNativeAtCreation(win);
     }
-    // Idem pour le cash shop (UICashShopWnd id 0x13e) : redraw ImGui complet.
-    if (windowID == 0x13e) {
-      if (auto* cs = Bourgeon::Instance().cashshop_window())
-        cs->HideNativeAtCreation(win);
-    }
-    // Shop NPC (achat 0x16, vente 0x17, chooser 0x19) : NpcShopWindow les cache dès
-    // la création -> l'utilisateur atterrit direct sur la fenêtre ImGui unifiée.
-    if (windowID == 0x16 || windowID == 0x17 || windowID == 0x18 ||
-        windowID == 0x19) {
-      if (auto* sh = Bourgeon::Instance().npc_shop_window())
-        sh->HideNativeAtCreation(win);
-    }
     // Échoppe joueur : la COMPOSITION (vente 0x29, achat 0xAE) ET la grille des
     // objets disponibles (0x2A/0xAF) sont remplacées par VendingWindow, qui les
     // fusionne en une seule fenêtre ImGui.
@@ -228,22 +204,6 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* vt = Bourgeon::Instance().vending_window())
         vt->HideNativeAtCreation(win);
     }
-    // Dialogue NPC (say 0x10 / secondaire 0xe2, menu 0x11, input nombre 0x38 /
-    // texte 0x64) : NpcDialogWindow les cache dès la création -> pas de flicker
-    // (le seul OnTick@100ms laissait la fenêtre native visible ~100 ms).
-    if (windowID == 0x10 || windowID == 0x11 || windowID == 0x38 ||
-        windowID == 0x64 || windowID == 0xe2) {
-      if (auto* nd = Bourgeon::Instance().npc_dialog_window())
-        nd->HideNativeAtCreation(win, windowID);
-    }
-    // Refine d'arme Whitesmith (UIWeaponRefineWnd id 111) : cette fenêtre est
-    // créée par le handler de ZC_NOTIFY_WEAPONITEMLIST (0x0221), donc ENTRE deux
-    // OnTick -> sans ce hook une frame native passerait à l'écran avant que le
-    // plugin ne la masque (même cas que la banque et le sertissage).
-    if (windowID == 111) {
-      if (auto* wr = Bourgeon::Instance().weapon_refine_window())
-        wr->HideNativeAtCreation(win);
-    }
     // Comparateur ATK/DEF (UIItemParamChangeDisplayWnd) : id variable, créé par le
     // handler d'achat natif -> détecté par vtable (no-op hors session shop).
     if (auto* sh = Bourgeon::Instance().npc_shop_window())
@@ -256,11 +216,6 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
       if (auto* rodex = Bourgeon::Instance().rodex_window())
         rodex->HideNativeAtCreation(win, windowID);
     }
-    // Échange joueur-joueur : appel INCONDITIONNEL (la fenêtre est la classe
-    // CUIExchangeUI, détectée par VTABLE 0x010457d8 — cf. docs/trade_window_re.md),
-    // capture de l'id runtime + masquage du natif. No-op si le viewer est désactivé.
-    if (auto* tt = Bourgeon::Instance().trade_window())
-      tt->HideNativeAtCreation(win, windowID);
   }
   return win;
 }

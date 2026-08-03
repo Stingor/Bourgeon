@@ -99,10 +99,6 @@ class NpcShopWindow : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Cache la fenêtre native (hook MakeWindow de WindowPosTweaks) : ids 0x16
-  // (achat), 0x17 (vente), 0x18, 0x19 (chooser). No-op si le viewer est désactivé.
-  void HideNativeAtCreation(void* win);
-
   // Masque le comparateur de stats ATK/DEF (UIItemParamChangeDisplayWnd, id 0x32),
   // que la fenêtre d'ACHAT native ouvre quand on sélectionne un équipement. Détecté
   // par VTABLE parce qu'on le voit passer dans le hook MakeWindow, avant qu'il ait

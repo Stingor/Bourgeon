@@ -395,8 +395,6 @@ void BankWindow::OnTick() {
   zeny_  = balances.zeny;
 }
 
-void BankWindow::HideNativeAtCreation(void* /*win*/) {}
-
 void BankWindow::CloseSession() {
   open_ = false;
   was_open_ = false;

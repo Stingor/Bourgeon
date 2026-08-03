@@ -712,13 +712,6 @@ void TradeWindow::ResolveNames() {
   }
 }
 
-// Ne fait plus rien : ces fenêtres ne naissent plus (les paquets qui les créaient
-// sont remplacés), les cacher serait nuisible — une native invisible garde le
-// clavier, et son bouton par défaut valide un échange — et les détruire ici est
-// exclu : on est à l'intérieur de MakeWindow, dont l'appelant déréférence le retour.
-// La purge d'OnTick s'en charge.
-void TradeWindow::HideNativeAtCreation(void* /*win*/, int /*windowID*/) {}
-
 bool TradeWindow::AnyNativeTradeWindow() const {
   int id = -1;
   if (FindTradeWnd(&id)) return true;

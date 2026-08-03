@@ -1098,22 +1098,6 @@ void NpcDialogWindow::PurgeNativeDialogWindows() {
   CloseWnd(kWinSay2);
 }
 
-// Le hook MakeWindow de window_pos_tweaks appelle encore ce point d'entrée pour
-// les cinq ids de dialogue ; il ne fait plus rien, et c'est voulu :
-//
-//  1. ces fenêtres ne naissent plus — leurs handlers de paquet ne tournent plus
-//     (cf. le constructeur), et rien d'autre dans le client ne les crée ;
-//  2. si l'une reparaissait quand même (interface moderne allumée en plein
-//     dialogue natif), la MASQUER serait nuisible : invisible, elle garderait le
-//     clavier. C'est la purge d'OnTick qui la détruit ;
-//  3. détruire ICI est exclu : on est à l'INTÉRIEUR de MakeWindow, dont
-//     l'appelant natif va déréférencer le retour.
-//
-// La fonction est gardée plutôt que l'appel retiré : c'est ce que fait déjà
-// WeaponRefineWindow, pour que le hook garde une forme unique pour ses douze
-// plugins.
-void NpcDialogWindow::HideNativeAtCreation(void* /*win*/, int /*window_id*/) {}
-
 void NpcDialogWindow::OnTick() {
   // Clic sur un lien d'item (<ITEM>) posé pendant le rendu : ouvre la desc au tick
   // (hors de l'arbre ImGui, plus sûr pour créer une fenêtre native).

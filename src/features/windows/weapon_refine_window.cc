@@ -941,25 +941,6 @@ void WeaponRefineWindow::OnModeSwitch(ModeMgr::ModeType mode_type,
   }
 }
 
-// 🔴 NE FAIT PLUS RIEN, et c'est le bon comportement — pas un oubli.
-//
-// Le point d'entrée est conservé parce qu'il est la convention du projet : le hook
-// MakeWindow de window_pos_tweaks appelle le `HideNativeAtCreation` de douze plugins.
-// Mais pour CETTE fenêtre il ne peut plus rien faire d'utile :
-//
-//  1. Il ne peut plus être atteint. La 111 n'est créée que par le handler natif du
-//     0x0221, or ce handler ne tourne QUE si nous sommes coupés — et alors la
-//     première ligne sort. Vérifié en remontant `RegisterReplaceOpcode`.
-//  2. Masquer serait NUISIBLE si jamais il l'était : une native invisible garde le
-//     clavier et sa session (docs/weapon_refine_re.md §10). C'est le fantôme qu'on a
-//     corrigé deux fois.
-//  3. Annuler ici est IMPOSSIBLE : l'appelant natif se sert encore du pointeur que
-//     MakeWindow vient de lui rendre — ce serait un use-after-free.
-//
-// Ne rien faire est donc l'unique bonne réponse : FlushPending, une frame plus tard,
-// pilotera son bouton Annuler. Ce qui reste ici est le commentaire.
-void WeaponRefineWindow::HideNativeAtCreation(void* /*win*/) {}
-
 void WeaponRefineWindow::CloseForOtherCraft() {
   // Rien d'ouvert ni d'armé : il n'y a rien à évincer, et poser un message serait du
   // bruit à chaque fabrication.
@@ -1002,7 +983,7 @@ void WeaponRefineWindow::OnTick() {
   if (prev_enabled_ != imgui_enabled_) {
     prev_enabled_ = imgui_enabled_;
     // (Plus rien à « rendre visible » à la coupure : on ne masque plus jamais cette
-    // fenêtre — cf. HideNativeAtCreation et le bloc supprimé plus bas.)
+    // fenêtre. La 111 ne naît que si nous sommes coupés, et alors elle est à elle.)
     //
     // 🔴 DÉSARMER AVANT DE JETER. La bascule referme notre interface, mais le
     // serveur, lui, garde son `menuskill` : sans ce -1 le personnage ne peut plus

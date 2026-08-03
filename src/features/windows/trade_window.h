@@ -95,12 +95,6 @@ class TradeWindow : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Appelé pour CHAQUE fenêtre créée (hook MakeWindow, sans filtre d'id — l'id de
-  // la fenêtre principale n'est pas connu statiquement). Détecte les 3 vtables de
-  // l'échange : capture l'objet + l'id runtime de UIExchangeWnd, et cache le natif
-  // (+0x28=0). No-op si le viewer est désactivé.
-  void HideNativeAtCreation(void* win, int windowID);
-
   // Ajoute `amount` unités de l'item à l'index inventaire `invIndex` au deal (cmd
   // 0x33). Public pour l'intégration avec l'InventoryViewer (clic/drag « ajouter à
   // l'échange »). L'ajout de zeny passe par le champ dédié de la fenêtre.

@@ -461,12 +461,6 @@ void CashShopWindow::CloseShop() {
   CloseNativeCashShop();
 }
 
-// Ne fait plus rien : la fenêtre ne NAÎT plus (son unique paquet créateur est
-// remplacé). La cacher serait nuisible — une native invisible garde le clavier —
-// et la détruire ici est exclu : on est à l'intérieur de MakeWindow, dont
-// l'appelant déréférence le retour. La purge d'OnTick s'en charge.
-void CashShopWindow::HideNativeAtCreation(void* /*win*/) {}
-
 void CashShopWindow::OnTick() {
   // ── Basculement de l'interrupteur, les DEUX sens ────────────────────────────
   // Basculer FERME le shop. On ne reprend pas une session qu'on n'a pas vue naître

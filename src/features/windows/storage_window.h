@@ -133,11 +133,6 @@ class StorageWindow : public Plugin {
            mx < win_x_ + win_w_ && my < win_y_ + win_h_;
   }
 
-  // NO-OP depuis que la native ne naît plus : il n'y a plus rien à masquer avant
-  // le 1er rendu. Conservé parce que le hook MakeWindow de WindowPosTweaks
-  // l'appelle pour douze plugins.
-  void HideNativeAtCreation(void* win);
-
  private:
   // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
   // copier : `prices_` et `meta_` sont des tables de hachage, et une insertion qui

@@ -61,10 +61,6 @@ class CashShopWindow : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Ne fait plus rien (la fenêtre ne naît plus). Gardée parce que le hook
-  // MakeWindow de WindowPosTweaks l'appelle pour toute fenêtre créée.
-  void HideNativeAtCreation(void* win);
-
   // Setting PERSISTANT (bourgeon_settings.yaml "cashshop_imgui", géré par
   // MoonlightUi) : ON = viewer ImGui + natif caché ; OFF = cash shop natif seul.
   // Basculé en GROUPE par SetModernInterface (moonlight_ui.h) — PLUS de case isolée

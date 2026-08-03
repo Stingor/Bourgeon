@@ -903,12 +903,6 @@ void StorageWindow::OnTick() {
   if (!open_ || !show_desc_tooltip_) hover_desc_id_ = 0;
 }
 
-// Plus rien à cacher : la fenêtre native ne naît plus (ses deux créateurs sont
-// revendiqués). On garde le point d'entrée, appelé par le hook MakeWindow de
-// window_pos_tweaks pour douze plugins, comme l'ont fait les autres fenêtres du
-// même chantier (trade, npc_shop, cashshop, bank, npc_dialog, weapon_refine).
-void StorageWindow::HideNativeAtCreation(void* /*win*/) {}
-
 // (Le pont vers le DRAG NATIF entrant — HandleNativeDrop, OnMouseDown, la lecture
 // du payload et le redessin de l'icône — a été retiré. Il n'existait que pour un
 // drag parti d'un inventaire ou d'un cart NATIFS ; or « Interface moderne » est

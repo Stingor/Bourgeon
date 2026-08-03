@@ -615,13 +615,6 @@ void NpcShopWindow::CloseNativeShop() {
   sell_all_close_ = false;  // desarme la fermeture auto
 }
 
-// Ne fait plus rien, comme chez NpcDialogWindow et BankWindow : ces fenêtres ne
-// naissent plus (leurs trois paquets d'ouverture sont remplacés), les masquer
-// serait nuisible (une native invisible garde le clavier), et les détruire ici est
-// exclu — on est à l'intérieur de MakeWindow, dont l'appelant natif déréférence le
-// retour. La purge d'OnTick s'en charge.
-void NpcShopWindow::HideNativeAtCreation(void* /*win*/) {}
-
 bool NpcShopWindow::AnyNativeShopWindow() const {
   return FindWnd(kWinChoose) || FindWnd(kWinShopFrame) || FindWnd(kWinPurchase) ||
          FindWnd(kWinSell) || FindWnd(kWinParamCompare);
