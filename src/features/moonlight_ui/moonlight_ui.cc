@@ -351,6 +351,12 @@ const moonlight_ui::SettingDesc kRefineSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"refine_auto_recast", SType::kBool, MLUI_FIELD(weapon_refine_window, auto_recast()),
      MLUI_LITERAL(bool, false)},
+    // Défaut OFF, et il le restera : c'est le seul réglage du plugin qui joue une
+    // arme à la place du joueur — chaque tentative pouvant la détruire. Il n'entre
+    // PAS dans le groupe « Interface moderne » (SetModernInterface ne bascule que
+    // « refine_imgui »), donc activer l'interface moderne ne l'allume jamais.
+    {"refine_auto_refine", SType::kBool, MLUI_FIELD(weapon_refine_window, auto_refine()),
+     MLUI_LITERAL(bool, false)},
     // Défaut OFF : Entrée ne déclenche pas le refine et reste au CHAT. Le bouton et
     // le double-clic font le travail.
     // (Elle a été confisquée dans les deux réglages pendant un temps, tant que la

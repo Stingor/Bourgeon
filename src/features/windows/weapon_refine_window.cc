@@ -74,6 +74,22 @@ int OwnJobLevel() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
+// SP courant. Le MÊME global que la barre de SP de UIBasicInfoWnd
+// (features/overlays/basic_info.cc le lit déjà, confirmé par RE de son
+// DrawContent @0x0095e620) — donc la valeur qu'affiche le client, en INT32.
+//
+// Il n'est là que pour BORNER la chaîne automatique, jamais pour être affiché :
+// le client a déjà sa jauge, et « il reste N lancements » serait un chiffre de
+// plus à lire pendant que des armes se jouent. La chaîne tourne jusqu'à ne plus
+// pouvoir, et c'est à ce moment-là qu'elle le dit.
+constexpr uintptr_t kOwnSpCur = 0x015ff910;
+
+int OwnSp() {
+  __try {
+    return *reinterpret_cast<const int*>(kOwnSpCur);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 constexpr uintptr_t kInvListHead = 0x015fbab0;
 constexpr int kNodeNext  = 0x00;  // nœud std::list : next
 constexpr int kNodeInfo  = 0x08;  // nœud : value = ItemSkillInfo
@@ -116,6 +132,19 @@ constexpr unsigned kRecastRetryDelayMs = 400;
 constexpr unsigned kRecastNoListMs     = 1000;  // chien de garde : rien n'est revenu
 constexpr int      kMaxRecastRetries   = 3;
 
+// ── Refine AUTOMATIQUE : le délai entre l'arrivée de la liste et l'envoi ──────
+//
+// Il n'est pas là pour ménager le serveur (la tentative part sur un menuskill
+// tout frais, rien ne peut la refuser pour cause de délai) mais pour le JOUEUR :
+// c'est la fenêtre pendant laquelle la liste est à l'écran, l'arme visée
+// surlignée, et le bouton « Arrêter » cliquable. Sans elle, la chaîne défile sans
+// que rien ne soit lisible ni interruptible.
+//
+// ⚠ OnTick est limité à ~100 ms : l'attente réelle vaut 350 à 450 ms, comme pour
+// kAutoRecastDelayMs. Un tour complet coûte donc ~1 s (relance + liste + refine),
+// ce qui laisse le temps de lire le résultat de chaque tentative.
+constexpr unsigned kAutoRefineDelayMs = 350;
+
 // ⏱ VALEURS RÉGLÉES EN JEU (2026-07-30). À 300 ms, la chaîne se coupait par moments
 // avec Entrée maintenue ; à 400 ms, plus du tout.
 //
@@ -155,6 +184,10 @@ constexpr int kSkNodeValue  = 0x08;
 constexpr int kSkOffValid   = 0x04;
 constexpr int kSkOffId      = 0x08;
 constexpr int kSkOffLvLocal = 0x10;
+// Coût SP au niveau courant, écrit par le PAQUET serveur (docs/skill_tree_re.md
+// §9.1). C'est la seule source honnête : le recopier depuis skill_db.yml en ferait
+// une constante à nous, fausse le jour où le serveur change son coût.
+constexpr int kSkOffSp      = 0x14;
 constexpr int kSkOffLearned = 0x30;  // int16, VÉRITÉ SERVEUR
 constexpr int kSkillJobTabs = 4;
 constexpr int kSkillMaxNodes = 256;
@@ -488,8 +521,13 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // vol, et le compteur d'essais repart de zéro pour le tour suivant.
     recast_sent_at_ = 0;
     recast_retries_ = 0;
-    if (empty_list_ && auto_chain_ > 0)
-      auto_stop_reason_ = "Plus aucune arme à refine : relance arrêtée.";
+    if (empty_list_ && (auto_chain_ > 0 || auto_refine_count_ > 0))
+      auto_stop_reason_ = "Plus aucune arme à refine : chaîne arrêtée.";
+    // Nouvelle liste = nouvelle cible à établir, et personne ne l'a encore vue.
+    // Ces deux lignes SONT le garde-fou du refine automatique : tant que DrawList
+    // n'a pas dessiné la liste, la chaîne n'a aucun index à jouer et attend.
+    first_visible_index_ = -1;
+    list_drawn_          = false;
     // ── Que devient la sélection quand une nouvelle liste arrive ? ────────────
     //
     // Elle est RECONDUITE si l'arme visée est encore là : un refine RÉUSSI ne
@@ -529,6 +567,11 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // armé et guettait la prochaine modale portant ce même texte. Un armement qui ne
     // peut plus être consommé est un piège en attente. C'est pourquoi le module a
     // été supprimé (docs make_item_list_re.md §3.1 bis le conserve).
+
+    // La liste est en place : si le refine automatique est demandé, c'est ici que
+    // le tour suivant s'arme. Rien n'est envoyé depuis un handler de paquet — on
+    // pose une échéance, OnTick la transforme en action, FlushPending l'envoie.
+    ScheduleAutoRefine();
     return;
   }
 
@@ -600,33 +643,94 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 //
 // ⚠ Appelée UNIQUEMENT sur un 0x0223 qui répond à une tentative de nous. C'est
 // ce lien de causalité qui borne la chaîne, et non un compteur : une relance ne
-// peut suivre qu'un refine, et un refine ne part que sur un geste du joueur.
-// Chaque tour coûte donc un clic, un minerai et un cast — le rythme est celui du
-// joueur, pas celui du client, et rien ne peut s'emballer.
+// peut suivre qu'un refine.
+//
+// 🔴 Et « un refine ne part que sur un geste du joueur » a cessé d'être vrai le
+// jour où `refine_auto_refine` est apparu : sous cette option, c'est le tour
+// précédent qui déclenche le suivant, et la boucle se referme sur elle-même. Ce
+// n'est plus la main du joueur qui donne le rythme, ce sont les BORNES —
+// AutoStopCause (minerai, SP) et la liste vide du serveur. Elles doivent donc
+// rester exactes : ce sont les seules choses qui arrêtent la chaîne.
 void WeaponRefineWindow::ScheduleAutoRecast(int result) {
   auto_recast_at_ = 0;
-  if (!auto_recast_ || !imgui_enabled_ || !ui_open_) return;
+  if (!AutoChain() || auto_paused_ || !imgui_enabled_ || !ui_open_) return;
 
   // result 2 (« niveau de compétence insuffisant ») et 3 (« minerai manquant »)
   // ne sont pas des tentatives : ce sont des refus de condition, et cette
   // condition ne changera pas d'elle-même. Relancer là-dessus tournerait en rond
   // en brûlant du SP à chaque tour.
   if (result != 0 && result != 1) {
-    auto_stop_reason_ = "Le serveur a refusé la condition : relance arrêtée.";
+    auto_stop_reason_ = "Le serveur a refusé la condition : chaîne arrêtée.";
     return;
   }
-  // Plus un seul minerai des trois : aucune arme ne peut plus entrer dans la
-  // liste (clif_item_refine_list exige celui du niveau de l'arme). Inutile de
-  // payer un cast pour se le faire dire.
-  if (OreCount(kOrePhracon) == 0 && OreCount(kOreEmveretarcon) == 0 &&
-      OreCount(kOreOridecon) == 0) {
-    auto_stop_reason_ = "Plus aucun minerai : relance arrêtée.";
+  // Minerai épuisé, SP épuisé : les bornes qui valent aussi bien pour la relance
+  // seule que pour la chaîne complète, réunies en un seul endroit.
+  if (const char* stop = AutoStopCause()) {
+    auto_stop_reason_ = stop;
     return;
   }
   auto_stop_reason_ = nullptr;
   ++auto_chain_;
   auto_recast_at_ = GetTickCount() + kAutoRecastDelayMs;
   if (auto_recast_at_ == 0) auto_recast_at_ = 1;  // 0 = « rien d'armé »
+}
+
+// ── Les bornes de la chaîne automatique ──────────────────────────────────────
+//
+// Ce que le joueur a demandé en cochant l'option, c'est « ça tourne tant que le
+// sort a du SP ». Ces deux tests sont donc la condition d'arrêt principale, et il
+// n'y en a pas de troisième inventée ici : ni compteur d'armes, ni plafond de
+// tours. Le reste des arrêts vient du SERVEUR (liste vide, refus de condition) et
+// arrive par paquet.
+//
+// Rend le motif à afficher tel quel, ou nullptr si la chaîne peut continuer.
+const char* WeaponRefineWindow::AutoStopCause() const {
+  // Plus un seul minerai des trois : aucune arme ne peut plus entrer dans la
+  // liste (clif_item_refine_list exige celui du niveau de l'arme). Inutile de
+  // payer un cast pour se le faire dire.
+  if (OreCount(kOrePhracon) == 0 && OreCount(kOreEmveretarcon) == 0 &&
+      OreCount(kOreOridecon) == 0)
+    return "Plus aucun minerai : chaîne arrêtée.";
+
+  // ── Le SP, la borne que l'option demande explicitement ────────────────────
+  //
+  // Le coût vient de la FICHE de compétence, que le serveur a envoyée
+  // (CSkillInfo+0x14) : c'est le chiffre du serveur, pas une constante recopiée
+  // de skill_db.yml.
+  //
+  // ⚠ Coût inconnu (0) = on se TAIT et on laisse passer. Bloquer sur une donnée
+  // qu'on n'a pas ferait passer une absence pour un manque de SP ; et le cas est
+  // couvert de toute façon — sans SP le client refuse le lancement, le chien de
+  // garde d'OnTick s'en aperçoit et la chaîne s'arrête là.
+  //
+  // ⚠ Comparaison STRICTE (`<`) : le serveur exige `sp >= cost`, un personnage
+  // pile au coût peut donc encore lancer. S'arrêter à l'égalité gaspillerait le
+  // dernier cast, celui-là même que le joueur a payé en attendant sa régénération.
+  int sp_cost = 0;
+  RefineSkillLevel(&sp_cost);
+  if (sp_cost > 0 && OwnSp() < sp_cost)
+    return "Plus assez de SP pour relancer la compétence : chaîne arrêtée.";
+  return nullptr;
+}
+
+// Arme le refine automatique de la liste qui vient d'arriver.
+//
+// N'envoie RIEN et ne choisit PAS encore l'arme : la cible est établie par OnTick,
+// à l'échéance, à partir de ce que DrawList a réellement affiché. Le décalage est
+// délibéré — cf. first_visible_index_ dans l'en-tête.
+void WeaponRefineWindow::ScheduleAutoRefine() {
+  auto_refine_at_ = 0;
+  if (!auto_refine_ || auto_paused_ || !imgui_enabled_ || !ui_open_) return;
+  // Liste vide, ou déjà consommée : rien à jouer. Le motif d'arrêt, lui, a déjà
+  // été posé par le handler (« plus aucune arme à refine »).
+  if (entries_.empty() || consumed_ || awaiting_result_) return;
+  if (const char* stop = AutoStopCause()) {
+    auto_stop_reason_ = stop;
+    return;
+  }
+  auto_stop_reason_ = nullptr;
+  auto_refine_at_ = GetTickCount() + kAutoRefineDelayMs;
+  if (auto_refine_at_ == 0) auto_refine_at_ = 1;  // 0 = « rien d'armé »
 }
 
 // Ré-arme une relance dont le LANCEMENT n'a rien donné : soit le serveur l'a jetée
@@ -637,7 +741,8 @@ void WeaponRefineWindow::ScheduleAutoRecast(int result) {
 void WeaponRefineWindow::RetryRecast() {
   recast_sent_at_ = 0;
   // Le joueur reste prioritaire, exactement comme pour l'armement initial.
-  if (!auto_recast_ || !imgui_enabled_ || !ui_open_ || !consumed_) return;
+  if (!AutoChain() || auto_paused_ || !imgui_enabled_ || !ui_open_ || !consumed_)
+    return;
   if (pending_ != kActNone) return;  // une action est déjà posée
 
   // Borné, et pas par le compteur de chaîne : celui-ci compte les tours RÉUSSIS.
@@ -807,6 +912,14 @@ void WeaponRefineWindow::ResetSession() {
   auto_stop_reason_ = nullptr;
   recast_sent_at_   = 0;
   recast_retries_   = 0;
+  // Idem pour le refine automatique — et l'arrêt demandé par le joueur ne survit
+  // pas non plus : une nouvelle session repart d'une page blanche, sinon un
+  // « Arrêter » cliqué la veille bloquerait une chaîne qu'on croit relancée.
+  auto_refine_at_    = 0;
+  auto_refine_count_ = 0;
+  auto_paused_       = false;
+  first_visible_index_ = -1;
+  list_drawn_          = false;
 }
 
 void WeaponRefineWindow::OnModeSwitch(ModeMgr::ModeType mode_type,
@@ -876,6 +989,7 @@ void WeaponRefineWindow::CloseForOtherCraft() {
   // `clif_parse_WeaponRefine` sort immédiatement, sans rien effacer.
   pending_ = kActCancel;
   auto_recast_at_ = 0;
+  auto_refine_at_ = 0;
   recast_sent_at_ = 0;
 
   PushLog("Session de refine abandonnée : une fabrication a été lancée (le serveur "
@@ -975,8 +1089,61 @@ void WeaponRefineWindow::OnTick() {
     // à relancer.
     // `consumed_` et non `entries_.empty()` : la table reste maintenant affichée
     // après une tentative, donc sa présence ne dit plus rien de l'état serveur.
-    if (auto_recast_ && ui_open_ && consumed_ && pending_ == kActNone)
-      pending_ = kActRecast;
+    if (AutoChain() && !auto_paused_ && ui_open_ && consumed_ &&
+        pending_ == kActNone) {
+      // Le SP a pu fondre entre l'armement et maintenant (un tour complet dure
+      // près d'une seconde, et rien n'interdit de se faire taper dessus pendant
+      // ce temps-là). On revérifie donc AVANT d'envoyer, sinon la chaîne paie un
+      // lancement que le client refusera.
+      if (const char* stop = AutoStopCause()) {
+        auto_stop_reason_ = stop;
+      } else {
+        pending_ = kActRecast;
+      }
+    }
+  }
+
+  // ── Échéance du refine AUTOMATIQUE ─────────────────────────────────────────
+  // Même mécanique que la relance : on POSE l'action, FlushPending l'envoie hors
+  // frame ImGui.
+  if (auto_refine_at_ &&
+      static_cast<int>(GetTickCount() - auto_refine_at_) >= 0) {
+    // Tout ce qui a pu changer depuis l'armement. La confirmation ouverte compte :
+    // le joueur a demandé une tentative à la main, la chaîne ne lui passe pas
+    // devant.
+    if (!auto_refine_ || auto_paused_ || !imgui_enabled_ || !ui_open_ ||
+        consumed_ || awaiting_result_ || pending_ != kActNone ||
+        confirm_index_ >= 0 || entries_.empty()) {
+      auto_refine_at_ = 0;
+    } else if (!list_drawn_) {
+      // 🔴 La liste n'a pas encore été DESSINÉE : on n'a donc aucune cible, et on
+      // ATTEND (l'échéance reste armée). C'est le garde-fou central de cette
+      // option — aucune arme n'est détruite sans être passée à l'écran d'abord.
+      // La frame suivante renseignera first_visible_index_.
+    } else if (const char* stop = AutoStopCause()) {
+      auto_refine_at_   = 0;
+      auto_stop_reason_ = stop;
+    } else {
+      // La cible : l'arme SÉLECTIONNÉE si elle est visible — c'est la reconduction
+      // de sélection du handler de liste, qui remet la main sur l'arme qu'on était
+      // en train de monter — sinon la première ligne AFFICHÉE, filtre et tri
+      // appliqués. Jamais entries_.front(), qui peut être masquée par le filtre.
+      const int target = sel_visible_ ? sel_index_ : first_visible_index_;
+      auto_refine_at_ = 0;
+      if (target < 0) {
+        // Liste non vide mais rien d'affiché : un filtre exclut tout. S'arrêter en
+        // le disant vaut mieux que tourner en rond sur une liste invisible.
+        auto_stop_reason_ =
+            "Aucune arme ne correspond au filtre : chaîne arrêtée.";
+      } else {
+        sel_index_        = target;
+        pending_          = kActRefine;
+        pending_index_    = target;
+        last_send_tick_   = GetTickCount();  // même cadence que les gestes manuels
+        auto_stop_reason_ = nullptr;
+        ++auto_refine_count_;
+      }
+    }
   }
 
   // ── Chien de garde de la relance ───────────────────────────────────────────
@@ -1153,8 +1320,9 @@ int WeaponRefineWindow::OreCount(uint32_t nameid) const {
   return total;
 }
 
-int WeaponRefineWindow::RefineSkillLevel() {
+int WeaponRefineWindow::RefineSkillLevel(int* sp_cost) {
   int found = 0;
+  int sp    = 0;
   __try {
     // Les cinq listes du bundle : quatre onglets de job + la liste plate.
     for (int tab = -1; tab < kSkillJobTabs && !found; ++tab) {
@@ -1177,10 +1345,14 @@ int WeaponRefineWindow::RefineSkillLevel() {
         int lv = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
         if (lv <= 0) lv = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
         found = lv;
+        // Coût SP au niveau courant, lu sur la MÊME fiche : le chercher à part
+        // rejouerait tout le parcours pour retomber sur ce nœud-ci.
+        sp = *reinterpret_cast<const int*>(v + kSkOffSp);
         break;
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (sp_cost) *sp_cost = sp > 0 ? sp : 0;  // négatif ou absent = « je ne sais pas »
   return found;
 }
 
@@ -1531,6 +1703,11 @@ void WeaponRefineWindow::RequestRefine(int inventory_index) {
   if (now - last_send_tick_ <= kMinSendIntervalMs) return;
   last_send_tick_ = now;
 
+  // Un refine demandé À LA MAIN lève l'arrêt de la chaîne automatique : le joueur
+  // vient de reprendre les commandes, et c'est exactement le geste qui dit « on
+  // repart ». Le réglage, lui, n'a jamais bougé — cf. le bouton « Arrêter ».
+  auto_paused_ = false;
+
   if (confirm_) {
     confirm_index_ = inventory_index;
     confirm_open_  = true;
@@ -1557,6 +1734,12 @@ void WeaponRefineWindow::RequestClose() {
   sel_index_  = -1;
   confirm_index_ = -1;
   confirm_open_  = false;
+  // Fermer, c'est arrêter : une chaîne automatique ne doit pas survivre à la
+  // fenêtre qui l'affiche. (OnTick le verrait aussi par `ui_open_`, mais compter
+  // sur un effet de bord pour couper une boucle qui détruit des armes serait une
+  // mauvaise façon d'écrire ça.)
+  auto_refine_at_ = 0;
+  auto_recast_at_ = 0;
   // La fenêtre se referme : c'est le moment d'écrire sa position, une fois.
   FlushWindowPos();
 }
@@ -1753,6 +1936,12 @@ void WeaponRefineWindow::DrawList(float list_h) {
     // ligne reprend la main — et elle est, elle, bien visible. Testé ICI, après
     // le filtre ET le tri, pour que « première ligne » désigne la première ligne
     // RENDUE.
+    // Première ligne RÉELLEMENT affichée (filtre appliqué, tri appliqué) : c'est
+    // la cible de repli du refine automatique quand la sélection n'est plus
+    // visible. Relevée ici, après le tri, pour qu'elle désigne bien la ligne du
+    // haut telle que le joueur la voit.
+    first_visible_index_ = rows.empty() ? -1 : rows.front().e->index;
+
     if (sort_changed && !rows.empty()) {
       sel_index_   = rows.front().e->index;
       sel_visible_ = true;
@@ -1856,6 +2045,12 @@ void WeaponRefineWindow::DrawList(float list_h) {
     ImGui::PopStyleVar();  // SelectableTextAlign
     ImGui::EndTable();
   }
+  // La liste courante est passée à l'écran. POSÉ HORS de la table, pour que même
+  // un BeginTable en échec (fenêtre repliée, hauteur nulle) le relève : sans ça,
+  // le refine automatique attendrait indéfiniment une cible qui ne viendrait
+  // jamais — first_visible_index_ resterait alors à -1 et la chaîne s'arrêterait
+  // en le disant, ce qui est le bon échec.
+  list_drawn_ = true;
 }
 
 // Les trois minerais, en LIENS d'item : icône + nom + stock, cliquables vers la
@@ -2006,18 +2201,42 @@ void WeaponRefineWindow::DrawFooter() {
     }
   }
 
+  // (Pas de compteur de SP ici : le client en a déjà un, et la chaîne n'a pas
+  // besoin d'être annoncée pour s'arrêter — quand le SP manque, le motif d'arrêt
+  // s'affiche plus bas, à sa place et au bon moment.)
+
   if (awaiting_result_) {
     ImGui::TextColored(V4(kColWarn), "Tentative envoyée — en attente du serveur…");
     ImGui::Spacing();
   }
 
-  // État de la relance automatique. Une action que le client prend de lui-même
+  // État de la chaîne automatique. Une action que le client prend de lui-même
   // doit se VOIR pendant qu'elle a lieu, et dire pourquoi elle s'arrête — sans
   // ça le joueur constate juste que sa fenêtre se rouvre ou ne se rouvre plus.
-  if (auto_recast_at_) {
-    ImGui::TextColored(V4(kColInfo), "Relance automatique… (%d)", auto_chain_);
+  //
+  // ⚠ Le refine automatique passe en ROUGE, pas en bleu comme la relance : la
+  // relance ne fait que redemander une liste, celui-ci va DÉTRUIRE une arme si le
+  // tirage tombe mal. Deux gravités différentes ne peuvent pas porter la même
+  // couleur.
+  if (auto_refine_at_) {
+    // Le numéro de la tentative QUI VA PARTIR (donc jamais « 0 »), pas le compte
+    // de celles qui sont derrière : c'est celle-là que le joueur peut encore
+    // arrêter, et c'est la seule qui l'intéresse à cet instant.
+    ImGui::TextColored(V4(kColBad), "Refine automatique imminent… (n° %d)",
+                       auto_refine_count_ + 1);
     ImGui::Spacing();
-  } else if (auto_stop_reason_ && auto_recast_) {
+  } else if (auto_recast_at_) {
+    ImGui::TextColored(V4(kColInfo),
+                       auto_refine_ ? "Chaîne automatique… (%d)"
+                                    : "Relance automatique… (%d)",
+                       auto_chain_);
+    ImGui::Spacing();
+  } else if (auto_paused_) {
+    ImGui::TextColored(V4(kColWarn),
+                       "Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
+                       "skill » la reprend.");
+    ImGui::Spacing();
+  } else if (auto_stop_reason_ && AutoChain()) {
     ImGui::TextColored(V4(kColWarn), "%s", auto_stop_reason_);
     ImGui::Spacing();
   }
@@ -2091,7 +2310,49 @@ void WeaponRefineWindow::DrawFooter() {
   // Et le bouton suit la même règle : inutile de proposer un geste que la relance
   // automatique est en train de faire — il n'aurait pas le temps d'être cliqué et
   // ne ferait que clignoter. Il reparaît dès que la chaîne s'arrête.
-  if ((entries_.empty() || consumed_) && !relaunch_coming) {
+  //
+  // ⚠ Et il cède sa place au bouton d'ARRÊT quand une chaîne automatique tourne.
+  // Les deux ne peuvent pas être utiles en même temps (relancer à la main pendant
+  // que le client relance tout seul n'a aucun sens), et la largeur de la fenêtre
+  // est calée sur TROIS boutons — en ajouter un quatrième le ferait déborder.
+  //
+  // La chaîne « tourne » dès qu'une de ses étapes est en cours, échéance armée
+  // comme action posée : c'est exactement pendant ces creux que le joueur veut
+  // pouvoir l'arrêter, et un bouton qui clignote entre deux tours ne serait pas
+  // cliquable.
+  const bool chain_running =
+      auto_refine_ && !auto_paused_ &&
+      (auto_refine_at_ != 0 || auto_recast_at_ != 0 || awaiting_result_ ||
+       pending_ == kActRefine || pending_ == kActRecast);
+
+  if (chain_running) {
+    if (ro::RoButton("Arrêter", kBtnRecastW)) {
+      // ⚠ On ne touche PAS à `auto_refine_`, qui est le RÉGLAGE persistant : un
+      // bouton de fenêtre ne décoche pas une case du panneau d'options. C'est
+      // `auto_paused_` qui tient la chaîne, jusqu'à un geste manuel.
+      auto_paused_      = true;
+      auto_refine_at_   = 0;
+      auto_recast_at_   = 0;
+      // Une action POSÉE n'est pas encore partie : on peut encore la retirer.
+      // Une tentative déjà envoyée (`awaiting_result_`), elle, ira à son terme —
+      // le serveur a l'arme, on ne la reprend pas. La chaîne s'arrêtera à son
+      // résultat, ScheduleAutoRecast testant `auto_paused_`.
+      if (pending_ == kActRefine || pending_ == kActRecast) pending_ = kActNone;
+      auto_stop_reason_ = nullptr;
+      PushLog("Chaîne automatique arrêtée à la demande.", kColWarn);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip(
+          "Arrête le refine automatique tout de suite.\n"
+          "\n"
+          "Une tentative DÉJÀ envoyée ira à son terme : le serveur a l'arme,\n"
+          "elle ne se reprend pas. Rien ne repartira ensuite.\n"
+          "\n"
+          "Le réglage reste coché : un clic sur « Refine » ou « Relancer le\n"
+          "skill » reprend la chaîne.");
+    }
+    ImGui::SameLine();
+  } else if ((entries_.empty() || consumed_) && !relaunch_coming) {
     ImGui::BeginDisabled(awaiting_result_);
     if (ro::RoButton("Relancer le skill", kBtnRecastW)) {
       pending_ = kActRecast;
@@ -2101,6 +2362,9 @@ void WeaponRefineWindow::DrawFooter() {
       auto_recast_at_   = 0;
       auto_stop_reason_ = nullptr;
       recast_retries_   = 0;
+      // …et c'est le geste manuel qui LÈVE l'arrêt demandé plus tôt : reprendre la
+      // main, c'est reprendre la chaîne. Le réglage n'a jamais été décoché.
+      auto_paused_      = false;
     }
     ImGui::EndDisabled();
     // Infobulle SUR le bouton (pas un « (?) » à côté) : c'est le bouton qui a
@@ -2198,6 +2462,42 @@ bool WeaponRefineWindow::DrawSettings() {
       "Si la compétence est jetée par son délai de lancement, la relance est "
       "réessayée un peu plus tard (3 fois au plus) au lieu de s'arrêter en "
       "silence.");
+
+  // ── La seule option du plugin qui AGISSE à la place du joueur ──────────────
+  // Elle est donc présentée comme telle : l'avertissement est SOUS la case, en
+  // rouge, et pas caché dans une infobulle qu'on peut ne jamais ouvrir. Un joueur
+  // doit pouvoir mesurer ce qu'il coche sans avoir à survoler quoi que ce soit.
+  changed |= ro::RoCheckbox("Refiner automatiquement (chaîne complète)",
+                            &auto_refine_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Enchaîne TOUT SEUL : la première arme de la liste est jouée, la "
+      "compétence relancée, et ainsi de suite jusqu'à ne plus pouvoir — c'est "
+      "le SP qui borne la chaîne, et elle s'arrête quand il manque.\n"
+      "\n"
+      "Implique la relance automatique (sans elle le serveur n'enverrait plus de "
+      "liste). La confirmation est IGNORÉE : une chaîne qui demande son accord à "
+      "chaque tour n'en est pas une.\n"
+      "\n"
+      "L'arme visée est celle qui est sélectionnée si elle est encore là (on "
+      "continue donc de monter la même), sinon la première ligne AFFICHÉE — "
+      "filtre et tri compris. Rien n'est joué avant que la liste n'ait été "
+      "affichée au moins une fois.\n"
+      "\n"
+      "S'arrête seule : plus de SP, plus de minerai, plus d'arme dans la liste, "
+      "ou refus du serveur. Un bouton « Arrêter » apparaît dans la fenêtre "
+      "pendant toute la chaîne.");
+  if (auto_refine_) {
+    ImGui::Indent();
+    ImGui::PushStyleColor(ImGuiCol_Text, V4(kColBad));
+    ImGui::TextWrapped(
+        "Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
+        "confirmation. La chaîne joue les armes de la liste jusqu'à épuisement "
+        "du SP.");
+    ImGui::PopStyleColor();
+    ImGui::Unindent();
+  }
+
   changed |= ro::RoCheckbox("Journal de session", &show_history_);
   ImGui::SameLine();
   HelpMarker(

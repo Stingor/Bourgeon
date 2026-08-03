@@ -790,6 +790,46 @@ l'implémentation a corrigé du plan initial.
 
     L'état est affiché pendant qu'il a lieu (« Relance automatique… (n) ») et la raison de
     l'arrêt reste à l'écran : une action que le client prend de lui-même doit se voir.
+
+11 bis. **Le refine automatique complet (`refine_auto_refine`, OFF).** Demandé ensuite, et il
+    franchit délibérément la ligne du point 11 : sous cette option, c'est le tour précédent
+    qui déclenche le suivant, la boucle se referme sur elle-même et **plus aucun clic
+    n'intervient**. La consigne était « tant que le sort a des SP, il refine ».
+
+    Ce qui change, et ce qu'il faut savoir en relisant le code :
+    - l'option **implique** la relance de compétence (`AutoChain()` = `auto_recast_ ||
+      auto_refine_`) : sans liste qui revient, il n'y aurait pas de second tour ;
+    - la **confirmation est contournée** — le chemin auto pose `pending_ = kActRefine`
+      directement, sans passer par `RequestRefine`. Une chaîne qui demande son accord à
+      chaque tour n'en est pas une, et c'est écrit noir sur rouge sous la case à cocher ;
+    - la borne annoncée est le **SP**. Le coût vient de la fiche de compétence
+      (`CSkillInfo+0x14`, écrit par le paquet serveur — cf. `skill_tree_re.md` §9.1), jamais
+      de `skill_db.yml` recopié ; le SP courant est le global de la barre de `UIBasicInfoWnd`
+      (`0x015FF910`). Coût **inconnu (0) ⇒ on se tait et on laisse passer** : le chien de
+      garde de la relance rattrapera. Le contrôle est refait **juste avant l'envoi**, pas
+      seulement à l'armement — un tour dure près d'une seconde, le SP peut fondre entre les
+      deux ;
+    - **la cible ne peut être qu'une ligne AFFICHÉE.** `first_visible_index_` est la première
+      ligne rendue (filtre **et** tri appliqués), et `list_drawn_` dit si la liste courante
+      est passée à l'écran depuis son arrivée. Les deux sont remis à zéro à chaque `0x0221` :
+      tant que `DrawList` n'a pas tourné, la chaîne **attend**. C'est le garde-fou central —
+      aucune arme n'est détruite sans être passée sous les yeux du joueur. Liste non vide
+      mais rien d'affiché (filtre qui exclut tout) ⇒ arrêt, en le disant ;
+    - l'arme visée est `sel_visible_ ? sel_index_ : first_visible_index_`. Un **succès**
+      reconduit la sélection (on continue de monter la même arme, jusqu'au plafond) ; un
+      **échec** l'a détruite, `sel_index_` retombe à -1 et la chaîne passe à la première
+      ligne suivante ;
+    - un bouton **« Arrêter »** prend la place de « Relancer le skill » pendant toute la
+      chaîne (la largeur de la fenêtre est calée sur trois boutons). Il pose `auto_paused_`,
+      un drapeau de **session** : il ne décoche pas le réglage, et un clic manuel sur
+      « Refine » ou « Relancer » le lève. Une tentative **déjà envoyée** va à son terme —
+      le serveur a l'arme.
+
+    ⚠ Le pavé au-dessus de `ScheduleAutoRecast` disait « un refine ne part que sur un geste
+    du joueur » : ce n'est plus vrai, et le commentaire le dit maintenant explicitement. Ce
+    ne sont plus les clics qui bornent la chaîne mais `AutoStopCause()` (minerai, SP) et les
+    réponses du serveur. **Ces bornes sont donc les seules choses qui l'arrêtent** — les
+    toucher, c'est toucher au frein.
 12. **Les trois minerais sont des LIENS d'item.** Icône + nom + stock, soulignés au survol,
     curseur main, aperçu au survol et ouverture de la description au clic — le pendant ImGui
     d'un `<ITEM>` de chat. Deux choses à retenir :
@@ -934,13 +974,23 @@ l'implémentation a corrigé du plan initial.
   de job level) : hors de portée du client. Le coder en dur contredirait la règle « jamais de
   données codées en dur » et mentirait dès que le serveur ajuste sa table. Ça demande un
   opcode custom.
-- **Aucun refine automatique.** Même avec la relance automatique activée, chaque tentative
-  demande un clic (ou Entrée). C'est la limite explicite du point 11 ci-dessus.
+- ~~**Aucun refine automatique.**~~ **Fait**, et opt-in : `refine_auto_refine` (défaut OFF).
+  Tant qu'il est décoché, la limite d'origine tient — chaque tentative demande un clic ou
+  Entrée. Coché, la chaîne tourne seule ; cf. le point 11 bis.
+- **Aucun compteur de SP affiché.** La borne existe (la chaîne s'arrête quand le SP manque)
+  mais elle ne s'affiche pas : le client a déjà sa jauge, et « il reste N lancements » serait
+  un chiffre de plus à lire pendant que des armes se jouent. Le motif d'arrêt, lui, s'affiche
+  au moment où il tombe.
 
 ### Réglages persistants
 
 `refine_imgui` (basculé en groupe), `refine_confirm`, `refine_show_cards`, `refine_filter`,
-`refine_desc_tooltip`, `refine_history` (OFF), `refine_log_time`, `refine_auto_recast` (OFF).
+`refine_desc_tooltip`, `refine_history` (OFF), `refine_log_time`, `refine_auto_recast` (OFF),
+`refine_auto_refine` (OFF).
+
+⚠ `refine_auto_refine` n'entre **pas** dans le groupe « Interface moderne » : `SetModernInterface`
+ne bascule que `refine_imgui`. Activer l'interface moderne n'allume donc jamais une option qui
+joue des armes toute seule.
 
 L'horodatage du journal est **calculé à l'insertion et toujours stocké** ; seul son affichage
 suit le réglage. Ne le composer qu'à la demande priverait de leur heure toutes les lignes déjà

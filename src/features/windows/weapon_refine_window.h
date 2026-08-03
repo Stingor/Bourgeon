@@ -152,6 +152,18 @@ class WeaponRefineWindow : public Plugin {
   // serveur. Le choix de l'arme et le déclenchement restent des clics. La
   // distinction est le cœur du garde-fou — cf. le pavé dans le .cc.
   bool& auto_recast()  { return auto_recast_; }
+
+  // « refine_auto_refine » : la chaîne COMPLÈTE, sans le moindre clic — le refine
+  // de la première arme de la liste part tout seul, puis la compétence est
+  // relancée, et ainsi de suite tant que le personnage a le SP de la relancer.
+  // OPT-IN, défaut OFF, et le seul réglage du plugin qui AGISSE à la place du
+  // joueur.
+  //
+  // 🔴 Chaque tentative peut DÉTRUIRE l'arme, et celle-ci part sans confirmation :
+  // c'est bien une automatisation, pas un raccourci d'affichage. Elle implique la
+  // relance de compétence (sans elle, la liste ne revient jamais) et s'arrête
+  // d'elle-même sur la première borne atteinte — cf. AutoStopCause dans le .cc.
+  bool& auto_refine()  { return auto_refine_; }
   bool& enter_key()    { return enter_key_; }
 
  private:
@@ -202,11 +214,29 @@ class WeaponRefineWindow : public Plugin {
   // Nombre d'exemplaires du minerai `nameid` en inventaire (somme des piles).
   int OreCount(uint32_t nameid) const;
   // Niveau APPRIS de WS_WEAPONREFINE (0 si introuvable) = plafond de refine.
-  static int RefineSkillLevel();
+  // `sp_cost` (optionnel) reçoit le coût SP au niveau courant, que le SERVEUR
+  // envoie avec la fiche de compétence (CSkillInfo+0x14) — donc jamais une
+  // constante à nous. 0 = inconnu, et l'appelant doit alors se taire.
+  static int RefineSkillLevel(int* sp_cost = nullptr);
 
   // Arme (ou refuse) une relance automatique de la compétence après un résultat.
   // N'envoie rien : c'est FlushPending qui joue le chemin natif.
   void ScheduleAutoRecast(int result);
+
+  // Arme le refine AUTOMATIQUE de la liste qui vient d'arriver. N'envoie rien non
+  // plus : pose une échéance que OnTick transforme en action.
+  void ScheduleAutoRefine();
+
+  // Une chaîne automatique est-elle demandée ? Le refine automatique IMPLIQUE la
+  // relance de compétence : sans elle le serveur n'enverrait plus jamais de liste
+  // et la chaîne s'arrêterait au premier tour. Un seul endroit pour cette règle,
+  // sinon elle se perd dans les cinq tests qui la consultent.
+  bool AutoChain() const { return auto_recast_ || auto_refine_; }
+
+  // La chaîne peut-elle continuer ? Rend le motif d'arrêt (à afficher tel quel) ou
+  // nullptr. Consultée à l'armement ET juste avant l'envoi : le SP, lui, peut
+  // avoir fondu entre les deux.
+  const char* AutoStopCause() const;
 
   // Ré-arme une relance dont le LANCEMENT n'a rien donné — la compétence a été jetée
   // par le délai de cast, ou rien n'est revenu. Distinct de ScheduleAutoRecast, qui
@@ -342,6 +372,20 @@ class WeaponRefineWindow : public Plugin {
   // déclenche un refine doit passer par ce drapeau, jamais par sel_index_ seul.
   bool sel_visible_ = false;
 
+  // ── Ce que le refine AUTOMATIQUE a le droit de viser ──────────────────────
+  //
+  // Index de la PREMIÈRE ligne rendue (filtre et tri appliqués), -1 si aucune.
+  // Écrit par DrawList, remis à -1 à chaque nouvelle liste — et c'est ce dernier
+  // point qui en fait un garde-fou plutôt qu'un cache : tant que la liste n'a pas
+  // été DESSINÉE au moins une fois, la chaîne automatique n'a aucune cible et
+  // attend. On ne détruit jamais une arme qui n'est pas passée sous les yeux du
+  // joueur.
+  int  first_visible_index_ = -1;
+  // La liste courante a-t-elle été rendue depuis son arrivée ? Distingue « pas
+  // encore dessinée » (on attend) de « dessinée, mais le filtre ne laisse rien
+  // voir » (on arrête, en le disant).
+  bool list_drawn_ = false;
+
   // Le tri n'a plus d'état ici : il vit dans les ImGuiTableSortSpecs de la table,
   // c'est-à-dire dans l'en-tête sur lequel le joueur clique. Sans aucun tri
   // demandé (mode tri-état), l'ordre affiché est celui du serveur.
@@ -408,6 +452,20 @@ class WeaponRefineWindow : public Plugin {
   // Pourquoi la chaîne s'est arrêtée, à afficher tel quel. Vide = pas d'arrêt.
   const char* auto_stop_reason_ = nullptr;
 
+  // Échéance du refine automatique (GetTickCount, 0 = rien d'armé) et nombre de
+  // tentatives que la chaîne a déclenchées seule — celui-là compte les ARMES
+  // jouées, là où auto_chain_ compte les relances de compétence.
+  unsigned auto_refine_at_    = 0;
+  int      auto_refine_count_ = 0;
+
+  // ── Le joueur a demandé l'ARRÊT ────────────────────────────────────────────
+  // Un bouton d'arrêt qui se contenterait de désarmer l'échéance ne servirait à
+  // rien : la liste suivante réarmerait la chaîne dans la demi-seconde. Ce drapeau
+  // la tient en respect jusqu'à un geste MANUEL (bouton « Refine », « Relancer »)
+  // ou une nouvelle session — sans toucher au réglage persistant, qui appartient
+  // au panneau d'options et pas à un bouton de fenêtre.
+  bool auto_paused_ = false;
+
   bool confirm_      = true;
   bool show_cards_   = true;
   bool show_filter_  = true;
@@ -415,6 +473,7 @@ class WeaponRefineWindow : public Plugin {
   bool show_history_ = false;
   bool log_time_     = true;
   bool auto_recast_  = false;
+  bool auto_refine_  = false;
   // Entrée déclenche-t-elle le refine ? Décoché (défaut) = la touche n'est PAS
   // confisquée et le chat reste accessible pendant qu'on refine. ⚠ La modale de
   // confirmation, elle, garde la touche quoi qu'il arrive (cf. WantsEnterKey) :
