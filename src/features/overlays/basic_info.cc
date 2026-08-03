@@ -155,6 +155,64 @@ constexpr int   kCartDirOffset = 0;
 // En pose de combat le corps pivote d'un cran ; le chariot suit.
 constexpr int   kCartCombatShift = 1;
 
+// ── Aperçu d'équipement (mouseover) ──────────────────────────────────────────
+//
+// L'aperçu compose le personnage portant SEULEMENT l'article survolé, comme la
+// fenêtre native : il faut donc savoir dans quel slot de tête ranger son viewID.
+// Le mapping vient de `UICostumePreviewWnd` OnMsg 0x17.
+//
+// Le slot ARME n'y figure pas — le natif non plus ne prévisualise que la tête et
+// la cape.
+// Masques d'emplacement, tels que le serveur les envoie dans la définition d'un
+// article — un bit par slot, et les articles multi-slots en portent plusieurs.
+enum Emplacement {
+  kEmpHeadLow        = 0x1,
+  kEmpGarment        = 0x4,
+  kEmpHeadTop        = 0x100,
+  kEmpHeadMid        = 0x200,
+  kEmpCostumeTop     = 0x400,
+  kEmpCostumeMid     = 0x800,
+  kEmpCostumeLow     = 0x1000,
+  kEmpCostumeGarment = 0x2000,
+  // Combinaisons courantes : un casque intégral occupe les trois slots de tête.
+  kEmpTopMid            = kEmpHeadTop | kEmpHeadMid,                 // 0x300
+  kEmpTopMidLow         = kEmpHeadTop | kEmpHeadMid | kEmpHeadLow,   // 0x301
+  kEmpMidLow            = kEmpHeadMid | kEmpHeadLow,                 // 0x201
+  kEmpCostumeTopMid     = kEmpCostumeTop | kEmpCostumeMid,           // 0xc00
+  kEmpCostumeTopLow     = kEmpCostumeTop | kEmpCostumeLow,           // 0x1400
+  kEmpCostumeMidLow     = kEmpCostumeMid | kEmpCostumeLow,           // 0x1800
+  kEmpCostumeTopMidLow  = kEmpCostumeTop | kEmpCostumeMid | kEmpCostumeLow,
+};
+
+enum PvSlot { PV_NONE, PV_TOP, PV_MID, PV_LOW, PV_GARMENT };
+
+// Range l'article dans UN slot pour l'aperçu : le plus haut qu'il occupe.
+//
+// ⚠ Une énumération de cas, et non un test de bits : c'est ce que fait
+// `UICostumePreviewWnd` (OnMsg 0x17), et un test de bits donnerait un autre
+// résultat sur les combinaisons — `kEmpTopMidLow` irait en tête basse alors que
+// le natif le prévisualise en tête haute.
+PvSlot MapEmplacementToSlot(int emp) {
+  switch (emp) {
+    case kEmpHeadTop:
+    case kEmpCostumeTop:
+    case kEmpCostumeTopLow:
+    case kEmpTopMid:
+    case kEmpCostumeTopMid:       return PV_TOP;
+    case kEmpHeadMid:
+    case kEmpCostumeMid:
+    case kEmpMidLow:
+    case kEmpCostumeMidLow:       return PV_MID;
+    case kEmpHeadLow:
+    case kEmpCostumeLow:
+    case kEmpTopMidLow:
+    case kEmpCostumeTopMidLow:    return PV_LOW;
+    case kEmpGarment:
+    case kEmpCostumeGarment:      return PV_GARMENT;
+    default:                      return PV_NONE;
+  }
+}
+
 // ── Coiffes portees ─────────────────────────────────────────
 // Résout les 3 view ids de coiffe (top/mid/low) à afficher, avec :
 //  (1) précédence costume par slot (tableau costume session+0x2b30) quand `show_costume` ;
