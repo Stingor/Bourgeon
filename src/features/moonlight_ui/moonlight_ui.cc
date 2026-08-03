@@ -57,6 +57,7 @@
 #include "features/patches/window_pos_tweaks.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/spr_effect_lab.h"
+#include "features/fx/ground_paint.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
@@ -601,15 +602,17 @@ const moonlight_ui::SettingDesc kSkillBarColorSettings[] = {
      MLUI_LITERAL_ARGB(0xFFFFFFFF)},
 };
 
-// « Sol uni » du SPR Lab (fond de capture). Son état n'appartient pas à un
-// plugin enregistré mais à deux globales de spr_lab, atteintes par des fonctions
-// libres : le résolveur s'écrit à la main, il ne peut jamais rendre nullptr.
+// « Sol uni » (fond de capture, section Staff Tools). Son état n'appartient pas à
+// un plugin enregistré mais à deux globales de ground_paint, atteintes par des
+// fonctions libres : le résolveur s'écrit à la main, il ne peut jamais rendre nullptr.
+// Les CLÉS YAML restent « ground_paint »/« ground_paint_color » : les renommer
+// perdrait le réglage de tous ceux qui l'ont déjà enregistré.
 const moonlight_ui::SettingDesc kGroundPaintSettings[] = {
     {"ground_paint", SType::kBool,
-     []() -> void* { return &spr_lab::ground_paint_enabled(); },
+     []() -> void* { return &ground_paint::enabled(); },
      MLUI_LITERAL(bool, false)},
     {"ground_paint_color", SType::kColorHex,
-     []() -> void* { return spr_lab::ground_color(); },
+     []() -> void* { return ground_paint::color(); },
      MLUI_LITERAL_ARGB(0xFF000000)},  // noir opaque
 };
 
@@ -1059,6 +1062,11 @@ void MoonlightUi::PostLoadApply() {
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* screen_fx = Bourgeon::Instance().screen_fx())
     screen_fx->Apply();  // pousse le post-traitement vers la couche d3d9
+
+  // « Sol uni » : le réglage peut revenir ACTIF du YAML sans que le panneau Staff
+  // Tools ait jamais été ouvert de la session — ses hooks de passe terrain doivent
+  // alors exister quand même, sinon le sol reste texturé et la case ment.
+  if (ground_paint::enabled()) ground_paint::EnsureInstalled();
 }
 
 void MoonlightUi::WriteSettingsFile() {
@@ -1694,6 +1702,12 @@ void MoonlightUi::OnRenderUI() {
 
       // SeparatorText("SPR Lab");
       // spr_lab::DrawDebugControls();
+
+      // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur
+      // unie sans toucher à sa géométrie (l'occlusion reste correcte). Vivait dans
+      // le SPR Lab, dont il ne partageait rien — et que plus rien ne dessine.
+      SeparatorText("Fond de capture");
+      ground_paint::DrawSettings();
 
       // ── Journal Bourgeon ────────────────────────────────────────────────────
       // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/

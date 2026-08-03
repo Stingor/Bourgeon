@@ -129,6 +129,8 @@ set(BOURGEON_FILES
 	# fx/
 	"features/fx/ez_effect_capture.cc"
 	"features/fx/ez_effect_capture.h"
+	"features/fx/ground_paint.cc"
+	"features/fx/ground_paint.h"
 	"features/fx/hat_effect_depth.cc"
 	"features/fx/hat_effect_depth.h"
 	"features/fx/screen_fx.cc"
