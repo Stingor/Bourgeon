@@ -324,11 +324,13 @@ bool D3D9_CompositeQuadsRGBA(const D3D9TexQuad* quads, int quad_count,
             if (!q.tex) continue;
             dev->SetTexture(0, static_cast<IDirect3DBaseTexture9*>(q.tex));
             const float o = -0.5f;  // pixel-center rasterisation offset
+            // Les coins arrivent dans l'ordre horaire (HG, HD, BD, BG) ; le
+            // triangle-strip veut HG, HD, BG, BD — d'où l'ordre 0, 1, 3, 2.
             const V vtx[4] = {
-                {q.x0 + o, q.y0 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v0},
-                {q.x1 + o, q.y0 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v0},
-                {q.x0 + o, q.y1 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v1},
-                {q.x1 + o, q.y1 + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v1},
+                {q.cx[0] + o, q.cy[0] + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v0},
+                {q.cx[1] + o, q.cy[1] + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v0},
+                {q.cx[3] + o, q.cy[3] + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u0, q.v1},
+                {q.cx[2] + o, q.cy[2] + o, 0.0f, 1.0f, 0xFFFFFFFFu, q.u1, q.v1},
             };
             dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vtx, sizeof(V));
         }

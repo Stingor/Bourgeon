@@ -7,9 +7,7 @@
 
 #include "ragnarok/lua.h"  // la cape interroge deux globaux Lua
 #include "ui/head_icon.h"
-#include "ui/ro_imgui.h"  // Cp949ToUtf8 : les chemins du GRF sont en CP949
 #include "ui/sprite_view.h"
-#include "utils/log_console.h"
 
 namespace ro {
 namespace {
@@ -456,6 +454,10 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   unsigned actor_frame = 0;
   if (anim_seconds >= 0.0f && !opts.freeze_body && (anim == 1 || anim == 4))
     actor_frame = SpriteFrameIndex(body.res, body_pose, anim_seconds);
+  // Image imposée : elle court-circuite l'horloge ET `freeze_body`. C'est ce
+  // que veut un enregistrement — viser une image, pas un instant.
+  if (opts.force_frame >= 0)
+    actor_frame = static_cast<unsigned>(opts.force_frame);
 
   // 🔴 DEUX résolutions du corps, exactement comme pour les pièces rapportées :
   // l'image 0 sert à MESURER, l'image courante à DESSINER. N'en faire qu'une
@@ -612,6 +614,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   };
   Attached list[kMaxPieces] = {};
   int list_n = 0;
+
+  // Boîte de la TÊTE et de ses coiffes, en unités .act — de quoi cadrer un
+  // portrait sur le visage plutôt que sur la silhouette entière.
+  float head_x0 = 0.0f, head_y0 = 0.0f, head_x1 = 0.0f, head_y1 = 0.0f;
+  bool  head_seen = false;
 
   // ── LA TABLE D'ORDRE, du fond vers l'avant ────────────────────────────────
   //
@@ -803,37 +810,6 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   SpriteQuad back[kMaxQuads];
   int back_n = 0;
 
-  // Mesure de l'assemblage : réémise seulement quand la pose ou le gabarit
-  // change. La clé mêle la pose au profil du corps (nombre d'actions, nombre
-  // d'images) et au nombre de pièces, de sorte qu'un changement de CLASSE la
-  // fasse basculer lui aussi — sinon comparer deux classes dans la même pose ne
-  // donnerait qu'une seule ligne.
-  //
-  // ⚠ Un ANNEAU de clés, pas une seule : plusieurs pantins cohabitent dans la
-  // même frame — l'avatar de la fiche et l'aperçu d'article, par exemple. Avec
-  // une clé unique ils se la volent tour à tour et le journal se réémet à chaque
-  // frame, ce qui le rend illisible au moment précis où on en a besoin.
-  static unsigned s_diag_keys[4] = {0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
-                                    0xFFFFFFFFu};
-  static int s_diag_next = 0;
-  const int body_nf = SpriteActionFrameCount(body.res, body_pose);
-  const unsigned diag_key =
-      pose * 1000003u + static_cast<unsigned>(SpriteActionCount(body.res)) * 8191u +
-      static_cast<unsigned>(body_nf) * 131u + static_cast<unsigned>(list_n);
-  bool diag = true;
-  for (unsigned k : s_diag_keys)
-    if (k == diag_key) { diag = false; break; }
-  if (diag) {
-    s_diag_keys[s_diag_next] = diag_key;
-    s_diag_next = (s_diag_next + 1) & 3;
-    LogDiag(
-        "[Pantin] pose={} | corps : action={} ({} actions) | image={} ({} "
-        "images) | ancre={},{} attr={}{} | {}",
-        pose, body_pose, SpriteActionCount(body.res), actor_frame, body_nf,
-        body_cax, body_cay, body_cattr, body_canchored ? "" : " ABSENTE",
-        Cp949ToUtf8(base));
-  }
-
   for (int i = 0; i < list_n; ++i) {
     SpriteQuad* dst = list[i].behind ? back : quads;
     int& dst_n      = list[i].behind ? back_n : n;
@@ -1004,27 +980,6 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
                                    &head_ray, &head_rattr);
     }
 
-    // ── Mesure de l'assemblage ────────────────────────────────────────────
-    //
-    // Une ligne PAR PIÈCE, réémise seulement quand la pose ou le gabarit
-    // change — jamais par image, sinon la console est inutilisable.
-    //
-    // Elle porte tout ce qui peut faire dérailler une pièce, et ces causes
-    // donnent le MÊME symptôme à l'écran : action repliée sur autre chose que
-    // ce qui était demandé, nombre d'images inégal, ancre absente, `attr` qui
-    // ne concorde pas. Sans les chiffres, on ne peut que deviner.
-    if (diag) {
-      int px = 0, py = 0, pattr = -1;
-      const bool pok = SpriteFrameAnchor(piece.res, piece_pose, pf, &px, &py,
-                                         &pattr);
-      LogDiag(
-          "[Pantin]   {} : demande={} -> action={} ({} actions) | image={} "
-          "({} images) | ancre={},{} attr={}{} | decalage={},{} | {}",
-          list[i].tag ? list[i].tag : "?", pose, piece_pose,
-          SpriteActionCount(piece.res), pf, piece_frames, px, py, pattr,
-          pok ? "" : " ABSENTE", last_dx, last_dy, Cp949ToUtf8(used));
-    }
-
     // Cadrage : image 0 de la pièce, à son ancre D'IMAGE 0. Rien de ce qui varie
     // d'une image à l'autre n'entre dans la boîte englobante — ni les quads, ni
     // le décalage qui les déplace.
@@ -1045,10 +1000,28 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
         SpriteResolveFrame(piece.res, piece_pose, pf, tmp, kMaxQuads - dst_n,
                            list[i].rotate);
     if (m <= 0) continue;
+    // La tête et ses coiffes forment la boîte que réclame un portrait. On la
+    // relève sur les quads DESSINÉS : c'est là qu'ils sont, et une vignette de
+    // tête n'a pas le problème de « respiration » du cadrage général — elle est
+    // recalculée à chaque frame de toute façon.
+    const bool is_head_part = list[i].head_ref || list[i].on_head;
     for (int k = 0; k < m; ++k) {
       for (int c = 0; c < 4; ++c) {
         tmp[k].corner[c].x += last_dx;
         tmp[k].corner[c].y += last_dy;
+        if (is_head_part) {
+          const float hx = tmp[k].corner[c].x, hy = tmp[k].corner[c].y;
+          if (!head_seen) {
+            head_x0 = head_x1 = hx;
+            head_y0 = head_y1 = hy;
+            head_seen = true;
+          } else {
+            if (hx < head_x0) head_x0 = hx;
+            if (hx > head_x1) head_x1 = hx;
+            if (hy < head_y0) head_y0 = hy;
+            if (hy > head_y1) head_y1 = hy;
+          }
+        }
       }
       dst[dst_n++] = tmp[k];
     }
@@ -1122,8 +1095,16 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // PIEDS en bas : c'est le bas de la boîte de référence qui vient se poser sur
   // le bas du rectangle, pas son centre — sinon un personnage coiffé d'un grand
   // chapeau s'enfoncerait dans le sol.
-  const float origin_x = x + w * 0.5f - ref_cx * scale;
-  const float origin_y = y + h - ref_feet * scale;
+  float origin_x = x + w * 0.5f - ref_cx * scale;
+  float origin_y = y + h - ref_feet * scale;
+
+  // Placement imposé par l'appelant : il a mesuré, il a décidé. Tout le calcul
+  // ci-dessus reste utile — il a produit les boîtes qu'il a lues.
+  if (opts.place_override) {
+    origin_x = opts.place_override->origin_x;
+    origin_y = opts.place_override->origin_y;
+    scale    = opts.place_override->scale;
+  }
 
   // Le cadrage est fixé : tout ce qui veut se caler sur le pantin peut l'être.
   // 🔴 (origin_x, origin_y) est l'ORIGINE DE L'ACTEUR, pas le centre de la
@@ -1134,7 +1115,28 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   placement.origin_x = origin_x;
   placement.origin_y = origin_y;
   placement.scale    = scale;
+  placement.head_x0 = head_x0;  placement.head_y0 = head_y0;
+  placement.head_x1 = head_x1;  placement.head_y1 = head_y1;
+  placement.head_valid = head_seen;
+  placement.body_x0 = body_min_x;  placement.body_y0 = body_min_y;
+  placement.body_x1 = body_max_x;  placement.body_y1 = body_max_y;
+  placement.body_valid = true;
+  // Ce qu'il faut pour rejouer l'action entière sans rouvrir le `.act`.
+  placement.frame_count = SpriteActionFrameCount(body.res, body_pose);
+  if (placement.frame_count < 1) placement.frame_count = 1;
+  {
+    const float ms = SpriteFrameIntervalMs(body.res, body_pose);
+    // Le `.act` compte en unités de 25 ms — c'est la granularité que le format
+    // exprime, et la seule qu'un GIF ait besoin de connaître.
+    int units = (ms > 0.0f) ? static_cast<int>(ms / 25.0f + 0.5f) : 4;
+    if (units < 1) units = 1;
+    placement.frame_delay = units;
+  }
   if (opts.out_placement) *opts.out_placement = placement;
+
+  // Mesure seule : on avait besoin des boîtes, pas des pixels.
+  if (opts.measure_only) return true;
+
   // AVANT le moindre calque — y compris ceux de la cape passée derrière : un
   // effet « avant le personnage » se place sous TOUT le pantin.
   if (opts.underlay) opts.underlay(opts.underlay_ctx, placement);
@@ -1156,10 +1158,22 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
                       origin_y + q[i].corner[c].y * scale);
       const ImVec2& uv0 = q[i].uv0;
       const ImVec2& uv1 = q[i].uv1;
-      draw_list->AddImageQuad(reinterpret_cast<ImTextureID>(q[i].tex), p[0],
-                              p[1], p[2], p[3], ImVec2(uv0.x, uv0.y),
-                              ImVec2(uv1.x, uv0.y), ImVec2(uv1.x, uv1.y),
-                              ImVec2(uv0.x, uv1.y), col);
+      if (opts.quad_sink) {
+        // Le calque part chez l'appelant au lieu d'ImGui — même géométrie, même
+        // ordre. C'est ce que consomme l'export GIF pour compositer hors écran.
+        DollQuad out;
+        out.tex = q[i].tex;
+        for (int c = 0; c < 4; ++c) out.corner[c] = p[c];
+        out.uv0  = uv0;
+        out.uv1  = uv1;
+        out.tint = col;
+        opts.quad_sink(opts.quad_sink_ctx, out);
+      } else {
+        draw_list->AddImageQuad(reinterpret_cast<ImTextureID>(q[i].tex), p[0],
+                                p[1], p[2], p[3], ImVec2(uv0.x, uv0.y),
+                                ImVec2(uv1.x, uv0.y), ImVec2(uv1.x, uv1.y),
+                                ImVec2(uv0.x, uv1.y), col);
+      }
       drawn = true;
     }
   };

@@ -95,10 +95,20 @@ void D3D9_RequestScreenshot(const char* filepath);
 // One textured quad for offscreen avatar compositing: `tex` = IDirect3DTexture9*,
 // (x0,y0)-(x1,y1) = destination rect in canvas pixels, (u0,v0)-(u1,v1) = source UVs
 // (pass them pre-swapped for a horizontal mirror).
+// Un quad texturé, donné par ses QUATRE coins — dans l'ordre haut-gauche,
+// haut-droit, bas-droit, bas-gauche.
+//
+// 🔴 Quatre coins et non un rectangle : les calques d'arme et de bouclier sont
+// TOURNÉS par leur `.act` (un `.spr` de bouclier ne contient que deux images, de
+// face et de dos ; tout le mouvement du bras vient des transformations). Un
+// `x0,y0,x1,y1` les redresserait.
+//
+// Les UV restent un rectangle : c'est la GÉOMÉTRIE qui tourne, pas la texture.
+// `mirror` s'exprime en échangeant u0 et u1, comme au dessin.
 struct D3D9TexQuad {
-  void* tex;
-  float x0, y0, x1, y1;
-  float u0, v0, u1, v1;
+  void*  tex;
+  float  cx[4], cy[4];
+  float  u0, v0, u1, v1;
 };
 
 // Composites `n` textured quads (in array/painter order, alpha-blended) onto a fresh

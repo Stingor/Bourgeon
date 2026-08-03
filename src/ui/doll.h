@@ -111,7 +111,37 @@ struct DollPlacement {
   float origin_x = 0.0f;
   float origin_y = 0.0f;
   float scale    = 1.0f;  // une unité .act -> pixels écran
+
+  // Boîtes du pantin en unités .act, dans le repère de l'acteur — donc AVANT
+  // `origin` et `scale`. Elles servent à cadrer sur une partie plutôt que sur
+  // l'ensemble : un portrait veut la tête, pas les pieds.
+  //
+  // `head` couvre la tête ET ses coiffes ; `body` le corps seul. `*_valid` dit
+  // si la partie a été rencontrée — une race sans sprite de tête existe.
+  float head_x0 = 0.0f, head_y0 = 0.0f, head_x1 = 0.0f, head_y1 = 0.0f;
+  float body_x0 = 0.0f, body_y0 = 0.0f, body_x1 = 0.0f, body_y1 = 0.0f;
+  bool  head_valid = false;
+  bool  body_valid = false;
+
+  // Nombre d'images de l'action du CORPS pour la pose demandée, et durée d'une
+  // image en unités .act (25 ms chacune). De quoi enregistrer une animation
+  // complète sans redemander le `.act`.
+  int frame_count = 1;
+  int frame_delay = 4;
 };
+
+// Un calque prêt à peindre, en coordonnées ÉCRAN — ce que `DrawDoll` enverrait
+// à ImGui. Les quatre coins sont donnés séparément : ceux de l'arme et du
+// bouclier sont TOURNÉS par le `.act`, un rectangle ne suffirait pas.
+struct DollQuad {
+  void*  tex;
+  ImVec2 corner[4];
+  ImVec2 uv0, uv1;
+  ImU32  tint;
+};
+
+// Reçoit les calques dans l'ordre de dessin, du fond vers l'avant.
+using DollQuadSinkFn = void (*)(void* ctx, const DollQuad& quad);
 
 // Rappel invoqué UNE fois, le cadrage résolu et AVANT le premier calque.
 //
@@ -212,6 +242,37 @@ struct DollDrawOpts {
   // qui le ferait rentrer, et la pose ici : le personnage rétrécit AVEC son
   // effet, ce qui est le seul moyen de garder les deux cohérents.
   float scale_limit = 0.0f;
+
+  // Tout calculer sans rien dessiner : `out_placement` est renseigné, aucun
+  // quad n'est émis, `underlay` n'est pas appelé.
+  //
+  // 🔴 Sert à cadrer sur une PARTIE du pantin. Les boîtes de `DollPlacement`
+  // n'existent qu'une fois la composition faite, et ImGui dessine dans l'ordre
+  // des appels : impossible de « revenir en arrière » pour recadrer. On mesure
+  // donc d'abord, on décide, puis on dessine — c'est ce que fait le portrait.
+  bool measure_only = false;
+
+  // Imposer origine et échelle au lieu de les calculer d'après [x,y,w,h].
+  //
+  // Seuls `origin_x`, `origin_y` et `scale` sont lus. Le rectangle passé à
+  // `DrawDoll` n'est alors plus qu'un cadre de dessin — c'est à l'appelant de
+  // le clipper s'il veut couper.
+  const DollPlacement* place_override = nullptr;
+
+  // Jouer CETTE image du corps plutôt que celle de l'horloge. < 0 = horloge.
+  //
+  // Sert à enregistrer une animation image par image : le temps qui passe ne
+  // permet pas de viser une image précise, et échantillonner l'horloge en
+  // sauterait ou en doublerait.
+  //
+  // ⚠ L'image des accessoires en DÉCOULE (elle se calcule à partir de celle du
+  // corps), donc forcer le corps suffit à figer tout le pantin.
+  int force_frame = -1;
+
+  // Recevoir les calques au lieu de les peindre. Non nul = rien n'est envoyé à
+  // `draw_list`, tout passe par le puits — dans le même ordre.
+  DollQuadSinkFn quad_sink     = nullptr;
+  void*          quad_sink_ctx = nullptr;
 
   DollUnderlayFn underlay      = nullptr;
   void*          underlay_ctx  = nullptr;
