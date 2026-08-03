@@ -179,6 +179,41 @@ const RegionDef kRegions[3] = {  // const (pas constexpr) : la base items = adre
 };
 inline bool RegionIsItems(int r) { return r == 2; }
 
+// ── Un raccourci ne déclenche QUE ce que le joueur VOIT ──────────────────────
+// Les cases vivent dans les GLOBALS du client, pas dans nos barres : masquer une
+// barre — ou réduire son « Nb slots » — n'efface rien côté natif. La touche liée
+// au slot 12 continuait donc de lancer la compétence du slot 12 alors que plus
+// aucune case ne la montrait : une compétence partie toute seule, sans rien à
+// l'écran pour l'expliquer, et l'inverse exact de ce que le joueur a réglé.
+//
+// On filtre à la SOURCE plutôt qu'à la touche : UIShortCutWnd::OnMsg case 0x29
+// est le point où aboutissent F1-F9 (RE : `this+0xc4[col + 9*row]`, donc
+// slot = p2 + 9*p3) ET tout autre chemin d'activation natif. Filtrer là couvre
+// les deux onglets d'un coup, sans avaler la touche elle-même — la frappe reste
+// disponible pour le chat, les fenêtres et les autres modules.
+//
+// `g_slot_drawn` est refait à chaque frame par SkillBar::RefreshDrawnSlots().
+static_assert(SkillBar::kItemSlotMax <= kMaxSlots, "g_slot_drawn trop étroit");
+bool g_slot_drawn[3][kMaxSlots] = {};
+bool g_slot_filter_on  = false;  // filtre armé (module actif, en jeu, native cachée)
+bool g_self_activation = false;  // notre propre ActivateSlot -> jamais filtré
+
+constexpr uintptr_t kShortCutOnMsg = 0x00901310;  // UIShortCutWnd::OnMsg (vtable+0x94)
+// __thiscall à SIX arguments pile (`retn 18h`) : ecx=this, edx ignoré, puis
+// arg0 / msg / p2..p5 — exactement la forme qu'envoie uiwnd::OnMsg.
+using ShortCutOnMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);
+ShortCutOnMsg_t g_orig_shortcut_onmsg = nullptr;
+int __fastcall ShortCutOnMsgHook(void* self, void* edx, int arg0, int msg,
+                                 int p2, int p3, int p4, int p5) {
+  if (!g_orig_shortcut_onmsg) return 0;
+  if (msg == kMsgUseSlot && g_slot_filter_on && !g_self_activation) {
+    const int slot   = p2 + 9 * p3;   // col + 9*row (indexation de this+0xc4)
+    const int region = CurrentTab();  // 0x29 ne lit QUE l'onglet actif
+    if (slot < 0 || slot >= kMaxSlots || !g_slot_drawn[region][slot]) return 0;
+  }
+  return g_orig_shortcut_onmsg(self, edx, arg0, msg, p2, p3, p4, p5);
+}
+
 // Assignation/vidage d'un slot d'ITEM : SkillMgr_SetShortCutItemSlot(mgr, id, slot) (__thiscall ;
 // id==0 vide ; écrit g_ShortCutItemSlotExt, type=0/objet). Use objet (réplique branche objet de
 // OnMsg 0x29) : dispatcher (*(0x0121333c)) ->vtable[0x18](0x71, info, count, 0, 0) (__thiscall).
@@ -237,7 +272,7 @@ void UseItemSlot(int slot) {
 // (OnMsg 0x29), MAIS 0x29 ne lit que this+0xc4 = onglet ACTIF -> on bascule temporairement sur
 // l'onglet de la barre (SetOption 10 + OnMsg 0x17) puis on restaure. ITEMS : UseItemSlot.
 // Gate option #5 (UI-lock natif, >=1 bloque) neutralisé le temps de l'appel puis restauré. SEH (Lua/jeu).
-void ActivateSlot(int region, int slot) {
+void ActivateSlotRaw(int region, int slot) {
   if (RegionIsItems(region)) { UseItemSlot(slot); return; }
   void* w = ShortCutWnd();
   if (!w) return;
@@ -259,6 +294,19 @@ void ActivateSlot(int region, int slot) {
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
+
+// Activation VOULUE par nous (clic sur une case, interception clavier de l'autre
+// onglet) : elle passe par le même OnMsg 0x29 que les touches F, donc elle doit
+// être exemptée du filtre — UseItemSlot détourne d'ailleurs this+0xc4[0], dont
+// le slot 0 n'a aucune raison d'être dessiné. Fonction séparée à dessein : le SEH
+// d'ActivateSlotRaw interdit tout objet à destructeur dans son corps, donc pas de
+// garde RAII là-bas.
+void ActivateSlot(int region, int slot) {
+  g_self_activation = true;
+  ActivateSlotRaw(region, slot);
+  g_self_activation = false;
+}
+
 // Notifie le serveur d'un changement de raccourci -> PERSISTANCE. Sur ce serveur
 // (moonlight/rAthena) les barres sont sauvées côté serveur : le client envoie
 // CZ_SHORTCUT_KEY_CHANGE2 (0x0b21, RE>=20190508) à chaque changement, le serveur met
@@ -743,6 +791,29 @@ SkillBar::SkillBar() {
   g_orig_shortcut_draw = reinterpret_cast<OnDraw_t>(
       hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kOnDraw),
                  reinterpret_cast<uint8_t*>(&ShortCutDrawHook)));
+  // Filtre d'activation : une case non dessinée ne répond plus à son raccourci.
+  g_orig_shortcut_onmsg = reinterpret_cast<ShortCutOnMsg_t>(
+      hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kShortCutOnMsg),
+                 reinterpret_cast<uint8_t*>(&ShortCutOnMsgHook)));
+}
+
+// Recalcule les cases DESSINÉES de la frame (barre visible ET slot dans la plage
+// affichée), telles que les parcourt DrawBar. C'est la seule définition de « visible
+// à l'écran » que le filtre de raccourci consulte : dessin et activation restent
+// donc décrits au même endroit, comme le reste du module.
+void SkillBar::RefreshDrawnSlots() {
+  std::memset(g_slot_drawn, 0, sizeof(g_slot_drawn));
+  for (int b = 0; b < kBarCount; ++b) {
+    const BarCfg& bc = bars_[b];
+    if (!bc.visible) continue;
+    const int maxSlots = kRegions[b].count;
+    const int count    = std::min(bc.slot_count, maxSlots);
+    for (int k = 0; k < count; ++k) {
+      const int slot = bc.first_slot + k;
+      if (slot >= maxSlots) break;
+      if (slot >= 0) g_slot_drawn[b][slot] = true;
+    }
+  }
 }
 
 void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
@@ -750,6 +821,7 @@ void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   if (!in_game_) {
     native_hidden_ = false; last_tab_ = -1; items_restored_ = false;
     g_suppress_native_draw = false;  // hors jeu : ne pas bloquer le dessin natif
+    g_slot_filter_on = false;        // ni filtrer des activations qu'on ne dessine plus
   }
   FlushIconCache();  // recharge les icônes au changement de zone
 }
@@ -787,17 +859,22 @@ void SkillBar::OnKeyDown(unsigned long vkey, int, int) {
   if (held(VK_CONTROL)) pressedMod = VK_CONTROL;
   else if (held(VK_MENU)) pressedMod = VK_MENU;
   else if (held(VK_SHIFT)) pressedMod = VK_SHIFT;
-  // Slot OCCUPÉ de la région lié à (vkey, pressedMod), ou -1.
+  // Slot lié à (vkey, pressedMod) qui soit OCCUPÉ *et* DESSINÉ, ou -1. Le test
+  // « dessiné » n'est pas un simple confort d'affichage : une case hors des barres
+  // visibles est de toute façon arrêtée par ShortCutOnMsgHook, donc la croire
+  // servie par le natif reviendrait à ne rien déclencher du tout alors que l'autre
+  // onglet, lui, montre bien une case pour cette touche.
   auto occupiedSlot = [&](int region) -> int {
     for (const SlotKeyBind& b : g_keyCache[region])
-      if (b.mainK == static_cast<int>(vkey) && b.modK == pressedMod && ReadSlot(region, b.slot).valid)
+      if (b.mainK == static_cast<int>(vkey) && b.modK == pressedMod &&
+          b.slot >= 0 && b.slot < kMaxSlots && g_slot_drawn[region][b.slot] &&
+          ReadSlot(region, b.slot).valid)
         return b.slot;
     return -1;
   };
   const int cur = CurrentTab();
   if (occupiedSlot(cur) != -1) return;  // onglet actif occupé pour cette touche -> le natif s'en charge
-  const int other = 1 - cur;
-  if (!bars_[other].visible) return;
+  const int other = 1 - cur;            // (barre masquée => aucun slot dessiné => -1)
   const int s = occupiedSlot(other);
   if (s != -1) ActivateSlot(other, s);
 }
@@ -848,6 +925,13 @@ void SkillBar::OnRenderUI() {
     }
     native_hidden_ = false;
   }
+
+  // ── Cases dessinées de la frame -> filtre des raccourcis (ShortCutOnMsgHook) ──
+  // Calculé AVANT le dessin, et même quand la barre native reprend la main : le
+  // filtre doit alors se désarmer, sans quoi les touches resteraient bridées par
+  // une configuration de barres qui ne s'affiche plus.
+  RefreshDrawnSlots();
+  g_slot_filter_on = native_hidden_ && w != nullptr;
 
   // ── Dessin des barres ImGui + drag natif au-dessus ─────────────────────────────
   if (native_hidden_ && w) {
@@ -940,7 +1024,9 @@ void SkillBar::DrawSettings() {
       "  Si les deux cases sont occupées, seul l'onglet actif répond.\n"
       "- Pour piloter l'Onglet 2 de façon dédiée, rebinde ses cases\n"
       "  sur des combos Ctrl+/Alt+ (touches uniques) dans les raccourcis clavier du jeu.\n"
-      "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).");
+      "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).\n"
+      "- Une case NON AFFICHÉE ne répond plus à sa touche : masquer une barre,\n"
+      "  ou baisser son \"Nb slots\", désarme aussi les raccourcis correspondants.");
 
   ImGui::EndDisabled();
 

@@ -96,6 +96,12 @@ class SkillBar : public Plugin {
 
  private:
   void DrawBar(int bar);     // dessine la barre d'index `bar` (== région native)
+  // Recense les cases réellement DESSINÉES cette frame (barre visible + slot dans
+  // la plage affichée). Un raccourci dont la case n'y figure pas est refusé : les
+  // slots vivent dans les globals du client, donc masquer une barre ou réduire son
+  // nombre de cases ne les désarmait pas, et une barre rangée après avoir été
+  // remplie continuait de lancer ses compétences en aveugle.
+  void RefreshDrawnSlots();
 
   bool in_game_        = false;
   bool native_hidden_  = false;  // état courant de la barre native
