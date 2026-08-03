@@ -65,15 +65,18 @@ namespace {
 constexpr uintptr_t kDeferEntry = 0x006046e0;  // CActorSprite_DeferQuadSorted
 constexpr uintptr_t kKeyWrite   = 0x006049e4;  // branch-1 key write (MOV [EAX+0x10],EDI)
 constexpr uintptr_t kSubmitQuad = 0x00c4a0d0;  // Actor_SubmitQuad_RenderQueue
-// L'AUTRE branche du flush. `RenderLayered` la prend quand
-// `Scene_IsVerticalFlipMode()` (0x00d72d10) vaut 1, c'est-à-dire
-// `dword_12515D0 != 0 && byte_12515D4 == 2` : un mode de DISTORSION plein écran
-// (la fonction 0x00555930 y recopie des bandes du back-buffer avec un décalage
-// aléatoire), armé par Actor_OnMsg_AppearanceEffects et CGameMode_EnterWorld.
+
+// 🔴 NE PAS hooker AUSSI Actor_SubmitQuad_VerticalFlip (0x00c4a670).
 //
-// Rare, mais atteignable en jeu — et sans ce second détour le bouclier y
-// remonterait devant le corps. Même premier argument, donc même stub.
-constexpr uintptr_t kSubmitFlip = 0x00c4a670;  // Actor_SubmitQuad_VerticalFlip
+// C'est bien l'autre branche du flush — `RenderLayered` la prend quand
+// `Scene_IsVerticalFlipMode()` (0x00d72d10) vaut 1 — mais elle ne soumet rien
+// elle-même : elle retourne les coordonnées, pose l'angle à 180 et DÉLÈGUE à
+// `Actor_SubmitQuad_RenderQueue` avec le MÊME `param_1`. Le détour ci-dessous
+// la couvre donc déjà.
+//
+// Le hooker en plus applique l'abaissement DEUX FOIS sur le même quad : -0,0006
+// au lieu de -0,0003, et le bouclier disparaît derrière le décor. Mesuré en jeu
+// le 2026-08-03, après l'avoir posé « pour être complet ».
 
 // 🔴 Ce que le tri regarde vraiment — mesuré, pas déduit. L'ordre de l'arbre
 // n'est PAS l'ordre de dessin.
@@ -132,7 +135,6 @@ static unsigned char g_weapon_top_force = 0;
 static void* g_tramp_defer  = nullptr;         // -> relocated prologue + body
 static void* g_tramp_key    = nullptr;         // -> relocated key writes + rest
 static void* g_tramp_submit = nullptr;         // -> relocated submit prologue
-static void* g_tramp_flip   = nullptr;         // -> idem, branche flip vertical
 
 // True only while the dual-weapon-sprites feature is on. The off-hand weapon is
 // drawn as an EXTRA layer at partIdx 6 (resource slot 6), which normally holds a
@@ -247,8 +249,9 @@ __declspec(naked) static void KeyWriteStub() {
 // d'acteur, y compris ceux qui ne viennent pas d'un noeud d'arbre — lire
 // `param_1[-1]` sur ceux-là n'a pas de sens et peut sortir de la page.
 //
-// Les DEUX branches du flush y passent : Actor_SubmitQuad_RenderQueue et
-// Actor_SubmitQuad_VerticalFlip (cf. kSubmitFlip).
+// Les DEUX branches du flush finissent ici : la branche « flip vertical »
+// délègue à celle-ci (cf. la note en tête de fichier). Un seul détour suffit —
+// en poser un second abaisserait deux fois.
 void __fastcall SinkTaggedQuad(float* quad) {
   __try {
     if (!quad) return;
@@ -275,22 +278,6 @@ __declspec(naked) static void SubmitQuadStub() {
   }
 }
 
-// Le même, pour la branche « distorsion plein écran ». Deux stubs et non un :
-// chaque hook a SON trampoline, et c'est la seule ligne qui change.
-__declspec(naked) static void SubmitFlipStub() {
-  __asm {
-    push eax
-    push ecx
-    push edx
-    mov  ecx, [esp+0x10]
-    call SinkTaggedQuad
-    pop  edx
-    pop  ecx
-    pop  eax
-    jmp  [g_tramp_flip]
-  }
-}
-
 WeaponLayer::WeaponLayer() {
   using namespace hooking;
   g_tramp_defer = HookManager::Instance().SetHook(
@@ -302,9 +289,6 @@ WeaponLayer::WeaponLayer() {
   g_tramp_submit = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSubmitQuad),
       reinterpret_cast<uint8_t*>(&SubmitQuadStub));
-  g_tramp_flip = HookManager::Instance().SetHook(
-      HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSubmitFlip),
-      reinterpret_cast<uint8_t*>(&SubmitFlipStub));
   // LogInfo("[WeaponLayer] z-order hooks installed (defer={} key={})",
           // g_tramp_defer != nullptr, g_tramp_key != nullptr);
 }
