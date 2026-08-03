@@ -2305,7 +2305,27 @@ void BasicInfo::RenderPlayerAvatar(float x, float y, float w, float h,
   o.anim_seconds   = now;
   o.freeze_body    = !animate;
   o.center_on_body = true;
-  o.scale_limit    = scale_limit;
+  // 🔴 L'échelle se calcule sur l'enveloppe MAXIMALE : toutes les images, les
+  // huit orientations. C'est le seul réglage qui tienne les deux bouts.
+  //
+  // Deux essais l'ont montré. Mesurer la pose affichée fait sauter la taille à
+  // la molette : l'arme et le bouclier s'écartent de face et se replient de dos.
+  // Mesurer le corps seul règle ça mais rogne tout le reste — et beaucoup de
+  // coiffes de costume posent leur sprite À CÔTÉ du personnage (un compagnon,
+  // une monture), donc elles débordent bien plus que lui.
+  //
+  // Sur l'enveloppe de tout, ce qui rentre rentre dans toutes les positions, et
+  // l'échelle ne dépend plus de celle qu'on regarde.
+  o.fit_span    = true;
+  o.scale_limit = scale_limit;
+  // Plancher de stature : le personnage ne descend pas sous la moitié de la
+  // hauteur du cadre, même s'il faut laisser déborder ce qu'il porte à côté de
+  // lui. Un costume-compagnon élargit l'enveloppe au point de le réduire de
+  // moitié, sous un grand vide — la fiche montre AVANT TOUT un personnage.
+  //
+  // C'est le seul bouton : le monter rogne davantage les sprites latéraux, le
+  // baisser rend le personnage plus petit quand il en porte un.
+  o.min_body_height = (h - 2.0f * pad) * 0.50f;
   o.out_placement  = &pl;
   o.underlay_ctx   = &pass;
   o.underlay = [](void* c, const ro::DollPlacement& p) {

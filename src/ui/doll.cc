@@ -493,10 +493,40 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   };
   grow(body_ref, body_rn, 0.0f, 0.0f);
 
+  // Enveloppe MAXIMALE d'une pièce : ses 8 orientations, toutes leurs images.
+  //
+  // 🔴 C'est ce qui rend l'échelle immobile. La mesure par défaut ne regarde
+  // que l'image 0 de l'orientation affichée, donc elle change quand on tourne
+  // le personnage (une arme s'écarte de face, se replie de dos) ou quand son
+  // animation l'étire. Ici on prend le maximum de tout : ce qui rentre rentre
+  // dans toutes les positions, et l'échelle ne dépend plus de celle qu'on
+  // regarde.
+  //
+  // Le décalage d'ancrage passé est celui de la pose COURANTE. C'est une
+  // approximation assumée : on cherche une borne, pas une position, et
+  // recalculer l'ancrage des 8 orientations coûterait bien plus que ce que le
+  // pixel gagné vaut.
+  auto grow_span = [&](const SpriteRes& res, float dx, float dy, bool rotate) {
+    for (int dir_i = 0; dir_i < 8; ++dir_i) {
+      const unsigned span_pose =
+          PieceAction(res, static_cast<unsigned>(anim * 8 + dir_i));
+      const int span_frames = SpriteActionFrameCount(res, span_pose);
+      for (int f = 0; f < span_frames; ++f) {
+        SpriteQuad span[kMaxQuads];
+        const int sn = SpriteResolveFrame(res, span_pose,
+                                          static_cast<unsigned>(f), span,
+                                          kMaxQuads, rotate);
+        if (sn > 0) grow(span, sn, dx, dy);
+      }
+    }
+  };
+  if (opts.fit_span) grow_span(body.res, 0.0f, 0.0f, /*rotate=*/false);
+
   // Boîte du CORPS SEUL, retenue avant la moindre pièce rapportée : c'est le
   // repère de `center_on_body`, et le seul qui ne bouge pas quand on change
   // d'arme ou de chapeau.
-  const float body_min_x = min_x, body_max_x = max_x, body_max_y = max_y;
+  const float body_min_x = min_x, body_max_x = max_x;
+  const float body_min_y = min_y, body_max_y = max_y;
 
   int body_ax = 0, body_ay = 0, body_attr = 0;
   const bool body_anchored =
@@ -1001,7 +1031,9 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     //
     // 🔴 Sauf en cadrage « corps seul » : là, l'échelle ne doit dépendre QUE du
     // corps, sinon un chapeau volumineux rétrécit le personnage.
-    if (!opts.fit_body_only) {
+    if (opts.fit_span) {
+      grow_span(piece.res, last_rdx, last_rdy, list[i].rotate);
+    } else if (!opts.fit_body_only) {
       SpriteQuad ref[kMaxQuads];
       const int rn = SpriteResolveFrame(piece.res, piece_pose, 0, ref, kMaxQuads,
                                         list[i].rotate);
@@ -1035,8 +1067,23 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   float ref_cx   = (min_x + max_x) * 0.5f;
   float ref_feet = max_y;
   if (opts.center_on_body) {
-    ref_cx   = (body_min_x + body_max_x) * 0.5f;
+    // 🔴 Les PIEDS viennent toujours du corps. Sans ça, une cape longue ou une
+    // coiffe qui descend plus bas que les bottes enfoncerait le personnage sous
+    // le bas du rectangle.
     ref_feet = body_max_y;
+    // Le CENTRE horizontal, lui, ne se recale sur le corps que si l'enveloppe
+    // est instable.
+    //
+    // 🔴 Recentrer sur le corps coûte la moitié du cadre : la demi-largeur
+    // retenue est la plus grande des deux mesurées DEPUIS ce centre, donc une
+    // coiffe latérale — un compagnon, une monture — fait réserver autant
+    // d'espace du côté où il n'y a rien. C'est le « petit pantin au milieu d'un
+    // grand cadre vide ».
+    //
+    // Avec `fit_span`, l'enveloppe couvre déjà toutes les orientations et toutes
+    // les images : son centre ne bouge plus, donc le recalage ne protège plus de
+    // rien et on garde la pleine largeur.
+    if (!opts.fit_span) ref_cx = (body_min_x + body_max_x) * 0.5f;
   }
 
   // Demi-largeur mesurée DEPUIS ce centre, côté le plus débordant : c'est elle
@@ -1050,8 +1097,24 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   float scale = h / span_y;
   const float fit_x = w * 0.5f / half;
   if (fit_x < scale) scale = fit_x;
+
+  // Plancher de stature : on renonce à tout faire rentrer plutôt que de réduire
+  // le personnage sous cette taille. C'est la LARGEUR qui l'impose presque
+  // toujours — une coiffe posée à côté du personnage double l'enveloppe — et le
+  // résultat est un pantin minuscule sous un grand vide.
+  //
+  // Mesuré sur la hauteur du CORPS : la seule qui ne dépende ni de l'équipement
+  // ni de l'orientation.
+  const float body_height = body_max_y - body_min_y;
+  if (opts.min_body_height > 0.0f && body_height > 0.0f) {
+    const float floor_scale = opts.min_body_height / body_height;
+    if (scale < floor_scale) scale = floor_scale;
+  }
+
   // Plafond de l'appelant : il fait rentrer autre chose que le pantin dans le
-  // même cadre (un effet de costume), et le pantin doit rétrécir AVEC.
+  // même cadre (un effet de costume), et le pantin doit rétrécir AVEC. Il passe
+  // APRÈS le plancher, et l'emporte donc sur lui : un effet qui déborde a une
+  // raison de réduire que le pantin seul n'a pas.
   if (opts.scale_limit > 0.0f && opts.scale_limit < scale)
     scale = opts.scale_limit;
   if (scale <= 0.0f) return false;

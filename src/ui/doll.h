@@ -168,6 +168,43 @@ struct DollDrawOpts {
   // centre du corps : aucun côté ne peut alors sortir du rectangle.
   bool center_on_body = false;
 
+  // Mesurer l'enveloppe MAXIMALE : toutes les images, toutes les orientations.
+  //
+  // 🔴 Sans ça, l'échelle est calculée sur l'image 0 de l'orientation affichée —
+  // et elle change donc quand le personnage tourne ou quand son animation
+  // l'étire. C'est visible : à la molette, le pantin grandit et rétrécit, parce
+  // qu'une arme s'écarte de face et se replie de dos.
+  //
+  // Les coiffes en sont la meilleure raison : beaucoup de costumes posent leur
+  // sprite À CÔTÉ du personnage (un compagnon, une monture) et débordent bien
+  // plus que lui. Les exclure de la mesure les fait rogner ; les mesurer sur la
+  // seule image affichée fait sauter l'échelle. Il faut donc l'enveloppe de
+  // TOUT, prise une bonne fois.
+  //
+  // ⚠ Le coût est réel : chaque pièce est résolue pour les 8 orientations et
+  // toutes leurs images, à chaque frame de rendu. C'est du calcul pur, sans
+  // rechargement (les ressources sont déjà en cache), et l'ordre de grandeur
+  // reste celui d'une centaine de résolutions de frame. À réserver à une vue
+  // unique, pas à une grille de vignettes.
+  bool fit_span = false;
+
+  // Hauteur MINIMALE du corps à l'écran, en pixels. <= 0 = aucune.
+  //
+  // 🔴 C'est un plancher, et il existe parce que la largeur peut écraser le
+  // personnage. Beaucoup de coiffes de costume posent leur sprite À CÔTÉ de lui
+  // — un compagnon, une monture : l'enveloppe devient deux fois plus large que
+  // haute, et dans un cadre étroit, tout faire rentrer réduit le personnage de
+  // moitié alors qu'il reste du vide au-dessus.
+  //
+  // Passé ce plancher, on cesse de tout faire rentrer : le personnage garde sa
+  // stature et ce qui dépasse sur les côtés déborde du rectangle. `DrawDoll` ne
+  // rogne rien — c'est à l'appelant de poser un clip s'il le souhaite.
+  //
+  // La hauteur du CORPS, et non celle de la silhouette : c'est la seule mesure
+  // qui ne dépende ni de l'équipement ni de l'orientation, donc la seule qui
+  // donne une stature comparable d'un personnage à l'autre.
+  float min_body_height = 0.0f;
+
   // Plafond d'échelle, en pixels par unité .act. <= 0 = aucun.
   //
   // Sert à faire tenir dans le cadre autre chose que le pantin — un effet de
