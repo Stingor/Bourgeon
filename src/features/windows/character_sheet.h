@@ -365,6 +365,34 @@ class CharacterSheet : public Plugin {
   int gif_export_anim_ = 4, gif_export_dir_ = 0;  // pose/dir figées au clic
   bool gif_export_show_costume_ = true;           // état costume figé au clic (GIF)
 
+  // ── Aperçu de description au survol d'une case d'équipement ────────────────
+  // La MÊME brique que l'inventaire, le chariot et le storage : itemcell::DrawTooltip,
+  // qui rend la description RO complète (fond blanc, cadre sysbox, cartes, options).
+  // Deux contraintes dictent la forme :
+  //  1. le tooltip crée son PROPRE popup — il se dessine APRÈS ro::EndRoWindow, sinon
+  //     il naît dans la fenêtre et passe dessous ;
+  //  2. les données d'INSTANCE (cartes serties, random options, refine, « cassé ») ne
+  //     sont pas dans la DB d'items — elles se relèvent dans l'ItemSkillInfo du slot,
+  //     au moment du survol.
+  // `id` remis à 0 à chaque frame : ce qui n'est plus survolé n'a plus d'aperçu.
+  struct HoverDesc {
+    uint32_t id = 0;           // 0 = aucune case survolée cette frame
+    int      refine = 0;
+    bool     damaged = false;
+    bool     forged = false;   // item forgé : +0x1c porte le forgeron, PAS des cartes
+    uint32_t cards[4] = {0};
+    int      opt_count = 0;
+    struct Opt { int16_t index = 0; int16_t value = 0; uint8_t param = 0; };
+    Opt      opts[5] = {};
+    char     name[128] = {0};  // nom décoré (refine + préfixes de cartes)
+  };
+  HoverDesc hover_desc_;
+  // Relève dans `info` (ItemSkillInfo d'un slot ou d'un nœud d'inventaire) tout ce que
+  // l'aperçu demande. `info` nul ou `id` nul = aucun aperçu cette frame.
+  void CaptureHoverDesc(const void* info, uint32_t id);
+  // Dessine l'aperçu de la case survolée. À appeler HORS de toute fenêtre ImGui.
+  void DrawHoverDesc();
+
   void DrawStatsPanel();
   void DrawDoll(float avail_w);
   // Onglet Presets : liste des presets du perso (icones des items) + sauvegarde.

@@ -62,6 +62,11 @@ constexpr int kOffEquipView     = 0x70;
 constexpr int kOffEquipType     = 0x00;   // type d'item (equip 4/5/8/9/0xb-0xf)
 constexpr int kOffEquipCards    = 0x1c;   // 4 u32 (nameid des cartes / forge)
 constexpr int kOffEquipGrade    = 0x88;   // i16 : grade d'enchant
+// Données d'INSTANCE que la DB d'items ne connaît pas — il les faut pour l'aperçu de
+// description au survol. MÊMES offsets que la grille d'inventaire (inventory_viewer).
+constexpr int kOffEquipDamaged  = 0x5d;   // octet : équipement CASSÉ (nom ombré rouge)
+constexpr int kOffEquipOptCount = 0x98;   // int : nb de random options (0..5)
+constexpr int kOffEquipOpts     = 0x9c;   // entrées de 5 octets {i16 index, i16 value, u8 param}
 constexpr int kOffEquipWear     = 0x0c;   // etat porte (!=0 => equipe)
 constexpr int kNormalSlots = 10;   // slots equip normaux 0..9 (cf. disposition doll)
 constexpr int kEqpHandR    = 0x2;  // masque EQP main droite (arme) -> detecte le dual-wield
@@ -216,6 +221,10 @@ struct AmmoItem {  // largeurs sémantiques, cf. EquipItem
   int      amount = 0;
   uint16_t viewId = 0;
   uint32_t location = 0;
+  // ItemSkillInfo VIVANT du nœud d'inventaire, pour l'aperçu de description au
+  // survol (cartes/options d'instance). ⚠ Valable la frame courante seulement :
+  // le nœud meurt quand la munition est consommée. Ne pas mémoriser.
+  const void* info = nullptr;
 };
 bool ReadEquippedAmmo(AmmoItem* out) {
   __try {
@@ -229,6 +238,7 @@ bool ReadEquippedAmmo(AmmoItem* out) {
       const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
       if (*reinterpret_cast<const int*>(info + kOffEquipInvIndex) == ammoIdx) {
         out->present  = true;
+        out->info     = info;
         out->invIndex = ammoIdx;
         out->amount   = *reinterpret_cast<const int*>(info + kOffEquipAmount);
         out->location = *reinterpret_cast<const uint32_t*>(info + kOffEquipLocation);
@@ -6003,22 +6013,21 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     ImGui::EndDragDropTarget();
   }
 
-  // Interactions sur la case : survol = tooltip ; clic DROIT = description ; MAJ+clic
-  // DROIT = lien de l'item dans le chat (comme l'inventaire) ; double-clic GAUCHE =
-  // déséquiper ; glisser = vers l'inventaire (drag-drop ci-dessus). Le clic gauche
-  // simple ne fait rien (réservé au démarrage du glisser).
+  // Interactions sur la case : survol = description ; clic DROIT = description
+  // (fenêtre) ; MAJ+clic DROIT = lien de l'item dans le chat (comme l'inventaire) ;
+  // double-clic GAUCHE = déséquiper ; glisser = vers l'inventaire (drag-drop
+  // ci-dessus). Le clic gauche simple ne fait rien (réservé au démarrage du glisser).
   if (has && ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);  // main
-    const char* hint =
-        "(clic droit : desc, Maj+clic droit : lien chat, double-clic : déséquip, glisser : inv.)";
-    // Nom COMPLET (refine + [slots] + cartes/enchant/forge) via BuildDisplayName, comme la
-    // description ; NameById seul rendrait le nom NU. Repli sur NameById si vide.
+    // Aperçu RO au survol, exactement comme l'inventaire, le chariot et le storage :
+    // on RETIENT la case ici, l'aperçu se dessine après la fenêtre (DrawHoverDesc) —
+    // c'est un popup, il doit passer AU-DESSUS d'elle. Pas pendant un glisser :
+    // l'aperçu masquerait la cible du drop.
     const uintptr_t hsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                            static_cast<uintptr_t>(slot) * kSlotStride;
-    char nm[128];
-    DecoratedItemName(reinterpret_cast<const void*>(hsrc), nm, sizeof(nm));
-    if (nm[0] == '\0') std::snprintf(nm, sizeof(nm), "%s", itemcell::NameById(it.nameid));
-    ImGui::SetTooltip("%s\n%s", nm, hint);
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        ImGui::GetDragDropPayload() == nullptr)
+      CaptureHoverDesc(reinterpret_cast<const void*>(hsrc), it.nameid);
     const ImVec2 mp = ImGui::GetMousePos();
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       if (ImGui::GetIO().KeyShift) {  // Maj+clic droit = lien de l'item dans le chat
@@ -6094,8 +6103,10 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
   if (ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);
     if (has) {
-      ImGui::SetTooltip("%s  x%d\n(clic droit : desc, double-clic : déséquiper, glisser ici : équiper)",
-                        itemcell::NameById(am.nameid), am.amount);
+      // Même aperçu de description que les cases d'équipement (cf. DrawSlot).
+      if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+          ImGui::GetDragDropPayload() == nullptr)
+        CaptureHoverDesc(am.info, am.nameid);
       const ImVec2 mp = ImGui::GetMousePos();
       // Différée au relâchement, comme les slots d'équipement ci-dessus.
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
@@ -6215,6 +6226,57 @@ void CharacterSheet::OpenCartWindow() {
   __try {
     uiwnd::MakeWindow(kCartWndId);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Relève les données d'INSTANCE de l'item survolé. Le nom passe par le name-builder
+// natif (DecoratedItemName), tout le reste se lit à même l'ItemSkillInfo, sous SEH :
+// un slot à moitié initialisé ne doit pas tuer le client pour un simple survol.
+void CharacterSheet::CaptureHoverDesc(const void* info, uint32_t id) {
+  hover_desc_ = HoverDesc{};
+  if (!info || id == 0) return;
+  hover_desc_.id = id;
+  DecoratedItemName(info, hover_desc_.name, sizeof(hover_desc_.name));  // SEH intégré
+  __try {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(info);
+    hover_desc_.refine  = *reinterpret_cast<const int*>(p + kOffEquipRefine);
+    hover_desc_.damaged = *(p + kOffEquipDamaged) != 0;
+    // ⚠ Sur un item FORGÉ/CRÉÉ, +0x1c ne porte pas des cartes mais les données du
+    // forgeron (charid scindé, star crumbs, élément) : même critère que l'inventaire
+    // et que la fenêtre de description (première entrée <= 500).
+    const uint32_t c0 = *reinterpret_cast<const uint32_t*>(p + kOffEquipCards);
+    hover_desc_.forged = (c0 != 0 && c0 <= 500);
+    if (!hover_desc_.forged)
+      for (int k = 0; k < 4; ++k)
+        hover_desc_.cards[k] =
+            *reinterpret_cast<const uint32_t*>(p + kOffEquipCards + k * 4);
+    int nopt = *reinterpret_cast<const int*>(p + kOffEquipOptCount);
+    if (nopt < 0) nopt = 0;
+    if (nopt > 5) nopt = 5;
+    hover_desc_.opt_count = nopt;
+    for (int k = 0; k < nopt; ++k) {
+      const uint8_t* e = p + kOffEquipOpts + k * 5;
+      hover_desc_.opts[k].index = *reinterpret_cast<const int16_t*>(e);
+      hover_desc_.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+      hover_desc_.opts[k].param = e[4];
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// L'aperçu lui-même. HORS de toute fenêtre ImGui (cf. itemcell::DrawTooltip) : appelé
+// juste après ro::EndRoWindow, il passe ainsi AU-DESSUS de la fiche.
+void CharacterSheet::DrawHoverDesc() {
+  if (hover_desc_.id == 0) return;
+  itemdesc::SimpleOpt sopts[5];
+  for (int k = 0; k < hover_desc_.opt_count && k < 5; ++k) {
+    sopts[k].index = hover_desc_.opts[k].index;
+    sopts[k].value = hover_desc_.opts[k].value;
+    sopts[k].param = hover_desc_.opts[k].param;
+  }
+  itemcell::DrawTooltip(hover_desc_.id, hover_desc_.forged ? nullptr : hover_desc_.cards,
+                        hover_desc_.forged ? 0 : 4, sopts, hover_desc_.opt_count,
+                        hover_desc_.refine,
+                        hover_desc_.name[0] ? hover_desc_.name : nullptr,
+                        hover_desc_.damaged);
 }
 
 void CharacterSheet::DrawDoll(float avail_w) {
@@ -7062,6 +7124,10 @@ void CharacterSheet::OnRenderUI() {
   // Rendu de la fenêtre seulement en jeu (evite d'afficher des stats a zero au login).
   if (!in_game) return;
 
+  // Aperçu de description : reposé par la case survolée pendant le rendu. Remis à zéro
+  // ICI, faute de quoi la description de la dernière case survolée resterait à l'écran.
+  hover_desc_.id = 0;
+
   if (need_pos_) {
     ImGui::SetNextWindowPos(ImVec2(240, 140), ImGuiCond_FirstUseEver);
     need_pos_ = false;
@@ -7160,6 +7226,11 @@ void CharacterSheet::OnRenderUI() {
   }
 
   ro::EndRoWindow();
+
+  // Aperçu de description de la case survolée : APRÈS la fenêtre (il crée son propre
+  // popup, il doit passer au-dessus d'elle) et hors de tout Begin/End — même place que
+  // dans l'inventaire, le chariot et le storage.
+  DrawHoverDesc();
 
   // Direction B du drag-drop : relâcher un item ÉQUIPÉ (glissé depuis un slot) sur la
   // fenêtre inventaire = le déséquiper. On détecte NOUS-MÊMES le relâché sur l'inventaire
