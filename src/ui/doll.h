@@ -161,6 +161,25 @@ using DollUnderlayFn = void (*)(void* ctx, const DollPlacement& placement);
 struct DollDrawOpts {
   int      dir          = 0;       // orientation 0..7 (0 = de face)
   int      anim         = 0;       // type d'action ; pose = anim*8 + dir
+
+  // Tête tournée — ce que fait `/doridori` en jeu. 0 (ou -1) = droit devant,
+  // 1 et 2 = penchée d'un côté et de l'autre.
+  //
+  // 🔴 C'est un index d'IMAGE, pas une action ni une direction. Un `.act` de tête
+  // porte exactement TROIS images par action, qui sont ces trois inclinaisons, et
+  // le client les choisit par l'index d'image de l'acteur (`acteur+0x3C`).
+  //
+  // Les deux autres lectures sont fausses, et se reconnaissent à l'écran :
+  //   * changer d'ACTION (`head_dir*8 + dir`) ne produit AUCUN effet visible —
+  //     les actions d'une tête sont les mêmes mouvements que celles d'un corps ;
+  //   * décaler la DIRECTION (`dir ± 1`) détache la tête du corps (les ancres
+  //     d'une autre direction ne correspondent plus) et la bascule en MIROIR
+  //     d'un côté, les directions 5..7 étant les vues 3..1 retournées.
+  //
+  // Les coiffes suivent d'elles-mêmes : leur `.act` porte un multiple exact des
+  // images de la tête (24 = 8 × 3), et l'animation alternative les place dans le
+  // sous-groupe de l'image de tête retenue.
+  int      head_dir     = -1;
   float    anim_seconds = -1.0f;   // horloge ; NÉGATIF = figé sur la 1ʳᵉ image
   uint32_t tint         = 0xFFFFFFFFu;
 

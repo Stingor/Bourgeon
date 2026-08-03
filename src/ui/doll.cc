@@ -451,13 +451,47 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   //
   // ⚠ `freeze_body` fige le corps SANS toucher aux accessoires : l'appelant qui
   // propose « Marche » et « Marche (animé) » ne parle que du corps.
+  //
+  // ⚠ La règle est bien « TOUT SAUF le repos et l'assise », et non « seulement
+  // la marche et le combat » comme ici auparavant : c'est ce que fait le client,
+  // qui force `frame = 0` pour les types d'action 0 et 2 uniquement. Une attaque
+  // ou un ramassage doivent donc pouvoir se jouer — c'est tout leur intérêt,
+  // leur image 0 ne montre rien de la posture.
   unsigned actor_frame = 0;
-  if (anim_seconds >= 0.0f && !opts.freeze_body && (anim == 1 || anim == 4))
+  if (anim_seconds >= 0.0f && !opts.freeze_body && anim != 0 && anim != 2)
     actor_frame = SpriteFrameIndex(body.res, body_pose, anim_seconds);
   // Image imposée : elle court-circuite l'horloge ET `freeze_body`. C'est ce
   // que veut un enregistrement — viser une image, pas un instant.
   if (opts.force_frame >= 0)
     actor_frame = static_cast<unsigned>(opts.force_frame);
+
+  // ── Tête tournée (`/doridori`) ────────────────────────────────────────────
+  //
+  // 🔴 L'index d'image est PARTAGÉ par tout l'acteur : le client n'a qu'un seul
+  // champ (`acteur+0x3C`), lu aussi bien pour le corps que pour la tête. C'est
+  // pour cela que `Actor_ComputeHeadAttach` (0x007adbc0) compare l'ancre de la
+  // tête à celle du corps PRISE SUR LA MÊME IMAGE — les deux sont forcément
+  // cohérentes.
+  //
+  // Ne l'imposer qu'ici garantit cette cohérence. Le faire seulement pour la
+  // tête laissait le corps à son image 0 : les deux ancres venaient alors
+  // d'images différentes et la tête se détachait du cou (visible surtout sur
+  // l'image 2, dont l'ancre s'écarte le plus — mesuré sur `1_남.act`, assis :
+  // ancres (1,-35) / (-2,-36) / (4,-36) pour les images 0 / 1 / 2).
+  //
+  // Réservé au corps IMMOBILE : en jeu, `/doridori` se joue à l'arrêt, et
+  // écraser l'index pendant une marche figerait l'animation.
+  if (opts.head_dir > 0 && opts.force_frame < 0 && actor_frame == 0)
+    actor_frame = static_cast<unsigned>(opts.head_dir);
+  // Le corps a-t-il seulement cette image ? `Act_GetFrame` (0x0070f4b0) retombe
+  // sur la PREMIÈRE quand l'index dépasse ; sans ce repli, une classe dont le
+  // corps porte moins d'images que la tête ne rendrait AUCUN quad, et le pantin
+  // disparaîtrait au lieu de simplement ne pas pencher la tête.
+  {
+    const int body_frames = SpriteActionFrameCount(body.res, body_pose);
+    if (body_frames > 0 && actor_frame >= static_cast<unsigned>(body_frames))
+      actor_frame = 0;
+  }
 
   // 🔴 DEUX résolutions du corps, exactement comme pour les pièces rapportées :
   // l'image 0 sert à MESURER, l'image courante à DESSINER. N'en faire qu'une
@@ -829,6 +863,7 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // Leur faire jouer le mouvement de repos à la place semblait plus logique
     // — une décoration vit pour elle-même — mais c'est faux : l'action de repos
     // d'un costume peut être tout autre chose que son animation en pose assise.
+    //
     const unsigned piece_pose = PieceAction(piece.res, pose);
 
     // ── Image de la pièce ────────────────────────────────────────────────────
@@ -853,6 +888,30 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // des millisecondes) : `c_angry_fish` dit 4.0 -> 96 ms par sous-image,
     // `c_avenger` 8.0 -> 192 ms. Avec 24 images pour 3 de tête, mult = 8 : ils
     // jouent 0..7, jamais les 24 — ce qui explique qu'ils ne « tournent » pas.
+    // ── Tête tournée (`/doridori`) ────────────────────────────────────────────
+    //
+    // 🔴 Une tête tourne par son IMAGE, pas par son action ni par sa direction.
+    // Un `.act` de tête porte exactement **3 images** par action — droit devant,
+    // penché d'un côté, penché de l'autre — et c'est l'index d'image de l'acteur
+    // (`acteur+0x3C`) qui les choisit. Le client le confirme dans
+    // `Actor_DrawSprites` (0x007ac820), dont le calcul d'offset Doram teste
+    // `+0x3C == 1` / `== 2` : ce champ porte bien 0/1/2 pour la tête.
+    //
+    // Les deux autres pistes ont été essayées et sont FAUSSES, chacune avec sa
+    // signature à l'écran :
+    //   * changer d'ACTION (`head_dir*8 + dir`) : aucun effet visible, les
+    //     actions d'une tête sont les mêmes mouvements que celles du corps ;
+    //   * décaler la DIRECTION (`dir ± 1`) : la tête se détache du corps (les
+    //     ancres d'une autre direction ne correspondent plus) et bascule en
+    //     MIROIR d'un côté — les directions 5..7 sont les vues 3..1 retournées.
+    //
+    // Les coiffes suivent SANS traitement particulier : leur `.act` porte un
+    // multiple exact des images de la tête (mesuré : 24 = 8 × 3), donc
+    // l'animation alternative ci-dessous les place dans le sous-groupe de la
+    // bonne image de tête. C'est exactement ce que fait le natif.
+    //
+    // Rien de spécifique à la tête ICI non plus : `actor_frame` porte déjà
+    // l'image voulue pour TOUT l'acteur (cf. son calcul, plus haut).
     unsigned pf = actor_frame;
     if (list[i].accessory && anim_seconds >= 0.0f && ref_frames > 0) {
       const int n_piece = SpriteActionFrameCount(piece.res, piece_pose);

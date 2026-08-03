@@ -29,6 +29,13 @@ std::string SettingsPath();
 std::string MoonlightUserPath();  // identifiant web mémorisé (texte clair)
 std::string MoonlightPwPath();    // mot de passe web chiffré DPAPI
 std::string LastCharsPath();      // CID des derniers persos joués (récence)
+// Mise en page personnalisée du char-select (sièges, ancres, fond choisi).
+// Fichier DÉDIÉ et non une section de bourgeon_settings.yaml : le document est
+// volumineux (25 sièges + ancres), il est réécrit à chaque sortie du mode
+// « Personnaliser », et il n'a aucun lecteur en dehors de char_select_layout —
+// le tenir à l'écart du yaml partagé évite d'exposer les réglages des autres
+// modules à ces réécritures fréquentes.
+std::string CharSelectLayoutPath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

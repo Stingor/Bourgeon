@@ -3,6 +3,8 @@
 #include "ui/doll.h"
 #include "ui/head_icon.h"
 #include "features/windows/char_select.h"
+#include "features/windows/char_select_layout.h"
+#include "ragnarok/held_sprites.h"
 
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
@@ -40,10 +42,13 @@ constexpr int       kCmdGetChar = 8;
 // Même chemin que les icônes d'items (character_sheet.cc) : UITextureMgr_Get ->
 // MakeKey(path) -> LoadTex ; la texture expose largeur/hauteur/pixels BGRA.
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-// Chemin VFS du décor : à déposer dans le GRF/data du client (via le patcher).
-// Préfixe 유저인터페이스\ (CP949) = racine UI où le loader résout à coup sûr, comme
-// les .bmp d'items. Fichier 24/32 bits ; dessiné étiré plein écran (toute taille
-// convient — plus petit = moins de VRAM).
+// Chemin VFS du décor d'USINE : déposé dans le GRF/data du client (via le
+// patcher). Fichier 24/32 bits ; dessiné étiré plein écran (toute taille convient
+// — plus petit = moins de VRAM).
+//
+// Ce n'est plus le seul décor possible : le joueur en choisit un dans la galerie
+// du mode « Personnaliser » (charsel::Backgrounds(), fichiers de data\lobby\), et
+// son choix est persisté. Celui-ci reste le repli quand aucun n'est choisi.
 const char kHallBmpPath[] =
     "lobby_hall.bmp";
 
@@ -159,6 +164,15 @@ constexpr int kHeadMid   = 0x66;  // u16 head_mid
 constexpr int kHairCol   = 0x68;  // u16
 constexpr int kClothesCol = 0x6a;  // u16
 constexpr int kGarment   = 0xa2;  // u32 robe
+// Arme et bouclier. Le char-select NATIF ne les passe pas à Actor_Init — il ne
+// les affiche pas — mais la liste les porte.
+//
+// 🔴 u16, PAS u32, et les champs voisins le prouvent : lus sur 32 bits, ils
+// renvoyaient 65537 (= 0x00010001, l'arme ET le niveau de base collés, ce
+// dernier étant à +0x5C). L'ordre du paquet est celui de rAthena :
+// hair, body, WEAPON, base_level, skill_point, head_bottom, SHIELD, head_top…
+constexpr int kWeapon    = 0x5a;  // u16 vue d'arme
+constexpr int kShield    = 0x62;  // u16 vue de bouclier
 // Compteurs de coupons (RE UINewSelectCharWnd_OnMsg 0x0079d610 : lus >0 pour le badge
 // via sub_D239E0(45/47), et +0xa6 relu dans le paquet moveslot case 433).
 constexpr int kMoveCnt   = 0xa6;  // u32 changements de SLOT restants (coupon 12786)
@@ -378,35 +392,15 @@ const char* JobName(int job, int sex) {
 // numérotée -> AJUSTABLES en jeu via l'éditeur de sièges (staff), qui journalise la
 // table prête à recoller ici. Ordre = 1 grand trône, 2 petit trône, 3-5 petites
 // tables, 6-14 rangée haute, 15/16 bouts, 17-25 rangée basse.
-struct Seat { float nx, ny, scale; };
-Seat g_seats[] = {
-    {0.460f, 0.295f, 0.115f},  // 1  grand trône
-    {0.545f, 0.304f, 0.115f},  // 2  petit trône
-    {0.414f, 0.453f, 0.115f},  // 3  petite table gauche
-    {0.497f, 0.453f, 0.115f},  // 4  petite table milieu
-    {0.579f, 0.453f, 0.115f},  // 5  petite table droite
-    {0.142f, 0.589f, 0.115f},  // 6  rangée haute
-    {0.232f, 0.589f, 0.115f},  // 7
-    {0.321f, 0.589f, 0.115f},  // 8
-    {0.408f, 0.589f, 0.115f},  // 9
-    {0.498f, 0.589f, 0.115f},  // 10
-    {0.586f, 0.589f, 0.115f},  // 11
-    {0.674f, 0.589f, 0.115f},  // 12
-    {0.763f, 0.589f, 0.115f},  // 13
-    {0.852f, 0.589f, 0.115f},  // 14
-    {0.041f, 0.677f, 0.115f},  // 15 bout gauche
-    {0.954f, 0.679f, 0.115f},  // 16 bout droit
-    {0.111f, 0.837f, 0.115f},  // 17 rangée basse
-    {0.207f, 0.837f, 0.115f},  // 18
-    {0.305f, 0.837f, 0.115f},  // 19
-    {0.401f, 0.837f, 0.115f},  // 20
-    {0.497f, 0.837f, 0.115f},  // 21
-    {0.594f, 0.837f, 0.115f},  // 22
-    {0.689f, 0.837f, 0.115f},  // 23
-    {0.782f, 0.837f, 0.115f},  // 24
-    {0.880f, 0.837f, 0.115f},  // 25
-};
-constexpr int kSeatCount = static_cast<int>(sizeof(g_seats) / sizeof(g_seats[0]));
+// La table elle-même vit désormais dans features/windows/char_select_layout :
+// elle est MODIFIABLE par le joueur (mode « Personnaliser ») et persistée dans
+// bourgeon_charselect_layout.yaml. Ici on ne fait que la lire.
+using charsel::kSeatCount;
+using charsel::Seat;
+// Sièges courants. Fonction et non référence statique : State() lit le fichier au
+// premier appel, qui peut survenir avant ou après ce fichier selon l'ordre
+// d'initialisation — on ne fige donc rien à la construction.
+inline Seat* Seats() { return charsel::State().seats; }
 
 // ── Pagination des bancs ──────────────────────────────────────────────────────
 // MAX_CHARS serveur (45, bientôt 60) dépasse les 25 sièges de la table. La table
@@ -427,30 +421,19 @@ int NumPages(int cap) {
   return (cap - kHeadSeats + kRowSeats - 1) / kRowSeats;  // ceil
 }
 
-// ── Éditeur de layout (staff) : poignées déplaçables + dump des coordonnées ─────
-// Toute position qui passe par Anchor() devient, en mode édition, une petite
-// poignée qu'on glisse à la souris ; « Dump layout » journalise tous ces points
-// (et la table des sièges) en bloc prêt à figer en dur. Sert à caler les petits
-// décalages qu'on ne peut pas calculer d'avance. Enregistrement idempotent par nom
-// (les fractions survivent aux changements de résolution).
-struct AnchorPt { const char* name; float nx, ny; };
-AnchorPt g_anchors[16];
-int g_anchor_count = 0;
-
-// Point de layout `name` (défaut def_nx/def_ny en FRACTIONS d'écran). Renvoie sa
-// position ÉCRAN courante (px). En mode édition, dessine + déplace la poignée.
+// ── Points d'ancrage des blocs d'interface (titre, boutons, pages, sortie) ─────
+// Toute position qui passe par Anchor() devient, en mode « Personnaliser », une
+// petite poignée qu'on glisse à la souris. Le registre (idempotent par nom, en
+// FRACTIONS d'écran donc stable d'une résolution à l'autre) vit dans
+// char_select_layout : ce qui n'était qu'un outil d'auteur, dont la seule sortie
+// était un LogDiag à recopier dans le code, est maintenant enregistré.
+//
+// Renvoie la position ÉCRAN courante (px) du point `name`, enregistré au défaut
+// def_nx/def_ny à son premier appel.
 ImVec2 Anchor(const char* name, float def_nx, float def_ny, bool edit) {
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
-  AnchorPt* a = nullptr;
-  for (int i = 0; i < g_anchor_count; ++i)
-    if (std::strcmp(g_anchors[i].name, name) == 0) { a = &g_anchors[i]; break; }
-  if (!a && g_anchor_count < static_cast<int>(sizeof(g_anchors) / sizeof(g_anchors[0]))) {
-    a = &g_anchors[g_anchor_count++];
-    a->name = name;
-    a->nx = def_nx;
-    a->ny = def_ny;
-  }
-  if (!a) return ImVec2(def_nx * disp.x, def_ny * disp.y);
+  charsel::AnchorPt* a = charsel::AnchorRef(name, def_nx, def_ny);
+  if (!a) return ImVec2(def_nx * disp.x, def_ny * disp.y);  // registre plein
   ImVec2 c(a->nx * disp.x, a->ny * disp.y);
   if (edit) {
     ImGui::PushID(name);
@@ -460,12 +443,16 @@ ImVec2 Anchor(const char* name, float def_nx, float def_ny, bool edit) {
       a->nx += ImGui::GetIO().MouseDelta.x / disp.x;
       a->ny += ImGui::GetIO().MouseDelta.y / disp.y;
       c = ImVec2(a->nx * disp.x, a->ny * disp.y);
+      charsel::MarkDirty();
     }
-    ImDrawList* fg = ImGui::GetForegroundDrawList();
-    fg->AddCircleFilled(c, 5.0f,
+    // Draw-list de la fenêtre (la couverture plein écran) et non le FOREGROUND :
+    // celui-ci passerait AU-DESSUS du panneau « Personnaliser », qui capte pourtant
+    // les clics à cet endroit — on verrait des poignées qu'on ne peut pas saisir.
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddCircleFilled(c, 5.0f,
                         ImGui::IsItemActive() ? IM_COL32(255, 255, 150, 255)
                                               : IM_COL32(120, 200, 255, 230));
-    fg->AddText(ImVec2(c.x + 8.0f, c.y - 6.0f), IM_COL32(150, 210, 255, 255), name);
+    dl->AddText(ImVec2(c.x + 8.0f, c.y - 6.0f), IM_COL32(150, 210, 255, 255), name);
     ImGui::PopID();
   }
   return c;
@@ -475,14 +462,14 @@ ImVec2 Anchor(const char* name, float def_nx, float def_ny, bool edit) {
 // texture native du décor. ⚠ AUCUN objet C++ ici : un std::vector/std::string dans
 // un __try déclenche C2712 (« __try dans une fonction nécessitant un déroulement
 // d'objet »). D'où la scission avec la conversion C++ ci-dessous.
-const uint8_t* FetchHallBgra(int* out_w, int* out_h) {
+const uint8_t* FetchHallBgra(const char* path, int* out_w, int* out_h) {
   __try {
     using TexMgr_t  = void*(__cdecl*)();
     using MakeKey_t = void*(__cdecl*)(const char*);
     using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
     void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     if (!mgr) return nullptr;
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(kHallBmpPath);
+    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
     if (!key) return nullptr;
     void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (!t) return nullptr;
@@ -515,23 +502,79 @@ bool CopyBgraToArgb(uint8_t* dst, const uint8_t* bgra, int w, int h) {
   }
 }
 
-// ── Fond banquet : BMP client -> texture ImGui (cache, invalidé au reset device) ─
-// Chargé une fois via le loader natif, converti BGRA->ARGB pour Overlay. Renvoie 0
-// tant que le .bmp est absent (le décor tombe alors sur un fond sombre uni).
-void* LoadHallTexture() {
+// ── Décor : BMP client -> texture ImGui (cache, invalidé au reset device) ──────
+// Chargé via le loader natif, converti BGRA->ARGB pour Overlay. Renvoie 0 tant que
+// le .bmp est absent (le décor tombe alors sur un fond sombre uni).
+//
+// Le cache porte le CHEMIN chargé, et pas seulement une texture : changer de décor
+// dans le mode « Personnaliser » doit se voir à la frame suivante, sans quitter
+// l'écran. La texture précédente est explicitement relâchée — sans quoi parcourir
+// la galerie fuirait une texture plein écran par décor essayé.
+//
+// ⚠ Release SEULEMENT quand le device est le même : après un changement d'epoch
+// les anciens handles appartiennent à un device détruit, les toucher fait fauter
+// le backend (cf. Overlay_ReleaseTexture).
+//
+// 🔴 Et JAMAIS dans la frame courante. Le décor est peint au DÉBUT de la frame
+// (DrawHallBackdrop -> AddImage), le clic qui change de décor arrive PLUS TARD
+// dans cette même frame : au moment du changement, la draw-list contient déjà un
+// dessin de l'ancienne texture, que rien d'autre ne référence encore (SetTexture
+// n'aura lieu qu'au rendu). Un Release immédiat la détruit donc avant qu'elle ne
+// soit dessinée, et d3d9 déréférence un objet mort au rendu :
+//   mov esi,[eax+0Ch] ; call esi   avec esi = 0  ->  EIP = 0 (crash observé,
+//   x32dbg, retour dans d3d9.dll 0x67ea199b).
+// La libération est donc DIFFÉRÉE de deux frames : la frame qui référençait la
+// texture est alors rendue et présentée depuis longtemps.
+struct PendingTexRelease {
+  void* tex = nullptr;
+  int   frame = 0;  // frame ImGui où la texture a cessé d'être utilisée
+};
+
+void* LoadHallTexture(const char* path) {
   static void* s_tex = nullptr;
   static unsigned s_epoch = 0xffffffff;
+  static std::string s_path;  // chemin de la texture en cache
   static bool s_tried = false;  // ne pas re-tenter en boucle si le .bmp manque
+  static PendingTexRelease s_pending[8];
+
+  const int frame = ImGui::GetFrameCount();
   const unsigned e = Overlay_DeviceEpoch();
   if (e != s_epoch) {  // device (re)créé -> l'ancienne texture est morte
+    s_tex = nullptr;   // (surtout PAS de Release : elle appartient au device parti)
+    // Les différées aussi : leurs handles sont morts avec le device.
+    for (PendingTexRelease& p : s_pending) p.tex = nullptr;
+    s_tried = false;
+    s_path.clear();
+    s_epoch = e;
+  }
+  // Purge des textures dont la dernière frame d'usage est passée.
+  for (PendingTexRelease& p : s_pending) {
+    if (p.tex && frame > p.frame + 1) {
+      Overlay_ReleaseTexture(p.tex);
+      p.tex = nullptr;
+    }
+  }
+  if (s_path != path) {  // décor changé à chaud
+    if (s_tex) {
+      bool queued = false;
+      for (PendingTexRelease& p : s_pending) {
+        if (!p.tex) { p.tex = s_tex; p.frame = frame; queued = true; break; }
+      }
+      // File pleine (le joueur a parcouru la galerie très vite) : on ABANDONNE la
+      // texture. Fuir quelques Mo de VRAM jusqu'au prochain reset de device est
+      // sans conséquence visible ; la relâcher trop tôt fait tomber le client.
+      if (!queued)
+        LogError("[CharSelect] file de libération pleine -> texture de décor "
+                 "abandonnée (fuite bénigne)");
+    }
     s_tex = nullptr;
     s_tried = false;
-    s_epoch = e;
+    s_path = path;
   }
   if (s_tex || s_tried) return s_tex;
   s_tried = true;
   int w = 0, h = 0;
-  const uint8_t* bgra = FetchHallBgra(&w, &h);
+  const uint8_t* bgra = FetchHallBgra(path, &w, &h);
   if (!bgra) return s_tex;  // .bmp absent/invalide -> fond uni
   // Conversion + upload en C++ normal : le std::vector a un destructeur, donc HORS
   // __try (sinon C2712). La recopie lisant `bgra` reste, elle, SEH-gardée.
@@ -540,6 +583,17 @@ void* LoadHallTexture() {
   s_tex = Overlay_CreateTextureARGB(argb.data(), w, h);
   return s_tex;
 }
+
+// Le décor choisi, ou celui d'usine si le réglage est vide.
+const char* CurrentBackgroundPath() {
+  const std::string& bg = charsel::State().background;
+  return bg.empty() ? kHallBmpPath : bg.c_str();
+}
+
+// Le décor demandé s'est-il chargé ? Sert au mode « Personnaliser » à dire au
+// joueur que son fichier n'a pas été trouvé, au lieu de lui montrer un fond uni
+// sans explication.
+bool BackgroundLoaded() { return LoadHallTexture(CurrentBackgroundPath()) != nullptr; }
 
 // ── Derniers personnages joués (reprise après déco/reco) ─────────────────────
 // Le natif replace toujours la sélection sur le slot 0 : après une déconnexion
@@ -664,6 +718,8 @@ bool CharSelect::ReadSlot(int slot, CharView* out) const {
     out->hair_color    = Read<uint16_t>(c, ci::kHairCol);
     out->clothes_color = Read<uint16_t>(c, ci::kClothesCol);
     out->garment       = static_cast<int>(Read<uint32_t>(c, ci::kGarment));
+    out->weapon        = Read<uint16_t>(c, ci::kWeapon);
+    out->shield        = Read<uint16_t>(c, ci::kShield);
     out->moves_avail   = static_cast<int>(Read<uint32_t>(c, ci::kMoveCnt));
     out->rename_avail  = static_cast<int>(Read<uint32_t>(c, ci::kRenameCnt));
     return true;
@@ -731,7 +787,8 @@ void CharSelect::EnterGame(int slot) {
 }
 
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
-                           float box_h) {
+                           float box_h, const charsel::Seat& pose,
+                           int seat_index) {
   // Paperdoll (corps + tête + coiffes + cape, palettes) : ui/doll.h le COMPOSE à
   // partir des fichiers. Il prend une apparence en paramètre, donc ne dépend ni
   // d'une session en jeu ni d'une UIWindow — indispensable ici, on est au
@@ -763,9 +820,10 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     tint = IM_COL32(255, gb, gb, 255);
   }
 
-  // dir 0 = de face ; anim 2 = ASSIS (les convives sont attablés). La pose assise
-  // pose aussi le perso SUR le banc (son point d'assise, pas ses pieds, arrive à
-  // chair_y) -> corrige le « flottement » de la pose debout.
+  // Pose : elle vient du SIÈGE (mode « Personnaliser »), défauts = dir 0 (de
+  // face) et anim 2 (ASSIS, les convives sont attablés). La pose assise pose le
+  // perso SUR le banc — son point d'assise, pas ses pieds, arrive à chair_y —,
+  // ce qui corrige le « flottement » de la pose debout.
   ro::DollLook dl;
   dl.sex           = v.sex_eff;  // 99 déjà résolu en sexe de compte
   dl.job           = v.job;
@@ -777,12 +835,45 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   dl.head_top      = v.head_top;
   dl.head_mid      = v.head_mid;
   dl.garment       = v.garment;
+  // Arme et bouclier : le composeur veut des CHEMINS, pas des identifiants (leur
+  // résolution native est trop tordue pour être recopiée, cf. ui/doll.h). En jeu
+  // ils se lisent sur l'acteur ; ici il n'y en a pas, donc on demande au client
+  // de les construire (rag::ResolveHeldSprites). Les tampons vivent jusqu'au
+  // DrawDoll ci-dessous, qui ne conserve rien.
+  rag::HeldSpritePaths held;
+  if (rag::ResolveHeldSprites(v.job, v.sex_eff, v.weapon, v.shield, &held)) {
+    if (held.weapon_spr[0]) {
+      dl.weapon.spr_base = held.weapon_spr;
+      dl.weapon.act_base = held.weapon_act[0] ? held.weapon_act : nullptr;
+    }
+    if (held.shield_spr[0]) {
+      dl.shield.spr_base = held.shield_spr;
+      dl.shield.act_base = held.shield_act[0] ? held.shield_act : nullptr;
+    }
+  }
   // L'horloge n'anime QUE les accessoires en pose assise — un masque dont les
   // couleurs changent, une mâchoire qui mordille. Le corps et la tête restent
   // figés : leurs images sont des poses et des expressions, pas une décoration.
-  const bool drawn = ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh,
-                                  /*dir=*/0, /*anim=*/2,
-                                  static_cast<float>(ImGui::GetTime()), tint);
+  ro::DollDrawOpts opts;
+  opts.dir          = pose.dir;
+  opts.anim         = pose.anim;
+  opts.head_dir     = pose.head_dir;
+  opts.anim_seconds = static_cast<float>(ImGui::GetTime());
+  opts.tint         = tint;
+  // Corps figé par défaut, animé sur demande (« Combat (animé) »). L'horloge
+  // reste posée dans les deux cas : elle anime les ACCESSOIRES, qui doivent
+  // continuer à vivre sur un personnage immobile, comme en jeu.
+  opts.freeze_body  = !pose.animate;
+  // Image imposée (sous-menu « Image ») : court-circuite horloge et freeze_body.
+  opts.force_frame  = pose.frame;
+  // Le nombre d'images de l'action, relevé au passage : le menu ne peut proposer
+  // que celles qui existent, et ce nombre dépend de la pose ET de la classe.
+  ro::DollPlacement place;
+  opts.out_placement = &place;
+  const bool drawn =
+      ro::DrawDoll(ImGui::GetWindowDrawList(), dl, x, y, w, dh, opts);
+  if (drawn && seat_index >= 0 && seat_index < kSeatCount)
+    seat_frames_[seat_index] = place.frame_count;
   if (!drawn) {
     // Placeholder tant que les fichiers ne sont pas chargés : une silhouette
     // discrète, même encombrement -> zéro saut de scène.
@@ -859,6 +950,13 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
 }
 
 void CharSelect::DriveModeCmd(int cmd) {
+  // Sortie d'écran (retour au login / fermeture du jeu) : on grave la mise en page
+  // avant de partir. C'est indispensable ICI et pas seulement dans OnModeSwitch :
+  // un retour au login ne CHANGE PAS de mode (le client reste en CLoginMode, seul
+  // son état bouge), OnModeSwitch ne repasserait donc jamais et le travail du
+  // joueur serait perdu.
+  seat_edit_ = false;
+  charsel::SaveIfDirty();
   // Envoie une commande au MODE courant (dispatcher *(0x0121333c), vtbl+0x18) — le
   // même point d'entrée que ReadSlot (cmd 8) et que le natif quand il quitte l'écran.
   // 5 args pile : DispCmd_t est le typedef partagé (aucun ne sert ici, tous à 0).
@@ -904,7 +1002,12 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     del_reject_seq_seen_ = g_del_reject_seq;  // ne pas ressortir un refus d'avant
     wait_since_ = 0;
     list_warned_ = false;
+    seat_edit_ = false;  // on n'arrive jamais sur l'écran en mode personnalisation
   } else {
+    // Entrée en jeu : dernier filet pour la mise en page laissée ouverte (le
+    // joueur a pu double-cliquer un personnage en pleine personnalisation).
+    seat_edit_ = false;
+    charsel::SaveIfDirty();
     // On quitte le login (entrée en jeu) : notre scène ne couvre plus rien. Sans ce
     // reset, g_cover_active reste collé à true — OnRenderLoginUI, seul endroit qui
     // le remettait à false, n'est plus appelé une fois en jeu. Voir Detour_ShowModal.
@@ -926,7 +1029,7 @@ void CharSelect::DrawHallBackdrop(ImDrawList* dl, const ImVec2& disp) {
   // sombre si le fichier n'est pas déployé. Partagé par la table et le fondu de
   // transition (qui doit s'assombrir DEPUIS le décor, pas depuis un écran vide,
   // sinon le char-select natif réapparaîtrait le temps du fondu).
-  if (void* hall = LoadHallTexture()) {
+  if (void* hall = LoadHallTexture(CurrentBackgroundPath())) {
     dl->AddImage(reinterpret_cast<ImTextureID>(hall), ImVec2(0, 0), disp);
   } else {
     dl->AddRectFilledMultiColor(ImVec2(0, 0), disp, IM_COL32(24, 22, 30, 255),
@@ -973,6 +1076,261 @@ void CharSelect::DrawTransitionFade(const char* label, unsigned long since) {
   ImGui::End();
   ImGui::PopStyleVar(2);
   ImGui::PopStyleColor();  // WindowBg
+}
+
+void CharSelect::ToggleLayoutEdit() {
+  seat_edit_ = !seat_edit_;
+  if (seat_edit_) {
+    // Le joueur vient peut-être de déposer un .bmp sans quitter le jeu : la
+    // galerie doit refléter le dossier tel qu'il est À CET INSTANT.
+    charsel::RescanBackgrounds();
+    // Sélection repartie de zéro : l'index d'un passage précédent ne désigne plus
+    // forcément le même enregistrement (une suppression a pu décaler la liste).
+    preset_sel_ = -1;
+    preset_del_armed_ = false;
+  } else {
+    // Sortie du mode = on grave. Enregistrer à chaque pixel de glissement
+    // réécrirait le fichier des dizaines de fois par seconde.
+    charsel::SaveIfDirty();
+  }
+}
+
+void CharSelect::DrawLayoutGuides(ImDrawList* dl, const ImVec2& disp) {
+  // Repères de composition (règle des tiers + axe central) : placer un personnage
+  // « au milieu » à l'œil nu sur un décor chargé est autrement un pari.
+  const ImU32 grid = IM_COL32(255, 255, 255, 26);
+  for (int i = 1; i < 3; ++i) {
+    const float x = disp.x * static_cast<float>(i) / 3.0f;
+    const float y = disp.y * static_cast<float>(i) / 3.0f;
+    dl->AddLine(ImVec2(x, 0.0f), ImVec2(x, disp.y), grid);
+    dl->AddLine(ImVec2(0.0f, y), ImVec2(disp.x, y), grid);
+  }
+  dl->AddLine(ImVec2(disp.x * 0.5f, 0.0f), ImVec2(disp.x * 0.5f, disp.y),
+              IM_COL32(255, 210, 90, 45));
+
+  // Rappel des gestes, en haut : le panneau peut être déplacé n'importe où, le
+  // joueur ne doit pas avoir à le retrouver pour se souvenir de la molette.
+  const char* hint =
+      "Personnalisation — glisser : placer  •  molette : tourner  •  "
+      "Ctrl+molette : taille  •  clic droit : pose  •  pastilles bleues : "
+      "blocs d'interface";
+  const ImVec2 hs = ImGui::CalcTextSize(hint);
+  const float hx = (disp.x - hs.x) * 0.5f, hy = 6.0f;
+  dl->AddRectFilled(ImVec2(hx - 12.0f, hy - 4.0f),
+                    ImVec2(hx + hs.x + 12.0f, hy + hs.y + 4.0f),
+                    IM_COL32(20, 30, 50, 225), 4.0f);
+  dl->AddRect(ImVec2(hx - 12.0f, hy - 4.0f),
+              ImVec2(hx + hs.x + 12.0f, hy + hs.y + 4.0f),
+              IM_COL32(120, 200, 255, 200), 4.0f, 0, 1.5f);
+  dl->AddText(ImVec2(hx, hy), IM_COL32(215, 235, 255, 255), hint);
+}
+
+// Chemin rendu LISIBLE : les antislashs deviennent des barres obliques pour
+// l'affichage seul. La police de l'UI est Malgun Gothic (coréenne), qui dessine
+// U+005C comme le symbole won « ₩ » — l'octet est bien 0x5C et le loader reçoit le
+// bon chemin, mais à l'écran « lobby\x.bmp » se lit « lobby₩x.bmp » et donne
+// l'impression que le séparateur est cassé. Le chemin STOCKÉ garde ses antislashs.
+std::string DisplayPath(const std::string& p) {
+  std::string s = p;
+  std::replace(s.begin(), s.end(), '\\', '/');
+  return s;
+}
+
+void CharSelect::DrawLayoutEditor() {
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  // Taille FIXE (redimensionnable à la main) et non AlwaysAutoResize : le panneau
+  // est fait de TextWrapped et d'un enfant à largeur libre, dont la mise en page
+  // dépend de la largeur — les laisser décider de cette même largeur fait osciller
+  // la fenêtre d'une frame à l'autre.
+  ImGui::SetNextWindowSize(ImVec2(370.0f, 480.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowPos(ImVec2((std::max)(20.0f, disp.x - 400.0f), 70.0f),
+                          ImGuiCond_FirstUseEver);
+  bool open = true;
+  // Repli AUTORISÉ pour ce panneau : il couvre une partie de la scène qu'on est
+  // justement en train de composer, et il faut pouvoir le sortir du chemin sans
+  // quitter le mode (ce qui écrirait le layout et ferait perdre la sélection).
+  //
+  // ⚠ Le repli est interdit GLOBALEMENT hors du monde de jeu (Bourgeon::RenderUI
+  // pose SetWindowCollapseAllowed(false) à chaque frame au login/char-select,
+  // pour qu'un formulaire de connexion ne puisse pas rester réduit à une barre de
+  // titre). On lève donc l'interdit le temps de CETTE fenêtre, et on le remet
+  // aussitôt — la valeur étant reposée à chaque frame, rien ne fuit.
+  ro::SetWindowCollapseAllowed(true);
+  const bool begun =
+      ro::BeginRoWindow("Personnaliser l'écran###bourgeon_charsel_layout", &open);
+  if (begun) {
+    charsel::Layout& lay = charsel::State();
+
+    ImGui::TextUnformatted("Décor");
+    ImGui::Separator();
+    const std::vector<charsel::Background>& bgs = charsel::Backgrounds();
+    const std::string current = lay.background;
+    ImGui::BeginChild("##bg_list", ImVec2(0.0f, 132.0f), true);
+    for (const charsel::Background& b : bgs) {
+      const bool sel = (b.path == current);
+      if (ImGui::Selectable(b.label.c_str(), sel) && !sel) {
+        // Appliqué IMMÉDIATEMENT : LoadHallTexture recharge dès que le chemin
+        // change, le joueur voit son décor derrière le panneau sans valider.
+        lay.background = b.path;
+        charsel::MarkDirty();
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", DisplayPath(b.path).c_str());
+    }
+    ImGui::EndChild();
+
+    // Un fichier peut avoir été supprimé/renommé depuis, ou ne pas être un BMP
+    // que le loader accepte : le dire, plutôt que de laisser le joueur devant un
+    // fond uni sans comprendre.
+    if (!BackgroundLoaded()) {
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(180, 40, 40, 255));
+      ImGui::TextWrapped("Ce décor n'a pas pu être chargé (fichier absent ou "
+                         "format refusé) — fond uni en attendant.");
+      ImGui::PopStyleColor();
+    }
+    if (ro::RoButton("Rafraîchir", 110.0f, 0.0f)) charsel::RescanBackgrounds();
+    ImGui::SameLine();
+    if (ro::RoButton("Ouvrir le dossier", 160.0f, 0.0f))
+      charsel::OpenBackgroundFolder();
+    // Chemins écrits en barres obliques : cf. DisplayPath (la police coréenne
+    // dessine l'antislash en « ₩ »).
+    ImGui::TextWrapped(
+        "Dépose tes images .bmp dans data/texture/lobby/ (24 ou 32 bits, nom "
+        "sans accent), puis « Rafraîchir ». Le bouton ci-dessus ouvre le bon "
+        "dossier et le crée au besoin.");
+    // Le client ne résout PAS data\lobby\ (il cherche sous data\texture\) : des
+    // images laissées là resteraient invisibles sans explication.
+    if (const int misplaced = charsel::MisplacedBackgroundCount()) {
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 90, 0, 255));
+      ImGui::TextWrapped("%d image(s) se trouvent dans %s : le client ne lit pas "
+                         "ce dossier, déplace-les vers data/texture/lobby/.",
+                         misplaced,
+                         DisplayPath(charsel::MisplacedBackgroundDir()).c_str());
+      ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Places libres");
+    ImGui::Separator();
+    bool hide = lay.hide_empty_seats;
+    if (ro::RoCheckbox("Masquer les places libres", &hide)) {
+      lay.hide_empty_seats = hide;
+      charsel::MarkDirty();
+    }
+    if (!hide) {
+      float alpha = lay.empty_seat_alpha;
+      if (ro::RoSliderFloat("Opacité", &alpha, 0.0f, 1.0f)) {
+        lay.empty_seat_alpha = alpha;
+        charsel::MarkDirty();
+      }
+    }
+    ImGui::TextWrapped("Masquées, elles réapparaissent au survol : créer un "
+                       "personnage reste possible. Elles restent toujours "
+                       "visibles pendant la personnalisation.");
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Placement");
+    ImGui::Separator();
+    ImGui::TextWrapped(
+        "Glisse un personnage pour déplacer sa place. Molette dessus : le "
+        "tourner ; Ctrl+molette : sa taille ; clic droit : sa pose (assis, "
+        "debout, touché, mort) et l'orientation de sa tête.\n"
+        "Les pastilles bleues déplacent le titre, la barre de boutons, la "
+        "pagination et la barre de sortie.");
+    if (ro::RoButton("Replacer les personnages", 200.0f, 0.0f))
+      charsel::ResetPlacement();
+    ImGui::SameLine();
+    if (ro::RoButton("Tout restaurer", 150.0f, 0.0f)) {
+      // Retour à la mise en page LIVRÉE (décor d'origine compris). Les
+      // enregistrements du joueur ne sont pas touchés : c'est une remise à zéro de
+      // l'écran, pas un effacement de son travail.
+      charsel::ResetAll();
+      preset_sel_ = -1;
+    }
+
+    // ── Mises en page enregistrées ───────────────────────────────────────────
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Mises en page enregistrées");
+    ImGui::Separator();
+    const std::vector<charsel::Preset>& presets = charsel::Presets();
+    ImGui::BeginChild("##preset_list", ImVec2(0.0f, 96.0f), true);
+    if (presets.empty()) {
+      ImGui::TextColored(ImVec4(0.36f, 0.38f, 0.42f, 1.0f),
+                         "Aucune pour l'instant.");
+    }
+    for (int i = 0; i < static_cast<int>(presets.size()); ++i) {
+      if (ImGui::Selectable(presets[i].name.c_str(), preset_sel_ == i)) {
+        preset_sel_ = i;
+        // Le champ suit la sélection : « Enregistrer » écrase alors CE nom, ce que
+        // le joueur attend après avoir cliqué dessus.
+        std::snprintf(preset_name_, sizeof(preset_name_), "%s",
+                      presets[i].name.c_str());
+        preset_del_armed_ = false;
+      }
+      if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        charsel::ApplyPreset(i);
+    }
+    ImGui::EndChild();
+
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##preset_name", "Nom (ex. « Ma taverne »)",
+                             preset_name_, sizeof(preset_name_));
+    const bool has_name = (preset_name_[0] != '\0');
+    if (!has_name) ImGui::BeginDisabled();
+    if (ro::RoButton("Enregistrer", 130.0f, 0.0f)) {
+      if (charsel::SavePreset(preset_name_)) preset_del_armed_ = false;
+      // Sélectionne l'entrée qui vient d'être écrite (nouvelle ou mise à jour).
+      const std::vector<charsel::Preset>& after = charsel::Presets();
+      for (int i = 0; i < static_cast<int>(after.size()); ++i)
+        if (after[i].name == preset_name_) { preset_sel_ = i; break; }
+    }
+    if (!has_name) ImGui::EndDisabled();
+    const bool has_sel =
+        (preset_sel_ >= 0 && preset_sel_ < static_cast<int>(presets.size()));
+    ImGui::SameLine();
+    if (!has_sel) ImGui::BeginDisabled();
+    if (ro::RoButton("Appliquer", 120.0f, 0.0f)) {
+      charsel::ApplyPreset(preset_sel_);
+      preset_del_armed_ = false;
+    }
+    ImGui::SameLine();
+    // Suppression en DEUX temps plutôt qu'un dialogue : un enregistrement effacé
+    // par erreur est irrécupérable, mais une boîte modale de plus sur cet écran
+    // (déjà peuplé de popups create/delete) coûterait plus qu'elle ne protège.
+    if (ro::RoButton(preset_del_armed_ ? "Confirmer" : "Supprimer", 120.0f, 0.0f)) {
+      if (preset_del_armed_) {
+        charsel::DeletePreset(preset_sel_);
+        preset_sel_ = -1;
+        preset_del_armed_ = false;
+      } else {
+        preset_del_armed_ = true;
+      }
+    }
+    if (!has_sel) ImGui::EndDisabled();
+    if (preset_del_armed_ && has_sel)
+      ImGui::TextColored(ImVec4(0.55f, 0.15f, 0.10f, 1.0f),
+                         "Clique « Confirmer » pour supprimer « %s ».",
+                         presets[preset_sel_].name.c_str());
+    else
+      ImGui::TextWrapped("Double-clic sur un nom = l'appliquer. « Enregistrer » "
+                         "range l'écran tel qu'il est sous ce nom.");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    if (ro::RoButton("Terminer", 120.0f, 0.0f)) open = false;
+    ImGui::SameLine();
+    // Couleurs explicites : le corps d'une fenêtre RO est CLAIR, ImGui::TextDisabled
+    // y est illisible.
+    if (charsel::Dirty())
+      ImGui::TextColored(ImVec4(0.45f, 0.30f, 0.05f, 1.0f),
+                         "Sera enregistré en quittant");
+    else
+      ImGui::TextColored(ImVec4(0.15f, 0.42f, 0.18f, 1.0f), "Enregistré");
+  }
+  ro::EndRoWindow();
+  ro::SetWindowCollapseAllowed(false);  // on rend l'interdit général de l'écran
+  if (!open) ToggleLayoutEdit();  // « Terminer » ou croix -> sortie + écriture
 }
 
 void CharSelect::OnRenderLoginUI() {
@@ -1205,12 +1563,15 @@ void CharSelect::OnRenderLoginUI() {
   // délai, elles jouaient le personnage avant même que le joueur ait vu la table.
   const bool enter_key = ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false);
+  // ⚠ Ni pendant la personnalisation : on y glisse des sièges au-dessus des
+  // personnages, entrer en jeu sur une frappe d'Entrée ferait perdre la mise en
+  // page en cours.
   const bool enter_armed = (GetTickCount() - active_since_) > kEnterGraceMs;
-  if (enter_key && enter_armed && !io.WantTextInput && !any_popup &&
+  if (enter_key && enter_armed && !io.WantTextInput && !any_popup && !seat_edit_ &&
       can_enter_slot(selected_))
     EnterGame(selected_);
 
-  // ── Sièges (position = g_seats[i]) ; slot de perso = CharForSeat(i, page) ─────
+  // ── Sièges (position = Seats()[i]) ; slot de perso = CharForSeat(i, page) ─────
   // Dessinés du fond vers l'avant (ordre de la table) : les sièges du 1er plan
   // passent par-dessus, et leur bouton invisible, soumis en dernier, gagne les
   // clics en cas de recouvrement. Les 5 sièges d'honneur restent sur les persos
@@ -1237,8 +1598,8 @@ void CharSelect::OnRenderLoginUI() {
       for (int i = 0; i < kSeatCount && !have_cur; ++i) {
         const int cj = CharForSeat(i, page_);
         if (cj == selected_ && cj < cap && cj < 128 && views[cj].occupied) {
-          curx = g_seats[i].nx * disp.x;
-          cury = g_seats[i].ny * disp.y;
+          curx = Seats()[i].nx * disp.x;
+          cury = Seats()[i].ny * disp.y;
           have_cur = true;
         }
       }
@@ -1249,8 +1610,8 @@ void CharSelect::OnRenderLoginUI() {
         if (cj >= cap || cj >= 128 || !views[cj].occupied) continue;
         if (first_occ < 0) first_occ = cj;
         if (!have_cur || cj == selected_) continue;
-        const float vx = g_seats[i].nx * disp.x - curx;
-        const float vy = g_seats[i].ny * disp.y - cury;
+        const float vx = Seats()[i].nx * disp.x - curx;
+        const float vy = Seats()[i].ny * disp.y - cury;
         const float proj = vx * dx + vy * dy;           // avance dans la direction
         if (proj <= 1.0f) continue;                       // pas dans la direction
         const float perp = std::fabs(vx * dy - vy * dx);  // écart latéral
@@ -1271,7 +1632,7 @@ void CharSelect::OnRenderLoginUI() {
     const bool empty = !v.occupied;
     if (empty && !creatable_all && !seat_edit_) continue;  // vide non créable
 
-    const Seat& st = g_seats[i];
+    const Seat& st = Seats()[i];
     const float cx = st.nx * disp.x;
     const float chair_y = st.ny * disp.y;
     const float box_h = st.scale * disp.y;
@@ -1285,15 +1646,36 @@ void CharSelect::OnRenderLoginUI() {
     const bool hovered = ImGui::IsItemHovered();
     const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
 
-    // Éditeur de sièges (staff) : glisser pour caler, molette pour la taille.
+    // Mode « Personnaliser » : glisser pour placer, molette pour TOURNER le
+    // personnage, Ctrl+molette pour sa taille. La rotation est le geste le plus
+    // fréquent une fois le décor changé — elle a donc la molette nue ; le zoom,
+    // qu'on règle une fois, prend le modificateur.
+    // Les valeurs partent dans le layout persisté (écrit à la sortie du mode).
     if (seat_edit_) {
       if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-        g_seats[i].nx += io.MouseDelta.x / disp.x;
-        g_seats[i].ny += io.MouseDelta.y / disp.y;
+        Seats()[i].nx += io.MouseDelta.x / disp.x;
+        Seats()[i].ny += io.MouseDelta.y / disp.y;
+        charsel::MarkDirty();
       }
-      if (hovered && io.MouseWheel != 0.0f)
-        g_seats[i].scale =
-            (std::max)(0.05f, g_seats[i].scale + io.MouseWheel * 0.005f);
+      if (hovered && io.MouseWheel != 0.0f) {
+        if (io.KeyCtrl) {
+          Seats()[i].scale =
+              (std::max)(0.05f, Seats()[i].scale + io.MouseWheel * 0.005f);
+        } else {
+          // 8 orientations en boucle. Un cran = un huitième de tour ; le signe
+          // suit le sens de la molette, et l'entier reste dans [0,7] (le & 7
+          // ramènerait -1 à 7 sans passer par un modulo négatif).
+          const int step = (io.MouseWheel > 0.0f) ? 1 : -1;
+          Seats()[i].dir = (Seats()[i].dir + step + 8) & 7;
+        }
+        charsel::MarkDirty();
+      }
+      // Clic DROIT : choisir la pose de ce siège (action + orientation de tête).
+      // Ouverture différée hors du PushID, comme le menu contextuel des coupons.
+      if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        seat_ctx_ = i;
+        seat_ctx_req_ = true;
+      }
       dl->AddRect(tl, br, IM_COL32(255, 210, 90, 220), 3.0f, 0, 1.5f);
       char lbl[8];
       std::snprintf(lbl, sizeof(lbl), "%d", i + 1);
@@ -1301,9 +1683,24 @@ void CharSelect::OnRenderLoginUI() {
     }
 
     if (empty) {
-      // Siège libre créable : marqueur « + ». Clic -> création native.
+      // Place libre : marqueur « + ». Masquable / atténuable (réglage du mode
+      // « Personnaliser ») — mais JAMAIS pendant l'édition elle-même, sinon on
+      // ne pourrait plus placer les sièges inoccupés.
+      const charsel::Layout& lay = charsel::State();
+      // 🔴 Masquées, elles restent CLIQUABLES et réapparaissent au survol : le
+      // bouton invisible est déjà soumis (plus haut), seul le dessin est sauté.
+      // Sans ça, masquer les places libres supprimerait le seul chemin de
+      // création de personnage.
+      if (lay.hide_empty_seats && !seat_edit_ && !hovered) {
+        ImGui::PopID();
+        continue;
+      }
+      // L'opacité ne s'applique qu'au repos : au survol, le marqueur reprend
+      // toute sa présence, sans quoi une place très atténuée deviendrait
+      // impossible à viser avec assurance.
+      const int a_idle = static_cast<int>(150.0f * lay.empty_seat_alpha);
       const ImU32 col = hovered ? IM_COL32(255, 230, 150, 230)
-                                : IM_COL32(210, 200, 180, 150);
+                                : IM_COL32(210, 200, 180, a_idle);
       const float r = w * 0.30f;
       dl->AddCircle(ImVec2(cx, chair_y - box_h * 0.5f), r, col, 24, 2.0f);
       dl->AddLine(ImVec2(cx - r * 0.5f, chair_y - box_h * 0.5f),
@@ -1334,25 +1731,7 @@ void CharSelect::OnRenderLoginUI() {
         dl->AddCircleFilled(ImVec2(cx, chair_y), w * 0.50f,
                             IM_COL32(200, 210, 235, 40), 28);
 
-      DrawDollAt(v, cx, chair_y, box_h);
-
-      // Badge(s) coupon en haut du perso (le natif y met une image « Click to Rename »
-      // via un effet ; nous une pastille ImGui) : rename (or) et/ou change-slot (cyan).
-      // Signale au joueur qu'un coupon est ACTIF sur ce perso (flag CHARACTER_INFO).
-      {
-        float bx = cx - w * 0.5f + 4.0f;
-        const float by = chair_y - box_h + 2.0f;
-        const auto badge = [&](const char* txt, ImU32 bg) {
-          const ImVec2 ts = ImGui::CalcTextSize(txt);
-          const ImVec2 a(bx, by), b(bx + ts.x + 8.0f, by + ts.y + 3.0f);
-          dl->AddRectFilled(a, b, bg, 3.0f);
-          dl->AddRect(a, b, IM_COL32(0, 0, 0, 120), 3.0f);
-          dl->AddText(ImVec2(bx + 4.0f, by + 1.0f), IM_COL32(30, 25, 10, 255), txt);
-          bx = b.x + 3.0f;
-        };
-        if (v.rename_avail > 0) badge("Renom.", IM_COL32(255, 214, 120, 235));
-        if (v.moves_avail > 0) badge("Slot", IM_COL32(140, 220, 255, 235));
-      }
+      DrawDollAt(v, cx, chair_y, box_h, st, i);
 
       // Étiquette nom + niveau sur UNE SEULE ligne, bandeau lisible. Le niveau suit
       // le nom (couleur dimmée pour rester secondaire).
@@ -1371,10 +1750,46 @@ void CharSelect::OnRenderLoginUI() {
                   sel ? IM_COL32(255, 236, 190, 255) : IM_COL32(235, 235, 235, 255),
                   nm);
       dl->AddText(ImVec2(lx + ns.x, ly), IM_COL32(200, 205, 220, 220), lvl);
+
+      // Ligne suivante libre sous le nom : badges de coupon, puis suppression.
+      float stack_y = ly + ns.y + 3.0f;
+
+      // Badge(s) coupon (le natif met une image « Click to Rename » via un effet ;
+      // nous une pastille ImGui) : rename (or) et/ou change-slot (cyan). Signale
+      // qu'un coupon est ACTIF sur ce perso (flag CHARACTER_INFO).
+      //
+      // 🔴 SOUS le nom, et non en haut du cadre du siège comme avant : la hauteur
+      // du cadre suit le zoom du personnage, si bien qu'un siège agrandi envoyait
+      // sa pastille très au-dessus, détachée de tout. Sous le nom, elle reste
+      // collée au groupe quelle que soit la taille du pantin.
+      if (v.rename_avail > 0 || v.moves_avail > 0) {
+        // Centré comme le nom : on mesure d'abord la largeur totale des pastilles.
+        const float gap = 3.0f;
+        float total = 0.0f;
+        if (v.rename_avail > 0)
+          total += ImGui::CalcTextSize("Renom.").x + 8.0f + gap;
+        if (v.moves_avail > 0) total += ImGui::CalcTextSize("Slot").x + 8.0f + gap;
+        float bx = cx - (total - gap) * 0.5f;
+        const float by = stack_y;
+        float bh = 0.0f;
+        const auto badge = [&](const char* txt, ImU32 bg) {
+          const ImVec2 ts = ImGui::CalcTextSize(txt);
+          const ImVec2 a(bx, by), b(bx + ts.x + 8.0f, by + ts.y + 3.0f);
+          dl->AddRectFilled(a, b, bg, 3.0f);
+          dl->AddRect(a, b, IM_COL32(0, 0, 0, 120), 3.0f);
+          dl->AddText(ImVec2(bx + 4.0f, by + 1.0f), IM_COL32(30, 25, 10, 255), txt);
+          bx = b.x + gap;
+          bh = b.y - a.y;
+        };
+        if (v.rename_avail > 0) badge("Renom.", IM_COL32(255, 214, 120, 235));
+        if (v.moves_avail > 0) badge("Slot", IM_COL32(140, 220, 255, 235));
+        stack_y += bh + 2.0f;
+      }
+
       if (v.del_rev_date > 0) {
         const char* del = "Suppression programmée";
         const ImVec2 ds = ImGui::CalcTextSize(del);
-        const float dx = cx - ds.x * 0.5f, dyy = ly + ns.y + 3.0f;
+        const float dx = cx - ds.x * 0.5f, dyy = stack_y;
         // Fond (rouge très sombre) pour détacher nettement le texte du décor de la
         // table. La ligne de texte réserve de l'espace d'ascension AU-DESSUS des
         // capitales -> on rentre le haut du rect de ~3px pour ne pas laisser de bande
@@ -1385,7 +1800,9 @@ void CharSelect::OnRenderLoginUI() {
         dl->AddText(ImVec2(dx, dyy), IM_COL32(255, 150, 150, 255), del);
       }
 
-      if (hovered) {
+      // Pas de fiche pendant la personnalisation : elle suivrait la souris qui
+      // traîne le siège et masquerait le placement en cours.
+      if (hovered && !seat_edit_) {
         // Fiche récap : tout ce que la session char-select fournit (CHARACTER_INFO).
         // LocalToUtf8 a un buffer rotatif (4) -> consommer chaque conversion aussitôt
         // (un seul %s par ligne).
@@ -1473,7 +1890,7 @@ void CharSelect::OnRenderLoginUI() {
       sel_occupied && views[selected_].del_rev_date > 0;
 
   // Largeur estimée de la barre pour la centrer.
-  float bar_w = 180.0f + 8.0f + 190.0f;
+  float bar_w = 180.0f + 8.0f + 190.0f + 8.0f + 160.0f;  // + « Personnaliser »
   if (sel_occupied) bar_w += 8.0f + 200.0f;  // bouton suppression
   // Position ancrée (poignée déplaçable). Le point = milieu-haut de la barre.
   const ImVec2 bp = Anchor("boutons", 0.5f, (disp.y - 52.0f) / disp.y, seat_edit_);
@@ -1485,7 +1902,24 @@ void CharSelect::OnRenderLoginUI() {
   if (!can_enter) ImGui::EndDisabled();
 
   ImGui::SameLine();
-  if (ro::RoButton("Mode Classique", 190.0f, 0.0f)) native_fallback_ = true;
+  if (ro::RoButton("Mode Classique", 190.0f, 0.0f)) {
+    native_fallback_ = true;
+    // Notre UI disparaît pour la session : le panneau de personnalisation avec
+    // elle, et la mise en page en cours doit être gravée maintenant.
+    seat_edit_ = false;
+    charsel::SaveIfDirty();
+  }
+
+  // Personnalisation de l'écran (décor + placement). Bouton VISIBLE et non un
+  // raccourci : c'est une fonctionnalité joueur, pas un outil d'auteur. F10 reste
+  // en doublon pour qui l'a appris.
+  //
+  // ⚠ Pas de gate IsStaff() : le niveau de groupe serveur n'arrive qu'EN JEU
+  // (setting id 26 sur la session map), il vaut 0 ici — un tel test masquerait le
+  // bouton à tout le monde. Cf. le commentaire de l'ancien éditeur F10.
+  ImGui::SameLine();
+  if (ro::RoButton(seat_edit_ ? "Terminer" : "Personnaliser", 160.0f, 0.0f))
+    ToggleLayoutEdit();
 
   // Suppression : réservation (pure ImGui) / annulation / suppression définitive.
   bool tip_sched = false, tip_cancel = false, tip_del = false;
@@ -1902,6 +2336,116 @@ void CharSelect::OnRenderLoginUI() {
     ro::EndRoPopupModal();
   }
 
+  // ── Menu contextuel du mode « Personnaliser » : pose du siège ────────────────
+  // Clic droit sur un siège pendant l'édition. Le menu des coupons, lui, ne
+  // s'ouvre qu'HORS édition : les deux ne peuvent pas se disputer le clic droit.
+  if (seat_ctx_req_) {
+    ImGui::OpenPopup("##seatpose");
+    seat_ctx_req_ = false;
+  }
+  if (ImGui::BeginPopup("##seatpose")) {
+    if (seat_ctx_ >= 0 && seat_ctx_ < kSeatCount) {
+      charsel::Seat& s = Seats()[seat_ctx_];
+      ImGui::Text("Place %d", seat_ctx_ + 1);
+      ImGui::Separator();
+      // Les quatre poses demandées. L'index est celui de l'action dans le .act
+      // (cf. charsel::kAnim*) ; le composeur replie une action absente, donc un
+      // sprite pauvre en actions retombe sur une pose voisine sans casser.
+      // `animate` ne vaut que pour les actions que le composeur fait défiler
+      // (Marche et Combat) : ailleurs, les images sont des poses, pas une boucle.
+      struct PoseItem { int anim; bool animate; const char* label; };
+      static const PoseItem kSeatPoses[] = {
+          {charsel::kAnimSit,   false, "Assis"},
+          {charsel::kAnimStand, false, "Debout"},
+          {charsel::kAnimFight, false, "Combat"},
+          {charsel::kAnimFight, true,  "Combat (animé)"},
+          {charsel::kAnimWalk,  true,  "Marche (animée)"},
+          {charsel::kAnimPick,  false, "Ramassage"},
+          {charsel::kAnimAtk,   false, "Attaque"},
+          {charsel::kAnimAtk,   true,  "Attaque (animée)"},
+          {charsel::kAnimAtk2,  true,  "Attaque 2 (animée)"},
+          {charsel::kAnimAtk3,  true,  "Attaque 3 (animée)"},
+          {charsel::kAnimHurt,  false, "Touché"},
+          {charsel::kAnimFroze, false, "Gelé"},
+          {charsel::kAnimDie,   false, "Mort"},
+          {charsel::kAnimExtra1, false, "Action 12"},
+          {charsel::kAnimExtra2, false, "Action 13"},
+      };
+      for (const PoseItem& p : kSeatPoses) {
+        const bool on = (s.anim == p.anim && s.animate == p.animate);
+        if (ImGui::MenuItem(p.label, nullptr, on)) {
+          s.anim = p.anim;
+          s.animate = p.animate;
+          // L'image choisie appartenait à l'action PRÉCÉDENTE : la nouvelle n'en
+          // a pas forcément autant. On repart d'« Automatique ».
+          s.frame = -1;
+          charsel::MarkDirty();
+        }
+      }
+      // Image de l'action. Une action en compte plusieurs — une attaque, un
+      // ramassage passent par des postures que l'image 0 ne montre pas. Le
+      // nombre proposé est celui RELEVÉ au rendu de cette place : il dépend de
+      // la pose et de la classe, deux personnages n'ont pas forcément le même.
+      const int nframes = seat_frames_[seat_ctx_];
+      if (nframes > 1 && ImGui::BeginMenu("Image")) {
+        if (ImGui::MenuItem("Automatique", nullptr, s.frame < 0)) {
+          s.frame = -1;
+          charsel::MarkDirty();
+        }
+        ImGui::Separator();
+        for (int f = 0; f < nframes; ++f) {
+          char lbl[24];
+          std::snprintf(lbl, sizeof(lbl), "Image %d / %d", f + 1, nframes);
+          if (ImGui::MenuItem(lbl, nullptr, s.frame == f)) {
+            s.frame = f;
+            charsel::MarkDirty();
+          }
+        }
+        ImGui::EndMenu();
+      }
+
+      ImGui::Separator();
+      // Tête tournée : les TROIS inclinaisons que porte le sprite de tête, celles
+      // que `/doridori` fait alterner en jeu (cf. ro::DollDrawOpts::head_dir).
+      if (ImGui::BeginMenu("Tête (doridori)")) {
+        struct HeadItem { int dir; const char* label; };
+        static const HeadItem kHeads[] = {
+            {0, "Droit devant"},
+            {1, "Penchée à droite"},
+            {2, "Penchée à gauche"},
+        };
+        for (const HeadItem& h : kHeads) {
+          // -1 et 0 valent tous deux « dans l'axe » : la coche suit ce sens.
+          const bool on = (h.dir == 0) ? (s.head_dir <= 0) : (s.head_dir == h.dir);
+          if (ImGui::MenuItem(h.label, nullptr, on)) {
+            s.head_dir = h.dir;
+            charsel::MarkDirty();
+          }
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::Separator();
+      ImGui::TextColored(ImVec4(0.36f, 0.38f, 0.42f, 1.0f),
+                         "Molette : tourner — Ctrl+molette : taille");
+      // Poser la même pose partout : replacer 25 sièges un par un après un
+      // changement de décor est le geste le plus pénible du mode.
+      if (ImGui::MenuItem("Appliquer cette pose à toutes les places")) {
+        // Copie locale : la boucle écrit dans le tableau dont `s` est une
+        // référence, et écraserait la source dès la première place traitée.
+        const charsel::Seat src = s;
+        for (int k = 0; k < kSeatCount; ++k) {
+          Seats()[k].anim = src.anim;
+          Seats()[k].animate = src.animate;
+          Seats()[k].head_dir = src.head_dir;
+          Seats()[k].dir = src.dir;
+          Seats()[k].frame = src.frame;
+        }
+        charsel::MarkDirty();
+      }
+    }
+    ImGui::EndPopup();
+  }
+
   // ── Menu contextuel coupons (clic droit) : Renommer / Changer de slot ─────────
   if (ctx_open_req_) {
     ImGui::OpenPopup("##charctx");
@@ -2093,38 +2637,24 @@ void CharSelect::OnRenderLoginUI() {
     dl->AddText(ImVec2(x0 + bw + gap, pp.y + 6.0f), IM_COL32(240, 232, 208, 255), pl);
   }
 
-  // ── Éditeur de layout (DÉSACTIVÉ) ────────────────────────────────────────────
-  // Le layout est calé : plus de déclencheur. Le CODE reste (poignées Anchor, drag
-  // des sièges, molette de taille, dump), mais `seat_edit_` ne peut plus passer à
-  // true -> tout ce chemin est mort. Pour le réactiver le temps d'un recalage,
-  // décommenter le bloc ci-dessous (F10 = bascule).
-  // ⚠ On NE peut PAS gater sur IsStaff() ici : le niveau de groupe serveur n'arrive
-  // qu'EN JEU (setting id 26 sur la session map). Au char-select il vaut 0 -> le
-  // panneau ne s'affichait jamais. D'où F10, seul chemin qui marchait. La condition
-  // IsStaff() a donc été retirée du bloc ci-dessous (et son include avec) : la
-  // remettre ne ferait que rendre le panneau inaccessible à nouveau.
-  //
-  // if (ImGui::IsKeyPressed(ImGuiKey_F10, false)) seat_edit_ = !seat_edit_;
-  // if (seat_edit_) {
-  //   ImGui::SetCursorPos(ImVec2(disp.x - 320.0f, disp.y - 30.0f));
-  //   ImGui::Checkbox("Éditer layout (F10)", &seat_edit_);
-  //   if (seat_edit_) {
-  //     ImGui::SameLine();
-  //     // Glisser une poignée = déplacer ; molette sur un siège = taille du pantin.
-  //     if (ImGui::SmallButton("Dump layout")) {
-  //       LogDiag("[CharSelect] --- sièges (recoller dans g_seats) ---");
-  //       for (int i = 0; i < kSeatCount; ++i)
-  //         LogDiag("    {{{:.3f}f, {:.3f}f, {:.3f}f}},  // {}", g_seats[i].nx,
-  //                 g_seats[i].ny, g_seats[i].scale, i + 1);
-  //       LogDiag("[CharSelect] --- points (nx, ny en fractions d'écran) ---");
-  //       for (int i = 0; i < g_anchor_count; ++i)
-  //         LogDiag("    {}  ->  {:.4f}f, {:.4f}f", g_anchors[i].name,
-  //                 g_anchors[i].nx, g_anchors[i].ny);
-  //     }
-  //   }
-  // }
+  // ── Mode « Personnaliser » ───────────────────────────────────────────────────
+  // F10 en doublon du bouton de la barre (l'ancien raccourci d'auteur, conservé).
+  // Neutralisé pendant une saisie ou un popup : F10 n'est pas un caractère, mais
+  // basculer le mode sous un dialogue de création laisserait le joueur devant deux
+  // interactions concurrentes.
+  if (ImGui::IsKeyPressed(ImGuiKey_F10, false) && !io.WantTextInput && !any_popup)
+    ToggleLayoutEdit();
+
+  // Aide au placement, PAR-DESSUS les sièges : lignes de tiers + rappel des gestes.
+  if (seat_edit_) DrawLayoutGuides(dl, disp);
 
   ImGui::End();
   ImGui::PopStyleVar(2);
   ImGui::PopStyleColor();  // WindowBg
+
+  // Le panneau, lui, est une fenêtre à part ENTIÈRE, ouverte après la fermeture de
+  // la fenêtre plein écran : déclarée en dernier, elle passe au-dessus (la
+  // couverture est en NoBringToFrontOnFocus) et reste déplaçable, ce qu'un
+  // BeginChild n'aurait pas permis.
+  if (seat_edit_) DrawLayoutEditor();
 }

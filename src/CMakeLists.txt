@@ -56,6 +56,8 @@ set(BOURGEON_FILES
 	"features/windows/cashshop_window.h"
 	"features/windows/char_select.cc"
 	"features/windows/char_select.h"
+	"features/windows/char_select_layout.cc"
+	"features/windows/char_select_layout.h"
 	"features/windows/character_sheet.cc"
 	"features/windows/character_sheet.h"
 	"features/windows/inventory_viewer.cc"
@@ -235,6 +237,8 @@ set(BOURGEON_FILES
 	"ragnarok/login_mode.h"
 	"ragnarok/game_mode.cc"
 	"ragnarok/game_mode.h"
+	"ragnarok/held_sprites.cc"
+	"ragnarok/held_sprites.h"
 	"ragnarok/own_actor.cc"
 	"ragnarok/own_actor.h"
 

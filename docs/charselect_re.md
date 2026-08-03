@@ -469,15 +469,135 @@ par `Overlay_DeviceEpoch`). **Fichier à déployer dans le GRF/data :**
 `lobby_hall.bmp` (constante `kHallBmpPath`, préfixe CP949).
 Absent ⇒ repli dégradé sombre.
 
-Les personnages sont posés aux **places** d'une table (table `g_seats`, 25 entrées,
-coords **normalisées** [0..1] sur le fond). Ordre = numérotation de l'image :
+Les personnages sont posés aux **places** d'une table (25 entrées, coords
+**normalisées** [0..1] sur le fond). Ordre = numérotation de l'image :
 slot i → place n°(i+1) (slot 0 = grand trône). Chaque place = pieds (nx,ny) + échelle
 (hauteur du pantin / hauteur écran, perspective). Rendu du pantin par
-`BasicInfo::RenderDoll` (coords écran). Coords estimées à l'œil ⇒ **éditeur de
-layout** (glisser = position, molette = taille, « Dump layout » journalise la table +
-les points `Anchor`, prêts à recoller dans `g_seats`).
+`BasicInfo::RenderDoll` (coords écran).
 
-⚠ **Éditeur DÉSACTIVÉ** : le layout est calé, le déclencheur (F10 / `IsStaff()`) est
-**commenté** en bas de `CharSelect::OnRenderLoginUI` — `seat_edit_` ne peut plus
-passer à `true`, tout le chemin d'édition est du code mort conservé pour un futur
-recalage (décommenter le bloc suffit).
+## Mode « Personnaliser » (mise en page joueur, persistée)
+
+La table des places et les points `Anchor` ne sont plus des constantes : ils vivent
+dans **`features/windows/char_select_layout`** (`charsel::State()`) et sont écrits
+dans **`bourgeon_charselect_layout.yaml`** (à côté de l'exe, cf.
+`paths::CharSelectLayoutPath()`). Portée = la **machine**, pas le compte.
+
+Ce qui était un outil d'auteur (bascule F10 commentée, dont la seule sortie était un
+`LogDiag` à recopier dans le code) est devenu une fonctionnalité joueur :
+
+* **Entrée** : bouton « Personnaliser » dans la barre du bas (F10 en doublon).
+  Pas de gate `IsStaff()` — le niveau de groupe serveur n'arrive qu'**en jeu**
+  (setting id 26 sur la session map), il vaut 0 ici et masquerait le bouton à tous.
+* **Gestes** : glisser = placer ; **molette = tourner** le personnage (8
+  orientations) ; **Ctrl+molette = taille** ; **clic droit = pose du siège** ;
+  pastilles bleues = titre / barre de boutons / pagination / barre de sortie.
+  Pendant l'édition, Entrée, double-clic et l'infobulle sont neutralisés, et le
+  clic droit va au menu de pose au lieu du menu des coupons.
+* **Pose par siège** (persistée dans `charsel::Seat`) : orientation du corps
+  `dir` 0..7, action `anim` (Assis 2 / Debout 0 / Combat 4 / Marche 1 / Touché 6 /
+  Mort 8, cf. `charsel::kAnim*`), `animate` (jouer l'animation du corps plutôt que
+  la figer — n'a d'effet qu'en Marche et en Combat, seules actions que le
+  composeur fait défiler ; `DollDrawOpts::freeze_body`) et **orientation de la
+  TÊTE** `head_dir`. Un item du menu applique la pose courante aux 25 places.
+  🔴🔴 **`head_dir` est un index d'IMAGE** (`/doridori`), ni une action ni une
+  direction. Un `.act` de tête porte **3 images par action** = les trois
+  inclinaisons, choisies par l'index d'image de l'acteur (`acteur+0x3C` ; le
+  calcul d'offset Doram de `Actor_DrawSprites` 0x007ac820 teste `+0x3C == 1/2`).
+  Les **coiffes suivent seules** : leur `.act` porte un multiple exact des images
+  de tête (mesuré : 24 = 8 × 3), et l'animation alternative (`Act_ResolveAltAnimFrame`)
+  les place dans le sous-groupe de l'image retenue. Rien de spécial à propager.
+  🔴 **L'index d'image est PARTAGÉ par tout l'acteur** — un seul champ côté client.
+  Il faut donc le poser pour le CORPS aussi, pas seulement pour la tête :
+  `Actor_ComputeHeadAttach` (0x007adbc0) accroche la tête en comparant son ancre à
+  celle du corps prise SUR LA MÊME IMAGE. Ne le poser que sur la tête laisse le
+  corps à son image 0, les deux ancres divergent et **le cou se détache**
+  (symptôme observé en test, surtout sur l'image 2 dont l'ancre s'écarte le plus :
+  `1_남.act` assis = (1,−35) / (−2,−36) / (4,−36) pour les images 0/1/2).
+  Réservé au corps immobile — `/doridori` se joue à l'arrêt — et borné au nombre
+  d'images du corps (`Act_GetFrame` retombe sur la première, sans quoi une classe
+  au corps plus pauvre que la tête ne rendrait aucun quad).
+  ⚠ Deux lectures fausses essayées avant, chacune avec sa signature à l'écran :
+  1. **action** (`head_dir*8 + dir`) → aucun effet visible ; les actions d'une tête
+     sont les mêmes mouvements que celles d'un corps (`머리통\남\1_남.act` =
+     104 actions = 13 types × 8 dirs, comme un corps ou une coiffe) ;
+  2. **direction** (`dir ± 1`) → la tête se DÉTACHE du corps (les ancres d'une
+     autre direction ne correspondent plus) et bascule en MIROIR d'un côté (dirs
+     5..7 = vues 3..1 retournées). C'est le symptôme rapporté en test.
+  Mesures faites en parsant les `.act` (calque = x, y, index, mirror + couleur sur
+  **4 octets**, scaleX, [scaleY ≥2.4], rotate, sprType, [w/h ≥2.5]).
+  Les six index sont **vérifiés en jeu** : 0/1/2/4 de longue date (avatar de la
+  fiche de personnage, scène du banquet), 6 (touché) et 8 (mort) confirmés à
+  l'écran le 2026-08-03. Un `.act` de personnage porte 13 types d'action.
+* **Décor** : galerie alimentée par les fonds livrés (GRF) **et** les `.bmp` déposés
+  par le joueur dans **`<jeu>\data\texture\lobby\`** — le VFS cherche le disque
+  avant les GRF, donc `lobby\<fichier>.bmp` suffit au loader, sans repack.
+  🔴 **`data\TEXTURE\lobby\`, pas `data\lobby\`** : `UITextureMgr_Load 0x00a8d4a0`
+  applique un préfixe par TYPE de fichier (`Path_ConcatPrefixIfMissing`, préfixe
+  résolu depuis l'extension par `UITextureMgr_ResolveTypeIndexFromExt 0x00a8d310`)
+  — `texture\` pour un .bmp — et c'est seulement ensuite que
+  `Res_MakeDataRootRelativePath 0x00573380` ajoute `data\`. Même règle que les
+  icônes d'items ou `Discord.bmp`. Un fichier posé sous `data\lobby\` est listé
+  mais JAMAIS trouvé ; le panneau le signale explicitement
+  (`MisplacedBackgroundCount`, mesuré au scan et pas par frame).
+  Le changement est **à chaud** : `LoadHallTexture(path)` mémorise le chemin
+  chargé, met l'ancienne texture dans une file de libération **différée de deux
+  frames** et recharge. 🔴 Libérer immédiatement fait tomber le client : le décor
+  est déjà dans la draw-list de la frame en cours et rien d'autre ne le référence,
+  d3d9 dessine alors un objet détruit (`mov esi,[eax+0Ch]` / `call esi` avec
+  esi = 0 → EIP = 0, vérifié x32dbg). Après un changement d'epoch device la file
+  est vidée SANS Release (handles d'un device déjà parti).
+  Noms **non-ASCII écartés** de la galerie : `FindFirstFileA` rend le nom
+  dans la code-page système (CP1252 en fr-FR) alors que le loader attend la sienne
+  (CP949) — le fichier ne serait jamais trouvé.
+* **Écriture** : jamais pendant le glissement (`MarkDirty` seulement). `SaveIfDirty`
+  à la sortie du mode, à l'entrée en jeu, au passage en Mode Classique et dans
+  `DriveModeCmd` — ce dernier est indispensable, un retour au login **ne change pas
+  de mode** (le client reste en CLoginMode) donc `OnModeSwitch` ne repasserait pas.
+* **Image de l'action** : `Seat::frame` (-1 = auto) → `DollDrawOpts::force_frame`.
+  Le sous-menu ne propose que les images qui EXISTENT : leur nombre est relevé au
+  rendu (`DollPlacement::frame_count`, qui dépend de la pose ET de la classe) et
+  remis à « auto » dès qu'on change d'action.
+* **Places libres** : `hide_empty_seats` / `empty_seat_alpha`. Masquées, elles
+  restent cliquables et **réapparaissent au survol** — le bouton invisible est
+  soumis avant le test, seul le dessin est sauté. Sans cela, les masquer
+  supprimerait le seul chemin de création de personnage.
+* **Arme et bouclier** (nouveau) : le char-select natif ne les affiche pas, mais
+  `CHARACTER_INFO` les porte (**+0x5A arme, +0x62 bouclier**, identifiants
+  d'OBJET). `rag::ResolveHeldSprites` (ragnarok/held_sprites) demande les chemins
+  au client — il n'y a pas d'acteur ici, donc `own_actor` ne peut pas servir :
+  `Job_GetWeaponSpritePath` 0x00d8a010 / `Job_GetWeaponActPath` 0x00d8a160
+  `__stdcall(std::string* out, job, sexe, classe_arme, vue_ou_-1, style)`, et pour
+  le BOUCLIER 0x00d5e240 (.spr) / 0x00d5e1d0 (.act) `(out, job, sexe, vue, style)`.
+  🔴 Ne pas confondre avec `Job_GetWeaponShield*Path` : celles-là servent la
+  couche voisine de l'ARME (emplacement 6), pas le bouclier (emplacement 7) —
+  vérifié dans `CActorSprite_BuildShield_Slot7` 0x00d401d0.
+  🔴 Ces champs portent une **VUE** (`status.weapon`), PAS un identifiant d'objet,
+  et ils font **16 bits** : lus sur 32, ils rendaient 65537 = l'arme et le
+  `base_level` (+0x5C) collés. Les passer à `Weapon_ItemIdToWeaponClass` donnait
+  classe 0 → suffixe VIDE → le chemin du CORPS (`…\초보자\초보자_남`), un fichier
+  qui existe mais n'est pas une arme.
+  Le nom de fichier tranche (vérifié dans le GRF) :
+  `data\sprite\인간족\초보자\초보자_남_양손도끼.spr` — le suffixe est le **nom de
+  l'arme**, donc la voie « **par vue** » (`Job_GetWeaponResNameByView`), le
+  suffixe de classe n'étant qu'un repli. On refait le sondage du natif avec
+  `ro::spract::ReadFile`. (`_검광` = l'éclat de lame, emplacement 6, non branché.) Chemins rendus **relatifs à la racine des
+  sprites** ⇒ préfixer `data\sprite\` soi-même (les couches natives l'ajoutent
+  plus tard) et retirer l'extension, que le composeur remet.
+  ⚠ Non couverts, faute d'acteur : la « traînée » d'arme (emplacement 6) et les
+  seaux de bouclier propres à quelques classes (`CActorSprite_ResolveShieldBucket`,
+  qui interroge l'acteur). Un chemin absent = rien à dessiner, jamais d'erreur.
+  ⚠ Les personnages BÉBÉ n'ont pas de bouclier affiché (drapeau `this+716` testé
+  en tête de `CActorSprite_BuildShield_Slot7`).
+* **Lecture tolérante** : bornes de validation par champ, valeur hors bornes ou
+  fichier illisible ⇒ repli sur la mise en page d'origine, jamais d'écran cassé.
+* **Mises en page enregistrées** (`charsel::Preset`, max 20) : un layout COMPLET
+  (sièges + ancres + décor) rangé sous un nom, dans le **même fichier** (clé
+  `presets:`). Enregistrer/appliquer/supprimer, double-clic = appliquer,
+  suppression en deux temps (« Supprimer » → « Confirmer »). Même jeu de clés que
+  la racine ⇒ un seul `ReadLayoutNode` / un seul émetteur pour les deux.
+  Enregistrer et supprimer écrivent le fichier **immédiatement** (`Save()`), à la
+  différence du glissement de souris qui se contente de `MarkDirty`.
+* **Restaurer le défaut** : la mise en page d'origine n'est PAS un preset — elle
+  est dans le code (`charsel::Factory()`) et se restaure par « Tout restaurer »
+  (`ResetAll`, décor compris) ou « Replacer les personnages » (`ResetPlacement`,
+  qui garde le décor choisi). Elle ne peut donc être ni écrasée ni supprimée.

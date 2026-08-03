@@ -10,6 +10,9 @@ class MoonlightAuth;
 // des types ImGui, ça ne justifie pas de tirer imgui.h dans cet en-tête.
 struct ImDrawList;
 struct ImVec2;
+// Mise en page persistée (features/windows/char_select_layout.h) : seule une
+// RÉFÉRENCE à Seat traverse cette interface, la déclaration anticipée suffit.
+namespace charsel { struct Seat; }
 
 // CharSelect — remplacement ImGui de l'écran de sélection de personnage.
 //
@@ -79,6 +82,11 @@ class CharSelect : public Plugin {
     int head_top = 0;       // +0x64 head_top
     int head_mid = 0;       // +0x66 head_mid
     int garment = 0;        // +0xa2 robe
+    // Arme et bouclier : identifiants d'OBJET. Le char-select natif ne les
+    // affiche pas ; nous si, en demandant leurs chemins de sprites au client
+    // (rag::ResolveHeldSprites — il n'y a pas d'acteur ici pour les porter).
+    int weapon = 0;         // +0x5a
+    int shield = 0;         // +0x62
     int moves_avail = 0;    // +0xa6 changements de slot restants (coupon change-slot)
     int rename_avail = 0;   // +0xaa renommages restants (coupon rename)
   };
@@ -92,9 +100,19 @@ class CharSelect : public Plugin {
   // pas en envoyant CH_SELECT_CHAR à la main : le natif fait bien plus que ça.
   void EnterGame(int slot);
 
-  // Peint le décor plein écran (BMP du banquet, ou dégradé de repli) + le voile bas.
-  // Partagé par la table et par le fondu de transition.
+  // Peint le décor plein écran (BMP choisi par le joueur, ou dégradé de repli) +
+  // le voile bas. Partagé par la table et par le fondu de transition.
   void DrawHallBackdrop(ImDrawList* dl, const ImVec2& disp);
+
+  // ── Mode « Personnaliser » (décor + placement, persistés) ───────────────────
+  // Entre/sort du mode : la sortie ÉCRIT le layout (features/windows/
+  // char_select_layout), l'entrée re-scanne le dossier de décors.
+  void ToggleLayoutEdit();
+  // Repères de composition + rappel des gestes, par-dessus la scène.
+  void DrawLayoutGuides(ImDrawList* dl, const ImVec2& disp);
+  // Le panneau lui-même (galerie de décors, réinitialisations). Fenêtre à part,
+  // ouverte APRÈS la couverture plein écran pour passer au-dessus.
+  void DrawLayoutEditor();
 
   // Fenêtre plein écran « décor + fondu au noir + libellé » des transitions (entrée
   // en jeu, fermeture du jeu). `since` = tick de départ du fondu (~260 ms).
@@ -103,7 +121,12 @@ class CharSelect : public Plugin {
   // Dessine le paperdoll du slot ancré sur son siège : pieds au point (cx, chair_y),
   // corps de hauteur `box_h` (px écran) étendu vers le haut, centré en X. Composé
   // par ui/doll.h ; placeholder tant que les fichiers ne sont pas chargés.
-  void DrawDollAt(const CharView& v, float cx, float chair_y, float box_h);
+  // `pose` apporte l'orientation du corps, l'action et l'orientation de la tête —
+  // réglées par siège dans le mode « Personnaliser » (charsel::Seat).
+  // `seat_index` sert à relever le nombre d'images de l'action jouée (le menu
+  // « Image » ne peut proposer que celles qui existent) ; -1 = ne rien relever.
+  void DrawDollAt(const CharView& v, float cx, float chair_y, float box_h,
+                  const charsel::Seat& pose, int seat_index = -1);
 
   // Dessine l'aperçu doll de CRÉATION (look Novice construit depuis create_*) dans le
   // rect écran [x,y]-[x+w,y+h], pieds en bas, centré. Même moteur que DrawDollAt.
@@ -188,12 +211,28 @@ class CharSelect : public Plugin {
   bool screen_was_alive_ = false;      // pour détecter ce front
   unsigned long wait_since_ = 0;       // début de l'attente d'une liste fraîche
   bool list_warned_ = false;           // le repli de sûreté n'alerte qu'une fois
-  // Éditeur de sièges/layout : glisser les marqueurs pour caler les positions sur le
-  // décor, molette = taille, bouton « Dump layout » -> bourgeon.log. Outil d'auteur.
-  // ⚠ DÉSACTIVÉ : le layout est calé, plus aucun déclencheur ne met ce flag à true
-  // (le bloc F10 est commenté en bas de OnRenderLoginUI) -> tout le chemin d'édition
-  // est du code mort, conservé pour un futur recalage.
+  // Mode « Personnaliser » : glisser les sièges et les blocs d'interface, molette
+  // = taille du pantin, galerie de décors. Ce qui n'était qu'un outil d'auteur
+  // (bascule F10 commentée, dont la seule sortie était un LogDiag à recopier dans
+  // le code) est devenu une fonctionnalité joueur — bouton dans la barre du bas,
+  // et mise en page PERSISTÉE (charsel::State(), bourgeon_charselect_layout.yaml).
   bool seat_edit_ = false;
+  // Mises en page enregistrées (charsel::Presets) : nom en cours de saisie, entrée
+  // sélectionnée dans la liste, et l'armement de la suppression (deux temps, cf.
+  // DrawLayoutEditor — un enregistrement effacé par mégarde est irrécupérable).
+  char preset_name_[41] = {0};
+  int  preset_sel_ = -1;
+  bool preset_del_armed_ = false;
+  // Menu contextuel de POSE (clic droit sur un siège en mode « Personnaliser ») :
+  // siège visé, et ouverture différée hors du PushID de la boucle des sièges —
+  // même contrainte que le menu des coupons (un ID scopé au siège ne matcherait
+  // pas un popup ouvert au niveau racine).
+  int  seat_ctx_ = -1;
+  bool seat_ctx_req_ = false;
+  // Nombre d'images de l'action jouée à chaque place, relevé au rendu (il dépend
+  // de la pose ET de la classe : deux personnages sur la même pose n'ont pas
+  // forcément le même nombre d'images). Sert au sous-menu « Image ».
+  int  seat_frames_[25] = {0};
   // Résultat de « Programmer suppression ». Le serveur répond HC_DELETE_CHAR3_RESERVED
   // (0x0828 ; result 1=ok, 4=guilde, 5=groupe, 3=db, 6=échoppe, 0=déjà en file). On
   // DÉTOURNE le handler natif Net_OnDeleteCharReserveAck 0x00d21210 (cf. .cc) : sur

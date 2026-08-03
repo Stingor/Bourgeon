@@ -25,6 +25,9 @@ std::string SettingsPath()       { return GameDir() + "bourgeon_settings.yaml"; 
 std::string MoonlightUserPath()  { return GameDir() + "bourgeon_moonlight_user.txt"; }
 std::string MoonlightPwPath()    { return GameDir() + "bourgeon_moonlight_pw.bin"; }
 std::string LastCharsPath()      { return GameDir() + "bourgeon_last_chars.txt"; }
+std::string CharSelectLayoutPath() {
+  return GameDir() + "bourgeon_charselect_layout.yaml";
+}
 std::string RecipesPath() {
   // Le premier chemin QUI EXISTE, sinon SystemEN\ par défaut — ainsi le message
   // d'erreur du chargeur nomme l'emplacement attendu plutôt qu'un chemin au
