@@ -7,6 +7,7 @@
 #include <cstring>
 #include <utility>
 
+#include "ui/ro_imgui.h"  // Cp949ToUtf8 : les chemins du GRF sont en CP949
 #include "utils/log_console.h"
 
 namespace ro {
@@ -534,13 +535,19 @@ bool Load(const char* spr_path, const char* act_path, Resource* out) {
   if (!spr_path || !*spr_path || !act_path || !*act_path || !out) return false;
   *out = Resource{};
 
+  // ⚠ Le chemin part en UTF-8 dans le journal, jamais tel quel : les dossiers du
+  // GRF sont en CP949, et la console en jeu est de l'ImGui, qui n'affiche que de
+  // l'UTF-8. Sans conversion, un chemin introuvable ressort en charabia — soit
+  // exactement au moment où il faut le lire. La conversion se fait ICI, à la
+  // source, et pas dans le puits de journalisation : la ligne mélange nos
+  // libellés français, déjà en UTF-8, et ces octets-là.
   std::vector<uint8_t> spr_bytes, act_bytes;
   if (!ReadFile(spr_path, &spr_bytes)) {
-    LogDiag("[SprAct] fichier introuvable : {}", spr_path);
+    LogDiag("[SprAct] fichier introuvable : {}", Cp949ToUtf8(spr_path));
     return false;
   }
   if (!ReadFile(act_path, &act_bytes)) {
-    LogDiag("[SprAct] fichier introuvable : {}", act_path);
+    LogDiag("[SprAct] fichier introuvable : {}", Cp949ToUtf8(act_path));
     return false;
   }
   // 🔴 Le .spr AVANT le .act, et ce n'est pas une préférence : le parseur .act

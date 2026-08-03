@@ -1,7 +1,9 @@
 #include "ragnarok/lua.h"
 #include "ragnarok/render.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/own_actor.h"  // arme / bouclier / chariot déjà résolus par le client
 #include "ui/doll.h"  // aperçu d'article : pantin COMPOSÉ (remplace la capture)
+#include "ui/sprite_view.h"  // chariot : sprite indépendant, posé sur le pantin
 #include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
@@ -138,6 +140,14 @@ constexpr uintptr_t kHair        = 0x015fb278;  // DAT_015fb278 hair style
 constexpr uintptr_t kClothesCol  = 0x015fb28c;  // DAT_015fb28c clothes palette
 constexpr uintptr_t kHairCol     = 0x015fb290;  // DAT_015fb290 hair palette
 constexpr uintptr_t kGarmentView = 0x015fb2a0;  // g_OwnLook_GarmentRobeViewId
+// g_Own_JobId — la classe BRUTE du joueur (= session + 5640, la même que lit
+// Job_ResolveMountedClassFromOption avant d'y appliquer l'état de monture).
+//
+// 🔴 C'est ELLE qui nomme le sprite de corps, pas le job « affiché » :
+// `Job_ResolveBodyClass(affiché, classe, 1)` ne se sert du premier argument que
+// pour reconnaître un bébé ou une monture, et prend le SECOND comme classe.
+// D'où « Novice au lieu de High Wizard » quand on lui passait 0.
+constexpr uintptr_t kOwnJobId    = 0x015fb9c8;
 constexpr int kCTexOffDX9 = 0x12c, kCTexOffDX7 = 0x128;  // CTexture -> native GPU handle
 
 struct CapLayer {
@@ -1007,7 +1017,8 @@ void CaptureAvatarActor(int anim, int dir, bool animate, int force_frame = -1,
     if (ims > 600.0f) ims = 600.0f;
     // Seuls Marche(1) et Combat(4) s'animent. Repos(0)/Assis(2) sont FIGÉS à l'image 0
     // (sinon la tête + les coiffes « regardent autour » en défilant, gênant). Côté
-    // character_sheet, la case « Animer » n'est d'ailleurs proposée que pour Marche/Combat.
+    // character_sheet, le combo de poses n'offre d'ailleurs de variante « (animé) »
+    // que pour Marche et Combat.
     const bool anim_pose = (anim == 1 || anim == 4);
     const int frame =
         (force_frame >= 0)
@@ -1980,10 +1991,9 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   look.hair          = *reinterpret_cast<int*>(kHair);
   look.hair_color    = *reinterpret_cast<int*>(kHairCol);
   look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
-  // ⚠ `body` reste à 0 : aucune globale de STYLE DE CORPS du joueur n'est
-  // connue. Un joueur qui a posé un style de corps se verra donc avec le corps
-  // standard de sa classe — écart assumé, l'ancien moteur ne le gérait pas non
-  // plus (il passait le job).
+  // 🔴 `body` = la CLASSE (cf. RenderPlayerAvatar) : c'est elle qui nomme le
+  // sprite de corps. À 0, tout le monde s'affichait en Novice.
+  look.body = *reinterpret_cast<int*>(kOwnJobId);
   look.head_top = (slot == PV_TOP)     ? view_id : 0;
   look.head_mid = (slot == PV_MID)     ? view_id : 0;
   look.head_low = (slot == PV_LOW)     ? view_id : 0;
@@ -2026,187 +2036,292 @@ int BasicInfo::ItemToHatOrdinal(int item_id) {
   return (it != g_hat_item_ord.end()) ? static_cast<int>(it->second) : 0;
 }
 
-// Avatar plein-corps (perso complet : corps + coiffes + garment + arme/bouclier,
-// apparence live) composité dans la fenêtre ImGui COURANTE. Cadrage STABLE : l'échelle
-// + l'ancrage sont FIGÉS, recalculés seulement quand (w,h,anim,dir,apparence) changent
-// — jamais par frame d'animation (sinon le sprite « respire »). Le figeage se fait sur
-// l'UNION de TOUTES les frames de la pose (comme ExportAvatarGif) pour qu'AUCUNE frame
-// ne déborde le cadre (pas de croppage d'extrémités), et l'échelle horizontale est
-// bornée sur le demi-extent depuis l'ancrage CORPS (une arme large d'un seul côté n'est
-// pas rognée). Pieds ancrés en bas façon WoW, CORPS centré en X -> clip -> AddImage (U
-// swap si mirror). No-op hors-jeu ou capture vide. À appeler entre Begin/End.
-// anim=animType, dir=0..7 (0=face), animate=joue.
+// ── Avatar plein-corps de la fiche de personnage ─────────────────────────────
+//
+// Le personnage entier — corps, tête, coiffes, cape, arme, bouclier — plus ses
+// effets de costume et son chariot, composité dans la fenêtre ImGui courante.
+//
+// 🔴 Plus aucune CAPTURE ici. Le pantin est assemblé par `ro::DrawDoll` à partir
+// des .spr/.act, comme le char-select et l'aperçu d'article. Ce qui restait
+// propre à cette vue et l'y retenait :
+//
+//   - l'ARME et le BOUCLIER, que le composeur ne savait pas assembler. Il le
+//     sait désormais, à condition qu'on lui donne leurs fichiers — ce que
+//     `rag::ReadOwnActorSprites` lit sur l'acteur du joueur ;
+//   - le CADRAGE, centré sur le corps et non sur la silhouette, pour qu'une arme
+//     large ne pousse pas le personnage de côté (`center_on_body`) ;
+//   - le PLAFOND d'échelle, qui fait rétrécir le personnage AVEC un effet de
+//     costume trop grand pour le cadre (`scale_limit`).
+//
+// Et ce qui n'a rien à faire dans un assemblage : les effets (.str et EZ) et le
+// CHARIOT sont des sprites indépendants, posés ici même sur le repère que le
+// composeur rend — derrière via son rappel, devant après son retour.
+//
+// ⚠ Le cadrage n'est plus FIGÉ par une clé (rect, pose, apparence) comme
+// autrefois : il n'a plus besoin de l'être. Le composeur mesure sur l'image 0 de
+// chaque pièce, jamais sur l'image dessinée — l'échelle ne peut donc pas
+// « respirer » au rythme de l'animation, qui était toute la raison du gel.
+//
+// À appeler entre Begin/End. anim = type d'action, dir = 0..7 (0 = face).
 void BasicInfo::RenderPlayerAvatar(float x, float y, float w, float h,
                                          int anim, int dir, bool animate, bool show_costume) {
   if (Bourgeon::Instance().client().session().aid() == 0) return;
-
   const float pad = 4.0f;
-  // Échelle + ancrage FIGÉS : recalculés seulement quand le rect / la pose / la
-  // direction / l'apparence changent — jamais par frame d'animation.
-  static float s_scale = 0.0f, s_cx = 0.0f, s_feet = 0.0f;
-  static float s_head_cx = 0.0f, s_head_cy = 0.0f;  // centre TÊTE (réf. ancre hat effect)
-  static float s_body_cy = 0.0f;                    // centre CORPS Y (réf. ancre hat effect)
-  static float s_w = -1.0f, s_h = -1.0f;
-  static int   s_anim = -1, s_dir = -1;
-  static unsigned s_sig = 0;
-  static bool s_animate = false;  // dans la clé : nf (union) dépend de animate
+  if (w <= 2.0f * pad || h <= 2.0f * pad) return;
 
-  // Capture LIVE (image courante) -> g_av_caps + g_av_sig (signature d'apparence).
-  CaptureAvatarActor(anim, dir, animate, -1, show_costume);
-  if (g_av_count <= 0) return;
-  const unsigned sig = g_av_sig;
+  // ── Apparence LIVE ────────────────────────────────────────────────────────
+  //
+  // ⚠ Pas de garde SEH dans cette fonction, volontairement : `__try` y
+  // interdirait tout objet à destructeur (C2712), et il y en a. Les lectures de
+  // globales ci-dessous se font déjà sans garde ailleurs dans ce fichier, et la
+  // fonction n'est atteinte qu'avec une session ouverte.
+  using GetSexFn = int(__fastcall*)(void*, void*);
+  using GetJobFn = int(__fastcall*)(void*, void*);
+  ro::DollLook look;
+  look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look.job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look.hair          = *reinterpret_cast<int*>(kHair);
+  look.hair_color    = *reinterpret_cast<int*>(kHairCol);
+  look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+  // 🔴 `body` = la CLASSE, pas un style. C'est le second argument de
+  // `Job_ResolveBodyClass`, et c'est lui qui nomme le sprite de corps — le
+  // laisser à 0 demandait la classe 0, donc Novice pour tout le monde. Le
+  // char-select donne la même chose : le champ que sa liste appelle « style de
+  // corps » porte la classe du personnage.
+  //
+  // ⚠ La classe BRUTE, jamais celle ajustée par la monture : `look.job` porte
+  // déjà l'ajustement, et `Job_ResolveBodyClass` refait lui-même le remap
+  // (4008 -> 4014) à partir des deux.
+  look.body = *reinterpret_cast<int*>(kOwnJobId);
+  //
+  // Coiffes portées : précédence costume + suppression native d'un hat réel
+  // multi-slot couvert par un costume (cf. ResolveHeadgearViews). show_costume
+  // gate cette précédence : false (vue Équipement, « Voir les costumes »
+  // décoché) -> coiffes RÉELLES.
+  ResolveHeadgearViews(show_costume, &look.head_top, &look.head_mid,
+                       &look.head_low);
+  if (show_costume) {
+    const uintptr_t cosG = rag::kSessionAddr + 0x2b30 + 2 * 0xf8;  // slot cape costume
+    look.garment = (*reinterpret_cast<int*>(cosG + 4) != 0)
+                       ? *reinterpret_cast<int*>(cosG + 0x70)
+                       : *reinterpret_cast<int*>(kGarmentView);
+  } else {
+    look.garment = *reinterpret_cast<int*>(kGarmentView);
+  }
 
-  if (s_scale <= 0.0f || s_w != w || s_h != h || s_anim != anim || s_dir != dir ||
-      s_sig != sig || s_animate != animate) {
-    // (Ré)figeage : bbox UNION sur TOUTES les frames de la pose (comme ExportAvatarGif)
-    // -> l'enveloppe contient chaque frame, donc rien n'est jamais rogné, et l'échelle
-    // reste constante (zéro « respiration »). bbox TOTALE (arme/coiffes incl.) pour la
-    // taille ; bbox CORPS (couches non-tête = torse/jambes) pour centrer X + les pieds.
-    float ax0 = 1e9f, ay0 = 1e9f, ax1 = -1e9f, ay1 = -1e9f;
-    float bx0 = 1e9f, by0 = 1e9f, bx1 = -1e9f, by1 = -1e9f;
-    float hx0 = 1e9f, hy0 = 1e9f, hx1 = -1e9f, hy1 = -1e9f;  // région TÊTE (ancre effet)
-    bool has_body = false, has_head = false;
-    const bool anim_pose = (anim == 1 || anim == 4);  // seules Marche/Combat animent
-    int nf = (animate && anim_pose && g_av_frame_count > 1) ? g_av_frame_count : 1;
-    if (nf > 40) nf = 40;  // garde-fou
-    for (int f = 0; f < nf; ++f) {
-      CaptureAvatarActor(anim, dir, true, f, show_costume);  // force l'image f
-      for (int i = 0; i < g_av_count; ++i) {
-        const CapLayer& L = g_av_caps[i];
-        // Cart / faucon : DESSINÉS (boucle de rendu plus bas) mais EXCLUS de tout le
-        // cadrage — ni l'échelle (bbox totale ax), ni l'ancrage corps (bx)/tête (hx). Sinon
-        // un cart large tire le centre X / les pieds et décentre/rapetisse l'avatar : le
-        // corps reste le seul « noyau », le compagnon peut déborder (clip du rect). C'est la
-        // cause du « position fausse en Repos » (direction OK) : la RE prouve que le cart
-        // est bien placé RELATIVEMENT au corps ; c'est l'ancrage global qui dérivait.
-        if (L.companion) continue;  // cart/faucon dessinés mais hors cadrage/ancrage
-        const float lx0 = L.cx - L.w * 0.5f, lx1 = L.cx + L.w * 0.5f;
-        const float ly0 = L.cy - L.h * 0.5f, ly1 = L.cy + L.h * 0.5f;
-        if (lx0 < ax0) ax0 = lx0;  if (lx1 > ax1) ax1 = lx1;
-        if (ly0 < ay0) ay0 = ly0;  if (ly1 > ay1) ay1 = ly1;
-        if (!L.head_region) {
-          has_body = true;
-          if (lx0 < bx0) bx0 = lx0;  if (lx1 > bx1) bx1 = lx1;
-          if (ly0 < by0) by0 = ly0;  if (ly1 > by1) by1 = ly1;
-        } else {
-          has_head = true;
-          if (lx0 < hx0) hx0 = lx0;  if (lx1 > hx1) hx1 = lx1;
-          if (ly0 < hy0) hy0 = ly0;  if (ly1 > hy1) hy1 = ly1;
-        }
+  // Arme, bouclier, traînée, chariot : les chemins que le CLIENT a résolus.
+  // Hors jeu la lecture échoue et tout reste vide — mains nues, ce qui est le
+  // bon repli.
+  rag::OwnActorSprites eq;
+  rag::ReadOwnActorSprites(&eq);
+  look.weapon.spr_base       = eq.weapon_spr;
+  look.weapon.act_base       = eq.weapon_act;
+  look.weapon_trail.spr_base = eq.trail_spr;
+  look.weapon_trail.act_base = eq.trail_act;
+  look.shield.spr_base       = eq.shield_spr;
+  look.shield.act_base       = eq.shield_act;
+  // Trace UNE fois par changement d'équipement. Ces chemins sont la seule
+  // inconnue de la chaîne : s'ils sont vides ou tronqués, l'arme manquera sans
+  // rien signaler — un calque introuvable est simplement omis par le composeur.
+  //
+  // ⚠ Convertis en UTF-8 : les dossiers du GRF sont en CP949, et la console en
+  // jeu est de l'ImGui. Le tampon rotatif de `Cp949ToUtf8` a huit emplacements,
+  // les quatre appels d'une même ligne cohabitent donc sans se marcher dessus.
+  {
+    static char s_last[260] = {0};
+    if (std::strncmp(s_last, eq.weapon_spr, sizeof(s_last)) != 0) {
+      lstrcpynA(s_last, eq.weapon_spr, static_cast<int>(sizeof(s_last)));
+      // ⚠ `LogDiag` est spdlog : les emplacements sont `{}`, pas `%s`. Avec du
+      // printf il imprime le gabarit tel quel, sans le moindre avertissement.
+      LogDiag(
+          "[Avatar] job={} classe={} | arme='{}' bouclier='{}' trainee='{}' "
+          "chariot='{}'",
+          look.job, look.body, ro::Cp949ToUtf8(eq.weapon_spr),
+          ro::Cp949ToUtf8(eq.shield_spr), ro::Cp949ToUtf8(eq.trail_spr),
+          ro::Cp949ToUtf8(eq.cart_spr));
+    }
+  }
+
+  // ── Le chariot ────────────────────────────────────────────────────────────
+  //
+  // Sprite INDÉPENDANT, pas une pièce du personnage : il traîne ~1 tuile
+  // derrière lui dans le monde. On le place à plat, sans lire ni sa position ni
+  // la caméra — la RE montre que sa position live ne converge pas (elle FIGE
+  // sous un seuil de distance), et la lire faisait dériver le pantin dès que le
+  // joueur marchait.
+  //
+  // Carte monde -> écran mesurée sur la matrice de vue (caméra standard, termes
+  // croisés nuls) : X monde -> X écran, Z monde -> Y écran écrasé de kCamPitch,
+  // Y écran vers le bas. « Derrière » = (-sin, cos) du cap.
+  const int   d      = dir & 7;
+  const int   d_eff  = (anim == 4) ? ((d + kCartCombatShift) & 7) : d;
+  const float rad    = static_cast<float>(-d_eff) * 45.0f * 0.01745329252f;
+  ro::SpriteRes cart_res;
+  bool cart_ok = false;
+  if (eq.cart_spr[0])
+    cart_ok = ro::LoadSpritePair(eq.cart_spr,
+                                 eq.cart_act[0] ? eq.cart_act : nullptr, nullptr,
+                                 &cart_res);
+  const float now = static_cast<float>(ImGui::GetTime());
+  // Le chariot ne défile QU'EN MARCHE : la RE prouve que son image n'avance que
+  // si le joueur se DÉPLACE — en combat sur place il reste figé. Ce défilement
+  // est justement ce qui simule le déplacement (le châssis reste fixe, la caisse
+  // rebondit d'une image à l'autre).
+  const bool  cart_anim = cart_ok && animate && anim == 1;
+  const unsigned cart_action = static_cast<unsigned>((d_eff + kCartDirOffset) & 7);
+
+  // ── Les effets de costume et le chariot, en deux passes ───────────────────
+  //
+  // ⚠ Structure et non lambdas : la passe ARRIÈRE est appelée depuis
+  // `ro::DrawDoll` par un pointeur de fonction NU (`doll.h` ne dépend d'aucun
+  // en-tête standard), donc rien ne peut être capturé — tout transite par ici.
+  struct AvPass {
+    BasicInfo*           self;
+    ImDrawList*          dl;
+    const ro::SpriteRes* cart;
+    unsigned             cart_action;
+    unsigned             cart_frame;
+    float                cart_dx, cart_dy;  // en unités .act
+    bool                 cart_behind;
+
+    void Cart(const ro::DollPlacement& p) {
+      if (!cart || !cart->res) return;
+      ro::SpriteQuad q[24];
+      const int m = ro::SpriteResolveFrame(*cart, cart_action, cart_frame, q, 24,
+                                           /*apply_rotation=*/false);
+      for (int i = 0; i < m; ++i) {
+        if (!q[i].tex) continue;
+        ImVec2 c[4];
+        for (int k = 0; k < 4; ++k)
+          c[k] = ImVec2(p.origin_x + (q[i].corner[k].x + cart_dx) * p.scale,
+                        p.origin_y + (q[i].corner[k].y + cart_dy) * p.scale);
+        dl->AddImageQuad(reinterpret_cast<ImTextureID>(q[i].tex), c[0], c[1],
+                         c[2], c[3], ImVec2(q[i].uv0.x, q[i].uv0.y),
+                         ImVec2(q[i].uv1.x, q[i].uv0.y),
+                         ImVec2(q[i].uv1.x, q[i].uv1.y),
+                         ImVec2(q[i].uv0.x, q[i].uv1.y), q[i].tint);
       }
     }
-    const float cx   = has_body ? (bx0 + bx1) * 0.5f : (ax0 + ax1) * 0.5f;
-    const float feet = has_body ? by1 : ay1;             // pieds = bas du corps
-    const float vh   = feet - ay0;                       // sommet (coiffe) -> pieds
-    const float half = (ax1 - cx > cx - ax0) ? (ax1 - cx) : (cx - ax0);  // demi-largeur
-    if (vh > 1.0f && half > 0.5f) {
-      // sx borne l'extent horizontal DEPUIS l'ancrage corps (pas la largeur totale) ->
-      // aucun côté ne sort du clip ; sy fait tenir toute la hauteur pieds->sommet.
-      const float sx = (w - 2.0f * pad) / (2.0f * half);
-      const float sy = (h - 2.0f * pad) / vh;
-      s_scale = (sx < sy) ? sx : sy;
-      s_cx = cx;
-      s_feet = feet;
-      // Références pour l'ancre hat effect : centre TÊTE (couches tête) + centre CORPS Y (bbox
-      // corps). L'ancre du doll = MÉDIANE de ces deux (réglage retenu). Replis si pas de couche.
-      s_head_cx = has_head ? (hx0 + hx1) * 0.5f : cx;
-      s_head_cy = has_head ? (hy0 + hy1) * 0.5f : ay0;
-      s_body_cy = has_body ? (by0 + by1) * 0.5f : (ay0 + ay1) * 0.5f;
-      s_w = w; s_h = h; s_anim = anim; s_dir = dir; s_sig = sig; s_animate = animate;
+
+    // Effets .str (costumes SANS viewid), pilotés depuis un nœud autonome puis
+    // compositéss. AUCUN réglage en dur : l'ancre ET l'ordre derrière/devant
+    // viennent de HatEffectInfo.lub par Lua.
+    //
+    // Ancre = ORIGINE de l'acteur, c'est-à-dire ses pieds. Le .str place SON
+    // contenu par rapport à ça : cercle magique au SOL, pluie de pièces
+    // AU-DESSUS, scène CENTRÉE — une seule ancre les sert tous.
+    void Str(const ro::DollPlacement& p, bool before_phase) {
+      self->hat_diag_active_ = static_cast<int>(self->own_hat_effects_.size());
+      for (uint16_t ordinal : self->own_hat_effects_) {
+        const HatEffectParams& hp = HatOrdinalParams(static_cast<int>(ordinal));
+        if (hp.before != before_phase) continue;
+        CaptureHatEffectOrdinal(static_cast<int>(ordinal));
+        self->hat_diag_concrete_ = static_cast<int>(ordinal);
+        self->hat_diag_layers_   = g_str_count;  // 0 = résolution/charge ratée
+        DrawStrCapLayers(dl, p.origin_x + hp.pos_x * p.scale, p.origin_y,
+                         p.scale);
+      }
     }
-    // Restaure la capture LIVE pour le rendu (la boucle a laissé la dernière image forcée).
-    CaptureAvatarActor(anim, dir, animate, -1, show_costume);
-    if (g_av_count <= 0) return;
-  }
-  if (s_scale <= 0.0f) return;  // pas encore de cadrage valide (capture dégénérée)
-  float s  = s_scale;
-  float ox = x + w * 0.5f - s_cx * s;      // CORPS centré horizontalement (figé)
-  float oy = y + h - pad - s_feet * s;     // pieds du corps collés au bas (figé)
-  // FIT effet (demande user : le CADRE ne bouge pas ; l'effet rétrécit pour tenir dedans et le doll
-  // scale AVEC). Si un effet EZ est figé et sa bbox déborde du cadre, on réduit s (perso ET effet, car
-  // l'effet suit s via R=s/S) puis on re-centre la bbox de l'effet dans le cadre. Largeur effet en px
-  // doll = (dx1-dx0)*s (g_ez_fz_* sont en unités doll/s). On ne fait que RÉDUIRE (jamais agrandir).
-  // FIT appliqué SEULEMENT si un effet est réellement capturé CE frame (ez_capture::Count()>0). Si le
-  // costume-effet est retiré (plus aucune primitive -> Count()==0), on n'applique PAS le FIT : le doll
-  // reprend sa taille de base IMMÉDIATEMENT (corrige « reste petit après dé-équipement », sans dépendre
-  // du paquet 0x0A3B). Après quelques frames vides on invalide la bbox figée (prochain effet).
-  // ⚠ Compte FILTRÉ sur les effets du doll : ez_capture::Count() inclurait l'aperçu survolé ailleurs,
-  // et le doll croirait avoir un effet à cadrer alors qu'il n'en affiche aucun.
+
+    void Behind(const ro::DollPlacement& p) {
+      // Effets EZ/CEffectMgr (hatEffectID) capturés dans la passe monde et
+      // ré-ancrés ici. Le z-order est PAR QUAD, via le bit natif que la capture
+      // conserve : phase derrière avant le personnage, phase devant après.
+      // Doll de la fiche : effets ÉQUIPÉS seulement, jamais l'article survolé
+      // ailleurs.
+      DrawEzCapTris(dl, p.origin_x, p.origin_y, p.scale, /*before=*/true,
+                    /*with_preview=*/false);
+      Str(p, true);
+      if (cart_behind) Cart(p);
+    }
+
+    void Front(const ro::DollPlacement& p) {
+      if (!cart_behind) Cart(p);
+      Str(p, false);
+      DrawEzCapTris(dl, p.origin_x, p.origin_y, p.scale, /*before=*/false,
+                    /*with_preview=*/false);
+    }
+  };
+
+  AvPass pass{};
+  pass.self        = this;
+  pass.dl          = ImGui::GetWindowDrawList();
+  pass.cart        = cart_ok ? &cart_res : nullptr;
+  pass.cart_action = cart_action;
+  pass.cart_frame =
+      cart_anim ? ro::SpriteFrameIndex(cart_res, cart_action, now) : 0u;
+  pass.cart_dx = -std::sin(rad) * kCartTilePx + kCartNudgeX;
+  pass.cart_dy = -std::cos(rad) * kCamPitch * kCartTilePx + kCartNudgeY;
+  // Z-order : le chariot passe DEVANT le corps pour les trois orientations « de
+  // dos » {3,4,5} — le personnage regarde à l'opposé, le chariot est donc PLUS
+  // PRÈS de la caméra. Il est derrière pour les cinq autres.
+  pass.cart_behind = (d_eff < 3 || d_eff > 5);
+
+  // ── Faire tenir un effet de costume plus grand que le cadre ───────────────
+  //
+  // Le CADRE ne bouge pas ; c'est l'effet qui rétrécit pour y tenir, et le
+  // personnage rétrécit AVEC lui (l'effet suit son échelle). On ne fait que
+  // RÉDUIRE, jamais agrandir, et jamais sous un plancher — passé lui, l'effet
+  // déborde et se fait rogner plutôt que d'écraser le personnage.
+  //
+  // ⚠ Le plancher se mesure sur l'échelle de BASE, pas sur celle de la frame
+  // précédente : sinon chaque frame plafonnée rabaisserait la suivante, et le
+  // pantin s'effondrerait sur lui-même. D'où la mémoire ci-dessous, qui n'est
+  // rafraîchie que sur les frames NON plafonnées.
+  //
+  // ⚠ Le FIT ne s'applique que si un effet est réellement capturé cette frame.
+  // Sinon, un costume-effet retiré laisserait le pantin petit jusqu'au prochain
+  // paquet. Après quelques frames vides on jette la boîte figée.
+  static float s_base_scale = 0.0f;
+  float scale_limit = 0.0f;
   if (g_ez_frozen_valid && EzPrimCountForDoll() <= 0) {
     if (++g_ez_empty_frames > 4) g_ez_frozen_valid = false;
   } else if (g_ez_frozen_valid) {
     g_ez_empty_frames = 0;
     const float ew = g_ez_fz_dx1 - g_ez_fz_dx0;
     const float eh = g_ez_fz_dy1 - g_ez_fz_dy0;
-    if (ew > 1.0f && eh > 1.0f) {
-      const float m = 0.94f;                                   // petite marge intérieure
+    if (ew > 1.0f && eh > 1.0f && s_base_scale > 0.0f) {
+      const float m   = 0.94f;  // petite marge intérieure
       const float sfx = (w - 2.0f * pad) * m / ew;
       const float sfy = (h - 2.0f * pad) * m / eh;
-      const float sfit = (sfx < sfy) ? sfx : sfy;
-      if (sfit < s) {
-        // Plancher : ne pas réduire le doll sous g_ez_fit_floor × base. Si l'effet est plus grand
-        // que ce que ça permet, il déborde (rogné par le clip du rect) au lieu d'écraser le perso.
-        const float sMin = s * g_ez_fit_floor;
-        s = (sfit < sMin) ? sMin : sfit;
-        // On garde le cadrage du CORPS (centré horizontal, pieds en bas) au nouveau scale — PAS un
-        // re-centrage sur la bbox de l'effet (qui décalerait le perso sur le côté). L'effet, dessiné
-        // relativement à l'origine acteur (ox,oy), reste ainsi centré sur le perso comme en jeu.
-        ox = x + w * 0.5f - s_cx * s;
-        oy = y + h - pad - s_feet * s;
-      }
+      float sfit = (sfx < sfy) ? sfx : sfy;
+      const float floor_s = s_base_scale * g_ez_fit_floor;
+      if (sfit < floor_s) sfit = floor_s;
+      if (sfit < s_base_scale) scale_limit = sfit;
     }
   }
 
-  // (d) composite (clip au rect). Hat effects (.str, costumes SANS viewid) capturés depuis un nœud
-  // STR autonome puis compositéss comme le natif (blend/rotation/échelle RE). AUCUN hardcode : ancre
-  // ET ordre de rendu viennent de HatEffectInfo.lub via Lua (HatOrdinalParams) :
-  //  - Ancre X/Y = ORIGINE de l'acteur (le corps est capturé à (0,0) -> l'origine se projette en
-  //    (ox, oy)) + hatEffectPosX / hatEffectPos (unités canvas .str -> ×s, l'échelle du contenu).
-  //    hatEffectPos<0 = vers le haut. (Remplace l'ancien 11 px + tilt 0.6428 hardcodés = data-driven.)
-  //  - isRenderBeforeCharacter : l'effet se dessine DERRIÈRE le perso (avant le sprite) ou DEVANT.
-  //  - Contenu .str : 1 px canvas -> s à l'écran. Un effet par ordinal actif (suivi 0x0A3B).
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->PushClipRect(ImVec2(x, y), ImVec2(x + w, y + h), true);
-
-  // (0) hat effects EZ/SPRITE + CEffectMgr (hatEffectID, ex. Digital_Space, Perm_Frost) : capturés
-  // live depuis la passe monde (ez_capture), re-ancrés sur le doll (origine acteur (ox,oy), échelle
-  // s/S_live). Z-ORDER PAR-QUAD via le bit 0x8 du flag natif (param_2 capturé) = ordre EXACT du jeu
-  // (RE render-order workflow) : phase DERRIÈRE (bit set) avant le sprite, phase DEVANT après. Gère
-  // plusieurs effets d'un coup, sans Lua. Capture vidée sur frontière de frame (module ez_capture).
-  // Doll de la fiche : effets ÉQUIPÉS seulement (pas l'effet survolé ailleurs).
-  DrawEzCapTris(dl, ox, oy, s, /*before=*/true, /*with_preview=*/false);   // quads DERRIÈRE le perso (bit 0x8)
-
-  hat_diag_active_ = static_cast<int>(own_hat_effects_.size());
-  auto drawHatEffects = [&](bool beforePhase) {
-    for (uint16_t ordinal : own_hat_effects_) {
-      const HatEffectParams& hp = HatOrdinalParams(static_cast<int>(ordinal));
-      if (hp.before != beforePhase) continue;
-      CaptureHatEffectOrdinal(static_cast<int>(ordinal));  // GetHatEfResName -> .str -> g_str_caps
-      hat_diag_concrete_ = static_cast<int>(ordinal);
-      hat_diag_layers_   = g_str_count;      // 0 = résolution/charge/capture a échoué (debug)
-      // Ancre = ORIGINE de l'acteur (le corps est capturé à (0,0) -> l'origine se projette en (ox,oy),
-      // = la cellule sol/pieds). Le .str place SON contenu par rapport à ça : cercle magique au SOL
-      // (contenu au centre canvas = origine), pluie de pièces AU-DESSUS, scène CENTRÉE, etc. -> une
-      // seule ancre pour tous, pose-suivie (oy = pieds recadrés par pose). + hatEffectPosX horizontal.
-      // (Le lift écran -80 natif des effets "tête/scène" n'est PAS reproductible à plat sans l'échelle
-      //  de rendu en jeu S ; l'ancre origine reste juste au sol et sous la tête.)
-      const float hox = ox + hp.pos_x * s;
-      DrawStrCapLayers(dl, hox, oy, s);      // contenu .str -> écran via DepthScale = s
-    }
+  // ── Le pantin ─────────────────────────────────────────────────────────────
+  ro::DollPlacement pl;
+  ro::DollDrawOpts o;
+  o.dir            = d;
+  o.anim           = anim;
+  // 🔴 L'horloge tourne TOUJOURS. Le combo de poses distingue « Marche » de
+  // « Marche (animé) » : ça ne concerne que le CORPS. Les coiffes et la cape
+  // vivent dans les deux cas, comme en jeu sur un personnage à l'arrêt — une
+  // horloge négative les figerait avec lui.
+  o.anim_seconds   = now;
+  o.freeze_body    = !animate;
+  o.center_on_body = true;
+  o.scale_limit    = scale_limit;
+  o.out_placement  = &pl;
+  o.underlay_ctx   = &pass;
+  o.underlay = [](void* c, const ro::DollPlacement& p) {
+    static_cast<AvPass*>(c)->Behind(p);
   };
 
-  drawHatEffects(true);   // (a) effets DERRIÈRE le perso (isRenderBeforeCharacter)
-  for (int i = 0; i < g_av_count; ++i) {   // (b) sprite (ordre tableau = painter z-order)
-    const CapLayer& L = g_av_caps[i];
-    const ImVec2 q0(ox + (L.cx - L.w * 0.5f) * s, oy + (L.cy - L.h * 0.5f) * s);
-    const ImVec2 q1(ox + (L.cx + L.w * 0.5f) * s, oy + (L.cy + L.h * 0.5f) * s);
-    const ImVec2 u0 = L.mirror ? ImVec2(L.uv1.x, L.uv0.y) : L.uv0;
-    const ImVec2 u1 = L.mirror ? ImVec2(L.uv0.x, L.uv1.y) : L.uv1;
-    dl->AddImage((ImTextureID)(uintptr_t)L.tex, q0, q1, u0, u1);
+  ImDrawList* dl = pass.dl;
+  dl->PushClipRect(ImVec2(x, y), ImVec2(x + w, y + h), true);
+  const bool drawn = ro::DrawDoll(dl, look, x + pad, y + pad, w - 2.0f * pad,
+                                  h - 2.0f * pad, o);
+  // 🔴 Conditionné au pantin : sans lui il n'y a pas d'ancre, et un effet ancré
+  // sur (0,0) atterrirait dans le coin de l'écran.
+  if (drawn) {
+    pass.Front(pl);
+    if (scale_limit <= 0.0f) s_base_scale = pl.scale;  // frame non plafonnée
   }
-  drawHatEffects(false);  // (c) effets .str DEVANT le perso
-  DrawEzCapTris(dl, ox, oy, s, /*before=*/false, /*with_preview=*/false);  // (c') quads EZ/CEffectMgr DEVANT le perso
-  // (reset de la capture = frontière de frame, dans le module ez_capture)
   dl->PopClipRect();
 }
 

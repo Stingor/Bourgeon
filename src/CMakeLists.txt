@@ -233,6 +233,8 @@ set(BOURGEON_FILES
 	"ragnarok/login_mode.h"
 	"ragnarok/game_mode.cc"
 	"ragnarok/game_mode.h"
+	"ragnarok/own_actor.cc"
+	"ragnarok/own_actor.h"
 
         # Layouts
 	"ragnarok/object_layouts/session/layouts.h"

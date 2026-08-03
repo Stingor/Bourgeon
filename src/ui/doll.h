@@ -15,13 +15,20 @@
 // les quads qu'il dessinait (hook sur Actor_SubmitSpriteQuad). C'était juste et
 // complet, mais ça exigeait un acteur vivant, un hook global, un cache de pages
 // d'atlas et une dizaine d'offsets de structure devinés. Ici, rien de tout ça :
-// on lit les fichiers. Le char-select et l'aperçu marchand y sont passés, et la
-// capture a été supprimée.
+// on lit les fichiers. Le char-select, l'aperçu d'article et l'avatar de la
+// fiche de personnage y sont passés ; il ne subsiste de capture que pour
+// l'export GIF, qui a besoin d'un rendu hors écran de toute façon.
 //
 // ── Ce qu'il ne fait pas ─────────────────────────────────────────────────────
-// Ni arme ni bouclier — comme le char-select natif, qui ne les montre pas non
-// plus. Les compagnons (cart, faucon) et les effets .str n'en sont pas non plus.
-// La CAPE, elle, est gérée (cf. `DollLook::garment`).
+// Les compagnons (cart, faucon) et les effets .str n'en sont pas. Ils n'ont
+// rien à y faire : ce sont des sprites INDÉPENDANTS, posés par rapport au
+// personnage et non assemblés avec lui. L'appelant les dessine lui-même, avec
+// le repère que `DollPlacement` lui rend — derrière via `DollDrawOpts::underlay`,
+// devant en dessinant après.
+//
+// La CAPE (`DollLook::garment`), l'ARME et le BOUCLIER (`DollLook::weapon`,
+// `shield`), eux, sont bien de l'assemblage : ils entrent dans le cadrage et
+// s'intercalent dans l'ordre de dessin.
 
 #include <cstdint>
 
@@ -29,15 +36,46 @@
 
 namespace ro {
 
+// Une pièce TENUE EN MAIN — arme, traînée d'arme, bouclier — désignée par ses
+// FICHIERS et non par un id d'objet.
+//
+// 🔴 Pourquoi des chemins, alors que tout le reste du pantin part d'un id : la
+// résolution native (`CActorSprite_BuildWeaponLayers` 0x00d403a0) ne se
+// reproduit pas honnêtement. Elle enchaîne une classe d'arme, un « seau » de
+// bouclier, une demi-douzaine de cas particuliers (montures, madogear), et
+// surtout deux SONDAGES d'existence de fichier qui décident du repli. La
+// recopier au jugé, c'est se tromper sur les cas rares sans jamais le savoir.
+//
+// Le client, lui, a déjà fait ce travail : les chemins résolus sont posés sur
+// l'acteur du joueur, et `ragnarok/own_actor.h` les y lit. Le composeur reste
+// donc ce qu'il est — un lecteur de fichiers — et n'hérite d'aucune de ces
+// règles.
+//
+// ⚠ Conséquence assumée : arme et bouclier n'apparaissent que sur un pantin
+// dont l'acteur existe en jeu. Au char-select ils resteront absents, ce qui est
+// aussi le comportement du char-select natif.
+struct DollHeldPiece {
+  const char* spr_base = nullptr;  // chemin VFS SANS extension ; nullptr = rien
+  const char* act_base = nullptr;  // nullptr = même base que le .spr
+};
+
 // Apparence d'un personnage. Mêmes champs que `BasicInfo::DollLook`, dont les
 // offsets viennent de CHARACTER_INFO (char-select natif) — on garde une
 // structure distincte pour que ce module ne dépende d'aucun plugin.
 struct DollLook {
   int sex = 0;            // 0 = femme, 1 = homme (DÉJÀ résolu, jamais 99)
   int job = 0;            // id de classe
-  // Style de corps (CHARACTER_INFO +0x58). 🔴 C'est LUI qui choisit le sprite
-  // de corps, pas `job` : le natif résout la paire (job, body) en une classe de
-  // corps, où `job` ne sert plus qu'à décider bébé / variante alternative.
+  // 🔴 La CLASSE qui nomme le sprite de corps — et non un « style ».
+  //
+  // `Job_ResolveBodyClass(job, body, 1)` (0x00d99150) ne lit `job` que pour
+  // reconnaître un BÉBÉ ou une MONTURE ; c'est `body` qu'il remappe et qu'il
+  // rend. Le laisser à 0 demande donc la classe 0 : tout le monde s'affiche en
+  // Novice, quelle que soit la valeur de `job`.
+  //
+  // En jeu, c'est la classe BRUTE du joueur (g_Own_JobId) ; au char-select,
+  // c'est le champ de CHARACTER_INFO +0x58, que la liste appelle « style de
+  // corps » mais qui porte bien la classe. Un style de corps équipé y arrive
+  // sous son propre identifiant (4332..4344), que le natif remappe.
   int body = 0;
   int hair = 0;           // id de coiffure BRUT (le remap est fait ici)
   int hair_color = -1;    // -1 = palette d'origine du sprite
@@ -51,6 +89,15 @@ struct DollLook {
   // n'est pas nous qui en décidons : le client interroge le global Lua
   // `DrawOnTop`. Voir le .cc.
   int garment = 0;
+
+  // Arme, traînée d'arme et bouclier. Vides = mains nues.
+  //
+  // ⚠ Les trois se dessinent d'un bloc, dans cet ordre — traînée, arme,
+  // bouclier — et ce bloc passe DERRIÈRE tout le personnage dans les
+  // orientations de dos. C'est le composeur qui s'en charge.
+  DollHeldPiece weapon;
+  DollHeldPiece weapon_trail;
+  DollHeldPiece shield;
 };
 
 // Où le pantin a atterri, une fois le cadrage résolu.
@@ -98,6 +145,36 @@ struct DollDrawOpts {
   // dépasser du rectangle — `DrawDoll` ne rogne rien, c'est à l'appelant de
   // prévoir la marge (ou de poser son propre clip s'il veut couper).
   bool fit_body_only = false;
+
+  // Figer le CORPS sur son image 0 — sans figer les accessoires.
+  //
+  // 🔴 Ce n'est pas la même chose qu'une horloge négative, qui fige TOUT. Les
+  // deux horloges du pantin sont indépendantes : le corps ne défile qu'en Marche
+  // et en Combat, les coiffes et la cape vivent en permanence sur la leur. Une
+  // vue qui propose « Marche » et « Marche (animé) » ne parle que de la
+  // PREMIÈRE ; les costumes, eux, doivent continuer à bouger dans les deux cas,
+  // comme ils le font en jeu sur un personnage à l'arrêt.
+  bool freeze_body = false;
+
+  // Centrer et poser les PIEDS d'après le corps seul, mais garder l'échelle
+  // calculée sur la silhouette entière.
+  //
+  // 🔴 Ce n'est PAS `fit_body_only` : là, tout rentre encore — c'est le repère
+  // qui change. Sans ça, une arme à deux mains élargit la boîte d'un seul côté
+  // et pousse le personnage à l'opposé ; une cape longue lui enfonce les pieds
+  // sous le bas du rectangle. Le corps est le seul point fixe honnête.
+  //
+  // ⚠ La demi-largeur retenue est la plus grande des deux, mesurée DEPUIS le
+  // centre du corps : aucun côté ne peut alors sortir du rectangle.
+  bool center_on_body = false;
+
+  // Plafond d'échelle, en pixels par unité .act. <= 0 = aucun.
+  //
+  // Sert à faire tenir dans le cadre autre chose que le pantin — un effet de
+  // costume plus grand que lui. L'appelant mesure l'effet, en déduit l'échelle
+  // qui le ferait rentrer, et la pose ici : le personnage rétrécit AVEC son
+  // effet, ce qui est le seul moyen de garder les deux cohérents.
+  float scale_limit = 0.0f;
 
   DollUnderlayFn underlay      = nullptr;
   void*          underlay_ctx  = nullptr;

@@ -7,7 +7,9 @@
 
 #include "ragnarok/lua.h"  // la cape interroge deux globaux Lua
 #include "ui/head_icon.h"
+#include "ui/ro_imgui.h"  // Cp949ToUtf8 : les chemins du GRF sont en CP949
 #include "ui/sprite_view.h"
+#include "utils/log_console.h"
 
 namespace ro {
 namespace {
@@ -126,7 +128,7 @@ void BodyPalettePath(int color, char* out, size_t out_size) {
 
 // ── Une pièce du pantin ──────────────────────────────────────────────────────
 constexpr int kMaxQuads  = 96;  // toutes pièces confondues
-constexpr int kMaxPieces = 8;   // tête + 3 coiffes + cape, avec de la marge
+constexpr int kMaxPieces = 12;  // tête + 3 coiffes + cape + arme/traînée/bouclier
 
 struct Piece {
   SpriteRes res;
@@ -448,8 +450,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // Voir AltAnimFrame plus bas — et noter que `actor_frame` ENTRE dans ce
   // calcul (`image = actor_frame * mult + sous-image`), donc les deux horloges
   // se composent au lieu de s'exclure.
+  //
+  // ⚠ `freeze_body` fige le corps SANS toucher aux accessoires : l'appelant qui
+  // propose « Marche » et « Marche (animé) » ne parle que du corps.
   unsigned actor_frame = 0;
-  if (anim_seconds >= 0.0f && (anim == 1 || anim == 4))
+  if (anim_seconds >= 0.0f && !opts.freeze_body && (anim == 1 || anim == 4))
     actor_frame = SpriteFrameIndex(body.res, body_pose, anim_seconds);
 
   // 🔴 DEUX résolutions du corps, exactement comme pour les pièces rapportées :
@@ -488,9 +493,27 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   };
   grow(body_ref, body_rn, 0.0f, 0.0f);
 
+  // Boîte du CORPS SEUL, retenue avant la moindre pièce rapportée : c'est le
+  // repère de `center_on_body`, et le seul qui ne bouge pas quand on change
+  // d'arme ou de chapeau.
+  const float body_min_x = min_x, body_max_x = max_x, body_max_y = max_y;
+
   int body_ax = 0, body_ay = 0, body_attr = 0;
   const bool body_anchored =
       SpriteFrameAnchor(body.res, body_pose, 0, &body_ax, &body_ay, &body_attr);
+
+  // Ancre du corps à l'image DESSINÉE. C'est elle que réclame `Actor_
+  // ComputeHeadAttach` (0x007adbc0) : il pose la tête à `corps.ancre −
+  // tête.ancre`, les deux prises à l'action ET à l'image COURANTES.
+  //
+  // 🔴 C'est le défaut « tête et corps désynchronisés en combat » : le corps
+  // s'élance de plusieurs pixels d'une image à l'autre, et une tête recalée à
+  // l'image 0 gardait un décalage constant — elle décrochait du cou. Au repos
+  // les deux valent la même chose (`SpriteFrameAnchor` force l'image 0 pour les
+  // actions < 8), donc rien ne change hors marche et combat.
+  int body_cax = 0, body_cay = 0, body_cattr = 0;
+  const bool body_canchored = SpriteFrameAnchor(
+      body.res, body_pose, actor_frame, &body_cax, &body_cay, &body_cattr);
 
   // ── Les pièces rapportées, dans l'ordre de dessin ─────────────────────────
   // Tête puis coiffes : bas, milieu, haut. Chacune s'accroche au CORPS (pas en
@@ -515,21 +538,160 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // `Actor_DrawSprites` (0x007ac820) donne aux parties 3 à 6 la partie 2 —
     // la tête — pour référence d'ancrage. La cape, elle, reste sur le corps.
     bool on_head;
+    // RÉFÉRENCE des accessoires : la tête, et elle seule. Distinct de
+    // `!accessory` depuis que l'arme existe — elle n'est pas un accessoire non
+    // plus, et laisser la déduction la promouvoir référence enverrait les
+    // coiffes s'accrocher au fer d'une épée.
+    bool head_ref;
+    // PIÈCE TENUE — arme, traînée, bouclier : AUCUN décalage d'accrochage.
+    //
+    // 🔴 Mesuré dans `CActorSprite_ComputePartAttachOffset` (0x00605170), qui
+    // est un `switch` sur le numéro de partie et ne connaît que trois cas :
+    //   partie 1 (tête)          -> ancre du CORPS moins la sienne ;
+    //   parties 2, 3, 4, 8       -> ancre de la TÊTE moins la sienne ;
+    //   default — 0 (corps) et 5, 6, 7 (arme, traînée, bouclier) -> ZÉRO.
+    // La fonction sort avec `param_1[2] = 0` et `param_1[3] = 0` : les pièces
+    // tenues sont posées à l'origine de l'acteur, exactement comme le corps.
+    // Tout leur mouvement est déjà dans les offsets de leurs calques.
+    //
+    // ⚠ J'avais cru l'inverse le 2026-08-03, sur un bouclier de Novice qui
+    // partait de travers : les ancres corps `8,-50` et bouclier `1,-50` ne
+    // coïncidaient pas, j'y ai vu la cause. C'en était une coïncidence — le
+    // vrai défaut était l'angle du `.act`, ignoré. Une fois l'angle honoré, le
+    // faux ancrage est resté et déplace désormais l'arme et le bouclier de
+    // quelques pixels sur toutes les classes dont les ancres diffèrent.
+    bool held;
+    // Appliquer l'ANGLE des calques.
+    //
+    // 🔴 Faux pour les huit parties composites — corps, tête, coiffes, cape :
+    // elles passent par `Actor_SubmitSpriteQuad` (0x00a1b7c0), qui construit un
+    // rectangle aligné aux axes et IGNORE l'angle qu'on lui donne. Les honorer
+    // faisait pivoter les chapeaux sur la tête.
+    //
+    // 🔴 Vrai pour l'arme et le bouclier, qui ne passent JAMAIS par cette
+    // fonction — ils vivent sur le `CActorSprite` et suivent un autre chemin de
+    // soumission. Et pour eux l'angle n'est pas une décoration : le `.spr` d'un
+    // bouclier ne contient que DEUX images, une de face et une de dos. Tout le
+    // mouvement du bras pendant l'animation d'attaque est porté par les
+    // transformations du `.act`. Les ignorer, c'est afficher un bouclier figé,
+    // posé de travers pendant toute l'animation.
+    bool rotate;
+    // Étiquette de mesure, pour lire un journal d'assemblage sans compter les
+    // indices. Purement descriptive.
+    const char* tag;
   };
   Attached list[kMaxPieces] = {};
   int list_n = 0;
 
+  // ── LA TABLE D'ORDRE, du fond vers l'avant ────────────────────────────────
+  //
+  //   DE DOS  {2,3,4,5} : bouclier · CORPS · tête · coiffes · arme · cape
+  //   DE FACE {0,1,6,7} : CORPS · tête · coiffes · cape · arme · bouclier
+  //
+  // (le corps en capitales : il n'est pas dans la liste, il est posé avant
+  //  elle ; tout ce qui doit passer derrière lui part dans le seau `behind`.)
+  //
+  // Elle n'est pas une convention de confort — c'est le résultat OBSERVABLE de
+  // trois mécanismes natifs enchaînés, qu'il vaut mieux écrire une fois pour
+  // toutes que redécouvrir pièce par pièce.
+  //
+  // Numérotation des NEUF parties, celle du natif :
+  //   0 corps · 1 tête · 2-4 coiffes bas/milieu/haut · 8 cape
+  //   5 arme  · 6 traînée · 7 bouclier
+  //
+  // 1. `Actor_SelectPartLayerByDir` (0x00d38850) donne l'ordre d'ÉMISSION, et
+  //    il dépend du groupe de direction :
+  //      FACE : 1, 0, 2, 3, 4, 8, 5, 6, 7
+  //      DOS  : 7, 1, 0, 2, 3, 4, 8, 5, 6
+  //    🔴 Le BOUCLIER est la seule pièce qui change de camp : de dos il est
+  //    émis EN PREMIER, donc derrière le corps lui-même — le personnage le
+  //    porte de l'autre côté et son propre dos le recouvre.
+  //
+  // 2. `CActorSprite_DeferQuadSorted` (0x006046e0) RETRIE : les parties 2, 3,
+  //    4 et 8 prennent une clé Lua (100 à 400), toutes les autres une clé de
+  //    séquence (1, 2, 3…). Coiffes et CAPE remontent donc au-dessus de l'arme
+  //    dans les deux orientations — d'où la cape en dernier de dos.
+  //
+  // 3. `weapon_layer.cc`, notre patch, relève l'arme et le bouclier au-dessus
+  //    de tout pour le seul groupe FACE, et laisse le DOS intact.
+  //
+  // ⚠ La liste est bâtie dans l'ordre des DÉPENDANCES autant que du dessin : la
+  // TÊTE doit précéder les coiffes (elle est leur référence d'ancrage) et la
+  // cape (elle donne le gabarit d'animation des accessoires). Les deux tables
+  // ci-dessus la placent avant elles, donc les deux contraintes coïncident.
+  const int  dir_group = opts.dir & 7;
+  const bool back_view = (dir_group >= 2 && dir_group <= 5);
+
+  auto add_held = [&](const DollHeldPiece& p, const char* tag, bool behind) {
+    if (!p.spr_base || !*p.spr_base || list_n >= kMaxPieces) return;
+    Attached& a = list[list_n];
+    a.tag = tag;
+    lstrcpynA(a.base, p.spr_base, static_cast<int>(sizeof(a.base)));
+    if (p.act_base && *p.act_base)
+      lstrcpynA(a.act, p.act_base, static_cast<int>(sizeof(a.act)));
+    a.held   = true;
+    a.rotate = true;
+    a.behind = behind;
+    ++list_n;
+  };
+
+  auto add_garment = [&]() {
+    // Deux refus repris tels quels de `CActorSprite_DrawGarmentLayer` : le type
+    // d'action 8 (poses 64 à 71) n'a jamais de cape, et trois classes n'en ont
+    // pas au FÉMININ.
+    //
+    // Elle est marquée `accessory` : le natif lui applique la même animation
+    // alternative qu'aux coiffes, avec la même référence — le slot 1,
+    // c'est-à-dire la TÊTE. Sa place après la tête dans la liste suffit donc à
+    // ce que le calcul tombe juste.
+    const bool garment_job_ok =
+        look.sex != 0 ||
+        (look.job != 4086 && look.job != 4087 && look.job != 4112);
+    if (look.garment <= 0 || list_n >= kMaxPieces || !garment_job_ok ||
+        (pose >= 64 && pose <= 71))
+      return;
+    char robe[128];
+    Attached& g = list[list_n];
+    // Le .spr peut venir de la disposition plate, le .act JAMAIS : il est
+    // toujours par classe. `base` = plate, `alt` = repli par classe — le même
+    // couple base/alt que la casse des accessoires, réutilisé tel quel.
+    if (!GarmentResNameCached(look.garment, robe, sizeof(robe)) ||
+        !GarmentBasePath(look, robe, /*job_layout=*/true, g.alt, sizeof(g.alt)))
+      return;
+    if (!GarmentBasePath(look, robe, /*job_layout=*/false, g.base,
+                         sizeof(g.base)))
+      g.base[0] = '\0';
+    lstrcpynA(g.act, g.alt, static_cast<int>(sizeof(g.act)));
+    g.pal[0] = '\0';
+    g.tag = "cape";
+    g.accessory = true;
+    // Devant ou derrière le CORPS : c'est le Lua `DrawOnTop` qui tranche, et
+    // lui seul. Derrière, elle rejoint le seau `behind` — où le bouclier de dos
+    // l'a déjà précédée, l'ordre entre eux étant celui de la liste.
+    g.behind = !GarmentDrawsOnTopCached(look.garment, look.sex, look.job, pose,
+                                        actor_frame);
+    ++list_n;
+  };
+
+  // 1. Le bouclier de DOS : tout au fond, avant même le corps.
+  if (back_view) add_held(look.shield, "bouclier", /*behind=*/true);
+
+  // 2. La tête — référence de tout ce qui suit.
   if (list_n < kMaxPieces &&
       HeadSpriteBasePath(look.hair, look.sex, list[list_n].base,
                          sizeof(list[list_n].base))) {
     list[list_n].alt[0] = '\0';
     list[list_n].pal[0] = '\0';
     list[list_n].accessory = false;  // la TÊTE : référence, jamais animée
+    list[list_n].head_ref  = true;
+    list[list_n].tag       = "tete";
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, list[list_n].pal,
                       sizeof(list[list_n].pal));
     ++list_n;
   }
+
+  // 3. Les coiffes, du bas vers le haut.
   const int gear[3] = {look.head_low, look.head_mid, look.head_top};
   for (int g = 0; g < 3 && list_n < kMaxPieces; ++g) {
     if (gear[g] <= 0) continue;
@@ -541,47 +703,41 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     list[list_n].pal[0] = '\0';
     list[list_n].accessory = true;
     list[list_n].on_head   = true;
+    list[list_n].tag       = (g == 0) ? "coiffe-bas"
+                          : (g == 1) ? "coiffe-milieu"
+                                     : "coiffe-haut";
     ++list_n;
   }
 
-  // ── La cape, en dernier ───────────────────────────────────────────────────
-  //
-  // Deux refus repris tels quels de `CActorSprite_DrawGarmentLayer` : le type
-  // d'action 8 (poses 64 à 71) n'a jamais de cape, et trois classes n'en ont pas
-  // au FÉMININ.
-  //
-  // Elle est marquée `accessory` : le natif lui applique la même animation
-  // alternative qu'aux coiffes, avec la même référence — le slot 1, c'est-à-dire
-  // la TÊTE (`CActorSprite_BuildHead_Slot1`). Sa place après la tête dans la
-  // liste suffit donc à ce que le calcul tombe juste.
-  const bool garment_job_ok =
-      look.sex != 0 ||
-      (look.job != 4086 && look.job != 4087 && look.job != 4112);
-  if (look.garment > 0 && list_n < kMaxPieces && garment_job_ok &&
-      (pose < 64 || pose > 71)) {
-    char robe[128];
-    Attached& g = list[list_n];
-    // Le .spr peut venir de la disposition plate, le .act JAMAIS : il est
-    // toujours par classe. `base` = plate, `alt` = repli par classe — le même
-    // couple base/alt que la casse des accessoires, réutilisé tel quel.
-    if (GarmentResNameCached(look.garment, robe, sizeof(robe)) &&
-        GarmentBasePath(look, robe, /*job_layout=*/true, g.alt, sizeof(g.alt))) {
-      if (!GarmentBasePath(look, robe, /*job_layout=*/false, g.base,
-                           sizeof(g.base)))
-        g.base[0] = '\0';
-      lstrcpynA(g.act, g.alt, static_cast<int>(sizeof(g.act)));
-      g.pal[0] = '\0';
-      g.accessory = true;
-      g.behind = !GarmentDrawsOnTopCached(look.garment, look.sex, look.job,
-                                          pose, actor_frame);
-      ++list_n;
-    }
-  }
+  // 4. De FACE, la cape passe SOUS l'arme : `weapon_layer.cc` relève l'arme
+  //    au-dessus de tout, cape comprise.
+  if (!back_view) add_garment();
+
+  // 5. L'arme et sa traînée.
+  add_held(look.weapon, "arme", /*behind=*/false);
+  add_held(look.weapon_trail, "trainee", /*behind=*/false);
+
+  // 6. De FACE, le bouclier ferme la marche, toujours par le même patch.
+  if (!back_view) add_held(look.shield, "bouclier", /*behind=*/false);
+
+  // 7. De DOS, c'est la CAPE qui ferme la marche — la clé Lua la fait remonter
+  //    au-dessus de l'arme, et c'est bien ce qui se voit : elle pend dans le
+  //    dos, devant le personnage vu de derrière.
+  if (back_view) add_garment();
 
   // Dernier décalage VALIDE. 🔴 Quand une pièce n'a pas d'ancre exploitable, le
   // natif REPREND celui-ci au lieu de repartir de zéro — remettre à zéro
   // recollerait la pièce à l'origine du corps, donc visiblement de travers.
+  //
+  // 🔴 DEUX décalages par pièce, et pas un : celui du DESSIN, calculé sur les
+  // images qu'on affiche, et celui de la MESURE, calculé sur l'image 0.
+  //
+  // Sans cette séparation, la boîte englobante se met à dépendre de l'image
+  // courante — donc l'échelle et le centrage —, et tout le pantin « respire » au
+  // rythme de l'animation. C'est le même piège que pour les QUADS, où l'on
+  // mesure déjà sur l'image 0 : il vaut aussi pour ce qui les DÉPLACE.
   float last_dx = 0.0f, last_dy = 0.0f;
+  float last_rdx = 0.0f, last_rdy = 0.0f;
 
   // Nombre d'images de la TÊTE pour cette action : c'est la référence de
   // l'animation alternative des accessoires (cf. Act_ResolveAltAnimFrame).
@@ -601,15 +757,52 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // On garde en plus le décalage de la TÊTE elle-même, faute de quoi les coiffes
   // atterriraient à l'origine du corps. Au repos les deux images valent 0 et le
   // calcul retombe exactement sur l'ancien : rien ne bouge hors marche.
+  //
+  // Le doublet `_r` est la même chose à l'image 0 — la référence de MESURE.
   float head_dx = 0.0f, head_dy = 0.0f;
   int   head_ax = 0, head_ay = 0, head_attr = 0;
   bool  head_ok = false;
+  float head_rdx = 0.0f, head_rdy = 0.0f;
+  int   head_rax = 0, head_ray = 0, head_rattr = 0;
+  bool  head_rok = false;
 
-  // Calques à poser DERRIÈRE le corps. Seule la cape peut y atterrir, et
-  // seulement dans certaines orientations — d'où un second tampon plutôt qu'un
-  // tri : l'ordre à l'intérieur de chaque passe reste celui de la liste.
+  // Calques à poser DERRIÈRE le corps. Seule la CAPE y atterrit, et seulement
+  // dans certaines orientations — c'est la seule pièce que le natif fasse
+  // changer de côté. Un tampon plutôt qu'un tri : l'ordre à l'intérieur de
+  // chaque passe reste celui de la liste, qui EST l'ordre de dessin.
   SpriteQuad back[kMaxQuads];
   int back_n = 0;
+
+  // Mesure de l'assemblage : réémise seulement quand la pose ou le gabarit
+  // change. La clé mêle la pose au profil du corps (nombre d'actions, nombre
+  // d'images) et au nombre de pièces, de sorte qu'un changement de CLASSE la
+  // fasse basculer lui aussi — sinon comparer deux classes dans la même pose ne
+  // donnerait qu'une seule ligne.
+  //
+  // ⚠ Un ANNEAU de clés, pas une seule : plusieurs pantins cohabitent dans la
+  // même frame — l'avatar de la fiche et l'aperçu d'article, par exemple. Avec
+  // une clé unique ils se la volent tour à tour et le journal se réémet à chaque
+  // frame, ce qui le rend illisible au moment précis où on en a besoin.
+  static unsigned s_diag_keys[4] = {0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+                                    0xFFFFFFFFu};
+  static int s_diag_next = 0;
+  const int body_nf = SpriteActionFrameCount(body.res, body_pose);
+  const unsigned diag_key =
+      pose * 1000003u + static_cast<unsigned>(SpriteActionCount(body.res)) * 8191u +
+      static_cast<unsigned>(body_nf) * 131u + static_cast<unsigned>(list_n);
+  bool diag = true;
+  for (unsigned k : s_diag_keys)
+    if (k == diag_key) { diag = false; break; }
+  if (diag) {
+    s_diag_keys[s_diag_next] = diag_key;
+    s_diag_next = (s_diag_next + 1) & 3;
+    LogDiag(
+        "[Pantin] pose={} | corps : action={} ({} actions) | image={} ({} "
+        "images) | ancre={},{} attr={}{} | {}",
+        pose, body_pose, SpriteActionCount(body.res), actor_frame, body_nf,
+        body_cax, body_cay, body_cattr, body_canchored ? "" : " ABSENTE",
+        Cp949ToUtf8(base));
+  }
 
   for (int i = 0; i < list_n; ++i) {
     SpriteQuad* dst = list[i].behind ? back : quads;
@@ -617,9 +810,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     if (dst_n >= kMaxQuads) continue;
 
     Piece piece;
-    if (!LoadPiece(list[i].base, list[i].act, list[i].pal, &piece) &&
-        !LoadPiece(list[i].alt, list[i].act, list[i].pal, &piece))
-      continue;
+    const char* used = list[i].base;
+    if (!LoadPiece(list[i].base, list[i].act, list[i].pal, &piece)) {
+      used = list[i].alt;
+      if (!LoadPiece(list[i].alt, list[i].act, list[i].pal, &piece)) continue;
+    }
 
     // 🔴 TOUTES les pièces partagent l'action du corps. C'est ce que fait le
     // natif : `CActorSprite_RenderCompositeJobSprite` lit une seule action
@@ -666,76 +861,157 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
              static_cast<unsigned>(sub);
       }
     }
-    // ⚠ Plafonnement sur ce que la pièce contient VRAIMENT. Tant que le corps
-    // restait figé sur l'image 0 la question ne se posait pas ; dès qu'il
-    // défile, une tête ou une coiffe qui a moins d'images que lui se verrait
-    // demander une image inexistante. L'implémentation de référence (le site
-    // Moonlight) fait la même chose : `min($animation, $count - 1)`.
+    // ⚠ Image hors bornes -> IMAGE 0, et surtout pas la dernière.
+    //
+    // 🔴 `Act_GetFrame` (0x0070f4b0) est explicite : si l'index dépasse, il rend
+    // `*begin`, c'est-à-dire la PREMIÈRE image. J'avais mis un plafonnement sur
+    // la dernière, copié du site Moonlight (`min($animation, $count - 1)`) —
+    // c'est le comportement du site, pas celui du client.
+    //
+    // La différence ne se voit que si la pièce a MOINS d'images que le corps
+    // pour cette action, ce qui dépend de la classe : d'où une tête synchronisée
+    // sur un High Wizard et décrochée sur un White Smith, avec exactement le
+    // même fichier de tête.
     const int piece_frames = SpriteActionFrameCount(piece.res, piece_pose);
-    if (piece_frames > 0 && pf >= static_cast<unsigned>(piece_frames))
-      pf = static_cast<unsigned>(piece_frames - 1);
+    if (piece_frames > 0 && pf >= static_cast<unsigned>(piece_frames)) pf = 0u;
 
 
 
     // ── Accrochage ────────────────────────────────────────────────────────
     //
-    // Deux régimes, et ce n'est pas une commodité : c'est ce que fait
-    // `Actor_DrawSprites` (0x007ac820).
+    // Trois régimes, et ce n'est pas une commodité : c'est ce que fait
+    // `Actor_DrawSprites` (0x007ac820) et sa `Actor_ComputeHeadAttach`.
     //
-    //   COIFFE  -> référence = la TÊTE, ancres des images COURANTES des deux.
-    //   le RESTE -> référence = le CORPS, ancres de l'image 0.
+    //   TÊTE                 -> référence = le CORPS, ancres des images
+    //                           COURANTES des deux.
+    //   COIFFE               -> référence = la TÊTE, ancres des images
+    //                           COURANTES des deux.
+    //   ARME, TRAÎNÉE, BOUCLIER -> AUCUN décalage (cf. `Attached::held`).
+    //   CAPE                 -> référence = le CORPS, ancre de l'image 0.
     //
-    // ⚠ Ne pas généraliser l'un ou l'autre. Tout accrocher au corps à l'image 0
-    // fige les coiffes pendant la marche ; tout passer à l'image courante fait
-    // dériver une pièce dont l'ancre bouge sans que sa référence bouge.
+    // ⚠ La CAPE est la seule exception, et elle est mesurée : le natif ne lui
+    // donne aucun décalage du tout, son `.act` portant lui-même son mouvement.
+    // La passer à l'image courante la ferait dériver.
     //
     // 🔴 L'attache ne s'applique que si les DEUX ancres portent le même `attr` :
     // c'est le test du natif, et sans lui on recale une pièce sur une ancre qui
     // ne la concerne pas.
+    //
+    // Chaque régime produit DEUX décalages : celui du dessin et celui de la
+    // mesure (image 0). Cf. `last_rdx` — sans lui la boîte englobante suivrait
+    // l'animation et le pantin respirerait.
     int ax = 0, ay = 0, attr = 0;
-    if (list[i].on_head) {
+    if (list[i].held) {
+      // Arme, traînée, bouclier : à l'origine, comme le corps. Remise à zéro
+      // EXPLICITE — `last_dx` survit d'une pièce à l'autre, et sans elle la
+      // pièce tenue héritait du décalage de la coiffe qui la précède.
+      last_dx = last_dy = last_rdx = last_rdy = 0.0f;
+    } else if (list[i].on_head) {
       // Coiffe : ancre de la TÊTE moins la sienne, toutes deux sur l'image
       // qu'elles DESSINENT — c'est ce mouvement-là qui porte le balancement.
+      //
+      // 🔴 Ancre inexploitable -> on retombe sur le décalage de la TÊTE, et
+      // SURTOUT pas sur celui de la coiffe précédente. Le natif initialise sa
+      // différence à zéro avant le test (`param_3 = 0`) et n'ajoute ensuite que
+      // le décalage de tête mémorisé : une coiffe sans ancre se pose donc sur la
+      // tête, pas là où s'était posée sa voisine. Mesuré sur un costume dont
+      // l'ancre manque à certaines images — il héritait des 3 px de la coiffe
+      // d'avant.
       if (head_ok &&
           SpriteFrameAnchor(piece.res, piece_pose, pf, &ax, &ay, &attr) &&
           attr == head_attr) {
         last_dx = head_dx + static_cast<float>(head_ax - ax);
         last_dy = head_dy + static_cast<float>(head_ay - ay);
+      } else {
+        last_dx = head_dx;
+        last_dy = head_dy;
+      }
+      if (head_rok &&
+          SpriteFrameAnchor(piece.res, piece_pose, 0, &ax, &ay, &attr) &&
+          attr == head_rattr) {
+        last_rdx = head_rdx + static_cast<float>(head_rax - ax);
+        last_rdy = head_rdy + static_cast<float>(head_ray - ay);
+      } else {
+        last_rdx = head_rdx;
+        last_rdy = head_rdy;
+      }
+    } else if (list[i].head_ref) {
+      // La TÊTE sur le CORPS, aux images courantes des deux : c'est le calcul
+      // exact du `case 1` de `CActorSprite_ComputePartAttachOffset`.
+      if (body_canchored &&
+          SpriteFrameAnchor(piece.res, piece_pose, pf, &ax, &ay, &attr) &&
+          attr == body_cattr) {
+        last_dx = static_cast<float>(body_cax - ax);
+        last_dy = static_cast<float>(body_cay - ay);
+      }
+      if (body_anchored &&
+          SpriteFrameAnchor(piece.res, piece_pose, 0, &ax, &ay, &attr) &&
+          attr == body_attr) {
+        last_rdx = static_cast<float>(body_ax - ax);
+        last_rdy = static_cast<float>(body_ay - ay);
       }
     } else if (body_anchored &&
                SpriteFrameAnchor(piece.res, piece_pose, 0, &ax, &ay, &attr) &&
                attr == body_attr) {
-      last_dx = static_cast<float>(body_ax - ax);
-      last_dy = static_cast<float>(body_ay - ay);
+      last_dx  = static_cast<float>(body_ax - ax);
+      last_dy  = static_cast<float>(body_ay - ay);
+      last_rdx = last_dx;
+      last_rdy = last_dy;
     }
 
     // La TÊTE devient la référence des pièces suivantes : son nombre d'images
     // pour l'animation alternative, son décalage et son ancre pour l'accrochage.
     // Elle est en tête de liste, donc tout est connu quand les coiffes arrivent.
-    if (!list[i].accessory) {
+    if (list[i].head_ref) {
       ref_frames = piece_frames;
       head_dx = last_dx;
       head_dy = last_dy;
       head_ok = SpriteFrameAnchor(piece.res, piece_pose, pf, &head_ax, &head_ay,
                                   &head_attr);
+      head_rdx = last_rdx;
+      head_rdy = last_rdy;
+      head_rok = SpriteFrameAnchor(piece.res, piece_pose, 0, &head_rax,
+                                   &head_ray, &head_rattr);
     }
 
-    // Cadrage : image 0 de la pièce, à son ancre. Rien de ce qui varie d'une
-    // image à l'autre n'entre dans la boîte englobante.
+    // ── Mesure de l'assemblage ────────────────────────────────────────────
+    //
+    // Une ligne PAR PIÈCE, réémise seulement quand la pose ou le gabarit
+    // change — jamais par image, sinon la console est inutilisable.
+    //
+    // Elle porte tout ce qui peut faire dérailler une pièce, et ces causes
+    // donnent le MÊME symptôme à l'écran : action repliée sur autre chose que
+    // ce qui était demandé, nombre d'images inégal, ancre absente, `attr` qui
+    // ne concorde pas. Sans les chiffres, on ne peut que deviner.
+    if (diag) {
+      int px = 0, py = 0, pattr = -1;
+      const bool pok = SpriteFrameAnchor(piece.res, piece_pose, pf, &px, &py,
+                                         &pattr);
+      LogDiag(
+          "[Pantin]   {} : demande={} -> action={} ({} actions) | image={} "
+          "({} images) | ancre={},{} attr={}{} | decalage={},{} | {}",
+          list[i].tag ? list[i].tag : "?", pose, piece_pose,
+          SpriteActionCount(piece.res), pf, piece_frames, px, py, pattr,
+          pok ? "" : " ABSENTE", last_dx, last_dy, Cp949ToUtf8(used));
+    }
+
+    // Cadrage : image 0 de la pièce, à son ancre D'IMAGE 0. Rien de ce qui varie
+    // d'une image à l'autre n'entre dans la boîte englobante — ni les quads, ni
+    // le décalage qui les déplace.
     //
     // 🔴 Sauf en cadrage « corps seul » : là, l'échelle ne doit dépendre QUE du
     // corps, sinon un chapeau volumineux rétrécit le personnage.
     if (!opts.fit_body_only) {
       SpriteQuad ref[kMaxQuads];
       const int rn = SpriteResolveFrame(piece.res, piece_pose, 0, ref, kMaxQuads,
-                                        /*apply_rotation=*/false);
-      if (rn > 0) grow(ref, rn, last_dx, last_dy);
+                                        list[i].rotate);
+      if (rn > 0) grow(ref, rn, last_rdx, last_rdy);
     }
 
     SpriteQuad tmp[kMaxQuads];
     const int m =
         SpriteResolveFrame(piece.res, piece_pose, pf, tmp, kMaxQuads - dst_n,
-                           /*apply_rotation=*/false);
+                           list[i].rotate);
     if (m <= 0) continue;
     for (int k = 0; k < m; ++k) {
       for (int c = 0; c < 4; ++c) {
@@ -747,19 +1023,44 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   }
 
   // ── Cadrage ───────────────────────────────────────────────────────────────
-  const float span_x = max_x - min_x, span_y = max_y - min_y;
-  if (span_x <= 0.0f || span_y <= 0.0f) return false;
+  //
+  // Deux repères possibles, et un seul jeu de règles : tout doit rentrer, le
+  // personnage est centré en X, ses PIEDS touchent le bas du rectangle. Ce qui
+  // change avec `center_on_body`, c'est QUI définit « centré » et « les pieds ».
+  //
+  // Par défaut c'est la silhouette entière — bon pour une vignette, où l'objet
+  // affiché EST la silhouette. Sur un personnage équipé c'est faux : l'arme ne
+  // dépasse que d'un côté, la cape ne descend que derrière, et le personnage se
+  // met à glisser dans son cadre au gré de son équipement.
+  float ref_cx   = (min_x + max_x) * 0.5f;
+  float ref_feet = max_y;
+  if (opts.center_on_body) {
+    ref_cx   = (body_min_x + body_max_x) * 0.5f;
+    ref_feet = body_max_y;
+  }
+
+  // Demi-largeur mesurée DEPUIS ce centre, côté le plus débordant : c'est elle
+  // qu'il faut faire tenir dans la demi-largeur du rectangle, pas la largeur
+  // totale. Sinon le côté long sort du cadre dès que le centre est décentré.
+  float half = max_x - ref_cx;
+  if (ref_cx - min_x > half) half = ref_cx - min_x;
+  const float span_y = ref_feet - min_y;
+  if (half <= 0.0f || span_y <= 0.0f) return false;
 
   float scale = h / span_y;
-  const float fit_x = w / span_x;
+  const float fit_x = w * 0.5f / half;
   if (fit_x < scale) scale = fit_x;
+  // Plafond de l'appelant : il fait rentrer autre chose que le pantin dans le
+  // même cadre (un effet de costume), et le pantin doit rétrécir AVEC.
+  if (opts.scale_limit > 0.0f && opts.scale_limit < scale)
+    scale = opts.scale_limit;
   if (scale <= 0.0f) return false;
 
-  // Corps centré en X, PIEDS en bas : c'est le bas de la boîte englobante qui
-  // vient se poser sur le bas du rectangle, pas son centre — sinon un
-  // personnage coiffé d'un grand chapeau s'enfoncerait dans le sol.
-  const float origin_x = x + w * 0.5f - (min_x + max_x) * 0.5f * scale;
-  const float origin_y = y + h - max_y * scale;
+  // PIEDS en bas : c'est le bas de la boîte de référence qui vient se poser sur
+  // le bas du rectangle, pas son centre — sinon un personnage coiffé d'un grand
+  // chapeau s'enfoncerait dans le sol.
+  const float origin_x = x + w * 0.5f - ref_cx * scale;
+  const float origin_y = y + h - ref_feet * scale;
 
   // Le cadrage est fixé : tout ce qui veut se caler sur le pantin peut l'être.
   // 🔴 (origin_x, origin_y) est l'ORIGINE DE L'ACTEUR, pas le centre de la
@@ -802,6 +1103,9 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // 🔴 L'arrière-plan D'ABORD. Le moteur du jeu ne mélange jamais un calque de
   // cape aux calques du corps : c'est tout devant ou tout derrière, décidé par
   // le Lua `DrawOnTop`. Deux passes suffisent donc à le reproduire.
+  //
+  // Le BOUCLIER emprunte le même seau en vue de dos, où il est émis avant tout
+  // le reste (cf. la table d'ordre plus haut).
   emit(back, back_n);
   emit(quads, n);
   return drawn;
