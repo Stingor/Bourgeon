@@ -410,6 +410,7 @@ void ReadPortraitLayout(const YAML::Node& ui) {
     element.w        = ui[prefix + "w"].as<int>(element.w);
     element.h        = ui[prefix + "h"].as<int>(element.h);
     element.rounding = ui[prefix + "rounding"].as<float>(element.rounding);
+    element.text_scale = ui[prefix + "tscale"].as<float>(element.text_scale);
     ReadArgbKey(ui, prefix + "bg", element.bg);
     ReadArgbKey(ui, prefix + "fg", element.fg);
   }
@@ -427,7 +428,8 @@ void WritePortraitLayout(YAML::Emitter& out) {
         << YAML::Key << (prefix + "y")        << YAML::Value << element.y
         << YAML::Key << (prefix + "w")        << YAML::Value << element.w
         << YAML::Key << (prefix + "h")        << YAML::Value << element.h
-        << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding;
+        << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding
+        << YAML::Key << (prefix + "tscale")   << YAML::Value << element.text_scale;
     WriteArgbKey(out, prefix + "bg", element.bg);
     WriteArgbKey(out, prefix + "fg", element.fg);
   }

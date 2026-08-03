@@ -125,8 +125,9 @@ class BasicInfo : public Plugin {
 
   // ── Status portrait: independent, movable HUD elements ────────────────────
   // The head sprite, pseudo, class and level are each a STANDALONE draggable +
-  // resizable frame with its own position/size, background colour+opacity and
-  // corner rounding, so players can build a custom status UI to their taste.
+  // resizable frame with its own position/size, background colour+opacity,
+  // corner rounding and text size, so players can build a custom status UI to
+  // their taste.
   // (Continuation of the Basic Info HUD; the head sprite capture lands in a
   // follow-up — placeholder for now. Eventual goal: hide the native Basic Info
   // window once this replaces it.) Persisted by MoonlightUi under "portrait_".
@@ -136,6 +137,7 @@ class BasicInfo : public Plugin {
     float bg[4];      // background colour + opacity
     float fg[4];      // text colour (ignored for the head element)
     float rounding;   // background corner rounding (0..16)
+    float text_scale; // taille du texte, ×  la police UI (ignoré pour la tête)
   };
   enum PortId { kPortHead = 0, kPortName, kPortClass, kPortLevel, kPortCount };
   static constexpr const char* kPortKeys[kPortCount] = {"head", "name", "class",
@@ -167,13 +169,13 @@ class BasicInfo : public Plugin {
 
   PortraitElem ports_[kPortCount] = {
     /* head  */ {true,  60,  60, 100, 100, {0.05f, 0.05f, 0.07f, 0.78f},
-                 {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f},
+                 {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f, 1.0f},
     /* name  */ {true,  60, 164, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
-                 {1.00f, 0.82f, 0.30f, 1.00f}, 4.0f},
+                 {1.00f, 0.82f, 0.30f, 1.00f}, 4.0f, 1.0f},
     /* class */ {true,  60, 186, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
-                 {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f},
+                 {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f, 1.0f},
     /* level */ {true,  60, 208, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
-                 {0.36f, 0.78f, 1.00f, 1.00f}, 4.0f},
+                 {0.36f, 0.78f, 1.00f, 1.00f}, 4.0f, 1.0f},
   };
 
   // Set by MoonlightUi when a size preset is applied so DrawBar force-applies

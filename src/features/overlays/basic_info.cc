@@ -16,6 +16,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cfloat>  // FLT_MAX (mesure de texte à taille imposée)
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -1891,6 +1892,16 @@ bool BasicInfo::DrawBar(BarId id, long long cur, long long max) {
 }
 
 namespace {
+// Bornes de la taille de texte des étiquettes du portrait, appliquées AU DESSIN
+// (et pas seulement au slider) : une valeur aberrante venue d'un yaml édité à la
+// main ne doit pas produire une police de 300 px ni de taille nulle.
+constexpr float kPortTextScaleMin = 0.50f;
+constexpr float kPortTextScaleMax = 4.00f;
+float ClampTextScale(float s) {
+  return s < kPortTextScaleMin ? kPortTextScaleMin
+                               : (s > kPortTextScaleMax ? kPortTextScaleMax : s);
+}
+
 // Returns the current text content for a portrait element (empty string for the
 // head element, which draws a sprite placeholder instead of text).
 void PortraitText(int id, char* out, size_t n) {
@@ -2186,10 +2197,18 @@ bool BasicInfo::DrawPortraitElem(PortId id) {
     } else {
       char buf[96];
       PortraitText(id, buf, sizeof(buf));
-      const ImVec2 ts = ImGui::CalcTextSize(buf);
+      // Taille réglable par étiquette : on redimensionne la police au dessin
+      // (`AddText` avec taille explicite), donc la mesure doit passer par
+      // `CalcTextSizeA` à la MÊME taille, sinon le centrage part de travers.
+      ImFont* font = ImGui::GetFont();
+      const float fpx = ImGui::GetFontSize() * ClampTextScale(e.text_scale);
+      const ImVec2 ts = font->CalcTextSizeA(fpx, FLT_MAX, 0.0f, buf);
       const ImVec2 tp((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f);
-      dl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(0, 0, 0, 200), buf);
-      dl->AddText(tp, fg, buf);
+      // L'ombre suit la taille, sinon elle disparaît sous un gros texte.
+      const float sh = std::max(1.0f, std::floor(fpx * 0.08f));
+      dl->AddText(font, fpx, ImVec2(tp.x + sh, tp.y + sh),
+                  IM_COL32(0, 0, 0, 200), buf);
+      dl->AddText(font, fpx, tp, fg, buf);
     }
 
     if (!frozen) {  // faint resize hint in the bottom-right corner
@@ -2313,7 +2332,8 @@ bool BasicInfo::DrawSettings() {
   SameLine(); HelpMarker(
       "Portrait de statut : la tête du personnage, le pseudo, la classe "
       "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
-      "redimensionnable, avec sa couleur/opacité de fond et son arrondi.");
+      "redimensionnable, avec sa couleur/opacité de fond, son arrondi et sa "
+      "taille de texte.");
 
   ImGui::BeginDisabled(!portrait_visible_);
 
@@ -2363,12 +2383,12 @@ bool BasicInfo::DrawSettings() {
       "Joue les images de l'animation (ex. le balayage de la posture "
       "Combat). Décoche pour figer une pose calme (image 0).");
 
-  SeparatorText("Couleurs et arrondis du portrait et des étiquettes");
+  SeparatorText("Couleurs, arrondis et taille de texte du portrait et des étiquettes");
   changed |= ro::RoCheckbox("Bordure", &portrait_border_);
   SameLine(); HelpMarker("Trait 1px autour du cadre et des étiquettes.");
 
   // Per-element config: show / background colour+opacity / rounding /
-  // text colour.  Each element is independent.
+  // text colour / text size.  Each element is independent.
   for (int i = 0; i < BasicInfo::kPortCount; ++i) {
     auto& e = ports_[i];
     ImGui::PushID(i);
@@ -2380,6 +2400,14 @@ bool BasicInfo::DrawSettings() {
       changed |= ColorEdit4WithAlphaBar("Texte", e.fg);
     }
     changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
+    if (i != BasicInfo::kPortHead) {
+      changed |= WheelSliderFloat("Taille du texte", &e.text_scale,
+                                  kPortTextScaleMin, kPortTextScaleMax);
+      SameLine(); HelpMarker(
+          "Taille du texte de cette étiquette (1.00 = taille de l'interface).\n"
+          "Le texte reste centré et coupé au cadre : agrandis le cadre s'il "
+          "déborde.");
+    }
     Unindent();
     ImGui::PopID();
   }
