@@ -100,9 +100,26 @@ const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
                              unsigned frame);
 
 // Premier son déclaré par le .act, toutes actions confondues — la « voix » du
-// sprite, celle qu'on joue sur une interaction ponctuelle. nullptr s'il n'y en
-// a aucun, ce qui est le cas de la plupart des .act.
+// sprite. nullptr s'il n'y en a aucun, ce qui est le cas de la plupart des .act.
+//
+// ⚠ Ce n'est PAS le son d'une action : la table est rangée dans l'ordre du
+// fichier, et sa première entrée sonore est en général le bruit d'attente. Pour
+// faire entendre une animation, c'est `SpriteFrameSound` qu'il faut, image par
+// image.
 const char* SpriteMainSound(const SpriteRes& res);
+
+// MARQUEUR d'animation attaché à (action, frame), ou nullptr.
+//
+// C'est l'autre contenu de la table de sons : des entrées sans extension que le
+// client lit comme des ÉVÉNEMENTS et non comme des fichiers. Le seul répandu est
+// « atk » — l'image où le coup PORTE. L'implémentation de référence le traite
+// pareil : GRF Editor exclut « atk » de la validation des chemins `data\wav\`
+// (GRFEditor/Tools/GrfValidation/ValidateContentReader.cs).
+//
+// Complément exact de `SpriteFrameSound` : une image donne l'un ou l'autre,
+// jamais les deux.
+const char* SpriteFrameEvent(const SpriteRes& res, unsigned action,
+                             unsigned frame);
 
 // ── Composition de plusieurs sprites ─────────────────────────────────────────
 //

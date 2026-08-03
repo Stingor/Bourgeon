@@ -461,6 +461,17 @@ const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
   return IsWav(s) ? s.c_str() : nullptr;
 }
 
+const char* SpriteFrameEvent(const SpriteRes& res, unsigned action,
+                             unsigned frame) {
+  Entry* e = static_cast<Entry*>(res.res);
+  if (!EnsureLoaded(e)) return nullptr;
+  const spract::Frame* f = FrameAt(e, action, frame);
+  if (!f || f->sound_id < 0) return nullptr;
+  if (static_cast<size_t>(f->sound_id) >= e->res.sound_files.size()) return nullptr;
+  const std::string& s = e->res.sound_files[f->sound_id];
+  return IsWav(s) ? nullptr : s.c_str();  // complément exact de SpriteFrameSound
+}
+
 const char* SpriteMainSound(const SpriteRes& res) {
   Entry* e = static_cast<Entry*>(res.res);
   if (!EnsureLoaded(e)) return nullptr;

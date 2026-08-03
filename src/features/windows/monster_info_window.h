@@ -156,6 +156,9 @@ class MonsterInfoWindow : public Plugin {
   MobInfo* Current();
 
   void DrawHeader(MobInfo& mob);       // sprite + nom + badges
+  // Clic sur le sprite : on titille le monstre. Arme l'animation ponctuelle
+  // (dégât, ou attaque une fois sur huit) et joue sa voix.
+  void PokeSprite();
   void DrawStatsTab(MobInfo& mob);
   void DrawResistTab(MobInfo& mob);
   void DrawDropsTab(MobInfo& mob);
@@ -175,6 +178,40 @@ class MonsterInfoWindow : public Plugin {
 
   // Ressources .spr/.act du monstre affiché (rechargées quand il change).
   ro::MobSpriteRes sprite_;
+
+  // ── Le sprite se manipule ──────────────────────────────────────────────────
+  // Molette au-dessus = on tourne le monstre : le .act range ses actions en
+  // motion * 8 + direction, donc on prend la POSE orientée (jamais un miroir,
+  // qui déplacerait l'ombre du mauvais côté — cf. features/overlays/login_parade.cc).
+  // Clic = on le titille : animation de dégât + le son de l'image + un sursaut.
+  // Il riposte de temps en temps, et finit par faire le mort si on insiste.
+  //
+  // 🔴 L'orientation SURVIT au changement de monstre (c'est un réglage de
+  // lecture), l'animation ponctuelle non — son numéro d'action ne vaut que pour
+  // le .act qui l'a produite.
+  int   sprite_dir_    = 0;    // 0 = sud, comme la fenêtre native
+  int   poke_action_   = -1;   // action ponctuelle en cours, -1 = aucune
+  float poke_start_    = 0.0f; // horloge ImGui au moment du clic
+  float poke_anim_end_ = 0.0f; // fin de l'ANIMATION : elle ne BOUCLE pas
+  // Fin de la RÉACTION. Vaut `poke_anim_end_`, sauf pour la mort : le monstre
+  // reste à terre (dernière image figée) un moment avant de se relever.
+  float poke_end_      = 0.0f;
+  bool  poke_freeze_   = false;  // tenir une image fixe jusqu'à `poke_end_`
+  // Horloge d'animation à tenir pendant ce gel : elle vise la dernière image
+  // VISIBLE de l'action, car une animation de mort se termine sur des images
+  // vides (le corps disparaît). Calculée au clic, valable pour ce .act.
+  float poke_freeze_clock_ = 0.0f;
+  // Prochain clic accepté. Sans ce temps mort, un clic répété relance
+  // l'animation à chaque image et empile les sons.
+  float poke_ready_at_ = 0.0f;
+  int   poke_count_    = 0;    // chatouilles cumulées -> riposte, puis mort
+  // Dernière image dessinée pendant la réaction. Le son du .act appartient à
+  // l'IMAGE, pas à l'action : on ne le déclenche qu'au CHANGEMENT d'image, sur
+  // celle qui est vraiment à l'écran. -1 = aucune image encore dessinée.
+  int   poke_frame_  = -1;
+  // Le son de coup de repli reste à jouer, sur l'image portant le marqueur
+  // « atk » — le cas d'une action marquée mais sans wav.
+  bool  poke_hit_pending_ = false;
 
   // Description de compétence demandée pendant le rendu, jouée par FlushPending.
   // 0 = rien en attente ; une seule demande en vol (une souris, un geste).

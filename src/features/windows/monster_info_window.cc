@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cfloat>   // FLT_MAX (contraintes de taille de la fenêtre)
+#include <cmath>    // std::sin (sursaut du sprite quand on le titille)
 #include <cstdarg>  // va_list (helper Label)
 #include <cstdio>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include "ragnarok/uiwnd.h"     // MakeWindow / OnMsg / SetPos (description de skill)
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"        // ro::BeginRoDescWindow, ro::LocalToUtf8 (CP949)
+#include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
 
 namespace {
 
@@ -75,6 +77,109 @@ const char* SizeName(uint8_t size) {
 const char* ResistLabel(int index) {
   return (index >= 0 && index < 10) ? msgstr::Utf8(kMsiPropertyBase + index) : "?";
 }
+
+// ── Poses d'un .act de monstre ───────────────────────────────────────────────
+// Les actions sont rangées `motion * 8 + direction` (0 = sud, 2 = ouest,
+// 4 = nord, 6 = est). Les motions d'un monstre, dans l'ordre du format :
+// 0 attente, 1 marche, 2 attaque, 3 dégât, 4 mort.
+//
+// 🔴 Toutes ne sont pas toujours présentes — un .act de monstre custom peut
+// n'avoir que l'attente. On TESTE donc le fichier (nombre d'images) au lieu de
+// supposer, et on se replie sur l'attente dans la même direction, puis sur
+// l'action 0, la seule qui existe forcément.
+constexpr unsigned kMotionAttack = 2;
+constexpr unsigned kMotionHurt   = 3;
+constexpr unsigned kMotionDie    = 4;
+
+// ── Le rythme de la chatouille ───────────────────────────────────────────────
+// Temps mort entre deux clics : il fixe aussi la cadence de l'escalade, d'où
+// des seuils courts — six clics font douze secondes, et personne ne clique une
+// minute pour voir ce qui se passe.
+constexpr float kPokeCooldownSec  = 2.0f;
+constexpr int   kPokesPerRiposte  = 3;    // une chatouille sur trois : il riposte
+constexpr int   kPokesBeforeDeath = 6;    // et à la sixième, il fait le mort
+constexpr float kDeathHoldSeconds = 1.6f; // temps passé à terre avant de se relever
+
+unsigned MobAction(const ro::MobSpriteRes& res, unsigned motion, int dir) {
+  const unsigned d = static_cast<unsigned>(dir) & 7u;
+  const unsigned a = motion * 8u + d;
+  if (ro::MobActionFrameCount(res, a) > 0) return a;
+  return (ro::MobActionFrameCount(res, d) > 0) ? d : 0u;
+}
+
+// ── Ce que l'action a à faire entendre, et QUAND ─────────────────────────────
+//
+// 🔴 Le son d'un .act n'appartient pas au fichier mais à l'IMAGE : chaque image
+// porte un `sound id` qui indexe la table de sons de l'Act (-1 = muette), et une
+// action pose son wav sur son image de contact, pas sur la première. Il n'y a
+// donc pas de « son du monstre » à jouer au clic — c'est le DESSIN qui déclenche
+// le son, quand il atteint l'image qui le porte.
+//
+// La même table contient aussi des MARQUEURS sans extension, dont « atk » :
+// l'image où le coup porte, sans wav associé. Quand c'est tout ce qu'a l'action,
+// on tient quand même l'instant juste pour poser le son de coup générique.
+enum class PokeAudio {
+  kFrameWav,  // vrai wav dans le .act : le dessin le déclenchera, image par image
+  kOnMarker,  // pas de wav mais un marqueur : repli calé sur SON image
+  kNow,       // ni l'un ni l'autre : repli immédiat, sinon le clic est muet
+};
+
+// Dernière image de l'action qui dessine réellement quelque chose.
+//
+// 🔴 Une animation de MORT se termine presque toujours sur des images VIDES :
+// le corps disparaît, c'est le fichier qui le veut. Tenir la dernière image du
+// .act laisserait donc un cadre vide pendant tout le temps où le monstre est
+// censé rester à terre. On remonte jusqu'à la dernière image qui a des calques.
+int LastVisibleFrame(const ro::MobSpriteRes& res, unsigned action) {
+  const int n = ro::MobActionFrameCount(res, action);
+  for (int f = n - 1; f > 0; --f) {
+    ro::SpriteQuad quad;  // un seul suffit : on teste la présence, pas le contenu
+    if (ro::SpriteResolveFrame(res.sprite, action, static_cast<unsigned>(f),
+                               &quad, 1) > 0)
+      return f;
+  }
+  return 0;
+}
+
+PokeAudio ClassifyActionAudio(const ro::MobSpriteRes& res, unsigned action) {
+  const int n = ro::MobActionFrameCount(res, action);
+  bool marker = false;
+  for (int f = 0; f < n; ++f) {
+    const unsigned uf = static_cast<unsigned>(f);
+    if (ro::SpriteFrameSound(res.sprite, action, uf)) return PokeAudio::kFrameWav;
+    if (ro::SpriteFrameEvent(res.sprite, action, uf)) marker = true;
+  }
+  return marker ? PokeAudio::kOnMarker : PokeAudio::kNow;
+}
+
+// ── Jouer un wav du client ───────────────────────────────────────────────────
+// Sound_Play3D, aux coordonnées de l'auditeur (centré, volume plein). Il honore
+// tout seul le réglage « effets sonores » du joueur, et on est EN JEU ici, donc
+// OptionInfo est chargé — pas besoin du contournement `Sound_PlaySample2D` de la
+// parade de login (features/overlays/login_parade.cc, qui tourne AVANT).
+//
+// ⚠ La fonction se termine par `RET 0x20` : elle dépile un dword de plus que ses
+// sept paramètres visibles. L'oublier corrompt la pile de l'APPELANT, et le
+// crash tombe après le retour — cf. le même appel dans minigames/roggle.cc.
+constexpr uintptr_t kSoundMgrPtr = 0x01253d0c;  // *ptr = SoundMgr (déréf 1x)
+constexpr uintptr_t kSoundPlay3D = 0x00600770;
+using PlaySound3DFn = void(__fastcall*)(void*, void*, const char*, float, float,
+                                        float, int, int, float, int);
+
+void PlayRoSound(const char* name) {
+  if (name == nullptr || name[0] == '\0') return;
+  __try {
+    void* mgr = *reinterpret_cast<void**>(kSoundMgrPtr);
+    if (mgr != nullptr)
+      reinterpret_cast<PlaySound3DFn>(kSoundPlay3D)(mgr, nullptr, name, 0.0f,
+                                                    0.0f, 0.0f, 250, 40, 1.0f, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// Repli quand le .act ne déclare aucun wav — le cas de la plupart des monstres.
+// C'est le son de COUP du jeu : celui qu'on entend en tapant le monstre.
+constexpr const char* kPokeFallbackWav = "effect\\EF_hit2.wav";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 // 🔴 Le corps d'une fenêtre RO est CLAIR (skin 9-slice du client) : les couleurs
@@ -358,11 +463,24 @@ void MonsterInfoWindow::OnModeSwitch(ModeMgr::ModeType, const char*) {
   current_id_ = 0;
   sense_ = SenseSnapshot{};
   sprite_ = ro::MobSpriteRes{};
+  poke_action_ = -1;
+  poke_freeze_ = false;
+  poke_ready_at_ = 0.0f;
+  poke_count_ = 0;
   cache_.clear();
 }
 
 void MonsterInfoWindow::Open(uint32_t mob_id, bool by_view) {
   if (mob_id == 0) return;
+  // Changement de monstre : l'animation ponctuelle en vol ne vaut plus rien —
+  // son numéro d'action désigne une pose de l'ANCIEN .act. L'orientation, elle,
+  // survit : c'est un réglage de lecture, pas un état du monstre.
+  if (mob_id != current_id_) {
+    poke_action_ = -1;
+    poke_freeze_ = false;
+    poke_ready_at_ = 0.0f;  // absolu : le garder ferait taire le nouveau monstre
+    poke_count_ = 0;
+  }
   current_id_ = mob_id;
   open_ = true;
   need_focus_ = true;
@@ -650,27 +768,117 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   // base : un monstre déguisé porte le sprite d'un autre.
   const uint32_t sprite_class =
       (mob.sprite_class != 0) ? mob.sprite_class : current_id_;
-  ro::LoadMobSprite(static_cast<int>(sprite_class), &sprite_);
+  const bool have_sprite = ro::LoadMobSprite(static_cast<int>(sprite_class), &sprite_);
 
   const ImVec2 box(116.0f, 132.0f);
   const ImVec2 p0 = ImGui::GetCursorScreenPos();
   const ImVec2 p1(p0.x + box.x, p0.y + box.y);
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddRectFilled(p0, p1, IM_COL32(24, 22, 20, 90), 3.0f);
-  const float clock = animate_ ? static_cast<float>(ImGui::GetTime()) : 0.0f;
+
+  const float now = static_cast<float>(ImGui::GetTime());
+
+  // Pose par défaut : l'attente, dans l'orientation choisie à la molette.
+  unsigned action = MobAction(sprite_, /*motion=*/0u, sprite_dir_);
+  float clock = animate_ ? now : 0.0f;
+  float ms    = animate_ ? 130.0f : 0.0f;
+  float shake = 0.0f;
+
+  // Chatouille en cours : elle PRIME sur l'attente. Son horloge repart du clic
+  // (image 0) et on coupe à la fin de l'action — `DrawSprite` boucle, c'est nous
+  // qui décidons que celle-ci ne se joue qu'une fois. Elle s'anime même quand
+  // l'animation d'attente est coupée : c'est une réaction, pas une décoration.
+  if (poke_action_ >= 0) {
+    if (now < poke_end_) {
+      action = static_cast<unsigned>(poke_action_);
+      clock  = now - poke_start_;
+      ms     = 130.0f;
+
+      const float anim_len = poke_anim_end_ - poke_start_;
+      // Mort : passé la fin de l'animation, on TIENT l'image du corps à terre
+      // (`poke_freeze_clock_`, calculée au clic). Sans ce gel, `DrawSprite`
+      // reboucle et le cadavre se relève tout seul, en boucle.
+      if (poke_freeze_ && clock >= anim_len) clock = poke_freeze_clock_;
+
+      // Sursaut : oscillation horizontale qui s'éteint avec l'animation. Elle
+      // s'arrête AVEC elle — un corps à terre ne tremble plus.
+      if (now < poke_anim_end_) {
+        const float left = (poke_anim_end_ - now) / anim_len;
+        shake = std::sin((now - poke_start_) * 47.0f) * 3.5f * left;
+      }
+
+      // ── Son SYNCHRONISÉ à l'image ────────────────────────────────────────
+      // C'est l'IMAGE qui porte le son, pas l'action : on demande l'index que
+      // `DrawSprite` va dessiner (mêmes paramètres -> même calcul, sprite_view
+      // n'en a qu'un) et on ne teste qu'au CHANGEMENT d'image. Le wav de
+      // l'attaque part ainsi sur son image de contact, et pas au clic.
+      //
+      // ⚠ Uniquement pendant la réaction : des .act portent aussi un son sur
+      // leur animation d'ATTENTE, et la fiche reste ouverte — elle se mettrait
+      // à couiner toute seule, en boucle, tant qu'on la regarde.
+      const unsigned frame =
+          ro::SpriteFrameIndex(sprite_.sprite, action, clock, ms);
+      if (static_cast<int>(frame) != poke_frame_) {
+        poke_frame_ = static_cast<int>(frame);
+        if (const char* wav = ro::SpriteFrameSound(sprite_.sprite, action, frame)) {
+          PlayRoSound(wav);
+        } else if (poke_hit_pending_ &&
+                   ro::SpriteFrameEvent(sprite_.sprite, action, frame)) {
+          // Action muette mais marquée (« atk ») : le son de coup part sur
+          // l'image du contact, une seule fois par chatouille.
+          poke_hit_pending_ = false;
+          PlayRoSound(kPokeFallbackWav);
+        }
+      }
+    } else {
+      poke_action_ = -1;
+    }
+  }
+
   // allow_upscale = false : taille RÉELLE du sprite, le cadre ne sert qu'à borner
   // ce qui dépasse. Les petits monstres restent petits — c'est une information de
   // gabarit, pas un défaut de cadrage.
-  if (!ro::DrawMobSprite(dl, sprite_, p0, p1, clock, /*action=*/0,
-                         animate_ ? 130.0f : 0.0f, /*allow_upscale=*/false)) {
-    // Repli : le .spr/.act n'existe pas (mob custom sans art). On ne laisse pas
-    // un carré vide sans explication.
+  const ImVec2 s0(p0.x + shake, p0.y);
+  const ImVec2 s1(p1.x + shake, p1.y);
+  const bool drawn = ro::DrawMobSprite(dl, sprite_, s0, s1, clock, action, ms,
+                                       /*allow_upscale=*/false);
+  // 🔴 Le placeholder ne dépend PAS de `drawn` : `DrawSprite` rend aussi false
+  // quand l'image est simplement VIDE (aucun calque), et une animation de mort
+  // se termine justement sur des images vides — le corps disparaît, c'est le
+  // fichier qui le veut. Seul un .spr/.act absent (mob custom sans art) mérite
+  // une explication ; une image vide se dessine… vide.
+  if (!drawn && !have_sprite) {
     const ImVec2 c((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f);
     dl->AddCircleFilled(c, 18.0f, IM_COL32(120, 110, 100, 160), 16);
     dl->AddText(ImVec2(p0.x + 6.0f, p1.y - 18.0f), IM_COL32(200, 190, 170, 200),
                 "pas de sprite");
   }
-  ImGui::Dummy(box);
+
+  // ── Le cadre est une ZONE ACTIVE ──────────────────────────────────────────
+  // `InvisibleButton` plutôt que `Dummy` : il avance le curseur pareil, mais il
+  // fait du cadre un item — donc survolable, cliquable, et propriétaire de la
+  // molette. Il est déclaré APRÈS le dessin, ce qui ne change rien à l'ordre de
+  // rendu (le sprite est déjà dans la liste de dessin de la fenêtre) et évite
+  // d'avoir à repositionner le curseur.
+  ImGui::InvisibleButton("##mi_sprite", box);
+  if (ImGui::IsItemHovered()) {
+    ro::SetHoverCursor(2);  // main : ça se manipule
+    // Molette = rotation, huit directions avec repli d'un bout à l'autre. On la
+    // CONSOMME, sinon la fiche défile en même temps qu'on tourne le monstre.
+    const float wheel = ImGui::GetIO().MouseWheel;
+    if (wheel != 0.0f) {
+      sprite_dir_ = (sprite_dir_ + (wheel > 0.0f ? 1 : 7)) & 7;
+      ImGui::GetIO().MouseWheel = 0.0f;
+    }
+  }
+  // Le temps mort est SILENCIEUX : un clic trop tôt ne fait rien, sans message
+  // ni curseur barré. C'est une réaction, pas une commande — la refuser bruyamment
+  // attirerait l'attention sur une mécanique qui doit rester discrète.
+  if (ImGui::IsItemClicked() && now >= poke_ready_at_) PokeSprite();
+  // Aide au survol, temporisée : elle ne doit pas masquer le sprite dès qu'on
+  // passe la souris dessus.
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+    ImGui::SetTooltip("Molette : tourner le monstre\nClic : le titiller");
   ImGui::SameLine();
 
   ImGui::BeginGroup();
@@ -719,6 +927,73 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   ImGui::EndGroup();
 
   DrawSenseNote(mob);
+}
+
+void MonsterInfoWindow::PokeSprite() {
+  // ── Ce que le monstre répond ──────────────────────────────────────────────
+  // Il encaisse, riposte une fois sur trois, et finit par faire le mort si on
+  // s'acharne — après quoi il se relève et le compteur repart de zéro. C'est
+  // toute la règle du jeu.
+  ++poke_count_;
+
+  // 🔴 On ne le fait mourir que si son .act a VRAIMENT une animation de mort :
+  // `MobAction` se replie silencieusement sur l'attente quand la motion manque,
+  // et on aurait alors un monstre « mort » debout, figé une seconde et demie.
+  const unsigned dir_bits   = static_cast<unsigned>(sprite_dir_) & 7u;
+  const unsigned die_action = MobAction(sprite_, kMotionDie, sprite_dir_);
+  const bool     dies       = (die_action == kMotionDie * 8u + dir_bits) &&
+                              poke_count_ >= kPokesBeforeDeath;
+
+  unsigned action;
+  if (dies) {
+    action = die_action;
+    poke_count_ = 0;  // il repart intact en se relevant
+  } else {
+    action = MobAction(
+        sprite_,
+        (poke_count_ % kPokesPerRiposte) == 0 ? kMotionAttack : kMotionHurt,
+        sprite_dir_);
+  }
+
+  // Durée = ce que déclare le .act, pas une constante : d'un monstre à l'autre,
+  // l'animation de dégât va de deux à une dizaine d'images, à des cadences qui
+  // n'ont rien à voir. Le plancher évite qu'un .act à une seule image ne rende
+  // la réaction invisible.
+  const int frames = (std::max)(1, ro::MobActionFrameCount(sprite_, action));
+  float interval_ms = ro::SpriteFrameIntervalMs(sprite_.sprite, action);
+  if (interval_ms <= 0.0f) interval_ms = 130.0f;  // même repli que le dessin
+  const float anim_len = (std::max)(0.20f, frames * interval_ms / 1000.0f);
+
+  poke_action_   = static_cast<int>(action);
+  poke_start_    = static_cast<float>(ImGui::GetTime());
+  poke_anim_end_ = poke_start_ + anim_len;
+  // La mort ne se termine pas quand l'animation s'arrête : le monstre reste à
+  // terre — dernière image tenue — le temps qu'on comprenne ce qu'on a fait.
+  poke_freeze_ = dies;
+  poke_end_    = poke_anim_end_ + (dies ? kDeathHoldSeconds : 0.0f);
+  // Sur QUELLE image on le tient : la dernière VISIBLE, pas la dernière du
+  // fichier. Le « + 0,5 » vise le milieu de son créneau, donc `SpriteFrameIndex`
+  // rendra bien cette image-là (même intervalle que le dessin, même calcul).
+  poke_freeze_clock_ =
+      (LastVisibleFrame(sprite_, action) + 0.5f) * interval_ms / 1000.0f;
+  // Temps mort avant le clic suivant. Le `max` couvre la mort d'un seul tenant :
+  // on ne tape pas un monstre à terre, et la reprise se fait après qu'il s'est
+  // relevé, pas pendant.
+  poke_ready_at_ = (std::max)(poke_start_ + kPokeCooldownSec, poke_end_ + 0.30f);
+  // -1 et non 0 : la toute première image dessinée doit compter comme un
+  // CHANGEMENT d'image, sinon le son qu'elle porte serait sauté.
+  poke_frame_ = -1;
+
+  // On ne joue RIEN ici quand l'action a ses propres sons : c'est le dessin qui
+  // les déclenchera, sur la bonne image. Le son de coup générique — celui qu'on
+  // entend en tapant le monstre — ne sert que de repli : un clic sans retour ne
+  // se lit pas comme une réaction.
+  poke_hit_pending_ = false;
+  switch (ClassifyActionAudio(sprite_, action)) {
+    case PokeAudio::kFrameWav: break;                          // le dessin s'en charge
+    case PokeAudio::kOnMarker: poke_hit_pending_ = true; break;  // à l'image « atk »
+    case PokeAudio::kNow:      PlayRoSound(kPokeFallbackWav); break;
+  }
 }
 
 void MonsterInfoWindow::DrawSenseNote(MobInfo& mob) {
