@@ -196,7 +196,7 @@ void InstallChatMessageFilter() {
 }  // namespace
 
 bool Bourgeon::Initialize() {
-  // LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
+  LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
 
   if (!client_.Initialize()) {
     LogError("Bourgeon failed to initialize");
@@ -429,13 +429,15 @@ void Bourgeon::RenderUI() {
   // MenuIcons::FlushPending — il ne filtre pas un rendu mais un CLIC, et
   // s'exécute hors de cette boucle.
   if (uiwnd::IsHudReplaced()) return;
+
   // Fenêtre de logs en jeu, à la place de la console Windows. Double condition,
   // et les deux comptent : le gate STAFF (le journal expose tout ce que le client
   // trace) et un interrupteur explicite dans « Staff Tools ». Le test de staff
   // est refait ICI, au rendu, et pas seulement là où la case se coche : un niveau
   // de groupe peut changer en cours de session (reconnexion, changement de
   // personnage), et la fenêtre doit disparaître avec le droit.
-  if (show_log_window_ && IsStaff()) ShowBourgeonWindow();
+  if (show_log_window_ && IsStaff()) ShowLogWindow();
+
   if (strstr(GetCommandLineA(), "--demo") != nullptr) {
     ImGui::ShowDemoWindow();
   }
@@ -774,20 +776,15 @@ void Bourgeon::LoadPlugins() {
   }
 }
 
-void Bourgeon::ShowBourgeonWindow() {
+void Bourgeon::ShowLogWindow() {
   ImGui::SetNextWindowSize(ImVec2(760.0f, 430.0f), ImGuiCond_FirstUseEver);
-  if (!ImGui::Begin("Bourgeon", &show_log_window_)) {
+  ImGui::SetNextWindowSizeConstraints(
+      ImVec2(100.0f, 100.0f),
+      ImVec2(ImGui::GetIO().DisplaySize.x* 0.8f, ImGui::GetIO().DisplaySize.y * 0.8f));
+  if (!ImGui::Begin("Logs", &show_log_window_)) {
     ImGui::End();
     return;
   }
-
-  // List of loaded plugins
-  if (ImGui::CollapsingHeader("Loaded plugins")) {
-    for (const auto& plugin : plugins_) {
-      ImGui::BulletText("%s", plugin->name());
-    }
-  }
-
   // Logs: a live mirror of every LogInfo/LogDiag/LogError (fed by the in-memory
   // spdlog sink), not just the plugin lines pushed via AddLogLine.  Snapshotted
   // each frame so it stays thread-safe against sinks running on other threads.
@@ -802,81 +799,79 @@ void Bourgeon::ShowBourgeonWindow() {
   // Ce qu'on perd : le clipper (les lignes sont toutes mises en forme d'un bloc).
   // D'où la borne kMaxShown : au-delà, on ne garde que la QUEUE, la seule qui
   // compte pour un diagnostic en cours.
-  if (ImGui::CollapsingHeader("Logs", ImGuiTreeNodeFlags_DefaultOpen)) {
-    constexpr size_t kMaxShown = 2000;
+  constexpr size_t kMaxShown = 2000;
 
-    static std::vector<std::string> log_lines;
-    static std::vector<char> flat;      // tampon NUL-terminé pour ImGui
-    static size_t last_count = static_cast<size_t>(-1);
-    static char   filter[64] = {0};
-    static char   last_filter[64] = {0};
-    static bool   follow = true;
-    static bool   scroll_to_end = false;
+  static std::vector<std::string> log_lines;
+  static std::vector<char> flat;      // tampon NUL-terminé pour ImGui
+  static size_t last_count = static_cast<size_t>(-1);
+  static char   filter[64] = {0};
+  static char   last_filter[64] = {0};
+  static bool   follow = true;
+  static bool   scroll_to_end = false;
 
-    LogLineBuffer::instance().Snapshot(&log_lines);
+  LogLineBuffer::instance().Snapshot(&log_lines);
 
-    // Le tampon n'est reconstruit que si quelque chose a changé : le remettre à
-    // plat à chaque frame recopierait des centaines de kilo-octets pour rien, et
-    // ferait sauter la sélection en cours sous la souris du joueur.
-    const bool filter_changed = std::strcmp(filter, last_filter) != 0;
-    if (log_lines.size() != last_count || filter_changed) {
-      last_count = log_lines.size();
-      std::strncpy(last_filter, filter, sizeof(last_filter) - 1);
-      last_filter[sizeof(last_filter) - 1] = '\0';
+  // Le tampon n'est reconstruit que si quelque chose a changé : le remettre à
+  // plat à chaque frame recopierait des centaines de kilo-octets pour rien, et
+  // ferait sauter la sélection en cours sous la souris du joueur.
+  const bool filter_changed = std::strcmp(filter, last_filter) != 0;
+  if (log_lines.size() != last_count || filter_changed) {
+    last_count = log_lines.size();
+    std::strncpy(last_filter, filter, sizeof(last_filter) - 1);
+    last_filter[sizeof(last_filter) - 1] = '\0';
 
-      std::string joined;
-      size_t kept = 0;
-      // Deux passes : on compte d'abord les lignes retenues pour ne garder que
-      // les kMaxShown DERNIÈRES (la queue), pas les premières.
-      for (const auto& line : log_lines)
-        if (!filter[0] || line.find(filter) != std::string::npos) ++kept;
-      const size_t skip = kept > kMaxShown ? kept - kMaxShown : 0;
-      size_t seen = 0;
-      for (const auto& line : log_lines) {
-        if (filter[0] && line.find(filter) == std::string::npos) continue;
-        if (seen++ < skip) continue;
-        joined += line;
-        if (joined.empty() || joined.back() != '\n') joined += '\n';
-      }
-      flat.assign(joined.begin(), joined.end());
-      flat.push_back('\0');
-      scroll_to_end = follow;
+    std::string joined;
+    size_t kept = 0;
+    // Deux passes : on compte d'abord les lignes retenues pour ne garder que
+    // les kMaxShown DERNIÈRES (la queue), pas les premières.
+    for (const auto& line : log_lines)
+      if (!filter[0] || line.find(filter) != std::string::npos) ++kept;
+    const size_t skip = kept > kMaxShown ? kept - kMaxShown : 0;
+    size_t seen = 0;
+    for (const auto& line : log_lines) {
+      if (filter[0] && line.find(filter) == std::string::npos) continue;
+      if (seen++ < skip) continue;
+      joined += line;
+      if (joined.empty() || joined.back() != '\n') joined += '\n';
     }
-    if (flat.empty()) flat.push_back('\0');
-
-    if (ImGui::Button("Copier tout")) ImGui::SetClipboardText(flat.data());
-    ImGui::SameLine();
-    if (ImGui::Button("Vider")) {
-      LogLineBuffer::instance().Clear();
-      last_count = static_cast<size_t>(-1);
-    }
-    ImGui::SameLine();
-    ImGui::Checkbox("Suivre", &follow);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(220.0f);
-    ImGui::InputTextWithHint("##logfilter", "filtre (sous-chaîne)", filter,
-                             sizeof(filter));
-    ImGui::SameLine();
-    ImGui::TextDisabled("(sélection souris · Ctrl+A · Ctrl+C)");
-
-    // ⚠ ReadOnly : ImGui n'écrit pas dans le tampon, mais il gère la sélection et
-    // la copie exactement comme un champ éditable. `AllowTabInput` reste OFF pour
-    // que Tab continue de naviguer.
-    ImGuiInputTextFlags flags = ImGuiInputTextFlags_ReadOnly;
-    if (scroll_to_end) flags |= ImGuiInputTextFlags_CallbackAlways;
-    ImGui::InputTextMultiline(
-        "##logs", flat.data(), flat.size(), ImVec2(-FLT_MIN, -FLT_MIN), flags,
-        [](ImGuiInputTextCallbackData* data) -> int {
-          // Suivi du bas : on pose le CURSEUR en fin de tampon et ImGui fait
-          // défiler pour le garder visible. C'est le seul levier de défilement
-          // exposé pour un champ multiligne — son enfant scrollable n'est pas
-          // adressable de l'extérieur.
-          data->CursorPos = data->BufTextLen;
-          data->SelectionStart = data->SelectionEnd = data->CursorPos;
-          return 0;
-        });
-    scroll_to_end = false;
+    flat.assign(joined.begin(), joined.end());
+    flat.push_back('\0');
+    scroll_to_end = follow;
   }
+  if (flat.empty()) flat.push_back('\0');
+
+  if (ImGui::Button("Copier tout")) ImGui::SetClipboardText(flat.data());
+  ImGui::SameLine();
+  if (ImGui::Button("Vider")) {
+    LogLineBuffer::instance().Clear();
+    last_count = static_cast<size_t>(-1);
+  }
+  ImGui::SameLine();
+  ImGui::Checkbox("Suivre", &follow);
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220.0f);
+  ImGui::InputTextWithHint("##logfilter", "filtre (sous-chaîne)", filter,
+                            sizeof(filter));
+  ImGui::SameLine();
+  ImGui::TextDisabled("(sélection souris · Ctrl+A · Ctrl+C)");
+
+  // ⚠ ReadOnly : ImGui n'écrit pas dans le tampon, mais il gère la sélection et
+  // la copie exactement comme un champ éditable. `AllowTabInput` reste OFF pour
+  // que Tab continue de naviguer.
+  ImGuiInputTextFlags flags = ImGuiInputTextFlags_ReadOnly;
+  if (scroll_to_end) flags |= ImGuiInputTextFlags_CallbackAlways;
+  ImGui::InputTextMultiline(
+      "##logs", flat.data(), flat.size(), ImVec2(-FLT_MIN, -FLT_MIN), flags,
+      [](ImGuiInputTextCallbackData* data) -> int {
+        // Suivi du bas : on pose le CURSEUR en fin de tampon et ImGui fait
+        // défiler pour le garder visible. C'est le seul levier de défilement
+        // exposé pour un champ multiligne — son enfant scrollable n'est pas
+        // adressable de l'extérieur.
+        data->CursorPos = data->BufTextLen;
+        data->SelectionStart = data->SelectionEnd = data->CursorPos;
+        return 0;
+      });
+  scroll_to_end = false;
 
   ImGui::End();
 }

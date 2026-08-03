@@ -1263,6 +1263,10 @@ void MoonlightUi::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name
     // retour à zéro, changer de compte laissait les « Staff Tools » et les
     // réglages fins de saut/marche exposés sur un compte qui n'y a pas droit,
     // jusqu'au prochain paquet. On retombe fermé par défaut.
+    // Tracé : c'est l'autre moitié de l'énigme du gate staff. Recoupée avec la
+    // ligne « reglages recus », elle dit si le niveau a été effacé APRÈS être
+    // arrivé, ou s'il n'est jamais revenu.
+    LogDiag("[MoonlightUi] sortie de jeu : niveau de groupe remis a zero");
     g_staff_level = 0;
   }
 
@@ -1350,6 +1354,24 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
     LogError("[MoonlightUi] ZC_BOURGEON_SETTINGS truncated: len={} count={}", len,
              setting_count);
     return;
+  }
+
+  // 🔴 Mesure, pas commodité. Le gate staff est retombé deux fois sans qu'on
+  // puisse dire si le paquet n'était pas arrivé, ou s'il était arrivé SANS le
+  // réglage 26 : les deux donnent exactement le même « Staff Tools » absent, et
+  // se corrigent à des endroits opposés (serveur ou client). Une ligne par
+  // paquet, et ils sont rares — le login, puis les échos de changement.
+  {
+    int level = -1;
+    for (uint16_t i = 0; i < setting_count; ++i)
+      if (*reinterpret_cast<const uint16_t*>(data + 6 + i * 6) ==
+          kSettingGroupLevel)
+        level = static_cast<int>(
+            *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2));
+    const std::string lvl =
+        (level < 0) ? std::string("ABSENT") : std::to_string(level);
+    LogDiag("[MoonlightUi] reglages recus : {} entree(s), niveau de groupe {}",
+            setting_count, lvl);
   }
 
   for (uint16_t i = 0; i < setting_count; ++i) {
@@ -1595,7 +1617,7 @@ void MoonlightUi::OnRenderUI() {
 
   // SPR Effect Lab : reconcile spawn + overlay au centre (foreground drawlist, indépendant
   // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé.
-  spr_lab::RenderFrame();
+  // spr_lab::RenderFrame();
 
   // Persist bars geometry once, the frame after the user finishes a drag.
   if (auto* basic_info = Bourgeon::Instance().basic_info();
@@ -1651,6 +1673,50 @@ void MoonlightUi::OnRenderUI() {
   if (!is_collapsed) ro::RegisterEscapeMinimizeWindow(&pending_collapse_request_);
 
   if (!is_collapsed) {
+    // ── Staff Tools (réservé group level serveur >= 80, cf. IsStaff) ──────────
+    // Regroupe les fonctionnalités réservées au staff : affichage permanent des
+    // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
+    // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
+    // des noms reste inerte (OnRenderUI vérifie IsStaff).
+    if (IsStaff() && CollapsingHeader("Staff Tools")) {
+      PushStyleCompact();
+
+      SeparatorText("Noms des entités");
+      if (auto* entity_names = Bourgeon::Instance().entity_names())
+        entity_names->DrawSettings();
+
+      // Cast en une action : la touche du sort suffit, la visée est résolue sous
+      // le curseur et le lancement émis par les messages d'acteur du clic natif
+      // (cf. quick_cast.h pour les deux approches écartées).
+      SeparatorText("Quick cast");
+      if (auto* quick_cast = Bourgeon::Instance().quick_cast())
+        quick_cast->DrawSettings();
+
+      // SeparatorText("SPR Lab");
+      // spr_lab::DrawDebugControls();
+
+      // ── Journal Bourgeon ────────────────────────────────────────────────────
+      // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/
+      // LogError y arrive, sélectionnable et copiable. PERSISTÉ
+      // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
+      // rouvrir à chaque lancement serait une corvée quotidienne.
+      SeparatorText("Journal");
+      if (ro::RoCheckbox("Fenêtre de logs",
+                         &Bourgeon::Instance().show_log_window()))
+        SaveSettings();
+      ImGui::SameLine();
+      HelpMarker(
+          "Miroir en jeu de tout ce que le client journalise "
+          "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
+          "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
+          "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
+          "restreint l'affichage à une sous-chaîne.\n\n"
+          "Réservé au staff, et le droit est revérifié à chaque frame : la "
+          "fenêtre disparaît si le niveau de groupe change en cours de session.");
+
+      PopStyleCompact();
+    }
+
     moonlight_ui::DrawRules();
 
     // ── DPS Meter, Doom, Roggle, Rojeweled, Jump, QSDZ ───────────────────
@@ -1672,50 +1738,6 @@ void MoonlightUi::OnRenderUI() {
             "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
             "générique. ON : chaque arme garde son apparence d'origine.");
       }
-      PopStyleCompact();
-    }
-
-    // ── Staff Tools (réservé group level serveur >= 80, cf. IsStaff) ──────────
-    // Regroupe les fonctionnalités réservées au staff : affichage permanent des
-    // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
-    // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
-    // des noms reste inerte (OnRenderUI vérifie IsStaff).
-    if (IsStaff() && CollapsingHeader("Staff Tools")) {
-      PushStyleCompact();
-
-      SeparatorText("Noms des entités");
-      if (auto* entity_names = Bourgeon::Instance().entity_names())
-        entity_names->DrawSettings();
-
-      // Cast en une action : la touche du sort suffit, la visée est résolue sous
-      // le curseur et le lancement émis par les messages d'acteur du clic natif
-      // (cf. quick_cast.h pour les deux approches écartées).
-      SeparatorText("Quick cast");
-      if (auto* quick_cast = Bourgeon::Instance().quick_cast())
-        quick_cast->DrawSettings();
-
-      SeparatorText("SPR Lab");
-      spr_lab::DrawDebugControls();
-
-      // ── Journal Bourgeon ────────────────────────────────────────────────────
-      // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/
-      // LogError y arrive, sélectionnable et copiable. PERSISTÉ
-      // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
-      // rouvrir à chaque lancement serait une corvée quotidienne.
-      SeparatorText("Journal");
-      if (ro::RoCheckbox("Fenêtre de logs",
-                         &Bourgeon::Instance().show_log_window()))
-        SaveSettings();
-      ImGui::SameLine();
-      HelpMarker(
-          "Miroir en jeu de tout ce que le client journalise "
-          "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
-          "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
-          "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
-          "restreint l'affichage à une sous-chaîne.\n\n"
-          "Réservé au staff, et le droit est revérifié à chaque frame : la "
-          "fenêtre disparaît si le niveau de groupe change en cours de session.");
-
       PopStyleCompact();
     }
 

@@ -193,7 +193,7 @@ class Bourgeon {
   Bourgeon();
 
   void LoadPlugins();
-  void ShowBourgeonWindow();
+  void ShowLogWindow();
 
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
