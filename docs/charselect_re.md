@@ -567,10 +567,17 @@ Ce qui était un outil d'auteur (bascule F10 commentée, dont la seule sortie é
   au client — il n'y a pas d'acteur ici, donc `own_actor` ne peut pas servir :
   `Job_GetWeaponSpritePath` 0x00d8a010 / `Job_GetWeaponActPath` 0x00d8a160
   `__stdcall(std::string* out, job, sexe, classe_arme, vue_ou_-1, style)`, et pour
-  le BOUCLIER 0x00d5e240 (.spr) / 0x00d5e1d0 (.act) `(out, job, sexe, vue, style)`.
-  🔴 Ne pas confondre avec `Job_GetWeaponShield*Path` : celles-là servent la
-  couche voisine de l'ARME (emplacement 6), pas le bouclier (emplacement 7) —
-  vérifié dans `CActorSprite_BuildShield_Slot7` 0x00d401d0.
+  le BOUCLIER **DÉDIÉ** (emplacement 7) 0x00d5e240 (.spr) / 0x00d5e1d0 (.act)
+  `(out, job, sexe, vue, style)` — appelé par `CActorSprite_BuildShield_Slot7`
+  0x00d401d0.
+  🔴 L'emplacement 7 rend une chaîne **VIDE** quand le couple (classe, vue) n'a
+  pas de variante dédiée, et c'est le **cas NOMINAL** : la plupart des boucliers
+  sont génériques (`Shield_HasJobSpecificVariant` 0x00d72190 tranche). Ce vide
+  n'est pas une anomalie à journaliser, c'est le signal qu'il faut demander
+  l'emplacement 6 — le bouclier **GÉNÉRIQUE**, `Job_GetWeaponShieldSpritePath`
+  0x00d8a080 / `…ActPath` 0x00d8a0f0
+  `(out, job, sexe, seau, vue, drapeau, style)`. On les avait d'abord pris pour
+  une couche de l'ARME : ce sont bien les boucliers ordinaires.
   🔴 Ces champs portent une **VUE** (`status.weapon`), PAS un identifiant d'objet,
   et ils font **16 bits** : lus sur 32, ils rendaient 65537 = l'arme et le
   `base_level` (+0x5C) collés. Les passer à `Weapon_ItemIdToWeaponClass` donnait
@@ -583,9 +590,13 @@ Ce qui était un outil d'auteur (bascule F10 commentée, dont la seule sortie é
   `ro::spract::ReadFile`. (`_검광` = l'éclat de lame, emplacement 6, non branché.) Chemins rendus **relatifs à la racine des
   sprites** ⇒ préfixer `data\sprite\` soi-même (les couches natives l'ajoutent
   plus tard) et retirer l'extension, que le composeur remet.
-  ⚠ Non couverts, faute d'acteur : la « traînée » d'arme (emplacement 6) et les
-  seaux de bouclier propres à quelques classes (`CActorSprite_ResolveShieldBucket`,
-  qui interroge l'acteur). Un chemin absent = rien à dessiner, jamais d'erreur.
+  ⚠ Non couverts, faute d'acteur : la « traînée » d'arme et les seaux de bouclier
+  propres à quelques classes montées (`CActorSprite_ResolveShieldBucket`, qui
+  interroge l'acteur) — sans acteur on prend sa branche par défaut, le seau vaut
+  la vue. Un chemin absent = rien à dessiner, jamais d'erreur : la résolution est
+  **muette**, elle ne journalise rien.
+  🔴 C'est `body` (+0x58) qu'il faut passer, PAS `class` (+0x54) : les sprites
+  d'arme sont rangés sous le nom de la classe du CORPS.
   ⚠ Les personnages BÉBÉ n'ont pas de bouclier affiché (drapeau `this+716` testé
   en tête de `CActorSprite_BuildShield_Slot7`).
 * **Lecture tolérante** : bornes de validation par champ, valeur hors bornes ou

@@ -840,8 +840,13 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   // ils se lisent sur l'acteur ; ici il n'y en a pas, donc on demande au client
   // de les construire (rag::ResolveHeldSprites). Les tampons vivent jusqu'au
   // DrawDoll ci-dessous, qui ne conserve rien.
+  //
+  // 🔴 On passe `body`, pas `job` : c'est la classe qui NOMME les sprites (celle
+  // que le composeur utilise déjà pour le corps), et les fichiers d'arme sont
+  // rangés sous ce nom — `…\초보자\초보자_남_….spr`. Le champ `class` (+0x54) ne
+  // sert pas ici ; il rend d'ailleurs des valeurs surprenantes sur cet écran.
   rag::HeldSpritePaths held;
-  if (rag::ResolveHeldSprites(v.job, v.sex_eff, v.weapon, v.shield, &held)) {
+  if (rag::ResolveHeldSprites(v.body, v.sex_eff, v.weapon, v.shield, &held)) {
     if (held.weapon_spr[0]) {
       dl.weapon.spr_base = held.weapon_spr;
       dl.weapon.act_base = held.weapon_act[0] ? held.weapon_act : nullptr;

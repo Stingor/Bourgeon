@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "ui/spr_act.h"
-#include "utils/log_console.h"
 
 namespace rag {
 namespace {
@@ -25,15 +24,19 @@ namespace {
 // c'est un des deux sondages annoncés dans own_actor.h, et on le refait ici.
 constexpr uintptr_t kWeaponSpr = 0x00d8a010;
 constexpr uintptr_t kWeaponAct = 0x00d8a160;
-// Bouclier (emplacement 7). Signature (out, job, sexe, vue_bouclier, style).
-// ⚠ Ce ne sont PAS les `Job_GetWeaponShield*Path` : ceux-là servent la couche
-// voisine de l'ARME (emplacement 6). Vérifié dans
-// `CActorSprite_BuildShield_Slot7` (0x00d401d0), qui appelle bien ces deux-ci.
+// Bouclier à variante DÉDIÉE (emplacement 7), celui qu'une classe dessine à sa
+// façon. Signature (out, job, sexe, vue_bouclier, style) ; appelé par
+// `CActorSprite_BuildShield_Slot7` (0x00d401d0).
+//
+// 🔴 Il rend une chaîne VIDE quand le couple (classe, vue) n'a pas de variante
+// dédiée — et c'est le CAS NOMINAL, pas une anomalie : la plupart des boucliers
+// sont génériques (`Shield_HasJobSpecificVariant` 0x00d72190 tranche).
 constexpr uintptr_t kShieldAct = 0x00d5e1d0;
 constexpr uintptr_t kShieldSpr = 0x00d5e240;
-// Conversions identifiant d'objet -> classe d'arme / vue de bouclier.
-constexpr uintptr_t kItemToWeaponClass = 0x00d8a1d0;  // -1 = pas une arme
-constexpr uintptr_t kItemToShieldView  = 0x00d84850;
+// Bouclier GÉNÉRIQUE (emplacement 6) : le repli du précédent, dessiné d'après le
+// « seau » de bouclier. Signature (out, job, sexe, seau, vue, drapeau, style).
+constexpr uintptr_t kShieldGenSpr = 0x00d8a080;
+constexpr uintptr_t kShieldGenAct = 0x00d8a0f0;
 // Destructeur de std::string du client (__fastcall, ecx = la chaîne).
 constexpr uintptr_t kStrDtor = 0x004f08f0;
 
@@ -49,7 +52,7 @@ struct NativeStr {
 
 using PathFn5_t = void*(__stdcall*)(NativeStr*, int, int, int, int);
 using PathFn6_t = void*(__stdcall*)(NativeStr*, int, int, int, int, int);
-using IdFn_t    = int(__stdcall*)(int);
+using PathFn7_t = void*(__stdcall*)(NativeStr*, int, int, int, int, int, int);
 using DtorFn_t  = void(__fastcall*)(NativeStr*);
 
 // Recopie la chaîne native dans `dst` en RETIRANT l'extension, puis la libère.
@@ -115,11 +118,19 @@ bool BuildPath5(uintptr_t fn, int job, int sex, int view, char* dst,
   }
 }
 
-int CallIdFn(uintptr_t fn, int item_id) {
+// Constructeur du bouclier GÉNÉRIQUE : un argument de plus (le drapeau, que le
+// natif laisse à 0 pour un bouclier ordinaire).
+bool BuildPath7(uintptr_t fn, int job, int sex, int bucket, int view, char* dst,
+                size_t dst_size) {
   __try {
-    return reinterpret_cast<IdFn_t>(fn)(item_id);
+    NativeStr s;
+    reinterpret_cast<PathFn7_t>(fn)(&s, job, sex, bucket, view, /*flag=*/0,
+                                    /*style=*/0);
+    TakeAndStrip(&s, dst, dst_size);
+    return dst[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return -1;
+    dst[0] = '\0';
+    return false;
   }
 }
 
@@ -132,19 +143,6 @@ bool ResolveHeldSprites(int job, int sex, int weapon_id, int shield_id,
   if (sex != 0 && sex != 1) return false;
 
   bool any = false;
-
-  // Trace de mise au point, émise UNE fois par combinaison : la chaîne compte
-  // quatre étapes (identifiant -> classe -> chemin -> fichier présent) et seul le
-  // journal dit laquelle a cédé. Sans ce garde-fou, ce serait 25 places × 60 Hz.
-  static int s_last_job = -1, s_last_sex = -1, s_last_wp = -1, s_last_sh = -1;
-  const bool trace = (job != s_last_job || sex != s_last_sex ||
-                      weapon_id != s_last_wp || shield_id != s_last_sh);
-  if (trace) {
-    s_last_job = job;
-    s_last_sex = sex;
-    s_last_wp = weapon_id;
-    s_last_sh = shield_id;
-  }
 
   // ── Arme ────────────────────────────────────────────────────────────────
   //
@@ -174,23 +172,11 @@ bool ResolveHeldSprites(int job, int sex, int weapon_id, int shield_id,
     int  view   = weapon_id;
     bool ok = BuildPath6(kWeaponSpr, job, sex, wclass, view, spr, sizeof(spr)) &&
               ActExists(spr);
-    if (trace)
-      LogDiag("[Held] job={} sexe={} vue d'arme={} -> {} (présent={})", job, sex,
-              weapon_id, spr, ok);
     if (!ok) {
       view = -1;
       ok = BuildPath6(kWeaponSpr, job, sex, wclass, view, spr, sizeof(spr)) &&
            ActExists(spr);
-      if (trace)
-        LogDiag("[Held]   repli par classe: {} (présent={})", spr, ok);
     }
-    // Une arme équipée qu'on n'arrive pas à dessiner est une anomalie, pas un
-    // cas normal : on la signale au niveau ERREUR pour qu'elle sorte même quand
-    // le client tourne en `--loglevel=warn`. Le dernier chemin essayé suffit
-    // d'ordinaire à dire ce qui manque.
-    if (!ok && trace)
-      LogError("[Held] arme (vue {}) non résolue — dernier chemin: {}",
-               weapon_id, spr);
     if (ok) {
       // L'.act suit la MÊME clé que le .spr retenu — sans quoi on marierait les
       // images d'une arme aux mouvements d'une autre.
@@ -204,32 +190,33 @@ bool ResolveHeldSprites(int job, int sex, int weapon_id, int shield_id,
 
   // ── Bouclier ────────────────────────────────────────────────────────────
   //
-  // Même règle que l'arme : le champ est déjà une VUE, celle que le natif pose
-  // dans `this+277` avant d'appeler ses constructeurs (cf.
-  // `CActorSprite_BuildShield_Slot7`). Repli par identifiant d'objet ensuite.
+  // Deux emplacements, dans cet ordre :
+  //   7 — la variante DÉDIÉE à la classe, quand elle existe ;
+  //   6 — le bouclier GÉNÉRIQUE, dessiné d'après son « seau ».
+  //
+  // 🔴 L'emplacement 7 rend une chaîne VIDE quand le couple (classe, vue) n'a
+  // pas de variante dédiée, et c'est le cas NOMINAL — la plupart des boucliers
+  // sont génériques. Ce n'est donc pas une anomalie à signaler : c'est le signal
+  // qu'il faut demander l'autre emplacement.
   if (shield_id > 0) {
     char spr[260], act[260];
-    int  view = shield_id;
-    bool ok = BuildPath5(kShieldSpr, job, sex, view, spr, sizeof(spr)) &&
+    bool ok = BuildPath5(kShieldSpr, job, sex, shield_id, spr, sizeof(spr)) &&
               ActExists(spr);
-    if (trace)
-      LogDiag("[Held] vue de bouclier={} -> {} (présent={})", shield_id, spr, ok);
-    if (!ok) {
-      const int as_item = CallIdFn(kItemToShieldView, shield_id);
-      if (as_item > 0 && as_item != shield_id) {
-        view = as_item;
-        ok = BuildPath5(kShieldSpr, job, sex, view, spr, sizeof(spr)) &&
-             ActExists(spr);
-        if (trace)
-          LogDiag("[Held]   repli objet: vue={} -> {} (présent={})", view, spr, ok);
-      }
-    }
-    if (!ok && trace)
-      LogError("[Held] bouclier (vue {}) non résolu — dernier chemin: {}",
-               shield_id, spr);
     if (ok) {
-      if (!BuildPath5(kShieldAct, job, sex, view, act, sizeof(act)))
+      if (!BuildPath5(kShieldAct, job, sex, shield_id, act, sizeof(act)))
         act[0] = '\0';
+    } else {
+      // Générique. Le « seau » vient normalement de
+      // `CActorSprite_ResolveShieldBucket`, qui interroge l'ACTEUR pour quelques
+      // classes montées ; sans acteur, on prend sa branche par défaut — le seau
+      // vaut la vue. Les cas particuliers retomberont sur « pas de bouclier ».
+      ok = BuildPath7(kShieldGenSpr, job, sex, shield_id, -1, spr, sizeof(spr)) &&
+           ActExists(spr);
+      if (ok && !BuildPath7(kShieldGenAct, job, sex, shield_id, -1, act,
+                            sizeof(act)))
+        act[0] = '\0';
+    }
+    if (ok) {
       std::memcpy(out->shield_spr, spr, sizeof(spr));
       std::memcpy(out->shield_act, act, sizeof(act));
       any = true;
