@@ -66,6 +66,11 @@ struct Entry {
   int   box_action = -1;
   float box_min_x = 0, box_min_y = 0, box_max_x = 0, box_max_y = 0;
   bool  box_valid = false;
+
+  // Dernière frame ImGui où l'entrée a été demandée. 🔴 C'est ce qui interdit de
+  // l'évincer : ses textures sont alors DÉJÀ dans la draw-list en cours de
+  // construction, et le rendu (SetTexture) n'aura lieu qu'à la fin de la frame.
+  int last_frame = -1;
 };
 
 // 🔴 Les entrées ne sont JAMAIS retirées de cette table, et c'est délibéré : les
@@ -91,8 +96,65 @@ size_t g_cache_bytes = 0;
 // la grille de coiffures du char-select en affiche 80, une liste de guilde une
 // vingtaine. Trop bas, il ferait re-analyser des .spr pendant un simple
 // défilement.
-constexpr size_t kMaxCached   = 128;
+//
+// 🔴 128 était trop bas d'un facteur deux pour le cas le plus lourd, et ça se
+// payait cash : basculer le sexe dans la CRÉATION de personnage affiche 80
+// nouvelles têtes alors que les 80 de l'autre sexe sont encore en cache. Le
+// plafond tombait EN COURS DE FRAME, et l'éviction relâchait les textures des
+// vignettes déjà dessinées -> use-after-free au rendu (SetTexture sur un objet
+// D3D détruit, corruption de tas dans le pilote). `TrimFor` refuse désormais ces
+// victimes, mais le plafond reste réglé pour ne même pas avoir à s'y frotter.
+constexpr size_t kMaxCached   = 256;
 constexpr size_t kCacheBudget = 48u * 1024u * 1024u;
+
+// Frame ImGui courante. 0 hors contexte : appeler le cache en dehors d'une frame
+// n'est pas prévu, et retourner une frame constante ne fait que différer un peu
+// plus les libérations.
+int CurrentFrame() {
+  return ImGui::GetCurrentContext() ? ImGui::GetFrameCount() : 0;
+}
+
+// ── Libération DIFFÉRÉE des textures ─────────────────────────────────────────
+//
+// 🔴 Une texture dessinée n'est pas une texture rendue. `AddImage` ne fait que
+// noter un ImTextureID dans la draw-list ; le device ne la voit qu'au rendu, à
+// la fin de la frame. Un `Release` immédiat entre les deux détruit l'objet sous
+// les pieds du rendu — c'est exactement le piège que le décor du char-select
+// contourne déjà de son côté (cf. `PendingTexRelease` dans char_select.cc).
+//
+// On garde donc les textures deux frames de plus. Un cran suffirait en théorie
+// (la draw-list est rendue avant la frame suivante), deux couvrent le cas où le
+// dessin et le rendu sont désynchronisés d'une frame.
+struct PendingRelease {
+  void*    tex   = nullptr;
+  unsigned epoch = 0;  // device qui l'a créée
+  int      frame = 0;  // frame où l'entrée a été lâchée
+};
+std::vector<PendingRelease> g_pending_release;
+
+void QueueRelease(void* tex) {
+  if (!tex) return;
+  g_pending_release.push_back({tex, Overlay_DeviceEpoch(), CurrentFrame()});
+}
+
+// Purge ce qui a passé son délai. Appelée à chaque acquisition, c'est-à-dire à
+// chaque frame qui dessine un sprite.
+void FlushPendingReleases() {
+  const int      frame = CurrentFrame();
+  const unsigned epoch = Overlay_DeviceEpoch();
+  size_t keep = 0;
+  for (const PendingRelease& p : g_pending_release) {
+    // ⚠ Device disparu : la poignée appartient à un objet qui n'existe plus, on
+    // la LÂCHE sans Release (cf. [[feedback_texture_cache_device_epoch]]).
+    if (p.epoch != epoch) continue;
+    if (frame > p.frame + 1) {
+      Overlay_ReleaseTexture(p.tex);
+      continue;
+    }
+    g_pending_release[keep++] = p;
+  }
+  g_pending_release.resize(keep);
+}
 
 size_t DecodedBytes(const spract::Resource& r) {
   size_t n = 0;
@@ -103,8 +165,8 @@ size_t DecodedBytes(const spract::Resource& r) {
 
 void ReleaseTextures(Entry* e) {
   for (PaletteSet& p : e->pals)
-    for (void* t : p.tex) Overlay_ReleaseTexture(t);
-  for (void* t : e->tex_bgra) Overlay_ReleaseTexture(t);
+    for (void* t : p.tex) QueueRelease(t);
+  for (void* t : e->tex_bgra) QueueRelease(t);
   for (PaletteSet& p : e->pals) p.tex.clear();
   e->tex_bgra.clear();
 }
@@ -175,7 +237,8 @@ void Unload(Entry* e) {
   if (!e->loaded) return;
   // Le device est vivant ici (on est appelé depuis un chargement) : les textures
   // se libèrent pour de bon, sinon parcourir beaucoup de sprites laisserait une
-  // texture en VRAM par image jamais revue.
+  // texture en VRAM par image jamais revue. ⚠ Pas tout de suite pour autant :
+  // `ReleaseTextures` les met en file (voir `QueueRelease`).
   ReleaseTextures(e);
   e->res = spract::Resource{};
   g_cache_bytes -= e->bytes;
@@ -186,13 +249,32 @@ void Unload(Entry* e) {
 
 // Décharge les plus anciennes entrées tant que le cache dépasse ses bornes.
 // `incoming` est le poids de celle qu'on s'apprête à charger.
+//
+// 🔴 Une entrée SERVIE DANS LA FRAME EN COURS n'est jamais une victime. Le
+// scénario qui l'impose : une grille de 80 vignettes qui déborde le plafond en
+// cours de route ferait évincer ses propres premières cases, déjà poussées dans
+// la draw-list. Elles seraient rendues après coup, texture détruite (le Release
+// est différé, mais pas éternellement, et l'entrée serait rechargée à chaque
+// frame pour rien). On la repousse donc en queue — ce qui donne au passage au
+// cache le comportement LRU que la simple file d'insertion n'avait pas.
+//
+// Conséquence assumée : si TOUT le cache sert dans la même frame, on dépasse les
+// bornes plutôt que de casser le rendu. Elles se rétabliront d'elles-mêmes dès
+// que l'écran changera.
 void TrimFor(size_t incoming) {
-  while (!g_cache_order.empty() &&
+  const int frame = CurrentFrame();
+  size_t in_use = 0;  // entrées repoussées en queue, déjà réexaminées
+  while (g_cache_order.size() > in_use &&
          (g_cache_order.size() >= kMaxCached ||
           g_cache_bytes + incoming > kCacheBudget)) {
     const std::string victim = g_cache_order.front();
     g_cache_order.pop_front();
     auto vit = g_cache.find(victim);
+    if (vit != g_cache.end() && vit->second->last_frame == frame) {
+      g_cache_order.push_back(victim);
+      ++in_use;
+      continue;
+    }
     if (vit != g_cache.end()) Unload(vit->second.get());
   }
 }
@@ -232,7 +314,16 @@ bool LoadInto(Entry* e) {
 // Toute lecture de `e->res` passe par ici : l'entrée a pu être déchargée depuis
 // le dernier accès.
 bool EnsureLoaded(Entry* e) {
-  if (!e || e->failed) return false;
+  if (!e) return false;
+  FlushPendingReleases();
+  // 🔴 Le marquage vit ICI et pas dans `Acquire` : les appelants gardent leur
+  // `SpriteRes` d'une frame à l'autre et dessinent sans jamais repasser par
+  // l'acquisition. Marquer plus haut laisserait ces entrées-là évinçables en
+  // pleine frame, c'est-à-dire exactement le use-after-free qu'on ferme.
+  //
+  // ⚠ Et AVANT le chargement, qui peut déclencher un `TrimFor`.
+  e->last_frame = CurrentFrame();
+  if (e->failed) return false;
   return e->loaded || LoadInto(e);
 }
 
