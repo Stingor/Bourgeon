@@ -277,9 +277,13 @@ class StorageWindow : public Plugin {
   // action en attente, survol, glisser) sans toucher à la fenêtre ni aux
   // réglages. Utilisée par la bascule ET par CloseLocal.
   void ClearStorageData();
-  // Vue à réinitialiser au prochain rendu (filtre par nom + sous-catégorie) :
-  // un filtre tapé pour un storage masquerait tout dans le suivant, ce qui se
-  // lit comme un storage vide. Le filtre est un statique de OnRenderUI, d'où le
-  // drapeau plutôt qu'un appel direct.
-  bool reset_view_ = false;
+  // Sous-catégorie à réinitialiser au prochain rendu : une sous-cat n'a de sens
+  // que dans un onglet où elle existe encore, et les items changent à chaque
+  // bascule. Posé par ClearStorageData (donc à chaque changement de storage).
+  bool reset_sub_ = false;
+  // Texte du filtre à vider au prochain rendu. Posé UNIQUEMENT à la fermeture :
+  // le joueur qui cherche un item le cherche dans TOUS ses entrepôts, donc le
+  // filtre survit aux bascules et se réapplique au contenu qui arrive. Le
+  // filtre est un statique de OnRenderUI, d'où le drapeau plutôt qu'un appel.
+  bool reset_filter_ = false;
 };

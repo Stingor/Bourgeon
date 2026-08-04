@@ -683,8 +683,21 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // SetNextFrameWantCaptureKeyboard — doivent rester TOTALES, elles remplacent
       // un écran natif qu'on ne veut pas voir réagir derrière.
       const bool typing = io.WantTextInput && !Doom::WantsKeyboard();
+      // 🔴 `wParam` ne désigne PAS la même chose selon le message : code VIRTUEL
+      // pour WM_KEYDOWN/UP, mais CARACTÈRE pour WM_CHAR. Or VK_F1..VK_F12, ce
+      // sont les codes 0x70..0x7B — c'est-à-dire 'p'..'z' en ASCII. La nuance
+      // ci-dessus relâchait donc vers le jeu le WM_CHAR de ces lettres-là : tapé
+      // dans un champ ImGui (le filtre du storage…), « proxy » s'écrivait AUSSI
+      // dans la barre de chat native, mais pas « abcde ». Un caractère n'est
+      // jamais une hotkey : la nuance ne vaut que pour les messages de TOUCHE.
+      const bool char_msg = (uMsg == WM_CHAR || uMsg == WM_UNICHAR);
+      // AltGr (clavier français) = Ctrl+Alt : ce sont des caractères de SAISIE
+      // (@, #, [, ], {, }, \, |, €), pas des raccourcis du jeu. Sans le test de
+      // Ctrl, taper @ dans un champ ImGui envoyait la frappe au jeu en plus.
+      const bool alt_shortcut = (GetKeyState(VK_MENU) & 0x8000) &&
+                                !(GetKeyState(VK_CONTROL) & 0x8000);
       const bool game_only_key =
-          (wParam >= VK_F1 && wParam <= VK_F12) || (GetKeyState(VK_MENU) & 0x8000);
+          !char_msg && ((wParam >= VK_F1 && wParam <= VK_F12) || alt_shortcut);
       if (!(typing && game_only_key)) {
         switch (uMsg) {
           case WM_KEYDOWN: case WM_KEYUP:

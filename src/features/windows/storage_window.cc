@@ -651,7 +651,7 @@ void StorageWindow::ClearStorageData() {
   hover_desc_id_ = 0;
   hover_desc_idx_ = -1;
   storage_name_[0] = '\0';
-  reset_view_ = true;   // filtre par nom + sous-catégorie (cf. reset_view_)
+  reset_sub_ = true;    // sous-catégorie seulement (cf. reset_sub_ / reset_filter_)
 }
 
 // Ferme la session côté client. N'envoie RIEN : soit le serveur vient de nous
@@ -662,6 +662,10 @@ void StorageWindow::CloseLocal() {
   switching_ = false;   // une bascule qui n'aboutira plus
   cur_storage_id_ = -1;
   ClearStorageData();
+  // La recherche appartient à la SESSION de storage : elle survit aux bascules
+  // d'entrepôt, mais pas à la fermeture — sinon la prochaine ouverture s'affiche
+  // filtrée par un texte tapé il y a longtemps, ce qui se lit « c'est vide ».
+  reset_filter_ = true;
 }
 
 // Demande au serveur d'ouvrir (ou de basculer vers) le storage `id`. Le serveur
@@ -1730,14 +1734,19 @@ void StorageWindow::OnRenderUI() {
   // Barre de recherche (filtre par nom) — optionnelle (setting « Champ de filtre »).
   // Le "(?)" des raccourcis est sur la ligne du compteur, sous la table d'options.
   static ImGuiTextFilter filter;
-  // Changement de storage : on repart d'une vue NEUVE. Un filtre tapé pour
-  // l'entrepôt précédent masquerait tout dans le suivant, ce qui se lit comme
-  // « mon storage est vide » ; et une sous-catégorie n'a de sens que dans un
-  // onglet où elle existe encore.
-  if (reset_view_) {
-    filter.Clear();
+  // Changement de storage : la SOUS-CATÉGORIE repart de zéro (elle n'a de sens
+  // que dans un onglet où elle existe encore). Le TEXTE de recherche, lui, est
+  // conservé et se réapplique tel quel au contenu du nouvel entrepôt : chercher
+  // un item, c'est justement le chercher d'un entrepôt à l'autre.
+  if (reset_sub_) {
     cur_sub_ = -1;
-    reset_view_ = false;
+    reset_sub_ = false;
+  }
+  // Fermeture du storage : c'est là (et seulement là) que la recherche est
+  // oubliée, pour ne pas rouvrir sur une liste filtrée par un texte oublié.
+  if (reset_filter_) {
+    filter.Clear();
+    reset_filter_ = false;
   }
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
