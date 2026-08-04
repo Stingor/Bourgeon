@@ -4216,7 +4216,8 @@ void CharacterSheet::DrawGuildTab() {
           guild_sel_cid_ = m.cid;
         if (m.online)
           ro::DrawHeadIcon(ImGui::GetWindowDrawList(), name_cell.x, name_cell.y - 2.0f,
-                           head_box, m.hair, m.sex, m.hair_color);
+                           head_box, m.hair, m.sex, m.hair_color,
+                           /*allow_upscale=*/false, m.job);
 
         // Menu contextuel : actions sur CE membre (le serveur revérifie les droits).
         if (ImGui::BeginPopupContextItem("cs_guild_member_ctx")) {

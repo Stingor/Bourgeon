@@ -7,6 +7,7 @@
 
 #include "ragnarok/lua.h"  // la cape interroge deux globaux Lua
 #include "ui/head_icon.h"
+#include "ui/sprite_path.h"
 #include "ui/sprite_view.h"
 
 namespace ro {
@@ -21,13 +22,12 @@ namespace {
 // lui colle devant le préfixe de race puis rend un `std::string`. 🔴 On ne
 // l'appelle pas : l'interop std::string avec le natif est précisément ce qui
 // plantait au char-select (edi corrompu). On concatène nous-mêmes.
+//
+// 🔴 Le préfixe de race n'est PAS constant : `Race_GetBodyPrefix6` (0x00b44190)
+// rend `도람족` pour un Doram et `인간족` pour tout le monde d'autre. Il vient
+// donc de `ro::RaceFolder` (ui/sprite_path.h) — l'écrire en dur, c'était perdre
+// le Summoner et, avec son corps, le pantin entier.
 constexpr uintptr_t kFmtBodyTail = 0x01088A18;
-
-// Jetons CP949, en hexadécimal ÉCHAPPÉ — nos sources sont en UTF-8, un littéral
-// coréen y serait mal encodé et ne désignerait aucun dossier du GRF.
-constexpr const char kRaceHuman[] = "\xC0\xCE\xB0\xA3\xC1\xB7";  // 인간족
-constexpr const char kSexMale[]   = "\xB3\xB2";                  // 남
-constexpr const char kSexFemale[] = "\xBF\xA9";                  // 여
 
 // ── Palette de vêtements ─────────────────────────────────────────────────────
 //
@@ -44,8 +44,6 @@ constexpr const char kSexFemale[] = "\xBF\xA9";                  // 여
 // WARP0716/LastSession.yml, qui liste `BodyPalUnisex` et `HeadPalUnisex`.
 // Voir Scripts/Patches/SharedPal.qjs pour la mécanique.
 constexpr const char kBodyPalFolder[] = "\xB8\xF6";  // 몸
-
-const char* SexToken(int sex) { return sex ? kSexMale : kSexFemale; }
 
 // ── Nom de SPRITE du corps ───────────────────────────────────────────────────
 //
@@ -71,15 +69,25 @@ constexpr uintptr_t kBodyResNamesEnd     = 0x015FF638;
 
 using ResolveBodyClassFn = int(__stdcall*)(int job, int body, char sub3950);
 
-bool BodyResName(int job, int body, char* out, size_t out_size) {
+// `out_job` (facultatif) reçoit la CLASSE effective du corps — l'index rendu
+// par `Job_ResolveBodyClass` remis à son échelle d'origine (+3950).
+//
+// 🔴 C'est elle, et non `look.job`, qui décide de la race du corps : le natif
+// passe très exactement `index + 3950` à `Race_GetBodyPrefix6`. La distinction
+// compte dès qu'un style de corps est équipé, et c'est aussi le seul champ
+// fiable quand l'appelant renseigne `body` sans `job`.
+bool BodyResName(int job, int body, char* out, size_t out_size,
+                 int* out_job = nullptr) {
   if (!out || out_size == 0) return false;
   out[0] = '\0';
+  if (out_job) *out_job = job;
   bool ok = false;
   __try {
     // Le 3e argument à 1 retranche 3950 au résultat : c'est ce qui transforme
     // un id de classe 4xxx en index de tableau.
     const int cls = reinterpret_cast<ResolveBodyClassFn>(kJobResolveBodyClass)(
         job, body, 1);
+    if (out_job) *out_job = cls + 3950;
     char** begin = *reinterpret_cast<char***>(kBodyResNamesBegin);
     char** end   = *reinterpret_cast<char***>(kBodyResNamesEnd);
     // 🔴 `sub_D81560` ne borne PAS son index — on le fait, sinon une classe
@@ -101,11 +109,19 @@ bool BodyResName(int job, int body, char* out, size_t out_size) {
 // des SPRITES, et les deux préfixes que les couches natives ajoutent
 // (« sprite\ » selon l'extension, puis « data\ ») sont à poser nous-mêmes
 // puisqu'on les court-circuite.
-bool BodyBasePath(const DollLook& look, char* out, size_t out_size) {
+//
+// `out_job` (facultatif) : la classe effective du corps, cf. `BodyResName`.
+// L'appelant s'en sert pour la TÊTE et les COIFFES, qui doivent suivre la même
+// race que le corps.
+bool BodyBasePath(const DollLook& look, char* out, size_t out_size,
+                  int* out_job = nullptr) {
   char job[128] = {0};
-  if (!BodyResName(look.job, look.body, job, sizeof(job))) return false;
+  int  body_job = look.job;
+  if (!BodyResName(look.job, look.body, job, sizeof(job), &body_job))
+    return false;
+  if (out_job) *out_job = body_job;
 
-  const char* sex = SexToken(look.sex);
+  const char* sex = SexFolder(look.sex);
   char tail[256];
   // ⚠ `std::snprintf` : le gabarit n'est pas un littéral (il est lu dans le
   // binaire), et la famille sécurisée déclencherait C4774.
@@ -115,18 +131,33 @@ bool BodyBasePath(const DollLook& look, char* out, size_t out_size) {
   const size_t n = std::strlen(tail);
   if (n > 4) tail[n - 4] = '\0';  // retire « .spr » : sprite_view veut une base
 
-  std::snprintf(out, out_size, "data\\sprite\\%s%s", kRaceHuman, tail);
+  std::snprintf(out, out_size, "data\\sprite\\%s%s", RaceFolder(body_job), tail);
   return true;
 }
 
-void BodyPalettePath(int color, char* out, size_t out_size) {
-  std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal", kBodyPalFolder,
-                color);
+// 🔴 Le dossier dépend de la RACE, et les fichiers ne se partagent PAS.
+//
+// `Job_BuildBodyPalettePath_impl` (0x00b42580) a DEUX gabarits : `몸\…` pour un
+// humain, `%s\body\…` (préfixe de race) pour un Doram. `BodyPalUnisex` réécrit
+// les deux — il traite explicitement le cas Doram — mais en gardant le dossier
+// de race : `도람족\body_<n>.pal`.
+//
+// ⚠ Et c'est TANT MIEUX : mesuré le 2026-08-04 sur `summoner_남.spr`, 46 % des
+// pixels opaques du corps Doram tombent sur des index que la palette humaine
+// laisse NOIRS, et 5 index sur 74 seulement y portent la couleur attendue. Les
+// deux races n'ont pas la même indexation — aucun fichier commun n'est possible.
+void BodyPalettePath(int color, int job, char* out, size_t out_size) {
+  std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal",
+                IsDoramJob(job) ? RaceFolder(job) : kBodyPalFolder, color);
 }
 
 // ── Une pièce du pantin ──────────────────────────────────────────────────────
 constexpr int kMaxQuads  = 96;  // toutes pièces confondues
 constexpr int kMaxPieces = 12;  // tête + 3 coiffes + cape + arme/traînée/bouclier
+// Chemins de repli d'une même pièce (cf. `Attached::cand`) : une coiffe de
+// Doram en demande quatre — variante `_doram` et variante humaine, chacune dans
+// les deux casses possibles du nom d'accessoire.
+constexpr int kMaxCandidates = 4;
 
 struct Piece {
   SpriteRes res;
@@ -182,6 +213,17 @@ bool HeadgearResName(int view_id, char* out, size_t out_size) {
 // son « _ » initial (`_비틀눈` -> `여_비틀눈.spr`).
 constexpr uintptr_t kFmtHeadgear = 0x01088A9C;
 
+// Variante DORAM : `악세사리\%s_doram\%s%s.%s` — même nom d'accessoire, dossier
+// `<sexe>_doram`.
+//
+// 🔴 Elle n'est pas exclusive. `Hair_BuildHeadgearSpritePath_impl` (0x00b41d90)
+// essaie ce chemin, DEMANDE AU GESTIONNAIRE DE TEXTURES s'il existe
+// (`UITextureMgr_ResourceExists` 0x00a8e500) et retombe sur le gabarit humain
+// sinon : la plupart des chapeaux n'ont pas de version Doram et se portent tels
+// quels. On reproduit ce repli par la liste de candidats du composeur, qui
+// essaie les chemins dans l'ordre jusqu'à ce qu'un fichier réponde.
+constexpr uintptr_t kFmtHeadgearDoram = 0x01088A80;
+
 // Chemin VFS d'une coiffe, SANS extension. `view_id` = id d'accessoire.
 //
 // `lower` demande la variante en MINUSCULES du nom d'accessoire. La table donne
@@ -193,7 +235,7 @@ constexpr uintptr_t kFmtHeadgear = 0x01088A9C;
 // chemin entier corromprait les octets CP949 : le SECOND octet d'un caractère
 // coréen peut tomber dans la plage 'A'-'Z', et le passer en minuscule change le
 // caractère.
-bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
+bool HeadgearBasePath(int view_id, int sex, bool lower, bool doram, char* out,
                       size_t out_size) {
   char name[128];
   if (!HeadgearResName(view_id, name, sizeof(name))) return false;
@@ -202,11 +244,12 @@ bool HeadgearBasePath(int view_id, int sex, bool lower, char* out,
       if (*p >= 'A' && *p <= 'Z') *p = static_cast<char>(*p - 'A' + 'a');
   }
 
-  const char* sex_tok = SexToken(sex);
+  const char* sex_tok = SexFolder(sex);
   char tail[256];
   std::snprintf(tail, sizeof(tail),
-                reinterpret_cast<const char*>(kFmtHeadgear), sex_tok, sex_tok,
-                name, "spr");
+                reinterpret_cast<const char*>(doram ? kFmtHeadgearDoram
+                                                    : kFmtHeadgear),
+                sex_tok, sex_tok, name, "spr");
   const size_t n = std::strlen(tail);
   if (n > 4) tail[n - 4] = '\0';  // retire « .spr »
 
@@ -376,7 +419,7 @@ bool GarmentBasePath(const DollLook& look, const char* robe, bool job_layout,
   if (job_layout) {
     char job[128] = {0};
     if (!BodyResName(look.job, look.body, job, sizeof(job))) return false;
-    const char* sex = SexToken(look.sex);
+    const char* sex = SexFolder(look.sex);
     std::snprintf(tail, sizeof(tail),
                   reinterpret_cast<const char*>(kFmtGarmentJob), robe, sex, job,
                   sex, "spr");
@@ -427,9 +470,17 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
 
   // ── Le CORPS est la référence d'ancrage : sans lui, rien à composer ────────
   char base[352], pal[128] = {0};
-  if (!BodyBasePath(look, base, sizeof(base))) return false;
+  // La classe effective du corps sort d'ici : c'est elle qui donne la RACE, et
+  // la tête comme les coiffes doivent suivre la même que lui.
+  int body_job = look.job;
+  if (!BodyBasePath(look, base, sizeof(base), &body_job)) return false;
+  // Doram (Summoner) : dossier de race, table de coiffures et variante de
+  // couvre-chef changent tous les trois. `look.job` reste consulté parce qu'un
+  // appelant peut renseigner la classe sans le style de corps.
+  const int  race_job = IsDoramJob(body_job) ? body_job : look.job;
+  const bool doram    = IsDoramJob(race_job);
   if (look.clothes_color >= 0)
-    BodyPalettePath(look.clothes_color, pal, sizeof(pal));
+    BodyPalettePath(look.clothes_color, race_job, pal, sizeof(pal));
 
   Piece body;
   if (!LoadPiece(base, nullptr, pal, &body)) return false;
@@ -584,8 +635,13 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // ── Les pièces rapportées, dans l'ordre de dessin ─────────────────────────
   // Tête puis coiffes : bas, milieu, haut. Chacune s'accroche au CORPS (pas en
   // cascade) — c'est ce que fait le natif pour les parties 1 à 3.
-  // `alt` = chemin de SECOURS, essayé si le premier ne donne rien (casse du nom
-  // d'accessoire). Vide = pas de secours.
+  //
+  // `cand` = les chemins à essayer, dans l'ordre, jusqu'à ce qu'un fichier
+  // réponde. 🔴 Ce n'est pas un luxe : le client lui-même SONDE l'existence des
+  // ressources avant de choisir (`UITextureMgr_ResourceExists`), et deux règles
+  // s'empilent sur une seule coiffe — la casse du nom d'accessoire, qui ne suit
+  // aucune règle, et la variante `_doram` que la plupart des chapeaux n'ont pas.
+  // D'où quatre candidats possibles là où deux suffisaient avant le Summoner.
   //
   // `accessory` : distingue une COIFFE de la TÊTE. Seules les coiffes ont une
   // animation alternative ; la tête, elle, sert de RÉFÉRENCE à leur calcul
@@ -594,8 +650,8 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   // `act` : base du .act quand elle diffère de celle du .spr — la CAPE seule.
   // `behind` : la cape, et elle seule, peut passer DERRIÈRE le corps.
   struct Attached {
-    char base[352];
-    char alt[352];
+    char cand[kMaxCandidates][352];
+    int  cand_n;
     char act[352];
     char pal[128];
     bool accessory;
@@ -693,11 +749,20 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   const int  dir_group = opts.dir & 7;
   const bool back_view = (dir_group >= 2 && dir_group <= 5);
 
+  // Ajoute un chemin à la liste d'essais d'une pièce. Silencieusement ignoré si
+  // la liste est pleine ou le chemin vide : un candidat de moins n'est pas une
+  // erreur, c'est une variante qui n'existe pas.
+  auto add_cand = [](Attached& a, const char* path) {
+    if (!path || !*path || a.cand_n >= kMaxCandidates) return;
+    lstrcpynA(a.cand[a.cand_n], path, static_cast<int>(sizeof(a.cand[0])));
+    ++a.cand_n;
+  };
+
   auto add_held = [&](const DollHeldPiece& p, const char* tag, bool behind) {
     if (!p.spr_base || !*p.spr_base || list_n >= kMaxPieces) return;
     Attached& a = list[list_n];
     a.tag = tag;
-    lstrcpynA(a.base, p.spr_base, static_cast<int>(sizeof(a.base)));
+    add_cand(a, p.spr_base);
     if (p.act_base && *p.act_base)
       lstrcpynA(a.act, p.act_base, static_cast<int>(sizeof(a.act)));
     a.held   = true;
@@ -722,17 +787,20 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
         (pose >= 64 && pose <= 71))
       return;
     char robe[128];
+    char job_layout[352], flat[352];
     Attached& g = list[list_n];
     // Le .spr peut venir de la disposition plate, le .act JAMAIS : il est
-    // toujours par classe. `base` = plate, `alt` = repli par classe — le même
-    // couple base/alt que la casse des accessoires, réutilisé tel quel.
+    // toujours par classe. Plate d'abord, par classe en repli — et c'est bien
+    // celle par classe, la seule sûre, qui sert de base au .act.
     if (!GarmentResNameCached(look.garment, robe, sizeof(robe)) ||
-        !GarmentBasePath(look, robe, /*job_layout=*/true, g.alt, sizeof(g.alt)))
+        !GarmentBasePath(look, robe, /*job_layout=*/true, job_layout,
+                         sizeof(job_layout)))
       return;
-    if (!GarmentBasePath(look, robe, /*job_layout=*/false, g.base,
-                         sizeof(g.base)))
-      g.base[0] = '\0';
-    lstrcpynA(g.act, g.alt, static_cast<int>(sizeof(g.act)));
+    if (!GarmentBasePath(look, robe, /*job_layout=*/false, flat, sizeof(flat)))
+      flat[0] = '\0';
+    add_cand(g, flat);
+    add_cand(g, job_layout);
+    lstrcpynA(g.act, job_layout, static_cast<int>(sizeof(g.act)));
     g.pal[0] = '\0';
     g.tag = "cape";
     g.accessory = true;
@@ -748,10 +816,11 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   if (back_view) add_held(look.shield, "bouclier", /*behind=*/true);
 
   // 2. La tête — référence de tout ce qui suit.
+  char head_base[352];
   if (list_n < kMaxPieces &&
-      HeadSpriteBasePath(look.hair, look.sex, list[list_n].base,
-                         sizeof(list[list_n].base))) {
-    list[list_n].alt[0] = '\0';
+      HeadSpriteBasePath(look.hair, look.sex, race_job, head_base,
+                         sizeof(head_base))) {
+    add_cand(list[list_n], head_base);
     list[list_n].pal[0] = '\0';
     list[list_n].accessory = false;  // la TÊTE : référence, jamais animée
     list[list_n].head_ref  = true;
@@ -769,31 +838,45 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     // dernier passait par-dessus le dos.
     list[list_n].behind = back_view;
     if (look.hair_color >= 0)
-      HairPalettePath(look.hair_color, list[list_n].pal,
+      HairPalettePath(look.hair_color, race_job, list[list_n].pal,
                       sizeof(list[list_n].pal));
     ++list_n;
   }
 
   // 3. Les coiffes, du bas vers le haut.
+  //
+  // Ordre des essais, celui du client : la variante de RACE d'abord — elle
+  // n'existe que pour une poignée de chapeaux, et le natif la sonde avant de se
+  // rabattre sur la commune — puis chacune dans les deux casses du nom
+  // d'accessoire. Sur un humain, les deux premières ne sont même pas formées.
+  struct GearVariant { bool doram, lower; };
+  static const GearVariant kGearVariants[kMaxCandidates] = {
+      {true, false}, {true, true}, {false, false}, {false, true}};
+
   const int gear[3] = {look.head_low, look.head_mid, look.head_top};
   for (int g = 0; g < 3 && list_n < kMaxPieces; ++g) {
     if (gear[g] <= 0) continue;
-    if (!HeadgearBasePath(gear[g], look.sex, /*lower=*/false, list[list_n].base,
-                          sizeof(list[list_n].base)))
-      continue;
-    HeadgearBasePath(gear[g], look.sex, /*lower=*/true, list[list_n].alt,
-                     sizeof(list[list_n].alt));
-    list[list_n].pal[0] = '\0';
-    list[list_n].accessory = true;
-    list[list_n].on_head   = true;
+    char gear_path[352];
+    Attached& a = list[list_n];
+    for (const GearVariant& v : kGearVariants) {
+      if (v.doram && !doram) continue;
+      if (HeadgearBasePath(gear[g], look.sex, v.lower, v.doram, gear_path,
+                           sizeof(gear_path)))
+        add_cand(a, gear_path);
+    }
+    if (a.cand_n == 0) continue;  // accessoire inconnu de la table
+
+    a.pal[0] = '\0';
+    a.accessory = true;
+    a.on_head   = true;
     // Les coiffes suivent la tête de part et d'autre du corps : elles s'y
     // accrochent, et les séparer ferait flotter un chapeau devant un dos dont
     // la tête est derrière. Placées APRÈS la tête dans le seau arrière, elles
     // restent au-dessus d'elle — ce qu'on veut : de dos, on voit le chapeau.
-    list[list_n].behind    = back_view;
-    list[list_n].tag       = (g == 0) ? "coiffe-bas"
-                          : (g == 1) ? "coiffe-milieu"
-                                     : "coiffe-haut";
+    a.behind    = back_view;
+    a.tag       = (g == 0) ? "coiffe-bas"
+                : (g == 1) ? "coiffe-milieu"
+                           : "coiffe-haut";
     ++list_n;
   }
 
@@ -866,12 +949,13 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     int& dst_n      = list[i].behind ? back_n : n;
     if (dst_n >= kMaxQuads) continue;
 
+    // Le premier candidat qui répond gagne. Aucun n'est obligatoire : une pièce
+    // dont pas un seul chemin n'existe est simplement omise, pas une erreur.
     Piece piece;
-    const char* used = list[i].base;
-    if (!LoadPiece(list[i].base, list[i].act, list[i].pal, &piece)) {
-      used = list[i].alt;
-      if (!LoadPiece(list[i].alt, list[i].act, list[i].pal, &piece)) continue;
-    }
+    bool loaded = false;
+    for (int c = 0; c < list[i].cand_n && !loaded; ++c)
+      loaded = LoadPiece(list[i].cand[c], list[i].act, list[i].pal, &piece);
+    if (!loaded) continue;
 
     // 🔴 TOUTES les pièces partagent l'action du corps. C'est ce que fait le
     // natif : `CActorSprite_RenderCompositeJobSprite` lit une seule action

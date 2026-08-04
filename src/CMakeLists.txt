@@ -199,6 +199,8 @@ set(BOURGEON_FILES
 	"ui/icon_cache.h"
 	"ui/head_icon.cc"
 	"ui/head_icon.h"
+	"ui/sprite_path.cc"
+	"ui/sprite_path.h"
 	"ui/color_codec.cc"
 	"ui/color_codec.h"
 	"ui/skin_panel.cc"

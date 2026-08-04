@@ -929,8 +929,10 @@ void CharSelect::DrawHairIcon(int hair, float x, float y, float sz, int color_ov
   //
   // allow_upscale : une vignette de grille doit remplir sa case, contrairement
   // à la tête d'une ligne de liste qu'on ne fait que réduire.
+  // `job` = 0 : la création ne propose que le Novice humain. Un Doram irait
+  // chercher sa coupe dans une autre table ET un autre dossier de race.
   ro::DrawHeadIcon(ImGui::GetWindowDrawList(), x, y, sz, hair, create_sex_,
-                   color_override, /*allow_upscale=*/true);
+                   color_override, /*allow_upscale=*/true, /*job=*/0);
 }
 
 void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
