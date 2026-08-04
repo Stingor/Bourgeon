@@ -1889,11 +1889,51 @@ void CharSelect::OnRenderLoginUI() {
   const bool pending =
       sel_occupied && views[selected_].del_rev_date > 0;
 
-  // Largeur estimée de la barre pour la centrer.
-  float bar_w = 180.0f + 8.0f + 190.0f + 8.0f + 160.0f;  // + « Personnaliser »
-  if (sel_occupied) bar_w += 8.0f + 200.0f;  // bouton suppression
+  // Largeur RÉELLE de la barre, pour la centrer. ⚠ Suppression PROGRAMMÉE = DEUX
+  // boutons (« Annuler suppression » + « Supprimer ») : les compter tous les deux,
+  // sinon la barre est dessinée 64 px trop à droite et déborde sur la barre de
+  // sortie.
+  const float kBarGap = 8.0f;
+  float bar_w = 180.0f + kBarGap + 190.0f + kBarGap + 160.0f;  // + « Personnaliser »
+  if (sel_occupied) {
+    bar_w += kBarGap + 200.0f;                     // « Programmer » / « Annuler »
+    if (pending) bar_w += kBarGap + 120.0f;        // + « Supprimer »
+  }
+  // Largeur MAXIMALE atteignable (perso sélectionné ET suppression programmée).
+  // C'est elle — et non la largeur courante — qui décide du placement de la barre
+  // de sortie : sinon celle-ci sauterait de ligne au gré des sélections.
+  const float bar_max_w = 180.0f + kBarGap + 190.0f + kBarGap + 160.0f + kBarGap +
+                          200.0f + kBarGap + 120.0f;
+
+  // ── Géométrie de la barre de SORTIE (dessinée plus bas) ─────────────────────
+  // Calculée ICI, avant le dessin de la barre d'action : c'est la comparaison des
+  // deux rectangles qui décide s'ils tiennent sur la même ligne.
+  const float kExitBackW = 190.0f, kExitQuitW = 160.0f;
+  const float exit_bar_w = kExitBackW + kBarGap + kExitQuitW;
+  // Point ancré (poignée déplaçable en mode édition) = coin GAUCHE-haut de la barre.
+  const ImVec2 xp = Anchor("sortie", (disp.x - exit_bar_w - 24.0f) / disp.x,
+                           (disp.y - 52.0f) / disp.y, seat_edit_);
+
   // Position ancrée (poignée déplaçable). Le point = milieu-haut de la barre.
   const ImVec2 bp = Anchor("boutons", 0.5f, (disp.y - 52.0f) / disp.y, seat_edit_);
+
+  // En dessous d'environ 1650 px de large, la barre d'action pleine (suppression
+  // programmée) et la barre de sortie ne tiennent PAS côte à côte : elles se
+  // chevauchaient, « Supprimer » passant sous « Revenir au login ». On empile donc
+  // la sortie une ligne au-dessus — le rang de droite y est libre (l'indicateur de
+  // page est centré). En mode « Personnaliser » on n'y touche pas : le joueur doit
+  // voir ses poignées là où il les pose.
+  const float kRowH = 20.0f;  // hauteur d'un RoButton (btn_out_left.bmp)
+  ImVec2 exit_pos = xp;
+  if (!seat_edit_) {
+    const float bmax_x0 = bp.x - bar_max_w * 0.5f;
+    const float bmax_x1 = bmax_x0 + bar_max_w;
+    const bool same_row = std::fabs(xp.y - bp.y) < kRowH;
+    const bool overlap =
+        bmax_x1 + kBarGap > xp.x && xp.x + exit_bar_w + kBarGap > bmax_x0;
+    if (same_row && overlap) exit_pos.y = bp.y - (kRowH + 6.0f);
+  }
+
   ImGui::SetCursorScreenPos(ImVec2(bp.x - bar_w * 0.5f, bp.y));
 
   const bool can_enter = can_enter_slot(selected_);
@@ -2009,18 +2049,15 @@ void CharSelect::OnRenderLoginUI() {
   // confirmation ImGui (jamais la msgbox native : elle est supprimée sous notre UI),
   // puis envoie la commande de mode (cf. kCmdBackToLogin / kCmdQuitGame).
   {
-    const float back_w = 190.0f, quit_w = 160.0f, gap = 8.0f;
-    const float exit_bar_w = back_w + gap + quit_w;
-    // Point ancré (poignée déplaçable en mode édition) = coin GAUCHE-haut de la barre.
-    const ImVec2 xp = Anchor("sortie", (disp.x - exit_bar_w - 24.0f) / disp.x,
-                             (disp.y - 52.0f) / disp.y, seat_edit_);
+    // Ancre et largeurs : calculées plus haut avec la barre d'action (c'est là que
+    // se décide l'empilement quand les deux barres ne tiennent pas sur une ligne).
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(28, 32, 44, 255));
     ImGui::PushStyleColor(ImGuiCol_TextDisabled, IM_COL32(118, 124, 138, 255));
-    ImGui::SetCursorScreenPos(xp);
-    const bool back_clicked = ro::RoButton("Revenir au login", back_w, 0.0f);
+    ImGui::SetCursorScreenPos(exit_pos);
+    const bool back_clicked = ro::RoButton("Revenir au login", kExitBackW, 0.0f);
     const bool tip_back = ImGui::IsItemHovered();
-    ImGui::SameLine(0.0f, gap);
-    const bool quit_clicked = ro::RoButton("Quitter le jeu", quit_w, 0.0f);
+    ImGui::SameLine(0.0f, kBarGap);
+    const bool quit_clicked = ro::RoButton("Quitter le jeu", kExitQuitW, 0.0f);
     const bool tip_quit = ImGui::IsItemHovered();
     ImGui::PopStyleColor(2);
     // Titres de popup distincts des labels de bouton (pas d'ID partagé dans la même
