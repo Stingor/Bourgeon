@@ -96,7 +96,10 @@ class NpcDialogWindow : public Plugin {
   static void ParseLine(const std::string& raw, std::vector<Run>* out);
   void DrawRichLines();               // rendu word-wrap multi-couleur (ImDrawList)
   void DrawMenu(float group_h);       // liste de choix (hauteur bornée) : recherche + touches 1-9
-  size_t MenuShownCount() const;      // options non vides (les vides comptent dans l'index, pas à l'écran)
+  // Options non vides. C'est AUSSI la borne haute de l'index attendu par le
+  // serveur : les entrées vides ne sont ni affichées ni comptées (rAthena
+  // menu_countoptions() les saute, cf. DrawMenu).
+  size_t MenuShownCount() const;
   // Hauteur que le groupe menu VOUDRAIT occuper : ses options, plafonnées à dix
   // lignes (au-delà la liste scrolle) plus la barre de recherche si elle est là.
   // C'est OnRenderUI qui la rabote ensuite pour garder de la place au texte du NPC.
@@ -153,6 +156,11 @@ class NpcDialogWindow : public Plugin {
 
   bool  open_ = false;                // interaction NPC active ?
   bool  was_open_ = false;
+  // La fenêtre a-t-elle déjà été rendue au moins une frame dans CETTE conversation ?
+  // Tant que non, un modèle vide = rien à montrer (on ne monte pas de cadre vide) ;
+  // une fois montée, un modèle vide est un simple creux entre deux paquets et la
+  // fenêtre RESTE — sinon elle clignote. Remis à false par Reset().
+  bool  rendered_ = false;
   bool  need_pos_ = false;            // (re)placer la fenêtre à l'ouverture
   bool  show_panel_ = true;
   bool  map_changed_ = false;         // warp reçu (fermer au tick)

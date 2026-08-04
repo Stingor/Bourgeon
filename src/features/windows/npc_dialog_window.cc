@@ -236,6 +236,7 @@ void NpcDialogWindow::Reset() {
   gid_ = 0;
   num_buf_[0] = str_buf_[0] = menu_filter_[0] = '\0';
   menu_hot_ = -1;
+  rendered_ = false;  // la prochaine conversation repart sans cadre vide
 }
 
 void NpcDialogWindow::PushText(const char* s) {
@@ -365,9 +366,18 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         // Séparateur RO = ':' (découpe fidèle au natif). NB : un ':' DANS un libellé
         // scinde l'option (limite RO côté serveur, le natif aussi) -> ne pas mettre de
         // ':' dans un nom d'option/map (à corriger dans la SQL).
-        // Les entrées VIDES sont GARDÉES : elles comptent dans l'index envoyé au
-        // serveur (menus dynamiques : select("a","","b") -> "b" = 3). Le natif les
-        // masque à l'affichage seulement -> DrawMenu les saute.
+        // 🔴 Les entrées VIDES ne comptent PAS dans l'index envoyé au serveur.
+        // rAthena compte les options avec menu_countoptions() (script.cpp), qui
+        // SAUTE les vides : sd->npc_menu = nombre d'options NON VIDES, et le
+        // contrôle anti-triche de clif_parse_NpcSelectMenu est `select >
+        // npc_menu`. L'octet du paquet est donc le RANG parmi les options
+        // affichées. C'est le serveur qui le retraduit ensuite en position
+        // ABSOLUE (compteur `total` de menu_countoptions) pour la valeur de
+        // retour de select() — d'où la confusion : select("a","","b") RENVOIE 3
+        // pour "b", mais le client ENVOIE 2.
+        // On les garde quand même dans choices_ pour ne pas fusionner deux
+        // séparateurs consécutifs ; DrawMenu les saute et numérote sur les
+        // visibles.
         size_t start = 0;
         while (start <= m.size()) {
           size_t sep = m.find(':', start);
@@ -402,7 +412,19 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       open_ = true;
       return;
     case kZcClear:
-      lines_.clear();
+      // Effacement PARESSEUX : on arme start_fresh_ au lieu de vider tout de suite,
+      // et c'est le prochain SAY qui remplace la page. Vider ici laissait le modèle
+      // ENTIÈREMENT vide — plus de texte, pas encore de bouton — et la fenêtre se
+      // démontait le temps que le `mes` suivant arrive : un clignotement à chaque
+      // `clear`, c'est-à-dire à chaque écran de dialogue un peu bavard.
+      //
+      // ⚠ Écart assumé avec le natif, qui vide le richtext immédiatement : un
+      // `clear` NON suivi d'un `mes` laisse l'ancienne page affichée au lieu d'un
+      // cadre vide. Le motif est introuvable dans les scripts (`clear` sert
+      // toujours à réécrire par-dessus), et l'ancienne page est de toute façon plus
+      // lisible qu'un cadre vide. C'est exactement la mécanique déjà retenue pour
+      // `next` et pour un choix de menu, qui sont aussi des sauts de page.
+      start_fresh_ = true;
       return;
     default:
       return;
@@ -626,8 +648,11 @@ void NpcDialogWindow::DrawMenu(float group_h) {
     menu_hot_ = 0;
   }
 
-  int chosen = -1;              // index ORIGINAL 1-based à envoyer
-  std::vector<int> visible;     // index originaux visibles (pour les touches 1-9)
+  int chosen = -1;              // RANG 1-based (options non vides) à envoyer
+  // Rangs des options actuellement visibles, dans l'ordre d'affichage (pour les
+  // touches 1-9 et la nav clavier). On y stocke le RANG, pas l'index brut : sous
+  // filtre, la position à l'écran n'a plus rien à voir avec ce qu'attend le serveur.
+  std::vector<int> visible;
 
   ImGui::BeginChild("##menu", ImVec2(0, 0), true);  // remplit le reste du groupe (scroll interne)
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -637,8 +662,14 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   const float row_h = MenuRowHeight();  // même mesure que MenuNaturalHeight
   const float pad_x = ImGui::GetStyle().ItemSpacing.x;
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad_x, 0.0f));  // aucun espace vertical entre items
+  // 🔴 Le rang se compte AVANT le filtre de recherche : il vaut la position parmi
+  // TOUTES les options non vides du menu, filtrées ou non — c'est exactement ce que
+  // compte menu_countoptions() côté serveur. Le compter après donnerait le numéro de
+  // la ligne à l'écran, et un menu filtré enverrait le mauvais choix.
+  int rank = 0;
   for (int i = 0; i < static_cast<int>(choices_.size()); ++i) {
-    if (choices_[i].empty()) continue;  // entrée vide = masquée (mais son index compte)
+    if (choices_[i].empty()) continue;  // entrée vide : ni affichée, ni comptée
+    ++rank;
     std::vector<Run> mruns;
     ParseLine(choices_[i], &mruns);  // découpe en runs colorés (^RRGGBB)
     std::string plain;               // texte brut pour le filtre
@@ -647,14 +678,14 @@ void NpcDialogWindow::DrawMenu(float group_h) {
     if (!f.empty() && LowerAscii(uplain.c_str()).find(f) == std::string::npos)
       continue;
     const bool hot = (static_cast<int>(visible.size()) == menu_hot_);  // item focus clavier ?
-    visible.push_back(i);
+    visible.push_back(rank);
     // Selectable transparent (clic + surbrillance ; `hot`=focus clavier) ; le texte
     // MULTICOLORE est dessiné par-dessus (chaque run garde sa couleur).
     char id[16];
     std::snprintf(id, sizeof(id), "##m%d", i);
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
     if (ImGui::Selectable(id, hot, ImGuiSelectableFlags_None, ImVec2(0, row_h)))
-      chosen = i + 1;
+      chosen = rank;
     if (hot && nav) ImGui::SetScrollHereY(0.5f);  // garde le focus visible pendant la nav
     float x = p0.x + pad_x;
     const float ty = p0.y + (row_h - fsize) * 0.5f;
@@ -686,7 +717,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   ImGui::EndChild();      // ##menu (liste)
   ImGui::EndChild();      // ##menugrp
 
-  // Touches 1-9 : sélectionne le N-ième choix VISIBLE (envoie son index original).
+  // Touches 1-9 : sélectionne le N-ième choix VISIBLE (envoie son RANG).
   // Seulement hors saisie clavier (sinon taper "1" dans le filtre choisirait #1) ET
   // sans modificateur : Ctrl/Alt/Shift + chiffre = combo hotkey (skillbar, macro…),
   // à laisser passer au jeu, pas une sélection de menu.
@@ -694,7 +725,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   if (!io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeyShift) {
     for (int k = 1; k <= 9 && k <= static_cast<int>(visible.size()); ++k) {
       if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + (k - 1)), false))
-        chosen = visible[k - 1] + 1;
+        chosen = visible[k - 1];
     }
   }
   // Entrée = valide l'option focus (depuis la recherche via EnterReturnsTrue, ou
@@ -704,7 +735,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
                       (ImGui::IsKeyPressed(ImGuiKey_Enter) ||
                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)));
   if (enter && menu_hot_ >= 0 && menu_hot_ < static_cast<int>(visible.size()))
-    chosen = visible[menu_hot_] + 1;
+    chosen = visible[menu_hot_];
 
   menu_vis_count_ = static_cast<int>(visible.size());
   // Anti double-envoi : une génération de menu ne peut être répondue qu'UNE fois (sinon
@@ -788,9 +819,17 @@ void NpcDialogWindow::OnRenderUI() {
   if (!open_ || !imgui_enabled_) return;
   // Rien à afficher (transitoire entre paquets) : pas de fenêtre vide, sauf si un
   // bouton Next/Close est demandé (pour pouvoir cliquer Fermer).
-  if (lines_.empty() && choices_.empty() && input_mode_ == kInputNone && !has_next_ &&
-      !has_close_)
-    return;
+  //
+  // 🔴 Mais UNIQUEMENT tant que la fenêtre n'est pas encore apparue. Une fois
+  // montée, un creux d'une seule frame la démontait et la remontait aussitôt — un
+  // clignotement, alors qu'ImGui n'a besoin que de la voir déclarée pour la garder
+  // en place. Le serveur n'a aucune obligation de faire tenir sa réponse dans un
+  // seul segment : ce trou est normal, ce n'est pas une fin de conversation. Seul
+  // CloseDialog (ou un warp) ferme, en repassant par Reset.
+  const bool nothing_to_show = lines_.empty() && choices_.empty() &&
+                               input_mode_ == kInputNone && !has_next_ && !has_close_;
+  if (nothing_to_show && !rendered_) return;
+  rendered_ = true;
   g_kbd_dialog_open = true;
   g_kbd_menu_open = !choices_.empty();
 

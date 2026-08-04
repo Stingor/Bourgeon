@@ -316,6 +316,20 @@ g_UISayDialogWnd_primary_0x10->OnMsg(0x20);        // reset le dialogue principa
 Le serveur envoie donc les choix comme **une chaîne unique séparée par `:`** ; le client
 la découpe.
 
+🔴 **Les options VIDES ne sont pas ajoutées à la liste** (`if (!t.empty())`) — et elles ne
+comptent donc PAS dans l'index renvoyé. L'octet de `CZ_CHOOSE_MENU` est le **rang 1-based
+parmi les options non vides**, pas la position dans la chaîne. Côté serveur, c'est la même
+règle : `menu_countoptions()` (rAthena `script.cpp`) saute les vides pour calculer
+`sd->npc_menu`, qui borne le contrôle anti-triche `select > sd->npc_menu` de
+`clif_parse_NpcSelectMenu` (dépassement ⇒ **kick GM**).
+
+⚠ Piège : la valeur de RETOUR de `select()` côté script, elle, est la position **absolue**
+(vides comprises) — le serveur la reconstitue avec le compteur `total` de
+`menu_countoptions()`. `select("a","","b")` **renvoie 3** pour « b » alors que le client
+**envoie 2**. Les scripts à menu dynamique (ex. `moon/quests/huntmission.npc`) bourrent
+exprès des options vides pour figer leurs numéros de `case` : envoyer l'index absolu y
+déclenche systématiquement la mauvaise branche.
+
 ### 5.2 OnMsg — `UIChoose3Wnd_OnMsg` @ `0x008BE590` (dérivé) → `UIChooseWnd_OnMsg_base` @ `0x008BEE20`
 
 Le dérivé `0x008BE590` intercepte `0x1B` (ajoute item, avec résolution de liens item via
