@@ -237,6 +237,7 @@ void NpcDialogWindow::Reset() {
   num_buf_[0] = str_buf_[0] = menu_filter_[0] = '\0';
   menu_hot_ = -1;
   rendered_ = false;  // la prochaine conversation repart sans cadre vide
+  awaiting_reply_ = false;
 }
 
 void NpcDialogWindow::PushText(const char* s) {
@@ -292,6 +293,29 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     if (char* h = std::strchr(nm, '#')) *h = '\0';  // tronque la partie cachée
     if (nm[0]) npc_names_[gid] = nm;
     return;
+  }
+
+  // Premier paquet de dialogue reçu depuis notre envoi : la page qu'on tenait
+  // affichée en attendant est morte, on l'efface MAINTENANT. C'est le pendant
+  // d'awaiting_reply_ — les envois ne nettoient plus rien eux-mêmes, sinon le footer
+  // se réorganisait pendant tout l'aller-retour serveur.
+  //
+  // ⚠ Restreint à NOS opcodes : OnRecvPacket est appelé pour tous ceux qu'observe
+  // n'importe quel plugin (ex. 0x8C8 ZC_NOTIFY_ACT du DPS meter), et l'un d'eux
+  // pendant l'attente effacerait la page à la place de la vraie réponse.
+  if (awaiting_reply_) {
+    switch (opcode) {
+      case kZcSay: case kZcSay2: case kZcWait: case kZcWait2: case kZcClose:
+      case kZcMenu: case kZcEditN: case kZcEditS: case kZcClear:
+        awaiting_reply_ = false;
+        choices_.clear();
+        menu_filter_[0] = '\0';
+        menu_hot_ = -1;
+        input_mode_ = kInputNone;
+        break;
+      default:
+        break;
+    }
   }
 
   // NB : OnRecvPacket est appelé pour TOUS les opcodes observés par N'IMPORTE quel
@@ -873,6 +897,15 @@ void NpcDialogWindow::OnRenderUI() {
                                ImGuiWindowFlags_NoScrollbar |
                                ImGuiWindowFlags_NoScrollWithMouse;
   if (!opening) win_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
+  // Rapport de bug : petit bouton posé DANS la barre de titre, entre le nom du PNJ
+  // et la croix de fermeture. Il était auparavant dans le footer, où il partageait
+  // la ligne des boutons de dialogue — qui apparaissent et disparaissent à chaque
+  // étape du script (`next` vs `menu` vs `close`). À chaque transition il glissait à
+  // gauche pour occuper la place libérée, et atterrissait sous le curseur : saut
+  // visuel, plus son infobulle qui s'ouvrait toute seule. Dans la barre de titre, sa
+  // position ne dépend plus du contenu.
+  auto* br = Bourgeon::Instance().bug_report();
+  const bool bug_btn = br != nullptr && br->enabled();
   const bool begun = ro::BeginRoDescWindow(
       title, can_close ? &show_panel_ : nullptr,  // ⊗ + Échap seulement si fermable
       win_flags);
@@ -926,6 +959,11 @@ void NpcDialogWindow::OnRenderUI() {
       ImGui::SetScrollHereY(1.0f);  // auto-scroll en bas
     ImGui::EndChild();
 
+    // En attente de la réponse serveur, la page reste à l'identique mais devient
+    // INERTE : les widgets gardent leur place (aucun saut de footer) et le joueur ne
+    // peut pas répondre deux fois. Sans le grisage, un second clic sur « Suivant »
+    // ferait AVANCER le script d'une page de plus.
+    ImGui::BeginDisabled(awaiting_reply_);
     DrawMenu(menu_grp);
     DrawInput();
 
@@ -934,8 +972,9 @@ void NpcDialogWindow::OnRenderUI() {
     if (footer_sep) ImGui::Separator();  // cf. le calcul de footer_h
     // Entrée/Espace valident le bouton principal — SEULEMENT hors menu (qui consomme
     // Entrée pour son option focus) et hors saisie (l'input a son propre OK). Sans
-    // repeat pour qu'un appui maintenu ne re-déclenche pas.
-    const bool kbd_ok = footer_kbd_ok &&
+    // repeat pour qu'un appui maintenu ne re-déclenche pas. BeginDisabled ne couvre
+    // PAS le clavier : il faut l'exclure explicitement pendant l'attente.
+    const bool kbd_ok = footer_kbd_ok && !awaiting_reply_ &&
                         (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
                          ImGui::IsKeyPressed(ImGuiKey_Space, false));
@@ -948,15 +987,15 @@ void NpcDialogWindow::OnRenderUI() {
       if (shown) ImGui::SameLine();
       if (ro::RoButton(has_close_ ? "Fermer" : "Annuler") || (kbd_ok && !shown))
         CloseDialog();
-      shown = true;
     }
-    // Rapport de bug contextuel : GID + nom du PNJ joints automatiquement.
-    if (auto* br = Bourgeon::Instance().bug_report()) {
-      auto nit = npc_names_.find(gid_);
-      const std::string npc_name =
-          (nit != npc_names_.end()) ? nit->second : std::string();
-      if (shown) ImGui::SameLine();
-      br->Button(BugReport::NpcContext(gid_, npc_name), "npc_bug");
+    ImGui::EndDisabled();
+
+    // Rapport de bug (GID + nom du PNJ joints) : dans la barre de titre. EN DERNIER
+    // — cf. BugReport::TitleBarButton, qui ne restaure pas le curseur de layout.
+    if (bug_btn) {
+      auto bit = npc_names_.find(gid_);
+      br->TitleBarButton(BugReport::NpcContext(
+          gid_, bit != npc_names_.end() ? bit->second : std::string()));
     }
   }
   ro::EndRoDescWindow();
@@ -997,7 +1036,9 @@ void NpcDialogWindow::SendNext() {
   *reinterpret_cast<uint16_t*>(pkt + 0) = kCzNext;
   *reinterpret_cast<uint32_t*>(pkt + 2) = gid_;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  has_next_ = false;    // attend la suite du serveur
+  // has_next_ reste POSÉ : le bouton garde sa place, grisé, jusqu'à la réponse. Le
+  // remettre à false ici le faisait disparaître pendant tout l'aller-retour.
+  awaiting_reply_ = true;
   start_fresh_ = true;  // `next` = saut de PAGE -> le prochain mes vide l'ancienne page
 }
 
@@ -1015,8 +1056,10 @@ void NpcDialogWindow::SendMenuChoice(int one_based) {
   // plus ; l'appel reste comme filet pour le menu déjà ouvert au moment où le joueur
   // allume l'interface moderne, et ne coûte qu'un FindWindow à vide.
   CloseWnd(kWinMenu);
-  choices_.clear();
-  menu_filter_[0] = '\0';
+  // La liste reste AFFICHÉE (grisée) jusqu'à la réponse : la vider ici escamotait le
+  // menu et le bouton « Annuler » pendant l'aller-retour. Un second envoi est déjà
+  // impossible — menu_answered_gen_ vient d'être posé.
+  awaiting_reply_ = true;
   start_fresh_ = true;  // un choix de menu = saut de PAGE -> vide l'ancienne page
 }
 
@@ -1037,7 +1080,7 @@ void NpcDialogWindow::SendNumber(int value) {
   *reinterpret_cast<uint32_t*>(pkt + 2) = gid_;
   *reinterpret_cast<int32_t*>(pkt + 6) = value;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  input_mode_ = kInputNone;
+  awaiting_reply_ = true;  // le champ reste en place, grisé, jusqu'à la réponse
 }
 
 void NpcDialogWindow::SendString(const char* text) {
@@ -1052,7 +1095,7 @@ void NpcDialogWindow::SendString(const char* text) {
   *reinterpret_cast<uint32_t*>(pkt.data() + 4) = gid_;
   std::memcpy(pkt.data() + 8, s, tlen - 1);  // le buffer est déjà nul-terminé
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
-  input_mode_ = kInputNone;
+  awaiting_reply_ = true;  // le champ reste en place, grisé, jusqu'à la réponse
 }
 
 void NpcDialogWindow::CloseDialog() {
@@ -1065,7 +1108,14 @@ void NpcDialogWindow::CloseDialog() {
   // une fenêtre menu NATIVE encore à l'écran. Le distinguer compte : un script
   // arrêté sur un `select` attend un CZ_CHOOSE_MENU, et c'est lui qui le termine
   // proprement.
-  const bool menu_pending = !choices_.empty() || FindWnd(kWinMenu) != nullptr;
+  //
+  // 🔴 `choices_` non vide ne suffit PLUS : depuis qu'un menu répondu reste affiché
+  // (grisé) le temps de l'aller-retour, il faut aussi qu'il n'ait pas DÉJÀ reçu sa
+  // réponse — sinon fermer pendant l'attente enverrait une annulation par-dessus le
+  // choix, sur un script qui n'attend plus rien.
+  const bool menu_pending =
+      (!choices_.empty() && menu_gen_ != menu_answered_gen_) ||
+      FindWnd(kWinMenu) != nullptr;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
   //    termine) ; sinon CZ_CLOSE_DIALOG.

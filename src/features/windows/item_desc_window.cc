@@ -2672,19 +2672,16 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
 // fonction SANS __try : RenderItemWindow/RenderSkillWindow contiennent un __try, et
 // MSVC (C2712) interdit tout objet à destructeur (ici std::string via *Context)
 // dans une fonction qui utilise __try. On confine donc les std::string ici.
-static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill,
-                              const char* imgui_id) {
+static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill) {
   auto* br = Bourgeon::Instance().bug_report();
-  if (!br || !br->enabled()) return;  // opt-out : pas de bouton ni de marge basse
+  if (!br) return;  // (l'opt-out est testé par TitleBarButton)
   const char* nm = name ? name : "";
-  ImGui::Spacing();
-  br->Button(is_skill ? BugReport::SkillContext(id, nm)
-                      : BugReport::ItemContext(id, nm),
-             imgui_id);
-  // Marge basse OBLIGATOIRE : la fenêtre desc a un cadre décoratif (~14px) en bas
-  // + un clip à -10px. Sans réserve, le bouton (dernier item) est tronqué par le
-  // cadre même défilé tout en bas. 18px > 14px => il dégage entièrement au-dessus.
-  ImGui::Dummy(ImVec2(0.0f, 18.0f));
+  // Dans la BARRE DE TITRE, plus en pied de description. En bas, il fallait lui
+  // réserver 18px de marge pour qu'il échappe au cadre décoratif, il rallongeait le
+  // contenu à défiler, et il bougeait avec lui. En haut, il ne coûte rien au corps
+  // de la fenêtre et ne dépend plus de ce qu'elle affiche.
+  br->TitleBarButton(is_skill ? BugReport::SkillContext(id, nm)
+                              : BugReport::ItemContext(id, nm));
 }
 
 // Reproduit la fenêtre de description d'ITEM en ImGui (Option A). Le pointeur
@@ -3129,7 +3126,7 @@ void ItemDescWindow::RenderItemWindow() {
   }
   // Rapport de bug contextuel : id + nom de l'objet joints automatiquement.
   // (Émis hors de cette fonction : elle contient un __try -> C2712 sinon.)
-  EmitDescBugButton(item_.id, ie.name, /*is_skill=*/false, "itemdesc_bug");
+  EmitDescBugButton(item_.id, ie.name, /*is_skill=*/false);
   ImGui::PopClipRect();  // fin du clip « contenu au-dessus du cadre du bas »
   // Ancre des satellites = rect de la fenêtre principale (capturé AVANT End, après
   // le clamp anti-hors-écran). Les panneaux (fenêtres séparées) sont dessinés
@@ -3251,7 +3248,7 @@ void ItemDescWindow::RenderSkillWindow() {
     ImGui::EndTabBar();
   }
   // Rapport de bug contextuel : id + nom de la compétence joints.
-  EmitDescBugButton(skill_.id, s_e.name, /*is_skill=*/true, "skilldesc_bug");
+  EmitDescBugButton(skill_.id, s_e.name, /*is_skill=*/true);
   ro::EndRoDescWindow();
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);

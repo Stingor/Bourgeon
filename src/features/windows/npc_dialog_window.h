@@ -154,6 +154,15 @@ class NpcDialogWindow : public Plugin {
   unsigned menu_gen_ = 0;             // génération du menu (incr. à chaque ZC_MENU_LIST)
   unsigned menu_answered_gen_ = 0xFFFFFFFFu;  // génération déjà répondue (anti double-envoi)
 
+  // Un envoi est parti, la réponse du serveur n'est pas encore là (un aller-retour
+  // complet = plusieurs frames). On GARDE alors la page telle quelle — bouton
+  // Suivant, liste de choix, champ de saisie — simplement DÉSACTIVÉE, au lieu de
+  // l'effacer tout de suite. L'effacer faisait sauter le footer : le bouton
+  // principal disparaissait, le bouton de rapport de bug glissait à sa place et son
+  // infobulle s'ouvrait sous le curseur, pour quelques frames. Remis à false par le
+  // premier paquet de dialogue qui suit (cf. HandlePacket).
+  bool  awaiting_reply_ = false;
+
   bool  open_ = false;                // interaction NPC active ?
   bool  was_open_ = false;
   // La fenêtre a-t-elle déjà été rendue au moins une frame dans CETTE conversation ?

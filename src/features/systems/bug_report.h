@@ -53,6 +53,21 @@ class BugReport : public Plugin {
   // `imgui_id` désambiguïse le bouton sur la pile d'ID ImGui (unique par site).
   // Au clic : mémorise `ctx` et demande l'ouverture de la modale au frame suivant.
   void Button(const Context& ctx, const char* imgui_id);
+  // Variante DISCRÈTE : un petit bouton posé dans la BARRE DE TITRE de la fenêtre
+  // RO courante, calé entre le titre et la croix de fermeture.
+  //
+  // 🔴 À appeler EN DERNIER dans la fenêtre (juste avant End), et jamais dans un
+  // BeginChild — le placement se calcule depuis GetWindowPos, et le curseur de
+  // layout n'est PAS restauré après coup. Le restaurer demanderait un SetCursorPos
+  // final, qui arme `DC.IsSetPos` et fait lever à End() « Code uses SetCursorPos()
+  // to extend window/parent boundaries » faute d'item derrière lui.
+  //
+  // 🔴 Préférer cette forme à Button() dans toute fenêtre dont le bas est occupé
+  // par des boutons qui vont et viennent : posé en pied de page, le rapport de bug
+  // glisse pour occuper la place libérée, atterrit sous le curseur et ouvre son
+  // infobulle tout seul. Dans la barre de titre, sa position ne dépend de rien.
+  // Pas d'`imgui_id` : la barre de titre n'en contient qu'un.
+  void TitleBarButton(const Context& ctx);
   // Ouvre directement la modale avec ce contexte (raccourci / menu).
   void Open(const Context& ctx);
 
