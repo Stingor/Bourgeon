@@ -1208,7 +1208,7 @@ bool InventoryViewer::MailDraggedItem() {
 }
 
 // Wrapper public sur le helper interne PostItemLinkToChat (insère le lien dans l'input
-// chat focalisé). Réutilisé par character_sheet (Maj+clic droit sur un slot équipé).
+// chat focalisé). Réutilisé par character_sheet (Maj+clic gauche sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
 
 // ── Verrou « description en vol » (anti-flicker de l'aperçu au survol) ────────

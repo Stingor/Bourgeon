@@ -146,7 +146,7 @@ class InventoryViewer : public Plugin {
   // Insère le lien de l'item d'index inventaire `invIndex` dans l'input chat focalisé
   // (comme Maj+clic gauche dans l'inventaire). No-op si aucun input chat n'a le focus.
   // Marche même inventaire fermé (lit le modèle session). Utilisé par character_sheet
-  // (Maj+clic droit sur un slot équipé).
+  // (Maj+clic gauche sur un slot équipé ou sur la munition).
   void LinkItemToChat(int invIndex);
 
  private:

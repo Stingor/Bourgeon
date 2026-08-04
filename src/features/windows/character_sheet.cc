@@ -2334,7 +2334,7 @@ void CharacterSheet::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t
   }
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void CharacterSheet::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
 
   // ZC_SKILL_POSTDELAY (0x043D) n'est PAS traité ici : la table de cooldowns est
@@ -5988,7 +5988,10 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
 
   // Drag-drop. SOURCE (slot occupé) : glisser l'item vers l'inventaire = le déséquiper.
   // Payload "BGN_EQUIP" = index inventaire ; l'inventaire l'accepte -> SendUnequip.
-  if (has && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+  // Pas de glisser quand Maj est enfoncé : ce geste-là poste le LIEN dans le chat
+  // (cf. plus bas), et sans ce garde un simple frémissement de souris déséquipait.
+  if (has && !ImGui::GetIO().KeyShift &&
+      ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
     int inv = it.invIndex;
     ImGui::SetDragDropPayload("BGN_EQUIP", &inv, sizeof(inv));
     ro::IconTex ic = ro::ItemIcon(it.nameid);  // aperçu du drag (icône + nom complet)
@@ -6014,9 +6017,10 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   }
 
   // Interactions sur la case : survol = description ; clic DROIT = description
-  // (fenêtre) ; MAJ+clic DROIT = lien de l'item dans le chat (comme l'inventaire) ;
+  // (fenêtre) ; MAJ+clic GAUCHE = lien de l'item dans le chat — le MÊME geste que
+  // l'inventaire et que le natif (UIInventoryWnd_OnLButtonDown, branche SHIFT) ;
   // double-clic GAUCHE = déséquiper ; glisser = vers l'inventaire (drag-drop
-  // ci-dessus). Le clic gauche simple ne fait rien (réservé au démarrage du glisser).
+  // ci-dessus). Le clic gauche simple ne fait rien.
   if (has && ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);  // main
     // Aperçu RO au survol, exactement comme l'inventaire, le chariot et le storage :
@@ -6029,22 +6033,24 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
         ImGui::GetDragDropPayload() == nullptr)
       CaptureHoverDesc(reinterpret_cast<const void*>(hsrc), it.nameid);
     const ImVec2 mp = ImGui::GetMousePos();
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-      if (ImGui::GetIO().KeyShift) {  // Maj+clic droit = lien de l'item dans le chat
-        if (auto* iv = Bourgeon::Instance().inventory_viewer())
-          iv->LinkItemToChat(it.invIndex);
-      } else {  // clic droit seul = description (avec cartes/enchants/options du slot source)
-        // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le
-        // clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
-        // `src` survit au différé : c'est une adresse FIXE du bloc session.
-        const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
-                              static_cast<uintptr_t>(slot) * kSlotStride;
-        itemcell::DeferDescById(it.nameid, it.viewId, it.location,
-                                static_cast<int>(mp.x), static_cast<int>(mp.y),
-                                reinterpret_cast<const void*>(src));
-      }
+    // Maj+clic GAUCHE = lien de l'item dans l'input du chat (geste de l'inventaire).
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::GetIO().KeyShift) {
+      if (auto* iv = Bourgeon::Instance().inventory_viewer())
+        iv->LinkItemToChat(it.invIndex);
     }
-    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+    // Clic droit = description (avec cartes/enchants/options du slot source).
+    // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le
+    // clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
+    // `src` survit au différé : c'est une adresse FIXE du bloc session.
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
+                            static_cast<uintptr_t>(slot) * kSlotStride;
+      itemcell::DeferDescById(it.nameid, it.viewId, it.location,
+                              static_cast<int>(mp.x), static_cast<int>(mp.y),
+                              reinterpret_cast<const void*>(src));
+    }
+    // Maj enfoncée, le double-clic reste un envoi de lien : il ne doit pas déséquiper.
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !ImGui::GetIO().KeyShift)
       SendUnequip(it.invIndex);
   }
   ImGui::PopID();
@@ -6108,11 +6114,17 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
           ImGui::GetDragDropPayload() == nullptr)
         CaptureHoverDesc(am.info, am.nameid);
       const ImVec2 mp = ImGui::GetMousePos();
+      const bool shift = ImGui::GetIO().KeyShift;
+      // Maj+clic GAUCHE = lien de l'item dans le chat, comme les slots d'équipement.
+      if (shift && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (auto* iv = Bourgeon::Instance().inventory_viewer())
+          iv->LinkItemToChat(am.invIndex);
+      }
       // Différée au relâchement, comme les slots d'équipement ci-dessus.
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
         itemcell::DeferDescById(am.nameid, am.viewId, am.location,
                                 static_cast<int>(mp.x), static_cast<int>(mp.y));
-      if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+      if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !shift)
         SendUnequip(am.invIndex);
     } else {
       ImGui::SetTooltip("Munition\n(glissez une flèche/balle/grenade/arme de jet ici pour l'équiper)");
