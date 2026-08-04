@@ -1407,11 +1407,9 @@ void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
 }
 
 void RodexWindow::OnTick() {
-  // Décodage sur le fil PRINCIPAL, avant tout le reste : l'accord de rédaction arrive
-  // entre deux ticks et doit être vu par le rendu de CE frame.
-  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
-    HandlePacket(op, d, n);
-  });
+  // (Le décodage des paquets ne se fait plus ici : Bourgeon draine la file de tous
+  // les modules à chaque frame, cf. Bourgeon::DrainNetInboxes. Au tick, l'accord de
+  // rédaction pouvait attendre 100 ms avant d'être vu par le rendu.)
 
   if (!imgui_enabled_) {
     // Retour au natif. Aucune des trois n'existe : le client les recréera à la

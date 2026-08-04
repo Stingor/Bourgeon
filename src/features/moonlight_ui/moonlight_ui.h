@@ -141,7 +141,7 @@ class MoonlightUi : public Plugin {
 
  private:
   // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
-  // HandlePacket décode en phase d'entrée. `alootid_presets_` (vecteur de
+  // HandlePacket décode à chaque frame. `alootid_presets_` (vecteur de
   // std::string) était reconstruit depuis le fil réseau pendant que le panneau
   // l'affichait. Cf. features/net_inbox.h.
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;

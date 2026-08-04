@@ -21,6 +21,10 @@ LoginMode::LoginMode(const YAML::Node& login_mode_configuration) {
 
 void LoginMode::OnUpdateHook() {
   ModeMgr::FireModeSwitch(ModeMgr::ModeType::kLogin);
+  // Même raison qu'en jeu (cf. GameMode::OnUpdateHook) : c'est la seule horloge par
+  // frame de ce mode. L'écran de sélection de personnage vit ici, et il est lui
+  // aussi entièrement en ImGui — donc sans le moindre CMode::SendMsg pour drainer.
+  Bourgeon::Instance().DrainNetInboxes();
   Bourgeon::Instance().OnTick();
   return OnUpdateRef(this);
 }

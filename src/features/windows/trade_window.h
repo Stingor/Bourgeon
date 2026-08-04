@@ -167,7 +167,7 @@ class TradeWindow : public Plugin {
 
   // ── Passage du fil RÉSEAU au fil PRINCIPAL ──────────────────────────────────
   // 🔴 OnRecvPacket ne fait que COPIER les octets ; le décodage entier est rejoué
-  // en phase d'entrée par HandlePacket, sur le fil principal. Écrire
+  // à chaque frame par HandlePacket, sur le fil principal. Écrire
   // `partner_items_` depuis le fil réseau pendant que le rendu le parcourt, c'est
   // un pointeur mort dès que le push_back réalloue. Cf. features/net_inbox.h.
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;

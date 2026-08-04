@@ -272,7 +272,7 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   }
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 // L'ordre compte ici plus qu'ailleurs — un dialogue est une CONVERSATION, et un
 // SAY rejoué après le MENU qui le suit afficherait le mauvais écran.
 void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,

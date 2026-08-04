@@ -932,7 +932,7 @@ void MakeItemWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     net_inbox_.Push(opcode, data, len);
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
   // ── Maîtrise culinaire (ZC 0x0F1C) ────────────────────────────────────────

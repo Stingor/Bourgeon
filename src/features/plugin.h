@@ -68,10 +68,15 @@ class Plugin {
   virtual void OnRecvPacket(uint16_t opcode, const uint8_t* data,
                             uint16_t len) {}
 
-  // Le décodage du paquet, sur le FIL PRINCIPAL, une fois par frame dans la phase
-  // d'entrée (`Bourgeon::OnProcessInput`, non bridée — contrairement à OnTick et
-  // ses ~100 ms). C'est là que va le corps qu'on écrivait autrefois dans
-  // OnRecvPacket, INCHANGÉ : mêmes offsets, même parsing, mêmes membres.
+  // Le décodage du paquet, sur le FIL PRINCIPAL, une fois par FRAME
+  // (`Bourgeon::DrainNetInboxes`, appelé depuis le hook OnUpdate du mode — non
+  // bridé, contrairement à OnTick et ses ~100 ms). C'est là que va le corps qu'on
+  // écrivait autrefois dans OnRecvPacket, INCHANGÉ : mêmes offsets, même parsing,
+  // mêmes membres.
+  //
+  // ⚠ Ne PAS drainer soi-même depuis son propre OnTick, et ne pas se redéclarer un
+  // `net_inbox_` : le membre ci-dessous serait masqué, Bourgeon draînerait une file
+  // vide, et le décodage retomberait au tick — donc jusqu'à 100 ms de retard.
   //
   // `data` pointe dans un tampon qui ne vit que le temps de l'appel — comme celui
   // du client. On décode, on n'en garde rien.

@@ -48,7 +48,7 @@ class RodexWindow : public Plugin {
   void OnRenderUI() override;
   // ZC_ACK_OPEN_WRITE_MAIL 0x0A12 (dont on a pris la place : c'était le seul
   // créateur de la fenêtre d'écriture native) et ZC_ACK_WRITE_MAIL 0x09ED (observé :
-  // le résultat de l'envoi). Fil RÉSEAU — on copie, le décodage repart au tick.
+  // le résultat de l'envoi). Fil RÉSEAU — on copie, le décodage repart à la frame.
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Appelé pour CHAQUE fenêtre créée (hook MakeWindow de WindowPosTweaks) : masque
@@ -187,9 +187,10 @@ class RodexWindow : public Plugin {
   void ReturnMail(const Mail& mail);      // CZ 0x0B98 (boîte Normal uniquement)
   void Compose(const char* recipient);    // cmd 0x10c (0 = destinataire vide)
   void CloseAll();                        // referme la session (+ filet natif)
-  // Décodage sur le fil PRINCIPAL, drainé depuis OnTick.
-  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
-  bourgeon::PacketInbox net_inbox_;
+  // Décodage sur le fil PRINCIPAL, drainé par Bourgeon à chaque frame via la file
+  // de `Plugin` (ce module en déclarait une seconde, du même nom, qui masquait celle
+  // de la base — le décodage n'avait alors lieu qu'au tick, bridé à 100 ms).
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   // Oublie la rédaction côté UI SANS rien émettre. CloseCompose, lui, émet d'abord
   // l'annulation — à ne pas confondre : après un envoi RÉUSSI, annuler serait un
   // contresens (la session serveur est déjà close).

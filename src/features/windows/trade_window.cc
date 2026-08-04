@@ -319,7 +319,7 @@ void TradeWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
   net_inbox_.Push(opcode, data, len);
 }
 
-// ── Fil PRINCIPAL : le décodage, rejoué en phase d'entrée (ordre d'arrivée) ──
+// ── Fil PRINCIPAL : le décodage, rejoué à chaque frame (ordre d'arrivée) ──
 void TradeWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   switch (opcode) {
     case kOpReq: {  // ZC_REQ_EXCHANGE_ITEM : quelqu'un demande un échange.

@@ -44,7 +44,7 @@ class InventoryViewer : public Plugin {
   void OnRenderUI() override;  // dessine la grille ImGui si l'inventaire est ouvert
   // Reçoit ZC_ITEMCOMPOSITION_LIST (0x017B, dont on a pris la place du handler
   // natif) et ZC_BOURGEON_COMPAT_CARDS (sertissage rapide). Fil RÉSEAU : on COPIE
-  // et rien d'autre, le décodage repart au tick (cf. features/net_inbox.h).
+  // et rien d'autre, le décodage repart à la frame (cf. features/net_inbox.h).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Setting PERSISTANT (bourgeon_settings.yaml "inventory_imgui", géré par
@@ -175,10 +175,11 @@ class InventoryViewer : public Plugin {
   // Remplit items_/item_count_ depuis le modèle session. SEH (POD only).
   void Extract();
 
-  // Décodage des paquets, rejoué sur le fil PRINCIPAL depuis OnTick (le fil
-  // réseau ne fait que copier — cf. features/net_inbox.h).
-  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
-  bourgeon::PacketInbox net_inbox_;
+  // Décodage des paquets, rejoué sur le fil PRINCIPAL (le fil réseau ne fait que
+  // copier — cf. features/net_inbox.h). Drainé par Bourgeon à chaque frame via la
+  // file de `Plugin` : ce module en déclarait une SECONDE, du même nom, qui masquait
+  // celle de la base — d'où un décodage qui n'avait lieu qu'au tick, bridé à 100 ms.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Dessine la fenêtre de sertissage si une session est en cours. Appelée AVANT
   // le early-return de OnRenderUI : elle vit sa propre vie et peut rester ouverte

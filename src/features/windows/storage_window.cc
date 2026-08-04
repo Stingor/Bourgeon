@@ -686,7 +686,7 @@ void StorageWindow::SendOpenStorage(uint8_t id) {
   ClearStorageData();
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   // OUVERTURE (revendiquée) : data = [len:2][invType:1][name:≤24]. Le prédicat a
   // déjà filtré l'invType ; ici on prend le nom, qui devient le titre du viewer.

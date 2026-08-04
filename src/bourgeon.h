@@ -98,7 +98,17 @@ class Bourgeon {
 
   bool Initialize();
   void OnTick();
-  void OnProcessInput();  // per-frame input-phase dispatch (NOT throttled)
+  void OnProcessInput();  // dispatch de commandes natives, sur ÉVÉNEMENT (cf. .cc)
+
+  // 🔴 Rejoue les paquets mis en file par le fil réseau, sur le fil PRINCIPAL, pour
+  // TOUS les modules (cf. features/net_inbox.h). Appelé à CHAQUE frame depuis les
+  // hooks OnUpdate des modes (jeu ET login/char-select), et non pas seulement
+  // depuis OnProcessInput : sur le client 20250716, l'adresse « ProcessInput » est
+  // en réalité CMode::SendMsg, un dispatcher ÉVÉNEMENTIEL, pas une phase de frame.
+  // Un joueur qui n'agissait que dans une fenêtre ImGui n'en déclenchait aucun, et
+  // ses paquets dormaient dans la file — le dialogue NPC n'avançait plus tant qu'on
+  // ne cliquait pas HORS de la fenêtre.
+  void DrainNetInboxes();
 
   // Relayé depuis le hook de CMode::SendMsg à chaque lancement de compétence
   // (commandes 0x45 / 0x71, p1 = identifiant). Observation pure : rien n'est
@@ -233,6 +243,11 @@ class Bourgeon {
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
+  // Garde de ré-entrance de DrainNetInboxes : un HandlePacket peut émettre une
+  // commande native, laquelle repasse par CMode::SendMsg -> OnProcessInput. Sans
+  // cette garde, le Drain imbriqué viderait les tampons de sortie que la boucle
+  // appelante est en train de parcourir (usage après libération).
+  bool draining_inboxes_ = false;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
   std::atomic<uint32_t> last_game_update_ms_{0};   // GetTickCount of last CGameMode update (0 = never)

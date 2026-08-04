@@ -137,6 +137,14 @@ void GameMode::OnUpdateHook() {
   // — more reliable than the mode-switch event, which the char-change path does
   // not always re-fire. RenderUI() gates plugin UI on its freshness.
   Bourgeon::Instance().NotifyGameUpdate();
+  // 🔴 Les paquets en file, à CHAQUE frame et sans bridage — c'est ici la seule
+  // horloge fiable. Le hook « ProcessInput » ci-dessus est en réalité posé sur
+  // CMode::SendMsg, qui ne tourne que sur ÉVÉNEMENT : un joueur qui n'agissait que
+  // dans une fenêtre ImGui n'en déclenchait aucun et voyait son dialogue NPC figé
+  // jusqu'au premier clic hors de la fenêtre (cf. Bourgeon::DrainNetInboxes).
+  // AVANT OnTick : les modules posent des drapeaux au décodage (fermeture sur
+  // warp, par exemple) et les traitent « au prochain OnTick ».
+  Bourgeon::Instance().DrainNetInboxes();
   Bourgeon::Instance().OnTick();
   return OnUpdateRef(this);
 }

@@ -996,11 +996,9 @@ bool VendingWindow::IsComposing() const {
 }
 
 void VendingWindow::OnTick() {
-  // Décodage sur le fil PRINCIPAL, avant tout le reste : l'ouverture d'une échoppe
-  // arrive entre deux ticks et doit être vue par le rendu de CE frame.
-  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
-    HandlePacket(op, d, n);
-  });
+  // (Le décodage des paquets ne se fait plus ici : Bourgeon draine la file de tous
+  // les modules à chaque frame, cf. Bourgeon::DrainNetInboxes. Au tick, l'ouverture
+  // d'une échoppe pouvait attendre 100 ms.)
 
   if (!imgui_enabled_) {
     wnd_ = nullptr;

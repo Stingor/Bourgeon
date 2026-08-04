@@ -1111,11 +1111,9 @@ void InventoryViewer::Extract() {
 }
 
 void InventoryViewer::OnTick() {
-  // Décodage des paquets sur le fil PRINCIPAL, avant tout le reste (une liste de
-  // sertissage arrivée entre deux ticks doit être vue par le rendu de CE frame).
-  net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
-    HandlePacket(op, d, n);
-  });
+  // (Le décodage des paquets ne se fait plus ici : Bourgeon draine la file de tous
+  // les modules à chaque frame, cf. Bourgeon::DrainNetInboxes. Le faire au tick
+  // retardait une liste de sertissage jusqu'à 100 ms.)
 
   // `open_` n'est plus déduit de la présence de la native : elle ne vit plus. Il
   // est posé par HandleNativeCreation (la demande du joueur) et levé par elle.

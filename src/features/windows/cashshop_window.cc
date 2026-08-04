@@ -261,7 +261,7 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   else                       net_inbox_.Push(opcode, data, len);
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 // Il compte ici : un onglet découpé en plusieurs paquets s'APPEND, un paquet rejoué
 // dans le désordre mélangerait deux onglets.
 void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,

@@ -461,7 +461,7 @@ void WeaponRefineWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   else                         net_inbox_.Push(opcode, data, len);
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                       uint16_t len) {
   if (opcode == kOpRefineList) {

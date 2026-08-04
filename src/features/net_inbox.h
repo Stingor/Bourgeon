@@ -20,18 +20,22 @@
 // ── LE PATRON ────────────────────────────────────────────────────────────────
 //
 // Le fil réseau ne décode RIEN : il COPIE les octets et rend la main. Le décodage
-// entier — celui qui existait déjà, inchangé — repart au tick, sur le fil
-// principal. Trois lignes par module :
+// entier — celui qui existait déjà, inchangé — repart sur le fil principal, à
+// chaque FRAME. Deux lignes par module :
 //
 //   void X::OnRecvPacket(uint16_t op, const uint8_t* data, uint16_t len) {
 //     net_inbox_.Push(op, data, len);          // fil RÉSEAU : rien d'autre
 //   }
-//   void X::OnTick() {
-//     net_inbox_.Drain([this](uint16_t op, const uint8_t* d, uint16_t n) {
-//       HandlePacket(op, d, n);                // l'ANCIEN corps, tel quel
-//     });
-//     ...
+//   void X::HandlePacket(uint16_t op, const uint8_t* d, uint16_t n) override {
+//     ...                                      // l'ANCIEN corps, tel quel
 //   }
+//
+// 🔴 Le module ne draine RIEN lui-même : `Bourgeon::DrainNetInboxes` appelle
+// `Plugin::DrainNetInbox` pour tous les modules, depuis le hook OnUpdate du mode,
+// à chaque frame. Drainer depuis son propre OnTick (bridé à ~100 ms) ou depuis
+// `Bourgeon::OnProcessInput` SEUL ne suffit pas — cette dernière est posée sur
+// CMode::SendMsg, qui ne tourne que sur ÉVÉNEMENT (⏱ symptôme : le dialogue NPC
+// figé jusqu'au premier clic HORS de la fenêtre ImGui).
 //
 // Copier plutôt que décoder est le point important : le tampon `data` appartient
 // au lecteur de paquets du client et ne survit pas au retour de OnRecvPacket. Il

@@ -230,24 +230,47 @@ void Bourgeon::OnTick() {
   }
 }
 
-void Bourgeon::OnProcessInput() {
-  // Runs every frame in the game's input phase (NOT throttled like OnTick) so a
-  // menu-icon click dispatches with the same timing/context as a native click —
-  // OnTick's ~100ms throttle delayed it to a random frame, which made heavy
-  // windows (world map) crash intermittently.
-
-  // 🔴 D'ABORD les paquets. `OnRecvPacket` tourne sur le fil RÉSEAU et ne fait plus
-  // que COPIER les octets ; le décodage de chaque module est rejoué ICI, sur le fil
-  // principal, dans l'ordre d'arrivée (cf. features/net_inbox.h). Ici et pas dans
-  // OnTick : le bridage à ~100 ms de ce dernier ajouterait un dixième de seconde à
-  // chaque dialogue, chaque dépôt d'échange et chaque coup porté.
+// 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.
+//
+// ⚠ Appelé à CHAQUE frame depuis les hooks OnUpdate des modes, PAS seulement
+// depuis OnProcessInput. La raison est un piège de nommage : sur le client
+// 20250716, la configuration donne `ProcessInput: 0x00c86740`, mais cette adresse
+// est CMode::SendMsg — le dispatcher de messages GÉNÉRAL du jeu, appelé sur
+// ÉVÉNEMENT (un clic sol, un lancement de compétence, une requête interne), et non
+// une phase de frame comme sur les clients plus anciens. Les modules dont l'UI est
+// entièrement en ImGui n'en émettent aucun : nos propres CZ partent par
+// SendPacketRef, et les clics sont mangés par ImGui avant le WndProc du jeu.
+//
+// ⏱ Symptôme observé en jeu (dialogue NPC ImGui) : le script n'avançait plus tant
+// qu'on ne cliquait pas HORS de la fenêtre — ce clic-là traversait jusqu'au jeu,
+// déclenchait un SendMsg, et débloquait d'un coup toute la file. « Pas toujours »,
+// parce que n'importe quel autre SendMsg (déplacement, attaque) faisait l'appoint.
+void Bourgeon::DrainNetInboxes() {
+  if (draining_inboxes_) return;  // ré-entrance : cf. bourgeon.h
+  draining_inboxes_ = true;
   for (auto& plugin : plugins_) {
     try {
       plugin->DrainNetInbox();
     } catch (const std::exception& error) {
       LogError("[{}] DrainNetInbox: {}", plugin->name(), error.what());
+    } catch (...) {
+      LogError("[{}] DrainNetInbox: exception non standard", plugin->name());
     }
   }
+  draining_inboxes_ = false;
+}
+
+void Bourgeon::OnProcessInput() {
+  // ⚠ Le nom ment sur ce client : ce n'est pas une phase de frame mais
+  // CMode::SendMsg, donc un point d'entrée ÉVÉNEMENTIEL (cf. DrainNetInboxes
+  // ci-dessus). Ce qui suit y reste quand même : une commande native rejouée ici
+  // part avec le timing et le contexte d'un clic natif — OnTick, bridé à ~100 ms,
+  // la décalait sur une frame au hasard, ce qui faisait crasher par intermittence
+  // les fenêtres lourdes (carte du monde).
+
+  // Les paquets d'abord : quand le joueur AGIT, autant ne pas attendre la frame
+  // suivante. La frame, elle, draine de son côté — c'est elle le filet.
+  DrainNetInboxes();
 
   if (auto* mi = menu_icons()) mi->FlushPending();
   // ⚠ Échoppe joueur : MÊME raison, mais pour un danger plus sévère que du

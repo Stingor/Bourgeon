@@ -445,9 +445,10 @@ class VendingWindow : public Plugin {
   // Termine la session d'achat : détruit les natives résiduelles ET rejoue les deux
   // gestes que la cmd 185 native faisait en plus de fermer (cf. EndVendorDeal).
   void CloseVendorSession();
-  // Décodage sur le fil PRINCIPAL, drainé depuis OnTick.
-  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len);
-  bourgeon::PacketInbox net_inbox_;
+  // Décodage sur le fil PRINCIPAL, drainé par Bourgeon à chaque frame via la file
+  // de `Plugin` (ce module en déclarait une seconde, du même nom, qui masquait celle
+  // de la base — le décodage n'avait alors lieu qu'au tick, bridé à 100 ms).
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   std::vector<BuyRow>     offers_;
   std::vector<BasketLine> basket_;
   std::vector<int>        offer_qty_;  // quantité saisie, indexée comme `offers_`
