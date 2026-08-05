@@ -254,6 +254,29 @@ struct DollDrawOpts {
   // donne une stature comparable d'un personnage à l'autre.
   float min_body_height = 0.0f;
 
+  // Échelle IMPOSÉE, en pixels par unité .act. <= 0 = calculée d'après [w,h].
+  //
+  // 🔴 Elle supprime l'AJUSTEMENT AU CADRE — le fait que chaque pantin soit
+  // agrandi ou réduit jusqu'à ce que SA silhouette remplisse le rectangle. C'est
+  // ce qu'il faut d'une vignette isolée, et c'est faux dès que plusieurs pantins
+  // se côtoient : l'ajustement gomme leurs tailles relatives. Un sprite
+  // naturellement petit est agrandi jusqu'à rejoindre le grand, un chapeau
+  // volumineux rétrécit son porteur, une monture le réduit de moitié — la scène
+  // perd toute échelle commune.
+  //
+  // Avec une échelle imposée, les sprites gardent les proportions de leurs
+  // fichiers et le rectangle ne sert plus qu'à POSER le pantin (centre en X,
+  // pieds en bas). Ce qui dépasse dépasse : `DrawDoll` ne rogne rien, c'est à
+  // l'appelant de poser un clip s'il le souhaite.
+  //
+  // ⚠ Ce n'est PAS `place_override`, qui impose AUSSI l'origine et oblige donc
+  // l'appelant à mesurer d'abord. Ici le cadrage continue de placer le pantin,
+  // en s'appuyant sur les boîtes qu'il vient de calculer.
+  //
+  // ⚠ `min_body_height` et `scale_limit` s'appliquent toujours APRÈS et peuvent
+  // donc la corriger : laisse-les à 0 pour obtenir exactement l'échelle demandée.
+  float force_scale = 0.0f;
+
   // Plafond d'échelle, en pixels par unité .act. <= 0 = aucun.
   //
   // Sert à faire tenir dans le cadre autre chose que le pantin — un effet de

@@ -393,8 +393,9 @@ const char* JobName(int job, int sex) {
 // Coords NORMALISÉES [0..1] sur le fond (indépendantes de la résolution : on
 // dessine le fond étiré plein écran, donc place écran = (nx*disp.x, ny*disp.y)).
 // `chair` = point où poser les PIEDS du perso (assis/debout sur le siège) ; `scale`
-// = hauteur du pantin en fraction de la hauteur d'écran (perspective : trônes au
-// fond = petits, bancs du 1er plan = grands). Valeurs extraites à l'œil de l'image
+// = hauteur d'un personnage STANDARD en fraction de la hauteur d'écran
+// (perspective : trônes au fond = petits, bancs du 1er plan = grands ; les
+// sprites plus grands que la norme débordent, cf. RefDollSpanUnits). Valeurs extraites à l'œil de l'image
 // numérotée -> AJUSTABLES en jeu via l'éditeur de sièges (staff), qui journalise la
 // table prête à recoller ici. Ordre = 1 grand trône, 2 petit trône, 3-5 petites
 // tables, 6-14 rangée haute, 15/16 bouts, 17-25 rangée basse.
@@ -792,6 +793,72 @@ void CharSelect::EnterGame(int slot) {
   if (entering_ && gid != 0) SaveRecentChars(recent_chars_, gid);
 }
 
+// Rapport largeur/hauteur du cadre d'un siège. C'est l'encombrement d'un sprite
+// RO debout ; il ne sert plus qu'à mesurer la référence ci-dessous et à poser le
+// placeholder, l'échelle ne s'y ajustant plus.
+constexpr float kDollBoxAspect = 0.62f;
+
+// Hauteur EFFECTIVE du pantin de RÉFÉRENCE dans une pose donnée, en unités .act
+// (= pixels de sprite).
+//
+// 🔴 Elle existe pour donner à la scène UNE échelle commune. Par défaut le
+// composeur ajuste chaque pantin à son cadre : il choisit l'échelle qui fait
+// remplir la box du siège à SA silhouette. Deux personnages n'ont alors plus la
+// même taille relative — celui dont le sprite est petit est agrandi jusqu'à
+// rejoindre le grand, un chapeau volumineux rétrécit son porteur, une monture le
+// réduit de moitié. Sur une scène de banquet, où les personnages se comparent du
+// regard, c'est le défaut le plus visible.
+//
+// On mesure donc un Novice masculin nu, et toutes les échelles du siège s'en
+// déduisent. L'intérêt de passer par cette mesure plutôt que par une constante
+// écrite en dur : `Seat::scale` garde exactement le sens qu'il avait — « hauteur
+// d'un personnage standard en fraction de l'écran » — donc les layouts déjà
+// enregistrés ne bougent pas d'un pixel. Ce qui change, ce sont les autres : un
+// Doram rend plus petit, un cavalier dépasse par le haut.
+//
+// ⚠ Mesurée dans la POSE du siège, sinon un banquet entier rapetisserait : un
+// personnage assis est bien plus court que debout, et le rapporter à une
+// référence debout le réduirait d'un quart.
+//
+// ⚠ …mais toujours à la direction 0. Prendre celle du siège ferait varier
+// l'échelle quand on tourne le personnage à la molette — c'est justement le
+// défaut que `fit_span` corrige ailleurs.
+//
+// Rend 0 tant que les sprites ne répondent pas (GRF pas encore prêt) : l'appelant
+// retombe alors sur l'ajustement au cadre, et retentera à la frame suivante.
+static float RefDollSpanUnits(int anim) {
+  // Une pose = une hauteur ; la mesure est chère (chargement + composition) et
+  // ne change jamais, d'où le cache. 13 types d'action, cf. char_select_layout.h.
+  constexpr int kAnimCount = 13;
+  static float cached[kAnimCount] = {0.0f};
+  if (anim < 0 || anim >= kAnimCount) anim = 0;
+  if (cached[anim] > 0.0f) return cached[anim];
+
+  ro::DollLook ref;   // tout à 0 = Novice nu, sans coiffe ni cape
+  ref.sex = 1;
+  ro::DollPlacement pl;
+  ro::DollDrawOpts o;
+  o.anim          = anim;
+  o.anim_seconds  = -1.0f;  // figé sur la première image
+  o.measure_only  = true;   // rien n'est dessiné, seules les boîtes comptent
+  o.out_placement = &pl;
+  // 🔴 Cadre aux PROPORTIONS d'un siège, pas un cadre libre : c'est l'échelle
+  // qu'aurait choisie l'ancien ajustement pour ce Novice qu'on relève, contrainte
+  // de largeur comprise. Sans elle, les poses larges — assis surtout, où le
+  // sprite est plus large que haut — mesureraient une hauteur qui n'a jamais été
+  // celle du rendu, et toute la scène grossirait d'un tiers.
+  //
+  // `h / scale` rend donc une hauteur EFFECTIVE : celle à laquelle rapporter la
+  // box du siège pour retomber sur la taille d'avant.
+  constexpr float kProbeH = 1000.0f;
+  if (!ro::DrawDoll(ImGui::GetWindowDrawList(), ref, 0.0f, 0.0f,
+                    kProbeH * kDollBoxAspect, kProbeH, o) ||
+      pl.scale <= 0.0f)
+    return 0.0f;
+  cached[anim] = kProbeH / pl.scale;
+  return cached[anim];
+}
+
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
                            float box_h, const charsel::Seat& pose,
                            int seat_index) {
@@ -803,15 +870,14 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   //
   // Échelle sprite par JOB : le client natif rétrécit les classes BÉBÉ
   // (Actor_GetJobSpriteScale 0x00d7fd30 -> 0.75 bébé 1re classe, 0.80/0.82 les
-  // autres, 1.0 non-bébé). Le composeur ne l'applique pas — son cadrage étire le
-  // sprite pour remplir la box, ce qui gommerait la différence. On RÉ-APPLIQUE
-  // donc le facteur à la BOX : l'échelle interne retombe sur celle d'un adulte et le
-  // bébé rend bien `js` fois plus petit, pieds toujours ancrés au banc.
+  // autres, 1.0 non-bébé). Le composeur ne l'applique pas — on le multiplie donc
+  // à l'échelle demandée, et le bébé rend bien `js` fois plus petit, pieds
+  // toujours ancrés au banc.
   using JobScaleFn = float(__stdcall*)(int);
   float js = reinterpret_cast<JobScaleFn>(0x00d7fd30)(v.job);
   if (!(js > 0.05f && js <= 1.0f)) js = 1.0f;  // garde-fou (job inconnu)
   const float dh = box_h * js;
-  const float w = dh * 0.62f;  // aspect sprite RO
+  const float w = dh * kDollBoxAspect;
   const float x = cx - w * 0.5f;
   const float y = chair_y - dh;
 
@@ -877,6 +943,20 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   opts.freeze_body  = !pose.animate;
   // Image imposée (sous-menu « Image ») : court-circuite horloge et freeze_body.
   opts.force_frame  = pose.frame;
+  // 🔴 Échelle COMMUNE : chaque sprite garde les proportions de son fichier au
+  // lieu d'être étiré jusqu'aux bords de la box (cf. RefDollSpanUnits). La box
+  // n'est plus une limite mais un repère de pose — ce qui dépasse déborde du
+  // cadre du siège, chapeaux hauts et montures compris, et c'est voulu : c'est le
+  // seul moyen que deux personnages côte à côte soient à la même échelle.
+  const float ref_span = RefDollSpanUnits(pose.anim);
+  if (ref_span > 0.0f) {
+    opts.force_scale = dh / ref_span;
+    // Le repère de pose devient le CORPS et non la silhouette. Sans ça, ce qui
+    // dépasse déplacerait le personnage au lieu de sortir du cadre : une arme
+    // large le pousserait latéralement, une cape longue l'enfoncerait sous le
+    // banc. Le corps est le seul point fixe une fois l'ajustement retiré.
+    opts.center_on_body = true;
+  }
   // Le nombre d'images de l'action, relevé au passage : le menu ne peut proposer
   // que celles qui existent, et ce nombre dépend de la pose ET de la classe.
   ro::DollPlacement place;
@@ -1726,7 +1806,10 @@ void CharSelect::OnRenderLoginUI() {
     const float cx = st.nx * disp.x;
     const float chair_y = st.ny * disp.y;
     const float box_h = st.scale * disp.y;
-    const float w = box_h * 0.62f;
+    // Cadre du siège : c'est la ZONE CLIQUABLE et le repère du mode
+    // « Personnaliser », plus la limite du dessin — le pantin garde l'échelle de
+    // ses fichiers et peut en déborder (cf. DrawDollAt).
+    const float w = box_h * kDollBoxAspect;
     const ImVec2 tl(cx - w * 0.5f, chair_y - box_h);
     const ImVec2 br(cx + w * 0.5f, chair_y + disp.y * 0.02f);
 

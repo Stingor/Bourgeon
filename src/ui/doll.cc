@@ -1231,6 +1231,12 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
   const float fit_x = w * 0.5f / half;
   if (fit_x < scale) scale = fit_x;
 
+  // Échelle imposée par l'appelant : plus d'ajustement au cadre, le rectangle ne
+  // sert plus qu'à POSER le pantin. Le fit ci-dessus reste calculé — il ne coûte
+  // rien de plus que les boîtes qui servent juste après au placement — mais il
+  // est écrasé, et ce qui dépasse déborde du rectangle.
+  if (opts.force_scale > 0.0f) scale = opts.force_scale;
+
   // Plancher de stature : on renonce à tout faire rentrer plutôt que de réduire
   // le personnage sous cette taille. C'est la LARGEUR qui l'impose presque
   // toujours — une coiffe posée à côté du personnage double l'enveloppe — et le

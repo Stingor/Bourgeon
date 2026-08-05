@@ -56,9 +56,16 @@ constexpr int kAnimAtk3  = 10; // troisième attaque
 constexpr int kAnimExtra1 = 11;
 constexpr int kAnimExtra2 = 12;
 
-// Un siège : point où poser les PIEDS du pantin (nx, ny), hauteur du pantin en
-// fraction de la hauteur d'écran (`scale` — la perspective du décor veut des
-// personnages plus petits au fond), et la POSE qu'il y prend.
+// Un siège : point où poser les PIEDS du pantin (nx, ny), hauteur d'un
+// personnage STANDARD en fraction de la hauteur d'écran (`scale` — la
+// perspective du décor veut des personnages plus petits au fond), et la POSE
+// qu'il y prend.
+//
+// ⚠ « Standard » et non « du pantin » : les sprites gardent leurs proportions de
+// fichier, ils ne sont plus ajustés à ce cadre. Un personnage naturellement plus
+// grand qu'un Novice — monture, grand chapeau — déborde donc vers le haut, et
+// c'est voulu : c'est ce qui donne à la scène une échelle commune. Cf.
+// `RefDollSpanUnits` dans char_select.cc.
 //
 // La pose est par SIÈGE et non globale : sur un décor de taverne, les convives
 // sont assis et le videur reste debout près de la porte.
