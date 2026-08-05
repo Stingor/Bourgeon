@@ -1282,7 +1282,16 @@ void MoonlightUi::OnTick() {
 
 void MoonlightUi::UpdateRelay() {
   if (auto* relay = Bourgeon::Instance().discord_relay()) {
-    relay->set_chat_active(discord_chat_ && on_discord_relay_map_);
+    const bool active = discord_chat_ && on_discord_relay_map_;
+    // Ce ET est le seul endroit qui peut faire taire le relais entrant, et il le
+    // fait au REÇU : un message écarté ici ne laisse aucune trace ailleurs. Tracer
+    // les deux moitiés SÉPARÉMENT est ce qui distingue « le réglage est éteint »
+    // de « on ne se croit pas sur la bonne carte » — deux causes sans rapport, et
+    // le même silence. C'est la seconde qui avait mordu (nom de carte tronqué).
+    if (active != relay->chat_active())
+      LogDiag("[MoonlightUi] relais Discord {} (reglage={} carte={})",
+              active ? "ACTIF" : "muet", discord_chat_, on_discord_relay_map_);
+    relay->set_chat_active(active);
   }
 }
 
@@ -1344,16 +1353,18 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
   if (opcode == kOpcodeMapMove) {
     // 0x0091 ZC_NPCACK_MAPMOVE : `data` pointe sur mapname[16] (ex. « gonryun.gat »).
     //
-    // ⚠ `len` ne vaut RIEN pour un opcode OBSERVÉ : rag_connection transmet la
-    // longueur ENREGISTRÉE au RegisterObserveOpcode (kMapNameLen), pas le nombre
-    // d'octets réellement reçus. Un `if (len < 7) return;` donnerait donc une
-    // fausse assurance — c'est le champ lui-même qu'il faut borner.
+    // ⚠ `len` EST la taille de ce qu'on a le droit de lire, et ça n'a pas
+    // toujours été vrai. Du temps où `data` pointait dans le buffer recv vivant,
+    // `len` n'était qu'une longueur déclarative et on bornait sur kMapNameLen ;
+    // depuis le passage par net_inbox, `data` est une COPIE de `len` octets et
+    // lire au-delà sort du tampon. On borne donc sur le plus petit des deux.
     //
-    // Le nom n'est pas garanti terminé par un zéro : strnlen le borne à la taille
-    // déclarée du champ, puis on ne compare que ce qu'on a réellement.
+    // Le nom n'est pas garanti terminé par un zéro : strnlen le borne, puis on ne
+    // compare que ce qu'on a réellement.
     if (!data) return;
     const char* map_name = reinterpret_cast<const char*>(data);
-    const size_t name_len = strnlen(map_name, kMapNameLen);
+    const size_t avail = (len < kMapNameLen) ? len : kMapNameLen;
+    const size_t name_len = strnlen(map_name, avail);
     constexpr size_t kPrefixLen = sizeof(kDiscordRelayMapPrefix) - 1;
     on_discord_relay_map_ = in_game_ && name_len >= kPrefixLen &&
                   (strncmp(map_name, kDiscordRelayMapPrefix, kPrefixLen) == 0);

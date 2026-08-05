@@ -32,6 +32,12 @@ class RagConnection {
   // `forward_len` bytes starting right after the 2-byte opcode are forwarded to
   // plugins as `data` — use the packet's known fixed field layout (e.g. for
   // 0x0091 ZC_NPCACK_MAPMOVE, forward_len = 16 to cover mapname[16]).
+  //
+  // 🔴 Un même opcode peut être observé par PLUSIEURS plugins : la longueur
+  // retenue est le MAXIMUM des demandes, jamais la dernière. Tous lisent au même
+  // offset, donc la plus longue les sert tous — et l'ordre de construction des
+  // plugins ne décide plus de ce que chacun reçoit (cf. le .cc, c'est ce qui
+  // avait fait taire le relais Discord).
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
 
   // ── RegisterReplaceOpcode : le handler natif ne tourne PAS ─────────────────

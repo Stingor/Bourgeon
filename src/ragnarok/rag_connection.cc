@@ -202,8 +202,21 @@ uint16_t RagConnection::NativeFixedPacketLen(uint16_t opcode) {
 }
 
 void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len) {
-  s_observe_opcodes_[opcode] = forward_len;
-  // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, forward_len);
+  // 🔴 LE MAXIMUM, pas la dernière inscription. Un opcode observé peut intéresser
+  // PLUSIEURS plugins, et ils n'en veulent pas la même longueur : quatre d'entre
+  // eux observent 0x0091, trois pour savoir qu'un warp a eu lieu (4 octets
+  // suffisent), un pour LIRE le nom de carte (16). En « dernier inscrit gagne »,
+  // l'ordre de construction décidait — et les trois qui se contentent de 4 étant
+  // construits après, le lecteur du nom recevait « gonr » puis trois octets de
+  // hasard. Il en concluait qu'on n'était pas sur la carte du relais Discord, et
+  // TOUS les messages entrants étaient jetés avant d'atteindre le chat.
+  //
+  // Tout le monde lit à partir du MÊME offset (packet_buf + 2) : la plus longue
+  // demande satisfait donc tout le monde, et qui n'a besoin que de 4 ignore le
+  // reste. Prendre le maximum est la seule règle qui ne dépende pas de l'ordre.
+  uint16_t& len = s_observe_opcodes_[opcode];  // 0 à la première inscription
+  if (forward_len > len) len = forward_len;
+  // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, len);
 }
 
 // Surcharge historique : le prédicat ne regarde pas le paquet. On l'adapte à la
