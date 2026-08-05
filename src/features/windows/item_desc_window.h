@@ -296,6 +296,12 @@ class ItemDescWindow : public Plugin {
   // DISTINCTE de `*_need_pos_` : elle vaut aussi pour un changement d'objet dans une
   // desc déjà ouverte, et ne doit pas être perdue quand GetCursorPos échoue.
   bool       item_need_raise_ = false;
+  // Un aperçu de personnage (coiffe/costume) était-il survolé à la frame
+  // PRÉCÉDENTE ? La molette lui appartient alors : elle fait tourner le pantin, et
+  // la fenêtre ne doit pas scroller en même temps. 🔴 Le drapeau ne peut pas être
+  // lu dans la frame courante — le survol ne se découvre qu'après le Begin, où les
+  // flags sont déjà figés. Même remède que la grille du cash shop.
+  bool       item_preview_active_ = false;
   uint32_t   item_last_id_ = 0;   // id affiché au tick précédent (0 = fermée)
   DescWindow skill_;            // fenêtre skill (classe 0x2e)
   bool       skill_was_open_ = false;

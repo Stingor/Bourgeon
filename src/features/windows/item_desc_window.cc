@@ -22,6 +22,7 @@
 #include "bourgeon.h"
 #include "features/link_gesture.h"        // gestes communs d'un lien (monstre)
 #include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
+#include "features/windows/cashshop_window.h"  // disponibilité au vote shop
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/imgui_escape.h"
@@ -2788,6 +2789,11 @@ void ItemDescWindow::RenderItemWindow() {
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
 
   const ImU32 black = IM_COL32(0, 0, 0, 255);
+  // Un aperçu de personnage est-il survolé CETTE frame ? La molette lui appartient
+  // alors (elle fait tourner le pantin) — mais ImGui scrolle la fenêtre AVANT que
+  // basic_info ne consomme l'événement, d'où le gel du scroll à la frame suivante.
+  // Même mécanisme que la grille du cash shop, où le problème s'était déjà posé.
+  bool preview_now = false;
   // Dessine une colonne (icône + titre + ID + description + bloc technique).
   auto draw_col = [&](const char* selId, const char* header, IconTex icon,
                       const ItemExtract& e, const DescWindow& snap,
@@ -2826,6 +2832,7 @@ void ItemDescWindow::RenderItemWindow() {
             if (can_sprite || ord != 0) {
               ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
               bi->RenderItemPreviewTooltip(e.view_id, e.emplacement, ord);
+              preview_now = true;  // la molette tourne le pantin, pas la fenêtre
             }
           }
         }
@@ -2874,6 +2881,7 @@ void ItemDescWindow::RenderItemWindow() {
           // + hat effect superposé si l'item en a un (costume viewid AVEC hateffect).
           bi->RenderItemPreviewTooltip(e.view_id, e.emplacement,
                                        bi->ItemToHatOrdinal(static_cast<int>(snap.id)));
+          preview_now = true;  // la molette tourne le pantin, pas la fenêtre
         }
       } else {
         char vid[64];
@@ -2884,6 +2892,7 @@ void ItemDescWindow::RenderItemWindow() {
     const int skip = skip_db + (has_vid ? 1 : 0);
 
     // Bouton +/- alootid (réintégré depuis l'overlay autonome) via MoonlightUi.
+    bool action_row = false;  // un bouton occupe-t-il déjà la ligne ?
     if (auto* mui = Bourgeon::Instance().moonlight_ui()) {
       const bool in = mui->IsAlootId(snap.id);
       char blbl[48];
@@ -2897,6 +2906,32 @@ void ItemDescWindow::RenderItemWindow() {
         else    mui->AddAlootId(snap.id);
       }
       ImGui::PopStyleColor(2);
+      action_row = true;
+    }
+
+    // ── Disponibilité au vote shop ────────────────────────────────────────────
+    //
+    // La description est l'endroit où l'on vient se renseigner sur un objet ;
+    // « on peut simplement l'acheter » fait partie du renseignement. Le bouton
+    // porte le PRIX : il informe autant qu'il agit, et évite d'ouvrir la
+    // boutique juste pour savoir combien.
+    //
+    // 🔴 Rien ne s'affiche quand l'objet n'y est pas — le catalogue vient du
+    // serveur et peut ne pas être arrivé, donc une absence ne prouve rien
+    // (cf. CashShopWindow::FindItem). On n'annonce que le POSITIF.
+    if (auto* shop = Bourgeon::Instance().cashshop_window()) {
+      int32_t price = 0;
+      if (shop->imgui_enabled_ && shop->FindItem(snap.id, nullptr, &price)) {
+        if (action_row) ImGui::SameLine();
+        char vs[64];
+        std::snprintf(vs, sizeof(vs), "Vote shop : %d pts%s", price, selId);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.33f, 0.08f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+        if (ImGui::SmallButton(vs)) shop->OpenWithItem(snap.id);
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Ouvre le vote shop avec cet objet dans le panier.");
+      }
     }
 
     // Bouton « Probabilité » (rejoue le natif « View Probability Info » -> ouvre
@@ -3103,8 +3138,13 @@ void ItemDescWindow::RenderItemWindow() {
     return y;
   };
 
-  const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
-                                 ImGuiWindowFlags_NoFocusOnAppearing;
+  // 🔴 Le gel du scroll se décide AVANT le Begin, donc sur l'état de la frame
+  // PRÉCÉDENTE : quand on l'apprend (au survol, plus bas), la fenêtre est déjà
+  // ouverte et le scroll déjà appliqué. C'est un décalage d'une frame, invisible
+  // à la main — la molette ne descend jamais assez vite pour passer entre les deux.
+  const ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing |
+      (item_preview_active_ ? ImGuiWindowFlags_NoScrollWithMouse : 0);
   char title[160];
   if (has_cmp)
     std::snprintf(title, sizeof(title), "Comparaison###itemdesc_item");
@@ -3186,6 +3226,11 @@ void ItemDescWindow::RenderItemWindow() {
     RenderTechTabs(item_);
     ImGui::EndTabBar();
   }
+  // Tout est dessiné : on sait maintenant si un aperçu est survolé, et le drapeau
+  // sert à la frame SUIVANTE (cf. `flags`). 🔴 Posé ICI, hors de l'onglet — depuis
+  // l'intérieur, passer sur un onglet de drops en pleine rotation aurait figé le
+  // drapeau à `true` et supprimé le scroll de la fenêtre pour de bon.
+  item_preview_active_ = preview_now;
   // Rapport de bug contextuel : id + nom de l'objet joints automatiquement.
   // (Émis hors de cette fonction : elle contient un __try -> C2712 sinon.)
   EmitDescBugButton(item_.id, ie.name, /*is_skill=*/false);

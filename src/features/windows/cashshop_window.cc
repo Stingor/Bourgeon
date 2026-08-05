@@ -97,6 +97,13 @@ const char* ShortName(uint32_t id) {
   return nm;
 }
 
+// Filtre de la grille. Il était `static` DANS OnRenderUI ; il est remonté ici
+// parce qu'un second appelant l'écrit désormais : `RevealItem` y pose le nom de
+// l'objet qu'on vient de demander depuis un lien de chat. Sans ça, on ouvrirait
+// la boutique sur un onglet de 2 500 cartes en laissant le joueur chercher celle
+// dont il vient justement de dire qu'elle l'intéressait.
+ImGuiTextFilter g_filter;
+
 
 
 // La description passe par itemcell::OpenDescById : les items du cash shop ne
@@ -216,6 +223,11 @@ constexpr uint16_t kOpItemList = 0x08ca;  // ZC_ACK_SCHEDULER_CASHITEM (items/on
 constexpr uint16_t kOpResult   = 0x0849;  // ZC_SE_PC_BUY_CASHITEM_RESULT
 // Envois (CZ).
 constexpr uint16_t kOpListReq  = 0x08c9;  // list request -> déclenche les 0x08ca
+// CZ_SE_CASHSHOP_OPEN2 [op:2][tab:4] : la demande d'OUVERTURE, celle que le bouton
+// du menu envoie. C'est le serveur qui ouvre — il répond ZC 0x0B6E, que l'on
+// remplace. 🔴 Il pose aussi `sd->npc_shopid = -1` : toute ouverture engage donc
+// la fermeture CZ 0x084A, sans quoi le personnage reste bloqué (cf. CloseShop).
+constexpr uint16_t kOpOpenReq  = 0x0b6d;  // CZ_SE_CASHSHOP_OPEN2
 constexpr uint16_t kOpBuy      = 0x0848;  // CZ_SE_PC_BUY_CASHITEM_LIST
 constexpr uint16_t kOpClose    = 0x084a;  // CZ cashshop close (2 octets)
 // Changement de map / de serveur. 🔴 Ce n'était pas notre affaire tant que le
@@ -317,7 +329,17 @@ void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // l'UI de sa fenêtre, qui ne naît plus. Sans elle, les onglets restent vides à
     // la toute première ouverture de la session (le serveur ne l'envoie qu'une fois,
     // `cashshop_sent`). C'est donc à nous, maintenant.
-    RequestTab(cur_tab_);
+    RequestCatalogue();
+    // Ouverture demandée depuis un lien d'objet : on l'amène sous les yeux du
+    // joueur. On écrase l'onglet que le serveur a nommé, et c'est voulu — le
+    // joueur a désigné un OBJET, pas une catégorie.
+    if (pending_item_ != 0) {
+      const uint32_t id = pending_item_;
+      pending_item_ = 0;
+      int tab = 0;
+      int32_t price = 0;
+      if (FindItem(id, &tab, &price)) RevealItem(id, tab, price);
+    }
     return;
   }
   if (opcode == kOpItemList) {
@@ -371,11 +393,64 @@ void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 
 // Demande la liste des items du cash shop (2 octets = juste l'opcode). Le serveur
 // répond par une série de ZC_ACK_SCHEDULER_CASHITEM 0x08ca (un par onglet rempli),
-// mais UNE SEULE FOIS par session (flag cashshop_sent) : le client natif l'envoie
-// déjà à l'ouverture, donc c'est surtout un filet de sécurité.
-void CashShopWindow::RequestTab(int /*tab*/) {
+// mais UNE SEULE FOIS par session (flag `cashshop_sent`, remis à zéro à chaque
+// authentification — pc.cpp).
+void CashShopWindow::RequestCatalogue() {
   uint16_t op = kOpListReq;
   Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
+}
+
+// ── Le catalogue vu de l'extérieur ───────────────────────────────────────────
+//
+// Un balayage linéaire des onglets AFFICHÉS. Quelques milliers d'entrées au pire,
+// et l'appel vient d'un menu contextuel qu'on ouvre à la main : pas de quoi
+// entretenir un index qu'il faudrait ensuite tenir à jour à chaque 0x08CA.
+bool CashShopWindow::FindItem(uint32_t id, int* tab, int32_t* price) const {
+  if (id == 0) return false;
+  for (int t = 0; t < kNumTabs; ++t) {
+    if (!kTabShown[t]) continue;  // onglet masqué : on ne peut pas y emmener
+    for (const auto& ci : tabs_[t]) {
+      if (ci.id != id) continue;
+      if (tab)   *tab = t;
+      if (price) *price = ci.price;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Amène la vue sur l'objet : onglet, filtres, panier. Suppose `tabs_` déjà peuplé
+// et la boutique ouverte (c'est l'appelant qui s'en assure).
+void CashShopWindow::RevealItem(uint32_t id, int tab, int32_t price) {
+  force_tab_ = tab;   // la barre d'onglets tient sa propre sélection : cf. le .h
+  cur_tab_   = tab;
+  cur_slot_  = -1;    // un filtre d'emplacement resté d'avant le cacherait
+  // Filtre posé sur son nom : l'onglet peut compter des milliers de cartes, et
+  // « ajouté au panier » sans le montrer laisserait le joueur devant une grille
+  // où rien n'a l'air d'avoir bougé.
+  std::snprintf(g_filter.InputBuf, IM_ARRAYSIZE(g_filter.InputBuf), "%s",
+                ShortName(id));
+  g_filter.Build();
+  AddToCart(id, tab, price);
+}
+
+// Ouvre la boutique sur un objet précis. Depuis un lien de chat, une table de
+// drops — partout où l'on parle d'un objet sans être dans la boutique.
+bool CashShopWindow::OpenWithItem(uint32_t id) {
+  if (!imgui_enabled_) return false;  // sans notre fenêtre, rien à piloter
+  int tab = 0;
+  int32_t price = 0;
+  if (!FindItem(id, &tab, &price)) return false;
+  if (open_) { RevealItem(id, tab, price); return true; }
+  // Fermée : on ne peut pas l'ouvrir nous-mêmes. C'est le SERVEUR qui ouvre (il
+  // répond ZC 0x0B6E, notre handler), et il faut passer par lui — c'est là qu'il
+  // ouvre la session d'achat côté personnage. L'objet attend jusque-là.
+  pending_item_ = id;
+  uint8_t pkt[6];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpOpenReq;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(tab);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  return true;
 }
 
 void CashShopWindow::AddToCart(uint32_t id, int tab, int32_t price) {
@@ -456,12 +531,37 @@ void CashShopWindow::CloseShop() {
   open_ = false;
   was_open_ = false;
   show_panel_ = true;
+  // 🔴 L'attente meurt avec la fermeture. ZC 0x0B6E est une BASCULE : si le
+  // joueur ferme la boutique entre notre demande et la réponse, ce même paquet
+  // passe ici — et l'objet en attente serait révélé à la PROCHAINE ouverture,
+  // celle-là voulue pour tout autre chose.
+  pending_item_ = 0;
   // Filet : une native peut traîner si l'interrupteur vient d'être allumé sur un
   // shop natif déjà ouvert. On la DÉTRUIT — masquée, elle garderait le clavier.
   CloseNativeCashShop();
 }
 
 void CashShopWindow::OnTick() {
+  // ── Le catalogue, avant qu'on en ait besoin ─────────────────────────────────
+  //
+  // Le serveur n'envoie la liste que sur demande (CZ 0x08C9) et ne la renvoie
+  // jamais (`cashshop_sent`). Tant que la demande partait à la première ouverture
+  // de la boutique, on ne pouvait rien dire d'un objet avant que le joueur ne
+  // l'ait ouverte — soit, en pratique, jamais. On la pose donc à l'entrée en jeu.
+  //
+  // ⚠ Cela CONSOMME la réponse unique de la session. Sans effet sur la boutique
+  // native, qui ne naît plus quand l'interface moderne est active (son paquet
+  // créateur est remplacé) — et c'est pourquoi la demande reste sous cet
+  // interrupteur : allumé, la native est hors jeu ; éteint, on n'envoie rien et
+  // elle fait sa propre demande comme avant.
+  const bool game_active = Bourgeon::Instance().IsGameActive();
+  if (!game_active && prev_game_active_) {
+    // Retour au choix de personnage / déconnexion : la prochaine authentification
+    // remettra `cashshop_sent` à zéro côté serveur (pc.cpp), donc nous aussi.
+    catalogue_requested_ = false;
+  }
+  prev_game_active_ = game_active;
+
   // ── Basculement de l'interrupteur, les DEUX sens ────────────────────────────
   // Basculer FERME le shop. On ne reprend pas une session qu'on n'a pas vue naître
   // (OFF -> ON : le paquet d'ouverture est passé au natif, on ne sait rien de ses
@@ -475,6 +575,15 @@ void CashShopWindow::OnTick() {
     was_open_ = false;
   }
   if (!imgui_enabled_) { open_ = false; was_open_ = false; return; }
+
+  // La demande, une fois par session, une fois le monde en place. On attend la
+  // fin du chargement de carte : pendant, le HUD natif se démonte et se remonte,
+  // et rien de ce qu'on envoie là n'a de raison de partir en premier.
+  if (game_active && !catalogue_requested_ &&
+      !Bourgeon::Instance().IsMapLoading()) {
+    RequestCatalogue();
+    catalogue_requested_ = true;
+  }
 
   // Filet du basculement en pleine session : on DÉTRUIT ce qui traîne au lieu de
   // le masquer. Idempotent, et sans effet dans le cas normal (rien ne naît plus).
@@ -569,7 +678,11 @@ void CashShopWindow::OnRenderUI() {
       char lbl[48];
       std::snprintf(lbl, sizeof(lbl), "%s (%d)###cstab%d", kTabLabels[t],
                     static_cast<int>(tabs_[t].size()), t);
-      if (ImGui::BeginTabItem(lbl)) {
+      // Onglet imposé de l'extérieur (arrivée par un lien d'objet) : la barre
+      // tient sa propre sélection et écraserait `cur_tab_` — il faut le lui dire.
+      const ImGuiTabItemFlags tab_flags =
+          (force_tab_ == t) ? ImGuiTabItemFlags_SetSelected : 0;
+      if (ImGui::BeginTabItem(lbl, nullptr, tab_flags)) {
         if (cur_tab_ != t) cur_slot_ = -1;  // changer d'onglet -> filtre slot remis à Tous
         cur_tab_ = t;
         ImGui::EndTabItem();
@@ -577,15 +690,15 @@ void CashShopWindow::OnRenderUI() {
     }
     ImGui::EndTabBar();
   }
+  force_tab_ = -1;  // une seule frame : après quoi le joueur reprend la main
 
-  static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
   // Champ filtre avec texte d'aide grise (placeholder) quand il est vide. On pilote
   // directement le buffer du ImGuiTextFilter (InputBuf/Build) pour garder le filtrage
-  // natif tout en ayant le hint (filter.Draw() n'expose pas de hint).
-  if (ImGui::InputTextWithHint("##cs_filter", "Filtrer...", filter.InputBuf,
-                               IM_ARRAYSIZE(filter.InputBuf)))
-    filter.Build();
+  // natif tout en ayant le hint (g_filter.Draw() n'expose pas de hint).
+  if (ImGui::InputTextWithHint("##cs_filter", "Filtrer...", g_filter.InputBuf,
+                               IM_ARRAYSIZE(g_filter.InputBuf)))
+    g_filter.Build();
 
   //  Filtre par emplacement d'équipement (slots présents dans l'onglet)
   // Prédicat "costume hat-effect" : rendu par effet .str (ItemToHatOrdinal != 0),
@@ -689,7 +802,7 @@ void CashShopWindow::OnRenderUI() {
       } else if (cur_slot_ != -1 && SlotOf(ci.location).key != cur_slot_) {
         continue;
       }
-      if (filter.PassFilter(ShortName(ci.id))) vis.push_back(&ci);
+      if (g_filter.PassFilter(ShortName(ci.id))) vis.push_back(&ci);
     }
     // Tri (Nom / ID / Cout, asc/desc).
     std::sort(vis.begin(), vis.end(),

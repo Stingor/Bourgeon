@@ -61,6 +61,33 @@ class CashShopWindow : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
+  // ── « Cet objet est-il vendu au vote shop ? » ──────────────────────────────
+  //
+  // Le catalogue reçu du serveur n'était consulté que par cette fenêtre. C'est
+  // pourtant la réponse à une question qu'on se pose ailleurs — devant un lien
+  // d'objet dans le chat, devant une table de drops : « est-ce que je peux
+  // simplement l'acheter ? ». D'où ces deux entrées publiques.
+  //
+  // 🔴 Une absence ne prouve RIEN tant que le catalogue n'est pas arrivé. Il ne
+  // l'est que sur demande (CZ 0x08C9), et le serveur ne répond qu'UNE fois par
+  // session (`cashshop_sent`) : c'est `OnTick` qui la pose à l'entrée en jeu,
+  // sans quoi rien ne serait connu avant la première ouverture de la boutique.
+  // Les appelants doivent donc traiter `false` comme « on ne sait pas », et
+  // n'afficher une disponibilité que quand elle est POSITIVE.
+  //
+  // `tab` et `price` sont facultatifs (nullptr accepté). Les onglets masqués
+  // (kTabShown) sont ignorés : on ne renvoie pas une adresse où l'on ne peut
+  // pas emmener le joueur.
+  bool FindItem(uint32_t id, int* tab, int32_t* price) const;
+
+  // Ouvre le vote shop sur l'objet : bon onglet, filtre posé sur son nom, et une
+  // unité au panier. Ne fait rien (et renvoie false) si l'objet n'y est pas.
+  //
+  // ⚠ L'ouverture n'est PAS immédiate quand la boutique est fermée : c'est le
+  // serveur qui ouvre (on lui envoie CZ 0x0B6D, il répond ZC 0x0B6E). L'objet
+  // attend dans `pending_item_` jusque-là.
+  bool OpenWithItem(uint32_t id);
+
   // Setting PERSISTANT (bourgeon_settings.yaml "cashshop_imgui", géré par
   // MoonlightUi) : ON = viewer ImGui + natif caché ; OFF = cash shop natif seul.
   // Basculé en GROUPE par SetModernInterface (moonlight_ui.h) — PLUS de case isolée
@@ -97,8 +124,12 @@ class CashShopWindow : public Plugin {
   // Achat 1-clic : achète 1 unité de l'item immédiatement puis FERME le shop
   // (paquet 0x848 count=1 + fermeture CZ 0x084a + destruction fenêtre native).
   void BuyNow(uint32_t id, int tab, int32_t price);
-  // Demande la liste d'items d'un onglet au serveur (CZ_REQ_SE_CASH_TAB_CODE 0x846).
-  void RequestTab(int tab);
+  // Demande le catalogue complet au serveur (CZ 0x08C9, 2 octets). Le serveur
+  // répond par une série de ZC 0x08CA, un paquet par onglet — et une seule fois
+  // par session.
+  void RequestCatalogue();
+  // Amène la vue sur un objet déjà présent dans `tabs_` : onglet, filtre, panier.
+  void RevealItem(uint32_t id, int tab, int32_t price);
   // Ferme la session d'achat côté SERVEUR (CZ 0x084A) puis chez nous. 🔴 Le paquet
   // n'est pas décoratif : sans lui le personnage reste bloqué (cf. le .cc).
   void CloseShop();
@@ -114,6 +145,18 @@ class CashShopWindow : public Plugin {
   bool prev_imgui_enabled_ = false;
 
   int      cur_tab_ = 0;
+  // Onglet à SÉLECTIONNER de force à la prochaine frame (-1 = aucun). Écrire
+  // `cur_tab_` ne suffit pas : la barre d'onglets ImGui tient sa propre sélection
+  // et la réimposerait aussitôt. Il faut lui passer ImGuiTabItemFlags_SetSelected.
+  int      force_tab_ = -1;
+  // Objet à révéler dès que la boutique s'ouvre (0 = aucun). Cf. OpenWithItem :
+  // c'est le serveur qui ouvre, on ne peut donc pas agir sur la vue tout de suite.
+  uint32_t pending_item_ = 0;
+  // Catalogue déjà demandé pour CETTE session ? Remis à zéro quand le monde de
+  // jeu s'arrête (changement de personnage, reconnexion), parce que le serveur
+  // remet `cashshop_sent` à zéro au même moment (pc.cpp).
+  bool     catalogue_requested_ = false;
+  bool     prev_game_active_ = false;
   int      cur_slot_ = -1;  // filtre emplacement d'équipement (clé, -1 = tous)
   int      cur_sort_ = 0;   // tri : 0 = Nom, 1 = ID, 2 = Coût
   bool     sort_asc_ = true;

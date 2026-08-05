@@ -8,6 +8,7 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
+#include "features/windows/cashshop_window.h"       // disponibilité au vote shop
 #include "features/windows/chat_window.h"           // poser un lien, armer une commande
 #include "features/windows/item_desc_window.h"      // itemdesc::OpenItemDbPage
 #include "features/windows/monster_info_window.h"   // fiche d'un monstre
@@ -246,6 +247,26 @@ void DrawMenu(const char* popup_id, const Target& target) {
         if (ImGui::MenuItem("Description")) OpenDescription(target);
         if (ImGui::MenuItem("Base de données du site")) itemdesc::OpenItemDbPage(id);
         if (ImGui::MenuItem("Lien dans le chat")) PostToChat(target);
+        ImGui::Separator();
+        // ── Disponibilité au vote shop ─────────────────────────────────────
+        //
+        // L'entrée n'existe QUE si l'objet y est vendu : sa présence EST
+        // l'information. Le prix y figure parce que la question d'après est
+        // toujours « combien ? », et qu'y répondre ici évite d'ouvrir la
+        // boutique pour rien.
+        //
+        // 🔴 On n'affiche jamais l'inverse (« pas au vote shop »). Le catalogue
+        // vient du serveur et peut ne pas être arrivé : une absence ne prouve
+        // rien, et l'annoncer serait affirmer plus qu'on ne sait.
+        if (auto* shop = Bourgeon::Instance().cashshop_window()) {
+          int32_t price = 0;
+          if (shop->imgui_enabled_ && shop->FindItem(id, nullptr, &price)) {
+            char label[80];
+            std::snprintf(label, sizeof(label),
+                          "Vote shop : ajouter au panier (%d pts)", price);
+            if (ImGui::MenuItem(label)) shop->OpenWithItem(id);
+          }
+        }
         ImGui::Separator();
         // Ramassage automatique : la MÊME liste que l'overlay de la description
         // (elle vit dans MoonlightUi, qui la tient à jour avec le serveur) —
