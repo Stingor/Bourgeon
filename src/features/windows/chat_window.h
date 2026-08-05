@@ -117,6 +117,20 @@ class ChatWindow : public Plugin {
   // ne force rien. Les familles sont bakées au démarrage, donc changer de valeur
   // s'applique à chaud — contrairement aux glyphes coréens, qui touchent l'atlas.
   int&  font_family()     { return font_family_; }
+  // Afficher les vignettes d'image et les emotes ? Éteint, le lien reste du
+  // texte cliquable et l'emote son « :nom: » — et rien n'est téléchargé.
+  //
+  // 🔴 SÉPARÉ de la taille, à dessein. Un « 0 = aucune » sur le curseur
+  // mélangeait deux questions dans une seule commande : le curseur ne dit plus
+  // que la taille, la case dit s'il y en a.
+  bool& thumbs()          { return thumbs_; }
+  // Hauteur des vignettes, en pixels. Bornée à 24..128 : en dessous ce n'est
+  // plus lisible, au-dessus ça cesse d'être une vignette.
+  //
+  // ⚠ Au-delà de la hauteur d'une ligne, la RANGÉE grandit pour accueillir
+  // l'image — le repli et le cache de hauteur suivent (cf. `row_h` au dessin).
+  int&  thumb_px()        { return thumb_px_; }
+  int   thumb_px() const  { return thumb_px_; }
   // Hôtes autorisés PAR LE JOUEUR, sérialisés (« a.com;b.net »). La liste vivante
   // est celle d'imgprev ; ce champ n'est que sa forme persistable — c'est lui que
   // les réglages écrivent et relisent, et OnTick les resynchronise.
@@ -455,6 +469,8 @@ class ChatWindow : public Plugin {
   bool url_confirm_    = true;   // opt-OUT : le garde-fou est là par défaut
   bool url_preview_    = false;  // opt-IN : rien n'est téléchargé sans accord
   int  font_family_    = 0;      // 0 = Système (cf. ro::ChatFamilyFont)
+  bool thumbs_         = false;  // afficher les vignettes ? (opt-in)
+  int  thumb_px_       = 48;     // hauteur, bornée 24..128
   std::string url_hosts_;        // hôtes autorisés par le joueur, « a.com;b.net »
   std::string url_hosts_seen_;   // dernière valeur poussée vers imgprev
   int  padding_px_     = 3;

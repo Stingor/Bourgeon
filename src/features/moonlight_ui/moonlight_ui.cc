@@ -488,6 +488,13 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
     // n'est accordé qu'il n'ait accordé lui-même.
     {"chatwnd_font_family", SType::kInt, MLUI_FIELD(chat_window, font_family()),
      MLUI_LITERAL(int, 0)},
+    // Vignettes : la case et la taille sont DEUX clés. Défaut décoché — afficher
+    // des images vient avec du trafic réseau, et ça se demande (cf.
+    // chatwnd_url_preview). La taille, elle, garde une valeur utile même éteinte.
+    {"chatwnd_thumbs", SType::kBool, MLUI_FIELD(chat_window, thumbs()),
+     MLUI_LITERAL(bool, false)},
+    {"chatwnd_thumb_px", SType::kInt, MLUI_FIELD(chat_window, thumb_px()),
+     MLUI_LITERAL(int, 48)},
     {"chatwnd_url_hosts", SType::kString, MLUI_FIELD(chat_window, url_hosts()),
      MLUI_LITERAL(std::string, "")},
     // ⚠ Défaut FAUX, et ce n'est pas de la timidité : le fichier écrit contient

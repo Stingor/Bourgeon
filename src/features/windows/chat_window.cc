@@ -2019,6 +2019,19 @@ void ChatWindow::DrawLines(const Channel& channel) {
     // figerait sur la mauvaise : la ligne resterait mal repliée jusqu'à ce que
     // quelque chose d'autre invalide le cache — c'est-à-dire, en pratique, jamais.
     bool emote_pending = false;
+    // Hauteur de la RANGEE courante. Elle vaut `line_h` par defaut, et GRANDIT
+    // quand une vignette depasse : sans ca une image de 128 px mordrait sur la
+    // ligne suivante. Remise a `line_h` a chaque repli — c'est une propriete de
+    // la rangee, pas de la ligne.
+    float row_h = line_h;
+    // Hauteur des vignettes et des emotes. La case dit S'IL Y EN A, le curseur
+    // dit LAQUELLE — les deux questions sont séparées. Bornage quand même : une
+    // valeur aberrante venue d'un yaml édité à la main ne doit pas produire une
+    // rangée absurde.
+    const float img_h =
+        !thumbs_ ? 0.0f
+                 : static_cast<float>(thumb_px_ < 24 ? 24
+                                     : (thumb_px_ > 128 ? 128 : thumb_px_));
 
     if (timestamps_) {
       char stamp[16];
@@ -2046,7 +2059,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
       //
       // Le réglage d'images gouverne le TÉLÉCHARGEMENT, pas la lisibilité : coupé,
       // on garde « :nom: » et rien ne part sur le réseau.
-      if (!run.emote_url.empty() && url_preview_) {
+      if (!run.emote_url.empty() && url_preview_ && img_h > 0.0f) {
         imgprev::Request(run.emote_url.c_str());
         const imgprev::Preview em = imgprev::Get(run.emote_url.c_str());
         const bool ready = (em.state == imgprev::Preview::kReady &&
@@ -2065,11 +2078,12 @@ void ChatWindow::DrawLines(const Channel& channel) {
         // Le repli textuel garde tout son sens quand les images sont ÉTEINTES :
         // là, rien n'arrivera jamais, et « :nom: » est la seule lecture possible.
         if (ready || em.state != imgprev::Preview::kFailed) {
-          const float ih = fsize + 2.0f;
+          const float ih = img_h;
           const float iw = ready
               ? ih * static_cast<float>(em.w) / static_cast<float>(em.h)
               : ih;  // carré par défaut : une emote Discord l'est
-          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
+          if (ih > row_h) row_h = ih;  // la rangée s'ouvre à la hauteur de l'image
           if (visible && ready) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(em.tex), p, ImVec2(p.x + iw, p.y + ih));
@@ -2087,7 +2101,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
         if (icon.tex != nullptr && icon.h > 0) {
           const float ih = fsize + 2.0f;
           const float iw = ih * static_cast<float>(icon.w) / static_cast<float>(icon.h);
-          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
           if (visible) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(icon.tex), p, ImVec2(p.x + iw, p.y + ih));
@@ -2125,10 +2139,15 @@ void ChatWindow::DrawLines(const Channel& channel) {
       // courante et on ne la teste qu'une fois refermée (fin du run, repli ou
       // saut de ligne), ce qui la rend continue.
       float seg_x0 = -1.0f, seg_x1 = 0.0f, seg_y = 0.0f;  // -1 = rien d'ouvert
+      // 🔴 HAUTEUR du segment survolable. Elle était codée en dur à celle d'une
+      // ligne de texte : sur une vignette de 128 px, seuls les 14 premiers
+      // pixels réagissaient, et le reste de l'image semblait mort. Elle suit
+      // désormais ce qu'on a réellement dessiné.
+      float seg_h = fsize + 2.0f;
       auto flush_link_hit = [&]() {
         if (!run.is_link() || seg_x0 < 0.0f) return;
         const ImVec2 a(origin.x + seg_x0, origin.y + seg_y);
-        const ImVec2 b(origin.x + seg_x1, origin.y + seg_y + fsize + 2.0f);
+        const ImVec2 b(origin.x + seg_x1, origin.y + seg_y + seg_h);
         seg_x0 = -1.0f;
         if (!hovering_log || !ImGui::IsMouseHoveringRect(a, b)) return;
         ro::SetHoverCursor(2);  // curseur « main » RO
@@ -2165,7 +2184,8 @@ void ChatWindow::DrawLines(const Channel& channel) {
       //
       // Elle reste un LIEN : survol = aperçu en grand, clic = ouvrir, clic droit =
       // menu. On lui donne le même segment de survol que du texte.
-      if (run.kind == Run::kUrl && url_preview_ && IsMirrorImage(run.url)) {
+      if (run.kind == Run::kUrl && url_preview_ && img_h > 0.0f &&
+          IsMirrorImage(run.url)) {
         imgprev::Request(run.url.c_str());
         const imgprev::Preview th = imgprev::Get(run.url.c_str());
         const bool ready = (th.state == imgprev::Preview::kReady &&
@@ -2179,11 +2199,12 @@ void ChatWindow::DrawLines(const Channel& channel) {
         // caractères, qui replie la ligne sur deux rangées avant de se réduire à
         // une vignette. La ligne aurait bougé à chaque image reçue.
         if (ready || th.state != imgprev::Preview::kFailed) {
-          const float ih = fsize + 2.0f;
+          const float ih = img_h;
           const float iw = ready
               ? ih * static_cast<float>(th.w) / static_cast<float>(th.h)
               : ih;  // proportion inconnue tant que rien n'est décodé
-          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
+          if (ih > row_h) row_h = ih;
           if (visible && ready) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(th.tex), p, ImVec2(p.x + iw, p.y + ih));
@@ -2191,6 +2212,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
           seg_x0 = x;
           seg_x1 = x + iw;
           seg_y  = y;
+          seg_h  = ih;  // toute l'image, pas sa première ligne
           x += iw + 2.0f;
           flush_link_hit();
           continue;  // l'image (ou sa place) REMPLACE l'adresse
@@ -2227,7 +2249,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
         const float ww = rfont->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
         // Le repli COUPE la zone cliquable : la partie déjà posée se referme sur
         // la rangée qu'elle occupe, la suite en ouvrira une autre plus bas.
-        if (x > 0.0f && x + ww > wrap) { flush_link_hit(); x = 0.0f; y += line_h; }
+        if (x > 0.0f && x + ww > wrap) { flush_link_hit(); x = 0.0f; y += row_h; row_h = line_h; }
         const ImVec2 pos(origin.x + x, origin.y + y);
         if (visible) {
           // Équipement CASSÉ : l'OMBRE rouge du natif (DrawName 0x008972c0),
@@ -2242,7 +2264,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
           // dense (il n'y en a pas non plus dans le chat natif). Au survol, le
           // curseur « main » suffit à dire que c'est cliquable.
           if (run.is_link()) {
-            if (seg_x0 < 0.0f) { seg_x0 = x; seg_y = y; }
+            if (seg_x0 < 0.0f) { seg_x0 = x; seg_y = y; seg_h = fsize + 2.0f; }
             seg_x1 = x + ww;
           }
         }
@@ -2252,7 +2274,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
       flush_link_hit();
     }
     x = 0.0f;
-    y += line_h;
+    y += row_h;  // dernière rangée : elle aussi peut avoir grandi
     if (!emote_pending) {
       line.cached_wrap   = wrap;
       line.cached_flags  = layout_flags;
@@ -3532,6 +3554,29 @@ bool ChatWindow::DrawSettings() {
       "l'interface.\n\n"
       "Les autres sont latines : un caractère coréen y apparaîtrait en carré. "
       "Sans effet en jeu, où tout est en français ou en anglais.");
+
+  // ── Vignettes : la case dit S'IL Y EN A, le curseur dit LAQUELLE ───────────
+  // Les deux étaient confondus dans un seul curseur où zéro valait « aucune ».
+  // Une commande qui répond à deux questions se lit mal : on ne sait plus si
+  // l'on règle une taille ou si l'on éteint quelque chose.
+  changed |= ro::RoCheckbox("Images et emotes###chatwnd_thumbs", &thumbs_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Affiche les images et les emotes du fil sous forme de vignettes.\n\n"
+      "Décoché, un lien reste une adresse cliquable et une emote son "
+      "« :nom: » — et rien n'est téléchargé.");
+  // Curseur inactif tant que la case est décochée : il reste VISIBLE, donc on
+  // voit la taille qui s'appliquera, mais il n'invite pas à régler ce qui ne
+  // s'affiche pas.
+  ImGui::BeginDisabled(!thumbs_);
+  changed |= WheelSliderInt("Taille des images###chatwnd_thumb", &thumb_px_,
+                            24, 128, "%d px");
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  HelpMarker(
+      "Hauteur des vignettes, de 24 à 128 pixels.\n\n"
+      "Au-delà d'une hauteur de ligne, la ligne s'agrandit pour accueillir "
+      "l'image : le fil reste lisible, il s'aère.");
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",

@@ -493,6 +493,51 @@ bool DecodeToBgra(const std::vector<uint8_t>& bytes, std::vector<uint8_t>* out,
 // mémoire vidéo.
 constexpr int    kMaxFrames    = 60;
 constexpr size_t kMaxAnimBytes = 12u * 1024u * 1024u;
+// 🔴 TAILLE DE SORTIE D'UNE ANIMATION. On compose à la taille NATIVE (il le faut,
+// les images ne sont que des rectangles de différences), mais on RÉDUIT avant de
+// garder — sans quoi le budget partait en fumée : un gif de 498x280 pèse 558 Ko
+// par image, soit 21 images seulement dans 12 Mio. La plupart en ont 30 à 60,
+// donc ils dépassaient et retombaient tous sur l'image fixe. Seuls les gifs
+// courts s'animaient, ce qui donnait un comportement incompréhensible.
+//
+// À 256 px, la même animation coûte 262 Ko par image : 45 images tiennent. Et
+// c'est bien assez — l'aperçu s'affiche dans une infobulle, la vignette fait la
+// hauteur d'une ligne de chat.
+constexpr int    kMaxAnimDim   = 256;
+
+// Réduction par MOYENNE DE BLOC, en place sur nos propres pixels BGRA. Pas de
+// WIC ici : il faudrait recréer un bitmap et un scaler PAR IMAGE, alors que la
+// moyenne d'un bloc tient en quinze lignes et travaille sur un tampon qu'on a
+// déjà sous la main.
+void DownscaleBgra(const std::vector<uint8_t>& src, int sw, int sh,
+                   std::vector<uint8_t>* dst, int dw, int dh) {
+  dst->assign(static_cast<size_t>(dw) * dh * 4u, 0);
+  for (int y = 0; y < dh; ++y) {
+    const int y0 = y * sh / dh, y1 = std::max(y0 + 1, (y + 1) * sh / dh);
+    for (int x = 0; x < dw; ++x) {
+      const int x0 = x * sw / dw, x1 = std::max(x0 + 1, (x + 1) * sw / dw);
+      unsigned acc[4] = {0, 0, 0, 0};
+      unsigned n = 0;
+      for (int sy = y0; sy < y1 && sy < sh; ++sy) {
+        for (int sx = x0; sx < x1 && sx < sw; ++sx) {
+          const uint8_t* p = &src[(static_cast<size_t>(sy) * sw + sx) * 4u];
+          // Prémultiplier par l'alpha pendant la moyenne : sans ça, un pixel
+          // transparent (dont la couleur est arbitraire) déteindrait sur ses
+          // voisins et cernerait les bords d'un halo.
+          acc[0] += p[0] * p[3]; acc[1] += p[1] * p[3];
+          acc[2] += p[2] * p[3]; acc[3] += p[3];
+          ++n;
+        }
+      }
+      uint8_t* d = &(*dst)[(static_cast<size_t>(y) * dw + x) * 4u];
+      if (n == 0 || acc[3] == 0) { d[0] = d[1] = d[2] = d[3] = 0; continue; }
+      d[0] = static_cast<uint8_t>(acc[0] / acc[3]);
+      d[1] = static_cast<uint8_t>(acc[1] / acc[3]);
+      d[2] = static_cast<uint8_t>(acc[2] / acc[3]);
+      d[3] = static_cast<uint8_t>(acc[3] / n);
+    }
+  }
+}
 constexpr int    kMinFrameMs   = 20;   // délai 0 = « aussi vite que possible »
 constexpr int    kDefaultFrameMs = 100;
 
@@ -549,8 +594,17 @@ bool DecodeAnimation(const std::vector<uint8_t>& bytes,
 
       const size_t canvas_bytes = static_cast<size_t>(cw) * ch * 4u;
       const UINT   big = (cw > ch) ? cw : ch;
-      if (cw > 0 && ch > 0 && big <= static_cast<UINT>(kMaxPreviewDim) &&
-          canvas_bytes > 0 && canvas_bytes * 2u <= kMaxAnimBytes) {
+      // Taille de SORTIE : réduite pour tenir dans le budget. Le gabarit d'entrée
+      // n'est plus limité qu'au garde-fou d'en-tête — un gif de 800 px s'anime
+      // désormais, réduit, au lieu d'être refusé.
+      double ascale = 1.0;
+      if (big > static_cast<UINT>(kMaxAnimDim))
+        ascale = static_cast<double>(kMaxAnimDim) / static_cast<double>(big);
+      const int ow = std::max(1, static_cast<int>(cw * ascale));
+      const int oh = std::max(1, static_cast<int>(ch * ascale));
+      const size_t out_bytes = static_cast<size_t>(ow) * oh * 4u;
+      if (cw > 0 && ch > 0 && big <= static_cast<UINT>(kMaxSourceDim) &&
+          out_bytes > 0 && out_bytes * 2u <= kMaxAnimBytes) {
         if (count > static_cast<UINT>(kMaxFrames))
           count = static_cast<UINT>(kMaxFrames);
 
@@ -610,12 +664,23 @@ bool DecodeAnimation(const std::vector<uint8_t>& bytes,
                 d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
               }
             }
-            budget += canvas_bytes;
+            budget += out_bytes;  // ce qu'on GARDE, pas ce qu'on compose
             if (budget > kMaxAnimBytes) failed = true;
           }
 
           if (!failed) {
-            frames->push_back(canvas);   // instantané du canevas COMPLET
+            // Instantané du canevas complet, RÉDUIT à la taille de sortie.
+            if (ascale < 1.0) {
+              // ⚠ PAS `small` : Windows.h en fait une macro (`#define small
+              // char`), et la déclaration devenait « std::vector<uint8_t> char ».
+              // Même famille que min/max/near/far.
+              std::vector<uint8_t> reduced;
+              DownscaleBgra(canvas, static_cast<int>(cw), static_cast<int>(ch),
+                            &reduced, ow, oh);
+              frames->push_back(std::move(reduced));
+            } else {
+              frames->push_back(canvas);
+            }
             delays->push_back(delay_ms);
 
             // Consigne d'effacement, appliquée pour l'image SUIVANTE.
@@ -641,8 +706,8 @@ bool DecodeAnimation(const std::vector<uint8_t>& bytes,
         }
 
         if (!failed && frames->size() > 1) {
-          *out_w = static_cast<int>(cw);
-          *out_h = static_cast<int>(ch);
+          *out_w = ow;  // la taille RÉDUITE : c'est celle des pixels rendus
+          *out_h = oh;
           ok = true;
         } else {
           frames->clear();
