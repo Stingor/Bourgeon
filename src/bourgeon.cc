@@ -46,6 +46,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/item_cell.h"  // itemcell::FlushDeferredDesc (desc au relâchement)
 #include "features/windows/item_desc_window.h"
+#include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
@@ -107,6 +108,9 @@ CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
+EntityContextMenu* Bourgeon::entity_context_menu() {
+  return entity_context_menu_;
+}
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
 
 namespace {
@@ -268,6 +272,10 @@ void Bourgeon::OnProcessInput() {
   // Fiche de monstre : le clic sur une compétence ouvre la fenêtre de description
   // NATIVE (0x2E) — MakeWindow + OnMsg, à ne pas jouer depuis une frame ImGui.
   if (auto* mif = monster_info()) mif->FlushPending();
+  // Menu contextuel d'entité : MÊME raison, et la plus tranchante de toutes —
+  // « nourrir le pet » et « nourrir l'homoncule » ouvrent une boîte de dialogue
+  // native BLOQUANTE (docs/entity_context_menu_re.md §6.3, codes 29 et 38).
+  if (auto* ecm = entity_context_menu()) ecm->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -741,6 +749,14 @@ void Bourgeon::LoadPlugins() {
     auto monster_info = std::make_unique<MonsterInfoWindow>();
     monster_info_ = monster_info.get();
     plugins_.emplace_back(std::move(monster_info));
+
+    // Menu du clic droit sur une entité. Son constructeur pose LE détour de
+    // GameMode_ShowEntityContextMenu — le seul chemin qui produise le menu du
+    // monde (docs/entity_context_menu_re.md §9). Après la fiche de monstre :
+    // une de ses entrées l'ouvre.
+    auto entity_context_menu = std::make_unique<EntityContextMenu>();
+    entity_context_menu_ = entity_context_menu.get();
+    plugins_.emplace_back(std::move(entity_context_menu));
   }
   {
     auto skill_bar = std::make_unique<SkillBar>();

@@ -19,6 +19,7 @@
 #include "features/overlays/basic_info.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/make_item_window.h"
+#include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
@@ -133,6 +134,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceRefine,      "Refine"},
         {kIfaceMakeItem,    "Fabrication"},
         {kIfaceMonsterInfo, "Fiche de monstre"},
+        {kIfaceContextMenu, "Menu contextuel"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
                   "kIfaceSections doit couvrir exactement l'enum IfaceSection");
@@ -433,6 +435,23 @@ void MoonlightUi::DrawInterfacePanel() {
               "sources d'une fiche d'objet l'ouvre d'un clic.");
           ImGui::Separator();
           if (mi->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(kPluginUnavailable);
+        }
+      }
+
+      // ── Menu contextuel du clic droit sur une entité ────────────────────────
+      if (iface_nav_ == kIfaceContextMenu) {
+        if (auto* ecm = Bourgeon::Instance().entity_context_menu()) {
+          ImGui::TextWrapped(
+              "Remplace le menu du clic droit sur une entité. Les actions ne "
+              "sont pas réécrites : elles repassent par le dispatcher du client, "
+              "donc ses vérifications et ses confirmations restent jouées. Le "
+              "menu du client n'existait que sur un joueur, son pet, son "
+              "homoncule et son mercenaire — ici il peut aussi s'ouvrir sur les "
+              "monstres et les NPC.");
+          ImGui::Separator();
+          if (ecm->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(kPluginUnavailable);
         }

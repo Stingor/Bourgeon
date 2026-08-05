@@ -38,6 +38,7 @@
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
 #include "features/windows/make_item_window.h"
+#include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
@@ -71,6 +72,11 @@
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
+
+// Miroir persistable du réglage « glyphes coréens ». La valeur qui COMPTE est
+// celle que ro::KoreanGlyphsWanted() lit dans le yaml à l'init — bien avant que
+// ce fichier ne soit chargé. Celui-ci ne sert qu'à l'écrire et à l'afficher.
+bool g_korean_glyphs = false;
 
 // Les helpers de couleur persistée vivent avec les moteurs de la table
 // (moonlight_ui/settings_table.h) : ce sont eux qui connaissent la dualité
@@ -424,6 +430,21 @@ const moonlight_ui::SettingDesc kMonsterInfoSettings[] = {
      MLUI_FIELD(monster_info, show_guardians()), MLUI_LITERAL(bool, false)},
 };
 
+// Menu contextuel du clic droit sur une entité (remplace UIMenuWnd 0x12 côté
+// monde). « ctxmenu_imgui » est basculé en GROUPE par SetModernInterface.
+const moonlight_ui::SettingDesc kEntityContextMenuSettings[] = {
+    {"ctxmenu_imgui", SType::kBool,
+     MLUI_FIELD(entity_context_menu, imgui_enabled_), MLUI_LITERAL(bool, false)},
+    // Défaut OFF : ouvrir un menu sur un monstre ou un NPC est un comportement
+    // que le client n'a jamais eu — c'est au joueur de le demander.
+    {"ctxmenu_all_entities", SType::kBool,
+     MLUI_FIELD(entity_context_menu, all_entities()), MLUI_LITERAL(bool, false)},
+    // Défaut ON : sans le gate serveur (group level >= 80) la section staff ne
+    // s'affiche de toute façon pas ; l'interrupteur ne sert qu'à la replier.
+    {"ctxmenu_staff_extras", SType::kBool,
+     MLUI_FIELD(entity_context_menu, staff_extras()), MLUI_LITERAL(bool, true)},
+};
+
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
 const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
     {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_window, imgui_enabled_),
@@ -465,6 +486,8 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, false)},
     // Hôtes autorisés PAR LE JOUEUR (« a.com;b.net »), vides par défaut : rien
     // n'est accordé qu'il n'ait accordé lui-même.
+    {"chatwnd_font_family", SType::kInt, MLUI_FIELD(chat_window, font_family()),
+     MLUI_LITERAL(int, 0)},
     {"chatwnd_url_hosts", SType::kString, MLUI_FIELD(chat_window, url_hosts()),
      MLUI_LITERAL(std::string, "")},
     // ⚠ Défaut FAUX, et ce n'est pas de la timidité : le fichier écrit contient
@@ -695,7 +718,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[4];
+  static const moonlight_ui::SettingDesc kHeader[5];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -705,7 +728,7 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[4] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[5] = {
     {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
      MLUI_LITERAL(bool, false)},
     {"log_level", SType::kString, MLUI_SELF(log_level_),
@@ -723,6 +746,18 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[4] = {
     // true ne verrait toujours rien.
     {"staff_log_window", SType::kBool,
      []() -> void* { return &Bourgeon::Instance().show_log_window(); },
+     MLUI_LITERAL(bool, false)},
+    // ── Glyphes coréens (débogage) ──────────────────────────────────────────
+    // 🔴 LU À L'INIT, DIRECTEMENT DANS LE YAML, par ro::KoreanGlyphsWanted() :
+    // l'atlas se construit bien avant que cette table n'existe. L'entrée est ici
+    // pour que le réglage soit ÉCRIT et survive — pas pour être appliqué.
+    // Changer sa valeur exige donc un redémarrage du client, et le libellé le dit.
+    //
+    // Défaut FAUX : le hangul pesait 97 % de l'atlas pour des caractères
+    // qu'aucun joueur ne voit. Seul le staff qui lit des chemins de fichiers du
+    // jeu dans la console en a l'usage.
+    {"korean_glyphs", SType::kBool,
+     []() -> void* { return &g_korean_glyphs; },
      MLUI_LITERAL(bool, false)},
 };
 
@@ -948,6 +983,12 @@ void SetModernInterface(bool on) {
   // drops n'a de sens qu'avec la fiche d'item moderne, qui en fait partie.
   if (auto* monster_info = Bourgeon::Instance().monster_info())
     monster_info->imgui_enabled_ = on;
+  // Le menu contextuel d'entité suit le groupe : une de ses entrées ouvre la
+  // fiche de monstre ci-dessus, et surtout il DÉTOURNE le constructeur du menu
+  // natif — l'activer seul laisserait un menu moderne au milieu d'une interface
+  // entièrement native. Cf. docs/entity_context_menu_re.md.
+  if (auto* entity_context_menu = Bourgeon::Instance().entity_context_menu())
+    entity_context_menu->imgui_enabled_ = on;
 }
 
 bool ModernInterfaceEnabled() {
@@ -985,6 +1026,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"
       "  • Fiche de monstre (compétence Sense), avec sprite animé, drops et\n"
       "    lieux d'apparition\n"
+      "  • Menu du clic droit sur une entité\n"
       "La case des autres sections reflète donc le même état.\n\n";
   help += window_help;
   ImGui::SameLine();
@@ -1047,6 +1089,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
+    moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
@@ -1180,6 +1223,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
+  moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
@@ -1798,6 +1842,26 @@ void MoonlightUi::OnRenderUI() {
           "restreint l'affichage à une sous-chaîne.\n\n"
           "Réservé au staff, et le droit est revérifié à chaque frame : la "
           "fenêtre disparaît si le niveau de groupe change en cours de session.");
+
+      // ── Glyphes coréens ────────────────────────────────────────────────
+      // Ici, à côté du journal, parce que c'est SON usage : lire les chemins
+      // des fichiers du jeu (« 유저인터페이스\… ») quand on débogue.
+      //
+      // 🔴 Le hangul pèse 11 172 glyphes, soit 97 % de l'atlas de polices, pour
+      // des caractères qu'aucun joueur ne voit — le jeu est en français et en
+      // anglais. Il n'est donc plus chargé par défaut.
+      if (ro::RoCheckbox("Glyphes coréens (redémarrage)", &g_korean_glyphs))
+        SaveSettings();
+      ImGui::SameLine();
+      HelpMarker(
+          "Charge les caractères coréens dans les polices. Utile UNIQUEMENT "
+          "pour lire les chemins des fichiers du jeu dans le journal — rien "
+          "en jeu ne s'affiche en coréen.\n\n"
+          "⚠ Prend effet au PROCHAIN LANCEMENT : les polices sont préparées "
+          "une seule fois au démarrage, et le moteur DirectDraw ne sait pas "
+          "les refaire en cours de partie.\n\n"
+          "Éteint, l'atlas de polices est vingt fois plus léger et le client "
+          "démarre plus vite. Un caractère coréen y apparaîtrait en carré.");
 
       PopStyleCompact();
     }
