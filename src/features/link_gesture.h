@@ -95,4 +95,17 @@ void DrawMenu(const char* popup_id, const Target& target);
 void OpenDescription(const Target& target);
 bool PostToChat(const Target& target);
 
+// ── L'avertissement avant d'ouvrir une adresse ───────────────────────────────
+// Une adresse postée dans le chat vient d'un TIERS, et le texte affiché n'a
+// aucun rapport obligé avec la destination. Ouvrir un lien passe donc par une
+// confirmation qui montre l'adresse COMPLÈTE — sauf si le joueur a retiré le
+// garde-fou dans les réglages de la chatbox, ce qui est son droit.
+//
+// 🔴 À APPELER UNE FOIS PAR FRAME, hors de toute fenêtre, par la surface qui
+// offre des liens d'adresse — aujourd'hui la seule est la chatbox (`Run::kUrl`).
+// L'ouverture ImGui est DIFFÉRÉE parce que `OpenUrl` part d'un menu contextuel,
+// donc d'une autre pile d'ID : un `OpenPopup` posé là ne trouverait pas la
+// modale. Même piège et même remède que `ro::OpenQuantityPrompt`.
+void DrawUrlConfirm();
+
 }  // namespace links

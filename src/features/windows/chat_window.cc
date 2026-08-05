@@ -1293,6 +1293,13 @@ void ChatWindow::OnRenderUI() {
   // désactivée dans les réglages, personne ne la consommerait et elle
   // s'appliquerait au premier réaffichage de la barre, longtemps après la touche.
   enter_pending_ = false;
+
+  // 🔴 HORS de toute fenêtre : une modale est une fenêtre à elle seule, et
+  // l'ouvrir depuis l'intérieur de la chatbox l'imbriquerait dans sa pile d'ID.
+  // C'est la chatbox qui l'héberge parce que c'est la seule surface qui produit
+  // des liens d'adresse (`Run::kUrl`) — si une autre s'y met, elle devra appeler
+  // ceci elle aussi, une fois par frame.
+  links::DrawUrlConfirm();
 }
 
 // Le skin d'un canal. `channel` peut être nul (registre pas encore lisible) : la
@@ -3210,6 +3217,14 @@ bool ChatWindow::DrawSettings() {
       "déplacement, plus de redimensionnement. Les onglets, les menus et "
       "l'arrachage continuent de fonctionner — c'est la position qui est "
       "verrouillée, pas la fenêtre.");
+  changed |= ro::RoCheckbox("Avertir avant d'ouvrir un lien###chatwnd_urlwarn",
+                            &url_confirm_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Une adresse postée dans le chat vient d'un autre joueur, et le texte "
+      "affiché n'a aucun rapport obligé avec la destination réelle. La "
+      "confirmation montre l'adresse COMPLÈTE avant d'ouvrir le navigateur.\n\n"
+      "En la décochant, un clic sur un lien ouvre directement le navigateur.");
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",

@@ -101,6 +101,12 @@ class ChatWindow : public Plugin {
   bool& keep_history() { return keep_history_; }
   int&  keep_lines()   { return keep_lines_; }
   bool& locked()          { return locked_; }          // géométrie figée
+  // Avertir avant d'ouvrir une adresse dans le navigateur. Opt-OUT : par défaut
+  // on avertit, parce qu'un lien de chat vient d'un tiers et que le texte
+  // affiché n'a aucun rapport obligé avec la destination. Le joueur qui sait ce
+  // qu'il fait peut le retirer ; c'est son choix, et il est explicite.
+  bool& url_confirm()     { return url_confirm_; }
+  bool  url_confirm() const { return url_confirm_; }
   int& font_scale_pct()   { return font_scale_pct_; }  // texte du LOG, 70..160 %
   int& ui_scale_pct()     { return ui_scale_pct_; }    // habillage, 70..160 %
   int& padding_px()       { return padding_px_; }      // marge du cadre
@@ -410,6 +416,7 @@ class ChatWindow : public Plugin {
   // l'arrachage continuent de fonctionner — c'est la GÉOMÉTRIE qui est figée, pas
   // la fenêtre.
   bool locked_         = false;
+  bool url_confirm_    = true;   // opt-OUT : le garde-fou est là par défaut
   int  padding_px_     = 3;
   int  line_gap_px_    = 2;
 

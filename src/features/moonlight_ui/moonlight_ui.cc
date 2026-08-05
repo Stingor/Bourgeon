@@ -453,6 +453,11 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"chatwnd_locked", SType::kBool, MLUI_FIELD(chat_window, locked()),
      MLUI_LITERAL(bool, false)},
+    // ⚠ Défaut VRAI, et c'est un garde-fou, pas une gêne : une adresse de chat
+    // vient d'un tiers et le texte affiché n'a aucun rapport obligé avec la
+    // destination. Le joueur peut le retirer — explicitement.
+    {"chatwnd_url_confirm", SType::kBool, MLUI_FIELD(chat_window, url_confirm()),
+     MLUI_LITERAL(bool, true)},
     // ⚠ Défaut FAUX, et ce n'est pas de la timidité : le fichier écrit contient
     // les chuchotements en clair, à côté du jeu.
     {"chatwnd_keep_history", SType::kBool, MLUI_FIELD(chat_window, keep_history()),

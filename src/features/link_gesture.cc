@@ -17,6 +17,12 @@
 namespace links {
 namespace {
 
+// 🔴 Les cadres RO poussent un texte CLAIR (leur fond est sombre) ; une infobulle
+// et un popup, eux, ont un fond CLAIR. Sans cette couleur, tout ce qu'on y écrit
+// est blanc sur blanc. Une seule définition pour les deux surfaces — l'infobulle
+// d'adresse l'avait justement oubliée.
+const ImU32 kDarkText = IM_COL32(24, 22, 20, 255);
+
 // Page « bestiaire » du site. Même rôle que `itemdesc::OpenItemDbPage` pour un
 // objet — écrite ICI, une fois, pour que les appelants n'aient pas chacun leur
 // copie de l'URL à corriger.
@@ -29,14 +35,54 @@ void OpenMobDbPage(uint32_t mob_id) {
   ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void OpenUrl(const char* url) {
-  if (url == nullptr || url[0] == '\0') return;
-  // « www.… » sans schéma n'est pas une URL pour le shell : il l'ouvrirait comme
-  // un chemin de fichier.
+// L'adresse telle qu'elle partira au navigateur. « www.… » sans schéma n'est pas
+// une URL pour le shell : il l'ouvrirait comme un chemin de fichier.
+std::string FullUrl(const char* url) {
   std::string full;
   if (_strnicmp(url, "www.", 4) == 0) full = "https://";
   full += url;
+  return full;
+}
+
+void LaunchUrl(const char* url) {
+  if (url == nullptr || url[0] == '\0') return;
+  const std::string full = FullUrl(url);
   ShellExecuteA(nullptr, "open", full.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// ── L'avertissement avant d'ouvrir le navigateur ─────────────────────────────
+// Une adresse postée dans le chat vient d'un autre joueur, et le texte affiché
+// n'a rien à voir avec la destination : c'est le vecteur d'hameçonnage le plus
+// banal qui soit. On demande donc confirmation, en montrant l'adresse COMPLÈTE —
+// celle qui partira, schéma compris, pas celle qui est écrite dans la ligne.
+//
+// Le joueur peut retirer le garde-fou (réglage de la chatbox). C'est son choix,
+// il est explicite, et le refuser reviendrait à faire cliquer trois fois par
+// lien quelqu'un qui sait ce qu'il fait.
+//
+// 🔴 L'ouverture ImGui est DIFFÉRÉE. `OpenUrl` est appelée depuis un menu
+// contextuel (donc une autre pile d'ID) ou depuis le dessin d'une ligne de log :
+// un `ImGui::OpenPopup` posé là ne trouverait pas la modale. Même piège, même
+// remède que `ro::OpenQuantityPrompt`.
+std::string g_pending_url;
+bool        g_confirm_requested = false;
+
+// Le réglage vit dans la chatbox — c'est là que les adresses arrivent, et c'est
+// là que le joueur ira le chercher. Chatbox absente : on avertit, parce que le
+// défaut d'un garde-fou est d'être là.
+bool UrlConfirmEnabled() {
+  const ChatWindow* chat = Bourgeon::Instance().chat_window();
+  return chat == nullptr || chat->url_confirm();
+}
+
+void OpenUrl(const char* url) {
+  if (url == nullptr || url[0] == '\0') return;
+  if (!UrlConfirmEnabled()) {
+    LaunchUrl(url);
+    return;
+  }
+  g_pending_url       = url;
+  g_confirm_requested = true;
 }
 
 // La fiche en jeu, avec repli sur le site quand elle est désactivée : un lien qui
@@ -175,16 +221,20 @@ void HoverPreview(const Target& target) {
   if (target.kind == Target::kUrl) {
     // 🔴 L'adresse ENTIÈRE avant de cliquer. Une ligne de chat tronque, et c'est
     // précisément sur ce qu'on ne voit pas qu'un lien trompe.
+    //
+    // ⚠ Texte SOMBRE, même raison que le menu ci-dessous : l'infobulle hérite du
+    // texte CLAIR que la chatbox pousse pour son fond sombre, alors que le fond
+    // d'une infobulle, lui, est clair. L'adresse s'affichait en blanc sur blanc —
+    // donc invisible, exactement là où elle est le plus utile.
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
     ImGui::BeginTooltip();
     ImGui::TextUnformatted(target.url.c_str());
     ImGui::EndTooltip();
+    ImGui::PopStyleColor();
   }
 }
 
 void DrawMenu(const char* popup_id, const Target& target) {
-  // 🔴 Texte SOMBRE : les cadres RO poussent un texte clair (fond sombre) alors
-  // qu'un popup, lui, est clair — blanc sur blanc sinon.
-  const ImU32 kDarkText = IM_COL32(24, 22, 20, 255);
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   if (ImGui::BeginPopup(popup_id)) {
     if (!target.label.empty()) ImGui::TextDisabled("%s", target.label.c_str());
@@ -249,6 +299,59 @@ void DrawMenu(const char* popup_id, const Target& target) {
     ImGui::EndPopup();
   }
   ImGui::PopStyleColor();
+}
+
+void DrawUrlConfirm() {
+  static const char* const kPopupId = "Ouvrir cette adresse ?";
+
+  if (g_confirm_requested) {
+    g_confirm_requested = false;
+    ImGui::OpenPopup(kPopupId);
+  }
+
+  // Sous le curseur, là où le joueur vient de cliquer — et SANS voile : assombrir
+  // tout l'écran pour une confirmation d'un clic serait disproportionné, et le
+  // chat doit rester lisible pendant qu'on décide. Pas de bullet de titre non
+  // plus : il n'y a rien à replier ici.
+  const ImVec2 mouse = ImGui::GetMousePos();
+  ro::SetNextRoModalPos(mouse.x, mouse.y, false);
+  // Fermeture qui ne vient pas de nos boutons (Échap, clic ailleurs) : on
+  // n'ouvre rien, et c'est exactement le bon défaut pour un garde-fou.
+  if (!ro::BeginRoPopupModal(kPopupId)) return;
+  // Échap doit fermer CETTE modale, pas la chatbox derrière elle.
+  ro::SuppressEscapeStack();
+
+  ImGui::TextUnformatted("Ce lien vient d'un autre joueur.");
+  ImGui::TextUnformatted("Il ouvrira votre navigateur sur :");
+  ImGui::Spacing();
+  // 🔴 L'adresse COMPLÈTE, schéma compris — c'est-à-dire celle qui partira
+  // vraiment, pas celle qui est écrite dans la ligne de chat. Tout l'intérêt de
+  // l'avertissement est là : le texte affiché et la destination peuvent n'avoir
+  // aucun rapport. Colorée pour qu'on la distingue de la phrase qui l'annonce.
+  const std::string full = FullUrl(g_pending_url.c_str());
+  ImGui::TextColored(ImVec4(0.10f, 0.20f, 0.55f, 1.0f), "%s", full.c_str());
+  ImGui::Spacing();
+
+  bool close = false;
+  if (ro::RoButton("Ouvrir")) {
+    LaunchUrl(g_pending_url.c_str());
+    close = true;
+  }
+  ImGui::SameLine();
+  if (ro::RoButton("Annuler")) close = true;
+  ImGui::SameLine();
+  // Copier plutôt qu'ouvrir : le geste prudent doit être à portée ICI aussi, pas
+  // seulement dans le menu contextuel qu'on vient de quitter.
+  if (ro::RoButton("Copier")) {
+    ImGui::SetClipboardText(full.c_str());
+    close = true;
+  }
+
+  if (close) {
+    g_pending_url.clear();
+    ImGui::CloseCurrentPopup();
+  }
+  ro::EndRoPopupModal();
 }
 
 }  // namespace links
