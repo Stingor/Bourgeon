@@ -145,6 +145,25 @@ class MonsterInfoWindow : public Plugin {
     uint16_t speed = 0;
     int16_t  resist[10] = {0};   // % encaissé par élément d'ATTAQUE, SIGNÉ
     std::string name;
+
+    // ── Identité : de QUEL monstre cette fiche parle-t-elle ──────────────────
+    // Beaucoup de monstres partagent exactement le nom affiché et l'apparence
+    // d'un autre (versions d'événement, d'invocation, d'instance). Le joueur qui
+    // ouvre l'un d'eux voit un monstre familier sans butin ni spawn et croit à
+    // un bug de la fiche. Ces champs lui donnent de quoi comprendre.
+    //
+    // 🔴 Ce sont des FAITS envoyés par le serveur, jamais une déduction. Le
+    // préfixe de l'AegisName N'EST PAS un discriminant : des noms légitimes
+    // commencent par ORC_/KOBOLD_/GOBLIN_/THIEF_, de vraies variantes portent au
+    // contraire un underscore FINAL (FABRE_, CHONCHON_), et 88 des homonymes de
+    // ce mob_db (GOBLIN_2..5, DIMIK_1..4, VENATU_1..4…) sont des monstres à part
+    // entière, spawnés et avec butin. L'absence de butin n'en est pas un non plus :
+    // 51 monstres de BASE n'en ont aucun.
+    std::string aegis;            // AegisName : l'identité unique, elle
+    bool     summoned = false;    // cible d'un NPC_SUMMONSLAVE (les G_* pour la plupart)
+    uint8_t  namesake_count = 1;  // combien de monstres portent ce nom affiché (lui compris)
+    uint32_t namesake_ref = 0;    // le plus petit id qui le porte (= lui si c'est lui)
+
     std::vector<Drop>     drops;
     std::vector<Spawn>    spawns;
     std::vector<MobSkill> skills;
@@ -166,6 +185,10 @@ class MonsterInfoWindow : public Plugin {
   MobInfo* Current();
 
   void DrawHeader(MobInfo& mob);       // sprite + nom + badges
+  // Bandeau d'homonymie : combien de monstres portent ce nom, lequel est
+  // celui-ci, et un raccourci vers le plus ancien. N'affiche rien quand le nom
+  // est unique. Cf. le commentaire de MobInfo::aegis pour le pourquoi.
+  void DrawNamesakeNote(MobInfo& mob);
   // Clic sur le sprite : on titille le monstre. Arme l'animation ponctuelle
   // (dégât, ou attaque une fois sur huit) et joue sa voix.
   void PokeSprite();

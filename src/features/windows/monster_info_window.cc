@@ -338,6 +338,33 @@ const char* BossLabel(uint8_t boss) {
   }
 }
 
+// ── Le qualificatif accolé au nom ────────────────────────────────────────────
+// nullptr quand il n'y a rien de SÛR à dire, et c'est le cas le plus fréquent.
+//
+// 🔴 L'ordre va du plus certain au moins certain, et s'arrête net :
+//   1. `EVENT_` — le nom se déclare lui-même, il n'y a rien à interpréter ;
+//   2. `summoned` — le serveur a CONSTATÉ un NPC_SUMMONSLAVE qui vise cet id.
+//      C'est le fait qui couvre la famille `G_` (88 des 213 de ce mob_db) sans
+//      rien supposer de son préfixe ;
+//   3. `E_` — convention, mais aucun des 21 de ce mob_db n'a de spawn ni
+//      d'instance, et c'est l'abréviation évidente du cas 1.
+//
+// Au-delà on SE TAIT. `META_`, `A_`, `R_`, `M_`, `W_`, `B_` n'ont pas de sens
+// établi sur ce serveur — et `B_SEYREN` & co sont de vrais boss d'instance, avec
+// butin : les étiqueter « variante » serait un mensonge. Inventer une étiquette
+// serait exactement la désinformation que cette fonctionnalité combat. Le
+// bandeau d'homonymie, lui, reste affiché : il n'énonce que du vérifiable.
+const char* VariantQualifier(const std::string& aegis, bool summoned) {
+  auto starts = [&aegis](const char* prefix) {
+    const size_t n = std::strlen(prefix);
+    return aegis.size() > n && aegis.compare(0, n, prefix) == 0;
+  };
+  if (starts("EVENT_")) return "événement";
+  if (summoned)         return "invoqué";
+  if (starts("E_"))     return "événement";
+  return nullptr;
+}
+
 // ── Compétences de monstre ───────────────────────────────────────────────────
 // Nom : wrapper Lua natif `GetSkillName(id)` (`__cdecl`), la source qu'utilisent
 // la fenêtre de skills et le tooltip natif — localisée, donc préférée. Mais elle
@@ -652,8 +679,32 @@ void MonsterInfoWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     }
   }
 
+  // ── Identité (queue du paquet) ─────────────────────────────────────────────
+  // [aegislen:1][aegis:N][summoned:1][namesake_count:1][namesake_ref:4]
+  // Tout est optionnel de la même façon que le reste du paquet : un serveur qui
+  // ne l'envoie pas laisse simplement les valeurs par défaut, et la fiche se
+  // contente de ne rien dire de l'identité.
+  m.aegis.clear();
+  m.summoned = false;
+  m.namesake_count = 1;
+  m.namesake_ref = 0;
+  if (need(1)) {
+    const uint8_t aegislen = u8();
+    if (need(aegislen)) {
+      m.aegis.assign(reinterpret_cast<const char*>(p), aegislen);
+      p += aegislen;
+      if (need(6)) {
+        m.summoned       = u8() != 0;
+        m.namesake_count = u8();
+        m.namesake_ref   = u32();
+      }
+    }
+  }
+
   m.state = Fetch::kReady;
 }
+
+
 
 MonsterInfoWindow::MobInfo* MonsterInfoWindow::Current() {
   if (current_id_ == 0) return nullptr;
@@ -887,6 +938,12 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   {
     ImGui::TextColored(kTitle, "%s",
                        mob.name.empty() ? "(sans nom)" : mob.name.c_str());
+    // Le qualificatif fait partie du TITRE : c'est la première chose lue, et
+    // c'est là qu'il faut lever le doute — pas trois lignes plus bas.
+    if (const char* qual = VariantQualifier(mob.aegis, mob.summoned)) {
+      ImGui::SameLine(0.0f, 4.0f);
+      ImGui::TextColored(kTitle, "(%s)", qual);
+    }
     ImGui::SameLine();
     Label("#%u", current_id_);
     if (const char* badge = BossLabel(mob.boss)) {
@@ -950,7 +1007,46 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   }
   ImGui::EndGroup();
 
+  DrawNamesakeNote(mob);
   DrawSenseNote(mob);
+}
+
+// ── « Plusieurs monstres portent ce nom » ────────────────────────────────────
+// Le bandeau n'énonce QUE du vérifiable : combien de monstres partagent le nom
+// affiché, lequel est celui-ci (son AegisName), et lequel est le plus ancien.
+// Il ne dit RIEN du butin ni des spawns — les onglets les montrent déjà, et
+// « pas de butin » n'a jamais voulu dire « variante » (51 monstres de base n'en
+// ont aucun).
+//
+// C'est pourtant lui qui répond à la vraie question du joueur : « pourquoi ce
+// Poring-là n'a rien ? » — parce que ce n'est pas le Poring qu'il croit.
+void MonsterInfoWindow::DrawNamesakeNote(MobInfo& mob) {
+  if (mob.namesake_count <= 1 || mob.name.empty()) return;
+
+  ImGui::Separator();
+  ImGui::TextColored(kAmber, "%u monstres portent le nom « %s ».",
+                     mob.namesake_count, mob.name.c_str());
+  if (!mob.aegis.empty()) {
+    ImGui::TextUnformatted("Celui-ci est");
+    ImGui::SameLine(0.0f, 4.0f);
+    ImGui::TextColored(kBlue, "%s", mob.aegis.c_str());
+    ImGui::SameLine(0.0f, 4.0f);
+    Label("#%u", current_id_);
+  }
+  // Le raccourci vers le plus ancien homonyme — celui que le joueur croyait
+  // avoir sous les yeux. Absent quand c'est justement lui : il n'y a nulle part
+  // où aller, et un bouton qui recharge la page courante est un piège.
+  if (mob.namesake_ref != 0 && mob.namesake_ref != current_id_) {
+    ImGui::SameLine();
+    // `Open` et pas un `current_id_ = …` à la main : c'est lui qui remet à zéro
+    // l'animation ponctuelle en vol, dont le numéro d'action désigne une pose de
+    // l'ANCIEN .act.
+    if (ro::RoSmallButton("Voir l'original##mi_namesake"))
+      Open(mob.namesake_ref, false);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Ouvrir la fiche du monstre #%u,\nle plus ancien à porter ce nom.",
+                        mob.namesake_ref);
+  }
 }
 
 void MonsterInfoWindow::PokeSprite() {

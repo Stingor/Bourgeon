@@ -522,7 +522,7 @@ Couple d'opcodes custom (zone sûre `0x0F00+`, cf. `features/systems/bourgeon_op
 | Opcode | Nom | Forme |
 |---|---|---|
 | `0x0F1F` | `CZ_BOURGEON_REQ_MOBINFO` | fixe 9 : `[type:2][len:2][mob_id:4][by_view:1]` |
-| `0x0F20` | `ZC_BOURGEON_MOBINFO` | variable : bloc fixe de 98 o + nom + drops + spawns + skills |
+| `0x0F20` | `ZC_BOURGEON_MOBINFO` | variable : bloc fixe de 98 o + nom + drops + spawns + skills + identité |
 
 Le détail des champs est en commentaire au-dessus des deux structures
 (`moonlight/src/map/packets_struct.hpp`), et le handler est
@@ -542,6 +542,44 @@ Le détail des champs est en commentaire au-dessus des deux structures
 * **Les résistances repartent SIGNÉES.** `clif_skill_estimation` les borne à 0 parce
   que le natif les lit en octet non signé (`-25` s'y afficherait « 231 »). Notre paquet
   n'a pas cette contrainte, donc une absorption (< 0) s'affiche telle quelle.
+
+### 7.2bis 🔴 L'identité : de QUEL monstre cette fiche parle-t-elle
+
+Des dizaines de monstres partagent **exactement** le nom affiché et l'apparence d'un
+autre — versions d'événement, d'invocation, d'instance. Le joueur qui ouvre l'un d'eux
+voit un monstre familier sans butin ni carte de spawn et conclut que la fiche est
+buguée. C'est un faux positif que la fiche doit désamorcer elle-même.
+
+La queue du paquet porte donc
+`[aegislen:1][aegis:N][summoned:1][namesake_count:1][namesake_ref:4]`, calculée une
+fois au premier appel (`mob_db` ne bouge plus après le chargement).
+
+**Ce sont des FAITS, jamais un drapeau « variante ».** Les deux raccourcis qu'on
+serait tenté de prendre sont faux, mesures à l'appui sur ce `mob_db` :
+
+| Raccourci tentant | Pourquoi il est faux |
+|---|---|
+| « le préfixe de l'AegisName » | des noms légitimes commencent par `ORC_`, `KOBOLD_`, `GOBLIN_`, `THIEF_`, `SOLDIER_`, `TREASURE_`… et de vraies variantes portent au contraire un underscore **final** (`FABRE_`, `CHONCHON_`) |
+| « pas de butin / pas de spawn » | **204 des 421** homonymes ONT du butin, et **51 monstres de base** n'en ont aucun — la règle se tromperait dans les deux sens |
+
+Sur les 266 noms partagés, **88 doublons ne sont pas des variantes du tout** :
+`GOBLIN_2..5`, `DIMIK_1..4`, `VENATU_1..4`, `PICKY_`, `PETIT_` sont des monstres à part
+entière, spawnés et avec butin. Un drapeau unique les aurait mélangés aux versions
+d'événement.
+
+**Ce que le client en fait** (`VariantQualifier`, monster_info_window.cc) : un
+qualificatif accolé au titre, du plus certain au moins certain, et **rien** au-delà.
+
+1. `EVENT_` — le nom se déclare lui-même ⇒ « (événement) » ;
+2. `summoned` — le serveur a CONSTATÉ un `NPC_SUMMONSLAVE` visant cet id. C'est ce qui
+   couvre la famille `G_` (88 des 213) sans rien supposer de son préfixe ⇒ « (invoqué) » ;
+3. `E_` — convention, mais aucun des 21 n'a de spawn ni d'instance ⇒ « (événement) ».
+
+`META_`, `A_`, `R_`, `M_`, `W_`, `B_` n'ont **pas** de sens établi sur ce serveur — et
+`B_SEYREN` & co sont de vrais boss d'instance avec butin. On se tait. Le bandeau
+d'homonymie, lui, reste affiché dans tous les cas : il n'énonce que du vérifiable
+(combien portent ce nom, lequel est celui-ci, raccourci vers le plus ancien) et ne dit
+jamais un mot du butin ni des spawns — les onglets les montrent déjà.
 
 ### 7.3 Points d'entrée de la nouvelle fenêtre
 
