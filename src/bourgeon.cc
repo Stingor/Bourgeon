@@ -99,6 +99,8 @@ TradeWindow* Bourgeon::trade_window() { return trade_window_; }
 ChatWindow* Bourgeon::chat_window() { return chat_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
 NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
+MoonlightAuth* Bourgeon::moonlight_auth() { return moonlight_auth_; }
+CharSelect* Bourgeon::char_select() { return char_select_; }
 BugReport* Bourgeon::bug_report() { return bug_report_; }
 CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
@@ -558,12 +560,17 @@ void Bourgeon::LoadPlugins() {
   {
     auto ma = std::make_unique<MoonlightAuth>(auto_login);
     moonlight_auth = ma.get();
+    moonlight_auth_ = moonlight_auth;  // le hook de WndProc l'interroge (WantsKeyboard)
     plugins_.emplace_back(std::move(ma));
   }
   // Remplacement ImGui du char-select (activé par défaut ; opt-out yaml
   // char_select.imgui:false). Réservé au parcours de login Moonlight (gate via
   // moonlight_auth). Socle du lobby unifié ; voir char_select.h / charselect_re.md.
-  plugins_.emplace_back(std::make_unique<CharSelect>(moonlight_auth));
+  {
+    auto char_select = std::make_unique<CharSelect>(moonlight_auth);
+    char_select_ = char_select.get();  // le hook de WndProc l'interroge aussi
+    plugins_.emplace_back(std::move(char_select));
+  }
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
   plugins_.emplace_back(std::make_unique<CheatDetector>());
   // Avertit dès l'écran de login quand le client rend en DirectX 7 (voir

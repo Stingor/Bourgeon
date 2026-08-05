@@ -14,6 +14,8 @@
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
+#include "features/systems/moonlight_auth.h"        // WantsKeyboard (écrans de login)
+#include "features/windows/char_select.h"           // NativeScreenHasKeyboard
 #include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/npc_dialog_window.h"     // EatsKey (touches du dialogue NPC)
 #include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
@@ -46,6 +48,12 @@ static WindowProcFunc WndProcRef;
 // Handle of the first (game) window created via CreateWindowExA. Exposed to
 // plugins through RagnarokClient::GameWindow() (e.g. for synthesizing input).
 static HWND g_game_hwnd = nullptr;
+
+// Marque des frappes que NOUS postons au client natif (RagnarokClient::
+// PostGameKey). Le `repeat count` (bits 0-15) y est NUL, ce qu'un WM_KEYDOWN du
+// pilote clavier ne produit jamais (il vaut toujours au moins 1) : aucune frappe
+// réelle ne peut porter cette valeur, la reconnaissance est donc sans ambiguïté.
+constexpr LPARAM kSyntheticKeyLParam = 0x00420000;
 
 static bool IsMouseOverAnyImGuiWindow(float mx, float my);
 // Same, but ALSO counts click-through (locked) windows — used to decide whether
@@ -352,6 +360,14 @@ YAML::Node RagnarokClient::LoadConfiguration() {
 
 void* RagnarokClient::GameWindow() { return g_game_hwnd; }
 
+void RagnarokClient::PostGameKey(int vkey) {
+  if (!g_game_hwnd) return;
+  PostMessageW(g_game_hwnd, WM_KEYDOWN, static_cast<WPARAM>(vkey),
+               kSyntheticKeyLParam);
+  PostMessageW(g_game_hwnd, WM_KEYUP, static_cast<WPARAM>(vkey),
+               kSyntheticKeyLParam);
+}
+
 uint32_t RagnarokClient::timestamp() const { return timestamp_; }
 
 Session& RagnarokClient::session() const { return *session_; }
@@ -558,6 +574,14 @@ static uint8_t g_mouse_captured_by_game = 0;  // bitmask: bit0=L, bit1=R, bit2=M
 
 static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
                                        LPARAM lParam) {
+  // Frappe synthétique de Bourgeon : elle vise le client NATIF (auto-confirm du
+  // char-server, service-select). Court-circuit AVANT ImGui — sans quoi notre
+  // propre UI la traiterait comme une frappe du joueur : l'Entrée postée pour
+  // valider « Select Service » atterrissait dans le char-select ImGui et
+  // déclenchait une entrée en jeu non demandée.
+  if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP) && lParam == kSyntheticKeyLParam)
+    return WndProcRef(hwnd, uMsg, wParam, lParam);
+
   // Only process ImGui events after at least one frame has been rendered.
   // Before that (e.g. D3D9 login screen where EndScene hasn't fired yet),
   // ImGui side-effects like SetCapture() on WM_LBUTTONDOWN interfere with
@@ -598,6 +622,37 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // Même règle pour la fenêtre de fabrication (94 « LIST » / 79).
       if (auto* make_item = Bourgeon::Instance().make_item_window())
         if (make_item->WantsEnterKey()) return 0;
+    }
+
+    // ── Parcours de login moderne : le clavier appartient à ImGui ─────────────
+    // Du formulaire web jusqu'au char-select, AUCUNE touche du joueur ne doit
+    // atteindre le client natif : ses écrans (login masqué, « Select Service »,
+    // char-select natif fugitivement découvert) réagissent tous au clavier sans
+    // jamais consulter leur visibilité. Un joueur qui martelait Entrée entrait en
+    // jeu sur un personnage qu'il n'avait pas choisi, ou ouvrait la fenêtre
+    // native de création — dont notre scène ne reprend la main qu'après annulation.
+    //
+    // On ne relâche qu'en SORTANT du parcours (repli « Login classique », écran
+    // natif assumé) ou une fois en jeu : c'est ce que portent les deux prédicats.
+    // ImGui, lui, a déjà reçu le message plus haut — nos champs de saisie et la
+    // navigation continuent de fonctionner normalement.
+    //
+    // ⚠ Les combinaisons Alt restent au système et au jeu (Alt+F4, Alt+Entrée) :
+    // aucune n'agit sur les fenêtres RO, et les confisquer empêcherait de fermer
+    // le client depuis l'écran de connexion.
+    if (uMsg == WM_KEYDOWN || uMsg == WM_KEYUP || uMsg == WM_CHAR ||
+        uMsg == WM_UNICHAR) {
+      const bool alt_combo = (GetKeyState(VK_MENU) & 0x8000) &&
+                             !(GetKeyState(VK_CONTROL) & 0x8000);
+      if (!alt_combo) {
+        if (auto* auth = Bourgeon::Instance().moonlight_auth()) {
+          if (auth->WantsKeyboard()) {
+            auto* char_select = Bourgeon::Instance().char_select();
+            if (char_select == nullptr || !char_select->NativeScreenHasKeyboard())
+              return 0;
+          }
+        }
+      }
     }
 
     ImGuiIO& io = ImGui::GetIO();

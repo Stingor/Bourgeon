@@ -21,7 +21,7 @@
 #include "nlohmann/json.hpp"
 #include "features/systems/auto_login.h"
 #include "features/systems/native_login.h"
-#include "ragnarok/ragnarok_client.h"  // GameWindow (nav clavier service-select)
+#include "ragnarok/ragnarok_client.h"  // PostGameKey (frappes destinées au natif)
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"
 #include "utils/game_paths.h"
@@ -486,12 +486,10 @@ void MoonlightAuth::ResolveServer() {
 }
 
 void MoonlightAuth::DriveServerSelect() {
-  HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
-  if (!hwnd) return;
-  auto press = [hwnd](int vk) {
-    PostMessageW(hwnd, WM_KEYDOWN, static_cast<WPARAM>(vk), 0);
-    PostMessageW(hwnd, WM_KEYUP, static_cast<WPARAM>(vk), 0);
-  };
+  // Frappes DESTINÉES AU NATIF : postées par le canal marqué, seul chemin qui
+  // traverse la capture ImGui et notre propre confiscation d'Entrée
+  // (cf. WantsEnterKey).
+  auto press = [](int vk) { RagnarokClient::PostGameKey(vk); };
   // Le client mémorise la dernière connexion : on force le haut de liste (Haut
   // borne en tête), puis on descend à l'index cible, puis on valide.
   for (int i = 0; i < server_count_; ++i) press(VK_UP);
@@ -564,6 +562,16 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     if (state_ == State::kDriveLogin || state_ == State::kDisabled)
       RearmWebLogin();  // mode LOGIN sans session vivante
   }
+}
+
+bool MoonlightAuth::WantsKeyboard() const {
+  // Repli « Login classique » : les écrans natifs redeviennent ceux du joueur, on
+  // leur rend le clavier (taper ses identifiants et valider à l'Entrée, c'est
+  // tout l'intérêt du repli).
+  if (!enabled_ || native_fallback_ || state_ == State::kDisabled) return false;
+  // Et seulement sur les écrans de connexion : une fois en jeu, le clavier est
+  // celui du jeu. `AtLoginScreen()` couvre login ET char-select (même mode).
+  return native_login::AtLoginScreen();
 }
 
 void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
@@ -718,11 +726,11 @@ void MoonlightAuth::OnRenderLoginUI() {
     if (socket_seen_ && login_accepted && !native_login::LoginWindowPresent() &&
         !native_login::CharSelectWindowPresent() && charsrv_tries_ < 10 &&
         (charsrv_tries_ == 0 || (GetTickCount() - charsrv_tick_) > 200)) {
-      HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
-      if (hwnd) {
-        PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0);
-        PostMessageW(hwnd, WM_KEYUP, VK_RETURN, 0);
-      }
+      // ⚠ Canal MARQUÉ (PostGameKey) : cette Entrée-là vise la fenêtre native
+      // « Select Service ». Postée nue, elle serait soit avalée par la capture
+      // clavier, soit interprétée par notre char-select ImGui comme une frappe
+      // du joueur — c'est ainsi qu'une entrée en jeu partait toute seule.
+      RagnarokClient::PostGameKey(VK_RETURN);
       charsrv_tick_ = GetTickCount();
       ++charsrv_tries_;
     }

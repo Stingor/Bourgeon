@@ -54,6 +54,18 @@ class CharSelect : public Plugin {
 
   bool enabled() const { return enabled_; }
 
+  // L'écran de sélection NATIF est-il celui qui a la main ? Le hook de WndProc
+  // s'en sert pour NE PAS confisquer Entrée/Espace au client dans ce cas : sur un
+  // écran natif assumé (mode classique, dialogue natif de création, compte sans
+  // personnage), le clavier appartient au jeu — c'est ainsi qu'on valide la
+  // saisie d'un nom. Sans cette exception, la protection contre le martèlement
+  // d'Entrée aurait rendu ces écrans-là inutilisables sans souris.
+  //
+  // Prédicat SANS état de rendu (comme les autres WantsEnterKey) : il se déduit
+  // de la config, des replis explicites et de faits natifs, jamais d'un drapeau
+  // posé à la frame précédente.
+  bool NativeScreenHasKeyboard() const;
+
  private:
   // Vue décodée d'un slot (depuis CHARACTER_INFO, offsets dans charselect_re.md).
   struct CharView {
@@ -117,6 +129,11 @@ class CharSelect : public Plugin {
   // Fenêtre plein écran « décor + fondu au noir + libellé » des transitions (entrée
   // en jeu, fermeture du jeu). `since` = tick de départ du fondu (~260 ms).
   void DrawTransitionFade(const char* label, unsigned long since);
+
+  // Voile plein écran « décor + libellé » tenu pendant que le char-select natif
+  // est là mais que nos données ne sont pas prêtes. Il COUVRE (rendu) et CAPTE
+  // (clavier + souris) : le natif ne doit être ni vu ni cliqué, même une frame.
+  void DrawWaitCover(const char* label);
 
   // Dessine le paperdoll du slot ancré sur son siège : pieds au point (cx, chair_y),
   // corps de hauteur `box_h` (px écran) étendu vers le haut, centré en X. Composé
@@ -211,6 +228,11 @@ class CharSelect : public Plugin {
   bool screen_was_alive_ = false;      // pour détecter ce front
   unsigned long wait_since_ = 0;       // début de l'attente d'une liste fraîche
   bool list_warned_ = false;           // le repli de sûreté n'alerte qu'une fois
+  // FRONT écran absent -> présent : borne la durée du voile d'attente
+  // (DrawWaitCover). Passé ce délai on rend la main au natif — un compte SANS
+  // personnage n'a jamais de liste à décoder, il ne doit pas rester enfermé
+  // derrière un voile.
+  unsigned long screen_arrived_tick_ = 0;
   // Mode « Personnaliser » : glisser les sièges et les blocs d'interface, molette
   // = taille du pantin, galerie de décors. Ce qui n'était qu'un outil d'auteur
   // (bascule F10 commentée, dont la seule sortie était un LogDiag à recopier dans

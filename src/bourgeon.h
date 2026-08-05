@@ -45,6 +45,8 @@ class Doom;
 class Roggle;
 class Rojeweled;
 class NpcDialogWindow;
+class MoonlightAuth;
+class CharSelect;
 class BugReport;
 class WeaponDualSprites;
 class EntityNames;
@@ -83,6 +85,11 @@ class Bourgeon {
   ChatWindow* chat_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
+  // Front de login « compte Moonlight » et scène de sélection de personnage.
+  // Consultés par le hook de WndProc : à eux deux ils disent si le clavier
+  // appartient à notre UI ou au client natif pendant les écrans de connexion.
+  MoonlightAuth* moonlight_auth();
+  CharSelect* char_select();
   BugReport* bug_report();
   CharacterSheet* character_sheet();
   LoginParade* login_parade();
@@ -236,6 +243,8 @@ class Bourgeon {
   ChatWindow* chat_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MoonlightAuth* moonlight_auth_ = nullptr;    // non-owning, lifetime tied to plugins_
+  CharSelect* char_select_ = nullptr;          // non-owning, lifetime tied to plugins_
   BugReport* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_

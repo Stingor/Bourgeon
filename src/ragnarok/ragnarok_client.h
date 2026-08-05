@@ -37,6 +37,18 @@ class RagnarokClient {
   // callers cast back to HWND. Null until the window exists.
   static void* GameWindow();
 
+  // Poste une frappe (WM_KEYDOWN + WM_KEYUP) DESTINÉE AU CLIENT NATIF, marquée
+  // comme venant de nous. Le hook de WndProc reconnaît la marque et la route
+  // droit au jeu : elle traverse la capture clavier d'ImGui, et ImGui ne la voit
+  // même pas.
+  //
+  // 🔴 C'est le SEUL moyen de piloter un écran natif au clavier pendant qu'on
+  // confisque la touche au joueur (parcours de login moderne : voir
+  // MoonlightAuth::WantsKeyboard). Un PostMessage nu serait soit avalé par la
+  // capture, soit — pire — traité par notre propre UI comme une frappe du joueur
+  // (l'auto-confirm du char-server déclenchait alors une entrée en jeu).
+  static void PostGameKey(int vkey);
+
  private:
   static YAML::Node LoadConfiguration();
   static uint32_t GetClientTimeStamp();

@@ -59,6 +59,31 @@ class MoonlightAuth : public Plugin {
   // native de bout en bout. Réarmé à chaque retour sur l'écran de login.
   bool DroveMoonlightLogin() const { return drove_moonlight_login_; }
 
+  // Le hook de WndProc consulte ceci pour confisquer LE CLAVIER au client NATIF
+  // pendant tout le parcours de login moderne (formulaire web, choix du compte,
+  // pilotage du login, char-select). Il ne le rend qu'en SORTANT du parcours
+  // (repli « Login classique », écran natif assumé — cf.
+  // CharSelect::NativeScreenHasKeyboard) ou une fois en jeu.
+  //
+  // ⚠ C'est un PRÉDICAT et non `io.WantCaptureKeyboard` : la capture ImGui est un
+  // état de rendu, or pendant le pilotage du login on ne dessine RIEN, et une
+  // modale native lance sa propre pompe de messages — le rendu s'arrête
+  // exactement quand la touche est le plus dangereuse, et la capture resterait
+  // figée sur sa dernière valeur.
+  //
+  // 🔴 Sans cette confiscation, un joueur qui martèle Entrée agit sur des écrans
+  // natifs qu'il ne voit même pas : les deux touches déclenchent le bouton par
+  // défaut de la fenêtre RO prioritaire, et la visibilité n'entre JAMAIS en ligne
+  // de compte (UIWindowMgr_OnKeyDown 0x00A471E0 -> OnMsg 6/+0x8C). Constaté :
+  // entrée en jeu sur le personnage du premier slot, ou ouverture de la fenêtre
+  // native de création, pendant le court instant où le char-select natif est
+  // découvert ; et, sur l'écran de login masqué, une msgbox modale bloquante
+  // (UILoginWnd_OnMsg case 186 exige id>=4 et mot de passe>=6 caractères).
+  //
+  // Nos PROPRES frappes (auto-confirm du char-server) ne sont pas concernées :
+  // elles passent par RagnarokClient::PostGameKey, que le hook reconnaît.
+  bool WantsKeyboard() const;
+
   // Ramène le flux au formulaire de login web (état kWebLogin) et oublie la session
   // authentifiée. À appeler quand on RETOURNE à l'écran de connexion sans changer de
   // MODE — c'est le cas du bouton « Revenir au login » du char-select (commande de

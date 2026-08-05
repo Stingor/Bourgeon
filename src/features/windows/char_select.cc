@@ -24,6 +24,7 @@
 #include "d3d9/d3d9_hook.h"      // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
 #include "imgui.h"
 #include "features/systems/moonlight_auth.h"
+#include "features/systems/native_login.h"  // sondes d'écran (fenêtre 0x115, liste)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
@@ -131,6 +132,11 @@ constexpr uint16_t kOpCharListPage = 0x0B72;  // HC_ACK_CHARINFO_PER_PAGE (varia
 // régression bien pire que le bug corrigé. Le message de log est aussi ce qui
 // nous dira que le fait-générateur ne se déclenche pas.
 constexpr unsigned long kListWaitMs = 3000;
+// Durée maximale du voile d'attente (DrawWaitCover) depuis l'ouverture du
+// char-select natif. Couvre largement l'arrivée + le décodage de la liste ; au
+// delà on rend la main au natif (un compte sans personnage n'aurait sinon plus
+// aucune issue, sa liste ne devenant jamais décodable).
+constexpr unsigned long kCoverWaitMs = 3000;
 
 // Comptes de slots renseignés par HC_ACCEPT_ENTER2 (serveur). Capacité = somme.
 constexpr uintptr_t kNormalSlots   = 0x015ffd60;
@@ -1085,6 +1091,66 @@ void CharSelect::DrawTransitionFade(const char* label, unsigned long since) {
   ImGui::PopStyleColor();  // WindowBg
 }
 
+bool CharSelect::NativeScreenHasKeyboard() const {
+  // Hors char-select, rien à dire : c'est le parcours de login, dont MoonlightAuth
+  // garde la touche (les écrans natifs y sont masqués derrière le formulaire).
+  if (!native_login::CharSelectWindowPresent()) return false;
+  // Écran natif ASSUMÉ : plugin désactivé, repli « Mode Classique », dialogue
+  // natif en cours (création / suppression), ou login non-Moonlight (règle
+  // produit : login natif => char-select natif).
+  if (!enabled_ || native_fallback_ || native_op_) return true;
+  if (!force_ && (auth_ == nullptr || !auth_->DroveMoonlightLogin())) return true;
+  // Compte SANS aucun personnage : notre scène ne s'affiche pas (rien à peupler)
+  // et le joueur crée son premier personnage dans la fenêtre native — où le nom
+  // se valide à l'Entrée. Fait natif, pas un drapeau de rendu.
+  //
+  // ⚠ Mais pas tout de suite : au tout début, « aucun personnage » est aussi ce
+  // que voit un compte normal dont la liste n'est pas encore décodée, et notre
+  // voile d'attente couvre alors l'écran. Même borne que lui (kCoverWaitMs), pour
+  // que couverture et clavier ne se contredisent jamais.
+  if (!native_login::CharListLoaded())
+    return (GetTickCount() - screen_arrived_tick_) >= kCoverWaitMs;
+  return false;  // notre scène tient l'écran
+}
+
+void CharSelect::DrawWaitCover(const char* label) {
+  // Le char-select NATIF est à l'écran mais nos données ne sont pas encore
+  // exploitables (liste pas confirmée fraîche, slots pas décodables). On COUVRE
+  // au lieu de rendre la main.
+  //
+  // 🔴 Rendre la main laissait le natif VISIBLE et surtout JOIGNABLE : le joueur
+  // qui martèle Entrée depuis l'écran de login (ou une Entrée encore en file)
+  // cliquait son bouton par défaut — entrée en jeu sur le premier slot, ou
+  // fenêtre native de création quand ce slot est vide, dont notre scène ne
+  // reprend plus la main tant qu'on n'a pas annulé à la main. La confiscation de
+  // clavier (MoonlightAuth::WantsKeyboard) ferme cette porte-là ; ce voile
+  // ferme celle de la SOURIS et supprime le clignotement d'écran natif.
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  ro::SetFullscreenCursorActive();
+  ImGui::SetNextFrameWantCaptureKeyboard(true);
+  ImGui::SetNextFrameWantCaptureMouse(true);
+  ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(disp, ImGuiCond_Always);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  g_cover_active = true;  // on couvre le natif (détour de msgbox)
+  // MÊME nom de fenêtre que la table et que le fondu : ImGui garde le même
+  // état/z-order, l'arrivée de la scène ne provoque aucun saut.
+  ImGui::Begin("##charselect_full", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+                   ImGuiWindowFlags_NoBringToFrontOnFocus);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  DrawHallBackdrop(dl, disp);
+  const ImVec2 ts = ImGui::CalcTextSize(label);
+  dl->AddText(ImVec2((disp.x - ts.x) * 0.5f, disp.y * 0.5f - ts.y * 0.5f),
+              IM_COL32(235, 230, 220, 235), label);
+  ImGui::End();
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();  // WindowBg
+}
+
 void CharSelect::ToggleLayoutEdit() {
   seat_edit_ = !seat_edit_;
   if (seat_edit_) {
@@ -1412,6 +1478,8 @@ void CharSelect::OnRenderLoginUI() {
   // l'enregistre QUE sur le front — le rafraîchir à chaque frame d'absence rendrait
   // toute liste « périmée », puisque le paquet arrive justement pendant l'absence.
   if (screen_was_alive_ && !screen_alive) screen_gone_tick_ = GetTickCount();
+  // FRONT absent -> présent : départ du voile d'attente (cf. DrawWaitCover).
+  if (!screen_was_alive_ && screen_alive) screen_arrived_tick_ = GetTickCount();
   screen_was_alive_ = screen_alive;
   if (!screen_alive) {
     active_ = false;
@@ -1427,18 +1495,25 @@ void CharSelect::OnRenderLoginUI() {
   // sexe incohérents). La liste est fraîche si son paquet est arrivé APRÈS la
   // dernière sortie de l'écran.
   const unsigned long now = GetTickCount();
+  // Le voile ne se tient qu'un temps borné : au-delà, on rend la main au natif
+  // comme avant (compte sans personnage, opcode de liste inattendu…). Il ferme
+  // une fenêtre de quelques frames, il ne doit jamais devenir une prison.
+  const bool may_cover = (now - screen_arrived_tick_) < kCoverWaitMs;
   const bool list_fresh =
       list_tick_ != 0 &&
       static_cast<long>(list_tick_ - screen_gone_tick_) >= 0;
   if (!list_fresh) {
     // Repli de sûreté : on ne bloque JAMAIS durablement. Passé kListWaitMs on
-    // s'arme quand même — le char-select natif reste visible entre-temps, donc
-    // le joueur n'est pas coincé — et on le signale une fois.
+    // s'arme quand même — et on le signale une fois.
     if (wait_since_ == 0) wait_since_ = now;
     if (now - wait_since_ < kListWaitMs) {
       active_ = false;
       active_since_ = 0;
-      return;  // on laisse le char-select NATIF à l'écran
+      // On COUVRE l'attente au lieu de découvrir le char-select natif : le
+      // laisser visible, c'est le laisser cliquable et le laisser réagir aux
+      // Entrées encore en file (entrée en jeu / création non demandées).
+      if (may_cover) DrawWaitCover("Chargement des personnages…");
+      return;
     }
     if (!list_warned_) {
       list_warned_ = true;
@@ -1452,7 +1527,11 @@ void CharSelect::OnRenderLoginUI() {
   }
 
   const int cap = SlotCapacity();
-  if (cap <= 0) { active_ = false; return; }
+  if (cap <= 0) {
+    active_ = false;
+    if (may_cover) DrawWaitCover("Chargement des personnages…");
+    return;
+  }
 
   // Lit tous les slots (occupés + vides).
   static CharView views[128];
@@ -1460,7 +1539,11 @@ void CharSelect::OnRenderLoginUI() {
   for (int i = 0; i < cap && i < 128; ++i) {
     if (ReadSlot(i, &views[i])) ++nfilled;
   }
-  if (nfilled == 0) { active_ = false; return; }  // liste pas encore décodable
+  if (nfilled == 0) {  // liste pas encore décodable — ou compte sans personnage
+    active_ = false;
+    if (may_cover) DrawWaitCover("Chargement des personnages…");
+    return;
+  }
   if (!active_) active_since_ = GetTickCount();   // arrivée sur l'écran (edge)
   active_ = true;
 

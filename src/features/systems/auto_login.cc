@@ -296,6 +296,13 @@ void AutoLogin::TypeString(const std::string& text) {
 void AutoLogin::PressKey(int vkey) {
   HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow());
   if (hwnd == nullptr) return;
+  // ⚠ Frappes NUES, volontairement : PAS le canal marqué de MoonlightAuth
+  // (RagnarokClient::PostGameKey). Ce plugin pilote les champs NATIFS, et sous le
+  // parcours de login moderne le formulaire Moonlight tient déjà l'écran : ses
+  // frappes doivent y rester soumises à la confiscation du clavier, sinon cette
+  // Entrée-ci déclencherait un login natif parallèle sur des champs vides. Quand
+  // MoonlightAuth est inerte ou en repli natif, plus rien n'est confisqué et ce
+  // plugin retrouve son chemin d'origine.
   PostMessageW(hwnd, WM_KEYDOWN, static_cast<WPARAM>(vkey), 0);
   PostMessageW(hwnd, WM_KEYUP, static_cast<WPARAM>(vkey), 0);
 }
