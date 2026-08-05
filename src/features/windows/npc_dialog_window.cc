@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
@@ -229,7 +230,15 @@ NpcDialogWindow::NpcDialogWindow() {
 
 void NpcDialogWindow::Reset() {
   lines_.clear();
-  choices_.clear();
+  menu_opts_.clear();
+  pending_lines_.clear();
+  pending_replaces_ = false;
+  last_dialog_ms_ = GetTickCount();
+  scroll_top_ = false;
+  frags_.clear();
+  layout_wrap_ = layout_font_ = -1.0f;
+  layout_h_ = 0.0f;
+  ++page_gen_;
   has_next_ = has_close_ = false;
   start_fresh_ = true;
   input_mode_ = kInputNone;
@@ -240,20 +249,61 @@ void NpcDialogWindow::Reset() {
   awaiting_reply_ = false;
 }
 
+// Ajoute une ligne à la page en cours de RÉCEPTION — pas à celle qui est affichée.
+// Cf. CommitPage : le corps ne s'étale plus au fil des paquets pour être raboté à
+// l'arrivée du menu.
 void NpcDialogWindow::PushText(const char* s) {
   if (!s) return;
   // Découpe sur les '\n' bruts (le natif fait pareil via preprocess_escapes).
   std::string cur;
   for (const char* p = s; *p; ++p) {
     if (*p == '\r') continue;
-    if (*p == '\n') { lines_.push_back(cur); cur.clear(); }
+    if (*p == '\n') { pending_lines_.push_back(cur); cur.clear(); }
     else cur += *p;
   }
-  lines_.push_back(cur);
-  // Borne l'historique de la conversation courante.
-  constexpr size_t kMaxLines = 400;
+  pending_lines_.push_back(cur);
+}
+
+// Publie la page reçue. Appelée par le paquet qui la TERMINE — WAIT (`next`),
+// CLOSE, MENU ou un prompt — donc dans le MÊME drain, donc dans la même frame que
+// le menu : corps, liste de choix et boutons apparaissent d'un seul tenant, à leur
+// taille définitive. C'est l'effet « sans couture » du natif.
+void NpcDialogWindow::CommitPage() {
+  // 🔴 La page tenue affichée pendant l'aller-retour serveur meurt ICI, et pas au
+  // premier paquet de la réponse : l'effacer plus tôt escamotait le menu et laissait
+  // le texte se ré-étaler sur toute la fenêtre le temps que la suite arrive — un
+  // aller-retour de réarrangement pour rien. Elle reste donc entière, simplement
+  // grisée (awaiting_reply_), jusqu'à l'instant où la suivante la remplace.
+  if (awaiting_reply_) {
+    awaiting_reply_ = false;
+    menu_opts_.clear();
+    menu_filter_[0] = '\0';
+    menu_hot_ = -1;
+    input_mode_ = kInputNone;
+  }
+  // Rien de neuf à publier : un terminateur sans `mes` (un `menu` qui suit un choix,
+  // un `close` sec) garde la page affichée telle quelle — le natif aussi.
+  if (pending_lines_.empty() && !pending_replaces_) return;
+  if (pending_replaces_) {
+    lines_.swap(pending_lines_);
+    scroll_top_ = true;  // nouvelle page : on la lit par le HAUT, pas par sa fin
+  } else {
+    lines_.insert(lines_.end(), pending_lines_.begin(), pending_lines_.end());
+  }
+  pending_lines_.clear();
+  pending_replaces_ = false;
+  // Garde-fou anti-emballement, PAS un budget d'affichage. L'ancien plafond de 400
+  // lignes tronquait pour de bon des pages légitimes : l'agent de warp, détail des
+  // cartes activé, en écrit ~700 (trois donjons, monstre par monstre) — le début de
+  // la liste, en-tête de la première carte compris, partait à la poubelle. Ça ne se
+  // voyait pas tant qu'on déroulait automatiquement jusqu'en bas ; maintenant que la
+  // page s'ouvre par le HAUT, c'est la première chose que le joueur lirait. Le coût
+  // d'une longue page a par ailleurs changé de nature — mise en page calculée une
+  // seule fois, rendu borné à la bande visible.
+  constexpr size_t kMaxLines = 4000;
   if (lines_.size() > kMaxLines)
     lines_.erase(lines_.begin(), lines_.begin() + (lines_.size() - kMaxLines));
+  ++page_gen_;  // invalide le cache de mise en page
 }
 
 // Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). Les paquets de
@@ -295,27 +345,20 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     return;
   }
 
-  // Premier paquet de dialogue reçu depuis notre envoi : la page qu'on tenait
-  // affichée en attendant est morte, on l'efface MAINTENANT. C'est le pendant
-  // d'awaiting_reply_ — les envois ne nettoient plus rien eux-mêmes, sinon le footer
-  // se réorganisait pendant tout l'aller-retour serveur.
+  // Le serveur PARLE : la page n'a pas fini d'arriver, l'échéance du filet
+  // d'OnRenderUI est repoussée. (La page qu'on tenait affichée en attendant, elle,
+  // n'est effacée qu'à la publication de la suivante — cf. CommitPage.)
   //
   // ⚠ Restreint à NOS opcodes : OnRecvPacket est appelé pour tous ceux qu'observe
   // n'importe quel plugin (ex. 0x8C8 ZC_NOTIFY_ACT du DPS meter), et l'un d'eux
-  // pendant l'attente effacerait la page à la place de la vraie réponse.
-  if (awaiting_reply_) {
-    switch (opcode) {
-      case kZcSay: case kZcSay2: case kZcWait: case kZcWait2: case kZcClose:
-      case kZcMenu: case kZcEditN: case kZcEditS: case kZcClear:
-        awaiting_reply_ = false;
-        choices_.clear();
-        menu_filter_[0] = '\0';
-        menu_hot_ = -1;
-        input_mode_ = kInputNone;
-        break;
-      default:
-        break;
-    }
+  // pendant l'attente repousserait l'échéance à la place d'un vrai paquet.
+  switch (opcode) {
+    case kZcSay: case kZcSay2: case kZcWait: case kZcWait2: case kZcClose:
+    case kZcMenu: case kZcEditN: case kZcEditS: case kZcClear:
+      last_dialog_ms_ = GetTickCount();
+      break;
+    default:
+      break;
   }
 
   // NB : OnRecvPacket est appelé pour TOUS les opcodes observés par N'IMPORTE quel
@@ -327,7 +370,12 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
       gid_ = *reinterpret_cast<const uint32_t*>(data + 2);
       const int textlen = static_cast<int>(plen) - 8;
-      if (start_fresh_) { lines_.clear(); start_fresh_ = false; }  // nouvelle conversation
+      // Saut de page : la page en RÉCEPTION remplacera l'affichée à sa publication.
+      if (start_fresh_) {
+        pending_lines_.clear();
+        pending_replaces_ = true;
+        start_fresh_ = false;
+      }
       if (textlen > 0) {
         std::string t(reinterpret_cast<const char*>(data + 6),
                       static_cast<size_t>(textlen));
@@ -343,7 +391,11 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
       gid_ = *reinterpret_cast<const uint32_t*>(data + 2);
       const int textlen = static_cast<int>(plen) - 9;
-      if (start_fresh_) { lines_.clear(); start_fresh_ = false; }  // nouvelle conversation
+      if (start_fresh_) {  // saut de page (cf. kZcSay)
+        pending_lines_.clear();
+        pending_replaces_ = true;
+        start_fresh_ = false;
+      }
       if (textlen > 0) {
         std::string t(reinterpret_cast<const char*>(data + 7),
                       static_cast<size_t>(textlen));
@@ -357,6 +409,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     case kZcWait:
     case kZcWait2:
       if (len >= 4) gid_ = *reinterpret_cast<const uint32_t*>(data);
+      CommitPage();  // `next` TERMINE la page : texte et bouton d'un seul tenant
       has_next_ = true;
       has_close_ = false;
       open_ = true;
@@ -368,6 +421,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       // close suit toujours un `mes` (open_ déjà posé par le SAY). Le natif les ignore
       // aussi. (`close;` sans `mes` = erreur serveur, donc jamais légitime.)
       if (!open_) return;  // close parasite hors session (login/OnPCLoginEvent/alootid2)
+      CommitPage();        // `close` TERMINE la page
       has_close_ = true;
       has_next_ = false;
       start_fresh_ = true;  // le prochain SAY = nouvelle conversation
@@ -378,7 +432,12 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
       gid_ = *reinterpret_cast<const uint32_t*>(data + 2);
       const int mlen = static_cast<int>(plen) - 8;
-      choices_.clear();
+      // 🔴 Le menu TERMINE la page : on publie le corps MAINTENANT, dans la même
+      // frame que la liste de choix. C'est tout l'objet de la mise en attente —
+      // sinon le corps s'étalait pendant l'arrivée des `mes` puis se faisait raboter
+      // ici, à l'instant même où le joueur commençait à lire.
+      CommitPage();
+      menu_opts_.clear();
       if (mlen > 0) {
         std::string m(reinterpret_cast<const char*>(data + 6),
                       static_cast<size_t>(mlen));
@@ -399,15 +458,24 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         // ABSOLUE (compteur `total` de menu_countoptions) pour la valeur de
         // retour de select() — d'où la confusion : select("a","","b") RENVOIE 3
         // pour "b", mais le client ENVOIE 2.
-        // On les garde quand même dans choices_ pour ne pas fusionner deux
-        // séparateurs consécutifs ; DrawMenu les saute et numérote sur les
-        // visibles.
+        // Le rang est donc FIGÉ ici, à la réception : les entrées vides le font
+        // avancer sans donner d'option, et le rendu n'a plus à le recompter (il
+        // le comptait avant filtre, sous peine d'envoyer le mauvais choix).
+        int rank = 0;
         size_t start = 0;
         while (start <= m.size()) {
           size_t sep = m.find(':', start);
           std::string opt = (sep == std::string::npos) ? m.substr(start)
                                                         : m.substr(start, sep - start);
-          choices_.push_back(opt);
+          if (!opt.empty()) {
+            MenuOption mo;
+            mo.rank = ++rank;
+            ParseLine(opt, &mo.runs);  // texte riche (^RRGGBB, ^i[id]…) en UTF-8
+            std::string plain;         // même texte, à plat, pour la recherche
+            for (const Run& r : mo.runs) plain += r.text;
+            mo.search = LowerAscii(plain.c_str());
+            menu_opts_.push_back(std::move(mo));
+          }
           if (sep == std::string::npos) break;
           start = sep + 1;
         }
@@ -423,6 +491,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     }
     case kZcEditN:
       if (len >= 4) gid_ = *reinterpret_cast<const uint32_t*>(data);
+      CommitPage();  // le prompt TERMINE la page (texte + champ d'un seul tenant)
       input_mode_ = kInputNumber;
       num_buf_[0] = '\0';
       input_need_focus_ = true;  // focus auto du champ à l'apparition
@@ -430,6 +499,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       return;
     case kZcEditS:
       if (len >= 4) gid_ = *reinterpret_cast<const uint32_t*>(data);
+      CommitPage();  // idem kZcEditN
       input_mode_ = kInputString;
       str_buf_[0] = '\0';
       input_need_focus_ = true;  // focus auto du champ à l'apparition
@@ -448,6 +518,15 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       // toujours à réécrire par-dessus), et l'ancienne page est de toute façon plus
       // lisible qu'un cadre vide. C'est exactement la mécanique déjà retenue pour
       // `next` et pour un choix de menu, qui sont aussi des sauts de page.
+      //
+      // 🔴 Et il ne PUBLIE rien — surtout pas. `clear` est le PREMIER paquet de la
+      // réponse du serveur (l'agent de warp l'envoie avant ses ~700 `mes`,
+      // moon/warp_agent.npc:794). Y publier faisait tomber le menu de la page
+      // précédente à cet instant précis : le corps encore affiché s'étalait aussitôt
+      // dans la place libérée, restait ainsi toute la durée de la rafale, puis se
+      // faisait raboter à l'arrivée du nouveau menu. Deux réarrangements au lieu de
+      // zéro. La page affichée doit rester ENTIÈRE — texte ET menu, grisés — jusqu'à
+      // la seconde où la suivante la remplace.
       start_fresh_ = true;
       return;
     default:
@@ -456,6 +535,9 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 }
 
 // ── Parsing d'une ligne en runs (couleur ^RRGGBB, gras/italique, liens) ──
+// Les segments sortent en UTF-8 : la conversion depuis l'ANSI des scripts serveur
+// se fait ICI, une fois par ligne et par page, plutôt qu'à chaque frame de rendu.
+// (`link_arg` reste brut : un id d'item ou une URL sont de l'ASCII.)
 void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
   Run cur;
   cur.color = 0;
@@ -463,6 +545,7 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
   auto flush = [&]() {
     if (!cur.text.empty()) {
       out->push_back(cur);
+      out->back().text = AnsiToUtf8(cur.text);
       cur.text.clear();
     }
   };
@@ -529,15 +612,16 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
   flush();
 }
 
-// ── Rendu word-wrap multi-couleur (ImDrawList) ──
-void NpcDialogWindow::DrawRichLines() {
-  ImDrawList* dl = ImGui::GetWindowDrawList();
+// ── Mise en page du corps (word-wrap multi-couleur) ──
+// Place TOUTES les lignes en coordonnées LOCALES au corps. C'est le calcul cher —
+// parsing des balises, conversion ANSI->UTF-8, mesure de chaque mot — et il était
+// refait à chaque frame : une page de deux cents lignes payait son propre découpage
+// soixante fois par seconde PENDANT qu'elle arrivait, d'où son apparition poussive
+// à côté du natif (dont UIRichTextCtrl::AddLine ne place la ligne qu'une fois).
+// Ici il ne repart qu'au changement de page, de largeur ou de taille de police.
+void NpcDialogWindow::BuildLayout(float wrap, float fsize, float line_h) {
+  frags_.clear();
   ImFont* font = ImGui::GetFont();
-  const float fsize = ImGui::GetFontSize();
-  const float line_h = ImGui::GetTextLineHeightWithSpacing();
-  const float wrap = ImGui::GetContentRegionAvail().x;
-  const ImU32 def_col = ImGui::GetColorU32(ImGuiCol_Text);
-  const ImVec2 origin = ImGui::GetCursorScreenPos();
   const float space_w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, " ").x;
 
   float x = 0.0f, y = 0.0f;
@@ -547,22 +631,24 @@ void NpcDialogWindow::DrawRichLines() {
     ParseLine(raw, &runs);
     for (const Run& r : runs) {
       // Icône item ^i[id] : hauteur = ligne, largeur au RATIO d'origine (pas de déform).
+      // ⚠ On ne garde QUE ses dimensions : une texture ne survit pas à un reset de
+      // device (cf. ui/icon_cache.h), le handle est redemandé au rendu. La résolution
+      // du chemin, elle, est mémorisée par le cache — l'appel ici est définitif.
       if (r.icon_id != 0) {
         ro::IconTex ic = ro::ItemIcon(static_cast<uint32_t>(r.icon_id));
         if (ic.tex && ic.h > 0) {
           const float ih = fsize + 3.0f;
           const float iw = ih * static_cast<float>(ic.w) / static_cast<float>(ic.h);
           if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
-          const ImVec2 ip(origin.x + x, origin.y + y);
-          dl->AddImage(TexId(ic.tex), ip, ImVec2(ip.x + iw, ip.y + ih));
+          Frag f;
+          f.x = x; f.y = y; f.w = iw; f.h = ih;
+          f.icon_id = r.icon_id;
+          frags_.push_back(std::move(f));
           x += iw + 3.0f;
         }
         continue;
       }
-      // Un lien prend TOUJOURS la couleur de lien (bleu, comme le natif) ; sinon la
-      // couleur ^RRGGBB explicite, ou le texte par défaut.
-      const ImU32 col = r.link ? kLinkColor : (r.color ? r.color : def_col);
-      const std::string u = AnsiToUtf8(r.text);  // scripts serveur = ANSI -> UTF-8
+      const std::string& u = r.text;  // déjà en UTF-8 (cf. ParseLine)
       // Découpe le run en mots (word-wrap manuel). Sûr en UTF-8 : un octet de
       // continuation (0x80-0xBF) n'est jamais 0x20, donc split sur ' ' est correct.
       size_t i = 0;
@@ -581,26 +667,19 @@ void NpcDialogWindow::DrawRichLines() {
         const float ww = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
         bool wrapped = false;
         if (x > 0.0f && x + ww > wrap) { x = 0.0f; y += line_h; wrapped = true; }
-        const ImVec2 pos(origin.x + x, origin.y + y);
-        dl->AddText(pos, col, w0, w1);
-        if (r.bold)  // fake-bold : re-dessine décalé de 1px
-          dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, w0, w1);
-        if (r.link) {  // souligne + rend cliquable (item -> desc ; url -> navigateur)
+        Frag f;
+        f.x = x; f.y = y; f.w = ww; f.h = fsize;
+        f.text.assign(w0, w1);
+        f.color = r.color;   // 0 = couleur par défaut, résolue au rendu (thème)
+        f.bold  = r.bold;
+        f.link  = r.link;
+        if (r.link) {
+          f.link_arg = r.link_arg;
           // Étend à gauche jusqu'au début des espaces de tête (MÊME ligne) pour que TOUT
           // le libellé du lien soit cliquable/souligné en continu, y compris entre 2 mots.
-          const float x0 = (!wrapped && gap_y == y) ? (origin.x + gap_x) : pos.x;
-          dl->AddLine(ImVec2(x0, pos.y + fsize), ImVec2(pos.x + ww, pos.y + fsize),
-                      kLinkColor);
-          if (!r.link_arg.empty() &&
-              ImGui::IsMouseHoveringRect(ImVec2(x0, pos.y),
-                                         ImVec2(pos.x + ww, pos.y + fsize + 2.0f))) {
-            ro::SetHoverCursor(2);  // 2 = curseur « main » RO (le jeu dessine son curseur)
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-              pending_link_cmd_ = r.link;      // action décidée au tick (item/url)
-              pending_link_arg_ = r.link_arg;
-            }
-          }
+          f.ux0 = (!wrapped && gap_y == y) ? gap_x : x;
         }
+        frags_.push_back(std::move(f));
         x += ww;
         i = j;
       }
@@ -608,24 +687,83 @@ void NpcDialogWindow::DrawRichLines() {
     x = 0.0f;
     y += line_h;  // fin de ligne source
   }
-  ImGui::Dummy(ImVec2(wrap, y));  // réserve la hauteur (scroll)
+  layout_h_    = y;
+  layout_wrap_ = wrap;
+  layout_font_ = fsize;
+  frags_gen_   = page_gen_;
 }
 
-size_t NpcDialogWindow::MenuShownCount() const {
-  return choices_.size() -  // options réellement affichées (les vides sont masquées)
-         static_cast<size_t>(
-             std::count(choices_.begin(), choices_.end(), std::string()));
+// ── Rendu du corps (ImDrawList) ──
+void NpcDialogWindow::DrawRichLines() {
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const float fsize = ImGui::GetFontSize();
+  const float line_h = ImGui::GetTextLineHeightWithSpacing();
+  const float wrap = ImGui::GetContentRegionAvail().x;
+  const ImU32 def_col = ImGui::GetColorU32(ImGuiCol_Text);
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+  if (frags_gen_ != page_gen_ || layout_wrap_ != wrap || layout_font_ != fsize)
+    BuildLayout(wrap, fsize, line_h);
+
+  // Bande réellement visible du corps. Hors d'elle, un fragment ne produirait que
+  // des sommets pour rien — et une liste de deux cents monstres en compte des
+  // milliers, tous empilés dans la même ImDrawList à chaque frame.
+  const float view_top = ImGui::GetWindowPos().y;
+  const float view_bot = view_top + ImGui::GetWindowSize().y;
+
+  for (const Frag& f : frags_) {
+    const ImVec2 pos(origin.x + f.x, origin.y + f.y);
+    if (pos.y > view_bot) break;              // frags_ est trié par y croissant
+    if (pos.y + line_h < view_top) continue;
+    if (f.icon_id != 0) {
+      ro::IconTex ic = ro::ItemIcon(static_cast<uint32_t>(f.icon_id));
+      if (ic.tex)
+        dl->AddImage(TexId(ic.tex), pos, ImVec2(pos.x + f.w, pos.y + f.h));
+      continue;
+    }
+    // Un lien prend TOUJOURS la couleur de lien (bleu, comme le natif) ; sinon la
+    // couleur ^RRGGBB explicite, ou le texte par défaut.
+    const ImU32 col = f.link ? kLinkColor : (f.color ? f.color : def_col);
+    const char* t0 = f.text.c_str();
+    const char* t1 = t0 + f.text.size();
+    dl->AddText(pos, col, t0, t1);
+    if (f.bold)  // fake-bold : re-dessine décalé de 1px
+      dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, t0, t1);
+    if (f.link) {  // souligne + rend cliquable (item -> desc ; url -> navigateur)
+      const float x0 = origin.x + f.ux0;
+      dl->AddLine(ImVec2(x0, pos.y + fsize), ImVec2(pos.x + f.w, pos.y + fsize),
+                  kLinkColor);
+      if (!f.link_arg.empty() &&
+          ImGui::IsMouseHoveringRect(ImVec2(x0, pos.y),
+                                     ImVec2(pos.x + f.w, pos.y + fsize + 2.0f))) {
+        ro::SetHoverCursor(2);  // 2 = curseur « main » RO (le jeu dessine son curseur)
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+          pending_link_cmd_ = f.link;      // action décidée au tick (item/url)
+          pending_link_arg_ = f.link_arg;
+        }
+      }
+    }
+  }
+  ImGui::Dummy(ImVec2(wrap, layout_h_));  // réserve la hauteur (scroll)
+}
+
+size_t NpcDialogWindow::MenuVisibleCount() const {
+  if (menu_filter_[0] == '\0') return menu_opts_.size();
+  const std::string f = LowerAscii(menu_filter_);
+  size_t n = 0;
+  for (const MenuOption& o : menu_opts_)
+    if (o.search.find(f) != std::string::npos) ++n;
+  return n;
 }
 
 float NpcDialogWindow::MenuNaturalHeight() const {
-  if (choices_.empty()) return 0.0f;
-  const size_t shown = MenuShownCount();
-  // Nombre de lignes RÉELLEMENT à l'écran : sous filtre, c'est le compte de la frame
-  // précédente (DrawMenu ne l'apprend qu'en dessinant). La boîte suit donc la
-  // recherche au lieu de garder la taille du menu complet.
-  size_t rows = shown;
-  if (menu_filter_[0] != '\0' && menu_vis_count_ >= 0)
-    rows = static_cast<size_t>(menu_vis_count_);
+  if (menu_opts_.empty()) return 0.0f;
+  // 🔴 Nombre de lignes RÉELLEMENT à l'écran, calculé MAINTENANT — filtre de
+  // recherche compris. C'est ce qui permet de dimensionner le menu AVANT le corps
+  // (OnRenderUI l'appelle en premier) : quand il était repris de la frame
+  // précédente, la boîte rattrapait sa taille avec un temps de retard et le texte
+  // au-dessus sautait d'autant.
+  size_t rows = MenuVisibleCount();
   if (rows < 1) rows = 1;                 // « aucun résultat » garde une ligne de haut
   if (rows > kMenuMaxRows) rows = kMenuMaxRows;  // au-delà : scrollbar interne
 
@@ -635,20 +773,19 @@ float NpcDialogWindow::MenuNaturalHeight() const {
   // d'un cheveu, ce qui fait apparaître une scrollbar sur un menu qui tenait.
   float h = static_cast<float>(rows) * MenuRowHeight() +
             st.WindowPadding.y * 2.0f + 2.0f;
-  if (menu_search_ && shown > kMenuFilterThreshold)  // barre de recherche au-dessus
+  if (menu_search_ && menu_opts_.size() > kMenuFilterThreshold)  // barre de recherche
     h += ImGui::GetFrameHeight() + st.ItemSpacing.y;
   return h;
 }
 
 void NpcDialogWindow::DrawMenu(float group_h) {
-  if (choices_.empty()) return;
+  if (menu_opts_.empty()) return;
   // Groupe menu à hauteur BORNÉE (barre de recherche + liste) : il s'ajuste au
   // nombre d'options (cf. MenuNaturalHeight) et ne pousse jamais les boutons hors
   // de la fenêtre.
   ImGui::BeginChild("##menugrp", ImVec2(0, group_h), false, ImGuiWindowFlags_NoScrollbar);
 
-  const size_t shown_count = MenuShownCount();
-  const bool filterable = menu_search_ && shown_count > kMenuFilterThreshold;
+  const bool filterable = menu_search_ && menu_opts_.size() > kMenuFilterThreshold;
   bool enter_from_search = false;
   if (filterable) {
     ImGui::SetNextItemWidth(-1.0f);
@@ -660,14 +797,16 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   const std::string f = LowerAscii(menu_filter_);
 
   // Navigation clavier : auto-focus de l'option 1 à l'ouverture, flèches haut/bas
-  // (avec wrap) sur le nombre d'items VISIBLES de la frame précédente.
+  // (avec wrap) sur le nombre d'items VISIBLES — connu avant de dessiner, donc plus
+  // de bouclage sur le compte de la frame précédente.
+  const int vis_count = static_cast<int>(MenuVisibleCount());
   if (menu_hot_ < 0) menu_hot_ = 0;  // auto-focus #1
   bool nav = false;
   if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) { ++menu_hot_; nav = true; }
   if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true))   { --menu_hot_; nav = true; }
-  if (menu_vis_count_ > 0) {
-    if (menu_hot_ < 0) menu_hot_ = menu_vis_count_ - 1;   // wrap bas
-    if (menu_hot_ >= menu_vis_count_) menu_hot_ = 0;      // wrap haut
+  if (vis_count > 0) {
+    if (menu_hot_ < 0) menu_hot_ = vis_count - 1;   // wrap bas
+    if (menu_hot_ >= vis_count) menu_hot_ = 0;      // wrap haut
   } else {
     menu_hot_ = 0;
   }
@@ -686,30 +825,23 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   const float row_h = MenuRowHeight();  // même mesure que MenuNaturalHeight
   const float pad_x = ImGui::GetStyle().ItemSpacing.x;
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad_x, 0.0f));  // aucun espace vertical entre items
-  // 🔴 Le rang se compte AVANT le filtre de recherche : il vaut la position parmi
-  // TOUTES les options non vides du menu, filtrées ou non — c'est exactement ce que
-  // compte menu_countoptions() côté serveur. Le compter après donnerait le numéro de
-  // la ligne à l'écran, et un menu filtré enverrait le mauvais choix.
-  int rank = 0;
-  for (int i = 0; i < static_cast<int>(choices_.size()); ++i) {
-    if (choices_[i].empty()) continue;  // entrée vide : ni affichée, ni comptée
-    ++rank;
-    std::vector<Run> mruns;
-    ParseLine(choices_[i], &mruns);  // découpe en runs colorés (^RRGGBB)
-    std::string plain;               // texte brut pour le filtre
-    for (const Run& mr : mruns) plain += mr.text;
-    const std::string uplain = AnsiToUtf8(plain);
-    if (!f.empty() && LowerAscii(uplain.c_str()).find(f) == std::string::npos)
-      continue;
+  // 🔴 Le rang ne se compte PAS ici : il est figé à la réception (HandlePacket) et
+  // vaut la position parmi TOUTES les options non vides du menu, filtrées ou non —
+  // exactement ce que compte menu_countoptions() côté serveur. Le recompter après
+  // filtre donnerait le numéro de la ligne à l'écran, et un menu filtré enverrait le
+  // mauvais choix.
+  for (size_t i = 0; i < menu_opts_.size(); ++i) {
+    const MenuOption& o = menu_opts_[i];
+    if (!f.empty() && o.search.find(f) == std::string::npos) continue;
     const bool hot = (static_cast<int>(visible.size()) == menu_hot_);  // item focus clavier ?
-    visible.push_back(rank);
+    visible.push_back(o.rank);
     // Selectable transparent (clic + surbrillance ; `hot`=focus clavier) ; le texte
     // MULTICOLORE est dessiné par-dessus (chaque run garde sa couleur).
     char id[16];
-    std::snprintf(id, sizeof(id), "##m%d", i);
+    std::snprintf(id, sizeof(id), "##m%d", static_cast<int>(i));
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
     if (ImGui::Selectable(id, hot, ImGuiSelectableFlags_None, ImVec2(0, row_h)))
-      chosen = rank;
+      chosen = o.rank;
     if (hot && nav) ImGui::SetScrollHereY(0.5f);  // garde le focus visible pendant la nav
     float x = p0.x + pad_x;
     const float ty = p0.y + (row_h - fsize) * 0.5f;
@@ -717,7 +849,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
     std::snprintf(num, sizeof(num), "%d. ", static_cast<int>(visible.size()));
     dl->AddText(ImVec2(x, ty), def_col, num);
     x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, num).x;
-    for (const Run& r : mruns) {
+    for (const Run& r : o.runs) {
       if (r.icon_id != 0) {  // icône item ^i[id] inline (ratio d'origine gardé)
         ro::IconTex ic = ro::ItemIcon(static_cast<uint32_t>(r.icon_id));
         if (ic.tex && ic.h > 0) {
@@ -729,12 +861,11 @@ void NpcDialogWindow::DrawMenu(float group_h) {
         }
         continue;
       }
-      const std::string u = AnsiToUtf8(r.text);
-      if (u.empty()) continue;
+      if (r.text.empty()) continue;  // déjà en UTF-8 (cf. ParseLine)
       const ImU32 col = r.color ? r.color : def_col;
-      dl->AddText(ImVec2(x, ty), col, u.c_str());
-      if (r.bold) dl->AddText(ImVec2(x + 1.0f, ty), col, u.c_str());
-      x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, u.c_str()).x;
+      dl->AddText(ImVec2(x, ty), col, r.text.c_str());
+      if (r.bold) dl->AddText(ImVec2(x + 1.0f, ty), col, r.text.c_str());
+      x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, r.text.c_str()).x;
     }
   }
   ImGui::PopStyleVar();   // ItemSpacing
@@ -761,7 +892,6 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   if (enter && menu_hot_ >= 0 && menu_hot_ < static_cast<int>(visible.size()))
     chosen = visible[menu_hot_];
 
-  menu_vis_count_ = static_cast<int>(visible.size());
   // Anti double-envoi : une génération de menu ne peut être répondue qu'UNE fois (sinon
   // le 1er choix fait avancer le serveur et le 2e envoi vise un menu à autre cardinalité
   // -> « Invalid menu selection ... got 14, valid [1..3] »).
@@ -841,6 +971,25 @@ bool NpcDialogWindow::EatsKey(unsigned msg, unsigned long wparam) {
 void NpcDialogWindow::OnRenderUI() {
   g_kbd_dialog_open = g_kbd_menu_open = false;  // recalculé chaque frame
   if (!open_ || !imgui_enabled_) return;
+
+  // Filet de la mise en attente : une page dont le paquet TERMINAL n'arrive jamais
+  // doit finir par s'afficher (un script qui écrit puis dort, ou qui s'arrête sur
+  // `end` sans `close`). Il se mesure en SILENCE — temps écoulé depuis le DERNIER
+  // paquet de dialogue — et non en durée totale : une page qui met une seconde à
+  // traverser le réseau repousse l'échéance à chaque paquet et reste donc entière.
+  //
+  // 🔴 Le seuil est volontairement LARGE. Le script engine de rAthena ne rend jamais
+  // la main entre deux `mes` : tous les paquets d'une page partent dans le même
+  // envoi, et seul TCP peut les espacer — de quelques frames, jamais d'un tiers de
+  // seconde. Un vrai `sleep` de script, lui, dure au moins une seconde. Le seuil
+  // sépare donc proprement les deux. (Cf. l'agent de warp, détail des cartes
+  // ACTIVÉ : ~700 `mes` d'affilée, ~40 Ko — c'est là que le filet trop nerveux
+  // publiait une demi-page.)
+  constexpr unsigned long kPageIdleMs = 400;
+  if (!pending_lines_.empty() &&
+      static_cast<unsigned long>(GetTickCount() - last_dialog_ms_) >= kPageIdleMs)
+    CommitPage();
+
   // Rien à afficher (transitoire entre paquets) : pas de fenêtre vide, sauf si un
   // bouton Next/Close est demandé (pour pouvoir cliquer Fermer).
   //
@@ -850,12 +999,12 @@ void NpcDialogWindow::OnRenderUI() {
   // en place. Le serveur n'a aucune obligation de faire tenir sa réponse dans un
   // seul segment : ce trou est normal, ce n'est pas une fin de conversation. Seul
   // CloseDialog (ou un warp) ferme, en repassant par Reset.
-  const bool nothing_to_show = lines_.empty() && choices_.empty() &&
+  const bool nothing_to_show = lines_.empty() && menu_opts_.empty() &&
                                input_mode_ == kInputNone && !has_next_ && !has_close_;
   if (nothing_to_show && !rendered_) return;
   rendered_ = true;
   g_kbd_dialog_open = true;
-  g_kbd_menu_open = !choices_.empty();
+  g_kbd_menu_open = !menu_opts_.empty();
 
   const bool opening = need_pos_;  // 1re frame de cette ouverture (z-order à forcer)
   if (need_pos_) {
@@ -879,13 +1028,13 @@ void NpcDialogWindow::OnRenderUI() {
   // envoyer CZ_CLOSE_DIALOG ferait AVANCER le script (npc_scriptcont reprend) au lieu de
   // fermer -> le natif n'offre d'ailleurs que « Suivant » à ce moment. Donc pas de croix
   // ⊗ ni d'Échap pendant un `next`.
-  const bool can_close = has_close_ || !choices_.empty();
+  const bool can_close = has_close_ || !menu_opts_.empty();
   // État menu/input CAPTURÉ AVANT DrawMenu/DrawInput : ces fonctions, sur Entrée,
-  // répondent PUIS vident choices_/input_mode_. Sans ce snapshot, le footer verrait
-  // choices_ déjà vide et piloterait « Annuler » sur la MÊME touche -> double envoi
+  // répondent PUIS vident menu_opts_/input_mode_. Sans ce snapshot, le footer verrait
+  // menu_opts_ déjà vide et piloterait « Annuler » sur la MÊME touche -> double envoi
   // (choix de menu + annulation). Donc : clavier du footer actif seulement s'il n'y a
   // NI menu NI input en cours.
-  const bool footer_kbd_ok = choices_.empty() && input_mode_ == kInputNone;
+  const bool footer_kbd_ok = menu_opts_.empty() && input_mode_ == kInputNone;
   // NoBringToFrontOnFocus : ne PAS repasser au 1er plan quand on clique l'overlay (sinon
   // un clic sur un lien re-focus l'overlay et masque la fenêtre de description qui vient
   // d'ouvrir). MAIS on l'OMET sur la 1re frame d'ouverture : avec ce flag posé,
@@ -936,11 +1085,15 @@ void NpcDialogWindow::OnRenderUI() {
     // l'autre se lisaient comme un défaut d'alignement. Hors menu, il sépare
     // utilement le texte du NPC de ses boutons — d'où la condition plutôt que la
     // suppression.
-    const bool  footer_sep = choices_.empty();
+    const bool  footer_sep = menu_opts_.empty();
     const float footer_h = (footer_sep ? sep : 0.0f) + row + btm_pad;
     const float input_h = (input_mode_ != kInputNone) ? (sep + row) : 0.0f;
+    // 🔴 Le MENU se mesure en PREMIER, avant que le corps ne prenne le reste : sa
+    // hauteur est entièrement calculable (options, filtre, plafond) sans rien
+    // dessiner. Et il arrive dans la même frame que le texte, puisque la page n'est
+    // publiée qu'à son paquet terminal — d'où la disparition du réarrangement.
     float menu_grp = 0.0f;                                    // hauteur du groupe menu
-    if (!choices_.empty()) {
+    if (!menu_opts_.empty()) {
       const float body = avail - footer_h - input_h;
       // La boîte prend la hauteur de ses options (bornée à kMenuMaxRows, au-delà
       // elle scrolle) au lieu d'une fraction de la fenêtre : un menu de trois
@@ -949,14 +1102,26 @@ void NpcDialogWindow::OnRenderUI() {
       if (menu_grp > body - 48.0f) menu_grp = body - 48.0f;  // garde ~48px de texte
       if (menu_grp < 0.0f) menu_grp = 0.0f;
     }
-    const float menu_total = choices_.empty() ? 0.0f : (sep + menu_grp);
+    const float menu_total = menu_opts_.empty() ? 0.0f : (sep + menu_grp);
     float text_h = avail - footer_h - input_h - menu_total;
     if (text_h < 1.0f) text_h = 1.0f;
 
+    // 🔴 Nouvelle page = on la lit par le HAUT. L'ancien auto-défilement vers le bas
+    // déposait le joueur à la FIN du texte : sur une page qui déborde — la liste des
+    // monstres d'un donjon, un panneau de règles — il tombait sur les dernières
+    // lignes et devait remonter pour comprendre ce qu'il lisait. Le natif, lui,
+    // affiche toujours une page neuve depuis son début.
+    //
+    // ⚠ SetNextWindowScroll et pas SetScrollY : ce dernier ne pose qu'une CIBLE,
+    // appliquée au Begin() SUIVANT — la page neuve se serait affichée une frame au
+    // défilement de l'ancienne (et clampé sur SA hauteur de contenu, donc n'importe
+    // où). Posé avant BeginChild, il vaut dès cette frame. (-1 = axe X inchangé.)
+    if (scroll_top_) {
+      ImGui::SetNextWindowScroll(ImVec2(-1.0f, 0.0f));
+      scroll_top_ = false;
+    }
     ImGui::BeginChild("##npctext", ImVec2(0, text_h), false);
     DrawRichLines();
-    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 2.0f)
-      ImGui::SetScrollHereY(1.0f);  // auto-scroll en bas
     ImGui::EndChild();
 
     // En attente de la réponse serveur, la page reste à l'identique mais devient
@@ -1070,7 +1235,7 @@ void NpcDialogWindow::SendMenuCancel() {
   *reinterpret_cast<uint32_t*>(pkt + 2) = gid_;
   pkt[6] = 0xFF;  // ESC / annulation menu
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  choices_.clear();
+  menu_opts_.clear();
 }
 
 void NpcDialogWindow::SendNumber(int value) {
@@ -1109,12 +1274,12 @@ void NpcDialogWindow::CloseDialog() {
   // arrêté sur un `select` attend un CZ_CHOOSE_MENU, et c'est lui qui le termine
   // proprement.
   //
-  // 🔴 `choices_` non vide ne suffit PLUS : depuis qu'un menu répondu reste affiché
+  // 🔴 `menu_opts_` non vide ne suffit PLUS : depuis qu'un menu répondu reste affiché
   // (grisé) le temps de l'aller-retour, il faut aussi qu'il n'ait pas DÉJÀ reçu sa
   // réponse — sinon fermer pendant l'attente enverrait une annulation par-dessus le
   // choix, sur un script qui n'attend plus rien.
   const bool menu_pending =
-      (!choices_.empty() && menu_gen_ != menu_answered_gen_) ||
+      (!menu_opts_.empty() && menu_gen_ != menu_answered_gen_) ||
       FindWnd(kWinMenu) != nullptr;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis

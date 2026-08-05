@@ -654,3 +654,73 @@ bloqué, 0xE8D lien invalide, 0xBE2 erreur ; `NO MSG : %d` si id>0x1102).
   conditionnée au style byte le rend quasi-certain.
 - Contenu littéral des 4 marqueurs de balise interdits et OnCreate de `UIChoose3Wnd`
   (crée liste/scrollbar/OK) non décompilés.
+
+---
+
+## 13. Portage ImGui — le rendu est PAR PAGE (2026-08-05)
+
+Symptôme rapporté : sur un script bavard (l'agent de warp qui liste les 216 monstres
+d'un donjon), le corps du dialogue s'étalait sur toute la fenêtre, puis se faisait
+**raboter** à l'arrivée du menu — un réarrangement d'autant plus tardif que la page
+est longue, et le joueur se retrouvait déposé à la **fin** du texte. Le natif, lui,
+paraît « sans couture ».
+
+**Pourquoi le natif ne bouge pas.** Sa liste de choix est une fenêtre SÉPARÉE
+(`UIChoose3Wnd`, id 0x11, §5) qui apparaît *à côté* du `UISayDialogWnd` : le texte
+n'est jamais redimensionné par l'arrivée du menu. Notre overlay, lui, empile texte +
+menu + boutons dans une seule fenêtre ImGui, et se partage donc une hauteur.
+
+**Le protocole.** rAthena envoie **un `ZC_SAY_DIALOG` 0x00B4 par `mes`** (216 `mes`
+= 216 paquets), puis le paquet qui TERMINE la page : `ZC_WAIT_DIALOG` 0xB5 (`next`),
+`ZC_CLOSE_DIALOG` 0xB6 (`close`), `ZC_MENU_LIST` 0xB7 (`menu`/`select`), ou un prompt
+0x0142/0x01D4. C'est le terminateur qui dit ce que la page contient d'autre que du
+texte — donc combien de place il faut lui réserver.
+
+**Ce qu'on fait** (`src/features/windows/npc_dialog_window.{h,cc}`) :
+
+1. **Mise en attente.** Les `mes` s'accumulent dans `pending_lines_`, pas dans
+   `lines_`. `CommitPage()` publie la page entière, appelée par le terminateur —
+   donc dans le MÊME drain de `PacketInbox`, donc dans la MÊME frame que le menu.
+   Corps, liste de choix et boutons apparaissent d'un coup, à leur taille définitive.
+2. **Filet — mesuré en SILENCE, et LARGE (400 ms).** Une page dont le terminateur
+   n'arrive jamais (script qui écrit puis dort, ou qui s'arrête sur `end`) doit
+   quand même s'afficher : `last_dialog_ms_` + `kPageIdleMs`. Le seuil se compte
+   depuis le DERNIER paquet, pas depuis le premier — un transfert lent mais régulier
+   repousse l'échéance et la page reste entière.
+   ⚠ **Première version fausse : « deux frames muettes ».** Beaucoup trop court.
+   L'agent de warp, *détail des cartes activé*, envoie ~700 `mes` d'affilée
+   (`moon/warp_agent.npc:794`, trois donjons monstre par monstre, ~40 Ko) : TCP les
+   livre en plusieurs rafales séparées d'une ou deux frames, le filet publiait donc
+   une demi-page — qui s'étalait sur toute la hauteur avant d'être rabotée par le
+   menu. Le script engine de rAthena ne rend jamais la main entre deux `mes` : seul
+   TCP peut les espacer, jamais d'un tiers de seconde ; un vrai `sleep` de script
+   dure au moins une seconde. 400 ms sépare proprement les deux.
+3. **`clear` (0x08D6) ne publie RIEN.** Il est le PREMIER paquet de la réponse
+   (l'agent de warp l'envoie avant ses `mes`) : y publier faisait tomber le menu de
+   la page précédente à cet instant, le corps encore affiché s'étalait dans la place
+   libérée pour toute la durée de la rafale, puis se faisait raboter par le nouveau
+   menu — deux réarrangements au lieu de zéro. Il arme seulement `start_fresh_`. La
+   page affichée reste ENTIÈRE, texte **et** menu, grisée (`awaiting_reply_`),
+   jusqu'à la seconde où la suivante la remplace.
+4. **Défilement en haut.** Une page qui REMPLACE la précédente repart du début
+   (`SetNextWindowScroll`, pas `SetScrollY` — ce dernier ne pose qu'une cible
+   appliquée au `Begin()` suivant). L'auto-défilement vers le bas a disparu : il
+   n'avait de sens que tant que le texte s'écrivait sous les yeux du joueur.
+5. **Menu mesuré en premier.** `MenuNaturalHeight()` calcule le nombre d'options
+   *réellement* affichées (filtre de recherche compris) au lieu de le reprendre de
+   la frame précédente : la boîte a sa taille définitive dès la frame où le joueur
+   tape, et le corps prend le reste.
+6. **Mise en page mise en cache.** Le word-wrap (parsing des balises, ANSI→UTF-8,
+   mesure de chaque mot) était refait à chaque frame sur TOUTES les lignes : une page
+   de 200 lignes payait son découpage 60 fois par seconde *pendant* qu'elle
+   arrivait — d'où son apparition poussive à côté du natif, dont
+   `UIRichTextCtrl::AddLine` (§4.1) ne place la ligne qu'une fois. Il est désormais
+   calculé une fois par page et par largeur (`frags_`, `page_gen_`), et le rendu
+   n'émet que les fragments dans la bande visible. Le rang des options de menu est
+   figé de même à la réception (`MenuOption::rank`).
+7. **Plafond de lignes relevé (400 → 4000).** L'ancien plafond tronquait pour de bon
+   des pages légitimes — les ~700 lignes de l'agent de warp détaillé perdaient leur
+   début, en-tête de la première carte compris. Ça passait inaperçu tant qu'on
+   déroulait jusqu'en bas ; c'est la première chose visible depuis que la page
+   s'ouvre par le haut. C'est un garde-fou anti-emballement, pas un budget
+   d'affichage — le coût d'une longue page ayant changé de nature (point 6).
