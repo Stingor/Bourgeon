@@ -500,17 +500,59 @@ Options de configuration lues sur ce chemin : `0x69` (attaque au clic simple),
 6. **Où le client lit « déjà en groupe / déjà en guilde ».** Les deux conditions du
    §5.4a sont vérifiables sans rien envoyer, et `EntityContextMenu` s'en sert pour
    **griser** l'entrée (le natif, lui, la faisait disparaître) :
-   - **groupe** — `std::list<PartyMember>` à `session+0x17B8` (sentinelle `+0x17BC`,
-     taille `+0x17C0`, celle que rend `Social_GetPartyMemberCount` 0x00d5cf50). Nœud
-     `{next@0, prev@4, valeur@8}` ; le **nom** est la `std::string` de `valeur+0x0C`
-     (= nœud+0x14, taille +0x24, capacité +0x28). 🔴 **Comparer par NOM, pas par
-     identifiant** : la valeur porte DEUX champs numériques — `+0x04` (clé de
-     0x00d5d650) et `+0x08` (clé de `sub_D5D740`) — dont l'un est un char_id.
-     Comparer `valeur+0x04` à l'AID du menu ne reconnaît **aucun** membre (mesuré
-     en jeu, 2026-08-05). Le natif dit la même chose en creux : il a l'AID sous la
-     main (`gm+0x2E0`) et cherche quand même par nom (`sub_D5D960`, insensible à
-     la casse). Une clé numérique mal choisie serait pire que rien : un char_id
-     peut valoir l'AID d'un AUTRE joueur.
+   - **groupe** — `std::list<PartyMember>` à `session+0x17B8` : sentinelle
+     `+0x17BC`, taille `+0x17C0` (celle que rend `Social_GetPartyMemberCount`
+     0x00d5cf50, et dont ChatWindow se sert déjà). Nœud `{next@0, prev@4,
+     valeur@8}`. ✅ **Relevé live** (2026-08-05, groupe d'un seul membre,
+     nœud @0x471BA010) :
+
+     | offset nœud | = valeur | contenu relevé |
+     |---|---|---|
+     | +0x08 | +0x00 | `1` (drapeau) |
+     | +0x0C | +0x04 | `2000001` — **l'AID du membre**, égal à `g_Account_Aid` |
+     | +0x10 | +0x08 | `150000` |
+     | +0x14 | +0x0C | `std::string` « Stingor » (taille +0x24, cap +0x28) |
+     | +0x2C | +0x24 | `std::string` « gonryun.rsw » (la map) |
+
+     C'est donc la clé de `Social_FindPartyMemberByAid` (0x00d5d650), et Bourgeon
+     compare **l'AID**. Le natif du menu cherche par nom (`sub_D5D960`) : clé plus
+     fragile, deux `std::string` à lire au lieu d'un `cmp`.
+
+     🔴 **La liste ne suffit pas.** Le natif ne testait que « la cible n'est pas
+     dans NOTRE groupe » — or le serveur refuse **tout** invité déjà associé à un
+     groupe (`party_invite`, `PARTY_REPLY_JOIN_OTHER_PARTY`,
+     moonlight/src/map/party.cpp:461). L'entrée native était donc cliquable pour
+     rien sur un joueur du groupe d'en face. Bourgeon grise les deux cas et lit le
+     second dans la **plaque de nom** : `CNameInfo+0x1C` non vide ⇒ la cible est
+     en groupe (c'est le `(party643077673)` affiché derrière le pseudo). La liste
+     ne sert plus qu'à distinguer les deux messages.
+
+     ⚠ **Piège de test, pas de code** : trois « corrections » successives ont été
+     écrites contre un faux négatif — la cible d'essai était dans un AUTRE groupe
+     (`party643077673` contre `party18595316`), et le groupe ne comptait qu'un
+     membre. Vérifier `count` à `+0x17C0` **avant** de conclure qu'une détection
+     de groupe est cassée.
+   - **blocage du chat = un ÉTAT, une seule entrée.** Les codes 12/13 ne sont pas
+     deux commandes offertes au choix : le natif interroge
+     `ChatBlockList_Contains` (0x005ee940) et n'en propose qu'**une**. Cette liste
+     est un `std::set<std::string>` derrière le pointeur global **0x01251824** :
+     arbre à `objet+0x18` (`_Myhead` ; `sub_5EE730` insère dans `this+24`), racine
+     = `_Myhead->_Parent`, nœud `{_Left@0, _Parent@4, _Right@8, _Isnil@0x0D,
+     std::string@0x10 (taille +0x20, cap +0x24)}` (offsets lus dans `sub_5EE3A0`).
+     Bourgeon la **lit** au lieu d'appeler le prédicat : celui-ci prend sa
+     `std::string` **par valeur** (0x18 octets sur la pile, détruits par
+     l'appelée), ce qui obligerait à fabriquer une chaîne du client et à allouer
+     sur SON tas dès 16 caractères.
+     ⚠ Le libellé natif ment par omission : l'action émet **CZ 0x00CF**
+     (`CZ_SETTING_WHISPER_PC`) et le serveur ne lit `sd->ignore[]` que sur le
+     chemin du **chuchotement** (moonlight clif.cpp:14795, intif.cpp:1301) — chat
+     public, groupe et guilde ne sont pas filtrés. C'est dit en infobulle.
+   - ⚠ **Le dictionnaire de noms n'a pas d'entrée pour SOI.**
+     `CNameDict_GetEntryOrRequest(gm+0x160, g_Account_Aid)` rend un `CNameInfo`
+     vide **statique** (0x01251678 en relevé), tous champs à `""`. Nos propres
+     nom / groupe / guilde vivent ailleurs : `session+0x54A4` = notre nom de
+     groupe (vidé par `sub_D56530` et `sub_D70220` à la dissolution),
+     `session+0x551C` = notre nom de guilde.
    - **guilde** — `ActorList_FindByGID(gm+0xCC, aid)` puis **`vtable+0xC4`** sur
      l'acteur rend son **id de guilde** (`call [edx+0C4h]` @0x00c6f4e2). Le natif
      exige en plus `dword_159C234` (droit d'invitation, sémantique non tranchée —

@@ -38,6 +38,14 @@
 // est empilée pendant le rendu et rejouée depuis `Bourgeon::OnProcessInput`,
 // comme WeaponRefineWindow et MakeItemWindow.
 //
+// ── 🔴 Le but n'est PAS de reproduire le natif ───────────────────────────────
+// C'est de combler ses manques. « Le client faisait comme ça » n'est donc jamais
+// une justification à soi seule : c'est une observation, dont il faut ensuite
+// décider si elle sert le joueur. Là où le natif laissait cliquer une action que
+// le serveur allait refuser, on grise et on dit pourquoi (invitation à quelqu'un
+// déjà en groupe ou en guilde, alliance avec un joueur sans guilde, ami déjà
+// dans la liste). Là où il ne disait pas QUI était visé, on l'affiche.
+//
 // ── Ce que le natif ne faisait pas ───────────────────────────────────────────
 // Le client n'ouvrait de menu que sur un JOUEUR, son pet, son homoncule ou son
 // mercenaire. Mobs, NPC, unités de compétence et objets au sol n'en ont jamais
@@ -148,8 +156,11 @@ class EntityContextMenu : public Plugin {
   std::string target_name_;
   // Ce que la cible est déjà, relevé à l'ouverture (joueurs uniquement) : sert à
   // GRISER les invitations sans objet plutôt qu'à les faire disparaître.
-  bool     target_in_party_ = false;
-  uint32_t target_guild_id_ = 0;
+  bool     target_in_party_  = false;  // dans NOTRE groupe
+  bool     target_has_party_ = false;  // dans un groupe, le nôtre ou un autre
+  bool     target_is_friend_ = false;  // déjà dans notre liste d'amis
+  bool     target_chat_blocked_ = false;  // déjà dans notre liste d'ignorés
+  uint32_t target_guild_id_  = 0;
   std::vector<Item> items_;
 
   // ── Action en attente, rejouée par FlushPending ───────────────────────────

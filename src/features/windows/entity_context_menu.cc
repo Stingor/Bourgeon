@@ -53,6 +53,34 @@ constexpr uintptr_t kActiveIdSetContains  = 0x00a727f0;  // __cdecl(aid) -> bool
 constexpr uintptr_t kNameDictGetEntry     = 0x005a1460;  // __thiscall(dict, gid)
 constexpr uintptr_t kPostActorClickAction = 0x00c753a0;  // __thiscall(gm, aid, flag)
 constexpr uintptr_t kActorListFindByGid   = 0x00a69eb0;  // __thiscall(actorMgr, gid)
+// La liste d'amis, interrogée par NOM — le prédicat que le natif consulte lui
+// aussi (@0x00c6f699) pour ne pas proposer « ajouter en ami » deux fois.
+// ⚠ `this` est l'ADRESSE du global, pas son contenu (`mov ecx, offset …`).
+constexpr uintptr_t kFriendListContains   = 0x00a388f0;  // __thiscall(mgr, name)
+constexpr uintptr_t kUIWindowMgrAddr      = 0x0131f4e8;
+
+// ── La liste d'ignorés du chat : `std::set<std::string>` ─────────────────────
+// Derrière le pointeur global 0x01251824. `ChatBlockList_Contains` (0x005ee940)
+// la consulte pour choisir entre « Block » et « Unblock » — c'est donc bien UN
+// ÉTAT, et le menu natif l'affichait déjà comme tel.
+// On la LIT au lieu de l'appeler : le prédicat natif prend sa `std::string` PAR
+// VALEUR (0x18 octets sur la pile, détruits par l'appelée), ce qui obligerait à
+// fabriquer une chaîne du client — et à allouer sur SON tas dès 16 caractères.
+// Parcourir l'arbre ne coûte rien et ne peut rien casser.
+//   objet+0x18 = `_Myhead` (l'arbre commence là : `sub_5EE730` insère dans
+//   `this+24`) ; racine = `_Myhead->_Parent`.
+//   nœud : _Left@0, _Parent@4, _Right@8, _Isnil@0x0D, `std::string`@0x10
+//   (taille +0x20, capacité +0x24) — offsets lus dans `sub_5EE3A0`.
+constexpr uintptr_t kChatBlockListPtr = 0x01251824;
+constexpr int kSet_Head     = 0x18;
+constexpr int kNode_Left    = 0x00;
+constexpr int kNode_Parent  = 0x04;
+constexpr int kNode_Right   = 0x08;
+constexpr int kNode_IsNil   = 0x0d;
+constexpr int kNode_Val     = 0x10;
+constexpr int kNode_ValSize = 0x20;
+constexpr int kNode_ValCap  = 0x24;
+constexpr int kTreeWalkGuard = 512;
 // Le prédicat d'adoption du client (`sub_D99860`) : niveau >= 70, non monté, en
 // couple, cible éligible… C'est LUI qui décide de l'entrée « Adopter » dans le
 // menu natif, et le dispatcher ne le rejoue pas — sans ce test, l'entrée partirait
@@ -62,10 +90,22 @@ constexpr uintptr_t kAdoptionEligible     = 0x00d99860;  // __stdcall(aid) -> bo
 // NPC/portail. Le natif s'en sert pour REFUSER tout menu (docs §4.1) — sans ce
 // test, un PNJ scripté sous forme de joueur se verrait proposer « échanger ».
 constexpr uintptr_t kIsHostileOrSpecial   = 0x00d9d220;  // __stdcall(aid, job) -> bool
+// ── CNameInfo : ce que la plaque de nom sait déjà ────────────────────────────
+// Le dictionnaire `std::map<GID, CNameInfo>` de GameMode+0x160 est rempli par
+// ZC 0x0A30 et porte, pour CHAQUE joueur croisé, bien plus que son pseudo :
+// c'est lui qui compose la plaque « [titre] pseudo (groupe) » / « guilde [rang] »
+// (`UIActorNameLabel_SetNameFromInfo` 0x0082e1d0, docs/entity_nameplate_re.md).
+// Champs, tous vérifiés live (2026-08-05) : +0x04 nom, +0x1C groupe, +0x34
+// guilde, +0x4C rang, +0x64 titre. Chacun est une `std::string` de 0x18 octets :
+// buffer, puis taille à +0x10 et capacité à +0x14 DU CHAMP.
+// ⚠ Le dictionnaire n'a PAS d'entrée pour soi-même : `CNameDict_GetEntryOrRequest`
+// rend alors un objet vide STATIQUE (0x01251678), tous champs à "". Ne jamais s'y
+// fier pour lire ses propres infos — cf. docs §9.6.
 constexpr int       kGm_NameDict          = 0x160;
-constexpr int       kName_Str             = 0x04;   // std::string dans CNameInfo
-constexpr int       kName_Size            = 0x14;
-constexpr int       kName_Cap             = 0x18;
+constexpr int       kName_Str             = 0x04;   // le pseudo
+constexpr int       kName_Party           = 0x1c;   // le nom de son GROUPE
+constexpr int       kNameField_Size       = 0x10;   // relatifs au champ, pas
+constexpr int       kNameField_Cap        = 0x14;   // à CNameInfo
 
 // Globaux de session lus pour décider quelles entrées ont un sens (§5.4).
 constexpr uintptr_t kOwnAccountAid = 0x015fb9a4;
@@ -80,24 +120,21 @@ constexpr int kSess_HomunAid = 0x5558;  // GameMode_IsCurrentId5558
 constexpr int kSess_MercAid  = 0x5608;  // GameMode_IsCurrentId5608
 
 // ── Le groupe : `std::list<PartyMember>` à session+0x17B8 ────────────────────
-// +0x17BC = le nœud sentinelle (`_Myhead`), +0x17C0 = la taille — c'est ce
-// dernier que `Social_GetPartyMemberCount` (0x00d5cf50) rend tel quel, et dont
-// ChatWindow se sert déjà pour autoriser le canal groupe.
-// Nœud : next@0, prev@4, valeur@8 ; le NOM du membre est la `std::string` de
-// valeur+0x0C, soit nœud+0x14 (taille +0x24, capacité +0x28).
+// +0x17BC = le nœud sentinelle (`_Myhead`), +0x17C0 = la taille, celle que rend
+// `Social_GetPartyMemberCount` (0x00d5cf50) et dont ChatWindow se sert déjà.
+// Nœud `{next@0, prev@4, valeur@8}`.
 //
-// 🔴 On compare par NOM, pas par identifiant. La valeur porte deux champs
-// numériques — `Social_FindPartyMemberByAid` (0x00d5d650) cherche sur
-// valeur+0x04, `sub_D5D740` sur valeur+0x08 — et l'un des deux est un char_id :
-// comparer valeur+0x04 à l'AID du menu ne reconnaît AUCUN membre (mesuré en
-// jeu). Le natif tranche pareil : il a l'AID sous la main (`gm+0x2E0`) et va
-// pourtant chercher le membre par son nom (`sub_D5D960`, comparaison
-// insensible à la casse). Une clé numérique mal choisie ferait bien pire que ne
-// rien griser : un char_id peut valoir l'AID de QUELQU'UN D'AUTRE.
+// ✅ Relevé live (2026-08-05, groupe d'un seul membre) — nœud @0x471BA010 :
+//     +0x08 = 1          (valeur+0x00, drapeau)
+//     +0x0C = 2000001    (valeur+0x04) == g_Account_Aid : L'AID DU MEMBRE
+//     +0x10 = 150000     (valeur+0x08)
+//     +0x14 = "Stingor"  (valeur+0x0C, std::string ; taille +0x24, cap +0x28)
+//     +0x2C = "gonryun.rsw" (valeur+0x24, la map)
+// C'est donc bien la clé de `Social_FindPartyMemberByAid` (0x00d5d650), dont les
+// appelants sont des handlers de paquets qui lui passent `pkt+2`. Le natif du
+// menu, lui, cherche par NOM (`sub_D5D960`) — clé plus fragile, on garde l'AID.
 constexpr int kSess_PartyListHead = 0x17bc;
-constexpr int kPartyNode_Name     = 0x14;  // std::string : nœud+0x14
-constexpr int kPartyNode_NameSize = 0x24;
-constexpr int kPartyNode_NameCap  = 0x28;
+constexpr int kPartyNode_Aid      = 0x0c;  // nœud+0x0C = valeur+0x04
 constexpr int kPartyWalkGuard     = 64;    // un groupe plafonne à 12 : garde-fou
 
 // Acteur : `vtable+0xC4` rend l'**id de guilde**. C'est l'appel exact que
@@ -157,6 +194,7 @@ constexpr uint16_t kCzContactNpc = 0x0090;
 
 using PushBackFn   = void   (__thiscall*)(void*, const int*);
 using GetGuildIdFn = uint32_t (__thiscall*)(void*);
+using ContainsNameFn = int  (__thiscall*)(void*, const char*);
 // ⚠ Deux conventions différentes, et confondre les deux décale la pile de 4
 // octets à chaque appel : ActiveIdSet_Contains est __cdecl (l'appelant dépile),
 // le prédicat d'adoption est __stdcall (l'appelée dépile).
@@ -198,22 +236,17 @@ bool IsHostileOrSpecialUnit(uint32_t aid, uint32_t job) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Nom brut d'une entité, tel que le dictionnaire du client le porte. Comme le
-// natif, un GID inconnu déclenche la demande au serveur (le nom arrivera plus
-// tard, et le menu affichera l'AID d'ici là).
-//
+// Recopie une `std::string` du client, SSO comprise. Rend false si elle est vide
+// ou trop longue pour le tampon — dans les deux cas, l'appelant n'a rien à en
+// tirer.
 // ⚠ SEH ⇒ AUCUN objet C++ dans cette fonction (C2712 : « __try dans une fonction
-// qui exige un déroulement d'objet »). La std::string se construit chez
-// l'appelant. C'est la raison de ce découpage en deux, pas un goût pour les
-// buffers bruts.
-bool ReadEntityNameRaw(void* game_mode, uint32_t aid, char* out, size_t out_size) {
+// qui exige un déroulement d'objet »). C'est la raison de ces buffers bruts, pas
+// un goût pour le C.
+bool CopyClientString(const void* str, char* out, size_t out_size) {
   __try {
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
-    void* entry = reinterpret_cast<GetEntryFn>(kNameDictGetEntry)(dict, aid);
-    if (!entry) return false;
-    const void* str = reinterpret_cast<const uint8_t*>(entry) + kName_Str;
-    const unsigned size = Read<unsigned>(entry, kName_Size);
-    const unsigned cap  = Read<unsigned>(entry, kName_Cap);
+    if (!str) return false;
+    const unsigned size = Read<unsigned>(str, kNameField_Size);
+    const unsigned cap  = Read<unsigned>(str, kNameField_Cap);
     if (size == 0 || size >= out_size) return false;
     const char* src = (cap >= 16) ? Read<const char*>(str, 0)
                                   : reinterpret_cast<const char*>(str);
@@ -224,9 +257,25 @@ bool ReadEntityNameRaw(void* game_mode, uint32_t aid, char* out, size_t out_size
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Un champ BRUT de la plaque de nom d'une entité (pseudo, groupe, guilde…), tel
+// que le dictionnaire du client le porte. Comme le natif, un GID inconnu
+// déclenche la demande au serveur (l'info arrivera plus tard, et le menu
+// affichera l'AID d'ici là).
+bool ReadNameFieldRaw(void* game_mode, uint32_t aid, int field, char* out,
+                      size_t out_size) {
+  const void* str = nullptr;
+  __try {
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
+    void* entry = reinterpret_cast<GetEntryFn>(kNameDictGetEntry)(dict, aid);
+    if (!entry) return false;
+    str = reinterpret_cast<const uint8_t*>(entry) + field;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return CopyClientString(str, out, out_size);
+}
+
 std::string EntityName(void* game_mode, uint32_t aid) {
   char buffer[64] = {};
-  if (!ReadEntityNameRaw(game_mode, aid, buffer, sizeof(buffer)))
+  if (!ReadNameFieldRaw(game_mode, aid, kName_Str, buffer, sizeof(buffer)))
     return std::string();
   // Les noms voyagent dans l'encodage du client : on affiche en UTF-8.
   const char* utf8 = ro::WireToUtf8(buffer);
@@ -241,29 +290,83 @@ void* FindActor(void* game_mode, uint32_t aid) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
+// Ce joueur est-il déjà dans notre liste d'ignorés ? Parcours complet de
+// l'arbre plutôt qu'une descente : la liste plafonne à une vingtaine de noms, et
+// une descente supposerait de rejouer EXACTEMENT le comparateur du client
+// (`sub_4DCBA0`) — une erreur de casse ou d'ordre y répondrait « absent » sur un
+// nom pourtant présent.
+// ⚠ SEH ⇒ aucun objet C++ ici.
+bool ChatBlockListContains(const char* wire_name) {
+  if (!wire_name || !*wire_name) return false;
+  __try {
+    const uint8_t* obj = *reinterpret_cast<const uint8_t**>(kChatBlockListPtr);
+    if (!obj) return false;
+    const uint8_t* head = Read<const uint8_t*>(obj, kSet_Head);
+    if (!head) return false;
+    const uint8_t* stack[64];
+    int top = 0;
+    const uint8_t* node = Read<const uint8_t*>(head, kNode_Parent);  // la racine
+    for (int guard = 0; guard < kTreeWalkGuard; ++guard) {
+      const bool real = node && Read<uint8_t>(node, kNode_IsNil) == 0;
+      if (real) {
+        if (top >= 64) return false;  // arbre incohérent : on renonce
+        stack[top++] = node;
+        node = Read<const uint8_t*>(node, kNode_Left);
+        continue;
+      }
+      if (top == 0) return false;  // parcours terminé, rien trouvé
+      node = stack[--top];
+      const unsigned size = Read<unsigned>(node, kNode_ValSize);
+      const unsigned cap  = Read<unsigned>(node, kNode_ValCap);
+      const char* name = (cap >= 16)
+                             ? Read<const char*>(node, kNode_Val)
+                             : reinterpret_cast<const char*>(node + kNode_Val);
+      if (name && size != 0 && _stricmp(name, wire_name) == 0) return true;
+      node = Read<const uint8_t*>(node, kNode_Right);
+    }
+    return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// La cible est-elle déjà dans notre liste d'amis ? Le natif retirait alors
+// l'entrée ; on la grise, avec sa raison.
+bool FriendListContainsName(const char* wire_name) {
+  if (!wire_name || !*wire_name) return false;
+  __try {
+    return reinterpret_cast<ContainsNameFn>(kFriendListContains)(
+               reinterpret_cast<void*>(kUIWindowMgrAddr), wire_name) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// La cible appartient-elle DÉJÀ à un groupe — le nôtre ou celui d'un autre ?
+// C'est la question qui décide si l'invitation a la moindre chance d'aboutir :
+// le serveur refuse tout invité déjà associé à un groupe (`party_invite`,
+// PARTY_REPLY_JOIN_OTHER_PARTY). Le natif, lui, ne testait que « pas dans NOTRE
+// groupe » et laissait donc cliquer une invitation vouée au refus.
+//
+// La réponse est dans la plaque de nom : `CNameInfo+0x1C` porte le nom du groupe
+// de la cible — c'est ce que le client AFFICHE entre parenthèses derrière le
+// pseudo. Non vide ⇒ elle est en groupe. Si sa plaque n'est pas encore arrivée,
+// tout est vide et on ne grise rien : on ne bloque jamais sur une ignorance.
+bool TargetHasParty(void* game_mode, uint32_t aid) {
+  char party[64] = {};
+  return ReadNameFieldRaw(game_mode, aid, kName_Party, party, sizeof(party));
+}
+
 // La cible est-elle DÉJÀ dans notre groupe ? Le natif se posait la question
 // (docs §5.4a) et retirait l'entrée ; on préfère la griser, mais la source est
-// la même liste et la clé est la même : le NOM, comparé sans tenir compte de la
-// casse. `wire_name` est le nom BRUT du dictionnaire — pas sa conversion UTF-8,
-// qui ne correspondrait plus aux octets de la liste.
-// Lecture seule, sans appel natif : parcourir la std::list circulaire coûte
-// moins que d'appeler une fonction à retour de structure.
+// la même liste. Comparaison par AID, relevée live (cf. le bloc d'offsets) :
+// exacte, là où le nom de groupe de la plaque confondrait deux groupes
+// homonymes. Lecture seule, sans appel natif.
 // ⚠ SEH ⇒ aucun objet C++ ici.
-bool OwnPartyContains(const char* wire_name) {
-  if (!wire_name || !*wire_name) return false;
+bool OwnPartyContains(uint32_t aid) {
   __try {
     void* session = reinterpret_cast<void*>(kSessionAddr);
     void** head = Read<void**>(session, kSess_PartyListHead);
     if (!head) return false;
     void** node = reinterpret_cast<void**>(*head);
     for (int guard = 0; node && node != head && guard < kPartyWalkGuard; ++guard) {
-      const unsigned size = Read<unsigned>(node, kPartyNode_NameSize);
-      const unsigned cap  = Read<unsigned>(node, kPartyNode_NameCap);
-      const char* name =
-          (cap >= 16) ? Read<const char*>(node, kPartyNode_Name)
-                      : reinterpret_cast<const char*>(
-                            reinterpret_cast<uint8_t*>(node) + kPartyNode_Name);
-      if (name && size != 0 && _stricmp(name, wire_name) == 0) return true;
+      if (Read<uint32_t>(node, kPartyNode_Aid) == aid) return true;
       node = reinterpret_cast<void**>(*node);
     }
     return false;
@@ -488,12 +591,14 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   target_in_party_ = false;
   target_guild_id_ = 0;
   if (kind == Kind::kPlayer) {
-    // Le nom BRUT, pas `target_name_` : la liste du groupe porte les octets du
-    // client, et la conversion UTF-8 ne s'y comparerait plus.
+    target_in_party_  = OwnPartyContains(aid);
+    target_has_party_ = target_in_party_ || TargetHasParty(game_mode, aid);
+    target_guild_id_  = ActorGuildId(FindActor(game_mode, aid));
+    // Amis et ignorés se cherchent par nom BRUT, pas par sa conversion UTF-8.
     char wire_name[64] = {};
-    ReadEntityNameRaw(game_mode, aid, wire_name, sizeof(wire_name));
-    target_in_party_ = OwnPartyContains(wire_name);
-    target_guild_id_ = ActorGuildId(FindActor(game_mode, aid));
+    ReadNameFieldRaw(game_mode, aid, kName_Str, wire_name, sizeof(wire_name));
+    target_is_friend_    = FriendListContainsName(wire_name);
+    target_chat_blocked_ = ChatBlockListContains(wire_name);
   }
 
   BuildItems();
@@ -571,7 +676,9 @@ void EntityContextMenu::BuildItems() {
 
   switch (kind_) {
     case Kind::kPlayer: {
-      const bool in_guild  = ReadGlobalInt(kOwnGuildId) != 0;
+      const uint32_t own_guild =
+          static_cast<uint32_t>(ReadGlobalInt(kOwnGuildId));
+      const bool in_guild  = own_guild != 0;
       const bool is_master = in_guild && ReadGlobalInt(kGuildIsMaster) != 0;
       const bool in_party  = ReadGlobalInt(kInPartyFlag) != 0;
 
@@ -582,32 +689,58 @@ void EntityContextMenu::BuildItems() {
       // le client n'en était pas capable. La raison part en infobulle.
       if (in_party) {
         add("Inviter dans le groupe", kCodePartyInvite);
-        if (target_in_party_) disable_last("Déjà membre de votre groupe.");
+        // Deux refus différents, deux phrases différentes : « il est déjà avec
+        // moi » n'appelle pas la même réaction que « il faudra qu'il quitte son
+        // groupe ».
+        if (target_in_party_) {
+          disable_last("Déjà membre de votre groupe.");
+        } else if (target_has_party_) {
+          disable_last(
+              "Ce joueur appartient déjà à un groupe : le serveur refuse "
+              "l'invitation tant qu'il ne l'a pas quitté.");
+        }
       }
       if (in_guild) {
         add("Inviter dans la guilde", kCodeGuildInvite);
-        // Condition du natif à l'identique : il n'offrait l'invitation que sur
-        // une cible SANS guilde. (Il exigeait en plus le droit d'invitation,
+        // Le serveur refuse un invité qui a déjà une guilde ; le natif le savait
+        // et retirait l'entrée. (Il exigeait en plus le droit d'invitation,
         // `dword_159C234` — non repris : ce flag n'est pas tranché en RE, et
-        // s'en servir risquerait de masquer l'entrée à qui y a droit.)
+        // s'en servir à tort masquerait l'entrée à qui y a droit. À mesurer.)
         if (target_guild_id_ != 0) disable_last("Ce joueur a déjà une guilde.");
       }
       if (is_master) {
+        // Les deux visent la GUILDE de la cible : sans guilde, il n'y a rien à
+        // allier ni à déclarer ennemi, et sur la nôtre ça n'a aucun sens. Le
+        // natif ne testait que « pas notre guilde » et laissait donc l'alliance
+        // cliquable sur un joueur sans guilde.
+        const char* guild_target_issue =
+            (target_guild_id_ == 0)          ? "Ce joueur n'a pas de guilde."
+            : (target_guild_id_ == own_guild) ? "C'est votre propre guilde."
+                                              : nullptr;
         add("Proposer une alliance", kCodeGuildAlly, Local::kNone, true);
+        if (guild_target_issue) disable_last(guild_target_issue);
         add("Déclarer la guilde ennemie", kCodeGuildFoe);
+        if (guild_target_issue) disable_last(guild_target_issue);
       }
       add("Chuchoter", kCodeWhisper, Local::kNone, true);
       add("Ajouter en ami", kCodeAddFriend);
+      if (target_is_friend_) disable_last("Déjà dans votre liste d'amis.");
       add("Envoyer un courrier", kCodeSendMail);
       // Même condition que le natif : le dispatcher, lui, ne la rejoue pas, et
       // la demande partirait au serveur pour se faire refuser.
       if (AdoptionEligible(target_aid_)) add("Adopter", kCodeAdopt);
-      // 🔴 Deux entrées, pas une bascule : les codes 12 et 13 sont deux
-      // commandes DISTINCTES côté client (docs §6.3). Le natif choisissait pour
-      // le joueur en interrogeant sa liste de blocage ; on préfère lui laisser
-      // dire ce qu'il veut plutôt que de deviner à sa place.
-      add("Bloquer le chat", kCodeBlockChat, Local::kNone, true);
-      add("Débloquer le chat", kCodeUnblockChat);
+      // UNE bascule, pas deux entrées : le blocage est un ÉTAT, et on sait le
+      // lire (la liste d'ignorés du client). En proposer deux, c'était en offrir
+      // une qui ne fait jamais rien.
+      // L'infobulle dit ce que le libellé natif cache : ça n'agit QUE sur les
+      // chuchotements. Le client émet CZ_SETTING_WHISPER_PC (0x00CF) et le
+      // serveur ne consulte `sd->ignore[]` que sur le chemin du chuchotement
+      // (moonlight clif.cpp:14795, intif.cpp:1301).
+      add(target_chat_blocked_ ? "Autoriser les chuchotements" : "Bloquer les chuchotements",
+          target_chat_blocked_ ? kCodeUnblockChat : kCodeBlockChat,
+          Local::kNone, true, false,
+          "Liste d'ignorés du compte : ses chuchotements ne vous parviennent "
+          "plus. Le chat public, le groupe et la guilde ne sont pas filtrés.");
       add("Signaler ce joueur", kCodeReportUser);
       add("Copier le nom", 0, Local::kCopyName, true);
       break;
