@@ -139,6 +139,19 @@ const char* const kBlockedMsgs[] = {
 // On fait pareil, sinon la fenêtre ImGui montre ce que la native n'a jamais eu.
 const char* const kNoMsg[] = {"No Msg", "NO MSG"};
 
+// Une adresse pointe-t-elle sur une image de NOTRE miroir de relais ? C'est la
+// seule famille d'adresses qu'on accepte d'afficher en miniature — voir le
+// commentaire au point de dessin pour la raison, qui n'est pas cosmétique.
+//
+// Le préfixe est écrit en dur, et c'est assumé : c'est notre propre domaine, pas
+// une donnée de configuration. Le jour où il change, il change ici comme il
+// changera dans groq_service.py, qui fabrique ces adresses.
+bool IsMirrorImage(const std::string& url) {
+  static const char kPrefix[] = "https://moonlight-destiny.fr/images/relay/";
+  constexpr size_t  kLen = sizeof(kPrefix) - 1;
+  return url.size() > kLen && url.compare(0, kLen, kPrefix) == 0;
+}
+
 ChatWindow* g_chat_window = nullptr;
 void*       g_tramp_chat_action = nullptr;
 
@@ -1044,6 +1057,39 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         continue;
       }
     }
+    // Emote Discord : <:nom:id> — ou <a:nom:id> quand elle est animée. C'est la
+    // forme brute que Discord met dans le contenu du message, et le relais nous
+    // la livre telle quelle.
+    //
+    // On la remplace par « :nom: » ET on note l'adresse du fichier sur le CDN,
+    // qu'on RECONSTRUIT depuis l'identifiant. Le repli textuel compte autant que
+    // l'image : lisible tout de suite, sans requête, et suffisant si le joueur a
+    // coupé les images.
+    if (*p == '<' && (end - p) >= 6 &&
+        (p[1] == ':' || ((p[1] == 'a' || p[1] == 'A') && p[2] == ':'))) {
+      const bool  animated = (p[1] != ':');
+      const char* n0 = p + (animated ? 3 : 2);          // début du nom
+      const char* c2 = static_cast<const char*>(std::memchr(n0, ':', end - n0));
+      const char* gt = (c2 != nullptr)
+                           ? static_cast<const char*>(std::memchr(c2, '>', end - c2))
+                           : nullptr;
+      // L'identifiant doit être un nombre : sans ce test, « <a:b:c> » tapé par un
+      // joueur produirait une adresse absurde et une requête pour rien.
+      bool numeric = (gt != nullptr) && (gt > c2 + 1);
+      for (const char* q = c2 + 1; numeric && q < gt; ++q)
+        if (*q < '0' || *q > '9') numeric = false;
+      if (numeric && n0 < c2) {
+        flush();
+        Run emote;
+        emote.text.assign(":").append(n0, c2).append(":");
+        const std::string id(c2 + 1, gt);
+        emote.emote_url = "https://cdn.discordapp.com/emojis/" + id +
+                          (animated ? ".gif" : ".png");
+        out->runs.push_back(emote);
+        p = gt + 1;
+        continue;
+      }
+    }
     // Lien d'objet du chat : <ITEML>[5c equip b62][1c type décoré][nameid b62]
     // [champs facultatifs]</ITEML>. Le tag ne porte AUCUN texte lisible — c'est au
     // lecteur de composer le libellé, et il faut le composer à partir de TOUT ce
@@ -1898,7 +1944,11 @@ void ChatWindow::DrawLines(const Channel& channel) {
 
   const uint8_t layout_flags = static_cast<uint8_t>((timestamps_ ? 1 : 0) |
                                                     (item_icons_ ? 2 : 0) |
-                                                    (diagnostic_ ? 4 : 0));
+                                                    (diagnostic_ ? 4 : 0) |
+                                                    // Une emote passe de « :nom: »
+                                                    // à une image : la largeur
+                                                    // change, donc le repli aussi.
+                                                    (url_preview_ ? 8 : 0));
   const bool hovering_log = ImGui::IsWindowHovered();
   links::Target click_target;        // invalide = aucun lien cliqué cette frame
   bool click_shift  = false;         // Maj enfoncé au moment du clic
@@ -1922,6 +1972,11 @@ void ChatWindow::DrawLines(const Channel& channel) {
     const float line_top = y;
     const bool  visible  = (y + line_h >= view_top && y <= view_bottom);
     const ImU32 def_col  = LineColorToImU32(line.rgb);
+    // 🔴 Une emote encore en cours de téléchargement occupe la place de « :nom: »,
+    // et celle de l'IMAGE une fois arrivée. Mémoriser la hauteur maintenant la
+    // figerait sur la mauvaise : la ligne resterait mal repliée jusqu'à ce que
+    // quelque chose d'autre invalide le cache — c'est-à-dire, en pratique, jamais.
+    bool emote_pending = false;
 
     if (timestamps_) {
       char stamp[16];
@@ -1943,6 +1998,45 @@ void ChatWindow::DrawLines(const Channel& channel) {
     }
 
     for (const Run& run : line.runs) {
+      // Emote Discord : l'image à hauteur de ligne quand elle est arrivée, sinon
+      // le « :nom: » qu'on a mis dans `text` — qui sera dessiné par le chemin
+      // normal juste en dessous. Aucun trou, aucune attente visible.
+      //
+      // Le réglage d'images gouverne le TÉLÉCHARGEMENT, pas la lisibilité : coupé,
+      // on garde « :nom: » et rien ne part sur le réseau.
+      if (!run.emote_url.empty() && url_preview_) {
+        imgprev::Request(run.emote_url.c_str());
+        const imgprev::Preview em = imgprev::Get(run.emote_url.c_str());
+        const bool ready = (em.state == imgprev::Preview::kReady &&
+                            em.tex != nullptr && em.h > 0);
+        if (em.state == imgprev::Preview::kNone ||
+            em.state == imgprev::Preview::kPending)
+          emote_pending = true;  // pas de mise en cache de la hauteur
+
+        // 🔴 RÉSERVER LA PLACE DE L'IMAGE DÈS MAINTENANT, même si elle n'est pas
+        // encore là. Le repli « :nom: » est trois à quatre fois plus large qu'une
+        // emote : l'afficher pendant le téléchargement faisait replier la ligne,
+        // puis tout se réorganisait à l'arrivée du fichier. Une ligne de chat qui
+        // bouge toute seule sous les yeux est pire qu'une case vide un quart de
+        // seconde. Le carré occupe donc la place, et l'image s'y pose.
+        //
+        // Le repli textuel garde tout son sens quand les images sont ÉTEINTES :
+        // là, rien n'arrivera jamais, et « :nom: » est la seule lecture possible.
+        if (ready || em.state != imgprev::Preview::kFailed) {
+          const float ih = fsize + 2.0f;
+          const float iw = ready
+              ? ih * static_cast<float>(em.w) / static_cast<float>(em.h)
+              : ih;  // carré par défaut : une emote Discord l'est
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (visible && ready) {
+            const ImVec2 p(origin.x + x, origin.y + y);
+            dl->AddImage(TexId(em.tex), p, ImVec2(p.x + iw, p.y + ih));
+          }
+          x += iw + 2.0f;
+          continue;  // l'image (ou sa place) REMPLACE le repli textuel
+        }
+        // Échec définitif : on retombe sur « :nom: », dessiné plus bas.
+      }
       // Icône d'objet : hauteur de ligne, largeur au ratio d'origine (pas de
       // déformation).
       if (run.item_id != 0 && run.text.empty()) {
@@ -1998,6 +2092,51 @@ void ChatWindow::DrawLines(const Channel& channel) {
           menu_request = true;
         }
       };
+      // ── Miniature d'une image de NOTRE miroir ────────────────────────────
+      //
+      // L'adresse est remplacée par l'image elle-même. Une ligne de chat n'a rien
+      // à gagner à afficher soixante caractères de hash — l'image, si.
+      //
+      // 🔴 UNIQUEMENT NOTRE DOMAINE, et ce n'est pas une commodité. Une miniature
+      // se charge à l'AFFICHAGE, pas au survol : pour un hébergeur tiers, la
+      // requête partirait à la seconde où la ligne apparaît, sans que personne
+      // n'ait rien demandé. Ce serait la fuite d'IP contre laquelle tout ce module
+      // est bâti, en pire. Sur notre miroir, il n'y a rien à fuiter.
+      //
+      // Elle reste un LIEN : survol = aperçu en grand, clic = ouvrir, clic droit =
+      // menu. On lui donne le même segment de survol que du texte.
+      if (run.kind == Run::kUrl && url_preview_ && IsMirrorImage(run.url)) {
+        imgprev::Request(run.url.c_str());
+        const imgprev::Preview th = imgprev::Get(run.url.c_str());
+        const bool ready = (th.state == imgprev::Preview::kReady &&
+                            th.tex != nullptr && th.h > 0);
+        if (th.state == imgprev::Preview::kNone ||
+            th.state == imgprev::Preview::kPending)
+          emote_pending = true;  // hauteur pas encore stable (cf. plus haut)
+
+        // Place réservée dès maintenant, même raison que pour les emotes — et le
+        // besoin est ici plus criant : le repli est une adresse de soixante
+        // caractères, qui replie la ligne sur deux rangées avant de se réduire à
+        // une vignette. La ligne aurait bougé à chaque image reçue.
+        if (ready || th.state != imgprev::Preview::kFailed) {
+          const float ih = fsize + 2.0f;
+          const float iw = ready
+              ? ih * static_cast<float>(th.w) / static_cast<float>(th.h)
+              : ih;  // proportion inconnue tant que rien n'est décodé
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (visible && ready) {
+            const ImVec2 p(origin.x + x, origin.y + y);
+            dl->AddImage(TexId(th.tex), p, ImVec2(p.x + iw, p.y + ih));
+          }
+          seg_x0 = x;
+          seg_x1 = x + iw;
+          seg_y  = y;
+          x += iw + 2.0f;
+          flush_link_hit();
+          continue;  // l'image (ou sa place) REMPLACE l'adresse
+        }
+        // Échec définitif : l'adresse redevient du texte cliquable, dessiné plus bas.
+      }
       size_t i = 0;
       while (i < u.size()) {
         // 🔴 Le SAUT DE LIGNE est un séparateur, au même titre que l'espace. Sans
@@ -2054,9 +2193,13 @@ void ChatWindow::DrawLines(const Channel& channel) {
     }
     x = 0.0f;
     y += line_h;
-    line.cached_wrap   = wrap;
-    line.cached_flags  = layout_flags;
-    line.cached_height = y - line_top;
+    if (!emote_pending) {
+      line.cached_wrap   = wrap;
+      line.cached_flags  = layout_flags;
+      line.cached_height = y - line_top;
+    } else {
+      line.cached_wrap = -1.0f;  // à remesurer quand l'image sera là
+    }
   }
   lock.unlock();  // le verrou ne couvre QUE le parcours des lignes
   // 🔴 Réserver `y` seul CROIT la dernière ligne d'un demi-caractère : `y` cumule

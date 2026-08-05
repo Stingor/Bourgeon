@@ -224,6 +224,20 @@ class ChatWindow : public Plugin {
     // donc ici qu'il faut le garder — sans quoi le nom perd ses préfixes et la
     // description ouvre l'item de BASE.
     itemcell::ChatLink item;
+
+    // ── Emote Discord ─────────────────────────────────────────────────────────
+    // Le relais transmet les emotes personnalisées telles que Discord les écrit :
+    // `<:nom:id>`, ou `<a:nom:id>` pour une animée. Illisible en jeu — un message
+    // qui n'est QUE ça ne veut rien dire du tout.
+    //
+    // 🔴 C'est le cas d'image le plus SÛR de tous : l'adresse est construite PAR
+    // NOUS à partir du seul identifiant, vers le CDN de Discord. Le posteur ne
+    // choisit ni l'hôte ni le chemin — rien de ce qui rend l'aperçu d'un lien
+    // délicat ne s'applique ici.
+    //
+    // `text` porte le repli « :nom: », affiché tant que l'image n'est pas arrivée
+    // (ou si le joueur a coupé les images) : lisible, et sans une seule requête.
+    std::string emote_url;
   };
 
   struct Line {
