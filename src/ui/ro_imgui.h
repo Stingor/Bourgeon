@@ -55,6 +55,22 @@ const char* LocalToUtf8(const char* local);
 // mojibake partout ailleurs. Mêmes garanties de tampon.
 const char* Utf8ToLocal(const char* utf8);
 
+// ── Texte venu DU FIL (serveur), et son retour ───────────────────────────────
+// ⚠ Ce n'est PAS la même code-page que LocalToUtf8, et la nuance a déjà coûté
+// des accents mangés : `LocalToUtf8` vaut pour ce que le CLIENT a chargé (DB
+// d'objets, msgstringtable, noms d'onglets relus de son .lua — la code-page de
+// son servicetype, souvent 949), tandis que ce qui arrive PAR LE RÉSEAU — lignes
+// de chat, courrier, textes de scripts — est du **1252**, en dur, parce que
+// l'encodage du fil est une propriété du SERVEUR et non de la machine qui lit.
+// `CP_ACP` décrirait la locale du joueur, qui vaut 949 chez ceux qui l'ont réglée
+// en coréen pour leur client RO. Le raisonnement complet est au-dessus de
+// kWireCodePage, dans ro_imgui.cc.
+//
+// Mêmes garanties de tampon que les fonctions ci-dessus (rotatif, à consommer
+// tout de suite). Sens retour pour une saisie ImGui qui repart au serveur.
+const char* WireToUtf8(const char* ansi);
+const char* Utf8ToWire(const char* utf8);
+
 // Charge DEUX polices dans l'atlas : la police intégrée d'ImGui (repli) et Malgun
 // Gothic (glyphes hangul + latin, présente sur tout Windows 10/11). Puis
 // sélectionne l'active selon l'état du toggle (voir SetFontEnabled), sans jamais
@@ -122,6 +138,58 @@ void EndRoPopupModal();
 // un nombre serait disproportionné). Comme le bullet de titre, la demande est
 // CONSOMMÉE par BeginRoPopupModal (pas de fuite sur la modale suivante).
 void SetNextRoModalPos(float x, float y, bool dim_background = true);
+
+// ── 3e style de cadre : la CHATBOX ───────────────────────────────────────────
+// La chatbox du client n'a ni barre de titre, ni corps clair : c'est un rectangle
+// translucide SOMBRE, bordé d'un filet clair, qu'on déplace en le glissant et
+// qu'on redimensionne par une poignée en bas à droite. Aucun des deux styles
+// ci-dessus ne convient — sur un corps clair, tout ce que le serveur envoie en
+// blanc devient invisible, et une barre de titre RO au-dessus d'un chat n'existe
+// nulle part dans le client.
+//
+// Ce que ce style pose, et que l'appelant n'a donc pas à refaire : fond et filet
+// aux couleurs demandées, texte CLAIR par défaut, champs de saisie restés CLAIRS
+// (les UIEditWnd natifs le sont — penser à pousser un texte sombre autour d'un
+// InputText), scrollbars RO, poignée de resize `btn_resize`, échelle de police et
+// marges propres à la fenêtre.
+//
+// ⚠ Les deux couleurs sont des **ImU32** (0xAABBGGRR, ce que rend IM_COL32 et
+// ImU32FromPicker) — pas de l'ARGB natif. Cf. ui/color_codec.h : les deux
+// encodages prennent le même `uint32_t` et rien dans le type ne les distingue.
+struct RoChatSkin {
+  unsigned int body_col   = 0x96000000;  // fond du log (défaut ≈ le 0x66000000 natif)
+  unsigned int border_col = 0xFFC5C5C5;  // filet du cadre
+  float        font_scale = 1.0f;        // taille de police propre au chat
+  float        padding    = 3.0f;        // marge intérieure du cadre
+  float        line_gap   = 2.0f;        // interligne (densité de l'historique)
+  // Bornes du redimensionnement par les bords. `max_*` à 0 = « 80 % de l'écran ».
+  float        min_w = 400.0f, min_h = 200.0f;
+  float        max_w = 0.0f,   max_h = 0.0f;
+  // Quantification de la HAUTEUR : `snap_base + N × snap_step`. 🔴 Si l'appelant
+  // impose la même règle par SetNextWindowSizeConstraints, il DOIT la donner ici
+  // aussi : sinon le redimensionnement pose une hauteur qu'ImGui corrige à la
+  // frame suivante, et le bord opposé — celui qu'on ne touche pas — se met à
+  // dériver. `snap_step` à 0 = aucune quantification.
+  float        snap_step = 0.0f;
+  float        snap_base = 0.0f;
+  // Verrouillage. `movable` pose `NoMove` ; `resizable` retire les quatre bandes
+  // de redimensionnement. Les deux sont séparés parce qu'ils se verrouillent
+  // parfois séparément — une fenêtre figée en taille peut rester déplaçable.
+  bool         movable   = true;
+  bool         resizable = true;
+};
+// Pas de `p_open` : la chatbox du client n'a pas de bouton de fermeture (elle se
+// replie, ou on la coupe dans les options). Le module qui l'appelle garde son
+// propre interrupteur.
+bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
+                       int imgui_window_flags = 0);
+void EndRoChatWindow();
+// Un bord est-il en train d'être tiré ? 🔴 L'appelant s'en sert pour n'imposer sa
+// quantification de hauteur QUE pendant le geste. Appliquée en permanence, elle
+// redimensionnerait la fenêtre à chaque changement d'onglet dès que la taille de
+// police devient propre à chaque onglet — et c'est elle qui fait vibrer le bas de
+// la fenêtre, les métriques étant mesurées avec une frame de retard.
+bool RoChatWindowIsResizing();
 
 // ── Bullet de la barre de titre, cliquable ────────────────────────────────────
 // Le petit blit sys_base à gauche du titre est décoratif par défaut (comme dans le

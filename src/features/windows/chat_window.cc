@@ -1,0 +1,3281 @@
+#include "features/windows/chat_window.h"
+
+#include <Windows.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cfloat>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <unordered_map>
+
+#include "yaml-cpp/yaml.h"       // disposition des onglets (SaveData\bourgeon_chat.yaml)
+
+#include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
+#include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
+#include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
+#include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
+#include "imgui.h"
+#include "imgui_internal.h"      // GetInputTextState (défilement interne du champ)
+#include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
+#include "ragnarok/uiwnd.h"      // uiwnd::SafeFindWindow / CloseWindow (natif détruit)
+#include "ui/game_texture.h"     // ro::TextureFromGameFile (bitmaps du client)
+#include "ui/color_codec.h"      // ro::ArgbFromPicker / PickerFromArgb
+#include "ui/icon_cache.h"       // ro::ItemIcon (icônes d'objets, cache partagé)
+#include "ui/ro_imgui.h"         // BeginRoChatWindow / RoCheckbox / WireToUtf8
+#include "ui/ro_widgets.h"       // HelpMarker
+#include "utils/game_paths.h"    // paths::ChatLayoutPath
+#include "utils/hooking/hook_manager.h"
+#include "utils/log_console.h"
+
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
+namespace {
+
+// ── Adresses RE (client 20250716, base 0x400000 ; cf. docs/chatbox_re.md) ─────
+//
+// LE chokepoint d'ingestion : `UIWindowMgr_ChatAction(mgr, action, texte,
+// couleurRGB, sender, TYPE)`, __thiscall, 5 arguments pile. action 1 = ajouter
+// une ligne, 0x13 = la même chose par le msg 0x73 (voie morte côté natif, mais
+// elle porte du texte).
+constexpr uintptr_t kChatActionAddr = 0x00a4ad20;
+
+// Pointeur direct vers la UINewChatWnd vivante (nul = pas de fenêtre native).
+// C'est lui qui arbitre laquelle des deux sources d'ingestion est en service.
+constexpr uintptr_t kNewChatWndPtr = 0x0131f6b0;
+
+// Registres de canaux : std::map<int, {nom, filtre[25]}>. Nœud MSVC :
+// +0x0D isnil, +0x10 clé (index), +0x14 nom (std::string SSO 0x18 octets),
+// +0x2C table de filtre BYTE[25] (un octet par TYPE de message).
+constexpr uintptr_t kChannelRegistryAddr  = 0x015faadc;
+constexpr uintptr_t kDetachedRegistryAddr = 0x015faae4;
+constexpr size_t    kNodeIsNilOff  = 0x0D;
+constexpr size_t    kNodeKeyOff    = 0x10;
+constexpr size_t    kNodeNameOff   = 0x14;
+constexpr size_t    kNodeFilterOff = 0x2C;
+constexpr size_t    kStringSizeOff = 0x10;  // std::string : taille après le buffer SSO
+constexpr size_t    kStringCapOff  = 0x14;
+constexpr size_t    kSsoCapacity   = 15;
+
+// ── Envoi (copie fidèle de ChatMacro_SendEmotionHotkeySlot 0x00a47400) ───────
+// Le seul chemin d'envoi du client qui ne dépende d'AUCUNE fenêtre : il lit le
+// texte, applique le filtre de mots, route les `/commandes`, et finit sur
+// CMode::SendMsg. C'est exactement ce qu'il nous faut, et ça évite de
+// réimplémenter la moindre règle de jeu.
+constexpr uintptr_t kPendingSendText    = 0x0131f9c4;  // std::string
+constexpr uintptr_t kStdStringAssign    = 0x004f1940;  // __thiscall(this, src, len)
+constexpr uintptr_t kStdStringDtor      = 0x004f08f0;  // __thiscall(this)
+// 🔴 CE GARDE N'EST PAS CELUI DE L'ENTRÉE — il appartient aux MACROS, et le
+// copier ici refusait tout message contenant un lien d'objet.
+//
+// `ChatMacro_SendEmotionHotkeySlot 0x00a47400` — dont notre envoi est la copie,
+// parce que c'est le seul chemin qui ne dépende d'aucune fenêtre — commence par
+// `if (g_ChatWordFilterEnabled) { if (Chat_ContainsForbiddenWord(texte)) →
+// msgstring 0xE53 }`. Or `0x00a23180` n'est pas un filtre de gros mots : il
+// cherche SIX littéraux de balise dans le texte, et 0xE53 se lit « It cannot be
+// used because it contains an Item Tag ». C'est une règle propre aux macros : une
+// macro est une chaîne enregistrée, elle n'a pas d'objet à désigner.
+//
+// L'ENTRÉE du chat natif (`WndProc` case 6/0xB8) ne l'appelle JAMAIS. Elle ne
+// refuse les balises que pour TROIS commandes slash (ids 18, 26, 55), et par un
+// simple `_mbsstr` sur `<ITEML>`/`<ITEM>`, avec msgstring 0xAFC. C'est cette
+// règle-là — et elle seule — que nous rejouons, en C++ (§5.1 de la doc).
+//
+// ⚠ Et le patch WARP `NoSwearFilter` ne sauve pas : il zérote seulement la chaîne
+// `manner.txt` (la liste d'insultes ne se charge plus), mais le gestionnaire
+// `0x0131F6C4` reste NON NUL — le garde s'ouvre donc, et le test de balises
+// s'exécute. Les six littéraux qu'il cherche sont `<URL>`, `<NAVI>`, `<ITEM>`,
+// `<ITEML>` et deux voisins : rien à voir avec un gros mot.
+constexpr uintptr_t kCmdHandlerMap      = 0x00d7f1a0;  // __thiscall(ctxKey, texte)
+constexpr uintptr_t kUIWindowContextKey = 0x015fa3c0;
+// 🔴 __thiscall, PAS __stdcall : le natif charge `ecx = g_UIWindowContextKey`
+// juste avant l'appel (0x00a4769c). Ce n'est pas décoratif — quand le nom tapé
+// n'est PAS dans la table statique, la fonction retombe sur la table dynamique
+// (`0x00d60804` → `sub_D5CD30(ecx, nom)`) et déréférence ce contexte. Appelée
+// sans, elle part sur un ecx quelconque et lève une exception.
+constexpr uintptr_t kLookupSlashCmd     = 0x00d5e590;  // __thiscall(ctx, texte, &id, args[3])
+constexpr uintptr_t kCurrentModePtr     = 0x0121333c;  // CMode* courant
+constexpr uintptr_t kInputTargetMode    = 0x015ff838;  // 0 public 1 groupe 2 guilde 3 clan 4 alliés
+constexpr uintptr_t kOwnGuildId         = 0x0159c230;
+constexpr uintptr_t kPartyMemberCount   = 0x00d5cf50;  // __thiscall(ctxKey)
+constexpr uintptr_t kClanStatePtr       = 0x0159c07c;  // *(byte*)(*ptr + 0x5C) = clan
+constexpr int       kSendMsgVtOff       = 0x18;        // CMode::SendMsg (vtbl+0x18)
+// Les commandes de CMode::SendMsg utilisées ici (§5.2 de la doc).
+constexpr int kMsgPublic  = 6;
+constexpr int kMsgWhisper = 11;
+constexpr int kMsgParty   = 66;   // 0x42
+constexpr int kMsgGuild   = 129;  // 0x81
+constexpr int kMsgClan    = 289;  // 0x121
+constexpr int kMsgCommand = 42;   // 0x2A -> Chat_HandleChatMessage
+// « Cette commande n'accepte pas de lien d'objet » — le refus de l'ENTRÉE
+// native, réservé aux commandes slash 18/26/55.
+constexpr int kMsgCmdRejectsItemTag = 0xAFC;
+
+// Le client refuse plus de 10 canaux (principaux + détachés confondus) : au-delà,
+// c'est qu'on ne lit pas un registre mais autre chose. La borne protège le
+// parcours d'arbre autant que l'affichage.
+constexpr int kMaxChannels = 10;
+
+// 25 types + le broadcast (0x19), qui n'est pas dans la table de filtre.
+constexpr int kTypeCount     = 25;
+constexpr int kTypeBroadcast = 0x19;
+
+// ── Messages système masqués ─────────────────────────────────────────────────
+// Liste historique (autrefois `InstallChatMessageFilter` dans bourgeon.cc, migrée
+// ici avec son détour). Match par sous-chaîne : ajouter une entrée suffit à
+// masquer un autre message système.
+const char* const kBlockedMsgs[] = {
+    "Command List: /h | /help",
+    "error when loading the data account settings",
+    "current shop display function is in",
+};
+
+// « No Msg » : le natif jette ces lignes silencieusement (ChatAction action 1).
+// On fait pareil, sinon la fenêtre ImGui montre ce que la native n'a jamais eu.
+const char* const kNoMsg[] = {"No Msg", "NO MSG"};
+
+ChatWindow* g_chat_window = nullptr;
+void*       g_tramp_chat_action = nullptr;
+
+// Copie POD des deux chaînes du client. Le tampon de texte est large : un
+// broadcast dépasse allègrement une ligne de chat ordinaire.
+struct RawChatLine {
+  char text[1024];
+  char sender[64];
+};
+
+// Recopie une chaîne du client sans jamais faire confiance à sa terminaison.
+void CopyBounded(char* dst, size_t dst_size, const char* src) {
+  size_t i = 0;
+  if (src != nullptr) {
+    for (; i + 1 < dst_size && src[i] != '\0'; ++i) dst[i] = src[i];
+  }
+  dst[i] = '\0';
+}
+
+// SEH pur — aucun objet C++ ici (règle MSVC C2712) : on met les chaînes du client
+// à l'abri, et TOUT le reste du traitement travaille ensuite sur nos tampons.
+bool SafeCopyChatStrings(const char* text, const char* sender, RawChatLine* out) {
+  bool ok = false;
+  __try {
+    CopyBounded(out->text, sizeof(out->text), text);
+    CopyBounded(out->sender, sizeof(out->sender), sender);
+    ok = out->text[0] != '\0';
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    ok = false;
+  }
+  return ok;
+}
+
+// Le corps du détour. Renvoie non-nul pour que le stub neutralise l'action : la
+// ligne n'est alors ajoutée NULLE PART (ni natif, ni chez nous).
+//
+// 🔴 ORDRE DES DEUX DERNIERS ARGUMENTS : c'est **(…, TYPE, sender)**, et non
+// « (…, sender, TYPE) » comme l'annonçait le commentaire de l'IDB. La preuve est
+// dans le relais vers le WndProc (`0x00A4B245`) :
+//
+//     push [ebp+arg_10]  ; -> p5
+//     push [ebp+var_94]  ; -> p4
+//     push [ebp+var_90]  ; -> p3  (couleur)
+//     push esi           ; -> p2  (texte)
+//
+// et `chat.cc`, dont l'ingestion donnait bien des types VARIÉS, lit **p4** comme
+// le type. Donc `var_94` (le 4ᵉ argument pile) est le TYPE, et `arg_10` (le 5ᵉ)
+// le sender. Les avoir intervertis nous faisait lire un POINTEUR en guise de
+// type ; l'écrêtage de `Ingest` le ramenait à 0, d'où « tout arrive en t00 ».
+// Le symptôme n'apparaissait qu'une fois la native détruite, puisque tant qu'elle
+// vivait c'est son WndProc — donc le bon ordre — qui nous alimentait.
+int __cdecl ChatActionFilter(int action, const char* text, int color,
+                             int type, const char* sender) {
+  // 🔴 Action 3 = `ToggleWindow(mgr, 1)` + msg 0x10 : le client RECRÉE sa chatbox
+  // pour déployer sa barre de saisie — c'est ce que fait `/bm`. La détruire après
+  // coup depuis OnProcessInput laissait la native visible quelques frames, le
+  // temps d'un aller-retour. On l'empêche donc de naître, et on traduit
+  // l'intention : ouvrir NOTRE saisie et lui donner le focus.
+  if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_) {
+    g_chat_window->RequestInputBarDeploy();
+    return 1;
+  }
+  if (action != 1 && action != 0x13) return 0;
+
+  RawChatLine raw;
+  if (!SafeCopyChatStrings(text, sender, &raw)) return 0;
+
+  for (const char* pattern : kBlockedMsgs)
+    if (std::strstr(raw.text, pattern) != nullptr) return 1;
+  for (const char* pattern : kNoMsg)
+    if (std::strcmp(raw.text, pattern) == 0) return 0;  // jetée, mais pas bloquée au natif
+
+  // Ingestion SEULEMENT si la fenêtre native n'existe pas : sinon c'est son
+  // WndProc qui nous alimente (cf. chatwnd::IngestNativeLine), et ingérer des
+  // deux côtés doublerait chaque ligne.
+  bool native_alive = false;
+  __try {
+    native_alive = *reinterpret_cast<void**>(kNewChatWndPtr) != nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    native_alive = false;
+  }
+  if (!native_alive && g_chat_window != nullptr) {
+    // 🔴 L'ACTION 0x13 EST UNE VOIE MORTE, ET C'EST ELLE QUI DOUBLAIT LES ANNONCES.
+    // `ChatAction` traite 1 et 0x13 par le même code, à un détail près : 1 envoie le
+    // msg 0x25 (add-line) à la chatbox, 0x13 le msg 0x73 — que le WndProc ignore
+    // (`if (msg == 0x73) return 0`). Or le handler d'annonce `sub_00CB7510` appelle
+    // les DEUX d'affilée sur le même texte :
+    //     0x00cb7983  ChatAction(mgr, 1,    txt, couleur, type 0x19)
+    //     0x00cb79a9  ChatAction(mgr, 0x13, txt, couleur, type 0x19)
+    // Le natif n'en affiche donc qu'une, alors que nous ingérions les deux — d'où
+    // des doublons sur le SEUL type 25 (broadcast), et nulle part ailleurs.
+    // On la laisse muette, mais on la BLOQUE quand même juste en dessous : sans
+    // chatbox native, l'une comme l'autre empile dans la file `mgr+0x4C4`, qui
+    // n'est plus jamais drainée.
+    if (action != 0x13) {
+      ++g_chat_window->ingest_seen_;
+      g_chat_window->Ingest(raw.text, static_cast<uint32_t>(color), raw.sender, type,
+                            'A');
+    }
+    // 🔴 BLOQUER, mais seulement quand NOTRE fenêtre a pris le relais. Sans
+    // fenêtre native pour la consommer, `ChatAction` empile la ligne dans la file
+    // `mgr+0x4C4`, qui n'est drainée qu'à la CRÉATION d'une fenêtre — donc jamais
+    // si l'on empêche celle-ci de naître. C'est une fuite mémoire sans plafond,
+    // et elle grossit d'autant plus vite que le joueur est dans une ville bavarde.
+    //
+    // Si l'interface moderne est éteinte, on laisse passer : la native est peut-
+    // être seulement pas encore créée (écran de chargement), et la file lui
+    // rendra ses lignes en naissant.
+    if (g_chat_window->imgui_enabled_) return 1;
+  }
+  return 0;
+}
+
+// ── Le crash des balises quand la chatbox native n'existe plus ───────────────
+// `ChatText_TransformTagLinks 0x008e1730` transforme les balises/liens d'un texte
+// et prend la UINewChatWnd pour `this` — elle porte la liste des transformateurs à
+// `+0xF4`. Ses QUINZE appelants la joignent en lisant `g_pNewChatWnd 0x0131f6b0`
+// SANS le tester : fenêtre détruite, `this` vaut 0, et `mov edx,[eax+0xF4]` fait
+// sauter le client. Le premier rencontré est le message de bienvenue du serveur
+// (ZC_BROADCAST2 0x01C3), qui arrive à chaque entrée en jeu — d'où un crash
+// systématique dès que notre chatbox remplace la native. Les quatorze autres
+// (effets d'apparence, suivi de quête, les cinq UIRichTextBox_Layout*) étaient
+// autant de bombes à retardement.
+//
+// 🔴 Le correctif ne peut pas se contenter de « ne rien faire » : la chaîne de
+// SORTIE arrive NON INITIALISÉE. La laisser telle quelle fait planter le
+// destructeur que l'appelant exécute juste après ; la rendre vide afficherait un
+// message vide, l'appelant déplaçant le résultat dans son tampon. On construit
+// donc la sortie comme une COPIE de l'entrée — le texte passe sans ses balises
+// transformées, ce qui est exactement le comportement dégradé attendu.
+constexpr uintptr_t kChatTagTransform  = 0x008e1730;  // __thiscall(this, out, in), retn 8
+constexpr uintptr_t kStdStringCopyCtor = 0x004e52a0;  // __thiscall(dst, src), retn 4
+void* g_tramp_chat_tags = nullptr;
+
+__declspec(naked) void ChatTagTransformStub() {
+  __asm {
+    test ecx, ecx
+    jnz  tags_chain           // fenêtre vivante : rien à faire, on chaîne
+    // À l'entrée : [esp+4] = sortie (non construite), [esp+8] = entrée.
+    mov  eax, [esp+8]         // src
+    mov  ecx, [esp+4]         // dst  (this du copy-ctor)
+    push ecx                  // on garde dst pour le rendre en eax
+    push eax                  // argument pile du copy-ctor
+    mov  edx, kStdStringCopyCtor
+    call edx                  // retn 4 : il dépile son propre argument
+    pop  eax                  // la fonction rend la chaîne de SORTIE
+    ret  8                    // même nettoyage que l'originale
+  tags_chain:
+    jmp  [g_tramp_chat_tags]
+  }
+}
+
+// Deuxième famille du même défaut. `UINewChatWnd_ToggleInputBar 0x008dc0d0`
+// déplie/replie la ligne de saisie (c'est le mécanisme du battle mode) et
+// déréférence `this` dès sa première ligne — `this+0xBC`, la boîte de saisie. Ses
+// SIX appelants lisent `g_pNewChatWnd` sans le tester :
+// `UIWindowMgr_DispatchHotkeyBehavior`, `UIWindowMgr_DispatchMouseInput`,
+// `CCashEmotion_OnClickEmotionButton`, `sub_5AB550` (×2) et la commande `/bm`.
+// Autrement dit : une touche de raccourci ou un clic suffisait à faire sauter le
+// client dès que la native n'existe plus.
+//
+// Ici, rien à reconstruire : la valeur de retour est ignorée par tous les
+// appelants. On rend simplement zéro.
+// Drapeau du client, persisté sous le nom `"ChangeChatMode"` : **1 = battle mode**
+// (barre masquée, Entrée l'ouvre, envoi à vide la referme), 0 = barre permanente.
+// Basculé par la case 135 de `Chat_HandleChatMessage` (`/bm`, `/battlemode`) au
+// moyen d'un `setz` — c'est une vraie bascule, un « on »/« off » en argument est
+// ignoré.
+constexpr uintptr_t kBattleModeFlag     = 0x0131f50e;
+constexpr uintptr_t kChatToggleInputBar = 0x008dc0d0;  // __thiscall(this), retn 0
+void* g_tramp_chat_togglebar = nullptr;
+
+__declspec(naked) void ChatToggleInputBarStub() {
+  __asm {
+    test ecx, ecx
+    jnz  bar_chain
+    xor  eax, eax
+    ret                       // l'originale ne dépile aucun argument
+  bar_chain:
+    jmp  [g_tramp_chat_togglebar]
+  }
+}
+
+// Détour d'entrée. Sauve eax/ecx/edx, empile les cinq arguments pile de
+// ChatAction pour ChatActionFilter (__cdecl), et si celui-ci veut bloquer, écrit
+// 0x7fffffff sur `action` : le switch du natif tombe dans son default no-op et
+// fait son propre épilogue (RET N) — zéro risque ABI.
+//
+// Après les trois push : action@esp+0x10, texte@+0x14, couleur@+0x18,
+// sender@+0x1c, type@+0x20. Chaque push décale esp de 4 et l'argument suivant est
+// 4 plus loin : les cinq lectures se font donc toutes à +0x20.
+__declspec(naked) void ChatActionStub() {
+  __asm {
+    push eax
+    push ecx
+    push edx
+    mov  eax, [esp+0x20]   // type
+    push eax
+    mov  eax, [esp+0x20]   // sender
+    push eax
+    mov  eax, [esp+0x20]   // couleur
+    push eax
+    mov  eax, [esp+0x20]   // texte
+    push eax
+    mov  eax, [esp+0x20]   // action
+    push eax
+    call ChatActionFilter
+    add  esp, 0x14
+    test eax, eax
+    jz   chat_pass
+    mov  dword ptr [esp+0x10], 0x7fffffff  // -> switch default (aucune ligne)
+  chat_pass:
+    pop  edx
+    pop  ecx
+    pop  eax
+    jmp  [g_tramp_chat_action]
+  }
+}
+
+// ── Envoi natif ──────────────────────────────────────────────────────────────
+// Une std::string MSVC telle que le CLIENT les manipule : buffer SSO de 16
+// octets, taille, capacité. Construite vide (capacité 15) et détruite par le
+// destructeur du client — si elle a dû allouer, c'est SON allocateur qui a servi.
+struct NativeString {
+  char     buf[16];
+  uint32_t size;
+  uint32_t capacity;
+};
+
+void NativeStringInit(NativeString* s) {
+  std::memset(s, 0, sizeof(*s));
+  s->capacity = static_cast<uint32_t>(kSsoCapacity);
+}
+
+using StdStringAssign_t = void*(__thiscall*)(void*, const char*, size_t);
+using StdStringDtor_t   = void(__thiscall*)(void*);
+using CmdHandlerMap_t   = int(__thiscall*)(void*, const char*);
+using PartyCount_t      = int(__thiscall*)(void*);
+using LookupSlashCmd_t  = int(__thiscall*)(void*, const char*, int*, void*);
+using SendMsg_t         = void(__thiscall*)(void*, int, int, int, int, int);
+
+// Le texte porte-t-il une balise d'objet ? Le natif fait exactement ce test, au
+// `_mbsstr`, sur les deux littéraux — et seulement pour trois commandes slash.
+bool ContainsItemTag(const char* text) {
+  return std::strstr(text, "<ITEML>") != nullptr ||
+         std::strstr(text, "<ITEM>") != nullptr;
+}
+
+// Les trois commandes qui refusent un lien d'objet (`WndProc` case 6/0xB8).
+bool CommandRejectsItemTag(int cmd_id) {
+  return cmd_id == 18 || cmd_id == 26 || cmd_id == 55;
+}
+
+// `g_ChatPendingSendText = text` : le tampon que TOUS les envois relisent.
+void SetPendingSendText(const char* text) {
+  reinterpret_cast<StdStringAssign_t>(kStdStringAssign)(
+      reinterpret_cast<void*>(kPendingSendText), text, std::strlen(text));
+}
+
+// CMode::SendMsg(cmd, p2..p5) sur le mode de zone courant. Rend false si aucun
+// mode n'est actif (écran de login, changement de carte).
+bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
+  void* mode = *reinterpret_cast<void**>(kCurrentModePtr);
+  if (mode == nullptr) return false;
+  void** vt = *reinterpret_cast<void***>(mode);
+  reinterpret_cast<SendMsg_t>(vt[kSendMsgVtOff / 4])(mode, cmd, p2, p3, p4, p5);
+  return true;
+}
+
+// Envoie `text` (code-page du fil) exactement comme l'ENTER natif : commandes,
+// modes d'envoi, chuchotement. `whisper_target` non vide = chuchotement, comme la
+// box destinataire du chat natif. Rend un message d'erreur à afficher, ou nullptr.
+// Code de la dernière exception attrapée dans le chemin d'envoi. Hors du __try :
+// une variable locale modifiée dans le filtre SEH n'est pas fiable.
+DWORD g_last_send_fault = 0;
+
+const char* NativeSendChatText(const char* text, const char* whisper_target) {
+  if (text == nullptr || text[0] == '\0') return nullptr;
+
+  const char* error = nullptr;
+  __try {
+    if (text[0] == '/') {
+      // Commandes : d'abord la map de handlers (commandes désactivables par le
+      // serveur) ; si elle a traité, c'est fini. Sinon la table slash historique
+      // donne l'id et jusqu'à trois arguments, et Chat_HandleChatMessage exécute.
+      void* ctx = reinterpret_cast<void*>(kUIWindowContextKey);
+      if (reinterpret_cast<CmdHandlerMap_t>(kCmdHandlerMap)(ctx, text) == 0) {
+        NativeString args[3];
+        for (NativeString& arg : args) NativeStringInit(&arg);
+        int cmd_id = 0;
+        const int arg_off = reinterpret_cast<LookupSlashCmd_t>(kLookupSlashCmd)(
+            ctx, text, &cmd_id, args);
+        // Trois commandes refusent un lien d'objet — c'est le SEUL endroit où
+        // l'ENTRÉE native teste les balises, et le refus est un message de chat,
+        // pas une modale (qui relancerait le rendu ; cf. l'en-tête).
+        if (CommandRejectsItemTag(cmd_id) && ContainsItemTag(text)) {
+          error = msgstr::Utf8(kMsgCmdRejectsItemTag);
+        } else {
+          if (arg_off != -1) SetPendingSendText(text + arg_off);
+          ModeSendMsg(kMsgCommand, cmd_id,
+                      static_cast<int>(reinterpret_cast<intptr_t>(args)));
+        }
+        for (NativeString& arg : args)
+          reinterpret_cast<StdStringDtor_t>(kStdStringDtor)(&arg);
+      }
+    } else if (whisper_target != nullptr && whisper_target[0] != '\0') {
+      // Chuchotement : même chemin que la box destinataire du chat natif —
+      // texte en attente, puis SendMsg(11, nom).
+      SetPendingSendText(text);
+      ModeSendMsg(kMsgWhisper,
+                  static_cast<int>(reinterpret_cast<intptr_t>(whisper_target)));
+    } else {
+      SetPendingSendText(text);
+      // Mode d'envoi : le client REFUSE de basculer vers un canal auquel on
+      // n'appartient pas (pas de groupe, pas de guilde, pas de clan) et retombe
+      // sur le public. On rejoue ses trois gardes.
+      const int mode = *reinterpret_cast<int*>(kInputTargetMode);
+      bool sent = false;
+      if (mode == 2) {
+        if (*reinterpret_cast<uint32_t*>(kOwnGuildId) != 0)
+          sent = ModeSendMsg(kMsgGuild);
+      } else if (mode == 1) {
+        void* ctx = reinterpret_cast<void*>(kUIWindowContextKey);
+        if (reinterpret_cast<PartyCount_t>(kPartyMemberCount)(ctx) != 0)
+          sent = ModeSendMsg(kMsgParty);
+      } else if (mode == 3) {
+        const uint8_t* clan = *reinterpret_cast<const uint8_t**>(kClanStatePtr);
+        if (clan != nullptr && clan[0x5C] != 0) sent = ModeSendMsg(kMsgClan);
+      }
+      if (!sent) ModeSendMsg(kMsgPublic);
+    }
+  } __except (g_last_send_fault = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+    // 🔴 Le code de l'exception, PAS un message générique. « L'envoi a échoué »
+    // tout seul a coûté une session entière : il ne dit ni où, ni quoi. Avec le
+    // code (0xC0000005 = déréférencement, 0xC0000409 = pile corrompue = mauvaise
+    // convention d'appel), la panne se lit sans debugger.
+    static char buffer[80];
+    std::snprintf(buffer, sizeof(buffer), "L'envoi a échoué (chemin natif, 0x%08X).",
+                  g_last_send_fault);
+    error = buffer;
+  }
+  return error;
+}
+
+// ── Lecture des registres de canaux ──────────────────────────────────────────
+// Forme POD, pour rester sous SEH d'un bout à l'autre du parcours d'arbre.
+struct RawChannel {
+  uintptr_t node;
+  int       index;
+  char      name[64];
+  uint8_t   filter[kTypeCount];
+};
+
+// Lit une std::string MSVC (SSO 15 caractères, sinon pointeur) dans `out`.
+void ReadStdString(const uint8_t* str, char* out, size_t out_size) {
+  const uint32_t capacity = *reinterpret_cast<const uint32_t*>(str + kStringCapOff);
+  const uint32_t size     = *reinterpret_cast<const uint32_t*>(str + kStringSizeOff);
+  const char* data = (capacity > kSsoCapacity)
+                         ? *reinterpret_cast<const char* const*>(str)
+                         : reinterpret_cast<const char*>(str);
+  size_t n = 0;
+  if (data != nullptr) {
+    for (; n + 1 < out_size && n < size; ++n) out[n] = data[n];
+  }
+  out[n] = '\0';
+}
+
+// Parcours de l'arbre rouge-noir d'un std::map MSVC : l'objet map porte
+// {_Myhead, _Mysize} ; _Myhead->parent (+4) est la racine, et la sentinelle
+// boucle sur elle-même. On borne à `out_max` — au-delà, ce n'est pas un registre
+// de chat, et une structure inattendue ne doit pas faire tourner la boucle.
+int ReadRegistry(uintptr_t registry_addr, RawChannel* out, int out_max) {
+  int count = 0;
+  __try {
+    const uint8_t* head = *reinterpret_cast<const uint8_t* const*>(registry_addr);
+    if (head == nullptr) return 0;
+    const uint8_t* stack[kMaxChannels * 2 + 4];
+    int depth = 0;
+    stack[depth++] = *reinterpret_cast<const uint8_t* const*>(head + 4);  // racine
+    while (depth > 0 && count < out_max) {
+      const uint8_t* node = stack[--depth];
+      if (node == nullptr || node == head) continue;
+      if (node[kNodeIsNilOff] != 0) continue;  // sentinelle, pas une valeur
+      out[count].node  = reinterpret_cast<uintptr_t>(node);
+      out[count].index = *reinterpret_cast<const int*>(node + kNodeKeyOff);
+      ReadStdString(node + kNodeNameOff, out[count].name, sizeof(out[count].name));
+      for (int i = 0; i < kTypeCount; ++i)
+        out[count].filter[i] = node[kNodeFilterOff + i];
+      ++count;
+      if (depth + 2 <= static_cast<int>(_countof(stack))) {
+        stack[depth++] = *reinterpret_cast<const uint8_t* const*>(node + 0);  // gauche
+        stack[depth++] = *reinterpret_cast<const uint8_t* const*>(node + 8);  // droite
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return count;  // ce qu'on a pu lire reste valable
+  }
+  return count;
+}
+
+// Pose l'octet de filtre d'un canal, exactement comme le fait la fenêtre native
+// d'options de log (UIBattleMsgOptionWnd_OnClickCheckbox écrit node+0x2C+type).
+void WriteChannelFilter(uintptr_t node, int type, bool on) {
+  if (node == 0 || type < 0 || type >= kTypeCount) return;
+  __try {
+    *reinterpret_cast<uint8_t*>(node + kNodeFilterOff + type) = on ? 1 : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// ── Bitmaps du client utilisés par la chatbox ────────────────────────────────
+// Les noms viennent de `UINewChatWnd_Create` : les boutons du chat sont des
+// UIBitmapButton à deux états (`_a` normal, `_b` survol/pressé).
+const char kUiDirCp949[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
+
+ro::GameTexture ChatBitmap(const char* rel_path) {
+  struct Entry {
+    ro::GameTexture tex;
+    unsigned        epoch = 0;
+    bool            tried = false;
+  };
+  static std::unordered_map<std::string, Entry> cache;
+  Entry& entry = cache[rel_path];
+  const unsigned epoch = Overlay_DeviceEpoch();
+  if (entry.tried && entry.epoch == epoch) return entry.tex;
+
+  char full[260];
+  std::snprintf(full, sizeof(full), "%s\\%s", kUiDirCp949, rel_path);
+  entry.tex   = ro::TextureFromGameFile(full);
+  entry.epoch = epoch;
+  entry.tried = true;
+  return entry.tex;
+}
+
+// Mode d'envoi COURANT du client (0 public, 1 groupe, 2 guilde, 3 clan,
+// 4 alliés). On lit le global plutôt que d'en tenir un second : les deux chats
+// doivent envoyer au même endroit.
+int ReadSendMode() {
+  __try {
+    return *reinterpret_cast<int*>(kInputTargetMode);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+}
+
+void WriteSendMode(int mode) {
+  __try {
+    *reinterpret_cast<int*>(kInputTargetMode) = mode;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// ── Petits outils de texte ───────────────────────────────────────────────────
+bool IsHex6(const char* s) {
+  for (int i = 0; i < 6; ++i)
+    if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
+  return true;
+}
+
+// Recherche d'une sous-chaîne dans un intervalle NON terminé par un zéro : le
+// texte d'une ligne est parcouru par pointeurs, et `strstr` lirait au-delà.
+const char* SearchSub(const char* begin, const char* end, const char* needle) {
+  const size_t n = std::strlen(needle);
+  if (static_cast<size_t>(end - begin) < n) return nullptr;
+  for (const char* p = begin; p + n <= end; ++p)
+    if (std::memcmp(p, needle, n) == 0) return p;
+  return nullptr;
+}
+
+// Badge de rang d'un monstre. Mêmes valeurs que la table des drops de la fenêtre
+// de description (`boss` : 2 = MVP, 1 = mini-boss), pour qu'un même monstre ne
+// change pas d'étiquette selon l'endroit d'où le lien a été posé.
+const char* MobRankTag(uint8_t rank) {
+  if (rank == 2) return "[MVP]";
+  if (rank == 1) return "[Boss]";
+  return "[Mob]";
+}
+
+// Début d'adresse web reconnu. Volontairement limité à ces trois amorces : tout
+// ce qui ressemble de loin à un domaine (« truc.fr ») transformerait en lien la
+// moitié des phrases, y compris les fins de phrase (« ...voilà.Et »).
+bool IsUrlStart(const char* p, const char* end) {
+  const size_t left = static_cast<size_t>(end - p);
+  return (left >= 7 && _strnicmp(p, "http://", 7) == 0) ||
+         (left >= 8 && _strnicmp(p, "https://", 8) == 0) ||
+         (left >= 4 && _strnicmp(p, "www.", 4) == 0);
+}
+
+// Fin de l'adresse. On s'arrête à l'espace, et on REND la ponctuation finale au
+// texte : « regarde https://moonlight-destiny.fr. » ne doit pas ouvrir une URL
+// terminée par un point. La parenthèse fermante n'est rendue que si l'adresse
+// n'en contient pas d'ouvrante (les URL de wiki en ont).
+const char* UrlEnd(const char* p, const char* end) {
+  const char* stop = p;
+  while (stop < end && static_cast<unsigned char>(*stop) > ' ' && *stop != '<' &&
+         *stop != '"')
+    ++stop;
+  while (stop > p) {
+    const char c = stop[-1];
+    if (c == '.' || c == ',' || c == ';' || c == ':' || c == '!' || c == '?') {
+      --stop;
+      continue;
+    }
+    if (c == ')' && std::memchr(p, '(', stop - p) == nullptr) {
+      --stop;
+      continue;
+    }
+    break;
+  }
+  return stop;
+}
+
+// Recherche insensible à la casse (ASCII) — le filtre de la barre de recherche.
+bool ContainsNoCase(const std::string& haystack, const char* needle) {
+  if (needle == nullptr || needle[0] == '\0') return true;
+  const size_t n = std::strlen(needle);
+  if (haystack.size() < n) return false;
+  for (size_t i = 0; i + n <= haystack.size(); ++i) {
+    size_t j = 0;
+    while (j < n && std::tolower(static_cast<unsigned char>(haystack[i + j])) ==
+                        std::tolower(static_cast<unsigned char>(needle[j])))
+      ++j;
+    if (j == n) return true;
+  }
+  return false;
+}
+
+// (Le base62 des liens d'items vit désormais dans `itemcell::ParseChatLink`, avec
+//  l'encodeur qui lui répond : une balise se lit là où elle s'écrit.)
+
+inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
+
+// ── Les DEUX couleurs du chat n'ont pas le même ordre d'octets ───────────────
+// La couleur d'une LIGNE est un COLORREF Windows — `0x00BBGGRR`, rouge en octet
+// de poids faible — parce que c'est ce que le client passe à GDI. Le rouge de
+// « Bienvenue sur Moonlight-Destiny » arrive donc en 0x0000FF, et le lire comme
+// du RGB le rendait BLEU à l'écran.
+inline ImU32 LineColorToImU32(uint32_t colorref) {
+  return IM_COL32(colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF,
+                  0xFF);
+}
+
+// Les codes `^RRGGBB` écrits DANS le texte, eux, sont en RGB : ce sont des
+// chiffres hexadécimaux lus de gauche à droite, pas un mot machine.
+inline ImU32 HexRgbToImU32(uint32_t rgb) {
+  return IM_COL32((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 0xFF);
+}
+
+inline ImU32 Lighten(ImU32 col, int amount) {
+  const int r = std::min(255, static_cast<int>((col >> IM_COL32_R_SHIFT) & 0xFF) + amount);
+  const int g = std::min(255, static_cast<int>((col >> IM_COL32_G_SHIFT) & 0xFF) + amount);
+  const int b = std::min(255, static_cast<int>((col >> IM_COL32_B_SHIFT) & 0xFF) + amount);
+  return IM_COL32(r, g, b, (col >> IM_COL32_A_SHIFT) & 0xFF);
+}
+
+// Couleur de ligne du chat natif quand l'appelant n'en donne pas.
+constexpr uint32_t kDefaultRgb = 0xFFFFFF;
+constexpr ImU32 kStampCol   = IM_COL32(150, 150, 150, 255);
+constexpr ImU32 kDiagCol    = IM_COL32(0xFF, 0xB0, 0x40, 255);  // marqueur de type
+constexpr ImU32 kLinkCol    = IM_COL32(0xF4, 0x93, 0x4A, 0xFF);  // liens du client
+constexpr ImU32 kTabTextCol = IM_COL32(0x14, 0x14, 0x14, 255);   // texte des onglets
+constexpr ImU32 kDarkText   = IM_COL32(0x14, 0x14, 0x14, 255);   // sur champ clair
+
+// Redimensionnement par RANGÉES, comme le chat natif : il n'affiche jamais une
+// ligne coupée en deux, parce que sa hauteur ne prend que des valeurs « chrome +
+// N lignes ». On reproduit ça avec une contrainte de taille ImGui.
+struct RowSnap {
+  float line_h   = 0.0f;  // hauteur d'une ligne de log
+  float chrome_h = 0.0f;  // tout ce qui n'est pas la zone de log
+  float min_h    = 0.0f;  // bornes, re-appliquées APRÈS l'arrondi
+  float max_h    = 0.0f;
+};
+RowSnap g_row_snap;
+
+void SnapHeightToRows(ImGuiSizeCallbackData* data) {
+  const RowSnap* snap = static_cast<const RowSnap*>(data->UserData);
+  if (snap == nullptr || snap->line_h <= 1.0f) return;
+  float rows = (data->DesiredSize.y - snap->chrome_h) / snap->line_h;
+  rows = std::floor(rows + 0.5f);
+  if (rows < 1.0f) rows = 1.0f;
+  // 🔴 Ce rappel s'exécute APRÈS le bornage min/max d'ImGui : arrondir ici peut
+  // repasser sous le minimum ou au-dessus du maximum. On re-borne donc à la
+  // RANGÉE — en montant pour le plancher, en descendant pour le plafond — sinon
+  // les deux règles se contredisent silencieusement.
+  if (snap->min_h > 0.0f)
+    while (snap->chrome_h + rows * snap->line_h < snap->min_h) rows += 1.0f;
+  if (snap->max_h > 0.0f)
+    while (rows > 1.0f && snap->chrome_h + rows * snap->line_h > snap->max_h)
+      rows -= 1.0f;
+  data->DesiredSize.y = snap->chrome_h + rows * snap->line_h;
+}
+
+}  // namespace
+
+// Ingestion depuis le WndProc natif (case 0x25). Mêmes protections que le détour
+// de ChatAction : les chaînes du client sont recopiées sous SEH avant tout.
+// ⚠ L'ordre des arguments n'est PAS celui de ChatAction : ici c'est
+// (texte, couleur, TYPE, sender) — le type et le sender sont intervertis.
+void chatwnd::IngestNativeLine(const char* text, uint32_t rgb, int type,
+                               const char* sender) {
+  if (g_chat_window == nullptr) return;
+  RawChatLine raw;
+  if (!SafeCopyChatStrings(text, sender, &raw)) return;
+  ++g_chat_window->ingest_seen_;
+  g_chat_window->Ingest(raw.text, rgb, raw.sender, type, 'W');
+}
+
+// ── Libellés des 25 types (msgstringtable du client, §3.1.1 de la doc) ───────
+const char* chatwnd::TypeLabel(int type) {
+  static const char* const kLabels[kTypeCount] = {
+      "Public",                            // 0  — système / défaut
+      "Public Chat",                       // 1
+      "Whisper",                           // 2
+      "Party Chat",                        // 3
+      "Guild Chat",                        // 4
+      "Alliance Chat",                     // 5
+      "Item get/drop",                     // 6
+      "Equipment on/off",                  // 7
+      "Abnormal status",                   // 8
+      "Party member's obtained item",      // 9
+      "Party member's abnormal status",    // 10
+      "Skill failure",                     // 11
+      "Party configuration",               // 12
+      "Damaged equipment",                 // 13
+      "WOE information",                   // 14
+      "Search message for party members",  // 15
+      "Battle message",                    // 16
+      "Party member's battle message",     // 17
+      "Experience message",                // 18
+      "Quest information",                 // 19
+      "Battlefield message",               // 20
+      "Clan Chat",                         // 21
+      "Call messages",                     // 22
+      "Repayment-exp",                     // 23
+      "Equip attribute changes",           // 24
+  };
+  if (type == kTypeBroadcast) return "Broadcast";
+  if (type < 0 || type >= kTypeCount) return "?";
+  return kLabels[type];
+}
+
+ChatWindow::ChatWindow() {
+  g_chat_window = this;
+  // Le détour porte DEUX besoins (filtre système + ingestion) parce qu'il n'y a
+  // qu'un seul jeu d'octets à détourner à cette adresse — cf. l'en-tête.
+  g_tramp_chat_action = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatActionAddr),
+      reinterpret_cast<uint8_t*>(&ChatActionStub));
+  if (g_tramp_chat_action == nullptr)
+    LogError("[chat] detour ChatAction 0x{:08x} NON pose", kChatActionAddr);
+
+  // Garde-fou permanent, posé même si la chatbox ImGui est éteinte : il ne coûte
+  // qu'un `test ecx, ecx` quand la native est vivante, et il protège quinze
+  // appelants dont on ne maîtrise pas le déclenchement.
+  g_tramp_chat_tags = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatTagTransform),
+      reinterpret_cast<uint8_t*>(&ChatTagTransformStub));
+  if (g_tramp_chat_tags == nullptr)
+    LogError("[chat] detour TransformTagLinks 0x{:08x} NON pose — le client "
+             "plantera au premier texte balisé sans chatbox native",
+             kChatTagTransform);
+
+  g_tramp_chat_togglebar = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatToggleInputBar),
+      reinterpret_cast<uint8_t*>(&ChatToggleInputBarStub));
+  if (g_tramp_chat_togglebar == nullptr)
+    LogError("[chat] detour ToggleInputBar 0x{:08x} NON pose — le client "
+             "plantera au premier raccourci ou clic sans chatbox native",
+             kChatToggleInputBar);
+
+  // Canaux du serveur (ZC 0x0F21), poussés au login. Écoutés MÊME en mode natif :
+  // le handler ne fait que remplir un tableau, et le jour où le joueur bascule en
+  // ImGui la liste est déjà là — la même règle que la liste des storages.
+  Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kChannelList);
+}
+
+// Fil RÉSEAU : copier, rien d'autre (features/net_inbox.h). Le décodage repart
+// sur le fil principal dans HandlePacket.
+void ChatWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
+// ZC_BOURGEON_CHANNEL_LIST : [count:1] puis count fois
+// [flags:1][color:4][name:20][alias:20]. `data` commence APRÈS [op:2][len:2].
+// REMPLACE la liste : les droits d'un joueur peuvent changer en cours de session
+// (@adjgroup), et une entrée survivant à sa permission proposerait un canal que
+// le serveur refuserait ensuite en silence.
+void ChatWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode != bopcodes::kChannelList || data == nullptr || len < 1) return;
+  constexpr size_t kNameLen  = 20;  // CHAN_NAME_LENGTH côté serveur
+  constexpr size_t kEntryLen = 5 + 2 * kNameLen;
+  const int count = data[0];
+  server_channels_.clear();
+  size_t off = 1;
+  for (int i = 0; i < count && off + kEntryLen <= len; ++i, off += kEntryLen) {
+    const uint8_t  flags = data[off];
+    const uint32_t bgr   = *reinterpret_cast<const uint32_t*>(data + off + 1);
+    auto bounded = [](const uint8_t* p, size_t cap) {
+      size_t n = 0;
+      while (n < cap && p[n] != '\0') ++n;
+      return std::string(reinterpret_cast<const char*>(p), n);
+    };
+    const std::string name = bounded(data + off + 5, kNameLen);
+    if (name.empty()) continue;  // une entrée sans nom est inatteignable
+    ServerChannel channel;
+    // Le serveur range le nom SANS son '#' (`struct Channel`, et
+    // `channel_name2channel` compare toujours sur `chname + 1`) : c'est ici qu'on
+    // le remet, une fois pour toutes — c'est la chaîne qui ira dans la box
+    // destinataire.
+    channel.name  = "#" + name;
+    channel.alias = ro::WireToUtf8(bounded(data + off + 5 + kNameLen, kNameLen).c_str());
+    // 🔴 Le serveur STOCKE ses couleurs en BGR (channel.cpp, « RGB to BGR » à la
+    // lecture de channels.conf) : c'est cette valeur-là qui voyage, et la remettre
+    // à l'endroit est notre travail — la lire comme du RGB donnerait un rouge
+    // partout où la conf dit bleu.
+    const uint32_t r = bgr & 0xFF, g = (bgr >> 8) & 0xFF, b = (bgr >> 16) & 0xFF;
+    channel.color = IM_COL32(r, g, b, 255);
+    channel.require_guild = (flags & 0x01) != 0;
+    channel.can_chat      = (flags & 0x02) != 0;
+    server_channels_.push_back(std::move(channel));
+  }
+}
+
+bool ChatWindow::InGuild() const {
+  __try {
+    return *reinterpret_cast<uint32_t*>(kOwnGuildId) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+// Dernière chance d'écrire : une fermeture par la croix ne passe pas forcément
+// par un changement de mode. Le détour, lui, n'est PAS retiré — il reste posé pour
+// la durée du processus ; on se contente de couper le pointeur qu'il consulte.
+ChatWindow::~ChatWindow() {
+  if (layout_dirty_) SaveLayout();
+  SaveHistory();
+  if (g_chat_window == this) g_chat_window = nullptr;
+}
+
+void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) {
+  // Changement de personnage / retour au login : l'historique appartenait à la
+  // session précédente, et les canaux seront relus au prochain rendu.
+  if (mode_type != ModeMgr::ModeType::kGame) {
+    // 🔴 Enregistrer AVANT de vider : c'est le dernier instant où la disposition
+    // existe encore. C'est aussi le moment que choisit le client pour écrire son
+    // propre `ChatWndInfo_U.lua` — la déconnexion, pas chaque modification : une
+    // écriture par ligne de chat serait exactement le genre de coût qui a déjà
+    // gelé cette fenêtre.
+    if (layout_dirty_) {
+      SaveLayout();
+      layout_dirty_ = false;
+    }
+    SaveHistory();  // avant ClearHistory, évidemment : après, il n'y a plus rien
+    ClearHistory();
+    channels_.clear();
+    channels_stamp_  = 0;
+    structure_owned_ = false;  // on repartira du fichier, sinon du registre
+    has_pending_ = false;
+    ingest_seen_ = 0;
+    ingest_kept_ = 0;
+  } else {
+    // Entrée en jeu : la disposition du JOUEUR d'abord. Si le fichier n'existe pas
+    // encore, `RefreshChannels` amorcera depuis le registre du client.
+    LoadLayout();
+    LoadHistory();
+  }
+}
+
+void ChatWindow::ClearHistory() {
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  lines_.clear();
+}
+
+// ── Ingestion ────────────────────────────────────────────────────────────────
+void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
+                        int type, char source) {
+  Line line;
+  line.source = source;
+  line.rgb  = (rgb != 0) ? (rgb & 0xFFFFFF) : kDefaultRgb;
+  line.type = static_cast<uint8_t>(
+      (type == kTypeBroadcast || (type >= 0 && type < kTypeCount)) ? type : 0);
+
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  line.hour   = static_cast<uint8_t>(now.wHour);
+  line.minute = static_cast<uint8_t>(now.wMinute);
+  line.second = static_cast<uint8_t>(now.wSecond);
+
+  // Sender : donné par l'appelant, sinon extrait du texte comme le natif le fait
+  // pour les formats « Nom : msg » (types public/groupe/guilde/clan) — il cherche
+  // le mot 16 bits ` :` et borne le nom à 24 caractères.
+  const char* raw_sender = sender;
+  char extracted[32] = {};
+  if ((raw_sender == nullptr || raw_sender[0] == '\0') &&
+      (line.type == 1 || line.type == 3 || line.type == 4 || line.type == 0x15)) {
+    const char* separator = std::strstr(text, " :");
+    if (separator != nullptr && (separator - text) <= 24) {
+      CopyBounded(extracted, sizeof(extracted), text);
+      extracted[separator - text] = '\0';
+      raw_sender = extracted;
+    }
+  }
+  if (raw_sender != nullptr && raw_sender[0] != '\0')
+    line.sender = ro::WireToUtf8(raw_sender);
+
+  ParseText(text, &line);
+
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  ++ingest_kept_;
+  lines_.push_back(std::move(line));
+  const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
+  while (lines_.size() > cap) lines_.pop_front();
+}
+
+// Découpe une ligne en fragments : couleurs ^RRGGBB, icônes ^i[id], liens
+// <ITEML>. Fait UNE fois, à l'ingestion — le rendu ne reparse rien.
+void ChatWindow::ParseText(const char* local_text, Line* out) const {
+  // 🔴 L'espace insécable se neutralise AVANT la conversion, sur les octets du
+  // FIL — et surtout pas après. En latin-1 l'octet 0xA0 est un NBSP (les liens
+  // natifs en sèment) ; en UTF-8 c'est un octet de CONTINUATION, celui du « à »
+  // (C3 A0). Le remplacer après conversion cassait « à » en une séquence invalide
+  // que l'atlas rendait en losange — d'où l'illusion d'un problème de code-page,
+  // alors que les « é » (C3 A9) passaient très bien.
+  std::string wire = (local_text != nullptr) ? local_text : "";
+  for (char& ch : wire)
+    if (static_cast<unsigned char>(ch) == 0xA0) ch = ' ';
+  ParseUtf8(ro::WireToUtf8(wire.c_str()), out);
+}
+
+// La MOITIÉ balisage du parse, séparée de la conversion d'encodage. C'est par ici
+// que rentre une ligne rechargée depuis notre historique : elle est déjà en UTF-8
+// (on l'a écrite ainsi), et la repasser par `WireToUtf8` la corromprait.
+void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
+  out->raw = text;  // le balisage INTACT : c'est lui qu'on persiste
+  Run current;
+  auto flush = [&]() {
+    if (!current.text.empty()) {
+      out->runs.push_back(current);
+      current.text.clear();
+    }
+  };
+
+  const char* p   = text.c_str();
+  const char* end = p + text.size();
+  while (p < end) {
+    // Couleur ^RRGGBB (^000000 = retour à la couleur de la ligne).
+    if (*p == '^' && (end - p) >= 7 && IsHex6(p + 1)) {
+      flush();
+      const unsigned v = static_cast<unsigned>(
+          std::strtoul(std::string(p + 1, p + 7).c_str(), nullptr, 16));
+      current.color = (v == 0) ? 0 : HexRgbToImU32(v);
+      p += 7;
+      continue;
+    }
+    // Icône d'objet ^i[<id décimal>] : le moteur natif la rend dans toutes ses
+    // fenêtres TextLayout, un joueur peut donc en taper une.
+    if (*p == '^' && (end - p) >= 4 && (p[1] == 'i' || p[1] == 'I') && p[2] == '[') {
+      const char* rb =
+          static_cast<const char*>(std::memchr(p + 3, ']', end - (p + 3)));
+      if (rb != nullptr) {
+        flush();
+        Run icon;
+        icon.item_id =
+            static_cast<uint32_t>(std::atoi(std::string(p + 3, rb).c_str()));
+        if (icon.item_id != 0) out->runs.push_back(icon);
+        p = rb + 1;
+        continue;
+      }
+    }
+    // Lien d'objet du chat : <ITEML>[5c equip b62][1c type décoré][nameid b62]
+    // [champs facultatifs]</ITEML>. Le tag ne porte AUCUN texte lisible — c'est au
+    // lecteur de composer le libellé, et il faut le composer à partir de TOUT ce
+    // que la balise transporte : refine, grade, cartes, forgeron. Ne lire que le
+    // nameid affichait « Axe » là où le natif écrit « Test's Axe ».
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<ITEML>", 7) == 0) {
+      itemcell::ChatLink item;
+      const char* tag_end = end;
+      if (itemcell::ParseChatLink(p, end, &item, &tag_end)) {
+        flush();
+        Run icon;
+        icon.item_id = item.id;
+        icon.item    = item;
+        out->runs.push_back(icon);
+        Run link;
+        link.item_id = item.id;
+        link.item    = item;
+        link.kind    = Run::kItem;
+        // Le name-builder NATIF, sur un ItemSkillInfo fabriqué depuis la balise :
+        // c'est le seul moyen d'obtenir mot pour mot ce qu'affiche le client (il
+        // va jusqu'à demander au serveur le nom du forgeron qu'il ne connaît pas).
+        // Il rend la code-page du client, d'où la conversion.
+        char composed[192];
+        itemcell::BuildChatLinkName(item, composed, sizeof(composed));
+        const std::string name = (composed[0] != '\0')
+                                     ? ro::WireToUtf8(composed)
+                                     : std::string(itemcell::NameById(item.id));
+        // Le format du natif, chevrons compris : `<+7 Sword [3]>`. Le nombre
+        // d'emplacements est déjà dans le nom composé (BuildChatLinkName).
+        link.text = "<" + name + ">";
+        out->runs.push_back(link);
+      }
+      p = tag_end;
+      continue;
+    }
+    // Lien de MONSTRE — balise à NOUS : `<MOBL>id:rang:nom</MOBL>`.
+    //
+    // 🔴 Le nom voyage DANS la balise, et ce n'est pas de la commodité : le client
+    // ne sait pas nommer un monstre. Il n'a pas mob_db, et le nom n'est même pas
+    // dans le paquet de la fiche (cf. project_monster_info_window) — c'est le
+    // serveur qui le lui donne, à la demande. Un lien qui ne porterait que l'id
+    // obligerait CHAQUE client recevant la ligne à interroger le serveur : un lien
+    // posté dans `#global`, et c'est toute la population qui envoie un paquet.
+    //
+    // Champs séparés par ':' et le nom EN DERNIER, donc libre de contenir tout ce
+    // qu'un nom de monstre contient (espaces, apostrophes, ponctuation).
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<MOBL>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</MOBL>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        const char* c2 = (c1 != nullptr)
+                             ? static_cast<const char*>(std::memchr(c1 + 1, ':', close - (c1 + 1)))
+                             : nullptr;
+        if (c2 != nullptr) {
+          const uint32_t id = static_cast<uint32_t>(
+              std::strtoul(std::string(body, c1).c_str(), nullptr, 10));
+          const int rank = std::atoi(std::string(c1 + 1, c2).c_str());
+          const std::string name(c2 + 1, close);
+          if (id != 0 && !name.empty()) {
+            flush();
+            Run link;
+            link.kind     = Run::kMob;
+            link.mob_id   = id;
+            link.mob_rank = static_cast<uint8_t>((rank < 0 || rank > 2) ? 0 : rank);
+            link.mob_name = name;
+            link.text     = "<" + std::string(MobRankTag(link.mob_rank)) + " " + name + ">";
+            out->runs.push_back(link);
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
+    // Adresse web. Rien à transporter : le joueur tape son URL, tout le monde
+    // reçoit le même texte — nous sommes seulement les seuls à la rendre
+    // cliquable. La chatbox NATIVE, elle, n'en fait rien : son seul détecteur de
+    // liens (`UISubChatWnd_AppendDrawnLine 0x0083d840`) ne teste que `<ITEML>`,
+    // vérifié sur l'initialiseur du littéral (0x00475fe0 → « <ITEML> »).
+    // Début de MOT exigé : sans ça, « voirhttps://… » ouvrirait un lien au beau
+    // milieu d'un mot et le couperait en deux à l'affichage.
+    const bool at_word_start =
+        (p == text.c_str()) || p[-1] == ' ' || p[-1] == '\t' || p[-1] == '\n' ||
+        p[-1] == '\r' || p[-1] == '(';
+    if (at_word_start && (*p == 'h' || *p == 'H' || *p == 'w' || *p == 'W') &&
+        IsUrlStart(p, end)) {
+      const char* stop = UrlEnd(p, end);
+      if (stop > p) {
+        flush();
+        Run link;
+        link.kind = Run::kUrl;
+        link.url.assign(p, stop);
+        link.text = link.url;
+        out->runs.push_back(link);
+        p = stop;
+        continue;
+      }
+    }
+    current.text += *p;  // (le NBSP a déjà été neutralisé avant la conversion)
+    ++p;
+  }
+  flush();
+
+  out->plain.clear();
+  for (const Run& run : out->runs) out->plain += run.text;
+}
+
+// ── Canaux ───────────────────────────────────────────────────────────────────
+bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const {
+  if (diagnostic_) return true;              // diagnostic : on ne filtre rien
+  if (line.type >= kTypeCount) return true;  // broadcast : tous les onglets
+  return channel.filter[line.type] != 0;
+}
+
+void ChatWindow::RefreshChannels() {
+  // 🔴 Le registre natif est un AMORÇAGE, pas une source permanente. Dès que le
+  // joueur a modifié la structure chez nous, le relire ne pourrait que défaire son
+  // travail : ressusciter l'onglet fermé, rendre son ancien nom à celui qu'il a
+  // renommé, redocker celui qu'il a arraché. Il faudra écrire dans les registres
+  // pour rendre tout ça visible du client — c'est le chantier suivant ; d'ici là,
+  // notre liste fait foi et le registre ne sert plus qu'à situer les nœuds de
+  // filtre déjà connus.
+  if (structure_owned_) return;
+
+  const uint32_t now = GetTickCount();
+  if (!channels_.empty() && (now - channels_stamp_) < 2000) return;
+  channels_stamp_ = now;
+
+  RawChannel raw[kMaxChannels * 2];
+  const int main_count = ReadRegistry(kChannelRegistryAddr, raw, kMaxChannels);
+  const int total =
+      main_count + ReadRegistry(kDetachedRegistryAddr, raw + main_count, kMaxChannels);
+
+  // 🔴 On FUSIONNE avec la liste existante, on ne la reconstruit PAS. Le rebuild
+  // remplaçait le vecteur entier toutes les deux secondes : tout ce que nous
+  // portons nous-mêmes sur un canal — identifiant stable, réglages, état détaché —
+  // était effacé sans trace, y compris deux secondes après le geste du joueur.
+  // C'est le préalable à tout ce qui rend les onglets vivants.
+  const uint32_t active_id =
+      (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
+          ? channels_[active_channel_].id
+          : 0;
+  std::vector<Channel> merged;
+  std::vector<bool>    taken(channels_.size(), false);
+
+  for (int i = 0; i < total; ++i) {
+    const bool detached = (i >= main_count);
+    // Les noms d'onglets viennent du .lua de sauvegarde relu par le CLIENT :
+    // c'est sa code-page, pas celle du fil (cf. ro_imgui.h).
+    std::string name = ro::LocalToUtf8(raw[i].name);
+    if (name.empty()) name = "Chat";
+
+    // Appariement, du plus sûr au plus faible. L'ADRESSE du nœud est stable tant
+    // que l'entrée vit ; l'index ne l'est qu'entre deux renumérotations ; le nom
+    // ne départage pas deux homonymes — d'où l'ordre, et le « premier non pris ».
+    int found = -1;
+    for (size_t k = 0; k < channels_.size() && found < 0; ++k)
+      if (!taken[k] && raw[i].node != 0 && channels_[k].node == raw[i].node)
+        found = static_cast<int>(k);
+    for (size_t k = 0; k < channels_.size() && found < 0; ++k)
+      if (!taken[k] && channels_[k].detached == detached &&
+          channels_[k].index == raw[i].index)
+        found = static_cast<int>(k);
+    for (size_t k = 0; k < channels_.size() && found < 0; ++k)
+      if (!taken[k] && channels_[k].name == name) found = static_cast<int>(k);
+
+    Channel channel;
+    if (found >= 0) {
+      channel = channels_[found];  // on GARDE ce qui est à nous, à commencer par l'id
+      taken[found] = true;
+    } else {
+      channel.id = next_channel_id_++;
+    }
+    channel.index    = raw[i].index;
+    // 🔴 Notre état gagne dès que le joueur y a touché : tant que le déplacement
+    // de l'entrée entre les deux registres natifs n'est pas écrit, le registre
+    // continuerait d'affirmer le contraire à chaque fusion.
+    if (!channel.detach_owned) channel.detached = detached;
+    channel.node     = raw[i].node;
+    channel.name     = std::move(name);
+    std::memcpy(channel.filter, raw[i].filter, sizeof(channel.filter));
+    merged.push_back(std::move(channel));
+  }
+
+  if (merged.empty()) {
+    // Registre illisible (avant l'entrée en jeu, p. ex.) : un canal qui accepte
+    // tout vaut mieux qu'une fenêtre vide sans explication. S'il est DÉJÀ en place
+    // (node nul = c'est le nôtre), on le laisse tel quel plutôt que d'en fabriquer
+    // un neuf toutes les deux secondes — son identifiant doit rester stable lui
+    // aussi, sinon ses réglages repartiraient de zéro en boucle.
+    if (channels_.size() == 1 && channels_[0].node == 0) return;
+    Channel fallback;
+    fallback.id   = next_channel_id_++;
+    fallback.name = "Public";
+    std::memset(fallback.filter, 1, sizeof(fallback.filter));
+    merged.push_back(std::move(fallback));
+  }
+  channels_.swap(merged);
+
+  // Rester sur le MÊME canal, pas au même rang : la fusion peut réordonner, et
+  // suivre le rang ferait sauter le joueur d'un onglet à l'autre tout seul.
+  active_channel_ = 0;
+  for (size_t k = 0; k < channels_.size(); ++k) {
+    if (channels_[k].id == active_id) {
+      active_channel_ = static_cast<int>(k);
+      break;
+    }
+  }
+}
+
+// ── Rendu ────────────────────────────────────────────────────────────────────
+// Une fenêtre par canal DÉTACHÉ, plus la fenêtre dockée qui porte les autres en
+// onglets. C'est la répartition du client : sa `UIChatWnd` détachée est une
+// fenêtre à part entière, pas un onglet déplacé.
+void ChatWindow::OnRenderUI() {
+  if (!imgui_enabled_) return;
+  // Relevée ICI, hors de toute fenêtre : c'est la seule taille de police qui ne
+  // porte l'échelle d'aucune d'entre elles. Tout le log s'en déduit.
+  base_font_size_ = ImGui::GetFontSize();
+  // Le battle mode appartient au CLIENT : on le relit à chaque frame plutôt que
+  // d'en tenir une copie. En sortir doit rendre la barre tout de suite ; y entrer
+  // doit la replier, sinon elle resterait ouverte jusqu'au prochain Échap.
+  const bool battle_now = ReadNativeBattleMode();
+  if (battle_now != battle_mode_) {
+    battle_mode_ = battle_now;
+    input_open_  = false;
+  }
+  RefreshChannels();
+  // L'onglet actif ne peut pas désigner un canal détaché : il n'est plus dans la
+  // bande. Sans ce recalage, détacher l'onglet courant laisserait la fenêtre
+  // dockée pointer un canal qu'elle n'affiche plus.
+  if (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()) &&
+      channels_[active_channel_].detached) {
+    active_channel_ = 0;
+    for (size_t i = 0; i < channels_.size(); ++i) {
+      if (!channels_[i].detached) {
+        active_channel_ = static_cast<int>(i);
+        break;
+      }
+    }
+  }
+
+  // La bande n'est valide que si la fenêtre dockée a été dessinée cette frame :
+  // repliée ou masquée, elle ne peut pas servir de cible de recollage — et une
+  // cible invisible qui accepte quand même est pire que pas de cible du tout.
+  strip_valid_ = false;
+  // 🔴 ENTRÉE se traite AVANT le dessin, et pas dans la ligne de saisie : en
+  // battle mode celle-ci n'est pas dessinée du tout, donc rien n'y consommerait la
+  // touche — la barre ne se serait jamais ouverte.
+  // La touche est relevée au clavier, la décision se prend ICI : c'est le seul
+  // endroit où l'on sait qu'une AUTRE zone de texte a déjà le focus (recherche,
+  // renommage, panneau de réglages). Sans ce test, chaque Entrée le lui volerait.
+  if (enter_pending_) {
+    enter_pending_ = false;
+    if (!ImGui::GetIO().WantTextInput) {
+      if (battle_mode_) input_open_ = true;
+      focus_input_next_ = true;
+    }
+  }
+  // L'action 3 de ChatAction : le client veut voir la barre dépliée. On la déplie
+  // — et RIEN de plus, surtout pas le focus (cf. RequestInputBarDeploy).
+  if (deploy_pending_) {
+    deploy_pending_ = false;
+    if (battle_mode_) input_open_ = true;
+  }
+
+  DrawDockedWindow();
+  // Parcours par INDICE : le rendu d'une flottante peut basculer son `detached`
+  // (recollage), ce qu'un itérateur n'aimerait pas. Aucun canal n'est créé ni
+  // supprimé ici, donc les indices restent valides.
+  for (size_t i = 0; i < channels_.size(); ++i)
+    if (channels_[i].detached) DrawDetachedWindow(static_cast<int>(i));
+
+  // Filet de sécurité, en FIN de frame et pas au début : un geste dont la fenêtre
+  // a cessé d'être dessinée (repli, canal disparu) laisserait sinon un glissement
+  // fantôme, actif jusqu'au prochain clic. Le placer au début casserait le lâcher,
+  // qui se produit précisément sur la frame où le bouton n'est plus enfoncé.
+  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    drag_tab_      = -1;
+    drag_detached_ = -1;
+  }
+  // La demande de focus est consommée par la ligne de saisie ; si celle-ci est
+  // désactivée dans les réglages, personne ne la consommerait et elle
+  // s'appliquerait au premier réaffichage de la barre, longtemps après la touche.
+  enter_pending_ = false;
+}
+
+// Le skin d'un canal. `channel` peut être nul (registre pas encore lisible) : la
+// fenêtre s'habille quand même, elle sera simplement vide.
+ro::RoChatSkin ChatWindow::MakeSkin(const Channel* channel) const {
+  ro::RoChatSkin skin;
+  skin.body_col   = ro::ImU32FromPicker(EffBody(channel));
+  skin.border_col = ro::ImU32FromPicker(border_rgba_);
+  // L'échelle de la FENÊTRE n'habille plus que l'habillage : onglets, boutons,
+  // ligne de saisie. Le log, lui, se dessine à taille explicite (LogFontSize).
+  skin.font_scale = static_cast<float>(ui_scale_pct_) / 100.0f;
+  skin.padding    = static_cast<float>(EffPadding(channel));
+  skin.line_gap   = static_cast<float>(EffLineGap(channel));
+  // 🔴 La MÊME règle de rangées que la contrainte de taille. Les deux doivent la
+  // connaître : la contrainte corrige ce qui entre par ailleurs (restauration de
+  // position, changement d'interligne), le redimensionnement par les bords doit
+  // produire d'emblée une hauteur conforme — sinon la correction d'ImGui, qui ne
+  // touche que la taille, fait dériver le bord d'en face.
+  // Les métriques sont celles de la frame PRÉCÉDENTE, et elles vivent sur le
+  // CANAL : deux fenêtres n'ont ni la même hauteur de ligne ni le même chrome.
+  skin.snap_step = (channel != nullptr) ? channel->line_h : 0.0f;
+  skin.snap_base = (channel != nullptr) ? channel->chrome_h : 0.0f;
+  // Verrouillage : ni déplacement ni redimensionnement. Une chatbox bien réglée se
+  // déplace ensuite par accident, en visant un onglet — c'est précisément ce que
+  // cette option évite.
+  skin.movable   = !locked_;
+  skin.resizable = !locked_;
+  return skin;
+}
+
+// Contraintes de taille de la fenêtre qu'on s'apprête à ouvrir. Le maximum est
+// relatif à l'écran plutôt que figé, pour suivre un changement de résolution.
+void ChatWindow::ApplySizeConstraints(const ro::RoChatSkin& skin) {
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  const ImVec2 max_size(display.x > 0.0f ? display.x * 0.8f : FLT_MAX,
+                        display.y > 0.0f ? display.y * 0.8f : FLT_MAX);
+  g_row_snap.line_h   = skin.snap_step;
+  g_row_snap.chrome_h = skin.snap_base;
+  g_row_snap.min_h    = skin.min_h;
+  g_row_snap.max_h    = max_size.y;
+  // 🔴 L'arrondi par rangées ne s'applique QUE pendant un redimensionnement. En
+  // permanence, il corrigeait la hauteur à chaque frame à partir de métriques
+  // mesurées à la frame précédente — d'où le frémissement du bas de la fenêtre —
+  // et surtout il la redimensionnerait à chaque changement d'onglet, maintenant
+  // que la taille de police est propre à chaque canal. Le geste, lui, produit déjà
+  // une hauteur conforme : c'est là que la règle doit vivre, et nulle part ailleurs.
+  const bool snap = (skin.snap_step > 1.0f) && ro::RoChatWindowIsResizing();
+  ImGui::SetNextWindowSizeConstraints(ImVec2(skin.min_w, skin.min_h), max_size,
+                                      snap ? SnapHeightToRows : nullptr, &g_row_snap);
+}
+
+void ChatWindow::DrawDockedWindow() {
+  // Le skin est calculé AVANT Begin, donc sur le canal actif de la frame
+  // précédente. Un changement d'onglet se voit à la frame suivante : sans
+  // importance tant que les réglages sont globaux, à revoir quand ils seront par
+  // canal (cf. le TODO sur les réglages par onglet).
+  const Channel* previous =
+      (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
+          ? &channels_[active_channel_]
+          : nullptr;
+  ro::RoChatSkin skin = MakeSkin(previous);
+  // Bornes du redimensionnement par les bords : jamais moins de 400×200, jamais
+  // plus de 80 % de l'écran.
+  skin.min_w = 400.0f;
+  skin.min_h = 200.0f;
+
+  ImGui::SetNextWindowSize(ImVec2(620.0f, 220.0f), ImGuiCond_FirstUseEver);
+  ApplySizeConstraints(skin);
+  if (ro::BeginRoChatWindow("###bourgeon_chat", skin)) {
+    DrawTabStrip();
+
+    if (show_search_) {
+      // 🔴 Le champ ET le bouton sont des bitmaps CLAIRS, alors que le cadre du
+      // chat pousse un texte clair pour son fond sombre : clair sur clair, on ne
+      // lit rien. Le texte repasse en sombre le temps de ces deux widgets — et
+      // seulement eux : le libellé de la case, lui, est sur le fond sombre.
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      ImGui::SetNextItemWidth(180.0f);
+      ImGui::InputTextWithHint("##chat_search", "Rechercher…", search_,
+                               sizeof(search_));
+      ImGui::SameLine();
+      if (ro::RoSmallButton("Effacer")) search_[0] = '\0';
+      ImGui::PopStyleColor();
+      ImGui::SameLine();
+      ro::RoCheckbox("Sélection###chatwnd_selmode", &select_mode_);
+      if (ImGui::IsItemHovered()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+        ImGui::SetTooltip(
+            "Change le log en texte sélectionnable : glisser pour sélectionner,\n"
+            "Ctrl+A tout prendre, Ctrl+C copier. Les couleurs et les icônes\n"
+            "disparaissent le temps de la sélection — c'est du texte nu.");
+        ImGui::PopStyleColor();
+      }
+    }
+
+    // La zone de log prend tout ce qui reste, moins la ligne de saisie.
+    float log_h = ImGui::GetContentRegionAvail().y;
+    if (InputRowVisible())
+      log_h -= ImGui::GetFrameHeightWithSpacing();
+    if (log_h < LogFontSize(previous)) log_h = LogFontSize(previous);  // une ligne de LOG
+
+    // Métriques pour la contrainte de taille de la PROCHAINE frame. Le « chrome »
+    // n'est pas seulement ce qui entoure la zone de log : dedans, la marge de
+    // l'enfant et le débord du dernier glyphe ne sont pas non plus du texte. Les
+    // oublier, c'était contraindre la fenêtre sur une grille décalée — donc
+    // continuer à couper une ligne alors même que le pas était juste.
+    // Relu APRÈS la bande d'onglets : un clic vient peut-être de changer d'onglet.
+    Channel* channel =
+        (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
+            ? &channels_[active_channel_]
+            : nullptr;
+    if (channel != nullptr) {
+      channel->line_h   = LineHeight(channel);
+      channel->chrome_h = ImGui::GetWindowSize().y - log_h +
+                          2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(channel);
+      DrawChannel(*channel, log_h);
+    }
+    if (InputRowVisible()) DrawInputRow();
+    DrawLogOptionsPopup();
+  }
+  ro::EndRoChatWindow();
+}
+
+// Un canal arraché : sa propre fenêtre, avec son en-tête et son log. Pas de ligne
+// de saisie — le client n'en met pas non plus sur ses fenêtres détachées, et pour
+// une bonne raison : il n'y a qu'un seul texte en cours de frappe, il appartient
+// au chat principal. Une deuxième boîte de saisie poserait la question « laquelle
+// envoie ? » à chaque touche.
+void ChatWindow::DrawDetachedWindow(int index) {
+  Channel& channel = channels_[index];
+  ro::RoChatSkin skin = MakeSkin(&channel);
+  // Bornes du client pour ses flottantes : largeur 280..512, hauteur 74..384. On
+  // reprend le plancher, pas le plafond — le nôtre est déjà relatif à l'écran.
+  skin.min_w = 280.0f;
+  skin.min_h = 120.0f;
+
+  // Le titre EST le nom du canal, et l'identifiant reste stable derrière `###` :
+  // renommer l'onglet ne doit pas faire perdre à ImGui la position de la fenêtre.
+  char window_id[96];
+  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_chat_%u",
+                channel.name.c_str(), channel.id);
+
+  ImGui::SetNextWindowSize(ImVec2(320.0f, 180.0f), ImGuiCond_FirstUseEver);
+  // La fenêtre qu'on vient d'arracher naît SOUS le curseur, là où le joueur l'a
+  // lâchée. `FirstUseEver` ne suffirait pas : ImGui se souvient d'une position
+  // précédente pour cet identifiant, et la fenêtre semblerait sauter ailleurs.
+  if (pending_pos_id_ == channel.id) {
+    ImGui::SetNextWindowPos(pending_pos_, ImGuiCond_Always);
+    pending_pos_id_ = 0;
+  }
+  ApplySizeConstraints(skin);
+  if (ro::BeginRoChatWindow(window_id, skin)) {
+    DrawDetachedHeader(index);
+    float log_h = ImGui::GetContentRegionAvail().y;
+    if (log_h < LogFontSize(&channel)) log_h = LogFontSize(&channel);  // une ligne de LOG
+    channel.line_h   = LineHeight(&channel);
+    channel.chrome_h = ImGui::GetWindowSize().y - log_h +
+                       2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(&channel);
+    DrawChannel(channel, log_h);
+    DrawLogOptionsPopup();
+  }
+  ro::EndRoChatWindow();
+}
+
+// En-tête d'une flottante : le nom, et le même clic droit que sur un onglet. La
+// fenêtre n'a pas de barre de titre (comme tout le skin du chat), c'est donc par
+// cette bande qu'on la déplace — elle reste volontairement sans widget.
+void ChatWindow::DrawDetachedHeader(int index) {
+  Channel& channel = channels_[index];
+  const float h = ImGui::GetFontSize() + 6.0f;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float  width  = ImGui::GetContentRegionAvail().x;
+  const ImU32  bg     = Lighten(ro::ImU32FromPicker(tab_rgba_), 58);
+  if (width <= 0.0f) return;  // ImGui refuse un bouton de largeur nulle
+
+  ImGui::InvisibleButton("##detached_head", ImVec2(width, h));
+  const bool hovered = ImGui::IsItemHovered();
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+    logopt_channel_ = index;
+    ImGui::OpenPopup("##chat_logopt_popup");
+  }
+
+  // 🔴 Ce bouton prend l'ActiveId, donc il ÉTEINT le déplacement d'ImGui sur toute
+  // la bande — la fenêtre n'ayant pas de barre de titre, on lui retirerait sa
+  // poignée la plus naturelle. On déplace donc nous-mêmes, ce qui a l'avantage de
+  // faire du même geste le recollage : c'est le lâcher qui tranche.
+  if (ImGui::IsItemActive() && !locked_) {
+    const ImVec2 delta = ImGui::GetIO().MouseDelta;
+    if (delta.x != 0.0f || delta.y != 0.0f) {
+      // API PUBLIQUE (`GetWindowPos`/`SetWindowPos` sans argument de fenêtre) : la
+      // variante qui prend un `ImGuiWindow*` vit dans imgui_internal.h, et un
+      // fichier de fonctionnalité n'a aucune raison d'aller y chercher un type que
+      // seul le squelette d'ImGui devrait manipuler.
+      const ImVec2 p = ImGui::GetWindowPos();
+      ImGui::SetWindowPos(ImVec2(p.x + delta.x, p.y + delta.y));
+    }
+    drag_detached_ = index;
+  }
+  const bool over_strip =
+      strip_valid_ && ImGui::GetIO().MousePos.x >= strip_min_.x &&
+      ImGui::GetIO().MousePos.x <= strip_max_.x &&
+      ImGui::GetIO().MousePos.y >= strip_min_.y &&
+      ImGui::GetIO().MousePos.y <= strip_max_.y;
+  if (drag_detached_ == index && over_strip) {
+    // La bande s'éclaire pendant le survol : sans retour visuel, le joueur lâche
+    // sans savoir si ça va prendre.
+    ImGui::GetForegroundDrawList()->AddRectFilled(strip_min_, strip_max_,
+                                                  IM_COL32(0xFF, 0xFF, 0xFF, 40));
+    ImGui::GetForegroundDrawList()->AddRect(strip_min_, strip_max_, kLinkCol);
+  }
+  if (drag_detached_ == index && ImGui::IsItemDeactivated()) {
+    drag_detached_ = -1;
+    if (over_strip) {
+      channel.detached     = false;
+      channel.detach_owned = true;
+      structure_owned_     = true;
+      layout_dirty_        = true;
+      active_channel_      = index;
+    }
+  }
+
+  if (hovered && drag_detached_ < 0) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip(
+        "Glisser : déplacer — la lâcher sur les onglets la rattache.\n"
+        "Clic droit : options du log.");
+    ImGui::PopStyleColor();
+  }
+  dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + h), bg);
+  dl->AddRect(origin, ImVec2(origin.x + width, origin.y + h),
+              IM_COL32(0x30, 0x30, 0x30, 200));
+  dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
+              channel.name.c_str());
+  ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
+}
+
+// Bande d'onglets façon client : petits rectangles gris, texte sombre, l'actif
+// éclairci. À droite, les boutons bitmap du chat natif. Le vide entre les deux
+// reste VIDE exprès : c'est par là qu'on déplace la fenêtre (elle n'a pas de
+// barre de titre), et un widget invisible mangerait le glissement.
+float ChatWindow::DrawTabStrip() {
+  const float h = ImGui::GetFontSize() + 6.0f;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  // Mesurée AVANT de déplacer le curseur : après le premier onglet, l'espace
+  // « restant » ne serait plus celui de la bande mais celui d'après.
+  const float strip_w = ImGui::GetContentRegionAvail().x;
+  const ImU32 tab_idle = ro::ImU32FromPicker(tab_rgba_);
+  const ImU32 tab_active = Lighten(tab_idle, 58);
+  const ImU32 tab_edge = IM_COL32(0x30, 0x30, 0x30, 200);
+
+  float x = 0.0f;
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    const Channel& channel = channels_[i];
+    if (channel.detached) continue;  // arraché : il a sa propre fenêtre
+    const float text_w = ImGui::CalcTextSize(channel.name.c_str()).x;
+    const float w = text_w + 14.0f;
+
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + x, origin.y));
+    char id[32];
+    std::snprintf(id, sizeof(id), "##tab%d", static_cast<int>(i));
+    // Un bouton invisible plutôt qu'un test de survol : sans lui, glisser un
+    // onglet déplacerait la fenêtre au lieu de le sélectionner.
+    ImGui::InvisibleButton(id, ImVec2(w, h));
+    const bool hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+      active_channel_ = static_cast<int>(i);
+    // Clic droit = les options de log DE CET onglet. C'est leur place : le filtre
+    // appartient au canal, pas à la fenêtre. Le popup s'ouvre sous le curseur, donc
+    // à l'onglet désigné — et il configure celui-là, pas l'onglet actif.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      logopt_channel_ = static_cast<int>(i);
+      ImGui::OpenPopup("##chat_logopt_popup");
+    }
+    // Arrachage : le seuil de 6 px distingue le GLISSEMENT du simple clic, qui
+    // sélectionne. Sans lui, sélectionner un onglet d'une main un peu tremblante
+    // le détacherait.
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0f))
+      drag_tab_ = static_cast<int>(i);
+    if (hovered && drag_tab_ < 0) {
+      // Un menu contextuel sans indice ne se découvre pas. Le fond de l'infobulle
+      // est clair : le texte doit repasser en sombre pour rester lisible.
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      ImGui::SetTooltip("Clic droit : options du log de « %s »\nGlisser dehors : détacher",
+                        channel.name.c_str());
+      ImGui::PopStyleColor();
+    }
+
+    const bool active = (active_channel_ == static_cast<int>(i));
+    const ImVec2 p0(origin.x + x, origin.y);
+    const ImVec2 p1(p0.x + w, p0.y + h);
+    dl->AddRectFilled(p0, p1, active ? tab_active
+                                     : (hovered ? Lighten(tab_idle, 24) : tab_idle));
+    dl->AddRect(p0, p1, tab_edge);
+    dl->AddText(ImVec2(p0.x + 7.0f, p0.y + 3.0f), kTabTextCol, channel.name.c_str());
+    x += w + 2.0f;
+  }
+
+  // La bande, mémorisée pour la frame : c'est la FENÊTRE DÉTACHÉE qui a besoin de
+  // savoir où elle est pour décider d'un recollage, et elle est dessinée après.
+  strip_min_   = origin;
+  strip_max_   = ImVec2(origin.x + strip_w, origin.y + h);
+  strip_valid_ = true;
+
+  // Fin de l'arrachage. Le lâcher tranche : dans la bande, rien ne se passe (le
+  // geste n'était qu'un clic maladroit) ; dehors, le canal part dans sa fenêtre,
+  // posée là où le joueur l'a lâchée.
+  if (drag_tab_ >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    const int dragged = drag_tab_;
+    drag_tab_ = -1;
+    if (dragged < static_cast<int>(channels_.size())) {
+      const ImVec2 mouse = ImGui::GetIO().MousePos;
+      const bool inside = mouse.x >= strip_min_.x && mouse.x <= strip_max_.x &&
+                          mouse.y >= strip_min_.y && mouse.y <= strip_max_.y;
+      int docked = 0;
+      for (const Channel& other : channels_)
+        if (!other.detached) ++docked;
+      if (!inside && docked > 1) {
+        Channel& target = channels_[dragged];
+        target.detached     = true;
+        target.detach_owned = true;
+        structure_owned_    = true;
+        layout_dirty_       = true;
+        pending_pos_id_     = target.id;
+        // Le curseur tenait l'onglet : la fenêtre doit naître sous lui, pas à
+        // l'endroit par défaut d'ImGui, sinon elle semble sauter ailleurs.
+        pending_pos_ = ImVec2(mouse.x - 20.0f, mouse.y - 6.0f);
+      }
+    }
+  }
+
+  // Le fantôme suit le curseur, sur le calque de PREMIER PLAN : la fenêtre
+  // détachée qu'on survole passerait sinon par-dessus.
+  if (drag_tab_ >= 0 && drag_tab_ < static_cast<int>(channels_.size())) {
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const char*  label = channels_[drag_tab_].name.c_str();
+    const float  gw    = ImGui::CalcTextSize(label).x + 14.0f;
+    ImDrawList*  fg    = ImGui::GetForegroundDrawList();
+    const ImVec2 g0(mouse.x - 20.0f, mouse.y - 6.0f);
+    const ImVec2 g1(g0.x + gw, g0.y + h);
+    fg->AddRectFilled(g0, g1, tab_active);
+    fg->AddRect(g0, g1, tab_edge);
+    fg->AddText(ImVec2(g0.x + 7.0f, g0.y + 3.0f), kTabTextCol, label);
+  }
+
+  // Boutons du client, alignés à droite. On ne dessine QUE ceux qui agissent —
+  // un bouton natif décoratif qui ne fait rien est un piège pour le joueur.
+  struct StripButton {
+    const char* bitmap;
+    const char* id;
+    const char* tip;
+  };
+  // Le bouton « options du log » a été RETIRÉ : ces options sont une propriété du
+  // canal, et un bouton unique dans la bande ne dit pas lequel il configure. Elles
+  // vivent maintenant au clic droit sur l'onglet concerné, où l'ambiguïté n'existe
+  // pas. Il ne reste donc que la recherche, qui, elle, porte bien sur la fenêtre.
+  const StripButton buttons[] = {
+      // sys_base = le petit rond des boutons de filtre du chat natif.
+      // Volontairement NEUTRE : wnd_mini (le « - ») dirait « fermer l'onglet »,
+      // ce que ce bouton-ci ne fait pas.
+      {"basic_interface\\sys_base", "##chat_search_btn", "Rechercher / copier"},
+  };
+  float bx = strip_w;
+  for (int i = static_cast<int>(_countof(buttons)) - 1; i >= 0; --i) {
+    // Deux familles de suffixes chez le client : les UIBitmapButton du chat sont
+    // en `_a`/`_b` (normal/survol), les boutons système en `_off`/`_on`.
+    const bool sys = std::strstr(buttons[i].bitmap, "sys_") != nullptr;
+    char path[96];
+    std::snprintf(path, sizeof(path), sys ? "%s_off.bmp" : "%s_a.bmp",
+                  buttons[i].bitmap);
+    ro::GameTexture normal = ChatBitmap(path);
+    std::snprintf(path, sizeof(path), sys ? "%s_on.bmp" : "%s_b.bmp",
+                  buttons[i].bitmap);
+    ro::GameTexture over = ChatBitmap(path);
+    const float bw = (normal.w > 0) ? static_cast<float>(normal.w) : 12.0f;
+    const float bh = (normal.h > 0) ? static_cast<float>(normal.h) : 12.0f;
+    bx -= bw + 3.0f;
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + bx, origin.y + (h - bh) * 0.5f));
+    ImGui::InvisibleButton(buttons[i].id, ImVec2(bw, bh));
+    const bool hovered = ImGui::IsItemHovered();
+    if (hovered) {
+      ro::SetHoverCursor(2);  // curseur « main » RO
+      // Le cadre du chat pousse un texte CLAIR : dans une infobulle au fond
+      // clair, il faut le repasser en sombre, sinon elle est illisible.
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      ImGui::SetTooltip("%s", buttons[i].tip);
+      ImGui::PopStyleColor();
+    }
+    const ImVec2 p0 = ImGui::GetItemRectMin();
+    const ImVec2 p1 = ImGui::GetItemRectMax();
+    ro::GameTexture draw = (hovered && over.tex) ? over : normal;
+    if (draw.tex != nullptr)
+      dl->AddImage(TexId(draw.tex), p0, p1);
+    else  // bitmap absent du GRF : un carré plutôt qu'un trou
+      dl->AddRectFilled(p0, p1, Lighten(tab_idle, 30));
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) show_search_ = !show_search_;
+  }
+
+  ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
+  return h;
+}
+
+// Le pas vertical du log. Le `- 6` est le calage historique du skin : l'interligne
+// réglable démarre volontairement plus serré que la hauteur de texte d'ImGui, qui
+// est très aérée pour du chat. Le plancher évite qu'un interligne à 0 rende le pas
+// dégénéré (et la division par lui, absurde).
+// 🔴 Depuis la taille de RÉFÉRENCE, pas depuis `GetFontSize()` de la fenêtre
+// courante. Le log se dessine dans une fenêtre ENFANT, qui n'hérite pas de
+// l'échelle de sa parente : mesurer dehors et dessiner dedans donnait deux tailles
+// différentes, donc une grille de rangées qui ne correspondait pas au texte.
+// ── Apparence effective ──────────────────────────────────────────────────────
+// Un canal sans style propre SUIT les réglages généraux — il ne les copie pas.
+// La différence se voit le jour où le joueur change le réglage général : les
+// onglets qui n'ont rien demandé doivent bouger avec lui.
+int ChatWindow::EffFontPct(const Channel* channel) const {
+  return (channel != nullptr && channel->style_own) ? channel->font_pct
+                                                    : font_scale_pct_;
+}
+int ChatWindow::EffPadding(const Channel* channel) const {
+  return (channel != nullptr && channel->style_own) ? channel->padding : padding_px_;
+}
+int ChatWindow::EffLineGap(const Channel* channel) const {
+  return (channel != nullptr && channel->style_own) ? channel->line_gap
+                                                    : line_gap_px_;
+}
+const float* ChatWindow::EffBody(const Channel* channel) const {
+  return (channel != nullptr && channel->style_own) ? channel->body : body_rgba_;
+}
+
+float ChatWindow::LogFontSize(const Channel* channel) const {
+  const float base = (base_font_size_ > 1.0f) ? base_font_size_ : ImGui::GetFontSize();
+  return base * static_cast<float>(EffFontPct(channel)) / 100.0f;
+}
+
+float ChatWindow::LineHeight(const Channel* channel) const {
+  const float h = LogFontSize(channel) + static_cast<float>(EffLineGap(channel)) - 6.0f;
+  return (h < 4.0f) ? 4.0f : h;
+}
+
+// +1 px : le soulignement des liens est tracé sur la ligne de base + hauteur de
+// texte, donc un pixel SOUS le glyphe.
+float ChatWindow::LineOverhang(const Channel* channel) const {
+  const float over = LogFontSize(channel) + 1.0f - LineHeight(channel);
+  return (over > 0.0f) ? over : 0.0f;
+}
+
+// Mode « sélection » : le log devient une zone de texte en LECTURE SEULE. C'est
+// la seule façon d'avoir une vraie sélection à la souris et un Ctrl+C — notre
+// rendu normal peint des glyphes dans un ImDrawList, il n'y a rien à sélectionner
+// dedans. Le prix est assumé : plus de couleurs, plus d'icônes, du texte nu — ce
+// qui est de toute façon ce qu'on veut coller ailleurs.
+void ChatWindow::RefreshSelectBuffer(const Channel& channel) {
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  // Clé de fraîcheur : reconstruire à chaque frame coûterait une concaténation de
+  // plusieurs dizaines de kilo-octets par frame, et le chat est précisément là où
+  // ce genre de coût a déjà gelé le client. `ingest_kept_` ne recule jamais, donc
+  // toute ligne nouvelle change la clé, y compris quand l'anneau est plein et que
+  // la TAILLE, elle, ne bouge plus.
+  // Le canal DESSINÉ, pas l'onglet actif : une fenêtre détachée n'est jamais
+  // l'onglet actif, et deux fenêtres partagent ce même tampon.
+  uint32_t key = ingest_kept_;
+  key = key * 31u + channel.id;
+  key = key * 31u + (timestamps_ ? 1u : 0u);
+  for (const char* p = search_; *p != '\0'; ++p)
+    key = key * 31u + static_cast<unsigned char>(*p);
+  if (key == select_key_) return;
+  select_key_ = key;
+
+  select_buf_.clear();
+  for (const Line& line : lines_) {
+    if (!ChannelAccepts(channel, line)) continue;
+    if (search_[0] != '\0' && !ContainsNoCase(line.plain, search_) &&
+        !ContainsNoCase(line.sender, search_))
+      continue;
+    if (timestamps_) {
+      char stamp[16];
+      std::snprintf(stamp, sizeof(stamp), "[%02d:%02d:%02d] ", line.hour, line.minute,
+                    line.second);
+      select_buf_ += stamp;
+    }
+    select_buf_ += line.plain;
+    select_buf_ += '\n';
+  }
+}
+
+void ChatWindow::DrawChannel(const Channel& channel, float height) {
+  if (select_mode_) {
+    RefreshSelectBuffer(channel);
+    // `&buf[0]` et non `.data()` : valable même sur une chaîne vide (l'accès à
+    // l'index size() est garanti et rend le zéro terminal). ReadOnly ⇒ ImGui ne
+    // touche jamais au tampon, la taille+1 ne sert qu'à lui donner la fin.
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    // Ce champ affiche du LOG : il suit l'échelle du log, pas celle de l'habillage.
+    // Restaurée juste après, sinon la ligne de saisie — dessinée ensuite dans la
+    // même fenêtre — hériterait de la taille du chat.
+    ImGui::SetWindowFontScale(static_cast<float>(EffFontPct(&channel)) / 100.0f);
+    ImGui::InputTextMultiline("##chat_select", &select_buf_[0], select_buf_.size() + 1,
+                              ImVec2(-FLT_MIN, height), ImGuiInputTextFlags_ReadOnly);
+    ImGui::SetWindowFontScale(static_cast<float>(ui_scale_pct_) / 100.0f);
+    ImGui::PopStyleColor();
+    return;
+  }
+
+  ImGui::BeginChild("##chat_log", ImVec2(0.0f, height), false);
+  DrawLines(channel);
+
+  // 🔴 Le collage au bas se décide SANS variable d'état. `GetScrollMaxY()` porte
+  // le contenu de la frame PRÉCÉDENTE : « ScrollY >= ScrollMaxY » veut donc dire
+  // « j'étais en bas au début de cette frame », ce qui est exactement la question.
+  // La version d'avant retenait la réponse dans un booléen mis à jour APRÈS le
+  // SetScrollHereY — donc avec une frame de retard : le chat se recollait en bas à
+  // chaque tentative de remonter, et il fallait insister pour s'en détacher.
+  const float line_h = LineHeight(&channel);
+  if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+    ImGui::SetScrollHereY(1.0f);
+  } else if (line_h > 1.0f) {
+    // Ailleurs qu'en bas : aligner le défilement sur une ligne entière. Toutes les
+    // lignes VISUELLES font exactement `line_h` (le repli en produit plusieurs,
+    // jamais des hauteurs différentes), donc un scroll multiple de line_h ne coupe
+    // jamais rien — ni en haut, ni en bas, comme le natif.
+    const float y = ImGui::GetScrollY();
+    const float snapped = std::floor(y / line_h + 0.5f) * line_h;
+    if (std::fabs(snapped - y) > 0.5f) ImGui::SetScrollY(snapped);
+  }
+  ImGui::EndChild();
+}
+
+// Word-wrap multi-couleur à la main (même moteur que le dialogue PNJ) : ImGui ne
+// sait pas enchaîner plusieurs couleurs sur une ligne qui se replie.
+//
+// Le coût par frame est le vrai sujet ici — c'est le chat qui a déjà offert au
+// projet une famille de freezes. Deux garde-fous : le parse est fait à
+// l'ingestion, et la HAUTEUR de chaque ligne est mémorisée pour la largeur
+// courante, ce qui permet de sauter d'un bloc toute ligne hors écran.
+void ChatWindow::DrawLines(const Channel& channel) {
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  ImFont* font   = ImGui::GetFont();
+  // 🔴 Taille EXPLICITE, de bout en bout : mesure (`CalcTextSizeA`) comme dessin
+  // (`AddText` avec police et taille). C'est ce qui rend le log indépendant de
+  // l'échelle de la fenêtre — celle-ci n'habille plus que les onglets, les boutons
+  // et la ligne de saisie.
+  const float fsize   = LogFontSize(&channel);
+  const float line_h  = LineHeight(&channel);
+  const float wrap    = ImGui::GetContentRegionAvail().x;
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float space_w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, " ").x;
+
+  // Bornes de la zone visible, en coordonnées locales de la liste.
+  const float view_top    = ImGui::GetScrollY() - line_h;
+  const float view_bottom = view_top + ImGui::GetWindowSize().y + 2.0f * line_h;
+
+  const uint8_t layout_flags = static_cast<uint8_t>((timestamps_ ? 1 : 0) |
+                                                    (item_icons_ ? 2 : 0) |
+                                                    (diagnostic_ ? 4 : 0));
+  const bool hovering_log = ImGui::IsWindowHovered();
+  links::Target click_target;        // invalide = aucun lien cliqué cette frame
+  bool click_shift  = false;         // Maj enfoncé au moment du clic
+  bool menu_request = false;         // clic droit sur un lien : ouvrir le menu
+
+  float x = 0.0f, y = 0.0f;
+  std::unique_lock<std::mutex> lock(lines_mutex_);
+  for (Line& line : lines_) {
+    if (!ChannelAccepts(channel, line)) continue;
+    if (search_[0] != '\0' && !ContainsNoCase(line.plain, search_) &&
+        !ContainsNoCase(line.sender, search_))
+      continue;
+
+    // Hauteur connue et ligne hors écran : rien à peindre, rien à mesurer.
+    if (line.cached_wrap == wrap && line.cached_flags == layout_flags &&
+        (y + line.cached_height < view_top || y > view_bottom)) {
+      y += line.cached_height;
+      continue;
+    }
+
+    const float line_top = y;
+    const bool  visible  = (y + line_h >= view_top && y <= view_bottom);
+    const ImU32 def_col  = LineColorToImU32(line.rgb);
+
+    if (timestamps_) {
+      char stamp[16];
+      std::snprintf(stamp, sizeof(stamp), "[%02d:%02d:%02d] ", line.hour, line.minute,
+                    line.second);
+      const float w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, stamp).x;
+      if (visible)
+        dl->AddText(font, fsize, ImVec2(origin.x + x, origin.y + y), kStampCol, stamp);
+      x += w;
+    }
+    if (diagnostic_) {  // le type tel qu'il nous est parvenu, avant tout filtre,
+                        // et par QUELLE de nos deux sources il est entré
+      char tag[12];
+      std::snprintf(tag, sizeof(tag), "t%02d%c ", line.type, line.source);
+      const float w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, tag).x;
+      if (visible)
+        dl->AddText(font, fsize, ImVec2(origin.x + x, origin.y + y), kDiagCol, tag);
+      x += w;
+    }
+
+    for (const Run& run : line.runs) {
+      // Icône d'objet : hauteur de ligne, largeur au ratio d'origine (pas de
+      // déformation).
+      if (run.item_id != 0 && run.text.empty()) {
+        if (!item_icons_) continue;
+        ro::IconTex icon = ro::ItemIcon(run.item_id);
+        if (icon.tex != nullptr && icon.h > 0) {
+          const float ih = fsize + 2.0f;
+          const float iw = ih * static_cast<float>(icon.w) / static_cast<float>(icon.h);
+          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (visible) {
+            const ImVec2 p(origin.x + x, origin.y + y);
+            dl->AddImage(TexId(icon.tex), p, ImVec2(p.x + iw, p.y + ih));
+          }
+          x += iw + 2.0f;
+        }
+        continue;
+      }
+
+      const ImU32 col = run.is_link() ? kLinkCol : (run.color != 0 ? run.color : def_col);
+      const std::string& u = run.text;
+      // ── Zone cliquable d'un lien : le RUN ENTIER, espaces compris ───────────
+      // Elle était posée mot à mot, ce qui laissait un trou à chaque espace :
+      // « [Test's Axe] » n'était survolable que sur « [Test's » et « Axe] », et le
+      // curseur retombait dans le vide entre les deux — juste là où l'on vise
+      // quand on pointe un nom. On accumule donc l'étendue du lien sur la rangée
+      // courante et on ne la teste qu'une fois refermée (fin du run, repli ou
+      // saut de ligne), ce qui la rend continue.
+      float seg_x0 = -1.0f, seg_x1 = 0.0f, seg_y = 0.0f;  // -1 = rien d'ouvert
+      auto flush_link_hit = [&]() {
+        if (!run.is_link() || seg_x0 < 0.0f) return;
+        const ImVec2 a(origin.x + seg_x0, origin.y + seg_y);
+        const ImVec2 b(origin.x + seg_x1, origin.y + seg_y + fsize + 2.0f);
+        seg_x0 = -1.0f;
+        if (!hovering_log || !ImGui::IsMouseHoveringRect(a, b)) return;
+        ro::SetHoverCursor(2);  // curseur « main » RO
+        // La description simple SOUS LA SOURIS, comme sur une cellule d'objet :
+        // lire un lien ne devrait pas obliger à cliquer.
+        links::HoverPreview(TargetOf(run));
+        // Convention commune à tout le client (features/link_gesture.h) : gauche
+        // = description, droite = menu, Maj+clic = lien dans la barre.
+        //
+        // ⚠ L'ACTION est retenue et jouée après le déverrouillage de `lines_` :
+        // elle peut ouvrir un navigateur, et le faire sous le verrou bloquerait
+        // l'ingestion le temps que le shell démarre. On copie donc la cible —
+        // pointer dans le deque serait pire encore, l'ingestion y pousse depuis
+        // le fil du jeu.
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+          click_target = TargetOf(run);
+          click_shift  = ImGui::GetIO().KeyShift;
+        }
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+          link_menu_   = TargetOf(run);
+          menu_request = true;
+        }
+      };
+      size_t i = 0;
+      while (i < u.size()) {
+        // 🔴 Le SAUT DE LIGNE est un séparateur, au même titre que l'espace. Sans
+        // ce cas, le mot qui suit un `\n` était passé tel quel à `AddText` : la
+        // mesure (`CalcTextSizeA`) s'arrête au `\n` et rend une largeur NULLE,
+        // tandis que le rendu, lui, honore le saut et dessine le mot une rangée
+        // plus bas — au `x` courant, donc en plein milieu du vide. Le mot semblait
+        // « lâché » à droite et tout ce qui suivait se réempilait au même endroit.
+        // Vu avec les messages relayés depuis Discord, qui portent de vrais
+        // retours à la ligne.
+        if (u[i] == '\n') { flush_link_hit(); x = 0.0f; y += line_h; ++i; continue; }
+        if (u[i] == '\r') { ++i; continue; }
+        if (u[i] == ' ') {
+          // L'espace d'un lien APPARTIENT au lien : sans ça, « [Test's Axe] »
+          // laissait un trou pile entre ses deux mots — là où le curseur passe
+          // forcément en visant le milieu du nom. Il n'agrandit la zone que si un
+          // mot du lien la précède sur cette rangée (sinon on collerait au lien la
+          // marge qui traîne devant lui).
+          if (seg_x0 >= 0.0f) seg_x1 += space_w;
+          x += space_w;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < u.size() && u[j] != ' ' && u[j] != '\n' && u[j] != '\r') ++j;
+        const char* w0 = u.c_str() + i;
+        const char* w1 = u.c_str() + j;
+        const float ww = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
+        // Le repli COUPE la zone cliquable : la partie déjà posée se referme sur
+        // la rangée qu'elle occupe, la suite en ouvrira une autre plus bas.
+        if (x > 0.0f && x + ww > wrap) { flush_link_hit(); x = 0.0f; y += line_h; }
+        const ImVec2 pos(origin.x + x, origin.y + y);
+        if (visible) {
+          // Équipement CASSÉ : l'OMBRE rouge du natif (DrawName 0x008972c0),
+          // décalée +1,+1 sous un texte inchangé — le même rendu que dans les
+          // viewers, et la raison d'être du champ privé de la balise.
+          if (run.kind == Run::kItem && run.item.broken)
+            dl->AddText(font, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+                        itemcell::kDamagedShadow, w0, w1);
+          dl->AddText(font, fsize, pos, col, w0, w1);
+          // Pas de soulignement : le lien se reconnaît déjà à sa couleur, à ses
+          // crochets et à son icône, et le trait salissait une ligne de chat
+          // dense (il n'y en a pas non plus dans le chat natif). Au survol, le
+          // curseur « main » suffit à dire que c'est cliquable.
+          if (run.is_link()) {
+            if (seg_x0 < 0.0f) { seg_x0 = x; seg_y = y; }
+            seg_x1 = x + ww;
+          }
+        }
+        x += ww;
+        i = j;
+      }
+      flush_link_hit();
+    }
+    x = 0.0f;
+    y += line_h;
+    line.cached_wrap   = wrap;
+    line.cached_flags  = layout_flags;
+    line.cached_height = y - line_top;
+  }
+  lock.unlock();  // le verrou ne couvre QUE le parcours des lignes
+  // 🔴 Réserver `y` seul CROIT la dernière ligne d'un demi-caractère : `y` cumule
+  // des PAS, et le pas est plus court que le texte dès que l'interligne est serré.
+  // Le contenu s'arrêtait donc au pas de la dernière ligne, pas sous son glyphe —
+  // et comme le bas de contenu borne le défilement, la ligne la plus récente était
+  // rognée en permanence, quel que soit le réglage.
+  if (y > 0.0f) y += LineOverhang(&channel);
+  ImGui::Dummy(ImVec2(wrap, y));  // réserve la hauteur pour le scroll
+
+  // Le geste retenu plus haut, joué ici — hors du verrou. (La description, elle,
+  // reste ARMÉE : elle passe par le natif, proscrit pendant une frame ImGui.)
+  if (click_target.valid()) {
+    if (click_shift) links::PostToChat(click_target);
+    else             links::OpenDescription(click_target);
+  }
+  // ⚠ Ouverture et rendu du popup dans la MÊME fenêtre ImGui (ici l'enfant du
+  // log) : son identifiant se hache avec la pile d'ids de la fenêtre courante.
+  if (menu_request) ImGui::OpenPopup("##chat_link_menu_log");
+  links::DrawMenu("##chat_link_menu_log", link_menu_);
+}
+
+// 🔴 Les couleurs de `channels.conf` sont choisies pour le fond SOMBRE du chat —
+// `White`, `Yellow`, `LightGreen` y sont lisibles. Le corps d'une fenêtre RO, lui,
+// est CLAIR : posées telles quelles dans la liste déroulante, la moitié d'entre
+// elles disparaîtrait purement et simplement. On garde la teinte (c'est elle qui
+// identifie le canal) et on plafonne sa LUMINANCE — un jaune reste jaune, mais
+// assez sombre pour se lire. Coefficients de luminance perçue (Rec. 601), les
+// mêmes que partout ailleurs pour ce genre d'arbitrage.
+static uint32_t DarkenForLightBody(uint32_t col) {
+  const float r = static_cast<float>((col >> IM_COL32_R_SHIFT) & 0xFF);
+  const float g = static_cast<float>((col >> IM_COL32_G_SHIFT) & 0xFF);
+  const float b = static_cast<float>((col >> IM_COL32_B_SHIFT) & 0xFF);
+  const float lum = 0.299f * r + 0.587f * g + 0.114f * b;
+  constexpr float kMaxLum = 140.0f;  // sur 255 : le seuil où le texte reste net
+  if (lum <= kMaxLum) return col;
+  const float k = kMaxLum / lum;
+  return IM_COL32(static_cast<int>(r * k), static_cast<int>(g * k),
+                  static_cast<int>(b * k), 255);
+}
+
+// Ligne de saisie, disposée comme celle du client : box du destinataire à
+// gauche (« Pseudo »), puis la saisie. Les champs sont CLAIRS (le cadre pousse
+// FrameBg pour ça) — le texte doit donc y être sombre.
+void ChatWindow::DrawInputRow() {
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+  ImGui::SetNextItemWidth(90.0f);
+  if (focus_whisper_next_) {
+    ImGui::SetKeyboardFocusHere();
+    focus_whisper_next_ = false;
+  }
+  ImGui::InputTextWithHint("##chat_whisper", "Pseudo", whisper_, sizeof(whisper_));
+  // Le focus vit sur DEUX champs, et le battle mode ne doit se refermer que
+  // lorsqu'il a quitté les deux (cf. la fin de cette fonction).
+  const bool whisper_active = ImGui::IsItemActive();
+  // TAB → la saisie. Elle est dessinée APRÈS dans la même frame, donc le focus
+  // bascule immédiatement, sans le battement d'une frame.
+  if (whisper_active && ImGui::IsKeyPressed(ImGuiKey_Tab, false))
+    focus_input_next_ = true;
+  ImGui::PopStyleColor();
+  // Clic droit = les destinataires récents, ce que le bouton natif « Select
+  // Receiver » (msg 0xE1) fait avec une combo. Le geste est le même que sur les
+  // onglets, et il ne coûte pas un pixel d'une rangée déjà serrée.
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+    ImGui::OpenPopup("##chat_whisper_hist");
+  if (ImGui::IsItemHovered() && !ImGui::IsPopupOpen("##chat_whisper_hist")) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip("Destinataire du chuchotement.\nClic droit : les récents.");
+    ImGui::PopStyleColor();
+  }
+  DrawWhisperHistoryPopup();
+  ImGui::SameLine();
+
+  // Le mode d'envoi est celui du CLIENT (g_ChatInputTargetMode) : le lire plutôt
+  // que d'en tenir un second, sinon les deux chats divergent.
+  int mode = ReadSendMode();
+  static const char* const kModes[] = {"Tous", "Groupe", "Guilde", "Clan", "Alliés"};
+  if (mode < 0 || mode >= static_cast<int>(_countof(kModes))) mode = 0;
+  // 🔴 L'APERÇU dit où le texte PART, pas quel mode est armé — et ce n'est pas la
+  // même chose : un destinataire non vide court-circuite le mode d'envoi (cf.
+  // NativeSendChatText). Un « #canal » dans la box l'emporte donc sur « Tous », et
+  // l'aperçu doit le dire, sans quoi le joueur croit parler à la carte alors qu'il
+  // parle au canal. Le cas du chuchotement à un PSEUDO reste affiché comme le mode,
+  // lui : le nom est déjà LU dans la box juste à côté, et le répéter mangerait la
+  // seule information que la combo apporte.
+  const bool channel_selected = whisper_[0] == '#';
+  const char* preview = channel_selected ? whisper_ : kModes[mode];
+  ImGui::SetNextItemWidth(80.0f);
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+  if (ro::RoBeginCombo("##chat_mode", preview)) {
+    for (int i = 0; i < static_cast<int>(_countof(kModes)); ++i) {
+      if (ImGui::Selectable(kModes[i], !channel_selected && mode == i)) {
+        WriteSendMode(i);
+        // Choisir un mode natif, c'est choisir de NE PLUS parler au canal : sans
+        // ce nettoyage la box garderait son « #canal », qui l'emporte sur le mode
+        // qu'on vient de désigner — le message partirait au canal en silence.
+        // Vaut aussi pour un pseudo : la combo est le sélecteur de destination.
+        whisper_[0] = '\0';
+      }
+    }
+    // ── Les canaux du serveur, poussés par ZC 0x0F21 ────────────────────────
+    // Ils ne sont PAS des modes d'envoi du client : parler dans un canal, c'est
+    // chuchoter à « #nom » (routage rAthena). D'où le choix d'écrire le nom dans
+    // la box destinataire plutôt que de toucher au mode natif — la combo n'invente
+    // aucun chemin d'envoi, elle remplit un champ que le joueur pourrait taper.
+    bool separator_drawn = false;
+    for (const ServerChannel& channel : server_channels_) {
+      if (channel.require_guild && !InGuild()) continue;  // #ally hors guilde
+      if (!separator_drawn) {
+        ImGui::Separator();
+        separator_drawn = true;
+      }
+      ImGui::PushStyleColor(ImGuiCol_Text, DarkenForLightBody(channel.color));
+      const bool current = channel_selected && std::strcmp(whisper_, channel.name.c_str()) == 0;
+      if (ImGui::Selectable(channel.name.c_str(), current))
+        CopyBounded(whisper_, sizeof(whisper_), channel.name.c_str());
+      ImGui::PopStyleColor();
+      if (ImGui::IsItemHovered() && !channel.alias.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+        // Le canal peut être en LECTURE seule (CHAN_OPT_CAN_CHAT absent) : le dire
+        // ici plutôt que de masquer l'entrée — le joueur doit comprendre pourquoi
+        // son message n'est pas parti, et le serveur, lui, refusera poliment.
+        if (channel.can_chat)
+          ImGui::SetTooltip("%s", channel.alias.c_str());
+        else
+          ImGui::SetTooltip("%s\nLecture seule.", channel.alias.c_str());
+        ImGui::PopStyleColor();
+      }
+    }
+    ro::RoEndCombo();
+  }
+  ImGui::PopStyleColor();
+  ImGui::SameLine();
+
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
+  // Géométrie du champ relevée AVANT sa soumission (le curseur aura avancé au
+  // retour) ; le repeint des liens, lui, se fait APRÈS — il RECOUVRE le texte.
+  const ImVec2 field_pos = ImGui::GetCursorScreenPos();
+  const float  field_w   = ImGui::CalcItemWidth();
+  const float  field_h   = ImGui::GetFrameHeight();
+  if (focus_input_next_) {
+    ImGui::SetKeyboardFocusHere();
+    // 🔴 LA DEMANDE N'EST CONSOMMÉE QU'UNE FOIS LE GESTE TERMINÉ. `SetKeyboardFocusHere`
+    // commence par un refus SEC — « ignored while DragDropActive » — dès qu'un
+    // glisser est en cours ou qu'une fenêtre est déplacée (imgui.cpp, tout en
+    // haut de la fonction). Or la demande est justement posée EN PLEIN GESTE :
+    // le Maj+clic qui pose un lien part d'une cellule d'inventaire, laquelle est
+    // une source de glisser. La demande était pourtant effacée dans la foulée —
+    // le champ n'avait donc jamais le focus, et la PREMIÈRE Entrée servait à
+    // l'ouvrir au lieu d'envoyer : « il faut appuyer deux fois pour envoyer un
+    // lien ». La re-poser jusqu'à la fin du geste suffit, et ça ne peut pas
+    // boucler : le relâchement, lui, arrive toujours.
+    if (!ImGui::IsAnyMouseDown() && !ImGui::IsDragDropActive())
+      focus_input_next_ = false;
+  }
+  // ↑/↓ rappellent l'historique de saisie. ImGui n'expose ça QUE par callback :
+  // le tampon appartient au widget pendant l'édition, l'écrire à côté (dans
+  // `input_`) serait écrasé par l'état interne à la frame suivante.
+  const auto history_cb = [](ImGuiInputTextCallbackData* data) -> int {
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+      auto* self = static_cast<ChatWindow*>(data->UserData);
+      self->RecallHistory(data->EventKey == ImGuiKey_UpArrow ? -1 : 1, data);
+    }
+    return 0;
+  };
+  const bool submitted = ImGui::InputText(
+      "##chat_input", input_, sizeof(input_),
+      ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+      history_cb, this);
+  // TAB → le champ « Pseudo ». Celui-ci étant dessiné AVANT, la bascule prend
+  // effet à la frame suivante : un battement, invisible à la frappe.
+  const bool input_active  = ImGui::IsItemActive();
+  const bool input_hovered = ImGui::IsItemHovered();
+  if (input_active && ImGui::IsKeyPressed(ImGuiKey_Tab, false))
+    focus_whisper_next_ = true;
+  ImGui::PopStyleColor();
+  // Les liens posés reprennent ici leur couleur et leurs crochets, par-dessus le
+  // texte que le champ vient de peindre.
+  DrawInputLinkChips(field_pos, field_w, field_h, input_active, input_hovered);
+  links::DrawMenu("##chat_link_menu_input", link_menu_);
+  // 🔴 LA PERTE DE FOCUS NE REFERME RIEN. DEUX sorties, toutes deux explicites :
+  // Entrée sur une ligne VIDE (les deux Entrée qui sortent du chat) et ÉCHAP.
+  // Rien d'autre : ni la combo de mode, ni la liste des destinataires, ni un
+  // onglet, ni le log, ni une autre fenêtre, ni un clic dans le décor.
+  //
+  // Il y avait ici une branche « désactivée sans envoi ⇒ on referme », calquée
+  // sur le natif — mais « désactivée » attrape des gestes qui n'ont rien d'un
+  // départ : ouvrir une liste déroulante désactive la saisie exactement comme un
+  // clic dehors, et la barre se refermait sous le doigt à l'instant où la liste
+  // s'ouvrait. D'où le test sur la TOUCHE et non sur la désactivation seule ;
+  // distinguer autrement les bonnes désactivations des mauvaises reviendrait à
+  // courir après chaque nouveau widget de la ligne.
+  if (submitted) {
+    if (input_[0] != '\0') {
+      QueueSend();          // on GARDE la main, comme le natif
+      focus_input_next_ = true;
+    } else if (battle_mode_) {
+      input_open_ = false;  // ligne vide : première sortie
+    }
+  } else if (battle_mode_ && ImGui::IsItemDeactivated() &&
+             ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    // Seconde sortie. `IsItemDeactivated` + la touche, et pas la touche seule :
+    // c'est bien la saisie qu'Échap vient de quitter (ImGui la désactive et
+    // restaure son texte dans la même frame), pas un Échap tapé ailleurs, qui
+    // appartient au jeu.
+    input_open_ = false;
+  }
+}
+
+// ── Persistance de la disposition ────────────────────────────────────────────
+// 🔴 Le fichier fait autorité dès qu'il existe : le relire, c'est reprendre la
+// main sur le registre natif, qui décrit encore la disposition d'avant. D'où
+// `structure_owned_` posé ici — sans lui, la fusion périodique écraserait deux
+// secondes plus tard tout ce qu'on vient de recharger.
+void ChatWindow::LoadLayout() {
+  std::ifstream file(paths::ChatLayoutPath());
+  if (!file) return;  // premier lancement : le registre natif fera l'amorçage
+  std::vector<Channel> loaded;
+  try {
+    const YAML::Node root = YAML::Load(file);
+    const YAML::Node list = root["channels"];
+    if (!list || !list.IsSequence()) return;
+    for (const YAML::Node& node : list) {
+      if (static_cast<int>(loaded.size()) >= kMaxChannels) break;
+      Channel channel;
+      channel.name = node["name"].as<std::string>("");
+      if (channel.name.empty()) continue;  // un onglet sans nom est inattrapable
+      channel.id       = node["id"].as<unsigned>(0);
+      channel.detached = node["detached"].as<bool>(false);
+      // ⚠ Un canal rechargé n'a PAS de nœud de registre, et n'en aura pas : la
+      // fusion est coupée dès que notre fichier fait autorité. Ses 25 filtres
+      // vivent donc UNIQUEMENT chez nous — ce qui suffit, puisque c'est nous qui
+      // filtrons l'affichage. Le chat natif, lui, garde sa propre copie jusqu'à ce
+      // qu'on écrive vraiment dans les deux registres.
+      channel.detach_owned = true;
+      const YAML::Node filter = node["filter"];
+      if (filter && filter.IsSequence()) {
+        for (size_t i = 0; i < filter.size() && i < kTypeCount; ++i)
+          channel.filter[i] = filter[i].as<bool>(true) ? 1 : 0;
+      } else {
+        std::memset(channel.filter, 1, sizeof(channel.filter));
+      }
+      // L'absence de bloc « style » VEUT DIRE « suit les réglages généraux » :
+      // c'est l'état par défaut, pas une valeur manquante à combler.
+      if (const YAML::Node style = node["style"]) {
+        channel.style_own = true;
+        channel.font_pct  = style["font"].as<int>(100);
+        channel.padding   = style["padding"].as<int>(3);
+        channel.line_gap  = style["line_gap"].as<int>(2);
+        const YAML::Node body = style["body"];
+        if (body && body.IsSequence()) {
+          for (size_t i = 0; i < body.size() && i < 4; ++i)
+            channel.body[i] = body[i].as<float>(0.0f);
+        }
+      }
+      loaded.push_back(std::move(channel));
+    }
+  } catch (const std::exception& e) {
+    LogError("[Chat] disposition illisible ({}) -> on repart du registre client",
+             e.what());
+    return;
+  }
+  if (loaded.empty()) return;
+
+  // Les identifiants doivent rester UNIQUES après rechargement, sinon deux canaux
+  // partageraient leurs réglages le jour où ceux-ci seront par onglet.
+  uint32_t next = 1;
+  for (Channel& channel : loaded) {
+    if (channel.id == 0) channel.id = 0xFFFFFFFFu;  // marqué à réattribuer
+    next = (channel.id != 0xFFFFFFFFu && channel.id >= next) ? channel.id + 1 : next;
+  }
+  for (Channel& channel : loaded)
+    if (channel.id == 0xFFFFFFFFu) channel.id = next++;
+  next_channel_id_ = next;
+
+  channels_.swap(loaded);
+  structure_owned_ = true;
+  active_channel_  = 0;
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    if (!channels_[i].detached) {
+      active_channel_ = static_cast<int>(i);
+      break;
+    }
+  }
+  LogDiag("[Chat] disposition rechargée : {} canaux", channels_.size());
+}
+
+void ChatWindow::SaveLayout() const {
+  if (channels_.empty()) return;  // rien à dire vaut mieux qu'écraser par du vide
+  YAML::Emitter out;
+  out << YAML::BeginMap;
+  out << YAML::Key << "channels" << YAML::Value << YAML::BeginSeq;
+  for (const Channel& channel : channels_) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "id" << YAML::Value << channel.id;
+    out << YAML::Key << "name" << YAML::Value << channel.name;
+    out << YAML::Key << "detached" << YAML::Value << channel.detached;
+    out << YAML::Key << "filter" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+    for (int i = 0; i < kTypeCount; ++i) out << (channel.filter[i] != 0);
+    out << YAML::EndSeq;
+    // L'apparence n'est écrite QUE si elle est propre à ce canal. Sérialiser une
+    // copie des réglages généraux les figerait : à la relecture, l'onglet cesserait
+    // de suivre un changement du réglage général sans que rien ne l'ait demandé.
+    if (channel.style_own) {
+      out << YAML::Key << "style" << YAML::Value << YAML::BeginMap;
+      out << YAML::Key << "font" << YAML::Value << channel.font_pct;
+      out << YAML::Key << "padding" << YAML::Value << channel.padding;
+      out << YAML::Key << "line_gap" << YAML::Value << channel.line_gap;
+      out << YAML::Key << "body" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+      for (int i = 0; i < 4; ++i) out << channel.body[i];
+      out << YAML::EndSeq;
+      out << YAML::EndMap;
+    }
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+  out << YAML::EndMap;
+
+  std::ofstream file(paths::ChatLayoutPath(), std::ios::trunc);
+  if (!file) {
+    LogError("[Chat] impossible d'écrire {}", paths::ChatLayoutPath());
+    return;
+  }
+  file << "# Bourgeon — disposition de la chatbox : onglets, fenêtres détachées\n"
+       << "# et filtres de chacun. L'« id » est un identifiant STABLE : c'est lui\n"
+       << "# qui porte les réglages, pas le nom (renommable) ni l'ordre.\n"
+       << out.c_str() << "\n";
+}
+
+// ── Historique conservé d'une session à l'autre ──────────────────────────────
+// On écrit la ligne AVANT analyse (`raw`, balisage intact) plus sa couleur, son
+// TYPE et son expéditeur. Le texte rendu seul perdrait les couleurs et les liens
+// d'objets — et surtout le type, que les filtres par canal consultent : des lignes
+// restaurées sans type ne sauraient plus dans quel onglet aller.
+void ChatWindow::SaveHistory() const {
+  if (!keep_history_) return;
+  const int keep = (keep_lines_ < 20) ? 20 : ((keep_lines_ > 1000) ? 1000 : keep_lines_);
+
+  YAML::Emitter out;
+  out << YAML::BeginMap;
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  char stamp[32];
+  std::snprintf(stamp, sizeof(stamp), "%04d-%02d-%02d %02d:%02d:%02d", now.wYear,
+                now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+  out << YAML::Key << "saved_at" << YAML::Value << stamp;
+  out << YAML::Key << "lines" << YAML::Value << YAML::BeginSeq;
+  {
+    std::lock_guard<std::mutex> lock(lines_mutex_);
+    size_t first = 0;
+    if (lines_.size() > static_cast<size_t>(keep)) first = lines_.size() - keep;
+    for (size_t i = first; i < lines_.size(); ++i) {
+      const Line& line = lines_[i];
+      out << YAML::BeginMap;
+      out << YAML::Key << "t" << YAML::Value << static_cast<int>(line.type);
+      out << YAML::Key << "rgb" << YAML::Value << line.rgb;
+      char hms[16];
+      std::snprintf(hms, sizeof(hms), "%02d:%02d:%02d", line.hour, line.minute,
+                    line.second);
+      out << YAML::Key << "at" << YAML::Value << hms;
+      if (!line.sender.empty())
+        out << YAML::Key << "from" << YAML::Value << line.sender;
+      out << YAML::Key << "raw" << YAML::Value << line.raw;
+      out << YAML::EndMap;
+    }
+  }
+  out << YAML::EndSeq;
+  out << YAML::EndMap;
+
+  std::ofstream file(paths::ChatHistoryPath(), std::ios::trunc);
+  if (!file) {
+    LogError("[Chat] impossible d'écrire {}", paths::ChatHistoryPath());
+    return;
+  }
+  file << "# Bourgeon — historique du chat conservé entre deux sessions.\n"
+       << "# ATTENTION : ce fichier contient les CHUCHOTEMENTS EN CLAIR.\n"
+       << "# L'option qui l'écrit est dans les réglages de la chatbox ImGui.\n"
+       << out.c_str() << "\n";
+}
+
+void ChatWindow::LoadHistory() {
+  if (!keep_history_) return;
+  std::ifstream file(paths::ChatHistoryPath());
+  if (!file) return;
+  std::vector<Line> restored;
+  std::string saved_at;
+  try {
+    const YAML::Node root = YAML::Load(file);
+    saved_at = root["saved_at"].as<std::string>("");
+    const YAML::Node list = root["lines"];
+    if (!list || !list.IsSequence()) return;
+    for (const YAML::Node& node : list) {
+      Line line;
+      line.type = static_cast<uint8_t>(node["t"].as<int>(0));
+      line.rgb  = node["rgb"].as<unsigned>(0xFFFFFF);
+      const std::string at = node["at"].as<std::string>("");
+      if (at.size() == 8) {  // « HH:MM:SS »
+        line.hour   = static_cast<uint8_t>(std::atoi(at.substr(0, 2).c_str()));
+        line.minute = static_cast<uint8_t>(std::atoi(at.substr(3, 2).c_str()));
+        line.second = static_cast<uint8_t>(std::atoi(at.substr(6, 2).c_str()));
+      }
+      line.sender = node["from"].as<std::string>("");
+      // 🔴 `ParseUtf8` et NON `ParseText` : le texte est déjà en UTF-8 dans le
+      // fichier, le repasser par la conversion depuis la code-page du fil le
+      // corromprait — c'est le même piège que les accents, à l'envers.
+      ParseUtf8(node["raw"].as<std::string>(""), &line);
+      if (line.runs.empty() && line.plain.empty()) continue;
+      restored.push_back(std::move(line));
+    }
+  } catch (const std::exception& e) {
+    LogError("[Chat] historique illisible ({}) -> ignoré", e.what());
+    return;
+  }
+  if (restored.empty()) return;
+
+  // Un séparateur, parce que l'heure affichée ment sur la date : une ligne d'hier
+  // soir se réaffiche avec une heure parfaitement plausible. Type « broadcast »,
+  // donc visible dans TOUS les onglets quel que soit leur filtre.
+  Line mark;
+  mark.type = static_cast<uint8_t>(kTypeBroadcast);
+  mark.rgb  = 0x9B9B9B;  // COLORREF gris, comme les en-têtes du client
+  Run run;
+  run.text = saved_at.empty()
+                 ? std::string("---- session precedente ----")
+                 : ("---- session precedente (" + saved_at + ") ----");
+  run.text = ro::LocalToUtf8(run.text.c_str());
+  mark.runs.push_back(run);
+  mark.plain = run.text;
+  restored.push_back(std::move(mark));
+
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  // Devant : ce sont les lignes les plus ANCIENNES. Les mettre à la suite les
+  // ferait passer pour ce qui vient d'arriver.
+  lines_.insert(lines_.begin(), restored.begin(), restored.end());
+  LogDiag("[Chat] historique rechargé : {} lignes", restored.size() - 1);
+}
+
+// Nouvel onglet. Le nom par défaut est celui du client (`NewTab_N`) : ce nom finit
+// dans SON fichier de session, autant qu'il y trouve ce qu'il sait écrire.
+void ChatWindow::CreateChannel() {
+  Channel channel;
+  channel.id = next_channel_id_++;
+  // Les homonymes sont PERMIS — c'est pour ça que la clé est un identifiant et pas
+  // le nom — mais en proposer un d'office serait juste désagréable.
+  for (int n = 2; n < 100; ++n) {
+    char name[32];
+    std::snprintf(name, sizeof(name), "NewTab_%d", n);
+    bool taken = false;
+    for (const Channel& other : channels_)
+      if (other.name == name) taken = true;
+    if (!taken) {
+      channel.name = name;
+      break;
+    }
+  }
+  if (channel.name.empty()) channel.name = "NewTab";
+  // Un onglet neuf qui n'afficherait rien passerait pour cassé : il accepte tout,
+  // et le joueur retire ce qu'il ne veut pas.
+  std::memset(channel.filter, 1, sizeof(channel.filter));
+  channels_.push_back(std::move(channel));
+  structure_owned_ = true;
+  layout_dirty_    = true;
+  active_channel_  = static_cast<int>(channels_.size()) - 1;
+}
+
+// Fermeture. Appelée APRÈS `EndPopup` : retirer l'élément pendant que le menu tient
+// encore un pointeur dessus le rendrait pendant.
+void ChatWindow::CloseChannel(int index) {
+  if (index < 0 || index >= static_cast<int>(channels_.size())) return;
+  const uint32_t active_id =
+      (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
+          ? channels_[active_channel_].id
+          : 0;
+  const bool closed_active = (channels_[index].id == active_id);
+  channels_.erase(channels_.begin() + index);
+  structure_owned_ = true;
+  layout_dirty_    = true;
+
+  // Suivre le canal, pas le rang : fermer le troisième onglet ne doit pas faire
+  // sauter le joueur ailleurs si ce n'est pas celui qu'il lisait.
+  active_channel_ = 0;
+  if (!closed_active) {
+    for (size_t i = 0; i < channels_.size(); ++i)
+      if (channels_[i].id == active_id) active_channel_ = static_cast<int>(i);
+  }
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    if (!channels_[i].detached) {  // la dockée doit pointer un onglet, pas une flottante
+      if (closed_active || channels_[active_channel_].detached)
+        active_channel_ = static_cast<int>(i);
+      break;
+    }
+  }
+}
+
+// Les 25 cases d'options de log du canal courant. Elles écrivent DIRECTEMENT
+// l'octet du registre (node+0x2C+type), exactement comme la fenêtre native 0x84 :
+// le registre reste la source de vérité, et le chat natif suit le même filtre.
+void ChatWindow::DrawLogOptionsPopup() {
+  // Marge du popup resserrée : celle du cadre du chat (réglable, jusqu'à 12 px)
+  // vaut pour une fenêtre, pas pour un menu — un menu contextuel doit se lire d'un
+  // coup d'œil, pas s'étaler.
+  // 🔴 La marge reste POUSSÉE pendant tout le corps, pas seulement le temps du
+  // Begin : les sous-menus ouvrent leurs propres fenêtres plus bas, et ils
+  // reprendraient sinon la marge du cadre du chat — réglable jusqu'à 12 px, ce qui
+  // convient à une fenêtre mais étale un menu.
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, 4.0f));
+  if (!ImGui::BeginPopup("##chat_logopt_popup")) {
+    ImGui::PopStyleVar();
+    return;
+  }
+  // L'onglet DÉSIGNÉ au clic droit. Il peut avoir disparu entre-temps (le registre
+  // natif est relu périodiquement) : on revalide l'index à chaque frame plutôt que
+  // de garder un pointeur, qui serait pendant au premier rafraîchissement.
+  const int target = (logopt_channel_ >= 0) ? logopt_channel_ : active_channel_;
+  Channel* channel =
+      (target >= 0 && target < static_cast<int>(channels_.size()))
+          ? &channels_[target]
+          : nullptr;
+  if (channel == nullptr) {
+    ImGui::EndPopup();
+    ImGui::PopStyleVar();  // la marge resserrée du menu
+    return;
+  }
+  int close_request = -1;  // joué APRÈS EndPopup : cf. CloseChannel
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+
+  // Renommage sur place. Le tampon est réamorcé quand le menu change de canal —
+  // sinon on éditerait le nom du précédent sans s'en apercevoir.
+  if (rename_id_ != channel->id) {
+    rename_id_ = channel->id;
+    CopyBounded(rename_buf_, sizeof(rename_buf_), channel->name.c_str());
+  }
+  ImGui::SetNextItemWidth(170.0f);
+  if (ImGui::InputText("##chat_rename", rename_buf_, sizeof(rename_buf_),
+                       ImGuiInputTextFlags_EnterReturnsTrue)) {
+    // Un nom vide rendrait l'onglet inattrapable : on refuse en silence plutôt que
+    // d'ouvrir une modale pour si peu.
+    if (rename_buf_[0] != '\0') {
+      channel->name    = rename_buf_;
+      structure_owned_ = true;
+      layout_dirty_    = true;
+    }
+    ImGui::CloseCurrentPopup();
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Renommer le canal — Entrée pour valider.");
+  ImGui::Separator();
+  // Détacher / rattacher. 🔴 `detach_owned` fait gagner NOTRE état sur celui du
+  // registre au prochain rafraîchissement : tant que le déplacement de l'entrée
+  // entre les deux registres natifs n'est pas écrit, la fusion remettrait le canal
+  // là où le client le croit — deux secondes après le geste du joueur.
+  if (channel->detached) {
+    if (ImGui::Selectable("Rattacher à la fenêtre principale")) {
+      channel->detached     = false;
+      channel->detach_owned = true;
+      structure_owned_      = true;
+      layout_dirty_         = true;
+      active_channel_       = target;
+    }
+  } else {
+    // Le dernier onglet docké ne peut pas partir : la fenêtre principale porte la
+    // saisie, elle ne doit jamais se retrouver sans canal à afficher.
+    int docked = 0;
+    for (const Channel& other : channels_)
+      if (!other.detached) ++docked;
+    const bool can_detach = (docked > 1);
+    if (!can_detach) ImGui::BeginDisabled();
+    if (ImGui::Selectable("Détacher dans sa propre fenêtre")) {
+      channel->detached     = true;
+      channel->detach_owned = true;
+      structure_owned_      = true;
+      layout_dirty_         = true;
+    }
+    if (!can_detach) {
+      ImGui::EndDisabled();
+      // `AllowWhenDisabled` : sans ce drapeau, un item grisé n'est jamais survolé,
+      // et l'infobulle qui EXPLIQUE le grisé ne s'afficherait justement jamais.
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Le dernier onglet ne peut pas être détaché.");
+    }
+  }
+  ImGui::Separator();
+
+  // Créer / fermer. 🔴 Le plafond de 10 canaux n'est pas décoratif : le CHARGEUR
+  // natif (`Lua_SetSubChatWndList 0x00a9cf70`) refuse au-delà, donc un 11ᵉ canal ne
+  // planterait rien — il disparaîtrait à la reconnexion suivante, sans un mot.
+  const bool can_create = static_cast<int>(channels_.size()) < kMaxChannels;
+  if (!can_create) ImGui::BeginDisabled();
+  if (ImGui::Selectable("Nouvel onglet")) CreateChannel();
+  if (!can_create) {
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip(
+          "Maximum atteint : %d canaux, onglets et fenêtres détachées confondus.\n"
+          "C'est la limite du client, pas la nôtre.",
+          kMaxChannels);
+  }
+
+  // Fermeture : jamais le dernier canal, et jamais le dernier onglet DOCKÉ — la
+  // fenêtre principale porte la saisie, elle ne doit pas rester sans rien à
+  // afficher.
+  int docked = 0;
+  for (const Channel& other : channels_)
+    if (!other.detached) ++docked;
+  const bool can_close =
+      channels_.size() > 1 && (channel->detached || docked > 1);
+  if (!can_close) ImGui::BeginDisabled();
+  if (ImGui::Selectable("Fermer l'onglet")) close_request = target;
+  if (!can_close) {
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("Il doit rester au moins un onglet dans la fenêtre principale.");
+  }
+  ImGui::Separator();
+
+  // Apparence PROPRE à cet onglet, dans son sous-menu. Le libellé annonce l'état :
+  // « suit les réglages généraux » ou « réglages propres », pour qu'on sache avant
+  // d'ouvrir si cet onglet a été personnalisé.
+  char style_label[80];
+  std::snprintf(style_label, sizeof(style_label), "Apparence  (%s)###chatstyle_menu",
+                channel->style_own ? "propre à cet onglet" : "générale");
+  if (ImGui::BeginMenu(style_label)) {
+    // Menu contextuel = place comptée. Le style compact resserre les hauteurs, et
+    // les curseurs sont bornés en largeur : leur largeur par défaut est celle du
+    // contenu disponible, ce qui étire le popup pour rien.
+    PushStyleCompact();
+    ImGui::PushItemWidth(140.0f);
+    bool own = channel->style_own;
+    if (ro::RoCheckbox("Réglages propres à cet onglet###chatstyle_own", &own)) {
+      // 🔴 En ACTIVANT, on part des valeurs générales : sinon le premier clic
+      // ferait sauter l'onglet vers des valeurs par défaut sans rapport avec ce
+      // que le joueur avait sous les yeux.
+      if (own && !channel->style_own) {
+        channel->font_pct = font_scale_pct_;
+        channel->padding  = padding_px_;
+        channel->line_gap = line_gap_px_;
+        std::memcpy(channel->body, body_rgba_, sizeof(channel->body));
+      }
+      channel->style_own = own;
+      layout_dirty_      = true;
+    }
+    if (!channel->style_own) ImGui::BeginDisabled();
+    bool touched = false;
+    touched |= WheelSliderInt("Taille du texte###chatstyle_font", &channel->font_pct,
+                              70, 160, "%d %%");
+    touched |= WheelSliderInt("Marges###chatstyle_pad", &channel->padding, 0, 12,
+                              "%d px");
+    touched |= WheelSliderInt("Interligne###chatstyle_gap", &channel->line_gap, 0, 16,
+                              "%d px");
+    touched |= RoColorSwatch("Fond###chatstyle_body", channel->body);
+    if (touched) layout_dirty_ = true;
+    if (!channel->style_own) ImGui::EndDisabled();
+    ImGui::PopItemWidth();
+    PopStyleCompact();
+    ImGui::EndMenu();
+  }
+  ImGui::Separator();
+
+  // 🔴 Les 25 filtres vivent dans un SOUS-MENU. À plat, ils enterraient sous
+  // vingt-cinq lignes les deux ou trois actions qu'on vient chercher — et un menu
+  // qu'on ne lit plus est un menu qu'on n'utilise plus. Le compte des types actifs
+  // est affiché dans le libellé : c'est l'information qu'on voulait obtenir en
+  // ouvrant, dans neuf cas sur dix, sans avoir à dérouler.
+  int active_filters = 0;
+  for (int i = 0; i < kTypeCount; ++i)
+    if (channel->filter[i] != 0) ++active_filters;
+  char menu_label[64];
+  std::snprintf(menu_label, sizeof(menu_label), "Filtres du log  (%d/%d)###chatflt_menu",
+                active_filters, kTypeCount);
+  if (ImGui::BeginMenu(menu_label)) {
+    // Vingt-cinq cases : c'est ici que le style compact rend le plus.
+    PushStyleCompact();
+    if (ro::RoSmallButton("Tout cocher")) {
+      for (int i = 0; i < kTypeCount; ++i) {
+        channel->filter[i] = 1;
+        layout_dirty_      = true;
+        WriteChannelFilter(channel->node, i, true);
+      }
+    }
+    ImGui::SameLine();
+    if (ro::RoSmallButton("Tout décocher")) {
+      for (int i = 0; i < kTypeCount; ++i) {
+        channel->filter[i] = 0;
+        layout_dirty_      = true;
+        WriteChannelFilter(channel->node, i, false);
+      }
+    }
+    ImGui::Separator();
+    for (int i = 0; i < kTypeCount; ++i) {
+      bool on = channel->filter[i] != 0;
+      // Le numéro de type en tête — mais SEULEMENT en mode diagnostic : c'est là
+      // qu'il sert (relier une ligne préfixée « t07 » à la case qui la laisse
+      // passer). Hors diagnostic, il n'ajouterait que du bruit à une liste que le
+      // joueur lit pour son sens, pas pour ses index.
+      // L'identifiant, lui, ne bouge PAS avec l'affichage (###chatflt<N>) : basculer
+      // le diagnostic ne doit pas réinitialiser l'état des cases.
+      char label[96];
+      if (diagnostic_)
+        std::snprintf(label, sizeof(label), "t%02d  %s###chatflt%d", i,
+                      chatwnd::TypeLabel(i), i);
+      else
+        std::snprintf(label, sizeof(label), "%s###chatflt%d", chatwnd::TypeLabel(i), i);
+      if (ro::RoCheckbox(label, &on)) {
+        channel->filter[i] = on ? 1 : 0;
+        layout_dirty_      = true;
+        WriteChannelFilter(channel->node, i, on);
+      }
+    }
+    PopStyleCompact();
+    ImGui::EndMenu();
+  }
+  ImGui::PopStyleColor();
+  ImGui::EndPopup();
+  ImGui::PopStyleVar();  // la marge resserrée du menu
+  // 🔴 Hors du popup : `channel` pointe DANS `channels_`, et fermer un canal
+  // réalloue le vecteur. Le faire pendant que le menu tient encore ce pointeur le
+  // rendrait pendant — une frame plus tard, sur une lecture innocente.
+  if (close_request >= 0) CloseChannel(close_request);
+}
+
+// ── Envoi ────────────────────────────────────────────────────────────────────
+// Entrée dans l'historique de saisie. Deux règles reprises du comportement usuel
+// d'une ligne de commande : on n'empile pas deux fois de suite la même chose, et
+// le rappel repart TOUJOURS du bas (le joueur vient d'envoyer, sa prochaine flèche
+// haut doit lui rendre ce qu'il vient d'écrire, pas là où il en était resté).
+void ChatWindow::PushInputHistory(const char* utf8) {
+  if (utf8 == nullptr || utf8[0] == '\0') return;
+  if (input_history_.empty() || input_history_.back() != utf8)
+    input_history_.push_back(utf8);
+  while (static_cast<int>(input_history_.size()) > kInputHistoryMax)
+    input_history_.erase(input_history_.begin());
+  history_index_ = static_cast<int>(input_history_.size());
+  input_draft_.clear();
+}
+
+// Rappel ↑/↓, calqué sur `UIChatEditCtrl::OnMsg` (msg 18/19). L'index vaut `size()`
+// quand on est sur le brouillon — c'est ce qui permet de RESSORTIR de l'historique
+// par le bas et de retrouver la phrase commencée, au lieu d'une ligne vide.
+void ChatWindow::RecallHistory(int direction, ImGuiInputTextCallbackData* data) {
+  const int count = static_cast<int>(input_history_.size());
+  if (count == 0) return;
+  if (direction < 0) {  // ↑ : vers le passé
+    if (history_index_ == count) input_draft_ = data->Buf;  // mise de côté
+    if (history_index_ > 0) --history_index_;
+  } else {  // ↓ : vers le présent
+    if (history_index_ >= count) return;
+    ++history_index_;
+  }
+  const std::string& text =
+      (history_index_ >= count) ? input_draft_ : input_history_[history_index_];
+  data->DeleteChars(0, data->BufTextLen);
+  data->InsertChars(0, text.c_str());
+  // Pas de sélection : `InsertChars` laisse le curseur en fin de ligne, donc la
+  // phrase rappelée se COMPLÈTE. Une sélection totale la ferait disparaître à la
+  // première touche, ce qui est exactement le contraire de l'usage — on rappelle
+  // pour corriger une faute de frappe ou changer un mot.
+}
+
+// Un destinataire entre dans la liste QUAND ON LUI PARLE, pas quand on tape son
+// nom : une frappe à moitié finie n'est pas un interlocuteur. S'il y est déjà, il
+// remonte en tête plutôt que d'être dupliqué.
+void ChatWindow::PushWhisperHistory(const char* utf8) {
+  if (utf8 == nullptr || utf8[0] == '\0') return;
+  for (auto it = whisper_history_.begin(); it != whisper_history_.end(); ++it) {
+    if (*it == utf8) {
+      whisper_history_.erase(it);
+      break;
+    }
+  }
+  whisper_history_.insert(whisper_history_.begin(), utf8);
+  if (static_cast<int>(whisper_history_.size()) > kWhisperHistoryMax)
+    whisper_history_.resize(kWhisperHistoryMax);
+}
+
+void ChatWindow::DrawWhisperHistoryPopup() {
+  if (!ImGui::BeginPopup("##chat_whisper_hist")) return;
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+  if (whisper_history_.empty()) {
+    ImGui::TextUnformatted("Aucun destinataire récent");
+  } else {
+    for (const std::string& name : whisper_history_) {
+      if (ImGui::Selectable(name.c_str())) {
+        CopyBounded(whisper_, sizeof(whisper_), name.c_str());
+        focus_input_next_ = true;  // le nom est choisi : on veut écrire, pas cliquer
+      }
+    }
+    ImGui::Separator();
+    if (ImGui::Selectable("Vider la liste")) whisper_history_.clear();
+  }
+  ImGui::PopStyleColor();
+  ImGui::EndPopup();
+}
+
+// ✅ Le drapeau du battle mode est LOCALISÉ (2026-08-04) : `g_BattleModeOn`
+// **0x0131F50E**, basculé par la case 135 de `Chat_HandleChatMessage` (`setz`,
+// donc une VRAIE bascule — le client ignore un éventuel « on »/« off ») et
+// persisté par `OptionInfo_SaveToFile`. On le LIT, on ne le déduit plus : c'est la
+// règle du projet, et elle évite deux désaccords que le suivi de commande ne
+// savait pas couvrir — la valeur restaurée à la connexion, et une bascule venue
+// d'ailleurs que de notre barre de saisie.
+// 🔴 POLARITÉ, tranchée par DEUX preuves indépendantes plutôt que par un ressenti :
+//
+//  1. Le NOM de l'option persistée. `OptionInfo_SaveToFile` (0x00D78D59) l'écrit
+//     sous `"ChangeChatMode"` — 1 = mode de chat changé, donc battle mode.
+//  2. La LOGIQUE de `UINewChatWnd_ToggleInputBar`. Avec le drapeau à 1 : barre
+//     déployée + texte vide ⇒ on referme. Avec le drapeau à 0 : on tombe TOUJOURS
+//     dans la branche « ouvre », et rien ne referme jamais sur un texte vide.
+//     Or « envoyer à vide referme » EST la définition du battle mode.
+//
+// 1 = battle mode. Le symptôme d'inversion observé venait d'ailleurs : on SUIVAIT
+// la commande en partant de `false`, alors que le client restaure sa valeur depuis
+// l'OptionInfo à la connexion. Un joueur déjà en battle mode nous trouvait donc
+// inversés dès la première frame — c'est précisément ce que lire le drapeau règle.
+bool ChatWindow::ReadNativeBattleMode() const {
+  bool battle = false;
+  __try {
+    battle = *reinterpret_cast<const uint8_t*>(kBattleModeFlag) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    battle = false;  // en cas de doute, barre visible : jamais de chat perdu
+  }
+  return battle;
+}
+
+// ── Liens d'objets (Maj + clic gauche) ───────────────────────────────────────
+// Le natif tient DEUX chaînes en parallèle dans l'accessoire `UIItemTagOnChat`
+// (`edit+0x144`) : le texte affiché à `+0x128` et le texte résolu à `+0x140`,
+// que la touche ENTRÉE préfère à ce que contient l'edit (`WndProc` case 6/0xB8,
+// branche `if (accessoire && *(accessoire+0x150))`). On fait la même chose, mais
+// en tenant les liens séparément plutôt qu'une deuxième copie de toute la ligne :
+// notre saisie reste une simple `char[]` qu'ImGui édite librement.
+std::string ChatWindow::ResolveItemLinks(const char* utf8) const {
+  if (item_links_.empty()) return utf8 ? utf8 : "";
+  const std::string src = utf8 ? utf8 : "";
+  std::string out;
+  size_t pos = 0;
+  for (const PendingLink& link : item_links_) {
+    if (link.display.empty()) continue;
+    const size_t at = src.find(link.display, pos);
+    if (at == std::string::npos) continue;  // effacé depuis la pose : on saute
+    out.append(src, pos, at - pos);
+    out += link.wire;
+    pos = at + link.display.size();
+  }
+  out.append(src, pos, std::string::npos);
+  return out;
+}
+
+// Le natif ne met pas du TEXTE dans sa ligne de saisie : il y accroche un vrai
+// bouton par lien (`UIItemTagButton`, cf. UIWnd_AppendItemLinkButton), coloré et
+// cliquable avant même l'envoi. Un `InputText` ImGui n'a pas de texte riche : la
+// seule façon d'y colorer un fragment est de le RECOUVRIR du fond du champ, puis
+// de le réécrire dans la couleur des liens — d'où le passage APRÈS la soumission
+// du widget, et le fond OPAQUE (le skin de la chatbox pousse des FrameBg pleins,
+// 0xCE/0xDE/0xEE : sans opacité, le texte d'origine transparaîtrait dessous).
+//
+// ⚠ Le champ DÉFILE quand la ligne dépasse sa largeur, et ce décalage n'est nulle
+// part ailleurs que dans l'état interne du widget (`ImGuiInputTextState::Scroll`,
+// accessible par son id, et qui n'existe QUE tant qu'il est actif — d'où le 0 par
+// défaut, qui est justement le décalage d'un champ inactif). L'ignorer collerait
+// les pastilles sur du texte qui a glissé, d'autant plus visiblement que la
+// saisie est longue — c'est-à-dire précisément quand on pose plusieurs liens.
+void ChatWindow::DrawInputLinkChips(const ImVec2& field_pos, float field_w,
+                                    float field_h, bool field_active,
+                                    bool field_hovered) {
+  if (item_links_.empty() || input_[0] == '\0') return;
+  const ImGuiStyle& style = ImGui::GetStyle();
+  float scroll_x = 0.0f;
+  if (ImGuiWindow* win = ImGui::GetCurrentWindow()) {
+    if (const ImGuiInputTextState* st =
+            ImGui::GetInputTextState(win->GetID("##chat_input")))
+      scroll_x = st->Scroll.x;
+  }
+  const ImU32 bg = ImGui::GetColorU32(field_active    ? ImGuiCol_FrameBgActive
+                                      : field_hovered ? ImGuiCol_FrameBgHovered
+                                                      : ImGuiCol_FrameBg);
+  const float x0 = field_pos.x + style.FramePadding.x - scroll_x;
+  const float y0 = field_pos.y + style.FramePadding.y;
+  const ImVec2 clip_min(field_pos.x + 1.0f, field_pos.y + 1.0f);
+  const ImVec2 clip_max(field_pos.x + field_w - 1.0f, field_pos.y + field_h - 1.0f);
+  const bool over_field = ImGui::IsMouseHoveringRect(clip_min, clip_max);
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->PushClipRect(clip_min, clip_max, true);
+  const std::string src = input_;
+  size_t from = 0;
+  // Même balayage que ResolveItemLinks — de gauche à droite, un lien consommé à
+  // la fois : deux exemplaires du même objet gardent chacun leur pastille.
+  for (const PendingLink& link : item_links_) {
+    if (link.display.empty()) continue;
+    const size_t at = src.find(link.display, from);
+    if (at == std::string::npos) continue;
+    from = at + link.display.size();
+    const char* base = src.c_str();
+    const float pre = ImGui::CalcTextSize(base, base + at).x;
+    const float wdt = ImGui::CalcTextSize(base + at, base + from).x;
+    const ImVec2 p(x0 + pre, y0);
+    const ImVec2 a(p.x - 1.0f, field_pos.y + 2.0f);
+    const ImVec2 b(p.x + wdt + 1.0f, field_pos.y + field_h - 2.0f);
+    dl->AddRectFilled(a, b, bg);  // efface le texte que le champ vient d'écrire
+    dl->AddText(p, kLinkCol, base + at, base + from);
+    // Mêmes gestes que dans le log — et c'est le même code qui les joue. Le
+    // survol, lui, est à nous : ces pastilles sont peintes à la main par-dessus
+    // un `InputText`, ce ne sont pas des items ImGui.
+    const bool hovered = over_field && ImGui::IsMouseHoveringRect(a, b);
+    const links::Target target = TargetOf(link);
+    if (hovered) links::HoverPreview(target);
+    if (links::Gestures(target, hovered)) {
+      link_menu_ = target;
+      ImGui::OpenPopup("##chat_link_menu_input");
+    }
+  }
+  dl->PopClipRect();
+}
+
+// Ce qu'un fragment du log DÉSIGNE, dans le vocabulaire commun des liens
+// (features/link_gesture.h). La chatbox n'a plus ni gestes ni menu à elle : elle
+// dit ce qu'elle montre, le module fait le reste.
+links::Target ChatWindow::TargetOf(const Run& run) const {
+  switch (run.kind) {
+    case Run::kItem: return links::FromItem(run.item, run.text.c_str());
+    case Run::kMob:
+      return links::FromMob(run.mob_id, run.mob_rank, run.mob_name.c_str());
+    case Run::kUrl: return links::FromUrl(run.url.c_str());
+    default: return links::Target{};
+  }
+}
+
+links::Target ChatWindow::TargetOf(const PendingLink& link) const {
+  if (link.kind == Run::kMob) {
+    links::Target t = links::FromMob(link.mob_id, link.mob_rank, link.mob_name.c_str());
+    t.label = link.display;  // le libellé POSÉ, celui que le joueur a sous les yeux
+    return t;
+  }
+  return links::FromItem(link.item, link.display.c_str());
+}
+
+// 🔴 Armer, jamais envoyer : `NativeSendChatText` est un appel natif, proscrit
+// pendant une frame ImGui (cf. l'en-tête). FlushPending, lui, tourne depuis
+// OnProcessInput.
+void ChatWindow::QueueCommand(const char* utf8) {
+  if (utf8 == nullptr || utf8[0] == '\0') return;
+  pending_text_ = ro::Utf8ToWire(utf8);
+  pending_whisper_.clear();
+  has_pending_ = true;
+}
+
+void ChatWindow::PruneItemLinks() {
+  if (item_links_.empty()) return;
+  const std::string src = input_;
+  std::vector<PendingLink> kept;
+  size_t pos = 0;
+  for (PendingLink& link : item_links_) {
+    if (link.display.empty()) continue;
+    const size_t at = src.find(link.display, pos);
+    if (at == std::string::npos) continue;
+    pos = at + link.display.size();
+    kept.push_back(std::move(link));
+  }
+  item_links_.swap(kept);
+}
+
+bool ChatWindow::AppendItemLink(void* info) {
+  if (!imgui_enabled_ || !input_bar_ || info == nullptr) return false;
+
+  char wire[192];
+  if (!itemcell::BuildChatLink(info, wire, sizeof(wire))) return false;
+
+  // 🔴 Le libellé posé est composé DEPUIS LA BALISE, pas depuis l'item : on relit
+  // ce qu'on vient d'écrire et on le rend exactement comme le fera le log une
+  // fois la ligne partie. C'est la seule façon de garantir que ce que le joueur
+  // voit AVANT l'envoi est ce que tout le monde verra APRÈS.
+  itemcell::ChatLink link;
+  if (!itemcell::ParseChatLink(wire, wire + std::strlen(wire), &link)) return false;
+  char name[192];
+  itemcell::BuildChatLinkName(link, name, sizeof(name));
+  if (name[0] == '\0') return false;
+  // Format du natif, chevrons compris : `<+7 Sword [3]>` (le compte
+  // d'emplacements est déjà dans le nom composé).
+  // (⚠ `WireToUtf8` rend un `const char*` : concaténer avec des littéraux, c'est
+  //  de l'arithmétique de pointeurs — on passe par la chaîne.)
+  std::string display = "<";
+  display += ro::WireToUtf8(name);
+  display += ">";
+  if (display.size() <= 2) return false;  // nom vide : rien à poser
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  // Un séparateur entre deux liens collés : sans lui, deux noms bout à bout ne se
+  // distinguent plus à la lecture, et la substitution retrouverait le second au
+  // milieu du premier si l'un est le préfixe de l'autre.
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+
+  PendingLink pending;
+  pending.wire    = wire;
+  pending.item    = link;  // la balise relue : même source que le libellé ci-dessus
+  pending.display = display;
+  item_links_.push_back(std::move(pending));
+  // Le geste vient d'une AUTRE fenêtre (inventaire, fiche de personnage) : sans
+  // ça, le joueur devrait encore cliquer dans la barre avant de pouvoir taper.
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// RELAYER un lien d'objet : le reposer dans la saisie sans posséder l'objet. La
+// balise est ré-encodée depuis le lien relu, donc refine, cartes, grade, options
+// et forgeron survivent au relais — c'est bien le MÊME objet qu'on repasse, pas
+// l'item de base qui porte son nom.
+bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
+  if (!imgui_enabled_ || !input_bar_ || link.id == 0) return false;
+
+  char wire[192];
+  if (!itemcell::BuildChatLinkFromLink(link, wire, sizeof(wire))) return false;
+  char name[192];
+  itemcell::BuildChatLinkName(link, name, sizeof(name));
+  if (name[0] == '\0') return false;
+  std::string display = "<";
+  display += ro::WireToUtf8(name);
+  display += ">";
+  if (display.size() <= 2) return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+
+  PendingLink pending;
+  pending.wire    = wire;
+  pending.item    = link;
+  pending.display = display;
+  pending.kind    = Run::kItem;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// Poser le lien d'un MONSTRE. Même mécanique que pour un objet : le libellé
+// lisible dans la saisie, la balise mise de côté et substituée à l'envoi.
+//
+// ⚠ Le nom vient de l'APPELANT et repart tel quel dans la balise. C'est voulu :
+// le client est incapable de nommer un monstre — ni mob_db ni le paquet de la
+// fiche ne le lui donnent — donc seul celui qui affiche déjà le nom (la fiche,
+// la table des drops) peut le fournir, et il doit voyager avec le lien.
+bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8) {
+  if (!imgui_enabled_ || !input_bar_) return false;
+  if (mob_id == 0 || name_utf8 == nullptr || name_utf8[0] == '\0') return false;
+  if (rank < 0 || rank > 2) rank = 0;
+  // Un nom qui porterait la fin de balise la couperait en deux à la relecture ;
+  // le reste (espaces, apostrophes, ponctuation) est libre puisque le nom est le
+  // DERNIER champ.
+  const std::string name(name_utf8);
+  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
+    return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const std::string display =
+      "<" + std::string(MobRankTag(static_cast<uint8_t>(rank))) + " " + name + ">";
+  char wire[256];
+  std::snprintf(wire, sizeof(wire), "<MOBL>%u:%d:%s</MOBL>", mob_id, rank,
+                name.c_str());
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+
+  PendingLink pending;
+  pending.wire     = wire;
+  pending.display  = display;
+  pending.kind     = Run::kMob;
+  pending.mob_id   = mob_id;
+  pending.mob_rank = static_cast<uint8_t>(rank);
+  pending.mob_name = name;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+void ChatWindow::QueueSend() {
+  if (input_[0] == '\0') return;
+  PushInputHistory(input_);
+  // Même condition que le chemin d'envoi : une ligne qui commence par `/` est une
+  // commande, la box destinataire n'est PAS consultée — enregistrer le nom alors
+  // qu'on n'a chuchoté à personne salirait la liste.
+  if (input_[0] != '/') PushWhisperHistory(whisper_);
+  // Les liens d'objets reprennent leur forme longue AVANT la conversion : le
+  // `<ITEML>` est de l'ASCII pur, il traverse `Utf8ToWire` inchangé, alors que le
+  // NOM qu'il remplace, lui, ne survivrait pas forcément à l'aller-retour.
+  // L'historique de saisie, lui, garde la version LISIBLE : c'est ce que le
+  // joueur a écrit, et c'est ce qu'il veut retrouver à la flèche du haut.
+  const std::string resolved = ResolveItemLinks(input_);
+  item_links_.clear();
+  // La saisie ImGui est en UTF-8 ; le client et le serveur parlent l'ANSI du
+  // système. On convertit ICI, pas au moment de l'envoi : FlushPending tourne
+  // hors frame et ne doit plus faire que des appels natifs.
+  pending_text_    = ro::Utf8ToWire(resolved.c_str());
+  pending_whisper_ = ro::Utf8ToWire(whisper_);
+  has_pending_     = true;
+  input_[0] = '\0';
+}
+
+// 🔴 DÉTRUIRE, pas masquer — la règle du projet pour toute native remplacée. Le
+// destructeur de la chatbox (`UINewChatWnd_dtor 0x008db7f0`) n'émet AUCUN paquet ;
+// il n'écrit que `ChatWndInfo_U.lua`, ce qui est sans conséquence. La fenêtre 0x84
+// (options de log du natif) part avec elle : notre menu contextuel la remplace.
+//
+// Appelée depuis `OnProcessInput`, donc hors de toute frame ImGui : une commande
+// native jouée pendant le rendu peut ouvrir une modale bloquante qui relance le
+// rendu — le gel muet classique.
+void ChatWindow::SuppressNativeChat() {
+  constexpr int kNativeChatWndId   = 1;
+  constexpr int kNativeLogOptWndId = 0x84;
+  // Rien en dehors du jeu : à l'écran de login ou pendant un chargement de carte,
+  // ni détruire ni recréer n'a de sens, et créer une fenêtre pendant un warp est
+  // précisément ce qui a valu au projet une famille de crashes.
+  const Bourgeon& app = Bourgeon::Instance();
+  if (!app.IsGameActive() || app.IsMapLoading()) return;
+
+  const bool native_alive = uiwnd::SafeFindWindow(kNativeChatWndId) != nullptr;
+  if (imgui_enabled_) {
+    if (native_alive) uiwnd::CloseWindow(kNativeChatWndId);
+    if (uiwnd::SafeFindWindow(kNativeLogOptWndId) != nullptr)
+      uiwnd::CloseWindow(kNativeLogOptWndId);
+    return;
+  }
+  // 🔴 Bascule INVERSE : éteindre l'interface moderne doit RENDRE la chatbox
+  // native, pas laisser le joueur sans aucun chat. Le client ne la recrée que
+  // lors du « case 0 » (entrée en jeu) — sans ce rappel, il faudrait se
+  // reconnecter pour la revoir. La file `mgr+0x4C4` se draine d'elle-même à la
+  // création : les lignes accumulées entre-temps réapparaissent.
+  if (!native_alive) uiwnd::MakeWindow(kNativeChatWndId);
+}
+
+void ChatWindow::OnKeyDown(unsigned long vkey, int, int) {
+  if (!imgui_enabled_) return;
+  if (vkey == VK_RETURN) enter_pending_ = true;
+}
+
+void ChatWindow::FlushPending() {
+  SuppressNativeChat();
+  if (!has_pending_) return;
+  has_pending_ = false;
+  const char* error =
+      NativeSendChatText(pending_text_.c_str(), pending_whisper_.c_str());
+  pending_text_.clear();
+  pending_whisper_.clear();
+  // Un refus (mot interdit) s'affiche dans NOTRE chat : le natif ouvrirait une
+  // modale bloquante, qui relance le rendu du mode courant — proscrit ici.
+  if (error != nullptr) {
+    Line line;
+    // COLORREF, comme toute couleur de ligne ici : 0x6060FF = rouge clair
+    // (R=255, G=96, B=96), pas l'inverse.
+    line.rgb = 0x6060FF;
+    Run run;
+    run.text = error;
+    line.runs.push_back(run);
+    line.plain = run.text;
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    line.hour   = static_cast<uint8_t>(now.wHour);
+    line.minute = static_cast<uint8_t>(now.wMinute);
+    line.second = static_cast<uint8_t>(now.wSecond);
+    std::lock_guard<std::mutex> lock(lines_mutex_);
+    lines_.push_back(std::move(line));
+  }
+}
+
+// ── Réglages ─────────────────────────────────────────────────────────────────
+bool ChatWindow::DrawSettings() {
+  bool changed = false;
+  // ⚠ Suffixes « ###chatwnd_… » sur TOUS les libellés : cette section est dessinée
+  // dans la MÊME fenêtre ImGui que celle de ChatTweaks (le chat natif), qui a
+  // ses propres « Icônes d'objets » et son horodatage. Deux widgets de même
+  // libellé dans une même fenêtre, c'est le même ID — ImGui le signale par une
+  // fenêtre d'erreur rouge, et l'un des deux devient inutilisable.
+  changed |= ro::RoCheckbox("Chatbox ImGui###chatwnd_on", &imgui_enabled_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Remplacement de la chatbox : mêmes canaux, mêmes filtres et même chemin "
+      "d'envoi que le client. La fenêtre native reste ouverte à côté tant que la "
+      "bascule complète n'est pas faite.");
+  changed |= ro::RoCheckbox("Ligne de saisie###chatwnd_input", &input_bar_);
+  changed |= ro::RoCheckbox("Verrouiller position et taille###chatwnd_lock", &locked_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Fige la géométrie de la chatbox et de ses fenêtres détachées : plus de "
+      "déplacement, plus de redimensionnement. Les onglets, les menus et "
+      "l'arrachage continuent de fonctionner — c'est la position qui est "
+      "verrouillée, pas la fenêtre.");
+  changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
+  changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
+  changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",
+                            &diagnostic_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Ignore les filtres de canal et préfixe chaque ligne du type que le client "
+      "nous a transmis (t00 à t24). Une ligne visible ici mais absente d'un onglet "
+      "a été écartée par un filtre ; une ligne absente même ici n'est jamais "
+      "arrivée jusqu'à nous.");
+  if (diagnostic_) {
+    size_t held = 0;
+    {
+      std::lock_guard<std::mutex> lock(lines_mutex_);
+      held = lines_.size();
+    }
+    ImGui::Text("Lignes vues par le détour : %u · retenues : %u · en mémoire : %d",
+                ingest_seen_, ingest_kept_, static_cast<int>(held));
+  }
+  // WheelSliderInt, pas ro::RoSliderInt : même habillage RO (il l'enveloppe),
+  // mais avec l'ajustement à la molette au survol, le clamp et l'infobulle —
+  // c'est la brique des panneaux de réglages, partout ailleurs dans Bourgeon.
+  changed |= WheelSliderInt("Lignes conservées###chatwnd_cap", &history_cap_, 100,
+                            5000, "%d");
+
+  changed |= ro::RoCheckbox("Garder l'historique entre les sessions###chatwnd_keep",
+                            &keep_history_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Réaffiche les dernières lignes de la session précédente à la reconnexion, "
+      "précédées d'un séparateur.\n\n"
+      "ATTENTION : elles sont écrites en clair dans SaveData\\bourgeon_chat_history"
+      ".yaml, CHUCHOTEMENTS COMPRIS. Sur une machine partagée, n'importe qui peut "
+      "les lire.");
+  if (keep_history_) {
+    changed |= WheelSliderInt("Lignes gardées d'une session à l'autre###chatwnd_keep_n",
+                              &keep_lines_, 20, 1000, "%d");
+  }
+
+  SeparatorText("Apparence de la chatbox ImGui");
+  ImGui::TextDisabled("Réglages généraux — un onglet peut avoir les siens");
+  ImGui::SameLine();
+  HelpMarker(
+      "Clic droit sur un onglet → « Apparence ». Un onglet qui n'a pas ses "
+      "propres réglages SUIT ceux-ci : le changer ici le déplace aussi.");
+  changed |= RoColorSwatch("Fond###chatwnd_body", body_rgba_);
+  changed |= RoColorSwatch("Bordure###chatwnd_border", border_rgba_);
+  changed |= RoColorSwatch("Onglets###chatwnd_tab", tab_rgba_);
+  changed |= WheelSliderInt("Taille du texte du chat###chatwnd_font",
+                            &font_scale_pct_, 70, 160, "%d %%");
+  changed |= WheelSliderInt("Taille de l'interface###chatwnd_uifont", &ui_scale_pct_,
+                            70, 160, "%d %%");
+  ImGui::SameLine();
+  HelpMarker(
+      "Onglets, boutons et ligne de saisie. Séparée de la taille du chat : "
+      "grossir le texte qu'on lit ne doit pas faire enfler la bande d'onglets, "
+      "qui mangerait la fenêtre.");
+  changed |= WheelSliderInt("Marges###chatwnd_pad", &padding_px_, 0, 12, "%d px");
+  changed |= WheelSliderInt("Interligne###chatwnd_gap", &line_gap_px_, 0, 16, "%d px");
+  if (ro::RoButton("Couleurs du client###chatwnd_reset")) {
+    ro::PickerFromArgb(body_rgba_, 0x96000000);    // le fond natif, un peu plus dense
+    ro::PickerFromArgb(border_rgba_, 0xFFC5C5C5);
+    ro::PickerFromArgb(tab_rgba_, 0xFF8E938E);     // gris de l'UITabStrip
+    changed = true;
+  }
+  ImGui::SameLine();
+  if (ro::RoButton("Vider l'historique###chatwnd_clear")) ClearHistory();
+  return changed;
+}

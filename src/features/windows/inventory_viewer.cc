@@ -21,6 +21,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "features/windows/bank_window.h"   // ToggleFromUi (bouton banque du footer)
+#include "features/windows/chat_window.h"   // AppendItemLink (Maj+clic = lien d'objet)
 #include "features/windows/trade_window.h"  // « Vers l'échange » (AddItemToTrade / active)
 #include "features/windows/rodex_window.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
@@ -513,16 +514,35 @@ bool ReadCompItemByIndex(int index, CompItem* out) {
 // pour que le titre soit celui de la description complète.
 // No-op si id == 0. Appelé À L'EXTÉRIEUR de toute fenêtre (crée son popup).
 
-// Shift+clic G : insère le LIEN de l'item dans l'input de la fenêtre qui a le FOCUS
-// (chat), comme le natif UIInventoryWnd_OnLButtonDown (0x0094afb0, branche SHIFT) :
-// fenêtre focus = g_UIWindowMgr+0x1a0, son type = wnd+0x2c ; les types d'input chat
-// appellent UIChatWnd_InsertItemLink(wnd, info) (0x008217f0). L'utilisateur envoie
-// ensuite avec Entrée. Ne fait RIEN si la fenêtre focus n'est pas un input chat.
+// Maj + clic G : le LIEN de l'item part dans la barre de saisie du chat, que le
+// joueur envoie ensuite avec Entrée — le geste de `UIInventoryWnd_OnLButtonDown
+// 0x0094afb0` (branche `GetAsyncKeyState(VK_SHIFT)`).
+//
+// 🔴 Le chemin NATIF est mort avec la chatbox. Il regardait la fenêtre qui a le
+// focus (`g_UIWindowMgr+0x1a0`, type à `wnd+0x2c` : 0x1ea/0x1ee = un edit de chat,
+// 0x1ed = la chatbox, dont l'edit est à `+0xbc`) et appelait
+// `UIChatWnd_InsertItemLink 0x008217f0`. Aucun de ces trois types n'existe plus
+// depuis que la chatbox ImGui détruit la native : la fonction ne faisait donc
+// plus RIEN, en silence. On adresse maintenant notre propre barre de saisie, qui
+// tient le lien de côté et le résout à l'envoi (cf. ChatWindow::AppendItemLink).
+//
+// L'ancien chemin natif est conservé pour le joueur resté en chat NATIF (la
+// chatbox ImGui est un réglage, pas une fatalité).
 using ChatInsertLink_t = void(__thiscall*)(void*, void*);
 void PostItemLinkToChat(int index) {
+  // `FindLive…` et non `FindInfoByIndex` : la fiche de personnage relaie ici le
+  // Maj+clic sur un slot ÉQUIPÉ, dont l'item n'est plus dans la liste inventaire.
+  void* info = FindLiveInfoByIndex(index);
+  if (!info) return;
+
+  if (auto* chat = Bourgeon::Instance().chat_window()) {
+    if (chat->AppendItemLink(info)) return;
+    // Chatbox ImGui active mais refus (plafond de trois liens, barre masquée) :
+    // s'en remettre au natif n'aurait aucun sens, il n'existe plus.
+    if (chat->imgui_enabled_) return;
+  }
+
   __try {
-    void* info = FindInfoByIndex(index);
-    if (!info) return;
     void* focused = *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + 0x1a0);
     if (!focused) return;
     const int type = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(focused) + 0x2c);

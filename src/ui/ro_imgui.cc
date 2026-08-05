@@ -110,6 +110,35 @@ const char* LocalToUtf8(const char* local) {
   return Recode(local, ClientCodePage(), CP_UTF8);
 }
 
+// ⚠ 1252 EN DUR, et c'est délibéré.
+//
+// Le texte qui arrive par le réseau est du latin-1 : « à » y est l'octet 0xE0, un
+// seul octet. Le raisonnement tient en une phrase : **l'encodage du fil est une
+// propriété du SERVEUR**, pas de la machine qui lit. Les deux autres candidats
+// décrivent autre chose, et le mesurent donc mal :
+//   · la code-page du CLIENT (LocalToUtf8) suit son servicetype — 949 en coréen,
+//     où 0xE0 est un octet de TÊTE ;
+//   · CP_ACP est la locale non-Unicode du SYSTÈME du joueur, qui vaut 949 chez
+//     tous ceux qui l'ont réglée en coréen pour leur client RO.
+// Aucune des deux ne dit ce que le serveur a émis ; sur une machine réglée
+// autrement, elles se mettraient à « marcher » par coïncidence.
+//
+// ⚠ Rectification à ne pas perdre : le U+FFFD qui avait lancé cette chasse ne
+// venait PAS de la code-page. Le chat neutralisait l'octet 0xA0 (NBSP latin-1)
+// APRÈS conversion, où c'est l'octet de continuation du « à » (C3 A0) — les
+// « é » (C3 A9), eux, passaient. Le bug était dans le parseur (chat_window.cc,
+// ParseText). 1252 reste le bon choix, pour la raison ci-dessus, pas pour
+// celle-là.
+constexpr UINT kWireCodePage = 1252;
+
+const char* WireToUtf8(const char* ansi) {
+  return Recode(ansi, kWireCodePage, CP_UTF8);
+}
+
+const char* Utf8ToWire(const char* utf8) {
+  return Recode(utf8, CP_UTF8, kWireCodePage);
+}
+
 const char* Utf8ToLocal(const char* utf8) {
   return Recode(utf8, CP_UTF8, ClientCodePage());
 }
@@ -176,8 +205,51 @@ ImFont* LoadKoreanFont(float size_px) {
         0xFFFD, 0xFFFD,  // glyphe « caractère manquant »
         0,
     };
+
+    // ── L'antislash : le seul glyphe qu'on ne prend PAS chez Malgun ──────────
+    // Les polices coréennes dessinent U+005C comme le WON « ₩ » — héritage de la
+    // code-page 949, où l'octet 0x5C porte le symbole monétaire. MESURÉ dans
+    // malgun.ttf : le glyphe de U+005C (#63) a QUATRE contours, dans exactement la
+    // même boîte que le won U+20A9 (#524) ; un vrai antislash n'en a qu'un (cf.
+    // U+002F #18 et U+FF3C #12564). Résultat en jeu : un message serveur du genre
+    // « You can be \"called\" » sortait « ₩"called"₩ », alors que le chat natif —
+    // rendu avec une police latine — montrait de vrais antislashs.
+    //
+    // Impossible à corriger côté texte (l'octet EST un antislash) : c'est le
+    // dessin qui diffère. On EXCLUT donc ce point de code de la source Malgun et
+    // on le fait fournir par une police latine du système.
+    //
+    // 🔴 `GlyphExcludeRanges`, PAS un trou dans `GlyphRanges`. Depuis ImGui 1.92
+    // les glyphes se chargent à la demande et `GlyphRanges` est *LEGACY* : il ne
+    // restreint plus la source. Découper les plages autour de 0x5C n'excluait donc
+    // rien du tout — Malgun le fournissait quand même, et comme elle est la
+    // première source, son won gagnait. C'est le piège de cette version.
+    //
+    // La police latine est choisie AVANT le chargement : sans elle, personne ne
+    // fournirait le glyphe et on afficherait un losange « absent », ce qui est
+    // pire qu'un won. Dans ce cas on n'exclut rien.
+    static const ImWchar kBackslashOnly[] = {0x005C, 0x005C, 0};
+    const char* const kLatinFonts[] = {"C:\\Windows\\Fonts\\tahoma.ttf",
+                                       "C:\\Windows\\Fonts\\arial.ttf",
+                                       "C:\\Windows\\Fonts\\segoeui.ttf"};
+    const char* latin_font = nullptr;
+    for (const char* path : kLatinFonts) {
+      if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) {
+        latin_font = path;
+        break;
+      }
+    }
+    if (latin_font) cfg.GlyphExcludeRanges = kBackslashOnly;
+
     g_font_malgun =
         io.Fonts->AddFontFromFileTTF(kKoreanFontPath, size_px, &cfg, kRanges);
+
+    if (latin_font && g_font_malgun) {
+      ImFontConfig merge = cfg;
+      merge.MergeMode = true;
+      merge.GlyphExcludeRanges = nullptr;  // c'est ELLE qui doit fournir 0x5C
+      io.Fonts->AddFontFromFileTTF(latin_font, size_px, &merge, kBackslashOnly);
+    }
   }
   ApplyFontSelection();
   return io.FontDefault;
@@ -879,6 +951,270 @@ void EndRoWindow() {
   if (g_skin_colors) {
     ImGui::PopStyleColor(g_skin_colors);
     g_skin_colors = 0;
+  }
+}
+
+// ── 3e style : la CHATBOX ────────────────────────────────────────────────────
+// Ni barre de titre, ni corps clair (cf. le commentaire de ro_imgui.h). Compteurs
+// dédiés — ce style ne passe PAS par PushSkinColors, dont le corps clair et le
+// texte sombre sont exactement ce qu'il ne faut pas ici.
+static int g_chat_colors = 0;
+static int g_chat_vars = 0;
+// Bornes du redimensionnement, recopiées du skin par Begin pour End (qui, lui, ne
+// reçoit pas le skin).
+static ImVec2 g_chat_min(400.0f, 200.0f);
+static ImVec2 g_chat_max(0.0f, 0.0f);
+static float  g_chat_snap_step = 0.0f;
+static float  g_chat_snap_base = 0.0f;
+static bool   g_chat_resizable = true;
+static bool   g_chat_resizing  = false;  // un bord est activement tiré
+
+bool RoChatWindowIsResizing() { return g_chat_resizing; }
+
+bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
+                       int imgui_window_flags) {
+  // Marque la fenêtre comme « habillée RO » : c'est ce drapeau que lit la
+  // repeinture des scrollbars, partagée avec BeginRoWindow.
+  g_skin_active = true;
+
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, skin.body_col);
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_Border, skin.border_col);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+  // Champs de saisie CLAIRS, comme les UIEditWnd du chat natif (la ligne de
+  // saisie et la box du destinataire y sont blanches sur le cadre sombre).
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0xCE, 0xCE, 0xCE, 255));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(0xDE, 0xDE, 0xDE, 255));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(0xEE, 0xEE, 0xEE, 255));
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0xF2, 0xF3, 0xF6, 255));
+  ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, IM_COL32(0x9C, 0xB8, 0xEA, 160));
+  // Scrollbar ImGui rendue transparente : c'est DrawRoScrollbar qui la peint.
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32(0, 0, 0, 0));
+  g_chat_colors = 13;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);  // le natif est carré
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);  // largeur des pièces RO
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                      ImVec2(skin.padding, skin.padding));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      ImVec2(ImGui::GetStyle().ItemSpacing.x, skin.line_gap));
+  g_chat_vars = 8;
+
+  // ⚠ PAS d'opacité globale (ImGuiStyleVar_Alpha) : l'opacité de CETTE fenêtre est
+  // dans l'alpha de `body_col`. Les cumuler rendrait le texte translucide en même
+  // temps que le fond, ce que le chat natif ne fait pas.
+  // 🔴 `NoResize` coupe le redimensionnement d'ImGui — poignées de COIN comprises,
+  // qu'aucun drapeau ne sait désactiver séparément. Ce sont nos quatre bords, posés
+  // par EndRoChatWindow, qui redimensionnent : eux seuls peuvent se désactiver
+  // individuellement quand ils touchent le bord de l'écran.
+  imgui_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize;
+  g_chat_min = ImVec2(skin.min_w, skin.min_h);
+  g_chat_max = ImVec2(skin.max_w, skin.max_h);
+  g_chat_snap_step = skin.snap_step;
+  g_chat_snap_base = skin.snap_base;
+  g_chat_resizable = skin.resizable;
+  if (!skin.movable) imgui_window_flags |= ImGuiWindowFlags_NoMove;
+  const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
+  if (skin.font_scale > 0.0f && skin.font_scale != 1.0f)
+    ImGui::SetWindowFontScale(skin.font_scale);
+
+  return open;
+}
+
+// Redimensionnement par les QUATRE BORDS, à la place des poignées d'ImGui.
+//
+// Pourquoi le faire nous-mêmes : ImGui ne sait pas désactiver un bord en
+// particulier, et surtout pas selon la position de la fenêtre. Or un bord collé
+// au bord de l'écran ne peut pas s'écarter — la fenêtre grandit alors du côté
+// OPPOSÉ, ce qui donne exactement le contraire du geste demandé. Ces bords-là sont
+// donc inertes tant qu'ils touchent l'écran, et se réactivent dès que la fenêtre
+// s'en éloigne.
+//
+// À poser en FIN de fenêtre : à hit-test égal, c'est le dernier widget soumis qui
+// gagne le survol — les bords passent ainsi devant le contenu, pas derrière.
+static void ChatEdgeResize(ImGuiWindow* w) {
+  ImGuiIO& io = ImGui::GetIO();
+  const ImVec2 disp = io.DisplaySize;
+  if (disp.x <= 0.0f || disp.y <= 0.0f) return;
+
+  ImVec2 min_size = g_chat_min;
+  ImVec2 max_size = g_chat_max;
+  if (max_size.x <= 0.0f) max_size.x = disp.x * 0.8f;  // défaut : 80 % de l'écran
+  if (max_size.y <= 0.0f) max_size.y = disp.y * 0.8f;
+  if (max_size.x < min_size.x) max_size.x = min_size.x;
+  if (max_size.y < min_size.y) max_size.y = min_size.y;
+
+  const float kBand = 8.0f;  // épaisseur de la zone de saisie du bord
+  const float kTol  = 2.0f;  // « collé à l'écran » à deux pixels près
+  const ImVec2 pos = w->Pos, size = w->SizeFull;
+  const bool live[4] = {
+      pos.x > kTol,                        // gauche
+      pos.x + size.x < disp.x - kTol,      // droite
+      pos.y > kTol,                        // haut
+      pos.y + size.y < disp.y - kTol,      // bas
+  };
+
+  const ImVec2 rect_min[4] = {
+      ImVec2(pos.x, pos.y + kBand),
+      ImVec2(pos.x + size.x - kBand, pos.y + kBand),
+      ImVec2(pos.x + kBand, pos.y),
+      ImVec2(pos.x + kBand, pos.y + size.y - kBand),
+  };
+  const ImVec2 rect_size[4] = {
+      ImVec2(kBand, size.y - 2.0f * kBand),
+      ImVec2(kBand, size.y - 2.0f * kBand),
+      ImVec2(size.x - 2.0f * kBand, kBand),
+      ImVec2(size.x - 2.0f * kBand, kBand),
+  };
+  static const char* const kIds[4] = {"##ro_rs_l", "##ro_rs_r", "##ro_rs_t",
+                                      "##ro_rs_b"};
+
+  // Le curseur de mise en page ET la borne de contenu sont restaurés : ces bandes
+  // ne sont pas du contenu. Les laisser étendre `CursorMaxPos` donnerait à la
+  // fenêtre quelques pixels de défilement fantôme — assez pour que la molette
+  // fasse glisser tout l'habillage de trois pixels.
+  const ImVec2 saved_cursor = ImGui::GetCursorScreenPos();
+  const ImVec2 saved_max    = w->DC.CursorMaxPos;
+  // 🔴 Le geste se calcule depuis la POSITION ABSOLUE de la souris, pas en cumulant
+  // `MouseDelta` — c'est la méthode d'ImGui lui-même, et pour une bonne raison.
+  // Cumuler des deltas sur une taille déjà arrondie à la rangée PERD tout mouvement
+  // plus court qu'une demi-rangée : le geste ne produisait rien tant qu'on bougeait
+  // doucement, puis sautait d'un cran dès qu'une frame dépassait le seuil. La
+  // largeur, elle, n'est pas quantifiée — d'où une largeur impeccable et une
+  // hauteur inutilisable, avec le même code.
+  //
+  // Deux repères pris au clic et tenus jusqu'au relâchement : `grab` = l'écart
+  // entre la souris et le bord saisi (sans lui, le bord saute sous le curseur au
+  // premier pixel), `fixed` = le bord OPPOSÉ, qui ne doit pas bouger du geste.
+  static ImVec2 g_drag_grab;
+  static ImVec2 g_drag_fixed;
+  ImGuiContext& g = *ImGui::GetCurrentContext();
+  ImVec2 want = size;
+  bool changed = false, dragged_left = false, dragged_top = false;
+
+  for (int i = 0; i < 4; ++i) {
+    // Un bord qu'on est EN TRAIN de tirer reste posé même s'il vient de toucher le
+    // bord de l'écran : le retirer en pleine frame perdrait l'ActiveId, et le
+    // glissement s'interromprait au milieu du geste.
+    const bool dragging_this = (g.ActiveId == w->GetID(kIds[i]));
+    if ((!live[i] && !dragging_this) || rect_size[i].x <= 0.0f ||
+        rect_size[i].y <= 0.0f)
+      continue;
+    ImGui::SetCursorScreenPos(rect_min[i]);
+    // 🔴 `FlattenChildren` est indispensable : la zone de log est une fenêtre
+    // ENFANT qui vient jusqu'à la marge, et un widget du parent n'est pas
+    // survolable là où c'est l'enfant qui est sous la souris. Sans ce drapeau, la
+    // bande utile se réduirait à la seule épaisseur du filet.
+    ImGui::InvisibleButton(kIds[i], rect_size[i], ImGuiButtonFlags_FlattenChildren);
+    if (ImGui::IsItemActivated()) {  // repères du geste, figés au clic
+      switch (i) {
+        case 0:
+          g_drag_grab.x  = io.MousePos.x - pos.x;
+          g_drag_fixed.x = pos.x + size.x;
+          break;
+        case 1:
+          g_drag_grab.x  = io.MousePos.x - (pos.x + size.x);
+          g_drag_fixed.x = pos.x;
+          break;
+        case 2:
+          g_drag_grab.y  = io.MousePos.y - pos.y;
+          g_drag_fixed.y = pos.y + size.y;
+          break;
+        default:
+          g_drag_grab.y  = io.MousePos.y - (pos.y + size.y);
+          g_drag_fixed.y = pos.y;
+          break;
+      }
+    }
+    // Le bouton actif prend l'ActiveId : sans lui, le glissement DÉPLACERAIT la
+    // fenêtre, qui n'a pas de barre de titre et se traîne donc par son corps.
+    const bool active = ImGui::IsItemActive();
+    if (active || ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+    if (!active) continue;
+    changed = true;
+    const ImVec2 edge(io.MousePos.x - g_drag_grab.x, io.MousePos.y - g_drag_grab.y);
+    switch (i) {
+      case 0: want.x = g_drag_fixed.x - edge.x; dragged_left = true; break;
+      case 1: want.x = edge.x - g_drag_fixed.x; break;
+      case 2: want.y = g_drag_fixed.y - edge.y; dragged_top = true; break;
+      default: want.y = edge.y - g_drag_fixed.y; break;
+    }
+  }
+  // 🔴 Restauration par écriture DIRECTE, surtout pas `SetCursorScreenPos` :
+  // ImGui note « le curseur a été déplacé » et exige un item derrière pour
+  // valider l'agrandissement. Un appel en dernière position n'en a aucun, et il
+  // lève « Code uses SetCursorPos() to extend window boundaries ». Ici on ne
+  // demande rien à ImGui, on lui rend son état d'avant.
+  w->DC.CursorPos    = saved_cursor;
+  w->DC.CursorMaxPos = saved_max;
+  g_chat_resizing    = changed;
+  if (!changed) return;
+
+  // La taille voulue passe par les bornes puis par la quantification ; c'est ce
+  // RÉSULTAT qui devient la fenêtre. Le calcul, lui, repart de la souris à chaque
+  // frame — rien ne s'accumule, donc rien ne dérive.
+  ImVec2 new_pos  = pos;
+  ImVec2 new_size = want;
+  new_size.x = ImClamp(new_size.x, min_size.x, max_size.x);
+  new_size.y = ImClamp(new_size.y, min_size.y, max_size.y);
+
+  // 🔴 Quantifier la hauteur ICI, avec exactement la règle que l'appelant a mise
+  // dans ses contraintes. Sans ça on pose une hauteur libre, ImGui l'arrondit à la
+  // frame suivante, et cet arrondi ne touche QUE la taille : le bord opposé à
+  // celui qu'on tire se déplace tout seul. C'est ce qui donnait, en hauteur, un
+  // redimensionnement qui semblait déplacer la fenêtre en même temps.
+  if (g_chat_snap_step > 1.0f) {
+    float rows = ImFloor((new_size.y - g_chat_snap_base) / g_chat_snap_step + 0.5f);
+    if (rows < 1.0f) rows = 1.0f;
+    while (g_chat_snap_base + rows * g_chat_snap_step < min_size.y) rows += 1.0f;
+    while (rows > 1.0f && g_chat_snap_base + rows * g_chat_snap_step > max_size.y)
+      rows -= 1.0f;
+    new_size.y = g_chat_snap_base + rows * g_chat_snap_step;
+  }
+
+  // 🔴 La position se déduit du bord FIGÉ, jamais du delta : c'est ce qui garantit
+  // que le bord d'en face ne bouge pas d'un pixel, y compris quand une borne ou
+  // l'arrondi à la rangée refusent la taille demandée.
+  if (dragged_left) new_pos.x = g_drag_fixed.x - new_size.x;
+  if (dragged_top)  new_pos.y = g_drag_fixed.y - new_size.y;
+
+  ImGui::SetWindowPos(w, new_pos);
+  ImGui::SetWindowSize(w, new_size);
+}
+
+void EndRoChatWindow() {
+  if (g_skin_active) {
+    ImGuiWindow* main = ImGui::GetCurrentWindow();
+    ImGuiContext* g = ImGui::GetCurrentContext();
+    if (main && g) {
+      for (ImGuiWindow* cw : g->Windows) {
+        if (cw && cw->Active && cw->ScrollbarY && cw->RootWindow == main)
+          DrawRoScrollbar(cw);
+      }
+      // Verrouillée : on ne pose PAS les bandes. Les laisser en les rendant
+      // inertes coûterait le même curseur « main » au survol, donc la promesse
+      // muette d'un geste qui ne se produira pas.
+      if (g_chat_resizable && !main->Collapsed && !main->Hidden)
+        ChatEdgeResize(main);
+    }
+    g_skin_active = false;
+  }
+  ImGui::End();
+  if (g_chat_vars) {
+    ImGui::PopStyleVar(g_chat_vars);
+    g_chat_vars = 0;
+  }
+  if (g_chat_colors) {
+    ImGui::PopStyleColor(g_chat_colors);
+    g_chat_colors = 0;
   }
 }
 
@@ -1732,10 +2068,40 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
 
   if (clicked) ImGui::OpenPopup("##rcb_pop");
 
-  // Liste en popup : sous le champ, largeur mini = champ, fond « corps » RO,
-  // sélection bleue (onglet actif) + texte corps foncé.
-  ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + 1.0f));
+  // Liste en popup : largeur mini = champ, fond « corps » RO, sélection bleue
+  // (onglet actif) + texte corps foncé.
+  // ⚠ Les contraintes de taille AVANT le calcul de position : c'est la taille
+  // CONTRAINTE que le placement doit connaître (même ordre que BeginComboPopup).
   ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0), ImVec2(FLT_MAX, FLT_MAX));
+
+  // 🔴 SOUS le champ quand il y a la place, AU-DESSUS sinon. Un `SetNextWindowPos`
+  // en dur ne peut pas le faire : Begin() ne recadre QUE les positions qu'il a
+  // choisies lui-même (`window_pos_set_by_api` court-circuite `ClampWindowPos` et
+  // `FindBestWindowPosForPopup`), si bien que la liste d'une chatbox posée en bas
+  // de l'écran se dépliait dans le vide. On reprend donc la recette d'ImGui
+  // lui-même (`BeginComboPopup`) : aller lire la taille que la popup AURA à la
+  // frame suivante, puis lui chercher un côté — la politique « ComboBox » essaie
+  // dessous, puis au-dessus, en gardant un bord commun avec le champ.
+  // La popup n'a pas encore de fenêtre à sa toute première ouverture : on garde
+  // alors le placement sous le champ, invisible de toute façon (ImGui saute le
+  // rendu de la frame où il mesure).
+  const ImRect combo_bb(p0, p1);
+  char popup_name[24];
+  ImFormatString(popup_name, IM_COUNTOF(popup_name), "##Popup_%08x",
+                 ImGui::GetCurrentWindow()->GetID("##rcb_pop"));
+  ImGuiWindow* popup_win = ImGui::FindWindowByName(popup_name);
+  if (popup_win != nullptr && popup_win->WasActive) {
+    const ImVec2 size_expected = ImGui::CalcWindowNextAutoFitSize(popup_win);
+    // Réinitialisé à chaque frame, comme ImGui : sans ça le côté retenu la fois
+    // précédente est re-tenté en premier et la liste reste collée en bas.
+    popup_win->AutoPosLastDirection = ImGuiDir_Down;
+    const ImRect r_outer = ImGui::GetPopupAllowedExtentRect(popup_win);
+    ImGui::SetNextWindowPos(ImGui::FindBestWindowPosForPopupEx(
+        combo_bb.GetBL(), size_expected, &popup_win->AutoPosLastDirection, r_outer,
+        combo_bb, ImGuiPopupPositionPolicy_ComboBox));
+  } else {
+    ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + 1.0f));
+  }
   ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(c.body_col[0], c.body_col[1],
                                                  c.body_col[2], c.body_col[3]));
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(c.border_col[0], c.border_col[1],

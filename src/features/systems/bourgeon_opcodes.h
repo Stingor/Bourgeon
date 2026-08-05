@@ -61,13 +61,14 @@ constexpr uint16_t kJumpNotify     = 0x0F1B;  // ZC_BOURGEON_JUMP (AREA sans sel
 constexpr uint16_t kCookMastery    = 0x0F1C;  // ZC_BOURGEON_COOK_MASTERY (char reg COOK_MASTERY, [0,1999])
 constexpr uint16_t kStorageList    = 0x0F1E;  // ZC_BOURGEON_STORAGE_LIST (storages accessibles + ouvert)
 constexpr uint16_t kMobInfo        = 0x0F20;  // ZC_BOURGEON_MOBINFO (fiche monstre : stats, drops, spawns, skills)
+constexpr uint16_t kChannelList    = 0x0F21;  // ZC_BOURGEON_CHANNEL_LIST (canaux de chat atteignables)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F21 -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F22 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F21;
+constexpr uint16_t kNextFree    = 0x0F22;
 
 }  // namespace bopcodes

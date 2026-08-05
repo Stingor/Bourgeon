@@ -53,6 +53,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
+#include "features/windows/chat_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
@@ -95,6 +96,7 @@ VendingWindow* Bourgeon::vending_window() { return vending_window_; }
 WeaponRefineWindow* Bourgeon::weapon_refine_window() { return weapon_refine_window_; }
 MakeItemWindow* Bourgeon::make_item_window() { return make_item_window_; }
 TradeWindow* Bourgeon::trade_window() { return trade_window_; }
+ChatWindow* Bourgeon::chat_window() { return chat_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
 NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
 BugReport* Bourgeon::bug_report() { return bug_report_; }
@@ -143,56 +145,15 @@ void PatchSilenceEmotePurchaseMsg() {
   }
 }
 
-// ── Filtre de messages système du chat ──────────────────────────────────────
-// FUN_00a4ad20 (__thiscall this=chatMgr, param_1=case, param_2=texte, ...) ajoute
-// une ligne au chat quand param_1 == 1 ou 0x13. Son switch(param_1) tombe dans un
-// DEFAULT no-op pour toute valeur non gérée. On détourne l'entrée : si le texte
-// matche la blocklist, on réécrit param_1 sur la pile en 0x7fffffff -> la fonction
-// s'exécute mais n'ajoute RIEN (et fait son propre épilogue/RET N -> zéro risque
-// ABI). Réutilisable : ajouter une sous-chaîne à kBlockedMsgs pour masquer un
-// autre message système (match par sous-chaîne, insensible aux codes couleur ^).
-constexpr uintptr_t kChatAddFn = 0x00a4ad20;
-void* g_tramp_chat = nullptr;
-const char* const kBlockedMsgs[] = {
-    "Command List: /h | /help",
-    "error when loading the data account settings",
-    "current shop display function is in",
-};
-int __fastcall ChatShouldBlock(int param_1, const char* text) {
-  if ((param_1 != 1 && param_1 != 0x13) || text == nullptr) return 0;
-  __try {
-    for (const char* pat : kBlockedMsgs)
-      if (std::strstr(text, pat) != nullptr) return 1;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-  return 0;
-}
-// Naked : sauve eax/ecx/edx, teste (param_1, texte) via ChatShouldBlock (__fastcall),
-// et si bloqué neutralise param_1 sur la pile, puis continue dans l'original.
-__declspec(naked) void ChatAddStub() {
-  __asm {
-    push eax
-    push ecx
-    push edx
-    mov  ecx, [esp+0x10]   // param_1  ([esp]=edx,+4=ecx,+8=eax,+0xc=ret,+0x10=p1)
-    mov  edx, [esp+0x14]   // param_2 (texte)
-    call ChatShouldBlock   // __fastcall(ecx=p1, edx=texte) -> eax
-    test eax, eax
-    jz   chat_pass
-    mov  dword ptr [esp+0x10], 0x7fffffff  // -> switch default (aucune ligne)
-  chat_pass:
-    pop  edx
-    pop  ecx
-    pop  eax
-    jmp  [g_tramp_chat]
-  }
-}
-void InstallChatMessageFilter() {
-  g_tramp_chat = hooking::HookManager::Instance().SetHook(
-      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatAddFn),
-      reinterpret_cast<uint8_t*>(&ChatAddStub));
-  // LogInfo("[chat-filter] hook {}", g_tramp_chat != nullptr ? "OK" : "FAIL");
-}
+// ── Filtre de messages système du chat — DÉMÉNAGÉ ───────────────────────────
+// Il vivait ici : un détour de `UIWindowMgr_ChatAction` (0x00a4ad20) qui masquait
+// trois messages système en neutralisant l'argument `action` sur la pile. Cette
+// fonction est aussi LE chokepoint par lequel passe toute ligne de chat, et le
+// remplacement ImGui de la chatbox doit l'intercepter (features/windows/
+// chat_window.cc). Or il n'y a qu'un seul jeu d'octets à détourner à cette
+// adresse : deux détours concurrents, c'est le second posé qui gagne, et le
+// premier redevient silencieusement inopérant. Les deux besoins vivent donc dans
+// le MÊME stub, chez ChatWindow, avec la liste `kBlockedMsgs`.
 }  // namespace
 
 bool Bourgeon::Initialize() {
@@ -204,7 +165,7 @@ bool Bourgeon::Initialize() {
   }
 
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
-  InstallChatMessageFilter();      // masque quelques messages systeme au login
+  // (le filtre de messages système du chat est posé par ChatWindow — cf. ci-dessus)
 
   // LogInfo("Bourgeon initialized successfully!");
   LoadPlugins();
@@ -273,6 +234,10 @@ void Bourgeon::OnProcessInput() {
   DrainNetInboxes();
 
   if (auto* mi = menu_icons()) mi->FlushPending();
+  // Chatbox ImGui : MÊME raison. Envoyer un message rejoue le pipeline natif
+  // complet (table de commandes, CMode::SendMsg), qui peut ouvrir une modale
+  // BLOQUANTE — à ne jamais déclencher entre NewFrame() et Render().
+  if (auto* cw = chat_window()) cw->FlushPending();
   // ⚠ Échoppe joueur : MÊME raison, mais pour un danger plus sévère que du
   // flicker. Ses boutons pilotent des commandes natives dont certaines ouvrent
   // une modale BLOQUANTE (UIWndMgr_ShowMessageBoxModal 0x00A31A30), qui ne rend
@@ -611,6 +576,14 @@ void Bourgeon::LoadPlugins() {
     auto chat_tweaks = std::make_unique<ChatTweaks>();
     chat_tweaks_ = chat_tweaks.get();
     plugins_.emplace_back(std::move(chat_tweaks));
+
+    // La chatbox ImGui. Son constructeur pose LE détour de ChatAction, qui porte
+    // aussi le filtre de messages système autrefois installé par Initialize() :
+    // il doit donc exister avant le premier message du login (LoadPlugins tourne
+    // au chargement de la DLL, bien avant l'entrée en jeu).
+    auto chat_window = std::make_unique<ChatWindow>();
+    chat_window_ = chat_window.get();
+    plugins_.emplace_back(std::move(chat_window));
   }
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());

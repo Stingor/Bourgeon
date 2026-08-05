@@ -28,6 +28,22 @@ std::string LastCharsPath()      { return GameDir() + "bourgeon_last_chars.txt";
 std::string CharSelectLayoutPath() {
   return GameDir() + "bourgeon_charselect_layout.yaml";
 }
+std::string ChatLayoutPath() {
+  // Dans SaveData\, auprès du ChatWndInfo_U.lua du client : c'est la même nature
+  // de donnée — la disposition du chat de CE joueur. Le dossier est créé s'il
+  // manque ; `_mkdir` n'étant pas récursif côté client, c'est exactement ce qui
+  // rend son /savechat muet quand SaveData\ n'existe pas encore.
+  const std::string dir = GameDir() + "SaveData";
+  CreateDirectoryA(dir.c_str(), nullptr);  // ERROR_ALREADY_EXISTS : sans importance
+  return dir + "\\bourgeon_chat.yaml";
+}
+
+std::string ChatHistoryPath() {
+  const std::string dir = GameDir() + "SaveData";
+  CreateDirectoryA(dir.c_str(), nullptr);
+  return dir + "\\bourgeon_chat_history.yaml";
+}
+
 std::string RecipesPath() {
   // Le premier chemin QUI EXISTE, sinon SystemEN\ par défaut — ainsi le message
   // d'erreur du chargeur nomme l'emplacement attendu plutôt qu'un chemin au

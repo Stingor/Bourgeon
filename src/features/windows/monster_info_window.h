@@ -58,6 +58,16 @@ class MonsterInfoWindow : public Plugin {
 
   bool IsOpen() const { return open_; }
 
+  // Aperçu AU SURVOL d'un lien de monstre : une infobulle compacte — sprite,
+  // niveau, race, élément, taille, PV/SP, vitesse. Le pendant de la description
+  // simple d'un objet, et le même rôle : décider si l'on ouvre la fiche.
+  //
+  // La demande au serveur part d'ici si la fiche n'est pas connue (une seule
+  // fois par monstre, `RequestInfo` porte sa propre garde) ; en attendant,
+  // l'infobulle le dit. N'ouvre NI ne change la fiche affichée — survoler n'est
+  // pas cliquer.
+  void DrawHoverPreview(uint32_t mob_id);
+
   // Rejoue HORS frame ImGui l'ouverture de la description d'une compétence
   // (chemin natif MakeWindow + OnMsg). Appelée par Bourgeon::OnProcessInput,
   // comme WeaponRefineWindow::FlushPending — cf.

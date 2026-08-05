@@ -24,6 +24,11 @@ set(BOURGEON_FILES
 	"features/staff_gate.h"
 	"features/item_cell.cc"
 	"features/item_cell.h"
+	# Gestes d'un LIEN (objet, monstre, adresse) : clic gauche = description,
+	# clic droit = menu, Maj+clic = lien dans le chat. Partagé par le chat, les
+	# tables de drops et toute surface qui affiche une référence.
+	"features/link_gesture.cc"
+	"features/link_gesture.h"
 	# Données serveur embarquées (SystemEN\bourgeon_recipes.yaml) : niveaux d'arme,
 	# taux de refine, recettes étendues. Partagé — le refine et la fabrication en
 	# dépendent, l'Atlas suivra.
@@ -58,6 +63,8 @@ set(BOURGEON_FILES
 	"features/windows/char_select.h"
 	"features/windows/char_select_layout.cc"
 	"features/windows/char_select_layout.h"
+	"features/windows/chat_window.cc"
+	"features/windows/chat_window.h"
 	"features/windows/character_sheet.cc"
 	"features/windows/character_sheet.h"
 	"features/windows/inventory_viewer.cc"

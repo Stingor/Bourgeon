@@ -36,6 +36,18 @@ std::string LastCharsPath();      // CID des derniers persos joués (récence)
 // le tenir à l'écart du yaml partagé évite d'exposer les réglages des autres
 // modules à ces réécritures fréquentes.
 std::string CharSelectLayoutPath();
+// Disposition de la chatbox ImGui : liste des canaux (identifiant stable, nom,
+// ordre, détaché ou non) et leurs 25 octets de filtre. Fichier DÉDIÉ, dans
+// `SaveData\` auprès du `ChatWndInfo_U.lua` du client — même nature de donnée,
+// même dossier — et surtout PAS une section de bourgeon_settings.yaml : il est
+// réécrit à chaque changement de carte, et rien d'autre ne le lit. Le dossier est
+// créé au besoin.
+std::string ChatLayoutPath();
+// Historique du chat conservé d'une session à l'autre (option). Fichier ENCORE
+// distinct de la disposition : il est volumineux et réécrit à chaque déconnexion,
+// alors que la disposition ne bouge presque jamais.
+// ⚠ Il contient les CHUCHOTEMENTS EN CLAIR. L'option est désactivée par défaut.
+std::string ChatHistoryPath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

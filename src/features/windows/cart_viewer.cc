@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "bourgeon.h"                  // Bourgeon::Instance()
+#include "features/windows/chat_window.h"       // AppendItemLink (Maj+clic = lien d'objet)
 #include "features/windows/inventory_viewer.h"  // PointOverViewer (dépôt vers le viewer inventaire)
 #include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "features/moonlight_ui/moonlight_ui.h"      // OpenInterfaceSection + HelpMarker
@@ -194,6 +195,16 @@ void CloseCart() {
 // le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
   itemcell::DeferDescFromIndex(kCartListHead, index, mx, my);
+}
+
+// Maj + clic gauche : le lien de l'objet dans la barre de saisie du chat. Le
+// natif le fait DEPUIS LE CHARIOT AUSSI (`UICartWnd_OnLButtonDown 0x0094b460`,
+// même branche `GetAsyncKeyState(VK_SHIFT)` que l'inventaire) ; le viewer ImGui
+// n'avait jamais repris ce geste.
+void PostItemLinkToChat(int index) {
+  void* info = itemcell::FindInfoByIndex(kCartListHead, index);
+  if (!info) return;
+  if (auto* chat = Bourgeon::Instance().chat_window()) chat->AppendItemLink(info);
 }
 
 // Lecture SEH (POD only) des compteurs du footer -> hors OnRenderUI, qui contient
@@ -773,10 +784,13 @@ void CartViewer::OnRenderUI() {
       }
 
       // Raccourcis (miroir de UICartWnd_OnRButtonDown) :
+      //   Maj  + clic GAUCHE = lien de l'objet dans la saisie du chat ;
       //   Ctrl + clic DROIT = description directe ;
       //   Alt  + clic DROIT = transfert rapide (storage ouvert -> 0x4f, sinon 0x4d) ;
       //   clic DROIT seul   = menu contextuel.
       const ImGuiIO& mods = ImGui::GetIO();
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && mods.KeyShift)
+        PostItemLinkToChat(it.index);
       if (IsLastItemRightClicked()) {
         if (mods.KeyCtrl) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);

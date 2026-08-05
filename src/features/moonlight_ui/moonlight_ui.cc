@@ -41,6 +41,7 @@
 #include "features/windows/monster_info_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
+#include "features/windows/chat_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
@@ -439,6 +440,45 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
+    // Chatbox ImGui (phase 1 : écoute, la native reste). Clés préfixées
+    // « chatwnd_ » : « chat_* » appartient déjà à ChatTweaks, qui règle le chat
+    // NATIF — les deux jeux d'options coexistent tant que les deux chats existent.
+    {"chatwnd_imgui", SType::kBool, MLUI_FIELD(chat_window, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"chatwnd_timestamps", SType::kBool, MLUI_FIELD(chat_window, timestamps()),
+     MLUI_LITERAL(bool, false)},
+    {"chatwnd_item_icons", SType::kBool, MLUI_FIELD(chat_window, item_icons()),
+     MLUI_LITERAL(bool, true)},
+    {"chatwnd_input_bar", SType::kBool, MLUI_FIELD(chat_window, input_bar()),
+     MLUI_LITERAL(bool, true)},
+    {"chatwnd_locked", SType::kBool, MLUI_FIELD(chat_window, locked()),
+     MLUI_LITERAL(bool, false)},
+    // ⚠ Défaut FAUX, et ce n'est pas de la timidité : le fichier écrit contient
+    // les chuchotements en clair, à côté du jeu.
+    {"chatwnd_keep_history", SType::kBool, MLUI_FIELD(chat_window, keep_history()),
+     MLUI_LITERAL(bool, false)},
+    {"chatwnd_keep_lines", SType::kInt, MLUI_FIELD(chat_window, keep_lines()),
+     MLUI_LITERAL(int, 100)},
+    // Skin de la chatbox : couleurs au format picker (persistées « AARRGGBB »),
+    // puis les trois leviers de mise en page demandés côté joueur.
+    {"chatwnd_body",   SType::kColorHex, MLUI_FIELD(chat_window, body_rgba_),
+     MLUI_LITERAL_ARGB(0x96000000)},
+    {"chatwnd_border", SType::kColorHex, MLUI_FIELD(chat_window, border_rgba_),
+     MLUI_LITERAL_ARGB(0xFFC5C5C5)},
+    {"chatwnd_tab",    SType::kColorHex, MLUI_FIELD(chat_window, tab_rgba_),
+     MLUI_LITERAL_ARGB(0xFF8E938E)},
+    // « font » = le texte du LOG, « uifont » = l'habillage. La clé historique garde
+    // son nom : la renommer invaliderait les fichiers déjà chez les joueurs.
+    {"chatwnd_font",    SType::kInt, MLUI_FIELD(chat_window, font_scale_pct()),
+     MLUI_LITERAL(int, 100)},
+    {"chatwnd_uifont",  SType::kInt, MLUI_FIELD(chat_window, ui_scale_pct()),
+     MLUI_LITERAL(int, 100)},
+    {"chatwnd_padding", SType::kInt, MLUI_FIELD(chat_window, padding_px()),
+     MLUI_LITERAL(int, 3)},
+    {"chatwnd_linegap", SType::kInt, MLUI_FIELD(chat_window, line_gap_px()),
+     MLUI_LITERAL(int, 2)},
+    {"chatwnd_history", SType::kInt, MLUI_FIELD(chat_window, history_cap()),
+     MLUI_LITERAL(int, 500)},
     {"npc_dialog_imgui", SType::kBool, MLUI_FIELD(npc_dialog_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"npc_menu_search",  SType::kBool, MLUI_FIELD(npc_dialog_window, menu_search_),
@@ -1294,7 +1334,7 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
   net_inbox_.Push(opcode, data, len);
 }
 
-// Fil PRINCIPAL : le décodage, rejoué en phase d'entrée, dans l'ordre d'arrivée.
+// Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   if (opcode == kOpcodeMapMove) {
     // 0x0091 ZC_NPCACK_MAPMOVE : `data` pointe sur mapname[16] (ex. « gonryun.gat »).

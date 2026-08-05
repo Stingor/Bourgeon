@@ -12,6 +12,8 @@
 #include "bourgeon.h"
 #include "features/item_cell.h"
 #include "features/systems/bourgeon_opcodes.h"
+#include "features/link_gesture.h"  // gestes communs des liens (item/monstre)
+#include "features/windows/chat_window.h"  // poser un lien de monstre dans la saisie
 #include "imgui.h"
 #include "ragnarok/item_db.h"   // itemdb::kSkillDesc* (fenêtre native 0x2E)
 #include "ragnarok/lua.h"       // lua::State / GetField / PCall (GetSkillDescript)
@@ -891,6 +893,28 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
       ImGui::SameLine();
       ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
     }
+    // ── Poser le monstre dans la barre de chat ────────────────────────────────
+    // 🔴 C'est ICI, et pas dans la chatbox, que le nom du monstre existe : le
+    // client ne sait pas nommer un monstre (ni mob_db, ni le paquet de la fiche
+    // ne le lui donnent — c'est le serveur qui l'a écrit dans ZC 0x0F20). Le
+    // lien emporte donc le nom que cette fiche affiche.
+    if (ChatWindow* chat = Bourgeon::Instance().chat_window()) {
+      if (chat->imgui_enabled_ && !mob.name.empty()) {
+        ImGui::SameLine();
+        // Bouton habillé aux pièces `btn_*` du client (3-slice), comme partout
+        // ailleurs : un SmallButton ImGui nu au milieu d'une fiche RO se voit
+        // immédiatement — ce n'est pas le même jeu.
+        if (ro::RoSmallButton("Lien##mi_chatlink")) {
+          // ⚠ `mob.name` est recopié BRUT du paquet, donc dans la code-page du
+          // client ; la barre de saisie est en UTF-8. Sans effet sur un nom
+          // purement ASCII, indispensable dès qu'il ne l'est pas.
+          chat->AppendMobLink(current_id_, mob.boss,
+                              ro::LocalToUtf8(mob.name.c_str()));
+        }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Poser ce monstre dans la barre de chat.");
+      }
+    }
 
     ImGui::Text("%s : %u", msgstr::Utf8(kMsiLevel), mob.level);
     ImGui::Text("%s : %s", msgstr::Utf8(kMsiRaceType), RaceName(mob.race));
@@ -1203,6 +1227,76 @@ void MonsterInfoWindow::DrawResistTab(MobInfo& mob) {
   }
 }
 
+// L'objet visé par le menu contextuel de la table des drops : mis de côté au clic
+// droit, relu à la frame SUIVANTE — c'est là que le popup s'ouvre vraiment. Une
+// variable de fichier plutôt qu'un membre : il n'y a qu'un popup ouvert à la fois,
+// et l'en-tête n'a pas à connaître `links::`.
+// 🔴 L'ouverture est DIFFÉRÉE hors de la table : une cellule modifie la pile
+// d'ids d'ImGui (TableBeginCell la remplace, TableEndCell la restaure), donc
+// l'identifiant écrit par `OpenPopup` depuis une cellule n'est pas celui que
+// `BeginPopup` cherchera ensuite — le menu ne s'ouvrirait jamais, en silence.
+static links::Target g_link_menu;
+static bool          g_link_menu_open = false;
+
+// Aperçu au survol d'un lien de monstre. Volontairement COURT : il répond à
+// « est-ce que je veux ouvrir la fiche ? », pas à « comment je le tue ? ».
+//
+// ⚠ Sa propre ressource de sprite, jamais celle de la fenêtre : survoler un lien
+// pendant qu'une autre fiche est ouverte ne doit pas lui arracher son sprite.
+static ro::MobSpriteRes g_preview_sprite;
+
+void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
+  if (mob_id == 0) return;
+  RequestInfo(mob_id, /*by_view=*/false);  // garde interne : une seule demande
+  const MobInfo& mob = cache_[mob_id];
+
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));  // fond clair
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
+  ImGui::BeginTooltip();
+  if (mob.state == Fetch::kUnknown) {
+    ImGui::TextDisabled("Monstre inconnu du serveur (#%u).", mob_id);
+  } else if (mob.state != Fetch::kReady) {
+    ImGui::TextDisabled("Chargement de la fiche…");
+  } else {
+    // Le sprite, VIVANT : son animation d'attente, comme dans la fiche. Elle
+    // suit le même réglage (« monsterinfo_animate ») — un joueur qui a coupé
+    // l'animation de la fiche ne s'attend pas à la voir revenir ici.
+    // Classe de VUE quand elle diffère de l'id : un monstre déguisé porte le
+    // sprite d'un autre.
+    const uint32_t cls = (mob.sprite_class != 0) ? mob.sprite_class : mob_id;
+    if (ro::LoadMobSprite(static_cast<int>(cls), &g_preview_sprite)) {
+      const ImVec2 box(72.0f, 78.0f);
+      const ImVec2 p0 = ImGui::GetCursorScreenPos();
+      // Pose orientée SUD, avec le repli de `MobAction` : tous les .act n'ont
+      // pas les huit directions, et demander une action absente ne dessine rien.
+      const unsigned action = MobAction(g_preview_sprite, /*motion=*/0u, /*dir=*/0);
+      ro::DrawMobSprite(ImGui::GetWindowDrawList(), g_preview_sprite, p0,
+                        ImVec2(p0.x + box.x, p0.y + box.y),
+                        animate_ ? static_cast<float>(ImGui::GetTime()) : 0.0f,
+                        action, animate_ ? 130.0f : 0.0f);
+      ImGui::Dummy(box);
+      ImGui::SameLine();
+    }
+    ImGui::BeginGroup();
+    ImGui::TextColored(kTitle, "%s",
+                       mob.name.empty() ? "(sans nom)" : mob.name.c_str());
+    if (const char* badge = BossLabel(mob.boss)) {
+      ImGui::SameLine();
+      ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
+    }
+    ImGui::Text("Niv. %u   %s   %s niv. %u", mob.level, SizeName(mob.size),
+                ElementName(mob.element), mob.element_lv);
+    ImGui::Text("%s", RaceName(mob.race));
+    // Les PV décident de tout ; le SP ne se lit que sur les monstres qui lancent
+    // quelque chose, d'où la ligne conditionnelle plutôt qu'un « SP : 0 ».
+    if (mob.sp > 0) ImGui::Text("PV %u   SP %u", mob.hp, mob.sp);
+    else            ImGui::Text("PV %u", mob.hp);
+    ImGui::EndGroup();
+  }
+  ImGui::EndTooltip();
+  ImGui::PopStyleColor(2);
+}
+
 void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
   if (mob.drops.empty()) {
     Label("Ce monstre ne laisse rien tomber.");
@@ -1267,7 +1361,8 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
       const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
       ImGui::TextColored(kLink, "%s",
                          d.name.empty() ? "(objet inconnu)" : d.name.c_str());
-      if (ImGui::IsItemHovered()) {
+      const bool item_hovered = ImGui::IsItemHovered();
+      if (item_hovered) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         const ImVec2 mn = ImGui::GetItemRectMin();
         const ImVec2 mx = ImGui::GetItemRectMax();
@@ -1275,12 +1370,16 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
                                             ImVec2(mx.x, mx.y),
                                             ImGui::GetColorU32(kLink));
       }
-      // Clic droit = description, comme partout ailleurs dans le projet.
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right) ||
-          ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-        const ImVec2 m = ImGui::GetIO().MousePos;
-        itemcell::DeferDescById(d.nameid, /*view=*/0, /*location=*/0,
-                                static_cast<int>(m.x), static_cast<int>(m.y));
+      // Les gestes communs des LIENS (features/link_gesture.h) : gauche = la
+      // description, droite = le menu (site, alootid, @iteminfo, @whodrops),
+      // Maj+clic = le lien dans la barre de chat.
+      const links::Target drop_target =
+          links::FromItemId(d.nameid, ro::LocalToUtf8(d.name.c_str()));
+      // La description simple sous la souris, comme sur une cellule d'objet.
+      if (item_hovered) links::HoverPreview(drop_target);
+      if (links::Gestures(drop_target, item_hovered)) {
+        g_link_menu = drop_target;
+        g_link_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
       }
 
       ImGui::TableNextColumn();
@@ -1296,6 +1395,11 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
     }
     ImGui::EndTable();
   }
+  if (g_link_menu_open) {
+    g_link_menu_open = false;
+    ImGui::OpenPopup("##mi_link_menu");
+  }
+  links::DrawMenu("##mi_link_menu", g_link_menu);
 }
 
 void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {

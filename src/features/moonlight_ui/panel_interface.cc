@@ -23,6 +23,7 @@
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
+#include "features/windows/chat_window.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/item_desc_window.h"
@@ -269,18 +270,40 @@ void MoonlightUi::DrawInterfacePanel() {
           }
           SameLine(); HelpMarker(kDiscordAvatarUrl);
 
-          if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
-            changed |= chat_tweaks->DrawSettings();
+          // 🔴 Les réglages du chat NATIF ne s'affichent que tant que ce chat
+          // EXISTE. La chatbox ImGui le détruit : largeur, horodatage, icônes et
+          // couleurs de fond n'agiraient alors plus sur rien. Laisser des réglages
+          // inertes est le pire des retours — le joueur tourne une valeur, rien ne
+          // bouge, et rien ne le lui dit.
+          const bool native_chat_replaced =
+              Bourgeon::Instance().chat_window() != nullptr &&
+              Bourgeon::Instance().chat_window()->imgui_enabled_;
+
+          if (!native_chat_replaced) {
+            if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
+              changed |= chat_tweaks->DrawSettings();
+            } else {
+              ImGui::TextDisabled(kPluginUnavailable);
+            }
+          }
+
+          // Chatbox ImGui — son remplacement. Les réglages du natif ci-dessus ne
+          // s'affichent que si elle est ÉTEINTE : allumée, elle détruit la fenêtre
+          // qu'ils habillent (cf. features/windows/chat_window.h).
+          SeparatorText("Chatbox ImGui");
+          if (auto* chat_window = Bourgeon::Instance().chat_window()) {
+            changed |= chat_window->DrawSettings();
           } else {
             ImGui::TextDisabled(kPluginUnavailable);
           }
 
-          SeparatorText("Couleurs du chat");
+          if (!native_chat_replaced) SeparatorText("Couleurs du chat");
           // Les trois fonds appartiennent à ChatTweaks (patch .text + parcours du
           // tas). Ils sont dessinés un par un et non en bloc pour une seule
           // raison : la case « Barre de préréglages » ci-dessous est un réglage de
           // MoonlightUi, et elle se pose à DROITE du premier sélecteur.
-          if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
+          if (auto* chat_tweaks =
+                  native_chat_replaced ? nullptr : Bourgeon::Instance().chat_tweaks()) {
             if (chat_tweaks->bg_available()) {
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgMain);
               SameLine();

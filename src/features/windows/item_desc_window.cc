@@ -20,7 +20,7 @@
 #pragma comment(lib, "shell32.lib")
 
 #include "bourgeon.h"
-#include "features/windows/monster_info_window.h"  // lien « nom de monstre » -> fiche
+#include "features/link_gesture.h"        // gestes communs d'un lien (monstre)
 #include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
@@ -1393,9 +1393,11 @@ void RenderCardTooltip(uint32_t id) {
   ImGui::BeginTooltip();
   RenderCardDescBody(id, "##cardtip", 340.0f);
   ImGui::Separator();
+  // ⚠ Les gestes sont ceux de TOUS les liens du client (features/link_gesture.h) :
+  // ce rappel doit suivre la convention, pas décrire ce que faisait cette liste.
   ImGui::TextDisabled(
-      "Clic gauche : base de données   \xc2\xb7   "
-      "Clic droit : ouvrir la description complète");
+      "Clic : la description   \xc2\xb7   Clic droit : le menu   \xc2\xb7   "
+      "Maj + clic : lien dans le chat");
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1446,17 +1448,6 @@ const char* GetOptName(int id, int value) {
     it = g_opt_name_cache.emplace(key, ok ? buf : "").first;
   }
   return it->second.empty() ? nullptr : it->second.c_str();
-}
-
-// Clic GAUCHE sur une carte : ouvre la base de données de l'item (par id). Format
-// confirmé en live : c'est exactement l'URL du lien natif <URL>..<INFO>url</INFO>
-// de la ligne 0 de la desc (page=itemdb&itemid=<id>).
-void OpenCardDbLink(uint32_t cardId) {
-  char url[256];
-  std::snprintf(url, sizeof(url),
-                "https://moonlight-destiny.fr/index.php?page=itemdb&itemid=%u",
-                cardId);
-  ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 // Résout (cache + chargement) l'icône de collection d'un item extrait.
@@ -1891,6 +1882,28 @@ void ItemDescWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   entry.state = FetchState::kReady;
 }
 
+// Le monstre visé par le menu contextuel de la table des drops : mis de côté au
+// clic droit, relu à la frame SUIVANTE — c'est là que le popup s'ouvre vraiment.
+//
+// ⚠ Ici et pas dans la classe : un membre `links::Target` obligerait
+// item_desc_window.h à inclure features/link_gesture.h, et comme item_cell.h nous
+// inclut déjà, le cycle item_cell.h → item_desc_window.h → link_gesture.h →
+// item_cell.h (sauté, en cours de traitement) laisse `itemcell::ChatLink` non
+// déclaré pile là où link_gesture.h s'en sert. Un seul popup à la fois de toute
+// façon : une variable de fichier dit exactement ce qui est vrai.
+// 🔴 L'ouverture est DIFFÉRÉE hors de la table. Une cellule de table modifie la
+// pile d'ids d'ImGui (TableBeginCell la remplace, TableEndCell la restaure) :
+// l'identifiant qu'`OpenPopup` écrirait depuis une cellule n'est pas celui que
+// `BeginPopup` cherche ensuite — le menu ne s'ouvrirait jamais, sans un mot.
+static links::Target g_drop_menu;
+static bool          g_drop_menu_open = false;
+// Idem pour les liens d'OBJET de la fenêtre (membres de combo, cartes serties).
+// `*_open` : le popup est ouvert HORS de la pile d'ids où le clic a eu lieu (les
+// membres de combo vivent sous un PushID par combo), sinon `BeginPopup` cherche
+// un identifiant que `OpenPopup` n'a pas écrit.
+static links::Target g_item_menu;
+static bool          g_item_menu_open = false;
+
 // Rend une table de sources (filtre + tri + liens bestiaire). show_type ajoute
 // une colonne mécanisme (drop normal / MVP reward).
 void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
@@ -1962,12 +1975,7 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
         ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "[Mini]");
         ImGui::SameLine();
       }
-      // Nom cliquable. Clic GAUCHE : le bestiaire du site (base de données),
-      // comme partout ailleurs dans la fenêtre. Clic DROIT : la fiche de
-      // monstre EN JEU (fenêtre MonsterInfoWindow), qui a tout ce que le
-      // bestiaire affichait — stats, élément, race, drops, spawns — sans
-      // quitter le client ; si cette fiche est coupée, le clic droit retombe
-      // sur le site.
+      // Nom cliquable — un LIEN, donc les gestes communs (juste en dessous).
       const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
       ImGui::TextColored(kLink, "%s (%u)", d->name.c_str(), d->mob_id);
       const bool link_hovered = ImGui::IsItemHovered();
@@ -1978,25 +1986,26 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
         ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
                                             ImVec2(mx.x, mx.y),
                                             ImGui::GetColorU32(kLink));
-        ImGui::SetTooltip("Clic : bestiaire du site\nClic droit : fiche du monstre");
       }
-      const bool have_sheet =
-          Bourgeon::Instance().monster_info() != nullptr &&
-          Bourgeon::Instance().monster_info()->imgui_enabled_;
-      const bool open_site =
-          ImGui::IsItemClicked(ImGuiMouseButton_Left) ||
-          // Repli : sans fiche en jeu, le clic droit ouvre le site lui aussi.
-          (IsLastItemRightClicked() && !have_sheet);
-      if (open_site) {
-        char url[192];
-        _snprintf_s(url, sizeof(url), _TRUNCATE,
-                    "https://moonlight-destiny.fr/index.php?page=bestiary&mobid=%u",
-                    d->mob_id);
-        ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
-      } else if (IsLastItemRightClicked() && have_sheet) {
-        // `d->mob_id` vient de mob_db (le serveur l'a pris dans son scan) : c'est
-        // bien un id de BASE, pas une classe de sprite -> by_view = false.
-        Bourgeon::Instance().monster_info()->Open(d->mob_id, /*by_view=*/false);
+      // 🔴 La convention des LIENS, la même dans tout le client
+      // (features/link_gesture.h) : gauche = la fiche, droite = le menu (site,
+      // @mobinfo, @whereis), Maj+clic = le lien dans la barre de chat. Ces trois
+      // gestes vivaient ici en version locale — et déjà divergente : le clic
+      // simple ouvrait le SITE là où un lien de chat ouvrait la fiche.
+      //
+      // ⚠ Le nom arrive du paquet dans la code-page du CLIENT (recopié brut, cf.
+      // le décodage plus haut) alors que la barre de saisie est en UTF-8 :
+      // convertir ici. Sans effet sur un nom ASCII, ce qu'ils sont presque tous.
+      // `d->boss` porte déjà la convention de rang (2 = MVP, 1 = boss).
+      const links::Target mob_target =
+          links::FromMob(d->mob_id, d->boss, ro::LocalToUtf8(d->name.c_str()));
+      // Aperçu SOUS LA SOURIS — sprite, niveau, race, élément, PV : de quoi
+      // décider si l'on ouvre la fiche. Il crée son propre popup, et remplace
+      // donc l'ancienne infobulle d'aide (une seule infobulle à la fois).
+      if (link_hovered) links::HoverPreview(mob_target);
+      if (links::Gestures(mob_target, link_hovered)) {
+        g_drop_menu = mob_target;
+        g_drop_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
       }
       ImGui::TableNextColumn();
       ImGui::Text("%.2f%%", d->rate / 100.0f);  // rate en 0.01% (10000 = 100%)
@@ -2011,6 +2020,11 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
     ImGui::EndTable();
   }
   ImGui::PopStyleColor();  // TableHeaderBg
+  if (g_drop_menu_open) {
+    g_drop_menu_open = false;
+    ImGui::OpenPopup("##drop_mob_menu");
+  }
+  links::DrawMenu("##drop_mob_menu", g_drop_menu);
   if (td.treasure_excluded > 0)
     ImGui::TextDisabled("%u coffre(s) au trésor exclu(s).", td.treasure_excluded);
   if (td.truncated)
@@ -2247,6 +2261,17 @@ void DrawScriptCode(const char* box_id, const std::string& raw) {
 // desc vient de la DB native via GetCardDesc/LoadCardDesc, qui vaut pour N'IMPORTE
 // quel id d'item, pas seulement les cartes.
 namespace itemdesc {
+
+// Page « base de données » du site. Format confirmé en live : c'est exactement
+// l'URL du lien natif `<URL>..<INFO>url</INFO>` de la ligne 0 de la description.
+void OpenItemDbPage(uint32_t item_id) {
+  if (item_id == 0) return;
+  char url[256];
+  std::snprintf(url, sizeof(url),
+                "https://moonlight-destiny.fr/index.php?page=itemdb&itemid=%u",
+                item_id);
+  ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
+}
 
 // Hauteur max de l'illustration dans l'aperçu. Les cardBmp font ~300x460 : à leur
 // taille native (ce que fait la fenêtre complète) elles écrasent le texte et
@@ -2613,7 +2638,8 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::PushStyleColor(ImGuiCol_Text, col);
           ImGui::TextUnformatted(lbl);
           ImGui::PopStyleColor();
-          if (ImGui::IsItemHovered()) {
+          const bool mem_hovered = ImGui::IsItemHovered();
+          if (mem_hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             const ImVec2 mn = ImGui::GetItemRectMin();
             const ImVec2 mx = ImGui::GetItemRectMax();
@@ -2621,10 +2647,21 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
                                                 ImVec2(mx.x, mx.y), col);
             RenderCardTooltip(mem.first);   // aperçu RO partagé (nom + desc + illust)
           }
-          if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-            OpenCardDbLink(mem.first);      // base de données du site (page itemdb)
-          if (IsLastItemRightClicked())
-            pending_card_open_ = mem.first; // desc complète au prochain OnTick
+          // Gestes communs des LIENS, mais description MAISON : ici elle REMPLACE
+          // l'objet affiché (comme un lien de carte natif) au lieu d'ouvrir une
+          // seconde fenêtre, et l'appel natif est différé au prochain OnTick. La
+          // convention porte sur le GESTE, pas sur la façon de l'honorer — d'où
+          // `Hit` plutôt que `Gestures`. Le site, lui, est passé dans le menu.
+          const links::Target t = links::FromItemId(mem.first, lbl);
+          switch (links::Hit(t, mem_hovered)) {
+            case links::Gesture::kDescription: pending_card_open_ = mem.first; break;
+            case links::Gesture::kChatLink:    links::PostToChat(t); break;
+            case links::Gesture::kMenu:
+              g_item_menu = t;
+              g_item_menu_open = true;  // ouvert plus bas, hors de la pile d'ids
+              break;
+            default: break;
+          }
         };
         for (size_t i = 0; i < sd->combos.size(); ++i) {
           const ComboInfo& c = sd->combos[i];
@@ -2662,6 +2699,16 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           if (i + 1 < sd->combos.size()) ImGui::Separator();
           ImGui::PopID();
         }
+        // 🔴 L'OUVERTURE se fait ICI, pas au clic. L'identifiant d'un popup se
+        // hache avec la pile d'ids courante : appeler `OpenPopup` depuis un
+        // membre — donc sous le `PushID(i)` de son combo — donnerait un id que le
+        // `BeginPopup` d'ici, hors de cette pile, ne retrouverait jamais. Le clic
+        // se contente donc de LEVER LE DRAPEAU.
+        if (g_item_menu_open) {
+          g_item_menu_open = false;
+          ImGui::OpenPopup("##desc_item_menu");
+        }
+        links::DrawMenu("##desc_item_menu", g_item_menu);
       }
     }
     ImGui::EndTabItem();
@@ -3021,19 +3068,34 @@ void ItemDescWindow::RenderItemWindow() {
           ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
           ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
           ImGui::PopStyleColor();
-          if (ImGui::IsItemHovered()) {
+          const bool card_hovered = ImGui::IsItemHovered();
+          if (card_hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             RenderCardTooltip(e.cards[i]);
           }
-          if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-            OpenCardDbLink(e.cards[i]);
-          // Clic droit -> ouvre la description COMPLÈTE de la carte/enchant dans la
-          // fenêtre desc (remplace l'item courant, comme un lien de carte natif). On
-          // diffère l'appel natif au prochain OnTick (hors rendu ImGui).
-          if (IsLastItemRightClicked())
-            pending_card_open_ = e.cards[i];
+          // Mêmes gestes que partout, description MAISON : elle REMPLACE l'item
+          // affiché (comme un lien de carte natif), et l'appel natif est différé
+          // au prochain OnTick. Le site est passé dans le menu.
+          const links::Target t = links::FromItemId(e.cards[i], clbl);
+          switch (links::Hit(t, card_hovered)) {
+            case links::Gesture::kDescription: pending_card_open_ = e.cards[i]; break;
+            case links::Gesture::kChatLink:    links::PostToChat(t); break;
+            case links::Gesture::kMenu:
+              g_item_menu = t;
+              g_item_menu_open = true;  // ouvert plus bas, hors de la pile d'ids
+              break;
+            default: break;
+          }
         }
         ImGui::PopStyleVar(1);
+        // Même raison que pour les membres de combo : l'ouverture se fait ICI,
+        // depuis une pile d'ids stable — le clic, lui, s'est produit dans une
+        // cellule de la liste.
+        if (g_item_menu_open) {
+          g_item_menu_open = false;
+          ImGui::OpenPopup("##desc_item_menu");
+        }
+        links::DrawMenu("##desc_item_menu", g_item_menu);
         y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
       }
       end_panel();

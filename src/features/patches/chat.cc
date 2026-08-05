@@ -2,6 +2,10 @@
 #include "ui/game_texture.h"
 #include "features/patches/chat.h"
 
+// La chatbox ImGui se branche sur le hook du WndProc posé ici (case 0x25) :
+// c'est le seul point qui garantisse la parité avec ce que le natif affiche.
+#include "features/windows/chat_window.h"
+
 #include <Windows.h>
 #include <intrin.h>  // _ReturnAddress
 #include <cstdint>
@@ -692,6 +696,14 @@ static void ReassertTabWidthsSEH(void* wnd) {
 uint32_t __fastcall ChatWndProcHook(void* ecx, void* edx, void* arg0, int msg,
                                     int mode, int new_w, int new_h, int p5) {
   g_chat_wnd = ecx;  // the WndProc 'this' is always the main chat window
+  // msg 0x25 = « ajoute une ligne », et pour CE message les quatre paramètres
+  // suivants ne sont plus (mode, largeur, hauteur) mais (texte, couleur, TYPE,
+  // sender). C'est le point où le natif dépose réellement ses lignes : la
+  // chatbox ImGui s'y branche pour afficher exactement ce qu'il affiche.
+  if (msg == 0x25)
+    chatwnd::IngestNativeLine(reinterpret_cast<const char*>(mode),
+                              static_cast<uint32_t>(new_w), new_h,
+                              reinterpret_cast<const char*>(p5));
   // BEFORE the stock handler: re-assert the per-tab wrap width so an incoming new
   // line (msg 0x25 pixel-wraps to tab+0x14 inside this call) uses the custom width.
   if (g_chat_width > 0 && !g_in_apply)

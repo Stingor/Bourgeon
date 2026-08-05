@@ -92,6 +92,11 @@ struct DeferredDesc {
   uint32_t    location;
   const void* src;
   int         mx, my;
+  // Lien de chat : COPIÉ, pas pointé. L'objet n'appartient à personne ici (c'est
+  // celui d'un autre joueur), il n'y a donc rien à garder en vie — et rien qui
+  // puisse mourir entre le clic et le relâchement.
+  ChatLink    link;
+  bool        from_link;
 };
 DeferredDesc g_deferred = {};
 
@@ -130,6 +135,327 @@ int SlotCount(void* info) {
   __try {
     return reinterpret_cast<int(__fastcall*)(void*)>(itemdb::kSlotCountAddr)(info);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// ── Lien d'objet pour le chat (`<ITEML>…</ITEML>`) ───────────────────────────
+// Le client a UN endroit où il forge ce texte : `UIWnd_AppendItemLinkButton
+// 0x00865230`, appelée par `UIChatWnd_InsertItemLink 0x008217f0` (le Maj+clic de
+// l'inventaire, cf. `UIInventoryWnd_OnLButtonDown 0x0094afb0`). On le rejoue
+// champ par champ plutôt que de l'appeler : sa signature réelle est
+// `(UIItemTagOnChat*, info, police)` — elle CRÉE un `UIItemTagButton` de 0x200
+// octets et l'accroche à la fenêtre qui a le focus. Sans chatbox native, il n'y a
+// plus ni accessoire ni fenêtre à qui l'accrocher.
+//
+// La table des séparateurs du client (`"!#$%&'()*+,-/"`, indices 3/4/5/7/9/10/11)
+// et celle de rAthena (`ItemDatabase::create_item_link`, src/map/itemdb.cpp)
+// coïncident exactement, PACKETVER ≥ 20200724 :
+//   %=refine  &=viewID  '=grade  )=carte  +=id d'option  ,=paramètre  -=valeur
+//
+// Deux écarts ASSUMÉS entre le client et le serveur, tranchés en faveur du
+// CLIENT — c'est lui la référence pour ce geste, c'est son texte que reçoivent
+// les autres joueurs :
+//   · le champ `&` (viewID) est écrit MÊME sur un objet non équipable ;
+//   · les cartes sont émises `SlotCount` fois (et non 4 d'office), sauf si l'une
+//     des quatre est non nulle.
+namespace {
+
+constexpr char kB62[] =
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+// base62 du client (`0x00842b30`), poids fort en tête. Sa boucle
+// `do { … } while (v >= 62)` émet toujours un chiffre AVANT le dernier : le
+// résultat ne fait donc JAMAIS moins de deux caractères, ce qui est le
+// `string_left_pad(base62_encode(v), '0', 2)` de rAthena. `min_width` sert au
+// seul champ qui demande plus : l'emplacement d'équipement, cadré sur 5.
+void AppendB62(char* out, size_t cap, size_t* len, uint32_t value, int min_width) {
+  char digits[16];
+  int n = 0;
+  do {
+    digits[n++] = kB62[value % 62u];
+    value /= 62u;
+  } while (value != 0 && n < 12);
+  while (n < min_width && n < 12) digits[n++] = '0';
+  while (n > 0 && *len + 1 < cap) out[(*len)++] = digits[--n];
+}
+
+void AppendChar(char* out, size_t cap, size_t* len, char c) {
+  if (*len + 1 < cap) out[(*len)++] = c;
+}
+
+void AppendStr(char* out, size_t cap, size_t* len, const char* s) {
+  while (*s && *len + 1 < cap) out[(*len)++] = *s++;
+}
+
+// Les types d'objet qu'`ItemTitle_IsDecoratedType 0x006a5d70` déclare équipables
+// (= `itemdb_isequip2` côté rAthena). Lu dans info+0x00.
+bool IsEquipType(int type) {
+  switch (type) {
+    case 4: case 5: case 8: case 9: case 11:
+    case 12: case 13: case 14: case 15: case 21:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
+bool BuildChatLink(void* info, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (!info) return false;
+  // Appel natif SORTI du __try : il porte déjà son propre SEH, et MSVC refuse un
+  // __try dans une portée qui déroulerait des objets.
+  int slots = SlotCount(info);
+
+  size_t len = 0;
+  bool ok = false;
+  __try {
+    const uint8_t* p = static_cast<const uint8_t*>(info);
+    const int      type  = *reinterpret_cast<const int*>(p + 0x00);
+    const uint32_t equip = *reinterpret_cast<const uint32_t*>(p + 0x08);
+    const uint32_t cap   = *reinterpret_cast<const uint32_t*>(p + 0x40);
+    const char*    ids   = (cap > 0xf) ? *reinterpret_cast<const char* const*>(p + 0x2c)
+                                       : reinterpret_cast<const char*>(p + 0x2c);
+    const uint32_t id     = ids ? static_cast<uint32_t>(std::atoi(ids)) : 0u;
+    const uint32_t refine = *reinterpret_cast<const uint32_t*>(p + 0x60);
+    const uint32_t look   = *reinterpret_cast<const uint32_t*>(p + 0x70);
+    const uint32_t grade  =
+        static_cast<uint32_t>(*reinterpret_cast<const int16_t*>(p + 0x88));
+    uint32_t cards[4];
+    for (int i = 0; i < 4; ++i)
+      cards[i] = *reinterpret_cast<const uint32_t*>(p + 0x1c + i * 4);
+    int nopt = *reinterpret_cast<const int*>(p + 0x98);
+    if (nopt < 0) nopt = 0;
+    if (nopt > 5) nopt = 5;
+
+    if (id != 0) {  // sans nameid il n'y a pas de lien à faire
+      AppendStr(out, out_size, &len, "<ITEML>");
+      AppendB62(out, out_size, &len, equip, 5);
+      AppendChar(out, out_size, &len, IsEquipType(type) ? '1' : '0');
+      AppendB62(out, out_size, &len, id, 2);
+      if (refine != 0) {
+        AppendChar(out, out_size, &len, '%');
+        AppendB62(out, out_size, &len, refine, 2);
+      }
+      AppendChar(out, out_size, &len, '&');
+      AppendB62(out, out_size, &len, look, 2);
+      AppendChar(out, out_size, &len, '\'');
+      AppendB62(out, out_size, &len, grade, 2);
+
+      // Bornage des emplacements, à l'identique du natif : 0 emplacement connu
+      // vaut 4, et une carte présente dans N'IMPORTE lequel des quatre mots force
+      // 4 — sinon un item forgé (dont ces mots portent les données du forgeron)
+      // verrait sa charge tronquée.
+      if (slots <= 0) slots = 4;
+      if (cards[0] || cards[1] || cards[2] || cards[3]) slots = 4;
+      if (slots > 4) slots = 4;
+      for (int i = 0; i < slots; ++i) {
+        AppendChar(out, out_size, &len, ')');
+        AppendB62(out, out_size, &len, cards[i], 2);
+      }
+
+      for (int k = 0; k < nopt; ++k) {
+        const uint8_t* e = p + 0x9c + k * 5;
+        const uint32_t opt_id    = static_cast<uint32_t>(*reinterpret_cast<const int16_t*>(e));
+        const uint32_t opt_value = static_cast<uint32_t>(*reinterpret_cast<const int16_t*>(e + 2));
+        const uint32_t opt_param = e[4];
+        if (opt_id == 0) break;  // le client n'affiche rien au-delà d'un id nul
+        AppendChar(out, out_size, &len, '+');
+        AppendB62(out, out_size, &len, opt_id, 2);
+        AppendChar(out, out_size, &len, ',');
+        AppendB62(out, out_size, &len, opt_param, 2);
+        AppendChar(out, out_size, &len, '-');
+        AppendB62(out, out_size, &len, opt_value, 2);
+      }
+      // ── Champ PRIVÉ Moonlight : l'équipement cassé (cf. ChatLink::broken) ──
+      // Le format officiel ne porte pas `+0x5d`. On l'ajoute en DERNIER, avec un
+      // séparateur que le client n'écrit jamais (`!`, rang 0 de sa table) : son
+      // décodeur le range dans une case qu'il ne lit pas, et tout le reste de la
+      // balise est intact pour qui ne connaît pas ce champ.
+      if (*reinterpret_cast<const uint8_t*>(p + 0x5d) != 0) {
+        AppendChar(out, out_size, &len, '!');
+        AppendB62(out, out_size, &len, 1, 2);
+      }
+      AppendStr(out, out_size, &len, "</ITEML>");
+      ok = true;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+
+  out[len < out_size ? len : out_size - 1] = '\0';
+  // Une balise ouvrante sans sa fermante ferait une ligne de chat illisible chez
+  // TOUT LE MONDE : plutôt rien qu'un lien tronqué.
+  if (!ok || std::strstr(out, "</ITEML>") == nullptr) {
+    out[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
+// ── Le lien de chat RELU ─────────────────────────────────────────────────────
+namespace {
+
+// L'inverse de `kB62` : rang du caractère, -1 s'il n'est pas un chiffre base62.
+// C'est aussi le test « fin de champ » du parse, les sept séparateurs du format
+// (`%&')+,-`) étant justement hors alphabet.
+int B62Digit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'z') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'Z') return c - 'A' + 36;
+  return -1;
+}
+
+uint32_t B62Decode(const char* s, size_t len) {
+  uint32_t v = 0;
+  for (size_t i = 0; i < len; ++i) {
+    const int d = B62Digit(s[i]);
+    if (d < 0) break;
+    v = v * 62u + static_cast<uint32_t>(d);
+  }
+  return v;
+}
+
+// L'ItemSkillInfo que le lien décrit, monté sur le tampon de l'appelant.
+// ⚠ À N'APPELER QUE depuis une portée __try : elle exécute du code du jeu.
+void FabricateFromLink(uint8_t* info, const ChatLink& l) {
+  std::memset(info, 0, kInfoSize);
+  reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
+  reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(l.id));
+  // 🔴 LE TYPE @0x00 N'EST PAS DANS LE LIEN — et il faut pourtant l'écrire, sans
+  // quoi le nom sort NU. Le name-builder ne consulte ce champ qu'à travers un
+  // prédicat, `ItemTitle_IsDecoratedType 0x006a5d70`, qui teste l'appartenance à
+  // {4,5,8,9,11,12,13,14,15,21} — et c'est EXACTEMENT ce booléen que le 6e
+  // caractère de la balise transporte (cf. UIWnd_AppendItemLinkButton). Une
+  // valeur dedans (4 = arme) ou dehors (3 = consommable) reproduit donc
+  // fidèlement la décision du client, sans avoir à deviner le vrai type.
+  *reinterpret_cast<int*>(info + 0x00) = l.equipable ? 4 : 3;
+  *reinterpret_cast<uint32_t*>(info + 0x08) = l.equip;
+  for (int i = 0; i < 4; ++i)
+    *reinterpret_cast<uint32_t*>(info + 0x1c + i * 4) = l.cards[i];
+  info[0x5c] = 1;  // identifié : sans ce drapeau le builder rend le nom de base
+  info[0x5d] = l.broken ? 1 : 0;  // cassé (champ privé de la balise)
+  *reinterpret_cast<uint32_t*>(info + 0x60) = l.refine;
+  *reinterpret_cast<uint32_t*>(info + 0x70) = l.view;
+  *reinterpret_cast<int16_t*>(info + 0x88)  = static_cast<int16_t>(l.grade);
+  int nopt = l.opt_count;
+  if (nopt < 0) nopt = 0;
+  if (nopt > 5) nopt = 5;
+  *reinterpret_cast<int*>(info + 0x98) = nopt;
+  for (int k = 0; k < nopt; ++k) {
+    uint8_t* e = info + 0x9c + k * 5;
+    *reinterpret_cast<int16_t*>(e)     = static_cast<int16_t>(l.opt_id[k]);
+    *reinterpret_cast<int16_t*>(e + 2) = static_cast<int16_t>(l.opt_value[k]);
+    e[4] = l.opt_param[k];
+  }
+  // Même coup de pouce que partout ailleurs : la DB de descriptions n'est peuplée
+  // qu'à la demande, et un objet jamais consulté rendrait un nom vide.
+  void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
+  if (cache)
+    reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(
+        cache, static_cast<int>(l.id));
+}
+
+}  // namespace
+
+bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
+                   const char** tag_end) {
+  if (tag_end) *tag_end = end;
+  if (!tag || !end || !out || end - tag < 7) return false;
+  if (std::strncmp(tag, "<ITEML>", 7) != 0) return false;
+  *out = ChatLink{};
+
+  // La fermante est cherchée DANS les bornes : une balise tronquée (ligne coupée
+  // par le serveur) ne doit pas faire lire au-delà du texte.
+  const char* close = nullptr;
+  for (const char* q = tag + 7; q + 8 <= end; ++q)
+    if (std::strncmp(q, "</ITEML>", 8) == 0) { close = q; break; }
+  const char* stop = (close != nullptr) ? close : end;
+  if (tag_end) *tag_end = (close != nullptr) ? close + 8 : end;
+
+  const char* p = tag + 7;
+  if (stop - p < 6) return false;
+  out->equip = B62Decode(p, 5);
+  p += 5;
+  out->equipable = (*p++ == '1');
+
+  size_t n = 0;
+  while (p + n < stop && B62Digit(p[n]) >= 0) ++n;
+  if (n == 0) return false;
+  out->id = B62Decode(p, n);
+  p += n;
+
+  // Champs facultatifs : un séparateur, sa charge en base62. La table est celle
+  // du client ET de rAthena (cf. BuildChatLink) ; un séparateur qu'on ne connaît
+  // pas voit simplement sa charge sautée, plutôt que de désynchroniser le reste.
+  int card = 0;
+  while (p < stop) {
+    const char sep = *p++;
+    size_t k = 0;
+    while (p + k < stop && B62Digit(p[k]) >= 0) ++k;
+    const uint32_t v = (k > 0) ? B62Decode(p, k) : 0;
+    p += k;
+    const int slot = out->opt_count;
+    switch (sep) {
+      case '%':  out->refine = v; break;
+      case '&':  out->view   = v; break;
+      case '\'': out->grade  = v; break;
+      case ')':  if (card < 4) out->cards[card++] = static_cast<uint32_t>(v); break;
+      // Une option arrive en TROIS morceaux (`+id`, `,paramètre`, `-valeur`) et
+      // c'est la valeur qui clôt le triplet : compter là, c'est ne jamais
+      // enregistrer une option à moitié lue.
+      case '+':  if (slot < 5) out->opt_id[slot]    = static_cast<uint16_t>(v); break;
+      case ',':  if (slot < 5) out->opt_param[slot] = static_cast<uint8_t>(v); break;
+      case '-':  if (slot < 5) { out->opt_value[slot] = static_cast<uint16_t>(v);
+                                 ++out->opt_count; } break;
+      case '!':  out->broken = (v != 0); break;  // champ privé Moonlight
+      default: break;
+    }
+  }
+  return out->id != 0;
+}
+
+void BuildChatLinkName(const ChatLink& link, char* out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  out[0] = '\0';
+  if (link.id == 0) return;
+  uint8_t info[kInfoSize];
+  bool built = false;
+  __try {
+    FabricateFromLink(info, link);
+    built = true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { built = false; }
+  if (!built) return;
+  // BuildDisplayName porte son propre SEH et son propre repli sur le nom de base.
+  BuildDisplayName(info, out, out_size);
+  // ⚠ Le suffixe « [N] » n'est PAS composé par le name-builder (il faut lui
+  // passer son dernier argument à 1, ce qu'aucun de nos appels ne fait) : c'est
+  // à l'appelant de l'ajouter, comme partout ailleurs dans le projet. Le compte
+  // vient de la DB du client, pas de la balise — elle ne le transporte pas, et
+  // l'info fabriquée suffit à l'y lire.
+  const int slots = SlotCount(info);
+  if (slots > 0) {
+    const size_t len = std::strlen(out);
+    std::snprintf(out + len, (len < out_size) ? out_size - len : 0, " [%d]", slots);
+  }
+}
+
+// Ré-encoder une balise depuis un lien DÉJÀ relu. Il n'y a pas de second
+// encodeur : on refabrique l'ItemSkillInfo que la balise décrit et on repasse par
+// `BuildChatLink`, le seul endroit qui connaisse le format. C'est ce qui permet de
+// RELAYER le lien d'un objet qu'on ne possède pas — celui qu'un autre joueur vient
+// de poster — sans jamais avoir eu l'objet sous la main.
+bool BuildChatLinkFromLink(const ChatLink& link, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (link.id == 0) return false;
+  uint8_t info[kInfoSize];
+  bool built = false;
+  __try {
+    FabricateFromLink(info, link);
+    built = true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { built = false; }
+  if (!built) return false;
+  return BuildChatLink(info, out, out_size);
 }
 
 const char* NameById(uint32_t id) {
@@ -247,19 +573,55 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Description d'un objet qu'on ne possède PAS : tout vient de la balise. Même
+// message que les deux autres portes (0x18, qui COPIE l'info), sur un
+// ItemSkillInfo fabriqué — donc cartes, refine, grade et options compris.
+void OpenDescFromChatLink(const ChatLink& link, int mx, int my) {
+  if (link.id == 0) return;
+  __try {
+    uint8_t info[kInfoSize];
+    FabricateFromLink(info, link);
+    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    if (dwnd) {
+      uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
+                   static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
+      uiwnd::SetPos(dwnd, mx, my);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // ── Ouverture différée au relâchement (cf. l'en-tête pour le pourquoi) ───────
 
 void DeferDescFromIndex(uintptr_t list_head, int index, int mx, int my) {
-  g_deferred = {list_head, index, 0, 0, 0, nullptr, mx, my};
+  g_deferred = DeferredDesc{};
+  g_deferred.list_head = list_head;
+  g_deferred.index     = index;
+  g_deferred.mx        = mx;
+  g_deferred.my        = my;
 }
 
 void DeferDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
                    const void* src) {
-  g_deferred = {0, 0, id, view, location, src, mx, my};
+  g_deferred = DeferredDesc{};
+  g_deferred.id       = id;
+  g_deferred.view     = view;
+  g_deferred.location = location;
+  g_deferred.src      = src;
+  g_deferred.mx       = mx;
+  g_deferred.my       = my;
+}
+
+void DeferDescFromChatLink(const ChatLink& link, int mx, int my) {
+  g_deferred = DeferredDesc{};
+  g_deferred.link      = link;
+  g_deferred.from_link = true;
+  g_deferred.mx        = mx;
+  g_deferred.my        = my;
 }
 
 void FlushDeferredDesc() {
-  if (g_deferred.list_head == 0 && g_deferred.id == 0) return;
+  if (g_deferred.list_head == 0 && g_deferred.id == 0 && !g_deferred.from_link)
+    return;
   // Le « bouton relâché » est LA condition — pas seulement « hors frame ImGui ».
   // Tant qu'un bouton est enfoncé, la fenêtre cliquée garde le focus et
   // repasserait devant la description à la frame suivante (cf. l'en-tête).
@@ -268,7 +630,9 @@ void FlushDeferredDesc() {
     return;
   const DeferredDesc d = g_deferred;
   g_deferred = DeferredDesc{};
-  if (d.list_head != 0)
+  if (d.from_link)
+    OpenDescFromChatLink(d.link, d.mx, d.my);
+  else if (d.list_head != 0)
     OpenDescFromInfo(FindInfoByIndex(d.list_head, d.index), d.mx, d.my);
   else
     OpenDescById(d.id, d.view, d.location, d.mx, d.my, d.src);

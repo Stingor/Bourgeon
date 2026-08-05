@@ -31,6 +31,7 @@ class VendingWindow;
 class WeaponRefineWindow;
 class MakeItemWindow;
 class TradeWindow;
+class ChatWindow;
 class RodexWindow;
 class CharacterSheet;
 class LoginParade;
@@ -79,6 +80,7 @@ class Bourgeon {
   WeaponRefineWindow* weapon_refine_window();
   MakeItemWindow* make_item_window();
   TradeWindow* trade_window();
+  ChatWindow* chat_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
   BugReport* bug_report();
@@ -226,6 +228,7 @@ class Bourgeon {
   WeaponRefineWindow* weapon_refine_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   MakeItemWindow* make_item_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
+  ChatWindow* chat_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   BugReport* bug_report_ = nullptr;  // non-owning, lifetime tied to plugins_

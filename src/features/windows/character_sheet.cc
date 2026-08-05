@@ -984,6 +984,29 @@ int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
       if (*reinterpret_cast<const int*>(v + kSkOffValid) == 0) continue;
       const int id = *reinterpret_cast<const int*>(v + kSkOffId);
       if (id <= 0) continue;
+      // ⚠ UNE LISTE D'ONGLET PEUT CONTENIR DEUX FOIS LA MÊME COMPÉTENCE. L'insertion
+      // native (sub_007381D0, appelée par c_AddSkillList) ne cherche JAMAIS l'id avant
+      // d'empiler, et la construction (sub_00D96790) rejoue InitSkillTreeView pour
+      // CHAQUE job de la chaîne d'héritage — plusieurs d'entre eux peuvent viser le
+      // même onglet (le sommet de chaîne et les jobs 4218/4220 vont tous les deux dans
+      // l'onglet 0 : cas du Doram). Le doublon donnait deux cases pour une compétence
+      // et deux widgets ImGui de MÊME ID (« 2 visible items with conflicting ID »).
+      // On garde la PREMIÈRE fiche : c'est aussi celle que le natif retient, sa
+      // recherche par id (FindInTree 0x00738320) rendant la main au premier match —
+      // donc celle que les mises à jour du serveur ont suivie. Les copies suivantes ne
+      // servent qu'à COMBLER : une case si la première n'en avait pas, et le niveau
+      // appris s'il n'a été écrit que sur l'une d'elles.
+      int dup = -1;
+      for (int k = 0; k < n && dup < 0; ++k)
+        if (out[k].id == id) dup = k;
+      if (dup >= 0) {
+        const int dpos = *reinterpret_cast<const int*>(v + kSkOffPos);
+        if (out[dup].pos < 0 && dpos >= 0) out[dup].pos = dpos;
+        int dlearned = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
+        if (dlearned <= 0) dlearned = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
+        if (dlearned > out[dup].learned) out[dup].learned = dlearned;
+        continue;
+      }
       SkillRaw& s = out[n];
       s.id         = id;
       s.inf        = *reinterpret_cast<const int*>(v + kSkOffInf);
@@ -3206,8 +3229,25 @@ void CharacterSheet::DrawSkillsTab() {
   const char* split_label[1] = {};
   int split_count = 0;
   for (int gi = 0; gi < groups[skill_tab_].nsrc; ++gi) {
-    const int n = ReadSkillTabSEH(groups[skill_tab_].src[gi], nodes + count,
-                                  kSkillMaxNodes - count);
+    int n = ReadSkillTabSEH(groups[skill_tab_].src[gi], nodes + count,
+                            kSkillMaxNodes - count);
+    if (n <= 0) continue;
+    // Doublon d'une source à l'autre : la lecture dédoublonne DANS une liste, mais
+    // « 1re / 2e classe » sont FUSIONNÉES ici et la même compétence peut vivre dans
+    // les deux onglets natifs. On garde la première (celle du tronc), sinon elle
+    // occuperait deux cases et ImGui verrait deux items de même ID.
+    {
+      int kept = 0;
+      for (int i = 0; i < n; ++i) {
+        bool already_seen = false;
+        for (int k = 0; k < count && !already_seen; ++k)
+          already_seen = nodes[k].id == nodes[count + i].id;
+        if (already_seen) continue;
+        if (kept != i) nodes[count + kept] = nodes[count + i];
+        ++kept;
+      }
+      n = kept;
+    }
     if (n <= 0) continue;
     // `count > 0` et pas `gi > 0` : si la source précédente était vide, celle-ci est
     // la première à l'écran — un trait au-dessus de la toute première ligne n'aurait

@@ -91,6 +91,83 @@ void BuildDisplayName(void* info, char* out, size_t out_size);
 // ou si la lecture échoue. Appel natif sous SEH.
 int SlotCount(void* info);
 
+// Le LIEN de chat de l'objet — `<ITEML>…</ITEML>`, le texte que les autres
+// clients savent rendre en icône + nom cliquable. Écrit dans `out` ; renvoie
+// false (et `out` vide) si l'item est illisible ou sans nameid, jamais une balise
+// tronquée. 128 octets suffisent largement (4 cartes + 5 options ≈ 90).
+//
+// C'est le geste Maj+clic gauche du client, réécrit : le natif le forge dans
+// `UIWnd_AppendItemLinkButton 0x00865230`, indissociable de la création d'un
+// bouton accroché à sa chatbox — qui n'existe plus. Le format et la table de
+// séparateurs sont vérifiés des DEUX côtés (client 20250716 et
+// `ItemDatabase::create_item_link` de rAthena) ; détail dans item_cell.cc.
+bool BuildChatLink(void* info, char* out, size_t out_size);
+
+// ── Le lien de chat RELU — tout ce que la balise transporte ──────────────────
+// Le pendant de `BuildChatLink`. C'est la SEULE source d'information sur l'objet
+// d'un AUTRE joueur : il n'est ni dans notre sac ni dans aucune liste de session,
+// la balise est tout ce qu'on aura jamais de lui. En jeter le contenu pour ne
+// garder que le nameid, c'est afficher « Axe » là où le natif écrit « Test's
+// Axe » et ouvrir une description sans cartes ni refine.
+//
+// POD pur : se copie et se conserve (la chatbox en garde un par lien affiché).
+struct ChatLink {
+  uint32_t id     = 0;  // nameid
+  uint32_t equip  = 0;  // emplacement d'équipement (masque EQP_*)
+  uint32_t refine = 0;
+  uint32_t view   = 0;  // viewID
+  uint32_t grade  = 0;
+  // ⚠ Sur un objet FORGÉ ce ne sont pas des cartes : `cards[2] | cards[3] << 16`
+  // est l'id de personnage du forgeron, celui que le client résout en « Test's ».
+  uint32_t cards[4]     = {0, 0, 0, 0};
+  uint16_t opt_id[5]    = {0, 0, 0, 0, 0};
+  uint16_t opt_value[5] = {0, 0, 0, 0, 0};
+  uint8_t  opt_param[5] = {0, 0, 0, 0, 0};
+  int      opt_count    = 0;
+  // 6e caractère de la balise : le booléen « type décoré » (= itemdb_isequip2).
+  // C'est la SEULE information de type que le lien transporte.
+  bool     equipable    = false;
+  // 🔴 CHAMP PRIVÉ MOONLIGHT (séparateur `!`) — l'équipement CASSÉ. Le format
+  // officiel ne le transporte pas : l'encodeur natif
+  // (`UIWnd_AppendItemLinkButton 0x00865230`) n'écrit que refine/viewID/grade/
+  // cartes/options, et `ItemSkillInfo+0x5d` n'y figure nulle part. On l'ajoute
+  // donc nous-mêmes, et c'est SANS RISQUE pour un client qui ne le connaît pas :
+  // son décodeur (`sub_0097E200`) range chaque champ dans une table indexée par
+  // le RANG du séparateur dans `"!#$%&'()*+,-/"` — `!` vaut 0, un rang que rien
+  // ne lit jamais. Le champ est donc lu, rangé, puis ignoré ; les autres ne
+  // bougent pas. (Il est écrit EN DERNIER, après les options, pour qu'un lecteur
+  // qui s'arrêterait avant ait quand même tout le standard.)
+  bool     broken       = false;
+};
+
+// Relit une balise `<ITEML>…</ITEML>`. `tag` pointe sur le `<`, `end` sur la fin
+// du texte. `tag_end` (facultatif) reçoit ce qui SUIT la fermante — ou `end` si
+// elle manque, pour que l'appelant n'ait pas à re-chercher. Renvoie false sur une
+// balise illisible ou sans nameid, `out` alors remis à neuf.
+bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
+                   const char** tag_end = nullptr);
+
+// Nom d'AFFICHAGE d'un lien, composé par le name-builder NATIF depuis un
+// ItemSkillInfo fabriqué à partir de la balise : refine, grade, préfixes de
+// cartes et « <forgeron>'s » compris — exactement ce qu'affiche le chat natif.
+// Vide si la balise ne porte pas d'objet. ⚠ Rendu dans la CODE-PAGE DU CLIENT,
+// comme BuildDisplayName : à convertir (`ro::WireToUtf8`) avant ImGui.
+void BuildChatLinkName(const ChatLink& link, char* out, size_t out_size);
+
+// Ré-encode une balise `<ITEML>` depuis un lien DÉJÀ relu. Il n'existe pas de
+// second encodeur : l'ItemSkillInfo que la balise décrit est refabriqué, puis
+// `BuildChatLink` fait le reste — un seul endroit connaît le format. C'est ce qui
+// permet de RELAYER le lien d'un objet qu'on ne possède pas (Maj+clic sur le lien
+// d'un autre joueur). Renvoie false si la balise ne porte pas d'objet.
+bool BuildChatLinkFromLink(const ChatLink& link, char* out, size_t out_size);
+
+// Description d'un lien de chat, armée pour le prochain OnProcessInput (même
+// différé que DeferDescById, cf. plus bas). Contrairement à `DeferDescById`, la
+// fenêtre reçoit les cartes, le refine, le grade et les options du lien : c'est
+// la description de L'OBJET du joueur qui l'a posté, pas celle de l'item de base.
+// Rien à maintenir en vie côté appelant — le lien est copié.
+void DeferDescFromChatLink(const ChatLink& link, int mx, int my);
+
 // Nom de BASE d'un item par son id, lu dans la DB de descriptions du client
 // (chargement paresseux + recherche, cf. ragnarok/item_db.h). Jamais nul :
 // « #<id> » quand la DB ne connaît pas l'objet, ce qui vaut mieux qu'un vide

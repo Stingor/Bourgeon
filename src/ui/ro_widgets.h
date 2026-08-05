@@ -42,6 +42,17 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi,
 bool WheelSliderInt(const char* label, int* v, int lo, int hi,
                     const char* fmt = "%d", int step = 0);
 
+// Sélecteur de couleur façon « Couleurs du chat » : une pastille cliquable, le
+// libellé à côté, et le nuancier dans un popup. Deux raisons de le préférer à un
+// ColorEdit4 en ligne — il tient sur une ligne courte, donc il passe dans un menu
+// contextuel ; et il est IDENTIQUE au sélecteur des fonds du chat natif, juste
+// à côté dans le même panneau. Deux widgets différents pour le même geste, dans la
+// même fenêtre, c'est une hésitation gratuite pour le joueur.
+//
+// `rgba` est au format picker (0..1, RGBA). Renvoie true tant que la couleur
+// change — donc à chaque frame d'un glissement dans le nuancier.
+bool RoColorSwatch(const char* label, float rgba[4]);
+
 // Style compact (padding/espacement réduits) — pour les panneaux dense en champs.
 // Toujours par paire.
 void PushStyleCompact();

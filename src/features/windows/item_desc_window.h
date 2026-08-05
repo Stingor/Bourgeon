@@ -65,6 +65,13 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int opt_count = 0, int refine = 0,
                       const char* display_name = nullptr, bool damaged = false);
 
+// Ouvre la page « base de données » du site pour cet item, dans le navigateur.
+// L'URL est celle du lien natif `<URL>…<INFO>url</INFO>` de la ligne 0 des
+// descriptions (`index.php?page=itemdb&itemid=<id>`), vérifiée en jeu — elle est
+// écrite ICI, une fois, pour que les appelants (cartes de la description, menu
+// contextuel d'un lien de chat) n'aient pas chacun leur copie à corriger.
+void OpenItemDbPage(uint32_t item_id);
+
 // ⚠️ Une fenêtre qui ouvre une description n'a RIEN à faire pour le z-order.
 //
 // Il exista ici un `FocusDescWindow()` que chaque appelant devait penser à appeler
@@ -261,6 +268,11 @@ class ItemDescWindow : public Plugin {
   // une colonne mécanisme (drop normal / MVP reward), utile pour le bucket MVP.
   void RenderDropTable(const TechData& td, const char* table_id,
                        uint32_t filter_key, bool show_type);
+  // ⚠ Le monstre visé par le menu contextuel de la table des drops vit dans le
+  // .cc, PAS ici. `links::Target` obligerait cet en-tête à inclure
+  // features/link_gesture.h, or item_cell.h nous inclut déjà : le cycle
+  // item_cell.h → item_desc_window.h → link_gesture.h → item_cell.h laisserait
+  // `itemcell::ChatLink` non déclaré au moment où link_gesture.h s'en sert.
 
   bool       show_item_panel_  = true;  // panneau technique pour les items
   bool       show_skill_panel_ = true;  // panneau technique pour les skills

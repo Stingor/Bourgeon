@@ -179,9 +179,12 @@ void MoonlightUi::DrawCommandsPanel() {
           TextUnformatted("@autolootid :");
           SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
           SameLine();
-          if (ro::RoCheckbox("Overlay", &show_alootid_overlay_))
-            SaveSettings();
-          SameLine(); HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item.");
+          if (!ModernInterfaceEnabled()) {
+            if (ro::RoCheckbox("Overlay", &show_alootid_overlay_))
+              SaveSettings();
+            SameLine();
+            HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item dans l'affichage natif.");
+          }
           SameLine();
           if (ro::RoSmallButton("Clear##alootid")) {
             aloot_ids_.clear();
