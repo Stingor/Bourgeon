@@ -107,6 +107,16 @@ class ChatWindow : public Plugin {
   // qu'il fait peut le retirer ; c'est son choix, et il est explicite.
   bool& url_confirm()     { return url_confirm_; }
   bool  url_confirm() const { return url_confirm_; }
+  // Aperçu d'une image au survol d'un lien. Opt-IN, décoché par défaut : c'est du
+  // trafic réseau déclenché par le lien d'AUTRUI, et ça mérite un accord explicite
+  // même si la liste blanche d'hôtes rend l'opération sans danger pour l'anonymat
+  // (cf. features/systems/image_preview.h).
+  bool& url_preview()     { return url_preview_; }
+  bool  url_preview() const { return url_preview_; }
+  // Hôtes autorisés PAR LE JOUEUR, sérialisés (« a.com;b.net »). La liste vivante
+  // est celle d'imgprev ; ce champ n'est que sa forme persistable — c'est lui que
+  // les réglages écrivent et relisent, et OnTick les resynchronise.
+  std::string& url_hosts() { return url_hosts_; }
   int& font_scale_pct()   { return font_scale_pct_; }  // texte du LOG, 70..160 %
   int& ui_scale_pct()     { return ui_scale_pct_; }    // habillage, 70..160 %
   int& padding_px()       { return padding_px_; }      // marge du cadre
@@ -417,6 +427,9 @@ class ChatWindow : public Plugin {
   // la fenêtre.
   bool locked_         = false;
   bool url_confirm_    = true;   // opt-OUT : le garde-fou est là par défaut
+  bool url_preview_    = false;  // opt-IN : rien n'est téléchargé sans accord
+  std::string url_hosts_;        // hôtes autorisés par le joueur, « a.com;b.net »
+  std::string url_hosts_seen_;   // dernière valeur poussée vers imgprev
   int  padding_px_     = 3;
   int  line_gap_px_    = 2;
 

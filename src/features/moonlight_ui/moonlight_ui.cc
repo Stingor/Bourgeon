@@ -458,6 +458,15 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
     // destination. Le joueur peut le retirer — explicitement.
     {"chatwnd_url_confirm", SType::kBool, MLUI_FIELD(chat_window, url_confirm()),
      MLUI_LITERAL(bool, true)},
+    // ⚠ Défaut FAUX, et symétrique du précédent : celui-ci fait AGIR le client
+    // (une requête réseau vers l'hébergeur d'un lien posté par autrui). Un
+    // garde-fou est là par défaut ; une action, non.
+    {"chatwnd_url_preview", SType::kBool, MLUI_FIELD(chat_window, url_preview()),
+     MLUI_LITERAL(bool, false)},
+    // Hôtes autorisés PAR LE JOUEUR (« a.com;b.net »), vides par défaut : rien
+    // n'est accordé qu'il n'ait accordé lui-même.
+    {"chatwnd_url_hosts", SType::kString, MLUI_FIELD(chat_window, url_hosts()),
+     MLUI_LITERAL(std::string, "")},
     // ⚠ Défaut FAUX, et ce n'est pas de la timidité : le fichier écrit contient
     // les chuchotements en clair, à côté du jeu.
     {"chatwnd_keep_history", SType::kBool, MLUI_FIELD(chat_window, keep_history()),

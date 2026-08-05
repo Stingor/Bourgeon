@@ -19,6 +19,7 @@
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
 #include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
+#include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
 #include "imgui.h"
 #include "imgui_internal.h"      // GetInputTextState (défilement interne du champ)
 #include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
@@ -1259,6 +1260,14 @@ void ChatWindow::RefreshChannels() {
 // fenêtre à part entière, pas un onglet déplacé.
 void ChatWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
+  // Hôtes autorisés par le joueur : la liste vivante est celle d'imgprev, ce champ
+  // n'en est que la forme persistée. On les resynchronise par COMPARAISON plutôt
+  // qu'à un moment précis du chargement — l'ordre d'initialisation des réglages
+  // n'est pas quelque chose sur quoi il faut parier.
+  if (url_hosts_ != url_hosts_seen_) {
+    imgprev::SetUserHostsCsv(url_hosts_);
+    url_hosts_seen_ = url_hosts_;
+  }
   // Relevée ICI, hors de toute fenêtre : c'est la seule taille de police qui ne
   // porte l'échelle d'aucune d'entre elles. Tout le log s'en déduit.
   base_font_size_ = ImGui::GetFontSize();
@@ -3260,6 +3269,44 @@ bool ChatWindow::DrawSettings() {
       "affiché n'a aucun rapport obligé avec la destination réelle. La "
       "confirmation montre l'adresse COMPLÈTE avant d'ouvrir le navigateur.\n\n"
       "En la décochant, un clic sur un lien ouvre directement le navigateur.");
+  changed |= ro::RoCheckbox("Aperçu des images au survol###chatwnd_urlprev",
+                            &url_preview_);
+  ImGui::SameLine();
+  HelpMarker(
+      "Survoler un lien d'image en montre le contenu, sans ouvrir le "
+      "navigateur.\n\n"
+      "Les images ne sont chargées que depuis des hébergeurs connus (Discord, "
+      "imgur, le site Moonlight). C'est ce qui rend l'aperçu sûr : sur ces "
+      "serveurs-là, celui qui a posté le lien ne peut pas savoir qui l'a "
+      "regardé. Un lien vers n'importe quel autre site reste un lien "
+      "ordinaire, à ouvrir soi-même.");
+
+  // 🔴 Une liste qu'on ne peut pas INSPECTER ni DÉFAIRE n'aurait pas dû exister.
+  // Le joueur accorde depuis le menu contextuel d'un lien ; c'est ici qu'il voit
+  // ce qu'il a accordé, et qu'il le reprend.
+  // ⚠ PAS derrière `url_preview_` : on doit pouvoir REPRENDRE un accord même
+  // après avoir éteint l'aperçu, sinon éteindre le réglage enfermerait le joueur
+  // avec une liste qu'il ne peut plus défaire. La liste ne s'affiche donc que si
+  // elle n'est pas vide — discrète pour qui n'a jamais rien accordé.
+  {
+    const std::vector<std::string> hosts = imgprev::UserHosts();
+    if (!hosts.empty()) {
+      ImGui::TextDisabled("  Vos sites autorisés :");
+      for (const std::string& h : hosts) {
+        char rm[96];
+        std::snprintf(rm, sizeof(rm), "Retirer###chatwnd_rmhost_%s", h.c_str());
+        ImGui::Bullet();
+        ImGui::TextUnformatted(h.c_str());
+        ImGui::SameLine();
+        if (ro::RoSmallButton(rm)) {
+          imgprev::ForgetHost(h.c_str());
+          url_hosts_      = imgprev::UserHostsCsv();
+          url_hosts_seen_ = url_hosts_;  // déjà appliqué : pas de resynchro
+          changed = true;
+        }
+      }
+    }
+  }
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",

@@ -161,6 +161,8 @@ set(BOURGEON_FILES
 	"features/systems/cheat_detector.h"
 	"features/systems/discord_relay.cc"
 	"features/systems/discord_relay.h"
+	"features/systems/image_preview.cc"
+	"features/systems/image_preview.h"
 	"features/systems/dx7_warning.cc"
 	"features/systems/dx7_warning.h"
 	"features/systems/integrity_check.cc"

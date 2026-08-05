@@ -14,6 +14,7 @@
 #include "features/patches/chat.h"
 #include "features/systems/cheat_detector.h"
 #include "features/systems/discord_relay.h"
+#include "features/systems/image_preview.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/dps_meter.h"
 #include "features/overlays/menu_icons.h"
@@ -183,6 +184,12 @@ void Bourgeon::OnTick() {
     return;
   }
   last_tick_count_ = current_tick_count;
+
+  // Aperçus d'images : téléversement des téléchargements finis, purge au reset de
+  // device, bornage du cache. 🔴 ICI et pas au rendu : Tick relâche des textures,
+  // et relâcher pendant une frame ImGui casse le flush (une draw-list les
+  // référence encore). OnTick tourne hors frame — c'est la seule place sûre.
+  imgprev::Tick();
 
   for (auto& plugin : plugins_) {
     try {

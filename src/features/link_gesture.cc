@@ -8,6 +8,7 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
+#include "features/systems/image_preview.h"         // aperçu d'une image de chat
 #include "features/windows/cashshop_window.h"       // disponibilité au vote shop
 #include "features/windows/chat_window.h"           // poser un lien, armer une commande
 #include "features/windows/item_desc_window.h"      // itemdesc::OpenItemDbPage
@@ -67,6 +68,10 @@ void LaunchUrl(const char* url) {
 // remède que `ro::OpenQuantityPrompt`.
 std::string g_pending_url;
 bool        g_confirm_requested = false;
+// Même mécanique différée pour l'autorisation d'un HÔTE : elle part aussi d'un
+// menu contextuel, donc d'une autre pile d'ID.
+std::string g_pending_host;
+bool        g_host_confirm_requested = false;
 
 // Le réglage vit dans la chatbox — c'est là que les adresses arrivent, et c'est
 // là que le joueur ira le chercher. Chatbox absente : on avertit, parce que le
@@ -84,6 +89,80 @@ void OpenUrl(const char* url) {
   }
   g_pending_url       = url;
   g_confirm_requested = true;
+}
+
+// ── L'aperçu d'une image, sous l'adresse ─────────────────────────────────────
+//
+// 🔴 UN DÉLAI AVANT DE TÉLÉCHARGER. Sans lui, traverser le chat déclencherait une
+// requête par lien croisé — personne ne DÉCIDE de survoler, et dans un chat qui
+// défile ce sont les lignes qui glissent sous un curseur immobile. Le délai fait
+// du survol un geste : il faut s'arrêter là pour que quoi que ce soit parte.
+//
+// Le reste des garde-fous (liste blanche d'hôtes, bornes, décodage) vit dans
+// imgprev — voir l'en-tête de features/systems/image_preview.h pour le pourquoi.
+constexpr float kPreviewHoverDelay = 0.4f;  // secondes
+
+// L'aperçu courant, et l'armement du téléchargement si le survol dure. Séparé du
+// DESSIN parce que la réponse décide de la forme de l'infobulle : une image prête
+// s'affiche SEULE, sans cadre ni fond ni adresse, et cela se décide avant
+// `BeginTooltip`.
+imgprev::Preview UrlPreviewState(const std::string& url) {
+  imgprev::Preview none;
+  const ChatWindow* chat = Bourgeon::Instance().chat_window();
+  if (chat == nullptr) return none;
+  const bool explicit_ok = imgprev::IsExplicitlyAllowed(url.c_str());
+  if (!chat->url_preview() && !explicit_ok) return none;
+  if (!imgprev::IsPreviewable(url.c_str())) return none;
+
+  // 🔴 UN DÉLAI AVANT DE TÉLÉCHARGER : sans lui, traverser le chat déclencherait
+  // une requête par lien croisé. Le compteur se mesure sur l'ADRESSE, pour que
+  // glisser d'un lien à l'autre reparte de zéro.
+  static std::string s_hovered;
+  static float       s_elapsed = 0.0f;
+  if (s_hovered != url) {
+    s_hovered = url;
+    s_elapsed = 0.0f;
+  } else {
+    s_elapsed += ImGui::GetIO().DeltaTime;
+  }
+  if (s_elapsed < kPreviewHoverDelay) return none;
+
+  imgprev::Request(url.c_str());
+  return imgprev::Get(url.c_str());
+}
+
+// Le STATUT, quand aucune image n'est prête à montrer. Vit dans l'infobulle
+// ordinaire, sous l'adresse.
+void DrawUrlPreviewStatus(const std::string& url,
+                          const imgprev::Preview& p) {
+  const ChatWindow* chat = Bourgeon::Instance().chat_window();
+  if (chat == nullptr) return;
+  // 🔴 L'OPT-IN BORNE CE QUI SE CHARGE TOUT SEUL, pas ce que le joueur a demandé.
+  // Réglage éteint et rien de demandé = on se tait complètement, y compris le
+  // message d'explication — du bruit pour qui a dit ne pas vouloir d'images.
+  const bool explicit_ok = imgprev::IsExplicitlyAllowed(url.c_str());
+  if (!chat->url_preview() && !explicit_ok) return;
+
+  if (!imgprev::IsPreviewable(url.c_str())) {
+    // 🔴 NE PAS SE TAIRE. Ne rien afficher parce que l'hôte est inconnu est le
+    // comportement voulu, mais il est indiscernable d'une panne — et la
+    // fonctionnalité devient invisible pour qui ne connaît pas la règle.
+    const std::string host = imgprev::HostOfUrl(url.c_str());
+    ImGui::Separator();
+    ImGui::TextDisabled("Aperçu non chargé : %s n'est pas dans vos sites",
+                        host.empty() ? "ce site" : host.c_str());
+    ImGui::TextDisabled("autorisés. Clic droit pour l'afficher.");
+    return;
+  }
+  if (p.state == imgprev::Preview::kPending) {
+    ImGui::Separator();
+    ImGui::TextDisabled("Chargement de l'aperçu...");
+  } else if (p.state == imgprev::Preview::kFailed) {
+    // Motif volontairement vague : le détail (404, type refusé, trop gros)
+    // n'aide en rien celui qui regarde. Le journal, lui, porte la raison exacte.
+    ImGui::Separator();
+    ImGui::TextDisabled("Aperçu indisponible.");
+  }
 }
 
 // La fiche en jeu, avec repli sur le site quand elle est désactivée : un lien qui
@@ -220,16 +299,32 @@ void HoverPreview(const Target& target) {
     return;
   }
   if (target.kind == Target::kUrl) {
-    // 🔴 L'adresse ENTIÈRE avant de cliquer. Une ligne de chat tronque, et c'est
-    // précisément sur ce qu'on ne voit pas qu'un lien trompe.
-    //
-    // ⚠ Texte SOMBRE, même raison que le menu ci-dessous : l'infobulle hérite du
-    // texte CLAIR que la chatbox pousse pour son fond sombre, alors que le fond
-    // d'une infobulle, lui, est clair. L'adresse s'affichait en blanc sur blanc —
-    // donc invisible, exactement là où elle est le plus utile.
+    // La forme de l'infobulle se décide AVANT de l'ouvrir, d'où l'état relevé ici.
+    const imgprev::Preview p = UrlPreviewState(target.url);
+
+    if (p.state == imgprev::Preview::kReady && p.tex != nullptr) {
+      // 🔴 L'IMAGE SEULE : ni fond, ni cadre, ni adresse. Une image se suffit —
+      // le chrome de l'infobulle et l'adresse répétée en dessous ne font que
+      // l'encombrer, et l'adresse est déjà lisible dans la ligne de chat.
+      // Même recette que l'illustration d'une carte (item_desc_window).
+      ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
+      ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+      ImGui::BeginTooltip();
+      ImGui::Image(reinterpret_cast<ImTextureID>(p.tex),
+                   ImVec2(static_cast<float>(p.w), static_cast<float>(p.h)));
+      ImGui::EndTooltip();
+      ImGui::PopStyleColor(2);
+      return;
+    }
+
+    // Pas d'image : l'infobulle ordinaire, avec l'adresse ENTIÈRE — une ligne de
+    // chat tronque, et c'est précisément sur ce qu'on ne voit pas qu'un lien
+    // trompe. Texte SOMBRE : le fond d'une infobulle est clair, alors que la
+    // chatbox pousse un texte clair pour son propre fond sombre.
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
     ImGui::BeginTooltip();
     ImGui::TextUnformatted(target.url.c_str());
+    DrawUrlPreviewStatus(target.url, p);
     ImGui::EndTooltip();
     ImGui::PopStyleColor();
   }
@@ -307,6 +402,32 @@ void DrawMenu(const char* popup_id, const Target& target) {
         break;
       }
       case Target::kUrl: {
+        // ── Les deux autorisations d'image, et elles ne se valent PAS ────────
+        //
+        // « Cette image » ne retient rien : le risque est celui d'un clic sur le
+        // lien, que le joueur peut déjà faire. « Toujours » accorde en revanche
+        // un accès AUTOMATIQUE et PERMANENT au survol — beaucoup plus engageant,
+        // d'où les points de suspension et la confirmation qui suit.
+        // ⚠ PAS derrière le réglage « aperçu au survol ». Ces deux entrées sont
+        // des gestes EXPLICITES, et les cacher tant que le réglage est éteint
+        // rendait la fonctionnalité introuvable : rien dans le menu, rien dans
+        // l'infobulle, aucun moyen de savoir qu'elle existe.
+        {
+          const std::string host = imgprev::HostOfUrl(target.url.c_str());
+          if (!imgprev::IsPreviewable(target.url.c_str())) {
+            if (ImGui::MenuItem("Afficher cette image"))
+              imgprev::AllowOnce(target.url.c_str());
+            if (!host.empty()) {
+              std::snprintf(cmd, sizeof(cmd), "Toujours afficher %s...",
+                            host.c_str());
+              if (ImGui::MenuItem(cmd)) {
+                g_pending_host = host;
+                g_host_confirm_requested = true;
+              }
+            }
+            ImGui::Separator();
+          }
+        }
         if (ImGui::MenuItem("Ouvrir dans le navigateur")) OpenUrl(target.url.c_str());
         // 🔴 L'adresse est écrite par un TIERS. La copier plutôt que l'ouvrir est
         // le geste prudent, et le menu doit l'offrir : personne ne peut juger un
@@ -322,7 +443,14 @@ void DrawMenu(const char* popup_id, const Target& target) {
   ImGui::PopStyleColor();
 }
 
+void DrawHostConfirm();  // définie juste en dessous
+
 void DrawUrlConfirm() {
+  // Les deux modales partagent le même appel unique par frame : celle de l'hôte
+  // doit être dessinée AVANT le `return` anticipé de celle-ci, sinon elle ne
+  // s'ouvrirait jamais quand aucune adresse n'attend confirmation.
+  DrawHostConfirm();
+
   static const char* const kPopupId = "Ouvrir cette adresse ?";
 
   if (g_confirm_requested) {
@@ -370,6 +498,58 @@ void DrawUrlConfirm() {
 
   if (close) {
     g_pending_url.clear();
+    ImGui::CloseCurrentPopup();
+  }
+  ro::EndRoPopupModal();
+}
+
+// ── Autoriser un HÔTE durablement ────────────────────────────────────────────
+//
+// 🔴 CETTE CONFIRMATION-CI EST LA PLUS INSISTANTE DES DEUX, et c'est
+// contre-intuitif. Ouvrir un lien révèle l'adresse IP une fois, sur un geste
+// délibéré. Autoriser un hôte la révèle AUTOMATIQUEMENT, à chaque survol, et
+// jusqu'à révocation — le joueur ne fera plus jamais le geste, et c'est
+// justement ce qui rend l'accord lourd de conséquences.
+//
+// Le texte dit donc ce qui est accordé, pas ce qu'on gagne.
+void DrawHostConfirm() {
+  static const char* const kPopupId = "Autoriser ce site ?";
+
+  if (g_host_confirm_requested) {
+    g_host_confirm_requested = false;
+    ImGui::OpenPopup(kPopupId);
+  }
+  const ImVec2 mouse = ImGui::GetMousePos();
+  ro::SetNextRoModalPos(mouse.x, mouse.y, false);
+  if (!ro::BeginRoPopupModal(kPopupId)) return;
+  ro::SuppressEscapeStack();
+
+  ImGui::TextUnformatted("Les images de ce site se chargeront");
+  ImGui::TextUnformatted("automatiquement, au simple survol :");
+  ImGui::Spacing();
+  ImGui::TextColored(ImVec4(0.10f, 0.20f, 0.55f, 1.0f), "%s",
+                     g_pending_host.c_str());
+  ImGui::Spacing();
+  ImGui::TextUnformatted("Ce serveur pourra alors voir que vous etes");
+  ImGui::TextUnformatted("en ligne, et depuis quelle adresse.");
+  ImGui::Spacing();
+  ImGui::TextDisabled("Reglages du chat pour revenir dessus.");
+  ImGui::Spacing();
+
+  bool close = false;
+  if (ro::RoButton("Autoriser")) {
+    imgprev::AllowHost(g_pending_host.c_str());
+    // Persistance : la liste vit dans imgprev, la chatbox n'en garde que la
+    // forme sérialisée que les réglages savent écrire.
+    if (ChatWindow* chat = Bourgeon::Instance().chat_window())
+      chat->url_hosts() = imgprev::UserHostsCsv();
+    close = true;
+  }
+  ImGui::SameLine();
+  if (ro::RoButton("Annuler")) close = true;
+
+  if (close) {
+    g_pending_host.clear();
     ImGui::CloseCurrentPopup();
   }
   ro::EndRoPopupModal();
