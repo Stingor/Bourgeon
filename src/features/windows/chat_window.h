@@ -582,6 +582,17 @@ namespace chatwnd {
 void IngestNativeLine(const char* text, uint32_t rgb, int type,
                       const char* sender);
 
+// ── TROISIÈME source : nos propres lignes ────────────────────────────────────
+// `UIM_PUSHINTOCHATHISTORY` — la voie par laquelle Bourgeon écrit dans le chat
+// (relais Discord, DPS meter) — n'atteint NI `ChatAction` NI, une fois la native
+// détruite, quoi que ce soit d'affiché. C'était l'angle mort de la chatbox ImGui,
+// et il ne contenait que nos propres sorties, d'où le temps qu'il a mis à se voir.
+//
+// Renvoie true si la ligne a été prise : l'appelant ne doit alors PAS la passer au
+// natif (sans fenêtre pour la consommer, elle s'empile dans `mgr+0x4C4`, jamais
+// drainée). Renvoie false tant que la native vit — c'est son WndProc qui alimente.
+bool IngestPluginLine(const char* text, uint32_t rgb);
+
 // Libellé d'un des 25 types de message (enum §3.1.1 de la doc). Volontairement
 // en anglais : ce sont les libellés du client (msgstringtable), ceux que les
 // joueurs lisent dans la fenêtre native d'options de log.

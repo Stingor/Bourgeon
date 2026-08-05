@@ -171,6 +171,19 @@ bool SafeCopyChatStrings(const char* text, const char* sender, RawChatLine* out)
   return ok;
 }
 
+// La chatbox NATIVE existe-t-elle encore ? C'est la question qui décide, partout,
+// si c'est à nous d'ingérer : tant qu'elle vit, son WndProc (`case 0x25`) nous
+// alimente et ingérer en plus doublerait la ligne. SEH pur (règle C2712).
+bool NativeChatAlive() {
+  bool alive = false;
+  __try {
+    alive = *reinterpret_cast<void**>(kNewChatWndPtr) != nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    alive = false;
+  }
+  return alive;
+}
+
 // Le corps du détour. Renvoie non-nul pour que le stub neutralise l'action : la
 // ligne n'est alors ajoutée NULLE PART (ni natif, ni chez nous).
 //
@@ -213,12 +226,7 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
   // Ingestion SEULEMENT si la fenêtre native n'existe pas : sinon c'est son
   // WndProc qui nous alimente (cf. chatwnd::IngestNativeLine), et ingérer des
   // deux côtés doublerait chaque ligne.
-  bool native_alive = false;
-  __try {
-    native_alive = *reinterpret_cast<void**>(kNewChatWndPtr) != nullptr;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    native_alive = false;
-  }
+  const bool native_alive = NativeChatAlive();
   if (!native_alive && g_chat_window != nullptr) {
     // 🔴 L'ACTION 0x13 EST UNE VOIE MORTE, ET C'EST ELLE QUI DOUBLAIT LES ANNONCES.
     // `ChatAction` traite 1 et 0x13 par le même code, à un détail près : 1 envoie le
@@ -743,6 +751,33 @@ void chatwnd::IngestNativeLine(const char* text, uint32_t rgb, int type,
   if (!SafeCopyChatStrings(text, sender, &raw)) return;
   ++g_chat_window->ingest_seen_;
   g_chat_window->Ingest(raw.text, rgb, raw.sender, type, 'W');
+}
+
+// ── L'angle mort : nos PROPRES lignes ────────────────────────────────────────
+//
+// `UIM_PUSHINTOCHATHISTORY` est la voie par laquelle Bourgeon écrit dans le chat
+// (relais Discord, DPS meter — les deux seuls). Mesuré en jeu : elle NE PASSE PAS
+// par `ChatAction`, elle atteint la chatbox native directement. Tant que celle-ci
+// vivait, son WndProc nous relayait la ligne (source 'W') et personne n'avait
+// remarqué la différence ; une fois la native détruite, la ligne tombait dans la
+// file `mgr+0x4C4`, qui n'est drainée qu'à la CRÉATION d'une fenêtre — donc plus
+// jamais. Nos deux plugins parlaient à une fenêtre morte, en silence.
+//
+// Renvoie true quand la chatbox ImGui a pris la ligne : l'appelant ne doit alors
+// PAS la passer au natif, sous peine de faire grossir cette file sans plafond.
+bool chatwnd::IngestPluginLine(const char* text, uint32_t rgb) {
+  if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return false;
+  // 🔴 La native vit encore : c'est son WndProc qui nous alimentera, et ingérer
+  // ici doublerait la ligne. Même règle que le détour de ChatAction.
+  if (NativeChatAlive()) return false;
+  RawChatLine raw;
+  if (!SafeCopyChatStrings(text, nullptr, &raw)) return false;
+  ++g_chat_window->ingest_seen_;
+  // Type 0 : c'est celui sous lequel le natif les affichait (relevé en jeu,
+  // « t00W » sur les lignes du DPS meter et du relais). Source 'P' pour les
+  // distinguer en mode diagnostic — ni le serveur ('A'/'W'), ni le natif : nous.
+  g_chat_window->Ingest(raw.text, rgb, raw.sender, 0, 'P');
+  return true;
 }
 
 // ── Libellés des 25 types (msgstringtable du client, §3.1.1 de la doc) ───────

@@ -25,6 +25,10 @@ void DiscordRelay::OnTick() {
     pending.swap(messages_);
   }
   for (const auto& msg : pending) {
+    // ⚠ UIM_PUSHINTOCHATHISTORY s'adresse à la chatbox NATIVE, et cette voie ne
+    // passe PAS par `ChatAction` (mesuré en jeu). Quand la chatbox ImGui a détruit
+    // la native, c'est `UIWindowMgr::SendMsg` qui réaiguille — surtout pas le hook
+    // `SendMsgHook`, que cet appel-ci contourne par le trampoline.
     Bourgeon::Instance().client().window_mgr().SendMsg(
         UIMessage::UIM_PUSHINTOCHATHISTORY,
         reinterpret_cast<int>(msg.c_str()), kDiscordColor, 0, 0);
@@ -37,7 +41,17 @@ void DiscordRelay::OnModeSwitch(ModeMgr::ModeType /*mode_type*/,
 void DiscordRelay::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                 uint16_t len) {
   if (opcode != kOpcodeDiscordMsg) return;
-  if (!chat_active_.load() || len == 0) return;
+  // 🔴 TRACER LE REJET, pas la réussite. Un message écarté ici ne laissait AUCUNE
+  // trace nulle part : côté serveur la ligne partait, côté joueur rien n'arrivait,
+  // et rien ne disait lequel des deux verrous avait joué. Une ligne affichée, elle,
+  // se voit — elle n'a pas besoin d'être racontée aussi dans le journal.
+  const bool active = chat_active_.load();
+  if (!active) {
+    LogDiag("[DiscordRelay] message JETE ({} octets) : relais muet "
+            "(reglage eteint ou hors Gonryun)", len);
+    return;
+  }
+  if (len == 0) return;
   const char* p = reinterpret_cast<const char*>(data);
   size_t str_len = 0;
   while (str_len < len && p[str_len] != '\0') ++str_len;

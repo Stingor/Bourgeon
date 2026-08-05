@@ -486,6 +486,13 @@ void Bourgeon::FireChatMessage(const char* chat_buffer) {
   }
 }
 
+// Aiguillage d'une ligne écrite par NOUS (UIM_PUSHINTOCHATHISTORY). Il vit ici et
+// non dans le hook : `ragnarok/` ne connaît pas les features, et n'a pas à les
+// connaître. Bourgeon, lui, tient déjà les deux bouts.
+bool Bourgeon::RouteChatLine(const char* text, uint32_t rgb) {
+  return chatwnd::IngestPluginLine(text, rgb);
+}
+
 void Bourgeon::FireKeyDown(unsigned long vkey, int new_key, int accurate_key) {
   for (auto& plugin : plugins_) {
     try {

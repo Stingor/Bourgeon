@@ -51,6 +51,18 @@ bool UIWindowMgr::ProcessPushButton(unsigned long vkey, int new_key,
 
 size_t UIWindowMgr::SendMsg(UIMessage message, int val1, int val2, int val3,
                             int val4) {
+  // 🔴 CE CHEMIN-CI EST CELUI DE NOS PLUGINS, et il NE PASSE PAS par SendMsgHook :
+  // il appelle `SendMsgRef`, le trampoline vers la fonction native d'origine. Le
+  // hook n'intercepte que les appels du JEU. Aiguiller là-bas ne pouvait donc rien
+  // changer pour le relais Discord ni le DPS meter, qui appellent ici.
+  //
+  // C'est aussi ce qui rend la panne si discrète : nos lignes n'ont jamais croisé
+  // le moindre code à nous entre l'envoi et la chatbox native — désormais morte.
+  if (message == UIMessage::UIM_PUSHINTOCHATHISTORY &&
+      Bourgeon::Instance().RouteChatLine(reinterpret_cast<const char*>(val1),
+                                         static_cast<uint32_t>(val2))) {
+    return 0;  // prise par la chatbox ImGui
+  }
   return SendMsgRef(g_uiwindowmgr_ptr.load(), static_cast<int>(message), val1,
                     val2, val3, val4);
 }
@@ -80,7 +92,20 @@ size_t UIWindowMgr::SendMsgHook(UIMessage message, int val1, int val2, int val3,
   if (message != UIMessage::UIM_PUSHINTOCHATHISTORY)
     return SendMsgRef(this, static_cast<int>(message), val1, val2, val3, val4);
 
-  Bourgeon::Instance().FireChatMessage(reinterpret_cast<const char*>(val1));
+  const char* text = reinterpret_cast<const char*>(val1);
+  Bourgeon::Instance().FireChatMessage(text);
+
+  // 🔴 SEULE VOIE par laquelle Bourgeon écrit dans le chat (relais Discord, DPS
+  // meter), et elle s'adresse à la chatbox NATIVE. Quand la chatbox ImGui l'a
+  // détruite, ce message ne mène plus nulle part : la ligne s'empile dans la file
+  // `mgr+0x4C4`, drainée à la seule création d'une fenêtre — donc jamais. Nos deux
+  // plugins parlaient dans le vide, sans la moindre erreur pour le dire.
+  //
+  // ⚠ Et surtout : cette voie NE PASSE PAS par `ChatAction` (mesuré en jeu — les
+  // lignes n'arrivaient qu'en source 'W', jamais 'A'). Le détour qui rattrape tout
+  // le reste ne pouvait donc pas rattraper celle-ci.
+  if (Bourgeon::Instance().RouteChatLine(text, static_cast<uint32_t>(val2)))
+    return 0;  // prise par la chatbox ImGui : ne pas nourrir la file du natif
 
   return SendMsgRef(this, static_cast<int>(message), val1, val2, val3, val4);
 }

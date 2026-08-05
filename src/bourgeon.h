@@ -144,6 +144,11 @@ class Bourgeon {
   void FireModeSwitch(ModeMgr::ModeType mode_type, const char* map_name);
   void FireTalkType(const char* chat_buffer);
   void FireChatMessage(const char* chat_buffer);
+
+  // Aiguille une ligne écrite par Bourgeon (UIM_PUSHINTOCHATHISTORY) vers la
+  // chatbox ImGui quand elle a remplacé la native. true = prise en charge, et
+  // l'appelant ne doit alors PAS la passer au natif (cf. chatwnd::IngestPluginLine).
+  bool RouteChatLine(const char* text, uint32_t rgb);
   void FireKeyDown(unsigned long vkey, int new_key, int accurate_key);
   void FireRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len);
 
