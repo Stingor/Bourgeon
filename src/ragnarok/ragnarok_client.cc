@@ -729,9 +729,18 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       //
       // On ne relâche QUE ce qu'aucun champ de saisie ne peut utiliser :
       //   - F1 a F12 : hotkeys de barre d'action, inertes pour ImGui ;
+      //   - INSERT : s'asseoir / se lever. ImGui n'a pas de mode « refrappe »,
+      //     cette touche ne lui sert donc À RIEN — et l'avaler faisait qu'on ne
+      //     pouvait plus s'asseoir tant que la barre de chat avait le focus,
+      //     c'est-à-dire précisément quand on discute assis ;
       //   - les combinaisons avec Alt : raccourcis du jeu (Alt+F...), qu'ImGui
       //     n'utilise pas non plus. Ctrl reste avalé — c'est copier/coller/tout
       //     sélectionner du champ.
+      //
+      // 🔴 LE CRITÈRE, pour la prochaine touche qu'on voudra ajouter : est-ce
+      // qu'une SAISIE DE TEXTE peut s'en servir ? Suppr, Origine, Fin, les
+      // flèches, Page haut/bas et Tab servent tous à l'édition — ils doivent
+      // rester avalés, sans quoi le champ deviendrait inutilisable.
       //
       // Et seulement quand la capture vient bien d'une saisie (`WantTextInput`) :
       // les prises volontaires du clavier — char-select, DOOM, qui la demandent par
@@ -752,7 +761,8 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       const bool alt_shortcut = (GetKeyState(VK_MENU) & 0x8000) &&
                                 !(GetKeyState(VK_CONTROL) & 0x8000);
       const bool game_only_key =
-          !char_msg && ((wParam >= VK_F1 && wParam <= VK_F12) || alt_shortcut);
+          !char_msg && ((wParam >= VK_F1 && wParam <= VK_F12) ||
+                        wParam == VK_INSERT || alt_shortcut);
       if (!(typing && game_only_key)) {
         switch (uMsg) {
           case WM_KEYDOWN: case WM_KEYUP:

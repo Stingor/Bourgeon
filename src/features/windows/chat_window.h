@@ -113,6 +113,10 @@ class ChatWindow : public Plugin {
   // (cf. features/systems/image_preview.h).
   bool& url_preview()     { return url_preview_; }
   bool  url_preview() const { return url_preview_; }
+  // Famille de police du LOG (index dans ro::ChatFamily*). 0 = « Système », qui
+  // ne force rien. Les familles sont bakées au démarrage, donc changer de valeur
+  // s'applique à chaud — contrairement aux glyphes coréens, qui touchent l'atlas.
+  int&  font_family()     { return font_family_; }
   // Hôtes autorisés PAR LE JOUEUR, sérialisés (« a.com;b.net »). La liste vivante
   // est celle d'imgprev ; ce champ n'est que sa forme persistable — c'est lui que
   // les réglages écrivent et relisent, et OnTick les resynchronise.
@@ -202,6 +206,14 @@ class ChatWindow : public Plugin {
     enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
+    // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message
+    // relayé se met en forme tout seul, et un joueur peut l'écrire aussi.
+    //
+    // 🔴 Ce sont de VRAIES polices, pas un effet : ImGui ne synthétise ni l'un ni
+    // l'autre. Et une variante étant plus large, celle du fragment doit servir à
+    // sa MESURE autant qu'à son dessin — sinon le repli tombe à côté.
+    bool        bold = false;
+    bool        italic = false;
     uint32_t    item_id = 0;  // lien <ITEML> / icône ^i[] : id de l'objet
     uint8_t     kind = kNone;
     bool is_link() const { return kind != kNone; }
@@ -442,6 +454,7 @@ class ChatWindow : public Plugin {
   bool locked_         = false;
   bool url_confirm_    = true;   // opt-OUT : le garde-fou est là par défaut
   bool url_preview_    = false;  // opt-IN : rien n'est téléchargé sans accord
+  int  font_family_    = 0;      // 0 = Système (cf. ro::ChatFamilyFont)
   std::string url_hosts_;        // hôtes autorisés par le joueur, « a.com;b.net »
   std::string url_hosts_seen_;   // dernière valeur poussée vers imgprev
   int  padding_px_     = 3;

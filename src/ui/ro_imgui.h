@@ -84,6 +84,48 @@ ImFont* LoadKoreanFont(float size_px = 15.0f);
 // LoadKoreanFont (l'état est mémorisé et appliqué au chargement). Désactivé =
 // retour à la police intégrée d'ImGui.
 void SetFontEnabled(bool enabled);
+
+// ── Variantes grasse et italique ─────────────────────────────────────────────
+// Bakées dans le MÊME atlas et à la MÊME taille que la police normale, par
+// LoadKoreanFont. Rendent nullptr quand le fichier système est absent : dans ce
+// cas l'appelant garde sa police courante — un texte non gras vaut mieux qu'un
+// texte manquant.
+//
+// 🔴 Une variante est PLUS LARGE que la normale. La police d'un fragment doit
+// donc servir à sa MESURE (`CalcTextSizeA`) autant qu'à son dessin, sinon les
+// retours à la ligne tombent à côté.
+//
+// ⚠ L'italique ne couvre que le LATIN : aucune police coréenne courante n'en
+// fournit, celle-ci vient d'Arial. Du texte coréen en italique restera droit.
+ImFont* FontBold();
+ImFont* FontItalic();
+
+// ── Familles au choix pour la chatbox ────────────────────────────────────────
+// Toutes bakées au démarrage : basculer ensuite ne coûte rien. L'index 0 est
+// « Système », qui ne force rien et laisse la police de base — c'est la seule à
+// couvrir le coréen quand le réglage de débogage est actif.
+//
+// `ChatFamilyFont` rend nullptr pour l'index 0 sans style : l'appelant garde
+// alors sa police courante. Repli en cascade sinon (style absent -> normal de la
+// même famille), parce que rester dans la famille en perdant le gras vaut mieux
+// que changer de dessin pour le garder.
+int         ChatFamilyCount();
+const char* ChatFamilyLabel(int index);
+ImFont*     ChatFamilyFont(int index, bool bold, bool italic);
+
+// ── Glyphes coréens : réservés au DÉBOGAGE ───────────────────────────────────
+// 🔴 Le hangul pesait 97 % de l'atlas (11 172 glyphes sur ~11 500) pour des
+// caractères qu'aucun joueur ne voit : le jeu est en français/anglais, et les
+// conversions CP949 du code traduisent l'ENCODAGE DU FIL, pas un contenu coréen.
+// Il n'est donc plus baké par défaut.
+//
+// Il le redevient quand le staff active le réglage « korean_glyphs » : les
+// chemins des fichiers du jeu (« 유저인터페이스\… ») redeviennent lisibles dans
+// la console de logs.
+//
+// ⚠ EXIGE UN REDÉMARRAGE : l'atlas est construit une seule fois à l'init, et le
+// backend DX7 n'a aucun chemin de texture dynamique pour le refaire.
+bool KoreanGlyphsWanted();
 bool IsFontEnabled();
 
 // Affiche une chaîne CP949 comme texte ImGui (convertit en UTF-8 d'abord).

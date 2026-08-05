@@ -5,6 +5,7 @@
 
 #include <cfloat>
 #include <cstdio>
+#include <fstream>  // lecture directe du yaml (glyphes coréens, cf. plus bas)
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +15,7 @@
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
 #include "ragnarok/globals.h"  // rag::kClientCodePageAddr (code-page du client)
+#include "utils/game_paths.h"  // paths::SettingsPath (réglage des glyphes coréens)
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 #include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
 
@@ -169,6 +171,49 @@ int Utf8ToCp949(const char* utf8, char* out, size_t out_size) {
 namespace {
 ImFont* g_font_default = nullptr;  // police intégrée ImGui (ProggyClean) = repli
 ImFont* g_font_malgun = nullptr;   // Malgun Gothic (null si absente du système)
+// ── Gras et italique ────────────────────────────────────────────────────────
+// ImGui ne synthétise NI l'un NI l'autre : il faut de vraies polices, bakées
+// dans le même atlas. Nulles quand le fichier système manque — l'appelant
+// retombe alors sur la police normale, et le texte reste lisible.
+//
+// ⚠ MALGUN N'A PAS D'ITALIQUE, et aucune police coréenne courante n'en fournit.
+// L'italique vient donc d'Arial : le latin est couvert, le coréen resterait
+// droit. Écart assumé sur un serveur francophone.
+ImFont* g_font_bold   = nullptr;
+ImFont* g_font_italic = nullptr;
+
+// ── Familles au choix pour la CHATBOX ────────────────────────────────────────
+// Bakées au démarrage, comme tout le reste : basculer ensuite ne coûte rien
+// (le rendu du chat prend un `ImFont*` en argument). Charger une police
+// arbitraire à chaud demanderait de reconstruire l'atlas et de recréer la
+// texture du backend — ce que DX7 ne sait pas faire.
+//
+// Chacune pèse ~275 glyphes. C'est négligeable DÈS LORS que le hangul n'est plus
+// baké par défaut : à lui seul, il en coûtait 11 172, soit quarante familles.
+struct ChatFamily {
+  const char* label;
+  const char* regular;
+  const char* bold;
+  const char* italic;
+};
+const ChatFamily kChatFamilies[] = {
+    {"Système (défaut)", nullptr, nullptr, nullptr},  // la police de base
+    // ⚠ Tahoma n'a PAS d'italique — elle ne livre que normal et gras. Ce n'est
+    // pas un oubli : le fichier n'existe pas. Cf. le repli dans ChatFamilyFont.
+    {"Tahoma",   "C:\\Windows\\Fonts\\tahoma.ttf",
+                 "C:\\Windows\\Fonts\\tahomabd.ttf",  nullptr},
+    {"Segoe UI", "C:\\Windows\\Fonts\\segoeui.ttf",
+                 "C:\\Windows\\Fonts\\segoeuib.ttf",
+                 "C:\\Windows\\Fonts\\segoeuii.ttf"},
+    {"Verdana",  "C:\\Windows\\Fonts\\verdana.ttf",
+                 "C:\\Windows\\Fonts\\verdanab.ttf",
+                 "C:\\Windows\\Fonts\\verdanai.ttf"},
+    {"Consolas", "C:\\Windows\\Fonts\\consola.ttf",
+                 "C:\\Windows\\Fonts\\consolab.ttf",
+                 "C:\\Windows\\Fonts\\consolai.ttf"},
+};
+constexpr int kChatFamilyCount = IM_ARRAYSIZE(kChatFamilies);
+ImFont* g_chat_fonts[kChatFamilyCount][3] = {};  // [famille][0=normal,1=gras,2=ital]
 bool g_font_enabled = true;        // état du toggle (mémorisé même avant load)
 
 // (Re)sélectionne la police active selon le toggle. Immédiat (pris en compte au
@@ -178,6 +223,74 @@ void ApplyFontSelection() {
       (g_font_enabled && g_font_malgun) ? g_font_malgun : g_font_default;
 }
 }  // namespace
+
+// ── Le réglage « glyphes coréens », lu AVANT que les plugins n'existent ──────
+//
+// L'atlas se construit à l'init, bien avant que MoonlightUi n'ait chargé le yaml.
+// On lit donc la clé directement, à la main — c'est laid, mais c'est le seul
+// moment où la question se pose, et ça évite d'inventer un second mécanisme de
+// configuration pour un booléen.
+//
+// 🔴 Changer ce réglage EXIGE un redémarrage du client : l'atlas est baké une
+// fois, et DX7 n'a aucun chemin de texture dynamique pour le refaire. Le libellé
+// du réglage doit le dire.
+bool KoreanGlyphsWanted() {
+  static int cached = -1;
+  if (cached >= 0) return cached != 0;
+  cached = 0;
+  try {
+    const std::string path = paths::SettingsPath();
+    std::ifstream in(path.c_str());
+    if (in) {
+      std::string line;
+      while (std::getline(in, line)) {
+        if (line.find("korean_glyphs") == std::string::npos) continue;
+        // « korean_glyphs: true » — on ne cherche pas plus loin qu'un `true`.
+        if (line.find("true") != std::string::npos) cached = 1;
+        break;
+      }
+    }
+  } catch (...) {
+    cached = 0;  // illisible = défaut, jamais d'exception à l'init du rendu
+  }
+  return cached != 0;
+}
+
+// Les variantes, ou nullptr quand le système ne les a pas. L'appelant DOIT
+// retomber sur sa police courante dans ce cas : un texte non gras vaut mieux
+// qu'un texte absent.
+ImFont* FontBold()   { return g_font_bold; }
+ImFont* FontItalic() { return g_font_italic; }
+
+int         ChatFamilyCount() { return kChatFamilyCount; }
+const char* ChatFamilyLabel(int i) {
+  return (i >= 0 && i < kChatFamilyCount) ? kChatFamilies[i].label : "";
+}
+
+// La police d'une famille, pour un style donné. Repli en cascade — famille
+// absente du système, ou style qu'elle ne fournit pas : on redescend vers la
+// variante générique puis vers nullptr, et l'appelant garde sa police courante.
+ImFont* ChatFamilyFont(int i, bool bold, bool italic) {
+  if (i <= 0 || i >= kChatFamilyCount) {  // 0 = « Système » : rien d'imposé
+    if (bold)   return g_font_bold;
+    if (italic) return g_font_italic;
+    return nullptr;
+  }
+  if (bold) {
+    if (g_chat_fonts[i][1]) return g_chat_fonts[i][1];
+    if (g_font_bold)        return g_font_bold;
+  } else if (italic) {
+    if (g_chat_fonts[i][2]) return g_chat_fonts[i][2];
+    if (g_font_italic)      return g_font_italic;
+  }
+  // 🔴 STYLE MANQUANT : on emprunte la variante GÉNÉRIQUE plutôt que de rendre le
+  // normal. Tahoma, par exemple, n'a pas d'italique du tout — et rendre le normal
+  // faisait que `*texte*` ne produisait RIEN de visible : le joueur écrit un
+  // balisage, rien ne change, il conclut que c'est cassé. Un italique d'Arial à
+  // côté d'un normal de Tahoma se remarque à peine à cette taille ; une emphase
+  // absente, elle, se remarque tout de suite.
+  return g_chat_fonts[i][0];
+}
 
 ImFont* LoadKoreanFont(float size_px) {
   ImGuiIO& io = ImGui::GetIO();
@@ -196,15 +309,34 @@ ImFont* LoadKoreanFont(float size_px) {
     // descriptions) contiennent des « … », tirets cadratins et apostrophes
     // courbes, qui sortaient en losange « glyphe manquant ». 43 glyphes de plus,
     // négligeable à côté des 11 172 syllabes hangul déjà bakées.
-    static const ImWchar kRanges[] = {
+    // ── Les plages, et la plus lourde est OPTIONNELLE ───────────────────────
+    //
+    // 🔴 LE HANGUL N'EST PLUS BAKÉ PAR DÉFAUT. Il pesait 11 172 glyphes sur ~11
+    // 500, soit 97 % de l'atlas — pour des caractères que PERSONNE ne voit : les
+    // joueurs sont francophones et le jeu est en français/anglais. Les
+    // conversions CP949 qu'on voit partout traduisent l'ENCODAGE DU FIL, pas un
+    // contenu coréen ; elles restent nécessaires, les glyphes non.
+    //
+    // ⚠ SAUF pour le staff qui débogue avec les fichiers du jeu : là, les chemins
+    // sont bel et bien coréens (« 유저인터페이스\… ») et la console doit rester
+    // lisible. D'où le réglage — voir KoreanGlyphsWanted().
+    static const ImWchar kRangesLatin[] = {
         0x0020, 0x00FF,  // latin de base + supplément (accents)
         0x2010, 0x203A,  // tirets, apostrophes/guillemets courbes, points de
                          // suspension (U+2026), puce, pour mille
-        0x3131, 0x3163,  // jamos coréens
-        0xAC00, 0xD7A3,  // syllabes coréennes
-        0xFFFD, 0xFFFD,  // glyphe « caractère manquant »
+        0xFFFD, 0xFFFD,  // glyphe « caractère manquant » (le carré propre)
         0,
     };
+    static const ImWchar kRangesKorean[] = {
+        0x0020, 0x00FF,
+        0x2010, 0x203A,
+        0x3131, 0x3163,  // jamos coréens
+        0xAC00, 0xD7A3,  // syllabes coréennes — les 11 172
+        0xFFFD, 0xFFFD,
+        0,
+    };
+    const ImWchar* const kRanges =
+        KoreanGlyphsWanted() ? kRangesKorean : kRangesLatin;
 
     // ── L'antislash : le seul glyphe qu'on ne prend PAS chez Malgun ──────────
     // Les polices coréennes dessinent U+005C comme le WON « ₩ » — héritage de la
@@ -249,6 +381,63 @@ ImFont* LoadKoreanFont(float size_px) {
       merge.MergeMode = true;
       merge.GlyphExcludeRanges = nullptr;  // c'est ELLE qui doit fournir 0x5C
       io.Fonts->AddFontFromFileTTF(latin_font, size_px, &merge, kBackslashOnly);
+    }
+
+    // ── Les variantes, bakées MAINTENANT ────────────────────────────────────
+    // Même taille et même configuration que la normale : une variante mesurée
+    // autrement décalerait les retours à la ligne, puisque c'est la police du
+    // fragment qui sert à la MESURE comme au dessin.
+    //
+    // Le premier fichier trouvé gagne. Malgun en gras couvre latin ET coréen ;
+    // pour l'italique, aucune coréenne n'existe et on prend une latine.
+    auto load_variant = [&](const char* const* paths, size_t n,
+                            const ImWchar* ranges) -> ImFont* {
+      for (size_t i = 0; i < n; ++i) {
+        if (GetFileAttributesA(paths[i]) == INVALID_FILE_ATTRIBUTES) continue;
+        ImFontConfig vc = cfg;
+        vc.GlyphExcludeRanges = nullptr;  // pas de won à écarter hors de Malgun
+        return io.Fonts->AddFontFromFileTTF(paths[i], size_px, &vc, ranges);
+      }
+      return nullptr;
+    };
+    static const char* const kBoldFonts[] = {"C:\\Windows\\Fonts\\malgunbd.ttf",
+                                             "C:\\Windows\\Fonts\\arialbd.ttf",
+                                             "C:\\Windows\\Fonts\\tahomabd.ttf"};
+    static const char* const kItalicFonts[] = {"C:\\Windows\\Fonts\\ariali.ttf",
+                                               "C:\\Windows\\Fonts\\seguiit.ttf"};
+    // 🔴 LES DEUX VARIANTES SONT LIMITÉES AU LATIN, et c'est une contrainte
+    // d'ATLAS, pas un choix esthétique. La plage coréenne pèse 11 172 syllabes ;
+    // l'atlas de base est déjà calibré pour tenir dans les limites de texture du
+    // backend DX7 (cf. OversampleH plus haut), qui n'a aucun chemin dynamique.
+    // Baker le hangul une deuxième fois pour du gras aurait pu faire déborder
+    // l'atlas — et un atlas qui déborde, ce n'est pas du texte moche, c'est du
+    // texte ABSENT, partout.
+    //
+    // Le coût serait de toute façon injustifiable : gras et italique ne servent
+    // qu'au balisage `**…**` du chat, tapé en français. Un fragment coréen mis en
+    // gras s'affichera donc en normal — invisible en pratique ici.
+    static const ImWchar kLatinRanges[] = {0x0020, 0x00FF, 0x2010, 0x203A, 0};
+    g_font_bold   = load_variant(kBoldFonts, IM_ARRAYSIZE(kBoldFonts),
+                                 kLatinRanges);
+    g_font_italic = load_variant(kItalicFonts, IM_ARRAYSIZE(kItalicFonts),
+                                 kLatinRanges);
+
+    // ── Les familles au choix pour la chatbox ──────────────────────────────
+    // Entrée 0 = la police de base, laissée nulle : la chatbox garde alors la
+    // sienne, et c'est le seul cas où le coréen s'affiche si le réglage est
+    // actif. Les autres sont latines — on ne met pas un chemin de sprite en
+    // Consolas.
+    for (int f = 1; f < kChatFamilyCount; ++f) {
+      const ChatFamily& fam = kChatFamilies[f];
+      const char* const paths_r[] = {fam.regular};
+      const char* const paths_b[] = {fam.bold};
+      const char* const paths_i[] = {fam.italic};
+      if (fam.regular) g_chat_fonts[f][0] = load_variant(paths_r, 1, kLatinRanges);
+      // Gras et italique PROPRES à la famille : passer d'Arial gras sur du
+      // Consolas donnerait deux dessins qui n'ont rien à voir. Absents, on
+      // retombe sur les variantes génériques, puis sur le normal.
+      if (fam.bold)    g_chat_fonts[f][1] = load_variant(paths_b, 1, kLatinRanges);
+      if (fam.italic)  g_chat_fonts[f][2] = load_variant(paths_i, 1, kLatinRanges);
     }
   }
   ApplyFontSelection();

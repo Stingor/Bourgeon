@@ -1042,6 +1042,48 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
       p += 7;
       continue;
     }
+    // ── **gras** et *italique* ────────────────────────────────────────────────
+    //
+    // La syntaxe de Discord : un message relayé se met donc en forme tout seul,
+    // et un joueur peut l'écrire de la même façon.
+    //
+    // 🔴 UNE BASCULE NE S'OUVRE QUE SI SA FERMETURE EXISTE. Sans ce contrôle, un
+    // « 3*4 » ou un « *soupir » sans fin passerait TOUTE la suite de la ligne en
+    // italique — et le chat est plein d'astérisques isolées. On exige aussi que
+    // le délimiteur ouvrant colle à son texte (« *mot », jamais « * mot ») : c'est
+    // ce qui distingue une mise en forme d'une multiplication.
+    //
+    // ⚠ Volontairement PAS de `_italique_` : les tirets bas pullulent dans les
+    // pseudos et les adresses, et le taux de faux positifs serait ingérable.
+    if (*p == '*') {
+      const bool  dbl = (end - p) >= 2 && p[1] == '*';
+      const char* tok_end = p + (dbl ? 2 : 1);
+      bool&       state = dbl ? current.bold : current.italic;
+      bool        toggle = false;
+      if (state) {
+        // Fermeture : elle doit coller au texte qu'elle termine.
+        toggle = (p > text.c_str()) && p[-1] != ' ';
+      } else if (tok_end < end && *tok_end != ' ' && *tok_end != '*') {
+        // Ouverture : il faut une fermeture plus loin, sinon on ne bascule pas.
+        const char* q = tok_end;
+        while (q < end && !toggle) {
+          const char* hit = static_cast<const char*>(
+              std::memchr(q, '*', end - q));
+          if (hit == nullptr) break;
+          const bool hit_dbl = (end - hit) >= 2 && hit[1] == '*';
+          if (hit_dbl == dbl && hit > tok_end && hit[-1] != ' ') toggle = true;
+          else q = hit + (hit_dbl ? 2 : 1);
+        }
+      }
+      if (toggle) {
+        flush();
+        state = !state;
+        p = tok_end;
+        continue;
+      }
+      // Pas un délimiteur : l'astérisque est du texte ordinaire, elle tombera
+      // dans l'accumulation générale plus bas.
+    }
     // Icône d'objet ^i[<id décimal>] : le moteur natif la rend dans toutes ses
     // fenêtres TextLayout, un joueur peut donc en taper une.
     if (*p == '^' && (end - p) >= 4 && (p[1] == 'i' || p[1] == 'I') && p[2] == '[') {
@@ -2057,6 +2099,24 @@ void ChatWindow::DrawLines(const Channel& channel) {
 
       const ImU32 col = run.is_link() ? kLinkCol : (run.color != 0 ? run.color : def_col);
       const std::string& u = run.text;
+      // ── La police de CE fragment ─────────────────────────────────────────
+      // 🔴 Elle sert à la MESURE autant qu'au dessin. Le gras est plus large que
+      // le normal : mesurer avec l'une et dessiner avec l'autre ferait tomber
+      // les retours à la ligne à côté, et le survol d'un lien avec.
+      //
+      // Absente du système = on garde la police courante. Un texte non gras vaut
+      // mieux qu'un texte manquant.
+      //
+      // ⚠ Gras ET italique à la fois : le gras l'emporte, faute d'une police
+      // grasse-italique. Le cas est rare et la perte, discrète.
+      ImFont* rfont = font;
+      if (ImFont* fam = ro::ChatFamilyFont(font_family_, run.bold, run.italic))
+        rfont = fam;
+      // Largeur d'espace DE CE FRAGMENT : elle varie avec la police, et c'est
+      // elle qui espace les mots ci-dessous.
+      const float rspace = (rfont == font)
+                               ? space_w
+                               : rfont->CalcTextSizeA(fsize, FLT_MAX, 0.0f, " ").x;
       // ── Zone cliquable d'un lien : le RUN ENTIER, espaces compris ───────────
       // Elle était posée mot à mot, ce qui laissait un trou à chaque espace :
       // « [Test's Axe] » n'était survolable que sur « [Test's » et « Axe] », et le
@@ -2155,8 +2215,8 @@ void ChatWindow::DrawLines(const Channel& channel) {
           // forcément en visant le milieu du nom. Il n'agrandit la zone que si un
           // mot du lien la précède sur cette rangée (sinon on collerait au lien la
           // marge qui traîne devant lui).
-          if (seg_x0 >= 0.0f) seg_x1 += space_w;
-          x += space_w;
+          if (seg_x0 >= 0.0f) seg_x1 += rspace;
+          x += rspace;
           ++i;
           continue;
         }
@@ -2164,7 +2224,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
         while (j < u.size() && u[j] != ' ' && u[j] != '\n' && u[j] != '\r') ++j;
         const char* w0 = u.c_str() + i;
         const char* w1 = u.c_str() + j;
-        const float ww = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
+        const float ww = rfont->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
         // Le repli COUPE la zone cliquable : la partie déjà posée se referme sur
         // la rangée qu'elle occupe, la suite en ouvrira une autre plus bas.
         if (x > 0.0f && x + ww > wrap) { flush_link_hit(); x = 0.0f; y += line_h; }
@@ -2174,9 +2234,9 @@ void ChatWindow::DrawLines(const Channel& channel) {
           // décalée +1,+1 sous un texte inchangé — le même rendu que dans les
           // viewers, et la raison d'être du champ privé de la balise.
           if (run.kind == Run::kItem && run.item.broken)
-            dl->AddText(font, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+            dl->AddText(rfont, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
                         itemcell::kDamagedShadow, w0, w1);
-          dl->AddText(font, fsize, pos, col, w0, w1);
+          dl->AddText(rfont, fsize, pos, col, w0, w1);
           // Pas de soulignement : le lien se reconnaît déjà à sa couleur, à ses
           // crochets et à son icône, et le trait salissait une ligne de chat
           // dense (il n'y en a pas non plus dans le chat natif). Au survol, le
@@ -3450,6 +3510,28 @@ bool ChatWindow::DrawSettings() {
       }
     }
   }
+  // Famille de police du log. Les familles sont bakées au démarrage : le choix
+  // s'applique donc immédiatement, sans redémarrage.
+  ImGui::SetNextItemWidth(160.0f);
+  if (ro::RoBeginCombo("Police###chatwnd_family",
+                       ro::ChatFamilyLabel(font_family_))) {
+    for (int f = 0; f < ro::ChatFamilyCount(); ++f) {
+      // On n'offre que ce qui a VRAIMENT été chargé : proposer une famille
+      // absente du système donnerait un choix sans effet, donc une panne.
+      if (f != 0 && ro::ChatFamilyFont(f, false, false) == nullptr) continue;
+      if (ImGui::Selectable(ro::ChatFamilyLabel(f), font_family_ == f)) {
+        font_family_ = f;
+        changed = true;
+      }
+    }
+    ro::RoEndCombo();
+  }
+  ImGui::SameLine();
+  HelpMarker(
+      "Police du fil de discussion. « Système » garde celle du reste de "
+      "l'interface.\n\n"
+      "Les autres sont latines : un caractère coréen y apparaîtrait en carré. "
+      "Sans effet en jeu, où tout est en français ou en anglais.");
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",
