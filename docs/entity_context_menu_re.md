@@ -86,8 +86,20 @@ traverse ce pipeline exactement comme un vrai clic.
 | **0** | `CActorSprite_SubmitNameplateQuad` 0x00c588b0 | acteur ordinaire : **joueur, monstre, NPC-acteur** |
 | **1** | `NpcActor_SubmitNameplateQuad` 0x00d1da70 | **NPC de map** (le PNJ cliquable classique) |
 | **2** | `SkillUnitActor_SubmitNameplateQuad` 0x00db4d60 | **unité de compétence** (trap, warp posé, plante…) |
-| **3** | `CActorSprite…` si type d'acteur `+0x314 == 7` | **objet au sol** (item drop) |
-| **4** | `CActorSprite…` si `Job_IsSpecialUnitId(job)` ou type ∈ {9,10,13,14} | **pet / homoncule / mercenaire / élémentaire** |
+| **3** | `CActorSprite…` si type d'acteur `+0x314 == 7` | 🔴 **le PET** (voir l'encadré) |
+| **4** | `CActorSprite…` si `Job_IsSpecialUnitId(job)` ou type ∈ {9,10,13,14} | **homoncule / mercenaire / élémentaire** (🔴 *pas* le pet) |
+
+🔴 **Correction 2026-08-06 — la catégorie 3 est le PET, pas un objet au sol.**
+`+0x314` est le champ `objecttype` du paquet de spawn, c'est-à-dire l'énumération
+`clif_bl_type` de rAthena (0 = PC, 2 = ITEM, 4 = UNSPECIFIED *par défaut*, 5 = NPC,
+6 = MOB, **7 = PET**, 8 = HOM, 9 = MER, 10 = ELEM). La valeur 7 est écrite
+`mov byte ptr [edi+314h], 7` @**0x00CBAB7D**, dans le sous-type 0 de
+`ZC_CHANGESTATE_PET` — le paquet qui déclare « cette entité est ton pet » — et le menu
+pet du §5.4b l'exige justement (`+0x314 == 7`). ✅ Vérifié live : l'acteur du pet porte
+`+0x314 == 0x07`, et sa vtable (`CNpc`, `0x010939D4`) porte bien
+`CActorSprite_SubmitNameplateQuad` à vt+0x14 — donc c'est ce chemin-là, donc cat 3.
+Un objet au sol porte `objecttype == 2` et retombe dans le `else`, soit la cat **0**
+(⚠ non vérifié live). Détail complet : [`pet_re.md`](pet_re.md) §2.2.
 
 ### Prédicats de classe employés partout
 
@@ -374,8 +386,8 @@ Le comportement dépend d'abord de **`quad[8]`** (la catégorie), puis du job.
 | **0** joueur/mob | curseur selon hostilité / cible valide | cf. détail ci-dessous |
 | **1** NPC | curseur **9** (dialogue) | `Actor::OnMsg(18, aid)` = **parler au NPC** |
 | **2** unité de skill | curseur 5 ou 10 selon le skill visé | `Actor::OnMsg(103, aid, …)` |
-| **3** objet au sol | curseur 0, **aucune** interaction ici | — |
-| **4** pet/homon/merc | curseur 0 (ou 5/11 selon le contexte) | `GameMode_PostActorClickAction(aid, 1)` |
+| **3** 🔴 **pet** | curseur 0, **aucune** interaction ici | — |
+| **4** homon/merc/élém | curseur 0 (ou 5/11 selon le contexte) | `GameMode_PostActorClickAction(aid, 1)` |
 
 Détail de la catégorie 0 :
 
@@ -407,7 +419,7 @@ dépend ensuite de la catégorie :
 | 0, joueur | non (`LButtonState == 1` requis) |
 | **1** NPC de map | non (`LButtonState == 1` requis) |
 | **2** unité de compétence | **OUI** en mode ciblage 5 : aucun test de bouton |
-| **4** pet/homoncule/merc | **OUI** : `GameMode_PostActorClickAction` sans test de bouton |
+| **4** homoncule/merc/élém | **OUI** : `GameMode_PostActorClickAction` sans test de bouton |
 
 **Conséquence — le bug qu'il faut connaître avant de remplacer ce menu** : le menu
 s'ouvre au **relâchement** (état 3) tandis que l'interaction part à l'**appui**
