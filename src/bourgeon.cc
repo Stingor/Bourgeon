@@ -32,6 +32,7 @@
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/fx/screen_fx.h"
+#include "features/fx/zone_recorder.h"
 #include "features/fx/weapon_layer.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/hat_effect_depth.h"
@@ -77,6 +78,7 @@ MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
 QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
 ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
+ZoneRecorder* Bourgeon::zone_recorder() { return zone_recorder_; }
 FpsView* Bourgeon::fps_view() { return fps_view_; }
 PlayerJump* Bourgeon::player_jump() { return player_jump_; }
 KeyboardMove* Bourgeon::keyboard_move() { return keyboard_move_; }
@@ -777,6 +779,13 @@ void Bourgeon::LoadPlugins() {
     auto screen_fx = std::make_unique<ScreenFx>();
     screen_fx_ = screen_fx.get();
     plugins_.emplace_back(std::move(screen_fx));
+  }
+  {
+    // Enregistreur de zone -> GIF (staff). Capture le backbuffer APRÈS l'overlay,
+    // via le callback de fin de frame du hook Present.
+    auto zone_recorder = std::make_unique<ZoneRecorder>();
+    zone_recorder_ = zone_recorder.get();
+    plugins_.emplace_back(std::move(zone_recorder));
   }
   {
     auto dps = std::make_unique<DpsMeter>();

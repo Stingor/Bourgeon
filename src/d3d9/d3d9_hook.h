@@ -92,6 +92,28 @@ void D3D9_SetPostFx(const D3D9PostFx& fx);
 // overlay) to a PNG. Captured next Present. `filepath` is copied. DX9 only.
 void D3D9_RequestScreenshot(const char* filepath);
 
+// Callback run once per frame from Present, AFTER the overlay has been drawn and
+// AFTER EndScene — i.e. on the finished image, outside any scene. That timing is
+// not a detail: the zone recorder needs the Bourgeon UI in its capture (that is
+// what the tutorials show), and StretchRect is illegal inside a BeginScene /
+// EndScene pair, which rules out every earlier hook point. nullptr disables it.
+// Called on the render thread. DX9 only (never fires under the DX7 proxy).
+void D3D9_SetPostFrameCallback(void (*callback)());
+
+// Copies a rectangle of the CURRENT backbuffer (game + native UI + Bourgeon
+// overlay) into `out_argb` as w*h 0xAARRGGBB pixels, rescaled to out_w * out_h.
+// The crop and the downscale happen on the GPU (StretchRect), so only the wanted
+// region ever travels back over the bus — a full-screen readback per frame would
+// cost megabytes each time. Alpha is forced opaque (the backbuffer is X8R8G8B8).
+//
+// 🔴 Must be called OUTSIDE a BeginScene/EndScene pair: StretchRect is forbidden
+// inside one. In practice: from the post-frame callback above.
+//
+// Returns false if the device isn't ready, the rectangle is empty, or a D3D call
+// fails. DX9 only.
+bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
+                               int out_w, int out_h, void* out_argb);
+
 // One textured quad for offscreen avatar compositing: `tex` = IDirect3DTexture9*,
 // (x0,y0)-(x1,y1) = destination rect in canvas pixels, (u0,v0)-(u1,v1) = source UVs
 // (pass them pre-swapped for a horizontal mirror).

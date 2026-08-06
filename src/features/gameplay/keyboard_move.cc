@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "bourgeon.h"
+#include "features/hotkey_util.h"  // NativeTextInputHasFocus (garde partagée)
 #include "imgui.h"
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
@@ -58,40 +59,9 @@ void* GetOwnActor(void* gm) {
   return actor;
 }
 
-// ── Focus d'une zone de saisie native ───────────────────────────────────────
-// Réplique la garde de UIWindowMgr_OnKeyDown (0x00a471e0) : quand une textbox a
-// le focus, le natif ne laisse passer en hotkey que Tab/Entrée/Maj/Ctrl/Alt et
-// F1..F12 — surtout PAS les lettres. On applique la même règle, sinon taper
-// « zoulou » dans le chat ferait courir le personnage.
-//   g_UIWindowMgr+0x24  : saisie de chat active
-//   g_UIWindowMgr+0x1a0 : widget qui a le focus (UIWindowMgr_GetFocusedWnd)
-//   g_UIWindowMgr+0x1c8 : fenêtre de chat ; +0xbc/+0xc0 = ses UIEditWnd
-//   widget+0x10         : fenêtre propriétaire ; +0x28 = visible
-bool NativeTextInputHasFocus() {
-  bool focused = false;
-  __try {
-    char* mgr = reinterpret_cast<char*>(uiwnd::kUIWindowMgrAddr);
-    void* widget = *reinterpret_cast<void**>(mgr + 0x1a0);
-    void* chat   = *reinterpret_cast<void**>(mgr + 0x1c8);
-    const bool chat_typing = *reinterpret_cast<uint8_t*>(mgr + 0x24) != 0;
-    if (chat_typing && chat && widget) {
-      char* c = reinterpret_cast<char*>(chat);
-      if (widget == *reinterpret_cast<void**>(c + 0xbc) ||
-          widget == *reinterpret_cast<void**>(c + 0xc0))
-        focused = true;
-    }
-    if (!focused && widget) {
-      void* owner =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(widget) + 0x10);
-      if (owner && owner != chat &&
-          *reinterpret_cast<int*>(reinterpret_cast<char*>(owner) + 0x28) != 0)
-        focused = true;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    focused = true;  // dans le doute, on ne bouge pas
-  }
-  return focused;
-}
+// La garde « une saisie native a le focus » (réplique de UIWindowMgr_OnKeyDown,
+// 0x00a471e0) vit dans hotkey_util : elle vaut pour TOUT raccourci global, et une
+// copie par module se serait corrigée une par une le jour où un offset bouge.
 
 // ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
 // Signature exacte du natif inconnue côté nettoyage de pile (Ghidra ne récupère
@@ -270,7 +240,7 @@ void KeyboardMove::Update() {
   // du jeu (et Maj sert au clic forcé), ils ne doivent pas faire marcher.
   const ImGuiIO& io = ImGui::GetIO();
   const bool keys_ours = !io.WantCaptureKeyboard && !io.KeyCtrl && !io.KeyAlt &&
-                         !io.KeyShift && !NativeTextInputHasFocus();
+                         !io.KeyShift && !hotkeys::NativeTextInputHasFocus();
 
   int screen_x = 0, screen_y = 0;
   if (keys_ours) {

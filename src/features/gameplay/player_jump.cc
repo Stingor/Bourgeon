@@ -107,38 +107,9 @@ void ApplyJumpHeight(void* actor, void* world, float offY) {
   }
 }
 
-// ── Focus d'une zone de saisie native ───────────────────────────────────────
-// Même garde que KeyboardMove : sans elle, l'espace tapé dans le chat (ou dans
-// tout autre champ : message privé, montant de vente…) fait sauter le perso.
-//   g_UIWindowMgr+0x24  : saisie de chat active
-//   g_UIWindowMgr+0x1a0 : widget qui a le focus
-//   g_UIWindowMgr+0x1c8 : fenêtre de chat ; +0xbc/+0xc0 = ses UIEditWnd
-//   widget+0x10         : fenêtre propriétaire ; +0x28 = visible
-bool NativeTextInputHasFocus() {
-  bool focused = false;
-  __try {
-    char* mgr = reinterpret_cast<char*>(uiwnd::kUIWindowMgrAddr);
-    void* widget = *reinterpret_cast<void**>(mgr + 0x1a0);
-    void* chat   = *reinterpret_cast<void**>(mgr + 0x1c8);
-    const bool chat_typing = *reinterpret_cast<uint8_t*>(mgr + 0x24) != 0;
-    if (chat_typing && chat && widget) {
-      char* c = reinterpret_cast<char*>(chat);
-      if (widget == *reinterpret_cast<void**>(c + 0xbc) ||
-          widget == *reinterpret_cast<void**>(c + 0xc0))
-        focused = true;
-    }
-    if (!focused && widget) {
-      void* owner =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(widget) + 0x10);
-      if (owner && owner != chat &&
-          *reinterpret_cast<int*>(reinterpret_cast<char*>(owner) + 0x28) != 0)
-        focused = true;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    focused = true;  // dans le doute, on ne saute pas
-  }
-  return focused;
-}
+// La garde « une saisie native a le focus » vit dans hotkey_util : elle vaut pour
+// TOUT raccourci global, et en garder une copie par module, c'est se condamner à
+// les corriger une par une le jour où un offset bouge.
 }  // namespace
 
 PlayerJump::PlayerJump() {
@@ -195,7 +166,7 @@ void PlayerJump::OnKeyDown(unsigned long vkey, int, int) {
   if (ImGui::GetCurrentContext() != nullptr &&
       ImGui::GetIO().WantCaptureKeyboard)
     return;
-  if (NativeTextInputHasFocus()) return;
+  if (hotkeys::NativeTextInputHasFocus()) return;
 
   bool already = false;
   for (const Jump& j : jumps_)

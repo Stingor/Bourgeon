@@ -9,8 +9,10 @@
 
 #include "bourgeon.h"
 #include "ragnarok/globals.h"  // rag::kStdStringDtorAddr
+#include "ragnarok/uiwnd.h"    // uiwnd::kUIWindowMgrAddr (focus d'une saisie native)
 #include "features/windows/character_sheet.h"  // EquipPreset (presets d'équipement)
 #include "features/gameplay/player_jump.h"      // touche de saut
+#include "features/fx/zone_recorder.h"          // touche d'enregistrement de zone
 
 namespace hotkeys {
 namespace {
@@ -139,7 +141,21 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // c) Un raccourci natif de la barre de skills/items.
+  // c) La touche d'enregistrement de zone (staff). Contrôlée pour tout le monde et
+  // pas seulement pour le staff : le niveau de groupe peut changer en cours de
+  // session, et un conflit qui n'apparaîtrait qu'à ce moment-là serait
+  // incompréhensible pour qui a réglé sa touche la veille.
+  if (self != Owner::kZoneRecorder) {
+    if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
+      if (zone_recorder->key_vk() == vkey && zone_recorder->key_ctrl() == ctrl &&
+          zone_recorder->key_alt() == alt && zone_recorder->key_shift() == shift) {
+        std::snprintf(what, cap, "l'enregistrement de zone");
+        return true;
+      }
+    }
+  }
+
+  // d) Un raccourci natif de la barre de skills/items.
   for (int category : kNativeCats)
     for (int slot = 0; slot < kNativeSlots; ++slot) {
       int main_vk, mod_vk;
@@ -153,6 +169,37 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       }
     }
   return false;
+}
+
+// Offsets du gestionnaire de fenêtres natif (client 20250716) :
+//   g_UIWindowMgr+0x24  : saisie de chat active
+//   g_UIWindowMgr+0x1a0 : widget qui a le focus (UIWindowMgr_GetFocusedWnd)
+//   g_UIWindowMgr+0x1c8 : fenêtre de chat ; +0xbc/+0xc0 = ses UIEditWnd
+//   widget+0x10         : fenêtre propriétaire ; +0x28 = visible
+bool NativeTextInputHasFocus() {
+  bool focused = false;
+  __try {
+    char* mgr = reinterpret_cast<char*>(uiwnd::kUIWindowMgrAddr);
+    void* widget = *reinterpret_cast<void**>(mgr + 0x1a0);
+    void* chat   = *reinterpret_cast<void**>(mgr + 0x1c8);
+    const bool chat_typing = *reinterpret_cast<uint8_t*>(mgr + 0x24) != 0;
+    if (chat_typing && chat && widget) {
+      char* c = reinterpret_cast<char*>(chat);
+      if (widget == *reinterpret_cast<void**>(c + 0xbc) ||
+          widget == *reinterpret_cast<void**>(c + 0xc0))
+        focused = true;
+    }
+    if (!focused && widget) {
+      void* owner =
+          *reinterpret_cast<void**>(reinterpret_cast<char*>(widget) + 0x10);
+      if (owner && owner != chat &&
+          *reinterpret_cast<int*>(reinterpret_cast<char*>(owner) + 0x28) != 0)
+        focused = true;
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    focused = true;  // lecture impossible : dans le doute, on n'agit pas
+  }
+  return focused;
 }
 
 void PingCapture() {

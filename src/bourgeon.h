@@ -18,6 +18,7 @@ class MenuIcons;
 class StatusIconBar;
 class QuestTracker;
 class ScreenFx;
+class ZoneRecorder;
 class MoonlightUi;
 class SkillBar;
 class ChatTweaks;
@@ -70,6 +71,7 @@ class Bourgeon {
   StatusIconBar* status_icons();
   QuestTracker* quest_tracker();
   ScreenFx* screen_fx();
+  ZoneRecorder* zone_recorder();
   MoonlightUi* moonlight_ui();
   SkillBar* skill_bar();
   ChatTweaks* chat_tweaks();
@@ -229,6 +231,7 @@ class Bourgeon {
   StatusIconBar* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
   QuestTracker* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
   ScreenFx* screen_fx_ = nullptr; // non-owning, lifetime tied to plugins_
+  ZoneRecorder* zone_recorder_ = nullptr;  // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_
   SkillBar* skill_bar_ = nullptr;       // non-owning, lifetime tied to plugins_
   ChatTweaks* chat_tweaks_ = nullptr;         // non-owning, lifetime tied to plugins_

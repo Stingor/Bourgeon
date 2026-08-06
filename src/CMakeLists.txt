@@ -150,6 +150,8 @@ set(BOURGEON_FILES
 	"features/fx/spr_effect_lab.h"
 	"features/fx/weapon_dual_sprites.cc"
 	"features/fx/weapon_dual_sprites.h"
+	"features/fx/zone_recorder.cc"
+	"features/fx/zone_recorder.h"
 	"features/fx/weapon_layer.cc"
 	"features/fx/weapon_layer.h"
 

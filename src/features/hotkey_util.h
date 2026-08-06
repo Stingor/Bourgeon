@@ -20,9 +20,10 @@ namespace hotkeys {
 // Qui demande le combo, pour s'exclure du contrôle : on ne se déclare pas en
 // conflit avec soi-même en redéfinissant son propre raccourci.
 enum class Owner {
-  kNone,         // rien à exclure
-  kEquipPreset,  // preset d'équipement ; self_index = son index dans equip_presets()
-  kJump,         // touche de saut (PlayerJump)
+  kNone,          // rien à exclure
+  kEquipPreset,   // preset d'équipement ; self_index = son index dans equip_presets()
+  kJump,          // touche de saut (PlayerJump)
+  kZoneRecorder,  // touche d'enregistrement de zone (ZoneRecorder, staff)
 };
 
 int      ImGuiKeyToVk(ImGuiKey key);
@@ -39,6 +40,14 @@ void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap);
 // `what` (au plus `cap` octets, toujours terminé).
 bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
               char* what, int cap);
+
+// Une zone de saisie NATIVE a le focus (chat, message privé, montant de vente…) :
+// la frappe est un caractère, pas un raccourci. Réplique la garde de
+// UIWindowMgr_OnKeyDown (0x00a471e0). Vit ici parce que TOUT raccourci global doit
+// la consulter — sans elle, taper « zoulou » dans le chat fait courir, sauter, et
+// maintenant filmer. En cas de lecture impossible, renvoie true : dans le doute on
+// n'agit pas.
+bool NativeTextInputHasFocus();
 
 // Une capture de combo est en cours quelque part dans l'UI : les raccourcis ne
 // doivent pas se déclencher pendant ce temps, la touche pressée sert à remapper.

@@ -28,6 +28,7 @@
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/fx/screen_fx.h"
+#include "features/fx/zone_recorder.h"
 #include "features/overlays/entity_names.h"
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
@@ -204,6 +205,38 @@ const moonlight_ui::SettingDesc kGraphicsSettings[] = {
      MLUI_LITERAL(int, INT_MIN)},
 };
 #undef POSTFX
+
+// Enregistreur de zone -> GIF (staff). La ZONE est persistée en pixels écran :
+// c'est un cadrage choisi une fois pour un tutoriel, qu'on veut retrouver
+// identique le lendemain. Elle est rebornée à la résolution courante au moment de
+// la capture (cf. D3D9_GrabBackbufferRegion), donc une fenêtre redimensionnée
+// entre deux sessions ne casse rien.
+const moonlight_ui::SettingDesc kZoneRecorderSettings[] = {
+    {"zonerec_x",          SType::kInt,  MLUI_FIELD(zone_recorder, zone_x()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_y",          SType::kInt,  MLUI_FIELD(zone_recorder, zone_y()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_w",          SType::kInt,  MLUI_FIELD(zone_recorder, zone_w()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_h",          SType::kInt,  MLUI_FIELD(zone_recorder, zone_h()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_fps",        SType::kInt,  MLUI_FIELD(zone_recorder, fps()),
+     MLUI_LITERAL(int, 10)},
+    {"zonerec_seconds",    SType::kInt,  MLUI_FIELD(zone_recorder, duration_s()),
+     MLUI_LITERAL(int, 6)},
+    {"zonerec_max_width",  SType::kInt,  MLUI_FIELD(zone_recorder, max_width()),
+     MLUI_LITERAL(int, 640)},
+    {"zonerec_start_delay",SType::kInt,  MLUI_FIELD(zone_recorder, start_delay_s()),
+     MLUI_LITERAL(int, 3)},
+    {"zonerec_key_vk",     SType::kInt,  MLUI_FIELD(zone_recorder, key_vk()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_key_ctrl",   SType::kBool, MLUI_FIELD(zone_recorder, key_ctrl()),
+     MLUI_LITERAL(bool, false)},
+    {"zonerec_key_alt",    SType::kBool, MLUI_FIELD(zone_recorder, key_alt()),
+     MLUI_LITERAL(bool, false)},
+    {"zonerec_key_shift",  SType::kBool, MLUI_FIELD(zone_recorder, key_shift()),
+     MLUI_LITERAL(bool, false)},
+};
 
 // Compteur de dégâts. Les membres sont publics mais DpsMeter est un plugin : on
 // ne peut pas en instancier un exemplaire juste pour lire ses défauts, d'où les
@@ -1110,6 +1143,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kStatusIconSettings);
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
+    moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
 
     moonlight_ui::ReadChatBgPresets(ui);
@@ -1218,6 +1252,8 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kQuestTrackerSettings);
 
   moonlight_ui::WriteSettings(out, kGraphicsSettings);
+
+  moonlight_ui::WriteSettings(out, kZoneRecorderSettings);
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
 
@@ -1830,6 +1866,12 @@ void MoonlightUi::OnRenderUI() {
       // le SPR Lab, dont il ne partageait rien — et que plus rien ne dessine.
       SeparatorText("Fond de capture");
       ground_paint::DrawSettings();
+
+      // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
+      // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.
+      SeparatorText("Enregistrer une zone (GIF)");
+      if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
+        zone_recorder->DrawSettings();
 
       // ── Journal Bourgeon ────────────────────────────────────────────────────
       // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/

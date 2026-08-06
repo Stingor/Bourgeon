@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <d3d9.h>
+#include <cstdint>
 #include <cstring>
 #include <thread>
 
@@ -474,9 +475,14 @@ static void PostFx_ReleaseRT() {
     g_fx_w = g_fx_h = 0;
 }
 
+// Scratch surfaces of the region grab (defined further down with the rest of the
+// zone-recorder plumbing). They are D3DPOOL_DEFAULT too, so they die with the
+// device and must go through the exact same teardown as the post-fx render target.
+static void Grab_ReleaseSurfaces();
+
 // Releases D3DPOOL_DEFAULT resources before a device Reset. Pixel shaders are not
 // pool-bound and survive a SAME-device reset.
-static void PostFx_OnDeviceLost() { PostFx_ReleaseRT(); }
+static void PostFx_OnDeviceLost() { PostFx_ReleaseRT(); Grab_ReleaseSurfaces(); }
 
 // Full teardown for a device RECREATION (CreateDevice / CreateDeviceEx): unlike a
 // same-device Reset, the pixel shaders ALSO belong to the destroyed old device, so
@@ -488,6 +494,7 @@ static void PostFx_OnDeviceLost() { PostFx_ReleaseRT(); }
 // Release() here is safe COM refcounting (it lets the old device finally die).
 static void PostFx_OnDeviceRecreated() {
     PostFx_ReleaseRT();
+    Grab_ReleaseSurfaces();
     if (g_fx_color_ps) { g_fx_color_ps->Release(); g_fx_color_ps = nullptr; }
     if (g_fx_fxaa_ps)  { g_fx_fxaa_ps->Release();  g_fx_fxaa_ps = nullptr; }
     g_fx_tried = false;
@@ -662,6 +669,102 @@ void D3D9_RequestScreenshot(const char* filepath) {
     g_shot_pending = true;
 }
 
+// ── Backbuffer region grab (zone GIF recorder) ────────────────────────────────
+// The scratch surfaces are CACHED between frames: a recording grabs one region
+// every 60-200 ms for several seconds, and creating a render target plus a
+// system-memory surface each time would allocate and free video memory in a loop
+// while the player is looking at the result. They are keyed on the output size
+// and the backbuffer format, and dropped whenever the device goes away.
+static IDirect3DTexture9* g_grab_rt      = nullptr;
+static IDirect3DSurface9* g_grab_rt_surf = nullptr;
+static IDirect3DSurface9* g_grab_sys     = nullptr;
+static UINT               g_grab_w = 0, g_grab_h = 0;
+static D3DFORMAT          g_grab_fmt = D3DFMT_UNKNOWN;
+static void (*g_post_frame_cb)() = nullptr;
+
+static void Grab_ReleaseSurfaces() {
+    if (g_grab_sys)     { g_grab_sys->Release();     g_grab_sys = nullptr; }
+    if (g_grab_rt_surf) { g_grab_rt_surf->Release(); g_grab_rt_surf = nullptr; }
+    if (g_grab_rt)      { g_grab_rt->Release();      g_grab_rt = nullptr; }
+    g_grab_w = g_grab_h = 0;
+    g_grab_fmt = D3DFMT_UNKNOWN;
+}
+
+void D3D9_SetPostFrameCallback(void (*callback)()) { g_post_frame_cb = callback; }
+
+bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
+                               int out_w, int out_h, void* out_argb) {
+    if (g_imgui_dx7_active) return false;
+    IDirect3DDevice9* dev = g_imgui_device;
+    if (!dev || !out_argb || src_w <= 0 || src_h <= 0 || out_w <= 0 || out_h <= 0)
+        return false;
+
+    IDirect3DSurface9* back = nullptr;
+    if (FAILED(dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)) || !back)
+        return false;
+    D3DSURFACE_DESC bd{};
+    if (FAILED(back->GetDesc(&bd))) { back->Release(); return false; }
+
+    // Clamp the source rectangle to the backbuffer: the saved zone belongs to the
+    // resolution it was drawn at, and the player may since have resized the window.
+    if (src_x < 0) { src_w += src_x; src_x = 0; }
+    if (src_y < 0) { src_h += src_y; src_y = 0; }
+    if (src_x + src_w > static_cast<int>(bd.Width))  src_w = static_cast<int>(bd.Width) - src_x;
+    if (src_y + src_h > static_cast<int>(bd.Height)) src_h = static_cast<int>(bd.Height) - src_y;
+    if (src_w <= 0 || src_h <= 0) { back->Release(); return false; }
+
+    // (Re)build the scratch pair when the geometry or the format changed. The
+    // render target keeps the BACKBUFFER's format on purpose: StretchRect between
+    // differing formats depends on a driver conversion cap, and this path must not
+    // become "works on my GPU".
+    if (!g_grab_rt_surf || !g_grab_sys || g_grab_w != static_cast<UINT>(out_w) ||
+        g_grab_h != static_cast<UINT>(out_h) || g_grab_fmt != bd.Format) {
+        Grab_ReleaseSurfaces();
+        if (FAILED(dev->CreateTexture(static_cast<UINT>(out_w), static_cast<UINT>(out_h), 1,
+                                      D3DUSAGE_RENDERTARGET, bd.Format,
+                                      D3DPOOL_DEFAULT, &g_grab_rt, nullptr)) ||
+            FAILED(g_grab_rt->GetSurfaceLevel(0, &g_grab_rt_surf)) ||
+            FAILED(dev->CreateOffscreenPlainSurface(static_cast<UINT>(out_w),
+                                                    static_cast<UINT>(out_h), bd.Format,
+                                                    D3DPOOL_SYSTEMMEM, &g_grab_sys, nullptr))) {
+            Grab_ReleaseSurfaces();
+            back->Release();
+            return false;
+        }
+        g_grab_w   = static_cast<UINT>(out_w);
+        g_grab_h   = static_cast<UINT>(out_h);
+        g_grab_fmt = bd.Format;
+    }
+
+    const RECT src{src_x, src_y, src_x + src_w, src_y + src_h};
+    // LINEAR when shrinking (a point-sampled downscale of a game frame aliases
+    // badly); NONE for a 1:1 copy, and as the fallback if the driver refuses the
+    // filter — StretchRectFilterCaps is not universal.
+    const bool scaled = (src_w != out_w || src_h != out_h);
+    HRESULT hr = dev->StretchRect(back, &src, g_grab_rt_surf, nullptr,
+                                  scaled ? D3DTEXF_LINEAR : D3DTEXF_NONE);
+    if (FAILED(hr) && scaled)
+        hr = dev->StretchRect(back, &src, g_grab_rt_surf, nullptr, D3DTEXF_NONE);
+    back->Release();
+    if (FAILED(hr)) return false;
+
+    if (FAILED(dev->GetRenderTargetData(g_grab_rt_surf, g_grab_sys))) return false;
+    D3DLOCKED_RECT lr;
+    if (FAILED(g_grab_sys->LockRect(&lr, nullptr, D3DLOCK_READONLY))) return false;
+    auto* dst = static_cast<uint32_t*>(out_argb);
+    const auto* src_bytes = static_cast<const unsigned char*>(lr.pBits);
+    for (int y = 0; y < out_h; ++y) {
+        const auto* row = reinterpret_cast<const uint32_t*>(src_bytes +
+                                                            static_cast<size_t>(y) * lr.Pitch);
+        uint32_t* out_row = dst + static_cast<size_t>(y) * out_w;
+        // X8R8G8B8 leaves the top byte undefined; force it opaque so the GIF
+        // encoder (and any ImGui preview) doesn't read garbage as coverage.
+        for (int x = 0; x < out_w; ++x) out_row[x] = row[x] | 0xFF000000u;
+    }
+    g_grab_sys->UnlockRect();
+    return true;
+}
+
 // ── EndScene hook ─────────────────────────────────────────────────────────────
 // ecx = vtable (*device); self = device (first explicit stack arg).
 static HRESULT __fastcall Hooked_EndScene(void* vtable_ecx, void* /*edx*/,
@@ -718,6 +821,10 @@ static HRESULT __fastcall Hooked_Present(void* vtable_ecx, void* /*edx*/,
             // Call the original EndScene directly to avoid re-entering our hook.
             g_orig_end_scene(vtable_ecx, nullptr, self);
         }
+        // Finished image, scene closed: the only moment where the frame holds
+        // everything (game + native UI + our overlay) AND StretchRect is legal.
+        // That is the zone recorder's window; see D3D9_SetPostFrameCallback.
+        if (g_post_frame_cb) g_post_frame_cb();
     }
     return g_orig_present(vtable_ecx, nullptr, self, pSrcRect, pDestRect,
                           hDestWindowOverride, pDirtyRegion);

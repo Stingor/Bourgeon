@@ -1,5 +1,6 @@
 #include "utils/gif_writer.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
@@ -96,6 +97,108 @@ void EmitIndicesLZW(BitBlockWriter& w, const uint8_t* idx, int count, int minCod
   w.writeBits(static_cast<unsigned>(cur), codeSize);
   w.writeBits(eoiCode, codeSize);
   w.finish();
+}
+
+// ── Median-cut quantiser (screen captures) ───────────────────────────────────
+// Colours are bucketed into a 15-bit (RGB555) histogram first: 32768 cells is
+// small enough to walk repeatedly, and fine enough that the 5-bit rounding is
+// invisible once the result is squeezed into 255 colours anyway.
+
+// One histogram cell that at least one pixel landed in.
+struct Bin {
+  uint16_t key;    // RGB555
+  uint32_t count;  // pixels across the WHOLE clip
+};
+
+inline int BinR(uint16_t key) { return (key >> 10) & 31; }
+inline int BinG(uint16_t key) { return (key >> 5) & 31; }
+inline int BinB(uint16_t key) { return key & 31; }
+
+// 5-bit channel -> 8-bit, replicating the high bits into the low ones so the
+// range stays full (31 -> 255, not 248: without this every colour darkens).
+inline int Bin5To8(int c) { return (c << 3) | (c >> 2); }
+
+// A contiguous range of bins, plus the extent of the colours it covers.
+struct Box {
+  int      begin, end;  // half-open range into the bin array
+  uint64_t count;       // pixels represented
+  int      rmin, rmax, gmin, gmax, bmin, bmax;  // 5-bit units
+};
+
+void ShrinkBox(Box& box, const std::vector<Bin>& bins) {
+  box.rmin = box.gmin = box.bmin = 31;
+  box.rmax = box.gmax = box.bmax = 0;
+  box.count = 0;
+  for (int i = box.begin; i < box.end; ++i) {
+    const int r = BinR(bins[i].key), g = BinG(bins[i].key), b = BinB(bins[i].key);
+    if (r < box.rmin) box.rmin = r;
+    if (r > box.rmax) box.rmax = r;
+    if (g < box.gmin) box.gmin = g;
+    if (g > box.gmax) box.gmax = g;
+    if (b < box.bmin) box.bmin = b;
+    if (b > box.bmax) box.bmax = b;
+    box.count += bins[i].count;
+  }
+}
+
+// Heckbert's median cut: split the box whose colours span the widest range, at
+// the median of its PIXEL POPULATION (not of its bin count) — so a colour that
+// covers half the screen earns its own entries, while a handful of stray pixels
+// don't. Stops early when nothing is splittable: a clip with 40 distinct colours
+// gets 40 palette entries and no empty ones.
+void MedianCut(std::vector<Bin>& bins, std::vector<Box>& boxes, int want) {
+  boxes.clear();
+  Box first{0, static_cast<int>(bins.size()), 0, 0, 0, 0, 0, 0, 0};
+  ShrinkBox(first, bins);
+  boxes.push_back(first);
+
+  while (static_cast<int>(boxes.size()) < want) {
+    int best = -1, best_extent = 0;
+    uint64_t best_count = 0;
+    for (size_t i = 0; i < boxes.size(); ++i) {
+      const Box& box = boxes[i];
+      if (box.end - box.begin < 2) continue;  // one bin: nothing left to cut
+      const int extent = (std::max)((std::max)(box.rmax - box.rmin, box.gmax - box.gmin),
+                                    box.bmax - box.bmin);
+      if (extent <= 0) continue;              // one single colour
+      if (extent > best_extent || (extent == best_extent && box.count > best_count)) {
+        best = static_cast<int>(i);
+        best_extent = extent;
+        best_count = box.count;
+      }
+    }
+    if (best < 0) break;
+
+    Box& box = boxes[best];
+    const int rspan = box.rmax - box.rmin, gspan = box.gmax - box.gmin,
+              bspan = box.bmax - box.bmin;
+    const int channel = (rspan >= gspan && rspan >= bspan) ? 0 : (gspan >= bspan ? 1 : 2);
+    std::sort(bins.begin() + box.begin, bins.begin() + box.end,
+              [channel](const Bin& a, const Bin& b) {
+                const int va = channel == 0 ? BinR(a.key) : channel == 1 ? BinG(a.key) : BinB(a.key);
+                const int vb = channel == 0 ? BinR(b.key) : channel == 1 ? BinG(b.key) : BinB(b.key);
+                return va < vb;
+              });
+
+    const uint64_t half = box.count / 2;
+    uint64_t acc = 0;
+    int split = box.begin;
+    for (int i = box.begin; i < box.end - 1; ++i) {
+      acc += bins[i].count;
+      split = i + 1;
+      if (acc >= half) break;
+    }
+    // Both halves must be non-empty, or the loop would spin on the same box.
+    if (split <= box.begin) split = box.begin + 1;
+    if (split >= box.end)   split = box.end - 1;
+
+    Box lo{box.begin, split, 0, 0, 0, 0, 0, 0, 0};
+    Box hi{split, box.end, 0, 0, 0, 0, 0, 0, 0};
+    ShrinkBox(lo, bins);
+    ShrinkBox(hi, bins);
+    boxes[best] = lo;
+    boxes.push_back(hi);
+  }
 }
 
 }  // namespace
@@ -214,4 +317,156 @@ bool GifWrite(const char* path, const uint32_t* const* frames, int w, int h,
   const size_t wrote = std::fwrite(file.data(), 1, file.size(), fp);
   std::fclose(fp);
   return wrote == file.size();
+}
+
+bool GifWriteScreen(const char* path, const uint32_t* const* frames, int w, int h,
+                    int nframes, int delay_cs) {
+  if (!path || !frames || w <= 0 || h <= 0 || nframes <= 0) return false;
+  const int npix = w * h;
+
+  // ── 1. One histogram for the whole clip ────────────────────────────────────
+  std::vector<uint32_t> hist(32768, 0);
+  for (int f = 0; f < nframes; ++f) {
+    const uint32_t* px = frames[f];
+    if (!px) return false;
+    for (int i = 0; i < npix; ++i) {
+      const uint32_t p = px[i];
+      const unsigned key = (((p >> 19) & 0x1Fu) << 10) | (((p >> 11) & 0x1Fu) << 5) |
+                           ((p >> 3) & 0x1Fu);
+      ++hist[key];
+    }
+  }
+
+  std::vector<Bin> bins;
+  bins.reserve(8192);
+  for (int k = 0; k < 32768; ++k)
+    if (hist[k]) bins.push_back({static_cast<uint16_t>(k), hist[k]});
+  if (bins.empty()) return false;
+  hist.clear();
+  hist.shrink_to_fit();
+
+  // ── 2. Global palette: index 0 is the transparent slot the differencing uses,
+  // so 255 colours are left for the picture.
+  std::vector<Box> boxes;
+  MedianCut(bins, boxes, 255);
+
+  uint8_t gct[256 * 3] = {0};
+  std::vector<uint8_t> lut(32768, 0);
+  for (size_t bi = 0; bi < boxes.size(); ++bi) {
+    const Box& box = boxes[bi];
+    const uint8_t index = static_cast<uint8_t>(bi + 1);
+    uint64_t rs = 0, gs = 0, bs = 0, n = 0;
+    for (int i = box.begin; i < box.end; ++i) {
+      const uint64_t c = bins[i].count;
+      rs += static_cast<uint64_t>(Bin5To8(BinR(bins[i].key))) * c;
+      gs += static_cast<uint64_t>(Bin5To8(BinG(bins[i].key))) * c;
+      bs += static_cast<uint64_t>(Bin5To8(BinB(bins[i].key))) * c;
+      n  += c;
+      // Every bin belongs to exactly one box, so the pixel->palette mapping is a
+      // direct lookup — no nearest-colour search anywhere in the hot loop.
+      lut[bins[i].key] = index;
+    }
+    if (n == 0) n = 1;
+    gct[index * 3 + 0] = static_cast<uint8_t>(rs / n);
+    gct[index * 3 + 1] = static_cast<uint8_t>(gs / n);
+    gct[index * 3 + 2] = static_cast<uint8_t>(bs / n);
+  }
+  bins.clear();
+  bins.shrink_to_fit();
+
+  FILE* fp = nullptr;
+  if (fopen_s(&fp, path, "wb") != 0 || !fp) return false;
+
+  // ── 3. Header, global colour table, loop extension ─────────────────────────
+  std::vector<uint8_t> chunk;
+  chunk.reserve(static_cast<size_t>(npix) / 2 + 2048);
+  const char hdr[6] = {'G', 'I', 'F', '8', '9', 'a'};
+  chunk.insert(chunk.end(), hdr, hdr + 6);
+  PutU16(chunk, static_cast<unsigned>(w));
+  PutU16(chunk, static_cast<unsigned>(h));
+  chunk.push_back(0xF7);  // global table present, 8-bit resolution, 256 entries
+  chunk.push_back(0x00);  // background colour index
+  chunk.push_back(0x00);  // pixel aspect ratio
+  chunk.insert(chunk.end(), gct, gct + sizeof(gct));
+  const uint8_t loopExt[] = {0x21, 0xFF, 0x0B, 'N', 'E', 'T', 'S', 'C', 'A', 'P',
+                             'E', '2', '.', '0', 0x03, 0x01, 0x00, 0x00, 0x00};
+  chunk.insert(chunk.end(), loopExt, loopExt + sizeof(loopExt));
+
+  bool ok = std::fwrite(chunk.data(), 1, chunk.size(), fp) == chunk.size();
+
+  // ── 4. Frames ──────────────────────────────────────────────────────────────
+  std::vector<uint8_t> cur(static_cast<size_t>(npix)), prev(static_cast<size_t>(npix));
+  std::vector<uint8_t> sub;
+  for (int f = 0; f < nframes && ok; ++f) {
+    const uint32_t* px = frames[f];
+    for (int i = 0; i < npix; ++i) {
+      const uint32_t p = px[i];
+      const unsigned key = (((p >> 19) & 0x1Fu) << 10) | (((p >> 11) & 0x1Fu) << 5) |
+                           ((p >> 3) & 0x1Fu);
+      cur[static_cast<size_t>(i)] = lut[key];
+    }
+
+    // Bounding box of what moved. Frame 0 is the full picture (there is nothing
+    // underneath it yet); afterwards a still screen collapses to a 1x1 rectangle
+    // that costs a dozen bytes and still burns its delay.
+    int x0 = 0, y0 = 0, x1 = w, y1 = h;
+    if (f > 0) {
+      x0 = w; y0 = h; x1 = -1; y1 = -1;
+      for (int y = 0; y < h; ++y) {
+        const uint8_t* c = &cur[static_cast<size_t>(y) * w];
+        const uint8_t* p = &prev[static_cast<size_t>(y) * w];
+        for (int x = 0; x < w; ++x) {
+          if (c[x] == p[x]) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+      if (x1 < 0) { x0 = 0; y0 = 0; x1 = 0; y1 = 0; }  // nothing changed at all
+      ++x1;
+      ++y1;
+    }
+    const int rw = x1 - x0, rh = y1 - y0;
+
+    sub.resize(static_cast<size_t>(rw) * rh);
+    for (int y = 0; y < rh; ++y) {
+      const size_t row = static_cast<size_t>(y0 + y) * w + x0;
+      for (int x = 0; x < rw; ++x) {
+        const uint8_t index = cur[row + x];
+        // Unchanged -> transparent, which under disposal 1 shows the pixel that
+        // is already on the canvas.
+        sub[static_cast<size_t>(y) * rw + x] =
+            (f > 0 && index == prev[row + x]) ? 0 : index;
+      }
+    }
+
+    chunk.clear();
+    chunk.push_back(0x21);  // Graphic Control Extension
+    chunk.push_back(0xF9);
+    chunk.push_back(0x04);
+    chunk.push_back((1 << 2) | 0x01);  // disposal 1 (leave in place) + transparency
+    PutU16(chunk, static_cast<unsigned>(delay_cs < 0 ? 0 : delay_cs));
+    chunk.push_back(0x00);  // transparent colour index
+    chunk.push_back(0x00);  // block terminator
+    chunk.push_back(0x2C);  // Image Descriptor
+    PutU16(chunk, static_cast<unsigned>(x0));
+    PutU16(chunk, static_cast<unsigned>(y0));
+    PutU16(chunk, static_cast<unsigned>(rw));
+    PutU16(chunk, static_cast<unsigned>(rh));
+    chunk.push_back(0x00);  // no local table: the global one covers every frame
+    chunk.push_back(0x08);  // min code size (256-entry table)
+    BitBlockWriter bw(chunk);
+    EmitIndicesLZW(bw, sub.data(), rw * rh, 8);
+
+    ok = std::fwrite(chunk.data(), 1, chunk.size(), fp) == chunk.size();
+    prev.swap(cur);
+  }
+
+  if (ok) {
+    const uint8_t trailer = 0x3B;
+    ok = std::fwrite(&trailer, 1, 1, fp) == 1;
+  }
+  std::fclose(fp);
+  return ok;
 }
