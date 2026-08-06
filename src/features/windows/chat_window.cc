@@ -22,6 +22,7 @@
 #include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
 #include "imgui.h"
 #include "imgui_internal.h"      // GetInputTextState (défilement interne du champ)
+#include "ragnarok/globals.h"    // kModeMgrAddr / kModeMgrGetActiveAddr (dict de noms)
 #include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
 #include "ragnarok/uiwnd.h"      // uiwnd::SafeFindWindow / CloseWindow (natif détruit)
 #include "ui/game_texture.h"     // ro::TextureFromGameFile (bitmaps du client)
@@ -124,6 +125,47 @@ constexpr int kMaxChannels = 10;
 // 25 types + le broadcast (0x19), qui n'est pas dans la table de filtre.
 constexpr int kTypeCount     = 25;
 constexpr int kTypeBroadcast = 0x19;
+constexpr int kTypeWhisper   = 2;
+
+// ── « Friend Setup » du client (UIFriendOptionWnd, Alt+I) ────────────────────
+// Les deux cases qui décident si une conversation privée s'ouvre en fenêtre, et
+// la troisième qui la fait sonner. Relevées dans `UIFriendOptionWnd_OnCreate`
+// 0x00701270, où chacune est posée avec son libellé : MsgString 0x169 « Open 1:1
+// Chat between Strangers », 0x167 « … between Friends », 0x16A « Alarm when
+// receive a 1:1 Chat ».
+//
+// 🔴 Ce sont les réglages du JOUEUR, pas des nôtres : reprendre une fenêtre
+// native, c'est reprendre ce qui la gouverne. Qui a coupé les popups ne doit pas
+// les voir revenir sous nos couleurs.
+constexpr uintptr_t kFriendOptOpenFromStranger = 0x015fb2f8;
+constexpr uintptr_t kFriendOptAlarm1on1        = 0x015fb2fc;
+constexpr uintptr_t kFriendOptOpenFromFriend   = 0x015fb300;
+
+// « ce nom est-il dans ma liste d'amis ? ». __thiscall, et le `this` est
+// l'ADRESSE de la clé de contexte : le pivot fait `mov ecx, offset
+// g_UIWindowContextKey` juste avant l'appel (0x00a2cc50).
+constexpr uintptr_t kFriendListHasName = 0x00d715f0;
+
+// ── Actions sur un joueur, par son NOM ───────────────────────────────────────
+// Le champ de nom de ces paquets fait 24 octets (NAME_LENGTH côté serveur), non
+// terminés par convention : c'est une taille FIXE, pas une chaîne.
+constexpr size_t kNameFieldLen = 24;
+
+// `SendMsg(0x3B, nom)` — invitation dans le groupe. C'est ce que joue le code 5
+// du menu contextuel d'entité (docs/entity_context_menu_re.md §6.3), et il passe
+// bien le NOM, pas l'AID.
+constexpr int kMsgPartyInvite = 0x3b;
+
+// `FriendList_AddByName(nom24)` __stdcall : construit et envoie CZ_ADD_FRIENDS.
+// Désassemblée à 0x00a2c600 — `Src = 514` (0x0202), 24 octets de nom recopiés,
+// longueur lue dans la table du client. ⚠ Elle lit les 24 octets d'un bloc.
+using FriendAddFn = int(__stdcall*)(const void*);
+constexpr uintptr_t kFriendListAddByName = 0x00a2c600;
+
+// CZ_REQ_JOIN_GUILD2 {op, nom[24]} — invitation en guilde PAR NOM. Le menu du
+// client, lui, n'invite que par AID : sans équivalent natif, on l'envoie
+// nous-mêmes. Sûr : le serveur l'enregistre hors de ses blocs shuffle.
+constexpr uint16_t kOpGuildInviteByName = 0x0916;
 
 // ── Messages système masqués ─────────────────────────────────────────────────
 // Liste historique (autrefois `InstallChatMessageFilter` dans bourgeon.cc, migrée
@@ -216,6 +258,34 @@ bool NativeChatAlive() {
 // type ; l'écrêtage de `Ingest` le ramenait à 0, d'où « tout arrive en t00 ».
 // Le symptôme n'apparaissait qu'une fois la native détruite, puisque tant qu'elle
 // vivait c'est son WndProc — donc le bon ordre — qui nous alimentait.
+// L'AID que le client affiche entre crochets est OBFUSQUÉ : `Aid_FormatObfuscated
+// 0x00d56e60` déroule les dix chiffres décimaux et substitue chacun, supprime les
+// zéros de tête, et insère un « - » avant les trois derniers. On rejoue la table
+// à l'envers, parce que l'ouverture par le menu contextuel ne nous donne QUE
+// cette chaîne — et que sans l'AID réel, la guilde du correspondant resterait
+// introuvable.
+//
+// Substitution du client : 0->'3' 1->'8' 2->'6' 3->'7' 4->'0' 5->'1' 6->'2'
+// 7->'4' 8->'9' 9->'5'. Vérifié : « 6333-317 » redonne 2000053.
+//
+// Rend 0 si la chaîne n'a pas cette forme — un AID nul est traité partout comme
+// « inconnu », ce qui est exactement le bon repli.
+uint32_t DeobfuscateAid(const char* display) {
+  if (display == nullptr) return 0;
+  // index = chiffre AFFICHÉ, valeur = chiffre RÉEL. '0'->4 '1'->5 '2'->6 '3'->0
+  // '4'->7 '5'->9 '6'->2 '7'->3 '8'->1 '9'->8.
+  static const char kInverse[] = "4560792318";
+  uint32_t value = 0;
+  int digits = 0;
+  for (const char* p = display; *p != '\0'; ++p) {
+    if (*p == '-') continue;
+    if (*p < '0' || *p > '9') return 0;
+    if (++digits > 10) return 0;  // au-delà, ce n'est plus un AID
+    value = value * 10u + static_cast<uint32_t>(kInverse[*p - '0'] - '0');
+  }
+  return digits != 0 ? value : 0;
+}
+
 int __cdecl ChatActionFilter(int action, const char* text, int color,
                              int type, const char* sender) {
   // 🔴 Action 3 = `ToggleWindow(mgr, 1)` + msg 0x10 : le client RECRÉE sa chatbox
@@ -225,6 +295,20 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
   // l'intention : ouvrir NOTRE saisie et lui donner le focus.
   if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_) {
     g_chat_window->RequestInputBarDeploy();
+    return 1;
+  }
+  // 🔴 Action 14 = `UIM_MAKE_WHISPER_WINDOW` : LE SECOND chemin d'ouverture d'une
+  // conversation 1:1, et il ne passe PAS par le pivot que nous détournons. Le
+  // « Chuchoter » du menu contextuel d'entité appelle `ChatAction(mgr, 14, …)`
+  // directement (0x00c888c3, `mov ecx, 0131F4E8h` / `push esi` / `push eax` /
+  // `push 0Eh`) — d'où une fenêtre NATIVE qui revenait par-dessus la nôtre.
+  //
+  // Les arguments ne portent pas ici le sens que leurs noms annoncent, qui est
+  // celui d'une ligne de chat : p2 = le NOM, p3 = un suffixe (« GuildMember » ou
+  // rien), p4 = l'AID déjà OBFUSQUÉ en chaîne. Vérifié : aucun des deux appelants
+  // ne teste la valeur de retour de ce case-là.
+  if (action == 14 && g_chat_window != nullptr && g_chat_window->imgui_enabled_) {
+    g_chat_window->OpenWhisperWindow(text, reinterpret_cast<const char*>(type));
     return 1;
   }
   if (action != 1 && action != 0x13) return 0;
@@ -379,6 +463,181 @@ __declspec(naked) void ChatActionStub() {
   }
 }
 
+// ── Chuchotement 1:1 : le pivot du client ────────────────────────────────────
+// `UIWindowMgr_OnWhisperReceived(mgr, nom, texte, couleur, aid)` — __thiscall,
+// 4 arguments pile, `retn 0x10`. C'est LE point de passage des conversations
+// privées, dans les deux sens : le handler de ZC_WHISPER l'appelle pour ce qu'on
+// reçoit, et l'acquittement de nos propres envois (`Whisper_DispatchSendResult`
+// 0x00c9d030) pour l'écho de ce qu'on envoie. Les deux sens arrivent donc ici
+// encore séparés et proprement typés — c'est pour ça qu'on se branche là plutôt
+// que sur le texte déjà mis en forme.
+//
+// 🔴 SA VALEUR DE RETOUR EST UN CONTRAT, pas un état : 1 = « une fenêtre 1:1 a
+// consommé la ligne », et l'appelant s'abstient alors de l'écrire dans la
+// chatbox. Le rendre nous-mêmes évite le doublon sans avoir à filtrer quoi que
+// ce soit plus loin. ⚠ Le reste de ce que fait l'appelant sur un retour 1 — la
+// réponse automatique d'absence (MsgString 0x3AD, drapeau 0x015ffa58) — vit chez
+// LUI, pas ici : il continue de tourner, on ne lui retire rien.
+constexpr uintptr_t kWhisperPivotAddr = 0x00a2cc20;
+void* g_tramp_whisper = nullptr;
+
+// Les deux couleurs du client pour une ligne de conversation privée, relevées à
+// 0x008cdd5a (`cmp [ebp+14h], 7800h` / `mov eax, 0E8DDB6h` / `mov ebx, 0FFFFh` /
+// `cmovnz`). Ce sont des COLORREF 0x00BBGGRR, comme toute couleur de LIGNE ici.
+constexpr int      kWhisperEchoTag  = 0x7800;    // couleur-marqueur de NOTRE envoi
+constexpr uint32_t kWhisperRecvRgb  = 0xE8DDB6;  // reçu : bleu-gris pâle
+constexpr uint32_t kWhisperEchoRgb  = 0x00FFFF;  // envoyé : jaune
+
+// Notre propre nom de personnage, dans la code-page du fil. C'est le getter que
+// le client utilise lui-même pour composer l'écho d'un chuchotement
+// (`Whisper_DispatchSendResult`, `Own_GetCharName(g_UIWindowContextKey)`).
+// POD + SEH : aucun objet à destructeur ici (C2712).
+constexpr uintptr_t kOwnGetCharName = 0x00d7fe40;  // __thiscall(ctxKey) -> char*
+
+bool ReadOwnCharName(char* out, size_t out_size) {
+  using OwnNameFn = const char*(__thiscall*)(void*);
+  __try {
+    const char* name = reinterpret_cast<OwnNameFn>(kOwnGetCharName)(
+        reinterpret_cast<void*>(kUIWindowContextKey));
+    if (name == nullptr || name[0] == '\0') return false;
+    size_t n = 0;
+    for (; n + 1 < out_size && name[n] != '\0'; ++n) out[n] = name[n];
+    out[n] = '\0';
+    return n != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+// Le client ouvrirait-il une popup pour ce correspondant ? Rejoue exactement le
+// test du pivot : ami ⇒ la case « Friends », inconnu ⇒ la case « Strangers ».
+bool WhisperPopupWanted(const char* name_wire) {
+  using HasNameFn = int(__thiscall*)(void*, const char*);
+  __try {
+    const bool is_friend =
+        reinterpret_cast<HasNameFn>(kFriendListHasName)(
+            reinterpret_cast<void*>(kUIWindowContextKey), name_wire) != 0;
+    const uint32_t* option = reinterpret_cast<const uint32_t*>(
+        is_friend ? kFriendOptOpenFromFriend : kFriendOptOpenFromStranger);
+    return *option != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+// Les deux cases du client, lues et écrites là où il les garde. Rien n'est
+// recopié chez nous : c'est le même mot de quatre octets des deux côtés.
+//
+// ⚠ Ce sont des DWORD, pas des booléens d'un octet — `UIFriendOptionWnd_OnMsg`
+// leur assigne l'argument entier de la case (cmd 213), et son OnCreate les
+// repasse tels quels à `UIToggleButton_SetState`. Écrire un seul octet
+// laisserait les trois autres tels quels.
+//
+// Vérifié : cocher la case native n'écrit QUE ce mot — aucune sauvegarde, aucun
+// paquet, aucun effet de bord. Notre écriture lui est donc strictement
+// équivalente. (En contrepartie le client ne persiste pas ces trois réglages : ni
+// les siens ni les nôtres ne survivent à une fermeture.)
+bool ReadWhisperPopupOptions(bool* from_stranger, bool* from_friend) {
+  __try {
+    *from_stranger = *reinterpret_cast<const uint32_t*>(kFriendOptOpenFromStranger) != 0;
+    *from_friend   = *reinterpret_cast<const uint32_t*>(kFriendOptOpenFromFriend) != 0;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+void WriteWhisperPopupOption(bool stranger, bool on) {
+  __try {
+    *reinterpret_cast<uint32_t*>(stranger ? kFriendOptOpenFromStranger
+                                          : kFriendOptOpenFromFriend) = on ? 1u : 0u;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+int __cdecl WhisperFilter(const char* name, const char* text, int color,
+                          unsigned int aid) {
+  // Interface moderne éteinte : on ne touche à rien. Le joueur est alors sur la
+  // chatbox native, et ses popups natives doivent continuer de s'ouvrir — les
+  // priver de leur pivot le laisserait sans conversation privée du tout.
+  if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return 0;
+  if (name == nullptr || name[0] == '\0' || text == nullptr) return 0;
+
+  const uint32_t rgb =
+      (color == kWhisperEchoTag) ? kWhisperEchoRgb : kWhisperRecvRgb;
+  return g_chat_window->IngestWhisper(name, text, rgb, aid) ? 1 : 0;
+}
+
+// Même construction que ChatActionStub : après les trois push de sauvegarde, un
+// push de plus décale d'autant l'argument suivant — les quatre lectures se font
+// donc toutes à [esp+0x1C]. Si le filtre a pris la ligne, on rend 1 et on fait
+// l'épilogue nous-mêmes (`ret 0x10`, les quatre arguments pile) sans jamais
+// entrer dans l'originale : c'est elle qui créerait la popup native.
+__declspec(naked) void WhisperPivotStub() {
+  __asm {
+    push eax
+    push ecx
+    push edx
+    mov  eax, [esp+0x1C]   // aid
+    push eax
+    mov  eax, [esp+0x1C]   // couleur
+    push eax
+    mov  eax, [esp+0x1C]   // texte
+    push eax
+    mov  eax, [esp+0x1C]   // nom
+    push eax
+    call WhisperFilter
+    add  esp, 0x10
+    test eax, eax
+    jz   whisper_chain
+    pop  edx
+    pop  ecx
+    pop  eax
+    mov  eax, 1            // « une fenêtre 1:1 l'a prise »
+    ret  0x10
+  whisper_chain:
+    pop  edx
+    pop  ecx
+    pop  eax
+    jmp  [g_tramp_whisper]
+  }
+}
+
+// ── Le « détecteur de sosies » du client, neutralisé ─────────────────────────
+// `Name_IsLookalike(a, b)` (__stdcall, 2 arguments pile, `retn 8`) devait repérer
+// les usurpations par homoglyphes — l'astuce du `I` majuscule pour imiter un `l`
+// minuscule, deux glyphes identiques à l'écran. L'intention est bonne. Le seuil
+// la rend inutilisable :
+//
+//   troisième passe : si |len(a) - len(b)| <= 2, il suffit de
+//   **min(len) - 2 correspondances de position** pour déclarer deux noms
+//   « ressemblants ».
+//
+// Mesuré en jeu : un roster contenant « Test » fait crier à l'usurpation sur un
+// message de « Gettar » — min(len) = 4, seuil 2, et `'e'=='e'` + `'t'=='t'`
+// suffisent. Deux noms sans le moindre rapport. L'avertissement se déclenche donc
+// à peu près tout le temps, et un avertissement permanent n'avertit plus de rien :
+// il apprend à ignorer la ligne le jour où elle serait vraie.
+//
+// 🔴 PORTÉE, mesurée avant de poser le détour : cette fonction n'a que DEUX
+// appelants — `FriendList_HasLookalikeName` et `Guild_HasLookalikeMemberName` —
+// qui n'en ont eux-mêmes que deux chacun : le pivot du chuchotement et
+// `sub_CAFD00`. Elle ne sert donc à RIEN d'autre dans le client. Rendre « aucune
+// ressemblance » supprime exactement les deux avertissements (MsgString 0x395 et
+// 0x397) et rien de plus.
+//
+// Posé inconditionnellement, chatbox native comprise : ces lignes sont du bruit
+// dans les deux interfaces.
+constexpr uintptr_t kNameIsLookalike = 0x00d56bf0;
+void* g_tramp_lookalike = nullptr;  // jamais chaîné — on ne rend QUE notre valeur
+
+__declspec(naked) void NameIsLookalikeStub() {
+  __asm {
+    mov eax, 1   // 1 = « franchement différents » (0 voudrait dire « sosies »)
+    ret  8
+  }
+}
+
 // ── Envoi natif ──────────────────────────────────────────────────────────────
 // Une std::string MSVC telle que le CLIENT les manipule : buffer SSO de 16
 // octets, taille, capacité. Construite vide (capacité 15) et détruite par le
@@ -525,6 +784,47 @@ void ReadStdString(const uint8_t* str, char* out, size_t out_size) {
     for (; n + 1 < out_size && n < size; ++n) out[n] = data[n];
   }
   out[n] = '\0';
+}
+
+// ── Guilde d'un correspondant ────────────────────────────────────────────────
+// Sonde POD, pour rester sous SEH d'un bout à l'autre : `__try` et les objets à
+// destructeur ne cohabitent pas (C2712), et la conversion des chaînes se fait
+// donc chez l'appelant.
+struct GuildProbe {
+  uint32_t aid;
+  char     guild[64];
+};
+
+// Le dictionnaire de noms du client (`GameMode+0x160`), celui-là même qui nourrit
+// les noms flottants au-dessus des personnages — docs/entity_nameplate_re.md.
+// `CNameDict_GetEntryOrRequest` rend le bloc CNameInfo s'il est connu, et sinon
+// met le GID en file de REQUÊTE serveur : c'est ce qui fait apparaître la guilde
+// quelques frames plus tard, sans que nous ayons de paquet à écrire.
+constexpr uintptr_t kNameDictGetEntryOrRequest = 0x005a1460;
+constexpr int       kGmNameDict   = 0x160;
+constexpr int       kNameInfoGuild = 0x34;  // nom +0x04, party +0x1C, guilde +0x34
+
+bool ProbeGuildsFromNameDict(GuildProbe* items, int count) {
+  if (count <= 0) return false;
+  using GetActiveFn    = void*(__fastcall*)(int);
+  using GetNameEntryFn = void*(__thiscall*)(void*, unsigned);
+  __try {
+    void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
+        static_cast<int>(rag::kModeMgrAddr));
+    if (gm == nullptr) return false;
+    void* dict = reinterpret_cast<uint8_t*>(gm) + kGmNameDict;
+    auto get_entry = reinterpret_cast<GetNameEntryFn>(kNameDictGetEntryOrRequest);
+    for (int i = 0; i < count; ++i) {
+      void* entry = get_entry(dict, items[i].aid);
+      if (entry == nullptr) continue;
+      ReadStdString(reinterpret_cast<const uint8_t*>(entry) + kNameInfoGuild,
+                    items[i].guild, sizeof(items[i].guild));
+    }
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // Dictionnaire indisponible (changement de carte) : on retentera.
+    return false;
+  }
 }
 
 // Parcours de l'arbre rouge-noir d'un std::map MSVC : l'objet map porte
@@ -849,6 +1149,28 @@ ChatWindow::ChatWindow() {
              "plantera au premier texte balisé sans chatbox native",
              kChatTagTransform);
 
+  // Conversations 1:1. Le détour se pose toujours mais ne mord que si la chatbox
+  // ImGui est active (cf. WhisperFilter) : en mode natif, ce sont les popups du
+  // client qui doivent continuer de s'ouvrir.
+  g_tramp_whisper = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kWhisperPivotAddr),
+      reinterpret_cast<uint8_t*>(&WhisperPivotStub));
+  if (g_tramp_whisper == nullptr)
+    LogError("[chat] detour OnWhisperReceived 0x{:08x} NON pose — les popups "
+             "1:1 NATIVES reviendront par-dessus l'interface moderne",
+             kWhisperPivotAddr);
+
+  // Détecteur de sosies : voir son en-tête. Deux appelants, tous deux dans le
+  // chemin du chuchotement — la neutralisation est bornée à ces deux
+  // avertissements.
+  g_tramp_lookalike = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kNameIsLookalike),
+      reinterpret_cast<uint8_t*>(&NameIsLookalikeStub));
+  if (g_tramp_lookalike == nullptr)
+    LogError("[chat] detour Name_IsLookalike 0x{:08x} NON pose — les faux "
+             "avertissements d'usurpation reviendront",
+             kNameIsLookalike);
+
   g_tramp_chat_togglebar = hooking::HookManager::Instance().SetHook(
       hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatToggleInputBar),
       reinterpret_cast<uint8_t*>(&ChatToggleInputBarStub));
@@ -910,6 +1232,24 @@ void ChatWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len
   }
 }
 
+bool ChatWindow::IsOwnName(const char* utf8) const {
+  if (utf8 == nullptr || utf8[0] == '\0') return false;
+  // Lecture sous SEH dans un tampon POD, comparaison ensuite : `__try` et les
+  // objets à destructeur ne cohabitent pas (C2712).
+  char own[32] = {};
+  if (!ReadOwnCharName(own, sizeof(own))) return false;
+  return _stricmp(ro::WireToUtf8(own), utf8) == 0;
+}
+
+bool ChatWindow::InParty() const {
+  __try {
+    return reinterpret_cast<PartyCount_t>(kPartyMemberCount)(
+               reinterpret_cast<void*>(kUIWindowContextKey)) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
 bool ChatWindow::InGuild() const {
   __try {
     return *reinterpret_cast<uint32_t*>(kOwnGuildId) != 0;
@@ -961,6 +1301,230 @@ void ChatWindow::ClearHistory() {
   lines_.clear();
 }
 
+// L'AID OBFUSQUÉ que le client colle dans le préfixe d'une ligne de chuchotement.
+// Il apparaît sous DEUX habillages selon le sens, et il a fallu les deux :
+//   envoi crochets  « [ To Nom (813-524) ] : … »   `Whisper_DispatchSendResult`
+//   envoi parenth.  « ( To Nom (813-524) : … »     idem, branche hors guilde
+//   reçu            « ( From Nom [813-524] ) : … » `sub_CAFD00`
+// Ce nombre ne dit rien à personne : ce n'est même pas l'identifiant réel, qui
+// est chiffré par substitution (cf. Aid_FormatObfuscated).
+//
+// 🔴 DEUX PIÈGES, tous deux payés en jeu :
+//
+// 1. L'AID est tantôt entre PARENTHÈSES, tantôt entre CROCHETS. Ne chercher que
+//    les parenthèses laissait le code visible sur tout ce qu'on RECEVAIT.
+//
+// 2. La forme « ( To Nom (aid) : » du client est DÉJÀ déséquilibrée — deux
+//    ouvrantes, une seule fermante, celle de l'AID. La retirer emportait donc la
+//    seule parenthèse fermante de la ligne, et l'on se retrouvait avec
+//    « ( To Nom : … ». On rééquilibre le préfixe après coup plutôt que de
+//    reproduire le déséquilibre du client.
+//
+// On ne touche qu'au PRÉFIXE, borné au premier « : ». Ce qui suit est le MESSAGE,
+// et l'amputer de ce qui ressemble à un groupe de chiffres reviendrait à réécrire
+// ce qu'un joueur a tapé — « rendez-vous à Prontera (11-42) » y perdrait ses
+// coordonnées.
+namespace {
+std::string StripWhisperAidTag(const char* wire_text) {
+  std::string out = (wire_text != nullptr) ? wire_text : "";
+  const size_t body  = out.find(" : ");
+  const size_t limit = (body == std::string::npos) ? out.size() : body;
+  std::string prefix = out.substr(0, limit);
+
+  // Retire du préfixe tout groupe « (…) » ou « […] » qui a la SIGNATURE d'un AID
+  // obfusqué. Celle-ci est étroite, et volontairement : `Aid_FormatObfuscated`
+  // insère son tiret quand le diviseur vaut 100, donc il y a TOUJOURS exactement
+  // trois chiffres après — et au moins un avant. « Prontera (11-42) » n'en a que
+  // deux et sort donc indemne, alors qu'un simple « chiffres et tirets » l'aurait
+  // mutilé.
+  bool removed = false;
+  for (size_t i = 0; i + 1 < prefix.size();) {
+    const char opener = prefix[i];
+    if (opener != '(' && opener != '[') { ++i; continue; }
+    const char closer = (opener == '(') ? ')' : ']';
+    const size_t close = prefix.find(closer, i + 1);
+    if (close == std::string::npos) { ++i; continue; }
+    const size_t dash = prefix.find('-', i + 1);
+    bool looks_like_aid = dash != std::string::npos && dash < close &&
+                          dash > i + 1 && close == dash + 4;
+    for (size_t k = i + 1; k < close && looks_like_aid; ++k)
+      if (k != dash && (prefix[k] < '0' || prefix[k] > '9')) looks_like_aid = false;
+    if (!looks_like_aid) { ++i; continue; }
+    // L'espace qui précède part avec le groupe, sinon « Nom  ] » garde un trou.
+    const size_t from = (i > 0 && prefix[i - 1] == ' ') ? i - 1 : i;
+    prefix.erase(from, close - from + 1);
+    removed = true;
+    i = from;
+  }
+  // 🔴 Rien retiré ⇒ rien touché. C'est ce qui rend l'appel sûr sur N'IMPORTE
+  // quelle ligne : sans cette sortie, le rééquilibrage ci-dessous irait
+  // « corriger » les parenthèses d'un message que personne ne lui a demandé de
+  // relire.
+  if (!removed) return out;
+
+  // Rééquilibrage : le client ouvre parfois sans fermer — « ( To Nom (aid) : »
+  // n'a qu'une fermante pour deux ouvrantes, et c'est celle de l'AID qu'on vient
+  // d'emporter. On n'ajoute jamais d'ouvrante, seulement les fermantes qui
+  // manquent, et à la fin du préfixe, là où le client les aurait mises.
+  auto balance = [&prefix](char opener, char closer) {
+    int depth = 0;
+    for (const char c : prefix) {
+      if (c == opener) ++depth;
+      else if (c == closer && depth > 0) --depth;
+    }
+    while (depth-- > 0) {
+      while (!prefix.empty() && prefix.back() == ' ') prefix.pop_back();
+      prefix += ' ';
+      prefix += closer;
+    }
+  };
+  balance('(', ')');
+  balance('[', ']');
+
+  return prefix + out.substr(limit);
+}
+
+// Le PSEUDO caché dans le libellé de tête d'une ligne, et le SENS de l'échange.
+//
+// Le client compose plusieurs formes selon le chemin qu'a pris la ligne, et le
+// pseudo n'y est pas toujours en tête — c'est ce qui le rendait à la fois
+// incliquable et absent des destinataires récents :
+//   « Nom »                    la fenêtre 1:1 (le pseudo nu)
+//   « ( From Nom [… »          reçu, écrit dans la chatbox  (0x010922ec)
+//   « ( To Nom ) » / « [ To Nom ] »   l'écho de notre envoi (0x01091a64 / 0x01091a54)
+//
+// Rend une chaîne vide quand il n'y a rien de sûr à en tirer : mieux vaut pas de
+// lien du tout qu'un menu qui propose d'inviter « [ To Nom ] » dans sa guilde.
+std::string WhisperPeerFromLabel(const std::string& label, bool* outgoing) {
+  *outgoing = false;
+  size_t begin = 0, end = label.size();
+  while (begin < end && (label[begin] == ' ' || label[begin] == '(' ||
+                         label[begin] == '[')) ++begin;
+  while (end > begin && (label[end - 1] == ' ' || label[end - 1] == ')' ||
+                         label[end - 1] == ']')) --end;
+  if (begin >= end) return std::string();
+
+  std::string inner = label.substr(begin, end - begin);
+  auto strip = [&inner](const char* prefix, bool value, bool* out) {
+    const size_t n = std::strlen(prefix);
+    if (inner.size() <= n || inner.compare(0, n, prefix) != 0) return false;
+    inner.erase(0, n);
+    *out = value;
+    return true;
+  };
+  // Les quatre en-têtes du client, relevés côte à côte en mémoire :
+  //   « [ Friend <nom> … ] : »  0x010922d4  l'expéditeur est dans vos amis
+  //   « [ Member <nom> … ] : »  0x010922e0  … dans votre guilde
+  //   « ( From <nom> … ) : »    0x010922ec  ni l'un ni l'autre
+  //   « ( To <nom> … ) : »      0x01091a64  l'écho de votre envoi
+  // C'est pourquoi deux joueurs voient la MÊME conversation sous deux formes
+  // différentes : la relation n'est pas symétrique.
+  if (!strip("From ", false, outgoing) && !strip("To ", true, outgoing) &&
+      !strip("Friend ", false, outgoing))
+    strip("Member ", false, outgoing);
+
+  // Ce qui suit le pseudo (« [ Member … », « ) : ») n'en fait pas partie.
+  const size_t cut = inner.find_first_of("[]()");
+  if (cut != std::string::npos) inner.erase(cut);
+  while (!inner.empty() && inner.back() == ' ') inner.pop_back();
+  // Un libellé qui contient encore un espace n'est pas un pseudo : les noms de
+  // personnage de RO n'en portent pas, et on refuse plutôt que de deviner.
+  if (inner.empty() || inner.find(' ') != std::string::npos) return std::string();
+  return inner;
+}
+// Un chuchotement du STAFF : le client le trahit par son TYPE.
+//
+// Le serveur lève `isAdmin` dans ZC_WHISPER (0x0097) quand l'expéditeur est du
+// staff — chez nous à partir du group level 80 (moonlight, clif_wis_message). Le
+// client, lui, ne l'affiche nulle part : il se contente d'écrire la ligne en type
+// **0x19 (broadcast)** au lieu de 2 (`sub_CAFD00`, 0x00cb0ade).
+//
+// On récupère donc les deux choses qu'il perd :
+//   * le TYPE — une conversation privée reste privée, et doit obéir au filtre
+//     « Whisper » des onglets, pas passer partout comme une annonce ;
+//   * l'INFORMATION — devenue le marqueur « (GM) », posé après le pseudo.
+//
+// 🔴 La reconnaissance ne se fait PAS sur le seul type : un vrai broadcast serait
+// alors pris pour un chuchotement. Il faut un en-tête de chuchotement reconnu
+// (`WhisperPeerFromLabel`), ce qu'aucune annonce serveur ne porte.
+//
+// Rend true si la ligne est un chuchotement de GM.
+bool TagGmWhisper(std::string* text, uint8_t* type) {
+  if (*type != kTypeBroadcast || text->empty()) return false;
+  const size_t body  = text->find(" : ");
+  const size_t limit = (body == std::string::npos) ? text->size() : body;
+  bool outgoing = false;
+  const std::string peer = WhisperPeerFromLabel(text->substr(0, limit), &outgoing);
+  if (peer.empty()) return false;  // une vraie annonce : on n'y touche pas
+
+  *type = static_cast<uint8_t>(kTypeWhisper);
+  const size_t at = text->find(peer);
+  if (at != std::string::npos && at < limit)
+    text->insert(at + peer.size(), " (GM)");
+  return true;
+}
+}  // namespace
+
+// Un chuchotement REÇU entre dans les destinataires récents. C'est le geste
+// qu'on veut ensuite neuf fois sur dix : répondre. Le natif ne remplissait cette
+// liste qu'à l'ENVOI, et nous non plus — d'où un correspondant qui vient
+// d'écrire mais reste introuvable dans le menu de la box destinataire.
+//
+// Rien à faire pour l'écho de nos propres envois : `QueueSend` l'a déjà noté au
+// moment où le joueur a validé.
+void ChatWindow::RememberWhisperPeer(const Line& line) {
+  if (line.type != kTypeWhisper) return;
+  bool outgoing = false;
+  const std::string peer = WhisperPeerFromLabel(line.sender, &outgoing);
+  if (peer.empty() || outgoing) return;
+  if (IsOwnName(peer.c_str())) return;  // notre propre écho relu à l'envers
+  PushWhisperHistory(peer.c_str());
+}
+
+// Rend cliquable le pseudo de tête, où qu'il soit dans le libellé.
+void ChatWindow::MarkSenderAsPlayerLink(Line* line) const {
+  bool outgoing = false;
+  const std::string name = WhisperPeerFromLabel(line->sender, &outgoing);
+  if (name.empty()) return;
+  for (size_t i = 0; i < line->runs.size(); ++i) {
+    Run& run = line->runs[i];
+    if (run.text.empty()) continue;
+    if (run.kind != Run::kNone) return;  // déjà un lien : on n'y touche pas
+    // Borné au PRÉFIXE : un pseudo qui se trouve aussi dans le corps du message
+    // (« dis à Filip que… ») ne doit pas devenir un second lien — celui-là, on ne
+    // sait pas s'il désigne un joueur ou un mot.
+    const size_t body  = run.text.find(" : ");
+    const size_t limit = (body == std::string::npos) ? run.text.size() : body;
+    const size_t at    = run.text.find(name);
+    if (at == std::string::npos || at + name.size() > limit) return;
+
+    const std::string before = run.text.substr(0, at);
+    const std::string after  = run.text.substr(at + name.size());
+    Run middle = run;  // hérite couleur, gras, italique
+    middle.text = name;
+    middle.kind = Run::kPlayer;
+
+    // Reconstruit sur place : au plus trois fragments, dont seuls les non vides
+    // sont conservés — un fragment vide se traînerait dans tout le rendu.
+    std::vector<Run> parts;
+    if (!before.empty()) {
+      Run head = run;
+      head.text = before;
+      parts.push_back(std::move(head));
+    }
+    parts.push_back(std::move(middle));
+    if (!after.empty()) {
+      Run tail = run;
+      tail.text = after;
+      parts.push_back(std::move(tail));
+    }
+    line->runs.erase(line->runs.begin() + static_cast<ptrdiff_t>(i));
+    line->runs.insert(line->runs.begin() + static_cast<ptrdiff_t>(i), parts.begin(),
+                      parts.end());
+    return;
+  }
+}
+
 // ── Ingestion ────────────────────────────────────────────────────────────────
 void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
                         int type, char source) {
@@ -975,6 +1539,22 @@ void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
   line.hour   = static_cast<uint8_t>(now.wHour);
   line.minute = static_cast<uint8_t>(now.wMinute);
   line.second = static_cast<uint8_t>(now.wSecond);
+
+  // L'AID obfusqué du correspondant : ôté AVANT l'extraction du sender, qui
+  // sinon le garderait dans son libellé.
+  //
+  // 🔴 PAS conditionné au type 2. Le client écrit un chuchotement en type 0x19
+  // (broadcast) au lieu de 2 quand l'expéditeur est un GM (`sub_CAFD00`, à
+  // 0x00cb0ade) — c'est ce qui laissait le code visible sur les lignes venant du
+  // staff, et seulement sur celles-là. La fonction ne touche de toute façon
+  // qu'aux lignes où elle reconnaît la signature exacte d'un AID obfusqué, et
+  // rend les autres intactes.
+  std::string cleaned = StripWhisperAidTag(text);
+  // Chuchotement du staff : le client l'a écrit en broadcast et n'en dit rien.
+  // On lui rend son type et on pose le marqueur — AVANT l'extraction du sender,
+  // qui doit voir le libellé définitif.
+  TagGmWhisper(&cleaned, &line.type);
+  text = cleaned.c_str();
 
   // Sender : donné par l'appelant, sinon extrait du texte comme le natif le fait
   // pour les formats « Nom : msg » (types public/groupe/guilde/clan) — il cherche
@@ -994,12 +1574,158 @@ void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
     line.sender = ro::WireToUtf8(raw_sender);
 
   ParseText(text, &line);
+  MarkSenderAsPlayerLink(&line);
+  RememberWhisperPeer(line);
 
   std::lock_guard<std::mutex> lock(lines_mutex_);
   ++ingest_kept_;
   lines_.push_back(std::move(line));
   const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
   while (lines_.size() > cap) lines_.pop_front();
+}
+
+// ── Chuchotement 1:1 ─────────────────────────────────────────────────────────
+// Nombre de conversations ouvertes simultanément. Ce n'est pas une contrainte du
+// client (sa map n'a pas de plafond) mais la nôtre : chaque conversation est une
+// fenêtre à l'écran, et au-delà d'une poignée elles se recouvrent en s'empilant
+// sans que le joueur puisse rien y faire. Le plus ANCIEN sans ligne récente cède
+// sa place — jamais le plus actif.
+constexpr size_t kMaxWhisperWindows = 8;
+
+int ChatWindow::FindWhisperChannel(const std::string& with_utf8) const {
+  if (with_utf8.empty()) return -1;
+  for (size_t i = 0; i < channels_.size(); ++i)
+    if (channels_[i].whisper_with == with_utf8) return static_cast<int>(i);
+  return -1;
+}
+
+int ChatWindow::FindOrCreateWhisper(const std::string& with_utf8, uint32_t aid) {
+  if (with_utf8.empty()) return -1;
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    if (channels_[i].whisper_with == with_utf8) {
+      // L'AID n'accompagne pas toujours la ligne (l'écho de nos envois l'a, le
+      // reçu aussi, mais on ne parie pas dessus) : on ne l'écrase jamais par zéro.
+      if (aid != 0) channels_[i].whisper_aid = aid;
+      channels_[i].whisper_stamp = GetTickCount();
+      return static_cast<int>(i);
+    }
+  }
+
+  size_t open = 0;
+  for (const Channel& channel : channels_)
+    if (!channel.whisper_with.empty()) ++open;
+  if (open >= kMaxWhisperWindows) {
+    // Plein : on ferme la conversation la plus ancienne au sens de sa dernière
+    // ligne. Faute de quoi la nouvelle n'apparaîtrait nulle part, et le joueur
+    // croirait avoir raté le message.
+    int      oldest       = -1;
+    uint32_t oldest_stamp = 0;
+    for (size_t i = 0; i < channels_.size(); ++i) {
+      if (channels_[i].whisper_with.empty()) continue;
+      if (oldest < 0 || channels_[i].whisper_stamp < oldest_stamp) {
+        oldest       = static_cast<int>(i);
+        oldest_stamp = channels_[i].whisper_stamp;
+      }
+    }
+    if (oldest < 0) return -1;
+    channels_.erase(channels_.begin() + oldest);
+    if (active_channel_ > oldest) --active_channel_;
+  }
+
+  Channel channel;
+  channel.id           = next_channel_id_++;
+  channel.name         = with_utf8;
+  channel.whisper_with = with_utf8;
+  channel.whisper_aid  = aid;
+  // 🔴 `detached` ET `detach_owned` : la fusion périodique avec le registre natif
+  // remettrait sinon ce canal « docké » — il n'a pas d'entrée là-bas, donc rien
+  // ne le contredirait jamais, et il finirait comme un onglet fantôme.
+  channel.detached      = true;
+  channel.detach_owned  = true;
+  channel.whisper_stamp = GetTickCount();
+  // Une conversation privée accepte tout ce qu'on lui range explicitement : c'est
+  // `whisper_with` qui filtre, pas la table de types (cf. ChannelAccepts).
+  std::memset(channel.filter, 1, sizeof(channel.filter));
+  channels_.push_back(std::move(channel));
+  return static_cast<int>(channels_.size() - 1);
+}
+
+bool ChatWindow::OpenWhisperWindow(const char* name_wire, const char* aid_display) {
+  return OpenWhisperWindowByAid(name_wire, DeobfuscateAid(aid_display));
+}
+
+bool ChatWindow::OpenWhisperWindowByAid(const char* name_wire, uint32_t aid) {
+  if (name_wire == nullptr || name_wire[0] == '\0') return false;
+  // 🔴 Interface moderne éteinte : `OnRenderUI` sort avant tout dessin, et le
+  // canal créé ici ne serait JAMAIS peint. Une fenêtre invisible est pire qu'un
+  // refus — l'appelant doit pouvoir le dire au joueur.
+  if (!imgui_enabled_) return false;
+  const int index = FindOrCreateWhisper(ro::WireToUtf8(name_wire), aid);
+  if (index < 0) return false;
+  // Le clavier va à la saisie : ici le joueur a CLIQUÉ « chuchoter », il veut
+  // écrire. C'est la différence avec une conversation qui s'ouvre parce qu'on
+  // vient de recevoir un message — celle-là ne doit rien voler.
+  channels_[index].whisper_focus = true;
+  return true;
+}
+
+bool ChatWindow::IngestWhisper(const char* with_wire, const char* text_wire,
+                               uint32_t rgb, uint32_t aid) {
+  const std::string with = ro::WireToUtf8(with_wire);
+
+  // Ouverture d'une conversation : gouvernée par les MÊMES cases que le client,
+  // celles de son « Friend Setup » (Alt+I). Remplacer une fenêtre native, c'est
+  // aussi reprendre ses réglages — sans quoi le joueur qui a coupé les popups les
+  // verrait revenir sous une autre forme.
+  //
+  // ⚠ Une conversation DÉJÀ ouverte reste alimentée quoi qu'il arrive : les cases
+  // décident d'OUVRIR, elles ne décident pas de museler ce qui est là.
+  const int index = (FindWhisperChannel(with) >= 0 || WhisperPopupWanted(with_wire))
+                        ? FindOrCreateWhisper(with, aid)
+                        : -1;
+  // Personne pour l'afficher : on ne prend pas la ligne, et le client la met dans
+  // la chatbox par son chemin habituel — exactement ce que fait sa popup absente.
+  if (index < 0) return false;
+
+  Line line;
+  line.source       = 'P';  // ni ChatAction ni WndProc : notre propre branchement
+  line.rgb          = rgb & 0xFFFFFF;
+  line.type         = static_cast<uint8_t>(kTypeWhisper);
+  line.whisper_with = with;
+
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  line.hour   = static_cast<uint8_t>(now.wHour);
+  line.minute = static_cast<uint8_t>(now.wMinute);
+  line.second = static_cast<uint8_t>(now.wSecond);
+
+  // L'AID obfusqué que le client colle dans l'écho (« [ To Nom (813-524) ] : ») :
+  // ôté ici aussi, et AVANT l'extraction du sender.
+  const std::string cleaned = StripWhisperAidTag(text_wire);
+  const char* body = cleaned.c_str();
+
+  // Le sender du natif est ici toujours en tête, séparé par « : ». On le laisse
+  // extraire comme pour les autres types plutôt que d'imposer `with` : à l'aller,
+  // le client écrit « ( To cible ) », et c'est bien CE libellé-là que le joueur
+  // doit lire, pas le nom nu.
+  const char* separator = std::strstr(body, " :");
+  if (separator != nullptr && (separator - body) <= 40) {
+    char extracted[64] = {};
+    CopyBounded(extracted, sizeof(extracted), body);
+    extracted[separator - body] = '\0';
+    line.sender = ro::WireToUtf8(extracted);
+  }
+  ParseText(body, &line);
+  MarkSenderAsPlayerLink(&line);
+  RememberWhisperPeer(line);
+
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  ++ingest_seen_;
+  ++ingest_kept_;
+  lines_.push_back(std::move(line));
+  const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
+  while (lines_.size() > cap) lines_.pop_front();
+  return true;
 }
 
 // Découpe une ligne en fragments : couleurs ^RRGGBB, icônes ^i[id], liens
@@ -1241,6 +1967,15 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
 
 // ── Canaux ───────────────────────────────────────────────────────────────────
 bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const {
+  // 🔴 Une conversation 1:1 filtre par CORRESPONDANT, avant tout le reste — le
+  // mode diagnostic compris. Y laisser passer quoi que ce soit d'autre serait
+  // pire qu'inutile : c'est la fenêtre où le joueur répond sans relire la cible.
+  if (!channel.whisper_with.empty())
+    return line.whisper_with == channel.whisper_with;
+  // Et symétriquement : une ligne privée n'apparaît dans les onglets ordinaires
+  // que si le joueur y a laissé le type « Whisper » coché. Le réglage existe
+  // déjà, il est par canal, et il répond exactement à la question « je veux mes
+  // chuchotements aussi dans le chat ? ».
   if (diagnostic_) return true;              // diagnostic : on ne filtre rien
   if (line.type >= kTypeCount) return true;  // broadcast : tous les onglets
   return channel.filter[line.type] != 0;
@@ -1287,16 +2022,23 @@ void ChatWindow::RefreshChannels() {
     // Appariement, du plus sûr au plus faible. L'ADRESSE du nœud est stable tant
     // que l'entrée vit ; l'index ne l'est qu'entre deux renumérotations ; le nom
     // ne départage pas deux homonymes — d'où l'ordre, et le « premier non pris ».
+    // 🔴 Les conversations 1:1 sont HORS appariement : elles ne viennent d'aucun
+    // registre. Sans cette exclusion, le troisième recours — l'appariement par
+    // NOM — livrerait la conversation ouverte avec « Filip » au premier onglet
+    // que le joueur aurait nommé « Filip », et la transformerait en onglet.
+    auto eligible = [&](size_t k) {
+      return !taken[k] && channels_[k].whisper_with.empty();
+    };
     int found = -1;
     for (size_t k = 0; k < channels_.size() && found < 0; ++k)
-      if (!taken[k] && raw[i].node != 0 && channels_[k].node == raw[i].node)
+      if (eligible(k) && raw[i].node != 0 && channels_[k].node == raw[i].node)
         found = static_cast<int>(k);
     for (size_t k = 0; k < channels_.size() && found < 0; ++k)
-      if (!taken[k] && channels_[k].detached == detached &&
+      if (eligible(k) && channels_[k].detached == detached &&
           channels_[k].index == raw[i].index)
         found = static_cast<int>(k);
     for (size_t k = 0; k < channels_.size() && found < 0; ++k)
-      if (!taken[k] && channels_[k].name == name) found = static_cast<int>(k);
+      if (eligible(k) && channels_[k].name == name) found = static_cast<int>(k);
 
     Channel channel;
     if (found >= 0) {
@@ -1322,13 +2064,33 @@ void ChatWindow::RefreshChannels() {
     // (node nul = c'est le nôtre), on le laisse tel quel plutôt que d'en fabriquer
     // un neuf toutes les deux secondes — son identifiant doit rester stable lui
     // aussi, sinon ses réglages repartiraient de zéro en boucle.
-    if (channels_.size() == 1 && channels_[0].node == 0) return;
+    //
+    // ⚠ Le compte se fait hors conversations 1:1 : elles ne sont pas des onglets,
+    // et une conversation ouverte ne doit pas faire croire que la bande est
+    // pourvue — la fenêtre dockée resterait alors vide, sans rien pour l'expliquer.
+    int tabs = 0, own_fallback = -1;
+    for (size_t k = 0; k < channels_.size(); ++k) {
+      if (!channels_[k].whisper_with.empty()) continue;
+      ++tabs;
+      if (channels_[k].node == 0) own_fallback = static_cast<int>(k);
+    }
+    if (tabs == 1 && own_fallback >= 0) return;
     Channel fallback;
     fallback.id   = next_channel_id_++;
     fallback.name = "Public";
     std::memset(fallback.filter, 1, sizeof(fallback.filter));
     merged.push_back(std::move(fallback));
   }
+
+  // 🔴 Les conversations 1:1 ne viennent d'AUCUN registre : rien ne les apparie,
+  // et la fusion les effacerait donc toutes les deux secondes — fenêtre ouverte
+  // comprise, en pleine conversation. On les reporte telles quelles, et APRÈS le
+  // repli ci-dessus : celui-ci peut encore renoncer par un `return`, qui laisserait
+  // sinon derrière lui des canaux vidés par le déplacement.
+  for (size_t k = 0; k < channels_.size(); ++k)
+    if (!taken[k] && !channels_[k].whisper_with.empty())
+      merged.push_back(std::move(channels_[k]));
+
   channels_.swap(merged);
 
   // Rester sur le MÊME canal, pas au même rang : la fusion peut réordonner, et
@@ -1410,8 +2172,28 @@ void ChatWindow::OnRenderUI() {
   // Parcours par INDICE : le rendu d'une flottante peut basculer son `detached`
   // (recollage), ce qu'un itérateur n'aimerait pas. Aucun canal n'est créé ni
   // supprimé ici, donc les indices restent valides.
-  for (size_t i = 0; i < channels_.size(); ++i)
-    if (channels_[i].detached) DrawDetachedWindow(static_cast<int>(i));
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    if (!channels_[i].detached) continue;
+    // Une conversation 1:1 est une flottante elle aussi, mais avec son propre
+    // chrome : un titre qui nomme le correspondant, sa croix, et sa saisie.
+    if (channels_[i].whisper_with.empty())
+      DrawDetachedWindow(static_cast<int>(i));
+    else
+      DrawWhisperWindow(static_cast<int>(i));
+  }
+  // Fermeture différée : cf. `whisper_close_id_`. L'historique, lui, RESTE — la
+  // conversation se rouvrira avec ce qui a déjà été dit, ce qui est le seul
+  // comportement raisonnable quand on referme par erreur.
+  if (whisper_close_id_ != 0) {
+    for (size_t i = 0; i < channels_.size(); ++i) {
+      if (channels_[i].id != whisper_close_id_) continue;
+      channels_.erase(channels_.begin() + static_cast<int>(i));
+      if (active_channel_ >= static_cast<int>(i) && active_channel_ > 0)
+        --active_channel_;
+      break;
+    }
+    whisper_close_id_ = 0;
+  }
 
   // Filet de sécurité, en FIN de frame et pas au début : un geste dont la fenêtre
   // a cessé d'être dessinée (repli, canal disparu) laisserait sinon un glissement
@@ -1667,6 +2449,219 @@ void ChatWindow::DrawDetachedHeader(int index) {
   dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
               channel.name.c_str());
   ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
+}
+
+// ── Conversation 1:1 ─────────────────────────────────────────────────────────
+// Une fenêtre par correspondant, comme la `UIWhisperWnd` du client. Elle a sa
+// propre saisie — c'est la différence avec une flottante ordinaire, et c'est tout
+// l'intérêt : on répond sans avoir à viser le bon destinataire dans le chat.
+//
+// Le titre porte le nom, et la guilde quand le client la connaît (cf.
+// ResolveWhisperGuilds). Pas l'identifiant de compte que le natif affiche entre
+// crochets : c'est un nombre obfusqué qui ne dit rien à personne.
+void ChatWindow::DrawWhisperWindow(int index) {
+  Channel& channel = channels_[index];
+  ro::RoChatSkin skin = MakeSkin(&channel);
+  skin.min_w = 280.0f;
+  skin.min_h = 120.0f;
+
+  // Le skin du chat pose `NoTitleBar` : ce qui précède `###` n'est donc jamais
+  // peint par ImGui — c'est notre en-tête qui affiche le nom. Il reste utile de
+  // le donner quand même (débogage, fichier .ini), et l'identifiant DOIT vivre
+  // derrière `###` : la guilde peut ARRIVER en cours de conversation, et le titre
+  // changerait alors sous les pieds d'ImGui, qui perdrait position et taille.
+  char window_id[192];
+  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_whisper_%u",
+                channel.whisper_with.c_str(), channel.id);
+
+  // Cascade de 17 px comme le client, pour que deux conversations ouvertes coup
+  // sur coup ne se recouvrent pas exactement. Indexée sur l'identifiant du canal
+  // et pas sur son rang : le rang bouge à chaque fusion de registre, et la
+  // fenêtre sauterait alors d'un cran sans raison visible.
+  const float step = 17.0f * static_cast<float>(channel.id % 8);
+  ImGui::SetNextWindowSize(ImVec2(320.0f, 190.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowPos(ImVec2(180.0f + step, 140.0f + step), ImGuiCond_FirstUseEver);
+  ApplySizeConstraints(skin);
+  if (ro::BeginRoChatWindow(window_id, skin)) {
+    DrawWhisperHeader(index);
+    // La saisie occupe une rangée en bas ; le log prend tout le reste. Mesuré
+    // plutôt que deviné : la hauteur d'une ligne suit la police du canal.
+    const float input_h = ImGui::GetFrameHeightWithSpacing();
+    float log_h = ImGui::GetContentRegionAvail().y - input_h;
+    if (log_h < LogFontSize(&channel)) log_h = LogFontSize(&channel);
+    channel.line_h   = LineHeight(&channel);
+    channel.chrome_h = ImGui::GetWindowSize().y - log_h +
+                       2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(&channel);
+    DrawChannel(channel, log_h);
+    DrawWhisperInput(index);
+    // Pas de DrawLogOptionsPopup ici : rien dans cet en-tête ne l'ouvre, et les
+    // 25 types de log n'ont aucun sens sur une conversation qui n'en accepte
+    // qu'un — c'est le correspondant qui filtre, pas la table.
+  }
+  ro::EndRoChatWindow();
+}
+
+// En-tête : le titre, et la croix. Même mécanique de déplacement manuel que les
+// flottantes ordinaires — la fenêtre n'a pas de barre de titre, et un bouton
+// invisible qui couvre la bande prendrait l'ActiveId, donc le glissement d'ImGui.
+// Pas de recollage en revanche : une conversation privée n'a pas d'onglet où
+// retourner, et l'y laisser tomber la ferait disparaître sans explication.
+void ChatWindow::DrawWhisperHeader(int index) {
+  Channel& channel = channels_[index];
+  const float h = ImGui::GetFontSize() + 6.0f;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float  width  = ImGui::GetContentRegionAvail().x;
+  if (width <= 0.0f) return;  // ImGui refuse un bouton de largeur nulle
+
+  const float close_w = h;
+  ImGui::InvisibleButton("##whisper_head", ImVec2(std::max(width - close_w, 1.0f), h));
+  const bool hovered = ImGui::IsItemHovered();
+  if (ImGui::IsItemActive() && !locked_) {
+    const ImVec2 delta = ImGui::GetIO().MouseDelta;
+    if (delta.x != 0.0f || delta.y != 0.0f) {
+      const ImVec2 p = ImGui::GetWindowPos();
+      ImGui::SetWindowPos(ImVec2(p.x + delta.x, p.y + delta.y));
+    }
+  }
+
+  ImGui::SameLine(0.0f, 0.0f);
+  ImGui::InvisibleButton("##whisper_close", ImVec2(close_w, h));
+  const bool close_hovered = ImGui::IsItemHovered();
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) whisper_close_id_ = channel.id;
+  if (close_hovered) ro::SetHoverCursor(2);  // curseur « main » RO
+
+  const ImU32 bg = Lighten(ro::ImU32FromPicker(tab_rgba_), 58);
+  dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + h), bg);
+  dl->AddRect(origin, ImVec2(origin.x + width, origin.y + h),
+              IM_COL32(0x30, 0x30, 0x30, 200));
+
+  // Le nom, puis la guilde en retrait. Deux teintes : le nom est ce qu'on lit,
+  // la guilde ce qu'on situe.
+  dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
+              channel.whisper_with.c_str());
+  if (!channel.whisper_guild.empty()) {
+    const float name_w = ImGui::CalcTextSize(channel.whisper_with.c_str()).x;
+    std::string guild = "[" + channel.whisper_guild + "]";
+    dl->AddText(ImVec2(origin.x + 13.0f + name_w, origin.y + 3.0f),
+                IM_COL32(0x50, 0x50, 0x50, 255), guild.c_str());
+  }
+
+  // La croix, peinte à la main : deux traits valent mieux qu'un glyphe, dont
+  // l'atlas n'a pas forcément le dessin (cf. le tiret cadratin proscrit ici).
+  const float cx = origin.x + width - close_w * 0.5f;
+  const float cy = origin.y + h * 0.5f;
+  const float r  = h * 0.22f;
+  const ImU32 cross = close_hovered ? IM_COL32(0xC0, 0x30, 0x30, 255) : kTabTextCol;
+  dl->AddLine(ImVec2(cx - r, cy - r), ImVec2(cx + r, cy + r), cross, 1.5f);
+  dl->AddLine(ImVec2(cx - r, cy + r), ImVec2(cx + r, cy - r), cross, 1.5f);
+
+  if (hovered) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip("Conversation privée avec %s.\nGlisser : déplacer.",
+                      channel.whisper_with.c_str());
+    ImGui::PopStyleColor();
+  }
+  ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
+}
+
+// La saisie propre à une conversation. Volontairement nue : pas de box
+// destinataire (elle est FIGÉE, c'est tout l'intérêt), pas de sélecteur de mode
+// (on chuchote, point), pas d'historique de noms.
+void ChatWindow::DrawWhisperInput(int index) {
+  Channel& channel = channels_[index];
+  char buffer[256];
+  CopyBounded(buffer, sizeof(buffer), channel.whisper_input.c_str());
+
+  ImGui::SetNextItemWidth(-FLT_MIN);
+  char field_id[64];
+  std::snprintf(field_id, sizeof(field_id), "##whisper_input_%u", channel.id);
+  char hint[96];
+  std::snprintf(hint, sizeof(hint), "Répondre à %s", channel.whisper_with.c_str());
+  // Le focus se rend APRÈS un envoi : sans ça, la conversation se poursuit au
+  // clavier une seule fois, puis la frappe repart dans le jeu.
+  if (channel.whisper_focus) {
+    ImGui::SetKeyboardFocusHere();
+    channel.whisper_focus = false;
+  }
+  if (ImGui::InputTextWithHint(field_id, hint, buffer, sizeof(buffer),
+                               ImGuiInputTextFlags_EnterReturnsTrue)) {
+    channel.whisper_input = buffer;
+    QueueWhisperSend(channel);
+    channel.whisper_focus = true;
+  } else {
+    channel.whisper_input = buffer;
+  }
+}
+
+// Arme l'envoi, joué par FlushPending hors frame. Le texte part TEL QUEL : la
+// résolution des liens d'objets appartient à la saisie principale, qui seule
+// reçoit les dépôts du Maj+clic — la refaire ici viderait `item_links_` sous les
+// pieds de l'autre.
+//
+// 🔴 RIEN N'EST POUSSÉ DANS L'HISTORIQUE DE SAISIE. Il est partagé avec la
+// chatbox : une flèche du haut y ressortirait un message privé, dans une ligne
+// qui part en PUBLIC au prochain Entrée. Une confidence divulguée par un
+// raccourci clavier vaut bien mieux que le confort de la rappeler.
+void ChatWindow::QueueWhisperSend(Channel& channel) {
+  if (channel.whisper_input.empty()) return;
+  pending_text_    = ro::Utf8ToWire(channel.whisper_input.c_str());
+  pending_whisper_ = ro::Utf8ToWire(channel.whisper_with.c_str());
+  has_pending_     = true;
+  channel.whisper_stamp = GetTickCount();
+  channel.whisper_input.clear();
+}
+
+// Complète le titre des conversations avec la guilde du correspondant, lue dans
+// le dictionnaire de noms du client — le même que celui des noms flottants
+// au-dessus des personnages (docs/entity_nameplate_re.md).
+//
+// 🔴 HORS FRAME ImGui. Une entrée inconnue ne renvoie pas simplement « rien » :
+// elle met le GID en file de requête et le client ÉMET un paquet. Ce n'est pas
+// une commande native qui relance le rendu, mais un effet de bord réseau n'a
+// rien à faire au milieu d'un dessin.
+//
+// ⚠ Peut ne JAMAIS aboutir, et c'est normal : rAthena ne répond à une requête de
+// nom que pour une unité de la MÊME CARTE (`clif_parse_GetCharNameRequest` ->
+// `map_id2bl`). Un correspondant à l'autre bout du monde restera donc sans
+// guilde ; le titre s'en passe plutôt que d'afficher un vide inquiétant. C'est
+// aussi pour ça qu'on relance : il peut arriver sur notre carte en cours de
+// conversation, et l'information apparaît alors toute seule.
+void ChatWindow::ResolveWhisperGuilds() {
+  bool any = false;
+  for (const Channel& channel : channels_)
+    if (!channel.whisper_with.empty() && channel.whisper_aid != 0) any = true;
+  if (!any) return;
+
+  // Une tentative par seconde suffit largement : la réponse du serveur met un
+  // aller-retour, et l'AID d'une conversation ne change jamais.
+  const uint32_t now = GetTickCount();
+  if (whisper_guild_stamp_ != 0 && (now - whisper_guild_stamp_) < 1000) return;
+  whisper_guild_stamp_ = now;
+
+  // La lecture native se fait sur des POD dans une fonction à part : `__try` et
+  // les objets à destructeur ne cohabitent pas (C2712), et une std::string dans
+  // cette boucle suffirait à refuser la compilation.
+  GuildProbe probe[kMaxWhisperWindows];
+  int count = 0;
+  for (const Channel& channel : channels_) {
+    if (channel.whisper_with.empty() || channel.whisper_aid == 0) continue;
+    if (count >= static_cast<int>(kMaxWhisperWindows)) break;
+    probe[count].aid      = channel.whisper_aid;
+    probe[count].guild[0] = '\0';
+    ++count;
+  }
+  if (!ProbeGuildsFromNameDict(probe, count)) return;
+
+  for (int i = 0; i < count; ++i) {
+    // 🔴 On n'EFFACE jamais une guilde déjà connue : l'entrée peut redevenir vide
+    // (le correspondant quitte notre carte, le dictionnaire se recycle) et le
+    // titre se mettrait à clignoter au rythme du dictionnaire.
+    if (probe[i].guild[0] == '\0') continue;
+    for (Channel& channel : channels_)
+      if (channel.whisper_aid == probe[i].aid)
+        channel.whisper_guild = ro::WireToUtf8(probe[i].guild);
+  }
 }
 
 // Bande d'onglets façon client : petits rectangles gris, texte sombre, l'actif
@@ -3206,6 +4201,7 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
     case Run::kMob:
       return links::FromMob(run.mob_id, run.mob_rank, run.mob_name.c_str());
     case Run::kUrl: return links::FromUrl(run.url.c_str());
+    case Run::kPlayer: return links::FromPlayer(run.text.c_str());
     default: return links::Target{};
   }
 }
@@ -3227,6 +4223,64 @@ void ChatWindow::QueueCommand(const char* utf8) {
   pending_text_ = ro::Utf8ToWire(utf8);
   pending_whisper_.clear();
   has_pending_ = true;
+}
+
+void ChatWindow::QueueNameAction(NameAction action, const char* name_wire) {
+  if (action == NameAction::kNone || name_wire == nullptr || name_wire[0] == '\0')
+    return;
+  pending_name_        = name_wire;
+  pending_name_action_ = action;
+}
+
+// Joue l'action armée. Appelée par FlushPending, donc hors frame ImGui.
+void ChatWindow::FlushNameAction() {
+  const NameAction action = pending_name_action_;
+  if (action == NameAction::kNone) return;
+  pending_name_action_ = NameAction::kNone;
+  // Le champ de nom des trois paquets fait 24 octets, non terminés par
+  // convention : on part d'un tampon zéro et on tronque, plutôt que de laisser
+  // filer ce qui traînait derrière une chaîne plus courte.
+  char name[kNameFieldLen] = {};
+  CopyBounded(name, sizeof(name), pending_name_.c_str());
+  pending_name_.clear();
+
+  switch (action) {
+    case NameAction::kPartyInvite:
+      // 🔴 Chemin NATIF, et c'est délibéré : `clif_parse_PartyInvite2` est un
+      // paquet SHUFFLE côté serveur (0x02c4, 0x088d, 0x0929, 0x091c, 0x0802,
+      // 0x086d selon la version). Coder l'opcode en dur, c'est parier sur la
+      // version ; laisser le client le choisir, c'est avoir raison par
+      // construction. C'est exactement ce que fait son menu contextuel (code 5).
+      ModeSendMsg(kMsgPartyInvite,
+                  static_cast<int>(reinterpret_cast<intptr_t>(name)));
+      return;
+    case NameAction::kFriendAdd: {
+      // Le client a sa propre fonction pour ça, et elle prend un NOM : elle
+      // construit `CZ_ADD_FRIENDS` (0x0202, désassemblé à 0x00a2c600 — `Src =
+      // 514`, 24 octets de nom, longueur via sa table) et l'envoie. Passer par
+      // elle évite de trancher entre les cinq opcodes que le serveur accepte.
+      // ⚠ Elle lit 24 octets d'affilée : le tampon doit les avoir.
+      static_assert(sizeof(name) >= 24, "sub_A2C600 lit 24 octets de nom");
+      __try {
+        reinterpret_cast<FriendAddFn>(kFriendListAddByName)(name);
+      } __except (EXCEPTION_EXECUTE_HANDLER) {
+      }
+      return;
+    }
+    case NameAction::kGuildInvite: {
+      // Pas d'équivalent natif par nom — le menu du client n'invite que par AID,
+      // qu'une ligne de chat ne porte pas. `CZ_REQ_JOIN_GUILD2` (0x0916) est en
+      // revanche enregistré HORS des blocs shuffle du serveur (clif_packetdb.hpp
+      // :1538), donc son opcode ne dépend pas de la version.
+      uint8_t packet[2 + kNameFieldLen] = {};
+      *reinterpret_cast<uint16_t*>(packet) = kOpGuildInviteByName;
+      std::memcpy(packet + 2, name, kNameFieldLen);
+      Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+      return;
+    }
+    case NameAction::kNone:
+      return;
+  }
 }
 
 void ChatWindow::PruneItemLinks() {
@@ -3437,6 +4491,10 @@ void ChatWindow::OnKeyDown(unsigned long vkey, int, int) {
 
 void ChatWindow::FlushPending() {
   SuppressNativeChat();
+  // Ici et pas dans la frame : interroger le dictionnaire de noms peut faire
+  // ÉMETTRE une requête au client (cf. ResolveWhisperGuilds).
+  ResolveWhisperGuilds();
+  FlushNameAction();
   if (!has_pending_) return;
   has_pending_ = false;
   const char* error =
@@ -3577,6 +4635,29 @@ bool ChatWindow::DrawSettings() {
       "Hauteur des vignettes, de 24 à 128 pixels.\n\n"
       "Au-delà d'une hauteur de ligne, la ligne s'agrandit pour accueillir "
       "l'image : le fil reste lisible, il s'aère.");
+  // ── Conversations privées ─────────────────────────────────────────────────
+  // 🔴 Ces deux cases ne sont PAS à nous : elles écrivent directement les
+  // octets du client, ceux de son « Friend Setup » (Alt+I). Une copie persistée
+  // de notre côté ferait deux sources de vérité pour un même réglage, qui se
+  // contrediraient dès que le joueur toucherait l'autre fenêtre. Elles sont ici
+  // parce que la native qui les portait n'est pas toujours sous la main, et
+  // qu'une fenêtre qui ne s'ouvre jamais sans qu'on sache pourquoi est pire
+  // qu'une option de plus.
+  bool from_stranger = false, from_friend = false;
+  const bool opts_ok = ReadWhisperPopupOptions(&from_stranger, &from_friend);
+  ImGui::BeginDisabled(!opts_ok);
+  if (ro::RoCheckbox("Fenêtre pour un inconnu###chatwnd_wh_stranger", &from_stranger))
+    WriteWhisperPopupOption(true, from_stranger);
+  if (ro::RoCheckbox("Fenêtre pour un ami###chatwnd_wh_friend", &from_friend))
+    WriteWhisperPopupOption(false, from_friend);
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  HelpMarker(
+      "Ouvre une fenêtre de conversation séparée quand un joueur chuchote.\n\n"
+      "Ce sont les réglages du CLIENT (Alt+I, « Friend Setup ») : les changer "
+      "ici les change là-bas, et inversement.\n\n"
+      "Décochés, les chuchotements restent de simples lignes dans le chat.");
+
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",

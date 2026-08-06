@@ -1224,3 +1224,301 @@ fichier.
 ⚠ L'adresse est écrite par un TIERS. Le menu offre donc « copier l'adresse » à
 côté de « ouvrir » : personne ne peut juger un lien sur ce qui tient dans une
 ligne de chat.
+
+---
+
+## 11. Conversation privée 1:1 (`UIWhisperWnd`)
+
+RE du 2026-08-06. La fenêtre « With *Nom* [*id*] » que le client ouvre quand un
+joueur chuchote — celle que les options « Friend Setup » (Alt+I) gouvernent.
+
+### 11.1 La classe
+
+| élément | adresse | note |
+|---|---|---|
+| RTTI | `.?AVUIWhisperWnd@@` | COL en `0x010c41f4`, TypeDescriptor `0x0123fa8c` |
+| vtable | **`0x01034324`** | l'ancien nom IDA « UIChatNamePopupWnd » était une supposition |
+| ctor | **`0x0088f500`** | objet de **0x11C** octets, taille initiale 280×120 |
+| OnMsg | **`0x008cd650`** | vtable+148 ; exclusif à cette vtable |
+| titre (DrawBg) | **`0x008b8a20`** | `"With  %s [%s]"` (0x1036c00) ou `"With  %s"` |
+
+Champs : `+0xB4` std::string **nom de la cible** (celui qu'on envoie) · `+0xCC`
+libellé affiché · `+0xE4/+0xE8/+0xEC/+0xF0` contrôles (?, `UIEditWnd` de saisie,
+`UISubChatWnd` de log, bouton fermer) · `+0xF4` vector des entrées du menu
+contextuel (stride 28) · `+0x104` std::string de l'AID obfusqué — **vide ⇒ titre
+sans crochets**.
+
+Messages : **6** cmd 184 (ENTRÉE) = envoi → `Chat_SetPendingSendText` +
+`CMode::SendMsg(11, this+0xB4)` = CZ_WHISPER `0x96` ; cmd 201 = fermer. **14**
+p=7 = resize, snap 32 px dans **[280..512]×[120..384]**. **34** = layout. **37**
+(0x25) = ajout de ligne. **48/49** = menu contextuel (fenêtre 0x12 ; MsgString
+0x138 code 11, plus 0x166 code 21 si la cible n'est pas un ami). **154** =
+relayout des liens d'objets.
+
+🔴 **Elle n'a PAS d'id `MakeWindow`.** Elle naît uniquement par
+`UIWindowMgr_ChatAction` **case 14 = `UIM_MAKE_WHISPER_WINDOW`**, qui l'alloue
+directement (`operator new(0x11C)`), la pousse dans la liste des fenêtres du
+manager, et l'enregistre dans une **`std::map<std::string, UIWindow*>` en
+`mgr+0x500`** (clé = le nom ; compteur en `mgr+0x504`, qui sert la cascade de
+17 px). Le titre y est composé : nom + `"  ("` + suffixe + `")  *^_^*"`.
+
+### 11.2 Le pivot — `UIWindowMgr_OnWhisperReceived 0x00a2cc20`
+
+`__thiscall(mgr, nom, texte, couleur, aid)`, 4 arguments pile, **`retn 0x10`**.
+Un seul point de passage pour les **deux sens** :
+
+* whisper **reçu** : handler ZC_WHISPER `sub_CAFD00` (appel en `0x00cafe92`) ;
+* **écho de nos propres envois** : `Whisper_DispatchSendResult 0x00c9d030`
+  (l'acquittement), qui compose `"( To cible (aid) ) : texte"` — crochets `[ To`
+  si la cible est un ami — et marque la couleur **`30720` (0x7800)**.
+
+Ce qu'il fait, dans l'ordre :
+
+1. `sub_D715F0(&g_UIWindowContextKey, nom)` = « est-ce un ami ? » ;
+2. ouvre une popup si **(`Open1on1FromStranger` && inconnu) || (`Open1on1FromFriend` && ami)** ;
+3. joue un son si **`Alarm1on1Chat`** ;
+4. si une fenêtre existe pour ce nom, lui envoie `msg 0x25` **(texte, couleur,
+   TYPE=2 Whisper, sender=0)** et **rend 1** ;
+5. sinon **rend 0**.
+
+🔴 **La valeur de retour est un contrat** : `1` = « une fenêtre 1:1 a consommé la
+ligne », et l'appelant s'abstient alors de l'écrire dans la chatbox. C'est ce qui
+rend le branchement propre — pas besoin de filtrer plus loin pour éviter le
+doublon. ⚠ L'appelant fait **autre chose** sur un retour 1 : la réponse
+automatique d'absence (MsgString `0x3AD`, drapeau `0x015ffa58`). Elle vit chez
+LUI, donc elle continue de tourner quoi qu'on fasse du pivot.
+
+Couleurs de ligne, relevées en `0x008cdd5a`
+(`cmp [ebp+14h], 7800h` / `mov eax, 0E8DDB6h` / `mov ebx, 0FFFFh` / `cmovnz`) —
+COLORREF `0x00BBGGRR` comme toute couleur de ligne :
+
+| sens | couleur | rendu |
+|---|---|---|
+| reçu | `0x00E8DDB6` | bleu-gris pâle |
+| envoyé (écho) | `0x0000FFFF` | jaune |
+
+### 11.3 « Friend Setup » — `UIFriendOptionWnd`
+
+`OnCreate 0x00701270` pose les trois cases, chacune avec son libellé :
+
+| global | adresse | MsgString | libellé |
+|---|---|---|---|
+| `g_FriendOpt_Open1on1FromStranger` | **`0x015fb2f8`** | `0x169` | Open 1:1 Chat between Strangers |
+| `g_FriendOpt_Alarm1on1Chat` | **`0x015fb2fc`** | `0x16A` | Alarm when receive a 1:1 Chat |
+| `g_FriendOpt_Open1on1FromFriend` | **`0x015fb300`** | `0x167` | Open 1:1 Chat between Friends |
+
+⚠ Ce sont des **DWORD**, pas des booléens d'un octet. `OnMsg 0x00701560` (cmd
+213) leur assigne l'argument entier de la case et **ne fait rien d'autre** :
+aucune sauvegarde, aucun paquet. Les écrire directement est donc strictement
+équivalent à cliquer la case — et, en contrepartie, le client **ne persiste pas**
+ces trois réglages.
+
+### 11.4 L'AID obfusqué — `Aid_FormatObfuscated 0x00d56e60`
+
+`__stdcall(std::string* out, uint aid)`. C'est l'identifiant entre crochets que
+le client affiche un peu partout : titre de la fenêtre whisper, menu contextuel
+d'entité, groupe, guilde, RODEX, trade.
+
+Il déroule les dix chiffres décimaux (diviseur 1e9 → 1) et **substitue** chaque
+chiffre, **supprime les zéros de tête**, et insère un `-` avant les **trois
+derniers** :
+
+| chiffre | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| affiché | 3 | 8 | 6 | 7 | 0 | 1 | 2 | 4 | 9 | 5 |
+
+Vérifié : `6333-317` se décode en **AID 2000053**.
+
+### 11.5 Ce que Bourgeon en fait
+
+`src/features/windows/chat_window.{h,cc}`. **Une conversation = un `Channel`**
+dont `whisper_with` est non vide : il est toujours `detached`, ne paraît jamais
+dans la bande d'onglets, et `ChannelAccepts` le filtre **par correspondant**
+avant tout le reste. Tout le rendu riche du chat (liens d'objets, monstres,
+URL, emotes, vignettes, gras/italique, polices) vient donc gratuitement.
+
+* **Détour** sur le pivot (`WhisperPivotStub`) : rend `1` et fait l'épilogue
+  lui-même (`ret 0x10`) sans jamais entrer dans l'originale — c'est elle qui
+  créerait la fenêtre native. Il ne mord que si la chatbox ImGui est active :
+  en mode natif, les popups du client doivent continuer de s'ouvrir.
+* 🔴 **DEUX chemins d'ouverture, et le second ne passe PAS par le pivot.** Le
+  « Chuchoter » du **menu contextuel d'entité** (code 20) appelle
+  `ChatAction(mgr, 14, …)` **en direct** — vérifié en `0x00c888c3` :
+  `mov ecx, 0131F4E8h` / `push esi` / `push eax` / `push 0Eh`. Détourner le seul
+  pivot laissait donc la fenêtre NATIVE revenir par ce chemin-là. Le case 14 est
+  intercepté dans `ChatActionFilter`, où les arguments ne portent pas le sens que
+  leurs noms annoncent : **p2 = le nom, p3 = un suffixe, p4 = l'AID déjà
+  obfusqué**. Vérifié : ni l'un ni l'autre des deux appelants ne teste la valeur
+  de retour de ce case. L'AID est **désobfusqué** (table inverse de §11.4) pour
+  retrouver la guilde — c'est la seule forme dont ce chemin dispose.
+* **Ouverture** gouvernée par les mêmes cases que le client, lues à leur adresse.
+  Une conversation déjà ouverte reste alimentée quoi qu'il arrive : les cases
+  décident d'ouvrir, pas de museler.
+* **Refus** (aucune case cochée) ⇒ on rend `0`, et la ligne repart dans la
+  chatbox par le chemin habituel du client.
+* **Envoi** : cible **figée**, par le chemin natif existant
+  (`NativeSendChatText(texte, cible)`), armé pendant la frame et joué par
+  `FlushPending`. 🔴 Rien n'est poussé dans l'historique de saisie : il est
+  partagé avec la chatbox, et une flèche du haut y ressortirait un message privé
+  dans une ligne qui part en public.
+* **Titre** : nom + guilde. Pas l'AID obfusqué — il ne dit rien à personne. La
+  guilde vient du **dictionnaire de noms** (`GameMode+0x160`,
+  `CNameDict_GetEntryOrRequest 0x005a1460`, guilde à `CNameInfo+0x34`), interrogé
+  **hors frame ImGui** : une entrée inconnue fait ÉMETTRE une requête au client.
+  ⚠ Elle peut ne jamais aboutir — rAthena ne répond qu'aux requêtes portant sur
+  une unité de la **même carte** (`clif_parse_GetCharNameRequest` → `map_id2bl`).
+  Le titre s'en passe alors, et retente : le correspondant peut arriver.
+* **Plafond de 8** fenêtres, la plus ancienne cédant sa place. Ce n'est pas une
+  contrainte du client (sa map n'en a pas) mais la nôtre : au-delà, elles se
+  recouvrent sans que le joueur puisse rien y faire.
+* **Fusion des canaux** : les conversations sont exclues de l'appariement avec
+  les registres natifs et reportées telles quelles — sans quoi la fusion
+  périodique les effacerait toutes les deux secondes, ou pire, l'appariement
+  **par nom** livrerait la conversation avec « Filip » au premier onglet que le
+  joueur aurait nommé « Filip ».
+
+### 11.6 Agir sur un joueur quand on n'a que son NOM
+
+Une ligne de chat ne porte pas d'AID. Cela **exclut** tout le chemin du menu
+contextuel d'entité, qui résout sa cible par `GameMode_CopyEntityName(gm, out,
+aid)` et ne connaît donc que les acteurs présents à l'écran. Les trois actions
+retenues prennent un nom :
+
+| action | chemin | pourquoi celui-là |
+|---|---|---|
+| **groupe** | `CMode::SendMsg(0x3B, nom)` | 🔴 `clif_parse_PartyInvite2` est **SHUFFLE** côté serveur (0x02c4, 0x088d, 0x0929, 0x091c, 0x0802, 0x086d selon la version). Coder l'opcode, c'est parier sur la version ; laisser le client le choisir, c'est avoir raison par construction. |
+| **ami** | `FriendList_AddByName 0x00a2c600` | Le client a sa fonction, et elle prend un nom : désassemblée, elle pose `Src = 514` (**CZ_ADD_FRIENDS 0x0202**), recopie 24 octets et lit la longueur dans sa table. ⚠ Elle lit les 24 octets d'un bloc : le tampon doit les avoir. Même raison que ci-dessus — ce paquet aussi est shuffle. |
+| **guilde** | paquet **0x0916** direct | Pas d'équivalent natif par nom (le menu du client n'invite que par AID). `CZ_REQ_JOIN_GUILD2` est en revanche enregistré **hors des blocs shuffle** (`clif_packetdb.hpp:1538`), donc son opcode ne dépend pas de la version. |
+
+Toutes sont **armées** pendant la frame et jouées par `FlushPending`
+(`ChatWindow::QueueNameAction`) : deux passent par le natif, proscrit entre
+`NewFrame` et `Render`.
+
+Le pseudo devient cliquable par `MarkSenderAsPlayerLink`, **après** le parse : il
+ne s'analyse pas — rien dans le texte ne distingue un pseudo d'un mot — mais il
+est déjà extrait dans `sender`, et le natif le place toujours en tête. ⚠ Les
+libellés composés par le client (« [ To Nom ] », « ( To Nom ) ») en sont exclus :
+ce ne sont pas des pseudos, et le menu inviterait « [ To Nom ] ». La règle est
+vérifiable — un pseudo n'a ni crochet ni parenthèse.
+
+⚠ **L'AID obfusqué est retiré du texte** (`StripWhisperAidTag`) : le client colle
+« [ To Nom (813-524) ] : … », et ce nombre ne dit rien à personne. Ôté du
+**préfixe seulement**, borné au premier « : » — au-delà c'est le message, et
+« rendez-vous à Prontera (11-42) » doit garder ses coordonnées.
+
+### 11.7 Les QUATRE en-têtes d'une ligne de chuchotement
+
+Relevés côte à côte en mémoire, choisis selon la **relation** avec l'autre :
+
+| en-tête | adresse | quand |
+|---|---|---|
+| `[ Friend <nom> (<aid>) ] : ` | `0x010922d4` | l'expéditeur est dans **votre** liste d'amis |
+| `[ Member <nom> (<aid>) ] : ` | `0x010922e0` | … dans **votre** guilde |
+| `( From <nom> [<aid>] ) : ` | `0x010922ec` | ni l'un ni l'autre |
+| `( To <nom> (<aid>) : ` | `0x01091a64` | l'écho de **votre** envoi (`) ] : ` en variante guilde, `0x01091a54`) |
+
+Trois conséquences, toutes payées en jeu :
+
+1. 🔴 **Deux joueurs voient la même conversation sous deux formes différentes.**
+   La relation n'est pas symétrique — A peut avoir B en ami sans la réciproque.
+   Ce n'est pas un bug d'affichage.
+2. 🔴 **L'AID est tantôt entre parenthèses, tantôt entre CROCHETS.** Ne traiter
+   que les parenthèses laisse le code visible sur tout ce qu'on **reçoit**.
+3. 🔴 **La forme `( To … ` du client est déjà déséquilibrée** : deux ouvrantes
+   (celle de l'en-tête, celle de l'AID) pour une seule fermante. Retirer l'AID
+   emporte donc la seule `)` de la ligne. `StripWhisperAidTag` **rééquilibre** le
+   préfixe après coup — il n'ajoute jamais d'ouvrante, seulement les fermantes
+   manquantes.
+
+**« This character is not your guildsman. »** — un GARDE-FOU ANTI-USURPATION
+
+Le message vient du **client**, pas du serveur, et ce n'est ni un bug ni une
+incohérence de données : il prévient que l'expéditeur pourrait **se faire passer**
+pour un camarade de guilde.
+
+Le cœur est `Name_IsLookalike 0x00d56bf0`, qui n'est PAS un `strcmp` — il rend 0
+quand deux noms **se ressemblent**, en tolérant :
+
+* la confusion **`I` (0x49) ↔ `l` (0x6C)** — deux glyphes identiques à l'écran
+  dans la police du jeu, et le tour le plus classique pour usurper un pseudo ;
+* un écart de longueur de 1 à 4 caractères ;
+* jusqu'à **deux caractères** franchement différents.
+
+**Les trois sites de MsgString 0x397, vérifiés octet par octet.** Le binaire
+contient huit occurrences de l'immédiat `0x397` ; cinq n'ont rien à voir :
+
+| adresse | octets | verdict |
+|---|---|---|
+| `0x00a2ccf2` | `68 97 03 00 00` + `call 0xa9ed30` | ✅ `UIWindowMgr_OnWhisperReceived` |
+| `0x00cb092a` | `68 97 03 00 00` + `call 0xa9ed30` | ✅ `sub_CAFD00`, action **1** |
+| `0x00cb094d` | `68 97 03 00 00` + `call 0xa9ed30` | ✅ `sub_CAFD00`, action **0x13** |
+| `0x00ad10fd` | `C7 45 FC 97 03 00 00` | ❌ `mov [ebp-4]` — état SEH (`EffectMgr_Init`) |
+| `0x00afa5c5` | `C7 45 FC 97 03 00 00` | ❌ idem (`Effect_ResolveResourceName`) |
+| `0x00b97d11` | `C7 85 8C F1 FF FF 97 03 …` | ❌ variable locale (`sub_B91140`) |
+| `0x00dae1de` | `push 397h` + `call EffectParamMap_GetByEffectId` | ❌ **effet** 919 |
+| `0x00dae228` | `push 397h` + `call Effect_SpawnPrimitiveById` | ❌ **effet** 919 |
+
+🔴 **Deux chemins DISTINCTS, à ne pas confondre** — c'est l'erreur qui a coûté
+deux diagnostics faux :
+
+* celui du **pivot** (`0x00a2ccf2`) est bien gouverné par les cases Friend Setup,
+  l'AID et la liste d'amis, comme décrit plus haut ;
+* celui de **`sub_CAFD00`** (`0x00cb092a`), qui est celui qu'on voit en jeu, n'a
+  **qu'un seul test** :
+
+```
+0x00cb07d7   saut → loc_CB08BA quand l'expéditeur n'est NI ami NI membre
+loc_CB08BA:  if (FriendList_HasLookalikeName(nom))  → 0x395 ×2, saute le test guilde
+loc_CB0907:  if (Guild_HasLookalikeMemberName(nom)) → 0x397 ×2
+loc_CB0967:  "( From " + nom + " [" + aid + "] ) : " + texte
+```
+
+**Ni les cases Friend Setup, ni l'AID, ni l'appartenance réelle n'y entrent.** Le
+message part deux fois (action 1 puis action 0x13, voie morte) : un ingesteur
+branché sur `ChatAction` doit filtrer l'action 0x13, sinon la ligne double.
+
+⚠⚠ **Le seuil est très laxiste, mesuré en jeu** : roster contenant « Test »,
+expéditeur « Gettar ». `|6-4| = 2 ≤ 2` ouvre la troisième passe ; `min(len) = 4`,
+donc le seuil est `4-2 = 2` correspondances ; `'e'=='e'` et `'t'=='t'` les
+fournissent. **Deux noms sans le moindre rapport déclenchent l'avertissement.**
+
+⚠ Il n'apparaît jamais si le joueur n'est dans aucune guilde (roster vide) — c'est
+ce qui fait qu'un compte le voit et pas l'autre. Identifiants confirmés dans
+`data/msgstringtable.csv`.
+
+⚠ Deux autres effets du même handler, à connaître avant d'accuser notre code :
+`sub_CAFD00` appelle **`ChatAction` action 3** à chaque chuchotement reçu (le
+client recrée sa chatbox pour déplier sa saisie — la même action que `/bm`), et
+il écrit la ligne en **type 0x19 (broadcast) au lieu de 2** quand l'expéditeur est
+un GM, ce qui la fait échapper au filtre « Whisper » des onglets.
+
+### 11.8 Le détecteur de sosies, neutralisé
+
+`Name_IsLookalike 0x00d56bf0` (__stdcall, `retn 8`) est **court-circuité** par
+Bourgeon (`NameIsLookalikeStub` : `mov eax, 1` / `ret 8` — « franchement
+différents »).
+
+**Pourquoi.** L'intention est bonne — repérer le `I` majuscule qui imite un `l`
+minuscule — mais le seuil la ruine : dans la troisième passe, `min(len) - 2`
+correspondances de position suffisent. Un roster contenant « Test » fait donc
+crier à l'usurpation sur un message de « Gettar » (4 caractères comparés, seuil 2,
+`'e'=='e'` et `'t'=='t'`). L'avertissement se déclenche à peu près tout le temps,
+et un avertissement permanent n'avertit plus de rien : il apprend au joueur à
+ignorer la ligne le jour où elle serait vraie.
+
+**Portée, vérifiée AVANT de poser le détour** — c'est ce qui rend l'opération
+sûre plutôt que hasardeuse :
+
+```
+Name_IsLookalike                     ← 2 appelants, et rien d'autre
+├── FriendList_HasLookalikeName      ← 2 appelants
+└── Guild_HasLookalikeMemberName     ← 2 appelants
+      └── UIWindowMgr_OnWhisperReceived · sub_CAFD00
+```
+
+La fonction ne sert à **rien d'autre** dans le client. La neutraliser supprime
+exactement les deux avertissements (MsgString **0x395** et **0x397**) et rien de
+plus. Prologue `55 / 8B EC / 83 EC 44` = 6 octets, de quoi loger un `jmp rel32`.
+
+⚠ Posé **inconditionnellement**, chatbox native comprise : ces lignes sont du
+bruit dans les deux interfaces.

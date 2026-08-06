@@ -35,6 +35,7 @@
 #include "features/item_cell.h"              // itemcell::OpenDescById (description au clic droit)
 #include "features/overlays/basic_info.h"    // RenderPlayerAvatar (avatar plein-corps)
 #include "features/windows/inventory_viewer.h"  // LinkItemToChat / EquipDraggedItem (drag-drop, chat)
+#include "features/windows/chat_window.h"       // OpenWhisperWindowByAid : « Chuchoter » sur un membre
 #include "features/windows/rodex_window.h"      // ComposeTo : « Envoyer un courrier » sur un membre
 #include "features/moonlight_ui/moonlight_ui.h"      // SaveSettings (persistance des presets)
 #include "features/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
@@ -440,6 +441,10 @@ constexpr uint16_t kOpGuildRequest   = 0x014F;  // CZ_REQ_GUILD_MENUINTERFACE {o
 constexpr uint16_t kOpGuildLeave     = 0x0159;  // CZ_REQ_LEAVE_GUILD {op, gid, aid, cid, msg[40]}
 constexpr uint16_t kOpGuildExpel     = 0x015B;  // CZ_REQ_BAN_GUILD, même forme
 constexpr uint16_t kOpGuildChangePos = 0x0155;  // CZ_REQ_CHANGE_MEMBERPOS {op, len, {aid,cid,pos}*}
+
+// (L'invitation dans le groupe passe par ChatWindow::QueueNameAction : elle est
+// jouée hors frame et par le chemin NATIF, seul moyen de ne pas parier sur
+// l'opcode — `clif_parse_PartyInvite2` est un paquet SHUFFLE côté serveur.)
 constexpr uint16_t kOpGuildInvite    = 0x0916;  // CZ_REQ_JOIN_GUILD2 {op, name[24]}
 constexpr uint16_t kOpGuildNotice    = 0x016E;  // CZ_GUILD_NOTICE {op, gid, sujet[60], texte[120]}
 constexpr uint16_t kOpGuildSetPos    = 0x0161;  // CZ_REG_CHANGE_GUILD_POSITIONINFO (var, 40 o/poste)
@@ -4265,10 +4270,52 @@ void CharacterSheet::DrawGuildTab() {
           ImGui::TextColored(kGray, "%s", m.name);
           ImGui::Separator();
           if (ImGui::MenuItem("Copier le nom")) ImGui::SetClipboardText(m.name);
-          // « Envoyer un courrier », comme le « Send a mail... » du menu natif : le
-          // destinataire part déjà rempli. Jamais vers soi-même (le serveur refuse).
           {
             const bool self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
+            // ── Chuchoter ────────────────────────────────────────────────────
+            // Réservé aux membres EN LIGNE : chuchoter à un déconnecté ne fait
+            // qu'un message d'erreur. Ouvre la conversation 1:1 et lui donne le
+            // clavier — aucun paquet, aucune commande native.
+            if (m.online && !self && ImGui::MenuItem("Chuchoter…")) {
+              ChatWindow* chat = Bourgeon::Instance().chat_window();
+              const bool opened =
+                  chat != nullptr && chat->OpenWhisperWindowByAid(m.name, m.aid);
+              // Le refus a une seule cause : le chat moderne est éteint, donc
+              // la fenêtre ne serait jamais dessinée. On le dit plutôt que de
+              // laisser croire à un clic sans effet.
+              guild_status_ = opened
+                                  ? std::string("Conversation avec ") + m.name
+                                  : std::string("Activez le chat moderne pour "
+                                                "les conversations séparées.");
+            }
+            // ── Inviter dans le groupe ───────────────────────────────────────
+            // Grisée plutôt que cachée quand je n'ai pas de groupe : l'entrée
+            // reste visible avec sa raison, sinon le joueur cherche pourquoi elle
+            // n'y est pas. ⚠ Le serveur exige aussi d'en être le CHEF, ce que le
+            // client ne sait pas dire — son refus arrivera avec son propre
+            // message, qui est plus précis que tout ce qu'on inventerait.
+            ChatWindow* chat_for_invite = Bourgeon::Instance().chat_window();
+            if (m.online && !self && chat_for_invite != nullptr) {
+              const bool in_party = chat_for_invite->InParty();
+              if (!in_party) ImGui::BeginDisabled();
+              if (ImGui::MenuItem("Inviter dans le groupe")) {
+                // Armée, pas envoyée : le chemin natif est proscrit pendant une
+                // frame ImGui. `m.name` est déjà dans la code-page du fil — il
+                // sort brut des structures du client.
+                chat_for_invite->QueueNameAction(
+                    ChatWindow::NameAction::kPartyInvite, m.name);
+                guild_status_ = std::string("Invitation envoyée à ") + m.name;
+              }
+              if (!in_party) {
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                  ImGui::SetTooltip(
+                      "Il faut être dans un groupe — et en être le chef — pour "
+                      "inviter quelqu'un.");
+              }
+            }
+            // « Envoyer un courrier », comme le « Send a mail... » du menu natif :
+            // le destinataire part déjà rempli. Jamais vers soi-même (refusé).
             if (!self && ImGui::MenuItem("Envoyer un courrier…")) {
               if (RodexWindow* rodex = Bourgeon::Instance().rodex_window())
                 rodex->ComposeTo(m.name);

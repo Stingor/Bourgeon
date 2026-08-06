@@ -1185,7 +1185,7 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   g_chat_colors = 13;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);  // le natif est carré
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, skin.rounding);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);

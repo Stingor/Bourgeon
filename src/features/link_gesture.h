@@ -35,7 +35,7 @@ namespace links {
 // Ce qu'un lien DÉSIGNE. Copiable et conservable : le menu contextuel s'ouvre à
 // la frame suivante, l'appelant doit donc garder sa cible sous la main.
 struct Target {
-  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl };
+  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer };
   uint8_t kind = kNone;
 
   // kItem — la balise RELUE, pas seulement l'id : elle porte le refine, les
@@ -50,6 +50,13 @@ struct Target {
   std::string mob_name;   // UTF-8
 
   std::string url;    // kUrl
+
+  // kPlayer — le pseudo d'un joueur, tel qu'une ligne de chat le porte. C'est
+  // TOUT ce dont on dispose : pas d'AID, donc aucune des actions du menu
+  // contextuel d'entité (qui résout sa cible par l'acteur à l'écran) n'est
+  // utilisable ici. Celles du menu ci-dessous prennent toutes un nom.
+  std::string player_name;  // UTF-8
+
   std::string label;  // ce que le menu affiche en tête (UTF-8)
 
   bool valid() const { return kind != kNone; }
@@ -61,6 +68,9 @@ Target FromItem(const itemcell::ChatLink& link, const char* label_utf8);
 Target FromItemId(uint32_t item_id, const char* label_utf8);
 Target FromMob(uint32_t mob_id, int rank, const char* name_utf8);
 Target FromUrl(const char* url);
+// Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'a rien à ouvrir ici — un
+// joueur n'a pas de « description » — donc seuls le menu et le Maj+clic jouent.
+Target FromPlayer(const char* name_utf8);
 
 // Le geste RECONNU, sans rien jouer. Pour les surfaces qui ont leur propre façon
 // d'ouvrir une description : les cartes et les membres de combo d'une fenêtre de

@@ -220,6 +220,15 @@ Target FromUrl(const char* url) {
   return t;
 }
 
+Target FromPlayer(const char* name_utf8) {
+  Target t;
+  if (name_utf8 == nullptr || name_utf8[0] == '\0') return t;
+  t.kind        = Target::kPlayer;
+  t.player_name = name_utf8;
+  t.label       = name_utf8;
+  return t;
+}
+
 void OpenDescription(const Target& target) {
   switch (target.kind) {
     case Target::kItem: {
@@ -233,6 +242,15 @@ void OpenDescription(const Target& target) {
     }
     case Target::kMob: OpenMobSheet(target.mob_id); break;
     case Target::kUrl: OpenUrl(target.url.c_str()); break;
+    case Target::kPlayer: {
+      // Un joueur n'a pas de « description » à ouvrir. Le geste GAUCHE lui rend
+      // donc ce qui en est l'équivalent le plus proche : la conversation privée.
+      // La convention porte sur l'intention — consulter — pas sur la fenêtre.
+      ChatWindow* chat = Bourgeon::Instance().chat_window();
+      if (chat != nullptr && !chat->IsOwnName(target.player_name.c_str()))
+        chat->OpenWhisperWindowByAid(ro::Utf8ToWire(target.player_name.c_str()), 0);
+      break;
+    }
     default: break;
   }
 }
@@ -399,6 +417,49 @@ void DrawMenu(const char* popup_id, const Target& target) {
           std::snprintf(cmd, sizeof(cmd), "@whereis %u", target.mob_id);
           QueueCommand(cmd);
         }
+        break;
+      }
+      case Target::kPlayer: {
+        // ⚠ Le NOM repart dans la code-page du FIL : il est arrivé de là, il y
+        // retourne. Les paquets et les fonctions natives visées ne connaissent
+        // pas l'UTF-8 — un pseudo accentué ne trouverait personne.
+        const char* wire = ro::Utf8ToWire(target.player_name.c_str());
+        ChatWindow* chat = Bourgeon::Instance().chat_window();
+        const bool self  = chat != nullptr && chat->IsOwnName(target.player_name.c_str());
+
+        // Chuchoter : rien de natif, rien sur le fil — juste notre fenêtre 1:1.
+        if (!self && ImGui::MenuItem("Chuchoter…")) {
+          if (chat != nullptr) chat->OpenWhisperWindowByAid(wire, 0);
+        }
+        if (!self && chat != nullptr) {
+          // Grisées PLUTÔT que cachées quand elles n'ont aucune chance : le
+          // joueur voit ce qui existe, et pourquoi ça ne s'offre pas à lui.
+          const bool in_party = chat->InParty();
+          if (!in_party) ImGui::BeginDisabled();
+          if (ImGui::MenuItem("Inviter dans le groupe"))
+            chat->QueueNameAction(ChatWindow::NameAction::kPartyInvite, wire);
+          if (!in_party) {
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+              ImGui::SetTooltip(
+                  "Il faut être dans un groupe — et en être le chef — pour "
+                  "inviter quelqu'un.");
+          }
+          const bool in_guild = chat->InGuild();
+          if (!in_guild) ImGui::BeginDisabled();
+          if (ImGui::MenuItem("Inviter dans la guilde"))
+            chat->QueueNameAction(ChatWindow::NameAction::kGuildInvite, wire);
+          if (!in_guild) {
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+              ImGui::SetTooltip("Il faut appartenir à une guilde pour y inviter.");
+          }
+          if (ImGui::MenuItem("Ajouter en ami"))
+            chat->QueueNameAction(ChatWindow::NameAction::kFriendAdd, wire);
+          ImGui::Separator();
+        }
+        if (ImGui::MenuItem("Copier le nom"))
+          ImGui::SetClipboardText(target.player_name.c_str());
         break;
       }
       case Target::kUrl: {

@@ -166,6 +166,36 @@ class ChatWindow : public Plugin {
   void Ingest(const char* text, uint32_t rgb, const char* sender, int type,
               char source);
 
+  // ── Chuchotement 1:1 ────────────────────────────────────────────────────────
+  // Range une ligne de conversation privée dans la fenêtre du correspondant, en
+  // l'ouvrant si besoin. `with_wire` est le nom du CORRESPONDANT — celui d'en
+  // face dans les DEUX sens — et `text_wire` la ligne déjà mise en forme par le
+  // client, tous deux dans la code-page du fil.
+  //
+  // Appelée par le détour du pivot natif (`UIWindowMgr_OnWhisperReceived`), donc
+  // depuis un handler de paquet : hors frame ImGui, sur le fil principal.
+  // Renvoie true si la ligne a été prise en charge — l'appelant dit alors au
+  // client qu'une fenêtre l'a consommée, exactement comme sa popup native.
+  bool IngestWhisper(const char* with_wire, const char* text_wire, uint32_t rgb,
+                     uint32_t aid);
+
+  // Ouvre (ou ramène) la conversation avec ce joueur, et lui donne le clavier —
+  // c'est un geste EXPLICITE, contrairement à la réception d'un message. `name`
+  // est dans la code-page du fil.
+  //
+  // 🔴 DEUX chemins d'ouverture chez le client, et le second ne passe pas par le
+  // pivot : le « Chuchoter » du menu contextuel d'entité appelle `ChatAction`
+  // case 14 en direct. C'est par ici qu'il arrive, et c'est aussi le point
+  // d'entrée pour NOS propres surfaces (liste de guilde, etc.).
+  //
+  // `aid_display` est facultatif : l'AID **obfusqué** tel que le client l'écrit
+  // entre crochets, seule forme dont dispose le menu contextuel. Il est décodé
+  // pour retrouver l'AID réel, sans lequel la guilde resterait introuvable.
+  // Passer nullptr quand on a mieux à offrir — ou rien.
+  bool OpenWhisperWindow(const char* name_wire, const char* aid_display = nullptr);
+  // Variante pour les appelants qui connaissent déjà l'AID réel.
+  bool OpenWhisperWindowByAid(const char* name_wire, uint32_t aid);
+
   // Vide l'historique (bouton du panneau, changement de personnage).
   void ClearHistory();
 
@@ -200,6 +230,29 @@ class ChatWindow : public Plugin {
   // s'en sert : une commande ne doit JAMAIS partir pendant une frame ImGui.
   void QueueCommand(const char* utf8);
 
+  // ── Actions sur un JOUEUR désigné par son NOM ───────────────────────────────
+  // Armées pendant la frame, jouées par `FlushPending` — deux d'entre elles
+  // passent par le natif, proscrit entre NewFrame et Render. `name` est dans la
+  // code-page du fil.
+  //
+  // 🔴 Toutes prennent un NOM et pas un AID, parce que c'est tout ce qu'une ligne
+  // de chat porte. Cela EXCLUT le chemin du menu contextuel d'entité, qui résout
+  // sa cible par `GameMode_CopyEntityName(gm, out, aid)` et ne connaît donc que
+  // les acteurs présents à l'écran.
+  enum class NameAction : uint8_t { kNone = 0, kPartyInvite, kFriendAdd, kGuildInvite };
+  void QueueNameAction(NameAction action, const char* name_wire);
+  // Suis-je dans un groupe / une guilde ? Le menu des liens s'en sert pour griser
+  // ce qui n'a aucune chance d'aboutir, avec sa raison — d'où leur place ici et
+  // non dans la partie privée. `InGuild` sert aussi en interne (#ally hors
+  // guilde) : c'est la globale `g_OwnGuildId`, celle que le chemin d'envoi natif
+  // consulte lui-même pour autoriser le mode Guilde.
+  bool InParty() const;
+  bool InGuild() const;
+  // Ce pseudo (UTF-8) est-il le nôtre ? Le menu s'en sert pour ne pas proposer
+  // de s'inviter soi-même — le serveur refuserait, et l'entrée n'aurait servi
+  // qu'à faire cliquer dans le vide.
+  bool IsOwnName(const char* utf8) const;
+
   // Compteurs de DIAGNOSTIC, posés par le détour. `seen` = appels d'ajout de
   // ligne vus (action 1 ou 0x13), `kept` = lignes réellement entrées dans le
   // modèle. Deux nombres qui divergent disent où chercher : seen == kept mais peu
@@ -217,7 +270,10 @@ class ChatWindow : public Plugin {
     // Genre du fragment CLIQUABLE. Un lien de chat n'est plus forcément un objet :
     // le monstre et l'URL empruntent exactement le même chemin (zone de clic
     // continue, couleur, curseur main, menu contextuel) — seule change l'action.
-    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl };
+    // `kPlayer` = le pseudo en tête de ligne, posé après le parse à partir du
+    // `sender` déjà extrait — il ne s'analyse pas depuis le texte, rien ne
+    // distingue un pseudo d'un mot ordinaire.
+    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
     // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message
@@ -278,6 +334,15 @@ class ChatWindow : public Plugin {
     uint32_t         rgb = 0xFFFFFF;
     uint8_t          type = 0;
     char             source = 'A';  // 'A' = ChatAction, 'W' = WndProc natif
+    // Conversation 1:1 à laquelle cette ligne appartient : le nom du CORRESPONDANT
+    // (jamais le nôtre), en UTF-8, dans les deux sens de la conversation. Vide pour
+    // tout le reste.
+    //
+    // 🔴 Il ne se déduit PAS de `sender` : à l'aller, le client construit
+    // « ( To cible (aid) ) : texte » et `sender` porte donc cette parenthèse
+    // entière, pas la cible. C'est le détour du pivot natif qui le pose, là où les
+    // deux sens arrivent encore séparés et proprement typés.
+    std::string      whisper_with;
     uint8_t          hour = 0, minute = 0, second = 0;
     // Hauteur du repli, mémorisée pour la largeur et les options d'affichage qui
     // l'ont produite. Elle permet de SAUTER une ligne hors écran sans remesurer
@@ -327,6 +392,25 @@ class ChatWindow : public Plugin {
     int         padding   = 3;     // marge du cadre
     int         line_gap  = 2;     // interligne
     float       body[4]   = {0.0f, 0.0f, 0.0f, 0.588f};  // fond, format picker
+
+    // ── Conversation 1:1 ────────────────────────────────────────────────────
+    // Non vide = ce canal n'est pas un onglet mais une fenêtre de chuchotement
+    // dédiée à ce correspondant. Il ne paraît JAMAIS dans la bande d'onglets, ne
+    // vient d'aucun registre natif, n'accepte que les lignes qui le nomment, et
+    // sa cible d'envoi est figée — le joueur ne peut pas s'y tromper de
+    // destinataire, ce qui est tout l'intérêt d'une fenêtre séparée.
+    std::string whisper_with;   // UTF-8, nom du correspondant
+    std::string whisper_input;  // sa saisie à lui : chaque conversation garde la sienne
+    // Guilde du correspondant, telle que le dictionnaire de noms du client la
+    // connaît. ⚠ Peut rester VIDE pour toujours : le serveur ne répond aux
+    // requêtes de nom que pour les unités de la même carte (rAthena,
+    // clif_parse_GetCharNameRequest -> map_id2bl). Le titre s'en passe alors.
+    std::string whisper_guild;
+    uint32_t    whisper_aid = 0;
+    bool        whisper_focus = false;  // rendre le focus à sa saisie
+    // Dernière activité (GetTickCount). Sert uniquement à choisir laquelle céder
+    // sa place quand le plafond de fenêtres est atteint.
+    uint32_t    whisper_stamp = 0;
   };
 
   // ── Canaux du SERVEUR (rAthena), poussés par ZC 0x0F21 ─────────────────────
@@ -348,9 +432,6 @@ class ChatWindow : public Plugin {
     bool        can_chat = true;
   };
   std::vector<ServerChannel> server_channels_;
-  // Le joueur est-il en guilde ? Lu chez le CLIENT (`g_OwnGuildId`), la même
-  // globale que le chemin d'envoi natif consulte pour autoriser le mode Guilde.
-  bool InGuild() const;
 
   // Valeurs EFFECTIVES : celles du canal s'il a les siennes, sinon les générales.
   // `channel` peut être nul (aucun canal lisible) — on rend alors les générales.
@@ -383,6 +464,33 @@ class ChatWindow : public Plugin {
   void DrawDockedWindow();
   void DrawDetachedWindow(int index);
   void DrawDetachedHeader(int index);
+  // ── Conversations 1:1 ──────────────────────────────────────────────────────
+  // Index du canal 1:1 déjà ouvert pour ce correspondant, ou -1.
+  // Rend cliquable le pseudo en tête de ligne, à partir du `sender` déjà
+  // extrait. Après le parse : il découpe un fragment déjà analysé.
+  void MarkSenderAsPlayerLink(Line* line) const;
+  // Un chuchotement REÇU entre dans les destinataires récents : c'est le geste
+  // qui suit, et la liste ne se remplissait qu'à l'envoi.
+  void RememberWhisperPeer(const Line& line);
+
+  int  FindWhisperChannel(const std::string& with_utf8) const;
+  // Idem, en le créant au besoin. Rend -1 si la limite est atteinte.
+  int  FindOrCreateWhisper(const std::string& with_utf8, uint32_t aid);
+  void DrawWhisperWindow(int index);
+  void DrawWhisperHeader(int index);
+  void DrawWhisperInput(int index);
+  void QueueWhisperSend(Channel& channel);
+  // Conversation dont la croix a été cliquée pendant la frame. 🔴 On ne peut pas
+  // la retirer sur place : le rendu parcourt `channels_` par indice, et supprimer
+  // en cours de route décalerait tout ce qui suit. Purgée en FIN de frame.
+  uint32_t whisper_close_id_ = 0;
+  // Dernière interrogation du dictionnaire de noms, pour ne pas la refaire à
+  // chaque tour de boucle d'entrées.
+  uint32_t whisper_guild_stamp_ = 0;
+  // Complète `whisper_guild` depuis le dictionnaire de noms du client. 🔴 Appelée
+  // depuis OnProcessInput, JAMAIS pendant une frame : une entrée inconnue fait
+  // ÉMETTRE au client une requête de nom.
+  void ResolveWhisperGuilds();
 
   // Bande d'onglets + boutons du client. Renvoie sa hauteur.
   float DrawTabStrip();
@@ -618,6 +726,11 @@ class ChatWindow : public Plugin {
   std::string pending_text_;
   std::string pending_whisper_;
   bool        has_pending_ = false;
+  // Action « par nom » en attente (cf. QueueNameAction). Une seule à la fois : ce
+  // sont des gestes de menu, et il n'en part qu'un par clic.
+  std::string pending_name_;
+  NameAction  pending_name_action_ = NameAction::kNone;
+  void FlushNameAction();
 };
 
 namespace chatwnd {

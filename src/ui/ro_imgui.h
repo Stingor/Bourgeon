@@ -204,6 +204,10 @@ struct RoChatSkin {
   float        font_scale = 1.0f;        // taille de police propre au chat
   float        padding    = 3.0f;        // marge intérieure du cadre
   float        line_gap   = 2.0f;        // interligne (densité de l'historique)
+  // Arrondi des coins du cadre. Le chat natif est carré ; on adoucit par défaut.
+  // ⚠ Ne concerne QUE le cadre : le fond du log est une child window laissée
+  // carrée, sinon ses coins découvriraient le fond de la fenêtre sur 6 px.
+  float        rounding   = 6.0f;
   // Bornes du redimensionnement par les bords. `max_*` à 0 = « 80 % de l'écran ».
   float        min_w = 400.0f, min_h = 200.0f;
   float        max_w = 0.0f,   max_h = 0.0f;
