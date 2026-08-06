@@ -53,5 +53,18 @@ bool Exists(int id);
 bool Draw(ImDrawList* draw_list, int id, ImVec2 rect_min, ImVec2 rect_max,
           float anim_seconds, bool allow_upscale = false);
 
+// ── Export ───────────────────────────────────────────────────────────────────
+// Écrit une emote par GIF animé dans `out_dir` (créé au besoin), nommés
+// `<nom>.gif`. Destination : les emojis custom d'un serveur Discord, dont le nom
+// doit correspondre au raccourci `:nom:` pour que le relais fasse le pont.
+//
+// `scale` agrandit d'un facteur ENTIER, au plus proche voisin : une emote RO fait
+// une cinquantaine de pixels et Discord l'affiche autour de 48, donc ×2 rend un
+// pixel art net là où l'agrandissement du navigateur le lisserait.
+//
+// Rend le nombre de fichiers écrits, ou -1 si le sprite n'a pas pu être lu.
+// N'exporte QUE les emotes utilisables (nommées, non exclues, présentes).
+int ExportGifs(const char* out_dir, int scale = 2);
+
 }  // namespace emote
 }  // namespace ro

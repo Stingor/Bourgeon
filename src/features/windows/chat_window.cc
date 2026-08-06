@@ -18,6 +18,7 @@
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
+#include "features/staff_gate.h" // IsStaff (export des emotes)
 #include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
 #include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
 #include "imgui.h"
@@ -1755,6 +1756,12 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
 
   const char* p   = text.c_str();
   const char* end = p + text.size();
+  // UNE emote rendue par ligne, pas plus. Ce n'est pas une limite de place : le
+  // relais Discord ne sait embarquer qu'une image par message (l'aperçu ne
+  // remplace le lien que si celui-ci est TOUT le message), et une ligne qui
+  // montrerait trois emotes en jeu en montrerait trois « :nom: » sur Discord.
+  // Les suivantes restent donc du texte, des deux côtés du pont.
+  bool emote_used = false;
   while (p < end) {
     // Couleur ^RRGGBB (^000000 = retour à la couleur de la ligne).
     if (*p == '^' && (end - p) >= 7 && IsHex6(p + 1)) {
@@ -1864,7 +1871,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // plus court mais illisible pour eux, et le token natif du client ne sert de
     // toute façon que dans les fenêtres TextLayout, dont la chatbox ne fait pas
     // partie.
-    if (*p == ':' && (end - p) >= 3) {
+    if (*p == ':' && (end - p) >= 3 && !emote_used) {
       const char* q = p + 1;
       while (q < end && q - p <= 24 &&
              ((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '_'))
@@ -1877,6 +1884,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
           em.game_emote = static_cast<int16_t>(id);
           em.text.assign(p, q + 1);  // le repli, deux-points compris
           out->runs.push_back(std::move(em));
+          emote_used = true;
           p = q + 1;
           continue;
         }
@@ -3414,9 +3422,17 @@ void ChatWindow::DrawEmotePicker() {
     if (clicked) {
       char code[40];
       std::snprintf(code, sizeof(code), ":%s:", ro::emote::Name(id));
-      InsertIntoInput(code);
-      // Fermer sur le clic : c'est un choix, pas une palette où l'on pioche en
-      // rafale. Le bouton est à un pixel pour en reprendre une.
+      // 🔴 ENVOI DIRECT, sans passer par la barre de saisie. Ce n'est pas un
+      // raccourci de confort : le relais Discord ne remplace le lien du GIF par
+      // son aperçu que si ce lien est TOUT le message. La moindre lettre autour
+      // — un « lol » resté dans la saisie, un espace — et l'emote redevient une
+      // adresse en clair sur Discord. Envoyer seul est donc la seule façon de
+      // garantir le rendu des deux côtés du pont.
+      //
+      // Ce que le joueur avait déjà tapé n'est pas touché : il le retrouve
+      // intact en revenant au champ.
+      SendTextNow(code);
+      // Fermer sur le clic : c'est un envoi, pas une palette où l'on pioche.
       ImGui::CloseCurrentPopup();
     }
     ImGui::PopID();
@@ -3424,26 +3440,49 @@ void ChatWindow::DrawEmotePicker() {
   }
 
   ImGui::EndChild();
+
+  // ── Export, réservé au staff ────────────────────────────────────────────────
+  // Ce n'est pas une fonction de jeu mais un outil ponctuel : sortir les emotes
+  // en GIF pour les téléverser comme emojis custom sur Discord, où le relais les
+  // retrouvera par leur nom. Un joueur n'a rien à en faire.
+  if (IsStaff()) {
+    ImGui::Separator();
+    if (ImGui::SmallButton("Exporter en GIF")) {
+      const std::string dir = paths::GameDir() + "emotes_export";
+      const int written = ro::emote::ExportGifs(dir.c_str(), 2);
+      if (written < 0)
+        LogError("[chat] export des emotes : sprite illisible");
+      else
+        LogInfo("[chat] export des emotes : {} fichiers dans {}", written, dir);
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Ecrit un GIF par emote dans « emotes_export »,\n"
+                        "a cote de l'executable. Pour Discord.");
+  }
+
   ImGui::PopStyleColor();
   ImGui::EndPopup();
 }
 
-// Ajoute `text` à la FIN de la saisie et rend la main au champ.
+// Envoie un texte court TOUT DE SUITE, sans le faire transiter par la saisie.
 //
-// 🔴 On écrit dans le TAMPON, pas dans l'état interne du widget — et c'est
-// possible ici précisément parce qu'un popup ImGui a désactivé la saisie : le
-// champ inactif relit son tampon en reprenant le focus. Passer par
-// `InsertChars` demanderait un callback, donc un champ ACTIF, ce qu'il n'est
-// jamais au moment d'un clic dans la grille.
-void ChatWindow::InsertIntoInput(const char* text) {
-  if (text == nullptr || text[0] == '\0') return;
-  const size_t len = std::strlen(input_);
-  const size_t add = std::strlen(text);
-  // Plein : on ne tronque pas. Une emote coupée en deux (« :smi ») ne veut rien
-  // dire et partirait telle quelle au serveur.
-  if (len + add + 1 > sizeof(input_)) return;
-  std::memcpy(input_ + len, text, add + 1);
-  focus_input_next_ = true;
+// 🔴 Ni historique de saisie, ni historique de destinataires : ce n'est pas une
+// ligne que le joueur a écrite. La flèche du haut doit lui rendre ses phrases,
+// pas la liste des emotes qu'il a cliquées.
+//
+// Le destinataire courant est respecté — une emote part là où l'on parle, canal
+// ou conversation privée comprise, exactement comme un message ordinaire. Et le
+// départ est DIFFÉRÉ comme tous les autres : `FlushPending` tourne hors frame,
+// une commande native jouée pendant le rendu gèle le client.
+bool ChatWindow::SendTextNow(const char* utf8) {
+  if (utf8 == nullptr || utf8[0] == '\0') return false;
+  // Un seul envoi peut attendre : écraser celui qui est là perdrait la phrase
+  // que le joueur vient de valider. La fenêtre ne dure qu'une frame.
+  if (has_pending_) return false;
+  pending_text_    = ro::Utf8ToWire(utf8);
+  pending_whisper_ = ro::Utf8ToWire(whisper_);
+  has_pending_     = true;
+  return true;
 }
 
 void ChatWindow::DrawInputRow() {
@@ -3557,8 +3596,8 @@ void ChatWindow::DrawInputRow() {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip("Emotes du jeu.\nElles partent en clair (« :smile: »),\n"
-                      "donc tout le monde les lit.");
+    ImGui::SetTooltip("Emotes du jeu.\nUn clic ENVOIE l'emote, seule.\n"
+                      "Elle part en clair (« :smile: »), donc tout le monde la lit.");
     ImGui::PopStyleColor();
   }
   DrawEmotePicker();

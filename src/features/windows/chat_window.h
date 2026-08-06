@@ -508,9 +508,9 @@ class ChatWindow : public Plugin {
   void  DrawChannel(const Channel& channel, float height);
   void  DrawLines(const Channel& channel);
   void  DrawInputRow();
-  // Grille des emotes du jeu, et l'écriture de son choix dans la saisie.
+  // Grille des emotes du jeu. Le clic ENVOIE : voir SendTextNow.
   void  DrawEmotePicker();
-  void  InsertIntoInput(const char* text);
+  bool  SendTextNow(const char* text);
   void  DrawLogOptionsPopup();
   void  CreateChannel();
   void  CloseChannel(int index);
