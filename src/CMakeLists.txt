@@ -206,6 +206,8 @@ set(BOURGEON_FILES
 	"ui/sprite_view.h"
 	"ui/mob_sprite.cc"
 	"ui/mob_sprite.h"
+	"ui/game_emotes.cc"
+	"ui/game_emotes.h"
 	"ui/doll.cc"
 	"ui/doll.h"
 	"ui/icon_cache.cc"

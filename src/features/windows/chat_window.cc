@@ -25,6 +25,7 @@
 #include "ragnarok/globals.h"    // kModeMgrAddr / kModeMgrGetActiveAddr (dict de noms)
 #include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
 #include "ragnarok/uiwnd.h"      // uiwnd::SafeFindWindow / CloseWindow (natif détruit)
+#include "ui/game_emotes.h"      // ro::emote (emotion.act : les emotes du jeu)
 #include "ui/game_texture.h"     // ro::TextureFromGameFile (bitmaps du client)
 #include "ui/color_codec.h"      // ro::ArgbFromPicker / PickerFromArgb
 #include "ui/icon_cache.h"       // ro::ItemIcon (icônes d'objets, cache partagé)
@@ -286,6 +287,16 @@ uint32_t DeobfuscateAid(const char* display) {
   return digits != 0 ? value : 0;
 }
 
+// ── Bavardage automatique des pets : marqué AILLEURS ─────────────────────────
+// Une réplique de pet n'a aucune signature dans ce qui arrive à `ChatAction` : le
+// type vaut 0 comme le système, le sender est vide, la couleur 0xFAFAFA n'a rien
+// d'exclusif. On ne peut donc PAS la reconnaître ici — seule la pile la trahit
+// (on est alors dans `PetAct_OnPacket 0x00cd13f0`).
+//
+// Le marquage est fait par le patch WARP **PetTalkMarker**, qui redirige le
+// format `"%s : "` de `PetTalk_FormatChatLine 0x00d83560` vers une chaîne portant
+// le marqueur. Il vaut pour tous les joueurs, DLL ou pas — c'est ce qui a
+// tranché. Voir docs/chatbox_re.md §12 pour tout le chemin.
 int __cdecl ChatActionFilter(int action, const char* text, int color,
                              int type, const char* sender) {
   // 🔴 Action 3 = `ToggleWindow(mgr, 1)` + msg 0x10 : le client RECRÉE sa chatbox
@@ -603,40 +614,16 @@ __declspec(naked) void WhisperPivotStub() {
   }
 }
 
-// ── Le « détecteur de sosies » du client, neutralisé ─────────────────────────
-// `Name_IsLookalike(a, b)` (__stdcall, 2 arguments pile, `retn 8`) devait repérer
-// les usurpations par homoglyphes — l'astuce du `I` majuscule pour imiter un `l`
-// minuscule, deux glyphes identiques à l'écran. L'intention est bonne. Le seuil
-// la rend inutilisable :
+// ── Le « détecteur de sosies » du client : neutralisé AILLEURS ───────────────
+// `Name_IsLookalike 0x00d56bf0` devait repérer les usurpations par homoglyphes (le
+// `I` majuscule qui imite un `l` minuscule) mais son seuil — `min(len) - 2`
+// correspondances de position — le fait crier sur des noms sans rapport, à peu
+// près tout le temps. C'est la source des MsgString 0x395 et 0x397 sur les
+// chuchotements.
 //
-//   troisième passe : si |len(a) - len(b)| <= 2, il suffit de
-//   **min(len) - 2 correspondances de position** pour déclarer deux noms
-//   « ressemblants ».
-//
-// Mesuré en jeu : un roster contenant « Test » fait crier à l'usurpation sur un
-// message de « Gettar » — min(len) = 4, seuil 2, et `'e'=='e'` + `'t'=='t'`
-// suffisent. Deux noms sans le moindre rapport. L'avertissement se déclenche donc
-// à peu près tout le temps, et un avertissement permanent n'avertit plus de rien :
-// il apprend à ignorer la ligne le jour où elle serait vraie.
-//
-// 🔴 PORTÉE, mesurée avant de poser le détour : cette fonction n'a que DEUX
-// appelants — `FriendList_HasLookalikeName` et `Guild_HasLookalikeMemberName` —
-// qui n'en ont eux-mêmes que deux chacun : le pivot du chuchotement et
-// `sub_CAFD00`. Elle ne sert donc à RIEN d'autre dans le client. Rendre « aucune
-// ressemblance » supprime exactement les deux avertissements (MsgString 0x395 et
-// 0x397) et rien de plus.
-//
-// Posé inconditionnellement, chatbox native comprise : ces lignes sont du bruit
-// dans les deux interfaces.
-constexpr uintptr_t kNameIsLookalike = 0x00d56bf0;
-void* g_tramp_lookalike = nullptr;  // jamais chaîné — on ne rend QUE notre valeur
-
-__declspec(naked) void NameIsLookalikeStub() {
-  __asm {
-    mov eax, 1   // 1 = « franchement différents » (0 voudrait dire « sosies »)
-    ret  8
-  }
-}
+// La neutralisation est faite par le patch WARP **NoLookalikeNameWarning**, pas
+// ici : elle ne dépend pas de notre chatbox, et sous forme de patch elle profite
+// à tous les joueurs. Voir docs/chatbox_re.md §11.8 pour la portée vérifiée.
 
 // ── Envoi natif ──────────────────────────────────────────────────────────────
 // Une std::string MSVC telle que le CLIENT les manipule : buffer SSO de 16
@@ -1160,17 +1147,6 @@ ChatWindow::ChatWindow() {
              "1:1 NATIVES reviendront par-dessus l'interface moderne",
              kWhisperPivotAddr);
 
-  // Détecteur de sosies : voir son en-tête. Deux appelants, tous deux dans le
-  // chemin du chuchotement — la neutralisation est bornée à ces deux
-  // avertissements.
-  g_tramp_lookalike = hooking::HookManager::Instance().SetHook(
-      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kNameIsLookalike),
-      reinterpret_cast<uint8_t*>(&NameIsLookalikeStub));
-  if (g_tramp_lookalike == nullptr)
-    LogError("[chat] detour Name_IsLookalike 0x{:08x} NON pose — les faux "
-             "avertissements d'usurpation reviendront",
-             kNameIsLookalike);
-
   g_tramp_chat_togglebar = hooking::HookManager::Instance().SetHook(
       hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatToggleInputBar),
       reinterpret_cast<uint8_t*>(&ChatToggleInputBarStub));
@@ -1398,8 +1374,17 @@ std::string StripWhisperAidTag(const char* wire_text) {
 std::string WhisperPeerFromLabel(const std::string& label, bool* outgoing) {
   *outgoing = false;
   size_t begin = 0, end = label.size();
+  // `delimited` : le libellé était-il entre parenthèses ou crochets ? C'est ce
+  // qui distingue une forme COMPOSÉE par le client d'un pseudo nu — et depuis que
+  // les espaces sont admis dans les noms, la distinction compte : sans elle, un
+  // joueur nommé « To ta » se ferait amputer de son « To » par le retrait de
+  // préfixe ci-dessous.
+  bool delimited = false;
   while (begin < end && (label[begin] == ' ' || label[begin] == '(' ||
-                         label[begin] == '[')) ++begin;
+                         label[begin] == '[')) {
+    if (label[begin] != ' ') delimited = true;
+    ++begin;
+  }
   while (end > begin && (label[end - 1] == ' ' || label[end - 1] == ')' ||
                          label[end - 1] == ']')) --end;
   if (begin >= end) return std::string();
@@ -1419,17 +1404,29 @@ std::string WhisperPeerFromLabel(const std::string& label, bool* outgoing) {
   //   « ( To <nom> … ) : »      0x01091a64  l'écho de votre envoi
   // C'est pourquoi deux joueurs voient la MÊME conversation sous deux formes
   // différentes : la relation n'est pas symétrique.
-  if (!strip("From ", false, outgoing) && !strip("To ", true, outgoing) &&
-      !strip("Friend ", false, outgoing))
+  // ⚠ Uniquement sur un libellé DÉLIMITÉ : le client n'écrit jamais ces mots
+  // devant un pseudo nu, alors qu'un pseudo, lui, peut commencer par n'importe
+  // quoi — espaces compris.
+  if (delimited && !strip("From ", false, outgoing) &&
+      !strip("To ", true, outgoing) && !strip("Friend ", false, outgoing))
     strip("Member ", false, outgoing);
 
   // Ce qui suit le pseudo (« [ Member … », « ) : ») n'en fait pas partie.
   const size_t cut = inner.find_first_of("[]()");
   if (cut != std::string::npos) inner.erase(cut);
   while (!inner.empty() && inner.back() == ' ') inner.pop_back();
-  // Un libellé qui contient encore un espace n'est pas un pseudo : les noms de
-  // personnage de RO n'en portent pas, et on refuse plutôt que de deviner.
-  if (inner.empty() || inner.find(' ') != std::string::npos) return std::string();
+
+  // 🔴 UN PSEUDO PEUT CONTENIR DES ESPACES. On refusait tout libellé qui en
+  // portait, en croyant qu'un nom de personnage n'en a jamais — c'est faux, et
+  // c'est une propriété du SERVEUR, pas du jeu : `char_name_option: 1` avec un
+  // espace dans `char_name_letters` (conf/char_athena.conf, où le commentaire
+  // insiste même sur le fait que l'espace y est délibéré). Des joueurs comme
+  // « .S T N. » n'étaient donc jamais cliquables.
+  //
+  // Il reste une borne, celle du serveur : NAME_LENGTH. Au-delà, ce n'est plus
+  // un pseudo mais un libellé qu'on n'a pas su découper, et mieux vaut ne rien
+  // proposer que d'ouvrir un menu sur une phrase.
+  if (inner.empty() || inner.size() >= kNameFieldLen) return std::string();
   return inner;
 }
 // Un chuchotement du STAFF : le client le trahit par son TYPE.
@@ -1856,6 +1853,33 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         out->runs.push_back(emote);
         p = gt + 1;
         continue;
+      }
+    }
+    // Emote du JEU : `:nom:`. Le nom doit être dans la table — sans ce test,
+    // « 13:10 » ou « lui : ok » deviendraient des emotes, et le chat est plein de
+    // deux-points. On accepte donc un nom de la table, et rien d'autre.
+    //
+    // 🔴 C'est cette forme-là qui part au serveur : les joueurs sans Bourgeon
+    // liront « :sweat: », ce qui se comprend. Un index nu (« ^e[4] ») aurait été
+    // plus court mais illisible pour eux, et le token natif du client ne sert de
+    // toute façon que dans les fenêtres TextLayout, dont la chatbox ne fait pas
+    // partie.
+    if (*p == ':' && (end - p) >= 3) {
+      const char* q = p + 1;
+      while (q < end && q - p <= 24 &&
+             ((*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '_'))
+        ++q;
+      if (q < end && *q == ':' && q > p + 1) {
+        const int id = ro::emote::Find(p + 1, static_cast<size_t>(q - p - 1));
+        if (id >= 0) {
+          flush();
+          Run em;
+          em.game_emote = static_cast<int16_t>(id);
+          em.text.assign(p, q + 1);  // le repli, deux-points compris
+          out->runs.push_back(std::move(em));
+          p = q + 1;
+          continue;
+        }
       }
     }
     // Lien d'objet du chat : <ITEML>[5c equip b62][1c type décoré][nameid b62]
@@ -3048,6 +3072,33 @@ void ChatWindow::DrawLines(const Channel& channel) {
     }
 
     for (const Run& run : line.runs) {
+      // Emote du JEU : elle sort du GRF, donc elle est là ou elle ne sera jamais.
+      // Ni attente, ni place à réserver, ni repli progressif — les trois raisons
+      // qui compliquent le bloc suivant ne s'appliquent pas ici.
+      //
+      // Le réglage la gouverne quand même : sa case dit « Images et emotes », et
+      // un joueur qui la décoche s'attend à retrouver du texte. Il lit alors le
+      // « :nom: » que le fragment porte déjà, c'est-à-dire exactement ce que voit
+      // un joueur sans Bourgeon.
+      //
+      // 🔴 L'EXISTENCE SE TESTE AVANT DE TOUCHER À LA GÉOMÉTRIE. Replier la ligne
+      // puis se rabattre sur le texte laisserait un repli décidé pour une image
+      // qui n'arrive jamais — et une largeur mesurée qui ne correspond à rien.
+      // Une entrée de la table peut manquer au fichier : la liste des emotes
+      // suit le protocole, le GRF d'un client donné s'arrête où il s'arrête.
+      if (run.game_emote >= 0 && url_preview_ && img_h > 0.0f &&
+          ro::emote::Exists(run.game_emote)) {
+        const float ih = img_h;
+        if (x > 0.0f && x + ih > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
+        if (ih > row_h) row_h = ih;  // la rangée s'ouvre à la hauteur de l'emote
+        if (visible) {
+          const ImVec2 p(origin.x + x, origin.y + y);
+          ro::emote::Draw(dl, run.game_emote, p, ImVec2(p.x + ih, p.y + ih),
+                          static_cast<float>(ImGui::GetTime()));
+        }
+        x += ih + 2.0f;
+        continue;  // l'image REMPLACE le repli textuel
+      }
       // Emote Discord : l'image à hauteur de ligne quand elle est arrivée, sinon
       // le « :nom: » qu'on a mis dans `text` — qui sera dessiné par le chemin
       // normal juste en dessous. Aucun trou, aucune attente visible.
@@ -3321,6 +3372,80 @@ static uint32_t DarkenForLightBody(uint32_t col) {
 // Ligne de saisie, disposée comme celle du client : box du destinataire à
 // gauche (« Pseudo »), puis la saisie. Les champs sont CLAIRS (le cadre pousse
 // FrameBg pour ça) — le texte doit donc y être sombre.
+// L'emote qui sert d'étiquette au bouton du sélecteur : `ET_SMILE`, la seule qui
+// annonce sans ambiguïté ce qu'on va trouver derrière.
+constexpr int kEmotePickerIcon = 18;
+
+// ── La grille ────────────────────────────────────────────────────────────────
+// Ne montre QUE ce que le GRF de ce client contient : la table des noms est celle
+// du protocole, plus longue que le fichier sur la plupart des installations.
+// Proposer une case vide serait promettre une emote qui ne s'afficherait chez
+// personne — pas même chez celui qui l'a écrite.
+void ChatWindow::DrawEmotePicker() {
+  if (!ImGui::BeginPopup("##chat_emote_grid")) return;
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+
+  // 🔴 La zone DÉFILE, et sa barre reste visible : il y a plus de quatre-vingts
+  // emotes pour six rangées affichées. Masquer la barre laisserait croire que ce
+  // qu'on voit est tout ce qu'il y a — la molette seule ne se devine pas.
+  constexpr int   kCols = 10;
+  constexpr float kCell = 30.0f;
+  const float     pad   = ImGui::GetStyle().ItemSpacing.x;
+  const float     bar   = ImGui::GetStyle().ScrollbarSize;
+  ImGui::BeginChild("##chat_emote_scroll",
+                    ImVec2(kCols * kCell + (kCols - 1) * pad + bar + pad,
+                           6.0f * (kCell + pad)));
+
+  ImDrawList* dl  = ImGui::GetWindowDrawList();
+  const float now = static_cast<float>(ImGui::GetTime());
+  int col = 0;
+  for (int id = 0; id < ro::emote::Count(); ++id) {
+    if (!ro::emote::Exists(id)) continue;
+    if (col != 0) ImGui::SameLine();
+    ImGui::PushID(id);
+    const ImVec2 p       = ImGui::GetCursorScreenPos();
+    const bool   clicked = ImGui::InvisibleButton("##e", ImVec2(kCell, kCell));
+    const ImVec2 q(p.x + kCell, p.y + kCell);
+    ro::emote::Draw(dl, id, p, q, now, true);
+    if (ImGui::IsItemHovered()) {
+      dl->AddRect(p, q, IM_COL32(40, 40, 40, 160));
+      ImGui::SetTooltip(":%s:", ro::emote::Name(id));
+    }
+    if (clicked) {
+      char code[40];
+      std::snprintf(code, sizeof(code), ":%s:", ro::emote::Name(id));
+      InsertIntoInput(code);
+      // Fermer sur le clic : c'est un choix, pas une palette où l'on pioche en
+      // rafale. Le bouton est à un pixel pour en reprendre une.
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::PopID();
+    if (++col == kCols) col = 0;
+  }
+
+  ImGui::EndChild();
+  ImGui::PopStyleColor();
+  ImGui::EndPopup();
+}
+
+// Ajoute `text` à la FIN de la saisie et rend la main au champ.
+//
+// 🔴 On écrit dans le TAMPON, pas dans l'état interne du widget — et c'est
+// possible ici précisément parce qu'un popup ImGui a désactivé la saisie : le
+// champ inactif relit son tampon en reprenant le focus. Passer par
+// `InsertChars` demanderait un callback, donc un champ ACTIF, ce qu'il n'est
+// jamais au moment d'un clic dans la grille.
+void ChatWindow::InsertIntoInput(const char* text) {
+  if (text == nullptr || text[0] == '\0') return;
+  const size_t len = std::strlen(input_);
+  const size_t add = std::strlen(text);
+  // Plein : on ne tronque pas. Une emote coupée en deux (« :smi ») ne veut rien
+  // dire et partirait telle quelle au serveur.
+  if (len + add + 1 > sizeof(input_)) return;
+  std::memcpy(input_ + len, text, add + 1);
+  focus_input_next_ = true;
+}
+
 void ChatWindow::DrawInputRow() {
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   ImGui::SetNextItemWidth(90.0f);
@@ -3409,6 +3534,34 @@ void ChatWindow::DrawInputRow() {
     ro::RoEndCombo();
   }
   ImGui::PopStyleColor();
+  ImGui::SameLine();
+
+  // ── Le sélecteur d'emotes ───────────────────────────────────────────────────
+  // Un carré de la hauteur de la rangée, qui porte pour étiquette une emote plutôt
+  // qu'un caractère : l'atlas de police est borné à l'ASCII (pas de ☺ à espérer),
+  // et un `:)` textuel dirait mal ce que le bouton ouvre.
+  const float  pick_side = ImGui::GetFrameHeight();
+  const ImVec2 pick_pos  = ImGui::GetCursorScreenPos();
+  if (ImGui::Button("##chat_emote_btn", ImVec2(pick_side, pick_side)))
+    ImGui::OpenPopup("##chat_emote_grid");
+  const bool pick_hovered = ImGui::IsItemHovered();
+  {
+    // Marge d'un pixel : l'emote ne doit pas mordre le cadre du bouton.
+    const ImVec2 in_min(pick_pos.x + 2.0f, pick_pos.y + 2.0f);
+    const ImVec2 in_max(pick_pos.x + pick_side - 2.0f, pick_pos.y + pick_side - 2.0f);
+    if (!ro::emote::Draw(ImGui::GetWindowDrawList(), kEmotePickerIcon, in_min, in_max,
+                         static_cast<float>(ImGui::GetTime()), true)) {
+      // Sprite absent : plutôt qu'un bouton vide, le repli ASCII.
+      ImGui::GetWindowDrawList()->AddText(in_min, kDarkText, ":)");
+    }
+  }
+  if (pick_hovered) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip("Emotes du jeu.\nElles partent en clair (« :smile: »),\n"
+                      "donc tout le monde les lit.");
+    ImGui::PopStyleColor();
+  }
+  DrawEmotePicker();
   ImGui::SameLine();
 
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);

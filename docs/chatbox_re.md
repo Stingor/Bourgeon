@@ -1494,9 +1494,13 @@ un GM, ce qui la fait échapper au filtre « Whisper » des onglets.
 
 ### 11.8 Le détecteur de sosies, neutralisé
 
-`Name_IsLookalike 0x00d56bf0` (__stdcall, `retn 8`) est **court-circuité** par
-Bourgeon (`NameIsLookalikeStub` : `mov eax, 1` / `ret 8` — « franchement
-différents »).
+`Name_IsLookalike 0x00d56bf0` (__stdcall, `retn 8`) est **court-circuité**
+(`mov eax, 1` / `ret 8` — « franchement différents »).
+
+⚠ Pas par la DLL : par le **patch WARP `NoLookalikeNameWarning`**
+(WARP0716, branche `patches/no-lookalike-name-warning`). Le détour Bourgeon a
+existé puis a été retiré — la correction ne dépend en rien de notre chatbox, et
+sous forme de patch elle vaut pour tous les joueurs, DLL ou pas.
 
 **Pourquoi.** L'intention est bonne — repérer le `I` majuscule qui imite un `l`
 minuscule — mais le seuil la ruine : dans la troisième passe, `min(len) - 2`
@@ -1522,3 +1526,98 @@ plus. Prologue `55 / 8B EC / 83 EC 44` = 6 octets, de quoi loger un `jmp rel32`.
 
 ⚠ Posé **inconditionnellement**, chatbox native comprise : ces lignes sont du
 bruit dans les deux interfaces.
+
+---
+
+## 12. Bavardage automatique des pets (`ZC_PET_ACT` 0x01AA) — 06/08/2026
+
+### 12.1 Le texte ne vient PAS du serveur
+
+C'est le point contre-intuitif : `clif_pet_emotion` (clif.cpp:11079) n'envoie
+que `[op:2][GID:4][data:4]` — quatre octets d'entier, aucun texte. Toutes les
+répliques (« Wait, what about me? I'm still hungry! ») sortent d'un fichier de
+**données du client**, `PetTalkTable.xml`, chargé par
+`LoadPetMonsterXmlTables 0x00d8af50` et rangé à `ctx+0x154C`.
+
+⚠ La racine de ce document s'appelle `<monster_talk_table>` — le même nom que
+celle de `MonsterTalkTable.xml`, chargée trois lignes plus bas à `ctx+0x15AC`.
+Les deux tables sont distinctes ; seule la première sert aux pets.
+
+Conséquence pratique : **le serveur ne peut ni changer ni traduire ces
+répliques**. Éditer `PetTalkTable.xml` dans le GRF est le seul levier côté
+contenu. Et un client modifié verra des répliques que les autres n'ont pas.
+
+### 12.2 Décodage de l'entier — `PetAct_OnPacket 0x00cd13f0`
+
+Quatre chiffres décimaux :
+
+| champ | calcul | usage |
+|---|---|---|
+| `mob` | `data / 1000` | `Monster_GetResNameById` → nom du nœud XML (défaut `poring`) |
+| `act` | `(data / 100) % 10` | `PetTalk_ActIdToNodeName` : feeding, hunting, danger, dead, stand, perfor_s, levelup, perfor_1..3, connect |
+| `hungry` | `(data / 10) % 10` | 1 `bit_hungry`, 2 `noting`, 3 `full`, 4 `so_full`, sinon `hungry` |
+| reste | `data % 10` | **2 = simple émoticône** (msg 160 à l'acteur, table `g_CashEmotionTable`), sinon une réplique. Sert aussi de drapeau au filtre de mots, passé comme `1 - reste`. |
+
+⚠ Ce **n'est pas** la formule que documente rAthena
+(`(mob-100)*100 + act*10 + hungry`, clif.cpp:17714). Sans conséquence pour les
+répliques ordinaires : l'entier est fabriqué par le client du **maître**, et
+`clif_parse_SendEmotion` le relaie brut (`RFIFOL`) à toute la zone. Le seul
+endroit où le serveur fabrique la valeur lui-même est le salut de connexion
+(clif.cpp:13725), qui suit l'ancienne formule.
+
+### 12.3 Tirage et mise en forme
+
+`PetTalkTable_PickLine 0x00d83160` descend `<monster_talk_table>/<resname>/
+<hungry>/<act>`, collecte **tous les nœuds frères de même nom** et en tire un au
+hasard (`rand() % n`) — d'où des répliques différentes pour un même état. Chemin
+absent ⇒ sortie vide ⇒ rien ne s'affiche.
+
+`PetTalk_FormatChatLine 0x00d83560` compose ensuite la ligne :
+
+1. saute un `\t` de tête éventuel ;
+2. applique la table de mots interdits si le drapeau est posé
+   (`byte_122AC20` = nombre d'entrées, `SubStr_0122ac28` = motifs,
+   `+count` = remplacements) ;
+3. `nom = GameMode_CopyEntityName(gid)` — si le nom est vide **et** que le GID
+   n'est pas `g_Own_PetAid 0x015fb3b0`, la sortie est vide ;
+4. sinon `"%s : "` + réplique, puis suppression d'un `\t` final.
+
+### 12.4 Deux sorties, deux interrupteurs
+
+```
+PetAct_OnPacket
+├── acteur->OnMsg(7, texte)                     ← bulle au-dessus de la tête
+└── si OptionInfo(0x72) == 0 && OptionInfo(0x94) == 0
+    └── ChatAction(mgr, 1, texte, 0xFAFAFA, 0)  ← la chatbox
+```
+
+Les deux options ne coupent que la ligne de **chat** : la bulle est déjà partie.
+
+### 12.5 Marquer la ligne — ce qui ne marche pas, et ce qui marche
+
+🔴 **Rien de ce qui arrive à `ChatAction` ne trahit un pet.** Le type vaut `0`,
+comme les messages système ; le `sender` est vide ; la couleur `0xFAFAFA` n'a
+rien d'exclusif. Reconnaître la ligne à sa forme (« un nom, puis ` : ` ») la
+confondrait avec la moitié du chat public.
+
+Côté DLL, le seul fait exploitable serait la **pile** : au moment du
+`ChatAction`, on est dans `PetAct_OnPacket`. Un détour de ce handler
+incrémentant un compteur `thread_local` autour de l'appel original suffit, et le
+filtre de `ChatAction` — même pile, donc même fil — n'a plus qu'à lire le
+compteur. Cette voie a été écrite puis **retirée** : elle ne marque que le chat
+(la bulle reste intacte), mais elle ne profite qu'aux porteurs de la DLL.
+
+**Ce qui est en service** : le patch WARP `PetTalkMarker` (WARP0716, branche
+`patches/pet-talk-marker`). Il réécrit l'**opérande** du `push offset "%s : "` de
+`PetTalk_FormatChatLine` vers une chaîne neuve portant le marqueur — texte,
+délimiteurs et côté au choix du patcheur.
+
+🔴 Ne **pas** modifier la chaîne `"%s : "` elle-même (`0x01028840`) : elle est
+partagée avec `UIExchangeWnd_DrawContent` et un troisième appelant. C'est le
+`push` de `PetTalk_FormatChatLine` qui est redirigé, les deux autres gardent
+l'originale.
+
+⚠ Contrepartie assumée : la composition alimentant les deux sorties, le marqueur
+sort **aussi dans la bulle**. Les séparer imposerait de recomposer une seconde
+fois — impossible sans code injecté, le tampon de la phrase source étant écrasé
+sur place pendant la composition.

@@ -320,6 +320,17 @@ class ChatWindow : public Plugin {
     // `text` porte le repli « :nom: », affiché tant que l'image n'est pas arrivée
     // (ou si le joueur a coupé les images) : lisible, et sans une seule requête.
     std::string emote_url;
+
+    // ── Emote du JEU ──────────────────────────────────────────────────────────
+    // L'index d'une emote de `emotion.act` — les bulles au-dessus des têtes,
+    // réemployées ici DANS la ligne. -1 = ce fragment n'en est pas une.
+    //
+    // Rien à voir avec `emote_url` malgré la parenté d'usage : l'image sort du
+    // GRF du joueur, donc aucune requête, aucune attente, et elle s'affiche même
+    // hors ligne. `text` porte ici aussi le « :nom: » de repli — c'est d'ailleurs
+    // exactement ce que lisent les joueurs sans Bourgeon, puisque c'est cette
+    // forme-là qui part au serveur.
+    int16_t game_emote = -1;
   };
 
   struct Line {
@@ -497,6 +508,9 @@ class ChatWindow : public Plugin {
   void  DrawChannel(const Channel& channel, float height);
   void  DrawLines(const Channel& channel);
   void  DrawInputRow();
+  // Grille des emotes du jeu, et l'écriture de son choix dans la saisie.
+  void  DrawEmotePicker();
+  void  InsertIntoInput(const char* text);
   void  DrawLogOptionsPopup();
   void  CreateChannel();
   void  CloseChannel(int index);
