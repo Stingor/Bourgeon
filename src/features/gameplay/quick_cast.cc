@@ -4,6 +4,7 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/overlays/skill_bar.h"  // RepeatItemSlot (rejeu d'une case d'objet)
 #include "features/staff_gate.h"
 #include "imgui.h"
 #include "ragnarok/globals.h"
@@ -72,6 +73,27 @@ constexpr int kSendMsgLeaveTargeting = 0x47;
 constexpr int kVtblSendMsgIndex = 6;  // vtable+0x18
 
 constexpr unsigned kJobWarpPortal = 45;  // catégorie 0 mais non ciblable
+
+// Durée de validité d'une frappe en attente. Une touche n'annonce que l'action
+// qu'elle déclenche dans la foulée — tout le chemin frappe -> dispatch hotkey ->
+// activation est synchrone, donc quelques dizaines de millisecondes suffisent
+// très largement. Au-delà, la touche est simplement TENUE pour autre chose
+// (marcher, par exemple) et ne doit pas se retrouver associée à un déclenchement
+// à la souris survenu entre-temps.
+constexpr uint32_t kPendingKeyLifetimeMs = 250;
+
+// La fenêtre du jeu est-elle au premier plan ? `GetAsyncKeyState` lit l'état
+// PHYSIQUE du clavier, sans se soucier du focus : une touche restée enfoncée au
+// moment d'un alt-tab continue donc de répondre « oui » alors que le joueur tape
+// ailleurs. Sans ce garde-fou, la répétition tournait dans le dos de l'utilisateur
+// — et pour un objet, elle viderait son sac. (Même patron que utils/frame_profiler.)
+bool GameHasFocus() {
+  const HWND fg = GetForegroundWindow();
+  if (!fg) return false;
+  DWORD pid = 0;
+  GetWindowThreadProcessId(fg, &pid);
+  return pid == GetCurrentProcessId();
+}
 
 // Prédicat monstre réimplémenté d'après Job_IsMonsterId (0x00c44470, fonction
 // feuille) — même copie que features/overlays/entity_names.cc.
@@ -294,6 +316,10 @@ bool QuickCast::CanCastNow() const {
   if (!Bourgeon::Instance().IsGameActive() ||
       Bourgeon::Instance().IsMapLoading())
     return false;
+  // Jeu au second plan : la touche est peut-être toujours enfoncée
+  // physiquement, mais elle ne s'adresse plus à lui (cf. GameHasFocus). Sans
+  // effet sur le premier lancement — il vient d'une frappe reçue par le jeu.
+  if (!GameHasFocus()) return false;
   // Curseur au-dessus de notre interface ou d'une fenêtre native : l'utilisateur
   // ne désigne pas le monde derrière, on laisse le ciblage classique.
   if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)
@@ -303,18 +329,32 @@ bool QuickCast::CanCastNow() const {
 }
 
 void QuickCast::OnKeyDown(unsigned long vkey, int new_key, int accurate_key) {
-  // Seul un appui FRAIS peut mener à un 0x48 (le natif ignore l'auto-répétition,
-  // cf. l'en-tête). On retient la touche pour l'associer au lancement qui suit
-  // immédiatement, dans la même passe de message.
-  if (accurate_key) pending_vk_ = vkey;
+  // Seul un appui FRAIS peut mener à un 0x48 ou à l'usage d'un objet (le natif
+  // ignore l'auto-répétition, cf. l'en-tête). On retient la touche pour
+  // l'associer à l'action qui suit immédiatement, dans la même passe de message.
+  if (accurate_key) {
+    pending_vk_    = vkey;
+    pending_vk_ms_ = GetTickCount();
+  }
+}
+
+// Touche en attente, consommée : renvoie 0 si elle a expiré ou n'est plus tenue.
+// Consommer dans tous les cas est délibéré — une frappe ne vaut que pour l'action
+// qu'elle amène, sinon un déclenchement ULTÉRIEUR à la souris en hériterait et se
+// mettrait à se répéter tout seul.
+unsigned long QuickCast::TakePendingKey() {
+  const unsigned long vk = pending_vk_;
+  pending_vk_ = 0;
+  if (vk == 0) return 0;
+  if (GetTickCount() - pending_vk_ms_ > kPendingKeyLifetimeMs) return 0;
+  if ((GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) == 0) return 0;
+  return vk;
 }
 
 void QuickCast::OnEnterTargeting(void* cmode) {
-  // Un 0x48 consomme la touche en attente, qu'il aboutisse ou non : sans cela,
-  // un déclenchement ultérieur À LA SOURIS hériterait d'une vieille touche et se
-  // répéterait tant qu'elle resterait enfoncée.
-  const unsigned long vk = pending_vk_;
-  pending_vk_ = 0;
+  // Un 0x48 consomme la touche en attente, qu'il aboutisse ou non (cf.
+  // TakePendingKey).
+  const unsigned long vk = TakePendingKey();
   repeat_vk_ = 0;  // un nouvel armement annule la répétition précédente
 
   if (!CanCastNow()) return;
@@ -335,10 +375,10 @@ void QuickCast::OnEnterTargeting(void* cmode) {
   last_cast_ms_ = now;
   LeaveTargeting(cmode);
 
-  // Armer la répétition — mais seulement si la touche retenue est RÉELLEMENT
-  // enfoncée à cet instant : cela distingue un lancement au clavier d'un clic
-  // sur une case de la barre de raccourcis, qui ne doit rien répéter.
-  if (vk != 0 && (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) != 0) {
+  // Armer la répétition — seulement si une touche fraîche, encore enfoncée, a
+  // amené ce lancement (TakePendingKey s'en assure) : cela distingue le clavier
+  // d'un clic sur une case de la barre de raccourcis, qui ne doit rien répéter.
+  if (vk != 0) {
     repeat_vk_    = vk;
     repeat_mode_  = mode;
     repeat_skill_ = skill;
@@ -382,12 +422,67 @@ void QuickCast::Update() {
     last_cast_ms_ = now;
 }
 
+void QuickCast::OnUseItemSlot(int region, int slot, uint32_t nameid) {
+  // La touche est consommée même si la répétition est éteinte : elle a bien
+  // servi à cette activation-là et ne doit pas resservir plus tard.
+  const unsigned long vk = TakePendingKey();
+
+  if (!item_enabled_ || !IsStaff()) return;
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+  if (vk == 0) return;  // clic sur la case : une seule utilisation, rien à répéter
+
+  item_vk_      = vk;
+  item_region_  = region;
+  item_slot_    = slot;
+  item_id_      = nameid;
+  last_item_ms_ = GetTickCount();  // le premier usage vient d'avoir lieu
+}
+
+void QuickCast::UpdateItemRepeat() {
+  if (item_vk_ == 0) return;
+
+  // Touche relâchée : fin de la répétition. Testé AVANT tout le reste pour que
+  // l'état s'oublie même si une autre garde bloque l'utilisation.
+  if ((GetAsyncKeyState(static_cast<int>(item_vk_)) & 0x8000) == 0) {
+    item_vk_ = 0;
+    return;
+  }
+  if (!item_enabled_ || !IsStaff()) { item_vk_ = 0; return; }
+  // Jeu passé au second plan (alt-tab la touche enfoncée) : elle ne s'adresse
+  // plus à lui. On arrête net plutôt que de vider le sac en arrière-plan.
+  if (!GameHasFocus()) { item_vk_ = 0; return; }
+  // Saisie en cours dans notre interface : la frappe appartient au champ de
+  // texte, pas à la barre de raccourcis. (Ouvrir le chat sans lâcher la touche.)
+  if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) {
+    item_vk_ = 0;
+    return;
+  }
+  if (!Bourgeon::Instance().IsGameActive() || Bourgeon::Instance().IsMapLoading())
+    return;  // chargement de carte : on patiente, la touche est toujours tenue
+
+  const uint32_t now = GetTickCount();
+  const uint32_t period =
+      item_repeat_ms_ > 0 ? static_cast<uint32_t>(item_repeat_ms_) : 0;
+  if (now - last_item_ms_ < period) return;
+
+  // Le rejeu appartient à la barre : elle seule sait ce que la case porte
+  // encore, et ce qu'il en reste en sac. Un `false` = plus rien à répéter (case
+  // vidée ou réarrangée, dernier exemplaire consommé).
+  auto* bar = Bourgeon::Instance().skill_bar();
+  if (!bar || !bar->RepeatItemSlot(item_region_, item_slot_, item_id_)) {
+    item_vk_ = 0;
+    return;
+  }
+  last_item_ms_ = now;
+}
+
 void QuickCast::OnRenderUI() { Update(); }
 
 void QuickCast::OnModeSwitch(ModeMgr::ModeType mode_type,
                              const char* map_name) {
   repeat_vk_  = 0;
   pending_vk_ = 0;
+  item_vk_    = 0;
 }
 
 void QuickCast::DrawSettings() {
@@ -428,6 +523,37 @@ void QuickCast::DrawSettings() {
         "qu'elle n'est pas prête, rien n'est envoyé. Ce réglage ne sert qu'aux "
         "compétences SANS cooldown, dont le rythme est fixé par le délai "
         "d'après-incantation — que le serveur ne communique pas au client.");
+  }
+
+  ImGui::Spacing();
+  if (ro::RoCheckbox("Objet : répéter tant que la touche est maintenue",
+                     &item_enabled_))
+    save = true;
+  ImGui::SameLine();
+  mui::HelpMarker(
+      "Une case de la barre d'action qui porte un OBJET (Old Blue Box, Dead "
+      "Branch, potions…) s'utilise en boucle tant que tu gardes sa touche "
+      "enfoncée, au lieu d'une fois par pression.\n\n"
+      "Ça s'arrête tout seul quand tu relâches, quand la case change, ou quand "
+      "il n'en reste plus en sac. Cliquer la case, en revanche, ne répète "
+      "rien : une seule utilisation, comme avant.\n\n"
+      "Attention : chaque répétition CONSOMME un objet — dont le dernier.");
+  if (item_enabled_) {
+    ImGui::SetNextItemWidth(160.0f);
+    if (mui::WheelSliderInt("Cadence objet (ms)", &item_repeat_ms_, 20, 1000))
+      save = true;
+    if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
+    ImGui::SameLine();
+    mui::HelpMarker(
+        "Période de répétition des objets. Elle est SÉPARÉE de celle des "
+        "compétences parce que ce n'est pas le même frein : ici c'est le "
+        "serveur qui fixe le minimum entre deux objets.\n\n"
+        "Pour le staff, ce minimum est de 20 ms — le serveur descend "
+        "l'intervalle à cette valeur au-dessus du niveau de groupe 40, au lieu "
+        "des 325 ms habituels. Le curseur va donc jusque-là.\n\n"
+        "En dessous, rien ne va plus vite : le serveur refuse et répond "
+        "« veuillez patienter » dans le chat. En pratique, la vraie limite est "
+        "la fréquence d'images du client.");
   }
 
   if (save) {

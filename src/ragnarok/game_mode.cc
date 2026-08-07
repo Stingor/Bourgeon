@@ -145,6 +145,10 @@ void GameMode::OnUpdateHook() {
   // AVANT OnTick : les modules posent des drapeaux au décodage (fermeture sur
   // warp, par exemple) et les traitent « au prochain OnTick ».
   Bourgeon::Instance().DrainNetInboxes();
+  // Battement par frame, hors frame ImGui : ce dont la cadence est trop fine pour
+  // le bridage ~100 ms d'OnTick (cf. Bourgeon::OnGameFrame). Avant OnTick, pour
+  // que la frappe en cours soit servie sans attendre le bridage.
+  Bourgeon::Instance().OnGameFrame();
   Bourgeon::Instance().OnTick();
   return OnUpdateRef(this);
 }

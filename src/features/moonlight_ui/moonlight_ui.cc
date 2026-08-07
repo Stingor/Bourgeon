@@ -613,6 +613,10 @@ const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
 // `quickcast_repeat_ms` = période de répétition touche maintenue. Il RESTE malgré
 // le cooldown réel (consulté avant, cf. quick_cast.cc) parce que le client ignore
 // le délai d'après-incantation du serveur, qui borne la plupart des sorts.
+// `quickcast_item` étend cette répétition aux cases d'OBJET de la barre d'action,
+// avec sa PROPRE cadence : le frein n'y est pas le même — c'est le serveur qui
+// impose l'intervalle minimal entre deux objets, et il le ramène à 20 ms au-dessus
+// du niveau de groupe 40, donc pour tout le monde ici (l'option est staff).
 const moonlight_ui::SettingDesc kQuickCastSettings[] = {
     {"quickcast_ground", SType::kBool, MLUI_FIELD(quick_cast, ground_enabled()),
      MLUI_LITERAL(bool, false)},
@@ -620,6 +624,10 @@ const moonlight_ui::SettingDesc kQuickCastSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"quickcast_repeat_ms", SType::kInt, MLUI_FIELD(quick_cast, repeat_ms()),
      MLUI_LITERAL(int, 200)},
+    {"quickcast_item", SType::kBool, MLUI_FIELD(quick_cast, item_enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"quickcast_item_repeat_ms", SType::kInt,
+     MLUI_FIELD(quick_cast, item_repeat_ms()), MLUI_LITERAL(int, 50)},
 };
 
 // Barres EXP/HP/SP et portrait de statut (BasicInfo). Les barres et les

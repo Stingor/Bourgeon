@@ -113,6 +113,13 @@ class Bourgeon {
   void OnTick();
   void OnProcessInput();  // dispatch de commandes natives, sur ÉVÉNEMENT (cf. .cc)
 
+  // Battement par FRAME, hors de toute frame ImGui (hook OnUpdate du mode, avant
+  // que le jeu ne dessine). C'est la seule horloge qui soit à la fois régulière
+  // et sûre pour rejouer une commande native : OnTick est bridé à ~100 ms, et
+  // OnProcessInput n'est qu'événementiel (CMode::SendMsg) sur ce client.
+  // Réservé à ce qui a besoin d'une cadence FINE — le reste va dans OnTick.
+  void OnGameFrame();
+
   // 🔴 Rejoue les paquets mis en file par le fil réseau, sur le fil PRINCIPAL, pour
   // TOUS les modules (cf. features/net_inbox.h). Appelé à CHAQUE frame depuis les
   // hooks OnUpdate des modes (jeu ET login/char-select), et non pas seulement

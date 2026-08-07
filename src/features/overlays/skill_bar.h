@@ -85,6 +85,13 @@ class SkillBar : public Plugin {
   void SnapshotItemSlots();     // lit g_ShortCutItemSlotExt -> item_slots_ (appelé avant la sauvegarde)
   void DrawSettings();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
 
+  // Rejoue l'utilisation d'une case d'OBJET — la voie exacte de sa touche. Pour
+  // QuickCast, qui répète tant que la touche est maintenue (le client ignorant
+  // l'auto-répétition clavier, cf. quick_cast.h). Renvoie false dès qu'il n'y a
+  // plus rien à répéter : case vidée, réarrangée, autre objet, ou sac vide — le
+  // signal d'arrêt de la boucle.
+  bool RepeatItemSlot(int region, int slot, uint32_t nameid);
+
   // Couleurs (RGBA 0..1) — fond du cadre, fond par type, fond vide, bordures.
   float col_frame_[4]    = {0.050f, 0.050f, 0.070f, 0.600f};  // fond du cadre (derrière les boutons)
   float col_skill_[4]    = {0.157f, 0.510f, 0.275f, 0.863f};  // vert

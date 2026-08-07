@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
+#include "features/gameplay/quick_cast.h"  // répétition d'un objet touche maintenue
 #include "features/moonlight_ui/moonlight_ui.h"  // grille d'alignement partagée (grid_.SnapAxis)
 #include "features/windows/inventory_viewer.h"  // DraggedItemNameId (drag inventaire -> case de barre)
 #include "ui/imgui_escape.h"
@@ -197,6 +198,13 @@ static_assert(SkillBar::kItemSlotMax <= kMaxSlots, "g_slot_drawn trop étroit");
 bool g_slot_drawn[3][kMaxSlots] = {};
 bool g_slot_filter_on  = false;  // filtre armé (module actif, en jeu, native cachée)
 bool g_self_activation = false;  // notre propre ActivateSlot -> jamais filtré
+// Case visée par notre propre activation. Indispensable pour la LIRE : la barre
+// d'objets détourne this+0xc4[0] le temps de l'appel (cf. UseItemSlot), donc les
+// col/row reçus par le OnMsg ne désignent alors pas la vraie case.
+int g_active_region = -1;
+int g_active_slot   = -1;
+
+SlotRec ReadSlot(int region, int i);  // fwd (défini plus bas)
 
 constexpr uintptr_t kShortCutOnMsg = 0x00901310;  // UIShortCutWnd::OnMsg (vtable+0x94)
 // __thiscall à SIX arguments pile (`retn 18h`) : ecx=this, edx ignoré, puis
@@ -206,12 +214,35 @@ ShortCutOnMsg_t g_orig_shortcut_onmsg = nullptr;
 int __fastcall ShortCutOnMsgHook(void* self, void* edx, int arg0, int msg,
                                  int p2, int p3, int p4, int p5) {
   if (!g_orig_shortcut_onmsg) return 0;
-  if (msg == kMsgUseSlot && g_slot_filter_on && !g_self_activation) {
-    const int slot   = p2 + 9 * p3;   // col + 9*row (indexation de this+0xc4)
-    const int region = CurrentTab();  // 0x29 ne lit QUE l'onglet actif
-    if (slot < 0 || slot >= kMaxSlots || !g_slot_drawn[region][slot]) return 0;
+
+  // Quelle case ce message active-t-il ? La nôtre s'annonce (et doit s'annoncer :
+  // le détournement de la barre d'objets rend p2/p3 muets) ; celle du natif ne
+  // peut venir que de l'onglet affiché, seul que le 0x29 sache lire.
+  int region = -1, slot = -1;
+  if (msg == kMsgUseSlot) {
+    region = g_self_activation ? g_active_region : CurrentTab();
+    slot   = g_self_activation ? g_active_slot   : p2 + 9 * p3;
+    if (g_slot_filter_on && !g_self_activation &&
+        (slot < 0 || slot >= kMaxSlots || !g_slot_drawn[region][slot]))
+      return 0;
   }
-  return g_orig_shortcut_onmsg(self, edx, arg0, msg, p2, p3, p4, p5);
+
+  const int ret = g_orig_shortcut_onmsg(self, edx, arg0, msg, p2, p3, p4, p5);
+
+  // Un OBJET vient d'être utilisé : QuickCast peut vouloir enchaîner tant que la
+  // touche reste enfoncée (le client, lui, ignore l'auto-répétition clavier).
+  // Après coup, pour ne rien annoncer que le natif aurait refusé. Ce point voit
+  // TOUTES les voies d'activation — touche de l'onglet affiché, routage de
+  // l'autre onglet, barre d'objets, clic sur la case — d'où le choix de l'y
+  // mettre plutôt que dans OnKeyDown, qui n'en connaît qu'une.
+  if (msg == kMsgUseSlot && region >= 0 && region < 3) {
+    const SlotRec rec = ReadSlot(region, slot);
+    if (rec.valid && rec.type == 0) {  // 0 = OBJET (convention du record, cf. en-tête)
+      if (auto* quick_cast = Bourgeon::Instance().quick_cast())
+        quick_cast->OnUseItemSlot(region, slot, rec.id);
+    }
+  }
+  return ret;
 }
 
 // Assignation/vidage d'un slot d'ITEM : SkillMgr_SetShortCutItemSlot(mgr, id, slot) (__thiscall ;
@@ -303,7 +334,10 @@ void ActivateSlotRaw(int region, int slot) {
 // garde RAII là-bas.
 void ActivateSlot(int region, int slot) {
   g_self_activation = true;
+  g_active_region   = region;  // la case RÉELLE, que les col/row du 0x29 ne diront pas
+  g_active_slot     = slot;
   ActivateSlotRaw(region, slot);
+  g_active_region = g_active_slot = -1;
   g_self_activation = false;
 }
 
@@ -842,6 +876,36 @@ void SkillBar::SnapshotItemSlots() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+// Rejoue l'utilisation d'une case d'OBJET pour QuickCast (touche maintenue). On
+// repasse par ActivateSlot, donc par la voie EXACTE de la touche : rien à tenir
+// en parallèle du client, et ses refus restent les siens.
+//
+// Le contrat tient dans le booléen : `false` = il n'y a plus rien à répéter, la
+// boucle appelante s'arrête. Deux raisons, et elles comptent toutes les deux —
+//   • la case a changé sous nos pieds (vidée, réarrangée, autre objet) : rejouer
+//     « ce qu'il y a maintenant à cet endroit » utiliserait autre chose que ce
+//     que le joueur a lancé ;
+//   • il n'en reste plus en sac : le serveur refuserait, et la case est déjà
+//     grisée à l'écran.
+// (La quantité est celle du client, donc en retard d'un aller-retour : au pire
+// un usage de trop part sur le dernier exemplaire, que le serveur écarte.)
+bool SkillBar::RepeatItemSlot(int region, int slot, uint32_t nameid) {
+  if (!in_game_) return false;
+  if (region < 0 || region >= kBarCount) return false;
+  // Barre rangée entre-temps (masquée, « Nb slots » réduit) : la case n'est plus
+  // à l'écran, donc plus une source d'action. Même règle que le filtre de
+  // raccourci — sauf qu'ici c'est à nous de l'appliquer, une activation qui vient
+  // de nous étant par construction exemptée de ce filtre.
+  if (g_slot_filter_on &&
+      (slot < 0 || slot >= kMaxSlots || !g_slot_drawn[region][slot]))
+    return false;
+  const SlotRec rec = ReadSlot(region, slot);
+  if (!rec.valid || rec.type != 0 || rec.id != nameid) return false;
+  if (GetItemLiveCount(nameid) <= 0) return false;
+  ActivateSlot(region, slot);
+  return true;
+}
+
 void SkillBar::OnKeyDown(unsigned long vkey, int, int) {
   if (!enabled_ || !native_hidden_ || !in_game_) return;
 
@@ -878,6 +942,10 @@ void SkillBar::OnKeyDown(unsigned long vkey, int, int) {
   if (occupiedSlot(cur) != -1) return;  // onglet actif occupé pour cette touche -> le natif s'en charge
   const int other = 1 - cur;            // (barre masquée => aucun slot dessiné => -1)
   const int s = occupiedSlot(other);
+  // ⚠ Cette activation-ci part depuis un OnKeyDown, donc AVANT que le jeu n'ait
+  // dispatché la frappe. QuickCast doit avoir vu la touche pour pouvoir répéter
+  // l'objet : il le peut parce qu'il est enregistré AVANT nous dans Bourgeon
+  // (LoadPlugins), donc son OnKeyDown a déjà noté la frappe quand on arrive ici.
   if (s != -1) ActivateSlot(other, s);
 }
 

@@ -4,7 +4,9 @@
 
 #include "features/plugin.h"
 
-// QuickCast — lancer une compétence en UNE action (opt-in, réservé au STAFF).
+// QuickCast — lancer une compétence en UNE action, et enchaîner tant que la
+// touche reste enfoncée (opt-in, réservé au STAFF). La répétition vaut aussi
+// pour les cases d'OBJET de la barre de raccourcis (voir le bloc dédié plus bas).
 //
 // Nativement, une compétence de zone ou ciblée demande DEUX actions : la touche
 // arme le « mode ciblage » (curseur de visée), puis le CLIC résout la souris et
@@ -78,6 +80,34 @@
 // la touche enfoncée. La visée est ré-évaluée à chaque fois : le sort suit le
 // curseur. `repeat_ms_` est donc la VRAIE période de répétition.
 //
+// ── OBJETS : la même répétition, pour les cases qui portent un objet ─────────
+// Un objet ne demande pas de visée : sa touche l'utilise en une action, la
+// question du « clic de confirmation » ne se pose donc pas. Reste l'autre
+// moitié du plugin, qui vaut telle quelle : maintenir la touche n'ouvre qu'UNE
+// Old Blue Box, parce que le client ignore l'auto-répétition (même bloc que
+// ci-dessus). On rejoue donc l'activation de la case tant que la touche est
+// tenue.
+//
+// Le rejeu, c'est SkillBar::RepeatItemSlot — autrement dit exactement la voie
+// de la touche (UIShortCutWnd::OnMsg 0x29), pas un CZ_USE_ITEM fabriqué : rien
+// à maintenir en parallèle du client, et ses gardes survivent. C'est aussi
+// SkillBar qui prévient (son hook de cet OnMsg voit toute activation, d'où
+// qu'elle vienne), parce que ces cases sont à lui.
+//
+// ⚠ Deux limites, PROPRES aux objets :
+//  • chaque répétition CONSOMME. La boucle s'arrête d'elle-même dès que la case
+//    change ou que le sac est vide, mais elle ne demande rien avant d'ouvrir la
+//    dernière boîte.
+//  • le SERVEUR fixe l'intervalle minimal entre deux objets, et il est BAS ICI.
+//    `item_use_interval` vaut 325 ms sur Moonlight (500 de plus en PvP sur les
+//    soins), MAIS `pc_useitem` le ramène à **20 ms au-dessus du niveau de groupe
+//    40** (patch maison « opti spam de branch en gm », src/map/pc.cpp). Or cette
+//    option est réservée au staff, donc niveau >= 80 : ses utilisateurs ont
+//    TOUJOURS le plancher à 20 ms. D'où une cadence séparée de celle des sorts —
+//    ce n'est pas le même frein — et une plage qui descend jusque-là.
+//    En pratique la limite devient la FRAME du client (~16 ms à 60 fps), d'où le
+//    battement par frame plutôt qu'un OnTick bridé.
+//
 // Adresses spécifiques au client 20250716 (no-ASLR).
 class QuickCast : public Plugin {
  public:
@@ -88,9 +118,17 @@ class QuickCast : public Plugin {
   // receveur (CGameMode en jeu), porteur de l'état de ciblage à +0x408.
   void OnEnterTargeting(void* cmode);
 
-  // Capture la touche qui va (peut-être) déclencher un 0x48 : le hook de
-  // UIWindowMgr::ProcessPushButton prévient AVANT de laisser tourner le dispatch
-  // natif du hotkey. `accurate_key` non nul = appui frais (cf. l'en-tête).
+  // Appelé par SkillBar quand une case portant un OBJET vient d'être activée,
+  // quelle qu'en soit la voie (touche de l'onglet affiché, routage de l'autre
+  // onglet, barre d'objets, clic sur la case). Arme la répétition si la frappe
+  // qui l'a déclenchée est toujours enfoncée — un clic de souris, lui, ne
+  // répète rien.
+  void OnUseItemSlot(int region, int slot, uint32_t nameid);
+
+  // Capture la touche qui va (peut-être) armer un ciblage ou utiliser un objet :
+  // le hook de UIWindowMgr::ProcessPushButton prévient AVANT de laisser tourner
+  // le dispatch natif du hotkey. `accurate_key` non nul = appui frais (cf.
+  // l'en-tête). C'est ce qui distingue ensuite le clavier de la souris.
   void OnKeyDown(unsigned long vkey, int new_key, int accurate_key) override;
 
   // Rejoue le lancement mémorisé tant que la touche reste enfoncée. Appelée par
@@ -98,6 +136,16 @@ class QuickCast : public Plugin {
   // vivante quand l'interface est masquée (F11 coupe la passe UI des plugins).
   // Auto-limitée dans le temps : deux appels dans la même frame sont sans effet.
   void Update();
+
+  // Répétition des OBJETS, appelée par Bourgeon::OnGameFrame — donc à CHAQUE
+  // frame, et hors de toute frame ImGui. Les deux comptent :
+  //  • hors frame ImGui, parce que le rejeu passe par une commande native
+  //    (UIShortCutWnd::OnMsg), à ne jamais jouer entre NewFrame() et Render() ;
+  //    c'est ce qui exclut Update(), appelée depuis la passe UI.
+  //  • par frame, parce que la cadence utile descend à ~20 ms pour le staff (cf.
+  //    le bloc OBJETS ci-dessus) : OnTick, bridé à ~100 ms, aurait plafonné le
+  //    réglage cinq fois trop haut en donnant l'illusion de l'honorer.
+  void UpdateItemRepeat();
 
   void OnRenderUI() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
@@ -109,14 +157,23 @@ class QuickCast : public Plugin {
   bool& ground_enabled() { return ground_enabled_; }
   bool& target_enabled() { return target_enabled_; }
   int&  repeat_ms()      { return repeat_ms_; }
+  bool& item_enabled()   { return item_enabled_; }
+  int&  item_repeat_ms() { return item_repeat_ms_; }
 
  private:
   // Gardes communes au premier lancement et à chaque répétition (opt-in, staff,
-  // client attendu, en jeu, hors chargement, curseur sur le monde).
+  // client attendu, en jeu, hors chargement, jeu au premier plan, curseur sur le
+  // monde).
   bool CanCastNow() const;
+
+  // Prend (et efface) la touche fraîche en attente, ou 0 si elle a expiré ou
+  // n'est plus enfoncée. Une action déclenchée AUTREMENT qu'au clavier n'a donc
+  // rien à répéter.
+  unsigned long TakePendingKey();
 
   bool ground_enabled_ = false;  // sorts de zone : cast direct sous la souris
   bool target_enabled_ = false;  // sorts ciblés : cast direct sur le survolé
+  bool item_enabled_   = false;  // objets : répétition tant que la touche est tenue
 
   // Période de répétition tant que la touche est maintenue, et intervalle minimal
   // entre deux lancements en général.
@@ -129,10 +186,23 @@ class QuickCast : public Plugin {
   // transmis au client. Cette période est donc ce qui règle le rythme pour eux.
   int repeat_ms_ = 200;
 
+  // Période de répétition des OBJETS, distincte de celle des sorts : ici le
+  // plancher vient du SERVEUR, et il est à 20 ms pour le staff (cf. le bloc
+  // OBJETS de l'en-tête). Le défaut reste un cran au-dessus — de quoi vider une
+  // pile de boîtes en quelques secondes sans coller au tick serveur, où la
+  // moindre latence ferait refuser une utilisation sur deux.
+  int item_repeat_ms_ = 50;
+
   uint32_t last_cast_ms_ = 0;
 
-  // Dernière touche vue en appui frais, en attente d'un 0x48 (0 = aucune).
-  unsigned long pending_vk_ = 0;
+  // Dernière touche vue en appui frais, en attente de l'action qu'elle déclenche
+  // (0 = aucune), et l'instant où elle a été vue. L'horodatage compte : sans lui,
+  // une touche pressée puis gardée pour tout autre chose — une direction tenue,
+  // par exemple — se retrouvait associée à un déclenchement ULTÉRIEUR à la
+  // souris, qui se mettait alors à se répéter tout seul. Une frappe ne vaut que
+  // pour l'action qu'elle amène, c'est-à-dire dans la passe de message qui suit.
+  unsigned long pending_vk_    = 0;
+  uint32_t      pending_vk_ms_ = 0;
 
   // Lancement mémorisé, rejoué par Update() tant que `repeat_vk_` est enfoncée.
   // repeat_vk_ == 0 = pas de répétition en cours (déclenchement à la souris, par
@@ -141,4 +211,14 @@ class QuickCast : public Plugin {
   int repeat_mode_  = 0;
   int repeat_skill_ = 0;
   int repeat_level_ = 0;
+
+  // Répétition d'OBJET en cours : la touche tenue, et la case exacte à rejouer.
+  // On mémorise aussi le nameid pour que la boucle s'arrête si la case change
+  // sous nos pieds (vidée, réarrangée) plutôt que d'utiliser « ce qu'il y a
+  // maintenant » à cet endroit. item_vk_ == 0 = pas de répétition en cours.
+  unsigned long item_vk_     = 0;
+  int           item_region_ = -1;
+  int           item_slot_   = -1;
+  uint32_t      item_id_     = 0;
+  uint32_t      last_item_ms_ = 0;
 };

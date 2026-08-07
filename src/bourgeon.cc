@@ -206,6 +206,18 @@ void Bourgeon::OnTick() {
   }
 }
 
+// Battement par FRAME, hors frame ImGui — la contrepartie fine d'OnTick, pour ce
+// qui ne supporte ni son bridage à ~100 ms ni le caractère événementiel
+// d'OnProcessInput. Le dispatch reste NOMINATIF (pas de boucle sur les plugins) :
+// c'est un chemin chaud, et seul ce qui le demande explicitement doit le payer.
+void Bourgeon::OnGameFrame() {
+  // QuickCast : la répétition d'un OBJET tant que la touche est maintenue. Sa
+  // cadence descend à ~20 ms pour le staff (le serveur ramène `canuseitem_tick`
+  // à 20 ms au-dessus du niveau de groupe 40), donc un battement de 100 ms
+  // aurait plafonné le réglage cinq fois trop haut sans rien en dire.
+  if (auto* qc = quick_cast()) qc->UpdateItemRepeat();
+}
+
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.
 //
 // ⚠ Appelé à CHAQUE frame depuis les hooks OnUpdate des modes, PAS seulement
