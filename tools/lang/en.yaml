@@ -10,10 +10,49 @@
 # literals in the code are concatenated by the compiler, so a label split across
 # several lines in C++ is ONE key here.
 #
+# Game terms stay in English in every language, by project convention:
+# storage, cart, shop, alootid. They are not translated below either.
+#
 # Strings the game itself owns - item names, descriptions, server messages - are
 # not handled by this file and never will be: they come from SystemEN\ and from
 # the server's own message catalogue.
 
+# ── Language setting (panel_interface.cc) ────────────────────────────────────
 "Langue": "Language"
-
 "Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, descriptions, messages du serveur) n'est pas concerné.\nUne langue grisée est connue mais son fichier de traduction est absent de SaveData\\lang\\.": "Language of the Bourgeon interface. The game itself (item names, descriptions, server messages) is not affected.\nA greyed-out language is known but its translation file is missing from SaveData\\lang\\."
+
+# ── Cart viewer (cart_viewer.cc) ─────────────────────────────────────────────
+# Category tabs. These two come from the static kCats[] table, so they are NOT
+# found by the static extractor - only by the runtime export.
+"Tout": "All"
+"Cartes": "Cards"
+
+"Options du cart": "Cart settings"
+"Shop en composition : les transferts sont figés.": "Shop being set up: transfers are locked."
+"Vers le storage": "To storage"
+"Vers l'inventaire": "To inventory"
+"Vers le storage...": "To storage..."
+"Vers l'inventaire...": "To inventory..."
+"Raccourcis cart\n\n- Double-clic gauche : retirer vers l'inventaire\n- Clic droit : menu contextuel\n- Ctrl + clic droit : description\n- Alt + clic droit : transfert rapide (storage si ouvert, sinon inventaire)\n- Glisser : lâcher sur l'inventaire ou le storage pour y transférer": "Cart shortcuts\n\n- Left double-click: move to the inventory\n- Right click: context menu\n- Ctrl + right click: description\n- Alt + right click: quick transfer (storage if open, otherwise inventory)\n- Drag: drop onto the inventory or the storage to transfer there"
+"Filtrer...": "Filter..."
+" Quantité : %d ": " Quantity: %d "
+"Shop en composition : le cart est figé": "Shop being set up: the cart is locked"
+"Storage ouvert : vers l'inventaire impossible": "Storage open: cannot move to the inventory"
+"Description": "Description"
+"Impossible pendant la composition d'un shop (règle du\nserveur). Ouvrez ou annulez le shop d'abord.": "Not possible while a shop is being set up (server\nrule). Open or cancel the shop first."
+"Impossible tant que le storage est ouvert (règle du serveur).\nFermez le storage, ou faites transiter l'objet par le storage.": "Not possible while the storage is open (server rule).\nClose the storage, or route the item through the storage."
+"Retirer de l'alootid": "Remove from alootid"
+"Ajouter à l'alootid": "Add to alootid"
+
+# Cart section of the Moonlight settings panel.
+"Fenêtre du groupe « Interface moderne »": "Window in the « Modern interface » group"
+"ON : cart ImGui moderne (grille d'icônes, onglets, recherche, double-clic pour retirer, clic droit, glisser vers l'inventaire ou le storage) et la fenêtre native est cachée.\nOFF (défaut) : cart natif classique, aucun viewer.": "ON: modern ImGui cart (icon grid, tabs, search, double-click to remove, right click, drag to the inventory or the storage), and the native window is hidden.\nOFF (default): classic native cart, no viewer."
+"Description au survol": "Description on hover"
+"Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, texte, cartes et options) dans un panneau au skin RO, à la place du petit tooltip nom + quantité.\nLa description COMPLÈTE reste accessible au Ctrl + clic droit / menu contextuel.": "Hovering an item shows a SIMPLIFIED preview (name, illustration, text, cards and options) in an RO-skinned panel, instead of the small name + quantity tooltip.\nThe FULL description stays available through Ctrl + right click / context menu."
+"Champ de filtre": "Filter field"
+"Affiche la barre de recherche par nom au-dessus de la grille.\nDécoche pour gagner une ligne (le filtre est alors vidé).": "Shows the search-by-name bar above the grid.\nUncheck to gain a line (the filter is then cleared)."
+"Onglets verticaux (à gauche)": "Vertical tabs (left)"
+"ON (défaut) : onglets en colonne à gauche de la grille (images tab_*).\nOFF : rangée horizontale au-dessus de la grille (images tabh_*).": "ON (default): tabs in a column left of the grid (tab_* images).\nOFF: horizontal row above the grid (tabh_* images)."
+"Verrouiller la taille": "Lock size"
+"La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).": "The window can no longer be resized (it stays movable)."
+"Tri serveur": "Server-side sorting"
