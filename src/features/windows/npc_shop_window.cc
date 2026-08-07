@@ -19,7 +19,9 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
-#include "features/item_cell.h"  // itemcell::OpenDescById (description au clic droit)
+#include "features/item_cell.h"  // itemcell::OpenDescById, itemcell::TypeIsStackable
+#include "ragnarok/msgstring.h"  // msgstr::Cp949 (MSI_EQUIPITEM_OLNY_ONE)
+#include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (refus au chat)
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
@@ -88,6 +90,48 @@ constexpr uintptr_t kDealLockGlobal = 0x01600553;
 bool DealLockOn() {
   __try { return *reinterpret_cast<uint8_t*>(kDealLockGlobal) != 0; }
   __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// ── Combien d'un même objet peut-on acheter d'un coup ? ──────────────────────
+// Le marchand NPC a un stock illimité, mais deux plafonds s'appliquent quand
+// même :
+//
+//   - EMPILABLE     : 30000, la taille de pile du client (le natif clampe là,
+//                     UIItemPurchaseWnd_OnMsg case 38 : `if (v28 > 30000)` +
+//                     MsgString 0x6A8) ;
+//   - NON EMPILABLE : 1, et c'est le défaut corrigé ici. Rien ne bornait la
+//                     quantité : cinq armes au panier partaient bien en CZ 0xc8
+//                     avec amount=5, et le serveur les ramenait à UNE seule en
+//                     journalisant « sent a hexed packet trying to buy 5 of
+//                     nonstackable item 1247 » (npc_buylist, npc.cpp) — le
+//                     joueur payait une arme et croyait en avoir commandé cinq.
+//
+// Le natif tient la même règle autrement : il autorise UNE ligne de panier par
+// équipement et refuse le doublon (MSI_EQUIPITEM_OLNY_ONE). Ici la ligne porte sa
+// quantité, donc la borne est la quantité elle-même — même résultat, sans
+// interdire au joueur de corriger une ligne existante.
+constexpr int kBuyStackMax = 30000;
+int BuyStackMax(uint8_t type) {
+  return itemcell::TypeIsStackable(type) ? kBuyStackMax : 1;
+}
+
+// « Please avoid buying 2 of the same items at one time. » — MSI_EQUIPITEM_OLNY_ONE,
+// le message que le natif écrit dans le chat quand on tente d'ajouter un second
+// équipement identique au panier. On reprend le libellé du client plutôt qu'une
+// paraphrase (règle du projet, cf. ragnarok/msgstring.h).
+constexpr int kMsgEquipOnlyOne = 0x77;
+// ⚠ Appelée depuis le rendu (AddToCart). C'est bien une commande native, mais la
+// seule qui soit sans danger là : UIM_PUSHINTOCHATHISTORY empile une ligne, il
+// n'ouvre aucune modale — le DPS meter l'émet depuis son OnRenderUI depuis des
+// mois. La règle « pas de commande native en pleine frame ImGui » vise les
+// chemins qui peuvent atteindre UIWndMgr_ShowMessageBoxModal ; celui-ci ne le
+// peut pas. Quand la chatbox ImGui est active, la ligne ne sort même pas de chez
+// nous (Bourgeon::RouteChatLine la prend au passage).
+void SayEquipOnlyOne() {
+  const char* text = msgstr::Cp949(kMsgEquipOnlyOne);  // CP949 : ce qu'attend le chat
+  if (text == nullptr || *text == '\0') return;
+  UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
+                       reinterpret_cast<int>(text), 0, 0, 0);
 }
 
 // Icône d'item (image d'inventaire).
@@ -404,6 +448,14 @@ void NpcShopWindow::AddToCart(uint32_t id, int index, int32_t price, int max, in
   if (qty < 1) qty = 1;
   for (auto& e : cart_) {
     if (e.id == id && e.index == index) {
+      // Objet non empilable déjà au panier : le natif REFUSE le second exemplaire
+      // et le dit au chat (case 38 : `if (ShopCart_FindBuyAmount(id)) ->
+      // MsgString 0x77`). On garde le refus ET le message — sans lui, le bouton
+      // « +1 » ne ferait rien et le joueur croirait à un clic manqué.
+      if (e.max == 1 && cur_mode_ == kBuy && e.amount >= 1) {
+        SayEquipOnlyOne();
+        return;
+      }
       e.amount += qty;
       if (e.amount > e.max) e.amount = e.max;  // borné à la quantité dispo
       return;
@@ -858,6 +910,10 @@ void NpcShopWindow::OnRenderUI() {
   // vraie valeur : 9 -> « +1 +9 » ; 650 -> « +1 +10 +100 +650 » ; 1 -> « +1 » seul.
   // Plafonne a 4 boutons (largeur de colonne), le dernier restant toujours le total.
   auto qty_steps = [](int max_avail, bool is_buy, int* out) -> int {
+    // Un objet non empilable s'achete a l'unite (max_avail = 1) : proposer
+    // « +10 / +100 / +1k » sur une arme, c'est promettre une commande que le
+    // serveur ramenera a UN exemplaire sans le dire au joueur.
+    if (max_avail <= 1) { out[0] = 1; return 1; }
     if (is_buy) { for (int k = 0; k < 4; ++k) out[k] = kQty[k]; return 4; }
     if (max_avail < 1) max_avail = 1;
     int n = 0;
@@ -951,7 +1007,10 @@ void NpcShopWindow::OnRenderUI() {
         draw_price(b.price, b.discount,
                    afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
         ImGui::TableNextColumn();
-        qty_buttons(b.id, -1, b.discount, 30000, true);
+        // Plafond : la pile du client pour un consommable, UN SEUL exemplaire
+        // pour un équipement (cf. BuyStackMax) — il porte la borne du panier et
+        // taille les boutons de quantité.
+        qty_buttons(b.id, -1, b.discount, BuyStackMax(b.type), true);
         ImGui::PopID();
       }
       ImGui::EndTable();
@@ -1045,7 +1104,13 @@ void NpcShopWindow::OnRenderUI() {
       if (e.amount > e.max) e.amount = e.max;  // vente = qté possédée ; achat = stack
     }
     ImGui::SameLine(0.0f, 2.0f);
-    if (ro::RoButton("+", step, step) && e.amount < e.max) ++e.amount;
+    // Le « + » d'une ligne au plafond ne fait rien — sauf sur un équipement, où
+    // le plafond EST la règle du serveur : là on le dit, comme le natif, plutôt
+    // que de laisser croire à un clic manqué.
+    if (ro::RoButton("+", step, step)) {
+      if (e.amount < e.max)                        ++e.amount;
+      else if (e.max == 1 && cur_mode_ == kBuy)    SayEquipOnlyOne();
+    }
     // Sous-total (noir) centre verticalement sur la ligne des champs.
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();

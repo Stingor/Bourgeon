@@ -26,6 +26,26 @@
 
 namespace itemcell {
 
+// ── L'objet s'empile-t-il ? ──────────────────────────────────────────────────
+// Réplique exacte de `item_data::isStackable()` du serveur (itemdb.cpp) : les
+// cinq types exclus sont des INSTANCES uniques — deux marteaux identiques
+// restent deux objets, ils ne font jamais « x2 ».
+//   4 = ARMOR · 5 = WEAPON · 7 = PETEGG · 8 = PETARMOR · 12 = SHADOWGEAR
+//
+// `type` est l'octet que le SERVEUR met dans ses paquets (échange, liste
+// d'achat…), après passage par `itemtype()` de clif.cpp — qui replie PETEGG sur
+// ARMOR et SHADOWGEAR sur WEAPON/ARMOR. 7 et 12 n'arrivent donc jamais par ce
+// canal ; ils restent listés parce que la règle, elle, les compte.
+//
+// ⚠ Le client natif est PLUS LARGE : la fenêtre d'achat (UIItemPurchaseWnd_OnMsg
+// 0x00951BD0, case 38) refuse un second exemplaire au panier pour les types
+// {4,5,8,9,11,12,13,14,15} — donc aussi 11 (DELAYCONSUME), que le serveur
+// empile sans broncher. On suit le SERVEUR : c'est lui qui tranche, et brider un
+// consommable empilable serait un faux positif visible.
+inline bool TypeIsStackable(uint8_t type) {
+  return type != 4 && type != 5 && type != 7 && type != 8 && type != 12;
+}
+
 // ── Équipement CASSÉ ─────────────────────────────────────────────────────────
 // Le flag d'instance vit à ItemSkillInfo+0x5d (octet, entre « identifié » +0x5c
 // et le refine +0x60). Le rendu natif de référence (DrawName 0x008972c0) est une

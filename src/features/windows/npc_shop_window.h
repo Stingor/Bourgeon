@@ -155,7 +155,11 @@ class NpcShopWindow : public Plugin {
     int      index = 0;   // index inventaire (vente uniquement)
     int      amount = 1;
     int32_t  price = 0;   // unitaire (achat = discount, vente = price)
-    int      max = 30000; // borne quantité (vente = qté possédée ; achat = stack)
+    // Borne de quantité. VENTE = la quantité possédée. ACHAT = la pile du client
+    // (30000) pour un objet empilable, mais 1 pour un équipement : le serveur
+    // n'en délivre jamais qu'un par entrée du paquet et journalise le reste comme
+    // un paquet trafiqué (cf. BuyStackMax dans le .cc).
+    int      max = 30000;
   };
 
   // Envoi CZ_ACK_SELECT_DEALTYPE 0xc5 (demande la liste achat/vente).

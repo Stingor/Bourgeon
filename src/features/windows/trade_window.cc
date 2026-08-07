@@ -144,14 +144,11 @@ void InventoryDecrease(int invIndex, int amount) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// L'objet s'empile-t-il ? Réplique exacte de item_data::isStackable() du serveur
-// (itemdb.cpp) — l'itemType du paquet vient de sd->inventory_data[i]->type, c'est
-// donc bien cette énumération-là. Les cinq exclus sont des INSTANCES uniques : deux
-// marteaux identiques restent deux lignes, ils ne font pas « x2 ».
-//   4 = ARMOR · 5 = WEAPON · 7 = PETEGG · 8 = PETARMOR · 12 = SHADOWGEAR
-bool TypeIsStackable(uint8_t type) {
-  return type != 4 && type != 5 && type != 7 && type != 8 && type != 12;
-}
+// L'objet s'empile-t-il ? La règle a quitté ce fichier pour features/item_cell.h
+// le jour où la boutique NPC en a eu besoin elle aussi (elle laissait mettre cinq
+// fois la même arme au panier, que le serveur ramenait à une). Une règle serveur
+// recopiée dans deux viewers, c'est deux versions qui divergent.
+using itemcell::TypeIsStackable;
 
 // ── Reconstruction d'un ItemSkillInfo à partir d'une entrée d'échange ────────
 //
