@@ -59,6 +59,30 @@ std::string RecipesPath() {
   return GameDir() + kCandidates[0];
 }
 
+namespace {
+
+// `SaveData\lang\`, créé au besoin. Les deux niveaux sont créés séparément :
+// CreateDirectoryA n'est pas récursif, et SaveData\ peut très bien ne pas
+// exister encore — c'est exactement ce qui rend le /savechat du client muet au
+// premier lancement (cf. ChatLayoutPath).
+std::string LangDir() {
+  const std::string save_data = GameDir() + "SaveData";
+  CreateDirectoryA(save_data.c_str(), nullptr);
+  const std::string dir = save_data + "\\lang";
+  CreateDirectoryA(dir.c_str(), nullptr);  // ERROR_ALREADY_EXISTS : sans importance
+  return dir;
+}
+
+}  // namespace
+
+std::string LangPath(const std::string& code) {
+  return LangDir() + "\\" + code + ".yaml";
+}
+
+std::string LangMissingPath(const std::string& code) {
+  return LangDir() + "\\" + code + ".missing.yaml";
+}
+
 std::string InGameDir(const std::string& relative) { return GameDir() + relative; }
 
 }  // namespace paths

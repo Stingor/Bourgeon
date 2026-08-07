@@ -62,6 +62,19 @@ std::string ChatHistoryPath();
 // dispositions de client sont essayées, comme dans MoonlightUi::LoadItemNames.
 std::string RecipesPath();
 
+// Catalogue de traduction de l'interface Bourgeon, un fichier par langue :
+// `SaveData\lang\en.yaml`. Le dossier est créé au besoin.
+//
+// Dans SaveData\ et non auprès d'itemInfo : c'est du texte de NOTRE interface,
+// pas de la donnée de patch. Un joueur peut y déposer une langue que le client
+// n'embarque pas, ou corriger une tournure sans attendre un patch — c'est
+// précisément pour ça que le catalogue est un fichier et pas une table compilée.
+// `code` est un code ISO 639-1 minuscule ("en", "es").
+std::string LangPath(const std::string& code);
+// Gabarit des textes que le catalogue ci-dessus ne couvre pas encore, écrit à
+// côté de lui : `SaveData\lang\en.missing.yaml`. Cf. i18n::ExportMissing.
+std::string LangMissingPath(const std::string& code);
+
 // `relative` résolu depuis le dossier du jeu. Le séparateur est déjà fourni par
 // GameDir(), donc passer "data\\clientinfo.xml" et non "\\data\\clientinfo.xml".
 std::string InGameDir(const std::string& relative);

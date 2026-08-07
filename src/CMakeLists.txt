@@ -276,6 +276,8 @@ set(BOURGEON_FILES
 	"utils/gif_writer.h"
 	"utils/game_paths.cc"
 	"utils/game_paths.h"
+	"utils/i18n.cc"
+	"utils/i18n.h"
 	"utils/log_console.cc"
 	"utils/log_console.h"
 	"utils/tinf_inflate.h"

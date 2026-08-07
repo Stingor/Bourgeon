@@ -1,0 +1,19 @@
+# Bourgeon UI translation catalogue - English.
+#
+# Deploy to:  <game folder>\SaveData\lang\en.yaml
+#
+# Key   = the FRENCH source string, exactly as written in the C++ code.
+# Value = its English translation. An empty value keeps the French text, so a
+#         half-finished file is safe to ship.
+#
+# The key must match the source byte for byte, accents included. Adjacent string
+# literals in the code are concatenated by the compiler, so a label split across
+# several lines in C++ is ONE key here.
+#
+# Strings the game itself owns - item names, descriptions, server messages - are
+# not handled by this file and never will be: they come from SystemEN\ and from
+# the server's own message catalogue.
+
+"Langue": "Language"
+
+"Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, descriptions, messages du serveur) n'est pas concerné.\nUne langue grisée est connue mais son fichier de traduction est absent de SaveData\\lang\\.": "Language of the Bourgeon interface. The game itself (item names, descriptions, server messages) is not affected.\nA greyed-out language is known but its translation file is missing from SaveData\\lang\\."

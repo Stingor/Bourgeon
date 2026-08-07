@@ -67,6 +67,7 @@
 #include "spdlog/fmt/fmt.h"
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
+#include "utils/i18n.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 
@@ -760,7 +761,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[5];
+  static const moonlight_ui::SettingDesc kHeader[6];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -770,7 +771,7 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[5] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
     {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
      MLUI_LITERAL(bool, false)},
     {"log_level", SType::kString, MLUI_SELF(log_level_),
@@ -801,6 +802,17 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[5] = {
     {"korean_glyphs", SType::kBool,
      []() -> void* { return &g_korean_glyphs; },
      MLUI_LITERAL(bool, false)},
+    // ── Langue de l'interface Bourgeon ──────────────────────────────────────
+    // Même motif de résolveur maison que « staff_log_window » : le champ ne vit
+    // dans aucun plugin, mais dans le module i18n, qui existe toujours.
+    //
+    // 🔴 Écrire ici ne charge RIEN : settings_table pose la valeur dans la chaîne
+    // par adresse, sans passer par i18n::SetLanguage. C'est LoadSettings qui
+    // enchaîne sur i18n::ReloadCatalog() une fois la table lue — sans quoi le
+    // code de langue serait juste, et l'interface resterait en français.
+    {"language", SType::kString,
+     []() -> void* { return &i18n::MutableLanguageCode(); },
+     MLUI_LITERAL(std::string, "fr")},
 };
 
 // Seule « mainchat_preset_bar » appartient encore à MoonlightUi : c'est un
@@ -1108,6 +1120,12 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadChatBackgrounds(ui);
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
+    // Le catalogue de langue, TOUT DE SUITE après l'en-tête qui porte la clé
+    // « language » — et pas en fin de LoadSettings ni dans PostLoadApply : les
+    // lectures qui suivent peuvent construire des libellés, et il faut qu'elles
+    // trouvent déjà la bonne langue. En français ce n'est qu'un test, le
+    // catalogue restant vide.
+    i18n::ReloadCatalog();
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
     moonlight_ui::ReadSettings(ui, kBugReportSettings);
     moonlight_ui::ReadSettings(ui, kWeaponSpriteSettings);

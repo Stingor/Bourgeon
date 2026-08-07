@@ -8,11 +8,14 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/staff_gate.h"  // IsStaff (compteur de textes non traduits)
 #include "ui/align_grid.h"
 #include "ui/color_codec.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "ui/skin_panel.h"
+#include "utils/i18n.h"
+#include "utils/log_console.h"  // LogDiag (export du gabarit de traduction)
 
 // Types COMPLETS des plugins pilotés par les 13 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
@@ -74,6 +77,76 @@ void MoonlightUi::DrawInterfacePanel() {
         "ci-dessous (Inventaire, Cart, Storage, Banque, Refine, Fabrication, "
         "Barre d'action). Ils sont grisés tant que cette case est décochée : "
         "sans elle, ces fenêtres n'existent pas.");
+
+    // ── Langue de l'interface ────────────────────────────────────────────────
+    // Le seul réglage de tout le panneau dont le libellé se traduit LUI-MÊME :
+    // c'est aussi le seul qu'un joueur doit pouvoir retrouver quand l'interface
+    // est déjà dans une langue qu'il ne lit pas.
+    {
+      // COPIE et non référence : i18n::SetLanguage écrit dans la chaîne globale
+      // au milieu de la boucle ci-dessous. Une référence changerait donc de
+      // valeur en cours de route, et les entrées suivantes se compareraient au
+      // code qu'on vient tout juste de poser.
+      const std::string current = i18n::LanguageCode();
+      ImGui::SetNextItemWidth(160.0f);
+      // `TrId` et non `Tr` : RoBeginCombo fait `PushID(label)`, donc un libellé
+      // traduit donnerait un widget différent à chaque langue. C'est le premier
+      // cas du chantier, et il sera la règle pour tout ce qui porte un état.
+      if (ro::RoBeginCombo(i18n::TrId("Langue", "bourgeon_language"),
+                           i18n::LabelOf(current))) {
+        for (const i18n::Language& language : i18n::AvailableLanguages()) {
+          const bool selected = (current == language.code);
+          // Une langue sans catalogue reste VISIBLE, mais inerte. La masquer
+          // laisserait croire que Bourgeon ne la connaît pas ; la griser dit ce
+          // qui est vrai — elle est prévue, son fichier n'est pas là.
+          if (!language.available) ImGui::BeginDisabled();
+          if (ImGui::Selectable(language.label, selected) && !selected) {
+            changed |= i18n::SetLanguage(language.code);
+          }
+          if (!language.available) ImGui::EndDisabled();
+          if (selected) ImGui::SetItemDefaultFocus();
+        }
+        // 🔴 `ro::RoEndCombo`, PAS `ImGui::EndCombo` : RoBeginCombo n'appelle pas
+        // BeginCombo, il dessine le champ à la main et ouvre un `ImGui::BeginPopup`.
+        // Le refermer avec EndCombo laisserait cinq PushStyleColor et un PushID
+        // sur la pile.
+        ro::RoEndCombo();
+      }
+      SameLine(); HelpMarker(i18n::Tr(
+          "Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, "
+          "descriptions, messages du serveur) n'est pas concerné.\n"
+          "Une langue grisée est connue mais son fichier de traduction est "
+          "absent de SaveData\\lang\\."));
+
+      // Le compteur de textes non traduits, staff uniquement : c'est un outil de
+      // TRADUCTION, pas un réglage. Un joueur n'a rien à faire d'un décompte
+      // qu'il ne peut pas réduire, et le voir donnerait l'impression d'une
+      // interface cassée là où elle se contente de retomber en français.
+      if (IsStaff() && i18n::MissingCount() > 0) {
+        ImGui::TextDisabled("%zu textes sans traduction", i18n::MissingCount());
+        SameLine();
+        if (ImGui::SmallButton("Exporter")) {
+          std::string exported_path;
+          // Le chemin est journalisé dans les DEUX cas : en échec, c'est lui qui
+          // dit pourquoi (dossier absent, fichier verrouillé), ce qu'un simple
+          // « erreur » ne dirait pas.
+          //
+          // Deux appels plutôt qu'un gabarit choisi par ternaire : le format de
+          // spdlog est vérifié à la COMPILATION, et une expression ternaire n'en
+          // est pas une constante — ça ne compile pas.
+          if (i18n::ExportMissing(&exported_path)) {
+            LogDiag("[i18n] gabarit écrit : {}", exported_path);
+          } else {
+            LogDiag("[i18n] gabarit NON écrit : {}", exported_path);
+          }
+        }
+        SameLine(); HelpMarker(
+            "Écrit les textes rencontrés depuis le lancement et absents du "
+            "catalogue dans SaveData\\lang\\<langue>.missing.yaml, prêts à "
+            "traduire. N'y figure que ce qui a été AFFICHÉ : ouvre les fenêtres "
+            "concernées avant d'exporter.");
+      }
+    }
 
     changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);
     SameLine(); HelpMarker(
