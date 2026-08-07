@@ -9,6 +9,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // ColorEdit4WithAlphaBar() (helper standardisé)
 #include "ui/ro_imgui.h"                         // ro::RoCheckbox (skin RO du panneau)
 #include "utils/hooking/hook_manager.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -213,28 +214,28 @@ void EnsureInstalled() {
 }
 
 void DrawSettings() {
-  bool changed = ro::RoCheckbox("Sol uni (fond de capture)", &g_enabled);
+  bool changed = ro::RoCheckbox(i18n::Tr("Sol uni (fond de capture)"), &g_enabled);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
+    ImGui::SetTooltip(i18n::Tr("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
                       "de la scène : la géométrie et le z-buffer du sol restent intacts, donc\n"
                       "l'occlusion par le terrain reste correcte.\n"
                       "L'eau, le ciel et le brouillard ne sont PAS affectés.\n"
                       "DX9 uniquement (le chemin de rendu DX7 est une autre famille de "
-                      "fonctions).");
+                      "fonctions)."));
   if (g_imgui_dx7_active) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "(DX7 : non supporté)");
+    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), i18n::Tr("(DX7 : non supporté)"));
   }
   if (g_enabled) {
     // Poser les hooks dès l'activation : ils ne servent à rien tant que la case est
     // décochée, et EnsureInstalled est idempotent.
     EnsureInstalled();
     ImGui::SetNextItemWidth(200.0f);
-    ColorEdit4WithAlphaBar("Couleur du sol", g_col);
+    ColorEdit4WithAlphaBar(i18n::Tr("Couleur du sol"), g_col);
     // Le picker renvoie true à CHAQUE frame de drag : on ne persiste qu'au relâchement,
     // sinon on réécrit tout le YAML des dizaines de fois par seconde.
     if (ImGui::IsItemDeactivatedAfterEdit()) changed = true;
-    ImGui::TextDisabled("L'alpha est ignoré (la passe du sol est opaque).");
+    ImGui::TextDisabled(i18n::Tr("L'alpha est ignoré (la passe du sol est opaque)."));
   }
   if (changed) {
     if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();

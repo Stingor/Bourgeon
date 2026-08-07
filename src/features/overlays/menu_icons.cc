@@ -19,6 +19,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // shared AlignGrid (snap)
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (icônes déplacées à la main)
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -272,25 +273,25 @@ void MenuIcons::OnTick() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool MenuIcons::DrawSettings() {
   bool changed = false;
-  SeparatorText("Réglages généraux");
-  changed |= ro::RoCheckbox("Rendre les icônes déplaçables", &enabled_);
-  SameLine(); HelpMarker("Cache la grille native et recrée les icônes fonctionnelles.");
+  SeparatorText(i18n::Tr("Réglages généraux"));
+  changed |= ro::RoCheckbox(i18n::Tr("Rendre les icônes déplaçables"), &enabled_);
+  SameLine(); HelpMarker(i18n::Tr("Cache la grille native et recrée les icônes fonctionnelles."));
 
   ImGui::BeginDisabled(!enabled_);
 
-  changed |= ro::RoCheckbox("Mode édition (glisser pour déplacer)", &edit_mode_);
+  changed |= ro::RoCheckbox(i18n::Tr("Mode édition (glisser pour déplacer)"), &edit_mode_);
   SameLine(); HelpMarker(
-      "En mode édition : glisse chaque icône pour la repositionner.\n"
+      i18n::Tr("En mode édition : glisse chaque icône pour la repositionner.\n"
       "Aimantage aux autres icônes et à la grille d'alignement.\n"
-      "Désactive le mode pour cliquer les icônes normalement.");
+      "Désactive le mode pour cliquer les icônes normalement."));
 
   // Per-icon show/hide. icons() is populated once in-game.
-  SeparatorText("Icônes");
+  SeparatorText(i18n::Tr("Icônes"));
   // `icon_list` et non `icons` : la locale masquerait l'accesseur icons() dont
   // elle est issue (elle le faisait, via mi->icons() une fois le préfixe retiré).
   auto& icon_list = icons();
   if (icon_list.empty()) {
-    ImGui::TextDisabled("(disponible une fois en jeu)");
+    ImGui::TextDisabled(i18n::Tr("(disponible une fois en jeu)"));
   } else {
     for (auto& ic : icon_list) {
       bool shown = !ic.hidden;

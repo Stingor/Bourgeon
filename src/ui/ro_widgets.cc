@@ -1,6 +1,7 @@
 #include "ui/ro_widgets.h"
 
 #include "ui/ro_imgui.h"  // ro::RoSliderFloat / RoSliderInt (rendu « façon RO »)
+#include "utils/i18n.h"
 
 namespace mui {
 
@@ -58,7 +59,7 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const cha
   // au même pas que la molette ci-dessous.
   bool changed = ro::RoSliderFloat(label, v, lo, hi, fmt, step,
                                    ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  Tooltip(i18n::Tr("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input."));
   // 🔴 `IsItemHovered()` D'ABORD : sans lui, la molette continuait d'ajuster un
   // slider GRISÉ. Elle est traitée hors du widget (c'est ce qui permet de
   // régler sans attraper la poignée), donc `BeginDisabled` ne la voit pas
@@ -79,7 +80,7 @@ bool WheelSliderFloat(const char* label, float* v, float lo, float hi, const cha
 bool WheelSliderInt(const char* label, int* v, int lo, int hi, const char* fmt, int step) {
   bool changed = ro::RoSliderInt(label, v, lo, hi, fmt, step,
                                  ImGuiSliderFlags_AlwaysClamp);
-  Tooltip("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.");
+  Tooltip(i18n::Tr("- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input."));
   // 🔴 `IsItemHovered()` D'ABORD : sans lui, la molette continuait d'ajuster un
   // slider GRISÉ. Elle est traitée hors du widget (c'est ce qui permet de
   // régler sans attraper la poignée), donc `BeginDisabled` ne la voit pas

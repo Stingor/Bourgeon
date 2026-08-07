@@ -12,6 +12,7 @@
 #include "d3d9/d3d9_hook.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ui/ro_imgui.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -115,18 +116,18 @@ void PatchFloatRO(float* addr, float value) {
 void ScreenFx::DrawSettings() {
   bool apply = false;  // push to the renderer this frame (live preview)
   bool save  = false;  // persist to disk (on release, not every drag frame)
-  if (ro::RoCheckbox("Overlay FPS", &fps_overlay_)) save = true;
+  if (ro::RoCheckbox(i18n::Tr("Overlay FPS"), &fps_overlay_)) save = true;
   auto slider = [&](const char* label, float* v, float lo, float hi) {
     ImGui::SetNextItemWidth(160.0f);
     if (WheelSliderFloat(label, v, lo, hi)) apply = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   };
 
-  if (ro::RoCheckbox("Post-processing (effets d'écran)", &fx_.enabled)) {
+  if (ro::RoCheckbox(i18n::Tr("Post-processing (effets d'écran)"), &fx_.enabled)) {
     apply = true;
     save  = true;
   }
-  ImGui::TextDisabled("Affecte le rendu du moteur (monde + UI native), pas l'overlay.");
+  ImGui::TextDisabled(i18n::Tr("Affecte le rendu du moteur (monde + UI native), pas l'overlay."));
 
   if (fx_.enabled) {
     // ── Presets ──
@@ -170,15 +171,15 @@ void ScreenFx::DrawSettings() {
     slider("Grain",         &fx_.grain,      0.0f, 1.0f);
     slider("Aberration",    &fx_.aberration, 0.0f, 1.0f);
     slider("Netteté",       &fx_.sharpen,    0.0f, 1.0f);
-    if (ro::RoCheckbox("FXAA (anti-crénelage)", &fx_.fxaa)) { apply = true; save = true; }
+    if (ro::RoCheckbox(i18n::Tr("FXAA (anti-crénelage)"), &fx_.fxaa)) { apply = true; save = true; }
     if (fx_.fxaa) {
       slider("  Force FXAA", &fx_.fxaa_strength, 0.0f, 0.5f);  // >0.5 wrecks UI text
       SameLine();
-      HelpMarker("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
-                          "Plafonné à 0.5 — au-delà le texte devient illisible.");
+      HelpMarker(i18n::Tr("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
+                          "Plafonné à 0.5 — au-delà le texte devient illisible."));
     }
 
-    if (ro::RoButton("Réinitialiser")) {
+    if (ro::RoButton(i18n::Tr("Réinitialiser"))) {
       fx_ = D3D9PostFx{};
       fx_.enabled = true;
       apply = true;

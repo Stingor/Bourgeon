@@ -31,6 +31,7 @@
 #include "features/windows/vending_window.h"    // IsComposing (shop en cours -> transferts figés)
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -415,19 +416,19 @@ const char* WeaponLabel(uint8_t st) {
     case 14: return "Whip";       case 15: return "Book";
     case 16: return "Katar";       case 17: return "Revolver";
     case 18: return "Rifle";       case 19: return "Gatling";
-    case 20: return "Shotgun";     case 21: return "Grenade Launcher";
-    case 22: return "Huuma";       case 23: return "Two-Handed Staff";
+    case 20: return "Shotgun";     case 21: return i18n::Tr("Grenade Launcher");
+    case 22: return "Huuma";       case 23: return i18n::Tr("Two-Handed Staff");
     default: return "Other";
   }
 }
 // Type de munition (item_data.subtype pour IT_AMMO = rAthena e_ammo_type A_*).
 const char* AmmoLabel(uint8_t st) {
   switch (st) {
-    case 1: return "Arrow";     case 2: return "Throwing Dagger";
+    case 1: return "Arrow";     case 2: return i18n::Tr("Throwing Dagger");
     case 3: return "Bullet";      case 4: return "Cartridge";
     case 5: return "Grenade";    case 6: return "Shuriken";
     case 7: return "Kunai";      case 8: return "Cannonball";
-    case 9: return "Throwing Weapon";   default: return "Other";
+    case 9: return i18n::Tr("Throwing Weapon");   default: return "Other";
   }
 }
 // Slot d'équipement principal depuis le masque item_data.equip (rAthena EQP_*).
@@ -953,61 +954,61 @@ bool StorageWindow::DrawSettings() {
   // suit ne dit que ce que la bascule change pour le storage.
   // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
   // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
-  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
-      "ON : storage ImGui moderne (icônes, onglets, tri, drag-drop). La "
+      i18n::Tr("ON : storage ImGui moderne (icônes, onglets, tri, drag-drop). La "
       "fenêtre native ne s'ouvre plus du tout.\nOFF : storage natif "
-      "classique, aucun viewer.");
+      "classique, aucun viewer."));
 
   ImGui::BeginDisabled(!imgui_enabled_);
 
-  changed |= ro::RoCheckbox("Description au survol", &desc_tooltip());
+  changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &desc_tooltip());
   SameLine(); HelpMarker(
-      "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+      i18n::Tr("Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
       "texte) dans un panneau au skin RO, posé au curseur et effacé dès "
       "que la souris quitte la ligne.\n"
       "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
-      "menu contextuel.");
+      "menu contextuel."));
 
-  changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &tabs_vertical());
+  changed |= ro::RoCheckbox(i18n::Tr("Onglets verticaux (à gauche)"), &tabs_vertical());
   SameLine(); HelpMarker(
-      "Dispose les catégories en liste verticale à gauche, comme la "
+      i18n::Tr("Dispose les catégories en liste verticale à gauche, comme la "
       "fenêtre native.\nOFF (défaut) : onglets horizontaux en haut.\n"
       "Décide aussi de l'orientation des onglets de storage, qui restent "
-      "toujours PERPENDICULAIRES aux catégories.");
+      "toujours PERPENDICULAIRES aux catégories."));
 
   // Sans onglets de catégorie, il n'y a plus de tuile à dessiner : la case est
   // grisée plutôt que laissée cliquable sans effet.
   ImGui::BeginDisabled(!show_type_tabs_);
-  changed |= ro::RoCheckbox("Images d'onglet", &tab_images());
+  changed |= ro::RoCheckbox(i18n::Tr("Images d'onglet"), &tab_images());
   SameLine(); HelpMarker(
-      "ON : tuiles images du client — jeu tab_* en disposition verticale, "
+      i18n::Tr("ON : tuiles images du client — jeu tab_* en disposition verticale, "
       "tabh_* en horizontale (all/use/wea/ammo/card/fav/cash/cos/etc). Les "
       "catégories sans art propre réutilisent celui de leur famille et "
       "portent alors un sigle (Am, Cs, Et).\n"
       "OFF : onglets texte — TabBar classique en horizontal, libellé écrit "
-      "à la verticale en vertical.");
+      "à la verticale en vertical."));
   ImGui::EndDisabled();
 
-  changed |= ro::RoCheckbox("Champ de filtre", &show_filter());
+  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter());
   SameLine(); HelpMarker(
-      "Affiche la barre de recherche par nom au-dessus de la liste.\n"
-      "Décoche pour gagner une ligne (le filtre est alors vidé).");
+      i18n::Tr("Affiche la barre de recherche par nom au-dessus de la liste.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé)."));
 
-  changed |= ro::RoCheckbox("Filtres par type d'item", &show_type_tabs());
+  changed |= ro::RoCheckbox(i18n::Tr("Filtres par type d'item"), &show_type_tabs());
   SameLine(); HelpMarker(
-      "Affiche les onglets de catégorie (Tout, Favoris, Consos, Armes...) et "
+      i18n::Tr("Affiche les onglets de catégorie (Tout, Favoris, Consos, Armes...) et "
       "le combo « Sous-type » qui en dépend.\n"
       "Décoche pour une liste unique, sans filtre de type : la vue repasse à "
       "« Tout » (rien ne reste masqué derrière) et « Images d'onglet » n'a "
       "plus d'objet. « Onglets verticaux », lui, continue de décider de "
       "l'orientation des onglets de STORAGE.\n"
       "Les favoris restent marquables (Ctrl + clic gauche, menu contextuel) : "
-      "seul l'onglet qui les isole disparaît.");
+      "seul l'onglet qui les isole disparaît."));
 
-  changed |= ro::RoCheckbox("Onglets de storage", &show_storage_tabs());
+  changed |= ro::RoCheckbox(i18n::Tr("Onglets de storage"), &show_storage_tabs());
   SameLine(); HelpMarker(
-      "Affiche un onglet par entrepôt auquel vous avez accès (principal et "
+      i18n::Tr("Affiche un onglet par entrepôt auquel vous avez accès (principal et "
       "alternatifs) : un clic bascule de l'un à l'autre sans repasser par "
       "@storage / @storagealtN.\n"
       "Les onglets se placent PERPENDICULAIREMENT à ceux des catégories — "
@@ -1017,24 +1018,24 @@ bool StorageWindow::DrawSettings() {
       "droit d'ouvrir, et n'apparaît qu'à partir de deux entrepôts.\n"
       "Chaque onglet porte son NUMÉRO par défaut ; clic droit dessus pour lui "
       "donner un nom à vous et une icône d'item (ou glissez-y un item du "
-      "storage pour reprendre la sienne).");
+      "storage pour reprendre la sienne)."));
 
-  changed |= ro::RoCheckbox("Valeur estimée du storage", &show_total_value());
+  changed |= ro::RoCheckbox(i18n::Tr("Valeur estimée du storage"), &show_total_value());
   SameLine(); HelpMarker(
-      "Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
-      "— elle suit donc l'onglet, le sous-type et le filtre.");
+      i18n::Tr("Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
+      "— elle suit donc l'onglet, le sous-type et le filtre."));
 
   SeparatorText("Colonnes");
   changed |= ro::RoCheckbox("Index", &show_index_col());
   SameLine(); HelpMarker(
-      "Index storage (slot) — un item récemment ajouté a un index élevé.");
-  changed |= ro::RoCheckbox("ID d'item", &show_id_col());
-  SameLine(); HelpMarker("Colonne avec l'id numérique de l'item.");
+      i18n::Tr("Index storage (slot) — un item récemment ajouté a un index élevé."));
+  changed |= ro::RoCheckbox(i18n::Tr("ID d'item"), &show_id_col());
+  SameLine(); HelpMarker(i18n::Tr("Colonne avec l'id numérique de l'item."));
   changed |= ro::RoCheckbox("Slots", &show_slots_col());
-  SameLine(); HelpMarker("Colonne avec le nombre de slots de carte.");
-  changed |= ro::RoCheckbox("Prix de revente", &show_value_col());
+  SameLine(); HelpMarker(i18n::Tr("Colonne avec le nombre de slots de carte."));
+  changed |= ro::RoCheckbox(i18n::Tr("Prix de revente"), &show_value_col());
   SameLine(); HelpMarker(
-      "Colonne avec le prix de revente NPC × la quantité du stack.");
+      i18n::Tr("Colonne avec le prix de revente NPC × la quantité du stack."));
 
   ImGui::EndDisabled();
 
@@ -1045,7 +1046,7 @@ bool StorageWindow::DrawSettings() {
   // serveur trie au moment où il envoie la liste).
   // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
   // (aucun réglage yaml de CE plugin n'a bougé).
-  SeparatorText("Tri serveur");
+  SeparatorText(i18n::Tr("Tri serveur"));
   ImGui::BeginDisabled(imgui_enabled_);
   if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
     mu->DrawSortModeCombo(MoonlightUi::kSortStorage);
@@ -1088,7 +1089,7 @@ void StorageWindow::OnRenderUI() {
                 storage_name_[0] ? storage_name_ : "Storage");
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre
   // (panneau Moonlight > Interface de jeu > Storage).
-  ro::SetNextWindowTitleBullet("Options du storage");
+  ro::SetNextWindowTitleBullet(i18n::Tr("Options du storage"));
   // Corps = couleur « fenêtre de liste » du skin (blanc pur par défaut), distincte
   // du corps général pour que la liste d'items se lise bien. Réglable dans
   // Moonlight > Interface de jeu > Skin RO.
@@ -1118,7 +1119,7 @@ void StorageWindow::OnRenderUI() {
   // plutôt que de griser une trentaine de cases et de cibles de glisser.
   if (VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       "Shop en composition : les transferts sont figés.");
+                       i18n::Tr("Shop en composition : les transferts sont figés."));
 
   // ── Onglets de STORAGE (opt-in) ─────────────────────────────────────────────
   // Ils basculent d'un entrepôt à l'autre — principal, alternatifs — sans passer
@@ -1185,7 +1186,7 @@ void StorageWindow::OnRenderUI() {
     // partait, alors que le cart est une destination tout aussi légitime — même
     // formulation que les entrées du menu contextuel.
     const char* verb =
-        pend_action_ == kPendStoToCart ? "Vers le cart" : "Vers l'inventaire";
+        pend_action_ == kPendStoToCart ? i18n::Tr("Vers le cart") : i18n::Tr("Vers l'inventaire");
     bool cancelled = false;
     const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
     if (qty > 0) { do_move(qty); pend_id_ = 0; }
@@ -1523,11 +1524,11 @@ void StorageWindow::OnRenderUI() {
       if (ic.tex && ic.w > 0 && ic.h > 0)
         ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
       else
-        ImGui::TextDisabled("(icône introuvable pour cet id)");
+        ImGui::TextDisabled(i18n::Tr("(icône introuvable pour cet id)"));
     } else {
-      ImGui::TextDisabled("Astuce : glissez un item du storage sur l'onglet.");
+      ImGui::TextDisabled(i18n::Tr("Astuce : glissez un item du storage sur l'onglet."));
     }
-    if (ro::RoButton("Réinitialiser", 110.0f, 20.0f)) {
+    if (ro::RoButton(i18n::Tr("Réinitialiser"), 110.0f, 20.0f)) {
       tab_custom_.erase(tab.id);
       save_settings();
       ImGui::CloseCurrentPopup();
@@ -1852,12 +1853,12 @@ void StorageWindow::OnRenderUI() {
   // précédent est le combo « Sous-type » ou le champ de filtre, tous deux en
   // largeur pleine (SetNextItemWidth(-1)), et le texte se retrouvait dessous.
   // Compteurs et "(?)" sont dans le footer.
-  if (show_total_value_) ImGui::Text("Valeur estimée: %lldz", total_val);
+  if (show_total_value_) ImGui::Text(i18n::Tr("Valeur estimée: %lldz"), total_val);
 
   // Bascule en vol : la liste est vide À DESSEIN (cf. OnTick, on ne lit plus le
   // modèle) et le storage demandé peut mettre un aller-retour char-server à
   // arriver. Sans cette ligne, l'écran dirait « storage vide ».
-  if (switching_) ImGui::TextDisabled("Chargement du storage...");
+  if (switching_) ImGui::TextDisabled(i18n::Tr("Chargement du storage..."));
 
   // Catégories VERTICALES -> la rangée de storages est HORIZONTALE. Elle est
   // émise ICI et pas en tête de fenêtre : au plus PRÈS de la table, juste
@@ -1919,11 +1920,11 @@ void StorageWindow::OnRenderUI() {
       ImGui::TableSetupColumn("Slots", ImGuiTableColumnFlags_WidthFixed |
                                            ImGuiTableColumnFlags_PreferSortDescending,
                               24.0f);
-    ImGui::TableSetupColumn("Qté", ImGuiTableColumnFlags_WidthFixed |
+    ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending,
                             36.0f);
     if (show_value_col_)
-      ImGui::TableSetupColumn("Prix revente", ImGuiTableColumnFlags_WidthFixed |
+      ImGui::TableSetupColumn(i18n::Tr("Prix revente"), ImGuiTableColumnFlags_WidthFixed |
                                           ImGuiTableColumnFlags_PreferSortDescending,
                               72.0f);
     ImGui::TableHeadersRow();
@@ -2072,8 +2073,7 @@ void StorageWindow::OnRenderUI() {
           POINT pt;
           if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].index, pt.x, pt.y);
         }
-        if (ImGui::MenuItem(IsFavorite(items_[idx].id) ? "Retirer des favoris"
-                                                       : "Ajouter aux favoris"))
+        if (ImGui::MenuItem(IsFavorite(items_[idx].id) ? i18n::Tr("Retirer des favoris") : i18n::Tr("Ajouter aux favoris")))
           ToggleFavorite(items_[idx].id);
         ImGui::Separator();
         const int amt = items_[idx].amount;
@@ -2081,15 +2081,15 @@ void StorageWindow::OnRenderUI() {
         // Destination NOMMÉE : « Retirer » seul ne disait pas où l'objet partait,
         // alors que le cart est une destination tout aussi légitime (et la seule
         // que le menu ne proposait pas du tout).
-        if (ImGui::MenuItem("Vers l'inventaire (1)")) WithdrawItem(index, 1);
+        if (ImGui::MenuItem(i18n::Tr("Vers l'inventaire (1)"))) WithdrawItem(index, 1);
         if (amt > 1) {
           char lbl[48];
-          std::snprintf(lbl, sizeof(lbl), "Vers l'inventaire (tout : %d)", amt);
+          std::snprintf(lbl, sizeof(lbl), i18n::Tr("Vers l'inventaire (tout : %d)"), amt);
           if (ImGui::MenuItem(lbl)) WithdrawItem(index, amt);
           // Quantité libre : on ARME le prompt partagé (ui/qty_prompt) au lieu de
           // saisir dans le menu — un champ + un bouton en plein menu contextuel,
           // c'était le seul endroit du storage resté en widgets ImGui bruts.
-          if (ImGui::MenuItem("Vers l'inventaire...")) {
+          if (ImGui::MenuItem(i18n::Tr("Vers l'inventaire..."))) {
             pend_id_ = index;
             pend_index_ = index;
             pend_max_ = amt;
@@ -2102,12 +2102,12 @@ void StorageWindow::OnRenderUI() {
         // hors pc_cant_act2) — contrairement à inventaire <-> cart.
         if (CartOpen()) {
           ImGui::Separator();
-          if (ImGui::MenuItem("Vers le cart (1)")) SendStorageToCart(index, 1);
+          if (ImGui::MenuItem(i18n::Tr("Vers le cart (1)"))) SendStorageToCart(index, 1);
           if (amt > 1) {
             char lbl[48];
-            std::snprintf(lbl, sizeof(lbl), "Vers le cart (tout : %d)", amt);
+            std::snprintf(lbl, sizeof(lbl), i18n::Tr("Vers le cart (tout : %d)"), amt);
             if (ImGui::MenuItem(lbl)) SendStorageToCart(index, amt);
-            if (ImGui::MenuItem("Vers le cart...")) {
+            if (ImGui::MenuItem(i18n::Tr("Vers le cart..."))) {
               pend_id_ = index;
               pend_index_ = index;
               pend_max_ = amt;

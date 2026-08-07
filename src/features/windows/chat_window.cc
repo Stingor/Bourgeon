@@ -35,6 +35,7 @@
 #include "utils/game_paths.h"    // paths::ChatLayoutPath
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -761,7 +762,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target) {
     // code (0xC0000005 = déréférencement, 0xC0000409 = pile corrompue = mauvaise
     // convention d'appel), la panne se lit sans debugger.
     static char buffer[80];
-    std::snprintf(buffer, sizeof(buffer), "L'envoi a échoué (chemin natif, 0x%08X).",
+    std::snprintf(buffer, sizeof(buffer), i18n::Tr("L'envoi a échoué (chemin natif, 0x%08X)."),
                   g_last_send_fault);
     error = buffer;
   }
@@ -2608,9 +2609,9 @@ void ChatWindow::DrawDockedWindow() {
       if (ImGui::IsItemHovered()) {
         ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
         ImGui::SetTooltip(
-            "Change le log en texte sélectionnable : glisser pour sélectionner,\n"
+            i18n::Tr("Change le log en texte sélectionnable : glisser pour sélectionner,\n"
             "Ctrl+A tout prendre, Ctrl+C copier. Les couleurs et les icônes\n"
-            "disparaissent le temps de la sélection — c'est du texte nu.");
+            "disparaissent le temps de la sélection — c'est du texte nu."));
         ImGui::PopStyleColor();
       }
     }
@@ -2773,19 +2774,19 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
     if (hovered && drag_tab_ < 0) {
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
       if (channel.whisper_with.empty())
-        ImGui::SetTooltip("Clic droit : options du log de « %s »\n"
+        ImGui::SetTooltip(i18n::Tr("Clic droit : options du log de « %s »\n"
                           "Glisser : vers une autre fenêtre, ou dehors\n"
-                          "Clic molette : fermer",
+                          "Clic molette : fermer"),
                           label);
       else if (channel.whisper_guild.empty())
-        ImGui::SetTooltip("Conversation privée avec %s.\n"
+        ImGui::SetTooltip(i18n::Tr("Conversation privée avec %s.\n"
                           "Glisser : vers une autre fenêtre, ou dehors\n"
-                          "Clic molette : fermer",
+                          "Clic molette : fermer"),
                           label);
       else
-        ImGui::SetTooltip("Conversation privée avec %s [%s].\n"
+        ImGui::SetTooltip(i18n::Tr("Conversation privée avec %s [%s].\n"
                           "Glisser : vers une autre fenêtre, ou dehors\n"
-                          "Clic molette : fermer",
+                          "Clic molette : fermer"),
                           label, channel.whisper_guild.c_str());
       ImGui::PopStyleColor();
     }
@@ -2884,7 +2885,7 @@ void ChatWindow::DrawWhisperInput(int index) {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip("Emotes du jeu.\nUn clic l'ENVOIE à %s, seule.",
+    ImGui::SetTooltip(i18n::Tr("Emotes du jeu.\nUn clic l'ENVOIE à %s, seule."),
                       channel.whisper_with.c_str());
     ImGui::PopStyleColor();
   }
@@ -2896,7 +2897,7 @@ void ChatWindow::DrawWhisperInput(int index) {
   char field_id[64];
   std::snprintf(field_id, sizeof(field_id), "##whisper_input_%u", channel.id);
   char hint[96];
-  std::snprintf(hint, sizeof(hint), "Répondre à %s", channel.whisper_with.c_str());
+  std::snprintf(hint, sizeof(hint), i18n::Tr("Répondre à %s"), channel.whisper_with.c_str());
   // Le focus se rend APRÈS un envoi : sans ça, la conversation se poursuit au
   // clavier une seule fois, puis la frappe repart dans le jeu.
   if (channel.whisper_focus) {
@@ -3040,8 +3041,8 @@ float ChatWindow::DrawTabStrip() {
       // est clair : le texte doit repasser en sombre pour rester lisible.
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
       ImGui::SetTooltip(
-          "Clic droit : options du log de « %s »\n"
-          "Glisser : réordonner, ou vers une autre fenêtre, ou dehors",
+          i18n::Tr("Clic droit : options du log de « %s »\n"
+          "Glisser : réordonner, ou vers une autre fenêtre, ou dehors"),
           channel.name.c_str());
       ImGui::PopStyleColor();
     }
@@ -3783,7 +3784,7 @@ void ChatWindow::DrawEmotePicker(int whisper_index) {
   // conversation, un outil de maintenance n'a rien à faire sous le nez du joueur.
   if (whisper_index < 0 && IsStaff() && emote_export_) {
     ImGui::Separator();
-    if (ImGui::SmallButton("Exporter en GIF")) {
+    if (ImGui::SmallButton(i18n::Tr("Exporter en GIF"))) {
       const std::string dir = paths::GameDir() + "emotes_export";
       const int written = ro::emote::ExportGifs(dir.c_str(), 2);
       if (written < 0)
@@ -3792,8 +3793,8 @@ void ChatWindow::DrawEmotePicker(int whisper_index) {
         LogInfo("[chat] export des emotes : {} fichiers dans {}", written, dir);
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Ecrit un GIF par emote dans « emotes_export »,\n"
-                        "a cote de l'executable. Pour Discord.");
+      ImGui::SetTooltip(i18n::Tr("Ecrit un GIF par emote dans « emotes_export »,\n"
+                        "a cote de l'executable. Pour Discord."));
   }
 
   ImGui::PopStyleColor();
@@ -3863,7 +3864,7 @@ void ChatWindow::DrawInputRow() {
     ImGui::OpenPopup("##chat_whisper_hist");
   if (ImGui::IsItemHovered() && !ImGui::IsPopupOpen("##chat_whisper_hist")) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip("Destinataire du chuchotement.\nClic droit : les récents.");
+    ImGui::SetTooltip(i18n::Tr("Destinataire du chuchotement.\nClic droit : les récents."));
     ImGui::PopStyleColor();
   }
   DrawWhisperHistoryPopup();
@@ -3921,7 +3922,7 @@ void ChatWindow::DrawInputRow() {
         if (channel.can_chat)
           ImGui::SetTooltip("%s", channel.alias.c_str());
         else
-          ImGui::SetTooltip("%s\nLecture seule.", channel.alias.c_str());
+          ImGui::SetTooltip(i18n::Tr("%s\nLecture seule."), channel.alias.c_str());
         ImGui::PopStyleColor();
       }
     }
@@ -3951,8 +3952,8 @@ void ChatWindow::DrawInputRow() {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip("Emotes du jeu.\nUn clic ENVOIE l'emote, seule.\n"
-                      "Elle part en clair (« :smile: »), donc tout le monde la lit.");
+    ImGui::SetTooltip(i18n::Tr("Emotes du jeu.\nUn clic ENVOIE l'emote, seule.\n"
+                      "Elle part en clair (« :smile: »), donc tout le monde la lit."));
     ImGui::PopStyleColor();
   }
   DrawEmotePicker();
@@ -4572,14 +4573,14 @@ void ChatWindow::DrawLogOptionsPopup() {
     ImGui::CloseCurrentPopup();
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Renommer le canal — Entrée pour valider.");
+    ImGui::SetTooltip(i18n::Tr("Renommer le canal — Entrée pour valider."));
   ImGui::Separator();
   // Détacher / rattacher. 🔴 `detach_owned` fait gagner NOTRE état sur celui du
   // registre au prochain rafraîchissement : tant que le déplacement de l'entrée
   // entre les deux registres natifs n'est pas écrit, la fusion remettrait le canal
   // là où le client le croit — deux secondes après le geste du joueur.
   if (channel->detached) {
-    if (ImGui::Selectable("Rattacher à la fenêtre principale")) {
+    if (ImGui::Selectable(i18n::Tr("Rattacher à la fenêtre principale"))) {
       SetChannelGroup(*channel, 0);
       channel->detach_owned = true;
       structure_owned_      = true;
@@ -4594,7 +4595,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       if (!other.detached) ++docked;
     const bool can_detach = (docked > 1);
     if (!can_detach) ImGui::BeginDisabled();
-    if (ImGui::Selectable("Détacher dans sa propre fenêtre")) {
+    if (ImGui::Selectable(i18n::Tr("Détacher dans sa propre fenêtre"))) {
       SetChannelGroup(*channel, NewGroupId());
       channel->detach_owned = true;
       channel->locked       = false;  // une flottante naît libre (cf. l'arrachage)
@@ -4606,7 +4607,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       // `AllowWhenDisabled` : sans ce drapeau, un item grisé n'est jamais survolé,
       // et l'infobulle qui EXPLIQUE le grisé ne s'afficherait justement jamais.
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Le dernier onglet ne peut pas être détaché.");
+        ImGui::SetTooltip(i18n::Tr("Le dernier onglet ne peut pas être détaché."));
     }
   }
 
@@ -4636,10 +4637,10 @@ void ChatWindow::DrawLogOptionsPopup() {
   }
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        "Fige la position et la taille de cette fenêtre-là. Les onglets, les "
+        i18n::Tr("Fige la position et la taille de cette fenêtre-là. Les onglets, les "
         "menus et l'arrachage continuent de fonctionner —\nc'est la géométrie "
         "qui est verrouillée, pas la fenêtre.\n\n"
-        "Chaque fenêtre a le sien : une flottante qu'on détache naît libre.");
+        "Chaque fenêtre a le sien : une flottante qu'on détache naît libre."));
   ImGui::Separator();
 
   // Créer / fermer. 🔴 Le plafond de 10 canaux n'est pas décoratif : le CHARGEUR
@@ -4647,13 +4648,13 @@ void ChatWindow::DrawLogOptionsPopup() {
   // planterait rien — il disparaîtrait à la reconnexion suivante, sans un mot.
   const bool can_create = static_cast<int>(channels_.size()) < kMaxChannels;
   if (!can_create) ImGui::BeginDisabled();
-  if (ImGui::Selectable("Nouvel onglet")) CreateChannel();
+  if (ImGui::Selectable(i18n::Tr("Nouvel onglet"))) CreateChannel();
   if (!can_create) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
       ImGui::SetTooltip(
-          "Maximum atteint : %d canaux, onglets et fenêtres détachées confondus.\n"
-          "C'est la limite du client, pas la nôtre.",
+          i18n::Tr("Maximum atteint : %d canaux, onglets et fenêtres détachées confondus.\n"
+          "C'est la limite du client, pas la nôtre."),
           kMaxChannels);
   }
 
@@ -4666,11 +4667,11 @@ void ChatWindow::DrawLogOptionsPopup() {
   const bool can_close =
       channels_.size() > 1 && (channel->detached || docked > 1);
   if (!can_close) ImGui::BeginDisabled();
-  if (ImGui::Selectable("Fermer l'onglet")) close_request = target;
+  if (ImGui::Selectable(i18n::Tr("Fermer l'onglet"))) close_request = target;
   if (!can_close) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("Il doit rester au moins un onglet dans la fenêtre principale.");
+      ImGui::SetTooltip(i18n::Tr("Il doit rester au moins un onglet dans la fenêtre principale."));
   }
   ImGui::Separator();
 
@@ -4679,7 +4680,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   // d'ouvrir si cet onglet a été personnalisé.
   char style_label[80];
   std::snprintf(style_label, sizeof(style_label), "Apparence  (%s)###chatstyle_menu",
-                channel->style_own ? "propre à cet onglet" : "générale");
+                channel->style_own ? i18n::Tr("propre à cet onglet") : i18n::Tr("générale"));
   if (ImGui::BeginMenu(style_label)) {
     // Menu contextuel = place comptée. Le style compact resserre les hauteurs, et
     // les curseurs sont bornés en largeur : leur largeur par défaut est celle du
@@ -4731,7 +4732,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   if (ImGui::BeginMenu(menu_label)) {
     // Vingt-cinq cases : c'est ici que le style compact rend le plus.
     PushStyleCompact();
-    if (ro::RoSmallButton("Tout cocher")) {
+    if (ro::RoSmallButton(i18n::Tr("Tout cocher"))) {
       for (int i = 0; i < kTypeCount; ++i) {
         channel->filter[i] = 1;
         layout_dirty_      = true;
@@ -4739,7 +4740,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       }
     }
     ImGui::SameLine();
-    if (ro::RoSmallButton("Tout décocher")) {
+    if (ro::RoSmallButton(i18n::Tr("Tout décocher"))) {
       for (int i = 0; i < kTypeCount; ++i) {
         channel->filter[i] = 0;
         layout_dirty_      = true;
@@ -4837,7 +4838,7 @@ void ChatWindow::DrawWhisperHistoryPopup() {
   if (!ImGui::BeginPopup("##chat_whisper_hist")) return;
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   if (whisper_history_.empty()) {
-    ImGui::TextUnformatted("Aucun destinataire récent");
+    ImGui::TextUnformatted(i18n::Tr("Aucun destinataire récent"));
   } else {
     for (const std::string& name : whisper_history_) {
       if (ImGui::Selectable(name.c_str())) {
@@ -4846,7 +4847,7 @@ void ChatWindow::DrawWhisperHistoryPopup() {
       }
     }
     ImGui::Separator();
-    if (ImGui::Selectable("Vider la liste")) whisper_history_.clear();
+    if (ImGui::Selectable(i18n::Tr("Vider la liste"))) whisper_history_.clear();
   }
   ImGui::PopStyleColor();
   ImGui::EndPopup();
@@ -5341,9 +5342,9 @@ bool ChatWindow::DrawSettings() {
   changed |= ro::RoCheckbox("Chatbox ImGui###chatwnd_on", &imgui_enabled_);
   ImGui::SameLine();
   HelpMarker(
-      "Remplacement de la chatbox : mêmes canaux, mêmes filtres et même chemin "
+      i18n::Tr("Remplacement de la chatbox : mêmes canaux, mêmes filtres et même chemin "
       "d'envoi que le client. La fenêtre native reste ouverte à côté tant que la "
-      "bascule complète n'est pas faite.");
+      "bascule complète n'est pas faite."));
   changed |= ro::RoCheckbox("Ligne de saisie###chatwnd_input", &input_bar_);
   // ⚠ Le verrouillage de la géométrie N'EST PLUS ICI : il y en a un par fenêtre,
   // et ce panneau ne sait pas de laquelle il parlerait. Il vit dans le menu
@@ -5352,21 +5353,21 @@ bool ChatWindow::DrawSettings() {
                             &url_confirm_);
   ImGui::SameLine();
   HelpMarker(
-      "Une adresse postée dans le chat vient d'un autre joueur, et le texte "
+      i18n::Tr("Une adresse postée dans le chat vient d'un autre joueur, et le texte "
       "affiché n'a aucun rapport obligé avec la destination réelle. La "
       "confirmation montre l'adresse COMPLÈTE avant d'ouvrir le navigateur.\n\n"
-      "En la décochant, un clic sur un lien ouvre directement le navigateur.");
+      "En la décochant, un clic sur un lien ouvre directement le navigateur."));
   changed |= ro::RoCheckbox("Aperçu des images au survol###chatwnd_urlprev",
                             &url_preview_);
   ImGui::SameLine();
   HelpMarker(
-      "Survoler un lien d'image en montre le contenu, sans ouvrir le "
+      i18n::Tr("Survoler un lien d'image en montre le contenu, sans ouvrir le "
       "navigateur.\n\n"
       "Les images ne sont chargées que depuis des hébergeurs connus (Discord, "
       "imgur, le site Moonlight). C'est ce qui rend l'aperçu sûr : sur ces "
       "serveurs-là, celui qui a posté le lien ne peut pas savoir qui l'a "
       "regardé. Un lien vers n'importe quel autre site reste un lien "
-      "ordinaire, à ouvrir soi-même.");
+      "ordinaire, à ouvrir soi-même."));
 
   // 🔴 Une liste qu'on ne peut pas INSPECTER ni DÉFAIRE n'aurait pas dû exister.
   // Le joueur accorde depuis le menu contextuel d'un lien ; c'est ici qu'il voit
@@ -5378,7 +5379,7 @@ bool ChatWindow::DrawSettings() {
   {
     const std::vector<std::string> hosts = imgprev::UserHosts();
     if (!hosts.empty()) {
-      ImGui::TextDisabled("  Vos sites autorisés :");
+      ImGui::TextDisabled(i18n::Tr("  Vos sites autorisés :"));
       for (const std::string& h : hosts) {
         char rm[96];
         std::snprintf(rm, sizeof(rm), "Retirer###chatwnd_rmhost_%s", h.c_str());
@@ -5412,10 +5413,10 @@ bool ChatWindow::DrawSettings() {
   }
   ImGui::SameLine();
   HelpMarker(
-      "Police du fil de discussion. « Système » garde celle du reste de "
+      i18n::Tr("Police du fil de discussion. « Système » garde celle du reste de "
       "l'interface.\n\n"
       "Les autres sont latines : un caractère coréen y apparaîtrait en carré. "
-      "Sans effet en jeu, où tout est en français ou en anglais.");
+      "Sans effet en jeu, où tout est en français ou en anglais."));
 
   // ── Vignettes : la case dit S'IL Y EN A, le curseur dit LAQUELLE ───────────
   // Les deux étaient confondus dans un seul curseur où zéro valait « aucune ».
@@ -5424,9 +5425,9 @@ bool ChatWindow::DrawSettings() {
   changed |= ro::RoCheckbox("Images et emotes###chatwnd_thumbs", &thumbs_);
   ImGui::SameLine();
   HelpMarker(
-      "Affiche les images et les emotes du fil sous forme de vignettes.\n\n"
+      i18n::Tr("Affiche les images et les emotes du fil sous forme de vignettes.\n\n"
       "Décoché, un lien reste une adresse cliquable et une emote son "
-      "« :nom: » — et rien n'est téléchargé.");
+      "« :nom: » — et rien n'est téléchargé."));
   // Curseur inactif tant que la case est décochée : il reste VISIBLE, donc on
   // voit la taille qui s'appliquera, mais il n'invite pas à régler ce qui ne
   // s'affiche pas.
@@ -5436,9 +5437,9 @@ bool ChatWindow::DrawSettings() {
   ImGui::EndDisabled();
   ImGui::SameLine();
   HelpMarker(
-      "Hauteur des vignettes, de 24 à 128 pixels.\n\n"
+      i18n::Tr("Hauteur des vignettes, de 24 à 128 pixels.\n\n"
       "Au-delà d'une hauteur de ligne, la ligne s'agrandit pour accueillir "
-      "l'image : le fil reste lisible, il s'aère.");
+      "l'image : le fil reste lisible, il s'aère."));
   // ── Outil ponctuel, sur demande explicite ─────────────────────────────────
   // L'export ÉCRIT des dizaines de fichiers sur le disque : c'est une action, pas
   // un affichage, donc elle s'active plutôt qu'elle ne se cache. Le bouton reste
@@ -5452,12 +5453,12 @@ bool ChatWindow::DrawSettings() {
                    &emote_export_);
     ImGui::SameLine();
     HelpMarker(
-        "Fait apparaître un bouton au bas de la grille d'emotes.\n\n"
+        i18n::Tr("Fait apparaître un bouton au bas de la grille d'emotes.\n\n"
         "Il écrit un GIF par emote dans « emotes_export », à côté de "
         "l'exécutable, sous le nom que le relais Discord attend. À déposer "
         "ensuite dans images/smilies/ du site.\n\n"
         "Réservé au staff, et éteint à chaque session : c'est une manipulation "
-        "ponctuelle, pas un réglage.");
+        "ponctuelle, pas un réglage."));
   }
   // ── Conversations privées ─────────────────────────────────────────────────
   // 🔴 Ces deux cases ne sont PAS à nous : elles écrivent directement les
@@ -5477,10 +5478,10 @@ bool ChatWindow::DrawSettings() {
   ImGui::EndDisabled();
   ImGui::SameLine();
   HelpMarker(
-      "Ouvre une fenêtre de conversation séparée quand un joueur chuchote.\n\n"
+      i18n::Tr("Ouvre une fenêtre de conversation séparée quand un joueur chuchote.\n\n"
       "Ce sont les réglages du CLIENT (Alt+I, « Friend Setup ») : les changer "
       "ici les change là-bas, et inversement.\n\n"
-      "Décochés, les chuchotements restent de simples lignes dans le chat.");
+      "Décochés, les chuchotements restent de simples lignes dans le chat."));
 
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
   changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
@@ -5488,17 +5489,17 @@ bool ChatWindow::DrawSettings() {
                             &diagnostic_);
   ImGui::SameLine();
   HelpMarker(
-      "Ignore les filtres de canal et préfixe chaque ligne du type que le client "
+      i18n::Tr("Ignore les filtres de canal et préfixe chaque ligne du type que le client "
       "nous a transmis (t00 à t24). Une ligne visible ici mais absente d'un onglet "
       "a été écartée par un filtre ; une ligne absente même ici n'est jamais "
-      "arrivée jusqu'à nous.");
+      "arrivée jusqu'à nous."));
   if (diagnostic_) {
     size_t held = 0;
     {
       std::lock_guard<std::mutex> lock(lines_mutex_);
       held = lines_.size();
     }
-    ImGui::Text("Lignes vues par le détour : %u · retenues : %u · en mémoire : %d",
+    ImGui::Text(i18n::Tr("Lignes vues par le détour : %u · retenues : %u · en mémoire : %d"),
                 ingest_seen_, ingest_kept_, static_cast<int>(held));
   }
   // WheelSliderInt, pas ro::RoSliderInt : même habillage RO (il l'enveloppe),
@@ -5508,34 +5509,34 @@ bool ChatWindow::DrawSettings() {
                             &history_cap_, 100, 5000, "%d");
   ImGui::SameLine();
   HelpMarker(
-      "Compté PAR TYPE de message — parole, combat, guilde, groupe, "
+      i18n::Tr("Compté PAR TYPE de message — parole, combat, guilde, groupe, "
       "chuchotement… — et non pour l'ensemble du chat.\n\n"
       "C'est ce qui empêche un donjon d'effacer vos conversations : une rafale de "
       "lignes de dégâts n'évince que des lignes de dégâts, et ce qui a été dit il "
       "y a dix minutes reste là.\n\n"
       "Le tampon est commun à tous les onglets — une même ligne s'affiche dans "
-      "plusieurs à la fois — mais chaque type y garde sa place.");
+      "plusieurs à la fois — mais chaque type y garde sa place."));
 
   changed |= ro::RoCheckbox("Garder l'historique entre les sessions###chatwnd_keep",
                             &keep_history_);
   ImGui::SameLine();
   HelpMarker(
-      "Réaffiche les dernières lignes de la session précédente à la reconnexion, "
+      i18n::Tr("Réaffiche les dernières lignes de la session précédente à la reconnexion, "
       "précédées d'un séparateur.\n\n"
       "ATTENTION : elles sont écrites en clair dans SaveData\\bourgeon_chat_history"
       ".yaml, CHUCHOTEMENTS COMPRIS. Sur une machine partagée, n'importe qui peut "
-      "les lire.");
+      "les lire."));
   if (keep_history_) {
     changed |= WheelSliderInt("Lignes gardées d'une session à l'autre###chatwnd_keep_n",
                               &keep_lines_, 20, 1000, "%d");
   }
 
-  SeparatorText("Apparence de la chatbox ImGui");
-  ImGui::TextDisabled("Réglages généraux — un onglet peut avoir les siens");
+  SeparatorText(i18n::Tr("Apparence de la chatbox ImGui"));
+  ImGui::TextDisabled(i18n::Tr("Réglages généraux — un onglet peut avoir les siens"));
   ImGui::SameLine();
   HelpMarker(
-      "Clic droit sur un onglet → « Apparence ». Un onglet qui n'a pas ses "
-      "propres réglages SUIT ceux-ci : le changer ici le déplace aussi.");
+      i18n::Tr("Clic droit sur un onglet → « Apparence ». Un onglet qui n'a pas ses "
+      "propres réglages SUIT ceux-ci : le changer ici le déplace aussi."));
   changed |= RoColorSwatch("Fond###chatwnd_body", body_rgba_);
   changed |= RoColorSwatch("Bordure###chatwnd_border", border_rgba_);
   changed |= RoColorSwatch("Onglets###chatwnd_tab", tab_rgba_);
@@ -5545,9 +5546,9 @@ bool ChatWindow::DrawSettings() {
                             70, 160, "%d %%");
   ImGui::SameLine();
   HelpMarker(
-      "Onglets, boutons et ligne de saisie. Séparée de la taille du chat : "
+      i18n::Tr("Onglets, boutons et ligne de saisie. Séparée de la taille du chat : "
       "grossir le texte qu'on lit ne doit pas faire enfler la bande d'onglets, "
-      "qui mangerait la fenêtre.");
+      "qui mangerait la fenêtre."));
   changed |= WheelSliderInt("Marges###chatwnd_pad", &padding_px_, 0, 12, "%d px");
   changed |= WheelSliderInt("Interligne###chatwnd_gap", &line_gap_px_, 0, 16, "%d px");
   if (ro::RoButton("Couleurs du client###chatwnd_reset")) {

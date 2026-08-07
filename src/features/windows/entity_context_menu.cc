@@ -15,6 +15,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;
 
@@ -736,7 +737,7 @@ void EntityContextMenu::BuildItems() {
       // chuchotements. Le client émet CZ_SETTING_WHISPER_PC (0x00CF) et le
       // serveur ne consulte `sd->ignore[]` que sur le chemin du chuchotement
       // (moonlight clif.cpp:14795, intif.cpp:1301).
-      add(target_chat_blocked_ ? "Autoriser les chuchotements" : "Bloquer les chuchotements",
+      add(target_chat_blocked_ ? i18n::Tr("Autoriser les chuchotements") : i18n::Tr("Bloquer les chuchotements"),
           target_chat_blocked_ ? kCodeUnblockChat : kCodeBlockChat,
           Local::kNone, true, false,
           "Liste d'ignorés du compte : ses chuchotements ne vous parviennent "
@@ -806,8 +807,7 @@ void EntityContextMenu::BuildItems() {
   // celles que le client n'ouvrait pas. Un identifiant nu ne dit rien à un
   // joueur : ces deux lignes vivent ici, et nulle part ailleurs.
   const char* copy_id_label = (kind_ == Kind::kSelf)   ? "Copier mon AID"
-                              : (kind_ == Kind::kPlayer) ? "Copier l'AID"
-                                                         : "Copier le GID";
+                              : (kind_ == Kind::kPlayer) ? i18n::Tr("Copier l'AID") : i18n::Tr("Copier le GID");
   add_staff(copy_id_label, 0, Local::kCopyId);
   add_staff("Copier l'identité de pick", 0, Local::kCopyPickInfo);
 
@@ -945,7 +945,7 @@ void EntityContextMenu::FlushPending() {
     case Local::kCopyPickInfo: {
       char buffer[192];
       snprintf(buffer, sizeof(buffer),
-               "%s | AID %u (0x%08X) | job %u | categorie de pick %d",
+               i18n::Tr("%s | AID %u (0x%08X) | job %u | categorie de pick %d"),
                target_name_.empty() ? "(nom inconnu)" : target_name_.c_str(),
                aid, aid, arg, target_cat_);
       ImGui::SetClipboardText(buffer);
@@ -988,19 +988,19 @@ bool EntityContextMenu::DrawSettings() {
   changed |= ro::RoCheckbox("Sur toutes les entités###ctxmenu_all", &all_entities_);
   ImGui::SameLine();
   HelpMarker(
-      "Le client n'ouvrait de menu que sur un joueur, son pet, son homoncule ou "
+      i18n::Tr("Le client n'ouvrait de menu que sur un joueur, son pet, son homoncule ou "
       "son mercenaire. Coché, le menu s'ouvre aussi sur les monstres et les "
-      "NPC.");
+      "NPC."));
 
   if (IsStaff()) {
     changed |= ro::RoCheckbox("Outils du staff###ctxmenu_staff", &staff_extras_);
     ImGui::SameLine();
     HelpMarker(
-        "Ajoute au menu les actions et les identifiants réservés au staff, et "
+        i18n::Tr("Ajoute au menu les actions et les identifiants réservés au staff, et "
         "ouvre le menu sur les entités de diagnostic (unités de compétence, "
         "objets au sol). Certaines entrées exigent en plus que l'AID du compte "
         "figure dans le clientinfo.xml du client : elles n'apparaissent que "
-        "dans ce cas.");
+        "dans ce cas."));
   }
   return changed;
 }

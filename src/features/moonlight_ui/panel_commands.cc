@@ -6,6 +6,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -15,35 +16,35 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // MÉTHODE MEMBRE : cf. la note dans moonlight_ui.h, ce panneau manipule l'état
 // privé (miroirs de réglages, presets alootid).
 void MoonlightUi::DrawCommandsPanel() {
-  if (CollapsingHeader("Commands Settings"))
+  if (CollapsingHeader(i18n::Tr("Commands Settings")))
   {
     PushStyleCompact();
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("CommandsSettingsTabs", tab_bar_flags))
     {
-      if (ImGui::BeginTabItem("Général"))
+      if (ImGui::BeginTabItem(i18n::Tr("Général")))
       {
         if (ImGui::BeginTable("split", 2)) // Toggles settings
         {
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show EXP gain", &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche le gain d'EXP dans le chat log. (@showexp)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Zeny gain", &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche le gain de Zeny dans le chat log. (@showzeny)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show mob info", &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche la RACE et l'ÉLÉMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Separate Kills", &separate_kills_enabled_)) SendSetting(kSettingSeparateKills, separate_kills_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Block EXP Gain", &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
-          SameLine(); HelpMarker("Bloque le gain d'EXP. (@blockexp)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Skill Delay", &show_attack_delay_enabled_)) SendSetting(kSettingShowAttackDelay, show_attack_delay_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Show Speed", &show_move_speed_enabled_)) SendSetting(kSettingShowMoveSpeed, show_move_speed_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Stuff", &sell_stuff_enabled_)) SendSetting(kSettingSellStuff, sell_stuff_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Sell Item", &sell_item_enabled_)) SendSetting(kSettingSellItem, sell_item_enabled_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Show EXP gain"), &show_exp_)) SendSetting(kSettingShowExp, show_exp_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche le gain d'EXP dans le chat log. (@showexp)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Show Zeny gain"), &show_zeny_)) SendSetting(kSettingShowZeny, show_zeny_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche le gain de Zeny dans le chat log. (@showzeny)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Show mob info"), &show_mob_info_)) SendSetting(kSettingShowMobInfo, show_mob_info_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche la RACE et l'ÉLÉMENT des monstres,\nsous leur nom. (Thx Doo - @showmobinfo)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Separate Kills"), &separate_kills_enabled_)) SendSetting(kSettingSeparateKills, separate_kills_enabled_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Block EXP Gain"), &block_exp_)) SendSetting(kSettingBlockExp, block_exp_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Bloque le gain d'EXP. (@blockexp)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Show Skill Delay"), &show_attack_delay_enabled_)) SendSetting(kSettingShowAttackDelay, show_attack_delay_enabled_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Show Speed"), &show_move_speed_enabled_)) SendSetting(kSettingShowMoveSpeed, show_move_speed_enabled_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Affiche la valeur de vitesse de déplacement et d'attaque\ndans le chat lors d'un changement comme après\nun buff style AgiUP ou Card. (@showspeed)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Sell Stuff"), &sell_stuff_enabled_)) SendSetting(kSettingSellStuff, sell_stuff_enabled_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Permet la vente d'items améliorés (refine > 0),\ncartes, munitions et items slotés chez les PNJ marchands.\nDésactiver pour protéger ces items. (@sellstuff)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Sell Item"), &sell_item_enabled_)) SendSetting(kSettingSellItem, sell_item_enabled_ ? 1 : 0);
           SameLine(); HelpMarker(
-            "Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
+            i18n::Tr("Permet la vente des items du groupe IG_SELLITEM chez les PNJ marchands.\nDésactiver pour les protéger. (@sellitem)\n\n"
             "Groupe SELLITEM :\nGreen Potion (506)\nWhite Slim Potion (547)\nLucky Candy (570)\n"
             "Old Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\n"
             "Old Violet Box (617)\nGift Box (644)\nPoison Bottle (678)\nGold (969)\n"
@@ -51,11 +52,11 @@ void MoonlightUi::DrawCommandsPanel() {
             "Fire Bottle (7135)\nAcid Bottle (7136)\nCoating Bottle (7139)\n"
             "Fragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\nPiece of Memory Red (7439)\n"
             "Ice Scale (7562)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
-            "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)");
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("No Ask", &no_ask_enabled_)) SendSetting(kSettingNoAsk, no_ask_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)");
+            "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("No Ask"), &no_ask_enabled_)) SendSetting(kSettingNoAsk, no_ask_enabled_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)"));
           ImGui::TableNextColumn(); if (ro::RoCheckbox("Wings", &wings_enabled_)) SendSetting(kSettingWings, wings_enabled_ ? 1 : 0);
-          SameLine(); HelpMarker("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)");
+          SameLine(); HelpMarker(i18n::Tr("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)"));
           ImGui::EndTable();
         }
         // @noks — combo 4 options (off / self / party / guild)
@@ -73,7 +74,7 @@ void MoonlightUi::DrawCommandsPanel() {
             }
             ImGui::EndCombo();
           }
-          SameLine(); HelpMarker("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)");
+          SameLine(); HelpMarker(i18n::Tr("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)"));
         }
         ImGui::EndTabItem();
       }
@@ -106,7 +107,7 @@ void MoonlightUi::DrawCommandsPanel() {
             aloot_min_zeny_ = min_zeny;
             SendSetting(kSettingAlootMinZenyDiv100, static_cast<uint16_t>(min_zeny / 100));
           }
-        SameLine(); HelpMarker("Autoloot des items ayant au minimum le prix de revente configuré.");
+        SameLine(); HelpMarker(i18n::Tr("Autoloot des items ayant au minimum le prix de revente configuré."));
           auto apply_min_zeny_delta = [this](int delta) {
             int min_zeny = aloot_min_zeny_ + delta;
             if (min_zeny < 0) min_zeny = 0;
@@ -131,7 +132,7 @@ void MoonlightUi::DrawCommandsPanel() {
         Separator();
         if (ImGui::TreeNode("@autoloottype")) {// @autoloottype
           TextUnformatted("@autoloottype :");
-          SameLine(); HelpMarker("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11");
+          SameLine(); HelpMarker(i18n::Tr("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11"));
           SameLine();
           if (ro::RoSmallButton("Reset##type")) {
             aloot_type_mask_ = 0;
@@ -160,30 +161,30 @@ void MoonlightUi::DrawCommandsPanel() {
         }
         Separator();
         {// @autolootrare
-        if (ro::RoCheckbox("Autoloot rares", &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
+        if (ro::RoCheckbox(i18n::Tr("Autoloot rares"), &aloot_rare_)) SendSetting(kSettingAlootRare, aloot_rare_ ? 1 : 0);
         SameLine(); HelpMarker(
-          "Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
+          i18n::Tr("Autolooting: Toutes les Cards\nOld Blue Box (603)\nYggdrasil Berry (607)\nYggdrasil Seed (608)\nOld Card Album (616)\nOld Purple Box (617)\nGift Box (644)\nGold (969)\n"
           "Temporal Crystal (6607)\nCoagulated Spell (6608)\nJitterbug's Tooth (6719)\nFragment of Agony (7436)\nFragment of Misery (7437)\nFragment of Hatred (7438)\n"
           "Piece_Of_Memory_Red (7439)\nTreasure Box (7444)\nCursed Water (12020)\nElemental Converter Fire (12114)\nElemental Converter Water (12115)\n"
-          "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)");
+          "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)\nSentimental Fragment (22687)\nCursed Fragment (23016)"));
         }
         Separator();
         {// @autolootmvp / @autolootmvpreward
-        if (ro::RoCheckbox("Autoloot MVP", &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
-        SameLine(); HelpMarker("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)");
-        if (ro::RoCheckbox("Autoloot MVP rewards (actif par défaut)", &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
-        SameLine(); HelpMarker("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)");
+        if (ro::RoCheckbox(i18n::Tr("Autoloot MVP"), &aloot_mvp_)) SendSetting(kSettingAlootMvp, aloot_mvp_ ? 1 : 0);
+        SameLine(); HelpMarker(i18n::Tr("Loot automatiquement les MVP\nquelque soit leur taux de drop. (@autolootmvp)"));
+        if (ro::RoCheckbox(i18n::Tr("Autoloot MVP rewards (actif par défaut)"), &aloot_mvp_rwd_)) SendSetting(kSettingAlootMvpRwd, aloot_mvp_rwd_ ? 1 : 0);
+        SameLine(); HelpMarker(i18n::Tr("Les drops de récompense des MVP sont lootés\nautomatiquement par défaut.\nDécocher pour désactiver. (@autolootmvpreward)"));
         }
         Separator();
         if (ImGui::TreeNode("@autolootid")) {// @autolootid
           TextUnformatted("@autolootid :");
-          SameLine(); HelpMarker("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)");
+          SameLine(); HelpMarker(i18n::Tr("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)"));
           SameLine();
           if (!ModernInterfaceEnabled()) {
             if (ro::RoCheckbox("Overlay", &show_alootid_overlay_))
               SaveSettings();
             SameLine();
-            HelpMarker("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item dans l'affichage natif.");
+            HelpMarker(i18n::Tr("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item dans l'affichage natif."));
           }
           SameLine();
           if (ro::RoSmallButton("Clear##alootid")) {
@@ -231,7 +232,7 @@ void MoonlightUi::DrawCommandsPanel() {
               }
               if (dirty)
                 std::snprintf(preset_header_text, sizeof(preset_header_text),
-                              "%s (non sauvegardé)", preset_name ? preset_name : "?");
+                              i18n::Tr("%s (non sauvegardé)"), preset_name ? preset_name : "?");
               else
                 std::snprintf(preset_header_text, sizeof(preset_header_text),
                               "%s", preset_name ? preset_name : "?");

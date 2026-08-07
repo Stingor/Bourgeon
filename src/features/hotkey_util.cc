@@ -13,6 +13,7 @@
 #include "features/windows/character_sheet.h"  // EquipPreset (presets d'équipement)
 #include "features/gameplay/player_jump.h"      // touche de saut
 #include "features/fx/zone_recorder.h"          // touche d'enregistrement de zone
+#include "utils/i18n.h"
 
 namespace hotkeys {
 namespace {
@@ -111,7 +112,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
 
   // Réservé : Alt+F ouvre/ferme la fiche de personnage elle-même.
   if (vkey == 'F' && alt && !ctrl && !shift) {
-    std::snprintf(what, cap, "l'ouverture de la fiche (Alt+F)");
+    std::snprintf(what, cap, i18n::Tr("l'ouverture de la fiche (Alt+F)"));
     return true;
   }
 
@@ -124,7 +125,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       const EquipPreset& preset = presets[i];
       if (preset.cid == cid && preset.hotkey_vk == vkey && preset.hotkey_ctrl == ctrl &&
           preset.hotkey_alt == alt && preset.hotkey_shift == shift) {
-        std::snprintf(what, cap, "le preset « %s »", preset.name.c_str());
+        std::snprintf(what, cap, i18n::Tr("le preset « %s »"), preset.name.c_str());
         return true;
       }
     }
@@ -135,7 +136,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       if (player_jump->key_vk() == vkey && player_jump->key_ctrl() == ctrl &&
           player_jump->key_alt() == alt && player_jump->key_shift() == shift) {
-        std::snprintf(what, cap, "le saut");
+        std::snprintf(what, cap, i18n::Tr("le saut"));
         return true;
       }
     }
@@ -149,7 +150,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
       if (zone_recorder->key_vk() == vkey && zone_recorder->key_ctrl() == ctrl &&
           zone_recorder->key_alt() == alt && zone_recorder->key_shift() == shift) {
-        std::snprintf(what, cap, "l'enregistrement de zone");
+        std::snprintf(what, cap, i18n::Tr("l'enregistrement de zone"));
         return true;
       }
     }
@@ -164,7 +165,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       const bool native_alt   = (mod_vk == VK_MENU);
       const bool native_shift = (mod_vk == VK_SHIFT);
       if (native_ctrl == ctrl && native_alt == alt && native_shift == shift) {
-        std::snprintf(what, cap, "un raccourci natif (barre de skills)");
+        std::snprintf(what, cap, i18n::Tr("un raccourci natif (barre de skills)"));
         return true;
       }
     }

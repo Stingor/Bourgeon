@@ -11,6 +11,7 @@
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 // ── Signature table ───────────────────────────────────────────────────────────
 // Patterns must be lowercase.
@@ -251,7 +252,7 @@ void CheatDetector::OnRenderUI() {
 
   const DWORD now   = GetTickCount();
   const DWORD since = (last_scan_tick_ > 0) ? (now - last_scan_tick_) / 1000 : 0;
-  ImGui::Text("Scans: %d  |  Dernier: il y a %us", scan_count_, since);
+  ImGui::Text(i18n::Tr("Scans: %d  |  Dernier: il y a %us"), scan_count_, since);
   ImGui::SameLine();
   if (ImGui::SmallButton("Scanner") && !scan_busy_.load()) {
     last_scan_tick_ = 0;  // force next StartScanIfReady to launch immediately
@@ -261,7 +262,7 @@ void CheatDetector::OnRenderUI() {
   ImGui::Separator();
 
   if (detections_.empty()) {
-    ImGui::TextDisabled("Aucune detection");
+    ImGui::TextDisabled(i18n::Tr("Aucune detection"));
   } else {
     const ImGuiTableFlags flags = ImGuiTableFlags_Borders
                                 | ImGuiTableFlags_RowBg

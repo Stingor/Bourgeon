@@ -25,6 +25,7 @@
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
+#include "utils/i18n.h"
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
@@ -656,7 +657,7 @@ void CashShopWindow::OnRenderUI() {
                  &use_kafra_);
   if (last_result_ == 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), " | Achat OK");
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), i18n::Tr(" | Achat OK"));
   } else if (last_result_ > 0) {
     // Le message EXACT du client, pas un code (cf. BuyResultMsgId). Repli sur le
     // code seulement si la table de messages ne rend rien — mieux vaut un numéro
@@ -666,7 +667,7 @@ void CashShopWindow::OnRenderUI() {
     if (why && why[0])
       ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | %s", why);
     else
-      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), " | Achat refusé (%d)",
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), i18n::Tr(" | Achat refusé (%d)"),
                          last_result_);
   }
   ImGui::Separator();
@@ -930,8 +931,7 @@ void CashShopWindow::OnRenderUI() {
           !use_kafra_ && static_cast<long long>(ci.price) <= combined;
       const char* why =
           event_helps
-              ? "Solde Vote insuffisant - cochez \"Utiliser Event\" pour cumuler"
-              : "Solde Vote + Event insuffisant pour cet item";
+              ? i18n::Tr("Solde Vote insuffisant - cochez \"Utiliser Event\" pour cumuler") : i18n::Tr("Solde Vote + Event insuffisant pour cet item");
       if (!afford) ImGui::BeginDisabled();
       ImGui::SetCursorPos(ImVec2(cx, cy + ImGui::GetTextLineHeight() + sp));
       if (ro::RoButton("Panier", colw, frameH))
@@ -976,7 +976,7 @@ void CashShopWindow::OnRenderUI() {
     }
     clipper.End();
     ImGui::PopStyleVar();
-    if (n == 0) ImGui::TextDisabled("(aucun item dans cette catégorie)");
+    if (n == 0) ImGui::TextDisabled(i18n::Tr("(aucun item dans cette catégorie)"));
   }
   ImGui::EndChild();
   preview_active_ = preview_now;  // gele le scroll grille tant qu'on survole un apercu
@@ -1012,7 +1012,7 @@ void CashShopWindow::OnRenderUI() {
     // Sous-total (noir, centre verticalement sur la ligne des champs).
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%lld pts", static_cast<long long>(e.price) * e.amount);
+    ImGui::TextColored(kBlack, i18n::Tr("%lld pts"), static_cast<long long>(e.price) * e.amount);
     // Bouton supprimer : meme petit bouton RO carre, aligne a droite.
     ImGui::SameLine();
     const float xr = ImGui::GetContentRegionMax().x - step;
@@ -1024,7 +1024,7 @@ void CashShopWindow::OnRenderUI() {
   ImGui::EndChild();
   if (remove >= 0) cart_.erase(cart_.begin() + remove);
   ImGui::Separator();
-  ImGui::Text("Total: %lld pts", total);
+  ImGui::Text(i18n::Tr("Total: %lld pts"), total);
   // Solde depensable selon la coche "Utiliser Event" (cumul si cochee, Vote seul
   // sinon) : identique a la logique des cartes + a ce que l'achat depense reellement.
   const long long buy_avail =
@@ -1032,7 +1032,7 @@ void CashShopWindow::OnRenderUI() {
                  : static_cast<long long>(cash_points_);
   const bool afford = total <= buy_avail;
   if (cart_.empty()) ImGui::BeginDisabled();
-  if (ro::RoButton(afford ? "Acheter" : "Points insuffisants",
+  if (ro::RoButton(afford ? "Acheter" : i18n::Tr("Points insuffisants"),
                    ImGui::GetContentRegionAvail().x, 0))
     SendBuy();
   if (cart_.empty()) ImGui::EndDisabled();

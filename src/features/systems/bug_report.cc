@@ -12,6 +12,7 @@
 #include "features/systems/bourgeon_opcodes.h"
 #include "ui/ro_imgui.h"     // ro::RoButton / ro::RoSmallButton (skin RO)
 #include "ui/ro_skin_blobs.hpp"  // dimensions sbtn_* / sys_close (bouton de titre)
+#include "utils/i18n.h"
 
 namespace {
 
@@ -103,7 +104,7 @@ BugReport::Context BugReport::SkillContext(uint32_t skill_id,
   Context c;
   c.category = kSkill;
   char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), "Compétence : %s (#%u)",
+  std::snprintf(lbl, sizeof(lbl), i18n::Tr("Compétence : %s (#%u)"),
                 name.empty() ? "?" : name.c_str(), skill_id);
   c.label = lbl;
   char js[256];
@@ -148,10 +149,10 @@ void BugReport::Button(const Context& ctx, const char* imgui_id) {
   ImGui::PushID(imgui_id);
   // Bouton habillé RO (pièces btn_* du client) : se fond dans les fenêtres desc /
   // dialogue PNJ où il est posé (toutes des fenêtres RO à fond clair).
-  if (ro::RoButton("Signaler un bug")) Open(ctx);
+  if (ro::RoButton(i18n::Tr("Signaler un bug"))) Open(ctx);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Envoyer un rapport de bug à l'équipe (le contexte est "
-                      "joint automatiquement)");
+    ImGui::SetTooltip(i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
+                      "joint automatiquement)"));
   ImGui::PopID();
 }
 
@@ -198,8 +199,8 @@ void BugReport::TitleBarButton(const Context& ctx) {
   // Infobulle APRÈS le PopClipRect : elle ouvre une autre fenêtre ImGui, elle ne
   // doit pas hériter du clip de la barre de titre.
   if (hovered)
-    ImGui::SetTooltip("Envoyer un rapport de bug à l'équipe (le contexte est "
-                      "joint automatiquement)");
+    ImGui::SetTooltip(i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
+                      "joint automatiquement)"));
   if (clicked) Open(ctx);
 }
 
@@ -286,8 +287,8 @@ void BugReport::RenderModal() {
     ImGui::CloseCurrentPopup();
   }
 
-  ImGui::TextWrapped("Décris brièvement le problème. Le contexte ci-dessous "
-                     "est joint automatiquement à ton rapport.");
+  ImGui::TextWrapped(i18n::Tr("Décris brièvement le problème. Le contexte ci-dessous "
+                     "est joint automatiquement à ton rapport."));
   ImGui::Separator();
 
   // Contexte capturé (lecture seule).
@@ -295,10 +296,10 @@ void BugReport::RenderModal() {
   ImGui::TextWrapped("%s", ctx_.label.c_str());
   ImGui::Spacing();
 
-  ImGui::TextDisabled("Ton message");
+  ImGui::TextDisabled(i18n::Tr("Ton message"));
   ImGui::InputTextMultiline("##bug_msg", msg_buf_, sizeof(msg_buf_),
                             ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5));
-  ImGui::TextDisabled("%zu / %zu caractères", std::strlen(msg_buf_),
+  ImGui::TextDisabled(i18n::Tr("%zu / %zu caractères"), std::strlen(msg_buf_),
                       kMaxMsgBytes);
 
   ImGui::Separator();
@@ -315,7 +316,7 @@ void BugReport::RenderModal() {
   }
   ImGui::EndDisabled();
   if (throttled && ImGui::IsItemHovered())
-    ImGui::SetTooltip("Patiente quelques secondes avant un nouveau rapport.");
+    ImGui::SetTooltip(i18n::Tr("Patiente quelques secondes avant un nouveau rapport."));
 
   ImGui::SameLine();
   if (ImGui::Button("Annuler", ImVec2(120, 0))) {

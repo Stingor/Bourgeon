@@ -28,6 +28,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -1041,27 +1042,27 @@ void SkillBar::DrawSettings() {
   // synchronisée, ce qui laissait croire à un réglage local alors qu'il en basculait
   // douze. Ce que la bascule apporte ICI reste dit — mais comme une DESCRIPTION :
   // section grisée ou non, elle doit donner envie d'essayer.
-  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
-      "Désactivé = barres classiques.\nActivé = barres modernes entièrement "
-      "customisables.");
+      i18n::Tr("Désactivé = barres classiques.\nActivé = barres modernes entièrement "
+      "customisables."));
 
-  SeparatorText("Réglages généraux");
+  SeparatorText(i18n::Tr("Réglages généraux"));
   ImGui::BeginDisabled(!enabled_);
   changed |= ro::RoCheckbox("Verrouiller", &locked_);
   SameLine(); HelpMarker(
-      "Coche = barres fixe. Décoche = glisser n'importe où pour la déplacer.\n"
-      "Verrouillée, les slots restent utilisables et réarrangeables.");
+      i18n::Tr("Coche = barres fixe. Décoche = glisser n'importe où pour la déplacer.\n"
+      "Verrouillée, les slots restent utilisables et réarrangeables."));
 
   // ── Réglages COMMUNS (taille/espacement sont PAR BARRE, dans chaque section ci-dessous) ──
-  changed |= ro::RoCheckbox("Filtre bilinéaire (flou)", &bilinear_);
-  SameLine(); HelpMarker("Décoche = pixels nets (POINT).\nCoche = lissage (BILINEAR).");
-  changed |= ro::RoCheckbox("Clic-traversant (maintenir Shift pour interagir)", &clickthrough_);
-  changed |= ro::RoCheckbox("Afficher les raccourcis dans les touches", &show_keys_);
+  changed |= ro::RoCheckbox(i18n::Tr("Filtre bilinéaire (flou)"), &bilinear_);
+  SameLine(); HelpMarker(i18n::Tr("Décoche = pixels nets (POINT).\nCoche = lissage (BILINEAR)."));
+  changed |= ro::RoCheckbox(i18n::Tr("Clic-traversant (maintenir Shift pour interagir)"), &clickthrough_);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher les raccourcis dans les touches"), &show_keys_);
   changed |= ro::RoCheckbox("Texte \"gras\"", &bold_text_);  // faux-gras (touches + nombres)
-  changed |= WheelSliderFloat("Taille texte raccourcis", &key_scale_, 0.5f, 2.0f, "%.2fx");
-  changed |= WheelSliderFloat("Taille texte level/qté", &count_scale_, 0.5f, 2.0f, "%.2fx");
-  ImGui::TextDisabled("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI).");
+  changed |= WheelSliderFloat(i18n::Tr("Taille texte raccourcis"), &key_scale_, 0.5f, 2.0f, "%.2fx");
+  changed |= WheelSliderFloat(i18n::Tr("Taille texte level/qté"), &count_scale_, 0.5f, 2.0f, "%.2fx");
+  ImGui::TextDisabled(i18n::Tr("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI)."));
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
   SeparatorText("Barres");
@@ -1073,7 +1074,7 @@ void SkillBar::DrawSettings() {
     if (ro::RoCheckbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
     if (bc.visible && ImGui::TreeNode("cfg", "Réglages %s", kBarNames[b])) {
       changed |= WheelSliderInt("Colonnes", &bc.columns, 1, 12);
-      changed |= WheelSliderInt("Nb slots", &bc.slot_count, 1, kRegions[b].count);
+      changed |= WheelSliderInt(i18n::Tr("Nb slots"), &bc.slot_count, 1, kRegions[b].count);
       changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);
       changed |= WheelSliderFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px", 1.0f);
       changed |= WheelSliderInt("X", &bc.x, -200, 4000);
@@ -1085,28 +1086,28 @@ void SkillBar::DrawSettings() {
   }
 
   SeparatorText("Couleurs");
-  changed |= ColorSwatch("Fond du cadre", col_frame_);
-  changed |= ColorSwatch("Fond objet", col_item_);
-  changed |= ColorSwatch("Fond skill", col_skill_);
-  changed |= ColorSwatch("Fond vide", col_empty_);
+  changed |= ColorSwatch(i18n::Tr("Fond du cadre"), col_frame_);
+  changed |= ColorSwatch(i18n::Tr("Fond objet"), col_item_);
+  changed |= ColorSwatch(i18n::Tr("Fond skill"), col_skill_);
+  changed |= ColorSwatch(i18n::Tr("Fond vide"), col_empty_);
   changed |= ColorSwatch("Bordure", col_border_);
-  changed |= ColorSwatch("Bordure survol", col_borderhi_);
-  changed |= ColorSwatch("Texte touches", col_keytext_);
-  changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
-  changed |= ColorSwatch("Contour texte (ombre)", col_textout_);
+  changed |= ColorSwatch(i18n::Tr("Bordure survol"), col_borderhi_);
+  changed |= ColorSwatch(i18n::Tr("Texte touches"), col_keytext_);
+  changed |= ColorSwatch(i18n::Tr("Texte nombre (count/lv)"), col_count_);
+  changed |= ColorSwatch(i18n::Tr("Contour texte (ombre)"), col_textout_);
 
   SeparatorText("Aide : souris");
   TextWrapped(
-      "- Clic gauche : utiliser. Clic droit : description.\n"
+      i18n::Tr("- Clic gauche : utiliser. Clic droit : description.\n"
       "- Glisser une case sur une autre : déplacer / échanger (les 3 barres\n"
       "  se répondent entre elles).\n"
       "- Glisser une case HORS des barres et relâcher : la vider. L'aperçu se\n"
       "  barre d'une croix rouge dès qu'on est en zone de retrait.\n"
-      "- Clic molette sur une case : la vider aussi, sans glisser.");
+      "- Clic molette sur une case : la vider aussi, sans glisser."));
 
   SeparatorText("Aide : clavier & onglets");
   TextWrapped(
-      "Le jeu ne pilote qu'UN onglet au clavier à la fois.\n"
+      i18n::Tr("Le jeu ne pilote qu'UN onglet au clavier à la fois.\n"
       "Bourgeon route les touches vers l'autre onglet visible :\n"
       "- Touche PARTAGEE (ex. F2 sur les 2 onglets) : la case OCCUPEE répond.\n"
       "  Si les deux cases sont occupées, seul l'onglet actif répond.\n"
@@ -1114,7 +1115,7 @@ void SkillBar::DrawSettings() {
       "  sur des combos Ctrl+/Alt+ (touches uniques) dans les raccourcis clavier du jeu.\n"
       "- La barre d'items n'a pas de raccourci clavier (clic gauche = utiliser).\n"
       "- Une case NON AFFICHÉE ne répond plus à sa touche : masquer une barre,\n"
-      "  ou baisser son \"Nb slots\", désarme aussi les raccourcis correspondants.");
+      "  ou baisser son \"Nb slots\", désarme aussi les raccourcis correspondants."));
 
   ImGui::EndDisabled();
 

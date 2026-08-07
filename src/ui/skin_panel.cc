@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "ui/ro_widgets.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -81,8 +82,8 @@ bool DrawSkinPanel() {
   }
   SameLine();
   HelpMarker(
-      "ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\n"
-      "OFF : police intégrée d'ImGui (ProggyClean).");
+      i18n::Tr("ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\n"
+      "OFF : police intégrée d'ImGui (ProggyClean)."));
 
   // (Le skin RO n'est plus optionnel : c'est l'habillage standard des fenêtres
   // ImGui Bourgeon. Seuls ses réglages restent configurables.)
@@ -128,8 +129,8 @@ bool DrawSkinPanel() {
   }
   SameLine();
   HelpMarker(
-      "Sauvegarde les couleurs/luminosité/opacité actuelles sous un nom.\n"
-      "« Appliquer » recharge un préréglage ; on peut se faire plusieurs thèmes.");
+      i18n::Tr("Sauvegarde les couleurs/luminosité/opacité actuelles sous un nom.\n"
+      "« Appliquer » recharge un préréglage ; on peut se faire plusieurs thèmes."));
 
   return changed;
 }

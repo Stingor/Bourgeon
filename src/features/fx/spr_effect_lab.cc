@@ -13,6 +13,7 @@
 #include "bourgeon.h"        // Bourgeon::Instance().IsMapLoading() / IsGameActive() (gate anti-crash warp)
 #include "features/fx/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
 #include "features/moonlight_ui/moonlight_ui.h"  // helpers UI du toolkit (namespace mui)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -308,7 +309,7 @@ void RenderFrame() {
 void DrawDebugControls() {
   EnsureInstalled();  // installe les hooks au 1er affichage du panneau (lazy)
 
-  ImGui::TextUnformatted("SPR Effect Lab — rend un hat effect .spr/EZ au centre de l'écran.");
+  ImGui::TextUnformatted(i18n::Tr("SPR Effect Lab — rend un hat effect .spr/EZ au centre de l'écran."));
   ImGui::Separator();
 
   // Seul l'ordinal est saisi ; l'id concret est résolu par le getter NATIF GetHatEffectID.
@@ -317,19 +318,19 @@ void DrawDebugControls() {
     g_resolved_concrete = ResolveConcreteId(g_ui_ordinal);
   ImGui::SameLine();
   if (g_resolved_concrete > 0)
-    ImGui::Text("-> id concret %d (natif)", g_resolved_concrete);
+    ImGui::Text(i18n::Tr("-> id concret %d (natif)"), g_resolved_concrete);
   else
-    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "-> non résolu (en jeu ? Lua prêt ?)");
+    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), i18n::Tr("-> non résolu (en jeu ? Lua prêt ?)"));
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("L'id concret vient de GetHatEffectID(ordinal), le getter du jeu.\n"
-                      "Ordinal 87 = Digital_Space -> 1240. Aucun hardcode.");
+    ImGui::SetTooltip(i18n::Tr("L'id concret vient de GetHatEffectID(ordinal), le getter du jeu.\n"
+                      "Ordinal 87 = Digital_Space -> 1240. Aucun hardcode."));
 
   const bool on = (g_wanted_ordinal != 0);
   if (!on) {
-    if (ImGui::Button("Spawn + afficher au centre")) {
+    if (ImGui::Button(i18n::Tr("Spawn + afficher au centre"))) {
       g_wanted_ordinal = g_ui_ordinal;    }
   } else {
-    if (ImGui::Button("Arrêter")) {
+    if (ImGui::Button(i18n::Tr("Arrêter"))) {
       g_wanted_ordinal = 0;    }
   }
   ImGui::SameLine();
@@ -337,24 +338,24 @@ void DrawDebugControls() {
   // CEffectMgr. Si le z-order des chapeaux/costumes natifs redevient correct en cochant, c'est ce
   // hook qui perturbe le rendu ; sinon il est hors de cause. ⚠ Seul écrivain de ce réglage.
   static bool s_no_effmgr = false;
-  if (ImGui::Checkbox("Couper le hook CEffectMgr (diag)", &s_no_effmgr))
+  if (ImGui::Checkbox(i18n::Tr("Couper le hook CEffectMgr (diag)"), &s_no_effmgr))
     ez_capture::SetEffMgrCaptureEnabled(!s_no_effmgr);
   ImGui::SameLine();
   // DIAGNOSTIC : lever l'exclusion de la famille .str. Si un effet rend en jeu mais n'est JAMAIS
   // capturé (0 dessin le concernant), c'est peut-être NOUS qui l'écartons par sa vtable.
   static bool s_capture_str = false;
-  if (ImGui::Checkbox("Capturer aussi les .str (diag)", &s_capture_str))
+  if (ImGui::Checkbox(i18n::Tr("Capturer aussi les .str (diag)"), &s_capture_str))
     ez_capture::SetCaptureStrEffects(s_capture_str);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Les instances CEZ2STREffect sont normalement écartées (autre pipeline).\n"
+    ImGui::SetTooltip(i18n::Tr("Les instances CEZ2STREffect sont normalement écartées (autre pipeline).\n"
                       "Coche pour vérifier si un effet non capturé appartient à cette famille :\n"
                       "s'il apparaît alors dans « effect_id capturés », c'est le cas.\n"
-                      "/!\\ Peut provoquer un double dessin ailleurs : diagnostic uniquement.");
+                      "/!\\ Peut provoquer un double dessin ailleurs : diagnostic uniquement."));
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Sert à isoler une régression : coche, puis regarde si le rendu NATIF\n"
+    ImGui::SetTooltip(i18n::Tr("Sert à isoler une régression : coche, puis regarde si le rendu NATIF\n"
                       "(z-order des chapeaux/costumes) redevient correct.\n"
                       "Coché = la famille aura/statut n'est plus ni capturée ni composée\n"
-                      "sur le doll (Perm_Frost & co disparaîtront de l'aperçu).");
+                      "sur le doll (Perm_Frost & co disparaîtront de l'aperçu)."));
   ImGui::SameLine();
   // Répartition tri/quad : diagnostic direct du layout (EZ = triangles 3 sommets, STR = quads 4).
   // ⚠ Count()/Prims() ramènent TOUS les effets du joueur : on ne compte que les NÔTRES (IsOurs),
@@ -367,7 +368,7 @@ void DrawDebugControls() {
     n_ours++;
     (cap_prims[i].n == 3 ? n_tri : n_quad)++;
   }
-  ImGui::Text("état: %s (%d prim : %d tri, %d quad)", on ? "actif" : "éteint", n_ours, n_tri, n_quad);
+  ImGui::Text(i18n::Tr("état: %s (%d prim : %d tri, %d quad)"), on ? "actif" : i18n::Tr("éteint"), n_ours, n_tri, n_quad);
 
   // ── Sonde « rien ne s'affiche » : localise la cause au lieu de la deviner ──
   // Beaucoup d'ordinaux ne rendent RIEN, même nativement (ex. 57, et toute la plage 60-78 =
@@ -380,11 +381,11 @@ void DrawDebugControls() {
                         st.draws, st.all_draws, st.inserts, n_ours);
     ImGui::SameLine();
     if (st.draws == 0)
-      ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f), "-> nœud jamais dessiné (non créé ?)");
+      ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.3f, 1.0f), i18n::Tr("-> nœud jamais dessiné (non créé ?)"));
     else if (st.inserts == 0)
-      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "-> dessiné mais n'émet RIEN (ressource ?)");
+      ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), i18n::Tr("-> dessiné mais n'émet RIEN (ressource ?)"));
     else if (n_ours == 0)
-      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "-> émis mais REJETÉ par nous (bug)");
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), i18n::Tr("-> émis mais REJETÉ par nous (bug)"));
     else
       ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), "-> OK");
     // Ce que le filtre de FORME a refusé cette frame. Quand « émis mais rejeté » s'affiche, c'est
@@ -395,13 +396,13 @@ void DrawDebugControls() {
                          "rejets: %d  (type=%d, sommets=%d, indices=%d)",
                          st.rej_count, st.rej_type, st.rej_vtx, st.rej_idx);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("dessins  = appels d'EzEffect_Draw sur NOTRE nœud\n"
+      ImGui::SetTooltip(i18n::Tr("dessins  = appels d'EzEffect_Draw sur NOTRE nœud\n"
                         "inserts  = primitives soumises pendant ce dessin (avant nos filtres)\n"
                         "capturés = ce qu'on garde après filtres de forme\n\n"
                         "0 dessin        -> le nœud n'existe pas : problème AMONT du rendu.\n"
                         "dessins, 0 ins. -> le sous-rendu n'émet rien : ressource absente\n"
                         "                   (le chargeur échoue en silence) ou condition non remplie.\n"
-                        "ins. mais 0 cap.-> le jeu émet et NOUS rejetons : là c'est notre bug.");
+                        "ins. mais 0 cap.-> le jeu émet et NOUS rejetons : là c'est notre bug."));
   }
 
   // Facteurs de blend RÉELLEMENT capturés cette frame (D3DBLEND bruts : 2=ONE, 5=SRCALPHA,
@@ -440,14 +441,14 @@ void DrawDebugControls() {
       char b[128]; int o = 0;
       for (int k = 0; k < nv && o < 110; ++k)
         o += std::snprintf(b + o, sizeof(b) - o, k ? ", %d" : "%d", vals[k]);
-      ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), "ids CEffectMgr (%d prim) : %s", n_em, b);
+      ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), i18n::Tr("ids CEffectMgr (%d prim) : %s"), n_em, b);
     } else {
-      ImGui::TextDisabled("ids CEffectMgr : aucun");
+      ImGui::TextDisabled(i18n::Tr("ids CEffectMgr : aucun"));
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Valeurs BRUTES lues à instance+0x04, pour établir leur encodage :\n"
+      ImGui::SetTooltip(i18n::Tr("Valeurs BRUTES lues à instance+0x04, pour établir leur encodage :\n"
                         "équipe un costume dont tu connais l'ordinal, puis déséquipe-le et\n"
-                        "regarde quelle valeur disparaît.");
+                        "regarde quelle valeur disparaît."));
 
     // ── TOUS les effect_id capturés, sans filtrage ────────────────────────────
     // Angle mort corrigé : la ligne ci-dessus ne montre que la famille CEffectMgr (id < 0). Si des
@@ -463,15 +464,15 @@ void DrawDebugControls() {
     if (na > 0) {
       char b[160]; int o = 0;
       for (int k = 0; k < na && o < 140; ++k)
-        o += std::snprintf(b + o, sizeof(b) - o, k ? ", %d×%d" : "%d×%d", all[k], cnt[k]);
-      ImGui::TextColored(ImVec4(0.6f, 0.9f, 1.0f, 1.0f), "effect_id capturés : %s", b);
+        o += std::snprintf(b + o, sizeof(b) - o, k ? i18n::Tr(", %d×%d") : i18n::Tr("%d×%d"), all[k], cnt[k]);
+      ImGui::TextColored(ImVec4(0.6f, 0.9f, 1.0f, 1.0f), i18n::Tr("effect_id capturés : %s"), b);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Tous les ids présents dans la capture, au format id×nombre.\n"
+        ImGui::SetTooltip(i18n::Tr("Tous les ids présents dans la capture, au format id×nombre.\n"
                           "Attendu : l'id concret de l'effet spawné. Une valeur DIFFÉRENTE\n"
                           "signifie que le nœud porte un autre id que celui résolu par Lua.\n"
-                          "-1 = famille CEffectMgr.");
+                          "-1 = famille CEffectMgr."));
     } else {
-      ImGui::TextDisabled("effect_id capturés : aucun (rien n'est capturé)");
+      ImGui::TextDisabled(i18n::Tr("effect_id capturés : aucun (rien n'est capturé)"));
     }
   }
 
@@ -482,35 +483,35 @@ void DrawDebugControls() {
   // L'adresse qui n'apparaît QUE lorsque l'effet tourne est la fonction cherchée.
   {
     static bool show_callers = false;
-    ImGui::Checkbox("Appelants du puits (diag)", &show_callers);
+    ImGui::Checkbox(i18n::Tr("Appelants du puits (diag)"), &show_callers);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Adresses de retour des fonctions qui soumettent des primitives, avec leur\n"
+      ImGui::SetTooltip(i18n::Tr("Adresses de retour des fonctions qui soumettent des primitives, avec leur\n"
                         "nombre d'appels sur la dernière frame.\n"
                         "Méthode : relève la liste effet ÉTEINT, puis effet ACTIF —\n"
-                        "l'adresse qui APPARAÎT est celle qui dessine l'effet.");
+                        "l'adresse qui APPARAÎT est celle qui dessine l'effet."));
     if (show_callers) {
       const ez_capture::Caller* c = ez_capture::Callers();
       const int n = ez_capture::CallerCount();
       if (ImGui::BeginChild("##ez_callers", ImVec2(0, 0), true)) {
         for (int i = 0; i < n; ++i)
-          ImGui::TextDisabled("0x%08X  ×%d", static_cast<unsigned>(c[i].addr), c[i].count);
-        if (n == 0) ImGui::TextDisabled("(aucun appel cette frame)");
+          ImGui::TextDisabled(i18n::Tr("0x%08X  ×%d"), static_cast<unsigned>(c[i].addr), c[i].count);
+        if (n == 0) ImGui::TextDisabled(i18n::Tr("(aucun appel cette frame)"));
       }
       ImGui::EndChild();
     }
   }
 
-  ImGui::Checkbox("Cacher en jeu (overlay seul)", &g_suppress);
+  ImGui::Checkbox(i18n::Tr("Cacher en jeu (overlay seul)"), &g_suppress);
   ImGui::SetNextItemWidth(180.0f);
   ImGui::Combo("Blend", &g_blend_mode,
-               "Natif par primitive\0Alpha normal\0Additif global\0");
+               i18n::Tr("Natif par primitive\0Alpha normal\0Additif global\0"));
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Natif par primitive : rejoue SRCBLEND/DESTBLEND que le jeu a posés pour\n"
+    ImGui::SetTooltip(i18n::Tr("Natif par primitive : rejoue SRCBLEND/DESTBLEND que le jeu a posés pour\n"
                       "chaque primitive (record +0x18/+0x1c) — le seul mode correct, car un\n"
                       "effet mélange additif et alpha dans la même frame.\n"
                       "Alpha normal : les primitives additives sortent en CARRÉS NOIRS.\n"
                       "Additif global : les primitives alpha CRAMENT en blanc.\n"
-                      "/!\\ Le mode natif agit sur le device D3D9 : inopérant sous DX7.");
+                      "/!\\ Le mode natif agit sur le device D3D9 : inopérant sous DX7."));
   ImGui::SameLine();
   if (bl_n > 0) {
     char b[96]; int o = 0;
@@ -521,26 +522,26 @@ void DrawDebugControls() {
     ImGui::TextDisabled("blends: -");
   }
 
-  ImGui::Checkbox("Debug capture (brut + ancre)", &g_debug);
+  ImGui::Checkbox(i18n::Tr("Debug capture (brut + ancre)"), &g_debug);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Dessine la capture BRUTE (positions écran natives) + l'ancre (point cyan) et\n"
+    ImGui::SetTooltip(i18n::Tr("Dessine la capture BRUTE (positions écran natives) + l'ancre (point cyan) et\n"
                       "le cercle du rayon, SANS reprojection. Décoche « Cacher en jeu » pour\n"
-                      "comparer les contours (vert) à l'effet natif in-world.");
+                      "comparer les contours (vert) à l'effet natif in-world."));
   ImGui::SameLine();
-  ImGui::TextDisabled("ancre (%.0f,%.0f)%s", g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : " [non projetée]");
+  ImGui::TextDisabled("ancre (%.0f,%.0f)%s", g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : i18n::Tr(" [non projetée]"));
 
   ImGui::SetNextItemWidth(180.0f);
   ImGui::SliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Garde-fou large par défaut (la géométrie « traînée » est LÉGITIME :\n"
+    ImGui::SetTooltip(i18n::Tr("Garde-fou large par défaut (la géométrie « traînée » est LÉGITIME :\n"
                       "le natif la rend en additif + dégradé d'alpha). À baisser seulement si\n"
-                      "un effet déborde encore : Rayon = distance sommet/ancre.");
+                      "un effet déborde encore : Rayon = distance sommet/ancre."));
 
   // ── Catalogue : liste NATIVE des ordinaux d'effets .spr/EZ (aucune liste hardcodée) ──
   ImGui::Separator();
-  if (ImGui::Button(g_catalog_built ? "Rescanner" : "Scanner le catalogue")) BuildCatalog();
+  if (ImGui::Button(g_catalog_built ? "Rescanner" : i18n::Tr("Scanner le catalogue"))) BuildCatalog();
   ImGui::SameLine();
-  ImGui::TextDisabled("%d effets EZ, dont %d implémentés (clic = spawn)",
+  ImGui::TextDisabled(i18n::Tr("%d effets EZ, dont %d implémentés (clic = spawn)"),
                       static_cast<int>(g_catalog.size()), g_catalog_impl);
   if (g_catalog_built) {
     static char filter[32] = "";
@@ -548,13 +549,13 @@ void DrawDebugControls() {
     ImGui::SetNextItemWidth(180.0f);
     ImGui::InputText("filtre", filter, sizeof(filter));
     ImGui::SameLine();
-    ImGui::Checkbox("implémentés seulement", &only_impl);
+    ImGui::Checkbox(i18n::Tr("implémentés seulement"), &only_impl);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Un effect id sans entrée dans la table de saut du client (0x00bc2e04)\n"
+      ImGui::SetTooltip(i18n::Tr("Un effect id sans entrée dans la table de saut du client (0x00bc2e04)\n"
                         "tombe sur un DEFAULT `mov al,1 ; ret` : le nœud est créé et tické, mais\n"
                         "ne dessine JAMAIS rien — nativement compris, et sans aucune erreur.\n"
                         "Ce n'est pas une ressource absente : c'est du code qui n'existe pas.\n"
-                        "L'état est LU dans la table du client, pas recopié d'une liste.");
+                        "L'état est LU dans la table du client, pas recopié d'une liste."));
     if (ImGui::BeginChild("##spr_catalog", ImVec2(0, 190), true)) {
       for (const HatEntry& e : g_catalog) {
         if (only_impl && e.kind == 0) continue;
@@ -578,9 +579,9 @@ void DrawDebugControls() {
       }
     }
     ImGui::EndChild();
-    ImGui::TextDisabled("« inerte » = ni entrée procédurale ni resourceFileName -> ne rend rien, même");
-    ImGui::TextDisabled("nativement.  « .str » = rend en jeu, mais via le pipeline billboard STR :");
-    ImGui::TextDisabled("un autre chemin que EzEffect_Draw, donc a priori NON capturé par ce lab.");
+    ImGui::TextDisabled(i18n::Tr("« inerte » = ni entrée procédurale ni resourceFileName -> ne rend rien, même"));
+    ImGui::TextDisabled(i18n::Tr("nativement.  « .str » = rend en jeu, mais via le pipeline billboard STR :"));
+    ImGui::TextDisabled(i18n::Tr("un autre chemin que EzEffect_Draw, donc a priori NON capturé par ce lab."));
   }
 
   // Le « Sol uni » (fond de capture) vivait ici ; il n'a jamais rien partagé avec la

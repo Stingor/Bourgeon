@@ -1064,7 +1064,7 @@ bool ModernInterfaceEnabled() {
 // Case + infobulle communes aux panneaux porteurs (cf. moonlight_ui.h).
 bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
   bool changed = false;
-  if (ro::RoCheckbox("Interface moderne", enabled)) {
+  if (ro::RoCheckbox(i18n::Tr("Interface moderne"), enabled)) {
     SetModernInterface(*enabled);
     changed = true;
   }
@@ -1872,32 +1872,32 @@ void MoonlightUi::OnRenderUI() {
     // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
     // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
     // des noms reste inerte (OnRenderUI vérifie IsStaff).
-    if (IsStaff() && CollapsingHeader("Staff Tools")) {
+    if (IsStaff() && CollapsingHeader(i18n::Tr("Staff Tools"))) {
       PushStyleCompact();
 
-      SeparatorText("Noms des entités");
+      SeparatorText(i18n::Tr("Noms des entités"));
       if (auto* entity_names = Bourgeon::Instance().entity_names())
         entity_names->DrawSettings();
 
       // Cast en une action : la touche du sort suffit, la visée est résolue sous
       // le curseur et le lancement émis par les messages d'acteur du clic natif
       // (cf. quick_cast.h pour les deux approches écartées).
-      SeparatorText("Quick cast");
+      SeparatorText(i18n::Tr("Quick cast"));
       if (auto* quick_cast = Bourgeon::Instance().quick_cast())
         quick_cast->DrawSettings();
 
-      // SeparatorText("SPR Lab");
+      // SeparatorText(i18n::Tr("SPR Lab"));
       // spr_lab::DrawDebugControls();
 
       // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur
       // unie sans toucher à sa géométrie (l'occlusion reste correcte). Vivait dans
       // le SPR Lab, dont il ne partageait rien — et que plus rien ne dessine.
-      SeparatorText("Fond de capture");
+      SeparatorText(i18n::Tr("Fond de capture"));
       ground_paint::DrawSettings();
 
       // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
       // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.
-      SeparatorText("Enregistrer une zone (GIF)");
+      SeparatorText(i18n::Tr("Enregistrer une zone (GIF)"));
       if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
         zone_recorder->DrawSettings();
 
@@ -1907,18 +1907,18 @@ void MoonlightUi::OnRenderUI() {
       // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
       // rouvrir à chaque lancement serait une corvée quotidienne.
       SeparatorText("Journal");
-      if (ro::RoCheckbox("Fenêtre de logs",
+      if (ro::RoCheckbox(i18n::Tr("Fenêtre de logs"),
                          &Bourgeon::Instance().show_log_window()))
         SaveSettings();
       ImGui::SameLine();
       HelpMarker(
-          "Miroir en jeu de tout ce que le client journalise "
+          i18n::Tr("Miroir en jeu de tout ce que le client journalise "
           "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
           "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
           "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
           "restreint l'affichage à une sous-chaîne.\n\n"
           "Réservé au staff, et le droit est revérifié à chaque frame : la "
-          "fenêtre disparaît si le niveau de groupe change en cours de session.");
+          "fenêtre disparaît si le niveau de groupe change en cours de session."));
 
       // ── Glyphes coréens ────────────────────────────────────────────────
       // Ici, à côté du journal, parce que c'est SON usage : lire les chemins
@@ -1927,18 +1927,18 @@ void MoonlightUi::OnRenderUI() {
       // 🔴 Le hangul pèse 11 172 glyphes, soit 97 % de l'atlas de polices, pour
       // des caractères qu'aucun joueur ne voit — le jeu est en français et en
       // anglais. Il n'est donc plus chargé par défaut.
-      if (ro::RoCheckbox("Glyphes coréens (redémarrage)", &g_korean_glyphs))
+      if (ro::RoCheckbox(i18n::Tr("Glyphes coréens (redémarrage)"), &g_korean_glyphs))
         SaveSettings();
       ImGui::SameLine();
       HelpMarker(
-          "Charge les caractères coréens dans les polices. Utile UNIQUEMENT "
+          i18n::Tr("Charge les caractères coréens dans les polices. Utile UNIQUEMENT "
           "pour lire les chemins des fichiers du jeu dans le journal — rien "
           "en jeu ne s'affiche en coréen.\n\n"
           "⚠ Prend effet au PROCHAIN LANCEMENT : les polices sont préparées "
           "une seule fois au démarrage, et le moteur DirectDraw ne sait pas "
           "les refaire en cours de partie.\n\n"
           "Éteint, l'atlas de polices est vingt fois plus léger et le client "
-          "démarre plus vite. Un caractère coréen y apparaîtrait en carré.");
+          "démarre plus vite. Un caractère coréen y apparaîtrait en carré."));
 
       PopStyleCompact();
     }
@@ -1956,13 +1956,13 @@ void MoonlightUi::OnRenderUI() {
         screen_fx->DrawSettings();
 
       if (auto* weapon_dual_sprites = Bourgeon::Instance().weapon_dual_sprites()) {
-        if (ro::RoCheckbox("Sprites d'armes doubles", &weapon_dual_sprites->enabled()))
+        if (ro::RoCheckbox(i18n::Tr("Sprites d'armes doubles"), &weapon_dual_sprites->enabled()))
           SaveSettings();
         SameLine(); HelpMarker(
-            "Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
+            i18n::Tr("Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
             "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
             "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
-            "générique. ON : chaque arme garde son apparence d'origine.");
+            "générique. ON : chaque arme garde son apparence d'origine."));
       }
       PopStyleCompact();
     }

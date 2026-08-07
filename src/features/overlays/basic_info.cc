@@ -35,6 +35,7 @@
 #include "utils/gif_writer.h"       // GifWrite
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -2257,49 +2258,49 @@ bool BasicInfo::DrawSettings() {
   bool changed = false;
   PushStyleCompact();
 
-  changed |= ro::RoCheckbox("Masquer la fenêtre Basic Info d'origine", &portrait_hide_basic_info_);
-  SameLine(); HelpMarker("Masque la fenêtre native \"Basic Info\".");
+  changed |= ro::RoCheckbox(i18n::Tr("Masquer la fenêtre Basic Info d'origine"), &portrait_hide_basic_info_);
+  SameLine(); HelpMarker(i18n::Tr("Masque la fenêtre native \"Basic Info\"."));
 
-  SeparatorText("Barres d'info");
-  changed |= ro::RoCheckbox("Afficher les barres", &visible_);
+  SeparatorText(i18n::Tr("Barres d'info"));
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher les barres"), &visible_);
   ImGui::BeginDisabled(!visible_);
   Indent();
     for (int i = 0; i < BasicInfo::kBarCount; ++i) {
       if (i) SameLine();
       changed |= ro::RoCheckbox(BasicInfo::kBarLabels[i], &bars_[i].show);
     }
-    SameLine(); HelpMarker("Affiche/cache chaque barre indépendamment.");
+    SameLine(); HelpMarker(i18n::Tr("Affiche/cache chaque barre indépendamment."));
   Unindent();
   ImGui::EndDisabled();
 
-  changed |= ro::RoCheckbox("Verrouiller les barres", &locked_);
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller les barres"), &locked_);
   SameLine(); HelpMarker(
-      "Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\n"
-      "Déverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner.");
+      i18n::Tr("Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\n"
+      "Déverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner."));
 
-  changed |= ro::RoCheckbox("Aimanter les barres (snap)", &sticky_);
+  changed |= ro::RoCheckbox(i18n::Tr("Aimanter les barres (snap)"), &sticky_);
   SameLine(); HelpMarker(
-      "Quand tu glisses une barre près d'une autre, ses bords s'alignent "
+      i18n::Tr("Quand tu glisses une barre près d'une autre, ses bords s'alignent "
       "et se collent automatiquement (~10px).\nÉloigne-la pour la "
-      "détacher. Les barres restent indépendantes.");
+      "détacher. Les barres restent indépendantes."));
 
   changed |= ro::RoCheckbox("Vertical", &vertical_);
   SameLine(); HelpMarker(
-      "Remplissage vertical des barres. \n"
-      "Décoche pour les barres horizontales.");
+      i18n::Tr("Remplissage vertical des barres. \n"
+      "Décoche pour les barres horizontales."));
 
-  changed |= ro::RoCheckbox("Bordure des barres", &border_);
+  changed |= ro::RoCheckbox(i18n::Tr("Bordure des barres"), &border_);
   SameLine(); HelpMarker(
-      "Trait sombre 1px autour de chaque barre (HP/SP/EXP...). \n"
-      "Décoche pour des barres sans contour.");
+      i18n::Tr("Trait sombre 1px autour de chaque barre (HP/SP/EXP...). \n"
+      "Décoche pour des barres sans contour."));
 
   const char* modes[] = {"Aucun", "Pourcentage", "Valeurs", "Les deux"};
-  changed |= ro::RoCombo("Texte des barres", &text_mode_, modes, IM_ARRAYSIZE(modes));
+  changed |= ro::RoCombo(i18n::Tr("Texte des barres"), &text_mode_, modes, IM_ARRAYSIZE(modes));
   SameLine(); HelpMarker(
-      "Ce qui est écrit sur les barres : rien, le pourcentage, les "
-      "valeurs brutes (courant / max) ou les deux.");
+      i18n::Tr("Ce qui est écrit sur les barres : rien, le pourcentage, les "
+      "valeurs brutes (courant / max) ou les deux."));
   changed |= WheelSliderFloat("Arrondi", &rounding_, 0.0f, 16.0f);
-  SameLine(); HelpMarker("Arrondi des coins des barres.");
+  SameLine(); HelpMarker(i18n::Tr("Arrondi des coins des barres."));
 
   for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     char lbl[32];
@@ -2308,7 +2309,7 @@ bool BasicInfo::DrawSettings() {
   }
   changed |= ColorEdit4WithAlphaBar("Fond / Opacité", bg_color_);
 
-  TextUnformatted("Tailles rapides de barres (toutes) :");
+  TextUnformatted(i18n::Tr("Tailles rapides de barres (toutes) :"));
   // Ce n'est PAS un préréglage (le mot désigne déjà trois autres familles dans
   // ce projet) : c'est le bouton qui applique une taille à TOUTES les barres.
   auto bar_size_button = [&](const char* label, int width_px, int height_px) {
@@ -2327,65 +2328,65 @@ bool BasicInfo::DrawSettings() {
   bar_size_button("M", 600, 22);
   bar_size_button("L", 800, 30);
 
-  SeparatorText("Portrait personnage");
-  changed |= ro::RoCheckbox("Afficher le portrait et les étiquettes", &portrait_visible_);
+  SeparatorText(i18n::Tr("Portrait personnage"));
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher le portrait et les étiquettes"), &portrait_visible_);
   SameLine(); HelpMarker(
-      "Portrait de statut : la tête du personnage, le pseudo, la classe "
+      i18n::Tr("Portrait de statut : la tête du personnage, le pseudo, la classe "
       "et le niveau sont des éléments INDÉPENDANTS — chacun déplaçable, "
       "redimensionnable, avec sa couleur/opacité de fond, son arrondi et sa "
-      "taille de texte.");
+      "taille de texte."));
 
   ImGui::BeginDisabled(!portrait_visible_);
 
-  changed |= ro::RoCheckbox("Verrouiller le portrait", &portrait_locked_);
-  Tooltip("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl.");
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller le portrait"), &portrait_locked_);
+  Tooltip(i18n::Tr("Si les éléments sont déverrouillés et en contact les uns avec les autres, ils sont déplaçables en maintenant Ctrl."));
   SameLine(); HelpMarker(
-      "Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
-      "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement).");
+      i18n::Tr("Verrouillé : les éléments ne bougent plus et laissent passer les clics au jeu.\n"
+      "Déverrouillé : glisse pour déplacer, tire un bord/coin pour redimensionner (aimantage à la grille d'alignement)."));
 
-  changed |= ro::RoCheckbox("Tête seule (sans le corps)", &portrait_head_only_);
+  changed |= ro::RoCheckbox(i18n::Tr("Tête seule (sans le corps)"), &portrait_head_only_);
   SameLine(); HelpMarker(
-      "Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
-      "Décoche pour le personnage entier.");
+      i18n::Tr("Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
+      "Décoche pour le personnage entier."));
 
   changed |= ro::RoCheckbox("Cape / garment", &portrait_show_garment_);
   SameLine(); HelpMarker(
-      "Affiche la cape/garment équipée (seulement en mode corps "
-      "entier — décoche \"Tête seule\" pour la voir).");
+      i18n::Tr("Affiche la cape/garment équipée (seulement en mode corps "
+      "entier — décoche \"Tête seule\" pour la voir)."));
 
   changed |= WheelSliderFloat("Zoom", &portrait_head_zoom_, 0.10f, 2.0f);
-  SameLine(); HelpMarker("Ajuster avec le zoom.");
+  SameLine(); HelpMarker(i18n::Tr("Ajuster avec le zoom."));
 
-  changed |= WheelSliderFloat("Décalage horiz.", &portrait_head_offx_, -1.5f, 1.5f);
+  changed |= WheelSliderFloat(i18n::Tr("Décalage horiz."), &portrait_head_offx_, -1.5f, 1.5f);
   SameLine(); HelpMarker(
-      "Décale le portrait horizontalement (0 = centré).\n"
-      "Sert à cadrer la tête/le corps ; le zoom reste centré.");
+      i18n::Tr("Décale le portrait horizontalement (0 = centré).\n"
+      "Sert à cadrer la tête/le corps ; le zoom reste centré."));
 
-  changed |= WheelSliderFloat("Décalage vert.", &portrait_head_offy_, -1.5f, 1.5f);
+  changed |= WheelSliderFloat(i18n::Tr("Décalage vert."), &portrait_head_offy_, -1.5f, 1.5f);
   SameLine(); HelpMarker(
-      "Décale le portrait verticalement (0 = centré).\n"
-      "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin.");
+      i18n::Tr("Décale le portrait verticalement (0 = centré).\n"
+      "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin."));
 
   static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
   changed |= ro::RoCombo("Animation", &portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
   SameLine(); HelpMarker(
-      "Pose animée du portrait (Combat = posture prête au combat).\n"
-      "Le nombre d'images de l'animation s'ajuste automatiquement.");
+      i18n::Tr("Pose animée du portrait (Combat = posture prête au combat).\n"
+      "Le nombre d'images de l'animation s'ajuste automatiquement."));
 
   static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
   changed |= ro::RoCombo("Direction", &portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
   SameLine(); HelpMarker(
-      "Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
-      "l'angle voulu (le rendu se met à jour en direct).");
+      i18n::Tr("Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
+      "l'angle voulu (le rendu se met à jour en direct)."));
 
   changed |= ro::RoCheckbox("Animer", &portrait_animate_);
   SameLine(); HelpMarker(
-      "Joue les images de l'animation (ex. le balayage de la posture "
-      "Combat). Décoche pour figer une pose calme (image 0).");
+      i18n::Tr("Joue les images de l'animation (ex. le balayage de la posture "
+      "Combat). Décoche pour figer une pose calme (image 0)."));
 
-  SeparatorText("Couleurs, arrondis et taille de texte du portrait et des étiquettes");
+  SeparatorText(i18n::Tr("Couleurs, arrondis et taille de texte du portrait et des étiquettes"));
   changed |= ro::RoCheckbox("Bordure", &portrait_border_);
-  SameLine(); HelpMarker("Trait 1px autour du cadre et des étiquettes.");
+  SameLine(); HelpMarker(i18n::Tr("Trait 1px autour du cadre et des étiquettes."));
 
   // Per-element config: show / background colour+opacity / rounding /
   // text colour / text size.  Each element is independent.
@@ -2401,12 +2402,12 @@ bool BasicInfo::DrawSettings() {
     }
     changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
     if (i != BasicInfo::kPortHead) {
-      changed |= WheelSliderFloat("Taille du texte", &e.text_scale,
+      changed |= WheelSliderFloat(i18n::Tr("Taille du texte"), &e.text_scale,
                                   kPortTextScaleMin, kPortTextScaleMax);
       SameLine(); HelpMarker(
-          "Taille du texte de cette étiquette (1.00 = taille de l'interface).\n"
+          i18n::Tr("Taille du texte de cette étiquette (1.00 = taille de l'interface).\n"
           "Le texte reste centré et coupé au cadre : agrandis le cadre s'il "
-          "déborde.");
+          "déborde."));
     }
     Unindent();
     ImGui::PopID();

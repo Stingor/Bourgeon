@@ -21,6 +21,7 @@
 #include "utils/game_paths.h"
 #include "utils/gif_writer.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -221,7 +222,7 @@ void ZoneRecorder::PumpState() {
   if (encode_ok_.load()) {
     last_saved_path_ = encode_path_;
     char msg[64];
-    std::snprintf(msg, sizeof(msg), "GIF écrit (%d images)", encode_frames_);
+    std::snprintf(msg, sizeof(msg), i18n::Tr("GIF écrit (%d images)"), encode_frames_);
     last_status_ = msg;
     LogInfo("ZoneRecorder: {} ({} images, {}x{})", encode_path_, encode_frames_,
             capture_w_, capture_h_);
@@ -547,13 +548,13 @@ void ZoneRecorder::DrawRecordingOverlay() {
   char label[64];
   if (state_ == State::kCountdown) {
     const long left = static_cast<long>(countdown_end_tick_ - GetTickCount());
-    std::snprintf(label, sizeof(label), "Départ dans %ld…", (left / 1000) + 1);
+    std::snprintf(label, sizeof(label), i18n::Tr("Départ dans %ld…"), (left / 1000) + 1);
   } else if (state_ == State::kRecording) {
     const unsigned long ms = GetTickCount() - record_start_tick_;
     std::snprintf(label, sizeof(label), "● REC  %.1f / %d s  (%d img)", ms / 1000.0f,
                   duration_s_, frame_count_);
   } else {
-    std::snprintf(label, sizeof(label), "Encodage du GIF…");
+    std::snprintf(label, sizeof(label), i18n::Tr("Encodage du GIF…"));
   }
 
   const ImVec2 ts = ImGui::CalcTextSize(label);
@@ -594,8 +595,8 @@ void ZoneRecorder::DrawSettings() {
 
   if (g_imgui_dx7_active) {
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f),
-                       "Indisponible : le client rend en DirectX 7.");
-    ImGui::TextDisabled("Bascule en DirectX 9 dans Setup.exe pour enregistrer.");
+                       i18n::Tr("Indisponible : le client rend en DirectX 7."));
+    ImGui::TextDisabled(i18n::Tr("Bascule en DirectX 9 dans Setup.exe pour enregistrer."));
     return;
   }
 
@@ -608,11 +609,11 @@ void ZoneRecorder::DrawSettings() {
     ImGui::Text("Zone : %d x %d  (en %d, %d)", zone_w_, zone_h_, zone_x_, zone_y_);
     preview_zone = ImGui::IsItemHovered();
   } else {
-    ImGui::TextDisabled("Aucune zone définie.");
+    ImGui::TextDisabled(i18n::Tr("Aucune zone définie."));
   }
   const bool busy = (state_ != State::kIdle);
   ImGui::BeginDisabled(busy);
-  if (ro::RoButton(IsZoneValid() ? "Redéfinir la zone" : "Définir la zone")) {
+  if (ro::RoButton(IsZoneValid() ? i18n::Tr("Redéfinir la zone") : i18n::Tr("Définir la zone"))) {
     select_hint_.clear();
     dragging_ = false;
     drag_ax_ = drag_bx_ = drag_ay_ = drag_by_ = 0.0f;
@@ -632,18 +633,18 @@ void ZoneRecorder::DrawSettings() {
   ImGui::EndDisabled();
   SameLine();
   HelpMarker(
-      "Trace un rectangle à la souris, comme l'outil de capture de Windows. La "
+      i18n::Tr("Trace un rectangle à la souris, comme l'outil de capture de Windows. La "
       "zone est mémorisée : ensuite, la touche ci-dessous suffit.\n\n"
       "L'image enregistrée est celle que tu vois — monde, interface native ET "
       "fenêtres Bourgeon. Le cadre et le témoin, eux, sont dessinés en dehors de "
       "la zone : ils n'apparaissent jamais dans le GIF.\n\n"
-      "Un second appui sur la touche arrête avant la fin.");
+      "Un second appui sur la touche arrête avant la fin."));
 
   if (state_ == State::kSelecting)
-    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Tracé en cours à l'écran…");
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), i18n::Tr("Tracé en cours à l'écran…"));
 
   // ── Réglages ──
-  SeparatorText("Réglages");
+  SeparatorText(i18n::Tr("Réglages"));
   // Persisté au RELÂCHEMENT et non à chaque frame de glissement : réécrire le
   // yaml soixante fois par seconde pour un curseur qu'on promène est absurde.
   // ⚠ La molette est traitée HORS du slider et ne désactive donc jamais l'item :
@@ -660,12 +661,12 @@ void ZoneRecorder::DrawSettings() {
   slider("Largeur max", &max_width_, 160, 1280);
   SameLine();
   HelpMarker(
-      "La zone est réduite à cette largeur (proportions gardées) avant d'entrer "
+      i18n::Tr("La zone est réduite à cette largeur (proportions gardées) avant d'entrer "
       "dans le GIF. C'est le réglage qui pèse le plus lourd : la mémoire et la "
-      "taille du fichier montent avec le CARRÉ de la largeur.");
+      "taille du fichier montent avec le CARRÉ de la largeur."));
   slider("Délai avant départ (s)", &start_delay_s_, 0, 5);
   SameLine();
-  HelpMarker("Le temps de refermer ce panneau et de te placer avant que ça tourne.");
+  HelpMarker(i18n::Tr("Le temps de refermer ce panneau et de te placer avant que ça tourne."));
 
   int ow = 0, oh = 0;
   ComputeOutputSize(&ow, &oh);
@@ -673,11 +674,11 @@ void ZoneRecorder::DrawSettings() {
   const bool over_budget = bytes > kMaxCaptureBytes;
   ImGui::TextColored(
       over_budget ? ImVec4(1.0f, 0.4f, 0.4f, 1.0f) : ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
-      "%d images en %d x %d  —  %.0f Mo en mémoire", fps_ * duration_s_, ow, oh,
+      i18n::Tr("%d images en %d x %d  —  %.0f Mo en mémoire"), fps_ * duration_s_, ow, oh,
       bytes / (1024.0 * 1024.0));
   if (over_budget)
     ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
-                       "Au-delà du budget : réduis la durée ou la largeur.");
+                       i18n::Tr("Au-delà du budget : réduis la durée ou la largeur."));
 
   // ── Raccourci ──
   SeparatorText("Raccourci");
@@ -687,7 +688,7 @@ void ZoneRecorder::DrawSettings() {
     // Gèle les autres raccourcis le temps du choix : la touche pressée doit
     // remapper, pas déclencher l'action qu'elle porte encore.
     hotkeys::PingCapture();
-    ImGui::Text("appuie sur une touche…  (Échap : annuler)");
+    ImGui::Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       key_capturing_ = false;
@@ -714,7 +715,7 @@ void ZoneRecorder::DrawSettings() {
     hotkeys::Label(key_vk_, key_ctrl_, key_alt_, key_shift_, label, sizeof(label));
     ImGui::Text("%s", label);
     SameLine(0.0f, 6.0f);
-    if (ro::RoButton("Redéfinir")) {
+    if (ro::RoButton(i18n::Tr("Redéfinir"))) {
       key_capturing_ = true;
       key_conflict_msg_.clear();
     }
@@ -743,15 +744,14 @@ void ZoneRecorder::DrawSettings() {
     if (show_status) ImGui::TextWrapped("%s", last_status_.c_str());
     if (!last_saved_path_.empty()) {
       ImGui::TextDisabled("%s", last_saved_path_.c_str());
-      if (ro::RoButton("Copier dans le presse-papier")) {
+      if (ro::RoButton(i18n::Tr("Copier dans le presse-papier"))) {
         clip_msg_ = CopyGifToClipboard(last_saved_path_)
-                        ? "GIF copié — Ctrl+V dans Discord pour le poster."
-                        : "Copie impossible : une autre application retient le "
-                          "presse-papier, réessaie.";
+                        ? i18n::Tr("GIF copié — Ctrl+V dans Discord pour le poster.") : i18n::Tr("Copie impossible : une autre application retient le "
+                          "presse-papier, réessaie.");
       }
-      Tooltip("Colle le fichier GIF lui-même, animation comprise.");
+      Tooltip(i18n::Tr("Colle le fichier GIF lui-même, animation comprise."));
       SameLine(0.0f, 6.0f);
-      if (ro::RoButton("Ouvrir le dossier")) RevealInExplorer(last_saved_path_);
+      if (ro::RoButton(i18n::Tr("Ouvrir le dossier"))) RevealInExplorer(last_saved_path_);
       if (clip_msg_) ImGui::TextWrapped("%s", clip_msg_);
     }
   }

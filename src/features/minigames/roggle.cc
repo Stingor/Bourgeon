@@ -16,6 +16,7 @@
 #include "ui/imgui_escape.h"
 
 #include "d3d9/d3d9_hook.h"  // D3D9_CreateTextureARGB
+#include "utils/i18n.h"
 
 // ── Tunables (board-local pixels; physics in px/second) ───────────────────────
 namespace {
@@ -356,7 +357,7 @@ void Roggle::OnRenderUI() {
     ImGui::SameLine(0, 22);
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.12f, 1.0f), "Oranges : %d", g.orange_left);
     ImGui::SameLine(0, 22);
-    if (ImGui::SmallButton("Nouvelle partie")) NewGame();
+    if (ImGui::SmallButton(i18n::Tr("Nouvelle partie"))) NewGame();
 
     // ── Canvas: an InvisibleButton gives us a clickable, hoverable region ──
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -468,7 +469,7 @@ void Roggle::OnRenderUI() {
     // Win/lose overlay (the "Nouvelle partie" HUD button restarts).
     if (g.state == kWon || g.state == kLost) {
       dl->AddRectFilled(P(0, 0), P(kBoardW, kBoardH), IM_COL32(0, 0, 0, 150), 6.0f);
-      const char* msg = (g.state == kWon) ? "GAGNÉ !" : "Perdu...";
+      const char* msg = (g.state == kWon) ? i18n::Tr("GAGNÉ !") : "Perdu...";
       const ImU32 mc  = (g.state == kWon) ? IM_COL32(120, 255, 150, 255)
                                           : IM_COL32(255, 120, 120, 255);
       const ImVec2 ts = ImGui::CalcTextSize(msg);

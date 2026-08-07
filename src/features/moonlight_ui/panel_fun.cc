@@ -19,6 +19,7 @@
 #include "features/gameplay/player_jump.h"
 #include "features/minigames/roggle.h"
 #include "features/minigames/rojeweled.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -40,7 +41,7 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
     // Gèle les raccourcis (saut ET presets) le temps du choix : la touche
     // pressée doit remapper, pas déclencher l'action qu'elle porte encore.
     hotkeys::PingCapture();
-    Text("appuie sur une touche…  (Échap : annuler)");
+    Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       player_jump->key_capturing() = false;
@@ -72,13 +73,13 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
                  player_jump->key_shift(), label, sizeof(label));
   Text("%s", label);
   SameLine(0.0f, 6.0f);
-  if (ro::RoButton("Redéfinir")) {
+  if (ro::RoButton(i18n::Tr("Redéfinir"))) {
     player_jump->key_capturing() = true;
     player_jump->key_conflict_msg().clear();
   }
-  Tooltip("Lettres, chiffres, F1-F12 et Espace (avec Ctrl/Alt/Maj si tu veux).\n"
+  Tooltip(i18n::Tr("Lettres, chiffres, F1-F12 et Espace (avec Ctrl/Alt/Maj si tu veux).\n"
           "Une touche déjà prise par un preset d'équipement ou par la barre de "
-          "skills est refusée.");
+          "skills est refusée."));
   return changed;
 }
 
@@ -88,7 +89,7 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
 // des plugins frères (DpsMeter, Doom, LoginParade, Roggle, RoJeweled, PlayerJump,
 // KeyboardMove). Extraits d'OnRenderUI — 180 lignes.
 void MoonlightUi::DrawFunPanels() {
-  if (CollapsingHeader("DPS Meter")) {
+  if (CollapsingHeader(i18n::Tr("DPS Meter"))) {
     PushStyleCompact();
     if (auto* dps_meter = Bourgeon::Instance().dps_meter()) {
       if (dps_meter->DrawSettings()) SaveSettings();
@@ -105,80 +106,80 @@ void MoonlightUi::DrawFunPanels() {
     SeparatorText("DOOM");
     if (auto* doom = Bourgeon::Instance().doom()) {
       bool on = doom->enabled();
-      if (ro::RoCheckbox("Lancer DOOM (1993) dans Ragnarok", &on))
+      if (ro::RoCheckbox(i18n::Tr("Lancer DOOM (1993) dans Ragnarok"), &on))
         doom->SetEnabled(on);
       SameLine(); HelpMarker(
-          "Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
+          i18n::Tr("Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
           "par-dessus le jeu.\n\n"
           "Nécessite doom1.wad (shareware) à côté de l'exe du client.\n"
           "Clique la fenêtre DOOM pour capturer le clavier : ZQSD (AZERTY), "
           "WASD ou flèches pour bouger, Ctrl tirer, Espace/E ouvrir, Shift "
           "courir, Échap menu.\n"
           "Décocher = pause. Quitter depuis le menu DOOM = définitif "
-          "jusqu'au redémarrage du client.");
-      ImGui::TextDisabled("État : %s", doom->StatusText());
+          "jusqu'au redémarrage du client."));
+      ImGui::TextDisabled(i18n::Tr("État : %s"), doom->StatusText());
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
-    SeparatorText("Parade de Porings (login)");
+    SeparatorText(i18n::Tr("Parade de Porings (login)"));
     if (auto* login_parade = Bourgeon::Instance().login_parade()) {
       bool on = login_parade->enabled_;
-      if (ro::RoCheckbox("Porings sur l'écran de login", &on)) {
+      if (ro::RoCheckbox(i18n::Tr("Porings sur l'écran de login"), &on)) {
         login_parade->enabled_ = on;
         SaveSettings();
       }
       SameLine(); HelpMarker(
-          "Fait flâner une petite bande de monstres de la famille Poring sur "
+          i18n::Tr("Fait flâner une petite bande de monstres de la famille Poring sur "
           "l'écran de login : ils sautillent d'un bord à l'autre, font des "
           "pauses, et sursautent (avec un son) si tu cliques dessus.\n\n"
           "Purement cosmétique. Ils s'estompent au-dessus du panneau de login "
-          "pour ne pas gêner la saisie. Visible uniquement à l'écran de login.");
+          "pour ne pas gêner la saisie. Visible uniquement à l'écran de login."));
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
     SeparatorText("Roggle");
     if (auto* roggle = Bourgeon::Instance().roggle()) {
       bool on = roggle->enabled();
-      if (ro::RoCheckbox("Ouvrir Roggle", &on))
+      if (ro::RoCheckbox(i18n::Tr("Ouvrir Roggle"), &on))
         roggle->SetEnabled(on);
       SameLine(); HelpMarker(
-          "Mini-jeu façon Peggle, dessiné en ImGui par-dessus le jeu.\n\n"
+          i18n::Tr("Mini-jeu façon Peggle, dessiné en ImGui par-dessus le jeu.\n\n"
           "Vise à la souris depuis le canon en haut, clique pour tirer la "
           "bille. Dégomme tous les pegs ORANGE pour gagner ; le seau vert en "
           "bas rattrape la bille = bille gratuite.\n"
-          "Fermer la fenêtre ou décocher = masquer (la partie est conservée).");
+          "Fermer la fenêtre ou décocher = masquer (la partie est conservée)."));
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
     SeparatorText("Rojeweled");
     if (auto* rojeweled = Bourgeon::Instance().rojeweled()) {
       bool on = rojeweled->enabled();
-      if (ro::RoCheckbox("Ouvrir Rojeweled", &on))
+      if (ro::RoCheckbox(i18n::Tr("Ouvrir Rojeweled"), &on))
         rojeweled->SetEnabled(on);
       SameLine(); HelpMarker(
-          "Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
+          i18n::Tr("Match-3 façon Bejeweled dont les gemmes sont de vrais sprites de "
           "monstres RO (famille Poring : Poring, Drops, Metaling, Poporing, "
           "Marin, Deviling).\n\n"
           "Clique deux monstres voisins pour les échanger ; aligne-en 3+ pour "
           "les faire disparaître (les cascades rapportent plus). DX9 requis "
-          "(sinon tuiles colorées).");
+          "(sinon tuiles colorées)."));
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
     SeparatorText("Saut");
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       bool on = player_jump->enabled();
-      if (ro::RoCheckbox("Sauter au clavier", &on)) {
+      if (ro::RoCheckbox(i18n::Tr("Sauter au clavier"), &on)) {
         player_jump->SetEnabled(on);
         SaveSettings();
       }
       SameLine(); HelpMarker(
-          "Appuie sur la touche de saut (Espace par défaut) pour faire bondir "
+          i18n::Tr("Appuie sur la touche de saut (Espace par défaut) pour faire bondir "
           "ton personnage : un petit arc parabolique (montée puis retombée) "
           "purement visuel.\n\n"
           "Le serveur ne voit rien — c'est un simple décalage de hauteur du "
           "sprite, ré-appliqué chaque frame (tu peux même sauter en marchant). "
-          "Taper cette touche dans le chat ne déclenche PAS de saut.");
+          "Taper cette touche dans le chat ne déclenche PAS de saut."));
       if (on && DrawJumpKeyBinding(player_jump)) SaveSettings();
       // Réglages fins de l'arc de saut : réservés au staff (cf. IsStaff, group
       // level serveur >= 80). Mal réglés ils donnent un saut grotesque ou
@@ -187,21 +188,21 @@ void MoonlightUi::DrawFunPanels() {
       if (on && IsStaff()) {
         PushItemWidth(160.0f);
         WheelSliderFloat("Hauteur", player_jump->p_height(), 2.0f, 40.0f);
-        WheelSliderInt("Durée (ms)", player_jump->p_duration_ms(), 200, 1500);
+        WheelSliderInt(i18n::Tr("Durée (ms)"), player_jump->p_duration_ms(), 200, 1500);
         PopItemWidth();
       }
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
-    SeparatorText("Déplacement au clavier (Expérimental)");
+    SeparatorText(i18n::Tr("Déplacement au clavier (Expérimental)"));
     if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
       bool on = keyboard_move->enabled();
-      if (ro::RoCheckbox("Marcher avec ZQSD / flèches", &on)) {
+      if (ro::RoCheckbox(i18n::Tr("Marcher avec ZQSD / flèches"), &on)) {
         keyboard_move->SetEnabled(on);
         SaveSettings();
       }
       SameLine(); HelpMarker(
-          "Déplace ton personnage au clavier : Z/S pour avancer et reculer, "
+          i18n::Tr("Déplace ton personnage au clavier : Z/S pour avancer et reculer, "
           "Q/D pour aller à gauche et à droite (les flèches font pareil). "
           "Deux touches ensemble = diagonale.\n\n"
           "Rien n'est simulé côté client : le plugin envoie la MÊME demande de "
@@ -209,20 +210,20 @@ void MoonlightUi::DrawFunPanels() {
           "déplacement (murs, vitesse, blocages). Taper dans le chat ne fait "
           "pas courir le personnage.\n\n"
           "Attention si tu as des raccourcis de compétence sur Z, Q, S ou D : "
-          "ils se déclencheront aussi.");
+          "ils se déclencheront aussi."));
       if (on) {
-        if (ro::RoCheckbox("Suivre la rotation de la caméra",
+        if (ro::RoCheckbox(i18n::Tr("Suivre la rotation de la caméra"),
                            keyboard_move->p_camera_relative()))
           SaveSettings();
         SameLine(); HelpMarker(
-            "« Haut » = le haut de l'écran, même après avoir fait pivoter la "
-            "caméra. Décoché : les directions restent celles de la carte.");
-        if (ro::RoCheckbox("S'arrêter au relâchement",
+            i18n::Tr("« Haut » = le haut de l'écran, même après avoir fait pivoter la "
+            "caméra. Décoché : les directions restent celles de la carte."));
+        if (ro::RoCheckbox(i18n::Tr("S'arrêter au relâchement"),
                            keyboard_move->p_stop_on_release()))
           SaveSettings();
         SameLine(); HelpMarker(
-            "Coupe la marche dès que tu lâches la touche, au lieu de laisser "
-            "le personnage finir le trajet demandé.");
+            i18n::Tr("Coupe la marche dès que tu lâches la touche, au lieu de laisser "
+            "le personnage finir le trajet demandé."));
         // Réglages fins du protocole de marche : réservés au staff (cf.
         // IsStaff, group level serveur >= 80). Mal réglés ils dégradent le
         // ressenti ou spamment le serveur — les valeurs par défaut restent

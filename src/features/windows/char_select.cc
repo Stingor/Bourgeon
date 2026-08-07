@@ -29,6 +29,7 @@
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
+#include "utils/i18n.h"
 
 namespace {
 
@@ -312,20 +313,20 @@ void InstallShowModalDetour() {
 const char* DeleteRejectMsg(int result) {
   switch (result) {
     case 4:
-      return "Suppression refusée : ce personnage est dans une GUILDE. "
-             "Quitte-la d'abord, puis réessaie.";
+      return i18n::Tr("Suppression refusée : ce personnage est dans une GUILDE. "
+             "Quitte-la d'abord, puis réessaie.");
     case 5:
-      return "Suppression refusée : ce personnage est dans un GROUPE. "
-             "Quitte-le d'abord, puis réessaie.";
+      return i18n::Tr("Suppression refusée : ce personnage est dans un GROUPE. "
+             "Quitte-le d'abord, puis réessaie.");
     case 6:
-      return "Suppression impossible : ce personnage tient un shop.";
+      return i18n::Tr("Suppression impossible : ce personnage tient un shop.");
     case 3:
-      return "Suppression impossible : erreur base de données ou personnage "
-             "introuvable.";
+      return i18n::Tr("Suppression impossible : erreur base de données ou personnage "
+             "introuvable.");
     case 0:
-      return "La suppression de ce personnage est déjà programmée.";
+      return i18n::Tr("La suppression de ce personnage est déjà programmée.");
     default:
-      return "Suppression refusée par le serveur.";
+      return i18n::Tr("Suppression refusée par le serveur.");
   }
 }
 
@@ -1314,7 +1315,7 @@ void CharSelect::DrawLayoutEditor() {
   if (begun) {
     charsel::Layout& lay = charsel::State();
 
-    ImGui::TextUnformatted("Décor");
+    ImGui::TextUnformatted(i18n::Tr("Décor"));
     ImGui::Separator();
     const std::vector<charsel::Background>& bgs = charsel::Backgrounds();
     const std::string current = lay.background;
@@ -1337,36 +1338,36 @@ void CharSelect::DrawLayoutEditor() {
     // fond uni sans comprendre.
     if (!BackgroundLoaded()) {
       ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(180, 40, 40, 255));
-      ImGui::TextWrapped("Ce décor n'a pas pu être chargé (fichier absent ou "
-                         "format refusé) — fond uni en attendant.");
+      ImGui::TextWrapped(i18n::Tr("Ce décor n'a pas pu être chargé (fichier absent ou "
+                         "format refusé) — fond uni en attendant."));
       ImGui::PopStyleColor();
     }
-    if (ro::RoButton("Rafraîchir", 110.0f, 0.0f)) charsel::RescanBackgrounds();
+    if (ro::RoButton(i18n::Tr("Rafraîchir"), 110.0f, 0.0f)) charsel::RescanBackgrounds();
     ImGui::SameLine();
-    if (ro::RoButton("Ouvrir le dossier", 160.0f, 0.0f))
+    if (ro::RoButton(i18n::Tr("Ouvrir le dossier"), 160.0f, 0.0f))
       charsel::OpenBackgroundFolder();
     // Chemins écrits en barres obliques : cf. DisplayPath (la police coréenne
     // dessine l'antislash en « ₩ »).
     ImGui::TextWrapped(
-        "Dépose tes images .bmp dans data/texture/lobby/ (24 ou 32 bits, nom "
+        i18n::Tr("Dépose tes images .bmp dans data/texture/lobby/ (24 ou 32 bits, nom "
         "sans accent), puis « Rafraîchir ». Le bouton ci-dessus ouvre le bon "
-        "dossier et le crée au besoin.");
+        "dossier et le crée au besoin."));
     // Le client ne résout PAS data\lobby\ (il cherche sous data\texture\) : des
     // images laissées là resteraient invisibles sans explication.
     if (const int misplaced = charsel::MisplacedBackgroundCount()) {
       ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 90, 0, 255));
-      ImGui::TextWrapped("%d image(s) se trouvent dans %s : le client ne lit pas "
-                         "ce dossier, déplace-les vers data/texture/lobby/.",
+      ImGui::TextWrapped(i18n::Tr("%d image(s) se trouvent dans %s : le client ne lit pas "
+                         "ce dossier, déplace-les vers data/texture/lobby/."),
                          misplaced,
                          DisplayPath(charsel::MisplacedBackgroundDir()).c_str());
       ImGui::PopStyleColor();
     }
 
     ImGui::Spacing();
-    ImGui::TextUnformatted("Places libres");
+    ImGui::TextUnformatted(i18n::Tr("Places libres"));
     ImGui::Separator();
     bool hide = lay.hide_empty_seats;
-    if (ro::RoCheckbox("Masquer les places libres", &hide)) {
+    if (ro::RoCheckbox(i18n::Tr("Masquer les places libres"), &hide)) {
       lay.hide_empty_seats = hide;
       charsel::MarkDirty();
     }
@@ -1377,23 +1378,23 @@ void CharSelect::DrawLayoutEditor() {
         charsel::MarkDirty();
       }
     }
-    ImGui::TextWrapped("Masquées, elles réapparaissent au survol : créer un "
+    ImGui::TextWrapped(i18n::Tr("Masquées, elles réapparaissent au survol : créer un "
                        "personnage reste possible. Elles restent toujours "
-                       "visibles pendant la personnalisation.");
+                       "visibles pendant la personnalisation."));
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Placement");
     ImGui::Separator();
     ImGui::TextWrapped(
-        "Glisse un personnage pour déplacer sa place. Molette dessus : le "
+        i18n::Tr("Glisse un personnage pour déplacer sa place. Molette dessus : le "
         "tourner ; Ctrl+molette : sa taille ; clic droit : sa pose (assis, "
         "debout, touché, mort) et l'orientation de sa tête.\n"
         "Les pastilles bleues déplacent le titre, la barre de boutons, la "
-        "pagination et la barre de sortie.");
-    if (ro::RoButton("Replacer les personnages", 200.0f, 0.0f))
+        "pagination et la barre de sortie."));
+    if (ro::RoButton(i18n::Tr("Replacer les personnages"), 200.0f, 0.0f))
       charsel::ResetPlacement();
     ImGui::SameLine();
-    if (ro::RoButton("Tout restaurer", 150.0f, 0.0f)) {
+    if (ro::RoButton(i18n::Tr("Tout restaurer"), 150.0f, 0.0f)) {
       // Retour à la mise en page LIVRÉE (décor d'origine compris). Les
       // enregistrements du joueur ne sont pas touchés : c'est une remise à zéro de
       // l'écran, pas un effacement de son travail.
@@ -1403,13 +1404,13 @@ void CharSelect::DrawLayoutEditor() {
 
     // ── Mises en page enregistrées ───────────────────────────────────────────
     ImGui::Spacing();
-    ImGui::TextUnformatted("Mises en page enregistrées");
+    ImGui::TextUnformatted(i18n::Tr("Mises en page enregistrées"));
     ImGui::Separator();
     const std::vector<charsel::Preset>& presets = charsel::Presets();
     ImGui::BeginChild("##preset_list", ImVec2(0.0f, 96.0f), true);
     if (presets.empty()) {
       ImGui::TextColored(ImVec4(0.36f, 0.38f, 0.42f, 1.0f),
-                         "Aucune pour l'instant.");
+                         i18n::Tr("Aucune pour l'instant."));
     }
     for (int i = 0; i < static_cast<int>(presets.size()); ++i) {
       if (ImGui::Selectable(presets[i].name.c_str(), preset_sel_ == i)) {
@@ -1426,7 +1427,7 @@ void CharSelect::DrawLayoutEditor() {
     ImGui::EndChild();
 
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##preset_name", "Nom (ex. « Ma taverne »)",
+    ImGui::InputTextWithHint("##preset_name", i18n::Tr("Nom (ex. « Ma taverne »)"),
                              preset_name_, sizeof(preset_name_));
     const bool has_name = (preset_name_[0] != '\0');
     if (!has_name) ImGui::BeginDisabled();
@@ -1462,11 +1463,11 @@ void CharSelect::DrawLayoutEditor() {
     if (!has_sel) ImGui::EndDisabled();
     if (preset_del_armed_ && has_sel)
       ImGui::TextColored(ImVec4(0.55f, 0.15f, 0.10f, 1.0f),
-                         "Clique « Confirmer » pour supprimer « %s ».",
+                         i18n::Tr("Clique « Confirmer » pour supprimer « %s »."),
                          presets[preset_sel_].name.c_str());
     else
-      ImGui::TextWrapped("Double-clic sur un nom = l'appliquer. « Enregistrer » "
-                         "range l'écran tel qu'il est sous ce nom.");
+      ImGui::TextWrapped(i18n::Tr("Double-clic sur un nom = l'appliquer. « Enregistrer » "
+                         "range l'écran tel qu'il est sous ce nom."));
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -1477,9 +1478,9 @@ void CharSelect::DrawLayoutEditor() {
     // y est illisible.
     if (charsel::Dirty())
       ImGui::TextColored(ImVec4(0.45f, 0.30f, 0.05f, 1.0f),
-                         "Sera enregistré en quittant");
+                         i18n::Tr("Sera enregistré en quittant"));
     else
-      ImGui::TextColored(ImVec4(0.15f, 0.42f, 0.18f, 1.0f), "Enregistré");
+      ImGui::TextColored(ImVec4(0.15f, 0.42f, 0.18f, 1.0f), i18n::Tr("Enregistré"));
   }
   ro::EndRoWindow();
   ro::SetWindowCollapseAllowed(false);  // on rend l'interdit général de l'écran
@@ -1516,7 +1517,7 @@ void CharSelect::OnRenderLoginUI() {
     const bool stalled = entering_ && NativeCharSelectAlive() &&
                          (GetTickCount() - enter_tick_) > kEnterTimeoutMs;
     if (!stalled) {
-      DrawTransitionFade(entering_ ? "Entrée en jeu…" : "Fermeture du jeu…",
+      DrawTransitionFade(entering_ ? i18n::Tr("Entrée en jeu…") : i18n::Tr("Fermeture du jeu…"),
                          entering_ ? enter_tick_ : quit_tick_);
       return;
     }
@@ -1592,7 +1593,7 @@ void CharSelect::OnRenderLoginUI() {
       // On COUVRE l'attente au lieu de découvrir le char-select natif : le
       // laisser visible, c'est le laisser cliquable et le laisser réagir aux
       // Entrées encore en file (entrée en jeu / création non demandées).
-      if (may_cover) DrawWaitCover("Chargement des personnages…");
+      if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
       return;
     }
     if (!list_warned_) {
@@ -1609,7 +1610,7 @@ void CharSelect::OnRenderLoginUI() {
   const int cap = SlotCapacity();
   if (cap <= 0) {
     active_ = false;
-    if (may_cover) DrawWaitCover("Chargement des personnages…");
+    if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
     return;
   }
 
@@ -1621,7 +1622,7 @@ void CharSelect::OnRenderLoginUI() {
   }
   if (nfilled == 0) {  // liste pas encore décodable — ou compte sans personnage
     active_ = false;
-    if (may_cover) DrawWaitCover("Chargement des personnages…");
+    if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
     return;
   }
   if (!active_) active_since_ = GetTickCount();   // arrivée sur l'écran (edge)
@@ -1654,8 +1655,8 @@ void CharSelect::OnRenderLoginUI() {
                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                        ImGuiWindowFlags_AlwaysAutoResize |
                        ImGuiWindowFlags_NoSavedSettings);
-      ImGui::TextUnformatted("Gestion native en cours…");
-      if (ImGui::Button("Revenir à la table")) {
+      ImGui::TextUnformatted(i18n::Tr("Gestion native en cours…"));
+      if (ImGui::Button(i18n::Tr("Revenir à la table"))) {
         native_op_ = false;
         op_prev_nfilled_ = -1;
       }
@@ -1880,7 +1881,7 @@ void CharSelect::OnRenderLoginUI() {
                   ImVec2(cx + r * 0.5f, chair_y - box_h * 0.5f), col, 2.0f);
       dl->AddLine(ImVec2(cx, chair_y - box_h * 0.5f - r * 0.5f),
                   ImVec2(cx, chair_y - box_h * 0.5f + r * 0.5f), col, 2.0f);
-      if (hovered) ImGui::SetTooltip("Créer un personnage (emplacement %d)", ci + 1);
+      if (hovered) ImGui::SetTooltip(i18n::Tr("Créer un personnage (emplacement %d)"), ci + 1);
       if (clicked && !seat_edit_ && has_slot) {
         // Ouvre notre popup de création ImGui (aperçu live + envoi 0xa39), au lieu de
         // la fenêtre native 0xC8. Sexe par défaut = celui du compte.
@@ -1993,7 +1994,7 @@ void CharSelect::OnRenderLoginUI() {
         if (v.map[0] != '\0') ImGui::Text("Carte : %s", LocalToUtf8(v.map));
         if (v.del_rev_date > 0)
           ImGui::TextColored(ImVec4(0.96f, 0.52f, 0.52f, 1.0f),
-                             "Suppression programmée");
+                             i18n::Tr("Suppression programmée"));
         ImGui::EndTooltip();
       }
       if (!seat_edit_) {
@@ -2111,11 +2112,11 @@ void CharSelect::OnRenderLoginUI() {
 
   const bool can_enter = can_enter_slot(selected_);
   if (!can_enter) ImGui::BeginDisabled();
-  if (ro::RoButton("Entrer en jeu", 180.0f, 0.0f)) EnterGame(selected_);
+  if (ro::RoButton(i18n::Tr("Entrer en jeu"), 180.0f, 0.0f)) EnterGame(selected_);
   if (!can_enter) ImGui::EndDisabled();
 
   ImGui::SameLine();
-  if (ro::RoButton("Mode Classique", 190.0f, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Mode Classique"), 190.0f, 0.0f)) {
     native_fallback_ = true;
     // Notre UI disparaît pour la session : le panneau de personnalisation avec
     // elle, et la mise en page en cours doit être gravée maintenant.
@@ -2140,7 +2141,7 @@ void CharSelect::OnRenderLoginUI() {
   if (sel_occupied) {
     ImGui::SameLine();
     if (!pending) {
-      if (ro::RoButton("Programmer suppression", 200.0f, 0.0f)) {
+      if (ro::RoButton(i18n::Tr("Programmer suppression"), 200.0f, 0.0f)) {
         DriveNativeCtrl(0x197, selected_);  // CZ 0x0827 (réserve la suppression)
         del_reject_until_ = 0;  // efface un éventuel bandeau de refus précédent
         // Le résultat (succès -> del_rev_date ; échec -> bandeau) est capté par le
@@ -2152,7 +2153,7 @@ void CharSelect::OnRenderLoginUI() {
       // déclenchait rien de fiable sous notre UI. CH_DELETE_CHAR3_CANCEL 0x082b :
       // [op u16][CID u32] = 6 o. Le serveur répond 0x082c et le recv natif efface
       // del_rev_date -> le perso quitte l'état « en suppression ».
-      if (ro::RoButton("Annuler suppression", 200.0f, 0.0f)) {
+      if (ro::RoButton(i18n::Tr("Annuler suppression"), 200.0f, 0.0f)) {
         // Poser kSelectedSlot avant l'envoi (cf. suppression) : la réponse
         // d'annulation met à jour le SLOT sélectionné côté client.
         *reinterpret_cast<uint8_t*>(kSelectedSlot) =
@@ -2192,28 +2193,28 @@ void CharSelect::OnRenderLoginUI() {
   // Tooltips APRÈS le pop du texte sombre (sinon texte sombre sur tooltip sombre).
   if (tip_sched)
     ImGui::SetTooltip(
-        "Planifie la suppression de ce personnage.\n"
+        i18n::Tr("Planifie la suppression de ce personnage.\n"
         "- Il n'est PAS supprimé tout de suite : un délai serveur s'écoule d'abord\n"
         "  (le perso reste et se marque « Suppression programmée »).\n"
         "- Pendant ce délai tu peux ANNULER (bouton « Annuler suppression »).\n"
         "- Le délai écoulé, « Supprimer » finalise — IRRÉVERSIBLE.\n"
         "- Impossible si le perso est dans une GUILDE ou un GROUPE : le serveur\n"
-        "  refuse, quitte-les d'abord.");
+        "  refuse, quitte-les d'abord."));
   if (tip_cancel)
     ImGui::SetTooltip(
-        "Annule la suppression planifiée : le personnage est conservé.");
+        i18n::Tr("Annule la suppression planifiée : le personnage est conservé."));
   if (tip_del) {
     if (del_remaining > 0) {
       const int h = del_remaining / 3600, m = (del_remaining % 3600) / 60,
                 s = del_remaining % 60;
       ImGui::SetTooltip(
-          "Suppression définitive indisponible : le délai serveur n'est pas\n"
-          "écoulé. Disponible dans %02d:%02d:%02d.", h, m, s);
+          i18n::Tr("Suppression définitive indisponible : le délai serveur n'est pas\n"
+          "écoulé. Disponible dans %02d:%02d:%02d."), h, m, s);
     } else {
       ImGui::SetTooltip(
-          "Supprime DÉFINITIVEMENT ce personnage. Action IRRÉVERSIBLE.\n"
+          i18n::Tr("Supprime DÉFINITIVEMENT ce personnage. Action IRRÉVERSIBLE.\n"
           "Ouvre une confirmation : saisis l'EMAIL du compte (le serveur le\n"
-          "vérifie ; c'est le même email pour tous tes personnages).");
+          "vérifie ; c'est le même email pour tous tes personnages)."));
     }
   }
 
@@ -2227,10 +2228,10 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(28, 32, 44, 255));
     ImGui::PushStyleColor(ImGuiCol_TextDisabled, IM_COL32(118, 124, 138, 255));
     ImGui::SetCursorScreenPos(exit_pos);
-    const bool back_clicked = ro::RoButton("Revenir au login", kExitBackW, 0.0f);
+    const bool back_clicked = ro::RoButton(i18n::Tr("Revenir au login"), kExitBackW, 0.0f);
     const bool tip_back = ImGui::IsItemHovered();
     ImGui::SameLine(0.0f, kBarGap);
-    const bool quit_clicked = ro::RoButton("Quitter le jeu", kExitQuitW, 0.0f);
+    const bool quit_clicked = ro::RoButton(i18n::Tr("Quitter le jeu"), kExitQuitW, 0.0f);
     const bool tip_quit = ImGui::IsItemHovered();
     ImGui::PopStyleColor(2);
     // Titres de popup distincts des labels de bouton (pas d'ID partagé dans la même
@@ -2240,17 +2241,17 @@ void CharSelect::OnRenderLoginUI() {
     // Tooltips APRÈS le pop du texte sombre (sinon sombre sur sombre).
     if (tip_back)
       ImGui::SetTooltip(
-          "Se déconnecte du serveur et revient à l'écran de connexion,\n"
-          "sans fermer le jeu.");
-    if (tip_quit) ImGui::SetTooltip("Ferme le jeu.");
+          i18n::Tr("Se déconnecte du serveur et revient à l'écran de connexion,\n"
+          "sans fermer le jeu."));
+    if (tip_quit) ImGui::SetTooltip(i18n::Tr("Ferme le jeu."));
   }
 
   if (ro::BeginRoPopupModal("Retour à l'écran de connexion###bourgeon_charsel_back")) {
     ImGui::TextUnformatted(
-        "Revenir à l'écran de connexion ?\n"
-        "Tu seras déconnecté du serveur ; aucun personnage n'est affecté.");
+        i18n::Tr("Revenir à l'écran de connexion ?\n"
+        "Tu seras déconnecté du serveur ; aucun personnage n'est affecté."));
     ImGui::Spacing();
-    if (ro::RoButton("Revenir au login", 170.0f, 0.0f)) {
+    if (ro::RoButton(i18n::Tr("Revenir au login"), 170.0f, 0.0f)) {
       DriveModeCmd(kCmdBackToLogin);
       // ⚠ Le client reste en CLoginMode (seul l'ÉTAT change, 9/6 -> 3) : aucun
       // OnModeSwitch n'est émis. Sans ce réarmement explicite, MoonlightAuth
@@ -2271,7 +2272,7 @@ void CharSelect::OnRenderLoginUI() {
   }
 
   if (ro::BeginRoPopupModal("Fermer le jeu###bourgeon_charsel_quit")) {
-    ImGui::TextUnformatted("Fermer le jeu ?");
+    ImGui::TextUnformatted(i18n::Tr("Fermer le jeu ?"));
     ImGui::Spacing();
     if (ro::RoButton("Quitter", 130.0f, 0.0f)) {
       DriveModeCmd(kCmdQuitGame);
@@ -2292,13 +2293,13 @@ void CharSelect::OnRenderLoginUI() {
   // il re-pousse la liste (le perso disparaît), sur mauvais email il refuse SANS figer.
   // JAMAIS le prompt natif (deux modaux bloquants qui figent sous notre capture).
   if (ro::BeginRoPopupModal("Suppression définitive###bourgeon_charsel_delete")) {
-    ImGui::Text("Supprimer DÉFINITIVEMENT « %s » ?", del_popup_name_);
-    ImGui::TextUnformatted("Action IRRÉVERSIBLE. Saisis l'email du compte pour confirmer :");
+    ImGui::Text(i18n::Tr("Supprimer DÉFINITIVEMENT « %s » ?"), del_popup_name_);
+    ImGui::TextUnformatted(i18n::Tr("Action IRRÉVERSIBLE. Saisis l'email du compte pour confirmer :"));
     ImGui::Spacing();
     ImGui::SetNextItemWidth(300.0f);
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     const bool submit = ImGui::InputTextWithHint(
-        "##del_email", "email du compte", del_email_, sizeof(del_email_),
+        "##del_email", i18n::Tr("email du compte"), del_email_, sizeof(del_email_),
         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::Spacing();
     const bool has_email = del_email_[0] != '\0';
@@ -2351,7 +2352,7 @@ void CharSelect::OnRenderLoginUI() {
     if (ImGui::IsItemHovered()) {
       if (io.MouseWheel != 0.0f)
         create_dir_ = (create_dir_ + static_cast<int>(io.MouseWheel) + 8) & 7;
-      ImGui::SetTooltip("Molette pour faire tourner le personnage");
+      ImGui::SetTooltip(i18n::Tr("Molette pour faire tourner le personnage"));
     }
     ImGui::SameLine();
 
@@ -2360,7 +2361,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::TextUnformatted("Nom");
     ImGui::SetNextItemWidth(220.0f);
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-    ImGui::InputTextWithHint("##cname", "nom du personnage", create_name_,
+    ImGui::InputTextWithHint("##cname", i18n::Tr("nom du personnage"), create_name_,
                              sizeof(create_name_));
     ImGui::TextUnformatted("Sexe");
     if (ro::RadioImage("Femelle", create_sex_ == 0)) create_sex_ = 0;
@@ -2501,7 +2502,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::Spacing();
 
     if (create_pending_)
-      ImGui::TextColored(ImVec4(0.85f, 0.82f, 0.45f, 1.0f), "Création en cours…");
+      ImGui::TextColored(ImVec4(0.85f, 0.82f, 0.45f, 1.0f), i18n::Tr("Création en cours…"));
     else if (create_failed_) {
       const char* why = g_suppressed_modal_msg[0]
                             ? LocalToUtf8(g_suppressed_modal_msg)
@@ -2512,7 +2513,7 @@ void CharSelect::OnRenderLoginUI() {
     const bool can_create =
         create_name_[0] != '\0' && create_slot_ >= 0 && !create_pending_;
     if (!can_create) ImGui::BeginDisabled();
-    if (ro::RoButton("Créer", 130.0f, 0.0f)) {
+    if (ro::RoButton(i18n::Tr("Créer"), 130.0f, 0.0f)) {
       // Cohérence avec la suppression : on pose kSelectedSlot. CH_MAKE_CHAR 0xa39 :
       // [op u16][name char[24]][slot u8][hair_color u16][hair u16][job u32][sex u8].
       // Nom converti UTF-8 (ImGui) -> code-page client (accents FR corrects).
@@ -2617,7 +2618,7 @@ void CharSelect::OnRenderLoginUI() {
       ImGui::Separator();
       // Tête tournée : les TROIS inclinaisons que porte le sprite de tête, celles
       // que `/doridori` fait alterner en jeu (cf. ro::DollDrawOpts::head_dir).
-      if (ImGui::BeginMenu("Tête (doridori)")) {
+      if (ImGui::BeginMenu(i18n::Tr("Tête (doridori)"))) {
         struct HeadItem { int dir; const char* label; };
         static const HeadItem kHeads[] = {
             {0, "Droit devant"},
@@ -2639,7 +2640,7 @@ void CharSelect::OnRenderLoginUI() {
                          "Molette : tourner — Ctrl+molette : taille");
       // Poser la même pose partout : replacer 25 sièges un par un après un
       // changement de décor est le geste le plus pénible du mode.
-      if (ImGui::MenuItem("Appliquer cette pose à toutes les places")) {
+      if (ImGui::MenuItem(i18n::Tr("Appliquer cette pose à toutes les places"))) {
         // Copie locale : la boucle écrit dans le tableau dont `s` est une
         // référence, et écraserait la source dès la première place traitée.
         const charsel::Seat src = s;
@@ -2685,7 +2686,7 @@ void CharSelect::OnRenderLoginUI() {
       if (!(cv.rename_avail > 0)) ImGui::EndDisabled();
       // Changer de slot : activé si un coupon change-slot est actif.
       char mi[32];
-      std::snprintf(mi, sizeof(mi), "Changer de slot (%d)", cv.moves_avail);
+      std::snprintf(mi, sizeof(mi), i18n::Tr("Changer de slot (%d)"), cv.moves_avail);
       if (!(cv.moves_avail > 0)) ImGui::BeginDisabled();
       if (ImGui::MenuItem(mi)) {
         move_from_ = ctx_slot_;
@@ -2704,11 +2705,11 @@ void CharSelect::OnRenderLoginUI() {
     rename_open_req_ = false;
   }
   if (ro::BeginRoPopupModal("Renommer le personnage###bourgeon_charsel_rename")) {
-    ImGui::Text("Nom actuel : %s", LocalToUtf8(rename_old_));
-    ImGui::TextUnformatted("Nouveau nom");
+    ImGui::Text(i18n::Tr("Nom actuel : %s"), LocalToUtf8(rename_old_));
+    ImGui::TextUnformatted(i18n::Tr("Nouveau nom"));
     ImGui::SetNextItemWidth(240.0f);
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-    ImGui::InputTextWithHint("##rname", "nouveau nom", rename_buf_,
+    ImGui::InputTextWithHint("##rname", i18n::Tr("nouveau nom"), rename_buf_,
                              sizeof(rename_buf_));
     // Succès = le slot s'est renommé (le serveur re-pousse la liste). Échec = modale
     // native supprimée (nom pris) -> instantané, sinon timeout.
@@ -2728,7 +2729,7 @@ void CharSelect::OnRenderLoginUI() {
     }
     ImGui::Spacing();
     if (rename_pending_)
-      ImGui::TextColored(ImVec4(0.85f, 0.82f, 0.45f, 1.0f), "Renommage en cours…");
+      ImGui::TextColored(ImVec4(0.85f, 0.82f, 0.45f, 1.0f), i18n::Tr("Renommage en cours…"));
     else if (rename_failed_) {
       // Message EXACT du serveur (capturé depuis la modale native supprimée) s'il y en a
       // un ; sinon générique (cas timeout : le serveur n'a pas répondu = perso introuvable
@@ -2786,7 +2787,7 @@ void CharSelect::OnRenderLoginUI() {
     move_open_req_ = false;
   }
   if (ro::BeginRoPopupModal("Changer de slot###bourgeon_charsel_moveslot")) {
-    ImGui::TextUnformatted("Choisis un emplacement LIBRE :");
+    ImGui::TextUnformatted(i18n::Tr("Choisis un emplacement LIBRE :"));
     ImGui::Spacing();
     const int cap = SlotCapacity();
     int shown = 0;
@@ -2811,7 +2812,7 @@ void CharSelect::OnRenderLoginUI() {
         ImGui::CloseCurrentPopup();
       }
     }
-    if (shown == 0) ImGui::TextDisabled("Aucun emplacement libre.");
+    if (shown == 0) ImGui::TextDisabled(i18n::Tr("Aucun emplacement libre."));
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();

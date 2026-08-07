@@ -26,6 +26,7 @@
 #include "features/windows/inventory_viewer.h"  // TradeDraggedItem (cible de drag-drop "INV_ITEM")
 #include "ui/ro_imgui.h"    // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"  // mui::IsLastItemRightClicked
+#include "utils/i18n.h"
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/trade_window_re.md) ──
 namespace {
@@ -769,10 +770,10 @@ void TradeWindow::OnRenderUI() {
     if (ro::BeginRoWindow("Demande d'échange###bourgeon_trade_req", &p_open,
                           ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
       if (req_level_ > 0)
-        ImGui::Text("%s (Niv. %d) souhaite échanger avec vous.", req_name_,
+        ImGui::Text(i18n::Tr("%s (Niv. %d) souhaite échanger avec vous."), req_name_,
                     req_level_);
       else
-        ImGui::Text("%s souhaite échanger avec vous.", req_name_);
+        ImGui::Text(i18n::Tr("%s souhaite échanger avec vous."), req_name_);
       ImGui::Spacing();
       if (ro::RoButton("Accepter", 130.0f, 0.0f)) TradeAck(3);
       ImGui::SameLine();
@@ -863,7 +864,7 @@ void TradeWindow::OnRenderUI() {
       ImGui::PopID();
     }
     if (items.empty())
-      ImGui::TextDisabled(mine && !locked ? "(vide — glissez un objet ici)" : "(vide)");
+      ImGui::TextDisabled(mine && !locked ? i18n::Tr("(vide — glissez un objet ici)") : "(vide)");
     ImGui::EndChild();
     // Le child qu'on vient de fermer est le « dernier item » ImGui : il devient donc
     // la cible de dépôt. Payload "INV_ITEM" = convention de l'inventaire ImGui (même
@@ -875,13 +876,13 @@ void TradeWindow::OnRenderUI() {
       }
       ImGui::EndDragDropTarget();
     }
-    ImGui::TextColored(locked ? kGreen : kBlack, locked ? "  Verrouillé" : "  En cours");
+    ImGui::TextColored(locked ? kGreen : kBlack, locked ? i18n::Tr("  Verrouillé") : i18n::Tr("  En cours"));
   };
 
   // ── Ma colonne / colonne partenaire ──
   const float col = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
   ImGui::BeginGroup();
-  ImGui::TextColored(kBlack, "Mon offre  (%lldz)", static_cast<long long>(my_zeny_));
+  ImGui::TextColored(kBlack, i18n::Tr("Mon offre  (%lldz)"), static_cast<long long>(my_zeny_));
   draw_items("trade_mine", my_items_, my_locked_, col, true);
   ImGui::EndGroup();
   ImGui::SameLine();  // (colonne partenaire ci-dessous)
@@ -922,7 +923,7 @@ void TradeWindow::OnRenderUI() {
   // cmd 0x34) : il n'y a pas de « définir » séparé, et un cmd 0x33 isolé reste en
   // attente (rien ne s'affiche tant qu'on n'a pas verrouillé). On calque ce modèle.
   ImGui::BeginDisabled(my_locked_);
-  ImGui::TextColored(kBlack, "Zeny à offrir :");
+  ImGui::TextColored(kBlack, i18n::Tr("Zeny à offrir :"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(120.0f);
   ImGui::InputInt("##trade_zeny", &zeny_input_, 0, 0);
@@ -932,16 +933,16 @@ void TradeWindow::OnRenderUI() {
   const char* scr_label = msgstr::Utf8(kMsgScrLabel);
   ro::RoCheckbox(scr_label[0] ? scr_label : "Screenshot Trade", &screenshot_);
   ImGui::EndDisabled();
-  ImGui::TextDisabled("Le zeny est validé en cliquant sur « Verrouiller (OK) ».");
+  ImGui::TextDisabled(i18n::Tr("Le zeny est validé en cliquant sur « Verrouiller (OK) »."));
   ImGui::TextDisabled(
-      "Ajout d'objets : glissez-les depuis l'inventaire vers « Mon offre », ou "
-      "clic-droit → « Vers l'échange » (ou Alt+clic droit).");
+      i18n::Tr("Ajout d'objets : glissez-les depuis l'inventaire vers « Mon offre », ou "
+      "clic-droit → « Vers l'échange » (ou Alt+clic droit)."));
 
   ImGui::Separator();
 
   // ── Boutons d'action ──
   if (my_locked_) ImGui::BeginDisabled();
-  if (ro::RoButton(my_locked_ ? "Verrouillé" : "Verrouiller (OK)", 150.0f, 0.0f)) {
+  if (ro::RoButton(my_locked_ ? i18n::Tr("Verrouillé") : "Verrouiller (OK)", 150.0f, 0.0f)) {
     SetZeny(zeny_input_);  // cmd 0x33(index 0) : pose le zeny...
     Lock();                // ...puis cmd 0x34 verrouille (séquence exacte du natif)
   }
@@ -954,11 +955,11 @@ void TradeWindow::OnRenderUI() {
     // Déjà validé de mon côté : l'échange ne s'exécute qu'une fois que l'AUTRE joueur
     // a validé aussi. On l'affiche explicitement au lieu d'un bouton qui « ne fait rien ».
     ImGui::BeginDisabled();
-    ro::RoButton("En attente...", 150.0f, 0.0f);
+    ro::RoButton(i18n::Tr("En attente..."), 150.0f, 0.0f);
     ImGui::EndDisabled();
   } else {
     if (!can_commit) ImGui::BeginDisabled();
-    if (ro::RoButton("Échanger", 150.0f, 0.0f)) Commit();
+    if (ro::RoButton(i18n::Tr("Échanger"), 150.0f, 0.0f)) Commit();
     if (!can_commit) ImGui::EndDisabled();
   }
   ImGui::SameLine();
@@ -966,13 +967,13 @@ void TradeWindow::OnRenderUI() {
 
   // Ligne d'état : dit toujours ce qu'on attend (verrou, validation, autre joueur).
   if (committed_)
-    ImGui::TextColored(kBlack, "Validé — en attente de l'autre joueur...");
+    ImGui::TextColored(kBlack, i18n::Tr("Validé — en attente de l'autre joueur..."));
   else if (can_commit)
-    ImGui::TextColored(kBlack, "Les deux offres sont verrouillées : cliquez « Échanger ».");
+    ImGui::TextColored(kBlack, i18n::Tr("Les deux offres sont verrouillées : cliquez « Échanger »."));
   else if (my_locked_)
-    ImGui::TextDisabled("En attente du verrouillage de l'autre joueur...");
+    ImGui::TextDisabled(i18n::Tr("En attente du verrouillage de l'autre joueur..."));
   else
-    ImGui::TextDisabled("Verrouillez votre offre quand elle est prête.");
+    ImGui::TextDisabled(i18n::Tr("Verrouillez votre offre quand elle est prête."));
 
   // Toasts (résultat / erreur d'ajout).
   if (add_error_ > 0) {
@@ -987,8 +988,8 @@ void TradeWindow::OnRenderUI() {
     }
     ImGui::TextColored(kRed, "%s", msg);
   }
-  if (last_result_ == 0) ImGui::TextColored(kGreen, "Échange réussi.");
-  else if (last_result_ == 1) ImGui::TextColored(kRed, "Échange échoué.");
+  if (last_result_ == 0) ImGui::TextColored(kGreen, i18n::Tr("Échange réussi."));
+  else if (last_result_ == 1) ImGui::TextColored(kRed, i18n::Tr("Échange échoué."));
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(4);

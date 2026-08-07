@@ -34,6 +34,7 @@
 #include "imgui.h"
 #include "ui/qty_prompt.h"   // ro::QuantityPrompt (dialogue « combien ? » partagé)
 #include "ui/ro_imgui.h"     // skin RO (BeginRoWindow / RoButton / RoCheckbox / DrawBar)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -1369,7 +1370,7 @@ void InventoryViewer::RenderCardInsert() {
       ImGui::SameLine();
       ImGui::TextDisabled("(x%d)", stock);  // stock restant, mis à jour à chaque sertissage
     } else {
-      ImGui::TextUnformatted("Carte introuvable");
+      ImGui::TextUnformatted(i18n::Tr("Carte introuvable"));
     }
     ImGui::Separator();
 
@@ -1378,10 +1379,9 @@ void InventoryViewer::RenderCardInsert() {
       // soit le serveur a listé des index qu'on ne retrouve pas, soit sa liste
       // était vide.
       ImGui::TextWrapped(n > 0
-          ? "Impossible de retrouver les équipements proposés par le serveur."
-          : "Aucun équipement compatible avec un emplacement libre.");
+          ? i18n::Tr("Impossible de retrouver les équipements proposés par le serveur.") : i18n::Tr("Aucun équipement compatible avec un emplacement libre."));
     } else {
-      ImGui::TextDisabled("Choisissez l'équipement à sertir :");
+      ImGui::TextDisabled(i18n::Tr("Choisissez l'équipement à sertir :"));
       const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
       if (ImGui::BeginChild("##ci_list", ImVec2(0, -footer), true)) {
         constexpr float kRowH = 26.0f;
@@ -1523,48 +1523,48 @@ bool InventoryViewer::DrawSettings() {
   // ⚠ Cette fenêtre reste l'ANCRE du groupe — `ModernInterfaceEnabled()` lit
   // `imgui_enabled_` ici. Ne pas renommer ni supprimer ce membre sans reprendre
   // cette fonction.
-  ImGui::TextDisabled("Fenêtre du groupe « Interface moderne »");
+  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
-      "ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
+      i18n::Tr("ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
       "est cachée.\nOFF (défaut) : inventaire natif classique, aucun viewer.\n\n"
       "Inclut la fenêtre de SERTISSAGE de cartes (double-clic sur une carte) : "
       "elle remplace le popup natif « Insert Card ». La liste des équipements "
-      "compatibles reste calculée par le serveur, donc identique au natif.");
+      "compatibles reste calculée par le serveur, donc identique au natif."));
 
   ImGui::BeginDisabled(!imgui_enabled_);
 
-  changed |= ro::RoCheckbox("Description au survol", &desc_tooltip());
+  changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &desc_tooltip());
   SameLine(); HelpMarker(
-      "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
+      i18n::Tr("Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, "
       "texte, cartes et options) dans un panneau au skin RO, à la place du "
       "petit tooltip nom + quantité.\n"
       "La description COMPLÈTE reste accessible au Ctrl + clic droit / "
-      "menu contextuel.");
+      "menu contextuel."));
 
-  changed |= ro::RoCheckbox("Champ de filtre", &show_filter());
+  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter());
   SameLine(); HelpMarker(
-      "Affiche la barre de recherche par nom au-dessus de la grille.\n"
-      "Décoche pour gagner une ligne (le filtre est alors vidé).");
+      i18n::Tr("Affiche la barre de recherche par nom au-dessus de la grille.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé)."));
 
-  changed |= ro::RoCheckbox("Onglets verticaux (à gauche)", &tabs_vertical());
+  changed |= ro::RoCheckbox(i18n::Tr("Onglets verticaux (à gauche)"), &tabs_vertical());
   SameLine(); HelpMarker(
-      "ON (défaut) : onglets en colonne à gauche de la grille, comme la "
+      i18n::Tr("ON (défaut) : onglets en colonne à gauche de la grille, comme la "
       "fenêtre native (images tab_*).\n"
-      "OFF : rangée horizontale au-dessus de la grille (images tabh_*).");
+      "OFF : rangée horizontale au-dessus de la grille (images tabh_*)."));
 
-  changed |= ro::RoCheckbox("Verrouiller la taille", &lock_size());
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"), &lock_size());
   SameLine(); HelpMarker(
-      "La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).");
+      i18n::Tr("La fenêtre ne peut plus être redimensionnée (elle reste déplaçable)."));
 
   // Le placement libre EXIGE la taille verrouillée : une case est un index
   // absolu (ligne × colonnes), donc changer la largeur change le nombre de
   // colonnes et mélangerait toutes les positions mémorisées.
   ImGui::BeginDisabled(!lock_size());
   Indent();
-    changed |= ro::RoCheckbox("Placement libre des items", &free_layout());
+    changed |= ro::RoCheckbox(i18n::Tr("Placement libre des items"), &free_layout());
     SameLine(); HelpMarker(
-        "Glisse un item sur une case vide pour l'y fixer ; sur une case "
+        i18n::Tr("Glisse un item sur une case vide pour l'y fixer ; sur une case "
         "occupée, les deux s'échangent. Les items sans case attribuée "
         "remplissent les trous restants, donc un nouvel objet ramassé ne "
         "bouscule plus ta disposition.\n\n"
@@ -1572,7 +1572,7 @@ bool InventoryViewer::DrawSettings() {
         "donc une case n'y désigne pas le même emplacement que dans "
         "l'onglet d'origine de l'item. Il garde le remplissage automatique.\n\n"
         "Nécessite « Verrouiller la taille » : les cases sont repérées par "
-        "un index absolu, qu'un changement de largeur décalerait.");
+        "un index absolu, qu'un changement de largeur décalerait."));
   Unindent();
   ImGui::EndDisabled();
 
@@ -1585,7 +1585,7 @@ bool InventoryViewer::DrawSettings() {
   // natif l'affichent dans l'ordre reçu.
   // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
   // (aucun réglage yaml de CE plugin n'a bougé).
-  SeparatorText("Tri serveur");
+  SeparatorText(i18n::Tr("Tri serveur"));
   ImGui::BeginDisabled(free_layout() && lock_size()); // placement libre = tri ImGui, pas serveur
   if (auto* mu = Bourgeon::Instance().moonlight_ui())
     mu->DrawSortModeCombo(MoonlightUi::kSortInventory);
@@ -1642,7 +1642,7 @@ void InventoryViewer::OnRenderUI() {
 
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre
   // (panneau Moonlight > Interface de jeu > Inventaire), comme le storage.
-  ro::SetNextWindowTitleBullet("Options de l'inventaire");
+  ro::SetNextWindowTitleBullet(i18n::Tr("Options de l'inventaire"));
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme le natif ; clic dessus = SetWindowCollapsed (géré par BeginRoWindow).
   const bool begun = ro::BeginRoWindow(
@@ -1664,7 +1664,7 @@ void InventoryViewer::OnRenderUI() {
   // ouverte, donc sans lui l'inventaire n'avertissait de rien du tout.
   if (VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       "Shop en composition : les transferts sont figés.");
+                       i18n::Tr("Shop en composition : les transferts sont figés."));
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
@@ -1697,8 +1697,7 @@ void InventoryViewer::OnRenderUI() {
     const char* verb = pend_action_ == kPendDrop      ? "Jeter"
                      : pend_action_ == kPendToCart     ? "Vers le cart"
                      : pend_action_ == kPendToStorage  ? "Vers le storage"
-                     : pend_action_ == kPendToMail     ? "Joindre au courrier"
-                                                       : "Déplacer";
+                     : pend_action_ == kPendToMail     ? i18n::Tr("Joindre au courrier") : i18n::Tr("Déplacer");
     bool cancelled = false;
     const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
     if (qty > 0) { do_move(qty); pend_id_ = 0; }
@@ -2029,7 +2028,7 @@ void InventoryViewer::OnRenderUI() {
                         itemcell::Label(lbl, sizeof(lbl), it.name,
                                         it.total_slots));
           itemcell::NameText(padded, it.damaged != 0);
-          if (it.amount > 1) ImGui::TextDisabled(" Quantité : %d ", it.amount);
+          if (it.amount > 1) ImGui::TextDisabled(i18n::Tr(" Quantité : %d "), it.amount);
           ImGui::EndTooltip();
         }
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -2082,10 +2081,10 @@ void InventoryViewer::OnRenderUI() {
         const ImVec2 drag_mouse = ImGui::GetMousePos();
         if (VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             "Shop en composition : les transferts sont figés");
+                             i18n::Tr("Shop en composition : les transferts sont figés"));
         else if (StorageOpen() && MouseOverCart(drag_mouse.x, drag_mouse.y))
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             "Storage ouvert : vers le cart impossible");
+                             i18n::Tr("Storage ouvert : vers le cart impossible"));
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
@@ -2121,8 +2120,7 @@ void InventoryViewer::OnRenderUI() {
         // « Sertir » — même chemin de code, libellé juste.
         const char* act = (it.type == 0 || it.type == 1 || it.type == 2 ||
                            it.type == 0x12) ? "Utiliser"
-                        : (it.type == 6)    ? "Sertir"
-                        : "Équiper";
+                        : (it.type == 6)    ? "Sertir" : i18n::Tr("Équiper");
         const bool usable = it.type <= 2 || it.type == 0x12 ||
                             (it.type >= 4 && it.type <= 0xf) || it.type == 6 ||
                             it.type == 0xa || it.type == 0x10 || it.type == 0x11 ||
@@ -2144,7 +2142,7 @@ void InventoryViewer::OnRenderUI() {
           if (!forged)
             for (int k = 0; k < total && k < 4; ++k) if (it.cards[k]) ++used;
           if (!forged && total > used) {  // au moins un emplacement libre
-            if (ImGui::BeginMenu("Sertissage rapide")) {
+            if (ImGui::BeginMenu(i18n::Tr("Sertissage rapide"))) {
               RequestCompatCards(it.index);  // no-op si déjà demandé pour cet équip
               if (qs_equip_index_ == it.index && qs_card_count_ > 0) {
                 for (int c = 0; c < qs_card_count_; ++c) {
@@ -2160,7 +2158,7 @@ void InventoryViewer::OnRenderUI() {
                   ImGui::PopID();
                 }
               } else if (qs_equip_index_ == it.index) {
-                ImGui::TextDisabled("Aucune carte compatible");
+                ImGui::TextDisabled(i18n::Tr("Aucune carte compatible"));
               } else {
                 ImGui::TextDisabled("Chargement…");
               }
@@ -2169,12 +2167,12 @@ void InventoryViewer::OnRenderUI() {
           }
         }
 
-        if (ImGui::MenuItem(it.favorite ? "Retirer des favoris" : "Ajouter aux favoris"))
+        if (ImGui::MenuItem(it.favorite ? i18n::Tr("Retirer des favoris") : i18n::Tr("Ajouter aux favoris")))
           SendFavoriteToggle(it.index, it.favorite != 0);
         // alootid : ramassage auto par ID (via MoonlightUi, comme le bouton d'item_desc).
         if (auto* mui = Bourgeon::Instance().moonlight_ui()) {
           const bool inAloot = mui->IsAlootId(it.id);
-          if (ImGui::MenuItem(inAloot ? "Retirer de l'alootid" : "Ajouter à l'alootid")) {
+          if (ImGui::MenuItem(inAloot ? i18n::Tr("Retirer de l'alootid") : i18n::Tr("Ajouter à l'alootid"))) {
             if (inAloot) mui->RemoveAlootId(it.id); else mui->AddAlootId(it.id);
           }
         }
@@ -2184,13 +2182,13 @@ void InventoryViewer::OnRenderUI() {
         if (dropLocked) ImGui::BeginDisabled();
         if (it.amount <= 1) {
           if (dropLocked) 
-            ImGui::MenuItem("Jeter - verrouillé");
+            ImGui::MenuItem(i18n::Tr("Jeter - verrouillé"));
           else
             if (ImGui::MenuItem("Jeter")) SendDrop(it.index, 1);
         }
         else
           if (dropLocked) 
-            ImGui::MenuItem("Jeter - verrouillé");
+            ImGui::MenuItem(i18n::Tr("Jeter - verrouillé"));
           else if (ImGui::MenuItem("Jeter...")) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendDrop; pend_open_prompt_ = true;
@@ -2209,9 +2207,9 @@ void InventoryViewer::OnRenderUI() {
           const bool blocked_by_storage = StorageOpen();
           const bool to_cart_off = blocked_by_storage || vending_lock;
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers le cart", nullptr, false, !to_cart_off))
+            if (ImGui::MenuItem(i18n::Tr("Vers le cart"), nullptr, false, !to_cart_off))
               SendCmd(kCmdToCart, it.index, 1);
-          } else if (ImGui::MenuItem("Vers le cart...", nullptr, false,
+          } else if (ImGui::MenuItem(i18n::Tr("Vers le cart..."), nullptr, false,
                                      !to_cart_off)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToCart; pend_open_prompt_ = true;
@@ -2220,10 +2218,9 @@ void InventoryViewer::OnRenderUI() {
               ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip(
                 vending_lock
-                    ? "Impossible pendant la composition d'un shop (règle du\n"
-                      "serveur). Ouvrez ou annulez le shop d'abord."
-                    : "Impossible tant que le storage est ouvert (règle du serveur).\n"
-                      "Fermez le storage, ou faites transiter l'objet par le storage.");
+                    ? i18n::Tr("Impossible pendant la composition d'un shop (règle du\n"
+                      "serveur). Ouvrez ou annulez le shop d'abord.") : i18n::Tr("Impossible tant que le storage est ouvert (règle du serveur).\n"
+                      "Fermez le storage, ou faites transiter l'objet par le storage."));
         }
         if (StorageOpen()) {
           // Ici le serveur accepterait : c'est NOUS qui figeons, pour qu'une
@@ -2231,9 +2228,9 @@ void InventoryViewer::OnRenderUI() {
           // prétend donc pas à une règle serveur.
           const bool vending_lock = VendingComposing();
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers le storage", nullptr, false, !vending_lock))
+            if (ImGui::MenuItem(i18n::Tr("Vers le storage"), nullptr, false, !vending_lock))
               SendCmd(kCmdToStorage, it.index, 1);
-          } else if (ImGui::MenuItem("Vers le storage...", nullptr, false,
+          } else if (ImGui::MenuItem(i18n::Tr("Vers le storage..."), nullptr, false,
                                      !vending_lock)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToStorage; pend_open_prompt_ = true;
@@ -2241,17 +2238,17 @@ void InventoryViewer::OnRenderUI() {
           if (vending_lock &&
               ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip(
-                "Figé pendant la composition d'un shop, pour que le stock\n"
-                "ne bouge pas sous la fenêtre en cours.");
+                i18n::Tr("Figé pendant la composition d'un shop, pour que le stock\n"
+                "ne bouge pas sous la fenêtre en cours."));
         }
         // Échange joueur-joueur : stack -> prompt quantité (comme « Jeter... »),
         // sinon ajout direct d'1 unité.
         if (TradeOpen()) {
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Vers l'échange"))
+            if (ImGui::MenuItem(i18n::Tr("Vers l'échange")))
               if (auto* tt = Bourgeon::Instance().trade_window())
                 tt->AddItemToTrade(it.index, 1);
-          } else if (ImGui::MenuItem("Vers l'échange...")) {
+          } else if (ImGui::MenuItem(i18n::Tr("Vers l'échange..."))) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToTrade; pend_open_prompt_ = true;
           }
@@ -2259,10 +2256,10 @@ void InventoryViewer::OnRenderUI() {
         // Courrier en cours d'écriture : même politique de quantité que l'échange.
         if (MailComposing()) {
           if (it.amount <= 1) {
-            if (ImGui::MenuItem("Joindre au courrier"))
+            if (ImGui::MenuItem(i18n::Tr("Joindre au courrier")))
               if (auto* rodex = Bourgeon::Instance().rodex_window())
                 rodex->AttachItem(it.index, 1);
-          } else if (ImGui::MenuItem("Joindre au courrier...")) {
+          } else if (ImGui::MenuItem(i18n::Tr("Joindre au courrier..."))) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToMail; pend_open_prompt_ = true;
           }

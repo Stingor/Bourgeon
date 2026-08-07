@@ -13,6 +13,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -146,7 +147,7 @@ void DpsMeter::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) 
     // it generates dozens of packets per frame and stalls the recv loop.
     if (static_cast<int>(chat_queue_.size()) < kMaxChatQueueSize) {
       char msg[64];
-      std::snprintf(msg, sizeof(msg), "Ground skill : %d dmg", damage);
+      std::snprintf(msg, sizeof(msg), i18n::Tr("Ground skill : %d dmg"), damage);
       chat_queue_.emplace_back(msg);
     }
   }
@@ -362,13 +363,13 @@ bool DpsMeter::DrawSettings() {
   changed |= ro::RoCheckbox("Afficher", &visible_);
   changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &locked_);
   SameLine();
-  HelpMarker("Fige la fenêtre DPS (position/taille) et laisse passer les clics "
-             "au jeu en dessous.");
-  changed |= ColorEdit4WithAlphaBar("Couleur texte",  text_color_);
-  changed |= ColorEdit4WithAlphaBar("Couleur graphe", plot_color_);
+  HelpMarker(i18n::Tr("Fige la fenêtre DPS (position/taille) et laisse passer les clics "
+             "au jeu en dessous."));
+  changed |= ColorEdit4WithAlphaBar(i18n::Tr("Couleur texte"),  text_color_);
+  changed |= ColorEdit4WithAlphaBar(i18n::Tr("Couleur graphe"), plot_color_);
 
   ImGui::PushItemWidth(160.0f);  // sliders étroits, pour tenir dans la fenêtre
-  changed |= WheelSliderFloat("Opacité fond", &bg_alpha_, 0.0f, 1.0f);
+  changed |= WheelSliderFloat(i18n::Tr("Opacité fond"), &bg_alpha_, 0.0f, 1.0f);
 
   // slot_ms_ passe par une copie : le changer invalide l'historique, et
   // ResetHistory ne doit être appelée qu'une fois, sur un vrai changement.
@@ -379,36 +380,36 @@ bool DpsMeter::DrawSettings() {
     changed = true;
   }
   SameLine();
-  HelpMarker("Largeur de chaque colonne du graphique en millisecondes.\n"
-             "Valeur plus basse = graphique plus précis mais moins smooth.");
+  HelpMarker(i18n::Tr("Largeur de chaque colonne du graphique en millisecondes.\n"
+             "Valeur plus basse = graphique plus précis mais moins smooth."));
 
   int window_secs = dps_window_secs_;
-  if (WheelSliderInt("Fenêtre DPS (s)", &window_secs, 1, 30)) {
+  if (WheelSliderInt(i18n::Tr("Fenêtre DPS (s)"), &window_secs, 1, 30)) {
     dps_window_secs_ = window_secs;
     changed = true;
   }
   SameLine();
-  HelpMarker("Fenêtre de temps pour calculer le DPS courant affiché.");
+  HelpMarker(i18n::Tr("Fenêtre de temps pour calculer le DPS courant affiché."));
 
   int combat_timeout = combat_timeout_secs_;
-  if (WheelSliderInt("Timeout combat (s)", &combat_timeout, 1, 15)) {
+  if (WheelSliderInt(i18n::Tr("Timeout combat (s)"), &combat_timeout, 1, 15)) {
     combat_timeout_secs_ = combat_timeout;
     changed = true;
   }
   SameLine();
-  HelpMarker("Secondes sans dégâts avant de quitter le mode combat.");
+  HelpMarker(i18n::Tr("Secondes sans dégâts avant de quitter le mode combat."));
 
   ImGui::PopItemWidth();
 
-  if (ro::RoButton("Reset graphique")) ResetHistory();
+  if (ro::RoButton(i18n::Tr("Reset graphique"))) ResetHistory();
 
   ImGui::Separator();
-  changed |= ro::RoCheckbox("Afficher dommages de sorts de zone dans le chat",
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher dommages de sorts de zone dans le chat"),
                             &show_ground_dmg_in_chat_);
   SameLine();
-  HelpMarker("Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans "
+  HelpMarker(i18n::Tr("Affiche chaque coup de Storm Gust / Meteor Storm / LoV etc. dans "
              "le chat.\nMessage custom Bourgeon — le serveur ne montre pas ces "
-             "dégâts dans le chat habituel.");
+             "dégâts dans le chat habituel."));
 
   return changed;
 }

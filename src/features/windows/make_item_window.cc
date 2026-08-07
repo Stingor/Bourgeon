@@ -28,6 +28,7 @@
 // mécanisme au cas où.)
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"  // LogDiag — journal staff en jeu
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -951,7 +952,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       if (previous >= 0 && previous != cook_mastery_) {
         char moved[160];
         std::snprintf(moved, sizeof(moved),
-                      "Maîtrise culinaire : %d -> %d.", previous,
+                      i18n::Tr("Maîtrise culinaire : %d -> %d."), previous,
                       cook_mastery_);
         Log(moved, (cook_mastery_ > previous) ? kColOk : kColWarn);
       }
@@ -1051,9 +1052,9 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         const char* used = mui ? mui->ItemName(item_id_) : nullptr;
         char lost[224];
         std::snprintf(lost, sizeof(lost),
-                      "%s consommé sans effet : une session de fabrication est "
+                      i18n::Tr("%s consommé sans effet : une session de fabrication est "
                       "déjà ouverte, le serveur n'en garde qu'une. Terminez-la "
-                      "ou fermez-la d'abord.",
+                      "ou fermez-la d'abord."),
                       (used && *used) ? used : "Objet");
         Log(lost, kColWarn);
       } else {
@@ -1243,11 +1244,11 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       char gone[160];
       if (gone_name && *gone_name)
         std::snprintf(gone, sizeof(gone),
-                      "Emplacement %d vidé : plus de %s en réserve.", slot + 1,
+                      i18n::Tr("Emplacement %d vidé : plus de %s en réserve."), slot + 1,
                       gone_name);
       else
         std::snprintf(gone, sizeof(gone),
-                      "Emplacement %d vidé : plus d'objet #%u en réserve.",
+                      i18n::Tr("Emplacement %d vidé : plus d'objet #%u en réserve."),
                       slot + 1, forge_slot_[slot]);
       Log(gone, kColWarn);
       forge_slot_[slot] = 0;
@@ -1614,14 +1615,14 @@ void MakeItemWindow::OnTick() {
       // et rien ne distingue ce lot NORMAL du tirage aléatoire maison. On énonce
       // donc le nombre sans l'interpréter.
       if (gained > 1)
-        std::snprintf(line, sizeof(line), "%s créé ×%d", subject, gained);
+        std::snprintf(line, sizeof(line), i18n::Tr("%s créé ×%d"), subject, gained);
       else if (gained == 1)
-        std::snprintf(line, sizeof(line), "%s créé.", subject);
+        std::snprintf(line, sizeof(line), i18n::Tr("%s créé."), subject);
       else
         // Stock en BAISSE : l'id envoyé était le matériau (flèches). On ne peut
         // pas nommer le rendement — le produit n'est ni dans notre demande ni
         // dans la réponse — donc on ne l'invente pas.
-        std::snprintf(line, sizeof(line), "%s transformé.", subject);
+        std::snprintf(line, sizeof(line), i18n::Tr("%s transformé."), subject);
       last_result_       = line;
       last_result_color_ = kColOk;
       Log(line, kColOk);
@@ -1654,7 +1655,7 @@ void MakeItemWindow::OnTick() {
       RebuildOwnedCounts();
       char line[192];
       const char* subject = last_sent_name_[0] ? last_sent_name_ : "Objet";
-      std::snprintf(line, sizeof(line), "%s : échec, matériaux perdus.", subject);
+      std::snprintf(line, sizeof(line), i18n::Tr("%s : échec, matériaux perdus."), subject);
       last_result_       = line;
       last_result_color_ = kColWarn;
       Log(line, kColWarn);
@@ -1703,18 +1704,16 @@ void MakeItemWindow::OnTick() {
     const bool is_dish = dish_lv >= 11 && dish_lv <= 20;
     auto_stop_reason_ =
         is_dish
-            ? "Pas de réponse : la fabrication a probablement ÉCHOUÉ. La cuisine "
+            ? i18n::Tr("Pas de réponse : la fabrication a probablement ÉCHOUÉ. La cuisine "
               "ne renvoie aucun message quand elle rate - seulement un effet "
               "visuel. Les matériaux sont consommés et la maîtrise culinaire "
               "baisse. Regarde les chances annoncées avant de recommencer. (Une "
               "demande refusée à la revalidation aurait le même silence, mais "
-              "n'aurait rien consommé.)"
-            : "Pas de réponse : la fabrication a probablement ÉCHOUÉ - ces "
+              "n'aurait rien consommé.)") : i18n::Tr("Pas de réponse : la fabrication a probablement ÉCHOUÉ - ces "
               "compétences ne renvoient aucun message, ni en cas de succès ni en "
               "cas d'échec. Autre possibilité : une demande refusée à la "
-              "revalidation des matériaux, qui elle n'aurait rien consommé.";
-    Log(is_dish ? "Échec probable — la cuisine ne dit rien quand elle rate."
-                : "Aucune réponse du serveur — échec probable.",
+              "revalidation des matériaux, qui elle n'aurait rien consommé.");
+    Log(is_dish ? i18n::Tr("Échec probable — la cuisine ne dit rien quand elle rate.") : i18n::Tr("Aucune réponse du serveur — échec probable."),
         kColWarn);
     LogDiag("[make] TIMEOUT: aucun 0x018F ni 0x0110 après {} ms (produit {})",
             kAwaitResultTimeoutMs, last_sent_id_);
@@ -1905,11 +1904,11 @@ void MakeItemWindow::NotifyItemUse(unsigned item_index) {
     const InvProbe p = ProbeFirstInvNode();
     if (p.ok)
       std::snprintf(item_probe_, sizeof(item_probe_),
-                    "1er nœud : id=%u +0x0C=%u +0x10=%u +0x14=%u amt(+0x18)=%d",
+                    i18n::Tr("1er nœud : id=%u +0x0C=%u +0x10=%u +0x14=%u amt(+0x18)=%d"),
                     p.id, p.v0c, p.v10, p.v14, p.amt);
     else
       std::snprintf(item_probe_, sizeof(item_probe_),
-                    "inventaire illisible (tête nulle ou accès refusé)");
+                    i18n::Tr("inventaire illisible (tête nulle ou accès refusé)"));
   }
 
   // On ne journalise QUE l'anomalie. Tracer chaque usage d'objet noyait la
@@ -1958,7 +1957,7 @@ void MakeItemWindow::SendReuseItem() {
   if (OwnedCount(source_item_id_) <= 0) {
     char msg[192];
     std::snprintf(msg, sizeof(msg),
-                  "Plus de %s en inventaire : relance arrêtée (%d consommés).",
+                  i18n::Tr("Plus de %s en inventaire : relance arrêtée (%d consommés)."),
                   source_item_name_, auto_items_used_);
     auto_stop_reason_ = msg;
     auto_ours_        = false;
@@ -1975,7 +1974,7 @@ void MakeItemWindow::SendReuseItem() {
     // arrêt qui compte vraiment pour le joueur — on le nomme.
     char msg[192];
     std::snprintf(msg, sizeof(msg),
-                  "Plus de %s en inventaire : relance arrêtée (%d consommés).",
+                  i18n::Tr("Plus de %s en inventaire : relance arrêtée (%d consommés)."),
                   source_item_name_, auto_items_used_);
     auto_stop_reason_ = msg;
     auto_ours_        = false;
@@ -1993,7 +1992,7 @@ void MakeItemWindow::SendReuseItem() {
     std::snprintf(line, sizeof(line), "Relance : %s consommé (%d/%d).",
                   source_item_name_, auto_items_used_, auto_reuse_max_);
   else
-    std::snprintf(line, sizeof(line), "Relance : %s consommé (%d au total).",
+    std::snprintf(line, sizeof(line), i18n::Tr("Relance : %s consommé (%d au total)."),
                   source_item_name_, auto_items_used_);
   Log(line, kColWarn);
 }
@@ -2043,7 +2042,7 @@ void MakeItemWindow::ScheduleAutoRecast() {
     if (auto_reuse_max_ > 0 && auto_items_used_ >= auto_reuse_max_) {
       char msg[192];
       std::snprintf(msg, sizeof(msg),
-                    "Plafond atteint : %d %s consommés. Relance arrêtée.",
+                    i18n::Tr("Plafond atteint : %d %s consommés. Relance arrêtée."),
                     auto_items_used_, source_item_name_);
       auto_stop_reason_ = msg;
       batch_left_ = 0;
@@ -2091,8 +2090,8 @@ void MakeItemWindow::RetryRelaunch() {
     if (reuse_owned_before_ >= 0 && owned_now < reuse_owned_before_) {
       char msg[192];
       std::snprintf(msg, sizeof(msg),
-                    "%s consommé mais aucune liste n'est revenue : relance "
-                    "arrêtée (le stock ne sera pas entamé davantage).",
+                    i18n::Tr("%s consommé mais aucune liste n'est revenue : relance "
+                    "arrêtée (le stock ne sera pas entamé davantage)."),
                     source_item_name_);
       auto_stop_reason_ = msg;
       batch_left_ = 0;
@@ -2123,7 +2122,7 @@ void MakeItemWindow::RetryRelaunch() {
       GetTickCount() + (from_item_ ? kAutoReuseDelayMs : kAutoRecastDelayMs);
   char line[160];
   std::snprintf(line, sizeof(line),
-                "Relance sans réponse : nouvel essai (%d/%d).",
+                i18n::Tr("Relance sans réponse : nouvel essai (%d/%d)."),
                 relaunch_retries_, kMaxRelaunchRetries);
   Log(line, kColWarn);
 }
@@ -2418,7 +2417,7 @@ void MakeItemWindow::LogResult(int result, uint32_t nameid) {
   } else if (tmpl) {
     std::snprintf(line, sizeof(line), "%s (%s)", tmpl, item_name);
   } else {
-    std::snprintf(line, sizeof(line), "%s : %s", success ? "Succès" : "Échec",
+    std::snprintf(line, sizeof(line), "%s : %s", success ? i18n::Tr("Succès") : i18n::Tr("Échec"),
                   item_name);
   }
   last_result_       = line;
@@ -2467,7 +2466,7 @@ void MakeItemWindow::OnRenderUI() {
   // banque. Les réglages qui pilotent CETTE fenêtre doivent être atteignables
   // DEPUIS elle — en particulier la relance automatique, qu'on veut couper ou
   // ajuster au moment précis où elle tourne.
-  ro::SetNextWindowTitleBullet("Options de fabrication");
+  ro::SetNextWindowTitleBullet(i18n::Tr("Options de fabrication"));
   bool open = true;
   hover_valid_ = false;  // relevé pendant le rendu, consommé juste après
   const bool begun =
@@ -2525,10 +2524,10 @@ void MakeItemWindow::DrawList() {
       ImGui::PopStyleColor();
     }
     Spacing();
-    TextWrapped("Le serveur n'a proposé aucun produit. Causes possibles :");
-    BulletWrapped("il te manque un matériau (ou la quantité) ;");
-    BulletWrapped("ton inventaire est plein — le serveur refuse ce qu'il ne peut pas te remettre ;");
-    BulletWrapped("le niveau de compétence requis n'est pas atteint.");
+    TextWrapped(i18n::Tr("Le serveur n'a proposé aucun produit. Causes possibles :"));
+    BulletWrapped(i18n::Tr("il te manque un matériau (ou la quantité) ;"));
+    BulletWrapped(i18n::Tr("ton inventaire est plein — le serveur refuse ce qu'il ne peut pas te remettre ;"));
+    BulletWrapped(i18n::Tr("le niveau de compétence requis n'est pas atteint."));
     Spacing();
 
     // ── Ce qu'on faisait juste avant, et ce qui manque ────────────────────────
@@ -2543,7 +2542,7 @@ void MakeItemWindow::DrawList() {
     // énumérable, et rien côté client ne dit quels produits appartiennent à cette
     // compétence. Énumérer tout demanderait un index dans le fichier.
     if (!stale_entries_.empty()) {
-      SeparatorText("Ce que tu pouvais faire juste avant");
+      SeparatorText(i18n::Tr("Ce que tu pouvais faire juste avant"));
       const MoonlightUi* ui = Bourgeon::Instance().moonlight_ui();
       int shown = 0;
       for (const Entry& e : stale_entries_) {
@@ -2570,12 +2569,12 @@ void MakeItemWindow::DrawList() {
         ++shown;
         ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
         if (missing[0])
-          Text("%s : il manque %s", e.name, missing);
+          Text(i18n::Tr("%s : il manque %s"), e.name, missing);
         else
           // Rien ne manque et le serveur refuse quand même : c'est une des deux
           // AUTRES causes (sac plein, niveau de compétence). Le dire évite de
           // chercher un matériau qui est là.
-          Text("%s : matériaux au complet — sac plein ou niveau insuffisant",
+          Text(i18n::Tr("%s : matériaux au complet — sac plein ou niveau insuffisant"),
                e.name);
         ImGui::PopStyleColor();
       }
@@ -2659,7 +2658,7 @@ void MakeItemWindow::DrawList() {
     ImGui::TableSetupColumn("##icone", ImGuiTableColumnFlags_WidthFixed, 28.0f);
     ImGui::TableSetupColumn("Produit", ImGuiTableColumnFlags_DefaultSort);
     if (show_owned_)
-      ImGui::TableSetupColumn("Possédé", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Possédé"), ImGuiTableColumnFlags_WidthFixed, 58.0f);
     if (show_craftable)
       ImGui::TableSetupColumn("Faisable", ImGuiTableColumnFlags_WidthFixed, 60.0f);
     ImGui::TableHeadersRow();
@@ -3112,11 +3111,11 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
       // façon de repérer un accesseur mémoire qui déraille sans debugger attaché.
       char inputs[224];
       std::snprintf(inputs, sizeof(inputs),
-                    "\n\nEntrées du calcul : kit niveau %d, plat niveau %d, "
-                    "base level %d, DEX %d, LUK %d, maîtrise %s.",
+                    i18n::Tr("\n\nEntrées du calcul : kit niveau %d, plat niveau %d, "
+                    "base level %d, DEX %d, LUK %d, maîtrise %s."),
                     kit, dish_lv, rag::BaseLevel(),
                     rag::StatTotal(rag::kDex), rag::StatTotal(rag::kLuk),
-                    (cook_mastery_ >= 0) ? "reçue" : "NON REÇUE");
+                    (cook_mastery_ >= 0) ? i18n::Tr("reçue") : i18n::Tr("NON REÇUE"));
       const int chance = CookingChancePercent(chosen.id, kit, cook_mastery_);
       if (chance >= 0) {
         ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn),
@@ -3130,10 +3129,9 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
         std::snprintf(
             tip, sizeof(tip), "%s%s",
             (kit >= 15)
-                ? "Kit de niveau 15 : le serveur pose directement 100 %, sans "
+                ? i18n::Tr("Kit de niveau 15 : le serveur pose directement 100 %, sans "
                   "aucun tirage. Ni vos statistiques, ni le plat visé, ni votre "
-                  "maîtrise culinaire n'entrent en jeu."
-                : "Calcul du serveur, rejoué à l'identique :\n"
+                  "maîtrise culinaire n'entrent en jeu.") : i18n::Tr("Calcul du serveur, rejoué à l'identique :\n"
                   "  12 % par palier de kit au-dessus du premier (c'est le terme "
                   "qui pèse le plus)\n"
                   "  - 4 % par palier de difficulté du plat\n"
@@ -3150,7 +3148,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                   "propre au serveur Moonlight.\n"
                   "\n"
                   "La cuisine est la seule fabrication que les réglages serveur ne "
-                  "multiplient PAS, et la seule qui n'exige aucune compétence.",
+                  "multiplient PAS, et la seule qui n'exige aucune compétence."),
             inputs);
         HelpMarker(tip);
         return;
@@ -3200,15 +3198,15 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
       }
       ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
       TextWrapped(
-          "Chances : non calculées (maîtrise culinaire non transmise par le "
-          "serveur).");
+          i18n::Tr("Chances : non calculées (maîtrise culinaire non transmise par le "
+          "serveur)."));
       ImGui::PopStyleColor();
       return;
     }
     ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
     TextWrapped(
-        "Chances : non calculées (le kit utilisé n'a pas été identifié ; son "
-        "niveau ne circule dans aucun paquet et se déduit de l'objet consommé).");
+        i18n::Tr("Chances : non calculées (le kit utilisé n'a pas été identifié ; son "
+        "niveau ne circule dans aucun paquet et se déduit de l'objet consommé)."));
     ImGui::PopStyleColor();
     return;
   }
@@ -3220,7 +3218,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                          chance);
       ImGui::SameLine();
       HelpMarker(
-          "Calcul du serveur, rejoué à l'identique :\n"
+          i18n::Tr("Calcul du serveur, rejoué à l'identique :\n"
           "  3 % par niveau de Pharmacy (le terme qui pèse le plus)\n"
           "  + 0,5 % par niveau de Potion Research\n"
           "  + job level x 20 + (INT / 2) x 10 + DEX x 10 + LUK x 10\n"
@@ -3235,13 +3233,13 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
           "\n"
           "Non pris en compte : le bonus d'un homoncule Vanilmirth avec Instruct "
           "(+1 % par niveau) et la pénalité de 30 % des classes baby. Le chiffre "
-          "est donc légèrement pessimiste dans ces deux cas.");
+          "est donc légèrement pessimiste dans ces deux cas."));
       return;
     }
     ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
     TextWrapped(
-        "Chances : non calculées (le fichier de recettes ne porte pas le réglage "
-        "serveur potion_produce_rate, qui multiplie le résultat).");
+        i18n::Tr("Chances : non calculées (le fichier de recettes ne porte pas le réglage "
+        "serveur potion_produce_rate, qui multiplie le résultat)."));
     ImGui::PopStyleColor();
     return;
   }
@@ -3254,7 +3252,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                        chance);
     ImGui::SameLine();
     HelpMarker(
-        "Calcul du serveur, rejoué à l'identique :\n"
+        i18n::Tr("Calcul du serveur, rejoué à l'identique :\n"
         "  job level x 20 + DEX x 10 + LUK x 10\n"
         "  + bonus de la compétence de la recette (45 à 65 % pour Iron "
         "Tempering, 35 à 55 % pour Steel, 15 à 35 % pour Enchanted Stone)\n"
@@ -3266,7 +3264,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
         "DEX et LUK sont les valeurs EFFECTIVES, équipement et cartes comprises — "
         "celles que montre ta feuille de personnage.\n"
         "\n"
-        "Un échec consomme les matériaux sans rien produire.");
+        "Un échec consomme les matériaux sans rien produire."));
     return;
   }
 
@@ -3288,7 +3286,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                          chance);
       ImGui::SameLine();
       HelpMarker(
-          "Calcul du serveur, rejoué à l'identique :\n"
+          i18n::Tr("Calcul du serveur, rejoué à l'identique :\n"
           "  job level x 20 + DEX x 10 + LUK x 10\n"
           "  + niveau de l'arme (+40 % en lv1, +20 % lv2, +10 % lv3, RIEN en lv4)\n"
           "  + 5 % par niveau de ta compétence de forge\n"
@@ -3303,13 +3301,13 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
           "donc la probabilité exacte. Il se recalcule quand tu changes les "
           "emplacements ci-dessous.\n"
           "\n"
-          "Non pris en compte : la pénalité de 30 % des classes baby.");
+          "Non pris en compte : la pénalité de 30 % des classes baby."));
       return;
     }
     ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
     TextWrapped(
-        "Chances : non calculées (le fichier de recettes ne porte pas le réglage "
-        "serveur weapon_produce_rate, qui multiplie le résultat).");
+        i18n::Tr("Chances : non calculées (le fichier de recettes ne porte pas le réglage "
+        "serveur weapon_produce_rate, qui multiplie le résultat)."));
     ImGui::PopStyleColor();
     return;
   }
@@ -3319,8 +3317,8 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
   // `skill_produce_mix`. On le dit plutôt que de laisser un blanc.
   ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
   TextWrapped(
-      "Chances : non calculées pour cette compétence (chaque métier a sa propre "
-      "formule côté serveur).");
+      i18n::Tr("Chances : non calculées pour cette compétence (chaque métier a sa propre "
+      "formule côté serveur)."));
   ImGui::PopStyleColor();
 }
 
@@ -3338,7 +3336,7 @@ void MakeItemWindow::DrawRecipe() {
     // produits fabricables n'ont aucune recette dans le fichier client. Un blanc
     // se lirait comme « pas de matériaux requis », ce qui est faux.
     ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped("Recette inconnue du client pour ce produit.");
+    TextWrapped(i18n::Tr("Recette inconnue du client pour ce produit."));
     ImGui::PopStyleColor();
     return;
   }
@@ -3348,7 +3346,7 @@ void MakeItemWindow::DrawRecipe() {
     // « 's required materials » à son nom serait un contresens (la recette
     // liste le matériau et son rendement). Pas de MsgString client pour ce
     // cas — sa fenêtre 94 n'affiche jamais de recette — d'où le libellé maison.
-    SeparatorText("Crafting result");
+    SeparatorText(i18n::Tr("Crafting result"));
   } else {
     // Libellé EXACT du client : MsgString 427 = « 's required materials », que le
     // natif accole au nom du produit dans sa fenêtre 80.
@@ -3357,7 +3355,7 @@ void MakeItemWindow::DrawRecipe() {
     if (suffix)
       SeparatorText((std::string(chosen->name) + suffix).c_str());
     else
-      SeparatorText("Matériaux requis");
+      SeparatorText(i18n::Tr("Matériaux requis"));
   }
 
   DrawSuccessChance(*chosen);
@@ -3385,13 +3383,13 @@ void MakeItemWindow::DrawRecipe() {
       // Le libellé appartient à l'UI, pas au fichier de recettes : celui-ci n'a
       // qu'à porter le marqueur (quantité 0). Écrit ainsi, il dit la SEULE chose
       // qui compte pour le joueur — l'objet est exigé mais ne sera pas perdu.
-      std::snprintf(label, sizeof(label), "%s  (requis, non consommé)",
+      std::snprintf(label, sizeof(label), i18n::Tr("%s  (requis, non consommé)"),
                     (db_name && *db_name) ? db_name : m.name);
     else if (m.id && !enough)
       // Le MANQUE plutôt que le seul stock : « (3) » oblige à faire la
       // soustraction de tête pour chaque ligne rouge, et c'est justement le
       // chiffre qu'on va chercher — combien aller ramasser.
-      std::snprintf(label, sizeof(label), "%d %s  (%d — il en manque %d)", m.qty,
+      std::snprintf(label, sizeof(label), i18n::Tr("%d %s  (%d — il en manque %d)"), m.qty,
                     (db_name && *db_name) ? db_name : m.name, have,
                     m.qty - have);
     else if (m.id)
@@ -3471,7 +3469,7 @@ void MakeItemWindow::DrawForgeSlots() {
     return (n && *n) ? n : "?";
   };
 
-  SeparatorText("Matériaux optionnels");
+  SeparatorText(i18n::Tr("Matériaux optionnels"));
 
   // Largeur DÉDUITE de la place réelle, pas fixée : trois combos de 150 px font
   // 460 px dans une fenêtre qui en fait ~360, et c'est le troisième emplacement
@@ -3562,36 +3560,36 @@ void MakeItemWindow::DrawForgeSlots() {
     // chargés couvrent la ponctuation générale (d'où les « — » et « … » qui
     // passent ailleurs) mais pas le bloc Mathematical Operators : U+2212 sort en
     // caractère manquant.
-    Text("%d Star Crumb : +%d ATK, -%d %% de réussite", star_crumbs,
+    Text(i18n::Tr("%d Star Crumb : +%d ATK, -%d %% de réussite"), star_crumbs,
          star_crumbs * kStarCrumbAtkBonus,
          star_crumbs * kStarCrumbMalusPercent);
     ImGui::PopStyleColor();
     ImGui::SameLine();
     HelpMarker(
-        "Le compromis que le natif ne montre jamais.\n\n"
+        i18n::Tr("Le compromis que le natif ne montre jamais.\n\n"
         "Chaque Star Crumb ajoute +5 ATK à l'arme forgée "
         "(card[1] = ((sc*5) << 8) + élément) et retranche 1500 au taux de "
         "réussite — lequel se compte sur 10000, donc 15 points de pourcentage "
         "(make_per -= sc * 1500 ; le tirage est rnd()%10000 < make_per).\n\n"
         "Trois Star Crumb, c'est donc +15 ATK contre 45 points de réussite en "
-        "moins. L'écran natif aligne trois emplacements et n'en dit rien.");
+        "moins. L'écran natif aligne trois emplacements et n'en dit rien."));
   }
   if (element_id != 0) {
     // ⚠ En couleur d'AVERTISSEMENT, pas en vert : la pierre donne l'élément mais
     // coûte 25 points de réussite, davantage qu'un Star Crumb. L'afficher comme un
     // gain pur était trompeur.
     ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
-    Text("Élément %s : -%d %% de réussite", NameOf(element_id),
+    Text(i18n::Tr("Élément %s : -%d %% de réussite"), NameOf(element_id),
          kElementMalusPercent);
     ImGui::PopStyleColor();
     ImGui::SameLine();
     HelpMarker(
-        "Une seule pierre élémentaire par arme : le serveur ne retient que la "
+        i18n::Tr("Une seule pierre élémentaire par arme : le serveur ne retient que la "
         "première (`ele == 0` en garde) et ne consomme même pas les suivantes.\n\n"
         "C'est pourquoi les autres emplacements n'en proposent plus dès qu'une "
         "est posée — un second choix n'aurait aucun effet.\n\n"
         "Elle coûte 25 points de réussite (make_per -= 2500 sur une échelle de "
-        "10000), soit plus qu'un Star Crumb. Le natif ne le dit nulle part.");
+        "10000), soit plus qu'un Star Crumb. Le natif ne le dit nulle part."));
   }
 
   // Le TOTAL, dès qu'il y a deux contributions : c'est le chiffre qu'on cherche,
@@ -3604,7 +3602,7 @@ void MakeItemWindow::DrawForgeSlots() {
       (element_id ? kElementMalusPercent : 0);
   if (star_crumbs > 0 && element_id != 0) {
     ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
-    Text("Total : -%d %% de réussite", total_malus);
+    Text(i18n::Tr("Total : -%d %% de réussite"), total_malus);
     ImGui::PopStyleColor();
   }
 
@@ -3629,23 +3627,23 @@ void MakeItemWindow::DrawForgeSlots() {
     if (best_anvil) {
       ImGui::PushStyleColor(ImGuiCol_Text,
                             best_anvil->percent > 0 ? kColOk : kColDim);
-      Text("Enclume retenue : %s (+%d %%)", NameOf(best_anvil->id),
+      Text(i18n::Tr("Enclume retenue : %s (+%d %%)"), NameOf(best_anvil->id),
            best_anvil->percent);
       ImGui::PopStyleColor();
       if (other_anvils > 0) {
         ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-        Text("(%d autre%s en sac, sans effet)", other_anvils,
+        Text(i18n::Tr("(%d autre%s en sac, sans effet)"), other_anvils,
              other_anvils > 1 ? "s" : "");
         ImGui::PopStyleColor();
       }
     } else {
       ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
-      TextUnformatted("Aucune enclume en sac.");
+      TextUnformatted(i18n::Tr("Aucune enclume en sac."));
       ImGui::PopStyleColor();
     }
     ImGui::SameLine();
     HelpMarker(
-        "L'enclume n'est PAS un matériau : elle n'entre dans aucune recette et "
+        i18n::Tr("L'enclume n'est PAS un matériau : elle n'entre dans aucune recette et "
         "n'est jamais consommée. Le serveur vérifie seulement que tu en portes "
         "une (pc_search_inventory) et ajoute au taux de réussite :\n\n"
         "  Emperium Anvil  +10 %\n"
@@ -3653,7 +3651,7 @@ void MakeItemWindow::DrawForgeSlots() {
         "  Oridecon Anvil  +2,5 %\n"
         "  Anvil           +0 %\n\n"
         "Seule la MEILLEURE compte (chaîne de « else if » côté serveur) : en "
-        "cumuler plusieurs n'apporte rien de plus.");
+        "cumuler plusieurs n'apporte rien de plus."));
   }
 
   // Un même objet placé deux fois exige deux exemplaires. Le serveur cherche
@@ -3666,7 +3664,7 @@ void MakeItemWindow::DrawForgeSlots() {
     const int have = OwnedCount(forge_slot_[i]);
     if (used > have) {
       ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
-      Text("%s : %d demandés, %d en sac", NameOf(forge_slot_[i]), used, have);
+      Text(i18n::Tr("%s : %d demandés, %d en sac"), NameOf(forge_slot_[i]), used, have);
       ImGui::PopStyleColor();
       break;  // un seul message suffit à dire que la sélection est intenable
     }
@@ -3724,21 +3722,20 @@ void MakeItemWindow::DrawFooter() {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       if (!can_relaunch)
         ImGui::SetTooltip(
-            by_item ? "Il ne te reste plus l'objet qui a ouvert cette liste."
-                    : "Compétence d'origine inconnue : relance impossible.");
+            by_item ? i18n::Tr("Il ne te reste plus l'objet qui a ouvert cette liste.") : i18n::Tr("Compétence d'origine inconnue : relance impossible."));
       else if (by_item)
         ImGui::SetTooltip(
-            "Ré-utilise %s pour rouvrir une liste.\n"
+            i18n::Tr("Ré-utilise %s pour rouvrir une liste.\n"
             "\n"
             "L'objet est CONSOMMÉ : le serveur le détruit avant d'exécuter son "
-            "script, même si tu annules ensuite.",
+            "script, même si tu annules ensuite."),
             source_item_name_);
       else
         ImGui::SetTooltip(
-            "Relance la compétence pour obtenir une nouvelle liste.\n"
+            i18n::Tr("Relance la compétence pour obtenir une nouvelle liste.\n"
             "\n"
             "Le serveur n'autorise qu'une fabrication par lancement : après "
-            "chaque objet produit, il faut relancer.");
+            "chaque objet produit, il faut relancer."));
     }
   } else {
     // ⚠ ro::RoButton, PAS ImGui::Button : le corps d'une fenêtre Bourgeon porte le
@@ -3765,7 +3762,7 @@ void MakeItemWindow::DrawFooter() {
   // Le serveur n'accepte pas de quantité : « ×20 » veut dire vingt tours
   // complets. Le champ n'est donc qu'une CIBLE.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled("Quantité");
+  ImGui::TextDisabled(i18n::Tr("Quantité"));
   SameLine();
   // ro::RoSmallButton, pas les flèches d'ImGui::InputInt : celles-ci sont des
   // boutons ImGui nus au milieu d'un pied entièrement habillé RO.
@@ -3787,7 +3784,7 @@ void MakeItemWindow::DrawFooter() {
     ImGui::PopStyleColor();
   } else {
     HelpMarker(
-        "Combien de fabrications partent TOUTES SEULES.\n\n"
+        i18n::Tr("Combien de fabrications partent TOUTES SEULES.\n\n"
         "À ne pas confondre avec « relancer automatiquement », qui rouvre la "
         "liste après chaque fabrication : à 1 avec cette case cochée, une "
         "fabrication part seule, la liste revient, et le clic suivant est à "
@@ -3800,7 +3797,7 @@ void MakeItemWindow::DrawFooter() {
         "tour. La fenêtre le dit si le cas se présente.\n\n"
         "Même effet qu'Entrée maintenue, mais la cible est CHIFFRÉE : on peut "
         "lâcher le clavier, et ça s'arrête au compte demandé plutôt qu'au moment "
-        "où l'on pense à relâcher.");
+        "où l'on pense à relâcher."));
   }
 
   // La série ne peut pas avancer sans la relance qui va la nourrir. Le dire AVANT
@@ -3810,12 +3807,11 @@ void MakeItemWindow::DrawFooter() {
     if (!relance_ok) {
       ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
       TextWrapped(from_item_
-                      ? "Série sans effet : la relance par OBJET est désactivée, "
+                      ? i18n::Tr("Série sans effet : la relance par OBJET est désactivée, "
                         "aucune nouvelle liste ne reviendra après la première "
-                        "fabrication."
-                      : "Série sans effet : la relance automatique de la "
+                        "fabrication.") : i18n::Tr("Série sans effet : la relance automatique de la "
                         "compétence est désactivée, aucune nouvelle liste ne "
-                        "reviendra après la première fabrication.");
+                        "reviendra après la première fabrication."));
       ImGui::PopStyleColor();
     }
   }
@@ -3830,7 +3826,7 @@ void MakeItemWindow::DrawFooter() {
   if (!can_make) {
     if (awaiting_result_) {
       ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-      TextUnformatted("Demande envoyée — en attente du serveur…");
+      TextUnformatted(i18n::Tr("Demande envoyée — en attente du serveur…"));
       ImGui::PopStyleColor();
     } else if (entries_.empty() || !list_armed_) {
       // Liste consommée : on affiche le RÉSULTAT, pas un « aucune liste ». C'est
@@ -3842,15 +3838,15 @@ void MakeItemWindow::DrawFooter() {
         ImGui::PopStyleColor();
       } else {
         ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-        TextUnformatted("Aucune liste en cours.");
+        TextUnformatted(i18n::Tr("Aucune liste en cours."));
         ImGui::PopStyleColor();
       }
     } else {
       ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
       if (sel_id_ < 0)
-        TextUnformatted("Choisis un produit.");
+        TextUnformatted(i18n::Tr("Choisis un produit."));
       else
-        TextUnformatted("Le produit visé est masqué par le filtre.");
+        TextUnformatted(i18n::Tr("Le produit visé est masqué par le filtre."));
       ImGui::PopStyleColor();
     }
   }
@@ -3863,13 +3859,13 @@ void MakeItemWindow::DrawFooter() {
     // où en est le plafond. Une relance par compétence ne coûte que du SP, le
     // simple compteur suffit.
     if (from_item_ && source_item_id_ != 0 && auto_reuse_max_ > 0)
-      Text("Relance automatique… %s consommé %d/%d", source_item_name_,
+      Text(i18n::Tr("Relance automatique… %s consommé %d/%d"), source_item_name_,
            auto_items_used_, auto_reuse_max_);
     else if (from_item_ && source_item_id_ != 0)
-      Text("Relance automatique… %s consommé ×%d", source_item_name_,
+      Text(i18n::Tr("Relance automatique… %s consommé ×%d"), source_item_name_,
            auto_items_used_);
     else
-      Text("Relance automatique… (%d)", auto_chain_);
+      Text(i18n::Tr("Relance automatique… (%d)"), auto_chain_);
     ImGui::PopStyleColor();
   } else if (!auto_stop_reason_.empty()) {
     ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
@@ -3885,45 +3881,45 @@ bool MakeItemWindow::DrawSettings() {
   // comme le reste, et un widget ImGui nu y détonne. Même remarque que pour les
   // boutons du pied de la fenêtre.
   ImGui::TextDisabled(
-      "Remplace les DEUX listes natives : « LIST » (flèches, convertisseurs, "
+      i18n::Tr("Remplace les DEUX listes natives : « LIST » (flèches, convertisseurs, "
       "poison, leurres, cuisine, bombes) et « Manufacturing List » "
-      "(pharmacie, runes, forge).");
+      "(pharmacie, runes, forge)."));
   ImGui::TextDisabled(
-      "Clic droit : description · double-clic ou Entrée : fabriquer.");
+      i18n::Tr("Clic droit : description · double-clic ou Entrée : fabriquer."));
   ImGui::TextDisabled(
-      "En-têtes de colonne : trier (3e clic = ordre du serveur).");
+      i18n::Tr("En-têtes de colonne : trier (3e clic = ordre du serveur)."));
 
-  changed |= ro::RoCheckbox("Colonnes « Possédé » et « Faisable »", &show_owned_);
+  changed |= ro::RoCheckbox(i18n::Tr("Colonnes « Possédé » et « Faisable »"), &show_owned_);
   ImGui::SameLine();
   HelpMarker(
-      "Le stock en inventaire, et le nombre de fabrications possibles déduit de "
+      i18n::Tr("Le stock en inventaire, et le nombre de fabrications possibles déduit de "
       "la recette du client.\n\n« — » signifie « on ne sait pas » : la recette "
       "manque au fichier client, ou un nom de matériau n'a pas pu être résolu. "
       "Jamais « 0 » — le serveur n'aurait pas proposé le produit s'il n'y avait "
-      "pas de quoi en faire au moins un.");
+      "pas de quoi en faire au moins un."));
 
-  changed |= ro::RoCheckbox("Champ de filtre", &show_filter_);
-  changed |= ro::RoCheckbox("Aperçu au survol", &desc_tooltip_);
-  changed |= ro::RoCheckbox("Journal de session", &show_history_);
+  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter_);
+  changed |= ro::RoCheckbox(i18n::Tr("Aperçu au survol"), &desc_tooltip_);
+  changed |= ro::RoCheckbox(i18n::Tr("Journal de session"), &show_history_);
   if (show_history_)
-    changed |= ro::RoCheckbox("Horodater le journal", &log_time_);
+    changed |= ro::RoCheckbox(i18n::Tr("Horodater le journal"), &log_time_);
 
-  changed |= ro::RoCheckbox("Entrée lance la fabrication", &enter_key_);
+  changed |= ro::RoCheckbox(i18n::Tr("Entrée lance la fabrication"), &enter_key_);
   ImGui::SameLine();
   HelpMarker(
-      "Décoché (défaut), la touche Entrée reste au CHAT pendant que la fenêtre "
+      i18n::Tr("Décoché (défaut), la touche Entrée reste au CHAT pendant que la fenêtre "
       "est ouverte.\n\n"
       "Cochée, elle déclenche la fabrication du produit sélectionné — et la "
       "maintenir enchaîne. Mais la fenêtre confisque alors la touche tant "
       "qu'elle est ouverte : impossible d'ouvrir la saisie du chat.\n\n"
       "Depuis que le champ Quantité existe, marteler Entrée n'a plus grand "
-      "intérêt : « ×20 » fait le même travail sans occuper le clavier.");
+      "intérêt : « ×20 » fait le même travail sans occuper le clavier."));
 
-  changed |= ro::RoCheckbox("Relancer la compétence automatiquement",
+  changed |= ro::RoCheckbox(i18n::Tr("Relancer la compétence automatiquement"),
                             &auto_recast_);
   ImGui::SameLine();
   HelpMarker(
-      "Le serveur n'autorise qu'UNE fabrication par lancement de compétence "
+      i18n::Tr("Le serveur n'autorise qu'UNE fabrication par lancement de compétence "
       "(clif_menuskill_clear). Sans ça, enchaîner impose de retourner à la barre "
       "de raccourcis à chaque fois.\n\n"
       "Ce qui se relance seul, c'est le LANCEMENT DE LA COMPÉTENCE — jamais la "
@@ -3933,17 +3929,17 @@ bool MakeItemWindow::DrawSettings() {
       "n'y a plus rien) ou sur un refus de compétence.\n\n"
       "NE S'APPLIQUE PAS aux listes ouvertes par un OBJET (Mini Furnace, "
       "marteaux de forge : leur script fait « produce N; »). Ces objets sont "
-      "CONSOMMÉS à chaque usage : ils ont leur propre réglage, juste en dessous.");
+      "CONSOMMÉS à chaque usage : ils ont leur propre réglage, juste en dessous."));
 
   // ── Relance par OBJET : réglage SÉPARÉ, et il doit le rester ──────────────
   // Cocher « relancer la compétence » ne peut pas valoir permission de dépenser
   // du stock. Le libellé annonce la dépense AVANT la case, pas dans une bulle
   // d'aide qu'on peut ne jamais ouvrir.
-  changed |= ro::RoCheckbox("Ré-utiliser l'OBJET automatiquement (le consomme)",
+  changed |= ro::RoCheckbox(i18n::Tr("Ré-utiliser l'OBJET automatiquement (le consomme)"),
                             &auto_reuse_item_);
   ImGui::SameLine();
   HelpMarker(
-      "Pour les listes ouvertes par un objet — Mini Furnace, marteaux de forge — "
+      i18n::Tr("Pour les listes ouvertes par un objet — Mini Furnace, marteaux de forge — "
       "dont le script fait « produce N; ».\n\n"
       "/!\\ CHAQUE RELANCE DÉTRUIT UN EXEMPLAIRE. Le serveur supprime l'objet "
       "(pc_delitem, LOG_TYPE_CONSUME) AVANT d'exécuter son script : l'exemplaire "
@@ -3953,7 +3949,7 @@ bool MakeItemWindow::DrawSettings() {
       "clics.\n\n"
       "La chaîne s'arrête sur une liste vide, sur un refus du serveur, dès qu'il "
       "ne te reste plus l'objet, ou si tu fermes la fenêtre. Le nombre "
-      "d'exemplaires consommés reste affiché pendant toute la chaîne.");
+      "d'exemplaires consommés reste affiché pendant toute la chaîne."));
 
   if (auto_reuse_item_) {
     // ── Pourquoi une case ET un curseur, plutôt que « 0 = illimité » ─────────
@@ -3964,7 +3960,7 @@ bool MakeItemWindow::DrawSettings() {
     // case. Le modèle, lui, garde `0 = illimité` : c'est la présentation qui
     // change, pas la donnée.
     bool unlimited = (auto_reuse_max_ == 0);
-    if (ro::RoCheckbox("Sans limite (jusqu'à épuisement du stock)", &unlimited)) {
+    if (ro::RoCheckbox(i18n::Tr("Sans limite (jusqu'à épuisement du stock)"), &unlimited)) {
       // En repassant à une limite, on repart du dernier plafond choisi plutôt
       // que d'un nombre arbitraire : décocher puis recocher ne doit pas effacer
       // un réglage.
@@ -3982,14 +3978,14 @@ bool MakeItemWindow::DrawSettings() {
     }
     ImGui::SameLine();
     HelpMarker(
-        "Sans limite, la chaîne va jusqu'à épuisement du stock. C'est le "
+        i18n::Tr("Sans limite, la chaîne va jusqu'à épuisement du stock. C'est le "
         "défaut — consommer toute une pile est ton choix.\n\n"
         "Le plafond n'existe que pour le seul cas qu'il couvre vraiment : avoir "
         "oublié ce réglage coché. Il ne protège de rien d'autre.\n\n"
         "Une chaîne illimitée ne peut pas s'emballer : chaque tour exige un "
         "résultat du serveur pour armer le suivant. Si le serveur ignore l'usage "
         "(objet en cooldown, condition non remplie), aucune liste n'arrive et la "
-        "chaîne s'arrête d'elle-même.");
+        "chaîne s'arrête d'elle-même."));
   }
 
   return changed;

@@ -22,6 +22,7 @@
 // handler NATIF, qui ne tourne plus. Cf. RefineWnd et docs §3.1 bis.)
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -690,7 +691,7 @@ const char* WeaponRefineWindow::AutoStopCause() const {
   // payer un cast pour se le faire dire.
   if (OreCount(kOrePhracon) == 0 && OreCount(kOreEmveretarcon) == 0 &&
       OreCount(kOreOridecon) == 0)
-    return "Plus aucun minerai : chaîne arrêtée.";
+    return i18n::Tr("Plus aucun minerai : chaîne arrêtée.");
 
   // ── Le SP, la borne que l'option demande explicitement ────────────────────
   //
@@ -709,7 +710,7 @@ const char* WeaponRefineWindow::AutoStopCause() const {
   int sp_cost = 0;
   RefineSkillLevel(&sp_cost);
   if (sp_cost > 0 && OwnSp() < sp_cost)
-    return "Plus assez de SP pour relancer la compétence : chaîne arrêtée.";
+    return i18n::Tr("Plus assez de SP pour relancer la compétence : chaîne arrêtée.");
   return nullptr;
 }
 
@@ -761,7 +762,7 @@ void WeaponRefineWindow::RetryRecast() {
   auto_stop_reason_ = nullptr;
   char line[128];
   std::snprintf(line, sizeof(line),
-                "Relance jetée par le délai de lancement : nouvel essai (%d/%d).",
+                i18n::Tr("Relance jetée par le délai de lancement : nouvel essai (%d/%d)."),
                 recast_retries_, kMaxRecastRetries);
   PushLog(line, kColWarn);
 }
@@ -1433,7 +1434,7 @@ void WeaponRefineWindow::OnRenderUI() {
     need_focus_ = false;
   }
 
-  ro::SetNextWindowTitleBullet("Options du refine");
+  ro::SetNextWindowTitleBullet(i18n::Tr("Options du refine"));
   bool open = true;
   // NoScrollbar/NoScrollWithMouse : le contenu tient toujours (la liste a son
   // propre enfant scrollable), la barre de la fenêtre était parasite.
@@ -1462,13 +1463,13 @@ void WeaponRefineWindow::OnRenderUI() {
       // create items yet. ») ne parle ni d'arme, ni de refine, ni de minerai :
       // on énumère les vraies causes, celles du filtre serveur
       // (clif_item_refine_list, cf. docs/weapon_refine_re.md §7).
-      ImGui::TextColored(V4(kColWarn), "Aucune arme refinable.");
+      ImGui::TextColored(V4(kColWarn), i18n::Tr("Aucune arme refinable."));
       ImGui::Spacing();
-      ImGui::TextWrapped("Le serveur ne propose une arme que si TOUT est vrai :");
-      BulletWrapped("elle est identifiée et a un niveau d'arme (1 à 4) ;");
-      BulletWrapped("elle n'est PAS portée (déséquipe-la d'abord) ;");
-      BulletWrapped("son refine est encore sous le plafond de ta compétence ;");
-      BulletWrapped("tu as le minerai correspondant à son niveau d'arme.");
+      ImGui::TextWrapped(i18n::Tr("Le serveur ne propose une arme que si TOUT est vrai :"));
+      BulletWrapped(i18n::Tr("elle est identifiée et a un niveau d'arme (1 à 4) ;"));
+      BulletWrapped(i18n::Tr("elle n'est PAS portée (déséquipe-la d'abord) ;"));
+      BulletWrapped(i18n::Tr("son refine est encore sous le plafond de ta compétence ;"));
+      BulletWrapped(i18n::Tr("tu as le minerai correspondant à son niveau d'arme."));
       ImGui::Spacing();
       DrawFooter();
     } else if (entries_.empty()) {
@@ -1481,8 +1482,8 @@ void WeaponRefineWindow::OnRenderUI() {
       if (!awaiting_result_ && consumed_ && auto_recast_at_ == 0 &&
           pending_ != kActRecast) {
         ImGui::TextWrapped(
-            "Session terminée : le serveur n'autorise qu'un refine par "
-            "lancement de la compétence.");
+            i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par "
+            "lancement de la compétence."));
       }
       ImGui::Spacing();
       DrawFooter();
@@ -1630,10 +1631,10 @@ void WeaponRefineWindow::OnRenderUI() {
       // largeur ne serait plus celle qu'on a fixée.
       ImGui::TextWrapped("%s", name[0] ? name : "(arme inconnue)");
       ImGui::Spacing();
-      ImGui::TextColored(V4(kColBad), "Un échec DÉTRUIT l'arme.");
+      ImGui::TextColored(V4(kColBad), i18n::Tr("Un échec DÉTRUIT l'arme."));
       ImGui::TextWrapped(
-          "Le minerai est consommé dans tous les cas. En cas de réussite "
-          "l'arme passe de +%d à +%d.",
+          i18n::Tr("Le minerai est consommé dans tous les cas. En cas de réussite "
+          "l'arme passe de +%d à +%d."),
           target->refine, target->refine + 1);
       ImGui::Spacing();
 
@@ -2138,9 +2139,9 @@ void WeaponRefineWindow::DrawFooter() {
     ImGui::TextDisabled("Plafond : +%d", cap);
     ImGui::SameLine();
     HelpMarker(
-        "Le niveau appris de la compétence Upgrade Weapon EST le plafond : le "
+        i18n::Tr("Le niveau appris de la compétence Upgrade Weapon EST le plafond : le "
         "serveur refuse toute arme déjà à ce refine (et jamais au-delà de "
-        "+10).");
+        "+10)."));
   }
 
   // ── La CHANCE de la tentative, à côté du plafond ───────────────────────────
@@ -2170,7 +2171,7 @@ void WeaponRefineWindow::DrawFooter() {
       ImGui::TextColored(V4(col), "· Chances : %d %%", chance);
       ImGui::SameLine();
       HelpMarker(
-          "Probabilité EXACTE de cette tentative, pas une estimation.\n"
+          i18n::Tr("Probabilité EXACTE de cette tentative, pas une estimation.\n"
           "\n"
           "Le serveur calcule per = Rate/100 + (job_level - 50) / 2, puis réussit "
           "si per > rnd()%%100. Comme le tirage est uniforme sur 0..99, la "
@@ -2178,7 +2179,7 @@ void WeaponRefineWindow::DrawFooter() {
           "\n"
           "Le Rate de base vient de la table de refine du serveur (niveau d'arme "
           "× refine visé). Un job level inférieur à 50 donne un bonus NÉGATIF : "
-          "ce n'est pas une erreur, le serveur fait bien cela.");
+          "ce n'est pas une erreur, le serveur fait bien cela."));
     }
   }
 
@@ -2187,7 +2188,7 @@ void WeaponRefineWindow::DrawFooter() {
   // s'affiche plus bas, à sa place et au bon moment.)
 
   if (awaiting_result_) {
-    ImGui::TextColored(V4(kColWarn), "Tentative envoyée — en attente du serveur…");
+    ImGui::TextColored(V4(kColWarn), i18n::Tr("Tentative envoyée — en attente du serveur…"));
     ImGui::Spacing();
   }
 
@@ -2203,19 +2204,18 @@ void WeaponRefineWindow::DrawFooter() {
     // Le numéro de la tentative QUI VA PARTIR (donc jamais « 0 »), pas le compte
     // de celles qui sont derrière : c'est celle-là que le joueur peut encore
     // arrêter, et c'est la seule qui l'intéresse à cet instant.
-    ImGui::TextColored(V4(kColBad), "Refine automatique imminent… (n° %d)",
+    ImGui::TextColored(V4(kColBad), i18n::Tr("Refine automatique imminent… (n° %d)"),
                        auto_refine_count_ + 1);
     ImGui::Spacing();
   } else if (auto_recast_at_) {
     ImGui::TextColored(V4(kColInfo),
-                       auto_refine_ ? "Chaîne automatique… (%d)"
-                                    : "Relance automatique… (%d)",
+                       auto_refine_ ? i18n::Tr("Chaîne automatique… (%d)") : i18n::Tr("Relance automatique… (%d)"),
                        auto_chain_);
     ImGui::Spacing();
   } else if (auto_paused_) {
     ImGui::TextColored(V4(kColWarn),
-                       "Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
-                       "skill » la reprend.");
+                       i18n::Tr("Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
+                       "skill » la reprend."));
     ImGui::Spacing();
   } else if (auto_stop_reason_ && AutoChain()) {
     ImGui::TextColored(V4(kColWarn), "%s", auto_stop_reason_);
@@ -2253,15 +2253,15 @@ void WeaponRefineWindow::DrawFooter() {
   const bool relaunch_coming = auto_recast_at_ != 0 || pending_ == kActRecast;
   if (consumed_ && !awaiting_result_ && !relaunch_coming) {
     ImGui::TextDisabled(
-        "Session terminée : le serveur n'autorise qu'un refine par lancement de "
-        "la compétence.");
+        i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par lancement de "
+        "la compétence."));
     ImGui::Spacing();
   }
 
   if (!entries_.empty()) {
     // Dire POURQUOI le bouton est gris, sinon il a juste l'air cassé.
     if (!has_sel && !busy) {
-      ImGui::TextDisabled("Sélectionne une arme dans la liste.");
+      ImGui::TextDisabled(i18n::Tr("Sélectionne une arme dans la liste."));
       ImGui::Spacing();
     }
     ImGui::BeginDisabled(!has_sel || busy);
@@ -2307,7 +2307,7 @@ void WeaponRefineWindow::DrawFooter() {
        pending_ == kActRefine || pending_ == kActRecast);
 
   if (chain_running) {
-    if (ro::RoButton("Arrêter", kBtnRecastW)) {
+    if (ro::RoButton(i18n::Tr("Arrêter"), kBtnRecastW)) {
       // ⚠ On ne touche PAS à `auto_refine_`, qui est le RÉGLAGE persistant : un
       // bouton de fenêtre ne décoche pas une case du panneau d'options. C'est
       // `auto_paused_` qui tient la chaîne, jusqu'à un geste manuel.
@@ -2324,18 +2324,18 @@ void WeaponRefineWindow::DrawFooter() {
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip(
-          "Arrête le refine automatique tout de suite.\n"
+          i18n::Tr("Arrête le refine automatique tout de suite.\n"
           "\n"
           "Une tentative DÉJÀ envoyée ira à son terme : le serveur a l'arme,\n"
           "elle ne se reprend pas. Rien ne repartira ensuite.\n"
           "\n"
           "Le réglage reste coché : un clic sur « Refine » ou « Relancer le\n"
-          "skill » reprend la chaîne.");
+          "skill » reprend la chaîne."));
     }
     ImGui::SameLine();
   } else if ((entries_.empty() || consumed_) && !relaunch_coming) {
     ImGui::BeginDisabled(awaiting_result_);
-    if (ro::RoButton("Relancer le skill", kBtnRecastW)) {
+    if (ro::RoButton(i18n::Tr("Relancer le skill"), kBtnRecastW)) {
       pending_ = kActRecast;
       // Relance MANUELLE : nouvelle chaîne, compteurs remis à zéro — y compris les
       // essais de relance, sinon un blocage précédent laisserait le quota épuisé.
@@ -2352,11 +2352,11 @@ void WeaponRefineWindow::DrawFooter() {
     // besoin d'être expliqué, et il est déjà à l'étroit dans le pied.
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       ImGui::SetTooltip(
-          "Relance la compétence Upgrade Weapon pour obtenir une nouvelle liste.\n"
+          i18n::Tr("Relance la compétence Upgrade Weapon pour obtenir une nouvelle liste.\n"
           "\n"
           "Le serveur n'autorise QU'UNE tentative par lancement : après chaque\n"
           "refine il faut relancer, et c'est ce que fait ce bouton — sans\n"
-          "repasser par la barre d'action.");
+          "repasser par la barre d'action."));
     }
     ImGui::SameLine();
   }
@@ -2391,34 +2391,34 @@ void WeaponRefineWindow::DrawHistory(float h) {
 bool WeaponRefineWindow::DrawSettings() {
   bool changed = false;
   ImGui::TextDisabled(
-      "Remplace la fenêtre « Upgradeable weapons » du skill Upgrade Weapon.");
+      i18n::Tr("Remplace la fenêtre « Upgradeable weapons » du skill Upgrade Weapon."));
   ImGui::TextDisabled(
-      "Clic droit : description · double-clic ou Entrée : refine.");
+      i18n::Tr("Clic droit : description · double-clic ou Entrée : refine."));
   ImGui::TextDisabled(
-      "En-têtes de colonne : trier (3e clic = ordre d'inventaire).");
-  changed |= ro::RoCheckbox("Confirmer avant un refine", &confirm_);
+      i18n::Tr("En-têtes de colonne : trier (3e clic = ordre d'inventaire)."));
+  changed |= ro::RoCheckbox(i18n::Tr("Confirmer avant un refine"), &confirm_);
   ImGui::SameLine();
   HelpMarker(
-      "Un échec DÉTRUIT l'arme, et le client affiche le MÊME message pour un "
-      "succès et un échec. La confirmation rappelle l'arme visée et le risque.");
-  changed |= ro::RoCheckbox("Cartes et emplacements", &show_cards_);
+      i18n::Tr("Un échec DÉTRUIT l'arme, et le client affiche le MÊME message pour un "
+      "succès et un échec. La confirmation rappelle l'arme visée et le risque."));
+  changed |= ro::RoCheckbox(i18n::Tr("Cartes et emplacements"), &show_cards_);
   ImGui::SameLine();
   HelpMarker(
-      "Le paquet du serveur porte les 4 cartes de chaque arme — la fenêtre "
+      i18n::Tr("Le paquet du serveur porte les 4 cartes de chaque arme — la fenêtre "
       "native les jette, deux armes identiques dont une sertie y sont donc "
-      "indistinguables.");
-  changed |= ro::RoCheckbox("Champ de filtre", &show_filter_);
+      "indistinguables."));
+  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter_);
   ImGui::SameLine();
   HelpMarker(
-      "Utile sur un gros inventaire ; sur deux ou trois armes il ne fait que "
+      i18n::Tr("Utile sur un gros inventaire ; sur deux ou trois armes il ne fait que "
       "prendre une ligne. Le décocher efface aussi le filtre en cours, pour "
-      "qu'aucune arme ne reste masquée par un champ invisible.");
-  changed |= ro::RoCheckbox("Description au survol", &desc_tooltip_);
+      "qu'aucune arme ne reste masquée par un champ invisible."));
+  changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &desc_tooltip_);
 
-  changed |= ro::RoCheckbox("Entrée lance le refine", &enter_key_);
+  changed |= ro::RoCheckbox(i18n::Tr("Entrée lance le refine"), &enter_key_);
   ImGui::SameLine();
   HelpMarker(
-      "Cochée, Entrée refine l'arme sélectionnée, et la maintenir enchaîne. La "
+      i18n::Tr("Cochée, Entrée refine l'arme sélectionnée, et la maintenir enchaîne. La "
       "fenêtre confisque alors la touche tant qu'elle est ouverte : impossible "
       "d'ouvrir la saisie du chat.\n"
       "\n"
@@ -2426,13 +2426,13 @@ bool WeaponRefineWindow::DrawSettings() {
       "\n"
       "La fenêtre de CONFIRMATION garde Entrée dans tous les cas : « Entrée = "
       "OK » y est la convention, et elle valide une action qui peut détruire "
-      "l'arme.");
+      "l'arme."));
 
-  changed |= ro::RoCheckbox("Relancer la compétence automatiquement",
+  changed |= ro::RoCheckbox(i18n::Tr("Relancer la compétence automatiquement"),
                             &auto_recast_);
   ImGui::SameLine();
   HelpMarker(
-      "Après chaque tentative, relance Upgrade Weapon pour rouvrir la liste — "
+      i18n::Tr("Après chaque tentative, relance Upgrade Weapon pour rouvrir la liste — "
       "le serveur n'en autorise qu'une par lancement.\n"
       "\n"
       "Ne refine RIEN tout seul : le choix de l'arme et le déclenchement "
@@ -2442,17 +2442,17 @@ bool WeaponRefineWindow::DrawSettings() {
       "\n"
       "Si la compétence est jetée par son délai de lancement, la relance est "
       "réessayée un peu plus tard (3 fois au plus) au lieu de s'arrêter en "
-      "silence.");
+      "silence."));
 
   // ── La seule option du plugin qui AGISSE à la place du joueur ──────────────
   // Elle est donc présentée comme telle : l'avertissement est SOUS la case, en
   // rouge, et pas caché dans une infobulle qu'on peut ne jamais ouvrir. Un joueur
   // doit pouvoir mesurer ce qu'il coche sans avoir à survoler quoi que ce soit.
-  changed |= ro::RoCheckbox("Refiner automatiquement (chaîne complète)",
+  changed |= ro::RoCheckbox(i18n::Tr("Refiner automatiquement (chaîne complète)"),
                             &auto_refine_);
   ImGui::SameLine();
   HelpMarker(
-      "Enchaîne TOUT SEUL : la première arme de la liste est jouée, la "
+      i18n::Tr("Enchaîne TOUT SEUL : la première arme de la liste est jouée, la "
       "compétence relancée, et ainsi de suite jusqu'à ne plus pouvoir — c'est "
       "le SP qui borne la chaîne, et elle s'arrête quand il manque.\n"
       "\n"
@@ -2467,28 +2467,28 @@ bool WeaponRefineWindow::DrawSettings() {
       "\n"
       "S'arrête seule : plus de SP, plus de minerai, plus d'arme dans la liste, "
       "ou refus du serveur. Un bouton « Arrêter » apparaît dans la fenêtre "
-      "pendant toute la chaîne.");
+      "pendant toute la chaîne."));
   if (auto_refine_) {
     ImGui::Indent();
     ImGui::PushStyleColor(ImGuiCol_Text, V4(kColBad));
     ImGui::TextWrapped(
-        "Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
+        i18n::Tr("Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
         "confirmation. La chaîne joue les armes de la liste jusqu'à épuisement "
-        "du SP.");
+        "du SP."));
     ImGui::PopStyleColor();
     ImGui::Unindent();
   }
 
-  changed |= ro::RoCheckbox("Journal de session", &show_history_);
+  changed |= ro::RoCheckbox(i18n::Tr("Journal de session"), &show_history_);
   ImGui::SameLine();
   HelpMarker(
-      "Garde la trace des tentatives de la session, avec le libellé EXACT du "
+      i18n::Tr("Garde la trace des tentatives de la session, avec le libellé EXACT du "
       "serveur. N'apparaît qu'à partir du premier résultat — avant, il n'y a "
       "rien à montrer. C'est le seul endroit où succès et échec se distinguent : "
-      "le client leur donne le MÊME texte (MsgString 911 et 912).");
+      "le client leur donne le MÊME texte (MsgString 911 et 912)."));
   if (show_history_) {
     ImGui::Indent();
-    changed |= ro::RoCheckbox("Horodater les lignes", &log_time_);
+    changed |= ro::RoCheckbox(i18n::Tr("Horodater les lignes"), &log_time_);
     ImGui::Unindent();
   }
   return changed;

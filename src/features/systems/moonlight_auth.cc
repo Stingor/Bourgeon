@@ -26,6 +26,7 @@
 #include "utils/log_console.h"
 #include "utils/game_paths.h"
 #include "yaml-cpp/yaml.h"
+#include "utils/i18n.h"
 
 namespace {
 
@@ -688,10 +689,9 @@ void MoonlightAuth::OnRenderLoginUI() {
       }
       error_msg_ =
           selected_online_
-              ? "La session précédente de ce compte ne s'est pas fermée à temps. "
-                "Réessaie dans quelques secondes."
-              : "Connexion refusée : compte encore connecté, OTP expiré ou "
-                "serveur injoignable. Réessaie.";
+              ? i18n::Tr("La session précédente de ce compte ne s'est pas fermée à temps. "
+                "Réessaie dans quelques secondes.") : i18n::Tr("Connexion refusée : compte encore connecté, OTP expiré ou "
+                "serveur injoignable. Réessaie.");
       state_ = State::kError;  // re-masque le natif + réaffiche le formulaire
       return;
     }
@@ -862,12 +862,12 @@ void MoonlightAuth::OnRenderLoginUI() {
     switch (state_) {
       case State::kWebLogin:     DrawWebLogin(); break;
       case State::kAuthing:      DrawSpinner("Authentification…"); break;
-      case State::kDiscordStart: DrawSpinner("Ouverture de Discord…"); break;
+      case State::kDiscordStart: DrawSpinner(i18n::Tr("Ouverture de Discord…")); break;
       case State::kDiscordWait:  DrawDiscordWait(); break;
       case State::kPickAccount:  DrawPickAccount(); break;
-      case State::kSelecting:    DrawSpinner("Préparation du compte…"); break;
+      case State::kSelecting:    DrawSpinner(i18n::Tr("Préparation du compte…")); break;
       case State::kKickWait:
-        DrawSpinner("Fermeture de la session en cours sur ce compte…");
+        DrawSpinner(i18n::Tr("Fermeture de la session en cours sur ce compte…"));
         break;
       case State::kError:        DrawError(); break;
       default: break;
@@ -877,23 +877,23 @@ void MoonlightAuth::OnRenderLoginUI() {
 }
 
 void MoonlightAuth::DrawWebLogin() {
-  ImGui::TextUnformatted("Connecte-toi avec ton compte Moonlight");
+  ImGui::TextUnformatted(i18n::Tr("Connecte-toi avec ton compte Moonlight"));
   ImGui::Spacing();
 
   ImGui::TextUnformatted("Identifiant");
   ImGui::SetNextItemWidth(kFormW);
   ImGui::InputText("##user", user_buf_, sizeof(user_buf_));
 
-  ImGui::TextUnformatted("Mot de passe");
+  ImGui::TextUnformatted(i18n::Tr("Mot de passe"));
   ImGui::SetNextItemWidth(kFormW);
   const bool submit_pw = ImGui::InputText(
       "##pass", pass_buf_, sizeof(pass_buf_),
       ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue);
 
   bool remember = remember_;
-  if (ro::RoCheckbox("Se souvenir de moi", &remember)) remember_ = remember;
+  if (ro::RoCheckbox(i18n::Tr("Se souvenir de moi"), &remember)) remember_ = remember;
   bool remember_pw = remember_pw_;
-  if (ro::RoCheckbox("Se souvenir du mot de passe", &remember_pw)) {
+  if (ro::RoCheckbox(i18n::Tr("Se souvenir du mot de passe"), &remember_pw)) {
     remember_pw_ = remember_pw;
     if (remember_pw_)
       remember_ = true;  // le mot de passe mémorisé implique l'identifiant
@@ -903,7 +903,7 @@ void MoonlightAuth::DrawWebLogin() {
 
   ImGui::Spacing();
   const bool has_input = user_buf_[0] != '\0' && pass_buf_[0] != '\0';
-  const bool click = ro::RoButton("Se connecter", kFormW, 0.0f);
+  const bool click = ro::RoButton(i18n::Tr("Se connecter"), kFormW, 0.0f);
   // Entrée valide le formulaire quel que soit le champ focus (ou sans focus) :
   // `submit_pw` ne couvre que le champ mot de passe.
   const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
@@ -954,7 +954,7 @@ void MoonlightAuth::DrawWebLogin() {
       ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(88, 101, 242, 255));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(105, 117, 245, 255));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(71, 82, 196, 255));
-      discord = ro::RoButton("Se connecter avec Discord", kFormW, 0.0f);
+      discord = ro::RoButton(i18n::Tr("Se connecter avec Discord"), kFormW, 0.0f);
       ImGui::PopStyleColor(3);
     }
     if (discord) StartDiscordLogin();
@@ -964,7 +964,7 @@ void MoonlightAuth::DrawWebLogin() {
   // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ (même origine
   // que les appels API) — pas d'hôte hardcodé.
   ImGui::Spacing();
-  ImGui::TextDisabled("Plusieurs comptes à regrouper ?");
+  ImGui::TextDisabled(i18n::Tr("Plusieurs comptes à regrouper ?"));
   ImGui::SameLine();
   HyperlinkOpen("Fusionner mes comptes",
                 base_url_ + "/ucp.php?i=moonlight&mode=merge");
@@ -974,8 +974,8 @@ void MoonlightAuth::DrawWebLogin() {
   // principal — masque le formulaire moderne pour la session.
   ImGui::Spacing();
   ImGui::Separator();
-  ImGui::TextDisabled("Tu préfères te connecter à un compte Ragnarok ?");
-  if (ro::RoSmallButton("Utiliser le login classique")) {
+  ImGui::TextDisabled(i18n::Tr("Tu préfères te connecter à un compte Ragnarok ?"));
+  if (ro::RoSmallButton(i18n::Tr("Utiliser le login classique"))) {
     native_fallback_ = true;
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)
   }
@@ -990,17 +990,17 @@ void MoonlightAuth::DrawSpinner(const char* label) {
 }
 
 void MoonlightAuth::DrawDiscordWait() {
-  DrawSpinner("En attente de Discord");
+  DrawSpinner(i18n::Tr("En attente de Discord"));
   ImGui::Spacing();
   ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
   ImGui::TextWrapped(
-      "Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
-      "de comptes s'affichera automatiquement.");
+      i18n::Tr("Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
+      "de comptes s'affichera automatiquement."));
   ImGui::PopTextWrapPos();
   ImGui::Spacing();
   // Ré-ouvrir la page si le joueur a fermé l'onglet par erreur.
   if (!discord_authorize_url_.empty() &&
-      ro::RoSmallButton("Rouvrir la page Discord")) {
+      ro::RoSmallButton(i18n::Tr("Rouvrir la page Discord"))) {
     ShellExecuteA(nullptr, "open", discord_authorize_url_.c_str(), nullptr,
                   nullptr, SW_SHOWNORMAL);
   }
@@ -1013,8 +1013,8 @@ void MoonlightAuth::DrawDiscordWait() {
 }
 
 void MoonlightAuth::DrawPickAccount() {
-  ImGui::TextUnformatted("Choisis un compte Ragnarok");
-  ImGui::TextDisabled("Flèches pour naviguer, Entrée (ou double-clic) pour jouer.");
+  ImGui::TextUnformatted(i18n::Tr("Choisis un compte Ragnarok"));
+  ImGui::TextDisabled(i18n::Tr("Flèches pour naviguer, Entrée (ou double-clic) pour jouer."));
   ImGui::Separator();
 
   const int n = static_cast<int>(accounts_.size());
@@ -1051,7 +1051,7 @@ void MoonlightAuth::DrawPickAccount() {
     std::snprintf(line, sizeof(line), "%s  (%d perso%s)%s%s%s%s", a.label.c_str(),
                   a.char_count, a.char_count > 1 ? "s" : "",
                   a.banned ? "  [banni]" : "",
-                  a.autotrade ? "  [autotrade]" : (a.online ? "  [en ligne]" : ""),
+                  a.autotrade ? "  [autotrade]" : (a.online ? i18n::Tr("  [en ligne]") : ""),
                   a.last_login.empty() ? "" : "   ",
                   a.last_login.empty() ? "" : a.last_login.c_str());
     // Compte déjà connecté : sélectionnable (le joueur peut vouloir reprendre la
@@ -1093,10 +1093,9 @@ void MoonlightAuth::DrawPickAccount() {
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
     ImGui::TextWrapped(
         is_autotrade
-            ? "Ce compte tient une boutique en autotrade : le choisir fermera "
-              "la boutique et déconnectera le marchand."
-            : "Ce compte est déjà connecté : le choisir déconnectera la session "
-              "en cours.");
+            ? i18n::Tr("Ce compte tient une boutique en autotrade : le choisir fermera "
+              "la boutique et déconnectera le marchand.") : i18n::Tr("Ce compte est déjà connecté : le choisir déconnectera la session "
+              "en cours."));
     ImGui::PopTextWrapPos();
     ImGui::PopStyleColor();
     ImGui::Spacing();
@@ -1152,17 +1151,17 @@ void MoonlightAuth::DrawError() {
   // Moonlight — le ticket signé suffit à redemander un OTP. (Ticket périmé =
   // /select répondra une erreur, on retombera ici.)
   if (!accounts_.empty() && !web_ticket_.empty() &&
-      ro::RoButton("Choisir un compte", kFormW, 0.0f)) {
+      ro::RoButton(i18n::Tr("Choisir un compte"), kFormW, 0.0f)) {
     error_msg_.clear();
     state_ = State::kPickAccount;
   }
-  if (ro::RoButton("Réessayer", kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Réessayer"), kFormW, 0.0f)) {
     error_msg_.clear();
     state_ = State::kWebLogin;
   }
   // Filet de sécurité (échec uniquement) : basculer sur le login natif pour la
   // session — utile si le site est en panne partielle alors que le jeu répond.
-  if (ro::RoButton("Login classique", kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Login classique"), kFormW, 0.0f)) {
     error_msg_.clear();
     native_fallback_ = true;
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)

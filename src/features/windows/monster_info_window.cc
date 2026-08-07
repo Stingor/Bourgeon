@@ -22,6 +22,7 @@
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"        // ro::BeginRoDescWindow, ro::LocalToUtf8 (CP949)
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
+#include "utils/i18n.h"
 
 namespace {
 
@@ -359,9 +360,9 @@ const char* VariantQualifier(const std::string& aegis, bool summoned) {
     const size_t n = std::strlen(prefix);
     return aegis.size() > n && aegis.compare(0, n, prefix) == 0;
   };
-  if (starts("EVENT_")) return "événement";
-  if (summoned)         return "invoqué";
-  if (starts("E_"))     return "événement";
+  if (starts("EVENT_")) return i18n::Tr("événement");
+  if (summoned)         return i18n::Tr("invoqué");
+  if (starts("E_"))     return i18n::Tr("événement");
   return nullptr;
 }
 
@@ -759,12 +760,12 @@ void MonsterInfoWindow::OnRenderUI() {
         mob->state == Fetch::kIdle) {
       Label("Interrogation du serveur...");
     } else if (mob->state == Fetch::kUnknown) {
-      ImGui::TextColored(kRed, "Monstre inconnu du serveur (classe %u).",
+      ImGui::TextColored(kRed, i18n::Tr("Monstre inconnu du serveur (classe %u)."),
                          current_id_);
       // On a peut-être quand même le relevé de Sense : mieux que rien.
       if (sense_.valid && sense_.sprite_class == current_id_) {
         ImGui::Separator();
-        ImGui::Text("Relevé Sense : niveau %u, PV %u, DEF %u, MDEF %u",
+        ImGui::Text(i18n::Tr("Relevé Sense : niveau %u, PV %u, DEF %u, MDEF %u"),
                     sense_.level, sense_.hp, sense_.def, sense_.mdef);
       }
     } else {
@@ -775,7 +776,7 @@ void MonsterInfoWindow::OnRenderUI() {
           DrawStatsTab(*mob);
           ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Résistances")) {
+        if (ImGui::BeginTabItem(i18n::Tr("Résistances"))) {
           DrawResistTab(*mob);
           ImGui::EndTabItem();
         }
@@ -931,7 +932,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   // Aide au survol, temporisée : elle ne doit pas masquer le sprite dès qu'on
   // passe la souris dessus.
   if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
-    ImGui::SetTooltip("Molette : tourner le monstre\nClic : le titiller");
+    ImGui::SetTooltip(i18n::Tr("Molette : tourner le monstre\nClic : le titiller"));
   ImGui::SameLine();
 
   ImGui::BeginGroup();
@@ -969,7 +970,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
                               ro::LocalToUtf8(mob.name.c_str()));
         }
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Poser ce monstre dans la barre de chat.");
+          ImGui::SetTooltip(i18n::Tr("Poser ce monstre dans la barre de chat."));
       }
     }
 
@@ -1024,10 +1025,10 @@ void MonsterInfoWindow::DrawNamesakeNote(MobInfo& mob) {
   if (mob.namesake_count <= 1 || mob.name.empty()) return;
 
   ImGui::Separator();
-  ImGui::TextColored(kAmber, "%u monstres portent le nom « %s ».",
+  ImGui::TextColored(kAmber, i18n::Tr("%u monstres portent le nom « %s »."),
                      mob.namesake_count, mob.name.c_str());
   if (!mob.aegis.empty()) {
-    ImGui::TextUnformatted("Celui-ci est");
+    ImGui::TextUnformatted(i18n::Tr("Celui-ci est"));
     ImGui::SameLine(0.0f, 4.0f);
     ImGui::TextColored(kBlue, "%s", mob.aegis.c_str());
     ImGui::SameLine(0.0f, 4.0f);
@@ -1041,10 +1042,10 @@ void MonsterInfoWindow::DrawNamesakeNote(MobInfo& mob) {
     // `Open` et pas un `current_id_ = …` à la main : c'est lui qui remet à zéro
     // l'animation ponctuelle en vol, dont le numéro d'action désigne une pose de
     // l'ANCIEN .act.
-    if (ro::RoSmallButton("Voir l'original##mi_namesake"))
+    if (ro::RoSmallButton(i18n::Tr("Voir l'original##mi_namesake")))
       Open(mob.namesake_ref, false);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Ouvrir la fiche du monstre #%u,\nle plus ancien à porter ce nom.",
+      ImGui::SetTooltip(i18n::Tr("Ouvrir la fiche du monstre #%u,\nle plus ancien à porter ce nom."),
                         mob.namesake_ref);
   }
 }
@@ -1125,14 +1126,14 @@ void MonsterInfoWindow::DrawSenseNote(MobInfo& mob) {
                        sense_.mdef != mob.mdef || sense_.level != mob.level;
   if (!differs) return;
   ImGui::TextColored(ImVec4(0.70f, 0.55f, 0.20f, 1.0f),
-                     "Relevé Sense (exemplaire croisé) : niveau %u, PV %u, %s %u, %s %u",
+                     i18n::Tr("Relevé Sense (exemplaire croisé) : niveau %u, PV %u, %s %u, %s %u"),
                      sense_.level, sense_.hp, msgstr::Utf8(kMsiDef), sense_.def,
                      msgstr::Utf8(kMsiMdef), sense_.mdef);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        "Ces chiffres viennent du monstre effectivement visé par Sense.\n"
+        i18n::Tr("Ces chiffres viennent du monstre effectivement visé par Sense.\n"
         "Ils peuvent différer de la base de données (modificateurs de serveur,\n"
-        "Guerre d'Emperium, monstre invoqué par script).");
+        "Guerre d'Emperium, monstre invoqué par script)."));
 }
 
 void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
@@ -1198,7 +1199,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
   const int mob_flee = static_cast<int>(mob.level) + static_cast<int>(mob.agi);
 
   ImGui::Spacing();
-  ImGui::TextColored(kTitle, "Précision et esquive");
+  ImGui::TextColored(kTitle, i18n::Tr("Précision et esquive"));
   if (ImGui::BeginTable("##mi_hitflee", 4,
                         ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
@@ -1228,7 +1229,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
   const OwnCombatStats own = ReadOwnCombatStats();
   if (own.valid) {
     ImGui::Spacing();
-    ImGui::TextColored(kTitle, "Face à votre personnage");
+    ImGui::TextColored(kTitle, i18n::Tr("Face à votre personnage"));
     if (ImGui::BeginTable("##mi_versus", 2,
                           ImGuiTableFlags_SizingStretchProp |
                               ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
@@ -1308,7 +1309,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
 void MonsterInfoWindow::DrawResistTab(MobInfo& mob) {
   Label("Pourcentage de dégâts ENCAISSÉS par élément d'attaque. 100 %% = normal, "
         "0 %% = immunisé, au-dessus de 100 %% = faiblesse.");
-  ImGui::Text("Élément du monstre : %s niveau %u", ElementName(mob.element),
+  ImGui::Text(i18n::Tr("Élément du monstre : %s niveau %u"), ElementName(mob.element),
               mob.element_lv);
   ImGui::Separator();
   if (ImGui::BeginTable("##mi_resist", 5,
@@ -1350,9 +1351,9 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
   ImGui::BeginTooltip();
   if (mob.state == Fetch::kUnknown) {
-    ImGui::TextDisabled("Monstre inconnu du serveur (#%u).", mob_id);
+    ImGui::TextDisabled(i18n::Tr("Monstre inconnu du serveur (#%u)."), mob_id);
   } else if (mob.state != Fetch::kReady) {
-    ImGui::TextDisabled("Chargement de la fiche…");
+    ImGui::TextDisabled(i18n::Tr("Chargement de la fiche…"));
   } else {
     // Le sprite, VIVANT : son animation d'attente, comme dans la fiche. Elle
     // suit le même réglage (« monsterinfo_animate ») — un joueur qui a coupé
@@ -1485,7 +1486,7 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
 
       ImGui::TableNextColumn();
       if (d.kind == 1)
-        ImGui::TextColored(kAmber, "Récompense MVP");
+        ImGui::TextColored(kAmber, i18n::Tr("Récompense MVP"));
       else
         Label("Drop normal");
     }
@@ -1550,7 +1551,7 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
                             ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Sortable |
                             ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("Compétence", ImGuiTableColumnFlags_WidthStretch |
+    ImGui::TableSetupColumn(i18n::Tr("Compétence"), ImGuiTableColumnFlags_WidthStretch |
                                               ImGuiTableColumnFlags_DefaultSort);
     ImGui::TableSetupColumn("Niveau",
                             ImGuiTableColumnFlags_WidthFixed |
@@ -1642,17 +1643,17 @@ void MonsterInfoWindow::FlushPending() {
 
 bool MonsterInfoWindow::DrawSettings() {
   bool changed = false;
-  if (ImGui::Checkbox("Animer le sprite du monstre", &animate_)) changed = true;
+  if (ImGui::Checkbox(i18n::Tr("Animer le sprite du monstre"), &animate_)) changed = true;
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        "La fenêtre native n'affiche que la première image de l'animation "
-        "d'attente.\nDécoché, on la reproduit à l'identique.");
-  if (ImGui::Checkbox("Afficher les Gardiens de forteresse", &show_guardians_))
+        i18n::Tr("La fenêtre native n'affiche que la première image de l'animation "
+        "d'attente.\nDécoché, on la reproduit à l'identique."));
+  if (ImGui::Checkbox(i18n::Tr("Afficher les Gardiens de forteresse"), &show_guardians_))
     changed = true;
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        "Le client d'origine refuse d'ouvrir la fiche des cinq Gardiens\n"
+        i18n::Tr("Le client d'origine refuse d'ouvrir la fiche des cinq Gardiens\n"
         "(Archer, Knight, Soldier, Sword, Bow) : leurs PV resteraient cachés\n"
-        "pendant la Guerre d'Emperium. Coché, la fiche s'ouvre quand même.");
+        "pendant la Guerre d'Emperium. Coché, la fiche s'ouvre quand même."));
   return changed;
 }

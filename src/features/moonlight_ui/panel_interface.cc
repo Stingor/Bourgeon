@@ -59,7 +59,7 @@ void MoonlightUi::DrawInterfacePanel() {
   const bool jump_requested = pending_iface_jump_;
   pending_iface_jump_ = false;
   if (jump_requested) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-  if (CollapsingHeader("Interface de jeu")) {
+  if (CollapsingHeader(i18n::Tr("Interface de jeu"))) {
     if (jump_requested) ImGui::SetScrollHereY(0.0f);
     PushStyleCompact();
     bool changed = false;
@@ -123,7 +123,7 @@ void MoonlightUi::DrawInterfacePanel() {
       // qu'il ne peut pas réduire, et le voir donnerait l'impression d'une
       // interface cassée là où elle se contente de retomber en français.
       if (IsStaff() && i18n::MissingCount() > 0) {
-        ImGui::TextDisabled("%zu textes sans traduction", i18n::MissingCount());
+        ImGui::TextDisabled(i18n::Tr("%zu textes sans traduction"), i18n::MissingCount());
         SameLine();
         if (ImGui::SmallButton("Exporter")) {
           std::string exported_path;
@@ -141,24 +141,24 @@ void MoonlightUi::DrawInterfacePanel() {
           }
         }
         SameLine(); HelpMarker(
-            "Écrit les textes rencontrés depuis le lancement et absents du "
+            i18n::Tr("Écrit les textes rencontrés depuis le lancement et absents du "
             "catalogue dans SaveData\\lang\\<langue>.missing.yaml, prêts à "
             "traduire. N'y figure que ce qui a été AFFICHÉ : ouvre les fenêtres "
-            "concernées avant d'exporter.");
+            "concernées avant d'exporter."));
       }
     }
 
-    changed |= ro::RoCheckbox("Grille d'alignement", &grid_.show);
+    changed |= ro::RoCheckbox(i18n::Tr("Grille d'alignement"), &grid_.show);
     SameLine(); HelpMarker(
-        "Affiche une grille plein écran pour aligner ton interface "
-        "(comme les add-ons d'interface de WoW).");
+        i18n::Tr("Affiche une grille plein écran pour aligner ton interface "
+        "(comme les add-ons d'interface de WoW)."));
     ImGui::SetNextItemWidth(160.0f);
-    changed |= WheelSliderInt("Taille grille", &grid_.cell_size_px, 4, 128);
-    changed |= ro::RoCheckbox("Aimanter à la grille", &grid_.snap);
+    changed |= WheelSliderInt(i18n::Tr("Taille grille"), &grid_.cell_size_px, 4, 128);
+    changed |= ro::RoCheckbox(i18n::Tr("Aimanter à la grille"), &grid_.snap);
     SameLine(); HelpMarker(
-        "Les barres et les icônes s'alignent sur les cellules de la grille "
-        "pendant le déplacement et le redimensionnement.");
-    changed |= ColorEdit4WithAlphaBar("Couleur grille", grid_.color);
+        i18n::Tr("Les barres et les icônes s'alignent sur les cellules de la grille "
+        "pendant le déplacement et le redimensionnement."));
+    changed |= ColorEdit4WithAlphaBar(i18n::Tr("Couleur grille"), grid_.color);
 
     // (Inventaire, Cart et Storage : tout est regroupé dans leurs sections
     // dédiées, sous la navigation latérale ci-dessous.)
@@ -174,11 +174,11 @@ void MoonlightUi::DrawInterfacePanel() {
 
     // Bouton « Signaler un bug » (desc item/skill + dialogue PNJ + raccourci).
     if (auto* br = Bourgeon::Instance().bug_report()) {
-      changed |= ro::RoCheckbox("Afficher le bouton « Signaler un bug »", &br->enabled());
+      changed |= ro::RoCheckbox(i18n::Tr("Afficher le bouton « Signaler un bug »"), &br->enabled());
       SameLine(); HelpMarker(
-          "Affiche le bouton de rapport de bug dans les fenêtres de "
+          i18n::Tr("Affiche le bouton de rapport de bug dans les fenêtres de "
           "description (item/skill) et le dialogue PNJ, et active le "
-          "raccourci Ctrl+Alt+B. Décoche pour tout désactiver.");
+          "raccourci Ctrl+Alt+B. Décoche pour tout désactiver."));
     }
 
     if (changed) SaveSettings();
@@ -281,9 +281,9 @@ void MoonlightUi::DrawInterfacePanel() {
         // mal sur le gris clair du skin RO — trop criard pour une invitation, et
         // moins lisible qu'un ton sourd sur fond pâle.
         ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f),
-                           "Aperçu — ces réglages appartiennent à l'interface "
-                           "moderne, qui est désactivée.");
-        if (ro::RoButton("Activer l'interface moderne")) {
+                           i18n::Tr("Aperçu — ces réglages appartiennent à l'interface "
+                           "moderne, qui est désactivée."));
+        if (ro::RoButton(i18n::Tr("Activer l'interface moderne"))) {
           SetModernInterface(true);
           SaveSettings();
         }
@@ -322,24 +322,24 @@ void MoonlightUi::DrawInterfacePanel() {
         {
           PushStyleCompact();
 
-          SeparatorText("Réglages généraux");
-          if (ro::RoCheckbox("Chat Discord (Gonryun only)", &discord_chat_)) {
+          SeparatorText(i18n::Tr("Réglages généraux"));
+          if (ro::RoCheckbox(i18n::Tr("Chat Discord (Gonryun only)"), &discord_chat_)) {
             UpdateRelay();
             SendSetting(kSettingDiscordChat, discord_chat_ ? 1 : 0);
           }
           SameLine(); HelpMarker(
-              "Relaie le canal Discord du serveur dans le chat du jeu, et tes "
-              "messages vers Discord — uniquement sur la carte Gonryun.");
+              i18n::Tr("Relaie le canal Discord du serveur dans le chat du jeu, et tes "
+              "messages vers Discord — uniquement sur la carte Gonryun."));
 
           // Avatar Discord : la page UCP du site génère l'image du personnage
           // déjà recadrée/dimensionnée pour Discord. C'est la MÊME identité que
           // le relais ci-dessus (le pseudo affiché côté Discord), d'où la place
           // de la mention ici plutôt que dans un panneau « compte ».
           ImGui::TextDisabled(
-              "Ton avatar Discord : le panneau utilisateur du site génère "
+              i18n::Tr("Ton avatar Discord : le panneau utilisateur du site génère "
               "l'image de ton personnage à la bonne dimension pour Discord, en "
-              "un clic.");
-          if (ro::RoButton("Générer mon avatar Discord")) {
+              "un clic."));
+          if (ro::RoButton(i18n::Tr("Générer mon avatar Discord"))) {
             ShellExecuteA(nullptr, "open", kDiscordAvatarUrl, nullptr, nullptr,
                           SW_SHOWNORMAL);
           }
@@ -365,14 +365,14 @@ void MoonlightUi::DrawInterfacePanel() {
           // Chatbox ImGui — son remplacement. Les réglages du natif ci-dessus ne
           // s'affichent que si elle est ÉTEINTE : allumée, elle détruit la fenêtre
           // qu'ils habillent (cf. features/windows/chat_window.h).
-          SeparatorText("Chatbox ImGui");
+          SeparatorText(i18n::Tr("Chatbox ImGui"));
           if (auto* chat_window = Bourgeon::Instance().chat_window()) {
             changed |= chat_window->DrawSettings();
           } else {
             ImGui::TextDisabled(kPluginUnavailable);
           }
 
-          if (!native_chat_replaced) SeparatorText("Couleurs du chat");
+          if (!native_chat_replaced) SeparatorText(i18n::Tr("Couleurs du chat"));
           // Les trois fonds appartiennent à ChatTweaks (patch .text + parcours du
           // tas). Ils sont dessinés un par un et non en bloc pour une seule
           // raison : la case « Barre de préréglages » ci-dessous est un réglage de
@@ -382,11 +382,11 @@ void MoonlightUi::DrawInterfacePanel() {
             if (chat_tweaks->bg_available()) {
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgMain);
               SameLine();
-              changed |= ro::RoCheckbox("Barre de préréglages", &mainchat_preset_bar_);
+              changed |= ro::RoCheckbox(i18n::Tr("Barre de préréglages"), &mainchat_preset_bar_);
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgDetached);
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgWhisper);
             } else {
-              ImGui::TextDisabled("(patch du fond de chat indisponible)");
+              ImGui::TextDisabled(i18n::Tr("(patch du fond de chat indisponible)"));
             }
           }
 
@@ -501,11 +501,11 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceMonsterInfo) {
         if (auto* mi = Bourgeon::Instance().monster_info()) {
           ImGui::TextWrapped(
-              "Remplace la fenêtre « Monster Info » qu'ouvre la compétence Sense. "
+              i18n::Tr("Remplace la fenêtre « Monster Info » qu'ouvre la compétence Sense. "
               "Elle ajoute ce que le paquet du skill ne transporte pas : nom "
               "fiable, EXP, ATK/MATK, stats de base, modes, drops, lieux "
               "d'apparition et compétences. Le nom d'un monstre dans la table des "
-              "sources d'une fiche d'objet l'ouvre d'un clic.");
+              "sources d'une fiche d'objet l'ouvre d'un clic."));
           ImGui::Separator();
           if (mi->DrawSettings()) SaveSettings();
         } else {
@@ -517,12 +517,12 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceContextMenu) {
         if (auto* ecm = Bourgeon::Instance().entity_context_menu()) {
           ImGui::TextWrapped(
-              "Remplace le menu du clic droit sur une entité. Les actions ne "
+              i18n::Tr("Remplace le menu du clic droit sur une entité. Les actions ne "
               "sont pas réécrites : elles repassent par le dispatcher du client, "
               "donc ses vérifications et ses confirmations restent jouées. Le "
               "menu du client n'existait que sur un joueur, son pet, son "
               "homoncule et son mercenaire — ici il peut aussi s'ouvrir sur les "
-              "monstres et les NPC.");
+              "monstres et les NPC."));
           ImGui::Separator();
           if (ecm->DrawSettings()) SaveSettings();
         } else {

@@ -24,6 +24,7 @@
 extern "C" {
 #include "doomgeneric.h"
 #include "doomkeys.h"
+#include "utils/i18n.h"
 }
 
 extern bool g_imgui_dx7_active;  // DX7 proxy path — this feature is DX9-only
@@ -332,20 +333,20 @@ void Doom::DrawWindow() {
     switch (state_) {
       case State::kNoWad:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                           "doom1.wad introuvable !");
+                           i18n::Tr("doom1.wad introuvable !"));
         ImGui::TextUnformatted(
-            "Place le shareware doom1.wad à côté du client (même dossier que\n"
-            "l'exe du jeu), puis décoche/recoche la case dans le menu.");
+            i18n::Tr("Place le shareware doom1.wad à côté du client (même dossier que\n"
+            "l'exe du jeu), puis décoche/recoche la case dans le menu."));
         break;
       case State::kDead:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                           "DOOM a crashé (I_Error) :");
+                           i18n::Tr("DOOM a crashé (I_Error) :"));
         ImGui::TextWrapped("%s", g_doom_fatal);
         break;
       case State::kQuit:
         ImGui::TextUnformatted(
-            "Tu as quitté DOOM depuis son menu. Le moteur ne peut pas\n"
-            "redémarrer dans le même processus — relance le client pour rejouer.");
+            i18n::Tr("Tu as quitté DOOM depuis son menu. Le moteur ne peut pas\n"
+            "redémarrer dans le même processus — relance le client pour rejouer."));
         break;
       case State::kRunning: {
         bool over_image = false;
@@ -377,11 +378,11 @@ void Doom::DrawWindow() {
           // state once focused; the WndProc gate below covers this frame).
           ImGui::SetNextFrameWantCaptureKeyboard(true);
           ImGui::TextDisabled(
-              "ZQSD/WASD/flèches bouger - clic/Ctrl tirer - clic droit/Espace "
-              "ouvrir - Shift courir - Échap menu");
+              i18n::Tr("ZQSD/WASD/flèches bouger - clic/Ctrl tirer - clic droit/Espace "
+              "ouvrir - Shift courir - Échap menu"));
         } else {
           ImGui::TextDisabled(
-              "Clique dans la fenêtre pour capturer le clavier.");
+              i18n::Tr("Clique dans la fenêtre pour capturer le clavier."));
         }
         PumpDoomKeys(want_keys);      // also flushes releases on focus loss
         PumpDoomMouse(over_image);    // click = fire, right-click = use
@@ -409,7 +410,7 @@ void Doom::OnRenderUI() {
   }
   if (g_imgui_dx7_active) {
     if (ImGui::Begin("DOOM", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-      ImGui::TextUnformatted("DOOM nécessite le rendu DX9 (mode DX7 actif).");
+      ImGui::TextUnformatted(i18n::Tr("DOOM nécessite le rendu DX9 (mode DX7 actif)."));
     }
     ImGui::End();
     g_doom_wants_keys = false;
@@ -422,11 +423,11 @@ void Doom::OnRenderUI() {
 
 const char* Doom::StatusText() const {
   switch (state_) {
-    case State::kIdle:    return "prêt (nécessite doom1.wad à côté du client)";
-    case State::kNoWad:   return "doom1.wad INTROUVABLE dans le dossier du client";
-    case State::kRunning: return "en cours — knee-deep in the dead";
-    case State::kQuit:    return "quitté (relance le client pour rejouer)";
-    case State::kDead:    return "crashé (I_Error) — voir bourgeon.log";
+    case State::kIdle:    return i18n::Tr("prêt (nécessite doom1.wad à côté du client)");
+    case State::kNoWad:   return i18n::Tr("doom1.wad INTROUVABLE dans le dossier du client");
+    case State::kRunning: return i18n::Tr("en cours — knee-deep in the dead");
+    case State::kQuit:    return i18n::Tr("quitté (relance le client pour rejouer)");
+    case State::kDead:    return i18n::Tr("crashé (I_Error) — voir bourgeon.log");
   }
   return "";
 }

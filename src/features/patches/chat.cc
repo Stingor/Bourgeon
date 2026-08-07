@@ -17,6 +17,7 @@
 #include "ui/ro_widgets.h"  // HelpMarker, SameLine, WheelSliderInt
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -973,7 +974,7 @@ void ChatTweaks::ApplySettings() {
 bool ChatTweaks::DrawSettings() {
   bool changed = false;
 
-  if (ro::RoCheckbox("Largeur du chat", &custom_width_)) {
+  if (ro::RoCheckbox(i18n::Tr("Largeur du chat"), &custom_width_)) {
     chat::SetCustomWidth(custom_width_, custom_width_px_);
     changed = true;
   }
@@ -994,22 +995,22 @@ bool ChatTweaks::DrawSettings() {
     }
   }
 
-  if (ro::RoCheckbox("Horodatage du chat", &timestamps_)) {
+  if (ro::RoCheckbox(i18n::Tr("Horodatage du chat"), &timestamps_)) {
     chat::SetTimestamps(timestamps_);
     changed = true;
   }
 
-  if (ro::RoCheckbox("Icônes d'objets", &item_icons_)) {
+  if (ro::RoCheckbox(i18n::Tr("Icônes d'objets"), &item_icons_)) {
     chat::SetItemIcons(item_icons_);
     changed = true;
   }
 
-  if (ro::RoButton("Effacer l'historique du chat")) chat::ClearHistory();
+  if (ro::RoButton(i18n::Tr("Effacer l'historique du chat"))) chat::ClearHistory();
   SameLine();
   HelpMarker(
-      "Vide l'historique de tous les canaux de la fenêtre de chat principale "
+      i18n::Tr("Vide l'historique de tous les canaux de la fenêtre de chat principale "
       "(historique brut effacé + affichage vidé). Les nouveaux messages "
-      "réapparaissent normalement ensuite.");
+      "réapparaissent normalement ensuite."));
 
   return changed;
 }

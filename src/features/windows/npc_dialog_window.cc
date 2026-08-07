@@ -26,6 +26,7 @@
 #include "imgui.h"
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
 #include "ui/ro_widgets.h"   // ro::HelpMarker (section de réglages)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -926,19 +927,19 @@ void NpcDialogWindow::DrawInput() {
 // que l'appel et la décision de sauvegarder.
 bool NpcDialogWindow::DrawSettings() {
   bool changed = false;
-  changed |= ro::RoCheckbox("Dialogue NPC ImGui", &imgui_enabled_);
+  changed |= ro::RoCheckbox(i18n::Tr("Dialogue NPC ImGui"), &imgui_enabled_);
   ImGui::SameLine();
   HelpMarker(
-      "Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
+      i18n::Tr("Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
       "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
-      "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif.");
+      "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif."));
 
   ImGui::BeginDisabled(!imgui_enabled_);
-  changed |= ro::RoCheckbox("Barre de recherche du menu", &menu_search_);
+  changed |= ro::RoCheckbox(i18n::Tr("Barre de recherche du menu"), &menu_search_);
   ImGui::SameLine();
   HelpMarker(
-      "Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
-      "choix) pour filtrer les options. Décoche pour un menu épuré.");
+      i18n::Tr("Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
+      "choix) pour filtrer les options. Décoche pour un menu épuré."));
   ImGui::EndDisabled();
   return changed;
 }

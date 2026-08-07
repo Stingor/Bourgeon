@@ -12,6 +12,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ui/ro_imgui.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -172,8 +173,8 @@ void EntityNames::DrawNames() {
 
 void EntityNames::DrawSettings() {
   bool save = false;
-  if (ro::RoCheckbox("Afficher les noms en permanence", &enabled_)) save = true;
-  ImGui::TextDisabled("Affiche le nom au-dessus des entités sans avoir à les survoler.");
+  if (ro::RoCheckbox(i18n::Tr("Afficher les noms en permanence"), &enabled_)) save = true;
+  ImGui::TextDisabled(i18n::Tr("Affiche le nom au-dessus des entités sans avoir à les survoler."));
 
   if (enabled_) {
     Spacing();
@@ -182,18 +183,18 @@ void EntityNames::DrawSettings() {
     if (ro::RoCheckbox("Monstres", &show_monsters_)) save = true;
     SameLine();
     if (ro::RoCheckbox("NPC", &show_npcs_)) save = true;
-    if (ro::RoCheckbox("Ton propre nom", &show_self_)) save = true;
-    if (ro::RoCheckbox("Contour noir (lisibilité)", &outline_)) save = true;
+    if (ro::RoCheckbox(i18n::Tr("Ton propre nom"), &show_self_)) save = true;
+    if (ro::RoCheckbox(i18n::Tr("Contour noir (lisibilité)"), &outline_)) save = true;
 
     ImGui::SetNextItemWidth(160.0f);
-    if (WheelSliderInt("Décalage vertical", &y_offset_, -30, 30)) save = true;
+    if (WheelSliderInt(i18n::Tr("Décalage vertical"), &y_offset_, -30, 30)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SetNextItemWidth(160.0f);
-    if (WheelSliderFloat("Taille du texte", &font_scale_, 0.7f, 1.6f)) save = true;
+    if (WheelSliderFloat(i18n::Tr("Taille du texte"), &font_scale_, 0.7f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
 
-    ImGui::TextDisabled("Les monstres déclenchent une requête de nom au serveur : sur une "
-             "map très peuplée, cela génère du trafic réseau.");
+    ImGui::TextDisabled(i18n::Tr("Les monstres déclenchent une requête de nom au serveur : sur une "
+             "map très peuplée, cela génère du trafic réseau."));
   }
 
   if (save) {

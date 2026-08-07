@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 namespace {
 
@@ -305,7 +306,7 @@ void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
 
 void IntegrityCheck::OnRenderUI() {
   if (popup_pending_) {
-    ImGui::OpenPopup("Client Update Required");
+    ImGui::OpenPopup(i18n::Tr("Client Update Required"));
     popup_pending_ = false;
   }
 
@@ -328,16 +329,16 @@ void IntegrityCheck::OnRenderUI() {
                              ImGuiWindowFlags_AlwaysAutoResize |
                                  ImGuiWindowFlags_NoMove)) {
     ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
-                       "Your game client is outdated!");
+                       i18n::Tr("Your game client is outdated!"));
     ImGui::Spacing();
     if (patcher_exe_.empty()) {
       ImGui::TextWrapped(
-          "Please close the game and run the patcher to update,\n"
-          "then reconnect.");
+          i18n::Tr("Please close the game and run the patcher to update,\n"
+          "then reconnect."));
     } else {
       ImGui::TextWrapped(
-          "The patcher will open automatically once the game closes.\n"
-          "Update, then reconnect.");
+          i18n::Tr("The patcher will open automatically once the game closes.\n"
+          "Update, then reconnect."));
     }
     ImGui::Spacing();
 
@@ -347,10 +348,10 @@ void IntegrityCheck::OnRenderUI() {
       const uint32_t remaining =
           elapsed < kKickDelayMs ? kKickDelayMs - elapsed : 0;
       const int secs = static_cast<int>((remaining + 999) / 1000);
-      ImGui::TextDisabled("Closing in %d second%s...", secs,
+      ImGui::TextDisabled(i18n::Tr("Closing in %d second%s..."), secs,
                           secs == 1 ? "" : "s");
     } else {
-      ImGui::TextDisabled("Disconnecting in a few seconds...");
+      ImGui::TextDisabled(i18n::Tr("Disconnecting in a few seconds..."));
     }
 
     ImGui::EndPopup();

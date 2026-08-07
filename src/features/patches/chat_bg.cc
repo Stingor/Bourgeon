@@ -12,6 +12,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/byte_pattern.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -275,7 +276,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
   if (ImGui::BeginPopup("picker")) {
     // ── Préréglages partagés ────────────────────────────────────────────────
     if (!bg_presets_.empty()) {
-      ImGui::TextUnformatted("Préréglages :");
+      ImGui::TextUnformatted(i18n::Tr("Préréglages :"));
       int delete_idx = -1;
       for (int i = 0; i < static_cast<int>(bg_presets_.size()); ++i) {
         const BgPreset& preset = bg_presets_[i];
@@ -300,11 +301,11 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
         bg_presets_.erase(bg_presets_.begin() + delete_idx);
         changed = true;
       }
-      SeparatorText("Sauvegarder une couleur comme preset");
+      SeparatorText(i18n::Tr("Sauvegarder une couleur comme preset"));
     }
     // ── Enregistrer la couleur courante ─────────────────────────────────────
     ImGui::SetNextItemWidth(120.0f);
-    ImGui::InputTextWithHint("##preset_name", "Nom du préréglage", preset_name_buf_,
+    ImGui::InputTextWithHint("##preset_name", i18n::Tr("Nom du préréglage"), preset_name_buf_,
                              sizeof(preset_name_buf_));
     SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f);  // aligne le bouton sur le champ
@@ -313,7 +314,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
       preset_name_buf_[0] = '\0';
       changed = true;
     }
-    SeparatorText("Choisir une couleur");
+    SeparatorText(i18n::Tr("Choisir une couleur"));
     if (ImGui::ColorPicker4("##pick", group.picker_rgba,
                             ImGuiColorEditFlags_AlphaBar |
                                 ImGuiColorEditFlags_NoSidePreview)) {
@@ -364,9 +365,9 @@ bool ChatTweaks::DrawPresetBar() {
     PushStyleCompact();
     BgGroup& main_chat = bg_[kBgMain];
     if (bg_presets_.empty()) {
-      ImGui::TextDisabled("Aucun préréglage.");
-      ImGui::TextDisabled("Ajoute-en depuis le");
-      ImGui::TextDisabled("sélecteur du chat.");
+      ImGui::TextDisabled(i18n::Tr("Aucun préréglage."));
+      ImGui::TextDisabled(i18n::Tr("Ajoute-en depuis le"));
+      ImGui::TextDisabled(i18n::Tr("sélecteur du chat."));
     } else {
       for (int i = 0; i < static_cast<int>(bg_presets_.size()); ++i) {
         const BgPreset& preset = bg_presets_[i];

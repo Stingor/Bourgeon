@@ -16,6 +16,7 @@
 #include "ragnarok/uiwnd.h"        // uiwnd::FindWindow
 #include "ui/game_texture.h"       // ro::TextureFromGameFile (fond bg_bank_moon.bmp)
 #include "ui/ro_imgui.h"           // skin RO (BeginRoWindow / RoButton / RoCheckbox)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -456,7 +457,7 @@ void BankWindow::SendTransfer(bool deposit) {
   // arrive par ZC 0x09A8/0x09AA, que le handler natif applique aux globales — nos
   // soldes se remettent donc à jour tout seuls au tick suivant.
   amount_ = 0;
-  SetStatus(deposit ? "Dépôt envoyé..." : "Retrait envoyé...", false);
+  SetStatus(deposit ? i18n::Tr("Dépôt envoyé...") : i18n::Tr("Retrait envoyé..."), false);
 }
 
 void BankWindow::OnRenderUI() {
@@ -546,14 +547,14 @@ void BankWindow::OnRenderUI() {
     ImGui::SameLine(value_col);
     ImGui::Text("%s z", Grouped64(total, buf, sizeof(buf)));
     SameLine(); HelpMarker(
-        "La banque est plafonnée à 2 147 483 647 z (INT32), côté client comme "
+        i18n::Tr("La banque est plafonnée à 2 147 483 647 z (INT32), côté client comme "
         "côté serveur (MAX_BANK_ZENY). Un dépôt qui ferait dépasser ce plafond "
-        "est refusé en bloc, pas tronqué.");
+        "est refusé en bloc, pas tronqué."));
     // Jauge de remplissage de la banque vis-à-vis du plafond INT32 : le natif ne
     // dit rien tant qu'on ne bute pas dessus, et l'erreur tombe alors sans prévenir.
     const float ratio = static_cast<float>(static_cast<double>(vault_) /
                                            static_cast<double>(kZenyMax));
-    std::snprintf(buf, sizeof(buf), "%.1f %% du plafond", ratio * 100.0f);
+    std::snprintf(buf, sizeof(buf), i18n::Tr("%.1f %% du plafond"), ratio * 100.0f);
     // Hauteur 0 = hauteur de cadre standard (police + 2×FramePadding.y) : c'est la
     // seule qui laisse ImGui centrer verticalement le texte du calque. Une barre
     // plus fine le rogne par le bas — elle est dessinée avant le texte, mais le
@@ -672,13 +673,13 @@ void BankWindow::OnRenderUI() {
   // widget — et comme IsSameLine est déjà retombé, le resserrage ne s'applique plus.
   ImVec2 row = ImGui::GetCursorScreenPos();
   ImGui::BeginDisabled(max_deposit <= 0);
-  if (ro::RoSmallButton("Tout déposer", col_w)) amount_ = max_deposit;
+  if (ro::RoSmallButton(i18n::Tr("Tout déposer"), col_w)) amount_ = max_deposit;
   ImGui::EndDisabled();
   if (max_deposit > 0 && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s z", Grouped64(max_deposit, buf, sizeof(buf)));
   ImGui::SetCursorScreenPos(ImVec2(row.x + col_w + col_gap, row.y));
   ImGui::BeginDisabled(max_withdraw <= 0);
-  if (ro::RoSmallButton("Tout retirer", col_w)) amount_ = max_withdraw;
+  if (ro::RoSmallButton(i18n::Tr("Tout retirer"), col_w)) amount_ = max_withdraw;
   ImGui::EndDisabled();
   if (max_withdraw > 0 && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s z", Grouped64(max_withdraw, buf, sizeof(buf)));
@@ -694,7 +695,7 @@ void BankWindow::OnRenderUI() {
   // Mêmes colonnes que la rangée « Tout … » ci-dessus, au pixel près.
   row = ImGui::GetCursorScreenPos();
   ImGui::BeginDisabled(!can_deposit);
-  if (ro::RoButton("Déposer", col_w)) SendTransfer(true);
+  if (ro::RoButton(i18n::Tr("Déposer"), col_w)) SendTransfer(true);
   ImGui::EndDisabled();
   ImGui::SetCursorScreenPos(ImVec2(row.x + col_w + col_gap, row.y));
   ImGui::BeginDisabled(!can_withdraw);

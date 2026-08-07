@@ -15,6 +15,7 @@
 #include "features/windows/monster_info_window.h"   // fiche d'un monstre
 #include "imgui.h"
 #include "ui/ro_imgui.h"                            // ro::SetHoverCursor
+#include "utils/i18n.h"
 
 namespace links {
 namespace {
@@ -149,19 +150,19 @@ void DrawUrlPreviewStatus(const std::string& url,
     // fonctionnalité devient invisible pour qui ne connaît pas la règle.
     const std::string host = imgprev::HostOfUrl(url.c_str());
     ImGui::Separator();
-    ImGui::TextDisabled("Aperçu non chargé : %s n'est pas dans vos sites",
+    ImGui::TextDisabled(i18n::Tr("Aperçu non chargé : %s n'est pas dans vos sites"),
                         host.empty() ? "ce site" : host.c_str());
-    ImGui::TextDisabled("autorisés. Clic droit pour l'afficher.");
+    ImGui::TextDisabled(i18n::Tr("autorisés. Clic droit pour l'afficher."));
     return;
   }
   if (p.state == imgprev::Preview::kPending) {
     ImGui::Separator();
-    ImGui::TextDisabled("Chargement de l'aperçu...");
+    ImGui::TextDisabled(i18n::Tr("Chargement de l'aperçu..."));
   } else if (p.state == imgprev::Preview::kFailed) {
     // Motif volontairement vague : le détail (404, type refusé, trop gros)
     // n'aide en rien celui qui regarde. Le journal, lui, porte la raison exacte.
     ImGui::Separator();
-    ImGui::TextDisabled("Aperçu indisponible.");
+    ImGui::TextDisabled(i18n::Tr("Aperçu indisponible."));
   }
 }
 
@@ -358,8 +359,8 @@ void DrawMenu(const char* popup_id, const Target& target) {
       case Target::kItem: {
         const uint32_t id = target.item.id;
         if (ImGui::MenuItem("Description")) OpenDescription(target);
-        if (ImGui::MenuItem("Base de données du site")) itemdesc::OpenItemDbPage(id);
-        if (ImGui::MenuItem("Lien dans le chat")) PostToChat(target);
+        if (ImGui::MenuItem(i18n::Tr("Base de données du site"))) itemdesc::OpenItemDbPage(id);
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         ImGui::Separator();
         // ── Disponibilité au vote shop ─────────────────────────────────────
         //
@@ -376,7 +377,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
           if (shop->imgui_enabled_ && shop->FindItem(id, nullptr, &price)) {
             char label[80];
             std::snprintf(label, sizeof(label),
-                          "Vote shop : ajouter au panier (%d pts)", price);
+                          i18n::Tr("Vote shop : ajouter au panier (%d pts)"), price);
             if (ImGui::MenuItem(label)) shop->OpenWithItem(id);
           }
         }
@@ -386,7 +387,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
         // surtout pas une seconde copie qui divergerait.
         if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
           const bool looted = mu->IsAlootId(id);
-          if (ImGui::MenuItem(looted ? "Retirer de l'alootid" : "Ajouter à l'alootid")) {
+          if (ImGui::MenuItem(looted ? i18n::Tr("Retirer de l'alootid") : i18n::Tr("Ajouter à l'alootid"))) {
             if (looted) mu->RemoveAlootId(id);
             else        mu->AddAlootId(id);
           }
@@ -405,9 +406,9 @@ void DrawMenu(const char* popup_id, const Target& target) {
         break;
       }
       case Target::kMob: {
-        if (ImGui::MenuItem("Fiche du monstre")) OpenMobSheet(target.mob_id);
-        if (ImGui::MenuItem("Bestiaire du site")) OpenMobDbPage(target.mob_id);
-        if (ImGui::MenuItem("Lien dans le chat")) PostToChat(target);
+        if (ImGui::MenuItem(i18n::Tr("Fiche du monstre"))) OpenMobSheet(target.mob_id);
+        if (ImGui::MenuItem(i18n::Tr("Bestiaire du site"))) OpenMobDbPage(target.mob_id);
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         ImGui::Separator();
         if (ImGui::MenuItem("@mobinfo")) {
           std::snprintf(cmd, sizeof(cmd), "@mobinfo %u", target.mob_id);
@@ -436,29 +437,29 @@ void DrawMenu(const char* popup_id, const Target& target) {
           // joueur voit ce qui existe, et pourquoi ça ne s'offre pas à lui.
           const bool in_party = chat->InParty();
           if (!in_party) ImGui::BeginDisabled();
-          if (ImGui::MenuItem("Inviter dans le groupe"))
+          if (ImGui::MenuItem(i18n::Tr("Inviter dans le groupe")))
             chat->QueueNameAction(ChatWindow::NameAction::kPartyInvite, wire);
           if (!in_party) {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
               ImGui::SetTooltip(
-                  "Il faut être dans un groupe — et en être le chef — pour "
-                  "inviter quelqu'un.");
+                  i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
+                  "inviter quelqu'un."));
           }
           const bool in_guild = chat->InGuild();
           if (!in_guild) ImGui::BeginDisabled();
-          if (ImGui::MenuItem("Inviter dans la guilde"))
+          if (ImGui::MenuItem(i18n::Tr("Inviter dans la guilde")))
             chat->QueueNameAction(ChatWindow::NameAction::kGuildInvite, wire);
           if (!in_guild) {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-              ImGui::SetTooltip("Il faut appartenir à une guilde pour y inviter.");
+              ImGui::SetTooltip(i18n::Tr("Il faut appartenir à une guilde pour y inviter."));
           }
-          if (ImGui::MenuItem("Ajouter en ami"))
+          if (ImGui::MenuItem(i18n::Tr("Ajouter en ami")))
             chat->QueueNameAction(ChatWindow::NameAction::kFriendAdd, wire);
           ImGui::Separator();
         }
-        if (ImGui::MenuItem("Copier le nom"))
+        if (ImGui::MenuItem(i18n::Tr("Copier le nom")))
           ImGui::SetClipboardText(target.player_name.c_str());
         break;
       }
@@ -476,10 +477,10 @@ void DrawMenu(const char* popup_id, const Target& target) {
         {
           const std::string host = imgprev::HostOfUrl(target.url.c_str());
           if (!imgprev::IsPreviewable(target.url.c_str())) {
-            if (ImGui::MenuItem("Afficher cette image"))
+            if (ImGui::MenuItem(i18n::Tr("Afficher cette image")))
               imgprev::AllowOnce(target.url.c_str());
             if (!host.empty()) {
-              std::snprintf(cmd, sizeof(cmd), "Toujours afficher %s...",
+              std::snprintf(cmd, sizeof(cmd), i18n::Tr("Toujours afficher %s..."),
                             host.c_str());
               if (ImGui::MenuItem(cmd)) {
                 g_pending_host = host;
@@ -489,11 +490,11 @@ void DrawMenu(const char* popup_id, const Target& target) {
             ImGui::Separator();
           }
         }
-        if (ImGui::MenuItem("Ouvrir dans le navigateur")) OpenUrl(target.url.c_str());
+        if (ImGui::MenuItem(i18n::Tr("Ouvrir dans le navigateur"))) OpenUrl(target.url.c_str());
         // 🔴 L'adresse est écrite par un TIERS. La copier plutôt que l'ouvrir est
         // le geste prudent, et le menu doit l'offrir : personne ne peut juger un
         // lien sur les quelques caractères qui tiennent dans une ligne de chat.
-        if (ImGui::MenuItem("Copier l'adresse"))
+        if (ImGui::MenuItem(i18n::Tr("Copier l'adresse")))
           ImGui::SetClipboardText(target.url.c_str());
         break;
       }
@@ -531,8 +532,8 @@ void DrawUrlConfirm() {
   // Échap doit fermer CETTE modale, pas la chatbox derrière elle.
   ro::SuppressEscapeStack();
 
-  ImGui::TextUnformatted("Ce lien vient d'un autre joueur.");
-  ImGui::TextUnformatted("Il ouvrira votre navigateur sur :");
+  ImGui::TextUnformatted(i18n::Tr("Ce lien vient d'un autre joueur."));
+  ImGui::TextUnformatted(i18n::Tr("Il ouvrira votre navigateur sur :"));
   ImGui::Spacing();
   // 🔴 L'adresse COMPLÈTE, schéma compris — c'est-à-dire celle qui partira
   // vraiment, pas celle qui est écrite dans la ligne de chat. Tout l'intérêt de
@@ -585,16 +586,16 @@ void DrawHostConfirm() {
   if (!ro::BeginRoPopupModal(kPopupId)) return;
   ro::SuppressEscapeStack();
 
-  ImGui::TextUnformatted("Les images de ce site se chargeront");
-  ImGui::TextUnformatted("automatiquement, au simple survol :");
+  ImGui::TextUnformatted(i18n::Tr("Les images de ce site se chargeront"));
+  ImGui::TextUnformatted(i18n::Tr("automatiquement, au simple survol :"));
   ImGui::Spacing();
   ImGui::TextColored(ImVec4(0.10f, 0.20f, 0.55f, 1.0f), "%s",
                      g_pending_host.c_str());
   ImGui::Spacing();
-  ImGui::TextUnformatted("Ce serveur pourra alors voir que vous etes");
-  ImGui::TextUnformatted("en ligne, et depuis quelle adresse.");
+  ImGui::TextUnformatted(i18n::Tr("Ce serveur pourra alors voir que vous etes"));
+  ImGui::TextUnformatted(i18n::Tr("en ligne, et depuis quelle adresse."));
   ImGui::Spacing();
-  ImGui::TextDisabled("Reglages du chat pour revenir dessus.");
+  ImGui::TextDisabled(i18n::Tr("Reglages du chat pour revenir dessus."));
   ImGui::Spacing();
 
   bool close = false;

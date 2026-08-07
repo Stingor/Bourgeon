@@ -24,6 +24,7 @@
 #include "ui/ro_widgets.h"   // mui::IsLastItemRightClicked (clic droit = description)
 #include "utils/hooking/hook_manager.h"  // détour du handler de contenu ZC 0x0B63
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
@@ -1591,9 +1592,9 @@ void RodexWindow::DrawMailList() {
   // Actions de BOÎTE en tête : elles ne dépendent pas de l'onglet courant, et les
   // placer avant la barre d'onglets marque cette portée — tout ce qui suit les
   // onglets, lui, appartient à la boîte sélectionnée.
-  if (ro::RoButton("Rafraîchir")) RequestRefresh();
+  if (ro::RoButton(i18n::Tr("Rafraîchir"))) RequestRefresh();
   ImGui::SameLine();
-  if (ro::RoButton("Écrire")) Compose(nullptr);
+  if (ro::RoButton(i18n::Tr("Écrire"))) Compose(nullptr);
   ImGui::SameLine();
   ImGui::TextDisabled("%d courrier%s", static_cast<int>(mails_.size()),
                       mails_.size() > 1 ? "s" : "");
@@ -1648,7 +1649,7 @@ void RodexWindow::DrawMailList() {
   // ET le sujet — c'est par l'un ou l'autre qu'on retrouve un courrier, et obliger
   // à choisir la colonne ne ferait qu'ajouter un clic.
   ImGui::SetNextItemWidth(-1.0f);
-  ImGui::InputTextWithHint("##rodex_filter", "Filtrer par expéditeur ou sujet...",
+  ImGui::InputTextWithHint("##rodex_filter", i18n::Tr("Filtrer par expéditeur ou sujet..."),
                            filter_, sizeof(filter_));
   const bool filtering = filter_[0] != '\0';
 
@@ -1661,12 +1662,12 @@ void RodexWindow::DrawMailList() {
     // sans fin ne dit rien au joueur. Le bouton « Rafraîchir » reste à sa portée.
     const bool loading =
         list_requested_ms_ != 0 && (GetTickCount() - list_requested_ms_) < 3000;
-    ImGui::TextDisabled("%s", loading ? "Chargement..." : "Aucun courrier.");
+    ImGui::TextDisabled("%s", loading ? "Chargement..." : i18n::Tr("Aucun courrier."));
   } else if (ImGui::BeginTable("rodex_table", 4,
                                ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                    ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
-    ImGui::TableSetupColumn("Expéditeur", ImGuiTableColumnFlags_WidthStretch, 0.34f);
+    ImGui::TableSetupColumn(i18n::Tr("Expéditeur"), ImGuiTableColumnFlags_WidthStretch, 0.34f);
     ImGui::TableSetupColumn("Sujet", ImGuiTableColumnFlags_WidthStretch, 0.50f);
     ImGui::TableSetupColumn("Expire", ImGuiTableColumnFlags_WidthFixed, 52.0f);
     ImGui::TableSetupScrollFreeze(0, 1);
@@ -1742,8 +1743,7 @@ void RodexWindow::DrawMailList() {
     // Table vide alors que la boîte ne l'est pas : sans un mot, on croit avoir tout
     // perdu. On distingue « le filtre ne trouve rien » de « cet onglet est vide ».
     if (shown == 0)
-      ImGui::TextDisabled("%s", filtering ? "Aucun courrier ne correspond."
-                                          : "Aucun courrier dans cet onglet.");
+      ImGui::TextDisabled("%s", filtering ? i18n::Tr("Aucun courrier ne correspond.") : i18n::Tr("Aucun courrier dans cet onglet."));
   }
   ImGui::EndChild();
 }
@@ -1843,9 +1843,9 @@ void RodexWindow::DrawMailDetail() {
 
   ImGui::BeginChild("rodex_body", ImVec2(0, 86), true);
   if (!mail->content_ready)
-    ImGui::TextDisabled("Chargement du message...");
+    ImGui::TextDisabled(i18n::Tr("Chargement du message..."));
   else if (mail->body.empty())
-    ImGui::TextDisabled("(message vide)");
+    ImGui::TextDisabled(i18n::Tr("(message vide)"));
   else
     ImGui::TextWrapped("%s", mail->body.c_str());
   ImGui::EndChild();
@@ -1858,22 +1858,22 @@ void RodexWindow::DrawMailDetail() {
     // seul le type nous dit qu'il transporte quelque chose. On annonce donc la pièce
     // jointe sans inventer de valeur — les octets du nœud sont du bruit de pile.
     if (has_zeny && mail->content_ready)
-      ImGui::TextColored(kBlack, "Zeny joint : %lld z",
+      ImGui::TextColored(kBlack, i18n::Tr("Zeny joint : %lld z"),
                          static_cast<long long>(mail->zeny));
     else if (has_zeny)
-      ImGui::TextDisabled("%s", "Zeny joint (ouvre le courrier pour voir le montant)");
+      ImGui::TextDisabled("%s", i18n::Tr("Zeny joint (ouvre le courrier pour voir le montant)"));
     for (size_t i = 0; i < mail->items.size(); ++i) {
       ImGui::PushID(static_cast<int>(i));
       DrawAttachRow(mail->items[i], false);
       ImGui::PopID();
     }
     if (has_items && !mail->content_ready)
-      ImGui::TextDisabled("%s", "Objets joints (ouvre le courrier pour les voir)");
-    if (ro::RoButton("Tout récupérer", 150.0f, 0.0f)) ClaimAttachments(*mail);
+      ImGui::TextDisabled("%s", i18n::Tr("Objets joints (ouvre le courrier pour les voir)"));
+    if (ro::RoButton(i18n::Tr("Tout récupérer"), 150.0f, 0.0f)) ClaimAttachments(*mail);
   }
 
   // ── Actions ──
-  if (ro::RoButton("Répondre", 110.0f, 0.0f))
+  if (ro::RoButton(i18n::Tr("Répondre"), 110.0f, 0.0f))
     Compose(mail->sender_raw.empty() ? nullptr : mail->sender_raw.c_str());
   ImGui::SameLine();
   // Retourner à l'expéditeur : le natif ne le propose que dans la boîte de
@@ -1889,7 +1889,7 @@ void RodexWindow::DrawMailDetail() {
   if (!can_delete) ImGui::BeginDisabled();
   if (ro::RoButton("Supprimer", 110.0f, 0.0f)) confirm_ = kConfirmDelete;
   if (!can_delete) ImGui::EndDisabled();
-  if (!can_delete) ImGui::TextDisabled("Récupère d'abord les pièces jointes.");
+  if (!can_delete) ImGui::TextDisabled(i18n::Tr("Récupère d'abord les pièces jointes."));
 
   DrawConfirmPopup();
 }
@@ -1935,7 +1935,7 @@ void RodexWindow::DrawComposeWindow() {
   ImGui::SetNextItemWidth(200.0f);
   ImGui::InputText("##rodex_to", to_, sizeof(to_));
   ImGui::SameLine();
-  if (ro::RoButton("Vérifier")) CheckRecipient();
+  if (ro::RoButton(i18n::Tr("Vérifier"))) CheckRecipient();
 
   // Métier + niveau du destinataire : c'est ce qui permet de reconnaître la bonne
   // personne avant d'envoyer des objets. Le char id, lui, ne dit rien au joueur.
@@ -1971,7 +1971,7 @@ void RodexWindow::DrawComposeWindow() {
                             ImVec2(-1.0f, 130.0f));
 
   // ── Zeny joint + frais ──
-  ImGui::TextColored(kBlack, "Zeny à joindre");
+  ImGui::TextColored(kBlack, i18n::Tr("Zeny à joindre"));
   ImGui::SetNextItemWidth(160.0f);
   ImGui::InputScalar("##rodex_zeny", ImGuiDataType_S64, &attach_zeny_);
   if (attach_zeny_ < 0) attach_zeny_ = 0;
@@ -1980,11 +1980,11 @@ void RodexWindow::DrawComposeWindow() {
   // SERVEUR (mail_zeny_fee, mail_attachment_price), qu'on n'a pas à dupliquer ici.
   // Tant que le natif n'a pas eu à le calculer, on se contente de prévenir.
   ImGui::SameLine();
-  if (tax_ > 0) ImGui::TextDisabled("frais : %lld z", static_cast<long long>(tax_));
-  else          ImGui::TextDisabled("(des frais d'envoi s'appliquent)");
+  if (tax_ > 0) ImGui::TextDisabled(i18n::Tr("frais : %lld z"), static_cast<long long>(tax_));
+  else          ImGui::TextDisabled(i18n::Tr("(des frais d'envoi s'appliquent)"));
 
   // ── Pièces jointes : cible de dépôt de l'inventaire ImGui ──
-  ImGui::TextColored(kBlack, "Pièces jointes (%d/%d)",
+  ImGui::TextColored(kBlack, i18n::Tr("Pièces jointes (%d/%d)"),
                      static_cast<int>(compose_items_.size()), kAttachSlots);
   ImGui::BeginChild("rodex_attach", ImVec2(0, 92), true);
   for (size_t i = 0; i < compose_items_.size(); ++i) {
@@ -1993,7 +1993,7 @@ void RodexWindow::DrawComposeWindow() {
     ImGui::PopID();
   }
   if (compose_items_.empty())
-    ImGui::TextDisabled("%s", "(vide — glisse un objet de l'inventaire ici)");
+    ImGui::TextDisabled("%s", i18n::Tr("(vide — glisse un objet de l'inventaire ici)"));
   ImGui::EndChild();
   // Le child qu'on vient de fermer est le « dernier item » ImGui : c'est lui la
   // cible de dépôt. Payload « INV_ITEM » = convention de l'inventaire ImGui (même
@@ -2033,8 +2033,7 @@ void RodexWindow::DrawConfirmPopup() {
   }
   if (ro::BeginRoPopupModal("Confirmation###rodex_confirm")) {
     ImGui::TextUnformatted(confirm_ == kConfirmDelete
-                               ? "Supprimer définitivement ce courrier ?"
-                               : "Retourner ce courrier à son expéditeur ?");
+                               ? i18n::Tr("Supprimer définitivement ce courrier ?") : i18n::Tr("Retourner ce courrier à son expéditeur ?"));
     ImGui::Spacing();
     if (ro::RoButton("Confirmer", 110.0f, 0.0f)) {
       if (confirm_ == kConfirmDelete) DeleteMail(*mail);

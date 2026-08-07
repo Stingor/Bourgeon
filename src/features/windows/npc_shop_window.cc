@@ -26,6 +26,7 @@
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
+#include "utils/i18n.h"
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
@@ -866,7 +867,7 @@ void NpcShopWindow::OnRenderUI() {
                        last_result_sell_ ? "Vente" : "Achat");
   } else if (last_result_ > 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "  Échec (%d)", last_result_);
+    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), i18n::Tr("  Échec (%d)"), last_result_);
   }
 
   // Rend une cellule prix facon natif : "base -> final" (base grise, final en
@@ -961,7 +962,7 @@ void NpcShopWindow::OnRenderUI() {
   if (ImGui::InputTextWithHint("##shop_filter", "Filtrer...", filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
-  ImGui::TextDisabled("Clic = panier   -   Ctrl+clic = achat/vente immédiat");
+  ImGui::TextDisabled(i18n::Tr("Clic = panier   -   Ctrl+clic = achat/vente immédiat"));
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1016,20 +1017,20 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::EndTable();
     }
     if (buy_items_.empty())
-      ImGui::TextDisabled("(liste d'achat en attente du serveur...)");
+      ImGui::TextDisabled(i18n::Tr("(liste d'achat en attente du serveur...)"));
   } else {  // kSell
     // "Tout vendre" : remplit le panier avec TOUS les items vendables au stack
     // complet ; l'utilisateur confirme ensuite via le bouton "Vendre".
     if (!sell_items_.empty() &&
-        ro::RoButton("Tout ajouter au panier")) {
+        ro::RoButton(i18n::Tr("Tout ajouter au panier"))) {
       cart_.clear();
       for (const auto& s : sell_items_)
         cart_.push_back(CartEntry{s.id, s.index, s.amount, s.price, s.amount});
       sell_all_close_ = true;  // arme la fermeture auto du shop apres la vente
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Ajoute tout l'inventaire vendable ; le shop se fermera "
-                        "automatiquement après la vente.");
+      ImGui::SetTooltip(i18n::Tr("Ajoute tout l'inventaire vendable ; le shop se fermera "
+                        "automatiquement après la vente."));
     if (ImGui::BeginTable("selltbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
@@ -1073,7 +1074,7 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::EndTable();
     }
     if (sell_items_.empty())
-      ImGui::TextDisabled("(rien à vendre / liste en attente...)");
+      ImGui::TextDisabled(i18n::Tr("(rien à vendre / liste en attente...)"));
   }
   ImGui::EndChild();
 
@@ -1081,7 +1082,7 @@ void NpcShopWindow::OnRenderUI() {
   if (show_cart) {
   ImGui::SameLine();
   ImGui::BeginChild("shop_cart", ImVec2(cart_w, -footer_h), true);
-  ImGui::TextUnformatted(cur_mode_ == kBuy ? "Panier d'achat" : "Panier de vente");
+  ImGui::TextUnformatted(cur_mode_ == kBuy ? i18n::Tr("Panier d'achat") : i18n::Tr("Panier de vente"));
   ImGui::SameLine();
   if (!cart_.empty() && ro::RoButton("Vider")) { cart_.clear(); sell_all_close_ = false; }
   ImGui::Separator();
@@ -1131,7 +1132,7 @@ void NpcShopWindow::OnRenderUI() {
   if (cur_mode_ == kBuy) {
     const bool afford = total <= static_cast<long long>(zeny);
     if (cart_.empty()) ImGui::BeginDisabled();
-    if (ro::RoButton(afford ? "Acheter" : "Zeny insuffisant",
+    if (ro::RoButton(afford ? "Acheter" : i18n::Tr("Zeny insuffisant"),
                      ImGui::GetContentRegionAvail().x, 0))
       SendBuy();
     if (cart_.empty()) ImGui::EndDisabled();
@@ -1159,7 +1160,7 @@ void NpcShopWindow::OnRenderUI() {
   if (ro::RoButton("Fermer", 90.0f, 0.0f)) want_close_ = true;
   ImGui::SameLine();
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled("Clic droit sur un objet : description");
+  ImGui::TextDisabled(i18n::Tr("Clic droit sur un objet : description"));
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);

@@ -66,6 +66,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "features/staff_gate.h"  // IsStaff() — gate de la fenêtre de logs
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 Bourgeon::Bourgeon()
     : plugins_(), last_tick_count_(), log_lines_(), client_() {}
@@ -894,7 +895,7 @@ void Bourgeon::ShowLogWindow() {
   }
   if (flat.empty()) flat.push_back('\0');
 
-  if (ImGui::Button("Copier tout")) ImGui::SetClipboardText(flat.data());
+  if (ImGui::Button(i18n::Tr("Copier tout"))) ImGui::SetClipboardText(flat.data());
   ImGui::SameLine();
   if (ImGui::Button("Vider")) {
     LogLineBuffer::instance().Clear();
@@ -904,10 +905,10 @@ void Bourgeon::ShowLogWindow() {
   ImGui::Checkbox("Suivre", &follow);
   ImGui::SameLine();
   ImGui::SetNextItemWidth(220.0f);
-  ImGui::InputTextWithHint("##logfilter", "filtre (sous-chaîne)", filter,
+  ImGui::InputTextWithHint("##logfilter", i18n::Tr("filtre (sous-chaîne)"), filter,
                             sizeof(filter));
   ImGui::SameLine();
-  ImGui::TextDisabled("(sélection souris · Ctrl+A · Ctrl+C)");
+  ImGui::TextDisabled(i18n::Tr("(sélection souris · Ctrl+A · Ctrl+C)"));
 
   // ⚠ ReadOnly : ImGui n'écrit pas dans le tampon, mais il gère la sélection et
   // la copie exactement comme un champ éditable. `AllowTabInput` reste OFF pour

@@ -9,6 +9,7 @@
 
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 // Armé par le proxy DirectDraw au premier EndScene du chemin DX7
 // (ddraw/proxy_idirectdraw.cc). Faux => le client rend en Direct3D 9.
@@ -113,28 +114,28 @@ void Dx7Warning::Draw(bool at_login) {
   ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 460.0f);
 
   ImGui::TextColored(ImVec4(0.75f, 0.15f, 0.15f, 1.0f),
-                     "Ton client tourne en DirectX 7.");
+                     i18n::Tr("Ton client tourne en DirectX 7."));
   ImGui::Spacing();
   ImGui::TextUnformatted(
-      "Bourgeon est développé et testé pour DirectX 9. En DirectX 7, le moteur "
+      i18n::Tr("Bourgeon est développé et testé pour DirectX 9. En DirectX 7, le moteur "
       "n'a ni shaders ni cible de rendu : plusieurs fonctionnalités sont "
-      "automatiquement désactivées ou dégradées.");
+      "automatiquement désactivées ou dégradées."));
   ImGui::Spacing();
-  ImGui::BulletText("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA");
-  ImGui::BulletText("Capture d'écran propre (sans interface) et filtrage des textures");
-  ImGui::BulletText("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)");
-  ImGui::BulletText("Mini-jeux : sprites réels indisponibles, DOOM inaccessible");
+  ImGui::BulletText(i18n::Tr("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA"));
+  ImGui::BulletText(i18n::Tr("Capture d'écran propre (sans interface) et filtrage des textures"));
+  ImGui::BulletText(i18n::Tr("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)"));
+  ImGui::BulletText(i18n::Tr("Mini-jeux : sprites réels indisponibles, DOOM inaccessible"));
   ImGui::Spacing();
   ImGui::TextUnformatted(
-      "Les performances et la compatibilité avec Windows 10/11 sont également "
-      "bien meilleures en DirectX 9.");
+      i18n::Tr("Les performances et la compatibilité avec Windows 10/11 sont également "
+      "bien meilleures en DirectX 9."));
   ImGui::Spacing();
   ImGui::Separator();
   ImGui::Spacing();
   ImGui::TextUnformatted(
-      "Pour changer : ferme le jeu, lance Setup.exe (dans le dossier du client), "
+      i18n::Tr("Pour changer : ferme le jeu, lance Setup.exe (dans le dossier du client), "
       "onglet « Graphics », choisis « DirectX 9 » dans « Graphics API », "
-      "enregistre, puis relance le jeu.");
+      "enregistre, puis relance le jeu."));
 
   ImGui::PopTextWrapPos();
   ImGui::Spacing();
@@ -145,21 +146,21 @@ void Dx7Warning::Draw(bool at_login) {
       // Hors du monde de jeu : on peut fermer le client sans couper la session
       // d'un personnage. Le Setup écrit son réglage dans le registre au moment
       // où le joueur enregistre — il n'a pas besoin que le jeu tourne.
-      if (ro::RoButton("Quitter et ouvrir le Setup")) {
+      if (ro::RoButton(i18n::Tr("Quitter et ouvrir le Setup"))) {
         LaunchSetup();
         ExitProcess(0);
       }
     } else {
       // En jeu, on ne coupe rien : le Setup s'ouvre derrière la fenêtre du jeu et
       // le réglage ne sera pris en compte qu'au prochain lancement.
-      if (ro::RoButton("Ouvrir le Setup")) LaunchSetup();
+      if (ro::RoButton(i18n::Tr("Ouvrir le Setup"))) LaunchSetup();
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Le Setup s'ouvre derrière le jeu — le changement prend "
-                          "effet au prochain lancement.");
+        ImGui::SetTooltip(i18n::Tr("Le Setup s'ouvre derrière le jeu — le changement prend "
+                          "effet au prochain lancement."));
     }
     ImGui::SameLine();
   }
-  if (ro::RoButton("Continuer en DirectX 7")) {
+  if (ro::RoButton(i18n::Tr("Continuer en DirectX 7"))) {
     ImGui::CloseCurrentPopup();
     dismissed_ = true;
   }

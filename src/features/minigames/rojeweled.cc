@@ -15,6 +15,7 @@
 #include "ui/imgui_escape.h"
 
 #include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback
+#include "utils/i18n.h"
 
 // Le mélange ADDITIF des explosions est propre au backend DX9 (les sprites, eux,
 // passent maintenant par notre parseur et s'affichent sous les deux moteurs).
@@ -315,9 +316,9 @@ void Rojeweled::OnRenderUI() {
     bourgeon::CloseWindowOnEscape(open);
     ImGui::Text("Score : %d", g.score);
     ImGui::SameLine(0, 24);
-    if (ImGui::SmallButton("Nouvelle partie")) NewGame();
+    if (ImGui::SmallButton(i18n::Tr("Nouvelle partie"))) NewGame();
     ImGui::SameLine(0, 16);
-    ImGui::TextDisabled("Clique 2 monstres voisins pour les échanger");
+    ImGui::TextDisabled(i18n::Tr("Clique 2 monstres voisins pour les échanger"));
 
 
     UpdateGame();  // advance the slide/revert state machine + age explosions

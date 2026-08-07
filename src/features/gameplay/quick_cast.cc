@@ -12,6 +12,7 @@
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"    // ro::RoCheckbox
 #include "ui/ro_widgets.h"  // mui::HelpMarker, mui::WheelSliderInt
+#include "utils/i18n.h"
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
@@ -487,26 +488,26 @@ void QuickCast::OnModeSwitch(ModeMgr::ModeType mode_type,
 
 void QuickCast::DrawSettings() {
   bool save = false;
-  if (ro::RoCheckbox("Sort de zone : cast direct sous la souris",
+  if (ro::RoCheckbox(i18n::Tr("Sort de zone : cast direct sous la souris"),
                      &ground_enabled_))
     save = true;
   ImGui::SameLine();
   mui::HelpMarker(
-      "Une compétence de ZONE (Storm Gust, pièges…) part immédiatement sur la "
+      i18n::Tr("Une compétence de ZONE (Storm Gust, pièges…) part immédiatement sur la "
       "cellule sous le curseur : plus besoin du clic de confirmation.\n\n"
       "Si aucune cellule valide n'est visée (ciel, interface), le mode ciblage "
       "classique reste armé. L'animation, la barre de cast et l'envoi restent "
-      "ceux du jeu : le serveur reste maître du lancement.");
-  if (ro::RoCheckbox("Sort ciblé : cast direct sur la cible survolée",
+      "ceux du jeu : le serveur reste maître du lancement."));
+  if (ro::RoCheckbox(i18n::Tr("Sort ciblé : cast direct sur la cible survolée"),
                      &target_enabled_))
     save = true;
   ImGui::SameLine();
   mui::HelpMarker(
-      "Une compétence CIBLÉE part immédiatement si une cible compatible est "
+      i18n::Tr("Une compétence CIBLÉE part immédiatement si une cible compatible est "
       "sous le curseur : monstre pour un sort offensif ; joueur, monstre ou "
       "soi-même pour un soutien.\n\n"
       "Sans cible compatible sous le curseur (ou pour viser un joueur en "
-      "PVP/GVG), le mode ciblage classique reste armé — rien n'est perdu.");
+      "PVP/GVG), le mode ciblage classique reste armé — rien n'est perdu."));
 
   if (ground_enabled_ || target_enabled_) {
     ImGui::SetNextItemWidth(160.0f);
@@ -514,7 +515,7 @@ void QuickCast::DrawSettings() {
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SameLine();
     mui::HelpMarker(
-        "Période de répétition quand tu MAINTIENS la touche : la compétence "
+        i18n::Tr("Période de répétition quand tu MAINTIENS la touche : la compétence "
         "s'enchaîne à ce rythme, en suivant le curseur.\n\n"
         "Le jeu, lui, ignore l'auto-répétition du clavier — un appui maintenu "
         "ne lance qu'une fois. Cette répétition est donc ajoutée par le "
@@ -522,30 +523,30 @@ void QuickCast::DrawSettings() {
         "Le COOLDOWN réel de la compétence est de toute façon respecté : tant "
         "qu'elle n'est pas prête, rien n'est envoyé. Ce réglage ne sert qu'aux "
         "compétences SANS cooldown, dont le rythme est fixé par le délai "
-        "d'après-incantation — que le serveur ne communique pas au client.");
+        "d'après-incantation — que le serveur ne communique pas au client."));
   }
 
   ImGui::Spacing();
-  if (ro::RoCheckbox("Objet : répéter tant que la touche est maintenue",
+  if (ro::RoCheckbox(i18n::Tr("Objet : répéter tant que la touche est maintenue"),
                      &item_enabled_))
     save = true;
   ImGui::SameLine();
   mui::HelpMarker(
-      "Une case de la barre d'action qui porte un OBJET (Old Blue Box, Dead "
+      i18n::Tr("Une case de la barre d'action qui porte un OBJET (Old Blue Box, Dead "
       "Branch, potions…) s'utilise en boucle tant que tu gardes sa touche "
       "enfoncée, au lieu d'une fois par pression.\n\n"
       "Ça s'arrête tout seul quand tu relâches, quand la case change, ou quand "
       "il n'en reste plus en sac. Cliquer la case, en revanche, ne répète "
       "rien : une seule utilisation, comme avant.\n\n"
-      "Attention : chaque répétition CONSOMME un objet — dont le dernier.");
+      "Attention : chaque répétition CONSOMME un objet — dont le dernier."));
   if (item_enabled_) {
     ImGui::SetNextItemWidth(160.0f);
-    if (mui::WheelSliderInt("Cadence objet (ms)", &item_repeat_ms_, 20, 1000))
+    if (mui::WheelSliderInt(i18n::Tr("Cadence objet (ms)"), &item_repeat_ms_, 20, 1000))
       save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SameLine();
     mui::HelpMarker(
-        "Période de répétition des objets. Elle est SÉPARÉE de celle des "
+        i18n::Tr("Période de répétition des objets. Elle est SÉPARÉE de celle des "
         "compétences parce que ce n'est pas le même frein : ici c'est le "
         "serveur qui fixe le minimum entre deux objets.\n\n"
         "Pour le staff, ce minimum est de 20 ms — le serveur descend "
@@ -553,7 +554,7 @@ void QuickCast::DrawSettings() {
         "des 325 ms habituels. Le curseur va donc jusque-là.\n\n"
         "En dessous, rien ne va plus vite : le serveur refuse et répond "
         "« veuillez patienter » dans le chat. En pratique, la vraie limite est "
-        "la fréquence d'images du client.");
+        "la fréquence d'images du client."));
   }
 
   if (save) {

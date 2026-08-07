@@ -18,6 +18,7 @@
 #include "utils/game_paths.h"  // paths::SettingsPath (réglage des glyphes coréens)
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 #include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -2338,26 +2339,26 @@ bool RoCombo(const char* label, int *current_item, const char* const items[], in
 
 bool ShowRoSkinSettings() {
   bool ch = false;
-  ch |= WheelSliderFloat("Luminosité", &g_cfg.title_brightness, 0.5f, 1.5f);
+  ch |= WheelSliderFloat(i18n::Tr("Luminosité"), &g_cfg.title_brightness, 0.5f, 1.5f);
   SameLine(); HelpMarker(
-    "N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
-    "icones) - pas le texte ni les fonds (régles par les couleurs ci-dessous).");
-  ch |= WheelSliderFloat("Opacité", &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
+    i18n::Tr("N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
+    "icones) - pas le texte ni les fonds (régles par les couleurs ci-dessous)."));
+  ch |= WheelSliderFloat(i18n::Tr("Opacité"), &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
   ch |= ColorEdit4WithAlphaBar("Corps", g_cfg.body_col);
   ch |= ColorEdit4WithAlphaBar("Bordure", g_cfg.border_col);
-  ch |= ColorEdit4WithAlphaBar("Texte titre", g_cfg.title_text);
-  ch |= ColorEdit4WithAlphaBar("Texte corps", g_cfg.body_text);
-  ch |= ColorEdit4WithAlphaBar("Onglet actif", g_cfg.tab_col);
-  ch |= ColorEdit4WithAlphaBar("Onglet inactif", g_cfg.tab_inact);
-  ch |= ColorEdit4WithAlphaBar("Champ de saisie", g_cfg.input_col);
-  ch |= ColorEdit4WithAlphaBar("En-tête tableau", g_cfg.header_col);
-  ch |= ColorEdit4WithAlphaBar("Fond cases (feuille perso)", g_cfg.slot_col);
-  ch |= ColorEdit4WithAlphaBar("Fond doll (feuille perso)", g_cfg.doll_col);
-  ch |= ColorEdit4WithAlphaBar("Fond carte item", g_cfg.card_col);
-  ch |= ColorEdit4WithAlphaBar("Bandeau carte", g_cfg.card_head_col);
-  ch |= ColorEdit4WithAlphaBar("Texte bandeau carte", g_cfg.card_head_text);
-  ch |= ColorEdit4WithAlphaBar("Fond fenêtre de liste (storage)", g_cfg.list_col);
-  if (ImGui::Button("Réinitialiser le skin")) {
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte titre"), g_cfg.title_text);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte corps"), g_cfg.body_text);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Onglet actif"), g_cfg.tab_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Onglet inactif"), g_cfg.tab_inact);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Champ de saisie"), g_cfg.input_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("En-tête tableau"), g_cfg.header_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Fond cases (feuille perso)"), g_cfg.slot_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Fond doll (feuille perso)"), g_cfg.doll_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Fond carte item"), g_cfg.card_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Bandeau carte"), g_cfg.card_head_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte bandeau carte"), g_cfg.card_head_text);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Fond fenêtre de liste (storage)"), g_cfg.list_col);
+  if (ImGui::Button(i18n::Tr("Réinitialiser le skin"))) {
     g_cfg = RoSkinConfig();
     ch = true;
   }

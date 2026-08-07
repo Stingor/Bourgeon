@@ -13,6 +13,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -765,75 +766,75 @@ void StatusIconBar::OnModeSwitch(ModeMgr::ModeType mode_type,
 void StatusIconBar::DrawSettings() {
   bool changed = false;
 
-  changed |= ro::RoCheckbox("Disposition personnalisée", &g_cfg.enabled);
-  SameLine(); HelpMarker("Désactivé = disposition d'origine du jeu (inchangée).");
+  changed |= ro::RoCheckbox(i18n::Tr("Disposition personnalisée"), &g_cfg.enabled);
+  SameLine(); HelpMarker(i18n::Tr("Désactivé = disposition d'origine du jeu (inchangée)."));
 
   ImGui::BeginDisabled(!g_cfg.enabled);
 
   // --- edit mode --------------------------------------------------------
-  ro::RoCheckbox("Déverrouiller (glisser pour déplacer)", &g_unlocked);
+  ro::RoCheckbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &g_unlocked);
   SameLine(); HelpMarker(
-    "Affiche un cadre sur la barre ; glissez-le pour la déplacer.\n"
+    i18n::Tr("Affiche un cadre sur la barre ; glissez-le pour la déplacer.\n"
     "La position met à jour Marge X / Marge Y.\n"
-    "Si la grille d'alignement (aimantation) est active, le cadre s'y aligne.");
-  changed |= ro::RoCheckbox("Aperçu (faux statuts)", &g_preview);
-  SameLine(); HelpMarker("Génère de faux statuts pour prévisualiser la disposition.");
+    "Si la grille d'alignement (aimantation) est active, le cadre s'y aligne."));
+  changed |= ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &g_preview);
+  SameLine(); HelpMarker(i18n::Tr("Génère de faux statuts pour prévisualiser la disposition."));
 
-  SeparatorText("Réglages");
+  SeparatorText(i18n::Tr("Réglages"));
   // Opacity is independent of the custom layout — it's forced at render time on
   // any status-icon node, so it works with the stock layout too.  The render
   // hook reads g_cfg.icon_alpha live, so no rebuild is needed.
-  changed |= WheelSliderInt("Opacité des icônes", &g_cfg.icon_alpha, 10, 100, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Opacité des icônes"), &g_cfg.icon_alpha, 10, 100, "%d%%");
   SameLine(); HelpMarker(
-    "Transparence des icônes de statut (100 % = opaque, comme l'origine).\n"
-    "Fonctionne même sans la disposition personnalisée.");
+    i18n::Tr("Transparence des icônes de statut (100 % = opaque, comme l'origine).\n"
+    "Fonctionne même sans la disposition personnalisée."));
 
-  changed |= WheelSliderInt("Taille des icônes", &g_cfg.icon_size,
+  changed |= WheelSliderInt(i18n::Tr("Taille des icônes"), &g_cfg.icon_size,
                             kIconSizeMin, kIconSizeMax, "%d px");
   SameLine(); HelpMarker(
-    "Taille des icônes de statut en pixels (32 = origine).\n"
+    i18n::Tr("Taille des icônes de statut en pixels (32 = origine).\n"
     "Nécessite la disposition personnalisée.\n"
-    "L'espacement (écart entre bords) est indépendant de la taille.");
-  changed |= ro::RoCombo("Coin d'ancrage", &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
-  Tooltip("Coin de la première icône qui sert d'ancrage.");
-  changed |= ro::RoCombo("Sens d'empilement", &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
-  Tooltip("Direction dans laquelle les icônes s'empilent à partir du coin d'ancrage.");
-  changed |= ro::RoCombo("Retour à la ligne", &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
-  Tooltip("Direction dans laquelle les icônes passent à la ligne suivante.");
-  changed |= WheelSliderInt("Icônes par ligne", &g_cfg.per_line, 1, 20);
-  changed |= WheelSliderInt("Espacement icônes", &g_cfg.icon_pitch, 0, 20, "%d px");
+    "L'espacement (écart entre bords) est indépendant de la taille."));
+  changed |= ro::RoCombo(i18n::Tr("Coin d'ancrage"), &g_cfg.corner, kCorners, IM_ARRAYSIZE(kCorners));
+  Tooltip(i18n::Tr("Coin de la première icône qui sert d'ancrage."));
+  changed |= ro::RoCombo(i18n::Tr("Sens d'empilement"), &g_cfg.step_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  Tooltip(i18n::Tr("Direction dans laquelle les icônes s'empilent à partir du coin d'ancrage."));
+  changed |= ro::RoCombo(i18n::Tr("Retour à la ligne"), &g_cfg.wrap_dir, kDirs, IM_ARRAYSIZE(kDirs));
+  Tooltip(i18n::Tr("Direction dans laquelle les icônes passent à la ligne suivante."));
+  changed |= WheelSliderInt(i18n::Tr("Icônes par ligne"), &g_cfg.per_line, 1, 20);
+  changed |= WheelSliderInt(i18n::Tr("Espacement icônes"), &g_cfg.icon_pitch, 0, 20, "%d px");
   SameLine(); HelpMarker(
-    "Écart entre les bords de deux icônes voisines, en pixels.\n"
-    "0 = icônes collées ; augmentez pour les espacer.");
-  changed |= WheelSliderInt("Espacement lignes", &g_cfg.line_pitch, 0, 20, "%d px");
-  SameLine(); HelpMarker("Écart entre les bords de deux lignes/colonnes, en pixels (0 = collées).");
-  changed |= ro::RoCombo("Tri par durée", &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
+    i18n::Tr("Écart entre les bords de deux icônes voisines, en pixels.\n"
+    "0 = icônes collées ; augmentez pour les espacer."));
+  changed |= WheelSliderInt(i18n::Tr("Espacement lignes"), &g_cfg.line_pitch, 0, 20, "%d px");
+  SameLine(); HelpMarker(i18n::Tr("Écart entre les bords de deux lignes/colonnes, en pixels (0 = collées)."));
+  changed |= ro::RoCombo(i18n::Tr("Tri par durée"), &g_cfg.sort_mode, kSortModes, IM_ARRAYSIZE(kSortModes));
   SameLine();
-  HelpMarker("Trie les icônes selon le temps d'expiration restant.");
-  changed |= ro::RoCheckbox("Afficher le temps restant", &g_cfg.show_remaining);
-  SameLine(); HelpMarker("Affiche le temps restant sous chaque icône.");
+  HelpMarker(i18n::Tr("Trie les icônes selon le temps d'expiration restant."));
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher le temps restant"), &g_cfg.show_remaining);
+  SameLine(); HelpMarker(i18n::Tr("Affiche le temps restant sous chaque icône."));
 
   ImGui::BeginDisabled(!g_cfg.show_remaining);
   Indent();
-    changed |= ro::RoCombo("Placement du texte", &g_cfg.time_place,
+    changed |= ro::RoCombo(i18n::Tr("Placement du texte"), &g_cfg.time_place,
                            kTimePlaces, IM_ARRAYSIZE(kTimePlaces));
-    SameLine(); HelpMarker("Dessous / dessus l'icône, ou à l'intérieur.");
+    SameLine(); HelpMarker(i18n::Tr("Dessous / dessus l'icône, ou à l'intérieur."));
     ImGui::BeginDisabled(g_cfg.time_place != 2);  // anchor only when "inside"
-      changed |= ro::RoCombo("Position dans l'icône", &g_cfg.time_anchor,
+      changed |= ro::RoCombo(i18n::Tr("Position dans l'icône"), &g_cfg.time_anchor,
                              kTimeAnchors, IM_ARRAYSIZE(kTimeAnchors));
-      SameLine(); HelpMarker("Ancrage du texte à l'intérieur de l'icône (9 positions).");
+      SameLine(); HelpMarker(i18n::Tr("Ancrage du texte à l'intérieur de l'icône (9 positions)."));
     ImGui::EndDisabled();
     changed |= ro::RoCheckbox("Texte \"gras\"", &g_cfg.time_bold);
-    SameLine(); HelpMarker("Faux-gras (ImGui n'a pas de fonte grasse).");
-    changed |= ColorSwatch("Couleur du texte", g_cfg.col_time_text);
-    changed |= ColorSwatch("Couleur de l'ombre", g_cfg.col_time_shadow);
-    SameLine(); HelpMarker("Contour/ombre 8 directions ; baissez l'alpha pour l'atténuer.");
-    changed |= ro::RoCheckbox("Fond derrière le texte", &g_cfg.time_bg);
-    SameLine(); HelpMarker("Ajoute un fond sombre derrière le temps restant.");
+    SameLine(); HelpMarker(i18n::Tr("Faux-gras (ImGui n'a pas de fonte grasse)."));
+    changed |= ColorSwatch(i18n::Tr("Couleur du texte"), g_cfg.col_time_text);
+    changed |= ColorSwatch(i18n::Tr("Couleur de l'ombre"), g_cfg.col_time_shadow);
+    SameLine(); HelpMarker(i18n::Tr("Contour/ombre 8 directions ; baissez l'alpha pour l'atténuer."));
+    changed |= ro::RoCheckbox(i18n::Tr("Fond derrière le texte"), &g_cfg.time_bg);
+    SameLine(); HelpMarker(i18n::Tr("Ajoute un fond sombre derrière le temps restant."));
   Unindent();
   ImGui::EndDisabled();
 
-  if (ImGui::Button("Réinitialiser (origine)")) {
+  if (ImGui::Button(i18n::Tr("Réinitialiser (origine)"))) {
     g_cfg.corner = kTopRight; g_cfg.margin_x = 32; g_cfg.margin_y = 185;
     g_cfg.step_dir = kDown; g_cfg.wrap_dir = kLeft; g_cfg.per_line = 17;
     g_cfg.icon_pitch = 3; g_cfg.line_pitch = 13; g_cfg.sort_mode = kSortNone;
