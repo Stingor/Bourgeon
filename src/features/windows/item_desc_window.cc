@@ -2109,7 +2109,7 @@ inline bool IdentChar(char c) {
 }
 // Mot-clé de contrôle (bleu) ?
 bool IsControlKw(const char* b, size_t len) {
-  static const char* kw[] = {")if", "else", "for", "while", "do", "switch",
+  static const char* kw[] = {"if", "else", "for", "while", "do", "switch",
                              "case", "default", "break", "continue", "return",
                              "function"};
   for (const char* k : kw)
@@ -2492,7 +2492,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::Checkbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
       ImGui::SetNextItemWidth(120.0f);
       if (dmg_target_self_) ImGui::BeginDisabled();
-      ImGui::InputInt(i18n::Tr("Cible : ID monstre (0 = neutre)"), &dmg_target_input_,
+      ImGui::InputInt("Cible : ID monstre (0 = neutre)", &dmg_target_input_,
                       0, 0);
       if (dmg_target_self_) ImGui::EndDisabled();
       if (dmg_target_input_ < 0) dmg_target_input_ = 0;
@@ -3212,7 +3212,7 @@ void ItemDescWindow::RenderItemWindow() {
                                   ImGuiTableFlags_SizingStretchSame)) {
           ImGui::TableNextRow();
           ImGui::TableNextColumn();
-          draw_col("##seltext_eq", i18n::Tr("Equipé"), cicon, ce, compare_, cwnd);
+          draw_col("##seltext_eq", "Equipé", cicon, ce, compare_, cwnd);
           ImGui::TableNextColumn();
           draw_col("##seltext_obj", "Objet", iicon, ie, item_, iwnd);
           ImGui::EndTable();
