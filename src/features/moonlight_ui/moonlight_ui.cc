@@ -505,8 +505,10 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"chatwnd_input_bar", SType::kBool, MLUI_FIELD(chat_window, input_bar()),
      MLUI_LITERAL(bool, true)},
-    {"chatwnd_locked", SType::kBool, MLUI_FIELD(chat_window, locked()),
-     MLUI_LITERAL(bool, false)},
+    // (« chatwnd_locked » a disparu : le verrouillage est désormais PAR FENÊTRE et
+    // se range avec le reste de la géométrie, dans le fichier de disposition du
+    // chat. Une clé restée dans un ancien yaml est simplement ignorée à la
+    // lecture, et disparaît à la prochaine écriture.)
     // ⚠ Défaut VRAI, et c'est un garde-fou, pas une gêne : une adresse de chat
     // vient d'un tiers et le texte affiché n'a aucun rapport obligé avec la
     // destination. Le joueur peut le retirer — explicitement.

@@ -77,15 +77,35 @@ class ChatWindow : public Plugin {
   // ENTRÉE. Traitée au prochain rendu, où l'état d'ImGui est valide.
   void RequestInputFocus() { enter_pending_ = true; }
 
-  // « Déplie la barre de saisie », SANS lui donner le clavier : la traduction de
-  // l'action 3 de ChatAction (msg 0x10 au natif = dérouler la barre repliée).
-  // 🔴 Le focus n'a rien à faire ici. Le client émet cette action à tout bout de
-  // champ — le handler d'annonce `sub_00CB7510` l'appelle (0x00cb7957) juste avant
-  // ses deux add-lines, comme des dizaines de handlers de paquets : donner le
-  // clavier à chacun, c'est voler ses touches de déplacement au joueur à chaque
-  // annonce du serveur. `/bm`, lui, garde la main tout seul (l'envoi du texte
-  // repose déjà le focus sur la saisie).
-  void RequestInputBarDeploy() { deploy_pending_ = true; }
+  // 🔴 LES TOUCHES QUE LE WndProc NOUS CONFISQUE, REMISES DIRECTEMENT. Sans ça
+  // elles se perdent, et c'est le piège le moins visible de tout ce fichier :
+  // `OnKeyDown` n'est PAS branché sur le WndProc — il vient de
+  // `Bourgeon::FireKeyDown`, appelé depuis `UIWindowMgr::ProcessPushButtonHook`,
+  // c'est-à-dire depuis LE JEU. Dès que la barre est ouverte sans clavier, le
+  // WndProc retire la touche au jeu (sinon la lettre déplacerait le personnage) —
+  // et du même coup il affame notre propre handler. Entrée et Échap ne
+  // refermaient alors plus rien.
+  void OnRawKey(unsigned long vkey);
+
+  // 🔴 « TAPER ÉCRIT DANS LA BARRE », SANS TENIR L'`ActiveId`. Vrai quand la barre
+  // est dépliée en battle mode et que personne n'écrit ailleurs : les caractères
+  // sont alors CONFISQUÉS au jeu (sinon ils déplaceraient le personnage) et remis
+  // à la saisie, qui prend le clavier au passage.
+  //
+  // C'est ce qui reste de l'invariant du chat natif, une fois admis qu'ImGui
+  // interdit de garder l'`ActiveId` en permanence (cf. le bloc du battle mode plus
+  // bas) : le joueur retrouve « j'ouvre, je clique ailleurs, je tape, ça s'écrit
+  // dans le chat » sans qu'aucun clic ni double-clic ne soit sacrifié.
+  //
+  // Lu aussi par le WndProc, qui décide de rendre ou non la touche au client.
+  bool WantsTypedKeys() const;
+
+  // 🔴 ÉCHAP NOUS APPARTIENT tant que la barre est dépliée en battle mode, même
+  // sans le clavier. Lu par le WndProc pour la confisquer au jeu : sans ça, la
+  // frappe qui referme la barre ouvrirait AUSSI le menu du client — deux effets
+  // pour un geste. Le pendant de `ro::AnyEscapeWindowOpen`, pour une barre qui
+  // n'est pas une fenêtre RO.
+  bool WantsEscapeKey() const;
 
   // Interrupteur de la fenêtre (persisté par MoonlightUi, clé « chatwnd_imgui »).
   // Public comme chez les autres fenêtres modernes : c'est la table de réglages
@@ -100,7 +120,6 @@ class ChatWindow : public Plugin {
   int&  history_cap()  { return history_cap_; }
   bool& keep_history() { return keep_history_; }
   int&  keep_lines()   { return keep_lines_; }
-  bool& locked()          { return locked_; }          // géométrie figée
   // Avertir avant d'ouvrir une adresse dans le navigateur. Opt-OUT : par défaut
   // on avertit, parce qu'un lien de chat vient d'un tiers et que le texte
   // affiché n'a aucun rapport obligé avec la destination. Le joueur qui sait ce
@@ -176,8 +195,14 @@ class ChatWindow : public Plugin {
   // depuis un handler de paquet : hors frame ImGui, sur le fil principal.
   // Renvoie true si la ligne a été prise en charge — l'appelant dit alors au
   // client qu'une fenêtre l'a consommée, exactement comme sa popup native.
+  //
+  // 🔴 `outgoing` est le SENS, et il ne se devine nulle part ailleurs : le texte
+  // du pivot est composé pour la fenêtre 1:1 (« <qui parle> : … ») et ne porte
+  // aucun « To »/« From ». Seule la couleur-marqueur du client le dit. Il sert à
+  // l'en-tête de la copie que cette ligne dépose dans le JOURNAL — sans quoi un
+  // chuchotement s'y lit comme une parole publique.
   bool IngestWhisper(const char* with_wire, const char* text_wire, uint32_t rgb,
-                     uint32_t aid);
+                     uint32_t aid, bool outgoing);
 
   // Ouvre (ou ramène) la conversation avec ce joueur, et lui donne le clavier —
   // c'est un geste EXPLICITE, contrairement à la réception d'un message. `name`
@@ -384,6 +409,13 @@ class ChatWindow : public Plugin {
     // secondes après le geste, sans rien pour l'expliquer. À retirer le jour où
     // l'on déplacera vraiment l'entrée entre les deux registres natifs.
     bool        detach_owned = false;
+    // Géométrie figée de SA fenêtre — n'a de sens que détaché (une conversation
+    // 1:1 l'est aussi). 🔴 Le verrou est une propriété de la FENÊTRE, pas du
+    // joueur : une fenêtre qu'on vient d'arracher n'hérite donc PAS de celui de
+    // la fenêtre principale, sinon elle naîtrait immobile là où le joueur l'a
+    // lâchée, sans rien pour le lui dire. Il se pose depuis le menu contextuel de
+    // son en-tête.
+    bool        locked = false;
     uintptr_t   node = 0;
     uint8_t     filter[25] = {};
     // Métriques de mise en page de SA fenêtre, mesurées à la frame précédente
@@ -509,11 +541,26 @@ class ChatWindow : public Plugin {
   void  DrawLines(const Channel& channel);
   void  DrawInputRow();
   // Grille des emotes du jeu. Le clic ENVOIE : voir SendTextNow.
-  void  DrawEmotePicker();
-  bool  SendTextNow(const char* text);
+  //
+  // `whisper_index` désigne la conversation 1:1 depuis laquelle la grille est
+  // ouverte, ou -1 pour la barre principale. Il ne sert pas qu'au destinataire :
+  // c'est aussi lui qui dit à QUELLE saisie rendre le clavier après l'envoi.
+  // 🔴 Le popup vit dans la fenêtre COURANTE (ImGui hache son identifiant avec la
+  // pile de celle-ci), donc `DrawEmotePicker` doit être appelé dans la même
+  // fenêtre que le bouton qui l'ouvre — sans quoi deux conversations ouvertes se
+  // partageraient une grille et la mauvaise recevrait l'emote.
+  void  DrawEmotePicker(int whisper_index = -1);
+  // `whisper_utf8` nul = le destinataire courant de la barre principale.
+  bool  SendTextNow(const char* text, const char* whisper_utf8 = nullptr);
   void  DrawLogOptionsPopup();
   void  CreateChannel();
   void  CloseChannel(int index);
+  // Réordonne la bande : l'onglet `from` (un indice de `channels_`) va se placer
+  // au rang `dest_slot`, compté PARMI LES ONGLETS DOCKÉS tels qu'ils sont
+  // dessinés — 0 = tout devant, `nombre d'onglets` = tout au bout. Les fenêtres
+  // détachées ne bougent pas d'un cran : elles ne sont pas dans la bande, et leur
+  // rang dans `channels_` ne se voit nulle part.
+  void  ReorderDockedChannel(int from, int dest_slot);
 
   // ── Persistance de la disposition (SaveData\bourgeon_chat.yaml) ─────────────
   // Ce que le joueur a construit — ses onglets, leurs noms, leur ordre, ce qui est
@@ -583,16 +630,26 @@ class ChatWindow : public Plugin {
   // dessine à partir d'elle, avec des tailles explicites — donc sans dépendre de
   // ce qu'une fenêtre enfant hérite ou non de sa parente.
   float base_font_size_ = 0.0f;
-  // Verrouillage de la géométrie : plus de déplacement ni de redimensionnement,
-  // ni pour la fenêtre dockée ni pour les flottantes. Les onglets, les menus et
-  // l'arrachage continuent de fonctionner — c'est la GÉOMÉTRIE qui est figée, pas
-  // la fenêtre.
+  // Verrouillage de la géométrie de la fenêtre PRINCIPALE : plus de déplacement
+  // ni de redimensionnement. Les onglets, les menus et l'arrachage continuent de
+  // fonctionner — c'est la GÉOMÉTRIE qui est figée, pas la fenêtre.
+  //
+  // 🔴 Il ne vaut QUE pour elle. Chaque fenêtre détachée porte le sien
+  // (`Channel::locked`) : verrouiller le chat principal parce qu'on l'a bien placé
+  // ne doit pas clouer au sol une flottante qu'on vient d'arracher. Les deux se
+  // posent au même endroit — le menu contextuel de l'onglet ou de l'en-tête — et
+  // se rangent dans le fichier de DISPOSITION, avec le reste de la géométrie,
+  // plutôt que dans les réglages généraux.
   bool locked_         = false;
   bool url_confirm_    = true;   // opt-OUT : le garde-fou est là par défaut
   bool url_preview_    = false;  // opt-IN : rien n'est téléchargé sans accord
   int  font_family_    = 0;      // 0 = Système (cf. ro::ChatFamilyFont)
   bool thumbs_         = false;  // afficher les vignettes ? (opt-in)
   int  thumb_px_       = 48;     // hauteur, bornée 24..128
+  // Arme le bouton d'export des emotes, au bas de la grille. Staff seulement, et
+  // volontairement NON persisté : c'est une manipulation ponctuelle, pas un
+  // réglage — chaque session repart désarmée.
+  bool emote_export_   = false;
   std::string url_hosts_;        // hôtes autorisés par le joueur, « a.com;b.net »
   std::string url_hosts_seen_;   // dernière valeur poussée vers imgprev
   int  padding_px_     = 3;
@@ -684,14 +741,59 @@ class ChatWindow : public Plugin {
   // déjà le focus (recherche, renommage, panneau de réglages) évite de la lui
   // voler à chaque Entrée.
   bool enter_pending_ = false;
-  // Idem pour l'action 3 de ChatAction : déplier la barre, sans toucher au focus.
-  bool deploy_pending_ = false;
+  // Idem pour ÉCHAP, et pour la même raison : la barre peut être ouverte SANS
+  // avoir le clavier, et il n'y a alors aucun widget pour voir la touche.
+  bool escape_pending_ = false;
+  // 🔴 Les caractères capturés à la frame N, rendus à ImGui à la frame N+1 — pas
+  // écrits dans `input_`. La nuance est vitale : `SetKeyboardFocusHere` active le
+  // champ par le chemin du TABULATEUR, qui SÉLECTIONNE TOUT dès que le tampon a
+  // changé depuis la dernière fois (imgui_widgets.cpp 4894, `recycle_state`).
+  // Écrire le caractère dans le tampon puis demander le focus, c'est donc le voir
+  // sélectionné — et effacé par la frappe suivante. Rendu à `AddInputCharacter`
+  // une frame plus tard, il s'insère au curseur comme n'importe quelle frappe.
+  std::vector<ImWchar> typed_pending_;
   // ── Battle mode (`/bm`) ─────────────────────────────────────────────────────
-  // Barre masquée ; Entrée l'ouvre et lui donne le focus ; Échap, un clic ailleurs
-  // ou un envoi À VIDE la referment. Ce dernier est le vrai confort : on sort du
-  // chat sans lâcher le clavier, en deux Entrée.
+  // Barre masquée. Les règles, et elles valent que la barre ait le clavier ou
+  // non — c'est tout l'enjeu :
+  //   • ENTRÉE, barre fermée      → ouvre, avec le clavier ;
+  //   • ENTRÉE, ouverte et vide   → SORT, en une frappe ;
+  //   • ENTRÉE, ouverte et pleine → ENVOIE, et garde la main ;
+  //   • ÉCHAP, ouverte            → SORT, en une frappe ;
+  //   • une LETTRE, ouverte       → s'écrit dans la barre, qui prend le clavier.
+  // 🔴 La dernière ligne est ce qui rend les autres possibles : tant qu'Entrée
+  // devait servir à reprendre le clavier, elle ne pouvait pas refermer, et une
+  // barre ouverte sans focus devenait un piège — ni sortie ni écriture sans
+  // aller cliquer dedans à la souris.
+  //
+  // ⛔ IL N'Y A PAS D'ÉTAT « TOUJOURS FOCALISÉE », ET IL NE PEUT PAS Y EN AVOIR.
+  // Le chat natif ne rend jamais le clavier tant que sa barre est ouverte ; on a
+  // essayé de tenir la même règle en reprenant le focus dès qu'il partait, et ça
+  // a cassé TOUTES les interactions à la souris du client. La cause est le modèle
+  // d'ImGui, pas notre code : tant qu'un widget détient l'`ActiveId`, plus rien
+  // n'est survolable ailleurs (`ItemHoverable`, imgui.cpp 4982), la fenêtre visée
+  // n'est même pas focalisée par le clic (8507), et le repli au double-clic d'une
+  // barre de titre exige `g.ActiveId == 0` (7715). Résultat : premier clic mangé
+  // partout, double-clic impossible. `ActiveIdAllowOverlap`, qui lèverait tout
+  // ça, n'est réglable que depuis le glisser-déposer.
+  //
+  // Donc : la saisie prend le clavier sur un GESTE (Entrée, un clic dedans, un
+  // envoi, un lien posé), et le rend comme n'importe quel champ ImGui. Ce que
+  // l'invariant protégeait vraiment — sortir en une frappe — est tenu par Échap,
+  // traité hors du champ.
+  //
+  // Conséquences ailleurs dans le code, à ne pas défaire :
+  //   • tout ce qui pose `input_open_` pose AUSSI le focus (liens d'objet…) ;
+  //   • l'action 3 de ChatAction n'ouvre RIEN (cf. ChatActionFilter) : le client
+  //     l'émet à chaque annonce, et ouvrir en volant le clavier prendrait les
+  //     touches de déplacement du joueur ;
+  //   • les DEUX champs referment : Entrée depuis « Pseudo » vaut Entrée depuis
+  //     la saisie, comme au natif.
   bool battle_mode_ = false;  // reflet de g_BattleModeOn, relu à chaque frame
   bool input_open_  = false;  // en battle mode uniquement : barre dépliée ?
+  // Laquelle des deux boxes portait le clavier en dernier : c'est à celle-là
+  // qu'on le rend après un envoi, une emote cliquée ou un lien posé. Le natif ne
+  // déplace pas le curseur du joueur sous prétexte qu'on a cliqué un bouton.
+  bool focus_on_whisper_ = false;
   // Lit le drapeau du CLIENT (`g_BattleModeOn 0x0131F50E`, persisté dans son
   // OptionInfo). On le lit plutôt que de suivre la commande : ainsi la valeur
   // restaurée à la connexion et toute bascule venue d'ailleurs nous parviennent.

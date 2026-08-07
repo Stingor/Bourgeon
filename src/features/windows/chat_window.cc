@@ -129,6 +129,12 @@ constexpr int kTypeCount     = 25;
 constexpr int kTypeBroadcast = 0x19;
 constexpr int kTypeWhisper   = 2;
 
+// L'emote qui sert d'étiquette au bouton du sélecteur : `ET_SMILE`, la seule qui
+// annonce sans ambiguïté ce qu'on va trouver derrière. Déclarée ICI, avec les
+// autres constantes : le bouton existe à DEUX endroits — la barre principale et
+// chaque conversation 1:1 — et la première est dessinée bien avant la grille.
+constexpr int kEmotePickerIcon = 18;
+
 // ── « Friend Setup » du client (UIFriendOptionWnd, Alt+I) ────────────────────
 // Les deux cases qui décident si une conversation privée s'ouvre en fenêtre, et
 // la troisième qui la fait sonner. Relevées dans `UIFriendOptionWnd_OnCreate`
@@ -301,14 +307,22 @@ uint32_t DeobfuscateAid(const char* display) {
 int __cdecl ChatActionFilter(int action, const char* text, int color,
                              int type, const char* sender) {
   // 🔴 Action 3 = `ToggleWindow(mgr, 1)` + msg 0x10 : le client RECRÉE sa chatbox
-  // pour déployer sa barre de saisie — c'est ce que fait `/bm`. La détruire après
-  // coup depuis OnProcessInput laissait la native visible quelques frames, le
-  // temps d'un aller-retour. On l'empêche donc de naître, et on traduit
-  // l'intention : ouvrir NOTRE saisie et lui donner le focus.
-  if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_) {
-    g_chat_window->RequestInputBarDeploy();
+  // pour déployer sa barre de saisie. La détruire après coup depuis OnProcessInput
+  // laissait la native visible quelques frames, le temps d'un aller-retour. On
+  // l'empêche donc de naître — c'est tout ce que fait ce `return 1`.
+  //
+  // 🔴 ET ON N'OUVRE RIEN CHEZ NOUS. L'intention semble pourtant claire (« déplie
+  // la saisie »), mais deux règles se croisent : une barre ouverte a le clavier
+  // (l'invariant du battle mode, cf. chat_window.h), et le client émet cette
+  // action à tout bout de champ — le handler d'annonce `sub_00CB7510` l'appelle
+  // (0x00cb7957) comme des dizaines d'autres handlers de paquets. Obéir, c'est
+  // donc voler les touches de déplacement du joueur à chaque annonce du serveur ;
+  // ouvrir sans le clavier, c'est fabriquer l'état « ouverte sans focus » qui
+  // coûte une Entrée à la sortie. Il ne reste qu'à ne pas ouvrir, et rien n'est
+  // perdu : le battle mode ne masque QUE la ligne de saisie, le log continue
+  // d'afficher l'annonce.
+  if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_)
     return 1;
-  }
   // 🔴 Action 14 = `UIM_MAKE_WHISPER_WINDOW` : LE SECOND chemin d'ouverture d'une
   // conversation 1:1, et il ne passe PAS par le pivot que nous détournons. Le
   // « Chuchoter » du menu contextuel d'entité appelle `ChatAction(mgr, 14, …)`
@@ -575,9 +589,12 @@ int __cdecl WhisperFilter(const char* name, const char* text, int color,
   if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return 0;
   if (name == nullptr || name[0] == '\0' || text == nullptr) return 0;
 
-  const uint32_t rgb =
-      (color == kWhisperEchoTag) ? kWhisperEchoRgb : kWhisperRecvRgb;
-  return g_chat_window->IngestWhisper(name, text, rgb, aid) ? 1 : 0;
+  // La couleur-marqueur dit le SENS, et c'est la seule chose qui le dise : le
+  // texte, lui, est écrit pour la fenêtre 1:1 (« <qui parle> : … ») et ne porte
+  // aucun « To »/« From ». Le journal en a besoin pour son en-tête.
+  const bool     outgoing = (color == kWhisperEchoTag);
+  const uint32_t rgb      = outgoing ? kWhisperEchoRgb : kWhisperRecvRgb;
+  return g_chat_window->IngestWhisper(name, text, rgb, aid, outgoing) ? 1 : 0;
 }
 
 // Même construction que ChatActionStub : après les trois push de sauvegarde, un
@@ -1668,7 +1685,7 @@ bool ChatWindow::OpenWhisperWindowByAid(const char* name_wire, uint32_t aid) {
 }
 
 bool ChatWindow::IngestWhisper(const char* with_wire, const char* text_wire,
-                               uint32_t rgb, uint32_t aid) {
+                               uint32_t rgb, uint32_t aid, bool outgoing) {
   const std::string with = ro::WireToUtf8(with_wire);
 
   // Ouverture d'une conversation : gouvernée par les MÊMES cases que le client,
@@ -1717,10 +1734,53 @@ bool ChatWindow::IngestWhisper(const char* with_wire, const char* text_wire,
   MarkSenderAsPlayerLink(&line);
   RememberWhisperPeer(line);
 
+  // ── La copie du JOURNAL ─────────────────────────────────────────────────────
+  // 🔴 UN DEVOIR REPRIS AU CLIENT. Le pivot qu'on détourne ne nourrissait pas que
+  // la popup : c'est le même geste qui posait la ligne dans le chat log, avec son
+  // en-tête. En prenant la ligne (retour 1), on a supprimé les DEUX — et le
+  // chuchotement se retrouvait dans le journal sous sa forme de CONVERSATION,
+  // « Nom : texte », impossible à distinguer d'une parole publique. Mesuré en
+  // jeu : `t02P` chez nous, là où le client écrivait `t02A ( To Nom ) : …`.
+  //
+  // On recompose donc l'en-tête, avec les formes du client (§11.7 de
+  // docs/chatbox_re.md) — moins l'AID obfusqué, qui ne dit rien à personne et que
+  // `StripWhisperAidTag` retire déjà partout ailleurs.
+  //
+  // ⚠ Le client choisit entre QUATRE en-têtes selon la relation (ami, membre de
+  // guilde, ni l'un ni l'autre, écho). On n'en emploie que deux, les neutres :
+  // connaître la relation demanderait d'interroger la liste d'amis et la guilde à
+  // chaque ligne, pour une nuance que le journal ne doit pas porter — il doit
+  // dire QUI et DANS QUEL SENS, et c'est tout.
+  //
+  // Le corps commence après le « : » du libellé de conversation ; sans séparateur
+  // reconnu, on reprend le texte entier plutôt que de le tronquer au hasard.
+  const char* message = body;
+  if (separator != nullptr && (separator - body) <= 40) {
+    message = separator + 2;  // au-delà de « :»
+    while (*message == ' ') ++message;
+  }
+  std::string header = outgoing ? "( To " : "( From ";
+  header += (with_wire != nullptr) ? with_wire : "";
+  header += " )";
+
+  Line note;
+  note.source = 'P';
+  note.rgb    = line.rgb;
+  note.type   = line.type;
+  note.hour   = line.hour;
+  note.minute = line.minute;
+  note.second = line.second;
+  // 🔴 `whisper_with` reste VIDE : c'est ce qui l'envoie dans les onglets et
+  // l'écarte des conversations. La ligne d'à côté fait exactement l'inverse.
+  note.sender = ro::WireToUtf8(header.c_str());
+  ParseText((header + " : " + message).c_str(), &note);
+  MarkSenderAsPlayerLink(&note);  // le nom DANS le libellé reste cliquable
+
   std::lock_guard<std::mutex> lock(lines_mutex_);
   ++ingest_seen_;
-  ++ingest_kept_;
+  ingest_kept_ += 2;
   lines_.push_back(std::move(line));
+  lines_.push_back(std::move(note));
   const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
   while (lines_.size() > cap) lines_.pop_front();
   return true;
@@ -2004,10 +2064,22 @@ bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const 
   // pire qu'inutile : c'est la fenêtre où le joueur répond sans relire la cible.
   if (!channel.whisper_with.empty())
     return line.whisper_with == channel.whisper_with;
-  // Et symétriquement : une ligne privée n'apparaît dans les onglets ordinaires
-  // que si le joueur y a laissé le type « Whisper » coché. Le réglage existe
-  // déjà, il est par canal, et il répond exactement à la question « je veux mes
-  // chuchotements aussi dans le chat ? ».
+  // 🔴 ET SYMÉTRIQUEMENT : une ligne qui APPARTIENT à une conversation n'entre
+  // jamais dans un onglet ordinaire. Elle est écrite pour SA fenêtre, en style
+  // conversation — « Gettar : salut », « Stingor : salut » — où le libellé se
+  // devine du titre. Dans le journal, la même ligne est indiscernable d'une
+  // parole publique : c'est exactement ce qu'on lisait, un chuchotement affiché
+  // comme si on l'avait crié sur la place.
+  //
+  // Le journal n'est pas privé de chuchotements pour autant : `IngestWhisper` lui
+  // en pose une copie À LUI, avec l'en-tête du client (« ( To Nom ) »,
+  // « ( From Nom ) ») et SANS `whisper_with` — donc prise ici, et soumise comme
+  // avant à la case « Whisper » de l'onglet.
+  //
+  // Placé AVANT le diagnostic, comme la règle du dessus : c'est du ROUTAGE, pas
+  // du filtrage. Le diagnostic désactive les 25 filtres de type, il ne renvoie pas
+  // une ligne dans une fenêtre qui n'est pas la sienne.
+  if (!line.whisper_with.empty()) return false;
   if (diagnostic_) return true;              // diagnostic : on ne filtre rien
   if (line.type >= kTypeCount) return true;  // broadcast : tous les onglets
   return channel.filter[line.type] != 0;
@@ -2186,19 +2258,122 @@ void ChatWindow::OnRenderUI() {
   // La touche est relevée au clavier, la décision se prend ICI : c'est le seul
   // endroit où l'on sait qu'une AUTRE zone de texte a déjà le focus (recherche,
   // renommage, panneau de réglages). Sans ce test, chaque Entrée le lui volerait.
+  //
+  // 🔴 ET ELLE NE SERT PLUS À REPRENDRE LE CLAVIER. C'était le nœud : tant
+  // qu'Entrée devait d'abord rendre le focus, elle ne pouvait pas refermer, et une
+  // barre ouverte sans clavier devenait un piège — plus moyen d'en sortir ni d'y
+  // écrire sans aller cliquer dedans à la souris. Depuis que TAPER rend le clavier
+  // tout seul (cf. `WantsTypedKeys`), Entrée retrouve son seul sens natif, et il
+  // vaut que la barre ait le focus ou non :
+  //   • fermée        → on l'ouvre, avec le clavier ;
+  //   • ouverte, vide → on SORT, en une frappe ;
+  //   • ouverte, pleine → on ENVOIE, et on garde la main.
   if (enter_pending_) {
     enter_pending_ = false;
+    // Si une zone de texte écrit — la nôtre comprise — c'est elle qui voit la
+    // touche : la ligne de saisie referme et envoie déjà par son propre chemin.
     if (!ImGui::GetIO().WantTextInput) {
-      if (battle_mode_) input_open_ = true;
-      focus_input_next_ = true;
+      if (battle_mode_ && input_open_) {
+        if (input_[0] != '\0') {
+          QueueSend();
+          focus_input_next_ = true;
+        } else {
+          input_open_ = false;
+        }
+      } else {
+        if (battle_mode_) input_open_ = true;
+        focus_input_next_ = true;
+      }
     }
   }
-  // L'action 3 de ChatAction : le client veut voir la barre dépliée. On la déplie
-  // — et RIEN de plus, surtout pas le focus (cf. RequestInputBarDeploy).
-  if (deploy_pending_) {
-    deploy_pending_ = false;
-    if (battle_mode_) input_open_ = true;
+  // ── ÉCHAP referme la barre, avec ou sans clavier ────────────────────────────
+  // 🔴 Traité ICI et pas dans la ligne de saisie, pour la même raison qu'Entrée :
+  // la saisie ne voit Échap que si elle a le focus (`IsItemDeactivated`). Une
+  // barre ouverte que le joueur a quittée d'un clic ne se refermait donc plus du
+  // tout — il fallait deux Entrée, une pour reprendre la main et une pour la ligne
+  // vide. C'EST LA SORTIE À UNE FRAPPE, à n'importe quel moment, et c'est ce qui
+  // permet à la barre de rendre le clavier à ImGui sans piéger le joueur.
+  //
+  // Rien si une AUTRE zone de texte écrit : Échap lui appartient (elle annule sa
+  // saisie). Et si c'est NOTRE champ qui l'a, la ligne de saisie s'en charge —
+  // elle seule sait restaurer le texte en même temps.
+  // ── « Taper écrit dans la barre » ───────────────────────────────────────────
+  // 🔴 CAPTURE D'ABORD, RESTITUTION ENSUITE, et cet ordre-là compte : la
+  // restitution passe par `AddInputCharacter`, qui écrit dans la MÊME file que
+  // celle qu'on lit ici. L'inverse relirait ce qu'on vient d'y remettre, en
+  // boucle.
+  //
+  // On ne capture pas tant qu'une demande de focus est en vol : le champ
+  // s'active à la frame suivante et reprend alors la file tout seul.
+  ImGuiIO& io = ImGui::GetIO();
+  if (WantsTypedKeys() && typed_pending_.empty() && !focus_input_next_ &&
+      !focus_whisper_next_ && io.InputQueueCharacters.Size > 0) {
+    for (ImWchar ch : io.InputQueueCharacters) {
+      // Seuls les caractères IMPRIMABLES ouvrent la saisie. Entrée (0x0D) a son
+      // propre chemin, Retour arrière et Tabulation n'ont rien à effacer ni à
+      // parcourir dans un champ qui n'est pas encore là.
+      if (ch >= 0x20 && ch != 0x7F) typed_pending_.push_back(ch);
+    }
+    if (!typed_pending_.empty()) {
+      if (focus_on_whisper_)
+        focus_whisper_next_ = true;
+      else
+        focus_input_next_ = true;
+    }
   }
+  // Rendues dès que la demande de focus est partie (les drapeaux sont retombés) :
+  // le champ s'active à CETTE frame-ci, et il lit la file au moment où il est
+  // soumis — donc après nous.
+  if (!typed_pending_.empty() && !focus_input_next_ && !focus_whisper_next_) {
+    // Ce que le joueur a tapé PENDANT le battement passe derrière : on vide la
+    // file et on la réécrit dans l'ordre, sinon la deuxième lettre arriverait
+    // avant la première.
+    for (ImWchar ch : io.InputQueueCharacters) typed_pending_.push_back(ch);
+    io.InputQueueCharacters.resize(0);
+    // Barre disparue entre-temps (réglage, sortie du battle mode) : on jette
+    // plutôt que de garder des frappes qui ressortiraient bien plus tard.
+    if (InputRowVisible())
+      for (ImWchar ch : typed_pending_) io.AddInputCharacter(ch);
+    typed_pending_.clear();
+  }
+
+  if (escape_pending_) {
+    escape_pending_ = false;
+    if (battle_mode_ && input_open_ && !ImGui::GetIO().WantTextInput) {
+      input_open_ = false;
+      // La touche est CONSOMMÉE : sans ça elle refermerait aussi la fenêtre RO du
+      // dessus (`ro::ProcessEscapeStack`, après tous les OnRenderUI).
+      ro::SuppressEscapeStack();
+    }
+  }
+
+  // ── ⛔ IL N'Y A PLUS DE REPRISE AUTOMATIQUE DU CLAVIER, ET IL NE PEUT PAS Y EN
+  // AVOIR. Elle a existé ici, pour tenir la règle du chat natif : « une barre
+  // ouverte ne lâche jamais le clavier ». Elle tenait — au prix de TOUTES les
+  // interactions à la souris du client, et ce n'est pas réparable.
+  //
+  // La cause est dans le modèle d'ImGui, pas dans notre code : tant qu'un widget
+  // détient l'`ActiveId`, TOUT le reste est réputé non survolable. Quatre portes
+  // le disent, toutes vérifiées dans imgui.cpp :
+  //   • `ItemHoverable` (4982) et `ButtonBehavior` (4894) : aucun autre widget
+  //     n'est survolable ⇒ le PREMIER clic ailleurs ne sert qu'à défocaliser ;
+  //   • `IsWindowHovered` (8507) : la fenêtre visée n'est même pas focalisée par
+  //     ce clic ;
+  //   • le repli au double-clic sur une barre de titre (7715) exige
+  //     `g.ActiveId == 0` — un double-clic ne pouvait donc JAMAIS aboutir, la
+  //     reprise reprenant l'`ActiveId` entre les deux clics.
+  // Et `ActiveIdAllowOverlap`, qui lèverait ces refus, n'est réglable que depuis
+  // le glisser-déposer : aucune API publique ne l'expose.
+  //
+  // La saisie ne prend donc le clavier QUE sur un geste : Entrée, un clic dedans,
+  // un envoi, un lien posé. C'est le comportement de n'importe quelle application
+  // ImGui, et le joueur le connaît sans l'avoir appris.
+  //
+  // 🔴 CE QUI COMPTAIT VRAIMENT EST PRÉSERVÉ — la sortie à UNE frappe, à
+  // n'importe quel moment : Échap referme la barre avec ou sans clavier (juste
+  // au-dessus), et Entrée sur un texte vide la referme quand elle l'a. Le seul
+  // renoncement est de taper SANS avoir repris la main d'abord ; une Entrée la
+  // rend, et elle ne se perd pas — elle ouvre la saisie.
 
   DrawDockedWindow();
   // Parcours par INDICE : le rendu d'une flottante peut basculer son `detached`
@@ -2271,8 +2446,15 @@ ro::RoChatSkin ChatWindow::MakeSkin(const Channel* channel) const {
   // Verrouillage : ni déplacement ni redimensionnement. Une chatbox bien réglée se
   // déplace ensuite par accident, en visant un onglet — c'est précisément ce que
   // cette option évite.
-  skin.movable   = !locked_;
-  skin.resizable = !locked_;
+  //
+  // 🔴 UN VERROU PAR FENÊTRE. Un canal détaché — conversation 1:1 comprise — porte
+  // le sien ; la fenêtre principale a `locked_`. Les confondre, c'était clouer au
+  // sol une flottante qu'on venait d'arracher parce que le chat principal, lui,
+  // était bien placé.
+  const bool frozen = (channel != nullptr && channel->detached) ? channel->locked
+                                                                : locked_;
+  skin.movable   = !frozen;
+  skin.resizable = !frozen;
   return skin;
 }
 
@@ -2433,7 +2615,7 @@ void ChatWindow::DrawDetachedHeader(int index) {
   // la bande — la fenêtre n'ayant pas de barre de titre, on lui retirerait sa
   // poignée la plus naturelle. On déplace donc nous-mêmes, ce qui a l'avantage de
   // faire du même geste le recollage : c'est le lâcher qui tranche.
-  if (ImGui::IsItemActive() && !locked_) {
+  if (ImGui::IsItemActive() && !channel.locked) {
     const ImVec2 delta = ImGui::GetIO().MouseDelta;
     if (delta.x != 0.0f || delta.y != 0.0f) {
       // API PUBLIQUE (`GetWindowPos`/`SetWindowPos` sans argument de fenêtre) : la
@@ -2475,8 +2657,17 @@ void ChatWindow::DrawDetachedHeader(int index) {
         "Clic droit : options du log.");
     ImGui::PopStyleColor();
   }
-  dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + h), bg);
-  dl->AddRect(origin, ImVec2(origin.x + width, origin.y + h),
+  // 🔴 L'ONGLET GARDE SA TAILLE, celle qu'il avait dans la bande : le texte plus
+  // 14 px, comme `DrawTabStrip`. Peint sur toute la largeur, il ne ressemblait plus
+  // à un onglet mais à une barre de titre — alors que c'est bien le MÊME objet,
+  // celui qu'on vient d'arracher et qu'on peut rendre.
+  //
+  // ⚠ La ZONE SENSIBLE, elle, reste toute la bande : la fenêtre n'a pas de barre
+  // de titre, c'est par là qu'on la déplace et qu'on la recolle. Rétrécir le
+  // bouton avec le dessin retirerait au joueur la poignée qu'il utilise déjà.
+  const float tab_w = ImGui::CalcTextSize(channel.name.c_str()).x + 14.0f;
+  dl->AddRectFilled(origin, ImVec2(origin.x + tab_w, origin.y + h), bg);
+  dl->AddRect(origin, ImVec2(origin.x + tab_w, origin.y + h),
               IM_COL32(0x30, 0x30, 0x30, 200));
   dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
               channel.name.c_str());
@@ -2549,7 +2740,7 @@ void ChatWindow::DrawWhisperHeader(int index) {
   const float close_w = h;
   ImGui::InvisibleButton("##whisper_head", ImVec2(std::max(width - close_w, 1.0f), h));
   const bool hovered = ImGui::IsItemHovered();
-  if (ImGui::IsItemActive() && !locked_) {
+  if (ImGui::IsItemActive() && !channel.locked) {
     const ImVec2 delta = ImGui::GetIO().MouseDelta;
     if (delta.x != 0.0f || delta.y != 0.0f) {
       const ImVec2 p = ImGui::GetWindowPos();
@@ -2604,6 +2795,40 @@ void ChatWindow::DrawWhisperInput(int index) {
   Channel& channel = channels_[index];
   char buffer[256];
   CopyBounded(buffer, sizeof(buffer), channel.whisper_input.c_str());
+
+  // ── Le sélecteur d'emotes, ici aussi ────────────────────────────────────────
+  // Même bouton que la barre principale, même grille. Une conversation est
+  // justement l'endroit où l'on répond d'un sourire plutôt que d'une phrase, et
+  // aller le chercher dans le chat principal l'enverrait au mauvais destinataire.
+  //
+  // 🔴 Le popup porte le MÊME nom que celui de la barre principale, et c'est
+  // voulu : ImGui hache l'identifiant avec la pile de la fenêtre courante, donc
+  // chaque conversation a le sien. Ce qui compte, c'est que le bouton et
+  // `DrawEmotePicker` soient dans la MÊME fenêtre — sinon deux conversations
+  // ouvertes se partageraient une grille, et la mauvaise recevrait l'emote.
+  const float  pick_side = ImGui::GetFrameHeight();
+  const ImVec2 pick_pos  = ImGui::GetCursorScreenPos();
+  ImGui::PushID(static_cast<int>(channel.id));
+  if (ImGui::Button("##whisper_emote_btn", ImVec2(pick_side, pick_side)))
+    ImGui::OpenPopup("##chat_emote_grid");
+  const bool pick_hovered = ImGui::IsItemHovered();
+  {
+    const ImVec2 in_min(pick_pos.x + 2.0f, pick_pos.y + 2.0f);
+    const ImVec2 in_max(pick_pos.x + pick_side - 2.0f, pick_pos.y + pick_side - 2.0f);
+    if (!ro::emote::Draw(ImGui::GetWindowDrawList(), kEmotePickerIcon, in_min, in_max,
+                         static_cast<float>(ImGui::GetTime()), true)) {
+      ImGui::GetWindowDrawList()->AddText(in_min, kDarkText, ":)");
+    }
+  }
+  if (pick_hovered) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip("Emotes du jeu.\nUn clic l'ENVOIE à %s, seule.",
+                      channel.whisper_with.c_str());
+    ImGui::PopStyleColor();
+  }
+  DrawEmotePicker(index);
+  ImGui::PopID();
+  ImGui::SameLine();
 
   ImGui::SetNextItemWidth(-FLT_MIN);
   char field_id[64];
@@ -2711,6 +2936,15 @@ float ChatWindow::DrawTabStrip() {
   const ImU32 tab_active = Lighten(tab_idle, 58);
   const ImU32 tab_edge = IM_COL32(0x30, 0x30, 0x30, 200);
 
+  // Bords de chaque onglet DESSINÉ, relevés au passage : c'est ce qui dit, au
+  // moment du dépôt, entre quels deux voisins le curseur se trouve. Un tableau
+  // fixe plutôt qu'un vecteur — la bande ne peut pas porter plus de canaux que le
+  // plafond, et c'est une mesure de frame, pas de l'état. Le RANG suffit : c'est
+  // dans cette numérotation-là que `ReorderDockedChannel` prend son argument.
+  float slot_x0[kMaxChannels] = {};
+  float slot_x1[kMaxChannels] = {};
+  int   slot_n = 0;
+
   float x = 0.0f;
   for (size_t i = 0; i < channels_.size(); ++i) {
     const Channel& channel = channels_[i];
@@ -2743,14 +2977,21 @@ float ChatWindow::DrawTabStrip() {
       // Un menu contextuel sans indice ne se découvre pas. Le fond de l'infobulle
       // est clair : le texte doit repasser en sombre pour rester lisible.
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-      ImGui::SetTooltip("Clic droit : options du log de « %s »\nGlisser dehors : détacher",
-                        channel.name.c_str());
+      ImGui::SetTooltip(
+          "Clic droit : options du log de « %s »\n"
+          "Glisser dans la bande : réordonner\nGlisser dehors : détacher",
+          channel.name.c_str());
       ImGui::PopStyleColor();
     }
 
     const bool active = (active_channel_ == static_cast<int>(i));
     const ImVec2 p0(origin.x + x, origin.y);
     const ImVec2 p1(p0.x + w, p0.y + h);
+    if (slot_n < kMaxChannels) {
+      slot_x0[slot_n] = p0.x;
+      slot_x1[slot_n] = p1.x;
+      ++slot_n;
+    }
     dl->AddRectFilled(p0, p1, active ? tab_active
                                      : (hovered ? Lighten(tab_idle, 24) : tab_idle));
     dl->AddRect(p0, p1, tab_edge);
@@ -2764,9 +3005,41 @@ float ChatWindow::DrawTabStrip() {
   strip_max_   = ImVec2(origin.x + strip_w, origin.y + h);
   strip_valid_ = true;
 
-  // Fin de l'arrachage. Le lâcher tranche : dans la bande, rien ne se passe (le
-  // geste n'était qu'un clic maladroit) ; dehors, le canal part dans sa fenêtre,
-  // posée là où le joueur l'a lâchée.
+  // ── Où l'onglet tombera-t-il, s'il tombe ici ? ──────────────────────────────
+  // Le rang visé se lit au MILIEU de chaque onglet, pas à son bord : c'est le
+  // point de bascule naturel — dépasser la moitié d'un voisin, c'est passer
+  // devant lui. Comparer aux bords ferait une zone morte large d'un onglet entre
+  // deux positions, où le trait ne bougerait pas.
+  //
+  // 🔴 Le rang est compté dans la bande TELLE QU'ELLE EST DESSINÉE, celui qu'on
+  // déplace COMPRIS. C'est ce que le joueur voit, et c'est donc la seule
+  // numérotation qui puisse correspondre à son geste ; `ReorderDockedChannel`
+  // fait la conversion.
+  int insert_slot = -1;  // -1 = aucun dépôt dans la bande en cours
+  if (drag_tab_ >= 0) {
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (mouse.x >= strip_min_.x && mouse.x <= strip_max_.x &&
+        mouse.y >= strip_min_.y && mouse.y <= strip_max_.y) {
+      insert_slot = slot_n;  // au-delà du dernier milieu : tout au bout
+      for (int k = 0; k < slot_n; ++k) {
+        if (mouse.x < (slot_x0[k] + slot_x1[k]) * 0.5f) {
+          insert_slot = k;
+          break;
+        }
+      }
+      // Le trait d'insertion, entre les deux voisins. Sans lui le joueur lâche à
+      // l'aveugle et découvre l'ordre obtenu après coup.
+      const float caret_x = (insert_slot < slot_n)
+                                ? slot_x0[insert_slot] - 1.0f
+                                : (slot_n > 0 ? slot_x1[slot_n - 1] + 1.0f : origin.x);
+      dl->AddLine(ImVec2(caret_x, origin.y), ImVec2(caret_x, origin.y + h), kLinkCol,
+                  2.0f);
+    }
+  }
+
+  // Fin du glissement. Le lâcher tranche : dans la bande, l'onglet prend le rang
+  // que montrait le trait ; dehors, le canal part dans sa fenêtre, posée là où le
+  // joueur l'a lâchée.
   if (drag_tab_ >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
     const int dragged = drag_tab_;
     drag_tab_ = -1;
@@ -2777,10 +3050,17 @@ float ChatWindow::DrawTabStrip() {
       int docked = 0;
       for (const Channel& other : channels_)
         if (!other.detached) ++docked;
-      if (!inside && docked > 1) {
+      if (inside && insert_slot >= 0) {
+        ReorderDockedChannel(dragged, insert_slot);
+      } else if (!inside && docked > 1) {
         Channel& target = channels_[dragged];
         target.detached     = true;
         target.detach_owned = true;
+        // 🔴 La flottante naît LIBRE. Elle vient d'être posée d'un geste, à un
+        // endroit choisi à la souris : la première chose que le joueur voudra en
+        // faire est la déplacer ou la retailler. Hériter du verrou de la fenêtre
+        // principale la rendrait immobile sans que rien ne l'annonce.
+        target.locked       = false;
         structure_owned_    = true;
         layout_dirty_       = true;
         pending_pos_id_     = target.id;
@@ -3380,16 +3660,13 @@ static uint32_t DarkenForLightBody(uint32_t col) {
 // Ligne de saisie, disposée comme celle du client : box du destinataire à
 // gauche (« Pseudo »), puis la saisie. Les champs sont CLAIRS (le cadre pousse
 // FrameBg pour ça) — le texte doit donc y être sombre.
-// L'emote qui sert d'étiquette au bouton du sélecteur : `ET_SMILE`, la seule qui
-// annonce sans ambiguïté ce qu'on va trouver derrière.
-constexpr int kEmotePickerIcon = 18;
 
 // ── La grille ────────────────────────────────────────────────────────────────
 // Ne montre QUE ce que le GRF de ce client contient : la table des noms est celle
 // du protocole, plus longue que le fichier sur la plupart des installations.
 // Proposer une case vide serait promettre une emote qui ne s'afficherait chez
 // personne — pas même chez celui qui l'a écrite.
-void ChatWindow::DrawEmotePicker() {
+void ChatWindow::DrawEmotePicker(int whisper_index) {
   if (!ImGui::BeginPopup("##chat_emote_grid")) return;
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
 
@@ -3431,7 +3708,25 @@ void ChatWindow::DrawEmotePicker() {
       //
       // Ce que le joueur avait déjà tapé n'est pas touché : il le retrouve
       // intact en revenant au champ.
-      SendTextNow(code);
+      Channel* target =
+          (whisper_index >= 0 && whisper_index < static_cast<int>(channels_.size()))
+              ? &channels_[whisper_index]
+              : nullptr;
+      SendTextNow(code, (target != nullptr) ? target->whisper_with.c_str() : nullptr);
+      // 🔴 ET LE CLAVIER REVIENT, comme après un envoi ordinaire — à la saisie
+      // D'OÙ L'ON PART. Le geste est une SOURIS, mais ce qui suit reste du
+      // clavier : sans ça le joueur doit recliquer dans le champ pour continuer
+      // sa phrase, et il ne comprend pas pourquoi.
+      if (target != nullptr) {
+        target->whisper_focus = true;
+        // La conversation vient de servir : elle ne doit pas être celle qu'on
+        // sacrifie quand le plafond de fenêtres est atteint.
+        target->whisper_stamp = GetTickCount();
+      } else if (focus_on_whisper_) {
+        focus_whisper_next_ = true;
+      } else {
+        focus_input_next_ = true;
+      }
       // Fermer sur le clic : c'est un envoi, pas une palette où l'on pioche.
       ImGui::CloseCurrentPopup();
     }
@@ -3441,11 +3736,14 @@ void ChatWindow::DrawEmotePicker() {
 
   ImGui::EndChild();
 
-  // ── Export, réservé au staff ────────────────────────────────────────────────
+  // ── Export, sur demande explicite ───────────────────────────────────────────
   // Ce n'est pas une fonction de jeu mais un outil ponctuel : sortir les emotes
-  // en GIF pour les téléverser comme emojis custom sur Discord, où le relais les
-  // retrouvera par leur nom. Un joueur n'a rien à en faire.
-  if (IsStaff()) {
+  // en GIF pour les héberger, là où le relais Discord ira les chercher par leur
+  // nom. Un joueur n'a rien à en faire, et même le staff n'en a besoin qu'une
+  // fois — d'où la case à armer dans les réglages plutôt qu'un bouton permanent
+  // au milieu de la grille. Et seulement depuis la barre principale : dans une
+  // conversation, un outil de maintenance n'a rien à faire sous le nez du joueur.
+  if (whisper_index < 0 && IsStaff() && emote_export_) {
     ImGui::Separator();
     if (ImGui::SmallButton("Exporter en GIF")) {
       const std::string dir = paths::GameDir() + "emotes_export";
@@ -3474,14 +3772,18 @@ void ChatWindow::DrawEmotePicker() {
 // ou conversation privée comprise, exactement comme un message ordinaire. Et le
 // départ est DIFFÉRÉ comme tous les autres : `FlushPending` tourne hors frame,
 // une commande native jouée pendant le rendu gèle le client.
-bool ChatWindow::SendTextNow(const char* utf8) {
+bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
   if (utf8 == nullptr || utf8[0] == '\0') return false;
   // Un seul envoi peut attendre : écraser celui qui est là perdrait la phrase
   // que le joueur vient de valider. La fenêtre ne dure qu'une frame.
   if (has_pending_) return false;
-  pending_text_    = ro::Utf8ToWire(utf8);
-  pending_whisper_ = ro::Utf8ToWire(whisper_);
-  has_pending_     = true;
+  pending_text_ = ro::Utf8ToWire(utf8);
+  // 🔴 Le destinataire est celui de la fenêtre D'OÙ L'ON PART, pas celui de la
+  // barre principale : une emote cliquée dans une conversation 1:1 doit partir à
+  // ce correspondant-là, même si la box destinataire du chat dit autre chose.
+  pending_whisper_ =
+      ro::Utf8ToWire((whisper_utf8 != nullptr) ? whisper_utf8 : whisper_);
+  has_pending_ = true;
   return true;
 }
 
@@ -3490,12 +3792,27 @@ void ChatWindow::DrawInputRow() {
   ImGui::SetNextItemWidth(90.0f);
   if (focus_whisper_next_) {
     ImGui::SetKeyboardFocusHere();
-    focus_whisper_next_ = false;
+    // Consommée seulement le geste fini, exactement comme pour la saisie plus
+    // bas : `SetKeyboardFocusHere` refuse tant qu'un bouton est enfoncé ou qu'un
+    // glisser court. La reprise du clavier vient justement d'un CLIC — l'effacer
+    // pendant le clic, c'est perdre la demande.
+    if (!ImGui::IsAnyMouseDown() && !ImGui::IsDragDropActive())
+      focus_whisper_next_ = false;
   }
-  ImGui::InputTextWithHint("##chat_whisper", "Pseudo", whisper_, sizeof(whisper_));
+  // 🔴 ENTRÉE VAUT DEPUIS ICI AUSSI. Le natif ne demande pas au joueur de savoir
+  // dans laquelle des deux boxes il a laissé son curseur : Entrée envoie, ou
+  // referme si le texte est vide — que le pseudo soit rempli ou non. Sans
+  // `EnterReturnsTrue`, la touche se perdait et la barre restait ouverte.
+  const bool whisper_submitted = ImGui::InputTextWithHint(
+      "##chat_whisper", "Pseudo", whisper_, sizeof(whisper_),
+      ImGuiInputTextFlags_EnterReturnsTrue);
   // Le focus vit sur DEUX champs, et le battle mode ne doit se refermer que
   // lorsqu'il a quitté les deux (cf. la fin de cette fonction).
-  const bool whisper_active = ImGui::IsItemActive();
+  const bool whisper_active      = ImGui::IsItemActive();
+  // Relevé ICI, collé au widget : plus bas, « l'item » désignerait le dernier
+  // dessiné (chips de liens, menu contextuel), et le test d'Échap porterait sur
+  // autre chose.
+  const bool whisper_deactivated = ImGui::IsItemDeactivated();
   // TAB → la saisie. Elle est dessinée APRÈS dans la même frame, donc le focus
   // bascule immédiatement, sans le battement d'une frame.
   if (whisper_active && ImGui::IsKeyPressed(ImGuiKey_Tab, false))
@@ -3641,8 +3958,9 @@ void ChatWindow::DrawInputRow() {
       history_cb, this);
   // TAB → le champ « Pseudo ». Celui-ci étant dessiné AVANT, la bascule prend
   // effet à la frame suivante : un battement, invisible à la frappe.
-  const bool input_active  = ImGui::IsItemActive();
-  const bool input_hovered = ImGui::IsItemHovered();
+  const bool input_active      = ImGui::IsItemActive();
+  const bool input_deactivated = ImGui::IsItemDeactivated();
+  const bool input_hovered     = ImGui::IsItemHovered();
   if (input_active && ImGui::IsKeyPressed(ImGuiKey_Tab, false))
     focus_whisper_next_ = true;
   ImGui::PopStyleColor();
@@ -3651,9 +3969,13 @@ void ChatWindow::DrawInputRow() {
   DrawInputLinkChips(field_pos, field_w, field_h, input_active, input_hovered);
   links::DrawMenu("##chat_link_menu_input", link_menu_);
   // 🔴 LA PERTE DE FOCUS NE REFERME RIEN. DEUX sorties, toutes deux explicites :
-  // Entrée sur une ligne VIDE (les deux Entrée qui sortent du chat) et ÉCHAP.
-  // Rien d'autre : ni la combo de mode, ni la liste des destinataires, ni un
-  // onglet, ni le log, ni une autre fenêtre, ni un clic dans le décor.
+  // Entrée sur un texte VIDE et ÉCHAP. Rien d'autre : ni la combo de mode, ni la
+  // liste des destinataires, ni un onglet, ni le log, ni une autre fenêtre, ni un
+  // clic dans le décor.
+  //
+  // Le pendant de cette règle est en haut de la fonction : ce qui fait perdre le
+  // focus ne referme pas la barre, DONC la barre doit reprendre le clavier — sans
+  // quoi elle reste ouverte et sourde, et la sortie coûte deux frappes.
   //
   // Il y avait ici une branche « désactivée sans envoi ⇒ on referme », calquée
   // sur le natif — mais « désactivée » attrape des gestes qui n'ont rien d'un
@@ -3662,21 +3984,41 @@ void ChatWindow::DrawInputRow() {
   // s'ouvrait. D'où le test sur la TOUCHE et non sur la désactivation seule ;
   // distinguer autrement les bonnes désactivations des mauvaises reviendrait à
   // courir après chaque nouveau widget de la ligne.
-  if (submitted) {
+  //
+  // 🔴 LA DÉCISION NE REGARDE QUE LE TEXTE, jamais la box d'où vient la touche :
+  // c'est la règle du natif, et c'est aussi la seule qui se retienne.
+  if (submitted || whisper_submitted) {
     if (input_[0] != '\0') {
       QueueSend();          // on GARDE la main, comme le natif
-      focus_input_next_ = true;
+      // ... et on la rend à la box d'où l'on a validé : le natif ne déplace pas
+      // le curseur du joueur pour lui.
+      if (whisper_submitted && !submitted)
+        focus_whisper_next_ = true;
+      else
+        focus_input_next_ = true;
     } else if (battle_mode_) {
-      input_open_ = false;  // ligne vide : première sortie
+      input_open_ = false;  // texte vide : la sortie, en UNE frappe
     }
-  } else if (battle_mode_ && ImGui::IsItemDeactivated() &&
+  } else if (battle_mode_ && (input_deactivated || whisper_deactivated) &&
              ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-    // Seconde sortie. `IsItemDeactivated` + la touche, et pas la touche seule :
-    // c'est bien la saisie qu'Échap vient de quitter (ImGui la désactive et
-    // restaure son texte dans la même frame), pas un Échap tapé ailleurs, qui
+    // L'autre sortie. La désactivation + la touche, et pas la touche seule :
+    // c'est bien une des deux boxes qu'Échap vient de quitter (ImGui la désactive
+    // et restaure son texte dans la même frame), pas un Échap tapé ailleurs, qui
     // appartient au jeu.
     input_open_ = false;
+    // 🔴 ET LA TOUCHE EST CONSOMMÉE. `ro::ProcessEscapeStack` tourne après tous les
+    // OnRenderUI et referme la fenêtre RO la plus au-dessus : sans ce mot-là, une
+    // seule frappe refermait la barre ET une fenêtre derrière. Même mécanique que
+    // les modales, qui s'en servent pour ne pas fermer ce qu'elles recouvrent.
+    ro::SuppressEscapeStack();
   }
+
+  // Laquelle des deux boxes portait le clavier en dernier. Elle SURVIT à la perte
+  // du focus — c'est tout son intérêt : un envoi, une emote cliquée ou un lien
+  // posé rendent le clavier là où le joueur avait laissé son curseur, et pas
+  // d'office dans la saisie.
+  if (whisper_active) focus_on_whisper_ = true;
+  if (input_active) focus_on_whisper_ = false;
 }
 
 // ── Persistance de la disposition ────────────────────────────────────────────
@@ -3690,6 +4032,10 @@ void ChatWindow::LoadLayout() {
   std::vector<Channel> loaded;
   try {
     const YAML::Node root = YAML::Load(file);
+    // Le verrou de la fenêtre PRINCIPALE. Il vit ici plutôt que dans les réglages
+    // généraux parce que c'est de la géométrie, comme les autres — et parce qu'il
+    // a des frères : un par canal détaché, quelques lignes plus bas.
+    locked_ = root["locked"].as<bool>(false);
     const YAML::Node list = root["channels"];
     if (!list || !list.IsSequence()) return;
     for (const YAML::Node& node : list) {
@@ -3699,6 +4045,10 @@ void ChatWindow::LoadLayout() {
       if (channel.name.empty()) continue;  // un onglet sans nom est inattrapable
       channel.id       = node["id"].as<unsigned>(0);
       channel.detached = node["detached"].as<bool>(false);
+      // Défaut FAUX, et c'est le bon sens de l'erreur : une fenêtre libre se
+      // reverrouille d'un clic, une fenêtre figée par accident donne l'impression
+      // d'être cassée.
+      channel.locked   = node["locked"].as<bool>(false);
       // ⚠ Un canal rechargé n'a PAS de nœud de registre, et n'en aura pas : la
       // fusion est coupée dès que notre fichier fait autorité. Ses 25 filtres
       // vivent donc UNIQUEMENT chez nous — ce qui suffit, puisque c'est nous qui
@@ -3761,12 +4111,16 @@ void ChatWindow::SaveLayout() const {
   if (channels_.empty()) return;  // rien à dire vaut mieux qu'écraser par du vide
   YAML::Emitter out;
   out << YAML::BeginMap;
+  out << YAML::Key << "locked" << YAML::Value << locked_;  // fenêtre principale
   out << YAML::Key << "channels" << YAML::Value << YAML::BeginSeq;
   for (const Channel& channel : channels_) {
     out << YAML::BeginMap;
     out << YAML::Key << "id" << YAML::Value << channel.id;
     out << YAML::Key << "name" << YAML::Value << channel.name;
     out << YAML::Key << "detached" << YAML::Value << channel.detached;
+    // Le verrou de SA fenêtre. Écrit même à faux : c'est un état de géométrie, et
+    // le fichier est fait pour se relire à l'œil.
+    out << YAML::Key << "locked" << YAML::Value << channel.locked;
     out << YAML::Key << "filter" << YAML::Value << YAML::Flow << YAML::BeginSeq;
     for (int i = 0; i < kTypeCount; ++i) out << (channel.filter[i] != 0);
     out << YAML::EndSeq;
@@ -3793,9 +4147,11 @@ void ChatWindow::SaveLayout() const {
     LogError("[Chat] impossible d'écrire {}", paths::ChatLayoutPath());
     return;
   }
-  file << "# Bourgeon — disposition de la chatbox : onglets, fenêtres détachées\n"
-       << "# et filtres de chacun. L'« id » est un identifiant STABLE : c'est lui\n"
-       << "# qui porte les réglages, pas le nom (renommable) ni l'ordre.\n"
+  file << "# Bourgeon — disposition de la chatbox : onglets, fenêtres détachées,\n"
+       << "# filtres et verrouillage de chacun. L'« id » est un identifiant STABLE :\n"
+       << "# c'est lui qui porte les réglages, pas le nom (renommable) ni l'ordre.\n"
+       << "# Le « locked » de la racine est celui de la fenêtre principale ; chaque\n"
+       << "# canal porte celui de SA fenêtre, qui ne vaut que s'il est détaché.\n"
        << out.c_str() << "\n";
 }
 
@@ -3832,6 +4188,13 @@ void ChatWindow::SaveHistory() const {
       out << YAML::Key << "at" << YAML::Value << hms;
       if (!line.sender.empty())
         out << YAML::Key << "from" << YAML::Value << line.sender;
+      // 🔴 LE CORRESPONDANT, sans quoi la ligne perd sa fenêtre à la relecture.
+      // Une ligne de conversation restaurée sans lui n'est plus routée nulle part
+      // — donc reprise par les onglets ordinaires, en style conversation et sans
+      // en-tête : exactement le défaut que la copie de journal corrige, revenu
+      // par la porte de derrière.
+      if (!line.whisper_with.empty())
+        out << YAML::Key << "with" << YAML::Value << line.whisper_with;
       out << YAML::Key << "raw" << YAML::Value << line.raw;
       out << YAML::EndMap;
     }
@@ -3872,6 +4235,10 @@ void ChatWindow::LoadHistory() {
         line.second = static_cast<uint8_t>(std::atoi(at.substr(6, 2).c_str()));
       }
       line.sender = node["from"].as<std::string>("");
+      // Absent = la ligne n'appartient à aucune conversation. C'est le cas de
+      // l'immense majorité, et c'est aussi ce que dit un historique écrit par une
+      // version d'avant : elles repartent dans les onglets, comme avant.
+      line.whisper_with = node["with"].as<std::string>("");
       // 🔴 `ParseUtf8` et NON `ParseText` : le texte est déjà en UTF-8 dans le
       // fichier, le repasser par la conversion depuis la code-page du fil le
       // corromprait — c'est le même piège que les accents, à l'envers.
@@ -3964,6 +4331,88 @@ void ChatWindow::CloseChannel(int index) {
   }
 }
 
+// ── Réordonnancement de la bande ─────────────────────────────────────────────
+// `dest_slot` est le rang visé PARMI LES ONGLETS DOCKÉS tels qu'ils sont
+// dessinés, celui qu'on déplace compris : c'est ce que le joueur a sous les yeux
+// quand il lâche, donc la seule numérotation qui puisse traduire son geste.
+void ChatWindow::ReorderDockedChannel(int from, int dest_slot) {
+  if (from < 0 || from >= static_cast<int>(channels_.size())) return;
+  if (channels_[from].detached) return;  // une flottante n'est pas dans la bande
+
+  // Les rangs dockés, dans l'ordre d'affichage.
+  std::vector<size_t> docked;
+  docked.reserve(channels_.size());
+  for (size_t i = 0; i < channels_.size(); ++i)
+    if (!channels_[i].detached) docked.push_back(i);
+
+  int src_slot = -1;
+  for (size_t k = 0; k < docked.size(); ++k)
+    if (docked[k] == static_cast<size_t>(from)) src_slot = static_cast<int>(k);
+  if (src_slot < 0) return;
+  if (dest_slot < 0) dest_slot = 0;
+  if (dest_slot > static_cast<int>(docked.size()))
+    dest_slot = static_cast<int>(docked.size());
+  // Lâcher juste devant ou juste derrière soi-même ne change RIEN. Sortir ici
+  // plutôt que de réécrire à l'identique : sans ça, un glissement de deux pixels
+  // marquerait la structure comme nôtre et déclencherait une écriture du fichier
+  // pour un geste qui n'a rien fait.
+  if (dest_slot == src_slot || dest_slot == src_slot + 1) return;
+
+  // L'ordre voulu : on retire, puis on réinsère. Le rang de destination recule
+  // d'un cran quand la source était AVANT lui — les places se sont resserrées.
+  std::vector<size_t> want = docked;
+  want.erase(want.begin() + src_slot);
+  const int shifted = (dest_slot > src_slot) ? dest_slot - 1 : dest_slot;
+  want.insert(want.begin() + shifted, static_cast<size_t>(from));
+
+  // Relevé AVANT le déménagement : après, l'indice ne désignera plus le même.
+  const uint32_t active_id =
+      (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
+          ? channels_[active_channel_].id
+          : 0;
+
+  // 🔴 Les EMPLACEMENTS dockés reçoivent les canaux dockés dans le nouvel ordre ;
+  // les détachées gardent EXACTEMENT leur place dans le vecteur. Réordonner tout
+  // le vecteur ferait bouger des fenêtres qui ne sont pas dans la bande, sans
+  // qu'aucun geste ne l'ait demandé — et l'ordre des flottantes ne se voit nulle
+  // part, donc personne n'y gagnerait.
+  //
+  // Le plan d'abord, le déménagement ensuite : quel canal va à quelle place. Le
+  // lire entièrement AVANT de déplacer quoi que ce soit évite d'avoir à se
+  // demander ce que vaut encore un canal déjà vidé. C'est une permutation, donc
+  // chacun est pris une fois et une seule.
+  std::vector<size_t> plan(channels_.size());
+  size_t next = 0;
+  for (size_t i = 0; i < channels_.size(); ++i)
+    plan[i] = channels_[i].detached ? i : want[next++];
+
+  std::vector<Channel> out;
+  out.reserve(channels_.size());
+  for (const size_t src : plan) out.push_back(std::move(channels_[src]));
+  channels_.swap(out);
+
+  // 🔴 Suivre le CANAL, pas le rang : `active_channel_` est un indice, et tous
+  // viennent de changer de sens. Sans ce recalage, réordonner ses onglets ferait
+  // sauter le joueur sur un autre canal.
+  if (active_id != 0) {
+    for (size_t i = 0; i < channels_.size(); ++i)
+      if (channels_[i].id == active_id) {
+        active_channel_ = static_cast<int>(i);
+        break;
+      }
+  }
+  // Le menu contextuel désigne lui aussi par indice. Il est fermé pendant un
+  // glissement — le clic qui l'aurait ouvert le referme — mais le laisser pointer
+  // au hasard serait une mine pour la prochaine retouche.
+  logopt_channel_ = -1;
+
+  // 🔴 Sans ça, la fusion périodique du registre natif remettrait la bande dans
+  // SON ordre deux secondes plus tard, et le geste du joueur disparaîtrait sans
+  // un mot (cf. RefreshChannels).
+  structure_owned_ = true;
+  layout_dirty_    = true;
+}
+
 // Les 25 cases d'options de log du canal courant. Elles écrivent DIRECTEMENT
 // l'octet du registre (node+0x2C+type), exactement comme la fenêtre native 0x84 :
 // le registre reste la source de vérité, et le chat natif suit le même filtre.
@@ -4040,6 +4489,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (ImGui::Selectable("Détacher dans sa propre fenêtre")) {
       channel->detached     = true;
       channel->detach_owned = true;
+      channel->locked       = false;  // une flottante naît libre (cf. l'arrachage)
       structure_owned_      = true;
       layout_dirty_         = true;
     }
@@ -4051,6 +4501,25 @@ void ChatWindow::DrawLogOptionsPopup() {
         ImGui::SetTooltip("Le dernier onglet ne peut pas être détaché.");
     }
   }
+
+  // ── Verrouillage de la géométrie ────────────────────────────────────────────
+  // 🔴 SA PLACE EST ICI, et plus dans le panneau de réglages. Il y a un verrou PAR
+  // FENÊTRE, et le panneau ne sait pas de laquelle on parle : une case unique y
+  // figeait les trois d'un coup, y compris la flottante qu'on venait d'arracher.
+  // Ce menu, lui, s'ouvre TOUJOURS depuis un onglet ou un en-tête — donc depuis
+  // une fenêtre précise. Le libellé la nomme, parce que « verrouiller » tout court
+  // ne veut rien dire quand trois fenêtres sont ouvertes.
+  bool* const lock = channel->detached ? &channel->locked : &locked_;
+  if (ro::RoCheckbox(channel->detached ? "Verrouiller cette fenêtre###chat_lock"
+                                       : "Verrouiller la fenêtre principale###chat_lock",
+                     lock))
+    layout_dirty_ = true;  // le verrou se range avec la géométrie, pas avec les réglages
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip(
+        "Fige la position et la taille de cette fenêtre-là. Les onglets, les "
+        "menus et l'arrachage continuent de fonctionner —\nc'est la géométrie "
+        "qui est verrouillée, pas la fenêtre.\n\n"
+        "Chaque fenêtre a le sien : une flottante qu'on détache naît libre.");
   ImGui::Separator();
 
   // Créer / fermer. 🔴 Le plafond de 10 canaux n'est pas décoratif : le CHARGEUR
@@ -4676,10 +5145,36 @@ void ChatWindow::SuppressNativeChat() {
   if (!native_alive) uiwnd::MakeWindow(kNativeChatWndId);
 }
 
-void ChatWindow::OnKeyDown(unsigned long vkey, int, int) {
+bool ChatWindow::WantsTypedKeys() const {
+  // `!WantTextInput` : si une zone de texte écrit déjà — la nôtre une fois
+  // focalisée, ou celle d'une autre fenêtre — elle reçoit les caractères par le
+  // chemin normal d'ImGui et nous n'avons rien à faire. Le prédicat ne vaut que
+  // pour l'état intermédiaire : barre ouverte, personne au clavier.
+  return imgui_enabled_ && battle_mode_ && InputRowVisible() &&
+         !ImGui::GetIO().WantTextInput;
+}
+
+bool ChatWindow::WantsEscapeKey() const {
+  // La ligne de saisie doit être RÉELLEMENT à l'écran : coupée dans les réglages,
+  // rien ne se refermerait et la touche serait confisquée pour rien.
+  return imgui_enabled_ && battle_mode_ && InputRowVisible();
+}
+
+void ChatWindow::OnRawKey(unsigned long vkey) {
   if (!imgui_enabled_) return;
   if (vkey == VK_RETURN) enter_pending_ = true;
+  // 🔴 ÉCHAP AUSSI, et pas seulement dans le champ. Une barre ouverte peut ne pas
+  // avoir le clavier — c'est même le cas dès qu'on a cliqué ailleurs — et aucun
+  // widget ne verrait alors la touche. C'est LA sortie à une frappe, celle qui
+  // permet à la saisie de rendre le clavier à ImGui sans piéger le joueur.
+  if (vkey == VK_ESCAPE) escape_pending_ = true;
 }
+
+// Le chemin ORDINAIRE, quand la touche a atteint le jeu. Il ne suffit pas à lui
+// seul : cf. `OnRawKey`, que le WndProc appelle pour celles qu'il nous confisque.
+// Poser deux fois le même drapeau est sans effet — il n'est consommé qu'une fois,
+// à la frame suivante.
+void ChatWindow::OnKeyDown(unsigned long vkey, int, int) { OnRawKey(vkey); }
 
 void ChatWindow::FlushPending() {
   SuppressNativeChat();
@@ -4729,13 +5224,9 @@ bool ChatWindow::DrawSettings() {
       "d'envoi que le client. La fenêtre native reste ouverte à côté tant que la "
       "bascule complète n'est pas faite.");
   changed |= ro::RoCheckbox("Ligne de saisie###chatwnd_input", &input_bar_);
-  changed |= ro::RoCheckbox("Verrouiller position et taille###chatwnd_lock", &locked_);
-  ImGui::SameLine();
-  HelpMarker(
-      "Fige la géométrie de la chatbox et de ses fenêtres détachées : plus de "
-      "déplacement, plus de redimensionnement. Les onglets, les menus et "
-      "l'arrachage continuent de fonctionner — c'est la position qui est "
-      "verrouillée, pas la fenêtre.");
+  // ⚠ Le verrouillage de la géométrie N'EST PLUS ICI : il y en a un par fenêtre,
+  // et ce panneau ne sait pas de laquelle il parlerait. Il vit dans le menu
+  // contextuel d'un onglet ou d'un en-tête — cf. DrawLogOptionsPopup.
   changed |= ro::RoCheckbox("Avertir avant d'ouvrir un lien###chatwnd_urlwarn",
                             &url_confirm_);
   ImGui::SameLine();
@@ -4827,6 +5318,26 @@ bool ChatWindow::DrawSettings() {
       "Hauteur des vignettes, de 24 à 128 pixels.\n\n"
       "Au-delà d'une hauteur de ligne, la ligne s'agrandit pour accueillir "
       "l'image : le fil reste lisible, il s'aère.");
+  // ── Outil ponctuel, sur demande explicite ─────────────────────────────────
+  // L'export ÉCRIT des dizaines de fichiers sur le disque : c'est une action, pas
+  // un affichage, donc elle s'active plutôt qu'elle ne se cache. Le bouton reste
+  // introuvable tant que cette case est décochée — on ne le déclenche pas d'un
+  // clic distrait en cherchant une emote.
+  //
+  // Live, non persisté, comme les autres réglages fins du staff : c'est un outil
+  // qu'on ouvre pour une manipulation puis qu'on referme.
+  if (IsStaff()) {
+    ro::RoCheckbox("Export des emotes en GIF###chatwnd_emote_export",
+                   &emote_export_);
+    ImGui::SameLine();
+    HelpMarker(
+        "Fait apparaître un bouton au bas de la grille d'emotes.\n\n"
+        "Il écrit un GIF par emote dans « emotes_export », à côté de "
+        "l'exécutable, sous le nom que le relais Discord attend. À déposer "
+        "ensuite dans images/smilies/ du site.\n\n"
+        "Réservé au staff, et éteint à chaque session : c'est une manipulation "
+        "ponctuelle, pas un réglage.");
+  }
   // ── Conversations privées ─────────────────────────────────────────────────
   // 🔴 Ces deux cases ne sont PAS à nous : elles écrivent directement les
   // octets du client, ceux de son « Friend Setup » (Alt+I). Une copie persistée

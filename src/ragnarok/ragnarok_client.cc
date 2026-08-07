@@ -19,6 +19,7 @@
 #include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/npc_dialog_window.h"     // EatsKey (touches du dialogue NPC)
 #include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
+#include "features/windows/chat_window.h"           // WantsEscapeKey (avale VK_ESCAPE)
 #include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
@@ -592,9 +593,23 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // Échap avalé pour le JEU tant qu'une fenêtre RO fermable est ouverte (ImGui
     // vient de le recevoir via le handler ; ProcessEscapeStack ferme la fenêtre du
     // dessus). Évite l'ouverture intempestive du menu natif.
+    // 🔴 La barre de chat dépliée (battle mode) la confisque elle aussi, et elle
+    // n'est PAS une fenêtre RO : elle ne s'enregistre donc pas dans la pile
+    // ci-dessus. Sans ce test, la frappe qui la referme ouvrirait en même temps le
+    // menu du client — deux effets pour un geste, exactement ce qu'on venait de
+    // corriger côté fenêtres RO.
     if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
-        ro::AnyEscapeWindowOpen())
+        (ro::AnyEscapeWindowOpen() ||
+         (Bourgeon::Instance().chat_window() != nullptr &&
+          Bourgeon::Instance().chat_window()->WantsEscapeKey()))) {
+      // 🔴 REMISE DIRECTE. La chatbox apprend normalement les touches par
+      // `ProcessPushButton`, c'est-à-dire par LE JEU — à qui l'on vient
+      // précisément de retirer celle-ci. Sans cette ligne, Échap est avalé pour
+      // tout le monde et ne referme plus rien.
+      if (Bourgeon::Instance().chat_window() != nullptr)
+        Bourgeon::Instance().chat_window()->OnRawKey(VK_ESCAPE);
       return 0;
+    }
 
     // Même principe pour Entrée, que la fenêtre de refine utilise comme raccourci
     // de validation : sans ça le jeu ouvrirait AUSSI sa saisie de chat par-dessus.
@@ -718,7 +733,15 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // capture flag taking effect (SetNextFrameWantCaptureKeyboard only applies
     // at the NEXT NewFrame) — without it, a key pressed in that gap reaches
     // the game too (e.g. Escape opening both DOOM's and the RO menu).
-    if (io.WantCaptureKeyboard || Doom::WantsKeyboard()) {
+    // 🔴 La barre de chat DÉPLIÉE mais pas encore focalisée en veut aussi : le
+    // joueur tape, ça doit s'écrire dans le chat et surtout PAS déplacer son
+    // personnage. ImGui, lui, ne demande rien — aucun champ n'est actif — d'où ce
+    // troisième prédicat. La chatbox récupère les caractères dans la file d'entrée
+    // et les rend au champ une frame plus tard (`WantsTypedKeys`).
+    ChatWindow* const chat_typing = Bourgeon::Instance().chat_window();
+    const bool chat_wants_typed =
+        (chat_typing != nullptr) && chat_typing->WantsTypedKeys();
+    if (io.WantCaptureKeyboard || Doom::WantsKeyboard() || chat_wants_typed) {
       // 🔴 Une SAISIE DE TEXTE ImGui n'a besoin que des touches qui écrivent. Sans
       // la nuance ci-dessous, cliquer dans un champ — le filtre d'une boutique, la
       // quantité d'un panier — éteignait TOUT le clavier du jeu tant que le champ
@@ -746,7 +769,12 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // les prises volontaires du clavier — char-select, DOOM, qui la demandent par
       // SetNextFrameWantCaptureKeyboard — doivent rester TOTALES, elles remplacent
       // un écran natif qu'on ne veut pas voir réagir derrière.
-      const bool typing = io.WantTextInput && !Doom::WantsKeyboard();
+      // 🔴 `chat_wants_typed` compte comme une SAISIE, pas comme une prise totale :
+      // la barre de chat attend des lettres, pas les F1-F9 de la barre de skills
+      // ni Insert. Sans lui ici, ouvrir la barre éteignait toute la barre d'action
+      // — alors même que le joueur n'a pas encore commencé à écrire.
+      const bool typing =
+          (io.WantTextInput || chat_wants_typed) && !Doom::WantsKeyboard();
       // 🔴 `wParam` ne désigne PAS la même chose selon le message : code VIRTUEL
       // pour WM_KEYDOWN/UP, mais CARACTÈRE pour WM_CHAR. Or VK_F1..VK_F12, ce
       // sont les codes 0x70..0x7B — c'est-à-dire 'p'..'z' en ASCII. La nuance
@@ -764,6 +792,16 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
           !char_msg && ((wParam >= VK_F1 && wParam <= VK_F12) ||
                         wParam == VK_INSERT || alt_shortcut);
       if (!(typing && game_only_key)) {
+        // 🔴 REMISE DIRECTE, même raison qu'Échap plus haut : quand c'est LA BARRE
+        // qui motive l'avalage, le jeu ne verra pas la touche, donc
+        // `ProcessPushButton` ne tournera pas et `OnKeyDown` non plus. Entrée
+        // n'ouvrait, ne fermait et n'envoyait plus rien dès que la barre avait
+        // perdu le clavier. Les autres motifs d'avalage (un champ ImGui a le
+        // focus, DOOM) ne nous concernent pas : la touche appartient alors à ce
+        // champ-là.
+        if (chat_wants_typed && uMsg == WM_KEYDOWN &&
+            (wParam == VK_RETURN || wParam == VK_ESCAPE))
+          chat_typing->OnRawKey(static_cast<unsigned long>(wParam));
         switch (uMsg) {
           case WM_KEYDOWN: case WM_KEYUP:
           case WM_SYSKEYDOWN: case WM_SYSKEYUP:

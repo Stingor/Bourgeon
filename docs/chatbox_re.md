@@ -879,10 +879,70 @@ Un lien Moonlight reste donc lisible par un client vanille.
   deux. Ne pas le faire laisserait des réglages qui ne font plus rien — le pire
   des retours pour un joueur, puisque rien ne le signale.
 - **Barre de saisie et `/bm` (battle mode)** — comportement à reproduire, relevé
-  en jeu le 2026-08-04 :
-  - `/bm ON` : la barre est **masquée**. **Entrée** l'ouvre ET lui donne le focus ;
-    **Échap** la referme ; **envoyer un champ vide** la referme aussi — c'est ce
-    qui permet de sortir du chat sans lâcher le clavier, en deux Entrée.
+  en jeu le 2026-08-04, complété le 2026-08-07 :
+  - `/bm ON` : la barre est **masquée**. **Entrée** l'ouvre ET pose le curseur
+    dans la box de **texte** ; **Échap** la referme ; **Entrée sur un texte vide**
+    la referme aussi — c'est ce qui permet de sortir sans lâcher le clavier.
+  - 🔴 **L'INVARIANT, et le vrai enseignement : IL N'EXISTE JAMAIS D'ÉTAT
+    « OUVERTE MAIS SANS FOCUS ».** Une fois ouverte, la barre native ne rend
+    JAMAIS le clavier : ni sur un clic sur l'un de ses propres éléments (onglet,
+    bouton, combo), ni sur un clic dans le sac, ni sur un clic dans le décor. À
+    tout instant, taper une lettre écrit dans la barre — dans celle des deux
+    boxes (texte ou pseudo) où le joueur a laissé son curseur, qu'un clic ne
+    déplace pas.
+  - **C'est cet invariant qui donne la sortie à UNE frappe**, à n'importe quel
+    moment. Dès qu'un état « ouverte sans focus » existe, la première Entrée
+    sert à reprendre la main et la sortie en coûte deux — le défaut observé côté
+    ImGui le 2026-08-07.
+  - **Les deux boxes referment** : Entrée depuis « Pseudo », rempli ou non,
+    referme dès lors que le **texte** est vide. La décision ne regarde que le
+    texte, jamais la box d'où vient la touche.
+  - ⛔ **CET INVARIANT EST INTENABLE EN ImGui — NE PAS LE RETENTER** (essayé et
+    retiré le 2026-08-07). Le tenir demande de reprendre le focus dès qu'il part ;
+    la saisie détient alors l'`ActiveId` en permanence, et ImGui en déduit que
+    **plus rien d'autre n'est interactif**. Quatre portes, toutes vérifiées :
+    | ce qui refuse | imgui.cpp | conséquence en jeu |
+    |---|---|---|
+    | `ItemHoverable` | 4982 | aucun widget survolable ailleurs ⇒ **le premier clic ne sert qu'à défocaliser** |
+    | `ButtonBehavior` | 4894 | idem, aucun bouton ne prend le clic |
+    | `IsWindowHovered` | 8507 | la fenêtre visée n'est même pas focalisée par le clic |
+    | repli au double-clic | 7715 | exige `g.ActiveId == 0` ⇒ **aucun double-clic n'aboutit**, la reprise reprenant l'`ActiveId` entre les deux clics |
+    `ActiveIdAllowOverlap` lèverait ces refus, mais n'est réglable que depuis le
+    glisser-déposer (14934) : aucune API publique ne l'expose. Et `FocusWindow`
+    **vole** en prime l'`ActiveId` d'en face (13070, « Steal active widgets »),
+    donc reprendre pendant qu'un bouton est enfoncé annule son clic.
+  - **Ce qu'on garde à la place**, et qui rend les comportements observables
+    sans jamais tenir l'`ActiveId`. 🔴 Les trois se tiennent : tant qu'ENTRÉE
+    devait servir à *reprendre* le clavier, elle ne pouvait pas refermer, et une
+    barre ouverte sans focus devenait un piège — ni sortie ni écriture possibles
+    sans aller cliquer dedans à la souris. C'est la capture de frappe qui la
+    libère.
+    - **sortir en une frappe** → ÉCHAP est traité hors du champ
+      (`escape_pending_`, comme `enter_pending_`), donc il referme la barre
+      qu'elle ait le clavier ou non ;
+    - **ENTRÉE retrouve son seul sens natif**, focus ou pas : fermée → ouvre ;
+      ouverte et vide → sort ; ouverte et pleine → envoie. Elle ne sert plus
+      jamais à « reprendre la main » ;
+    - **« taper écrit dans la barre »** → `ChatWindow::WantsTypedKeys()`. Tant que
+      la barre est dépliée et que personne n'écrit, le WndProc confisque les
+      touches au client (sinon la lettre déplacerait le personnage) et la chatbox
+      relève `io.InputQueueCharacters`, demande le focus, et **rend** les
+      caractères à `AddInputCharacter` **une frame plus tard**.
+      🔴 Les rendre plutôt que les écrire dans le tampon n'est pas un détail :
+      `SetKeyboardFocusHere` active le champ par le chemin du TABULATEUR, qui
+      **sélectionne tout** dès que le tampon a changé depuis la dernière fois
+      (imgui_widgets.cpp 4894, `recycle_state`) — la lettre écrite d'avance serait
+      donc sélectionnée, puis effacée par la suivante.
+      ⚠ `WantsTypedKeys` compte comme une SAISIE dans le WndProc, pas comme une
+      prise totale : F1-F12, Insert et les combinaisons Alt continuent d'aller au
+      jeu, sinon ouvrir la barre éteindrait la barre d'action.
+  - 🔴 **Échap doit alors être CONSOMMÉ DEUX FOIS** : par `ro::SuppressEscapeStack`
+    (sinon `ro::ProcessEscapeStack`, qui tourne après tous les `OnRenderUI`,
+    referme aussi la fenêtre RO du dessus) **et** par le WndProc
+    (`ChatWindow::WantsEscapeKey`, sinon le menu du client s'ouvre en même temps —
+    la barre n'est pas une fenêtre RO, elle n'est pas dans la pile d'Échap).
+  - ⚠ Ne JAMAIS redemander le focus sur un champ déjà actif : ImGui
+    re-sélectionne alors tout son texte, que la frappe suivante effacerait.
   - `/bm off` : barre **affichée en permanence**, Entrée lui donne le focus.
   - ✅ **Drapeau localisé (2026-08-04) : `g_ChatBarAlwaysVisible 0x0131F50E`.**
     🔴 **Polarité inversée, vérifiée EN JEU** : **1 = barre toujours visible**
@@ -894,8 +954,15 @@ Un lien Moonlight reste donc lisible par un client vanille.
     `g_ChatInputBarDeployed 0x0131F50C` = barre actuellement dépliée.
   - 🔴 `/bm` passe par **`ChatAction` action 3** = `ToggleWindow(mgr, 1)`, donc le
     client **RECRÉE sa chatbox**. La détruire après coup la laisse visible
-    quelques frames : il faut bloquer l'action 3 dans le détour et traduire
-    l'intention (ouvrir NOTRE saisie).
+    quelques frames : il faut bloquer l'action 3 dans le détour.
+  - 🔴 **Et ne RIEN ouvrir en réponse à l'action 3** (décidé le 2026-08-07). Le
+    client l'émet à tout bout de champ — le handler d'annonce `sub_00CB7510`
+    l'appelle (0x00cb7957), comme des dizaines de handlers de paquets. Deux
+    règles se croisent : une barre ouverte a le clavier (l'invariant ci-dessus),
+    et donner le clavier à chaque annonce volerait ses touches de déplacement au
+    joueur. Ouvrir sans focus étant exclu par l'invariant, il ne reste qu'à ne
+    pas ouvrir — et rien n'est perdu, le battle mode ne masque QUE la ligne de
+    saisie, le log affiche l'annonce de toute façon.
   - 🔴 Dépend de la reprise de la touche ENTRÉE (§8.3) : tant que la native vit,
     c'est SA barre qui reçoit Entrée.
 - `/savechat` (`ChatLog_SaveAllToFiles`) itère `mgr+0x1C8` (null → no-op
