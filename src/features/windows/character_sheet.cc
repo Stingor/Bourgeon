@@ -2790,7 +2790,7 @@ void CharacterSheet::DrawPresetsTab() {
         char what[64];
         if (hotkeys::Conflict(vk, c, a, sh, hotkeys::Owner::kEquipPreset, mine[mi], what,
                               sizeof(what))) {
-          hk_conflict_msg_ = std::string("Déjà utilisé par ") + what + " — choisis un autre combo";
+          hk_conflict_msg_ = std::string(i18n::Tr("Déjà utilisé par ")) + what + " — choisis un autre combo";
         } else {  // libre : on assigne + persiste
           EquipPreset& e = equip_presets_[mine[mi]];
           e.hotkey_vk = vk; e.hotkey_ctrl = c; e.hotkey_alt = a; e.hotkey_shift = sh;
@@ -3951,7 +3951,7 @@ void CharacterSheet::DrawGuildTab() {
     if ((name_submitted || create_clicked) && guild_create_buf_[0]) {
       SendCreateGuild(guild_create_buf_);
       guild_create_result_ = -1;  // en attente de la réponse serveur
-      guild_status_ = std::string("Demande envoyée : ") + guild_create_buf_;
+      guild_status_ = std::string(i18n::Tr("Demande envoyée : ")) + guild_create_buf_;
     }
     // Retour du serveur (ZC 0x0167). Le client affiche déjà sa propre boîte ; on
     // double l'information ici pour ne pas laisser l'onglet muet.
@@ -4282,9 +4282,9 @@ void CharacterSheet::DrawGuildTab() {
               // la fenêtre ne serait jamais dessinée. On le dit plutôt que de
               // laisser croire à un clic sans effet.
               guild_status_ = opened
-                                  ? std::string("Conversation avec ") + m.name
-                                  : std::string("Activez le chat moderne pour "
-                                                "les conversations séparées.");
+                                  ? std::string(i18n::Tr("Conversation avec ")) + m.name
+                                  : std::string(i18n::Tr("Activez le chat moderne pour "
+                                                "les conversations séparées."));
             }
             // ── Inviter dans le groupe ───────────────────────────────────────
             // Grisée plutôt que cachée quand je n'ai pas de groupe : l'entrée
@@ -4302,7 +4302,7 @@ void CharacterSheet::DrawGuildTab() {
                 // sort brut des structures du client.
                 chat_for_invite->QueueNameAction(
                     ChatWindow::NameAction::kPartyInvite, m.name);
-                guild_status_ = std::string("Invitation envoyée à ") + m.name;
+                guild_status_ = std::string(i18n::Tr("Invitation envoyée à ")) + m.name;
               }
               if (!in_party) {
                 ImGui::EndDisabled();
@@ -4317,7 +4317,7 @@ void CharacterSheet::DrawGuildTab() {
             if (!self && ImGui::MenuItem(i18n::Tr("Envoyer un courrier…"))) {
               if (RodexWindow* rodex = Bourgeon::Instance().rodex_window())
                 rodex->ComposeTo(m.name);
-              guild_status_ = std::string("Courrier à ") + m.name;
+              guild_status_ = std::string(i18n::Tr("Courrier à ")) + m.name;
             }
           }
           if (is_master && known_count > 0 && m.position_id != 0) {
@@ -4470,7 +4470,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::SameLine();
     if (ro::RoButton("Inviter") && guild_invite_buf_[0]) {
       SendGuildInvite(guild_invite_buf_);
-      guild_status_ = std::string("Invitation envoyée à ") + guild_invite_buf_;
+      guild_status_ = std::string(i18n::Tr("Invitation envoyée à ")) + guild_invite_buf_;
       guild_invite_buf_[0] = '\0';
     }
     ImGui::SameLine();
@@ -6563,8 +6563,8 @@ void CharacterSheet::DrawDoll(float avail_w) {
           bi && bi->ExportAvatarGif(gif_export_anim_, gif_export_dir_, p.c_str(),
                                     gif_export_show_costume_);
       const char* fn = std::strrchr(p.c_str(), '\\');
-      gif_status_ = ok ? (std::string("GIF OK : ") + (fn ? fn + 1 : p.c_str()))
-                       : std::string("Échec GIF (voir log)");
+      gif_status_ = ok ? (std::string(i18n::Tr("GIF OK : ")) + (fn ? fn + 1 : p.c_str()))
+                       : std::string(i18n::Tr("Échec GIF (voir log)"));
     } else {
       gif_status_ = i18n::Tr("Export annulé");
     }

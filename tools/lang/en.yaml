@@ -1452,3 +1452,25 @@
 "Zeny à récupérer": "Zeny to collect"
 "Zeny bonus": "Bonus Zeny"
 "Zone trop petite (32 px minimum) — recommence": "Area too small (32 px minimum) — start again"
+
+# ── Third pass: concatenation prefixes and login messages ────────────────────
+# Several keys end with a SPACE: they are the left-hand side of a concatenation
+# ("Conversation with " + name). The trailing space is part of the key AND of
+# the translation - dropping it would glue the two words together.
+"Déjà utilisé par ": "Already used by "
+"injected module: ": "injected module: "
+"window class: ": "window class: "
+"Connexion Moonlight": "Moonlight login"
+"Authentification refusée.": "Authentication refused."
+"Impossible de démarrer la connexion Discord.": "Could not start the Discord login."
+"Session Discord expirée. Réessaie.": "Discord session expired. Try again."
+"Connexion Discord refusée.": "Discord login refused."
+"Sélection du compte refusée.": "Account selection refused."
+"Demande envoyée : ": "Request sent: "
+"Conversation avec ": "Conversation with "
+"Activez le chat moderne pour les conversations séparées.": "Enable the modern chat for separate conversations."
+"Invitation envoyée à ": "Invitation sent to "
+"Courrier à ": "Mail to "
+"GIF OK : ": "GIF OK: "
+"Échec GIF (voir log)": "GIF failed (see the log)"
+"---- session precedente ----": "---- previous session ----"

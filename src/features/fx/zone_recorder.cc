@@ -699,7 +699,7 @@ void ZoneRecorder::DrawSettings() {
       if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kZoneRecorder, -1,
                             what, sizeof(what))) {
         key_conflict_msg_ =
-            std::string("Déjà utilisé par ") + what + " — choisis une autre touche";
+            std::string(i18n::Tr("Déjà utilisé par ")) + what + " — choisis une autre touche";
       } else {
         key_vk_    = vkey;
         key_ctrl_  = ctrl;

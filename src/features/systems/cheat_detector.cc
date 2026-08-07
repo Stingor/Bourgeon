@@ -170,7 +170,7 @@ void CheatDetector::ScanModules(std::vector<Detection>& out) {
         if (kSigs[i].type != SigType::kModule) continue;
         if (mod.find(kSigs[i].pattern) != std::string::npos)
           out.push_back({ kSigs[i].tool_name,
-                          std::string("injected module: ") + me.szModule,
+                          std::string(i18n::Tr("injected module: ")) + me.szModule,
                           now, now, 1 });
       }
     } while (Module32Next(snap, &me));
@@ -191,7 +191,7 @@ BOOL CALLBACK CheatDetector::WindowEnumProc(HWND hwnd, LPARAM lparam) {
     if (kSigs[i].type != SigType::kWindowClass) continue;
     if (cls_lower.find(kSigs[i].pattern) != std::string::npos)
       out->push_back({ kSigs[i].tool_name,
-                       std::string("window class: ") + cls,
+                       std::string(i18n::Tr("window class: ")) + cls,
                        now, now, 1 });
   }
   return TRUE;

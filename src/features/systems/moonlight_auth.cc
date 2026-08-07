@@ -858,7 +858,10 @@ void MoonlightAuth::OnRenderLoginUI() {
                           ImGuiCond_Always, ImVec2(0.5f, 0.5f));
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_AlwaysAutoResize;
-  if (ro::BeginRoWindow("Connexion Moonlight", nullptr, flags)) {
+  // `Tr` et non `TrId` : les flags ci-dessus portent NoSavedSettings et la
+  // position est reposée à chaque frame — cette fenêtre n'a aucun état qu'un
+  // changement d'identifiant pourrait lui faire perdre.
+  if (ro::BeginRoWindow(i18n::Tr("Connexion Moonlight"), nullptr, flags)) {
     switch (state_) {
       case State::kWebLogin:     DrawWebLogin(); break;
       case State::kAuthing:      DrawSpinner("Authentification…"); break;
@@ -1177,7 +1180,7 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
   try {
     const auto j = nlohmann::json::parse(r.body);
     if (r.status != 200 || !j.value("ok", false)) {
-      error_msg_ = j.value("error", std::string("Authentification refusée."));
+      error_msg_ = j.value("error", std::string(i18n::Tr("Authentification refusée.")));
       state_ = State::kError;
       return false;
     }
@@ -1277,7 +1280,7 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
     const auto j = nlohmann::json::parse(r.body);
     if (r.status != 200 || !j.value("ok", false)) {
       error_msg_ =
-          j.value("error", std::string("Impossible de démarrer la connexion Discord."));
+          j.value("error", std::string(i18n::Tr("Impossible de démarrer la connexion Discord.")));
       state_ = State::kError;
       return;
     }
@@ -1321,12 +1324,12 @@ void MoonlightAuth::HandleDiscordPollResponse(const HttpResult& r) {
   try {
     const auto j = nlohmann::json::parse(r.body);
     if (r.status == 410 || r.status != 200) {
-      error_msg_ = j.value("error", std::string("Session Discord expirée. Réessaie."));
+      error_msg_ = j.value("error", std::string(i18n::Tr("Session Discord expirée. Réessaie.")));
       state_ = State::kError;
       return;
     }
     if (!j.value("ok", false)) {
-      error_msg_ = j.value("error", std::string("Connexion Discord refusée."));
+      error_msg_ = j.value("error", std::string(i18n::Tr("Connexion Discord refusée.")));
       state_ = State::kError;
       return;
     }
@@ -1352,7 +1355,7 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
   try {
     const auto j = nlohmann::json::parse(r.body);
     if (r.status != 200 || !j.value("ok", false)) {
-      error_msg_ = j.value("error", std::string("Sélection du compte refusée."));
+      error_msg_ = j.value("error", std::string(i18n::Tr("Sélection du compte refusée.")));
       state_ = State::kError;
       return;
     }

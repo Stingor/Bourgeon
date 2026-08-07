@@ -4320,7 +4320,7 @@ void ChatWindow::LoadHistory() {
   mark.rgb  = 0x9B9B9B;  // COLORREF gris, comme les en-têtes du client
   Run run;
   run.text = saved_at.empty()
-                 ? std::string("---- session precedente ----")
+                 ? std::string(i18n::Tr("---- session precedente ----"))
                  : ("---- session precedente (" + saved_at + ") ----");
   run.text = ro::LocalToUtf8(run.text.c_str());
   mark.runs.push_back(run);

@@ -82,6 +82,7 @@ function Test-IsUserText([string]$lit) {
   return ($rxAccent.IsMatch($lit) -or $rxWords.IsMatch($lit))
 }
 
+$gap = '(?:\s|//[^\n]*\n|/\*(?s:.*?)\*/)*'
 $litGroup = '"(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*'
 $rxJoin   = [regex]'"((?:[^"\\]|\\.)*)"'
 # 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
@@ -101,7 +102,7 @@ function Invoke-Wrap([string]$text, [string[]]$calls, [bool]$afterComma) {
     $pat = if ($afterComma) {
       $guard + [regex]::Escape($call) + '\s*\((?s:.*?),\s*(' + $litGroup + ')'
     } else {
-      $guard + [regex]::Escape($call) + '\s*\(\s*(' + $litGroup + ')'
+      $guard + [regex]::Escape($call) + '\s*\(' + $gap + '(' + $litGroup + ')'
     }
     $rx = [regex]$pat
     $text = $rx.Replace($text, {
@@ -186,6 +187,16 @@ function Invoke-WrapPatterns([string]$text) {
     $lit = $m.Groups[2].Value
     $j = ""; foreach ($p in $rxJoin.Matches($lit)) { $j += $p.Groups[1].Value }
     if (Test-IsUserText $j) { return $m.Groups[1].Value + "i18n::Tr($lit)" + $m.Groups[3].Value }
+    return $m.Value
+  })
+
+  # 3quater. std::string("libelle") : le debut d'une concatenation d'affichage.
+  $rxStdString = [regex]('std::string\s*\(\s*(' + $litGroup + ')\s*\)')
+  $text = $rxStdString.Replace($text, {
+    param($m)
+    $lit = $m.Groups[1].Value
+    $j = ""; foreach ($p in $rxJoin.Matches($lit)) { $j += $p.Groups[1].Value }
+    if (Test-IsUserText $j) { return "std::string(i18n::Tr($lit))" }
     return $m.Value
   })
 
