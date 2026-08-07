@@ -137,7 +137,7 @@ BugReport::Context BugReport::NpcContext(uint32_t gid,
 BugReport::Context BugReport::GenericContext() {
   Context c;
   c.category = kGeneric;
-  c.label = "Rapport général (aucun contexte spécifique)";
+  c.label = i18n::Tr("Rapport général (aucun contexte spécifique)");
   c.json = "{}";
   return c;
 }
@@ -351,16 +351,16 @@ void BugReport::RenderAckToast() {
   ImU32 accent;
   switch (ack_status_) {
     case 0:
-      title = "Rapport envoyé";
-      text  = "Merci ! Ton rapport de bug a bien été enregistré.";
+      title = i18n::Tr("Rapport envoyé");
+      text  = i18n::Tr("Merci ! Ton rapport de bug a bien été enregistré.");
       accent = IM_COL32(90, 205, 105, 255); break;
     case 1:
-      title = "Trop rapide";
-      text  = "Patiente un instant avant d'envoyer un nouveau rapport.";
+      title = i18n::Tr("Trop rapide");
+      text  = i18n::Tr("Patiente un instant avant d'envoyer un nouveau rapport.");
       accent = IM_COL32(238, 190, 90, 255); break;
     default:
-      title = "Échec de l'envoi";
-      text  = "Le rapport n'a pas pu être enregistré (erreur serveur).";
+      title = i18n::Tr("Échec de l'envoi");
+      text  = i18n::Tr("Le rapport n'a pas pu être enregistré (erreur serveur).");
       accent = IM_COL32(232, 100, 100, 255); break;
   }
 

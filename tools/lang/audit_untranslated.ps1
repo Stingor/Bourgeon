@@ -22,13 +22,20 @@ $rxLetters= [regex]'[^A-Za-z\u00C0-\u00FF]'
 # Un GROUPE de litteraux adjacents = une seule chaine pour le compilateur.
 $rxGroup  = [regex]'"(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*'
 $rxJoin   = [regex]'"((?:[^"\\]|\\.)*)"'
+# 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
+# ce nettoyage il ouvre une fausse chaine et TOUT le reste du fichier se decale --
+# on s'est retrouve avec des morceaux de code C++ pris pour des libelles.
+$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
+function Remove-CharLiterals([string]$src) {
+  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
+}
 # Ce qui precede immediatement le groupe : identifiant + parenthese eventuelle.
 $rxCaller = [regex]'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*$'
 
 $rows = New-Object System.Collections.Generic.List[object]
 
 foreach ($file in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
-  $text  = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8)
+  $text  = Remove-CharLiterals ([System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8))
   $lines = $text -split "`n"
   # Offsets de debut de ligne, pour retrouver le numero depuis un index.
   $starts = New-Object System.Collections.Generic.List[int]

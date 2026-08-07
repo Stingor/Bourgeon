@@ -1278,14 +1278,14 @@ int EmblemTransparencyPercent(const std::vector<uint8_t>& bmp) {
 // serveur est indiscernable d'un serveur muet.
 bool EmblemBmpIsUsable(const std::vector<uint8_t>& bmp, std::string* why) {
   auto fail = [why](const char* text) { if (why) *why = text; return false; };
-  if (bmp.size() < 54) return fail("Fichier trop court pour un BMP.");
-  if (bmp[0] != 'B' || bmp[1] != 'M') return fail("Ce n'est pas un BMP (signature « BM » absente).");
+  if (bmp.size() < 54) return fail(i18n::Tr("Fichier trop court pour un BMP."));
+  if (bmp[0] != 'B' || bmp[1] != 'M') return fail(i18n::Tr("Ce n'est pas un BMP (signature « BM » absente)."));
   const uint32_t declared = *reinterpret_cast<const uint32_t*>(&bmp[2]);
   // Le serveur compare bfSize à la taille réellement reçue : un en-tête menteur
   // (fréquent après une conversion) est rejeté sans le moindre message en jeu.
-  if (declared != bmp.size()) return fail("En-tête BMP incohérent (taille déclarée ≠ taille du fichier).");
+  if (declared != bmp.size()) return fail(i18n::Tr("En-tête BMP incohérent (taille déclarée ≠ taille du fichier)."));
   const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
-  if (dataOff >= bmp.size()) return fail("En-tête BMP incohérent (offset des pixels hors fichier).");
+  if (dataOff >= bmp.size()) return fail(i18n::Tr("En-tête BMP incohérent (offset des pixels hors fichier)."));
   const int32_t w    = *reinterpret_cast<const int32_t*>(&bmp[0x12]);
   const int32_t hraw = *reinterpret_cast<const int32_t*>(&bmp[0x16]);
   const int32_t h    = (hraw < 0) ? -hraw : hraw;
@@ -1299,9 +1299,9 @@ bool EmblemBmpIsUsable(const std::vector<uint8_t>& bmp, std::string* why) {
     return false;
   }
   const int16_t bpp = *reinterpret_cast<const int16_t*>(&bmp[0x1c]);
-  if (bpp != 24 && bpp != 8) return fail("Profondeur non gérée : utilise du 24 bits ou du 256 couleurs.");
+  if (bpp != 24 && bpp != 8) return fail(i18n::Tr("Profondeur non gérée : utilise du 24 bits ou du 256 couleurs."));
   const uint32_t compression = *reinterpret_cast<const uint32_t*>(&bmp[0x1e]);
-  if (compression != 0) return fail("BMP compressé (RLE) : enregistre-le sans compression.");
+  if (compression != 0) return fail(i18n::Tr("BMP compressé (RLE) : enregistre-le sans compression."));
   if (bmp.size() > kEmblemMaxRawBytes) {
     if (why) {
       char text[96];
@@ -1396,7 +1396,7 @@ void ScanEmblemFolder() {
     cand.name = fd.cFileName;
     cand.bmp = ReadWholeFile((dir + cand.name).c_str(), 1 << 16);
     if (cand.bmp.empty()) {
-      cand.why = "Fichier illisible ou vide.";
+      cand.why = i18n::Tr("Fichier illisible ou vide.");
     } else {
       cand.usable = EmblemBmpIsUsable(cand.bmp, &cand.why);
       cand.preview = EmblemPreview(cand.name, cand.bmp);
@@ -2622,7 +2622,7 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
     if (cnt >= kMaxPresetsPerChar) { preset_status_ = "Limite de 5 presets atteinte"; return; }
     equip_presets_.push_back(std::move(p));
   }
-  preset_status_ = "Preset enregistré";
+  preset_status_ = i18n::Tr("Preset enregistré");
   if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
 }
 
@@ -2730,7 +2730,7 @@ void CharacterSheet::DrawPresetsTab() {
 
   // Action globale : se mettre « tout nu » (independant des presets). Les costumes vivent dans
   // un tableau session distinct -> bouton separe pour tout retirer, costumes compris.
-  if (ro::RoButton(i18n::Tr("Tout déséquiper"), bw("Tout déséquiper"))) UnequipAll(false);
+  if (ro::RoButton(i18n::Tr("Tout déséquiper"), bw(i18n::Tr("Tout déséquiper")))) UnequipAll(false);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire l'équipement porté (garde les costumes)"));
   ImGui::SameLine(0.0f, 4.0f);
@@ -2829,7 +2829,7 @@ void CharacterSheet::DrawPresetsTab() {
   // Section sauvegarde (bas de l'onglet).
   ImGui::TextColored(kBlack, i18n::Tr("Enregistrer l'équipement porté (%d/%d)"),
                      static_cast<int>(mine.size()), kMaxPresetsPerChar);
-  const float save_w = bw("Sauver l'actuel");
+  const float save_w = bw(i18n::Tr("Sauver l'actuel"));
   ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - save_w - 8.0f));
   ImGui::InputTextWithHint("##cs_pname", i18n::Tr("nom du preset"), preset_name_buf_,
                            sizeof(preset_name_buf_));
@@ -3039,7 +3039,7 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
   }
   // 2) la compétence demandée elle-même.
   if (target.user_up <= 0) {
-    skill_status_ = "Cette compétence ne se monte pas avec des points.";
+    skill_status_ = i18n::Tr("Cette compétence ne se monte pas avec des points.");
     return false;
   }
   const int current = std::max(target.learned, PendingLevel(id));
@@ -3047,7 +3047,7 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
   // `reserve` borne déjà au niveau max ET aux points restants : viser le max revient
   // à demander tout ce qui reste, sans boucler ni recompter les prérequis.
   if (reserve(target, to_max ? target.maxlv : current + 1) == 0) {
-    skill_status_ = "Points insuffisants pour les prérequis.";
+    skill_status_ = i18n::Tr("Points insuffisants pour les prérequis.");
     return false;
   }
   skill_status_.clear();
@@ -4110,7 +4110,7 @@ void CharacterSheet::DrawGuildTab() {
     if (ro::RoButton("Enregistrer", 110.0f, 0.0f)) {
       SendGuildNotice(gi.guildId, guild_notice_subj_, guild_notice_body_);
       guild_notice_edit_ = false;
-      guild_status_ = "Annonce envoyée.";
+      guild_status_ = i18n::Tr("Annonce envoyée.");
     }
     ImGui::SameLine();
     if (ro::RoButton("Annuler", 90.0f, 0.0f)) guild_notice_edit_ = false;
@@ -4145,7 +4145,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Storage de guilde"))) {
       SendAtCommand(kCmdGuildStorage);
-      guild_status_ = "Storage de guilde : ouverture demandée.";
+      guild_status_ = i18n::Tr("Storage de guilde : ouverture demandée.");
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered())
@@ -4518,10 +4518,10 @@ void CharacterSheet::DrawGuildTab() {
       const std::vector<uint8_t> current = CurrentEmblemBmp(gi.guildId);
       if (!current.empty() && EmblemCanvasLoadBmp(current)) {
         guild_emblem_goto_paint_ = true;  // sinon le modal s'ouvre sur la liste de fichiers
-        guild_emblem_diag_ = "Emblème actuel de la guilde chargé dans l'éditeur.";
+        guild_emblem_diag_ = i18n::Tr("Emblème actuel de la guilde chargé dans l'éditeur.");
       } else {
         guild_emblem_diag_ =
-            "Emblème actuel illisible (pas encore téléchargé ?) : le dessin en cours est gardé.";
+            i18n::Tr("Emblème actuel illisible (pas encore téléchargé ?) : le dessin en cours est gardé.");
       }
     }
     ImGui::OpenPopup("Changer l'emblème###bourgeon_guild_emblem");
@@ -4562,7 +4562,7 @@ void CharacterSheet::DrawGuildTab() {
                             static_cast<uint32_t>(
                                 Bourgeon::Instance().client().session().aid()),
                             static_cast<uint32_t>(ReadInt(kOwnCharId)), guild_reason_buf_);
-      guild_status_ = "Départ envoyé.";
+      guild_status_ = i18n::Tr("Départ envoyé.");
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
@@ -4598,7 +4598,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::BeginDisabled(!name_matches);
     if (ro::RoButton("Dissoudre", 110.0f, 0.0f)) {
       SendAtCommand(kCmdBreakGuild);
-      guild_status_ = "Dissolution demandée.";
+      guild_status_ = i18n::Tr("Dissolution demandée.");
       guild_break_confirm_[0] = '\0';
       ImGui::CloseCurrentPopup();
     }
@@ -5563,7 +5563,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
       guild_emblem_error_.clear();
       guild_status_ = "Dessin repris de " + chosen->name;
     } else {
-      guild_emblem_error_ = "Ce fichier n'est pas reprenable (dimensions ou profondeur).";
+      guild_emblem_error_ = i18n::Tr("Ce fichier n'est pas reprenable (dimensions ou profondeur).");
     }
   }
   ImGui::EndDisabled();
@@ -5834,9 +5834,9 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   if (ro::RoButton(i18n::Tr("Emblème actuel"), 150.0f, 0.0f)) {
     const std::vector<uint8_t> current = CurrentEmblemBmp(guildId);
     if (!current.empty() && EmblemCanvasLoadBmp(current))
-      guild_emblem_diag_ = "Emblème actuel de la guilde chargé dans l'éditeur.";
+      guild_emblem_diag_ = i18n::Tr("Emblème actuel de la guilde chargé dans l'éditeur.");
     else
-      guild_emblem_diag_ = "Emblème actuel illisible (pas encore téléchargé ?).";
+      guild_emblem_diag_ = i18n::Tr("Emblème actuel illisible (pas encore téléchargé ?).");
   }
   ImGui::EndDisabled();
   if (ImGui::IsItemHovered())
@@ -5870,7 +5870,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     if (EmblemCanvasLoadItemIcon(static_cast<uint32_t>(guild_emblem_item_id_))) {
       guild_emblem_diag_.clear();
     } else {
-      guild_emblem_diag_ = "Icône introuvable pour cet item.";
+      guild_emblem_diag_ = i18n::Tr("Icône introuvable pour cet item.");
     }
   }
   ImGui::EndDisabled();
@@ -6566,7 +6566,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
       gif_status_ = ok ? (std::string("GIF OK : ") + (fn ? fn + 1 : p.c_str()))
                        : std::string("Échec GIF (voir log)");
     } else {
-      gif_status_ = "Export annulé";
+      gif_status_ = i18n::Tr("Export annulé");
     }
     gif_dialog_busy_.store(false);
   }
@@ -6634,12 +6634,12 @@ void CharacterSheet::RequestGifSave() {
     OPENFILENAMEA ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner   = nullptr;  // top-level : pas de propriétaire cross-thread
-    ofn.lpstrFilter = "GIF anime (*.gif)\0*.gif\0Tous les fichiers\0*.*\0";
+    ofn.lpstrFilter = i18n::Tr("GIF anime (*.gif)\0*.gif\0Tous les fichiers\0*.*\0");
     ofn.lpstrFile   = path;
     ofn.nMaxFile    = sizeof(path);
     ofn.lpstrInitialDir = initdir.c_str();
     ofn.lpstrDefExt = "gif";
-    ofn.lpstrTitle  = "Enregistrer le GIF de l'avatar";
+    ofn.lpstrTitle  = i18n::Tr("Enregistrer le GIF de l'avatar");
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     const bool ok = GetSaveFileNameA(&ofn) != 0;
     gif_dialog_path_ = ok ? std::string(path) : std::string();
@@ -6865,57 +6865,57 @@ void CharacterSheet::DrawStatsPanel() {
     // Sections repliables (la fiche peut être bien fournie) ; ouvertes par défaut.
     constexpr ImGuiTreeNodeFlags kSec = ImGuiTreeNodeFlags_DefaultOpen;
     if (any_flat && ImGui::CollapsingHeader(i18n::Tr("Bonus d'équipement"), kSec)) {
-    pct("Mêlée", bonus_.melee_pct, "Dégâts de mêlée à mains nues (%).");
-    pct("Distance", bonus_.ranged_pct, "Dégâts des attaques à distance (%).");
-    pct("Dég. crit.", bonus_.crit_dmg_pct, "Dégâts des coups critiques (%).");
-    flat("PV max", bonus_.hp_add, "PV max ajoutés par l'équipement.");
-    flat("SP max", bonus_.sp_add, "SP max ajoutés par l'équipement.");
-    flat("ASPD", bonus_.aspd_add, "Vitesse d'attaque ajoutée (valeur plate).");
-    pct("Cast var.", bonus_.vcast_pct, "Temps de cast variable (%). Négatif = réduction.");
-    pct("Cast fixe", bonus_.fcast_pct, "Temps de cast fixe (%). Négatif = réduction.");
+    pct(i18n::Tr("Mêlée"), bonus_.melee_pct, i18n::Tr("Dégâts de mêlée à mains nues (%)."));
+    pct("Distance", bonus_.ranged_pct, i18n::Tr("Dégâts des attaques à distance (%)."));
+    pct(i18n::Tr("Dég. crit."), bonus_.crit_dmg_pct, i18n::Tr("Dégâts des coups critiques (%)."));
+    flat(i18n::Tr("PV max"), bonus_.hp_add, i18n::Tr("PV max ajoutés par l'équipement."));
+    flat(i18n::Tr("SP max"), bonus_.sp_add, i18n::Tr("SP max ajoutés par l'équipement."));
+    flat("ASPD", bonus_.aspd_add, i18n::Tr("Vitesse d'attaque ajoutée (valeur plate)."));
+    pct(i18n::Tr("Cast var."), bonus_.vcast_pct, i18n::Tr("Temps de cast variable (%). Négatif = réduction."));
+    pct(i18n::Tr("Cast fixe"), bonus_.fcast_pct, i18n::Tr("Temps de cast fixe (%). Négatif = réduction."));
     // Lot A — offensif
-    pct("ATK %", bonus_.atk_pct, "Bonus d'ATK physique global (%).");
-    pct("MATK %", bonus_.matk_pct, "Bonus d'ATK magique global (%).");
-    pct("Renvoi mêlée", bonus_.dmg_ret_melee, "Renvoie une part des dégâts de mêlée reçus (%).");
-    pct("Renvoi dist.", bonus_.dmg_ret_ranged, "Renvoie une part des dégâts à distance reçus (%).");
-    pct("Renvoi mag.", bonus_.dmg_ret_magic, "Renvoie une part des dégâts magiques reçus (%).");
-    pct("Double att.", bonus_.double_pct, "Chance de frapper deux fois (%).");
-    pct("Coup parfait", bonus_.perfect_hit, "Chance de coup parfait (%) : ignore FLEE et DEF.");
+    pct("ATK %", bonus_.atk_pct, i18n::Tr("Bonus d'ATK physique global (%)."));
+    pct("MATK %", bonus_.matk_pct, i18n::Tr("Bonus d'ATK magique global (%)."));
+    pct(i18n::Tr("Renvoi mêlée"), bonus_.dmg_ret_melee, i18n::Tr("Renvoie une part des dégâts de mêlée reçus (%)."));
+    pct(i18n::Tr("Renvoi dist."), bonus_.dmg_ret_ranged, i18n::Tr("Renvoie une part des dégâts à distance reçus (%)."));
+    pct(i18n::Tr("Renvoi mag."), bonus_.dmg_ret_magic, i18n::Tr("Renvoie une part des dégâts magiques reçus (%)."));
+    pct(i18n::Tr("Double att."), bonus_.double_pct, i18n::Tr("Chance de frapper deux fois (%)."));
+    pct(i18n::Tr("Coup parfait"), bonus_.perfect_hit, i18n::Tr("Chance de coup parfait (%) : ignore FLEE et DEF."));
     // Lot B — survie
-    pct("PV max %", bonus_.hp_pct, "Bonus de PV maximum (%).");
-    pct("SP max %", bonus_.sp_pct, "Bonus de SP maximum (%).");
-    pct("Régén. PV", bonus_.hp_regen_pct, "Récupération naturelle de PV (%).");
-    pct("Régén. SP", bonus_.sp_regen_pct, "Récupération naturelle de SP (%).");
-    pct("Réduc. crit", bonus_.crit_def_pct, "Réduit la probabilité de subir un critique (%).");
-    flat("PV/kill", bonus_.hp_on_kill, "PV récupérés en tuant un ennemi.");
-    flat("SP/kill", bonus_.sp_on_kill, "SP récupérés en tuant un ennemi.");
-    pct("Incassable", bonus_.unbreak_pct, "Chance d'éviter la casse d'un équipement (%).");
+    pct(i18n::Tr("PV max %"), bonus_.hp_pct, i18n::Tr("Bonus de PV maximum (%)."));
+    pct(i18n::Tr("SP max %"), bonus_.sp_pct, i18n::Tr("Bonus de SP maximum (%)."));
+    pct(i18n::Tr("Régén. PV"), bonus_.hp_regen_pct, i18n::Tr("Récupération naturelle de PV (%)."));
+    pct(i18n::Tr("Régén. SP"), bonus_.sp_regen_pct, i18n::Tr("Récupération naturelle de SP (%)."));
+    pct(i18n::Tr("Réduc. crit"), bonus_.crit_def_pct, i18n::Tr("Réduit la probabilité de subir un critique (%)."));
+    flat("PV/kill", bonus_.hp_on_kill, i18n::Tr("PV récupérés en tuant un ennemi."));
+    flat("SP/kill", bonus_.sp_on_kill, i18n::Tr("SP récupérés en tuant un ennemi."));
+    pct("Incassable", bonus_.unbreak_pct, i18n::Tr("Chance d'éviter la casse d'un équipement (%)."));
     // Lot C — utilitaire
-    pct("Potions PV", bonus_.pot_hp_pct, "Efficacité des objets de soin PV (%).");
-    pct("Potions SP", bonus_.pot_sp_pct, "Efficacité des objets de soin SP (%).");
-    pct("Soin donné", bonus_.heal_up_pct, "Puissance des soins que vous prodiguez (%).");
-    pct("Délai skill", bonus_.delay_pct, "After-cast delay (%). Négatif = réduction.");
-    flat("Cast var. ms", bonus_.add_vcast_ms, "Ajout/retrait au cast variable, en millisecondes.");
-    flat("Cast fixe ms", bonus_.add_fcast_ms, "Ajout/retrait au cast fixe, en millisecondes.");
-    pct("Vol", bonus_.steal_pct, "Taux de vol d'objets (%).");
+    pct(i18n::Tr("Potions PV"), bonus_.pot_hp_pct, i18n::Tr("Efficacité des objets de soin PV (%)."));
+    pct(i18n::Tr("Potions SP"), bonus_.pot_sp_pct, i18n::Tr("Efficacité des objets de soin SP (%)."));
+    pct(i18n::Tr("Soin donné"), bonus_.heal_up_pct, i18n::Tr("Puissance des soins que vous prodiguez (%)."));
+    pct(i18n::Tr("Délai skill"), bonus_.delay_pct, i18n::Tr("After-cast delay (%). Négatif = réduction."));
+    flat(i18n::Tr("Cast var. ms"), bonus_.add_vcast_ms, i18n::Tr("Ajout/retrait au cast variable, en millisecondes."));
+    flat(i18n::Tr("Cast fixe ms"), bonus_.add_fcast_ms, i18n::Tr("Ajout/retrait au cast fixe, en millisecondes."));
+    pct("Vol", bonus_.steal_pct, i18n::Tr("Taux de vol d'objets (%)."));
     // Lot E — réduction par type d'attaque + splash
-    pct("Réduc. mêlée", bonus_.def_melee_pct, "Réduit les dégâts de mêlée reçus (%).");
-    pct("Réduc. distance", bonus_.def_ranged_pct, "Réduit les dégâts à distance reçus (%).");
-    pct("Réduc. magie", bonus_.def_magic_pct, "Réduit les dégâts magiques reçus (%).");
-    pct("Réduc. divers", bonus_.def_misc_pct, "Réduit les dégâts divers reçus (%).");
-    flat("Splash", bonus_.splash, "Portée de la zone d'effet de vos attaques (cases).");
-    flat("Splash+", bonus_.splash_add, "Portée de splash additionnelle (cases).");
+    pct(i18n::Tr("Réduc. mêlée"), bonus_.def_melee_pct, i18n::Tr("Réduit les dégâts de mêlée reçus (%)."));
+    pct(i18n::Tr("Réduc. distance"), bonus_.def_ranged_pct, i18n::Tr("Réduit les dégâts à distance reçus (%)."));
+    pct(i18n::Tr("Réduc. magie"), bonus_.def_magic_pct, i18n::Tr("Réduit les dégâts magiques reçus (%)."));
+    pct(i18n::Tr("Réduc. divers"), bonus_.def_misc_pct, i18n::Tr("Réduit les dégâts divers reçus (%)."));
+    flat("Splash", bonus_.splash, i18n::Tr("Portée de la zone d'effet de vos attaques (cases)."));
+    flat("Splash+", bonus_.splash_add, i18n::Tr("Portée de splash additionnelle (cases)."));
     // Lot F — vol de vie
-    pct("Vol PV", bonus_.hp_drain_pct, "PV volés à chaque attaque (% des dégâts).");
-    pct("Vol SP", bonus_.sp_drain_pct, "SP volés à chaque attaque (% des dégâts).");
+    pct(i18n::Tr("Vol PV"), bonus_.hp_drain_pct, i18n::Tr("PV volés à chaque attaque (% des dégâts)."));
+    pct(i18n::Tr("Vol SP"), bonus_.sp_drain_pct, i18n::Tr("SP volés à chaque attaque (% des dégâts)."));
     // Lot G — très niche
-    pct("Casse arme", bonus_.break_weapon_pct, "Chance de casser l'arme de la cible (%).");
-    pct("Casse armure", bonus_.break_armor_pct, "Chance de casser l'armure de la cible (%).");
-    pct("Zeny bonus", bonus_.zeny_bonus_pct, "Bonus de Zeny obtenu sur les monstres (%).");
-    pct("Transforme", bonus_.classchange_pct, "Chance de transformer la cible en un autre monstre (%).");
-    pct("Réduc. renvoi", bonus_.dmg_ret_reduce, "Réduit les dégâts que vous subissez du renvoi (%).");
-    flat("PV au sort", bonus_.magic_hp_gain, "PV récupérés en lançant un sort.");
-    flat("SP au sort", bonus_.magic_sp_gain, "SP récupérés en lançant un sort.");
+    pct(i18n::Tr("Casse arme"), bonus_.break_weapon_pct, i18n::Tr("Chance de casser l'arme de la cible (%)."));
+    pct(i18n::Tr("Casse armure"), bonus_.break_armor_pct, i18n::Tr("Chance de casser l'armure de la cible (%)."));
+    pct(i18n::Tr("Zeny bonus"), bonus_.zeny_bonus_pct, i18n::Tr("Bonus de Zeny obtenu sur les monstres (%)."));
+    pct("Transforme", bonus_.classchange_pct, i18n::Tr("Chance de transformer la cible en un autre monstre (%)."));
+    pct(i18n::Tr("Réduc. renvoi"), bonus_.dmg_ret_reduce, i18n::Tr("Réduit les dégâts que vous subissez du renvoi (%)."));
+    flat(i18n::Tr("PV au sort"), bonus_.magic_hp_gain, i18n::Tr("PV récupérés en lançant un sort."));
+    flat(i18n::Tr("SP au sort"), bonus_.magic_sp_gain, i18n::Tr("SP récupérés en lançant un sort."));
     }  // ── fin « Bonus d'équipement »
 
     // Conditionnels : (code, idx) -> libellé via les tables de noms.
@@ -6971,7 +6971,7 @@ void CharacterSheet::DrawStatsPanel() {
       char label[64];
       std::snprintf(label, sizeof(label), "%s %s", kind, who);
       std::snprintf(vb, sizeof(vb), "%+d%%", c.value);
-      bonusStat(label, vb, "Bonus conditionnel : ne s'applique que contre ce type de cible.");
+      bonusStat(label, vb, i18n::Tr("Bonus conditionnel : ne s'applique que contre ce type de cible."));
     }
 
     // Bonus liés à un skill : nom résolu via le wrapper Lua natif (localisé).
@@ -7000,7 +7000,7 @@ void CharacterSheet::DrawStatsPanel() {
         case kBskSkillAtk:
           std::snprintf(label, sizeof(label), i18n::Tr("Dégâts %s"), skillName(sk.skill_id));
           std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
-          tip = "Bonus de dégâts sur ce skill précis (%).";
+          tip = i18n::Tr("Bonus de dégâts sur ce skill précis (%).");
           break;
         case kBskAddeff:
         case kBskAddeffHit: {
@@ -7016,13 +7016,13 @@ void CharacterSheet::DrawStatsPanel() {
           // skill_id porte l'EFST du statut (résolu via GetStateIconDescript).
           std::snprintf(label, sizeof(label), i18n::Tr("Résist. %s"), StatusName(sk.skill_id));
           std::snprintf(vb, sizeof(vb), "%d,%02d%%", sk.value / 100, std::abs(sk.value) % 100);  // 1/100% -> %
-          tip = "Résistance à ce statut (chance/durée réduite).";
+          tip = i18n::Tr("Résistance à ce statut (chance/durée réduite).");
           break;
         }
         case kBskSubskill:
           std::snprintf(label, sizeof(label), i18n::Tr("Réduc. %s"), skillName(sk.skill_id));
           std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
-          tip = "Réduit les dégâts subis de ce skill (%).";
+          tip = i18n::Tr("Réduit les dégâts subis de ce skill (%).");
           break;
         case kBskAutospellSkill: {
           // Deux noms de skill (casté + déclencheur) : copier le 1er avant le 2e appel.
@@ -7035,7 +7035,7 @@ void CharacterSheet::DrawStatsPanel() {
           else
             std::snprintf(label, sizeof(label), "Autocast %s sur %s", cast, trig);
           std::snprintf(vb, sizeof(vb), "%d,%d%%", sk.value / 10, sk.value % 10);  // ‰ -> %
-          tip = "Chance de lancer ce sort en utilisant le skill déclencheur.";
+          tip = i18n::Tr("Chance de lancer ce sort en utilisant le skill déclencheur.");
           break;
         }
         case kBskSkillSprate: case kBskSkillSpcost:
@@ -7063,7 +7063,7 @@ void CharacterSheet::DrawStatsPanel() {
           if (unit == 0)      std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
           else if (unit == 1) std::snprintf(vb, sizeof(vb), "%+d ms", sk.value);
           else                std::snprintf(vb, sizeof(vb), "%+d", sk.value);
-          tip = "Modificateur appliqué à ce skill précis.";
+          tip = i18n::Tr("Modificateur appliqué à ce skill précis.");
           break;
         }
         default:
@@ -7083,7 +7083,7 @@ void CharacterSheet::DrawStatsPanel() {
       else
         std::snprintf(label, sizeof(label), "Drop %s", itemcell::NameById(it.nameid));
       std::snprintf(vb, sizeof(vb), "%d,%02d%%", it.rate / 100, std::abs(it.rate) % 100);  // 1~10000 -> %
-      bonusStat(label, vb, "Chance de drop bonus de cet objet en tuant un monstre.");
+      bonusStat(label, vb, i18n::Tr("Chance de drop bonus de cet objet en tuant un monstre."));
     }
   }
 }

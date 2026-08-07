@@ -758,7 +758,7 @@ void MonsterInfoWindow::OnRenderUI() {
     MobInfo* mob = Current();
     if (mob == nullptr || mob->state == Fetch::kPending ||
         mob->state == Fetch::kIdle) {
-      Label("Interrogation du serveur...");
+      Label(i18n::Tr("Interrogation du serveur..."));
     } else if (mob->state == Fetch::kUnknown) {
       ImGui::TextColored(kRed, i18n::Tr("Monstre inconnu du serveur (classe %u)."),
                          current_id_);
@@ -1154,8 +1154,8 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
     // PV, SP et EXP. Les stats (STR 1..255), les portées et les millisecondes
     // n'en ont pas besoin, et en mettre partout ferait du bruit.
     row("PV", Grouped(mob.hp, a, sizeof(a)), "SP", Grouped(mob.sp, b, sizeof(b)));
-    row("EXP de base", Grouped(mob.base_exp, a, sizeof(a)),
-        "EXP de job", Grouped(mob.job_exp, b, sizeof(b)));
+    row(i18n::Tr("EXP de base"), Grouped(mob.base_exp, a, sizeof(a)),
+        i18n::Tr("EXP de job"), Grouped(mob.job_exp, b, sizeof(b)));
 
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u ~ %u", mob.atk_min, mob.atk_max);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u ~ %u", mob.matk_min, mob.matk_max);
@@ -1187,10 +1187,10 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
     } else {
       _snprintf_s(b, sizeof(b), _TRUNCATE, "immobile");
     }
-    row("Portée d'attaque", a, "Vitesse de dépl.", b);
+    row(i18n::Tr("Portée d'attaque"), a, i18n::Tr("Vitesse de dépl."), b);
 
     if (mob.mvp_exp > 0)
-      row("EXP MVP", Grouped(mob.mvp_exp, a, sizeof(a)), "", "");
+      row(i18n::Tr("EXP MVP"), Grouped(mob.mvp_exp, a, sizeof(a)), "", "");
     ImGui::EndTable();
   }
 
@@ -1205,23 +1205,23 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
                             ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn(); Label("HIT");
-    Help("Précision du monstre, comparée à votre FLEE.\n\n"
-         "HIT = niveau du monstre + sa DEX.");
+    Help(i18n::Tr("Précision du monstre, comparée à votre FLEE.\n\n"
+         "HIT = niveau du monstre + sa DEX."));
     ImGui::TableNextColumn(); ImGui::Text("%d", mob_hit);
     ImGui::TableNextColumn(); Label("FLEE");
-    Help("Esquive du monstre, comparée à votre HIT.\n\n"
-         "FLEE = niveau du monstre + son AGI.");
+    Help(i18n::Tr("Esquive du monstre, comparée à votre HIT.\n\n"
+         "FLEE = niveau du monstre + son AGI."));
     ImGui::TableNextColumn(); ImGui::Text("%d", mob_flee);
 
     ImGui::TableNextRow();
     ImGui::TableNextColumn(); Label("Critique");
-    Help("Sur ce serveur, un monstre ne fait JAMAIS de coup critique : la "
+    Help(i18n::Tr("Sur ce serveur, un monstre ne fait JAMAIS de coup critique : la "
          "mécanique est réservée aux joueurs et aux mercenaires. Ce n'est pas "
-         "une donnée manquante, c'est zéro par conception.");
+         "une donnée manquante, c'est zéro par conception."));
     ImGui::TableNextColumn(); ImGui::TextColored(kGreen, "aucun");
-    ImGui::TableNextColumn(); Label("Esquive parfaite");
-    Help("De même, un monstre n'a pas d'esquive parfaite : elle est réservée "
-         "aux joueurs.");
+    ImGui::TableNextColumn(); Label(i18n::Tr("Esquive parfaite"));
+    Help(i18n::Tr("De même, un monstre n'a pas d'esquive parfaite : elle est réservée "
+         "aux joueurs."));
     ImGui::TableNextColumn(); ImGui::TextColored(kGreen, "aucune");
     ImGui::EndTable();
   }
@@ -1243,14 +1243,14 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
 
       const int you_hit = HitChancePct(own.hit, mob_flee);
       _snprintf_s(v, sizeof(v), _TRUNCATE, "%d %%", you_hit);
-      line("Vous le touchez",
-           "Chance qu'une attaque normale porte.\n\n"
+      line(i18n::Tr("Vous le touchez"),
+           i18n::Tr("Chance qu'une attaque normale porte.\n\n"
            "80 % + votre HIT - le FLEE du monstre, bornée entre 5 % et 100 %.\n\n"
            "Votre HIT vaut votre NIVEAU DE BASE + votre DEX : la moitié du "
            "calcul vient donc de votre niveau, pas de vos points. Le serveur "
            "plafonne la part du niveau (600 actuellement), au-delà seule la DEX "
            "compte encore.\n\n"
-           "Ne tient compte ni des compétences, ni des cartes conditionnelles.",
+           "Ne tient compte ni des compétences, ni des cartes conditionnelles."),
            v, you_hit >= 90 ? kGreen : (you_hit <= 40 ? kRed : kAmber));
 
       // ── Critique ──────────────────────────────────────────────────────────
@@ -1267,11 +1267,11 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
       if (crit_tenths > 1000) crit_tenths = 1000;
       _snprintf_s(v, sizeof(v), _TRUNCATE, "%d,%d %%", crit_tenths / 10,
                   crit_tenths % 10);
-      line("Vos critiques sur lui",
-           "Chance qu'une attaque soit un coup critique. Ce n'est PAS un "
+      line(i18n::Tr("Vos critiques sur lui"),
+           i18n::Tr("Chance qu'une attaque soit un coup critique. Ce n'est PAS un "
            "multiplicateur de dégâts.\n\n"
            "Votre CRIT moins 0,2 point par LUK du monstre. Un critique "
-           "remplace le jet de précision (il ne rate jamais) et ignore la DEF.",
+           "remplace le jet de précision (il ne rate jamais) et ignore la DEF."),
            v, crit_tenths > 0 ? kBlue : kLabel);
 
       // ── Être touché ───────────────────────────────────────────────────────
@@ -1287,8 +1287,8 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
       if (pdodge > 100) pdodge = 100;
       const int net = raw * (100 - pdodge) / 100;
       _snprintf_s(v, sizeof(v), _TRUNCATE, "%d %%", net);
-      line("Il vous touche",
-           "Chance qu'une de ses attaques vous atteigne réellement, esquive "
+      line(i18n::Tr("Il vous touche"),
+           i18n::Tr("Chance qu'une de ses attaques vous atteigne réellement, esquive "
            "parfaite déduite.\n\n"
            "80 % + son HIT - votre FLEE, bornée entre 5 % et 100 %, puis "
            "amputée de votre esquive parfaite, qui annule l'attaque avant tout "
@@ -1299,7 +1299,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
            "compte encore.\n\n"
            "Votre FLEE chute par ailleurs de 10 % par monstre au-delà du "
            "deuxième qui vous prend pour cible : en pack, le chiffre réel est "
-           "plus élevé.",
+           "plus élevé."),
            v, net <= 20 ? kGreen : (net >= 80 ? kRed : kAmber));
       ImGui::EndTable();
     }
@@ -1307,8 +1307,8 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
 }
 
 void MonsterInfoWindow::DrawResistTab(MobInfo& mob) {
-  Label("Pourcentage de dégâts ENCAISSÉS par élément d'attaque. 100 %% = normal, "
-        "0 %% = immunisé, au-dessus de 100 %% = faiblesse.");
+  Label(i18n::Tr("Pourcentage de dégâts ENCAISSÉS par élément d'attaque. 100 %% = normal, "
+        "0 %% = immunisé, au-dessus de 100 %% = faiblesse."));
   ImGui::Text(i18n::Tr("Élément du monstre : %s niveau %u"), ElementName(mob.element),
               mob.element_lv);
   ImGui::Separator();
@@ -1396,7 +1396,7 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
 
 void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
   if (mob.drops.empty()) {
-    Label("Ce monstre ne laisse rien tomber.");
+    Label(i18n::Tr("Ce monstre ne laisse rien tomber."));
     return;
   }
   static ImGuiTextFilter s_filter;
@@ -1488,7 +1488,7 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
       if (d.kind == 1)
         ImGui::TextColored(kAmber, i18n::Tr("Récompense MVP"));
       else
-        Label("Drop normal");
+        Label(i18n::Tr("Drop normal"));
     }
     ImGui::EndTable();
   }
@@ -1501,8 +1501,8 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
 
 void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
   if (mob.spawns.empty()) {
-    Label("Aucun spawn permanent connu : ce monstre n'apparaît que par script "
-          "(invocation, quête, instance) ou n'est plus placé sur aucune carte.");
+    Label(i18n::Tr("Aucun spawn permanent connu : ce monstre n'apparaît que par script "
+          "(invocation, quête, instance) ou n'est plus placé sur aucune carte."));
     return;
   }
   if (ImGui::BeginTable("##mi_spawns", 2,
@@ -1541,11 +1541,11 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
     }
     ImGui::EndTable();
   }
-  Label("Les spawns d'instance et les invocations de script ne sont pas comptés.");
+  Label(i18n::Tr("Les spawns d'instance et les invocations de script ne sont pas comptés."));
 }
 
 void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
-  Label("Clic sur une compétence : sa description (fenêtre du client).");
+  Label(i18n::Tr("Clic sur une compétence : sa description (fenêtre du client)."));
   if (ImGui::BeginTable("##mi_skills", 3,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_ScrollY |

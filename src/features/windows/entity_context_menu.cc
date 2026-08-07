@@ -683,31 +683,31 @@ void EntityContextMenu::BuildItems() {
       const bool is_master = in_guild && ReadGlobalInt(kGuildIsMaster) != 0;
       const bool in_party  = ReadGlobalInt(kInPartyFlag) != 0;
 
-      add("Voir l'équipement", kCodeViewEquip);
-      add("Proposer un échange", kCodeDeal);
+      add(i18n::Tr("Voir l'équipement"), kCodeViewEquip);
+      add(i18n::Tr("Proposer un échange"), kCodeDeal);
       // Les deux invitations restent VISIBLES et grisées quand elles n'ont pas
       // de sens : le natif les faisait disparaître, ce qui laissait croire que
       // le client n'en était pas capable. La raison part en infobulle.
       if (in_party) {
-        add("Inviter dans le groupe", kCodePartyInvite);
+        add(i18n::Tr("Inviter dans le groupe"), kCodePartyInvite);
         // Deux refus différents, deux phrases différentes : « il est déjà avec
         // moi » n'appelle pas la même réaction que « il faudra qu'il quitte son
         // groupe ».
         if (target_in_party_) {
-          disable_last("Déjà membre de votre groupe.");
+          disable_last(i18n::Tr("Déjà membre de votre groupe."));
         } else if (target_has_party_) {
           disable_last(
-              "Ce joueur appartient déjà à un groupe : le serveur refuse "
-              "l'invitation tant qu'il ne l'a pas quitté.");
+              i18n::Tr("Ce joueur appartient déjà à un groupe : le serveur refuse "
+              "l'invitation tant qu'il ne l'a pas quitté."));
         }
       }
       if (in_guild) {
-        add("Inviter dans la guilde", kCodeGuildInvite);
+        add(i18n::Tr("Inviter dans la guilde"), kCodeGuildInvite);
         // Le serveur refuse un invité qui a déjà une guilde ; le natif le savait
         // et retirait l'entrée. (Il exigeait en plus le droit d'invitation,
         // `dword_159C234` — non repris : ce flag n'est pas tranché en RE, et
         // s'en servir à tort masquerait l'entrée à qui y a droit. À mesurer.)
-        if (target_guild_id_ != 0) disable_last("Ce joueur a déjà une guilde.");
+        if (target_guild_id_ != 0) disable_last(i18n::Tr("Ce joueur a déjà une guilde."));
       }
       if (is_master) {
         // Les deux visent la GUILDE de la cible : sans guilde, il n'y a rien à
@@ -718,15 +718,15 @@ void EntityContextMenu::BuildItems() {
             (target_guild_id_ == 0)          ? "Ce joueur n'a pas de guilde."
             : (target_guild_id_ == own_guild) ? "C'est votre propre guilde."
                                               : nullptr;
-        add("Proposer une alliance", kCodeGuildAlly, Local::kNone, true);
+        add(i18n::Tr("Proposer une alliance"), kCodeGuildAlly, Local::kNone, true);
         if (guild_target_issue) disable_last(guild_target_issue);
-        add("Déclarer la guilde ennemie", kCodeGuildFoe);
+        add(i18n::Tr("Déclarer la guilde ennemie"), kCodeGuildFoe);
         if (guild_target_issue) disable_last(guild_target_issue);
       }
       add("Chuchoter", kCodeWhisper, Local::kNone, true);
-      add("Ajouter en ami", kCodeAddFriend);
-      if (target_is_friend_) disable_last("Déjà dans votre liste d'amis.");
-      add("Envoyer un courrier", kCodeSendMail);
+      add(i18n::Tr("Ajouter en ami"), kCodeAddFriend);
+      if (target_is_friend_) disable_last(i18n::Tr("Déjà dans votre liste d'amis."));
+      add(i18n::Tr("Envoyer un courrier"), kCodeSendMail);
       // Même condition que le natif : le dispatcher, lui, ne la rejoue pas, et
       // la demande partirait au serveur pour se faire refuser.
       if (AdoptionEligible(target_aid_)) add("Adopter", kCodeAdopt);
@@ -740,48 +740,48 @@ void EntityContextMenu::BuildItems() {
       add(target_chat_blocked_ ? i18n::Tr("Autoriser les chuchotements") : i18n::Tr("Bloquer les chuchotements"),
           target_chat_blocked_ ? kCodeUnblockChat : kCodeBlockChat,
           Local::kNone, true, false,
-          "Liste d'ignorés du compte : ses chuchotements ne vous parviennent "
-          "plus. Le chat public, le groupe et la guilde ne sont pas filtrés.");
-      add("Signaler ce joueur", kCodeReportUser);
-      add("Copier le nom", 0, Local::kCopyName, true);
+          i18n::Tr("Liste d'ignorés du compte : ses chuchotements ne vous parviennent "
+          "plus. Le chat public, le groupe et la guilde ne sont pas filtrés."));
+      add(i18n::Tr("Signaler ce joueur"), kCodeReportUser);
+      add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);
       break;
     }
     case Kind::kSelf:
-      add("Copier mon nom", 0, Local::kCopyName);
+      add(i18n::Tr("Copier mon nom"), 0, Local::kCopyName);
       break;
     case Kind::kMonster:
       add("Attaquer", 0, Local::kAttack);
-      add("Fiche du monstre", 0, Local::kMonsterInfo, true);
-      add("Copier le nom", 0, Local::kCopyName);
+      add(i18n::Tr("Fiche du monstre"), 0, Local::kMonsterInfo, true);
+      add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
     case Kind::kNpc:
       // Pas d'« Interagir » sur un PORTAIL : le natif sort avant toute action
       // dès que le job vaut 45 (docs §7), et un warp n'a pas de dialogue.
       if (target_job_ != kJobPortal) add("Interagir", 0, Local::kTalkToNpc);
-      add("Copier le nom", 0, Local::kCopyName, true);
+      add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);
       break;
     case Kind::kPet:
-      add("Statut du pet", kCodePetStatus);
+      add(i18n::Tr("Statut du pet"), kCodePetStatus);
       add("Nourrir", kCodePetFeed);
       add("Spectacle", kCodePetPerform);
-      add("Retirer l'accessoire", kCodePetUnequip);
-      add("Remettre dans l'œuf", kCodePetToEgg, Local::kNone, true);
+      add(i18n::Tr("Retirer l'accessoire"), kCodePetUnequip);
+      add(i18n::Tr("Remettre dans l'œuf"), kCodePetToEgg, Local::kNone, true);
       break;
     case Kind::kHomunculus:
-      add("Statut de l'homoncule", kCodeHomunStatus);
+      add(i18n::Tr("Statut de l'homoncule"), kCodeHomunStatus);
       add("Nourrir", kCodeHomunFeed);
-      add("En attente", kCodeHomunStandBy);
+      add(i18n::Tr("En attente"), kCodeHomunStandBy);
       break;
     case Kind::kMercenary:
-      add("Statut du mercenaire", kCodeMercStatus);
-      add("En attente", kCodeMercStandBy);
+      add(i18n::Tr("Statut du mercenaire"), kCodeMercStatus);
+      add(i18n::Tr("En attente"), kCodeMercStandBy);
       break;
     case Kind::kSkillUnit:
     case Kind::kGroundItem:
     case Kind::kOther:
       // Ces trois-là ne s'ouvrent que pour le staff (cf. `diagnostic_only` dans
       // OnNativeContextMenu) : le reste du menu est la section staff ci-dessous.
-      add("Copier le nom", 0, Local::kCopyName);
+      add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
     default:
       break;
@@ -809,20 +809,20 @@ void EntityContextMenu::BuildItems() {
   const char* copy_id_label = (kind_ == Kind::kSelf)   ? "Copier mon AID"
                               : (kind_ == Kind::kPlayer) ? i18n::Tr("Copier l'AID") : i18n::Tr("Copier le GID");
   add_staff(copy_id_label, 0, Local::kCopyId);
-  add_staff("Copier l'identité de pick", 0, Local::kCopyPickInfo);
+  add_staff(i18n::Tr("Copier l'identité de pick"), 0, Local::kCopyPickInfo);
 
   if (kind_ == Kind::kPlayer) {
     // Le « C-Code » est un identifiant de diagnostic (le natif le pose dans le
     // presse-papier) : même famille que l'AID, même place.
-    add_staff("Copier le C-Code", kCodeCopyCCode);
-    add_staff("Afficher le GID dans le chat", kCodeShowGid);
+    add_staff(i18n::Tr("Copier le C-Code"), kCodeCopyCCode);
+    add_staff(i18n::Tr("Afficher le GID dans le chat"), kCodeShowGid);
     add_staff("Expulser (kick)", kCodeKick, Local::kNone,
-              "Le serveur revalide la permission avant d'agir.");
-    add_staff("Journal des blocages de chat", kCodeChatBanLog);
+              i18n::Tr("Le serveur revalide la permission avant d'agir."));
+    add_staff(i18n::Tr("Journal des blocages de chat"), kCodeChatBanLog);
     if (client_admin) {
-      add_staff("Retirer tout l'équipement", kCodeFullStrip);
-      add_staff("Point de manière +", kCodeMannerPlus);
-      add_staff("Point de manière −", kCodeMannerMinus);
+      add_staff(i18n::Tr("Retirer tout l'équipement"), kCodeFullStrip);
+      add_staff(i18n::Tr("Point de manière +"), kCodeMannerPlus);
+      add_staff(i18n::Tr("Point de manière −"), kCodeMannerMinus);
     }
   }
 }

@@ -1199,11 +1199,11 @@ void RodexWindow::SendMail() {
   if (to_ansi[0] == '\0') { send_error_ = "Indique un destinataire."; return; }
   if (title_len == 0)     { send_error_ = "Le sujet ne peut pas être vide."; return; }
   if (title_len > kMailTitleMax) {
-    send_error_ = "Sujet trop long (39 caractères maximum).";
+    send_error_ = i18n::Tr("Sujet trop long (39 caractères maximum).");
     return;
   }
   if (body_len > kMailBodyMax) {
-    send_error_ = "Message trop long (499 caractères maximum).";
+    send_error_ = i18n::Tr("Message trop long (499 caractères maximum).");
     return;
   }
 
@@ -1307,7 +1307,7 @@ void RodexWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
     if (data[0] == 0) {
       ClearComposeState();  // surtout PAS CloseCompose : ce serait annuler après coup
     } else {
-      send_error_ = "Le serveur a refusé l'envoi.";
+      send_error_ = i18n::Tr("Le serveur a refusé l'envoi.");
     }
   }
 }
@@ -1693,15 +1693,15 @@ void RodexWindow::DrawMailList() {
       if ((mail.type & 4) && (mail.type & 2)) {
         icon = &g_ico_both;
         mark = "#";
-        what = "Objets et zeny à récupérer";
+        what = i18n::Tr("Objets et zeny à récupérer");
       } else if (mail.type & 4) {
         icon = &g_ico_item;
         mark = "#";
-        what = "Objets à récupérer";
+        what = i18n::Tr("Objets à récupérer");
       } else if (mail.type & 2) {
         icon = &g_ico_zeny;
         mark = "z";
-        what = "Zeny à récupérer";
+        what = i18n::Tr("Zeny à récupérer");
       }
       if (icon && icon->tex) {
         // Hauteur alignée sur la ligne de texte, largeur au ratio : ces .bmp ne

@@ -84,6 +84,13 @@ function Test-IsUserText([string]$lit) {
 
 $litGroup = '"(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*'
 $rxJoin   = [regex]'"((?:[^"\\]|\\.)*)"'
+# 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
+# ce nettoyage il ouvre une fausse chaine et TOUT le reste du fichier se decale --
+# on s'est retrouve avec des morceaux de code C++ pris pour des libelles.
+$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
+function Remove-CharLiterals([string]$src) {
+  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
+}
 
 function Invoke-Wrap([string]$text, [string[]]$calls, [bool]$afterComma) {
   foreach ($call in $calls) {
@@ -141,6 +148,44 @@ function Invoke-WrapPatterns([string]$text) {
     $lit = $m.Groups[1].Value
     $j = ""; foreach ($p in $rxJoin.Matches($lit)) { $j += $p.Groups[1].Value }
     if (Test-IsUserText $j) { return $m.Value.Replace($lit, "i18n::Tr($lit)") }
+    return $m.Value
+  })
+
+  # 3bis. Helpers d'affichage du projet, qui prennent PLUSIEURS textes : un
+  #       libelle ET sa description (pct("Regen PV", v, "Recuperation...")). On
+  #       enveloppe donc TOUS les litteraux francais de l'appel, pas seulement le
+  #       premier. Bornes a l'instruction courante pour ne pas deborder.
+  foreach ($helper in @('pct','flat','add','bonusStat','row','line','slider','Label',
+                        'Help','bw','preset','fail','add_staff','disable_last')) {
+    $rxHelper = [regex]('(?<![A-Za-z0-9_])' + [regex]::Escape($helper) + '\s*\((?s:[^;]*?)\)\s*;')
+    $text = $rxHelper.Replace($text, {
+      param($m)
+      $inner = $m.Value
+      $rxG = [regex]$litGroup
+      return $rxG.Replace($inner, {
+        param($g)
+        # Deja enveloppe ? La regex de groupe ne voit pas le Tr( qui precede,
+        # on le teste sur le texte a gauche du litteral dans l'appel.
+        $at = $g.Index
+        $left = if ($at -ge 12) { $inner.Substring($at - 12, 12) } else { $inner.Substring(0, $at) }
+        if ($left -match 'i18n::Tr(?:Id)?\(\s*$') { return $g.Value }
+        $j = ""; foreach ($p in $rxJoin.Matches($g.Value)) { $j += $p.Groups[1].Value }
+        if (Test-IsUserText $j) { return "i18n::Tr(" + $g.Value + ")" }
+        return $g.Value
+      })
+    })
+  }
+
+  # 3ter. Affectation d'un libelle a une variable d'affichage : « tip = "..." ».
+  #       🔴 La ligne DOIT etre indentee. Une declaration en colonne 0 est une
+  #       globale ou une table de fichier, initialisee au chargement de la DLL :
+  #       un Tr() pose la serait fige en francais pour toujours.
+  $rxAssign = [regex]('(?m)^(\s{2,}[A-Za-z_][A-Za-z0-9_\.\->\[\]]*\s*=\s*)(' + $litGroup + ')(\s*;)')
+  $text = $rxAssign.Replace($text, {
+    param($m)
+    $lit = $m.Groups[2].Value
+    $j = ""; foreach ($p in $rxJoin.Matches($lit)) { $j += $p.Groups[1].Value }
+    if (Test-IsUserText $j) { return $m.Groups[1].Value + "i18n::Tr($lit)" + $m.Groups[3].Value }
     return $m.Value
   })
 

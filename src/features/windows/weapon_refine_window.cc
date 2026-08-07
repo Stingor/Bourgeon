@@ -523,7 +523,7 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     recast_sent_at_ = 0;
     recast_retries_ = 0;
     if (empty_list_ && (auto_chain_ > 0 || auto_refine_count_ > 0))
-      auto_stop_reason_ = "Plus aucune arme à refine : chaîne arrêtée.";
+      auto_stop_reason_ = i18n::Tr("Plus aucune arme à refine : chaîne arrêtée.");
     // Nouvelle liste = nouvelle cible à établir, et personne ne l'a encore vue.
     // Ces deux lignes SONT le garde-fou du refine automatique : tant que DrawList
     // n'a pas dessiné la liste, la chaîne n'a aucun index à jouer et attend.
@@ -620,7 +620,7 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       PushLog("Tentative refusée par le serveur (aucun minerai consommé).",
               kColWarn);
       auto_recast_at_   = 0;
-      auto_stop_reason_ = "Le serveur a refusé la tentative : relance arrêtée.";
+      auto_stop_reason_ = i18n::Tr("Le serveur a refusé la tentative : relance arrêtée.");
       return;
     }
     // (b) C'est notre RELANCE de compétence que le serveur a jetée — délai de cast,
@@ -661,7 +661,7 @@ void WeaponRefineWindow::ScheduleAutoRecast(int result) {
   // condition ne changera pas d'elle-même. Relancer là-dessus tournerait en rond
   // en brûlant du SP à chaque tour.
   if (result != 0 && result != 1) {
-    auto_stop_reason_ = "Le serveur a refusé la condition : chaîne arrêtée.";
+    auto_stop_reason_ = i18n::Tr("Le serveur a refusé la condition : chaîne arrêtée.");
     return;
   }
   // Minerai épuisé, SP épuisé : les bornes qui valent aussi bien pour la relance
@@ -751,7 +751,7 @@ void WeaponRefineWindow::RetryRecast() {
   // chose et insister ne ferait que masquer le vrai motif d'arrêt.
   if (++recast_retries_ > kMaxRecastRetries) {
     auto_stop_reason_ =
-        "La compétence ne repart pas (délai de lancement) : relance arrêtée.";
+        i18n::Tr("La compétence ne repart pas (délai de lancement) : relance arrêtée.");
     PushLog(auto_stop_reason_, kColWarn);
     return;
   }
@@ -777,14 +777,14 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
     case 0:
       msg_id = kMsgRefineSuccess;
       color  = kColOk;
-      prefix = "Succès — ";
+      prefix = i18n::Tr("Succès — ");
       break;
     case 1:
       // Le seul cas destructeur, et celui que le client rend indiscernable du
       // succès (911 == 912 dans msgstringtable.csv). D'où le préfixe explicite.
       msg_id = kMsgRefineFail;
       color  = kColBad;
-      prefix = "ÉCHEC — arme détruite — ";
+      prefix = i18n::Tr("ÉCHEC — arme détruite — ");
       break;
     case 2:
       msg_id = kMsgFailLevel;
@@ -1116,7 +1116,7 @@ void WeaponRefineWindow::OnTick() {
         // Liste non vide mais rien d'affiché : un filtre exclut tout. S'arrêter en
         // le disant vaut mieux que tourner en rond sur une liste invisible.
         auto_stop_reason_ =
-            "Aucune arme ne correspond au filtre : chaîne arrêtée.";
+            i18n::Tr("Aucune arme ne correspond au filtre : chaîne arrêtée.");
       } else {
         sel_index_        = target;
         pending_          = kActRefine;

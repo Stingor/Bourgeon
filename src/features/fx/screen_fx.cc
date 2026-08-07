@@ -146,19 +146,19 @@ void ScreenFx::DrawSettings() {
       p.temperature=-0.25f; p.vignette=0.35f; preset("Nuit", p); }
     SameLine();
     { D3D9PostFx p; p.contrast=1.15f; p.saturation=1.12f; p.vignette=0.30f;
-      p.sharpen=0.30f; p.aberration=0.20f; p.fxaa=true; preset("Cinéma", p); }
+      p.sharpen=0.30f; p.aberration=0.20f; p.fxaa=true; preset(i18n::Tr("Cinéma"), p); }
     SameLine();
     { D3D9PostFx p; p.contrast=1.10f; p.saturation=1.20f; p.grain=0.35f;
-      p.vignette=0.45f; preset("Rétro", p); }
+      p.vignette=0.45f; preset(i18n::Tr("Rétro"), p); }
     SameLine();
     { D3D9PostFx p; p.filter=1; preset("N&B", p); }
 
     SeparatorText("Couleur");
-    slider("Luminosité",  &fx_.brightness, -0.5f, 0.5f);
+    slider(i18n::Tr("Luminosité"),  &fx_.brightness, -0.5f, 0.5f);
     slider("Contraste",   &fx_.contrast,    0.5f, 2.0f);
     slider("Gamma",       &fx_.gamma,       0.5f, 2.0f);
     slider("Saturation",  &fx_.saturation,  0.0f, 2.0f);
-    slider("Température",  &fx_.temperature,-1.0f, 1.0f);
+    slider(i18n::Tr("Température"),  &fx_.temperature,-1.0f, 1.0f);
     const char* filters[] = {"Aucun", "Noir & blanc", "Sépia", "Négatif", "Daltonien"};
     ImGui::SetNextItemWidth(180.0f);
     if (ro::RoCombo("Filtre", &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
@@ -170,10 +170,10 @@ void ScreenFx::DrawSettings() {
     slider("Vignette",      &fx_.vignette,   0.0f, 1.0f);
     slider("Grain",         &fx_.grain,      0.0f, 1.0f);
     slider("Aberration",    &fx_.aberration, 0.0f, 1.0f);
-    slider("Netteté",       &fx_.sharpen,    0.0f, 1.0f);
+    slider(i18n::Tr("Netteté"),       &fx_.sharpen,    0.0f, 1.0f);
     if (ro::RoCheckbox(i18n::Tr("FXAA (anti-crénelage)"), &fx_.fxaa)) { apply = true; save = true; }
     if (fx_.fxaa) {
-      slider("  Force FXAA", &fx_.fxaa_strength, 0.0f, 0.5f);  // >0.5 wrecks UI text
+      slider(i18n::Tr("  Force FXAA"), &fx_.fxaa_strength, 0.0f, 0.5f);  // >0.5 wrecks UI text
       SameLine();
       HelpMarker(i18n::Tr("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
                           "Plafonné à 0.5 — au-delà le texte devient illisible."));

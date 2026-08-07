@@ -127,9 +127,9 @@ class HeapLockGuard {
 }  // namespace
 
 void ChatTweaks::FindBackgroundSites() {
-  bg_[kBgMain].label        = "Chat principal";
+  bg_[kBgMain].label        = i18n::Tr("Chat principal");
   bg_[kBgMain].yaml_key     = "chat_bg";          // conservée pour la compatibilité
-  bg_[kBgDetached].label    = "Fenêtres détachées";
+  bg_[kBgDetached].label    = i18n::Tr("Fenêtres détachées");
   bg_[kBgDetached].yaml_key = "chat_bg_detached";
   bg_[kBgWhisper].label     = "Chuchotement (1:1)";
   bg_[kBgWhisper].yaml_key  = "chat_bg_whisper";

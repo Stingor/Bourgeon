@@ -2698,19 +2698,19 @@ void VendingWindow::OnRenderUI() {
     // vraie protection, ceci évite simplement le cas le plus courant).
     for (int i = 0; i < rows_now && i < kMaxRows && !blocker; ++i) {
       if (prices_[i] <= 0) {
-        blocker = "Un objet est à prix 0.";
+        blocker = i18n::Tr("Un objet est à prix 0.");
       } else if (buying_) {
         if (amounts_[i] <= 0)              blocker = "Une ligne est à quantité 0.";
         else if (amounts_[i] > kBuyQtyMax) blocker = "Quantité maximale : 9999 par ligne.";
         else if (prices_[i] > kBuyPriceMax)
-          blocker = "Prix maximal : 99 999 984 z par objet.";
+          blocker = i18n::Tr("Prix maximal : 99 999 984 z par objet.");
       }
     }
     if (buying_ && !blocker) {
       if (zeny_limit_ <= 0)
-        blocker = "Renseigne la limite de zeny d'achat.";
+        blocker = i18n::Tr("Renseigne la limite de zeny d'achat.");
       else if (static_cast<long long>(zeny_limit_) > zeny_now)
-        blocker = "La limite dépasse tes zeny.";
+        blocker = i18n::Tr("La limite dépasse tes zeny.");
     }
 
     // Dit à l'écran, pas seulement au survol d'un bouton grisé : sans ça le

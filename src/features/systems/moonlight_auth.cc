@@ -204,7 +204,7 @@ MoonlightAuth::HttpResult DoPost(const std::string& full_url,
   uc.lpszUrlPath = path;
   uc.dwUrlPathLength = 2047;
   if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &uc)) {
-    res.error = "URL invalide";
+    res.error = i18n::Tr("URL invalide");
     return res;
   }
   const bool secure = (uc.nScheme == INTERNET_SCHEME_HTTPS);
@@ -213,7 +213,7 @@ MoonlightAuth::HttpResult DoPost(const std::string& full_url,
                              WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME,
                              WINHTTP_NO_PROXY_BYPASS, 0);
   if (!hs) {
-    res.error = "WinHttpOpen a échoué";
+    res.error = i18n::Tr("WinHttpOpen a échoué");
     return res;
   }
   WinHttpSetTimeouts(hs, 10000, 10000, 15000, 15000);
@@ -829,7 +829,7 @@ void MoonlightAuth::OnRenderLoginUI() {
     const unsigned long now = GetTickCount();
     if (discord_deadline_tick_ != 0 && now > discord_deadline_tick_) {
       error_msg_ =
-          "Connexion Discord expirée. Réessaie et valide dans le navigateur.";
+          i18n::Tr("Connexion Discord expirée. Réessaie et valide dans le navigateur.");
       state_ = State::kError;
     } else if (now - discord_poll_tick_ >= discord_poll_interval_ms_) {
       discord_poll_tick_ = now;
@@ -1197,7 +1197,7 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
       accounts_.push_back(std::move(a));
     }
     if (accounts_.empty()) {
-      error_msg_ = "Aucun compte Ragnarok lié à ce compte Moonlight.";
+      error_msg_ = i18n::Tr("Aucun compte Ragnarok lié à ce compte Moonlight.");
       state_ = State::kError;
       return false;
     }
@@ -1230,7 +1230,7 @@ bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
     state_ = State::kPickAccount;
     return true;
   } catch (const std::exception&) {
-    error_msg_ = "Réponse du serveur illisible.";
+    error_msg_ = i18n::Tr("Réponse du serveur illisible.");
     state_ = State::kError;
     return false;
   }
@@ -1287,7 +1287,7 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
     // (l'origine exacte de nos appels API) = source de vérité unique de l'hôte.
     const std::string path = j.value("authorize_path", std::string());
     if (game_session_.empty() || path.empty()) {
-      error_msg_ = "Réponse incomplète du serveur.";
+      error_msg_ = i18n::Tr("Réponse incomplète du serveur.");
       state_ = State::kError;
       return;
     }
@@ -1305,7 +1305,7 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
                   nullptr, SW_SHOWNORMAL);
     state_ = State::kDiscordWait;
   } catch (const std::exception&) {
-    error_msg_ = "Réponse du serveur illisible.";
+    error_msg_ = i18n::Tr("Réponse du serveur illisible.");
     state_ = State::kError;
   }
 }
@@ -1359,7 +1359,7 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
     const std::string userid = j.value("userid", std::string());
     const std::string otp = j.value("otp", std::string());
     if (userid.empty() || otp.empty()) {
-      error_msg_ = "Réponse incomplète du serveur.";
+      error_msg_ = i18n::Tr("Réponse incomplète du serveur.");
       state_ = State::kError;
       return;
     }
@@ -1376,7 +1376,7 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
     authenticated_ = true;          // survit au retour char-select (pas de re-auth)
     state_ = State::kDriveLogin;
   } catch (const std::exception&) {
-    error_msg_ = "Réponse du serveur illisible.";
+    error_msg_ = i18n::Tr("Réponse du serveur illisible.");
     state_ = State::kError;
   }
 }

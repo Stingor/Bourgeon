@@ -24,17 +24,26 @@ param(
 # argument est capture, l'identifiant stable n'etant pas une cle de traduction.
 $rxTr    = [regex]'i18n::Tr(?:Id)?\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)'
 $rxLit   = [regex]'"((?:[^"\\]|\\.)*)"'
+# 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
+# ce nettoyage il ouvre une fausse chaine et TOUT le reste du fichier se decale --
+# on s'est retrouve avec des morceaux de code C++ pris pour des libelles.
+$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
+function Remove-CharLiterals([string]$src) {
+  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
+}
 $rxEntry = [regex]'^"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"\s*$'
 
 $srcKeys = New-Object System.Collections.Generic.HashSet[string]
 $perFile = @{}
 foreach ($f in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
-  $text = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
+  $text = Remove-CharLiterals ([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8))
   $n = 0
   foreach ($m in $rxTr.Matches($text)) {
     $key = ""
     foreach ($lit in $rxLit.Matches($m.Groups[1].Value)) { $key += $lit.Groups[1].Value }
-    if ($key) { [void]$srcKeys.Add($key); $n++ }
+    # Un vrai saut de ligne dans une cle = artefact d'analyse (raw string mal
+    # decoupee). Un libelle C++ ecrit toujours \n en ECHAPPE, jamais en litteral.
+    if ($key -and -not ($key.Contains("`n") -or $key.Contains("`r"))) { [void]$srcKeys.Add($key); $n++ }
   }
   if ($n -gt 0) { $perFile[$f.Name] = $n }
 }

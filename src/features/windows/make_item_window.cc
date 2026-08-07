@@ -1323,7 +1323,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // SERVEUR plutôt que deviné : c'est la condition d'arrêt de la chaîne.
     if (empty_list_) batch_left_ = 0;  // plus rien à faire : la série est close
     if (empty_list_ && auto_chain_ > 0)
-      auto_stop_reason_ = "Plus rien à fabriquer : relance arrêtée.";
+      auto_stop_reason_ = i18n::Tr("Plus rien à fabriquer : relance arrêtée.");
     if (!empty_list_) auto_stop_reason_.clear();
 
     // ── Que devient la sélection quand une nouvelle liste arrive ? ───────────
@@ -2031,8 +2031,8 @@ void MakeItemWindow::ScheduleAutoRecast() {
     }
     if (source_item_id_ == 0) {
       auto_stop_reason_ =
-          "Objet d'origine inconnu : relance impossible. (La liste a été ouverte "
-          "avant que le client ne puisse l'observer.)";
+          i18n::Tr("Objet d'origine inconnu : relance impossible. (La liste a été ouverte "
+          "avant que le client ne puisse l'observer.)");
       batch_left_ = 0;
       return;
     }
@@ -2058,7 +2058,7 @@ void MakeItemWindow::ScheduleAutoRecast() {
     return;
   }
   if (skill_id_ <= 0) {
-    auto_stop_reason_ = "Compétence inconnue : relance impossible.";
+    auto_stop_reason_ = i18n::Tr("Compétence inconnue : relance impossible.");
     batch_left_ = 0;
     return;
   }
@@ -2106,7 +2106,7 @@ void MakeItemWindow::RetryRelaunch() {
   // insister masquerait le vrai motif d'arrêt.
   if (++relaunch_retries_ > kMaxRelaunchRetries) {
     auto_stop_reason_ =
-        "La liste ne revient pas (délai de lancement) : relance arrêtée.";
+        i18n::Tr("La liste ne revient pas (délai de lancement) : relance arrêtée.");
     Log(auto_stop_reason_, kColWarn);
     batch_left_ = 0;
     return;

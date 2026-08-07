@@ -448,23 +448,23 @@ bool MoonlightUi::DrawSortModeCombo(SortTarget target) {
   switch (target) {
     case kSortInventory:
       value = &sort_mode_inventory_; setting_id = kSettingSortModeInventory;
-      label = "Tri Inventaire";
-      help = "Tri automatique de l'inventaire.";
+      label = i18n::Tr("Tri Inventaire");
+      help = i18n::Tr("Tri automatique de l'inventaire.");
       break;
     case kSortCart:
       value = &sort_mode_cart_; setting_id = kSettingSortModeCart;
-      label = "Tri Cart";
-      help = "Tri automatique du cart.";
+      label = i18n::Tr("Tri Cart");
+      help = i18n::Tr("Tri automatique du cart.");
       break;
     case kSortStorage:
       value = &sort_mode_storage_; setting_id = kSettingSortModeStorage;
-      label = "Tri Storages";
-      help = "Tri automatique des Storages personnel à la prochaine ouverture.";
+      label = i18n::Tr("Tri Storages");
+      help = i18n::Tr("Tri automatique des Storages personnel à la prochaine ouverture.");
       break;
     case kSortGuildStorage:
       value = &sort_mode_guild_storage_; setting_id = kSettingSortModeGuildStorage;
-      label = "Tri Storage Guilde";
-      help = "Tri automatique du Storage de guilde à la prochaine ouverture.";
+      label = i18n::Tr("Tri Storage Guilde");
+      help = i18n::Tr("Tri automatique du Storage de guilde à la prochaine ouverture.");
       break;
     default:
       return false;

@@ -17,13 +17,20 @@
 
 param([Parameter(Mandatory=$true)][string]$Path)
 
-$text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+$text = Remove-CharLiterals ([System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8))
 
 # Les litteraux ADJACENTS sont concatenes par le compilateur : un libelle coupe
 # sur plusieurs lignes en C++ ne fait qu'UNE cle. Pour TrId, la repetition
 # s'arrete a la virgule -> l'identifiant stable n'est pas capture.
 $rx    = [regex]'i18n::Tr(?:Id)?\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)'
 $rxLit = [regex]'"((?:[^"\\]|\\.)*)"'
+# 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
+# ce nettoyage il ouvre une fausse chaine et TOUT le reste du fichier se decale --
+# on s'est retrouve avec des morceaux de code C++ pris pour des libelles.
+$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
+function Remove-CharLiterals([string]$src) {
+  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
+}
 
 $keys = New-Object System.Collections.Generic.List[string]
 foreach ($m in $rx.Matches($text)) {

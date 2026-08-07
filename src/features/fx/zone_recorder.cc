@@ -228,7 +228,7 @@ void ZoneRecorder::PumpState() {
             capture_w_, capture_h_);
   } else {
     last_saved_path_.clear();
-    last_status_ = "échec de l'écriture du GIF";
+    last_status_ = i18n::Tr("échec de l'écriture du GIF");
     LogError("ZoneRecorder: écriture impossible : {}", encode_path_);
   }
   last_status_tick_ = GetTickCount();
@@ -245,18 +245,18 @@ bool ZoneRecorder::ArmRecording() {
   clip_msg_ = nullptr;
 
   if (g_imgui_dx7_active) {
-    last_status_ = "indisponible en DirectX 7";
+    last_status_ = i18n::Tr("indisponible en DirectX 7");
     return false;
   }
   if (!IsZoneValid()) {
-    last_status_ = "aucune zone définie";
+    last_status_ = i18n::Tr("aucune zone définie");
     return false;
   }
 
   ComputeOutputSize(&capture_w_, &capture_h_);
   const int wanted = (std::max)(1, fps_ * duration_s_);
   if (EstimatedBytes() > kMaxCaptureBytes) {
-    last_status_ = "trop d'images : réduis la durée ou la largeur";
+    last_status_ = i18n::Tr("trop d'images : réduis la durée ou la largeur");
     return false;
   }
 
@@ -271,7 +271,7 @@ bool ZoneRecorder::ArmRecording() {
   } catch (const std::bad_alloc&) {
     frames_.clear();
     frames_.shrink_to_fit();
-    last_status_ = "mémoire insuffisante pour cet enregistrement";
+    last_status_ = i18n::Tr("mémoire insuffisante pour cet enregistrement");
     return false;
   }
 
@@ -300,7 +300,7 @@ void ZoneRecorder::FinishRecording() {
     frames_.clear();
     frames_.shrink_to_fit();
     frame_count_ = 0;
-    last_status_ = "aucune image capturée";
+    last_status_ = i18n::Tr("aucune image capturée");
     last_status_tick_ = GetTickCount();
     state_ = State::kIdle;
     return;
@@ -475,7 +475,7 @@ void ZoneRecorder::DrawSelectionOverlay() {
     dragging_ = false;
     const int nw = static_cast<int>(x1 - x0), nh = static_cast<int>(y1 - y0);
     if (nw < kMinZonePx || nh < kMinZonePx) {
-      select_hint_ = "Zone trop petite (32 px minimum) — recommence";
+      select_hint_ = i18n::Tr("Zone trop petite (32 px minimum) — recommence");
       drag_ax_ = drag_bx_ = drag_ay_ = drag_by_ = 0.0f;
     } else {
       zone_x_ = static_cast<int>(x0);
@@ -657,14 +657,14 @@ void ZoneRecorder::DrawSettings() {
       save = true;
   };
   slider("Images / s", &fps_, 5, 20);
-  slider("Durée (s)", &duration_s_, 1, 15);
-  slider("Largeur max", &max_width_, 160, 1280);
+  slider(i18n::Tr("Durée (s)"), &duration_s_, 1, 15);
+  slider(i18n::Tr("Largeur max"), &max_width_, 160, 1280);
   SameLine();
   HelpMarker(
       i18n::Tr("La zone est réduite à cette largeur (proportions gardées) avant d'entrer "
       "dans le GIF. C'est le réglage qui pèse le plus lourd : la mémoire et la "
       "taille du fichier montent avec le CARRÉ de la largeur."));
-  slider("Délai avant départ (s)", &start_delay_s_, 0, 5);
+  slider(i18n::Tr("Délai avant départ (s)"), &start_delay_s_, 0, 5);
   SameLine();
   HelpMarker(i18n::Tr("Le temps de refermer ce panneau et de te placer avant que ça tourne."));
 
