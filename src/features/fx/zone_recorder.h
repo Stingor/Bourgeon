@@ -89,6 +89,9 @@ class ZoneRecorder : public Plugin {
 
   void DrawSelectionOverlay();
   void DrawRecordingOverlay();
+  // Cadre de la zone mémorisée, au survol dans le panneau. 🔴 À N'APPELER QU'À
+  // L'ARRÊT : la capture est prise après notre overlay, ce cadre serait filmé.
+  void DrawZonePreview() const;
 
   // Taille du GIF : la zone, réduite à `max_width_` en gardant ses proportions.
   void ComputeOutputSize(int* out_w, int* out_h) const;
@@ -139,4 +142,8 @@ class ZoneRecorder : public Plugin {
   std::string   last_status_;
   std::string   last_saved_path_;
   unsigned long last_status_tick_ = 0;
+  // Retour du bouton « Copier dans le presse-papier ». Littéral, donc pas de
+  // std::string ; nul tant qu'on n'a pas cliqué, remis à nul à chaque nouvel
+  // enregistrement pour ne pas afficher le verdict de la capture précédente.
+  const char*   clip_msg_ = nullptr;
 };

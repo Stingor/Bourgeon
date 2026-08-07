@@ -2,8 +2,12 @@
 
 #include <windows.h>
 
+#include <shellapi.h>     // ShellExecuteA (« Ouvrir le dossier »)
+#include <shlobj_core.h>  // DROPFILES (CF_HDROP) ; tire ole2.h -> DROPEFFECT_COPY
+
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <new>
 
 #include "imgui.h"
@@ -52,6 +56,79 @@ std::string TimestampedGifPath() {
   std::snprintf(name, sizeof(name), "\\bourgeon_zone_%04d%02d%02d_%02d%02d%02d.gif",
                 t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
   return dir + name;
+}
+
+// 🔴 On copie le GIF EN TANT QUE FICHIER (CF_HDROP), pas en tant qu'image. Un
+// CF_DIB/CF_BITMAP n'emporterait que la première image et l'animation — tout
+// l'intérêt du GIF — serait perdue. Avec CF_HDROP, un Ctrl+V dans Discord (ou
+// dans un dossier de l'explorateur) colle le .gif complet, exactement comme un
+// copier-coller de fichier depuis l'explorateur.
+bool CopyGifToClipboard(const std::string& path) {
+  // CF_HDROP = un DROPFILES suivi de la liste des chemins, terminée par un NUL
+  // supplémentaire (d'où les +2 : celui du chemin, puis celui de la liste).
+  const size_t bytes = sizeof(DROPFILES) + path.size() + 2;
+  HGLOBAL files = GlobalAlloc(GMEM_MOVEABLE, bytes);
+  if (!files) return false;
+  auto* drop = static_cast<DROPFILES*>(GlobalLock(files));
+  if (!drop) {
+    GlobalFree(files);
+    return false;
+  }
+  ZeroMemory(drop, bytes);
+  drop->pFiles = sizeof(DROPFILES);  // décalage du premier chemin
+  drop->fWide  = FALSE;              // chemins ANSI (comme tout paths::)
+  std::memcpy(reinterpret_cast<char*>(drop) + sizeof(DROPFILES), path.c_str(),
+              path.size());
+  GlobalUnlock(files);
+
+  // Sans « Preferred DropEffect », un collage dans l'explorateur peut être traité
+  // comme un DÉPLACEMENT : le GIF disparaîtrait alors de <jeu>\screenshot.
+  HGLOBAL effect = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
+  if (effect) {
+    if (auto* value = static_cast<DWORD*>(GlobalLock(effect))) {
+      *value = DROPEFFECT_COPY;
+      GlobalUnlock(effect);
+    } else {
+      GlobalFree(effect);
+      effect = nullptr;
+    }
+  }
+
+  // OpenClipboard(nullptr) : le presse-papier s'attache au thread appelant, comme
+  // le fait ImGui. Aucune pompe de messages n'est ouverte ici — rien qui puisse
+  // figer la frame en cours.
+  if (!OpenClipboard(nullptr)) {
+    // Échec normal et transitoire : une autre application tient le presse-papier
+    // à cet instant. Rien à réparer, mais on trace le code pour le diagnostic.
+    LogError("ZoneRecorder: OpenClipboard refusé (code {})", GetLastError());
+    GlobalFree(files);
+    if (effect) GlobalFree(effect);
+    return false;
+  }
+  EmptyClipboard();
+  // SetClipboardData réussi = le presse-papier devient PROPRIÉTAIRE du bloc ;
+  // le libérer nous-mêmes serait un double free. En échec, il reste à nous.
+  const bool ok = SetClipboardData(CF_HDROP, files) != nullptr;
+  if (!ok) GlobalFree(files);
+  if (effect) {
+    const UINT format = RegisterClipboardFormatA("Preferred DropEffect");
+    if (format == 0 || SetClipboardData(format, effect) == nullptr)
+      GlobalFree(effect);
+  }
+  CloseClipboard();
+  return ok;
+}
+
+// Ouvre l'explorateur sur le dossier ET met le GIF en surbrillance, plutôt que de
+// lâcher le joueur dans un screenshot\ qui contient déjà des dizaines de fichiers.
+void RevealInExplorer(const std::string& path) {
+  // /select veut le chemin entre guillemets : le dossier du jeu peut contenir des
+  // espaces, et l'argument serait sinon coupé au premier.
+  const std::string arg = "/select,\"" + path + "\"";
+  // ShellExecute ne fait que poster la demande au shell (cf. charsel::
+  // OpenBackgroundFolder) : pas de dialogue bloquant sur le fil principal.
+  ShellExecuteA(nullptr, "open", "explorer.exe", arg.c_str(), nullptr,
+                SW_SHOWNORMAL);
 }
 
 // Une place pour le témoin, EN DEHORS du rectangle enregistré — il serait sinon
@@ -164,6 +241,7 @@ bool ZoneRecorder::ArmRecording() {
   if (state_ != State::kIdle || !IsStaff()) return false;
   last_status_.clear();
   last_status_tick_ = GetTickCount();
+  clip_msg_ = nullptr;
 
   if (g_imgui_dx7_active) {
     last_status_ = "indisponible en DirectX 7";
@@ -411,6 +489,43 @@ void ZoneRecorder::DrawSelectionOverlay() {
   if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) CancelAll();
 }
 
+// ── Aperçu de la zone mémorisée (survol dans le panneau) ─────────────────────
+// 🔴 Appelé UNIQUEMENT à l'arrêt (state_ == kIdle) : la capture est prise après
+// notre overlay, ce cadre serait donc filmé s'il s'affichait pendant un
+// enregistrement. Le garde-fou est chez l'appelant, où l'état est connu.
+void ZoneRecorder::DrawZonePreview() const {
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  if (disp.x <= 0.0f || disp.y <= 0.0f) return;  // fenêtre minimisée
+
+  const float x0 = static_cast<float>(zone_x_);
+  const float y0 = static_cast<float>(zone_y_);
+  const float x1 = x0 + static_cast<float>(zone_w_);
+  const float y1 = y0 + static_cast<float>(zone_h_);
+
+  // Draw-list de PREMIER PLAN : le panneau « Staff Tools » recouvre souvent la
+  // zone, et c'est justement par-dessus lui qu'il faut voir le cadre.
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  // Pas de voile plein écran, contrairement au tracé : un simple survol ne doit
+  // pas noircir l'écran. Un remplissage très discret suffit à situer la zone.
+  dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 205, 70, 28));
+  dl->AddRect(ImVec2(x0 - 1.0f, y0 - 1.0f), ImVec2(x1 + 1.0f, y1 + 1.0f),
+              IM_COL32(255, 205, 70, 255), 0.0f, 0, 2.0f);
+
+  // Mêmes dimensions que pendant le tracé, au même endroit — au-dessus du cadre,
+  // ou en dessous s'il touche le haut de l'écran. L'abscisse est ramenée dans
+  // l'écran : une zone mémorisée sous une AUTRE résolution peut déborder, et
+  // c'est précisément le cas où l'aperçu sert à quelque chose.
+  char size[48];
+  std::snprintf(size, sizeof(size), "%d x %d", zone_w_, zone_h_);
+  const ImVec2 ts = ImGui::CalcTextSize(size);
+  const float lw = ts.x + 8.0f;
+  const float lx = (std::min)((std::max)(0.0f, x0), (std::max)(0.0f, disp.x - lw));
+  const float ly = (y0 - ts.y - 4.0f >= 0.0f) ? y0 - ts.y - 4.0f : y1 + 4.0f;
+  dl->AddRectFilled(ImVec2(lx, ly), ImVec2(lx + lw, ly + ts.y + 2.0f),
+                    IM_COL32(0, 0, 0, 180));
+  dl->AddText(ImVec2(lx + 4.0f, ly + 1.0f), IM_COL32(255, 255, 255, 255), size);
+}
+
 // ── Décompte, témoin d'enregistrement ────────────────────────────────────────
 void ZoneRecorder::DrawRecordingOverlay() {
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
@@ -485,8 +600,13 @@ void ZoneRecorder::DrawSettings() {
   }
 
   // ── Zone ──
+  // « 977 x 689 en 3, 301 » ne dit rien de concret : on montre le rectangle
+  // lui-même, à sa place à l'écran, dès que la souris passe sur la ligne qui le
+  // décrit ou sur le bouton qui le refait.
+  bool preview_zone = false;
   if (IsZoneValid()) {
     ImGui::Text("Zone : %d x %d  (en %d, %d)", zone_w_, zone_h_, zone_x_, zone_y_);
+    preview_zone = ImGui::IsItemHovered();
   } else {
     ImGui::TextDisabled("Aucune zone définie.");
   }
@@ -498,6 +618,13 @@ void ZoneRecorder::DrawSettings() {
     drag_ax_ = drag_bx_ = drag_ay_ = drag_by_ = 0.0f;
     state_ = State::kSelecting;
   }
+  // Grisé pendant un enregistrement, le bouton n'est PAS survolable — et c'est
+  // exactement ce qu'on veut ici (cf. DrawZonePreview).
+  preview_zone = preview_zone || ImGui::IsItemHovered();
+  // 🔴 JAMAIS pendant un enregistrement : la capture est prise APRÈS notre
+  // overlay, ce cadre atterrirait dans le GIF. La ligne « Zone : … » ci-dessus
+  // n'est pas grisée, elle, donc le garde-fou se met ICI et pas au survol.
+  if (preview_zone && !busy && IsZoneValid()) DrawZonePreview();
   SameLine();
   ImGui::BeginDisabled(!IsZoneValid());
   if (ro::RoButton("Enregistrer")) ArmRecording();
@@ -604,12 +731,28 @@ void ZoneRecorder::DrawSettings() {
     ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", key_conflict_msg_.c_str());
 
   // ── Dernier résultat ──
-  if (!last_status_.empty() && GetTickCount() - last_status_tick_ < 60000u) {
+  // Le MESSAGE s'efface au bout d'une minute — un « aucune zone définie » n'a
+  // rien à faire à l'écran dix minutes plus tard. Le dernier GIF écrit, lui,
+  // reste offert tant que la session dure : on revient le copier bien après
+  // l'enregistrement, une fois le tutoriel rédigé, et le faire disparaître
+  // obligerait à réenregistrer pour retrouver les boutons.
+  const bool show_status =
+      !last_status_.empty() && GetTickCount() - last_status_tick_ < 60000u;
+  if (show_status || !last_saved_path_.empty()) {
     ImGui::Separator();
-    ImGui::TextWrapped("%s", last_status_.c_str());
+    if (show_status) ImGui::TextWrapped("%s", last_status_.c_str());
     if (!last_saved_path_.empty()) {
       ImGui::TextDisabled("%s", last_saved_path_.c_str());
-      if (ro::RoButton("Copier le chemin")) ImGui::SetClipboardText(last_saved_path_.c_str());
+      if (ro::RoButton("Copier dans le presse-papier")) {
+        clip_msg_ = CopyGifToClipboard(last_saved_path_)
+                        ? "GIF copié — Ctrl+V dans Discord pour le poster."
+                        : "Copie impossible : une autre application retient le "
+                          "presse-papier, réessaie.";
+      }
+      Tooltip("Colle le fichier GIF lui-même, animation comprise.");
+      SameLine(0.0f, 6.0f);
+      if (ro::RoButton("Ouvrir le dossier")) RevealInExplorer(last_saved_path_);
+      if (clip_msg_) ImGui::TextWrapped("%s", clip_msg_);
     }
   }
 
