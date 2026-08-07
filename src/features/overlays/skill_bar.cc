@@ -820,6 +820,8 @@ void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   in_game_ = (mode_type == ModeMgr::ModeType::kGame);
   if (!in_game_) {
     native_hidden_ = false; last_tab_ = -1; items_restored_ = false;
+    ForgetDrag();                    // un glisser interrompu par un changement de carte
+                                     // ne décidera de rien au retour en jeu
     g_suppress_native_draw = false;  // hors jeu : ne pas bloquer le dessin natif
     g_slot_filter_on = false;        // ni filtrer des activations qu'on ne dessine plus
   }
@@ -935,13 +937,22 @@ void SkillBar::OnRenderUI() {
 
   // ── Dessin des barres ImGui + drag natif au-dessus ─────────────────────────────
   if (native_hidden_ && w) {
+    // Suivi du glisser d'une case AVANT le dessin : l'aperçu qui suit le curseur
+    // doit porter la croix rouge dès la frame où il quitte les barres, sinon
+    // l'avertissement arrive après le geste qu'il est censé annoncer.
+    UpdateDragRemoval();
     for (int b = 0; b < kBarCount; ++b)
       if (bars_[b].visible) DrawBar(b);  // 3 barres fixes (0=Onglet1, 1=Onglet2, 2=Items)
 
     // (Le redessin de l'icône d'un glisser NATIF au-dessus des barres a disparu :
     // ses deux sources — le grimoire natif et l'inventaire natif — ne naissent
     // plus, la barre étant membre du même groupe « Interface moderne » qu'eux.)
-}
+  } else {
+    // Barres rendues au natif (ou fenêtre absente) : on oublie tout glisser en
+    // cours. Son état survivrait sinon jusqu'au prochain, qui serait alors lu
+    // avec la décision de l'ancien.
+    ForgetDrag();
+  }
 }
 
 // (Plus de HandleNativeDrop : il accueillait un glisser NATIF venu du grimoire ou
@@ -1016,6 +1027,15 @@ void SkillBar::DrawSettings() {
   changed |= ColorSwatch("Texte nombre (count/lv)", col_count_);
   changed |= ColorSwatch("Contour texte (ombre)", col_textout_);
 
+  SeparatorText("Aide : souris");
+  TextWrapped(
+      "- Clic gauche : utiliser. Clic droit : description.\n"
+      "- Glisser une case sur une autre : déplacer / échanger (les 3 barres\n"
+      "  se répondent entre elles).\n"
+      "- Glisser une case HORS des barres et relâcher : la vider. L'aperçu se\n"
+      "  barre d'une croix rouge dès qu'on est en zone de retrait.\n"
+      "- Clic molette sur une case : la vider aussi, sans glisser.");
+
   SeparatorText("Aide : clavier & onglets");
   TextWrapped(
       "Le jeu ne pilote qu'UN onglet au clavier à la fois.\n"
@@ -1031,6 +1051,80 @@ void SkillBar::DrawSettings() {
   ImGui::EndDisabled();
 
   if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
+}
+
+// ---- retrait d'une case glissée hors des barres -----------------------------
+// Marge de pardon autour d'une barre : un relâchement au ras du bord vise encore
+// la barre. Sans elle, viser la case du bout de rangée et rater d'un pixel
+// effacerait le raccourci — la même main hésitante que le geste doit servir.
+constexpr float kBarDropMargin = 8.0f;
+
+bool SkillBar::PointOverAnyBar(float x, float y) const {
+  for (int b = 0; b < kBarCount; ++b) {
+    const BarCfg& bc = bars_[b];
+    if (!bc.visible) continue;
+    // Même géométrie que DrawBar : winw == cols*step, winh == rows*step (la marge
+    // intérieure pad == spacing/2 de chaque côté compense le -spacing).
+    const int   maxSlots = kRegions[b].count;
+    const int   cols  = std::max(1, bc.columns);
+    const int   count = std::min(bc.slot_count, maxSlots);
+    const int   rows  = (count + cols - 1) / cols;
+    const float step  = bc.icon_size + bc.spacing;
+    const float x0 = static_cast<float>(bc.x) - kBarDropMargin;
+    const float y0 = static_cast<float>(bc.y) - kBarDropMargin;
+    const float x1 = static_cast<float>(bc.x) + cols * step + kBarDropMargin;
+    const float y1 = static_cast<float>(bc.y) + rows * step + kBarDropMargin;
+    if (x >= x0 && x < x1 && y >= y0 && y < y1) return true;
+  }
+  return false;
+}
+
+// Suit le glisser d'une case (payload "SBSLOT") et, à la fin, retire le raccourci
+// si personne ne l'a accueilli ET qu'il a été lâché hors des barres — vers le sol,
+// une autre fenêtre, le décor. Un dépôt sur une case reste un déplacement.
+//
+// ⚠ Deux temps distincts, sinon le geste se lit à l'envers :
+//   • la DÉCISION se fige à l'instant du relâchement (le curseur peut ensuite
+//     passer sur une barre sans que cela change ce que le joueur a fait) ;
+//   • l'EXÉCUTION attend la disparition du payload, car ImGui ne marque une
+//     livraison (`Delivery`) qu'après la passe des cibles, une à deux frames plus
+//     tard : agir plus tôt effacerait la case qu'on vient de déplacer.
+// Un glisser qui s'éteint sans relâchement observé (perte de focus, alt-tab) ne
+// retire rien : on n'efface que sur un geste vu en entier.
+void SkillBar::UpdateDragRemoval() {
+  const ImGuiPayload* pl = ImGui::GetDragDropPayload();
+  const bool ours = pl != nullptr && pl->IsDataType("SBSLOT") &&
+                    pl->Data != nullptr &&
+                    pl->DataSize == static_cast<int>(sizeof(int) * 2);
+  if (ours) {
+    const int* d = static_cast<const int*>(pl->Data);
+    if (drag_src_region_ < 0) {  // début d'un nouveau glisser
+      drag_delivered_ = false;
+      drag_released_  = false;
+      drag_over_bars_ = true;    // par défaut : ne rien retirer
+    }
+    drag_src_region_ = d[0];
+    drag_src_slot_   = d[1];
+    if (pl->Delivery) drag_delivered_ = true;  // accepté (par une case, ou par ailleurs)
+    if (!drag_released_) {
+      const ImVec2 mp = ImGui::GetIO().MousePos;
+      drag_over_bars_ = PointOverAnyBar(mp.x, mp.y);
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) drag_released_ = true;
+    }
+    return;
+  }
+  if (drag_src_region_ < 0) return;  // aucun glisser en cours
+
+  const int region = drag_src_region_, slot = drag_src_slot_;
+  drag_src_region_ = drag_src_slot_ = -1;
+  const bool remove = drag_released_ && !drag_delivered_ && !drag_over_bars_;
+  drag_delivered_ = drag_released_ = false;
+  drag_over_bars_ = true;
+  if (!remove) return;
+  if (region < 0 || region >= kBarCount) return;
+  if (!ReadSlot(region, slot).valid) return;  // déjà vidée entre-temps
+  ClearSlot(region, slot);
+  if (RegionIsItems(region)) dirty_ = true;   // barre d'items : persistance client (yaml)
 }
 
 // ---- la barre d'action elle-même -------------------------------------------
@@ -1219,6 +1313,17 @@ void SkillBar::DrawBar(int bar) {
         if (ptex) ImGui::Image((ImTextureID)(uintptr_t)ptex,
                                ImVec2(icon_size_, icon_size_));
         else ImGui::Text("%s %u", r.type == 0 ? "Objet" : "Skill", r.id);
+        // Hors des barres, l'aperçu se barre d'une croix rouge : relâcher là
+        // RETIRE la case (UpdateDragRemoval) au lieu de simplement annuler. Le
+        // geste est sans confirmation, comme sur la barre native — l'avertir
+        // pendant qu'on le fait est le seul moment où cela sert encore.
+        if (!drag_over_bars_) {
+          ImDrawList* tdl = ImGui::GetWindowDrawList();
+          const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+          tdl->AddRectFilled(a, b, IM_COL32(190, 30, 30, 90));
+          tdl->AddLine(a, b, IM_COL32(240, 70, 70, 235), 2.0f);
+          tdl->AddLine(ImVec2(b.x, a.y), ImVec2(a.x, b.y), IM_COL32(240, 70, 70, 235), 2.0f);
+        }
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar(3);
@@ -1227,6 +1332,11 @@ void SkillBar::DrawBar(int bar) {
         if (const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("SBSLOT")) {
           const int* d = static_cast<const int*>(pl->Data);
           move_region = d[0]; move_from = d[1]; move_to = slot;
+          // Une case a accueilli le glisser : c'est un déplacement, pas un retrait.
+          // Noté ICI parce qu'UpdateDragRemoval passe AVANT le dessin : le drapeau
+          // `Delivery` d'ImGui n'existe qu'après cette passe, et le payload aura
+          // disparu au tour suivant.
+          drag_delivered_ = true;
         } else if (ImGui::AcceptDragDropPayload("INV_ITEM")) {
           // Item lâché depuis le viewer inventaire ImGui (comme le drag natif inventaire->barre,
           // que HandleNativeDrop gère pour la fenêtre native). Le viewer expose le nameid glissé ;

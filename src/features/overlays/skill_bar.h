@@ -19,7 +19,9 @@
 //     déclenche l'usage par OnMsg(0,0x29,col,row) — exactement la voie des
 //     F-keys -> dessin et activation toujours cohérents. OnMsg(0x17) (rebuild de
 //     this+0xc4) est renvoyé seulement au hide et au changement d'onglet.
-//   - Clic droit = vide le slot (SkillMgr_SetShortCutSlot id=0).
+//   - Vider une case : clic molette dessus, ou la glisser hors des barres et
+//     relâcher (le geste de la barre native, dont OnDrop efface le slot quand le
+//     dépôt tombe à côté). Clic droit = description.
 //
 // v1 : une barre configurable (colonnes, taille, espacement, position, nb slots).
 // NON câblé dans MoonlightUi (persistance yaml + multi-barres = étape suivante).
@@ -96,6 +98,22 @@ class SkillBar : public Plugin {
 
  private:
   void DrawBar(int bar);     // dessine la barre d'index `bar` (== région native)
+  // Retrait d'une case en la glissant HORS des barres — le geste de la barre
+  // native, dont OnDrop efface le slot quand le dépôt tombe à côté. Sans lui, un
+  // glisser lâché dans le décor se contentait de ne rien faire : pour vider une
+  // case il fallait deviner le clic molette, que rien n'annonce.
+  void UpdateDragRemoval();
+  // Le point est-il sur une barre visible (avec une marge de pardon) ? Sert à la
+  // fois à la décision de retrait et à la croix rouge de l'aperçu : les deux
+  // répondent ainsi toujours pareil, donc ce que le joueur voit est ce qui arrive.
+  bool PointOverAnyBar(float x, float y) const;
+  // Oublie le glisser en cours (barres éteintes, sortie du jeu) : son état ne doit
+  // pas servir à décider du sort d'un glisser suivant.
+  void ForgetDrag() {
+    drag_src_region_ = drag_src_slot_ = -1;
+    drag_delivered_ = drag_released_ = false;
+    drag_over_bars_ = true;
+  }
   // Recense les cases réellement DESSINÉES cette frame (barre visible + slot dans
   // la plage affichée). Un raccourci dont la case n'y figure pas est refusé : les
   // slots vivent dans les globals du client, donc masquer une barre ou réduire son
@@ -109,4 +127,13 @@ class SkillBar : public Plugin {
   float bar_drag_off_x_ = 0.0f;  // décalage curseur -> coin lors du glisser d'une barre (pour le snap)
   float bar_drag_off_y_ = 0.0f;
   int  last_tab_      = -1;      // pour détecter un changement d'onglet (re-hide natif)
+
+  // ── Glisser d'une case en cours (payload "SBSLOT") — suivi pour le retrait ──
+  int  drag_src_region_ = -1;    // région/slot d'origine du glisser (-1 = aucun glisser)
+  int  drag_src_slot_   = -1;
+  bool drag_delivered_  = false; // une case a accepté le payload -> déplacement, pas retrait
+  bool drag_released_   = false; // bouton relâché : la décision ci-dessous est figée
+  bool drag_over_bars_  = true;  // curseur au-dessus d'une barre au relâchement. Vrai au repos
+                                 // ET entre deux glissers : l'état neutre ne retire rien, et la
+                                 // croix rouge de l'aperçu n'apparaît pas sur sa première frame.
 };
