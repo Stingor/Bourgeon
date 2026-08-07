@@ -2182,7 +2182,7 @@ void CharSelect::OnRenderLoginUI() {
         std::strncpy(del_popup_name_, views[selected_].name,
                      sizeof(del_popup_name_) - 1);
         del_popup_name_[sizeof(del_popup_name_) - 1] = '\0';
-        ImGui::OpenPopup("Suppression définitive");
+        ImGui::OpenPopup("Suppression définitive###bourgeon_charsel_delete");
       }
       if (!del_elapsed) ImGui::EndDisabled();
       tip_del = ImGui::IsItemHovered();
@@ -2235,8 +2235,8 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::PopStyleColor(2);
     // Titres de popup distincts des labels de bouton (pas d'ID partagé dans la même
     // fenêtre) et plus explicites dans la barre de titre RO.
-    if (back_clicked) ImGui::OpenPopup("Retour à l'écran de connexion");
-    if (quit_clicked) ImGui::OpenPopup("Fermer le jeu");
+    if (back_clicked) ImGui::OpenPopup("Retour à l'écran de connexion###bourgeon_charsel_back");
+    if (quit_clicked) ImGui::OpenPopup("Fermer le jeu###bourgeon_charsel_quit");
     // Tooltips APRÈS le pop du texte sombre (sinon sombre sur sombre).
     if (tip_back)
       ImGui::SetTooltip(
@@ -2245,7 +2245,7 @@ void CharSelect::OnRenderLoginUI() {
     if (tip_quit) ImGui::SetTooltip("Ferme le jeu.");
   }
 
-  if (ro::BeginRoPopupModal("Retour à l'écran de connexion")) {
+  if (ro::BeginRoPopupModal("Retour à l'écran de connexion###bourgeon_charsel_back")) {
     ImGui::TextUnformatted(
         "Revenir à l'écran de connexion ?\n"
         "Tu seras déconnecté du serveur ; aucun personnage n'est affecté.");
@@ -2270,7 +2270,7 @@ void CharSelect::OnRenderLoginUI() {
     ro::EndRoPopupModal();
   }
 
-  if (ro::BeginRoPopupModal("Fermer le jeu")) {
+  if (ro::BeginRoPopupModal("Fermer le jeu###bourgeon_charsel_quit")) {
     ImGui::TextUnformatted("Fermer le jeu ?");
     ImGui::Spacing();
     if (ro::RoButton("Quitter", 130.0f, 0.0f)) {
@@ -2291,7 +2291,7 @@ void CharSelect::OnRenderLoginUI() {
   // (chclif_delchar_check, CHAR_DEL_EMAIL) exige l'email EXACT du compte ; sur succès
   // il re-pousse la liste (le perso disparaît), sur mauvais email il refuse SANS figer.
   // JAMAIS le prompt natif (deux modaux bloquants qui figent sous notre capture).
-  if (ro::BeginRoPopupModal("Suppression définitive")) {
+  if (ro::BeginRoPopupModal("Suppression définitive###bourgeon_charsel_delete")) {
     ImGui::Text("Supprimer DÉFINITIVEMENT « %s » ?", del_popup_name_);
     ImGui::TextUnformatted("Action IRRÉVERSIBLE. Saisis l'email du compte pour confirmer :");
     ImGui::Spacing();
@@ -2334,10 +2334,10 @@ void CharSelect::OnRenderLoginUI() {
   // Ouverture différée : le clic « siège libre » (dans PushID) a levé le drapeau ; on
   // ouvre ICI, au niveau racine, pour que l'ID matche BeginRoPopupModal.
   if (create_open_req_) {
-    ImGui::OpenPopup("Créer un personnage");
+    ImGui::OpenPopup("Créer un personnage###bourgeon_charsel_create");
     create_open_req_ = false;
   }
-  if (ro::BeginRoPopupModal("Créer un personnage")) {
+  if (ro::BeginRoPopupModal("Créer un personnage###bourgeon_charsel_create")) {
     // Aperçu doll (gauche). Le doll garde sa taille nominale (ph) mais est CENTRÉ
     // verticalement dans une colonne aussi haute que le formulaire de droite (mesuré
     // frame N-1) -> plus de gros vide sous l'aperçu. MOLETTE au survol = rotation.
@@ -2700,10 +2700,10 @@ void CharSelect::OnRenderLoginUI() {
 
   // ── Popup Renommer (CH_REQ_CHANGE_CHARNAME 0x08fc : [op][CID.4][name.24] = 30 o) ──
   if (rename_open_req_) {
-    ImGui::OpenPopup("Renommer le personnage");
+    ImGui::OpenPopup("Renommer le personnage###bourgeon_charsel_rename");
     rename_open_req_ = false;
   }
-  if (ro::BeginRoPopupModal("Renommer le personnage")) {
+  if (ro::BeginRoPopupModal("Renommer le personnage###bourgeon_charsel_rename")) {
     ImGui::Text("Nom actuel : %s", LocalToUtf8(rename_old_));
     ImGui::TextUnformatted("Nouveau nom");
     ImGui::SetNextItemWidth(240.0f);
@@ -2782,10 +2782,10 @@ void CharSelect::OnRenderLoginUI() {
   // [op][slot_before.2][slot_after.2][remaining.2] = 8 o. Le serveur bouge le perso
   // de `from` vers `to` (siège LIBRE). On liste les slots libres comme boutons.
   if (move_open_req_) {
-    ImGui::OpenPopup("Changer de slot");
+    ImGui::OpenPopup("Changer de slot###bourgeon_charsel_moveslot");
     move_open_req_ = false;
   }
-  if (ro::BeginRoPopupModal("Changer de slot")) {
+  if (ro::BeginRoPopupModal("Changer de slot###bourgeon_charsel_moveslot")) {
     ImGui::TextUnformatted("Choisis un emplacement LIBRE :");
     ImGui::Spacing();
     const int cap = SlotCapacity();

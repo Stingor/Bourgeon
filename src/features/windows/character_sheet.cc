@@ -4480,14 +4480,14 @@ void CharacterSheet::DrawGuildTab() {
   // Libellé différent du titre du modal : bouton et popup partagent sinon le même ID.
   if (ro::RoButton("Quitter…")) {
     guild_reason_buf_[0] = '\0';
-    ImGui::OpenPopup("Quitter la guilde");
+    ImGui::OpenPopup("Quitter la guilde###bourgeon_guild_leave");
   }
   // Dissolution : réservée au maître, comme la commande (gmaster_flag côté serveur).
   if (is_master) {
     ImGui::SameLine();
     if (ro::RoButton("Dissoudre…")) {
       guild_break_confirm_[0] = '\0';
-      ImGui::OpenPopup("Dissoudre la guilde");
+      ImGui::OpenPopup("Dissoudre la guilde###bourgeon_guild_disband");
     }
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip("Supprime définitivement la guilde (@breakguild).");
@@ -4499,11 +4499,11 @@ void CharacterSheet::DrawGuildTab() {
   // l'onglet, pour que l'ID matche celui du modal.
   if (guild_expel_ask_) {
     guild_expel_ask_ = false;
-    ImGui::OpenPopup("Expulser de la guilde");
+    ImGui::OpenPopup("Expulser de la guilde###bourgeon_guild_expel");
   }
   if (guild_rel_del_ask_) {
     guild_rel_del_ask_ = false;
-    ImGui::OpenPopup("Rompre la relation");
+    ImGui::OpenPopup("Rompre la relation###bourgeon_guild_relation");
   }
   // Le dossier est relu à CHAQUE ouverture : on y dépose justement un fichier juste
   // avant de venir le choisir.
@@ -4526,11 +4526,11 @@ void CharacterSheet::DrawGuildTab() {
             "Emblème actuel illisible (pas encore téléchargé ?) : le dessin en cours est gardé.";
       }
     }
-    ImGui::OpenPopup("Changer l'emblème");
+    ImGui::OpenPopup("Changer l'emblème###bourgeon_guild_emblem");
   }
   DrawGuildEmblemModal(gi.guildId, is_master);
 
-  if (ro::BeginRoPopupModal("Rompre la relation")) {
+  if (ro::BeginRoPopupModal("Rompre la relation###bourgeon_guild_relation")) {
     if (guild_rel_del_kind_ == 0)
       ImGui::Text("Rompre l'alliance avec %s ?", guild_rel_del_name_);
     else
@@ -4550,7 +4550,7 @@ void CharacterSheet::DrawGuildTab() {
     ro::EndRoPopupModal();
   }
 
-  if (ro::BeginRoPopupModal("Quitter la guilde")) {
+  if (ro::BeginRoPopupModal("Quitter la guilde###bourgeon_guild_leave")) {
     ImGui::TextUnformatted("Quitter définitivement la guilde ?");
     ImGui::TextColored(kGray, "Il faudra une nouvelle invitation pour y revenir.");
     ImGui::Spacing();
@@ -4575,7 +4575,7 @@ void CharacterSheet::DrawGuildTab() {
   // ⚠ @breakguild n'a NI argument NI confirmation : il appelle guild_break() sur-le-champ.
   // Le serveur ne posera donc aucune question — le garde-fou du nom retapé est le seul
   // qui existe, à l'image de ce que demande la fenêtre native pour dissoudre.
-  if (ro::BeginRoPopupModal("Dissoudre la guilde")) {
+  if (ro::BeginRoPopupModal("Dissoudre la guilde###bourgeon_guild_disband")) {
     ImGui::TextColored(kRed, "Dissoudre « %s » ?", gi.name);
     ImGui::TextColored(kGray, "Irréversible : la guilde, ses postes, son storage et ses\n"
                               "compétences disparaissent.");
@@ -4610,7 +4610,7 @@ void CharacterSheet::DrawGuildTab() {
     ro::EndRoPopupModal();
   }
 
-  if (ro::BeginRoPopupModal("Expulser de la guilde")) {
+  if (ro::BeginRoPopupModal("Expulser de la guilde###bourgeon_guild_expel")) {
     ImGui::Text("Expulser %s de la guilde ?", guild_expel_name_);
     ImGui::Spacing();
     ImGui::TextColored(kGray, "Motif (facultatif) :");
@@ -5432,7 +5432,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
 // L'envoi est réservé au maître (le serveur exige gmaster_flag) et refusé pendant
 // une guerre de guildes selon la configuration du serveur.
 void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
-  if (!ro::BeginRoPopupModal("Changer l'emblème")) return;
+  if (!ro::BeginRoPopupModal("Changer l'emblème###bourgeon_guild_emblem")) return;
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
   const std::string dir = paths::InGameDir("emblem\\");

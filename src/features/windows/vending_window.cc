@@ -1615,7 +1615,7 @@ void VendingWindow::OnRenderUI() {
       // FIN à la boutique. La faire simplement masquer laissait l'échoppe tourner
       // sans plus aucune UI pour la reprendre — un cul-de-sac.
       bool keep_open = true;
-      if (ro::BeginRoWindow("Mon shop", &keep_open,
+      if (ro::BeginRoWindow("Mon shop###bourgeon_vending_shop", &keep_open,
                             ImGuiWindowFlags_AlwaysAutoResize |
                             ImGuiWindowFlags_NoCollapse)) {
         if (myshop_.empty()) {
@@ -1682,8 +1682,8 @@ void VendingWindow::OnRenderUI() {
         const bool close_clicked = ro::RoButton("Fermer le shop");
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Met fin à la vente et récupère les objets invendus.");
-        if (close_clicked || !keep_open) ImGui::OpenPopup("Fermer ?");
-        if (ro::BeginRoPopupModal("Fermer ?")) {
+        if (close_clicked || !keep_open) ImGui::OpenPopup("Fermer ?###bourgeon_vending_close");
+        if (ro::BeginRoPopupModal("Fermer ?###bourgeon_vending_close")) {
           ImGui::TextUnformatted("Mettre fin au shop ?");
           ImGui::Separator();
           if (ro::RoButton("Oui")) {
