@@ -1001,7 +1001,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
       for (const ModeBit& b : kModeBits) {
         if ((mob.mode & b.bit) == 0) continue;
         ImGui::TableNextColumn();
-        ImGui::TextColored(kBlue, "[%s]", b.label);
+        ImGui::TextColored(kBlue, "[%s]", i18n::Tr(b.label));
       }
       ImGui::EndTable();
     }

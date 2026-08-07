@@ -2307,7 +2307,7 @@ bool BasicInfo::DrawSettings() {
     std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfo::kBarLabels[i]);
     changed |= ColorEdit4WithAlphaBar(lbl, bars_[i].fill);
   }
-  changed |= ColorEdit4WithAlphaBar("Fond / Opacité", bg_color_);
+  changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), bg_color_);
 
   TextUnformatted(i18n::Tr("Tailles rapides de barres (toutes) :"));
   // Ce n'est PAS un préréglage (le mot désigne déjà trois autres familles dans
@@ -2395,7 +2395,7 @@ bool BasicInfo::DrawSettings() {
     ImGui::PushID(i);
     changed |= ro::RoCheckbox(BasicInfo::kPortLabels[i], &e.show);
     Indent();
-    changed |= ColorEdit4WithAlphaBar("Fond / Opacité", e.bg);
+    changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), e.bg);
     if (i != BasicInfo::kPortHead) {
       SameLine();
       changed |= ColorEdit4WithAlphaBar("Texte", e.fg);

@@ -250,7 +250,7 @@ void QuestTracker::OnRenderUI() {
   // stable while the visible label changes. The (X) close button turns the
   // custom tracker off (re-enable from the settings panel).
   char titlebuf[64];
-  snprintf(titlebuf, sizeof(titlebuf), "Suivi de quête (%d)###quest_tracker", n);
+  snprintf(titlebuf, sizeof(titlebuf), i18n::Tr("Suivi de quête (%d)###quest_tracker"), n);
   bool open = true;
   bool* p_open = g_cfg.show_titlebar ? &open : nullptr;
 

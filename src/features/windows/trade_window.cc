@@ -767,7 +767,7 @@ void TradeWindow::OnRenderUI() {
                             ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Appearing);
     bool p_open = true;
-    if (ro::BeginRoWindow("Demande d'échange###bourgeon_trade_req", &p_open,
+    if (ro::BeginRoWindow(i18n::Tr("Demande d'échange###bourgeon_trade_req"), &p_open,
                           ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
       if (req_level_ > 0)
         ImGui::Text(i18n::Tr("%s (Niv. %d) souhaite échanger avec vous."), req_name_,
@@ -797,7 +797,7 @@ void TradeWindow::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
 
-  const bool begun = ro::BeginRoWindow("Échange###bourgeon_trade", &show_panel_,
+  const bool begun = ro::BeginRoWindow(i18n::Tr("Échange###bourgeon_trade"), &show_panel_,
                                        ImGuiWindowFlags_NoCollapse);
   bourgeon::CloseWindowOnEscape(show_panel_);
   if (!show_panel_) {  // clic X = annuler l'échange

@@ -677,7 +677,7 @@ void CashShopWindow::OnRenderUI() {
     for (int t = 0; t < kNumTabs; ++t) {
       if (!kTabShown[t]) continue;  // onglet toujours vide -> masqué
       char lbl[48];
-      std::snprintf(lbl, sizeof(lbl), "%s (%d)###cstab%d", kTabLabels[t],
+      std::snprintf(lbl, sizeof(lbl), "%s (%d)###cstab%d", i18n::Tr(kTabLabels[t]),
                     static_cast<int>(tabs_[t].size()), t);
       // Onglet imposé de l'extérieur (arrivée par un lien d'objet) : la barre
       // tient sa propre sélection et écraserait `cur_tab_` — il faut le lui dire.

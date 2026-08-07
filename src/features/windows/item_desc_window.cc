@@ -31,7 +31,6 @@
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
 #include "utils/log_console.h"
-#include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -1040,7 +1039,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
         // Texte blanc forcé : la couleur de texte poussée (noir, pour le fond
         // clair de la fenêtre) rendrait le tooltip invisible sur fond sombre.
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-        ImGui::SetTooltip(i18n::Tr("Aller à : %s (%d, %d)"), mapn, nx, ny);
+        ImGui::SetTooltip("Aller à : %s (%d, %d)", mapn, nx, ny);
         ImGui::PopStyleColor();
         if (clicked && mapn[0])
           StartNavigation(mapn, nx, ny, ntype);  // routage natif (ABI capturée live)
@@ -1381,7 +1380,7 @@ void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
                           IM_COL32(0, 0, 0, 255), wrap);
     ImGui::EndGroup();
   } else if (!illust.tex) {
-    ImGui::TextDisabled(i18n::Tr("(pas de description)"));
+    ImGui::TextDisabled("(pas de description)");
   }
 }
 
@@ -1398,8 +1397,8 @@ void RenderCardTooltip(uint32_t id) {
   // ⚠ Les gestes sont ceux de TOUS les liens du client (features/link_gesture.h) :
   // ce rappel doit suivre la convention, pas décrire ce que faisait cette liste.
   ImGui::TextDisabled(
-      i18n::Tr("Clic : la description   \xc2\xb7   Clic droit : le menu   \xc2\xb7   "
-      "Maj + clic : lien dans le chat"));
+      "Clic : la description   \xc2\xb7   Clic droit : le menu   \xc2\xb7   "
+      "Maj + clic : lien dans le chat");
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1911,7 +1910,7 @@ static bool          g_item_menu_open = false;
 void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
                                      uint32_t filter_key, bool show_type) {
   if (td.drops.empty()) {
-    ImGui::TextDisabled(i18n::Tr("Aucune source."));
+    ImGui::TextDisabled("Aucune source.");
     return;
   }
   // Filtre texte (par nom de monstre), persistant entre frames par (id,scope).
@@ -2014,9 +2013,9 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
       if (show_type) {
         ImGui::TableNextColumn();
         if (d->src == 1)
-          ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), i18n::Tr("MVP reward"));
+          ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "MVP reward");
         else
-          ImGui::TextDisabled(i18n::Tr("Drop normal"));
+          ImGui::TextDisabled("Drop normal");
       }
     }
     ImGui::EndTable();
@@ -2028,14 +2027,14 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
   }
   links::DrawMenu("##drop_mob_menu", g_drop_menu);
   if (td.treasure_excluded > 0)
-    ImGui::TextDisabled(i18n::Tr("%u coffre(s) au trésor exclu(s)."), td.treasure_excluded);
+    ImGui::TextDisabled("%u coffre(s) au trésor exclu(s).", td.treasure_excluded);
   if (td.truncated)
-    ImGui::TextDisabled(i18n::Tr("... autres sources : voir la base de données."));
+    ImGui::TextDisabled("... autres sources : voir la base de données.");
   // Les spawns d'instance (donjons instanciés) ne sont pas encore pris en
   // compte par le scan serveur : ces sources peuvent manquer dans la liste.
   ImGui::TextColored(ImVec4(0.70f, 0.55f, 0.20f, 1.0f),
-                     i18n::Tr("Note : les spawns d'instance ne sont pas encore "
-                     "comptés/scannés."));
+                     "Note : les spawns d'instance ne sont pas encore "
+                     "comptés/scannés.");
 }
 
 // ── Rendu « éditeur » d'un script rAthena (pretty-print + coloration) ────────
@@ -2088,7 +2087,7 @@ std::string PrettyPrintScript(const std::string& in) {
     }
     if (c == ',') {
       while (!out.empty() && out.back() == ' ') out.pop_back();
-      out += ", i18n::Tr(";
+      out += ", ";
       at_line_start = false;
       continue;
     }
@@ -2377,7 +2376,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
                           IM_COL32(0, 0, 0, 255), text_wrap);
     ImGui::EndGroup();
   } else if (!img.tex) {
-    ImGui::TextDisabled(i18n::Tr("(pas de description)"));
+    ImGui::TextDisabled("(pas de description)");
   }
 
   // ── Cartes / enchants insérés (données d'INSTANCE, pas de la DB) ───────────
@@ -2445,17 +2444,17 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     if (st == FetchState::kPending)
       ImGui::TextDisabled("Chargement...");
     else if (st == FetchState::kFailed)
-      ImGui::TextDisabled(i18n::Tr("échec de la requête"));
+      ImGui::TextDisabled("échec de la requête");
     return (st == FetchState::kReady && it != cache_.end()) ? &it->second
                                                             : nullptr;
   };
 
   if (w.is_skill) {
     // ── Onglet « Infos techniques » : table de cast par niveau ──────────────
-    if (ImGui::BeginTabItem(i18n::Tr("Infos techniques"))) {
+    if (ImGui::BeginTabItem("Infos techniques")) {
       const TechData* td = tech_body(kScopeNormal);
       if (td && td->levels.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Aucune donnée de cast."));
+        ImGui::TextDisabled("Aucune donnée de cast.");
       } else if (td) {
         const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_RowBg |
@@ -2466,7 +2465,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::TableSetupColumn("Niv");
           ImGui::TableSetupColumn("Cast");
           ImGui::TableSetupColumn("Cooldown");
-          ImGui::TableSetupColumn(i18n::Tr("Délai"));
+          ImGui::TableSetupColumn("Délai");
           ImGui::TableHeadersRow();
           auto sec = [](int32_t ms) { return ms / 1000.0f; };
           for (size_t i = 0; i < td->levels.size(); ++i) {
@@ -2480,16 +2479,16 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::EndTable();
         }
         ImGui::PopStyleColor();
-        ImGui::TextDisabled(i18n::Tr("Valeurs effectives : tes stats + gear + buffs actifs."));
+        ImGui::TextDisabled("Valeurs effectives : tes stats + gear + buffs actifs.");
       }
       ImGui::EndTabItem();
     }
 
     // ── Onglet « Dégâts » : cible réglable (mob id, ou soi-même PvP) ────────
-    if (ImGui::BeginTabItem(i18n::Tr("Dégâts"))) {
+    if (ImGui::BeginTabItem("Dégâts")) {
       // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
       const bool self_changed =
-          ImGui::Checkbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
+          ImGui::Checkbox("Contre moi-même (PvP)", &dmg_target_self_);
       ImGui::SetNextItemWidth(120.0f);
       if (dmg_target_self_) ImGui::BeginDisabled();
       ImGui::InputInt("Cible : ID monstre (0 = neutre)", &dmg_target_input_,
@@ -2516,23 +2515,23 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
       const FetchState st =
           (it != dmg_cache_.end()) ? it->second.state : FetchState::kNone;
       if (st == FetchState::kPending) {
-        ImGui::TextDisabled(i18n::Tr("Calcul en cours..."));
+        ImGui::TextDisabled("Calcul en cours...");
       } else if (st == FetchState::kReady && it != dmg_cache_.end()) {
         const DamageEst& d = it->second;
         if (d.status == 1) {
-          ImGui::TextDisabled(i18n::Tr("Sort non offensif (aucun dégât)."));
+          ImGui::TextDisabled("Sort non offensif (aucun dégât).");
         } else if (d.status == 2) {
-          ImGui::TextDisabled(i18n::Tr("Monstre introuvable (ID invalide ?)."));
+          ImGui::TextDisabled("Monstre introuvable (ID invalide ?).");
         } else if (d.status != 0) {
-          ImGui::TextDisabled(i18n::Tr("Estimation indisponible."));
+          ImGui::TextDisabled("Estimation indisponible.");
         } else {
           const char* atk = (d.atk_type == 1) ? "Physique"
                           : (d.atk_type == 2) ? "Magique"
                                               : "Divers";
           if (d.target == 0xFFFFFFFFu)
-            ImGui::TextDisabled(i18n::Tr("Cible : toi-même (miroir PvP)"));
+            ImGui::TextDisabled("Cible : toi-même (miroir PvP)");
           else if (d.target == 0)
-            ImGui::TextDisabled(i18n::Tr("Cible : neutre 0 def (dégâts bruts)"));
+            ImGui::TextDisabled("Cible : neutre 0 def (dégâts bruts)");
           else if (!d.target_name.empty())
             ImGui::Text("Cible : %s (#%u)", d.target_name.c_str(), d.target);
           else
@@ -2546,7 +2545,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
             ImGui::SameLine();
             ImGui::Text("x%u coups", d.hits);
           }
-          ImGui::TextDisabled(i18n::Tr("Inclut ton stuff / buffs. Neutre = avant def/elem."));
+          ImGui::TextDisabled("Inclut ton stuff / buffs. Neutre = avant def/elem.");
         }
       }
       ImGui::EndTabItem();
@@ -2582,7 +2581,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     }
     if (st != FetchState::kReady || it == script_cache_.end()) return nullptr;
     if (it->second.status != 0) {
-      ImGui::TextDisabled(i18n::Tr("Script indisponible (item introuvable serveur)."));
+      ImGui::TextDisabled("Script indisponible (item introuvable serveur).");
       return nullptr;
     }
     return &it->second;
@@ -2598,7 +2597,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   if (ImGui::BeginTabItem("Script")) {
     if (const ScriptData* sd = script_body()) {
       if (sd->main.empty() && sd->equip.empty() && sd->unequip.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Cet item n'a aucun script."));
+        ImGui::TextDisabled("Cet item n'a aucun script.");
       } else {
         if (!sd->main.empty()) {
           ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "Script");
@@ -2621,7 +2620,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   if (ImGui::BeginTabItem("Combos")) {
     if (const ScriptData* sd = script_body()) {
       if (sd->combos.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Cet item ne fait partie d'aucun combo."));
+        ImGui::TextDisabled("Cet item ne fait partie d'aucun combo.");
       } else {
         // Rend un membre de combo comme LIEN vers l'itemdb du site : bleu (or pour
         // l'item courant), soulignement + curseur main au survol, aperçu de
@@ -2696,7 +2695,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
             std::snprintf(bid, sizeof(bid), "##combo_scr%zu", i);
             draw_code(bid, c.script);
           } else {
-            ImGui::TextDisabled(i18n::Tr("(pas de script)"));
+            ImGui::TextDisabled("(pas de script)");
           }
           if (i + 1 < sd->combos.size()) ImGui::Separator();
           ImGui::PopID();
@@ -2925,13 +2924,13 @@ void ItemDescWindow::RenderItemWindow() {
       if (shop->imgui_enabled_ && shop->FindItem(snap.id, nullptr, &price)) {
         if (action_row) ImGui::SameLine();
         char vs[64];
-        std::snprintf(vs, sizeof(vs), i18n::Tr("Vote shop : %d pts%s"), price, selId);
+        std::snprintf(vs, sizeof(vs), "Vote shop : %d pts%s", price, selId);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.33f, 0.08f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
         if (ImGui::SmallButton(vs)) shop->OpenWithItem(snap.id);
         ImGui::PopStyleColor(2);
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(i18n::Tr("Ouvre le vote shop avec cet objet dans le panier."));
+          ImGui::SetTooltip("Ouvre le vote shop avec cet objet dans le panier.");
       }
     }
 
@@ -2939,7 +2938,7 @@ void ItemDescWindow::RenderItemWindow() {
     // la fenêtre 0x271c des taux refine/enchant pour cet item).
     if (ItemHasProbability(snap.id)) {
       char pb[48];
-      std::snprintf(pb, sizeof(pb), i18n::Tr("Probabilités%s"), selId);
+      std::snprintf(pb, sizeof(pb), "Probabilités%s", selId);
       if (ImGui::SmallButton(pb)) CallDescButton(wnd, kCmdProbability);
     }
 
@@ -2958,13 +2957,13 @@ void ItemDescWindow::RenderItemWindow() {
         if (show_book_panel_) HideBookWindow(FindBookWindow());
       }
       ImGui::SameLine();
-      std::snprintf(rb, sizeof(rb), i18n::Tr("Lecture auto%s"), selId);
+      std::snprintf(rb, sizeof(rb), "Lecture auto%s", selId);
       // Lecture auto = le personnage récite le livre dans le chat (le client
       // n'affiche alors AUCUNE fenêtre) — pas de panneau à reproduire.
       if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(i18n::Tr("Le personnage lit le livre à voix haute, ligne par "
-                          "ligne, dans le chat."));
+        ImGui::SetTooltip("Le personnage lit le livre à voix haute, ligne par "
+                          "ligne, dans le chat.");
     }
     ImGui::EndGroup();
 
@@ -3085,7 +3084,7 @@ void ItemDescWindow::RenderItemWindow() {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
         for (int i = 0; i < slot_rows; ++i) {
           if (e.cards[i] == 0) {  // emplacement vide de l'item
-            ImGui::TextDisabled(i18n::Tr("[Emplacement vide]"));
+            ImGui::TextDisabled("[Emplacement vide]");
             continue;
           }
           char clbl[160];
@@ -3433,9 +3432,9 @@ void ItemDescWindow::RenderBookWindow() {
     const bool first = (be.page <= 1);
     const bool last  = (be.page >= be.pages);
     ImGui::BeginDisabled(first);
-    if (ImGui::SmallButton(i18n::Tr("<< Début"))) goto_page = 1;
+    if (ImGui::SmallButton("<< Début")) goto_page = 1;
     ImGui::SameLine();
-    if (ImGui::SmallButton(i18n::Tr("< Précédente"))) page_cmd = kCmdBookPrev;
+    if (ImGui::SmallButton("< Précédente")) page_cmd = kCmdBookPrev;
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::Text("Page %d / %d", be.page, be.pages);
@@ -3482,43 +3481,43 @@ void ItemDescWindow::RenderBookWindow() {
 // de sauvegarder. Rend true si un réglage a changé.
 bool ItemDescWindow::DrawSettings() {
   bool changed = false;
-  TextUnformatted(i18n::Tr("Descriptions modernes des items et skills."));
+  TextUnformatted("Descriptions modernes des items et skills.");
 
-  changed |= ro::RoCheckbox(i18n::Tr("Panneau technique des items"), &show_item_panel());
+  changed |= ro::RoCheckbox("Panneau technique des items", &show_item_panel());
   SameLine(); HelpMarker(
-      i18n::Tr("Affiche le panneau enrichi description d'un ITEM.\n"
-      "Clic droit item"));
+      "Affiche le panneau enrichi description d'un ITEM.\n"
+      "Clic droit item");
 
-  changed |= ro::RoCheckbox(i18n::Tr("Panneau technique des skills"), &show_skill_panel());
+  changed |= ro::RoCheckbox("Panneau technique des skills", &show_skill_panel());
   SameLine(); HelpMarker(
-      i18n::Tr("Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
-      "Clic droit dans le grimoire"));
+      "Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
+      "Clic droit dans le grimoire");
 
-  changed |= ro::RoCheckbox(i18n::Tr("Fenêtre de livre moderne"), &show_book_panel());
+  changed |= ro::RoCheckbox("Fenêtre de livre moderne", &show_book_panel());
   SameLine(); HelpMarker(
-      i18n::Tr("Redessine la fenêtre de lecture des livres en ImGui (texte "
+      "Redessine la fenêtre de lecture des livres en ImGui (texte "
       "sélectionnable, pages à la molette).\n"
-      "OFF : fenêtre native, qui s'affiche SOUS l'interface moderne."));
+      "OFF : fenêtre native, qui s'affiche SOUS l'interface moderne.");
 
-  changed |= ro::RoCheckbox(i18n::Tr("Livres : ouvrir à la première page"),
+  changed |= ro::RoCheckbox("Livres : ouvrir à la première page",
                             &book_reset_page());
   SameLine(); HelpMarker(
-      i18n::Tr("ON : un livre s'ouvre toujours page 1.\n"
+      "ON : un livre s'ouvre toujours page 1.\n"
       "OFF : comportement d'origine du client, qui reprend à la dernière page "
-      "lue (signet enregistré par personnage dans le registre Windows)."));
+      "lue (signet enregistré par personnage dans le registre Windows).");
 
-  changed |= ro::RoCheckbox(i18n::Tr("Ouvrir près de la souris"), &desc_spawn_at_cursor());
+  changed |= ro::RoCheckbox("Ouvrir près de la souris", &desc_spawn_at_cursor());
   SameLine(); HelpMarker(
-      i18n::Tr("ON : la description apparaît près du curseur à chaque ouverture.\n"
-      "OFF : elle réapparaît à sa dernière position connue."));
+      "ON : la description apparaît près du curseur à chaque ouverture.\n"
+      "OFF : elle réapparaît à sa dernière position connue.");
 
   if (desc_spawn_at_cursor()) {
     Indent();
       const char* kAnchors[] = {"Haut-gauche", "Haut-droite", "Bas-gauche","Bas-droite", "Centre"};
       changed |= ro::RoCombo("Ancrage", &desc_anchor(), kAnchors, 5);
-      changed |= WheelSliderInt(i18n::Tr("Offset X"), &desc_offset_x(), -400, 400, "%d px");
-      changed |= WheelSliderInt(i18n::Tr("Offset Y"), &desc_offset_y(), -400, 400, "%d px");
-      SameLine(); HelpMarker(i18n::Tr("Décalage depuis le curseur (molette au survol pour ajuster)."));
+      changed |= WheelSliderInt("Offset X", &desc_offset_x(), -400, 400, "%d px");
+      changed |= WheelSliderInt("Offset Y", &desc_offset_y(), -400, 400, "%d px");
+      SameLine(); HelpMarker("Décalage depuis le curseur (molette au survol pour ajuster).");
     Unindent();
   }
   return changed;

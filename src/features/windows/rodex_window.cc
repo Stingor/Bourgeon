@@ -1630,7 +1630,7 @@ void RodexWindow::DrawMailList() {
       // ### : le compteur change à chaque courrier reçu, l'identité de l'onglet
       // ne doit pas changer avec lui (sinon ImGui perd l'onglet sélectionné).
       char label[64];
-      std::snprintf(label, sizeof(label), "%s (%d)###rodex_tab%d", kTabs[tab],
+      std::snprintf(label, sizeof(label), "%s (%d)###rodex_tab%d", i18n::Tr(kTabs[tab]),
                     counts[tab], tab);
       if (ImGui::BeginTabItem(label)) {
         if (tab_ != tab) {
@@ -1916,7 +1916,7 @@ void RodexWindow::DrawComposeWindow() {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
 
   bool open = true;
-  const bool begun = ro::BeginRoWindow("Écrire un courrier###bourgeon_rodex_write",
+  const bool begun = ro::BeginRoWindow(i18n::Tr("Écrire un courrier###bourgeon_rodex_write"),
                                        &open, ImGuiWindowFlags_NoCollapse);
   if (!open) {  // clic sur le X = annuler l'écriture (le natif libère les objets)
     CloseCompose();

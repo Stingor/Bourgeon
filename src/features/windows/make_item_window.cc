@@ -1989,7 +1989,7 @@ void MakeItemWindow::SendReuseItem() {
 
   char line[192];
   if (auto_reuse_max_ > 0)
-    std::snprintf(line, sizeof(line), "Relance : %s consommé (%d/%d).",
+    std::snprintf(line, sizeof(line), i18n::Tr("Relance : %s consommé (%d/%d)."),
                   source_item_name_, auto_items_used_, auto_reuse_max_);
   else
     std::snprintf(line, sizeof(line), i18n::Tr("Relance : %s consommé (%d au total)."),
@@ -3122,7 +3122,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                            "Chances : %d %%", chance);
         if (cook_mastery_ >= 0 && kit < 15) {
           ImGui::SameLine();
-          ImGui::TextDisabled("(maîtrise %d / 1999)", cook_mastery_);
+          ImGui::TextDisabled(i18n::Tr("(maîtrise %d / 1999)"), cook_mastery_);
         }
         ImGui::SameLine();
         char tip[1024];
@@ -3780,7 +3780,7 @@ void MakeItemWindow::DrawFooter() {
   SameLine();
   if (batch_left_ > 0) {
     ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
-    Text("série : %d/%d", batch_target_ - batch_left_, batch_target_);
+    Text(i18n::Tr("série : %d/%d"), batch_target_ - batch_left_, batch_target_);
     ImGui::PopStyleColor();
   } else {
     HelpMarker(

@@ -151,13 +151,13 @@ const int kPoseCount = 6;
 // Libellé de BASE d'une pose (1er match par anim, sans « (animé) ») : noms de fichier GIF.
 const char* PoseLabel(int anim) {
   for (int i = 0; i < kPoseCount; ++i)
-    if (kPoses[i].anim == anim) return kPoses[i].label;
+    if (kPoses[i].anim == anim) return i18n::Tr(kPoses[i].label);
   return "Combat";  // repli
 }
 // Libellé COMPLET de la pose courante (anim + animé) : aperçu du combo.
 const char* PoseLabelFull(int anim, bool animate) {
   for (int i = 0; i < kPoseCount; ++i)
-    if (kPoses[i].anim == anim && kPoses[i].animate == animate) return kPoses[i].label;
+    if (kPoses[i].anim == anim && kPoses[i].animate == animate) return i18n::Tr(kPoses[i].label);
   return PoseLabel(anim);
 }
 constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinales
@@ -4524,7 +4524,7 @@ void CharacterSheet::DrawGuildTab() {
             i18n::Tr("Emblème actuel illisible (pas encore téléchargé ?) : le dessin en cours est gardé.");
       }
     }
-    ImGui::OpenPopup("Changer l'emblème###bourgeon_guild_emblem");
+    ImGui::OpenPopup(i18n::Tr("Changer l'emblème###bourgeon_guild_emblem"));
   }
   DrawGuildEmblemModal(gi.guildId, is_master);
 
@@ -5429,7 +5429,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
 // L'envoi est réservé au maître (le serveur exige gmaster_flag) et refusé pendant
 // une guerre de guildes selon la configuration du serveur.
 void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
-  if (!ro::BeginRoPopupModal("Changer l'emblème###bourgeon_guild_emblem")) return;
+  if (!ro::BeginRoPopupModal(i18n::Tr("Changer l'emblème###bourgeon_guild_emblem"))) return;
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
   const std::string dir = paths::InGameDir("emblem\\");
@@ -6658,9 +6658,9 @@ void CharacterSheet::DrawStatsPanel() {
   auto primaryTip = [&](int i, char* buf, int cap) -> const char* {
     if (bonus_.valid && (bonus_.equip[i] != 0 || bonus_.card[i] != 0))
       std::snprintf(buf, cap, i18n::Tr("%s\nÉquipement : %+d   Cartes : %+d"),
-                    kStatDesc[i], bonus_.equip[i], bonus_.card[i]);
+                    i18n::Tr(kStatDesc[i]), bonus_.equip[i], bonus_.card[i]);
     else
-      std::snprintf(buf, cap, "%s", kStatDesc[i]);
+      std::snprintf(buf, cap, "%s", i18n::Tr(kStatDesc[i]));
     return buf;
   };
 

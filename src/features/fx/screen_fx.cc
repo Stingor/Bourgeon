@@ -159,7 +159,7 @@ void ScreenFx::DrawSettings() {
     slider("Gamma",       &fx_.gamma,       0.5f, 2.0f);
     slider("Saturation",  &fx_.saturation,  0.0f, 2.0f);
     slider(i18n::Tr("Température"),  &fx_.temperature,-1.0f, 1.0f);
-    const char* filters[] = {"Aucun", "Noir & blanc", "Sépia", "Négatif", "Daltonien"};
+    const char* filters[] = {i18n::Tr("Aucun"), i18n::Tr("Noir & blanc"), i18n::Tr("Sépia"), i18n::Tr("Négatif"), i18n::Tr("Daltonien")};
     ImGui::SetNextItemWidth(180.0f);
     if (ro::RoCombo("Filtre", &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
       apply = true;

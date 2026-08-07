@@ -265,7 +265,7 @@ ImFont* FontItalic() { return g_font_italic; }
 
 int         ChatFamilyCount() { return kChatFamilyCount; }
 const char* ChatFamilyLabel(int i) {
-  return (i >= 0 && i < kChatFamilyCount) ? kChatFamilies[i].label : "";
+  return (i >= 0 && i < kChatFamilyCount) ? i18n::Tr(kChatFamilies[i].label) : "";
 }
 
 // La police d'une famille, pour un style donné. Repli en cascade — famille
@@ -2318,7 +2318,13 @@ void RoEndCombo() {
 
 bool RoCombo(const char* label, int *current_item, const char* const items[], int items_count) {
   bool changed = false;
-  if (ro::RoBeginCombo(label, items[*current_item])) {
+  // 🔴 LES LIBELLÉS SE TRADUISENT ICI, ET C'EST LE SEUL ENDROIT POSSIBLE.
+  // Les appelants passent presque tous un tableau STATIQUE de `const char*` :
+  // un i18n::Tr posé à sa définition serait évalué une fois, au chargement de la
+  // DLL, et resterait figé en français pour toujours. En traduisant à la lecture,
+  // un seul point de code rend traduisibles tous les combos du projet — et le
+  // français ne paie rien, Tr rendant alors son argument.
+  if (ro::RoBeginCombo(label, i18n::Tr(items[*current_item]))) {
     for (int i = 0; i < items_count; ++i) {
       const bool selected = (*current_item == i);
       // `changed` ne doit être levé QUE sur un vrai changement de sélection. Il était
@@ -2326,7 +2332,7 @@ bool RoCombo(const char* label, int *current_item, const char* const items[], in
       // ouvert : les appelants font `changed |= RoCombo(...)` puis `if (changed)
       // SaveSettings()`, ce qui réécrivait bourgeon_settings.yaml à 60 Hz tant que le
       // menu restait déroulé. Re-cliquer l'entrée déjà active n'est pas un changement.
-      if (ImGui::Selectable(items[i], selected) && !selected) {
+      if (ImGui::Selectable(i18n::Tr(items[i]), selected) && !selected) {
         *current_item = i;
         changed = true;
       }

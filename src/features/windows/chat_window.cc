@@ -2605,7 +2605,7 @@ void ChatWindow::DrawDockedWindow() {
       if (ro::RoSmallButton("Effacer")) search_[0] = '\0';
       ImGui::PopStyleColor();
       ImGui::SameLine();
-      ro::RoCheckbox("Sélection###chatwnd_selmode", &select_mode_);
+      ro::RoCheckbox(i18n::Tr("Sélection###chatwnd_selmode"), &select_mode_);
       if (ImGui::IsItemHovered()) {
         ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
         ImGui::SetTooltip(
@@ -4627,8 +4627,8 @@ void ChatWindow::DrawLogOptionsPopup() {
   // tant que les deux écritures passent par ici.
   const uint32_t group = channel->group;
   bool* const lock = (group != 0) ? &channel->locked : &locked_;
-  if (ro::RoCheckbox(channel->detached ? "Verrouiller cette fenêtre###chat_lock"
-                                       : "Verrouiller la fenêtre principale###chat_lock",
+  if (ro::RoCheckbox(channel->detached ? i18n::Tr("Verrouiller cette fenêtre###chat_lock")
+                                       : i18n::Tr("Verrouiller la fenêtre principale###chat_lock"),
                      lock)) {
     if (group != 0)
       for (Channel& other : channels_)
@@ -4688,7 +4688,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     PushStyleCompact();
     ImGui::PushItemWidth(140.0f);
     bool own = channel->style_own;
-    if (ro::RoCheckbox("Réglages propres à cet onglet###chatstyle_own", &own)) {
+    if (ro::RoCheckbox(i18n::Tr("Réglages propres à cet onglet###chatstyle_own"), &own)) {
       // 🔴 En ACTIVANT, on part des valeurs générales : sinon le premier clic
       // ferait sauter l'onglet vers des valeurs par défaut sans rapport avec ce
       // que le joueur avait sous les yeux.
@@ -5357,7 +5357,7 @@ bool ChatWindow::DrawSettings() {
       "affiché n'a aucun rapport obligé avec la destination réelle. La "
       "confirmation montre l'adresse COMPLÈTE avant d'ouvrir le navigateur.\n\n"
       "En la décochant, un clic sur un lien ouvre directement le navigateur."));
-  changed |= ro::RoCheckbox("Aperçu des images au survol###chatwnd_urlprev",
+  changed |= ro::RoCheckbox(i18n::Tr("Aperçu des images au survol###chatwnd_urlprev"),
                             &url_preview_);
   ImGui::SameLine();
   HelpMarker(
@@ -5471,9 +5471,9 @@ bool ChatWindow::DrawSettings() {
   bool from_stranger = false, from_friend = false;
   const bool opts_ok = ReadWhisperPopupOptions(&from_stranger, &from_friend);
   ImGui::BeginDisabled(!opts_ok);
-  if (ro::RoCheckbox("Fenêtre individuelle pour un inconnu###chatwnd_wh_stranger", &from_stranger))
+  if (ro::RoCheckbox(i18n::Tr("Fenêtre individuelle pour un inconnu###chatwnd_wh_stranger"), &from_stranger))
     WriteWhisperPopupOption(true, from_stranger);
-  if (ro::RoCheckbox("Fenêtre individuelle pour un ami###chatwnd_wh_friend", &from_friend))
+  if (ro::RoCheckbox(i18n::Tr("Fenêtre individuelle pour un ami###chatwnd_wh_friend"), &from_friend))
     WriteWhisperPopupOption(false, from_friend);
   ImGui::EndDisabled();
   ImGui::SameLine();
@@ -5484,7 +5484,7 @@ bool ChatWindow::DrawSettings() {
       "Décochés, les chuchotements restent de simples lignes dans le chat."));
 
   changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
-  changed |= ro::RoCheckbox("Icônes d'objets###chatwnd_icons", &item_icons_);
+  changed |= ro::RoCheckbox(i18n::Tr("Icônes d'objets###chatwnd_icons"), &item_icons_);
   changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",
                             &diagnostic_);
   ImGui::SameLine();
@@ -5505,7 +5505,7 @@ bool ChatWindow::DrawSettings() {
   // WheelSliderInt, pas ro::RoSliderInt : même habillage RO (il l'enveloppe),
   // mais avec l'ajustement à la molette au survol, le clamp et l'infobulle —
   // c'est la brique des panneaux de réglages, partout ailleurs dans Bourgeon.
-  changed |= WheelSliderInt("Lignes conservées par type###chatwnd_cap",
+  changed |= WheelSliderInt(i18n::Tr("Lignes conservées par type###chatwnd_cap"),
                             &history_cap_, 100, 5000, "%d");
   ImGui::SameLine();
   HelpMarker(
@@ -5527,7 +5527,7 @@ bool ChatWindow::DrawSettings() {
       ".yaml, CHUCHOTEMENTS COMPRIS. Sur une machine partagée, n'importe qui peut "
       "les lire."));
   if (keep_history_) {
-    changed |= WheelSliderInt("Lignes gardées d'une session à l'autre###chatwnd_keep_n",
+    changed |= WheelSliderInt(i18n::Tr("Lignes gardées d'une session à l'autre###chatwnd_keep_n"),
                               &keep_lines_, 20, 1000, "%d");
   }
 

@@ -1311,7 +1311,7 @@ void CharSelect::DrawLayoutEditor() {
   // aussitôt — la valeur étant reposée à chaque frame, rien ne fuit.
   ro::SetWindowCollapseAllowed(true);
   const bool begun =
-      ro::BeginRoWindow("Personnaliser l'écran###bourgeon_charsel_layout", &open);
+      ro::BeginRoWindow(i18n::Tr("Personnaliser l'écran###bourgeon_charsel_layout"), &open);
   if (begun) {
     charsel::Layout& lay = charsel::State();
 
@@ -2183,7 +2183,7 @@ void CharSelect::OnRenderLoginUI() {
         std::strncpy(del_popup_name_, views[selected_].name,
                      sizeof(del_popup_name_) - 1);
         del_popup_name_[sizeof(del_popup_name_) - 1] = '\0';
-        ImGui::OpenPopup("Suppression définitive###bourgeon_charsel_delete");
+        ImGui::OpenPopup(i18n::Tr("Suppression définitive###bourgeon_charsel_delete"));
       }
       if (!del_elapsed) ImGui::EndDisabled();
       tip_del = ImGui::IsItemHovered();
@@ -2236,7 +2236,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::PopStyleColor(2);
     // Titres de popup distincts des labels de bouton (pas d'ID partagé dans la même
     // fenêtre) et plus explicites dans la barre de titre RO.
-    if (back_clicked) ImGui::OpenPopup("Retour à l'écran de connexion###bourgeon_charsel_back");
+    if (back_clicked) ImGui::OpenPopup(i18n::Tr("Retour à l'écran de connexion###bourgeon_charsel_back"));
     if (quit_clicked) ImGui::OpenPopup("Fermer le jeu###bourgeon_charsel_quit");
     // Tooltips APRÈS le pop du texte sombre (sinon sombre sur sombre).
     if (tip_back)
@@ -2246,7 +2246,7 @@ void CharSelect::OnRenderLoginUI() {
     if (tip_quit) ImGui::SetTooltip(i18n::Tr("Ferme le jeu."));
   }
 
-  if (ro::BeginRoPopupModal("Retour à l'écran de connexion###bourgeon_charsel_back")) {
+  if (ro::BeginRoPopupModal(i18n::Tr("Retour à l'écran de connexion###bourgeon_charsel_back"))) {
     ImGui::TextUnformatted(
         i18n::Tr("Revenir à l'écran de connexion ?\n"
         "Tu seras déconnecté du serveur ; aucun personnage n'est affecté."));
@@ -2292,7 +2292,7 @@ void CharSelect::OnRenderLoginUI() {
   // (chclif_delchar_check, CHAR_DEL_EMAIL) exige l'email EXACT du compte ; sur succès
   // il re-pousse la liste (le perso disparaît), sur mauvais email il refuse SANS figer.
   // JAMAIS le prompt natif (deux modaux bloquants qui figent sous notre capture).
-  if (ro::BeginRoPopupModal("Suppression définitive###bourgeon_charsel_delete")) {
+  if (ro::BeginRoPopupModal(i18n::Tr("Suppression définitive###bourgeon_charsel_delete"))) {
     ImGui::Text(i18n::Tr("Supprimer DÉFINITIVEMENT « %s » ?"), del_popup_name_);
     ImGui::TextUnformatted(i18n::Tr("Action IRRÉVERSIBLE. Saisis l'email du compte pour confirmer :"));
     ImGui::Spacing();
@@ -2335,10 +2335,10 @@ void CharSelect::OnRenderLoginUI() {
   // Ouverture différée : le clic « siège libre » (dans PushID) a levé le drapeau ; on
   // ouvre ICI, au niveau racine, pour que l'ID matche BeginRoPopupModal.
   if (create_open_req_) {
-    ImGui::OpenPopup("Créer un personnage###bourgeon_charsel_create");
+    ImGui::OpenPopup(i18n::Tr("Créer un personnage###bourgeon_charsel_create"));
     create_open_req_ = false;
   }
-  if (ro::BeginRoPopupModal("Créer un personnage###bourgeon_charsel_create")) {
+  if (ro::BeginRoPopupModal(i18n::Tr("Créer un personnage###bourgeon_charsel_create"))) {
     // Aperçu doll (gauche). Le doll garde sa taille nominale (ph) mais est CENTRÉ
     // verticalement dans une colonne aussi haute que le formulaire de droite (mesuré
     // frame N-1) -> plus de gros vide sous l'aperçu. MOLETTE au survol = rotation.
@@ -2584,7 +2584,7 @@ void CharSelect::OnRenderLoginUI() {
       };
       for (const PoseItem& p : kSeatPoses) {
         const bool on = (s.anim == p.anim && s.animate == p.animate);
-        if (ImGui::MenuItem(p.label, nullptr, on)) {
+        if (ImGui::MenuItem(i18n::Tr(p.label), nullptr, on)) {
           s.anim = p.anim;
           s.animate = p.animate;
           // L'image choisie appartenait à l'action PRÉCÉDENTE : la nouvelle n'en
@@ -2628,7 +2628,7 @@ void CharSelect::OnRenderLoginUI() {
         for (const HeadItem& h : kHeads) {
           // -1 et 0 valent tous deux « dans l'axe » : la coche suit ce sens.
           const bool on = (h.dir == 0) ? (s.head_dir <= 0) : (s.head_dir == h.dir);
-          if (ImGui::MenuItem(h.label, nullptr, on)) {
+          if (ImGui::MenuItem(i18n::Tr(h.label), nullptr, on)) {
             s.head_dir = h.dir;
             charsel::MarkDirty();
           }

@@ -2193,7 +2193,7 @@ void StorageWindow::OnRenderUI() {
   // Compteur UNIQUE (plus de doublon en tête) : occupation du storage + nombre
   // d'items réellement affichés (onglet + sous-type + filtre).
   char cnt[48];
-  std::snprintf(cnt, sizeof(cnt), "%d/%d  (%d affichés)", used_, max_,
+  std::snprintf(cnt, sizeof(cnt), i18n::Tr("%d/%d  (%d affichés)"), used_, max_,
                 static_cast<int>(view.size()));
 
   // ── Footer btnbar (épinglé en bas de la fenêtre) : icône + compteur + Quitter.

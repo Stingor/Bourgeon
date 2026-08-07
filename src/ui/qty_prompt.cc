@@ -9,7 +9,7 @@ namespace {
 
 // « Quantité » est le titre AFFICHÉ ; l'id ImGui (après ###) est fixe et propre au
 // module, pour qu'il ne dépende pas du libellé et ne collisionne avec rien.
-const char* const kPopupId = "Quantité###ro_qty_prompt";
+const char* const kPopupId = i18n::Tr("Quantité###ro_qty_prompt");
 
 const void* g_owner = nullptr;  // fenêtre à qui appartient le prompt en cours
 bool g_open_requested = false;  // OpenQuantityPrompt en attente

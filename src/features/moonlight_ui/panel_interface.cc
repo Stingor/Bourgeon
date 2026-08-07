@@ -225,7 +225,7 @@ void MoonlightUi::DrawInterfacePanel() {
     if (s_labels_font != ImGui::GetFont() || s_labels_size != ImGui::GetFontSize()) {
       s_labels_w = 0.0f;
       for (const IfaceEntry& entry : kIfaceSections)
-        s_labels_w = (std::max)(s_labels_w, ImGui::CalcTextSize(entry.label).x);
+        s_labels_w = (std::max)(s_labels_w, ImGui::CalcTextSize(i18n::Tr(entry.label)).x);
       s_labels_font = ImGui::GetFont();
       s_labels_size = ImGui::GetFontSize();
     }
@@ -239,7 +239,7 @@ void MoonlightUi::DrawInterfacePanel() {
 
     ImGui::BeginChild("iface_nav", ImVec2(nav_w, nav_h), ImGuiChildFlags_Borders);
     for (const IfaceEntry& entry : kIfaceSections)
-      if (ImGui::Selectable(entry.label, iface_nav_ == entry.id)) iface_nav_ = entry.id;
+      if (ImGui::Selectable(i18n::Tr(entry.label), iface_nav_ == entry.id)) iface_nav_ = entry.id;
     ImGui::EndChild();
 
     SameLine();

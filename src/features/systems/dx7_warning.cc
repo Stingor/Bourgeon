@@ -18,7 +18,7 @@ extern bool g_imgui_dx7_active;
 namespace {
 
 // Titre affiché + ID stable (tout ce qui suit ### est hors rendu).
-constexpr char kPopupId[] = "Mode DirectX 7 détecté###dx7_warning";
+constexpr char kPopupId[] = i18n::Tr("Mode DirectX 7 détecté###dx7_warning");
 
 // Dossier de l'exécutable du jeu, backslash final inclus. Comme pour le patcher
 // (integrity_check), on part du module et pas du CWD : un raccourci peut lancer

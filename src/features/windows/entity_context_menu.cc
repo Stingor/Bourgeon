@@ -985,7 +985,7 @@ bool EntityContextMenu::DrawSettings() {
   // panneau. Une case locale rouvrirait l'état mixte que ce groupe existe pour
   // interdire — c'est la règle suivie par toutes les fenêtres du groupe.)
   bool changed = false;
-  changed |= ro::RoCheckbox("Sur toutes les entités###ctxmenu_all", &all_entities_);
+  changed |= ro::RoCheckbox(i18n::Tr("Sur toutes les entités###ctxmenu_all"), &all_entities_);
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Le client n'ouvrait de menu que sur un joueur, son pet, son homoncule ou "

@@ -1987,7 +1987,7 @@ void VendingWindow::OnRenderUI() {
       // l'ouverture, et sans ça la fenêtre serait recréée (position perdue).
       char title[96];
       if (bs_buyer_[0] != '\0')
-        std::snprintf(title, sizeof(title), "Vendre à %s###buying_store_sell",
+        std::snprintf(title, sizeof(title), i18n::Tr("Vendre à %s###buying_store_sell"),
                       bs_buyer_);
       else
         std::snprintf(title, sizeof(title), "Vendre###buying_store_sell");

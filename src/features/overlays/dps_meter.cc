@@ -374,7 +374,7 @@ bool DpsMeter::DrawSettings() {
   // slot_ms_ passe par une copie : le changer invalide l'historique, et
   // ResetHistory ne doit être appelée qu'une fois, sur un vrai changement.
   int slot_ms = slot_ms_;
-  if (WheelSliderInt("Résolution (ms/slot)", &slot_ms, 50, 2000)) {
+  if (WheelSliderInt(i18n::Tr("Résolution (ms/slot)"), &slot_ms, 50, 2000)) {
     slot_ms_ = slot_ms;
     ResetHistory();
     changed = true;
