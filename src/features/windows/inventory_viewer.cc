@@ -1695,8 +1695,8 @@ void InventoryViewer::OnRenderUI() {
   // l'inventaire, le storage et le cart.
   {
     const char* verb = pend_action_ == kPendDrop      ? "Jeter"
-                     : pend_action_ == kPendToCart     ? "Vers le cart"
-                     : pend_action_ == kPendToStorage  ? "Vers le storage"
+                     : pend_action_ == kPendToCart     ? i18n::Tr("Vers le cart")
+                     : pend_action_ == kPendToStorage  ? i18n::Tr("Vers le storage")
                      : pend_action_ == kPendToMail     ? i18n::Tr("Joindre au courrier") : i18n::Tr("Déplacer");
     bool cancelled = false;
     const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
@@ -1706,7 +1706,7 @@ void InventoryViewer::OnRenderUI() {
 
   // Aide raccourcis : le texte est construit ici, mais le "(?)" est émis dans le
   // FOOTER (cf. plus bas) pour ne pas manger une ligne au-dessus de la grille.
-  std::string desc = "Raccourcis inventaire\n\n"
+  std::string desc = i18n::Tr("Raccourcis inventaire\n\n"
                      "- Double-clic gauche : utiliser / équiper\n"
                      "- Ctrl + double-clic gauche : équiper en main gauche\n"
                      "- Maj + clic gauche : lien de l'item dans l'input du chat (puis Entrée)\n"
@@ -1715,7 +1715,7 @@ void InventoryViewer::OnRenderUI() {
                      "- Maj + clic droit : (dé)favori\n"
                      "- Alt + clic droit : transfert rapide (storage / cart si ouvert)\n"
                      "- Glisser : cart / storage / équipement / barre d'action / sol\n"
-                     "- Glisser un favori sur un autre onglet : le retirer des favoris";
+                     "- Glisser un favori sur un autre onglet : le retirer des favoris");
   static ImGuiTextFilter filter;
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
@@ -2429,7 +2429,7 @@ void InventoryViewer::OnRenderUI() {
                             ? static_cast<float>(g_btn_bank[0].w) * kBankBtnScale
                             : 18.0f * kBankBtnScale;
     if (FooterImgButton3("##inv_bank", zx - bankW - 4.0f, cy1, fy0, fy1, g_btn_bank,
-                         "Z", "Ouvrir la banque de zeny (Ctrl+B)", nullptr,
+                         "Z", i18n::Tr("Ouvrir la banque de zeny (Ctrl+B)"), nullptr,
                          kBankBtnScale))
       bank->ToggleFromUi();
   }
@@ -2444,18 +2444,18 @@ void InventoryViewer::OnRenderUI() {
   // Boutons (dessinés par-dessus la barre) : Drop, puis Deal + Tri sur les Favoris.
   float bx = grpL, bwOut = 0.0f;
   if (FooterImgToggle("##inv_droplock", bx, cyc, g_btn_drop[1], g_btn_drop[0], dropOn, "D",
-                      "Verrou drop : empêche de jeter des items (tous onglets)", &bwOut))
+                      i18n::Tr("Verrou drop : empêche de jeter des items (tous onglets)"), &bwOut))
     ToggleLock(kDropLockGlobal);
   bx += bwOut + bgap;
   if (favTab) {
     if (FooterImgToggle("##inv_deallock", bx, cyc, g_btn_deal[1], g_btn_deal[0], dealOn, "V",
-                        "Verrou vente : les favoris ne peuvent pas être vendus aux NPC", &bwOut))
+                        i18n::Tr("Verrou vente : les favoris ne peuvent pas être vendus aux NPC"), &bwOut))
       ToggleLock(kDealLockGlobal);
     bx += bwOut + bgap;
   }
   if (showSort) {
     if (FooterImgToggle("##inv_sort", bx, cyc, g_btn_sort[1], g_btn_sort[0], sort_enabled_, "T",
-                        "Trier la vue (type puis nom) ; sinon ordre du serveur", &bwOut))
+                        i18n::Tr("Trier la vue (type puis nom) ; sinon ordre du serveur"), &bwOut))
       sort_enabled_ = !sort_enabled_;
   }
 

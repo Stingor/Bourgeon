@@ -1196,8 +1196,8 @@ void RodexWindow::SendMail() {
   const int title_len = Utf8ToAnsi(subject_, title, sizeof(title));
   const int body_len  = Utf8ToAnsi(body_, body, sizeof(body));
 
-  if (to_ansi[0] == '\0') { send_error_ = "Indique un destinataire."; return; }
-  if (title_len == 0)     { send_error_ = "Le sujet ne peut pas être vide."; return; }
+  if (to_ansi[0] == '\0') { send_error_ = i18n::Tr("Indique un destinataire."); return; }
+  if (title_len == 0)     { send_error_ = i18n::Tr("Le sujet ne peut pas être vide."); return; }
   if (title_len > kMailTitleMax) {
     send_error_ = i18n::Tr("Sujet trop long (39 caractères maximum).");
     return;
@@ -1573,7 +1573,7 @@ void RodexWindow::DrawMailbox() {
     ImGui::Separator();
     DrawMailDetail();
   } else {
-    ImGui::TextDisabled("%s", "Clique sur un courrier pour le lire.");
+    ImGui::TextDisabled("%s", i18n::Tr("Clique sur un courrier pour le lire."));
   }
 
   // Mesure de fin de frame : c'est elle qui sert de base au calcul d'agrandissement
@@ -1941,11 +1941,11 @@ void RodexWindow::DrawComposeWindow() {
   // personne avant d'envoyer des objets. Le char id, lui, ne dit rien au joueur.
   switch (check_state_) {
     case kCheckPending:
-      ImGui::TextDisabled("%s", "Vérification en cours...");
+      ImGui::TextDisabled("%s", i18n::Tr("Vérification en cours..."));
       break;
     case kCheckUnknown:
       ImGui::TextColored(ImVec4(0.75f, 0.15f, 0.15f, 1.0f), "%s",
-                         "Ce personnage n'existe pas.");
+                         i18n::Tr("Ce personnage n'existe pas."));
       break;
     case kCheckFound: {
       // Le serveur réémet le nom qu'il a trouvé : l'afficher plutôt que la saisie

@@ -749,7 +749,7 @@ void MonsterInfoWindow::OnRenderUI() {
               (titled != nullptr && titled->state == Fetch::kReady &&
                !titled->name.empty())
                   ? titled->name.c_str()
-                  : "Fiche de monstre");
+                  : i18n::Tr("Fiche de monstre"));
 
   const ImGuiWindowFlags kFlags =
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing;
@@ -905,7 +905,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
     const ImVec2 c((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f);
     dl->AddCircleFilled(c, 18.0f, IM_COL32(120, 110, 100, 160), 16);
     dl->AddText(ImVec2(p0.x + 6.0f, p1.y - 18.0f), IM_COL32(200, 190, 170, 200),
-                "pas de sprite");
+                i18n::Tr("pas de sprite"));
   }
 
   // ── Le cadre est une ZONE ACTIVE ──────────────────────────────────────────
@@ -938,7 +938,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   ImGui::BeginGroup();
   {
     ImGui::TextColored(kTitle, "%s",
-                       mob.name.empty() ? "(sans nom)" : mob.name.c_str());
+                       mob.name.empty() ? i18n::Tr("(sans nom)") : mob.name.c_str());
     // Le qualificatif fait partie du TITRE : c'est la première chose lue, et
     // c'est là qu'il faut lever le doute — pas trois lignes plus bas.
     if (const char* qual = VariantQualifier(mob.aegis, mob.summoned)) {
@@ -1376,7 +1376,7 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
     }
     ImGui::BeginGroup();
     ImGui::TextColored(kTitle, "%s",
-                       mob.name.empty() ? "(sans nom)" : mob.name.c_str());
+                       mob.name.empty() ? i18n::Tr("(sans nom)") : mob.name.c_str());
     if (const char* badge = BossLabel(mob.boss)) {
       ImGui::SameLine();
       ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
@@ -1457,7 +1457,7 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
       }
       const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
       ImGui::TextColored(kLink, "%s",
-                         d.name.empty() ? "(objet inconnu)" : d.name.c_str());
+                         d.name.empty() ? i18n::Tr("(objet inconnu)") : d.name.c_str());
       const bool item_hovered = ImGui::IsItemHovered();
       if (item_hovered) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);

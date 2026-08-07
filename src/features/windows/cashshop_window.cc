@@ -195,12 +195,12 @@ constexpr int kSlotHatEffect = 100;
 
 struct Slot { int key; const char* label; };
 Slot SlotOf(uint32_t e) {
-  if (e & 0x2000)            return {13, "Costume garment"};    // COSTUME_GARMENT
+  if (e & 0x2000)            return {13, i18n::Tr("Costume garment")};    // COSTUME_GARMENT
   if (e & (0x0400 | 0x0800 | 0x1000))
-                            return {10, "Costume head"};        // COSTUME_HEAD_*
-  if (e & 0x0100)            return {0,  "Head top"};           // HEAD_TOP
-  if (e & 0x0200)            return {1,  "Head mid"};           // HEAD_MID
-  if (e & 0x0001)            return {2,  "Head bot"};           // HEAD_LOW
+                            return {10, i18n::Tr("Costume head")};        // COSTUME_HEAD_*
+  if (e & 0x0100)            return {0,  i18n::Tr("Head top")};           // HEAD_TOP
+  if (e & 0x0200)            return {1,  i18n::Tr("Head mid")};           // HEAD_MID
+  if (e & 0x0001)            return {2,  i18n::Tr("Head bot")};           // HEAD_LOW
   if (e & 0x0010)            return {3,  "Armor"};              // ARMOR
   if (e & 0x0004)            return {4,  "Garment"};            // GARMENT
   if (e & 0x0040)            return {5,  "Shoes"};              // SHOES
@@ -623,7 +623,7 @@ void CashShopWindow::OnRenderUI() {
   char title[96];
   const char* shop_name = msgstr::Utf8(kMsiCashShop);
   std::snprintf(title, sizeof(title), "%s###bourgeon_cashshop",
-                (shop_name && shop_name[0]) ? shop_name : "Vote Shop");
+                (shop_name && shop_name[0]) ? shop_name : i18n::Tr("Vote Shop"));
   const bool begun =
       ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
   if (!show_panel_) {
@@ -650,10 +650,10 @@ void CashShopWindow::OnRenderUI() {
                      (lbl_cash && lbl_cash[0]) ? lbl_cash : "Vote", cash_points_);
   ImGui::SameLine();
   ImGui::TextColored(kBlack, " | %s: %u",
-                     (lbl_free && lbl_free[0]) ? lbl_free : "Points d'Event",
+                     (lbl_free && lbl_free[0]) ? lbl_free : i18n::Tr("Points d'Event"),
                      kafra_points_);
   ImGui::SameLine();
-  ro::RoCheckbox((lbl_usef && lbl_usef[0]) ? lbl_usef : "Points d'Event d'abord",
+  ro::RoCheckbox((lbl_usef && lbl_usef[0]) ? lbl_usef : i18n::Tr("Points d'Event d'abord"),
                  &use_kafra_);
   if (last_result_ == 0) {
     ImGui::SameLine();
@@ -723,7 +723,7 @@ void CashShopWindow::OnRenderUI() {
   }
   // Entrée virtuelle "Costumes hat-effect" (clé 100 > toutes les clés réelles ->
   // en fin de liste), présente seulement si l'onglet en contient.
-  if (has_hateffect) slots.push_back({kSlotHatEffect, "Costumes hat-effect"});
+  if (has_hateffect) slots.push_back({kSlotHatEffect, i18n::Tr("Costumes hat-effect")});
   // Un seul slot "Autre" (99) => onglet non-équipable : pas de filtre utile.
   const bool slot_filter_useful = slots.size() > 1;
   if (slot_filter_useful) {
@@ -937,14 +937,14 @@ void CashShopWindow::OnRenderUI() {
       if (ro::RoButton("Panier", colw, frameH))
         AddToCart(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(afford ? "Ajouter au panier (achat groupe via Acheter)"
+        ImGui::SetTooltip(afford ? i18n::Tr("Ajouter au panier (achat groupe via Acheter)")
                                  : why);
       ImGui::SetCursorPos(
           ImVec2(cx, cy + ImGui::GetTextLineHeight() + frameH + 2.0f * sp));
       if (ro::RoButton("Achat 1-Click", colw, frameH))
         BuyNow(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(afford ? "Achat immédiat d'1 unité, puis fermeture du shop"
+        ImGui::SetTooltip(afford ? i18n::Tr("Achat immédiat d'1 unité, puis fermeture du shop")
                                  : why);
       if (!afford) ImGui::EndDisabled();
       ImGui::EndChild();

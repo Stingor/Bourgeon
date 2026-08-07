@@ -1265,9 +1265,9 @@ void CharSelect::DrawLayoutGuides(ImDrawList* dl, const ImVec2& disp) {
   // Rappel des gestes, en haut : le panneau peut être déplacé n'importe où, le
   // joueur ne doit pas avoir à le retrouver pour se souvenir de la molette.
   const char* hint =
-      "Personnalisation — glisser : placer  •  molette : tourner  •  "
+      i18n::Tr("Personnalisation — glisser : placer  •  molette : tourner  •  "
       "Ctrl+molette : taille  •  clic droit : pose  •  pastilles bleues : "
-      "blocs d'interface";
+      "blocs d'interface");
   const ImVec2 hs = ImGui::CalcTextSize(hint);
   const float hx = (disp.x - hs.x) * 0.5f, hy = 6.0f;
   dl->AddRectFilled(ImVec2(hx - 12.0f, hy - 4.0f),
@@ -1373,7 +1373,7 @@ void CharSelect::DrawLayoutEditor() {
     }
     if (!hide) {
       float alpha = lay.empty_seat_alpha;
-      if (ro::RoSliderFloat("Opacité", &alpha, 0.0f, 1.0f)) {
+      if (ro::RoSliderFloat(i18n::Tr("Opacité"), &alpha, 0.0f, 1.0f)) {
         lay.empty_seat_alpha = alpha;
         charsel::MarkDirty();
       }
@@ -1961,7 +1961,7 @@ void CharSelect::OnRenderLoginUI() {
       }
 
       if (v.del_rev_date > 0) {
-        const char* del = "Suppression programmée";
+        const char* del = i18n::Tr("Suppression programmée");
         const ImVec2 ds = ImGui::CalcTextSize(del);
         const float dx = cx - ds.x * 0.5f, dyy = stack_y;
         // Fond (rouge très sombre) pour détacher nettement le texte du décor de la
@@ -2015,7 +2015,7 @@ void CharSelect::OnRenderLoginUI() {
   }
 
   // ── Titre ────────────────────────────────────────────────────────────────────
-  const char* title = "Choisis ton personnage";
+  const char* title = i18n::Tr("Choisis ton personnage");
   const ImVec2 tsz = ImGui::CalcTextSize(title);
   // Position ancrée (poignée déplaçable en mode édition). Le point = milieu-haut.
   const ImVec2 tp = Anchor("titre", 0.5f, 24.0f / disp.y, seat_edit_);
@@ -2029,7 +2029,7 @@ void CharSelect::OnRenderLoginUI() {
   // Même bandeau pour l'entrée en jeu abandonnée par le filet anti-écran-mort : le
   // joueur doit comprendre pourquoi le fondu est retombé sur la table.
   if (del_reject_until_ <= GetTickCount() && enter_failed_until_ > GetTickCount()) {
-    const char* msg = "L'entrée en jeu n'a pas abouti — réessaie.";
+    const char* msg = i18n::Tr("L'entrée en jeu n'a pas abouti — réessaie.");
     const ImVec2 ms = ImGui::CalcTextSize(msg);
     const float by = tp.y + tsz.y + 10.0f;
     const float bx = (disp.x - ms.x) * 0.5f;
@@ -2366,7 +2366,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::TextUnformatted("Sexe");
     if (ro::RadioImage("Femelle", create_sex_ == 0)) create_sex_ = 0;
     ImGui::SameLine(0.0f, 18.0f);
-    if (ro::RadioImage("Mâle", create_sex_ == 1)) create_sex_ = 1;
+    if (ro::RadioImage(i18n::Tr("Mâle"), create_sex_ == 1)) create_sex_ = 1;
 
     // Grille de coiffures : icônes = frame du .spr natif (DrawHairIcon). Scrollable ;
     // seules les cases VISIBLES chargent (IsRectVisible) -> pas de saturation atlas.
@@ -2506,7 +2506,7 @@ void CharSelect::OnRenderLoginUI() {
     else if (create_failed_) {
       const char* why = g_suppressed_modal_msg[0]
                             ? LocalToUtf8(g_suppressed_modal_msg)
-                            : "Échec : nom déjà pris, trop court ou caractères interdits.";
+                            : i18n::Tr("Échec : nom déjà pris, trop court ou caractères interdits.");
       ImGui::TextColored(ImVec4(0.96f, 0.52f, 0.52f, 1.0f), "%s", why);
     }
 
@@ -2736,8 +2736,8 @@ void CharSelect::OnRenderLoginUI() {
       // ou refus silencieux). Le message natif est en code-page client -> LocalToUtf8.
       const char* why = g_suppressed_modal_msg[0]
                             ? LocalToUtf8(g_suppressed_modal_msg)
-                            : "Échec : nom pris/invalide, coupon absent, ou perso en "
-                              "guilde/groupe (rename interdit).";
+                            : i18n::Tr("Échec : nom pris/invalide, coupon absent, ou perso en "
+                              "guilde/groupe (rename interdit).");
       ImGui::TextColored(ImVec4(0.96f, 0.52f, 0.52f, 1.0f), "%s", why);
     }
     ImGui::Spacing();

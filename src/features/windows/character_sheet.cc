@@ -2619,7 +2619,7 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
   if (!replaced) {
     int cnt = 0;  // plafond par perso (kMaxPresetsPerChar)
     for (const auto& ex : equip_presets_) if (ex.cid == p.cid) ++cnt;
-    if (cnt >= kMaxPresetsPerChar) { preset_status_ = "Limite de 5 presets atteinte"; return; }
+    if (cnt >= kMaxPresetsPerChar) { preset_status_ = i18n::Tr("Limite de 5 presets atteinte"); return; }
     equip_presets_.push_back(std::move(p));
   }
   preset_status_ = i18n::Tr("Preset enregistré");
@@ -2673,8 +2673,8 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
   }
   for (int e = 0; e < neq; ++e) SendEquip(toEquip[e].index, toEquip[e].pos);
   preset_status_ = (missing > 0)
-                       ? "Appliqué (" + std::to_string(missing) + " item(s) manquant(s))"
-                       : "Preset appliqué";
+                       ? i18n::Tr("Appliqué (") + std::to_string(missing) + " item(s) manquant(s))"
+                       : i18n::Tr("Preset appliqué");
 }
 
 // « Tout nu » : desequipe tous les slots portes, en paquets bruts envoyes d'un coup (meme
@@ -2693,8 +2693,8 @@ int CharacterSheet::UnequipAll(bool with_costumes) {
     const int kCostumeSlots[4] = {8, 0, 9, 2};  // tete haut, tete bas, tete mil, cape
     for (int s : kCostumeSlots) strip(s, true);
   }
-  preset_status_ = freed > 0 ? "Tout déséquipé (" + std::to_string(freed) + " pièce(s))"
-                             : "Rien à déséquiper";
+  preset_status_ = freed > 0 ? i18n::Tr("Tout déséquipé (") + std::to_string(freed) + i18n::Tr(" pièce(s))")
+                             : i18n::Tr("Rien à déséquiper");
   return freed;
 }
 
@@ -2790,7 +2790,7 @@ void CharacterSheet::DrawPresetsTab() {
         char what[64];
         if (hotkeys::Conflict(vk, c, a, sh, hotkeys::Owner::kEquipPreset, mine[mi], what,
                               sizeof(what))) {
-          hk_conflict_msg_ = std::string(i18n::Tr("Déjà utilisé par ")) + what + " — choisis un autre combo";
+          hk_conflict_msg_ = std::string(i18n::Tr("Déjà utilisé par ")) + what + i18n::Tr(" — choisis un autre combo");
         } else {  // libre : on assigne + persiste
           EquipPreset& e = equip_presets_[mine[mi]];
           e.hotkey_vk = vk; e.hotkey_ctrl = c; e.hotkey_alt = a; e.hotkey_shift = sh;
@@ -2808,7 +2808,7 @@ void CharacterSheet::DrawPresetsTab() {
                      sizeof(hkl));
       ImGui::TextColored(kBlack, "%s", hkl);
       ImGui::SameLine(0.0f, 6.0f);
-      if (ro::RoButton(i18n::Tr("Définir"), bw("Définir"))) {
+      if (ro::RoButton(i18n::Tr("Définir"), bw(i18n::Tr("Définir")))) {
         hk_capturing_ = mine[mi];
         hk_conflict_msg_.clear();
       }
@@ -2964,7 +2964,7 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
     return false;
   };
   SkillRaw target{};
-  if (!find(id, target)) { skill_status_ = "Compétence introuvable dans l'arbre."; return false; }
+  if (!find(id, target)) { skill_status_ = i18n::Tr("Compétence introuvable dans l'arbre."); return false; }
 
   int spent = 0;
   for (const auto& p : skill_pending_) {
@@ -2972,7 +2972,7 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
     if (find(p.first, fiche)) spent += p.second - fiche.learned;
   }
   int left = SkillPointsSEH() - spent;
-  if (left <= 0) { skill_status_ = "Plus de point de compétence disponible."; return false; }
+  if (left <= 0) { skill_status_ = i18n::Tr("Plus de point de compétence disponible."); return false; }
 
   // Poser (ou relever) une réservation ; renvoie ce qui a réellement été dépensé.
   auto reserve = [&](const SkillRaw& fiche, int target_level) -> int {
@@ -3043,7 +3043,7 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
     return false;
   }
   const int current = std::max(target.learned, PendingLevel(id));
-  if (current >= target.maxlv) { skill_status_ = "Déjà au niveau maximum."; return false; }
+  if (current >= target.maxlv) { skill_status_ = i18n::Tr("Déjà au niveau maximum."); return false; }
   // `reserve` borne déjà au niveau max ET aux points restants : viser le max revient
   // à demander tout ce qui reste, sans boucler ni recompter les prérequis.
   if (reserve(target, to_max ? target.maxlv : current + 1) == 0) {
@@ -3308,14 +3308,14 @@ void CharacterSheet::DrawSkillsTab() {
     if (s.maxlv > 0) {
       tip += "\nNiveau " + std::to_string(effective) + " / " + std::to_string(s.maxlv);
       const int pending = PendingLevel(static_cast<uint16_t>(s.id));
-      if (pending > 0) tip += "  (+" + std::to_string(pending - s.learned) + " réservé)";
+      if (pending > 0) tip += "  (+" + std::to_string(pending - s.learned) + i18n::Tr(" réservé)");
     }
     tip += s.inf == 0 ? i18n::Tr("\nPassive (toujours active)") : "\nActive";
     if (s.learned > 0 && s.sp > 0)    tip += "\nSP : " + std::to_string(s.sp);
-    if (s.learned > 0 && s.range > 0) tip += "\nPortée : " + std::to_string(s.range);
+    if (s.learned > 0 && s.range > 0) tip += i18n::Tr("\nPortée : ") + std::to_string(s.range);
     const unsigned long cd_ms = SkillCooldownRemaining(static_cast<uint16_t>(s.id));
     if (cd_ms > 0)
-      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) + " s de cooldown";
+      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) + i18n::Tr(" s de cooldown");
     if (s.need_count > 0) {
       tip += "\nRequiert : ";
       for (int i = 0; i < s.need_count; ++i) {
@@ -3328,21 +3328,21 @@ void CharacterSheet::DrawSkillsTab() {
         // dire — c'est ce que le natif signale en coloriant l'onglet concerné.
         bool here = false;
         for (int k = 0; k < count && !here; ++k) here = nodes[k].id == s.need_id[i];
-        if (!here) tip += " (autre onglet)";
+        if (!here) tip += i18n::Tr(" (autre onglet)");
       }
     }
-    if (s.user_up <= 0) tip += "\n\nNe se monte pas avec des points (quête / lien).";
+    if (s.user_up <= 0) tip += i18n::Tr("\n\nNe se monte pas avec des points (quête / lien).");
     if (s.user_up > 0 && effective < s.maxlv)
-      tip += "\n\nClic : réserver un point — Ctrl + clic : jusqu'au max";
+      tip += i18n::Tr("\n\nClic : réserver un point — Ctrl + clic : jusqu'au max");
     else
       tip += "\n";
     if (s.learned > 0 && s.inf != 0) tip += "\nDouble-clic : lancer";
     if (s.learned > 1 && IsLevelUseSkillSEH(s.id))
-      tip += "\nMolette : niveau de lancement (" +
+      tip += i18n::Tr("\nMolette : niveau de lancement (") +
              std::to_string(EffectiveUseLevelSEH(s.id, s.learned)) + " / " +
              std::to_string(s.learned) + ")";
-    tip += "\nClic droit : menu — Ctrl + clic droit : description";
-    if (s.learned > 0 && s.inf != 0) tip += "\nGlisser : poser sur une barre d'action";
+    tip += i18n::Tr("\nClic droit : menu — Ctrl + clic droit : description");
+    if (s.learned > 0 && s.inf != 0) tip += i18n::Tr("\nGlisser : poser sur une barre d'action");
     ImGui::SetTooltip("%s", tip.c_str());
   };
 
@@ -3956,12 +3956,12 @@ void CharacterSheet::DrawGuildTab() {
     // Retour du serveur (ZC 0x0167). Le client affiche déjà sa propre boîte ; on
     // double l'information ici pour ne pas laisser l'onglet muet.
     if (guild_create_result_ >= 0) {
-      const char* result_text = "Résultat inconnu.";
+      const char* result_text = i18n::Tr("Résultat inconnu.");
       switch (guild_create_result_) {
-        case 0: result_text = "Guilde créée."; break;
-        case 1: result_text = "Tu es déjà dans une guilde."; break;
-        case 2: result_text = "Ce nom de guilde est déjà pris."; break;
-        case 3: result_text = "Il te faut un Emperium pour créer une guilde."; break;
+        case 0: result_text = i18n::Tr("Guilde créée."); break;
+        case 1: result_text = i18n::Tr("Tu es déjà dans une guilde."); break;
+        case 2: result_text = i18n::Tr("Ce nom de guilde est déjà pris."); break;
+        case 3: result_text = i18n::Tr("Il te faut un Emperium pour créer une guilde."); break;
         default: break;
       }
       ImGui::TextColored(guild_create_result_ == 0 ? ImVec4(0.10f, 0.50f, 0.15f, 1.0f)
@@ -4369,7 +4369,7 @@ void CharacterSheet::DrawGuildTab() {
         ImGui::TableSetColumnIndex(3);
         const char* position_label = GuildPositionLabel(m.position_id, m.position);
         if (m.position_id == 0)
-          ImGui::TextColored(kBlue, "%s", position_label ? position_label : "Maître");
+          ImGui::TextColored(kBlue, "%s", position_label ? position_label : i18n::Tr("Maître"));
         else
           ImGui::TextColored(kBlack, "%s", position_label ? position_label : "—");
         ImGui::TableSetColumnIndex(4);
@@ -4539,7 +4539,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::Spacing();
     if (ro::RoButton(guild_rel_del_kind_ == 0 ? "Rompre" : "Retirer", 110.0f, 0.0f)) {
       SendGuildDeleteRelation(guild_rel_del_id_, guild_rel_del_kind_);
-      guild_status_ = std::string(guild_rel_del_name_) + " : demande envoyée.";
+      guild_status_ = std::string(guild_rel_del_name_) + i18n::Tr(" : demande envoyée.");
       guild_last_req_ = 0;  // rafraîchit la liste des relations
       ImGui::CloseCurrentPopup();
     }
@@ -4619,7 +4619,7 @@ void CharacterSheet::DrawGuildTab() {
     if (ro::RoButton("Expulser", 110.0f, 0.0f)) {
       SendGuildLeaveOrExpel(kOpGuildExpel, gi.guildId, guild_expel_aid_, guild_expel_cid_,
                             guild_reason_buf_);
-      guild_status_ = std::string(guild_expel_name_) + " : expulsion envoyée.";
+      guild_status_ = std::string(guild_expel_name_) + i18n::Tr(" : expulsion envoyée.");
       guild_last_req_ = 0;
       ImGui::CloseCurrentPopup();
     }
@@ -4887,21 +4887,21 @@ void CharacterSheet::DrawGuildSkillsTab() {
     if (live && live->name[0]) { tip += "  ("; tip += live->name; tip += ")"; }
     if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
                                   std::to_string(row.max_level);
-    if (live && live->range > 0) tip += "\nPortée : " + std::to_string(live->range);
+    if (live && live->range > 0) tip += i18n::Tr("\nPortée : ") + std::to_string(live->range);
     const unsigned long cd_ms = SkillCooldownRemaining(row.id);
     if (cd_ms > 0)
       tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) +
-             " s (lancer une compétence de guilde les bloque toutes les quatre)";
+             i18n::Tr(" s (lancer une compétence de guilde les bloque toutes les quatre)");
     // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
     // là où le joueur regarde quand il se demande pourquoi elle est grisée.
     const std::string reqs = requirements_text(row.node);
     if (!reqs.empty()) tip += "\nRequiert : " + reqs;
     if (live) tip += live->inf == 0 ? i18n::Tr("\nPassive (toujours active)") : "\nActive";
-    tip += locked       ? "\n\nVerrouillée : prérequis non remplis."
-         : can_use      ? "\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre"
+    tip += locked       ? i18n::Tr("\n\nVerrouillée : prérequis non remplis.")
+         : can_use      ? i18n::Tr("\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre")
          : active_skill ? i18n::Tr("\n\nClic droit : description — glisser vers une barre") : i18n::Tr("\n\nClic droit : description");
     if (live && live->upgradable && guild_skill_points_ > 0)
-      tip += "\nClic gauche : monter d'un niveau";
+      tip += i18n::Tr("\nClic gauche : monter d'un niveau");
     ImGui::SetTooltip("%s", tip.c_str());
   };
 
@@ -5543,9 +5543,9 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   if (ro::RoButton("Envoyer", 110.0f, 0.0f)) {
     const bool started = RequestEmblemUploadSEH(guildId, chosen->name.c_str());
     guild_emblem_diag_ = started
-                             ? "Envoi au service web lancé (" + chosen->name + ")."
-                             : "Refusé : un envoi est déjà en cours, ou service indisponible.";
-    if (started) guild_status_ = "Emblème envoyé : " + chosen->name;
+                             ? i18n::Tr("Envoi au service web lancé (") + chosen->name + ")."
+                             : i18n::Tr("Refusé : un envoi est déjà en cours, ou service indisponible.");
+    if (started) guild_status_ = i18n::Tr("Emblème envoyé : ") + chosen->name;
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
@@ -5561,7 +5561,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
     if (EmblemCanvasLoadBmp(chosen->bmp)) {
       guild_emblem_goto_paint_ = true;  // bascule sur l'éditeur, sinon rien ne se voit
       guild_emblem_error_.clear();
-      guild_status_ = "Dessin repris de " + chosen->name;
+      guild_status_ = i18n::Tr("Dessin repris de ") + chosen->name;
     } else {
       guild_emblem_error_ = i18n::Tr("Ce fichier n'est pas reprenable (dimensions ou profondeur).");
     }
@@ -5750,7 +5750,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   ImGui::TextColored(kGray, i18n::Tr("(clic droit = efface)"));
 
   ImGui::SetNextItemWidth(140.0f);
-  ro::RoSliderInt("Épaisseur", &g_emblem_canvas.brush, 1, 3, "%d px");
+  ro::RoSliderInt(i18n::Tr("Épaisseur"), &g_emblem_canvas.brush, 1, 3, "%d px");
   ImGui::SameLine();
   ro::RoCheckbox(i18n::Tr("Symétrie"), &g_emblem_canvas.mirror);
   if (ImGui::IsItemHovered())
@@ -5943,7 +5943,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
         if (clicked) {
           guild_emblem_item_id_ = static_cast<int>(id);
           if (EmblemCanvasLoadItemIcon(id)) guild_emblem_diag_.clear();
-          else guild_emblem_diag_ = "Icône introuvable pour cet item.";
+          else guild_emblem_diag_ = i18n::Tr("Icône introuvable pour cet item.");
         }
         ImGui::PopID();
       }
@@ -5986,14 +5986,14 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
                                                   ? g_emblem_canvas.save_name
                                                   : "mon_embleme") + ".bmp";
     if (!WriteEmblemFile(file_name.c_str(), bmp)) {
-      guild_emblem_diag_ = "Écriture impossible : emblem/" + file_name;
+      guild_emblem_diag_ = i18n::Tr("Écriture impossible : emblem/") + file_name;
     } else {
       g_emblem_preview_cache.erase(file_name);  // la vignette du fichier a changé
       const bool started = RequestEmblemUploadSEH(guildId, file_name.c_str());
       guild_emblem_diag_ = started
-                               ? "Envoi au service web lancé (" + file_name + ")."
-                               : "Refusé : un envoi est déjà en cours, ou service indisponible.";
-      if (started) guild_status_ = "Emblème dessiné envoyé (" + file_name + ").";
+                               ? i18n::Tr("Envoi au service web lancé (") + file_name + ")."
+                               : i18n::Tr("Refusé : un envoi est déjà en cours, ou service indisponible.");
+      if (started) guild_status_ = i18n::Tr("Emblème dessiné envoyé (") + file_name + ").";
     }
   }
   ImGui::EndDisabled();
@@ -6019,12 +6019,12 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
       std::fwrite(bmp.data(), 1, bmp.size(), fp);
       std::fclose(fp);
       // Nom seul, sans le chemin : la police CP949 du client dessine l'antislash en ₩.
-      guild_status_ = "Emblème enregistré : emblem/" + file_name;
+      guild_status_ = i18n::Tr("Emblème enregistré : emblem/") + file_name;
       // Réécrire sous un nom déjà vu : la vignette en cache montrerait l'ancien dessin.
       g_emblem_preview_cache.erase(file_name);
       ScanEmblemFolder();
     } else {
-      guild_emblem_error_ = "Écriture impossible : emblem/" + file_name;
+      guild_emblem_error_ = i18n::Tr("Écriture impossible : emblem/") + file_name;
     }
   }
 }
@@ -6758,7 +6758,7 @@ void CharacterSheet::DrawStatsPanel() {
       std::snprintf(b + n, sizeof(b) - n, "  (%s %+d)", label, contrib);
     }
   };
-  auto appendEquip = [&](int contrib) { append("équip", contrib); };
+  auto appendEquip = [&](int contrib) { append(i18n::Tr("équip"), contrib); };
   // Variante % (ex. DEF de refine, qui alimente la réduction en %).
   auto appendPct = [&](const char* label, int contrib) {
     if (bonus_.valid && contrib != 0) {
@@ -6769,15 +6769,15 @@ void CharacterSheet::DrawStatsPanel() {
   std::snprintf(b, sizeof(b), "%d + %d", s.atk1, s.atk2);
   appendEquip(bonus_.eatk);
   append("refine", bonus_.refine_atk);
-  stat("ATK", b, "Attaque physique (arme + statut) : détermine les dégâts des coups physiques.");
+  stat("ATK", b, i18n::Tr("Attaque physique (arme + statut) : détermine les dégâts des coups physiques."));
   std::snprintf(b, sizeof(b), "%d ~ %d", s.matk_min, s.matk_max);
   appendEquip(bonus_.ematk);
-  stat("MATK", b, "Attaque magique : détermine les dégâts des sorts.");
+  stat("MATK", b, i18n::Tr("Attaque magique : détermine les dégâts des sorts."));
   std::snprintf(b, sizeof(b), "%d%% + %d", s.def_s, s.def_h);
   appendPct("refine", bonus_.refine_def);
-  stat("DEF", b, "Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du refine des armures (dans la réduction %).");
+  stat("DEF", b, i18n::Tr("Défense physique : réduction en % (VIT/équip, def1) + réduction plate (def2). « refine » = part du refine des armures (dans la réduction %)."));
   std::snprintf(b, sizeof(b), "%d%% + %d", s.mdef_s, s.mdef_h);
-  stat("MDEF", b, "Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2).");
+  stat("MDEF", b, i18n::Tr("Défense magique : réduction en % (INT, mdef1) + réduction plate (mdef2)."));
   // 🔴 HIT et FLEE valent « niveau de base + DEX/AGI », et la part du NIVEAU
   // s'arrête à 600 (battle_config.maxstatlevelcalc, conf/import/battle_conf.txt).
   // Rien ne le signale en jeu : un personnage niveau 999 a 400 points de HIT et
@@ -6787,14 +6787,14 @@ void CharacterSheet::DrawStatsPanel() {
   // là-bas, ces deux textes mentent — les mettre à jour en même temps.
   std::snprintf(b, sizeof(b), "%d", s.hit);
   stat("HIT", b,
-       "Précision : comparée au FLEE de la cible pour déterminer si vous "
+       i18n::Tr("Précision : comparée au FLEE de la cible pour déterminer si vous "
        "touchez.\n\nHIT = niveau de base + DEX. La part du niveau s'arrête au "
-       "niveau 600 : au-delà, seule la DEX fait encore monter le HIT.");
+       "niveau 600 : au-delà, seule la DEX fait encore monter le HIT."));
   std::snprintf(b, sizeof(b), "%d", s.flee);
   stat("FLEE", b,
-       "Esquive : comparée au HIT de la cible, réduit la probabilité d'être "
+       i18n::Tr("Esquive : comparée au HIT de la cible, réduit la probabilité d'être "
        "touché.\n\nFLEE = niveau de base + AGI. La part du niveau s'arrête au "
-       "niveau 600 : au-delà, seule l'AGI fait encore monter le FLEE.");
+       "niveau 600 : au-delà, seule l'AGI fait encore monter le FLEE."));
   // 🔴 CRI et Esq.P sont des POUR CENT ENTIERS, PAS des dixièmes. Les diviser
   // encore par 10 divisait le vrai taux par dix.
   //
@@ -6809,11 +6809,11 @@ void CharacterSheet::DrawStatsPanel() {
   // ⚠ Oui, un taux peut dépasser 100 % : le jet est `rnd()%1000 < cri`, tout
   // ce qui est au-dessus est simplement toujours vrai.
   std::snprintf(b, sizeof(b), "%d%%", s.crit);
-  stat("CRI", b, "Taux de coup critique (%) : un critique ignore la DEF et ne rate jamais.");
+  stat("CRI", b, i18n::Tr("Taux de coup critique (%) : un critique ignore la DEF et ne rate jamais."));
   std::snprintf(b, sizeof(b), "%d", (2000 - s.aspd_raw) / 10);
-  stat("ASPD", b, "Vitesse d'attaque : plus elle est haute, plus vous frappez souvent.");
+  stat("ASPD", b, i18n::Tr("Vitesse d'attaque : plus elle est haute, plus vous frappez souvent."));
   std::snprintf(b, sizeof(b), "%d%%", s.pdodge);
-  stat("Esq.P", b, "Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique.");
+  stat("Esq.P", b, i18n::Tr("Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique."));
 
   // ── Bonus d'équipement/cartes (poussés par le serveur, ZC_BOURGEON_STAT_BONUS) ──
   // Origines que le natif n'expose pas : bonus plats + conditionnels vs cible.
@@ -6933,39 +6933,39 @@ void CharacterSheet::DrawStatsPanel() {
         return who_buf;
       };
       switch (c.code) {
-        case kBscSubEle:  kind = "Résist. vs"; who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
-        case kBscSubRace: kind = "Résist. vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscSubSize: kind = "Résist. vs"; who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
-        case kBscAddEle:  kind = "Dégâts vs";  who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
-        case kBscAddRace: kind = "Dégâts vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscAddSize: kind = "Dégâts vs";  who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
-        case kBscMAddEle:  kind = "Dég. mag. vs"; who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
-        case kBscMAddRace: kind = "Dég. mag. vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscMAddSize: kind = "Dég. mag. vs"; who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
-        case kBscCritRace:    kind = "Crit vs";       who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscIgnDefRace:  kind = "Ignore DEF vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscIgnMdefRace: kind = "Ignore MDEF vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscIgnDefClass:  kind = "Ignore DEF vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscIgnMdefClass: kind = "Ignore MDEF vs"; who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscSubdefEle:   kind = "Résist. arme";   who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
-        case kBscSubClass:    kind = "Réduc. vs";      who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscSubRace2:  kind = "Réduc. vs";  who = rc2(c.idx); break;
-        case kBscExpRace:   kind = "EXP vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscExpClass:  kind = "EXP vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscDropRace:  kind = "Drop vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscDropClass: kind = "Drop vs"; who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscSubEle:  kind = i18n::Tr("Résist. vs"); who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscSubRace: kind = i18n::Tr("Résist. vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscSubSize: kind = i18n::Tr("Résist. vs"); who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscAddEle:  kind = i18n::Tr("Dégâts vs");  who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscAddRace: kind = i18n::Tr("Dégâts vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscAddSize: kind = i18n::Tr("Dégâts vs");  who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscMAddEle:  kind = i18n::Tr("Dég. mag. vs"); who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscMAddRace: kind = i18n::Tr("Dég. mag. vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMAddSize: kind = i18n::Tr("Dég. mag. vs"); who = nameOf(kSizeName, IM_ARRAYSIZE(kSizeName), c.idx); break;
+        case kBscCritRace:    kind = i18n::Tr("Crit vs");       who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnDefRace:  kind = i18n::Tr("Ignore DEF vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnMdefRace: kind = i18n::Tr("Ignore MDEF vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnDefClass:  kind = i18n::Tr("Ignore DEF vs");  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscIgnMdefClass: kind = i18n::Tr("Ignore MDEF vs"); who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscSubdefEle:   kind = i18n::Tr("Résist. arme");   who = nameOf(kEleName, IM_ARRAYSIZE(kEleName), c.idx); break;
+        case kBscSubClass:    kind = i18n::Tr("Réduc. vs");      who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscSubRace2:  kind = i18n::Tr("Réduc. vs");  who = rc2(c.idx); break;
+        case kBscExpRace:   kind = i18n::Tr("EXP vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscExpClass:  kind = i18n::Tr("EXP vs");  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscDropRace:  kind = i18n::Tr("Drop vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscDropClass: kind = i18n::Tr("Drop vs"); who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
         // Très niche
-        case kBscDefsetRace:   kind = "DEF fixée vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscMdefsetRace:  kind = "MDEF fixée vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscHpVanishRace: kind = "Vanish PV vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscSpVanishRace: kind = "Vanish SP vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscComaRace:     kind = "Coma vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscComaClass:    kind = "Coma vs";  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
-        case kBscIgnResRace:   kind = "Ignore RES vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscIgnMresRace:  kind = "Ignore MRES vs"; who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
-        case kBscMAddRace2:      kind = "Dég. mag. vs";  who = rc2(c.idx); break;
-        case kBscIgnMdefRace2:   kind = "Ignore MDEF vs"; who = rc2(c.idx); break;
-        case kBscSpGainRace:   kind = "SP/kill vs";  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscDefsetRace:   kind = i18n::Tr("DEF fixée vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMdefsetRace:  kind = i18n::Tr("MDEF fixée vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscHpVanishRace: kind = i18n::Tr("Vanish PV vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscSpVanishRace: kind = i18n::Tr("Vanish SP vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscComaRace:     kind = i18n::Tr("Coma vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscComaClass:    kind = i18n::Tr("Coma vs");  who = nameOf(kClassName, IM_ARRAYSIZE(kClassName), c.idx); break;
+        case kBscIgnResRace:   kind = i18n::Tr("Ignore RES vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscIgnMresRace:  kind = i18n::Tr("Ignore MRES vs"); who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
+        case kBscMAddRace2:      kind = i18n::Tr("Dég. mag. vs");  who = rc2(c.idx); break;
+        case kBscIgnMdefRace2:   kind = i18n::Tr("Ignore MDEF vs"); who = rc2(c.idx); break;
+        case kBscSpGainRace:   kind = i18n::Tr("SP/kill vs");  who = nameOf(kRaceName, IM_ARRAYSIZE(kRaceName), c.idx); break;
         default: break;
       }
       char label[64];
@@ -6982,7 +6982,7 @@ void CharacterSheet::DrawStatsPanel() {
     if (!bonus_.skills.empty() && ImGui::CollapsingHeader("Skills & statuts", kSec))
     for (const auto& sk : bonus_.skills) {
       char label[96];
-      const char* tip = "Bonus lié à un skill.";
+      const char* tip = i18n::Tr("Bonus lié à un skill.");
       switch (sk.code) {
         case kBskAutospell:
         case kBskAutospellHit: {
@@ -7047,16 +7047,16 @@ void CharacterSheet::DrawStatsPanel() {
           const char* pre = "";
           int unit = 0;  // 0=% 1=ms 2=plat
           switch (sk.code) {
-            case kBskSkillSprate:    pre = "Coût SP";   unit = 0; break;
-            case kBskSkillSpcost:    pre = "Coût SP";   unit = 2; break;
-            case kBskSkillVcastrate: pre = "Cast var."; unit = 0; break;
-            case kBskSkillFcastrate: pre = "Cast fixe"; unit = 0; break;
-            case kBskSkillVcast:     pre = "Cast var."; unit = 1; break;
-            case kBskSkillFcast:     pre = "Cast fixe"; unit = 1; break;
+            case kBskSkillSprate:    pre = i18n::Tr("Coût SP");   unit = 0; break;
+            case kBskSkillSpcost:    pre = i18n::Tr("Coût SP");   unit = 2; break;
+            case kBskSkillVcastrate: pre = i18n::Tr("Cast var."); unit = 0; break;
+            case kBskSkillFcastrate: pre = i18n::Tr("Cast fixe"); unit = 0; break;
+            case kBskSkillVcast:     pre = i18n::Tr("Cast var."); unit = 1; break;
+            case kBskSkillFcast:     pre = i18n::Tr("Cast fixe"); unit = 1; break;
             case kBskSkillCooldown:  pre = "Cooldown";  unit = 1; break;
-            case kBskSkillDelay:     pre = "Délai";     unit = 0; break;
+            case kBskSkillDelay:     pre = i18n::Tr("Délai");     unit = 0; break;
             case kBskSkillHeal:      pre = "Soin";      unit = 0; break;
-            case kBskSkillHeal2:     pre = "Soin reçu"; unit = 0; break;
+            case kBskSkillHeal2:     pre = i18n::Tr("Soin reçu"); unit = 0; break;
             case kBskSkillBlown:     pre = "Knockback"; unit = 2; break;
           }
           std::snprintf(label, sizeof(label), "%s %s", pre, skillName(sk.skill_id));

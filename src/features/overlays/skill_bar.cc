@@ -1072,7 +1072,7 @@ void SkillBar::DrawSettings() {
     ImGui::PushID(b);
     bool vis = bc.visible;
     if (ro::RoCheckbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
-    if (bc.visible && ImGui::TreeNode("cfg", "Réglages %s", kBarNames[b])) {
+    if (bc.visible && ImGui::TreeNode("cfg", i18n::Tr("Réglages %s"), kBarNames[b])) {
       changed |= WheelSliderInt("Colonnes", &bc.columns, 1, 12);
       changed |= WheelSliderInt(i18n::Tr("Nb slots"), &bc.slot_count, 1, kRegions[b].count);
       changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);

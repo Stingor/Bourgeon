@@ -73,10 +73,10 @@ void MoonlightUi::DrawInterfacePanel() {
     bool modern = ModernInterfaceEnabled();
     changed |= DrawModernInterfaceCheckbox(
         &modern,
-        "Les réglages propres à chaque fenêtre restent dans leur section "
+        i18n::Tr("Les réglages propres à chaque fenêtre restent dans leur section "
         "ci-dessous (Inventaire, Cart, Storage, Banque, Refine, Fabrication, "
         "Barre d'action). Ils sont grisés tant que cette case est décochée : "
-        "sans elle, ces fenêtres n'existent pas.");
+        "sans elle, ces fenêtres n'existent pas."));
 
     // ── Langue de l'interface ────────────────────────────────────────────────
     // Le seul réglage de tout le panneau dont le libellé se traduit LUI-MÊME :
@@ -113,10 +113,10 @@ void MoonlightUi::DrawInterfacePanel() {
         ro::RoEndCombo();
       }
       SameLine(); HelpMarker(i18n::Tr(
-          "Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, "
+          i18n::Tr("Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, "
           "descriptions, messages du serveur) n'est pas concerné.\n"
           "Une langue grisée est connue mais son fichier de traduction est "
-          "absent de SaveData\\lang\\."));
+          "absent de SaveData\\lang\\.")));
 
       // Le compteur de textes non traduits, staff uniquement : c'est un outil de
       // TRADUCTION, pas un réglage. Un joueur n'a rien à faire d'un décompte
@@ -210,7 +210,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceContextMenu, "Menu contextuel"},
     };
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
-                  "kIfaceSections doit couvrir exactement l'enum IfaceSection");
+                  i18n::Tr("kIfaceSections doit couvrir exactement l'enum IfaceSection"));
 
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour

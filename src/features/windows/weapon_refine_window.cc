@@ -617,7 +617,7 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       // (a) La TENTATIVE de refine est refusée. Une condition manque, et elle ne
       // changera pas d'elle-même : relancer tournerait en rond en brûlant du SP.
       awaiting_result_ = false;
-      PushLog("Tentative refusée par le serveur (aucun minerai consommé).",
+      PushLog(i18n::Tr("Tentative refusée par le serveur (aucun minerai consommé)."),
               kColWarn);
       auto_recast_at_   = 0;
       auto_stop_reason_ = i18n::Tr("Le serveur a refusé la tentative : relance arrêtée.");
@@ -974,8 +974,8 @@ void WeaponRefineWindow::CloseForOtherCraft() {
   auto_refine_at_ = 0;
   recast_sent_at_ = 0;
 
-  PushLog("Session de refine abandonnée : une fabrication a été lancée (le serveur "
-          "n'en garde qu'une).", kColWarn);
+  PushLog(i18n::Tr("Session de refine abandonnée : une fabrication a été lancée (le serveur "
+          "n'en garde qu'une)."), kColWarn);
   FlushWindowPos();  // la fenêtre se referme : c'est le moment d'écrire sa position
   ResetSession();
 }
@@ -1629,7 +1629,7 @@ void WeaponRefineWindow::OnRenderUI() {
       // WRAPPÉ, pas TextUnformatted : un nom décoré (« +9 Double Explosive
       // Superbia String [2] ») élargirait la modale à sa seule mesure, et la
       // largeur ne serait plus celle qu'on a fixée.
-      ImGui::TextWrapped("%s", name[0] ? name : "(arme inconnue)");
+      ImGui::TextWrapped("%s", name[0] ? name : i18n::Tr("(arme inconnue)"));
       ImGui::Spacing();
       ImGui::TextColored(V4(kColBad), i18n::Tr("Un échec DÉTRUIT l'arme."));
       ImGui::TextWrapped(
@@ -2320,7 +2320,7 @@ void WeaponRefineWindow::DrawFooter() {
       // résultat, ScheduleAutoRecast testant `auto_paused_`.
       if (pending_ == kActRefine || pending_ == kActRecast) pending_ = kActNone;
       auto_stop_reason_ = nullptr;
-      PushLog("Chaîne automatique arrêtée à la demande.", kColWarn);
+      PushLog(i18n::Tr("Chaîne automatique arrêtée à la demande."), kColWarn);
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip(

@@ -325,7 +325,7 @@ void IntegrityCheck::OnRenderUI() {
 
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                           ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal("Client Update Required", nullptr,
+  if (ImGui::BeginPopupModal(i18n::Tr("Client Update Required"), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize |
                                  ImGuiWindowFlags_NoMove)) {
     ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),

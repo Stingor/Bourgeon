@@ -151,7 +151,7 @@ void DrawUrlPreviewStatus(const std::string& url,
     const std::string host = imgprev::HostOfUrl(url.c_str());
     ImGui::Separator();
     ImGui::TextDisabled(i18n::Tr("Aperçu non chargé : %s n'est pas dans vos sites"),
-                        host.empty() ? "ce site" : host.c_str());
+                        host.empty() ? i18n::Tr("ce site") : host.c_str());
     ImGui::TextDisabled(i18n::Tr("autorisés. Clic droit pour l'afficher."));
     return;
   }

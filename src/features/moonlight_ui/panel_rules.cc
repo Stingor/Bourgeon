@@ -14,7 +14,7 @@ namespace moonlight_ui {
 void DrawRules() {
   if (CollapsingHeader(i18n::Tr("Règles du serveur"))) {
     PushStyleCompact();
-    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", "CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !");
+    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", i18n::Tr("CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !"));
     if (ImGui::TreeNode(i18n::Tr("Règlements généraux"))) {
       TextWrapped(i18n::Tr("Les règles du serveur doivent être appliquées à la lettre.\nToute personne ne respectant pas la charte sera sanctionnée dans les plus brefs délais."));
       Spacing();
@@ -115,7 +115,7 @@ void DrawRules() {
       Unindent();
       TextUnformatted(i18n::Tr("Les trucs interdits (et je rigole zéro) :"));
       Indent();
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", "Ne me prenez pas pour un jambon.");
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", i18n::Tr("Ne me prenez pas pour un jambon."));
         TextUnformatted(i18n::Tr("Si vous me sortez :"));
         Indent();
           BulletWrapped(i18n::Tr("un auto-buffer"));

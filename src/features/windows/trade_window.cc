@@ -910,7 +910,7 @@ void TradeWindow::OnRenderUI() {
   // MEMBRE, pas sur la pile. C'est ce qui interdisait d'employer la brique jusqu'ici.
   // Une seule demande en vol (une souris, un geste) : un tampon suffit.
   if (desc_for) {
-    static_assert(sizeof(desc_info_) >= kInfoSize, "tampon de description trop petit");
+    static_assert(sizeof(desc_info_) >= kInfoSize, i18n::Tr("tampon de description trop petit"));
     BuildTradeInfo(*desc_for, desc_info_);
     itemcell::DeferDescById(desc_for->id, desc_for->look, desc_for->location,
                             desc_x, desc_y, desc_info_);
@@ -931,7 +931,7 @@ void TradeWindow::OnRenderUI() {
   // Case « Screenshot Trade » du natif — libellé lu dans la table de messages du
   // client (jamais en dur), repli si la table n'est pas encore chargée.
   const char* scr_label = msgstr::Utf8(kMsgScrLabel);
-  ro::RoCheckbox(scr_label[0] ? scr_label : "Screenshot Trade", &screenshot_);
+  ro::RoCheckbox(scr_label[0] ? scr_label : i18n::Tr("Screenshot Trade"), &screenshot_);
   ImGui::EndDisabled();
   ImGui::TextDisabled(i18n::Tr("Le zeny est validé en cliquant sur « Verrouiller (OK) »."));
   ImGui::TextDisabled(
@@ -977,14 +977,14 @@ void TradeWindow::OnRenderUI() {
 
   // Toasts (résultat / erreur d'ajout).
   if (add_error_ > 0) {
-    const char* msg = "Ajout refusé";
+    const char* msg = i18n::Tr("Ajout refusé");
     switch (add_error_) {
       case 1: msg = "Surpoids"; break;
-      case 2: msg = "Échange annulé"; break;
-      case 3: msg = "Inventaire plein"; break;
-      case 4: msg = "Quantité de stack dépassée"; break;
-      case kErrAlreadyAllOffered: msg = "Tout ce que vous en avez est déjà offert"; break;
-      case kErrTradeFull: msg = "Offre pleine (10 objets au maximum)"; break;
+      case 2: msg = i18n::Tr("Échange annulé"); break;
+      case 3: msg = i18n::Tr("Inventaire plein"); break;
+      case 4: msg = i18n::Tr("Quantité de stack dépassée"); break;
+      case kErrAlreadyAllOffered: msg = i18n::Tr("Tout ce que vous en avez est déjà offert"); break;
+      case kErrTradeFull: msg = i18n::Tr("Offre pleine (10 objets au maximum)"); break;
     }
     ImGui::TextColored(kRed, "%s", msg);
   }

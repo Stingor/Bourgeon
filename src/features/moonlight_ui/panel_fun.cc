@@ -52,7 +52,7 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
       if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kJump, -1, what,
                             sizeof(what))) {
         player_jump->key_conflict_msg() =
-            std::string(i18n::Tr("Déjà utilisé par ")) + what + " — choisis une autre touche";
+            std::string(i18n::Tr("Déjà utilisé par ")) + what + i18n::Tr(" — choisis une autre touche");
       } else {  // libre : on assigne, l'appelant persiste
         player_jump->key_vk()    = vkey;
         player_jump->key_ctrl()  = ctrl;

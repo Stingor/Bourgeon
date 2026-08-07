@@ -2658,7 +2658,7 @@ void VendingWindow::OnRenderUI() {
 
     if (buying_) {
       ImGui::SetNextItemWidth(160.0f);
-      ImGui::InputInt("Limite de zeny d'achat", &zeny_limit_, 0, 0);
+      ImGui::InputInt(i18n::Tr("Limite de zeny d'achat"), &zeny_limit_, 0, 0);
       if (zeny_limit_ < 0) zeny_limit_ = 0;
       ImGui::SameLine();
       if (ro::RoSmallButton("= total")) zeny_limit_ = static_cast<int>(
@@ -2700,8 +2700,8 @@ void VendingWindow::OnRenderUI() {
       if (prices_[i] <= 0) {
         blocker = i18n::Tr("Un objet est à prix 0.");
       } else if (buying_) {
-        if (amounts_[i] <= 0)              blocker = "Une ligne est à quantité 0.";
-        else if (amounts_[i] > kBuyQtyMax) blocker = "Quantité maximale : 9999 par ligne.";
+        if (amounts_[i] <= 0)              blocker = i18n::Tr("Une ligne est à quantité 0.");
+        else if (amounts_[i] > kBuyQtyMax) blocker = i18n::Tr("Quantité maximale : 9999 par ligne.");
         else if (prices_[i] > kBuyPriceMax)
           blocker = i18n::Tr("Prix maximal : 99 999 984 z par objet.");
       }
@@ -2729,9 +2729,9 @@ void VendingWindow::OnRenderUI() {
       QueueSubmit();
     if (!can_open) ImGui::EndDisabled();
     if (!can_open && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip(overflow        ? "Zeny + recette dépasserait le plafond."
-                        : rows_now == 0 ? "Pose au moins un objet."
-                        : name_[0] == '\0' ? "Donne un nom au shop."
+      ImGui::SetTooltip(overflow        ? i18n::Tr("Zeny + recette dépasserait le plafond.")
+                        : rows_now == 0 ? i18n::Tr("Pose au moins un objet.")
+                        : name_[0] == '\0' ? i18n::Tr("Donne un nom au shop.")
                                            : blocker);
     ImGui::SameLine();
     // « Import » natif : recharge le dernier shop monté par ce personnage. Le
@@ -2761,7 +2761,7 @@ void VendingWindow::OnRenderUI() {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
       ImGui::SetTooltip(
-          can_import ? "Recharge les objets et les prix de ton dernier shop."
+          can_import ? i18n::Tr("Recharge les objets et les prix de ton dernier shop.")
           : import_used_ ? i18n::Tr("Déjà importé pour ce shop.") : i18n::Tr("Aucun shop précédent enregistré pour ce personnage."));
     ImGui::SameLine();
     if (ro::RoButton("Annuler"))

@@ -360,7 +360,7 @@ bool ChatTweaks::DrawPresetBar() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(40.0f, 1.0f));
   // Sans barre de titre (minimaliste). Reste déplaçable par le corps, et
   // redimensionnable.
-  if (ImGui::Begin("Chat presets", nullptr,
+  if (ImGui::Begin(i18n::Tr("Chat presets"), nullptr,
                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoNav)) {
     PushStyleCompact();
     BgGroup& main_chat = bg_[kBgMain];

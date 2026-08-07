@@ -246,7 +246,7 @@ void CheatDetector::OnRenderUI() {
 
   ImGui::SetNextWindowSize(ImVec2(460, 180), ImGuiCond_FirstUseEver);
   bool open = true;
-  ImGui::Begin("Cheat Detector", &open);
+  ImGui::Begin(i18n::Tr("Cheat Detector"), &open);
   bourgeon::CloseWindowOnEscape(open);
   if (!open) { visible_ = false; ImGui::End(); return; }
 

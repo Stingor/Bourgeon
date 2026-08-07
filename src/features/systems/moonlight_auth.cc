@@ -174,13 +174,13 @@ std::string UrlEncode(const std::string& s) {
 std::string WinHttpErr(unsigned long e) {
   const char* m;
   switch (e) {
-    case 12002: m = "délai dépassé (timeout)"; break;
-    case 12007: m = "nom de domaine introuvable (DNS)"; break;
-    case 12029: m = "connexion refusée/impossible"; break;
-    case 12030: m = "connexion coupée"; break;
-    case 12045: m = "certificat TLS : autorité non reconnue"; break;
-    case 12057: m = "certificat TLS : révocation non vérifiable"; break;
-    case 12175: m = "échec TLS (certificat invalide/auto-signé ?)"; break;
+    case 12002: m = i18n::Tr("délai dépassé (timeout)"); break;
+    case 12007: m = i18n::Tr("nom de domaine introuvable (DNS)"); break;
+    case 12029: m = i18n::Tr("connexion refusée/impossible"); break;
+    case 12030: m = i18n::Tr("connexion coupée"); break;
+    case 12045: m = i18n::Tr("certificat TLS : autorité non reconnue"); break;
+    case 12057: m = i18n::Tr("certificat TLS : révocation non vérifiable"); break;
+    case 12175: m = i18n::Tr("échec TLS (certificat invalide/auto-signé ?)"); break;
     default:    m = "erreur"; break;
   }
   char buf[96];
@@ -969,7 +969,7 @@ void MoonlightAuth::DrawWebLogin() {
   ImGui::Spacing();
   ImGui::TextDisabled(i18n::Tr("Plusieurs comptes à regrouper ?"));
   ImGui::SameLine();
-  HyperlinkOpen("Fusionner mes comptes",
+  HyperlinkOpen(i18n::Tr("Fusionner mes comptes"),
                 base_url_ + "/ucp.php?i=moonlight&mode=merge");
 
   // Option secondaire : se connecter directement à un compte RO via le login
@@ -1173,7 +1173,7 @@ void MoonlightAuth::DrawError() {
 
 bool MoonlightAuth::ApplyAccountList(const HttpResult& r) {
   if (!r.error.empty()) {
-    error_msg_ = "Connexion au serveur impossible : " + r.error;
+    error_msg_ = i18n::Tr("Connexion au serveur impossible : ") + r.error;
     state_ = State::kError;
     return false;
   }
@@ -1272,7 +1272,7 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
     LogDiag("[MoonlightAuth] discord_start -> status={} err='{}' body='{}'",
             r.status, r.error, r.body);
   if (!r.error.empty()) {
-    error_msg_ = "Connexion au serveur impossible : " + r.error;
+    error_msg_ = i18n::Tr("Connexion au serveur impossible : ") + r.error;
     state_ = State::kError;
     return;
   }
@@ -1348,7 +1348,7 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
     LogDiag("[MoonlightAuth] /select -> status={} err='{}' body='{}'", r.status,
             r.error, r.body);
   if (!r.error.empty()) {
-    error_msg_ = "Connexion au serveur impossible : " + r.error;
+    error_msg_ = i18n::Tr("Connexion au serveur impossible : ") + r.error;
     state_ = State::kError;
     return;
   }

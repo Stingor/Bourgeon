@@ -344,7 +344,7 @@ void DpsMeter::OnRenderUI() {
     const float avg_dps = elapsed > 0.0f ? static_cast<float>(total_damage_) / elapsed : 0.0f;
     TextShadowed(kSub, "avg %.0f  |  %d dmg  |  %.0fs", avg_dps, total_damage_, elapsed);
   } else {
-    TextShadowed(kSub, "(pas en combat)");
+    TextShadowed(kSub, i18n::Tr("(pas en combat)"));
   }
 
   ImGui::End();

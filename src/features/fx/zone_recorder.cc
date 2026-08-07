@@ -112,7 +112,7 @@ bool CopyGifToClipboard(const std::string& path) {
   const bool ok = SetClipboardData(CF_HDROP, files) != nullptr;
   if (!ok) GlobalFree(files);
   if (effect) {
-    const UINT format = RegisterClipboardFormatA("Preferred DropEffect");
+    const UINT format = RegisterClipboardFormatA(i18n::Tr("Preferred DropEffect"));
     if (format == 0 || SetClipboardData(format, effect) == nullptr)
       GlobalFree(effect);
   }
@@ -461,7 +461,7 @@ void ZoneRecorder::DrawSelectionOverlay() {
 
   // Consigne, en haut au centre.
   const char* hint = select_hint_.empty()
-                         ? "Trace la zone à enregistrer  —  Échap pour annuler"
+                         ? i18n::Tr("Trace la zone à enregistrer  —  Échap pour annuler")
                          : select_hint_.c_str();
   const ImVec2 hs = ImGui::CalcTextSize(hint);
   const ImVec2 hp((disp.x - hs.x) * 0.5f, 24.0f);
@@ -699,7 +699,7 @@ void ZoneRecorder::DrawSettings() {
       if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kZoneRecorder, -1,
                             what, sizeof(what))) {
         key_conflict_msg_ =
-            std::string(i18n::Tr("Déjà utilisé par ")) + what + " — choisis une autre touche";
+            std::string(i18n::Tr("Déjà utilisé par ")) + what + i18n::Tr(" — choisis une autre touche");
       } else {
         key_vk_    = vkey;
         key_ctrl_  = ctrl;

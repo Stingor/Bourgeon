@@ -1071,7 +1071,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
   // Liste du groupe : SOURCE UNIQUE de l'infobulle (le code, lui, a la sienne
   // juste au-dessus, dans SetModernInterface).
   std::string help =
-      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
+      i18n::Tr("Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
       "ImGui ou tout natif) :\n"
       "  • Inventaire (et le sertissage de cartes)\n"
       "  • Cart\n"
@@ -1089,7 +1089,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Fiche de monstre (compétence Sense), avec sprite animé, drops et\n"
       "    lieux d'apparition\n"
       "  • Menu du clic droit sur une entité\n"
-      "La case des autres sections reflète donc le même état.\n\n";
+      "La case des autres sections reflète donc le même état.\n\n");
   help += window_help;
   ImGui::SameLine();
   HelpMarker(help.c_str());

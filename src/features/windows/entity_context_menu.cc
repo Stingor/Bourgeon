@@ -715,8 +715,8 @@ void EntityContextMenu::BuildItems() {
         // natif ne testait que « pas notre guilde » et laissait donc l'alliance
         // cliquable sur un joueur sans guilde.
         const char* guild_target_issue =
-            (target_guild_id_ == 0)          ? "Ce joueur n'a pas de guilde."
-            : (target_guild_id_ == own_guild) ? "C'est votre propre guilde."
+            (target_guild_id_ == 0)          ? i18n::Tr("Ce joueur n'a pas de guilde.")
+            : (target_guild_id_ == own_guild) ? i18n::Tr("C'est votre propre guilde.")
                                               : nullptr;
         add(i18n::Tr("Proposer une alliance"), kCodeGuildAlly, Local::kNone, true);
         if (guild_target_issue) disable_last(guild_target_issue);
@@ -806,7 +806,7 @@ void EntityContextMenu::BuildItems() {
   // une entité se comporte mal — et ça vaut pour TOUTES les entités, y compris
   // celles que le client n'ouvrait pas. Un identifiant nu ne dit rien à un
   // joueur : ces deux lignes vivent ici, et nulle part ailleurs.
-  const char* copy_id_label = (kind_ == Kind::kSelf)   ? "Copier mon AID"
+  const char* copy_id_label = (kind_ == Kind::kSelf)   ? i18n::Tr("Copier mon AID")
                               : (kind_ == Kind::kPlayer) ? i18n::Tr("Copier l'AID") : i18n::Tr("Copier le GID");
   add_staff(copy_id_label, 0, Local::kCopyId);
   add_staff(i18n::Tr("Copier l'identité de pick"), 0, Local::kCopyPickInfo);
@@ -857,7 +857,7 @@ void EntityContextMenu::OnRenderUI() {
   if (visible) {
     // En-tête : QUI est visé. Le natif ne le disait pas — il fallait se souvenir
     // de ce qu'on avait cliqué.
-    const char* kind_label = "Entité";
+    const char* kind_label = i18n::Tr("Entité");
     switch (kind_) {
       case Kind::kSelf:       kind_label = "Moi"; break;
       case Kind::kPlayer:     kind_label = "Joueur"; break;
@@ -866,8 +866,8 @@ void EntityContextMenu::OnRenderUI() {
       case Kind::kPet:        kind_label = "Pet"; break;
       case Kind::kHomunculus: kind_label = "Homoncule"; break;
       case Kind::kMercenary:  kind_label = "Mercenaire"; break;
-      case Kind::kSkillUnit:  kind_label = "Unité"; break;
-      case Kind::kGroundItem: kind_label = "Objet au sol"; break;
+      case Kind::kSkillUnit:  kind_label = i18n::Tr("Unité"); break;
+      case Kind::kGroundItem: kind_label = i18n::Tr("Objet au sol"); break;
       default: break;
     }
     if (target_name_.empty()) {
@@ -946,7 +946,7 @@ void EntityContextMenu::FlushPending() {
       char buffer[192];
       snprintf(buffer, sizeof(buffer),
                i18n::Tr("%s | AID %u (0x%08X) | job %u | categorie de pick %d"),
-               target_name_.empty() ? "(nom inconnu)" : target_name_.c_str(),
+               target_name_.empty() ? i18n::Tr("(nom inconnu)") : target_name_.c_str(),
                aid, aid, arg, target_cat_);
       ImGui::SetClipboardText(buffer);
       return;

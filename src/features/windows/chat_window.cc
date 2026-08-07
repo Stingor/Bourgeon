@@ -4321,7 +4321,7 @@ void ChatWindow::LoadHistory() {
   Run run;
   run.text = saved_at.empty()
                  ? std::string(i18n::Tr("---- session precedente ----"))
-                 : ("---- session precedente (" + saved_at + ") ----");
+                 : (i18n::Tr("---- session precedente (") + saved_at + ") ----");
   run.text = ro::LocalToUtf8(run.text.c_str());
   mark.runs.push_back(run);
   mark.plain = run.text;
@@ -5042,7 +5042,7 @@ void ChatWindow::FlushNameAction() {
       // 514`, 24 octets de nom, longueur via sa table) et l'envoie. Passer par
       // elle évite de trancher entre les cinq opcodes que le serveur accepte.
       // ⚠ Elle lit 24 octets d'affilée : le tampon doit les avoir.
-      static_assert(sizeof(name) >= 24, "sub_A2C600 lit 24 octets de nom");
+      static_assert(sizeof(name) >= 24, i18n::Tr("sub_A2C600 lit 24 octets de nom"));
       __try {
         reinterpret_cast<FriendAddFn>(kFriendListAddByName)(name);
       } __except (EXCEPTION_EXECUTE_HANDLER) {

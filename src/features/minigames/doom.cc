@@ -115,7 +115,7 @@ void DG_SetWindowTitle(const char* title) {
 // message and longjmp out of the engine — the guarded Create/Tick wrapper below
 // catches it and marks DOOM dead. Frames unwound are plain C (no destructors).
 void DG_OnFatalError(const char* msg) {
-  strncpy_s(g_doom_fatal, sizeof(g_doom_fatal), msg ? msg : "(no message)",
+  strncpy_s(g_doom_fatal, sizeof(g_doom_fatal), msg ? msg : i18n::Tr("(no message)"),
             _TRUNCATE);
   if (g_doom_jmp_armed) std::longjmp(g_doom_jmp, 1);
   // Not armed (impossible: all engine code runs inside the wrappers) — the

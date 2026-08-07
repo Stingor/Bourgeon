@@ -474,7 +474,7 @@ void Roggle::OnRenderUI() {
                                           : IM_COL32(255, 120, 120, 255);
       const ImVec2 ts = ImGui::CalcTextSize(msg);
       dl->AddText(P(kBoardW * 0.5f - ts.x * 0.5f, kBoardH * 0.5f - 30.0f), mc, msg);
-      const char* sub = "Clique \"Nouvelle partie\" en haut pour rejouer.";
+      const char* sub = i18n::Tr("Clique \"Nouvelle partie\" en haut pour rejouer.");
       const ImVec2 ss = ImGui::CalcTextSize(sub);
       dl->AddText(P(kBoardW * 0.5f - ss.x * 0.5f, kBoardH * 0.5f - 6.0f),
                   IM_COL32(230, 230, 230, 255), sub);

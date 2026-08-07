@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "ui/ro_imgui.h"
+#include "utils/i18n.h"
 
 namespace ro {
 namespace {
@@ -55,7 +56,7 @@ int QuantityPrompt(const void* owner, const char* action_label, int max_amount,
   // les fermerait toutes les deux d'un coup).
   SuppressEscapeStack();
 
-  ImGui::Text("%s combien ? (max %d)", action_label ? action_label : "Déplacer",
+  ImGui::Text("%s combien ? (max %d)", action_label ? action_label : i18n::Tr("Déplacer"),
               max_amount);
 
   // À l'ouverture : défaut = pile ENTIÈRE (le cas courant) et focus sur le champ,

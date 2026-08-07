@@ -237,7 +237,7 @@ void MoonlightUi::DrawCommandsPanel() {
                 std::snprintf(preset_header_text, sizeof(preset_header_text),
                               "%s", preset_name ? preset_name : "?");
             } else {
-              std::strncpy(preset_header_text, "Liste courante",
+              std::strncpy(preset_header_text, i18n::Tr("Liste courante"),
                            sizeof(preset_header_text));
             }
             TextUnformatted(preset_header_text);

@@ -33,7 +33,7 @@ void EnsureDefaultSkinPresets() {
   auto& presets = SkinPresets();
   if (!presets.empty()) return;
 
-  presets.push_back({"RO Classique", RoSkinConfig{}});  // défauts natifs
+  presets.push_back({i18n::Tr("RO Classique"), RoSkinConfig{}});  // défauts natifs
 
   {
     RoSkinConfig dark;
@@ -76,7 +76,7 @@ bool DrawSkinPanel() {
   bool changed = false;
 
   bool font_on = IsFontEnabled();
-  if (RoCheckbox("Police Malgun (UI)", &font_on)) {
+  if (RoCheckbox(i18n::Tr("Police Malgun (UI)"), &font_on)) {
     SetFontEnabled(font_on);
     changed = true;
   }

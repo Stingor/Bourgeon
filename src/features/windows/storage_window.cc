@@ -436,9 +436,9 @@ const char* AmmoLabel(uint8_t st) {
 struct SubCat { int key; const char* label; };
 SubCat PrimaryEquipSlot(uint32_t e) {
   // Coiffe séparée en 3 slots distincts (priorité haut > milieu > bas si multi-slot).
-  if (e & 0x100)                    return {0,  "Head top"};    // HEAD_TOP
-  if (e & 0x200)                    return {1,  "Head mid"};    // HEAD_MID
-  if (e & 0x001)                    return {2,  "Head bot"};    // HEAD_LOW
+  if (e & 0x100)                    return {0,  i18n::Tr("Head top")};    // HEAD_TOP
+  if (e & 0x200)                    return {1,  i18n::Tr("Head mid")};    // HEAD_MID
+  if (e & 0x001)                    return {2,  i18n::Tr("Head bot")};    // HEAD_LOW
   if (e & 0x010)                    return {3,  "Armor"};       // ARMOR
   if (e & 0x004)                    return {4,  "Garment"};     // GARMENT
   if (e & 0x040)                    return {5,  "Shoes"};       // SHOES
@@ -453,9 +453,9 @@ SubCat PrimaryEquipSlot(uint32_t e) {
 // Slot d'un COSTUME depuis le masque equip (bits COSTUME_* distincts des slots
 // normaux). Labels alignés sur PrimaryEquipSlot pour la cohérence visuelle.
 SubCat CostumeSlot(uint32_t e) {
-  if (e & 0x0400) return {0, "Head top"};  // COSTUME_HEAD_TOP
-  if (e & 0x0800) return {1, "Head mid"};  // COSTUME_HEAD_MID
-  if (e & 0x1000) return {2, "Head bot"};  // COSTUME_HEAD_LOW
+  if (e & 0x0400) return {0, i18n::Tr("Head top")};  // COSTUME_HEAD_TOP
+  if (e & 0x0800) return {1, i18n::Tr("Head mid")};  // COSTUME_HEAD_MID
+  if (e & 0x1000) return {2, i18n::Tr("Head bot")};  // COSTUME_HEAD_LOW
   if (e & 0x2000) return {3, "Garment"};   // COSTUME_GARMENT
   return {99, "Other"};
 }
@@ -1515,7 +1515,7 @@ void StorageWindow::OnRenderUI() {
       save_settings();
     int icon = static_cast<int>(custom.icon_id);
     ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::InputInt("Icône (id d'item)", &icon)) {
+    if (ImGui::InputInt(i18n::Tr("Icône (id d'item)"), &icon)) {
       custom.icon_id = icon > 0 ? static_cast<uint32_t>(icon) : 0;
       save_settings();
     }
@@ -1758,7 +1758,7 @@ void StorageWindow::OnRenderUI() {
     // Filtre masqué : on le vide pour ne pas cacher silencieusement des items.
     filter.Clear();
   }
-  std::string desc = "Raccourcis storage\n\n"
+  std::string desc = i18n::Tr("Raccourcis storage\n\n"
                      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
                      "  pile = menu contextuel : Vers l'inventaire 1 / tout / quantité)\n"
                      "- Ctrl + clic gauche : (dé)marquer l'item comme favori (onglet Favoris)\n"
@@ -1776,7 +1776,7 @@ void StorageWindow::OnRenderUI() {
                      "- Onglets de storage (option) : bascule vers un entrepôt alternatif\n"
                      "- Clic droit sur un onglet de storage : le renommer / lui donner une icône\n"
                      "- Glisser un item sur un onglet de storage : lui assigner SON icône\n"
-                     "- Bouton Quitter / X : ferme le storage";
+                     "- Bouton Quitter / X : ferme le storage");
 
   // Onglet EFFECTIF : « Tout » (index 0) quand les filtres par type sont
   // désactivés. `cur_tab_` n'est PAS écrasé — le choix du joueur l'attend

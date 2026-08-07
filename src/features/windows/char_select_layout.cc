@@ -11,6 +11,7 @@
 #include "utils/game_paths.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
+#include "utils/i18n.h"
 
 namespace charsel {
 namespace {
@@ -346,9 +347,9 @@ void Save() {
     LogError("[CharSelect] impossible d'écrire {}", paths::CharSelectLayoutPath());
     return;
   }
-  f << "# Bourgeon — mise en page de l'écran de sélection de personnage.\n"
-    << "# Écrit par le mode « Personnaliser » ; les coordonnées sont des\n"
-    << "# fractions de l'écran, donc valables à toute résolution.\n"
+  f << i18n::Tr("# Bourgeon — mise en page de l'écran de sélection de personnage.\n")
+    << i18n::Tr("# Écrit par le mode « Personnaliser » ; les coordonnées sont des\n")
+    << i18n::Tr("# fractions de l'écran, donc valables à toute résolution.\n")
     << out.c_str() << "\n";
   LogDiag("[CharSelect] mise en page enregistrée ({} sièges, {} ancres, {} "
           "enregistrement(s), décor {})",

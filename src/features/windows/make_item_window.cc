@@ -1058,8 +1058,8 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                       (used && *used) ? used : "Objet");
         Log(lost, kColWarn);
       } else {
-        Log("Aucun produit proposé : une session de fabrication est déjà ouverte "
-            "(le serveur n'en garde qu'une). La liste affichée reste valable.",
+        Log(i18n::Tr("Aucun produit proposé : une session de fabrication est déjà ouverte "
+            "(le serveur n'en garde qu'une). La liste affichée reste valable."),
             kColWarn);
       }
       LogDiag(
@@ -1275,7 +1275,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       source_item_id_ = item_id_;
       const char* on = ui ? ui->ItemName(source_item_id_) : nullptr;
       std::snprintf(source_item_name_, sizeof(source_item_name_), "%s",
-                    (on && *on) ? on : "cet objet");
+                    (on && *on) ? on : i18n::Tr("cet objet"));
     }
 
     // Traçage de l'ORIGINE : c'est la donnée qui décide de toute la relance, et
@@ -1409,7 +1409,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     if (!awaiting_result_) return;
     if (!sent_at_ || GetTickCount() - sent_at_ > kSkillFailWindowMs) return;
     awaiting_result_ = false;
-    Log("Demande refusée par le serveur.", kColWarn);
+    Log(i18n::Tr("Demande refusée par le serveur."), kColWarn);
     // Un REFUS n'est pas une tentative : la condition qui l'a causé ne changera
     // pas d'elle-même, relancer tournerait en rond en brûlant du SP.
     auto_recast_at_   = 0;
@@ -1418,7 +1418,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // prochaine ouverture manuelle.
     batch_left_       = 0;
     batch_fire_       = false;
-    if (auto_chain_ > 0) auto_stop_reason_ = "Refus serveur : relance arrêtée.";
+    if (auto_chain_ > 0) auto_stop_reason_ = i18n::Tr("Refus serveur : relance arrêtée.");
     return;
   }
 }
@@ -3183,7 +3183,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
         char range_tip[1024];
         std::snprintf(
             range_tip, sizeof(range_tip), "%s%s",
-            "La fourchette couvre toute la plage de maîtrise culinaire, de zéro "
+            i18n::Tr("La fourchette couvre toute la plage de maîtrise culinaire, de zéro "
             "au maximum : votre valeur exacte place le résultat quelque part "
             "entre ces deux bornes.\n"
             "\n"
@@ -3191,7 +3191,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
             "pas deviner - elle vit côté serveur et ne circule dans aucun paquet "
             "du jeu d'origine ; ce serveur doit la pousser explicitement. Une "
             "maîtrise de zéro, elle, s'afficherait normalement : c'est une valeur "
-            "comme une autre.",
+            "comme une autre."),
             inputs);
         HelpMarker(range_tip);
         return;
@@ -3971,7 +3971,7 @@ bool MakeItemWindow::DrawSettings() {
       // ro::RoSliderInt, pas ImGui::SliderInt : même raison que les cases à
       // cocher — le panneau porte le skin RO de bout en bout.
       ImGui::SetNextItemWidth(160.0f);
-      if (ro::RoSliderInt("Exemplaires au maximum", &auto_reuse_max_, 1, 50)) {
+      if (ro::RoSliderInt(i18n::Tr("Exemplaires au maximum"), &auto_reuse_max_, 1, 50)) {
         auto_reuse_cap_ = auto_reuse_max_;  // mémorisé pour le prochain décochage
         changed = true;
       }

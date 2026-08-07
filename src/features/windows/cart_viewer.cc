@@ -608,12 +608,12 @@ void CartViewer::OnRenderUI() {
   // Les littéraux adjacents sont concaténés par le compilateur : c'est donc UNE
   // seule clé de catalogue, avec ses retours à la ligne.
   const char* kShortcuts = i18n::Tr(
-      "Raccourcis cart\n\n"
+      i18n::Tr("Raccourcis cart\n\n"
       "- Double-clic gauche : retirer vers l'inventaire\n"
       "- Clic droit : menu contextuel\n"
       "- Ctrl + clic droit : description\n"
       "- Alt + clic droit : transfert rapide (storage si ouvert, sinon inventaire)\n"
-      "- Glisser : lâcher sur l'inventaire ou le storage pour y transférer");
+      "- Glisser : lâcher sur l'inventaire ou le storage pour y transférer"));
   static ImGuiTextFilter filter;
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
@@ -1034,34 +1034,34 @@ bool CartViewer::DrawSettings() {
   // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
   ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(i18n::Tr(
-      "ON : cart ImGui moderne (grille d'icônes, onglets, recherche, "
+      i18n::Tr("ON : cart ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic pour retirer, clic droit, glisser vers l'inventaire ou le "
       "storage) et la fenêtre native est cachée.\n"
-      "OFF (défaut) : cart natif classique, aucun viewer."));
+      "OFF (défaut) : cart natif classique, aucun viewer.")));
 
   ImGui::BeginDisabled(!imgui_enabled_);
 
   changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &desc_tooltip());
   SameLine(); HelpMarker(i18n::Tr(
-      "Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, texte, "
+      i18n::Tr("Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, texte, "
       "cartes et options) dans un panneau au skin RO, à la place du petit "
       "tooltip nom + quantité.\n"
       "La description COMPLÈTE reste accessible au Ctrl + clic droit / menu "
-      "contextuel."));
+      "contextuel.")));
 
   changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter());
   SameLine(); HelpMarker(i18n::Tr(
-      "Affiche la barre de recherche par nom au-dessus de la grille.\n"
-      "Décoche pour gagner une ligne (le filtre est alors vidé)."));
+      i18n::Tr("Affiche la barre de recherche par nom au-dessus de la grille.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé).")));
 
   changed |= ro::RoCheckbox(i18n::Tr("Onglets verticaux (à gauche)"), &tabs_vertical());
   SameLine(); HelpMarker(i18n::Tr(
-      "ON (défaut) : onglets en colonne à gauche de la grille (images tab_*).\n"
-      "OFF : rangée horizontale au-dessus de la grille (images tabh_*)."));
+      i18n::Tr("ON (défaut) : onglets en colonne à gauche de la grille (images tab_*).\n"
+      "OFF : rangée horizontale au-dessus de la grille (images tabh_*).")));
 
   changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"), &lock_size());
   SameLine(); HelpMarker(i18n::Tr(
-      "La fenêtre ne peut plus être redimensionnée (elle reste déplaçable)."));
+      i18n::Tr("La fenêtre ne peut plus être redimensionnée (elle reste déplaçable).")));
 
   ImGui::EndDisabled();
 
