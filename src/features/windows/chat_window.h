@@ -42,6 +42,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -403,6 +404,22 @@ class ChatWindow : public Plugin {
     int         index = 0;     // index natif COURANT, simple lien vers le registre
     std::string name;          // UTF-8
     bool        detached = false;
+    // ── À QUELLE FENÊTRE ce canal appartient ────────────────────────────────
+    // 0 = la fenêtre principale, celle qui porte la saisie. Toute autre valeur
+    // désigne une flottante — et PLUSIEURS canaux peuvent partager la même :
+    // c'est ce qui permet de regrouper des onglets détachés dans une seule
+    // fenêtre, au lieu d'une fenêtre par canal.
+    //
+    // 🔴 L'identifiant est STABLE et jamais réutilisé, comme celui d'un canal :
+    // la fenêtre ImGui est nommée avec lui, et le voir changer lui ferait perdre
+    // sa position et sa taille. Il ne descend donc PAS de l'identifiant du canal
+    // fondateur, qui peut partir ou se fermer alors que la fenêtre reste.
+    //
+    // 🔴 `detached` en est le simple REFLET (`group != 0`). Il reste parce que
+    // vingt-cinq endroits le lisent, mais les deux champs se posent ENSEMBLE, par
+    // `SetChannelGroup` — et par personne d'autre. Les laisser diverger, c'est un
+    // canal dessiné dans une fenêtre et compté dans une autre.
+    uint32_t    group = 0;
     // 🔴 `detached` vient du registre natif au départ, mais dès que le joueur
     // l'a changé chez nous, c'est NOTRE valeur qui fait foi. Sans ce drapeau, la
     // fusion périodique remettrait le canal là où le client le croit — deux
@@ -501,12 +518,10 @@ class ChatWindow : public Plugin {
   // hauteur réservée. C'est ce débord qu'il faut ajouter au contenu.
   float LineOverhang(const Channel* channel) const;
 
-  // ── Une fenêtre par canal détaché, plus la dockée qui porte les onglets ──────
+  // ── Une fenêtre par GROUPE, plus la principale qui porte la saisie ──────────
   ro::RoChatSkin MakeSkin(const Channel* channel) const;
   void ApplySizeConstraints(const ro::RoChatSkin& skin);
   void DrawDockedWindow();
-  void DrawDetachedWindow(int index);
-  void DrawDetachedHeader(int index);
   // ── Conversations 1:1 ──────────────────────────────────────────────────────
   // Index du canal 1:1 déjà ouvert pour ce correspondant, ou -1.
   // Rend cliquable le pseudo en tête de ligne, à partir du `sender` déjà
@@ -519,14 +534,17 @@ class ChatWindow : public Plugin {
   int  FindWhisperChannel(const std::string& with_utf8) const;
   // Idem, en le créant au besoin. Rend -1 si la limite est atteinte.
   int  FindOrCreateWhisper(const std::string& with_utf8, uint32_t aid);
-  void DrawWhisperWindow(int index);
-  void DrawWhisperHeader(int index);
+  // 🔴 Une conversation n'a plus de fenêtre à elle : elle vit dans un GROUPE, comme
+  // un onglet, et peut donc partager sa fenêtre avec d'autres. Seule sa SAISIE lui
+  // reste propre — destinataire figé, tampon à elle — et `DrawGroupWindow` ne la
+  // dessine que quand l'onglet actif en est une.
   void DrawWhisperInput(int index);
   void QueueWhisperSend(Channel& channel);
-  // Conversation dont la croix a été cliquée pendant la frame. 🔴 On ne peut pas
-  // la retirer sur place : le rendu parcourt `channels_` par indice, et supprimer
-  // en cours de route décalerait tout ce qui suit. Purgée en FIN de frame.
-  uint32_t whisper_close_id_ = 0;
+  // Canal dont la fermeture a été demandée pendant la frame — la croix d'une
+  // conversation, autrefois ; le clic molette sur un onglet, désormais. 🔴 On ne
+  // peut pas le retirer sur place : le rendu parcourt `channels_` par indice, et
+  // supprimer en cours de route décalerait tout ce qui suit. Purgé en FIN de frame.
+  uint32_t close_channel_id_ = 0;
   // Dernière interrogation du dictionnaire de noms, pour ne pas la refaire à
   // chaque tour de boucle d'entrées.
   uint32_t whisper_guild_stamp_ = 0;
@@ -534,6 +552,24 @@ class ChatWindow : public Plugin {
   // depuis OnProcessInput, JAMAIS pendant une frame : une entrée inconnue fait
   // ÉMETTRE au client une requête de nom.
   void ResolveWhisperGuilds();
+
+  // ── Une fenêtre par GROUPE ──────────────────────────────────────────────────
+  // Les flottantes, conversations 1:1 comprises. Le groupe 0 (la principale) garde
+  // sa propre fonction : lui seul porte la ligne de saisie générale, les boutons
+  // du client et la cible de recollage historique.
+  //
+  // 🔴 Une fenêtre est un GROUPE, pas un canal. C'est ce qui permet à plusieurs
+  // onglets d'y cohabiter — et c'est pour ça que son identifiant ImGui descend du
+  // groupe et non du canal, qui peut la quitter alors qu'elle reste.
+  void DrawGroupWindow(uint32_t group);
+  // La bande d'onglets d'un groupe : sélection, réordonnancement, arrachage, et
+  // l'enregistrement du rectangle comme CIBLE DE DÉPÔT pour la frame.
+  void DrawGroupStrip(uint32_t group);
+  // Déplace un canal vers `group`, au rang `dest_slot` compté parmi les canaux DE
+  // CE GROUPE tels qu'ils sont dessinés. `group` 0 = la fenêtre principale.
+  void MoveChannelToGroup(int from, uint32_t group, int dest_slot);
+  // Le canal actif d'un groupe (indice dans `channels_`), ou -1 s'il est vide.
+  int  GroupActiveIndex(uint32_t group) const;
 
   // Bande d'onglets + boutons du client. Renvoie sa hauteur.
   float DrawTabStrip();
@@ -555,12 +591,15 @@ class ChatWindow : public Plugin {
   void  DrawLogOptionsPopup();
   void  CreateChannel();
   void  CloseChannel(int index);
-  // Réordonne la bande : l'onglet `from` (un indice de `channels_`) va se placer
-  // au rang `dest_slot`, compté PARMI LES ONGLETS DOCKÉS tels qu'ils sont
-  // dessinés — 0 = tout devant, `nombre d'onglets` = tout au bout. Les fenêtres
-  // détachées ne bougent pas d'un cran : elles ne sont pas dans la bande, et leur
-  // rang dans `channels_` ne se voit nulle part.
-  void  ReorderDockedChannel(int from, int dest_slot);
+  // 🔴 LE SEUL ÉCRIVAIN de `Channel::group` et de son reflet `Channel::detached`.
+  // `group` 0 = la fenêtre principale. Tout le reste du code lit l'un ou l'autre
+  // sans avoir à se demander lequel fait foi.
+  static void SetChannelGroup(Channel& channel, uint32_t group);
+  // Un identifiant de fenêtre flottante, neuf et jamais revu. Voir `Channel::group`
+  // pour pourquoi il ne peut pas être celui du canal qui la fonde.
+  uint32_t NewGroupId() { return next_group_id_++; }
+  // Combien de canaux vivent dans cette fenêtre ? Zéro = elle n'existe plus.
+  int GroupSize(uint32_t group) const;
 
   // ── Persistance de la disposition (SaveData\bourgeon_chat.yaml) ─────────────
   // Ce que le joueur a construit — ses onglets, leurs noms, leur ordre, ce qui est
@@ -572,6 +611,39 @@ class ChatWindow : public Plugin {
   // Historique conservé d'une session à l'autre (option, désactivée par défaut).
   void LoadHistory();
   void SaveHistory() const;
+  // ── Éviction : un quota PAR TYPE, pas un plafond unique ─────────────────────
+  // 🔴 LE DÉFAUT QUE ÇA CORRIGE, rapporté par des joueurs : on entre en donjon, le
+  // log de combat crache des centaines de lignes de dégâts, et les conversations
+  // disparaissent de la fenêtre. Elles n'étaient pas filtrées — elles avaient été
+  // ÉVINCÉES, poussées hors d'un tampon que tous les onglets partageaient.
+  //
+  // Le stockage reste commun, et il doit le rester : une même ligne s'affiche
+  // légitimement dans plusieurs onglets à la fois (un chuchotement dans « Regular
+  // Chat » ET dans tout onglet qui coche « Whisper »), un tampon par onglet la
+  // dupliquerait. C'est l'ÉVICTION qui devient sélective : on garde les `cap`
+  // dernières lignes de CHAQUE type. Une rafale de combat n'évince alors que du
+  // combat, et la parole d'il y a dix minutes reste là.
+  //
+  // Un onglet montre l'UNION de plusieurs types ; lui garantir `cap` lignes par
+  // type lui en garantit donc au moins autant qu'avant, jamais moins.
+  void TrimLines();
+  // Combien de lignes de chaque type vivent dans `lines_`. Tenu à jour à chaque
+  // entrée et à chaque éviction — recompter à la volée coûterait un parcours du
+  // tampon par ligne reçue.
+  // 🔴 Indexé par TYPE et non par canal, et c'est ce qui rend l'éviction sûre
+  // depuis n'importe quel fil : elle ne lit jamais `channels_`, que le rendu
+  // remanie (onglets déplacés, fermés, regroupés).
+  // 25 types filtrables, plus UN panier pour tout le reste — le broadcast (0x19)
+  // et les types qu'un serveur ajouterait sans nous prévenir.
+  static constexpr int kTypeBuckets = 26;
+  static int TypeBucket(uint8_t type) {
+    return (type < kTypeBuckets - 1) ? static_cast<int>(type) : kTypeBuckets - 1;
+  }
+  size_t type_count_[kTypeBuckets] = {};
+  // Combien de lignes du tampon sont déjà comptées ci-dessus. Le compte se fait
+  // dans `TrimLines`, à partir de ce repère : les sites d'ingestion n'ont donc
+  // rien à tenir, et rien ne peut diverger si l'un d'eux oublie un jour d'appeler.
+  size_t counted_lines_ = 0;
   bool layout_dirty_ = false;  // une écriture est due (structure ou filtre modifié)
   void  ParseText(const char* local_text, Line* out) const;
   void  ParseUtf8(const std::string& text, Line* out) const;
@@ -595,6 +667,10 @@ class ChatWindow : public Plugin {
   std::vector<Channel> channels_;
   uint32_t         channels_stamp_ = 0;  // dernier rafraîchissement (GetTickCount)
   uint32_t         next_channel_id_ = 1; // 0 = « aucun canal », jamais attribué
+  // Idem pour les FENÊTRES flottantes. 0 est réservé à la principale, donc le
+  // compteur part de 1. Relevé au chargement pour ne jamais réattribuer l'id
+  // d'une fenêtre qui vit encore.
+  uint32_t         next_group_id_   = 1;
   // 🔴 Bascule d'AUTORITÉ. Tant qu'elle est fausse, le registre natif décrit la
   // liste des canaux et la fusion l'importe. Dès que le joueur y touche chez nous
   // — créer, fermer, renommer, détacher — c'est NOTRE liste qui fait foi, et la
@@ -815,18 +891,40 @@ class ChatWindow : public Plugin {
   // canal actif — donc pas celui que le joueur vient de désigner.
   int  logopt_channel_  = -1;
 
-  // ── Geste d'arrachage / de recollage ────────────────────────────────────────
-  // Un onglet tiré hors de la bande devient une fenêtre ; une fenêtre lâchée sur
-  // la bande y revient. La bande est mémorisée à chaque frame parce que c'est la
-  // FENÊTRE DÉTACHÉE qui doit savoir où elle est — et elle est dessinée après.
-  int    drag_tab_       = -1;  // indice de l'onglet en cours d'arrachage
-  int    drag_detached_  = -1;  // indice de la flottante en cours de déplacement
-  ImVec2 strip_min_{};
+  // ── Geste d'arrachage, de regroupement et de recollage ──────────────────────
+  // 🔴 UN SEUL GESTE, celui de l'ONGLET : tiré dans une autre bande il change de
+  // fenêtre, tiré dans le vide il fonde la sienne, tiré dans la principale il y
+  // revient. La fenêtre entière, elle, ne se glisse plus — c'est ImGui qui la
+  // déplace par le vide de sa bande, et il le fait mieux que nous.
+  int    drag_tab_       = -1;  // indice de l'onglet en cours de glissement
+  ImVec2 strip_min_{};          // la bande de la PRINCIPALE, pour son propre test
   ImVec2 strip_max_{};
-  bool   strip_valid_    = false;
+  // 🔴 TOUTES les bandes de la frame, une par fenêtre ouverte. Il en fallait une
+  // seule tant qu'un onglet ne pouvait que revenir à la principale ; depuis qu'il
+  // peut tomber sur N'IMPORTE QUELLE fenêtre, le lâcher doit savoir laquelle est
+  // sous le curseur. Reconstruite à chaque frame — une fenêtre repliée ou fermée
+  // ne doit pas rester une cible.
+  struct StripRect {
+    uint32_t group = 0;
+    ImVec2   min{};
+    ImVec2   max{};
+  };
+  std::vector<StripRect> strips_;
+  // La cible désignée pour le lâcher en cours, remplie par la bande survolée au
+  // moment où elle se dessine (c'est elle qui peint le trait d'insertion), et lue
+  // APRÈS toutes les fenêtres. Le rang est compté parmi les onglets du groupe.
+  bool     drop_valid_ = false;
+  uint32_t drop_group_ = 0;
+  int      drop_slot_  = -1;
+  // Le canal actif de chaque FENÊTRE, par identifiant de groupe -> identifiant de
+  // canal. Une entrée périmée est sans danger : elle ne correspond plus à rien et
+  // le premier onglet du groupe reprend la main. Le groupe 0 n'est pas ici — c'est
+  // `active_channel_` qui le porte, avec tout ce qui en dépend déjà.
+  std::map<uint32_t, uint32_t> group_active_;
   // Position demandée pour la flottante qui vient d'être arrachée : elle doit
   // apparaître SOUS le curseur, là où le joueur l'a lâchée, et pas à l'endroit par
   // défaut d'ImGui. Un seul geste à la fois, donc un seul en attente.
+  // 🔴 Indexée sur le GROUPE : c'est la fenêtre qu'on place, pas le canal.
   uint32_t pending_pos_id_ = 0;
   ImVec2   pending_pos_{};
   bool show_search_ = false;    // barre de recherche dépliée (bouton)

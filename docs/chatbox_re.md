@@ -1012,6 +1012,47 @@ Un lien Moonlight reste donc lisible par un client vanille.
 - Création/suppression/renommage de canaux = manipuler les registres (mêmes
   invariants : ≤10 canaux, index compacts) — plus aucun WndProc à poster.
 
+### 8.6bis Une fenêtre = un GROUPE, pas un canal (2026-08-07)
+
+Le client ne sait faire que deux choses d'un canal : le laisser dans sa fenêtre
+principale, ou lui en donner une à lui (registre « main » / registre
+« detached »). Nous allons plus loin : **plusieurs canaux peuvent partager une
+même flottante**, comme les onglets d'un navigateur.
+
+- `Channel::group` porte la fenêtre : **0 = la principale**, toute autre valeur =
+  une flottante. `detached` n'en est que le reflet (`group != 0`), gardé parce que
+  beaucoup d'endroits le lisent ; 🔴 **les deux ne s'écrivent que par
+  `SetChannelGroup`**, sans quoi un canal se retrouve dessiné dans une fenêtre et
+  compté dans une autre.
+- 🔴 **L'identifiant de groupe ne descend PAS du canal fondateur.** C'est lui qui
+  nomme la fenêtre ImGui (`###bourgeon_chat_grp_<n>`), et le fondateur peut la
+  quitter ou se fermer alors qu'elle reste — elle perdrait alors position et
+  taille. Compteur propre, jamais réutilisé, relevé au chargement.
+- Le registre natif **ignore tout des groupes** : il n'a que « principal » ou
+  « détaché ». Un canal détaché qu'il nous apprend naît donc seul dans sa fenêtre,
+  et c'est notre fichier de disposition (`group` par canal) qui sait les réunir.
+  Sans conséquence : `structure_owned_` coupe la fusion dès que le joueur a touché
+  à quoi que ce soit.
+- **Un seul geste, celui de l'ONGLET** : glissé dans une autre bande il change de
+  fenêtre, dans le vide il fonde la sienne, dans la principale il y revient. Chaque
+  bande s'enregistre comme cible de dépôt à chaque frame (`strips_`), et 🔴 le
+  lâcher n'est tranché qu'APRÈS le dessin de toutes les fenêtres : c'est le seul
+  moment où l'on sait laquelle était sous le curseur, et où plus personne ne
+  parcourt `channels_` par indice — le déplacement réordonne le vecteur.
+- La fenêtre entière ne se glisse plus par un en-tête maison : **ImGui la déplace**
+  par le vide de la bande. Nos en-têtes ne s'en chargeaient que parce qu'ils
+  couvraient toute la largeur d'un bouton invisible, ce qui lui retirait sa poignée.
+- Les **conversations 1:1** sont des onglets comme les autres depuis ce changement.
+  Seule leur SAISIE leur reste propre (destinataire figé, tampon à elles), et la
+  fenêtre ne la dessine que quand l'onglet actif en est une. Un **clic molette**
+  ferme un onglet — il remplace la croix de l'ancien en-tête, qui ne saurait plus
+  lequel elle ferme.
+- ⚠ Le **verrou** décrit une fenêtre mais vit sur le canal : tous ceux d'un groupe
+  en portent la même copie, et le rendu lit celle de l'onglet actif. Une copie par
+  onglet plutôt qu'une table de groupes à ranger, relire et purger — le verrou est
+  un booléen, et rien ne peut diverger tant que les deux écritures (menu, dépôt)
+  passent par les mêmes endroits.
+
 ### 8.7 Persistance (le dtor natif ne tournera plus)
 `SaveChatWndInfo 0x008f9d00` est **indépendante des fenêtres** (elle ne lit que
 les registres) mais elle était appelée par le dtor → **c'est à nous de

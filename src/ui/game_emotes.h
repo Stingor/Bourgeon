@@ -17,9 +17,15 @@
 // forme que Discord emploie, ce qui rend la traduction d'un bout à l'autre du
 // relais mécanique.
 //
-// Les noms viennent de l'énumération `emotion_type` du serveur (clif.hpp), donc
-// de la source qui fait autorité sur l'ordre. Le client, lui, ne porte que des
-// clés de bulle d'aide (`TT_REQ_EMOTION_*`) et pas pour toutes.
+// Les noms s'inspirent de l'énumération `emotion_type` du serveur (clif.hpp) —
+// le client, lui, ne porte que des clés de bulle d'aide (`TT_REQ_EMOTION_*`), et
+// pas pour toutes.
+//
+// 🔴 MAIS L'ÉNUMÉRATION NE FAIT PAS AUTORITÉ SUR L'ORDRE. La table est indexée
+// par l'ACTION du sprite, et les deux numérotations divergent — dès l'index 2, et
+// encore après `chat_prohibit`. Ce qui fait foi est ce que le fichier montre à
+// l'écran ; le détail et la méthode de vérification sont dans le .cc, au-dessus
+// de la table.
 
 #include <cstddef>
 

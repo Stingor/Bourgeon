@@ -56,15 +56,32 @@ constexpr const char kVfsPrefix[] = "data\\sprite\\";
 // `CZ_REQ_EMOTION`. Le jour où l'on voudra déclencher une bulle au-dessus de la
 // tête depuis ce module, il faudra rajouter 1 au-delà de 33.
 //
+// 🔴 ET LE DÉCALAGE COMMENCE PLUS TÔT QUE ÇA. Le sprite porte une action de plus
+// que l'énumération dès le DÉBUT : le serveur numérote `ET_DELIGHT = 2`, le
+// fichier met là un sifflement et ne place `delight` qu'en 3 (relevé en jeu,
+// 2026-08-07). L'énumération du serveur n'est donc PAS la source de vérité de
+// l'ordre — elle n'est qu'une bonne façon de nommer. Ce qui fait autorité, c'est
+// ce que le sprite montre à l'écran, et la seule vérification qui vaille est de
+// dérouler la grille en lisant les infobulles.
+//
+// Ce n'est pas grave, et c'est la raison pour laquelle ça ne l'est pas : cet
+// index ne sert QU'À DESSINER. Ce qui voyage — dans le chat, jusqu'à Discord —
+// c'est le NOM. Tant que nom et image se correspondent ici, la chaîne entière est
+// juste, quel que soit le numéro que le protocole aurait mis en face.
+//
+// ⚠ Renommer une entrée casse en revanche le pont Discord : les GIF déposés sur
+// le site portent l'ANCIEN nom, et le relais ne résout `:nom:` en image que si le
+// fichier existe (sinon il laisse le texte). Renommer = ré-exporter.
+//
 // ── EXCLURE UNE EMOTE ────────────────────────────────────────────────────────
 // Remplacer son nom par `nullptr` — ne PAS supprimer la ligne, ce qui décalerait
 // tout ce qui suit. L'entrée garde sa place et l'emote disparaît de partout d'un
 // coup : absente de la grille, `:nom:` ne la reconnaît plus, `Name` ne la rend
 // plus.
 const char* const kNames[] = {
-    nullptr, nullptr, "delight",   "throb",          "sweat",
-    "aha",      "fret",     "anger",     "money",          "think",
-    "scissor",  "rock",     "wrap",      "flag",           "bigthrob",
+    "surprise", "question", "whistle",   "delight",        "throb",
+    "sweat",    "aha",      "fret",      "anger",          "money",
+    "think",    "scissor",  "rock",      "wrap",           "flag",
     "thanks",   "kek",      "sorry",     "smile",          "profusely_sweat",
     "scratch",  "best",     "stare_about", "huk",          "o",
     "x",        "help",     "go",        "cry",            "kik",
@@ -78,9 +95,6 @@ const char* const kNames[] = {
     "luv",      "flag8",    "flag9",     "mobile",         "mail",
     "antenna0", "antenna1", "antenna2",  "antenna3",       "hum2",
     "abs",      "oops",     "spit",      "ene",            "panic",
-    nullptr,    nullptr,     nullptr,      nullptr,        nullptr,
-    nullptr,    nullptr,     nullptr,      nullptr,        nullptr,
-    nullptr,    nullptr,     nullptr,
 };
 constexpr int kCount = static_cast<int>(sizeof(kNames) / sizeof(kNames[0]));
 
@@ -89,7 +103,7 @@ constexpr int kCount = static_cast<int>(sizeof(kNames) / sizeof(kNames[0]));
 // jeu se serait contenté d'afficher chaque emote à la place de sa voisine.
 // Ce nombre ne change que si le PROTOCOLE gagne des emotes — et alors on ajoute
 // à la FIN, jamais au milieu.
-static_assert(kCount == 92, "Table d'emotes desalignee : pour EXCLURE une emote "
+static_assert(kCount == 79, "Table d'emotes desalignee : pour EXCLURE une emote "
                             "mettre nullptr, ne pas supprimer la ligne");
 
 // Le sprite, chargé une seule fois pour tout le processus : c'est un fichier de

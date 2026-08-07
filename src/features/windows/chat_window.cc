@@ -1293,6 +1293,12 @@ void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name)
 void ChatWindow::ClearHistory() {
   std::lock_guard<std::mutex> lock(lines_mutex_);
   lines_.clear();
+  // 🔴 Les compteurs d'éviction partent avec : ils décrivent le contenu du
+  // tampon, et les laisser pleins ferait évincer les premières lignes reçues
+  // ensuite — le log se remettrait à se vider tout seul, sans rien pour
+  // l'expliquer (cf. TrimLines).
+  std::memset(type_count_, 0, sizeof(type_count_));
+  counted_lines_ = 0;
 }
 
 // L'AID OBFUSQUÉ que le client colle dans le préfixe d'une ligne de chuchotement.
@@ -1595,8 +1601,7 @@ void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
   std::lock_guard<std::mutex> lock(lines_mutex_);
   ++ingest_kept_;
   lines_.push_back(std::move(line));
-  const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
-  while (lines_.size() > cap) lines_.pop_front();
+  TrimLines();
 }
 
 // ── Chuchotement 1:1 ─────────────────────────────────────────────────────────
@@ -1655,7 +1660,9 @@ int ChatWindow::FindOrCreateWhisper(const std::string& with_utf8, uint32_t aid) 
   // 🔴 `detached` ET `detach_owned` : la fusion périodique avec le registre natif
   // remettrait sinon ce canal « docké » — il n'a pas d'entrée là-bas, donc rien
   // ne le contredirait jamais, et il finirait comme un onglet fantôme.
-  channel.detached      = true;
+  // Une conversation naît dans SA fenêtre à elle ; on l'y groupera ensuite si le
+  // joueur le veut.
+  SetChannelGroup(channel, NewGroupId());
   channel.detach_owned  = true;
   channel.whisper_stamp = GetTickCount();
   // Une conversation privée accepte tout ce qu'on lui range explicitement : c'est
@@ -1781,9 +1788,57 @@ bool ChatWindow::IngestWhisper(const char* with_wire, const char* text_wire,
   ingest_kept_ += 2;
   lines_.push_back(std::move(line));
   lines_.push_back(std::move(note));
-  const size_t cap = static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
-  while (lines_.size() > cap) lines_.pop_front();
+  TrimLines();
   return true;
+}
+
+// ── Éviction : les `cap` dernières lignes de CHAQUE type ─────────────────────
+// 🔴 APPELÉE SOUS `lines_mutex_`, et elle ne lit QUE `lines_` et ses compteurs.
+// Surtout pas `channels_` : le rendu le remanie (onglets déplacés, fermés,
+// regroupés), et l'ingestion ne tourne pas au même moment.
+void ChatWindow::TrimLines() {
+  const size_t cap =
+      static_cast<size_t>(std::max(100, std::min(history_cap_, 5000)));
+
+  // Les lignes qui viennent d'entrer, comptées ICI plutôt qu'à chacun des trois
+  // sites d'ingestion : compte et éviction ne peuvent alors pas diverger.
+  for (size_t i = counted_lines_; i < lines_.size(); ++i)
+    ++type_count_[TypeBucket(lines_[i].type)];
+  counted_lines_ = lines_.size();
+
+  // Un type en surnombre perd sa PLUS VIEILLE ligne. Le parcours part du début et
+  // s'arrête donc presque aussitôt : dans une rafale, la doyenne du type qui
+  // déborde est justement en tête du tampon.
+  for (int bucket = 0; bucket < kTypeBuckets; ++bucket) {
+    while (type_count_[bucket] > cap) {
+      bool removed = false;
+      for (size_t i = 0; i < lines_.size(); ++i) {
+        if (TypeBucket(lines_[i].type) != bucket) continue;
+        lines_.erase(lines_.begin() + static_cast<ptrdiff_t>(i));
+        --type_count_[bucket];
+        --counted_lines_;
+        removed = true;
+        break;
+      }
+      // Compteur en avance sur la réalité (une purge a vidé le tampon sans
+      // passer par ici) : on le recale plutôt que de tourner à vide.
+      if (!removed) {
+        type_count_[bucket] = 0;
+        break;
+      }
+    }
+  }
+
+  // ⚠ Plafond DUR, et il ne sert qu'à ça : borner la mémoire si un serveur se met
+  // à employer vingt types à la fois. Le quota par type suffit en pratique — six
+  // types vivants à cinq cents lignes font trois mille lignes, quelques centaines
+  // de kio. Au-delà, on évince à l'ancienne, du plus vieux.
+  const size_t hard = std::max<size_t>(cap * 8, 4000);
+  while (lines_.size() > hard) {
+    --type_count_[TypeBucket(lines_.front().type)];
+    lines_.pop_front();
+    --counted_lines_;
+  }
 }
 
 // Découpe une ligne en fragments : couleurs ^RRGGBB, icônes ^i[id], liens
@@ -2155,7 +2210,15 @@ void ChatWindow::RefreshChannels() {
     // 🔴 Notre état gagne dès que le joueur y a touché : tant que le déplacement
     // de l'entrée entre les deux registres natifs n'est pas écrit, le registre
     // continuerait d'affirmer le contraire à chaque fusion.
-    if (!channel.detach_owned) channel.detached = detached;
+    //
+    // Le registre natif ne connaît que « principal » ou « détaché » — il n'a
+    // aucune idée de nos GROUPES. Un canal détaché qu'il nous apprend naît donc
+    // dans sa fenêtre à lui ; c'est notre fichier de disposition, lui, qui sait
+    // les réunir (et dès qu'il fait autorité, cette fusion ne tourne plus).
+    if (!channel.detach_owned)
+      SetChannelGroup(channel, detached ? (channel.group != 0 ? channel.group
+                                                              : NewGroupId())
+                                        : 0u);
     channel.node     = raw[i].node;
     channel.name     = std::move(name);
     std::memcpy(channel.filter, raw[i].filter, sizeof(channel.filter));
@@ -2251,7 +2314,7 @@ void ChatWindow::OnRenderUI() {
   // La bande n'est valide que si la fenêtre dockée a été dessinée cette frame :
   // repliée ou masquée, elle ne peut pas servir de cible de recollage — et une
   // cible invisible qui accepte quand même est pire que pas de cible du tout.
-  strip_valid_ = false;
+
   // 🔴 ENTRÉE se traite AVANT le dessin, et pas dans la ligne de saisie : en
   // battle mode celle-ci n'est pas dessinée du tout, donc rien n'y consommerait la
   // touche — la barre ne se serait jamais ouverte.
@@ -2375,41 +2438,70 @@ void ChatWindow::OnRenderUI() {
   // renoncement est de taper SANS avoir repris la main d'abord ; une Entrée la
   // rend, et elle ne se perd pas — elle ouvre la saisie.
 
+  // Les cibles de dépôt se reconstruisent à chaque frame : une fenêtre repliée ou
+  // fermée ne doit pas rester une cible. Et la désignation du lâcher avec elles.
+  strips_.clear();
+  drop_valid_ = false;
+
   DrawDockedWindow();
-  // Parcours par INDICE : le rendu d'une flottante peut basculer son `detached`
-  // (recollage), ce qu'un itérateur n'aimerait pas. Aucun canal n'est créé ni
-  // supprimé ici, donc les indices restent valides.
-  for (size_t i = 0; i < channels_.size(); ++i) {
-    if (!channels_[i].detached) continue;
-    // Une conversation 1:1 est une flottante elle aussi, mais avec son propre
-    // chrome : un titre qui nomme le correspondant, sa croix, et sa saisie.
-    if (channels_[i].whisper_with.empty())
-      DrawDetachedWindow(static_cast<int>(i));
-    else
-      DrawWhisperWindow(static_cast<int>(i));
+  // 🔴 UNE FENÊTRE PAR GROUPE, et non par canal : c'est tout le groupage. Les
+  // groupes sont relevés d'abord, parce que dessiner peut en changer l'occupation
+  // (un onglet lâché ailleurs) et qu'un parcours qui découvrirait les groupes au
+  // fil de l'eau en sauterait un.
+  uint32_t seen[kMaxChannels] = {};
+  int seen_n = 0;
+  for (const Channel& channel : channels_) {
+    if (channel.group == 0) continue;
+    bool known = false;
+    for (int k = 0; k < seen_n; ++k) known = known || (seen[k] == channel.group);
+    if (!known && seen_n < kMaxChannels) seen[seen_n++] = channel.group;
   }
-  // Fermeture différée : cf. `whisper_close_id_`. L'historique, lui, RESTE — la
+  for (int k = 0; k < seen_n; ++k) DrawGroupWindow(seen[k]);
+
+  // Fermeture différée : cf. `close_channel_id_`. L'historique, lui, RESTE — une
   // conversation se rouvrira avec ce qui a déjà été dit, ce qui est le seul
   // comportement raisonnable quand on referme par erreur.
-  if (whisper_close_id_ != 0) {
+  if (close_channel_id_ != 0) {
     for (size_t i = 0; i < channels_.size(); ++i) {
-      if (channels_[i].id != whisper_close_id_) continue;
-      channels_.erase(channels_.begin() + static_cast<int>(i));
-      if (active_channel_ >= static_cast<int>(i) && active_channel_ > 0)
-        --active_channel_;
+      if (channels_[i].id != close_channel_id_) continue;
+      // Jamais le dernier canal, ni le dernier onglet de la fenêtre principale :
+      // elle porte la saisie et ne doit pas rester sans rien à afficher. C'est la
+      // même règle que le menu contextuel, ici pour le clic molette.
+      const bool docked_last =
+          channels_[i].group == 0 && GroupSize(0) <= 1;
+      if (channels_.size() > 1 && !docked_last) CloseChannel(static_cast<int>(i));
       break;
     }
-    whisper_close_id_ = 0;
+    close_channel_id_ = 0;
+  }
+
+  // ── Le lâcher d'un onglet, une fois TOUTES les bandes dessinées ─────────────
+  // Ici seulement : c'est la dernière position où l'on connaît les cibles de la
+  // frame, et où plus aucune fenêtre ne parcourt `channels_` par indice — le
+  // déplacement réordonne le vecteur.
+  if (drag_tab_ >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    const int dragged = drag_tab_;
+    drag_tab_ = -1;
+    if (dragged < static_cast<int>(channels_.size())) {
+      if (drop_valid_) {
+        MoveChannelToGroup(dragged, drop_group_, drop_slot_);
+      } else if (channels_[dragged].group != 0 || GroupSize(0) > 1) {
+        // Lâché dans le vide : il fonde SA fenêtre, sous le curseur. Le dernier
+        // onglet de la principale, lui, ne part pas — elle porte la saisie.
+        const uint32_t group = NewGroupId();
+        MoveChannelToGroup(dragged, group, 0);
+        pending_pos_id_ = group;
+        pending_pos_ = ImVec2(ImGui::GetIO().MousePos.x - 20.0f,
+                              ImGui::GetIO().MousePos.y - 6.0f);
+      }
+    }
   }
 
   // Filet de sécurité, en FIN de frame et pas au début : un geste dont la fenêtre
   // a cessé d'être dessinée (repli, canal disparu) laisserait sinon un glissement
   // fantôme, actif jusqu'au prochain clic. Le placer au début casserait le lâcher,
   // qui se produit précisément sur la frame où le bouton n'est plus enfoncé.
-  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-    drag_tab_      = -1;
-    drag_detached_ = -1;
-  }
+  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) drag_tab_ = -1;
   // La demande de focus est consommée par la ligne de saisie ; si celle-ci est
   // désactivée dans les réglages, personne ne la consommerait et elle
   // s'appliquerait au premier réaffichage de la barre, longtemps après la touche.
@@ -2551,242 +2643,212 @@ void ChatWindow::DrawDockedWindow() {
   ro::EndRoChatWindow();
 }
 
-// Un canal arraché : sa propre fenêtre, avec son en-tête et son log. Pas de ligne
-// de saisie — le client n'en met pas non plus sur ses fenêtres détachées, et pour
-// une bonne raison : il n'y a qu'un seul texte en cours de frappe, il appartient
-// au chat principal. Une deuxième boîte de saisie poserait la question « laquelle
-// envoie ? » à chaque touche.
-void ChatWindow::DrawDetachedWindow(int index) {
-  Channel& channel = channels_[index];
+int ChatWindow::GroupActiveIndex(uint32_t group) const {
+  int first = -1;
+  const auto it = group_active_.find(group);
+  const uint32_t want = (it != group_active_.end()) ? it->second : 0;
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    if (channels_[i].group != group) continue;
+    if (first < 0) first = static_cast<int>(i);
+    if (want != 0 && channels_[i].id == want) return static_cast<int>(i);
+  }
+  // Entrée périmée (l'onglet est parti ailleurs, ou fermé) : le premier reprend.
+  return first;
+}
+
+// ── Une fenêtre FLOTTANTE, et ses onglets ────────────────────────────────────
+// Elle remplace les deux fonctions d'avant — une pour les canaux arrachés, une
+// pour les conversations 1:1 — parce qu'elles ne différaient plus que par deux
+// choses : le libellé de l'onglet et la présence d'une saisie. Or depuis qu'une
+// fenêtre peut porter PLUSIEURS canaux, les deux peuvent s'y côtoyer, et deux
+// fonctions séparées n'auraient plus su laquelle dessiner.
+//
+// 🔴 Pas de ligne de saisie GÉNÉRALE ici, jamais : il n'y a qu'un texte en cours
+// de frappe et il appartient au chat principal. Une conversation, elle, garde la
+// sienne — destinataire figé, tampon à elle — et c'est justement ce qui la
+// distingue d'un onglet. Elle n'apparaît donc que quand l'onglet ACTIF en est une.
+void ChatWindow::DrawGroupWindow(uint32_t group) {
+  const int active = GroupActiveIndex(group);
+  if (active < 0) return;  // fenêtre vide : elle n'existe plus
+  Channel& channel = channels_[active];
+
   ro::RoChatSkin skin = MakeSkin(&channel);
   // Bornes du client pour ses flottantes : largeur 280..512, hauteur 74..384. On
   // reprend le plancher, pas le plafond — le nôtre est déjà relatif à l'écran.
   skin.min_w = 280.0f;
   skin.min_h = 120.0f;
 
-  // Le titre EST le nom du canal, et l'identifiant reste stable derrière `###` :
-  // renommer l'onglet ne doit pas faire perdre à ImGui la position de la fenêtre.
-  char window_id[96];
-  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_chat_%u",
-                channel.name.c_str(), channel.id);
+  // 🔴 L'identifiant vient du GROUPE. Le titre ne sert qu'au débogage (le skin
+  // pose `NoTitleBar`), mais ce qui suit `###` DOIT être stable : le canal qui a
+  // fondé la fenêtre peut la quitter ou se fermer, et elle perdrait alors position
+  // et taille si elle portait son nom.
+  char window_id[192];
+  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_chat_grp_%u",
+                channel.whisper_with.empty() ? channel.name.c_str()
+                                             : channel.whisper_with.c_str(),
+                group);
 
-  ImGui::SetNextWindowSize(ImVec2(320.0f, 180.0f), ImGuiCond_FirstUseEver);
+  // Cascade de 17 px comme le client, pour que deux fenêtres ouvertes coup sur
+  // coup ne se recouvrent pas exactement.
+  const float step = 17.0f * static_cast<float>(group % 8);
+  ImGui::SetNextWindowSize(ImVec2(320.0f, 190.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowPos(ImVec2(180.0f + step, 140.0f + step), ImGuiCond_FirstUseEver);
   // La fenêtre qu'on vient d'arracher naît SOUS le curseur, là où le joueur l'a
   // lâchée. `FirstUseEver` ne suffirait pas : ImGui se souvient d'une position
   // précédente pour cet identifiant, et la fenêtre semblerait sauter ailleurs.
-  if (pending_pos_id_ == channel.id) {
+  if (pending_pos_id_ == group) {
     ImGui::SetNextWindowPos(pending_pos_, ImGuiCond_Always);
     pending_pos_id_ = 0;
   }
   ApplySizeConstraints(skin);
   if (ro::BeginRoChatWindow(window_id, skin)) {
-    DrawDetachedHeader(index);
-    float log_h = ImGui::GetContentRegionAvail().y;
-    if (log_h < LogFontSize(&channel)) log_h = LogFontSize(&channel);  // une ligne de LOG
-    channel.line_h   = LineHeight(&channel);
-    channel.chrome_h = ImGui::GetWindowSize().y - log_h +
-                       2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(&channel);
-    DrawChannel(channel, log_h);
-    DrawLogOptionsPopup();
-  }
-  ro::EndRoChatWindow();
-}
-
-// En-tête d'une flottante : le nom, et le même clic droit que sur un onglet. La
-// fenêtre n'a pas de barre de titre (comme tout le skin du chat), c'est donc par
-// cette bande qu'on la déplace — elle reste volontairement sans widget.
-void ChatWindow::DrawDetachedHeader(int index) {
-  Channel& channel = channels_[index];
-  const float h = ImGui::GetFontSize() + 6.0f;
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-  const ImVec2 origin = ImGui::GetCursorScreenPos();
-  const float  width  = ImGui::GetContentRegionAvail().x;
-  const ImU32  bg     = Lighten(ro::ImU32FromPicker(tab_rgba_), 58);
-  if (width <= 0.0f) return;  // ImGui refuse un bouton de largeur nulle
-
-  ImGui::InvisibleButton("##detached_head", ImVec2(width, h));
-  const bool hovered = ImGui::IsItemHovered();
-  if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-    logopt_channel_ = index;
-    ImGui::OpenPopup("##chat_logopt_popup");
-  }
-
-  // 🔴 Ce bouton prend l'ActiveId, donc il ÉTEINT le déplacement d'ImGui sur toute
-  // la bande — la fenêtre n'ayant pas de barre de titre, on lui retirerait sa
-  // poignée la plus naturelle. On déplace donc nous-mêmes, ce qui a l'avantage de
-  // faire du même geste le recollage : c'est le lâcher qui tranche.
-  if (ImGui::IsItemActive() && !channel.locked) {
-    const ImVec2 delta = ImGui::GetIO().MouseDelta;
-    if (delta.x != 0.0f || delta.y != 0.0f) {
-      // API PUBLIQUE (`GetWindowPos`/`SetWindowPos` sans argument de fenêtre) : la
-      // variante qui prend un `ImGuiWindow*` vit dans imgui_internal.h, et un
-      // fichier de fonctionnalité n'a aucune raison d'aller y chercher un type que
-      // seul le squelette d'ImGui devrait manipuler.
-      const ImVec2 p = ImGui::GetWindowPos();
-      ImGui::SetWindowPos(ImVec2(p.x + delta.x, p.y + delta.y));
-    }
-    drag_detached_ = index;
-  }
-  const bool over_strip =
-      strip_valid_ && ImGui::GetIO().MousePos.x >= strip_min_.x &&
-      ImGui::GetIO().MousePos.x <= strip_max_.x &&
-      ImGui::GetIO().MousePos.y >= strip_min_.y &&
-      ImGui::GetIO().MousePos.y <= strip_max_.y;
-  if (drag_detached_ == index && over_strip) {
-    // La bande s'éclaire pendant le survol : sans retour visuel, le joueur lâche
-    // sans savoir si ça va prendre.
-    ImGui::GetForegroundDrawList()->AddRectFilled(strip_min_, strip_max_,
-                                                  IM_COL32(0xFF, 0xFF, 0xFF, 40));
-    ImGui::GetForegroundDrawList()->AddRect(strip_min_, strip_max_, kLinkCol);
-  }
-  if (drag_detached_ == index && ImGui::IsItemDeactivated()) {
-    drag_detached_ = -1;
-    if (over_strip) {
-      channel.detached     = false;
-      channel.detach_owned = true;
-      structure_owned_     = true;
-      layout_dirty_        = true;
-      active_channel_      = index;
-    }
-  }
-
-  if (hovered && drag_detached_ < 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip(
-        "Glisser : déplacer — la lâcher sur les onglets la rattache.\n"
-        "Clic droit : options du log.");
-    ImGui::PopStyleColor();
-  }
-  // 🔴 L'ONGLET GARDE SA TAILLE, celle qu'il avait dans la bande : le texte plus
-  // 14 px, comme `DrawTabStrip`. Peint sur toute la largeur, il ne ressemblait plus
-  // à un onglet mais à une barre de titre — alors que c'est bien le MÊME objet,
-  // celui qu'on vient d'arracher et qu'on peut rendre.
-  //
-  // ⚠ La ZONE SENSIBLE, elle, reste toute la bande : la fenêtre n'a pas de barre
-  // de titre, c'est par là qu'on la déplace et qu'on la recolle. Rétrécir le
-  // bouton avec le dessin retirerait au joueur la poignée qu'il utilise déjà.
-  const float tab_w = ImGui::CalcTextSize(channel.name.c_str()).x + 14.0f;
-  dl->AddRectFilled(origin, ImVec2(origin.x + tab_w, origin.y + h), bg);
-  dl->AddRect(origin, ImVec2(origin.x + tab_w, origin.y + h),
-              IM_COL32(0x30, 0x30, 0x30, 200));
-  dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
-              channel.name.c_str());
-  ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
-}
-
-// ── Conversation 1:1 ─────────────────────────────────────────────────────────
-// Une fenêtre par correspondant, comme la `UIWhisperWnd` du client. Elle a sa
-// propre saisie — c'est la différence avec une flottante ordinaire, et c'est tout
-// l'intérêt : on répond sans avoir à viser le bon destinataire dans le chat.
-//
-// Le titre porte le nom, et la guilde quand le client la connaît (cf.
-// ResolveWhisperGuilds). Pas l'identifiant de compte que le natif affiche entre
-// crochets : c'est un nombre obfusqué qui ne dit rien à personne.
-void ChatWindow::DrawWhisperWindow(int index) {
-  Channel& channel = channels_[index];
-  ro::RoChatSkin skin = MakeSkin(&channel);
-  skin.min_w = 280.0f;
-  skin.min_h = 120.0f;
-
-  // Le skin du chat pose `NoTitleBar` : ce qui précède `###` n'est donc jamais
-  // peint par ImGui — c'est notre en-tête qui affiche le nom. Il reste utile de
-  // le donner quand même (débogage, fichier .ini), et l'identifiant DOIT vivre
-  // derrière `###` : la guilde peut ARRIVER en cours de conversation, et le titre
-  // changerait alors sous les pieds d'ImGui, qui perdrait position et taille.
-  char window_id[192];
-  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_whisper_%u",
-                channel.whisper_with.c_str(), channel.id);
-
-  // Cascade de 17 px comme le client, pour que deux conversations ouvertes coup
-  // sur coup ne se recouvrent pas exactement. Indexée sur l'identifiant du canal
-  // et pas sur son rang : le rang bouge à chaque fusion de registre, et la
-  // fenêtre sauterait alors d'un cran sans raison visible.
-  const float step = 17.0f * static_cast<float>(channel.id % 8);
-  ImGui::SetNextWindowSize(ImVec2(320.0f, 190.0f), ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowPos(ImVec2(180.0f + step, 140.0f + step), ImGuiCond_FirstUseEver);
-  ApplySizeConstraints(skin);
-  if (ro::BeginRoChatWindow(window_id, skin)) {
-    DrawWhisperHeader(index);
-    // La saisie occupe une rangée en bas ; le log prend tout le reste. Mesuré
-    // plutôt que deviné : la hauteur d'une ligne suit la police du canal.
-    const float input_h = ImGui::GetFrameHeightWithSpacing();
+    DrawGroupStrip(group);
+    // La saisie n'occupe une rangée que si l'onglet actif est une conversation.
+    const bool has_input = !channel.whisper_with.empty();
+    const float input_h  = has_input ? ImGui::GetFrameHeightWithSpacing() : 0.0f;
     float log_h = ImGui::GetContentRegionAvail().y - input_h;
     if (log_h < LogFontSize(&channel)) log_h = LogFontSize(&channel);
     channel.line_h   = LineHeight(&channel);
     channel.chrome_h = ImGui::GetWindowSize().y - log_h +
                        2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(&channel);
     DrawChannel(channel, log_h);
-    DrawWhisperInput(index);
-    // Pas de DrawLogOptionsPopup ici : rien dans cet en-tête ne l'ouvre, et les
-    // 25 types de log n'ont aucun sens sur une conversation qui n'en accepte
-    // qu'un — c'est le correspondant qui filtre, pas la table.
+    if (has_input) DrawWhisperInput(active);
+    DrawLogOptionsPopup();
   }
   ro::EndRoChatWindow();
 }
 
-// En-tête : le titre, et la croix. Même mécanique de déplacement manuel que les
-// flottantes ordinaires — la fenêtre n'a pas de barre de titre, et un bouton
-// invisible qui couvre la bande prendrait l'ActiveId, donc le glissement d'ImGui.
-// Pas de recollage en revanche : une conversation privée n'a pas d'onglet où
-// retourner, et l'y laisser tomber la ferait disparaître sans explication.
-void ChatWindow::DrawWhisperHeader(int index) {
-  Channel& channel = channels_[index];
+// La bande d'onglets d'une fenêtre flottante. Mêmes mesures que celle de la
+// principale (`DrawTabStrip`) : c'est le MÊME objet, un onglet, qu'il soit resté
+// dans la bande ou parti avec sa fenêtre.
+//
+// ⚠ Le vide à droite reste VIDE, sans widget : la fenêtre n'ayant pas de barre de
+// titre, c'est par là qu'ImGui la déplace. Un bouton invisible qui couvrirait la
+// bande entière lui retirerait sa poignée.
+void ChatWindow::DrawGroupStrip(uint32_t group) {
   const float h = ImGui::GetFontSize() + 6.0f;
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const ImVec2 origin = ImGui::GetCursorScreenPos();
-  const float  width  = ImGui::GetContentRegionAvail().x;
-  if (width <= 0.0f) return;  // ImGui refuse un bouton de largeur nulle
+  const ImVec2 origin  = ImGui::GetCursorScreenPos();
+  const float  strip_w = ImGui::GetContentRegionAvail().x;
+  const ImU32 tab_idle   = ro::ImU32FromPicker(tab_rgba_);
+  const ImU32 tab_active = Lighten(tab_idle, 58);
+  const ImU32 tab_edge   = IM_COL32(0x30, 0x30, 0x30, 200);
+  const int   active     = GroupActiveIndex(group);
 
-  const float close_w = h;
-  ImGui::InvisibleButton("##whisper_head", ImVec2(std::max(width - close_w, 1.0f), h));
-  const bool hovered = ImGui::IsItemHovered();
-  if (ImGui::IsItemActive() && !channel.locked) {
-    const ImVec2 delta = ImGui::GetIO().MouseDelta;
-    if (delta.x != 0.0f || delta.y != 0.0f) {
-      const ImVec2 p = ImGui::GetWindowPos();
-      ImGui::SetWindowPos(ImVec2(p.x + delta.x, p.y + delta.y));
+  float slot_x0[kMaxChannels] = {};
+  float slot_x1[kMaxChannels] = {};
+  int   slot_n = 0;
+  float x = 0.0f;
+
+  for (size_t i = 0; i < channels_.size(); ++i) {
+    Channel& channel = channels_[i];
+    if (channel.group != group) continue;
+    // Une conversation s'annonce par le nom de son correspondant : c'est ce que le
+    // joueur cherche des yeux, pas le nom de canal qu'on lui a donné à la création.
+    const char* label = channel.whisper_with.empty() ? channel.name.c_str()
+                                                     : channel.whisper_with.c_str();
+    const float w = ImGui::CalcTextSize(label).x + 14.0f;
+
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + x, origin.y));
+    char id[48];
+    std::snprintf(id, sizeof(id), "##gtab%u_%d", group, static_cast<int>(i));
+    ImGui::InvisibleButton(id, ImVec2(w, h),
+                           ImGuiButtonFlags_MouseButtonLeft |
+                               ImGuiButtonFlags_MouseButtonRight |
+                               ImGuiButtonFlags_MouseButtonMiddle);
+    const bool hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+      group_active_[group] = channel.id;
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      logopt_channel_ = static_cast<int>(i);
+      ImGui::OpenPopup("##chat_logopt_popup");
+    }
+    // Clic MOLETTE = fermer, le geste des onglets partout ailleurs. Il remplace la
+    // croix que portait l'en-tête d'une conversation : avec plusieurs onglets dans
+    // la fenêtre, une croix unique ne saurait plus lequel elle ferme.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Middle) && channels_.size() > 1)
+      close_channel_id_ = channel.id;
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0f))
+      drag_tab_ = static_cast<int>(i);
+    if (hovered && drag_tab_ < 0) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      if (channel.whisper_with.empty())
+        ImGui::SetTooltip("Clic droit : options du log de « %s »\n"
+                          "Glisser : vers une autre fenêtre, ou dehors\n"
+                          "Clic molette : fermer",
+                          label);
+      else if (channel.whisper_guild.empty())
+        ImGui::SetTooltip("Conversation privée avec %s.\n"
+                          "Glisser : vers une autre fenêtre, ou dehors\n"
+                          "Clic molette : fermer",
+                          label);
+      else
+        ImGui::SetTooltip("Conversation privée avec %s [%s].\n"
+                          "Glisser : vers une autre fenêtre, ou dehors\n"
+                          "Clic molette : fermer",
+                          label, channel.whisper_guild.c_str());
+      ImGui::PopStyleColor();
+    }
+
+    const ImVec2 p0(origin.x + x, origin.y);
+    const ImVec2 p1(p0.x + w, p0.y + h);
+    if (slot_n < kMaxChannels) {
+      slot_x0[slot_n] = p0.x;
+      slot_x1[slot_n] = p1.x;
+      ++slot_n;
+    }
+    dl->AddRectFilled(p0, p1, (static_cast<int>(i) == active)
+                                  ? tab_active
+                                  : (hovered ? Lighten(tab_idle, 24) : tab_idle));
+    dl->AddRect(p0, p1, tab_edge);
+    dl->AddText(ImVec2(p0.x + 7.0f, p0.y + 3.0f), kTabTextCol, label);
+    x += w + 2.0f;
+  }
+
+  // La bande devient une CIBLE DE DÉPÔT pour la frame.
+  StripRect rect;
+  rect.group = group;
+  rect.min   = origin;
+  rect.max   = ImVec2(origin.x + strip_w, origin.y + h);
+  strips_.push_back(rect);
+
+  // Le trait d'insertion, peint par la bande SURVOLÉE — elle seule connaît ses
+  // onglets. Le lâcher, lui, est traité après toutes les fenêtres : à ce
+  // moment-là, on ne saurait plus dans quelle bande on est.
+  if (drag_tab_ >= 0) {
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (mouse.x >= rect.min.x && mouse.x <= rect.max.x && mouse.y >= rect.min.y &&
+        mouse.y <= rect.max.y) {
+      int slot = slot_n;
+      for (int k = 0; k < slot_n; ++k)
+        if (mouse.x < (slot_x0[k] + slot_x1[k]) * 0.5f) {
+          slot = k;
+          break;
+        }
+      drop_valid_ = true;
+      drop_group_ = group;
+      drop_slot_  = slot;
+      const float caret_x = (slot < slot_n)
+                                ? slot_x0[slot] - 1.0f
+                                : (slot_n > 0 ? slot_x1[slot_n - 1] + 1.0f : origin.x);
+      dl->AddLine(ImVec2(caret_x, origin.y), ImVec2(caret_x, origin.y + h), kLinkCol,
+                  2.0f);
     }
   }
 
-  ImGui::SameLine(0.0f, 0.0f);
-  ImGui::InvisibleButton("##whisper_close", ImVec2(close_w, h));
-  const bool close_hovered = ImGui::IsItemHovered();
-  if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) whisper_close_id_ = channel.id;
-  if (close_hovered) ro::SetHoverCursor(2);  // curseur « main » RO
-
-  const ImU32 bg = Lighten(ro::ImU32FromPicker(tab_rgba_), 58);
-  dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + h), bg);
-  dl->AddRect(origin, ImVec2(origin.x + width, origin.y + h),
-              IM_COL32(0x30, 0x30, 0x30, 200));
-
-  // Le nom, puis la guilde en retrait. Deux teintes : le nom est ce qu'on lit,
-  // la guilde ce qu'on situe.
-  dl->AddText(ImVec2(origin.x + 7.0f, origin.y + 3.0f), kTabTextCol,
-              channel.whisper_with.c_str());
-  if (!channel.whisper_guild.empty()) {
-    const float name_w = ImGui::CalcTextSize(channel.whisper_with.c_str()).x;
-    std::string guild = "[" + channel.whisper_guild + "]";
-    dl->AddText(ImVec2(origin.x + 13.0f + name_w, origin.y + 3.0f),
-                IM_COL32(0x50, 0x50, 0x50, 255), guild.c_str());
-  }
-
-  // La croix, peinte à la main : deux traits valent mieux qu'un glyphe, dont
-  // l'atlas n'a pas forcément le dessin (cf. le tiret cadratin proscrit ici).
-  const float cx = origin.x + width - close_w * 0.5f;
-  const float cy = origin.y + h * 0.5f;
-  const float r  = h * 0.22f;
-  const ImU32 cross = close_hovered ? IM_COL32(0xC0, 0x30, 0x30, 255) : kTabTextCol;
-  dl->AddLine(ImVec2(cx - r, cy - r), ImVec2(cx + r, cy + r), cross, 1.5f);
-  dl->AddLine(ImVec2(cx - r, cy + r), ImVec2(cx + r, cy - r), cross, 1.5f);
-
-  if (hovered) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip("Conversation privée avec %s.\nGlisser : déplacer.",
-                      channel.whisper_with.c_str());
-    ImGui::PopStyleColor();
-  }
   ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + h + 2.0f));
 }
+
+// ── ⛔ DrawDetachedWindow / DrawDetachedHeader / DrawWhisperWindow /
+// DrawWhisperHeader ONT DISPARU ICI. Elles dessinaient « une fenêtre = un canal »,
+// avec un en-tête maison pour déplacer la fenêtre et une croix pour la fermer.
+// `DrawGroupWindow` + `DrawGroupStrip` les remplacent toutes les quatre : une
+// fenêtre porte désormais N canaux, donc son en-tête EST une bande d'onglets, et
+// c'est l'onglet qui se ferme (clic molette) ou se déplace — pas la fenêtre.
+//
+// Le déplacement de la fenêtre revient à ImGui, qui le fait très bien par le vide
+// de la bande : nos en-têtes ne le prenaient à leur charge que parce qu'ils
+// couvraient toute la largeur avec un bouton invisible.
 
 // La saisie propre à une conversation. Volontairement nue : pas de box
 // destinataire (elle est FIGÉE, c'est tout l'intérêt), pas de sélecteur de mode
@@ -2940,7 +3002,7 @@ float ChatWindow::DrawTabStrip() {
   // moment du dépôt, entre quels deux voisins le curseur se trouve. Un tableau
   // fixe plutôt qu'un vecteur — la bande ne peut pas porter plus de canaux que le
   // plafond, et c'est une mesure de frame, pas de l'état. Le RANG suffit : c'est
-  // dans cette numérotation-là que `ReorderDockedChannel` prend son argument.
+  // dans cette numérotation-là que `MoveChannelToGroup` prend son argument.
   float slot_x0[kMaxChannels] = {};
   float slot_x1[kMaxChannels] = {};
   int   slot_n = 0;
@@ -2979,7 +3041,7 @@ float ChatWindow::DrawTabStrip() {
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
       ImGui::SetTooltip(
           "Clic droit : options du log de « %s »\n"
-          "Glisser dans la bande : réordonner\nGlisser dehors : détacher",
+          "Glisser : réordonner, ou vers une autre fenêtre, ou dehors",
           channel.name.c_str());
       ImGui::PopStyleColor();
     }
@@ -2999,11 +3061,17 @@ float ChatWindow::DrawTabStrip() {
     x += w + 2.0f;
   }
 
-  // La bande, mémorisée pour la frame : c'est la FENÊTRE DÉTACHÉE qui a besoin de
-  // savoir où elle est pour décider d'un recollage, et elle est dessinée après.
+  // La bande, mémorisée pour la frame — et enregistrée comme CIBLE DE DÉPÔT au
+  // même titre que celle de n'importe quelle flottante. `strip_*` reste pour le
+  // recollage historique d'une fenêtre entière.
   strip_min_   = origin;
   strip_max_   = ImVec2(origin.x + strip_w, origin.y + h);
-  strip_valid_ = true;
+
+  StripRect rect;
+  rect.group = 0;
+  rect.min   = strip_min_;
+  rect.max   = strip_max_;
+  strips_.push_back(rect);
 
   // ── Où l'onglet tombera-t-il, s'il tombe ici ? ──────────────────────────────
   // Le rang visé se lit au MILIEU de chaque onglet, pas à son bord : c'est le
@@ -3013,61 +3081,31 @@ float ChatWindow::DrawTabStrip() {
   //
   // 🔴 Le rang est compté dans la bande TELLE QU'ELLE EST DESSINÉE, celui qu'on
   // déplace COMPRIS. C'est ce que le joueur voit, et c'est donc la seule
-  // numérotation qui puisse correspondre à son geste ; `ReorderDockedChannel`
-  // fait la conversion.
-  int insert_slot = -1;  // -1 = aucun dépôt dans la bande en cours
+  // numérotation qui puisse correspondre à son geste ; `MoveChannelToGroup` fait
+  // la conversion. Le LÂCHER, lui, est traité une fois toutes les fenêtres
+  // dessinées (OnRenderUI) : à ce moment-là seulement on sait laquelle était sous
+  // le curseur, et plus personne ne parcourt `channels_` par indice.
   if (drag_tab_ >= 0) {
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     if (mouse.x >= strip_min_.x && mouse.x <= strip_max_.x &&
         mouse.y >= strip_min_.y && mouse.y <= strip_max_.y) {
-      insert_slot = slot_n;  // au-delà du dernier milieu : tout au bout
+      int slot = slot_n;  // au-delà du dernier milieu : tout au bout
       for (int k = 0; k < slot_n; ++k) {
         if (mouse.x < (slot_x0[k] + slot_x1[k]) * 0.5f) {
-          insert_slot = k;
+          slot = k;
           break;
         }
       }
+      drop_valid_ = true;
+      drop_group_ = 0;
+      drop_slot_  = slot;
       // Le trait d'insertion, entre les deux voisins. Sans lui le joueur lâche à
       // l'aveugle et découvre l'ordre obtenu après coup.
-      const float caret_x = (insert_slot < slot_n)
-                                ? slot_x0[insert_slot] - 1.0f
+      const float caret_x = (slot < slot_n)
+                                ? slot_x0[slot] - 1.0f
                                 : (slot_n > 0 ? slot_x1[slot_n - 1] + 1.0f : origin.x);
       dl->AddLine(ImVec2(caret_x, origin.y), ImVec2(caret_x, origin.y + h), kLinkCol,
                   2.0f);
-    }
-  }
-
-  // Fin du glissement. Le lâcher tranche : dans la bande, l'onglet prend le rang
-  // que montrait le trait ; dehors, le canal part dans sa fenêtre, posée là où le
-  // joueur l'a lâchée.
-  if (drag_tab_ >= 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-    const int dragged = drag_tab_;
-    drag_tab_ = -1;
-    if (dragged < static_cast<int>(channels_.size())) {
-      const ImVec2 mouse = ImGui::GetIO().MousePos;
-      const bool inside = mouse.x >= strip_min_.x && mouse.x <= strip_max_.x &&
-                          mouse.y >= strip_min_.y && mouse.y <= strip_max_.y;
-      int docked = 0;
-      for (const Channel& other : channels_)
-        if (!other.detached) ++docked;
-      if (inside && insert_slot >= 0) {
-        ReorderDockedChannel(dragged, insert_slot);
-      } else if (!inside && docked > 1) {
-        Channel& target = channels_[dragged];
-        target.detached     = true;
-        target.detach_owned = true;
-        // 🔴 La flottante naît LIBRE. Elle vient d'être posée d'un geste, à un
-        // endroit choisi à la souris : la première chose que le joueur voudra en
-        // faire est la déplacer ou la retailler. Hériter du verrou de la fenêtre
-        // principale la rendrait immobile sans que rien ne l'annonce.
-        target.locked       = false;
-        structure_owned_    = true;
-        layout_dirty_       = true;
-        pending_pos_id_     = target.id;
-        // Le curseur tenait l'onglet : la fenêtre doit naître sous lui, pas à
-        // l'endroit par défaut d'ImGui, sinon elle semble sauter ailleurs.
-        pending_pos_ = ImVec2(mouse.x - 20.0f, mouse.y - 6.0f);
-      }
     }
   }
 
@@ -4044,7 +4082,12 @@ void ChatWindow::LoadLayout() {
       channel.name = node["name"].as<std::string>("");
       if (channel.name.empty()) continue;  // un onglet sans nom est inattrapable
       channel.id       = node["id"].as<unsigned>(0);
-      channel.detached = node["detached"].as<bool>(false);
+      // 🔴 `group` fait foi, `detached` n'est plus qu'un repli pour les fichiers
+      // écrits avant le groupage : un canal détaché sans groupe s'en voit
+      // attribuer un plus bas, une fois tous les identifiants connus.
+      const bool was_detached = node["detached"].as<bool>(false);
+      SetChannelGroup(channel, node["group"].as<unsigned>(was_detached ? 0xFFFFFFFFu
+                                                                      : 0u));
       // Défaut FAUX, et c'est le bon sens de l'erreur : une fenêtre libre se
       // reverrouille d'un clic, une fenêtre figée par accident donne l'impression
       // d'être cassée.
@@ -4095,6 +4138,18 @@ void ChatWindow::LoadLayout() {
     if (channel.id == 0xFFFFFFFFu) channel.id = next++;
   next_channel_id_ = next;
 
+  // Même travail pour les identifiants de FENÊTRE, et une reprise au passage :
+  // un fichier écrit avant le groupage ne porte pas de `group`, ses canaux
+  // détachés sont marqués 0xFFFFFFFF plus haut. Chacun reçoit sa propre fenêtre —
+  // c'est exactement ce que l'ancienne disposition décrivait, une par canal.
+  uint32_t next_group = 1;
+  for (const Channel& channel : loaded)
+    if (channel.group != 0xFFFFFFFFu && channel.group >= next_group)
+      next_group = channel.group + 1;
+  for (Channel& channel : loaded)
+    if (channel.group == 0xFFFFFFFFu) SetChannelGroup(channel, next_group++);
+  next_group_id_ = next_group;
+
   channels_.swap(loaded);
   structure_owned_ = true;
   active_channel_  = 0;
@@ -4117,7 +4172,11 @@ void ChatWindow::SaveLayout() const {
     out << YAML::BeginMap;
     out << YAML::Key << "id" << YAML::Value << channel.id;
     out << YAML::Key << "name" << YAML::Value << channel.name;
+    // `detached` reste écrit pour qu'une version antérieure relise le fichier
+    // sans tout perdre ; c'est `group` qui porte la vérité, et lui seul sait que
+    // deux canaux partagent une fenêtre.
     out << YAML::Key << "detached" << YAML::Value << channel.detached;
+    out << YAML::Key << "group" << YAML::Value << channel.group;
     // Le verrou de SA fenêtre. Écrit même à faux : c'est un état de géométrie, et
     // le fichier est fait pour se relire à l'œil.
     out << YAML::Key << "locked" << YAML::Value << channel.locked;
@@ -4271,6 +4330,12 @@ void ChatWindow::LoadHistory() {
   // Devant : ce sont les lignes les plus ANCIENNES. Les mettre à la suite les
   // ferait passer pour ce qui vient d'arriver.
   lines_.insert(lines_.begin(), restored.begin(), restored.end());
+  // 🔴 Insérées EN TÊTE, donc le repère de comptage ne vaut plus rien : il
+  // désigne un nombre de lignes depuis le début, et le début a bougé. On repart
+  // d'un compte neuf, que `TrimLines` refera intégralement.
+  std::memset(type_count_, 0, sizeof(type_count_));
+  counted_lines_ = 0;
+  TrimLines();
   LogDiag("[Chat] historique rechargé : {} lignes", restored.size() - 1);
 }
 
@@ -4335,75 +4400,118 @@ void ChatWindow::CloseChannel(int index) {
 // `dest_slot` est le rang visé PARMI LES ONGLETS DOCKÉS tels qu'ils sont
 // dessinés, celui qu'on déplace compris : c'est ce que le joueur a sous les yeux
 // quand il lâche, donc la seule numérotation qui puisse traduire son geste.
-void ChatWindow::ReorderDockedChannel(int from, int dest_slot) {
+void ChatWindow::SetChannelGroup(Channel& channel, uint32_t group) {
+  channel.group    = group;
+  channel.detached = (group != 0);
+}
+
+int ChatWindow::GroupSize(uint32_t group) const {
+  int n = 0;
+  for (const Channel& channel : channels_)
+    if (channel.group == group) ++n;
+  return n;
+}
+
+void ChatWindow::MoveChannelToGroup(int from, uint32_t group, int dest_slot) {
   if (from < 0 || from >= static_cast<int>(channels_.size())) return;
-  if (channels_[from].detached) return;  // une flottante n'est pas dans la bande
 
-  // Les rangs dockés, dans l'ordre d'affichage.
-  std::vector<size_t> docked;
-  docked.reserve(channels_.size());
+  // Les rangs du groupe CIBLE dans l'ordre d'affichage, SANS le canal déplacé.
+  std::vector<size_t> slots;
+  slots.reserve(channels_.size());
   for (size_t i = 0; i < channels_.size(); ++i)
-    if (!channels_[i].detached) docked.push_back(i);
+    if (channels_[i].group == group && static_cast<int>(i) != from)
+      slots.push_back(i);
 
-  int src_slot = -1;
-  for (size_t k = 0; k < docked.size(); ++k)
-    if (docked[k] == static_cast<size_t>(from)) src_slot = static_cast<int>(k);
-  if (src_slot < 0) return;
+  // 🔴 Le rang vient de la bande TELLE QU'ELLE EST DESSINÉE, celui qu'on déplace
+  // COMPRIS quand il est déjà dans cette fenêtre. Il faut donc le retirer de la
+  // numérotation avant de s'en servir — et sortir si le lâcher retombe à
+  // l'endroit d'où l'on part : sans ça un glissement de deux pixels marquerait la
+  // structure comme nôtre et déclencherait une écriture du fichier pour rien.
+  if (channels_[from].group == group) {
+    int src = -1, k = 0;
+    for (size_t i = 0; i < channels_.size(); ++i) {
+      if (channels_[i].group != group) continue;
+      if (static_cast<int>(i) == from) { src = k; break; }
+      ++k;
+    }
+    if (src >= 0) {
+      if (dest_slot == src || dest_slot == src + 1) return;
+      if (dest_slot > src) --dest_slot;
+    }
+  }
   if (dest_slot < 0) dest_slot = 0;
-  if (dest_slot > static_cast<int>(docked.size()))
-    dest_slot = static_cast<int>(docked.size());
-  // Lâcher juste devant ou juste derrière soi-même ne change RIEN. Sortir ici
-  // plutôt que de réécrire à l'identique : sans ça, un glissement de deux pixels
-  // marquerait la structure comme nôtre et déclencherait une écriture du fichier
-  // pour un geste qui n'a rien fait.
-  if (dest_slot == src_slot || dest_slot == src_slot + 1) return;
+  if (dest_slot > static_cast<int>(slots.size()))
+    dest_slot = static_cast<int>(slots.size());
 
-  // L'ordre voulu : on retire, puis on réinsère. Le rang de destination recule
-  // d'un cran quand la source était AVANT lui — les places se sont resserrées.
-  std::vector<size_t> want = docked;
-  want.erase(want.begin() + src_slot);
-  const int shifted = (dest_slot > src_slot) ? dest_slot - 1 : dest_slot;
-  want.insert(want.begin() + shifted, static_cast<size_t>(from));
-
-  // Relevé AVANT le déménagement : après, l'indice ne désignera plus le même.
+  // Le voisin devant lequel on s'insère, retenu par son IDENTIFIANT : les indices
+  // ne survivront pas à la suppression qui suit.
+  const uint32_t anchor_id =
+      (dest_slot < static_cast<int>(slots.size())) ? channels_[slots[dest_slot]].id
+                                                   : 0;
   const uint32_t active_id =
       (active_channel_ >= 0 && active_channel_ < static_cast<int>(channels_.size()))
           ? channels_[active_channel_].id
           : 0;
 
-  // 🔴 Les EMPLACEMENTS dockés reçoivent les canaux dockés dans le nouvel ordre ;
-  // les détachées gardent EXACTEMENT leur place dans le vecteur. Réordonner tout
-  // le vecteur ferait bouger des fenêtres qui ne sont pas dans la bande, sans
-  // qu'aucun geste ne l'ait demandé — et l'ordre des flottantes ne se voit nulle
-  // part, donc personne n'y gagnerait.
-  //
-  // Le plan d'abord, le déménagement ensuite : quel canal va à quelle place. Le
-  // lire entièrement AVANT de déplacer quoi que ce soit évite d'avoir à se
-  // demander ce que vaut encore un canal déjà vidé. C'est une permutation, donc
-  // chacun est pris une fois et une seule.
-  std::vector<size_t> plan(channels_.size());
-  size_t next = 0;
-  for (size_t i = 0; i < channels_.size(); ++i)
-    plan[i] = channels_[i].detached ? i : want[next++];
+  Channel moved = std::move(channels_[from]);
+  SetChannelGroup(moved, group);
+  const uint32_t moved_id = moved.id;
+  channels_.erase(channels_.begin() + from);
 
-  std::vector<Channel> out;
-  out.reserve(channels_.size());
-  for (const size_t src : plan) out.push_back(std::move(channels_[src]));
-  channels_.swap(out);
-
-  // 🔴 Suivre le CANAL, pas le rang : `active_channel_` est un indice, et tous
-  // viennent de changer de sens. Sans ce recalage, réordonner ses onglets ferait
-  // sauter le joueur sur un autre canal.
-  if (active_id != 0) {
+  size_t at = channels_.size();
+  if (anchor_id != 0) {
     for (size_t i = 0; i < channels_.size(); ++i)
-      if (channels_[i].id == active_id) {
-        active_channel_ = static_cast<int>(i);
-        break;
-      }
+      if (channels_[i].id == anchor_id) { at = i; break; }
+  } else {
+    // Au bout du groupe : juste après son dernier canal. Groupe vide (on vient de
+    // le créer) : à la fin du vecteur, l'ordre entre fenêtres ne se voyant nulle
+    // part.
+    bool found = false;
+    for (size_t i = 0; i < channels_.size(); ++i)
+      if (channels_[i].group == group) { at = i + 1; found = true; }
+    if (!found) at = channels_.size();
   }
-  // Le menu contextuel désigne lui aussi par indice. Il est fermé pendant un
-  // glissement — le clic qui l'aurait ouvert le referme — mais le laisser pointer
-  // au hasard serait une mine pour la prochaine retouche.
+  channels_.insert(channels_.begin() + static_cast<ptrdiff_t>(at), std::move(moved));
+
+  // 🔴 LE VERROU DÉCRIT UNE FENÊTRE, pas un canal — il faut donc que tous ceux
+  // d'un même groupe en portent la même copie. Sans ça la géométrie se figerait
+  // ou se libérerait selon l'onglet actif, `MakeSkin` lisant celui-là. Le nouveau
+  // venu adopte celui de la fenêtre qu'il rejoint ; une fenêtre qui vient de
+  // naître, elle, est LIBRE — on vient de la poser à la souris, et la première
+  // chose qu'on en fera est de la déplacer.
+  bool group_lock = false;
+  for (const Channel& other : channels_)
+    if (other.group == group && other.id != moved_id) {
+      group_lock = other.locked;
+      break;
+    }
+  for (Channel& other : channels_) {
+    if (other.group != group) continue;
+    other.locked = group_lock;
+    // 🔴 Notre état gagne sur le registre natif : sans ce drapeau, la fusion
+    // périodique remettrait le canal là où le client le croit — deux secondes
+    // après le geste du joueur (cf. RefreshChannels).
+    if (other.id == moved_id) other.detach_owned = true;
+  }
+
+  // L'onglet déposé devient l'ACTIF de sa nouvelle fenêtre : le joueur vient de le
+  // désigner du doigt, le cacher derrière un autre serait absurde.
+  if (group != 0) group_active_[group] = moved_id;
+
+  // 🔴 `active_channel_` suit le CANAL et non le rang : ils viennent tous de
+  // changer de sens. Sans ce recalage, déplacer un onglet ferait sauter le joueur
+  // sur un autre canal.
+  const uint32_t want = (group == 0) ? moved_id : active_id;
+  active_channel_ = 0;
+  for (size_t i = 0; i < channels_.size(); ++i)
+    if (channels_[i].id == want) { active_channel_ = static_cast<int>(i); break; }
+  // La principale doit pointer un de SES onglets : le canal actif a pu la quitter.
+  if (active_channel_ < static_cast<int>(channels_.size()) &&
+      channels_[active_channel_].group != 0) {
+    for (size_t i = 0; i < channels_.size(); ++i)
+      if (channels_[i].group == 0) { active_channel_ = static_cast<int>(i); break; }
+  }
+  // Le menu contextuel désigne par indice, lui aussi.
   logopt_channel_ = -1;
 
   // 🔴 Sans ça, la fusion périodique du registre natif remettrait la bande dans
@@ -4472,7 +4580,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   // là où le client le croit — deux secondes après le geste du joueur.
   if (channel->detached) {
     if (ImGui::Selectable("Rattacher à la fenêtre principale")) {
-      channel->detached     = false;
+      SetChannelGroup(*channel, 0);
       channel->detach_owned = true;
       structure_owned_      = true;
       layout_dirty_         = true;
@@ -4487,7 +4595,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     const bool can_detach = (docked > 1);
     if (!can_detach) ImGui::BeginDisabled();
     if (ImGui::Selectable("Détacher dans sa propre fenêtre")) {
-      channel->detached     = true;
+      SetChannelGroup(*channel, NewGroupId());
       channel->detach_owned = true;
       channel->locked       = false;  // une flottante naît libre (cf. l'arrachage)
       structure_owned_      = true;
@@ -4509,11 +4617,23 @@ void ChatWindow::DrawLogOptionsPopup() {
   // Ce menu, lui, s'ouvre TOUJOURS depuis un onglet ou un en-tête — donc depuis
   // une fenêtre précise. Le libellé la nomme, parce que « verrouiller » tout court
   // ne veut rien dire quand trois fenêtres sont ouvertes.
-  bool* const lock = channel->detached ? &channel->locked : &locked_;
+  //
+  // ⚠ Le verrou vit sur le CANAL alors qu'il décrit une FENÊTRE. Depuis qu'une
+  // fenêtre en porte plusieurs, la case l'écrit donc sur TOUS les canaux du
+  // groupe, et le rendu lit celui de l'onglet actif (`MakeSkin`). Une copie par
+  // onglet plutôt qu'une table de groupes à ranger, à relire et à purger : le
+  // verrou est un booléen, la redondance ne coûte rien et rien ne peut diverger
+  // tant que les deux écritures passent par ici.
+  const uint32_t group = channel->group;
+  bool* const lock = (group != 0) ? &channel->locked : &locked_;
   if (ro::RoCheckbox(channel->detached ? "Verrouiller cette fenêtre###chat_lock"
                                        : "Verrouiller la fenêtre principale###chat_lock",
-                     lock))
+                     lock)) {
+    if (group != 0)
+      for (Channel& other : channels_)
+        if (other.group == group) other.locked = *lock;
     layout_dirty_ = true;  // le verrou se range avec la géométrie, pas avec les réglages
+  }
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
         "Fige la position et la taille de cette fenêtre-là. Les onglets, les "
@@ -5206,6 +5326,7 @@ void ChatWindow::FlushPending() {
     line.second = static_cast<uint8_t>(now.wSecond);
     std::lock_guard<std::mutex> lock(lines_mutex_);
     lines_.push_back(std::move(line));
+    TrimLines();
   }
 }
 
@@ -5349,9 +5470,9 @@ bool ChatWindow::DrawSettings() {
   bool from_stranger = false, from_friend = false;
   const bool opts_ok = ReadWhisperPopupOptions(&from_stranger, &from_friend);
   ImGui::BeginDisabled(!opts_ok);
-  if (ro::RoCheckbox("Fenêtre pour un inconnu###chatwnd_wh_stranger", &from_stranger))
+  if (ro::RoCheckbox("Fenêtre individuelle pour un inconnu###chatwnd_wh_stranger", &from_stranger))
     WriteWhisperPopupOption(true, from_stranger);
-  if (ro::RoCheckbox("Fenêtre pour un ami###chatwnd_wh_friend", &from_friend))
+  if (ro::RoCheckbox("Fenêtre individuelle pour un ami###chatwnd_wh_friend", &from_friend))
     WriteWhisperPopupOption(false, from_friend);
   ImGui::EndDisabled();
   ImGui::SameLine();
@@ -5383,8 +5504,17 @@ bool ChatWindow::DrawSettings() {
   // WheelSliderInt, pas ro::RoSliderInt : même habillage RO (il l'enveloppe),
   // mais avec l'ajustement à la molette au survol, le clamp et l'infobulle —
   // c'est la brique des panneaux de réglages, partout ailleurs dans Bourgeon.
-  changed |= WheelSliderInt("Lignes conservées###chatwnd_cap", &history_cap_, 100,
-                            5000, "%d");
+  changed |= WheelSliderInt("Lignes conservées par type###chatwnd_cap",
+                            &history_cap_, 100, 5000, "%d");
+  ImGui::SameLine();
+  HelpMarker(
+      "Compté PAR TYPE de message — parole, combat, guilde, groupe, "
+      "chuchotement… — et non pour l'ensemble du chat.\n\n"
+      "C'est ce qui empêche un donjon d'effacer vos conversations : une rafale de "
+      "lignes de dégâts n'évince que des lignes de dégâts, et ce qui a été dit il "
+      "y a dix minutes reste là.\n\n"
+      "Le tampon est commun à tous les onglets — une même ligne s'affiche dans "
+      "plusieurs à la fois — mais chaque type y garde sa place.");
 
   changed |= ro::RoCheckbox("Garder l'historique entre les sessions###chatwnd_keep",
                             &keep_history_);
