@@ -1085,7 +1085,7 @@ void StorageWindow::OnRenderUI() {
   // "Storage" / "Guild Storage" / nom premium. Repli "Storage" si pas encore reçu.
   // L'id ImGui (###) reste stable -> position/taille persistent malgré le nom variable.
   char title[64];
-  std::snprintf(title, sizeof(title), "%s###bourgeon_storage",
+  std::snprintf(title, sizeof(title), i18n::Tr("%s###bourgeon_storage"),
                 storage_name_[0] ? storage_name_ : "Storage");
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre
   // (panneau Moonlight > Interface de jeu > Storage).
@@ -1751,7 +1751,7 @@ void StorageWindow::OnRenderUI() {
   }
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##storage_filter", "Filtrer...", filter.InputBuf,
+    if (ImGui::InputTextWithHint("##storage_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
                                  IM_ARRAYSIZE(filter.InputBuf)))
       filter.Build();
   } else if (filter.InputBuf[0]) {

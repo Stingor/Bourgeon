@@ -769,8 +769,8 @@ void ShowSlotTooltip(int region, int slot) {
   // Format : objet = "Nom (ID: n)" ; skill = "Nom - Lv: l (ID: n)". Rendu ImGui (au-dessus de tout ;
   // le tooltip natif FUN_00a753d0 passait sous la barre + 1 frame de retard).
   char out[224];
-  if (is_item) std::snprintf(out, sizeof(out), "%s (ID: %d)", nm, id);
-  else         std::snprintf(out, sizeof(out), "%s - Lv: %d (ID: %d)", nm, level, id);
+  if (is_item) std::snprintf(out, sizeof(out), i18n::Tr("%s (ID: %d)"), nm, id);
+  else         std::snprintf(out, sizeof(out), i18n::Tr("%s - Lv: %d (ID: %d)"), nm, level, id);
   // Habillage : le style ImGui par défaut donne un rectangle à angles vifs, à marge
   // asymétrique (WindowPadding x != y). On force des coins arrondis, un liseré discret
   // et un padding ÉGAL sur les deux axes -> même marge en haut/bas qu'à gauche/droite.

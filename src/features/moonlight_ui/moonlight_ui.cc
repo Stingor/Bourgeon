@@ -1558,7 +1558,7 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
         level = static_cast<int>(
             *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2));
     const std::string lvl =
-        (level < 0) ? std::string("ABSENT") : std::to_string(level);
+        (level < 0) ? std::string(i18n::Tr("ABSENT")) : std::to_string(level);
     LogDiag("[MoonlightUi] reglages recus : {} entree(s), niveau de groupe {}",
             setting_count, lvl);
   }

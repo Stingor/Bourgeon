@@ -979,7 +979,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
     ImGui::Text("%s : %s", msgstr::Utf8(kMsiProperty), ElementName(mob.element));
     ImGui::SameLine();
     // Le niveau élémentaire, que ZC_MONSTER_INFO ne transporte pas (docs §4.3).
-    Label("niv. %u", mob.element_lv);
+    Label(i18n::Tr("niv. %u"), mob.element_lv);
     ImGui::Text("%s : %s", msgstr::Utf8(kMsiSize), SizeName(mob.size));
     // Pas de ligne PV ici : l'onglet Stats l'affiche déjà, en tête de tableau.
 
@@ -994,7 +994,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
       if (mob.mode & b.bit) ++mode_count;
 
     if (mode_count == 0) {
-      Label("[Passif]");
+      Label(i18n::Tr("[Passif]"));
     } else if (ImGui::BeginTable("##mi_modes", 3,
                                  ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_NoSavedSettings)) {
@@ -1153,13 +1153,13 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
     // Séparateurs de milliers sur les seuls champs qui atteignent le million :
     // PV, SP et EXP. Les stats (STR 1..255), les portées et les millisecondes
     // n'en ont pas besoin, et en mettre partout ferait du bruit.
-    row("PV", Grouped(mob.hp, a, sizeof(a)), "SP", Grouped(mob.sp, b, sizeof(b)));
+    row(i18n::Tr("PV"), Grouped(mob.hp, a, sizeof(a)), i18n::Tr("SP"), Grouped(mob.sp, b, sizeof(b)));
     row(i18n::Tr("EXP de base"), Grouped(mob.base_exp, a, sizeof(a)),
         i18n::Tr("EXP de job"), Grouped(mob.job_exp, b, sizeof(b)));
 
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u ~ %u", mob.atk_min, mob.atk_max);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u ~ %u", mob.matk_min, mob.matk_max);
-    row("ATK", a, "MATK", b);
+    row(i18n::Tr("ATK"), a, i18n::Tr("MATK"), b);
 
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u%% (+%u)", mob.def, mob.def2);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u%% (+%u)", mob.mdef, mob.mdef2);
@@ -1167,13 +1167,13 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
 
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u", mob.str);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u", mob.agi);
-    row("STR", a, "AGI", b);
+    row(i18n::Tr("STR"), a, i18n::Tr("AGI"), b);
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u", mob.vit);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u", mob.int_);
-    row("VIT", a, "INT", b);
+    row(i18n::Tr("VIT"), a, i18n::Tr("INT"), b);
     _snprintf_s(a, sizeof(a), _TRUNCATE, "%u", mob.dex);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "%u", mob.luk);
-    row("DEX", a, "LUK", b);
+    row(i18n::Tr("DEX"), a, i18n::Tr("LUK"), b);
 
     // `speed` est le temps de marche d'UNE case, en millisecondes : plus il est
     // petit, plus le monstre est rapide. Affiché tel quel, le chiffre se lit à
@@ -1204,25 +1204,25 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
                         ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
     ImGui::TableNextRow();
-    ImGui::TableNextColumn(); Label("HIT");
+    ImGui::TableNextColumn(); Label(i18n::Tr("HIT"));
     Help(i18n::Tr("Précision du monstre, comparée à votre FLEE.\n\n"
          "HIT = niveau du monstre + sa DEX."));
     ImGui::TableNextColumn(); ImGui::Text("%d", mob_hit);
-    ImGui::TableNextColumn(); Label("FLEE");
+    ImGui::TableNextColumn(); Label(i18n::Tr("FLEE"));
     Help(i18n::Tr("Esquive du monstre, comparée à votre HIT.\n\n"
          "FLEE = niveau du monstre + son AGI."));
     ImGui::TableNextColumn(); ImGui::Text("%d", mob_flee);
 
     ImGui::TableNextRow();
-    ImGui::TableNextColumn(); Label("Critique");
+    ImGui::TableNextColumn(); Label(i18n::Tr("Critique"));
     Help(i18n::Tr("Sur ce serveur, un monstre ne fait JAMAIS de coup critique : la "
          "mécanique est réservée aux joueurs et aux mercenaires. Ce n'est pas "
          "une donnée manquante, c'est zéro par conception."));
-    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, "aucun");
+    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, i18n::Tr("aucun"));
     ImGui::TableNextColumn(); Label(i18n::Tr("Esquive parfaite"));
     Help(i18n::Tr("De même, un monstre n'a pas d'esquive parfaite : elle est réservée "
          "aux joueurs."));
-    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, "aucune");
+    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, i18n::Tr("aucune"));
     ImGui::EndTable();
   }
 

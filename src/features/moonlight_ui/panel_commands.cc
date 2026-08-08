@@ -248,7 +248,7 @@ void MoonlightUi::DrawCommandsPanel() {
               ImGui::TableNextColumn();
               const uint32_t id = aloot_ids_[i];
               char lbl[32];
-              std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
+              std::snprintf(lbl, sizeof(lbl), i18n::Tr("x##alootid_%d"), i);
               if (ro::RoSmallButton(lbl)) {
                 SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
                 aloot_ids_.erase(aloot_ids_.begin() + i);

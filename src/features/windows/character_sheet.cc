@@ -815,7 +815,7 @@ const char* JobName(int jobId) {
   const char* n = JobNameSEH(jobId);
   char buf[64];
   if (n && n[0]) { std::strncpy(buf, n, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0'; }
-  else           std::snprintf(buf, sizeof(buf), "Classe %d", jobId);
+  else           std::snprintf(buf, sizeof(buf), i18n::Tr("Classe %d"), jobId);
   return (g_job_name_cache[jobId] = buf).c_str();
 }
 
@@ -1959,7 +1959,7 @@ const char* TitleName(int id) {
   if (it != g_title_cache.end()) return it->second.c_str();
   char buf[96];
   ResolveTitleSEH(id, buf, sizeof(buf));
-  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), "Titre #%d", id);
+  if (buf[0] == '\0') std::snprintf(buf, sizeof(buf), i18n::Tr("Titre #%d"), id);
   return (g_title_cache[id] = buf).c_str();
 }
 // Équipe un titre : CZ_REQ_CHANGE_TITLE (0x0A2E) {title_id.L}. title_id=0 => retirer le titre.
@@ -2279,7 +2279,7 @@ const char* StatusName(uint16_t efst) {
   }
   clean[o] = '\0';
   while (o > 0 && clean[o - 1] == ' ') clean[--o] = '\0';  // trim fin
-  if (!clean[0]) std::snprintf(clean, sizeof(clean), "Statut #%u", efst);
+  if (!clean[0]) std::snprintf(clean, sizeof(clean), i18n::Tr("Statut #%u"), efst);
   return (g_status_name_cache[efst] = clean).c_str();
 }
 
@@ -2725,7 +2725,7 @@ void CharacterSheet::DrawPresetsTab() {
     return ImGui::CalcTextSize(t).x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f;
   };
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const float load_w = bw("Charger"), del_w = bw("Suppr");
+  const float load_w = bw(i18n::Tr("Charger")), del_w = bw(i18n::Tr("Suppr"));
   const float icon = 30.0f, igap = 3.0f;
 
   // Action globale : se mettre « tout nu » (independant des presets). Les costumes vivent dans
@@ -2734,7 +2734,7 @@ void CharacterSheet::DrawPresetsTab() {
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire l'équipement porté (garde les costumes)"));
   ImGui::SameLine(0.0f, 4.0f);
-  if (ro::RoButton(i18n::Tr("+ costumes"), bw("+ costumes"))) UnequipAll(true);
+  if (ro::RoButton(i18n::Tr("+ costumes"), bw(i18n::Tr("+ costumes")))) UnequipAll(true);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire aussi les costumes (têtes + cape)"));
   ImGui::Spacing();
@@ -2814,7 +2814,7 @@ void CharacterSheet::DrawPresetsTab() {
       }
       if (ep.hotkey_vk != 0) {
         ImGui::SameLine(0.0f, 4.0f);
-        if (ro::RoButton(i18n::Tr("Effacer"), bw("Effacer"))) {
+        if (ro::RoButton(i18n::Tr("Effacer"), bw(i18n::Tr("Effacer")))) {
           EquipPreset& e = equip_presets_[mine[mi]];
           e.hotkey_vk = 0; e.hotkey_ctrl = e.hotkey_alt = e.hotkey_shift = false;
           if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
@@ -3123,7 +3123,7 @@ void CharacterSheet::DrawSkillsTab() {
   }
   ImGui::SameLine();
   ImGui::SetNextItemWidth(120.0f);
-  ImGui::InputTextWithHint("##skfilter", "Rechercher…", skill_filter_buf_,
+  ImGui::InputTextWithHint("##skfilter", i18n::Tr("Rechercher…"), skill_filter_buf_,
                            sizeof(skill_filter_buf_));
   ImGui::SameLine();
   if (ro::RoButton(skill_grid_ ? "Grille" : "Liste", 58.0f, 0.0f))
@@ -3222,7 +3222,7 @@ void CharacterSheet::DrawSkillsTab() {
   if (ImGui::BeginTabBar("cs_skill_tabs")) {
     for (int g = 0; g < group_count; ++g) {
       char label[96];
-      std::snprintf(label, sizeof(label), "%s###skgrp%d", groups[g].label, g);
+      std::snprintf(label, sizeof(label), i18n::Tr("%s###skgrp%d"), groups[g].label, g);
       if (ImGui::BeginTabItem(label)) { skill_tab_ = g; ImGui::EndTabItem(); }
     }
     ImGui::EndTabBar();
@@ -6875,16 +6875,16 @@ void CharacterSheet::DrawStatsPanel() {
     constexpr ImGuiTreeNodeFlags kSec = ImGuiTreeNodeFlags_DefaultOpen;
     if (any_flat && ImGui::CollapsingHeader(i18n::Tr("Bonus d'équipement"), kSec)) {
     pct(i18n::Tr("Mêlée"), bonus_.melee_pct, i18n::Tr("Dégâts de mêlée à mains nues (%)."));
-    pct("Distance", bonus_.ranged_pct, i18n::Tr("Dégâts des attaques à distance (%)."));
+    pct(i18n::Tr("Distance"), bonus_.ranged_pct, i18n::Tr("Dégâts des attaques à distance (%)."));
     pct(i18n::Tr("Dég. crit."), bonus_.crit_dmg_pct, i18n::Tr("Dégâts des coups critiques (%)."));
     flat(i18n::Tr("PV max"), bonus_.hp_add, i18n::Tr("PV max ajoutés par l'équipement."));
     flat(i18n::Tr("SP max"), bonus_.sp_add, i18n::Tr("SP max ajoutés par l'équipement."));
-    flat("ASPD", bonus_.aspd_add, i18n::Tr("Vitesse d'attaque ajoutée (valeur plate)."));
+    flat(i18n::Tr("ASPD"), bonus_.aspd_add, i18n::Tr("Vitesse d'attaque ajoutée (valeur plate)."));
     pct(i18n::Tr("Cast var."), bonus_.vcast_pct, i18n::Tr("Temps de cast variable (%). Négatif = réduction."));
     pct(i18n::Tr("Cast fixe"), bonus_.fcast_pct, i18n::Tr("Temps de cast fixe (%). Négatif = réduction."));
     // Lot A — offensif
-    pct("ATK %", bonus_.atk_pct, i18n::Tr("Bonus d'ATK physique global (%)."));
-    pct("MATK %", bonus_.matk_pct, i18n::Tr("Bonus d'ATK magique global (%)."));
+    pct(i18n::Tr("ATK %"), bonus_.atk_pct, i18n::Tr("Bonus d'ATK physique global (%)."));
+    pct(i18n::Tr("MATK %"), bonus_.matk_pct, i18n::Tr("Bonus d'ATK magique global (%)."));
     pct(i18n::Tr("Renvoi mêlée"), bonus_.dmg_ret_melee, i18n::Tr("Renvoie une part des dégâts de mêlée reçus (%)."));
     pct(i18n::Tr("Renvoi dist."), bonus_.dmg_ret_ranged, i18n::Tr("Renvoie une part des dégâts à distance reçus (%)."));
     pct(i18n::Tr("Renvoi mag."), bonus_.dmg_ret_magic, i18n::Tr("Renvoie une part des dégâts magiques reçus (%)."));
@@ -6898,7 +6898,7 @@ void CharacterSheet::DrawStatsPanel() {
     pct(i18n::Tr("Réduc. crit"), bonus_.crit_def_pct, i18n::Tr("Réduit la probabilité de subir un critique (%)."));
     flat("PV/kill", bonus_.hp_on_kill, i18n::Tr("PV récupérés en tuant un ennemi."));
     flat("SP/kill", bonus_.sp_on_kill, i18n::Tr("SP récupérés en tuant un ennemi."));
-    pct("Incassable", bonus_.unbreak_pct, i18n::Tr("Chance d'éviter la casse d'un équipement (%)."));
+    pct(i18n::Tr("Incassable"), bonus_.unbreak_pct, i18n::Tr("Chance d'éviter la casse d'un équipement (%)."));
     // Lot C — utilitaire
     pct(i18n::Tr("Potions PV"), bonus_.pot_hp_pct, i18n::Tr("Efficacité des objets de soin PV (%)."));
     pct(i18n::Tr("Potions SP"), bonus_.pot_sp_pct, i18n::Tr("Efficacité des objets de soin SP (%)."));
@@ -6906,14 +6906,14 @@ void CharacterSheet::DrawStatsPanel() {
     pct(i18n::Tr("Délai skill"), bonus_.delay_pct, i18n::Tr("After-cast delay (%). Négatif = réduction."));
     flat(i18n::Tr("Cast var. ms"), bonus_.add_vcast_ms, i18n::Tr("Ajout/retrait au cast variable, en millisecondes."));
     flat(i18n::Tr("Cast fixe ms"), bonus_.add_fcast_ms, i18n::Tr("Ajout/retrait au cast fixe, en millisecondes."));
-    pct("Vol", bonus_.steal_pct, i18n::Tr("Taux de vol d'objets (%)."));
+    pct(i18n::Tr("Vol"), bonus_.steal_pct, i18n::Tr("Taux de vol d'objets (%)."));
     // Lot E — réduction par type d'attaque + splash
     pct(i18n::Tr("Réduc. mêlée"), bonus_.def_melee_pct, i18n::Tr("Réduit les dégâts de mêlée reçus (%)."));
     pct(i18n::Tr("Réduc. distance"), bonus_.def_ranged_pct, i18n::Tr("Réduit les dégâts à distance reçus (%)."));
     pct(i18n::Tr("Réduc. magie"), bonus_.def_magic_pct, i18n::Tr("Réduit les dégâts magiques reçus (%)."));
     pct(i18n::Tr("Réduc. divers"), bonus_.def_misc_pct, i18n::Tr("Réduit les dégâts divers reçus (%)."));
-    flat("Splash", bonus_.splash, i18n::Tr("Portée de la zone d'effet de vos attaques (cases)."));
-    flat("Splash+", bonus_.splash_add, i18n::Tr("Portée de splash additionnelle (cases)."));
+    flat(i18n::Tr("Splash"), bonus_.splash, i18n::Tr("Portée de la zone d'effet de vos attaques (cases)."));
+    flat(i18n::Tr("Splash+"), bonus_.splash_add, i18n::Tr("Portée de splash additionnelle (cases)."));
     // Lot F — vol de vie
     pct(i18n::Tr("Vol PV"), bonus_.hp_drain_pct, i18n::Tr("PV volés à chaque attaque (% des dégâts)."));
     pct(i18n::Tr("Vol SP"), bonus_.sp_drain_pct, i18n::Tr("SP volés à chaque attaque (% des dégâts)."));
@@ -6921,7 +6921,7 @@ void CharacterSheet::DrawStatsPanel() {
     pct(i18n::Tr("Casse arme"), bonus_.break_weapon_pct, i18n::Tr("Chance de casser l'arme de la cible (%)."));
     pct(i18n::Tr("Casse armure"), bonus_.break_armor_pct, i18n::Tr("Chance de casser l'armure de la cible (%)."));
     pct(i18n::Tr("Zeny bonus"), bonus_.zeny_bonus_pct, i18n::Tr("Bonus de Zeny obtenu sur les monstres (%)."));
-    pct("Transforme", bonus_.classchange_pct, i18n::Tr("Chance de transformer la cible en un autre monstre (%)."));
+    pct(i18n::Tr("Transforme"), bonus_.classchange_pct, i18n::Tr("Chance de transformer la cible en un autre monstre (%)."));
     pct(i18n::Tr("Réduc. renvoi"), bonus_.dmg_ret_reduce, i18n::Tr("Réduit les dégâts que vous subissez du renvoi (%)."));
     flat(i18n::Tr("PV au sort"), bonus_.magic_hp_gain, i18n::Tr("PV récupérés en lançant un sort."));
     flat(i18n::Tr("SP au sort"), bonus_.magic_sp_gain, i18n::Tr("SP récupérés en lançant un sort."));
@@ -6938,7 +6938,7 @@ void CharacterSheet::DrawStatsPanel() {
       char who_buf[24];  // repli pour les groupes RC2 sans libellé
       auto rc2 = [&](int idx) -> const char* {
         if (idx >= 0 && idx < IM_ARRAYSIZE(kRace2Name) && kRace2Name[idx][0]) return kRace2Name[idx];
-        std::snprintf(who_buf, sizeof(who_buf), "groupe #%d", idx);
+        std::snprintf(who_buf, sizeof(who_buf), i18n::Tr("groupe #%d"), idx);
         return who_buf;
       };
       switch (c.code) {
@@ -6998,7 +6998,7 @@ void CharacterSheet::DrawStatsPanel() {
           const char* pre = (sk.code == kBskAutospellHit) ? "Riposte" : "Autocast";
           const char* nm = skillName(sk.skill_id);
           if (sk.lv > 0)
-            std::snprintf(label, sizeof(label), "%s %s Niv %d", pre, nm, sk.lv);
+            std::snprintf(label, sizeof(label), i18n::Tr("%s %s Niv %d"), pre, nm, sk.lv);
           else
             std::snprintf(label, sizeof(label), "%s %s", pre, nm);
           std::snprintf(vb, sizeof(vb), "%d,%d%%", sk.value / 10, sk.value % 10);  // ‰ -> %
@@ -7040,9 +7040,9 @@ void CharacterSheet::DrawStatsPanel() {
           cast[sizeof(cast) - 1] = '\0';
           const char* trig = sk.aux ? skillName(sk.aux) : "?";
           if (sk.lv > 0)
-            std::snprintf(label, sizeof(label), "Autocast %s Niv %d sur %s", cast, sk.lv, trig);
+            std::snprintf(label, sizeof(label), i18n::Tr("Autocast %s Niv %d sur %s"), cast, sk.lv, trig);
           else
-            std::snprintf(label, sizeof(label), "Autocast %s sur %s", cast, trig);
+            std::snprintf(label, sizeof(label), i18n::Tr("Autocast %s sur %s"), cast, trig);
           std::snprintf(vb, sizeof(vb), "%d,%d%%", sk.value / 10, sk.value % 10);  // ‰ -> %
           tip = i18n::Tr("Chance de lancer ce sort en utilisant le skill déclencheur.");
           break;
@@ -7070,7 +7070,7 @@ void CharacterSheet::DrawStatsPanel() {
           }
           std::snprintf(label, sizeof(label), "%s %s", pre, skillName(sk.skill_id));
           if (unit == 0)      std::snprintf(vb, sizeof(vb), "%+d%%", sk.value);
-          else if (unit == 1) std::snprintf(vb, sizeof(vb), "%+d ms", sk.value);
+          else if (unit == 1) std::snprintf(vb, sizeof(vb), i18n::Tr("%+d ms"), sk.value);
           else                std::snprintf(vb, sizeof(vb), "%+d", sk.value);
           tip = i18n::Tr("Modificateur appliqué à ce skill précis.");
           break;
@@ -7090,7 +7090,7 @@ void CharacterSheet::DrawStatsPanel() {
       if (it.code == kBsiAddDropGroup)  // nameid porte l'id de GROUPE, pas d'item
         std::snprintf(label, sizeof(label), i18n::Tr("Drop groupe #%u"), it.nameid);
       else
-        std::snprintf(label, sizeof(label), "Drop %s", itemcell::NameById(it.nameid));
+        std::snprintf(label, sizeof(label), i18n::Tr("Drop %s"), itemcell::NameById(it.nameid));
       std::snprintf(vb, sizeof(vb), "%d,%02d%%", it.rate / 100, std::abs(it.rate) % 100);  // 1~10000 -> %
       bonusStat(label, vb, i18n::Tr("Chance de drop bonus de cet objet en tuant un monstre."));
     }
@@ -7262,7 +7262,7 @@ void CharacterSheet::OnRenderUI() {
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme l'inventaire/le natif ; le repli est géré par le `if (!begun)` ci-dessous.
   const bool begun =
-      ro::BeginRoWindow("Personnage###bourgeon_charsheet", &show_,
+      ro::BeginRoWindow(i18n::Tr("Personnage###bourgeon_charsheet"), &show_,
                         ImGuiWindowFlags_None);
   bourgeon::CloseWindowOnEscape(show_);
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }

@@ -314,7 +314,7 @@ void DrawDebugControls() {
 
   // Seul l'ordinal est saisi ; l'id concret est résolu par le getter NATIF GetHatEffectID.
   ImGui::SetNextItemWidth(120.0f);
-  if (ImGui::InputInt("Ordinal", &g_ui_ordinal) || g_resolved_concrete <= 0)
+  if (ImGui::InputInt(i18n::Tr("Ordinal"), &g_ui_ordinal) || g_resolved_concrete <= 0)
     g_resolved_concrete = ResolveConcreteId(g_ui_ordinal);
   ImGui::SameLine();
   if (g_resolved_concrete > 0)
@@ -387,7 +387,7 @@ void DrawDebugControls() {
     else if (n_ours == 0)
       ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), i18n::Tr("-> émis mais REJETÉ par nous (bug)"));
     else
-      ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), "-> OK");
+      ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), i18n::Tr("-> OK"));
     // Ce que le filtre de FORME a refusé cette frame. Quand « émis mais rejeté » s'affiche, c'est
     // ici que se trouve la raison : type de primitive, nombre de sommets, primitive indexée.
     // Formes acceptées : type 4 (TRIANGLELIST) à 3 sommets, ou type 5 (TRIANGLESTRIP) à 4, non indexé.
@@ -562,9 +562,9 @@ void DrawDebugControls() {
         const char* tag = (e.kind == 0) ? "   [inerte]" : (e.kind == 2 ? "   [.str]" : "");
         char label[128];
         if (e.res[0])
-          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d   %s%s", e.ord, e.cid, e.res, tag);
+          std::snprintf(label, sizeof(label), i18n::Tr("ord %-3d  ->  id %-5d   %s%s"), e.ord, e.cid, e.res, tag);
         else
-          std::snprintf(label, sizeof(label), "ord %-3d  ->  id %-5d%s", e.ord, e.cid, tag);
+          std::snprintf(label, sizeof(label), i18n::Tr("ord %-3d  ->  id %-5d%s"), e.ord, e.cid, tag);
         if (filter[0] && !std::strstr(label, filter)) continue;
         // Inerte = grisé (cliquable quand même, pour le vérifier soi-même via la sonde).
         // .str = teinté : rend NATIVEMENT, mais par un autre pipeline -> ce lab ne le capture pas.

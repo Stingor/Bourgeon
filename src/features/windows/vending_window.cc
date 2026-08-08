@@ -1616,7 +1616,7 @@ void VendingWindow::OnRenderUI() {
       // FIN à la boutique. La faire simplement masquer laissait l'échoppe tourner
       // sans plus aucune UI pour la reprendre — un cul-de-sac.
       bool keep_open = true;
-      if (ro::BeginRoWindow("Mon shop###bourgeon_vending_shop", &keep_open,
+      if (ro::BeginRoWindow(i18n::Tr("Mon shop###bourgeon_vending_shop"), &keep_open,
                             ImGuiWindowFlags_AlwaysAutoResize |
                             ImGuiWindowFlags_NoCollapse)) {
         if (myshop_.empty()) {
@@ -1807,10 +1807,10 @@ void VendingWindow::OnRenderUI() {
       // après l'ouverture, et sans ça la fenêtre serait recréée (position perdue).
       char title[96];
       if (vendor_name_[0] != '\0')
-        std::snprintf(title, sizeof(title), "Shop de %s###vending_buy",
+        std::snprintf(title, sizeof(title), i18n::Tr("Shop de %s###vending_buy"),
                       vendor_name_);
       else
-        std::snprintf(title, sizeof(title), "Shop###vending_buy");
+        std::snprintf(title, sizeof(title), i18n::Tr("Shop###vending_buy"));
       if (ro::BeginRoWindow(title, &keep_vendor,
                             ImGuiWindowFlags_AlwaysAutoResize |
                             ImGuiWindowFlags_NoCollapse)) {
@@ -1990,7 +1990,7 @@ void VendingWindow::OnRenderUI() {
         std::snprintf(title, sizeof(title), i18n::Tr("Vendre à %s###buying_store_sell"),
                       bs_buyer_);
       else
-        std::snprintf(title, sizeof(title), "Vendre###buying_store_sell");
+        std::snprintf(title, sizeof(title), i18n::Tr("Vendre###buying_store_sell"));
       if (ro::BeginRoWindow(title, &keep_bs, ImGuiWindowFlags_NoCollapse)) {
         char cell[48];
         // Les deux listes du haut ont une hauteur FIXE et défilent : elles

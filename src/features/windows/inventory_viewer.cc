@@ -1355,7 +1355,7 @@ void InventoryViewer::RenderCardInsert() {
   const CompItem* hover = nullptr;
 
   bool open = true;
-  const bool begun = ro::BeginRoWindow("Sertir une carte###bourgeon_card_insert", &open,
+  const bool begun = ro::BeginRoWindow(i18n::Tr("Sertir une carte###bourgeon_card_insert"), &open,
                                        ImGuiWindowFlags_NoCollapse);
   if (begun) {
     // En-tête : la carte que l'on sertit + son total en inventaire.
@@ -1429,7 +1429,7 @@ void InventoryViewer::RenderCardInsert() {
           // (le serveur a déjà écarté les items sans emplacement libre).
           if (!it.forged && it.used_slots > 0) {
             char sl[32];
-            std::snprintf(sl, sizeof(sl), "  (%d sertie%s)", it.used_slots,
+            std::snprintf(sl, sizeof(sl), i18n::Tr("  (%d sertie%s)"), it.used_slots,
                           it.used_slots > 1 ? "s" : "");
             const float w = ImGui::CalcTextSize(line).x;
             dl->AddText(ImVec2(tx + w, ty), ImGui::GetColorU32(ImGuiCol_TextDisabled), sl);
@@ -1646,7 +1646,7 @@ void InventoryViewer::OnRenderUI() {
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme le natif ; clic dessus = SetWindowCollapsed (géré par BeginRoWindow).
   const bool begun = ro::BeginRoWindow(
-      "Inventaire###bourgeon_inventory", &show_panel_,
+      i18n::Tr("Inventaire###bourgeon_inventory"), &show_panel_,
       lock_size_ ? ImGuiWindowFlags_NoResize : 0);
   // À appeler que Begin ait renvoyé true ou non : la barre de titre existe même
   // fenêtre repliée, et la demande est consommée par BeginRoWindow.
@@ -1719,7 +1719,7 @@ void InventoryViewer::OnRenderUI() {
   static ImGuiTextFilter filter;
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##inv_filter", "Filtrer...", filter.InputBuf,
+    if (ImGui::InputTextWithHint("##inv_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
                                  IM_ARRAYSIZE(filter.InputBuf)))
       filter.Build();
   } else if (filter.InputBuf[0]) {

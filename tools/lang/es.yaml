@@ -2668,7 +2668,7 @@
 # en: Nothing left to craft: chain stopped.
 "Plus rien à fabriquer : relance arrêtée.": ""
 # en: Manner point −
-"Point de manière −": ""
+"Point de manière -": ""
 # en: Manner point +
 "Point de manière +": ""
 # en: Not enough points for the prerequisites.
@@ -3974,7 +3974,7 @@
 "Taux": ""
 # en: Finish
 "Terminer": ""
-# en: Territory: %s
+# en: Territory : %s
 "Territoire : %s": ""
 # en: Text
 "Texte": ""
@@ -4066,3 +4066,277 @@
 "Parchemins": ""
 # en: Sale
 "Soldes": ""
+# en:   %s OK
+"  %s OK": ""
+# en:   (%d socketed%s)
+"  (%d sertie%s)": ""
+# en:   peak %.0f
+"  peak %.0f": ""
+# en: %+d ms
+"%+d ms": ""
+# en: %d pts
+"%d pts": ""
+# en: %s  (%d character%s)%s%s%s%s
+"%s  (%d perso%s)%s%s%s%s": ""
+# en: %s %s Lv %d
+"%s %s Niv %d": ""
+# en: %s (#%u)##sc%d_%s
+"%s (#%u)##sc%d_%s": ""
+# en: %s (%d)###cstab%d
+"%s (%d)###cstab%d": ""
+# en: %s (%d)###rodex_tab%d
+"%s (%d)###rodex_tab%d": ""
+# en: %s (ID: %d)
+"%s (ID: %d)": ""
+# en: %s - Lv: %d (ID: %d)
+"%s - Lv: %d (ID: %d)": ""
+# en: %s alootid%s
+"%s alootid%s": ""
+# en: %s###bourgeon_cashshop
+"%s###bourgeon_cashshop": ""
+# en: %s###bourgeon_chat_grp_%u
+"%s###bourgeon_chat_grp_%u": ""
+# en: %s###bourgeon_npc_dialog
+"%s###bourgeon_npc_dialog": ""
+# en: %s###bourgeon_shop
+"%s###bourgeon_shop": ""
+# en: %s###bourgeon_storage
+"%s###bourgeon_storage": ""
+# en: %s###chatflt%d
+"%s###chatflt%d": ""
+# en: %s###itemdesc_skill
+"%s###itemdesc_skill": ""
+# en: %s###makeitem
+"%s###makeitem": ""
+# en: %s###skgrp%d
+"%s###skgrp%d": ""
+# en: %s%s###itemdesc_item
+"%s%s###itemdesc_item": ""
+# en: %sSpace
+"%sEspace": ""
+# en: (wheel: rotate)
+"(molette : tourner)": ""
+# en: -> OK
+"-> OK": ""
+# en: MISSING
+"ABSENT": ""
+# en: AGI
+"AGI": ""
+# en: ASPD
+"ASPD": ""
+# en: ATK
+"ATK": ""
+# en: ATK %
+"ATK %": ""
+# en: Aberration
+"Aberration": ""
+# en: Adopt
+"Adopter": ""
+# en: Anchor
+"Ancrage": ""
+# en: Appearance  (%s)###chatstyle_menu
+"Apparence  (%s)###chatstyle_menu": ""
+# en: Attack
+"Attaquer": ""
+# en: Autocast %s Lv %d on %s
+"Autocast %s Niv %d sur %s": ""
+# en: Autocast %s on %s
+"Autocast %s sur %s": ""
+# en: Bank###bourgeon_bank
+"Banque###bourgeon_bank": ""
+# en: Boss / MVP
+"Boss / MVP": ""
+# en: Cart###bourgeon_cart
+"Cart###bourgeon_cart": ""
+# en: Cards / Enchants
+"Cartes / Enchants": ""
+# en: Cards / Enchants (%d slot%s)
+"Cartes / Enchants (%d emplacement%s)": ""
+# en: Chance: %d %%
+"Chances : %d %%": ""
+# en: Chance: between %d %% and %d %%
+"Chances : entre %d %% et %d %%": ""
+# en: Whisper
+"Chuchoter": ""
+# en: Class %d
+"Classe %d": ""
+# en: Click: the description   ·   Right click: the menu   ·   Shift + click: link in chat
+"Clic : la description   ·   Clic droit : le menu   ·   Maj + clic : lien dans le chat": ""
+# en: Combo %zu
+"Combo %zu": ""
+# en: Combos
+"Combos": ""
+# en: Comparison###itemdesc_item
+"Comparaison###itemdesc_item": ""
+# en: Compare
+"Comparer": ""
+# en: Contrast
+"Contraste": ""
+# en: Color %s
+"Couleur %s": ""
+# en: Mail (%d unread%s)###bourgeon_rodex
+"Courrier (%d non lu%s)###bourgeon_rodex": ""
+# en: Mail###bourgeon_rodex
+"Courrier###bourgeon_rodex": ""
+# en: Critical
+"Critique": ""
+# en: DEX
+"DEX": ""
+# en: DPS Meter | %.0f DPS###DPS Meter
+"DPS Meter | %.0f DPS###DPS Meter": ""
+# en: Ranged
+"Distance": ""
+# en: Drop %s
+"Drop %s": ""
+# en: EquipScript
+"EquipScript": ""
+# en: Kick
+"Expulser (kick)": ""
+# en: FLEE
+"FLEE": ""
+# en: Female
+"Femelle": ""
+# en: Filter…
+"Filtrer…": ""
+# en: Log filters  (%d/%d)###chatflt_menu
+"Filtres du log  (%d/%d)###chatflt_menu": ""
+# en: Gamma
+"Gamma": ""
+# en: Grain
+"Grain": ""
+# en: HIT
+"HIT": ""
+# en: ID: %u
+"ID : %u": ""
+# en: INT
+"INT": ""
+# en: Unbreakable
+"Incassable": ""
+# en: Interact
+"Interagir": ""
+# en: Inventory###bourgeon_inventory
+"Inventaire###bourgeon_inventory": ""
+# en: LUK
+"LUK": ""
+# en: Read%s
+"Lire%s": ""
+# en: MATK
+"MATK": ""
+# en: MATK %
+"MATK %": ""
+# en: Wheel: rotate — Ctrl+wheel: size
+"Molette : tourner — Ctrl+molette : taille": ""
+# en: My shop###bourgeon_vending_shop
+"Mon shop###bourgeon_vending_shop": ""
+# en: Monster
+"Monstre": ""
+# en: B&W
+"N&B": ""
+# en: Neutral
+"Neutre": ""
+# en: NewTab_%d
+"NewTab_%d": ""
+# en: Feed
+"Nourrir": ""
+# en: Night
+"Nuit": ""
+# en: Item: %s (#%u)
+"Objet : %s (#%u)": ""
+# en: Option #%d: value %d (param %u)
+"Option #%d : valeur %d (param %u)": ""
+# en: Oranges: %d
+"Oranges : %d": ""
+# en: Ordinal
+"Ordinal": ""
+# en: NPC
+"PNJ": ""
+# en: NPC: %s (GID %u)
+"PNJ : %s (GID %u)": ""
+# en: HP
+"PV": ""
+# en: Page %d / %d
+"Page %d / %d": ""
+# en: Character###bourgeon_charsheet
+"Personnage###bourgeon_charsheet": ""
+# en: Font###chatwnd_family
+"Police###chatwnd_family": ""
+# en: Name
+"Pseudo": ""
+# en: Search...
+"Rechercher...": ""
+# en: Search…
+"Rechercher…": ""
+# en: Refine Weapon###bourgeon_weapon_refine
+"Refine Weapon###bourgeon_weapon_refine": ""
+# en: Rename (%d)
+"Renommer (%d)": ""
+# en: Remove###chatwnd_rmhost_%s
+"Retirer###chatwnd_rmhost_%s": ""
+# en: STR
+"STR": ""
+# en: Saturation
+"Saturation": ""
+# en: Script
+"Script": ""
+# en: Insert a card###bourgeon_card_insert
+"Sertir une carte###bourgeon_card_insert": ""
+# en: %s's shop###vending_buy
+"Shop de %s###vending_buy": ""
+# en: Shop###vending_buy
+"Shop###vending_buy": ""
+# en: Perform
+"Spectacle": ""
+# en: Splash
+"Splash": ""
+# en: Splash+
+"Splash+": ""
+# en: Status #%u
+"Statut #%u": ""
+# en: Next >
+"Suivante >": ""
+# en: Title #%d
+"Titre #%d": ""
+# en: Transform
+"Transforme": ""
+# en: UnEquipScript
+"UnEquipScript": ""
+# en: VIT
+"VIT": ""
+# en: Sell###buying_store_sell
+"Vendre###buying_store_sell": ""
+# en: ViewID: %d
+"ViewID : %d": ""
+# en: Vignette
+"Vignette": ""
+# en: Steal
+"Vol": ""
+# en: [MVP]
+"[MVP]": ""
+# en: [Mini]
+"[Mini]": ""
+# en: [Passive]
+"[Passif]": ""
+# en: avg %.0f  |  %d dmg  |  %.0fs
+"avg %.0f  |  %d dmg  |  %.0fs": ""
+# en: expired
+"expiré": ""
+# en: group #%d
+"groupe #%d": ""
+# en: id %u
+"id %u": ""
+# en: job %d
+"job %d": ""
+# en: Lv %u
+"niv. %u": ""
+# en: ord %-3d  ->  id %-5d   %s%s
+"ord %-3d  ->  id %-5d   %s%s": ""
+# en: ord %-3d  ->  id %-5d%s
+"ord %-3d  ->  id %-5d%s": ""
+# en: t%02d  %s###chatflt%d
+"t%02d  %s###chatflt%d": ""
+# en: x##alootid_%d
+"x##alootid_%d": ""
+# en: · Chance: %d %%
+"· Chances : %d %%": ""
+# en: none
+"aucune": ""

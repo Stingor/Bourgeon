@@ -2443,7 +2443,7 @@ void MakeItemWindow::OnRenderUI() {
   if (!imgui_enabled_ || !ui_open_) return;
 
   char title[128];
-  std::snprintf(title, sizeof(title), "%s###makeitem", ProtoTitle());
+  std::snprintf(title, sizeof(title), i18n::Tr("%s###makeitem"), ProtoTitle());
 
   if (pos_x_ != INT_MIN && pos_y_ != INT_MIN) {
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(pos_x_),
@@ -2612,7 +2612,7 @@ void MakeItemWindow::DrawList() {
     // l'explique. Le focus automatique sur une recherche ne se justifie que
     // lorsque l'utilisateur a demandé la recherche — jamais quand la fenêtre
     // s'ouvre toute seule.
-    ImGui::InputTextWithHint("##makefilter", "Filtrer…", filter_, sizeof(filter_));
+    ImGui::InputTextWithHint("##makefilter", i18n::Tr("Filtrer…"), filter_, sizeof(filter_));
     PopItemWidth();
   }
 
@@ -3119,7 +3119,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
       const int chance = CookingChancePercent(chosen.id, kit, cook_mastery_);
       if (chance >= 0) {
         ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn),
-                           "Chances : %d %%", chance);
+                           i18n::Tr("Chances : %d %%"), chance);
         if (cook_mastery_ >= 0 && kit < 15) {
           ImGui::SameLine();
           ImGui::TextDisabled(i18n::Tr("(maîtrise %d / 1999)"), cook_mastery_);
@@ -3175,10 +3175,10 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
         // serait absurde — on donne le chiffre ferme, qui est exact.
         if (worst == best)
           ImGui::TextColored(V4(worst >= 80 ? kColOk : kColWarn),
-                             "Chances : %d %%", worst);
+                             i18n::Tr("Chances : %d %%"), worst);
         else
           ImGui::TextColored(V4(worst >= 80 ? kColOk : kColWarn),
-                             "Chances : entre %d %% et %d %%", worst, best);
+                             i18n::Tr("Chances : entre %d %% et %d %%"), worst, best);
         ImGui::SameLine();
         char range_tip[1024];
         std::snprintf(
@@ -3214,7 +3214,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
   if (potion) {
     const int chance = PharmacyChancePercent(chosen.id);
     if (chance >= 0) {
-      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), "Chances : %d %%",
+      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
                          chance);
       ImGui::SameLine();
       HelpMarker(
@@ -3248,7 +3248,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
     const int chance = MetalCraftChancePercent(chosen.id, skill);
     // Vert au-dessus de 80 %, ambre en dessous : à ce jeu-là un échec consomme les
     // matériaux sans rien rendre, la couleur doit dire le risque et pas décorer.
-    ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), "Chances : %d %%",
+    ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
                        chance);
     ImGui::SameLine();
     HelpMarker(
@@ -3282,7 +3282,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
     const int chance =
         ForgeChancePercent(chosen.id, skill, star_crumbs, element);
     if (chance >= 0) {
-      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), "Chances : %d %%",
+      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
                          chance);
       ImGui::SameLine();
       HelpMarker(

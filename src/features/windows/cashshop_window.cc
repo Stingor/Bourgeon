@@ -622,7 +622,7 @@ void CashShopWindow::OnRenderUI() {
   // et une prochaine retouche là-bas doit se voir ici sans recompiler.
   char title[96];
   const char* shop_name = msgstr::Utf8(kMsiCashShop);
-  std::snprintf(title, sizeof(title), "%s###bourgeon_cashshop",
+  std::snprintf(title, sizeof(title), i18n::Tr("%s###bourgeon_cashshop"),
                 (shop_name && shop_name[0]) ? shop_name : i18n::Tr("Vote Shop"));
   const bool begun =
       ro::BeginRoWindow(title, &show_panel_, ImGuiWindowFlags_NoCollapse);
@@ -677,7 +677,7 @@ void CashShopWindow::OnRenderUI() {
     for (int t = 0; t < kNumTabs; ++t) {
       if (!kTabShown[t]) continue;  // onglet toujours vide -> masqué
       char lbl[48];
-      std::snprintf(lbl, sizeof(lbl), "%s (%d)###cstab%d", i18n::Tr(kTabLabels[t]),
+      std::snprintf(lbl, sizeof(lbl), i18n::Tr("%s (%d)###cstab%d"), i18n::Tr(kTabLabels[t]),
                     static_cast<int>(tabs_[t].size()), t);
       // Onglet imposé de l'extérieur (arrivée par un lien d'objet) : la barre
       // tient sa propre sélection et écraserait `cur_tab_` — il faut le lui dire.
@@ -697,7 +697,7 @@ void CashShopWindow::OnRenderUI() {
   // Champ filtre avec texte d'aide grise (placeholder) quand il est vide. On pilote
   // directement le buffer du ImGuiTextFilter (InputBuf/Build) pour garder le filtrage
   // natif tout en ayant le hint (g_filter.Draw() n'expose pas de hint).
-  if (ImGui::InputTextWithHint("##cs_filter", "Filtrer...", g_filter.InputBuf,
+  if (ImGui::InputTextWithHint("##cs_filter", i18n::Tr("Filtrer..."), g_filter.InputBuf,
                                IM_ARRAYSIZE(g_filter.InputBuf)))
     g_filter.Build();
 
@@ -914,7 +914,7 @@ void CashShopWindow::OnRenderUI() {
       const float col_h = ImGui::GetTextLineHeight() + 2.0f * frameH + 2.0f * sp;
       const float cy = low_top + (LH - col_h) * 0.5f;
       char pbuf[24];
-      std::snprintf(pbuf, sizeof(pbuf), "%d pts", ci.price);
+      std::snprintf(pbuf, sizeof(pbuf), i18n::Tr("%d pts"), ci.price);
       const float tw = ImGui::CalcTextSize(pbuf).x;
       ImGui::SetCursorPos(ImVec2(cx + (colw > tw ? (colw - tw) * 0.5f : 0.0f), cy));
       ImGui::TextColored(kBlack, "%s", pbuf);

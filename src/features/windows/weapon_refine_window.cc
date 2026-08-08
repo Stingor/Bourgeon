@@ -833,7 +833,7 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
   // PREMIÈRE occurrence de « %s » — et on ignore les suivantes.
   char subject[160];
   if (!name[0]) {
-    std::snprintf(subject, sizeof(subject), "id %u", nameid);
+    std::snprintf(subject, sizeof(subject), i18n::Tr("id %u"), nameid);
   } else if (result == 0 && sent_refine_ >= 0) {
     // 🔴 Une réussite doit énoncer un PASSAGE, pas un état. « Refined weapon:
     // +4 Knife » est lu comme « elle est à +4 » — donc comme un échec — alors que
@@ -1439,7 +1439,7 @@ void WeaponRefineWindow::OnRenderUI() {
   // NoScrollbar/NoScrollWithMouse : le contenu tient toujours (la liste a son
   // propre enfant scrollable), la barre de la fenêtre était parasite.
   const bool begun = ro::BeginRoWindow(
-      "Refine Weapon###bourgeon_weapon_refine", &open,
+      i18n::Tr("Refine Weapon###bourgeon_weapon_refine"), &open,
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   if (ro::TitleBulletClicked())
@@ -1737,7 +1737,7 @@ void WeaponRefineWindow::DrawList(float list_h) {
   // ou trois armes il ne sert à rien et mange une ligne de la fenêtre.
   if (show_filter_) {
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##refine_filter", "Filtrer…", filter_,
+    ImGui::InputTextWithHint("##refine_filter", i18n::Tr("Filtrer…"), filter_,
                              sizeof(filter_));
   } else if (filter_[0]) {
     // Masquer le champ ne doit pas laisser un filtre invisible cacher des armes.
@@ -1773,7 +1773,7 @@ void WeaponRefineWindow::DrawList(float list_h) {
       r.slots = itemcell::SlotCount(info);
     }
     if (!r.name[0])
-      std::snprintf(r.name, sizeof(r.name), "id %u", e.nameid);
+      std::snprintf(r.name, sizeof(r.name), i18n::Tr("id %u"), e.nameid);
 
     if (filter_lc[0]) {
       char lower[128];
@@ -2168,7 +2168,7 @@ void WeaponRefineWindow::DrawFooter() {
       const uint32_t col =
           (chance >= 90) ? kColOk : (chance >= 50 ? kColWarn : kColBad);
       ImGui::SameLine();
-      ImGui::TextColored(V4(col), "· Chances : %d %%", chance);
+      ImGui::TextColored(V4(col), i18n::Tr("· Chances : %d %%"), chance);
       ImGui::SameLine();
       HelpMarker(
           i18n::Tr("Probabilité EXACTE de cette tentative, pas une estimation.\n"

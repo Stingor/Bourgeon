@@ -491,7 +491,7 @@ void BankWindow::OnRenderUI() {
   // Ni poignée de redimensionnement ni bouton « réduire » : la fenêtre n'a qu'une
   // taille utile, et un repli n'apporterait rien sur trois lignes de contenu.
   const bool begun = ro::BeginRoWindow(
-      "Banque###bourgeon_bank", &show_panel_,
+      i18n::Tr("Banque###bourgeon_bank"), &show_panel_,
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
   // X du viewer -> ferme la banque native (les deux fenêtres partent ensemble).
   if (!show_panel_) { CloseSession(); show_panel_ = true; }

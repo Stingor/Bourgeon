@@ -2599,7 +2599,7 @@ void ChatWindow::DrawDockedWindow() {
       // seulement eux : le libellé de la case, lui, est sur le fond sombre.
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
       ImGui::SetNextItemWidth(180.0f);
-      ImGui::InputTextWithHint("##chat_search", "Rechercher…", search_,
+      ImGui::InputTextWithHint("##chat_search", i18n::Tr("Rechercher…"), search_,
                                sizeof(search_));
       ImGui::SameLine();
       if (ro::RoSmallButton(i18n::Tr("Effacer"))) search_[0] = '\0';
@@ -2684,7 +2684,7 @@ void ChatWindow::DrawGroupWindow(uint32_t group) {
   // fondé la fenêtre peut la quitter ou se fermer, et elle perdrait alors position
   // et taille si elle portait son nom.
   char window_id[192];
-  std::snprintf(window_id, sizeof(window_id), "%s###bourgeon_chat_grp_%u",
+  std::snprintf(window_id, sizeof(window_id), i18n::Tr("%s###bourgeon_chat_grp_%u"),
                 channel.whisper_with.empty() ? channel.name.c_str()
                                              : channel.whisper_with.c_str(),
                 group);
@@ -3843,7 +3843,7 @@ void ChatWindow::DrawInputRow() {
   // referme si le texte est vide — que le pseudo soit rempli ou non. Sans
   // `EnterReturnsTrue`, la touche se perdait et la barre restait ouverte.
   const bool whisper_submitted = ImGui::InputTextWithHint(
-      "##chat_whisper", "Pseudo", whisper_, sizeof(whisper_),
+      "##chat_whisper", i18n::Tr("Pseudo"), whisper_, sizeof(whisper_),
       ImGuiInputTextFlags_EnterReturnsTrue);
   // Le focus vit sur DEUX champs, et le battle mode ne doit se refermer que
   // lorsqu'il a quitté les deux (cf. la fin de cette fonction).
@@ -4349,7 +4349,7 @@ void ChatWindow::CreateChannel() {
   // le nom — mais en proposer un d'office serait juste désagréable.
   for (int n = 2; n < 100; ++n) {
     char name[32];
-    std::snprintf(name, sizeof(name), "NewTab_%d", n);
+    std::snprintf(name, sizeof(name), i18n::Tr("NewTab_%d"), n);
     bool taken = false;
     for (const Channel& other : channels_)
       if (other.name == name) taken = true;
@@ -4679,7 +4679,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   // « suit les réglages généraux » ou « réglages propres », pour qu'on sache avant
   // d'ouvrir si cet onglet a été personnalisé.
   char style_label[80];
-  std::snprintf(style_label, sizeof(style_label), "Apparence  (%s)###chatstyle_menu",
+  std::snprintf(style_label, sizeof(style_label), i18n::Tr("Apparence  (%s)###chatstyle_menu"),
                 channel->style_own ? i18n::Tr("propre à cet onglet") : i18n::Tr("générale"));
   if (ImGui::BeginMenu(style_label)) {
     // Menu contextuel = place comptée. Le style compact resserre les hauteurs, et
@@ -4727,7 +4727,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   for (int i = 0; i < kTypeCount; ++i)
     if (channel->filter[i] != 0) ++active_filters;
   char menu_label[64];
-  std::snprintf(menu_label, sizeof(menu_label), "Filtres du log  (%d/%d)###chatflt_menu",
+  std::snprintf(menu_label, sizeof(menu_label), i18n::Tr("Filtres du log  (%d/%d)###chatflt_menu"),
                 active_filters, kTypeCount);
   if (ImGui::BeginMenu(menu_label)) {
     // Vingt-cinq cases : c'est ici que le style compact rend le plus.
@@ -4758,10 +4758,10 @@ void ChatWindow::DrawLogOptionsPopup() {
       // le diagnostic ne doit pas réinitialiser l'état des cases.
       char label[96];
       if (diagnostic_)
-        std::snprintf(label, sizeof(label), "t%02d  %s###chatflt%d", i,
+        std::snprintf(label, sizeof(label), i18n::Tr("t%02d  %s###chatflt%d"), i,
                       chatwnd::TypeLabel(i), i);
       else
-        std::snprintf(label, sizeof(label), "%s###chatflt%d", chatwnd::TypeLabel(i), i);
+        std::snprintf(label, sizeof(label), i18n::Tr("%s###chatflt%d"), chatwnd::TypeLabel(i), i);
       if (ro::RoCheckbox(label, &on)) {
         channel->filter[i] = on ? 1 : 0;
         layout_dirty_      = true;
@@ -5384,7 +5384,7 @@ bool ChatWindow::DrawSettings() {
       ImGui::TextDisabled(i18n::Tr("  Vos sites autorisés :"));
       for (const std::string& h : hosts) {
         char rm[96];
-        std::snprintf(rm, sizeof(rm), "Retirer###chatwnd_rmhost_%s", h.c_str());
+        std::snprintf(rm, sizeof(rm), i18n::Tr("Retirer###chatwnd_rmhost_%s"), h.c_str());
         ImGui::Bullet();
         ImGui::TextUnformatted(h.c_str());
         ImGui::SameLine();
@@ -5400,7 +5400,7 @@ bool ChatWindow::DrawSettings() {
   // Famille de police du log. Les familles sont bakées au démarrage : le choix
   // s'applique donc immédiatement, sans redémarrage.
   ImGui::SetNextItemWidth(160.0f);
-  if (ro::RoBeginCombo("Police###chatwnd_family",
+  if (ro::RoBeginCombo(i18n::Tr("Police###chatwnd_family"),
                        ro::ChatFamilyLabel(font_family_))) {
     for (int f = 0; f < ro::ChatFamilyCount(); ++f) {
       // On n'offre que ce qui a VRAIMENT été chargé : proposer une famille

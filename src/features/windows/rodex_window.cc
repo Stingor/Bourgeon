@@ -838,7 +838,7 @@ std::string ExpiryLabel(int64_t expire) {
   if (expire <= 0) return std::string();
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const int64_t left = expire - now;
-  if (left <= 0) return std::string("expir\xC3\xA9");  // « expiré »
+  if (left <= 0) return std::string(i18n::Tr("expiré"));
   const int64_t days = left / 86400;
   if (days >= 1) return "J-" + std::to_string(days);
   const int64_t hours = left / 3600;
@@ -1548,10 +1548,10 @@ void RodexWindow::DrawMailbox() {
 
   char title[96];
   if (unread_ > 0)
-    std::snprintf(title, sizeof(title), "Courrier (%d non lu%s)###bourgeon_rodex",
+    std::snprintf(title, sizeof(title), i18n::Tr("Courrier (%d non lu%s)###bourgeon_rodex"),
                   unread_, unread_ > 1 ? "s" : "");
   else
-    std::snprintf(title, sizeof(title), "Courrier###bourgeon_rodex");
+    std::snprintf(title, sizeof(title), i18n::Tr("Courrier###bourgeon_rodex"));
 
   // BeginRoWindow inscrit lui-même la fenêtre dans la pile Échap (imgui_escape.h) :
   // pas de CloseWindowOnEscape ici, ce serait un doublon dans la pile.
@@ -1630,7 +1630,7 @@ void RodexWindow::DrawMailList() {
       // ### : le compteur change à chaque courrier reçu, l'identité de l'onglet
       // ne doit pas changer avec lui (sinon ImGui perd l'onglet sélectionné).
       char label[64];
-      std::snprintf(label, sizeof(label), "%s (%d)###rodex_tab%d", i18n::Tr(kTabs[tab]),
+      std::snprintf(label, sizeof(label), i18n::Tr("%s (%d)###rodex_tab%d"), i18n::Tr(kTabs[tab]),
                     counts[tab], tab);
       if (ImGui::BeginTabItem(label)) {
         if (tab_ != tab) {

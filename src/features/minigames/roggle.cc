@@ -355,7 +355,7 @@ void Roggle::OnRenderUI() {
     ImGui::Text(i18n::Tr("Score : %d"), g.score);
     ImGui::SameLine(0, 22); ImGui::Text(i18n::Tr("Billes : %d"), g.balls_left);
     ImGui::SameLine(0, 22);
-    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.12f, 1.0f), "Oranges : %d", g.orange_left);
+    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.12f, 1.0f), i18n::Tr("Oranges : %d"), g.orange_left);
     ImGui::SameLine(0, 22);
     if (ImGui::SmallButton(i18n::Tr("Nouvelle partie"))) NewGame();
 

@@ -2304,7 +2304,7 @@ bool BasicInfo::DrawSettings() {
 
   for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     char lbl[32];
-    std::snprintf(lbl, sizeof(lbl), "Couleur %s", BasicInfo::kBarLabels[i]);
+    std::snprintf(lbl, sizeof(lbl), i18n::Tr("Couleur %s"), BasicInfo::kBarLabels[i]);
     changed |= ColorEdit4WithAlphaBar(lbl, bars_[i].fill);
   }
   changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), bg_color_);

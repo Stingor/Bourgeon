@@ -560,7 +560,7 @@ void CartViewer::OnRenderUI() {
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
   ro::SetNextWindowTitleBullet(i18n::Tr("Options du cart"));
   const bool begun = ro::BeginRoWindow(
-      "Cart###bourgeon_cart", &show_panel_,
+      i18n::Tr("Cart###bourgeon_cart"), &show_panel_,
       lock_size_ ? ImGuiWindowFlags_NoResize : 0);
   if (ro::TitleBulletClicked())
     if (auto* mu = Bourgeon::Instance().moonlight_ui())

@@ -84,7 +84,7 @@ BugReport::Context BugReport::ItemContext(uint32_t item_id,
   Context c;
   c.category = kItem;
   char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), "Objet : %s (#%u)",
+  std::snprintf(lbl, sizeof(lbl), i18n::Tr("Objet : %s (#%u)"),
                 name.empty() ? "?" : name.c_str(), item_id);
   c.label = lbl;
   char js[256];
@@ -124,7 +124,7 @@ BugReport::Context BugReport::NpcContext(uint32_t gid,
   Context c;
   c.category = kNpc;
   char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), "PNJ : %s (GID %u)",
+  std::snprintf(lbl, sizeof(lbl), i18n::Tr("PNJ : %s (GID %u)"),
                 name.empty() ? "?" : name.c_str(), gid);
   c.label = lbl;
   char js[256];

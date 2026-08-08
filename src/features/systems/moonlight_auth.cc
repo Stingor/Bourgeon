@@ -1093,7 +1093,7 @@ void MoonlightAuth::DrawPickAccount() {
     char line[192];
     // Un compte en autotrade est aussi « en ligne » : on n'affiche que le badge
     // le plus précis des deux.
-    std::snprintf(line, sizeof(line), "%s  (%d perso%s)%s%s%s%s", a.label.c_str(),
+    std::snprintf(line, sizeof(line), i18n::Tr("%s  (%d perso%s)%s%s%s%s"), a.label.c_str(),
                   a.char_count, a.char_count > 1 ? "s" : "",
                   a.banned ? "  [banni]" : "",
                   a.autotrade ? "  [autotrade]" : (a.online ? i18n::Tr("  [en ligne]") : ""),

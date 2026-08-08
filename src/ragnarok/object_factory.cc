@@ -54,6 +54,7 @@ UIWindowMgr::Pointer ObjectFactory::CreateUIWindowMgr(
   try {
     return std::make_unique<UIWindowMgr>(uiwindowmgr_configuration);
   } catch (std::exception& ex) {
+    // Message de LOG : il s adresse au developpeur, jamais au joueur.
     LogError(std::string("UIWindowMgr configuration is invalid") + ex.what());
     return nullptr;
   }

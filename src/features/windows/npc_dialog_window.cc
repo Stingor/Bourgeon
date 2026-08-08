@@ -790,7 +790,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   bool enter_from_search = false;
   if (filterable) {
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##menufilter", "Rechercher...", menu_filter_,
+    if (ImGui::InputTextWithHint("##menufilter", i18n::Tr("Rechercher..."), menu_filter_,
                                  sizeof(menu_filter_),
                                  ImGuiInputTextFlags_EnterReturnsTrue))
       enter_from_search = true;  // Entrée dans la recherche = valide le choix focus
@@ -1018,8 +1018,8 @@ void NpcDialogWindow::OnRenderUI() {
   char title[96];
   auto nit = npc_names_.find(gid_);
   const std::string name = AnsiToUtf8(
-      (nit != npc_names_.end() && !nit->second.empty()) ? nit->second : std::string("PNJ"));
-  std::snprintf(title, sizeof(title), "%s###bourgeon_npc_dialog", name.c_str());
+      (nit != npc_names_.end() && !nit->second.empty()) ? nit->second : std::string(i18n::Tr("PNJ")));
+  std::snprintf(title, sizeof(title), i18n::Tr("%s###bourgeon_npc_dialog"), name.c_str());
 
   // Skin « fenêtre de description » (barre claire skill_upbar + cadre sysbox, fond
   // crème) — même habillage que les panneaux item/skill. Échap géré par la pile RO

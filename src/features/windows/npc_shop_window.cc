@@ -822,7 +822,7 @@ void NpcShopWindow::OnRenderUI() {
   // Titre = nom du NPC (observé via 0x0adf) si connu, sinon "Shop".
   char title[64];
   auto nit = npc_names_.find(npc_id_);
-  std::snprintf(title, sizeof(title), "%s###bourgeon_shop",
+  std::snprintf(title, sizeof(title), i18n::Tr("%s###bourgeon_shop"),
                 (nit != npc_names_.end() && !nit->second.empty())
                     ? nit->second.c_str()
                     : "Shop");
@@ -863,7 +863,7 @@ void NpcShopWindow::OnRenderUI() {
   ImGui::TextColored(kBlack, i18n::Tr("Zeny: %uz"), zeny);
   if (last_result_ == 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "  %s OK",
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), i18n::Tr("  %s OK"),
                        last_result_sell_ ? "Vente" : "Achat");
   } else if (last_result_ > 0) {
     ImGui::SameLine();
@@ -959,7 +959,7 @@ void NpcShopWindow::OnRenderUI() {
   static ImGuiTextFilter filter;
   ImGui::SetNextItemWidth(-1.0f);
   // Placeholder grise "Filtrer..." quand le champ est vide (pilote InputBuf/Build).
-  if (ImGui::InputTextWithHint("##shop_filter", "Filtrer...", filter.InputBuf,
+  if (ImGui::InputTextWithHint("##shop_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
   ImGui::TextDisabled(i18n::Tr("Clic = panier   -   Ctrl+clic = achat/vente immédiat"));

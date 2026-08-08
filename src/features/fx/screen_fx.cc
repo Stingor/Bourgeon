@@ -140,10 +140,10 @@ void ScreenFx::DrawSettings() {
       }
     };
     D3D9PostFx neutral;  // all-default
-    preset("Neutre", neutral);
+    preset(i18n::Tr("Neutre"), neutral);
     SameLine();
     { D3D9PostFx p; p.brightness=-0.06f; p.contrast=1.08f; p.saturation=0.85f;
-      p.temperature=-0.25f; p.vignette=0.35f; preset("Nuit", p); }
+      p.temperature=-0.25f; p.vignette=0.35f; preset(i18n::Tr("Nuit"), p); }
     SameLine();
     { D3D9PostFx p; p.contrast=1.15f; p.saturation=1.12f; p.vignette=0.30f;
       p.sharpen=0.30f; p.aberration=0.20f; p.fxaa=true; preset(i18n::Tr("Cinéma"), p); }
@@ -151,13 +151,13 @@ void ScreenFx::DrawSettings() {
     { D3D9PostFx p; p.contrast=1.10f; p.saturation=1.20f; p.grain=0.35f;
       p.vignette=0.45f; preset(i18n::Tr("Rétro"), p); }
     SameLine();
-    { D3D9PostFx p; p.filter=1; preset("N&B", p); }
+    { D3D9PostFx p; p.filter=1; preset(i18n::Tr("N&B"), p); }
 
     SeparatorText(i18n::Tr("Couleur"));
     slider(i18n::Tr("Luminosité"),  &fx_.brightness, -0.5f, 0.5f);
-    slider("Contraste",   &fx_.contrast,    0.5f, 2.0f);
-    slider("Gamma",       &fx_.gamma,       0.5f, 2.0f);
-    slider("Saturation",  &fx_.saturation,  0.0f, 2.0f);
+    slider(i18n::Tr("Contraste"),   &fx_.contrast,    0.5f, 2.0f);
+    slider(i18n::Tr("Gamma"),       &fx_.gamma,       0.5f, 2.0f);
+    slider(i18n::Tr("Saturation"),  &fx_.saturation,  0.0f, 2.0f);
     slider(i18n::Tr("Température"),  &fx_.temperature,-1.0f, 1.0f);
     // 🔴 Libellés NUS : `ro::RoCombo` traduit ses items lui-même, à la lecture.
     // Les envelopper ici les traduirait DEUX fois — l'anglais rendu par le
@@ -172,9 +172,9 @@ void ScreenFx::DrawSettings() {
     }
 
     SeparatorText(i18n::Tr("Effets"));
-    slider("Vignette",      &fx_.vignette,   0.0f, 1.0f);
-    slider("Grain",         &fx_.grain,      0.0f, 1.0f);
-    slider("Aberration",    &fx_.aberration, 0.0f, 1.0f);
+    slider(i18n::Tr("Vignette"),      &fx_.vignette,   0.0f, 1.0f);
+    slider(i18n::Tr("Grain"),         &fx_.grain,      0.0f, 1.0f);
+    slider(i18n::Tr("Aberration"),    &fx_.aberration, 0.0f, 1.0f);
     slider(i18n::Tr("Netteté"),       &fx_.sharpen,    0.0f, 1.0f);
     if (ro::RoCheckbox(i18n::Tr("FXAA (anti-crénelage)"), &fx_.fxaa)) { apply = true; save = true; }
     if (fx_.fxaa) {

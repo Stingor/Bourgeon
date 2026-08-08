@@ -723,13 +723,13 @@ void EntityContextMenu::BuildItems() {
         add(i18n::Tr("Déclarer la guilde ennemie"), kCodeGuildFoe);
         if (guild_target_issue) disable_last(guild_target_issue);
       }
-      add("Chuchoter", kCodeWhisper, Local::kNone, true);
+      add(i18n::Tr("Chuchoter"), kCodeWhisper, Local::kNone, true);
       add(i18n::Tr("Ajouter en ami"), kCodeAddFriend);
       if (target_is_friend_) disable_last(i18n::Tr("Déjà dans votre liste d'amis."));
       add(i18n::Tr("Envoyer un courrier"), kCodeSendMail);
       // Même condition que le natif : le dispatcher, lui, ne la rejoue pas, et
       // la demande partirait au serveur pour se faire refuser.
-      if (AdoptionEligible(target_aid_)) add("Adopter", kCodeAdopt);
+      if (AdoptionEligible(target_aid_)) add(i18n::Tr("Adopter"), kCodeAdopt);
       // UNE bascule, pas deux entrées : le blocage est un ÉTAT, et on sait le
       // lire (la liste d'ignorés du client). En proposer deux, c'était en offrir
       // une qui ne fait jamais rien.
@@ -750,26 +750,26 @@ void EntityContextMenu::BuildItems() {
       add(i18n::Tr("Copier mon nom"), 0, Local::kCopyName);
       break;
     case Kind::kMonster:
-      add("Attaquer", 0, Local::kAttack);
+      add(i18n::Tr("Attaquer"), 0, Local::kAttack);
       add(i18n::Tr("Fiche du monstre"), 0, Local::kMonsterInfo, true);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
     case Kind::kNpc:
       // Pas d'« Interagir » sur un PORTAIL : le natif sort avant toute action
       // dès que le job vaut 45 (docs §7), et un warp n'a pas de dialogue.
-      if (target_job_ != kJobPortal) add("Interagir", 0, Local::kTalkToNpc);
+      if (target_job_ != kJobPortal) add(i18n::Tr("Interagir"), 0, Local::kTalkToNpc);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);
       break;
     case Kind::kPet:
       add(i18n::Tr("Statut du pet"), kCodePetStatus);
-      add("Nourrir", kCodePetFeed);
-      add("Spectacle", kCodePetPerform);
+      add(i18n::Tr("Nourrir"), kCodePetFeed);
+      add(i18n::Tr("Spectacle"), kCodePetPerform);
       add(i18n::Tr("Retirer l'accessoire"), kCodePetUnequip);
       add(i18n::Tr("Remettre dans l'œuf"), kCodePetToEgg, Local::kNone, true);
       break;
     case Kind::kHomunculus:
       add(i18n::Tr("Statut de l'homoncule"), kCodeHomunStatus);
-      add("Nourrir", kCodeHomunFeed);
+      add(i18n::Tr("Nourrir"), kCodeHomunFeed);
       add(i18n::Tr("En attente"), kCodeHomunStandBy);
       break;
     case Kind::kMercenary:
@@ -816,13 +816,13 @@ void EntityContextMenu::BuildItems() {
     // presse-papier) : même famille que l'AID, même place.
     add_staff(i18n::Tr("Copier le C-Code"), kCodeCopyCCode);
     add_staff(i18n::Tr("Afficher le GID dans le chat"), kCodeShowGid);
-    add_staff("Expulser (kick)", kCodeKick, Local::kNone,
+    add_staff(i18n::Tr("Expulser (kick)"), kCodeKick, Local::kNone,
               i18n::Tr("Le serveur revalide la permission avant d'agir."));
     add_staff(i18n::Tr("Journal des blocages de chat"), kCodeChatBanLog);
     if (client_admin) {
       add_staff(i18n::Tr("Retirer tout l'équipement"), kCodeFullStrip);
       add_staff(i18n::Tr("Point de manière +"), kCodeMannerPlus);
-      add_staff(i18n::Tr("Point de manière −"), kCodeMannerMinus);
+      add_staff(i18n::Tr("Point de manière -"), kCodeMannerMinus);
     }
   }
 }

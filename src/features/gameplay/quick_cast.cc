@@ -511,7 +511,7 @@ void QuickCast::DrawSettings() {
 
   if (ground_enabled_ || target_enabled_) {
     ImGui::SetNextItemWidth(160.0f);
-    if (mui::WheelSliderInt("Cadence (ms)", &repeat_ms_, 50, 1000)) save = true;
+    if (mui::WheelSliderInt(i18n::Tr("Cadence (ms)"), &repeat_ms_, 50, 1000)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SameLine();
     mui::HelpMarker(

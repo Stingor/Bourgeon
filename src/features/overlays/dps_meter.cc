@@ -269,7 +269,7 @@ void DpsMeter::OnRenderUI() {
 
   // Title shows current DPS even when collapsed; ###DPS Meter keeps the window ID stable.
   char title[64];
-  std::snprintf(title, sizeof(title), "DPS Meter | %.0f DPS###DPS Meter", current_dps_);
+  std::snprintf(title, sizeof(title), i18n::Tr("DPS Meter | %.0f DPS###DPS Meter"), current_dps_);
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -310,9 +310,9 @@ void DpsMeter::OnRenderUI() {
   // the contrast that the stock ~0.5 grey TextDisabled lacked).
   const ImVec4 kSub(0.78f, 0.78f, 0.78f, 1.0f);
   TextShadowed(ImVec4(text_color_[0], text_color_[1], text_color_[2],
-                      text_color_[3]), "%.0f DPS", current_dps_);
+                      text_color_[3]), i18n::Tr("%.0f DPS"), current_dps_);
   ImGui::SameLine();
-  TextShadowed(kSub, "  peak %.0f", peak_dps_);
+  TextShadowed(kSub, i18n::Tr("  peak %.0f"), peak_dps_);
 
   // Plot height = available space minus one text line at the bottom.
   const float line_h   = ImGui::GetTextLineHeightWithSpacing();
@@ -342,7 +342,7 @@ void DpsMeter::OnRenderUI() {
   if (in_combat_) {
     const float elapsed = static_cast<float>(now - combat_start_tick_) / 1000.0f;
     const float avg_dps = elapsed > 0.0f ? static_cast<float>(total_damage_) / elapsed : 0.0f;
-    TextShadowed(kSub, "avg %.0f  |  %d dmg  |  %.0fs", avg_dps, total_damage_, elapsed);
+    TextShadowed(kSub, i18n::Tr("avg %.0f  |  %d dmg  |  %.0fs"), avg_dps, total_damage_, elapsed);
   } else {
     TextShadowed(kSub, i18n::Tr("(pas en combat)"));
   }

@@ -972,7 +972,7 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
     dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, chair_y),
                       IM_COL32(40, 44, 58, 120), 4.0f);
     char t[24];
-    std::snprintf(t, sizeof(t), "job %d", v.job);
+    std::snprintf(t, sizeof(t), i18n::Tr("job %d"), v.job);
     const ImVec2 ts = ImGui::CalcTextSize(t);
     dl->AddText(ImVec2(cx - ts.x * 0.5f, y + dh * 0.5f),
                 IM_COL32(150, 160, 190, 170), t);
@@ -2363,7 +2363,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::InputTextWithHint("##cname", i18n::Tr("nom du personnage"), create_name_,
                              sizeof(create_name_));
     ImGui::TextUnformatted(i18n::Tr("Sexe"));
-    if (ro::RadioImage("Femelle", create_sex_ == 0)) create_sex_ = 0;
+    if (ro::RadioImage(i18n::Tr("Femelle"), create_sex_ == 0)) create_sex_ = 0;
     ImGui::SameLine(0.0f, 18.0f);
     if (ro::RadioImage(i18n::Tr("Mâle"), create_sex_ == 1)) create_sex_ = 1;
 
@@ -2636,7 +2636,7 @@ void CharSelect::OnRenderLoginUI() {
       }
       ImGui::Separator();
       ImGui::TextColored(ImVec4(0.36f, 0.38f, 0.42f, 1.0f),
-                         "Molette : tourner — Ctrl+molette : taille");
+                         i18n::Tr("Molette : tourner — Ctrl+molette : taille"));
       // Poser la même pose partout : replacer 25 sièges un par un après un
       // changement de décor est le geste le plus pénible du mode.
       if (ImGui::MenuItem(i18n::Tr("Appliquer cette pose à toutes les places"))) {
@@ -2670,7 +2670,7 @@ void CharSelect::OnRenderLoginUI() {
       // Renommer : activé seulement si un coupon rename est actif (label indique le
       // nb de coupons restants ; grisé sinon).
       char ri[32];
-      std::snprintf(ri, sizeof(ri), "Renommer (%d)", cv.rename_avail);
+      std::snprintf(ri, sizeof(ri), i18n::Tr("Renommer (%d)"), cv.rename_avail);
       if (!(cv.rename_avail > 0)) ImGui::BeginDisabled();
       if (ImGui::MenuItem(ri)) {
         rename_slot_ = ctx_slot_;

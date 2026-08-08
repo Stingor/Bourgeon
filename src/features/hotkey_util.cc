@@ -94,13 +94,13 @@ int CaptureMainVk() {
 
 void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap) {
   if (cap <= 0) return;
-  if (vkey == 0) { std::snprintf(out, cap, "(aucun)"); return; }
+  if (vkey == 0) { std::snprintf(out, cap, i18n::Tr("(aucun)")); return; }
   char mods[24] = {0};
   if (ctrl)  std::strncat(mods, "Ctrl+", sizeof(mods) - std::strlen(mods) - 1);
   if (alt)   std::strncat(mods, "Alt+",  sizeof(mods) - std::strlen(mods) - 1);
   if (shift) std::strncat(mods, "Maj+",  sizeof(mods) - std::strlen(mods) - 1);
   // ImGui nomme la barre d'espace « Space » : le seul libellé qu'on traduit.
-  if (vkey == VK_SPACE) { std::snprintf(out, cap, "%sEspace", mods); return; }
+  if (vkey == VK_SPACE) { std::snprintf(out, cap, i18n::Tr("%sEspace"), mods); return; }
   const char* key_name = ImGui::GetKeyName(VkToImGuiKey(vkey));
   std::snprintf(out, cap, "%s%s", mods, (key_name && key_name[0]) ? key_name : "?");
 }
