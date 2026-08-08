@@ -285,12 +285,23 @@ Tous détruits ensemble par `ActorAiClass_DestroyAttachedUI` `0x00c459e0`.
 | **`+0x264`** | **`UITransBalloonText` — la bulle de chat** | **msg 7** `0x00c4dace` | centrée, au-dessus de la tête ; **expire à `+0x248 + 5000 ms`** |
 | `+0x268` | *(widget de tête)* | — | `(x-70, y-17)` |
 | `+0x26C` | *(widget de tête)* | — | `(x-70, y-34)` |
-| `+0x270` | jauge **temporisée** (barre de progression `sub_8637B0`) | — | `(x-30, y)` ; expire sur `+0x280`, puis **msg 83** à l'acteur |
+| `+0x270` | **barre d'INCANTATION** — classe distincte (0xA4 o, pas 0xB0), barre de progression `sub_8637B0(écoulé, total)` | **msg 82** `0x00c4d955` (retirée par **msg 83** à l'expiration de `+0x280`) | `(x-30, y - échelle×hauteur)` = **au-dessus de la tête** |
 | `+0x274` | *(widget de tête)* | — | `(x-70, y-34)` |
 | **`+0x488`** | **`UIPcGage` — la jauge de vie 60×5 px** | **msg 34** `0x00d3c5de` (détruite par **msg 35** `0x00d3c5a7`) | `(x-30, y + scale(12))` |
 
 Champs annexes de l'acteur : `+0x248` horodatage de la bulle · `+0x288`/`+0x28C`
 largeur/hauteur de la bulle · `+0x280`/`+0x284` fin/début de la jauge temporisée.
+
+**Deux barres, deux classes, deux places — confirmé à l'écran (2026-08-08) :** la
+**vie** est `UIPcGage` à `+0x488`, **sous les pieds** (`y + échelle(12)`) ;
+l'**incantation** est le widget de `+0x270`, **au-dessus de la tête**. La
+géométrie du code le disait déjà, mais l'inverse se plaide bien : ne pas s'y fier
+de mémoire.
+
+⚠ **Ce qui alimente `UIPcGage` (msg 34) reste À TROUVER.** Le candidat évident,
+`ZC_HP_INFO 0x0977` (handler `sub_CF33F0` `0x00cf33f0`), est **écarté** : il
+envoie le **msg 145**, pas le 34. Piste à creuser :
+`Entity_OnAIDPacket_HPUpdate` `0x00c6c838`, déjà nommée dans l'IDB.
 
 > 🔴 **`UIPcGage` n'est pas la bulle.** Classe distincte (`0x0102bca0`, 0xB0 o,
 > ctor `0x00836440`), deux jauges (`+0xA0/+0xA4` haute, `+0xA8/+0xAC` basse,
