@@ -792,7 +792,21 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       const bool game_only_key =
           !char_msg && ((wParam >= VK_F1 && wParam <= VK_F12) ||
                         wParam == VK_INSERT || alt_shortcut);
-      if (!(typing && game_only_key)) {
+      // 🔴 IMPR. ÉCRAN : la capture NATIVE du client, et le SEUL moyen de la
+      // déclencher. Relevé dans `Game_MainWndProc` (0x00DB8100) :
+      //     case WM_KEYUP: if (wParam == 0x2C)
+      //                      UIWindowMgr_OnKeyDown(mgr, 0x2C, lParam, 1);
+      // — c'est un WM_KEY**UP**, Windows n'émettant pas de WM_KEYDOWN pour cette
+      // touche. Notre garde avalait les deux : barre de chat ouverte (ou simple
+      // champ ImGui focalisé), plus une seule capture ne partait, et le joueur
+      // n'avait aucun moyen de deviner pourquoi.
+      // Elle est relâchée quel que soit le MOTIF de la capture, pas seulement en
+      // saisie : aucun de nos écrans (DOOM, char-select) n'a d'usage d'Impr.
+      // écran, et une capture est sans effet de bord sur le jeu. D'où sa place
+      // À CÔTÉ de `game_only_key` et non dedans.
+      // ⚠ `!char_msg` est vital ici : 0x2C, c'est aussi la VIRGULE en WM_CHAR.
+      const bool screenshot_key = !char_msg && wParam == VK_SNAPSHOT;
+      if (!(typing && game_only_key) && !screenshot_key) {
         // 🔴 REMISE DIRECTE, même raison qu'Échap plus haut : quand c'est LA BARRE
         // qui motive l'avalage, le jeu ne verra pas la touche, donc
         // `ProcessPushButton` ne tournera pas et `OnKeyDown` non plus. Entrée
