@@ -198,6 +198,15 @@ constexpr int kCmdBookClose = 0xc9;   // sauve le SIGNET (msg 356) puis ferme
 constexpr int kCmdBookPrev  = 0x162;  // page précédente
 constexpr int kCmdBookNext  = 0x163;  // page suivante
 constexpr int kMsgBookGoto  = 92;     // aller à la page param_3 (0 = signet registre)
+
+// Clavier du panneau livre — armé par EatsBookKey (hook WndProc), consommé par
+// RenderBookWindow. L'explication complète est au-dessus d'EatsBookKey.
+// 🔴 `g_book_kbd_open` est posé par OnTick et NON par le rendu : OnRenderUI ne
+// tourne pas quand le joueur masque l'interface (F11) ni sous la carte du monde,
+// et le drapeau serait alors resté armé — les flèches auraient continué d'être
+// confisquées au jeu alors que plus aucun panneau n'est à l'écran.
+bool g_book_kbd_open  = false;
+int  g_book_page_step = 0;  // -1 / +1
 using TexMgr_t       = void* (__cdecl*)();
 using MakeKey_t      = void* (__cdecl*)(const char*);
 using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
@@ -1618,6 +1627,13 @@ void ItemDescWindow::OnTick() {
     // où le natif la veut masquée).
     else if (!show_book_panel_ && !book_.auto_read) ShowBookWindow(bwnd);
   }
+  // Les flèches ← → n'appartiennent au panneau moderne que tant qu'il tient un
+  // livre (cf. EatsBookKey). Recalculé ICI, dans le tick, qui tourne même quand le
+  // rendu est suspendu — sinon la confiscation survivrait au masquage de
+  // l'interface. Le pas en attente meurt avec lui : une touche pressée juste avant
+  // la fermeture ne doit pas tourner la page du livre SUIVANT.
+  g_book_kbd_open = show_book_panel_ && book_.open;
+  if (!g_book_kbd_open) g_book_page_step = 0;
   // Front montant -> pose la fenêtre reproduite près du curseur (même réglage
   // d'ancrage que les descs).
   if (book_.open && !book_was) {
@@ -3379,6 +3395,52 @@ void ItemDescWindow::RenderSkillWindow() {
   if (!open) SafeCloseWindowId(0x2e);
 }
 
+// ── Les flèches ← → et le livre masqué ───────────────────────────────────────
+//
+// 🔴 Le client DIFFUSE les flèches à toutes ses fenêtres, la nôtre comprise.
+// Chemin établi par RE (client 20250716) :
+//   UIWindowMgr_OnKeyDown 0x00A471E0 -> sub_A449A0, un switch sur le code VIRTUEL
+//   case 37 (VK_LEFT)  -> sub_A38EF0 -> OnMsg(20) « page précédente »
+//   case 39 (VK_RIGHT) -> sub_A4AB70 -> OnMsg(21) « page suivante »
+// Ces deux-là essaient d'abord deux fenêtres privilégiées (mgr+0x3DC, mgr+0x3B0),
+// puis, à défaut, PARCOURENT LA LISTE ENTIÈRE des fenêtres et envoient le message
+// à chacune dont `vt+8` répond vrai — or `vt+8` est le stub `return 1` en dur
+// (0x005A5D90) que toutes les UIWindow partagent. La visibilité n'est JAMAIS
+// consultée : c'est le même trou que pour Entrée/Espace
+// (cf. feedback_hidden_native_window_keyboard), pour d'autres touches.
+//
+// Conséquences, toutes deux signalées en jeu : la fenêtre livre MASQUÉE changeait
+// de page et **se ré-affichait** (le natif la remontre à chaque chargement de
+// page) — d'où le clignotement en arrière-plan, que les boutons « Précédente /
+// Suivante » n'ont pas puisqu'ils la recachent dans la même frame — et la barre de
+// chat native recevait les mêmes messages, donc bougeait son historique.
+//
+// Le remède est celui de la mémoire citée : confisquer la touche AVANT le jeu, et
+// rendre nous-mêmes le service attendu. Le hook WndProc appelle `EatsBookKey`, qui
+// arme ce pas de page ; `RenderBookWindow` le consomme comme un clic sur les
+// boutons — natif recaché dans la foulée, donc sans clignotement.
+//
+// ⚠ Ce test n'est atteint QUE si aucun champ ImGui ne réclame le clavier : le hook
+// traite ce cas plus haut, en chaîne if/else. Une saisie garde donc ses flèches.
+bool ItemDescWindow::EatsBookKey(unsigned msg, unsigned long wparam) {
+  if (!g_book_kbd_open) return false;
+  if (wparam != VK_LEFT && wparam != VK_RIGHT) return false;
+  switch (msg) {
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+      // Les modificateurs ne sont PAS testés, et c'est délibéré : le client
+      // n'en tient pas compte non plus sur ce chemin (contrairement à son case 9,
+      // qui teste Ctrl). Laisser passer Maj+flèche rouvrirait le clignotement
+      // pour cette seule combinaison.
+      g_book_page_step = (wparam == VK_LEFT) ? -1 : 1;
+      return true;
+    case WM_KEYUP:
+    case WM_SYSKEYUP:
+      return true;  // avalé aussi : le relâchement n'a rien à faire au jeu
+  }
+  return false;
+}
+
 // Reproduit la fenêtre LIVRE (UIBookWnd 0x6a) en ImGui. Même principe que la desc :
 // la fenêtre native reste vivante (elle charge book\<id>.txt, wrappe le texte,
 // tient la pagination et le signet) mais son rendu est masqué, et on redessine la
@@ -3483,6 +3545,21 @@ void ItemDescWindow::RenderBookWindow() {
     const float wheel = ImGui::GetIO().MouseWheel;
     if (wheel < 0.0f && be.page < be.pages) page_cmd = kCmdBookNext;
     else if (wheel > 0.0f && be.page > 1)   page_cmd = kCmdBookPrev;
+  }
+
+  // Pas de page armé par une flèche (cf. EatsBookKey plus haut). Consommé ici et
+  // pas dans le hook WndProc : la commande passe par un OnMsg NATIF, qui n'a rien
+  // à faire au milieu du traitement d'un message Windows — et il faut de toute
+  // façon recacher la fenêtre dans la foulée, ce qui est le travail de ce bloc.
+  // Consommé même hors bornes (première/dernière page) : sinon la touche resterait
+  // en attente et sauterait une page au prochain changement.
+  if (g_book_page_step != 0) {
+    const int step = g_book_page_step;
+    g_book_page_step = 0;
+    if (page_cmd == 0 && goto_page == 0) {
+      if (step < 0 && be.page > 1)            page_cmd = kCmdBookPrev;
+      else if (step > 0 && be.page < be.pages) page_cmd = kCmdBookNext;
+    }
   }
 
   if (page_cmd != 0) {

@@ -117,6 +117,19 @@ class ItemDescWindow : public Plugin {
   int& desc_offset_x() { return desc_offset_x_; }
   int& desc_offset_y() { return desc_offset_y_; }
 
+  // Appelé par le hook WndProc (ragnarok_client) : vrai si cette touche pilote le
+  // panneau LIVRE moderne et doit être avalée AVANT le jeu. Ciblé sur ← et →, et
+  // seulement quand un livre est affiché.
+  //
+  // 🔴 Ce n'est pas un confort mais une CORRECTION. Le client diffuse ces deux
+  // touches à toutes ses fenêtres (`sub_A449A0` cases 37/39 -> OnMsg 20/21, envoyé
+  // à chaque fenêtre dont `vt+8` répond vrai — un `return 1` en dur). La fenêtre
+  // livre MASQUÉE les recevait donc : elle changeait de page et se ré-affichait,
+  // d'où un clignotement en arrière-plan, pendant que la barre de chat native
+  // bougeait son historique avec les mêmes messages. Détail complet dans le .cc.
+  // (msg, wparam) = paramètres bruts du WndProc.
+  static bool EatsBookKey(unsigned msg, unsigned long wparam);
+
   // Cache IMMÉDIATEMENT le rendu natif des fenêtres desc (item 0xc + comparaison
   // 0xea) depuis leurs slots manager (appelé depuis le hook OnMsg de MoonlightUi
   // au moment de l'ouverture -> zéro flicker). No-op si le panneau item enrichi

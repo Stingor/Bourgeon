@@ -18,6 +18,7 @@
 #include "features/windows/char_select.h"           // NativeScreenHasKeyboard
 #include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/npc_dialog_window.h"     // EatsKey (touches du dialogue NPC)
+#include "features/windows/item_desc_window.h"      // EatsBookKey (flèches du livre)
 #include "features/windows/weapon_refine_window.h"  // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/chat_window.h"           // WantsEscapeKey (avale VK_ESCAPE)
 #include "features/minigames/doom.h"
@@ -813,6 +814,13 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // Dialogue NPC ImGui : avalage CIBLÉ (Entrée/Espace/Échap, flèches + 1-9 si
       // menu) — le reste du clavier (F1-F9, hotkeys skillbar…) atteint le jeu,
       // comme pendant un dialogue natif.
+      return 0;
+    } else if (ItemDescWindow::EatsBookKey(uMsg, wParam)) {
+      // Livre moderne ouvert : ← et → tournent SA page. Le jeu ne doit pas les
+      // voir — il les diffuse à toutes ses fenêtres, y compris la fenêtre livre
+      // MASQUÉE qui se ré-affichait en changeant de page (clignotement en fond) et
+      // la barre de chat, dont elles remontaient l'historique. Le pas de page est
+      // armé par le prédicat et joué au rendu, hors de ce message.
       return 0;
     }
   }
