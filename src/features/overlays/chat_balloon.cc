@@ -13,6 +13,7 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/systems/image_preview.h"  // imgprev : emotes Discord deja en cache
 #include "features/windows/chat_window.h"
 #include "ui/game_emotes.h"   // ro::emote : les emotes du JEU (emotion.act)
 #include "ui/icon_cache.h"    // ro::ItemIcon : le cache d'icones partage avec le chat
@@ -434,6 +435,33 @@ void ChatBalloon::LayoutRuns(const ChatWindow::Line& line, float wrap,
       }
       x += img_h + 2.0f;
       continue;  // l'image REMPLACE le repli « :nom: »
+    }
+
+    // Emote Discord (relais). 🔴 On appelle `Get` mais JAMAIS `Request` : une
+    // bulle vit cinq secondes, elle n'a pas le temps d'attendre un
+    // téléchargement, et un overlay n'a rien à faire sur le réseau. Déjà en
+    // cache — parce que le chat l'a demandée en affichant la même ligne — on la
+    // dessine ; sinon le fragment retombe sur son « :nom: », qui est déjà dans
+    // `run.text` et sera rendu par le chemin normal plus bas.
+    //
+    // ⚠ Pas de place réservée non plus, contrairement au chat : rien n'arrivera
+    // en cours de route, donc il n'y a pas de réorganisation à éviter.
+    if (!run.emote_url.empty()) {
+      const imgprev::Preview em = imgprev::Get(run.emote_url.c_str());
+      if (em.state == imgprev::Preview::kReady && em.tex != nullptr && em.h > 0) {
+        const float iw = img_h * static_cast<float>(em.w) / static_cast<float>(em.h);
+        if (x > 0.0f && x + iw > wrap) newline();
+        if (img_h > row_h) row_h = img_h;
+        if (dl != nullptr) {
+          const ImVec2 p(origin.x + x, origin.y + y);
+          dl->AddImage(reinterpret_cast<ImTextureID>(em.tex), p,
+                       ImVec2(p.x + iw, p.y + img_h), ImVec2(0, 0), ImVec2(1, 1),
+                       IM_COL32(255, 255, 255, alpha255));
+        }
+        x += iw + 2.0f;
+        continue;
+      }
+      // Pas encore là (ou jamais) : on laisse le « :nom: » se dessiner.
     }
 
     // Icône d'objet : un fragment porteur d'un id mais SANS texte.

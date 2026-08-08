@@ -103,47 +103,44 @@ void EntityNames::DrawNames() {
 
   auto get_entry = reinterpret_cast<GetNameEntryFn>(kCNameDict_GetEntryOrRequest);
 
-  // Parcours de la std::list<Actor*> : node{next@0, prev@4, value@8}. Garde-fou
-  // sur le nombre d'itérations au cas où la liste serait corrompue.
-  int guard = 0;
-  for (void* node = Read<void*>(sentinel, 0);
-       node && node != sentinel && guard < 4096;
-       node = Read<void*>(node, 0), ++guard) {
-    void* actor = Read<void*>(node, kNode_Actor);
-    if (!actor) continue;
+  // 🔴 Le corps est une lambda, et pas le corps d'une boucle, parce qu'il faut
+  // l'appliquer à DEUX sources : la std::list<Actor*>, et le joueur local qui
+  // n'y figure pas.
+  auto draw_one = [&](void* actor) {
+    if (!actor) return;
 
     // Éligible au nameplate (l'acteur est visible/vivant, comme pour le picking).
-    if (Read<uint8_t>(actor, kAct_Nameplate) == 0) continue;
+    if (Read<uint8_t>(actor, kAct_Nameplate) == 0) return;
 
-    if (actor == own_actor && !show_self_) continue;
+    if (actor == own_actor && !show_self_) return;
 
     const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
     const bool is_mob = IsMonsterJob(job);
     const bool is_ply = !is_mob && IsPlayerJob(job);
     const bool is_npc = !is_mob && !is_ply;
-    if (is_mob && !show_monsters_) continue;
-    if (is_ply && !show_players_) continue;
-    if (is_npc && !show_npcs_) continue;
+    if (is_mob && !show_monsters_) return;
+    if (is_ply && !show_players_) return;
+    if (is_npc && !show_npcs_) return;
 
     // Position écran (pieds) déjà projetée par le moteur cette frame.
     const int sx = Read<int32_t>(actor, kAct_ScreenX);
     const int sy = Read<int32_t>(actor, kAct_ScreenY);
     if (sx <= 0 || sy <= 0 || sx >= static_cast<int>(disp_w) ||
         sy >= static_cast<int>(disp_h))
-      continue;
+      return;
 
     // Nom depuis le dictionnaire natif (et demande au serveur si inconnu).
     const unsigned aid = Read<uint32_t>(actor, kAct_Aid);
     void* entry = get_entry(dict, aid);
-    if (!entry) continue;
+    if (!entry) return;
     const unsigned size = Read<uint32_t>(entry, kName_Size);
-    if (size == 0 || size > 63) continue;  // inconnu (requête en file) ou aberrant
+    if (size == 0 || size > 63) return;  // inconnu (requête en file) ou aberrant
     const unsigned cap = Read<uint32_t>(entry, kName_Cap);
     const char* data = (cap < 16)
                            ? reinterpret_cast<const char*>(
                                  reinterpret_cast<uint8_t*>(entry) + kName_Str)
                            : Read<const char*>(entry, kName_Str);
-    if (!data) continue;
+    if (!data) return;
 
     char buf[64];
     std::memcpy(buf, data, size);
@@ -168,7 +165,29 @@ void EntityNames::DrawNames() {
       dl->AddText(font, font_px, ImVec2(px - 1, py - 1), sh, buf);
     }
     dl->AddText(font, font_px, ImVec2(px, py), col, buf);
+  };
+
+  // Parcours de la std::list<Actor*> : node{next@0, prev@4, value@8}. Garde-fou
+  // sur le nombre d'itérations au cas où la liste serait corrompue.
+  int guard = 0;
+  for (void* node = Read<void*>(sentinel, 0);
+       node && node != sentinel && guard < 4096;
+       node = Read<void*>(node, 0), ++guard) {
+    draw_one(Read<void*>(node, kNode_Actor));
   }
+
+  // 🔴 Le joueur local N'EST PAS dans cette liste — vérifié en live le
+  // 2026-08-08 : la sentinelle pointait sur elle-même (liste vide) alors que
+  // l'acteur propre vivait bien à `actorMgr+0x2C`, vtable joueur 0x01094810.
+  // Sans cette ligne, l'option « Ton propre nom » ne pouvait pas fonctionner :
+  // le test `actor == own_actor` du corps n'était jamais atteint pour soi.
+  // Découvert en reprenant les bulles de chat, qui butaient sur le même angle
+  // mort (cf. docs/entity_chat_balloon_re.md §9).
+  //
+  // ⚠ Le garde-fou `+0xa5` s'applique aussi à lui. S'il s'avérait ne jamais être
+  // armé sur le joueur local, c'est LUI qu'il faudrait relâcher ici — pas la
+  // ligne ci-dessous.
+  if (show_self_) draw_one(own_actor);
 }
 
 void EntityNames::DrawSettings() {
