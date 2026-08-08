@@ -48,6 +48,7 @@
 #include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
+#include "features/windows/craft_atlas.h"
 #include "features/overlays/login_parade.h"
 #include "features/minigames/doom.h"
 #include "features/minigames/roggle.h"
@@ -446,6 +447,30 @@ const moonlight_ui::SettingDesc kMakeItemSettings[] = {
     {"makeitem_pos_x", SType::kInt, MLUI_FIELD(make_item_window, pos_x()),
      MLUI_LITERAL(int, INT_MIN)},
     {"makeitem_pos_y", SType::kInt, MLUI_FIELD(make_item_window, pos_y()),
+     MLUI_LITERAL(int, INT_MIN)},
+};
+
+// Atlas des recettes. 🔴 Aucune clé « imgui » ici, et ce n'est pas un oubli :
+// l'Atlas ne remplace RIEN, il ajoute une fenêtre de consultation. Il n'entre
+// donc pas dans le groupe « interface moderne », qui bascule des remplacements.
+const moonlight_ui::SettingDesc kCraftAtlasSettings[] = {
+    // La fenêtre se rouvre où on l'avait laissée : c'est une fenêtre de
+    // consultation qu'on garde ouverte pendant qu'on farme.
+    {"craftatlas_open", SType::kBool, MLUI_FIELD(craft_atlas, open()),
+     MLUI_LITERAL(bool, false)},
+    {"craftatlas_desc_tooltip", SType::kBool, MLUI_FIELD(craft_atlas, desc_tooltip()),
+     MLUI_LITERAL(bool, true)},
+    // Défaut OFF : l'Atlas sert d'abord à préparer ce qu'on n'a PAS encore, et un
+    // filtre par défaut cacherait justement ce qu'on venait chercher.
+    {"craftatlas_only_craftable", SType::kBool,
+     MLUI_FIELD(craft_atlas, only_craftable()), MLUI_LITERAL(bool, false)},
+    // Défaut OFF : les recettes dont aucune classe du serveur n'apprend la
+    // compétence sont des lignes que le serveur refusera toujours.
+    {"craftatlas_show_unavailable", SType::kBool,
+     MLUI_FIELD(craft_atlas, show_unavailable()), MLUI_LITERAL(bool, false)},
+    {"craftatlas_pos_x", SType::kInt, MLUI_FIELD(craft_atlas, pos_x()),
+     MLUI_LITERAL(int, INT_MIN)},
+    {"craftatlas_pos_y", SType::kInt, MLUI_FIELD(craft_atlas, pos_y()),
      MLUI_LITERAL(int, INT_MIN)},
 };
 
@@ -1151,6 +1176,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
+    moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
     moonlight_ui::ReadStorageFavorites(ui);
@@ -1288,6 +1314,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
+  moonlight_ui::WriteSettings(out, kCraftAtlasSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
   moonlight_ui::WriteStorageFavorites(out);

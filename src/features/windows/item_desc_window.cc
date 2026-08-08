@@ -20,9 +20,11 @@
 #pragma comment(lib, "shell32.lib")
 
 #include "bourgeon.h"
+#include "features/craft_data.h"          // étiquette « Craft » : recette, matériau, flèches
 #include "features/link_gesture.h"        // gestes communs d'un lien (monstre)
 #include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
 #include "features/windows/cashshop_window.h"  // disponibilité au vote shop
+#include "features/windows/craft_atlas.h"      // l'étiquette « Craft » y renvoie
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/imgui_escape.h"
@@ -2963,6 +2965,73 @@ void ItemDescWindow::RenderItemWindow() {
         if (ro::RoSmallButton(vs)) shop->OpenWithItem(snap.id);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip(i18n::Tr("Ouvre le vote shop avec cet objet dans le panier."));
+      }
+    }
+
+    // ── Étiquette « Craft » -> l'Atlas des recettes ───────────────────────────
+    //
+    // Même esprit que le bouton du vote shop juste au-dessus : il INFORME autant
+    // qu'il agit. « Cet objet se fabrique » (et par quel métier) fait partie du
+    // renseignement qu'on vient chercher dans une description, et rien dans le
+    // jeu ne le dit — la table de recettes du client ne se lit que par produit
+    // déjà connu, et le serveur n'en montre une liste qu'après un lancement de
+    // compétence. Un joueur qui ramasse un matériau n'a donc AUCUN moyen
+    // d'apprendre qu'il sert à quelque chose.
+    //
+    // 🔴 On n'annonce que le POSITIF, comme le vote shop : pas d'étiquette quand
+    // l'objet n'a rien à voir avec la fabrication. Une mention « non fabricable »
+    // sur les milliers d'objets restants serait du bruit permanent, et surtout
+    // elle serait FAUSSE si le fichier de recettes manque (l'absence d'entrée ne
+    // prouve rien quand la table entière est absente).
+    if (craftdata::Available()) {
+      const craftdata::Recipe* recipe = craftdata::RecipeOf(snap.id);
+      const int used_in = static_cast<int>(craftdata::RecipesUsing(snap.id).size());
+      const bool arrows = craftdata::ArrowFrom(snap.id) != nullptr ||
+                          !craftdata::ArrowsYielding(snap.id).empty();
+      if (recipe || used_in > 0 || arrows) {
+        char lbl[96];
+        // Le libellé porte l'information la plus utile du cas, comme le prix sur
+        // le bouton du vote shop. Priorité à la RECETTE : savoir qu'on peut
+        // fabriquer l'objet, et par quel métier, prime sur le fait qu'il serve
+        // ailleurs.
+        if (recipe)
+          std::snprintf(lbl, sizeof(lbl), i18n::Tr("Craft : %s%s"),
+                        CraftAtlas::SkillLabel(recipe->skill, recipe->lv), selId);
+        else if (used_in > 0)
+          std::snprintf(lbl, sizeof(lbl), i18n::Tr("Craft : %d recettes%s"),
+                        used_in, selId);
+        else
+          std::snprintf(lbl, sizeof(lbl), i18n::Tr("Craft : flèches%s"), selId);
+
+        if (action_row) ImGui::SameLine();
+        if (ro::RoSmallButton(lbl)) {
+          if (auto* atlas = Bourgeon::Instance().craft_atlas())
+            atlas->OpenOnItem(snap.id);
+        }
+        action_row = true;
+        if (ImGui::IsItemHovered()) {
+          // Le tooltip dit les TROIS choses d'un coup — l'objet peut être à la
+          // fois fabricable, matériau, et transformable en flèches.
+          std::string tip;
+          if (recipe) {
+            tip += i18n::Tr("Se fabrique");
+            if (recipe->skill != 0) {
+              tip += " (";
+              tip += CraftAtlas::SkillLabel(recipe->skill, recipe->lv);
+              tip += ")";
+            }
+            tip += ".\n";
+          }
+          if (used_in > 0) {
+            char line[96];
+            std::snprintf(line, sizeof(line),
+                          i18n::Tr("Entre dans %d recettes.\n"), used_in);
+            tip += line;
+          }
+          if (arrows) tip += i18n::Tr("Concerné par la fabrication de flèches.\n");
+          tip += i18n::Tr("\nClique pour l'ouvrir dans l'Atlas des recettes.");
+          ImGui::SetTooltip("%s", tip.c_str());
+        }
       }
     }
 

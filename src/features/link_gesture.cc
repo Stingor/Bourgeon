@@ -3,14 +3,17 @@
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (site, bestiaire, adresses du chat)
 
+#include <cstdarg>  // DimText, relais variadique vers ImGui::TextV
 #include <cstdio>
 #include <cstring>  // _strnicmp (adresse « www.… » sans schéma)
 
 #include "bourgeon.h"
+#include "features/craft_data.h"                    // la recette d'un lien kRecipe
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
 #include "features/systems/image_preview.h"         // aperçu d'une image de chat
 #include "features/windows/cashshop_window.h"       // disponibilité au vote shop
 #include "features/windows/chat_window.h"           // poser un lien, armer une commande
+#include "features/windows/craft_atlas.h"           // cible d'un lien de recette
 #include "features/windows/item_desc_window.h"      // itemdesc::OpenItemDbPage
 #include "features/windows/monster_info_window.h"   // fiche d'un monstre
 #include "imgui.h"
@@ -25,6 +28,23 @@ namespace {
 // est blanc sur blanc. Une seule définition pour les deux surfaces — l'infobulle
 // d'adresse l'avait justement oubliée.
 const ImU32 kDarkText = IM_COL32(24, 22, 20, 255);
+
+// Texte SECONDAIRE de ces mêmes surfaces claires. `ImGui::TextDisabled` est
+// calibré pour un fond sombre : sur le beige d'une infobulle il s'efface presque
+// entièrement. Ce gris est celui de la palette du projet (0.35, 0.35, 0.42).
+const ImU32 kDimText = IM_COL32(89, 89, 107, 255);
+
+// Écrit une ligne secondaire lisible sur fond clair — à préférer partout où le
+// réflexe serait `TextDisabled`.
+void DimText(const char* fmt, ...) IM_FMTARGS(1);
+void DimText(const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  ImGui::PushStyleColor(ImGuiCol_Text, kDimText);
+  ImGui::TextV(fmt, args);
+  ImGui::PopStyleColor();
+  va_end(args);
+}
 
 // Page « bestiaire » du site. Même rôle que `itemdesc::OpenItemDbPage` pour un
 // objet — écrite ICI, une fois, pour que les appelants n'aient pas chacun leur
@@ -150,19 +170,19 @@ void DrawUrlPreviewStatus(const std::string& url,
     // fonctionnalité devient invisible pour qui ne connaît pas la règle.
     const std::string host = imgprev::HostOfUrl(url.c_str());
     ImGui::Separator();
-    ImGui::TextDisabled(i18n::Tr("Aperçu non chargé : %s n'est pas dans vos sites"),
-                        host.empty() ? i18n::Tr("ce site") : host.c_str());
-    ImGui::TextDisabled(i18n::Tr("autorisés. Clic droit pour l'afficher."));
+    DimText(i18n::Tr("Aperçu non chargé : %s n'est pas dans vos sites"),
+            host.empty() ? i18n::Tr("ce site") : host.c_str());
+    DimText(i18n::Tr("autorisés. Clic droit pour l'afficher."));
     return;
   }
   if (p.state == imgprev::Preview::kPending) {
     ImGui::Separator();
-    ImGui::TextDisabled(i18n::Tr("Chargement de l'aperçu..."));
+    DimText(i18n::Tr("Chargement de l'aperçu..."));
   } else if (p.state == imgprev::Preview::kFailed) {
     // Motif volontairement vague : le détail (404, type refusé, trop gros)
     // n'aide en rien celui qui regarde. Le journal, lui, porte la raison exacte.
     ImGui::Separator();
-    ImGui::TextDisabled(i18n::Tr("Aperçu indisponible."));
+    DimText(i18n::Tr("Aperçu indisponible."));
   }
 }
 
@@ -199,6 +219,18 @@ Target FromItemId(uint32_t item_id, const char* label_utf8) {
   itemcell::ChatLink link;
   link.id = item_id;
   return FromItem(link, label_utf8);
+}
+
+Target FromRecipe(uint32_t item_id, const char* label_utf8) {
+  Target t;
+  // 🔴 Pas de recette, pas de lien. Un « [Recette: X] » cliquable qui ouvrirait
+  // une fiche vide serait pire que rien : le lecteur irait vérifier par lui-même
+  // ce que l'expéditeur croyait lui apprendre.
+  if (item_id == 0 || craftdata::RecipeOf(item_id) == nullptr) return t;
+  t.kind    = Target::kRecipe;
+  t.item.id = item_id;
+  if (label_utf8 != nullptr) t.label = label_utf8;
+  return t;
 }
 
 Target FromMob(uint32_t mob_id, int rank, const char* name_utf8) {
@@ -242,6 +274,14 @@ void OpenDescription(const Target& target) {
       break;
     }
     case Target::kMob: OpenMobSheet(target.mob_id); break;
+    case Target::kRecipe: {
+      // L'équivalent de « consulter » pour une recette : l'Atlas, ouvert sur la
+      // fiche du produit. Rien de natif ici, donc rien à différer — l'Atlas est
+      // une fenêtre ImGui, elle se contente de changer d'objet affiché.
+      if (auto* atlas = Bourgeon::Instance().craft_atlas())
+        atlas->OpenOnItem(target.item.id);
+      break;
+    }
     case Target::kUrl: OpenUrl(target.url.c_str()); break;
     case Target::kPlayer: {
       // Un joueur n'a pas de « description » à ouvrir. Le geste GAUCHE lui rend
@@ -317,6 +357,54 @@ void HoverPreview(const Target& target) {
       sheet->DrawHoverPreview(target.mob_id);
     return;
   }
+  if (target.kind == Target::kRecipe) {
+    const craftdata::Recipe* r = craftdata::RecipeOf(target.item.id);
+    if (r == nullptr) return;  // la cible s'en assure, mais le fichier peut manquer
+    // ── L'encadré : le métier, puis les composants ────────────────────────────
+    // Volontairement SUCCINCT — c'est un aperçu, pas la fiche. Ce qu'on veut
+    // savoir en survolant un lien posté par quelqu'un d'autre, c'est « est-ce que
+    // je peux le faire, et avec quoi » ; le détail (chances, index inverse) est à
+    // un clic, dans l'Atlas.
+    // 🔴 Texte SOMBRE : le fond d'une infobulle est clair, alors que la chatbox
+    // d'où l'on survole pousse un texte clair pour son propre fond sombre. Sans
+    // ça, l'encadré est blanc sur blanc — même oubli que l'infobulle d'adresse.
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+
+    const char* product = itemcell::NameById(target.item.id);
+    ImGui::TextUnformatted((product && product[0]) ? product : "?");
+    ImGui::Separator();
+
+    if (r->skill == 0) {
+      DimText("%s", CraftAtlas::SkillLabel(r->skill, r->lv));
+    } else {
+      DimText(i18n::Tr("%s  (niveau %d)"),
+              CraftAtlas::SkillLabel(r->skill, r->lv), r->skill_lv);
+    }
+
+    if (r->mats.empty()) {
+      DimText(i18n::Tr("(aucun matériau connu)"));
+    } else {
+      ImGui::Spacing();
+      for (const craftdata::Ingredient& ing : r->mats) {
+        const char* mat = itemcell::NameById(ing.id);
+        // Un guide n'est PAS consommé : afficher « x0 » serait absurde, et « x1 »
+        // laisserait croire qu'on le perd.
+        if (ing.not_consumed)
+          ImGui::BulletText(i18n::Tr("%s  (requis, non consommé)"),
+                            (mat && mat[0]) ? mat : "?");
+        else
+          ImGui::BulletText("%d x %s", ing.qty, (mat && mat[0]) ? mat : "?");
+      }
+    }
+    ImGui::Spacing();
+    DimText(i18n::Tr("Clic : ouvrir dans l'Atlas des recettes"));
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor();
+    return;
+  }
   if (target.kind == Target::kUrl) {
     // La forme de l'infobulle se décide AVANT de l'ouvrir, d'où l'état relevé ici.
     const imgprev::Preview p = UrlPreviewState(target.url);
@@ -352,7 +440,7 @@ void HoverPreview(const Target& target) {
 void DrawMenu(const char* popup_id, const Target& target) {
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   if (ImGui::BeginPopup(popup_id)) {
-    if (!target.label.empty()) ImGui::TextDisabled("%s", target.label.c_str());
+    if (!target.label.empty()) DimText("%s", target.label.c_str());
     ImGui::Separator();
     char cmd[64];
     switch (target.kind) {
@@ -595,7 +683,7 @@ void DrawHostConfirm() {
   ImGui::TextUnformatted(i18n::Tr("Ce serveur pourra alors voir que vous etes"));
   ImGui::TextUnformatted(i18n::Tr("en ligne, et depuis quelle adresse."));
   ImGui::Spacing();
-  ImGui::TextDisabled(i18n::Tr("Reglages du chat pour revenir dessus."));
+  DimText(i18n::Tr("Reglages du chat pour revenir dessus."));
   ImGui::Spacing();
 
   bool close = false;

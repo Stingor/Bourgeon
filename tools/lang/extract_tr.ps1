@@ -17,8 +17,6 @@
 
 param([Parameter(Mandatory=$true)][string]$Path)
 
-$text = Remove-CharLiterals ([System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8))
-
 # Les litteraux ADJACENTS sont concatenes par le compilateur : un libelle coupe
 # sur plusieurs lignes en C++ ne fait qu'UNE cle. Pour TrId, la repetition
 # s'arrete a la virgule -> l'identifiant stable n'est pas capture.
@@ -31,6 +29,12 @@ $rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
 function Remove-CharLiterals([string]$src) {
   return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
 }
+
+# 🔴 APRES la fonction et sa regex, pas avant. PowerShell execute le script de
+# haut en bas : appelee plus haut, Remove-CharLiterals n'existait pas encore, et
+# le script rendait « 0 cles » en signalant une commande inconnue -- une sortie
+# vide qui se lit comme « ce fichier n'a rien a traduire ».
+$text = Remove-CharLiterals ([System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8))
 
 $keys = New-Object System.Collections.Generic.List[string]
 foreach ($m in $rx.Matches($text)) {

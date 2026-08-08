@@ -53,6 +53,7 @@
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
 #include "features/windows/vending_window.h"
+#include "features/windows/craft_atlas.h"
 #include "features/windows/make_item_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
@@ -100,6 +101,7 @@ NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
 VendingWindow* Bourgeon::vending_window() { return vending_window_; }
 WeaponRefineWindow* Bourgeon::weapon_refine_window() { return weapon_refine_window_; }
 MakeItemWindow* Bourgeon::make_item_window() { return make_item_window_; }
+CraftAtlas* Bourgeon::craft_atlas() { return craft_atlas_; }
 TradeWindow* Bourgeon::trade_window() { return trade_window_; }
 ChatWindow* Bourgeon::chat_window() { return chat_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
@@ -690,6 +692,13 @@ void Bourgeon::LoadPlugins() {
     auto make_item_window = std::make_unique<MakeItemWindow>();
     make_item_window_ = make_item_window.get();
     plugins_.emplace_back(std::move(make_item_window));
+
+    // Atlas des recettes : la vue d'ensemble que la fenêtre ci-dessus ne peut pas
+    // donner — elle ne montre que ce que le serveur vient de proposer, après un
+    // lancement de compétence. L'Atlas, lui, se lit sans rien lancer.
+    auto craft_atlas = std::make_unique<CraftAtlas>();
+    craft_atlas_ = craft_atlas.get();
+    plugins_.emplace_back(std::move(craft_atlas));
   }
   {
     auto trade_window = std::make_unique<TradeWindow>();

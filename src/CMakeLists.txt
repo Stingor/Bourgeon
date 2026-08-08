@@ -91,6 +91,12 @@ set(BOURGEON_FILES
 	"features/windows/weapon_refine_window.h"
 	"features/windows/make_item_window.cc"
 	"features/windows/make_item_window.h"
+	# Atlas des recettes : le PARCOURS de ce qui se fabrique (par métier, par
+	# produit, par matériau, flèches). Ni le client ni le serveur n'offrent cette
+	# vue — la table native est une lookup par clé, et le serveur ne liste
+	# qu'après un lancement de compétence.
+	"features/windows/craft_atlas.cc"
+	"features/windows/craft_atlas.h"
 
 	# patches/
 	"features/patches/berserk_chat_unlock.cc"

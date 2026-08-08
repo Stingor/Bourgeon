@@ -31,6 +31,7 @@ class NpcShopWindow;
 class VendingWindow;
 class WeaponRefineWindow;
 class MakeItemWindow;
+class CraftAtlas;
 class TradeWindow;
 class ChatWindow;
 class RodexWindow;
@@ -84,6 +85,7 @@ class Bourgeon {
   VendingWindow* vending_window();
   WeaponRefineWindow* weapon_refine_window();
   MakeItemWindow* make_item_window();
+  CraftAtlas* craft_atlas();
   TradeWindow* trade_window();
   ChatWindow* chat_window();
   RodexWindow* rodex_window();
@@ -251,6 +253,7 @@ class Bourgeon {
   VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_
   WeaponRefineWindow* weapon_refine_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   MakeItemWindow* make_item_window_ = nullptr;  // non-owning, lifetime tied to plugins_
+  CraftAtlas* craft_atlas_ = nullptr;            // non-owning, lifetime tied to plugins_
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   ChatWindow* chat_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_

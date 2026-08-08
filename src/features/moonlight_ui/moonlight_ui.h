@@ -129,7 +129,7 @@ class MoonlightUi : public Plugin {
     // « Interface moderne » comme les autres — il ne restait qu'un paragraphe
     // descriptif, qui n'a rien à faire dans un panneau de réglages.)
     kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceRefine,
-    kIfaceMakeItem, kIfaceMonsterInfo, kIfaceContextMenu,
+    kIfaceMakeItem, kIfaceMonsterInfo, kIfaceContextMenu, kIfaceCraftAtlas,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

@@ -21,6 +21,7 @@
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
 #include "features/windows/bank_window.h"
+#include "features/windows/craft_atlas.h"
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
@@ -208,6 +209,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceMakeItem,    "Fabrication"},
         {kIfaceMonsterInfo, "Fiche de monstre"},
         {kIfaceContextMenu, "Menu contextuel"},
+        {kIfaceCraftAtlas,  "Atlas des recettes"},
     };
     // Message de static_assert : un LITTÉRAL. Il est lu à la compilation et
     // s'adresse au développeur — jamais i18n::Tr.
@@ -527,6 +529,18 @@ void MoonlightUi::DrawInterfacePanel() {
               "monstres et les NPC."));
           ImGui::Separator();
           if (ecm->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        }
+      }
+
+      // ── Atlas des recettes (CraftAtlas) ────────────────────────────────────
+      // 🔴 PAS dans `needs_modern` : l'Atlas n'AGIT sur rien — il n'envoie aucun
+      // paquet et ne remplace aucune fenêtre native, il lit un fichier. Le gate
+      // « interface moderne » porte sur ce qui agit, pas sur ce qui affiche.
+      if (iface_nav_ == kIfaceCraftAtlas) {
+        if (auto* atlas = Bourgeon::Instance().craft_atlas()) {
+          if (atlas->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }

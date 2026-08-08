@@ -17,6 +17,7 @@
 
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
+#include "features/craft_data.h" // recette d'un lien <CRAF>
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
 #include "features/staff_gate.h" // IsStaff (export des emotes)
 #include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
@@ -52,6 +53,21 @@ constexpr uintptr_t kChatActionAddr = 0x00a4ad20;
 // Pointeur direct vers la UINewChatWnd vivante (nul = pas de fenêtre native).
 // C'est lui qui arbitre laquelle des deux sources d'ingestion est en service.
 constexpr uintptr_t kNewChatWndPtr = 0x0131f6b0;
+
+// Modèle SESSION de l'inventaire — la std::list que le client tient à jour quel
+// que soit l'état de ses fenêtres (même source que les viewers). Sert ici à une
+// seule question : possède-t-on l'objet dont on pose le lien ? Le client bloque
+// l'envoi d'un `<ITEML>` sinon.
+constexpr uintptr_t kInvListHead = 0x015fbab0;
+
+// Le libellé visible d'un lien de RECETTE. Composé LOCALEMENT à partir du seul
+// nom transporté, jamais transmis tout fait : chacun le lit ainsi dans SA langue,
+// et le « [Recette: ] » d'un expéditeur anglophone n'impose rien au lecteur.
+std::string RecipeLinkLabel(const std::string& product_name) {
+  char buf[256];
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[Recette: %s]"), product_name.c_str());
+  return buf;
+}
 
 // Registres de canaux : std::map<int, {nom, filtre[25]}>. Nœud MSVC :
 // +0x0D isnil, +0x10 clé (index), +0x14 nom (std::string SSO 0x18 octets),
@@ -2080,6 +2096,96 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         }
       }
     }
+    // RÉFÉRENCE d'objet — balise à NOUS : `<ITMR>id:nom</ITMR>`.
+    //
+    // 🔴 Pourquoi une seconde balise d'objet alors que `<ITEML>` existe : le
+    // client REFUSE d'envoyer un `<ITEML>` portant un objet absent du sac
+    // (« Item tags can only tag items you own. », en rouge, à l'envoi). La garde
+    // est native et locale — le paquet ne part même pas, donc ni nous ni le
+    // serveur ne pouvons l'assouplir. Or parler d'un objet qu'on n'a PAS est le
+    // cas courant : « il me faut ça », « ça se fabrique avec quoi ? », toute
+    // conversation partant de l'Atlas des recettes. Le client ne connaît pas
+    // `<ITMR>`, donc il ne la filtre pas — exactement le détour déjà pris pour les
+    // monstres avec `<MOBL>`.
+    //
+    // ⚠ Ce que ça COÛTE, et c'est assumé : un client sans Bourgeon affiche la
+    // balise telle quelle. D'où le nom EN CLAIR dedans (comme `<MOBL>`) — la
+    // ligne reste lisible, au prix des chevrons. `<ITEML>`, lui, est rendu par
+    // tout le monde : il reste donc le choix par défaut dès que l'objet est en
+    // sac (cf. AppendItemLinkFromLink).
+    //
+    // ⚠ Ce lien décrit l'objet de BASE, jamais une instance : ni refine, ni
+    // cartes, ni forgeron. C'est cohérent avec ce qu'il désigne — une référence
+    // au catalogue, pas l'objet de quelqu'un.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<ITMR>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</ITMR>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const uint32_t id = static_cast<uint32_t>(
+              std::strtoul(std::string(body, c1).c_str(), nullptr, 10));
+          const std::string name(c1 + 1, close);
+          if (id != 0 && !name.empty()) {
+            flush();
+            // Un `Run::kItem` comme les autres : les gestes, l'aperçu au survol et
+            // le menu contextuel marchent alors sans une ligne de plus. Seul le
+            // `ChatLink` est réduit à son nameid — il n'y a rien d'autre à en
+            // dire, et `link_gesture` sait déjà traiter ce cas (FromItemId).
+            itemcell::ChatLink item;
+            item.id = id;
+            Run icon;
+            icon.item_id = id;
+            icon.item    = item;
+            out->runs.push_back(icon);
+            Run link;
+            link.kind    = Run::kItem;
+            link.item_id = id;
+            link.item    = item;
+            // Le nom TRANSPORTÉ, pas celui de notre DB : l'expéditeur peut jouer
+            // dans une autre langue, et c'est ce qu'il a écrit qui fait foi.
+            link.text = "<" + name + ">";
+            out->runs.push_back(link);
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
+    // RECETTE de fabrication — balise à NOUS : `<CRAF>id:nom</CRAF>`.
+    //
+    // Ce n'est pas un lien d'objet : il ne désigne pas l'objet mais la FAÇON DE
+    // LE FAIRE. D'où un libellé qui l'annonce (« [Recette: Acid Bottle] »), un
+    // aperçu qui montre métier et composants au lieu des stats, et un clic qui
+    // ouvre l'Atlas plutôt que la description. C'est ce qu'on veut poster quand
+    // on explique à quelqu'un comment fabriquer quelque chose — un `<ITEML>` ne
+    // dit rien de tout cela.
+    //
+    // ⚠ Le nom voyage, comme dans `<ITMR>` : un client sans Bourgeon voit la
+    // balise brute, et il vaut mieux qu'elle reste lisible.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<CRAF>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</CRAF>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const uint32_t id = static_cast<uint32_t>(
+              std::strtoul(std::string(body, c1).c_str(), nullptr, 10));
+          const std::string name(c1 + 1, close);
+          if (id != 0 && !name.empty()) {
+            flush();
+            Run link;
+            link.kind    = Run::kRecipe;
+            link.item_id = id;
+            link.item.id = id;
+            link.text    = RecipeLinkLabel(name);
+            out->runs.push_back(link);
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
     // Adresse web. Rien à transporter : le joueur tape son URL, tout le monde
     // reçoit le même texte — nous sommes seulement les seuls à la rendre
     // cliquable. La chatbox NATIVE, elle, n'en fait rien : son seul détecteur de
@@ -2725,7 +2831,8 @@ void ChatWindow::DrawGroupWindow(uint32_t group) {
 //
 // ⚠ Le vide à droite reste VIDE, sans widget : la fenêtre n'ayant pas de barre de
 // titre, c'est par là qu'ImGui la déplace. Un bouton invisible qui couvrirait la
-// bande entière lui retirerait sa poignée.
+// bande entière lui retirerait sa poignée. Seule exception, tolérée parce qu'elle
+// ne mord qu'un carré au coin : la croix de fermeture d'une conversation 1:1.
 void ChatWindow::DrawGroupStrip(uint32_t group) {
   const float h = ImGui::GetFontSize() + 6.0f;
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2741,49 +2848,39 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
   int   slot_n = 0;
   float x = 0.0f;
 
-  // ── Bouton « Fermer », tout à gauche de la bande ────────────────────────────
-  // 🔴 Une fenêtre flottante n'a PAS de barre de titre — le skin chat pose
-  // NoTitleBar, c'est ce qui lui donne son allure de chatbox du client. Elle ne se
-  // fermait donc QUE par un clic MOLETTE sur son onglet : un geste que rien
-  // n'annonce, et dont l'infobulle qui le mentionne demande déjà de survoler
-  // l'onglet pour être lue. Signalé en jeu sur les conversations privées — « pas
-  // de moyen visible de la fermer », ce qui était exact.
+  // ── La croix de fermeture, en haut à DROITE ─────────────────────────────────
+  // 🔴 Elle n'apparaît que pour une conversation 1:1. Une fenêtre flottante n'a
+  // PAS de barre de titre — le skin chat pose NoTitleBar, c'est ce qui lui donne
+  // son allure de chatbox du client — et une conversation privée n'avait donc
+  // aucun moyen VISIBLE de se fermer : rien qu'un clic MOLETTE sur son onglet,
+  // geste que seule annonce une infobulle qu'il faut déjà survoler l'onglet pour
+  // lire. Un onglet de CANAL, lui, n'en porte pas : le fermer retire un canal du
+  // chat, ce qui n'a rien d'un geste de fenêtre, et reste au clic molette comme au
+  // menu contextuel de l'onglet.
   //
-  // Il ferme l'onglet ACTIF, celui qu'on a sous les yeux. C'est la seule lecture
-  // sans ambiguïté quand une fenêtre en porte plusieurs — l'objection qui avait
-  // fait retirer la croix d'en-tête (« elle ne saurait plus lequel elle ferme »)
-  // tombe dès lors que la cible est ce qui est affiché, comme dans un navigateur.
-  // Il passe par `close_channel_id_`, le même chemin différé que le clic molette :
-  // ses gardes (jamais le dernier canal, jamais le dernier onglet de la fenêtre
-  // principale) valent donc aussi ici, sans être réécrites.
-  if (active >= 0) {
-    const char* close_label = i18n::Tr("Fermer");
-    const float close_w = ImGui::CalcTextSize(close_label).x + 14.0f;
-    ImGui::SetCursorScreenPos(origin);
+  // Elle ferme l'onglet ACTIF, celui qu'on a sous les yeux — la seule lecture sans
+  // ambiguïté quand la fenêtre en porte plusieurs. Elle passe par
+  // `close_channel_id_`, le même chemin différé que le clic molette : ses gardes
+  // (jamais le dernier canal, jamais le dernier onglet de la fenêtre principale)
+  // valent donc ici sans être réécrites.
+  //
+  // 🔴 SOUMISE AVANT les onglets, PEINTE APRÈS — et les deux moitiés comptent, car
+  // une bande bien remplie fait passer un onglet dessous. Le survol va au PREMIER
+  // élément soumis (`ItemHoverable` refuse tout candidat suivant tant que
+  // `g.HoveredId` est pris) ; le dessin, lui, va au dernier tracé. Les inverser,
+  // c'était une croix visible mais morte, ou vivante mais recouverte.
+  const bool close_shown = (active >= 0 && !channels_[active].whisper_with.empty());
+  const ImVec2 close_p0(origin.x + strip_w - h, origin.y);
+  const ImVec2 close_p1(close_p0.x + h, close_p0.y + h);
+  bool close_hovered = false;
+  if (close_shown) {
+    ImGui::SetCursorScreenPos(close_p0);
     char close_id[40];
     std::snprintf(close_id, sizeof(close_id), "##gclose%u", group);
-    ImGui::InvisibleButton(close_id, ImVec2(close_w, h));
-    const bool close_hovered = ImGui::IsItemHovered();
+    ImGui::InvisibleButton(close_id, ImVec2(h, h));
+    close_hovered = ImGui::IsItemHovered();
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
       close_channel_id_ = channels_[active].id;
-    const ImVec2 c0(origin.x, origin.y);
-    const ImVec2 c1(c0.x + close_w, c0.y + h);
-    // Survol en rouge CLAIR, pas sombre : le libellé des onglets est peint en
-    // sombre (kTabTextCol) et disparaîtrait sur un fond foncé.
-    dl->AddRectFilled(c0, c1, close_hovered ? IM_COL32(0xE0, 0x92, 0x92, 255)
-                                            : tab_idle);
-    dl->AddRect(c0, c1, tab_edge);
-    dl->AddText(ImVec2(c0.x + 7.0f, c0.y + 3.0f), kTabTextCol, close_label);
-    if (close_hovered && drag_tab_ < 0) {
-      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-      ImGui::SetTooltip(i18n::Tr("Ferme l'onglet affiché (%s).\nL'historique est "
-                        "conservé : rouvrir la conversation le retrouve."),
-                        channels_[active].whisper_with.empty()
-                            ? channels_[active].name.c_str()
-                            : channels_[active].whisper_with.c_str());
-      ImGui::PopStyleColor();
-    }
-    x = close_w + 6.0f;  // les onglets commencent après lui
   }
 
   for (size_t i = 0; i < channels_.size(); ++i) {
@@ -2849,6 +2946,29 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
     dl->AddRect(p0, p1, tab_edge);
     dl->AddText(ImVec2(p0.x + 7.0f, p0.y + 3.0f), kTabTextCol, label);
     x += w + 2.0f;
+  }
+
+  // La croix, PAR-DESSUS les onglets (cf. le commentaire de sa soumission).
+  if (close_shown) {
+    // Survol en rouge CLAIR, pas sombre : la croix est tracée en sombre
+    // (kTabTextCol, comme le libellé des onglets) et disparaîtrait sur un fond foncé.
+    dl->AddRectFilled(close_p0, close_p1,
+                      close_hovered ? IM_COL32(0xE0, 0x92, 0x92, 255) : tab_idle);
+    dl->AddRect(close_p0, close_p1, tab_edge);
+    // Croix TRACÉE, pas le glyphe « X » : il n'est pas centré dans sa cellule et se
+    // lirait de travers dans un carré de cette taille.
+    const float pad = 5.0f;
+    dl->AddLine(ImVec2(close_p0.x + pad, close_p0.y + pad),
+                ImVec2(close_p1.x - pad, close_p1.y - pad), kTabTextCol, 1.6f);
+    dl->AddLine(ImVec2(close_p1.x - pad, close_p0.y + pad),
+                ImVec2(close_p0.x + pad, close_p1.y - pad), kTabTextCol, 1.6f);
+    if (close_hovered && drag_tab_ < 0) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      ImGui::SetTooltip(i18n::Tr("Ferme l'onglet affiché (%s).\nL'historique est "
+                        "conservé : rouvrir la conversation le retrouve."),
+                        channels_[active].whisper_with.c_str());
+      ImGui::PopStyleColor();
+    }
   }
 
   // La bande devient une CIBLE DE DÉPÔT pour la frame.
@@ -5035,6 +5155,7 @@ void ChatWindow::DrawInputLinkChips(const ImVec2& field_pos, float field_w,
 links::Target ChatWindow::TargetOf(const Run& run) const {
   switch (run.kind) {
     case Run::kItem: return links::FromItem(run.item, run.text.c_str());
+    case Run::kRecipe: return links::FromRecipe(run.item_id, run.text.c_str());
     case Run::kMob:
       return links::FromMob(run.mob_id, run.mob_rank, run.mob_name.c_str());
     case Run::kUrl: return links::FromUrl(run.url.c_str());
@@ -5044,6 +5165,11 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
 }
 
 links::Target ChatWindow::TargetOf(const PendingLink& link) const {
+  if (link.kind == Run::kRecipe) {
+    links::Target t = links::FromRecipe(link.item.id, link.display.c_str());
+    t.label = link.display;  // le libellé POSÉ, celui que le joueur a sous les yeux
+    return t;
+  }
   if (link.kind == Run::kMob) {
     links::Target t = links::FromMob(link.mob_id, link.mob_rank, link.mob_name.c_str());
     t.label = link.display;  // le libellé POSÉ, celui que le joueur a sous les yeux
@@ -5192,6 +5318,17 @@ bool ChatWindow::AppendItemLink(void* info) {
 bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   if (!imgui_enabled_ || !input_bar_ || link.id == 0) return false;
 
+  // 🔴 L'objet est-il en sac ? Le client REFUSE d'envoyer un `<ITEML>` qui n'y est
+  // pas — la ligne entière est bloquée à l'envoi, avec un « Item tags can only tag
+  // items you own. » en rouge. On bascule donc sur notre propre balise plutôt que
+  // de laisser le geste échouer : le lien part, il est rendu chez tout joueur
+  // Bourgeon, et il reste lisible ailleurs.
+  //
+  // Le test porte sur le MODÈLE SESSION (même liste que les viewers), pas sur une
+  // fenêtre : cacher l'inventaire natif vide la seconde, jamais le premier.
+  if (itemcell::FindInfoById(kInvListHead, link.id) == nullptr)
+    return AppendItemRefLink(link.id, itemcell::NameById(link.id));
+
   char wire[192];
   if (!itemcell::BuildChatLinkFromLink(link, wire, sizeof(wire))) return false;
   char name[192];
@@ -5216,6 +5353,87 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   pending.item    = link;
   pending.display = display;
   pending.kind    = Run::kItem;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// Poser une RÉFÉRENCE d'objet — l'objet de base, sans instance. C'est le chemin
+// des objets qu'on ne possède PAS, que le client refuse de taguer en `<ITEML>`
+// (cf. AppendItemLinkFromLink et le décodeur de `<ITMR>`).
+//
+// ⚠ Le nom part DANS la balise : c'est ce qui garde la ligne lisible chez un
+// joueur sans Bourgeon, qui verra la balise brute. Un nom porteur de `<` ou `>`
+// la couperait en deux à la relecture — on refuse alors plutôt que d'émettre une
+// balise qui se relira de travers.
+bool ChatWindow::AppendItemRefLink(uint32_t item_id, const char* name_utf8) {
+  if (!imgui_enabled_ || !input_bar_ || item_id == 0) return false;
+  const std::string name = (name_utf8 && name_utf8[0]) ? name_utf8
+                                                       : itemcell::NameById(item_id);
+  if (name.empty()) return false;
+  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
+    return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const std::string display = "<" + name + ">";
+  char wire[256];
+  std::snprintf(wire, sizeof(wire), "<ITMR>%u:%s</ITMR>", item_id, name.c_str());
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+
+  PendingLink pending;
+  pending.wire    = wire;
+  pending.display = display;
+  pending.kind    = Run::kItem;
+  pending.item.id = item_id;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// Poser le lien d'une RECETTE — « [Recette: Acid Bottle] ». Ce n'est pas un lien
+// d'objet : il désigne la façon de le FAIRE, et c'est ce qu'on veut poster quand
+// on explique une fabrication à quelqu'un.
+//
+// 🔴 Refusé si l'objet n'a pas de recette. Poser un lien qui ouvrirait une fiche
+// vide ferait perdre son temps au lecteur, et à l'expéditeur sa crédibilité.
+bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
+  if (!imgui_enabled_ || !input_bar_ || item_id == 0) return false;
+  if (craftdata::RecipeOf(item_id) == nullptr) return false;
+
+  const std::string name = (name_utf8 && name_utf8[0]) ? name_utf8
+                                                       : itemcell::NameById(item_id);
+  if (name.empty()) return false;
+  // Un nom porteur de chevrons couperait la balise en deux à la relecture.
+  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
+    return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const std::string display = RecipeLinkLabel(name);
+  char wire[256];
+  std::snprintf(wire, sizeof(wire), "<CRAF>%u:%s</CRAF>", item_id, name.c_str());
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+
+  PendingLink pending;
+  pending.wire    = wire;
+  pending.display = display;
+  pending.kind    = Run::kRecipe;
+  pending.item.id = item_id;
   item_links_.push_back(std::move(pending));
   if (battle_mode_) input_open_ = true;
   focus_input_next_ = true;

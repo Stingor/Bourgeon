@@ -248,7 +248,29 @@ class ChatWindow : public Plugin {
   // vient d'afficher. On n'a pas l'objet — on ne l'aura jamais — mais la balise
   // suffit : elle est ré-encodée telle quelle (itemcell::BuildChatLinkFromLink),
   // donc le refine, les cartes et le forgeron survivent au relais.
+  // ⚠ Bascule AUTOMATIQUEMENT sur `AppendItemRefLink` quand l'objet n'est pas
+  // dans le sac : le client refuse d'envoyer un `<ITEML>` qu'on ne possède pas.
   bool AppendItemLinkFromLink(const itemcell::ChatLink& link);
+
+  // Poser une RÉFÉRENCE d'objet : l'objet de BASE, sans refine ni cartes, dans
+  // notre propre balise `<ITMR>`. C'est le seul moyen de parler d'un objet qu'on
+  // n'a pas — le client bloque le `<ITEML>` correspondant À L'ENVOI, la ligne
+  // entière avec (« Item tags can only tag items you own. »). Même détour que
+  // `<MOBL>` pour les monstres : une balise que le client ne connaît pas ne peut
+  // pas la filtrer.
+  //
+  // ⚠ Un joueur SANS Bourgeon voit la balise brute — d'où le nom en clair dedans,
+  // qui garde la ligne lisible. `AppendItemLinkFromLink` reste donc préférable
+  // dès qu'on possède l'objet : `<ITEML>` est rendu par tous les clients.
+  // `name_utf8` nul ou vide -> le nom de la DB client.
+  bool AppendItemRefLink(uint32_t item_id, const char* name_utf8);
+
+  // Poser le lien d'une RECETTE : « [Recette: Acid Bottle] ». Désigne la façon de
+  // FAIRE l'objet, pas l'objet — le survol montre le métier et les composants, le
+  // clic ouvre l'Atlas. Balise `<CRAF>`, même détour maison que `<ITMR>`.
+  // 🔴 Refusé (false) si l'objet n'a pas de recette : un lien vers une fiche vide
+  // vaut moins que pas de lien.
+  bool AppendRecipeLink(uint32_t item_id, const char* name_utf8);
 
   // Arme une commande (`@iteminfo`, `@mobinfo`…) pour le prochain FlushPending.
   // Même canal que l'envoi d'une ligne tapée — donc le pipeline COMPLET du
@@ -299,7 +321,9 @@ class ChatWindow : public Plugin {
     // `kPlayer` = le pseudo en tête de ligne, posé après le parse à partir du
     // `sender` déjà extrait — il ne s'analyse pas depuis le texte, rien ne
     // distingue un pseudo d'un mot ordinaire.
-    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer };
+    // `kRecipe` réutilise `item_id` : il désigne un objet, mais l'intention est
+    // sa RECETTE — le survol montre métier et matériaux, le clic ouvre l'Atlas.
+    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
     // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message

@@ -11,6 +11,7 @@
 #include "bourgeon.h"
 #include "features/craft_data.h"  // WeaponLevel : « ce produit est-il un équipement ? »
 #include "features/item_cell.h"
+#include "features/windows/craft_atlas.h"  // le bouton « Atlas » du pied
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/systems/bourgeon_opcodes.h"  // kCookMastery (ZC 0x0F1C)
 #include "features/windows/item_desc_window.h"
@@ -3747,6 +3748,29 @@ void MakeItemWindow::DrawFooter() {
 
   SameLine();
   if (ro::RoButton(i18n::Tr("Fermer"), kBtnW)) CloseAndCancel();
+
+  // ── Vers l'Atlas ──────────────────────────────────────────────────────────
+  // Cette fenêtre ne montre que ce que le serveur vient de proposer : ce qu'on
+  // NE PEUT PAS encore faire, et ce qu'il faudrait aller chercher, n'y sont
+  // jamais. C'est là que la question se pose (« il me manque quoi, déjà ? »),
+  // donc c'est là que doit se trouver la porte.
+  // ⚠ N'envoie RIEN et ne touche pas à la liste armée : l'Atlas est une fenêtre
+  // de lecture, elle peut s'ouvrir en pleine session de fabrication.
+  SameLine();
+  if (ro::RoButton(i18n::Tr("Atlas"), kBtnW)) {
+    if (auto* atlas = Bourgeon::Instance().craft_atlas()) {
+      // Sur le produit SÉLECTIONNÉ quand il y en a un : arriver sur sa fiche est
+      // ce qu'on veut neuf fois sur dix, et ouvrir l'Atlas vide obligerait à le
+      // rechercher à la main dans la liste qu'on a sous les yeux.
+      if (sel_id_ > 0) atlas->OpenOnItem(static_cast<uint32_t>(sel_id_));
+      else             atlas->open() = true;
+    }
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip(i18n::Tr(
+        "Ouvre l'Atlas des recettes : tout ce qui se fabrique sur ce serveur, "
+        "par métier, par produit et par matériau — y compris ce que cette liste "
+        "ne propose pas encore."));
 
   // ── Quantité voulue — SUR SA PROPRE LIGNE ─────────────────────────────────
   // 🔴 Ces widgets étaient à la suite des deux boutons. La barre débordait alors

@@ -35,7 +35,11 @@ namespace links {
 // Ce qu'un lien DÉSIGNE. Copiable et conservable : le menu contextuel s'ouvre à
 // la frame suivante, l'appelant doit donc garder sa cible sous la main.
 struct Target {
-  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer };
+  // kRecipe — la RECETTE d'un objet, pas l'objet. Le geste gauche n'ouvre donc
+  // pas sa description mais l'Atlas, et l'aperçu au survol montre le métier et
+  // les matériaux plutôt que les stats. C'est un genre à part parce que c'est une
+  // INTENTION différente : « comment on fabrique ça » n'est pas « c'est quoi ».
+  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe };
   uint8_t kind = kNone;
 
   // kItem — la balise RELUE, pas seulement l'id : elle porte le refine, les
@@ -66,6 +70,11 @@ Target FromItem(const itemcell::ChatLink& link, const char* label_utf8);
 // Pour les listes qui n'ont qu'un id (membres d'un combo, cartes serties…) :
 // l'objet de BASE, sans refine ni cartes — il n'y a rien d'autre à en dire.
 Target FromItemId(uint32_t item_id, const char* label_utf8);
+// La RECETTE d'un objet. `label_utf8` est le nom NU du produit (« Acid Bottle ») :
+// la décoration « [Recette: …] » appartient à la surface qui l'affiche, pas à la
+// cible. Rend une cible vide si l'objet n'a pas de recette — un lien qui ne mène
+// à rien vaut moins que pas de lien.
+Target FromRecipe(uint32_t item_id, const char* label_utf8);
 Target FromMob(uint32_t mob_id, int rank, const char* name_utf8);
 Target FromUrl(const char* url);
 // Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'a rien à ouvrir ici — un
