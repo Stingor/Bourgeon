@@ -1,23 +1,33 @@
 # Confronte les cles i18n::Tr()/TrId() du code aux entrees d'un catalogue.
 #
-# Il attrape les trois pannes de traduction qui ne se voient PAS a l'ecran, parce
-# que Tr retombe silencieusement en francais dans les trois cas :
+# Il attrape les pannes de traduction qui ne se voient PAS a l'ecran, parce que
+# Tr retombe silencieusement en francais dans presque tous les cas :
 #   - chaine migree SANS entree au catalogue -> elle sortira en francais ;
 #   - entree ORPHELINE -> un texte source a ete retouche, sa traduction est morte ;
-#   - valeur VIDE -> Tr la traite comme absente.
+#   - valeur VIDE -> Tr la traite comme absente ;
+#   - ESPACE DE BORD perdu ou ajoute -> le texte se decale d'un cran a l'ecran.
+#
+# 🔴 IL SORT EN CODE 1 QUAND IL TROUVE QUELQUE CHOSE : c'est ce qui le rend
+# utilisable en integration continue (.github/workflows/i18n.yml). Le prix du
+# choix « le francais EST la cle », c'est qu'une retouche de libelle tue sa
+# traduction sans un mot ; ce script est le seul endroit ou ca fait du bruit.
 #
 # Usage :
-#   powershell -File tools\lang\check_catalog.ps1
-#   powershell -File tools\lang\check_catalog.ps1 -Catalog tools\lang\es.yaml
+#   pwsh -File tools/lang/check_catalog.ps1
+#   pwsh -File tools/lang/check_catalog.ps1 -Catalog tools/lang/es.yaml
 #
 # ⚠ L'extraction est STATIQUE : elle ne voit que les litteraux passes a Tr. Une
 # chaine venant d'une table (Tr(kCats[c].label)) n'y figure pas et ressortira en
 # ORPHELINE -- c'est normal, elle est legitime. Seul l'export runtime du jeu
 # (panneau Interface, bouton « Exporter ») les connait toutes.
 
+# ⚠ [IO.Path]::Combine et non une chaine a backslashes : ce script tourne aussi
+# sur le runner LINUX de la CI, ou « \ » n'est pas un separateur de chemin mais un
+# caractere ordinaire -- le defaut ne resolvait alors rien du tout. Combine rend
+# le separateur natif de la plateforme, et existe aussi bien en 5.1 qu'en 7.
 param(
-  [string]$Src     = "$PSScriptRoot\..\..\src",
-  [string]$Catalog = "$PSScriptRoot\en.yaml"
+  [string]$Src     = [IO.Path]::Combine($PSScriptRoot, '..', '..', 'src'),
+  [string]$Catalog = [IO.Path]::Combine($PSScriptRoot, 'en.yaml')
 )
 
 # Pour TrId, la repetition de litteraux s'arrete a la virgule : seul le PREMIER
@@ -44,6 +54,27 @@ $rxExplVal = [regex]'^:\s*"((?:[^"\\]|\\.)*)"\s*$'
 # Marge sous les 1024 octets, la meme que i18n.cc (kMaxImplicitKeyBytes).
 $maxImplicitKeyBytes = 1000
 
+# 🔴 L'ESPACE DE BORD FAIT PARTIE DE LA CLE, DONC DE LA TRADUCTION.
+# Des cles commencent ou finissent par une espace, pour deux raisons legitimes :
+# membre gauche d'une concatenation (« Conversation avec » + le nom du joueur) ou
+# retrait d'affichage ("  Verrouille"). Une traduction qui perd cette espace -- ou
+# qui en ajoute une -- ne fait broncher ni le compilateur ni les controles
+# ci-dessus : la cle est bien traduite, l'entree n'est pas orpheline, la valeur
+# n'est pas vide. A l'ecran, tout le texte se decale d'un cran, ou deux mots se
+# collent. Vecu le 2026-08-08 : es.yaml avait 2 202 valeurs precedees d'un espace
+# parasite, et les 16 cles a espace FINAL l'avaient perdu -- la meme espace,
+# deplacee de la fin vers le debut. Un editeur qui rogne les fins de ligne le
+# produit tout seul.
+# La regle est mecanique et donc verifiable : meme prefixe, meme suffixe.
+$rxLead  = [regex]'^[ \t]*'
+$rxTrail = [regex]'[ \t]*$'
+# Rend une espace visible dans le rapport : sans ca, « attendu ' ' trouve '' »
+# s'imprime comme deux paires de quotes qu'on ne sait pas distinguer.
+function Show-Edge([string]$s) {
+  if (-not $s) { return "(rien)" }
+  return ($s -replace ' ', '<esp>' -replace "`t", '<tab>')
+}
+
 $srcKeys = New-Object System.Collections.Generic.HashSet[string]
 $perFile = @{}
 foreach ($f in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
@@ -64,12 +95,27 @@ $empty  = New-Object System.Collections.Generic.List[string]
 $dupes  = New-Object System.Collections.Generic.List[string]
 $broken = New-Object System.Collections.Generic.List[string]
 $tooLong = New-Object System.Collections.Generic.List[string]
+$edges  = New-Object System.Collections.Generic.List[string]
 
 # Enregistre une entree, quelle que soit la forme dont elle vient.
 $record = {
   param($k, $v)
   if (-not $catKeys.Add($k)) { $dupes.Add($k) }
   if (-not $v) { $empty.Add($k) }
+  # ⚠ Seulement sur une valeur NON vide : une entree vide est deja signalee plus
+  # haut, et un gabarit a moitie traduit sortirait sinon en centaines de faux
+  # positifs.
+  if ($v) {
+    $kLead  = $rxLead.Match($k).Value
+    $vLead  = $rxLead.Match($v).Value
+    $kTrail = $rxTrail.Match($k).Value
+    $vTrail = $rxTrail.Match($v).Value
+    if ($kLead -ne $vLead -or $kTrail -ne $vTrail) {
+      $edges.Add(("debut " + (Show-Edge $kLead) + " -> " + (Show-Edge $vLead) +
+                  " | fin " + (Show-Edge $kTrail) + " -> " + (Show-Edge $vTrail) +
+                  "   cle: " + $k.Substring(0, [Math]::Min(50, $k.Length))))
+    }
+  }
 }
 
 $pendingKey = $null
@@ -123,6 +169,11 @@ if ($tooLong.Count) {
   Write-Output "   (a reecrire en forme explicite : ligne '? \"cle\"' puis ligne ': \"valeur\"')"
   $tooLong | ForEach-Object { "   ! " + $_ }
 }
+if ($edges.Count) {
+  Write-Output ("ESPACES DE BORD qui ne suivent pas la cle : " + $edges.Count)
+  Write-Output "   (la valeur doit avoir EXACTEMENT le meme prefixe et le meme suffixe d'espaces que sa cle)"
+  $edges | ForEach-Object { "   ! " + $_ }
+}
 if ($broken.Count) {
   Write-Output ("LIGNES NON PARSEES : " + $broken.Count)
   $broken | ForEach-Object { "   ! " + $_ }
@@ -131,4 +182,10 @@ Write-Output ""
 Write-Output "Fichiers migres :"
 $perFile.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object { "{0,5}  {1}" -f $_.Value, $_.Key }
 
-if ($missing.Count -or $empty.Count -or $dupes.Count -or $broken.Count -or $tooLong.Count) { exit 1 }
+if ($missing.Count -or $empty.Count -or $dupes.Count -or $broken.Count -or $tooLong.Count -or $edges.Count) {
+  Write-Output ""
+  Write-Output "ECHEC : le catalogue et le code ont diverge (voir ci-dessus)."
+  exit 1
+}
+Write-Output ""
+Write-Output "OK : le catalogue suit le code."

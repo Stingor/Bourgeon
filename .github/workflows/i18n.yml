@@ -1,0 +1,44 @@
+name: Catalogues de langue
+
+# Le prix du choix « le français EST la clé » (cf. src/utils/i18n.h) : retoucher un
+# libellé français tue SILENCIEUSEMENT sa traduction. `Tr` ne trouve plus la clé et
+# retombe en français — pas de crash, pas de warning, rien. Ce contrôle est le seul
+# endroit où cette divergence fait du bruit, donc il tourne à chaque push.
+#
+# Il ne compile rien : il lit le source et les catalogues. Quelques secondes.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "tools/lang/*.yaml"
+      - "tools/lang/check_catalog.ps1"
+      - ".github/workflows/i18n.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tools/lang/*.yaml"
+      - "tools/lang/check_catalog.ps1"
+      - ".github/workflows/i18n.yml"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # `pwsh` est préinstallé sur les runners ubuntu ; le script est portable
+      # (chemins par [IO.Path]::Combine, lecture explicite en UTF-8).
+      - name: en.yaml
+        shell: pwsh
+        run: ./tools/lang/check_catalog.ps1 -Catalog tools/lang/en.yaml
+
+      # `always()` : un échec sur l'anglais ne doit pas masquer l'état de
+      # l'espagnol. On veut les DEUX rapports en une seule exécution, sinon on
+      # corrige, on repousse, et on découvre le second problème au tour suivant.
+      - name: es.yaml
+        if: always()
+        shell: pwsh
+        run: ./tools/lang/check_catalog.ps1 -Catalog tools/lang/es.yaml
