@@ -78,6 +78,52 @@ Confirmées par RE de `DrawContent`/`OnCreate` (le ctor pousse les max via
   l'affiche groupé par milliers. Le poids est une vraie fraction `cur / max`.
 - `max` peut être **sous** `cur` (job exp) — c'est normal.
 
+### Jauges d'EXP — `UIBasicInfoWnd_LayoutChildren` @ `0x0095dfb0`
+Les barres Base/Job EXP sont des **contrôles enfants** (`UIINT64BarGraph`, `this+0xf0` /
+`this+0xf4`), créés dans `OnCreate` @ `0x0095e1d0` — `DrawContent` ne les dessine pas.
+C'est `LayoutChildren` qui décide de leur sort, et il ne les **cache pas** : il les
+**pousse hors du cadre** (`x = -200`) quand il croit le personnage au niveau max :
+
+```c
+if ( Job_GetMaxBaseLevel(job) == g_Own_BaseLevel )  MoveWindow(barreBase, -200, 78);
+else                                                MoveWindow(barreBase, 85, extraY + 76);
+if ( g_Own_JobLevel < Job_GetMaxJobLevel(job) )     MoveWindow(barreJob, 85, extraY + 88);
+else                                                MoveWindow(barreJob, -200, 88);
+```
+
+- `Job_GetMaxBaseLevel` @ `0x00d99ca0` et `Job_GetMaxJobLevel` @ `0x00d99d30` renvoient les
+  plafonds de `MaxLevelTable` d'**ExternalSettings_kr.lub** (globals `g_ES_Max*`
+  `0x01602288`+, lus une fois au boot). Un job sans branche dédiée — dont **High Wizard
+  (4010)** — retombe sur `g_ES_MaxBaseLevel` = **99** ; les 2e classes transcendantes sur
+  `g_ES_MaxJobLevel2nd` = **70**.
+- Moonlight, lui, monte à **999 / 80** (`db/import/job_exp.yml`, `MAX_LEVEL 999`). D'où le
+  bug observé : la barre de base disparaît **pile au niveau 99** et revient au 100 (le test
+  est une **égalité stricte**) ; la barre de job disparaît dès le **job 70** et ne revient
+  jamais (test `>=`). LIVE-VÉRIFIÉ x32dbg au base 99 / job 80 : les deux barres à
+  `+0x1c = -200`, `+0x20 = 78` et `88`.
+- ⚠ **Le lub ne peut pas porter le correctif** : ses plafonds sont par **catégorie** de job
+  (les ~9 branches codées en dur des getters : novice / 2e / 3e / 4e / transcendant / Doram…)
+  alors que Moonlight les définit par **groupe de jobs** dans `db/import/job_exp.yml`, bien
+  plus fin — `MaxJobLevel` y vaut 10, 50, 52, 60, 70, 80, 99 ou 111 selon la classe. Aucune
+  valeur unique par catégorie ne serait juste.
+  *Effet de bord évité au passage* : `g_ES_MaxBaseLevel` sert AUSSI, en égalité stricte, à
+  `CActorSprite_ApplyLevelJobAura` @ `0x00c41950` pour l'**aura de niveau 99** — le relever
+  l'aurait déplacée au niveau 999. Sans conséquence sur Moonlight (auras de niveau non
+  affichées), mais le détour laisse ce chemin intact.
+- **Correctif Bourgeon** (`basic_info.cc`) : détour des deux **getters**, qui ne sont appelés
+  que par la Basic Info (`Job_GetMaxBaseLevel` : `LayoutChildren` + `DrawCollapsed_4thJob` ;
+  `Job_GetMaxJobLevel` : `LayoutChildren`).
+  Le vrai plafond vient du **serveur** : `pc_nextbaseexp`/`pc_nextjobexp` (moonlight
+  `src/map/pc.cpp`) renvoient une **sentinelle** au niveau max, `MAX_LEVEL_BASE_EXP`
+  = 99 999 999 / `MAX_LEVEL_JOB_EXP` = 999 999 999, au lieu du coût du palier suivant.
+  Le détour rend le niveau courant si la sentinelle est là (rejoue la branche « masquer »
+  du natif), sinon un plafond hors d'atteinte. Aucune des deux sentinelles n'est un palier
+  réel de la table Moonlight → pas de faux positif.
+- `LayoutChildren` n'est rejoué qu'à la **création**, au **repli/dépli** et au **changement
+  de classe** (`sub_D70D60` @ `0x00d70d60`) : un simple passage de niveau ne repositionne
+  rien. Bourgeon rejoue donc le layout depuis `OnTick` quand l'état « au max serveur »
+  bascule.
+
 ### Déplacement / dock / tooltip
 - `UIBasicInfoWnd_OnMove_DockMenuIcons` @ `0x0095f240` : `FindWindow(0x133)` puis
   re-docke la grille d'icônes à `(x, y+hauteur)`.

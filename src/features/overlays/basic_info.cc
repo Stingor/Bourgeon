@@ -2506,6 +2506,81 @@ void BIPatchPtr(uintptr_t addr, T val) {
     FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
   }
 }
+
+// ── Barres d'EXP de la Basic Info NATIVE : plafonds de niveau client vs serveur ──
+//
+// `UIBasicInfoWnd_LayoutChildren` (0x0095dfb0) ne « cache » pas les jauges d'exp : il les
+// POUSSE hors du cadre (x = -200) dès qu'il croit le personnage au niveau max —
+//   base : `Job_GetMaxBaseLevel(job) == g_Own_BaseLevel`   (égalité STRICTE)
+//   job  : `g_Own_JobLevel >= Job_GetMaxJobLevel(job)`
+// Les deux plafonds sortent de `MaxLevelTable` d'ExternalSettings_kr.lub, lue une fois au
+// boot (globals g_ES_Max* 0x01602288+). Sur ce client ils valent 99 (base) et 70 (2e classe
+// transcendante) alors que Moonlight monte à 999 / 80 (db/import/job_exp.yml). D'où le
+// symptôme : la barre de base disparaît PILE au niveau 99 et revient au 100 (l'égalité
+// stricte redevient fausse), et la barre de job disparaît dès le job 70 — définitivement,
+// celle-là, puisque son test est un `>=`.
+//
+// 🔴 Le lub ne PEUT PAS porter ce correctif : ses plafonds sont par CATÉGORIE de job (les
+// ~9 branches codées en dur des deux getters : novice / 2e / 3e / 4e / transcendant /
+// Doram…), alors que Moonlight les définit par GROUPE DE JOBS dans db/import/job_exp.yml,
+// bien plus fin — `MaxJobLevel` y vaut 10, 50, 52, 60, 70, 80, 99 ou 111 selon la classe.
+// Aucune valeur unique par catégorie ne serait juste. On détourne donc les deux GETTERS,
+// appelés QUE par la Basic Info (`Job_GetMaxBaseLevel` : LayoutChildren +
+// DrawCollapsed_4thJob ; `Job_GetMaxJobLevel` : LayoutChildren).
+// Effet de bord évité au passage : `g_ES_MaxBaseLevel` sert AUSSI, en égalité stricte, à
+// `CActorSprite_ApplyLevelJobAura` (0x00c41950) pour l'aura de niveau 99 — le relever
+// l'aurait déplacée au niveau 999. Sans conséquence sur Moonlight (les auras de niveau n'y
+// sont pas affichées) ; le détour laisse ce chemin intact de toute façon.
+//
+// Le vrai plafond, seul le SERVEUR le connaît, et il le dit déjà : `pc_nextbaseexp` /
+// `pc_nextjobexp` (moonlight src/map/pc.cpp) renvoient une SENTINELLE au niveau max —
+// MAX_LEVEL_BASE_EXP = 99 999 999 / MAX_LEVEL_JOB_EXP = 999 999 999 — au lieu du coût du
+// palier suivant. Aucune des deux n'est un palier réel de la table Moonlight (vérifié dans
+// db/import/job_exp.yml : les seules occurrences de 999999999 sont le dernier palier des
+// groupes Novice), donc le test est sans faux positif. On garde ainsi l'INTENTION du natif
+// — barre masquée au VRAI niveau max — au lieu de forcer bêtement les barres visibles.
+constexpr uintptr_t kJobGetMaxBaseLevel = 0x00d99ca0;  // __stdcall(jobId)
+constexpr uintptr_t kJobGetMaxJobLevel  = 0x00d99d30;  // __stdcall(jobId)
+constexpr uintptr_t kOwnBaseExpNext = 0x015fb9d8;  // g_Own_BaseExpNext (INT64)
+constexpr uintptr_t kOwnJobExpNext  = 0x015fb9e0;  // g_Own_JobExpNext  (INT64)
+constexpr long long kSrvMaxBaseExp  = 99999999LL;   // MAX_LEVEL_BASE_EXP (moonlight const.hpp)
+constexpr long long kSrvMaxJobExp   = 999999999LL;  // MAX_LEVEL_JOB_EXP  (idem)
+constexpr int       kBILevelUnreached = 0x7fffffff;  // plafond qu'aucun niveau n'atteint
+using JobMaxLevelFn_t = int(__stdcall*)(int);
+JobMaxLevelFn_t g_bi_orig_max_base_lv = nullptr;
+JobMaxLevelFn_t g_bi_orig_max_job_lv  = nullptr;
+
+// Le personnage est-il au niveau max du SERVEUR ? (sentinelle d'exp, cf. bloc ci-dessus)
+inline bool BIAtServerMaxBase() {
+  return *reinterpret_cast<const long long*>(kOwnBaseExpNext) == kSrvMaxBaseExp;
+}
+inline bool BIAtServerMaxJob() {
+  return *reinterpret_cast<const long long*>(kOwnJobExpNext) == kSrvMaxJobExp;
+}
+
+// Au vrai max on rend le niveau COURANT : ça rejoue exactement la branche « masquer » du
+// natif (base `==`, job `>=`). Sinon un plafond hors d'atteinte => la barre reste en place.
+// Les trois sites d'appel passent toujours la classe du propre joueur, d'où la lecture des
+// globals de session ; hors jeu (niveau nul) on rend la main au natif, faute de savoir.
+int __stdcall BIMaxBaseLevelHook(int job_id) {
+  const int lv = *reinterpret_cast<const int*>(kBaseLevel);
+  if (lv <= 0 && g_bi_orig_max_base_lv) return g_bi_orig_max_base_lv(job_id);
+  return BIAtServerMaxBase() ? lv : kBILevelUnreached;
+}
+int __stdcall BIMaxJobLevelHook(int job_id) {
+  const int lv = *reinterpret_cast<const int*>(kJobLevel);
+  if (lv <= 0 && g_bi_orig_max_job_lv) return g_bi_orig_max_job_lv(job_id);
+  return BIAtServerMaxJob() ? lv : kBILevelUnreached;
+}
+
+// Filet de relayout. `LayoutChildren` n'est rejoué qu'à la création, au repli/dépli et au
+// changement de classe (sub_D70D60) : atteindre le niveau max EN COURS de session ne
+// repositionne rien. On le rejoue donc nous-mêmes quand l'état « au max » bascule, avec le
+// même appel que le natif : LayoutChildren(fenêtre, hauteur courante).
+constexpr uintptr_t kBILayoutChildren = 0x0095dfb0;  // __thiscall(wnd, height)
+constexpr int       kBIWinHeight      = 0x18;
+using BILayoutFn_t = void(__thiscall*)(void*, int);
+bool g_bi_cap_known = false, g_bi_base_capped = false, g_bi_job_capped = false;
 }  // namespace
 
 BasicInfo::BasicInfo() {
@@ -2515,6 +2590,20 @@ BasicInfo::BasicInfo() {
   if (cur && cur != reinterpret_cast<void*>(&BIMsgHook)) {
     g_bi_orig_msg = reinterpret_cast<BIMsg_t>(cur);
     BIPatchPtr<void*>(kBIMsgSlot, reinterpret_cast<void*>(&BIMsgHook));
+  }
+  // Plafonds de niveau des jauges d'exp natives : le client les tient d'ExternalSettings
+  // (99 / 70) alors que Moonlight monte plus haut, ce qui escamote les barres au niveau 99
+  // et dès le job 70. Détour des deux getters — voir le bloc de commentaire au-dessus de
+  // BIMaxBaseLevelHook. Posé au chargement de la DLL : les adresses sont statiques et le
+  // HUD n'existe pas encore, donc le tout premier layout est déjà correct.
+  {
+    auto& hm = hooking::HookManager::Instance();
+    g_bi_orig_max_base_lv = reinterpret_cast<JobMaxLevelFn_t>(
+        hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kJobGetMaxBaseLevel),
+                   reinterpret_cast<uint8_t*>(&BIMaxBaseLevelHook)));
+    g_bi_orig_max_job_lv = reinterpret_cast<JobMaxLevelFn_t>(
+        hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kJobGetMaxJobLevel),
+                   reinterpret_cast<uint8_t*>(&BIMaxJobLevelHook)));
   }
   // ZC_EQUIPMENT_EFFECT 0x0A3B (VAR) : [len:2][aid:4][status:1]{effectId:2}. On
   // OBSERVE (paquet natif intact) pour suivre les hat effects actifs du joueur ;
@@ -2629,6 +2718,21 @@ void BasicInfo::OnTick() {
   g_bi_hide = portrait_hide_basic_info_;  // seen by the pre-render msg-0x22 hook
   void* bi = *reinterpret_cast<void**>(kBasicInfoPtr);
   if (!bi) return;  // HUD not created yet
+
+  // Jauges d'exp : rejoue le layout natif quand l'état « au niveau max serveur » bascule
+  // (atteindre le max en jeu, ou le quitter). Inutile si la native est cachée, et surtout
+  // on ne veut pas rejouer son dock de la grille d'icônes pendant qu'elle est hors-écran.
+  if (!portrait_hide_basic_info_) {
+    const bool base_capped = BIAtServerMaxBase();
+    const bool job_capped  = BIAtServerMaxJob();
+    if (!g_bi_cap_known || base_capped != g_bi_base_capped || job_capped != g_bi_job_capped) {
+      g_bi_cap_known   = true;
+      g_bi_base_capped = base_capped;
+      g_bi_job_capped  = job_capped;
+      reinterpret_cast<BILayoutFn_t>(kBILayoutChildren)(
+          bi, *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(bi) + kBIWinHeight));
+    }
+  }
 
   if (portrait_hide_basic_info_) {
     BIPinOffscreen(bi);       // keep off-screen (raw write; persist mgr+0x514 untouched)
