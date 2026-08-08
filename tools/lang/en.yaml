@@ -2329,3 +2329,15 @@
 "Rouvre le tracé à la souris sans passer par ce panneau — qui recouvre justement ce que tu cherches à cadrer.\n\nUn second appui annule le tracé, comme Échap. Pendant un décompte, la touche renonce au départ et rouvre le tracé ; pendant un enregistrement ou un encodage, elle refuse et le dit à l'écran (les images d'un GIF doivent toutes avoir la même taille).": "Reopens the mouse outline without going through this panel — which covers exactly what you are trying to frame.\n\nA second press cancels the outline, like Esc. During a countdown, the key gives up the start and reopens the outline; during a recording or an encoding it refuses and says so on screen (the frames of a GIF must all be the same size)."
 "Images / s": "Frames / s"
 "● REC  %.1f / %d s  (%d img)": "● REC  %.1f / %d s  (%d frames)"
+
+# Bulles de chat au-dessus des entites (chat_balloon.cc).
+"Afficher aussi les tiennes": "Show your own too"
+"Bulles au-dessus des têtes": "Overhead balloons"
+"Durée de base (ms)": "Base duration (ms)"
+"Fondu en fin d'affichage": "Fade out at the end"
+"Garder la durée du client (5 s fixes)": "Keep the client's duration (fixed 5 s)"
+"Largeur maximale (fraction d'écran)": "Maximum width (fraction of the screen)"
+"Le client donne 5 s à tout le monde : un pavé de trois lignes disparaît aussi vite qu'un « ok ».": "The client gives everyone 5 s: a three-line wall of text vanishes as fast as an 'ok'."
+"Les bulles reprennent le rendu de la chatbox : mêmes libellés de liens, mêmes couleurs. Sans elles le client afficherait les balises brutes.": "Balloons reuse the chatbox rendering: same link labels, same colours. Without them the client would show raw tags."
+"Rallonge par caractère (ms)": "Extra time per character (ms)"
+"Suit la chatbox ImGui : allume-la pour remplacer les bulles. Avec la chatbox native, le client résout ses propres liens et sa bulle est correcte — la remplacer n'apporterait rien.": "Follows the ImGui chatbox: turn it on to replace balloons. With the native chatbox the client resolves its own links and its balloon is correct, so replacing it would gain nothing."

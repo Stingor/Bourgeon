@@ -2290,3 +2290,15 @@
 "Rouvre le tracé à la souris sans passer par ce panneau — qui recouvre justement ce que tu cherches à cadrer.\n\nUn second appui annule le tracé, comme Échap. Pendant un décompte, la touche renonce au départ et rouvre le tracé ; pendant un enregistrement ou un encodage, elle refuse et le dit à l'écran (les images d'un GIF doivent toutes avoir la même taille).": "Vuelve a abrir el trazado con el ratón sin pasar por este panel, que tapa justamente lo que intentas encuadrar.\n\nUna segunda pulsación cancela el trazado, como Esc. Durante una cuenta atrás, la tecla renuncia a la salida y reabre el trazado; durante una grabación o una codificación, se niega y lo dice en pantalla (las imágenes de un GIF deben tener todas el mismo tamaño)."
 "Images / s": "Imágenes / s"
 "● REC  %.1f / %d s  (%d img)": "● REC  %.1f / %d s  (%d img)"
+
+# Bulles de chat au-dessus des entites (chat_balloon.cc).
+"Afficher aussi les tiennes": "Mostrar también las tuyas"
+"Bulles au-dessus des têtes": "Burbujas sobre las cabezas"
+"Durée de base (ms)": "Duración base (ms)"
+"Fondu en fin d'affichage": "Fundido al final"
+"Garder la durée du client (5 s fixes)": "Mantener la duración del cliente (5 s fijos)"
+"Largeur maximale (fraction d'écran)": "Anchura máxima (fracción de pantalla)"
+"Le client donne 5 s à tout le monde : un pavé de trois lignes disparaît aussi vite qu'un « ok ».": "El cliente da 5 s a todos: un bloque de tres líneas desaparece tan rápido como un 'ok'."
+"Les bulles reprennent le rendu de la chatbox : mêmes libellés de liens, mêmes couleurs. Sans elles le client afficherait les balises brutes.": "Las burbujas reutilizan el renderizado de la chatbox: mismas etiquetas de enlace, mismos colores. Sin ellas el cliente mostraría las etiquetas en bruto."
+"Rallonge par caractère (ms)": "Tiempo extra por carácter (ms)"
+"Suit la chatbox ImGui : allume-la pour remplacer les bulles. Avec la chatbox native, le client résout ses propres liens et sa bulle est correcte — la remplacer n'apporterait rien.": "Sigue a la chatbox ImGui: actívala para reemplazar las burbujas. Con la chatbox nativa el cliente resuelve sus propios enlaces y su burbuja es correcta, así que reemplazarla no aportaría nada."
