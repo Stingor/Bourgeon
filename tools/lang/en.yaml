@@ -879,6 +879,8 @@
 "(pas de script)": "(no script)"
 "Vote shop : %d pts%s": "Vote shop: %d pts%s"
 "Ouvre le vote shop avec cet objet dans le panier.": "Opens the vote shop with this item in the basket."
+"Cet objet est dans ta liste de ramassage automatique. Clique pour l'en retirer.": "This item is in your autoloot list. Click to remove it."
+"Ramasser automatiquement cet objet.": "Pick this item up automatically."
 "Probabilités%s": "Odds%s"
 "Lecture auto%s": "Auto-read%s"
 "Le personnage lit le livre à voix haute, ligne par ligne, dans le chat.": "The character reads the book aloud, line by line, in the chat."

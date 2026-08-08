@@ -2134,7 +2134,10 @@ void DrawScriptCode(const char* box_id, const std::string& raw) {
   const std::string code = PrettyPrintScript(raw);
   char clbl[48];
   std::snprintf(clbl, sizeof(clbl), i18n::Tr("Copier##%s"), box_id);
-  if (ImGui::SmallButton(clbl)) ImGui::SetClipboardText(code.c_str());
+  // Bouton RO même au-dessus d'un bloc à fond sombre : c'est l'art du client qui
+  // fait l'unité de l'interface, pas le fond sur lequel il se pose (le libellé
+  // garde, lui, la couleur de texte du style courant).
+  if (ro::RoSmallButton(clbl)) ImGui::SetClipboardText(code.c_str());
 
   // Palette (VS Code Dark+).
   const ImU32 kDef  = IM_COL32(212, 212, 212, 255);
@@ -2437,7 +2440,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     const uint32_t key = CacheKey(w.id, w.is_skill, scope);
     char rlbl[40];
     std::snprintf(rlbl, sizeof(rlbl), i18n::Tr("Rafraichir##tech%u"), key);
-    if (ImGui::SmallButton(rlbl)) cache_.erase(key);  // force refetch
+    if (ro::RoSmallButton(rlbl)) cache_.erase(key);  // force refetch
     RequestTechData(w.id, w.is_skill, scope);
     auto it = cache_.find(key);
     const FetchState st =
@@ -2489,7 +2492,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     if (ImGui::BeginTabItem(i18n::Tr("Dégâts"))) {
       // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
       const bool self_changed =
-          ImGui::Checkbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
+          ro::RoCheckbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
       ImGui::SetNextItemWidth(120.0f);
       if (dmg_target_self_) ImGui::BeginDisabled();
       ImGui::InputInt(i18n::Tr("Cible : ID monstre (0 = neutre)"), &dmg_target_input_,
@@ -2497,7 +2500,12 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
       if (dmg_target_self_) ImGui::EndDisabled();
       if (dmg_target_input_ < 0) dmg_target_input_ = 0;
       ImGui::SameLine();
-      const bool calc = ImGui::Button(i18n::Tr("Calculer"));
+      // Hauteur imposée à celle d'une frame : le bouton partage sa ligne avec le
+      // champ de saisie, et la hauteur NATIVE de l'art RO (le défaut, h = 0) ne
+      // vaut pas GetFrameHeight — les deux ne seraient pas alignés. La largeur,
+      // elle, reste automatique (w <= 0 = au contenu).
+      const bool calc =
+          ro::RoButton(i18n::Tr("Calculer"), 0.0f, ImGui::GetFrameHeight());
 
       // Cible envoyée : 0xFFFFFFFF = soi-même, sinon l'id saisi (0 = neutre).
       const uint32_t req_target =
@@ -2898,15 +2906,21 @@ void ItemDescWindow::RenderItemWindow() {
       const bool in = mui->IsAlootId(snap.id);
       char blbl[48];
       std::snprintf(blbl, sizeof(blbl), i18n::Tr("%s alootid%s"), in ? "-" : "+", selId);
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            in ? ImVec4(0.65f, 0.18f, 0.18f, 1.0f)
-                               : ImVec4(0.18f, 0.48f, 0.18f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-      if (ImGui::SmallButton(blbl)) {
+      // 🔴 Le fond rouge/vert a disparu avec la conversion, et ce n'est pas une
+      // perte d'information : un bouton RO dessine son art 9-slice à la main et
+      // IGNORE ImGuiCol_Button — le garder aurait fait un PushStyleColor mort,
+      // et le ImGuiCol_Text blanc qui l'accompagnait, lui, était bel et bien
+      // appliqué : du texte blanc sur l'art CLAIR du client, donc illisible.
+      // L'état reste dit par le libellé, qui le portait déjà : « + alootid »
+      // quand l'objet n'y est pas, « - alootid » quand il y est.
+      if (ro::RoSmallButton(blbl)) {
         if (in) mui->RemoveAlootId(snap.id);
         else    mui->AddAlootId(snap.id);
       }
-      ImGui::PopStyleColor(2);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(in ? i18n::Tr("Cet objet est dans ta liste de ramassage "
+                                        "automatique. Clique pour l'en retirer.")
+                             : i18n::Tr("Ramasser automatiquement cet objet."));
       action_row = true;
     }
 
@@ -2926,10 +2940,11 @@ void ItemDescWindow::RenderItemWindow() {
         if (action_row) ImGui::SameLine();
         char vs[64];
         std::snprintf(vs, sizeof(vs), i18n::Tr("Vote shop : %d pts%s"), price, selId);
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.33f, 0.08f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-        if (ImGui::SmallButton(vs)) shop->OpenWithItem(snap.id);
-        ImGui::PopStyleColor(2);
+        // Même remarque que pour le bouton alootid ci-dessus : le doré ne
+        // survivait pas au skin (art dessiné main), et le blanc du texte se
+        // serait perdu sur lui. Ce bouton n'a pas d'état à signaler — son
+        // libellé porte le prix, qui est toute l'information.
+        if (ro::RoSmallButton(vs)) shop->OpenWithItem(snap.id);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip(i18n::Tr("Ouvre le vote shop avec cet objet dans le panier."));
       }
@@ -2940,7 +2955,7 @@ void ItemDescWindow::RenderItemWindow() {
     if (ItemHasProbability(snap.id)) {
       char pb[48];
       std::snprintf(pb, sizeof(pb), i18n::Tr("Probabilités%s"), selId);
-      if (ImGui::SmallButton(pb)) CallDescButton(wnd, kCmdProbability);
+      if (ro::RoSmallButton(pb)) CallDescButton(wnd, kCmdProbability);
     }
 
     // Boutons « Lire » / « Lecture auto » des LIVRES (rejouent les 2 boutons
@@ -2950,7 +2965,7 @@ void ItemDescWindow::RenderItemWindow() {
     if (ItemIsReadableBook(snap.id)) {
       char rb[48];
       std::snprintf(rb, sizeof(rb), i18n::Tr("Lire%s"), selId);
-      if (ImGui::SmallButton(rb)) {
+      if (ro::RoSmallButton(rb)) {
         CallDescButton(wnd, kCmdReadBook);
         // La fenêtre livre vient d'être créée + affichée : on la cache DANS LA
         // MÊME frame (avant EndScene) -> zéro flicker, comme le hook OnMsg des
@@ -2961,7 +2976,7 @@ void ItemDescWindow::RenderItemWindow() {
       std::snprintf(rb, sizeof(rb), i18n::Tr("Lecture auto%s"), selId);
       // Lecture auto = le personnage récite le livre dans le chat (le client
       // n'affiche alors AUCUNE fenêtre) — pas de panneau à reproduire.
-      if (ImGui::SmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
+      if (ro::RoSmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip(i18n::Tr("Le personnage lit le livre à voix haute, ligne par "
                           "ligne, dans le chat."));
@@ -3432,16 +3447,22 @@ void ItemDescWindow::RenderBookWindow() {
   if (visible) {
     const bool first = (be.page <= 1);
     const bool last  = (be.page >= be.pages);
+    // Pagination en boutons RO. Le compteur du milieu n'est PAS recalé
+    // verticalement : un petit bouton RO fait 14 px (sbtn_out_left), une ligne de
+    // texte en fait presque autant, et un SetCursorPosY entre deux SameLine se
+    // propagerait au bouton suivant (SameLine reprend l'Y de la ligne précédente,
+    // que l'item décalé vient de déplacer) — on corrigerait un demi-pixel pour en
+    // décaler plusieurs.
     ImGui::BeginDisabled(first);
-    if (ImGui::SmallButton(i18n::Tr("<< Début"))) goto_page = 1;
+    if (ro::RoSmallButton(i18n::Tr("<< Début"))) goto_page = 1;
     ImGui::SameLine();
-    if (ImGui::SmallButton(i18n::Tr("< Précédente"))) page_cmd = kCmdBookPrev;
+    if (ro::RoSmallButton(i18n::Tr("< Précédente"))) page_cmd = kCmdBookPrev;
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::Text(i18n::Tr("Page %d / %d"), be.page, be.pages);
     ImGui::SameLine();
     ImGui::BeginDisabled(last);
-    if (ImGui::SmallButton(i18n::Tr("Suivante >"))) page_cmd = kCmdBookNext;
+    if (ro::RoSmallButton(i18n::Tr("Suivante >"))) page_cmd = kCmdBookNext;
     ImGui::EndDisabled();
     ImGui::Separator();
 

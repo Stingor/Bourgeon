@@ -316,17 +316,25 @@ void BugReport::RenderModal() {
   const bool throttled = (now - last_send_tick_) < kSendThrottleMs;
 
   ImGui::BeginDisabled(!has_msg || throttled);
-  if (ImGui::Button(i18n::Tr("Envoyer"), ImVec2(120, 0))) {
+  // Les deux boutons de la modale sont les derniers du fichier à être restés nus
+  // (le « Signaler un bug » de la fenêtre de description est skinné depuis
+  // toujours) : c'était l'incohérence la plus visible, puisque c'est la fenêtre
+  // qu'on ouvre justement pour signaler ce qui cloche.
+  // ⚠ RoButton prend DEUX floats, pas un ImVec2.
+  if (ro::RoButton(i18n::Tr("Envoyer"), 120.0f, 0.0f)) {
     SendReport(ctx_, msg_buf_);
     modal_open_ = false;
     ImGui::CloseCurrentPopup();
   }
   ImGui::EndDisabled();
-  if (throttled && ImGui::IsItemHovered())
+  // 🔴 `AllowWhenDisabled` : sans lui, un bouton grisé ne compte pas comme
+  // survolé — or c'est précisément là qu'il faut dire POURQUOI. L'infobulle du
+  // throttle ne pouvait donc jamais sortir (défaut antérieur au skinning).
+  if (throttled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
     ImGui::SetTooltip(i18n::Tr("Patiente quelques secondes avant un nouveau rapport."));
 
   ImGui::SameLine();
-  if (ImGui::Button(i18n::Tr("Annuler"), ImVec2(120, 0))) {
+  if (ro::RoButton(i18n::Tr("Annuler"), 120.0f, 0.0f)) {
     modal_open_ = false;
     ImGui::CloseCurrentPopup();
   }

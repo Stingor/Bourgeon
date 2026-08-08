@@ -861,6 +861,8 @@
 "(pas de script)": " (sin script)"
 "Vote shop : %d pts%s": " Vote shop: %d pts%s"
 "Ouvre le vote shop avec cet objet dans le panier.": " Abre el vote shop con este objeto en la cesta."
+"Cet objet est dans ta liste de ramassage automatique. Clique pour l'en retirer.": " Este objeto está en tu lista de alootid. Haz clic para quitarlo."
+"Ramasser automatiquement cet objet.": " Recoger este objeto automáticamente."
 "Probabilités%s": " Probabilidades%s"
 "Lecture auto%s": " Lectura automática%s"
 "Le personnage lit le livre à voix haute, ligne par ligne, dans le chat.": " El personaje lee el libro en voz alta, línea por línea, en el chat."
