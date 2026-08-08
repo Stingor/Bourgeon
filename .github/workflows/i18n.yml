@@ -27,7 +27,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 🔴 PAS de `actions/checkout` : ce dépôt n'autorise que les actions lui
+      # appartenant, et `actions/checkout` appartient à GitHub. C'est la même
+      # contrainte qui fait passer main.yml par l'API REST plutôt que par le
+      # dépôt lui-même. Le clone se fait donc à la main — c'est cinq lignes.
+      #
+      # On récupère le SHA POUSSÉ et non la tête de la branche : entre le
+      # déclenchement et le clone, un autre push peut être passé, et on
+      # vérifierait alors un état que personne n'a demandé. GitHub autorise le
+      # fetch par SHA, c'est exactement ce que fait actions/checkout.
+      #
+      # `--depth 1` : on ne lit que l'arbre de travail, l'historique ne sert à
+      # rien ici et le dépôt est gros.
+      #
+      # ⚠ Le jeton n'apparaît pas en clair dans les logs : GitHub n'y résout pas
+      # les variables d'environnement, et masque de toute façon GITHUB_TOKEN.
+      - name: Recuperer le depot
+        id: checkout
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
 
       # `pwsh` est préinstallé sur les runners ubuntu ; le script est portable
       # (chemins par [IO.Path]::Combine, lecture explicite en UTF-8).
@@ -35,10 +59,14 @@ jobs:
         shell: pwsh
         run: ./tools/lang/check_catalog.ps1 -Catalog tools/lang/en.yaml
 
-      # `always()` : un échec sur l'anglais ne doit pas masquer l'état de
-      # l'espagnol. On veut les DEUX rapports en une seule exécution, sinon on
-      # corrige, on repousse, et on découvre le second problème au tour suivant.
+      # Un échec sur l'anglais ne doit pas masquer l'état de l'espagnol : on veut
+      # les DEUX rapports en une seule exécution, sinon on corrige, on repousse,
+      # et on découvre le second problème au tour suivant.
+      #
+      # ⚠ `always()` SEUL relancerait aussi quand le clone a échoué — le script
+      # sortirait alors sur une erreur de fichier introuvable, qui ne veut rien
+      # dire. D'où la condition sur l'étape de clone.
       - name: es.yaml
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: pwsh
         run: ./tools/lang/check_catalog.ps1 -Catalog tools/lang/es.yaml
