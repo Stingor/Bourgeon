@@ -254,7 +254,13 @@ void MoonlightUi::DrawCommandsPanel() {
               ImGui::TableNextColumn();
               const uint32_t id = aloot_ids_[i];
               char lbl[32];
-              std::snprintf(lbl, sizeof(lbl), i18n::Tr("x##alootid_%d"), i);
+              // 🔴 PAS de Tr ici, et ce n'est pas un oubli : le libellé affiché
+              // est la croix « x », identique dans toute langue, et le reste est
+              // un identifiant ImGui qui rend chaque bouton distinct de ses
+              // voisins. Traduit, il serait à la merci d'un traducteur qui
+              // « corrigerait » le suffixe — deux boutons partageraient alors le
+              // même ID, et un seul des deux répondrait au clic.
+              std::snprintf(lbl, sizeof(lbl), "x##alootid_%d", i);
               if (ro::RoSmallButton(lbl)) {
                 SendSetting(kSettingAlootIdRemove, aloot_ids_[i]);
                 aloot_ids_.erase(aloot_ids_.begin() + i);

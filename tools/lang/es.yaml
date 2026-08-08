@@ -2173,7 +2173,6 @@
 "ord %-3d  ->  id %-5d   %s%s": "ord %-3d  ->  id %-5d   %s%s"
 "ord %-3d  ->  id %-5d%s": "ord %-3d  ->  id %-5d%s"
 "t%02d  %s###chatflt%d": "t%02d  %s###chatflt%d"
-"x##alootid_%d": "x##alootid_%d"
 "· Chances : %d %%": "· Probabilidad: %d %%"
 "aucune": "ninguno"
 " - Broken": " - Broken"
