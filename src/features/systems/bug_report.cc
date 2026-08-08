@@ -270,13 +270,16 @@ void BugReport::OnRenderUI() {
 }
 
 void BugReport::RenderModal() {
-  // Centre la modale au premier affichage.
-  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_Appearing);
 
-  if (!ImGui::BeginPopupModal(i18n::Tr("Signaler un bug###bug_report_modal"), nullptr,
-                              ImGuiWindowFlags_AlwaysAutoResize)) {
+  // 🔴 Modale habillée RO — barre de titre 3-slice titlebar_* + corps clair, comme
+  // les confirmations du char-select et le prompt de quantité. Elle est restée
+  // longtemps en fenêtre ImGui NUE : skinner ses deux boutons ne suffisait pas, il
+  // manquait tout le cadre autour. `ro::BeginRoPopupModal` centre lui-même à
+  // l'apparition (d'où la disparition du SetNextWindowPos qui était ici) et pousse
+  // les couleurs RO pour le contenu ; ImGui garde la modalité et le voile.
+  // ⚠ EndRoPopupModal UNIQUEMENT si Begin a rendu true (règle EndPopup d'ImGui).
+  if (!ro::BeginRoPopupModal(i18n::Tr("Signaler un bug###bug_report_modal"))) {
     modal_open_ = false;  // fermé -> réarme le raccourci
     return;
   }
@@ -294,20 +297,26 @@ void BugReport::RenderModal() {
     ImGui::CloseCurrentPopup();
   }
 
+  // 🔴 Le corps d'une fenêtre RO est CLAIR : `ImGui::TextDisabled` y est calibré
+  // pour un fond sombre et s'y efface presque entièrement. Les trois libellés
+  // secondaires de cette modale passent donc par un gris SOMBRE explicite — la
+  // palette que la feuille de personnage emploie déjà sur le même fond.
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+
   ImGui::TextWrapped(i18n::Tr("Décris brièvement le problème. Le contexte ci-dessous "
                      "est joint automatiquement à ton rapport."));
   ImGui::Separator();
 
   // Contexte capturé (lecture seule).
-  ImGui::TextDisabled(i18n::Tr("Contexte"));
+  ImGui::TextColored(kGray, "%s", i18n::Tr("Contexte"));
   ImGui::TextWrapped("%s", ctx_.label.c_str());
   ImGui::Spacing();
 
-  ImGui::TextDisabled(i18n::Tr("Ton message"));
+  ImGui::TextColored(kGray, "%s", i18n::Tr("Ton message"));
   ImGui::InputTextMultiline("##bug_msg", msg_buf_, sizeof(msg_buf_),
                             ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5));
-  ImGui::TextDisabled(i18n::Tr("%zu / %zu caractères"), std::strlen(msg_buf_),
-                      kMaxMsgBytes);
+  ImGui::TextColored(kGray, i18n::Tr("%zu / %zu caractères"), std::strlen(msg_buf_),
+                     kMaxMsgBytes);
 
   ImGui::Separator();
 
@@ -339,7 +348,7 @@ void BugReport::RenderModal() {
     ImGui::CloseCurrentPopup();
   }
 
-  ImGui::EndPopup();
+  ro::EndRoPopupModal();
 }
 
 void BugReport::RenderAckToast() {
