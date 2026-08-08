@@ -2219,6 +2219,23 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
   for (const Run& run : out->runs) out->plain += run.text;
 }
 
+void ChatWindow::ParseWireLine(const char* wire, Line* out) const {
+  if (out == nullptr) return;
+  *out = Line();
+  if (wire == nullptr || *wire == '\0') return;
+  // `WireToUtf8` rend un tampon statique : on le copie avant d'appeler quoi que
+  // ce soit d'autre qui pourrait le réutiliser.
+  const char* utf8 = ro::WireToUtf8(wire);
+  if (utf8 == nullptr) return;
+  ParseUtf8(std::string(utf8), out);
+}
+
+std::string ChatWindow::PlainTextFromWire(const char* wire) const {
+  Line line;
+  ParseWireLine(wire, &line);
+  return line.plain;
+}
+
 // ── Canaux ───────────────────────────────────────────────────────────────────
 bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const {
   // 🔴 Une conversation 1:1 filtre par CORRESPONDANT, avant tout le reste — le

@@ -18,6 +18,10 @@ propre, aucun `memory_search`). Les relevés à chaud sont signalés par ⏱.
 > (= `clif_displaymessage`), **ZC 0x008D** (`ZC_NOTIFY_CHAT`) et **ZC 0x02C1**
 > (`ZC_NPC_CHAT`, le seul qui transporte une couleur).
 
+> **Cette bulle est REMPLACÉE chez nous** par un overlay ImGui
+> (`src/features/overlays/chat_balloon.{h,cc}`). Le §11 décrit le remplacement,
+> ce qu'il a fallu neutraliser et pourquoi il n'était pas optionnel.
+
 ---
 
 ## 1. Les trois émetteurs — la piste `clif_displaymessage` était la bonne
@@ -311,6 +315,25 @@ bulle               = *(acteur + 0x264)                         ⏱ 0x488367C8 p
    largeur / hauteur = acteur+0x288 / +0x28C                    ⏱ 186 × 23
 ```
 
+### Trois faits établis en direct le 2026-08-08
+
+1. 🔴 **Le joueur local n'est PAS dans la `std::list` d'acteurs.** Relevé sur un
+   client où la sentinelle (`*(actorMgr+0x10)`) pointait sur elle-même — liste
+   vide — alors que l'acteur propre existait bien à `actorMgr+0x2C` avec la
+   vtable joueur `0x01094810`. Tout parcours qui n'itère que la liste ignore
+   donc le joueur. Conséquence observée : sa bulle restait native quand toutes
+   les autres étaient reprises.
+   ⚠ **`EntityNames` a exactement le même angle mort** : son option « Ton propre
+   nom » compare `actor == own_actor` à l'intérieur du parcours de liste, donc la
+   condition n'est jamais vraie et la case ne fait rien.
+2. **`acteur+0x264` est remis à 0 proprement à l'expiration.** Vérifié après les
+   5 s : le champ vaut 0, l'acteur ne garde donc **aucun pointeur pendouillant**.
+   Lire la fenêtre depuis le champ est sûr tant qu'on le fait dans la frame.
+3. **Effacer la surface à la couleur-clé ne suffit PAS à faire disparaître la
+   fenêtre.** `UIWindow_Render 0x00a1ce10` appelle `Paint` (vt+0x50) quand
+   `fenêtre+0x58 == 1`, puis **blitte la surface dans tous les cas**. Un
+   rectangle subsistait à l'écran. La seule voie propre est de détruire l'objet.
+
 > 🔴 **Piège de lecture live.** Entre deux appels MCP espacés de quelques
 > secondes, la bulle **expire**. Le second appel lit alors de la mémoire
 > **libérée** dont la vtable vaut **`0x01022f68` = `UIRPData`** — la classe
@@ -362,7 +385,51 @@ bulle               = *(acteur + 0x264)                         ⏱ 0x488367C8 p
 
 ---
 
-## 11. Points d'attention pour un remplacement Bourgeon
+## 11. Le remplacement Bourgeon — `src/features/overlays/chat_balloon.{h,cc}`
+
+**Pourquoi il n'est pas optionnel.** Le chemin natif n'appelle
+`ChatText_TransformTagLinks` que sous `if (g_pNewChatWnd)`. Dès que la chatbox
+ImGui est active, la fenêtre native est détruite, ce pointeur vaut **0**
+(vérifié en live), et **plus aucune balise n'est résolue** — pas seulement nos
+`<MOBL>` / `<ITMR>` / `<CRAF>`, mais **`<ITEML>` lui-même**, pourtant une balise
+du client. C'est pour ça que l'activation suit `chatwnd_imgui` et n'a pas de
+réglage propre : en chatbox native, le client sait de nouveau résoudre ses liens
+et sa bulle est correcte.
+
+**Deux détours de fonction entière**, aucun patch en milieu de fonction :
+
+| Fonction | Rôle |
+|---|---|
+| `UIBalloonText_SetTextWrapped 0x00830240` | **observateur** : seul point commun aux DEUX créateurs (acteur et unité de sol), texte encore brut. On copie, on relaie. |
+| `UITransBalloonText_Paint 0x008263a0` | **silence** de la frame de naissance, le temps que la destruction parte. |
+
+**La fenêtre native est DÉTRUITE dès que son texte est adopté**, via
+`UIWindowMgr::QueueDestroyWindow 0x00a447d0` — la fonction que le natif
+s'applique à lui-même, donc aucune étape de démontage sautée. La destruction est
+différée à `OnTick`, **hors frame ImGui** (un appel natif dedans = freeze muet).
+Corollaire : la présence d'une entité ne peut plus se déduire de « elle porte une
+fenêtre », puisqu'on la lui retire.
+
+**Le rendu part des fragments du chat, pas d'un texte plat.** `ChatWindow::Run`
+et `Line` sont publics, `ParseWireLine` les produit, et `ChatBalloon::LayoutRuns`
+calque la boucle de `ChatWindow::DrawLines` : couleur par fragment, emotes du jeu
+(`ro::emote::Draw`, qui accepte n'importe quel `ImDrawList`), icônes d'objet
+(`ro::ItemIcon`), `kLinkCol` pour les liens. Passer par `Line::plain` ne marche
+pas : ce n'est que la concaténation des textes, donc une emote y reste écrite
+« :nom: » et une icône disparaît.
+
+Rendu sur `ImGui::GetBackgroundDrawList()` — derrière toutes les fenêtres ImGui.
+
+**Ce que le remplacement corrige** : durée proportionnelle à la longueur (le
+natif fige 5 s pour tout le monde), fondu de fin, anti-chevauchement (le natif
+n'en a aucun), coupure par largeur réelle au lieu de 35 caractères, fond lisible,
+et le facteur vertical recalculé chaque frame au lieu du magic static figé.
+
+**Non fait** : les emotes **Discord** (elles déclencheraient un téléchargement
+depuis un overlay qui vit 5 s — le fragment retombe sur son `:nom:`), et le
+**clic** sur les liens.
+
+### Points d'attention (valables pour toute reprise)
 
 1. **Le slot est l'acteur, pas le gestionnaire.** Pour supprimer/remplacer la
    bulle native il faut agir sur `acteur+0x264` **et** sur `acteur+0x248` : le

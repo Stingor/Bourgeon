@@ -29,6 +29,7 @@
 #include "features/overlays/quest_tracker.h"
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
+#include "features/overlays/chat_balloon.h"
 #include "features/overlays/entity_names.h"
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
@@ -165,6 +166,32 @@ const moonlight_ui::SettingDesc kEntityNameSettings[] = {
      MLUI_LITERAL(int, 2)},
     {"entnames_fontscale", SType::kFloat, MLUI_FIELD(entity_names, font_scale()),
      MLUI_LITERAL(float, 1.0f)},
+};
+
+// Bulle de chat au-dessus des têtes (remplacement du UITransBalloonText natif).
+// Mêmes contraintes que ci-dessus : champs privés, défauts littéraux.
+const moonlight_ui::SettingDesc kChatBalloonSettings[] = {
+    // Pas de clé « balloon_enabled » : l'activation suit `chatwnd_imgui`, la
+    // bulle étant une conséquence de la chatbox moderne et non une option à
+    // côté (cf. le commentaire de ChatBalloon::Active).
+    {"balloon_self",       SType::kBool,  MLUI_FIELD(chat_balloon, show_self()),
+     MLUI_LITERAL(bool, true)},
+    {"balloon_fade",       SType::kBool,  MLUI_FIELD(chat_balloon, fade()),
+     MLUI_LITERAL(bool, true)},
+    {"balloon_nativelife", SType::kBool,  MLUI_FIELD(chat_balloon, follow_native_life()),
+     MLUI_LITERAL(bool, false)},
+    {"balloon_baselife",   SType::kInt,   MLUI_FIELD(chat_balloon, base_life_ms()),
+     MLUI_LITERAL(int, 5000)},
+    {"balloon_perchar",    SType::kInt,   MLUI_FIELD(chat_balloon, per_char_ms()),
+     MLUI_LITERAL(int, 45)},
+    {"balloon_maxlife",    SType::kInt,   MLUI_FIELD(chat_balloon, max_life_ms()),
+     MLUI_LITERAL(int, 12000)},
+    {"balloon_yoffset",    SType::kInt,   MLUI_FIELD(chat_balloon, y_offset()),
+     MLUI_LITERAL(int, 0)},
+    {"balloon_fontscale",  SType::kFloat, MLUI_FIELD(chat_balloon, font_scale()),
+     MLUI_LITERAL(float, 1.0f)},
+    {"balloon_maxwidth",   SType::kFloat, MLUI_FIELD(chat_balloon, max_width_ratio()),
+     MLUI_LITERAL(float, 0.28f)},
 };
 
 // Post-traitement D3D9 + réglages graphiques divers (ScreenFx). Les 13
@@ -1206,6 +1233,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
+    moonlight_ui::ReadSettings(ui, kChatBalloonSettings);
 
     moonlight_ui::ReadChatBgPresets(ui);
     moonlight_ui::ReadEquipPresets(ui);
@@ -1317,6 +1345,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kZoneRecorderSettings);
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
+  moonlight_ui::WriteSettings(out, kChatBalloonSettings);
 
   moonlight_ui::WriteSkinAndPresets(out);
   moonlight_ui::WriteSettings(out, kInventorySettings);

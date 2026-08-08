@@ -225,6 +225,24 @@ class ChatWindow : public Plugin {
   // Vide l'historique (bouton du panneau, changement de personnage).
   void ClearHistory();
 
+  // ── Le parseur du chat, ouvert aux autres surfaces d'affichage ──────────────
+  // Rend le texte AFFICHABLE d'une ligne brute (code-page client) : `<ITEML>`,
+  // `<MOBL>`, `<ITMR>` et `<CRAF>` résolus en leur libellé, `^RRGGBB` et `^i[]`
+  // retirés. Sortie UTF-8, prête pour ImGui.
+  //
+  // 🔴 C'est le RACCORDEMENT de la bulle de tête à l'interface moderne, et il
+  // passe par le MÊME `ParseUtf8` que la chatbox — pas par un résolveur bis. Une
+  // seconde implémentation divergerait au premier libellé qu'on retoucherait
+  // d'un seul côté, et le joueur verrait deux textes différents pour la même
+  // phrase, à l'écran en même temps.
+  //
+  // ⚠ Ce n'est pas une commodité mais une nécessité : chez nous la résolution
+  // native est MORTE. Le chemin natif de la bulle appelle
+  // `ChatText_TransformTagLinks` sous `if (g_pNewChatWnd)`, or ce pointeur vaut 0
+  // dès que la chatbox native est détruite — donc même `<ITEML>`, pourtant une
+  // balise du client, ressort littéralement (cf. docs/entity_chat_balloon_re.md).
+  std::string PlainTextFromWire(const char* wire) const;
+
   // ── Maj + clic gauche sur un objet = son LIEN dans la saisie ────────────────
   // `info` = un ItemSkillInfo vivant (nœud de liste inventaire/chariot, slot
   // d'équipement). On insère le NOM lisible dans la barre de saisie et on garde
@@ -309,8 +327,17 @@ class ChatWindow : public Plugin {
   unsigned ingest_seen_ = 0;
   unsigned ingest_kept_ = 0;
 
- private:
   // ── Le modèle ──────────────────────────────────────────────────────────────
+  // 🔴 `Run` et `Line` sont PUBLICS, et pas par commodité : ce sont eux que les
+  // autres surfaces d'affichage doivent consommer. La bulle au-dessus des têtes
+  // en dessine exactement les mêmes fragments (couleurs, emotes du jeu, icônes
+  // d'objet, liens), avec les mêmes primitives — c'est ce qui garantit qu'elle
+  // ne montrera jamais autre chose que le chat pour la même phrase.
+  //
+  // ⚠ Rendre depuis `Line::plain` ne suffit PAS : ce n'est que la concaténation
+  // des textes, donc un fragment d'emote y reste écrit « :nom: » et une icône
+  // d'objet y disparaît. Il faut la liste des runs.
+ public:
   // Un fragment de ligne déjà analysé : le parse (^RRGGBB, ^i[], <ITEML>) est
   // fait UNE fois à l'ingestion, pas à chaque frame. Le chat est précisément
   // l'endroit où le coût par frame a déjà coûté des freezes (chat_trim_freeze).
@@ -414,6 +441,12 @@ class ChatWindow : public Plugin {
     uint8_t          cached_flags = 0xFF;  // horodatage + icônes (cf. DrawLines)
   };
 
+  // Analyse une ligne brute (code-page client) en fragments prêts à dessiner.
+  // C'est LE point d'entrée des autres surfaces : même parseur, donc mêmes
+  // libellés de liens, mêmes couleurs, mêmes emotes que la chatbox.
+  void ParseWireLine(const char* wire, Line* out) const;
+
+ private:
   // Un canal, tel que le registre natif le décrit (nom + 25 octets de filtre).
   // `node` est l'adresse du nœud : les 25 cases d'options écrivent DEDANS, comme
   // le fait la fenêtre native 0x84 — le registre reste la source de vérité.

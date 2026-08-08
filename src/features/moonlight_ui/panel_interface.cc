@@ -20,6 +20,7 @@
 // Types COMPLETS des plugins pilotés par les 13 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
+#include "features/overlays/chat_balloon.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/craft_atlas.h"
 #include "features/windows/make_item_window.h"
@@ -372,6 +373,17 @@ void MoonlightUi::DrawInterfacePanel() {
           SeparatorText(i18n::Tr("Chatbox ImGui"));
           if (auto* chat_window = Bourgeon::Instance().chat_window()) {
             changed |= chat_window->DrawSettings();
+          } else {
+            ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          }
+
+          // La bulle au-dessus des têtes vit ICI, avec la chatbox, et pas dans
+          // une section « overlays » : elle affiche exactement les mêmes lignes,
+          // résolues par le MÊME parseur (ChatWindow::PlainTextFromWire). Les
+          // séparer inviterait à les faire diverger.
+          SeparatorText(i18n::Tr("Bulles au-dessus des têtes"));
+          if (auto* balloon = Bourgeon::Instance().chat_balloon()) {
+            balloon->DrawSettings();
           } else {
             ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
           }

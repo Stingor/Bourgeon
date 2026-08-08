@@ -120,6 +120,8 @@ set(BOURGEON_FILES
 	"features/overlays/basic_info.h"
 	"features/overlays/dps_meter.cc"
 	"features/overlays/dps_meter.h"
+	"features/overlays/chat_balloon.cc"
+	"features/overlays/chat_balloon.h"
 	"features/overlays/entity_names.cc"
 	"features/overlays/entity_names.h"
 	"features/overlays/login_parade.cc"

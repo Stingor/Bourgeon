@@ -63,6 +63,7 @@
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
+#include "features/overlays/chat_balloon.h"
 #include "features/overlays/entity_names.h"
 #include "utils/hooking/hook_manager.h"
 #include "features/staff_gate.h"  // IsStaff() — gate de la fenêtre de logs
@@ -117,6 +118,7 @@ EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
 }
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
+ChatBalloon* Bourgeon::chat_balloon() { return chat_balloon_; }
 
 namespace {
 // Silence le message chat "Successfully purchased emotion." (EMSG_EMOTION_
@@ -840,6 +842,14 @@ void Bourgeon::LoadPlugins() {
     auto entity_names = std::make_unique<EntityNames>();
     entity_names_ = entity_names.get();
     plugins_.emplace_back(std::move(entity_names));
+  }
+  {
+    // Bulle de chat au-dessus des têtes. Son constructeur POSE DEUX DÉTOURS
+    // (capture du texte + mise en silence du rendu natif) : il doit donc être
+    // construit après la chatbox, dont il consomme le parseur de balises.
+    auto chat_balloon = std::make_unique<ChatBalloon>();
+    chat_balloon_ = chat_balloon.get();
+    plugins_.emplace_back(std::move(chat_balloon));
   }
 
   for (const auto& plugin : plugins_) {
