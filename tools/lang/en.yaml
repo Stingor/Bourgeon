@@ -778,6 +778,7 @@
 "Clic droit : options du log de « %s »\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": "Right click: log options for « %s »\nDrag: to another window, or outside\nMiddle click: close"
 "Conversation privée avec %s.\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": "Private conversation with %s.\nDrag: to another window, or outside\nMiddle click: close"
 "Conversation privée avec %s [%s].\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": "Private conversation with %s [%s].\nDrag: to another window, or outside\nMiddle click: close"
+"Ferme l'onglet affiché (%s).\nL'historique est conservé : rouvrir la conversation le retrouve.": "Closes the displayed tab (%s).\nThe history is kept: reopening the conversation brings it back."
 "Emotes du jeu.\nUn clic l'ENVOIE à %s, seule.": "Game emotes.\nOne click SENDS it to %s, on its own."
 "Répondre à %s": "Reply to %s"
 "Clic droit : options du log de « %s »\nGlisser : réordonner, ou vers une autre fenêtre, ou dehors": "Right click: log options for « %s »\nDrag: reorder, or to another window, or outside"

@@ -2741,6 +2741,51 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
   int   slot_n = 0;
   float x = 0.0f;
 
+  // ── Bouton « Fermer », tout à gauche de la bande ────────────────────────────
+  // 🔴 Une fenêtre flottante n'a PAS de barre de titre — le skin chat pose
+  // NoTitleBar, c'est ce qui lui donne son allure de chatbox du client. Elle ne se
+  // fermait donc QUE par un clic MOLETTE sur son onglet : un geste que rien
+  // n'annonce, et dont l'infobulle qui le mentionne demande déjà de survoler
+  // l'onglet pour être lue. Signalé en jeu sur les conversations privées — « pas
+  // de moyen visible de la fermer », ce qui était exact.
+  //
+  // Il ferme l'onglet ACTIF, celui qu'on a sous les yeux. C'est la seule lecture
+  // sans ambiguïté quand une fenêtre en porte plusieurs — l'objection qui avait
+  // fait retirer la croix d'en-tête (« elle ne saurait plus lequel elle ferme »)
+  // tombe dès lors que la cible est ce qui est affiché, comme dans un navigateur.
+  // Il passe par `close_channel_id_`, le même chemin différé que le clic molette :
+  // ses gardes (jamais le dernier canal, jamais le dernier onglet de la fenêtre
+  // principale) valent donc aussi ici, sans être réécrites.
+  if (active >= 0) {
+    const char* close_label = i18n::Tr("Fermer");
+    const float close_w = ImGui::CalcTextSize(close_label).x + 14.0f;
+    ImGui::SetCursorScreenPos(origin);
+    char close_id[40];
+    std::snprintf(close_id, sizeof(close_id), "##gclose%u", group);
+    ImGui::InvisibleButton(close_id, ImVec2(close_w, h));
+    const bool close_hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+      close_channel_id_ = channels_[active].id;
+    const ImVec2 c0(origin.x, origin.y);
+    const ImVec2 c1(c0.x + close_w, c0.y + h);
+    // Survol en rouge CLAIR, pas sombre : le libellé des onglets est peint en
+    // sombre (kTabTextCol) et disparaîtrait sur un fond foncé.
+    dl->AddRectFilled(c0, c1, close_hovered ? IM_COL32(0xE0, 0x92, 0x92, 255)
+                                            : tab_idle);
+    dl->AddRect(c0, c1, tab_edge);
+    dl->AddText(ImVec2(c0.x + 7.0f, c0.y + 3.0f), kTabTextCol, close_label);
+    if (close_hovered && drag_tab_ < 0) {
+      ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+      ImGui::SetTooltip(i18n::Tr("Ferme l'onglet affiché (%s).\nL'historique est "
+                        "conservé : rouvrir la conversation le retrouve."),
+                        channels_[active].whisper_with.empty()
+                            ? channels_[active].name.c_str()
+                            : channels_[active].whisper_with.c_str());
+      ImGui::PopStyleColor();
+    }
+    x = close_w + 6.0f;  // les onglets commencent après lui
+  }
+
   for (size_t i = 0; i < channels_.size(); ++i) {
     Channel& channel = channels_[i];
     if (channel.group != group) continue;
@@ -2893,6 +2938,15 @@ void ChatWindow::DrawWhisperInput(int index) {
   ImGui::PopID();
   ImGui::SameLine();
 
+  // 🔴 Texte de saisie en SOMBRE, comme la barre principale (qui pousse la même
+  // couleur autour de son champ). Sans ça, le texte hérite du blanc que
+  // `BeginRoChatWindow` pose pour les lignes de LOG — lisible sur le corps sombre
+  // de la chatbox, mais le champ, lui, a un fond CLAIR (ImGuiCol_FrameBg 0xCECECE
+  // poussé par le même skin). On tapait donc en clair sur clair.
+  // L'invite (`InputTextWithHint`) suit : elle se peint en `ImGuiCol_TextDisabled`,
+  // calibré pour un fond sombre — sur le gris du champ elle s'efface presque.
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+  ImGui::PushStyleColor(ImGuiCol_TextDisabled, IM_COL32(0x6A, 0x6A, 0x72, 255));
   ImGui::SetNextItemWidth(-FLT_MIN);
   char field_id[64];
   std::snprintf(field_id, sizeof(field_id), "##whisper_input_%u", channel.id);
@@ -2912,6 +2966,7 @@ void ChatWindow::DrawWhisperInput(int index) {
   } else {
     channel.whisper_input = buffer;
   }
+  ImGui::PopStyleColor(2);
 }
 
 // Arme l'envoi, joué par FlushPending hors frame. Le texte part TEL QUEL : la

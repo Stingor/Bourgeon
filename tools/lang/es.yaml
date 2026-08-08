@@ -760,6 +760,7 @@
 "Clic droit : options du log de « %s »\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": " Clic derecho: opciones de log de « %s »\nArrastrar: a otra ventana, o fuera\nClic central: cerrar"
 "Conversation privée avec %s.\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": " Conversación privada con %s.\nArrastrar: a otra ventana, o fuera\nClic central: cerrar"
 "Conversation privée avec %s [%s].\nGlisser : vers une autre fenêtre, ou dehors\nClic molette : fermer": " Conversación privada con %s [%s].\nArrastrar: a otra ventana, o fuera\nClic central: cerrar"
+"Ferme l'onglet affiché (%s).\nL'historique est conservé : rouvrir la conversation le retrouve.": " Cierra la pestaña mostrada (%s).\nEl historial se conserva: al reabrir la conversación reaparece."
 "Emotes du jeu.\nUn clic l'ENVOIE à %s, seule.": " Emotes del juego.\nUn clic lo ENVÍA a %s, sin más."
 "Répondre à %s": " Responder a %s"
 "Clic droit : options du log de « %s »\nGlisser : réordonner, ou vers une autre fenêtre, ou dehors": " Clic derecho: opciones de log de « %s »\nArrastrar: reordenar, o a otra ventana, o fuera"
