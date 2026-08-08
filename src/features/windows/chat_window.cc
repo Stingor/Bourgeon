@@ -5042,7 +5042,9 @@ void ChatWindow::FlushNameAction() {
       // 514`, 24 octets de nom, longueur via sa table) et l'envoie. Passer par
       // elle évite de trancher entre les cinq opcodes que le serveur accepte.
       // ⚠ Elle lit 24 octets d'affilée : le tampon doit les avoir.
-      static_assert(sizeof(name) >= 24, i18n::Tr("sub_A2C600 lit 24 octets de nom"));
+      // Message de static_assert : un LITTÉRAL, jamais i18n::Tr — il est lu à la
+      // compilation, et il s'adresse au développeur, pas au joueur.
+      static_assert(sizeof(name) >= 24, "sub_A2C600 lit 24 octets de nom");
       __try {
         reinterpret_cast<FriendAddFn>(kFriendListAddByName)(name);
       } __except (EXCEPTION_EXECUTE_HANDLER) {

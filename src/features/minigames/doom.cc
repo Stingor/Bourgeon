@@ -13,6 +13,11 @@
 #include "d3d9/d3d9_hook.h"
 #include "ragnarok/ragnarok_client.h"
 #include "utils/log_console.h"
+// 🔴 AVANT le bloc extern "C" ci-dessous, et surtout pas dedans : i18n.h déclare
+// une fonction qui rend un std::vector, ce qu'une liaison C ne peut pas porter
+// (C2526). Un include ajouté « après le dernier #include » atterrissait dans le
+// bloc, et cassait la compilation de tout le projet.
+#include "utils/i18n.h"
 
 // doomgeneric.h declares DG_ScreenBuffer OUTSIDE its own extern "C" guard
 // (upstream bug) — from C++ it would link against a mangled symbol and fail.
@@ -24,7 +29,6 @@
 extern "C" {
 #include "doomgeneric.h"
 #include "doomkeys.h"
-#include "utils/i18n.h"
 }
 
 extern bool g_imgui_dx7_active;  // DX7 proxy path — this feature is DX9-only

@@ -18,7 +18,17 @@ extern bool g_imgui_dx7_active;
 namespace {
 
 // Titre affiché + ID stable (tout ce qui suit ### est hors rendu).
-constexpr char kPopupId[] = i18n::Tr("Mode DirectX 7 détecté###dx7_warning");
+//
+// 🔴 Le libellé reste NU ici, et se traduit à ses points d'usage (`PopupTitle()`).
+// Un `constexpr char[]` ne peut pas être initialisé par un appel de fonction —
+// et même si le compilateur l'acceptait, la valeur serait figée au chargement,
+// donc en français pour toujours.
+constexpr char kPopupId[] = "Mode DirectX 7 détecté###dx7_warning";
+
+// Le titre traduit, résolu à CHAQUE appel. L'identifiant stable voyage dans la
+// traduction (« ###dx7_warning » en fait partie), donc OpenPopup et
+// BeginPopupModal continuent de se répondre quelle que soit la langue.
+inline const char* PopupTitle() { return i18n::Tr(kPopupId); }
 
 // Dossier de l'exécutable du jeu, backslash final inclus. Comme pour le patcher
 // (integrity_check), on part du module et pas du CWD : un raccourci peut lancer
@@ -90,7 +100,7 @@ void Dx7Warning::Draw(bool at_login) {
   // OpenPopup et BeginPopupModal au même niveau (hors de toute fenêtre) pour que
   // les ID concordent — même règle que les modales du char-select.
   if (!opened_) {
-    ImGui::OpenPopup(kPopupId);
+    ImGui::OpenPopup(PopupTitle());
     opened_ = true;
     if (!logged_) {
       logged_ = true;
@@ -98,7 +108,7 @@ void Dx7Warning::Draw(bool at_login) {
     }
   }
 
-  if (!ro::BeginRoPopupModal(kPopupId)) {
+  if (!ro::BeginRoPopupModal(PopupTitle())) {
     // ImGui ferme un popup qui n'a pas été soumis pendant une frame — ce qui
     // arrive dès que RenderUI se met en retrait (chargement de carte, interface
     // native masquée en F11). Ce n'est PAS un acquittement : on réarme pour le
