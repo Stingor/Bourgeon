@@ -652,8 +652,10 @@ void ZoneRecorder::DrawRecordingOverlay() {
       std::snprintf(buf, sizeof(buf), i18n::Tr("Départ dans %ld…"), (left / 1000) + 1);
     } else if (state_ == State::kRecording) {
       const unsigned long ms = GetTickCount() - record_start_tick_;
-      std::snprintf(buf, sizeof(buf), "● REC  %.1f / %d s  (%d img)", ms / 1000.0f,
-                    duration_s_, frame_count_);
+      // C'est le GABARIT qu'on traduit, avant la composition : « img » est un mot,
+      // et une fois le compteur inséré la chaîne n'est plus une clé de catalogue.
+      std::snprintf(buf, sizeof(buf), i18n::Tr("● REC  %.1f / %d s  (%d img)"),
+                    ms / 1000.0f, duration_s_, frame_count_);
     } else {
       std::snprintf(buf, sizeof(buf), "%s", i18n::Tr("Encodage du GIF…"));
     }
@@ -775,7 +777,7 @@ void ZoneRecorder::DrawSettings() {
     if (ImGui::IsItemDeactivatedAfterEdit() || (changed && !ImGui::IsItemActive()))
       save = true;
   };
-  slider("Images / s", &fps_, 5, 20);
+  slider(i18n::Tr("Images / s"), &fps_, 5, 20);
   slider(i18n::Tr("Durée (s)"), &duration_s_, 1, 15);
   slider(i18n::Tr("Largeur max"), &max_width_, 160, 1280);
   SameLine();
