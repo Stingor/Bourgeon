@@ -1781,11 +1781,11 @@ void InventoryViewer::OnRenderUI() {
       } else {
         const ImVec2 sz = vtabs
             ? ImVec2(tabW, 0.0f)
-            : ImVec2(ImGui::CalcTextSize(kCats[c].label).x +
+            : ImVec2(ImGui::CalcTextSize(i18n::Tr(kCats[c].label)).x +
                          ImGui::GetStyle().FramePadding.x * 2.0f, tabH);
-        if (ImGui::Selectable(kCats[c].label, sel, 0, sz)) cur_tab_ = c;
+        if (ImGui::Selectable(i18n::Tr(kCats[c].label), sel, 0, sz)) cur_tab_ = c;
       }
-      if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kCats[c].label);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", i18n::Tr(kCats[c].label));
       // Glisser un item sur un onglet : sur Favoris = l'AJOUTE aux favoris ; hors de
       // Favoris (item déjà favori) = le RETIRE (comme le natif).
       if (ImGui::BeginDragDropTarget()) {

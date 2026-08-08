@@ -94,7 +94,7 @@ void MoonlightUi::DrawFunPanels() {
     if (auto* dps_meter = Bourgeon::Instance().dps_meter()) {
       if (dps_meter->DrawSettings()) SaveSettings();
     } else {
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
     }
     PopStyleCompact();
   }
@@ -119,7 +119,7 @@ void MoonlightUi::DrawFunPanels() {
           "jusqu'au redémarrage du client."));
       ImGui::TextDisabled(i18n::Tr("État : %s"), doom->StatusText());
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Parade de Porings (login)"));
     if (auto* login_parade = Bourgeon::Instance().login_parade()) {
@@ -135,7 +135,7 @@ void MoonlightUi::DrawFunPanels() {
           "Purement cosmétique. Ils s'estompent au-dessus du panneau de login "
           "pour ne pas gêner la saisie. Visible uniquement à l'écran de login."));
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Roggle"));
     if (auto* roggle = Bourgeon::Instance().roggle()) {
@@ -149,7 +149,7 @@ void MoonlightUi::DrawFunPanels() {
           "bas rattrape la bille = bille gratuite.\n"
           "Fermer la fenêtre ou décocher = masquer (la partie est conservée)."));
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Rojeweled"));
     if (auto* rojeweled = Bourgeon::Instance().rojeweled()) {
@@ -164,7 +164,7 @@ void MoonlightUi::DrawFunPanels() {
           "les faire disparaître (les cascades rapportent plus). DX9 requis "
           "(sinon tuiles colorées)."));
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Saut"));
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
@@ -192,7 +192,7 @@ void MoonlightUi::DrawFunPanels() {
         PopItemWidth();
       }
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Déplacement au clavier (Expérimental)"));
     if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
@@ -236,6 +236,6 @@ void MoonlightUi::DrawFunPanels() {
         }
       }
     } else
-      ImGui::TextDisabled(kPluginUnavailable);
+      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
   }
 }

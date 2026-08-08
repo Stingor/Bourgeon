@@ -1151,7 +1151,7 @@ void NpcDialogWindow::OnRenderUI() {
     }
     if (can_close) {
       if (shown) ImGui::SameLine();
-      if (ro::RoButton(has_close_ ? "Fermer" : "Annuler") || (kbd_ok && !shown))
+      if (ro::RoButton(has_close_ ? i18n::Tr("Fermer") : i18n::Tr("Annuler")) || (kbd_ok && !shown))
         CloseDialog();
     }
     ImGui::EndDisabled();

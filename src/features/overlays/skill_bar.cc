@@ -1381,7 +1381,7 @@ void SkillBar::DrawBar(int bar) {
         void* ptex = GetIconTex(r.type, r.id);
         if (ptex) ImGui::Image((ImTextureID)(uintptr_t)ptex,
                                ImVec2(icon_size_, icon_size_));
-        else ImGui::Text("%s %u", r.type == 0 ? "Objet" : "Skill", r.id);
+        else ImGui::Text("%s %u", r.type == 0 ? i18n::Tr("Objet") : i18n::Tr("Skill"), r.id);
         // Hors des barres, l'aperçu se barre d'une croix rouge : relâcher là
         // RETIRE la case (UpdateDragRemoval) au lieu de simplement annuler. Le
         // geste est sans confirmation, comme sur la barre native — l'avertir

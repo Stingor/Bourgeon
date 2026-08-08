@@ -301,7 +301,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* sb = Bourgeon::Instance().skill_bar())
           sb->DrawSettings();
         else
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }
 
       // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
@@ -310,7 +310,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* basic_info = Bourgeon::Instance().basic_info()) {
           if (basic_info->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -360,7 +360,7 @@ void MoonlightUi::DrawInterfacePanel() {
             if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
               changed |= chat_tweaks->DrawSettings();
             } else {
-              ImGui::TextDisabled(kPluginUnavailable);
+              ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
             }
           }
 
@@ -371,7 +371,7 @@ void MoonlightUi::DrawInterfacePanel() {
           if (auto* chat_window = Bourgeon::Instance().chat_window()) {
             changed |= chat_window->DrawSettings();
           } else {
-            ImGui::TextDisabled(kPluginUnavailable);
+            ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
           }
 
           if (!native_chat_replaced) SeparatorText(i18n::Tr("Couleurs du chat"));
@@ -402,7 +402,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* mi = Bourgeon::Instance().menu_icons()) {
           if (mi->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -411,7 +411,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* si = Bourgeon::Instance().status_icons())
           si->DrawSettings();
         else
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }
 
       // ── Suivi de quête (QuestTracker) ──────────────────────────────
@@ -419,7 +419,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* qt = Bourgeon::Instance().quest_tracker())
           qt->DrawSettings();
         else
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }
 
       // ── Descriptions (ItemDescWindow : panneaux techniques item/skill) ───
@@ -427,7 +427,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* idt = Bourgeon::Instance().item_desc()) {
           if (idt->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -443,7 +443,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* nd = Bourgeon::Instance().npc_dialog_window()) {
           if (nd->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -452,7 +452,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* stg = Bourgeon::Instance().storage_window()) {
           if (stg->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -461,7 +461,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
           if (iv->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -470,7 +470,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* cv = Bourgeon::Instance().cart_viewer()) {
           if (cv->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -486,7 +486,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* wr = Bourgeon::Instance().weapon_refine_window()) {
           if (wr->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -495,7 +495,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* mk = Bourgeon::Instance().make_item_window()) {
           if (mk->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -511,7 +511,7 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::Separator();
           if (mi->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -528,7 +528,7 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::Separator();
           if (ecm->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(kPluginUnavailable);
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 

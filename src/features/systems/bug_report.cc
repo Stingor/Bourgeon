@@ -158,7 +158,14 @@ void BugReport::Button(const Context& ctx, const char* imgui_id) {
 
 void BugReport::TitleBarButton(const Context& ctx) {
   if (!enabled_) return;  // opt-out via MoonlightUi
+  // 🔴 Le littéral reste NU : il est `static`, donc construit au chargement de la
+  // DLL — bien avant que le catalogue n'existe. Un `Tr` posé ici serait figé en
+  // français pour toujours, sans la moindre erreur.
   static const char kLabel[] = "Signaler un bug";
+  // ⚠ Traduit UNE fois, et la même chaîne sert à MESURER et à DESSINER. Mesurer le
+  // français pour dessiner l'anglais donnerait un bouton mal placé — la largeur
+  // calculée plus bas positionne le bouton dans la barre de titre.
+  const char* label = i18n::Tr(kLabel);
 
   const ImVec2 wp = ImGui::GetWindowPos();  // = coin haut-gauche de la barre
   const float ww = ImGui::GetWindowWidth();
@@ -166,7 +173,7 @@ void BugReport::TitleBarButton(const Context& ctx) {
   // Largeur donnée EXPLICITEMENT (même formule que le mode auto de RoSmallButton)
   // pour la connaître avant de placer le curseur : la mesurer après coup ferait
   // sauter le bouton d'une frame à chaque ouverture — le défaut qu'on corrige.
-  const float bw = ImGui::CalcTextSize(kLabel).x +
+  const float bw = ImGui::CalcTextSize(label).x +
                    static_cast<float>(ro::skin::ksBtnOutLeft.w +
                                       ro::skin::ksBtnOutRight.w);
   // La croix de fermeture vit à 5 px du bord droit : on lui laisse sa largeur plus
@@ -187,7 +194,7 @@ void BugReport::TitleBarButton(const Context& ctx) {
   // bouton est survolé, HoveredId != 0 et ImGui ne démarre pas le drag de titre.
   ImGui::PushClipRect(wp, ImVec2(wp.x + ww, wp.y + title_h), false);
   ImGui::SetCursorScreenPos(ImVec2(bx, by));
-  const bool clicked = ro::RoSmallButton(kLabel, bw);
+  const bool clicked = ro::RoSmallButton(label, bw);
   const bool hovered = ImGui::IsItemHovered();
   ImGui::PopClipRect();
   // 🔴 On NE restaure PAS le curseur, et c'est pour ça que cet appel doit être le

@@ -757,7 +757,7 @@ void CashShopWindow::OnRenderUI() {
     ro::RoEndCombo();
   }
   ImGui::SameLine();
-  if (ro::RoButton(sort_asc_ ? "Asc" : "Desc")) sort_asc_ = !sort_asc_;
+  if (ro::RoButton(sort_asc_ ? i18n::Tr("Asc") : i18n::Tr("Desc"))) sort_asc_ = !sort_asc_;
 
   //  Disposition : grille à gauche, panier à droite (comme le cash shop natif) 
   const ImVec2 avail = ImGui::GetContentRegionAvail();

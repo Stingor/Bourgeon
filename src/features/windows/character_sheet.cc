@@ -3126,7 +3126,7 @@ void CharacterSheet::DrawSkillsTab() {
   ImGui::InputTextWithHint("##skfilter", i18n::Tr("Rechercher…"), skill_filter_buf_,
                            sizeof(skill_filter_buf_));
   ImGui::SameLine();
-  if (ro::RoButton(skill_grid_ ? "Grille" : "Liste", 58.0f, 0.0f))
+  if (ro::RoButton(skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f))
     skill_grid_ = !skill_grid_;
   mui::Tooltip(i18n::Tr("Bascule entre la grille d'icônes (vue « moderne » du client) et la\n"
                "liste détaillée (niveau, SP, portée, prérequis)."));
@@ -4546,7 +4546,7 @@ void CharacterSheet::DrawGuildTab() {
                        i18n::Tr("Refusé par le serveur pendant une guerre de guildes\n"
                        "et sur les cartes verrouillées."));
     ImGui::Spacing();
-    if (ro::RoButton(guild_rel_del_kind_ == 0 ? "Rompre" : "Retirer", 110.0f, 0.0f)) {
+    if (ro::RoButton(guild_rel_del_kind_ == 0 ? i18n::Tr("Rompre") : i18n::Tr("Retirer"), 110.0f, 0.0f)) {
       SendGuildDeleteRelation(guild_rel_del_id_, guild_rel_del_kind_);
       guild_status_ = std::string(guild_rel_del_name_) + i18n::Tr(" : demande envoyée.");
       guild_last_req_ = 0;  // rafraîchit la liste des relations
@@ -4780,7 +4780,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
 
   ImGui::Text(i18n::Tr("Points de compétence : %d"), guild_skill_points_);
   ImGui::SameLine();
-  if (ro::RoButton(guild_skill_grid_ ? "Grille" : "Liste", 58.0f, 0.0f))
+  if (ro::RoButton(guild_skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f))
     guild_skill_grid_ = !guild_skill_grid_;
   mui::Tooltip(i18n::Tr("Bascule entre la grille d'icônes et la liste détaillée\n"
                "(niveau, SP, lancer, monter) — comme le Grimoire."));

@@ -1299,7 +1299,7 @@ void StorageWindow::OnRenderUI() {
           // Pas d'images : onglet TEXTE au libellé tourné à 90° (lecture bas->haut).
           // Hauteur du bouton = longueur du libellé -> le nom entier tient dans un
           // strip étroit, sans abréviation.
-          const float ih = ImGui::CalcTextSize(kStgCats[c].label).x +
+          const float ih = ImGui::CalcTextSize(i18n::Tr(kStgCats[c].label)).x +
                            ImGui::GetStyle().FramePadding.y * 2.0f + 6.0f;
           const ImVec2 p = ImGui::GetCursorScreenPos();
           if (ImGui::InvisibleButton("tab", ImVec2(tabW-4.0f, ih))) select_tab(c);
@@ -1325,12 +1325,12 @@ void StorageWindow::OnRenderUI() {
               (std::min)(pe.y, tdl->GetClipRectMax().y));
           if (cmax.x > cmin.x && cmax.y > cmin.y)
             AddTextVertical(tdl, ImVec2((p.x + pe.x-2.0f) * 0.5f, (p.y + pe.y) * 0.5f),
-                            ImGui::GetColorU32(ImGuiCol_Text), kStgCats[c].label,
+                            ImGui::GetColorU32(ImGuiCol_Text), i18n::Tr(kStgCats[c].label),
                             cmin, cmax);
         }
         // Glisser un item du viewer sur l'onglet : Favoris = ajoute, autre = retire.
         tab_drop_target(c);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kStgCats[c].label);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", i18n::Tr(kStgCats[c].label));
         if (sel) {
           active_tab_min = ImGui::GetItemRectMin();
           active_tab_max = ImGui::GetItemRectMax();
@@ -1390,14 +1390,14 @@ void StorageWindow::OnRenderUI() {
         }
         if (!sel && ImGui::IsItemHovered())
           tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol
-      } else if (ImGui::Selectable(kStgCats[c].label, sel, 0,
-                                   ImVec2(ImGui::CalcTextSize(kStgCats[c].label).x +
+      } else if (ImGui::Selectable(i18n::Tr(kStgCats[c].label), sel, 0,
+                                   ImVec2(ImGui::CalcTextSize(i18n::Tr(kStgCats[c].label)).x +
                                               ImGui::GetStyle().FramePadding.x * 2.0f,
                                           tabH))) {
         select_tab(c);
       }
       tab_drop_target(c);  // Favoris = ajoute, autre onglet = retire
-      if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", kStgCats[c].label);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip(" %s ", i18n::Tr(kStgCats[c].label));
       if (sel) {
         active_tab_min = ImGui::GetItemRectMin();
         active_tab_max = ImGui::GetItemRectMax();
@@ -1415,7 +1415,7 @@ void StorageWindow::OnRenderUI() {
       for (int c = 0; c < kNumStgCats; ++c) {
         const ImGuiTabItemFlags tflags =
             (!tab_applied_ && c == cur_tab_) ? ImGuiTabItemFlags_SetSelected : 0;
-        const bool tab_open = ImGui::BeginTabItem(kStgCats[c].label, nullptr, tflags);
+        const bool tab_open = ImGui::BeginTabItem(i18n::Tr(kStgCats[c].label), nullptr, tflags);
         // Le « dernier item » ImGui est le BOUTON d'onglet, que celui-ci soit ouvert
         // ou non (BeginTabItem ne renvoie true que pour l'onglet SÉLECTIONNÉ) : la
         // cible de dépôt doit donc être posée ici, hors du if, sinon on ne pourrait

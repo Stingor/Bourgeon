@@ -1450,7 +1450,7 @@ void CharSelect::DrawLayoutEditor() {
     // Suppression en DEUX temps plutôt qu'un dialogue : un enregistrement effacé
     // par erreur est irrécupérable, mais une boîte modale de plus sur cet écran
     // (déjà peuplé de popups create/delete) coûterait plus qu'elle ne protège.
-    if (ro::RoButton(preset_del_armed_ ? "Confirmer" : "Supprimer", 120.0f, 0.0f)) {
+    if (ro::RoButton(preset_del_armed_ ? i18n::Tr("Confirmer") : i18n::Tr("Supprimer"), 120.0f, 0.0f)) {
       if (preset_del_armed_) {
         charsel::DeletePreset(preset_sel_);
         preset_sel_ = -1;
@@ -2131,7 +2131,7 @@ void CharSelect::OnRenderLoginUI() {
   // (setting id 26 sur la session map), il vaut 0 ici — un tel test masquerait le
   // bouton à tout le monde. Cf. le commentaire de l'ancien éditeur F10.
   ImGui::SameLine();
-  if (ro::RoButton(seat_edit_ ? "Terminer" : "Personnaliser", 160.0f, 0.0f))
+  if (ro::RoButton(seat_edit_ ? i18n::Tr("Terminer") : i18n::Tr("Personnaliser"), 160.0f, 0.0f))
     ToggleLayoutEdit();
 
   // Suppression : réservation (pure ImGui) / annulation / suppression définitive.
