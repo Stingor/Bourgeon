@@ -112,11 +112,11 @@ void MoonlightUi::DrawInterfacePanel() {
         // sur la pile.
         ro::RoEndCombo();
       }
-      SameLine(); HelpMarker(i18n::Tr(
+      SameLine(); HelpMarker(
           i18n::Tr("Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, "
           "descriptions, messages du serveur) n'est pas concerné.\n"
           "Une langue grisée est connue mais son fichier de traduction est "
-          "absent de SaveData\\lang\\.")));
+          "absent de SaveData\\lang\\."));
 
       // Le compteur de textes non traduits, staff uniquement : c'est un outil de
       // TRADUCTION, pas un réglage. Un joueur n'a rien à faire d'un décompte
