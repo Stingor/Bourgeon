@@ -4,7 +4,7 @@
         {
             "label": "Build Release (clean)",
             "type": "shell",
-            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --clean-first --target ALL_BUILD -j 20",
+            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --clean-first --target ALL_BUILD -j 20 | Tee-Object -FilePath '${workspaceFolder}/build/last_build.log'; $code = $LASTEXITCODE; $errs = @(Select-String -Path '${workspaceFolder}/build/last_build.log' -Pattern ': (fatal )?error [A-Z]+[0-9]+' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line.Trim() } | Select-Object -Unique); Write-Host ''; if ($errs.Count) { Write-Host ('===== ' + $errs.Count + ' ERREUR(S) =====') -ForegroundColor Red; $errs | ForEach-Object { Write-Host $_ -ForegroundColor Red } } else { Write-Host '===== BUILD OK, aucune erreur =====' -ForegroundColor Green }; exit $(if ($null -eq $code) { 1 } else { $code })",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -12,17 +12,19 @@
             "problemMatcher": "$msCompile",
             "presentation": {
                 "reveal": "always",
+                "revealProblems": "onProblem",
                 "panel": "shared"
             }
         },
         {
             "label": "Build Release",
             "type": "shell",
-            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20",
+            "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20 | Tee-Object -FilePath '${workspaceFolder}/build/last_build.log'; $code = $LASTEXITCODE; $errs = @(Select-String -Path '${workspaceFolder}/build/last_build.log' -Pattern ': (fatal )?error [A-Z]+[0-9]+' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line.Trim() } | Select-Object -Unique); Write-Host ''; if ($errs.Count) { Write-Host ('===== ' + $errs.Count + ' ERREUR(S) =====') -ForegroundColor Red; $errs | ForEach-Object { Write-Host $_ -ForegroundColor Red } } else { Write-Host '===== BUILD OK, aucune erreur =====' -ForegroundColor Green }; exit $(if ($null -eq $code) { 1 } else { $code })",
             "group": "build",
             "problemMatcher": "$msCompile",
             "presentation": {
                 "reveal": "always",
+                "revealProblems": "onProblem",
                 "panel": "shared"
             }
         }
