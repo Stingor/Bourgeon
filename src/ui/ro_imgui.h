@@ -315,6 +315,17 @@ void RoEndCombo();
 // active. C'est ce qui permet aux appelants d'écrire sans risque le motif habituel
 //   changed |= ro::RoCombo(...);  ...  if (changed) SaveSettings();
 // sans déclencher une sérialisation par frame. Toute évolution doit préserver ce contrat.
+//
+// 🔴 `items` SE PASSE EN FRANÇAIS NU. RoCombo traduit chaque libellé À SA LECTURE,
+// ce qui couvre d'un coup tous les combos du projet sans toucher un seul appel.
+// Envelopper les items chez l'appelant les traduirait donc DEUX fois : le premier
+// `Tr` rend l'anglais, le second ne le trouve pas au catalogue et l'inscrit comme
+// « à traduire ». Rien ne se voit à l'écran — c'est le gabarit d'export qui se
+// remplit de textes déjà traduits, et on cherche longtemps d'où ils viennent.
+// (Le `label`, lui, s'enveloppe normalement : c'est un argument, pas un item.)
+//
+// ⚠ Corollaire : un tableau d'items ne doit JAMAIS être `static` s'il est
+// construit avec `Tr` — mais comme il se passe nu, la question ne se pose pas.
 bool RoCombo(const char* label, int* current_item, const char* const items[], int items_count);
 
 // Barre horizontale 3-slice (btnbar_*) dessinée dans le rect donné, sur le draw

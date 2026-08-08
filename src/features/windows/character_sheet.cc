@@ -3069,15 +3069,24 @@ void CharacterSheet::DrawSkillsTab() {
   // On traduit le générique, on garde tel quel ce qui est spécifique à la classe.
   char lua_names[4][32];
   ReadSkillTabNamesSEH(OwnJobIdSEH(), lua_names);
+  // 🔴 Table STATIQUE, donc NUE : un `Tr` posé ici serait évalué au chargement de
+  // la DLL, avant le catalogue, et resterait français pour toujours. La traduction
+  // se fait à la LECTURE, dans tab_label.
   static const char* kFallback[4] = {"1re classe", "2e classe", "3e classe", "4e classe"};
+  // 🔴 Traduire ICI et pas à l'affichage : ces libellés sont ensuite COMPOSÉS par
+  // snprintf (« %s / %s » pour les deux premières classes fusionnées). Après la
+  // composition il n'y a plus de clé de catalogue à chercher — « 1re classe / 2e
+  // classe » n'en est pas une, et ne le sera jamais.
   auto tab_label = [&](int t) -> const char* {
-    if (t >= kSkillJobTabs) return "Divers";
+    if (t >= kSkillJobTabs) return i18n::Tr("Divers");
     const char* n = lua_names[t];
-    if (!n[0]) return kFallback[t];
-    if (std::strcmp(n, "1st") == 0) return kFallback[0];
-    if (std::strcmp(n, "2nd") == 0) return kFallback[1];
-    if (std::strcmp(n, "3rd") == 0) return kFallback[2];
-    if (std::strcmp(n, "4th") == 0) return kFallback[3];
+    if (!n[0]) return i18n::Tr(kFallback[t]);
+    if (std::strcmp(n, "1st") == 0) return i18n::Tr(kFallback[0]);
+    if (std::strcmp(n, "2nd") == 0) return i18n::Tr(kFallback[1]);
+    if (std::strcmp(n, "3rd") == 0) return i18n::Tr(kFallback[2]);
+    if (std::strcmp(n, "4th") == 0) return i18n::Tr(kFallback[3]);
+    // Nom SPÉCIFIQUE à la classe, donné par le Lua du client (« Ninja »…) : il
+    // vient déjà de la langue du client, on n'y touche pas.
     return n;
   };
 
@@ -3204,7 +3213,7 @@ void CharacterSheet::DrawSkillsTab() {
   add_group(tab_label(0), tab_label(1), 0, 1);        // 1re + 2e classe fusionnées
   add_group(tab_label(2), nullptr, 2, kNoSource);     // 3e classe
   add_group(tab_label(3), nullptr, 3, kNoSource);     // 4e classe
-  add_group("Divers", nullptr, -1, kNoSource);        // liste plate
+  add_group(i18n::Tr("Divers"), nullptr, -1, kNoSource);  // liste plate
 
   if (group_count == 0) {
     ImGui::TextColored(kGray, i18n::Tr("Aucune compétence."));
@@ -3259,7 +3268,7 @@ void CharacterSheet::DrawSkillsTab() {
     if (count > 0 && split_count < 1) {
       const int src = groups[skill_tab_].src[gi];
       split_row[split_count]   = base / kSkillGridCols;
-      split_label[split_count] = (src >= 0) ? tab_label(src) : "Divers";
+      split_label[split_count] = (src >= 0) ? tab_label(src) : i18n::Tr("Divers");
       ++split_count;
     }
     int local_max = -1;
@@ -3678,7 +3687,7 @@ void CharacterSheet::DrawSkillsTab() {
       const float x0 = origin.x;
       const float x1 = origin.x + kSkillGridCols * cell_w - pad;
       const ImU32 line_col = IM_COL32(200, 60, 60, 200);
-      const char* txt = split_label[k] ? split_label[k] : "Suite";
+      const char* txt = split_label[k] ? split_label[k] : i18n::Tr("Suite");
       const ImVec2 tsz = ImGui::CalcTextSize(txt);
       const float tx = x0 + 14.0f;
       dl->AddLine(ImVec2(x0, y), ImVec2(tx - 6.0f, y), line_col, 2.0f);
