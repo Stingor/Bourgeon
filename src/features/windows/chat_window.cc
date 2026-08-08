@@ -3533,7 +3533,6 @@ void ChatWindow::DrawLines(const Channel& channel) {
     }
 
     const float line_top = y;
-    const bool  visible  = (y + line_h >= view_top && y <= view_bottom);
     const ImU32 def_col  = LineColorToImU32(line.rgb);
     // 🔴 Une emote encore en cours de téléchargement occupe la place de « :nom: »,
     // et celle de l'IMAGE une fois arrivée. Mémoriser la hauteur maintenant la
@@ -3545,6 +3544,12 @@ void ChatWindow::DrawLines(const Channel& channel) {
     // ligne suivante. Remise a `line_h` a chaque repli — c'est une propriete de
     // la rangee, pas de la ligne.
     float row_h = line_h;
+    // 🔴 La visibilité se juge RANGÉE PAR RANGÉE, pas une fois pour la ligne. Elle
+    // l'était, avec la hauteur d'UNE rangée : une ligne repliée sur cinq
+    // disparaissait d'un bloc dès que son sommet passait au-dessus de la vue, et
+    // ses quatre autres rangées avec — alors qu'elles occupaient tout l'écran. On
+    // ne le voyait pas tant qu'un message tenait sur une ou deux rangées.
+    auto row_visible = [&] { return y + row_h >= view_top && y <= view_bottom; };
     // Hauteur des vignettes et des emotes. La case dit S'IL Y EN A, le curseur
     // dit LAQUELLE — les deux questions sont séparées. Bornage quand même : une
     // valeur aberrante venue d'un yaml édité à la main ne doit pas produire une
@@ -3559,7 +3564,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
       std::snprintf(stamp, sizeof(stamp), "[%02d:%02d:%02d] ", line.hour, line.minute,
                     line.second);
       const float w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, stamp).x;
-      if (visible)
+      if (row_visible())
         dl->AddText(font, fsize, ImVec2(origin.x + x, origin.y + y), kStampCol, stamp);
       x += w;
     }
@@ -3568,7 +3573,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
       char tag[12];
       std::snprintf(tag, sizeof(tag), "t%02d%c ", line.type, line.source);
       const float w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, tag).x;
-      if (visible)
+      if (row_visible())
         dl->AddText(font, fsize, ImVec2(origin.x + x, origin.y + y), kDiagCol, tag);
       x += w;
     }
@@ -3593,7 +3598,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
         const float ih = img_h;
         if (x > 0.0f && x + ih > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
         if (ih > row_h) row_h = ih;  // la rangée s'ouvre à la hauteur de l'emote
-        if (visible) {
+        if (row_visible()) {
           const ImVec2 p(origin.x + x, origin.y + y);
           ro::emote::Draw(dl, run.game_emote, p, ImVec2(p.x + ih, p.y + ih),
                           static_cast<float>(ImGui::GetTime()));
@@ -3632,7 +3637,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
               : ih;  // carré par défaut : une emote Discord l'est
           if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
           if (ih > row_h) row_h = ih;  // la rangée s'ouvre à la hauteur de l'image
-          if (visible && ready) {
+          if (row_visible() && ready) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(em.tex), p, ImVec2(p.x + iw, p.y + ih));
           }
@@ -3650,7 +3655,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
           const float ih = fsize + 2.0f;
           const float iw = ih * static_cast<float>(icon.w) / static_cast<float>(icon.h);
           if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
-          if (visible) {
+          if (row_visible()) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(icon.tex), p, ImVec2(p.x + iw, p.y + ih));
           }
@@ -3753,7 +3758,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
               : ih;  // proportion inconnue tant que rien n'est décodé
           if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += row_h; row_h = line_h; }
           if (ih > row_h) row_h = ih;
-          if (visible && ready) {
+          if (row_visible() && ready) {
             const ImVec2 p(origin.x + x, origin.y + y);
             dl->AddImage(TexId(th.tex), p, ImVec2(p.x + iw, p.y + ih));
           }
@@ -3792,32 +3797,72 @@ void ChatWindow::DrawLines(const Channel& channel) {
         }
         size_t j = i;
         while (j < u.size() && u[j] != ' ' && u[j] != '\n' && u[j] != '\r') ++j;
-        const char* w0 = u.c_str() + i;
-        const char* w1 = u.c_str() + j;
-        const float ww = rfont->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
-        // Le repli COUPE la zone cliquable : la partie déjà posée se referme sur
-        // la rangée qu'elle occupe, la suite en ouvrira une autre plus bas.
-        if (x > 0.0f && x + ww > wrap) { flush_link_hit(); x = 0.0f; y += row_h; row_h = line_h; }
-        const ImVec2 pos(origin.x + x, origin.y + y);
-        if (visible) {
-          // Équipement CASSÉ : l'OMBRE rouge du natif (DrawName 0x008972c0),
-          // décalée +1,+1 sous un texte inchangé — le même rendu que dans les
-          // viewers, et la raison d'être du champ privé de la balise.
-          if (run.kind == Run::kItem && run.item.broken)
-            dl->AddText(rfont, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
-                        itemcell::kDamagedShadow, w0, w1);
-          dl->AddText(rfont, fsize, pos, col, w0, w1);
-          // Pas de soulignement : le lien se reconnaît déjà à sa couleur, à ses
-          // crochets et à son icône, et le trait salissait une ligne de chat
-          // dense (il n'y en a pas non plus dans le chat natif). Au survol, le
-          // curseur « main » suffit à dire que c'est cliquable.
-          if (run.is_link()) {
-            if (seg_x0 < 0.0f) { seg_x0 = x; seg_y = y; seg_h = fsize + 2.0f; }
-            seg_x1 = x + ww;
+        // 🔴 UN MOT PEUT ÊTRE PLUS LARGE QUE TOUTE LA ZONE. Le repli mot à mot
+        // n'a alors rien à couper : il descend le mot d'une rangée, où il déborde
+        // exactement pareil, et la fin du texte sort de la fenêtre. C'est ce que
+        // font un « FAAAA…AAA » de trois cents caractères, une adresse sans
+        // espace ou un nom de fichier — tous les jours dans un chat public.
+        //
+        // Le mot est donc découpé AU CARACTÈRE quand il ne tient pas : chaque
+        // tour de boucle pose ce qui rentre dans la place restante, replie, et
+        // recommence sur le reste.
+        while (i < j) {
+          const char* w0   = u.c_str() + i;
+          const char* wend = u.c_str() + j;
+          // Une seule mesure, BORNÉE à la place restante : elle répond aux deux
+          // questions d'un coup — la largeur à dessiner, et par `stop` le point
+          // où le mot cesse de rentrer. `stop` tombe sur une frontière de
+          // CODEPOINT, jamais au milieu d'un accent ni d'un caractère CP949.
+          const char* stop = wend;
+          float ww = rfont->CalcTextSizeA(fsize, wrap - x, 0.0f, w0, wend, &stop).x;
+          // Ça ne rentre pas, mais la rangée a déjà du contenu : on descend
+          // d'abord — le mot a droit à la largeur entière avant qu'on envisage de
+          // le couper. Le repli COUPE la zone cliquable : la partie déjà posée se
+          // referme sur sa rangée, la suite en ouvrira une autre plus bas.
+          if (stop != wend && x > 0.0f) {
+            flush_link_hit();
+            x = 0.0f;
+            y += row_h;
+            row_h = line_h;
+            stop = wend;
+            ww   = rfont->CalcTextSizeA(fsize, wrap, 0.0f, w0, wend, &stop).x;
           }
+          // ⚠ Toute la largeur et même pas un glyphe (fenêtre réduite à quelques
+          // pixels) : `stop` ne bouge pas, `i` non plus, et la boucle tourne pour
+          // toujours — un FREEZE, pas un défaut d'affichage. On pose un caractère
+          // quoi qu'il arrive, ses octets de continuation avec lui.
+          if (stop <= w0) {
+            stop = w0 + 1;
+            while (stop < wend && (static_cast<unsigned char>(*stop) & 0xC0) == 0x80) ++stop;
+            ww = rfont->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, stop).x;
+          }
+          const char* w1 = stop;
+          const ImVec2 pos(origin.x + x, origin.y + y);
+          if (row_visible()) {
+            // Équipement CASSÉ : l'OMBRE rouge du natif (DrawName 0x008972c0),
+            // décalée +1,+1 sous un texte inchangé — le même rendu que dans les
+            // viewers, et la raison d'être du champ privé de la balise.
+            if (run.kind == Run::kItem && run.item.broken)
+              dl->AddText(rfont, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+                          itemcell::kDamagedShadow, w0, w1);
+            dl->AddText(rfont, fsize, pos, col, w0, w1);
+            // Pas de soulignement : le lien se reconnaît déjà à sa couleur, à ses
+            // crochets et à son icône, et le trait salissait une ligne de chat
+            // dense (il n'y en a pas non plus dans le chat natif). Au survol, le
+            // curseur « main » suffit à dire que c'est cliquable.
+            if (run.is_link()) {
+              if (seg_x0 < 0.0f) { seg_x0 = x; seg_y = y; seg_h = fsize + 2.0f; }
+              seg_x1 = x + ww;
+            }
+          }
+          x += ww;
+          i = static_cast<size_t>(w1 - u.c_str());
+          // Mot coupé en plein milieu : la suite descend d'une rangée. Le repli
+          // est fait ICI, sans attendre le tour suivant — la place restante ne
+          // vaut plus qu'un caractère au mieux, et le tour suivant repartirait de
+          // toute façon sur une mesure vide.
+          if (w1 != wend) { flush_link_hit(); x = 0.0f; y += row_h; row_h = line_h; }
         }
-        x += ww;
-        i = j;
       }
       flush_link_hit();
     }
