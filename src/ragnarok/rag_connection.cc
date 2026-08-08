@@ -40,6 +40,24 @@ uintptr_t RagConnection::s_packet_len_table_  = 0;
 // décision.
 static void* g_forward_native_handler = nullptr;
 
+// Tête de la boucle de dépilage de FUN_00c9df00 (0x00c9e1dd sur 20250716) : le
+// point où convergent TOUS les `case` natifs pour aller chercher le paquet
+// suivant. Renseignée depuis la config ; 0 = repli sur l'ancien épilogue.
+//
+// 🔴 Pourquoi elle existe. Le commentaire IDA du dispatch annonçait un tail-call
+// (« after JMP: function returns »). C'est FAUX : mesuré dans l'IDB, 838 `jmp`
+// de fin de `case` pointent ici, et les 2164 slots par défaut y reviennent via
+// RecvDispatch_DefaultSkip. Un `case` natif ne rend jamais la main — il reboucle.
+//
+// Notre stub, lui, faisait l'épilogue puis `ret`, c'est-à-dire qu'il ne
+// terminait pas le PAQUET mais toute la fonction de réception. Or celle-ci
+// n'est appelée qu'UNE FOIS PAR FRAME (depuis GameMode_InGame_ProcessFrame
+// 0x00c74a80, `call` à 0x00c74ab7, retour ignoré) : en sortir plafonnait la
+// réception à UN paquet revendiqué par frame, ~7 ms chacun. Sur `@storeall`,
+// où le serveur envoie 0x00f2 une fois par objet, 150 objets = 1-2 s de latence
+// alors que le serveur avait tout émis en 1 ms.
+static uintptr_t g_recv_loop_head = 0;
+
 // Packet saved by PacketBufReaderHook: captured right after FUN_00c147d0
 // fills the shared buffer, before anything downstream overwrites it.
 // The dispatch handler (RecvPacketHandlerImpl) reads from here.
@@ -99,6 +117,18 @@ RagConnection::RagConnection(const YAML::Node& ragconnection_configuration) {
         reinterpret_cast<void**>(table_addr.as<uint32_t>());
     recv_opcode_base_ =
         ragconnection_configuration["RecvOpcodeBase"].as<uint16_t>(0x73);
+
+    // Tête de boucle du dispatch : optionnelle. Absente, le stub retombe sur
+    // l'ancien épilogue — correct, mais au prix d'une frame par paquet
+    // revendiqué (cf. g_recv_loop_head).
+    const auto loophead_addr = ragconnection_configuration["RecvDispatchLoopHead"];
+    if (loophead_addr.IsDefined()) {
+      g_recv_loop_head = loophead_addr.as<uint32_t>();
+    } else {
+      LogDiag(
+          "RagConnection: RecvDispatchLoopHead absent -> un paquet revendique "
+          "par frame (latence sur les rafales, ex. @storeall)");
+    }
 
     // Résolveur de longueur du client : optionnel, mais sans lui les paquets à
     // longueur FIXE ne peuvent pas être remplacés (cf. NativeFixedPacketLen).
@@ -379,12 +409,17 @@ void* RagConnection::RecvPacketHandlerImpl() {
       // main au natif, qui est exactement le comportement « plugin absent ».
       claimed = false;
     }
-    // Trace de VALIDATION : ces paquets n'arrivent qu'au lancement d'une
-    // compétence (quelques-uns par session), donc aucun coût en volume — et c'est
-    // la seule façon de voir, en jeu, quel régime a pris le paquet.
-    LogDiag("[recv] 0x{:04x} {} (len {})", opcode,
-            claimed ? "revendique -> ImGui, natif saute" : "rendu au natif",
-            after_opcode);
+    // Trace de VALIDATION : la seule facon de voir, en jeu, quel regime a pris le
+    // paquet. LogDebug et NON LogDiag : ce chemin est traverse par CHAQUE paquet
+    // revendique, or LogDiag (= warn) reste actif en release et le logger tourne
+    // avec flush_on(trace) -- soit un flush disque synchrone par paquet.
+    // L'hypothese d'origine (« quelques-uns par session, aucun cout en volume »)
+    // est tombee le jour ou le viewer storage a revendique 0x00f2, que le serveur
+    // envoie UNE FOIS PAR ITEM : un @storeall de 150 objets = 150 flush disque,
+    // d'ou 1-2 s de latence cote client alors que le serveur avait tout emis en 1 ms.
+    LogDebug("[recv] 0x{:04x} {} (len {})", opcode,
+             claimed ? "revendique -> ImGui, natif saute" : "rendu au natif",
+             after_opcode);
     if (!claimed) {
       const auto native = s_native_handlers_.find(opcode);
       return (native != s_native_handlers_.end()) ? native->second : nullptr;
@@ -407,14 +442,21 @@ void* RagConnection::RecvPacketHandlerImpl() {
   return nullptr;
 }
 
-// FUN_00c9df00 (20250716) dispatches via `JMP [table+idx*4]` — a tail call
-// that does NOT push a return address.  A normal C++ function would corrupt
-// the stack because its RET would consume one of FUN_00c9df00's local
-// variables instead of the real return address.
+// FUN_00c9df00 (20250716) dispatches via `JMP [table+idx*4]`, which does NOT
+// push a return address.  A normal C++ function would corrupt the stack because
+// its RET would consume one of FUN_00c9df00's local variables instead of the
+// real return address — hence this naked stub.
+//
+// 🔴 Ce n'est PAS un tail-call, malgré ce que dit le commentaire de l'IDB. Un
+// `case` natif ne rend jamais la main : il fait son travail puis `jmp` vers la
+// tête de boucle 0x00c9e1dd pour dépiler le paquet suivant (838 `jmp` y
+// aboutissent, et les 2164 slots par défaut y reviennent aussi). Croire au
+// tail-call a coûté cher — cf. g_recv_loop_head.
 //
 // This naked function calls our C++ impl normally (CALL pushes a return
-// address for the impl, which RETs back here), then performs FUN_00c9df00's
-// own epilogue so the stack and SEH chain are correctly restored:
+// address for the impl, which RETs back here), then rejoins that dispatch loop
+// exactly like a native case does.  FUN_00c9df00's own epilogue is kept only as
+// a fallback for clients where the loop head isn't configured:
 //
 //   FUN_00c9df00 prologue leaves (low→high addr) at JMP time:
 //     [ESP+0]  XOR'd security cookie  (PUSH EAX after alloca)
@@ -449,6 +491,18 @@ __declspec(naked) void RagConnection::RecvPacketHandler() {
     popad
     cmp dword ptr [g_forward_native_handler], 0
     jne forward_to_native
+    ; Paquet revendiqué : on se comporte comme un `case` natif — on REBOUCLE
+    ; vers la tête de la boucle de dépilage au lieu de quitter la fonction.
+    ; Pas de restauration SEH ici : on reste DANS FUN_00c9df00, la chaîne doit
+    ; rester en place (c'est son propre épilogue, plus bas, qui la défera).
+    ; `pushad`/`popad` ont rendu ESP/EDI/ESI intacts et EBP n'a pas bougé :
+    ; l'état est bit pour bit celui d'un `case` natif à son `jmp` de fin.
+    cmp dword ptr [g_recv_loop_head], 0
+    je epilogue_and_return
+    jmp dword ptr [g_recv_loop_head]
+  epilogue_and_return:
+    ; Repli (tête de boucle non configurée) : ancien comportement, correct mais
+    ; il coûte une frame par paquet revendiqué.
     mov ecx, [ebp - 0x0c]  ; restore SEH chain
     mov fs:[0], ecx
     pop ecx                  ; XOR'd cookie (discarded)

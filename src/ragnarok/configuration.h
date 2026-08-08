@@ -89,6 +89,12 @@ const std::string kYamlConfiguration = R"(
     RecvDispatchTable: 0x00caa2e0
     RecvOpcodeBase: 0x73
     RecvDispatchTableSize: 0xBC3
+    # Tete de la boucle de depilage de la fonction de reception (0x00c9df00) :
+    # le point ou convergent tous les `case` natifs pour lire le paquet suivant.
+    # Notre stub y reboucle au lieu de quitter la fonction -- sans quoi la
+    # reception est plafonnee a UN paquet revendique par frame (la fonction
+    # n'est appelee qu'une fois par frame), soit ~7 ms par paquet.
+    RecvDispatchLoopHead: 0x00c9e1dd
     RecvOpcodeReader: 0x00c144b0
     RecvBufferReset: 0x00c148b0
     # Resolveur de longueur du client : PacketLenTable_Lookup(table, out[2], opcode)
