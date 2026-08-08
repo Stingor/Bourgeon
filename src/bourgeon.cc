@@ -169,6 +169,13 @@ void PatchSilenceEmotePurchaseMsg() {
 bool Bourgeon::Initialize() {
   LogInfo("Bourgeon {}\n", BOURGEON_VERSION);
 
+  // 🔴 LA LANGUE EN PREMIER, avant les plugins et donc avant le moindre dessin.
+  // Elle vivait dans bourgeon_settings.yaml, que MoonlightUi ne relit qu'à la
+  // transition vers le mode jeu : l'écran de login et le char-select sortaient
+  // toujours en français, quel que soit le réglage — les deux écrans que voit
+  // d'abord le joueur à qui la traduction s'adresse.
+  i18n::LoadLanguageSetting();
+
   if (!client_.Initialize()) {
     LogError("Bourgeon failed to initialize");
     return false;

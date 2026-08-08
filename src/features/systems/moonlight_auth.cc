@@ -25,6 +25,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"
 #include "utils/game_paths.h"
+#include "utils/startup_settings.h"
 #include "yaml-cpp/yaml.h"
 #include "utils/i18n.h"
 
@@ -377,6 +378,46 @@ void HyperlinkOpen(const char* label, const std::string& url) {
     ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+// ── Le choix de la langue, sur l'écran de login ──────────────────────────────
+// Le réglage existe déjà dans le panneau « Interface de jeu », mais celui-là
+// n'est atteignable qu'une fois EN JEU. Un joueur anglophone qui lance le client
+// pour la première fois devrait donc traverser un formulaire français, un
+// char-select français et une entrée en jeu avant de pouvoir demander l'anglais.
+// C'est ici qu'il faut le lui proposer, sur le premier écran qu'il voit.
+void DrawLanguagePicker() {
+  ImGui::Spacing();
+  ImGui::Separator();
+
+  // 🔴 COPIE et non référence : `SetLanguage` réécrit la chaîne globale au milieu
+  // de la boucle. Une référence changerait donc de valeur en cours de route, et
+  // les entrées suivantes se compareraient au code qu'on vient de poser.
+  const std::string current = i18n::LanguageCode();
+  ImGui::SetNextItemWidth(140.0f);
+  // `TrId` et non `Tr` : RoBeginCombo fait `PushID(label)`, donc un libellé
+  // traduit donnerait un widget différent d'une langue à l'autre.
+  if (ro::RoBeginCombo(i18n::TrId("Langue", "bourgeon_login_language"),
+                       i18n::LabelOf(current))) {
+    for (const i18n::Language& language : i18n::AvailableLanguages()) {
+      const bool selected = (current == language.code);
+      // Une langue sans catalogue reste VISIBLE mais inerte : la masquer
+      // laisserait croire que Bourgeon ne la connaît pas.
+      if (!language.available) ImGui::BeginDisabled();
+      // `language.label` est un littéral immortel de la table des langues — et
+      // surtout PAS une chaîne rendue par `Tr` : `SetLanguage` vide le catalogue,
+      // ce qui invaliderait un pointeur obtenu avant le clic. C'est aussi
+      // pourquoi ce combo est dessiné EN DERNIER, après tout le reste de la
+      // fenêtre : plus aucun libellé traduit n'est en vol quand il bascule.
+      if (ImGui::Selectable(language.label, selected) && !selected)
+        i18n::SetLanguage(language.code);
+      if (!language.available) ImGui::EndDisabled();
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    // 🔴 `ro::RoEndCombo`, PAS `ImGui::EndCombo` : RoBeginCombo n'appelle pas
+    // BeginCombo, il dessine le champ à la main et ouvre un `ImGui::BeginPopup`.
+    ro::RoEndCombo();
+  }
+}
+
 }  // namespace
 
 MoonlightAuth::MoonlightAuth(AutoLogin* auto_login) : auto_login_(auto_login) {
@@ -384,7 +425,7 @@ MoonlightAuth::MoonlightAuth(AutoLogin* auto_login) : auto_login_(auto_login) {
   ResolveServer();
   state_ = enabled_ ? State::kWebLogin : State::kDisabled;
   // Un plugin inerte = login web indisponible : c'est une anomalie de config
-  // (base_url manquant dans bourgeon_settings.yaml), pas un fonctionnement normal.
+  // (base_url manquant dans le fichier de démarrage), pas un fonctionnement normal.
   if (!enabled_)
     LogDiag("[MoonlightAuth] inerte (base_url manquant/enabled=false) — login web "
             "indisponible");
@@ -397,22 +438,19 @@ void MoonlightAuth::LoadConfig() {
   // est OPTIONNEL et ne fait que surcharger (dev/local, ou enabled:false).
   base_url_ = kDefaultBaseUrl;
   enabled_ = true;
-  std::ifstream f(paths::SettingsPath());
-  if (f) {
-    try {
-      const YAML::Node root = YAML::Load(f);
-      const YAML::Node ma = root["moonlight_auth"];
-      if (ma) {
-        base_url_ = ma["base_url"].as<std::string>(base_url_);
-        endpoint_ = ma["endpoint"].as<std::string>(endpoint_);
-        save_id_ = ma["save_id"].as<bool>(save_id_);
-        remember_ = ma["remember"].as<bool>(remember_);
-        verify_tls_ = ma["verify_tls"].as<bool>(verify_tls_);
-        enabled_ = ma["enabled"].as<bool>(enabled_);
-      }
-    } catch (const std::exception& e) {
-      LogError("[MoonlightAuth] config illisible: {}", e.what());
+  try {
+    // Réglage d'AVANT le jeu : fichier de démarrage, ancien yaml en secours.
+    const YAML::Node ma = startup::Section("moonlight_auth");
+    if (ma) {
+      base_url_ = ma["base_url"].as<std::string>(base_url_);
+      endpoint_ = ma["endpoint"].as<std::string>(endpoint_);
+      save_id_ = ma["save_id"].as<bool>(save_id_);
+      remember_ = ma["remember"].as<bool>(remember_);
+      verify_tls_ = ma["verify_tls"].as<bool>(verify_tls_);
+      enabled_ = ma["enabled"].as<bool>(enabled_);
     }
+  } catch (const std::exception& e) {
+    LogError("[MoonlightAuth] config illisible: {}", e.what());
   }
   if (base_url_.empty()) enabled_ = false;
   // Retire un éventuel '/' final du base_url pour concaténer proprement.
@@ -875,6 +913,10 @@ void MoonlightAuth::OnRenderLoginUI() {
       case State::kError:        DrawError(); break;
       default: break;
     }
+    // HORS du switch, et volontairement en DERNIER : le combo reste atteignable
+    // dans tous les états — y compris l'écran d'erreur, où un joueur qui ne
+    // comprend pas le message a justement besoin d'en changer la langue.
+    DrawLanguagePicker();
   }
   ro::EndRoWindow();
 }

@@ -44,6 +44,12 @@ std::string ChatHistoryPath() {
   return dir + "\\bourgeon_chat_history.yaml";
 }
 
+std::string StartupSettingsPath() {
+  const std::string dir = GameDir() + "SaveData";
+  CreateDirectoryA(dir.c_str(), nullptr);
+  return dir + "\\bourgeon_startup.yaml";
+}
+
 std::string RecipesPath() {
   // Le premier chemin QUI EXISTE, sinon SystemEN\ par défaut — ainsi le message
   // d'erreur du chargeur nomme l'emplacement attendu plutôt qu'un chemin au

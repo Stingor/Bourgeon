@@ -84,24 +84,33 @@ const char* TrId(const char* fr, const char* stable_id);
 // Code ISO 639-1 minuscule : "fr", "en", "es". "fr" = la langue SOURCE.
 const std::string& LanguageCode();
 
-// Pose la langue et recharge le catalogue. Sans effet si le code est déjà celui
-// en cours — recharger jetterait les pointeurs rendus par `Tr` pour rien.
-// Rend true si la langue a changé.
+// Pose la langue, recharge le catalogue ET l'écrit sur le disque. Sans effet si
+// le code est déjà celui en cours — recharger jetterait les pointeurs rendus par
+// `Tr` pour rien. Rend true si la langue a changé.
+//
+// La persistance est FAITE ICI, et pas laissée à l'appelant : le combo du login
+// s'affiche avant que `MoonlightUi` n'ait de cycle d'écriture, et un réglage qui
+// ne tient que jusqu'à la fermeture du jeu passerait pour un bug.
 bool SetLanguage(const std::string& code);
 
 // Recharge le catalogue de la langue courante depuis le disque, sans rien
-// changer d'autre. Deux usages :
-//   • après que la persistance a écrit `MutableLanguageCode()` (cf. plus bas) ;
-//   • pour reprendre à chaud un fichier de langue qu'on vient de corriger.
+// changer d'autre : pour reprendre à chaud un fichier de langue qu'on vient de
+// corriger.
 void ReloadCatalog();
 
-// 🔴 RÉSERVÉ À LA PERSISTANCE (settings_table, clé « language »). C'est la seule
-// façon d'écrire le code de langue sans passer par `SetLanguage`, et donc SANS
-// recharger le catalogue : l'appelant DOIT enchaîner sur `ReloadCatalog()`.
-// Elle existe parce que settings_table écrit dans un `std::string*` qu'il résout
-// par adresse — il n'a pas de point d'accroche pour appeler un setter. Partout
-// ailleurs : `SetLanguage`.
-std::string& MutableLanguageCode();
+// ── La langue, au CHARGEMENT DE LA DLL ───────────────────────────────────────
+// À appeler une fois, tôt, avant que quoi que ce soit ne dessine.
+//
+// 🔴 La langue vivait dans `bourgeon_settings.yaml`, lu par `MoonlightUi` à la
+// seule transition vers le mode jeu. L'écran de login et le char-select se
+// dessinaient donc TOUJOURS en français, quel que soit le réglage — l'anglophone
+// à qui la traduction s'adresse ne la voyait qu'une fois connecté. Elle est
+// maintenant dans `paths::StartupSettingsPath()`, lu ici.
+//
+// Reprend l'ancienne clé `moonlight_ui.language` si le nouveau fichier n'existe
+// pas encore, et l'écrit à son nouvel emplacement : le choix déjà fait par un
+// joueur ne doit pas disparaître dans le déménagement.
+void LoadLanguageSetting();
 
 // ── Les langues proposées ────────────────────────────────────────────────────
 struct Language {

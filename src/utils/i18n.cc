@@ -165,8 +165,6 @@ const char* TrId(const char* fr, const char* stable_id) {
 
 const std::string& LanguageCode() { return g_code; }
 
-std::string& MutableLanguageCode() { return g_code; }
-
 void ReloadCatalog() {
   g_catalog.clear();
   g_missing.clear();
@@ -210,12 +208,100 @@ void ReloadCatalog() {
   }
 }
 
+namespace {
+
+// La clé, sous la racine du fichier de démarrage.
+constexpr const char* kLanguageKey = "language";
+
+// Écrit la langue sans toucher au reste du document.
+//
+// 🔴 On RELIT puis on remplace la seule clé, au lieu d'émettre un document neuf :
+// `bourgeon_startup.yaml` porte aussi les sections `auto_login`, `char_select` et
+// `moonlight_auth`. Écrire à plat le tronquerait, et changer de langue effacerait
+// les identifiants d'auto-login — exactement le bug qu'a déjà connu
+// `bourgeon_settings.yaml`, dont la parade est commentée dans WriteSettingsFile.
+void SaveLanguageSetting() {
+  const std::string path = paths::StartupSettingsPath();
+  YAML::Node root;
+  try {
+    root = YAML::LoadFile(path);
+  } catch (const std::exception&) {
+    // Absent au premier lancement, ou illisible : on repart d'un document vide
+    // plutôt que de renoncer à enregistrer le choix du joueur.
+  }
+  if (!root.IsMap()) root = YAML::Node(YAML::NodeType::Map);
+  root[kLanguageKey] = g_code;
+
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    LogDiag("[i18n] impossible d'écrire {} — la langue ne sera pas retenue", path);
+    return;
+  }
+  file << YAML::Dump(root) << "\n";
+  file.flush();
+  // ⚠ Vérifier APRÈS écriture : un disque plein ou un fichier verrouillé ne se
+  // manifeste qu'ici, l'ouverture ayant réussi.
+  if (!file) LogDiag("[i18n] écriture de {} incomplète", path);
+}
+
+// L'ancienne place de la clé, avant l'éclatement : `moonlight_ui.language` dans
+// bourgeon_settings.yaml. Rend "" si elle n'y est pas.
+std::string ReadLegacyLanguage() {
+  try {
+    const YAML::Node root = YAML::LoadFile(paths::SettingsPath());
+    if (!root.IsMap()) return std::string();
+    const YAML::Node ui = root["moonlight_ui"];
+    if (!ui || !ui.IsMap()) return std::string();
+    const YAML::Node language = ui[kLanguageKey];
+    if (!language) return std::string();
+    return language.as<std::string>("");
+  } catch (const std::exception&) {
+    return std::string();  // fichier absent ou illisible : rien à reprendre
+  }
+}
+
+}  // namespace
+
 bool SetLanguage(const std::string& code) {
   const std::string wanted = code.empty() ? kSourceLanguage : code;
   if (wanted == g_code) return false;
   g_code = wanted;
   ReloadCatalog();
+  SaveLanguageSetting();
   return true;
+}
+
+void LoadLanguageSetting() {
+  std::string code;
+  try {
+    const YAML::Node root = YAML::LoadFile(paths::StartupSettingsPath());
+    if (root.IsMap()) {
+      if (const YAML::Node language = root[kLanguageKey])
+        code = language.as<std::string>("");
+    }
+  } catch (const std::exception&) {
+    // Fichier absent au premier lancement : ce n'est pas une anomalie.
+  }
+
+  // Rien au nouvel emplacement : c'est peut-être un déménagement, pas un premier
+  // lancement. On reprend l'ancienne clé et on la réécrit ici — sans quoi le
+  // joueur qui avait déjà choisi sa langue la verrait revenir au français, une
+  // fois, sans explication.
+  bool migrated = false;
+  if (code.empty()) {
+    code = ReadLegacyLanguage();
+    migrated = !code.empty();
+  }
+
+  if (code.empty() || code == kSourceLanguage) return;  // français : rien à faire
+
+  g_code = code;
+  ReloadCatalog();
+  if (migrated) {
+    SaveLanguageSetting();
+    LogInfo("[i18n] langue « {} » reprise de bourgeon_settings.yaml vers {}", g_code,
+            paths::StartupSettingsPath());
+  }
 }
 
 std::vector<Language> AvailableLanguages() {

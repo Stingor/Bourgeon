@@ -48,6 +48,23 @@ std::string ChatLayoutPath();
 // alors que la disposition ne bouge presque jamais.
 // ⚠ Il contient les CHUCHOTEMENTS EN CLAIR. L'option est désactivée par défaut.
 std::string ChatHistoryPath();
+// ── Ce que Bourgeon doit connaître AVANT d'entrer en jeu ─────────────────────
+// Langue de l'interface, auto-login, char-select, login Moonlight.
+//
+// 🔴 La frontière n'est pas thématique, elle est TEMPORELLE, et c'est ce qui la
+// rend tenable : `bourgeon_settings.yaml` n'est relu qu'à la transition vers le
+// mode jeu (MoonlightUi::LoadSettings, appelée sur `in_game_ && !was_in_game`).
+// Tout réglage qui doit agir sur l'écran de login ou de char-select y arriverait
+// donc trop tard — la langue s'appliquait après le login, une fois l'écran qu'on
+// voulait traduire déjà passé.
+//
+// Ce fichier-ci est lu au CHARGEMENT DE LA DLL. Y mettre un réglage, c'est dire
+// « il agit avant le jeu » ; le laisser dans bourgeon_settings.yaml, c'est dire
+// « il n'agit qu'en jeu ». Premier pas de l'éclatement prévu du yaml partagé.
+//
+// ⚠ PARTAGÉ lui aussi (langue + trois sections de login) : ne jamais le réécrire
+// sans fusionner le document existant.
+std::string StartupSettingsPath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

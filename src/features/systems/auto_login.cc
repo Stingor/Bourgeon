@@ -12,6 +12,7 @@
 #include "ragnarok/ragnarok_client.h"
 #include "utils/log_console.h"
 #include "utils/game_paths.h"
+#include "utils/startup_settings.h"
 #include "yaml-cpp/yaml.h"
 
 namespace {
@@ -129,12 +130,11 @@ bool AutoLogin::ParseCommandLine() {
 }
 
 void AutoLogin::LoadFromYaml() {
-  std::ifstream f(paths::SettingsPath());
-  if (!f) return;  // no settings file — nothing to load
   try {
-    const YAML::Node root = YAML::Load(f);
-    const YAML::Node al = root["auto_login"];
-    if (!al) return;
+    // Réglage d'AVANT le jeu : il vient du fichier de démarrage, avec l'ancien
+    // bourgeon_settings.yaml en secours. Cf. utils/startup_settings.h.
+    const YAML::Node al = startup::Section("auto_login");
+    if (!al) return;  // section absente : rien à charger, ce n'est pas une erreur
     if (login_.empty()) login_ = al["login"].as<std::string>("");
     if (password_.empty()) password_ = al["pass"].as<std::string>("");
     if (server_.empty()) server_ = al["server"].as<std::string>("");

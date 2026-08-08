@@ -280,6 +280,8 @@ set(BOURGEON_FILES
 	"utils/i18n.h"
 	"utils/log_console.cc"
 	"utils/log_console.h"
+	"utils/startup_settings.cc"
+	"utils/startup_settings.h"
 	"utils/tinf_inflate.h"
 	"utils/hooking/detours.h"
 	"utils/hooking/disasm.cc"

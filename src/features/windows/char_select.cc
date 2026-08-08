@@ -8,6 +8,7 @@
 
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
+#include "utils/startup_settings.h"
 #include <Windows.h>
 
 #include <algorithm>
@@ -387,7 +388,8 @@ const char* JobName(int job, int sex) {
   return (n && *n) ? n : nullptr;
 }
 
-// (Chemin du yaml : paths::SettingsPath(), utils/game_paths.h.)
+// (Section « char_select » : paths::StartupSettingsPath(), lue via
+//  startup::Section — l'ancien bourgeon_settings.yaml sert encore de secours.)
 
 // ── Table des PLACES (scène banquet) ──────────────────────────────────────────
 // L'utilisateur a numéroté le décor (1..25) : le slot i occupe la place n°(i+1).
@@ -651,18 +653,15 @@ CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
   // Cf. docs/charselect_re.md.
   Bourgeon::Instance().RegisterObserveOpcode(kOpCharList, 0);
   Bourgeon::Instance().RegisterObserveOpcode(kOpCharListPage, 0);
-  std::ifstream f(paths::SettingsPath());
-  if (f) {
-    try {
-      const YAML::Node root = YAML::Load(f);
-      const YAML::Node cs = root["char_select"];
-      if (cs) {
-        enabled_ = cs["imgui"].as<bool>(true);  // défaut activé ; opt-out explicite
-        force_ = cs["force"].as<bool>(false);
-      }
-    } catch (const std::exception& e) {
-      LogError("[CharSelect] config illisible: {}", e.what());
+  try {
+    // Réglage d'AVANT le jeu : fichier de démarrage, ancien yaml en secours.
+    const YAML::Node cs = startup::Section("char_select");
+    if (cs) {
+      enabled_ = cs["imgui"].as<bool>(true);  // défaut activé ; opt-out explicite
+      force_ = cs["force"].as<bool>(false);
     }
+  } catch (const std::exception& e) {
+    LogError("[CharSelect] config illisible: {}", e.what());
   }
   // Détour du handler de réponse « delete reserve » : supprime la msgbox native de
   // refus (guilde/groupe…) qui traînerait sous notre UI, et capte le code exact.
@@ -1955,8 +1954,8 @@ void CharSelect::OnRenderLoginUI() {
           bx = b.x + gap;
           bh = b.y - a.y;
         };
-        if (v.rename_avail > 0) badge("Renom.", IM_COL32(255, 214, 120, 235));
-        if (v.moves_avail > 0) badge("Slot", IM_COL32(140, 220, 255, 235));
+        if (v.rename_avail > 0) badge(i18n::Tr("Renom."), IM_COL32(255, 214, 120, 235));
+        if (v.moves_avail > 0) badge(i18n::Tr("Slot"), IM_COL32(140, 220, 255, 235));
         stack_y += bh + 2.0f;
       }
 

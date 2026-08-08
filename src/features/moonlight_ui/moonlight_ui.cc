@@ -769,7 +769,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[6];
+  static const moonlight_ui::SettingDesc kHeader[5];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -779,7 +779,7 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[5] = {
     {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
      MLUI_LITERAL(bool, false)},
     {"log_level", SType::kString, MLUI_SELF(log_level_),
@@ -810,18 +810,16 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
     {"korean_glyphs", SType::kBool,
      []() -> void* { return &g_korean_glyphs; },
      MLUI_LITERAL(bool, false)},
-    // ── Langue de l'interface Bourgeon ──────────────────────────────────────
-    // Même motif de résolveur maison que « staff_log_window » : le champ ne vit
-    // dans aucun plugin, mais dans le module i18n, qui existe toujours.
-    //
-    // 🔴 Écrire ici ne charge RIEN : settings_table pose la valeur dans la chaîne
-    // par adresse, sans passer par i18n::SetLanguage. C'est LoadSettings qui
-    // enchaîne sur i18n::ReloadCatalog() une fois la table lue — sans quoi le
-    // code de langue serait juste, et l'interface resterait en français.
-    {"language", SType::kString,
-     []() -> void* { return &i18n::MutableLanguageCode(); },
-     MLUI_LITERAL(std::string, "fr")},
 };
+
+// 🔴 « language » N'EST PLUS ICI, et ne doit pas y revenir. Ce fichier n'est relu
+// qu'à l'entrée en jeu (LoadSettings, sur `in_game_ && !was_in_game`) : la langue
+// arrivait donc APRÈS l'écran de login et le char-select, qui restaient en
+// français quel que soit le réglage — précisément les écrans qu'un joueur
+// anglophone rencontre en premier.
+// Elle vit maintenant dans paths::StartupSettingsPath(), lu au chargement de la
+// DLL par i18n::LoadLanguageSetting(), et i18n::SetLanguage l'y réécrit
+// elle-même. L'ancienne clé est reprise automatiquement une fois.
 
 // Seule « mainchat_preset_bar » appartient encore à MoonlightUi : c'est un
 // réglage de SON panneau (afficher la barre de préréglages de couleur), pas du
@@ -1128,12 +1126,9 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadChatBackgrounds(ui);
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
-    // Le catalogue de langue, TOUT DE SUITE après l'en-tête qui porte la clé
-    // « language » — et pas en fin de LoadSettings ni dans PostLoadApply : les
-    // lectures qui suivent peuvent construire des libellés, et il faut qu'elles
-    // trouvent déjà la bonne langue. En français ce n'est qu'un test, le
-    // catalogue restant vide.
-    i18n::ReloadCatalog();
+    // Pas de i18n::ReloadCatalog() ici : la langue est chargée bien avant, au
+    // chargement de la DLL, depuis paths::StartupSettingsPath(). La rappeler à
+    // l'entrée en jeu ne servirait qu'à jeter les pointeurs déjà rendus par `Tr`.
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
     moonlight_ui::ReadSettings(ui, kBugReportSettings);
     moonlight_ui::ReadSettings(ui, kWeaponSpriteSettings);
