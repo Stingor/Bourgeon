@@ -1025,13 +1025,13 @@ bool StorageWindow::DrawSettings() {
       i18n::Tr("Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
       "— elle suit donc l'onglet, le sous-type et le filtre."));
 
-  SeparatorText("Colonnes");
-  changed |= ro::RoCheckbox("Index", &show_index_col());
+  SeparatorText(i18n::Tr("Colonnes"));
+  changed |= ro::RoCheckbox(i18n::Tr("Index"), &show_index_col());
   SameLine(); HelpMarker(
       i18n::Tr("Index storage (slot) — un item récemment ajouté a un index élevé."));
   changed |= ro::RoCheckbox(i18n::Tr("ID d'item"), &show_id_col());
   SameLine(); HelpMarker(i18n::Tr("Colonne avec l'id numérique de l'item."));
-  changed |= ro::RoCheckbox("Slots", &show_slots_col());
+  changed |= ro::RoCheckbox(i18n::Tr("Slots"), &show_slots_col());
   SameLine(); HelpMarker(i18n::Tr("Colonne avec le nombre de slots de carte."));
   changed |= ro::RoCheckbox(i18n::Tr("Prix de revente"), &show_value_col());
   SameLine(); HelpMarker(
@@ -1507,7 +1507,7 @@ void StorageWindow::OnRenderUI() {
     TabCustom& custom = tab_custom_[tab.id];
     // Nom du SERVEUR toujours rappelé : c'est la seule façon de savoir quel
     // entrepôt on est en train de renommer une fois le nom remplacé.
-    ImGui::TextDisabled("%s (id %u)", tab.name, static_cast<unsigned>(tab.id));
+    ImGui::TextDisabled(i18n::Tr("%s (id %u)"), tab.name, static_cast<unsigned>(tab.id));
     ImGui::Separator();
     ImGui::SetNextItemWidth(180.0f);
     // Le hint montre le nom serveur : laisser vide, c'est le garder.
@@ -1821,11 +1821,11 @@ void StorageWindow::OnRenderUI() {
       for (const auto& s : subs) if (s.key == cur_sub_) { cur_label = s.label; found = true; break; }
       if (!found) cur_sub_ = -1;
     }
-    ImGui::TextUnformatted("Sous-type");
+    ImGui::TextUnformatted(i18n::Tr("Sous-type"));
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1.0f);
     if (ro::RoBeginCombo("##storage_subcat", cur_label)) {
-      if (ImGui::Selectable("Tout", cur_sub_ == -1)) cur_sub_ = -1;
+      if (ImGui::Selectable(i18n::Tr("Tout"), cur_sub_ == -1)) cur_sub_ = -1;
       for (const auto& s : subs)
         if (ImGui::Selectable(s.label, cur_sub_ == s.key)) cur_sub_ = s.key;
       ro::RoEndCombo();
@@ -1909,15 +1909,15 @@ void StorageWindow::OnRenderUI() {
   if (ImGui::BeginTable("storage_items", ncols, tf, table_size)) {
     ImGui::TableSetupScrollFreeze(0, 1);
     if (show_index_col_)
-      ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed |
+      ImGui::TableSetupColumn(i18n::Tr("Index"), ImGuiTableColumnFlags_WidthFixed |
                                          ImGuiTableColumnFlags_PreferSortDescending,
                               54.0f);
-    ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthStretch |
+    ImGui::TableSetupColumn(i18n::Tr("Item"), ImGuiTableColumnFlags_WidthStretch |
                                         ImGuiTableColumnFlags_DefaultSort);
     if (show_id_col_)
-      ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+      ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
     if (show_slots_col_)
-      ImGui::TableSetupColumn("Slots", ImGuiTableColumnFlags_WidthFixed |
+      ImGui::TableSetupColumn(i18n::Tr("Slots"), ImGuiTableColumnFlags_WidthFixed |
                                            ImGuiTableColumnFlags_PreferSortDescending,
                               24.0f);
     ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed |
@@ -2066,7 +2066,7 @@ void StorageWindow::OnRenderUI() {
                            items_[idx].damaged != 0);
         ImGui::PopStyleColor();
         ImGui::Separator();
-        if (ImGui::MenuItem("Description")) {
+        if (ImGui::MenuItem(i18n::Tr("Description"))) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
           MarkDescPending();
@@ -2219,7 +2219,7 @@ void StorageWindow::OnRenderUI() {
     HelpMarker(desc.c_str());
     SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.0f);
-    if (ro::RoButton("Quitter", bw - 4.0f, kFooterH - 4.0f)) SendCloseStorage();
+    if (ro::RoButton(i18n::Tr("Quitter"), bw - 4.0f, kFooterH - 4.0f)) SendCloseStorage();
   }
 
   // DRAG d'un item storage : suit le curseur ; au relâché, la CIBLE décide du sens :

@@ -55,7 +55,7 @@ void MoonlightUi::DrawCommandsPanel() {
             "Elemental Converter Earth (12116)\nElemental Converter Wind (12117)\nMystical Card Album (12246)"));
           ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("No Ask"), &no_ask_enabled_)) SendSetting(kSettingNoAsk, no_ask_enabled_ ? 1 : 0);
           SameLine(); HelpMarker(i18n::Tr("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)"));
-          ImGui::TableNextColumn(); if (ro::RoCheckbox("Wings", &wings_enabled_)) SendSetting(kSettingWings, wings_enabled_ ? 1 : 0);
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Wings"), &wings_enabled_)) SendSetting(kSettingWings, wings_enabled_ ? 1 : 0);
           SameLine(); HelpMarker(i18n::Tr("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)"));
           ImGui::EndTable();
         }
@@ -80,7 +80,7 @@ void MoonlightUi::DrawCommandsPanel() {
       }
       // (« SPR Lab » a été déplacé dans le CollapsingHeader « Staff Tools »,
       // gaté sur le group level serveur — cf. IsStaff.)
-      if (ImGui::BeginTabItem("Autoloots"))
+      if (ImGui::BeginTabItem(i18n::Tr("Autoloots")))
       {
         Spacing();
         {// @autoloot
@@ -91,7 +91,7 @@ void MoonlightUi::DrawCommandsPanel() {
             SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
           }
           SameLine();
-          if (ro::RoSmallButton("Reset##rate")) {
+          if (ro::RoSmallButton(i18n::Tr("Reset##rate"))) {
             aloot_rate_ = 0;
             SendSetting(kSettingAlootRate, 0);
           }
@@ -116,15 +116,15 @@ void MoonlightUi::DrawCommandsPanel() {
             aloot_min_zeny_ = min_zeny;
             SendSetting(kSettingAlootMinZenyDiv100, static_cast<uint16_t>(min_zeny / 100));
           };
-          if (ro::RoSmallButton("-10kz"))  apply_min_zeny_delta(-10000);
+          if (ro::RoSmallButton(i18n::Tr("-10kz")))  apply_min_zeny_delta(-10000);
           SameLine();
-          if (ro::RoSmallButton("-1kz"))   apply_min_zeny_delta(-1000);
+          if (ro::RoSmallButton(i18n::Tr("-1kz")))   apply_min_zeny_delta(-1000);
           SameLine();
-          if (ro::RoSmallButton("+1kz"))   apply_min_zeny_delta(1000);
+          if (ro::RoSmallButton(i18n::Tr("+1kz")))   apply_min_zeny_delta(1000);
           SameLine();
-          if (ro::RoSmallButton("+10kz"))  apply_min_zeny_delta(10000);
+          if (ro::RoSmallButton(i18n::Tr("+10kz")))  apply_min_zeny_delta(10000);
           SameLine();
-          if (ro::RoSmallButton("Reset##pognon")) {
+          if (ro::RoSmallButton(i18n::Tr("Reset##pognon"))) {
             aloot_min_zeny_ = 0;
             SendSetting(kSettingAlootMinZenyDiv100, 0);
           }
@@ -134,7 +134,7 @@ void MoonlightUi::DrawCommandsPanel() {
           TextUnformatted("@autoloottype :");
           SameLine(); HelpMarker(i18n::Tr("Cochez les types d'items à lootter automatiquement.\nHealing=0 Usable=2 Etc=3 Armor=4 Weapon=5\nCard=6 PetEgg=7 PetArmor=8 Ammo=10 Cash=11"));
           SameLine();
-          if (ro::RoSmallButton("Reset##type")) {
+          if (ro::RoSmallButton(i18n::Tr("Reset##type"))) {
             aloot_type_mask_ = 0;
             SendSetting(kSettingAlootType, 0);
           }
@@ -181,13 +181,13 @@ void MoonlightUi::DrawCommandsPanel() {
           SameLine(); HelpMarker(i18n::Tr("Loot automatiquement les items par ID.\nMax 50 IDs. (@autolootid <id>)"));
           SameLine();
           if (!ModernInterfaceEnabled()) {
-            if (ro::RoCheckbox("Overlay", &show_alootid_overlay_))
+            if (ro::RoCheckbox(i18n::Tr("Overlay"), &show_alootid_overlay_))
               SaveSettings();
             SameLine();
             HelpMarker(i18n::Tr("Affiche un bouton Add/Remove Alootid\nprès du curseur au clic droit sur un item dans l'affichage natif."));
           }
           SameLine();
-          if (ro::RoSmallButton("Clear##alootid")) {
+          if (ro::RoSmallButton(i18n::Tr("Clear##alootid"))) {
             aloot_ids_.clear();
             SendSetting(kSettingAlootId, 0);
           }
@@ -197,7 +197,7 @@ void MoonlightUi::DrawCommandsPanel() {
           SameLine();
           const bool can_add = (aloot_id_input_ > 0 && aloot_ids_.size() < 50);
           if (!can_add) ImGui::BeginDisabled();
-          if (ro::RoButton("Add##alootid")) {
+          if (ro::RoButton(i18n::Tr("Add##alootid"))) {
             const uint32_t id = static_cast<uint32_t>(aloot_id_input_);
             bool found = false;
             for (uint32_t x : aloot_ids_) if (x == id) { found = true; break; }
@@ -271,22 +271,22 @@ void MoonlightUi::DrawCommandsPanel() {
             Separator();
             const auto itv = item_names_.find(g_last_viewed_item);
             if (itv != item_names_.end())
-              ImGui::Text("Vu: [%u] %s", g_last_viewed_item, itv->second.c_str());
+              ImGui::Text(i18n::Tr("Vu: [%u] %s"), g_last_viewed_item, itv->second.c_str());
             else
-              ImGui::Text("Vu: [%u]", g_last_viewed_item);
+              ImGui::Text(i18n::Tr("Vu: [%u]"), g_last_viewed_item);
             SameLine();
             int vu_idx = -1;
             for (int k = 0; k < static_cast<int>(aloot_ids_.size()); ++k)
               if (aloot_ids_[k] == g_last_viewed_item) { vu_idx = k; break; }
             if (vu_idx >= 0) {
-              if (ro::RoSmallButton("Remove##alootid_vu")) {
+              if (ro::RoSmallButton(i18n::Tr("Remove##alootid_vu"))) {
                 SendSetting(kSettingAlootIdRemove, aloot_ids_[vu_idx]);
                 aloot_ids_.erase(aloot_ids_.begin() + vu_idx);
               }
             } else {
               const bool can_add_vu = (aloot_ids_.size() < 50);
               if (!can_add_vu) ImGui::BeginDisabled();
-              if (ro::RoSmallButton("Add##alootid_vu")) {
+              if (ro::RoSmallButton(i18n::Tr("Add##alootid_vu"))) {
                 aloot_ids_.push_back(g_last_viewed_item);
                 SendSetting(kSettingAlootId, g_last_viewed_item);
               }
@@ -295,7 +295,7 @@ void MoonlightUi::DrawCommandsPanel() {
           }
           // ── Presets (server-backed, DB table `alootid`) ──
           Separator();
-          TextUnformatted("Presets :");
+          TextUnformatted(i18n::Tr("Presets :"));
           // Autoload indicator + toggle, on the same line as the label.
           {
             const AlootPreset* autoload_preset = nullptr;
@@ -308,7 +308,7 @@ void MoonlightUi::DrawCommandsPanel() {
               if (p.slot_no == alootid_selected_preset_) { sel_for_al = &p; break; }
             bool al = sel_for_al && sel_for_al->autoload;
             if (!sel_for_al) ImGui::BeginDisabled();
-            if (ro::RoCheckbox("Autoload##preset", &al))
+            if (ro::RoCheckbox(i18n::Tr("Autoload##preset"), &al))
               SendPresetCmd(kAlootPresetAutoload, al ? alootid_selected_preset_ : 0);
             if (!sel_for_al) ImGui::EndDisabled();
             SameLine();
@@ -318,14 +318,14 @@ void MoonlightUi::DrawCommandsPanel() {
               else
                 ImGui::TextDisabled("(%s)", autoload_preset->name.c_str());
             } else {
-              ImGui::TextDisabled("(aucun)");
+              ImGui::TextDisabled(i18n::Tr("(aucun)"));
             }
           }
           ImGui::SetNextItemWidth(120.0f);
           ImGui::InputText("##preset_name", alootid_preset_input_,
                            sizeof(alootid_preset_input_));
           SameLine();
-          ro::RoCheckbox("Renommer##preset_toggle", &alootid_rename_open_);
+          ro::RoCheckbox(i18n::Tr("Renommer##preset_toggle"), &alootid_rename_open_);
           if (alootid_rename_open_) {
             SameLine();
             ImGui::SetNextItemWidth(120.0f);
@@ -413,10 +413,10 @@ void MoonlightUi::DrawCommandsPanel() {
             SameLine();
             const bool has_sel = sel_preset != nullptr;
             if (!has_sel) ImGui::BeginDisabled();
-            if (ro::RoSmallButton("Charger##preset"))
+            if (ro::RoSmallButton(i18n::Tr("Charger##preset")))
               SendPresetCmd(kAlootPresetLoad, alootid_selected_preset_);
             SameLine();
-            if (ro::RoSmallButton("Supprimer##preset"))
+            if (ro::RoSmallButton(i18n::Tr("Supprimer##preset")))
               SendPresetCmd(kAlootPresetDelete, alootid_selected_preset_);
             if (!has_sel) ImGui::EndDisabled();
 

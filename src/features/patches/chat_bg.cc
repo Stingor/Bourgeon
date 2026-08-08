@@ -309,7 +309,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
                              sizeof(preset_name_buf_));
     SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f);  // aligne le bouton sur le champ
-    if (ro::RoButton("Enregistrer") && preset_name_buf_[0] != '\0') {
+    if (ro::RoButton(i18n::Tr("Enregistrer")) && preset_name_buf_[0] != '\0') {
       bg_presets_.push_back({preset_name_buf_, ro::ArgbFromPicker(group.picker_rgba)});
       preset_name_buf_[0] = '\0';
       changed = true;
@@ -321,7 +321,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
       ApplyBackground(group_id, ro::ArgbFromPicker(group.picker_rgba), false);
       group.picker_drag_in_progress = true;
     }
-    if (ro::RoButton("Fermer")) ImGui::CloseCurrentPopup();
+    if (ro::RoButton(i18n::Tr("Fermer"))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
   }
 

@@ -377,7 +377,7 @@ void DrawDebugControls() {
     const ez_capture::Stats st = ez_capture::LastFrameStats();
     // dessins/inserts viennent du module et restent tels quels ; « capturés » est en revanche
     // ramené à NOTRE effet (n_ours), sinon un autre effet du joueur masquerait notre 0.
-    ImGui::TextDisabled("sonde: %d/%d dessins / %d inserts / %d capturés",
+    ImGui::TextDisabled(i18n::Tr("sonde: %d/%d dessins / %d inserts / %d capturés"),
                         st.draws, st.all_draws, st.inserts, n_ours);
     ImGui::SameLine();
     if (st.draws == 0)
@@ -517,9 +517,9 @@ void DrawDebugControls() {
     char b[96]; int o = 0;
     for (int k = 0; k < bl_n && o < 80; ++k)
       o += std::snprintf(b + o, sizeof(b) - o, k ? " + %d/%d" : "%d/%d", bl_src[k], bl_dst[k]);
-    ImGui::TextDisabled("blends: %s", b);
+    ImGui::TextDisabled(i18n::Tr("blends: %s"), b);
   } else {
-    ImGui::TextDisabled("blends: -");
+    ImGui::TextDisabled(i18n::Tr("blends: -"));
   }
 
   ImGui::Checkbox(i18n::Tr("Debug capture (brut + ancre)"), &g_debug);
@@ -528,7 +528,7 @@ void DrawDebugControls() {
                       "le cercle du rayon, SANS reprojection. Décoche « Cacher en jeu » pour\n"
                       "comparer les contours (vert) à l'effet natif in-world."));
   ImGui::SameLine();
-  ImGui::TextDisabled("ancre (%.0f,%.0f)%s", g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : i18n::Tr(" [non projetée]"));
+  ImGui::TextDisabled(i18n::Tr("ancre (%.0f,%.0f)%s"), g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : i18n::Tr(" [non projetée]"));
 
   ImGui::SetNextItemWidth(180.0f);
   ImGui::SliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");

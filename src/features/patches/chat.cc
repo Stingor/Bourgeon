@@ -988,7 +988,7 @@ bool ChatTweaks::DrawSettings() {
     // traite hors du slider, sans jamais « désactiver » l'item) : on applique
     // tout de suite. `IsItemDeactivatedAfterEdit()` = fin de drag ou fin de
     // saisie Ctrl+clic. Pendant le drag l'item est actif : on ne fait rien.
-    const bool moved = WheelSliderInt("Largeur (px)", &custom_width_px_, 320, 1200);
+    const bool moved = WheelSliderInt(i18n::Tr("Largeur (px)"), &custom_width_px_, 320, 1200);
     if ((moved && !ImGui::IsItemActive()) || ImGui::IsItemDeactivatedAfterEdit()) {
       chat::SetCustomWidth(true, custom_width_px_);
       changed = true;

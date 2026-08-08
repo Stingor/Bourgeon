@@ -68,7 +68,7 @@ void DrawRules() {
       if (ImGui::TreeNode(i18n::Tr("Salle de duel"))) {
         BulletWrapped(i18n::Tr("Ce n'est pas un salon de thé"));
         BulletWrapped(i18n::Tr("Si vous regardez, ok. Sinon, laissez la place."));
-        BulletWrapped("Utilisez : @duel, @invite, @accept, @reject, @leave.");
+        BulletWrapped(i18n::Tr("Utilisez : @duel, @invite, @accept, @reject, @leave."));
         ImGui::TreePop();
       }
       if (ImGui::TreeNode(i18n::Tr("Carnage Room"))) {
@@ -99,11 +99,11 @@ void DrawRules() {
     }
     Spacing();
     if (ImGui::TreeNode(i18n::Tr("Logiciels tiers"))) {
-      TextUnformatted("Autorisations :");
+      TextUnformatted(i18n::Tr("Autorisations :"));
       Indent();
         BulletWrapped(i18n::Tr("Je vais être clair : oui, j'autorise les scripts AHK, les macros clavier/souris, les trucs qui bouclent un sort… tant que ça reste :"));
-        BulletWrapped("SIMPLE");
-        BulletWrapped("BASIQUE");
+        BulletWrapped(i18n::Tr("SIMPLE"));
+        BulletWrapped(i18n::Tr("BASIQUE"));
         BulletWrapped(i18n::Tr("Pas un tableau de bord de la NASA"));
         BulletWrapped(i18n::Tr("Vous bouclez le spell, éventuellement un clic en plus pour les AOE type Storm Gust, et basta."));
       Unindent();
@@ -136,7 +136,7 @@ void DrawRules() {
         Unindent();
         TextUnformatted(i18n::Tr("Résultat :"));
         Indent();
-          BulletWrapped("Pouf.");
+          BulletWrapped(i18n::Tr("Pouf."));
           BulletWrapped(i18n::Tr("Vous étiez sur Moon."));
           BulletWrapped(i18n::Tr("Vous ne l'êtes plus."));
           BulletWrapped(i18n::Tr("Et il ne restera de vous que des ruines numériques sur Wayback Machine."));

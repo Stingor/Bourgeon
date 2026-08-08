@@ -897,12 +897,12 @@ void Bourgeon::ShowLogWindow() {
 
   if (ImGui::Button(i18n::Tr("Copier tout"))) ImGui::SetClipboardText(flat.data());
   ImGui::SameLine();
-  if (ImGui::Button("Vider")) {
+  if (ImGui::Button(i18n::Tr("Vider"))) {
     LogLineBuffer::instance().Clear();
     last_count = static_cast<size_t>(-1);
   }
   ImGui::SameLine();
-  ImGui::Checkbox("Suivre", &follow);
+  ImGui::Checkbox(i18n::Tr("Suivre"), &follow);
   ImGui::SameLine();
   ImGui::SetNextItemWidth(220.0f);
   ImGui::InputTextWithHint("##logfilter", i18n::Tr("filtre (sous-chaîne)"), filter,

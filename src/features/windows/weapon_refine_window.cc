@@ -1560,7 +1560,7 @@ void WeaponRefineWindow::OnRenderUI() {
   // — la seule modale native du chemin de refine est celle qu'on escamote, et
   // elle vient du réseau, pas d'un clic.
   if (confirm_open_) {
-    ImGui::OpenPopup("Confirmer le refine###bourgeon_refine_confirm");
+    ImGui::OpenPopup(i18n::Tr("Confirmer le refine###bourgeon_refine_confirm"));
     confirm_open_ = false;
     // Frame d'ouverture, retenue pour que la MÊME frappe d'Entrée ne traverse pas
     // la confirmation (cf. plus bas) : la modale s'ouvre et se dessine dans la
@@ -1568,7 +1568,7 @@ void WeaponRefineWindow::OnRenderUI() {
     confirm_frame_ = ImGui::GetFrameCount();
   }
 
-  if (ro::BeginRoPopupModal("Confirmer le refine###bourgeon_refine_confirm")) {
+  if (ro::BeginRoPopupModal(i18n::Tr("Confirmer le refine###bourgeon_refine_confirm"))) {
     // ── 🔴 LA cause de la dérive : TextWrapped dans une fenêtre auto-dimensionnée
     //
     // La modale est en `AlwaysAutoResize` (défaut de BeginRoPopupModal) et son
@@ -1648,14 +1648,14 @@ void WeaponRefineWindow::OnRenderUI() {
                              ImGui::IsKeyPressed(ImGuiKey_KeypadEnter));
       // Rien à armer pour le jeu ici : la modale n'existe que par-dessus notre
       // fenêtre, et celle-ci confisque déjà Entrée du seul fait d'être ouverte.
-      if (ro::RoButton("Refine", kBtnConfirmW) || enter_ok) {
+      if (ro::RoButton(i18n::Tr("Refine"), kBtnConfirmW) || enter_ok) {
         pending_       = kActRefine;
         pending_index_ = confirm_index_;
         confirm_index_ = -1;
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
-      if (ro::RoButton("Annuler", kBtnConfirmW)) {
+      if (ro::RoButton(i18n::Tr("Annuler"), kBtnConfirmW)) {
         confirm_index_ = -1;
         ImGui::CloseCurrentPopup();
       }
@@ -1835,9 +1835,9 @@ void WeaponRefineWindow::DrawList(float list_h) {
     ImGui::TableSetupColumn("+", ImGuiTableColumnFlags_WidthFixed |
                                      ImGuiTableColumnFlags_PreferSortDescending,
                             26.0f);
-    ImGui::TableSetupColumn("Arme", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(i18n::Tr("Arme"), ImGuiTableColumnFlags_WidthStretch);
     if (show_cards_)
-      ImGui::TableSetupColumn("Slots",
+      ImGui::TableSetupColumn(i18n::Tr("Slots"),
                               ImGuiTableColumnFlags_WidthFixed |
                                   ImGuiTableColumnFlags_PreferSortDescending,
                               38.0f);
@@ -2131,12 +2131,12 @@ void WeaponRefineWindow::DrawFooter() {
   // Stock de minerai. Le serveur ne propose une arme que si SON minerai est là :
   // ces trois compteurs disent lesquels manquent, ce que le natif ne montre nulle
   // part. On ne DÉCIDE rien avec — le serveur reste seul juge.
-  ImGui::SeparatorText("Minerais");
+  ImGui::SeparatorText(i18n::Tr("Minerais"));
   DrawOreLinks();
 
   const int cap = RefineSkillLevel();
   if (cap > 0) {
-    ImGui::TextDisabled("Plafond : +%d", cap);
+    ImGui::TextDisabled(i18n::Tr("Plafond : +%d"), cap);
     ImGui::SameLine();
     HelpMarker(
         i18n::Tr("Le niveau appris de la compétence Upgrade Weapon EST le plafond : le "
@@ -2265,7 +2265,7 @@ void WeaponRefineWindow::DrawFooter() {
       ImGui::Spacing();
     }
     ImGui::BeginDisabled(!has_sel || busy);
-    if (ro::RoButton("Refine", kBtnRefineW)) RequestRefine(sel_index_);
+    if (ro::RoButton(i18n::Tr("Refine"), kBtnRefineW)) RequestRefine(sel_index_);
     ImGui::EndDisabled();
     ImGui::SameLine();
   }
@@ -2361,7 +2361,7 @@ void WeaponRefineWindow::DrawFooter() {
     ImGui::SameLine();
   }
 
-  if (ro::RoButton("Fermer", kBtnCloseW)) RequestClose();
+  if (ro::RoButton(i18n::Tr("Fermer"), kBtnCloseW)) RequestClose();
 }
 
 void WeaponRefineWindow::DrawHistory(float h) {

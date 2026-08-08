@@ -3476,3 +3476,573 @@
 "Fabrication": ""
 # en: Context menu
 "Menu contextuel": ""
+# en:    none
+"   aucune": ""
+# en:   level +
+"  niveau +": ""
+# en:   level -
+"  niveau -": ""
+# en:  %d card(s) socketed 
+" %d carte(s) sertie(s) ": ""
+# en: %.0f DPS
+"%.0f DPS": ""
+# en: %.0f FPS  (%.1f ms)
+"%.0f FPS  (%.1f ms)": ""
+# en: %d mail%s
+"%d courrier%s": ""
+# en: %dx  (%us)
+"%dx  (%us)": ""
+# en: %s (id %u)
+"%s (id %u)": ""
+# en: %s how many? (max %d)
+"%s combien ? (max %d)": ""
+# en: %s — %s, level %d
+"%s — %s, niveau %d": ""
+# en: %s — level %d
+"%s — niveau %d": ""
+# en: (+%d more)
+"(+%d autres)": ""
+# en: (none)
+"(aucun)": ""
+# en: (expires: %s)
+"(expire : %s)": ""
+# en: (wheel: level)
+"(molette : niveau)": ""
+# en: (empty)
+"(vide)": ""
+# en: + alootid
+"+ alootid": ""
+# en: + costumes
+"+ costumes": ""
+# en: +##batchinc
+"+##batchinc": ""
+# en: +10kz
+"+10kz": ""
+# en: +1kz
+"+1kz": ""
+# en: - alootid
+"- alootid": ""
+# en: -##batchdec
+"-##batchdec": ""
+# en: -10kz
+"-10kz": ""
+# en: -1kz
+"-1kz": ""
+# en: = total
+"= total": ""
+# en: Accept
+"Accepter": ""
+# en: 1-Click purchase
+"Achat 1-Click": ""
+# en: Buy
+"Acheter": ""
+# en: Refresh
+"Actualiser": ""
+# en: Add##alootid
+"Add##alootid": ""
+# en: Add##alootid_vu
+"Add##alootid_vu": ""
+# en: Show
+"Afficher": ""
+# en: Help: keyboard & tabs
+"Aide : clavier & onglets": ""
+# en: Help: mouse
+"Aide : souris": ""
+# en: Add
+"Ajouter": ""
+# en: Animation
+"Animation": ""
+# en: Animate
+"Animer": ""
+# en: Cancel
+"Annuler": ""
+# en: Look-ahead (cells)
+"Anticipation (cases)": ""
+# en: Apply
+"Appliquer": ""
+# en: Weapon
+"Arme": ""
+# en: Rounding
+"Arrondi": ""
+# en: Authenticating…
+"Authentification…": ""
+# en: Autoload##preset
+"Autoload##preset": ""
+# en: Autoloots
+"Autoloots": ""
+# en: Automatic
+"Automatique": ""
+# en: Permissions:
+"Autorisations :": ""
+# en: Allow
+"Autoriser": ""
+# en: Warn before opening a link###chatwnd_urlwarn
+"Avertir avant d'ouvrir un lien###chatwnd_urlwarn": ""
+# en: BASIC
+"BASIQUE": ""
+# en: Bank
+"Banque": ""
+# en: Bars
+"Barres": ""
+# en: Balls: %d
+"Billes : %d": ""
+# en: Border
+"Bordure": ""
+# en: Rate (ms)
+"Cadence (ms)": ""
+# en: Cape / garment
+"Cape / garment": ""
+# en: Map
+"Carte": ""
+# en: Map: %s
+"Carte : %s": ""
+# en: Change slot###bourgeon_charsel_moveslot
+"Changer de slot###bourgeon_charsel_moveslot": ""
+# en: Loading...
+"Chargement...": ""
+# en: Loading…
+"Chargement…": ""
+# en: Load
+"Charger": ""
+# en: Load##preset
+"Charger##preset": ""
+# en: ImGui chatbox###chatwnd_on
+"Chatbox ImGui###chatwnd_on": ""
+# en: Whisper…
+"Chuchoter…": ""
+# en: Class
+"Classe": ""
+# en: Class: %s
+"Classe : %s": ""
+# en: Clear##alootid
+"Clear##alootid": ""
+# en: Hairstyle
+"Coiffure": ""
+# en: Columns
+"Colonnes": ""
+# en: Conditional
+"Conditionnels": ""
+# en: Confirmation###rodex_confirm
+"Confirmation###rodex_confirm": ""
+# en: Confirm
+"Confirmer": ""
+# en: Confirm refine###bourgeon_refine_confirm
+"Confirmer le refine###bourgeon_refine_confirm": ""
+# en: Last login
+"Connexion": ""
+# en: Context
+"Contexte": ""
+# en: Contrib.
+"Contrib.": ""
+# en: Copy
+"Copier": ""
+# en: Body
+"Corps": ""
+# en: Costume
+"Costume": ""
+# en: Color
+"Couleur": ""
+# en: Color %d
+"Couleur %d": ""
+# en: Color (%d)
+"Couleur (%d)": ""
+# en: Color:
+"Couleur :": ""
+# en: Colors
+"Couleurs": ""
+# en: Client colors###chatwnd_reset
+"Couleurs du client###chatwnd_reset": ""
+# en: DOOM
+"DOOM": ""
+# en: From: %s
+"De : %s": ""
+# en: Draw
+"Dessiner": ""
+# en: Recipient
+"Destinataire": ""
+# en: Detail
+"Detail": ""
+# en: Diagnostics: show everything + type###chatwnd_diag
+"Diagnostic : tout afficher + type###chatwnd_diag": ""
+# en: Direction
+"Direction": ""
+# en: Disband
+"Dissoudre": ""
+# en: Disband the guild###bourgeon_guild_disband
+"Dissoudre la guilde###bourgeon_guild_disband": ""
+# en: Disband…
+"Dissoudre…": ""
+# en: Clear
+"Effacer": ""
+# en: Effects
+"Effets": ""
+# en: Slot: all
+"Emplacement: tous": ""
+# en: Save
+"Enregistrer": ""
+# en: Send
+"Envoyer": ""
+# en: Spacing
+"Espacement": ""
+# en: P.Dodge
+"Esq.P": ""
+# en: Expires
+"Expire": ""
+# en: Export emotes as GIF###chatwnd_emote_export
+"Export des emotes en GIF###chatwnd_emote_export": ""
+# en: Export
+"Exporter": ""
+# en: Expel
+"Expulser": ""
+# en: Expel from the guild###bourgeon_guild_expel
+"Expulser de la guilde###bourgeon_guild_expel": ""
+# en: Expel…
+"Expulser…": ""
+# en: Expulsions
+"Expulsions": ""
+# en: Craft
+"Fabriquer": ""
+# en: Craftable
+"Faisable": ""
+# en: Close
+"Fermer": ""
+# en: Close?###bourgeon_vending_close
+"Fermer ?###bourgeon_vending_close": ""
+# en: Quit the game###bourgeon_charsel_quit
+"Fermer le jeu###bourgeon_charsel_quit": ""
+# en: Filter
+"Filtre": ""
+# en: Keep history between sessions###chatwnd_keep
+"Garder l'historique entre les sessions###chatwnd_keep": ""
+# en: Graphics
+"Graphismes": ""
+# en: Grimoire
+"Grimoire": ""
+# en: HP: %lld / %lld
+"HP : %lld / %lld": ""
+# en: Height
+"Hauteur": ""
+# en: Timestamps###chatwnd_stamp
+"Horodatage###chatwnd_stamp": ""
+# en: INT %d  DEX %d  LUK %d
+"INT %d  DEX %d  LUK %d": ""
+# en: Username
+"Identifiant": ""
+# en: Image
+"Image": ""
+# en: Images and emotes###chatwnd_thumbs
+"Images et emotes###chatwnd_thumbs": ""
+# en: Import
+"Importer": ""
+# en: Index
+"Index": ""
+# en: Line spacing###chatstyle_gap
+"Interligne###chatstyle_gap": ""
+# en: Line spacing###chatwnd_gap
+"Interligne###chatwnd_gap": ""
+# en: Invite
+"Inviter": ""
+# en: Invite:
+"Inviter :": ""
+# en: Item
+"Item": ""
+# en: Drop
+"Jeter": ""
+# en: Drop...
+"Jeter...": ""
+# en: Play
+"Jouer": ""
+# en: Players
+"Joueurs": ""
+# en: Log
+"Journal": ""
+# en: Start
+"Lancer": ""
+# en: Width
+"Largeur": ""
+# en: Width (px)
+"Largeur (px)": ""
+# en: Level
+"Level": ""
+# en: Link##mi_chatlink
+"Lien##mi_chatlink": ""
+# en: Input line###chatwnd_input
+"Ligne de saisie###chatwnd_input": ""
+# en: Padding###chatstyle_pad
+"Marges###chatstyle_pad": ""
+# en: Padding###chatwnd_pad
+"Marges###chatwnd_pad": ""
+# en: Max
+"Max": ""
+# en: Members
+"Membres": ""
+# en: Message
+"Message": ""
+# en: Ores
+"Minerais": ""
+# en: Minigames
+"Mini-jeux": ""
+# en: Monsters
+"Monstres": ""
+# en: Amount
+"Montant": ""
+# en: Reason
+"Motif": ""
+# en: Reason (optional):
+"Motif (facultatif) :": ""
+# en: NPC
+"NPC": ""
+# en: Lv %u   %s   %s Lv %u
+"Niv. %u   %s   %s niv. %u": ""
+# en: Level
+"Niveau": ""
+# en: Level: base %d / job %d
+"Niveau : base %d / job %d": ""
+# en: Count
+"Nombre": ""
+# en: No
+"Non": ""
+# en: Lv
+"Nv": ""
+# en: OK
+"OK": ""
+# en: Item
+"Objet": ""
+# en: Items
+"Objets": ""
+# en: Yes
+"Oui": ""
+# en: Tool
+"Outil": ""
+# en: Tool:
+"Outil :": ""
+# en: Staff tools###ctxmenu_staff
+"Outils du staff###ctxmenu_staff": ""
+# en: Open
+"Ouvrir": ""
+# en: Overlay
+"Overlay": ""
+# en: HP %u
+"PV %u": ""
+# en: HP %u   SP %u
+"PV %u   SP %u": ""
+# en: Palette:
+"Palette :": ""
+# en: Basket
+"Panier": ""
+# en: Partner  (%lldz)
+"Partenaire  (%lldz)": ""
+# en: Passive
+"Passif": ""
+# en: Character
+"Personnage": ""
+# en: Slot %d
+"Place %d": ""
+# en: Placement
+"Placement": ""
+# en: Cap: +%d
+"Plafond : +%d": ""
+# en: Pocket
+"Poche": ""
+# en: Points: %d
+"Points : %d": ""
+# en: Place
+"Poser": ""
+# en: Position: %d, %d
+"Position : %d, %d": ""
+# en: Rank
+"Poste": ""
+# en: Ranks
+"Postes": ""
+# en: Poof.
+"Pouf.": ""
+# en: Presets
+"Presets": ""
+# en: Presets:
+"Presets :": ""
+# en: Price
+"Prix": ""
+# en: Product
+"Produit": ""
+# en: Quit
+"Quitter": ""
+# en: Leave the guild###bourgeon_guild_leave
+"Quitter la guilde###bourgeon_guild_leave": ""
+# en: Quit…
+"Quitter…": ""
+# en: Shortcut
+"Raccourci": ""
+# en: Shortcut:
+"Raccourci :": ""
+# en: Shortcuts
+"Raccourcis": ""
+# en: Decline
+"Refuser": ""
+# en: Restart
+"Relancer": ""
+# en: Relations
+"Relations": ""
+# en: Remove##alootid_vu
+"Remove##alootid_vu": ""
+# en: Ren.
+"Renom.": ""
+# en: Rename
+"Renommer": ""
+# en: Rename the character###bourgeon_charsel_rename
+"Renommer le personnage###bourgeon_charsel_rename": ""
+# en: Rename##preset_toggle
+"Renommer##preset_toggle": ""
+# en: Reset##pognon
+"Reset##pognon": ""
+# en: Reset##rate
+"Reset##rate": ""
+# en: Reset##type
+"Reset##type": ""
+# en: Left
+"Reste": ""
+# en: Left: %d
+"Reste : %d": ""
+# en: Withdraw
+"Retirer": ""
+# en: Back
+"Retour": ""
+# en: Return
+"Retourner": ""
+# en: Roggle
+"Roggle": ""
+# en: Rojeweled
+"Rojeweled": ""
+# en: Break the relation###bourgeon_guild_relation
+"Rompre la relation###bourgeon_guild_relation": ""
+# en: SIMPLE
+"SIMPLE": ""
+# en: SP
+"SP": ""
+# en: SP: %lld / %lld
+"SP : %lld / %lld": ""
+# en: STR %d  AGI %d  VIT %d
+"STR %d  AGI %d  VIT %d": ""
+# en: Jump
+"Saut": ""
+# en: Scan
+"Scanner": ""
+# en: Score: %d
+"Score : %d": ""
+# en: Socket
+"Sertir": ""
+# en: Gender
+"Sexe": ""
+# en: Report a bug###bug_report_modal
+"Signaler un bug###bug_report_modal": ""
+# en: Skills & statuses
+"Skills & statuts": ""
+# en: Slot
+"Slot": ""
+# en: Slots
+"Slots": ""
+# en: Subtype
+"Sous-type": ""
+# en: Stats
+"Stats": ""
+# en: Stock
+"Stock": ""
+# en: Next
+"Suivant": ""
+# en: Follow
+"Suivre": ""
+# en: Subject
+"Sujet": ""
+# en: Subject: %s
+"Sujet : %s": ""
+# en: Del
+"Suppr": ""
+# en: Delete
+"Supprimer": ""
+# en: Delete##preset
+"Supprimer##preset": ""
+# en: Size
+"Taille": ""
+# en: Interface size###chatwnd_uifont
+"Taille de l'interface###chatwnd_uifont": ""
+# en: Image size###chatwnd_thumb
+"Taille des images###chatwnd_thumb": ""
+# en: Chat text size###chatwnd_font
+"Taille du texte du chat###chatwnd_font": ""
+# en: Text size###chatstyle_font
+"Taille du texte###chatstyle_font": ""
+# en: Rate
+"Taux": ""
+# en: Finish
+"Terminer": ""
+# en: Territory: %s
+"Territoire : %s": ""
+# en: Text
+"Texte": ""
+# en: \"Bold\" text
+"Texte \"gras\"": ""
+# en: Titles
+"Titres": ""
+# en: Total
+"Total": ""
+# en: Total: %s z
+"Total : %s z": ""
+# en: Total: %lldz
+"Total: %lldz": ""
+# en: Key:
+"Touche :": ""
+# en: Transparency:
+"Transparence :": ""
+# en: Sort
+"Tri": ""
+# en: Type
+"Type": ""
+# en: Use: @duel, @invite, @accept, @reject, @leave.
+"Utilisez : @duel, @invite, @accept, @reject, @leave.": ""
+# en: Sell
+"Vendre": ""
+# en: Sell
+"Vente": ""
+# en: Lock
+"Verrouiller": ""
+# en: Lock (freeze + click-through)
+"Verrouiller (fige + clic-traversant)": ""
+# en: Vertical
+"Vertical": ""
+# en: Clear
+"Vider": ""
+# en: Clear history###chatwnd_clear
+"Vider l'historique###chatwnd_clear": ""
+# en: Wanted
+"Voulu": ""
+# en: Seen
+"Vu": ""
+# en: Seen: [%u]
+"Vu: [%u]": ""
+# en: Seen: [%u] %s
+"Vu: [%u] %s": ""
+# en: Wings
+"Wings": ""
+# en: Zeny: %d
+"Zeny : %d": ""
+# en: Zeny: %s z
+"Zeny : %s z": ""
+# en: Zeny: %uz
+"Zeny: %uz": ""
+# en: Zone: %d x %d  (at %d, %d)
+"Zone : %d x %d  (en %d, %d)": ""
+# en: Zoom
+"Zoom": ""
+# en: anchor (%.0f,%.0f)%s
+"ancre (%.0f,%.0f)%s": ""
+# en: blends: %s
+"blends: %s": ""
+# en: blends: -
+"blends: -": ""
+# en: probe: %d/%d draws / %d inserts / %d captured
+"sonde: %d/%d dessins / %d inserts / %d capturés": ""
+# en: | %d/%d slot(s)
+"| %d/%d emplacement(s)": ""
+# en: none
+"aucun": ""
+# en: passive
+"passif": ""

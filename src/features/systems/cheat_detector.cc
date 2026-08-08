@@ -254,7 +254,7 @@ void CheatDetector::OnRenderUI() {
   const DWORD since = (last_scan_tick_ > 0) ? (now - last_scan_tick_) / 1000 : 0;
   ImGui::Text(i18n::Tr("Scans: %d  |  Dernier: il y a %us"), scan_count_, since);
   ImGui::SameLine();
-  if (ImGui::SmallButton("Scanner") && !scan_busy_.load()) {
+  if (ImGui::SmallButton(i18n::Tr("Scanner")) && !scan_busy_.load()) {
     last_scan_tick_ = 0;  // force next StartScanIfReady to launch immediately
     StartScanIfReady();
   }
@@ -270,9 +270,9 @@ void CheatDetector::OnRenderUI() {
                                 | ImGuiTableFlags_ScrollY;
     if (ImGui::BeginTable("##det", 3, flags,
                           ImVec2(0, ImGui::GetContentRegionAvail().y))) {
-      ImGui::TableSetupColumn("Outil",  ImGuiTableColumnFlags_WidthFixed,  110.0f);
-      ImGui::TableSetupColumn("Detail", ImGuiTableColumnFlags_WidthStretch);
-      ImGui::TableSetupColumn("Vu",     ImGuiTableColumnFlags_WidthFixed,   80.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Outil"),  ImGuiTableColumnFlags_WidthFixed,  110.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Detail"), ImGuiTableColumnFlags_WidthStretch);
+      ImGui::TableSetupColumn(i18n::Tr("Vu"),     ImGuiTableColumnFlags_WidthFixed,   80.0f);
       ImGui::TableSetupScrollFreeze(0, 1);
       ImGui::TableHeadersRow();
 
@@ -285,7 +285,7 @@ void CheatDetector::OnRenderUI() {
         ImGui::TextUnformatted(d.detail.c_str());
         ImGui::TableSetColumnIndex(2);
         const DWORD age = (now - d.last_seen_tick) / 1000;
-        ImGui::Text("%dx  (%us)", d.seen_count, age);
+        ImGui::Text(i18n::Tr("%dx  (%us)"), d.seen_count, age);
       }
 
       ImGui::EndTable();

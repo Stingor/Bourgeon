@@ -358,7 +358,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
     switch (target.kind) {
       case Target::kItem: {
         const uint32_t id = target.item.id;
-        if (ImGui::MenuItem("Description")) OpenDescription(target);
+        if (ImGui::MenuItem(i18n::Tr("Description"))) OpenDescription(target);
         if (ImGui::MenuItem(i18n::Tr("Base de données du site"))) itemdesc::OpenItemDbPage(id);
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         ImGui::Separator();
@@ -429,7 +429,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
         const bool self  = chat != nullptr && chat->IsOwnName(target.player_name.c_str());
 
         // Chuchoter : rien de natif, rien sur le fil — juste notre fenêtre 1:1.
-        if (!self && ImGui::MenuItem("Chuchoter…")) {
+        if (!self && ImGui::MenuItem(i18n::Tr("Chuchoter…"))) {
           if (chat != nullptr) chat->OpenWhisperWindowByAid(wire, 0);
         }
         if (!self && chat != nullptr) {
@@ -544,16 +544,16 @@ void DrawUrlConfirm() {
   ImGui::Spacing();
 
   bool close = false;
-  if (ro::RoButton("Ouvrir")) {
+  if (ro::RoButton(i18n::Tr("Ouvrir"))) {
     LaunchUrl(g_pending_url.c_str());
     close = true;
   }
   ImGui::SameLine();
-  if (ro::RoButton("Annuler")) close = true;
+  if (ro::RoButton(i18n::Tr("Annuler"))) close = true;
   ImGui::SameLine();
   // Copier plutôt qu'ouvrir : le geste prudent doit être à portée ICI aussi, pas
   // seulement dans le menu contextuel qu'on vient de quitter.
-  if (ro::RoButton("Copier")) {
+  if (ro::RoButton(i18n::Tr("Copier"))) {
     ImGui::SetClipboardText(full.c_str());
     close = true;
   }
@@ -599,7 +599,7 @@ void DrawHostConfirm() {
   ImGui::Spacing();
 
   bool close = false;
-  if (ro::RoButton("Autoriser")) {
+  if (ro::RoButton(i18n::Tr("Autoriser"))) {
     imgprev::AllowHost(g_pending_host.c_str());
     // Persistance : la liste vit dans imgprev, la chatbox n'en garde que la
     // forme sérialisée que les réglages savent écrire.
@@ -608,7 +608,7 @@ void DrawHostConfirm() {
     close = true;
   }
   ImGui::SameLine();
-  if (ro::RoButton("Annuler")) close = true;
+  if (ro::RoButton(i18n::Tr("Annuler"))) close = true;
 
   if (close) {
     g_pending_host.clear();

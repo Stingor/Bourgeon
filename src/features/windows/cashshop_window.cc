@@ -736,7 +736,7 @@ void CashShopWindow::OnRenderUI() {
     }
     ImGui::SetNextItemWidth(200.0f);
     if (ro::RoBeginCombo("##cs_slot", cur_label)) {
-      if (ImGui::Selectable("Emplacement: tous", cur_slot_ == -1)) cur_slot_ = -1;
+      if (ImGui::Selectable(i18n::Tr("Emplacement: tous"), cur_slot_ == -1)) cur_slot_ = -1;
       for (const auto& s : slots)
         if (ImGui::Selectable(s.label, cur_slot_ == s.key)) cur_slot_ = s.key;
       ro::RoEndCombo();
@@ -747,7 +747,7 @@ void CashShopWindow::OnRenderUI() {
 
   // Tri : Nom / ID / Cout + sens ascendant/descendant.
   if (slot_filter_useful) ImGui::SameLine();
-  ImGui::TextUnformatted("Tri");
+  ImGui::TextUnformatted(i18n::Tr("Tri"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(90.0f);
   const char* kSortLabels[] = {"Nom", "ID", "Coût"};
@@ -934,14 +934,14 @@ void CashShopWindow::OnRenderUI() {
               ? i18n::Tr("Solde Vote insuffisant - cochez \"Utiliser Event\" pour cumuler") : i18n::Tr("Solde Vote + Event insuffisant pour cet item");
       if (!afford) ImGui::BeginDisabled();
       ImGui::SetCursorPos(ImVec2(cx, cy + ImGui::GetTextLineHeight() + sp));
-      if (ro::RoButton("Panier", colw, frameH))
+      if (ro::RoButton(i18n::Tr("Panier"), colw, frameH))
         AddToCart(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip(afford ? i18n::Tr("Ajouter au panier (achat groupe via Acheter)")
                                  : why);
       ImGui::SetCursorPos(
           ImVec2(cx, cy + ImGui::GetTextLineHeight() + frameH + 2.0f * sp));
-      if (ro::RoButton("Achat 1-Click", colw, frameH))
+      if (ro::RoButton(i18n::Tr("Achat 1-Click"), colw, frameH))
         BuyNow(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip(afford ? i18n::Tr("Achat immédiat d'1 unité, puis fermeture du shop")
@@ -985,9 +985,9 @@ void CashShopWindow::OnRenderUI() {
   if (show_cart) {  // panier masqué quand vide -> grille pleine largeur
   ImGui::SameLine();
   ImGui::BeginChild("cs_cart", ImVec2(cart_w, 0), true);
-  ImGui::TextUnformatted("Panier");
+  ImGui::TextUnformatted(i18n::Tr("Panier"));
   ImGui::SameLine();
-  if (!cart_.empty() && ro::RoButton("Vider")) cart_.clear();
+  if (!cart_.empty() && ro::RoButton(i18n::Tr("Vider"))) cart_.clear();
   ImGui::Separator();
   long long total = 0;
   int remove = -1;

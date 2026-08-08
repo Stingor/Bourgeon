@@ -314,7 +314,7 @@ void Rojeweled::OnRenderUI() {
   if (ImGui::Begin("Rojeweled", &open,
                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     bourgeon::CloseWindowOnEscape(open);
-    ImGui::Text("Score : %d", g.score);
+    ImGui::Text(i18n::Tr("Score : %d"), g.score);
     ImGui::SameLine(0, 24);
     if (ImGui::SmallButton(i18n::Tr("Nouvelle partie"))) NewGame();
     ImGui::SameLine(0, 16);

@@ -2350,8 +2350,8 @@ bool ShowRoSkinSettings() {
     i18n::Tr("N'affecte que les images (barre de titre, boutons, scrollbar, footer,\n"
     "icones) - pas le texte ni les fonds (régles par les couleurs ci-dessous)."));
   ch |= WheelSliderFloat(i18n::Tr("Opacité"), &g_cfg.alpha, 0.3f, 1.0f, "%.2f");
-  ch |= ColorEdit4WithAlphaBar("Corps", g_cfg.body_col);
-  ch |= ColorEdit4WithAlphaBar("Bordure", g_cfg.border_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Corps"), g_cfg.body_col);
+  ch |= ColorEdit4WithAlphaBar(i18n::Tr("Bordure"), g_cfg.border_col);
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte titre"), g_cfg.title_text);
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte corps"), g_cfg.body_text);
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Onglet actif"), g_cfg.tab_col);

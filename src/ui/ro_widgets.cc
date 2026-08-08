@@ -42,7 +42,7 @@ bool RoColorSwatch(const char* label, float rgba[4]) {
     changed |= ImGui::ColorPicker4("##pick", rgba,
                                    ImGuiColorEditFlags_AlphaBar |
                                        ImGuiColorEditFlags_NoSidePreview);
-    if (ro::RoButton("Fermer")) ImGui::CloseCurrentPopup();
+    if (ro::RoButton(i18n::Tr("Fermer"))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
   }
   ImGui::PopID();

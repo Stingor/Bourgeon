@@ -338,11 +338,11 @@ void QuestTracker::DrawSettings() {
   g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher l'objectif"), &g_cfg.show_objective);
   g_needs_save |= WheelSliderInt(i18n::Tr("Position X"), &g_cfg.pos_x, 0, 1920);
   g_needs_save |= WheelSliderInt(i18n::Tr("Position Y"), &g_cfg.pos_y, 0, 1080);
-  g_needs_save |= WheelSliderInt("Largeur", &g_cfg.width, 120, 600, "%d px");
+  g_needs_save |= WheelSliderInt(i18n::Tr("Largeur"), &g_cfg.width, 120, 600, "%d px");
   g_needs_save |= WheelSliderInt(i18n::Tr("Quetes max"), &g_cfg.max_quests, 1, kMaxCollect);
   g_needs_save |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale, 60, 200, "%d%%");
 
-  SeparatorText("Couleurs");
+  SeparatorText(i18n::Tr("Couleurs"));
   float tc[3], dc[3], hc[3];
   RgbToF3(g_cfg.title_rgb, tc);
   RgbToF3(g_cfg.desc_rgb, dc);

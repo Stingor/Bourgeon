@@ -772,7 +772,7 @@ void MonsterInfoWindow::OnRenderUI() {
       DrawHeader(*mob);
       ImGui::Separator();
       if (ImGui::BeginTabBar("##monsterinfo_tabs")) {
-        if (ImGui::BeginTabItem("Stats")) {
+        if (ImGui::BeginTabItem(i18n::Tr("Stats"))) {
           DrawStatsTab(*mob);
           ImGui::EndTabItem();
         }
@@ -962,7 +962,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
         // Bouton habillé aux pièces `btn_*` du client (3-slice), comme partout
         // ailleurs : un SmallButton ImGui nu au milieu d'une fiche RO se voit
         // immédiatement — ce n'est pas le même jeu.
-        if (ro::RoSmallButton("Lien##mi_chatlink")) {
+        if (ro::RoSmallButton(i18n::Tr("Lien##mi_chatlink"))) {
           // ⚠ `mob.name` est recopié BRUT du paquet, donc dans la code-page du
           // client ; la barre de saisie est en UTF-8. Sans effet sur un nom
           // purement ASCII, indispensable dès qu'il ne l'est pas.
@@ -1381,13 +1381,13 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
       ImGui::SameLine();
       ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
     }
-    ImGui::Text("Niv. %u   %s   %s niv. %u", mob.level, SizeName(mob.size),
+    ImGui::Text(i18n::Tr("Niv. %u   %s   %s niv. %u"), mob.level, SizeName(mob.size),
                 ElementName(mob.element), mob.element_lv);
     ImGui::Text("%s", RaceName(mob.race));
     // Les PV décident de tout ; le SP ne se lit que sur les monstres qui lancent
     // quelque chose, d'où la ligne conditionnelle plutôt qu'un « SP : 0 ».
-    if (mob.sp > 0) ImGui::Text("PV %u   SP %u", mob.hp, mob.sp);
-    else            ImGui::Text("PV %u", mob.hp);
+    if (mob.sp > 0) ImGui::Text(i18n::Tr("PV %u   SP %u"), mob.hp, mob.sp);
+    else            ImGui::Text(i18n::Tr("PV %u"), mob.hp);
     ImGui::EndGroup();
   }
   ImGui::EndTooltip();
@@ -1409,12 +1409,12 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
                                 ImGuiTableFlags_Sortable |
                                 ImGuiTableFlags_SizingStretchProp;
   if (ImGui::BeginTable("##mi_drops", 3, flags)) {
-    ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("Taux", ImGuiTableColumnFlags_WidthFixed |
+    ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(i18n::Tr("Taux"), ImGuiTableColumnFlags_WidthFixed |
                                         ImGuiTableColumnFlags_PreferSortDescending |
                                         ImGuiTableColumnFlags_DefaultSort,
                             70.0f);
-    ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 95.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, 95.0f);
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
@@ -1510,9 +1510,9 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
                             ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Sortable |
                             ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("Carte", ImGuiTableColumnFlags_WidthStretch |
+    ImGui::TableSetupColumn(i18n::Tr("Carte"), ImGuiTableColumnFlags_WidthStretch |
                                          ImGuiTableColumnFlags_DefaultSort);
-    ImGui::TableSetupColumn("Nombre",
+    ImGui::TableSetupColumn(i18n::Tr("Nombre"),
                             ImGuiTableColumnFlags_WidthFixed |
                                 ImGuiTableColumnFlags_PreferSortDescending,
                             80.0f);
@@ -1553,11 +1553,11 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
                             ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn(i18n::Tr("Compétence"), ImGuiTableColumnFlags_WidthStretch |
                                               ImGuiTableColumnFlags_DefaultSort);
-    ImGui::TableSetupColumn("Niveau",
+    ImGui::TableSetupColumn(i18n::Tr("Niveau"),
                             ImGuiTableColumnFlags_WidthFixed |
                                 ImGuiTableColumnFlags_PreferSortDescending,
                             60.0f);
-    ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+    ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed, 50.0f);
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 

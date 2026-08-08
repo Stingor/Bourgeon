@@ -2284,7 +2284,7 @@ bool BasicInfo::DrawSettings() {
       "et se collent automatiquement (~10px).\nÉloigne-la pour la "
       "détacher. Les barres restent indépendantes."));
 
-  changed |= ro::RoCheckbox("Vertical", &vertical_);
+  changed |= ro::RoCheckbox(i18n::Tr("Vertical"), &vertical_);
   SameLine(); HelpMarker(
       i18n::Tr("Remplissage vertical des barres. \n"
       "Décoche pour les barres horizontales."));
@@ -2299,7 +2299,7 @@ bool BasicInfo::DrawSettings() {
   SameLine(); HelpMarker(
       i18n::Tr("Ce qui est écrit sur les barres : rien, le pourcentage, les "
       "valeurs brutes (courant / max) ou les deux."));
-  changed |= WheelSliderFloat("Arrondi", &rounding_, 0.0f, 16.0f);
+  changed |= WheelSliderFloat(i18n::Tr("Arrondi"), &rounding_, 0.0f, 16.0f);
   SameLine(); HelpMarker(i18n::Tr("Arrondi des coins des barres."));
 
   for (int i = 0; i < BasicInfo::kBarCount; ++i) {
@@ -2349,12 +2349,12 @@ bool BasicInfo::DrawSettings() {
       i18n::Tr("Ne génère que la tête (visage/cheveux/coiffes) et retire le corps.\n"
       "Décoche pour le personnage entier."));
 
-  changed |= ro::RoCheckbox("Cape / garment", &portrait_show_garment_);
+  changed |= ro::RoCheckbox(i18n::Tr("Cape / garment"), &portrait_show_garment_);
   SameLine(); HelpMarker(
       i18n::Tr("Affiche la cape/garment équipée (seulement en mode corps "
       "entier — décoche \"Tête seule\" pour la voir)."));
 
-  changed |= WheelSliderFloat("Zoom", &portrait_head_zoom_, 0.10f, 2.0f);
+  changed |= WheelSliderFloat(i18n::Tr("Zoom"), &portrait_head_zoom_, 0.10f, 2.0f);
   SameLine(); HelpMarker(i18n::Tr("Ajuster avec le zoom."));
 
   changed |= WheelSliderFloat(i18n::Tr("Décalage horiz."), &portrait_head_offx_, -1.5f, 1.5f);
@@ -2368,24 +2368,24 @@ bool BasicInfo::DrawSettings() {
       "Optionnel — le zoom reste centré ; laisse à 0 si tu n'en as pas besoin."));
 
   static const char* kLabelsAnim[] = { "Repos", "Marche", "Assis", "Ramasser", "Combat", "Attaque", "Touché", "Gelé", "Mort" };
-  changed |= ro::RoCombo("Animation", &portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
+  changed |= ro::RoCombo(i18n::Tr("Animation"), &portrait_anim_, kLabelsAnim, IM_ARRAYSIZE(kLabelsAnim));
   SameLine(); HelpMarker(
       i18n::Tr("Pose animée du portrait (Combat = posture prête au combat).\n"
       "Le nombre d'images de l'animation s'ajuste automatiquement."));
 
   static const char* kLabelsDir[] = { "Face", "Profil-Gauche", "Gauche", "Arrière-Gauche", "Dos", "Arrière-Droite", "Droite", "Profil-Droite" };
-  changed |= ro::RoCombo("Direction", &portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
+  changed |= ro::RoCombo(i18n::Tr("Direction"), &portrait_dir_, kLabelsDir, IM_ARRAYSIZE(kLabelsDir));
   SameLine(); HelpMarker(
       i18n::Tr("Oriente le portrait. 0 = face. Essaie les valeurs pour trouver "
       "l'angle voulu (le rendu se met à jour en direct)."));
 
-  changed |= ro::RoCheckbox("Animer", &portrait_animate_);
+  changed |= ro::RoCheckbox(i18n::Tr("Animer"), &portrait_animate_);
   SameLine(); HelpMarker(
       i18n::Tr("Joue les images de l'animation (ex. le balayage de la posture "
       "Combat). Décoche pour figer une pose calme (image 0)."));
 
   SeparatorText(i18n::Tr("Couleurs, arrondis et taille de texte du portrait et des étiquettes"));
-  changed |= ro::RoCheckbox("Bordure", &portrait_border_);
+  changed |= ro::RoCheckbox(i18n::Tr("Bordure"), &portrait_border_);
   SameLine(); HelpMarker(i18n::Tr("Trait 1px autour du cadre et des étiquettes."));
 
   // Per-element config: show / background colour+opacity / rounding /
@@ -2398,9 +2398,9 @@ bool BasicInfo::DrawSettings() {
     changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), e.bg);
     if (i != BasicInfo::kPortHead) {
       SameLine();
-      changed |= ColorEdit4WithAlphaBar("Texte", e.fg);
+      changed |= ColorEdit4WithAlphaBar(i18n::Tr("Texte"), e.fg);
     }
-    changed |= WheelSliderFloat("Arrondi", &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
+    changed |= WheelSliderFloat(i18n::Tr("Arrondi"), &e.rounding, 0.0f, 16.0f, "%.0f", 1.0f);
     if (i != BasicInfo::kPortHead) {
       changed |= WheelSliderFloat(i18n::Tr("Taille du texte"), &e.text_scale,
                                   kPortTextScaleMin, kPortTextScaleMax);

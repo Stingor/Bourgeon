@@ -362,7 +362,7 @@ void Doom::DrawWindow() {
                        ImVec2(static_cast<float>(kW), static_cast<float>(kH)));
           over_image = ImGui::IsItemHovered();  // the Image is the last item
         } else {
-          ImGui::TextUnformatted("Chargement...");
+          ImGui::TextUnformatted(i18n::Tr("Chargement..."));
         }
         const bool focused =
             ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);

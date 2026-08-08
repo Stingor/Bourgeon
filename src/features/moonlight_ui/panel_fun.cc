@@ -34,7 +34,7 @@ namespace {
 bool DrawJumpKeyBinding(PlayerJump* player_jump) {
   bool changed = false;
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled("Touche :");
+  ImGui::TextDisabled(i18n::Tr("Touche :"));
   SameLine();
 
   if (player_jump->key_capturing()) {
@@ -102,8 +102,8 @@ void MoonlightUi::DrawFunPanels() {
   // ── Interface de jeu  ────────────────────────────────────────────────────
   // NB: la vue caméra FPS (FpsView) reste dans le code (toggle F9) mais
   // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
-  if (CollapsingHeader("Mini-jeux")) {
-    SeparatorText("DOOM");
+  if (CollapsingHeader(i18n::Tr("Mini-jeux"))) {
+    SeparatorText(i18n::Tr("DOOM"));
     if (auto* doom = Bourgeon::Instance().doom()) {
       bool on = doom->enabled();
       if (ro::RoCheckbox(i18n::Tr("Lancer DOOM (1993) dans Ragnarok"), &on))
@@ -137,7 +137,7 @@ void MoonlightUi::DrawFunPanels() {
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
-    SeparatorText("Roggle");
+    SeparatorText(i18n::Tr("Roggle"));
     if (auto* roggle = Bourgeon::Instance().roggle()) {
       bool on = roggle->enabled();
       if (ro::RoCheckbox(i18n::Tr("Ouvrir Roggle"), &on))
@@ -151,7 +151,7 @@ void MoonlightUi::DrawFunPanels() {
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
-    SeparatorText("Rojeweled");
+    SeparatorText(i18n::Tr("Rojeweled"));
     if (auto* rojeweled = Bourgeon::Instance().rojeweled()) {
       bool on = rojeweled->enabled();
       if (ro::RoCheckbox(i18n::Tr("Ouvrir Rojeweled"), &on))
@@ -166,7 +166,7 @@ void MoonlightUi::DrawFunPanels() {
     } else
       ImGui::TextDisabled(kPluginUnavailable);
 
-    SeparatorText("Saut");
+    SeparatorText(i18n::Tr("Saut"));
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       bool on = player_jump->enabled();
       if (ro::RoCheckbox(i18n::Tr("Sauter au clavier"), &on)) {
@@ -187,7 +187,7 @@ void MoonlightUi::DrawFunPanels() {
       // Live, non persistés (comme FpsView).
       if (on && IsStaff()) {
         PushItemWidth(160.0f);
-        WheelSliderFloat("Hauteur", player_jump->p_height(), 2.0f, 40.0f);
+        WheelSliderFloat(i18n::Tr("Hauteur"), player_jump->p_height(), 2.0f, 40.0f);
         WheelSliderInt(i18n::Tr("Durée (ms)"), player_jump->p_duration_ms(), 200, 1500);
         PopItemWidth();
       }
@@ -230,8 +230,8 @@ void MoonlightUi::DrawFunPanels() {
         // actives pour tout le monde. Live, non persistés (comme FpsView).
         if (IsStaff()) {
           PushItemWidth(160.0f);
-          WheelSliderInt("Anticipation (cases)", keyboard_move->p_look_ahead(), 1, 6);
-          WheelSliderInt("Cadence (ms)", keyboard_move->p_refresh_ms(), 60, 400);
+          WheelSliderInt(i18n::Tr("Anticipation (cases)"), keyboard_move->p_look_ahead(), 1, 6);
+          WheelSliderInt(i18n::Tr("Cadence (ms)"), keyboard_move->p_refresh_ms(), 60, 400);
           PopItemWidth();
         }
       }

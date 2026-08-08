@@ -1596,7 +1596,7 @@ void RodexWindow::DrawMailList() {
   ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Écrire"))) Compose(nullptr);
   ImGui::SameLine();
-  ImGui::TextDisabled("%d courrier%s", static_cast<int>(mails_.size()),
+  ImGui::TextDisabled(i18n::Tr("%d courrier%s"), static_cast<int>(mails_.size()),
                       mails_.size() > 1 ? "s" : "");
 
   // Onglets = les trois boîtes du manager, plus une vue agrégée. Changer d'onglet
@@ -1668,8 +1668,8 @@ void RodexWindow::DrawMailList() {
                                    ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
     ImGui::TableSetupColumn(i18n::Tr("Expéditeur"), ImGuiTableColumnFlags_WidthStretch, 0.34f);
-    ImGui::TableSetupColumn("Sujet", ImGuiTableColumnFlags_WidthStretch, 0.50f);
-    ImGui::TableSetupColumn("Expire", ImGuiTableColumnFlags_WidthFixed, 52.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Sujet"), ImGuiTableColumnFlags_WidthStretch, 0.50f);
+    ImGui::TableSetupColumn(i18n::Tr("Expire"), ImGuiTableColumnFlags_WidthFixed, 52.0f);
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
@@ -1799,7 +1799,7 @@ void RodexWindow::DrawAttachRow(const Attach& attach, bool removable) {
 
   if (removable) {
     ImGui::SameLine();
-    if (ro::RoButton("Retirer")) RemoveAttachment(attach.inv_index, attach.amount);
+    if (ro::RoButton(i18n::Tr("Retirer"))) RemoveAttachment(attach.inv_index, attach.amount);
   }
 }
 
@@ -1833,13 +1833,13 @@ void RodexWindow::DrawMailDetail() {
     return;
   }
 
-  ImGui::TextColored(kBlack, "De : %s", mail->sender.c_str());
+  ImGui::TextColored(kBlack, i18n::Tr("De : %s"), mail->sender.c_str());
   const std::string expiry = ExpiryLabel(mail->expire);
   if (!expiry.empty()) {
     ImGui::SameLine();
-    ImGui::TextDisabled("(expire : %s)", expiry.c_str());
+    ImGui::TextDisabled(i18n::Tr("(expire : %s)"), expiry.c_str());
   }
-  ImGui::TextColored(kBlack, "Sujet : %s", mail->title.c_str());
+  ImGui::TextColored(kBlack, i18n::Tr("Sujet : %s"), mail->title.c_str());
 
   ImGui::BeginChild("rodex_body", ImVec2(0, 86), true);
   if (!mail->content_ready)
@@ -1880,14 +1880,14 @@ void RodexWindow::DrawMailDetail() {
   // réception (un courrier de compte ou déjà retourné n'a pas d'émetteur joignable).
   const bool can_return = (mail->box == 0);
   if (!can_return) ImGui::BeginDisabled();
-  if (ro::RoButton("Retourner", 110.0f, 0.0f)) confirm_ = kConfirmReturn;
+  if (ro::RoButton(i18n::Tr("Retourner"), 110.0f, 0.0f)) confirm_ = kConfirmReturn;
   if (!can_return) ImGui::EndDisabled();
   ImGui::SameLine();
   // Comme le natif : suppression interdite tant qu'il reste une pièce jointe (le
   // serveur refuserait de toute façon, avec un message d'erreur dans le chat).
   const bool can_delete = (mail->type & 6) == 0;
   if (!can_delete) ImGui::BeginDisabled();
-  if (ro::RoButton("Supprimer", 110.0f, 0.0f)) confirm_ = kConfirmDelete;
+  if (ro::RoButton(i18n::Tr("Supprimer"), 110.0f, 0.0f)) confirm_ = kConfirmDelete;
   if (!can_delete) ImGui::EndDisabled();
   if (!can_delete) ImGui::TextDisabled(i18n::Tr("Récupère d'abord les pièces jointes."));
 
@@ -1931,7 +1931,7 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Destinataire ──
-  ImGui::TextColored(kBlack, "Destinataire");
+  ImGui::TextColored(kBlack, i18n::Tr("Destinataire"));
   ImGui::SetNextItemWidth(200.0f);
   ImGui::InputText("##rodex_to", to_, sizeof(to_));
   ImGui::SameLine();
@@ -1952,10 +1952,10 @@ void RodexWindow::DrawComposeWindow() {
       // permet de repérer une coquille (majuscule, espace) sans relire son champ.
       const char* who = checked_name_.empty() ? to_ : checked_name_.c_str();
       if (!checked_job_.empty())
-        ImGui::TextColored(kBlack, "%s — %s, niveau %d", who, checked_job_.c_str(),
+        ImGui::TextColored(kBlack, i18n::Tr("%s — %s, niveau %d"), who, checked_job_.c_str(),
                            checked_level_);
       else
-        ImGui::TextColored(kBlack, "%s — niveau %d", who, checked_level_);
+        ImGui::TextColored(kBlack, i18n::Tr("%s — niveau %d"), who, checked_level_);
       break;
     }
     default:
@@ -1963,10 +1963,10 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Sujet / message ──
-  ImGui::TextColored(kBlack, "Sujet");
+  ImGui::TextColored(kBlack, i18n::Tr("Sujet"));
   ImGui::SetNextItemWidth(-1.0f);
   ImGui::InputText("##rodex_subject", subject_, sizeof(subject_));
-  ImGui::TextColored(kBlack, "Message");
+  ImGui::TextColored(kBlack, i18n::Tr("Message"));
   ImGui::InputTextMultiline("##rodex_body", body_, sizeof(body_),
                             ImVec2(-1.0f, 130.0f));
 
@@ -2008,9 +2008,9 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   ImGui::Separator();
-  if (ro::RoButton("Envoyer", 130.0f, 0.0f)) SendMail();
+  if (ro::RoButton(i18n::Tr("Envoyer"), 130.0f, 0.0f)) SendMail();
   ImGui::SameLine();
-  if (ro::RoButton("Annuler", 110.0f, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Annuler"), 110.0f, 0.0f)) {
     CloseCompose();
     ro::EndRoWindow();
     ImGui::PopStyleVar(3);
@@ -2028,21 +2028,21 @@ void RodexWindow::DrawConfirmPopup() {
   const Mail* mail = Selected();
   if (!mail) return;
   if (confirm_ != kConfirmNone) {
-    ImGui::OpenPopup("Confirmation###rodex_confirm");
+    ImGui::OpenPopup(i18n::Tr("Confirmation###rodex_confirm"));
     ro::SuppressEscapeStack();  // Échap ferme la modale, pas la boîte derrière
   }
-  if (ro::BeginRoPopupModal("Confirmation###rodex_confirm")) {
+  if (ro::BeginRoPopupModal(i18n::Tr("Confirmation###rodex_confirm"))) {
     ImGui::TextUnformatted(confirm_ == kConfirmDelete
                                ? i18n::Tr("Supprimer définitivement ce courrier ?") : i18n::Tr("Retourner ce courrier à son expéditeur ?"));
     ImGui::Spacing();
-    if (ro::RoButton("Confirmer", 110.0f, 0.0f)) {
+    if (ro::RoButton(i18n::Tr("Confirmer"), 110.0f, 0.0f)) {
       if (confirm_ == kConfirmDelete) DeleteMail(*mail);
       else                            ReturnMail(*mail);
       confirm_ = kConfirmNone;
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ro::RoButton("Annuler", 110.0f, 0.0f)) {
+    if (ro::RoButton(i18n::Tr("Annuler"), 110.0f, 0.0f)) {
       confirm_ = kConfirmNone;
       ImGui::CloseCurrentPopup();
     }

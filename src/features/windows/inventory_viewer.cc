@@ -1456,7 +1456,7 @@ void InventoryViewer::RenderCardInsert() {
     // Boutons en largeur AUTO (w=0 = texte + marges natives).
     const bool can_ok = (selItem != nullptr && cardIndex > 0 && maxK >= 1);
     if (!can_ok) ImGui::BeginDisabled();
-    if (ro::RoButton("Sertir")) {
+    if (ro::RoButton(i18n::Tr("Sertir"))) {
       if (!SertirTimes(cardIndex, ci_sel_, 1, stock)) CloseCardInsert();
       else ci_sel_ = -1;
     }
@@ -1473,7 +1473,7 @@ void InventoryViewer::RenderCardInsert() {
     }
     if (!can_ok) ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ro::RoButton("Fermer")) {
+    if (ro::RoButton(i18n::Tr("Fermer"))) {
       CancelComposition();
       CloseCardInsert();
     }
@@ -1499,7 +1499,7 @@ void InventoryViewer::RenderCardInsert() {
       if (hover->total_slots > 0) ImGui::Text(" %s [%d] ", hn, hover->total_slots);
       else                        ImGui::Text(" %s ", hn);
       if (!hover->forged && hover->used_slots > 0)
-        ImGui::TextDisabled(" %d carte(s) sertie(s) ", hover->used_slots);
+        ImGui::TextDisabled(i18n::Tr(" %d carte(s) sertie(s) "), hover->used_slots);
       ImGui::EndTooltip();
     }
   }
@@ -2109,7 +2109,7 @@ void InventoryViewer::OnRenderUI() {
                            it.damaged != 0);
         ImGui::PopStyleColor();
         ImGui::Separator();
-        if (ImGui::MenuItem("Description")) {
+        if (ImGui::MenuItem(i18n::Tr("Description"))) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
           MarkDescPending();
@@ -2160,7 +2160,7 @@ void InventoryViewer::OnRenderUI() {
               } else if (qs_equip_index_ == it.index) {
                 ImGui::TextDisabled(i18n::Tr("Aucune carte compatible"));
               } else {
-                ImGui::TextDisabled("Chargement…");
+                ImGui::TextDisabled(i18n::Tr("Chargement…"));
               }
               ImGui::EndMenu();
             }
@@ -2184,12 +2184,12 @@ void InventoryViewer::OnRenderUI() {
           if (dropLocked) 
             ImGui::MenuItem(i18n::Tr("Jeter - verrouillé"));
           else
-            if (ImGui::MenuItem("Jeter")) SendDrop(it.index, 1);
+            if (ImGui::MenuItem(i18n::Tr("Jeter"))) SendDrop(it.index, 1);
         }
         else
           if (dropLocked) 
             ImGui::MenuItem(i18n::Tr("Jeter - verrouillé"));
-          else if (ImGui::MenuItem("Jeter...")) {
+          else if (ImGui::MenuItem(i18n::Tr("Jeter..."))) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendDrop; pend_open_prompt_ = true;
           }

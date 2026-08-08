@@ -2580,7 +2580,7 @@ void MakeItemWindow::DrawList() {
       }
       if (static_cast<int>(stale_entries_.size()) > shown) {
         ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-        Text("(+%d autres)", static_cast<int>(stale_entries_.size()) - shown);
+        Text(i18n::Tr("(+%d autres)"), static_cast<int>(stale_entries_.size()) - shown);
         ImGui::PopStyleColor();
       }
       Spacing();
@@ -2656,11 +2656,11 @@ void MakeItemWindow::DrawList() {
     // colonne de plus rognait le nom, qui est la seule chose que le joueur lit.
     // Trier par id reste utile — c'est l'ordre « par famille d'objet ».
     ImGui::TableSetupColumn("##icone", ImGuiTableColumnFlags_WidthFixed, 28.0f);
-    ImGui::TableSetupColumn("Produit", ImGuiTableColumnFlags_DefaultSort);
+    ImGui::TableSetupColumn(i18n::Tr("Produit"), ImGuiTableColumnFlags_DefaultSort);
     if (show_owned_)
       ImGui::TableSetupColumn(i18n::Tr("Possédé"), ImGuiTableColumnFlags_WidthFixed, 58.0f);
     if (show_craftable)
-      ImGui::TableSetupColumn("Faisable", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Faisable"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
     ImGui::TableHeadersRow();
 
     // Vue triée : on ne touche JAMAIS à `entries_`, qui reste dans l'ordre du
@@ -3488,7 +3488,7 @@ void MakeItemWindow::DrawForgeSlots() {
     // cases et le curseur du pied — la fenêtre porte le skin RO de bout en bout,
     // et un widget ImGui nu y devient l'exception qu'on remarque.
     if (ro::RoBeginCombo("##forgeslot", preview)) {
-      if (ImGui::Selectable("(vide)", forge_slot_[i] == 0)) forge_slot_[i] = 0;
+      if (ImGui::Selectable(i18n::Tr("(vide)"), forge_slot_[i] == 0)) forge_slot_[i] = 0;
 
       // ── Ce qu'on propose, et ce qu'on ne propose PAS ─────────────────────
       // Les deux familles n'obéissent pas à la même règle serveur, et les
@@ -3707,7 +3707,7 @@ void MakeItemWindow::DrawFooter() {
         by_item && source_item_id_ != 0 && OwnedCount(source_item_id_) > 0;
     const bool     can_relaunch = by_item ? have_item : (skill_id_ > 0);
     ImGui::BeginDisabled(!can_relaunch);
-    if (ro::RoButton("Relancer", kBtnW)) {
+    if (ro::RoButton(i18n::Tr("Relancer"), kBtnW)) {
       // Geste MANUEL : la chaîne repart de zéro. Sans cette remise à plat, le
       // compteur d'une série précédente s'afficherait sur la suivante.
       auto_chain_      = 0;
@@ -3741,12 +3741,12 @@ void MakeItemWindow::DrawFooter() {
     // ⚠ ro::RoButton, PAS ImGui::Button : le corps d'une fenêtre Bourgeon porte le
     // skin RO (art clair, 9-slice), et un bouton ImGui nu y détonne.
     ImGui::BeginDisabled(!can_make);
-    if (ro::RoButton("Fabriquer", kBtnW)) RequestMake();
+    if (ro::RoButton(i18n::Tr("Fabriquer"), kBtnW)) RequestMake();
     ImGui::EndDisabled();
   }
 
   SameLine();
-  if (ro::RoButton("Fermer", kBtnW)) CloseAndCancel();
+  if (ro::RoButton(i18n::Tr("Fermer"), kBtnW)) CloseAndCancel();
 
   // ── Quantité voulue — SUR SA PROPRE LIGNE ─────────────────────────────────
   // 🔴 Ces widgets étaient à la suite des deux boutons. La barre débordait alors
@@ -3766,7 +3766,7 @@ void MakeItemWindow::DrawFooter() {
   SameLine();
   // ro::RoSmallButton, pas les flèches d'ImGui::InputInt : celles-ci sont des
   // boutons ImGui nus au milieu d'un pied entièrement habillé RO.
-  if (ro::RoSmallButton("-##batchdec") && batch_target_ > 1) --batch_target_;
+  if (ro::RoSmallButton(i18n::Tr("-##batchdec")) && batch_target_ > 1) --batch_target_;
   SameLine();
   ImGui::SetNextItemWidth(56.0f);
   // step = 0 : on supprime les flèches natives d'InputInt, les nôtres les
@@ -3776,7 +3776,7 @@ void MakeItemWindow::DrawFooter() {
     if (batch_target_ > 999) batch_target_ = 999;
   }
   SameLine();
-  if (ro::RoSmallButton("+##batchinc") && batch_target_ < 999) ++batch_target_;
+  if (ro::RoSmallButton(i18n::Tr("+##batchinc")) && batch_target_ < 999) ++batch_target_;
   SameLine();
   if (batch_left_ > 0) {
     ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);

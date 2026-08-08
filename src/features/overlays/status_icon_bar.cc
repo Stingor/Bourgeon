@@ -824,7 +824,7 @@ void StatusIconBar::DrawSettings() {
                              kTimeAnchors, IM_ARRAYSIZE(kTimeAnchors));
       SameLine(); HelpMarker(i18n::Tr("Ancrage du texte à l'intérieur de l'icône (9 positions)."));
     ImGui::EndDisabled();
-    changed |= ro::RoCheckbox("Texte \"gras\"", &g_cfg.time_bold);
+    changed |= ro::RoCheckbox(i18n::Tr("Texte \"gras\""), &g_cfg.time_bold);
     SameLine(); HelpMarker(i18n::Tr("Faux-gras (ImGui n'a pas de fonte grasse)."));
     changed |= ColorSwatch(i18n::Tr("Couleur du texte"), g_cfg.col_time_text);
     changed |= ColorSwatch(i18n::Tr("Couleur de l'ombre"), g_cfg.col_time_shadow);

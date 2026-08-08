@@ -2602,7 +2602,7 @@ void ChatWindow::DrawDockedWindow() {
       ImGui::InputTextWithHint("##chat_search", "Rechercher…", search_,
                                sizeof(search_));
       ImGui::SameLine();
-      if (ro::RoSmallButton("Effacer")) search_[0] = '\0';
+      if (ro::RoSmallButton(i18n::Tr("Effacer"))) search_[0] = '\0';
       ImGui::PopStyleColor();
       ImGui::SameLine();
       ro::RoCheckbox(i18n::Tr("Sélection###chatwnd_selmode"), &select_mode_);
@@ -4703,11 +4703,11 @@ void ChatWindow::DrawLogOptionsPopup() {
     }
     if (!channel->style_own) ImGui::BeginDisabled();
     bool touched = false;
-    touched |= WheelSliderInt("Taille du texte###chatstyle_font", &channel->font_pct,
+    touched |= WheelSliderInt(i18n::Tr("Taille du texte###chatstyle_font"), &channel->font_pct,
                               70, 160, "%d %%");
-    touched |= WheelSliderInt("Marges###chatstyle_pad", &channel->padding, 0, 12,
+    touched |= WheelSliderInt(i18n::Tr("Marges###chatstyle_pad"), &channel->padding, 0, 12,
                               "%d px");
-    touched |= WheelSliderInt("Interligne###chatstyle_gap", &channel->line_gap, 0, 16,
+    touched |= WheelSliderInt(i18n::Tr("Interligne###chatstyle_gap"), &channel->line_gap, 0, 16,
                               "%d px");
     touched |= RoColorSwatch("Fond###chatstyle_body", channel->body);
     if (touched) layout_dirty_ = true;
@@ -5341,17 +5341,17 @@ bool ChatWindow::DrawSettings() {
   // ses propres « Icônes d'objets » et son horodatage. Deux widgets de même
   // libellé dans une même fenêtre, c'est le même ID — ImGui le signale par une
   // fenêtre d'erreur rouge, et l'un des deux devient inutilisable.
-  changed |= ro::RoCheckbox("Chatbox ImGui###chatwnd_on", &imgui_enabled_);
+  changed |= ro::RoCheckbox(i18n::Tr("Chatbox ImGui###chatwnd_on"), &imgui_enabled_);
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Remplacement de la chatbox : mêmes canaux, mêmes filtres et même chemin "
       "d'envoi que le client. La fenêtre native reste ouverte à côté tant que la "
       "bascule complète n'est pas faite."));
-  changed |= ro::RoCheckbox("Ligne de saisie###chatwnd_input", &input_bar_);
+  changed |= ro::RoCheckbox(i18n::Tr("Ligne de saisie###chatwnd_input"), &input_bar_);
   // ⚠ Le verrouillage de la géométrie N'EST PLUS ICI : il y en a un par fenêtre,
   // et ce panneau ne sait pas de laquelle il parlerait. Il vit dans le menu
   // contextuel d'un onglet ou d'un en-tête — cf. DrawLogOptionsPopup.
-  changed |= ro::RoCheckbox("Avertir avant d'ouvrir un lien###chatwnd_urlwarn",
+  changed |= ro::RoCheckbox(i18n::Tr("Avertir avant d'ouvrir un lien###chatwnd_urlwarn"),
                             &url_confirm_);
   ImGui::SameLine();
   HelpMarker(
@@ -5424,7 +5424,7 @@ bool ChatWindow::DrawSettings() {
   // Les deux étaient confondus dans un seul curseur où zéro valait « aucune ».
   // Une commande qui répond à deux questions se lit mal : on ne sait plus si
   // l'on règle une taille ou si l'on éteint quelque chose.
-  changed |= ro::RoCheckbox("Images et emotes###chatwnd_thumbs", &thumbs_);
+  changed |= ro::RoCheckbox(i18n::Tr("Images et emotes###chatwnd_thumbs"), &thumbs_);
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Affiche les images et les emotes du fil sous forme de vignettes.\n\n"
@@ -5434,7 +5434,7 @@ bool ChatWindow::DrawSettings() {
   // voit la taille qui s'appliquera, mais il n'invite pas à régler ce qui ne
   // s'affiche pas.
   ImGui::BeginDisabled(!thumbs_);
-  changed |= WheelSliderInt("Taille des images###chatwnd_thumb", &thumb_px_,
+  changed |= WheelSliderInt(i18n::Tr("Taille des images###chatwnd_thumb"), &thumb_px_,
                             24, 128, "%d px");
   ImGui::EndDisabled();
   ImGui::SameLine();
@@ -5451,7 +5451,7 @@ bool ChatWindow::DrawSettings() {
   // Live, non persisté, comme les autres réglages fins du staff : c'est un outil
   // qu'on ouvre pour une manipulation puis qu'on referme.
   if (IsStaff()) {
-    ro::RoCheckbox("Export des emotes en GIF###chatwnd_emote_export",
+    ro::RoCheckbox(i18n::Tr("Export des emotes en GIF###chatwnd_emote_export"),
                    &emote_export_);
     ImGui::SameLine();
     HelpMarker(
@@ -5485,9 +5485,9 @@ bool ChatWindow::DrawSettings() {
       "ici les change là-bas, et inversement.\n\n"
       "Décochés, les chuchotements restent de simples lignes dans le chat."));
 
-  changed |= ro::RoCheckbox("Horodatage###chatwnd_stamp", &timestamps_);
+  changed |= ro::RoCheckbox(i18n::Tr("Horodatage###chatwnd_stamp"), &timestamps_);
   changed |= ro::RoCheckbox(i18n::Tr("Icônes d'objets###chatwnd_icons"), &item_icons_);
-  changed |= ro::RoCheckbox("Diagnostic : tout afficher + type###chatwnd_diag",
+  changed |= ro::RoCheckbox(i18n::Tr("Diagnostic : tout afficher + type###chatwnd_diag"),
                             &diagnostic_);
   ImGui::SameLine();
   HelpMarker(
@@ -5519,7 +5519,7 @@ bool ChatWindow::DrawSettings() {
       "Le tampon est commun à tous les onglets — une même ligne s'affiche dans "
       "plusieurs à la fois — mais chaque type y garde sa place."));
 
-  changed |= ro::RoCheckbox("Garder l'historique entre les sessions###chatwnd_keep",
+  changed |= ro::RoCheckbox(i18n::Tr("Garder l'historique entre les sessions###chatwnd_keep"),
                             &keep_history_);
   ImGui::SameLine();
   HelpMarker(
@@ -5542,24 +5542,24 @@ bool ChatWindow::DrawSettings() {
   changed |= RoColorSwatch("Fond###chatwnd_body", body_rgba_);
   changed |= RoColorSwatch("Bordure###chatwnd_border", border_rgba_);
   changed |= RoColorSwatch("Onglets###chatwnd_tab", tab_rgba_);
-  changed |= WheelSliderInt("Taille du texte du chat###chatwnd_font",
+  changed |= WheelSliderInt(i18n::Tr("Taille du texte du chat###chatwnd_font"),
                             &font_scale_pct_, 70, 160, "%d %%");
-  changed |= WheelSliderInt("Taille de l'interface###chatwnd_uifont", &ui_scale_pct_,
+  changed |= WheelSliderInt(i18n::Tr("Taille de l'interface###chatwnd_uifont"), &ui_scale_pct_,
                             70, 160, "%d %%");
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Onglets, boutons et ligne de saisie. Séparée de la taille du chat : "
       "grossir le texte qu'on lit ne doit pas faire enfler la bande d'onglets, "
       "qui mangerait la fenêtre."));
-  changed |= WheelSliderInt("Marges###chatwnd_pad", &padding_px_, 0, 12, "%d px");
-  changed |= WheelSliderInt("Interligne###chatwnd_gap", &line_gap_px_, 0, 16, "%d px");
-  if (ro::RoButton("Couleurs du client###chatwnd_reset")) {
+  changed |= WheelSliderInt(i18n::Tr("Marges###chatwnd_pad"), &padding_px_, 0, 12, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Interligne###chatwnd_gap"), &line_gap_px_, 0, 16, "%d px");
+  if (ro::RoButton(i18n::Tr("Couleurs du client###chatwnd_reset"))) {
     ro::PickerFromArgb(body_rgba_, 0x96000000);    // le fond natif, un peu plus dense
     ro::PickerFromArgb(border_rgba_, 0xFFC5C5C5);
     ro::PickerFromArgb(tab_rgba_, 0xFF8E938E);     // gris de l'UITabStrip
     changed = true;
   }
   ImGui::SameLine();
-  if (ro::RoButton("Vider l'historique###chatwnd_clear")) ClearHistory();
+  if (ro::RoButton(i18n::Tr("Vider l'historique###chatwnd_clear"))) ClearHistory();
   return changed;
 }

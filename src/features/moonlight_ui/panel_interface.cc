@@ -125,7 +125,7 @@ void MoonlightUi::DrawInterfacePanel() {
       if (IsStaff() && i18n::MissingCount() > 0) {
         ImGui::TextDisabled(i18n::Tr("%zu textes sans traduction"), i18n::MissingCount());
         SameLine();
-        if (ImGui::SmallButton("Exporter")) {
+        if (ImGui::SmallButton(i18n::Tr("Exporter"))) {
           std::string exported_path;
           // Le chemin est journalisé dans les DEUX cas : en échec, c'est lui qui
           // dit pourquoi (dossier absent, fichier verrouillé), ce qu'un simple

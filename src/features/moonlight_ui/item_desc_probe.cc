@@ -10,6 +10,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/hooking/hook_manager.h"
+#include "utils/i18n.h"
 #include "utils/log_console.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -180,7 +181,7 @@ void MoonlightUi::DrawAlootOverlay() {
       SameLine();
       if (ov_idx >= 0) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.18f, 0.18f, 1.0f));
-        if (ImGui::SmallButton("- alootid")) {
+        if (ImGui::SmallButton(i18n::Tr("- alootid"))) {
           SendSetting(kSettingAlootIdRemove, aloot_ids_[ov_idx]);
           aloot_ids_.erase(aloot_ids_.begin() + ov_idx);
         }
@@ -189,7 +190,7 @@ void MoonlightUi::DrawAlootOverlay() {
         const bool can_add = (aloot_ids_.size() < 50);
         if (!can_add) ImGui::BeginDisabled();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.48f, 0.18f, 1.0f));
-        if (ImGui::SmallButton("+ alootid")) {
+        if (ImGui::SmallButton(i18n::Tr("+ alootid"))) {
           aloot_ids_.push_back(g_last_viewed_item);
           SendSetting(kSettingAlootId, g_last_viewed_item);
         }

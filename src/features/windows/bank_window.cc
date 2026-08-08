@@ -528,13 +528,13 @@ void BankWindow::OnRenderUI() {
   // natif ne fait pas (il colle le nombre juste après le libellé). La colonne est
   // calée sur le PLUS LONG libellé pour qu'aucun ne morde sur les chiffres.
   const float value_col =
-      ImGui::CalcTextSize("Montant").x + ImGui::GetFontSize() * 1.5f;
+      ImGui::CalcTextSize(i18n::Tr("Montant")).x + ImGui::GetFontSize() * 1.5f;
 
-  ImGui::TextUnformatted("Banque");
+  ImGui::TextUnformatted(i18n::Tr("Banque"));
   ImGui::SameLine(value_col);
   ImGui::Text("%s z", Grouped64(vault_, buf, sizeof(buf)));
 
-  ImGui::TextUnformatted("Poche");
+  ImGui::TextUnformatted(i18n::Tr("Poche"));
   ImGui::SameLine(value_col);
   ImGui::Text("%s z", Grouped32(zeny_, buf, sizeof(buf)));
 
@@ -543,7 +543,7 @@ void BankWindow::OnRenderUI() {
     // un bitmap du client pré-composé à hauteur FIXE. Un contenu qu'on peut
     // masquer ferait glisser tout ce qui suit hors du fond peint. Cf. DrawSettings.
     const long long total = vault_ + static_cast<long long>(zeny_);
-    ImGui::TextUnformatted("Total");
+    ImGui::TextUnformatted(i18n::Tr("Total"));
     ImGui::SameLine(value_col);
     ImGui::Text("%s z", Grouped64(total, buf, sizeof(buf)));
     SameLine(); HelpMarker(
@@ -577,7 +577,7 @@ void BankWindow::OnRenderUI() {
     ImGui::SetCursorPosX(amount_col_x);
     ImGui::SetNextItemWidth(kAmountInputW);
   } else {
-    ImGui::TextUnformatted("Montant");
+    ImGui::TextUnformatted(i18n::Tr("Montant"));
     ImGui::SameLine(value_col);
     ImGui::SetNextItemWidth(-1.0f);
   }
@@ -699,7 +699,7 @@ void BankWindow::OnRenderUI() {
   ImGui::EndDisabled();
   ImGui::SetCursorScreenPos(ImVec2(row.x + col_w + col_gap, row.y));
   ImGui::BeginDisabled(!can_withdraw);
-  if (ro::RoButton("Retirer", col_w)) SendTransfer(false);
+  if (ro::RoButton(i18n::Tr("Retirer"), col_w)) SendTransfer(false);
   ImGui::EndDisabled();
 
   // (Les messages — refus et confirmations — sont rendus plus haut, dans la bande

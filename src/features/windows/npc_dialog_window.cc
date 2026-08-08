@@ -911,13 +911,13 @@ void NpcDialogWindow::DrawInput() {
         "##num", num_buf_, sizeof(num_buf_),
         ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ro::RoButton("OK") || enter) SendNumber(std::atoi(num_buf_));
+    if (ro::RoButton(i18n::Tr("OK")) || enter) SendNumber(std::atoi(num_buf_));
   } else {  // kInputString
     ImGui::SetNextItemWidth(-60.0f);
     const bool enter = ImGui::InputText("##str", str_buf_, sizeof(str_buf_),
                                         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ro::RoButton("OK") || enter) SendString(str_buf_);
+    if (ro::RoButton(i18n::Tr("OK")) || enter) SendString(str_buf_);
   }
 }
 
@@ -1146,7 +1146,7 @@ void NpcDialogWindow::OnRenderUI() {
                          ImGui::IsKeyPressed(ImGuiKey_Space, false));
     bool shown = false;
     if (has_next_) {
-      if (ro::RoButton("Suivant") || kbd_ok) SendNext();
+      if (ro::RoButton(i18n::Tr("Suivant")) || kbd_ok) SendNext();
       shown = true;
     }
     if (can_close) {

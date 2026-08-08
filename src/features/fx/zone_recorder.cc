@@ -606,7 +606,7 @@ void ZoneRecorder::DrawSettings() {
   // décrit ou sur le bouton qui le refait.
   bool preview_zone = false;
   if (IsZoneValid()) {
-    ImGui::Text("Zone : %d x %d  (en %d, %d)", zone_w_, zone_h_, zone_x_, zone_y_);
+    ImGui::Text(i18n::Tr("Zone : %d x %d  (en %d, %d)"), zone_w_, zone_h_, zone_x_, zone_y_);
     preview_zone = ImGui::IsItemHovered();
   } else {
     ImGui::TextDisabled(i18n::Tr("Aucune zone définie."));
@@ -628,7 +628,7 @@ void ZoneRecorder::DrawSettings() {
   if (preview_zone && !busy && IsZoneValid()) DrawZonePreview();
   SameLine();
   ImGui::BeginDisabled(!IsZoneValid());
-  if (ro::RoButton("Enregistrer")) ArmRecording();
+  if (ro::RoButton(i18n::Tr("Enregistrer"))) ArmRecording();
   ImGui::EndDisabled();
   ImGui::EndDisabled();
   SameLine();
@@ -681,8 +681,8 @@ void ZoneRecorder::DrawSettings() {
                        i18n::Tr("Au-delà du budget : réduis la durée ou la largeur."));
 
   // ── Raccourci ──
-  SeparatorText("Raccourci");
-  ImGui::TextDisabled("Touche :");
+  SeparatorText(i18n::Tr("Raccourci"));
+  ImGui::TextDisabled(i18n::Tr("Touche :"));
   SameLine();
   if (key_capturing_) {
     // Gèle les autres raccourcis le temps du choix : la touche pressée doit
@@ -721,7 +721,7 @@ void ZoneRecorder::DrawSettings() {
     }
     if (key_vk_ != 0) {
       SameLine(0.0f, 6.0f);
-      if (ro::RoButton("Effacer")) {
+      if (ro::RoButton(i18n::Tr("Effacer"))) {
         key_vk_ = 0;
         key_ctrl_ = key_alt_ = key_shift_ = false;
         save = true;

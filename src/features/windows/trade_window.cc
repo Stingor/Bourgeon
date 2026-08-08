@@ -775,9 +775,9 @@ void TradeWindow::OnRenderUI() {
       else
         ImGui::Text(i18n::Tr("%s souhaite échanger avec vous."), req_name_);
       ImGui::Spacing();
-      if (ro::RoButton("Accepter", 130.0f, 0.0f)) TradeAck(3);
+      if (ro::RoButton(i18n::Tr("Accepter"), 130.0f, 0.0f)) TradeAck(3);
       ImGui::SameLine();
-      if (ro::RoButton("Refuser", 130.0f, 0.0f)) TradeAck(4);
+      if (ro::RoButton(i18n::Tr("Refuser"), 130.0f, 0.0f)) TradeAck(4);
     }
     if (!p_open) TradeAck(4);
     ro::EndRoWindow();
@@ -887,7 +887,7 @@ void TradeWindow::OnRenderUI() {
   ImGui::EndGroup();
   ImGui::SameLine();  // (colonne partenaire ci-dessous)
   ImGui::BeginGroup();
-  ImGui::TextColored(kBlack, "Partenaire  (%lldz)",
+  ImGui::TextColored(kBlack, i18n::Tr("Partenaire  (%lldz)"),
                      static_cast<long long>(partner_zeny_));
   draw_items("trade_partner", partner_items_, partner_locked_, col, false);
   ImGui::EndGroup();
@@ -963,7 +963,7 @@ void TradeWindow::OnRenderUI() {
     if (!can_commit) ImGui::EndDisabled();
   }
   ImGui::SameLine();
-  if (ro::RoButton("Annuler", 100.0f, 0.0f)) CloseTrade();
+  if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) CloseTrade();
 
   // Ligne d'état : dit toujours ce qu'on attend (verrou, validation, autre joueur).
   if (committed_)

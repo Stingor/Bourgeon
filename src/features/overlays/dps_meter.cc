@@ -336,7 +336,7 @@ void DpsMeter::OnRenderUI() {
         (ImGui::GetIO().MousePos.x - ImGui::GetItemRectMin().x) /
         (ImGui::GetItemRectMax().x - ImGui::GetItemRectMin().x), 0.0f, 0.9999f);
     const int idx = ((int)(t * kPlotSlots) + plot_offset_) % kPlotSlots;
-    ImGui::SetTooltip("%.0f DPS", plot_buf_[idx]);
+    ImGui::SetTooltip(i18n::Tr("%.0f DPS"), plot_buf_[idx]);
   }
 
   if (in_combat_) {
@@ -360,8 +360,8 @@ void DpsMeter::OnRenderUI() {
 bool DpsMeter::DrawSettings() {
   bool changed = false;
 
-  changed |= ro::RoCheckbox("Afficher", &visible_);
-  changed |= ro::RoCheckbox("Verrouiller (fige + clic-traversant)", &locked_);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher"), &visible_);
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller (fige + clic-traversant)"), &locked_);
   SameLine();
   HelpMarker(i18n::Tr("Fige la fenêtre DPS (position/taille) et laisse passer les clics "
              "au jeu en dessous."));

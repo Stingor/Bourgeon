@@ -1906,7 +1906,7 @@ void MoonlightUi::OnRenderUI() {
       // LogError y arrive, sélectionnable et copiable. PERSISTÉ
       // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
       // rouvrir à chaque lancement serait une corvée quotidienne.
-      SeparatorText("Journal");
+      SeparatorText(i18n::Tr("Journal"));
       if (ro::RoCheckbox(i18n::Tr("Fenêtre de logs"),
                          &Bourgeon::Instance().show_log_window()))
         SaveSettings();
@@ -1950,7 +1950,7 @@ void MoonlightUi::OnRenderUI() {
 
     DrawInterfacePanel();
     // ── Graphismes (color grading post-process, ScreenFx plugin) ───────
-    if (CollapsingHeader("Graphismes")) {
+    if (CollapsingHeader(i18n::Tr("Graphismes"))) {
       PushStyleCompact();
       if (auto* screen_fx = Bourgeon::Instance().screen_fx())
         screen_fx->DrawSettings();

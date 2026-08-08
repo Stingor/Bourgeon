@@ -993,7 +993,7 @@ bool EntityContextMenu::DrawSettings() {
       "NPC."));
 
   if (IsStaff()) {
-    changed |= ro::RoCheckbox("Outils du staff###ctxmenu_staff", &staff_extras_);
+    changed |= ro::RoCheckbox(i18n::Tr("Outils du staff###ctxmenu_staff"), &staff_extras_);
     ImGui::SameLine();
     HelpMarker(
         i18n::Tr("Ajoute au menu les actions et les identifiants réservés au staff, et "

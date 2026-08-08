@@ -253,7 +253,7 @@ void BugReport::OnRenderUI() {
   }
 
   if (want_open_) {
-    ImGui::OpenPopup("Signaler un bug###bug_report_modal");
+    ImGui::OpenPopup(i18n::Tr("Signaler un bug###bug_report_modal"));
     want_open_ = false;
     modal_open_ = true;
   }
@@ -268,7 +268,7 @@ void BugReport::RenderModal() {
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_Appearing);
 
-  if (!ImGui::BeginPopupModal("Signaler un bug###bug_report_modal", nullptr,
+  if (!ImGui::BeginPopupModal(i18n::Tr("Signaler un bug###bug_report_modal"), nullptr,
                               ImGuiWindowFlags_AlwaysAutoResize)) {
     modal_open_ = false;  // fermé -> réarme le raccourci
     return;
@@ -292,7 +292,7 @@ void BugReport::RenderModal() {
   ImGui::Separator();
 
   // Contexte capturé (lecture seule).
-  ImGui::TextDisabled("Contexte");
+  ImGui::TextDisabled(i18n::Tr("Contexte"));
   ImGui::TextWrapped("%s", ctx_.label.c_str());
   ImGui::Spacing();
 
@@ -309,7 +309,7 @@ void BugReport::RenderModal() {
   const bool throttled = (now - last_send_tick_) < kSendThrottleMs;
 
   ImGui::BeginDisabled(!has_msg || throttled);
-  if (ImGui::Button("Envoyer", ImVec2(120, 0))) {
+  if (ImGui::Button(i18n::Tr("Envoyer"), ImVec2(120, 0))) {
     SendReport(ctx_, msg_buf_);
     modal_open_ = false;
     ImGui::CloseCurrentPopup();
@@ -319,7 +319,7 @@ void BugReport::RenderModal() {
     ImGui::SetTooltip(i18n::Tr("Patiente quelques secondes avant un nouveau rapport."));
 
   ImGui::SameLine();
-  if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+  if (ImGui::Button(i18n::Tr("Annuler"), ImVec2(120, 0))) {
     modal_open_ = false;
     ImGui::CloseCurrentPopup();
   }

@@ -352,8 +352,8 @@ void Roggle::OnRenderUI() {
                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     bourgeon::CloseWindowOnEscape(open);
     // ── HUD ──
-    ImGui::Text("Score : %d", g.score);
-    ImGui::SameLine(0, 22); ImGui::Text("Billes : %d", g.balls_left);
+    ImGui::Text(i18n::Tr("Score : %d"), g.score);
+    ImGui::SameLine(0, 22); ImGui::Text(i18n::Tr("Billes : %d"), g.balls_left);
     ImGui::SameLine(0, 22);
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.12f, 1.0f), "Oranges : %d", g.orange_left);
     ImGui::SameLine(0, 22);

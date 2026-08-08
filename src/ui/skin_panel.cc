@@ -90,7 +90,7 @@ bool DrawSkinPanel() {
   changed |= ShowRoSkinSettings();
 
   // ── Presets : jeux de couleurs sauvegardés ─────────────────────────────────
-  SeparatorText("Presets");
+  SeparatorText(i18n::Tr("Presets"));
   auto& presets = SkinPresets();
   int& selection = SkinPresetSelection();
   const int preset_count = static_cast<int>(presets.size());

@@ -864,7 +864,7 @@ void MoonlightAuth::OnRenderLoginUI() {
   if (ro::BeginRoWindow(i18n::Tr("Connexion Moonlight"), nullptr, flags)) {
     switch (state_) {
       case State::kWebLogin:     DrawWebLogin(); break;
-      case State::kAuthing:      DrawSpinner("Authentification…"); break;
+      case State::kAuthing:      DrawSpinner(i18n::Tr("Authentification…")); break;
       case State::kDiscordStart: DrawSpinner(i18n::Tr("Ouverture de Discord…")); break;
       case State::kDiscordWait:  DrawDiscordWait(); break;
       case State::kPickAccount:  DrawPickAccount(); break;
@@ -883,7 +883,7 @@ void MoonlightAuth::DrawWebLogin() {
   ImGui::TextUnformatted(i18n::Tr("Connecte-toi avec ton compte Moonlight"));
   ImGui::Spacing();
 
-  ImGui::TextUnformatted("Identifiant");
+  ImGui::TextUnformatted(i18n::Tr("Identifiant"));
   ImGui::SetNextItemWidth(kFormW);
   ImGui::InputText("##user", user_buf_, sizeof(user_buf_));
 
@@ -1008,7 +1008,7 @@ void MoonlightAuth::DrawDiscordWait() {
                   nullptr, SW_SHOWNORMAL);
   }
   ImGui::Spacing();
-  if (ro::RoButton("Annuler", kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Annuler"), kFormW, 0.0f)) {
     game_session_.clear();
     discord_authorize_url_.clear();
     state_ = State::kWebLogin;
@@ -1110,10 +1110,10 @@ void MoonlightAuth::DrawPickAccount() {
     confirm = true;
 
   if (!can_play) ImGui::BeginDisabled();
-  if (ro::RoButton("Jouer", kFormW, 0.0f)) confirm = true;
+  if (ro::RoButton(i18n::Tr("Jouer"), kFormW, 0.0f)) confirm = true;
   if (!can_play) ImGui::EndDisabled();
 
-  if (ro::RoButton("Retour", kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Retour"), kFormW, 0.0f)) {
     accounts_.clear();
     selected_ = -1;
     web_ticket_.clear();

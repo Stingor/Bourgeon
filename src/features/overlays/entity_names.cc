@@ -178,11 +178,11 @@ void EntityNames::DrawSettings() {
 
   if (enabled_) {
     Spacing();
-    if (ro::RoCheckbox("Joueurs", &show_players_)) save = true;
+    if (ro::RoCheckbox(i18n::Tr("Joueurs"), &show_players_)) save = true;
     SameLine();
-    if (ro::RoCheckbox("Monstres", &show_monsters_)) save = true;
+    if (ro::RoCheckbox(i18n::Tr("Monstres"), &show_monsters_)) save = true;
     SameLine();
-    if (ro::RoCheckbox("NPC", &show_npcs_)) save = true;
+    if (ro::RoCheckbox(i18n::Tr("NPC"), &show_npcs_)) save = true;
     if (ro::RoCheckbox(i18n::Tr("Ton propre nom"), &show_self_)) save = true;
     if (ro::RoCheckbox(i18n::Tr("Contour noir (lisibilité)"), &outline_)) save = true;
 

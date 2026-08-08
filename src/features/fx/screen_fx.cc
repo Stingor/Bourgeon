@@ -153,7 +153,7 @@ void ScreenFx::DrawSettings() {
     SameLine();
     { D3D9PostFx p; p.filter=1; preset("N&B", p); }
 
-    SeparatorText("Couleur");
+    SeparatorText(i18n::Tr("Couleur"));
     slider(i18n::Tr("Luminosité"),  &fx_.brightness, -0.5f, 0.5f);
     slider("Contraste",   &fx_.contrast,    0.5f, 2.0f);
     slider("Gamma",       &fx_.gamma,       0.5f, 2.0f);
@@ -161,12 +161,12 @@ void ScreenFx::DrawSettings() {
     slider(i18n::Tr("Température"),  &fx_.temperature,-1.0f, 1.0f);
     const char* filters[] = {i18n::Tr("Aucun"), i18n::Tr("Noir & blanc"), i18n::Tr("Sépia"), i18n::Tr("Négatif"), i18n::Tr("Daltonien")};
     ImGui::SetNextItemWidth(180.0f);
-    if (ro::RoCombo("Filtre", &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
+    if (ro::RoCombo(i18n::Tr("Filtre"), &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
       apply = true;
       save  = true;
     }
 
-    SeparatorText("Effets");
+    SeparatorText(i18n::Tr("Effets"));
     slider("Vignette",      &fx_.vignette,   0.0f, 1.0f);
     slider("Grain",         &fx_.grain,      0.0f, 1.0f);
     slider("Aberration",    &fx_.aberration, 0.0f, 1.0f);
@@ -211,7 +211,7 @@ void ScreenFx::OnRenderUI() {
                            ImGuiWindowFlags_AlwaysAutoResize |
                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
   if (ImGui::Begin("##fps_overlay", nullptr, flags)) {
-    ImGui::Text("%.0f FPS  (%.1f ms)", io.Framerate, 1000.0f / io.Framerate);
+    ImGui::Text(i18n::Tr("%.0f FPS  (%.1f ms)"), io.Framerate, 1000.0f / io.Framerate);
     ImGui::PlotLines("##ft", fps_hist_, IM_ARRAYSIZE(fps_hist_), fps_head_, nullptr,
                      0.0f, 33.3f, ImVec2(140, 32));
   }

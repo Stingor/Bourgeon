@@ -1628,10 +1628,10 @@ void VendingWindow::OnRenderUI() {
           // WidthFixed dont la largeur initiale est nulle s'ajuste au contenu.
           // Les noms composés (refine, cartes, emplacements) sont de longueur
           // très variable ; toute valeur en dur rognait les plus longs.
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn("Reste", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-          ImGui::TableSetupColumn("Total", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn(i18n::Tr("Reste"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < myshop_.size(); ++i) {
             const Row& r = myshop_[i];
@@ -1682,16 +1682,16 @@ void VendingWindow::OnRenderUI() {
         const bool close_clicked = ro::RoButton(i18n::Tr("Fermer le shop"));
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip(i18n::Tr("Met fin à la vente et récupère les objets invendus."));
-        if (close_clicked || !keep_open) ImGui::OpenPopup("Fermer ?###bourgeon_vending_close");
-        if (ro::BeginRoPopupModal("Fermer ?###bourgeon_vending_close")) {
+        if (close_clicked || !keep_open) ImGui::OpenPopup(i18n::Tr("Fermer ?###bourgeon_vending_close"));
+        if (ro::BeginRoPopupModal(i18n::Tr("Fermer ?###bourgeon_vending_close"))) {
           ImGui::TextUnformatted(i18n::Tr("Mettre fin au shop ?"));
           ImGui::Separator();
-          if (ro::RoButton("Oui")) {
+          if (ro::RoButton(i18n::Tr("Oui"))) {
             QueueCommand(myshop_id, kCmdMyShopClose);
             ImGui::CloseCurrentPopup();
           }
           ImGui::SameLine();
-          if (ro::RoButton("Non")) ImGui::CloseCurrentPopup();
+          if (ro::RoButton(i18n::Tr("Non"))) ImGui::CloseCurrentPopup();
           ro::EndRoPopupModal();
         }
       }
@@ -1736,10 +1736,10 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_log", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-          ImGui::TableSetupColumn("Montant", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Montant"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
           ImGui::TableHeadersRow();
           long long total = 0;
           for (size_t i = 0; i < log_.size(); ++i) {
@@ -1783,7 +1783,7 @@ void VendingWindow::OnRenderUI() {
         }
         // Pas de confirmation : contrairement au cmd 201 de « Mon shop », celui-ci
         // ne dispatche aucun CMode::SendMsg — il ne met fin à rien, il ferme.
-        close_log = ro::RoButton("Fermer");
+        close_log = ro::RoButton(i18n::Tr("Fermer"));
       }
       ro::EndRoWindow();
       // Hors du Begin/End : la croix peut être cliquée sur une fenêtre que Begin
@@ -1820,9 +1820,9 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_offer", 5,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn("Stock", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
           ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, 60.0f);
           ImGui::TableHeadersRow();
@@ -1859,7 +1859,7 @@ void VendingWindow::OnRenderUI() {
             }
 
             ImGui::TableNextColumn();
-            if (ro::RoSmallButton("Ajouter")) {
+            if (ro::RoSmallButton(i18n::Tr("Ajouter"))) {
               if (ImGui::GetIO().KeyCtrl) {
                 // Ctrl+clic = achat IMMÉDIAT de toute la ligne, panier ignoré.
                 QuickBuy(o, o.stock);
@@ -1905,9 +1905,9 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_basket", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Panier", ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn(i18n::Tr("Panier"), ImGuiTableColumnFlags_WidthFixed);
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn("Total", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
           ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 60.0f);
           ImGui::TableHeadersRow();
           int remove_at = -1;
@@ -1929,7 +1929,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::TextUnformatted(cell);
 
             ImGui::TableNextColumn();
-            if (ro::RoSmallButton("Retirer")) remove_at = static_cast<int>(i);
+            if (ro::RoSmallButton(i18n::Tr("Retirer"))) remove_at = static_cast<int>(i);
             ImGui::PopID();
           }
           ImGui::EndTable();
@@ -1938,7 +1938,7 @@ void VendingWindow::OnRenderUI() {
         }
 
         FormatZeny(total, cell, sizeof(cell));
-        ImGui::Text("Total : %s z", cell);
+        ImGui::Text(i18n::Tr("Total : %s z"), cell);
         const int zeny = PlayerZeny();
         const bool affordable = total <= static_cast<long long>(zeny);
         if (!affordable) {
@@ -1950,10 +1950,10 @@ void VendingWindow::OnRenderUI() {
         // Le serveur revalide de toute façon ; griser sert juste à ne pas
         // envoyer une requête qu'on sait perdue d'avance.
         ImGui::BeginDisabled(basket_.empty() || !affordable);
-        if (ro::RoButton("Acheter")) SendVendingBuy();
+        if (ro::RoButton(i18n::Tr("Acheter"))) SendVendingBuy();
         ImGui::EndDisabled();
         ImGui::SameLine();
-        close_vendor = ro::RoButton("Fermer");
+        close_vendor = ro::RoButton(i18n::Tr("Fermer"));
       }
       ro::EndRoWindow();
       // L'échoppe s'est vidée sous nos achats : plus rien à faire ici, on ferme
@@ -2011,9 +2011,9 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_bs_wanted", 3,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
-          ImGui::TableSetupColumn("Voulu", ImGuiTableColumnFlags_WidthFixed, 52.0f);
-          ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+          ImGui::TableSetupColumn(i18n::Tr("Voulu"), ImGuiTableColumnFlags_WidthFixed, 52.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < bs_wanted_rows_.size(); ++i) {
             const BuyRow& w = bs_wanted_rows_[i];
@@ -2042,8 +2042,8 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_bs_avail", 4,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
-          ImGui::TableSetupColumn("Stock", ImGuiTableColumnFlags_WidthFixed, 46.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 56.0f);
           ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, 60.0f);
           ImGui::TableHeadersRow();
@@ -2068,7 +2068,7 @@ void VendingWindow::OnRenderUI() {
 
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(sellable <= 0);
-            if (ro::RoSmallButton("Vendre")) {
+            if (ro::RoSmallButton(i18n::Tr("Vendre"))) {
               add_index = static_cast<int>(i);
               // Ctrl+clic : tout ce que l'acheteur peut encore prendre.
               add_qty = ImGui::GetIO().KeyCtrl
@@ -2111,9 +2111,9 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_bs_sell", 4,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
-          ImGui::TableSetupColumn("Total", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
           ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 60.0f);
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < bs_sell_rows_.size(); ++i) {
@@ -2133,7 +2133,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::TextUnformatted(cell);
 
             ImGui::TableNextColumn();
-            if (ro::RoSmallButton("Retirer")) remove_index = static_cast<int>(i);
+            if (ro::RoSmallButton(i18n::Tr("Retirer"))) remove_index = static_cast<int>(i);
             ImGui::PopID();
           }
           ImGui::EndTable();
@@ -2141,7 +2141,7 @@ void VendingWindow::OnRenderUI() {
         ImGui::EndChild();
 
         FormatZeny(total, cell, sizeof(cell));
-        ImGui::Text("Total : %s z", cell);
+        ImGui::Text(i18n::Tr("Total : %s z"), cell);
         char left[32];
         FormatZeny(bs_zeny_left_, left, sizeof(left));
         ImGui::Text(i18n::Tr("Fonds de l'acheteur : %s z"), left);
@@ -2166,10 +2166,10 @@ void VendingWindow::OnRenderUI() {
         // ferme les trois fenêtres. On ne fabrique PAS le paquet nous-mêmes ici
         // (contrairement à l'achat) : l'index qui part dans CZ 0x0819 est celui
         // de l'inventaire, et c'est la liste de session qui le tient.
-        if (ro::RoButton("Vendre")) QueueCommand(kWinBsSellList, kCmdBsSell);
+        if (ro::RoButton(i18n::Tr("Vendre"))) QueueCommand(kWinBsSellList, kCmdBsSell);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        close_bs = ro::RoButton("Fermer");
+        close_bs = ro::RoButton(i18n::Tr("Fermer"));
 
         // Mutations après les tables : elles reconstruisent les listes.
         if (add_index >= 0) BsAddToSellList(add_index, add_qty);
@@ -2266,7 +2266,7 @@ void VendingWindow::OnRenderUI() {
                         ImGuiWindowFlags_NoScrollbar |
                         ImGuiWindowFlags_NoScrollWithMouse)) {
     // ── Nom du shop ──
-    ImGui::TextUnformatted("Nom");
+    ImGui::TextUnformatted(i18n::Tr("Nom"));
     ImGui::SameLine(kNameLabelW);
     ImGui::SetNextItemWidth(-1.0f);
     ro::InputTextCp949("##nom_boutique", name_, sizeof(name_));
@@ -2377,8 +2377,8 @@ void VendingWindow::OnRenderUI() {
         // « Objet » absorbe la largeur restante : c'est la colonne qui porte les
         // noms composés (« +10 Bloodlust Sword Master Krishna »), donc celle qui
         // profite le mieux d'un agrandissement.
-        ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Reste", ImGuiTableColumnFlags_WidthFixed, kAvailStock);
+        ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(i18n::Tr("Reste"), ImGuiTableColumnFlags_WidthFixed, kAvailStock);
         ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, kAvailQty);
         ImGui::TableSetupColumn("##act", ImGuiTableColumnFlags_WidthFixed, kAvailAct);
         ImGui::TableHeadersRow();
@@ -2422,7 +2422,7 @@ void VendingWindow::OnRenderUI() {
           ImGui::TableNextColumn();
           const bool blocked = full || remaining <= 0;
           if (blocked) ImGui::BeginDisabled();
-          if (ro::RoSmallButton("Poser")) place_index = i;
+          if (ro::RoSmallButton(i18n::Tr("Poser"))) place_index = i;
           if (blocked) ImGui::EndDisabled();
           if (blocked && ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", full ? i18n::Tr("Tous les emplacements sont pris.") : i18n::Tr("Tout le lot est déjà dans le shop."));
@@ -2485,12 +2485,12 @@ void VendingWindow::OnRenderUI() {
       if (ImGui::BeginTable("##lignes_echoppe", cols,
                             ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Objet", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Stock", ImGuiTableColumnFlags_WidthFixed, kColStock);
+        ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, kColStock);
         if (buying_)
           ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, kColQty);
-        ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, kColPrice);
-        ImGui::TableSetupColumn("Total", ImGuiTableColumnFlags_WidthFixed, kColTotal);
+        ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, kColPrice);
+        ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, kColTotal);
         ImGui::TableSetupColumn("##act", ImGuiTableColumnFlags_WidthFixed, kColAct);
         ImGui::TableHeadersRow();
 
@@ -2585,7 +2585,7 @@ void VendingWindow::OnRenderUI() {
         const Row& a = avail_[rank];
         ImGui::TextUnformatted(a.desc.name[0] ? a.desc.name
                                               : itemcell::NameById(a.desc.id));
-        ImGui::TextDisabled("Reste : %d", a.amount);
+        ImGui::TextDisabled(i18n::Tr("Reste : %d"), a.amount);
         ImGui::Separator();
         ImGui::SetNextItemWidth(kAskFieldW);
         // Le champ prend le focus au premier passage : la quantité est la seule
@@ -2596,11 +2596,11 @@ void VendingWindow::OnRenderUI() {
             ImGuiInputTextFlags_EnterReturnsTrue);
         if (grid_ask_qty_ > a.amount) grid_ask_qty_ = a.amount;
         if (grid_ask_qty_ < 1) grid_ask_qty_ = 1;
-        if (ro::RoSmallButton("Tout")) grid_ask_qty_ = a.amount;
+        if (ro::RoSmallButton(i18n::Tr("Tout"))) grid_ask_qty_ = a.amount;
         ImGui::SameLine();
-        const bool ok = ro::RoSmallButton("Poser") || entered;
+        const bool ok = ro::RoSmallButton(i18n::Tr("Poser")) || entered;
         ImGui::SameLine();
-        if (ro::RoSmallButton("Annuler")) {
+        if (ro::RoSmallButton(i18n::Tr("Annuler"))) {
           grid_ask_src_ = -1;
           ImGui::CloseCurrentPopup();
         } else if (ok) {
@@ -2632,9 +2632,9 @@ void VendingWindow::OnRenderUI() {
     ImGui::TextDisabled(i18n::Tr("(hors taxe serveur)"));
 
     FormatZeny(PlayerZeny(), buf, sizeof(buf));
-    ImGui::Text("Zeny : %s z", buf);
+    ImGui::Text(i18n::Tr("Zeny : %s z"), buf);
     ImGui::SameLine();
-    ImGui::TextDisabled("| %d/%d emplacement(s)", rows_now, slots_);
+    ImGui::TextDisabled(i18n::Tr("| %d/%d emplacement(s)"), rows_now, slots_);
 
     // ⚠ Contrôle d'overflow du natif (étape 9 du chemin OK, cf. la doc RE) :
     // en VENTE il refuse si `zeny + Σ(qté × prix) > 0x7FFFFFFF`. Le refus est
@@ -2661,7 +2661,7 @@ void VendingWindow::OnRenderUI() {
       ImGui::InputInt(i18n::Tr("Limite de zeny d'achat"), &zeny_limit_, 0, 0);
       if (zeny_limit_ < 0) zeny_limit_ = 0;
       ImGui::SameLine();
-      if (ro::RoSmallButton("= total")) zeny_limit_ = static_cast<int>(
+      if (ro::RoSmallButton(i18n::Tr("= total"))) zeny_limit_ = static_cast<int>(
           grand > 2147483647LL ? 2147483647LL : grand);
     } else {
       // Case native « Safe check for over 10 mil zeny » : on la bascule PAR le
@@ -2750,7 +2750,7 @@ void VendingWindow::OnRenderUI() {
     ReadSnapshotName(snap_name, sizeof(snap_name));
     const bool can_import = !import_used_ && snap_name[0] != '\0';
     ImGui::BeginDisabled(!can_import);
-    if (ro::RoButton("Importer")) {
+    if (ro::RoButton(i18n::Tr("Importer"))) {
       import_count_ = ReadSnapshot(import_ids_, import_prices_, import_amounts_,
                                    kMaxRows);
       ReadSnapshotName(import_name_, sizeof(import_name_));
@@ -2764,7 +2764,7 @@ void VendingWindow::OnRenderUI() {
           can_import ? i18n::Tr("Recharge les objets et les prix de ton dernier shop.")
           : import_used_ ? i18n::Tr("Déjà importé pour ce shop.") : i18n::Tr("Aucun shop précédent enregistré pour ce personnage."));
     ImGui::SameLine();
-    if (ro::RoButton("Annuler"))
+    if (ro::RoButton(i18n::Tr("Annuler")))
       QueueCommand(buying_ ? kWinBuyingStore : kWinVending, kCmdCancel);
 
     // Hauteur réelle du pied, pour la réserve de la frame suivante. Un seul

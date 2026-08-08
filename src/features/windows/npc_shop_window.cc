@@ -844,8 +844,8 @@ void NpcShopWindow::OnRenderUI() {
   // ── Onglets Achat / Vente ──
   int prev_mode = cur_mode_;
   if (ImGui::BeginTabBar("shop_tabs")) {
-    if (ImGui::BeginTabItem("Acheter")) { cur_mode_ = kBuy; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem("Vendre"))  { cur_mode_ = kSell; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem(i18n::Tr("Acheter"))) { cur_mode_ = kBuy; ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem(i18n::Tr("Vendre")))  { cur_mode_ = kSell; ImGui::EndTabItem(); }
     ImGui::EndTabBar();
   }
   if (cur_mode_ != prev_mode) {
@@ -860,7 +860,7 @@ void NpcShopWindow::OnRenderUI() {
   // Bandeau : zeny du joueur + résultat de la dernière transaction.
   const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
   const uint32_t zeny = static_cast<uint32_t>(rag::Zeny());
-  ImGui::TextColored(kBlack, "Zeny: %uz", zeny);
+  ImGui::TextColored(kBlack, i18n::Tr("Zeny: %uz"), zeny);
   if (last_result_ == 0) {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "  %s OK",
@@ -984,8 +984,8 @@ void NpcShopWindow::OnRenderUI() {
     if (ImGui::BeginTable("buytbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
-      ImGui::TableSetupColumn("Objet");
-      ImGui::TableSetupColumn("Prix", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Objet"));
+      ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
@@ -1034,8 +1034,8 @@ void NpcShopWindow::OnRenderUI() {
     if (ImGui::BeginTable("selltbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
-      ImGui::TableSetupColumn("Objet");
-      ImGui::TableSetupColumn("Vente", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Objet"));
+      ImGui::TableSetupColumn(i18n::Tr("Vente"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
       // Plus large qu'a l'achat : le dernier bouton porte le stack en clair
       // (« +30000 » au pire), pas l'abrege « +1k ».
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 172.0f);
@@ -1084,7 +1084,7 @@ void NpcShopWindow::OnRenderUI() {
   ImGui::BeginChild("shop_cart", ImVec2(cart_w, -footer_h), true);
   ImGui::TextUnformatted(cur_mode_ == kBuy ? i18n::Tr("Panier d'achat") : i18n::Tr("Panier de vente"));
   ImGui::SameLine();
-  if (!cart_.empty() && ro::RoButton("Vider")) { cart_.clear(); sell_all_close_ = false; }
+  if (!cart_.empty() && ro::RoButton(i18n::Tr("Vider"))) { cart_.clear(); sell_all_close_ = false; }
   ImGui::Separator();
   long long total = 0;
   int remove = -1;
@@ -1127,7 +1127,7 @@ void NpcShopWindow::OnRenderUI() {
   ImGui::EndChild();
   if (remove >= 0) cart_.erase(cart_.begin() + remove);
   ImGui::Separator();
-  ImGui::Text("Total: %lldz", total);
+  ImGui::Text(i18n::Tr("Total: %lldz"), total);
 
   if (cur_mode_ == kBuy) {
     const bool afford = total <= static_cast<long long>(zeny);
@@ -1138,7 +1138,7 @@ void NpcShopWindow::OnRenderUI() {
     if (cart_.empty()) ImGui::EndDisabled();
   } else {
     if (cart_.empty()) ImGui::BeginDisabled();
-    if (ro::RoButton("Vendre", ImGui::GetContentRegionAvail().x, 0)) SendSell();
+    if (ro::RoButton(i18n::Tr("Vendre"), ImGui::GetContentRegionAvail().x, 0)) SendSell();
     if (cart_.empty()) ImGui::EndDisabled();
   }
   ImGui::EndChild();
@@ -1157,7 +1157,7 @@ void NpcShopWindow::OnRenderUI() {
   // ImGui — le chemin qu'emprunte déjà la fermeture automatique de « Tout ajouter
   // au panier ».
   ImGui::Separator();
-  if (ro::RoButton("Fermer", 90.0f, 0.0f)) want_close_ = true;
+  if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) want_close_ = true;
   ImGui::SameLine();
   ImGui::AlignTextToFramePadding();
   ImGui::TextDisabled(i18n::Tr("Clic droit sur un objet : description"));

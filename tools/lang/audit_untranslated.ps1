@@ -13,7 +13,13 @@
 
 param(
   [string]$Src = "$PSScriptRoot\..\..\src",
-  [switch]$ByCall
+  [switch]$ByCall,
+  [switch]$Detail,
+  # 🔴 PAS « $File » : la boucle plus bas s'appelle « $file », PowerShell ne
+  # distingue pas la casse, et un parametre TYPE [string] impose son type a toute
+  # affectation ulterieure du scope -- l'objet fichier serait coerce en chaine et
+  # $file.FullName rendrait du vide, sans la moindre erreur a la declaration.
+  [string]$Only = ""
 )
 
 $rxAccent = [regex]'[\u00C0-\u00FF\u0152\u0153\u00AB\u00BB]'
@@ -73,9 +79,20 @@ foreach ($file in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
   }
 }
 
+if ($Only) { $rows = @($rows | Where-Object { $_.File -eq $Only }) }
+
 Write-Output ("Libelles francais encore nus : " + $rows.Count)
 Write-Output ""
-if ($ByCall) {
+if ($Detail) {
+  # Un par ligne, groupe par fichier et dans l'ordre du fichier : c'est la forme
+  # qu'on relit en migrant, un fichier a la fois.
+  $rows | Group-Object File | Sort-Object Count -Descending | ForEach-Object {
+    Write-Output ("=== " + $_.Name + "  (" + $_.Count + ") ===")
+    $_.Group | Sort-Object Line | ForEach-Object {
+      "{0,6}  {1,-24}  {2}" -f $_.Line, $_.Caller, $_.Text
+    }
+  }
+} elseif ($ByCall) {
   Write-Output "--- par APPELANT (ce qui reste a couvrir) ---"
   $rows | Group-Object Caller | Sort-Object Count -Descending | ForEach-Object {
     "{0,5}  {1}" -f $_.Count, $_.Name

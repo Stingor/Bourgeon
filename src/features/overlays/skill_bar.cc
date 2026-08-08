@@ -1049,7 +1049,7 @@ void SkillBar::DrawSettings() {
 
   SeparatorText(i18n::Tr("Réglages généraux"));
   ImGui::BeginDisabled(!enabled_);
-  changed |= ro::RoCheckbox("Verrouiller", &locked_);
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller"), &locked_);
   SameLine(); HelpMarker(
       i18n::Tr("Coche = barres fixe. Décoche = glisser n'importe où pour la déplacer.\n"
       "Verrouillée, les slots restent utilisables et réarrangeables."));
@@ -1059,13 +1059,13 @@ void SkillBar::DrawSettings() {
   SameLine(); HelpMarker(i18n::Tr("Décoche = pixels nets (POINT).\nCoche = lissage (BILINEAR)."));
   changed |= ro::RoCheckbox(i18n::Tr("Clic-traversant (maintenir Shift pour interagir)"), &clickthrough_);
   changed |= ro::RoCheckbox(i18n::Tr("Afficher les raccourcis dans les touches"), &show_keys_);
-  changed |= ro::RoCheckbox("Texte \"gras\"", &bold_text_);  // faux-gras (touches + nombres)
+  changed |= ro::RoCheckbox(i18n::Tr("Texte \"gras\""), &bold_text_);  // faux-gras (touches + nombres)
   changed |= WheelSliderFloat(i18n::Tr("Taille texte raccourcis"), &key_scale_, 0.5f, 2.0f, "%.2fx");
   changed |= WheelSliderFloat(i18n::Tr("Taille texte level/qté"), &count_scale_, 0.5f, 2.0f, "%.2fx");
   ImGui::TextDisabled(i18n::Tr("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI)."));
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
-  SeparatorText("Barres");
+  SeparatorText(i18n::Tr("Barres"));
   static const char* const kBarNames[kBarCount] = {"Onglet 1", "Onglet 2", "Items"};
   for (int b = 0; b < kBarCount; ++b) {
     BarCfg& bc = bars_[b];
@@ -1073,30 +1073,30 @@ void SkillBar::DrawSettings() {
     bool vis = bc.visible;
     if (ro::RoCheckbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
     if (bc.visible && ImGui::TreeNode("cfg", i18n::Tr("Réglages %s"), kBarNames[b])) {
-      changed |= WheelSliderInt("Colonnes", &bc.columns, 1, 12);
+      changed |= WheelSliderInt(i18n::Tr("Colonnes"), &bc.columns, 1, 12);
       changed |= WheelSliderInt(i18n::Tr("Nb slots"), &bc.slot_count, 1, kRegions[b].count);
-      changed |= WheelSliderFloat("Taille", &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);
-      changed |= WheelSliderFloat("Espacement", &bc.spacing, 0.0f, 12.0f, "%.0f px", 1.0f);
+      changed |= WheelSliderFloat(i18n::Tr("Taille"), &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);
+      changed |= WheelSliderFloat(i18n::Tr("Espacement"), &bc.spacing, 0.0f, 12.0f, "%.0f px", 1.0f);
       changed |= WheelSliderInt("X", &bc.x, -200, 4000);
       changed |= WheelSliderInt("Y", &bc.y, -200, 4000);
-      Text("Position : %d, %d", bc.x, bc.y);
+      Text(i18n::Tr("Position : %d, %d"), bc.x, bc.y);
       ImGui::TreePop();
     }
     ImGui::PopID();
   }
 
-  SeparatorText("Couleurs");
+  SeparatorText(i18n::Tr("Couleurs"));
   changed |= ColorSwatch(i18n::Tr("Fond du cadre"), col_frame_);
   changed |= ColorSwatch(i18n::Tr("Fond objet"), col_item_);
   changed |= ColorSwatch(i18n::Tr("Fond skill"), col_skill_);
   changed |= ColorSwatch(i18n::Tr("Fond vide"), col_empty_);
-  changed |= ColorSwatch("Bordure", col_border_);
+  changed |= ColorSwatch(i18n::Tr("Bordure"), col_border_);
   changed |= ColorSwatch(i18n::Tr("Bordure survol"), col_borderhi_);
   changed |= ColorSwatch(i18n::Tr("Texte touches"), col_keytext_);
   changed |= ColorSwatch(i18n::Tr("Texte nombre (count/lv)"), col_count_);
   changed |= ColorSwatch(i18n::Tr("Contour texte (ombre)"), col_textout_);
 
-  SeparatorText("Aide : souris");
+  SeparatorText(i18n::Tr("Aide : souris"));
   TextWrapped(
       i18n::Tr("- Clic gauche : utiliser. Clic droit : description.\n"
       "- Glisser une case sur une autre : déplacer / échanger (les 3 barres\n"
@@ -1105,7 +1105,7 @@ void SkillBar::DrawSettings() {
       "  barre d'une croix rouge dès qu'on est en zone de retrait.\n"
       "- Clic molette sur une case : la vider aussi, sans glisser."));
 
-  SeparatorText("Aide : clavier & onglets");
+  SeparatorText(i18n::Tr("Aide : clavier & onglets"));
   TextWrapped(
       i18n::Tr("Le jeu ne pilote qu'UN onglet au clavier à la fois.\n"
       "Bourgeon route les touches vers l'autre onglet visible :\n"
