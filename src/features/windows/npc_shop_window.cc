@@ -76,9 +76,14 @@ constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDispl
 constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list<ItemSkillInfo>
 // Champs de l'ItemSkillInfo utilisés ici (mêmes offsets que l'InventoryViewer).
 constexpr int kInfoNum   = 0x10;  // quantité possédée
+constexpr int kInfoCards = 0x1c;  // 4 emplacements de carte (uint32 chacun)
 constexpr int kInfoIdStr = 0x2c;  // std::string « itemId » (MSVC : +0x14 = capacité)
 constexpr int kInfoIdCap = kInfoIdStr + 0x14;
+constexpr int kInfoDamaged = 0x5d;  // octet : équipement CASSÉ (cf. itemcell)
+constexpr int kInfoRefine  = 0x60;  // niveau de raffinage (int)
 constexpr int kInfoFav   = 0x74;  // flag « favori » (onglet Favoris de l'inventaire)
+constexpr int kInfoOptNum = 0x98;  // nb d'options aléatoires d'instance
+constexpr int kInfoOpts   = 0x9c;  // entrées de 5 octets {index:2, value:2, param:1}
 
 // ── Verrou de vente des favoris ──────────────────────────────────────────────
 // Bouton « Deal » du pied de l'inventaire (onglet Favoris) : 100 % CLIENT, aucun
@@ -573,6 +578,28 @@ void NpcShopWindow::ResolveSellItems() {
       s.id     = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       s.amount = *reinterpret_cast<int*>(p + kInfoNum);
       favorite = *(p + kInfoFav);
+      // Données d'instance de l'aperçu au survol (cf. SellItem dans le .h). Lues
+      // ICI et pas au rendu : c'est le seul moment où l'on tient l'ItemSkillInfo,
+      // et une lecture par frame dans une liste qui peut mourir sous nos pieds
+      // (objet vendu, transféré) n'aurait rien apporté qu'un SEH de plus.
+      s.refine  = *reinterpret_cast<int*>(p + kInfoRefine);
+      s.damaged = *(p + kInfoDamaged);
+      const uint32_t card0 = *reinterpret_cast<uint32_t*>(p + kInfoCards);
+      s.forged = (card0 != 0 && card0 <= 500);  // forgeron, pas des cartes
+      if (!s.forged) {
+        for (int k = 0; k < 4; ++k)
+          s.cards[k] = *reinterpret_cast<uint32_t*>(p + kInfoCards + k * 4);
+      }
+      int nopt = *reinterpret_cast<int*>(p + kInfoOptNum);
+      if (nopt < 0) nopt = 0;
+      if (nopt > 5) nopt = 5;
+      s.opt_count = nopt;
+      for (int k = 0; k < nopt; ++k) {
+        const uint8_t* e = p + kInfoOpts + k * 5;
+        s.opts[k].index = *reinterpret_cast<const int16_t*>(e);
+        s.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+        s.opts[k].param = e[4];
+      }
     } __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
     // Le filtre du natif, à l'identique : favori + verrou posé = pas vendable. Le
     // serveur, lui, ne connaît pas ce verrou (c'est un garde-fou purement client) —
@@ -886,6 +913,16 @@ void NpcShopWindow::OnRenderUI() {
     }
   };
 
+  // ── Objet survolé cette frame ───────────────────────────────────────────────
+  // On MÉMORISE, on ne peint rien dans la boucle : `itemcell::DrawTooltip` crée son
+  // PROPRE popup et doit sortir hors de toute fenêtre ImGui (cf. features/item_cell.h)
+  // — né dans le tableau, il serait clippé dedans. Le rendu a lieu après EndRoWindow.
+  // Deux natures d'aperçu, parce que les deux moitiés ne savent pas la même chose :
+  // à l'ACHAT on ne tient qu'un id (l'objet n'est l'exemplaire de personne), à la
+  // VENTE on tient l'ItemSkillInfo du sac, cartes et raffinage compris.
+  const SellItem* hover_sell = nullptr;
+  uint32_t        hover_buy  = 0;
+
   // Clic-droit sur le DERNIER item dessine (icone ou nom) -> description native.
   // DIFFÉRÉE au relâchement (itemcell::FlushDeferredDesc) : ouverte dès le clic,
   // un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
@@ -997,10 +1034,12 @@ void NpcShopWindow::OnRenderUI() {
         ro::IconTex ic = ro::ItemIcon(b.id);
         if (ic.tex) {
           ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
+          if (ImGui::IsItemHovered()) hover_buy = b.id;  // survol icone -> apercu
           rclick_desc(b.id, b.view, b.location);  // clic-droit icone -> desc
           ImGui::SameLine();
         }
         ImGui::TextUnformatted(nm);
+        if (ImGui::IsItemHovered()) hover_buy = b.id;  // survol nom -> apercu
         rclick_desc(b.id, b.view, b.location);  // clic-droit nom -> desc
         ImGui::TableNextColumn();
         const bool afford = static_cast<uint32_t>(b.discount) <= zeny;
@@ -1059,10 +1098,18 @@ void NpcShopWindow::OnRenderUI() {
         // view/loc inconnus en vente -> 0 : pas d'apercu, la desc reste correcte.
         if (ic.tex) {
           ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20, 20));
+          if (ImGui::IsItemHovered()) hover_sell = &s;  // survol icone -> apercu
           rclick_desc(s.id, 0, 0);  // clic-droit icone -> desc
           ImGui::SameLine();
         }
-        ImGui::Text("%s x%d", nm, s.amount);
+        // `itemcell::NameText` et non `ImGui::Text` : un équipement CASSÉ porte
+        // l'ombre rouge du natif, ici comme dans l'inventaire et l'échange. On lit
+        // désormais le flag pour l'aperçu — la liste n'a pas de raison de l'ignorer,
+        // et c'est justement au moment de vendre qu'on veut le voir.
+        char row[128];
+        std::snprintf(row, sizeof(row), "%s x%d", nm, s.amount);
+        itemcell::NameText(row, s.damaged != 0);
+        if (ImGui::IsItemHovered()) hover_sell = &s;  // survol nom -> apercu
         rclick_desc(s.id, 0, 0);  // clic-droit nom -> desc
         ImGui::TableNextColumn();
         // "base -> majore" si Overcharge, sinon juste le prix (lu du noeud natif).
@@ -1160,8 +1207,28 @@ void NpcShopWindow::OnRenderUI() {
   if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) want_close_ = true;
   ImGui::SameLine();
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled(i18n::Tr("Clic droit sur un objet : description"));
+  ImGui::TextDisabled(i18n::Tr("Survol : aperçu   -   Clic droit : description"));
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);
+
+  // ── Aperçu de l'objet survolé ───────────────────────────────────────────────
+  // APRÈS la fenêtre et après ses styles : un tooltip crée son propre popup, et
+  // hériter des arrondis/bordures de la boutique lui donnerait un cadre qui n'est
+  // pas le sien (celui de la description RO est peint par DrawTooltip).
+  //
+  // VENTE : l'objet est déjà à nous, on montre l'EXEMPLAIRE — cartes, raffinage,
+  // options, « cassé ». C'est ce qui distingue deux pièces au même nom, et la
+  // vente ne se rattrape pas. ACHAT : rien de tout ça n'existe encore, la
+  // description de base suffit et le nom vient de la DB (nullptr = repli).
+  if (hover_sell) {
+    itemcell::DrawTooltip(hover_sell->id,
+                          hover_sell->forged ? nullptr : hover_sell->cards,
+                          hover_sell->forged ? 0 : 4, hover_sell->opts,
+                          hover_sell->opt_count, hover_sell->refine,
+                          hover_sell->name[0] ? hover_sell->name : nullptr,
+                          hover_sell->damaged != 0);
+  } else if (hover_buy != 0) {
+    itemcell::DrawTooltip(hover_buy, nullptr, 0, nullptr, 0, 0, nullptr);
+  }
 }

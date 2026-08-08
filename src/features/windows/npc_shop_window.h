@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "features/windows/item_desc_window.h"  // itemdesc::SimpleOpt
 
 // ── NpcShopWindow ───────────────────────────────────────────────────────────────
 //
@@ -148,6 +149,22 @@ class NpcShopWindow : public Plugin {
     int32_t  base_price = 0;    // prix de vente de base (avant Overcharge) — affichage base->final
     int      slots = 0;
     char     name[64] = {0};
+    // ── Données d'INSTANCE, pour l'aperçu au survol ──────────────────────────
+    // Elles ne servent qu'à ça, et c'est la moitié vendue qui les a : ici l'objet
+    // est DÉJÀ le nôtre (il est dans le sac), donc son ItemSkillInfo existe et
+    // porte ses cartes, son raffinage et ses options — ce que la moitié ACHAT ne
+    // pourra jamais montrer, un item de boutique n'étant encore l'exemplaire de
+    // personne. Vendre au mauvais NPC une pièce +7 sertie est irréversible :
+    // l'aperçu doit dire ce qui part, pas l'item de base qui porte le même nom.
+    uint32_t cards[4] = {0, 0, 0, 0};
+    // Objet FORGÉ : ces mêmes mots portent alors le forgeron (charid scindé, star
+    // crumbs, élément) et non des cartes — critère partagé avec l'inventaire et la
+    // fenêtre de description : card[0] petit non nul (<= 500).
+    bool     forged = false;
+    int      refine = 0;
+    uint8_t  damaged = 0;       // équipement CASSÉ (titre « - Broken », ombre rouge)
+    itemdesc::SimpleOpt opts[5];
+    int      opt_count = 0;
   };
   // Une ligne de panier (achat ou vente selon l'onglet actif).
   struct CartEntry {
