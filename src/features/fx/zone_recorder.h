@@ -14,6 +14,10 @@
 // secondes. Le résultat est un GIF animé dans <jeu>\screenshot, destiné aux
 // tutoriels qui présentent les fonctionnalités du serveur.
 //
+// DEUX raccourcis, tous deux facultatifs : l'un lance et arrête l'enregistrement,
+// l'autre rouvre le tracé pour recadrer sans passer par le panneau — le panneau
+// recouvre l'écran, c'est-à-dire ce qu'on cherche justement à cadrer.
+//
 // 🔴 LA CAPTURE CONTIENT NOTRE INTERFACE. Elle est prise dans Present, APRÈS le
 // rendu de l'overlay ImGui (cf. D3D9_SetPostFrameCallback) : c'est tout l'intérêt
 // pour un tutoriel — les fenêtres Bourgeon sont le sujet. Conséquence directe et
@@ -61,10 +65,15 @@ class ZoneRecorder : public Plugin {
   int& duration_s()    { return duration_s_; }
   int& max_width()     { return max_width_; }
   int& start_delay_s() { return start_delay_s_; }
+  bool& auto_copy()    { return auto_copy_; }
   int&  key_vk()    { return key_vk_; }
   bool& key_ctrl()  { return key_ctrl_; }
   bool& key_alt()   { return key_alt_; }
   bool& key_shift() { return key_shift_; }
+  int&  sel_key_vk()    { return sel_key_vk_; }
+  bool& sel_key_ctrl()  { return sel_key_ctrl_; }
+  bool& sel_key_alt()   { return sel_key_alt_; }
+  bool& sel_key_shift() { return sel_key_shift_; }
 
   // Appelé depuis le hook Present (fil de rendu), une fois l'image finie.
   void OnPostFrame();
@@ -83,12 +92,24 @@ class ZoneRecorder : public Plugin {
   void PumpState();
 
   bool ArmRecording();   // valide, pré-alloue, passe au décompte. false = refusé
+  // Ouvre le tracé à la souris (bouton du panneau ET raccourci de tracé).
+  // false = refusé (DirectX 7), la raison est dans last_status_.
+  bool BeginZoneSelection();
+  // Le raccourci de tracé, selon l'état courant : ouvre, referme, ou refuse en
+  // expliquant pourquoi (cf. toast_msg_).
+  void ToggleZoneSelection();
   void BeginRecording();
   void FinishRecording();  // fin des captures -> lance l'encodage
   void CancelAll();        // retour à kIdle en abandonnant ce qui est en cours
 
   void DrawSelectionOverlay();
   void DrawRecordingOverlay();
+  // Message flottant en bas de l'écran, à l'arrêt uniquement (rien n'est capturé
+  // à ce moment-là, donc aucun risque de le retrouver dans une image).
+  void DrawToast() const;
+  // Un message flottant est-il encore frais ? (Défini dans le .cc : le délai et
+  // GetTickCount y vivent, le header n'a pas à tirer <windows.h>.)
+  bool HasToast() const;
   // Cadre de la zone mémorisée, au survol dans le panneau. 🔴 À N'APPELER QU'À
   // L'ARRÊT : la capture est prise après notre overlay, ce cadre serait filmé.
   void DrawZonePreview() const;
@@ -104,14 +125,30 @@ class ZoneRecorder : public Plugin {
   int duration_s_    = 6;    // 1..15
   int max_width_     = 640;  // largeur max du GIF (0 = taille réelle)
   int start_delay_s_ = 3;    // décompte avant le départ (0..5)
+  // Copier le GIF dans le presse-papier dès qu'il est écrit. Éteint par défaut :
+  // écraser le presse-papier est une ACTION, pas un affichage, et personne ne
+  // s'attend à perdre ce qu'il y avait mis en lançant un enregistrement.
+  bool auto_copy_ = false;
 
   int  key_vk_    = 0;  // 0 = aucun raccourci
   bool key_ctrl_  = false;
   bool key_alt_   = false;
   bool key_shift_ = false;
 
+  // Seconde touche, dédiée au TRACÉ de la zone. Séparée de la précédente parce
+  // qu'elle sert dans l'autre sens : la touche d'enregistrement n'ouvre le tracé
+  // que faute de zone mémorisée, et une fois la zone connue il n'existait plus
+  // aucun moyen de la recadrer sans rouvrir le panneau — c'est-à-dire sans
+  // recouvrir l'écran qu'on veut justement cadrer.
+  int  sel_key_vk_    = 0;
+  bool sel_key_ctrl_  = false;
+  bool sel_key_alt_   = false;
+  bool sel_key_shift_ = false;
+
   // ── Capture de la touche dans le panneau ──────────────────────────────────
-  bool        key_capturing_ = false;
+  // Quelle touche est en cours de remappage : hotkeys::kZoneRecKey*, ou -1. Une
+  // seule à la fois, d'où le message de conflit partagé.
+  int         capturing_key_ = -1;
   std::string key_conflict_msg_;
 
   // ── Tracé de la zone ──────────────────────────────────────────────────────
@@ -146,4 +183,10 @@ class ZoneRecorder : public Plugin {
   // std::string ; nul tant qu'on n'a pas cliqué, remis à nul à chaque nouvel
   // enregistrement pour ne pas afficher le verdict de la capture précédente.
   const char*   clip_msg_ = nullptr;
+
+  // Refus du raccourci de tracé, affiché QUELQUES SECONDES dans le témoin déjà
+  // à l'écran. `last_status_` ne conviendrait pas : il ne vit que dans le panneau,
+  // or ce refus arrive précisément quand le panneau est fermé (on filme).
+  const char*   toast_msg_  = nullptr;
+  unsigned long toast_tick_ = 0;
 };

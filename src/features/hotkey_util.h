@@ -23,8 +23,14 @@ enum class Owner {
   kNone,          // rien à exclure
   kEquipPreset,   // preset d'équipement ; self_index = son index dans equip_presets()
   kJump,          // touche de saut (PlayerJump)
-  kZoneRecorder,  // touche d'enregistrement de zone (ZoneRecorder, staff)
+  kZoneRecorder,  // touches de l'enregistreur de zone ; self_index = kZoneRecKey*
 };
+
+// L'enregistreur de zone porte DEUX touches distinctes, qui se contrôlent l'une
+// contre l'autre comme n'importe quelle autre paire : elles se passent en
+// `self_index` pour ne pas se déclarer en conflit avec elles-mêmes.
+inline constexpr int kZoneRecKeyRecord = 0;  // lance / arrête l'enregistrement
+inline constexpr int kZoneRecKeySelect = 1;  // retrace la zone
 
 int      ImGuiKeyToVk(ImGuiKey key);
 ImGuiKey VkToImGuiKey(int vkey);

@@ -47,6 +47,11 @@ constexpr size_t kMaxCaptureBytes = 128u * 1024u * 1024u;
 
 constexpr int kMinZonePx = 32;  // en deçà, un tracé est un clic qui a glissé
 
+// Durée d'affichage d'un message flottant (copie faite, recadrage refusé). Assez
+// long pour être lu sans quitter le jeu des yeux, assez court pour ne pas traîner
+// sur l'écran pendant qu'on cadre la prise suivante.
+constexpr unsigned long kToastMs = 3000;
+
 // <jeu>\screenshot\bourgeon_zone_AAAAMMJJ_HHMMSS.gif (dossier créé au besoin).
 std::string TimestampedGifPath() {
   const std::string dir = paths::InGameDir("screenshot");
@@ -130,6 +135,14 @@ void RevealInExplorer(const std::string& path) {
   // OpenBackgroundFolder) : pas de dialogue bloquant sur le fil principal.
   ShellExecuteA(nullptr, "open", "explorer.exe", arg.c_str(), nullptr,
                 SW_SHOWNORMAL);
+}
+
+// Cartouche sombre + texte, la seule forme d'affichage flottant du module.
+void DrawBadge(ImDrawList* dl, const ImVec2& pos, const char* text, ImU32 color) {
+  const ImVec2 ts = ImGui::CalcTextSize(text);
+  dl->AddRectFilled(pos, ImVec2(pos.x + ts.x + 16.0f, pos.y + ts.y + 8.0f),
+                    IM_COL32(0, 0, 0, 205), 4.0f);
+  dl->AddText(ImVec2(pos.x + 8.0f, pos.y + 4.0f), color, text);
 }
 
 // Une place pour le témoin, EN DEHORS du rectangle enregistré — il serait sinon
@@ -226,6 +239,21 @@ void ZoneRecorder::PumpState() {
     last_status_ = msg;
     LogInfo("ZoneRecorder: {} ({} images, {}x{})", encode_path_, encode_frames_,
             capture_w_, capture_h_);
+    // 🔴 La copie se fait ICI, sur le fil principal, et pas au bout du thread
+    // d'encodage : OpenClipboard s'attache au THREAD appelant, et le faire depuis
+    // un thread qui se termine dans la foulée est un mauvais pari. Le join vient
+    // d'avoir lieu, le fichier est donc complet et fermé.
+    if (auto_copy_) {
+      clip_msg_ = CopyGifToClipboard(last_saved_path_)
+                      ? i18n::Tr("GIF copié — Ctrl+V dans Discord pour le poster.")
+                      : i18n::Tr("Copie automatique impossible : une autre application "
+                                 "retient le presse-papier. Le bouton ci-dessous "
+                                 "réessaie.");
+      // Le panneau est souvent fermé au moment où l'encodage s'achève : sans ce
+      // témoin à l'écran, rien ne dirait que le GIF est prêt À COLLER.
+      toast_msg_  = i18n::Tr("GIF copié dans le presse-papier");
+      toast_tick_ = GetTickCount();
+    }
   } else {
     last_saved_path_.clear();
     last_status_ = i18n::Tr("échec de l'écriture du GIF");
@@ -243,6 +271,9 @@ bool ZoneRecorder::ArmRecording() {
   last_status_.clear();
   last_status_tick_ = GetTickCount();
   clip_msg_ = nullptr;
+  // Un « GIF copié » de la prise précédente n'a rien à faire par-dessus le
+  // décompte de celle qui commence.
+  toast_msg_ = nullptr;
 
   if (g_imgui_dx7_active) {
     last_status_ = i18n::Tr("indisponible en DirectX 7");
@@ -281,6 +312,56 @@ bool ZoneRecorder::ArmRecording() {
       GetTickCount() + static_cast<unsigned long>((std::max)(0, start_delay_s_)) * 1000u;
   state_ = State::kCountdown;  // PumpState démarre, même avec un délai nul
   return true;
+}
+
+// Le tracé part TOUJOURS d'une ardoise vierge : sans ça, le rectangle de la
+// session précédente resterait dessiné sous le voile avant le premier clic.
+bool ZoneRecorder::BeginZoneSelection() {
+  if (g_imgui_dx7_active) {
+    // Même refus que ArmRecording, posé ICI plutôt que chez chaque appelant : sans
+    // backbuffer D3D9 à relire, cadrer une zone ne mènerait nulle part.
+    last_status_      = i18n::Tr("indisponible en DirectX 7");
+    last_status_tick_ = GetTickCount();
+    return false;
+  }
+  select_hint_.clear();
+  dragging_ = false;
+  drag_ax_ = drag_bx_ = drag_ay_ = drag_by_ = 0.0f;
+  state_ = State::kSelecting;
+  return true;
+}
+
+// Le raccourci de tracé. Il vaut pendant qu'on JOUE, panneau fermé : chaque refus
+// se dit donc à l'écran (toast_msg_) et pas seulement dans le panneau.
+void ZoneRecorder::ToggleZoneSelection() {
+  toast_msg_  = nullptr;
+  toast_tick_ = GetTickCount();
+  switch (state_) {
+    case State::kIdle:
+      // Le refus DX7 de BeginZoneSelection ne va que dans last_status_, donc dans
+      // le panneau — or on est ici justement parce qu'il est fermé.
+      if (!BeginZoneSelection())
+        toast_msg_ = i18n::Tr("Enregistrement indisponible en DirectX 7");
+      break;
+    case State::kSelecting:
+      CancelAll();  // 2e appui = on renonce, comme Échap
+      break;
+    case State::kCountdown:
+      // Le décompte sert justement à se placer : si on appuie sur « retracer »
+      // à ce moment-là, c'est que le cadrage ne va pas. On abandonne le départ
+      // et on rouvre le tracé, plutôt que d'obliger à annuler d'abord.
+      CancelAll();
+      BeginZoneSelection();
+      break;
+    case State::kRecording:
+      // Les tampons sont dimensionnés pour la zone courante et le GIF veut des
+      // images de taille constante : recadrer ici donnerait un fichier incohérent.
+      toast_msg_ = i18n::Tr("Recadrage impossible pendant l'enregistrement");
+      break;
+    case State::kEncoding:
+      toast_msg_ = i18n::Tr("Recadrage impossible pendant l'encodage");
+      break;
+  }
 }
 
 void ZoneRecorder::BeginRecording() {
@@ -334,6 +415,7 @@ void ZoneRecorder::CancelAll() {
   frame_count_ = 0;
   dragging_ = false;
   select_hint_.clear();
+  toast_msg_ = nullptr;
   state_ = State::kIdle;
 }
 
@@ -348,19 +430,30 @@ void ZoneRecorder::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 
 void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
   if (!IsStaff()) return;
-  if (key_vk_ == 0 || static_cast<int>(vkey) != key_vk_) return;
   // ProcessPushButton ne transmet que la touche principale : les modificateurs se
   // lisent sur l'état clavier du message en cours (cf. player_jump).
   const bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
   const bool alt   = (GetKeyState(VK_MENU) & 0x8000) != 0;
   const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-  if (ctrl != key_ctrl_ || alt != key_alt_ || shift != key_shift_) return;
+  auto matches = [&](int bound_vk, bool bound_ctrl, bool bound_alt, bool bound_shift) {
+    return bound_vk != 0 && static_cast<int>(vkey) == bound_vk && ctrl == bound_ctrl &&
+           alt == bound_alt && shift == bound_shift;
+  };
+  const bool record = matches(key_vk_, key_ctrl_, key_alt_, key_shift_);
+  const bool select = !record && matches(sel_key_vk_, sel_key_ctrl_, sel_key_alt_,
+                                         sel_key_shift_);
+  if (!record && !select) return;
 
   if (hotkeys::CaptureInProgress()) return;  // un remappage est en cours
   if (!Bourgeon::Instance().IsGameActive()) return;
   if (Bourgeon::Instance().IsMapLoading()) return;
   if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureKeyboard) return;
   if (hotkeys::NativeTextInputHasFocus()) return;
+
+  if (select) {
+    ToggleZoneSelection();
+    return;
+  }
 
   switch (state_) {
     case State::kIdle:
@@ -390,7 +483,8 @@ void ZoneRecorder::OnRenderUI() {
     case State::kCountdown:
     case State::kRecording:
     case State::kEncoding:  DrawRecordingOverlay(); break;
-    default: break;
+    // À l'arrêt, seul un message récent a quelque chose à dire (« GIF copié »).
+    case State::kIdle:      if (HasToast()) DrawToast(); break;
   }
 }
 
@@ -545,16 +639,25 @@ void ZoneRecorder::DrawRecordingOverlay() {
     dl->AddRect(ImVec2(zx - 2.0f, zy - 2.0f), ImVec2(zx + zw + 2.0f, zy + zh + 2.0f),
                 color, 0.0f, 0, 2.0f);
 
-  char label[64];
-  if (state_ == State::kCountdown) {
-    const long left = static_cast<long>(countdown_end_tick_ - GetTickCount());
-    std::snprintf(label, sizeof(label), i18n::Tr("Départ dans %ld…"), (left / 1000) + 1);
-  } else if (state_ == State::kRecording) {
-    const unsigned long ms = GetTickCount() - record_start_tick_;
-    std::snprintf(label, sizeof(label), "● REC  %.1f / %d s  (%d img)", ms / 1000.0f,
-                  duration_s_, frame_count_);
-  } else {
-    std::snprintf(label, sizeof(label), i18n::Tr("Encodage du GIF…"));
+  // Un refus de recadrage prend la place du témoin le temps d'être lu : il arrive
+  // panneau fermé, et le compteur d'images qu'il masque revient dans 3 secondes.
+  // Le message est pris TEL QUEL et non recopié : une traduction plus longue que
+  // le tampon local sortirait tronquée.
+  const bool toast = HasToast();
+  char buf[64];
+  const char* label = toast_msg_;
+  if (!toast) {
+    if (state_ == State::kCountdown) {
+      const long left = static_cast<long>(countdown_end_tick_ - GetTickCount());
+      std::snprintf(buf, sizeof(buf), i18n::Tr("Départ dans %ld…"), (left / 1000) + 1);
+    } else if (state_ == State::kRecording) {
+      const unsigned long ms = GetTickCount() - record_start_tick_;
+      std::snprintf(buf, sizeof(buf), "● REC  %.1f / %d s  (%d img)", ms / 1000.0f,
+                    duration_s_, frame_count_);
+    } else {
+      std::snprintf(buf, sizeof(buf), "%s", i18n::Tr("Encodage du GIF…"));
+    }
+    label = buf;
   }
 
   const ImVec2 ts = ImGui::CalcTextSize(label);
@@ -567,8 +670,24 @@ void ZoneRecorder::DrawRecordingOverlay() {
   else if (!PlaceBadge(disp, zx, zy, zw, zh, bw, bh, &pos))
     return;  // aucune marge libre : mieux vaut pas de témoin qu'un témoin filmé
 
-  dl->AddRectFilled(pos, ImVec2(pos.x + bw, pos.y + bh), IM_COL32(0, 0, 0, 205), 4.0f);
-  dl->AddText(ImVec2(pos.x + 8.0f, pos.y + 4.0f), color, label);
+  DrawBadge(dl, pos, label, toast ? IM_COL32(255, 235, 150, 245) : color);
+}
+
+// ── Message flottant ─────────────────────────────────────────────────────────
+bool ZoneRecorder::HasToast() const {
+  return toast_msg_ != nullptr && GetTickCount() - toast_tick_ < kToastMs;
+}
+
+// Rien n'est capturé en kIdle : le bas de l'écran est donc sans danger, et c'est
+// là que le joueur regarde déjà (chat, barre d'action). Sert surtout à annoncer la
+// copie automatique, qui aboutit une fois le panneau refermé.
+void ZoneRecorder::DrawToast() const {
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  if (disp.x <= 0.0f || disp.y <= 0.0f) return;
+  const ImVec2 ts = ImGui::CalcTextSize(toast_msg_);
+  const ImVec2 pos((disp.x - (ts.x + 16.0f)) * 0.5f, disp.y - (ts.y + 8.0f) - 40.0f);
+  DrawBadge(ImGui::GetForegroundDrawList(), pos, toast_msg_,
+            IM_COL32(255, 235, 150, 245));
 }
 
 // ── Dimensions de sortie et budget ───────────────────────────────────────────
@@ -613,12 +732,8 @@ void ZoneRecorder::DrawSettings() {
   }
   const bool busy = (state_ != State::kIdle);
   ImGui::BeginDisabled(busy);
-  if (ro::RoButton(IsZoneValid() ? i18n::Tr("Redéfinir la zone") : i18n::Tr("Définir la zone"))) {
-    select_hint_.clear();
-    dragging_ = false;
-    drag_ax_ = drag_bx_ = drag_ay_ = drag_by_ = 0.0f;
-    state_ = State::kSelecting;
-  }
+  if (ro::RoButton(IsZoneValid() ? i18n::Tr("Redéfinir la zone") : i18n::Tr("Définir la zone")))
+    BeginZoneSelection();
   // Grisé pendant un enregistrement, le bouton n'est PAS survolable — et c'est
   // exactement ce qu'on veut ici (cf. DrawZonePreview).
   preview_zone = preview_zone || ImGui::IsItemHovered();
@@ -628,13 +743,17 @@ void ZoneRecorder::DrawSettings() {
   if (preview_zone && !busy && IsZoneValid()) DrawZonePreview();
   SameLine();
   ImGui::BeginDisabled(!IsZoneValid());
-  if (ro::RoButton(i18n::Tr("Enregistrer"))) ArmRecording();
+  // « Filmer » et pas « Enregistrer » : ce dernier est LA clé de traduction des
+  // trois boutons de sauvegarde du projet, et sortait donc « Save » en anglais sur
+  // un bouton qui lance une capture.
+  if (ro::RoButton(i18n::Tr("Filmer"))) ArmRecording();
   ImGui::EndDisabled();
   ImGui::EndDisabled();
   SameLine();
   HelpMarker(
       i18n::Tr("Trace un rectangle à la souris, comme l'outil de capture de Windows. La "
-      "zone est mémorisée : ensuite, la touche ci-dessous suffit.\n\n"
+      "zone est mémorisée : ensuite, la touche ci-dessous suffit. Une seconde "
+      "touche rouvre le tracé en jeu, pour recadrer sans rouvrir ce panneau.\n\n"
       "L'image enregistrée est celle que tu vois — monde, interface native ET "
       "fenêtres Bourgeon. Le cadre et le témoin, eux, sont dessinés en dehors de "
       "la zone : ils n'apparaissent jamais dans le GIF.\n\n"
@@ -668,6 +787,19 @@ void ZoneRecorder::DrawSettings() {
   SameLine();
   HelpMarker(i18n::Tr("Le temps de refermer ce panneau et de te placer avant que ça tourne."));
 
+  // Le trajet complet d'un tutoriel, c'est « je filme, je colle dans Discord » :
+  // sans ça il faut rouvrir ce panneau après chaque prise pour cliquer sur un
+  // bouton. Éteint par défaut — écraser le presse-papier est une ACTION, et le
+  // joueur y a peut-être mis autre chose.
+  if (ro::RoCheckbox(i18n::Tr("Copier dans le presse-papier à la fin"), &auto_copy_))
+    save = true;
+  SameLine();
+  HelpMarker(
+      i18n::Tr("Dès que le GIF est écrit, il part dans le presse-papier comme fichier : "
+      "un Ctrl+V dans Discord le poste, animation comprise.\n\n"
+      "Un message le confirme à l'écran, panneau fermé compris. Ce que tu avais "
+      "copié auparavant est perdu."));
+
   int ow = 0, oh = 0;
   ComputeOutputSize(&ow, &oh);
   const size_t bytes = EstimatedBytes();
@@ -680,54 +812,78 @@ void ZoneRecorder::DrawSettings() {
     ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
                        i18n::Tr("Au-delà du budget : réduis la durée ou la largeur."));
 
-  // ── Raccourci ──
-  SeparatorText(i18n::Tr("Raccourci"));
-  ImGui::TextDisabled(i18n::Tr("Touche :"));
-  SameLine();
-  if (key_capturing_) {
-    // Gèle les autres raccourcis le temps du choix : la touche pressée doit
-    // remapper, pas déclencher l'action qu'elle porte encore.
-    hotkeys::PingCapture();
-    ImGui::Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
-    ImGuiIO& io = ImGui::GetIO();
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-      key_capturing_ = false;
-      key_conflict_msg_.clear();
-    } else if (const int vkey = hotkeys::CaptureMainVk()) {
-      const bool ctrl = io.KeyCtrl, alt = io.KeyAlt, shift = io.KeyShift;
-      char what[64];
-      if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kZoneRecorder, -1,
-                            what, sizeof(what))) {
-        key_conflict_msg_ =
-            std::string(i18n::Tr("Déjà utilisé par ")) + what + i18n::Tr(" — choisis une autre touche");
-      } else {
-        key_vk_    = vkey;
-        key_ctrl_  = ctrl;
-        key_alt_   = alt;
-        key_shift_ = shift;
-        key_capturing_ = false;
+  // ── Raccourcis ──
+  // Deux touches indépendantes, toutes deux facultatives. Une ligne par touche,
+  // sous un ImGui::PushID : les boutons « Redéfinir » et « Effacer » portent le
+  // même libellé sur les deux lignes, donc sans cet ID ils partageraient le leur
+  // et un clic irait à la mauvaise ligne.
+  SeparatorText(i18n::Tr("Raccourcis"));
+  auto hotkey_row = [&](const char* title, const char* id, int slot, int* vkey_out,
+                        bool* ctrl_out, bool* alt_out, bool* shift_out) {
+    ImGui::PushID(id);
+    ImGui::TextDisabled("%s", title);
+    SameLine();
+    if (capturing_key_ == slot) {
+      // Gèle les autres raccourcis le temps du choix : la touche pressée doit
+      // remapper, pas déclencher l'action qu'elle porte encore.
+      hotkeys::PingCapture();
+      ImGui::Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
+      ImGuiIO& io = ImGui::GetIO();
+      if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        capturing_key_ = -1;
         key_conflict_msg_.clear();
-        save = true;
+      } else if (const int vkey = hotkeys::CaptureMainVk()) {
+        const bool ctrl = io.KeyCtrl, alt = io.KeyAlt, shift = io.KeyShift;
+        char what[64];
+        // `slot` s'exclut lui-même du contrôle, mais PAS l'autre touche du module :
+        // les deux se déclencheraient ensemble sur le même combo.
+        if (hotkeys::Conflict(vkey, ctrl, alt, shift, hotkeys::Owner::kZoneRecorder,
+                              slot, what, sizeof(what))) {
+          key_conflict_msg_ =
+              std::string(i18n::Tr("Déjà utilisé par ")) + what + i18n::Tr(" — choisis une autre touche");
+        } else {
+          *vkey_out  = vkey;
+          *ctrl_out  = ctrl;
+          *alt_out   = alt;
+          *shift_out = shift;
+          capturing_key_ = -1;
+          key_conflict_msg_.clear();
+          save = true;
+        }
       }
-    }
-  } else {
-    char label[48];
-    hotkeys::Label(key_vk_, key_ctrl_, key_alt_, key_shift_, label, sizeof(label));
-    ImGui::Text("%s", label);
-    SameLine(0.0f, 6.0f);
-    if (ro::RoButton(i18n::Tr("Redéfinir"))) {
-      key_capturing_ = true;
-      key_conflict_msg_.clear();
-    }
-    if (key_vk_ != 0) {
+    } else {
+      char label[48];
+      hotkeys::Label(*vkey_out, *ctrl_out, *alt_out, *shift_out, label, sizeof(label));
+      ImGui::Text("%s", label);
       SameLine(0.0f, 6.0f);
-      if (ro::RoButton(i18n::Tr("Effacer"))) {
-        key_vk_ = 0;
-        key_ctrl_ = key_alt_ = key_shift_ = false;
-        save = true;
+      if (ro::RoButton(i18n::Tr("Redéfinir"))) {
+        capturing_key_ = slot;
+        key_conflict_msg_.clear();
+      }
+      if (*vkey_out != 0) {
+        SameLine(0.0f, 6.0f);
+        if (ro::RoButton(i18n::Tr("Effacer"))) {
+          *vkey_out = 0;
+          *ctrl_out = *alt_out = *shift_out = false;
+          save = true;
+        }
       }
     }
-  }
+    ImGui::PopID();
+  };
+
+  hotkey_row(i18n::Tr("Filmer :"), "zonerec_key", hotkeys::kZoneRecKeyRecord,
+             &key_vk_, &key_ctrl_, &key_alt_, &key_shift_);
+  hotkey_row(i18n::Tr("Retracer la zone :"), "zonesel_key", hotkeys::kZoneRecKeySelect,
+             &sel_key_vk_, &sel_key_ctrl_, &sel_key_alt_, &sel_key_shift_);
+  SameLine();
+  HelpMarker(
+      i18n::Tr("Rouvre le tracé à la souris sans passer par ce panneau — qui recouvre "
+      "justement ce que tu cherches à cadrer.\n\n"
+      "Un second appui annule le tracé, comme Échap. Pendant un décompte, la "
+      "touche renonce au départ et rouvre le tracé ; pendant un enregistrement "
+      "ou un encodage, elle refuse et le dit à l'écran (les images d'un GIF "
+      "doivent toutes avoir la même taille)."));
   if (!key_conflict_msg_.empty())
     ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", key_conflict_msg_.c_str());
 

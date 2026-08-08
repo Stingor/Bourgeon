@@ -238,6 +238,18 @@ const moonlight_ui::SettingDesc kZoneRecorderSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"zonerec_key_shift",  SType::kBool, MLUI_FIELD(zone_recorder, key_shift()),
      MLUI_LITERAL(bool, false)},
+    // Seconde touche : rouvre le TRACÉ de la zone en jeu, sans ce panneau.
+    {"zonerec_sel_key_vk",    SType::kInt,  MLUI_FIELD(zone_recorder, sel_key_vk()),
+     MLUI_LITERAL(int, 0)},
+    {"zonerec_sel_key_ctrl",  SType::kBool, MLUI_FIELD(zone_recorder, sel_key_ctrl()),
+     MLUI_LITERAL(bool, false)},
+    {"zonerec_sel_key_alt",   SType::kBool, MLUI_FIELD(zone_recorder, sel_key_alt()),
+     MLUI_LITERAL(bool, false)},
+    {"zonerec_sel_key_shift", SType::kBool, MLUI_FIELD(zone_recorder, sel_key_shift()),
+     MLUI_LITERAL(bool, false)},
+    // Copie du GIF dans le presse-papier dès qu'il est écrit (éteint par défaut).
+    {"zonerec_auto_copy",     SType::kBool, MLUI_FIELD(zone_recorder, auto_copy()),
+     MLUI_LITERAL(bool, false)},
 };
 
 // Compteur de dégâts. Les membres sont publics mais DpsMeter est un plugin : on

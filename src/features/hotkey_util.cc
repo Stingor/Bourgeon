@@ -142,15 +142,33 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // c) La touche d'enregistrement de zone (staff). Contrôlée pour tout le monde et
-  // pas seulement pour le staff : le niveau de groupe peut changer en cours de
-  // session, et un conflit qui n'apparaîtrait qu'à ce moment-là serait
-  // incompréhensible pour qui a réglé sa touche la veille.
-  if (self != Owner::kZoneRecorder) {
-    if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
-      if (zone_recorder->key_vk() == vkey && zone_recorder->key_ctrl() == ctrl &&
-          zone_recorder->key_alt() == alt && zone_recorder->key_shift() == shift) {
-        std::snprintf(what, cap, i18n::Tr("l'enregistrement de zone"));
+  // c) Les DEUX touches de l'enregistreur de zone (staff) : celle qui filme et
+  // celle qui retrace la zone. Contrôlées pour tout le monde et pas seulement pour
+  // le staff : le niveau de groupe peut changer en cours de session, et un conflit
+  // qui n'apparaîtrait qu'à ce moment-là serait incompréhensible pour qui a réglé
+  // sa touche la veille.
+  if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
+    // Table LOCALE, donc construite à chaque appel : les i18n::Tr y sont évalués
+    // après le chargement du catalogue (une table statique les figerait en
+    // français, cf. la règle de migration).
+    const struct {
+      int         index;
+      int         vkey;
+      bool        ctrl, alt, shift;
+      const char* what;
+    } zone_keys[] = {
+        {kZoneRecKeyRecord, zone_recorder->key_vk(), zone_recorder->key_ctrl(),
+         zone_recorder->key_alt(), zone_recorder->key_shift(),
+         i18n::Tr("l'enregistrement de zone")},
+        {kZoneRecKeySelect, zone_recorder->sel_key_vk(), zone_recorder->sel_key_ctrl(),
+         zone_recorder->sel_key_alt(), zone_recorder->sel_key_shift(),
+         i18n::Tr("le tracé de la zone à enregistrer")},
+    };
+    for (const auto& zone_key : zone_keys) {
+      if (self == Owner::kZoneRecorder && zone_key.index == self_index) continue;
+      if (zone_key.vkey == vkey && zone_key.ctrl == ctrl && zone_key.alt == alt &&
+          zone_key.shift == shift) {
+        std::snprintf(what, cap, "%s", zone_key.what);
         return true;
       }
     }
