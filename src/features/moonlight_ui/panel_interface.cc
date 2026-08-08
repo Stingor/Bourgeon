@@ -209,8 +209,10 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceMonsterInfo, "Fiche de monstre"},
         {kIfaceContextMenu, "Menu contextuel"},
     };
+    // Message de static_assert : un LITTÉRAL. Il est lu à la compilation et
+    // s'adresse au développeur — jamais i18n::Tr.
     static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
-                  i18n::Tr("kIfaceSections doit couvrir exactement l'enum IfaceSection"));
+                  "kIfaceSections doit couvrir exactement l'enum IfaceSection");
 
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour

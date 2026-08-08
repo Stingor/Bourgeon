@@ -910,7 +910,7 @@ void TradeWindow::OnRenderUI() {
   // MEMBRE, pas sur la pile. C'est ce qui interdisait d'employer la brique jusqu'ici.
   // Une seule demande en vol (une souris, un geste) : un tampon suffit.
   if (desc_for) {
-    static_assert(sizeof(desc_info_) >= kInfoSize, i18n::Tr("tampon de description trop petit"));
+    static_assert(sizeof(desc_info_) >= kInfoSize, "tampon de description trop petit");
     BuildTradeInfo(*desc_for, desc_info_);
     itemcell::DeferDescById(desc_for->id, desc_for->look, desc_for->location,
                             desc_x, desc_y, desc_info_);
