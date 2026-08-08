@@ -72,7 +72,13 @@ void MoonlightUi::DrawCommandsPanel() {
               }
               if (selected) ImGui::SetItemDefaultFocus();
             }
-            ImGui::EndCombo();
+            // 🔴 `ro::RoEndCombo`, PAS `ImGui::EndCombo` : RoBeginCombo n'appelle
+            // pas BeginCombo — il dessine le champ à la main et ouvre un
+            // ImGui::BeginPopup. Le refermer avec EndCombo laissait cinq
+            // PushStyleColor et un PushID sur la pile à CHAQUE frame où le combo
+            // était déroulé. (Le BeginCombo natif de la ligne ~411, lui, se ferme
+            // bien par ImGui::EndCombo : ne pas « corriger » celui-là.)
+            ro::RoEndCombo();
           }
           SameLine(); HelpMarker(i18n::Tr("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)"));
         }
