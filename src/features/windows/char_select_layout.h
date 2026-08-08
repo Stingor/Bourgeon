@@ -168,13 +168,25 @@ bool ApplyPreset(int index);
 bool DeletePreset(int index);
 
 // ── Galerie de décors ────────────────────────────────────────────────────────
-// Deux origines : les fonds LIVRÉS avec le client (dans le GRF, connus par leur
-// nom) et ceux que le joueur dépose dans BackgroundDir(). Les deux sont résolus
-// par le loader natif via le VFS, qui cherche le disque AVANT les GRF.
+// Trois origines, toutes résolues par le loader natif via le VFS (qui cherche le
+// disque AVANT les GRF) :
+//   * le fond livré avec le client, désigné en dur par le layout d'usine ;
+//   * ceux que le joueur dépose dans BackgroundDir() — énumérés par le système
+//     de fichiers ;
+//   * ceux qu'un GRF apporte, énumérés par la table de fichiers du client
+//     (rag::ListGrfFiles). Cette dernière source est indispensable : un GRF
+//     n'est pas un dossier, `FindFirstFile` n'y voit rien, et sans elle un décor
+//     packé restait chargeable mais jamais PROPOSÉ.
+enum class BgOrigin {
+  kFactory,  // livré avec le client
+  kPacked,   // trouvé dans une archive montée
+  kDisk,     // déposé par le joueur dans BackgroundDir()
+};
+
 struct Background {
   std::string path;   // chemin VFS passé au loader (relatif à data\)
   std::string label;  // libellé affiché
-  bool        user = false;  // déposé par le joueur (vs livré avec le client)
+  BgOrigin    origin = BgOrigin::kFactory;
 };
 
 // Liste courante ; scannée au premier appel.
@@ -182,6 +194,11 @@ const std::vector<Background>& Backgrounds();
 // Re-scanne le dossier joueur (bouton « Rafraîchir » : le joueur vient d'y
 // déposer un fichier sans quitter le jeu).
 void RescanBackgrounds();
+
+// Nombre de décors venus d'une archive dans la liste courante. Sert à dire au
+// joueur qu'il en a reçu du serveur (et à voir tout de suite, en jeu, si
+// l'énumération des GRF a donné quelque chose).
+int PackedBackgroundCount();
 
 // Dossier disque où déposer ses décors : <jeu>\data\texture\lobby\. Créé au
 // besoin. ⚠ C'est bien data\TEXTURE\lobby\ : le TexMgr natif résout les .bmp

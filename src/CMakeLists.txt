@@ -225,6 +225,8 @@ set(BOURGEON_FILES
 	# Ragnarok
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
+	"ragnarok/grf_index.cc"
+	"ragnarok/grf_index.h"
 	"ragnarok/player_skills.cc"
 	"ragnarok/player_skills.h"
 	"ragnarok/item_db.h"

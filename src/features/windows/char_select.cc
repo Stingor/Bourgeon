@@ -1327,8 +1327,16 @@ void CharSelect::DrawLayoutEditor() {
         lay.background = b.path;
         charsel::MarkDirty();
       }
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", DisplayPath(b.path).c_str());
+      if (ImGui::IsItemHovered()) {
+        // L'origine est dite ICI et pas dans la liste : elle ne change rien au
+        // choix, mais explique pourquoi un décor apparaît alors que le joueur
+        // n'a rien déposé — il est livré dans une archive du serveur.
+        const char* origin =
+            b.origin == charsel::BgOrigin::kDisk    ? i18n::Tr("ton fichier")
+            : b.origin == charsel::BgOrigin::kPacked ? i18n::Tr("livré par le serveur")
+                                                     : i18n::Tr("livré avec le client");
+        ImGui::SetTooltip("%s\n%s", DisplayPath(b.path).c_str(), origin);
+      }
     }
     ImGui::EndChild();
 
@@ -1351,6 +1359,11 @@ void CharSelect::DrawLayoutEditor() {
         i18n::Tr("Dépose tes images .bmp dans data/texture/lobby/ (24 ou 32 bits, nom "
         "sans accent), puis « Rafraîchir ». Le bouton ci-dessus ouvre le bon "
         "dossier et le crée au besoin."));
+    // Les décors packés n'ont demandé aucune manipulation au joueur : le dire,
+    // sinon la liste semble contenir des entrées venues de nulle part.
+    if (const int packed = charsel::PackedBackgroundCount())
+      ImGui::TextWrapped(i18n::Tr("%d décor(s) sont livrés avec le jeu : ils "
+                         "apparaissent tout seuls, rien à installer."), packed);
     // Le client ne résout PAS data\lobby\ (il cherche sous data\texture\) : des
     // images laissées là resteraient invisibles sans explication.
     if (const int misplaced = charsel::MisplacedBackgroundCount()) {

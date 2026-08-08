@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 
+#include "ragnarok/grf_index.h"
 #include "utils/game_paths.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
@@ -65,7 +66,11 @@ const char kUserBgSubdir[] = "lobby";
 // règle que les icônes d'items ou le bouton Discord (cf. moonlight_auth.cc).
 // Le dossier à SCANNER sur le disque est donc data\texture\lobby\, pas
 // data\lobby\ : un fichier posé là serait listé mais jamais trouvé au chargement.
-const char kUserBgDiskDir[] = "data\\texture\\lobby\\";
+//
+// Ce chemin relatif sert DEUX fois : tel quel sous le dossier du jeu pour les
+// fichiers du joueur, et comme préfixe de recherche dans la table des archives
+// (les entrées d'un GRF portent exactement le même « data\texture\lobby\… »).
+const char kUserBgDir[] = "data\\texture\\lobby\\";
 // L'emplacement qu'on croit « naturel » (et que Bourgeon a indiqué à tort avant
 // cette correction) : on le regarde pour pouvoir DIRE au joueur que ses images
 // sont au mauvais endroit, plutôt que de le laisser devant une liste vide.
@@ -197,6 +202,7 @@ void LoadInto(Layout* out) {
 std::vector<Background> g_backgrounds;
 bool g_scanned = false;
 int  g_misplaced = 0;  // .bmp trouvés dans l'ancien emplacement, faux (cf. Scan)
+int  g_packed = 0;     // décors venus d'une archive montée
 
 // Un nom de fichier utilisable tel quel par le loader natif. Les noms non-ASCII
 // sont ÉCARTÉS : le client attend ses chemins dans sa code-page (CP949), alors que
@@ -210,14 +216,32 @@ bool AsciiFileName(const char* n) {
   return true;
 }
 
+// Le nom de fichier seul, en minuscules — la clé de déduplication. Un même
+// décor peut se présenter DEUX fois : sur le disque et dans une archive, ou dans
+// deux archives (data.grf et un GRF de patch). Le loader, lui, n'en chargera
+// qu'un — le disque d'abord, puis le premier GRF de la liste — et deux lignes
+// identiques dans la galerie n'auraient donc désigné qu'un seul fichier. On
+// garde la première rencontrée, dans cet ordre-là.
+std::string FileKey(const std::string& path) {
+  const auto slash = path.find_last_of("\\/");
+  std::string k = (slash == std::string::npos) ? path : path.substr(slash + 1);
+  for (char& c : k)
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  return k;
+}
+
 void Scan() {
   g_scanned = true;
   g_backgrounds.clear();
   // Les décors livrés d'abord : ils existent toujours, ce sont eux qui font le
   // repli quand le fichier du joueur disparaît.
-  g_backgrounds.push_back({kFactoryBackground, "Banquet (d'origine)", false});
+  g_backgrounds.push_back({kFactoryBackground, "Banquet (d'origine)",
+                           BgOrigin::kFactory});
 
-  std::vector<Background> user;
+  // Une seule liste pour les deux sources : elle est triée par libellé à la fin,
+  // le joueur n'a pas à savoir d'où vient chaque décor pour le choisir.
+  std::vector<Background> gallery;
+  std::vector<std::string> seen;  // clés déjà proposées, cf. FileKey
   const std::string pattern = BackgroundDir() + "*.bmp";
   WIN32_FIND_DATAA fd = {};
   const HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
@@ -229,16 +253,52 @@ void Scan() {
       std::string label(fd.cFileName);
       const auto dot = label.find_last_of('.');
       if (dot != std::string::npos) label.resize(dot);
-      user.push_back({std::string(kUserBgSubdir) + "\\" + fd.cFileName, label, true});
-    } while (FindNextFileA(h, &fd) && user.size() < 200);
+      gallery.push_back({std::string(kUserBgSubdir) + "\\" + fd.cFileName, label,
+                         BgOrigin::kDisk});
+      seen.push_back(FileKey(fd.cFileName));
+    } while (FindNextFileA(h, &fd) && gallery.size() < 200);
     FindClose(h);
     if (skipped > 0)
       LogDiag("[CharSelect] {} décor(s) ignoré(s) : nom non-ASCII (le loader du "
               "client attend sa propre code-page)", skipped);
   }
-  std::sort(user.begin(), user.end(),
+
+  // Décors LIVRÉS DANS UNE ARCHIVE. Le scan ci-dessus ne peut pas les voir : un
+  // GRF n'est pas un dossier. Ils se chargent pourtant très bien (le VFS les
+  // résout), il ne leur manquait que d'être découverts — d'où la lecture de la
+  // table de fichiers du client. Le joueur garde son dossier disque, les deux
+  // sources cohabitent.
+  std::vector<rag::GrfFile> packed;
+  g_packed = 0;
+  if (rag::ListGrfFiles(kUserBgDir, ".bmp", &packed, 200)) {
+    int skipped = 0;
+    for (const rag::GrfFile& f : packed) {
+      const auto slash = f.path.find_last_of("\\/");
+      const std::string file =
+          (slash == std::string::npos) ? f.path : f.path.substr(slash + 1);
+      if (file.empty()) continue;
+      // Même règle de code-page que sur le disque : le nom repart tel quel vers
+      // le loader, et le libellé s'affiche dans de l'ImGui (UTF-8 seulement).
+      if (!AsciiFileName(file.c_str())) { ++skipped; continue; }
+      const std::string key = FileKey(file);
+      if (std::find(seen.begin(), seen.end(), key) != seen.end())
+        continue;  // déjà proposé (fichier du joueur, ou archive prioritaire)
+      seen.push_back(key);
+      std::string label(file);
+      const auto dot = label.find_last_of('.');
+      if (dot != std::string::npos) label.resize(dot);
+      gallery.push_back({std::string(kUserBgSubdir) + "\\" + file, label,
+                         BgOrigin::kPacked});
+      ++g_packed;
+    }
+    if (skipped > 0)
+      LogDiag("[CharSelect] {} décor(s) d'archive ignoré(s) : nom non-ASCII",
+              skipped);
+  }
+
+  std::sort(gallery.begin(), gallery.end(),
             [](const Background& a, const Background& b) { return a.label < b.label; });
-  g_backgrounds.insert(g_backgrounds.end(), user.begin(), user.end());
+  g_backgrounds.insert(g_backgrounds.end(), gallery.begin(), gallery.end());
 
   // Images laissées dans data\lobby\ : le client n'y regarde pas (il résout sous
   // data\texture\). Compté ICI, pas à l'affichage — le panneau le lit à chaque
@@ -425,13 +485,18 @@ void ResetAll() {
 }
 
 const std::string& BackgroundDir() {
-  static const std::string dir = paths::InGameDir(kUserBgDiskDir);
+  static const std::string dir = paths::InGameDir(kUserBgDir);
   return dir;
 }
 
 int MisplacedBackgroundCount() {
   if (!g_scanned) Scan();
   return g_misplaced;  // mesuré au SCAN : l'appelant l'affiche à chaque frame
+}
+
+int PackedBackgroundCount() {
+  if (!g_scanned) Scan();
+  return g_packed;
 }
 
 const std::string& MisplacedBackgroundDir() {
