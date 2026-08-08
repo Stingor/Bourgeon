@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <ostream>
 #include <set>
 #include <string_view>
 
@@ -92,6 +93,30 @@ std::string YamlQuote(const std::string& text) {
   }
   out += '"';
   return out;
+}
+
+// 🔴 La spec YAML limite une clé IMPLICITE — la forme `clé: valeur` — à 1024
+// caractères ; yaml-cpp l'applique à la lettre (simplekey.cpp, VerifySimpleKey).
+// Au-delà, la clé est invalidée et l'analyseur bute sur le « : » qu'il ne sait
+// plus rattacher : « illegal map value », et c'est le fichier ENTIER qui est
+// perdu, pas la seule ligne fautive.
+//
+// La parade est la forme EXPLICITE, qui n'a aucune limite de longueur :
+//     ? "la très longue clé"
+//     : "sa traduction"
+// Nos libellés d'aide (les pavés de raccourcis) dépassent le millier d'octets.
+constexpr std::size_t kMaxImplicitKeyBytes = 1000;  // marge sous les 1024
+
+// Écrit une entrée sous la forme qui convient à la longueur de sa clé.
+void WriteYamlEntry(std::ostream& out, const std::string& source,
+                    const std::string& translated) {
+  const std::string key = YamlQuote(source);
+  const std::string value = YamlQuote(translated);
+  if (key.size() > kMaxImplicitKeyBytes) {
+    out << "? " << key << "\n: " << value << "\n";
+  } else {
+    out << key << ": " << value << "\n";
+  }
 }
 
 }  // namespace
@@ -230,7 +255,7 @@ bool ExportMissing(std::string* out_path) {
        << "# Leave a value empty to keep the French text for now.\n"
        << "# Move finished lines into " << g_code << ".yaml.\n\n";
   for (const std::string& source : g_missing) {
-    file << YamlQuote(source) << ": \"\"\n";
+    WriteYamlEntry(file, source, std::string());
   }
 
   // ⚠ Vérifier APRÈS écriture : un disque plein ou un fichier verrouillé ne se

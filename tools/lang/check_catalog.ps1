@@ -31,7 +31,18 @@ $rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
 function Remove-CharLiterals([string]$src) {
   return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
 }
-$rxEntry = [regex]'^"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"\s*$'
+# Les DEUX formes admises au catalogue. La seconde existe pour une raison
+# precise : la spec YAML limite une cle IMPLICITE (`cle: valeur`) a 1024
+# caracteres, et yaml-cpp l'applique. Au-dela il faut la forme EXPLICITE, sans
+# limite -- sinon le jeu perd le fichier ENTIER, pas la seule ligne fautive :
+#     ? "la tres longue cle"
+#     : "sa traduction"
+$rxEntry   = [regex]'^"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"\s*$'
+$rxExplKey = [regex]'^\?\s+"((?:[^"\\]|\\.)*)"\s*$'
+$rxExplVal = [regex]'^:\s*"((?:[^"\\]|\\.)*)"\s*$'
+
+# Marge sous les 1024 octets, la meme que i18n.cc (kMaxImplicitKeyBytes).
+$maxImplicitKeyBytes = 1000
 
 $srcKeys = New-Object System.Collections.Generic.HashSet[string]
 $perFile = @{}
@@ -52,15 +63,45 @@ $catKeys = New-Object System.Collections.Generic.HashSet[string]
 $empty  = New-Object System.Collections.Generic.List[string]
 $dupes  = New-Object System.Collections.Generic.List[string]
 $broken = New-Object System.Collections.Generic.List[string]
+$tooLong = New-Object System.Collections.Generic.List[string]
+
+# Enregistre une entree, quelle que soit la forme dont elle vient.
+$record = {
+  param($k, $v)
+  if (-not $catKeys.Add($k)) { $dupes.Add($k) }
+  if (-not $v) { $empty.Add($k) }
+}
+
+$pendingKey = $null
 foreach ($line in [System.IO.File]::ReadAllLines($Catalog, [System.Text.Encoding]::UTF8)) {
   $t = $line.Trim()
   if (-not $t -or $t.StartsWith('#')) { continue }
+
+  if ($null -ne $pendingKey) {
+    # Une cle explicite a ete ouverte : la ligne suivante DOIT porter sa valeur.
+    $mv = $rxExplVal.Match($t)
+    if ($mv.Success) { & $record $pendingKey $mv.Groups[1].Value }
+    else { $broken.Add($t.Substring(0, [Math]::Min(70, $t.Length))) }
+    $pendingKey = $null
+    continue
+  }
+
+  $mk = $rxExplKey.Match($t)
+  if ($mk.Success) { $pendingKey = $mk.Groups[1].Value; continue }
+
   $m = $rxEntry.Match($t)
   if (-not $m.Success) { $broken.Add($t.Substring(0, [Math]::Min(70, $t.Length))); continue }
   $k = $m.Groups[1].Value
-  if (-not $catKeys.Add($k)) { $dupes.Add($k) }
-  if (-not $m.Groups[2].Value) { $empty.Add($k) }
+  # 🔴 La cle telle qu'ECRITE, guillemets compris : c'est ce que compte yaml-cpp.
+  # Trop longue en forme implicite = fichier illisible au chargement, sans que
+  # rien ici ne s'en apercoive -- d'ou ce controle.
+  $bytes = [System.Text.Encoding]::UTF8.GetByteCount($k) + 2
+  if ($bytes -gt $maxImplicitKeyBytes) {
+    $tooLong.Add(("" + $bytes + " octets : " + $k.Substring(0, [Math]::Min(60, $k.Length))))
+  }
+  & $record $k $m.Groups[2].Value
 }
+if ($null -ne $pendingKey) { $broken.Add("cle explicite sans valeur : " + $pendingKey.Substring(0, [Math]::Min(60, $pendingKey.Length))) }
 
 $missing = @($srcKeys | Where-Object { -not $catKeys.Contains($_) })
 $orphan  = @($catKeys | Where-Object { -not $srcKeys.Contains($_) })
@@ -77,6 +118,11 @@ Write-Output ("valeurs VIDES : " + $empty.Count)
 $empty | Sort-Object | ForEach-Object { "   - " + $_ }
 Write-Output ("DOUBLONS : " + $dupes.Count)
 $dupes | Sort-Object | ForEach-Object { "   - " + $_ }
+if ($tooLong.Count) {
+  Write-Output ("CLES TROP LONGUES pour la forme implicite : " + $tooLong.Count)
+  Write-Output "   (a reecrire en forme explicite : ligne '? \"cle\"' puis ligne ': \"valeur\"')"
+  $tooLong | ForEach-Object { "   ! " + $_ }
+}
 if ($broken.Count) {
   Write-Output ("LIGNES NON PARSEES : " + $broken.Count)
   $broken | ForEach-Object { "   ! " + $_ }
@@ -85,4 +131,4 @@ Write-Output ""
 Write-Output "Fichiers migres :"
 $perFile.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object { "{0,5}  {1}" -f $_.Value, $_.Key }
 
-if ($missing.Count -or $empty.Count -or $dupes.Count -or $broken.Count) { exit 1 }
+if ($missing.Count -or $empty.Count -or $dupes.Count -or $broken.Count -or $tooLong.Count) { exit 1 }
