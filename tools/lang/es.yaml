@@ -4340,3 +4340,31 @@
 "· Chances : %d %%": ""
 # en: none
 "aucune": ""
+# en:  - Broken
+" - Broken": ""
+# en: %lld - %lld  (avg. %lld)
+"%lld - %lld  (moy. %lld)": ""
+# en: Compute
+"Calculer": ""
+# en: Cast
+"Cast": ""
+# en: Target: %s (#%u)
+"Cible : %s (#%u)": ""
+# en: Target: monster #%u
+"Cible : monstre #%u": ""
+# en: Cooldown
+"Cooldown": ""
+# en: Copy##%s
+"Copier##%s": ""
+# en: Lv
+"Niv": ""
+# en: Level %u  -  %s
+"Niveau %u  -  %s": ""
+# en: Option #%d: %d
+"Option #%d : %d": ""
+# en: Options
+"Options": ""
+# en: Refresh##tech%u
+"Rafraichir##tech%u": ""
+# en: x%u hits
+"x%u coups": ""

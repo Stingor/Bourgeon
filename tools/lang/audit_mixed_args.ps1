@@ -29,6 +29,10 @@ param(
   [string[]]$Skip = @('item_desc_window.cc')
 )
 
+# Preparation du texte a analyser : commentaires blanchis SANS jamais
+# confondre un delimiteur place a l interieur d une chaine. Cf. _scan.ps1.
+. "$PSScriptRoot\_scan.ps1"
+
 # 🔴 Le titre d une fenetre EST son identifiant dans imgui.ini. On ne l enveloppe
 # QUE s il porte deja un « ### » : ce qui suit est alors l identifiant, et la
 # traduction voyage devant sans rien deplacer. Sans « ### », traduire perdrait
@@ -36,17 +40,6 @@ param(
 # la main, en TrId.
 $windowTitleCalls = @('ImGui::Begin', 'ro::BeginRoWindow')
 
-$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
-function Remove-CharLiterals([string]$src) {
-  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
-}
-$rxComment = [regex]'(?s)//[^\r\n]*|/\*.*?\*/'
-function Remove-Comments([string]$src) {
-  return $rxComment.Replace($src, {
-    param($m)
-    -join ($m.Value.ToCharArray() | ForEach-Object { if ($_ -eq "`n" -or $_ -eq "`r") { $_ } else { ' ' } })
-  })
-}
 
 # Mots-cles qui portent une parenthese sans etre des appels.
 # Mots-cles, et CONSTRUCTEURS trop generiques pour que le test des voisines ait
@@ -123,6 +116,13 @@ function Test-Translatable([string]$lit) {
   if ($lit.StartsWith('##')) { return $false }
   if ($lit.StartsWith('@'))  { return $false }
   if ($lit -cmatch '^[a-z0-9_]+$') { return $false }
+  # 🔴 Une URL ne se traduit JAMAIS. Le test de phrase plus bas la sauverait a
+  # tort : « moonlight-destiny.fr » y ressemble a « mot . mot ».
+  if ($lit -match '^(https?|ftp)://') { return $false }
+  # Ce qui reste APRES retrait des specificateurs doit ressembler a du texte. Un
+  # identifiant tout en minuscules n en est pas : « tabh%s » construit un nom de
+  # texture, « %s_db » un identifiant ImGui.
+  if (($rxFormatSpec.Replace($lit, '')) -cmatch '^[a-z0-9_.-]*$') { return $false }
   # Un gabarit technique n est ecarte que s il n a PAS de structure de phrase : un
   # texte d aide a le droit de citer SaveData\lang\en.yaml.
   if ($rxTechnical.IsMatch($lit) -and -not $rxSentence.IsMatch($lit)) { return $false }
@@ -134,7 +134,7 @@ $slots = @{}   # "nom#index" -> @{ Wrapped = n; Bare = liste }
 
 foreach ($fileItem in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
   $raw = [System.IO.File]::ReadAllText($fileItem.FullName, [System.Text.Encoding]::UTF8)
-  $text = Remove-Comments (Remove-CharLiterals $raw)
+  $text = Get-ScannableText $raw
   $starts = New-Object System.Collections.Generic.List[int]
   $acc = 0
   foreach ($l in ($text -split "`n")) { $starts.Add($acc); $acc += $l.Length + 1 }

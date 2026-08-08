@@ -27,6 +27,10 @@ param(
   [string]$Only = ""
 )
 
+# Preparation du texte a analyser : commentaires blanchis SANS jamais
+# confondre un delimiteur place a l interieur d une chaine. Cf. _scan.ps1.
+. "$PSScriptRoot\_scan.ps1"
+
 # Le libelle est le PREMIER argument.
 $callsArg0 = @(
   'ImGui::TextUnformatted', 'ImGui::TextDisabled', 'ImGui::TextWrapped',
@@ -50,22 +54,7 @@ $callsArg1 = @('ImGui::TextColored', 'ImGui::InputTextWithHint', 'TextColored')
 # 🔴 Les litteraux de CARACTERE d'abord : `c == '"'` ouvrirait une fausse chaine
 # et decalerait la lecture de tout le fichier. Longueur conservee pour que les
 # numeros de ligne restent justes.
-$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
-function Remove-CharLiterals([string]$src) {
-  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
-}
 
-# Les COMMENTAIRES, blanchis a longueur EGALE : ce depot commente en francais et
-# cite volontiers du code (« ImGui::Text("truc") »), qui serait sinon compte comme
-# un vrai site d'appel. Conserver la longueur garde les numeros de ligne justes.
-# Les sauts de ligne sont preserves pour la meme raison.
-$rxComment = [regex]'(?s)//[^\r\n]*|/\*.*?\*/'
-function Remove-Comments([string]$src) {
-  return $rxComment.Replace($src, {
-    param($m)
-    -join ($m.Value.ToCharArray() | ForEach-Object { if ($_ -eq "`n" -or $_ -eq "`r") { $_ } else { ' ' } })
-  })
-}
 
 # Ce qui ne reste QUE du format ne se traduit pas : « %s », « %s z », « %d/%d ».
 # On retire les specificateurs, et on exige au moins deux lettres au reste.
@@ -114,7 +103,7 @@ $rows = New-Object System.Collections.Generic.List[object]
 
 foreach ($fileItem in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
   $raw = [System.IO.File]::ReadAllText($fileItem.FullName, [System.Text.Encoding]::UTF8)
-  $text = Remove-Comments (Remove-CharLiterals $raw)
+  $text = Get-ScannableText $raw
   $starts = New-Object System.Collections.Generic.List[int]
   $acc = 0
   foreach ($l in ($text -split "`n")) { $starts.Add($acc); $acc += $l.Length + 1 }

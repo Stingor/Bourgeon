@@ -33,6 +33,10 @@ param(
   [string[]]$Skip = @('item_desc_window.cc')
 )
 
+# Preparation du texte a analyser : commentaires blanchis SANS jamais
+# confondre un delimiteur place a l interieur d une chaine. Cf. _scan.ps1.
+. "$PSScriptRoot\_scan.ps1"
+
 $callsArg0 = @(
   'ImGui::TextUnformatted', 'ImGui::TextDisabled', 'ImGui::TextWrapped',
   'ImGui::BulletText', 'ImGui::Text',
@@ -59,20 +63,7 @@ $callsArg1 = @('ImGui::TextColored', 'ImGui::InputTextWithHint', 'TextColored')
 # fenetre dans imgui.ini. Le traduire ferait perdre position et taille a chaque
 # bascule de langue. Ces titres-la se reprennent a la main, en TrId.
 
-$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
-function Remove-CharLiterals([string]$src) {
-  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
-}
 
-# Commentaires blanchis a longueur EGALE : les positions relevees sur ce texte
-# valent donc telles quelles sur le texte ORIGINAL, qui seul sera modifie.
-$rxComment = [regex]'(?s)//[^\r\n]*|/\*.*?\*/'
-function Remove-Comments([string]$src) {
-  return $rxComment.Replace($src, {
-    param($m)
-    -join ($m.Value.ToCharArray() | ForEach-Object { if ($_ -eq "`n" -or $_ -eq "`r") { $_ } else { ' ' } })
-  })
-}
 
 $rxFormatSpec = [regex]'%[-+ #0]*[0-9*]*(\.[0-9*]+)?(hh|h|ll|l|j|z|t|L|I64|I32)?[diouxXeEfgGaAcspn%]'
 $rxJoin = [regex]'"((?:[^"\\]|\\.)*)"'
@@ -101,7 +92,7 @@ foreach ($fileItem in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
   if ($Only -and $fileItem.Name -ne $Only) { continue }
 
   $raw = [System.IO.File]::ReadAllText($fileItem.FullName, [System.Text.Encoding]::UTF8)
-  $scan = Remove-Comments (Remove-CharLiterals $raw)
+  $scan = Get-ScannableText $raw
 
   # Toutes les positions a envelopper, puis tri DECROISSANT : on remplace de la
   # fin vers le debut, pour qu'aucun index releve ne soit invalide par le
@@ -124,6 +115,11 @@ foreach ($fileItem in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
       # panel_commands en fait des TreeNode, dont l'etat ouvert/ferme est indexe
       # sur le libelle -- le traduire replierait l'arbre a chaque bascule.
       if ($lit.StartsWith('@')) { continue }
+      # 🔴 Une URL ne se traduit JAMAIS, et un gabarit qui ne laisse qu un
+      # identifiant minuscule apres retrait des specificateurs non plus :
+      # « tabh%s » nomme une texture, « %s_db » un widget ImGui.
+      if ($lit -match '^(https?|ftp)://') { continue }
+      if (($rxFormatSpec.Replace($lit, '')) -cmatch '^[a-z0-9_.#-]*$') { continue }
       $body = $rxFormatSpec.Replace($lit, '')
       if (($body -replace '[^A-Za-z\u00C0-\u00FF]', '').Length -lt 2) { continue }
       $spans.Add([pscustomobject]@{ Start = $g.Index; Length = $g.Length; Call = $probe.Name; Text = $lit })

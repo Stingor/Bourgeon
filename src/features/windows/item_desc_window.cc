@@ -2133,7 +2133,7 @@ bool IsCmdKw(const char* b, size_t len) {
 void DrawScriptCode(const char* box_id, const std::string& raw) {
   const std::string code = PrettyPrintScript(raw);
   char clbl[48];
-  std::snprintf(clbl, sizeof(clbl), "Copier##%s", box_id);
+  std::snprintf(clbl, sizeof(clbl), i18n::Tr("Copier##%s"), box_id);
   if (ImGui::SmallButton(clbl)) ImGui::SetClipboardText(code.c_str());
 
   // Palette (VS Code Dark+).
@@ -2318,7 +2318,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   // suffixe « - Broken » et ombre rouge sous le nom.
   if (damaged) {
     const size_t len = strnlen(title, sizeof(title));
-    std::snprintf(title + len, sizeof(title) - len, " - Broken");
+    std::snprintf(title + len, sizeof(title) - len, i18n::Tr(" - Broken"));
   }
   // Titre WRAPPÉ : un nom décoré (« +7 Vadon's Sword of Rage [4] ») dépasse
   // largement la largeur du tooltip, qui est bornée — sans wrap il déborderait du
@@ -2343,7 +2343,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   // (cf. juste en dessous) : sans cette ligne, l'aperçu au survol serait le seul
   // endroit de l'UI où l'id n'apparaît plus. Posée AVANT le corps, elle précède
   // donc la ligne « ViewID : N », qui ouvre celui-ci.
-  ImGui::TextDisabled("ID : %u", id);
+  ImGui::TextDisabled(i18n::Tr("ID : %u"), id);
 
   // Ligne 0 = lien DB <URL>ItemID..</URL> : bruit -> sautée.
   const int skip = (cd->line_count > 0 && std::strstr(cd->lines[0], "<URL>") &&
@@ -2377,7 +2377,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
                           IM_COL32(0, 0, 0, 255), text_wrap);
     ImGui::EndGroup();
   } else if (!img.tex) {
-    ImGui::TextDisabled("(pas de description)");
+    ImGui::TextDisabled(i18n::Tr("(pas de description)"));
   }
 
   // ── Cartes / enchants insérés (données d'INSTANCE, pas de la DB) ───────────
@@ -2410,12 +2410,12 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     if (opts && opts[i].index) ++nopts;
   if (nopts > 0) {
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), "Options");
+    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), i18n::Tr("Options"));
     for (int i = 0; i < opt_count; ++i) {
       if (!opts || !opts[i].index) continue;
       const char* nm = GetOptName(opts[i].index, opts[i].value);
       if (nm && nm[0]) ImGui::TextUnformatted(nm);
-      else ImGui::Text("Option #%d : %d", opts[i].index, opts[i].value);
+      else ImGui::Text(i18n::Tr("Option #%d : %d"), opts[i].index, opts[i].value);
     }
   }
 }
@@ -2436,26 +2436,26 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   auto tech_body = [&](uint8_t scope) -> const TechData* {
     const uint32_t key = CacheKey(w.id, w.is_skill, scope);
     char rlbl[40];
-    std::snprintf(rlbl, sizeof(rlbl), "Rafraichir##tech%u", key);
+    std::snprintf(rlbl, sizeof(rlbl), i18n::Tr("Rafraichir##tech%u"), key);
     if (ImGui::SmallButton(rlbl)) cache_.erase(key);  // force refetch
     RequestTechData(w.id, w.is_skill, scope);
     auto it = cache_.find(key);
     const FetchState st =
         (it != cache_.end()) ? it->second.state : FetchState::kNone;
     if (st == FetchState::kPending)
-      ImGui::TextDisabled("Chargement...");
+      ImGui::TextDisabled(i18n::Tr("Chargement..."));
     else if (st == FetchState::kFailed)
-      ImGui::TextDisabled("échec de la requête");
+      ImGui::TextDisabled(i18n::Tr("échec de la requête"));
     return (st == FetchState::kReady && it != cache_.end()) ? &it->second
                                                             : nullptr;
   };
 
   if (w.is_skill) {
     // ── Onglet « Infos techniques » : table de cast par niveau ──────────────
-    if (ImGui::BeginTabItem("Infos techniques")) {
+    if (ImGui::BeginTabItem(i18n::Tr("Infos techniques"))) {
       const TechData* td = tech_body(kScopeNormal);
       if (td && td->levels.empty()) {
-        ImGui::TextDisabled("Aucune donnée de cast.");
+        ImGui::TextDisabled(i18n::Tr("Aucune donnée de cast."));
       } else if (td) {
         const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_RowBg |
@@ -2463,10 +2463,10 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
         ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
                               IM_COL32(206, 198, 172, 255));
         if (ImGui::BeginTable("tech_skill", 4, tf)) {
-          ImGui::TableSetupColumn("Niv");
-          ImGui::TableSetupColumn("Cast");
-          ImGui::TableSetupColumn("Cooldown");
-          ImGui::TableSetupColumn("Délai");
+          ImGui::TableSetupColumn(i18n::Tr("Niv"));
+          ImGui::TableSetupColumn(i18n::Tr("Cast"));
+          ImGui::TableSetupColumn(i18n::Tr("Cooldown"));
+          ImGui::TableSetupColumn(i18n::Tr("Délai"));
           ImGui::TableHeadersRow();
           auto sec = [](int32_t ms) { return ms / 1000.0f; };
           for (size_t i = 0; i < td->levels.size(); ++i) {
@@ -2480,24 +2480,24 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::EndTable();
         }
         ImGui::PopStyleColor();
-        ImGui::TextDisabled("Valeurs effectives : tes stats + gear + buffs actifs.");
+        ImGui::TextDisabled(i18n::Tr("Valeurs effectives : tes stats + gear + buffs actifs."));
       }
       ImGui::EndTabItem();
     }
 
     // ── Onglet « Dégâts » : cible réglable (mob id, ou soi-même PvP) ────────
-    if (ImGui::BeginTabItem("Dégâts")) {
+    if (ImGui::BeginTabItem(i18n::Tr("Dégâts"))) {
       // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
       const bool self_changed =
-          ImGui::Checkbox("Contre moi-même (PvP)", &dmg_target_self_);
+          ImGui::Checkbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
       ImGui::SetNextItemWidth(120.0f);
       if (dmg_target_self_) ImGui::BeginDisabled();
-      ImGui::InputInt("Cible : ID monstre (0 = neutre)", &dmg_target_input_,
+      ImGui::InputInt(i18n::Tr("Cible : ID monstre (0 = neutre)"), &dmg_target_input_,
                       0, 0);
       if (dmg_target_self_) ImGui::EndDisabled();
       if (dmg_target_input_ < 0) dmg_target_input_ = 0;
       ImGui::SameLine();
-      const bool calc = ImGui::Button("Calculer");
+      const bool calc = ImGui::Button(i18n::Tr("Calculer"));
 
       // Cible envoyée : 0xFFFFFFFF = soi-même, sinon l'id saisi (0 = neutre).
       const uint32_t req_target =
@@ -2516,37 +2516,37 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
       const FetchState st =
           (it != dmg_cache_.end()) ? it->second.state : FetchState::kNone;
       if (st == FetchState::kPending) {
-        ImGui::TextDisabled("Calcul en cours...");
+        ImGui::TextDisabled(i18n::Tr("Calcul en cours..."));
       } else if (st == FetchState::kReady && it != dmg_cache_.end()) {
         const DamageEst& d = it->second;
         if (d.status == 1) {
-          ImGui::TextDisabled("Sort non offensif (aucun dégât).");
+          ImGui::TextDisabled(i18n::Tr("Sort non offensif (aucun dégât)."));
         } else if (d.status == 2) {
-          ImGui::TextDisabled("Monstre introuvable (ID invalide ?).");
+          ImGui::TextDisabled(i18n::Tr("Monstre introuvable (ID invalide ?)."));
         } else if (d.status != 0) {
-          ImGui::TextDisabled("Estimation indisponible.");
+          ImGui::TextDisabled(i18n::Tr("Estimation indisponible."));
         } else {
           const char* atk = (d.atk_type == 1) ? "Physique"
                           : (d.atk_type == 2) ? "Magique"
                                               : "Divers";
           if (d.target == 0xFFFFFFFFu)
-            ImGui::TextDisabled("Cible : toi-même (miroir PvP)");
+            ImGui::TextDisabled(i18n::Tr("Cible : toi-même (miroir PvP)"));
           else if (d.target == 0)
-            ImGui::TextDisabled("Cible : neutre 0 def (dégâts bruts)");
+            ImGui::TextDisabled(i18n::Tr("Cible : neutre 0 def (dégâts bruts)"));
           else if (!d.target_name.empty())
-            ImGui::Text("Cible : %s (#%u)", d.target_name.c_str(), d.target);
+            ImGui::Text(i18n::Tr("Cible : %s (#%u)"), d.target_name.c_str(), d.target);
           else
-            ImGui::Text("Cible : monstre #%u", d.target);
-          ImGui::Text("Niveau %u  -  %s", d.skill_lv, atk);
-          ImGui::Text("%lld - %lld  (moy. %lld)",
+            ImGui::Text(i18n::Tr("Cible : monstre #%u"), d.target);
+          ImGui::Text(i18n::Tr("Niveau %u  -  %s"), d.skill_lv, atk);
+          ImGui::Text(i18n::Tr("%lld - %lld  (moy. %lld)"),
                       static_cast<long long>(d.dmg_min),
                       static_cast<long long>(d.dmg_max),
                       static_cast<long long>(d.dmg_avg));
           if (d.hits > 1) {
             ImGui::SameLine();
-            ImGui::Text("x%u coups", d.hits);
+            ImGui::Text(i18n::Tr("x%u coups"), d.hits);
           }
-          ImGui::TextDisabled("Inclut ton stuff / buffs. Neutre = avant def/elem.");
+          ImGui::TextDisabled(i18n::Tr("Inclut ton stuff / buffs. Neutre = avant def/elem."));
         }
       }
       ImGui::EndTabItem();
@@ -2555,7 +2555,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   }
 
   // ── ITEM : onglets « Monstres » (non-boss) et « Boss / MVP » ──────────────
-  if (ImGui::BeginTabItem("Monstres")) {
+  if (ImGui::BeginTabItem(i18n::Tr("Monstres"))) {
     if (const TechData* td = tech_body(kScopeNormal))
       RenderDropTable(*td, "tech_drops_normal",
                       CacheKey(w.id, false, kScopeNormal), /*show_type=*/false);
