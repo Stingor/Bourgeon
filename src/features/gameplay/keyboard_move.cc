@@ -9,6 +9,7 @@
 
 #include "bourgeon.h"
 #include "features/hotkey_util.h"  // NativeTextInputHasFocus (garde partagée)
+#include "features/windows/item_desc_window.h"  // WantsSideArrows (livre ouvert)
 #include "imgui.h"
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
@@ -242,15 +243,30 @@ void KeyboardMove::Update() {
   const bool keys_ours = !io.WantCaptureKeyboard && !io.KeyCtrl && !io.KeyAlt &&
                          !io.KeyShift && !hotkeys::NativeTextInputHasFocus();
 
+  // 🔴 Les flèches ← → peuvent appartenir à une AUTRE fenêtre moderne — le panneau
+  // livre s'en sert pour tourner ses pages, et le hook WndProc les confisque alors
+  // au client. Cette confiscation ne nous protège pas : on ne lit pas les messages
+  // Windows mais l'état ImGui, que le backend a enregistré AVANT qu'on retire la
+  // touche au jeu. Sans ce test, tourner une page faisait marcher le personnage —
+  // le geste avait donc encore deux effets, l'un d'eux resté invisible au premier
+  // correctif.
+  //
+  // Seules les DEUX flèches latérales se taisent : ↑ et ↓ ne portent pas la
+  // pagination du client, elles ne sont pas confisquées, et ZQSD reste actif de
+  // bout en bout — lire un livre n'a jamais empêché d'avancer.
+  const bool side_arrows_ours = !ItemDescWindow::WantsSideArrows();
+
   int screen_x = 0, screen_y = 0;
   if (keys_ours) {
     if (ImGui::IsKeyDown(ImGuiKey_Z) || ImGui::IsKeyDown(ImGuiKey_UpArrow))
       ++screen_y;
     if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow))
       --screen_y;
-    if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow))
+    if (ImGui::IsKeyDown(ImGuiKey_D) ||
+        (side_arrows_ours && ImGui::IsKeyDown(ImGuiKey_RightArrow)))
       ++screen_x;
-    if (ImGui::IsKeyDown(ImGuiKey_Q) || ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+    if (ImGui::IsKeyDown(ImGuiKey_Q) ||
+        (side_arrows_ours && ImGui::IsKeyDown(ImGuiKey_LeftArrow)))
       --screen_x;
   }
 

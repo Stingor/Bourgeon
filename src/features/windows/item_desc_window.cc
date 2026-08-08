@@ -3422,8 +3422,10 @@ void ItemDescWindow::RenderSkillWindow() {
 //
 // ⚠ Ce test n'est atteint QUE si aucun champ ImGui ne réclame le clavier : le hook
 // traite ce cas plus haut, en chaîne if/else. Une saisie garde donc ses flèches.
+bool ItemDescWindow::WantsSideArrows() { return g_book_kbd_open; }
+
 bool ItemDescWindow::EatsBookKey(unsigned msg, unsigned long wparam) {
-  if (!g_book_kbd_open) return false;
+  if (!WantsSideArrows()) return false;
   if (wparam != VK_LEFT && wparam != VK_RIGHT) return false;
   switch (msg) {
     case WM_KEYDOWN:

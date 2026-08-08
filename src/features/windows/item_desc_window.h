@@ -130,6 +130,19 @@ class ItemDescWindow : public Plugin {
   // (msg, wparam) = paramètres bruts du WndProc.
   static bool EatsBookKey(unsigned msg, unsigned long wparam);
 
+  // Les flèches ← et → appartiennent-elles au panneau livre en ce moment ?
+  //
+  // Prédicat SANS effet de bord — c'est toute sa raison d'être : `EatsBookKey`,
+  // lui, ARME un changement de page, on ne peut donc pas s'en servir pour poser la
+  // question. Il est destiné aux modules qui lisent ces touches AILLEURS que dans
+  // les messages Windows, et que la confiscation du hook ne protège pas : le
+  // déplacement clavier les lit dans l'état ImGui, lequel reflète la frappe
+  // AVANT qu'on la retire au jeu.
+  //
+  // ⚠ Seulement ← et → : ↑ et ↓ ne portent pas les messages de pagination du
+  // client, elles ne sont donc pas confisquées et continuent de faire marcher.
+  static bool WantsSideArrows();
+
   // Cache IMMÉDIATEMENT le rendu natif des fenêtres desc (item 0xc + comparaison
   // 0xea) depuis leurs slots manager (appelé depuis le hook OnMsg de MoonlightUi
   // au moment de l'ouverture -> zéro flicker). No-op si le panneau item enrichi
