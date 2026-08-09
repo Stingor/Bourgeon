@@ -5010,10 +5010,14 @@ void ChatWindow::LoadHistory() {
   mark.type   = static_cast<uint8_t>(kTypeBroadcast);
   mark.rgb    = 0x9B9B9B;  // COLORREF gris, comme les en-têtes du client
   Run run;
+  // 🔴 PAS de ro::LocalToUtf8 ici : le catalogue i18n est déjà en UTF-8 et `saved_at`
+  // est une date ASCII. Convertir une seconde fois depuis la code-page du client
+  // encodait les accents DEUX fois — « sesión » sortait en « sesiÃ³n ». Invisible en
+  // français, dont le repère est écrit sans accent : seule une traduction accentuée
+  // le révélait. Même piège qu'au chargement des lignes plus haut, dans l'autre sens.
   run.text = saved_at.empty()
                  ? std::string(i18n::Tr("---- session precedente ----"))
                  : (i18n::Tr("---- session precedente (") + saved_at + ") ----");
-  run.text = ro::LocalToUtf8(run.text.c_str());
   mark.runs.push_back(run);
   mark.plain = run.text;
   restored.push_back(std::move(mark));

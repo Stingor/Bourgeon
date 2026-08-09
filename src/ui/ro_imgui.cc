@@ -2126,19 +2126,126 @@ void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
   dl->PopClipRect();
 }
 
-// Faux-gras : ImGui n'a qu'une graisse chargée, on re-dessine le texte décalé d'un
-// pixel. Même recette que les textes du chatbox NPC et de la barre de skills.
 namespace {
 // Posé par RoToggleButton le temps d'un appel : le bouton se dessine alors enfoncé
 // (art « press » + libellé gras) sans que la souris ait à le tenir.
 bool g_force_button_active = false;
 
-void DrawButtonLabel(ImDrawList* dl, ImVec2 pos, ImU32 color, const char* label, bool bold) {
+// ── Libellé plus long que la largeur imposée ─────────────────────────────────
+// Le client parle FR, EN et ES, et la mise en page a été taillée au millimètre pour
+// le français : « Achat 1-Click » devient « 1-Click buy » et « Compra en 1 clic »,
+// qui ne rentrent plus. Les boutons RO dessinent leur texte à la main dans la
+// draw-list — ImGui ne clippe rien pour eux — donc le libellé bavait hors de l'art.
+// On le fait tenir : d'abord en rétrécissant la police, en dernier recours en le
+// coupant (l'appelant propose alors le libellé entier en infobulle).
+//
+// La taille descend par crans ENTIERS et pas au pixel juste : chaque taille distincte
+// fait rasteriser une police de plus dans l'atlas dynamique (ImGui 1.92 + FreeType),
+// ce qui borne le nombre de valeurs possibles entre le plancher et 100 %.
+//
+// Plancher BAS (65 %) délibérément : entre un libellé rapetissé et un libellé coupé,
+// le rapetissé reste lisible et dit encore ce que fait le bouton — « Quitar todo el
+// eq... » ne dit plus rien. Même esprit que le nom d'item des cartes du cash shop,
+// qui descend jusqu'à 55 %. La coupe ne sert donc qu'aux cas désespérés.
+constexpr float kLabelMinScale = 0.65f;
+
+struct FittedLabel {
+  float       size     = 0.0f;      // taille de police à employer
+  const char* begin    = nullptr;   // texte à dessiner…
+  const char* end      = nullptr;   // …jusqu'ici (coupé quand `ellipsis`)
+  bool        ellipsis = false;     // texte coupé -> « ... » collée après
+  float       text_w   = 0.0f;      // largeur de la seule partie texte
+  float       width    = 0.0f;      // largeur rendue, ellipse comprise (centrage)
+};
+
+// `avail_w` = largeur utile, caps de l'art déjà retirées. Un `avail_w` négatif ou nul
+// (bouton minuscule) laisse le libellé tel quel : mieux vaut un débordement qu'un
+// texte réduit à néant.
+FittedLabel FitButtonLabel(const char* label, float avail_w) {
+  ImFont* const font = ImGui::GetFont();
+  const float base = ImGui::GetFontSize();
+  FittedLabel f;
+  f.begin = label;
+  f.end = ImGui::FindRenderedTextEnd(label);
+  f.size = base;
+  f.text_w = f.width = ImGui::CalcTextSize(f.begin, f.end).x;
+  if (avail_w <= 0.0f || f.width <= avail_w) return f;
+
+  // 1) Rétrécir. On PART d'une estimation (la taille qui ferait pile tenir si la
+  //    largeur était proportionnelle à la taille) puis on descend CRAN PAR CRAN en
+  //    mesurant à chaque fois : la largeur réelle n'est PAS proportionnelle — FreeType
+  //    arrondit les advances au pixel et le hinting resserre irrégulièrement, si bien
+  //    qu'une seule tentative rate d'un pixel et tombe dans la coupe alors qu'un cran
+  //    de plus suffisait. Deux ou trois tours au pire, l'estimation étant bonne.
+  const float min_sz = ImMax(1.0f, ImFloor(base * kLabelMinScale));
+  for (float sz = ImClamp(ImFloor(base * (avail_w / f.width)), min_sz, base);;
+       sz -= 1.0f) {
+    f.size = sz;
+    f.text_w = f.width = font->CalcTextSizeA(sz, FLT_MAX, 0.0f, f.begin, f.end).x;
+    if (f.width <= avail_w || sz <= min_sz) break;
+  }
+  if (f.width <= avail_w) return f;
+
+  // 2) Ça déborde même au plancher : couper au caractère et coller « ... ». Points
+  //    ASCII, PAS le U+2026 : ce glyphe n'est pas garanti dans l'atlas.
+  const float dots_w = font->CalcTextSizeA(f.size, FLT_MAX, 0.0f, "...").x;
+  const char* stop = f.begin;
+  f.text_w = font->CalcTextSizeA(f.size, ImMax(1.0f, avail_w - dots_w), 0.0f,
+                                 f.begin, f.end, &stop)
+                 .x;
+  f.end = stop;
+  f.ellipsis = true;
+  f.width = f.text_w + dots_w;
+  return f;
+}
+
+// Faux-gras : ImGui n'a qu'une graisse chargée, on re-dessine le texte décalé d'un
+// pixel. Même recette que les textes du chatbox NPC et de la barre de skills.
+void DrawButtonLabel(ImDrawList* dl, ImVec2 pos, ImU32 color,
+                     const FittedLabel& f, bool bold) {
+  ImFont* const font = ImGui::GetFont();
+  for (int pass = 0; pass < (bold ? 2 : 1); ++pass) {
+    const float x = pos.x + static_cast<float>(pass);
+    dl->AddText(font, f.size, ImVec2(x, pos.y), color, f.begin, f.end);
+    if (f.ellipsis)
+      dl->AddText(font, f.size, ImVec2(x + f.text_w, pos.y), color, "...");
+  }
+}
+
+// Libellé coupé -> le texte entier en infobulle, sinon l'action devient une devinette.
+// Posée AVANT que l'appelant ne reprenne la main : s'il pose la sienne juste après,
+// c'est la sienne qui gagne (elle explique déjà l'action, elle vaut mieux). ImGui
+// restaure `LastItemData` en sortant du tooltip, le IsItemHovered() de l'appelant
+// vise donc toujours le bouton et pas le texte de l'infobulle.
+void TooltipIfTruncated(const FittedLabel& f, const char* label) {
+  if (!f.ellipsis) return;
+  if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) return;
   const char* end = ImGui::FindRenderedTextEnd(label);
-  dl->AddText(pos, color, label, end);
-  if (bold) dl->AddText(ImVec2(pos.x + 1.0f, pos.y), color, label, end);
+  ImGui::SetTooltip("%.*s", static_cast<int>(end - label), label);
 }
 }  // namespace
+
+// Mesure de la largeur AUTOMATIQUE (même formule que la branche `w <= 0` des deux
+// boutons) : c'est ce qui permet à une mise en page de se caler sur ses libellés
+// TRADUITS au lieu du français. Les dimensions des caps sont statiques (blobs du
+// skin), aucune texture n'a besoin d'être chargée pour répondre.
+float ButtonWidth(const char* label) {
+  return ImGui::CalcTextSize(label, nullptr, true).x +
+         static_cast<float>(skin::kBtnOutLeft.w) +
+         static_cast<float>(skin::kBtnOutRight.w) + 12.0f;
+}
+
+float SmallButtonWidth(const char* label) {
+  return ImGui::CalcTextSize(label, nullptr, true).x +
+         static_cast<float>(skin::ksBtnOutLeft.w) +
+         static_cast<float>(skin::ksBtnOutRight.w);
+}
+
+float MaxButtonWidth(std::initializer_list<const char*> labels) {
+  float w = 0.0f;
+  for (const char* l : labels) w = ImMax(w, ButtonWidth(l));
+  return w;
+}
 
 // `active` = bouton « enclenché » (outil courant, option retenue…) : le libellé passe
 // en gras et le fond garde l'art « pressé », même quand la souris est ailleurs.
@@ -2166,6 +2273,12 @@ bool RoButton(const char* label, float w, float h) {
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   if (w <= 0.0f) w = ts.x + capL + capR + 12.0f;
   if (h <= 0.0f) h = nativeH;
+  // Largeur imposée par l'appelant : elle a pu être calculée pour le français alors
+  // qu'on affiche l'anglais ou l'espagnol. Place disponible = l'espace PHYSIQUE entre
+  // les deux caps, moins 2 px pour ne pas coller à l'art. Surtout PAS les 12 px de
+  // marge de la largeur auto : c'est du confort, pas de l'encombrement — les décompter
+  // ici rapetissait des libellés qui tenaient très bien.
+  const FittedLabel fit = FitButtonLabel(label, w - capL - capR - 2.0f);
 
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
@@ -2202,15 +2315,18 @@ bool RoButton(const char* label, float w, float h) {
     dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
   }
 
-  const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
-                  p0.y + (h - ts.y) * 0.5f + (held ? 1.0f : 0.0f));
+  // Centrage sur les dimensions RETENUES (fit.size = hauteur de ligne à cette
+  // taille) : identique à ts quand le libellé n'a pas eu à être réduit.
+  const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
+                  p0.y + (h - fit.size) * 0.5f + (held ? 1.0f : 0.0f));
   // Bouton enfoncé : libellé en gras. L'art « press » se distingue mal de l'état
   // survolé sur les petites tailles, la graisse tranche tout de suite.
   DrawButtonLabel(dl, tp,
                   disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
                            : ImGui::GetColorU32(ImGuiCol_Text),
-                  label, held && !disabled);
+                  fit, held && !disabled);
   ImGui::PopID();
+  TooltipIfTruncated(fit, label);
   return clicked;
 }
 // Petit bouton (ex. pour les + - x ) : même design que RoButton mais plus petit
@@ -2231,6 +2347,11 @@ bool RoSmallButton(const char* label, float w, float h) {
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   if (w <= 0.0f) w = ts.x + capL + capR; // +12px pour RoButton, pas pour le petit bouton
   if (h <= 0.0f) h = nativeH;
+  // Comme RoButton : un libellé traduit plus long que le français ne déborde pas de
+  // l'art, il rétrécit (puis se coupe). Pas de marge de 2 px retirée ici, contrairement
+  // au grand bouton : la largeur auto du petit vaut PILE texte + caps, en enlever
+  // quoi que ce soit rapetisserait tous les petits boutons en taille automatique.
+  const FittedLabel fit = FitButtonLabel(label, w - capL - capR);
 
   // Resserre le bouton contre le widget qui le précède SUR LA MÊME LIGNE (le skin
   // RO a déjà sa propre marge dans l'art, l'ItemSpacing d'ImGui l'éloigne trop).
@@ -2285,13 +2406,14 @@ bool RoSmallButton(const char* label, float w, float h) {
     dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
   }
 
-  const ImVec2 tp(p0.x + (w - ts.x) * 0.5f,
-                  p0.y + (h - ts.y) * 0.5f - 1.0f);  // -1 pour centrer le texte correctement dans la case
+  const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
+                  p0.y + (h - fit.size) * 0.5f - 1.0f);  // -1 pour centrer le texte correctement dans la case
   DrawButtonLabel(dl, tp,
                   disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
                            : ImGui::GetColorU32(ImGuiCol_Text),
-                  label, held && !disabled);
+                  fit, held && !disabled);
   ImGui::PopID();
+  TooltipIfTruncated(fit, label);
   return clicked;
 }
 

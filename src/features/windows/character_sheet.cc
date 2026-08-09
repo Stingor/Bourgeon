@@ -1581,7 +1581,10 @@ struct EmblemCanvas {
   bool     shape_erase = false;    // tirée au clic droit = efface
   int      revision = 0;           // incrémenté à chaque modification (cache du BMP)
   std::vector<std::vector<uint32_t>> undo;  // états précédents (plafonnés)
-  char     save_name[32] = "mon_embleme";
+  // Vide au départ, PAS pré-rempli : le nom par défaut se traduit (cf. le repli
+  // i18n::Tr("mon_embleme") côté envoi) et un initialiseur statique serait figé en
+  // français, avant même que la langue soit choisie. Le champ l'annonce en indice.
+  char     save_name[32] = "";
 };
 EmblemCanvas g_emblem_canvas;
 
@@ -2853,20 +2856,25 @@ void CharacterSheet::DrawPresetsTab() {
   for (int i = 0; i < static_cast<int>(equip_presets_.size()); ++i)
     if (equip_presets_[i].cid == cid) mine.push_back(i);
 
-  auto bw = [](const char* t) {
-    return ImGui::CalcTextSize(t).x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f;
-  };
+  // Largeur des boutons : ro::ButtonWidth et PAS la formule d'ImGui (FramePadding×2),
+  // qui vaut ~6 px de moins que ce dont le bouton RO a besoin (ses deux caps + sa
+  // marge). Les libellés espagnols, plus longs, débordaient donc de leur art — ici
+  // rien ne contraint la largeur, les boutons n'ont qu'à grandir.
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const float load_w = bw(i18n::Tr("Charger")), del_w = bw(i18n::Tr("Suppr"));
+  const float load_w = ro::ButtonWidth(i18n::Tr("Charger"));
+  const float del_w = ro::ButtonWidth(i18n::Tr("Suppr"));
   const float icon = 30.0f, igap = 3.0f;
 
   // Action globale : se mettre « tout nu » (independant des presets). Les costumes vivent dans
   // un tableau session distinct -> bouton separe pour tout retirer, costumes compris.
-  if (ro::RoButton(i18n::Tr("Tout déséquiper"), bw(i18n::Tr("Tout déséquiper")))) UnequipAll(false);
+  if (ro::RoButton(i18n::Tr("Tout déséquiper"),
+                   ro::ButtonWidth(i18n::Tr("Tout déséquiper"))))
+    UnequipAll(false);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire l'équipement porté (garde les costumes)"));
   ImGui::SameLine(0.0f, 4.0f);
-  if (ro::RoButton(i18n::Tr("+ costumes"), bw(i18n::Tr("+ costumes")))) UnequipAll(true);
+  if (ro::RoButton(i18n::Tr("+ costumes"), ro::ButtonWidth(i18n::Tr("+ costumes"))))
+    UnequipAll(true);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire aussi les costumes (têtes + cape)"));
   ImGui::Spacing();
@@ -2940,13 +2948,13 @@ void CharacterSheet::DrawPresetsTab() {
                      sizeof(hkl));
       ImGui::TextColored(kBlack, "%s", hkl);
       ImGui::SameLine(0.0f, 6.0f);
-      if (ro::RoButton(i18n::Tr("Définir"), bw(i18n::Tr("Définir")))) {
+      if (ro::RoButton(i18n::Tr("Définir"), ro::ButtonWidth(i18n::Tr("Définir")))) {
         hk_capturing_ = mine[mi];
         hk_conflict_msg_.clear();
       }
       if (ep.hotkey_vk != 0) {
         ImGui::SameLine(0.0f, 4.0f);
-        if (ro::RoButton(i18n::Tr("Effacer"), bw(i18n::Tr("Effacer")))) {
+        if (ro::RoButton(i18n::Tr("Effacer"), ro::ButtonWidth(i18n::Tr("Effacer")))) {
           EquipPreset& e = equip_presets_[mine[mi]];
           e.hotkey_vk = 0; e.hotkey_ctrl = e.hotkey_alt = e.hotkey_shift = false;
           if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
@@ -2961,7 +2969,7 @@ void CharacterSheet::DrawPresetsTab() {
   // Section sauvegarde (bas de l'onglet).
   ImGui::TextColored(kBlack, i18n::Tr("Enregistrer l'équipement porté (%d/%d)"),
                      static_cast<int>(mine.size()), kMaxPresetsPerChar);
-  const float save_w = bw(i18n::Tr("Sauver l'actuel"));
+  const float save_w = ro::ButtonWidth(i18n::Tr("Sauver l'actuel"));
   ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - save_w - 8.0f));
   ImGui::InputTextWithHint("##cs_pname", i18n::Tr("nom du preset"), preset_name_buf_,
                            sizeof(preset_name_buf_));
@@ -3447,22 +3455,24 @@ void CharacterSheet::DrawSkillsTab() {
   auto tooltip_for = [&](const SkillRaw& s, int effective) {
     std::string tip = skill_name(s.id);
     if (s.maxlv > 0) {
-      tip += "\nNiveau " + std::to_string(effective) + " / " + std::to_string(s.maxlv);
+      tip += i18n::Tr("\nNiveau ") + std::to_string(effective) + " / " +
+             std::to_string(s.maxlv);
       const int pending = PendingLevel(static_cast<uint16_t>(s.id));
       if (pending > 0) tip += "  (+" + std::to_string(pending - s.learned) + i18n::Tr(" réservé)");
     }
-    tip += s.inf == 0 ? i18n::Tr("\nPassive (toujours active)") : "\nActive";
-    if (s.learned > 0 && s.sp > 0)    tip += "\nSP : " + std::to_string(s.sp);
+    tip += s.inf == 0 ? i18n::Tr("\nPassive (toujours active)") : i18n::Tr("\nActive");
+    if (s.learned > 0 && s.sp > 0)    tip += i18n::Tr("\nSP : ") + std::to_string(s.sp);
     if (s.learned > 0 && s.range > 0) tip += i18n::Tr("\nPortée : ") + std::to_string(s.range);
     const unsigned long cd_ms = SkillCooldownRemaining(static_cast<uint16_t>(s.id));
     if (cd_ms > 0)
-      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) + i18n::Tr(" s de cooldown");
+      tip += i18n::Tr("\nEncore ") + std::to_string((cd_ms + 999) / 1000) +
+             i18n::Tr(" s de cooldown");
     if (s.need_count > 0) {
-      tip += "\nRequiert : ";
+      tip += i18n::Tr("\nRequiert : ");
       for (int i = 0; i < s.need_count; ++i) {
         if (i) tip += ", ";
         tip += skill_name(s.need_id[i]);
-        tip += " Niv ";
+        tip += i18n::Tr(" Niv ");
         tip += std::to_string(s.need_lv[i]);
         // Un prérequis peut vivre dans un AUTRE onglet (une 3e classe en réclame
         // souvent une de 2e) : aucune flèche ne peut alors le désigner, autant le
@@ -3477,7 +3487,7 @@ void CharacterSheet::DrawSkillsTab() {
       tip += i18n::Tr("\n\nClic : réserver un point — Ctrl + clic : jusqu'au max");
     else
       tip += "\n";
-    if (s.learned > 0 && s.inf != 0) tip += "\nDouble-clic : lancer";
+    if (s.learned > 0 && s.inf != 0) tip += i18n::Tr("\nDouble-clic : lancer");
     if (s.learned > 1 && IsLevelUseSkillSEH(s.id))
       tip += i18n::Tr("\nMolette : niveau de lancement (") +
              std::to_string(EffectiveUseLevelSEH(s.id, s.learned)) + " / " +
@@ -5459,7 +5469,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     for (const GuildSkillReq& req : node->need) {
       if (!text.empty()) text += ", ";
       text += skill_label(req.id, nullptr);
-      text += " Niv ";
+      text += i18n::Tr(" Niv ");
       text += std::to_string(req.level);
     }
     return text;
@@ -5491,18 +5501,19 @@ void CharacterSheet::DrawGuildSkillsTab() {
     const bool can_use = active_skill && (live->inf & 0x04) != 0;
     std::string tip = label;
     if (live && live->name[0]) { tip += "  ("; tip += live->name; tip += ")"; }
-    if (row.max_level > 0) tip += "\nNiveau " + std::to_string(level) + " / " +
+    if (row.max_level > 0) tip += i18n::Tr("\nNiveau ") + std::to_string(level) + " / " +
                                   std::to_string(row.max_level);
     if (live && live->range > 0) tip += i18n::Tr("\nPortée : ") + std::to_string(live->range);
     const unsigned long cd_ms = SkillCooldownRemaining(row.id);
     if (cd_ms > 0)
-      tip += "\nEncore " + std::to_string((cd_ms + 999) / 1000) +
+      tip += i18n::Tr("\nEncore ") + std::to_string((cd_ms + 999) / 1000) +
              i18n::Tr(" s (lancer une compétence de guilde les bloque toutes les quatre)");
     // Les prérequis sont ce qui manque justement à une verrouillée : les dire ICI,
     // là où le joueur regarde quand il se demande pourquoi elle est grisée.
     const std::string reqs = requirements_text(row.node);
-    if (!reqs.empty()) tip += "\nRequiert : " + reqs;
-    if (live) tip += live->inf == 0 ? i18n::Tr("\nPassive (toujours active)") : "\nActive";
+    if (!reqs.empty()) tip += i18n::Tr("\nRequiert : ") + reqs;
+    if (live)
+      tip += live->inf == 0 ? i18n::Tr("\nPassive (toujours active)") : i18n::Tr("\nActive");
     tip += locked       ? i18n::Tr("\n\nVerrouillée : prérequis non remplis.")
          : can_use      ? i18n::Tr("\n\nDouble-clic : lancer — clic droit : description — glisser vers une barre")
          : active_skill ? i18n::Tr("\n\nClic droit : description — glisser vers une barre") : i18n::Tr("\n\nClic droit : description");
@@ -5964,7 +5975,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
             guild_positions_editing_ = true;
           }
         } else {
-          ImGui::TextColored(kBlack, "%s", on ? "oui" : "-");
+          ImGui::TextColored(kBlack, "%s", on ? i18n::Tr("oui") : "-");
         }
         ImGui::PopID();
       }
@@ -6346,9 +6357,9 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   for (int t = 0; t < 6; ++t) {
     ImGui::PushID(t);
     // L'outil courant reste enfoncé, libellé en gras (ro::RoToggleButton).
-    if (ro::RoToggleButton(tool_names[t], g_emblem_canvas.tool == t, 80.0f, 0.0f))
+    if (ro::RoToggleButton(i18n::Tr(tool_names[t]), g_emblem_canvas.tool == t, 80.0f, 0.0f))
       g_emblem_canvas.tool = t;
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tool_hints[t]);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", i18n::Tr(tool_hints[t]));
     ImGui::PopID();
     if (t != 2 && t != 5) ImGui::SameLine();
   }
@@ -6584,13 +6595,19 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
                              "remplis davantage le fond."),
                        s_transparency, kEmblemTransparencyWarn);
   const bool can_send = has_ink && guildId > 0;
+  // Nom du .bmp, commun aux deux boutons : ce que le joueur a saisi, sinon le défaut
+  // que le champ annonce en indice — d'où le repli ici plutôt qu'un champ pré-rempli.
+  // 🔴 Sa traduction doit rester en ASCII PUR : ce n'est pas un libellé d'écran mais
+  // un NOM DE FICHIER, écrit dans <jeu>\emblem\ puis passé tel quel à l'upload natif,
+  // qui manipule le chemin dans la code-page du client. Un accent suffirait à faire
+  // échouer l'écriture ou à produire du mojibake.
+  const std::string file_name = std::string(g_emblem_canvas.save_name[0]
+                                                ? g_emblem_canvas.save_name
+                                                : i18n::Tr("mon_embleme")) + ".bmp";
   ImGui::BeginDisabled(!can_send);
   // Le dessin part par le chemin NATIF : on l'écrit d'abord dans <jeu>\emblem\, car
   // l'upload du jeu prend un CHEMIN de fichier (curl lit le fichier lui-même).
   if (ro::RoButton(i18n::Tr("Envoyer ce dessin"), 160.0f, 0.0f)) {
-    const std::string file_name = std::string(g_emblem_canvas.save_name[0]
-                                                  ? g_emblem_canvas.save_name
-                                                  : "mon_embleme") + ".bmp";
     if (!WriteEmblemFile(file_name.c_str(), bmp)) {
       guild_emblem_diag_ = i18n::Tr("Écriture impossible : emblem/") + file_name;
     } else {
@@ -6611,16 +6628,15 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   }
   ImGui::SameLine();
   ImGui::SetNextItemWidth(150.0f);
-  ro::InputTextCp949("##cs_emblem_savename", g_emblem_canvas.save_name,
-                     sizeof(g_emblem_canvas.save_name));
+  ro::InputTextCp949WithHint("##cs_emblem_savename", i18n::Tr("mon_embleme"),
+                             g_emblem_canvas.save_name,
+                             sizeof(g_emblem_canvas.save_name));
   ImGui::SameLine();
   // Garder le .bmp sous la main : il rejoint le dossier que lit aussi la fenêtre native.
-  if (ro::RoButton(i18n::Tr("Enregistrer dans emblem"), 190.0f, 0.0f) && g_emblem_canvas.save_name[0]) {
-    const std::string path =
-        paths::InGameDir("emblem\\") + g_emblem_canvas.save_name + std::string(".bmp");
+  if (ro::RoButton(i18n::Tr("Enregistrer dans emblem"), 190.0f, 0.0f)) {
+    const std::string path = paths::InGameDir("emblem\\") + file_name;
     CreateDirectoryA(paths::InGameDir("emblem").c_str(), nullptr);
     FILE* fp = nullptr;
-    const std::string file_name = std::string(g_emblem_canvas.save_name) + ".bmp";
     if (fopen_s(&fp, path.c_str(), "wb") == 0 && fp) {
       std::fwrite(bmp.data(), 1, bmp.size(), fp);
       std::fclose(fp);

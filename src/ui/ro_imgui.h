@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <initializer_list>
 
 // ── ro_imgui : socle du toolkit ImGui « façon RO » ────────────────────────────
 // Briques bloquantes du remplacement complet de l'UI native par de l'ImGui :
@@ -319,8 +320,24 @@ void SetNextWindowBodyColor(unsigned int argb);
 // pressé). w/h à 0 = taille auto (texte + marges / hauteur native). Renvoie true
 // au clic. À utiliser dans une fenêtre RO (fond clair). Ignore le skin toggle :
 // dessine toujours le bouton RO (c'est un widget, pas un chrome de fenêtre).
+//
+// Une largeur IMPOSÉE trop courte pour le libellé ne le laisse pas déborder de
+// l'art : le texte est rétréci (par crans, plancher à 78 %) puis, si ça ne suffit
+// pas, coupé avec « ... » et le libellé entier passe en infobulle. C'est un
+// garde-fou, pas une solution : le client parle FR/EN/ES et une mise en page
+// calée sur le français y perd en lisibilité. Là où le conteneur peut respirer,
+// mesurer les libellés traduits avec ButtonWidth/MaxButtonWidth ci-dessous.
 bool RoButton(const char* label, float w = 0.0f, float h = 0.0f);
 bool RoSmallButton(const char* label, float w = 0.0f, float h = 0.0f);
+
+// Largeur qu'occuperait le bouton en taille automatique, DANS LA LANGUE COURANTE —
+// de quoi dimensionner un conteneur sur ses libellés traduits :
+//   const float col_w = ro::MaxButtonWidth({i18n::Tr("Panier"),
+//                                           i18n::Tr("Achat 1-Click")});
+// À appeler pendant une frame ImGui (la mesure dépend de la police courante).
+float ButtonWidth(const char* label);
+float SmallButtonWidth(const char* label);
+float MaxButtonWidth(std::initializer_list<const char*> labels);
 
 // Bouton d'état (outil courant, option retenue…) : quand `active` est vrai, il se
 // dessine ENFONCÉ et son libellé passe en gras — l'art « press » seul se confond

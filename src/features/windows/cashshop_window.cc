@@ -780,7 +780,27 @@ void CashShopWindow::OnRenderUI() {
                     preview_active_ ? ImGuiWindowFlags_NoScrollWithMouse : 0);
   bool preview_now = false;  // un aperçu survolé cette frame ?
   {
-    const float card_w = 172.0f, card_h = 100.0f, gap = 4.0f, box = 78.0f;
+    const float card_h = 100.0f, gap = 4.0f, box = 78.0f;
+    // Géométrie INTERNE de la carte. Tout ce qui ne dépend que de sa HAUTEUR est
+    // calculé ici, car sa largeur s'en déduit (cf. card_w juste en dessous).
+    const float pad_x = 5.0f, pad_y = 3.0f;   // = WindowPadding de la carte
+    const float gap2 = 8.0f;                  // image <-> colonne prix + boutons
+    const float header_h = card_h - box;      // marge bas reduite -> image + grande
+    const float cont_h = card_h - 2.0f * pad_y;
+    const float low_top = header_h - pad_y;   // Y contenu = bas de la bande
+    const float LH = cont_h - low_top;        // hauteur de la zone basse
+    const float img = LH - 10.0f;             // image un peu plus petite -> marges
+    // Largeur calée sur les LIBELLÉS TRADUITS, pas sur le français : les 89 px que
+    // laissait la carte d'origine tiennent « Achat 1-Click », pas « 1-Click buy » ni
+    // « Compra en 1 clic » — ils débordaient de leur bouton. On élargit la carte
+    // plutôt que de rétrécir le texte (RoButton sait le faire, mais autant garder
+    // les libellés pleine taille quand la place existe) : la grille recalcule
+    // simplement son nombre de colonnes, et le snap de fenêtre suit (g_snap.cardw).
+    const float card_w =
+        std::max(172.0f, 2.0f * pad_x + img + gap2 +
+                             ro::MaxButtonWidth({i18n::Tr("Panier"),
+                                                 i18n::Tr("Achat 1-Click")}));
+    const float cont_w = card_w - 2.0f * pad_x;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     const float grid_inner_w = ImGui::GetContentRegionAvail().x;
     const float grid_inner_h = ImGui::GetContentRegionAvail().y;
@@ -831,7 +851,7 @@ void CashShopWindow::OnRenderUI() {
       ImGui::PushID(static_cast<int>(ci.id));
       ImGui::PushStyleColor(ImGuiCol_ChildBg, card_bg);  // fond carte (couleur skin)
       // Marges resserrees (image plus grande) ; le ChildRounding est global (fenetre).
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5.0f, 3.0f));
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad_x, pad_y));
       // NoScrollWithMouse : la carte ne capture PAS la molette -> le scroll va à la
       // grille parente (sinon survoler une carte casse la navigation du shop).
       ImGui::BeginChild("card", ImVec2(card_w, card_h), true,
@@ -841,7 +861,6 @@ void CashShopWindow::OnRenderUI() {
       // Nom EN HAUT dans un BANDEAU plus fonce que la carte (isole du corps) :
       // bande remplie sur toute la largeur, du haut jusqu'au debut de la rangee du
       // bas, texte clair par-dessus.
-      const float header_h = card_h - box;  // marge bas reduite -> image + grande
       ImDrawList* dl = ImGui::GetWindowDrawList();
       const ImVec2 wp = ImGui::GetWindowPos();
       dl->AddRectFilled(wp, ImVec2(wp.x + card_w, wp.y + header_h),
@@ -863,19 +882,12 @@ void CashShopWindow::OnRenderUI() {
       }
       // 2) Rangée du bas ancrée : image à GAUCHE, prix + Buy à DROITE.
       // Bloc du bas [image | prix+boutons] CENTRE sur tous les bords (coords contenu).
-      const float pad_x = 5.0f, pad_y = 3.0f;   // = WindowPadding de la carte
-      const float cont_w = card_w - 2.0f * pad_x;
-      const float cont_h = card_h - 2.0f * pad_y;
-      const float low_top = header_h - pad_y;    // Y contenu = bas de la bande
-      const float LH = cont_h - low_top;         // hauteur de la zone basse
       const float frameH = ImGui::GetFrameHeight();
       const float sp = ImGui::GetStyle().ItemSpacing.y;
-      const float gap2 = 8.0f;
       // Image de COLLECTION (art de preview), pas la petite icône d'inventaire :
       // c'est ce que le cash shop natif affiche, et c'est la raison d'être de la
       // vignette large. Repli automatique sur l'icône quand l'art n'existe pas.
       ro::IconTex ic = ro::ItemCollectionIcon(ci.id);
-      const float img = LH - 10.0f;              // image un peu plus petite -> marges
       float iw = img, ih = img;
       if (ic.tex && ic.w > 0 && ic.h > 0) {
         const float s = img / std::max(ic.w, ic.h);
