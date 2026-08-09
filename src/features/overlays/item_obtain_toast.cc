@@ -67,7 +67,6 @@ constexpr float kTextX     = 41.0f;
 constexpr float kTextXNoIcon = 13.0f;  // le natif recule le texte quand il n'y a pas d'icône
 constexpr float kPadRight  = 13.0f;
 constexpr float kMinWidth  = 34.0f;    // plancher natif
-constexpr float kRowGap    = 2.0f;
 
 // Plafond dur de la pile. Le réglage joue en dessous ; ceci n'est là que pour
 // qu'un `max_lines` aberrant relu d'un yaml trafiqué ne fasse pas grossir la
@@ -96,6 +95,14 @@ OnMsg_t g_msg_orig = nullptr;
 ItemObtainToastConfig g_cfg;
 bool g_in_game    = false;
 bool g_needs_save = false;
+
+// État de l'ancre déplaçable. `g_anchor_w` est sa largeur relue d'une frame sur
+// l'autre (il faut la connaître pour la centrer, et elle dépend de la langue) ;
+// `g_anchor_force` repositionne la fenêtre pour UNE frame, quand un réglage
+// change la position sous elle — sans ça, ImGui garderait la position qu'elle
+// avait à sa création et le retour au centrage ne se verrait pas.
+float g_anchor_w     = 200.0f;
+bool  g_anchor_force = false;
 
 // 🔴 Le hook est appelé depuis le dispatch de paquets du client, pas depuis notre
 // boucle de rendu. Ce dispatch touche l'UI native (il ouvre des fenêtres, écrit
@@ -245,6 +252,33 @@ bool FormatTakesOneInt(const char* fmt) {
 // le bord droit retombe entre deux pixels quelle que soit l'origine.
 inline float Snap(float v) { return std::floor(v + 0.5f); }
 
+// Un pourcentage de réglage vers l'alpha 0..255 d'un ImU32.
+inline int PctToA8(int pct) {
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  return (pct * 255) / 100;
+}
+
+// Fond LIBRE, dessiné à la place du cadre RO quand celui-ci est masqué. Sans
+// lui, le texte se retrouve à nu sur la scène : lisible sur un sol sombre,
+// illisible dès qu'un mur clair ou un effet passe dessous.
+//
+// Contrairement au cadre sysbox, tout est peint en primitives ImGui — donc
+// couleur, opacité, arrondi et bordure sont libres, ce que l'art 9-slice ne
+// permettait pas.
+void DrawFreeBackground(ImDrawList* dl, float x0, float y0, float x1, float y1) {
+  const float r = static_cast<float>(g_cfg.bg_rounding);
+  if (g_cfg.bg_enabled) {
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1),
+                      RgbToImU32(g_cfg.bg_rgb, PctToA8(g_cfg.bg_alpha)), r);
+  }
+  if (g_cfg.border_enabled && g_cfg.border_thickness > 0) {
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1),
+                RgbToImU32(g_cfg.border_rgb, PctToA8(g_cfg.border_alpha)), r, 0,
+                static_cast<float>(g_cfg.border_thickness));
+  }
+}
+
 int LineCap() {
   int cap = g_cfg.max_lines;
   if (cap < 1) cap = 1;
@@ -333,7 +367,12 @@ void ItemObtainToast::OnRenderUI() {
 
   const uint32_t now = timeGetTime();
   PumpQueue(now);
-  if (g_live.empty()) return;
+
+  // Déverrouillé, la pile vide : on montre quand même une ligne d'exemple. Sans
+  // ça, placer l'ancre supposerait d'aller ramasser un objet toutes les cinq
+  // secondes pour voir ce qu'on règle.
+  const bool preview = !g_cfg.locked && g_live.empty();
+  if (g_live.empty() && !preview) return;
 
   ImDrawList* dl = ImGui::GetForegroundDrawList();
   ImFont* font = ImGui::GetFont();
@@ -343,23 +382,32 @@ void ItemObtainToast::OnRenderUI() {
   // Taille de police ENTIÈRE : un corps fractionnaire fait rééchantillonner les
   // glyphes de l'atlas et rend tout le texte pâteux, réglage de 110 % compris.
   const float fsize = Snap(ImGui::GetFontSize() * scale);
-  // Hauteur de ligne : entière (elle sert d'incrément vertical d'une ligne à la
-  // suivante, donc une fraction décalerait toute la pile de plus en plus), et
-  // calée sur la grille de tuiles pour la même raison que la largeur.
+
+  // Hauteur d'une ligne. Toujours ENTIÈRE : elle sert d'incrément vertical d'une
+  // ligne à la suivante, donc une fraction décalerait toute la pile de plus en
+  // plus. Le contenu, c'est l'icône (24) ou le texte, selon le plus haut.
+  const float pad_v = static_cast<float>(g_cfg.pad_v < 0 ? 0 : g_cfg.pad_v);
+  const float content = (g_cfg.show_icon && kIconSize > fsize) ? kIconSize : fsize;
+  float row_h = Snap(content + 2.0f * pad_v);
+
+  // AVEC le cadre RO, la hauteur n'est pas libre : elle se cale sur la grille de
+  // tuiles, sinon le 9-slice échantillonne entre ses texels.
   //
-  // ⚠ On s'écarte ici des 32 px du natif, en connaissance de cause. 32, c'est
-  // 28 de bordure (deux tuiles) + 4 d'intérieur : le toolkit ÉCRASE alors une
-  // tuile de 14 dans 4 px sur les deux montants, soit un rapport 3,5:1 — la
-  // couture la plus visible du cadre. À 28 il n'y a plus d'intérieur du tout,
-  // rien que les quatre coins blittés 1:1, et le résultat est net. Les 24 px de
-  // l'icône y tiennent avec 2 px de marge de chaque côté.
-  const float tile = ro::DescPanelEdge();          // 14
-  const float need = (kIconSize > fsize ? kIconSize : fsize) + 4.0f;
-  float row_h = Snap(kRowH * (scale < 1.0f ? 1.0f : scale));
+  // ⚠ On s'écarte alors des 32 px du natif, en connaissance de cause. 32, c'est
+  // 28 de bordure (deux tuiles) + 4 d'intérieur : le toolkit ÉCRASE une tuile de
+  // 14 dans 4 px sur les deux montants, un rapport 3,5:1 — la couture la plus
+  // visible du cadre. À 28 il n'y a plus d'intérieur du tout, rien que les
+  // quatre coins blittés 1:1. Les 24 px de l'icône y tiennent avec 2 px de
+  // marge, et c'est aussi pourquoi `pad_v` n'a d'effet visible qu'une fois assez
+  // grand pour faire passer la ligne au palier suivant (42).
+  const float tile = ro::DescPanelEdge();  // 14
   if (g_cfg.show_frame && tile >= 1.0f) {
-    row_h = 2.0f * tile;                            // 28 : les coins, sans plus
+    const float need = row_h;
+    row_h = 2.0f * tile;
     if (need > row_h) row_h += std::ceil((need - row_h) / tile) * tile;
   }
+
+  const float gap = static_cast<float>(g_cfg.row_gap < 0 ? 0 : g_cfg.row_gap);
 
   const ImU32 col_text = RgbToImU32(g_cfg.text_rgb);
   const ImU32 col_qty  = RgbToImU32(g_cfg.qty_rgb);
@@ -378,13 +426,71 @@ void ItemObtainToast::OnRenderUI() {
   if (!fmt || !*fmt || !FormatTakesOneInt(fmt)) fmt = " - %d obtained.";
 
   const float screen_w = ImGui::GetIO().DisplaySize.x;
+
+  // ── L'ancre ───────────────────────────────────────────────────────────────
+  // Le bandeau se dessine sur le foreground draw list : il passe au-dessus de
+  // tout, mais ne peut rien capter à la souris. La poignée est donc une vraie
+  // fenêtre ImGui, affichée SEULEMENT quand le verrou est ouvert — verrouillé,
+  // le bandeau redevient parfaitement transparent aux clics, ce qu'on attend
+  // d'une notification.
+  //
+  // C'est le geste direct, à la place des deux curseurs X/Y qu'il fallait
+  // régler à l'aveugle : on attrape le bandeau là où il est.
+  if (!g_cfg.locked) {
+    const bool centered = g_cfg.pos_x < 0;
+    const float ax = centered ? Snap((screen_w - g_anchor_w) * 0.5f)
+                              : static_cast<float>(g_cfg.pos_x);
+    ImGui::SetNextWindowPos(ImVec2(ax, static_cast<float>(g_cfg.pos_y)),
+                            g_anchor_force ? ImGuiCond_Always : ImGuiCond_Once);
+    ImGui::SetNextWindowBgAlpha(0.45f);
+    const ImGuiWindowFlags af =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize;
+    if (ImGui::Begin("###itemtoast_anchor", nullptr, af)) {
+      ImGui::TextUnformatted(i18n::Tr("Objet obtenu — glisser pour placer"));
+      // Largeur relue pour la frame SUIVANTE : on ne peut pas centrer une
+      // fenêtre dont la taille n'est pas encore connue, et elle dépend de la
+      // langue. Le centrage converge donc en une frame, ce qui ne se voit pas.
+      g_anchor_w = ImGui::GetWindowWidth();
+      const ImVec2 wp = ImGui::GetWindowPos();
+      const int nx = static_cast<int>(Snap(wp.x));
+      const int ny = static_cast<int>(Snap(wp.y));
+      // Un déplacement HORIZONTAL sort du centrage — on ne peut pas à la fois
+      // centrer et placer. Un déplacement purement vertical, lui, le préserve :
+      // descendre le bandeau ne doit pas le décentrer au passage.
+      if (nx != static_cast<int>(ax)) {
+        g_cfg.pos_x = nx;
+        g_needs_save = true;
+      }
+      if (ny != g_cfg.pos_y) {
+        g_cfg.pos_y = ny;
+        g_needs_save = true;
+      }
+    }
+    ImGui::End();
+    g_anchor_force = false;
+  }
+
   float y = static_cast<float>(g_cfg.pos_y);
+
+  // La ligne d'exemple de l'aperçu. Un objet réel (501) plutôt qu'un texte
+  // inventé : on voit l'icône, la vraie police et la vraie largeur.
+  Toast demo;
+  if (preview) {
+    demo.id     = 501;
+    demo.amount = 1;
+    const char* dn = itemcell::NameById(demo.id);
+    std::snprintf(demo.name, sizeof(demo.name), "%s", dn ? dn : "");
+  }
 
   // `newest_on_top` : la pile pousse vers le bas, la plus récente en tête. Sinon
   // les nouvelles s'ajoutent sous les anciennes, comme un journal.
-  const int n = static_cast<int>(g_live.size());
+  const int n = preview ? 1 : static_cast<int>(g_live.size());
   for (int k = 0; k < n; ++k) {
-    const Toast& t = g_cfg.newest_on_top ? g_live[n - 1 - k] : g_live[k];
+    const Toast& t =
+        preview ? demo : (g_cfg.newest_on_top ? g_live[n - 1 - k] : g_live[k]);
 
     char suffix[64];
     std::snprintf(suffix, sizeof(suffix), fmt, t.amount);
@@ -430,6 +536,8 @@ void ItemObtainToast::OnRenderUI() {
 
     if (g_cfg.show_frame)
       ro::DrawDescPanelFrame(dl, x, y, x + w, y + row_h);
+    else
+      DrawFreeBackground(dl, x, y, x + w, y + row_h);
 
     if (has_icon) {
       // Blit 1:1, comme le client : l'icône fait déjà 24x24, la redimensionner
@@ -455,7 +563,16 @@ void ItemObtainToast::OnRenderUI() {
     dl->AddText(font, fsize, ImVec2(Snap(name_pos.x + name_sz.x), ty), col_qty,
                 suffix);
 
-    y += row_h + kRowGap;
+    y += row_h + gap;
+  }
+
+  // Une position posée à la souris se sauvegarde toute seule — mais seulement
+  // une fois le glissement TERMINÉ, sinon on réécrirait le yaml à chaque frame
+  // du déplacement.
+  if (g_needs_save && !ImGui::IsAnyItemActive() &&
+      !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    g_needs_save = false;
   }
 }
 
@@ -488,24 +605,82 @@ void ItemObtainToast::DrawSettings() {
   SameLine();
   HelpMarker(i18n::Tr("Le client d'origine tient 5000 ms, sans réglage possible."));
 
+  SeparatorText(i18n::Tr("Placement"));
+
+  // Pas de curseur X/Y : le placement se fait à la souris. Deux mécanismes pour
+  // le même geste seraient une hésitation gratuite pour le joueur.
+  bool unlocked = !g_cfg.locked;
+  if (ro::RoCheckbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &unlocked)) {
+    g_cfg.locked = !unlocked;
+    g_anchor_force = true;
+    g_needs_save = true;
+  }
+  SameLine();
+  HelpMarker(i18n::Tr("Déverrouillé, une poignée apparaît à l'emplacement du "
+                      "bandeau : glisse-la où tu veux. Un exemple s'affiche "
+                      "tant que rien n'a été ramassé.\n"
+                      "Verrouillé, le bandeau ne capte plus aucun clic."));
+
   bool centered = (g_cfg.pos_x < 0);
   if (ro::RoCheckbox(i18n::Tr("Centrer horizontalement"), &centered)) {
+    // 220 = l'abscisse du natif sur sa largeur de référence de 640 : décocher
+    // repose le bandeau là où le client l'aurait mis.
     g_cfg.pos_x = centered ? -1 : 220;
+    g_anchor_force = true;
     g_needs_save = true;
   }
-  ImGui::BeginDisabled(centered);
-  int px = g_cfg.pos_x < 0 ? 0 : g_cfg.pos_x;
-  if (WheelSliderInt(i18n::Tr("Position X"), &px, 0, 1920)) {
-    g_cfg.pos_x = px;
-    g_needs_save = true;
-  }
-  ImGui::EndDisabled();
-  g_needs_save |= WheelSliderInt(i18n::Tr("Position Y"), &g_cfg.pos_y, 0, 1080);
+  SameLine();
+  HelpMarker(i18n::Tr("Le centrage survit à un déplacement VERTICAL de la "
+                      "poignée ; un déplacement horizontal en sort."));
+
+  SeparatorText(i18n::Tr("Compacité"));
+  g_needs_save |= WheelSliderInt(i18n::Tr("Interligne"), &g_cfg.row_gap, 0, 16, "%d px");
+  SameLine();
+  HelpMarker(i18n::Tr("L'espace entre deux lignes. À 0 elles se touchent."));
+  g_needs_save |= WheelSliderInt(i18n::Tr("Marge verticale"), &g_cfg.pad_v, 0, 12, "%d px");
+  SameLine();
+  HelpMarker(i18n::Tr("La marge au-dessus et au-dessous du contenu d'une ligne.\n"
+                      "Sans effet tant que le cadre RO est affiché : sa hauteur "
+                      "est imposée par la taille de ses tuiles."));
   g_needs_save |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale,
                                  60, 200, "%d%%");
 
+  SeparatorText(i18n::Tr("Apparence"));
   g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher l'icône"), &g_cfg.show_icon);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher le cadre"), &g_cfg.show_frame);
+  g_needs_save |= ro::RoCheckbox(i18n::Tr("Cadre RO"), &g_cfg.show_frame);
+  SameLine();
+  HelpMarker(i18n::Tr("Le cadre clair du client. Décoché, le fond libre "
+                      "ci-dessous prend sa place."));
+
+  // Le fond libre ne sert QUE sans le cadre RO : le griser dit pourquoi il ne
+  // fait rien, au lieu de laisser croire à un réglage cassé.
+  ImGui::BeginDisabled(g_cfg.show_frame);
+  g_needs_save |= ro::RoCheckbox(i18n::Tr("Fond libre"), &g_cfg.bg_enabled);
+  float bgc[4];
+  RgbToF4(g_cfg.bg_rgb, bgc);
+  if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur du fond"), bgc)) {
+    g_cfg.bg_rgb = F3ToRgb(bgc);
+    g_needs_save = true;
+  }
+  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha,
+                                 0, 100, "%d%%");
+  g_needs_save |= WheelSliderInt(i18n::Tr("Arrondi"), &g_cfg.bg_rounding,
+                                 0, 16, "%d px");
+
+  g_needs_save |= ro::RoCheckbox(i18n::Tr("Bordure"), &g_cfg.border_enabled);
+  ImGui::BeginDisabled(!g_cfg.border_enabled);
+  float bdc[4];
+  RgbToF4(g_cfg.border_rgb, bdc);
+  if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur de la bordure"), bdc)) {
+    g_cfg.border_rgb = F3ToRgb(bdc);
+    g_needs_save = true;
+  }
+  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité de la bordure"),
+                                 &g_cfg.border_alpha, 0, 100, "%d%%");
+  g_needs_save |= WheelSliderInt(i18n::Tr("Épaisseur de la bordure"),
+                                 &g_cfg.border_thickness, 1, 4, "%d px");
+  ImGui::EndDisabled();
+  ImGui::EndDisabled();
 
   SeparatorText(i18n::Tr("Couleurs"));
   float tc[4], qc[4];

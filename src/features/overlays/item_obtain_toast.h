@@ -74,17 +74,46 @@ struct ItemObtainToastConfig {
   // fait le natif. Le jour où le toolkit prendra un alpha, il n'y aura qu'un
   // paramètre à passer ici.
 
-  // Ancrage. `pos_x` négatif = centré horizontalement, ce qui reproduit le natif
-  // (il place son cadre à 220 sur une largeur de référence de 640, puis
-  // recentre). `pos_y` = 75, la valeur native.
-  int  pos_x = -1;
-  int  pos_y = 75;
+  // ── Ancrage ─────────────────────────────────────────────────────────────
+  // `pos_x` négatif = centré horizontalement, ce qui reproduit le natif (il
+  // place son cadre à 220 sur une largeur de référence de 640, puis recentre).
+  // `pos_y` = 75, la valeur native.
+  //
+  // Ces deux champs ne se règlent PAS au curseur : ils sont pilotés par une
+  // ancre qu'on attrape à la souris quand `locked` est faux — le geste direct
+  // plutôt que deux nombres qu'il faut régler à l'aveugle, comme le fait déjà
+  // le suivi de quête. Glisser l'ancre sort du centrage (`pos_x` devient
+  // absolu), puisqu'on ne peut pas à la fois centrer et placer.
+  bool locked = true;
+  int  pos_x  = -1;
+  int  pos_y  = 75;
+
+  // Compacité : l'espace ENTRE deux lignes, et la marge verticale à l'intérieur
+  // d'une ligne. La seconde n'agit que sans le cadre RO — avec, la hauteur est
+  // imposée par la grille de tuiles (cf. le rendu).
+  int  row_gap = 2;
+  int  pad_v   = 3;
 
   bool show_icon  = true;
   bool show_frame = true;  // cadre clair « sysbox », comme le client
-  // (Pas de réglage d'opacité du cadre : `ro::DrawDescPanelFrame` blitte ses
+  // (Pas de réglage d'opacité du cadre RO : `ro::DrawDescPanelFrame` blitte ses
   // textures sans teinte. Un champ persisté qui ne ferait rien serait pire que
   // son absence — cf. la note sur le fondu ci-dessus.)
+
+  // ── Fond libre, quand le cadre RO est masqué ────────────────────────────
+  // Sans le cadre, le texte se retrouvait à nu sur la scène et devenait
+  // illisible dès qu'un décor clair passait dessous. D'où un fond à soi :
+  // couleur, opacité, arrondi, et une bordure facultative. Ces champs sont
+  // INERTES tant que `show_frame` est vrai — le panneau les grise en
+  // conséquence, ils ne se contredisent jamais à l'écran.
+  bool bg_enabled       = true;
+  int  bg_rgb           = 0x101014;
+  int  bg_alpha         = 70;  // %
+  int  bg_rounding      = 4;   // px ; 0 = angles droits
+  bool border_enabled   = true;
+  int  border_rgb       = 0x000000;
+  int  border_alpha     = 90;  // %
+  int  border_thickness = 1;   // px
 
   // Le natif écrit en noir sur son cadre clair ; `qty_rgb` colore le suffixe
   // « - N obtained. » pour que la quantité se détache du nom.
