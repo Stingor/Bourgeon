@@ -262,7 +262,7 @@ Résolu via les 25 libellés poussés par `UIBattleMsgOptionWnd_ctor 0x008d6ba0`
 | 22 | 0xBA4 | Call messages | |
 | 23 | 0xFBC | Repayment-exp (guilde) | |
 | 24 | 0xFBE | Equip attribute changes | |
-| 25 (0x19) | — | **Broadcast / annonce** | hors table : toujours affiché sur tous les onglets |
+| 25 (0x19) | — | **Broadcast / annonce** | hors table côté client : toujours affiché sur tous les onglets. ⚠ Bourgeon lui ajoute une **26e case de filtre**, qui n'existe QUE chez nous (le nœud n'a pas d'octet pour elle) et vit dans `chat_layout.yml`. |
 
 ### 3.2 API `UIWindowMgr_ChatAction` @ `0x00a4ad20` — signature corrigée
 
@@ -1081,7 +1081,11 @@ natif ne concerne que la fenêtre native).
    - Canaux + filtres lus dans `g_ChatChannelRegistry` /
      `g_ChatDetachedChannelRegistry` (parcours du std::map MSVC sous SEH, borné à
      10) ; repli sur un canal « Public » qui accepte tout si le registre n'est pas
-     lisible. Routage = `filtre[type]`, broadcast partout.
+     lisible. Routage = `filtre[type]` sur **26** cases : les 25 du registre, plus
+     le broadcast (t25), que le natif imposait partout et que le joueur peut
+     désormais taire onglet par onglet. Cette 26e case n'a pas d'octet dans le
+     nœud — `WriteChannelFilter` s'arrête à 25 — et ne survit que par
+     `chat_layout.yml`. Seul le repère « session précédente » y échappe (`pinned`).
    - Rendu : word-wrap multi-couleur maison (^RRGGBB), icônes `^i[id]`, liens
      `<ITEML>` résolus en `[Nom]` + icône, clic DROIT → description (armée hors
      frame ImGui via `itemcell::DeferDescById`). Zone de log au fond sombre : les

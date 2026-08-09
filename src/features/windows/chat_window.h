@@ -443,6 +443,15 @@ class ChatWindow : public Plugin {
     uint32_t         rgb = 0xFFFFFF;
     uint8_t          type = 0;
     char             source = 'A';  // 'A' = ChatAction, 'W' = WndProc natif
+    // Ligne À NOUS, qu'aucun filtre de type ne concerne. Le repère de session
+    // posé par `LoadHistory` en est le seul cas : il porte le type broadcast
+    // pour paraître dans tous les onglets, et depuis que le broadcast a sa
+    // propre case (t25), ce type ne suffit plus à le garantir — décocher les
+    // annonces serveur effacerait le trait qui sépare hier d'aujourd'hui.
+    //
+    // Volontairement NON sérialisé : relu depuis l'historique, un repère n'est
+    // plus un repère, juste une vieille ligne parmi les autres.
+    bool             pinned = false;
     // Conversation 1:1 à laquelle cette ligne appartient : le nom du CORRESPONDANT
     // (jamais le nôtre), en UTF-8, dans les deux sens de la conversation. Vide pour
     // tout le reste.
@@ -469,8 +478,9 @@ class ChatWindow : public Plugin {
 
  private:
   // Un canal, tel que le registre natif le décrit (nom + 25 octets de filtre).
-  // `node` est l'adresse du nœud : les 25 cases d'options écrivent DEDANS, comme
-  // le fait la fenêtre native 0x84 — le registre reste la source de vérité.
+  // `node` est l'adresse du nœud : les 25 PREMIÈRES cases d'options écrivent
+  // DEDANS, comme le fait la fenêtre native 0x84 — le registre reste la source de
+  // vérité. La 26e, elle, n'a pas d'octet là-bas (cf. `filter` plus bas).
   struct Channel {
     // 🔴 Identifiant STABLE, ENGENDRÉ PAR NOUS, jamais réutilisé. C'est lui qui
     // porte tout ce que nous attachons à un canal (réglages, état détaché,
@@ -512,7 +522,18 @@ class ChatWindow : public Plugin {
     // son en-tête.
     bool        locked = false;
     uintptr_t   node = 0;
-    uint8_t     filter[25] = {};
+    // 🔴 VINGT-SIX cases, alors que le nœud natif n'en porte que 25 : la dernière
+    // (index 25 = le type broadcast, celui des annonces serveur) est À NOUS. Le
+    // client ne filtre JAMAIS le broadcast — il n'a donc aucun octet où l'écrire,
+    // et `WriteChannelFilter` s'arrête à 25 exprès. Le joueur, lui, veut pouvoir
+    // taire les annonces dans l'onglet où il suit sa guilde, et c'est justement le
+    // seul type qu'il ne pouvait pas décocher.
+    //
+    // ⚠ Le défaut d'un `Channel` neuf est ZÉRO, donc « tout coupé » : chaque site
+    // de création remplit le tableau à 1 (`memset`), et la relecture d'une
+    // disposition écrite AVANT cette case doit faire de même pour ce qu'elle n'y
+    // trouve pas — sinon les annonces disparaîtraient d'un coup, sans un mot.
+    uint8_t     filter[26] = {};
     // Métriques de mise en page de SA fenêtre, mesurées à la frame précédente
     // (arrondi de la hauteur par rangées entières). Elles vivent sur le canal et
     // pas sur la classe : deux fenêtres n'ont ni la même hauteur de ligne ni le
@@ -1145,8 +1166,10 @@ void IngestNativeLine(const char* text, uint32_t rgb, int type,
 // drainée). Renvoie false tant que la native vit — c'est son WndProc qui alimente.
 bool IngestPluginLine(const char* text, uint32_t rgb);
 
-// Libellé d'un des 25 types de message (enum §3.1.1 de la doc). Volontairement
-// en anglais : ce sont les libellés du client (msgstringtable), ceux que les
-// joueurs lisent dans la fenêtre native d'options de log.
+// Libellé d'un des 25 types de message, plus le broadcast 0x19 (enum §3.1.1 de
+// la doc). Volontairement en anglais : ce sont les libellés du client
+// (msgstringtable), ceux que les joueurs lisent dans la fenêtre native d'options
+// de log. Le broadcast n'y figure pas — il n'y était pas filtrable — et reprend
+// le mot du jeu, « Broadcast ».
 const char* TypeLabel(int type);
 }  // namespace chatwnd

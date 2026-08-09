@@ -143,10 +143,18 @@ constexpr int kMsgCmdRejectsItemTag = 0xAFC;
 // parcours d'arbre autant que l'affichage.
 constexpr int kMaxChannels = 10;
 
-// 25 types + le broadcast (0x19), qui n'est pas dans la table de filtre.
+// 25 types dans la table de filtre NATIVE, plus le broadcast (0x19), qui n'y est
+// pas : le client l'affiche partout, sans jamais demander son avis à personne.
 constexpr int kTypeCount     = 25;
 constexpr int kTypeBroadcast = 0x19;
 constexpr int kTypeWhisper   = 2;
+
+// 🔴 NOTRE table à nous en compte une de plus, et c'est toute la différence : la
+// case d'index `kTypeBroadcast` (25) filtre les annonces serveur, que le natif
+// laissait passer de force. Elle n'a AUCUN octet en face dans le nœud du registre
+// — `WriteChannelFilter` refuse d'aller au-delà de 25, et déborder d'un octet là
+// écrirait dans le champ suivant du nœud client.
+constexpr int kFilterCount = kTypeCount + 1;
 
 // L'emote qui sert d'étiquette au bouton du sélecteur : `ET_SMILE`, la seule qui
 // annonce sans ambiguïté ce qu'on va trouver derrière. Déclarée ICI, avec les
@@ -886,6 +894,11 @@ int ReadRegistry(uintptr_t registry_addr, RawChannel* out, int out_max) {
 
 // Pose l'octet de filtre d'un canal, exactement comme le fait la fenêtre native
 // d'options de log (UIBattleMsgOptionWnd_OnClickCheckbox écrit node+0x2C+type).
+//
+// 🔴 La borne `kTypeCount` — et NON `kFilterCount` — est ce qui protège le nœud :
+// notre case broadcast n'a pas d'équivalent chez le client, et l'octet qui la
+// suivrait à node+0x2C+25 appartient à autre chose. Le refus est silencieux parce
+// que l'appelant, lui, coche les 26 cases sans avoir à savoir laquelle est nôtre.
 void WriteChannelFilter(uintptr_t node, int type, bool on) {
   if (node == 0 || type < 0 || type >= kTypeCount) return;
   __try {
@@ -2316,11 +2329,20 @@ bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const 
   // avant à la case « Whisper » de l'onglet.
   //
   // Placé AVANT le diagnostic, comme la règle du dessus : c'est du ROUTAGE, pas
-  // du filtrage. Le diagnostic désactive les 25 filtres de type, il ne renvoie pas
+  // du filtrage. Le diagnostic désactive les filtres de type, il ne renvoie pas
   // une ligne dans une fenêtre qui n'est pas la sienne.
   if (!line.whisper_with.empty()) return false;
-  if (diagnostic_) return true;              // diagnostic : on ne filtre rien
-  if (line.type >= kTypeCount) return true;  // broadcast : tous les onglets
+  // Nos propres repères ne sont d'aucun type : ils décrivent le journal, ils n'y
+  // participent pas. Avant le diagnostic pour la même raison que ci-dessus.
+  if (line.pinned) return true;
+  if (diagnostic_) return true;  // diagnostic : on ne filtre rien
+  // 🔴 Le broadcast (t25) EST filtré, contrairement au natif : c'est la 26e case,
+  // celle que le client ne pouvait pas offrir faute d'octet pour la ranger. Tout
+  // ce qui dépasserait encore reste affiché — un type qu'un serveur inventerait
+  // sans nous prévenir doit se voir, pas se perdre.
+  static_assert(sizeof(Channel::filter) == static_cast<size_t>(kFilterCount),
+                "la table de filtre du .h et kFilterCount ont divergé");
+  if (line.type >= kFilterCount) return true;
   return channel.filter[line.type] != 0;
 }
 
@@ -2405,7 +2427,16 @@ void ChatWindow::RefreshChannels() {
                                         : 0u);
     channel.node     = raw[i].node;
     channel.name     = std::move(name);
-    std::memcpy(channel.filter, raw[i].filter, sizeof(channel.filter));
+    // 🔴 La taille de la SOURCE, jamais celle de la destination : le POD relevé
+    // dans le registre n'a que 25 octets, notre table en a 26. `sizeof` sur la
+    // destination lirait un octet au-delà de `raw[i]` — et écraserait au passage
+    // notre case broadcast avec ce qu'il aurait trouvé là.
+    std::memcpy(channel.filter, raw[i].filter, sizeof(raw[i].filter));
+    // Le registre natif ignore tout du broadcast : un canal qu'il vient de nous
+    // apprendre le laisse donc passer, comme le client l'a toujours fait. Un
+    // canal déjà connu, lui, garde le choix du joueur — il est déjà dans
+    // `channel`, recopié de `channels_[found]` un peu plus haut.
+    if (found < 0) channel.filter[kTypeBroadcast] = 1;
     merged.push_back(std::move(channel));
   }
 
@@ -4696,17 +4727,22 @@ void ChatWindow::LoadLayout() {
       // d'être cassée.
       channel.locked   = node["locked"].as<bool>(false);
       // ⚠ Un canal rechargé n'a PAS de nœud de registre, et n'en aura pas : la
-      // fusion est coupée dès que notre fichier fait autorité. Ses 25 filtres
+      // fusion est coupée dès que notre fichier fait autorité. Ses filtres
       // vivent donc UNIQUEMENT chez nous — ce qui suffit, puisque c'est nous qui
       // filtrons l'affichage. Le chat natif, lui, garde sa propre copie jusqu'à ce
       // qu'on écrive vraiment dans les deux registres.
       channel.detach_owned = true;
+      // 🔴 « TOUT COCHÉ » D'ABORD, le fichier ensuite — et pas l'inverse. Une
+      // disposition écrite avant la case broadcast ne porte que 25 valeurs ; les
+      // cases qu'elle ne nomme pas garderaient le défaut du `Channel`, qui est
+      // ZÉRO. Le joueur qui met à jour verrait alors les annonces serveur
+      // disparaître de tous ses onglets d'un coup, sans avoir rien décoché et
+      // sans un mot pour l'expliquer. Ce qu'un fichier ne dit pas, il l'accepte.
+      std::memset(channel.filter, 1, sizeof(channel.filter));
       const YAML::Node filter = node["filter"];
       if (filter && filter.IsSequence()) {
-        for (size_t i = 0; i < filter.size() && i < kTypeCount; ++i)
+        for (size_t i = 0; i < filter.size() && i < kFilterCount; ++i)
           channel.filter[i] = filter[i].as<bool>(true) ? 1 : 0;
-      } else {
-        std::memset(channel.filter, 1, sizeof(channel.filter));
       }
       // L'absence de bloc « style » VEUT DIRE « suit les réglages généraux » :
       // c'est l'état par défaut, pas une valeur manquante à combler.
@@ -4784,7 +4820,9 @@ void ChatWindow::SaveLayout() const {
     // le fichier est fait pour se relire à l'œil.
     out << YAML::Key << "locked" << YAML::Value << channel.locked;
     out << YAML::Key << "filter" << YAML::Value << YAML::Flow << YAML::BeginSeq;
-    for (int i = 0; i < kTypeCount; ++i) out << (channel.filter[i] != 0);
+    // 26 valeurs : la dernière est la case broadcast, qui n'existe que chez nous
+    // et n'a donc nulle part ailleurs où survivre à la fermeture du jeu.
+    for (int i = 0; i < kFilterCount; ++i) out << (channel.filter[i] != 0);
     out << YAML::EndSeq;
     // L'apparence n'est écrite QUE si elle est propre à ce canal. Sérialiser une
     // copie des réglages généraux les figerait : à la relecture, l'onglet cesserait
@@ -4915,11 +4953,14 @@ void ChatWindow::LoadHistory() {
   if (restored.empty()) return;
 
   // Un séparateur, parce que l'heure affichée ment sur la date : une ligne d'hier
-  // soir se réaffiche avec une heure parfaitement plausible. Type « broadcast »,
-  // donc visible dans TOUS les onglets quel que soit leur filtre.
+  // soir se réaffiche avec une heure parfaitement plausible. Visible dans TOUS les
+  // onglets quel que soit leur filtre — et c'est `pinned` qui le garantit
+  // désormais, plus le type broadcast : celui-ci a sa case depuis qu'on peut
+  // taire les annonces serveur, et le repère aurait disparu avec elles.
   Line mark;
-  mark.type = static_cast<uint8_t>(kTypeBroadcast);
-  mark.rgb  = 0x9B9B9B;  // COLORREF gris, comme les en-têtes du client
+  mark.pinned = true;
+  mark.type   = static_cast<uint8_t>(kTypeBroadcast);
+  mark.rgb    = 0x9B9B9B;  // COLORREF gris, comme les en-têtes du client
   Run run;
   run.text = saved_at.empty()
                  ? std::string(i18n::Tr("---- session precedente ----"))
@@ -5124,9 +5165,11 @@ void ChatWindow::MoveChannelToGroup(int from, uint32_t group, int dest_slot) {
   layout_dirty_    = true;
 }
 
-// Les 25 cases d'options de log du canal courant. Elles écrivent DIRECTEMENT
-// l'octet du registre (node+0x2C+type), exactement comme la fenêtre native 0x84 :
-// le registre reste la source de vérité, et le chat natif suit le même filtre.
+// Les 26 cases d'options de log du canal courant. Les 25 premières écrivent
+// DIRECTEMENT l'octet du registre (node+0x2C+type), exactement comme la fenêtre
+// native 0x84 : le registre reste la source de vérité, et le chat natif suit le
+// même filtre. La 26e — le broadcast — n'a pas d'octet là-bas et ne vit que chez
+// nous, dans la disposition sauvegardée.
 void ChatWindow::DrawLogOptionsPopup() {
   // Marge du popup resserrée : celle du cadre du chat (réglable, jusqu'à 12 px)
   // vaut pour une fenêtre, pas pour un menu — un menu contextuel doit se lire d'un
@@ -5324,22 +5367,26 @@ void ChatWindow::DrawLogOptionsPopup() {
   }
   ImGui::Separator();
 
-  // 🔴 Les 25 filtres vivent dans un SOUS-MENU. À plat, ils enterraient sous
-  // vingt-cinq lignes les deux ou trois actions qu'on vient chercher — et un menu
+  // 🔴 Les filtres vivent dans un SOUS-MENU. À plat, ils enterraient sous
+  // vingt-six lignes les deux ou trois actions qu'on vient chercher — et un menu
   // qu'on ne lit plus est un menu qu'on n'utilise plus. Le compte des types actifs
   // est affiché dans le libellé : c'est l'information qu'on voulait obtenir en
   // ouvrant, dans neuf cas sur dix, sans avoir à dérouler.
   int active_filters = 0;
-  for (int i = 0; i < kTypeCount; ++i)
+  for (int i = 0; i < kFilterCount; ++i)
     if (channel->filter[i] != 0) ++active_filters;
   char menu_label[64];
   std::snprintf(menu_label, sizeof(menu_label), i18n::Tr("Filtres du log  (%d/%d)###chatflt_menu"),
-                active_filters, kTypeCount);
+                active_filters, kFilterCount);
   if (ImGui::BeginMenu(menu_label)) {
-    // Vingt-cinq cases : c'est ici que le style compact rend le plus.
+    // Vingt-six cases : c'est ici que le style compact rend le plus.
     PushStyleCompact();
+    // 🔴 Les boucles vont jusqu'à `kFilterCount`, donc la case broadcast suit ses
+    // sœurs — « tout décocher » qui laisserait passer les annonces serveur serait
+    // un mensonge. C'est `WriteChannelFilter` qui écarte tout seul l'index 25 du
+    // registre natif, où il n'a pas d'octet.
     if (ro::RoSmallButton(i18n::Tr("Tout cocher"))) {
-      for (int i = 0; i < kTypeCount; ++i) {
+      for (int i = 0; i < kFilterCount; ++i) {
         channel->filter[i] = 1;
         layout_dirty_      = true;
         WriteChannelFilter(channel->node, i, true);
@@ -5347,14 +5394,14 @@ void ChatWindow::DrawLogOptionsPopup() {
     }
     ImGui::SameLine();
     if (ro::RoSmallButton(i18n::Tr("Tout décocher"))) {
-      for (int i = 0; i < kTypeCount; ++i) {
+      for (int i = 0; i < kFilterCount; ++i) {
         channel->filter[i] = 0;
         layout_dirty_      = true;
         WriteChannelFilter(channel->node, i, false);
       }
     }
     ImGui::Separator();
-    for (int i = 0; i < kTypeCount; ++i) {
+    for (int i = 0; i < kFilterCount; ++i) {
       bool on = channel->filter[i] != 0;
       // Le numéro de type en tête — mais SEULEMENT en mode diagnostic : c'est là
       // qu'il sert (relier une ligne préfixée « t07 » à la case qui la laisse
