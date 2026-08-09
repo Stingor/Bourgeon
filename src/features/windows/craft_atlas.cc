@@ -318,7 +318,7 @@ void CraftAtlas::OnRenderUI() {
                                       ImGui::GetContentRegionAvail().x * 0.55f);
       if (ImGui::BeginChild("##atlas_list", ImVec2(list_w, 0.0f),
                             ImGuiChildFlags_Borders)) {
-        if (ImGui::BeginTabBar("##atlas_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+        if (ro::RoBeginTabBar("##atlas_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
           if (ImGui::BeginTabItem(i18n::Tr("Métiers"))) {
             tab_ = 0; DrawSkillTree(); ImGui::EndTabItem();
           }
@@ -332,7 +332,7 @@ void CraftAtlas::OnRenderUI() {
             tab_ = 3; DrawArrowList(); ImGui::EndTabItem();
           }
           // EndTabBar DOIT rester dans le if (BeginTabBar) : ImGui l'exige.
-          ImGui::EndTabBar();
+          ro::RoEndTabBar();
         }
       }
       ImGui::EndChild();

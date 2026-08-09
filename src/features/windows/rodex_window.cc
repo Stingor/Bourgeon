@@ -1624,7 +1624,7 @@ void RodexWindow::DrawMailList() {
   }
 
   static const char* kTabs[4] = {"Reçus", "Compte", "Retournés", "Tous"};
-  if (ImGui::BeginTabBar("rodex_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+  if (ro::RoBeginTabBar("rodex_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
     for (int tab = 0; tab < 4; ++tab) {
       if (tab == 1 && !show_account) continue;
       // ### : le compteur change à chaque courrier reçu, l'identité de l'onglet
@@ -1642,7 +1642,7 @@ void RodexWindow::DrawMailList() {
         ImGui::EndTabItem();
       }
     }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
 
   // Filtre : équivalent du bouton « rechercher » natif. Il porte sur l'expéditeur

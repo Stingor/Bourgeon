@@ -3219,13 +3219,13 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::TextColored(kGray, i18n::Tr("Aucune compétence."));
     return;
   }
-  if (ImGui::BeginTabBar("cs_skill_tabs")) {
+  if (ro::RoBeginTabBar("cs_skill_tabs")) {
     for (int g = 0; g < group_count; ++g) {
       char label[96];
       std::snprintf(label, sizeof(label), i18n::Tr("%s###skgrp%d"), groups[g].label, g);
       if (ImGui::BeginTabItem(label)) { skill_tab_ = g; ImGui::EndTabItem(); }
     }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   if (skill_tab_ >= group_count) skill_tab_ = 0;  // le groupe retenu a disparu (job change)
 
@@ -4165,13 +4165,13 @@ void CharacterSheet::DrawGuildTab() {
   ImGui::Separator();
 
   // ── Sous-onglets Membres / Postes / Relations ─────────────────────────────
-  if (ImGui::BeginTabBar("cs_guild_sub")) {
+  if (ro::RoBeginTabBar("cs_guild_sub")) {
     if (ImGui::BeginTabItem(i18n::Tr("Membres")))     { guild_sub_tab_ = 0; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Postes")))      { guild_sub_tab_ = 2; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Compétences"))) { guild_sub_tab_ = 3; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Relations")))   { guild_sub_tab_ = 1; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Expulsions")))  { guild_sub_tab_ = 4; ImGui::EndTabItem(); }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
 
   // Hauteur laissée à la liste : tout sauf la barre d'actions du bas.
@@ -5450,7 +5450,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   if (!is_master)
     ImGui::TextColored(kRed, i18n::Tr("Tu n'es pas maître de guilde : le serveur ignorera l'envoi."));
   ImGui::Spacing();
-  if (!ImGui::BeginTabBar("cs_emblem_tabs")) {
+  if (!ro::RoBeginTabBar("cs_emblem_tabs")) {
     ro::EndRoPopupModal();
     return;
   }
@@ -5464,7 +5464,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
     ImGui::EndTabItem();
   }
   if (!ImGui::BeginTabItem(i18n::Tr("Choisir un fichier"))) {
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
     ImGui::Separator();
     if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
     if (!guild_emblem_diag_.empty()) ImGui::TextColored(kGray, "%s", guild_emblem_diag_.c_str());
@@ -5577,7 +5577,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   }
   ImGui::EndDisabled();
   ImGui::EndTabItem();
-  ImGui::EndTabBar();
+  ro::RoEndTabBar();
 
   ImGui::Separator();
   if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
@@ -7270,7 +7270,7 @@ void CharacterSheet::OnRenderUI() {
   // Onglets Equipement / Costume / Presets / Titres / Guilde / Grimoire.
   // `tab_request_` (posé par OpenSkillsTab) force la sélection UNE frame : ImGui
   // choisit l'onglet au moment où il le dessine, un hook ne peut pas l'imposer.
-  if (ImGui::BeginTabBar("cs_tabs")) {
+  if (ro::RoBeginTabBar("cs_tabs")) {
     auto flag = [this](int idx) {
       return tab_request_ == idx ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
     };
@@ -7280,7 +7280,7 @@ void CharacterSheet::OnRenderUI() {
     if (ImGui::BeginTabItem(i18n::Tr("Titres"),     nullptr, flag(3))) { tab_ = 3; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Guilde"),     nullptr, flag(4))) { tab_ = 4; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Grimoire"),   nullptr, flag(5))) { tab_ = 5; ImGui::EndTabItem(); }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   tab_request_ = -1;
   costume_ = (tab_ == 1);

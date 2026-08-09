@@ -771,7 +771,7 @@ void MonsterInfoWindow::OnRenderUI() {
     } else {
       DrawHeader(*mob);
       ImGui::Separator();
-      if (ImGui::BeginTabBar("##monsterinfo_tabs")) {
+      if (ro::RoBeginTabBar("##monsterinfo_tabs")) {
         if (ImGui::BeginTabItem(i18n::Tr("Stats"))) {
           DrawStatsTab(*mob);
           ImGui::EndTabItem();
@@ -803,7 +803,7 @@ void MonsterInfoWindow::OnRenderUI() {
             ImGui::EndTabItem();
           }
         }
-        ImGui::EndTabBar();
+        ro::RoEndTabBar();
       }
     }
   }

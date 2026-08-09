@@ -525,6 +525,8 @@ SkinTex g_bar_l, g_bar_m, g_bar_r, g_iconnum;
 SkinTex g_up_l, g_up_m, g_up_r;                    // barre de titre desc (skill_upbar)
 SkinTex g_sb_lm, g_sb_rm, g_sb_ld, g_sb_md, g_sb_rd;  // cadre boîte desc (sysbox)
 SkinTex g_sb_lu, g_sb_mu, g_sb_ru;                    // haut du sysbox (panels sans titre)
+SkinTex g_tab_l_on, g_tab_m_on, g_tab_r_on;     // onglet ACTIF   (tabh_*_on)
+SkinTex g_tab_l_off, g_tab_m_off, g_tab_r_off;  // onglet inactif (tabh_*_off)
 bool g_skin_active = false;  // BeginRoWindow a pris la branche skin (pour EndRoWindow)
 bool g_collapse_allowed = true;  // faux hors du jeu (cf. SetWindowCollapseAllowed)
 
@@ -616,6 +618,20 @@ bool BlitStretch(ImDrawList* dl, const SkinTex& t, ImVec2 p0, ImVec2 p1,
   // Luminosité + opacité globales appliquées à chaque pièce.
   dl->AddImage((ImTextureID)t.tex, p0, p1, ImVec2(0, 0), ImVec2(1, 1),
                ApplySkinTint(col));
+  return true;
+}
+
+// Comme BlitStretch, mais ne prend qu'une PARTIE de la pièce (rect source en
+// PIXELS, pas en uv). Sert aux pièces qu'il faut garder NETTES à une taille que
+// l'art ne prévoit pas : on blitte les coins à l'échelle 1:1 et on n'étire que
+// les bords — uniformes le long de l'axe étiré, donc sans déformation visible.
+bool BlitPart(ImDrawList* dl, const SkinTex& t, ImVec2 p0, ImVec2 p1,
+              float sx0, float sy0, float sx1, float sy1,
+              ImU32 col = IM_COL32_WHITE) {
+  if (!t.tex || t.w <= 0 || t.h <= 0) return false;
+  const ImVec2 uv0(sx0 / (float)t.w, sy0 / (float)t.h);
+  const ImVec2 uv1(sx1 / (float)t.w, sy1 / (float)t.h);
+  dl->AddImage((ImTextureID)t.tex, p0, p1, uv0, uv1, ApplySkinTint(col));
   return true;
 }
 
@@ -2341,6 +2357,157 @@ bool RoCombo(const char* label, int *current_item, const char* const items[], in
     ro::RoEndCombo();
   }
   return changed;
+}
+
+// ── Onglets (tab bar) ─────────────────────────────────────────────────────────
+// Pièces du client : tabh_{l,m,r}_{on,off}.bmp (5x20, basic_interface). Ce n'est
+// pas un fond plein mais un CONTOUR d'1 px (#ADADAD) à intérieur transparent :
+// `l`/`r` portent le coin haut arrondi (3x3) puis le bord vertical, `m` la ligne
+// du haut. L'état « on » (actif) n'a PAS de ligne du bas — l'onglet s'ouvre sur
+// le contenu ; « off » la porte et s'en referme. C'est ce pont ouvert qui dit la
+// sélection dans le client, pas la couleur.
+// L'intérieur étant creux, c'est nous qui le peignons : avec `tab_col` /
+// `tab_inact` du skin, qui restent donc les leviers du joueur.
+//
+// Le rendu se GREFFE sur le vrai TabBar d'ImGui (sélection, ordre, scroll,
+// clavier, drag&drop : rien n'est réimplémenté) — on rend ses fonds transparents
+// et on peint l'art à leur place, d'après le layout de la frame PRÉCÉDENTE
+// (`Offset`/`Width` ne sont recalculés qu'au premier BeginTabItem). Aucun retard
+// visible pour autant : à sa toute première frame, ImGui ne dessine pas non plus
+// ses onglets (TabItemEx sort avant le rendu quand `tab_appearing`).
+namespace {
+
+// Largeur du coin de l'art (px). Au-delà, `l`/`r` ne sont plus qu'un bord
+// vertical d'1 px, uniforme -> étirable à n'importe quelle hauteur d'onglet
+// (17 px dans une fenêtre RO, contre 20 px à l'art) sans le déformer.
+constexpr float kTabCorner = 3.0f;
+constexpr int kTabBarColors = 7;  // à dépiler dans RoEndTabBar
+
+void EnsureTabTex() {
+  EnsureTex("basic_interface\\tabh_l_on.bmp",   skin::kTabhLOn,   g_tab_l_on);
+  EnsureTex("basic_interface\\tabh_m_on.bmp",   skin::kTabhMOn,   g_tab_m_on);
+  EnsureTex("basic_interface\\tabh_r_on.bmp",   skin::kTabhROn,   g_tab_r_on);
+  EnsureTex("basic_interface\\tabh_l_off.bmp",  skin::kTabhLOff,  g_tab_l_off);
+  EnsureTex("basic_interface\\tabh_m_off.bmp",  skin::kTabhMOff,  g_tab_m_off);
+  EnsureTex("basic_interface\\tabh_r_off.bmp",  skin::kTabhROff,  g_tab_r_off);
+}
+
+// Peint UN onglet dans son rect écran : intérieur plein puis contour RO.
+void DrawRoTab(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool selected, bool hovered) {
+  const SkinTex& l = selected ? g_tab_l_on : g_tab_l_off;
+  const SkinTex& m = selected ? g_tab_m_on : g_tab_m_off;
+  const SkinTex& r = selected ? g_tab_r_on : g_tab_r_off;
+
+  ImVec4 fill(g_cfg.tab_inact[0], g_cfg.tab_inact[1], g_cfg.tab_inact[2],
+              g_cfg.tab_inact[3]);
+  if (selected) {
+    fill = ImVec4(g_cfg.tab_col[0], g_cfg.tab_col[1], g_cfg.tab_col[2],
+                  g_cfg.tab_col[3]);
+  } else if (hovered) {  // éclaircissement du survol, comme le thème ImGui
+    fill.x = ImMin(fill.x + 0.055f, 1.0f);
+    fill.y = ImMin(fill.y + 0.055f, 1.0f);
+    fill.z = ImMin(fill.z + 0.055f, 1.0f);
+  }
+  // L'onglet ACTIF descend jusqu'en bas du rect (il se fond dans le contenu) ;
+  // l'inactif s'arrête 1 px plus haut, là où son art referme le bord.
+  const float fill_y1 = selected ? p1.y : p1.y - 1.0f;
+  if (fill_y1 > p0.y + 1.0f)
+    dl->AddRectFilled(ImVec2(p0.x + 1.0f, p0.y + 1.0f),
+                      ImVec2(p1.x - 1.0f, fill_y1), ImGui::GetColorU32(fill),
+                      2.0f, ImDrawFlags_RoundCornersTop);
+
+  if (!l.tex || !m.tex || !r.tex) return;  // bmp absent du client -> fond seul
+  const float lh = (float)l.h;
+  const float mw = (float)m.w, mh = (float)m.h;
+  const float rw = (float)r.w, rh = (float)r.h;
+  // Coins à l'échelle 1:1, bords étirés (uniformes -> aucun artefact).
+  BlitPart(dl, l, p0, ImVec2(p0.x + kTabCorner, p0.y + kTabCorner),
+           0.0f, 0.0f, kTabCorner, kTabCorner);
+  BlitPart(dl, l, ImVec2(p0.x, p0.y + kTabCorner), ImVec2(p0.x + 1.0f, p1.y),
+           0.0f, kTabCorner, 1.0f, lh);
+  BlitPart(dl, r, ImVec2(p1.x - kTabCorner, p0.y), ImVec2(p1.x, p0.y + kTabCorner),
+           rw - kTabCorner, 0.0f, rw, kTabCorner);
+  BlitPart(dl, r, ImVec2(p1.x - 1.0f, p0.y + kTabCorner), ImVec2(p1.x, p1.y),
+           rw - 1.0f, kTabCorner, rw, rh);
+  BlitPart(dl, m, ImVec2(p0.x + kTabCorner, p0.y),
+           ImVec2(p1.x - kTabCorner, p0.y + 1.0f), 0.0f, 0.0f, mw, 1.0f);
+  if (!selected)  // ligne du bas : l'onglet inactif se ferme côté contenu
+    BlitPart(dl, m, ImVec2(p0.x, p1.y - 1.0f), ImVec2(p1.x, p1.y),
+             0.0f, mh - 1.0f, mw, mh);
+}
+
+// Peint tous les onglets de la barre + le trait qui prolonge la rangée.
+void DrawRoTabBarArt(ImGuiTabBar* tb) {
+  if (!tb) return;
+  ImGuiContext& g = *ImGui::GetCurrentContext();
+  const ImRect bar = tb->BarRect;
+  if (bar.Max.y - bar.Min.y < 4.0f || bar.Max.x <= bar.Min.x) return;
+  EnsureTabTex();
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->PushClipRect(bar.Min, bar.Max, true);
+  dl->AddCallback(ImCb_PointFilter, nullptr);  // pixel-art net
+  // Bornes ramenées à l'entier : un contour d'1 px posé sur une coordonnée
+  // fractionnaire ressort décalé d'un pixel en échantillonnage POINT (le piège
+  // qui « abîmait » déjà les boutons système d'une barre de titre impaire).
+  const float y0 = ImFloor(bar.Min.y), y1 = ImFloor(bar.Max.y);
+  float last_x = ImFloor(bar.Min.x);
+  for (const ImGuiTabItem& tab : tb->Tabs) {
+    // Seulement les onglets soumis à la frame précédente : une entrée survit un
+    // moment à l'onglet qui a cessé d'être émis, et la peindre laisserait un
+    // onglet fantôme (ImGui, lui, ne la dessine plus).
+    if (tab.LastFrameVisible + 1 < g.FrameCount) continue;
+    if (tab.Flags & ImGuiTabItemFlags_Invisible) continue;
+    // Mêmes coordonnées que TabItemEx, à l'entier près : un bord d'1 px posé sur
+    // une abscisse fractionnaire ressort épaissi ou effacé en filtrage POINT.
+    const float x0 = ImFloor(bar.Min.x + IM_TRUNC(tab.Offset - tb->ScrollingAnim));
+    const float x1 = ImFloor(x0 + tab.Width);
+    if (x1 - x0 < kTabCorner * 2.0f) continue;  // trop étroit pour les 2 coins
+    // VisibleTabId (et non SelectedTabId) : c'est l'onglet dont le CONTENU est
+    // affiché, y compris pendant un aperçu Ctrl+Tab.
+    const bool sel = (tb->VisibleTabId == tab.ID);
+    // Survol de la frame précédente — celle dont on peint le layout.
+    const bool hov = (g.HoveredIdPreviousFrame == tab.ID);
+    DrawRoTab(dl, ImVec2(x0, y0), ImVec2(x1, y1), sel, hov);
+    if (hov) SetHoverCursor(kRoCursorHand);
+    if (x1 > last_x) last_x = x1;
+  }
+  // La rangée se prolonge jusqu'au bord du panneau, comme dans le client : les
+  // onglets inactifs portent déjà cette ligne dans leur art, il ne manque que
+  // l'après-dernier-onglet.
+  if (last_x < bar.Max.x && g_tab_m_off.tex)
+    BlitPart(dl, g_tab_m_off, ImVec2(last_x, y1 - 1.0f),
+             ImVec2(bar.Max.x, y1), 0.0f, (float)g_tab_m_off.h - 1.0f,
+             (float)g_tab_m_off.w, (float)g_tab_m_off.h);
+  dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  dl->PopClipRect();
+}
+
+}  // namespace
+
+bool RoBeginTabBar(const char* str_id, int tab_bar_flags) {
+  // Fonds ImGui neutralisés : l'onglet est entièrement peint par DrawRoTabBarArt.
+  // (Le séparateur de bas de barre d'ImGui reprend ImGuiCol_TabSelected : il
+  // disparaît donc avec eux, et c'est notre trait qui le remplace.)
+  const ImU32 kNone = IM_COL32(0, 0, 0, 0);
+  ImGui::PushStyleColor(ImGuiCol_Tab, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabHovered, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabSelected, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabDimmed, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabDimmedSelected, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabSelectedOverline, kNone);
+  ImGui::PushStyleColor(ImGuiCol_TabDimmedSelectedOverline, kNone);
+  if (!ImGui::BeginTabBar(str_id, tab_bar_flags)) {
+    ImGui::PopStyleColor(kTabBarColors);
+    return false;
+  }
+  DrawRoTabBarArt(ImGui::GetCurrentTabBar());
+  return true;
+}
+
+void RoEndTabBar() {
+  ImGui::EndTabBar();
+  ImGui::PopStyleColor(kTabBarColors);
 }
 
 bool ShowRoSkinSettings() {

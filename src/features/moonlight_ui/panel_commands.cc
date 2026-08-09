@@ -20,7 +20,7 @@ void MoonlightUi::DrawCommandsPanel() {
   {
     PushStyleCompact();
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
-    if (ImGui::BeginTabBar("CommandsSettingsTabs", tab_bar_flags))
+    if (ro::RoBeginTabBar("CommandsSettingsTabs", tab_bar_flags))
     {
       if (ImGui::BeginTabItem(i18n::Tr("Général")))
       {
@@ -440,7 +440,7 @@ void MoonlightUi::DrawCommandsPanel() {
       // EndTabBar DOIT rester dans le if (BeginTabBar) : ImGui l'exige (assert en
       // debug, état de tab bar corrompu en release). Il était appelé juste après
       // l'accolade, donc aussi quand BeginTabBar renvoyait false — onglet replié.
-      ImGui::EndTabBar();
+      ro::RoEndTabBar();
     }
     PopStyleCompact();
   }

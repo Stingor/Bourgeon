@@ -3288,7 +3288,7 @@ void ItemDescWindow::RenderItemWindow() {
     const ImVec2 ws = ImGui::GetWindowSize();
     ImGui::PushClipRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y - 10.0f), true);
   }
-  if (visible && ImGui::BeginTabBar("##itemtabs")) {
+  if (visible && ro::RoBeginTabBar("##itemtabs")) {
     if (ImGui::BeginTabItem(i18n::Tr("Description"))) {
       // Toggle comparaison : replie/déplie la colonne « Équipé » (visible seulement
       // quand la donnée de comparaison native existe).
@@ -3325,7 +3325,7 @@ void ItemDescWindow::RenderItemWindow() {
     // Onglets drops de l'objet principal (item_). En comparaison, ce sont les
     // sources de l'objet évalué, pas de l'équipé.
     RenderTechTabs(item_);
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   // Tout est dessiné : on sait maintenant si un aperçu est survolé, et le drapeau
   // sert à la frame SUIVANTE (cf. `flags`). 🔴 Posé ICI, hors de l'onglet — depuis
@@ -3442,7 +3442,7 @@ void ItemDescWindow::RenderSkillWindow() {
     if (ny < 0.0f) ny = 0.0f;
     if (nx != pos.x || ny != pos.y) ImGui::SetWindowPos(ImVec2(nx, ny));
   }
-  if (visible && ImGui::BeginTabBar("##skilltabs")) {
+  if (visible && ro::RoBeginTabBar("##skilltabs")) {
     if (ImGui::BeginTabItem(i18n::Tr("Description"))) {
       // Nom+SP déjà dans la barre de titre, ID/Max Level déjà dans la desc
       // native (box head) -> on n'affiche QUE la description ici.
@@ -3453,7 +3453,7 @@ void ItemDescWindow::RenderSkillWindow() {
       ImGui::EndTabItem();
     }
     RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   // Rapport de bug contextuel : id + nom de la compétence joints.
   EmitDescBugButton(skill_.id, s_e.name, /*is_skill=*/true);

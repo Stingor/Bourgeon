@@ -328,6 +328,24 @@ void RoEndCombo();
 // construit avec `Tr` — mais comme il se passe nu, la question ne se pose pas.
 bool RoCombo(const char* label, int* current_item, const char* const items[], int items_count);
 
+// Barre d'onglets habillée RO (pièces tabh_{l,m,r}_{on,off} du client : contour
+// gris à coins arrondis, l'onglet ACTIF ouvert sur le contenu). S'utilise
+// EXACTEMENT comme ImGui::BeginTabBar — et les onglets eux-mêmes restent des
+// ImGui::BeginTabItem/EndTabItem ordinaires, rien à convertir de ce côté :
+//   if (ro::RoBeginTabBar("mes_onglets")) {
+//     if (ImGui::BeginTabItem("Un")) { ...; ImGui::EndTabItem(); }
+//     ro::RoEndTabBar();
+//   }
+// RoEndTabBar NE DOIT être appelé QUE si RoBeginTabBar renvoie true (il dépile
+// les couleurs poussées par le Begin).
+//
+// 🔴 Une barre imbriquée dans une autre doit elle aussi passer par RoBeginTabBar :
+// le Begin rend les fonds d'onglet ImGui TRANSPARENTS pour peindre l'art à leur
+// place, et ce style reste actif pendant le contenu de l'onglet ouvert — un
+// ImGui::BeginTabBar qui y resterait nu se retrouverait donc invisible.
+bool RoBeginTabBar(const char* str_id, int tab_bar_flags = 0);
+void RoEndTabBar();
+
 // Barre horizontale 3-slice (btnbar_*) dessinée dans le rect donné, sur le draw
 // list de la fenêtre courante. Pour un footer/bandeau dans une fenêtre RO.
 void DrawBar(float x0, float y0, float x1, float y1);

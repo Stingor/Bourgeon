@@ -1411,7 +1411,7 @@ void StorageWindow::OnRenderUI() {
     // PERSISTANT (bourgeon_settings.yaml) : au 1er rendu de la session on force la
     // sélection sur l'onglet restauré (ImGui ne sérialise pas la sélection d'un
     // TabBar), ensuite c'est le joueur qui pilote.
-    if (ImGui::BeginTabBar("storage_cats", ImGuiTabBarFlags_FittingPolicyScroll)) {
+    if (ro::RoBeginTabBar("storage_cats", ImGuiTabBarFlags_FittingPolicyScroll)) {
       for (int c = 0; c < kNumStgCats; ++c) {
         const ImGuiTabItemFlags tflags =
             (!tab_applied_ && c == cur_tab_) ? ImGuiTabItemFlags_SetSelected : 0;
@@ -1426,7 +1426,7 @@ void StorageWindow::OnRenderUI() {
           ImGui::EndTabItem();
         }
       }
-      ImGui::EndTabBar();
+      ro::RoEndTabBar();
       tab_applied_ = true;
     }
   }

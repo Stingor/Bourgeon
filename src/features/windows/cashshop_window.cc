@@ -673,7 +673,7 @@ void CashShopWindow::OnRenderUI() {
   ImGui::Separator();
 
   //  Onglets de catégorie 
-  if (ImGui::BeginTabBar("cashshop_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+  if (ro::RoBeginTabBar("cashshop_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
     for (int t = 0; t < kNumTabs; ++t) {
       if (!kTabShown[t]) continue;  // onglet toujours vide -> masqué
       char lbl[48];
@@ -689,7 +689,7 @@ void CashShopWindow::OnRenderUI() {
         ImGui::EndTabItem();
       }
     }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   force_tab_ = -1;  // une seule frame : après quoi le joueur reprend la main
 

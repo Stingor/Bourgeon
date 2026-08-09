@@ -870,10 +870,10 @@ void NpcShopWindow::OnRenderUI() {
 
   // ── Onglets Achat / Vente ──
   int prev_mode = cur_mode_;
-  if (ImGui::BeginTabBar("shop_tabs")) {
+  if (ro::RoBeginTabBar("shop_tabs")) {
     if (ImGui::BeginTabItem(i18n::Tr("Acheter"))) { cur_mode_ = kBuy; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Vendre")))  { cur_mode_ = kSell; ImGui::EndTabItem(); }
-    ImGui::EndTabBar();
+    ro::RoEndTabBar();
   }
   if (cur_mode_ != prev_mode) {
     cart_.clear();       // panier propre à chaque onglet
