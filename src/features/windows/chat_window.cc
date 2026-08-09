@@ -1322,6 +1322,14 @@ void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name)
   }
 }
 
+uint64_t ChatWindow::LastLineSeq() const {
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  // La dernière du tampon porte le rang le plus élevé : les rangs suivent l'ordre
+  // d'insertion, et `LoadHistory` — le seul à insérer en tête — renumérote tout
+  // derrière lui (cf. TrimLines).
+  return lines_.empty() ? 0 : lines_.back().seq;
+}
+
 void ChatWindow::ClearHistory() {
   std::lock_guard<std::mutex> lock(lines_mutex_);
   lines_.clear();
@@ -1834,8 +1842,20 @@ void ChatWindow::TrimLines() {
 
   // Les lignes qui viennent d'entrer, comptées ICI plutôt qu'à chacun des trois
   // sites d'ingestion : compte et éviction ne peuvent alors pas diverger.
-  for (size_t i = counted_lines_; i < lines_.size(); ++i)
+  //
+  // 🔴 C'est aussi ici, et NULLE PART AILLEURS, que se pose le rang d'une ligne
+  // (`Line::seq`) : ce parcours est le seul qui voie chaque ligne neuve une fois
+  // et une seule, sous le verrou, quel que soit le site qui l'a poussée. Un
+  // quatrième site d'ingestion en hériterait sans rien avoir à savoir.
+  //
+  // ⚠ `LoadHistory` remet `counted_lines_` à zéro après avoir inséré EN TÊTE :
+  // le tampon entier est alors renuméroté dans son ordre, ce qui remet les
+  // lignes restaurées — les plus anciennes — devant celles de la session. Sans
+  // ça, une ligne d'hier porterait un rang plus élevé que sa cadette.
+  for (size_t i = counted_lines_; i < lines_.size(); ++i) {
+    lines_[i].seq = next_line_seq_++;
     ++type_count_[TypeBucket(lines_[i].type)];
+  }
   counted_lines_ = lines_.size();
 
   // Un type en surnombre perd sa PLUS VIEILLE ligne. Le parcours part du début et
@@ -2311,6 +2331,16 @@ std::string ChatWindow::PlainTextFromWire(const char* wire) const {
 
 // ── Canaux ───────────────────────────────────────────────────────────────────
 bool ChatWindow::ChannelAccepts(const Channel& channel, const Line& line) const {
+  // ── « Vider cet onglet », AVANT toute autre règle ───────────────────────────
+  // C'est un geste du joueur sur SA vue, et il vaut pour une conversation 1:1
+  // comme pour un onglet ordinaire. Il masque, il ne détruit pas : les lignes
+  // restent dans le tampon partagé, les autres onglets les gardent, et
+  // « Réafficher » les ramène toutes.
+  //
+  // 🔴 La garde sur zéro n'est pas décorative : tant que rien n'a été vidé, la
+  // règle ne doit pas s'appliquer DU TOUT. Sans elle, une ligne dont le rang
+  // n'aurait pas encore été posé (seq 0) disparaîtrait de tous les onglets.
+  if (channel.clear_seq != 0 && line.seq <= channel.clear_seq) return false;
   // 🔴 Une conversation 1:1 filtre par CORRESPONDANT, avant tout le reste — le
   // mode diagnostic compris. Y laisser passer quoi que ce soit d'autre serait
   // pire qu'inutile : c'est la fenêtre où le joueur répond sans relire la cible.
@@ -2673,6 +2703,12 @@ void ChatWindow::OnRenderUI() {
   }
   for (int k = 0; k < seen_n; ++k) DrawGroupWindow(seen[k]);
 
+  // 🔴 ICI, et pas dans une fenêtre : une modale ImGui doit s'ouvrir et se dessiner
+  // au même niveau de pile, sinon l'identifiant qu'`OpenPopup` enregistre n'est pas
+  // celui que `BeginPopupModal` cherche — et la modale n'apparaît jamais. Toutes
+  // les fenêtres du chat sont refermées à ce point.
+  DrawCloseConfirmPopup();
+
   // Fermeture différée : cf. `close_channel_id_`. L'historique, lui, RESTE — une
   // conversation se rouvrira avec ce qui a déjà été dit, ce qui est le seul
   // comportement raisonnable quand on referme par erreur.
@@ -2991,8 +3027,10 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
     std::snprintf(close_id, sizeof(close_id), "##gclose%u", group);
     ImGui::InvisibleButton(close_id, ImVec2(h, h));
     close_hovered = ImGui::IsItemHovered();
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-      close_channel_id_ = channels_[active].id;
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+      confirm_close_id_   = channels_[active].id;
+      confirm_close_open_ = true;
+    }
   }
 
   for (size_t i = 0; i < channels_.size(); ++i) {
@@ -3021,8 +3059,14 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
     // Clic MOLETTE = fermer, le geste des onglets partout ailleurs. Il remplace la
     // croix que portait l'en-tête d'une conversation : avec plusieurs onglets dans
     // la fenêtre, une croix unique ne saurait plus lequel elle ferme.
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Middle) && channels_.size() > 1)
-      close_channel_id_ = channel.id;
+    //
+    // 🔴 Il DEMANDE la fermeture, il ne la fait plus : c'est le geste qui part le
+    // plus facilement tout seul — la molette sert aussi à faire défiler le log
+    // juste en dessous, et un cran de trop haut visait un onglet.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Middle) && channels_.size() > 1) {
+      confirm_close_id_   = channel.id;
+      confirm_close_open_ = true;
+    }
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0f))
       drag_tab_ = static_cast<int>(i);
     if (hovered && drag_tab_ < 0) {
@@ -3606,6 +3650,10 @@ void ChatWindow::RefreshSelectBuffer(const Channel& channel) {
   uint32_t key = ingest_kept_;
   key = key * 31u + channel.id;
   key = key * 31u + (timestamps_ ? 1u : 0u);
+  // Le vidage de l'onglet EN FAIT PARTIE : il ne fait entrer aucune ligne, donc
+  // `ingest_kept_` ne bouge pas et le tampon de sélection resterait celui d'avant
+  // le geste — on copierait des lignes qu'on ne voit plus.
+  key = key * 31u + static_cast<uint32_t>(channel.clear_seq);
   for (const char* p = search_; *p != '\0'; ++p)
     key = key * 31u + static_cast<unsigned char>(*p);
   if (key == select_key_) return;
@@ -5165,6 +5213,97 @@ void ChatWindow::MoveChannelToGroup(int from, uint32_t group, int dest_slot) {
   layout_dirty_    = true;
 }
 
+// ── Confirmation avant de fermer un onglet ───────────────────────────────────
+// 🔴 CE QUI EST PERDU, ET CE QUI NE L'EST PAS — et il fallait vérifier avant de
+// l'écrire. Fermer un onglet ne touche PAS aux messages : ils vivent dans
+// `lines_`, un tampon commun à toutes les fenêtres, et tout onglet qui les
+// accepte continue de les montrer. Une conversation rouverte retrouve même ce qui
+// y a été dit (cf. la fermeture différée). Ce qui disparaît, ce sont les RÉGLAGES
+// du canal : ses 26 filtres, son apparence propre, son nom, son identifiant — et
+// un onglet, contrairement à une conversation, ne se rouvre pas tout seul.
+//
+// Annoncer la perte des messages aurait fait renoncer le joueur pour une raison
+// fausse, ce qui est pire qu'un menu sans garde-fou : une confirmation qui se
+// trompe apprend à ne plus lire les confirmations.
+void ChatWindow::DrawCloseConfirmPopup() {
+  // 🔴 L'ID est le SEUL lien entre l'ouverture et le dessin, et il doit survivre à
+  // la traduction du titre : d'où le `###`, dont ImGui ne hache que la fin.
+  static constexpr const char* kId = "###chat_close_confirm";
+  if (confirm_close_open_) {
+    ImGui::OpenPopup(kId);
+    confirm_close_open_ = false;
+  }
+
+  // Le canal peut s'être volatilisé entre la question et la réponse — fusion du
+  // registre, changement de personnage. Par IDENTIFIANT et non par indice, pour
+  // cette raison exacte : un indice aurait désigné le voisin.
+  const Channel* channel = nullptr;
+  for (const Channel& other : channels_)
+    if (other.id == confirm_close_id_) channel = &other;
+  const bool whisper = (channel != nullptr) && !channel->whisper_with.empty();
+
+  if (!ro::BeginRoPopupModal(whisper
+                                 ? i18n::Tr("Fermer la conversation ?###chat_close_confirm")
+                                 : i18n::Tr("Fermer l'onglet ?###chat_close_confirm"))) {
+    // Refermée autrement que par ses boutons (Échap, notamment) : le geste est
+    // ABANDONNÉ. Sans cette remise à zéro, la demande resterait armée et la
+    // prochaine ouverture croirait avoir déjà reçu son oui.
+    confirm_close_id_ = 0;
+    return;
+  }
+  if (channel == nullptr) {  // disparu : la question n'a plus d'objet
+    confirm_close_id_ = 0;
+    ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+    return;
+  }
+
+  // Le nom que le joueur a sous les yeux dans la bande, pas le nom de canal qu'on
+  // a donné à une conversation à sa création.
+  const std::string& label = whisper ? channel->whisper_with : channel->name;
+  if (whisper)
+    ImGui::Text(i18n::Tr("Fermer la conversation avec %s ?"), label.c_str());
+  else
+    ImGui::Text(i18n::Tr("Fermer l'onglet « %s » ?"), label.c_str());
+  ImGui::Spacing();
+
+  // Gris explicite : sur le corps CLAIR d'une fenêtre RO, `TextDisabled` est
+  // illisible — c'est une couleur pensée pour un fond sombre.
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  if (whisper) {
+    ImGui::TextColored(kGray,
+                       i18n::Tr("Rien n'est perdu : le journal garde les messages, et\n"
+                                "rouvrir la conversation les remontrera."));
+  } else {
+    ImGui::TextColored(kGray,
+                       i18n::Tr("Ses réglages partent avec lui : les filtres du log, son\n"
+                                "apparence propre, son nom. Un onglet ne se rouvre pas —\n"
+                                "il faudra le recréer et le régler à nouveau."));
+    ImGui::Spacing();
+    ImGui::TextColored(kGray,
+                       i18n::Tr("Les messages, eux, RESTENT : ils vivent dans un journal\n"
+                                "commun à toutes les fenêtres, et les autres onglets\n"
+                                "continuent de les afficher."));
+  }
+  ImGui::Spacing();
+
+  if (ro::RoButton(i18n::Tr("Fermer"), 110.0f, 0.0f)) {
+    // 🔴 On ne ferme pas ICI : on passe par `close_channel_id_`, consommé quelques
+    // lignes plus bas dans la frame. C'est lui qui porte les gardes communes aux
+    // trois gestes — jamais le dernier canal, jamais le dernier onglet de la
+    // fenêtre principale — et les réécrire ici, c'était les voir diverger.
+    close_channel_id_ = confirm_close_id_;
+    confirm_close_id_ = 0;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) {
+    confirm_close_id_ = 0;
+    ImGui::CloseCurrentPopup();
+  }
+  ro::EndRoPopupModal();
+}
+
 // Les 26 cases d'options de log du canal courant. Les 25 premières écrivent
 // DIRECTEMENT l'octet du registre (node+0x2C+type), exactement comme la fenêtre
 // native 0x84 : le registre reste la source de vérité, et le chat natif suit le
@@ -5196,7 +5335,6 @@ void ChatWindow::DrawLogOptionsPopup() {
     ImGui::PopStyleVar();  // la marge resserrée du menu
     return;
   }
-  int close_request = -1;  // joué APRÈS EndPopup : cf. CloseChannel
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
 
   // Renommage sur place. Le tampon est réamorcé quand le menu change de canal —
@@ -5312,7 +5450,15 @@ void ChatWindow::DrawLogOptionsPopup() {
   const bool can_close =
       channels_.size() > 1 && (channel->detached || docked > 1);
   if (!can_close) ImGui::BeginDisabled();
-  if (ImGui::Selectable(i18n::Tr("Fermer l'onglet"))) close_request = target;
+  // 🔴 Par IDENTIFIANT, et la fermeture attend la modale : `channel` pointe DANS
+  // `channels_`, et fermer pendant que le menu tient encore ce pointeur le rendrait
+  // pendant. C'était le rôle de l'ancien `close_request`, joué après `EndPopup` ;
+  // la confirmation le remplace en repoussant la fermeture bien plus loin — à la
+  // racine du rendu, hors de toute fenêtre, une fois la modale acquittée.
+  if (ImGui::Selectable(i18n::Tr("Fermer l'onglet"))) {
+    confirm_close_id_   = channel->id;
+    confirm_close_open_ = true;
+  }
   if (!can_close) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -5424,13 +5570,34 @@ void ChatWindow::DrawLogOptionsPopup() {
     PopStyleCompact();
     ImGui::EndMenu();
   }
+
+  // ── Vider CET onglet ────────────────────────────────────────────────────────
+  // Sa place est ici, avec les filtres : les deux décident de ce que l'onglet
+  // MONTRE. Et surtout pas à côté de « Fermer l'onglet » — deux gestes qui vident
+  // l'écran, voisins d'un pixel dans un menu, finissent par se confondre.
+  ImGui::Separator();
+  if (ImGui::Selectable(i18n::Tr("Vider cet onglet"))) channel->clear_seq = LastLineSeq();
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip(
+        i18n::Tr("Masque ce que cet onglet affiche aujourd'hui ; la suite s'affichera "
+                 "normalement.\n\nRien n'est détruit : les autres onglets gardent ces "
+                 "lignes, l'historique enregistré aussi,\net « Réafficher tout » les "
+                 "ramène ici."));
+  // Proposée seulement s'il y a quelque chose à défaire — le geste est réversible,
+  // encore faut-il que le joueur le voie, et un menu qui propose toujours d'annuler
+  // ne dit plus rien de l'état de l'onglet.
+  if (channel->clear_seq != 0) {
+    if (ImGui::Selectable(i18n::Tr("Réafficher tout"))) channel->clear_seq = 0;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip(
+          i18n::Tr("Annule le vidage : cet onglet remontre tout ce que ses filtres "
+                   "acceptent.\n\nSauf ce que l'éviction a évacué entre-temps — le "
+                   "tampon ne garde qu'un nombre de lignes borné."));
+  }
+
   ImGui::PopStyleColor();
   ImGui::EndPopup();
   ImGui::PopStyleVar();  // la marge resserrée du menu
-  // 🔴 Hors du popup : `channel` pointe DANS `channels_`, et fermer un canal
-  // réalloue le vecteur. Le faire pendant que le menu tient encore ce pointeur le
-  // rendrait pendant — une frame plus tard, sur une lecture innocente.
-  if (close_request >= 0) CloseChannel(close_request);
 }
 
 // ── Envoi ────────────────────────────────────────────────────────────────────
@@ -6410,6 +6577,12 @@ bool ChatWindow::DrawSettings() {
     changed = true;
   }
   ImGui::SameLine();
-  if (ro::RoButton(i18n::Tr("Vider l'historique###chatwnd_clear"))) ClearHistory();
+  if (ro::RoButton(i18n::Tr("Vider l'historique###chatwnd_clear"))) {
+    ClearHistory();
+    // Les points de coupe par onglet partent avec le tampon qu'ils découpaient :
+    // les laisser ne masquerait plus rien (les rangs à venir sont plus élevés),
+    // mais chaque onglet continuerait de proposer « Réafficher » pour du vide.
+    for (Channel& channel : channels_) channel.clear_seq = 0;
+  }
   return changed;
 }

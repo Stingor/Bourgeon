@@ -452,6 +452,16 @@ class ChatWindow : public Plugin {
     // Volontairement NON sérialisé : relu depuis l'historique, un repère n'est
     // plus un repère, juste une vieille ligne parmi les autres.
     bool             pinned = false;
+    // Rang d'arrivée, strictement croissant, posé par `TrimLines` — le seul
+    // endroit qui voie chaque ligne neuve une fois et une seule. C'est ce que
+    // compare le « vider cet onglet » : un onglet retient le rang qu'il avait
+    // atteint, et masque tout ce qui lui est antérieur. Le tampon, lui, n'est pas
+    // touché — les autres onglets gardent ces lignes, et le geste s'annule.
+    //
+    // 🔴 Un numéro plutôt qu'une position : `TrimLines` évince des lignes AU
+    // MILIEU du tampon, et `LoadHistory` en insère EN TÊTE. Un index deviendrait
+    // faux au premier débordement, en désignant une ligne qui n'a rien à voir.
+    uint64_t         seq = 0;
     // Conversation 1:1 à laquelle cette ligne appartient : le nom du CORRESPONDANT
     // (jamais le nôtre), en UTF-8, dans les deux sens de la conversation. Vide pour
     // tout le reste.
@@ -534,6 +544,21 @@ class ChatWindow : public Plugin {
     // disposition écrite AVANT cette case doit faire de même pour ce qu'elle n'y
     // trouve pas — sinon les annonces disparaîtraient d'un coup, sans un mot.
     uint8_t     filter[26] = {};
+    // ── « Vider cet onglet » (clic droit sur l'onglet) ──────────────────────
+    // Rang de la dernière ligne au moment du geste : cet onglet n'affiche plus
+    // que ce qui est arrivé APRÈS. Zéro = rien n'a été vidé, et la règle ne
+    // s'applique alors pas du tout — une ligne dont le rang n'aurait pas encore
+    // été posé ne doit pas disparaître par accident.
+    //
+    // 🔴 Un MASQUE, pas une suppression : le tampon `lines_` est partagé par
+    // tous les onglets, et en retirer les lignes d'un onglet les arracherait à
+    // tous ceux qui les acceptent aussi. Vider « Guilde » ne doit rien coûter à
+    // l'onglet qui montre tout. C'est aussi ce qui rend le geste réversible.
+    //
+    // ⚠ NON persisté, et il ne peut pas l'être : les rangs sont réattribués à
+    // chaque session (cf. `Line::seq`), donc un rang relu d'un fichier ne
+    // désignerait plus rien. Le vidage vaut pour la session en cours.
+    uint64_t    clear_seq = 0;
     // Métriques de mise en page de SA fenêtre, mesurées à la frame précédente
     // (arrondi de la hauteur par rangées entières). Elles vivent sur le canal et
     // pas sur la classe : deux fenêtres n'ont ni la même hauteur de ligne ni le
@@ -657,6 +682,22 @@ class ChatWindow : public Plugin {
   // peut pas le retirer sur place : le rendu parcourt `channels_` par indice, et
   // supprimer en cours de route décalerait tout ce qui suit. Purgé en FIN de frame.
   uint32_t close_channel_id_ = 0;
+  // ── Confirmation avant fermeture ────────────────────────────────────────────
+  // Canal dont la fermeture attend un OUI (0 = aucune). Les TROIS gestes qui
+  // ferment — la croix d'une conversation, le clic molette sur un onglet,
+  // l'entrée du menu contextuel — arment celui-ci au lieu de fermer ; seule la
+  // modale pose ensuite `close_channel_id_`. Le clic molette surtout : c'est le
+  // plus facile à faire sans le vouloir, en visant l'onglet d'à côté.
+  uint32_t confirm_close_id_ = 0;
+  // 🔴 L'OUVERTURE se demande, elle ne se déduit pas de `confirm_close_id_`.
+  // `OpenPopup` prend l'identifiant de la fenêtre COURANTE : appelé depuis la
+  // bande d'onglets, il ouvrirait un popup que le `BeginPopupModal` de la racine
+  // ne retrouverait jamais. Le geste lève ce drapeau, la racine ouvre.
+  //
+  // Et le déduire de `confirm_close_id_ != 0` rouvrirait la modale à la frame
+  // suivant un abandon par Échap — une modale qu'on ne peut plus refuser.
+  bool     confirm_close_open_ = false;
+  void     DrawCloseConfirmPopup();
   // Dernière interrogation du dictionnaire de noms, pour ne pas la refaire à
   // chaque tour de boucle d'entrées.
   uint32_t whisper_guild_stamp_ = 0;
@@ -762,6 +803,11 @@ class ChatWindow : public Plugin {
   // Un onglet montre l'UNION de plusieurs types ; lui garantir `cap` lignes par
   // type lui en garantit donc au moins autant qu'avant, jamais moins.
   void TrimLines();
+  // Rang de la DERNIÈRE ligne entrée, ou zéro si le tampon est vide. C'est la
+  // borne que pose « vider cet onglet » : tout ce qui existe à cet instant passe
+  // derrière elle, et rien de ce qui arrivera ensuite n'est concerné. Prend le
+  // verrou du tampon — à n'appeler que depuis un geste, jamais par frame.
+  uint64_t LastLineSeq() const;
   // Combien de lignes de chaque type vivent dans `lines_`. Tenu à jour à chaque
   // entrée et à chaque éviction — recompter à la volée coûterait un parcours du
   // tampon par ligne reçue.
@@ -779,6 +825,10 @@ class ChatWindow : public Plugin {
   // dans `TrimLines`, à partir de ce repère : les sites d'ingestion n'ont donc
   // rien à tenir, et rien ne peut diverger si l'un d'eux oublie un jour d'appeler.
   size_t counted_lines_ = 0;
+  // Prochain rang à distribuer (cf. `Line::seq`). Il ne recule JAMAIS, pas même
+  // après un vidage général : deux lignes de la session ne doivent pas pouvoir
+  // porter le même rang, sinon un onglet vidé ferait réapparaître la seconde.
+  uint64_t next_line_seq_ = 1;
   bool layout_dirty_ = false;  // une écriture est due (structure ou filtre modifié)
   void  ParseText(const char* local_text, Line* out) const;
   void  ParseUtf8(const std::string& text, Line* out) const;
