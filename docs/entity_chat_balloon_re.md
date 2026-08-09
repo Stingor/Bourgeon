@@ -416,8 +416,20 @@ et sa bulle est correcte.
 
 **La fenêtre native est DÉTRUITE dès que son texte est adopté**, via
 `UIWindowMgr::QueueDestroyWindow 0x00a447d0` — la fonction que le natif
-s'applique à lui-même, donc aucune étape de démontage sautée. La destruction est
-différée à `OnTick`, **hors frame ImGui** (un appel natif dedans = freeze muet).
+s'applique à lui-même, donc aucune étape de démontage sautée.
+
+🔴 **L'adoption ET la destruction se font dans `Bourgeon::OnGameFrame`, pas dans
+`OnRenderUI`** — et pour DEUX raisons, dont la seconde est la moins évidente :
+
+1. `QueueDestroyWindow` est un appel natif, interdit pendant une frame ImGui
+   (freeze muet) ;
+2. surtout, **`OnRenderUI` arrive APRÈS que le jeu a dessiné**. Détruire depuis
+   là laissait la fenêtre native visible une frame entière : un rectangle qui
+   clignotait derrière la bulle à chaque réplique. Depuis `OnTick` (bridé à
+   ~100 ms) c'était plusieurs frames. `OnGameFrame` est le battement par frame
+   qui précède le dessin — c'est le seul endroit qui satisfasse les deux
+   contraintes.
+
 Corollaire : la présence d'une entité ne peut plus se déduire de « elle porte une
 fenêtre », puisqu'on la lui retire.
 

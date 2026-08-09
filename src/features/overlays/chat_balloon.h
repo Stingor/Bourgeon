@@ -38,12 +38,20 @@
 //   1. `UIBalloonText_SetTextWrapped` (0x00830240) — OBSERVATEUR. C'est le seul
 //      point par lequel passent les DEUX créateurs (l'acteur et l'unité de sol),
 //      avec le texte encore brut, avant la coupure. On copie, on relaie.
-//   2. `UITransBalloonText_Paint` (0x008263a0) — SILENCE. Quand la fenêtre
-//      peinte est la bulle d'un acteur, on remplit sa surface de la couleur-clé
-//      `0xFFFF00FF` et on rend la main : le natif ne dessine plus rien, mais
-//      garde son cycle de vie (expiration à 5 s, destruction au despawn). On ne
-//      lui prend donc AUCUN de ses devoirs cachés, et il ne reste ni fenêtre
-//      fantôme ni pointeur pendouillant.
+//   2. `UITransBalloonText_Paint` (0x008263a0) — bretelle. Quand la fenêtre
+//      peinte appartient à un acteur, on remplit sa surface de la couleur-clé et
+//      on rend la main.
+//
+// 🔴 Ce n'est PAS le détour 2 qui fait disparaître la bulle native : la fenêtre
+// est DÉTRUITE, à `OnGameFramePulse`, dès que son texte est adopté — via
+// `UIWindowMgr::QueueDestroyWindow`, c'est-à-dire la fonction que le natif
+// s'applique déjà à lui-même à l'expiration et au despawn. Aucun de ses devoirs
+// cachés n'est donc sauté.
+//
+// ⚠ Effacer la surface ne SUFFIT PAS, contrairement à ce qu'on pouvait croire :
+// `UIWindow_Render 0x00a1ce10` blitte la surface quoi qu'il arrive, et un
+// rectangle restait visible. Le détour 2 ne sert plus qu'à couvrir l'instant
+// entre la création de la fenêtre et le battement qui la tue.
 //
 // ⚠ Le détour 1 ne peut pas filtrer : `SetTextWrapped` sert aussi aux infobulles
 // (13 appelants, dont `UIWindow_ShowHoverTooltip`). C'est le détour 2 qui
@@ -58,11 +66,20 @@ class ChatBalloon : public Plugin {
 
   const char* name() const override { return "ChatBalloon"; }
 
+  // Ne fait plus que DESSINER : l'adoption et la destruction ont lieu avant, à
+  // `OnGameFramePulse`.
   void OnRenderUI() override;
-  // Met à la casse les fenêtres natives adoptées pendant les frames écoulées.
-  // 🔴 Ici et pas dans OnRenderUI : `QueueDestroyWindow` est un appel NATIF, et
-  // en émettre un au milieu d'une frame ImGui provoque un freeze muet.
-  void OnTick() override;
+
+  // 🔴 Battement par frame, AVANT que le jeu ne dessine, hors de toute frame
+  // ImGui (`Bourgeon::OnGameFrame`). C'est ici qu'on adopte le texte des bulles
+  // natives et qu'on les DÉTRUIT.
+  //
+  // ⚠ Le faire depuis OnRenderUI ne marchait pas, et pas seulement à cause de
+  // l'interdiction d'appeler du natif pendant une frame ImGui : OnRenderUI
+  // arrive APRÈS le dessin du jeu, donc la fenêtre native restait visible une
+  // frame entière — un rectangle qui clignotait derrière la bulle. Depuis
+  // OnTick (~100 ms) c'était plusieurs frames.
+  void OnGameFramePulse();
 
   // Section du panneau de réglages (« Interface »).
   void DrawSettings();
@@ -116,7 +133,7 @@ class ChatBalloon : public Plugin {
   // poignée de bulles — et un cache aurait à s'invalider sur la police, la
   // largeur d'écran ET le contenu, pour rien.
 
-  // Fenêtre native adoptée, en attente de destruction au prochain OnTick. On
+  // Fenêtre native adoptée, en attente de destruction au battement de frame. On
   // garde l'acteur avec, pour ne remettre son `+0x264` à zéro que si c'est bien
   // encore CETTE fenêtre qu'il porte.
   struct Doomed {
@@ -125,6 +142,7 @@ class ChatBalloon : public Plugin {
   };
 
   void ResetWhenDisabled();
+  void SyncGuarded();  // le __try, seul dans sa fonction (C2712)
   void DrawBalloons();
   void DestroyAdopted(const std::vector<Doomed>& doomed);
   // Rapproche les textes captés des acteurs qui les portent, et purge ce qui a

@@ -228,6 +228,16 @@ void Bourgeon::OnGameFrame() {
   // à 20 ms au-dessus du niveau de groupe 40), donc un battement de 100 ms
   // aurait plafonné le réglage cinq fois trop haut sans rien en dire.
   if (auto* qc = quick_cast()) qc->UpdateItemRepeat();
+
+  // 🔴 Bulles de chat : adoption du texte natif ET destruction de la fenêtre,
+  // ici et PAS dans OnRenderUI. Deux raisons qui se cumulent :
+  //   · `QueueDestroyWindow` est un appel natif, interdit pendant une frame
+  //     ImGui (freeze muet) ;
+  //   · surtout, OnRenderUI arrive APRÈS que le jeu a dessiné. La fenêtre
+  //     native restait donc visible une frame entière — un rectangle qui
+  //     clignotait derrière la bulle. Ce battement-ci passe AVANT le dessin.
+  // OnTick (~100 ms) était encore pire : plusieurs frames de clignotement.
+  if (auto* cb = chat_balloon()) cb->OnGameFramePulse();
 }
 
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.

@@ -217,6 +217,11 @@ bool ChatBalloon::IsActorBalloon(void* window) {
 // (C2712).
 void ChatBalloon::ResetWhenDisabled() {
   balloons_.clear();
+  // ⚠ Vider aussi la file de destruction : éteints, on ne la draine plus, et ses
+  // pointeurs d'acteurs deviendraient périmés. Les rejouer plus tard, à la
+  // réactivation, reviendrait à déréférencer des acteurs libérés depuis
+  // longtemps. Les fenêtres concernées expirent toutes seules côté natif.
+  pending_destroy_.clear();
   std::lock_guard<std::mutex> lock(s_mutex);
   s_pending.clear();
   s_claimed.clear();
@@ -234,8 +239,9 @@ void ChatBalloon::OnRenderUI() {
     return;
   }
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+  // Dessin SEUL : l'adoption et la destruction ont eu lieu à OnGameFramePulse,
+  // avant que le jeu ne dessine.
   __try {
-    SyncWithActors();
     DrawBalloons();
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     // Une entité à moitié construite/libérée a fait faute : on saute la frame.
@@ -243,15 +249,31 @@ void ChatBalloon::OnRenderUI() {
   }
 }
 
-void ChatBalloon::OnTick() {
-  if (pending_destroy_.empty()) return;
+void ChatBalloon::OnGameFramePulse() {
+  if (!Active()) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) {
     pending_destroy_.clear();
     return;
   }
+  // Adoption d'abord : elle remplit `pending_destroy_` pour les fenêtres nées
+  // depuis le dernier battement…
+  SyncGuarded();
+  // …puis on les tue TOUT DE SUITE, dans la même frame et avant le dessin.
+  if (pending_destroy_.empty()) return;
   std::vector<Doomed> doomed;
   doomed.swap(pending_destroy_);
   DestroyAdopted(doomed);
+}
+
+// ⚠ Le `__try` vit SEUL dans sa fonction, sans aucun objet local : MSVC refuse
+// de mêler gestion structurée d'exceptions et déroulement d'objets (C2712).
+void ChatBalloon::SyncGuarded() {
+  __try {
+    SyncWithActors();
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // Acteur à moitié construit/libéré : on saute ce battement. Rien de natif
+    // n'a été modifié à ce stade — la destruction, elle, a sa propre garde.
+  }
 }
 
 // Hors de toute frame ImGui, et sous __try : entre l'adoption et ici, l'acteur a
@@ -367,9 +389,10 @@ void ChatBalloon::SyncWithActors() {
     // pas — `UIWindow_Render` blitte la surface quoi qu'il arrive, et il restait
     // un rectangle à l'écran. Plus d'objet, plus de rectangle.
     //
-    // La destruction elle-même est différée à OnTick : appeler une fonction
-    // native pendant une frame ImGui est la recette d'un freeze muet
-    // (feedback_no_native_cmd_during_imgui_frame).
+    // La destruction est faite par OnGameFramePulse, dans la MEME frame et
+    // AVANT que le jeu ne dessine. Passer par OnRenderUI laissait la fenetre
+    // native visible une frame entiere (rectangle clignotant), et OnTick,
+    // bride a ~100 ms, en laissait plusieurs.
     pending_destroy_.push_back({actor, window});
   };
 
