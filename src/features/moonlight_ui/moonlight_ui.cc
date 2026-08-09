@@ -621,6 +621,12 @@ const moonlight_ui::SettingDesc kEntityContextMenuSettings[] = {
     // s'affiche de toute façon pas ; l'interrupteur ne sert qu'à la replier.
     {"ctxmenu_staff_extras", SType::kBool,
      MLUI_FIELD(entity_context_menu, staff_extras()), MLUI_LITERAL(bool, true)},
+    // Défaut ON : c'est le remplaçant client de `@npcblock`, et il ne fait rien
+    // tant qu'aucun NPC n'est coché. Décoché, la case n'est plus proposée et les
+    // NPC déjà bloqués redeviennent cliquables — la liste, elle, est gardée.
+    {"ctxmenu_npc_block", SType::kBool,
+     MLUI_FIELD(entity_context_menu, npc_block_enabled()),
+     MLUI_LITERAL(bool, true)},
 };
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
@@ -1298,6 +1304,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
+    moonlight_ui::ReadBlockedNpcs(ui);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
@@ -1443,6 +1450,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kCraftAtlasSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
+  moonlight_ui::WriteBlockedNpcs(out);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);

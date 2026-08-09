@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -58,6 +60,41 @@
 // joueur — il ne s'ouvre que sous le réglage staff, et les identifiants
 // (AID/GID) ne figurent que dans la section staff, quelle que soit la cible.
 //
+// ── Rendre un NPC de service SOURD au clic gauche ────────────────────────────
+// Les NPC de la capitale (kafra, job master, styliste, warpers…) se tiennent au
+// milieu du passage : on les clique en voulant marcher, et le dialogue s'ouvre.
+// Moonlight répondait à ça côté SERVEUR avec `@npcblock` (moon/atcommands.npc :
+// un masque de bits `#BlockMoonNpc` que CINQ scripts relisaient à la main). La
+// base des identifiants fixes (`moon/npc_fixed_id.yml`) permet de rendre ça au
+// client : ces NPC gardent le même GID d'un boot à l'autre, dans la plage
+// réservée 3000000..3000099, donc le client peut les reconnaître tout seul.
+//
+// Une case à cocher apparaît alors dans le menu, et elle SEULE décide : rien ne
+// part au serveur. Le blocage se joue dans `GameMode_RouteHoverAndClick`
+// (0x00c756a0), sur les seules frames où un bouton AGIT, et il y fait DEUX
+// choses — l'une ne suffisait pas :
+//   · un quad de pick NUL, pour que le natif ne route rien vers le NPC : ni
+//     dialogue, ni ordre d'approche. Filtrer CZ_CONTACTNPC à l'envoi n'aurait
+//     PAS suffi — le clic sur un NPC de catégorie 1 passe par `OnMsg(18)` de
+//     l'IA, qui fait MARCHER le personnage jusqu'au NPC AVANT d'émettre : le
+//     joueur aurait traversé la place pour n'obtenir rien ;
+//   · un retour « clic consommé » (non nul et ≠ 2), la convention que teste
+//     `GameMode_GroundClick_RequestMove` (`param_1 && param_1 != 2 -> return`),
+//     pour que le clic ne se transforme pas non plus en déplacement.
+// Résultat : le clic gauche sur un NPC bloqué n'émet STRICTEMENT AUCUN paquet.
+//
+//   · le survol n'est pas touché (états 0 et 3) : plaque de nom et curseur
+//     restent ceux du client — y compris le curseur « dialogue », qui était déjà
+//     là du temps de `@npcblock` et n'est donc pas un défaut à corriger ;
+//   · le ciblage AU SOL est exclu (`CGameMode+0x408 == 1`) : viser une zone et
+//     cliquer la case d'un NPC bloqué lance bien le sort ;
+//   · le menu du clic droit, lui, est construit AVANT dans la même passe souris
+//     (`ShowEntityContextMenu` précède `RouteHoverAndClick`) : il continue de
+//     s'ouvrir, ce qui est indispensable — c'est de là qu'on décoche.
+//
+// ⚠ Purement CLIENT : un script à `OnTouch` se déclenchera toujours en marchant
+// dessus, et la case ne suit pas le joueur d'une machine à l'autre.
+//
 // OPT-IN : « ctxmenu_imgui », membre du groupe « Interface moderne » (défaut
 // OFF, comme les autres). Coupé, le détour repasse la main au natif au premier
 // clic — rien n'est masqué ni détruit, donc aucun état à restaurer.
@@ -104,6 +141,40 @@ class EntityContextMenu : public Plugin {
   // (le natif ne doit alors rien construire).
   bool OnNativeContextMenu(void* game_mode, const int* quad, int blocked);
 
+  // ── Blocage du clic sur un NPC à identifiant fixe (cf. l'en-tête) ──────────
+
+  // Ce GID est-il celui d'un NPC épinglé par `moon/npc_fixed_id.yml` ? La plage
+  // est celle que le serveur se réserve (FIXED_NPC_NUM..FIXED_NPC_NUM_LAST dans
+  // src/map/npc.hpp) et sous laquelle `npc_get_new_npc_id` n'alloue jamais : un
+  // GID d'ici ne peut donc être ni un mob, ni un pet, ni un NPC dynamique. C'est
+  // ce qui rend le test sûr sans rien demander au serveur.
+  static bool IsFixedIdNpc(uint32_t gid);
+  bool IsNpcClickBlocked(uint32_t gid) const;
+
+  // Appelé par le détour de GameMode_RouteHoverAndClick : ce quad désigne-t-il
+  // une entité dont l'action monde doit être ignorée CETTE frame ?
+  // ⚠ Non const : c'est ici qu'est émis le rappel « ce NPC, c'est vous qui
+  // l'avez bloqué », au premier clic avalé de la session.
+  bool ShouldIgnoreWorldClick(const int* quad);
+
+  // « ctxmenu_npc_block » : proposer la case, et l'appliquer. Défaut ON — c'est
+  // le remplaçant de `@npcblock`, et sans NPC coché il ne fait rien.
+  bool& npc_block_enabled() { return npc_block_enabled_; }
+
+  // GID -> nom relevé au moment du blocage (UTF-8, purement informatif : il ne
+  // sert qu'à nommer la ligne du panneau et le message de chat). Persisté par
+  // moonlight_ui::Read/WriteBlockedNpcs.
+  std::map<uint32_t, std::string> blocked_npcs_;
+
+  // 🔴 NPC déjà expliqués CETTE session. Un blocage survit au fichier de
+  // réglages : des semaines plus tard, le joueur clique une kafra qui ne répond
+  // pas et n'a plus aucune raison de faire le lien avec une case cochée un soir
+  // de mars. Le premier clic avalé de la session lui redit donc pourquoi — une
+  // fois par NPC, sinon la ligne partirait à chaque clic.
+  // Vidé en quittant le monde (login / choix de personnage), pas au changement
+  // de carte : « une fois par session » veut dire une fois.
+  std::set<uint32_t> warned_this_session_;
+
  private:
   // Ce que désigne le curseur, tel que le pick l'a rendu.
   enum class Kind {
@@ -139,6 +210,10 @@ class EntityContextMenu : public Plugin {
     bool  separator = false;          // séparateur AVANT cette ligne
     bool  staff     = false;          // affichée en couleur staff
     bool  disabled  = false;          // grisée : l'action n'a pas de sens ici
+    // Case à cocher plutôt qu'une action : elle bascule un ÉTAT et ne ferme donc
+    // pas le menu (on veut pouvoir cocher puis parler au NPC dans la foulée).
+    bool  toggle    = false;
+    bool  checked   = false;
     std::string tip;                  // infobulle, vide = aucune
   };
 
@@ -146,6 +221,9 @@ class EntityContextMenu : public Plugin {
   void BuildItems();
   Kind ClassifyTarget(void* game_mode, uint32_t aid, uint32_t job, int category) const;
   void Choose(const Item& item);
+  // Bascule le blocage de la cible courante, le dit dans le chat et demande la
+  // sauvegarde des réglages.
+  void ToggleNpcBlock(uint32_t gid);
 
   // ── État du menu affiché ──────────────────────────────────────────────────
   bool     open_        = false;
@@ -178,4 +256,5 @@ class EntityContextMenu : public Plugin {
   bool all_entities_  = false;
   bool self_menu_     = true;
   bool staff_extras_  = true;
+  bool npc_block_enabled_ = true;
 };

@@ -13,6 +13,7 @@
 #include "features/overlays/basic_info.h"
 #include "features/patches/chat.h"
 #include "features/windows/character_sheet.h"
+#include "features/windows/entity_context_menu.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/overlays/menu_icons.h"
@@ -146,6 +147,38 @@ void WriteInventoryLayout(YAML::Emitter& out) {
       out << YAML::Key << entry.first << YAML::Value << entry.second;
   }
   out << YAML::EndMap;
+}
+
+void ReadBlockedNpcs(const YAML::Node& ui) {
+  auto* menu = Bourgeon::Instance().entity_context_menu();
+  if (!menu) return;
+  const YAML::Node blocked = ui["ctxmenu_blocked_npcs"];
+  if (!blocked) return;
+  menu->blocked_npcs_.clear();
+  for (const YAML::Node& entry : blocked) {
+    const uint32_t gid = entry["id"].as<uint32_t>(0);
+    // Hors de la plage réservée, l'entrée ne peut désigner aucun NPC épinglé :
+    // un GID dynamique recyclé viserait un jour une autre entité. On la jette
+    // plutôt que de bloquer au hasard.
+    if (!EntityContextMenu::IsFixedIdNpc(gid)) continue;
+    menu->blocked_npcs_[gid] = entry["name"].as<std::string>("");
+  }
+}
+
+void WriteBlockedNpcs(YAML::Emitter& out) {
+  auto* menu = Bourgeon::Instance().entity_context_menu();
+  // La std::map est déjà ordonnée par GID : le fichier est stable d'une
+  // sauvegarde à l'autre sans tri supplémentaire.
+  out << YAML::Key << "ctxmenu_blocked_npcs" << YAML::Value << YAML::BeginSeq;
+  if (menu) {
+    for (const auto& entry : menu->blocked_npcs_) {
+      out << YAML::Flow << YAML::BeginMap;
+      out << YAML::Key << "id" << YAML::Value << entry.first;
+      out << YAML::Key << "name" << YAML::Value << entry.second;
+      out << YAML::EndMap;
+    }
+  }
+  out << YAML::EndSeq;
 }
 
 void ReadStorageFavorites(const YAML::Node& ui) {

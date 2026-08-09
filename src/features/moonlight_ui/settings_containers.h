@@ -29,6 +29,13 @@ void WriteMenuIcons(YAML::Emitter& out);
 void ReadInventoryLayout(const YAML::Node& ui);
 void WriteInventoryLayout(YAML::Emitter& out);
 
+// NPC rendus sourds au clic gauche : séquence d'objets { id, name }. L'id est un
+// GID de la plage réservée aux NPC à identifiant fixe (moon/npc_fixed_id.yml) —
+// c'est LUI la clé ; le nom n'est là que pour nommer la ligne du panneau quand
+// le NPC est sur une autre carte. Possédés par EntityContextMenu.
+void ReadBlockedNpcs(const YAML::Node& ui);
+void WriteBlockedNpcs(YAML::Emitter& out);
+
 // Favoris d'entrepôt : une séquence d'ids d'items (client seul).
 void ReadStorageFavorites(const YAML::Node& ui);
 void WriteStorageFavorites(YAML::Emitter& out);

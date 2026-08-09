@@ -8,9 +8,11 @@
 #include "imgui.h"
 
 #include "bourgeon.h"
+#include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
 #include "features/windows/monster_info_window.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (avis de blocage)
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/hooking/hook_manager.h"
@@ -26,6 +28,28 @@ namespace {
 
 // §4 — le constructeur du menu natif du monde. Notre unique point d'interception.
 constexpr uintptr_t kShowEntityContextMenu = 0x00c6e990;
+
+// §5/§7 — le routeur survol/clic du monde, appelé JUSTE APRÈS le menu dans la
+// même passe souris (`GameMode_ProcessMouseWorldInput` 0x00c76400) :
+//     v10 = GameMode_RouteHoverAndClick(this, blocked, quad);
+//     GameMode_GroundClick_RequestMove(this, v10);
+// C'est le seul endroit qui voie le quad de pick APRÈS le menu contextuel et qui
+// commande AUSSI le clic sol — les deux choses qu'il faut tenir en même temps
+// pour qu'un NPC bloqué ne déclenche ni dialogue ni déplacement (cf. le détour).
+constexpr uintptr_t kRouteHoverAndClick = 0x00c756a0;
+
+// ── Plage réservée aux NPC à identifiant FIXE ────────────────────────────────
+// `moon/npc_fixed_id.yml` côté serveur : FIXED_NPC_NUM..FIXED_NPC_NUM_LAST de
+// src/map/npc.hpp. `npc_get_new_npc_id()` n'alloue jamais sous START_NPC_NUM,
+// donc aucun mob, pet, homoncule ou NPC dynamique ne peut porter un GID d'ici —
+// le test tient sans rien demander au serveur. Élargir la plage demande de
+// recompiler le map-server ; c'est pourquoi elle est en dur des deux côtés.
+constexpr uint32_t kFixedNpcGidFirst = 3000000;
+constexpr uint32_t kFixedNpcGidLast  = 3000099;
+
+// Couleur des lignes que Bourgeon écrit lui-même dans le chat (celle du DPS
+// meter) : elles se distinguent de ce que dit le serveur.
+constexpr uint32_t kOwnChatRgb = 0xFFAA00;
 
 // §6.2 — CMode::SendMsg, message 24 = « la ligne N du menu a été cliquée ».
 constexpr int kMsgMenuItemChosen = 24;
@@ -47,6 +71,18 @@ constexpr uintptr_t kStorageWndPtr = 0x0131f770;  // storage NATIF ouvert
 constexpr int kGm_MenuCodes  = 0x1cc;  // std::vector<int> : begin/end/cap
 constexpr int kGm_MenuTarget = 0x2e0;  // uint32 : AID de la cible
 constexpr int kGm_ActorMgr   = 0x0cc;
+
+// Mode de ciblage courant. La valeur 1 est le ciblage AU SOL : `RouteHoverAndClick`
+// sort alors immédiatement et c'est `GroundClick_RequestMove` qui lance le sort.
+constexpr int kGm_TargetingMode = 0x408;
+constexpr int kTargetingGround  = 1;
+
+// « Ce clic est déjà consommé, ne demande pas de déplacement » — la convention du
+// client, lue dans le garde de `GameMode_GroundClick_RequestMove` :
+// `param_1 && param_1 != 2 -> return param_1`. Le natif lui-même rend 1 sur un de
+// ses chemins (`if (LButtonState == 2) return 1`), c'est donc une valeur qu'il
+// sait déjà recevoir.
+constexpr int kClickConsumed = 1;
 
 // §8 — helpers natifs réutilisés.
 constexpr uintptr_t kStdVectorIntPushBack = 0x007a7fa0;  // __thiscall(vec*, int*)
@@ -207,6 +243,11 @@ using DispatchFn   = int    (__thiscall*)(void*, int, int, int, int, int);
 using ClickFn      = int    (__thiscall*)(void*, uint32_t, int);
 using FindActorFn  = void*  (__thiscall*)(void*, uint32_t);
 using ShowMenuFn   = int    (__fastcall*)(void*, void*, int, int);
+// ⚠ Ordre des arguments : le natif est `__thiscall(this, blocked, quad)` — le
+// drapeau « une fenêtre native mange la souris » d'abord, le quad de pick
+// ENSUITE (`GameMode_RouteHoverAndClick(this, v2, Point)` chez l'appelant).
+// Les intervertir rendrait un quad de pick au client sous forme de drapeau.
+using RouteHoverFn = int*   (__fastcall*)(void*, void*, int*, int*);
 
 template <typename T>
 inline T Read(const void* base, int off) {
@@ -439,9 +480,40 @@ bool RunNativeActorClick(uint32_t aid) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Écrit une ligne dans le chat du jeu, par la voie unique de Bourgeon
+// (`UIWindowMgr::SendMsg`, qui aiguille vers la chatbox ImGui quand elle vit et
+// vers la native sinon).
+//
+// Encodage : `Utf8ToWire` (CP1252). C'est avec `WireToUtf8` que la chatbox ImGui
+// relit ce qu'on lui donne (`ChatWindow::Parse`) ; sans cette conversion, nos
+// accents partiraient en octets UTF-8 bruts et reviendraient en mojibake.
+//
+// ⚠ Appelée depuis le rendu, comme le DPS meter et le refus de la boutique NPC :
+// UIM_PUSHINTOCHATHISTORY empile une ligne et n'ouvre aucune modale — c'est la
+// seule commande native sans danger en pleine frame ImGui.
+void SayToChat(const char* utf8) {
+  if (!utf8 || !*utf8) return;
+  const char* wire = ro::Utf8ToWire(utf8);
+  if (!wire || !*wire) return;
+  UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
+                       reinterpret_cast<int>(wire), kOwnChatRgb, 0, 0);
+}
+
+// De quoi nommer un NPC bloqué dans une phrase. Le nom est celui relevé au
+// moment du blocage ; il peut manquer si la plaque de nom n'était pas encore
+// arrivée, auquel cas le GID vaut mieux qu'une phrase sans sujet.
+void FormatNpcLabel(uint32_t gid, const char* name, char* out, size_t out_size) {
+  if (name == nullptr || *name == '\0') {
+    std::snprintf(out, out_size, i18n::Tr("Le NPC %u"), gid);
+  } else {
+    std::snprintf(out, out_size, "%s", name);
+  }
+}
+
 // Le module, pour le détour (fonction libre : il tourne avant tout objet).
 EntityContextMenu* g_owner = nullptr;
 void* g_trampoline = nullptr;
+void* g_trampoline_route = nullptr;
 
 // Corps du détour, isolé dans sa propre fonction : __try/__except est interdit
 // dans une fonction qui doit dérouler des objets C++, et OnNativeContextMenu en
@@ -475,6 +547,62 @@ int __fastcall ShowEntityContextMenuDetour(void* game_mode, void* edx, int quad,
   return reinterpret_cast<ShowMenuFn>(g_trampoline)(game_mode, edx, quad, blocked);
 }
 
+// Même raison que SafeOnNativeContextMenu : le prédicat manipule des objets C++
+// (une std::map), donc son __try vit ici.
+bool SafeShouldIgnoreWorldClick(const int* quad) {
+  __try {
+    return g_owner->ShouldIgnoreWorldClick(quad);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // Quad illisible : on ne s'en mêle pas. Rendre `true` ferait disparaître une
+    // entité du routage pour une raison qui n'a rien à voir avec le blocage.
+    return false;
+  }
+}
+
+// 🔴 NE PAS avaler le clic pendant un ciblage AU SOL. Le joueur qui vise une
+// zone (Storm Gust…) et clique la case où se tient un NPC bloqué doit lancer son
+// sort : c'est `GroundClick_RequestMove` qui s'en charge, et notre « clic
+// consommé » l'en empêcherait. Aucun risque de dialogue par ailleurs — dans ce
+// mode `RouteHoverAndClick` sort AVANT d'atteindre `CursorMgr_UpdateHover`.
+// En cas de lecture douteuse on répond « oui, ciblage » : ne rien avaler est le
+// repli inoffensif.
+bool IsGroundTargeting(void* game_mode) {
+  __try {
+    if (!game_mode) return true;
+    return Read<int>(game_mode, kGm_TargetingMode) == kTargetingGround;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return true; }
+}
+
+// Détour du routeur survol/clic. Sur un NPC bloqué, et seulement sur les frames
+// où un bouton agit, il fait DEUX choses :
+//   · il efface le quad de pick -> le natif ne route rien vers le NPC, donc ni
+//     dialogue ni ordre d'approche (`OwnActor::OnMsg(18)`) ;
+//   · il rend « clic consommé » -> `GroundClick_RequestMove` sort sur son garde
+//     `param_1 && param_1 != 2` sans demander de déplacement.
+// Le clic ne produit alors STRICTEMENT AUCUN paquet : ni CZ_CONTACTNPC, ni
+// marche. Le NPC devient une zone morte, ce qu'attend un joueur qui vient de
+// dire « celui-là, je ne veux plus le cliquer ».
+// Le natif est appelé quand même, avec un quad nul : c'est lui qui tient à jour
+// le curseur et ses cibles de suivi, et « quad nul » est exactement la vérité de
+// la situation — le curseur ne survole plus rien de cliquable.
+int* __fastcall RouteHoverAndClickDetour(void* game_mode, void* edx, int* blocked,
+                                         int* quad) {
+  // `blocked` non nul = une fenêtre native mange déjà la souris : le clic ne va
+  // pas au monde, il n'y a rien à avaler.
+  const bool swallow = g_owner && quad && !blocked &&
+                       !IsGroundTargeting(game_mode) &&
+                       SafeShouldIgnoreWorldClick(quad);
+  if (swallow) quad = nullptr;
+
+  // Sans trampoline, rendre `blocked` : c'est ce que le natif rend lui-même sur
+  // tous ses chemins « rien à router », donc le clic sol garde son sens.
+  int* const routed =
+      g_trampoline_route ? reinterpret_cast<RouteHoverFn>(g_trampoline_route)(
+                               game_mode, edx, blocked, quad)
+                         : blocked;
+  return swallow ? reinterpret_cast<int*>(kClickConsumed) : routed;
+}
+
 }  // namespace
 
 EntityContextMenu::EntityContextMenu() {
@@ -489,9 +617,22 @@ EntityContextMenu::EntityContextMenu() {
   if (!g_trampoline) {
     LogDiag("[EntityContextMenu] detour NON pose (prologue non relocalisable)");
   }
+  // 🔴 Ce second détour N'EST PAS gardé par `imgui_enabled_` : le blocage d'un
+  // NPC est une préférence de jeu, pas un habillage, et l'éteindre avec
+  // l'interface moderne ferait « oublier » au client des NPC que le joueur avait
+  // rendus sourds. Il ne coûte rien tant que la liste est vide (cf.
+  // ShouldIgnoreWorldClick), et le panneau garde la liste débrayable.
+  g_trampoline_route = HookManager::Instance().SetHook(
+      HookType::kJmpHook, reinterpret_cast<uint8_t*>(kRouteHoverAndClick),
+      reinterpret_cast<uint8_t*>(&RouteHoverAndClickDetour));
+  if (!g_trampoline_route) {
+    LogDiag(
+        "[EntityContextMenu] detour clic-monde NON pose : le blocage des NPC "
+        "reste sans effet");
+  }
 }
 
-void EntityContextMenu::OnModeSwitch(ModeMgr::ModeType, const char*) {
+void EntityContextMenu::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Un changement de map/mode invalide la cible : le menu ne doit pas survivre
   // à l'entité qu'il désigne.
   open_ = request_open_ = false;
@@ -499,6 +640,12 @@ void EntityContextMenu::OnModeSwitch(ModeMgr::ModeType, const char*) {
   target_aid_ = 0;
   pending_code_ = 0;
   pending_local_ = Local::kNone;
+
+  // 🔴 Les rappels de blocage se rearment en QUITTANT le monde, pas à chaque
+  // carte. Cet événement est émis pour les deux, et vider ici sans distinguer
+  // ferait réexpliquer le même NPC à chaque aller-retour de warp — soit tout
+  // sauf « une fois par session ».
+  if (mode_type != ModeMgr::ModeType::kGame) warned_this_session_.clear();
 }
 
 // ── Interception ─────────────────────────────────────────────────────────────
@@ -538,7 +685,14 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   // Les entités que le client n'a JAMAIS servies restent derrière leur opt-in.
   const bool native_served = (kind == Kind::kPlayer || kind == Kind::kPet ||
                               kind == Kind::kHomunculus || kind == Kind::kMercenary);
-  if (!native_served && !all_entities_) return true;
+  // 🔴 Exception : un NPC à identifiant fixe ouvre son menu même sans « toutes
+  // les entités ». Ce menu est le SEUL endroit d'où l'on coche et décoche le
+  // blocage du clic ; le laisser derrière un autre réglage rendrait la case
+  // introuvable — et pire, un NPC bloqué le resterait sans aucun moyen visible
+  // de revenir en arrière depuis le monde.
+  const bool blockable_npc =
+      (kind == Kind::kNpc) && npc_block_enabled_ && IsFixedIdNpc(aid);
+  if (!native_served && !all_entities_ && !blockable_npc) return true;
 
   // 🔴 SOI-MÊME : le menu n'y porte que « Copier mon nom » (plus les
   // identifiants sous le réglage staff). Or on se clique dessus sans le vouloir
@@ -644,6 +798,15 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   }
 
   if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnAccountAid))) return Kind::kSelf;
+
+  // 🔴 Un GID de la plage réservée ne peut être qu'un NPC épinglé, QUEL QUE SOIT
+  // le sprite qu'il porte : un NPC déguisé (`@eventdisguise`) garde un job de
+  // monstre et se ferait sinon classer « monstre » — donc sans sa case de
+  // blocage, et avec un « Attaquer » qui n'a aucun sens sur un script. Le test
+  // vient après soi-même et les compagnons, les seules identités qu'on ne veut
+  // en aucun cas voir réécrites.
+  if (IsFixedIdNpc(aid)) return Kind::kNpc;
+
   if (category == kPickSpecial || IsSpecialUnitJob(job)) return Kind::kOther;
   if (IsMonsterJob(job)) return Kind::kMonster;
   // 🔴 APRÈS le monstre, AVANT le joueur. Un PNJ scripté porte souvent une
@@ -655,6 +818,98 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   if (IsNpcOrPortalJob(job)) return Kind::kNpc;
   if (IsPlayerJob(job)) return Kind::kPlayer;
   return Kind::kOther;
+}
+
+// ── Blocage du clic sur un NPC à identifiant fixe ────────────────────────────
+
+bool EntityContextMenu::IsFixedIdNpc(uint32_t gid) {
+  return gid >= kFixedNpcGidFirst && gid <= kFixedNpcGidLast;
+}
+
+bool EntityContextMenu::IsNpcClickBlocked(uint32_t gid) const {
+  if (!npc_block_enabled_ || blocked_npcs_.empty()) return false;
+  return blocked_npcs_.find(gid) != blocked_npcs_.end();
+}
+
+bool EntityContextMenu::ShouldIgnoreWorldClick(const int* quad) {
+  // Le cas courant — aucun NPC bloqué — sort en deux tests, sans toucher au
+  // quad : ce détour tourne à chaque frame de la passe souris.
+  if (!npc_block_enabled_ || blocked_npcs_.empty() || !quad) return false;
+
+  // 🔴 Seuls les états qui DÉCLENCHENT une action sont neutralisés. Le survol
+  // (état 0) et le relâchement (état 3) passent intacts, donc la plaque de nom
+  // et le curseur du NPC restent ceux du client : un NPC bloqué se voit et se
+  // vise toujours, il ne répond simplement plus. Côté gauche on prend aussi le
+  // maintien (2) et la répétition (4), sans quoi garder le bouton enfoncé en
+  // passant sur le NPC rendrait la marche saccadée ; côté droit on prend l'appui
+  // et sa répétition, les deux états sur lesquels `CursorMgr_UpdateHover` émet
+  // CZ_CONTACTNPC pour une entité « hostile/spéciale » (docs §7.1) — le menu
+  // contextuel efface déjà cet état quand il prend le clic, ceci couvre les cas
+  // où il décline (Maj enfoncée, par exemple).
+  const int lbutton = ReadGlobalInt(kMouseLButtonState);
+  const int rbutton = ReadGlobalInt(kMouseRButtonState);
+  const bool acting =
+      lbutton == kBtnPressed || lbutton == kBtnHeld || lbutton == kBtnRepeat ||
+      rbutton == kBtnPressed || rbutton == kBtnRepeat;
+  if (!acting) return false;
+
+  const uint32_t gid = static_cast<uint32_t>(quad[6]);
+  if (!IsNpcClickBlocked(gid)) return false;
+
+  // 🔴 Dire POURQUOI il ne se passe rien. Un blocage survit au fichier de
+  // réglages : le joueur peut cliquer, des semaines plus tard, un NPC muet dont
+  // il a oublié qu'il l'avait coché — sans un mot, c'est un client qui a l'air
+  // cassé. Une ligne au premier clic avalé de la session, par NPC.
+  //
+  // Seulement sur l'APPUI NEUF du bouton gauche : un maintien qui traverse le
+  // NPC en marchant n'est pas une tentative d'interaction, et le clic droit
+  // ouvre de toute façon le menu où la case se voit cochée.
+  //
+  // ⚠ On est dans la passe souris du client, PAS dans une frame ImGui : c'est
+  // exactement d'ici que le natif écrit ses propres refus (msg 4027 de
+  // CursorMgr_UpdateHover). Rien à différer.
+  if (lbutton == kBtnPressed && warned_this_session_.insert(gid).second) {
+    const auto entry = blocked_npcs_.find(gid);
+    char who[96];
+    FormatNpcLabel(gid,
+                   entry != blocked_npcs_.end() ? entry->second.c_str() : nullptr,
+                   who, sizeof(who));
+    char line[256];
+    std::snprintf(line, sizeof(line),
+                  i18n::Tr("%s : vous avez bloqué le clic gauche sur ce NPC. "
+                           "Clic droit dessus pour le débloquer."),
+                  who);
+    SayToChat(line);
+  }
+  return true;
+}
+
+void EntityContextMenu::ToggleNpcBlock(uint32_t gid) {
+  if (!IsFixedIdNpc(gid)) return;
+
+  char who[96];
+  FormatNpcLabel(gid, target_name_.c_str(), who, sizeof(who));
+
+  char line[256];
+  const auto it = blocked_npcs_.find(gid);
+  if (it != blocked_npcs_.end()) {
+    blocked_npcs_.erase(it);
+    warned_this_session_.erase(gid);
+    std::snprintf(line, sizeof(line),
+                  i18n::Tr("%s : le clic gauche est de nouveau actif."), who);
+  } else {
+    blocked_npcs_[gid] = target_name_;
+    // Marqué comme déjà expliqué : le joueur vient de cocher la case, la ligne
+    // ci-dessous lui dit tout. Sans ça, son premier clic de vérification
+    // rejouerait la même explication deux secondes plus tard.
+    warned_this_session_.insert(gid);
+    std::snprintf(line, sizeof(line),
+                  i18n::Tr("%s : le clic gauche ne fait plus rien sur lui. Clic "
+                           "droit pour le débloquer ou lui parler."),
+                  who);
+  }
+  SayToChat(line);
+  if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
 }
 
 // ── Construction des entrées ─────────────────────────────────────────────────
@@ -762,12 +1017,35 @@ void EntityContextMenu::BuildItems() {
       add(i18n::Tr("Fiche du monstre"), 0, Local::kMonsterInfo, true);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
-    case Kind::kNpc:
+    case Kind::kNpc: {
       // Pas d'« Interagir » sur un PORTAIL : le natif sort avant toute action
       // dès que le job vaut 45 (docs §7), et un warp n'a pas de dialogue.
+      // ⚠ Cette entrée-là RESTE active sur un NPC bloqué, et c'est voulu : le
+      // blocage vise le clic accidentel, pas la volonté de parler. Elle envoie
+      // CZ_CONTACTNPC directement, sans repasser par le routeur détourné.
       if (target_job_ != kJobPortal) add(i18n::Tr("Interagir"), 0, Local::kTalkToNpc);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);
+      // La case de blocage, seulement sur les NPC dont le GID est épinglé : les
+      // autres changent d'identifiant à chaque redémarrage du map-server, une
+      // case cochée sur eux désignerait n'importe qui le lendemain.
+      if (npc_block_enabled_ && IsFixedIdNpc(target_aid_)) {
+        Item item;
+        item.label     = i18n::Tr("Bloquer le clic gauche###ctxmenu_npcblock");
+        item.toggle    = true;
+        item.checked   = IsNpcClickBlocked(target_aid_);
+        item.separator = true;
+        item.tip = i18n::Tr(
+            "Coché, le clic gauche sur ce NPC ne fait plus rien du tout : ni "
+            "dialogue, ni déplacement. Le menu du clic droit reste disponible, "
+            "« Interagir » compris, et viser une zone avec un sort continue de "
+            "marcher par-dessus lui.\n"
+            "Réglage du client, gardé sur cette machine : il ne suit pas le "
+            "personnage, et un script déclenché en MARCHANT dessus s'exécutera "
+            "toujours.");
+        items_.push_back(std::move(item));
+      }
       break;
+    }
     case Kind::kPet:
       add(i18n::Tr("Statut du pet"), kCodePetStatus);
       add(i18n::Tr("Nourrir"), kCodePetFeed);
@@ -890,6 +1168,20 @@ void EntityContextMenu::OnRenderUI() {
     for (size_t i = 0; i < items_.size(); ++i) {
       const Item& item = items_[i];
       if (item.separator && i != 0) ImGui::Separator();
+      // Une case à cocher bascule un ÉTAT : elle ne se « choisit » pas et ne
+      // ferme donc pas le menu — on doit pouvoir cocher, puis parler au NPC dans
+      // la foulée. Rien n'est différé ici : ToggleNpcBlock ne fait qu'écrire une
+      // ligne de chat, la seule commande native sans danger en pleine frame.
+      if (item.toggle) {
+        bool checked = item.checked;
+        if (ro::RoCheckbox(item.label.c_str(), &checked)) {
+          ToggleNpcBlock(target_aid_);
+          items_[i].checked = checked;
+        }
+        if (!item.tip.empty() && ImGui::IsItemHovered())
+          ImGui::SetTooltip("%s", item.tip.c_str());
+        continue;
+      }
       if (item.staff) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.28f, 0.10f, 1.0f));
       }
@@ -1015,6 +1307,53 @@ bool EntityContextMenu::DrawSettings() {
       "soi-même repart au client sans rien ouvrir ni rien avaler.\n"
       "Sans « Sur toutes les entités », ce menu ne s'ouvre de toute façon "
       "jamais : le client n'en a jamais eu sur soi."));
+  ImGui::Unindent();
+
+  // ── Blocage du clic sur les NPC de service ─────────────────────────────────
+  // La case elle-même se coche dans le menu, sur le NPC. Ce qui vit ICI, c'est
+  // l'interrupteur général et la LISTE — sans quoi un joueur qui éteint
+  // l'interface moderne n'aurait plus aucun moyen de débloquer un NPC : le menu,
+  // et donc la case, disparaissent avec elle.
+  changed |= ro::RoCheckbox(
+      i18n::Tr("Blocage du clic sur les NPC de service###ctxmenu_npcblock_opt"),
+      &npc_block_enabled_);
+  ImGui::SameLine();
+  HelpMarker(i18n::Tr(
+      "Les NPC de la capitale (kafra, job master, styliste, warpers…) se "
+      "tiennent au milieu du passage et s'ouvrent quand on cherchait à "
+      "marcher. Clic droit sur l'un d'eux, puis « Bloquer le clic gauche » : "
+      "il devient une zone morte, le clic ne déclenche plus rien.\n"
+      "Décoché ici, la case n'est plus proposée et les NPC déjà bloqués "
+      "redeviennent cliquables — la liste, elle, est conservée."));
+
+  ImGui::Indent();
+  if (blocked_npcs_.empty()) {
+    ImGui::TextDisabled("%s", i18n::Tr("Aucun NPC bloqué."));
+  } else {
+    // Une ligne par NPC, avec de quoi le débloquer sans avoir à le retrouver en
+    // jeu (il peut être sur une autre carte).
+    uint32_t to_unblock = 0;
+    for (const auto& entry : blocked_npcs_) {
+      ImGui::PushID(static_cast<int>(entry.first));
+      if (ro::RoSmallButton(i18n::Tr("Débloquer"))) to_unblock = entry.first;
+      ImGui::SameLine();
+      if (entry.second.empty()) {
+        ImGui::Text(i18n::Tr("NPC %u"), entry.first);
+      } else {
+        ImGui::Text("%s", entry.second.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%u)", entry.first);
+      }
+      ImGui::PopID();
+    }
+    if (to_unblock != 0) {
+      blocked_npcs_.erase(to_unblock);
+      // Le rappel de session suit le blocage : rebloqué plus tard, ce NPC doit
+      // pouvoir réexpliquer son silence.
+      warned_this_session_.erase(to_unblock);
+      changed = true;
+    }
+  }
   ImGui::Unindent();
 
   if (IsStaff()) {
