@@ -2358,3 +2358,28 @@
 "Si pas déjà annoncé": "Solo si no se anuncia ya"
 "Sous une bulle, l'étiquette passe à droite de la barre : la bulle occupe exactement la place au-dessus.": "Bajo un bocadillo, la etiqueta pasa a la derecha de la barra: el bocadillo ocupa exactamente el sitio de encima."
 "Toujours": "Siempre"
+
+# Blocage du clic gauche sur les NPC a identifiant fixe (entity_context_menu.cc).
+"Le NPC %u": "El NPC %u"
+"%s : vous avez bloqué le clic gauche sur ce NPC. Clic droit dessus pour le débloquer.": "%s: has bloqueado el clic izquierdo en este NPC. Clic derecho para desbloquearlo."
+"%s : le clic gauche est de nouveau actif.": "%s: el clic izquierdo vuelve a funcionar."
+"%s : le clic gauche ne fait plus rien sur lui. Clic droit pour le débloquer ou lui parler.": "%s: el clic izquierdo ya no hace nada sobre él. Clic derecho para desbloquearlo o para hablarle."
+"Bloquer le clic gauche###ctxmenu_npcblock": "Bloquear el clic izquierdo###ctxmenu_npcblock"
+"Coché, le clic gauche sur ce NPC ne fait plus rien du tout : ni dialogue, ni déplacement. Le menu du clic droit reste disponible, « Interagir » compris, et viser une zone avec un sort continue de marcher par-dessus lui.\nRéglage du client, gardé sur cette machine : il ne suit pas le personnage, et un script déclenché en MARCHANT dessus s'exécutera toujours.": "Marcado, el clic izquierdo sobre este NPC ya no hace nada: ni diálogo, ni desplazamiento. El menú del clic derecho sigue disponible, «Interactuar» incluido, y apuntar una zona con una habilidad sigue funcionando por encima de él.\nAjuste del cliente, guardado en esta máquina: no sigue al personaje, y un script activado al CAMINAR sobre él se ejecutará igualmente."
+"Blocage du clic sur les NPC de service###ctxmenu_npcblock_opt": "Bloqueo del clic en los NPC de servicio###ctxmenu_npcblock_opt"
+"Les NPC de la capitale (kafra, job master, styliste, warpers…) se tiennent au milieu du passage et s'ouvrent quand on cherchait à marcher. Clic droit sur l'un d'eux, puis « Bloquer le clic gauche » : il devient une zone morte, le clic ne déclenche plus rien.\nDécoché ici, la case n'est plus proposée et les NPC déjà bloqués redeviennent cliquables — la liste, elle, est conservée.": "Los NPC de la capital (kafra, job master, estilista, warpers…) se plantan en medio del paso y se abren cuando solo querías caminar. Clic derecho en uno de ellos, luego «Bloquear el clic izquierdo»: se convierte en una zona muerta, el clic ya no activa nada.\nDesmarcado aquí, la casilla deja de ofrecerse y los NPC ya bloqueados vuelven a ser clicables — la lista, en cambio, se conserva."
+"Aucun NPC bloqué.": "Ningún NPC bloqueado."
+"Débloquer": "Desbloquear"
+"NPC %u": "NPC %u"
+
+# Libelles vivant dans des tables STATIQUES (status_icon_bar.cc,
+# item_desc_window.cc) : invisibles a l'extracteur, releves par l'export en jeu.
+"Haut-gauche": "Arriba-izquierda"
+"Haut": "Arriba"
+"Haut-droite": "Arriba-derecha"
+"Centre": "Centro"
+"Bas-gauche": "Abajo-izquierda"
+"Bas": "Abajo"
+"Bas-droite": "Abajo-derecha"
+"Plus long d'abord": "Más largo primero"
+"Plus court d'abord": "Más corto primero"

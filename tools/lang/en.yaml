@@ -2397,3 +2397,28 @@
 "Si pas déjà annoncé": "Only if not already announced"
 "Sous une bulle, l'étiquette passe à droite de la barre : la bulle occupe exactement la place au-dessus.": "Under a balloon, the label moves to the right of the bar: the balloon takes exactly the space above."
 "Toujours": "Always"
+
+# Blocage du clic gauche sur les NPC a identifiant fixe (entity_context_menu.cc).
+"Le NPC %u": "NPC %u"
+"%s : vous avez bloqué le clic gauche sur ce NPC. Clic droit dessus pour le débloquer.": "%s: you blocked left-click on this NPC. Right-click it to unblock."
+"%s : le clic gauche est de nouveau actif.": "%s: left-click works again."
+"%s : le clic gauche ne fait plus rien sur lui. Clic droit pour le débloquer ou lui parler.": "%s: left-click no longer does anything on it. Right-click to unblock it or to talk to it."
+"Bloquer le clic gauche###ctxmenu_npcblock": "Block left-click###ctxmenu_npcblock"
+"Coché, le clic gauche sur ce NPC ne fait plus rien du tout : ni dialogue, ni déplacement. Le menu du clic droit reste disponible, « Interagir » compris, et viser une zone avec un sort continue de marcher par-dessus lui.\nRéglage du client, gardé sur cette machine : il ne suit pas le personnage, et un script déclenché en MARCHANT dessus s'exécutera toujours.": "When ticked, left-clicking this NPC does nothing at all: no dialogue, no movement. The right-click menu stays available, \"Interact\" included, and ground-targeting a spell still works over it.\nA client setting, kept on this machine: it does not follow the character, and a script triggered by WALKING onto it will still run."
+"Blocage du clic sur les NPC de service###ctxmenu_npcblock_opt": "Block clicks on service NPCs###ctxmenu_npcblock_opt"
+"Les NPC de la capitale (kafra, job master, styliste, warpers…) se tiennent au milieu du passage et s'ouvrent quand on cherchait à marcher. Clic droit sur l'un d'eux, puis « Bloquer le clic gauche » : il devient une zone morte, le clic ne déclenche plus rien.\nDécoché ici, la case n'est plus proposée et les NPC déjà bloqués redeviennent cliquables — la liste, elle, est conservée.": "The capital's NPCs (kafra, job master, stylist, warpers…) stand right in the way and open up when you were only trying to walk. Right-click one of them, then \"Block left-click\": it becomes a dead zone, the click no longer triggers anything.\nUnticked here, the box is no longer offered and NPCs already blocked become clickable again — the list itself is kept."
+"Aucun NPC bloqué.": "No blocked NPC."
+"Débloquer": "Unblock"
+"NPC %u": "NPC %u"
+
+# Libelles vivant dans des tables STATIQUES (status_icon_bar.cc,
+# item_desc_window.cc) : invisibles a l'extracteur, releves par l'export en jeu.
+"Haut-gauche": "Top-left"
+"Haut": "Top"
+"Haut-droite": "Top-right"
+"Centre": "Center"
+"Bas-gauche": "Bottom-left"
+"Bas": "Bottom"
+"Bas-droite": "Bottom-right"
+"Plus long d'abord": "Longest first"
+"Plus court d'abord": "Shortest first"
