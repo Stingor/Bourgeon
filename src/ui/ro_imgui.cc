@@ -5,6 +5,7 @@
 
 #include <cfloat>
 #include <cstdio>
+#include <cstring>  // std::strlen (validation UTF-8 du texte venu du fil)
 #include <fstream>  // lecture directe du yaml (glyphes coréens, cf. plus bas)
 #include <string>
 #include <unordered_map>
@@ -168,6 +169,30 @@ static bool LooksLikeUtf8(const char* s) {
          0;
 }
 
+// ── Une séquence UTF-8 COUPÉE en fin de chaîne : combien d'octets ? ──────────
+// 0 = la fin est propre, ou l'erreur est ailleurs.
+//
+// 🔴 Ce n'est pas une précaution théorique. Le serveur remplit des champs de
+// TAILLE FIXE et coupe à l'octet près, sans savoir ce qu'il coupe — le relais
+// Discord tronque à 243 octets (clif_bourgeon_discord_msg_all), et un emoji en
+// pèse quatre. Une coupe au mauvais endroit rend la chaîne invalide, et sans ce
+// rattrapage c'est le message ENTIER qui repart en 1252 : le joueur ne perd pas
+// le dernier caractère, il perd la phrase entière en mojibake.
+static size_t DanglingUtf8TailLen(const char* s, size_t n) {
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(s);
+  // Un caractère UTF-8 fait au plus quatre octets : la coupure, s'il y en a une,
+  // est dans les trois derniers.
+  for (size_t back = 1; back <= 3 && back <= n; ++back) {
+    const unsigned char c = p[n - back];
+    if (c < 0x80) return 0;            // de l'ASCII : rien n'est coupé
+    if ((c & 0xC0) == 0x80) continue;  // octet de continuation : on remonte
+    // Octet de TÊTE. Combien d'octets annonce-t-il, et en reste-t-il assez ?
+    const size_t need = (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : (c >= 0xC0) ? 2 : 1;
+    return (need > back) ? back : 0;
+  }
+  return 0;
+}
+
 bool IsUtf8(const char* s) { return LooksLikeUtf8(s); }
 
 // ── Les sélecteurs de variante, retirés à l'entrée ───────────────────────────
@@ -208,6 +233,28 @@ const char* WireToUtf8(const char* ansi) {
     StripVariationSelectors(&out);
     return out.c_str();
   }
+
+  // Deuxième chance : de l'UTF-8 que le serveur a coupé au milieu d'un caractère
+  // (cf. DanglingUtf8TailLen). On jette la queue orpheline — un caractère perdu
+  // vaut mieux qu'une phrase entière en mojibake — et on revalide le reste.
+  //
+  // ⚠ Aucun risque pour un vrai texte 1252 finissant par un accent : le préfixe
+  // qui resterait devrait être de l'UTF-8 valide ET contenir du non-ASCII pour
+  // passer, ce qu'une phrase latine ordinaire ne fait jamais.
+  if (ansi != nullptr && *ansi != '\0') {
+    const size_t len  = std::strlen(ansi);
+    const size_t tail = DanglingUtf8TailLen(ansi, len);
+    if (tail > 0) {
+      std::string head(ansi, len - tail);
+      if (LooksLikeUtf8(head.c_str())) {
+        std::string& out = NextScratch();
+        out.swap(head);
+        StripVariationSelectors(&out);
+        return out.c_str();
+      }
+    }
+  }
+
   return Recode(ansi, kWireCodePage, CP_UTF8);
 }
 

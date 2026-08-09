@@ -1,8 +1,11 @@
 #include "features/systems/discord_relay.h"
 
+#include <cstdio>
 #include <mutex>
+#include <string>
 
 #include "bourgeon.h"
+#include "ui/ro_imgui.h"  // ro::IsUtf8 (verdict d'encodage, pour le diagnostic)
 #include "utils/log_console.h"
 
 namespace {
@@ -55,6 +58,48 @@ void DiscordRelay::OnRecvPacket(uint16_t opcode, const uint8_t* data,
   const char* p = reinterpret_cast<const char*>(data);
   size_t str_len = 0;
   while (str_len < len && p[str_len] != '\0') ++str_len;
-  if (str_len > 0)
-    PushMessage(std::string(p, str_len));
+  if (str_len == 0) return;
+  const std::string text(p, str_len);
+
+  // ── La PREUVE de l'encodage, sans debugger ─────────────────────────────────
+  // Les octets bruts tels qu'ils sortent du fil, avant toute interprétation, et
+  // le verdict qui leur sera appliqué. C'est ce qui répond à « le serveur
+  // envoie-t-il vraiment de l'UTF-8, et le client le voit-il ? » :
+  //   · un emoji intact se lit F0 9F .. et le verdict dit UTF-8 ;
+  //   · un « ? » (3F) à sa place = il a été perdu AVANT nous, dans la base — la
+  //     connexion MySQL de rAthena est en latin1, où aucun emoji n'existe, d'où
+  //     la traduction faite par le bot (_to_wire, tools/groq_service.py) ;
+  //   · verdict CP1252 alors que des octets >= 0x80 défilent = la séquence est
+  //     invalide, donc coupée en route.
+  //
+  // 🔴 UNE FOIS par session, plus les anomalies. Tracer chaque message serait du
+  // bruit permanent dans le journal de TOUS les joueurs, au niveau warn de
+  // surcroît — et un diagnostic qu'on ne peut pas éteindre finit par masquer ce
+  // qu'il devait montrer. Le premier message non-ASCII suffit à prouver que la
+  // chaîne tient ; après quoi seul l'anormal parle.
+  {
+    bool high = false;
+    for (char c : text)
+      if (static_cast<unsigned char>(c) >= 0x80) { high = true; break; }
+    if (high) {
+      const bool utf8 = ro::IsUtf8(text.c_str());
+      static bool proof_logged = false;
+      if (!proof_logged || !utf8) {
+        proof_logged = true;
+        std::string hex;
+        const size_t shown = (str_len < 48) ? str_len : 48;
+        hex.reserve(shown * 3);
+        for (size_t i = 0; i < shown; ++i) {
+          char cell[4];
+          std::snprintf(cell, sizeof(cell), "%02X ",
+                        static_cast<unsigned char>(text[i]));
+          hex += cell;
+        }
+        LogDiag("[DiscordRelay] {} octets, verdict {} | {}{}", str_len,
+                utf8 ? "UTF-8" : "CP1252", hex, (shown < str_len) ? "..." : "");
+      }
+    }
+  }
+
+  PushMessage(text);
 }
