@@ -376,4 +376,24 @@ if(RO_DEPLOY_DIR)
             || ${CMAKE_COMMAND} -E echo "Deploy skipped (ddraw.dll in use — close the game)"
         COMMENT "Deployed to ${RO_DEPLOY_DIR}"
     )
+
+    # Les catalogues de langue (tools/lang/*.yaml) vers SaveData\lang\ du client.
+    #
+    # 🔴 Une cible À PART, et non un POST_BUILD de `bourgeon` : MSBuild ne relance
+    # les étapes post-build que lorsque la cible a été relinkée, or retoucher une
+    # traduction ne recompile RIEN — le cas d'usage le plus courant du chantier
+    # i18n aurait donc été le seul à ne rien déployer. Une custom target sans
+    # OUTPUT est toujours tenue pour périmée : elle tourne à chaque build, et le
+    # script ne recopie que les fichiers dont le CONTENU diffère.
+    add_custom_target(bourgeon_deploy_lang ALL
+        COMMAND ${CMAKE_COMMAND}
+            -D "SRC_DIR=${CMAKE_SOURCE_DIR}/tools/lang"
+            -D "GAME_DIR=${RO_DEPLOY_DIR}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/deploy_lang.cmake"
+        COMMENT "Deploying language catalogs to ${RO_DEPLOY_DIR}/SaveData/lang"
+        VERBATIM
+    )
+    # Après la DLL, et pas du tout si elle n'a pas été produite : un catalogue neuf
+    # en face d'un binaire qui n'a pas compilé ne ferait qu'égarer le diagnostic.
+    add_dependencies(bourgeon_deploy_lang bourgeon)
 endif()
