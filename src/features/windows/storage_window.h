@@ -176,6 +176,11 @@ class StorageWindow : public Plugin {
   bool  show_index_col_ = false;  // setting : afficher l'index storage (slot)
   bool  show_slots_col_ = false;  // setting : afficher une colonne nb de slots carte
   bool  show_desc_tooltip_ = false;  // setting : description native au survol
+  // « Remettre l'ordre d'origine » (colonnes) demandé depuis le panneau de
+  // réglages. PAS un setting : l'ordre lui-même vit dans imgui.ini, tenu par
+  // ImGui. Le drapeau attend la prochaine table — le panneau s'ouvre aussi
+  // storage fermé, et la demande doit tout de même être honorée.
+  bool  reset_col_order_ = false;
   bool  show_value_col_ = true;    // setting : colonne prix de revente (NPC * qté)
   bool  show_total_value_ = true;  // setting : valeur estimée du storage (en-tête)
   bool  show_filter_ = true;  // setting : afficher le champ de filtre par nom

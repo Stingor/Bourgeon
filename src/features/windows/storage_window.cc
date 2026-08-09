@@ -22,6 +22,10 @@
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
+// PushOverrideID / ImHashStr (id de table stable), GetCurrentTable +
+// IsResetDisplayOrderRequest (« Remettre l'ordre d'origine ») et
+// LocalizeRegisterEntries (le menu des en-têtes, qu'ImGui écrit en anglais).
+#include "imgui_internal.h"
 #include "ui/imgui_escape.h"
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kStoragePrices
 #include "features/windows/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
@@ -580,6 +584,45 @@ ro::IconTex GrayItemIcon(uint32_t nameid) {
   return gray;
 }
 
+// ── Colonnes de la liste : index de DÉCLARATION, figés ───────────────────────
+// L'ordre d'AFFICHAGE, lui, appartient au joueur (les en-têtes se glissent). Ces
+// index restent donc les seuls repères stables : ils désignent la colonne à
+// remplir (`TableSetColumnIndex`) et celle sur laquelle trier
+// (`ImGuiTableColumnSortSpecs::ColumnIndex`), où qu'elle soit rendue.
+enum StorageCol : int {
+  kColIdx = 0,   // Index storage (slot)      — optionnelle
+  kColItem,      // icône + nom               — toujours là
+  kColId,        // id numérique              — optionnelle
+  kColSlots,     // nb de slots de carte      — optionnelle
+  kColQte,       // quantité du stack
+  kColVal,       // prix de revente x qté     — optionnelle
+  kColCount
+};
+
+// Le menu du CLIC DROIT sur un en-tête de colonne (« Reset » > « Reset order »)
+// vient de la table de localisation d'ImGui, en anglais. On y pose nos deux
+// libellés — c'est un réglage GLOBAL d'ImGui, valable pour toutes ses tables,
+// mais nous sommes les seuls à activer `Reorderable`, donc les seuls à faire
+// apparaître ce sous-menu.
+//
+// 🔴 À refaire à CHAQUE changement de langue : la table ne garde que des
+// pointeurs, et ceux de `i18n::Tr` meurent au rechargement du catalogue. D'où la
+// copie dans des `std::string` statiques, ré-enregistrées juste après (aucun
+// rendu ne s'intercale entre les deux). Le suffixe « ### » reprend celui des
+// libellés d'origine : il fige l'identité ImGui de l'entrée malgré la traduction.
+void EnsureTableMenuLocalized() {
+  static std::string lang, reset, reset_order;
+  if (!lang.empty() && lang == i18n::LanguageCode()) return;
+  lang = i18n::LanguageCode();
+  reset = i18n::Tr("Réinitialiser");
+  reset_order = i18n::Tr("Remettre l'ordre d'origine###ResetOrder");
+  const ImGuiLocEntry entries[] = {
+      {ImGuiLocKey_TableReset, reset.c_str()},
+      {ImGuiLocKey_TableResetOrder, reset_order.c_str()},
+  };
+  ImGui::LocalizeRegisterEntries(entries, IM_ARRAYSIZE(entries));
+}
+
 }  // namespace
 
 // ── Paquets de la session « storage » ──────────────────────────────────────
@@ -1036,6 +1079,20 @@ bool StorageWindow::DrawSettings() {
   changed |= ro::RoCheckbox(i18n::Tr("Prix de revente"), &show_value_col());
   SameLine(); HelpMarker(
       i18n::Tr("Colonne avec le prix de revente NPC × la quantité du stack."));
+
+  // L'ORDRE des colonnes, lui, se règle dans la fenêtre elle-même : on ne fait
+  // ici que le dire, et offrir la marche arrière (le joueur peut vouloir la
+  // demander storage fermé — d'où le drapeau, consommé à la prochaine table).
+  ImGui::TextDisabled(i18n::Tr("Ordre : glissez un en-tête de colonne."));
+  SameLine(); HelpMarker(
+      i18n::Tr("Dans la fenêtre du storage, attrapez le TITRE d'une colonne et "
+      "faites-la glisser à gauche ou à droite. L'ordre choisi est retenu "
+      "d'une session à l'autre, et vaut pour les deux dispositions "
+      "d'onglets.\n"
+      "Le clic droit sur un en-tête propose la même remise à plat que le "
+      "bouton ci-dessous."));
+  if (ro::RoButton(i18n::Tr("Remettre l'ordre d'origine"), 190.0f, 20.0f))
+    reset_col_order_ = true;
 
   ImGui::EndDisabled();
 
@@ -1772,6 +1829,8 @@ void StorageWindow::OnRenderUI() {
                      "- Survol d'un item : description (si activé dans Interface > Storage)\n"
                      "- Clic sur un en-tête de colonne : tri ; combo Sous-type : filtre fin\n"
                      "  (onglets de catégorie et sous-type : désactivables dans les options)\n"
+                     "- Glisser un en-tête de colonne : la déplacer (ordre retenu ; clic droit\n"
+                     "  sur un en-tête pour remettre l'ordre d'origine)\n"
                      "- Colonnes, filtre et survol : Moonlight > Interface de jeu > Storage\n"
                      "- Onglets de storage (option) : bascule vers un entrepôt alternatif\n"
                      "- Clic droit sur un onglet de storage : le renommer / lui donner une icône\n"
@@ -1885,19 +1944,25 @@ void StorageWindow::OnRenderUI() {
   uint32_t hover_id = 0;
   int      hover_idx = -1;
 
-  // Ordre courant des colonnes : [Index], Item, [ID], [Slots], Qté, Prix revente.
-  // Les index de tri sont calculés dynamiquement (les colonnes optionnelles décalent).
-  const int ncols = 2 + (show_index_col_ ? 1 : 0) + (show_id_col_ ? 1 : 0) +
-                    (show_slots_col_ ? 1 : 0) + (show_value_col_ ? 1 : 0);
-  int colc = 0;
-  const int kColIdx   = show_index_col_ ? colc++ : -1;  // Index
-  ++colc;                                               // Item -> tri par nom (else)
-  const int kColId    = show_id_col_ ? colc++ : -1;      // ID
-  const int kColSlots = show_slots_col_ ? colc++ : -1;   // Slots
-  const int kColQte   = colc++;                          // Qté
-  const int kColVal   = show_value_col_ ? colc++ : -1;   // Prix revente
+  // ── La table : colonnes RÉORGANISABLES (glisser un en-tête) ─────────────────
+  // Les SIX colonnes sont toujours DÉCLARÉES, dans l'ordre figé de `StorageCol` ;
+  // celles que les réglages ne veulent pas partent avec `_Disabled` au lieu
+  // d'être omises. Deux raisons, dont la première est structurelle :
+  //   • ImGui range l'ordre d'affichage (imgui.ini) par INDEX de colonne et ne
+  //     recharge ses réglages que si le NOMBRE de colonnes correspond
+  //     (TableLoadSettings) — un compte qui bouge avec les cases à cocher ferait
+  //     dériver, puis perdre, l'ordre choisi par le joueur ;
+  //   • les index de tri redeviennent des constantes, au lieu d'un compteur qui
+  //     décalait au gré des colonnes visibles.
+  // `_Disabled` plutôt que le drapeau `Hideable` : la visibilité garde UNE source
+  // de vérité, les cases du panneau de réglages (persistées en yaml). Le menu du
+  // clic droit ne propose donc que la remise à plat de l'ordre.
+  const auto col_opt = [](bool shown) -> ImGuiTableColumnFlags {
+    return shown ? ImGuiTableColumnFlags_None : ImGuiTableColumnFlags_Disabled;
+  };
   const ImGuiTableFlags tf = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                              ImGuiTableFlags_Sortable |
+                             ImGuiTableFlags_Reorderable |
                              ImGuiTableFlags_ScrollY |
                              ImGuiTableFlags_SizingStretchProp;
   // En disposition verticale, c'est le child « corps » qui a déjà réservé la place
@@ -1906,27 +1971,43 @@ void StorageWindow::OnRenderUI() {
       vertical_cats ? ImVec2(0.0f, 0.0f) : ImVec2(0.0f, body_h);
   table_top_y  = ImGui::GetCursorScreenPos().y;
   table_left_x = ImGui::GetCursorScreenPos().x;
-  if (ImGui::BeginTable("storage_items", ncols, tf, table_size)) {
+  EnsureTableMenuLocalized();
+  // 🔴 Identité de la table FIGÉE : en disposition verticale elle vit dans le
+  // child « corps », dont l'id entrerait dans le sien. L'ordre des colonnes
+  // serait alors mémorisé deux fois — un par disposition — et changer
+  // d'orientation d'onglets rendrait au joueur un ordre qu'il n'a pas demandé.
+  ImGui::PushOverrideID(ImHashStr("bourgeon_storage_items"));
+  if (ImGui::BeginTable("storage_items", kColCount, tf, table_size)) {
+    // « Remettre l'ordre d'origine » armé depuis le panneau de réglages (le
+    // storage pouvait être fermé au moment du clic). Consommé ICI : la demande
+    // est traitée par TableUpdateLayout, que TableHeadersRow déclenche juste en
+    // dessous — elle prend donc effet dès cette frame.
+    if (reset_col_order_) {
+      if (ImGuiTable* tbl = ImGui::GetCurrentTable())
+        tbl->IsResetDisplayOrderRequest = true;
+      reset_col_order_ = false;
+    }
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (show_index_col_)
-      ImGui::TableSetupColumn(i18n::Tr("Index"), ImGuiTableColumnFlags_WidthFixed |
-                                         ImGuiTableColumnFlags_PreferSortDescending,
-                              54.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Index"), ImGuiTableColumnFlags_WidthFixed |
+                                       ImGuiTableColumnFlags_PreferSortDescending |
+                                       col_opt(show_index_col_),
+                            54.0f);
     ImGui::TableSetupColumn(i18n::Tr("Item"), ImGuiTableColumnFlags_WidthStretch |
                                         ImGuiTableColumnFlags_DefaultSort);
-    if (show_id_col_)
-      ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
-    if (show_slots_col_)
-      ImGui::TableSetupColumn(i18n::Tr("Slots"), ImGuiTableColumnFlags_WidthFixed |
-                                           ImGuiTableColumnFlags_PreferSortDescending,
-                              24.0f);
+    ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed |
+                                      col_opt(show_id_col_),
+                            60.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Slots"), ImGuiTableColumnFlags_WidthFixed |
+                                         ImGuiTableColumnFlags_PreferSortDescending |
+                                         col_opt(show_slots_col_),
+                            24.0f);
     ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending,
                             36.0f);
-    if (show_value_col_)
-      ImGui::TableSetupColumn(i18n::Tr("Prix revente"), ImGuiTableColumnFlags_WidthFixed |
-                                          ImGuiTableColumnFlags_PreferSortDescending,
-                              72.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Prix revente"), ImGuiTableColumnFlags_WidthFixed |
+                                        ImGuiTableColumnFlags_PreferSortDescending |
+                                        col_opt(show_value_col_),
+                            72.0f);
     ImGui::TableHeadersRow();
 
     if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) { // tri demandé
@@ -1963,13 +2044,16 @@ void StorageWindow::OnRenderUI() {
     constexpr float kIcon = 22.0f;  // hauteur d'affichage de l'icône
     for (int idx : view) {
       ImGui::TableNextRow();
+      // 🔴 Chaque cellule vise sa colonne par son INDEX, jamais « la suivante » :
+      // l'ordre d'affichage appartient au joueur, l'ordre de déclaration au code.
+      // Le retour dit si la colonne est rendue (les réglages en désactivent) —
+      // false = rien à soumettre.
       // ── Colonne Idx (optionnelle) : index storage (slot) ──
-      if (show_index_col_) {
-        ImGui::TableNextColumn();
+      if (ImGui::TableSetColumnIndex(kColIdx))
         ImGui::Text("%d", items_[idx].index);
-      }
       // ── Colonne Item : icône + nom cliquable (clic-droit = description) ──
-      ImGui::TableNextColumn();
+      // Jamais désactivée : elle se remplit sans test.
+      ImGui::TableSetColumnIndex(kColItem);
       const ro::IconTex ic = ro::ItemIcon(items_[idx].id, items_[idx].identified);
       const ImVec2 icon_pos = ImGui::GetCursorScreenPos();
       if (ic.tex && ic.w > 0 && ic.h > 0) {
@@ -2120,23 +2204,19 @@ void StorageWindow::OnRenderUI() {
       }
       ImGui::PopID();
       // ── Colonne ID (optionnelle) ──
-      if (show_id_col_) {
-        ImGui::TableNextColumn();
+      if (ImGui::TableSetColumnIndex(kColId))
         ImGui::Text("%u", items_[idx].id);
-      }
       // ── Colonne Slots (optionnelle) : nb de slots de carte ──
-      if (show_slots_col_) {
-        ImGui::TableNextColumn();
+      if (ImGui::TableSetColumnIndex(kColSlots)) {
         const int sl = submeta(items_[idx].id).slots;
         if (sl > 0) ImGui::Text("%d", sl);
         else ImGui::TextDisabled("-");
       }
       // ── Colonne Qte ──
-      ImGui::TableNextColumn();
-      ImGui::Text("%d", items_[idx].amount);
+      if (ImGui::TableSetColumnIndex(kColQte))
+        ImGui::Text("%d", items_[idx].amount);
       // ── Colonne Valeur (prix de vente NPC * quantité, optionnelle) ──
-      if (show_value_col_) {
-        ImGui::TableNextColumn();
+      if (ImGui::TableSetColumnIndex(kColVal)) {
         const long long val = price(items_[idx].id) * items_[idx].amount;
         if (val > 0) ImGui::Text("%lldz", val);
         else ImGui::TextDisabled("-");
@@ -2144,6 +2224,7 @@ void StorageWindow::OnRenderUI() {
     }
     ImGui::EndTable();
   }
+  ImGui::PopID();  // identité figée de la table (PushOverrideID)
 
   // Pont de l'onglet de STORAGE actif : on mange la bordure HAUTE du tableau sur
   // sa seule largeur. Le blanc de l'onglet, celui des deux pixels d'air et celui
