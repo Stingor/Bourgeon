@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -60,8 +61,8 @@ constexpr int kInfoRefine  = 0x60;  // int    : niveau d'affinage
 // même endroit et de la même taille que ce qu'il remplace.
 constexpr float kRowH      = 32.0f;
 constexpr float kIconX     = 13.0f;
-constexpr float kIconY     = 5.0f;
-constexpr float kIconSize  = 24.0f;
+constexpr float kIconSize  = 24.0f;  // (le natif la pose à y+5 dans ses 32 px ;
+                                     //  la nôtre est centrée, cf. le rendu)
 constexpr float kTextX     = 41.0f;
 constexpr float kTextXNoIcon = 13.0f;  // le natif recule le texte quand il n'y a pas d'icône
 constexpr float kPadRight  = 13.0f;
@@ -231,6 +232,19 @@ bool FormatTakesOneInt(const char* fmt) {
   return conversions == 1;
 }
 
+// ── Tout tombe sur un pixel ENTIER ──────────────────────────────────────────
+// 🔴 Le cadre 9-slice blitte ses tuiles avec un filtre POINT (ro_imgui pose
+// ImCb_PointFilter). Une borne à x.5 échantillonne alors entre deux texels : au
+// lieu d'adoucir, le point DUPLIQUE ou MANGE une colonne — d'où des coutures
+// visibles aux angles et un bord qui « bave » d'un pixel selon la position.
+//
+// Les sources de demi-pixel n'étaient pas évidentes : la largeur vient d'une
+// MESURE DE TEXTE (fractionnaire quasi toujours), le centrage divise par deux,
+// et la hauteur est mise à l'échelle de la police. Poser une seule de ces
+// valeurs sur un entier ne suffit pas — il faut la largeur ET l'origine, sinon
+// le bord droit retombe entre deux pixels quelle que soit l'origine.
+inline float Snap(float v) { return std::floor(v + 0.5f); }
+
 int LineCap() {
   int cap = g_cfg.max_lines;
   if (cap < 1) cap = 1;
@@ -326,8 +340,26 @@ void ItemObtainToast::OnRenderUI() {
   if (!dl || !font) return;
 
   const float scale = (g_cfg.font_scale < 50 ? 50 : g_cfg.font_scale) / 100.0f;
-  const float fsize = ImGui::GetFontSize() * scale;
-  const float row_h = kRowH * (scale < 1.0f ? 1.0f : scale);
+  // Taille de police ENTIÈRE : un corps fractionnaire fait rééchantillonner les
+  // glyphes de l'atlas et rend tout le texte pâteux, réglage de 110 % compris.
+  const float fsize = Snap(ImGui::GetFontSize() * scale);
+  // Hauteur de ligne : entière (elle sert d'incrément vertical d'une ligne à la
+  // suivante, donc une fraction décalerait toute la pile de plus en plus), et
+  // calée sur la grille de tuiles pour la même raison que la largeur.
+  //
+  // ⚠ On s'écarte ici des 32 px du natif, en connaissance de cause. 32, c'est
+  // 28 de bordure (deux tuiles) + 4 d'intérieur : le toolkit ÉCRASE alors une
+  // tuile de 14 dans 4 px sur les deux montants, soit un rapport 3,5:1 — la
+  // couture la plus visible du cadre. À 28 il n'y a plus d'intérieur du tout,
+  // rien que les quatre coins blittés 1:1, et le résultat est net. Les 24 px de
+  // l'icône y tiennent avec 2 px de marge de chaque côté.
+  const float tile = ro::DescPanelEdge();          // 14
+  const float need = (kIconSize > fsize ? kIconSize : fsize) + 4.0f;
+  float row_h = Snap(kRowH * (scale < 1.0f ? 1.0f : scale));
+  if (g_cfg.show_frame && tile >= 1.0f) {
+    row_h = 2.0f * tile;                            // 28 : les coins, sans plus
+    if (need > row_h) row_h += std::ceil((need - row_h) / tile) * tile;
+  }
 
   const ImU32 col_text = RgbToImU32(g_cfg.text_rgb);
   const ImU32 col_qty  = RgbToImU32(g_cfg.qty_rgb);
@@ -365,12 +397,35 @@ void ItemObtainToast::OnRenderUI() {
     const ImVec2 name_sz = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, t.name);
     const ImVec2 suf_sz  = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, suffix);
 
-    float w = text_x + name_sz.x + suf_sz.x + kPadRight;
+    // `ceil` et pas `Snap` : arrondir la largeur VERS LE BAS rognerait le
+    // dernier glyphe d'un demi-pixel. Les autres termes sont déjà entiers, donc
+    // la largeur l'est aussi une fois la mesure de texte arrondie.
+    float w = std::ceil(text_x + name_sz.x + suf_sz.x + kPadRight);
     if (w < kMinWidth) w = kMinWidth;
 
+    // 🔴 Deuxième moitié du problème de texels, et elle ne se règle PAS par un
+    // arrondi de coordonnées. `ro::DrawDescPanelFrame` ÉTIRE sa bande centrale
+    // (BlitStretch) là où le client, lui, la RÉPÈTE par pas de 14. Une largeur
+    // intérieure qui n'est pas un multiple de la tuile fait donc échantillonner
+    // la texture entre ses texels sur toute la longueur du bandeau — visible
+    // d'autant plus que le filtre est POINT.
+    //
+    // On cale l'intérieur sur la grille de tuiles. C'est exactement l'intention
+    // de l'arrondi natif à 28 (`if (w % 28) w += 28`), en réparant au passage
+    // son erreur : lui AJOUTE 28 au lieu d'arrondir, donc sa largeur n'est
+    // presque jamais un multiple de quoi que ce soit.
+    if (g_cfg.show_frame) {
+      const float e = ro::DescPanelEdge();  // 14 px, le côté d'une tuile sysbox
+      if (e >= 1.0f) {
+        const float inner = w - 2.0f * e;
+        if (inner > 0.0f) w = 2.0f * e + std::ceil(inner / e) * e;
+      }
+    }
+
     // `pos_x` négatif = centré, ce que fait le natif à sa façon (un x pensé pour
-    // 640, recentré à la résolution courante).
-    const float x = (g_cfg.pos_x < 0) ? (screen_w - w) * 0.5f
+    // 640, recentré à la résolution courante). Le centrage divise par deux : une
+    // largeur impaire donne un x en .5, d'où le Snap.
+    const float x = (g_cfg.pos_x < 0) ? Snap((screen_w - w) * 0.5f)
                                       : static_cast<float>(g_cfg.pos_x);
 
     if (g_cfg.show_frame)
@@ -381,18 +436,24 @@ void ItemObtainToast::OnRenderUI() {
       // ne ferait que la rendre floue.
       const float iw = icon.w > 0 ? static_cast<float>(icon.w) : kIconSize;
       const float ih = icon.h > 0 ? static_cast<float>(icon.h) : kIconSize;
-      const ImVec2 ip(x + kIconX, y + kIconY + (kIconSize - ih) * 0.5f);
+      // Centrée dans la LIGNE, pas posée à un décalage fixe : le natif écrit
+      // y+5 parce que sa ligne fait 32 ; la nôtre en fait 28, et le même
+      // décalage ferait déborder l'icône du cadre par le bas.
+      const ImVec2 ip(x + kIconX, Snap(y + (row_h - ih) * 0.5f));
       dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), ip,
                    ImVec2(ip.x + iw, ip.y + ih));
     }
 
-    const float ty = y + (row_h - fsize) * 0.5f;
+    // Le texte aussi : ImGui échantillonne l'atlas de police en POINT, donc un
+    // y fractionnaire suffit à rendre tous les glyphes flous.
+    const float ty = Snap(y + (row_h - fsize) * 0.5f);
     const ImVec2 name_pos(x + text_x, ty);
     if (t.damaged)
       dl->AddText(font, fsize, ImVec2(name_pos.x + 1.0f, name_pos.y + 1.0f),
                   col_dmg, t.name);
     dl->AddText(font, fsize, name_pos, col_text, t.name);
-    dl->AddText(font, fsize, ImVec2(name_pos.x + name_sz.x, ty), col_qty, suffix);
+    dl->AddText(font, fsize, ImVec2(Snap(name_pos.x + name_sz.x), ty), col_qty,
+                suffix);
 
     y += row_h + kRowGap;
   }
