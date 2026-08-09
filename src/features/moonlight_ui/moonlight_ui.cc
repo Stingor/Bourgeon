@@ -733,10 +733,11 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
 
 // Saut (PlayerJump) : activation + touche. Seuls la hauteur et la durée
 // de l'arc restent vives et non persistées (réglages staff, cf. panel_fun).
+// Opt-in, OFF par défaut (le saut prend une touche et se voit sur le réseau).
 // 0x20 = VK_SPACE.
 const moonlight_ui::SettingDesc kJumpKeySettings[] = {
     {"jump_enabled",   SType::kBool, MLUI_FIELD(player_jump, enabled()),
-     MLUI_LITERAL(bool, true)},
+     MLUI_LITERAL(bool, false)},
     {"jump_key_vk",    SType::kInt,  MLUI_FIELD(player_jump, key_vk()),
      MLUI_LITERAL(int, 0x20)},
     {"jump_key_ctrl",  SType::kBool, MLUI_FIELD(player_jump, key_ctrl()),
@@ -750,9 +751,12 @@ const moonlight_ui::SettingDesc kJumpKeySettings[] = {
 // Déplacement au clavier (KeyboardMove) : activation + les deux options
 // visibles par tous. L'anticipation et la cadence restent vives et non
 // persistées (réglages staff, cf. panel_fun).
+// Opt-in, OFF par défaut : ZQSD sont souvent déjà liées à une compétence, marcher
+// la déclencherait. Les deux options gardent leur défaut ON : elles ne servent
+// qu'une fois le déplacement activé, et ce sont les bons réglages de départ.
 const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
     {"kbmove_enabled", SType::kBool, MLUI_FIELD(keyboard_move, enabled()),
-     MLUI_LITERAL(bool, true)},
+     MLUI_LITERAL(bool, false)},
     {"kbmove_camera_relative", SType::kBool,
      MLUI_FIELD(keyboard_move, camera_relative()), MLUI_LITERAL(bool, true)},
     {"kbmove_stop_on_release", SType::kBool,

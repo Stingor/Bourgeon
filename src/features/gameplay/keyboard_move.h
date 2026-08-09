@@ -70,7 +70,10 @@ class KeyboardMove : public Plugin {
  private:
   void Reset();  // oublie la direction en cours (changement de map, hors jeu…)
 
-  bool enabled_         = true;
+  // OFF par défaut : ZQSD sont des touches que beaucoup ont déjà liées à une
+  // compétence, et un pas déclencherait alors le sort. On ne prend pas quatre
+  // touches au joueur sans qu'il le demande.
+  bool enabled_         = false;
   bool camera_relative_ = true;  // suivre la rotation de la caméra
   bool stop_on_release_ = true;  // au relâchement : demander la cellule courante
   int  look_ahead_      = 2;     // cellules visées devant le personnage

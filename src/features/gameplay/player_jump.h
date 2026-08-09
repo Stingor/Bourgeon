@@ -99,7 +99,9 @@ class PlayerJump : public Plugin {
   // qui n'ont rien à faire hors du fil principal. Cf. features/net_inbox.h.
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  bool  enabled_     = true;
+  // OFF par défaut : le saut prend une touche (Espace) et émet un paquet que
+  // les autres joueurs voient. Comme tout ce qui AGIT, il s'active à la main.
+  bool  enabled_     = false;
   float jump_height_ = 10.0f;  // hauteur de crête, en unités monde
   int   jump_ms_     = 600;    // durée montée+descente
   // Combo de déclenchement (VK Windows + modificateurs). 0x20 = VK_SPACE ; on
