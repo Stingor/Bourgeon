@@ -34,13 +34,16 @@ param(
 # argument est capture, l'identifiant stable n'etant pas une cle de traduction.
 $rxTr    = [regex]'i18n::Tr(?:Id)?\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)'
 $rxLit   = [regex]'"((?:[^"\\]|\\.)*)"'
-# 🔴 Les litteraux de CARACTERE d'abord. `c == '"'` contient un guillemet ; sans
-# ce nettoyage il ouvre une fausse chaine et TOUT le reste du fichier se decale --
-# on s'est retrouve avec des morceaux de code C++ pris pour des libelles.
-$rxCharLit = [regex]"'(?:[^'\\\\]|\\\\.)'"
-function Remove-CharLiterals([string]$src) {
-  return $rxCharLit.Replace($src, { param($m) "'" + ("x" * ($m.Value.Length - 2)) + "'" })
-}
+# 🔴 Le meme tokeniseur que les audits : commentaires blanchis, litteraux de
+# CARACTERE neutralises (`c == '"'` ouvrirait sinon une fausse chaine et decalerait
+# la lecture de TOUT le fichier), chaines intactes.
+# Sans le blanchiment des commentaires, un exemple de code CITE dans un commentaire
+# devient une cle a traduire : `CollapsingHeader(i18n::Tr("…"))`, ecrit deux fois
+# pour expliquer ce que LinkableHeader remplace, sortait en « SANS traduction » --
+# une entree impossible a satisfaire, qui tenait la CI au rouge.
+# ⚠ [IO.Path]::Combine et non "$PSScriptRoot\_scan.ps1" : ce script tourne aussi
+# sur le runner LINUX de la CI (cf. l'en-tete de param), ou « \ » ne separe rien.
+. ([IO.Path]::Combine($PSScriptRoot, '_scan.ps1'))
 # Les DEUX formes admises au catalogue. La seconde existe pour une raison
 # precise : la spec YAML limite une cle IMPLICITE (`cle: valeur`) a 1024
 # caracteres, et yaml-cpp l'applique. Au-dela il faut la forme EXPLICITE, sans
@@ -78,7 +81,7 @@ function Show-Edge([string]$s) {
 $srcKeys = New-Object System.Collections.Generic.HashSet[string]
 $perFile = @{}
 foreach ($f in Get-ChildItem -Path $Src -Recurse -Include *.cc,*.h) {
-  $text = Remove-CharLiterals ([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8))
+  $text = Get-ScannableText ([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8))
   $n = 0
   foreach ($m in $rxTr.Matches($text)) {
     $key = ""
