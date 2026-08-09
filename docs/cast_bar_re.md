@@ -201,14 +201,39 @@ paquet vieux de trente secondes nommerait la barre d'un sort suivant dont on
 aurait raté le paquet — une erreur affichée avec aplomb, pire qu'une barre
 anonyme.
 
-**Réglages** : remplacement on/off · filtres joueurs / monstres / PNJ · nom ·
-temps restant · bordure · largeur · hauteur · décalage vertical · arrondi ·
-taille du texte · opacité · trois couleurs (fond, remplissage, remplissage
-**monstres**) · masquer la sienne au-dessus de sa tête.
+**Réglages** : remplacement on/off · filtres joueurs / monstres / PNJ · **nom du
+sort (jamais / si pas déjà annoncé / toujours)** · temps restant · bordure ·
+largeur · hauteur · décalage vertical · arrondi · taille du texte · opacité ·
+trois couleurs (fond, remplissage, remplissage **monstres**) · masquer la sienne
+au-dessus de sa tête.
 
 ⚠ Les filtres disent ce qu'on veut **voir** : le masquage du natif, lui, reste
 global dès que le remplacement est actif. Décocher « Monstres » ne rend pas au
 client ses barres de monstres.
+
+### 6.1 La bulle occupe déjà la place — et dit déjà le nom
+
+🔴 **Le client ANNONCE le sort dans une bulle au-dessus de la tête, pour les
+JOUEURS.** Les monstres, eux, n'annoncent rien. Écrire le nom sur la barre le
+donnait donc **deux fois** pour un joueur — et pas seulement en doublon
+sémantique : la bulle et la barre partagent le **même ancrage**
+(`y = yPieds − échelle × hauteurSprite`), la bulle poussant vers le haut et la
+barre vers le bas. L'étiquette tombait **dans le cadre de la bulle**, deux textes
+superposés et illisibles (constaté en jeu le 2026-08-09).
+
+Deux corrections, toutes deux pilotées par la **présence effective d'une bulle**
+plutôt que par un test « est-ce un joueur » — ce qui couvre aussi le mob qui
+parle, et le joueur dont la bulle a expiré au milieu d'un long cast :
+
+- **le nom** : mode par défaut « si pas déjà annoncé » ;
+- **la position** : sous une bulle, l'étiquette passe **à droite de la barre**,
+  centrée verticalement dessus. L'espace y est toujours libre et ça se lit comme
+  un chronomètre.
+
+La question « une bulle est-elle affichée ? » se pose à `ChatBalloon` quand il a
+pris la main (`ChatBalloon::HasBalloonFor`) — ⚠ **pas** à `acteur+0x264`, que ce
+plugin met à zéro en détruisant la fenêtre native. Chatbox native, on lit bien
+`acteur+0x264`.
 
 ---
 

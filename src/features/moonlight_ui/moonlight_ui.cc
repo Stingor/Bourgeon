@@ -231,8 +231,9 @@ const moonlight_ui::SettingDesc kCastBarSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"cast_hideown",   SType::kBool,     MLUI_FIELD(cast_bar, hide_own()),
      MLUI_LITERAL(bool, false)},
-    {"cast_name",      SType::kBool,     MLUI_FIELD(cast_bar, show_name()),
-     MLUI_LITERAL(bool, true)},
+    // 0 jamais · 1 si pas déjà annoncé (défaut) · 2 toujours — cf. name_mode_.
+    {"cast_namemode",  SType::kInt,      MLUI_FIELD(cast_bar, name_mode()),
+     MLUI_LITERAL(int, 1)},
     {"cast_time",      SType::kBool,     MLUI_FIELD(cast_bar, show_time()),
      MLUI_LITERAL(bool, true)},
     {"cast_border",    SType::kBool,     MLUI_FIELD(cast_bar, border()),

@@ -233,6 +233,12 @@ bool ChatBalloon::Active() const {
   return chat != nullptr && chat->imgui_enabled_;
 }
 
+bool ChatBalloon::HasBalloonFor(void* actor) const {
+  if (actor == nullptr || balloons_.empty() || !Active()) return false;
+  const uint32_t aid = Read<uint32_t>(actor, kAct_Aid);
+  return balloons_.count(KeyForActor(actor, aid)) != 0;
+}
+
 void ChatBalloon::OnRenderUI() {
   if (!Active()) {
     if (!balloons_.empty()) ResetWhenDisabled();

@@ -15,6 +15,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/overlays/basic_info.h"
+#include "features/overlays/chat_balloon.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -49,6 +50,14 @@ constexpr int kAct_Height   = 0x5c;   //  float : facteur de hauteur du sprite
 constexpr int kAct_CastGage  = 0x270;  //  UIRechargeGage* : la barre native
 constexpr int kAct_CastEnd   = 0x280;  //  uint : timeGetTime de FIN
 constexpr int kAct_CastStart = 0x284;  //  uint : timeGetTime de DÉBUT
+// La bulle de chat, pour savoir si le sort est DÉJÀ annoncé au-dessus de la tête.
+// ⚠ Nulle dès que ChatBalloon a pris la main : il détruit la fenêtre native.
+constexpr int kAct_Balloon   = 0x264;  //  UITransBalloonText*
+
+// Modes du nom de sort, cf. CastBar::name_mode_.
+constexpr int kName_Never  = 0;
+constexpr int kName_IfFree = 1;  // seulement si aucune bulle ne l'annonce déjà
+constexpr int kName_Always = 2;
 
 // Garde-fou sur la durée lue : au-delà, c'est de la mémoire recyclée, pas une
 // incantation. Deux minutes couvrent largement le plus long sort du jeu.
@@ -185,6 +194,15 @@ const char* CastBar::SkillNameForGid(uint32_t gid, uint32_t cast_start) const {
                          ? (it->second.stamp_ms - cast_start)
                          : (cast_start - it->second.stamp_ms);
   return (d <= kPacketPairingMs) ? it->second.name : nullptr;
+}
+
+bool CastBar::EntityHasBalloon(void* actor) const {
+  // Bulle ImGui : la fenêtre native a été DÉTRUITE, `acteur+0x264` ne dit plus
+  // rien — seul le plugin sait ce qu'il affiche.
+  const ChatBalloon* cb = Bourgeon::Instance().chat_balloon();
+  if (cb != nullptr && cb->Active()) return cb->HasBalloonFor(actor);
+  // Chatbox native : la fenêtre est encore accrochée à l'acteur.
+  return Read<void*>(actor, kAct_Balloon) != nullptr;
 }
 
 // ── Frame ────────────────────────────────────────────────────────────────────
@@ -412,10 +430,20 @@ void CastBar::DrawBars() {
                   rounding_);
 
     // ── L'étiquette, que le natif n'a jamais eue ──────────────────────────────
+    //
+    // 🔴 Une bulle occupe la place JUSTE AU-DESSUS de la barre, au pixel près :
+    // c'est le même ancrage, la bulle poussant vers le haut et la barre vers le
+    // bas. Y écrire par-dessus donnait deux textes superposés et illisibles.
+    // Quand une bulle est là, l'étiquette passe donc à DROITE de la barre — un
+    // espace toujours libre, et qui se lit comme un chronomètre.
+    const bool balloon = EntityHasBalloon(actor);
+    const bool want_name =
+        (name_mode_ == kName_Always) || (name_mode_ == kName_IfFree && !balloon);
+
     char label[96];
     label[0] = '\0';
     const char* nm =
-        show_name_ ? SkillNameForGid(Read<uint32_t>(actor, kAct_Aid), start) : nullptr;
+        want_name ? SkillNameForGid(Read<uint32_t>(actor, kAct_Aid), start) : nullptr;
     char secs[24];
     secs[0] = '\0';
     if (show_time_)
@@ -429,8 +457,9 @@ void CastBar::DrawBars() {
 
     if (label[0] == '\0') return;
     const ImVec2 ts = font->CalcTextSizeA(font_px, FLT_MAX, 0.0f, label);
-    const float tx = static_cast<float>(sx) - ts.x * 0.5f;
-    const float ty = p0.y - ts.y - 1.0f;  // posée SUR la barre, pas dedans
+    const float tx = balloon ? p1.x + 3.0f : static_cast<float>(sx) - ts.x * 0.5f;
+    const float ty = balloon ? p0.y + (bh - ts.y) * 0.5f   // centrée sur la barre
+                             : p0.y - ts.y - 1.0f;         // posée SUR la barre
     const int a255 = static_cast<int>(255.0f * opacity_);
     dl->AddText(font, font_px, ImVec2(tx + 1.0f, ty + 1.0f),
                 IM_COL32(0, 0, 0, static_cast<int>(210.0f * opacity_)), label);
@@ -482,13 +511,26 @@ void CastBar::DrawSettings() {
         "Ce que tu veux VOIR. Décocher ne rend pas la barre du client : le "
         "remplacement reste global, seule la barre affichée disparaît."));
 
-    if (ro::RoCheckbox(i18n::Tr("Nom de la compétence"), &show_name_)) save = true;
+    // Libellés BRUTS : RoCombo les traduit à la lecture (un i18n::Tr posé sur un
+    // tableau statique serait figé au chargement de la DLL).
+    const char* name_modes[] = {"Jamais", "Si pas déjà annoncé", "Toujours"};
+    ImGui::SetNextItemWidth(200.0f);
+    if (ro::RoCombo(i18n::Tr("Nom de la compétence"), &name_mode_, name_modes,
+                    IM_ARRAYSIZE(name_modes)))
+      save = true;
     SameLine();
+    HelpMarker(i18n::Tr(
+        "Le client annonce déjà le sort dans une bulle au-dessus de la tête — "
+        "pour les joueurs, pas pour les monstres. « Si pas déjà annoncé » ne "
+        "l'écrit donc que là où l'information manque.\n"
+        "Le nom lui-même vient du paquet d'incantation, que le client jette sans "
+        "le transmettre à sa barre : sans paquet capté, seul le temps s'affiche."));
+
     if (ro::RoCheckbox(i18n::Tr("Temps restant"), &show_time_)) save = true;
     SameLine();
     HelpMarker(i18n::Tr(
-        "Le nom vient du paquet d'incantation, que le client jette sans le "
-        "transmettre à sa barre. Sans paquet capté, seul le temps s'affiche."));
+        "Sous une bulle, l'étiquette passe à droite de la barre : la bulle "
+        "occupe exactement la place au-dessus."));
 
     if (ro::RoCheckbox(i18n::Tr("Bordure"), &border_)) save = true;
 

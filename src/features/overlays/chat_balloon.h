@@ -92,6 +92,20 @@ class ChatBalloon : public Plugin {
   // propre bulle redevient correcte — la nôtre n'aurait plus lieu d'être.
   bool Active() const;
 
+  // Une bulle est-elle affichée EN CE MOMENT au-dessus de cet acteur ?
+  //
+  // Posée pour la barre d'incantation (features/overlays/cast_bar.cc) : quand le
+  // client annonce le sort dans une bulle — ce qu'il fait pour les JOUEURS, pas
+  // pour les monstres — réécrire son nom sur la barre fait doublon, et l'étiquette
+  // tombe en plus dans le cadre de la bulle. Répondre à la question plutôt que de
+  // deviner « c'est un joueur » couvre aussi le cas inverse, et le cas d'un mob
+  // qui parle.
+  //
+  // ⚠ Déréférence l'acteur : à appeler depuis un chemin déjà sous garde
+  // d'exception. Faux si l'overlay est éteint — la fenêtre native est alors
+  // vivante, et c'est à `acteur+0x264` qu'il faut regarder.
+  bool HasBalloonFor(void* actor) const;
+
   // Accesseurs pour la persistance (bourgeon_settings.yaml via MoonlightUi).
   bool&  show_self()          { return show_self_; }
   bool&  fade()               { return fade_; }

@@ -87,7 +87,7 @@ class CastBar : public Plugin {
   bool&  show_monsters()  { return show_monsters_; }
   bool&  show_npcs()      { return show_npcs_; }
   bool&  hide_own()       { return hide_own_; }
-  bool&  show_name()      { return show_name_; }
+  int&   name_mode()      { return name_mode_; }
   bool&  show_time()      { return show_time_; }
   bool&  border()         { return border_; }
   int&   width()          { return width_; }
@@ -124,6 +124,11 @@ class CastBar : public Plugin {
   // aplomb, pire qu'une barre anonyme.
   const char* SkillNameForGid(uint32_t gid, uint32_t cast_start) const;
 
+  // Une bulle est-elle affichée au-dessus de cet acteur en ce moment ? Interroge
+  // ChatBalloon quand il a pris la main, sinon lit `acteur+0x264`. Sert au mode
+  // « nom du sort : si pas déjà annoncé ».
+  bool EntityHasBalloon(void* actor) const;
+
   bool enabled_       = true;
   bool show_players_  = true;
   bool show_monsters_ = true;
@@ -133,7 +138,15 @@ class CastBar : public Plugin {
   // remplacement est éteint : dans ce cas on masque la fenêtre NATIVE, sinon
   // décocher le remplacement ferait réapparaître la barre qu'on voulait cacher.
   bool hide_own_      = false;
-  bool show_name_     = true;
+  // Nom du sort : 0 jamais · 1 **si pas déjà annoncé** (défaut) · 2 toujours.
+  //
+  // 🔴 Le défaut n'est pas « toujours » parce que le client ANNONCE DÉJÀ le sort
+  // dans une bulle au-dessus de la tête — pour les JOUEURS. Le réécrire sur la
+  // barre le donne deux fois, et l'étiquette tombe dans le cadre de la bulle.
+  // Les monstres, eux, n'annoncent rien : c'est là que le nom a de la valeur.
+  // Interroger la bulle plutôt que tester « est-ce un joueur » couvre aussi le
+  // mob qui parle et le joueur dont la bulle a expiré au milieu d'un long cast.
+  int  name_mode_     = 1;
   bool show_time_     = true;
   bool border_        = true;
   int   width_        = 76;   // le natif : 60 px, illisible
