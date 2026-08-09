@@ -540,6 +540,14 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
                               kind == Kind::kHomunculus || kind == Kind::kMercenary);
   if (!native_served && !all_entities_) return true;
 
+  // 🔴 SOI-MÊME : le menu n'y porte que « Copier mon nom » (plus les
+  // identifiants sous le réglage staff). Or on se clique dessus sans le vouloir
+  // — en pleine foule, ou à côté de la cible visée — et le clic droit part
+  // alors dans un menu d'une ligne. Décoché, on sort ICI, c'est-à-dire AVANT la
+  // neutralisation du bouton droit plus bas : le clic repart au client intact,
+  // rien n'est avalé.
+  if (kind == Kind::kSelf && !self_menu_) return true;
+
   // 🔴 Un objet au sol, une unité de compétence ou une entité non classée n'ont
   // AUCUNE action de jeu : il n'en reste que de l'identité brute (nom, GID, quad
   // de pick), c'est-à-dire un outil de débogage. Pour un joueur, ce menu ne
@@ -991,6 +999,23 @@ bool EntityContextMenu::DrawSettings() {
       i18n::Tr("Le client n'ouvrait de menu que sur un joueur, son pet, son homoncule ou "
       "son mercenaire. Coché, le menu s'ouvre aussi sur les monstres et les "
       "NPC."));
+
+  // Sous-réglage : sans « toutes les entités », le menu ne s'ouvre de toute
+  // façon jamais sur soi. Grisée plutôt que masquée — une case qui disparaît ne
+  // dit pas ce qu'elle attendait ; l'infobulle, elle, reste lisible (elle est
+  // posée HORS du grisage, sinon ImGui ne la montrerait plus).
+  ImGui::Indent();
+  ImGui::BeginDisabled(!all_entities_);
+  changed |= ro::RoCheckbox(i18n::Tr("Sur soi-même###ctxmenu_self"), &self_menu_);
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  HelpMarker(
+      i18n::Tr("Le menu sur son propre personnage ne porte que « Copier mon nom » (plus "
+      "les identifiants sous « Outils du staff »). Décoché, le clic droit sur "
+      "soi-même repart au client sans rien ouvrir ni rien avaler.\n"
+      "Sans « Sur toutes les entités », ce menu ne s'ouvre de toute façon "
+      "jamais : le client n'en a jamais eu sur soi."));
+  ImGui::Unindent();
 
   if (IsStaff()) {
     changed |= ro::RoCheckbox(i18n::Tr("Outils du staff###ctxmenu_staff"), &staff_extras_);

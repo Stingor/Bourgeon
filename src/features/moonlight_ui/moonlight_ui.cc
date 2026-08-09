@@ -539,6 +539,11 @@ const moonlight_ui::SettingDesc kEntityContextMenuSettings[] = {
     // que le client n'a jamais eu — c'est au joueur de le demander.
     {"ctxmenu_all_entities", SType::kBool,
      MLUI_FIELD(entity_context_menu, all_entities()), MLUI_LITERAL(bool, false)},
+    // Défaut ON : soi-même faisait partie du lot « toutes les entités » depuis
+    // le premier jour, on ne change pas ce que le joueur avait déjà. Décoché,
+    // le clic droit sur son propre personnage n'ouvre plus rien.
+    {"ctxmenu_self", SType::kBool,
+     MLUI_FIELD(entity_context_menu, self_menu()), MLUI_LITERAL(bool, true)},
     // Défaut ON : sans le gate serveur (group level >= 80) la section staff ne
     // s'affiche de toute façon pas ; l'interrupteur ne sert qu'à la replier.
     {"ctxmenu_staff_extras", SType::kBool,

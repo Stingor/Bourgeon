@@ -85,6 +85,12 @@ class EntityContextMenu : public Plugin {
   // ignorait (monstres, NPC). Défaut OFF — c'est un changement de comportement
   // de jeu, pas un habillage.
   bool& all_entities() { return all_entities_; }
+  // « ctxmenu_self » : ouvrir le menu quand la cible, c'est SOI. Sous-réglage de
+  // « toutes les entités » — le client n'ouvrait rien sur son propre personnage,
+  // c'est ce lot-là qui l'a rendu possible. Défaut ON (le comportement livré),
+  // mais le menu sur soi ne porte presque rien : décoché, ce clic droit repart
+  // au client INTACT plutôt que d'être avalé par un menu d'une ligne.
+  bool& self_menu() { return self_menu_; }
   // « ctxmenu_staff_extras » : ajouter la section staff, ET ouvrir le menu sur
   // les entités purement diagnostiques (unité de compétence, objet au sol, non
   // classée). Sans effet pour un compte non-staff (IsStaff() garde de toute
@@ -170,5 +176,6 @@ class EntityContextMenu : public Plugin {
   uint32_t pending_arg_   = 0;       // job (fiche de monstre), aid (parler)…
 
   bool all_entities_  = false;
+  bool self_menu_     = true;
   bool staff_extras_  = true;
 };
