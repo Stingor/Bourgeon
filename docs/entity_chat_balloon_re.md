@@ -285,7 +285,7 @@ Tous détruits ensemble par `ActorAiClass_DestroyAttachedUI` `0x00c459e0`.
 | **`+0x264`** | **`UITransBalloonText` — la bulle de chat** | **msg 7** `0x00c4dace` | centrée, au-dessus de la tête ; **expire à `+0x248 + 5000 ms`** |
 | `+0x268` | *(widget de tête)* | — | `(x-70, y-17)` |
 | `+0x26C` | *(widget de tête)* | — | `(x-70, y-34)` |
-| `+0x270` | **barre d'INCANTATION** — classe distincte (0xA4 o, pas 0xB0), barre de progression `sub_8637B0(écoulé, total)` | **msg 82** `0x00c4d955` (retirée par **msg 83** à l'expiration de `+0x280`) | `(x-30, y - échelle×hauteur)` = **au-dessus de la tête** |
+| `+0x270` | **barre d'INCANTATION** — `UIRechargeGage` (vftable `0x0102bbc8`, 0xA4 o), 60×6 px, `UIRechargeGage_SetProgress(écoulé, total)`. **RE complète : [`cast_bar_re.md`](cast_bar_re.md)** | **msg 82** `0x00c4d955` (retirée par **msg 83** à l'expiration de `+0x280`) | `(x-30, y - échelle×hauteur)` = **au-dessus de la tête** |
 | `+0x274` | *(widget de tête)* | — | `(x-70, y-34)` |
 | **`+0x488`** | **`UIPcGage` — la jauge de vie 60×5 px** | **msg 34** `0x00d3c5de` (détruite par **msg 35** `0x00d3c5a7`) | `(x-30, y + scale(12))` |
 
@@ -294,9 +294,17 @@ largeur/hauteur de la bulle · `+0x280`/`+0x284` fin/début de la jauge temporis
 
 **Deux barres, deux classes, deux places — confirmé à l'écran (2026-08-08) :** la
 **vie** est `UIPcGage` à `+0x488`, **sous les pieds** (`y + échelle(12)`) ;
-l'**incantation** est le widget de `+0x270`, **au-dessus de la tête**. La
+l'**incantation** est `UIRechargeGage` à `+0x270`, **au-dessus de la tête**. La
 géométrie du code le disait déjà, mais l'inverse se plaide bien : ne pas s'y fier
 de mémoire.
+
+✅ **L'incantation est REMPLACÉE en ImGui** (2026-08-09) :
+`src/features/overlays/cast_bar.{h,cc}`, plus la septième barre `kCast` de
+`BasicInfo` pour la sienne en HUD. 🔴 Contrairement à la bulle, la fenêtre native
+n'est **pas détruite** mais **masquée** (`+0x28`) : c'est son horloge
+(`+0x280`/`+0x284`) qui alimente la nôtre, et le msg 83 a un devoir caché
+(`acteur+0x70 == 8` → `vtable+60`). Tout est dans
+[`cast_bar_re.md`](cast_bar_re.md).
 
 ⚠ **Ce qui alimente `UIPcGage` (msg 34) reste À TROUVER.** Le candidat évident,
 `ZC_HP_INFO 0x0977` (handler `sub_CF33F0` `0x00cf33f0`), est **écarté** : il

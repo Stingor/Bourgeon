@@ -64,6 +64,7 @@
 #include "features/systems/bug_report.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
+#include "features/overlays/cast_bar.h"
 #include "features/overlays/chat_balloon.h"
 #include "features/overlays/entity_names.h"
 #include "utils/hooking/hook_manager.h"
@@ -121,6 +122,7 @@ EntityContextMenu* Bourgeon::entity_context_menu() {
 }
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
 ChatBalloon* Bourgeon::chat_balloon() { return chat_balloon_; }
+CastBar* Bourgeon::cast_bar() { return cast_bar_; }
 
 namespace {
 // Silence le message chat "Successfully purchased emotion." (EMSG_EMOTION_
@@ -240,6 +242,12 @@ void Bourgeon::OnGameFrame() {
   //     clignotait derrière la bulle. Ce battement-ci passe AVANT le dessin.
   // OnTick (~100 ms) était encore pire : plusieurs frames de clignotement.
   if (auto* cb = chat_balloon()) cb->OnGameFramePulse();
+
+  // Barres d'incantation : même raison d'être ici. Le masquage de la fenêtre
+  // native (drapeau +0x28) doit précéder le dessin du jeu, sinon elle reste
+  // visible une frame. Le relevé des horodatages d'incantation se fait dans la
+  // foulée, sous la même garde.
+  if (auto* cast = cast_bar()) cast->OnGameFramePulse();
 }
 
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.
@@ -867,6 +875,14 @@ void Bourgeon::LoadPlugins() {
     auto chat_balloon = std::make_unique<ChatBalloon>();
     chat_balloon_ = chat_balloon.get();
     plugins_.emplace_back(std::move(chat_balloon));
+  }
+  {
+    // Barre d'incantation. Aucun détour : son constructeur ne fait qu'observer
+    // trois opcodes, pour récupérer le skillId que le client jette avant de
+    // créer sa barre (cf. features/overlays/cast_bar.h).
+    auto cast_bar = std::make_unique<CastBar>();
+    cast_bar_ = cast_bar.get();
+    plugins_.emplace_back(std::move(cast_bar));
   }
 
   for (const auto& plugin : plugins_) {

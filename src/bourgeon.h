@@ -55,6 +55,7 @@ class BugReport;
 class WeaponDualSprites;
 class EntityNames;
 class ChatBalloon;
+class CastBar;
 
 class Bourgeon {
  public:
@@ -114,6 +115,7 @@ class Bourgeon {
   WeaponDualSprites* weapon_dual_sprites();
   EntityNames* entity_names();
   ChatBalloon* chat_balloon();
+  CastBar* cast_bar();
 
   bool Initialize();
   void OnTick();
@@ -281,6 +283,7 @@ class Bourgeon {
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   ChatBalloon* chat_balloon_ = nullptr;  // non-owning, lifetime tied to plugins_
+  CastBar* cast_bar_ = nullptr;          // non-owning, lifetime tied to plugins_
   uint32_t last_tick_count_;
   // Garde de ré-entrance de DrainNetInboxes : un HandlePacket peut émettre une
   // commande native, laquelle repasse par CMode::SendMsg -> OnProcessInput. Sans

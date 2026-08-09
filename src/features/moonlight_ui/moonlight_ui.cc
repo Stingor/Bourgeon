@@ -30,6 +30,7 @@
 #include "features/overlays/item_obtain_toast.h"
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
+#include "features/overlays/cast_bar.h"
 #include "features/overlays/chat_balloon.h"
 #include "features/overlays/entity_names.h"
 #include "features/overlays/skill_bar.h"
@@ -214,6 +215,46 @@ const moonlight_ui::SettingDesc kChatBalloonSettings[] = {
      MLUI_LITERAL(float, 0.28f)},
     {"balloon_opacity",    SType::kFloat, MLUI_FIELD(chat_balloon, opacity()),
      MLUI_LITERAL(float, 1.0f)},
+};
+
+// Barres d'incantation au-dessus des têtes (CastBar). La barre HUD, elle, n'a
+// aucune clé ici : c'est la septième barre de BasicInfo, persistée sous
+// expbar_cast_* par la boucle qui parcourt kBarKeys.
+const moonlight_ui::SettingDesc kCastBarSettings[] = {
+    {"cast_enabled",   SType::kBool,     MLUI_FIELD(cast_bar, enabled()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_players",   SType::kBool,     MLUI_FIELD(cast_bar, show_players()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_monsters",  SType::kBool,     MLUI_FIELD(cast_bar, show_monsters()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_npcs",      SType::kBool,     MLUI_FIELD(cast_bar, show_npcs()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_hideown",   SType::kBool,     MLUI_FIELD(cast_bar, hide_own()),
+     MLUI_LITERAL(bool, false)},
+    {"cast_name",      SType::kBool,     MLUI_FIELD(cast_bar, show_name()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_time",      SType::kBool,     MLUI_FIELD(cast_bar, show_time()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_border",    SType::kBool,     MLUI_FIELD(cast_bar, border()),
+     MLUI_LITERAL(bool, true)},
+    {"cast_width",     SType::kInt,      MLUI_FIELD(cast_bar, width()),
+     MLUI_LITERAL(int, 76)},
+    {"cast_height",    SType::kInt,      MLUI_FIELD(cast_bar, height()),
+     MLUI_LITERAL(int, 9)},
+    {"cast_yoffset",   SType::kInt,      MLUI_FIELD(cast_bar, y_offset()),
+     MLUI_LITERAL(int, 0)},
+    {"cast_rounding",  SType::kFloat,    MLUI_FIELD(cast_bar, rounding()),
+     MLUI_LITERAL(float, 3.0f)},
+    {"cast_fontscale", SType::kFloat,    MLUI_FIELD(cast_bar, font_scale()),
+     MLUI_LITERAL(float, 0.80f)},
+    {"cast_opacity",   SType::kFloat,    MLUI_FIELD(cast_bar, opacity()),
+     MLUI_LITERAL(float, 1.0f)},
+    {"cast_bg",        SType::kColorHex, MLUI_FIELD(cast_bar, bg_color_),
+     MLUI_LITERAL_ARGB(0xC70D0D12)},
+    {"cast_fill",      SType::kColorHex, MLUI_FIELD(cast_bar, fill_color_),
+     MLUI_LITERAL_ARGB(0xFF6BADFF)},
+    {"cast_fillmob",   SType::kColorHex, MLUI_FIELD(cast_bar, mob_fill_color_),
+     MLUI_LITERAL_ARGB(0xFFFF8C40)},
 };
 
 // Post-traitement D3D9 + réglages graphiques divers (ScreenFx). Les 13
@@ -1262,6 +1303,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
     moonlight_ui::ReadSettings(ui, kChatBalloonSettings);
+    moonlight_ui::ReadSettings(ui, kCastBarSettings);
 
     moonlight_ui::ReadChatBgPresets(ui);
     moonlight_ui::ReadEquipPresets(ui);
@@ -1376,6 +1418,7 @@ void MoonlightUi::WriteSettingsFile() {
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
   moonlight_ui::WriteSettings(out, kChatBalloonSettings);
+  moonlight_ui::WriteSettings(out, kCastBarSettings);
 
   moonlight_ui::WriteSkinAndPresets(out);
   moonlight_ui::WriteSettings(out, kInventorySettings);

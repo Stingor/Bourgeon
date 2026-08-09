@@ -93,13 +93,20 @@ class BasicInfo : public Plugin {
     float fill[4];  // ImGui RGBA picker state
   };
 
-  enum BarId { kBaseExp = 0, kJobExp, kHp, kSp, kZeny, kWeight, kBarCount };
+  // ⚠ `kCast` n'est pas une barre comme les autres : elle ne lit aucune globale
+  // (cf. kSrc), son contenu vient de CastBar, et elle ne s'affiche QUE pendant
+  // une incantation. Tout le reste — position, taille, couleur, verrou,
+  // aimantation, persistance — lui est commun avec HP/SP/EXP, ce qui est
+  // précisément la raison de la loger ici plutôt que dans son plugin.
+  enum BarId { kBaseExp = 0, kJobExp, kHp, kSp, kZeny, kWeight, kCast, kBarCount };
 
   // Persistence key suffix + UI label, indexed by BarId.
   static constexpr const char* kBarKeys[kBarCount] = {"base", "job",  "hp",
-                                                      "sp",   "zeny", "weight"};
+                                                      "sp",   "zeny", "weight",
+                                                      "cast"};
   static constexpr const char* kBarLabels[kBarCount] = {"Base", "Job",  "HP",
-                                                        "SP",   "Zeny", "Poids"};
+                                                        "SP",   "Zeny", "Poids",
+                                                        "Cast"};
 
   // Global style shared by every bar.
   bool  visible_   = false;  // master toggle for the whole feature (opt-in)
@@ -121,6 +128,7 @@ class BasicInfo : public Plugin {
     /* SP       */ {true, 100,  58, 220, 16, {0.30f, 0.62f, 0.95f, 1.00f}},
     /* Zeny     */ {true, 100, 112, 220, 16, {0.98f, 0.73f, 0.20f, 1.00f}},
     /* Poids    */ {true, 100, 130, 220, 16, {0.65f, 0.55f, 0.80f, 1.00f}},
+    /* Cast     */ {true, 100, 148, 220, 16, {0.42f, 0.68f, 1.00f, 1.00f}},
   };
 
   // ── Status portrait: independent, movable HUD elements ────────────────────
@@ -208,7 +216,12 @@ class BasicInfo : public Plugin {
 
   // Draws bar `id` with the given current/max value. Returns true if its stored
   // geometry changed this frame (user drag/resize).
-  bool DrawBar(BarId id, long long cur, long long max);
+  //
+  // `label_override` remplace INTÉGRALEMENT le texte de la barre (et court-circuite
+  // donc `text_mode_`) : la barre d'incantation n'écrit ni pourcentage ni
+  // « 1400 / 2000 », mais « Storm Gust 1,4 s ».
+  bool DrawBar(BarId id, long long cur, long long max,
+               const char* label_override = nullptr);
 
   // Draws all shown portrait elements (each its own movable/resizable frame).
   // Sets geometry_dirty_ on drag-end so MoonlightUi persists the new layout.

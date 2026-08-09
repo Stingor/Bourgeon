@@ -20,6 +20,7 @@
 // Types COMPLETS des plugins pilotés par les 13 sections (bourgeon.h n'en donne
 // que des déclarations anticipées).
 #include "features/overlays/basic_info.h"
+#include "features/overlays/cast_bar.h"
 #include "features/overlays/chat_balloon.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/craft_atlas.h"
@@ -197,6 +198,7 @@ void MoonlightUi::DrawInterfacePanel() {
     static constexpr IfaceEntry kIfaceSections[] = {
         {kIfaceSkillBar,    "Barre d'action"},
         {kIfaceBasicInfo,   "Basic Info"},
+        {kIfaceCastBar,     "Barre d'incantation"},
         {kIfaceChat,        "Chat"},
         {kIfaceMenuIcons,   "Icônes du menu"},
         {kIfaceStatusIcons, "Icônes de statut"},
@@ -317,6 +319,17 @@ void MoonlightUi::DrawInterfacePanel() {
         } else {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
+      }
+
+      // ── Barre d'incantation (CastBar) ────────────────────────────────────
+      // Sa jumelle HUD (« Cast ») se règle avec les autres barres, dans la
+      // section Basic Info : c'est la même famille de widgets, même verrou,
+      // même aimantation. Ici on ne traite que celles des entités.
+      if (iface_nav_ == kIfaceCastBar) {
+        if (auto* cast = Bourgeon::Instance().cast_bar())
+          cast->DrawSettings();
+        else
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }
 
       // ── Chat Settings ────────────────────────────────────────────────────

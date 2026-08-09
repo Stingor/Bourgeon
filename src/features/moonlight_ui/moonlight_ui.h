@@ -131,6 +131,11 @@ class MoonlightUi : public Plugin {
     // descriptif, qui n'a rien à faire dans un panneau de réglages.)
     kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceRefine,
     kIfaceMakeItem, kIfaceMonsterInfo, kIfaceContextMenu, kIfaceCraftAtlas,
+    // ⚠ Les entrées s'AJOUTENT EN FIN d'énumération, jamais au milieu : la
+    // section ouverte est persistée par son numéro (`iface_nav_`), qu'une
+    // insertion décalerait. L'ordre AFFICHÉ, lui, vient de kIfaceSections, dont
+    // chaque ligne porte son identifiant — il est libre.
+    kIfaceCastBar,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

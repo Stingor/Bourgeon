@@ -29,6 +29,7 @@
 #include "imgui.h"
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"  // D3D9_CompositeQuadsRGBA (export GIF avatar)
+#include "features/overlays/cast_bar.h"  // barre « Cast » : contenu et présence
 #include "features/systems/bourgeon_opcodes.h"  // kHatEffectMap (ZC 0x0F17)
 #include "features/fx/ez_effect_capture.h"  // capture PARTAGÉE des effets EZ (doll + aperçu)
 #include "features/moonlight_ui/moonlight_ui.h"  // shared AlignGrid (snap + draw)
@@ -70,6 +71,11 @@ const Src kSrc[BasicInfo::kBarCount] = {
   {0x015ff910, 0x015ff914, 0,        false, false, "SP",    "###BISp"},
   {rag::kZenyAddr, rag::kZenyAddr, kZenyMax, false, true,  "Zeny",  "###BIZeny"},
   {0x015fbaa0, 0x015fba9c, 0,        false, false, "Poids", "###BIWeight"},
+  // Incantation : AUCUNE globale à lire. Ses valeurs sont l'écoulé et la durée
+  // totale du cast en cours, relevés sur l'acteur par CastBar et poussés à
+  // DrawBar depuis OnRenderUI. Les deux adresses nulles sont là pour garder la
+  // table alignée sur BarId — elles ne sont jamais déréférencées.
+  {0,          0,          0,        false, false, "Cast",  "###BICast"},
 };
 
 // Formats a signed integer with thousands separators (1234567 -> "1,234,567")
@@ -1673,7 +1679,8 @@ float BasicInfo::SnapValue(float v, float ext, int self_id,
   return best;
 }
 
-bool BasicInfo::DrawBar(BarId id, long long cur, long long max) {
+bool BasicInfo::DrawBar(BarId id, long long cur, long long max,
+                        const char* label_override) {
   Bar& bar = bars_[id];
   const bool frozen = locked_;
 
@@ -1851,7 +1858,9 @@ bool BasicInfo::DrawBar(BarId id, long long cur, long long max) {
     if (text_mode_ != 0) {
       const char* label = kSrc[id].label;
       char buf[96];
-      if (kSrc[id].grouped) {  // zeny: label + thousands-grouped amount
+      if (label_override != nullptr)  // barre d'incantation : texte déjà composé
+        std::snprintf(buf, sizeof(buf), "%s", label_override);
+      else if (kSrc[id].grouped) {  // zeny: label + thousands-grouped amount
         char num[24];
         GroupInt(cur, num, sizeof(num));
         std::snprintf(buf, sizeof(buf), "%s %s", label, num);
@@ -2431,6 +2440,18 @@ void BasicInfo::OnRenderUI() {
   bool changed = false;
   for (int i = 0; i < kBarCount; ++i) {
     if (!bars_[i].show) continue;
+    if (i == kCast) {
+      // Barre d'incantation : pas de globale à lire, et surtout elle n'existe
+      // que le temps du sort. Hors incantation on ne dessine RIEN — une jauge
+      // vide en permanence prendrait la place sans rien dire.
+      const CastBar* cb = Bourgeon::Instance().cast_bar();
+      if (cb == nullptr || !cb->own_cast().active) continue;
+      char label[96];
+      cb->OwnCastLabel(label, sizeof(label));
+      changed |= DrawBar(kCast, cb->own_cast().elapsed_ms,
+                         cb->own_cast().total_ms, label);
+      continue;
+    }
     const long long cur = RDval(kSrc[i].cur, kSrc[i].wide);
     const long long max = kSrc[i].max_const ? kSrc[i].max_const
                                             : RDval(kSrc[i].max, kSrc[i].wide);
