@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "imgui_freetype.h"  // ImGuiFreeTypeLoaderFlags_LoadColor (emoji en couleur)
 #include "imgui_internal.h"  // ImGui::GetActiveID, GetCurrentWindow, TitleBarRect
 
 #include "d3d9/d3d9_hook.h"   // Overlay_CreateTextureARGB, Overlay_SetTextureFilter
@@ -134,12 +135,139 @@ const char* LocalToUtf8(const char* local) {
 // celle-là.
 constexpr UINT kWireCodePage = 1252;
 
+// ── … MAIS LE FIL N'EST PLUS 1252 TOUT SEUL ─────────────────────────────────
+// Il porte désormais les DEUX encodages, et c'est voulu. 1252 ne sait pas écrire
+// un emoji — il n'a que 256 caractères — donc tout ce qui vient de Discord par le
+// relais, ou d'un joueur qui en tape un, doit voyager en UTF-8. Basculer le fil
+// d'un bloc était exclu : les scripts NPC, les msg_conf du serveur et
+// l'historique de chat déjà écrit sont en 1252, et ils auraient tous perdu leurs
+// accents d'un coup.
+//
+// D'où la lecture TOLÉRANTE : on regarde ce que la chaîne EST, au lieu de le
+// décréter. Le test n'est pas une heuristique floue — c'est la validité stricte
+// de l'UTF-8, que Windows vérifie pour nous (MB_ERR_INVALID_CHARS) :
+//   · « é » en 1252 est l'octet 0xE9 SEUL, ce qui n'est pas de l'UTF-8 valide
+//     (0xE9 y annonce trois octets et rien ne suit) → décodé en 1252 ;
+//   · « é » en UTF-8 est C3 A9, séquence valide → pris tel quel.
+// Les accents des textes existants sont donc conservés à l'octet près, sans
+// qu'on ait à toucher au serveur.
+//
+// ⚠ Le seul faux positif possible est une chaîne 1252 qui serait ELLE-MÊME de
+// l'UTF-8 valide : « Ã© », « Ã¨ »… Autrement dit du mojibake déjà écrit. Personne
+// ne tape ça, et le confondre avec l'original qu'il représente est même plutôt
+// une réparation.
+static bool LooksLikeUtf8(const char* s) {
+  if (s == nullptr || *s == '\0') return false;
+  bool has_high = false;
+  for (const unsigned char* p = reinterpret_cast<const unsigned char*>(s); *p;
+       ++p)
+    if (*p >= 0x80) { has_high = true; break; }
+  // ASCII pur : les deux tables coïncident, autant garder le chemin habituel.
+  if (!has_high) return false;
+  return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, nullptr, 0) >
+         0;
+}
+
+bool IsUtf8(const char* s) { return LooksLikeUtf8(s); }
+
+// ── Les sélecteurs de variante, retirés à l'entrée ───────────────────────────
+// U+FE0F (« affiche l'emoji en couleur ») suit presque tous les emoji envoyés
+// par Discord ou par le panneau de Windows : « ❤️ » est DEUX points de code.
+//
+// 🔴 Il ne se contente pas d'être invisible, il PREND DE LA PLACE. Un moteur de
+// texte complet l'absorbe pendant le shaping ; ImGui n'en fait pas et dessine
+// bêtement son glyphe — qui, dans Segoe UI Emoji, est vide mais large de 2812
+// unités sur 2048 (MESURÉ dans la hmtx). Chaque cœur serait donc suivi d'un
+// blanc plus large que lui.
+//
+// On les retire donc du texte à l'affichage. Rien ne se perd : la couleur ne
+// dépend pas d'eux ici, elle vient de la police (une seule est chargée).
+static void StripVariationSelectors(std::string* s) {
+  // U+FE00..U+FE0F = EF B8 80 .. EF B8 8F en UTF-8.
+  size_t w = 0;
+  for (size_t r = 0; r < s->size(); ++r) {
+    const unsigned char c0 = static_cast<unsigned char>((*s)[r]);
+    if (c0 == 0xEF && r + 2 < s->size() &&
+        static_cast<unsigned char>((*s)[r + 1]) == 0xB8) {
+      const unsigned char c2 = static_cast<unsigned char>((*s)[r + 2]);
+      if (c2 >= 0x80 && c2 <= 0x8F) {
+        r += 2;  // la boucle avance du troisième octet
+        continue;
+      }
+    }
+    (*s)[w++] = (*s)[r];
+  }
+  s->resize(w);
+}
+
 const char* WireToUtf8(const char* ansi) {
+  if (LooksLikeUtf8(ansi)) {
+    // Déjà de l'UTF-8 : le repasser par 1252 le doublerait (« é » -> « Ã© »).
+    std::string& out = NextScratch();
+    out = ansi;
+    StripVariationSelectors(&out);
+    return out.c_str();
+  }
   return Recode(ansi, kWireCodePage, CP_UTF8);
 }
 
 const char* Utf8ToWire(const char* utf8) {
   return Recode(utf8, CP_UTF8, kWireCodePage);
+}
+
+// ── Le retour, pour du TEXTE (et lui seul) ───────────────────────────────────
+// 🔴 CE N'EST PAS UN REMPLAÇANT D'`Utf8ToWire`, et les mélanger casserait des
+// choses silencieusement. Un nom de personnage, une cible de chuchotement, un
+// nom de canal sont des IDENTIFIANTS : le serveur les compare octet par octet à
+// ce que sa base contient, en 1252. Les envoyer en UTF-8 ferait échouer la
+// recherche sur le premier accent. Ceux-là passent par `Utf8ToWire`, toujours.
+//
+// Ici, on ne parle que de PHRASES — une ligne de chat, un courrier — dont le
+// serveur ne fait que relayer les octets.
+//
+// La règle est « 1252 tant que possible » plutôt que « UTF-8 partout », pour que
+// la migration ne se voie nulle part ailleurs : une phrase accentuée ordinaire
+// part exactement comme avant (mêmes octets en base, dans les logs, pour les
+// commandes @), et seule celle qui contient vraiment un caractère hors 1252 —
+// un emoji — bascule. Le lecteur, lui, accepte les deux (cf. LooksLikeUtf8).
+//
+// `WC_NO_BEST_FIT_CHARS` est indispensable : sans lui Windows remplace en
+// silence ce qu'il ne sait pas écrire par un caractère « approchant », et l'on
+// enverrait un « e » là où le joueur a tapé autre chose, sans jamais basculer.
+const char* Utf8ToWireText(const char* utf8) {
+  if (utf8 == nullptr || *utf8 == '\0') {
+    std::string& out = NextScratch();
+    out.clear();
+    return out.c_str();
+  }
+
+  const int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+  if (wlen > 1) {
+    std::wstring wide(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wlen);
+
+    const char fallback = '?';
+    const int olen = WideCharToMultiByte(kWireCodePage, WC_NO_BEST_FIT_CHARS,
+                                         wide.data(), -1, nullptr, 0, &fallback,
+                                         nullptr);
+    if (olen > 1) {
+      // ⚠ Le drapeau se lit sur la CONVERSION, pas sur la mesure : en mode
+      // « calcule-moi la taille » (cbMultiByte = 0), Windows ne garantit pas de
+      // le renseigner. On convertit donc pour de bon, puis on décide — quitte à
+      // jeter le résultat et à repartir sur un autre emplacement du scratch.
+      std::string& out = NextScratch();
+      out.resize(olen - 1);
+      BOOL used_default = FALSE;
+      WideCharToMultiByte(kWireCodePage, WC_NO_BEST_FIT_CHARS, wide.data(), -1,
+                          out.data(), olen, &fallback, &used_default);
+      if (!used_default) return out.c_str();
+    }
+  }
+
+  // Hors 1252 : l'UTF-8 part tel quel.
+  std::string& out = NextScratch();
+  out = utf8;
+  return out.c_str();
 }
 
 const char* Utf8ToLocal(const char* utf8) {
@@ -222,6 +350,89 @@ bool g_font_enabled = true;        // état du toggle (mémorisé même avant lo
 void ApplyFontSelection() {
   ImGui::GetIO().FontDefault =
       (g_font_enabled && g_font_malgun) ? g_font_malgun : g_font_default;
+}
+
+// ── Les EMOJI, en couleur, dans CHACUNE des polices ──────────────────────────
+// Segoe UI Emoji est livrée avec Windows 10 (1809+) et 11, comme Malgun : rien à
+// embarquer ni à télécharger.
+//
+// 🔴 IL FAUT LA FUSIONNER DANS TOUTES LES POLICES, pas seulement dans la
+// principale. Une police ImGui ne connaît que SES sources : le chat, qui est
+// précisément là où les emoji arrivent, se dessine avec la famille choisie par
+// le joueur (Tahoma, Consolas…) et bascule sur les variantes grasse/italique au
+// balisage `**…**`. Chacune est une ImFont SÉPARÉE — sans cette fusion, un emoji
+// dans un passage en gras, ou dans un chat réglé sur Verdana, sortirait en
+// losange, et le joueur croirait à un bug intermittent.
+//
+// ⚠ D'où le chargement EN MÉMOIRE plutôt que par chemin : `AddFontFromFileTTF`
+// relit et duplique le fichier à chaque source, et seguiemj.ttf pèse 12,4 Mio.
+// Quatorze polices, c'est 170 Mio dans un processus 32 bits — de quoi manquer
+// d'adressable. Ici le tampon est chargé UNE fois et partagé, d'où
+// `FontDataOwnedByAtlas = false` : sans lui, l'atlas le libérerait une fois par
+// source, soit treize libérations de trop.
+//
+// 🔴 AUCUNE PLAGE N'EST DÉCLARÉE, ET C'EST DÉLIBÉRÉ. Depuis ImGui 1.92 les
+// glyphes se chargent À LA DEMANDE quand le backend sait mettre sa texture à jour
+// (le DX9 le sait) : la source couvre alors tout ce que la police contient, sans
+// rien préparer. Lister les blocs emoji ne servirait qu'au backend DX7, resté en
+// atlas figé — et lui ferait précharger près de deux mille glyphes COULEUR d'un
+// coup, au risque de faire déborder sa texture. Or un atlas qui déborde, ce n'est
+// pas du texte moche : c'est du texte ABSENT, partout. En DX7 les emoji
+// manqueront donc, et rien d'autre.
+//
+// ⚠ `LoadColor` n'a d'effet qu'avec le rasteriseur FreeType, activé GLOBALEMENT
+// (IMGUI_ENABLE_FREETYPE, thirdparty/imgui/CMakeLists.txt) : stb_truetype ne lit
+// que les contours et sortirait le dessin AU TRAIT de chaque emoji. Le brancher
+// sur cette seule source aurait été préférable — ImGui expose bien un loader par
+// source — mais il le REFUSE pour FreeType (« FIXME-NEWATLAS: Unsupported yet. »)
+// et déréférencerait un pointeur nul en Release. Le détail est dans le CMakeLists.
+// Conséquence à connaître : tout le texte de l'interface est rastérisé par
+// FreeType, donc son dessin bouge très légèrement.
+//
+// Le flag, lui, est bien PAR SOURCE : `InitFont` fait
+// `src->FontLoaderFlags | atlas->FontLoaderFlags`. Seuls les emoji sont donc
+// chargés en couleur, pas le reste du texte.
+// ⚠ FUITE VOLONTAIRE, jamais libérée. FreeType garde un FT_Face ouvert SUR ce
+// tampon pour chaque source, et l'atlas ImGui vit aussi longtemps que la DLL.
+// Un `std::vector` global serait détruit par les destructeurs statiques au
+// déchargement, dont rien ne garantit qu'ils passent après la destruction du
+// contexte ImGui : ce serait un plantage à la fermeture, du genre qu'on ne
+// reproduit qu'une fois sur cinq. Douze mégaoctets rendus au processus une
+// milliseconde plus tôt ne valent pas ça.
+std::vector<char>* g_emoji_ttf = nullptr;  // le fichier, chargé une seule fois
+
+// À appeler JUSTE APRÈS l'ajout de la police à enrichir : `MergeMode` fusionne
+// dans la DERNIÈRE police ajoutée à l'atlas, pas dans une police nommée.
+void MergeEmoji(float size_px, const ImFontConfig& base) {
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    std::ifstream f("C:\\Windows\\Fonts\\seguiemj.ttf",
+                    std::ios::binary | std::ios::ate);
+    if (f) {
+      const std::streamoff size = f.tellg();
+      if (size > 0) {
+        auto* buf = new std::vector<char>(static_cast<size_t>(size));
+        f.seekg(0);
+        f.read(buf->data(), size);
+        if (f)
+          g_emoji_ttf = buf;
+        else
+          delete buf;  // lecture partielle : ne rien fusionner
+      }
+    }
+  }
+  // Windows trop ancien, ou police absente : pas d'emoji, et rien d'autre ne change.
+  if (g_emoji_ttf == nullptr || g_emoji_ttf->empty()) return;
+
+  ImFontConfig emoji = base;
+  emoji.MergeMode = true;
+  emoji.GlyphExcludeRanges = nullptr;  // l'antislash-won ne la concerne pas
+  emoji.FontDataOwnedByAtlas = false;  // 🔴 tampon partagé, cf. ci-dessus
+  emoji.FontLoaderFlags |= ImGuiFreeTypeLoaderFlags_LoadColor;  // par source
+  ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
+      g_emoji_ttf->data(), static_cast<int>(g_emoji_ttf->size()), size_px,
+      &emoji, nullptr);
 }
 }  // namespace
 
@@ -384,6 +595,8 @@ ImFont* LoadKoreanFont(float size_px) {
       io.Fonts->AddFontFromFileTTF(latin_font, size_px, &merge, kBackslashOnly);
     }
 
+    MergeEmoji(size_px, cfg);
+
     // ── Les variantes, bakées MAINTENANT ────────────────────────────────────
     // Même taille et même configuration que la normale : une variante mesurée
     // autrement décalerait les retours à la ligne, puisque c'est la police du
@@ -397,7 +610,15 @@ ImFont* LoadKoreanFont(float size_px) {
         if (GetFileAttributesA(paths[i]) == INVALID_FILE_ATTRIBUTES) continue;
         ImFontConfig vc = cfg;
         vc.GlyphExcludeRanges = nullptr;  // pas de won à écarter hors de Malgun
-        return io.Fonts->AddFontFromFileTTF(paths[i], size_px, &vc, ranges);
+        ImFont* font =
+            io.Fonts->AddFontFromFileTTF(paths[i], size_px, &vc, ranges);
+        // 🔴 Les emoji dans CELLE-CI aussi. C'est par ici que passent les deux
+        // variantes ET les quatre familles de la chatbox : sans cette ligne, un
+        // emoji dans un passage en gras, ou un chat réglé sur Verdana, n'aurait
+        // que des losanges. Et l'appel doit suivre IMMÉDIATEMENT l'ajout —
+        // `MergeMode` fusionne dans la dernière police de l'atlas.
+        if (font != nullptr) MergeEmoji(size_px, vc);
+        return font;
       }
       return nullptr;
     };

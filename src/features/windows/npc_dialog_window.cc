@@ -148,21 +148,18 @@ std::string LowerAscii(const char* s) {
   return r;
 }
 
-// Le serveur encode les scripts NPC en ANSI (CP_ACP = CP1252 sur Windows fr) ; ImGui
-// veut de l'UTF-8 -> conversion (sinon les accents é/à/œ… cassent).
+// Les scripts NPC arrivent par le fil ; ImGui veut de l'UTF-8 (sinon les accents
+// é/à/œ… cassent).
+//
+// ⚠ DÉLÈGUE à la porte commune, et ce n'est pas qu'un nettoyage : cette copie
+// locale lisait en CP_ACP, la locale non-Unicode du POSTE, alors que l'encodage
+// du fil est une propriété du SERVEUR (identique ici sur un Windows français,
+// faux chez un joueur dont le système est réglé en coréen pour son client RO).
+// Et `ro::WireToUtf8` accepte désormais les DEUX encodages, ce qui fait qu'un
+// emoji dans un dialogue s'affiche au lieu de sortir en mojibake.
 std::string AnsiToUtf8(const std::string& in) {
   if (in.empty()) return std::string();
-  const int wn = MultiByteToWideChar(CP_ACP, 0, in.c_str(),
-                                     static_cast<int>(in.size()), nullptr, 0);
-  if (wn <= 0) return in;
-  std::wstring w(static_cast<size_t>(wn), L'\0');
-  MultiByteToWideChar(CP_ACP, 0, in.c_str(), static_cast<int>(in.size()), &w[0], wn);
-  const int un = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wn, nullptr, 0, nullptr,
-                                     nullptr);
-  if (un <= 0) return in;
-  std::string out(static_cast<size_t>(un), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wn, &out[0], un, nullptr, nullptr);
-  return out;
+  return std::string(ro::WireToUtf8(in.c_str()));
 }
 
 // ── Icônes item ImGui (recette inventory_viewer.cc) ──

@@ -66,10 +66,43 @@ const char* Utf8ToLocal(const char* utf8);
 // en coréen pour leur client RO. Le raisonnement complet est au-dessus de
 // kWireCodePage, dans ro_imgui.cc.
 //
+// ⚠⚠ MISE À JOUR : le fil porte MAINTENANT LES DEUX ENCODAGES. 1252 ne sait pas
+// écrire un emoji, donc ce qui vient du relais Discord — ou d'un joueur qui en
+// tape un — voyage en UTF-8, pendant que les scripts NPC, les msg_conf et tout
+// l'historique déjà écrit restent en 1252.
+//
+// `WireToUtf8` tranche donc à la LECTURE, sur la validité stricte de l'UTF-8 :
+// « é » en 1252 (l'octet 0xE9 seul) n'est pas de l'UTF-8 valide et se décode en
+// 1252 ; « é » en UTF-8 (C3 A9) est pris tel quel. Les accents des textes
+// existants sont conservés à l'octet près, sans rien changer côté serveur.
+//
+// Elle retire au passage les sélecteurs de variante (U+FE0F & co) : ImGui ne
+// fait pas de shaping et dessinerait leur glyphe, VIDE mais large d'un emoji.
+//
 // Mêmes garanties de tampon que les fonctions ci-dessus (rotatif, à consommer
 // tout de suite). Sens retour pour une saisie ImGui qui repart au serveur.
 const char* WireToUtf8(const char* ansi);
 const char* Utf8ToWire(const char* utf8);
+
+// La chaîne est-elle de l'UTF-8 valide portant au moins un octet non-ASCII ?
+// C'est le prédicat exact sur lequel `WireToUtf8` se décide, exposé parce que
+// certains traitements doivent connaître l'encodage AVANT la conversion — la
+// neutralisation de l'octet 0xA0 dans le parseur du chat, notamment : c'est un
+// NBSP en 1252, mais l'octet de continuation du « à » en UTF-8.
+bool IsUtf8(const char* s);
+
+// ── Le retour pour du TEXTE, à ne pas confondre avec `Utf8ToWire` ────────────
+// 🔴 Réservé aux PHRASES que le serveur ne fait que relayer (ligne de chat,
+// courrier). Un nom de personnage, une cible de chuchotement ou un nom de canal
+// sont des IDENTIFIANTS que le serveur compare octet par octet à sa base en
+// 1252 : ceux-là passent par `Utf8ToWire`, sans exception, sinon la recherche
+// échoue au premier accent.
+//
+// Règle : 1252 tant que la phrase y rentre ENTIÈREMENT (elle part alors
+// exactement comme avant — mêmes octets en base, dans les logs, pour les
+// commandes @), UTF-8 seulement si elle contient un caractère hors 1252, donc
+// en pratique un emoji. Le lecteur accepte les deux.
+const char* Utf8ToWireText(const char* utf8);
 
 // Charge DEUX polices dans l'atlas : la police intégrée d'ImGui (repli) et Malgun
 // Gothic (glyphes hangul + latin, présente sur tout Windows 10/11). Puis

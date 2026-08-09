@@ -584,6 +584,18 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
   if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP) && lParam == kSyntheticKeyLParam)
     return WndProcRef(hwnd, uMsg, wParam, lParam);
 
+  // ── Le sélecteur de variante du panneau emoji de Windows, jeté ici ─────────
+  // Win+. envoie « ❤️ » en DEUX caractères : le cœur, puis U+FE0F qui demande la
+  // version en couleur. Un moteur de texte complet l'absorbe pendant le shaping ;
+  // ImGui n'en fait pas et dessinerait son glyphe — vide, mais large d'un emoji
+  // entier dans Segoe UI Emoji (MESURÉ : 2812 unités sur 2048). Chaque emoji
+  // tapé serait donc suivi d'un blanc plus large que lui dans le champ de saisie.
+  //
+  // Le même filtrage existe côté LECTURE (ro::WireToUtf8) pour ce qui arrive du
+  // réseau ; celui-ci couvre la frappe. Rien ne se perd : la couleur vient de la
+  // police, pas de ce caractère.
+  if (uMsg == WM_CHAR && (wParam >= 0xFE00 && wParam <= 0xFE0F)) return 0;
+
   // Only process ImGui events after at least one frame has been rendered.
   // Before that (e.g. D3D9 login screen where EndScene hasn't fired yet),
   // ImGui side-effects like SetCapture() on WM_LBUTTONDOWN interfere with

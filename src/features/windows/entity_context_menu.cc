@@ -484,16 +484,19 @@ bool RunNativeActorClick(uint32_t aid) {
 // (`UIWindowMgr::SendMsg`, qui aiguille vers la chatbox ImGui quand elle vit et
 // vers la native sinon).
 //
-// Encodage : `Utf8ToWire` (CP1252). C'est avec `WireToUtf8` que la chatbox ImGui
-// relit ce qu'on lui donne (`ChatWindow::Parse`) ; sans cette conversion, nos
-// accents partiraient en octets UTF-8 bruts et reviendraient en mojibake.
+// Encodage : `Utf8ToWireText`, qui rend du CP1252 tant que la phrase y rentre —
+// c'est le cas de tous nos messages, qui n'ont que des accents — et de l'UTF-8
+// sinon. C'est avec `WireToUtf8` que la chatbox ImGui relit ce qu'on lui donne
+// (`ChatWindow::Parse`), et elle accepte les deux ; sans conversion du tout, nos
+// accents partiraient en octets UTF-8 bruts vers la chatbox NATIVE, qui ne sait
+// lire que du 1252, et reviendraient en mojibake.
 //
 // ⚠ Appelée depuis le rendu, comme le DPS meter et le refus de la boutique NPC :
 // UIM_PUSHINTOCHATHISTORY empile une ligne et n'ouvre aucune modale — c'est la
 // seule commande native sans danger en pleine frame ImGui.
 void SayToChat(const char* utf8) {
   if (!utf8 || !*utf8) return;
-  const char* wire = ro::Utf8ToWire(utf8);
+  const char* wire = ro::Utf8ToWireText(utf8);
   if (!wire || !*wire) return;
   UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
                        reinterpret_cast<int>(wire), kOwnChatRgb, 0, 0);

@@ -546,6 +546,19 @@ class ChatWindow : public Plugin {
     std::string whisper_guild;
     uint32_t    whisper_aid = 0;
     bool        whisper_focus = false;  // rendre le focus à sa saisie
+    // 🔴 AJOUT DIFFÉRÉ D'UNE FRAME, et il n'y a pas moyen de faire autrement.
+    // `DrawWhisperInput` recopie `whisper_input` dans un tampon local AVANT de
+    // dessiner le sélecteur, puis réécrit `whisper_input` depuis ce tampon
+    // APRÈS : un emoji posé directement dans `whisper_input` depuis la grille
+    // serait donc écrasé dans la même frame, sans laisser de trace. On le met
+    // en attente ici, et la saisie le consomme au début de la frame suivante —
+    // seize millisecondes, invisibles.
+    std::string whisper_pending_insert;
+    // La saisie transite par un tampon de cette taille dans `DrawWhisperInput`.
+    // Tout ce qui l'écrit doit s'y tenir : au-delà, la copie tronque — et une
+    // troncature tombant au milieu d'un caractère UTF-8 (un emoji en fait
+    // quatre octets) laisserait une séquence invalide, donc un losange.
+    static constexpr size_t kInputBufSize = 256;
     // Dernière activité (GetTickCount). Sert uniquement à choisir laquelle céder
     // sa place quand le plafond de fenêtres est atteint.
     uint32_t    whisper_stamp = 0;
@@ -662,7 +675,12 @@ class ChatWindow : public Plugin {
   void  DrawChannel(const Channel& channel, float height);
   void  DrawLines(const Channel& channel);
   void  DrawInputRow();
-  // Grille des emotes du jeu. Le clic ENVOIE : voir SendTextNow.
+  // Le sélecteur, DEUX onglets — et la séparation n'est pas cosmétique : ce qui
+  // arrive au bout du fil n'est pas de même nature.
+  //   · « Emotes » = les images du GRF. Elles voyagent en `:nom:` et le clic
+  //     ENVOIE, seul (voir DrawGameEmoteGrid pour pourquoi).
+  //   · « Emoji » = du TEXTE Unicode. Le clic INSÈRE dans la saisie, parce
+  //     qu'un emoji a vocation à se mettre AU MILIEU d'une phrase.
   //
   // `whisper_index` désigne la conversation 1:1 depuis laquelle la grille est
   // ouverte, ou -1 pour la barre principale. Il ne sert pas qu'au destinataire :
@@ -671,7 +689,17 @@ class ChatWindow : public Plugin {
   // pile de celle-ci), donc `DrawEmotePicker` doit être appelé dans la même
   // fenêtre que le bouton qui l'ouvre — sans quoi deux conversations ouvertes se
   // partageraient une grille et la mauvaise recevrait l'emote.
-  void  DrawEmotePicker(int whisper_index = -1);
+  //
+  // `btn_min`/`btn_max` sont les coins du BOUTON qui ouvre la grille, en
+  // coordonnées écran : c'est au-dessus de lui que le popup se pose, pour ne pas
+  // recouvrir la saisie ni les dernières lignes du log.
+  void  DrawEmotePicker(const ImVec2& btn_min, const ImVec2& btn_max,
+                        int whisper_index = -1);
+  void  DrawGameEmoteGrid(int whisper_index);
+  void  DrawEmojiGrid(int whisper_index);
+  // Ajoute du texte à la FIN de la saisie visée (barre principale ou
+  // conversation), sans rien envoyer. Ne fait rien si le tampon est plein.
+  void  AppendToInput(const char* utf8, int whisper_index);
   // `whisper_utf8` nul = le destinataire courant de la barre principale.
   bool  SendTextNow(const char* text, const char* whisper_utf8 = nullptr);
   void  DrawLogOptionsPopup();
@@ -906,6 +934,29 @@ class ChatWindow : public Plugin {
   // réglages) : on ne peut pas le recalculer là-bas, l'id se hache avec la pile de
   // la fenêtre courante.
   ImGuiID input_field_id_ = 0;
+  // ── Le clavier, rendu quand la palette d'emoji se REFERME ──────────────────
+  // L'onglet « Emoji » ne se ferme pas au clic (on en pioche souvent plusieurs
+  // d'affilée, contrairement à une emote qui part seule), donc on ne peut pas
+  // rendre le focus au moment du clic : ce serait fermer le popup à la place du
+  // joueur. On note qu'une pioche a eu lieu, ET DEPUIS QUELLE SAISIE, puis on
+  // rend le clavier à celle-là quand le popup a disparu. Sans la cible, le
+  // premier sélecteur venu — celui de la barre principale, dessiné à chaque
+  // frame — consommerait la demande et volerait le focus à la conversation.
+  bool picker_picked_        = false;
+  int  picker_picked_target_ = -1;  // index de conversation, -1 = barre principale
+  // ── Ce qu'il faut savoir de la grille HORS frame ────────────────────────────
+  // `WantsEscapeKey`/`OnRawKey` sont appelés depuis le WndProc, donc ENTRE deux
+  // frames : d'où un numéro de frame plutôt qu'un booléen à remettre à zéro, qui
+  // demanderait un point de reset unique dans le rendu — et il n'y en a pas, la
+  // grille étant dessinée par la barre principale ET par chaque conversation.
+  int    picker_open_frame_ = -1;    // dernière frame où la grille était à l'écran
+  bool   picker_close_      = false; // Échap reçu : elle se ferme au rendu suivant
+  // Sa taille, mesurée à la frame précédente. Un popup s'auto-dimensionne, donc il
+  // ne connaît la sienne qu'après avoir été dessiné une fois — et il en faut une
+  // estimation AVANT, pour le poser au-dessus du bouton plutôt qu'en travers de la
+  // barre de saisie.
+  ImVec2 picker_size_{0.0f, 0.0f};
+  bool   PickerOpen() const;
   // Repeint les liens POSÉS dans la ligne de saisie — crochets et couleur, comme
   // dans le log — et les rend cliquables, à l'image des boutons que le natif
   // accroche à la sienne. À appeler JUSTE APRÈS avoir soumis le champ, avec sa

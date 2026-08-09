@@ -785,40 +785,63 @@ bool ReadMgrCounters(const uint8_t* mgr, int* out_unread, bool* out_has_mail) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Le serveur encode ses textes en ANSI (CP_ACP = CP1252 sur Windows fr) et ImGui
-// veut de l'UTF-8 — même conversion que les dialogues PNJ, sinon les accents
-// tapés par les joueurs cassent dans les sujets et les corps de courrier.
+// Le texte du fil vers l'UTF-8 d'ImGui, sinon les accents tapés par les joueurs
+// cassent dans les sujets et les corps de courrier.
+//
+// ⚠ DÉLÈGUE à la porte commune, et ce n'est pas qu'un nettoyage : cette copie
+// locale lisait en CP_ACP, la locale non-Unicode du POSTE, alors que l'encodage
+// du fil est une propriété du SERVEUR (identique ici sur un Windows français,
+// faux chez un joueur dont le système est réglé en coréen pour son client RO).
+// Et surtout, `ro::WireToUtf8` accepte désormais les DEUX encodages — c'est ce
+// qui fait qu'un emoji reçu dans un courrier s'affiche au lieu de sortir en
+// mojibake.
 std::string AnsiToUtf8(const char* in) {
   if (!in || !*in) return std::string();
-  const int len = static_cast<int>(std::strlen(in));
-  const int wn = MultiByteToWideChar(CP_ACP, 0, in, len, nullptr, 0);
-  if (wn <= 0) return std::string(in);
-  std::wstring w(static_cast<size_t>(wn), L'\0');
-  MultiByteToWideChar(CP_ACP, 0, in, len, &w[0], wn);
-  const int un = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wn, nullptr, 0, nullptr,
-                                     nullptr);
-  if (un <= 0) return std::string(in);
-  std::string out(static_cast<size_t>(un), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wn, &out[0], un, nullptr, nullptr);
-  return out;
+  return std::string(ro::WireToUtf8(in));
 }
 
-// Sens inverse pour ce qui PART sur le fil : la saisie ImGui est en UTF-8, le
-// serveur (comme le client) parle ANSI. Renvoie le nombre d'octets écrits, '\0'
-// non compris. Les caractères non représentables deviennent '?'.
+// Sens inverse pour un IDENTIFIANT qui part sur le fil — ici le nom du
+// destinataire. Renvoie le nombre d'octets écrits, '\0' non compris ; les
+// caractères non représentables deviennent '?'.
+//
+// ⚠ Délègue elle aussi, et il le FALLAIT : sa jumelle en lecture vient de passer
+// au 1252 du fil. La laisser écrire en CP_ACP aurait ouvert une asymétrie —
+// courrier envoyé dans la locale du poste, relu en 1252 — qui ne se voit pas sur
+// un Windows français (les deux valent 1252) mais casse chez un joueur dont le
+// système est réglé en coréen pour son client RO.
 int Utf8ToAnsi(const char* utf8, char* out, size_t out_size) {
   out[0] = '\0';
-  if (!utf8 || !*utf8) return 0;
-  const int len = static_cast<int>(std::strlen(utf8));
-  const int wn = MultiByteToWideChar(CP_UTF8, 0, utf8, len, nullptr, 0);
-  if (wn <= 0) return 0;
-  std::wstring w(static_cast<size_t>(wn), L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, utf8, len, &w[0], wn);
-  const int written = WideCharToMultiByte(CP_ACP, 0, w.c_str(), wn, out,
-                                          static_cast<int>(out_size) - 1, "?", nullptr);
-  const int n = (written > 0) ? written : 0;
+  if (!utf8 || !*utf8 || out_size == 0) return 0;
+  const char* wire = ro::Utf8ToWire(utf8);
+  size_t n = std::strlen(wire);
+  if (n > out_size - 1) n = out_size - 1;
+  std::memcpy(out, wire, n);
   out[n] = '\0';
-  return n;
+  return static_cast<int>(n);
+}
+
+// Le même sens, mais pour une PHRASE — un sujet, un corps de courrier. La
+// différence avec `Utf8ToAnsi` ci-dessus est la même que partout ailleurs dans le
+// projet : 1252 tant que le texte y rentre entièrement, UTF-8 sinon, ce qui
+// laisse passer un emoji.
+//
+// 🔴 SURTOUT PAS POUR LE DESTINATAIRE. Un nom de personnage est un identifiant
+// que le serveur cherche octet par octet dans sa base, en 1252 : l'envoyer en
+// UTF-8 ferait échouer la recherche au premier accent, et le courrier
+// reviendrait « destinataire introuvable ».
+//
+// La troncature au buffer n'a pas besoin d'être fine : les deux champs sont
+// validés juste après contre des limites (39 et 499 octets) bien inférieures aux
+// tampons (64 et 1024), donc un texte trop long est REFUSÉ, jamais envoyé coupé.
+int Utf8ToWireField(const char* utf8, char* out, size_t out_size) {
+  out[0] = '\0';
+  if (!utf8 || !*utf8 || out_size == 0) return 0;
+  const char* wire = ro::Utf8ToWireText(utf8);
+  size_t n = std::strlen(wire);
+  if (n > out_size - 1) n = out_size - 1;
+  std::memcpy(out, wire, n);
+  out[n] = '\0';
+  return static_cast<int>(n);
 }
 
 // Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
@@ -1192,9 +1215,9 @@ void RodexWindow::SendMail() {
   char to_ansi[24] = {0};
   char title[64] = {0};
   char body[1024] = {0};
-  Utf8ToAnsi(to_, to_ansi, sizeof(to_ansi));
-  const int title_len = Utf8ToAnsi(subject_, title, sizeof(title));
-  const int body_len  = Utf8ToAnsi(body_, body, sizeof(body));
+  Utf8ToAnsi(to_, to_ansi, sizeof(to_ansi));  // 🔴 le NOM reste en 1252
+  const int title_len = Utf8ToWireField(subject_, title, sizeof(title));
+  const int body_len  = Utf8ToWireField(body_, body, sizeof(body));
 
   if (to_ansi[0] == '\0') { send_error_ = i18n::Tr("Indique un destinataire."); return; }
   if (title_len == 0)     { send_error_ = i18n::Tr("Le sujet ne peut pas être vide."); return; }

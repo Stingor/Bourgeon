@@ -28,6 +28,7 @@
 #include "ragnarok/globals.h"    // kModeMgrAddr / kModeMgrGetActiveAddr (dict de noms)
 #include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
 #include "ragnarok/uiwnd.h"      // uiwnd::SafeFindWindow / CloseWindow (natif détruit)
+#include "ui/emoji_set.h"        // ro::emoji (la palette Unicode, 2e onglet)
 #include "ui/game_emotes.h"      // ro::emote (emotion.act : les emotes du jeu)
 #include "ui/game_texture.h"     // ro::TextureFromGameFile (bitmaps du client)
 #include "ui/color_codec.h"      // ro::ArgbFromPicker / PickerFromArgb
@@ -1868,9 +1869,16 @@ void ChatWindow::ParseText(const char* local_text, Line* out) const {
   // (C3 A0). Le remplacer après conversion cassait « à » en une séquence invalide
   // que l'atlas rendait en losange — d'où l'illusion d'un problème de code-page,
   // alors que les « é » (C3 A9) passaient très bien.
+  //
+  // 🔴 ET SEULEMENT SI LA LIGNE EST EN 1252. Depuis que le fil porte aussi de
+  // l'UTF-8 (les emoji n'existent pas en 1252, cf. ro::WireToUtf8), la même
+  // substitution appliquée à une ligne UTF-8 casserait précisément ce que le
+  // commentaire ci-dessus décrit : le 0xA0 y est l'octet de continuation du
+  // « à », et le remplacer par un espace laisserait un « Ã » orphelin.
   std::string wire = (local_text != nullptr) ? local_text : "";
-  for (char& ch : wire)
-    if (static_cast<unsigned char>(ch) == 0xA0) ch = ' ';
+  if (!ro::IsUtf8(wire.c_str()))
+    for (char& ch : wire)
+      if (static_cast<unsigned char>(ch) == 0xA0) ch = ' ';
   ParseUtf8(ro::WireToUtf8(wire.c_str()), out);
 }
 
@@ -3094,6 +3102,15 @@ void ChatWindow::DrawGroupStrip(uint32_t group) {
 // (on chuchote, point), pas d'historique de noms.
 void ChatWindow::DrawWhisperInput(int index) {
   Channel& channel = channels_[index];
+  // 🔴 AVANT la copie dans le tampon, jamais après : c'est tout l'intérêt de
+  // l'attente. Un emoji piqué dans la palette a été mis de côté pendant la frame
+  // précédente (la grille se dessine plus bas, une fois `buffer` déjà rempli) ;
+  // c'est ici, et seulement ici, qu'il peut rejoindre la saisie sans être écrasé
+  // par la réécriture de fin de fonction.
+  if (!channel.whisper_pending_insert.empty()) {
+    channel.whisper_input += channel.whisper_pending_insert;
+    channel.whisper_pending_insert.clear();
+  }
   char buffer[256];
   CopyBounded(buffer, sizeof(buffer), channel.whisper_input.c_str());
 
@@ -3123,11 +3140,13 @@ void ChatWindow::DrawWhisperInput(int index) {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip(i18n::Tr("Emotes du jeu.\nUn clic l'ENVOIE à %s, seule."),
+    ImGui::SetTooltip(i18n::Tr("Emotes et emoji.\nUne emote part à %s aussitôt, "
+                      "seule ; un emoji s'ajoute à ta réponse."),
                       channel.whisper_with.c_str());
     ImGui::PopStyleColor();
   }
-  DrawEmotePicker(index);
+  DrawEmotePicker(pick_pos, ImVec2(pick_pos.x + pick_side, pick_pos.y + pick_side),
+                  index);
   ImGui::PopID();
   ImGui::SameLine();
 
@@ -3173,7 +3192,10 @@ void ChatWindow::DrawWhisperInput(int index) {
 // raccourci clavier vaut bien mieux que le confort de la rappeler.
 void ChatWindow::QueueWhisperSend(Channel& channel) {
   if (channel.whisper_input.empty()) return;
-  pending_text_    = ro::Utf8ToWire(channel.whisper_input.c_str());
+  // 🔴 DEUX fonctions différentes, et pas par inadvertance : le TEXTE peut
+  // basculer en UTF-8 s'il porte un emoji, le NOM du correspondant jamais — le
+  // serveur le cherche octet par octet dans sa base, en 1252.
+  pending_text_    = ro::Utf8ToWireText(channel.whisper_input.c_str());
   pending_whisper_ = ro::Utf8ToWire(channel.whisper_with.c_str());
   has_pending_     = true;
   channel.whisper_stamp = GetTickCount();
@@ -4056,25 +4078,144 @@ static uint32_t DarkenForLightBody(uint32_t col) {
 // gauche (« Pseudo »), puis la saisie. Les champs sont CLAIRS (le cadre pousse
 // FrameBg pour ça) — le texte doit donc y être sombre.
 
-// ── La grille ────────────────────────────────────────────────────────────────
+// ── Les deux grilles du sélecteur ────────────────────────────────────────────
+// Dimensions COMMUNES : sans ça le popup change de taille en passant d'un onglet
+// à l'autre, et les onglets se dérobent sous le curseur au moment même où l'on
+// cherche à revenir.
+namespace {
+constexpr int   kPickerCols = 10;
+constexpr float kPickerCell = 30.0f;
+constexpr float kPickerRows = 6.0f;
+
+ImVec2 PickerGridSize() {
+  const float pad = ImGui::GetStyle().ItemSpacing.x;
+  const float bar = ImGui::GetStyle().ScrollbarSize;
+  return ImVec2(kPickerCols * kPickerCell + (kPickerCols - 1) * pad + bar + pad,
+                kPickerRows * (kPickerCell + pad));
+}
+}  // namespace
+
+void ChatWindow::DrawEmotePicker(const ImVec2& btn_min, const ImVec2& btn_max,
+                                 int whisper_index) {
+  // ── La grille s'ouvre AU-DESSUS du bouton, jamais en travers de la barre ────
+  // Par défaut ImGui pose un popup au point de clic : la grille recouvrait donc
+  // la saisie et les dernières lignes du log — c'est-à-dire exactement ce qu'on
+  // relit en choisissant quoi répondre.
+  //
+  // 🔴 Poser la position à la main DÉSACTIVE le garde-fou d'ImGui : le clamp
+  // « la fenêtre reste visible » de `Begin()` est conditionné à
+  // `!window_pos_set_by_api`. Une chatbox remontée en haut de l'écran enverrait
+  // donc la grille hors champ, sans rattrapage — d'où le repli en dessous et le
+  // bornage horizontal ci-dessous, qu'il faut faire nous-mêmes.
+  {
+    const ImVec2 fallback(PickerGridSize().x + 24.0f,
+                          PickerGridSize().y + 64.0f);  // 1re ouverture : estimé
+    const ImVec2 size = (picker_size_.y > 0.0f) ? picker_size_ : fallback;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 lo = vp->WorkPos;
+    const ImVec2 hi(vp->WorkPos.x + vp->WorkSize.x, vp->WorkPos.y + vp->WorkSize.y);
+    constexpr float kGap = 4.0f;
+
+    float y = btn_min.y - kGap - size.y;
+    if (y < lo.y) y = btn_max.y + kGap;  // pas la place au-dessus : en dessous
+    y = ImClamp(y, lo.y, ImMax(lo.y, hi.y - size.y));
+    const float x = ImClamp(btn_min.x, lo.x, ImMax(lo.x, hi.x - size.x));
+    ImGui::SetNextWindowPos(ImVec2(x, y));
+  }
+
+  if (!ImGui::BeginPopup("##chat_emote_grid")) {
+    // 🔴 Demande de fermeture devenue caduque, à jeter — sinon elle referme la
+    // grille SUIVANTE au moment même où on l'ouvre. Le cas arrive quand Échap
+    // tombe juste après une fermeture au clic : `OnRawKey` arme encore le
+    // drapeau (le prédicat tolère une frame de retard, il est lu hors frame) et
+    // plus personne n'est là pour le consommer. `PickerOpen()` garde le
+    // nettoyage inoffensif tant qu'UNE grille est ouverte quelque part — celle
+    // d'une conversation, alors que c'est la principale, fermée, qui passe ici.
+    if (!PickerOpen()) picker_close_ = false;
+    // Le popup a disparu (Échap, clic au dehors) après une pioche d'emoji : on
+    // rend le clavier à la saisie D'OÙ L'ON EST PARTI, comme après un envoi.
+    // 🔴 Le test sur la cible n'est pas une précaution de style : cette fonction
+    // tourne pour CHAQUE conversation ouverte plus la barre principale, et sans
+    // lui le premier appel venu emporterait le focus.
+    if (picker_picked_ && picker_picked_target_ == whisper_index) {
+      picker_picked_ = false;
+      if (whisper_index >= 0 &&
+          whisper_index < static_cast<int>(channels_.size()))
+        channels_[whisper_index].whisper_focus = true;
+      else if (focus_on_whisper_)
+        focus_whisper_next_ = true;
+      else
+        focus_input_next_ = true;
+    }
+    return;
+  }
+  // Elle est à l'écran : c'est ce numéro de frame que lisent `WantsEscapeKey` et
+  // `OnRawKey`, appelés depuis le WndProc entre deux frames.
+  picker_open_frame_ = ImGui::GetFrameCount();
+  // 🔴 Et la pile Échap des fenêtres RO est neutralisée tant qu'elle est ouverte.
+  // Sans ça, un Échap tapé avec une autre fenêtre RO derrière (l'inventaire, le
+  // storage…) fermerait LES DEUX d'un coup : la grille par le chemin ci-dessous,
+  // la fenêtre par `ro::ProcessEscapeStack`. Une touche, une fermeture.
+  ro::SuppressEscapeStack();
+  // Échap reçu pendant que la grille était ouverte. 🔴 ImGui ne ferme PAS les
+  // popups sur Échap de lui-même ici : ce chemin appartient à la navigation
+  // clavier, que le projet n'active pas (ConfigFlags, ragnarok_client). Sans ce
+  // rappel, la touche ne refermerait rien du tout.
+  if (picker_close_) {
+    picker_close_ = false;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+
+  // Deux natures, deux onglets — et deux gestes différents au clic, expliqués
+  // dans chacune des grilles.
+  if (ro::RoBeginTabBar("##chat_picker_tabs")) {
+    if (ImGui::BeginTabItem(i18n::Tr("Emotes"))) {
+      DrawGameEmoteGrid(whisper_index);
+      ImGui::EndTabItem();
+    }
+    if (ImGui::BeginTabItem(i18n::Tr("Emoji"))) {
+      DrawEmojiGrid(whisper_index);
+      ImGui::EndTabItem();
+    }
+    ro::RoEndTabBar();
+  }
+
+  // ── La croix, en haut à droite ──────────────────────────────────────────────
+  // Dessinée EN DERNIER pour passer par-dessus la barre d'onglets, dans l'espace
+  // vide qu'elle laisse à sa droite. Un popup n'a pas de barre de titre — donc
+  // pas de bouton système — et se ferme d'ordinaire par un clic au dehors : le
+  // geste existe, mais rien ne le montre, et une palette qu'on ne sait pas
+  // refermer est une palette qui reste dans les jambes.
+  {
+    const float side = ImGui::GetFontSize();
+    const float pad  = ImGui::GetStyle().WindowPadding.x;
+    const ImVec2 pos(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - pad - side,
+                     ImGui::GetWindowPos().y + ImGui::GetStyle().WindowPadding.y);
+    if (ImGui::CloseButton(ImGui::GetID("##picker_close"), pos))
+      ImGui::CloseCurrentPopup();
+  }
+
+  // Mesurée pour la PROCHAINE ouverture : c'est elle qui permet de poser la
+  // grille au-dessus du bouton (cf. l'en-tête de la fonction).
+  picker_size_ = ImGui::GetWindowSize();
+
+  ImGui::PopStyleColor();
+  ImGui::EndPopup();
+}
+
+// ── L'onglet EMOTES ──────────────────────────────────────────────────────────
 // Ne montre QUE ce que le GRF de ce client contient : la table des noms est celle
 // du protocole, plus longue que le fichier sur la plupart des installations.
 // Proposer une case vide serait promettre une emote qui ne s'afficherait chez
 // personne — pas même chez celui qui l'a écrite.
-void ChatWindow::DrawEmotePicker(int whisper_index) {
-  if (!ImGui::BeginPopup("##chat_emote_grid")) return;
-  ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-
+void ChatWindow::DrawGameEmoteGrid(int whisper_index) {
   // 🔴 La zone DÉFILE, et sa barre reste visible : il y a plus de quatre-vingts
   // emotes pour six rangées affichées. Masquer la barre laisserait croire que ce
   // qu'on voit est tout ce qu'il y a — la molette seule ne se devine pas.
-  constexpr int   kCols = 10;
-  constexpr float kCell = 30.0f;
-  const float     pad   = ImGui::GetStyle().ItemSpacing.x;
-  const float     bar   = ImGui::GetStyle().ScrollbarSize;
-  ImGui::BeginChild("##chat_emote_scroll",
-                    ImVec2(kCols * kCell + (kCols - 1) * pad + bar + pad,
-                           6.0f * (kCell + pad)));
+  constexpr int   kCols = kPickerCols;
+  constexpr float kCell = kPickerCell;
+  ImGui::BeginChild("##chat_emote_scroll", PickerGridSize());
 
   ImDrawList* dl  = ImGui::GetWindowDrawList();
   const float now = static_cast<float>(ImGui::GetTime());
@@ -4152,9 +4293,109 @@ void ChatWindow::DrawEmotePicker(int whisper_index) {
       ImGui::SetTooltip(i18n::Tr("Ecrit un GIF par emote dans « emotes_export »,\n"
                         "a cote de l'executable. Pour Discord."));
   }
+}
 
-  ImGui::PopStyleColor();
-  ImGui::EndPopup();
+// ── L'onglet EMOJI ───────────────────────────────────────────────────────────
+// Le geste n'est pas celui des emotes, et la différence tient à la nature de ce
+// qu'on pose :
+//   · une emote est une IMAGE que le relais Discord ne sait montrer que si elle
+//     est tout le message — d'où l'envoi immédiat, seul ;
+//   · un emoji est du TEXTE, qui s'affiche partout au milieu d'une phrase. On
+//     l'INSÈRE donc dans la saisie, et la palette reste ouverte : on en pioche
+//     volontiers deux ou trois d'affilée.
+void ChatWindow::DrawEmojiGrid(int whisper_index) {
+  ImGui::BeginChild("##chat_emoji_scroll", PickerGridSize());
+
+  // La police du chat est calibrée pour du texte ; à cette taille un emoji est
+  // un timbre-poste. On agrandit pour la grille seulement — `PushFont(nullptr,
+  // …)` garde la police courante et ne change que la taille, et ImGui 1.92 cuit
+  // la nouvelle taille à la demande (le backend DX9 sait mettre son atlas à
+  // jour). En DX7, où l'atlas est figé, ImGui met simplement à l'échelle ce
+  // qu'il a : c'est moins net, et de toute façon les emoji y manquent.
+  //
+  // ⚠ La taille normale est relevée AVANT le push, pour les intertitres. Elle ne
+  // se retrouve pas avec `PushFont(nullptr, 0.0f)` : ce zéro-là veut dire
+  // « garde la taille COURANTE », donc la grande — les titres seraient géants.
+  const float title_size = ImGui::GetFontSize();
+  ImGui::PushFont(nullptr, kPickerCell * 0.72f);
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImU32 hover_col = IM_COL32(40, 40, 40, 160);
+  for (int c = 0; c < ro::emoji::CategoryCount(); ++c) {
+    const ro::emoji::Category& cat = ro::emoji::CategoryAt(c);
+    // 🔴 L'intertitre se traduit ICI : la table les garde en français nu, comme
+    // les items de `ro::RoCombo` (les envelopper à la source les traduirait deux
+    // fois et polluerait le gabarit d'export).
+    ImGui::PushFont(nullptr, title_size);
+    ImGui::SeparatorText(i18n::Tr(cat.label));
+    ImGui::PopFont();
+
+    ImGui::PushID(c);
+    for (int i = 0; i < cat.count; ++i) {
+      if (i % kPickerCols != 0) ImGui::SameLine();
+      ImGui::PushID(i);
+      const ImVec2 p       = ImGui::GetCursorScreenPos();
+      const bool   clicked =
+          ImGui::InvisibleButton("##x", ImVec2(kPickerCell, kPickerCell));
+      const ImVec2 q(p.x + kPickerCell, p.y + kPickerCell);
+      // Centré dans sa case : les glyphes emoji n'ont pas tous la même chasse,
+      // et alignés à gauche ils donnent une grille qui tremble.
+      const ImVec2 sz = ImGui::CalcTextSize(cat.items[i]);
+      // ⚠ `kDarkText`, pas du blanc : un glyphe en COULEUR ignore la teinte
+      // (ImGui le dessine « non teinté »), mais si la police emoji manque du
+      // système, le repli est un losange monochrome — en blanc, il serait
+      // invisible sur le corps clair du popup.
+      dl->AddText(ImVec2(p.x + (kPickerCell - sz.x) * 0.5f,
+                         p.y + (kPickerCell - sz.y) * 0.5f),
+                  kDarkText, cat.items[i]);
+      if (ImGui::IsItemHovered()) dl->AddRect(p, q, hover_col);
+      if (clicked) {
+        AppendToInput(cat.items[i], whisper_index);
+        // Retenu pour rendre le clavier quand la palette se refermera : on ne
+        // peut pas le faire maintenant sans la fermer sous les doigts du joueur.
+        picker_picked_        = true;
+        picker_picked_target_ = whisper_index;
+      }
+      ImGui::PopID();
+    }
+    ImGui::PopID();
+  }
+
+  ImGui::PopFont();
+  ImGui::EndChild();
+}
+
+// Pose du texte à la fin de la saisie visée. Rien n'est envoyé : c'est au joueur
+// de valider, comme pour tout ce qu'il écrit.
+void ChatWindow::AppendToInput(const char* utf8, int whisper_index) {
+  if (utf8 == nullptr || utf8[0] == '\0') return;
+  const size_t add = std::strlen(utf8);
+
+  if (whisper_index >= 0 &&
+      whisper_index < static_cast<int>(channels_.size())) {
+    Channel& channel = channels_[whisper_index];
+    if (channel.whisper_input.size() + channel.whisper_pending_insert.size() +
+            add + 1 > Channel::kInputBufSize)
+      return;  // plein : mieux vaut ne rien poser qu'un emoji coupé en deux
+    // 🔴 EN ATTENTE, pas directement : `DrawWhisperInput` a déjà recopié
+    // `whisper_input` dans son tampon local pour cette frame et le réécrira par
+    // -dessus en sortant. Voir `whisper_pending_insert`.
+    channel.whisper_pending_insert += utf8;
+    // La conversation vient de servir : elle ne doit pas être celle qu'on
+    // sacrifie quand le plafond de fenêtres est atteint.
+    channel.whisper_stamp = GetTickCount();
+    return;
+  }
+
+  // La barre principale, elle, écrit dans `input_` — le tampon que l'InputText
+  // utilise directement, d'où le `NotifyInputEdited` obligatoire.
+  const size_t used = std::strlen(input_);
+  if (used + add + 1 > sizeof(input_)) return;  // plein : on ne tronque pas un emoji
+  std::memcpy(input_ + used, utf8, add + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  // La barre repliée (battle mode) doit s'ouvrir, sinon le joueur ne voit pas où
+  // son emoji est parti.
+  if (battle_mode_) input_open_ = true;
 }
 
 // Envoie un texte court TOUT DE SUITE, sans le faire transiter par la saisie.
@@ -4172,7 +4413,7 @@ bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
   // Un seul envoi peut attendre : écraser celui qui est là perdrait la phrase
   // que le joueur vient de valider. La fenêtre ne dure qu'une frame.
   if (has_pending_) return false;
-  pending_text_ = ro::Utf8ToWire(utf8);
+  pending_text_ = ro::Utf8ToWireText(utf8);
   // 🔴 Le destinataire est celui de la fenêtre D'OÙ L'ON PART, pas celui de la
   // barre principale : une emote cliquée dans une conversation 1:1 doit partir à
   // ce correspondant-là, même si la box destinataire du chat dit autre chose.
@@ -4308,11 +4549,13 @@ void ChatWindow::DrawInputRow() {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip(i18n::Tr("Emotes du jeu.\nUn clic ENVOIE l'emote, seule.\n"
-                      "Elle part en clair (« :smile: »), donc tout le monde la lit."));
+    ImGui::SetTooltip(i18n::Tr("Emotes et emoji.\nUne emote part SEULE, en clair "
+                      "(« :smile: ») : tout le monde la lit.\nUn emoji, lui, "
+                      "s'ajoute à ta phrase."));
     ImGui::PopStyleColor();
   }
-  DrawEmotePicker();
+  DrawEmotePicker(pick_pos,
+                  ImVec2(pick_pos.x + pick_side, pick_pos.y + pick_side));
   ImGui::SameLine();
 
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
@@ -5373,7 +5616,7 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
 // OnProcessInput.
 void ChatWindow::QueueCommand(const char* utf8) {
   if (utf8 == nullptr || utf8[0] == '\0') return;
-  pending_text_ = ro::Utf8ToWire(utf8);
+  pending_text_ = ro::Utf8ToWireText(utf8);
   pending_whisper_.clear();
   has_pending_ = true;
 }
@@ -5751,10 +5994,12 @@ void ChatWindow::QueueSend() {
   // joueur a écrit, et c'est ce qu'il veut retrouver à la flèche du haut.
   const std::string resolved = ResolveItemLinks(input_);
   item_links_.clear();
-  // La saisie ImGui est en UTF-8 ; le client et le serveur parlent l'ANSI du
-  // système. On convertit ICI, pas au moment de l'envoi : FlushPending tourne
-  // hors frame et ne doit plus faire que des appels natifs.
-  pending_text_    = ro::Utf8ToWire(resolved.c_str());
+  // La saisie ImGui est en UTF-8 ; le fil, lui, est en 1252 — sauf quand la
+  // phrase contient quelque chose que 1252 ne sait pas écrire (un emoji), auquel
+  // cas elle part en UTF-8 (cf. ro::Utf8ToWireText). On convertit ICI, pas au
+  // moment de l'envoi : FlushPending tourne hors frame et ne doit plus faire que
+  // des appels natifs.
+  pending_text_    = ro::Utf8ToWireText(resolved.c_str());
   pending_whisper_ = ro::Utf8ToWire(whisper_);
   has_pending_     = true;
   input_[0] = '\0';
@@ -5801,10 +6046,25 @@ bool ChatWindow::WantsTypedKeys() const {
          !ImGui::GetIO().WantTextInput;
 }
 
+// La grille d'emotes/emoji est-elle à l'écran ? Lu depuis le WndProc, donc ENTRE
+// deux frames : d'où la tolérance d'une frame, sans laquelle le prédicat serait
+// faux une fois sur deux.
+bool ChatWindow::PickerOpen() const {
+  if (picker_open_frame_ < 0 || ImGui::GetCurrentContext() == nullptr)
+    return false;
+  return ImGui::GetFrameCount() - picker_open_frame_ <= 1;
+}
+
 bool ChatWindow::WantsEscapeKey() const {
+  if (!imgui_enabled_) return false;
+  // 🔴 La grille ouverte confisque Échap À ELLE SEULE. Sans cette ligne, la
+  // touche partirait au JEU dès que la barre de saisie est fermée (ou hors
+  // battle mode) et ouvrirait son menu — alors que le joueur voulait juste
+  // refermer la palette.
+  if (PickerOpen()) return true;
   // La ligne de saisie doit être RÉELLEMENT à l'écran : coupée dans les réglages,
   // rien ne se refermerait et la touche serait confisquée pour rien.
-  return imgui_enabled_ && battle_mode_ && InputRowVisible();
+  return battle_mode_ && InputRowVisible();
 }
 
 void ChatWindow::OnRawKey(unsigned long vkey) {
@@ -5814,7 +6074,17 @@ void ChatWindow::OnRawKey(unsigned long vkey) {
   // avoir le clavier — c'est même le cas dès qu'on a cliqué ailleurs — et aucun
   // widget ne verrait alors la touche. C'est LA sortie à une frappe, celle qui
   // permet à la saisie de rendre le clavier à ImGui sans piéger le joueur.
-  if (vkey == VK_ESCAPE) escape_pending_ = true;
+  if (vkey == VK_ESCAPE) {
+    // 🔴 UNE SEULE CHOSE À LA FOIS. La grille ouverte prend la touche pour elle
+    // et s'arrête là : sinon le même Échap refermait la palette ET la barre de
+    // saisie derrière, et le joueur qui voulait renoncer à une emote se
+    // retrouvait sans chat, à retaper sa phrase.
+    if (PickerOpen()) {
+      picker_close_ = true;
+      return;
+    }
+    escape_pending_ = true;
+  }
 }
 
 // Le chemin ORDINAIRE, quand la touche a atteint le jeu. Il ne suffit pas à lui
