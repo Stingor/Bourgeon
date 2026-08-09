@@ -410,7 +410,7 @@ bulle               = *(acteur + 0x264)                         ⏱ 0x488367C8 p
 `ChatText_TransformTagLinks` que sous `if (g_pNewChatWnd)`. Dès que la chatbox
 ImGui est active, la fenêtre native est détruite, ce pointeur vaut **0**
 (vérifié en live), et **plus aucune balise n'est résolue** — pas seulement nos
-`<MOBL>` / `<ITMR>` / `<CRAF>`, mais **`<ITEML>` lui-même**, pourtant une balise
+`<MOBL>` / `<ITMR>` / `<CRAF>` / `<SETL>`, mais **`<ITEML>` lui-même**, pourtant une balise
 du client. C'est pour ça que l'activation suit `chatwnd_imgui` et n'a pas de
 réglage propre : en chatbox native, le client sait de nouveau résoudre ses liens
 et sa bulle est correcte.

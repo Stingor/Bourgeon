@@ -89,7 +89,7 @@ bool DrawJumpKeyBinding(PlayerJump* player_jump) {
 // des plugins frères (DpsMeter, Doom, LoginParade, Roggle, RoJeweled, PlayerJump,
 // KeyboardMove). Extraits d'OnRenderUI — 180 lignes.
 void MoonlightUi::DrawFunPanels() {
-  if (CollapsingHeader(i18n::Tr("DPS Meter"))) {
+  if (iface::LinkableHeader("dps")) {
     PushStyleCompact();
     if (auto* dps_meter = Bourgeon::Instance().dps_meter()) {
       if (dps_meter->DrawSettings()) SaveSettings();
@@ -102,7 +102,7 @@ void MoonlightUi::DrawFunPanels() {
   // ── Interface de jeu  ────────────────────────────────────────────────────
   // NB: la vue caméra FPS (FpsView) reste dans le code (toggle F9) mais
   // n'est plus exposée dans ce menu (expérimental, retiré à la demande).
-  if (CollapsingHeader(i18n::Tr("Mini-jeux"))) {
+  if (iface::LinkableHeader("minigames")) {
     SeparatorText(i18n::Tr("DOOM"));
     if (auto* doom = Bourgeon::Instance().doom()) {
       bool on = doom->enabled();

@@ -1938,7 +1938,9 @@ void MoonlightUi::OpenInterfaceSection(int section) {
   // entrée à l'enum suffit, il n'y a plus rien à penser ici.
   if (section < 0 || section >= kIfaceCount) return;
   iface_nav_ = section;
-  pending_iface_jump_ = true;
+  // La nav vit DANS l'en-tête « Interface de jeu » : sans le déplier, sélectionner
+  // une entrée ne montrerait rien.
+  pending_header_key_ = "interface";
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
   // la restauration au login (pending_collapse_restore_ -> SetNextWindowCollapsed).
   if (ui_collapsed_) {
@@ -1946,6 +1948,35 @@ void MoonlightUi::OpenInterfaceSection(int section) {
     pending_collapse_restore_ = true;
   }
   ImGui::SetWindowFocus("Moonlight-Destiny");
+}
+
+// Le point d'entrée des LIENS de réglage : une clé, qui désigne indifféremment un
+// en-tête du panneau ou une section de la nav. Les sections repassent par
+// OpenInterfaceSection — elles ont, en plus de l'en-tête à déplier, une entrée de
+// nav à sélectionner.
+void MoonlightUi::OpenSettingTarget(const char* key) {
+  const int section = iface::SectionByKey(key);
+  if (section >= 0) {
+    OpenInterfaceSection(section);
+    return;
+  }
+  // Destination inconnue ici (version plus ancienne, en-tête réservé au staff) :
+  // ne rien ouvrir DU TOUT. Ouvrir le panneau « à peu près » ferait chercher au
+  // joueur un réglage qui n'y est pas.
+  if (iface::DestLabel(key) == nullptr) return;
+  pending_header_key_ = key;
+  if (ui_collapsed_) {
+    ui_collapsed_ = false;
+    pending_collapse_restore_ = true;
+  }
+  ImGui::SetWindowFocus("Moonlight-Destiny");
+}
+
+bool MoonlightUi::ConsumeHeaderJump(const char* key) {
+  if (pending_header_key_.empty() || key == nullptr) return false;
+  if (pending_header_key_ != key) return false;
+  pending_header_key_.clear();
+  return true;
 }
 
 // ── ImGui panel ───────────────────────────────────────────────────────────
@@ -2020,7 +2051,7 @@ void MoonlightUi::OnRenderUI() {
     // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
     // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
     // des noms reste inerte (OnRenderUI vérifie IsStaff).
-    if (IsStaff() && CollapsingHeader(i18n::Tr("Staff Tools"))) {
+    if (IsStaff() && iface::LinkableHeader("staff_tools")) {
       PushStyleCompact();
 
       SeparatorText(i18n::Tr("Noms des entités"));
@@ -2098,7 +2129,7 @@ void MoonlightUi::OnRenderUI() {
 
     DrawInterfacePanel();
     // ── Graphismes (color grading post-process, ScreenFx plugin) ───────
-    if (CollapsingHeader(i18n::Tr("Graphismes"))) {
+    if (iface::LinkableHeader("graphics")) {
       PushStyleCompact();
       if (auto* screen_fx = Bourgeon::Instance().screen_fx())
         screen_fx->DrawSettings();

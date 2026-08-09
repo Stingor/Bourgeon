@@ -19,6 +19,7 @@
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
 #include "features/craft_data.h" // recette d'un lien <CRAF>
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
+#include "features/moonlight_ui/moonlight_ui.h"   // iface:: (sections de <SETL>)
 #include "features/staff_gate.h" // IsStaff (export des emotes)
 #include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
 #include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
@@ -2186,6 +2187,57 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         }
       }
     }
+    // DESTINATION DE RÉGLAGES — balise à NOUS : `<SETL>clé:libellé</SETL>`.
+    // La clé désigne un en-tête du panneau (« graphics ») ou une section de sa nav
+    // (« item_toast ») : un seul espace de clés pour les deux étages.
+    //
+    // Le premier lien qui ne parle pas du monde mais du CLIENT. « Va voir le
+    // réglage Objet obtenu » est ce qu'on répond vingt fois par jour dans un chat
+    // d'entraide, et le décrire par un chemin (« panneau Moonlight, en-tête
+    // Interface de jeu, huitième entrée ») ne marche jamais : le lien, lui, ouvre
+    // le panneau déjà déplié au bon endroit.
+    //
+    // 🔴 UNE CLÉ, PAS UN NUMÉRO. Un numéro de section décrit l'ordre d'UNE version
+    // de Bourgeon : une entrée insérée entre-temps et le lecteur atterrirait en
+    // silence sur le réglage voisin. La clé, elle, désigne la destination —
+    // inconnue chez le lecteur, elle ne résout rien, ce qui est le bon échec. Une
+    // destination qui n'existe pas CHEZ LUI (« Staff Tools » hors staff) échoue
+    // pareillement, et pour la même raison : le lien n'aurait rien à ouvrir.
+    //
+    // ⚠ Le libellé transporté ne sert QU'À un client sans Bourgeon, qui verra la
+    // balise brute : ici c'est le libellé LOCAL qui gagne, donc traduit dans la
+    // langue du lecteur (même règle que `<CRAF>`).
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<SETL>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</SETL>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const std::string key(body, c1);
+          const std::string fallback(c1 + 1, close);
+          if (iface::DestLabel(key.c_str()) != nullptr) {
+            flush();
+            Run link;
+            link.kind        = Run::kSetting;
+            link.setting_key = key;
+            link.text        = links::SettingLabel(key.c_str());
+            out->runs.push_back(link);
+          } else if (!fallback.empty()) {
+            // Destination inconnue ou indisponible : le fragment reste du TEXTE
+            // ORDINAIRE, avec le libellé que l'expéditeur a transporté. Il dit
+            // encore de quoi on parle, il ne prétend simplement plus mener quelque
+            // part. Accumulé dans `current` et non poussé à part, pour qu'il garde
+            // la couleur et la graisse en cours — c'est du texte, il doit se
+            // comporter comme tel.
+            current.text += '[';
+            current.text += fallback;
+            current.text += ']';
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
     // Adresse web. Rien à transporter : le joueur tape son URL, tout le monde
     // reçoit le même texte — nous sommes seulement les seuls à la rendre
     // cliquable. La chatbox NATIVE, elle, n'en fait rien : son seul détecteur de
@@ -4232,6 +4284,9 @@ void ChatWindow::DrawInputRow() {
       "##chat_input", input_, sizeof(input_),
       ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
       history_cb, this);
+  // L'id du champ, pour que les Append*Link puissent prévenir ImGui depuis une
+  // AUTRE fenêtre qu'on a modifié son buffer (cf. NotifyInputEdited).
+  input_field_id_ = ImGui::GetItemID();
   // TAB → le champ « Pseudo ». Celui-ci étant dessiné AVANT, la bascule prend
   // effet à la frame suivante : un battement, invisible à la frappe.
   const bool input_active      = ImGui::IsItemActive();
@@ -5222,6 +5277,7 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
       return links::FromMob(run.mob_id, run.mob_rank, run.mob_name.c_str());
     case Run::kUrl: return links::FromUrl(run.url.c_str());
     case Run::kPlayer: return links::FromPlayer(run.text.c_str());
+    case Run::kSetting: return links::FromSetting(run.setting_key.c_str());
     default: return links::Target{};
   }
 }
@@ -5237,6 +5293,7 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
     t.label = link.display;  // le libellé POSÉ, celui que le joueur a sous les yeux
     return t;
   }
+  if (link.kind == Run::kSetting) return links::FromSetting(link.setting_key.c_str());
   return links::FromItem(link.item, link.display.c_str());
 }
 
@@ -5310,6 +5367,18 @@ void ChatWindow::FlushNameAction() {
   }
 }
 
+// 🔴 Voir l'en-tête : sans ce rappel, le lien posé pendant que la saisie a le
+// focus est écrasé par l'état interne du widget à la frame suivante — il n'aura
+// jamais été affiché. `MoveToEnd` parce qu'on AJOUTE en fin de ligne : c'est là
+// que le curseur doit se retrouver pour continuer à écrire.
+void ChatWindow::NotifyInputEdited() {
+  if (input_field_id_ == 0) return;
+  // Rend nullptr quand le champ n'est pas actif — c'est-à-dire quand il n'y a
+  // justement rien à resynchroniser.
+  if (ImGuiInputTextState* state = ImGui::GetInputTextState(input_field_id_))
+    state->ReloadUserBufAndMoveToEnd();
+}
+
 void ChatWindow::PruneItemLinks() {
   if (item_links_.empty()) return;
   const std::string src = input_;
@@ -5360,6 +5429,7 @@ bool ChatWindow::AppendItemLink(void* info) {
   insert += ' ';
   if (used + insert.size() + 1 > sizeof(input_)) return false;
   std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
 
   PendingLink pending;
   pending.wire    = wire;
@@ -5409,6 +5479,7 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   insert += ' ';
   if (used + insert.size() + 1 > sizeof(input_)) return false;
   std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
 
   PendingLink pending;
   pending.wire    = wire;
@@ -5449,6 +5520,7 @@ bool ChatWindow::AppendItemRefLink(uint32_t item_id, const char* name_utf8) {
   insert += ' ';
   if (used + insert.size() + 1 > sizeof(input_)) return false;
   std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
 
   PendingLink pending;
   pending.wire    = wire;
@@ -5490,12 +5562,57 @@ bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
   insert += ' ';
   if (used + insert.size() + 1 > sizeof(input_)) return false;
   std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
 
   PendingLink pending;
   pending.wire    = wire;
   pending.display = display;
   pending.kind    = Run::kRecipe;
   pending.item.id = item_id;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// Poser le lien d'une DESTINATION DE RÉGLAGES — « [Réglage: Objet obtenu] ». Même
+// mécanique que les autres : le libellé lisible dans la saisie, la balise mise de
+// côté et substituée à l'envoi.
+//
+// 🔴 C'est la CLÉ qui part sur le fil, jamais un numéro de section — un numéro
+// décrit l'ordre d'une version de Bourgeon, et le lecteur atterrirait sur la
+// section d'à côté à la première insertion (cf. iface::DestLabel). Le libellé
+// voyage avec, uniquement pour rester lisible chez qui n'a pas Bourgeon : à
+// l'affichage c'est le libellé LOCAL, donc traduit, qui gagne.
+bool ChatWindow::AppendSettingLink(const char* key) {
+  if (!imgui_enabled_ || !input_bar_ || key == nullptr) return false;
+  const char* label = iface::DestLabel(key);
+  if (label == nullptr) return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const std::string display = links::SettingLabel(key);
+  if (display.empty()) return false;
+  char wire[192];
+  // Le libellé de repli part NON TRADUIT : c'est le nom de la destination dans la
+  // langue de référence du projet, celui qui a le plus de chances de parler au
+  // lecteur d'un client sans Bourgeon — et il ne dépend ainsi pas de la langue
+  // dans laquelle l'expéditeur joue.
+  std::snprintf(wire, sizeof(wire), "<SETL>%s:%s</SETL>", key, label);
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+
+  PendingLink pending;
+  pending.wire        = wire;
+  pending.display     = display;
+  pending.kind        = Run::kSetting;
+  pending.setting_key = key;
   item_links_.push_back(std::move(pending));
   if (battle_mode_) input_open_ = true;
   focus_input_next_ = true;
@@ -5534,6 +5651,7 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   insert += ' ';
   if (used + insert.size() + 1 > sizeof(input_)) return false;
   std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
 
   PendingLink pending;
   pending.wire     = wire;

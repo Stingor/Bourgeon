@@ -262,6 +262,28 @@ Target FromPlayer(const char* name_utf8) {
   return t;
 }
 
+std::string SettingLabel(const char* key) {
+  const char* name = iface::DestLabel(key);
+  if (name == nullptr) return std::string();
+  // Traduit ICI, chez celui qui regarde : la table porte le libellé français, et
+  // c'est i18n qui décide de la langue affichée — pas l'expéditeur du lien.
+  char buf[128];
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[Réglage: %s]"), i18n::Tr(name));
+  return buf;
+}
+
+Target FromSetting(const char* key) {
+  Target t;
+  // Destination inconnue — ou absente du panneau de CE joueur — = pas de lien.
+  // Même règle que pour une recette absente : un « [Réglage: …] » qui n'ouvrirait
+  // rien enverrait le lecteur chercher un panneau qui n'existe pas chez lui.
+  if (iface::DestLabel(key) == nullptr) return t;
+  t.kind        = Target::kSetting;
+  t.setting_key = key;
+  t.label       = SettingLabel(key);
+  return t;
+}
+
 void OpenDescription(const Target& target) {
   switch (target.kind) {
     case Target::kItem: {
@@ -283,6 +305,16 @@ void OpenDescription(const Target& target) {
       break;
     }
     case Target::kUrl: OpenUrl(target.url.c_str()); break;
+    case Target::kSetting: {
+      // Rien de natif ici : OpenSettingTarget ne fait que poser l'état que le
+      // prochain rendu consomme (déplier la fenêtre + ouvrir l'en-tête +, pour
+      // une section, la sélectionner). C'est déjà le chemin qu'emprunte le bullet
+      // de barre de titre des fenêtres Bourgeon, donc appelable depuis n'importe
+      // quel OnRenderUI.
+      if (auto* mu = Bourgeon::Instance().moonlight_ui())
+        mu->OpenSettingTarget(target.setting_key.c_str());
+      break;
+    }
     case Target::kPlayer: {
       // Un joueur n'a pas de « description » à ouvrir. Le geste GAUCHE lui rend
       // donc ce qui en est l'équivalent le plus proche : la conversation privée.
@@ -296,12 +328,22 @@ void OpenDescription(const Target& target) {
   }
 }
 
+bool CanPostToChat() {
+  ChatWindow* chat = Bourgeon::Instance().chat_window();
+  // La barre de SAISIE, et pas seulement la chatbox : c'est elle qui reçoit le
+  // lien, et le joueur peut l'avoir masquée. Mêmes conditions que celles où
+  // Append*Link refuse — sans quoi une surface annoncerait un geste inerte.
+  return chat != nullptr && chat->imgui_enabled_ && chat->input_bar();
+}
+
 bool PostToChat(const Target& target) {
   ChatWindow* chat = Bourgeon::Instance().chat_window();
   if (chat == nullptr || !chat->imgui_enabled_) return false;
   if (target.kind == Target::kMob)
     return chat->AppendMobLink(target.mob_id, target.mob_rank, target.mob_name.c_str());
   if (target.kind == Target::kItem) return chat->AppendItemLinkFromLink(target.item);
+  if (target.kind == Target::kSetting)
+    return chat->AppendSettingLink(target.setting_key.c_str());
   return false;
 }
 
@@ -401,6 +443,29 @@ void HoverPreview(const Target& target) {
     ImGui::Spacing();
     DimText(i18n::Tr("Clic : ouvrir dans l'Atlas des recettes"));
     ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor();
+    return;
+  }
+  if (target.kind == Target::kSetting) {
+    // Le CHEMIN COMPLET, pas seulement le nom de la destination : ce lien sert à
+    // guider quelqu'un, et il doit rester utile même s'il ne le clique pas — ou
+    // s'il reçoit la ligne dans un client sans Bourgeon et vient la lire ici.
+    // Une section est d'un étage plus bas qu'un en-tête, et le chemin le dit.
+    const char* name = iface::DestLabel(target.setting_key.c_str());
+    if (name == nullptr) return;  // la cible s'en assure, mais elle a pu vieillir
+    const bool is_section = iface::SectionByKey(target.setting_key.c_str()) >= 0;
+
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(i18n::Tr("Réglages Bourgeon"));
+    ImGui::Separator();
+    if (is_section)
+      DimText("%s  >  %s", i18n::Tr("Interface de jeu"), i18n::Tr(name));
+    else
+      DimText("%s", i18n::Tr(name));
+    ImGui::Spacing();
+    DimText(i18n::Tr("Clic : ouvrir ce réglage"));
     ImGui::EndTooltip();
     ImGui::PopStyleColor();
     return;
@@ -549,6 +614,11 @@ void DrawMenu(const char* popup_id, const Target& target) {
         }
         if (ImGui::MenuItem(i18n::Tr("Copier le nom")))
           ImGui::SetClipboardText(target.player_name.c_str());
+        break;
+      }
+      case Target::kSetting: {
+        if (ImGui::MenuItem(i18n::Tr("Ouvrir ce réglage"))) OpenDescription(target);
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         break;
       }
       case Target::kUrl: {

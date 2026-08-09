@@ -1,6 +1,7 @@
 #include "features/moonlight_ui/internal.h"
 
 #include "imgui.h"
+#include "features/moonlight_ui/moonlight_ui.h"  // iface::LinkableHeader
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 
@@ -12,7 +13,7 @@ namespace moonlight_ui {
 // accès à MoonlightUi. C'est précisément pour cela qu'elle sort en premier :
 // elle valide la mécanique du découpage sans rien pouvoir casser.
 void DrawRules() {
-  if (CollapsingHeader(i18n::Tr("Règles du serveur"))) {
+  if (iface::LinkableHeader("rules")) {
     PushStyleCompact();
     ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", i18n::Tr("CES RÈGLEMENTS S'APPLIQUENT PARTOUT SUR MOONLIGHT-DESTINY !"));
     if (ImGui::TreeNode(i18n::Tr("Règlements généraux"))) {

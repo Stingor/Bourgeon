@@ -59,6 +59,35 @@ bool ModernInterfaceEnabled();
 // de cette fonction.
 bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help);
 
+// ── Les sections d'« Interface de jeu », vues de l'extérieur ─────────────────
+// La table (identifiant + clé + libellé) vit dans panel_interface.cc, au plus près
+// de la nav qu'elle dessine. Ces trois fonctions sont ce qu'en voit le reste du
+// projet : un LIEN DE RÉGLAGE posté dans le chat doit savoir nommer sa cible chez
+// l'expéditeur et la retrouver chez le lecteur.
+//
+// 🔴 LA CLÉ (« item_toast ») N'EST PAS LE NUMÉRO DE SECTION, et c'est ce qui rend
+// le lien transportable : le numéro décrit l'ordre d'une version de Bourgeon, la
+// clé désigne la section elle-même. Un lecteur dont la version ignore la clé ne
+// résout rien — bien mieux que d'ouvrir en silence le réglage d'à côté.
+//
+// Le LIBELLÉ n'est pas traduit (il l'est à l'affichage, chez celui qui lit) : un
+// lien posé par un joueur anglophone s'écrit en français chez son lecteur français,
+// comme les liens de recette.
+namespace iface {
+const char* SectionLabel(int section);  // NON traduit — passer par i18n::Tr
+int         SectionByKey(const char* key);  // -1 si la clé n'est pas une section
+// Le libellé de N'IMPORTE QUELLE destination — en-tête du panneau ou section de
+// la nav, un seul espace de clés. nullptr si la clé est inconnue, ou si sa
+// destination ne s'affiche pas chez ce joueur (« Staff Tools » hors staff) : dans
+// les deux cas il n'y a pas de lien à former.
+const char* DestLabel(const char* key);
+// L'en-tête du panneau qui sait se lier : Maj + clic pose son lien dans le chat
+// au lieu de le plier, et un lien reçu le déplie et scrolle dessus. Remplace
+// `CollapsingHeader(i18n::Tr("…"))` aux sept en-têtes — le libellé vient de la
+// table, l'appelant ne donne que la clé.
+bool LinkableHeader(const char* key);
+}  // namespace iface
+
 // Moonlight-Destiny settings panel — manages client/server settings sync.
 class MoonlightUi : public Plugin {
  public:
@@ -144,6 +173,18 @@ class MoonlightUi : public Plugin {
   // (cf. ro::SetNextWindowTitleBullet) pour joindre LEUR config en un clic.
   // Prend effet au rendu suivant (sûr à appeler depuis n'importe quel OnRenderUI).
   void OpenInterfaceSection(int section);
+
+  // Idem, mais pour n'importe quelle destination désignée par sa CLÉ — un en-tête
+  // du panneau (« graphics ») aussi bien qu'une section de la nav
+  // (« item_toast »). C'est ce qu'ouvre un lien de réglage reçu dans le chat.
+  // Ne fait rien si la clé est inconnue ou indisponible ici.
+  void OpenSettingTarget(const char* key);
+
+  // Cet en-tête-ci est-il la cible du saut en attente ? Le consomme si oui.
+  // 🔴 Appelée par iface::LinkableHeader et par personne d'autre : l'état ne peut
+  // être consommé qu'UNE fois, sinon le premier en-tête dessiné mangerait le saut
+  // destiné à un autre.
+  bool ConsumeHeaderJump(const char* key);
 
  private:
   // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
@@ -343,9 +384,11 @@ class MoonlightUi : public Plugin {
   // Section sélectionnée dans « Interface de jeu » (membre, et non statique local,
   // pour qu'OpenInterfaceSection puisse la piloter depuis une autre fenêtre).
   int  iface_nav_ = 0;
-  // Saut demandé par OpenInterfaceSection : force l'ouverture de l'en-tête et le
-  // scroll au prochain rendu, puis se consomme.
-  bool pending_iface_jump_ = false;
+  // Saut demandé (bullet de barre de titre, lien de réglage du chat) : la CLÉ de
+  // l'en-tête à déplier et à scroller au prochain rendu. Vidée par le premier
+  // LinkableHeader qui la reconnaît — d'où la clé plutôt qu'un simple booléen :
+  // le panneau a sept en-têtes, et ils ne se dessinent pas tous dans ce fichier.
+  std::string pending_header_key_;
 
   // ── Anti-rebond de la sauvegarde (voir SaveSettings) ────────────────────────
   // Délai d'inactivité avant écriture réelle. Assez long pour absorber un drag de

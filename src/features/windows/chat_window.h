@@ -290,6 +290,19 @@ class ChatWindow : public Plugin {
   // vaut moins que pas de lien.
   bool AppendRecipeLink(uint32_t item_id, const char* name_utf8);
 
+  // Poser le lien d'une DESTINATION DE RÉGLAGES : « [Réglage: Objet obtenu] ».
+  // `key` désigne un en-tête du panneau ou une section de sa nav (cf.
+  // iface::DestLabel) ; false si cette version ne la connaît pas. Balise
+  // `<SETL>clé:libellé</SETL>`, même détour maison que `<MOBL>` et `<ITMR>` — le
+  // client ne connaît pas la balise, donc il ne la filtre pas.
+  //
+  // 🔴 Ce qui voyage est la CLÉ (« item_toast »), jamais un numéro : un numéro
+  // décrit l'ordre d'une version de Bourgeon, et une insertion enverrait le
+  // lecteur sur la section d'à côté sans que rien ne le dise. Le libellé voyage
+  // aussi, mais seulement pour rester lisible chez qui n'a pas Bourgeon : à
+  // l'affichage, c'est le libellé LOCAL (donc traduit) qui gagne.
+  bool AppendSettingLink(const char* key);
+
   // Arme une commande (`@iteminfo`, `@mobinfo`…) pour le prochain FlushPending.
   // Même canal que l'envoi d'une ligne tapée — donc le pipeline COMPLET du
   // client. 🔴 Publique parce que le menu des liens (features/link_gesture.cc)
@@ -350,7 +363,11 @@ class ChatWindow : public Plugin {
     // distingue un pseudo d'un mot ordinaire.
     // `kRecipe` réutilise `item_id` : il désigne un objet, mais l'intention est
     // sa RECETTE — le survol montre métier et matériaux, le clic ouvre l'Atlas.
-    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe };
+    // `kSetting` ne désigne rien du jeu : c'est une SECTION du panneau de
+    // réglages Bourgeon, et le clic l'ouvre. C'est le premier lien qui parle du
+    // CLIENT plutôt que du monde — « va voir ce réglage » est ce qu'on répond
+    // vingt fois par jour dans un chat d'entraide.
+    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
     // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message
@@ -373,6 +390,10 @@ class ChatWindow : public Plugin {
     // Baphomet> ») et que la balise, elle, transporte tel quel. Le garder évite
     // de le ré-extraire d'un libellé pour relayer le lien.
     std::string mob_name;
+    // kSetting : la CLÉ de la destination, telle qu'elle a voyagé. Elle n'est
+    // posée QUE si cette version la reconnaît — sinon le fragment n'est pas un
+    // lien du tout (le texte reste lisible, il ne mène simplement nulle part).
+    std::string setting_key;
     // kUrl : l'adresse NUE. Séparée du texte parce que le texte affiché peut
     // emporter la ponctuation qui suit (« regarde https://… ! ») alors que
     // l'adresse ouverte, elle, doit s'arrêter avant.
@@ -830,6 +851,7 @@ class ChatWindow : public Plugin {
     uint32_t    mob_id = 0;
     uint8_t     mob_rank = 0;
     std::string mob_name;
+    std::string setting_key;  // kSetting
     // La balise RELUE, pour que le lien posé dans la saisie soit déjà un objet
     // cliquable — c'est ce que fait le natif, qui accroche un vrai bouton sur sa
     // ligne de saisie (`UIItemTagButton`) plutôt que d'y écrire du texte mort.
@@ -845,6 +867,26 @@ class ChatWindow : public Plugin {
   // Oublie les liens dont le nom n'est plus dans la saisie : le joueur qui efface
   // un lien doit pouvoir en reposer un autre sans buter sur le plafond de trois.
   void PruneItemLinks();
+
+  // ── 🔴 PRÉVENIR IMGUI QU'ON A ÉCRIT DANS `input_` DANS SON DOS ──────────────
+  // TANT QUE LE CHAMP EST ACTIF, IL ÉDITE SA PROPRE COPIE et la réécrit dans notre
+  // buffer à chaque frame. Un lien posé pendant que la saisie a le focus est donc
+  // effacé avant même d'être affiché : le premier lien passait (barre pas encore
+  // focalisée), et plus aucun ensuite — puisque poser un lien DONNE le focus.
+  //
+  // C'est écrit tel quel dans imgui_internal.h : « If you modify underlying
+  // user-passed buffer while active you need to call this ». Le projet le savait
+  // déjà pour l'historique (flèche haut/bas), qui passe par un CALLBACK pour cette
+  // raison exacte — les Append*Link, eux, écrivaient directement.
+  //
+  // À appeler après TOUTE écriture directe dans `input_`. Sans effet si le champ
+  // n'est pas actif (GetInputTextState rend nullptr).
+  void NotifyInputEdited();
+  // L'id ImGui du champ de saisie, relevé à sa soumission. Mémorisé parce que les
+  // Append*Link sont appelés depuis d'AUTRES fenêtres (l'inventaire, le panneau de
+  // réglages) : on ne peut pas le recalculer là-bas, l'id se hache avec la pile de
+  // la fenêtre courante.
+  ImGuiID input_field_id_ = 0;
   // Repeint les liens POSÉS dans la ligne de saisie — crochets et couleur, comme
   // dans le log — et les rend cliquables, à l'image des boutons que le natif
   // accroche à la sienne. À appeler JUSTE APRÈS avoir soumis le champ, avec sa

@@ -4,9 +4,12 @@
 #include <shellapi.h>  // ShellExecuteA (lien « avatar Discord » vers l'UCP)
 
 #include <algorithm>
+#include <cstring>  // std::strcmp (résolution d'une clé de section)
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "imgui_internal.h"  // TreeNodeSetOpen (annuler le pli d'un Maj + clic)
+#include "features/link_gesture.h"  // Maj + clic sur une entrée de nav = un lien
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/staff_gate.h"  // IsStaff (compteur de textes non traduits)
 #include "ui/align_grid.h"
@@ -51,6 +54,209 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 constexpr const char* kDiscordAvatarUrl =
     "https://moonlight-destiny.fr/ucp.php?i=profile&mode=avatar";
 
+// ── LES DESTINATIONS D'UN LIEN DE RÉGLAGE ────────────────────────────────────
+// Deux étages, deux tables : les EN-TÊTES du panneau (Staff Tools, Graphismes,
+// Interface de jeu…) et les SECTIONS de la nav latérale d'« Interface de jeu ».
+// Elles partagent un seul espace de CLÉS — une clé désigne une destination, sans
+// qu'on ait à dire de quel étage elle vient.
+//
+// Source UNIQUE dans les deux cas : chaque ligne porte sa clé, son libellé et,
+// pour une section, son identifiant d'enum. Insérer/déplacer une entrée ne peut
+// donc pas désaligner silencieusement le libellé et le contenu — la panne muette
+// que produisait la paire « enum + tableau de chaînes » maintenue à la main.
+//
+// 🔴 LA CLÉ N'EST PAS LE NUMÉRO D'ENUM, et c'est tout l'intérêt. Un lien de
+// réglage posté dans le chat voyage vers d'AUTRES clients, qui peuvent avoir une
+// autre version de Bourgeon : un numéro y désignerait la section voisine à la
+// première insertion, et le lecteur atterrirait sans le savoir sur le mauvais
+// réglage. La clé, elle, est un nom stable — inconnue chez le lecteur, elle ne
+// résout rien du tout, ce qui est le bon échec.
+// ⚠ Une clé posée ne se renomme donc JAMAIS : les lignes de chat déjà envoyées
+// la portent encore. Le libellé, lui, est libre (il est traduit à l'affichage).
+namespace {
+
+// Un EN-TÊTE du panneau. `staff_only` n'est pas de la décoration : l'en-tête
+// n'EXISTE pas chez un non-staff, donc son lien ne doit pas s'y former — sans
+// quoi le lecteur cliquerait sur un lien qui ne peut rien ouvrir.
+struct PanelHeader {
+  const char* key;
+  const char* label;  // non traduit
+  bool        staff_only;
+};
+
+constexpr PanelHeader kPanelHeaders[] = {
+    {"staff_tools", "Staff Tools",       true},
+    {"rules",       "Règles du serveur", false},
+    {"dps",         "DPS Meter",         false},
+    {"minigames",   "Mini-jeux",         false},
+    {"interface",   "Interface de jeu",  false},
+    {"graphics",    "Graphismes",        false},
+    {"commands",    "Commands Settings", false},
+};
+
+struct IfaceEntry {
+  MoonlightUi::IfaceSection id;
+  const char* key;
+  const char* label;
+};
+
+constexpr IfaceEntry kIfaceSections[] = {
+    {MoonlightUi::kIfaceSkillBar,    "skill_bar",    "Barre d'action"},
+    {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
+    {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre d'incantation"},
+    {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
+    {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
+    {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
+    {MoonlightUi::kIfaceQuest,       "quest",        "Suivi de quête"},
+    {MoonlightUi::kIfaceItemToast,   "item_toast",   "Objet obtenu"},
+    {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
+    {MoonlightUi::kIfaceSkin,        "skin",         "Skin RO"},
+    {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
+    {MoonlightUi::kIfaceStorage,     "storage",      "Storage"},
+    {MoonlightUi::kIfaceInventory,   "inventory",    "Inventaire"},
+    {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
+    {MoonlightUi::kIfaceRefine,      "refine",       "Refine"},
+    {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
+    {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
+    {MoonlightUi::kIfaceContextMenu, "context_menu", "Menu contextuel"},
+    {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Atlas des recettes"},
+};
+// Message de static_assert : un LITTÉRAL. Il est lu à la compilation et
+// s'adresse au développeur — jamais i18n::Tr.
+static_assert(IM_ARRAYSIZE(kIfaceSections) == MoonlightUi::kIfaceCount,
+              "kIfaceSections doit couvrir exactement l'enum IfaceSection");
+
+// ── LE GESTE DE LIEN SE LIT SUR LA GÉOMÉTRIE, PAS SUR L'ÉTAT D'IMGUI ─────────
+//
+// 🔴 `IsItemHovered()` EST INUTILISABLE ICI, et deux corrections successives par
+// drapeaux n'y ont rien changé. Poser un lien donne le focus à la saisie du chat,
+// et cet état la fait mentir de plusieurs façons à la fois : la saisie devient
+// l'`ActiveId` (« Test if another item is active »), le focus venant de
+// `SetKeyboardFocusHere` l'item actif est d'origine CLAVIER donc
+// `g.NavHighlightItemUnderNav` se lève et une branche PRIORITAIRE exige alors que
+// l'item ait le focus nav, `g.HoveredWindow` est remis à NULL quand le clic
+// initial n'appartient pas à une fenêtre… Chaque garde neutralisée en découvrait
+// une autre, et le geste continuait de mourir dès la barre focalisée.
+//
+// On lit donc CE QU'ON VOIT : le rectangle de l'item (clippé par la fenêtre) et
+// le bouton BRUT de l'IO. Ni l'un ni l'autre ne consulte le focus, l'item actif
+// ou la navigation — c'est déjà ainsi que le log du chat teste ses liens, pour la
+// même raison.
+//
+// ⚠ Réservé à un geste MODIFIÉ, qu'aucun widget ne réclame : ImGui refuse déjà le
+// clic modifié sur un en-tête, et un `Selectable` ne s'active pas sous un item
+// actif. Il n'y a donc personne à qui voler le clic. Un geste ORDINAIRE, lui, doit
+// rester au widget : ces gardes sont ce qui empêche un slider d'en piloter un
+// autre au passage.
+bool ShiftClickedLastItem() {
+  const ImGuiIO& io = ImGui::GetIO();
+  if (!io.KeyShift || !io.MouseClicked[0]) return false;
+  // Le seul garde qu'on garde d'ImGui : « une AUTRE fenêtre n'est pas par-dessus ».
+  // La géométrie seule poserait un lien à travers la chatbox posée sur le panneau.
+  // Celui-ci ne peut pas mentir comme les autres — il ne consulte que la fenêtre
+  // survolée, sans branche de navigation clavier (vérifié dans `IsWindowHovered`).
+  if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                              ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+    return false;
+  return ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(),
+                                    ImGui::GetItemRectMax());
+}
+
+// Le SURVOL, pour l'infobulle qui annonce le geste. Elle, peut se contenter de
+// l'`IsItemHovered` d'ImGui — c'est de la décoration, et son délai vient du style.
+// Les deux drapeaux couvrent les deux gardes les plus fréquentes ; si elle
+// s'efface pendant que la saisie a le focus, on ne perd qu'une aide, pas un geste.
+constexpr ImGuiHoveredFlags kLinkHoverFlags =
+    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+    ImGuiHoveredFlags_NoNavOverride;
+
+// L'en-tête que désigne cette clé, s'il est DISPONIBLE pour ce joueur.
+const PanelHeader* HeaderByKey(const char* key) {
+  if (key == nullptr || key[0] == '\0') return nullptr;
+  for (const PanelHeader& header : kPanelHeaders) {
+    if (std::strcmp(header.key, key) != 0) continue;
+    return (header.staff_only && !IsStaff()) ? nullptr : &header;
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+namespace iface {
+
+const char* SectionLabel(int section) {
+  for (const IfaceEntry& entry : kIfaceSections)
+    if (entry.id == section) return entry.label;
+  return nullptr;
+}
+
+int SectionByKey(const char* key) {
+  if (key == nullptr || key[0] == '\0') return -1;
+  for (const IfaceEntry& entry : kIfaceSections)
+    if (std::strcmp(entry.key, key) == 0) return entry.id;
+  return -1;
+}
+
+const char* DestLabel(const char* key) {
+  const int section = SectionByKey(key);
+  if (section >= 0) return SectionLabel(section);
+  const PanelHeader* header = HeaderByKey(key);
+  return (header != nullptr) ? header->label : nullptr;
+}
+
+// ── L'en-tête qui sait se lier ───────────────────────────────────────────────
+// Remplace `CollapsingHeader(i18n::Tr("…"))` aux sept en-têtes du panneau. Il
+// porte les deux bouts du lien : le geste qui le POSE (Maj + clic) et le saut qui
+// l'HONORE (un lien reçu déplie l'en-tête et scrolle dessus).
+//
+// 🔴 UN EN-TÊTE IMGUI REFUSE LE CLIC MODIFIÉ, et c'est ce qui a fait échouer la
+// première version de ce code. `TreeNodeBehavior` pose `NoKeyModsAllowed` dès que
+// la souris n'est pas sur la FLÈCHE (imgui_widgets.cpp, « We allow clicking on the
+// arrow section with keyboard modifiers held ») : Maj enfoncé, le corps de
+// l'en-tête ne reçoit aucun clic, donc aucune bascule à observer — guetter
+// `IsItemToggledOpen()` ne déclenchait jamais rien.
+// On lit donc le geste NOUS-MÊMES, sur le survol : `mods_ok` ne gouverne que
+// l'activation, `hovered` reste calculé normalement. Et c'est aussi le geste que
+// `links::Hit` reconnaît partout ailleurs — clic ENFONCÉ, pas relâché.
+//
+// ⚠ Sur la flèche, en revanche, les modificateurs SONT acceptés et l'en-tête a
+// basculé : on annule dans ce cas précis, pour que le geste soit le même sur toute
+// la largeur.
+bool LinkableHeader(const char* key) {
+  const PanelHeader* header = HeaderByKey(key);
+  // Clé inconnue (ou en-tête réservé au staff) : on dessine quand même l'en-tête,
+  // sinon une faute de frappe ferait disparaître toute une partie du panneau.
+  // Seul le LIEN se retire, ce qui est la seule chose qui n'a pas de sens ici.
+  const char* label = (header != nullptr) ? header->label : key;
+
+  MoonlightUi* mu = Bourgeon::Instance().moonlight_ui();
+  const bool jump = (mu != nullptr) && mu->ConsumeHeaderJump(key);
+  if (jump) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+
+  bool open = CollapsingHeader(i18n::Tr(label));
+  if (jump) ImGui::SetScrollHereY(0.0f);
+
+  if (header != nullptr && links::CanPostToChat() && ShiftClickedLastItem()) {
+    links::PostToChat(links::FromSetting(key));
+    // Clic sur la flèche : lui seul a été accepté, donc lui seul a basculé.
+    if (ImGui::IsItemToggledOpen()) {
+      ImGui::TreeNodeSetOpen(ImGui::GetItemID(), !open);
+      open = !open;
+    }
+  }
+  // Le geste n'a aucune trace visible : sans cette ligne, il n'existe que pour
+  // qui l'a lu dans un changelog. Mêmes drapeaux de survol : l'aide doit tenir
+  // exactement là où le geste tient, sinon elle disparaît précisément au moment
+  // où l'on s'en sert — la barre de chat ouverte.
+  if (header != nullptr && links::CanPostToChat() &&
+      ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags))
+    ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cette "
+                               "section dans le chat"));
+  return open;
+}
+
+}  // namespace iface
+
 // ── En-tête « Interface de jeu » ─────────────────────────────────────────────
 // Navigation latérale + les 13 sections de configuration. C'était le bloc dominant
 // d'OnRenderUI (742 lignes sur 1702) : une nav, puis une cascade de 11 tests sur
@@ -58,13 +264,10 @@ constexpr const char* kDiscordAvatarUrl =
 // La table kIfaceSections (source unique libellé + identifiant, cf. chantier 5)
 // vit ici, au plus près de son usage.
 void MoonlightUi::DrawInterfacePanel() {
-  // Saut demandé (bullet de barre de titre d'une fenêtre Bourgeon) : on force
-  // l'en-tête ouvert et on scrolle dessus, une seule fois.
-  const bool jump_requested = pending_iface_jump_;
-  pending_iface_jump_ = false;
-  if (jump_requested) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-  if (CollapsingHeader(i18n::Tr("Interface de jeu"))) {
-    if (jump_requested) ImGui::SetScrollHereY(0.0f);
+  // Le dépliage sur saut (bullet de barre de titre d'une fenêtre Bourgeon, lien de
+  // réglage reçu dans le chat) et le Maj + clic vivent dans LinkableHeader : cet
+  // en-tête-ci est un en-tête du panneau comme les six autres.
+  if (iface::LinkableHeader("interface")) {
     PushStyleCompact();
     bool changed = false;
 
@@ -189,37 +392,8 @@ void MoonlightUi::DrawInterfacePanel() {
 
     // Navigation latérale (liste à gauche, contenu à droite). L'entrée active est
     // un MEMBRE (iface_nav_) : OpenInterfaceSection la pilote depuis le bullet de
-    // barre de titre d'une autre fenêtre Bourgeon.
-    // Source UNIQUE des sections : chaque ligne porte son identifiant d'enum ET
-    // son libellé. Insérer/déplacer une entrée ne peut donc plus désaligner
-    // silencieusement le libellé et le contenu — la panne muette que produisait
-    // la paire « enum + tableau de chaînes » maintenue à la main.
-    struct IfaceEntry { IfaceSection id; const char* label; };
-    static constexpr IfaceEntry kIfaceSections[] = {
-        {kIfaceSkillBar,    "Barre d'action"},
-        {kIfaceBasicInfo,   "Basic Info"},
-        {kIfaceCastBar,     "Barre d'incantation"},
-        {kIfaceChat,        "Chat"},
-        {kIfaceMenuIcons,   "Icônes du menu"},
-        {kIfaceStatusIcons, "Icônes de statut"},
-        {kIfaceQuest,       "Suivi de quête"},
-        {kIfaceItemToast,   "Objet obtenu"},
-        {kIfaceDesc,        "Descriptions"},
-        {kIfaceSkin,        "Skin RO"},
-        {kIfaceNpc,         "Fenêtre NPC"},
-        {kIfaceStorage,     "Storage"},
-        {kIfaceInventory,   "Inventaire"},
-        {kIfaceCart,        "Cart"},
-        {kIfaceRefine,      "Refine"},
-        {kIfaceMakeItem,    "Fabrication"},
-        {kIfaceMonsterInfo, "Fiche de monstre"},
-        {kIfaceContextMenu, "Menu contextuel"},
-        {kIfaceCraftAtlas,  "Atlas des recettes"},
-    };
-    // Message de static_assert : un LITTÉRAL. Il est lu à la compilation et
-    // s'adresse au développeur — jamais i18n::Tr.
-    static_assert(IM_ARRAYSIZE(kIfaceSections) == kIfaceCount,
-                  "kIfaceSections doit couvrir exactement l'enum IfaceSection");
+    // barre de titre d'une autre fenêtre Bourgeon. La table des sections
+    // (kIfaceSections) vit en tête de ce fichier — elle sert aussi aux liens.
 
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
@@ -247,8 +421,41 @@ void MoonlightUi::DrawInterfacePanel() {
                       + st.WindowPadding.y * 2.0f;
 
     ImGui::BeginChild("iface_nav", ImVec2(nav_w, nav_h), ImGuiChildFlags_Borders);
-    for (const IfaceEntry& entry : kIfaceSections)
-      if (ImGui::Selectable(i18n::Tr(entry.label), iface_nav_ == entry.id)) iface_nav_ = entry.id;
+    // 🔴 Maj + clic POSE LE LIEN DE LA SECTION dans la barre de chat, et ne
+    // navigue pas. C'est la convention des liens du client (features/link_gesture.h)
+    // appliquée à une entrée de nav : « regarde ce réglage » est exactement ce
+    // qu'on veut dire à quelqu'un qu'on aide, et le décrire à la voix (« le panneau
+    // Moonlight, en-tête Interface de jeu, huitième entrée ») ne marche jamais.
+    //
+    // Maj DÉSARME donc la sélection : sans ça le geste poserait le lien ET
+    // changerait de section sous les yeux de celui qui explique.
+    const bool link_posts = links::CanPostToChat();
+    const bool shift_held = ImGui::GetIO().KeyShift;
+    for (const IfaceEntry& entry : kIfaceSections) {
+      const bool selected = ImGui::Selectable(i18n::Tr(entry.label),
+                                              iface_nav_ == entry.id);
+      // 🔴 Le geste de lien est lu SUR LA GÉOMÉTRIE, et pas par le retour du
+      // Selectable : celui-ci est muet dès que la barre de saisie du chat détient
+      // l'ActiveId — c'est-à-dire juste après qu'on y a posé un lien (cf.
+      // ShiftClickedLastItem). Le deuxième lien d'affilée ne partait jamais.
+      if (link_posts && ShiftClickedLastItem()) {
+        links::PostToChat(links::FromSetting(entry.key));
+      } else if (selected && !(link_posts && shift_held)) {
+        // ⚠ Sans barre de chat pour l'accueillir, Maj + clic redevient un clic
+        // ORDINAIRE. Le geste n'est alors annoncé nulle part : le laisser avaler
+        // le clic rendrait l'entrée muette pour qui a une main sur Maj sans y
+        // penser — et il n'aurait aucun moyen de comprendre pourquoi.
+        iface_nav_ = entry.id;
+      }
+      // Le geste n'a aucune trace visible : sans cette ligne, il n'existe que
+      // pour qui l'a lu dans un changelog. Après un délai, pour ne pas encombrer
+      // une liste qu'on survole en permanence — et seulement quand il y a une
+      // barre de chat pour l'accueillir.
+      if (link_posts &&
+          ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags))
+        ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cette "
+                                   "section dans le chat"));
+    }
     ImGui::EndChild();
 
     SameLine();

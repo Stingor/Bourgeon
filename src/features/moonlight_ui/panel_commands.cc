@@ -16,7 +16,7 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // MÉTHODE MEMBRE : cf. la note dans moonlight_ui.h, ce panneau manipule l'état
 // privé (miroirs de réglages, presets alootid).
 void MoonlightUi::DrawCommandsPanel() {
-  if (CollapsingHeader(i18n::Tr("Commands Settings")))
+  if (iface::LinkableHeader("commands"))
   {
     PushStyleCompact();
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;

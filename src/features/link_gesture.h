@@ -39,7 +39,12 @@ struct Target {
   // pas sa description mais l'Atlas, et l'aperçu au survol montre le métier et
   // les matériaux plutôt que les stats. C'est un genre à part parce que c'est une
   // INTENTION différente : « comment on fabrique ça » n'est pas « c'est quoi ».
-  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe };
+  // kSetting — une DESTINATION du panneau de réglages Moonlight : un en-tête
+  // (« Graphismes ») ou une section de la nav (« Objet obtenu »). Le geste gauche
+  // n'ouvre donc pas une description mais le panneau, déjà déplié au bon endroit :
+  // c'est ce qu'on veut dire quand on aide quelqu'un, et « le panneau Moonlight,
+  // Interface de jeu, huitième entrée » ne marche jamais à la voix.
+  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting };
   uint8_t kind = kNone;
 
   // kItem — la balise RELUE, pas seulement l'id : elle porte le refine, les
@@ -61,6 +66,12 @@ struct Target {
   // utilisable ici. Celles du menu ci-dessous prennent toutes un nom.
   std::string player_name;  // UTF-8
 
+  // kSetting — la CLÉ de la destination (« item_toast », « graphics »). C'est
+  // aussi ce qui voyage sur le fil : un nom stable désigne la destination, là où
+  // un numéro ne décrirait que l'ordre d'UNE version de Bourgeon. En-têtes et
+  // sections partagent le même espace de clés (cf. iface::DestLabel).
+  std::string setting_key;
+
   std::string label;  // ce que le menu affiche en tête (UTF-8)
 
   bool valid() const { return kind != kNone; }
@@ -80,6 +91,19 @@ Target FromUrl(const char* url);
 // Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'a rien à ouvrir ici — un
 // joueur n'a pas de « description » — donc seuls le menu et le Maj+clic jouent.
 Target FromPlayer(const char* name_utf8);
+
+// Le libellé VISIBLE d'un lien de réglage : « [Réglage: Objet obtenu] ». Composé
+// LOCALEMENT, jamais transmis tout fait — chacun le lit dans SA langue, et le
+// « [Réglage: ] » d'un expéditeur anglophone n'impose rien à son lecteur. Chaîne
+// vide si la destination est inconnue (ou indisponible) dans cette version.
+std::string SettingLabel(const char* key);
+
+// Une destination du panneau de réglages, par sa CLÉ — la seule forme qui voyage.
+// Cible VIDE si cette version ne la connaît pas, ou si elle ne s'y affiche pas
+// (un en-tête réservé au staff chez un joueur ordinaire) : c'est ce qui arrive à
+// un lien reçu d'un client plus récent, et un texte inerte y vaut mieux qu'un lien
+// qui ouvrirait le réglage d'à côté — ou rien du tout.
+Target FromSetting(const char* key);
 
 // Le geste RECONNU, sans rien jouer. Pour les surfaces qui ont leur propre façon
 // d'ouvrir une description : les cartes et les membres de combo d'une fenêtre de
@@ -113,6 +137,10 @@ void DrawMenu(const char* popup_id, const Target& target);
 // Les actions, utilisables seules (un bouton, une entrée de menu à soi).
 void OpenDescription(const Target& target);
 bool PostToChat(const Target& target);
+// Y a-t-il seulement une barre de saisie pour accueillir un lien ? Pour les
+// surfaces qui ANNONCENT le Maj+clic (une entrée de nav, un bouton) : promettre
+// un geste qui ne peut rien faire est pire que de se taire.
+bool CanPostToChat();
 
 // ── L'avertissement avant d'ouvrir une adresse ───────────────────────────────
 // Une adresse postée dans le chat vient d'un TIERS, et le texte affiché n'a
