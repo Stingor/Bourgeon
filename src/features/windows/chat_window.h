@@ -651,6 +651,14 @@ class ChatWindow : public Plugin {
 
   // Bande d'onglets + boutons du client. Renvoie sa hauteur.
   float DrawTabStrip();
+  // Ctrl + molette au-dessus d'une fenêtre de chat = zoom du texte du log. Cible
+  // exactement ce que lit `EffFontPct` : l'onglet s'il a ses réglages propres,
+  // les réglages généraux sinon. Sans effet si la fenêtre n'est pas survolée.
+  void  HandleFontZoom(Channel& channel);
+  // Jette les hauteurs de repli mémorisées par les lignes : elles valaient pour
+  // l'ANCIENNE mise en page. À appeler après tout changement de `LineHeight`
+  // (taille du texte, interligne) — voir le commentaire de la définition.
+  void  InvalidateLineLayout();
   void  DrawChannel(const Channel& channel, float height);
   void  DrawLines(const Channel& channel);
   void  DrawInputRow();
@@ -779,6 +787,17 @@ class ChatWindow : public Plugin {
   // à choisir entre un chat lisible et une bande d'onglets qui mange la fenêtre.
   int  font_scale_pct_ = 100;  // log
   int  ui_scale_pct_   = 100;  // habillage
+  // Bornes de l'échelle du LOG, partagées par les curseurs (général et par
+  // onglet) et par le zoom à la molette : trois sites qui doivent s'accorder,
+  // sans quoi un geste pourrait poser une valeur que le curseur d'à côté refuse
+  // d'afficher. Le pas est celui d'un cran de molette.
+  static constexpr int kFontPctMin  = 70;
+  static constexpr int kFontPctMax  = 160;
+  static constexpr int kFontZoomStep = 5;
+  // Jusqu'à quand montrer le pourcentage atteint par le zoom (`ImGui::GetTime`,
+  // en secondes). Sans lui le geste est muet aux butées : le joueur continue de
+  // tourner la molette sur un texte qui ne bouge plus, sans rien pour le dire.
+  double zoom_hint_until_ = 0.0;
   // Taille de police de référence, relevée HORS de toute fenêtre au début de la
   // frame : c'est la seule qui ne porte l'échelle de personne. Tout le log se
   // dessine à partir d'elle, avec des tailles explicites — donc sans dépendre de

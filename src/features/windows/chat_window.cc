@@ -2808,6 +2808,9 @@ void ChatWindow::DrawDockedWindow() {
             ? &channels_[active_channel_]
             : nullptr;
     if (channel != nullptr) {
+      // AVANT les métriques : elles doivent décrire la taille qu'on va dessiner,
+      // pas celle d'avant le cran de molette.
+      HandleFontZoom(*channel);
       channel->line_h   = LineHeight(channel);
       channel->chrome_h = ImGui::GetWindowSize().y - log_h +
                           2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(channel);
@@ -2884,6 +2887,7 @@ void ChatWindow::DrawGroupWindow(uint32_t group) {
     const float input_h  = has_input ? ImGui::GetFrameHeightWithSpacing() : 0.0f;
     float log_h = ImGui::GetContentRegionAvail().y - input_h;
     if (log_h < LogFontSize(&channel)) log_h = LogFontSize(&channel);
+    HandleFontZoom(channel);  // cf. la fenêtre principale : avant les métriques
     channel.line_h   = LineHeight(&channel);
     channel.chrome_h = ImGui::GetWindowSize().y - log_h +
                        2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(&channel);
@@ -3467,6 +3471,69 @@ float ChatWindow::LineHeight(const Channel* channel) const {
 float ChatWindow::LineOverhang(const Channel* channel) const {
   const float over = LogFontSize(channel) + 1.0f - LineHeight(channel);
   return (over > 0.0f) ? over : 0.0f;
+}
+
+// ── Ctrl + molette = zoom du texte, comme partout ailleurs ───────────────────
+// Le geste que tout le monde connaît du navigateur, au même endroit : la molette
+// seule fait défiler le log, Ctrl enfoncé change la taille du texte.
+//
+// Rien à disputer à ImGui : `UpdateMouseWheel` rend la main dès que Ctrl est tenu
+// (et son vieux zoom de fenêtre dort, `io.FontAllowUserScaling` restant à false).
+// Sous Ctrl la molette est donc LIBRE — le log ne défilera pas en même temps
+// qu'il grossit. On la consomme quand même : d'autres surfaces lisent
+// `io.MouseWheel` sans regarder qui est survolé.
+//
+// La cible est celle de `EffFontPct`, et c'est la seule qui ne mente pas : un
+// onglet qui a ses réglages propres se zoome seul ; un onglet qui suit les
+// réglages généraux DÉPLACE les réglages généraux — exactement ce que ferait le
+// curseur du panneau, qui affichera d'ailleurs la valeur qu'on vient de poser.
+void ChatWindow::HandleFontZoom(Channel& channel) {
+  // `RootAndChildWindows` : le log est une fenêtre ENFANT, et c'est justement
+  // au-dessus de lui qu'on fait le geste. Le hover est refusé tant qu'un popup
+  // est ouvert par-dessus (menu d'onglet, options), ce qui est bien ce qu'on
+  // veut — là, la molette appartient au menu.
+  if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) return;
+
+  ImGuiIO& io       = ImGui::GetIO();
+  const float wheel = io.MouseWheel;
+  if (io.KeyCtrl && wheel != 0.0f) {
+    io.MouseWheel = 0.0f;
+    const int step = (wheel > 0.0f) ? kFontZoomStep : -kFontZoomStep;
+    int* target    = channel.style_own ? &channel.font_pct : &font_scale_pct_;
+    const int before = *target;
+    *target = ImClamp(before + step, kFontPctMin, kFontPctMax);
+    // Posé même à la butée : c'est là qu'il sert le plus, pour dire que le texte
+    // ne bougera plus.
+    zoom_hint_until_ = ImGui::GetTime() + 1.2;
+    if (*target != before) {
+      InvalidateLineLayout();
+      // L'onglet range ses réglages avec la disposition, les généraux avec ceux
+      // de Bourgeon. `SaveSettings` a son anti-rebond (400 ms) : un cran de
+      // molette n'écrit pas un fichier, et un geste continu n'en écrit qu'un.
+      if (channel.style_own) layout_dirty_ = true;
+      else if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    }
+  }
+
+  // Le fond de l'infobulle est CLAIR, alors que le cadre du chat pousse un texte
+  // clair pour son fond sombre : sans ce passage en sombre, le pourcentage se lit
+  // à peine (même règle que l'infobulle des onglets).
+  if (ImGui::GetTime() < zoom_hint_until_) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::SetTooltip("%d %%", EffFontPct(&channel));
+    ImGui::PopStyleColor();
+  }
+}
+
+// Les hauteurs de repli mémorisées valent pour UNE mise en page : changer la
+// taille du texte ou l'interligne les périme toutes. Les lignes visibles se
+// remesurent d'elles-mêmes à la frame suivante, mais celles qui sont hors écran
+// seraient SAUTÉES sur leur ancienne hauteur (cf. `DrawLines`) — donc une hauteur
+// totale fausse, et un défilement qui ne tombe plus en face du texte. Une passe
+// sur le tampon, une seule fois par changement.
+void ChatWindow::InvalidateLineLayout() {
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  for (Line& line : lines_) line.cached_wrap = -1.0f;
 }
 
 // Mode « sélection » : le log devient une zone de texte en LECTURE SEULE. C'est
@@ -4992,17 +5059,21 @@ void ChatWindow::DrawLogOptionsPopup() {
       }
       channel->style_own = own;
       layout_dirty_      = true;
+      // La bascule change la taille EFFECTIVE de l'onglet (les siennes ou les
+      // générales) : les hauteurs mémorisées ne valent plus.
+      InvalidateLineLayout();
     }
     if (!channel->style_own) ImGui::BeginDisabled();
-    bool touched = false;
-    touched |= WheelSliderInt(i18n::Tr("Taille du texte###chatstyle_font"), &channel->font_pct,
-                              70, 160, "%d %%");
+    bool touched  = false;
+    bool relayout = WheelSliderInt(i18n::Tr("Taille du texte###chatstyle_font"),
+                                   &channel->font_pct, kFontPctMin, kFontPctMax, "%d %%");
     touched |= WheelSliderInt(i18n::Tr("Marges###chatstyle_pad"), &channel->padding, 0, 12,
                               "%d px");
-    touched |= WheelSliderInt(i18n::Tr("Interligne###chatstyle_gap"), &channel->line_gap, 0, 16,
-                              "%d px");
+    relayout |= WheelSliderInt(i18n::Tr("Interligne###chatstyle_gap"), &channel->line_gap, 0, 16,
+                               "%d px");
     touched |= RoColorSwatch("Fond###chatstyle_body", channel->body);
-    if (touched) layout_dirty_ = true;
+    if (relayout) InvalidateLineLayout();  // le PAS des lignes a changé
+    if (touched || relayout) layout_dirty_ = true;
     if (!channel->style_own) ImGui::EndDisabled();
     ImGui::PopItemWidth();
     PopStyleCompact();
@@ -5995,8 +6066,15 @@ bool ChatWindow::DrawSettings() {
   changed |= RoColorSwatch("Fond###chatwnd_body", body_rgba_);
   changed |= RoColorSwatch("Bordure###chatwnd_border", border_rgba_);
   changed |= RoColorSwatch("Onglets###chatwnd_tab", tab_rgba_);
-  changed |= WheelSliderInt(i18n::Tr("Taille du texte du chat###chatwnd_font"),
-                            &font_scale_pct_, 70, 160, "%d %%");
+  // `relayout` = ce qui change le PAS des lignes, donc ce qui périme les hauteurs
+  // de repli mémorisées (cf. InvalidateLineLayout). Ni les couleurs ni l'échelle
+  // de l'habillage n'en font partie.
+  bool relayout = WheelSliderInt(i18n::Tr("Taille du texte du chat###chatwnd_font"),
+                                 &font_scale_pct_, kFontPctMin, kFontPctMax, "%d %%");
+  ImGui::SameLine();
+  HelpMarker(
+      i18n::Tr("Ctrl + molette au-dessus d'une fenêtre de chat fait la même chose, sans "
+      "ouvrir ce panneau. Un onglet qui a ses propres réglages zoome seul."));
   changed |= WheelSliderInt(i18n::Tr("Taille de l'interface###chatwnd_uifont"), &ui_scale_pct_,
                             70, 160, "%d %%");
   ImGui::SameLine();
@@ -6005,7 +6083,9 @@ bool ChatWindow::DrawSettings() {
       "grossir le texte qu'on lit ne doit pas faire enfler la bande d'onglets, "
       "qui mangerait la fenêtre."));
   changed |= WheelSliderInt(i18n::Tr("Marges###chatwnd_pad"), &padding_px_, 0, 12, "%d px");
-  changed |= WheelSliderInt(i18n::Tr("Interligne###chatwnd_gap"), &line_gap_px_, 0, 16, "%d px");
+  relayout |= WheelSliderInt(i18n::Tr("Interligne###chatwnd_gap"), &line_gap_px_, 0, 16, "%d px");
+  if (relayout) InvalidateLineLayout();
+  changed |= relayout;
   if (ro::RoButton(i18n::Tr("Couleurs du client###chatwnd_reset"))) {
     ro::PickerFromArgb(body_rgba_, 0x96000000);    // le fond natif, un peu plus dense
     ro::PickerFromArgb(border_rgba_, 0xFFC5C5C5);

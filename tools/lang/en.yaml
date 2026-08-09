@@ -2031,6 +2031,7 @@
 "Taille de l'interface###chatwnd_uifont": "Interface size###chatwnd_uifont"
 "Taille des images###chatwnd_thumb": "Image size###chatwnd_thumb"
 "Taille du texte du chat###chatwnd_font": "Chat text size###chatwnd_font"
+"Ctrl + molette au-dessus d'une fenêtre de chat fait la même chose, sans ouvrir ce panneau. Un onglet qui a ses propres réglages zoome seul.": "Ctrl + mouse wheel over a chat window does the same thing, without opening this panel. A tab with its own settings zooms on its own."
 "Taille du texte###chatstyle_font": "Text size###chatstyle_font"
 "Taux": "Rate"
 "Terminer": "Finish"
