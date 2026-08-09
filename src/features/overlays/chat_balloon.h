@@ -102,6 +102,7 @@ class ChatBalloon : public Plugin {
   int&   y_offset()           { return y_offset_; }
   float& font_scale()         { return font_scale_; }
   float& max_width_ratio()    { return max_width_ratio_; }
+  float& opacity()            { return opacity_; }
 
   // ── Appelés depuis les stubs de détour ─────────────────────────────────────
   // Copie le texte brut annoncé pour cette fenêtre native. Pas de décodage ici :
@@ -166,6 +167,9 @@ class ChatBalloon : public Plugin {
   int  y_offset_ = 0;
   float font_scale_ = 1.0f;
   float max_width_ratio_ = 0.28f;    // largeur max de bulle, en fraction d'écran
+  // Opacité d'ensemble (fond, liseré, texte). Facteur MULTIPLICATIF du fondu de
+  // fin, pas un remplacement : les deux se composent.
+  float opacity_ = 1.0f;
 
   std::unordered_map<uint32_t, Balloon> balloons_;
   std::vector<Doomed> pending_destroy_;

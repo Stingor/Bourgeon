@@ -192,6 +192,8 @@ const moonlight_ui::SettingDesc kChatBalloonSettings[] = {
      MLUI_LITERAL(float, 1.0f)},
     {"balloon_maxwidth",   SType::kFloat, MLUI_FIELD(chat_balloon, max_width_ratio()),
      MLUI_LITERAL(float, 0.28f)},
+    {"balloon_opacity",    SType::kFloat, MLUI_FIELD(chat_balloon, opacity()),
+     MLUI_LITERAL(float, 1.0f)},
 };
 
 // Post-traitement D3D9 + réglages graphiques divers (ScreenFx). Les 13

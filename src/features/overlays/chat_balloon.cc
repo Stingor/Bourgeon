@@ -629,6 +629,10 @@ void ChatBalloon::DrawBalloons() {
         alpha = static_cast<float>(b.life_ms - age) / 600.0f;
       alpha = std::max(0.0f, std::min(1.0f, alpha));
     }
+    // Opacité réglable, appliquée EN FACTEUR sur le fondu et non à sa place :
+    // les deux doivent se composer, sinon baisser l'opacité ferait réapparaître
+    // la bulle en pleine extinction.
+    alpha *= opacity_;
     const int a255 = static_cast<int>(alpha * 255.0f);
 
     // Le natif ne peint QUE un liseré 0x5C5C5C sur du transparent : illisible
@@ -701,6 +705,13 @@ void ChatBalloon::DrawSettings() {
     if (WheelSliderFloat(i18n::Tr("Largeur maximale (fraction d'écran)"),
                          &max_width_ratio_, 0.15f, 0.60f))
       save = true;
+    if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
+
+    // Plancher à 0.25 : en dessous la bulle est illisible sans être invisible,
+    // donc le réglage ne servirait qu'à croire à un bug d'affichage. Qui veut
+    // s'en passer éteint la chatbox ImGui.
+    ImGui::SetNextItemWidth(160.0f);
+    if (WheelSliderFloat(i18n::Tr("Opacité"), &opacity_, 0.25f, 1.0f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   }
 

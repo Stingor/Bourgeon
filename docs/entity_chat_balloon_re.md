@@ -448,9 +448,16 @@ natif fige 5 s pour tout le monde), fondu de fin, anti-chevauchement (le natif
 n'en a aucun), coupure par largeur réelle au lieu de 35 caractères, fond lisible,
 et le facteur vertical recalculé chaque frame au lieu du magic static figé.
 
-**Non fait** : les emotes **Discord** (elles déclencheraient un téléchargement
-depuis un overlay qui vit 5 s — le fragment retombe sur son `:nom:`), et le
-**clic** sur les liens.
+Les emotes **Discord** s'affichent quand elles sont **déjà en cache** : on lit
+`imgprev::Get`, on n'appelle jamais `Request`. Une bulle vit cinq secondes, elle
+n'a pas le temps d'attendre un téléchargement, et un overlay n'a pas à ouvrir de
+connexion. En pratique le chat les a déjà demandées en affichant la même ligne ;
+sinon le fragment retombe sur son `:nom:`.
+
+⛔ **Le clic sur les liens est ÉCARTÉ — décision, pas oubli.** Une zone cliquable
+qui suit une entité en mouvement volerait des clics au sol en plein jeu, pour un
+gain marginal puisque la même ligne est cliquable dans la chatbox, à un endroit
+stable. Ne pas le réimplémenter en croyant combler un manque.
 
 ### Points d'attention (valables pour toute reprise)
 
