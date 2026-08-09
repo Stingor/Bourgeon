@@ -81,11 +81,11 @@ int QuantityPrompt(const void* owner, const char* action_label, int max_amount,
   const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
                      ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
   int accepted = 0;
-  if (RoButton("OK") || enter) accepted = g_amount;
+  if (RoButton(i18n::Tr("OK")) || enter) accepted = g_amount;
   ImGui::SameLine();
-  if (RoButton("Tout")) accepted = max_amount;
+  if (RoButton(i18n::Tr("Tout"))) accepted = max_amount;
   ImGui::SameLine();
-  const bool abandoned = RoButton("Annuler");
+  const bool abandoned = RoButton(i18n::Tr("Annuler"));
 
   if (accepted > 0 || abandoned) {
     g_amount = 1;
