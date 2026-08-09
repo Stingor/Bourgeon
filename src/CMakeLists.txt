@@ -124,6 +124,8 @@ set(BOURGEON_FILES
 	"features/overlays/chat_balloon.h"
 	"features/overlays/entity_names.cc"
 	"features/overlays/entity_names.h"
+	"features/overlays/item_obtain_toast.cc"
+	"features/overlays/item_obtain_toast.h"
 	"features/overlays/login_parade.cc"
 	"features/overlays/login_parade.h"
 	"features/overlays/menu_icons.cc"

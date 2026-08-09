@@ -27,6 +27,7 @@
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/quest_tracker.h"
+#include "features/overlays/item_obtain_toast.h"
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
 #include "features/overlays/chat_balloon.h"
@@ -145,6 +146,25 @@ const moonlight_ui::SettingDesc kQuestTrackerSettings[] = {
     {"questtracker_show_objective", SType::kBool, QTRACK(show_objective)},
 };
 #undef QTRACK
+
+// Bandeau « objet obtenu » (remplacement ImGui de la fenêtre native 58).
+#define IOTOAST(member) \
+  MLUI_FIELD(item_obtain_toast, config().member), MLUI_DEFAULT(ItemObtainToastConfig, member)
+const moonlight_ui::SettingDesc kItemObtainToastSettings[] = {
+    {"itemtoast_enabled",       SType::kBool, IOTOAST(enabled)},
+    {"itemtoast_max_lines",     SType::kInt,  IOTOAST(max_lines)},
+    {"itemtoast_newest_on_top", SType::kBool, IOTOAST(newest_on_top)},
+    {"itemtoast_merge_same",    SType::kBool, IOTOAST(merge_same)},
+    {"itemtoast_duration_ms",   SType::kInt,  IOTOAST(duration_ms)},
+    {"itemtoast_pos_x",         SType::kInt,  IOTOAST(pos_x)},
+    {"itemtoast_pos_y",         SType::kInt,  IOTOAST(pos_y)},
+    {"itemtoast_show_icon",     SType::kBool, IOTOAST(show_icon)},
+    {"itemtoast_show_frame",    SType::kBool, IOTOAST(show_frame)},
+    {"itemtoast_text_rgb",      SType::kInt,  IOTOAST(text_rgb)},
+    {"itemtoast_qty_rgb",       SType::kInt,  IOTOAST(qty_rgb)},
+    {"itemtoast_font_scale",    SType::kInt,  IOTOAST(font_scale)},
+};
+#undef IOTOAST
 
 // Noms d'entités au-dessus des acteurs. Les champs d'EntityNames sont privés et
 // n'existent que derrière des accesseurs : le défaut ne peut pas être lu dans le
@@ -1237,6 +1257,7 @@ void MoonlightUi::LoadSettings() {
 
     moonlight_ui::ReadSettings(ui, kStatusIconSettings);
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
+    moonlight_ui::ReadSettings(ui, kItemObtainToastSettings);
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
@@ -1346,6 +1367,8 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStatusIconSettings);
 
   moonlight_ui::WriteSettings(out, kQuestTrackerSettings);
+
+  moonlight_ui::WriteSettings(out, kItemObtainToastSettings);
 
   moonlight_ui::WriteSettings(out, kGraphicsSettings);
 

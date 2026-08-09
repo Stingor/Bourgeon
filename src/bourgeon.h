@@ -17,6 +17,7 @@ class BasicInfo;
 class MenuIcons;
 class StatusIconBar;
 class QuestTracker;
+class ItemObtainToast;
 class ScreenFx;
 class ZoneRecorder;
 class MoonlightUi;
@@ -72,6 +73,7 @@ class Bourgeon {
   MenuIcons* menu_icons();
   StatusIconBar* status_icons();
   QuestTracker* quest_tracker();
+  ItemObtainToast* item_obtain_toast();
   ScreenFx* screen_fx();
   ZoneRecorder* zone_recorder();
   MoonlightUi* moonlight_ui();
@@ -241,6 +243,7 @@ class Bourgeon {
   MenuIcons* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
   StatusIconBar* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
   QuestTracker* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
+  ItemObtainToast* item_obtain_toast_ = nullptr;  // non-owning, lifetime tied to plugins_
   ScreenFx* screen_fx_ = nullptr; // non-owning, lifetime tied to plugins_
   ZoneRecorder* zone_recorder_ = nullptr;  // non-owning, lifetime tied to plugins_
   MoonlightUi* moonlight_ui_ = nullptr;       // non-owning, lifetime tied to plugins_

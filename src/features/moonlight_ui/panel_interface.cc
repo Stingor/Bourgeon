@@ -36,6 +36,7 @@
 #include "features/overlays/menu_icons.h"
 #include "features/windows/npc_dialog_window.h"
 #include "features/overlays/quest_tracker.h"
+#include "features/overlays/item_obtain_toast.h"
 #include "features/windows/rodex_window.h"
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
@@ -200,6 +201,7 @@ void MoonlightUi::DrawInterfacePanel() {
         {kIfaceMenuIcons,   "Icônes du menu"},
         {kIfaceStatusIcons, "Icônes de statut"},
         {kIfaceQuest,       "Suivi de quête"},
+        {kIfaceItemToast,   "Objet obtenu"},
         {kIfaceDesc,        "Descriptions"},
         {kIfaceSkin,        "Skin RO"},
         {kIfaceNpc,         "Fenêtre NPC"},
@@ -432,6 +434,14 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceQuest) {
         if (auto* qt = Bourgeon::Instance().quest_tracker())
           qt->DrawSettings();
+        else
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      }
+
+      // ── Bandeau « objet obtenu » (ItemObtainToast) ─────────────────
+      if (iface_nav_ == kIfaceItemToast) {
+        if (auto* iot = Bourgeon::Instance().item_obtain_toast())
+          iot->DrawSettings();
         else
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }

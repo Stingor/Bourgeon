@@ -123,7 +123,8 @@ class MoonlightUi : public Plugin {
   // sert de borne (OpenInterfaceSection) et de contrôle de taille à la compilation.
   enum IfaceSection {
     kIfaceSkillBar = 0, kIfaceBasicInfo, kIfaceChat, kIfaceMenuIcons,
-    kIfaceStatusIcons, kIfaceQuest, kIfaceDesc, kIfaceSkin, kIfaceNpc,
+    kIfaceStatusIcons, kIfaceQuest, kIfaceItemToast, kIfaceDesc, kIfaceSkin,
+    kIfaceNpc,
     // (Pas de section « Banque » : elle n'a plus AUCUN réglage. Son contenu est
     // imposé par un fond bitmap à hauteur fixe, et elle suit le groupe
     // « Interface moderne » comme les autres — il ne restait qu'un paragraphe
