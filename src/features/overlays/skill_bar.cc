@@ -4,6 +4,7 @@
 #include "features/overlays/skill_bar.h"
 
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/homunculus.h"  // skill d'homoncule posé dans une case : lecture + lancement
 #include <Windows.h>
 
 #include <algorithm>
@@ -334,6 +335,18 @@ void ActivateSlotRaw(int region, int slot) {
 // d'ActivateSlotRaw interdit tout objet à destructeur dans son corps, donc pas de
 // garde RAII là-bas.
 void ActivateSlot(int region, int slot) {
+  // 🔴 COMPÉTENCE D'HOMONCULE : elle ne peut PAS passer par le natif. L'OnMsg 0x29
+  // de UIShortCutWnd résout l'id dans le bundle du PERSONNAGE (0x00D7FA90) ; un id
+  // 8001+ y est introuvable, la case ne fait donc rien du tout. Le chemin correct
+  // prend la fiche dans la liste de l'homoncule avant d'appeler le dispatcher —
+  // c'est ce que fait rag::homun::LaunchSkill (cf. ragnarok/homunculus.h).
+  if (!RegionIsItems(region)) {
+    const SlotRec r = ReadSlot(region, slot);
+    if (r.valid && r.type != 0 && rag::homun::IsSkillId(static_cast<int>(r.id))) {
+      rag::homun::LaunchSkill(static_cast<int>(r.id), r.level);
+      return;
+    }
+  }
   g_self_activation = true;
   g_active_region   = region;  // la case RÉELLE, que les col/row du 0x29 ne diront pas
   g_active_slot     = slot;
@@ -647,6 +660,11 @@ void FlushIconCache() { g_iconCache.clear(); }  // changement de zone (textures 
 // Nettoyage via FUN_00739cd0 (même signature __fastcall(void*) que StrFree_t) -> pas de fuite malgré
 // l'appel par frame. SEH (POD only). id = id canonique stocké (rec+1), comme OnDraw.
 bool SkillKnown(uint32_t id) {
+  // Une compétence d'HOMONCULE n'est pas dans le bundle du personnage : le getter
+  // natif la dirait toujours inconnue et la case resterait grisée en permanence.
+  // On la cherche là où elle est — la liste de l'homoncule.
+  if (rag::homun::IsSkillId(static_cast<int>(id)))
+    return rag::homun::SkillLevel(static_cast<int>(id)) > 0;
   bool known = false;
   __try {
     alignas(8) uint8_t info[0xC0] = {};

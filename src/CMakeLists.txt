@@ -241,6 +241,8 @@ set(BOURGEON_FILES
 	"ragnarok/grf_index.h"
 	"ragnarok/player_skills.cc"
 	"ragnarok/player_skills.h"
+	"ragnarok/homunculus.cc"
+	"ragnarok/homunculus.h"
 	"ragnarok/item_db.h"
 	"ragnarok/msgstring.cc"
 	"ragnarok/msgstring.h"

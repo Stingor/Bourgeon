@@ -9,6 +9,8 @@
 #include "ui/icon_cache.h"
 #include "ui/head_icon.h"  // miniature de tête des membres de guilde
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/msgstring.h"  // msgstr::Utf8 : libellés EXACTS du client (onglet Homoncule)
+#include "ragnarok/homunculus.h"  // état + compétences de l'homoncule (partagé avec skill_bar)
 #include "ragnarok/skill_cooldowns.h"  // table de cooldowns partagée (ZC 0x043D)
 #include "utils/game_paths.h"
 #include <Windows.h>
@@ -824,6 +826,117 @@ const char* JobName(int jobId) {
 // un item ÉQUIPÉ dont on tient le slot, préférer DecoratedItemName plus bas :
 // elle compose refine et cartes, que le nom nu ne porte pas.
 
+// ═══ Homoncule ══════════════════════════════════════════════════════════════
+// Adresses, drapeaux, lecture d'état et parcours de la liste de compétences vivent
+// dans `ragnarok/homunculus.h` — partagés avec la barre de raccourcis, qui doit
+// reconnaître un skill d'homoncule posé dans une case et le lancer par le bon
+// chemin. Ne restent ici que les ÉMETTEURS et les libellés de cet onglet.
+// RE complet : docs/homunculus_re.md.
+
+// CZ_COMMAND_MER : {op, type.W = 0, command.B}. command 0 = info (le serveur ne fait
+// RIEN), 1 = nourrir, 2 = supprimer. Le natif n'envoie jamais le 0.
+constexpr uint16_t kOpHomunMenu   = 0x022d;
+constexpr uint8_t  kHomunCmdFeed  = 1;
+constexpr uint8_t  kHomunCmdDelete = 2;
+constexpr uint16_t kOpHomunRename = 0x0231;  // {op, name[24]}
+constexpr uint16_t kOpConfig      = 0x02d8;  // CZ_CONFIG {op, type.L, value.L}
+constexpr uint32_t kConfigHomunAutoFeed = 3;
+
+// Ids MsgStringTable — on affiche le libellé EXACT du client, jamais une paraphrase.
+// (kMsiHomunInfo / kMsiName : plus utilisés — l'onglet porte déjà le titre, et le nom
+//  est son propre bouton, sans libellé « Name : » qui coûterait une ligne à 280 px.)
+constexpr int kMsiLevel         = 0x198;
+constexpr int kMsiHomunExp      = 0x3fb;
+constexpr int kMsiHunger        = 0x249;
+constexpr int kMsiIntimacy      = 0x24a;
+constexpr int kMsiAutoFeeding   = 0xccf;
+constexpr int kMsiAutoFeedInfo  = 0xcd4;
+constexpr int kMsiDeleteHomun   = 0x3bb;
+constexpr int kMsiNameTooLong   = 0x3aa;
+constexpr int kMsiHomunHungry   = 0x3fa;  // « Your Homunculus is starving… »
+
+// Certains libellés du client portent un saut de ligne parce qu'ils sont peints sur
+// un bouton bitmap de deux lignes (« Auto \nFeeding »). Sur une case à cocher ImGui,
+// ce saut casserait la mise en page ET entrerait dans l'identifiant du widget.
+const char* FlattenLabel(const char* src) {
+  static thread_local char buf[128];
+  int n = 0;
+  for (const char* p = src; p && *p && n < static_cast<int>(sizeof(buf)) - 1; ++p)
+    buf[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+  while (n > 0 && buf[n - 1] == ' ') --n;  // pas d'espace traînant avant le « ## »
+  buf[n] = '\0';
+  return buf;
+}
+
+// Retire les codes couleur ^RRGGBB du client. Plusieurs libellés natifs en portent —
+// MSI_DELETE_HOMUN en a DEUX d'affilée — parce que la boîte de dialogue du jeu les
+// interprète. ImGui, lui, les afficherait tels quels : « ^ff0000^ff0000 » en plein
+// milieu de l'avertissement.
+//
+// ⚠ Tampon ROTATIF sur quatre emplacements, comme msgstr::Utf8 : bon pour un affichage
+// immédiat, à recopier si la chaîne doit survivre à la frame.
+const char* StripRoColors(const char* src) {
+  static thread_local char bufs[4][512];
+  static thread_local int slot = 0;
+  slot = (slot + 1) & 3;
+  char* out = bufs[slot];
+  const int cap = static_cast<int>(sizeof(bufs[0])) - 1;
+  int o = 0;
+  for (const char* p = src; p && *p && o < cap;) {
+    if (*p == '^') {
+      bool hex6 = true;
+      for (int k = 1; k <= 6; ++k) {
+        const char c = p[k];
+        if (!c || !std::isxdigit(static_cast<unsigned char>(c))) { hex6 = false; break; }
+      }
+      if (hex6) { p += 7; continue; }
+    }
+    out[o++] = *p++;
+  }
+  out[o] = '\0';
+  return out;
+}
+
+// Paliers d'intimité, repris tels quels de UIHomunInfoWnd::OnRender (0x0087E7B0).
+// Bornes IDENTIQUES à hom_intimacy_intimacy2grade côté serveur.
+int HomunIntimacyMsgId(int intimacy) {
+  if (intimacy <= 3)    return 0x3fe;  // Hate with a Passion
+  if (intimacy <= 10)   return 0x3fd;  // Hate
+  if (intimacy <= 100)  return 0x2a0;  // Awkward
+  if (intimacy <= 250)  return 0x2a1;  // Shy
+  if (intimacy <= 750)  return 0x29d;  // Neutral
+  if (intimacy <= 910)  return 0x2a2;  // Cordial
+  if (intimacy <= 1000) return 0x2a3;  // Loyal
+  return 0x2a4;                        // Unknown
+}
+
+// CZ_COMMAND_MER (5 o). `type` reste à 0 comme le natif ; seul `command` compte.
+void SendHomunMenu(uint8_t command) {
+  uint8_t pkt[5];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpHomunMenu;
+  pkt[4] = command;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// CZ_RENAME_MER (26 o) : nom sur 24 octets, tronqué à 23 + terminateur comme le natif.
+void SendHomunRename(const char* name) {
+  uint8_t pkt[26];
+  std::memset(pkt, 0, sizeof(pkt));
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpHomunRename;
+  if (name && name[0]) std::strncpy(reinterpret_cast<char*>(pkt + 2), name, 23);
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// CZ_CONFIG (10 o), type 3 = auto-alimentation de l'homoncule. Le serveur répond par
+// un ZC_CONFIG que le client applique lui-même sur son global (0x00DA8740) : on
+// n'écrit RIEN localement, on attend l'accusé — sinon la case mentirait sur un refus.
+void SendHomunAutoFeed(bool on) {
+  uint8_t pkt[10];
+  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpConfig;
+  *reinterpret_cast<uint32_t*>(pkt + 2) = kConfigHomunAutoFeed;
+  *reinterpret_cast<uint32_t*>(pkt + 6) = on ? 1u : 0u;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
 // ── Icône de skill (case compagnon) ──────────────────────────────────────────
 std::unordered_map<uint32_t, ro::IconTex> g_skill_icon_cache;
 // Le .bmp d'icône de skill est nommé par l'idname Lua (rejet des sentinelles
@@ -957,6 +1070,24 @@ constexpr int       kWinGuildNone   = 0xd4;  // demandée quand on n'a pas de gu
 constexpr int       kWinGuildPanelFirst = 0x3c;
 constexpr int       kWinGuildPanelLast  = 0x42;
 constexpr int       kTabGuild       = 4;     // onglet « Guilde » de la feuille
+constexpr int       kTabHomun       = 6;     // onglet « Homoncule » (CONDITIONNEL)
+
+// ── Homoncule : DEUX natives remplacées, qui mènent au MÊME onglet ───────────
+// 113 = UIHomunInfoWnd (fiche d'état, raccourci Alt+R) et 114 = UISkillListWnd en
+// mode homoncule (arbre de compétences, ouvert par le bouton « btn_skill » de la
+// 113). Notre onglet les fusionne, comme il fusionne déjà Status + Équipement.
+//
+// ⚠ La 113 ne naît QUE si le client connaît la classe de l'homoncule
+// (`MakeWindow` case 113 teste `g_Homun_Class != -1`) : sans homoncule, le
+// raccourci ne produit aucune création — donc rien à router, et notre onglet est
+// absent de la barre pour la même raison.
+//
+// ⚠ Les détruire est SANS RISQUE pour les paquets : le décodeur de
+// ZC_PROPERTY_HOMUN écrit les globals d'abord et ne touche aux fenêtres que sous
+// `if (instance)` (0x00CD1ED0, et `Homun_InvalidateInfoWnd` 0x00D70D30 pareil).
+// Les données restent donc à jour, fenêtres ou pas. Cf. docs/homunculus_re.md.
+constexpr int       kWinHomunInfo   = 0x71;  // 113
+constexpr int       kWinHomunSkill  = 0x72;  // 114
 
 constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
 constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
@@ -1284,7 +1415,7 @@ bool EmblemBmpIsUsable(const std::vector<uint8_t>& bmp, std::string* why) {
   const uint32_t declared = *reinterpret_cast<const uint32_t*>(&bmp[2]);
   // Le serveur compare bfSize à la taille réellement reçue : un en-tête menteur
   // (fréquent après une conversion) est rejeté sans le moindre message en jeu.
-  if (declared != bmp.size()) return fail(i18n::Tr("En-tête BMP incohérent (taille déclarée ≠ taille du fichier)."));
+  if (declared != bmp.size()) return fail(i18n::Tr("En-tête BMP incohérent (taille déclarée != taille du fichier)."));
   const uint32_t dataOff = *reinterpret_cast<const uint32_t*>(&bmp[0x0a]);
   if (dataOff >= bmp.size()) return fail(i18n::Tr("En-tête BMP incohérent (offset des pixels hors fichier)."));
   const int32_t w    = *reinterpret_cast<const int32_t*>(&bmp[0x12]);
@@ -3923,6 +4054,472 @@ void CharacterSheet::DrawSkillsTab() {
   }
   ImGui::EndChild();
   skill_hover_ = hovered_now;  // consommé à la frame suivante (surlignage des liens)
+}
+
+// ═══ Onglet Homoncule ═══════════════════════════════════════════════════════
+// Les DEUX fenêtres natives de l'homoncule en une : l'état (UIHomunInfoWnd, id 113,
+// raccourci Alt+R) et l'arbre de compétences (UISkillListWnd, id 114, bouton
+// « btn_skill » de la première). En interface moderne elles sont REMPLACÉES —
+// détruites à la naissance, leur demande routée ici (HandleReplacedNativeCreation).
+// Tout est lu LIVE dans les globals plats et la std::list de compétences ; les
+// actions partent en paquets bruts, exactement comme le natif.
+//
+// 🔴 Combler les manques du natif, pas seulement l'imiter : la fiche native
+// n'affiche NI l'exp courante (elle imprime l'exp requise), NI l'état « déjà
+// renommé », NI si une compétence peut encore monter — elle laisse cliquer et le
+// serveur jette en silence. Les trois sont ici.
+// RE complet : docs/homunculus_re.md.
+void CharacterSheet::DrawHomunTab() {
+  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  const ImVec4 kGreen(0.10f, 0.50f, 0.15f, 1.0f);
+  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
+  const ImVec4 kBlack(0.10f, 0.10f, 0.13f, 1.0f);
+
+  rag::homun::State h{};
+  if (!rag::homun::ReadState(&h)) {
+    // Classe == -1 : le client ne sait rien de l'homoncule — c'est exactement le cas
+    // où MakeWindow(113) refuse de créer la fenêtre native.
+    ImGui::TextColored(kGray, i18n::Tr("Aucun homoncule."));
+    ImGui::Spacing();
+    ImGui::TextWrapped(i18n::Tr(
+        "Un Alchimiste ayant appris Bioéthique peut en invoquer un avec une Embryon. "
+        "Cet onglet reprend la fiche d'état (Alt+R) et l'arbre de compétences."));
+    return;
+  }
+
+  const bool resting = (h.flags & rag::homun::kFlagResting) != 0;
+  const bool alive   = (h.flags & rag::homun::kFlagAlive) != 0;
+  const bool renamed = (h.flags & rag::homun::kFlagRenamed) != 0;
+
+  // ── En-tête ───────────────────────────────────────────────────────────────
+  // Tout l'onglet est calibré pour tenir dans la feuille SANS le volet stats
+  // (kDollW = 280 px de contenu) : c'est la largeur de repli, et rien ici ne
+  // justifie d'imposer la large. D'où les libellés courts et les boutons ajustés
+  // au texte plutôt qu'à une largeur ronde.
+  const float kFullW = ImGui::GetContentRegionAvail().x;
+
+  if (homun_rename_edit_) {
+    // `homun_name_buf_` fait 24 octets, soit 23 caractères + terminateur : la BORNE
+    // du natif (MSI_HOMUN_NAME_IN23, « no longer than 23 letters ») est donc imposée
+    // par la saisie elle-même, on ne peut pas taper de nom refusable.
+    // 2 boutons de 60 + les 3 espacements : le champ prend tout le reste.
+    ImGui::SetNextItemWidth(kFullW - 120.0f - 3.0f * ImGui::GetStyle().ItemSpacing.x);
+    ImGui::InputText("##homun_name", homun_name_buf_, sizeof(homun_name_buf_));
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Valider"), 60.0f, 0.0f) && homun_name_buf_[0]) {
+      SendHomunRename(homun_name_buf_);
+      homun_status_ = i18n::Tr("Renommage envoyé.");
+      homun_rename_edit_ = false;
+    }
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Annuler"), 60.0f, 0.0f)) homun_rename_edit_ = false;
+    ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+    ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiNameTooLong)));
+    ImGui::PopStyleColor();
+  } else {
+    // Le NOM EST le bouton de renommage — tant que le serveur l'accepte encore.
+    // Une fois le droit consommé il redevient du texte : pas de bouton qui ne
+    // saurait que se faire refuser.
+    //
+    // ⚠ Sur MOONLIGHT ce verrou n'existe pas : `conf/import/battle_conf.txt` pose
+    // `hom_rename: yes` (le défaut rAthena est `no`), et `clif_hominfo` n'envoie le
+    // bit 0 que si `!battle_config.hom_rename` — il ne vient donc JAMAIS, et
+    // `hom_change_name` ne teste pas non plus le drapeau. Renommer est libre et
+    // illimité, pour tout le monde : ce n'est PAS une permission de groupe, aucun
+    // test de droit n'intervient dans ce chemin. La branche « déjà renommé »
+    // ci-dessous n'est donc pas morte pour autant — elle reprend du service si la
+    // config repasse à `no`.
+    const char* shown = h.name[0] ? h.name : (h.job[0] ? h.job : "?");
+    if (!renamed) {
+      // Suffixe « ## » : RoSmallButton tire son identifiant du libellé (PushID) et
+      // n'affiche que ce qui précède les deux dièses. Sans lui, l'identifiant du
+      // bouton changerait avec le nom de l'homoncule.
+      char btn[64];
+      std::snprintf(btn, sizeof(btn), "%s##homun_rename", shown);
+      if (ro::RoSmallButton(btn, 0.0f, 0.0f)) {
+        std::snprintf(homun_name_buf_, sizeof(homun_name_buf_), "%s", h.name);
+        homun_rename_edit_ = true;
+      }
+      // Pas de « une seule fois » ici : sur ce serveur c'est faux. Le rappel ne
+      // s'affiche que dans la branche où le serveur a réellement posé le verrou.
+      mui::Tooltip(i18n::Tr("Cliquer pour renommer."));
+    } else {
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextColored(kBlack, "%s", shown);
+      mui::Tooltip(i18n::Tr("Le serveur n'accepte le renommage qu'UNE fois."));
+    }
+    // « Abandonner » remonte ici, collé au bord droit : il est IRRÉVERSIBLE, on le
+    // veut loin de la case auto-alimentation qu'on coche et décoche sans y penser.
+    const float w = 100.0f;
+    ImGui::SameLine();
+    const float avail = ImGui::GetContentRegionAvail().x;
+    if (avail > w) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);
+    if (ro::RoSmallButton(i18n::Tr("Abandonner…"), w, 0.0f)) {
+      homun_del_ask_ = true;
+      homun_del_confirm_[0] = '\0';
+    }
+  }
+
+  // Espèce, niveau et état sur UNE ligne — trois informations courtes qui n'ont pas
+  // besoin d'une ligne chacune à 280 px.
+  ImGui::TextColored(kGray, "%s  ·  %s %d", h.job[0] ? h.job : "?", msgstr::Utf8(kMsiLevel),
+                     h.level);
+  if (resting || !alive) {
+    ImGui::SameLine();
+    if (resting) ImGui::TextColored(kGray, i18n::Tr("Au repos."));
+    else         ImGui::TextColored(kRed,  i18n::Tr("Hors de combat (0 PV)."));
+  }
+  ImGui::Separator();
+
+  // ── Jauges PV / SP / EXP / satiété ────────────────────────────────────────
+  auto gauge = [](const char* label, long long cur, long long max, const ImVec4& col) {
+    char text[80];
+    const float ratio = max > 0 ? std::clamp(static_cast<float>(static_cast<double>(cur) /
+                                                               static_cast<double>(max)),
+                                             0.0f, 1.0f)
+                                : 0.0f;
+    if (max > 0) std::snprintf(text, sizeof(text), "%s  %lld / %lld  (%.1f %%)", label, cur,
+                               max, ratio * 100.0f);
+    else         std::snprintf(text, sizeof(text), "%s  %lld", label, cur);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
+    // Libellé vide : on le dessine NOUS-MÊMES juste après. Celui d'ImGui suit le bord
+    // du remplissage — il finit donc sur le fond sombre de la jauge, en gris de texte,
+    // et devient illisible. Ici : blanc plein, ombre portée (le texte traverse deux
+    // fonds de luminosité opposée dès qu'une jauge est à moitié pleine), centré, et
+    // remonté de 2 px — le centrage d'ImGui prend la boîte de la police, dont le
+    // jambage descendant fait paraître le texte trop bas.
+    ImGui::ProgressBar(ratio, ImVec2(-1.0f, 15.0f), "");
+    ImGui::PopStyleColor();
+    const ImVec2 p0 = ImGui::GetItemRectMin(), p1 = ImGui::GetItemRectMax();
+    const ImVec2 ts = ImGui::CalcTextSize(text);
+    const ImVec2 at((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f - 2.0f);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddText(ImVec2(at.x + 1.0f, at.y + 1.0f), IM_COL32(0, 0, 0, 200), text);
+    dl->AddText(at, IM_COL32(255, 255, 255, 255), text);
+  };
+  gauge("PV", h.hp, h.max_hp, ImVec4(0.70f, 0.20f, 0.20f, 1.0f));
+  gauge("SP", h.sp, h.max_sp, ImVec4(0.20f, 0.35f, 0.70f, 1.0f));
+  // ⚠ La fenêtre native imprime ICI l'exp REQUISE (qword_15FF988), pas l'exp courante —
+  // seule sa jauge montre le rapport. On affiche les deux, c'est l'information utile.
+  if (h.exp_next > 0) {
+    gauge(msgstr::Utf8(kMsiHomunExp), h.exp, h.exp_next, ImVec4(0.55f, 0.45f, 0.15f, 1.0f));
+  } else {
+    ImGui::TextColored(kGreen, "%s : %lld  —  %s", msgstr::Utf8(kMsiHomunExp), h.exp,
+                       i18n::Tr("niveau maximum"));
+  }
+  // Satiété : maximum 100 en dur, comme le natif (et comme le serveur).
+  gauge(msgstr::Utf8(kMsiHunger), h.hunger, 100,
+        h.hunger <= 10 ? ImVec4(0.75f, 0.20f, 0.20f, 1.0f)
+                       : ImVec4(0.35f, 0.60f, 0.25f, 1.0f));
+  if (h.hunger <= 10) {
+    // Message natif long : replié, sinon il sort de la fenêtre.
+    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiHomunHungry)));
+    ImGui::PopStyleColor();
+  }
+
+  // Intimité : le palier suffit, la valeur brute passe en infobulle.
+  ImGui::TextColored(kBlack, "%s :", msgstr::Utf8(kMsiIntimacy));
+  ImGui::SameLine();
+  ImGui::TextUnformatted(msgstr::Utf8(HomunIntimacyMsgId(h.intimacy)));
+  {
+    char it[48];
+    std::snprintf(it, sizeof(it), "%d / 1000", h.intimacy);
+    mui::Tooltip(it);
+  }
+
+  // ── Actions : nourrir / auto-alimentation ─────────────────────────────────
+  // Nourrir n'a de sens que sur un homoncule ACTIF : le serveur refuse sur un
+  // homoncule au repos (hom_is_active), et le natif jette la demande de la même façon.
+  ImGui::BeginDisabled(resting);
+  if (ro::RoSmallButton(i18n::Tr("Nourrir"), 62.0f, 0.0f)) {
+    SendHomunMenu(kHomunCmdFeed);
+    homun_status_ = i18n::Tr("Demande de nourrissage envoyée.");
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  bool auto_feed = h.auto_feed;
+  if (ro::RoCheckbox(FlattenLabel(msgstr::Utf8(kMsiAutoFeeding)), &auto_feed))
+    SendHomunAutoFeed(auto_feed);
+  mui::Tooltip(msgstr::Utf8(kMsiAutoFeedInfo));
+
+  if (homun_del_ask_) {
+    ImGui::Spacing();
+    // ⚠ Ce libellé porte DEUX ^ff0000 : sans StripRoColors ils s'affichent bruts.
+    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiDeleteHomun)));
+    ImGui::PopStyleColor();
+    ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+    ImGui::TextWrapped("%s", i18n::Tr("Retape le nom de l'homoncule pour confirmer :"));
+    ImGui::PopStyleColor();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##homun_del", homun_del_confirm_, sizeof(homun_del_confirm_));
+    const char* expected = h.name[0] ? h.name : h.job;
+    const bool ok = expected && expected[0] && std::strcmp(homun_del_confirm_, expected) == 0;
+    ImGui::BeginDisabled(!ok);
+    if (ro::RoSmallButton(i18n::Tr("Abandonner"), 100.0f, 0.0f)) {
+      SendHomunMenu(kHomunCmdDelete);
+      rag::homun::NotifyDeleted();  // le ménage que faisait la fenêtre native
+      homun_status_ = i18n::Tr("Suppression envoyée.");
+      homun_del_ask_ = false;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Annuler"), 70.0f, 0.0f)) homun_del_ask_ = false;
+  }
+  if (!homun_status_.empty()) ImGui::TextColored(kGray, "%s", homun_status_.c_str());
+
+  ImGui::Spacing();
+  ImGui::Separator();
+
+  // ── Statistiques ──────────────────────────────────────────────────────────
+  // Mêmes huit lignes que la colonne du natif, dans le même ordre.
+  //
+  // 🔴 CES HUIT NOMBRES NE SONT PAS CE QU'ILS SEMBLENT. `clif_hominfo` compose
+  // certains d'entre eux, et Moonlight étant PRÉ-RENEWAL les DEF/MDEF n'ont pas la
+  // sémantique renewal. Vérifié source en main (clif.cpp, battle.cpp branche
+  // `#ifndef RENEWAL`, conf/battle) — le détail est dans les infobulles, parce que
+  // deux de ces lignes sont carrément trompeuses :
+  //   • CRI : `hom_setting` vaut 0x3D, donc HOMSET_DISPLAY_LUK est ACTIF -> le
+  //     serveur envoie `LUK/3 + 1`, pas un taux de critique. Et `enable_critical`
+  //     vaut 17 (BL_PC|BL_MER) : BL_HOM en est EXCLU, l'homoncule ne critique
+  //     JAMAIS. Cette ligne est un indicateur de LUK, rien d'autre.
+  //   • DEF : le serveur envoie `DEF1 + VIT`, la somme d'un POURCENTAGE et d'une
+  //     statistique. Les deux agissent, mais séparément et pas du tout pareil.
+  if (ImGui::BeginTable("cs_homun_stats", 4,
+                        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
+    // Deux paires « libellé / valeur » par ligne. Les libellés prennent la largeur du
+    // texte, les valeurs le reste : à 280 px les quatre colonnes se serrent au lieu
+    // d'étaler quatre quarts égaux à moitié vides.
+    ImGui::TableSetupColumn("l0", ImGuiTableColumnFlags_WidthFixed);
+    ImGui::TableSetupColumn("v0", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("l1", ImGuiTableColumnFlags_WidthFixed);
+    ImGui::TableSetupColumn("v1", ImGuiTableColumnFlags_WidthStretch);
+    //
+    // Une SEULE de ces valeurs porte son unité : MDEF. C'est la seule dont le
+    // nombre envoyé EST directement le pourcentage appliqué (branche
+    // `magic_defense_type == 0`, battle.cpp). DEF, elle, est une somme mixte
+    // (% + stat) : lui coller un « % » mentirait. CRI n'est pas un taux du tout.
+    struct Row { const char* label; int value; const char* tip; bool pct; };
+    const Row rows[] = {
+        {"ATK", h.atk,
+         i18n::Tr("Attaque de base + attaque d'arme (batk + atk2), plafonnée à 32767.\n"
+                  "C'est le dégât AVANT défense de la cible.")},
+        {"MATK", h.matk,
+         i18n::Tr("Attaque magique MAXIMALE. Sur ce serveur HOMSET_SAME_MATK est actif :\n"
+                  "le minimum est égal au maximum, il n'y a donc pas de fourchette.")},
+        {"HIT", h.hit,
+         i18n::Tr("Précision = min(niveau, 600) + DEX.\n"
+                  "Chance de toucher = 80 + HIT - FLEE de la cible, bornée à 5..100 %.")},
+        {"CRI", h.crit,
+         i18n::Tr("/!\\ CE N'EST PAS UN TAUX DE CRITIQUE. Le serveur envoie ici LUK/3 + 1\n"
+                  "(option HOMSET_DISPLAY_LUK). Un homoncule ne fait JAMAIS de critique :\n"
+                  "enable_critical ne couvre que les joueurs et les mercenaires.\n"
+                  "À lire comme un indicateur de LUK — donc ici LUK vaut environ (valeur - 1) x 3.")},
+        {"DEF", h.def,
+         i18n::Tr("Somme de DEUX choses de natures différentes : DEF dure + VIT.\n"
+                  "• DEF dure = réduction en POURCENTAGE (dégâts x (100 - DEF) / 100).\n"
+                  "• VIT alimente la DEF douce, une réduction PLATE soustraite ensuite,\n"
+                  "  avec une part aléatoire : DEF2 + rnd(0, (DEF2/20)²).\n"
+                  "Le nombre affiché ne se lit donc ni en % ni en plat — c'est un total\n"
+                  "d'affichage hérité d'Aegis.")},
+        {"MDEF", h.mdef,
+         i18n::Tr("MDEF dure SEULE, en POURCENTAGE (dégâts magiques x (100 - MDEF) / 100).\n"
+                  "/!\\ La MDEF douce (INT + VIT/2), soustraite à plat après, n'est PAS\n"
+                  "comptée ici — la résistance réelle est supérieure à ce chiffre."),
+         true},
+        {"FLEE", h.flee,
+         i18n::Tr("Esquive = min(niveau, 600) + AGI. Elle se retranche directement de la\n"
+                  "précision de l'attaquant. -10 % par assaillant au-delà du deuxième.\n"
+                  "L'esquive parfaite (LUK) n'est pas transmise pour un homoncule.")},
+        {"ASPD", (2000 - h.amotion) / 10, nullptr},  // infobulle bâtie plus bas (valeur brute)
+    };
+    // ASPD : absente du paquet, le client la CALCULE — son infobulle se bâtit ici.
+    char amo[176];
+    std::snprintf(amo, sizeof(amo),
+                  i18n::Tr("Vitesse d'attaque = (2000 - amotion) / 10, calculée par le "
+                           "client.\nDélai d'attaque brut : %d ms — c'est LUI que le "
+                           "serveur envoie."),
+                  h.amotion);
+    for (int i = 0; i < 8; ++i) {
+      if (i % 2 == 0) ImGui::TableNextRow();
+      const char* tip = rows[i].tip ? rows[i].tip : amo;
+      // Libellé collé à sa valeur (colonne au texte), valeur alignée à DROITE de sa
+      // moitié : sans ça le libellé étirait sa colonne et laissait un trou au milieu.
+      ImGui::TableNextColumn();
+      ImGui::TextColored(kGray, "%s", rows[i].label);
+      mui::Tooltip(tip);
+      ImGui::TableNextColumn();
+      char val[16];
+      std::snprintf(val, sizeof(val), rows[i].pct ? "%d %%" : "%d", rows[i].value);
+      const float w = ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(val).x;
+      if (w > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + w);
+      ImGui::TextUnformatted(val);
+      mui::Tooltip(tip);
+    }
+    ImGui::EndTable();
+  }
+  {
+    char rng[128];
+    std::snprintf(rng, sizeof(rng), i18n::Tr("Portée d'attaque : %d"), h.range);
+    ImGui::TextColored(kGray, "%s", rng);
+    mui::Tooltip(i18n::Tr("En cases. 1 = corps à corps ; au-delà, l'homoncule frappe à "
+                          "distance sans se déplacer."));
+  }
+
+  ImGui::Spacing();
+  ImGui::Separator();
+
+  // ── Compétences (fenêtre native 114) ──────────────────────────────────────
+  static rag::homun::Skill skills[rag::homun::kMaxSkills];
+  const int count = rag::homun::ReadSkills(skills, rag::homun::kMaxSkills);
+
+  // Section REPLIABLE : une fois les points dépensés et les compétences posées dans
+  // la barre de raccourcis, il n'y a plus rien à venir y faire. L'état est persisté
+  // (yaml « charsheet_homun_skills »), sinon la replier ne servirait qu'une session.
+  //
+  // Le titre porte le compteur de points : replié, c'est la seule chose qui puisse
+  // rappeler qu'il reste quelque chose à dépenser.
+  char sec[96];
+  if (h.skill_points > 0)
+    std::snprintf(sec, sizeof(sec), i18n::Tr("Compétences  -  %d point(s)###homun_skills"),
+                  h.skill_points);
+  else
+    std::snprintf(sec, sizeof(sec), i18n::Tr("Compétences###homun_skills"));
+  // 🔴 `SetNextItemOpen` à CHAQUE frame, sinon ImGui garde son propre état interne et
+  // notre booléen persisté ne pilote rien. Le retour de `CollapsingHeader` le remet à
+  // jour : c'est LUI qui fait foi, y compris pour la sauvegarde.
+  ImGui::SetNextItemOpen(homun_skills_open_);
+  const bool open = ImGui::CollapsingHeader(sec);
+  if (open != homun_skills_open_) {
+    homun_skills_open_ = open;
+    // Le repli est un choix durable, pas un état de frame : on l'écrit tout de suite.
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  }
+  if (!open) return;
+
+  if (count == 0) {
+    ImGui::TextColored(kGray, i18n::Tr("Aucune compétence reçue du serveur."));
+    return;
+  }
+
+  auto skill_name = [](int id) -> const char* {
+    const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    return (n && n[0]) ? n : "?";
+  };
+
+  // ⚠ Pas de callback de filtre d'échantillonnage ici : un ImGui table découpe sa
+  // draw list en canaux, et une commande de callback n'y garde pas sa place dans
+  // l'ordre. La vue liste du Grimoire fait pareil (le filtre n'est posé que sur la
+  // grille, dessinée hors table).
+  ImGui::BeginChild("cs_homun_skills", ImVec2(0, 0), true);
+  // Trois colonnes seulement : le nom, le niveau, le bouton « + ». SP, portée et
+  // nature (active / passive) tiennent dans l'infobulle du nom — ce sont des
+  // informations qu'on consulte, pas qu'on balaie du regard, et à 280 px chaque
+  // colonne se paie sur la place du nom.
+  if (ImGui::BeginTable("cs_homun_skill_rows", 3,
+                        ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                            ImGuiTableFlags_SizingFixedFit)) {
+    ImGui::TableSetupColumn(i18n::Tr("Compétence"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(i18n::Tr("Niv"));
+    ImGui::TableSetupColumn("");
+    ImGui::TableHeadersRow();
+
+    for (int i = 0; i < count; ++i) {
+      const rag::homun::Skill& s = skills[i];
+      ImGui::PushID(s.id);
+      ImGui::TableNextRow();
+
+      ImGui::TableNextColumn();
+      const ro::IconTex ic = ResolveSkillIcon(s.id);
+      const bool active = s.inf != 0 && s.level > 0;
+      // Calculé AVANT de soumettre quoi que ce soit : la même valeur doit valoir pour
+      // l'icône et pour le nom, sinon celui des deux qui passe après verrait le
+      // glisser que l'autre vient d'ouvrir.
+      const bool dragging = ImGui::GetDragDropPayload() != nullptr;
+
+      // Les gestes s'attachent au DERNIER widget soumis : cette lambda est donc
+      // rappelée après l'icône ET après le nom, pour que la cellule entière réagisse
+      // — on attrape une compétence par son icône aussi naturellement que par son nom.
+      auto gestures = [&]() {
+        // Glisser une compétence ACTIVE vers la barre de raccourcis — même charge
+        // « BGN_SKILL » {id, niveau} que le Grimoire et les compétences de guilde. La
+        // barre reconnaît l'id d'homoncule et le lance par le chemin qui convient
+        // (cf. ragnarok/homunculus.h) ; une passive n'irait nulle part, on ne la
+        // laisse donc pas partir.
+        //
+        // 🔴 `SourceAllowNullID` est OBLIGATOIRE : ni `Image` ni `TextUnformatted` ne
+        // déposent d'identifiant ImGui, et `BeginDragDropSource` en exige un — sans ce
+        // drapeau il rend false sans rien dire (l'assertion qui l'expliquerait est
+        // compilée hors du binaire en Release). Le drapeau en fabrique un depuis la
+        // position dans la fenêtre : icône et nom étant à deux endroits, chacun a le
+        // sien, et les deux sources ne se marchent pas dessus.
+        if (active && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+          const int payload[2] = {s.id, s.level};
+          ImGui::SetDragDropPayload("BGN_SKILL", payload, sizeof(payload));
+          if (ic.tex) {
+            ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
+            ImGui::SameLine();
+          }
+          ImGui::TextUnformatted(skill_name(s.id));
+          ImGui::EndDragDropSource();
+        }
+        if (!ImGui::IsItemHovered()) return;
+        // Clic droit = description, double-clic = lancer : la convention des CELLULES
+        // du projet. ⚠ Rien ne se déclenche pendant un glisser, sinon relâcher sur la
+        // barre lancerait AUSSI la compétence.
+        if (!dragging && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+          const ImVec2 mp = ImGui::GetIO().MousePos;
+          OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+        }
+        if (active && !dragging && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+          rag::homun::LaunchSkill(s.id, s.level);
+        // Une seule infobulle, qui porte TOUT ce que les colonnes ne montrent plus :
+        // nature, coût en SP, portée, puis les gestes possibles.
+        char tip[256], sp[24], rg[24];
+        if (s.sp > 0)    std::snprintf(sp, sizeof(sp), "%d", s.sp);
+        else             std::snprintf(sp, sizeof(sp), "-");
+        if (s.range > 0) std::snprintf(rg, sizeof(rg), "%d", s.range);
+        else             std::snprintf(rg, sizeof(rg), "-");
+        std::snprintf(tip, sizeof(tip),
+                      active ? i18n::Tr("%s  ·  SP %s  ·  portée %s\n"
+                                        "Double-clic : lancer  ·  Glisser : poser dans la barre\n"
+                                        "Clic droit : description")
+                             : i18n::Tr("%s  ·  SP %s  ·  portée %s\n"
+                                        "Clic droit : description"),
+                      s.inf == 0 ? i18n::Tr("passif") : i18n::Tr("actif"), sp, rg);
+        ImGui::SetTooltip("%s", tip);
+      };
+
+      if (ic.tex) {
+        ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(20.0f, 20.0f));
+        gestures();
+        ImGui::SameLine();
+      }
+      ImGui::TextUnformatted(skill_name(s.id));
+      gestures();
+
+      ImGui::TableNextColumn();
+      ImGui::Text("%d", s.level);
+      ImGui::TableNextColumn();
+      // « upgradable » vient du serveur (level < max du tronc de l'espèce) : c'est LA
+      // condition, avec les points restants. Le natif, lui, laisse cliquer et le
+      // serveur jette en silence. Rien d'affiché quand elle est au maximum : une
+      // colonne de « max » ne dit que ce que le bouton absent dit déjà.
+      if (s.upgradable && h.skill_points > 0) {
+        if (ro::RoSmallButton("+", 22.0f, 0.0f)) {
+          SendSkillUp(static_cast<uint16_t>(s.id));  // CZ 0x0112, aiguillé sur hom_skillup
+          homun_status_ = i18n::Tr("Montée envoyée.");
+        }
+        mui::Tooltip(i18n::Tr("Dépense un point (envoi immédiat, comme le natif).\n"
+                              "Le serveur exige en plus un niveau d'homoncule minimum, "
+                              "que le client ne connaît pas."));
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+  }
+  ImGui::EndChild();
 }
 
 // Onglet Guilde : la fenêtre de guilde native (les 7 panneaux UIGuildWnd) refaite en
@@ -7132,6 +7729,15 @@ void CharacterSheet::OpenGuildTab() {
   tab_request_ = kTabGuild;
 }
 
+// Homoncule : l'onglet qui refait les DEUX natives (fiche d'état 113 + arbre de
+// compétences 114). Les deux demandes y mènent, comme les deux fenêtres de guilde
+// mènent à l'onglet Guilde.
+void CharacterSheet::OpenHomunTab() {
+  show_ = true;
+  tab_ = kTabHomun;
+  tab_request_ = kTabHomun;
+}
+
 // Ferme une fenêtre native comme le ferait son X : UIWindowMgr_Close enregistre son
 // rectangle puis la DÉTRUIT. Hors frame ImGui uniquement (appelée depuis OnTick),
 // cf. la règle « pas de commande native pendant une frame ImGui ».
@@ -7143,7 +7749,7 @@ void DestroyNativeWindow(int window_id) {
 }
 }  // namespace
 
-// Une des trois fenêtres natives que cette feuille remplace vient de naître : on la
+// Une des fenêtres natives que cette feuille remplace vient de naître : on la
 // masque SUR-LE-CHAMP (sans quoi une frame native passe à l'écran) et on route la
 // demande vers l'onglet correspondant. La destruction, elle, revient à OnTick — le
 // natif manipule encore la fenêtre qu'il vient de créer.
@@ -7182,6 +7788,16 @@ void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
       if (show_ && tab_ == kTabGuild) { show_ = false; return; }
       OpenGuildTab();
       return;
+    case kWinHomunInfo:
+    case kWinHomunSkill:
+      // Idem : la fiche d'état (Alt+R) et l'arbre de compétences sont deux natives,
+      // un seul onglet chez nous. La 114 n'arrive en pratique jamais ici — son
+      // unique créateur était le bouton « btn_skill » de la 113, qui n'existe plus —
+      // mais on la route pareil, au cas où le mode moderne serait activé alors
+      // qu'elle est déjà à l'écran.
+      if (show_ && tab_ == kTabHomun) { show_ = false; return; }
+      OpenHomunTab();
+      return;
     default:
       return;
   }
@@ -7202,7 +7818,8 @@ void CharacterSheet::OnTick() {
   // elles renaissent par des chemins qui ne demandent rien au joueur — la
   // reconstruction de l'interface, ou l'activation du mode moderne alors qu'elles
   // sont déjà à l'écran. Les détruire ici couvre les deux cas.
-  for (const int id : {kWinSkillList, kWinStatus, kWinEquip, kWinGuild, kWinGuildNone})
+  for (const int id : {kWinSkillList, kWinStatus, kWinEquip, kWinGuild, kWinGuildNone,
+                       kWinHomunInfo, kWinHomunSkill})
     if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
   // Les panneaux d'onglet de la fenêtre de guilde : le conteneur en crée un à
   // l'ouverture (et un autre à chaque clic d'onglet). Ils ne portent aucune donnée
@@ -7268,9 +7885,10 @@ void CharacterSheet::OnRenderUI() {
   bourgeon::CloseWindowOnEscape(show_);
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
-  // Onglets Equipement / Costume / Presets / Titres / Guilde / Grimoire.
+  // Onglets Equipement / Costume / Presets / Titres / Guilde / Grimoire (+ Homoncule).
   // `tab_request_` (posé par OpenSkillsTab) force la sélection UNE frame : ImGui
   // choisit l'onglet au moment où il le dessine, un hook ne peut pas l'imposer.
+  const bool homun_tab_visible = rag::homun::Present();
   if (ro::RoBeginTabBar("cs_tabs")) {
     auto flag = [this](int idx) {
       return tab_request_ == idx ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
@@ -7281,9 +7899,20 @@ void CharacterSheet::OnRenderUI() {
     if (ImGui::BeginTabItem(i18n::Tr("Titres"),     nullptr, flag(3))) { tab_ = 3; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Guilde"),     nullptr, flag(4))) { tab_ = 4; ImGui::EndTabItem(); }
     if (ImGui::BeginTabItem(i18n::Tr("Grimoire"),   nullptr, flag(5))) { tab_ = 5; ImGui::EndTabItem(); }
+    // Onglet Homoncule : présent seulement quand il y en a un — MÊME garde que le
+    // raccourci natif Alt+R (comportement 124, `g_Homun_Present != 0`). Un Alchimiste
+    // sans homoncule invoqué n'a rien à y voir, et le natif refuse d'ouvrir sa fenêtre.
+    if (homun_tab_visible &&
+        ImGui::BeginTabItem(i18n::Tr("Homoncule"), nullptr, flag(kTabHomun))) {
+      tab_ = kTabHomun;
+      ImGui::EndTabItem();
+    }
     ro::RoEndTabBar();
   }
   tab_request_ = -1;
+  // L'homoncule a disparu (repos, suppression, changement de perso) alors qu'on
+  // regardait son onglet : retour au mannequin plutôt qu'une page vide sans onglet.
+  if (tab_ == kTabHomun && !homun_tab_visible) tab_ = 0;
   costume_ = (tab_ == 1);
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -7307,6 +7936,11 @@ void CharacterSheet::OnRenderUI() {
     // Onglet Grimoire : pleine largeur (grille 7 colonnes ou liste détaillée).
     ImGui::BeginChild("cs_skills", ImVec2(0, 0), true);
     DrawSkillsTab();
+    ImGui::EndChild();
+  } else if (tab_ == kTabHomun) {
+    // Onglet Homoncule : pleine largeur (fiche d'état + liste de compétences).
+    ImGui::BeginChild("cs_homun", ImVec2(0, 0), true);
+    DrawHomunTab();
     ImGui::EndChild();
   } else {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).

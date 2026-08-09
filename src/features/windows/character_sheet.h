@@ -77,8 +77,9 @@ class CharacterSheet : public Plugin {
   bool& open() { return show_; }
 
   // ── Les fenêtres natives que cette feuille remplace ────────────────────────
-  // Grimoire (0x25), Status (0xb), Équipement (0xa) et la GUILDE (0x3b avec
-  // guilde, 0xd4 sans, plus les panneaux d'onglet 0x3c..0x42). Quand l'interface
+  // Grimoire (0x25), Status (0xb), Équipement (0xa), la GUILDE (0x3b avec
+  // guilde, 0xd4 sans, plus les panneaux d'onglet 0x3c..0x42) et l'HOMONCULE
+  // (0x71 fiche d'état, 0x72 arbre de compétences). Quand l'interface
   // moderne est active elles ne s'ouvrent plus : leurs raccourcis ET les boutons
   // du menu d'icônes atterrissent ici, sur l'onglet correspondant.
   //
@@ -98,11 +99,15 @@ class CharacterSheet : public Plugin {
   // mènent ici — l'onglet montre le roster quand on a une guilde, et la création
   // quand on n'en a pas, exactement le partage que fait le client.
   void OpenGuildTab();
-  // Appelée par le hook MakeWindow (window_pos_tweaks) à la naissance d'une de ces
-  // trois fenêtres : masque tout de suite (pas de frame native à l'écran) et route
+  // Homoncule : les DEUX natives de l'homoncule (0x71 fiche d'état / Alt+R, 0x72
+  // arbre de compétences) mènent ici. L'onglet n'existe que lorsqu'un homoncule est
+  // invoqué — même garde que le raccourci natif.
+  void OpenHomunTab();
+  // Appelée par le hook MakeWindow (window_pos_tweaks) à la naissance de l'une de
+  // ces fenêtres : masque tout de suite (pas de frame native à l'écran) et route
   // la demande. La destruction revient à OnTick — le natif manipule encore la
   // fenêtre qu'il vient de créer. No-op quand l'interface moderne est éteinte, où
-  // les trois natives reprennent leur service (StatusTweaks y relayoute la 0xb).
+  // les natives reprennent leur service (StatusTweaks y relayoute la 0xb).
   void HandleReplacedNativeCreation(void* win, int window_id);
 
   // Pose de l'avatar (pose + direction + animation on/off), persistee par MoonlightUi
@@ -116,6 +121,12 @@ class CharacterSheet : public Plugin {
   // « charsheet_grimoire_bilinear »). Défaut OFF : le natif ne filtre rien, les
   // icônes 24 px agrandies restent nettes.
   bool& skill_bilinear() { return skill_bilinear_; }
+
+  // Section « Compétences » de l'onglet Homoncule dépliée ou non (yaml
+  // « charsheet_homun_skills »). Une fois les points dépensés et les compétences
+  // posées dans la barre, il n'y a plus rien à y faire : on veut pouvoir la replier
+  // POUR DE BON, donc l'état survit à la fermeture de la feuille.
+  bool& homun_skills_open() { return homun_skills_open_; }
 
  private:
   // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
@@ -241,6 +252,22 @@ class CharacterSheet : public Plugin {
   // Lissage des icônes de la grille (OFF = pixels nets, comme le natif qui ne filtre
   // rien). Persisté par MoonlightUi (yaml « charsheet_grimoire_bilinear »).
   bool skill_bilinear_ = false;
+
+  // ── Onglet Homoncule (fenêtres natives 113 + 114 refaites en ImGui) ────────
+  // Renommage : le serveur n'accepte qu'UNE fois (bit 0 des flags), et le natif
+  // impose 23 caractères + un filtre de grossièretés. On réplique la même barrière
+  // côté saisie ; le refus final reste celui du serveur.
+  bool homun_rename_edit_ = false;
+  char homun_name_buf_[24] = {};
+  // Suppression : le natif demande confirmation par une modale (MSI_DELETE_HOMUN).
+  // Ici c'est le nom retapé — la suppression est DÉFINITIVE et sans confirmation
+  // serveur, comme la dissolution de guilde.
+  bool homun_del_ask_ = false;
+  char homun_del_confirm_[24] = {};
+  std::string homun_status_;  // retour UI de la dernière action homoncule
+  // Section « Compétences » dépliée. Persistée par MoonlightUi (cf. l'accesseur
+  // homun_skills_open()) : défaut OUVERT, on la replie une fois pour toutes.
+  bool homun_skills_open_ = true;
 
   // ── Onglet Guilde (fenêtre de guilde native refaite en ImGui) ──────────────
   int      guild_sub_tab_ = 0;      // 0 = Membres, 1 = Relations
@@ -410,6 +437,13 @@ class CharacterSheet : public Plugin {
   bool ReserveSkillPoint(uint16_t id, bool to_max = false);
   // Niveau réservé pour `id` (0 = aucune réservation).
   int  PendingLevel(uint16_t id) const;
+  // Onglet Homoncule : refait les DEUX fenêtres natives de l'homoncule — l'état
+  // (UIHomunInfoWnd, id 113) et l'arbre de compétences (UISkillListWnd, id 114).
+  // Tout est lu dans les globals plats 0x015FF918.. et la std::list 0x015FA424 ;
+  // les actions partent en paquets bruts (CZ 0x022D nourrir/supprimer, 0x0231
+  // renommer, 0x0112 monter un skill, 0x02D8 type 3 auto-feed).
+  // Cf. docs/homunculus_re.md.
+  void DrawHomunTab();
   // Onglet Guilde : infos, annonce, roster (tri + actions) et relations, tout en ImGui.
   // Lecture des globals CGuild/g_GuildInfo_* ; actions en paquets bruts (0x014f/0x0155/
   // 0x0159/0x015b/0x016e/0x0916), revalidées par le serveur.

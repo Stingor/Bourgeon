@@ -61,9 +61,10 @@ diagnosed by live timing, fixed by repainting only when the grid changes.
 Both modes are immediate-mode and share the expensive per-node loop; the grid mode draws more (42 cell
 quads + a bigger window + more icons), so it is the one that visibly tanks FPS.
 
-> ⚠️ There is **also** a genuine, separate legacy class `UISkillListWnd` (id **`0x105`**), but **no
-> menu/hotkey path opens it** in this client (superseded — see §7). Do not confuse it with the "legacy"
-> *mode* above.
+> ⚠️ Il existe **aussi** une classe distincte `UISkillListWnd` — mais elle n'a rien à voir avec le
+> « legacy » *mode* ci-dessus, et **son id n'est PAS `0x105`** : c'est la fenêtre **114**
+> (compétences de l'**homoncule**) / **126** (mercenaire). Cf. §7 corrigé et
+> `docs/homunculus_re.md`.
 
 ---
 
@@ -278,14 +279,27 @@ rebuild):
 
 ---
 
-## 7. The genuine old `UISkillListWnd` (id `0x105`) — superseded
+## 7. ~~The genuine old `UISkillListWnd` (id `0x105`) — superseded~~ ❌ CORRIGÉ (2026-08-09)
 
-A real, separate class, but **no menu/hotkey path opens it**. RTTI `.?AVUISkillListWnd@@` @ `0x01240678`;
-vtable `0x0103F3EC`; ctor `0x00970D30` (factory case `0x105` only); OnMsg `0x00971560`; DrawContent
-`0x00971120`; RebuildList `0x00971A20` (a vertical list of cached `UIItemLinkBtn`, built **once** — a
-retained-widget design, nearly free per frame). Registry key `SKILLLISTWNDINFO.*` (`@0x0104BB04`).
-Remaining role: skill **reordering** (packet **`0x9FB`**). Live check: bp on `0x00970D30` while opening
-the grimoire → should never hit.
+> 🔴 **Cette section était fausse sur trois points**, corrigés lors du RE de l'homoncule
+> (`docs/homunculus_re.md` §4.1) :
+>
+> 1. La vtable `0x0103F3EC` a pour RTTI **`.?AVUIPetEvolutionWnd@@`** — l'id `0x105` est la
+>    fenêtre d'**évolution de familier**, pas un vieux `UISkillListWnd`. IDA nomme d'ailleurs
+>    son ctor `UIPetEvolutionWnd_ctor` (`0x00970D30`).
+> 2. Le **vrai** `UISkillListWnd` est en vtable **`0x0103CB18`**, ctor **`0x00935290`**
+>    (alloc `0x148`), OnCreate `0x00943150`, OnMsg `0x00959890`.
+> 3. Il **est** ouvert par le jeu : c'est la fenêtre **114** (arbre de compétences de
+>    l'**homoncule**) et la **126** (mercenaire). Une seule classe, deux modes, sélectionnés
+>    par `this+0x144`.
+>
+> Ce qui reste vrai : le grimoire du **joueur** est bien `UINewSkillListWnd` id `0x25`, et
+> `UISkillListWnd` n'est sur aucun de ses chemins d'ouverture.
+
+Détail d'origine (conservé pour la piste `SKILLLISTWNDINFO.*` `@0x0104BB04` et le paquet de
+réordonnancement **`0x9FB`**) : OnMsg `0x00971560`, DrawContent `0x00971120`, RebuildList
+`0x00971A20` — ces trois adresses appartiennent donc à `UIPetEvolutionWnd`, à revérifier avant
+usage.
 
 ---
 
@@ -293,7 +307,8 @@ the grimoire → should never hit.
 
 - `vtable+0x94` = `OnMsg` (`__thiscall`, 6 stack args); `+0x50` = `DrawContent`; `+0x3C` = `OnCreate`.
 - Don't confuse the ids: skill/item **desc** = `0xC`; **action bar** = `0x24`; **grimoire** (the real
-  window) = **`0x25`**; **old** grimoire = `0x105`.
+  window) = **`0x25`**. `0x105` = **`UIPetEvolutionWnd`** (évolution de familier), PAS un vieux
+  grimoire ; le vrai `UISkillListWnd` = **114** (homoncule) / **126** (mercenaire). Cf. §7.
 - The "window instance" globals `DAT_0131F6xx`/`DAT_0131F7xx` are **fields of the window manager**
   `0x0131F4E8` (skill window = `mgr+0x2C4`), written indirectly by the factory (no direct write xref).
 - `DAT_015fa454` = **`Simplicity_SkillList`** (compact mode), **NOT** a "reservation/sim" mode.
@@ -317,7 +332,8 @@ the grimoire → should never hit.
 | OptionInfo Load / Save | `0x00D759F0` / `0x00D78970` |
 | open: menu cmd `0xC4` → | `FUN_00814A70` → `FUN_00812E60(0x25)` |
 | `UITextureMgr_Load` / `MakeKeyFromPath` | `0x00A8D4A0` / `0x00A9F030` |
-| Old `UISkillListWnd` id / vtable / ctor | `0x105` / `0x0103F3EC` / `0x00970D30` |
+| `UIPetEvolutionWnd` id / vtable / ctor (ex-« old UISkillListWnd », cf. §7) | `0x105` / `0x0103F3EC` / `0x00970D30` |
+| Vrai `UISkillListWnd` id / vtable / ctor (homoncule, mercenaire) | `114` et `126` / `0x0103CB18` / `0x00935290` |
 
 ---
 ---

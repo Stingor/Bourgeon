@@ -166,8 +166,14 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     // ici : ils ne routent rien (le `default` de la fonction), mais il faut les
     // masquer à la naissance comme les autres — le conteneur en crée un d'office,
     // et sans ça sa frame native passe à l'écran.
+    //
+    // S'y ajoutent les deux fenêtres de l'HOMONCULE : 0x71 (UIHomunInfoWnd, la fiche
+    // d'état, raccourci Alt+R) et 0x72 (UISkillListWnd en mode homoncule, son arbre
+    // de compétences). L'onglet Homoncule les fusionne, comme l'onglet du mannequin
+    // fusionne Status et Équipement. Cf. docs/homunculus_re.md.
     if (windowID == 0x25 || windowID == 0x0a || windowID == 0x0b ||
         windowID == 0x3b || windowID == 0xd4 ||
+        windowID == 0x71 || windowID == 0x72 ||
         (windowID >= 0x3c && windowID <= 0x42)) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
         cs->HandleReplacedNativeCreation(win, windowID);
