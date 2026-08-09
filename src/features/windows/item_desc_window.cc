@@ -3612,8 +3612,11 @@ void ItemDescWindow::RenderBookWindow() {
   ImGui::PopStyleColor(4);
   ImGui::PopStyleVar(3);
 
-  if (wheel_ok && page_cmd == 0 && goto_page == 0) {
-    const float wheel = ImGui::GetIO().MouseWheel;
+  if (page_cmd == 0 && goto_page == 0) {
+    // Verrou anti-défilement en plus du test de scroll ci-dessus (ui/ro_widgets.h) :
+    // une salve de molette lancée ailleurs ne doit pas finir par tourner des pages
+    // en arrivant sur le livre. Zone hit-testée à la main -> RegionWheel.
+    const float wheel = RegionWheel("bgn_book_pages", wheel_ok);
     if (wheel < 0.0f && be.page < be.pages) page_cmd = kCmdBookNext;
     else if (wheel > 0.0f && be.page > 1)   page_cmd = kCmdBookPrev;
   }

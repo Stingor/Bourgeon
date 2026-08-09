@@ -1136,17 +1136,19 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   // Un sprite non-prévisualisable (slot inconnu) SANS effet -> rien. Avec un hat effect,
   // on rend quand même le perso de BASE (view 0) + l'effet.
   if (slot == PV_NONE && hat_ordinal == 0) return;
-  // Réserve la molette à l'item survolé (rotation du perso) : ImGui ne scrolle plus
-  // AUCUNE fenêtre à la molette pendant l'aperçu (ex. la scrollbar de la description qui
-  // se trouve dessous). L'API prévue pour ça : SetItemKeyOwner sur le dernier item survolé.
-  ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-  // Molette (pendant le survol) = rotation du perso (dir 0..7).
+  // Molette (pendant le survol) = rotation du perso (dir 0..7), filtrée par le verrou
+  // anti-défilement (ui/ro_widgets.h) : il pose la possession de la molette, donc ImGui
+  // ne scrolle plus aucune fenêtre pendant l'aperçu (ex. la scrollbar de la description
+  // qui se trouve dessous) — mais seulement une fois le curseur posé et hors d'un
+  // défilement en cours, sinon parcourir la liste ferait tourner le perso au passage.
+  //
+  // 🔴 `RegionWheel` et pas `LastItemWheel` : le survol est celui de l'APPELANT, et il
+  // n'est pas toujours le dernier item soumis — le lien « ViewID : N » de la description
+  // est suivi d'un « (molette : tourner) » avant qu'on n'arrive ici. Les trois appelants
+  // (description ×2, cash shop) n'entrent que sous leur propre test de survol.
   static int s_dir = 0;
-  const float wheel = ImGui::GetIO().MouseWheel;
-  if (wheel != 0.0f) {
-    s_dir = (s_dir + (wheel > 0.0f ? 1 : 7)) & 7;  // +1 / -1 avec wrap
-    ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenêtre
-  }
+  const float wheel = mui::RegionWheel("bgn_item_preview_spin", /*hovered=*/true);
+  if (wheel != 0.0f) s_dir = (s_dir + (wheel > 0.0f ? 1 : 7)) & 7;  // +1 / -1 avec wrap
   // Carrousel d'animations, ~2,5 s chacune : marche -> repos -> assis.
   static const int kPvAnims[3] = {1, 0, 2};
   const int pv_anim = kPvAnims[(GetTickCount() / 2500u) % 3u];

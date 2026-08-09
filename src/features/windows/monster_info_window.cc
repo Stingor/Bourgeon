@@ -21,6 +21,7 @@
 #include "ragnarok/uiwnd.h"     // MakeWindow / OnMsg / SetPos (description de skill)
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"        // ro::BeginRoDescWindow, ro::LocalToUtf8 (CP949)
+#include "ui/ro_widgets.h"      // mui::LastItemWheel (verrou molette anti-défilement)
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
 #include "utils/i18n.h"
 
@@ -917,13 +918,12 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   ImGui::InvisibleButton("##mi_sprite", box);
   if (ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);  // main : ça se manipule
-    // Molette = rotation, huit directions avec repli d'un bout à l'autre. On la
-    // CONSOMME, sinon la fiche défile en même temps qu'on tourne le monstre.
-    const float wheel = ImGui::GetIO().MouseWheel;
-    if (wheel != 0.0f) {
+    // Molette = rotation, huit directions avec repli d'un bout à l'autre. Passée par
+    // le verrou anti-défilement (ui/ro_widgets.h) : elle revient au cadre quand le
+    // geste lui est destiné, et reste à la fiche tant qu'on la parcourt.
+    const float wheel = mui::LastItemWheel();
+    if (wheel != 0.0f)
       sprite_dir_ = (sprite_dir_ + (wheel > 0.0f ? 1 : 7)) & 7;
-      ImGui::GetIO().MouseWheel = 0.0f;
-    }
   }
   // Le temps mort est SILENCIEUX : un clic trop tôt ne fait rien, sans message
   // ni curseur barré. C'est une réaction, pas une commande — la refuser bruyamment

@@ -30,9 +30,46 @@ namespace mui {
 // Affiche un petit « (?) » qui montre `desc` en infobulle au survol.
 void HelpMarker(const char* desc);
 
+// ── Molette : verrou anti-défilement ─────────────────────────────────────────
+// Une zone qui prend la molette au survol — slider de réglage, aperçu qui tourne,
+// case de compétence — VOLE le défilement de la page qui la contient. Le joueur
+// qui parcourt une page de réglages à la molette voit alors ses valeurs bouger
+// sous le curseur sans l'avoir demandé : il voulait défiler, pas régler.
+//
+// Ces helpers n'accordent la molette à la zone survolée que quand le geste lui
+// est clairement destiné :
+//   * aucun défilement en cours — une salve de crans reste au défilement jusqu'au
+//     bout, y compris une fois la page arrivée en butée (c'est là que le curseur
+//     s'immobilise sur un widget et que l'accident se produisait) ;
+//   * et le curseur est posé sur la zone depuis un court instant, pour que la
+//     traverser en visant plus bas ne compte pas.
+// La détection de défilement vient d'ImGui lui-même (`WheelingWindowScrolledFrame`,
+// posé quand il APPLIQUE un scroll) et pas d'un comptage de crans : là où rien
+// n'est défilable — char-select, fenêtre `NoScrollWithMouse` — aucun verrou ne
+// s'arme et la molette reste franche.
+//
+// À appeler UNE fois par frame, juste après ImGui::NewFrame() et avant le moindre
+// widget : c'est le point où l'on sait si la frame vient de défiler.
+void WheelGateNewFrame();
+
+// Molette destinée au DERNIER widget soumis, filtrée par le verrou ci-dessus.
+// Renvoie les crans (signés) qui lui reviennent, 0 sinon — et les CONSOMME, donc
+// personne d'autre ne les relira dans la frame. À appeler juste après le widget,
+// comme IsLastItemHovered.
+//
+// `engaged` = l'utilisateur manipule DÉJÀ la zone (glisser en cours) : elle garde
+// alors la molette sans délai et même si le curseur en est sorti.
+float LastItemWheel(bool engaged = false);
+
+// Même chose pour une zone hit-testée à la main (motif overlay : ImDrawList +
+// rectangle calculé), où l'« item » ImGui n'existe pas. `key` identifie la zone —
+// n'importe quelle chaîne stable et unique, elle ne sert qu'à la reconnaître d'une
+// frame à l'autre ; `hovered` est le test de survol de l'appelant.
+float RegionWheel(const char* key, bool hovered, bool engaged = false);
+
 // Sliders qui s'ajustent AUSSI à la molette quand ils sont survolés (réglage fin
 // sans attraper le curseur). Shift = pas plus large. `step` vaut par défaut
-// 0.01 (float) / 1 (int).
+// 0.01 (float) / 1 (int). La molette passe par le verrou anti-défilement ci-dessus.
 // ⚠ La molette est traitée HORS du slider et ne « désactive » donc jamais l'item :
 // un appelant qui veut réagir seulement en fin d'édition doit combiner
 // `IsItemDeactivatedAfterEdit()` avec `retour && !ImGui::IsItemActive()`, sinon les

@@ -41,6 +41,7 @@
 #include "features/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"  // mui::LastItemWheel (verrou molette anti-défilement)
 #include "utils/tinf_inflate.h"  // inflate zlib pour les emblèmes de guilde (.ebm)
 #include "utils/log_console.h"   // LogDiag : échecs de chargement de l'arbre de guilde
 #include "utils/i18n.h"
@@ -3426,12 +3427,12 @@ void CharacterSheet::DrawSkillsTab() {
   auto common_item_actions = [&](const SkillRaw& s, int effective, ro::IconTex ic) {
     // ── Molette = niveau de lancement ───────────────────────────────────────────
     // AU SURVOL et PENDANT LE GLISSER : dans les deux cas c'est cette case qui doit
-    // posséder la molette, sinon le panneau défile sous le curseur au lieu de régler
-    // le niveau. SetItemKeyOwner couvre justement « survolée OU active » — et il faut
-    // l'appeler ICI, tant que le dernier item soumis est bien la case : après
-    // BeginDragDropSource ce serait l'infobulle de glisser. La possession vaut pour la
-    // frame SUIVANTE (le défilement est appliqué dans NewFrame), d'où le rappel à
-    // chaque frame tant qu'on survole / qu'on glisse.
+    // posséder la molette, sinon le grimoire défile sous le curseur au lieu de régler
+    // le niveau. `LastItemWheel` couvre les deux et il faut l'appeler ICI, tant que le
+    // dernier item soumis est bien la case : après BeginDragDropSource ce serait
+    // l'infobulle de glisser. Au survol il impose son verrou anti-défilement (parcourir
+    // le grimoire ne doit rien régler) ; pendant le glisser la case est « engagée » et
+    // garde la molette sans délai, curseur sorti ou non. Voir ui/ro_widgets.h.
     // Réservée aux compétences qu'on peut vraiment doser (effet dépendant du niveau ET
     // au moins 2 niveaux appris) : ailleurs la molette garde son rôle de défilement.
     const bool level_tunable = s.learned > 1 && IsLevelUseSkillSEH(s.id);
@@ -3439,8 +3440,7 @@ void CharacterSheet::DrawSkillsTab() {
     const bool hovering_this =
         ImGui::IsItemHovered() && ImGui::GetDragDropPayload() == nullptr;
     if (level_tunable && (hovering_this || dragging_this)) {
-      ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-      const float wheel = ImGui::GetIO().MouseWheel;
+      const float wheel = mui::LastItemWheel(/*engaged=*/dragging_this);
       if (wheel != 0.0f) {
         const int use = EffectiveUseLevelSEH(s.id, s.learned);
         // Un cran = un niveau, quel que soit le pas de la molette (les souris à
@@ -6506,17 +6506,18 @@ void CharacterSheet::DrawDoll(float avail_w) {
   }
   ImGui::EndChild();
   ImGui::PopStyleColor();
-  // Molette sur l'avatar = tourner (comme le preview cashshop : dir 0..7 + wrap,
-  // et on CONSOMME la molette pour ne pas scroller la fenetre). Defaut = face.
+  // Molette sur l'avatar = tourner (comme le preview cashshop : dir 0..7 + wrap).
+  // Elle passe par le verrou anti-défilement, qui la retient tant que la fiche est
+  // en train de défiler : sinon parcourir la page fait pivoter le perso au passage.
+  // Defaut = face.
   if (ImGui::IsItemHovered()) {
     ro::SetHoverCursor(2);
-    const float wheel = ImGui::GetIO().MouseWheel;
+    const float wheel = mui::LastItemWheel();
     if (wheel != 0.0f) {
       if (avatar_anim_ == kAnimCombat)  // combat : 4 dirs cardinales (0=face,2,4=dos,6)
         avatar_dir_ = ((avatar_dir_ & ~1) + (wheel > 0.0f ? 2 : 6)) & 7;
       else
         avatar_dir_ = (avatar_dir_ + (wheel > 0.0f ? 1 : 7)) & 7;  // 8 dirs
-      ImGui::GetIO().MouseWheel = 0.0f;  // consommer -> pas de scroll de fenetre
       if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();  // persister la direction
     }
   }

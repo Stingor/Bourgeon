@@ -27,6 +27,7 @@
 #include "features/systems/moonlight_auth.h"
 #include "features/systems/native_login.h"  // sondes d'écran (fenêtre 0x115, liste)
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"  // mui::LastItemWheel (verrou molette anti-défilement)
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
@@ -1843,15 +1844,18 @@ void CharSelect::OnRenderLoginUI() {
         Seats()[i].ny += io.MouseDelta.y / disp.y;
         charsel::MarkDirty();
       }
-      if (hovered && io.MouseWheel != 0.0f) {
+      // Molette filtrée par le verrou anti-défilement (ui/ro_widgets.h) : ici rien
+      // n'est défilable, donc elle reste franche — seul un curseur qui vient
+      // d'arriver sur le siège attend d'être posé avant de faire tourner le perso.
+      const float wheel = mui::LastItemWheel();
+      if (wheel != 0.0f) {
         if (io.KeyCtrl) {
-          Seats()[i].scale =
-              (std::max)(0.05f, Seats()[i].scale + io.MouseWheel * 0.005f);
+          Seats()[i].scale = (std::max)(0.05f, Seats()[i].scale + wheel * 0.005f);
         } else {
           // 8 orientations en boucle. Un cran = un huitième de tour ; le signe
           // suit le sens de la molette, et l'entier reste dans [0,7] (le & 7
           // ramènerait -1 à 7 sans passer par un modulo négatif).
-          const int step = (io.MouseWheel > 0.0f) ? 1 : -1;
+          const int step = (wheel > 0.0f) ? 1 : -1;
           Seats()[i].dir = (Seats()[i].dir + step + 8) & 7;
         }
         charsel::MarkDirty();
@@ -2362,8 +2366,9 @@ void CharSelect::OnRenderLoginUI() {
     DrawCreateDoll(dp.x, dp.y + (box_h - ph) * 0.5f, pw, ph);
     ImGui::InvisibleButton("##preview", ImVec2(pw, box_h));  // capte survol/molette
     if (ImGui::IsItemHovered()) {
-      if (io.MouseWheel != 0.0f)
-        create_dir_ = (create_dir_ + static_cast<int>(io.MouseWheel) + 8) & 7;
+      const float wheel = mui::LastItemWheel();  // verrou anti-défilement (ro_widgets.h)
+      if (wheel != 0.0f)
+        create_dir_ = (create_dir_ + static_cast<int>(wheel) + 8) & 7;
       ImGui::SetTooltip(i18n::Tr("Molette pour faire tourner le personnage"));
     }
     ImGui::SameLine();

@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "ragnarok/skill_cooldowns.h"
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"  // mui::WheelGateNewFrame (verrou molette anti-défilement)
 #include "ui/window_clamp.h"
 #include "ui/window_zorder.h"
 #include "features/systems/auto_login.h"
@@ -431,6 +432,13 @@ void Bourgeon::RenderUI() {
   // toutes les vraies fenêtres. Même endroit et mêmes raisons que le clamp
   // ci-dessus : après NewFrame, avant le premier Begin. Voir ui/window_zorder.h.
   ro::SendBackgroundWindowsToBack();
+  // Qui a droit à la molette cette frame ? Même fenêtre de tir que les deux appels
+  // ci-dessus, et pour une raison voisine : ImGui vient d'appliquer le défilement
+  // dans NewFrame, et c'est la seule occasion de le constater avant que le premier
+  // widget ne réclame la molette. Avant le `return` de chargement de carte et celui
+  // du hors-jeu : le char-select a lui aussi des zones qui tournent à la molette.
+  // Voir ui/ro_widgets.h.
+  mui::WheelGateNewFrame();
   // Stand down while a map is loading: hide all plugin UI. This also stops
   // SkillBar::EnsureCreated() from MakeWindow'ing the native shortcut bar
   // every frame while the HUD is being torn down/rebuilt — the race that freed a
