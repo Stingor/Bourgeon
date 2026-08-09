@@ -128,11 +128,16 @@ class EntityContextMenu : public Plugin {
   // mais le menu sur soi ne porte presque rien : décoché, ce clic droit repart
   // au client INTACT plutôt que d'être avalé par un menu d'une ligne.
   bool& self_menu() { return self_menu_; }
-  // « ctxmenu_staff_extras » : ajouter la section staff, ET ouvrir le menu sur
-  // les entités purement diagnostiques (unité de compétence, objet au sol, non
-  // classée). Sans effet pour un compte non-staff (IsStaff() garde de toute
-  // façon le rendu). Défaut ON : le gate serveur suffit, l'interrupteur ne sert
-  // qu'à dégonfler le menu.
+  // « ctxmenu_staff_extras » : ajouter la section staff — dont « Propriétés… »,
+  // qui ouvre EntityInspector — ET ouvrir le menu sur TOUTES les entités, sans
+  // attendre « toutes les entités » : monstre, NPC, unité de compétence, objet
+  // au sol, non classée. Ce second effet n'est pas un raccourci de confort :
+  // l'inspecteur sert d'abord sur les cibles inattendues, et le laisser derrière
+  // un réglage de JOUEUR le rendait introuvable — clic droit sans effet, sans
+  // rien qui dise pourquoi.
+  // Sans effet pour un compte non-staff (IsStaff() garde de toute façon le
+  // rendu). Défaut ON : le gate serveur suffit, l'interrupteur ne sert qu'à
+  // dégonfler le menu.
   bool& staff_extras() { return staff_extras_; }
 
   // Appelé par le détour de GameMode_ShowEntityContextMenu. `quad` est le quad
@@ -201,7 +206,13 @@ class EntityContextMenu : public Plugin {
     kCopyPickInfo,  // AID + job + catégorie de pick (staff)
     kTalkToNpc,     // CZ_CONTACTNPC 0x0090
     kAttack,        // GameMode_PostActorClickAction
+    kInspect,       // ouvre l'inspecteur de propriétés (staff)
   };
+
+  // Le nom de la famille de la cible, tel qu'il s'affiche en tête du menu — et
+  // tel qu'il part à l'inspecteur, qui ne reclasse donc pas la cible une seconde
+  // fois avec une seconde logique.
+  static const char* KindLabel(Kind kind);
 
   struct Item {
     std::string label;

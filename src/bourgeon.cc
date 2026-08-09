@@ -50,6 +50,7 @@
 #include "features/item_cell.h"  // itemcell::FlushDeferredDesc (desc au relâchement)
 #include "features/windows/item_desc_window.h"
 #include "features/windows/entity_context_menu.h"
+#include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
@@ -121,6 +122,7 @@ MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
 }
+EntityInspector* Bourgeon::entity_inspector() { return entity_inspector_; }
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
 ChatBalloon* Bourgeon::chat_balloon() { return chat_balloon_; }
 CastBar* Bourgeon::cast_bar() { return cast_bar_; }
@@ -818,6 +820,13 @@ void Bourgeon::LoadPlugins() {
     auto entity_context_menu = std::make_unique<EntityContextMenu>();
     entity_context_menu_ = entity_context_menu.get();
     plugins_.emplace_back(std::move(entity_context_menu));
+
+    // Inspecteur de propriétés (staff). Aucun détour, aucun paquet revendiqué :
+    // il ne fait que lire, et n'existe que parce qu'une entrée du menu
+    // ci-dessus l'ouvre — d'où sa place juste après.
+    auto entity_inspector = std::make_unique<EntityInspector>();
+    entity_inspector_ = entity_inspector.get();
+    plugins_.emplace_back(std::move(entity_inspector));
   }
   {
     auto skill_bar = std::make_unique<SkillBar>();

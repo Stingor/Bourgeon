@@ -69,6 +69,8 @@ set(BOURGEON_FILES
 	"features/windows/character_sheet.h"
 	"features/windows/entity_context_menu.cc"
 	"features/windows/entity_context_menu.h"
+	"features/windows/entity_inspector.cc"
+	"features/windows/entity_inspector.h"
 	"features/windows/inventory_viewer.cc"
 	"features/windows/inventory_viewer.h"
 	"features/windows/item_desc_window.cc"

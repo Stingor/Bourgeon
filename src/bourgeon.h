@@ -41,6 +41,7 @@ class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
 class EntityContextMenu;
+class EntityInspector;
 class FpsView;
 class PlayerJump;
 class KeyboardMove;
@@ -105,6 +106,7 @@ class Bourgeon {
   ItemDescWindow* item_desc();
   MonsterInfoWindow* monster_info();
   EntityContextMenu* entity_context_menu();
+  EntityInspector* entity_inspector();
   FpsView* fps_view();
   PlayerJump* player_jump();
   KeyboardMove* keyboard_move();
@@ -280,6 +282,7 @@ class Bourgeon {
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem
+  EntityInspector* entity_inspector_ = nullptr;       // idem
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   ChatBalloon* chat_balloon_ = nullptr;  // non-owning, lifetime tied to plugins_

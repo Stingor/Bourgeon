@@ -41,6 +41,7 @@ constexpr uint16_t kReqCompatCards = 0x0F18;  // CZ_BOURGEON_REQ_COMPAT_CARDS (c
 constexpr uint16_t kJump        = 0x0F1A;  // CZ_BOURGEON_JUMP (« j'ai sauté » ; sans payload)
 constexpr uint16_t kOpenStorage = 0x0F1D;  // CZ_BOURGEON_OPEN_STORAGE (ouvrir/basculer de storage)
 constexpr uint16_t kReqMobInfo  = 0x0F1F;  // CZ_BOURGEON_REQ_MOBINFO (fiche détaillée d'un monstre)
+constexpr uint16_t kReqEntityProps = 0x0F22;  // CZ_BOURGEON_REQ_ENTITY_PROPS (propriétés serveur d'une entité — STAFF)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -62,13 +63,14 @@ constexpr uint16_t kCookMastery    = 0x0F1C;  // ZC_BOURGEON_COOK_MASTERY (char 
 constexpr uint16_t kStorageList    = 0x0F1E;  // ZC_BOURGEON_STORAGE_LIST (storages accessibles + ouvert)
 constexpr uint16_t kMobInfo        = 0x0F20;  // ZC_BOURGEON_MOBINFO (fiche monstre : stats, drops, spawns, skills)
 constexpr uint16_t kChannelList    = 0x0F21;  // ZC_BOURGEON_CHANNEL_LIST (canaux de chat atteignables)
+constexpr uint16_t kEntityProps    = 0x0F23;  // ZC_BOURGEON_ENTITY_PROPS (liste clé/valeur décrivant une entité — STAFF)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F22 -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F24 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F22;
+constexpr uint16_t kNextFree    = 0x0F24;
 
 }  // namespace bopcodes

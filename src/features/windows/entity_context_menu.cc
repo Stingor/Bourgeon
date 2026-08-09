@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
+#include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (avis de blocage)
@@ -695,7 +696,15 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   // de revenir en arrière depuis le monde.
   const bool blockable_npc =
       (kind == Kind::kNpc) && npc_block_enabled_ && IsFixedIdNpc(aid);
-  if (!native_served && !all_entities_ && !blockable_npc) return true;
+  // 🔴 Le staff outillé ouvre sur TOUT, sans passer par « toutes les entités ».
+  // La section staff porte l'inspecteur de propriétés, et un inspecteur qu'il
+  // faut armer d'un SECOND réglage — un réglage de joueur, en plus — est un
+  // inspecteur qu'on ne trouve pas : on clique droit sur le monstre qui se
+  // comporte mal, il ne se passe rien, et rien ne dit pourquoi. C'est d'ailleurs
+  // ce que l'infobulle de « Outils du staff » promettait déjà.
+  const bool staff_tools = staff_extras_ && IsStaff();
+  if (!native_served && !all_entities_ && !blockable_npc && !staff_tools)
+    return true;
 
   // 🔴 SOI-MÊME : le menu n'y porte que « Copier mon nom » (plus les
   // identifiants sous le réglage staff). Or on se clique dessus sans le vouloir
@@ -712,7 +721,7 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   // au réglage staff, et le clic repart au natif pour tout le monde d'autre.
   const bool diagnostic_only = (kind == Kind::kSkillUnit ||
                                 kind == Kind::kGroundItem || kind == Kind::kOther);
-  if (diagnostic_only && !(staff_extras_ && IsStaff())) return true;
+  if (diagnostic_only && !staff_tools) return true;
 
   // 🔴 Alt + clic droit sur un MONSTRE = ordre à l'homoncule (Alt+Maj = au
   // mercenaire) : `CursorMgr_UpdateHover` lit l'appui droit pour ça
@@ -1097,6 +1106,13 @@ void EntityContextMenu::BuildItems() {
   // joueur : ces deux lignes vivent ici, et nulle part ailleurs.
   const char* copy_id_label = (kind_ == Kind::kSelf)   ? i18n::Tr("Copier mon AID")
                               : (kind_ == Kind::kPlayer) ? i18n::Tr("Copier l'AID") : i18n::Tr("Copier le GID");
+  // L'inspecteur EN PREMIER : c'est lui qu'on ouvre quand on ne sait pas encore
+  // ce qu'on regarde, donc avant les entrées qui supposent de le savoir déjà.
+  // Valable pour TOUTES les familles, sans exception — un inspecteur qui
+  // refuserait les cibles bizarres manquerait les seules qui le méritent.
+  add_staff(i18n::Tr("Propriétés…"), 0, Local::kInspect,
+            i18n::Tr("Tout ce que le client sait de cette entité : plaque de "
+                     "nom, acteur, position, adresses mémoire."));
   add_staff(copy_id_label, 0, Local::kCopyId);
   add_staff(i18n::Tr("Copier l'identité de pick"), 0, Local::kCopyPickInfo);
 
@@ -1113,6 +1129,21 @@ void EntityContextMenu::BuildItems() {
       add_staff(i18n::Tr("Point de manière +"), kCodeMannerPlus);
       add_staff(i18n::Tr("Point de manière -"), kCodeMannerMinus);
     }
+  }
+}
+
+const char* EntityContextMenu::KindLabel(Kind kind) {
+  switch (kind) {
+    case Kind::kSelf:       return "Moi";
+    case Kind::kPlayer:     return "Joueur";
+    case Kind::kMonster:    return "Monstre";
+    case Kind::kNpc:        return "NPC";
+    case Kind::kPet:        return "Pet";
+    case Kind::kHomunculus: return "Homoncule";
+    case Kind::kMercenary:  return "Mercenaire";
+    case Kind::kSkillUnit:  return i18n::Tr("Unité");
+    case Kind::kGroundItem: return i18n::Tr("Objet au sol");
+    default:                return i18n::Tr("Entité");
   }
 }
 
@@ -1146,19 +1177,7 @@ void EntityContextMenu::OnRenderUI() {
   if (visible) {
     // En-tête : QUI est visé. Le natif ne le disait pas — il fallait se souvenir
     // de ce qu'on avait cliqué.
-    const char* kind_label = i18n::Tr("Entité");
-    switch (kind_) {
-      case Kind::kSelf:       kind_label = "Moi"; break;
-      case Kind::kPlayer:     kind_label = "Joueur"; break;
-      case Kind::kMonster:    kind_label = "Monstre"; break;
-      case Kind::kNpc:        kind_label = "NPC"; break;
-      case Kind::kPet:        kind_label = "Pet"; break;
-      case Kind::kHomunculus: kind_label = "Homoncule"; break;
-      case Kind::kMercenary:  kind_label = "Mercenaire"; break;
-      case Kind::kSkillUnit:  kind_label = i18n::Tr("Unité"); break;
-      case Kind::kGroundItem: kind_label = i18n::Tr("Objet au sol"); break;
-      default: break;
-    }
+    const char* kind_label = KindLabel(kind_);
     if (target_name_.empty()) {
       ImGui::Text("%s (%u)", kind_label, target_aid_);
     } else {
@@ -1254,6 +1273,14 @@ void EntityContextMenu::FlushPending() {
       ImGui::SetClipboardText(buffer);
       return;
     }
+    case Local::kInspect:
+      // ⚠ `target_cat_` et `kind_` ne sont pas recopiés dans les champs
+      // `pending_*` : ils ne changent qu'à la PROCHAINE ouverture de menu, qui
+      // écraserait de toute façon l'action en attente. Même raisonnement que
+      // `kCopyPickInfo` juste au-dessus.
+      if (auto* insp = Bourgeon::Instance().entity_inspector())
+        insp->Open(aid, arg, target_cat_, KindLabel(kind_));
+      return;
     case Local::kMonsterInfo:
       // `by_view` : le quad porte une classe de SPRITE, pas un id de mob_db —
       // exactement le cas du skill Sense, que la fiche sait déjà résoudre.
@@ -1363,11 +1390,14 @@ bool EntityContextMenu::DrawSettings() {
     changed |= ro::RoCheckbox(i18n::Tr("Outils du staff###ctxmenu_staff"), &staff_extras_);
     ImGui::SameLine();
     HelpMarker(
-        i18n::Tr("Ajoute au menu les actions et les identifiants réservés au staff, et "
-        "ouvre le menu sur les entités de diagnostic (unités de compétence, "
-        "objets au sol). Certaines entrées exigent en plus que l'AID du compte "
-        "figure dans le clientinfo.xml du client : elles n'apparaissent que "
-        "dans ce cas."));
+        i18n::Tr("Ajoute au menu les actions et les identifiants réservés au staff, dont "
+        "« Propriétés… » — tout ce que le client sait d'une entité.\n"
+        "Coché, le menu s'ouvre alors sur TOUTES les entités sans attendre le "
+        "réglage du dessus : monstres, NPC, unités de compétence, objets au "
+        "sol. C'est justement sur les cibles inattendues qu'un inspecteur "
+        "sert.\n"
+        "Certaines entrées exigent en plus que l'AID du compte figure dans le "
+        "clientinfo.xml du client : elles n'apparaissent que dans ce cas."));
   }
   return changed;
 }
