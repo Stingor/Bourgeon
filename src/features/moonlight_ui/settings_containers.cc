@@ -248,7 +248,12 @@ void WriteStorageTabCustom(YAML::Emitter& out) {
 }
 
 void ReadSkinAndPresets(const YAML::Node& ui) {
+  // 🔴 DANS CET ORDRE. « malgun_font » est l'ancien booléen (police intégrée
+  // d'ImGui quand il est faux) ; « ui_font_family » le remplace et porte le choix
+  // complet, donc il tranche en dernier. Un yaml d'avant la famille n'a que le
+  // booléen, et le défaut de `as<int>` garde alors le comportement d'origine.
   ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
+  ro::SetUiFontFamily(ui["ui_font_family"].as<int>(ro::UiFontFamily()));
   // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
   // ancienne valeur false dans le yaml est simplement ignorée.)
   ReadSkinCfg(ui, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
@@ -270,7 +275,10 @@ void ReadSkinAndPresets(const YAML::Node& ui) {
 }
 
 void WriteSkinAndPresets(YAML::Emitter& out) {
+  // Les deux clés, et pas seulement la neuve : une DLL antérieure relira le
+  // booléen et retombera au moins sur Malgun plutôt que sur ProggyClean.
   out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
+  out << YAML::Key << "ui_font_family" << YAML::Value << ro::UiFontFamily();
   EmitSkinCfg(out, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
   out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
   for (const ro::SkinPreset& preset : ro::SkinPresets()) {

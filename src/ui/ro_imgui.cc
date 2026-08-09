@@ -358,14 +358,26 @@ ImFont* g_font_malgun = nullptr;   // Malgun Gothic (null si absente du système
 ImFont* g_font_bold   = nullptr;
 ImFont* g_font_italic = nullptr;
 
-// ── Familles au choix pour la CHATBOX ────────────────────────────────────────
-// Bakées au démarrage, comme tout le reste : basculer ensuite ne coûte rien
-// (le rendu du chat prend un `ImFont*` en argument). Charger une police
-// arbitraire à chaud demanderait de reconstruire l'atlas et de recréer la
-// texture du backend — ce que DX7 ne sait pas faire.
+// ── Familles au choix, pour l'INTERFACE comme pour la CHATBOX ───────────────
+// Bakées au démarrage, comme tout le reste : basculer ensuite ne coûte rien —
+// le rendu du chat prend un `ImFont*` en argument, et l'interface ne fait que
+// changer `io.FontDefault`. Charger une police arbitraire à chaud demanderait de
+// reconstruire l'atlas et de recréer la texture du backend — ce que DX7 ne sait
+// pas faire.
 //
 // Chacune pèse ~275 glyphes. C'est négligeable DÈS LORS que le hangul n'est plus
 // baké par défaut : à lui seul, il en coûtait 11 172, soit quarante familles.
+//
+// 🔴 L'ORDRE DE LA TABLE EST FIGÉ : l'index est PERSISTÉ dans le yaml
+// (« chatwnd_font_family » pour le chat, « ui_font_family » pour l'interface).
+// Une nouvelle famille s'ajoute EN FIN DE TABLE, jamais au milieu — sinon le
+// réglage d'un joueur désigne une AUTRE police au prochain lancement.
+//
+// ⚠ Le fichier TTF reste EN MÉMOIRE tant que l'atlas vit (depuis ImGui 1.92 les
+// glyphes se chargent à la demande, donc la source garde son tampon) : une
+// famille coûte le poids de ses trois fichiers. D'où l'absence de Calibri et de
+// Courier New — 4 et 2 Mio de plus dans un processus 32 bits, pour des dessins
+// que Segoe UI et Consolas rendent déjà.
 struct ChatFamily {
   const char* label;
   const char* regular;
@@ -387,16 +399,68 @@ const ChatFamily kChatFamilies[] = {
     {"Consolas", "C:\\Windows\\Fonts\\consola.ttf",
                  "C:\\Windows\\Fonts\\consolab.ttf",
                  "C:\\Windows\\Fonts\\consolai.ttf"},
+    // ── Ajoutées pour l'interface (toujours EN FIN DE TABLE) ────────────────
+    // Toutes livrées avec Windows 10/11 sans installation ; une absente est
+    // simplement masquée du menu (cf. le filtre sur ChatFamilyFont == nullptr).
+    {"Arial",    "C:\\Windows\\Fonts\\arial.ttf",
+                 "C:\\Windows\\Fonts\\arialbd.ttf",
+                 "C:\\Windows\\Fonts\\ariali.ttf"},
+    {"Trebuchet MS", "C:\\Windows\\Fonts\\trebuc.ttf",
+                 "C:\\Windows\\Fonts\\trebucbd.ttf",
+                 "C:\\Windows\\Fonts\\trebucit.ttf"},
+    {"Candara",  "C:\\Windows\\Fonts\\candara.ttf",
+                 "C:\\Windows\\Fonts\\candarab.ttf",
+                 "C:\\Windows\\Fonts\\candarai.ttf"},
+    {"Corbel",   "C:\\Windows\\Fonts\\corbel.ttf",
+                 "C:\\Windows\\Fonts\\corbelb.ttf",
+                 "C:\\Windows\\Fonts\\corbeli.ttf"},
+    // ⚠ Franklin Gothic Medium EST le gras de sa famille : Windows ne livre que
+    // « Medium » et « Medium Italic », pas de fichier plus gras encore.
+    {"Franklin Gothic", "C:\\Windows\\Fonts\\framd.ttf", nullptr,
+                 "C:\\Windows\\Fonts\\framdit.ttf"},
+    {"Georgia",  "C:\\Windows\\Fonts\\georgia.ttf",
+                 "C:\\Windows\\Fonts\\georgiab.ttf",
+                 "C:\\Windows\\Fonts\\georgiai.ttf"},
+    {"Times New Roman", "C:\\Windows\\Fonts\\times.ttf",
+                 "C:\\Windows\\Fonts\\timesbd.ttf",
+                 "C:\\Windows\\Fonts\\timesi.ttf"},
+    {"Comic Sans MS", "C:\\Windows\\Fonts\\comic.ttf",
+                 "C:\\Windows\\Fonts\\comicbd.ttf",
+                 "C:\\Windows\\Fonts\\comici.ttf"},
 };
 constexpr int kChatFamilyCount = IM_ARRAYSIZE(kChatFamilies);
-ImFont* g_chat_fonts[kChatFamilyCount][3] = {};  // [famille][0=normal,1=gras,2=ital]
-bool g_font_enabled = true;        // état du toggle (mémorisé même avant load)
 
-// (Re)sélectionne la police active selon le toggle. Immédiat (pris en compte au
+// 🔴 GARDE-FOU D'ATLAS. En mode « glyphes coréens » (débogage staff), le hangul
+// reprend ses 11 172 glyphes ; le backend DX7 bake TOUT d'avance dans une texture
+// unique, et douze familles latines par-dessus (~9 000 glyphes) la feraient
+// déborder. Or un atlas qui déborde, ce n'est pas du texte moche : c'est du texte
+// ABSENT, partout. Dans ce mode on s'en tient donc aux quatre familles
+// historiques, et les suivantes restent nulles — le menu les masque tout seul.
+constexpr int kFamilyCountWithKorean = 5;
+
+ImFont* g_chat_fonts[kChatFamilyCount][3] = {};  // [famille][0=normal,1=gras,2=ital]
+
+// Famille de l'INTERFACE : -1 = police intégrée d'ImGui (l'ancien « Malgun OFF »),
+// 0 = Malgun Gothic, >0 = index dans kChatFamilies. Mémorisé même avant le
+// chargement de l'atlas, comme l'était le booléen qu'il remplace.
+int g_ui_family = 0;
+
+// La police d'une famille pour l'INTERFACE, ou nullptr s'il faut retomber sur
+// Malgun (famille absente du système, ou index hors table).
+ImFont* UiFamilyFont(int style) {
+  if (g_ui_family <= 0 || g_ui_family >= kChatFamilyCount) return nullptr;
+  return g_chat_fonts[g_ui_family][style];
+}
+
+// (Re)sélectionne la police active selon le réglage. Immédiat (pris en compte au
 // prochain NewFrame), sans rebuild d'atlas.
 void ApplyFontSelection() {
-  ImGui::GetIO().FontDefault =
-      (g_font_enabled && g_font_malgun) ? g_font_malgun : g_font_default;
+  ImFont* font = nullptr;
+  if (g_ui_family >= 0) {
+    font = UiFamilyFont(0);          // la famille choisie…
+    if (font == nullptr) font = g_font_malgun;  // …ou Malgun si elle manque
+  }
+  ImGui::GetIO().FontDefault = font ? font : g_font_default;
 }
 
 // ── Les EMOJI, en couleur, dans CHACUNE des polices ──────────────────────────
@@ -413,8 +477,9 @@ void ApplyFontSelection() {
 //
 // ⚠ D'où le chargement EN MÉMOIRE plutôt que par chemin : `AddFontFromFileTTF`
 // relit et duplique le fichier à chaque source, et seguiemj.ttf pèse 12,4 Mio.
-// Quatorze polices, c'est 170 Mio dans un processus 32 bits — de quoi manquer
-// d'adressable. Ici le tampon est chargé UNE fois et partagé, d'où
+// Les trente et quelques polices de l'atlas, c'est plus de 400 Mio dans un
+// processus 32 bits — largement de quoi manquer d'adressable. Ici le tampon est
+// chargé UNE fois et partagé, d'où
 // `FontDataOwnedByAtlas = false` : sans lui, l'atlas le libérerait une fois par
 // source, soit treize libérations de trop.
 //
@@ -518,8 +583,19 @@ bool KoreanGlyphsWanted() {
 // Les variantes, ou nullptr quand le système ne les a pas. L'appelant DOIT
 // retomber sur sa police courante dans ce cas : un texte non gras vaut mieux
 // qu'un texte absent.
-ImFont* FontBold()   { return g_font_bold; }
-ImFont* FontItalic() { return g_font_italic; }
+//
+// 🔴 Elles SUIVENT la famille choisie pour l'interface. Sans ça, une interface en
+// Georgia aurait mis ses passages en gras dans le Malgun gras générique : deux
+// dessins qui n'ont rien à voir, sur la même ligne. Repli sur la variante
+// générique quand la famille ne fournit pas ce style.
+ImFont* FontBold() {
+  ImFont* font = UiFamilyFont(1);
+  return font ? font : g_font_bold;
+}
+ImFont* FontItalic() {
+  ImFont* font = UiFamilyFont(2);
+  return font ? font : g_font_italic;
+}
 
 int         ChatFamilyCount() { return kChatFamilyCount; }
 const char* ChatFamilyLabel(int i) {
@@ -531,8 +607,10 @@ const char* ChatFamilyLabel(int i) {
 // variante générique puis vers nullptr, et l'appelant garde sa police courante.
 ImFont* ChatFamilyFont(int i, bool bold, bool italic) {
   if (i <= 0 || i >= kChatFamilyCount) {  // 0 = « Système » : rien d'imposé
-    if (bold)   return g_font_bold;
-    if (italic) return g_font_italic;
+    // Rien d'imposé = la police de l'INTERFACE, donc ses variantes à elle (et
+    // non les génériques) : c'est FontBold/FontItalic qui savent laquelle.
+    if (bold)   return FontBold();
+    if (italic) return FontItalic();
     return nullptr;
   }
   if (bold) {
@@ -685,18 +763,24 @@ ImFont* LoadKoreanFont(float size_px) {
     // Le coût serait de toute façon injustifiable : gras et italique ne servent
     // qu'au balisage `**…**` du chat, tapé en français. Un fragment coréen mis en
     // gras s'affichera donc en normal — invisible en pratique ici.
-    static const ImWchar kLatinRanges[] = {0x0020, 0x00FF, 0x2010, 0x203A, 0};
+    // (0xFFFD : le carré « caractère manquant ». Depuis que ces polices servent
+    // aussi à TOUTE l'interface, c'est elles qui doivent le fournir — la plage
+    // latine seule laissait un trou là où Malgun affichait un carré propre.)
+    static const ImWchar kLatinRanges[] = {0x0020, 0x00FF, 0x2010, 0x203A,
+                                           0xFFFD, 0xFFFD, 0};
     g_font_bold   = load_variant(kBoldFonts, IM_ARRAYSIZE(kBoldFonts),
                                  kLatinRanges);
     g_font_italic = load_variant(kItalicFonts, IM_ARRAYSIZE(kItalicFonts),
                                  kLatinRanges);
 
-    // ── Les familles au choix pour la chatbox ──────────────────────────────
+    // ── Les familles au choix pour l'interface et la chatbox ───────────────
     // Entrée 0 = la police de base, laissée nulle : la chatbox garde alors la
     // sienne, et c'est le seul cas où le coréen s'affiche si le réglage est
     // actif. Les autres sont latines — on ne met pas un chemin de sprite en
     // Consolas.
-    for (int f = 1; f < kChatFamilyCount; ++f) {
+    const int family_count =
+        KoreanGlyphsWanted() ? kFamilyCountWithKorean : kChatFamilyCount;
+    for (int f = 1; f < family_count; ++f) {
       const ChatFamily& fam = kChatFamilies[f];
       const char* const paths_r[] = {fam.regular};
       const char* const paths_b[] = {fam.bold};
@@ -713,12 +797,30 @@ ImFont* LoadKoreanFont(float size_px) {
   return io.FontDefault;
 }
 
-void SetFontEnabled(bool enabled) {
-  g_font_enabled = enabled;
+void SetUiFontFamily(int index) {
+  // Un index venu d'un yaml trafiqué ou d'une version future ne doit pas sortir
+  // de la table : on retombe sur Malgun, jamais sur une lecture hors bornes.
+  if (index < -1 || index >= kChatFamilyCount) index = 0;
+  g_ui_family = index;
   if (ImGui::GetCurrentContext()) ApplyFontSelection();
 }
 
-bool IsFontEnabled() { return g_font_enabled; }
+int UiFontFamily() { return g_ui_family; }
+
+// Ancien booléen « police Malgun », conservé pour la clé yaml du même nom :
+// décocher = police intégrée d'ImGui, recocher = retour à Malgun. Recocher ne
+// touche PAS à une famille déjà choisie (Georgia reste Georgia).
+void SetFontEnabled(bool enabled) {
+  // Toujours en passant par SetUiFontFamily, même quand la valeur ne change pas :
+  // c'est lui qui applique la sélection, et un appelant qui rallume la police
+  // attend un effet, pas un no-op silencieux.
+  if (!enabled)
+    SetUiFontFamily(-1);
+  else
+    SetUiFontFamily(g_ui_family < 0 ? 0 : g_ui_family);
+}
+
+bool IsFontEnabled() { return g_ui_family >= 0; }
 
 void TextCp949(const char* cp949) {
   ImGui::TextUnformatted(Cp949ToUtf8(cp949));

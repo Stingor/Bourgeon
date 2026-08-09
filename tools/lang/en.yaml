@@ -1238,7 +1238,7 @@
 "Fond fenêtre de liste (storage)": "List window background (storage)"
 "Réinitialiser le skin": "Reset the skin"
 "- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input.": "- Arrows / mouse wheel adjust value (Shift = larger step)\n- Ctrl-Click for direct input."
-"ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\nOFF : police intégrée d'ImGui (ProggyClean).": "ON: Malgun Gothic font for the whole ImGui UI (Latin + Korean).\nOFF: ImGui's built-in font (ProggyClean)."
+"Police de toute l'UI ImGui. Le gras et l'italique suivent la famille choisie, ainsi que la chatbox réglée sur « Système ».\n\nMalgun Gothic est la seule à couvrir le coréen : avec une autre, les chemins de fichiers du jeu (réglage de débogage) sortent en carrés.\nProggyClean est la police intégrée d'ImGui, minuscule et sans accents élégants.": "Font for the whole ImGui UI. Bold and italic follow the chosen family, and so does the chatbox set to « System ».\n\nMalgun Gothic is the only one covering Korean: with any other, the game's file paths (debug setting) come out as squares.\nProggyClean is ImGui's built-in font, tiny and with plain accents."
 "Sauvegarde les couleurs/luminosité/opacité actuelles sous un nom.\n« Appliquer » recharge un préréglage ; on peut se faire plusieurs thèmes.": "Saves the current colours/brightness/opacity under a name.\n« Apply » reloads a preset; you can build yourself several themes."
 "Copier tout": "Copy all"
 "filtre (sous-chaîne)": "filter (substring)"
@@ -1653,7 +1653,10 @@
 "Chaîne automatique arrêtée à la demande.": "Automatic chain stopped on request."
 "ce site": "this site"
 "RO Classique": "Classic RO"
-"Police Malgun (UI)": "Malgun font (UI)"
+"Police de l'interface": "UI font"
+"ImGui (ProggyClean)": "ImGui (ProggyClean)"
+"(choisir)": "(choose)"
+"Sauvegarder": "Save"
 
 # ── Fifth pass: titles with a stable ### id, and formats ─────────────────────
 # A title carrying « ### » is wrapped like any other string: the stable id is

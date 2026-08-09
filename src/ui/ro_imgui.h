@@ -116,7 +116,25 @@ ImFont* LoadKoreanFont(float size_px = 15.0f);
 // d'atlas — les deux polices sont déjà bakées). Sûr à appeler même avant
 // LoadKoreanFont (l'état est mémorisé et appliqué au chargement). Désactivé =
 // retour à la police intégrée d'ImGui.
+//
+// C'est le cas particulier de SetUiFontFamily(-1) ci-dessous, gardé pour la clé
+// yaml « malgun_font » : réactiver ne défait PAS un choix de famille.
 void SetFontEnabled(bool enabled);
+
+// ── La police de TOUTE l'interface ───────────────────────────────────────────
+// Index dans la table des familles (cf. ChatFamilyLabel) : 0 = Malgun Gothic, le
+// défaut ; -1 = police intégrée d'ImGui ; >0 = une famille du système. Bascule à
+// chaud, sans rebuild d'atlas — tout est baké au démarrage.
+//
+// Les variantes FontBold/FontItalic suivent la famille choisie, et la chatbox
+// réglée sur « Système » suit elle aussi.
+//
+// ⚠ Une famille absente du système, ou écartée par le mode « glyphes coréens »
+// (cf. KoreanGlyphsWanted), n'est pas bakée : la sélection retombe alors
+// silencieusement sur Malgun. Un menu doit donc masquer les familles dont
+// ChatFamilyFont rend nullptr, sinon il propose des entrées sans effet.
+void SetUiFontFamily(int index);
+int  UiFontFamily();
 
 // ── Variantes grasse et italique ─────────────────────────────────────────────
 // Bakées dans le MÊME atlas et à la MÊME taille que la police normale, par
@@ -133,10 +151,14 @@ void SetFontEnabled(bool enabled);
 ImFont* FontBold();
 ImFont* FontItalic();
 
-// ── Familles au choix pour la chatbox ────────────────────────────────────────
+// ── Familles au choix (chatbox ET interface) ─────────────────────────────────
 // Toutes bakées au démarrage : basculer ensuite ne coûte rien. L'index 0 est
 // « Système », qui ne force rien et laisse la police de base — c'est la seule à
 // couvrir le coréen quand le réglage de débogage est actif.
+//
+// ⚠ Le nom dit « Chat » pour raison historique : la même table sert désormais à
+// la police de l'interface (SetUiFontFamily). L'ORDRE EN EST FIGÉ, l'index étant
+// persisté des deux côtés — une famille s'ajoute en fin de table.
 //
 // `ChatFamilyFont` rend nullptr pour l'index 0 sans style : l'appelant garde
 // alors sa police courante. Repli en cascade sinon (style absent -> normal de la

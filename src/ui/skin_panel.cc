@@ -75,15 +75,58 @@ void EnsureDefaultSkinPresets() {
 bool DrawSkinPanel() {
   bool changed = false;
 
-  bool font_on = IsFontEnabled();
-  if (RoCheckbox(i18n::Tr("Police Malgun (UI)"), &font_on)) {
-    SetFontEnabled(font_on);
-    changed = true;
+  // ── La police de toute l'interface ─────────────────────────────────────────
+  // Les familles sont bakées dans l'atlas au démarrage : le choix s'applique à
+  // la frame suivante, sans rechargement. Deux entrées sortent de la table :
+  // Malgun (index 0, le défaut) et la police intégrée d'ImGui (index -1, qui
+  // était l'ancienne case « Police Malgun » décochée).
+  //
+  // ⚠ L'APERÇU DIT CE QUI EST VRAIMENT AFFICHÉ, pas ce que le yaml contient : une
+  // famille non bakée (mode « glyphes coréens » activé depuis, police désinstallée)
+  // a déjà fait retomber l'interface sur Malgun, et annoncer « Georgia » laisserait
+  // le joueur chercher pourquoi son choix ne prend pas.
+  const int ui_family = UiFontFamily();
+  const bool family_baked =
+      ui_family > 0 && ChatFamilyFont(ui_family, false, false) != nullptr;
+  // (`font_preview` et non `preview` : la section des presets, plus bas dans la
+  // même fonction, a déjà sa variable de ce nom.)
+  const char* font_preview = ui_family < 0 ? i18n::Tr("ImGui (ProggyClean)")
+                             : family_baked ? ChatFamilyLabel(ui_family)
+                                            : "Malgun Gothic";
+  ImGui::SetNextItemWidth(180.f);
+  if (RoBeginCombo(i18n::Tr("Police de l'interface"), font_preview)) {
+    // Cochée dès que c'est Malgun qui sort à l'écran — y compris quand la famille
+    // enregistrée n'a pas pu être bakée, pour que la coche et l'aperçu s'accordent.
+    if (ImGui::Selectable("Malgun Gothic", ui_family >= 0 && !family_baked)) {
+      SetUiFontFamily(0);
+      changed = true;
+    }
+    // Familles du système. Celles qu'ImGui n'a pas pu baker (fichier absent, ou
+    // écartées par le mode « glyphes coréens ») sont MASQUÉES : les proposer
+    // donnerait un réglage sans effet visible, que le joueur prendrait pour un
+    // bug. L'index 0 de la table, lui, est « Système » — déjà couvert ci-dessus
+    // par Malgun.
+    for (int f = 1; f < ChatFamilyCount(); ++f) {
+      if (ChatFamilyFont(f, false, false) == nullptr) continue;
+      if (ImGui::Selectable(ChatFamilyLabel(f), ui_family == f)) {
+        SetUiFontFamily(f);
+        changed = true;
+      }
+    }
+    if (ImGui::Selectable(i18n::Tr("ImGui (ProggyClean)"), ui_family < 0)) {
+      SetUiFontFamily(-1);
+      changed = true;
+    }
+    RoEndCombo();
   }
   SameLine();
   HelpMarker(
-      i18n::Tr("ON : police Malgun Gothic pour toute l'UI ImGui (latin + coréen).\n"
-      "OFF : police intégrée d'ImGui (ProggyClean)."));
+      i18n::Tr("Police de toute l'UI ImGui. Le gras et l'italique suivent la "
+      "famille choisie, ainsi que la chatbox réglée sur « Système ».\n\n"
+      "Malgun Gothic est la seule à couvrir le coréen : avec une autre, les "
+      "chemins de fichiers du jeu (réglage de débogage) sortent en carrés.\n"
+      "ProggyClean est la police intégrée d'ImGui, minuscule et sans accents "
+      "élégants."));
 
   // (Le skin RO n'est plus optionnel : c'est l'habillage standard des fenêtres
   // ImGui Bourgeon. Seuls ses réglages restent configurables.)
@@ -95,19 +138,19 @@ bool DrawSkinPanel() {
   int& selection = SkinPresetSelection();
   const int preset_count = static_cast<int>(presets.size());
   const bool valid_sel = selection >= 0 && selection < preset_count;
-  const char* preview = valid_sel ? presets[selection].name.c_str() : "(choisir)";
+  const char* preview = valid_sel ? presets[selection].name.c_str() : i18n::Tr("(choisir)");
   if (RoBeginCombo("##ro_preset", preview)) {
     for (int i = 0; i < preset_count; ++i)
       if (ImGui::Selectable(presets[i].name.c_str(), selection == i)) selection = i;
     RoEndCombo();
   }
   SameLine();
-  if (RoButton("Appliquer") && valid_sel) {
+  if (RoButton(i18n::Tr("Appliquer")) && valid_sel) {
     SkinConfig() = presets[selection].cfg;
     changed = true;
   }
   SameLine();
-  if (RoButton("Supprimer") && valid_sel) {
+  if (RoButton(i18n::Tr("Supprimer")) && valid_sel) {
     presets.erase(presets.begin() + selection);
     selection = -1;
     changed = true;
@@ -115,7 +158,7 @@ bool DrawSkinPanel() {
   static char preset_name[32] = "";
   ImGui::InputText("##ro_preset_name", preset_name, sizeof(preset_name));
   SameLine();
-  if (RoButton("Sauvegarder") && preset_name[0]) {
+  if (RoButton(i18n::Tr("Sauvegarder")) && preset_name[0]) {
     bool found = false;
     for (auto& preset : presets)
       if (preset.name == preset_name) {
