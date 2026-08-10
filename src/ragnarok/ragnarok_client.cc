@@ -840,6 +840,18 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // Dialogue NPC ImGui : avalage CIBLÉ (Entrée/Espace/Échap, flèches + 1-9 si
       // menu) — le reste du clavier (F1-F9, hotkeys skillbar…) atteint le jeu,
       // comme pendant un dialogue natif.
+      //
+      // 🔴 REMISE DIRECTE D'ENTRÉE À LA BARRE ARMÉE, même raison qu'Échap plus
+      // haut : la touche n'atteint pas le jeu, donc `ProcessPushButton` ne tourne
+      // pas et `OnKeyDown` non plus. Un lien relayé d'un Maj+clic depuis le
+      // dialogue restait alors PRISONNIER de la saisie — plus moyen de l'envoyer
+      // sans fermer le script. Le dialogue, lui, ne réagit pas à cette Entrée-là :
+      // il consulte le même prédicat au rendu.
+      // (Rien à faire quand la saisie a déjà le clavier : on ne serait pas passé
+      // par ici, `WantCaptureKeyboard` ayant pris la branche du dessus.)
+      if (uMsg == WM_KEYDOWN && wParam == VK_RETURN && chat_typing != nullptr &&
+          chat_typing->OwnsEnterKey())
+        chat_typing->OnRawKey(VK_RETURN);
       return 0;
     } else if (ItemDescWindow::EatsBookKey(uMsg, wParam)) {
       // Livre moderne ouvert : ← et → tournent SA page. Le jeu ne doit pas les

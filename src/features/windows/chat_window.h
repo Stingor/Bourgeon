@@ -108,6 +108,25 @@ class ChatWindow : public Plugin {
   // n'est pas une fenêtre RO.
   bool WantsEscapeKey() const;
 
+  // 🔴 LA BARRE EST-ELLE ARMÉE, c'est-à-dire en droit de recevoir ENTRÉE avant
+  // qui que ce soit d'autre ? Lu par les fenêtres qui se servent de la touche
+  // comme raccourci de validation — le dialogue NPC en tête, dont un lien
+  // `<ITEML>`/`<MOBL>` se relaie dans le chat d'un Maj+clic. Sans ce prédicat, le
+  // lien atterrissait dans la saisie et n'en repartait plus : le dialogue prenait
+  // la touche pour son bouton « Suivant », et il fallait fermer le script pour
+  // pouvoir envoyer.
+  //
+  // Armée = la ligne de saisie est à l'écran ET l'un de ces trois signes : la
+  // barre est DÉPLIÉE en battle mode (le joueur l'a ouverte exprès), elle porte du
+  // TEXTE, ou elle a le CLAVIER — ou est sur le point de l'avoir. Hors battle mode
+  // et vide et sans clavier, elle ne réclame rien : « Entrée = Suivant » continue
+  // de marcher, ce qui est tout l'intérêt de ne pas confisquer la touche pour la
+  // seule durée d'un script.
+  //
+  // Lu depuis le WndProc, donc ENTRE deux frames : d'où la tolérance d'une frame
+  // sur le focus (même mécanique que `PickerOpen`).
+  bool OwnsEnterKey() const;
+
   // Interrupteur de la fenêtre (persisté par MoonlightUi, clé « chatwnd_imgui »).
   // Public comme chez les autres fenêtres modernes : c'est la table de réglages
   // qui l'écrit (MLUI_FIELD).
@@ -1078,6 +1097,11 @@ class ChatWindow : public Plugin {
   // pas tout seul : sa navigation au clavier est désactivée, et un InputText
   // n'insère pas la tabulation sans `AllowTabInput`. C'est donc à nous.
   bool focus_whisper_next_ = false;
+  // Dernière frame où une des deux boxes de la ligne (saisie ou « Pseudo »)
+  // portait le clavier. Un numéro de frame et pas un booléen, pour la même raison
+  // que la grille d'emotes : `OwnsEnterKey` est lu depuis le WndProc, entre deux
+  // frames, et il n'existe aucun point de reset unique dans le rendu.
+  int  input_focus_frame_ = -1;
   // 🔴 La touche est RELEVÉE au clavier, la décision se prend au RENDU. C'est là
   // seulement que l'état d'ImGui est valide : savoir si une autre zone de texte a
   // déjà le focus (recherche, renommage, panneau de réglages) évite de la lui

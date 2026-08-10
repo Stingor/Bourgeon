@@ -2612,12 +2612,22 @@ void ChatWindow::OnRenderUI() {
     // Si une zone de texte écrit — la nôtre comprise — c'est elle qui voit la
     // touche : la ligne de saisie referme et envoie déjà par son propre chemin.
     if (!ImGui::GetIO().WantTextInput) {
-      if (battle_mode_ && input_open_) {
+      // 🔴 « OUVERTE » NE VEUT PAS DIRE LA MÊME CHOSE DANS LES DEUX MODES. En
+      // battle mode c'est le dépliement (`input_open_`) ; hors battle mode la
+      // barre est là en permanence, et exiger `input_open_` renvoyait TOUJOURS
+      // vers la branche « on l'ouvre » — une barre pleine mais sans clavier
+      // demandait donc DEUX Entrée pour envoyer, la première ne servant qu'à
+      // reprendre le focus. C'est ce qui bloquait un lien posé pendant un
+      // dialogue NPC, où la touche est confisquée puis remise ici.
+      const bool row_open = battle_mode_ ? input_open_ : InputRowVisible();
+      if (row_open) {
         if (input_[0] != '\0') {
           QueueSend();
           focus_input_next_ = true;
-        } else {
+        } else if (battle_mode_) {
           input_open_ = false;
+        } else {
+          focus_input_next_ = true;  // rien à envoyer : la touche rend le clavier
         }
       } else {
         if (battle_mode_) input_open_ = true;
@@ -4773,6 +4783,10 @@ void ChatWindow::DrawInputRow() {
   // d'office dans la saisie.
   if (whisper_active) focus_on_whisper_ = true;
   if (input_active) focus_on_whisper_ = false;
+  // Le clavier est-il DANS la ligne, cette frame ? Relevé ici pour `OwnsEnterKey`,
+  // que le WndProc interroge entre deux frames — il ne peut pas appeler
+  // `IsItemActive` lui-même.
+  if (input_active || whisper_active) input_focus_frame_ = ImGui::GetFrameCount();
 }
 
 // ── Persistance de la disposition ────────────────────────────────────────────
@@ -6311,6 +6325,29 @@ bool ChatWindow::PickerOpen() const {
   if (picker_open_frame_ < 0 || ImGui::GetCurrentContext() == nullptr)
     return false;
   return ImGui::GetFrameCount() - picker_open_frame_ <= 1;
+}
+
+// Cf. l'en-tête pour le POURQUOI. Ici, le seul point délicat est l'ordre des
+// tests : le TEXTE d'abord, parce qu'un lien fraîchement posé arme la barre à
+// l'instant même où le geste s'achève — bien avant que le focus demandé ne se
+// soit matérialisé (`SetKeyboardFocusHere` est refusé tant que le bouton de la
+// souris est enfoncé, cf. DrawInputRow). Attendre le focus, c'est laisser une
+// fenêtre de plusieurs frames où le dialogue NPC reprendrait la touche.
+bool ChatWindow::OwnsEnterKey() const {
+  if (!imgui_enabled_ || !InputRowVisible()) return false;
+  // 🔴 EN BATTLE MODE, LE DÉPLIEMENT SUFFIT : la barre n'est là que parce que le
+  // joueur l'a ouverte, et Entrée est justement ce qui la referme quand elle est
+  // vide. La laisser filer au dialogue, c'est un geste pour deux effets — la barre
+  // se refermait ET le script avançait d'une page. (`InputRowVisible` a déjà
+  // vérifié `input_open_` : en battle mode elle ne vaut que dépliée.)
+  if (battle_mode_) return true;
+  // Hors battle mode la barre est là en PERMANENCE : son existence ne prouve donc
+  // aucune intention, et il faut un signe — du texte, ou le clavier.
+  if (input_[0] != '\0') return true;  // un lien posé, une phrase en cours
+  // Focus EN VOL : la demande est posée, le champ s'active à la frame suivante.
+  if (focus_input_next_ || focus_whisper_next_) return true;
+  if (input_focus_frame_ < 0 || ImGui::GetCurrentContext() == nullptr) return false;
+  return ImGui::GetFrameCount() - input_focus_frame_ <= 1;
 }
 
 bool ChatWindow::WantsEscapeKey() const {

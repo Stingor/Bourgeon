@@ -24,6 +24,7 @@
 #include "features/link_gesture.h"        // links:: (gestes des balises maison)
 #include "features/systems/bug_report.h"  // BugReport::NpcContext
 #include "features/systems/image_preview.h"  // imgprev:: (<IMG> web)
+#include "features/windows/chat_window.h"  // OwnsEnterKey (à qui appartient Entrée)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch (icônes)
 #include "imgui.h"
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (<IMG> ressource client)
@@ -85,6 +86,22 @@ constexpr uint32_t kLinkColor = IM_COL32(0x2E, 0x74, 0xD8, 0xFF);
 // donc l'état de la frame qui vient d'être rendue.
 bool g_kbd_dialog_open = false;  // overlay dialogue rendu cette frame
 bool g_kbd_menu_open   = false;  // un menu de choix est affiché (flèches + 1-9 actifs)
+
+// 🔴 ENTRÉE APPARTIENT D'ABORD À LA BARRE DE CHAT. Un `<ITEML>`/`<MOBL>` du script
+// se relaie dans le chat d'un Maj+clic : le lien atterrit dans la saisie, et il
+// faut pouvoir l'envoyer SANS fermer le script. Tant que la barre est armée — du
+// texte dedans, ou le clavier — la touche est à elle, ici comme dans le WndProc
+// (cf. ChatWindow::OwnsEnterKey). Barre vide et sans clavier, elle ne réclame
+// rien et « Entrée = Suivant » vaut comme avant : confisquer la touche pour toute
+// la durée d'un script coûterait bien plus qu'il ne rapporte.
+//
+// ⚠ N'engage QUE la touche Entrée. Espace continue de valider le bouton par
+// défaut : le chat ne le réclame que lorsqu'il a le clavier, et ce cas-là est
+// déjà couvert par `WantTextInput`.
+bool ChatOwnsEnter() {
+  const ChatWindow* chat = Bourgeon::Instance().chat_window();
+  return chat != nullptr && chat->OwnsEnterKey();
+}
 
 // ── Fenêtres natives (SEH-gardé) ──
 void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
@@ -1438,9 +1455,12 @@ void NpcDialogWindow::DrawMenu(float group_h) {
     }
   }
   // Entrée = valide l'option focus (depuis la recherche via EnterReturnsTrue, ou
-  // globalement hors saisie clavier).
+  // globalement hors saisie clavier ET hors barre de chat armée — cf.
+  // ChatOwnsEnter). Le chemin `enter_from_search`, lui, n'est PAS soumis à cette
+  // dernière condition : la touche vient alors du filtre, qui a le clavier, et
+  // c'est bien lui qui valide — pas une frappe libre qu'on disputerait au chat.
   const bool enter = enter_from_search ||
-                     (!ImGui::GetIO().WantTextInput &&
+                     (!ImGui::GetIO().WantTextInput && !ChatOwnsEnter() &&
                       (ImGui::IsKeyPressed(ImGuiKey_Enter) ||
                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)));
   if (enter && menu_hot_ >= 0 && menu_hot_ < static_cast<int>(visible.size()))
@@ -1521,6 +1541,12 @@ bool NpcDialogWindow::DrawSettings() {
 // dialogue et ne doit PAS atteindre le jeu (Entrée ouvrirait le chat, Échap le menu
 // RO). Tout le reste — F1-F9, lettres… — passe au jeu, comme en natif : la skillbar
 // et les hotkeys restent utilisables pendant un dialogue NPC.
+//
+// ⚠ ENTRÉE RESTE AVALÉE MÊME QUAND LA BARRE DE CHAT LA RÉCLAME, et c'est voulu :
+// la laisser filer au jeu la ferait passer par `UIWindowMgr_ActivateDefault`, donc
+// par le bouton par défaut de la fenêtre native prioritaire. Le WndProc la remet
+// DIRECTEMENT à la chatbox (`OnRawKey`) au lieu de la relâcher — même recette
+// qu'Échap, et le seul moyen de ne pas affamer notre propre handler.
 bool NpcDialogWindow::EatsKey(unsigned msg, unsigned long wparam) {
   if (!g_kbd_dialog_open) return false;
   // Combo avec modificateur = hotkey jeu (skillbar, macro…) : on laisse passer.
@@ -1735,10 +1761,19 @@ void NpcDialogWindow::OnRenderUI() {
     // Entrée pour son option focus) et hors saisie (l'input a son propre OK). Sans
     // repeat pour qu'un appui maintenu ne re-déclenche pas. BeginDisabled ne couvre
     // PAS le clavier : il faut l'exclure explicitement pendant l'attente.
-    const bool kbd_ok = footer_kbd_ok && !awaiting_reply_ &&
-                        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-                         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
-                         ImGui::IsKeyPressed(ImGuiKey_Space, false));
+    //
+    // 🔴 `WantTextInput` MANQUAIT ICI, et c'était le trou : n'importe quelle zone de
+    // texte à l'écran — la barre de chat, le filtre d'une autre fenêtre — voyait sa
+    // frappe faire AUSSI avancer le script, et la moindre espace tapée valait un
+    // « Suivant ». Le clavier du footer ne vaut que si personne n'écrit.
+    // Et Entrée cède en plus à la barre de chat ARMÉE, qui n'a pas forcément le
+    // clavier quand elle porte un lien fraîchement posé (cf. ChatOwnsEnter).
+    const bool kbd_free = !ImGui::GetIO().WantTextInput;
+    const bool kbd_ok =
+        footer_kbd_ok && !awaiting_reply_ && kbd_free &&
+        ((!ChatOwnsEnter() && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                               ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) ||
+         ImGui::IsKeyPressed(ImGuiKey_Space, false));
     bool shown = false;
     if (has_next_) {
       if (ro::RoButton(i18n::Tr("Suivant")) || kbd_ok) SendNext();
