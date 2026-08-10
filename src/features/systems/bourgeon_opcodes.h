@@ -43,6 +43,7 @@ constexpr uint16_t kOpenStorage = 0x0F1D;  // CZ_BOURGEON_OPEN_STORAGE (ouvrir/b
 constexpr uint16_t kReqMobInfo  = 0x0F1F;  // CZ_BOURGEON_REQ_MOBINFO (fiche détaillée d'un monstre)
 constexpr uint16_t kReqEntityProps = 0x0F22;  // CZ_BOURGEON_REQ_ENTITY_PROPS (propriétés serveur d'une entité — STAFF)
 constexpr uint16_t kUiCaps      = 0x0F24;  // CZ_BOURGEON_UI_CAPS (ce que l'interface moderne SAIT AFFICHER)
+constexpr uint16_t kNpcAdmin    = 0x0F25;  // CZ_BOURGEON_NPC_ADMIN (recharger/décharger/déplacer un NPC — ADMIN)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -72,6 +73,6 @@ constexpr uint16_t kEntityProps    = 0x0F23;  // ZC_BOURGEON_ENTITY_PROPS (liste
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F25;
+constexpr uint16_t kNextFree    = 0x0F26;
 
 }  // namespace bopcodes

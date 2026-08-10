@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
+#include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (outillage NPC admin)
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
@@ -249,6 +250,31 @@ constexpr int kCodeReportUser  = 63;
 // CZ_CONTACTNPC : parler à un NPC. 7 octets, comme le natif l'émet lui-même dans
 // la branche « entité hostile/spéciale » de CursorMgr_UpdateHover (docs §7).
 constexpr uint16_t kCzContactNpc = 0x0090;
+
+// ── CZ_BOURGEON_NPC_ADMIN (0x0F25) ───────────────────────────────────────────
+// [op:2][len:2][gid:4][action:1]. Miroir EXACT de `e_bourgeon_npc_admin_action`
+// côté moonlight (packets_struct.hpp) : les deux listes bougent ensemble et les
+// valeurs ne se réordonnent pas.
+constexpr uint8_t kNpcAdminReloadFile = 0;
+constexpr uint8_t kNpcAdminUnload     = 1;
+constexpr uint8_t kNpcAdminMoveToMe   = 2;
+
+// Le titre-identifiant de la modale de confirmation. Fonction et non constante :
+// la partie visible est traduite, seul ce qui suit `###` fait l'identité ImGui —
+// et les trois endroits qui la nomment (ouverture, dessin, test « déjà ouverte »)
+// doivent citer exactement la même chaîne.
+const char* ConfirmModalId() {
+  return i18n::Tr("Décharger ce NPC###bourgeon_ctxmenu_confirm");
+}
+
+void SendNpcAdmin(uint32_t gid, uint8_t action) {
+  uint8_t packet[9];
+  *reinterpret_cast<uint16_t*>(packet + 0) = bopcodes::kNpcAdmin;
+  *reinterpret_cast<uint16_t*>(packet + 2) = static_cast<uint16_t>(sizeof(packet));
+  *reinterpret_cast<uint32_t*>(packet + 4) = gid;
+  packet[8] = action;
+  Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+}
 
 using PushBackFn   = void   (__thiscall*)(void*, const int*);
 using GetGuildIdFn = uint32_t (__thiscall*)(void*);
@@ -664,6 +690,12 @@ void EntityContextMenu::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   target_aid_ = 0;
   pending_code_ = 0;
   pending_local_ = Local::kNone;
+  // Une question posée sur une entité d'une autre carte n'a plus de réponse
+  // sensée : le GID peut déjà désigner autre chose. (La modale, elle, se ferme
+  // d'elle-même : `confirm_local_` remis à zéro, DrawConfirmModal la referme.)
+  confirm_request_ = false;
+  confirm_local_   = Local::kNone;
+  confirm_aid_     = 0;
 
   // 🔴 Les rappels de blocage se rearment en QUITTANT le monde, pas à chaque
   // carte. Cet événement est émis pour les deux, et vider ici sans distinguer
@@ -1176,6 +1208,40 @@ void EntityContextMenu::BuildItems() {
       add_staff(i18n::Tr("Point de manière -"), kCodeMannerMinus);
     }
   }
+
+  // ── Outillage NPC de l'administrateur ──────────────────────────────────────
+  // 🔴 `IsAdmin()` (niveau de groupe >= 99), pas `IsStaff()` : tout ce qui
+  // précède AFFICHE, ces trois-là MODIFIENT le serveur pour tous les joueurs
+  // connectés. Le serveur refait le test — le bouton absent n'est pas une garde.
+  //
+  // Un portail (job 45) est un NPC comme un autre pour ces actions : c'est même
+  // le cas où l'on veut le plus pouvoir recharger le fichier sans redémarrer.
+  if (kind_ == Kind::kNpc && IsAdmin()) {
+    // Le rechargement en premier : c'est le geste courant (on vient d'éditer le
+    // script), et le seul des trois qui ne retire rien.
+    add(i18n::Tr("Recharger son fichier de script"), 0, Local::kNpcReloadFile,
+        true, true,
+        i18n::Tr("Recharge le FICHIER d'où vient ce NPC, pas seulement lui : tous "
+                 "les NPC déclarés dans ce fichier sont déchargés puis relus, et "
+                 "leurs événements OnInit rejoués.\n"
+                 "Les mapflags et les monstres posés directement par le script ne "
+                 "sont PAS retirés — ils s'ajouteront à ceux déjà en place.\n"
+                 "Le serveur dit dans le chat ce qu'il a fait."));
+    add(i18n::Tr("Déplacer ici"), 0, Local::kNpcMoveHere, false, true,
+        i18n::Tr("Pose le NPC sur votre case. Rien n'est enregistré : il "
+                 "retrouvera sa position d'origine au prochain rechargement de "
+                 "son fichier ou du serveur."));
+    Item unload;
+    unload.label   = i18n::Tr("Décharger ce NPC…");
+    unload.local   = Local::kNpcUnload;
+    unload.staff   = true;
+    unload.danger  = true;
+    unload.confirm = true;
+    unload.tip = i18n::Tr(
+        "Retire ce NPC du monde pour TOUS les joueurs connectés, avec ses "
+        "duplicates. Il faudra recharger son fichier pour le faire revenir.");
+    items_.push_back(std::move(unload));
+  }
 }
 
 const char* EntityContextMenu::KindLabel(Kind kind) {
@@ -1200,18 +1266,33 @@ void EntityContextMenu::OnRenderUI() {
   if (request_open_) {
     const bool stale = (GetTickCount() - request_tick_) > 500u;
     request_open_ = false;
-    if (stale) return;  // interface masquée au moment du clic : la demande a péri
-    open_ = true;
-    ImGui::OpenPopup("##bourgeon_entity_ctx");
-    // 🔴 La position vient d'ImGui, PAS des globaux souris du client
-    // (`g_MouseScreenX/Y`, docs §2) : ceux-là sont en pixels CLIENT, et rien ne
-    // garantit qu'ils partagent l'échelle du DisplaySize d'ImGui. Le menu
-    // s'ouvre au relâchement du bouton, donc le curseur n'a pas bougé entre le
-    // tick qui l'a décidé et cette frame.
-    ImGui::SetNextWindowPos(ImGui::GetIO().MousePos, ImGuiCond_Always);
+    // Interface masquée au moment du clic : la demande a péri. 🔴 On ne SORT pas
+    // pour autant — la modale de confirmation vit plus bas et sauter sa frame la
+    // fermerait en silence.
+    //
+    // 🔴 Et on n'ouvre RIEN tant qu'une confirmation est à l'écran. Le menu naît
+    // de la passe souris du CLIENT, qu'une modale ImGui ne bloque pas : sans ce
+    // test, un clic droit dans le monde appellerait `OpenPopup` au même niveau de
+    // pile et REMPLACERAIT la modale — la question posée disparaîtrait sans
+    // réponse, et sans que rien ne le dise.
+    if (!stale && !ImGui::IsPopupOpen(ConfirmModalId())) {
+      open_ = true;
+      ImGui::OpenPopup("##bourgeon_entity_ctx");
+      // 🔴 La position vient d'ImGui, PAS des globaux souris du client
+      // (`g_MouseScreenX/Y`, docs §2) : ceux-là sont en pixels CLIENT, et rien ne
+      // garantit qu'ils partagent l'échelle du DisplaySize d'ImGui. Le menu
+      // s'ouvre au relâchement du bouton, donc le curseur n'a pas bougé entre le
+      // tick qui l'a décidé et cette frame.
+      ImGui::SetNextWindowPos(ImGui::GetIO().MousePos, ImGuiCond_Always);
+    }
   }
-  if (!open_) return;
+  if (open_) DrawPopup();
+  // 🔴 Hors du popup, et appelée à CHAQUE frame : le menu est déjà fermé quand la
+  // question se pose, et une modale qu'on cesse de dessiner disparaît.
+  DrawConfirmModal();
+}
 
+void EntityContextMenu::DrawPopup() {
   // Serré : un menu contextuel se lit d'un coup d'œil, il ne se contemple pas.
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 3.0f));
@@ -1249,14 +1330,18 @@ void EntityContextMenu::OnRenderUI() {
           ImGui::SetTooltip("%s", item.tip.c_str());
         continue;
       }
-      if (item.staff) {
+      // Le rouge l'emporte sur l'ocre du staff : une entrée qui RETIRE quelque
+      // chose au monde doit se distinguer de celles qui ne font que lire.
+      if (item.danger) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.75f, 0.13f, 0.13f, 1.0f));
+      } else if (item.staff) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.28f, 0.10f, 1.0f));
       }
       if (item.disabled) ImGui::BeginDisabled();
       const bool clicked = ImGui::Selectable(
           item.label.c_str(), false, ImGuiSelectableFlags_NoAutoClosePopups);
       if (item.disabled) ImGui::EndDisabled();
-      if (item.staff) ImGui::PopStyleColor();
+      if (item.danger || item.staff) ImGui::PopStyleColor();
       // 🔴 `AllowWhenDisabled` : sans ce drapeau, une entrée grisée ne compte pas
       // comme survolée — et c'est justement celle dont il faut dire POURQUOI.
       if (!item.tip.empty() &&
@@ -1281,12 +1366,78 @@ void EntityContextMenu::OnRenderUI() {
 // ── Exécution ────────────────────────────────────────────────────────────────
 
 void EntityContextMenu::Choose(const Item& item) {
+  // Une action à confirmer ne s'arme pas : elle pose sa question d'abord. La
+  // cible est recopiée dès maintenant — le menu peut se rouvrir sur autre chose
+  // pendant que la modale est à l'écran, et c'est bien le NPC nommé DANS la
+  // question qui doit disparaître.
+  if (item.confirm) {
+    confirm_local_   = item.local;
+    confirm_aid_     = target_aid_;
+    confirm_name_    = target_name_;
+    confirm_request_ = true;
+    return;
+  }
+
   // Rien n'est joué ICI : on est entre NewFrame() et Render(), et plusieurs de
   // ces actions ouvrent une modale native BLOQUANTE qui relance le tick du mode.
   pending_aid_   = target_aid_;
   pending_code_  = item.code;
   pending_local_ = item.local;
   pending_arg_   = target_job_;
+}
+
+// ── Confirmation ─────────────────────────────────────────────────────────────
+// Une seule modale, parce qu'il n'y a aujourd'hui qu'une action à confirmer. Le
+// `switch` sur `confirm_local_` est là pour que la deuxième n'ait pas à
+// réinventer le mécanisme.
+void EntityContextMenu::DrawConfirmModal() {
+  if (confirm_request_) {
+    confirm_request_ = false;
+    ImGui::OpenPopup(ConfirmModalId());
+  }
+  if (!ro::BeginRoPopupModal(ConfirmModalId())) return;
+
+  switch (confirm_local_) {
+    case Local::kNpcUnload: {
+      const ImVec4 red(0.75f, 0.13f, 0.13f, 1.0f);
+      const ImVec4 gray(0.35f, 0.35f, 0.35f, 1.0f);
+      char who[96];
+      FormatNpcLabel(confirm_aid_,
+                     confirm_name_.empty() ? nullptr : confirm_name_.c_str(),
+                     who, sizeof(who));
+      ImGui::TextColored(red, i18n::Tr("Décharger %s ?"), who);
+      ImGui::Spacing();
+      // Ce que ça coûte VRAIMENT, dit avant le clic : le serveur, lui, ne pose
+      // aucune question et n'en reposera pas.
+      // ⚠ Sauts de ligne EXPLICITES, pas `TextWrapped` : la modale est en
+      // AlwaysAutoResize, et un texte qui se replie sur une largeur qu'il fixe
+      // lui-même fait osciller la fenêtre d'une frame à l'autre.
+      ImGui::Text("%s",
+          i18n::Tr("Il disparaît immédiatement pour TOUS les joueurs\n"
+                   "connectés, avec ses duplicates. Une conversation en\n"
+                   "cours avec lui reste ouverte sur un NPC qui n'existe plus."));
+      ImGui::Spacing();
+      ImGui::TextColored(gray, "%s",
+          i18n::Tr("Pour le faire revenir : clic droit sur un autre NPC du même\n"
+                   "fichier puis « Recharger son fichier de script », ou\n"
+                   "@reloadnpcfile. Rien n'est perdu sur le disque."));
+      ImGui::Spacing();
+      if (ro::RoButton(i18n::Tr("Décharger"), 110.0f, 0.0f)) {
+        pending_aid_   = confirm_aid_;
+        pending_code_  = 0;
+        pending_local_ = Local::kNpcUnload;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+      break;
+    }
+    default:
+      // Sécurité : une confirmation sans question n'a rien à faire à l'écran.
+      ImGui::CloseCurrentPopup();
+      break;
+  }
+  ro::EndRoPopupModal();
 }
 
 void EntityContextMenu::FlushPending() {
@@ -1343,6 +1494,19 @@ void EntityContextMenu::FlushPending() {
     case Local::kAttack:
       if (!RunNativeActorClick(aid))
         LogDiag("[EntityContextMenu] clic acteur refuse (cible {})", aid);
+      return;
+    // ── Outillage NPC de l'administrateur (CZ 0x0F25) ─────────────────────────
+    // Aucun compte rendu ici : c'est le SERVEUR qui dit dans le chat ce qu'il a
+    // fait — y compris le refus, s'il juge que le compte n'y a pas droit. Lui
+    // seul sait si le script s'est rechargé.
+    case Local::kNpcReloadFile:
+      SendNpcAdmin(aid, kNpcAdminReloadFile);
+      return;
+    case Local::kNpcUnload:
+      SendNpcAdmin(aid, kNpcAdminUnload);
+      return;
+    case Local::kNpcMoveHere:
+      SendNpcAdmin(aid, kNpcAdminMoveToMe);
       return;
     // ── Les deux chuchotements ────────────────────────────────────────────────
     // 🔴 Pas de `return` quand le chat moderne refuse : on TOMBE sur le code natif

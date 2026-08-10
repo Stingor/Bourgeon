@@ -17,3 +17,15 @@
 // donnée déjà présente sur chaque client (les noms), aucun enforcement serveur
 // n'est possible.
 bool IsStaff();
+
+// Vrai si le compte est ADMINISTRATEUR : niveau de groupe serveur >= 99, la même
+// source que IsStaff() (setting id 26). Seuil distinct parce que les deux gates
+// ne protègent pas la même chose : `IsStaff()` ouvre ce qui AFFICHE (noms des
+// entités, inspecteur, SPR Lab), `IsAdmin()` ouvre ce qui MODIFIE l'état du
+// serveur pour tous les joueurs connectés — décharger un NPC, recharger son
+// fichier de script.
+//
+// ⚠ Comme IsStaff(), c'est un gate de CONFIANCE côté client : il décide de ce qui
+// s'affiche, pas de ce qui est permis. Chaque action ainsi gatée doit avoir sa
+// propre revalidation SERVEUR (le handler de CZ 0x0F25 refait le test).
+bool IsAdmin();

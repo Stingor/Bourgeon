@@ -60,6 +60,28 @@
 // joueur — il ne s'ouvre que sous le réglage staff, et les identifiants
 // (AID/GID) ne figurent que dans la section staff, quelle que soit la cible.
 //
+// ── Outillage NPC de l'ADMINISTRATEUR (niveau de groupe >= 99) ───────────────
+// Trois actions de plus quand le NPC est visé par un compte admin : recharger le
+// fichier de script d'où il vient, le décharger, le poser sur notre case. Ce sont
+// `@reloadnpcfile`, `@unloadnpc` et `@npcmove` — mais sans avoir à savoir le nom
+// de ce qu'on regarde, ni le fichier d'où il sort.
+//
+// 🔴 Elles partent en CZ 0x0F25, PAS en commande @ rejouée par le chat. Les trois
+// atcommands résolvent leur cible par `npc_name2id`, dont la clé est `exname` —
+// le nom UNIQUE du serveur. Le client, lui, ne connaît que le nom AFFICHÉ de la
+// plaque, et les deux diffèrent dès qu'il y a un `#suffixe` ou un duplicate :
+// une commande @ aurait échoué sur « This NPC doesn't exist » précisément là où
+// l'outil sert le plus. Le GID, lui, est ce qu'on a sous le curseur. Quant au
+// rechargement, il n'était même pas exprimable : ce qui se recharge est le
+// FICHIER, dont le chemin ne vit que dans `nd->path`, côté serveur.
+//
+// 🔴 Seuil 99, pas 80 (`IsAdmin()`, pas `IsStaff()`). L'inspecteur de propriétés
+// AFFICHE ; ces trois-là MODIFIENT le monde pour tous les joueurs connectés. Le
+// serveur refait le test de son côté — le bouton absent n'est pas une garde.
+//
+// Le compte rendu vient du SERVEUR (`clif_displaymessage`), mot pour mot, dans le
+// chat : c'est lui qui sait si le script s'est rechargé.
+//
 // ── Rendre un NPC de service SOURD au clic gauche ────────────────────────────
 // Les NPC de la capitale (kafra, job master, styliste, warpers…) se tiennent au
 // milieu du passage : on les clique en voulant marcher, et le dialogue s'ouvre.
@@ -217,6 +239,12 @@ class EntityContextMenu : public Plugin {
     // chat moderne est éteint — c'est pour ça qu'ils portent AUSSI ce code.
     kWhisperBar,    // écrit le nom dans la box « Pseudo » de la barre principale
     kWhisperWindow, // ouvre la conversation 1:1
+    // ── Outillage NPC, niveau de groupe >= 99 (cf. l'en-tête) ────────────────
+    // Trois CZ 0x0F25, une par action. Elles ne portent AUCUN code natif : le
+    // client n'a jamais rien su faire de tel.
+    kNpcReloadFile, // recharger le fichier de script d'où vient ce NPC
+    kNpcUnload,     // décharger ce NPC et ses duplicates (confirmation)
+    kNpcMoveHere,   // le poser sur notre case
   };
 
   // Le nom de la famille de la cible, tel qu'il s'affiche en tête du menu — et
@@ -230,6 +258,9 @@ class EntityContextMenu : public Plugin {
     Local local     = Local::kNone;
     bool  separator = false;          // séparateur AVANT cette ligne
     bool  staff     = false;          // affichée en couleur staff
+    bool  danger    = false;          // rouge : l'action retire quelque chose au monde
+    // Passe par la modale de confirmation au lieu d'être jouée tout de suite.
+    bool  confirm   = false;
     bool  disabled  = false;          // grisée : l'action n'a pas de sens ici
     // Case à cocher plutôt qu'une action : elle bascule un ÉTAT et ne ferme donc
     // pas le menu (on veut pouvoir cocher puis parler au NPC dans la foulée).
@@ -242,6 +273,14 @@ class EntityContextMenu : public Plugin {
   void BuildItems();
   Kind ClassifyTarget(void* game_mode, uint32_t aid, uint32_t job, int category) const;
   void Choose(const Item& item);
+  // Le popup du menu lui-même. Extrait d'OnRenderUI pour que la modale de
+  // confirmation, elle, soit dessinée à CHAQUE frame — y compris celles où le
+  // menu est fermé, c'est-à-dire toutes celles où la question est posée.
+  void DrawPopup();
+  // La confirmation des actions destructrices. Dessinée à la RACINE de la frame,
+  // pas dans le popup du menu : celui-ci est fermé au moment du clic, et une
+  // modale ouverte depuis un popup mourant avec lui ne s'afficherait jamais.
+  void DrawConfirmModal();
   // Bascule le blocage de la cible courante, le dit dans le chat et demande la
   // sauvegarde des réglages.
   void ToggleNpcBlock(uint32_t gid);
@@ -273,6 +312,15 @@ class EntityContextMenu : public Plugin {
   uint32_t pending_aid_   = 0;
   Local    pending_local_ = Local::kNone;
   uint32_t pending_arg_   = 0;       // job (fiche de monstre), aid (parler)…
+
+  // ── Confirmation en attente ───────────────────────────────────────────────
+  // La cible est recopiée ici : le menu peut se rouvrir sur autre chose pendant
+  // que la modale est à l'écran, et c'est bien le NPC affiché dans la question
+  // qui doit être déchargé.
+  bool        confirm_request_ = false;  // ouvrir la modale à cette frame
+  Local       confirm_local_   = Local::kNone;
+  uint32_t    confirm_aid_     = 0;
+  std::string confirm_name_;
 
   bool all_entities_  = false;
   bool self_menu_     = true;

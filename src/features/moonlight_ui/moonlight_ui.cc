@@ -1059,6 +1059,16 @@ static constexpr int kStaffMinGroupLevel = 80;
 // jour), la fonctionnalité reste masquée, y compris sur un poste dev.
 bool IsStaff() { return g_staff_level >= kStaffMinGroupLevel; }
 
+// Seuil « administrateur » : le groupe le plus haut de rAthena. Au-dessus de
+// `kStaffMinGroupLevel` parce que les deux gates ne gardent pas la même chose —
+// le staff VOIT (noms, inspecteur), l'admin MODIFIE le serveur pour tout le monde
+// (décharger un NPC, recharger un fichier de script).
+static constexpr int kAdminMinGroupLevel = 99;
+
+// Cf. staff_gate.h. Le serveur refait le test à chaque action gatée ici : ceci ne
+// décide que de ce qui s'affiche.
+bool IsAdmin() { return g_staff_level >= kAdminMinGroupLevel; }
+
 
 
 void MoonlightUi::LoadItemNames() {

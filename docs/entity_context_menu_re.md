@@ -573,3 +573,30 @@ Options de configuration lues sur ce chemin : `0x69` (attaque au clic simple),
    menu quand il rend vrai (§4.1) — c'est ce qui empêche de proposer « échanger » à
    une kafra, dont la classe est une classe de **joueur**. Un remplaçant qui classe
    les entités sur le seul `job` se fait piéger.
+8. **Outillage NPC de l'administrateur** (niveau de groupe **>= 99**, `IsAdmin()`).
+   Trois entrées de plus sur un NPC : *recharger son fichier de script*, *déplacer
+   ici*, *décharger* (avec confirmation). Ce sont `@reloadnpcfile`, `@npcmove` et
+   `@unloadnpc`.
+
+   🔴 **Elles passent par CZ 0x0F25 (`CZ_BOURGEON_NPC_ADMIN`), PAS par une commande
+   `@` rejouée dans le chat.** Les trois atcommands résolvent leur cible avec
+   `npc_name2id`, dont la clé est **`nd->exname`** — le nom *unique* du serveur
+   (`strdb_put(npcname_db, nd->exname, nd)`, moonlight/src/map/npc.cpp). Le client,
+   lui, ne connaît que **`nd->name`**, le nom *affiché* de la plaque. Les deux
+   diffèrent dès qu'il y a un `#suffixe` ou un `duplicate` : la commande aurait
+   répondu « This NPC doesn't exist » précisément sur les NPC où l'outil sert le
+   plus. Le **GID** est ce que le pick fournit déjà et ce que `map_id2nd` prend
+   directement. Et le rechargement n'était de toute façon pas exprimable côté
+   client : ce qui se recharge est le **fichier**, dont le chemin ne vit que dans
+   `nd->path`.
+
+   Le seuil est **99**, pas 80 : l'inspecteur de propriétés (CZ 0x0F22) *affiche*,
+   ces trois-là *modifient le monde pour tous les joueurs connectés*. Gate refait
+   **côté serveur** dans `clif_parse_bourgeon_npc_admin`. Aucun ZC en retour — le
+   compte rendu part en `clif_displaymessage`, le canal des atcommands, et
+   s'affiche dans le chat.
+
+   ⚠ Côté serveur, `npc_unloadfile()` finit par `npc_delsrcfile()` et le dernier
+   `npc_unload()` libère l'entrée de `npc_path_db` : **`nd` et `nd->path` sont morts
+   après l'appel**. Le chemin est copié dans un tampon local avant, et `nd` mis à
+   `nullptr`.
