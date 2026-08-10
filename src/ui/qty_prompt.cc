@@ -66,14 +66,13 @@ int QuantityPrompt(const void* owner, const char* action_label, int max_amount,
 
   // [-] [champ] [+] : InputInt en step 0 (ses +/- natifs ne sont pas skinnés),
   // petits boutons RO carrés à la place, comme le panier du cash shop.
-  const float step_sz = ImGui::GetFrameHeight();
-  if (RoButton("-", step_sz, step_sz)) --g_amount;
+  if (RoButton("-")) --g_amount;
   ImGui::SameLine(0.0f, 2.0f);
   if (appearing) ImGui::SetKeyboardFocusHere();  // cible l'InputInt qui suit
   ImGui::SetNextItemWidth(90.0f);
   ImGui::InputInt("##ro_qty", &g_amount, 0, 0);
   ImGui::SameLine(0.0f, 2.0f);
-  if (RoButton("+", step_sz, step_sz)) ++g_amount;
+  if (RoButton("+")) ++g_amount;
   if (g_amount < 1) g_amount = 1;
   if (g_amount > max_amount) g_amount = max_amount;
 

@@ -3028,7 +3028,7 @@ bool ShowRoSkinSettings() {
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Bandeau carte"), g_cfg.card_head_col);
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Texte bandeau carte"), g_cfg.card_head_text);
   ch |= ColorEdit4WithAlphaBar(i18n::Tr("Fond fenêtre de liste (storage)"), g_cfg.list_col);
-  if (ImGui::Button(i18n::Tr("Réinitialiser le skin"))) {
+  if (ro::RoButton(i18n::Tr("Réinitialiser le skin"))) {
     g_cfg = RoSkinConfig();
     ch = true;
   }

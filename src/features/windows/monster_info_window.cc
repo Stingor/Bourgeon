@@ -1824,12 +1824,12 @@ void MonsterInfoWindow::FlushPending() {
 
 bool MonsterInfoWindow::DrawSettings() {
   bool changed = false;
-  if (ImGui::Checkbox(i18n::Tr("Animer le sprite du monstre"), &animate_)) changed = true;
+  if (ro::RoCheckbox(i18n::Tr("Animer le sprite du monstre"), &animate_)) changed = true;
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
         i18n::Tr("La fenêtre native n'affiche que la première image de l'animation "
         "d'attente.\nDécoché, on la reproduit à l'identique."));
-  if (ImGui::Checkbox(i18n::Tr("Afficher les Gardiens de forteresse"), &show_guardians_))
+  if (ro::RoCheckbox(i18n::Tr("Afficher les Gardiens de forteresse"), &show_guardians_))
     changed = true;
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(

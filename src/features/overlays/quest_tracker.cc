@@ -320,7 +320,7 @@ void QuestTracker::DrawSettings() {
   SameLine(); HelpMarker(i18n::Tr("Activé = overlay personnalisable\nDésactivé = overlay d'origine."));
 
   ImGui::BeginDisabled(!g_cfg.enabled);
-  g_needs_save |= ImGui::Checkbox(i18n::Tr("Barre de titre (nom + bouton de fermeture)"), &g_cfg.show_titlebar);
+  g_needs_save |= ro::RoCheckbox(i18n::Tr("Barre de titre (nom + bouton de fermeture)"), &g_cfg.show_titlebar);
   SameLine(); HelpMarker(
     i18n::Tr("Affiche une barre de titre avec le nombre de quêtes suivies.\n"
     "Le panneau se déplace en glissant la barre."));
@@ -328,7 +328,7 @@ void QuestTracker::DrawSettings() {
   // Borderless mode only: lock = click-through overlay; unlock = drag the body.
   ImGui::BeginDisabled(g_cfg.show_titlebar);
   bool unlocked = !g_cfg.locked;
-  if (ImGui::Checkbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &unlocked)) {
+  if (ro::RoCheckbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &unlocked)) {
     g_cfg.locked = !unlocked;
     g_needs_save = true;
   }
@@ -360,7 +360,7 @@ void QuestTracker::DrawSettings() {
     g_needs_save = true;
   }
 
-  g_needs_save |= ImGui::Checkbox(i18n::Tr("Fond translucide"), &g_cfg.show_bg);
+  g_needs_save |= ro::RoCheckbox(i18n::Tr("Fond translucide"), &g_cfg.show_bg);
   ImGui::BeginDisabled(!g_cfg.show_bg);
   g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha, 0, 100, "%d%%");
   ImGui::EndDisabled();
