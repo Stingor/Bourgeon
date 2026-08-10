@@ -36,9 +36,26 @@ int& SkinPresetSelection();
 // appeler après avoir chargé les presets du disque.
 void EnsureDefaultSkinPresets();
 
+// Le combo « police de toute l'interface », seul : la section ci-dessous le pose
+// en tête, et l'écran de login à côté du choix de la langue.
+//
+// 🔴 Il PERSISTE lui-même son choix (startup::SaveUiFontFamily), au lieu de le
+// rendre à l'appelant comme le reste du panneau. C'est un réglage d'AVANT le
+// jeu, écrit dans le fichier de démarrage : le login n'a aucun cycle de
+// sauvegarde à lui offrir, et un choix perdu à la fermeture du client passerait
+// pour un bug.
+//
+// `label` se passe DÉJÀ TRADUIT, et via `i18n::TrId` : `RoBeginCombo` fait
+// `PushID(label)`, donc un libellé traduit changerait l'identité du widget d'une
+// langue à l'autre — au login, précisément pendant qu'on en change.
+void DrawUiFontCombo(const char* label, float width);
+
 // Section complète « Skin RO » : police, réglages du skin, gestion des presets.
 // À placer dans un panneau ImGui existant. Renvoie true si quelque chose a
 // changé — l'appelant décide alors de sauvegarder.
+//
+// ⚠ La police n'est PAS dans ce « quelque chose » : elle ne vit plus dans
+// bourgeon_settings.yaml et s'enregistre toute seule (cf. DrawUiFontCombo).
 bool DrawSkinPanel();
 
 }  // namespace ro

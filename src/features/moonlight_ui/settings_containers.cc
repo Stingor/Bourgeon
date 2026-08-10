@@ -248,12 +248,16 @@ void WriteStorageTabCustom(YAML::Emitter& out) {
 }
 
 void ReadSkinAndPresets(const YAML::Node& ui) {
-  // 🔴 DANS CET ORDRE. « malgun_font » est l'ancien booléen (police intégrée
-  // d'ImGui quand il est faux) ; « ui_font_family » le remplace et porte le choix
-  // complet, donc il tranche en dernier. Un yaml d'avant la famille n'a que le
-  // booléen, et le défaut de `as<int>` garde alors le comportement d'origine.
-  ro::SetFontEnabled(ui["malgun_font"].as<bool>(ro::IsFontEnabled()));
-  ro::SetUiFontFamily(ui["ui_font_family"].as<int>(ro::UiFontFamily()));
+  // 🔴 « malgun_font » et « ui_font_family » NE SONT PLUS ICI, et ne doivent pas
+  // y revenir. Ce fichier n'est relu qu'à l'entrée en jeu (LoadSettings, sur
+  // `in_game_ && !was_in_game`) : la police arrivait donc après l'écran de login
+  // et le char-select, et cette relecture ÉCRASAIT le choix que le joueur venait
+  // de faire au combo du login. Elle vit maintenant à la racine de
+  // paths::StartupSettingsPath(), lue au chargement de la DLL par
+  // startup::UiFontFamily() — qui reprend les deux anciennes clés d'ici tant que
+  // la neuve n'a jamais été posée — et écrite par startup::SaveUiFontFamily().
+  // (Même déménagement que « language », cf. moonlight_ui.cc.)
+  //
   // (« ro_skin » : clé abandonnée — le skin RO est désormais toujours actif. Une
   // ancienne valeur false dans le yaml est simplement ignorée.)
   ReadSkinCfg(ui, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
@@ -275,10 +279,9 @@ void ReadSkinAndPresets(const YAML::Node& ui) {
 }
 
 void WriteSkinAndPresets(YAML::Emitter& out) {
-  // Les deux clés, et pas seulement la neuve : une DLL antérieure relira le
-  // booléen et retombera au moins sur Malgun plutôt que sur ProggyClean.
-  out << YAML::Key << "malgun_font" << YAML::Value << ro::IsFontEnabled();
-  out << YAML::Key << "ui_font_family" << YAML::Value << ro::UiFontFamily();
+  // (La police de l'interface n'est plus écrite ici — cf. ReadSkinAndPresets.
+  // Les anciennes clés restent dans les yaml existants : elles servent encore de
+  // repli à startup::UiFontFamily() au premier lancement après la mise à jour.)
   EmitSkinCfg(out, ro::SkinConfig(), "ro_skin_", /*with_rounding=*/true);
   out << YAML::Key << "ro_skin_presets" << YAML::Value << YAML::BeginSeq;
   for (const ro::SkinPreset& preset : ro::SkinPresets()) {

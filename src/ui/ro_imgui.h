@@ -118,8 +118,10 @@ ImFont* LoadKoreanFont(float size_px = 15.0f);
 // LoadKoreanFont (l'état est mémorisé et appliqué au chargement). Désactivé =
 // retour à la police intégrée d'ImGui.
 //
-// C'est le cas particulier de SetUiFontFamily(-1) ci-dessous, gardé pour la clé
-// yaml « malgun_font » : réactiver ne défait PAS un choix de famille.
+// C'est le cas particulier de SetUiFontFamily(-1) ci-dessous : réactiver ne
+// défait PAS un choix de famille. Il portait la vieille clé yaml « malgun_font »,
+// qui n'est plus écrite — startup::UiFontFamily() la lit encore en repli, mais
+// résout elle-même le booléen en index et n'appelle plus ceci.
 void SetFontEnabled(bool enabled);
 
 // ── La police de TOUTE l'interface ───────────────────────────────────────────

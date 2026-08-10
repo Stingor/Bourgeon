@@ -73,6 +73,7 @@
 #include "features/staff_gate.h"  // IsStaff() — gate de la fenêtre de logs
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/startup_settings.h"  // police de l'interface, lue avant le login
 
 Bourgeon::Bourgeon()
     : plugins_(), last_tick_count_(), log_lines_(), client_() {}
@@ -186,6 +187,14 @@ bool Bourgeon::Initialize() {
   // toujours en français, quel que soit le réglage — les deux écrans que voit
   // d'abord le joueur à qui la traduction s'adresse.
   i18n::LoadLanguageSetting();
+
+  // La police de l'interface voyage avec elle, et pour la même raison : l'écran
+  // de login la propose juste à côté du choix de la langue, et
+  // `bourgeon_settings.yaml` n'aurait rendu son verdict qu'une fois cet écran
+  // passé. Rien n'est dessiné à cet instant — `SetUiFontFamily` se contente de
+  // mémoriser, et `ro::LoadKoreanFont` appliquera la sélection quand il bâtira
+  // l'atlas.
+  ro::SetUiFontFamily(startup::UiFontFamily(ro::UiFontFamily()));
 
   if (!client_.Initialize()) {
     LogError("Bourgeon failed to initialize");

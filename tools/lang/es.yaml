@@ -178,6 +178,7 @@
 "Coupe la marche dès que tu lâches la touche, au lieu de laisser le personnage finir le trajet demandé.": "Corta la marcha en cuanto sueltas la tecla, en vez de dejar que el personaje termine el camino pedido."
 "Interface de jeu": "Interfaz de juego"
 "Langue": "Idioma"
+"Police": "Fuente"
 "Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, descriptions, messages du serveur) n'est pas concerné.\nUne langue grisée est connue mais son fichier de traduction est absent de SaveData\\lang\\.": "Idioma de la interfaz de Bourgeon. El juego en sí (nombres de objetos, descripciones, mensajes del servidor) no se ve afectado.\nUn idioma en gris es conocido pero falta su archivo de traducción en SaveData\\lang\\."
 "%zu textes sans traduction": "%zu textos sin traducir"
 "Écrit les textes rencontrés depuis le lancement et absents du catalogue dans SaveData\\lang\\<langue>.missing.yaml, prêts à traduire. N'y figure que ce qui a été AFFICHÉ : ouvre les fenêtres concernées avant d'exporter.": "Escribe los textos encontrados desde el arranque y ausentes del catálogo en SaveData\\lang\\<idioma>.missing.yaml, listos para traducir. Solo aparece ahí lo que se ha MOSTRADO: abre las ventanas correspondientes antes de exportar."

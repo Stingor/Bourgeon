@@ -23,6 +23,7 @@
 #include "features/systems/native_login.h"
 #include "ragnarok/ragnarok_client.h"  // PostGameKey (frappes destinées au natif)
 #include "ui/ro_imgui.h"
+#include "ui/skin_panel.h"  // ro::DrawUiFontCombo (le combo de police, partagé)
 #include "utils/log_console.h"
 #include "utils/game_paths.h"
 #include "utils/startup_settings.h"
@@ -31,9 +32,30 @@
 
 namespace {
 
-// Largeur commune des contrôles du formulaire (la fenêtre s'auto-dimensionne
-// autour ; largeur fixe pour éviter que les champs/boutons ne s'effondrent).
-constexpr float kFormW = 340.0f;
+// Largeur PLANCHER des contrôles du formulaire. La fenêtre s'auto-dimensionne
+// autour d'eux, et ce minimum évite que champs et boutons ne s'effondrent quand
+// il n'y a rien de plus large à afficher.
+constexpr float kFormMinW = 340.0f;
+
+// Largeur commune des contrôles du formulaire : tout ce que la fenêtre offre.
+//
+// 🔴 DYNAMIQUE et non figée, parce que la fenêtre est en `AlwaysAutoResize` :
+// elle se règle sur son élément le plus large, et un formulaire calibré en dur
+// pour le français laissait une bande vide à droite dès qu'un libellé traduit
+// dépassait — l'anglais et l'espagnol allongent la ligne « Langue / Police ».
+// Ici chaque contrôle occupe la largeur réelle, quelle qu'elle soit.
+//
+// ⚠ À appeler EN DÉBUT DE LIGNE : `GetContentRegionAvail` part du curseur, donc
+// après un `SameLine` il ne rend plus que ce qui reste.
+//
+// ⚠ Rien ne doit demander PLUS que ce que cette fonction rend, sans quoi la
+// fenêtre grandirait d'un cran à chaque frame. Un contrôle exactement large de
+// `FormWidth()` contribue exactement la largeur courante : le calcul a un point
+// fixe, et la taille se stabilise en une frame ou deux. (Le plancher, lui, ne
+// pousse qu'une fois vers le haut.)
+float FormWidth() {
+  return (std::max)(ImGui::GetContentRegionAvail().x, kFormMinW);
+}
 
 // URL « usine » du serveur Moonlight — identique pour tous les joueurs, intégrée
 // au build : aucun utilisateur n'a à toucher à la config. La section yaml
@@ -378,25 +400,54 @@ void HyperlinkOpen(const char* label, const std::string& url) {
     ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-// ── Le choix de la langue, sur l'écran de login ──────────────────────────────
-// Le réglage existe déjà dans le panneau « Interface de jeu », mais celui-là
-// n'est atteignable qu'une fois EN JEU. Un joueur anglophone qui lance le client
-// pour la première fois devrait donc traverser un formulaire français, un
-// char-select français et une entrée en jeu avant de pouvoir demander l'anglais.
-// C'est ici qu'il faut le lui proposer, sur le premier écran qu'il voit.
-void DrawLanguagePicker() {
+// ── Le choix de la langue et de la police, sur l'écran de login ──────────────
+// Les deux réglages existent déjà dans le panneau « Interface de jeu », mais
+// celui-là n'est atteignable qu'une fois EN JEU. Un joueur anglophone qui lance
+// le client pour la première fois devrait donc traverser un formulaire français,
+// un char-select français et une entrée en jeu avant de pouvoir demander
+// l'anglais. C'est ici qu'il faut le lui proposer, sur le premier écran qu'il
+// voit — et la police va avec : c'est aussi le premier écran où on la lit.
+void DrawLanguageAndFontPickers() {
   ImGui::Spacing();
   ImGui::Separator();
+
+  // Les deux combos se PARTAGENT la largeur du formulaire, libellés déduits :
+  // cette ligne est la plus large de la fenêtre, donc la seule qui puisse en
+  // fixer la taille. Lui laisser des largeurs en dur revenait à l'élargir pour
+  // elle seule pendant que le reste du formulaire gardait la sienne — d'où la
+  // bande vide à droite, d'autant plus visible que les libellés s'allongent en
+  // anglais et en espagnol.
+  //
+  // Les libellés se mesurent donc TRADUITS (« Idioma » n'a pas la largeur de
+  // « Langue »), et `hide_text_after_double_hash` écarte l'identifiant stable que
+  // `TrId` colle derrière.
+  const char* lang_label = i18n::TrId("Langue", "bourgeon_login_language");
+  const char* font_label = i18n::TrId("Police", "bourgeon_login_ui_font");
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const float labels_w = ImGui::CalcTextSize(lang_label, nullptr, true).x +
+                         ImGui::CalcTextSize(font_label, nullptr, true).x;
+  // Un combo suivi de son libellé, deux fois : deux espacements internes et
+  // celui qui sépare les deux groupes.
+  const float spacing_w = style.ItemInnerSpacing.x * 2.0f + style.ItemSpacing.x;
+  // Plancher par combo : en dessous, l'aperçu (« Malgun Gothic ») ne dirait plus
+  // rien. La fenêtre s'élargit alors une fois pour l'accueillir, et les autres
+  // contrôles suivent puisqu'ils lisent la même largeur.
+  constexpr float kComboMinW = 110.0f;
+  const float combos_w =
+      (std::max)(FormWidth() - labels_w - spacing_w, kComboMinW * 2.0f);
+  // 40/60 : les noms de langue sont courts (« Français », « Español »), les noms
+  // de police beaucoup moins (« ImGui (ProggyClean) »).
+  const float lang_w = (std::max)(combos_w * 0.4f, kComboMinW);
+  const float font_w = combos_w - lang_w;
 
   // 🔴 COPIE et non référence : `SetLanguage` réécrit la chaîne globale au milieu
   // de la boucle. Une référence changerait donc de valeur en cours de route, et
   // les entrées suivantes se compareraient au code qu'on vient de poser.
   const std::string current = i18n::LanguageCode();
-  ImGui::SetNextItemWidth(140.0f);
+  ImGui::SetNextItemWidth(lang_w);
   // `TrId` et non `Tr` : RoBeginCombo fait `PushID(label)`, donc un libellé
   // traduit donnerait un widget différent d'une langue à l'autre.
-  if (ro::RoBeginCombo(i18n::TrId("Langue", "bourgeon_login_language"),
-                       i18n::LabelOf(current))) {
+  if (ro::RoBeginCombo(lang_label, i18n::LabelOf(current))) {
     for (const i18n::Language& language : i18n::AvailableLanguages()) {
       const bool selected = (current == language.code);
       // Une langue sans catalogue reste VISIBLE mais inerte : la masquer
@@ -405,7 +456,7 @@ void DrawLanguagePicker() {
       // `language.label` est un littéral immortel de la table des langues — et
       // surtout PAS une chaîne rendue par `Tr` : `SetLanguage` vide le catalogue,
       // ce qui invaliderait un pointeur obtenu avant le clic. C'est aussi
-      // pourquoi ce combo est dessiné EN DERNIER, après tout le reste de la
+      // pourquoi ces combos sont dessinés EN DERNIER, après tout le reste de la
       // fenêtre : plus aucun libellé traduit n'est en vol quand il bascule.
       if (ImGui::Selectable(language.label, selected) && !selected)
         i18n::SetLanguage(language.code);
@@ -416,6 +467,14 @@ void DrawLanguagePicker() {
     // BeginCombo, il dessine le champ à la main et ouvre un `ImGui::BeginPopup`.
     ro::RoEndCombo();
   }
+
+  // 🔴 La police APRÈS la langue, et ce n'est pas qu'une question de mise en
+  // page : ses libellés viennent eux aussi du catalogue, et les lire une fois la
+  // bascule ci-dessus passée garantit qu'aucun pointeur jeté par `SetLanguage`
+  // n'est encore en vol. (`font_label`, lui, est une COPIE — `TrId` recopie la
+  // traduction dans son anneau, d'où sa lecture possible plus haut.)
+  ImGui::SameLine();
+  ro::DrawUiFontCombo(font_label, font_w);
 }
 
 }  // namespace
@@ -913,10 +972,10 @@ void MoonlightAuth::OnRenderLoginUI() {
       case State::kError:        DrawError(); break;
       default: break;
     }
-    // HORS du switch, et volontairement en DERNIER : le combo reste atteignable
-    // dans tous les états — y compris l'écran d'erreur, où un joueur qui ne
-    // comprend pas le message a justement besoin d'en changer la langue.
-    DrawLanguagePicker();
+    // HORS du switch, et volontairement en DERNIER : les combos restent
+    // atteignables dans tous les états — y compris l'écran d'erreur, où un joueur
+    // qui ne comprend pas le message a justement besoin d'en changer la langue.
+    DrawLanguageAndFontPickers();
   }
   ro::EndRoWindow();
 }
@@ -926,11 +985,11 @@ void MoonlightAuth::DrawWebLogin() {
   ImGui::Spacing();
 
   ImGui::TextUnformatted(i18n::Tr("Identifiant"));
-  ImGui::SetNextItemWidth(kFormW);
+  ImGui::SetNextItemWidth(FormWidth());
   ImGui::InputText("##user", user_buf_, sizeof(user_buf_));
 
   ImGui::TextUnformatted(i18n::Tr("Mot de passe"));
-  ImGui::SetNextItemWidth(kFormW);
+  ImGui::SetNextItemWidth(FormWidth());
   const bool submit_pw = ImGui::InputText(
       "##pass", pass_buf_, sizeof(pass_buf_),
       ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue);
@@ -948,7 +1007,7 @@ void MoonlightAuth::DrawWebLogin() {
 
   ImGui::Spacing();
   const bool has_input = user_buf_[0] != '\0' && pass_buf_[0] != '\0';
-  const bool click = ro::RoButton(i18n::Tr("Se connecter"), kFormW, 0.0f);
+  const bool click = ro::RoButton(i18n::Tr("Se connecter"), FormWidth(), 0.0f);
   // Entrée valide le formulaire quel que soit le champ focus (ou sans focus) :
   // `submit_pw` ne couvre que le champ mot de passe.
   const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
@@ -975,10 +1034,10 @@ void MoonlightAuth::DrawWebLogin() {
       const float pad = 6.0f;
       float iw = static_cast<float>(d.w);
       float ih = static_cast<float>(d.h);
-      const float maxw = kFormW - pad * 2.0f;
+      const float maxw = FormWidth() - pad * 2.0f;
       if (iw > maxw) { ih *= maxw / iw; iw = maxw; }
       const float btnh = ih + pad * 2.0f;
-      discord = ro::RoButton("##discord_login", kFormW, btnh);
+      discord = ro::RoButton("##discord_login", FormWidth(), btnh);
       const ImVec2 a = ImGui::GetItemRectMin();
       const ImVec2 b = ImGui::GetItemRectMax();
       const ImVec2 c((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
@@ -999,7 +1058,7 @@ void MoonlightAuth::DrawWebLogin() {
       ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(88, 101, 242, 255));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(105, 117, 245, 255));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(71, 82, 196, 255));
-      discord = ro::RoButton(i18n::Tr("Se connecter avec Discord"), kFormW, 0.0f);
+      discord = ro::RoButton(i18n::Tr("Se connecter avec Discord"), FormWidth(), 0.0f);
       ImGui::PopStyleColor(3);
     }
     if (discord) StartDiscordLogin();
@@ -1037,7 +1096,7 @@ void MoonlightAuth::DrawSpinner(const char* label) {
 void MoonlightAuth::DrawDiscordWait() {
   DrawSpinner(i18n::Tr("En attente de Discord"));
   ImGui::Spacing();
-  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + FormWidth());
   ImGui::TextWrapped(
       i18n::Tr("Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
       "de comptes s'affichera automatiquement."));
@@ -1050,7 +1109,7 @@ void MoonlightAuth::DrawDiscordWait() {
                   nullptr, SW_SHOWNORMAL);
   }
   ImGui::Spacing();
-  if (ro::RoButton(i18n::Tr("Annuler"), kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Annuler"), FormWidth(), 0.0f)) {
     game_session_.clear();
     discord_authorize_url_.clear();
     state_ = State::kWebLogin;
@@ -1085,7 +1144,7 @@ void MoonlightAuth::DrawPickAccount() {
   const int vis = n < 8 ? n : 8;
   const float rowh = ImGui::GetTextLineHeightWithSpacing();
   const float listh = (vis > 0 ? vis : 1) * rowh + 8.0f;
-  ImGui::BeginChild("##accts", ImVec2(kFormW, listh), true);
+  ImGui::BeginChild("##accts", ImVec2(FormWidth(), listh), true);
   for (int i = 0; i < n; ++i) {
     const Account& a = accounts_[i];
     ImGui::PushID(i);
@@ -1135,7 +1194,7 @@ void MoonlightAuth::DrawPickAccount() {
     ImGui::PushStyleColor(ImGuiCol_Text, is_autotrade
                                              ? IM_COL32(140, 215, 185, 255)
                                              : IM_COL32(230, 190, 110, 255));
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + FormWidth());
     ImGui::TextWrapped(
         is_autotrade
             ? i18n::Tr("Ce compte tient une boutique en autotrade : le choisir fermera "
@@ -1152,10 +1211,10 @@ void MoonlightAuth::DrawPickAccount() {
     confirm = true;
 
   if (!can_play) ImGui::BeginDisabled();
-  if (ro::RoButton(i18n::Tr("Jouer"), kFormW, 0.0f)) confirm = true;
+  if (ro::RoButton(i18n::Tr("Jouer"), FormWidth(), 0.0f)) confirm = true;
   if (!can_play) ImGui::EndDisabled();
 
-  if (ro::RoButton(i18n::Tr("Retour"), kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Retour"), FormWidth(), 0.0f)) {
     accounts_.clear();
     selected_ = -1;
     web_ticket_.clear();
@@ -1186,7 +1245,7 @@ void MoonlightAuth::StartAccountSelect() {
 
 void MoonlightAuth::DrawError() {
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 110, 110, 255));
-  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kFormW);
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + FormWidth());
   ImGui::TextWrapped("%s", error_msg_.c_str());
   ImGui::PopTextWrapPos();
   ImGui::PopStyleColor();
@@ -1196,17 +1255,17 @@ void MoonlightAuth::DrawError() {
   // Moonlight — le ticket signé suffit à redemander un OTP. (Ticket périmé =
   // /select répondra une erreur, on retombera ici.)
   if (!accounts_.empty() && !web_ticket_.empty() &&
-      ro::RoButton(i18n::Tr("Choisir un compte"), kFormW, 0.0f)) {
+      ro::RoButton(i18n::Tr("Choisir un compte"), FormWidth(), 0.0f)) {
     error_msg_.clear();
     state_ = State::kPickAccount;
   }
-  if (ro::RoButton(i18n::Tr("Réessayer"), kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Réessayer"), FormWidth(), 0.0f)) {
     error_msg_.clear();
     state_ = State::kWebLogin;
   }
   // Filet de sécurité (échec uniquement) : basculer sur le login natif pour la
   // session — utile si le site est en panne partielle alors que le jeu répond.
-  if (ro::RoButton(i18n::Tr("Login classique"), kFormW, 0.0f)) {
+  if (ro::RoButton(i18n::Tr("Login classique"), FormWidth(), 0.0f)) {
     error_msg_.clear();
     native_fallback_ = true;
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)

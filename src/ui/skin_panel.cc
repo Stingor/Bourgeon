@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "utils/startup_settings.h"  // la police vit avec les réglages d'avant-jeu
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -72,10 +73,7 @@ void EnsureDefaultSkinPresets() {
   }
 }
 
-bool DrawSkinPanel() {
-  bool changed = false;
-
-  // ── La police de toute l'interface ─────────────────────────────────────────
+void DrawUiFontCombo(const char* label, float width) {
   // Les familles sont bakées dans l'atlas au démarrage : le choix s'applique à
   // la frame suivante, sans rechargement. Deux entrées sortent de la table :
   // Malgun (index 0, le défaut) et la police intégrée d'ImGui (index -1, qui
@@ -88,13 +86,12 @@ bool DrawSkinPanel() {
   const int ui_family = UiFontFamily();
   const bool family_baked =
       ui_family > 0 && ChatFamilyFont(ui_family, false, false) != nullptr;
-  // (`font_preview` et non `preview` : la section des presets, plus bas dans la
-  // même fonction, a déjà sa variable de ce nom.)
   const char* font_preview = ui_family < 0 ? i18n::Tr("ImGui (ProggyClean)")
                              : family_baked ? ChatFamilyLabel(ui_family)
                                             : "Malgun Gothic";
-  ImGui::SetNextItemWidth(180.f);
-  if (RoBeginCombo(i18n::Tr("Police de l'interface"), font_preview)) {
+  bool changed = false;
+  ImGui::SetNextItemWidth(width);
+  if (RoBeginCombo(label, font_preview)) {
     // Cochée dès que c'est Malgun qui sort à l'écran — y compris quand la famille
     // enregistrée n'a pas pu être bakée, pour que la coche et l'aperçu s'accordent.
     if (ImGui::Selectable("Malgun Gothic", ui_family >= 0 && !family_baked)) {
@@ -119,6 +116,18 @@ bool DrawSkinPanel() {
     }
     RoEndCombo();
   }
+  // Enregistré ICI, et seulement sur un changement effectif : ce réglage vit
+  // dans le fichier de démarrage, qu'aucun des deux appelants ne sauvegarde.
+  if (changed) startup::SaveUiFontFamily(UiFontFamily());
+}
+
+bool DrawSkinPanel() {
+  bool changed = false;
+
+  // ── La police de toute l'interface ─────────────────────────────────────────
+  // Elle s'enregistre toute seule (fichier de démarrage) : rien à remonter dans
+  // `changed`, qui ne parle que de bourgeon_settings.yaml.
+  DrawUiFontCombo(i18n::TrId("Police de l'interface", "bourgeon_ui_font"), 180.f);
   SameLine();
   HelpMarker(
       i18n::Tr("Police de toute l'UI ImGui. Le gras et l'italique suivent la "
