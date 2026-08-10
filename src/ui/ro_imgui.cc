@@ -630,10 +630,83 @@ ImFont* ChatFamilyFont(int i, bool bold, bool italic) {
   return g_chat_fonts[i][0];
 }
 
+namespace {
+
+// ── La police latine du système, celle qu'on emprunte ────────────────────────
+// Elle sert DEUX fois : pour l'antislash que les polices coréennes dessinent en
+// won, et pour la ponctuation qui manque à la police intégrée d'ImGui. Le premier
+// fichier trouvé gagne ; nullptr si Windows n'a aucune des trois — ce qui
+// n'arrive pas, mais les deux appelants savent s'en passer.
+const char* FindSystemLatinFont() {
+  static const char* const kLatinFonts[] = {"C:\\Windows\\Fonts\\tahoma.ttf",
+                                            "C:\\Windows\\Fonts\\arial.ttf",
+                                            "C:\\Windows\\Fonts\\segoeui.ttf"};
+  for (const char* path : kLatinFonts)
+    if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) return path;
+  return nullptr;
+}
+
+// ── Ce qui manque à la police intégrée d'ImGui ───────────────────────────────
+// 🔴 ELLE NE CONNAÎT QUE 0x20-0xFF. ProggyClean — « Police de l'interface » →
+// « Police intégrée », un choix que le joueur peut faire, et le repli quand
+// Malgun manque — n'a AUCUN glyphe au-delà du latin-1 : le tiret cadratin « — »,
+// les points de suspension « … », la flèche « → », le « œ » français et la puce
+// « ● » du bandeau d'enregistrement y sortent tous en « ? ». Mesuré en jeu : la
+// feuille de perso affichait « STR ? 999 » sur chacune de ses six stats.
+//
+// On COMBLE donc ses trous avec une police latine du système, exactement comme
+// pour l'antislash de Malgun plus bas. C'est le seul remède qui vaille : réécrire
+// nos libellés en ASCII ne corrigerait que les NÔTRES, alors que les catalogues
+// de traduction — dont le texte français EST la clé — réintroduiraient la même
+// typographie dès qu'on joue en anglais ou en espagnol.
+//
+// 🔴 LA SOURCE AJOUTÉE APRÈS NE FOURNIT QUE CE QUE LA PREMIÈRE N'A PAS. C'est ce
+// qui rend ce merge inoffensif : le dessin pixel-parfait de ProggyClean reste
+// celui de tout le texte courant, la latine ne comble que les trous.
+//
+// ⚠ `SizePixels` LAISSÉ À ZÉRO, et ce n'est pas un oubli. La police intégrée a une
+// taille de référence IMPLICITE (`ImFontFlags_ImplicitRefSize`) et ImGui refuse
+// par assertion qu'on lui fusionne une source à taille explicite (imgui_draw.cpp :
+// « Cannot use MergeMode with an explicit reference size… »). À zéro, la source
+// reprend la taille de sa cible (`src->SizePixels = ref_size`), ce qui est
+// exactement ce qu'on veut — et une source à 15 px dans une police à 13 aurait
+// donné des points de suspension plus grands que le texte qui les porte.
+//
+// Les plages, elles, ne servent qu'au backend DX7 : lui ne charge rien à la
+// demande et ne bake que ce qui est DÉCLARÉ (ImFontAtlasBuildLegacyPreloadAll
+// GlyphRanges). En DX9 elles ne coûtent rien — la source y couvre tout ce que le
+// fichier contient. Une centaine de glyphes, à comparer aux 11 172 du hangul.
+void MergeTypographyIntoDefault() {
+  const char* const latin = FindSystemLatinFont();
+  if (latin == nullptr) return;  // rien à emprunter : on garde les « ? »
+  static const ImWchar kTypoRanges[] = {
+      0x0152, 0x0153,  // Œ œ — le « cœur » et le « bœuf » du français
+      0x2010, 0x203A,  // tirets, apostrophes et guillemets courbes, « … », puce
+      0x2190, 0x2193,  // flèches ← ↑ → ↓
+      0x25A0, 0x25CF,  // carrés et cercles pleins (« ● REC » de l'enregistreur)
+      0xFFFD, 0xFFFD,  // le carré « caractère manquant », propre
+      0,
+  };
+  ImFontConfig cfg;
+  cfg.MergeMode   = true;
+  cfg.SizePixels  = 0.0f;  // 🔴 implicite, cf. ci-dessus
+  cfg.OversampleH = 1;     // même contrainte d'atlas que le reste
+  cfg.OversampleV = 1;
+  cfg.PixelSnapH  = true;
+  ImGui::GetIO().Fonts->AddFontFromFileTTF(latin, 0.0f, &cfg, kTypoRanges);
+}
+
+}  // namespace
+
 ImFont* LoadKoreanFont(float size_px) {
   ImGuiIO& io = ImGui::GetIO();
   // Les DEUX polices sont bakées dans l'atlas au init → bascule gratuite ensuite.
   g_font_default = io.Fonts->AddFontDefault();
+  // Sa ponctuation manquante, empruntée à une latine du système. JUSTE ICI :
+  // `MergeMode` fusionne dans la DERNIÈRE police ajoutée à l'atlas, pas dans une
+  // police nommée — une seule ligne entre les deux appels et c'est Malgun qu'on
+  // enrichirait, elle qui n'en a aucun besoin.
+  MergeTypographyIntoDefault();
 
   if (GetFileAttributesA(kKoreanFontPath) != INVALID_FILE_ATTRIBUTES) {
     ImFontConfig cfg;
@@ -699,16 +772,7 @@ ImFont* LoadKoreanFont(float size_px) {
     // fournirait le glyphe et on afficherait un losange « absent », ce qui est
     // pire qu'un won. Dans ce cas on n'exclut rien.
     static const ImWchar kBackslashOnly[] = {0x005C, 0x005C, 0};
-    const char* const kLatinFonts[] = {"C:\\Windows\\Fonts\\tahoma.ttf",
-                                       "C:\\Windows\\Fonts\\arial.ttf",
-                                       "C:\\Windows\\Fonts\\segoeui.ttf"};
-    const char* latin_font = nullptr;
-    for (const char* path : kLatinFonts) {
-      if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) {
-        latin_font = path;
-        break;
-      }
-    }
+    const char* const latin_font = FindSystemLatinFont();  // la même qu'au merge ci-dessus
     if (latin_font) cfg.GlyphExcludeRanges = kBackslashOnly;
 
     g_font_malgun =
