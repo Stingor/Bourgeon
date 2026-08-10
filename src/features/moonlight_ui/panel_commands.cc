@@ -106,7 +106,7 @@ void MoonlightUi::DrawCommandsPanel() {
         { // @autolootpognon
           int min_zeny = aloot_min_zeny_;
           ImGui::SetNextItemWidth(130.0f);
-          if (ImGui::InputInt("@autolootpognon (z)", &min_zeny, 100, 10000)) {
+          if (ImGui::InputInt("@autolootpognon (z)", &min_zeny, 0, 0)) {
             if (min_zeny < 0) min_zeny = 0;
             if (min_zeny > 1000000) min_zeny = 1000000;
             min_zeny = (min_zeny / 100) * 100;
