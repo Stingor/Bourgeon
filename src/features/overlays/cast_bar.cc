@@ -211,7 +211,7 @@ bool CastBar::NeedsSync() const {
   // Le remplacement est éteint, mais la barre HUD de BasicInfo se nourrit du
   // même relevé : sans lui elle resterait vide.
   const BasicInfo* bi = Bourgeon::Instance().basic_info();
-  return bi != nullptr && bi->visible_ && bi->bars_[BasicInfo::kCast].show;
+  return bi != nullptr && bi->bars_visible_ && bi->bars_[BasicInfo::kCast].show;
 }
 
 void CastBar::OnGameFramePulse() {

@@ -2273,8 +2273,8 @@ bool BasicInfo::DrawSettings() {
   SameLine(); HelpMarker(i18n::Tr("Masque la fenêtre native \"Basic Info\"."));
 
   SeparatorText(i18n::Tr("Barres d'info"));
-  changed |= ro::RoCheckbox(i18n::Tr("Afficher les barres"), &visible_);
-  ImGui::BeginDisabled(!visible_);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher les barres"), &bars_visible_);
+  ImGui::BeginDisabled(!bars_visible_);
   Indent();
     for (int i = 0; i < BasicInfo::kBarCount; ++i) {
       if (i) SameLine();
@@ -2282,7 +2282,6 @@ bool BasicInfo::DrawSettings() {
     }
     SameLine(); HelpMarker(i18n::Tr("Affiche/cache chaque barre indépendamment."));
   Unindent();
-  ImGui::EndDisabled();
 
   changed |= ro::RoCheckbox(i18n::Tr("Verrouiller les barres"), &locked_);
   SameLine(); HelpMarker(
@@ -2338,6 +2337,7 @@ bool BasicInfo::DrawSettings() {
   bar_size_button("S", 400, 16);
   bar_size_button("M", 600, 22);
   bar_size_button("L", 800, 30);
+  ImGui::EndDisabled();
 
   SeparatorText(i18n::Tr("Portrait personnage"));
   changed |= ro::RoCheckbox(i18n::Tr("Afficher le portrait et les étiquettes"), &portrait_visible_);
@@ -2435,7 +2435,7 @@ void BasicInfo::OnRenderUI() {
 
   DrawPortrait();  // independent of the EXP-bar master toggle below
 
-  if (!visible_) return;
+  if (!bars_visible_) return;
   // Globals are only populated once a character is in the world.
   if (Bourgeon::Instance().client().session().aid() == 0) return;
 

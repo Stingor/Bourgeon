@@ -809,7 +809,7 @@ const moonlight_ui::SettingDesc kQuickCastSettings[] = {
 // éléments du portrait sont indexés (expbar_<barre>_*, portrait_<élément>_*) :
 // leurs clés se construisent à l'exécution, elles restent en boucle.
 const moonlight_ui::SettingDesc kBasicInfoSettings[] = {
-    {"expbar_visible",  SType::kBool,  MLUI_FIELD(basic_info, visible_),
+    {"expbar_visible",  SType::kBool,  MLUI_FIELD(basic_info, bars_visible_),
      MLUI_LITERAL(bool, false)},
     {"expbar_locked",   SType::kBool,  MLUI_FIELD(basic_info, locked_),
      MLUI_LITERAL(bool, false)},

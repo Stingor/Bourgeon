@@ -109,14 +109,14 @@ class BasicInfo : public Plugin {
                                                         "Cast"};
 
   // Global style shared by every bar.
-  bool  visible_   = false;  // master toggle for the whole feature (opt-in)
-  bool  locked_    = false;  // freeze + click-through (all bars)
-  bool  sticky_    = false;  // magnetic edge-snap between bars on drag
-  int   text_mode_ = 1;      // 0=none 1=percent 2=values 3=both
-  bool  vertical_  = false;  // false = horizontal fill, true = vertical fill
-  bool  border_    = true;   // draw the 1px dark outline around each bar
-  float rounding_  = 4.0f;   // corner rounding of the drawn bars (0..16)
-  float bg_color_[4] = {0.05f, 0.05f, 0.07f, 0.70f};  // shared background + alpha
+  bool  bars_visible_ = false;  // master toggle for the whole feature (opt-in)
+  bool  locked_       = false;  // freeze + click-through (all bars)
+  bool  sticky_       = false;  // magnetic edge-snap between bars on drag
+  int   text_mode_    = 1;      // 0=none 1=percent 2=values 3=both
+  bool  vertical_     = false;  // false = horizontal fill, true = vertical fill
+  bool  border_       = true;   // draw the 1px dark outline around each bar
+  float rounding_     = 4.0f;   // corner rounding of the drawn bars (0..16)
+  float bg_color_[4]  = {0.05f, 0.05f, 0.07f, 0.70f};  // shared background + alpha
 
   // The alignment grid moved to a shared AlignGrid owned by MoonlightUi
   // (Bourgeon::Instance().moonlight_ui()->grid_); bars read it for snapping.
