@@ -21,9 +21,13 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket
+#include "features/link_gesture.h"        // links:: (gestes des balises maison)
 #include "features/systems/bug_report.h"  // BugReport::NpcContext
+#include "features/systems/image_preview.h"  // imgprev:: (<IMG> web)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch (icônes)
 #include "imgui.h"
+#include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (<IMG> ressource client)
+#include "ui/mob_sprite.h"    // ro::LoadMobSprite / DrawMobSprite (<MOBS>, <MOBP>)
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
 #include "ui/ro_widgets.h"   // ro::HelpMarker (section de réglages)
 #include "utils/i18n.h"
@@ -183,6 +187,174 @@ constexpr size_t kMenuMaxRows = 10;
 // Seuil d'apparition de la barre de recherche (options réellement affichées).
 constexpr size_t kMenuFilterThreshold = 8;
 
+// ── Médias : les bornes ─────────────────────────────────────────────────────
+// Le contenu vient du SERVEUR, donc du staff — mais un chiffre mal tapé dans un
+// script ne doit pas produire une image plein écran dans une fenêtre de 460 px.
+// Ces plafonds sont ceux de l'AFFICHAGE ; ce qui protège le décodage vit dans
+// imgprev (taille de téléchargement, dimensions, délai).
+constexpr float kMediaMaxH     = 220.0f;  // hauteur max d'un média inline
+constexpr float kSpriteInlineH = 48.0f;   // hauteur par défaut d'un `<MOBS>`
+constexpr float kPortraitW     = 104.0f;  // largeur de la colonne du portrait
+// Cadence d'animation des sprites : celle qu'emploie déjà la fiche de monstre.
+constexpr float kSpriteMsPerFrame = 130.0f;
+
+// Gris des cartouches d'état d'un média (« image introuvable », « chargement »).
+// 🔴 PAS `ImGuiCol_TextDisabled` : le corps d'une fenêtre RO est CLAIR (skin
+// 9-slice crème), et cette couleur, calibrée pour un thème sombre, y devient
+// invisible. Gris sombre explicite, celui de la feuille de personnage.
+constexpr uint32_t kNoticeColor = IM_COL32(90, 90, 107, 255);
+
+// ── Le vocabulaire Bourgeon ──────────────────────────────────────────────────
+//
+// Les balises que le client ne connaît PAS, et qui sont donc à nous. La chatbox
+// les parle déjà (`<MOBL>`, `<ITMR>`, `<CRAF>`, `<SETL>` — cf. chat_window.cc) ;
+// ce fichier les fait parler au dialogue NPC, avec deux ajouts qui n'auraient
+// aucun sens dans une ligne de log : `<IMG>` et `<MOBS>`/`<MOBP>`.
+//
+// 🔴 CE QU'ELLES COÛTENT À QUI NE LES REND PAS. Le dialogue NATIF efface les
+// balises qu'il connaît et laisse passer les autres : un joueur resté en natif
+// lirait donc `<MOBL>1002:0:Poring</MOBL>` en toutes lettres. C'est précisément ce
+// que règle CZ_BOURGEON_UI_CAPS (features/systems/ui_caps.h) — le serveur sait qui
+// les rend, et dégrade pour les autres. Le nom en clair transporté dans la balise
+// est le deuxième filet : même brute, la ligne reste lisible.
+//
+// ⚠ Le nom d'un monstre VOYAGE, comme dans le chat, et pour la même raison : le
+// client ne sait pas nommer un monstre (ni mob_db ni le paquet de sa fiche ne le
+// lui donnent). Une balise qui ne porterait que l'id afficherait un numéro.
+//
+// Champs séparés par ':' et le champ libre EN DERNIER : un nom de monstre contient
+// des espaces et des apostrophes, une adresse web contient des ':'.
+//
+//   <MOBL>id:rang:nom</MOBL>   lien monstre  (rang 0 normal / 1 boss / 2 MVP)
+//   <ITMR>id:nom</ITMR>        lien objet de base (sans refine ni cartes)
+//   <CRAF>id:nom</CRAF>        lien recette -> l'Atlas
+//   <SETL>clé:libellé</SETL>   lien vers une destination du panneau Moonlight
+//   <MOBS>id</MOBS>            sprite de monstre, inline dans le texte
+//   <MOBP>id</MOBP>            portrait de PAGE (colonne de gauche)
+//   <IMG>source</IMG>          image : ressource du client, ou adresse web
+//   <IMG>w:h:source</IMG>      idem, taille imposée (en pixels)
+
+const char* MobRankTag(int rank) {
+  if (rank == 2) return "[MVP]";
+  if (rank == 1) return "[Boss]";
+  return "[Mob]";
+}
+
+std::string RecipeLinkLabel(const std::string& product_name) {
+  char buf[256];
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[Recette: %s]"), product_name.c_str());
+  return buf;
+}
+
+// Recherche d'un motif dans [begin, end) : le corps d'un paquet n'est pas garanti
+// nul-terminé à l'endroit où on le lit.
+const char* SearchSub(const char* begin, const char* end, const char* needle) {
+  const size_t n = std::strlen(needle);
+  if (n == 0 || static_cast<size_t>(end - begin) < n) return nullptr;
+  for (const char* p = begin; p + n <= end; ++p)
+    if (std::memcmp(p, needle, n) == 0) return p;
+  return nullptr;
+}
+
+// Le corps d'une balise `<TAG>…</TAG>` ouverte en `p`. Rend false si la balise
+// n'est pas celle-là, ou si sa fermante manque — auquel cas rien n'est consommé
+// et l'appelant laisse le texte tel quel plutôt que d'avaler la fin de la ligne.
+bool TagBody(const char* p, const char* end, const char* open, const char* close,
+             const char** body, const char** body_end, const char** after) {
+  const size_t olen = std::strlen(open);
+  if (static_cast<size_t>(end - p) < olen || std::memcmp(p, open, olen) != 0)
+    return false;
+  const char* b = p + olen;
+  const char* c = SearchSub(b, end, close);
+  if (c == nullptr) return false;
+  *body = b;
+  *body_end = c;
+  *after = c + std::strlen(close);
+  return true;
+}
+
+// Découpe `n` champs séparés par ':' — le DERNIER prend tout ce qui reste, ':'
+// compris (nom de monstre, adresse web).
+bool SplitFields(const char* b, const char* e, int n, std::string* out) {
+  for (int i = 0; i < n - 1; ++i) {
+    const char* colon = static_cast<const char*>(std::memchr(b, ':', e - b));
+    if (colon == nullptr) return false;
+    out[i].assign(b, colon);
+    b = colon + 1;
+  }
+  out[n - 1].assign(b, e);
+  return true;
+}
+
+bool AllDigits(const std::string& s) {
+  if (s.empty()) return false;
+  for (char c : s)
+    if (c < '0' || c > '9') return false;
+  return true;
+}
+
+// Une source d'image désigne-t-elle le WEB ? Le seul discriminant dont on a
+// besoin : tout le reste est un chemin de ressource du client.
+bool IsWebSource(const std::string& s) {
+  return s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0;
+}
+
+// Place occupée par une image WEB dont on ne connaît pas encore les dimensions.
+// Ce que le script écrit en `w:h:source` vaut toujours mieux : c'est la seule
+// forme dont la mise en page ne bouge pas quand l'image arrive.
+constexpr float kWebPlaceholderW = 160.0f;
+constexpr float kWebPlaceholderH = 120.0f;
+
+// À l'échelle, sans jamais déformer ni dépasser.
+ImVec2 FitBox(float w, float h, float max_w, float max_h) {
+  if (w <= 0.0f || h <= 0.0f) return ImVec2(0.0f, 0.0f);
+  float s = 1.0f;
+  if (w > max_w) s = max_w / w;
+  if (h * s > max_h) s = max_h / h;
+  return ImVec2(w * s, h * s);
+}
+
+// Le cartouche des états où il n'y a pas d'image à montrer mais quelque chose à
+// DIRE (hôte non autorisé, fichier absent, échec). 🔴 On ne se tait pas : une
+// image manquante muette est indiscernable d'un script qui ne l'a jamais posée,
+// et c'est le staff qui écrit ces balises — il doit voir son erreur.
+ImVec2 NoticeBox(float max_w, float line_h) {
+  return ImVec2((max_w < 300.0f) ? max_w : 300.0f, line_h + 6.0f);
+}
+
+// La taille à RÉSERVER pour une image, avant même de savoir si elle arrivera.
+//
+// ⚠ DÉTERMINISTE pour un état donné, et c'est ce qui la rend sûre : le rendu la
+// rappelle et compare au fragment déjà placé pour savoir si l'image web est
+// arrivée entre-temps (auquel cas il redemande une mise en page). Deux appels dans
+// le même état doivent donc rendre exactement la même chose, sinon la page se
+// remettrait en page à chaque frame.
+ImVec2 ImageBoxSize(const std::string& src, float want_w, float want_h,
+                    float wrap, float line_h) {
+  const float max_w = (wrap > 8.0f) ? wrap : 8.0f;
+  // Taille imposée par le script : elle fait foi (bornée quand même — un zéro de
+  // trop dans un script ne doit pas produire une image plein écran).
+  if (want_w > 0.0f && want_h > 0.0f)
+    return FitBox(want_w, want_h, max_w, kMediaMaxH);
+
+  if (IsWebSource(src)) {
+    if (!imgprev::IsPreviewable(src.c_str()))
+      return NoticeBox(max_w, line_h);  // hôte hors liste : on propose, on n'impose pas
+    const imgprev::Preview p = imgprev::Get(src.c_str());  // sans effet de bord
+    if (p.state == imgprev::Preview::kReady && p.w > 0 && p.h > 0)
+      return FitBox(static_cast<float>(p.w), static_cast<float>(p.h), max_w, kMediaMaxH);
+    if (p.state == imgprev::Preview::kFailed) return NoticeBox(max_w, line_h);
+    return FitBox(kWebPlaceholderW, kWebPlaceholderH, max_w, kMediaMaxH);
+  }
+
+  // Ressource du client : le chargement est synchrone et mémorisé (échec compris),
+  // donc la taille est connue dès la mise en page.
+  const ro::GameTexture t = ro::CachedTextureFromGameFile(src.c_str());
+  if (t.tex != nullptr && t.w > 0 && t.h > 0)
+    return FitBox(static_cast<float>(t.w), static_cast<float>(t.h), max_w, kMediaMaxH);
+  return NoticeBox(max_w, line_h);
+}
+
 }  // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,6 +406,10 @@ void NpcDialogWindow::Reset() {
   last_dialog_ms_ = GetTickCount();
   scroll_top_ = false;
   frags_.clear();
+  targets_.clear();
+  img_srcs_.clear();
+  portrait_mob_ = 0;
+  link_menu_request_ = false;
   layout_wrap_ = layout_font_ = -1.0f;
   layout_h_ = 0.0f;
   ++page_gen_;
@@ -301,7 +477,36 @@ void NpcDialogWindow::CommitPage() {
   constexpr size_t kMaxLines = 4000;
   if (lines_.size() > kMaxLines)
     lines_.erase(lines_.begin(), lines_.begin() + (lines_.size() - kMaxLines));
+  ScanPageDirectives();
   ++page_gen_;  // invalide le cache de mise en page
+}
+
+// Ce qui vaut pour la PAGE et non pour une ligne. Aujourd'hui : le portrait.
+//
+// 🔴 Il ne peut pas être relevé par la mise en page, alors que c'est là que
+// vivent toutes les autres balises. La mise en page se refait à chaque changement
+// de largeur du corps — or c'est le portrait qui DÉCIDE de cette largeur (il
+// occupe une colonne). L'y lire ferait dépendre la largeur d'un calcul qui dépend
+// de la largeur. Ici, il est fixé une fois par page, avant tout rendu.
+//
+// Le DERNIER `<MOBP>` de la page gagne : un script qui en pose deux a changé d'avis
+// en cours de route, et c'est sa dernière phrase qui décrit l'écran affiché.
+void NpcDialogWindow::ScanPageDirectives() {
+  portrait_mob_ = 0;
+  for (const std::string& raw : lines_) {
+    const char* p = raw.c_str();
+    const char* end = p + raw.size();
+    while (p < end) {
+      const char* open = SearchSub(p, end, "<MOBP>");
+      if (open == nullptr) break;
+      const char* body = open + 6;
+      const char* close = SearchSub(body, end, "</MOBP>");
+      if (close == nullptr) break;
+      const std::string id(body, close);
+      if (AllDigits(id)) portrait_mob_ = std::atoi(id.c_str());
+      p = close + 7;
+    }
+  }
 }
 
 // Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). Les paquets de
@@ -532,6 +737,103 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   }
 }
 
+// ── Balises MAISON ──────────────────────────────────────────────────────────
+// Le vocabulaire est décrit en tête de fichier. Ici : la reconnaissance, et rien
+// d'autre — le texte affiché d'un lien est composé LOCALEMENT (donc dans la langue
+// du lecteur pour ce qui est traduisible), le nom transporté ne servant qu'aux
+// clients qui ne rendent pas la balise.
+//
+// Une balise mal formée (fermante absente, champs manquants, id nul) n'est PAS
+// consommée ici : elle retombe sur le parseur générique, qui masque les chevrons
+// et laisse le corps en texte. C'est le bon échec — un script fautif se voit,
+// là où l'escamotage complet se cherche pendant une heure.
+const char* NpcDialogWindow::TryOwnTag(const char* p, const char* end, Run* out) {
+  const char *b = nullptr, *be = nullptr, *after = nullptr;
+  std::string f[3];
+
+  if (TagBody(p, end, "<MOBL>", "</MOBL>", &b, &be, &after)) {
+    if (!SplitFields(b, be, 3, f)) return nullptr;
+    const uint32_t id = static_cast<uint32_t>(std::strtoul(f[0].c_str(), nullptr, 10));
+    int rank = std::atoi(f[1].c_str());
+    if (rank < 0 || rank > 2) rank = 0;
+    if (id == 0 || f[2].empty()) return nullptr;
+    const std::string name = AnsiToUtf8(f[2]);
+    out->target = links::FromMob(id, rank, name.c_str());
+    out->text   = "<" + std::string(MobRankTag(rank)) + " " + name + ">";
+    return after;
+  }
+  if (TagBody(p, end, "<ITMR>", "</ITMR>", &b, &be, &after)) {
+    if (!SplitFields(b, be, 2, f)) return nullptr;
+    const uint32_t id = static_cast<uint32_t>(std::strtoul(f[0].c_str(), nullptr, 10));
+    if (id == 0 || f[1].empty()) return nullptr;
+    // Le nom TRANSPORTÉ, pas celui de notre DB : l'écrivain du script sait de quel
+    // objet il parle, et un client dans une autre langue ne doit pas le renommer.
+    const std::string name = AnsiToUtf8(f[1]);
+    out->target = links::FromItemId(id, name.c_str());
+    out->text   = "<" + name + ">";
+    return after;
+  }
+  if (TagBody(p, end, "<CRAF>", "</CRAF>", &b, &be, &after)) {
+    if (!SplitFields(b, be, 2, f)) return nullptr;
+    const uint32_t id = static_cast<uint32_t>(std::strtoul(f[0].c_str(), nullptr, 10));
+    if (id == 0 || f[1].empty()) return nullptr;
+    const std::string name = AnsiToUtf8(f[1]);
+    // 🔴 Cible VIDE si l'objet n'a pas de recette (links::FromRecipe le décide) :
+    // le fragment reste alors du texte ordinaire. Un lien qui n'ouvre rien vaut
+    // moins que pas de lien — même règle que dans le chat.
+    out->target = links::FromRecipe(id, name.c_str());
+    out->text   = RecipeLinkLabel(name);
+    return after;
+  }
+  if (TagBody(p, end, "<SETL>", "</SETL>", &b, &be, &after)) {
+    if (!SplitFields(b, be, 2, f)) return nullptr;
+    if (f[0].empty()) return nullptr;
+    out->target = links::FromSetting(f[0].c_str());
+    // Destination inconnue de CETTE version (ou indisponible pour ce joueur) : le
+    // libellé transporté par le script reste, en texte simple. Il dit encore de
+    // quoi on parle, il ne prétend plus mener quelque part.
+    const std::string label = links::SettingLabel(f[0].c_str());
+    out->text = label.empty() ? AnsiToUtf8(f[1]) : label;
+    if (out->text.empty()) return nullptr;
+    return after;
+  }
+  if (TagBody(p, end, "<MOBS>", "</MOBS>", &b, &be, &after)) {
+    const std::string id(b, be);
+    if (!AllDigits(id)) return nullptr;
+    out->media  = Run::kMediaMobSprite;
+    out->mob_id = std::atoi(id.c_str());
+    if (out->mob_id <= 0) return nullptr;
+    return after;
+  }
+  if (TagBody(p, end, "<MOBP>", "</MOBP>", &b, &be, &after)) {
+    // Le portrait ne produit AUCUN fragment : il vaut pour la page entière et
+    // c'est ScanPageDirectives qui le relève. Ici on ne fait que l'effacer du
+    // texte, pour qu'il n'y laisse pas ses chevrons.
+    const std::string id(b, be);
+    if (!AllDigits(id)) return nullptr;
+    return after;
+  }
+  if (TagBody(p, end, "<IMG>", "</IMG>", &b, &be, &after)) {
+    // Deux écritures : `source` seule, ou `w:h:source`. On ne tente la seconde que
+    // si les deux premiers champs sont des NOMBRES — sans quoi « https » et son
+    // ':' feraient passer une adresse pour une taille.
+    std::string src(b, be);
+    float want_w = 0.0f, want_h = 0.0f;
+    if (SplitFields(b, be, 3, f) && AllDigits(f[0]) && AllDigits(f[1])) {
+      want_w = static_cast<float>(std::atoi(f[0].c_str()));
+      want_h = static_cast<float>(std::atoi(f[1].c_str()));
+      src    = f[2];
+    }
+    if (src.empty()) return nullptr;
+    out->media  = Run::kMediaImage;
+    out->src    = src;
+    out->want_w = want_w;
+    out->want_h = want_h;
+    return after;
+  }
+  return nullptr;
+}
+
 // ── Parsing d'une ligne en runs (couleur ^RRGGBB, gras/italique, liens) ──
 // Les segments sortent en UTF-8 : la conversion depuis l'ANSI des scripts serveur
 // se fait ICI, une fois par ligne et par page, plutôt qu'à chaque frame de rendu.
@@ -571,6 +873,35 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
         icon.icon_id = std::atoi(std::string(p + 3, rb).c_str());
         out->push_back(icon);
         p = rb + 1;
+        continue;
+      }
+    }
+    // Balises MAISON (`<MOBL>`, `<IMG>`…) : essayées EN PREMIER, parce qu'elles
+    // ont un corps structuré et une fermante explicite — le traitement générique
+    // ci-dessous, lui, ne lit qu'un nom entre chevrons et jetterait le reste.
+    if (*p == '<') {
+      Run made;
+      made.color = cur.color;  // un média hérite du contexte, un lien reprendra le sien
+      if (const char* np = TryOwnTag(p, end, &made)) {
+        flush();
+        // Un lien d'OBJET porte son icône, comme dans la chatbox : c'est ce qui rend
+        // une liste de composants lisible d'un coup d'œil. Les autres genres n'en ont
+        // pas (une recette n'est pas l'objet, un monstre a son sprite).
+        if (made.target.kind == links::Target::kItem && made.target.item.id != 0) {
+          Run icon;
+          icon.color   = 0;
+          icon.icon_id = static_cast<int>(made.target.item.id);
+          out->push_back(icon);
+        }
+        // Un `<MOBP>` ne produit rien à afficher : il a déjà été relevé pour la page.
+        if (made.media != Run::kMediaNone || !made.text.empty()) {
+          // Déjà en UTF-8 (converti dans TryOwnTag) : ne pas repasser par le flush,
+          // qui reconvertirait — un texte UTF-8 relu comme de l'ANSI donne du mojibake.
+          made.bold   = cur.bold;
+          made.italic = cur.italic;
+          out->push_back(std::move(made));
+        }
+        p = np;
         continue;
       }
     }
@@ -619,15 +950,80 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
 // Ici il ne repart qu'au changement de page, de largeur ou de taille de police.
 void NpcDialogWindow::BuildLayout(float wrap, float fsize, float line_h) {
   frags_.clear();
+  targets_.clear();
+  img_srcs_.clear();
   ImFont* font = ImGui::GetFont();
   const float space_w = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, " ").x;
 
   float x = 0.0f, y = 0.0f;
+  // ── Lignes à hauteur VARIABLE ──────────────────────────────────────────────
+  // Un sprite ou une image fait plusieurs lignes de haut, et le texte posé à côté
+  // doit rester lisible : on ferme donc chaque ligne VISUELLE en connaissant sa
+  // hauteur réelle, puis on centre son contenu dessus. Sans média, `line_max`
+  // reste `line_h` et le décalage vaut zéro — le rendu des pages ordinaires ne
+  // bouge pas d'un pixel.
+  size_t line_start = 0;      // premier fragment de la ligne visuelle en cours
+  float  line_max   = line_h;  // sa hauteur (le plus haut de ses fragments)
+  auto end_line = [&]() {
+    for (size_t k = line_start; k < frags_.size(); ++k) {
+      Frag& g = frags_[k];
+      // Le texte se centre sur la bande de texte (sa hauteur nominale est celle
+      // d'une ligne, pas celle du glyphe) ; un média sur sa propre hauteur.
+      const float ref = (g.media != 0) ? g.h : line_h;
+      g.y += (line_max - ref) * 0.5f;
+    }
+    y += line_max;
+    line_start = frags_.size();
+    line_max   = line_h;
+    x = 0.0f;
+  };
+
   std::vector<Run> runs;
   for (const std::string& raw : lines_) {
     runs.clear();
     ParseLine(raw, &runs);
     for (const Run& r : runs) {
+      // ── Médias (image, sprite de monstre) ────────────────────────────────
+      if (r.media != Run::kMediaNone) {
+        ImVec2 box(0.0f, 0.0f);
+        int img_idx = -1;
+        if (r.media == Run::kMediaImage) {
+          box = ImageBoxSize(r.src, r.want_w, r.want_h, wrap, line_h);
+          img_idx = static_cast<int>(img_srcs_.size());
+          img_srcs_.push_back(r.src);
+        } else {
+          const float side = (r.want_h > 0.0f) ? r.want_h : kSpriteInlineH;
+          box = ImVec2(side, side);
+        }
+        // Jamais plus large que le corps — et à l'échelle, sans déformer (le
+        // ratio d'un sprite ou d'une image est une information).
+        if (box.x > wrap && box.x > 0.0f) {
+          const float s = wrap / box.x;
+          box.x *= s;
+          box.y *= s;
+        }
+        if (x > 0.0f && x + box.x > wrap) end_line();
+        Frag f;
+        f.x = x; f.y = y; f.w = box.x; f.h = box.y;
+        f.media  = r.media;
+        f.img    = img_idx;
+        f.mob_id = r.mob_id;
+        if (r.target.valid()) {
+          f.target = static_cast<int>(targets_.size());
+          targets_.push_back(r.target);
+        }
+        frags_.push_back(std::move(f));
+        x += box.x + 4.0f;
+        if (box.y > line_max) line_max = box.y;
+        continue;
+      }
+      // Un lien maison : sa cible est mémorisée UNE fois pour le run, et chacun de
+      // ses mots y renvoie — c'est la zone entière qui est cliquable, pas un mot.
+      int target_idx = -1;
+      if (r.target.valid()) {
+        target_idx = static_cast<int>(targets_.size());
+        targets_.push_back(r.target);
+      }
       // Icône item ^i[id] : hauteur = ligne, largeur au RATIO d'origine (pas de déform).
       // ⚠ On ne garde QUE ses dimensions : une texture ne survit pas à un reset de
       // device (cf. ui/icon_cache.h), le handle est redemandé au rendu. La résolution
@@ -637,10 +1033,11 @@ void NpcDialogWindow::BuildLayout(float wrap, float fsize, float line_h) {
         if (ic.tex && ic.h > 0) {
           const float ih = fsize + 3.0f;
           const float iw = ih * static_cast<float>(ic.w) / static_cast<float>(ic.h);
-          if (x > 0.0f && x + iw > wrap) { x = 0.0f; y += line_h; }
+          if (x > 0.0f && x + iw > wrap) end_line();
           Frag f;
           f.x = x; f.y = y; f.w = iw; f.h = ih;
           f.icon_id = r.icon_id;
+          f.target  = target_idx;
           frags_.push_back(std::move(f));
           x += iw + 3.0f;
         }
@@ -664,17 +1061,20 @@ void NpcDialogWindow::BuildLayout(float wrap, float fsize, float line_h) {
         const char* w1 = u.c_str() + j;
         const float ww = font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, w0, w1).x;
         bool wrapped = false;
-        if (x > 0.0f && x + ww > wrap) { x = 0.0f; y += line_h; wrapped = true; }
+        if (x > 0.0f && x + ww > wrap) { end_line(); wrapped = true; }
         Frag f;
         f.x = x; f.y = y; f.w = ww; f.h = fsize;
         f.text.assign(w0, w1);
-        f.color = r.color;   // 0 = couleur par défaut, résolue au rendu (thème)
-        f.bold  = r.bold;
-        f.link  = r.link;
-        if (r.link) {
-          f.link_arg = r.link_arg;
+        f.color  = r.color;  // 0 = couleur par défaut, résolue au rendu (thème)
+        f.bold   = r.bold;
+        f.link   = r.link;
+        f.target = target_idx;
+        if (r.link || target_idx >= 0) {
+          if (r.link) f.link_arg = r.link_arg;
           // Étend à gauche jusqu'au début des espaces de tête (MÊME ligne) pour que TOUT
           // le libellé du lien soit cliquable/souligné en continu, y compris entre 2 mots.
+          // Vaut pour les liens maison aussi : « <[Mob] Poring> » fait deux mots, et
+          // sans cela le soulignement du second repartirait de la marge gauche.
           f.ux0 = (!wrapped && gap_y == y) ? gap_x : x;
         }
         frags_.push_back(std::move(f));
@@ -682,8 +1082,7 @@ void NpcDialogWindow::BuildLayout(float wrap, float fsize, float line_h) {
         i = j;
       }
     }
-    x = 0.0f;
-    y += line_h;  // fin de ligne source
+    end_line();  // fin de ligne source
   }
   layout_h_    = y;
   layout_wrap_ = wrap;
@@ -709,10 +1108,41 @@ void NpcDialogWindow::DrawRichLines() {
   const float view_top = ImGui::GetWindowPos().y;
   const float view_bot = view_top + ImGui::GetWindowSize().y;
 
+  // Un média peut dépasser la ligne : la marge évite qu'un fragment haut, dont le
+  // haut est déjà sorti par le bas de la bande, soit coupé alors qu'il reste
+  // visible. Le tri par y n'est plus strict depuis le centrage vertical des lignes
+  // (± une demi-hauteur de ligne), et le plafond des médias borne l'écart.
+  const float slack = kMediaMaxH;
+  bool relayout = false;
+
   for (const Frag& f : frags_) {
     const ImVec2 pos(origin.x + f.x, origin.y + f.y);
-    if (pos.y > view_bot) break;              // frags_ est trié par y croissant
-    if (pos.y + line_h < view_top) continue;
+    if (pos.y > view_bot + slack) break;
+    if (pos.y + f.h + line_h < view_top) continue;
+    if (f.media != 0) {
+      // L'image web arrivée depuis la mise en page a maintenant ses vraies
+      // dimensions : on refait la page UNE fois (ImageBoxSize est déterministe,
+      // donc l'égalité s'établit et la boucle ne se répète pas).
+      if (f.media == Run::kMediaImage && f.img >= 0 &&
+          f.img < static_cast<int>(img_srcs_.size())) {
+        const ImVec2 now = ImageBoxSize(img_srcs_[f.img], 0.0f, 0.0f, wrap, line_h);
+        // Une taille imposée par le script ne se recalcule pas : `now` vaudrait la
+        // taille naturelle. On ne compare donc que si la boîte placée vient bien
+        // d'un calcul sans consigne — repérable au fait qu'elle valait l'un des
+        // états de `ImageBoxSize` (placeholder ou cartouche).
+        const ImVec2 ph = FitBox(kWebPlaceholderW, kWebPlaceholderH, wrap, kMediaMaxH);
+        const bool was_provisional =
+            (f.w == ph.x && f.h == ph.y) ||
+            (f.w == NoticeBox(wrap, line_h).x && f.h == NoticeBox(wrap, line_h).y);
+        if (was_provisional && (now.x != f.w || now.y != f.h)) relayout = true;
+      }
+      DrawMedia(dl, f, pos);
+      const bool hovered = ImGui::IsMouseHoveringRect(
+          pos, ImVec2(pos.x + f.w, pos.y + f.h));
+      if (f.target >= 0 && f.target < static_cast<int>(targets_.size()))
+        LinkGestures(targets_[f.target], hovered);
+      continue;
+    }
     if (f.icon_id != 0) {
       ro::IconTex ic = ro::ItemIcon(static_cast<uint32_t>(f.icon_id));
       if (ic.tex)
@@ -720,20 +1150,29 @@ void NpcDialogWindow::DrawRichLines() {
       continue;
     }
     // Un lien prend TOUJOURS la couleur de lien (bleu, comme le natif) ; sinon la
-    // couleur ^RRGGBB explicite, ou le texte par défaut.
-    const ImU32 col = f.link ? kLinkColor : (f.color ? f.color : def_col);
+    // couleur ^RRGGBB explicite, ou le texte par défaut. Les liens MAISON suivent la
+    // même règle : dans une page de dialogue, ce qui est cliquable se voit.
+    const bool own_link = f.target >= 0 && f.target < static_cast<int>(targets_.size());
+    const ImU32 col =
+        (f.link || own_link) ? kLinkColor : (f.color ? f.color : def_col);
     const char* t0 = f.text.c_str();
     const char* t1 = t0 + f.text.size();
     dl->AddText(pos, col, t0, t1);
     if (f.bold)  // fake-bold : re-dessine décalé de 1px
       dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, t0, t1);
-    if (f.link) {  // souligne + rend cliquable (item -> desc ; url -> navigateur)
+    if (f.link || own_link) {  // souligne + rend cliquable
       const float x0 = origin.x + f.ux0;
       dl->AddLine(ImVec2(x0, pos.y + fsize), ImVec2(pos.x + f.w, pos.y + fsize),
                   kLinkColor);
-      if (!f.link_arg.empty() &&
-          ImGui::IsMouseHoveringRect(ImVec2(x0, pos.y),
-                                     ImVec2(pos.x + f.w, pos.y + fsize + 2.0f))) {
+      const bool hovered = ImGui::IsMouseHoveringRect(
+          ImVec2(x0, pos.y), ImVec2(pos.x + f.w, pos.y + fsize + 2.0f));
+      if (own_link) {
+        // 🔴 Les gestes passent par links:: — le MÊME module que la chatbox et la
+        // table des drops. Gauche ouvre la description, droite le menu, Maj+clic
+        // pose le lien dans la barre de chat : la convention ne se réinvente pas
+        // par surface (cf. features/link_gesture.h).
+        LinkGestures(targets_[f.target], hovered);
+      } else if (!f.link_arg.empty() && hovered) {
         ro::SetHoverCursor(2);  // 2 = curseur « main » RO (le jeu dessine son curseur)
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
           pending_link_cmd_ = f.link;      // action décidée au tick (item/url)
@@ -742,7 +1181,94 @@ void NpcDialogWindow::DrawRichLines() {
       }
     }
   }
-  ImGui::Dummy(ImVec2(wrap, layout_h_));  // réserve la hauteur (scroll)
+  if (relayout) frags_gen_ = 0xFFFFFFFFu;  // remise en page à la frame suivante
+  ImGui::Dummy(ImVec2(wrap, layout_h_));   // réserve la hauteur (scroll)
+}
+
+// Le dessin d'un média DÉJÀ placé. Il ne décide de rien — la mise en page a fixé
+// le rectangle — mais il connaît les états dégradés : une image dont l'hôte n'est
+// pas autorisé se propose au clic, une image absente le DIT.
+void NpcDialogWindow::DrawMedia(ImDrawList* dl, const Frag& f, ImVec2 p0) {
+  const ImVec2 p1(p0.x + f.w, p0.y + f.h);
+  const ImU32 dim = kNoticeColor;
+
+  if (f.media == Run::kMediaMobSprite) {
+    ro::MobSpriteRes* res = MobSprite(f.mob_id);
+    if (res == nullptr) return;
+    ro::DrawMobSprite(dl, *res, p0, p1,
+                      static_cast<float>(ImGui::GetTime()), /*action=*/0,
+                      kSpriteMsPerFrame, /*allow_upscale=*/false);
+    return;
+  }
+
+  if (f.img < 0 || f.img >= static_cast<int>(img_srcs_.size())) return;
+  const std::string& src = img_srcs_[f.img];
+
+  if (!IsWebSource(src)) {
+    const ro::GameTexture t = ro::CachedTextureFromGameFile(src.c_str());
+    if (t.tex != nullptr) {
+      dl->AddImage(TexId(t.tex), p0, p1);
+    } else {
+      dl->AddRect(p0, p1, dim);
+      dl->AddText(ImVec2(p0.x + 4.0f, p0.y + 3.0f), dim,
+                  i18n::Tr("[image introuvable]"));
+    }
+    return;
+  }
+
+  // Web. 🔴 L'hôte non autorisé ne charge RIEN tout seul : c'est la règle du
+  // module d'aperçu (image_preview.h), et elle vaut ici aussi — l'adresse vient du
+  // serveur, mais le joueur reste celui qui décide de contacter un tiers.
+  if (!imgprev::IsPreviewable(src.c_str())) {
+    dl->AddRect(p0, p1, dim);
+    const std::string host = imgprev::HostOfUrl(src.c_str());
+    char label[160];
+    std::snprintf(label, sizeof(label), i18n::Tr("Cliquer pour afficher (%s)"),
+                  host.empty() ? i18n::Tr("site inconnu") : host.c_str());
+    dl->AddText(ImVec2(p0.x + 4.0f, p0.y + 3.0f), dim, label);
+    if (ImGui::IsMouseHoveringRect(p0, p1)) {
+      ro::SetHoverCursor(2);
+      if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        imgprev::AllowOnce(src.c_str());  // cette image-ci, une fois
+    }
+    return;
+  }
+  imgprev::Request(src.c_str());  // idempotent
+  const imgprev::Preview p = imgprev::Get(src.c_str());
+  if (p.state == imgprev::Preview::kReady && p.tex != nullptr) {
+    dl->AddImage(TexId(p.tex), p0, p1);
+    return;
+  }
+  dl->AddRect(p0, p1, dim);
+  // Mêmes libellés que l'aperçu d'image du chat : c'est le même mécanisme, il n'a
+  // pas à se nommer autrement ici (et les deux sont déjà traduits).
+  dl->AddText(ImVec2(p0.x + 4.0f, p0.y + 3.0f), dim,
+              (p.state == imgprev::Preview::kFailed)
+                  ? i18n::Tr("Aperçu indisponible.")
+                  : i18n::Tr("Chargement de l'aperçu..."));
+}
+
+// Les gestes d'un lien maison. L'ouverture du menu est DIFFÉRÉE d'une frame :
+// l'identifiant d'un popup se hache avec la pile d'ID de la fenêtre où l'OpenPopup
+// est appelé, et nous sommes ici dans un child. Même mécanique que la chatbox.
+void NpcDialogWindow::LinkGestures(const links::Target& target, bool hovered) {
+  if (!target.valid()) return;
+  if (hovered) links::HoverPreview(target);
+  if (links::Gestures(target, hovered)) {
+    link_menu_ = target;
+    link_menu_request_ = true;
+  }
+}
+
+ro::MobSpriteRes* NpcDialogWindow::MobSprite(int class_id) {
+  if (class_id <= 0) return nullptr;
+  auto it = mob_sprites_.find(class_id);
+  if (it == mob_sprites_.end())
+    it = mob_sprites_.emplace(class_id, ro::MobSpriteRes{}).first;
+  // Idempotent : LoadMobSprite ne recharge pas ce qu'il a déjà, et retient l'échec
+  // (`failed`) pour ne pas retenter un monstre sans sprite à chaque frame.
+  ro::LoadMobSprite(class_id, &it->second);
+  return it->second.failed ? nullptr : &it->second;
 }
 
 size_t NpcDialogWindow::MenuVisibleCount() const {
@@ -859,8 +1385,38 @@ void NpcDialogWindow::DrawMenu(float group_h) {
         }
         continue;
       }
+      // ⚠ Un média dans une OPTION reste à la hauteur de sa ligne — une option de
+      // menu est une ligne cliquable d'un seul tenant, pas un paragraphe : y
+      // laisser grandir une image ferait une liste dont chaque entrée aurait sa
+      // taille. Un sprite de monstre y devient donc une vignette, ce qui est
+      // exactement l'usage attendu (« choisir un monstre dans une liste »).
+      if (r.media != Run::kMediaNone) {
+        const float mh = row_h - 1.0f;
+        const float my = p0.y + (row_h - mh) * 0.5f;
+        Frag mf;
+        mf.w = mh; mf.h = mh;
+        mf.media = r.media;
+        mf.mob_id = r.mob_id;
+        if (r.media == Run::kMediaImage) {
+          // Le dessin d'image lit `img_srcs_`, qui appartient à la mise en page du
+          // CORPS : on y passe par une entrée temporaire plutôt que d'ouvrir un
+          // second chemin de rendu.
+          mf.img = static_cast<int>(img_srcs_.size());
+          img_srcs_.push_back(r.src);
+        }
+        DrawMedia(dl, mf, ImVec2(x, my));
+        if (r.media == Run::kMediaImage) img_srcs_.pop_back();
+        x += mh + 3.0f;
+        continue;
+      }
       if (r.text.empty()) continue;  // déjà en UTF-8 (cf. ParseLine)
-      const ImU32 col = r.color ? r.color : def_col;
+      // 🔴 Un lien dans une option de menu se voit (couleur), mais ne se CLIQUE
+      // pas : le clic appartient au choix. Le rectangle d'un Selectable couvre
+      // toute la ligne, et disputer ce clic à links:: ferait qu'un joueur visant
+      // « 3. <Poring> » ouvrirait une fiche au lieu de répondre au NPC. Le lien
+      // reste utile — on lit de quoi parle l'option — sans piéger le geste.
+      const bool own_link = r.target.valid();
+      const ImU32 col = own_link ? kLinkColor : (r.color ? r.color : def_col);
       dl->AddText(ImVec2(x, ty), col, r.text.c_str());
       if (r.bold) dl->AddText(ImVec2(x + 1.0f, ty), col, r.text.c_str());
       x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, r.text.c_str()).x;
@@ -894,6 +1450,26 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   // le 1er choix fait avancer le serveur et le 2e envoi vise un menu à autre cardinalité
   // -> « Invalid menu selection ... got 14, valid [1..3] »).
   if (chosen > 0 && menu_gen_ != menu_answered_gen_) SendMenuChoice(chosen);
+}
+
+// Le portrait de page. Il n'est PAS cliquable : la balise ne transporte qu'un id,
+// et le client ne sait pas nommer un monstre — un menu contextuel s'ouvrirait donc
+// sur un libellé vide. Un script qui veut un lien pose un `<MOBL>` à côté, qui,
+// lui, porte le nom.
+void NpcDialogWindow::DrawPortrait(float col_w, float col_h) {
+  ro::MobSpriteRes* res = MobSprite(portrait_mob_);
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  // Ancré en HAUT de la colonne : le texte commence en haut lui aussi, et un
+  // portrait centré sur une page longue flotterait au milieu de rien.
+  float h = col_h;
+  if (h > 200.0f) h = 200.0f;
+  if (res != nullptr) {
+    ro::DrawMobSprite(ImGui::GetWindowDrawList(), *res, p0,
+                      ImVec2(p0.x + col_w, p0.y + h),
+                      static_cast<float>(ImGui::GetTime()), /*action=*/0,
+                      kSpriteMsPerFrame, /*allow_upscale=*/false);
+  }
+  ImGui::Dummy(ImVec2(col_w, col_h));  // réserve la colonne (le corps suit en SameLine)
 }
 
 void NpcDialogWindow::DrawInput() {
@@ -1114,6 +1690,19 @@ void NpcDialogWindow::OnRenderUI() {
     // appliquée au Begin() SUIVANT — la page neuve se serait affichée une frame au
     // défilement de l'ancienne (et clampé sur SA hauteur de contenu, donc n'importe
     // où). Posé avant BeginChild, il vaut dès cette frame. (-1 = axe X inchangé.)
+    // Portrait de page (`<MOBP>`) : une colonne à gauche, réservée AVANT le corps
+    // pour que le word-wrap voie la largeur réellement disponible. Rien n'est
+    // réservé si le sprite est introuvable — mieux vaut le texte pleine largeur
+    // qu'une colonne vide.
+    //
+    // ⚠ Avant le SetNextWindowScroll ci-dessous : ce réglage vaut pour la PROCHAINE
+    // fenêtre ouverte, et le corps doit être celle-là.
+    const bool has_portrait =
+        portrait_mob_ != 0 && MobSprite(portrait_mob_) != nullptr;
+    if (has_portrait) {
+      DrawPortrait(kPortraitW, text_h);
+      ImGui::SameLine();
+    }
     if (scroll_top_) {
       ImGui::SetNextWindowScroll(ImVec2(-1.0f, 0.0f));
       scroll_top_ = false;
@@ -1121,6 +1710,15 @@ void NpcDialogWindow::OnRenderUI() {
     ImGui::BeginChild("##npctext", ImVec2(0, text_h), false);
     DrawRichLines();
     ImGui::EndChild();
+
+    // Menu contextuel d'un lien maison (clic droit dans le corps). Ouvert ICI, dans
+    // la pile d'ID de la FENÊTRE : posé depuis le child du texte, l'identifiant du
+    // popup ne serait pas celui que `links::DrawMenu` recherche.
+    if (link_menu_request_) {
+      ImGui::OpenPopup("##npc_link_menu");
+      link_menu_request_ = false;
+    }
+    links::DrawMenu("##npc_link_menu", link_menu_);
 
     // En attente de la réponse serveur, la page reste à l'identique mais devient
     // INERTE : les widgets gardent leur place (aucun saut de footer) et le joueur ne

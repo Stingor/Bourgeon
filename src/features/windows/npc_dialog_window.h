@@ -6,7 +6,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "features/link_gesture.h"  // links::Target (balises maison MOBL/ITMR/CRAF/SETL)
 #include "features/plugin.h"
+#include "ui/mob_sprite.h"          // ro::MobSpriteRes (<MOBS> / <MOBP>)
 
 // ── NpcDialogWindow ──────────────────────────────────────────────────────────
 //
@@ -37,11 +39,23 @@
 // OPT-IN : imgui_enabled_ = false par défaut ; quand ON, on cache les fenêtres
 // natives (0x10/0x11/0x38/0x64/0xE2, flag wnd+0x28) et on rend notre overlay.
 //
-// P2 (non couvert ici) : icônes ^i / émotes ^e inline (texture atlas), gras/
-// italique rendus (font atlas), wiring clic liens item/navi/quest, dialogue
-// secondaire 0xE2 (SAY2/WAIT2 capturés mais non distingués), quest/monolog
-// dialog, honorer ALIGN/SIZE/POS. Validation mots-interdits de l'input texte
-// (le serveur re-valide de toute façon).
+// ── LE VOCABULAIRE BOURGEON ──────────────────────────────────────────────────
+// L'overlay rend, en plus des balises du client, celles que le client ne connaît
+// pas (détail et syntaxe : « Le vocabulaire Bourgeon » dans le .cc) :
+//   `<MOBL>` monstre · `<ITMR>` objet · `<CRAF>` recette · `<SETL>` réglage —
+//   les mêmes que la chatbox, avec les mêmes gestes (links::) ;
+//   `<MOBS>` sprite de monstre inline · `<MOBP>` portrait de page · `<IMG>` image
+//   (ressource du client ou adresse web) — propres au dialogue.
+//
+// 🔴 Un script ne doit les émettre qu'aux clients qui les rendent, sinon le
+// dialogue NATIF affiche la balise en toutes lettres. C'est l'objet de
+// CZ_BOURGEON_UI_CAPS (features/systems/ui_caps.h), que le serveur consulte pour
+// dégrader ce qu'il envoie aux autres.
+//
+// P2 (non couvert ici) : émotes ^e inline, gras/italique par font atlas, clic des
+// liens NAVI/QUEST natifs, dialogue secondaire 0xE2 (SAY2/WAIT2 capturés mais non
+// distingués), quest/monolog dialog, honorer ALIGN/SIZE/POS. Validation
+// mots-interdits de l'input texte (le serveur re-valide de toute façon).
 
 class NpcDialogWindow : public Plugin {
  public:
@@ -95,6 +109,23 @@ class NpcDialogWindow : public Plugin {
     int         link = 0;    // 0=aucun ; sinon cmd de lien (URL/ITEM/NAVI/QUEST)
     std::string link_arg;    // URL brute, ou id d'item (<INFO>) pour ouvrir la desc
     int         icon_id = 0; // ^i[id] : icône d'item inline (0 = pas une icône)
+
+    // ── Balises MAISON (cf. « Le vocabulaire Bourgeon » dans le .cc) ──────────
+    // Un lien décrit par une cible `links::` : mêmes gestes, même aperçu et même
+    // menu contextuel que dans la chatbox, parce que c'est le MÊME module qui les
+    // joue. Le texte affiché reste dans `text` (le lecteur voit un libellé, pas
+    // une balise) ; `target.valid()` distingue le lien du texte ordinaire.
+    links::Target target;
+
+    // Un MÉDIA : ni texte ni lien, un rectangle à placer. `<IMG>` charge une
+    // image (ressource du client ou adresse web), `<MOBS>` anime un sprite de
+    // monstre.
+    enum Media : uint8_t { kMediaNone = 0, kMediaImage, kMediaMobSprite };
+    uint8_t     media = kMediaNone;
+    std::string src;            // kMediaImage : chemin de ressource OU adresse web
+    int         mob_id = 0;     // kMediaMobSprite : id de classe du monstre
+    float       want_w = 0.0f;  // taille demandée par le script (0 = à nous de choisir)
+    float       want_h = 0.0f;
   };
 
   // Une option de menu, préparée à la RÉCEPTION une fois pour toutes : texte riche,
@@ -121,15 +152,35 @@ class NpcDialogWindow : public Plugin {
     int         link = 0;
     int         icon_id = 0;
     bool        bold = false;
+
+    // ⚠ Cible et source d'image par INDEX, pas par valeur. Une `links::Target`
+    // pèse ses quatre std::string, et une page peut compter des dizaines de
+    // milliers de fragments (l'agent de warp en produit autant qu'il y a de mots) :
+    // la porter dans chaque fragment de texte coûterait des mégaoctets pour des
+    // champs vides. -1 = aucun.
+    int         target = -1;  // index dans `targets_`
+    int         img = -1;     // index dans `img_srcs_`
+    uint8_t     media = 0;    // Run::Media
+    int         mob_id = 0;   // Media == kMediaMobSprite
   };
 
   void Reset();                       // vide le modèle (fermeture/warp)
   void PushText(const char* s);       // ajoute une ligne à la page en RÉCEPTION
+  // Relit la page PUBLIÉE pour y trouver ce qui vaut à l'échelle de la page entière
+  // et non d'une ligne : aujourd'hui le seul `<MOBP>` (portrait). Appelée par
+  // CommitPage, donc une fois par page — le corps, lui, se remet en page à chaque
+  // changement de largeur, et le portrait ne peut pas en dépendre : c'est LUI qui
+  // dicte la largeur restante.
+  void ScanPageDirectives();
   // Publie la page reçue : corps, menu, prompt et boutons apparaissent dans la MÊME
   // frame. Appelée par le paquet qui TERMINE la page (WAIT/CLOSE/MENU/prompt), et en
   // dernier recours par le filet à frames muettes d'OnRenderUI.
   void CommitPage();
   static void ParseLine(const std::string& raw, std::vector<Run>* out);
+  // Une balise MAISON à la position `p` ? Rend la position juste après sa
+  // fermante et remplit `out` ; nullptr si ce n'en est pas une (le parseur
+  // reprend alors son traitement générique des `<...>`).
+  static const char* TryOwnTag(const char* p, const char* end, Run* out);
   // (Re)calcule le placement de TOUTES les lignes pour une largeur donnée.
   void BuildLayout(float wrap, float font_size, float line_h);
   void DrawRichLines();               // rendu word-wrap multi-couleur (ImDrawList)
@@ -143,6 +194,19 @@ class NpcDialogWindow : public Plugin {
   // C'est OnRenderUI qui la rabote ensuite pour garder de la place au texte du NPC.
   float MenuNaturalHeight() const;
   void DrawInput();                   // prompt nombre / texte
+  // Le portrait de page (`<MOBP>`), dans sa colonne. Ne dessine rien — et ne
+  // réserve rien — s'il n'y en a pas.
+  void DrawPortrait(float col_w, float col_h);
+  // Dessine un média déjà PLACÉ (image ou sprite) dans son rectangle. Partagé par
+  // le corps et par le menu, qui les rencontrent tous les deux.
+  void DrawMedia(ImDrawList* dl, const Frag& f, ImVec2 p0);
+  // Les gestes d'un lien maison sur une zone survolée : aperçu, clic gauche,
+  // Maj+clic, et l'ouverture DIFFÉRÉE du menu contextuel (l'`OpenPopup` doit
+  // partir de la pile d'ID de la fenêtre, cf. links::DrawMenu).
+  void LinkGestures(const links::Target& target, bool hovered);
+  // Le sprite d'un monstre, chargé une fois par id. Rend nullptr tant que le
+  // chargement échoue — un monstre sans sprite ne doit pas retenter à chaque frame.
+  ro::MobSpriteRes* MobSprite(int class_id);
 
   // Envois (thread principal uniquement).
   void SendNext();
@@ -210,11 +274,31 @@ class NpcDialogWindow : public Plugin {
   // qu'une fois). Ici : calculé UNE fois par page et par largeur, et le rendu ne
   // dessine que les fragments réellement visibles.
   std::vector<Frag> frags_;
+  // Ce que les fragments désignent par index (cf. Frag::target / Frag::img).
+  // Reconstruits avec la mise en page, donc jamais désaccordés d'elle.
+  std::vector<links::Target> targets_;
+  std::vector<std::string>   img_srcs_;
   float    layout_wrap_ = -1.0f;    // largeur pour laquelle frags_ vaut
   float    layout_font_ = -1.0f;    // taille de police idem
   float    layout_h_    = 0.0f;     // hauteur totale du contenu
   unsigned page_gen_    = 0;        // génération de la page (incrémentée à chaque publication)
   unsigned frags_gen_   = 0xFFFFFFFFu;
+
+  // ── Médias ────────────────────────────────────────────────────────────────
+  // Portrait de la page (`<MOBP>id</MOBP>`, 0 = aucun) : un sprite unique, dans
+  // une colonne à gauche du corps. Il vaut pour la page ENTIÈRE, d'où sa lecture
+  // à la publication et non au fil des lignes.
+  int portrait_mob_ = 0;
+  // Sprites chargés, par id de classe. Le cache de ui/sprite_view.h porte déjà les
+  // textures ; ceci ne garde que les poignées, pour ne pas refaire la résolution
+  // de nom à chaque frame.
+  std::unordered_map<int, ro::MobSpriteRes> mob_sprites_;
+
+  // ── Menu contextuel d'un lien ─────────────────────────────────────────────
+  // La cible est mise de côté au clic droit et le popup ouvert à la frame
+  // suivante, dans la pile d'ID de la fenêtre (même mécanique que la chatbox).
+  links::Target link_menu_;
+  bool          link_menu_request_ = false;
 
   bool       has_next_  = false;      // bouton [Next] demandé (WAIT)
   bool       has_close_ = false;      // bouton [Close] demandé (CLOSE)

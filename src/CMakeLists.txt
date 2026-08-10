@@ -191,6 +191,8 @@ set(BOURGEON_FILES
 	"features/systems/moonlight_auth.h"
 	"features/systems/native_login.cc"
 	"features/systems/native_login.h"
+	"features/systems/ui_caps.cc"
+	"features/systems/ui_caps.h"
 
 	# minigames/
 	"features/minigames/doom.cc"

@@ -20,6 +20,7 @@
 #include "features/overlays/dps_meter.h"
 #include "features/overlays/menu_icons.h"
 #include "features/systems/integrity_check.h"
+#include "features/systems/ui_caps.h"
 #include "features/systems/dx7_warning.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/patches/status_tweaks.h"
@@ -664,6 +665,10 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(char_select));
   }
   plugins_.emplace_back(std::make_unique<IntegrityCheck>());
+  // Annonce au serveur les interfaces modernes ALLUMÉES, pour que les scripts NPC
+  // n'envoient du markup Bourgeon qu'à un client qui le rendra (cf. ui_caps.h).
+  // Après IntegrityCheck : il n'envoie rien tant que le serveur ne l'a pas reconnu.
+  plugins_.emplace_back(std::make_unique<UiCaps>());
   plugins_.emplace_back(std::make_unique<CheatDetector>());
   // Avertit dès l'écran de login quand le client rend en DirectX 7 (voir
   // dx7_warning.h) : la moitié des modules graphiques de Bourgeon y est inerte.

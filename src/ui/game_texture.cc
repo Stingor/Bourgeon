@@ -2,9 +2,11 @@
 
 #include <Windows.h>
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
+#include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
 
 namespace {
 
@@ -72,6 +74,22 @@ GameTexture TextureFromGameFile(const char* path) {
   int w = 0, h = 0;
   if (!GameFilePixels(path, &argb, &w, &h)) return {};
   return {Overlay_CreateTextureARGB(argb.data(), w, h), w, h};
+}
+
+GameTexture CachedTextureFromGameFile(const char* path) {
+  static std::unordered_map<std::string, GameTexture> s_cache;
+  static unsigned s_epoch = 0;
+  // Textures en D3DPOOL_DEFAULT : elles meurent au reset du device, et un handle
+  // libéré passé à AddImage plante dans ddraw. Même garde que ui/icon_cache.cc.
+  const unsigned epoch = Overlay_DeviceEpoch();
+  if (epoch != s_epoch) {
+    s_cache.clear();
+    s_epoch = epoch;
+  }
+  if (!path || !path[0]) return {};
+  auto found = s_cache.find(path);
+  if (found != s_cache.end()) return found->second;
+  return s_cache[path] = TextureFromGameFile(path);
 }
 
 }  // namespace ro

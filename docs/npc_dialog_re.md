@@ -724,3 +724,87 @@ texte — donc combien de place il faut lui réserver.
    déroulait jusqu'en bas ; c'est la première chose visible depuis que la page
    s'ouvre par le haut. C'est un garde-fou anti-emballement, pas un budget
    d'affichage — le coût d'une longue page ayant changé de nature (point 6).
+
+---
+
+## 14. Les balises Bourgeon — liens, sprites et images (2026-08-10)
+
+Le dialogue moderne rend, **en plus** des balises du client (§4.3), un vocabulaire
+que le client ne connaît pas. Quatre d'entre elles existaient déjà dans la chatbox
+(`src/features/windows/chat_window.cc`) ; le dialogue les parle désormais aussi, et
+en ajoute trois qui n'auraient pas de sens dans une ligne de log.
+
+| Balise | Effet | Geste |
+|---|---|---|
+| `<MOBL>id:rang:nom</MOBL>` | lien vers la fiche d'un monstre (rang 0/1/2 = normal/boss/MVP) | gauche = fiche, droite = menu, Maj = lien chat |
+| `<ITMR>id:nom</ITMR>` | lien vers la description d'un objet **de base** | idem |
+| `<CRAF>id:nom</CRAF>` | lien vers la **recette** (Atlas) | idem |
+| `<SETL>clé:libellé</SETL>` | lien vers une destination du panneau de réglages | idem |
+| `<MOBS>id</MOBS>` | sprite animé du monstre, **inline** dans le texte | — |
+| `<MOBP>id</MOBP>` | **portrait de page** : colonne à gauche du corps | — |
+| `<IMG>src</IMG>` · `<IMG>w:h:src</IMG>` | image : ressource du client, ou adresse http(s) | clic pour charger si l'hôte n'est pas autorisé |
+
+Champs séparés par `:`, **le champ libre en dernier** — un nom de monstre contient
+des espaces, une adresse web contient des `:`.
+
+### 14.1 Pourquoi un paquet de capacités (CZ 0x0F24)
+
+🔴 Le dialogue **natif** efface les balises qu'il connaît et **laisse passer les
+autres** : un `<MOBL>1002:0:Poring</MOBL>` envoyé à un joueur resté en natif
+s'affiche en toutes lettres. `sd->state.has_bourgeon` ne suffit pas à trancher —
+il dit qu'on parle à un client Bourgeon, pas que *son dialogue moderne est
+allumé*, ce que le joueur change quand il veut.
+
+D'où `CZ_BOURGEON_UI_CAPS` (`0x0F24`, `[type:2][len:2][caps:4]`) : le client
+annonce un masque des surfaces qui rendent ces balises, dès que le serveur l'a
+reconnu (à la réception de `ZC_BOURGEON_SETTINGS`) puis **à chaque bascule** d'un
+réglage. Côté moonlight, `sd->bourgeon_ui_caps` (jamais persisté — c'est un état de
+session) et `clif_bourgeon_strip_own_tags`, appelé par `clif_scriptmes` et
+`clif_scriptmenu` : la balise y est remplacée par le libellé qu'elle transporte,
+les médias disparaissent. **Un script s'écrit donc une seule fois.**
+
+Modules : client `src/features/systems/ui_caps.{h,cc}` ; serveur `clif.cpp`
+(`clif_parse_bourgeon_ui_caps`), `e_bourgeon_ui_cap` dans `clif.hpp`.
+
+### 14.2 Côté script (moonlight)
+
+```c
+mes "Méfie-toi de " + mobtag(1002) + " en chemin.";
+mes mobsprite(1039) + " Baphomet garde l'entrée.";
+mes "Il te faut " + itemtag(501) + ", et la " + crafttag(970) + ".";
+mes imgtag("https://moonlight-ro.com/img/event.png", 320, 180);
+if (bourgeon_ui(BOURGEON_UI_NPC_DIALOG)) mes mobsprite(1039, 1);  // portrait de page
+```
+
+`mobtag` va chercher le nom et le rang dans `mob_db` : **le client ne sait pas
+nommer un monstre**, le nom doit voyager. `itemtag` n'est pas `itemlink` (rAthena,
+`<ITEML>`) — ce dernier est rendu par tous les clients mais le client refuse de le
+renvoyer pour un objet absent du sac, ce qui est justement le cas d'un NPC qui
+parle d'une quête.
+
+### 14.3 Mise en page : lignes à hauteur variable
+
+Un média fait plusieurs lignes de haut ; `BuildLayout` ferme donc chaque ligne
+**visuelle** en connaissant sa hauteur réelle et centre son contenu dessus. Sans
+média le décalage vaut zéro — les pages ordinaires sont rendues au pixel près comme
+avant. Le portrait (`<MOBP>`), lui, est relevé à la **publication de la page**
+(`ScanPageDirectives`) et non pendant la mise en page : c'est lui qui décide de la
+largeur restante, et l'y lire ferait dépendre la largeur d'un calcul qui en dépend.
+
+Une image web dont les dimensions sont inconnues occupe une boîte provisoire, puis
+la page se remet en page **une fois** à son arrivée (`ImageBoxSize` est
+déterministe, donc la comparaison converge). Donner `w:h` dans la balise évite ce
+réarrangement.
+
+### 14.4 Ce qui n'est pas fait, et pourquoi
+
+- **Un lien dans une option de menu ne se clique pas** : le rectangle d'un
+  `Selectable` couvre la ligne entière, et disputer ce clic ferait qu'un joueur
+  visant « 3. `<Poring>` » ouvrirait une fiche au lieu de répondre. Le lien reste
+  coloré — on lit de quoi parle l'option.
+- **Le portrait n'est pas cliquable** : la balise ne transporte qu'un id, et le
+  client ne sait pas nommer un monstre — le menu s'ouvrirait sur un libellé vide.
+  Un `<MOBL>` posé à côté fait le travail.
+- **Le chat n'est pas dégradé côté serveur.** `clif_displaymessage` et consorts
+  laissent passer les balises telles quelles ; un script qui en envoie dans le chat
+  doit tester `bourgeon_ui(BOURGEON_UI_CHAT)`.

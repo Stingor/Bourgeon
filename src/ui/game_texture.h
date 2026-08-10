@@ -53,6 +53,17 @@ constexpr int kPixels = 0x11c;  // BGRA brut
 // texture nulle plutôt que de lever (le chemin natif est gardé par un SEH).
 GameTexture TextureFromGameFile(const char* path);
 
+// La même texture, MÉMORISÉE par chemin — y compris l'échec, qui est un résultat
+// et non une raison de retenter à chaque frame. C'est ce que ro::ItemIcon fait
+// depuis un nameid ; ici la clé est le chemin lui-même, pour les surfaces où il
+// vient d'ailleurs que de la DB d'items (une balise `<IMG>` d'un script NPC, par
+// exemple).
+//
+// Le cache se vide seul au reset de device (Overlay_DeviceEpoch) : l'appelant
+// n'a rien à surveiller, il redemande simplement à chaque frame — un hit ne coûte
+// qu'une recherche de table.
+GameTexture CachedTextureFromGameFile(const char* path);
+
 // Mêmes pixels, mais rendus à l'APPELANT au lieu d'être téléversés au GPU : pour
 // les traitements côté CPU (l'éditeur d'emblème importe ainsi une icône d'item,
 // qui fait justement 24x24 comme un emblème).

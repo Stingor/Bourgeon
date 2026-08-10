@@ -42,6 +42,7 @@ constexpr uint16_t kJump        = 0x0F1A;  // CZ_BOURGEON_JUMP (« j'ai sauté �
 constexpr uint16_t kOpenStorage = 0x0F1D;  // CZ_BOURGEON_OPEN_STORAGE (ouvrir/basculer de storage)
 constexpr uint16_t kReqMobInfo  = 0x0F1F;  // CZ_BOURGEON_REQ_MOBINFO (fiche détaillée d'un monstre)
 constexpr uint16_t kReqEntityProps = 0x0F22;  // CZ_BOURGEON_REQ_ENTITY_PROPS (propriétés serveur d'une entité — STAFF)
+constexpr uint16_t kUiCaps      = 0x0F24;  // CZ_BOURGEON_UI_CAPS (ce que l'interface moderne SAIT AFFICHER)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -65,12 +66,12 @@ constexpr uint16_t kMobInfo        = 0x0F20;  // ZC_BOURGEON_MOBINFO (fiche mons
 constexpr uint16_t kChannelList    = 0x0F21;  // ZC_BOURGEON_CHANNEL_LIST (canaux de chat atteignables)
 constexpr uint16_t kEntityProps    = 0x0F23;  // ZC_BOURGEON_ENTITY_PROPS (liste clé/valeur décrivant une entité — STAFF)
 
-// --- PROCHAIN OPCODE LIBRE : 0x0F24 -----------------------------------------
+// --- PROCHAIN OPCODE LIBRE : 0x0F25 -----------------------------------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F24;
+constexpr uint16_t kNextFree    = 0x0F25;
 
 }  // namespace bopcodes
