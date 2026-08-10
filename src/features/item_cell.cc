@@ -71,6 +71,9 @@ constexpr int kNodeInfo  = 0x08;
 constexpr int kInfoIndex = 0x04;  // int : index client (arg des commandes)
 constexpr int kInfoIdStr = 0x2c;  // std::string : l'itemId EN TEXTE (le jeu fait atoi)
 constexpr int kInfoIdCap = 0x40;  // capacité SSO (= +0x2c+0x14) ; >15 => heap
+// int : la QUANTITÉ de la pile (`num_`), l'un des deux seuls champs du layout
+// d'ItemInfo qui soient confirmés en jeu (cf. ragnarok/item_info.h).
+constexpr int kInfoAmount = 0x10;
 
 // Plafond du parcours : simple garde-fou anti-boucle (la liste s'arrête sur sa
 // sentinelle). Une seule valeur pour les trois listes — la plus grosse, celle du
@@ -656,6 +659,30 @@ void* FindInfoById(uintptr_t list_head, uint32_t id) {
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return nullptr;
+}
+
+int CountById(uintptr_t list_head, uint32_t id) {
+  if (id == 0) return 0;
+  int total = 0;
+  __try {
+    // 🔴 `list_head` est l'adresse du GLOBAL ; le nœud sentinelle est ce qu'il
+    // CONTIENT, et c'est lui — pas le global — qui ferme la liste circulaire.
+    // Comparer le nœud courant à l'adresse du global fait boucler jusqu'au
+    // garde-fou et additionne la liste des centaines de fois.
+    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
+    if (!head) return 0;
+    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
+      uint8_t* info = node + kNodeInfo;
+      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
+      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
+                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
+      if (ids && static_cast<uint32_t>(atoi(ids)) == id)
+        total += *reinterpret_cast<int*>(info + kInfoAmount);
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return total; }
+  return total;
 }
 
 void* FindInfoByIndex(uintptr_t list_head, int index) {

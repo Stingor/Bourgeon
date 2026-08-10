@@ -181,16 +181,35 @@ constexpr int kPartyWalkGuard     = 64;    // un groupe plafonne à 12 : garde-f
 // décider de proposer, ou non, l'invitation en guilde.
 constexpr int kActorVt_GetGuildId = 0xc4;
 
-// Type d'acteur (`acteur+0x314`) : 7 = objet au sol, 1/6/12 = hostile/spécial.
+// Type d'acteur (`acteur+0x314`) : le champ `objecttype` du paquet de spawn,
+// que les handlers recopient tel quel (`mov [ebx+314h], al`). Deux valeurs sont
+// PROUVÉES, et ce sont les seules dont ce fichier a besoin :
+//   · **7 = PET** — `mov byte ptr [edi+314h], 7` @0x00cbab7d, dans le sous-type 0
+//     de `ZC_CHANGESTATE_PET`, le paquet qui déclare « cette entité est ton
+//     pet » ; recoupé live (docs/pet_re.md §2.2) ;
+//   · {1, 6, 12} = hostile / unité spéciale, le test dont le client se sert pour
+//     REFUSER son menu joueur (`EntityName_IsHostileOrSpecialUnit` 0x00d9d220).
+// ⚠ La correspondance des AUTRES valeurs avec `clif_bl_type` est déduite du
+// paquet, pas vérifiée : ne pas s'en servir pour trancher quoi que ce soit ici.
 constexpr int kActor_Type = 0x314;
 
 // §3 — catégories du quad de picking. La catégorie 0 (acteur ordinaire : joueur,
 // monstre, PNJ scripté) n'a pas de constante : c'est le cas par défaut, tranché
 // sur le job faute de mieux.
+//
+// 🔴 La catégorie 3, c'est le PET — pas un objet au sol. Il n'existe que TROIS
+// producteurs de quads (les trois xrefs de `NameplateQueue_Insert` 0x00a79610),
+// et le seul qui écrive 3 est `CActorSprite_SubmitNameplateQuad` @0x00c58c48,
+// sous la condition `acteur+0x314 == 7`, c'est-à-dire `CLIF_BL_PET`. Un objet
+// au sol porte `objecttype == 2`, retombe dans le `else` et sort donc en
+// catégorie 0 : AUCUN quad ne vaut « objet au sol ». Le nom d'origine de cette
+// constante — corrigé dans docs le 2026-08-06, ici seulement maintenant — a
+// coûté tout le menu du pet, capté par un `return kGroundItem` posé AVANT que
+// le test du pet ne soit atteint.
 constexpr int kPickNpc        = 1;
 constexpr int kPickSkillUnit  = 2;
-constexpr int kPickGroundItem = 3;
-constexpr int kPickSpecial    = 4;  // pet / homoncule / mercenaire / élémentaire
+constexpr int kPickPet        = 3;
+constexpr int kPickSpecial    = 4;  // homoncule / mercenaire / élémentaire
 
 // §6.3 — codes d'action natifs (ceux qu'on rejoue).
 constexpr int kCodeDeal        = 4;
@@ -715,13 +734,12 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   // rien n'est avalé.
   if (kind == Kind::kSelf && !self_menu_) return true;
 
-  // 🔴 Un objet au sol, une unité de compétence ou une entité non classée n'ont
+  // 🔴 Une unité de compétence, le pet d'autrui ou une entité non classée n'ont
   // AUCUNE action de jeu : il n'en reste que de l'identité brute (nom, GID, quad
   // de pick), c'est-à-dire un outil de débogage. Pour un joueur, ce menu ne
   // ferait qu'avaler son clic droit sans rien lui offrir — il est donc réservé
   // au réglage staff, et le clic repart au natif pour tout le monde d'autre.
-  const bool diagnostic_only = (kind == Kind::kSkillUnit ||
-                                kind == Kind::kGroundItem || kind == Kind::kOther);
+  const bool diagnostic_only = (kind == Kind::kSkillUnit || kind == Kind::kOther);
   if (diagnostic_only && !staff_tools) return true;
 
   // 🔴 Alt + clic droit sur un MONSTRE = ordre à l'homoncule (Alt+Maj = au
@@ -795,7 +813,6 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // scripté sous forme de joueur porte un job de joueur — le cas qui a servi de
   // référence pendant la RE).
   if (category == kPickSkillUnit) return Kind::kSkillUnit;
-  if (category == kPickGroundItem) return Kind::kGroundItem;
   if (category == kPickNpc) return Kind::kNpc;
 
   // Ses propres compagnons, avant tout test de job : ce sont les seuls cas où le
@@ -803,12 +820,26 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   {
     void* session = reinterpret_cast<void*>(kSessionAddr);
     if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnPetAid))) {
+      // La condition d'entrée du menu pet natif est, mot pour mot,
+      // `quad[6] == g_Own_PetAid && acteur[0x314] == 7` (@0x00c6ecdb). Sa
+      // seconde moitié, le quad la porte DÉJÀ : la catégorie 3 n'est écrite que
+      // sous ce même octet. On la lit donc d'abord, et on ne va chercher
+      // l'acteur qu'en second recours — un pointeur de moins à obtenir, c'est
+      // une façon de moins de perdre le menu en silence.
+      if (category == kPickPet) return Kind::kPet;
       void* actor = FindActor(game_mode, aid);
       if (actor && Read<uint8_t>(actor, kActor_Type) == 7) return Kind::kPet;
     }
     if (aid == Read<uint32_t>(session, kSess_HomunAid)) return Kind::kHomunculus;
     if (aid == Read<uint32_t>(session, kSess_MercAid)) return Kind::kMercenary;
   }
+
+  // 🔴 Le pet d'AUTRUI arrive ici, en catégorie 3 lui aussi. Il porte un job de
+  // MONSTRE (le pet EST un mob id) et se ferait donc classer « monstre » un peu
+  // plus bas — avec un « Attaquer » que le serveur refusera, et une fiche de
+  // monstre sur une créature apprivoisée. Le natif ne lui ouvrait rien du tout ;
+  // on n'en garde que l'identité, c'est-à-dire le menu de diagnostic du staff.
+  if (category == kPickPet) return Kind::kOther;
 
   if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnAccountAid))) return Kind::kSelf;
 
@@ -1091,9 +1122,8 @@ void EntityContextMenu::BuildItems() {
       add(i18n::Tr("En attente"), kCodeMercStandBy);
       break;
     case Kind::kSkillUnit:
-    case Kind::kGroundItem:
     case Kind::kOther:
-      // Ces trois-là ne s'ouvrent que pour le staff (cf. `diagnostic_only` dans
+      // Ces deux-là ne s'ouvrent que pour le staff (cf. `diagnostic_only` dans
       // OnNativeContextMenu) : le reste du menu est la section staff ci-dessous.
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
@@ -1158,7 +1188,6 @@ const char* EntityContextMenu::KindLabel(Kind kind) {
     case Kind::kHomunculus: return "Homoncule";
     case Kind::kMercenary:  return "Mercenaire";
     case Kind::kSkillUnit:  return i18n::Tr("Unité");
-    case Kind::kGroundItem: return i18n::Tr("Objet au sol");
     default:                return i18n::Tr("Entité");
   }
 }

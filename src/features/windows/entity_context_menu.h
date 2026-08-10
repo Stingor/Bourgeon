@@ -54,7 +54,7 @@
 // eu. C'est l'espace qu'occupe l'option « toutes les entités » : interagir avec
 // un NPC, fiche de monstre, copier le nom.
 //
-// 🔴 Les unités de compétence, les objets au sol et les entités non classées
+// 🔴 Les unités de compétence, le pet d'autrui et les entités non classées
 // n'ont AUCUNE action de jeu : il n'en reste que de l'identité brute (GID, quad
 // de pick). Ce menu-là est un outil de débogage, pas une fonctionnalité de
 // joueur — il ne s'ouvre que sous le réglage staff, et les identifiants
@@ -192,7 +192,11 @@ class EntityContextMenu : public Plugin {
     kHomunculus,  // SON homoncule
     kMercenary,   // SON mercenaire
     kSkillUnit,   // une unité de compétence posée
-    kGroundItem,  // un objet au sol
+    // 🔴 Pas de `kGroundItem` : aucune catégorie de pick ne vaut « objet au
+    // sol ». La 3 est celle du PET (cf. `kPickPet` dans le .cc) ; un objet au
+    // sol porte `objecttype == 2` et sort en catégorie 0, donc classé au job
+    // comme n'importe quel acteur. La valeur existait pour recevoir la 3, et
+    // c'est précisément ce qui interceptait le menu du pet.
     kOther,
   };
 

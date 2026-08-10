@@ -2562,3 +2562,58 @@
 "Propriétés": "Properties"
 "Copier le rapport": "Copy report"
 "Tout ce que le CLIENT sait de cette entité, relu à chaque image. Les champs de la plaque de nom viennent du serveur : vides, ils veulent dire « pas encore reçu », pas « vides côté serveur ».\nLes adresses et la vtable se collent telles quelles dans IDA ou x32dbg.": "Everything the CLIENT knows about this entity, re-read every frame. The nameplate fields come from the server: empty, they mean \"not received yet\", not \"empty on the server side\".\nThe addresses and the vtable paste as-is into IDA or x32dbg."
+
+
+# Pet sheet (PetWindow: UIPetInfoWnd 88 + the command menu 260 it opened).
+"  (pet)": "  (pet)"
+"Accessoire": "Accessory"
+"Animer le sprite du pet": "Animate the pet sprite"
+"Aucun accessoire.": "No accessory."
+"Aucune évolution pour ce pet.": "No evolution for this pet."
+"Ce pet a déjà été renommé : le serveur n'accepte qu'une fois.": "This pet has already been renamed: the server only allows it once."
+"Ce pet ne porte aucun accessoire.": "This pet is not wearing an accessory."
+"Cliquer pour renommer — une seule fois, définitivement.": "Click to rename - once only, permanently."
+"Confirmer « remettre dans l'œuf »": "Confirm « return to egg »"
+"en baisse, précédemment": "falling, previously"
+"en hausse, précédemment": "rising, previously"
+"Évolution : le client ne connaît pas l'œuf de ce pet.": "Evolution: the client does not know which egg this pet came from."
+"Faim": "Hunger"
+"homoncule / mercenaire / élémentaire": "homunculus / mercenary / elemental"
+"Intimité": "Intimacy"
+"Le client ne demandait rien : l'entrée était voisine de « Spectacle » dans le même menu, et se tromper range le pet pour de bon.": "The client asked nothing: the entry sat next to « Perform » in the same menu, and a slip puts the pet away for good."
+"Le serveur nourrit le pet tout seul sous un certain seuil de faim. L'état affiché est celui que le SERVEUR confirme, pas la case cochée.": "The server feeds the pet by itself below a hunger threshold. The state shown is the one the SERVER confirms, not the box you ticked."
+"niv.": "lv."
+"Nourrir un pet qui n'a pas faim lui fait PERDRE de l'intimité. Sans nourriture en sac, le client refuse sans rien envoyer.": "Feeding a pet that is not hungry makes it LOSE intimacy. With no food in the bag, the client refuses without sending anything."
+"Pet": "Pet"
+"pet": "pet"
+"Ranger": "Put away"
+"Ranger le pet dans son œuf ?": "Put the pet back in its egg?"
+
+# Pet evolution panel (replaces UIPetEvolutionWnd 261).
+"Aucun matériau connu du client.": "No materials known to the client."
+"Matériaux requis :": "Materials required:"
+"Le serveur exige 910 d'intimité, pas 901.": "The server requires 910 intimacy, not 901."
+"Le pet doit retirer son accessoire avant d'évoluer.": "The pet must remove its accessory before it can evolve."
+"Il manque des matériaux.": "Some materials are missing."
+"Faire évoluer": "Evolve"
+
+# Pet egg seen as an ITEM (its card slots are the pet's record).
+" - Éclos": " - Hatched"
+"Déjà renommé": "Already renamed"
+"Œuf vierge : aucun familier dedans.": "Blank egg: no pet inside."
+"Renommage disponible": "Rename still available"
+
+# Section label of the Moonlight panel (static table -> invisible to the extractor).
+"Fiche de pet": "Pet sheet"
+
+# Pet hatching list (replaces UIPetEggListWnd, id 90).
+"Éclore un œuf": "Hatch an Egg"
+"Faire éclore": "Hatch"
+"Aucun œuf de familier dans le sac.": "No pet egg in your bag."
+"Œuf vierge : rien à éclore.": "Blank egg: nothing to hatch."
+"Introuvable dans le sac.": "Not found in your bag."
+"  ·  déjà renommé": "  ·  already renamed"
+"Choisis l'œuf à faire éclore.": "Pick the egg to hatch."
+"Cet œuf n'est plus dans le sac.": "That egg is no longer in your bag."
+"Cet œuf est vide : le serveur refusera de l'éclore.": "That egg is empty: the server will refuse to hatch it."
+"Remplace la fiche du pet, le menu de commandes qu'elle ouvrait et la fenêtre d'évolution, en une seule fenêtre flottante — ainsi que la liste d'éclosion. Les commandes ne sont pas réécrites : elles repassent par le dispatcher du client, donc son refus « pas de nourriture en sac » reste joué. S'y ajoute ce que le client gardait pour lui : le sens de variation de la faim, le nom de l'accessoire porté, les matériaux d'évolution qu'on possède déjà, les œufs vides que le serveur refusera d'éclore, et la raison pour laquelle une action est indisponible plutôt que sa disparition.": "Replaces the pet sheet, the command menu it used to open and the evolution window, all in a single floating window — plus the hatching list. Commands are not rewritten: they still go through the client's dispatcher, so its « no food in bag » refusal is still played. On top of that comes what the client kept to itself: which way hunger is heading, the name of the worn accessory, the evolution materials you already own, the empty eggs the server will refuse to hatch, and the reason an action is unavailable instead of making it vanish."

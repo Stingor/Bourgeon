@@ -855,47 +855,13 @@ constexpr int kMsiDeleteHomun   = 0x3bb;
 constexpr int kMsiNameTooLong   = 0x3aa;
 constexpr int kMsiHomunHungry   = 0x3fa;  // « Your Homunculus is starving… »
 
-// Certains libellés du client portent un saut de ligne parce qu'ils sont peints sur
-// un bouton bitmap de deux lignes (« Auto \nFeeding »). Sur une case à cocher ImGui,
-// ce saut casserait la mise en page ET entrerait dans l'identifiant du widget.
-const char* FlattenLabel(const char* src) {
-  static thread_local char buf[128];
-  int n = 0;
-  for (const char* p = src; p && *p && n < static_cast<int>(sizeof(buf)) - 1; ++p)
-    buf[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
-  while (n > 0 && buf[n - 1] == ' ') --n;  // pas d'espace traînant avant le « ## »
-  buf[n] = '\0';
-  return buf;
-}
-
-// Retire les codes couleur ^RRGGBB du client. Plusieurs libellés natifs en portent —
-// MSI_DELETE_HOMUN en a DEUX d'affilée — parce que la boîte de dialogue du jeu les
-// interprète. ImGui, lui, les afficherait tels quels : « ^ff0000^ff0000 » en plein
-// milieu de l'avertissement.
-//
-// ⚠ Tampon ROTATIF sur quatre emplacements, comme msgstr::Utf8 : bon pour un affichage
-// immédiat, à recopier si la chaîne doit survivre à la frame.
-const char* StripRoColors(const char* src) {
-  static thread_local char bufs[4][512];
-  static thread_local int slot = 0;
-  slot = (slot + 1) & 3;
-  char* out = bufs[slot];
-  const int cap = static_cast<int>(sizeof(bufs[0])) - 1;
-  int o = 0;
-  for (const char* p = src; p && *p && o < cap;) {
-    if (*p == '^') {
-      bool hex6 = true;
-      for (int k = 1; k <= 6; ++k) {
-        const char c = p[k];
-        if (!c || !std::isxdigit(static_cast<unsigned char>(c))) { hex6 = false; break; }
-      }
-      if (hex6) { p += 7; continue; }
-    }
-    out[o++] = *p++;
-  }
-  out[o] = '\0';
-  return out;
-}
+// 🔴 Ces deux mises en forme ont DÉMÉNAGÉ dans `msgstr` (ragnarok/msgstring.h),
+// à côté de la table dont elles traitent les libellés : la fiche de pet en avait
+// exactement le même besoin, et une deuxième copie était une copie de trop. Les
+// noms locaux restent pour ne pas toucher aux appels de ce fichier — la logique,
+// elle, n'existe plus qu'à un seul endroit.
+const char* FlattenLabel(const char* src) { return msgstr::Flatten(src); }
+const char* StripRoColors(const char* src) { return msgstr::StripColors(src); }
 
 // Paliers d'intimité, repris tels quels de UIHomunInfoWnd::OnRender (0x0087E7B0).
 // Bornes IDENTIQUES à hom_intimacy_intimacy2grade côté serveur.

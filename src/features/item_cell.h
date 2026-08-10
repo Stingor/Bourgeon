@@ -314,6 +314,13 @@ void FlushDeferredDesc();
 // d'affichage de la fenêtre (wnd+0xe8) : cacher le natif vide la seconde, jamais
 // le premier. Renvoient nullptr si absent ; SEH-gardées.
 void* FindInfoById(uintptr_t list_head, uint32_t id);
+
+// Le TOTAL d'un objet dans la liste, toutes piles confondues — ce que
+// `FindInfoById` ne peut pas dire, puisqu'il s'arrête à la première.
+// C'est la question « en ai-je assez ? », et c'est ainsi que le serveur y répond
+// (`pet_evolution_requirements_check` additionne les piles avant de comparer).
+// 0 si l'objet est absent.
+int CountById(uintptr_t list_head, uint32_t id);
 void* FindInfoByIndex(uintptr_t list_head, int index);
 
 // ⚠ Un septième site N'EST PAS passé par ici, et c'est délibéré :

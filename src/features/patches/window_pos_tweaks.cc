@@ -15,6 +15,7 @@
 #include "features/windows/vending_window.h"  // hide-native-at-creation (id 0x29/0xAE)
 #include "features/windows/rodex_window.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "features/windows/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
+#include "features/windows/pet_window.h"  // hide-native-at-creation (fiche pet 88 / menu 260)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -177,6 +178,18 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
         (windowID >= 0x3c && windowID <= 0x42)) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
         cs->HandleReplacedNativeCreation(win, windowID);
+    }
+    // Le PET : la fiche (UIPetInfoWnd id 88), le menu de commandes qu'elle
+    // ouvrait (UIMenuWnd id 260) et la fenêtre d'évolution (UIPetEvolutionWnd
+    // id 261), fusionnés par PetWindow. Les deux premières naissent
+    // encore pour de bon — la 88 par le menu contextuel du pet OU, sans que le
+    // joueur demande rien, par `GameMode_PetIntimacyWarnAndOpenInfo` quand
+    // l'intimité tombe sous 100. C'est justement pour ça qu'il faut la DÉTRUIRE
+    // et non la masquer : masquée, elle serait rouverte en boucle, invisible et
+    // toujours vivante. Cf. docs/pet_re.md §5.4 et §12.1.
+    if (windowID == 88 || windowID == 260 || windowID == 261) {
+      if (auto* pw = Bourgeon::Instance().pet_window())
+        pw->HandleNativeCreation(win, windowID);
     }
     // Fabrication : les DEUX listes natives (UIMakingArrowListWnd id 94 « LIST »
     // et UIMakeTargetListWnd id 79 « Manufacturing List »). Elles naissent dans un

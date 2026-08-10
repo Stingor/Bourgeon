@@ -225,11 +225,72 @@ longueur **37**.
 | **3** | accessory | `data != 0` → `CActorSprite_SetBodyActFromPath` ; `data == 0` → sprite de base (`vt+0x54`) |
 | **4** | performance | `CActorSprite_SetOpt3(data)` + `vt+0x3C` |
 | 5 | hairstyle | **absent** (tombe dans le `default` → no-op) |
-| **6** | capture | `data == 0` → réinitialise les globals, rafraîchit l'inventaire, **ferme la fiche (88)** ; `data == 1` → insère l'œuf en inventaire, mémorise son index dans `0x015FB3F0`, **ferme la fenêtre 90** (`UIPetEggListWnd`, cf. §6.4) |
+| **6** | capture | `data == 0` → `Pet_ResetOwnGlobals`, rafraîchit l'inventaire, **ferme la fiche (88)** ; `data == 1` → insère l'œuf en inventaire, mémorise son index dans `0x015FB3F0`, **ferme la fenêtre 90** (`UIPetEggListWnd`, cf. §6.4) |
 | **7** | — | boîte de message, msg 4344 (0x10F8) |
 
 ⚠ Le type 1 porte un cas particulier : **monture Doram** (classe 4050..4052) avec
 intimité < 100 **et** faim < 30 → ligne de chat msg 1188 (0x4A4).
+
+#### 🔴🔴 Le sous-type 6 ne veut PAS dire « le pet s'en va »
+
+`clif_send_petdata` calcule sa valeur ainsi (moonlight `clif.cpp:11380`, identique
+à rAthena amont) :
+
+```c
+case CHANGESTATEPET_UPDATE_EGG:
+    value = ( pd.pet.intimate == 1 ) ? 0 : 1;
+```
+
+avec `PET_INTIMATE_AWKWARD == 1` : **un pet d'intimité normale rangé dans son œuf
+envoie donc `data = 1`, jamais 0.** Et le sous-type 6 est aussi envoyé **à
+l'éclosion** (`pet_birth_process`, pet.cpp:1117) — il ne signifie donc rien de
+plus que « l'œuf a changé d'état en inventaire ».
+
+Or la branche `data == 1` du client est gardée par `UIWindowMgr_FindWindow(mgr,
+90)` : hors d'une session `@hatch`, **elle ne fait strictement rien**. Sur un
+retour à l'œuf ordinaire, le client ne réinitialise donc **aucun** global, et
+**sa propre fiche 88 reste à l'écran sur un pet absent** — défaut natif, pas
+régression d'un remplaçant.
+
+#### 🔴 « Le pet est parti » ne se lit ni sur l'AID, ni sur la classe
+
+`Pet_ResetOwnGlobals` (**0x00D8A830**) tient en deux affectations :
+
+```c
+void Pet_ResetOwnGlobals() {
+    g_Own_PetEggInvIndex = -1;   // 0x015FB3F0
+    g_Own_PetClass       = -1;   // 0x015FB3DC
+}
+```
+
+**`g_Own_PetAid` n'est jamais remis à zéro** — ni ici, ni ailleurs : les 44 xrefs
+de `0x015FB3B0` ne contiennent aucune écriture hors du sous-type 0. Après un
+retour à l'œuf, il désigne donc indéfiniment un pet qui n'est plus là.
+
+Le test du client est la **classe**, pas l'AID — `if (g_Own_PetClass != -1)`
+@**0x00CBB416** (`GameMode_OnRecv_ZC_DELETEITEM_FROM_BODY`, le décrément
+d'inventaire qui repère la destruction de l'œuf porté).
+
+⚠ Mais cette classe-là **ne retombe que par `Pet_ResetOwnGlobals`**, donc
+seulement sur le sous-type 6 **avec `data == 0`** — c'est-à-dire, d'après le
+calcul ci-dessus, uniquement quand l'intimité du pet vaut exactement 1. Sur un
+retour à l'œuf ordinaire, **elle reste**, et l'AID aussi.
+
+🔴 **Le seul observable du chemin ordinaire est l'ACTEUR.** `pet_return_egg` finit
+par `unit_free(pd, CLR_OUTSIGHT)` : l'entité disparaît, et
+`Actor_FindByGid(g_Own_PetAid)` (**0x00D806A0**, `__stdcall`, qui résout lui-même
+le mode actif) rend `nullptr`. `rag::pet::Present()` exige donc les **trois** :
+`aid != 0`, `class > 0`, **et** l'acteur vivant.
+
+⚠ Et l'absence d'acteur ne se lit pas sur un seul tick : un changement de map vide
+la liste, et le chargement se termine **avant** que les spawns n'arrivent. Côté
+Bourgeon, la fiche cesse de se DESSINER dès que l'acteur manque (le retour à l'œuf
+se voit tout de suite) mais ne se FERME qu'après une absence continue d'environ
+une seconde, compteur remis à zéro pendant le chargement.
+
+⚠ Le clrtype ne discrimine pas : les warps ordinaires passent eux aussi par
+`CLR_OUTSIGHT` (`pc_setpos(sd, …, CLR_OUTSIGHT)`), donc observer
+`ZC_NOTIFY_VANISH` n'aurait rien apporté de plus.
 
 ### 4.3 `ZC_PET_ACT` **0x01AA** — `PetAct_OnPacket` @0x00CD13F0
 
@@ -561,9 +622,31 @@ for (i = 0; i < count; i++) {
 | +0xB8 | 0 | offset de défilement |
 | **+0xBC** | **−1** | **index sélectionné** — aucune ligne cochée |
 | +0xC4 | 4 | lignes par page (le pas des msg 9/10) |
-| +0xCC | pointeur | début du tableau d'entrées (`Inventory_AppendNewItem(this+0xCC, …)`) |
-| **+0xD0** | **1** | **nombre d'entrées** (un seul œuf) |
+| **+0xCC** | pointeur | **`_Myhead`** de la liste d'entrées (`Inventory_AppendNewItem(this+0xCC, …)`) |
+| **+0xD0** | **1** | **`_Mysize`** — nombre d'entrées (un seul œuf) |
 | +0xD4 | `"Pet List"` | titre de la fenêtre (`std::string` SSO) |
+
+✅ **Re-relevé live 2026-08-10** sur une liste de **trois** œufs (instance
+`0x18DC8DC8`) : `+0xBC` = **−1** et `+0xC4` = 4 confirmés, et `+0xCC`/`+0xD0` sont
+bien un **`std::list<ItemInfo>` MSVC**, pas un tableau plat — `+0xCC` pointe la
+**sentinelle** (dont le `_Myval` n'est jamais construit : on y lit du remplissage
+`0xABABABAB`), et chaque nœud vaut `{next, prev, ItemInfo}`, la valeur commençant
+donc en `nœud+0x08`. Les deux entrées lues portaient `ItemInfo+0x04` = **14** et
+**18**, avec `+0x10` (quantité) = 1.
+
+🔴 **L'index qui circule est le même partout.** `clif_sendegg` envoie
+`client_index(i)` = **i+2** ; le client le range tel quel dans `ItemInfo+0x04` ;
+`UIPetEggListWnd::OnMsg` (msg 6 / id 184) repasse ce `+0x04` à `SendMsg(146, …)` ;
+et `clif_parse_SelectEgg` retranche les 2. Un remplaçant n'a donc **rien à
+convertir** : il renvoie l'entier reçu. (Vérifié : slots serveur 12 et 16 → 14 et
+18 sur le fil → 14 et 18 dans les `ItemInfo`.)
+
+**Ce que Bourgeon en fait** : la fenêtre 90 ne naît plus, `ZC_PETEGG_LIST` est
+**remplacé** (`RegisterReplaceOpcode`, révocable) et `PetWindow::DrawHatchWindow`
+prend sa place — le handler natif ne faisait rien d'autre que créer et remplir sa
+fenêtre, il n'y a donc aucun devoir orphelin. On y ajoute la seule chose qui
+manquait : l'**œuf vierge est signalé**, et le bouton refuse avec la raison au
+lieu de laisser partir un paquet que `pet_select_egg` jette en silence.
 
 🔴 **Garde implicite invisible en statique** : `+0xBC` vaut **−1** tant que rien n'est
 sélectionné. Un clic sur **OK** dans cet état fait rendre « non trouvé » à
@@ -616,6 +699,45 @@ qui aboutit au même `CZ 0x01F9` sans passer par le pseudo-skill.
 que le *code* existe. Tant que le **déclencheur** n'est pas remonté jusqu'à un émetteur
 serveur vivant, on ne peut rien affirmer sur ce que le joueur voit
 (cf. [[feedback_dead_code_unverified_offsets]]).
+
+### 6.6 🔴 L'œuf vu comme un OBJET — ses quatre « cartes » n'en sont pas
+
+Un œuf de familier (ITID **9001..9499**, `IsPetEggItem` @0x00D8EBE0) range la fiche de
+son occupant dans ses quatre emplacements de carte. Mais **ce que le client en reçoit
+n'est pas ce que le serveur en garde** : `clif_addcards`
+(moonlight `src/map/clif.cpp:2864`) réécrit les quatre slots avant l'envoi.
+
+| slot | base serveur (`pet_create_egg`, pet.cpp:1413) | ce qui arrive au client |
+|---|---|---|
+| `card[0]` | `CARD0_PET` = **0x0100** | **0** |
+| `card[1]` | mot **bas** du `pet_id` | **0** |
+| `card[2]` | mot **haut** du `pet_id` | `card[3] >> 1` = **rang d'intimité 1..5** |
+| `card[3]` | bit 0 = renommé, bits 1-3 = rang | `card[3] & 1` = **renommé** |
+
+Le rang suit `pet_get_card3_intimacy` (pet.cpp:612) : 1 Awkward · 2 Shy · 3 Neutral ·
+4 Cordial · 5 Loyal. Le serveur le réécrit à **chaque** retour à l'œuf
+(`card[3] &= 1` puis `|= rang << 1`) et ne le relit jamais : il n'existe que pour
+l'affichage.
+
+Trois conséquences pour tout code client :
+
+1. **`CARD0_PET` n'atteint jamais le client.** Le chercher pour reconnaître un œuf
+   habité rend systématiquement « œuf vierge ». (C'est le bug qu'a produit la
+   première version de `rag::pet::DecodeEggCards`.)
+2. **Le `pet_id` non plus** : aucun paquet ne le porte. Il n'y a rien à afficher.
+3. Les deux slots restants sont des **nombres**, pas des ITID. Passés au rendu de
+   cartes, ils donnent « #5 » et le nom de l'objet d'id 1.
+
+Un œuf **vierge** (obtenu par `@item`) a ses quatre slots à zéro côté serveur et
+emprunte le chemin ordinaire de `clif_addcards` : il arrive donc à zéro lui aussi.
+C'est ce qui le distingue — *tout à zéro = personne dedans* — et `pet_select_egg`
+(pet.cpp:1207) refusera bien son éclosion, faute de `CARD0_PET` dans SA base.
+
+⚠ L'œuf de l'occupant **sorti** reste en inventaire : le serveur pose
+`attribute = 1` pour le masquer de la grille (`pet_recv_petdata`), et le client le
+saute lui-même dans `Inventory_HitTestSlotSkippingHiddenEgg` @0x009396F0. Ce drapeau
+est le même que celui d'un objet **cassé** — d'où le suffixe « - Broken » à corriger
+en « éclos » sur un œuf.
 
 ---
 

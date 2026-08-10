@@ -30,6 +30,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
 #include "features/patches/chat.h"
@@ -118,6 +119,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceRefine,      "refine",       "Refine"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
+    {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
     {MoonlightUi::kIfaceContextMenu, "context_menu", "Menu contextuel"},
     {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Atlas des recettes"},
 };
@@ -481,7 +483,7 @@ void MoonlightUi::DrawInterfacePanel() {
           iface_nav_ == kIfaceSkillBar  || iface_nav_ == kIfaceStorage ||
           iface_nav_ == kIfaceInventory || iface_nav_ == kIfaceCart    ||
           iface_nav_ == kIfaceRefine    || iface_nav_ == kIfaceMakeItem  ||
-          iface_nav_ == kIfaceMonsterInfo;
+          iface_nav_ == kIfaceMonsterInfo || iface_nav_ == kIfacePet;
       const bool locked = needs_modern && !ModernInterfaceEnabled();
       if (locked) {
         // 🔴 Un APERÇU, pas un cimetière. Ces sections sont la meilleure vitrine de
@@ -754,6 +756,26 @@ void MoonlightUi::DrawInterfacePanel() {
               "sources d'une fiche d'objet l'ouvre d'un clic."));
           ImGui::Separator();
           if (mi->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        }
+      }
+
+      // ── Fiche de pet (PetWindow : 88 + menu 260 + évolution 261 + liste 90) ─
+      if (iface_nav_ == kIfacePet) {
+        if (auto* pw = Bourgeon::Instance().pet_window()) {
+          ImGui::TextWrapped(
+              i18n::Tr("Remplace la fiche du pet, le menu de commandes qu'elle "
+              "ouvrait et la fenêtre d'évolution, en une seule fenêtre flottante — "
+              "ainsi que la liste d'éclosion. Les commandes ne sont pas "
+              "réécrites : elles repassent par le dispatcher du client, donc son "
+              "refus « pas de nourriture en sac » reste joué. S'y ajoute ce que le "
+              "client gardait pour lui : le sens de variation de la faim, le nom de "
+              "l'accessoire porté, les matériaux d'évolution qu'on possède déjà, "
+              "les œufs vides que le serveur refusera d'éclore, et la raison pour "
+              "laquelle une action est indisponible plutôt que sa disparition."));
+          ImGui::Separator();
+          if (pw->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }

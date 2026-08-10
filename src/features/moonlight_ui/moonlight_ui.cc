@@ -44,6 +44,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
 #include "features/windows/chat_window.h"
@@ -601,6 +602,19 @@ const moonlight_ui::SettingDesc kMonsterInfoSettings[] = {
     // (Guerre d'Emperium), pas un défaut d'interface — on la reproduit.
     {"monsterinfo_guardians", SType::kBool,
      MLUI_FIELD(monster_info, show_guardians()), MLUI_LITERAL(bool, false)},
+};
+
+// Fiche de pet (remplace UIPetInfoWnd id 88 ET son menu de commandes id 260).
+// « pet_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kPetWindowSettings[] = {
+    {"pet_imgui", SType::kBool, MLUI_FIELD(pet_window, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+    // Défaut ON : le client ne demandait rien, mais « Return to Egg » voisinait
+    // « Performance » dans le même menu et se tromper range le pet pour de bon.
+    {"pet_confirm_egg", SType::kBool, MLUI_FIELD(pet_window, confirm_egg()),
+     MLUI_LITERAL(bool, true)},
+    {"pet_animate", SType::kBool, MLUI_FIELD(pet_window, animate()),
+     MLUI_LITERAL(bool, true)},
 };
 
 // Menu contextuel du clic droit sur une entité (remplace UIMenuWnd 0x12 côté
@@ -1210,6 +1224,13 @@ void SetModernInterface(bool on) {
   // entièrement native. Cf. docs/entity_context_menu_re.md.
   if (auto* entity_context_menu = Bourgeon::Instance().entity_context_menu())
     entity_context_menu->imgui_enabled_ = on;
+  // La fiche de pet suit le groupe : elle DÉTRUIT deux fenêtres natives (88 et
+  // 260), et c'est le menu contextuel ci-dessus — lui aussi du groupe — qui
+  // demande son ouverture. L'activer seule laisserait une fiche moderne au bout
+  // d'un menu natif ; la laisser seule éteinte ferait ouvrir par ce même menu
+  // une fenêtre que rien ne détruit plus. Cf. docs/pet_re.md §12.
+  if (auto* pet_window = Bourgeon::Instance().pet_window())
+    pet_window->imgui_enabled_ = on;
 }
 
 bool ModernInterfaceEnabled() {
@@ -1314,6 +1335,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
+    moonlight_ui::ReadSettings(ui, kPetWindowSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
     moonlight_ui::ReadBlockedNpcs(ui);
     moonlight_ui::ReadStorageFavorites(ui);
@@ -1460,6 +1482,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteSettings(out, kCraftAtlasSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
+  moonlight_ui::WriteSettings(out, kPetWindowSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
   moonlight_ui::WriteBlockedNpcs(out);
   moonlight_ui::WriteStorageFavorites(out);

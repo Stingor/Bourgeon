@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <cctype>
+
 #include "ui/ro_imgui.h"  // ro::Cp949ToUtf8
 
 namespace msgstr {
@@ -24,6 +26,38 @@ const char* Utf8(int id) {
   // que lui ferait dire à nos fenêtres autre chose qu'aux siennes.
   // LocalToUtf8 accepte la chaîne vide et rend « » : pas de cas particulier.
   return ro::LocalToUtf8(Cp949(id));
+}
+
+const char* Flatten(const char* src) {
+  static thread_local char buf[128];
+  int n = 0;
+  for (const char* p = src; p && *p && n < static_cast<int>(sizeof(buf)) - 1; ++p)
+    buf[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+  while (n > 0 && buf[n - 1] == ' ') --n;  // pas d'espace traînant avant le « ## »
+  buf[n] = '\0';
+  return buf;
+}
+
+const char* StripColors(const char* src) {
+  static thread_local char bufs[4][512];
+  static thread_local int slot = 0;
+  slot = (slot + 1) & 3;
+  char* out = bufs[slot];
+  const int cap = static_cast<int>(sizeof(bufs[0])) - 1;
+  int o = 0;
+  for (const char* p = src; p && *p && o < cap;) {
+    if (*p == '^') {
+      bool hex6 = true;
+      for (int k = 1; k <= 6; ++k) {
+        const char c = p[k];
+        if (!c || !std::isxdigit(static_cast<unsigned char>(c))) { hex6 = false; break; }
+      }
+      if (hex6) { p += 7; continue; }
+    }
+    out[o++] = *p++;
+  }
+  out[o] = '\0';
+  return out;
 }
 
 }  // namespace msgstr

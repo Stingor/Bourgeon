@@ -52,6 +52,7 @@
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/pet_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
@@ -120,6 +121,7 @@ CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
+PetWindow* Bourgeon::pet_window() { return pet_window_; }
 EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
 }
@@ -334,6 +336,10 @@ void Bourgeon::OnProcessInput() {
   // « nourrir le pet » et « nourrir l'homoncule » ouvrent une boîte de dialogue
   // native BLOQUANTE (docs/entity_context_menu_re.md §6.3, codes 29 et 38).
   if (auto* ecm = entity_context_menu()) ecm->FlushPending();
+  // Fiche de pet : MÊME raison, et la même boîte — `SendMsg(150, 1)` est le
+  // chemin par lequel « nourrir » ouvre sa confirmation native (docs/pet_re.md
+  // §12.2). S'y ajoute l'ouverture de la fenêtre d'évolution (MakeWindow 261).
+  if (auto* pw = pet_window()) pw->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -827,6 +833,13 @@ void Bourgeon::LoadPlugins() {
     auto monster_info = std::make_unique<MonsterInfoWindow>();
     monster_info_ = monster_info.get();
     plugins_.emplace_back(std::move(monster_info));
+
+    // Fiche de pet : remplace UIPetInfoWnd (88) et son menu de commandes (260).
+    // Avant le menu contextuel, dont l'entrée « Statut du pet » aboutit ici par
+    // le routage de MakeWindow. Cf. docs/pet_re.md.
+    auto pet_window = std::make_unique<PetWindow>();
+    pet_window_ = pet_window.get();
+    plugins_.emplace_back(std::move(pet_window));
 
     // Menu du clic droit sur une entité. Son constructeur pose LE détour de
     // GameMode_ShowEntityContextMenu — le seul chemin qui produise le menu du

@@ -37,4 +37,23 @@ const char* Cp949(int id);
 // doit survivre à la frame.
 const char* Utf8(int id);
 
+// ── Deux mises en forme que TOUTE fenêtre ImGui doit à ces libellés ─────────
+// Elles vivaient dans l'anonyme de character_sheet.cc, qui les a découvertes en
+// premier ; la fiche de pet en a exactement le même besoin. Une seule
+// implémentation, ici — le .cc de la feuille de personnage n'en garde que le
+// renvoi, sous ses noms d'origine.
+
+// Remplace les sauts de ligne par des espaces. Certains libellés en portent
+// parce qu'ils sont peints sur un bouton bitmap de deux lignes (« Auto \nFeeding ») :
+// sur une case à cocher ImGui, le saut casse la mise en page ET entre dans
+// l'identifiant du widget. ⚠ Tampon thread-local UNIQUE : un seul vivant à la fois.
+const char* Flatten(const char* src);
+
+// Retire les codes couleur `^RRGGBB` du client. Plusieurs libellés natifs en
+// portent — MSI_DELETE_HOMUN en a DEUX d'affilée — parce que la boîte de dialogue
+// du jeu les interprète ; ImGui, lui, les afficherait tels quels.
+// ⚠ Tampon ROTATIF sur quatre emplacements, comme `Utf8` : bon pour un affichage
+// immédiat, à recopier si la chaîne doit survivre à la frame.
+const char* StripColors(const char* src);
+
 }  // namespace msgstr

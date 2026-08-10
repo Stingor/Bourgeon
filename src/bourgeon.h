@@ -40,6 +40,7 @@ class CharacterSheet;
 class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
+class PetWindow;
 class EntityContextMenu;
 class EntityInspector;
 class FpsView;
@@ -105,6 +106,7 @@ class Bourgeon {
   LoginParade* login_parade();
   ItemDescWindow* item_desc();
   MonsterInfoWindow* monster_info();
+  PetWindow* pet_window();
   EntityContextMenu* entity_context_menu();
   EntityInspector* entity_inspector();
   FpsView* fps_view();
@@ -281,6 +283,7 @@ class Bourgeon {
   Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
+  PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem
   EntityInspector* entity_inspector_ = nullptr;       // idem
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_

@@ -5,6 +5,8 @@
 #include "ui/ro_widgets.h"
 
 #include "ragnarok/globals.h"  // rag::rag::kGameOperatorDeleteAddrAddr
+#include "ragnarok/msgstring.h"  // libellé d'intimité d'un œuf, celui du client
+#include "ragnarok/pet.h"        // œuf de familier : slots = fiche du pet, pas des cartes
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (ouvrir les liens <URL>)
@@ -333,6 +335,11 @@ struct ItemExtract {
   uint32_t cards[kMaxCards] = {0, 0, 0, 0};
   char     card_names[kMaxCards][64] = {};
   int      card_slots = 0;  // nb d'emplacements de carte de l'item (record+0x30)
+  // 🔴 ŒUF DE FAMILIER (ITID 9001..9499). Ses `cards[]` ne sont pas des cartes
+  // mais la fiche du pet, et son drapeau « endommagé » ne veut pas dire cassé
+  // mais ÉCLOS — le serveur s'en sert pour le retirer de la grille pendant que
+  // le pet est dehors. Les deux affichages en dépendent.
+  bool     pet_egg = false;
   int      view_id = 0;     // info+0x70 (viewID sprite ; 0 = aucun aperçu)
   int      emplacement = 0; // info+0x8 (bitmask emplacement, pour le slot d'aperçu)
   int      opt_count = 0;
@@ -524,7 +531,24 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // les vraies cartes/enchants ont un id > 500). card[0]==0 = slots VIDES d'un item
     // normal (ex. Rapier) -> on garde l'affichage des emplacements vides + [N].
     const uint32_t card0 = *reinterpret_cast<uint32_t*>(info + kInfoCards);
-    const bool forged = (card0 != 0 && card0 <= 500);
+    // L'ITID, lu là où le client le range : en TEXTE, dans la std::string de
+    // info+0x2c (d'où l'`atoi`). Il était déjà relu plus bas pour le nombre
+    // d'emplacements ; il sert désormais aussi ICI.
+    const char* id_str_for_kind =
+        MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
+    const uint32_t extracted_id =
+        id_str_for_kind ? static_cast<uint32_t>(atoi(id_str_for_kind)) : 0u;
+    // 🔴 L'ŒUF DE FAMILIER n'est ni forgé ni serti : ses slots portent la fiche
+    // du pet (rang d'intimité, renommage), que `clif_addcards` a réécrite avant
+    // de l'envoyer — détail complet dans ragnarok/pet.h. Ce ne sont donc PAS des
+    // ITID, et le rendu de cartes en tirait « #5 » et le nom de l'objet d'id 1.
+    // Le drapeau route l'affichage vers le panneau « Pet », qui les résout ; le
+    // test de forge le prend au passage, moins par nécessité (le `card[0]` d'un
+    // œuf arrive à zéro) que pour dire noir sur blanc qu'un œuf ne passe jamais
+    // par le chemin des cartes.
+    const bool is_pet_egg = rag::pet::IsEggItem(extracted_id);
+    e->pet_egg = is_pet_egg;
+    const bool forged = (!is_pet_egg && card0 != 0 && card0 <= 500);
     for (int i = 0; i < kMaxCards; ++i) {
       const uint32_t cid =
           forged ? 0u : *reinterpret_cast<uint32_t*>(info + kInfoCards + i * 4);
@@ -2313,6 +2337,10 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   // description complète (cf. ExtractItem) : ni section « Cartes », ni suffixe [N].
   const uint32_t card0 = (cards && card_count > 0) ? cards[0] : 0u;
   const bool forged = (card0 != 0 && card0 <= 500);
+  // ŒUF DE FAMILIER : ses slots ne sont pas des cartes non plus, mais la fiche du
+  // pet — même traitement que la fenêtre complète, sinon l'aperçu au survol reste
+  // le dernier endroit de l'UI à afficher « #5 » pour un rang d'intimité.
+  const bool pet_egg = rag::pet::IsEggItem(id);
 
   // Titre = celui de la fenêtre de description COMPLÈTE : nom décoré par le
   // name-builder natif (refine « +7 », préfixes/suffixes des cartes serties, forge)
@@ -2336,10 +2364,13 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     std::snprintf(title + len, sizeof(title) - len, " [%d]", cd->card_slots);
   }
   // Item CASSÉ : même rendu que le titre de la fenêtre de description complète —
-  // suffixe « - Broken » et ombre rouge sous le nom.
+  // suffixe « - Broken » et ombre rouge sous le nom. Sur un ŒUF, ce drapeau ne
+  // veut pas dire cassé : le serveur pose `attribute = 1` pour sortir l'œuf de la
+  // grille pendant que le pet est dehors, et le retire au retour à l'œuf.
   if (damaged) {
     const size_t len = strnlen(title, sizeof(title));
-    std::snprintf(title + len, sizeof(title) - len, i18n::Tr(" - Broken"));
+    std::snprintf(title + len, sizeof(title) - len,
+                  pet_egg ? i18n::Tr(" - Éclos") : i18n::Tr(" - Broken"));
   }
   // Titre WRAPPÉ : un nom décoré (« +7 Vadon's Sword of Rage [4] ») dépasse
   // largement la largeur du tooltip, qui est bornée — sans wrap il déborderait du
@@ -2401,9 +2432,28 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     ImGui::TextDisabled(i18n::Tr("(pas de description)"));
   }
 
+  // ── ŒUF DE FAMILIER : la fiche du pet, résolue ────────────────────────────
+  // Posée à la place de la section « Cartes », qui affichait ces deux nombres
+  // comme des ITID. Même contenu que le panneau « Pet » de la fenêtre complète.
+  if (pet_egg) {
+    rag::pet::EggCards ec{};
+    if (cards && rag::pet::DecodeEggCards(cards, card_count, &ec) && ec.has_pet) {
+      ImGui::Separator();
+      ImGui::TextColored(hdr, i18n::Tr("Pet"));
+      if (ec.intimacy_rank > 0) {
+        ImGui::TextDisabled(i18n::Tr("Intimité"));
+        ImGui::SameLine();
+        ImGui::TextUnformatted(
+            msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
+      }
+      ImGui::TextDisabled(ec.renamed ? i18n::Tr("Déjà renommé")
+                                     : i18n::Tr("Renommage disponible"));
+    }
+  }
+
   // ── Cartes / enchants insérés (données d'INSTANCE, pas de la DB) ───────────
   int ncards = 0;
-  if (!forged)
+  if (!forged && !pet_egg)
     for (int i = 0; i < card_count; ++i)
       if (cards && cards[i]) ++ncards;
   if (ncards > 0) {
@@ -2580,14 +2630,57 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     return;
   }
 
+  // ── Onglets SANS CONTENU : grisés, pas masqués ────────────────────────────
+  // 🔴 Un onglet ne demandait ses données qu'une fois OUVERT : sur un œuf de
+  // familier, « Monstres », « Boss / MVP », « Script » et « Combos » restaient
+  // donc affichés et vides, et rien ne le disait avant d'avoir cliqué les quatre.
+  // On lance les trois requêtes dès l'affichage de la barre, et on GRISE ce qui
+  // revient vide.
+  //
+  // ⚠ GRISER et non retirer, délibérément : la barre garde la même forme d'un
+  // objet à l'autre, et surtout elle ne se réorganise pas sous le curseur quand
+  // les réponses arrivent — un onglet qui disparaît au moment où on le vise fait
+  // cliquer sur le suivant.
+  // ⚠ Les requêtes sont mises en cache par id (et par scope) : rouvrir la même
+  // fiche n'en relance aucune.
+  RequestTechData(w.id, w.is_skill, kScopeNormal);
+  RequestTechData(w.id, w.is_skill, kScopeMvp);
+  RequestItemScript(w.id);
+
+  // « Connu vide » n'est PAS « vide » : tant que la réponse n'est pas arrivée on
+  // ne sait rien, et griser par défaut ferait clignoter la barre à chaque
+  // ouverture. On ne grise que sur un cache PRÊT.
+  auto tech_known_empty = [&](uint8_t scope) -> bool {
+    auto it = cache_.find(CacheKey(w.id, w.is_skill, scope));
+    return it != cache_.end() && it->second.state == FetchState::kReady &&
+           it->second.drops.empty();
+  };
+  auto script_entry = [&]() -> const ScriptData* {
+    auto it = script_cache_.find(w.id);
+    return (it != script_cache_.end() && it->second.state == FetchState::kReady)
+               ? &it->second
+               : nullptr;
+  };
+
+  // 🔴 `BeginDisabled` couvre le SEUL `BeginTabItem`, pas le corps : sans ça le
+  // contenu de l'onglet resté sélectionné se dessinerait grisé lui aussi.
+  // Et l'onglet peut rester ouvert alors qu'il vient d'être grisé (il était actif
+  // quand la réponse est arrivée) — d'où le corps toujours dessiné.
+
   // ── ITEM : onglets « Monstres » (non-boss) et « Boss / MVP » ──────────────
-  if (ImGui::BeginTabItem(i18n::Tr("Monstres"))) {
+  ImGui::BeginDisabled(tech_known_empty(kScopeNormal));
+  const bool tab_mobs = ImGui::BeginTabItem(i18n::Tr("Monstres"));
+  ImGui::EndDisabled();
+  if (tab_mobs) {
     if (const TechData* td = tech_body(kScopeNormal))
       RenderDropTable(*td, "tech_drops_normal",
                       CacheKey(w.id, false, kScopeNormal), /*show_type=*/false);
     ImGui::EndTabItem();
   }
-  if (ImGui::BeginTabItem(i18n::Tr("Boss / MVP"))) {
+  ImGui::BeginDisabled(tech_known_empty(kScopeMvp));
+  const bool tab_mvp = ImGui::BeginTabItem(i18n::Tr("Boss / MVP"));
+  ImGui::EndDisabled();
+  if (tab_mvp) {
     if (const TechData* td = tech_body(kScopeMvp))
       RenderDropTable(*td, "tech_drops_mvp", CacheKey(w.id, false, kScopeMvp),
                       /*show_type=*/true);
@@ -2621,7 +2714,14 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   };
 
   // ── Onglet « Script » : source brute (principal / équip / déséquip) ────────
-  if (ImGui::BeginTabItem(i18n::Tr("Script"))) {
+  {
+    const ScriptData* sd = script_entry();
+    ImGui::BeginDisabled(sd != nullptr && sd->main.empty() && sd->equip.empty() &&
+                         sd->unequip.empty());
+  }
+  const bool tab_script = ImGui::BeginTabItem(i18n::Tr("Script"));
+  ImGui::EndDisabled();
+  if (tab_script) {
     if (const ScriptData* sd = script_body()) {
       if (sd->main.empty() && sd->equip.empty() && sd->unequip.empty()) {
         ImGui::TextDisabled(i18n::Tr("Cet item n'a aucun script."));
@@ -2644,7 +2744,13 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   }
 
   // ── Onglet « Combos » : combos auxquels l'item participe + leur script ─────
-  if (ImGui::BeginTabItem(i18n::Tr("Combos"))) {
+  {
+    const ScriptData* sd = script_entry();
+    ImGui::BeginDisabled(sd != nullptr && sd->combos.empty());
+  }
+  const bool tab_combos = ImGui::BeginTabItem(i18n::Tr("Combos"));
+  ImGui::EndDisabled();
+  if (tab_combos) {
     if (const ScriptData* sd = script_body()) {
       if (sd->combos.empty()) {
         ImGui::TextDisabled(i18n::Tr("Cet item ne fait partie d'aucun combo."));
@@ -3177,6 +3283,39 @@ void ItemDescWindow::RenderItemWindow() {
       char wid[64];
       std::snprintf(wid, sizeof(wid), "##cardpanel_%s", tag);
       if (begin_panel(wid)) {
+        // ── ŒUF DE FAMILIER : ce ne sont pas des cartes ──────────────────────
+        // 🔴 Les quatre slots portent la fiche du pet, pas des cartes : les
+        // afficher tels quels donnait « [Emplacement vide] [Emplacement vide]
+        // #3 », c'est-à-dire du bruit. On les RÉSOUT (moonlight src/map/pet.cpp,
+        // cf. ragnarok/pet.h) au lieu de les montrer bruts.
+        if (e.pet_egg) {
+          rag::pet::EggCards ec{};
+          rag::pet::DecodeEggCards(e.cards, kMaxCards, &ec);
+          ImGui::TextColored(brown, i18n::Tr("Pet"));
+          ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
+          if (!ec.has_pet) {
+            // Quatre slots à zéro : un œuf sorti d'un `@item`, sans pet derrière.
+            // Le serveur le listera bien à l'éclosion mais `pet_select_egg` le
+            // refusera — autant le dire ici.
+            ImGui::TextDisabled(i18n::Tr("Œuf vierge : aucun familier dedans."));
+          } else {
+            if (ec.intimacy_rank > 0) {
+              ImGui::TextDisabled(i18n::Tr("Intimité"));
+              ImGui::SameLine();
+              ImGui::TextUnformatted(
+                  msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
+            }
+            ImGui::TextDisabled(ec.renamed ? i18n::Tr("Déjà renommé")
+                                           : i18n::Tr("Renommage disponible"));
+            // ⚠ Rien de plus à dire : le `pet_id` de la base ne franchit pas le
+            // fil (`clif_addcards` écrase les deux slots qui le portaient), et
+            // c'est tout ce que l'œuf sait de son occupant.
+          }
+          ImGui::PopStyleVar(1);
+          y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
+          end_panel();
+          return y;
+        }
         if (e.card_slots > 0)
           ImGui::TextColored(brown, i18n::Tr("Cartes / Enchants (%d emplacement%s)"),
                              e.card_slots, e.card_slots > 1 ? "s" : "");
@@ -3251,9 +3390,16 @@ void ItemDescWindow::RenderItemWindow() {
     std::snprintf(title, sizeof(title), i18n::Tr("Comparaison###itemdesc_item"));
   else
     // Item cassé (name_shadow) -> suffixe " - Broken" dans le titre.
+    // 🔴 Sauf sur un ŒUF DE FAMILIER : ce drapeau-là n'y signifie pas « cassé »
+    // mais « ÉCLOS ». C'est le serveur qui le pose (`attribute = 1`, commentaire
+    // « Hide egg from inventory ») pour que le client sorte l'œuf de la grille
+    // pendant que le pet est dehors, et il le retire au retour à l'œuf. Écrire
+    // « Broken » sur un œuf parfaitement sain était un contresens.
     std::snprintf(title, sizeof(title), i18n::Tr("%s%s###itemdesc_item"),
                   ie.name[0] ? ie.name : "Description",
-                  ie.name_shadow ? " - Broken" : "");
+                  ie.name_shadow ? (ie.pet_egg ? i18n::Tr(" - Éclos")
+                                               : i18n::Tr(" - Broken"))
+                                 : "");
 
   // Coins arrondis (comme moonlight_ui) : fenêtre moins « rude ».
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);

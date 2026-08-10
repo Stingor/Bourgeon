@@ -165,6 +165,7 @@ class MoonlightUi : public Plugin {
     // insertion décalerait. L'ordre AFFICHÉ, lui, vient de kIfaceSections, dont
     // chaque ligne porte son identifiant — il est libre.
     kIfaceCastBar,
+    kIfacePet,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

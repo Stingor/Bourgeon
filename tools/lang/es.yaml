@@ -2523,3 +2523,57 @@
 "Propriétés": "Propiedades"
 "Copier le rapport": "Copiar el informe"
 "Tout ce que le CLIENT sait de cette entité, relu à chaque image. Les champs de la plaque de nom viennent du serveur : vides, ils veulent dire « pas encore reçu », pas « vides côté serveur ».\nLes adresses et la vtable se collent telles quelles dans IDA ou x32dbg.": "Todo lo que el CLIENTE sabe de esta entidad, releído en cada fotograma. Los campos de la placa de nombre vienen del servidor: vacíos, significan \"aún no recibido\", no \"vacíos en el servidor\".\nLas direcciones y la vtable se pegan tal cual en IDA o x32dbg."
+
+# Ficha de mascota (PetWindow: UIPetInfoWnd 88 + su menú de comandos 260).
+"  (pet)": "  (mascota)"
+"Accessoire": "Accesorio"
+"Animer le sprite du pet": "Animar el sprite de la mascota"
+"Aucun accessoire.": "Sin accesorio."
+"Aucune évolution pour ce pet.": "Ninguna evolución para esta mascota."
+"Ce pet a déjà été renommé : le serveur n'accepte qu'une fois.": "Esta mascota ya ha sido renombrada: el servidor solo lo permite una vez."
+"Ce pet ne porte aucun accessoire.": "Esta mascota no lleva ningún accesorio."
+"Cliquer pour renommer — une seule fois, définitivement.": "Haz clic para renombrar: una sola vez, definitivamente."
+"Confirmer « remettre dans l'œuf »": "Confirmar « devolver al huevo »"
+"en baisse, précédemment": "bajando, antes"
+"en hausse, précédemment": "subiendo, antes"
+"Évolution : le client ne connaît pas l'œuf de ce pet.": "Evolución: el cliente no sabe de qué huevo salió esta mascota."
+"Faim": "Hambre"
+"homoncule / mercenaire / élémentaire": "homúnculo / mercenario / elemental"
+"Intimité": "Intimidad"
+"Le client ne demandait rien : l'entrée était voisine de « Spectacle » dans le même menu, et se tromper range le pet pour de bon.": "El cliente no preguntaba nada: la entrada estaba junto a « Espectáculo » en el mismo menú, y equivocarse guarda la mascota para siempre."
+"Le serveur nourrit le pet tout seul sous un certain seuil de faim. L'état affiché est celui que le SERVEUR confirme, pas la case cochée.": "El servidor alimenta a la mascota por sí solo por debajo de cierto umbral de hambre. El estado mostrado es el que confirma el SERVIDOR, no la casilla marcada."
+"niv.": "niv."
+"Nourrir un pet qui n'a pas faim lui fait PERDRE de l'intimité. Sans nourriture en sac, le client refuse sans rien envoyer.": "Alimentar a una mascota que no tiene hambre le hace PERDER intimidad. Sin comida en la bolsa, el cliente se niega sin enviar nada."
+"Pet": "Mascota"
+"pet": "mascota"
+"Ranger": "Guardar"
+"Ranger le pet dans son œuf ?": "¿Guardar la mascota en su huevo?"
+
+# Panel de evolución de mascota (sustituye UIPetEvolutionWnd 261).
+"Aucun matériau connu du client.": "Ningún material conocido por el cliente."
+"Matériaux requis :": "Materiales necesarios:"
+"Le serveur exige 910 d'intimité, pas 901.": "El servidor exige 910 de intimidad, no 901."
+"Le pet doit retirer son accessoire avant d'évoluer.": "La mascota debe quitarse el accesorio antes de evolucionar."
+"Il manque des matériaux.": "Faltan materiales."
+"Faire évoluer": "Evolucionar"
+
+# Huevo de mascota visto como OBJETO (sus cartas son la ficha de la mascota).
+" - Éclos": " - Eclosionado"
+"Déjà renommé": "Ya renombrada"
+"Œuf vierge : aucun familier dedans.": "Huevo vacío: no hay mascota dentro."
+"Renommage disponible": "Cambio de nombre disponible"
+
+# Etiqueta de seccion del panel Moonlight (tabla estatica -> invisible al extractor).
+"Fiche de pet": "Ficha de mascota"
+
+# Lista de eclosion (sustituye a UIPetEggListWnd, id 90).
+"Éclore un œuf": "Incubar un huevo"
+"Faire éclore": "Incubar"
+"Aucun œuf de familier dans le sac.": "No hay ningún huevo de mascota en la bolsa."
+"Œuf vierge : rien à éclore.": "Huevo vacío: no hay nada que incubar."
+"Introuvable dans le sac.": "No se encuentra en la bolsa."
+"  ·  déjà renommé": "  ·  ya renombrada"
+"Choisis l'œuf à faire éclore.": "Elige el huevo que quieres incubar."
+"Cet œuf n'est plus dans le sac.": "Ese huevo ya no está en la bolsa."
+"Cet œuf est vide : le serveur refusera de l'éclore.": "Ese huevo está vacío: el servidor se negará a incubarlo."
+"Remplace la fiche du pet, le menu de commandes qu'elle ouvrait et la fenêtre d'évolution, en une seule fenêtre flottante — ainsi que la liste d'éclosion. Les commandes ne sont pas réécrites : elles repassent par le dispatcher du client, donc son refus « pas de nourriture en sac » reste joué. S'y ajoute ce que le client gardait pour lui : le sens de variation de la faim, le nom de l'accessoire porté, les matériaux d'évolution qu'on possède déjà, les œufs vides que le serveur refusera d'éclore, et la raison pour laquelle une action est indisponible plutôt que sa disparition.": "Sustituye la ficha de la mascota, el menú de órdenes que abría y la ventana de evolución en una sola ventana flotante, además de la lista de eclosión. Las órdenes no se reescriben: siguen pasando por el despachador del cliente, así que su rechazo « no hay comida en la bolsa » se sigue mostrando. A eso se suma lo que el cliente se guardaba: hacia dónde va el hambre, el nombre del accesorio puesto, los materiales de evolución que ya tienes, los huevos vacíos que el servidor se negará a incubar, y el motivo por el que una acción no está disponible en lugar de hacerla desaparecer."

@@ -79,10 +79,13 @@ constexpr int kActor_HeightOff = 0x3f4;  // float, offset de hauteur (le saut)
 constexpr int kActorVt_GetGuildId = 0xc4;
 
 // Catégories du quad de picking (docs/entity_context_menu_re.md §3).
+// 🔴 La 3, c'est le PET : seul `CActorSprite_SubmitNameplateQuad` @0x00c58c48
+// l'écrit, sous `acteur+0x314 == 7` (`CLIF_BL_PET`). Aucun quad ne vaut « objet
+// au sol » — un objet au sol porte `objecttype == 2` et sort en catégorie 0.
 constexpr int kPickActor      = 0;
 constexpr int kPickNpc        = 1;
 constexpr int kPickSkillUnit  = 2;
-constexpr int kPickGroundItem = 3;
+constexpr int kPickPet        = 3;
 constexpr int kPickSpecial    = 4;
 
 // Intervalle minimal entre deux passages par le chemin QUI DEMANDE.
@@ -240,8 +243,8 @@ const char* PickCategoryLabel(int category) {
     case kPickActor:      return i18n::Tr("acteur (joueur, monstre, PNJ scripté)");
     case kPickNpc:        return i18n::Tr("NPC de carte");
     case kPickSkillUnit:  return i18n::Tr("unité de compétence");
-    case kPickGroundItem: return i18n::Tr("objet au sol");
-    case kPickSpecial:    return i18n::Tr("pet / homoncule / mercenaire");
+    case kPickPet:        return i18n::Tr("pet");
+    case kPickSpecial:    return i18n::Tr("homoncule / mercenaire / élémentaire");
     default:              return i18n::Tr("inconnue");
   }
 }
@@ -525,15 +528,19 @@ void EntityInspector::DrawBody(const Snapshot& snap) {
                   i18n::Tr("%u — ne correspond PAS au pick"), snap.actor_gid);
       Row(i18n::Tr("GID (+0x110)"), line, /*missing=*/true);
     }
-    // Seule certitude établie sur ce champ : {1, 6, 12} = « hostile ou unité
-    // spéciale », le test dont le client se sert pour REFUSER son menu joueur
-    // (EntityName_IsHostileOrSpecialUnit 0x00d9d220). Les autres valeurs
-    // attendent leur RE — on montre le nombre, pas une étiquette inventée.
+    // Deux certitudes établies sur ce champ, et deux seulement : {1, 6, 12} =
+    // « hostile ou unité spéciale », le test dont le client se sert pour REFUSER
+    // son menu joueur (EntityName_IsHostileOrSpecialUnit 0x00d9d220), et 7 =
+    // PET, écrit par `ZC_CHANGESTATE_PET` sous-type 0 @0x00cbab7d — c'est lui
+    // qui met le pet en catégorie de pick 3. Les autres valeurs attendent leur
+    // RE : on montre le nombre, pas une étiquette inventée.
     const bool hostile = (snap.actor_type == 1 || snap.actor_type == 6 ||
                           snap.actor_type == 12);
+    const char* type_note = hostile ? i18n::Tr("  (hostile / unité spéciale)")
+                          : snap.actor_type == 7 ? i18n::Tr("  (pet)")
+                          : "";
     RowFmt(i18n::Tr("Type (+0x314)"), "%u%s",
-           static_cast<unsigned>(snap.actor_type),
-           hostile ? i18n::Tr("  (hostile / unité spéciale)") : "");
+           static_cast<unsigned>(snap.actor_type), type_note);
     RowFmt(i18n::Tr("Id de guilde"), "%u", snap.guild_id);
     RowFmt(i18n::Tr("Position"), "x %.2f   y %.2f   z %.2f", snap.pos_x,
            snap.pos_y, snap.pos_z);
