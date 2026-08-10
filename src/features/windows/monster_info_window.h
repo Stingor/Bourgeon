@@ -127,6 +127,10 @@ class MonsterInfoWindow : public Plugin {
   struct MobInfo {
     Fetch    state = Fetch::kIdle;
     uint32_t requested_tick = 0;
+    // Comment cet id a été demandé la première fois. Un rafraîchissement doit
+    // reposer la MÊME question : un id de classe de sprite (Sense) redemandé en
+    // `by_view = 0` désignerait un autre monstre, ou aucun.
+    bool     by_view = false;
 
     uint32_t sprite_class = 0;
     uint16_t level = 0;
@@ -164,6 +168,22 @@ class MonsterInfoWindow : public Plugin {
     uint8_t  namesake_count = 1;  // combien de monstres portent ce nom affiché (lui compris)
     uint32_t namesake_ref = 0;    // le plus petit id qui le porte (= lui si c'est lui)
 
+    // ── Ce que ce monstre rapporte à CE personnage ───────────────────────────
+    // L'EXP de mob_db ci-dessus est la même pour tout le monde ; celle-ci passe
+    // par le calcul complet du serveur (mob_estimate_exp_gain) : malus de haut
+    // niveau, cartes bExpAddRace / bExpAddClass, Battle Manual, VIP, event EXP.
+    // C'est le chiffre que la warp agent annonce déjà dans ses listes de chasse.
+    //
+    // 🔴 INSTANTANÉ, pas une donnée de base : il ne vaut que pour l'état du
+    // personnage au moment de la demande. `exp_base_level` / `exp_job_level`
+    // gardent cet état pour que l'ouverture suivante sache qu'il a vieilli — le
+    // reste de la fiche, lui, ne bouge jamais.
+    bool     exp_valid = false;
+    uint32_t est_base_exp = 0, est_job_exp = 0;
+    uint32_t next_base_exp = 0, next_job_exp = 0;
+    bool     max_base_lv = false, max_job_lv = false;
+    int      exp_base_level = 0, exp_job_level = 0;
+
     std::vector<Drop>     drops;
     std::vector<Spawn>    spawns;
     std::vector<MobSkill> skills;
@@ -193,6 +213,10 @@ class MonsterInfoWindow : public Plugin {
   // (dégât, ou attaque une fois sur huit) et joue sa voix.
   void PokeSprite();
   void DrawStatsTab(MobInfo& mob);
+  // « Ce qu'il vous rapporte » : l'EXP estimée par le serveur pour CE personnage,
+  // en pour cent de la barre et en nombre de monstres. N'affiche rien tant que le
+  // serveur ne l'a pas envoyée (serveur plus ancien, ou fiche encore en vol).
+  void DrawExpGain(MobInfo& mob);
   void DrawResistTab(MobInfo& mob);
   void DrawDropsTab(MobInfo& mob);
   void DrawSpawnsTab(MobInfo& mob);

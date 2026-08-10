@@ -15,6 +15,7 @@
 #include "features/link_gesture.h"  // gestes communs des liens (item/monstre)
 #include "features/windows/chat_window.h"  // poser un lien de monstre dans la saisie
 #include "imgui.h"
+#include "ragnarok/globals.h"   // rag::BaseLevel / JobLevel (péremption de l'EXP estimée)
 #include "ragnarok/item_db.h"   // itemdb::kSkillDesc* (fenêtre native 0x2E)
 #include "ragnarok/lua.h"       // lua::State / GetField / PCall (GetSkillDescript)
 #include "ragnarok/msgstring.h"
@@ -210,6 +211,19 @@ void Label(const char* fmt, ...) {
   ImGui::TextV(fmt, args);
   ImGui::PopStyleColor();
   va_end(args);
+}
+
+// Le même, mais pour une PHRASE et non un libellé de colonne : `ImGui::Text` ne
+// renvoie jamais à la ligne, il déborde et se fait rogner par le bord de la
+// fenêtre. Une note d'une ligne et demie disparaissait ainsi à moitié.
+// `PushTextWrapPos(0)` = enveloppe à la fin de la zone de contenu, donc suit le
+// redimensionnement de la fenêtre.
+void LabelWrapped(const char* text) {
+  ImGui::PushStyleColor(ImGuiCol_Text, kLabel);
+  ImGui::PushTextWrapPos(0.0f);
+  ImGui::TextUnformatted(text);
+  ImGui::PopTextWrapPos();
+  ImGui::PopStyleColor();
 }
 
 // Vert = le monstre encaisse peu, rouge = il encaisse plein (ou plus).
@@ -521,10 +535,24 @@ void MonsterInfoWindow::Open(uint32_t mob_id, bool by_view) {
 void MonsterInfoWindow::RequestInfo(uint32_t mob_id, bool by_view) {
   MobInfo& e = cache_[mob_id];
   const uint32_t now = GetTickCount();
-  // Une fiche est statique (mob_db) : une fois prête, on n'y revient pas.
-  if (e.state == Fetch::kReady || e.state == Fetch::kUnknown) return;
-  // Requête en vol depuis moins de 5 s : on attend.
-  if (e.state == Fetch::kPending && (now - e.requested_tick) < 5000) return;
+  // Une fiche est statique (mob_db) : une fois prête, on n'y revient pas… à une
+  // exception près. L'EXP estimée, elle, est un instantané du PERSONNAGE : elle
+  // ne vaut plus rien après un niveau. On redemande alors la fiche entière — le
+  // paquet est unique et le coût dérisoire à côté d'un second aller-retour.
+  //
+  // 🔴 Seuls les niveaux déclenchent ce rafraîchissement. Un buff d'EXP pris
+  // entre-temps n'est PAS détecté : le suivre demanderait de guetter les icônes
+  // de statut, et un chiffre qui bouge tout seul sous les yeux du joueur pose
+  // plus de questions qu'il n'en résout. La section le dit.
+  const bool exp_stale = e.exp_valid &&
+                         (e.exp_base_level != rag::BaseLevel() ||
+                          e.exp_job_level  != rag::JobLevel());
+  if (e.state == Fetch::kUnknown) return;
+  if (e.state == Fetch::kReady && !exp_stale) return;
+  // Requête en vol depuis moins de 5 s : on attend. Vaut aussi pour le
+  // rafraîchissement, sinon `exp_stale` reste vrai jusqu'à la réponse et la
+  // demande repartirait à chaque frame de survol.
+  if (e.state != Fetch::kIdle && (now - e.requested_tick) < 5000) return;
 
   uint8_t pkt[9];  // [op:2][len:2][mob_id:4][by_view:1]
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpcodeReqMobInfo;
@@ -532,8 +560,12 @@ void MonsterInfoWindow::RequestInfo(uint32_t mob_id, bool by_view) {
   *reinterpret_cast<uint32_t*>(pkt + 4) = mob_id;
   pkt[8] = by_view ? 1 : 0;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  e.state = Fetch::kPending;
+  // Une fiche déjà prête le RESTE pendant son rafraîchissement : repasser à
+  // kPending viderait la fenêtre le temps d'un aller-retour pour ne changer que
+  // deux lignes. La réponse écrasera l'entrée de toute façon.
+  if (e.state != Fetch::kReady) e.state = Fetch::kPending;
   e.requested_tick = now;
+  e.by_view = by_view;
 }
 
 // Décodage sur le FIL PRINCIPAL (cf. features/net_inbox.h).
@@ -703,6 +735,27 @@ void MonsterInfoWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     }
   }
 
+  // ── EXP estimée pour CE personnage (queue du paquet) ───────────────────────
+  // [est_base:4][est_job:4][next_base:4][next_job:4][flags:1]
+  // Le serveur y applique tout ce qui pèse sur le gain réel — c'est le calcul de
+  // la warp agent, pas une multiplication faite ici. Absent d'un serveur plus
+  // ancien : la section correspondante ne s'affiche simplement pas.
+  m.exp_valid = false;
+  if (need(17)) {
+    m.est_base_exp  = u32();
+    m.est_job_exp   = u32();
+    m.next_base_exp = u32();
+    m.next_job_exp  = u32();
+    const uint8_t flags = u8();
+    m.max_base_lv = (flags & 1) != 0;
+    m.max_job_lv  = (flags & 2) != 0;
+    m.exp_valid   = true;
+    // L'état du personnage au moment du calcul : c'est lui qui périme le chiffre,
+    // pas le temps qui passe (cf. RequestInfo).
+    m.exp_base_level = rag::BaseLevel();
+    m.exp_job_level  = rag::JobLevel();
+  }
+
   m.state = Fetch::kReady;
 }
 
@@ -716,6 +769,11 @@ MonsterInfoWindow::MobInfo* MonsterInfoWindow::Current() {
 
 void MonsterInfoWindow::OnRenderUI() {
   if (!imgui_enabled_ || !open_) return;
+
+  // Le personnage a pu monter de niveau la fiche ouverte : l'EXP estimée qu'elle
+  // affiche est alors datée. RequestInfo porte la péremption et la garde — ici on
+  // ne fait que lui donner l'occasion de reposer la question, à l'identique.
+  if (const MobInfo* cur = Current()) RequestInfo(current_id_, cur->by_view);
 
   if (need_focus_) {
     ImGui::SetNextWindowFocus();
@@ -1136,6 +1194,125 @@ void MonsterInfoWindow::DrawSenseNote(MobInfo& mob) {
         "Guerre d'Emperium, monstre invoqué par script)."));
 }
 
+// « Ce qu'il vous rapporte » : l'EXP que CE monstre donnerait à CE personnage.
+//
+// 🔴 Le chiffre vient du SERVEUR, entièrement calculé (`mob_estimate_exp_gain`) :
+// malus de haut niveau, cartes bExpAddRace / bExpAddClass, Battle Manual, VIP,
+// event EXP. Le client ne multiplie rien — il ne connaît aucun de ces termes, et
+// une estimation maison finirait par contredire le gain réel.
+//
+// Le pour cent se calcule en revanche ici, à partir des deux paliers que le paquet
+// transporte : c'est de l'arithmétique sur des chiffres déjà justes.
+void MonsterInfoWindow::DrawExpGain(MobInfo& mob) {
+  if (!mob.exp_valid) return;                       // serveur plus ancien
+  if (mob.est_base_exp == 0 && mob.est_job_exp == 0) return;  // ne donne rien
+
+  ImGui::Spacing();
+  ImGui::TextColored(kTitle, i18n::Tr("Ce qu'il vous rapporte"));
+
+  if (!ImGui::BeginTable("##mi_expgain", 4,
+                         ImGuiTableFlags_SizingStretchProp |
+                             ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders))
+    return;
+
+  // Deux décimales, séparateur français. `%.2f` mettrait un point : les centièmes
+  // se calculent en entiers, comme les dixièmes de case/s plus haut.
+  auto pct = [](uint32_t got, uint32_t next, char* out, size_t cap) {
+    if (next == 0) { _snprintf_s(out, cap, _TRUNCATE, "-"); return; }
+    const uint64_t hundredths =
+        static_cast<uint64_t>(got) * 10000ull / static_cast<uint64_t>(next);
+    // Un gain réel mais sous le centième de pour cent : « 0,00 % » se lirait comme
+    // « ce monstre ne rapporte rien », ce qui est faux — la ligne du dessous dit
+    // justement combien il en faudrait.
+    if (hundredths == 0 && got > 0) {
+      _snprintf_s(out, cap, _TRUNCATE, "< 0,01 %%");
+      return;
+    }
+    _snprintf_s(out, cap, _TRUNCATE, "%llu,%02llu %%", hundredths / 100,
+                hundredths % 100);
+  };
+  // Combien de monstres pour un niveau ENTIER. Pas « pour finir celui-ci » : le
+  // client ne sait pas où en est la barre, et un chiffre qui fondrait à chaque
+  // monstre tué ne se compare plus d'une fiche à l'autre.
+  auto kills = [](uint32_t got, uint32_t next, char* out, size_t cap) {
+    if (got == 0 || next == 0) { _snprintf_s(out, cap, _TRUNCATE, "-"); return; }
+    const uint64_t n = (static_cast<uint64_t>(next) + got - 1) / got;
+    _snprintf_s(out, cap, _TRUNCATE, "%llu", n);
+  };
+
+  char v[64], w[64];
+
+  // ── EXP de base ────────────────────────────────────────────────────────────
+  ImGui::TableNextRow();
+  ImGui::TableNextColumn();
+  Label(i18n::Tr("EXP de base"));
+  Help(i18n::Tr("Ce que ce monstre vous donnerait VRAIMENT, et non la valeur de la "
+       "base de données affichée plus haut.\n\n"
+       "Le serveur applique tout ce qui pèse sur le gain : le taux du serveur, le "
+       "malus de haut niveau, vos cartes et objets qui augmentent l'EXP contre "
+       "cette race ou cette classe, un Battle Manual actif, le statut VIP et un "
+       "éventuel événement d'EXP.\n\n"
+       "Estimation pour un monstre que vous tuez SEUL, en lui ayant infligé la "
+       "totalité des dégâts. En groupe, ou en partageant les dégâts, votre part "
+       "est plus petite ; certaines ZONES ont au contraire un multiplicateur "
+       "d'EXP qui leur est propre."));
+  ImGui::TableNextColumn();
+  ImGui::TextColored(kBlue, "%s", Grouped(mob.est_base_exp, v, sizeof(v)));
+  ImGui::TableNextColumn();
+  if (mob.max_base_lv) {
+    Label(i18n::Tr("Niveau maximum"));
+    ImGui::TableNextColumn();
+    ImGui::TextColored(kGreen, i18n::Tr("atteint"));
+  } else {
+    Label(i18n::Tr("de votre niveau"));
+    ImGui::TableNextColumn();
+    pct(mob.est_base_exp, mob.next_base_exp, v, sizeof(v));
+    ImGui::TextColored(kGreen, "%s", v);
+  }
+
+  // ── EXP de job ─────────────────────────────────────────────────────────────
+  ImGui::TableNextRow();
+  ImGui::TableNextColumn();
+  Label(i18n::Tr("EXP de job"));
+  ImGui::TableNextColumn();
+  ImGui::TextColored(kBlue, "%s", Grouped(mob.est_job_exp, v, sizeof(v)));
+  ImGui::TableNextColumn();
+  if (mob.max_job_lv) {
+    Label(i18n::Tr("Job maximum"));
+    ImGui::TableNextColumn();
+    ImGui::TextColored(kGreen, i18n::Tr("atteint"));
+  } else {
+    Label(i18n::Tr("de votre job"));
+    ImGui::TableNextColumn();
+    pct(mob.est_job_exp, mob.next_job_exp, v, sizeof(v));
+    ImGui::TextColored(kGreen, "%s", v);
+  }
+
+  // ── Combien il en faut ─────────────────────────────────────────────────────
+  if (!mob.max_base_lv || !mob.max_job_lv) {
+    kills(mob.est_base_exp, mob.max_base_lv ? 0 : mob.next_base_exp, v, sizeof(v));
+    kills(mob.est_job_exp,  mob.max_job_lv  ? 0 : mob.next_job_exp,  w, sizeof(w));
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    Label(i18n::Tr("Pour un niveau"));
+    Help(i18n::Tr("Nombre de ces monstres à tuer pour un niveau COMPLET, pas pour "
+         "terminer celui que vous avez entamé."));
+    ImGui::TableNextColumn();
+    ImGui::Text("%s", v);
+    ImGui::TableNextColumn();
+    Label(i18n::Tr("Pour un job"));
+    ImGui::TableNextColumn();
+    ImGui::Text("%s", w);
+  }
+
+  ImGui::EndTable();
+
+  // Le chiffre est daté du moment où le serveur l'a calculé : un changement de
+  // niveau le fait redemander (RequestInfo), un buff d'EXP pris entre-temps non.
+  LabelWrapped(i18n::Tr("Calculé par le serveur pour votre personnage, en supposant "
+               "que vous le tuez seul. Hors partage de groupe et hors bonus de zone."));
+}
+
 void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
   if (ImGui::BeginTable("##mi_stats", 4,
                         ImGuiTableFlags_SizingStretchProp |
@@ -1193,6 +1370,10 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
       row(i18n::Tr("EXP MVP"), Grouped(mob.mvp_exp, a, sizeof(a)), "", "");
     ImGui::EndTable();
   }
+
+  // Les deux lignes d'EXP ci-dessus sont celles de mob_db : les mêmes pour tout
+  // le monde. Ce que le joueur veut savoir vient juste après.
+  DrawExpGain(mob);
 
   // ── Dérivés + simulation contre le personnage ─────────────────────────────
   const int mob_hit  = static_cast<int>(mob.level) + static_cast<int>(mob.dex);

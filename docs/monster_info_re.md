@@ -522,7 +522,7 @@ Couple d'opcodes custom (zone sûre `0x0F00+`, cf. `features/systems/bourgeon_op
 | Opcode | Nom | Forme |
 |---|---|---|
 | `0x0F1F` | `CZ_BOURGEON_REQ_MOBINFO` | fixe 9 : `[type:2][len:2][mob_id:4][by_view:1]` |
-| `0x0F20` | `ZC_BOURGEON_MOBINFO` | variable : bloc fixe de 98 o + nom + drops + spawns + skills + identité |
+| `0x0F20` | `ZC_BOURGEON_MOBINFO` | variable : bloc fixe de 88 o + nom + drops + spawns + skills + identité + EXP estimée |
 
 Le détail des champs est en commentaire au-dessus des deux structures
 (`moonlight/src/map/packets_struct.hpp`), et le handler est
@@ -580,6 +580,56 @@ qualificatif accolé au titre, du plus certain au moins certain, et **rien** au-
 d'homonymie, lui, reste affiché dans tous les cas : il n'énonce que du vérifiable
 (combien portent ce nom, lequel est celui-ci, raccourci vers le plus ancien) et ne dit
 jamais un mot du butin ni des spawns — les onglets les montrent déjà.
+
+### 7.2ter L'EXP estimée : le seul champ qui dépende du joueur qui regarde
+
+Les deux lignes `base_exp` / `job_exp` du bloc fixe sont celles de `mob_db` : les mêmes
+pour tout le monde, et **ce n'est pas la question que le joueur se pose**. Ce qu'il veut
+savoir, c'est ce que CE monstre lui rapporterait, à LUI, maintenant.
+
+Le serveur sait déjà répondre : la warp agent (`moon/warp_agent.npc`) affiche ce chiffre
+dans ses listes de chasse via la commande de script custom `getmonsterexprate`
+(`src/custom/script.inc`). La queue du paquet transporte donc le même calcul :
+
+`[est_base_exp:4][est_job_exp:4][next_base_exp:4][next_job_exp:4][exp_flags:1]`
+— `exp_flags` : bit0 = niveau de base MAX, bit1 = niveau de job MAX.
+
+Le calcul est **partagé**, pas recopié : `mob_estimate_exp_gain` (`src/map/mob.cpp`)
+porte la chaîne complète, et la fiche comme la warp agent l'appellent.
+
+```
+mob_db (déjà × base_exp_rate / job_exp_rate au chargement)
+  -> pc_highlevel_exp_malus   malus au-delà du niveau 200, moitié pour le Taekwon
+  -> pc_calcexp_from          bExpAddRace / bExpAddClass, Battle Manual, VIP, event EXP
+```
+
+Deux extractions ont été nécessaires côté serveur, et elles valent d'être notées :
+
+* `pc_highlevel_exp_malus` sort de `pc_gainexp` — la formule y était en dur, et une
+  deuxième copie dans l'estimation aurait fini par diverger du gain réel ;
+* `pc_calcexp_from` est le corps de `pc_calcexp` exprimé sur la **race, la classe et le
+  niveau** de la source au lieu d'un `block_list`. C'est la seule forme utilisable ici :
+  il n'existe aucune instance du monstre sur la carte. 🔴 `getmonsterexprate` passait
+  `sd` en guise de source, ce qui appliquait les bonus d'EXP de la race et de la classe
+  du **joueur** et perdait le bonus VIP (réservé à `src->type == BL_MOB`) — corrigé du
+  même coup, la warp agent annonce désormais le bon chiffre elle aussi.
+
+**Ce que l'estimation ne peut pas contenir**, faute d'exister avant le combat : la part
+de dégâts, le partage de groupe, le bonus par attaquant supplémentaire, les mapflags de
+la zone (`MF_NOBASEEXP`, `MF_BEXP`…) et la taxe de guilde. C'est donc le cas « je le tue
+seul, j'ai fait tous les dégâts » — la fiche le dit sous la section.
+
+🔴 **C'est un instantané, pas une donnée de base.** Le reste du paquet ne bouge jamais,
+celui-ci vieillit dès que le personnage change de niveau. Le client garde donc les
+niveaux au moment de la réception (`MobInfo::exp_base_level` / `exp_job_level`) et
+`RequestInfo` redemande la fiche entière quand ils ont changé — la fenêtre ouverte s'en
+charge à chaque frame, la garde des 5 s évite le bavardage. Une fiche déjà prête **reste
+affichée** pendant ce rafraîchissement : repasser à `kPending` viderait la fenêtre le
+temps d'un aller-retour pour ne changer que deux lignes.
+
+Un buff d'EXP pris entre-temps n'est PAS détecté : le suivre demanderait de guetter les
+icônes de statut, et un chiffre qui bougerait tout seul sous les yeux du joueur poserait
+plus de questions qu'il n'en résoudrait.
 
 ### 7.3 Points d'entrée de la nouvelle fenêtre
 
