@@ -35,6 +35,17 @@ class ScreenFx : public Plugin {
   // exists (values are just stored).
   void Apply();
 
+  // Ceiling of the FXAA strength slider, in blend units. The FXAA pass runs on
+  // the ENGINE frame — native UI text included — and past ~0.5 that text turns
+  // to mush, hence the stock cap. It doubles when the ImGui chatbox is on: the
+  // native chatbox and its log-options window are then DESTROYED (see
+  // ChatWindow::SuppressNativeChat) and every line is drawn in the Bourgeon
+  // overlay, which the post-fx passes never touch. The densest, smallest text of
+  // the frame is simply no longer IN the frame, so the ceiling can go all the way
+  // to the full blend. What is left of native text — entity nameplates, the
+  // native windows still standing — is what keeps this a PLAYER call above 0.5.
+  float FxaaMaxStrength() const;
+
   // Renders the graphics-tweak controls (no window of its own); hosted by
   // moonlight_ui inside its "Graphismes" section.
   void DrawSettings();

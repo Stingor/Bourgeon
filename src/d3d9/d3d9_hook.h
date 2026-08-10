@@ -81,7 +81,10 @@ struct D3D9PostFx {
   float aberration  = 0.0f;   // 0..1 chromatic aberration
   float sharpen     = 0.0f;   // 0..1 unsharp mask
   bool  fxaa        = false;  // edge anti-aliasing (second pass)
-  float fxaa_strength = 0.35f; // 0..0.5 blend of the FXAA result (>0.5 wrecks UI text)
+  // 0..1 blend of the FXAA result. How far the player may actually push it is a
+  // CALLER-side call (ScreenFx::FxaaMaxStrength): it depends on how much native
+  // text is still drawn into the engine frame, which this layer knows nothing of.
+  float fxaa_strength = 0.35f;
 };
 
 // Stores the params immediately; they take effect next frame, so it is safe to

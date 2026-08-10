@@ -658,8 +658,10 @@ static void PostFx_CaptureIfRequested(IDirect3DDevice9* dev) {
 
 void D3D9_SetPostFx(const D3D9PostFx& fx) {
     g_fx = fx;
-    // Hard cap: full-screen FXAA above 0.5 makes UI text illegible.
-    if (g_fx.fxaa_strength > 0.5f) g_fx.fxaa_strength = 0.5f;
+    // Hard cap = the full blend, nothing more. The READABILITY ceiling is not set
+    // here: it depends on how much native text is left in the engine frame (see
+    // ScreenFx::FxaaMaxStrength), and this layer has no way to know that.
+    if (g_fx.fxaa_strength > 1.0f) g_fx.fxaa_strength = 1.0f;
     if (g_fx.fxaa_strength < 0.0f) g_fx.fxaa_strength = 0.0f;
 }
 

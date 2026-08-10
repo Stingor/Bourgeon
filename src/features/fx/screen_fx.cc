@@ -11,6 +11,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/windows/chat_window.h"  // imgui_enabled_ : plafond du FXAA
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
 
@@ -98,6 +99,13 @@ void ScreenFx::Apply() {
   D3D9_SetTextureFilter(tex_filter_);
 }
 
+// Documented in the header. Null chatbox (very early, or the plugin is absent)
+// answers the STOCK ceiling: the safe one is the one that assumes native text.
+float ScreenFx::FxaaMaxStrength() const {
+  const ChatWindow* chat = Bourgeon::Instance().chat_window();
+  return (chat != nullptr && chat->imgui_enabled_) ? 1.0f : 0.5f;
+}
+
 namespace {
 
 // Writes a float into a read-only (.rdata) location via VirtualProtect; no-op if
@@ -178,10 +186,19 @@ void ScreenFx::DrawSettings() {
     slider(i18n::Tr("Netteté"),       &fx_.sharpen,    0.0f, 1.0f);
     if (ro::RoCheckbox(i18n::Tr("FXAA (anti-crénelage)"), &fx_.fxaa)) { apply = true; save = true; }
     if (fx_.fxaa) {
-      slider(i18n::Tr("  Force FXAA"), &fx_.fxaa_strength, 0.0f, 0.5f);  // >0.5 wrecks UI text
+      // Ceiling follows the chatbox mode — see FxaaMaxStrength.
+      const float fxaa_max = FxaaMaxStrength();
+      slider(i18n::Tr("  Force FXAA"), &fx_.fxaa_strength, 0.0f, fxaa_max);
       SameLine();
-      HelpMarker(i18n::Tr("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
-                          "Plafonné à 0.5 — au-delà le texte devient illisible."));
+      HelpMarker(fxaa_max > 0.5f
+                     ? i18n::Tr("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
+                                "Chatbox ImGui allumée : le chat est dessiné dans l'overlay,\n"
+                                "que le post-traitement ne touche pas — le plafond monte donc\n"
+                                "à 1.0. Il reste du texte natif (noms au-dessus des personnages,\n"
+                                "fenêtres natives) : au-delà de 0.5, lui aussi s'adoucit.")
+                     : i18n::Tr("Le FXAA plein écran adoucit aussi le texte de l'UI.\n"
+                                "Plafonné à 0.5 — au-delà le texte devient illisible.\n"
+                                "Avec la chatbox ImGui, le plafond monte à 1.0."));
     }
 
     if (ro::RoButton(i18n::Tr("Réinitialiser"))) {
@@ -224,6 +241,22 @@ void ScreenFx::OnRenderUI() {
 }
 
 void ScreenFx::OnTick() {
+  // ── FXAA ceiling follows the chatbox mode ────────────────────────────────────
+  // Turning the ImGui chatbox back OFF puts the native chat log — the densest,
+  // smallest text of the whole frame — back under the post-fx passes. A strength
+  // the player was only granted for the ImGui mode has to come back down with it,
+  // and be persisted: what the slider can show is then also what is applied, with
+  // no hidden value sitting above its own maximum. Skipped while the chatbox
+  // plugin is not there yet, so a saved high value survives startup ordering.
+  if (Bourgeon::Instance().chat_window() != nullptr) {
+    const float fxaa_max = FxaaMaxStrength();
+    if (fx_.fxaa_strength > fxaa_max) {
+      fx_.fxaa_strength = fxaa_max;
+      Apply();
+      if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+    }
+  }
+
   // Extended camera zoom-out: keep the engine's max view-distance clamp globals
   // (read every camera update by Camera_ApplyViewDistanceClamp @ 0x00c82340)
   // raised to default * zoom_factor_. 20250716-specific addresses.
