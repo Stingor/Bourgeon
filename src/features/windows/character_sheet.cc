@@ -2129,8 +2129,87 @@ ImU32 DollBgCol() {
 //  Deux tailles de fenetre : doll seul (narrow) ou doll+stats (wide). Le drag snap
 //  sur la plus proche ; le volet stats est cache si la largeur ne suffit pas (evite
 //  la scrollbar "dans le vide").
-constexpr float kDollW  = 280.0f;   // largeur zone doll (contenu)
-constexpr float kStatsW = 240.0f;   // largeur zone stats (contenu)
+//
+// 🔴 CES DEUX LARGEURS SE MESURENT — elles ne sont plus écrites en dur (280 et 240
+// px). Elles l'étaient, calibrées sur la police d'alors ; le joueur peut changer la
+// police de l'interface, et la police intégrée d'ImGui (ProggyClean) est la plus
+// large du menu. Avec elle, la valeur d'une stat passait sous ses propres boutons
+// et « Générer le GIF » sortait du cadre du mannequin.
+//
+// Tout ce qui borne la largeur est donc mesuré à la police COURANTE : bloc du
+// mannequin, ligne « pose + GIF », case à cocher, colonne des valeurs et boutons de
+// montée. Les anciennes valeurs restent le PLANCHER — une police étroite garde
+// exactement la mise en page d'origine, et la fenêtre ne rétrécit jamais sous ce
+// qu'elle a toujours mesuré.
+//
+// ⚠ Aucune de ces mesures ne dépend de la largeur de la FENÊTRE : elles ne lisent
+// que la police et le style. C'est ce qui les rend utilisables dans la contrainte
+// de taille (appelée AVANT Begin) sans boucle de rétroaction d'une frame à l'autre.
+constexpr float kDollWMin  = 280.0f;  // planchers = les largeurs historiques
+constexpr float kStatsWMin = 240.0f;
+constexpr float kSlotSz    = 44.0f;   // côté d'une case d'équipement
+constexpr float kSlotGap   = 6.0f;    // écart entre deux cases
+constexpr float kAvatarW   = 130.0f;  // largeur de l'avatar central
+// Le bloc du mannequin : 2 colonnes de cases encadrant l'avatar. En PIXELS D'IMAGE
+// (cases et sprite), donc insensible à la police.
+constexpr float kDollBlockW  = kSlotSz + kSlotGap + kAvatarW + kSlotGap + kSlotSz;
+constexpr float kPoseLineGap = 8.0f;  // écart net entre le combo de pose et le bouton GIF
+constexpr float kStatValGap  = 12.0f; // écart libellé de stat -> colonne des valeurs
+
+// Largeur du combo de pose : le plus large libellé TRADUIT (une traduction plus
+// longue que le français élargit le combo, elle ne le déborde pas) + la flèche.
+float PoseComboW() {
+  float w = 0.0f;
+  for (int i = 0; i < kPoseCount; ++i)
+    w = std::max(w, ImGui::CalcTextSize(i18n::Tr(kPoses[i].label)).x);
+  // Largeurs ARRONDIES au pixel entier : des bordures RO sub-pixel provoquaient un
+  // léger glitch visuel à gauche du bouton voisin.
+  return std::floor(w + ImGui::GetFrameHeight() +
+                    ImGui::GetStyle().FramePadding.x * 2.0f + 6.0f);
+}
+float GifButtonW() {
+  return std::floor(ImGui::CalcTextSize(i18n::Tr("Générer le GIF")).x +
+                    ImGui::GetStyle().FramePadding.x * 2.0f + 12.0f);
+}
+// Largeur de la case à cocher sous le mannequin : les DEUX libellés possibles
+// (Équipement / Costume), pour que la fenêtre ne change pas de taille en changeant
+// d'onglet.
+float DollCheckW() {
+  return std::max(ImGui::CalcTextSize(i18n::Tr("Montrer mon équipement")).x,
+                  ImGui::CalcTextSize(i18n::Tr("Voir les costumes")).x) + 42.0f;
+}
+// Le plus large des trois contenus du volet mannequin.
+float DollPaneW() {
+  const float content = std::max(std::max(kDollBlockW,
+                                          PoseComboW() + kPoseLineGap + GifButtonW()),
+                                 DollCheckW());
+  return std::max(kDollWMin,
+                  std::ceil(content + ImGui::GetStyle().WindowPadding.x * 2.0f));
+}
+// Largeur réservée au coût du prochain point, à droite du « + » (3 chiffres suffisent :
+// le coût d'une stat plafonne bien avant 999).
+float StatCostW() { return ImGui::CalcTextSize("999").x + 6.0f; }
+// Volet des stats. La rangée la plus contrainte est celle d'une stat PRIMAIRE : sa
+// valeur est écrite au fil du texte alors que « Max », « + » et le coût sont collés au
+// bord droit — trop étroit, la valeur passe SOUS les boutons. Les gabarits sont donc
+// généreux (999 de base, cinq chiffres de bonus) ; au-delà, seul le détail entre
+// parenthèses d'une dérivée déborde, et lui passe à la ligne (cf. DrawStatsPanel).
+float StatsPaneW() {
+  const ImGuiStyle& st = ImGui::GetStyle();
+  const float val_x  = ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + kStatValGap;
+  const float max_w  = ImGui::CalcTextSize(i18n::Tr("Max")).x + st.FramePadding.x * 2.0f + 4.0f;
+  const float prim   = val_x + ImGui::CalcTextSize("- 999 (+99999)").x + st.ItemSpacing.x +
+                       max_w + 4.0f + ImGui::GetFrameHeight() + StatCostW();
+  const float deriv  = val_x + ImGui::CalcTextSize("999999 ~ 999999").x;
+  char pts[64];
+  std::snprintf(pts, sizeof(pts), i18n::Tr("Points de statut : %d"), 9999);
+  const float points = ImGui::CalcTextSize(pts).x;
+  const float content = std::max(std::max(prim, deriv), points);
+  // + la scrollbar : le volet en a une dès que les bonus d'équipement se déplient,
+  // et elle prend sa largeur SUR le contenu.
+  return std::max(kStatsWMin,
+                  std::ceil(content + st.WindowPadding.x * 2.0f + st.ScrollbarSize));
+}
 struct WinSnap {
   float narrow = 0.0f, wide = 0.0f;
   bool  valid = false;
@@ -4214,9 +4293,9 @@ void CharacterSheet::DrawHomunTab() {
 
   // ── En-tête ───────────────────────────────────────────────────────────────
   // Tout l'onglet est calibré pour tenir dans la feuille SANS le volet stats
-  // (kDollW = 280 px de contenu) : c'est la largeur de repli, et rien ici ne
-  // justifie d'imposer la large. D'où les libellés courts et les boutons ajustés
-  // au texte plutôt qu'à une largeur ronde.
+  // (DollPaneW(), au moins 280 px de contenu) : c'est la largeur de repli, et rien
+  // ici ne justifie d'imposer la large. D'où les libellés courts et les boutons
+  // ajustés au texte plutôt qu'à une largeur ronde.
   const float kFullW = ImGui::GetContentRegionAvail().x;
 
   if (homun_rename_edit_) {
@@ -7155,9 +7234,19 @@ void CharacterSheet::DrawDoll(float avail_w) {
   Stats s{};
   if (ReadStats(&s))
   {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "HP: %d/%d SP: %d/%d", s.hp, s.hp_max, s.sp, s.sp_max);
-    centered(buf);
+    // PV et SP sur une seule ligne, ou sur DEUX si elle ne tient pas dans la colonne :
+    // un personnage à six chiffres de PV (et une police large) débordait sinon du cadre,
+    // et c'est le SP qui disparaissait — la moitié de l'information, sans rien qui le dise.
+    char hp[40], sp[40], both[80];
+    std::snprintf(hp, sizeof(hp), "HP: %d/%d", s.hp, s.hp_max);
+    std::snprintf(sp, sizeof(sp), "SP: %d/%d", s.sp, s.sp_max);
+    std::snprintf(both, sizeof(both), "%s %s", hp, sp);
+    if (ImGui::CalcTextSize(both).x <= avail_w) {
+      centered(both);
+    } else {
+      centered(hp);
+      centered(sp);
+    }
   }
   // Bas du TEXTE de l'en-tête (avant le séparateur, qui ajoute son propre espacement) : sert à
   // centrer l'emblème verticalement. Le 1er texte démarre ~5px au-dessus de hdr_p0 (centered()).
@@ -7183,8 +7272,8 @@ void CharacterSheet::DrawDoll(float avail_w) {
   // Bloc poupée : 2 colonnes de slots + avatar central, largeur fixe CENTRÉE
   // horizontalement (MÊME méthode que l'en-tête : start_x + marge -> sinon le bloc
   // est collé à gauche). La disposition dépend de l'onglet (branches ci-dessous).
-  const float sz = 44.0f, gap = 6.0f, avatar_w = 130.0f;
-  const float block_w = sz + gap + avatar_w + gap + sz;
+  const float sz = kSlotSz, gap = kSlotGap, avatar_w = kAvatarW;
+  const float block_w = kDollBlockW;
   const float ox = start_x + std::max(0.0f, (avail_w - block_w) * 0.5f);  // centre
   const float y0 = ImGui::GetCursorPosY() + 2.0f;
   const float lx = ox;                              // colonne gauche
@@ -7265,17 +7354,15 @@ void CharacterSheet::DrawDoll(float avail_w) {
   // Combo ET bouton s'ajustent à la largeur de leur texte.
   const float sel_y = content_bottom + 8.0f;
   const float fh = ImGui::GetFrameHeightWithSpacing();
-  float combo_w = 0.0f;  // largeur combo = plus large libellé + flèche + padding
-  for (int i = 0; i < kPoseCount; ++i)
-    combo_w = std::max(combo_w, ImGui::CalcTextSize(kPoses[i].label).x);
-  // Largeurs/positions ARRONDIES au pixel entier : des bordures RO sub-pixel
-  // provoquaient un léger glitch visuel à gauche du bouton.
-  combo_w = static_cast<float>(static_cast<int>(
-      combo_w + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f + 6.0f));
-  const float gif_w = static_cast<float>(static_cast<int>(
-      ImGui::CalcTextSize(i18n::Tr("Générer le GIF")).x + ImGui::GetStyle().FramePadding.x * 2.0f + 12.0f));
-  const float line_gap = 8.0f;  // écart net combo / bouton
-  const float line_w = combo_w + line_gap + gif_w;
+  const float combo_w = PoseComboW();
+  const float gif_w   = GifButtonW();
+  const float line_gap = kPoseLineGap;  // écart net combo / bouton
+  // La colonne est dimensionnée pour cette ligne (cf. DollPaneW), mais elle peut
+  // malgré tout être trop étroite : le joueur a rétréci la fenêtre, ou une scrollbar
+  // verticale est apparue et a pris sa largeur sur le contenu. Dans ce cas le bouton
+  // passe SOUS le combo plutôt que de sortir du cadre.
+  const bool  one_line = (combo_w + line_gap + gif_w) <= avail_w;
+  const float line_w = one_line ? combo_w + line_gap + gif_w : combo_w;
   const float line_x = static_cast<float>(static_cast<int>(
       start_x + std::max(0.0f, (avail_w - line_w) * 0.5f)));
   ImGui::SetCursorPos(ImVec2(line_x, sel_y));
@@ -7284,7 +7371,9 @@ void CharacterSheet::DrawDoll(float avail_w) {
     for (int i = 0; i < kPoseCount; ++i) {
       const bool sel =
           (avatar_anim_ == kPoses[i].anim && avatar_animate_ == kPoses[i].animate);
-      if (ImGui::Selectable(kPoses[i].label, sel)) {
+      // Le libellé TRADUIT, comme l'aperçu du combo (PoseLabelFull) : la liste
+      // déroulante restait en français dans les autres langues.
+      if (ImGui::Selectable(i18n::Tr(kPoses[i].label), sel)) {
         avatar_anim_    = kPoses[i].anim;
         avatar_animate_ = kPoses[i].animate;
         if (avatar_anim_ == kAnimCombat) avatar_dir_ &= ~1;  // snap dir cardinale
@@ -7293,9 +7382,16 @@ void CharacterSheet::DrawDoll(float avail_w) {
     }
     ro::RoEndCombo();
   }
-  // Bouton « Générer le GIF » sur la même ligne, largeur ajustée à son texte. Ouvre un
-  // dialogue « Enregistrer sous » (thread séparé, non bloquant) ; l'export se fait ici.
-  ImGui::SameLine(0.0f, line_gap);
+  // Bouton « Générer le GIF », largeur ajustée à son texte : à droite du combo quand la
+  // colonne est assez large, sur la ligne suivante sinon. Ouvre un dialogue « Enregistrer
+  // sous » (thread séparé, non bloquant) ; l'export se fait ici.
+  if (one_line) {
+    ImGui::SameLine(0.0f, line_gap);
+  } else {
+    ImGui::SetCursorPos(ImVec2(static_cast<float>(static_cast<int>(
+                                   start_x + std::max(0.0f, (avail_w - gif_w) * 0.5f))),
+                               sel_y + fh));
+  }
   const bool gif_busy = gif_dialog_busy_.load();
   if (gif_busy) ImGui::BeginDisabled();
   if (ro::RoButton(i18n::Tr("Générer le GIF"), gif_w)) RequestGifSave();
@@ -7318,8 +7414,10 @@ void CharacterSheet::DrawDoll(float avail_w) {
     }
     gif_dialog_busy_.store(false);
   }
+  // Bas de la ligne pose/GIF : une rangée, ou deux quand le bouton est passé dessous.
+  const float pose_bottom = sel_y + fh * (one_line ? 1.0f : 2.0f);
   if (!gif_status_.empty()) {
-    ImGui::SetCursorPos(ImVec2(ox, sel_y + fh));
+    ImGui::SetCursorPos(ImVec2(ox, pose_bottom));
     ImGui::PushTextWrapPos(ox + block_w);  // wrap dans la largeur du bloc
     ImGui::TextColored(kBlack, "%s", gif_status_.c_str());
     ImGui::PopTextWrapPos();
@@ -7329,7 +7427,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   // serveur répond ZC_CONFIG qui applique + rafraîchit le sprite) :
   //   Costume -> « Voir les costumes » (flag 0x016024c0 : 0=affiché) ;
   //   Équipement -> « Montrer mon équipement » aux autres (flag 0x015ffd14 : 1=visible).
-  const float cfg_y = sel_y + fh + (gif_status_.empty() ? 0.0f : fh) + 4.0f;
+  const float cfg_y = pose_bottom + (gif_status_.empty() ? 0.0f : fh) + 4.0f;
   if (costume_) {
     bool show = ReadInt(kCostumeHideFlag) == 0;
     const float cw = ImGui::CalcTextSize(i18n::Tr("Voir les costumes")).x + 42.0f;
@@ -7418,8 +7516,8 @@ void CharacterSheet::DrawStatsPanel() {
   const float start = ImGui::GetCursorPosX();          // colonne LABEL (gauche)
   // Colonne VALEURS alignée : après le plus large label ("Esq.P") + marge. Toutes les
   // valeurs (primaires + dérivées) démarrent à ce x -> chiffres en colonne.
-  const float val_x = start + ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + 12.0f;
-  const float cost_w = 30.0f;  // largeur réservée au coût, à droite du +
+  const float val_x = start + ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + kStatValGap;
+  const float cost_w = StatCostW();  // largeur réservée au coût, à droite du +
   const float max_w = ImGui::CalcTextSize(i18n::Tr("Max")).x + ImGui::GetStyle().FramePadding.x * 2.0f + 4.0f;
   // Petit fond arrondi gris léger derrière le NOM de chaque stat (limité au libellé).
   const ImU32 kRowBg = IM_COL32(165, 170, 180, 55);  // gris léger
@@ -7433,10 +7531,13 @@ void CharacterSheet::DrawStatsPanel() {
     if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }  // rôle + split équip/carte
     ImGui::SameLine();
     ImGui::SetCursorPosX(val_x);                                // colonne valeurs
+    // 🔴 TIRET ASCII, PAS un cadratin « — ». La police intégrée d'ImGui (ProggyClean)
+    // ne bake que la plage 0x20-0xFF : U+2014 y sort en « ? ». Un joueur qui choisit
+    // cette police lisait donc « STR ? 999 » sur chacune de ses six stats.
     if (s.bonus[i] != 0)
-      ImGui::TextColored(kBlack, "— %d (+%d)", s.base[i], s.bonus[i]);
+      ImGui::TextColored(kBlack, "- %d (+%d)", s.base[i], s.bonus[i]);
     else
-      ImGui::TextColored(kBlack, "— %d", s.base[i]);
+      ImGui::TextColored(kBlack, "- %d", s.base[i]);
     if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }
     // Boutons de montée (actifs SSI on peut se payer >=1 point). « Max » ajoute le
     // MAXIMUM possible ; « + » = +1, ou MAJ+clic = jusqu'au prochain palier de 10 (qui
@@ -7485,6 +7586,14 @@ void CharacterSheet::DrawStatsPanel() {
 
   // Stats derivees : label (gauche) + valeur (colonne val_x alignée). Survol = expl. Le
   // % : DEF/MDEF « 1 » (soft, VIT/INT = réduction en %) + « 2 » (plate) ; CRI/Esq.P = %.
+  //
+  // Le DÉTAIL entre parenthèses — « (équip +N) », « (refine +N%) » — suit la valeur, ou
+  // PASSE À LA LIGNE (indenté sur la colonne des valeurs) quand il n'y tient plus. Le
+  // volet est dimensionné sur la valeur seule : un ATK à cinq chiffres avec une police
+  // large sortait sinon du cadre, coupé net au milieu d'un mot. Élargir la fenêtre pour
+  // le pire cas la rendrait énorme pour tout le monde ; la replier ne coûte qu'une ligne,
+  // et seulement aux personnages qui en ont besoin.
+  char sfx[64] = "";  // détail de la stat COURANTE, consommé (et vidé) par stat()
   auto stat = [&](const char* label, const char* value, const char* tip) {
     const ImVec2 rp = ImGui::GetCursorScreenPos();
     const float nw = ImGui::CalcTextSize(label).x;  // fond limité au libellé
@@ -7497,22 +7606,31 @@ void CharacterSheet::DrawStatsPanel() {
     ImGui::SetCursorPosX(val_x);
     ImGui::TextColored(kBlack, "%s", value);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+    if (sfx[0]) {
+      const float after =
+          val_x + ImGui::CalcTextSize(value).x + ImGui::GetStyle().ItemSpacing.x;
+      if (after + ImGui::CalcTextSize(sfx).x <= right) ImGui::SameLine();
+      else                                             ImGui::SetCursorPosX(val_x);
+      ImGui::TextColored(kBlack, "%s", sfx);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+      sfx[0] = '\0';  // consommé : la stat suivante repart sans détail
+    }
   };
   char b[112];
-  // Accole « (label ±X) » à la valeur courante (équip, refine…) si non nul.
+  // Accole « (label ±X) » au détail de la valeur courante (équip, refine…) si non nul.
   auto append = [&](const char* label, int contrib) {
-    if (bonus_.valid && contrib != 0) {
-      const size_t n = std::strlen(b);
-      std::snprintf(b + n, sizeof(b) - n, "  (%s %+d)", label, contrib);
-    }
+    if (!bonus_.valid || contrib == 0) return;
+    const size_t n = std::strlen(sfx);
+    if (n) std::snprintf(sfx + n, sizeof(sfx) - n, "  (%s %+d)", label, contrib);
+    else   std::snprintf(sfx, sizeof(sfx), "(%s %+d)", label, contrib);
   };
   auto appendEquip = [&](int contrib) { append(i18n::Tr("équip"), contrib); };
   // Variante % (ex. DEF de refine, qui alimente la réduction en %).
   auto appendPct = [&](const char* label, int contrib) {
-    if (bonus_.valid && contrib != 0) {
-      const size_t n = std::strlen(b);
-      std::snprintf(b + n, sizeof(b) - n, "  (%s %+d%%)", label, contrib);
-    }
+    if (!bonus_.valid || contrib == 0) return;
+    const size_t n = std::strlen(sfx);
+    if (n) std::snprintf(sfx + n, sizeof(sfx) - n, "  (%s %+d%%)", label, contrib);
+    else   std::snprintf(sfx, sizeof(sfx), "(%s %+d%%)", label, contrib);
   };
   std::snprintf(b, sizeof(b), "%d + %d", s.atk1, s.atk2);
   appendEquip(bonus_.eatk);
@@ -7997,8 +8115,10 @@ void CharacterSheet::OnRenderUI() {
   }
   // Deux tailles possibles : doll seul (narrow) ou doll+stats (wide) ; snap au drag.
   const float gap = ImGui::GetStyle().ItemSpacing.x;
-  g_win_snap.narrow = kDollW + chrome_w_;
-  g_win_snap.wide   = kDollW + gap + kStatsW + chrome_w_;
+  const float doll_pane_w  = DollPaneW();   // mesurées à la police courante
+  const float stats_pane_w = StatsPaneW();
+  g_win_snap.narrow = doll_pane_w + chrome_w_;
+  g_win_snap.wide   = doll_pane_w + gap + stats_pane_w + chrome_w_;
   g_win_snap.valid  = true;
   // Les onglets Guilde (table des membres) et Grimoire (grille de 7 colonnes) ont
   // besoin de toute la largeur : on y interdit le repli étroit plutôt que de laisser
@@ -8086,12 +8206,12 @@ void CharacterSheet::OnRenderUI() {
   } else {
     // Volet stats seulement si la largeur suffit (sinon cache -> pas de scrollbar vide).
     const bool show_stats =
-        avail.x >= kDollW + ImGui::GetStyle().ItemSpacing.x + kStatsW - 6.0f;
+        avail.x >= doll_pane_w + ImGui::GetStyle().ItemSpacing.x + stats_pane_w - 6.0f;
     // Mémorisé pour la bascule du raccourci Status : c'est la présence de ce volet
     // qui distingue « vue Status » de « vue Équipement », les deux partageant
     // l'onglet du mannequin.
     stats_panel_shown_ = show_stats;
-    const float doll_w = show_stats ? kDollW : avail.x;
+    const float doll_w = show_stats ? doll_pane_w : avail.x;
 
     ImGui::BeginChild("cs_doll", ImVec2(doll_w, 0), true);
     DrawDoll(ImGui::GetContentRegionAvail().x);
@@ -8099,7 +8219,7 @@ void CharacterSheet::OnRenderUI() {
 
     if (show_stats) {
       ImGui::SameLine();
-      ImGui::BeginChild("cs_stats", ImVec2(kStatsW, 0), true);
+      ImGui::BeginChild("cs_stats", ImVec2(stats_pane_w, 0), true);
       DrawStatsPanel();
       ImGui::EndChild();
     }
