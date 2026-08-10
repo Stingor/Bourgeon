@@ -581,8 +581,15 @@ void DrawMenu(const char* popup_id, const Target& target) {
         ChatWindow* chat = Bourgeon::Instance().chat_window();
         const bool self  = chat != nullptr && chat->IsOwnName(target.player_name.c_str());
 
-        // Chuchoter : rien de natif, rien sur le fil — juste notre fenêtre 1:1.
+        // ── Chuchoter, en DEUX gestes ────────────────────────────────────────
+        // Rien de natif, rien sur le fil dans les deux cas. Le premier prépare
+        // l'envoi dans la barre de chat ; le second — juste en dessous — ouvre la
+        // conversation dans sa propre fenêtre, ce qui engage bien davantage et ne
+        // doit donc pas arriver sans qu'on l'ait demandé.
         if (!self && ImGui::MenuItem(i18n::Tr("Chuchoter…"))) {
+          if (chat != nullptr) chat->TargetWhisper(wire);
+        }
+        if (!self && ImGui::MenuItem(i18n::Tr("Chuchoter dans une fenêtre…"))) {
           if (chat != nullptr) chat->OpenWhisperWindowByAid(wire, 0);
         }
         if (!self && chat != nullptr) {

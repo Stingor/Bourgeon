@@ -207,6 +207,12 @@ class EntityContextMenu : public Plugin {
     kTalkToNpc,     // CZ_CONTACTNPC 0x0090
     kAttack,        // GameMode_PostActorClickAction
     kInspect,       // ouvre l'inspecteur de propriétés (staff)
+    // Les deux gestes « chuchoter », séparés parce qu'ils n'ont pas la même
+    // portée : le premier PRÉPARE l'envoi dans la barre de chat, le second ouvre
+    // une conversation à part. Tous deux retombent sur le code natif 20 quand le
+    // chat moderne est éteint — c'est pour ça qu'ils portent AUSSI ce code.
+    kWhisperBar,    // écrit le nom dans la box « Pseudo » de la barre principale
+    kWhisperWindow, // ouvre la conversation 1:1
   };
 
   // Le nom de la famille de la cible, tel qu'il s'affiche en tête du menu — et

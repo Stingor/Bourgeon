@@ -20,6 +20,7 @@
 #include "utils/game_paths.h"  // paths::SettingsPath (réglage des glyphes coréens)
 #include "ui/ro_skin_blobs.hpp"  // dimensions des pièces (pixels chargés du client)
 #include "ui/ro_widgets.h"  // WheelSliderFloat/Int (sliders ajustables à la molette)
+#include "ui/window_clamp.h"  // MagnetMarkWindow (aimantation des chatbox)
 #include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -1599,6 +1600,10 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   g_chat_resizable = skin.resizable;
   if (!skin.movable) imgui_window_flags |= ImGuiWindowFlags_NoMove;
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
+  // Aimantable : les chatbox se rangent bord à bord entre elles et sur l'écran.
+  // 🔴 Marquée que Begin ait rendu true ou non — une fenêtre repliée ou clippée
+  // occupe toujours sa place, et reste donc un voisin auquel se coller.
+  MagnetMarkWindow();
   if (skin.font_scale > 0.0f && skin.font_scale != 1.0f)
     ImGui::SetWindowFontScale(skin.font_scale);
 

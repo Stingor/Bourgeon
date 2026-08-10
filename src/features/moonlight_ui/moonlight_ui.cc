@@ -656,6 +656,11 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"chatwnd_input_bar", SType::kBool, MLUI_FIELD(chat_window, input_bar()),
      MLUI_LITERAL(bool, true)},
+    // Aimantation des chatbox entre elles et sur les bords de l'écran. Défaut
+    // VRAI : les fenêtres natives du client se rangent déjà comme ça, et une
+    // chatbox qu'on pose à trois pixels d'une autre n'est jamais voulue.
+    {"chatwnd_magnet", SType::kBool, MLUI_FIELD(chat_window, magnet()),
+     MLUI_LITERAL(bool, true)},
     // (« chatwnd_locked » a disparu : le verrouillage est désormais PAR FENÊTRE et
     // se range avec le reste de la géométrie, dans le fichier de disposition du
     // chat. Une clé restée dans un ancien yaml est simplement ignorée à la

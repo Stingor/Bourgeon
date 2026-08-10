@@ -438,6 +438,12 @@ void Bourgeon::RenderUI() {
   // là), donc le déplacement souris de la frame est déjà appliqué et la position
   // corrigée est celle qui sera dessinée. Écrans de login inclus (le bloc
   // OnRenderLoginUI ci-dessous dessine aussi des fenêtres). Voir ui/window_clamp.h.
+  //
+  // L'aimant passe AVANT le clamp, et pas l'inverse : il peut pousser une fenêtre
+  // d'un ou deux pixels hors de l'écran en la collant à une voisine, et c'est au
+  // clamp de dire le dernier mot. Il tourne à chaque frame, y compris éteint : il
+  // y recycle la liste des fenêtres aimantables.
+  ro::SnapMovingWindowToPeers();
   ro::KeepWindowsOnScreen();
   // Le HUD (barre de skills, barres HP/SP/XP/zeny/poids, portrait) reste sous
   // toutes les vraies fenêtres. Même endroit et mêmes raisons que le clamp

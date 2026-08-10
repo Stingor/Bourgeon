@@ -1,5 +1,8 @@
 #include "ui/window_clamp.h"
 
+#include <cfloat>
+#include <vector>
+
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiWindow, context->Windows, ImClamp/ImTrunc, MarkIniSettingsDirty
 
@@ -62,6 +65,143 @@ void KeepWindowsOnScreen() {
     // MarkIniSettingsDirty lui-même.)
     ImGui::MarkIniSettingsDirty(window);
   }
+}
+
+// ── Aimantation ──────────────────────────────────────────────────────────────
+namespace {
+
+// Rayon d'attraction, en pixels d'écran. Assez large pour qu'on n'ait pas à viser
+// le pixel, assez court pour qu'on puisse encore poser délibérément une fenêtre à
+// une dizaine de pixels d'une autre.
+constexpr float kMagnetRadius = 12.0f;
+
+// Deux fenêtres qui ne se croisent sur AUCUN axe n'ont rien à s'aimanter : coller
+// le bord gauche de l'une au bord droit d'une autre posée trois cents pixels plus
+// bas ne range rien du tout. On tolère un petit débord, sinon deux fenêtres
+// rangées coin contre coin ne s'accrochent qu'au pixel près.
+constexpr float kMagnetOverlap = 24.0f;
+
+bool g_magnet_on = true;
+
+// 🔴 Des ImGuiID, PAS des ImGuiWindow* : une fenêtre peut disparaître entre deux
+// frames (une conversation qu'on ferme), et le pointeur gardé d'une frame à
+// l'autre serait pendant.
+//
+// La passe tourne AVANT le premier Begin de la frame : elle ne dispose donc que
+// des marques posées à la frame PRÉCÉDENTE. Sans conséquence — une fenêtre ne
+// change pas de nature d'une frame à l'autre, et sa géométrie d'avant est
+// justement celle qu'on voit à l'écran au moment où le joueur vise.
+std::vector<ImGuiID> g_magnet_marks;    // en cours de constitution (frame N)
+std::vector<ImGuiID> g_magnet_windows;  // celles de la frame N-1, les seules cibles
+
+bool IsMagnetWindow(ImGuiID id) {
+  for (const ImGuiID marked : g_magnet_windows)
+    if (marked == id) return true;
+  return false;
+}
+
+// Retient le plus COURT des écarts proposés, et seulement s'il tient dans le
+// rayon. `best` reste à FLT_MAX quand rien n'a mordu : c'est ce qui distingue
+// « aucun voisin » d'un écart nul (fenêtre déjà collée).
+struct MagnetAxis {
+  float best  = FLT_MAX;
+  float delta = 0.0f;
+
+  void Consider(float candidate) {
+    const float distance = ImFabs(candidate);
+    if (distance > kMagnetRadius || distance >= best) return;
+    best  = distance;
+    delta = candidate;
+  }
+  float Apply(float value) const { return (best == FLT_MAX) ? value : value + delta; }
+};
+
+}  // namespace
+
+void SetWindowMagnet(bool on) { g_magnet_on = on; }
+
+void MagnetMarkWindow() {
+  ImGuiWindow* window = ImGui::GetCurrentWindow();
+  if (window == nullptr) return;
+  // La racine : c'est elle qui porte la position, et c'est elle qu'ImGui déplace.
+  ImGuiWindow* root = (window->RootWindow != nullptr) ? window->RootWindow : window;
+  g_magnet_marks.push_back(root->ID);
+}
+
+void SnapMovingWindowToPeers() {
+  // L'échange se fait à CHAQUE passe, même quand l'aimant est éteint ou qu'aucune
+  // fenêtre ne bouge : sans lui, les marques de la frame s'empileraient sans fin.
+  g_magnet_windows.swap(g_magnet_marks);
+  g_magnet_marks.clear();
+  if (!g_magnet_on || g_magnet_windows.empty()) return;
+
+  ImGuiContext* context = ImGui::GetCurrentContext();
+  if (context == nullptr || context->MovingWindow == nullptr) return;
+  // 🔴 Le SIMPLE CLIC ne doit rien aimanter. ImGui arme `MovingWindow` dès que le
+  // bouton s'enfonce, bien avant le moindre déplacement : sans ce test, cliquer
+  // sur une chatbox déjà posée à trois pixels d'une autre la ferait sauter contre
+  // elle — un geste qui ne demandait rien, et qui déplace quand même.
+  if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) return;
+  ImGuiWindow* moving = (context->MovingWindow->RootWindow != nullptr)
+                            ? context->MovingWindow->RootWindow
+                            : context->MovingWindow;
+  if (moving->Size.x <= 0.0f || moving->Size.y <= 0.0f) return;
+  if (!IsMagnetWindow(moving->ID)) return;
+
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  if (display.x <= 0.0f || display.y <= 0.0f) return;  // fenêtre du jeu minimisée
+
+  const float x0 = moving->Pos.x, x1 = moving->Pos.x + moving->Size.x;
+  const float y0 = moving->Pos.y, y1 = moving->Pos.y + moving->Size.y;
+
+  MagnetAxis ax, ay;
+  // Les bords de l'écran, d'abord : ce sont les voisins que toute fenêtre a.
+  ax.Consider(0.0f - x0);
+  ax.Consider(display.x - x1);
+  ay.Consider(0.0f - y0);
+  ay.Consider(display.y - y1);
+
+  for (ImGuiWindow* peer : context->Windows) {
+    if (peer == nullptr || peer == moving) continue;
+    // `WasActive` et pas `Active` : à ce point de la frame, aucune fenêtre n'a
+    // encore été soumise — c'est l'état de la frame précédente qui décrit ce que
+    // le joueur a sous les yeux.
+    if (!peer->WasActive) continue;
+    if (peer->Size.x <= 0.0f || peer->Size.y <= 0.0f) continue;
+    if (!IsMagnetWindow(peer->ID)) continue;
+
+    const float px0 = peer->Pos.x, px1 = peer->Pos.x + peer->Size.x;
+    const float py0 = peer->Pos.y, py1 = peer->Pos.y + peer->Size.y;
+
+    // Quatre écarts par axe : les deux qui font se TOUCHER les fenêtres (bord
+    // contre bord), et les deux qui les ALIGNENT (bords du même côté à la même
+    // abscisse). Les seconds servent à empiler proprement deux fenêtres l'une
+    // sous l'autre — c'est ce qu'on cherche en rangeant des chatbox.
+    if (y0 <= py1 + kMagnetOverlap && py0 <= y1 + kMagnetOverlap) {
+      ax.Consider(px1 - x0);  // se coller à sa droite
+      ax.Consider(px0 - x1);  // se coller à sa gauche
+      ax.Consider(px0 - x0);  // bords gauches alignés
+      ax.Consider(px1 - x1);  // bords droits alignés
+    }
+    if (x0 <= px1 + kMagnetOverlap && px0 <= x1 + kMagnetOverlap) {
+      ay.Consider(py1 - y0);  // se poser sous elle
+      ay.Consider(py0 - y1);  // se poser au-dessus
+      ay.Consider(py0 - y0);  // bords hauts alignés
+      ay.Consider(py1 - y1);  // bords bas alignés
+    }
+  }
+
+  if (ax.best == FLT_MAX && ay.best == FLT_MAX) return;
+  const ImVec2 snapped(ax.Apply(moving->Pos.x), ay.Apply(moving->Pos.y));
+  if (snapped.x == moving->Pos.x && snapped.y == moving->Pos.y) return;
+
+  // Écriture directe de Pos, pour les raisons détaillées dans KeepWindowsOnScreen.
+  // 🔴 Et rien à mémoriser : ImGui RECALCULE cette position à partir de la souris
+  // à chaque frame du glisser (UpdateMouseMovingWindowNewFrame). C'est ce qui
+  // donne à l'aimant son comportement attendu — la fenêtre décolle dès que la
+  // souris s'éloigne, sans dérive accumulée.
+  moving->Pos = ImTrunc(snapped);
+  ImGui::MarkIniSettingsDirty(moving);
 }
 
 }  // namespace ro

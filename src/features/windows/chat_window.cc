@@ -35,6 +35,7 @@
 #include "ui/icon_cache.h"       // ro::ItemIcon (icônes d'objets, cache partagé)
 #include "ui/ro_imgui.h"         // BeginRoChatWindow / RoCheckbox / WireToUtf8
 #include "ui/ro_widgets.h"       // HelpMarker
+#include "ui/window_clamp.h"     // SetWindowMagnet (aimantation des chatbox)
 #include "utils/game_paths.h"    // paths::ChatLayoutPath
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -1731,6 +1732,31 @@ bool ChatWindow::OpenWhisperWindowByAid(const char* name_wire, uint32_t aid) {
   return true;
 }
 
+// Le chuchotement ORDINAIRE : on prépare l'envoi dans la barre principale, on
+// n'ouvre rien. C'est ce que fait le bouton « Select Receiver » du chat natif —
+// remplir la box destinataire — et c'est ce que le joueur attend d'un menu
+// « Chuchoter » quand il a refusé les fenêtres individuelles.
+bool ChatWindow::TargetWhisper(const char* name_wire) {
+  if (name_wire == nullptr || name_wire[0] == '\0') return false;
+  // Interface moderne éteinte : la barre n'est pas dessinée, écrire dedans ne se
+  // verrait nulle part. L'appelant retombe sur le chemin natif.
+  if (!imgui_enabled_) return false;
+  if (!input_bar_) return false;  // barre masquée par le joueur : même raison
+
+  CopyBounded(whisper_, sizeof(whisper_), ro::WireToUtf8(name_wire));
+  // 🔴 Le champ peut être ACTIF (le joueur y avait laissé son curseur) : sans ce
+  // rappel, sa copie interne réécrirait l'ancien texte par-dessus le nom qu'on
+  // vient d'y poser, à la frame suivante.
+  NotifyWhisperEdited();
+  // Barre repliée par le battle mode : la déplier, sinon le nom part dans un
+  // champ que personne ne voit.
+  if (battle_mode_) input_open_ = true;
+  // Le clavier va à la SAISIE, pas au pseudo : le destinataire est choisi, ce
+  // qu'il reste à faire, c'est écrire.
+  focus_input_next_ = true;
+  return true;
+}
+
 bool ChatWindow::IngestWhisper(const char* with_wire, const char* text_wire,
                                uint32_t rgb, uint32_t aid, bool outgoing) {
   const std::string with = ro::WireToUtf8(with_wire);
@@ -2533,6 +2559,11 @@ void ChatWindow::OnRenderUI() {
   // Relevée ICI, hors de toute fenêtre : c'est la seule taille de police qui ne
   // porte l'échelle d'aucune d'entre elles. Tout le log s'en déduit.
   base_font_size_ = ImGui::GetFontSize();
+  // L'aimant vit dans ui/window_clamp : sa passe tourne bien avant nous, en tête
+  // de frame. On lui repousse le réglage à chaque frame plutôt qu'au moment où il
+  // change — c'est une case, pas un événement, et l'ordre de chargement des
+  // réglages n'est pas quelque chose sur quoi il faut parier.
+  ro::SetWindowMagnet(magnet_);
   // Le battle mode appartient au CLIENT : on le relit à chaque frame plutôt que
   // d'en tenir une copie. En sortir doit rendre la barre tout de suite ; y entrer
   // doit la replier, sinon elle resterait ouverte jusqu'au prochain Échap.
@@ -4521,6 +4552,9 @@ void ChatWindow::DrawInputRow() {
   const bool whisper_submitted = ImGui::InputTextWithHint(
       "##chat_whisper", i18n::Tr("Pseudo"), whisper_, sizeof(whisper_),
       ImGuiInputTextFlags_EnterReturnsTrue);
+  // L'id du champ, pour que `TargetWhisper` puisse prévenir ImGui depuis un menu
+  // contextuel qu'on a écrit dans son buffer (cf. NotifyWhisperEdited).
+  whisper_field_id_ = ImGui::GetItemID();
   // Le focus vit sur DEUX champs, et le battle mode ne doit se refermer que
   // lorsqu'il a quitté les deux (cf. la fin de cette fonction).
   const bool whisper_active      = ImGui::IsItemActive();
@@ -5911,6 +5945,12 @@ void ChatWindow::NotifyInputEdited() {
     state->ReloadUserBufAndMoveToEnd();
 }
 
+void ChatWindow::NotifyWhisperEdited() {
+  if (whisper_field_id_ == 0) return;
+  if (ImGuiInputTextState* state = ImGui::GetInputTextState(whisper_field_id_))
+    state->ReloadUserBufAndMoveToEnd();
+}
+
 void ChatWindow::PruneItemLinks() {
   if (item_links_.empty()) return;
   const std::string src = input_;
@@ -6544,6 +6584,20 @@ bool ChatWindow::DrawSettings() {
     changed |= WheelSliderInt(i18n::Tr("Lignes gardées d'une session à l'autre###chatwnd_keep_n"),
                               &keep_lines_, 20, 1000, "%d");
   }
+
+  // ── Aimantation ───────────────────────────────────────────────────────────
+  // Le réglage est ici, avec les autres comportements de fenêtre, et non dans le
+  // menu d'une chatbox : il vaut pour TOUTES, et une case par fenêtre laisserait
+  // croire qu'on peut aimanter l'une sans l'autre — un aimant, ça se prend à deux.
+  changed |= ro::RoCheckbox(i18n::Tr("Aimanter les fenêtres entre elles###chatwnd_magnet"),
+                            &magnet_);
+  ImGui::SameLine();
+  HelpMarker(
+      i18n::Tr("Une chatbox traînée à la souris colle aux bords de l'écran et à ceux "
+      "des autres chatbox dès qu'elle en approche : elles se rangent bord à "
+      "bord sans avoir à viser le pixel.\n\n"
+      "Rien n'est attaché pour autant — éloigner la souris décolle la fenêtre, "
+      "et déplacer la voisine n'entraîne pas celle qui lui était collée."));
 
   SeparatorText(i18n::Tr("Apparence de la chatbox ImGui"));
   ImGui::TextDisabled(i18n::Tr("Réglages généraux — un onglet peut avoir les siens"));

@@ -47,4 +47,30 @@ ImVec2 ClampWindowPosToScreen(ImVec2 window_pos, ImVec2 window_size);
 // viewport) : les corriger ici ne servirait à rien.
 void KeepWindowsOnScreen();
 
+// ── Aimantation d'une fenêtre sur ses voisines ───────────────────────────────
+// Une fenêtre traînée à la souris colle aux bords de l'écran et à ceux de ses
+// consœurs dès qu'elle en approche : les chatbox se rangent bord à bord sans
+// qu'on ait à viser le pixel, comme les fenêtres natives du client, qui ont leur
+// propre gestionnaire d'adjacence (WinSnap).
+//
+// Rien n'est mémorisé : l'aimant CORRIGE la position de la frame, il ne crée pas
+// de lien entre les deux fenêtres. Éloigner la souris décolle donc la fenêtre,
+// et déplacer la voisine n'entraîne pas celle qui lui était collée.
+
+// Ouvre/ferme l'aimant (réglage du joueur). Sans effet sur le clamp d'écran, qui
+// n'est pas une option.
+void SetWindowMagnet(bool on);
+
+// Déclare la fenêtre ImGui COURANTE aimantable, pour cette frame. À appeler juste
+// après son Begin. Seules les fenêtres marquées s'aimantent — entre elles et sur
+// l'écran : une fenêtre invisible ou un overlay plein écran ferait sinon une
+// ligne d'accrochage que le joueur ne voit pas et ne peut pas expliquer.
+void MagnetMarkWindow();
+
+// Aimante la fenêtre en cours de déplacement. Même fenêtre de tir que
+// KeepWindowsOnScreen — juste après NewFrame, avant le premier Begin — mais
+// AVANT lui : l'aimant peut pousser une fenêtre hors de l'écran d'un pixel ou
+// deux, et c'est au clamp de dire le dernier mot.
+void SnapMovingWindowToPeers();
+
 }  // namespace ro

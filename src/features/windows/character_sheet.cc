@@ -4886,17 +4886,31 @@ void CharacterSheet::DrawGuildTab() {
           if (ImGui::MenuItem(i18n::Tr("Copier le nom"))) ImGui::SetClipboardText(m.name);
           {
             const bool self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
-            // ── Chuchoter ────────────────────────────────────────────────────
-            // Réservé aux membres EN LIGNE : chuchoter à un déconnecté ne fait
-            // qu'un message d'erreur. Ouvre la conversation 1:1 et lui donne le
-            // clavier — aucun paquet, aucune commande native.
+            // ── Chuchoter, en DEUX gestes ────────────────────────────────────
+            // Réservés aux membres EN LIGNE : chuchoter à un déconnecté ne fait
+            // qu'un message d'erreur. Aucun paquet, aucune commande native dans
+            // un cas comme dans l'autre.
+            //
+            // Le premier ne fait que préparer l'envoi — le nom part dans la box
+            // destinataire de la barre de chat. Le second, juste en dessous,
+            // ouvre la conversation à part : c'est le geste engageant, et il se
+            // demande.
             if (m.online && !self && ImGui::MenuItem(i18n::Tr("Chuchoter…"))) {
+              ChatWindow* chat = Bourgeon::Instance().chat_window();
+              const bool armed = chat != nullptr && chat->TargetWhisper(m.name);
+              // Le refus a une seule cause : le chat moderne est éteint (ou sa
+              // barre de saisie masquée), donc rien ne serait dessiné. On le dit
+              // plutôt que de laisser croire à un clic sans effet.
+              guild_status_ = armed
+                                  ? std::string(i18n::Tr("Chuchotement à ")) + m.name
+                                  : std::string(i18n::Tr("Activez le chat moderne et sa "
+                                                "barre de saisie."));
+            }
+            if (m.online && !self &&
+                ImGui::MenuItem(i18n::Tr("Chuchoter dans une fenêtre…"))) {
               ChatWindow* chat = Bourgeon::Instance().chat_window();
               const bool opened =
                   chat != nullptr && chat->OpenWhisperWindowByAid(m.name, m.aid);
-              // Le refus a une seule cause : le chat moderne est éteint, donc
-              // la fenêtre ne serait jamais dessinée. On le dit plutôt que de
-              // laisser croire à un clic sans effet.
               guild_status_ = opened
                                   ? std::string(i18n::Tr("Conversation avec ")) + m.name
                                   : std::string(i18n::Tr("Activez le chat moderne pour "

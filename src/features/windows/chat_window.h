@@ -114,6 +114,7 @@ class ChatWindow : public Plugin {
   bool imgui_enabled_ = false;
 
   // ── Réglages (lus/écrits par la table de persistance de MoonlightUi) ──
+  bool& magnet()       { return magnet_; }
   bool& timestamps()   { return timestamps_; }
   bool& item_icons()   { return item_icons_; }
   bool& input_bar()    { return input_bar_; }
@@ -221,6 +222,20 @@ class ChatWindow : public Plugin {
   bool OpenWhisperWindow(const char* name_wire, const char* aid_display = nullptr);
   // Variante pour les appelants qui connaissent déjà l'AID réel.
   bool OpenWhisperWindowByAid(const char* name_wire, uint32_t aid);
+
+  // Le geste « chuchoter » ORDINAIRE : le nom va dans la box « Pseudo » de la
+  // barre principale, la barre s'ouvre si le battle mode l'avait repliée, et le
+  // clavier part à la saisie. Aucune fenêtre ne s'ouvre, rien ne part sur le fil.
+  //
+  // 🔴 C'est le geste par DÉFAUT de toutes nos entrées « Chuchoter » (menu
+  // contextuel d'entité, lien de joueur, liste de guilde). Ouvrir une fenêtre
+  // séparée est l'entrée d'à côté : un joueur qui a décoché les fenêtres
+  // individuelles du « Friend Setup » ne doit pas en voir surgir une parce qu'il
+  // a cliqué « Chuchoter » — c'est exactement ce qu'il a refusé.
+  //
+  // Rend false si l'interface moderne est éteinte (la barre n'est pas dessinée) :
+  // l'appelant retombe alors sur le chemin natif.
+  bool TargetWhisper(const char* name_wire);
 
   // Vide l'historique (bouton du panneau, changement de personnage).
   void ClearHistory();
@@ -867,6 +882,12 @@ class ChatWindow : public Plugin {
   uint32_t         rename_id_ = 0;        // canal dont `rename_buf_` porte le nom
 
   // Réglages.
+  // Aimantation des chatbox entre elles et sur les bords de l'écran (l'aimant
+  // lui-même vit dans ui/window_clamp.h — il ne concerne que les fenêtres qui se
+  // déclarent, et à ce jour ce sont les nôtres). Coché par défaut : c'est ce que
+  // font les fenêtres NATIVES du client, dont le gestionnaire d'adjacence range
+  // déjà les siennes bord à bord.
+  bool magnet_      = true;
   bool timestamps_  = false;
   bool item_icons_  = true;
   bool input_bar_   = true;
@@ -1005,6 +1026,11 @@ class ChatWindow : public Plugin {
   // réglages) : on ne peut pas le recalculer là-bas, l'id se hache avec la pile de
   // la fenêtre courante.
   ImGuiID input_field_id_ = 0;
+  // Le MÊME piège, pour la box « Pseudo » : `TargetWhisper` y écrit depuis un menu
+  // contextuel, et le joueur peut très bien avoir laissé son curseur dedans — le
+  // nom qu'on vient d'y poser serait alors écrasé par la copie interne du widget.
+  void    NotifyWhisperEdited();
+  ImGuiID whisper_field_id_ = 0;
   // ── Le clavier, rendu quand la palette d'emoji se REFERME ──────────────────
   // L'onglet « Emoji » ne se ferme pas au clic (on en pioche souvent plusieurs
   // d'affilée, contrairement à une emote qui part seule), donc on ne peut pas

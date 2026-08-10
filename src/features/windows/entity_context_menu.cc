@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
+#include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
 #include "ragnarok/globals.h"
@@ -998,7 +999,22 @@ void EntityContextMenu::BuildItems() {
         add(i18n::Tr("Déclarer la guilde ennemie"), kCodeGuildFoe);
         if (guild_target_issue) disable_last(guild_target_issue);
       }
-      add(i18n::Tr("Chuchoter"), kCodeWhisper, Local::kNone, true);
+      // ── Chuchoter, en DEUX gestes ─────────────────────────────────────────
+      // Le premier ne fait que préparer l'envoi : le nom va dans la box
+      // destinataire de la barre de chat, et on écrit. Le second — juste en
+      // dessous, parce que c'est le même geste en plus engageant — ouvre la
+      // conversation dans sa propre fenêtre.
+      //
+      // 🔴 L'ordre n'est pas cosmétique. Ouvrir une fenêtre était le comportement
+      // par défaut, y compris chez qui avait DÉCOCHÉ les fenêtres individuelles
+      // du « Friend Setup » : ces cases ne gouvernaient que les chuchotements
+      // REÇUS, et un clic de menu passait outre. La fenêtre est désormais une
+      // entrée à part, qu'on choisit.
+      add(i18n::Tr("Chuchoter"), kCodeWhisper, Local::kWhisperBar, true);
+      add(i18n::Tr("Chuchoter dans une fenêtre"), kCodeWhisper, Local::kWhisperWindow,
+          false, false,
+          i18n::Tr("Ouvre une conversation à part, avec son propre historique et sa "
+                   "propre ligne de saisie."));
       add(i18n::Tr("Ajouter en ami"), kCodeAddFriend);
       if (target_is_friend_) disable_last(i18n::Tr("Déjà dans votre liste d'amis."));
       add(i18n::Tr("Envoyer un courrier"), kCodeSendMail);
@@ -1299,6 +1315,26 @@ void EntityContextMenu::FlushPending() {
       if (!RunNativeActorClick(aid))
         LogDiag("[EntityContextMenu] clic acteur refuse (cible {})", aid);
       return;
+    // ── Les deux chuchotements ────────────────────────────────────────────────
+    // 🔴 Pas de `return` quand le chat moderne refuse : on TOMBE sur le code natif
+    // 20, que ces deux entrées portent justement pour ça. Sans lui, « Chuchoter »
+    // ne ferait plus rien du tout chez un joueur resté sur la chatbox du client.
+    //
+    // ⚠ `target_name_` est de l'UTF-8 (EntityName le convertit) et le chat, comme
+    // tout ce qui touche au client, parle la code-page du FIL : un pseudo accentué
+    // ne trouverait personne sans cette conversion.
+    case Local::kWhisperBar:
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        if (!target_name_.empty() &&
+            chat->TargetWhisper(ro::Utf8ToWire(target_name_.c_str())))
+          return;
+      break;
+    case Local::kWhisperWindow:
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        if (!target_name_.empty() &&
+            chat->OpenWhisperWindowByAid(ro::Utf8ToWire(target_name_.c_str()), aid))
+          return;
+      break;
     case Local::kNone:
       break;
   }
