@@ -308,6 +308,10 @@ void ReadEquipPresets(const YAML::Node& ui) {
     preset.hotkey_ctrl  = node["hkc"].as<bool>(false);
     preset.hotkey_alt   = node["hka"].as<bool>(false);
     preset.hotkey_shift = node["hks"].as<bool>(false);
+    // Absent des presets d'avant les costumes : faux, c'est-a-dire « ne touche pas a
+    // l'apparence ». C'est le seul defaut qui laisse ces presets se comporter comme ils
+    // l'ont toujours fait — ils n'ont d'ailleurs aucun item de famille costume.
+    preset.with_costumes = node["costumes"].as<bool>(false);
     if (const YAML::Node items = node["items"]) {
       for (const YAML::Node& item : items) {
         EquipPresetItem entry;
@@ -315,6 +319,12 @@ void ReadEquipPresets(const YAML::Node& ui) {
         entry.refine   = item["refine"].as<int>(0);
         entry.grade    = item["grade"].as<int>(0);
         entry.left_hand = item["left"].as<bool>(false);
+        // Famille : 0 equipement, 1 costume, 2 munition. Clef absente -> equipement,
+        // ce que sont tous les items des presets deja sur disque.
+        const int kind = item["kind"].as<int>(0);
+        entry.kind = (kind == 1)   ? PresetKind::kCostume
+                     : (kind == 2) ? PresetKind::kAmmo
+                                   : PresetKind::kEquip;
         if (const YAML::Node cards = item["cards"])
           for (int slot = 0; slot < 4 && slot < static_cast<int>(cards.size()); ++slot)
             entry.cards[slot] = cards[slot].as<uint32_t>(0);
@@ -336,6 +346,7 @@ void WriteEquipPresets(YAML::Emitter& out) {
           << YAML::Key << "hkc"  << YAML::Value << preset.hotkey_ctrl
           << YAML::Key << "hka"  << YAML::Value << preset.hotkey_alt
           << YAML::Key << "hks"  << YAML::Value << preset.hotkey_shift
+          << YAML::Key << "costumes" << YAML::Value << preset.with_costumes
           << YAML::Key << "items" << YAML::Value << YAML::BeginSeq;
       for (const EquipPresetItem& entry : preset.items) {
         out << YAML::BeginMap
@@ -343,6 +354,7 @@ void WriteEquipPresets(YAML::Emitter& out) {
             << YAML::Key << "refine" << YAML::Value << entry.refine
             << YAML::Key << "grade"  << YAML::Value << entry.grade
             << YAML::Key << "left"   << YAML::Value << entry.left_hand
+            << YAML::Key << "kind"   << YAML::Value << static_cast<int>(entry.kind)
             << YAML::Key << "cards"  << YAML::Value << YAML::Flow << YAML::BeginSeq;
         for (int slot = 0; slot < 4; ++slot) out << entry.cards[slot];
         out << YAML::EndSeq << YAML::EndMap;

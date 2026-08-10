@@ -11,12 +11,22 @@
 // Un item d'un preset d'equipement : identite suffisante pour le RETROUVER en
 // inventaire lors de l'application (nameid + refine + cartes + grade). left_hand =
 // arme equipee en main gauche (dual-wield, slot bouclier).
+// De quelle famille de « porte » vient cette piece. Les trois ne vivent PAS au meme
+// endroit cote client — tableau equip, tableau costume, global de munition — et n'ont
+// pas les memes regles a l'application (cf. EquipPreset::with_costumes et ApplyPreset).
+enum class PresetKind : uint8_t {
+  kEquip   = 0,  // les 10 slots d'equipement normaux
+  kCostume = 1,  // tetes haut/milieu/bas + cape cosmetiques (tableau session distinct)
+  kAmmo    = 2,  // fleche / balle / grenade / arme de jet (global g_AmmoEquippedInvIndex)
+};
+
 struct EquipPresetItem {
-  uint32_t nameid = 0;
-  int      refine = 0;
-  uint32_t cards[4] = {0, 0, 0, 0};
-  int      grade = 0;
-  bool     left_hand = false;
+  uint32_t   nameid = 0;
+  int        refine = 0;
+  uint32_t   cards[4] = {0, 0, 0, 0};
+  int        grade = 0;
+  bool       left_hand = false;
+  PresetKind kind = PresetKind::kEquip;  // absent des presets d'avant -> equipement
 };
 // Un preset = un jeu d'equipement nomme, propre a UN personnage (cid = g_Own_CharId).
 struct EquipPreset {
@@ -26,6 +36,15 @@ struct EquipPreset {
   // Raccourci clavier optionnel (VK Windows + modificateurs). hotkey_vk==0 => aucun.
   int  hotkey_vk = 0;
   bool hotkey_ctrl = false, hotkey_alt = false, hotkey_shift = false;
+  // Le preset PILOTE-t-il les costumes ? Defaut NON, et c'est le choix qui compte :
+  // un preset de combat ne doit pas deshabiller l'apparence, et les presets deja
+  // enregistres n'ont aucun costume — actives d'office, ils retireraient le costume
+  // porte a chaque chargement. La meme distinction existe deja sur le desequipement
+  // de masse (« Tout desequiper » / « + costumes »).
+  //
+  // Les costumes portes sont capturés dans `items` DE TOUTE FAÇON : cocher la case
+  // apres coup suffit, sans avoir a re-enregistrer le preset.
+  bool with_costumes = false;
 };
 
 // Feuille de personnage facon WoW : un avatar central entoure des slots

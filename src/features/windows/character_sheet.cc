@@ -74,6 +74,10 @@ constexpr int kOffEquipOptCount = 0x98;   // int : nb de random options (0..5)
 constexpr int kOffEquipOpts     = 0x9c;   // entrées de 5 octets {i16 index, i16 value, u8 param}
 constexpr int kOffEquipWear     = 0x0c;   // etat porte (!=0 => equipe)
 constexpr int kNormalSlots = 10;   // slots equip normaux 0..9 (cf. disposition doll)
+// Le tableau costume a la meme forme que celui de l'equip, mais SEULES ces quatre
+// positions y existent : tete haut, tete bas, tete milieu, cape. Les indices ne sont
+// pas contigus — c'est la meme numerotation de slots que l'equipement normal.
+constexpr int kCostumeSlots[4] = {8, 0, 9, 2};
 constexpr int kEqpHandR    = 0x2;  // masque EQP main droite (arme) -> detecte le dual-wield
 constexpr int kMaxPresetsPerChar = 5;  // plafond de presets par personnage
 
@@ -101,6 +105,11 @@ constexpr uintptr_t kSp = 0x015ff910, kSpMax = 0x015ff914;
 constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpEquip   = 0x0998;  // CZ_REQ_WEAR_EQUIP_V5 {op, invIndex, position:4}
 constexpr uint32_t kEqpHandL  = 0x20;    // EQP main GAUCHE (bouclier / arme dual-wield)
+// Bits EQP qui rangent un item hors de l'equipement ordinaire. Ils servent a RESOUDRE un
+// item de preset dans la bonne famille : sans eux, un chapeau et son costume homonyme se
+// confondraient, et le preset equiperait l'un pour l'autre.
+constexpr uint32_t kEqpCostumeMask = 0x3C00;  // costume : tete haut 0x400, mil 0x800, bas 0x1000, cape 0x2000
+constexpr uint32_t kEqpAmmo        = 0x8000;  // munition
 
 //  Munition : PAS un slot du tableau equip -> invIndex dans un global dédié (cf. RE 2026-07-12).
 //  On lit l'item par cet invIndex dans la liste inventaire (in-place, donne la quantité).
@@ -334,12 +343,26 @@ bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
+//  L'item d'inventaire `it` appartient-il a la famille de `kind` ? Un costume porte un bit
+//  EQP costume, une munition le bit 0x8000, une piece d'equipement ni l'un ni l'autre. Le
+//  test est PERMISSIF pour l'equipement : un `loc` lu a zero y passe, ce qui preserve le
+//  comportement des presets d'avant, ou la famille n'existait pas.
+bool KindMatches(PresetKind kind, const InvItemLite& it) {
+  const uint32_t loc = static_cast<uint32_t>(it.loc);
+  switch (kind) {
+    case PresetKind::kCostume: return (loc & kEqpCostumeMask) != 0;
+    case PresetKind::kAmmo:    return (loc & kEqpAmmo) != 0;
+    case PresetKind::kEquip:
+    default:                   return (loc & (kEqpCostumeMask | kEqpAmmo)) == 0;
+  }
+}
 //  Resout un item de preset -> index inventaire courant (-1 si absent). Priorite au match
 //  EXACT (refine+cartes+grade) ; a defaut, 1er item de meme nameid.
 int ResolvePresetItem(const EquipPresetItem& pi, const InvItemLite* inv, int n) {
   int fallback = -1;
   for (int i = 0; i < n; ++i) {
     if (inv[i].nameid != pi.nameid || pi.nameid == 0) continue;
+    if (!KindMatches(pi.kind, inv[i])) continue;
     const bool exact = inv[i].refine == pi.refine && inv[i].grade == pi.grade &&
                        inv[i].cards[0] == pi.cards[0] && inv[i].cards[1] == pi.cards[1] &&
                        inv[i].cards[2] == pi.cards[2] && inv[i].cards[3] == pi.cards[3];
@@ -2135,7 +2158,16 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddRectFilled(p0, p1, SlotBgCol(), 3.0f);
-  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 3.0f);
+  // Le cadre dit la FAMILLE : une rangée mélange équipement, costumes et munition, et
+  // l'icône seule ne les distingue pas — un chapeau et son costume ont la même image.
+  switch (pi.kind) {
+    case PresetKind::kCostume:
+      dl->AddRect(p0, p1, IM_COL32(150, 90, 190, 220), 3.0f, 0, 2.0f); break;
+    case PresetKind::kAmmo:
+      dl->AddRect(p0, p1, IM_COL32(70, 130, 70, 220), 3.0f, 0, 2.0f); break;
+    default:
+      dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 3.0f); break;
+  }
   ro::IconTex ic = ro::ItemIcon(pi.nameid);
   if (ic.tex)
     dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + 2, p0.y + 2),
@@ -2151,8 +2183,19 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
     dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
   }
   if (hov) {
-    if (pi.refine > 0) ImGui::SetTooltip("+%d %s", pi.refine, itemcell::NameById(pi.nameid));
-    else               ImGui::SetTooltip("%s", itemcell::NameById(pi.nameid));
+    // La famille sur sa PROPRE ligne, sans espace de bord dans la clé de traduction :
+    // une espace en tête ou en queue se perd au premier aller-retour de catalogue, et
+    // le texte se décale d'un cran sans que rien ne le signale.
+    char nm[192];
+    if (pi.refine > 0)
+      std::snprintf(nm, sizeof(nm), "+%d %s", pi.refine, itemcell::NameById(pi.nameid));
+    else
+      std::snprintf(nm, sizeof(nm), "%s", itemcell::NameById(pi.nameid));
+    const char* family = (pi.kind == PresetKind::kCostume) ? i18n::Tr("costume")
+                       : (pi.kind == PresetKind::kAmmo)    ? i18n::Tr("munition")
+                                                           : nullptr;
+    if (family) ImGui::SetTooltip("%s\n(%s)", nm, family);
+    else        ImGui::SetTooltip("%s", nm);
   }
 }
 
@@ -2713,10 +2756,49 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
     pi.left_hand = (s == 5) && (li.loc & kEqpHandR) != 0;
     p.items.push_back(pi);
   }
-  // Ecrase un preset existant de MEME nom pour ce perso, sinon ajoute.
+  // ── Costumes ───────────────────────────────────────────────────────────────
+  // Tableau session DISTINCT, et seules quatre positions y existent. On les capture
+  // TOUJOURS, meme si `with_costumes` est faux : l'information ne coute rien a garder,
+  // et cocher la case plus tard doit suffire — sans quoi il faudrait re-enregistrer le
+  // preset en portant la bonne apparence, ce que personne ne devinerait.
+  for (int s : kCostumeSlots) {
+    InvItemLite li{};
+    if (!ReadEquipLite(s, &li, /*costume=*/true)) continue;
+    EquipPresetItem pi{};
+    pi.nameid = li.nameid;
+    pi.refine = li.refine;
+    pi.grade  = li.grade;
+    for (int c = 0; c < 4; ++c) pi.cards[c] = li.cards[c];
+    pi.kind = PresetKind::kCostume;
+    p.items.push_back(pi);
+  }
+  // ── Munition ───────────────────────────────────────────────────────────────
+  // Ni slot d'equip ni costume : un item d'inventaire ordinaire designe par un global.
+  // Elle n'a ni refine ni cartes — seul le nameid la caracterise.
+  {
+    AmmoItem am{};
+    if (ReadEquippedAmmo(&am) && am.nameid != 0) {
+      EquipPresetItem pi{};
+      pi.nameid = am.nameid;
+      pi.kind   = PresetKind::kAmmo;
+      p.items.push_back(pi);
+    }
+  }
+  // Ecrase un preset existant de MEME nom pour ce perso, sinon ajoute — en gardant SON
+  // reglage de costumes et son raccourci : re-enregistrer une tenue ne doit pas defaire
+  // ce que le joueur a coche a cote.
   bool replaced = false;
   for (auto& ex : equip_presets_)
-    if (ex.cid == p.cid && ex.name == p.name) { ex = std::move(p); replaced = true; break; }
+    if (ex.cid == p.cid && ex.name == p.name) {
+      p.with_costumes = ex.with_costumes;
+      p.hotkey_vk     = ex.hotkey_vk;
+      p.hotkey_ctrl   = ex.hotkey_ctrl;
+      p.hotkey_alt    = ex.hotkey_alt;
+      p.hotkey_shift  = ex.hotkey_shift;
+      ex = std::move(p);
+      replaced = true;
+      break;
+    }
   if (!replaced) {
     int cnt = 0;  // plafond par perso (kMaxPresetsPerChar)
     for (const auto& ex : equip_presets_) if (ex.cid == p.cid) ++cnt;
@@ -2730,36 +2812,71 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
 void CharacterSheet::ApplyPreset(const EquipPreset& p) {
   InvItemLite inv[512];
   int n = ReadInventoryLite(inv, 512);
-  // 1) Items PORTES : on relève leur index (pour le déséquip) ET on les AJOUTE aux candidats
-  //    de résolution (la liste inventaire ne restitue pas toujours les items équipés) -> un
-  //    item commun déjà porté est ainsi résolu au lieu d'être déclaré « manquant ».
+  // Ajoute une piece PORTEE aux candidats de resolution : la liste inventaire ne restitue
+  // pas toujours les items equipes (nameid vide), donc un item commun deja porte serait
+  // declare « manquant » a tort. La copie equip fait foi, elle porte l'identite complete.
+  auto add_candidate = [&](const InvItemLite& li) {
+    for (int i = 0; i < n; ++i)
+      if (inv[i].index == li.index) { inv[i] = li; return; }
+    if (n < 512) inv[n++] = li;
+  };
+
+  // 1) Ce qui est porté, par famille. Les trois familles ne se déséquipent pas aux mêmes
+  //    conditions, d'où trois listes plutôt qu'une : l'équipement suit le preset, le
+  //    costume n'est touché que si le preset le pilote, la munition ne se retire jamais.
   int equipped[kNormalSlots]; int ne = 0;
   for (int s = 0; s < kNormalSlots; ++s) {
     InvItemLite li{};
     if (!ReadEquipLite(s, &li)) continue;
     equipped[ne++] = li.index;
-    // Remplace l'entrée existante de même index par la copie équip (identité fiable : la copie
-    // liste peut avoir un nameid vide pour un item porté), sinon l'ajoute.
-    int existing = -1;
-    for (int i = 0; i < n; ++i) if (inv[i].index == li.index) { existing = i; break; }
-    if (existing >= 0) inv[existing] = li;
-    else if (n < 512) inv[n++] = li;
+    add_candidate(li);
   }
+  int worn_costume[4]; int nwc = 0;
+  for (int s : kCostumeSlots) {
+    InvItemLite li{};
+    if (!ReadEquipLite(s, &li, /*costume=*/true)) continue;
+    worn_costume[nwc++] = li.index;
+    add_candidate(li);
+  }
+  int worn_ammo = 0;
+  {
+    AmmoItem am{};
+    if (ReadEquippedAmmo(&am)) worn_ammo = am.invIndex;
+  }
+
   // 2) Resoudre chaque item du preset -> index cible + position EQP a envoyer (non deja porte).
-  int targets[32]; int nt = 0;
-  struct ToEquip { int index; uint32_t pos; } toEquip[32]; int neq = 0;
+  int targets[48]; int nt = 0;          // pieces d'EQUIPEMENT a garder sur soi
+  int costume_targets[8]; int nct = 0;  // idem, costumes
+  struct ToEquip { int index; uint32_t pos; } toEquip[48]; int neq = 0;
   int missing = 0;
   for (const EquipPresetItem& pi : p.items) {
+    // Un preset qui ne pilote pas les costumes ignore les siens de bout en bout : ni
+    // rééquipés, ni comptés manquants. Sans ce filtre, une apparence rangée dans le
+    // storage ferait apparaître « 2 items manquants » sur un preset de combat.
+    if (pi.kind == PresetKind::kCostume && !p.with_costumes) continue;
+
     const int idx = ResolvePresetItem(pi, inv, n);
     if (idx < 0) { ++missing; continue; }
-    if (nt < 32) targets[nt++] = idx;
-    bool eq = false;
-    for (int k = 0; k < ne; ++k) if (equipped[k] == idx) eq = true;
-    if (!eq && neq < 32) {
+    if (pi.kind == PresetKind::kCostume) {
+      if (nct < 8) costume_targets[nct++] = idx;
+    } else if (pi.kind == PresetKind::kEquip) {
+      if (nt < 48) targets[nt++] = idx;
+    }
+    // Déjà en place ? Rien à envoyer. La munition a son propre porteur (un global), pas
+    // un slot du tableau equip.
+    bool eq = (pi.kind == PresetKind::kAmmo) ? (worn_ammo == idx) : false;
+    if (pi.kind == PresetKind::kEquip)
+      for (int k = 0; k < ne; ++k) if (equipped[k] == idx) eq = true;
+    if (pi.kind == PresetKind::kCostume)
+      for (int k = 0; k < nwc; ++k) if (worn_costume[k] == idx) eq = true;
+
+    if (!eq && neq < 48) {
       InvItemLite li{};
       if (FindInvLiteByIndex(inv, n, idx, &li)) {
         // Position = masque EQP de l'item (info+8, comme le natif) ; forcee a la main GAUCHE
         // pour une arme dual-wield (sinon le serveur pre-renewal la remettrait a droite).
+        // Les costumes et la munition portent DEJA leur position dans ce masque (bits
+        // EQP_COSTUME_*, 0x8000) : le serveur route dessus, rien de special a faire.
         const uint32_t pos = pi.left_hand ? kEqpHandL : static_cast<uint32_t>(li.loc);
         toEquip[neq++] = {idx, pos};
       }
@@ -2772,6 +2889,18 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
     for (int t = 0; t < nt; ++t) if (targets[t] == equipped[k]) keep = true;
     if (!keep) SendUnequip(equipped[k]);
   }
+  // Les costumes ne bougent QUE si le preset les pilote — sinon on n'y touche pas du tout.
+  if (p.with_costumes) {
+    for (int k = 0; k < nwc; ++k) {
+      bool keep = false;
+      for (int t = 0; t < nct; ++t) if (costume_targets[t] == worn_costume[k]) keep = true;
+      if (!keep) SendUnequip(worn_costume[k]);
+    }
+  }
+  // 🔴 La munition ne se RETIRE jamais, elle se remplace. Un consommable de combat n'a rien
+  // d'une piece d'apparence ou de stats : la retirer parce que le preset n'en portait pas au
+  // moment de l'enregistrement ne rend service a personne, et l'archer ne s'en apercevrait
+  // qu'au premier tir. Tous les presets d'avant sont dans ce cas.
   for (int e = 0; e < neq; ++e) SendEquip(toEquip[e].index, toEquip[e].pos);
   preset_status_ = (missing > 0)
                        ? i18n::Tr("Appliqué (") + std::to_string(missing) + " item(s) manquant(s))"
@@ -2790,10 +2919,8 @@ int CharacterSheet::UnequipAll(bool with_costumes) {
     ++freed;
   };
   for (int s = 0; s < kNormalSlots; ++s) strip(s, false);
-  if (with_costumes) {
-    const int kCostumeSlots[4] = {8, 0, 9, 2};  // tete haut, tete bas, tete mil, cape
+  if (with_costumes)
     for (int s : kCostumeSlots) strip(s, true);
-  }
   preset_status_ = freed > 0 ? i18n::Tr("Tout déséquipé (") + std::to_string(freed) + i18n::Tr(" pièce(s))")
                              : i18n::Tr("Rien à déséquiper");
   return freed;
@@ -2880,6 +3007,24 @@ void CharacterSheet::DrawPresetsTab() {
         DrawPresetItemIcon(ep.items[k], icon);
       }
     }
+    // Les costumes ne sont pilotés que sur demande : un preset de combat ne doit pas
+    // déshabiller l'apparence. Décoché, ceux du preset sont ignorés de bout en bout —
+    // ni rééquipés, ni comptés manquants — et ceux qu'on porte restent en place.
+    {
+      bool wc = ep.with_costumes;
+      if (ro::RoCheckbox(i18n::Tr("Piloter aussi les costumes"), &wc)) {
+        equip_presets_[mine[mi]].with_costumes = wc;
+        if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(i18n::Tr(
+            "Coché, le preset rétablit exactement l'apparence enregistrée : il remet ses "
+            "costumes et retire ceux qui n'en font pas partie.\n\n"
+            "Décoché (défaut), il ne touche pas aux costumes portés.\n\n"
+            "Les costumes portés au moment de l'enregistrement sont gardés dans le preset "
+            "quoi qu'il arrive : cocher la case plus tard suffit, sans le ré-enregistrer."));
+    }
+
     // Ligne raccourci clavier : libellé + Définir/Effacer, ou mode capture.
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kGray, i18n::Tr("Raccourci :"));
