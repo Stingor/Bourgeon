@@ -88,8 +88,10 @@ Target FromItemId(uint32_t item_id, const char* label_utf8);
 Target FromRecipe(uint32_t item_id, const char* label_utf8);
 Target FromMob(uint32_t mob_id, int rank, const char* name_utf8);
 Target FromUrl(const char* url);
-// Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'a rien à ouvrir ici — un
-// joueur n'a pas de « description » — donc seuls le menu et le Maj+clic jouent.
+// Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'ouvre pas de description —
+// un joueur n'en a pas — mais PRÉPARE le chuchotement : le pseudo dans la box
+// destinataire de la barre de chat, le clavier dans la saisie. La fenêtre 1:1,
+// elle, reste au menu.
 Target FromPlayer(const char* name_utf8);
 
 // Le libellé VISIBLE d'un lien de réglage : « [Réglage: Objet obtenu] ». Composé

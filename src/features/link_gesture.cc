@@ -317,11 +317,21 @@ void OpenDescription(const Target& target) {
     }
     case Target::kPlayer: {
       // Un joueur n'a pas de « description » à ouvrir. Le geste GAUCHE lui rend
-      // donc ce qui en est l'équivalent le plus proche : la conversation privée.
-      // La convention porte sur l'intention — consulter — pas sur la fenêtre.
+      // donc l'équivalent le plus proche, et surtout le plus LÉGER : la barre de
+      // chat, son pseudo déjà posé dans la box destinataire, le clavier dans la
+      // saisie. Ouvrir une conversation dans SA fenêtre engage bien davantage —
+      // ça reste au menu (clic DROIT), comme pour tout ce qui crée une fenêtre.
       ChatWindow* chat = Bourgeon::Instance().chat_window();
-      if (chat != nullptr && !chat->IsOwnName(target.player_name.c_str()))
-        chat->OpenWhisperWindowByAid(ro::Utf8ToWire(target.player_name.c_str()), 0);
+      if (chat == nullptr || chat->IsOwnName(target.player_name.c_str())) break;
+      // ⚠ Le nom repart dans la code-page du FIL (cf. le menu, plus bas), et on
+      // en garde une COPIE : les tampons de conversion sont rotatifs, et
+      // `TargetWhisper` en consomme en chemin.
+      const std::string wire = ro::Utf8ToWire(target.player_name.c_str());
+      // Repli : la barre de saisie peut être masquée par le joueur — il n'y a
+      // alors aucun champ où poser le nom. Plutôt qu'un clic inerte, la
+      // conversation 1:1, qui porte sa saisie à elle.
+      if (!chat->TargetWhisper(wire.c_str()))
+        chat->OpenWhisperWindowByAid(wire.c_str(), 0);
       break;
     }
     default: break;

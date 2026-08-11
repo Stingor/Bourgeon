@@ -1513,6 +1513,16 @@ libellés composés par le client (« [ To Nom ] », « ( To Nom ) ») en sont e
 ce ne sont pas des pseudos, et le menu inviterait « [ To Nom ] ». La règle est
 vérifiable — un pseudo n'a ni crochet ni parenthèse.
 
+🔴 **Le clic GAUCHE sur un pseudo PRÉPARE le chuchotement, il n'ouvre pas de
+fenêtre** (`links::OpenDescription`, cas `kPlayer` → `ChatWindow::TargetWhisper`) :
+le nom dans la box destinataire de la barre, le clavier dans la saisie, rien
+d'autre. C'est le pendant exact du bouton « Select Receiver » du chat natif. La
+conversation **1:1**, elle, crée une fenêtre : elle reste au **menu** (clic
+droit, « Chuchoter dans une fenêtre… »), parce qu'un clic simple sur un pseudo du
+log arrive bien trop facilement pour ça. Seul repli : la ligne de saisie masquée
+par le joueur (`input_bar_` faux) — il n'y a alors aucun champ où poser le nom,
+et la conversation 1:1, qui porte sa saisie à elle, vaut mieux qu'un clic inerte.
+
 ⚠ **L'AID obfusqué est retiré du texte** (`StripWhisperAidTag`) : le client colle
 « [ To Nom (813-524) ] : … », et ce nombre ne dit rien à personne. Ôté du
 **préfixe seulement**, borné au premier « : » — au-delà c'est le message, et
