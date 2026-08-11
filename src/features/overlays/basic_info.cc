@@ -140,6 +140,12 @@ constexpr uintptr_t kHair        = 0x015fb278;  // style de coiffure
 constexpr uintptr_t kClothesCol  = 0x015fb28c;  // palette de vêtements
 constexpr uintptr_t kHairCol     = 0x015fb290;  // palette de cheveux
 constexpr uintptr_t kGarmentView = 0x015fb2a0;  // g_OwnLook_GarmentRobeViewId
+// Les VUES de coiffe, telles que le SERVEUR les a décidées : le client les tient
+// à jour sur ZC_SPRITE_CHANGE et c'est d'elles qu'il habille l'acteur en scène.
+// Cf. `BuildOwnDollLook` pour ce qu'elles apportent que l'équipement ne sait pas.
+constexpr uintptr_t kHeadLowView = 0x015fb294;  // g_OwnLook_HeadBottomViewId
+constexpr uintptr_t kHeadTopView = 0x015fb298;  // g_OwnLook_HeadTopViewId
+constexpr uintptr_t kHeadMidView = 0x015fb29c;  // g_OwnLook_HeadMidViewId
 // 🔴 La CLASSE qui nomme le sprite de corps — second argument de
 // `Job_ResolveBodyClass`. À ne pas confondre avec le job ajusté par la monture.
 constexpr uintptr_t kOwnJobId    = 0x015fb9c8;
@@ -221,49 +227,54 @@ PvSlot MapEmplacementToSlot(int emp) {
   }
 }
 
-// ── Coiffes portees ─────────────────────────────────────────
-// Résout les 3 view ids de coiffe (top/mid/low) à afficher, avec :
-//  (1) précédence costume par slot (tableau costume session+0x2b30) quand `show_costume` ;
-//  (2) suppression NATIVE d'un chapeau RÉEL multi-slot dès qu'un costume occupe l'un de
-//      ses slots : un hat qui prend head top+mid+low (même invIndex/tag +4 dans les 3
-//      entrées equip) est masqué EN ENTIER par le natif quand un costume prend le head-top
-//      — il ne doit pas ressurgir via ses slots mid/low (que le costume, lui, ne couvre
-//      pas). Règle : un item réel est masqué si son tag == le tag réel d'un slot
-//      actuellement couvert par un costume.
-//  (3) de-dup par tag (item multi-slot / costume multi-slot -> une seule couche), en
-//      GARDANT la priorité de couche identique au rendu natif capturé (correct hors costume).
-// Slots equip (vérifié en jeu) : 0 = head-bot/low, 8 = head-top, 9 = head-mid. Les
-// paramètres hg_top/hg_mid/hg_low ne sont que des noms de COUCHE de l'actor ctor : on
-// conserve le câblage slot->couche de l'origine (slot8->hg_mid, slot9->hg_low, slot0->hg_top),
-// empiriquement correct — la suppression ci-dessus, elle, est symétrique et ne dépend PAS de
-// quel slot est « top » (elle opère sur les tags des 3 slots tête).
-void ResolveHeadgearViews(bool show_costume, int* hg_top, int* hg_mid, int* hg_low) {
-  const int slots[3] = {0, 8, 9};  // ordre de lecture ; [k] -> couche assignée plus bas
-  int rtag[3], rview[3], ctag[3], cview[3], etag[3], eview[3];
+// ── Câblage slot -> COUCHE ───────────────────────────────────────────────────
+//
+// `hg_top`/`hg_mid`/`hg_low` ne sont PAS des slots d'équipement : ce sont les
+// noms de couche de l'actor ctor, c'est-à-dire l'ORDRE D'EMPILEMENT que le
+// composeur respectera (`low` dessous, `top` dessus). Le câblage ci-dessous —
+// slot 8 -> hg_mid, slot 9 -> hg_low, slot 0 -> hg_top — est celui du rendu
+// natif capturé, et il ne se déduit d'aucune règle : c'est une mesure.
+//
+// 🔴 Il vit ICI et nulle part ailleurs. Ses deux appelants (l'équipement porté
+// et les vues du serveur) alimentent les mêmes slots ; le recopier chez l'un
+// des deux, c'est se garantir un empilement qui diverge de l'autre au premier
+// ajustement.
+void AssignHeadgearLayers(int view_slot0, int view_slot8, int view_slot9,
+                          int* hg_top, int* hg_mid, int* hg_low) {
+  *hg_mid = view_slot8;
+  *hg_low = view_slot9;
+  *hg_top = view_slot0;
+}
+
+// ── Coiffes PORTÉES ──────────────────────────────────────────────────────────
+//
+// Les 3 view ids des coiffes RÉELLEMENT équipées, lues dans la table
+// d'équipement du client (session+0x17d0). C'est ce que demande la vue
+// « costumes masqués » — les costumes n'y entrent donc pas, par définition, et
+// la table costume (+0x2b30) n'est plus consultée ici.
+//
+// De-dup par tag : une coiffe multi-slots occupe plusieurs entrées avec le même
+// invIndex (+4), et rendre sa vue dans chacune la dessinerait plusieurs fois sur
+// elle-même. Priorité de couche du rendu natif capturé : slot 8, puis 9, puis 0.
+//
+// Slots equip (vérifié en jeu) : 0 = head-bot/low, 8 = head-top, 9 = head-mid ;
+// le câblage slot -> couche est celui d'`AssignHeadgearLayers`.
+//
+// 🔴 Elle décrit L'ÉQUIPEMENT PORTÉ, jamais l'apparence : le champ de vue qu'elle
+// lit (+0x70) vient du catalogue d'items, donc elle IGNORE la transmogrification.
+// C'est voulu ici. Pour ce que le monde voit, cf. `BuildOwnDollLook`.
+void ResolveHeadgearViews(int* hg_top, int* hg_mid, int* hg_low) {
+  const int slots[3] = {0, 8, 9};  // ordre de lecture ; [k] -> couche câblée plus bas
+  int tag[3], view[3];
   for (int k = 0; k < 3; ++k) {
     const uintptr_t gen = rag::kSessionAddr + 0x17d0 + static_cast<uintptr_t>(slots[k]) * 0xf8;
-    const uintptr_t cos = rag::kSessionAddr + 0x2b30 + static_cast<uintptr_t>(slots[k]) * 0xf8;
-    rtag[k]  = *reinterpret_cast<int*>(gen + 4);
-    rview[k] = *reinterpret_cast<int*>(gen + 0x70);
-    ctag[k]  = show_costume ? *reinterpret_cast<int*>(cos + 4) : 0;
-    cview[k] = *reinterpret_cast<int*>(cos + 0x70);
+    tag[k]  = *reinterpret_cast<int*>(gen + 4);
+    view[k] = *reinterpret_cast<int*>(gen + 0x70);
   }
-  // Vue EFFECTIVE par slot : costume prioritaire ; sinon réel s'il n'est pas « couvert »
-  // (aucun slot du même item réel n'est pris par un costume).
-  for (int k = 0; k < 3; ++k) {
-    if (ctag[k] != 0) { etag[k] = ctag[k]; eview[k] = cview[k]; continue; }
-    bool covered = false;
-    if (rtag[k] != 0)
-      for (int j = 0; j < 3; ++j)
-        if (ctag[j] != 0 && rtag[j] == rtag[k]) { covered = true; break; }
-    if (rtag[k] != 0 && !covered) { etag[k] = rtag[k]; eview[k] = rview[k]; }
-    else                          { etag[k] = 0;       eview[k] = 0; }
-  }
-  // De-dup couche (priorité de l'origine, préservée) : slot 8 d'abord, puis slot 9, puis
-  // slot 0 — un item multi-slot à view identique ne rend donc que dans une seule couche.
-  *hg_mid = etag[1] ? eview[1] : 0;                                        // slot 8
-  *hg_low = (etag[2] && etag[2] != etag[1]) ? eview[2] : 0;                // slot 9
-  *hg_top = (etag[0] && etag[0] != etag[1] && etag[0] != etag[2]) ? eview[0] : 0;  // slot 0
+  const int v8 = tag[1] ? view[1] : 0;
+  const int v9 = (tag[2] && tag[2] != tag[1]) ? view[2] : 0;
+  const int v0 = (tag[0] && tag[0] != tag[1] && tag[0] != tag[2]) ? view[0] : 0;
+  AssignHeadgearLayers(v0, v8, v9, hg_top, hg_mid, hg_low);
 }
 
 
@@ -1084,19 +1095,55 @@ void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
   // déjà l'ajustement, et `Job_ResolveBodyClass` refait lui-même le remap
   // (4008 -> 4014) à partir des deux.
   look->body = *reinterpret_cast<int*>(kOwnJobId);
-  // Coiffes portées : précédence costume + suppression native d'un hat réel
-  // multi-slot couvert par un costume (cf. ResolveHeadgearViews). show_costume
-  // gate cette précédence : false (vue Équipement, « Voir les costumes »
-  // décoché) -> coiffes RÉELLES.
-  ResolveHeadgearViews(show_costume, &look->head_top, &look->head_mid,
-                       &look->head_low);
+  // ── Coiffes : les VUES du serveur, pas les items portés ───────────────────
+  //
+  // 🔴 Le viewID ne se déduit PAS de l'équipement. Moonlight a un système de
+  // TRANSMOGRIFICATION (`moon/stylist.npc`) : un `setlook LOOK_HEAD_TOP, <vue>`
+  // donne à une coiffe équipée le sprite d'un AUTRE chapeau, sans rien changer à
+  // l'item porté. Le serveur mémorise la substitution (`sd->setlook_head_*`) et
+  // la ré-applique après chaque recalcul d'apparence (`pc_set_costume_view`).
+  //
+  // Le tableau d'équipement du client ne peut donc pas répondre : son champ de
+  // vue (+0x70) vient du `wItemSpriteNumber` du paquet, que `clif_item_equip`
+  // remplit avec le `look` de l'item_db — la valeur de CATALOGUE, jamais la
+  // substituée. En dériver l'apparence, c'est dessiner l'ITEM au lieu de ce que
+  // le monde voit.
+  //
+  // Ce que le monde voit arrive par ZC_SPRITE_CHANGE, et le client le range dans
+  // ses globales d'apparence — celles-là mêmes dont il habille l'acteur en
+  // scène. On les lit telles quelles : le serveur y a DÉJÀ tranché la précédence
+  // des costumes, la déduplication d'une coiffe multi-slots (il met 0 dans les
+  // slots couverts) et la transmogrification. Rien à recalculer.
+  //
+  // ⚠ Elles ne savent RIEN de la distinction costume / équipement réel : elles
+  // ne portent que le résultat. « Voir les costumes » décoché reste donc servi
+  // par `ResolveHeadgearViews`, qui remonte aux items — et qui, à ce titre,
+  // ignore la transmogrification. C'est cohérent : cette vue-là montre ce que le
+  // personnage PORTE, pas ce à quoi il ressemble.
   if (show_costume) {
-    const uintptr_t cosG = rag::kSessionAddr + 0x2b30 + 2 * 0xf8;  // cape costume
-    look->garment = (*reinterpret_cast<int*>(cosG + 4) != 0)
-                        ? *reinterpret_cast<int*>(cosG + 0x70)
-                        : *reinterpret_cast<int*>(kGarmentView);
+    AssignHeadgearLayers(*reinterpret_cast<int*>(kHeadLowView),   // slot equip 0
+                         *reinterpret_cast<int*>(kHeadTopView),   // slot equip 8
+                         *reinterpret_cast<int*>(kHeadMidView),   // slot equip 9
+                         &look->head_top, &look->head_mid, &look->head_low);
   } else {
+    ResolveHeadgearViews(&look->head_top, &look->head_mid, &look->head_low);
+  }
+  // La CAPE suit exactement la même règle, et pour la même raison : `setlook
+  // LOOK_ROBE` existe aussi (`sd->setlook_robe`). La vue du serveur d'abord ; la
+  // table d'équipement seulement pour montrer la cape PORTÉE.
+  //
+  // ⚠ La branche « costumes masqués » lisait elle aussi la globale, donc une
+  // cape de costume restait affichée alors qu'on demandait l'équipement réel.
+  // Elle remonte désormais au slot 2 de la table normale : les deux tables
+  // partagent l'indexage des slots — la cape de costume se lisait au même index
+  // 2 de la table costume, comme les trois têtes vivent en 0/8/9 dans les deux.
+  if (show_costume) {
     look->garment = *reinterpret_cast<int*>(kGarmentView);
+  } else {
+    const uintptr_t genG = rag::kSessionAddr + 0x17d0 + 2 * 0xf8;  // cape portée
+    look->garment = (*reinterpret_cast<int*>(genG + 4) != 0)
+                        ? *reinterpret_cast<int*>(genG + 0x70)
+                        : 0;
   }
 
   // Arme, bouclier, traînée, chariot : les chemins que le CLIENT a résolus.
