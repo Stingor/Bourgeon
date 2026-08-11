@@ -205,10 +205,10 @@ void EntityNames::DrawSettings() {
     if (ro::RoCheckbox(i18n::Tr("Ton propre nom"), &show_self_)) save = true;
     if (ro::RoCheckbox(i18n::Tr("Contour noir (lisibilité)"), &outline_)) save = true;
 
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderInt(i18n::Tr("Décalage vertical"), &y_offset_, -30, 30)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Taille du texte"), &font_scale_, 0.7f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
 

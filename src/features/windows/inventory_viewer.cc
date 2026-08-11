@@ -869,12 +869,15 @@ bool FooterImgButton3(const char* id, float x, float cyc, float bar_y0, float ba
 }
 
 // Largeur du strip d'onglets = plus grande largeur d'image d'onglet (repli 22 px).
+// 🔴 Mise à l'échelle de l'interface, comme tout le chrome : « jamais étirée »
+// veut dire « pas déformée », pas « figée en pixels d'écran ». Un strip resté à
+// 22 px à côté d'une grille agrandie, c'est le défaut qu'on corrige ici.
 float TabStripWidth() {
   float w = 0.0f;
   for (int c = 0; c < kNumCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tab[c][s].w > w) w = static_cast<float>(g_tab[c][s].w);
-  return w > 0.0f ? w : 22.0f;
+  return ro::Px(w > 0.0f ? w : 22.0f);
 }
 
 // Hauteur de la rangée d'onglets HORIZONTALE = plus grande hauteur du jeu tabh_*
@@ -885,7 +888,7 @@ float TabStripHeightH() {
   for (int c = 0; c < kNumCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
-  return h > 0.0f ? h : 22.0f;
+  return ro::Px(h > 0.0f ? h : 22.0f);  // à l'échelle, cf. TabStripWidth
 }
 
 // Teinte des AddImage (icônes/tuiles/onglets/footer) = luminosité + opacité du skin RO,
@@ -899,7 +902,10 @@ void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, I
     dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImGuiCol_FrameBg));
     return;
   }
-  const float tw = static_cast<float>(tile.w), th = static_cast<float>(tile.h);
+  // À l'échelle : c'est le fond des cases de la grille, qui suit la même taille
+  // qu'elles — sinon quatre tuiles de fond se logeraient dans une case à 200 %.
+  const float tw = ro::Px(static_cast<float>(tile.w));
+  const float th = ro::Px(static_cast<float>(tile.h));
   // Pavage ALIGNÉ sur `origin` (la 1re tuile de la grille) : le fond et les items
   // partagent la même marge (fin du désync). Démarre à la 1re tuile <= mn (floor -inf).
   auto floorTo = [](float v, float o, float step) {
@@ -1883,7 +1889,12 @@ void InventoryViewer::OnRenderUI() {
   ImGui::BeginChild("invgrid", ImVec2(0.0f, childH), true,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
   {
-    const float cell = 32.0f, gap = 0.0f;  // tuiles natives 32px, jointives (sans padding)
+    // Tuiles de 32 px (la taille native du client), jointives (sans padding) —
+    // et À L'ÉCHELLE de l'interface, sinon toute la grille reste minuscule
+    // pendant que le texte des onglets et du footer grandit autour d'elle.
+    // Le fond pavé suit le même facteur (DrawTiledBg), donc les tuiles du fond
+    // restent alignées sur les cases.
+    const float cell = ro::Px(32.0f), gap = 0.0f;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     const float availw = ImGui::GetContentRegionAvail().x;  // exclut déjà la scrollbar
     const float availh = ImGui::GetContentRegionAvail().y;

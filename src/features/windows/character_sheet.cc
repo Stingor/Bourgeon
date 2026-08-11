@@ -2145,13 +2145,22 @@ ImU32 DollBgCol() {
 // ⚠ Aucune de ces mesures ne dépend de la largeur de la FENÊTRE : elles ne lisent
 // que la police et le style. C'est ce qui les rend utilisables dans la contrainte
 // de taille (appelée AVANT Begin) sans boucle de rétroaction d'une frame à l'autre.
+// 🔴 CES CONSTANTES SONT EN PIXELS D'ART, PAS EN PIXELS D'ÉCRAN. Elles décrivent
+// l'image (une case fait 44 unités de large), et chaque LECTURE les convertit par
+// `ro::Px` — l'échelle de l'interface est un réglage du joueur, elle change en
+// cours de session, une constante ne peut pas la porter.
+//
+// La distinction avec le reste de ce bloc est nette et vaut d'être tenue : tout
+// ce qui se MESURE sur la police (les `CalcTextSize` ci-dessous) suit déjà
+// l'échelle tout seul, puisque la police elle-même la suit. Repasser ces
+// mesures-là par `Px` les ferait grossir au carré.
 constexpr float kDollWMin  = 280.0f;  // planchers = les largeurs historiques
 constexpr float kStatsWMin = 240.0f;
 constexpr float kSlotSz    = 44.0f;   // côté d'une case d'équipement
 constexpr float kSlotGap   = 6.0f;    // écart entre deux cases
 constexpr float kAvatarW   = 130.0f;  // largeur de l'avatar central
 // Le bloc du mannequin : 2 colonnes de cases encadrant l'avatar. En PIXELS D'IMAGE
-// (cases et sprite), donc insensible à la police.
+// (cases et sprite), donc insensible à la police — mais pas à l'échelle.
 constexpr float kDollBlockW  = kSlotSz + kSlotGap + kAvatarW + kSlotGap + kSlotSz;
 constexpr float kPoseLineGap = 8.0f;  // écart net entre le combo de pose et le bouton GIF
 constexpr float kStatValGap  = 12.0f; // écart libellé de stat -> colonne des valeurs
@@ -2165,30 +2174,31 @@ float PoseComboW() {
   // Largeurs ARRONDIES au pixel entier : des bordures RO sub-pixel provoquaient un
   // léger glitch visuel à gauche du bouton voisin.
   return std::floor(w + ImGui::GetFrameHeight() +
-                    ImGui::GetStyle().FramePadding.x * 2.0f + 6.0f);
+                    ImGui::GetStyle().FramePadding.x * 2.0f + ro::Px(6.0f));
 }
 float GifButtonW() {
   return std::floor(ImGui::CalcTextSize(i18n::Tr("Générer le GIF")).x +
-                    ImGui::GetStyle().FramePadding.x * 2.0f + 12.0f);
+                    ImGui::GetStyle().FramePadding.x * 2.0f + ro::Px(12.0f));
 }
 // Largeur de la case à cocher sous le mannequin : les DEUX libellés possibles
 // (Équipement / Costume), pour que la fenêtre ne change pas de taille en changeant
 // d'onglet.
 float DollCheckW() {
   return std::max(ImGui::CalcTextSize(i18n::Tr("Montrer mon équipement")).x,
-                  ImGui::CalcTextSize(i18n::Tr("Voir les costumes")).x) + 42.0f;
+                  ImGui::CalcTextSize(i18n::Tr("Voir les costumes")).x) + ro::Px(42.0f);
 }
 // Le plus large des trois contenus du volet mannequin.
 float DollPaneW() {
-  const float content = std::max(std::max(kDollBlockW,
-                                          PoseComboW() + kPoseLineGap + GifButtonW()),
-                                 DollCheckW());
-  return std::max(kDollWMin,
+  const float content =
+      std::max(std::max(ro::Px(kDollBlockW),
+                        PoseComboW() + ro::Px(kPoseLineGap) + GifButtonW()),
+               DollCheckW());
+  return std::max(ro::Px(kDollWMin),
                   std::ceil(content + ImGui::GetStyle().WindowPadding.x * 2.0f));
 }
 // Largeur réservée au coût du prochain point, à droite du « + » (3 chiffres suffisent :
 // le coût d'une stat plafonne bien avant 999).
-float StatCostW() { return ImGui::CalcTextSize("999").x + 6.0f; }
+float StatCostW() { return ImGui::CalcTextSize("999").x + ro::Px(6.0f); }
 // Volet des stats. La rangée la plus contrainte est celle d'une stat PRIMAIRE : sa
 // valeur est écrite au fil du texte alors que « Max », « + » et le coût sont collés au
 // bord droit — trop étroit, la valeur passe SOUS les boutons. Les gabarits sont donc
@@ -2196,10 +2206,11 @@ float StatCostW() { return ImGui::CalcTextSize("999").x + 6.0f; }
 // parenthèses d'une dérivée déborde, et lui passe à la ligne (cf. DrawStatsPanel).
 float StatsPaneW() {
   const ImGuiStyle& st = ImGui::GetStyle();
-  const float val_x  = ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + kStatValGap;
-  const float max_w  = ImGui::CalcTextSize(i18n::Tr("Max")).x + st.FramePadding.x * 2.0f + 4.0f;
+  const float val_x  = ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + ro::Px(kStatValGap);
+  const float max_w  = ImGui::CalcTextSize(i18n::Tr("Max")).x + st.FramePadding.x * 2.0f +
+                       ro::Px(4.0f);
   const float prim   = val_x + ImGui::CalcTextSize("- 999 (+99999)").x + st.ItemSpacing.x +
-                       max_w + 4.0f + ImGui::GetFrameHeight() + StatCostW();
+                       max_w + ro::Px(4.0f) + ImGui::GetFrameHeight() + StatCostW();
   const float deriv  = val_x + ImGui::CalcTextSize("999999 ~ 999999").x;
   char pts[64];
   std::snprintf(pts, sizeof(pts), i18n::Tr("Points de statut : %d"), 9999);
@@ -2207,7 +2218,7 @@ float StatsPaneW() {
   const float content = std::max(std::max(prim, deriv), points);
   // + la scrollbar : le volet en a une dès que les bonus d'équipement se déplient,
   // et elle prend sa largeur SUR le contenu.
-  return std::max(kStatsWMin,
+  return std::max(ro::Px(kStatsWMin),
                   std::ceil(content + st.WindowPadding.x * 2.0f + st.ScrollbarSize));
 }
 struct WinSnap {
@@ -2236,26 +2247,32 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
   const bool hov = ImGui::IsItemHovered();
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(p0, p1, SlotBgCol(), 3.0f);
+  // Arrondis, épaisseurs de cadre et marge de l'icône : tout suit la case, qui
+  // suit l'échelle. Une icône collée à 2 px de bord dans une case deux fois plus
+  // grande laisserait un cadre vide tout autour d'elle.
+  const float round = ro::Px(3.0f);
+  const float inset = ro::Px(2.0f);
+  dl->AddRectFilled(p0, p1, SlotBgCol(), round);
   // Le cadre dit la FAMILLE : une rangée mélange équipement, costumes et munition, et
   // l'icône seule ne les distingue pas — un chapeau et son costume ont la même image.
   switch (pi.kind) {
     case PresetKind::kCostume:
-      dl->AddRect(p0, p1, IM_COL32(150, 90, 190, 220), 3.0f, 0, 2.0f); break;
+      dl->AddRect(p0, p1, IM_COL32(150, 90, 190, 220), round, 0, inset); break;
     case PresetKind::kAmmo:
-      dl->AddRect(p0, p1, IM_COL32(70, 130, 70, 220), 3.0f, 0, 2.0f); break;
+      dl->AddRect(p0, p1, IM_COL32(70, 130, 70, 220), round, 0, inset); break;
     default:
-      dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 3.0f); break;
+      dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), round); break;
   }
   ro::IconTex ic = ro::ItemIcon(pi.nameid);
   if (ic.tex)
-    dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + 2, p0.y + 2),
-                 ImVec2(p1.x - 2, p1.y - 2));
+    dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex),
+                 ImVec2(p0.x + inset, p0.y + inset),
+                 ImVec2(p1.x - inset, p1.y - inset));
   if (pi.refine > 0) {  // "+N" bas-droite, noir cerne blanc
     char rf[8];
     std::snprintf(rf, sizeof(rf), "+%d", pi.refine);
     const ImVec2 ts = ImGui::CalcTextSize(rf);
-    const ImVec2 rp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+    const ImVec2 rp(p1.x - ts.x - inset, p1.y - ts.y - ro::Px(1.0f));
     for (int oy = -1; oy <= 1; ++oy)
       for (int ox = -1; ox <= 1; ++ox)
         if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), IM_COL32(255, 255, 255, 255), rf);
@@ -3035,7 +3052,9 @@ void CharacterSheet::DrawPresetsTab() {
   const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const float load_w = ro::ButtonWidth(i18n::Tr("Charger"));
   const float del_w = ro::ButtonWidth(i18n::Tr("Suppr"));
-  const float icon = 30.0f, igap = 3.0f;
+  // Cases d'items d'un preset, à l'échelle de l'interface : elles encadrent des
+  // icônes d'art, pas du texte.
+  const float icon = ro::Px(30.0f), igap = ro::Px(3.0f);
 
   // Action globale : se mettre « tout nu » (independant des presets). Les costumes vivent dans
   // un tableau session distinct -> bouton separe pour tout retirer, costumes compris.
@@ -3452,7 +3471,7 @@ void CharacterSheet::DrawSkillsTab() {
                        reserved_points > 1 ? "s" : "");
   }
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(120.0f);
+  ImGui::SetNextItemWidth(ro::Px(120.0f));
   ImGui::InputTextWithHint("##skfilter", i18n::Tr("Rechercher…"), skill_filter_buf_,
                            sizeof(skill_filter_buf_));
   ImGui::SameLine();
@@ -4159,10 +4178,10 @@ void CharacterSheet::DrawSkillsTab() {
                                   ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
     if (ImGui::BeginTable("cs_skill_tbl", 5, flags)) {
       ImGui::TableSetupColumn(i18n::Tr("Compétence"), ImGuiTableColumnFlags_WidthStretch);
-      ImGui::TableSetupColumn(i18n::Tr("Niveau"), ImGuiTableColumnFlags_WidthFixed, 56.0f);
-      ImGui::TableSetupColumn(i18n::Tr("SP"), ImGuiTableColumnFlags_WidthFixed, 40.0f);
-      ImGui::TableSetupColumn(i18n::Tr("Portée"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Niveau"), ImGuiTableColumnFlags_WidthFixed, ro::Px(56.0f));
+      ImGui::TableSetupColumn(i18n::Tr("SP"), ImGuiTableColumnFlags_WidthFixed, ro::Px(40.0f));
+      ImGui::TableSetupColumn(i18n::Tr("Portée"), ImGuiTableColumnFlags_WidthFixed, ro::Px(46.0f));
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(28.0f));
       ImGui::TableHeadersRow();
       const float icon = ImGui::GetTextLineHeight();
       for (int oi = 0; oi < count; ++oi) {
@@ -4748,7 +4767,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::TextColored(kGray,
                        i18n::Tr("Un Emperium dans l'inventaire est nécessaire, et la carte ne "
                        "doit pas interdire les guildes."));
-    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SetNextItemWidth(ro::Px(220.0f));
     const bool name_submitted =
         ro::InputTextCp949("##cs_guild_create", guild_create_buf_, sizeof(guild_create_buf_),
                            ImGuiInputTextFlags_EnterReturnsTrue);
@@ -5010,11 +5029,11 @@ void CharacterSheet::DrawGuildTab() {
       ImGui::TableSetupScrollFreeze(0, 1);
       ImGui::TableSetupColumn(i18n::Tr("Nom"), ImGuiTableColumnFlags_WidthStretch |
                                          ImGuiTableColumnFlags_DefaultSort);
-      ImGui::TableSetupColumn(i18n::Tr("Classe"), ImGuiTableColumnFlags_WidthFixed, 88.0f);
-      ImGui::TableSetupColumn(i18n::Tr("Nv"), ImGuiTableColumnFlags_WidthFixed, 32.0f);
-      ImGui::TableSetupColumn(i18n::Tr("Poste"), ImGuiTableColumnFlags_WidthFixed, 84.0f);
-      ImGui::TableSetupColumn(i18n::Tr("Contrib."), ImGuiTableColumnFlags_WidthFixed, 70.0f);
-      ImGui::TableSetupColumn(i18n::Tr("Connexion"), ImGuiTableColumnFlags_WidthFixed, 104.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Classe"), ImGuiTableColumnFlags_WidthFixed, ro::Px(88.0f));
+      ImGui::TableSetupColumn(i18n::Tr("Nv"), ImGuiTableColumnFlags_WidthFixed, ro::Px(32.0f));
+      ImGui::TableSetupColumn(i18n::Tr("Poste"), ImGuiTableColumnFlags_WidthFixed, ro::Px(84.0f));
+      ImGui::TableSetupColumn(i18n::Tr("Contrib."), ImGuiTableColumnFlags_WidthFixed, ro::Px(70.0f));
+      ImGui::TableSetupColumn(i18n::Tr("Connexion"), ImGuiTableColumnFlags_WidthFixed, ro::Px(104.0f));
       ImGui::TableHeadersRow();
 
       if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
@@ -5283,7 +5302,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kBlack, i18n::Tr("Inviter :"));
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(130.0f);
+    ImGui::SetNextItemWidth(ro::Px(130.0f));
     ro::InputTextCp949("##cs_guild_invite", guild_invite_buf_, sizeof(guild_invite_buf_));
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip(i18n::Tr("Nom exact du personnage à inviter (il doit être connecté)."));
@@ -5373,7 +5392,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::TextColored(kGray, i18n::Tr("Il faudra une nouvelle invitation pour y revenir."));
     ImGui::Spacing();
     ImGui::TextColored(kGray, i18n::Tr("Motif (facultatif) :"));
-    ImGui::SetNextItemWidth(240.0f);
+    ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_leave_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
     ImGui::Spacing();
@@ -5408,7 +5427,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::TextColored(kGray, i18n::Tr("L'instance fait échouer la dissolution SANS aucun message."));
     ImGui::Spacing();
     ImGui::TextColored(kGray, i18n::Tr("Retape le nom de la guilde pour confirmer :"));
-    ImGui::SetNextItemWidth(240.0f);
+    ImGui::SetNextItemWidth(ro::Px(240.0f));
     // Indice STATIQUE, pas gi.name : le nom vient du client en CP949, et l'indice est
     // rendu en UTF-8. La comparaison, elle, se fait bien CP949 contre CP949.
     ro::InputTextCp949WithHint("##cs_guild_break", i18n::Tr("Nom exact de la guilde"),
@@ -5432,7 +5451,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::Text(i18n::Tr("Expulser %s de la guilde ?"), guild_expel_name_);
     ImGui::Spacing();
     ImGui::TextColored(kGray, i18n::Tr("Motif (facultatif) :"));
-    ImGui::SetNextItemWidth(240.0f);
+    ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_expel_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
     ImGui::Spacing();
@@ -5465,7 +5484,7 @@ void CharacterSheet::DrawGuildBansTab() {
   const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                       ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY;
   if (!ImGui::BeginTable("cs_guild_bans_tbl", 2, table_flags)) return;
-  ImGui::TableSetupColumn(i18n::Tr("Personnage"), ImGuiTableColumnFlags_WidthFixed, 130.0f);
+  ImGui::TableSetupColumn(i18n::Tr("Personnage"), ImGuiTableColumnFlags_WidthFixed, ro::Px(130.0f));
   ImGui::TableSetupColumn(i18n::Tr("Motif"), ImGuiTableColumnFlags_WidthStretch);
   ImGui::TableHeadersRow();
   for (const GuildBanRow& ban : guild_bans_) {
@@ -5931,13 +5950,13 @@ void CharacterSheet::DrawGuildSkillsTab() {
   // en liens ; une 3e redite volait la largeur au nom, qui se retrouvait tronqué.
   if (!ImGui::BeginTable("cs_guild_skills_tbl", 5, table_flags)) return;
   ImGui::TableSetupColumn(i18n::Tr("Compétence"), ImGuiTableColumnFlags_WidthStretch);
-  ImGui::TableSetupColumn(i18n::Tr("Level"), ImGuiTableColumnFlags_WidthFixed, 54.0f);
+  ImGui::TableSetupColumn(i18n::Tr("Level"), ImGuiTableColumnFlags_WidthFixed, ro::Px(54.0f));
   // Assez large pour « Passif » : cette colonne porte le coût OU la nature de la
   // compétence, exactement comme le natif qui écrit « Passive » à la place du SP.
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(56.0f));
   // Colonne « lancer » élargie : elle porte aussi le décompte de cooldown (« 4:12 »).
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 46.0f);  // lancer
-  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 30.0f);  // monter
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(46.0f));  // lancer
+  ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(30.0f));  // monter
   ImGui::TableHeadersRow();
 
   // Ancre = bord gauche de l'icône, milieu vertical. x < 0 : ligne pas encore dessinée.
@@ -6140,12 +6159,12 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
                                                      : 0.0f));
   if (ImGui::BeginTable("cs_guild_positions_tbl", 6, table_flags, ImVec2(0.0f, rows_h))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 22.0f);
+    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, ro::Px(22.0f));
     ImGui::TableSetupColumn(i18n::Tr("Nom"), ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn(i18n::Tr("Inviter"), ImGuiTableColumnFlags_WidthFixed, 54.0f);
-    ImGui::TableSetupColumn(i18n::Tr("Expulser"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
-    ImGui::TableSetupColumn(i18n::Tr("Storage"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
-    ImGui::TableSetupColumn(i18n::Tr("Part exp"), ImGuiTableColumnFlags_WidthFixed, 96.0f);
+    ImGui::TableSetupColumn(i18n::Tr("Inviter"), ImGuiTableColumnFlags_WidthFixed, ro::Px(54.0f));
+    ImGui::TableSetupColumn(i18n::Tr("Expulser"), ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
+    ImGui::TableSetupColumn(i18n::Tr("Storage"), ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
+    ImGui::TableSetupColumn(i18n::Tr("Part exp"), ImGuiTableColumnFlags_WidthFixed, ro::Px(96.0f));
     ImGui::TableHeadersRow();
 
     for (int id = 0; id < kGuildPositionSlots; ++id) {
@@ -6570,7 +6589,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   ImGui::SameLine();
   ImGui::TextColored(kGray, i18n::Tr("(clic droit = efface)"));
 
-  ImGui::SetNextItemWidth(140.0f);
+  ImGui::SetNextItemWidth(ro::Px(140.0f));
   ro::RoSliderInt(i18n::Tr("Épaisseur"), &g_emblem_canvas.brush, 1, 3, "%d px");
   ImGui::SameLine();
   ro::RoCheckbox(i18n::Tr("Symétrie"), &g_emblem_canvas.mirror);
@@ -6669,7 +6688,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   ImGui::AlignTextToFramePadding();
   ImGui::TextColored(kGray, i18n::Tr("Partir d'une icône d'item :"));
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(90.0f);
+  ImGui::SetNextItemWidth(ro::Px(90.0f));
   ImGui::InputInt("##cs_emblem_itemid", &guild_emblem_item_id_, 0, 0);
   if (guild_emblem_item_id_ < 0) guild_emblem_item_id_ = 0;
   // Aperçu à côté du champ : on voit ce qu'on va importer avant de perdre le dessin.
@@ -6831,7 +6850,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     ImGui::TextColored(kRed, i18n::Tr("Envoi impossible : %s."), why);
   }
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(150.0f);
+  ImGui::SetNextItemWidth(ro::Px(150.0f));
   ro::InputTextCp949WithHint("##cs_emblem_savename", i18n::Tr("mon_embleme"),
                              g_emblem_canvas.save_name,
                              sizeof(g_emblem_canvas.save_name));
@@ -6870,12 +6889,14 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
   ImGui::InvisibleButton("slot", ImVec2(sz, sz));
   const ImVec2 p1(p0.x + sz, p0.y + sz);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(p0, p1, SlotBgCol(), 4.0f);     // fond de case (réglable skin RO)
-  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), 4.0f);  // bordure
+  dl->AddRectFilled(p0, p1, SlotBgCol(), ro::Px(4.0f));     // fond (skin RO)
+  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 80), ro::Px(4.0f));  // bordure
   if (has) {
     ro::IconTex ic = ro::ItemIcon(it.nameid);
     if (ic.tex) {
-      const float pad = 3.0f;
+      // La marge suit la case : à l'échelle, une icône collée à un pad de 3 px
+      // dans une case deux fois plus grande laisserait un cadre disproportionné.
+      const float pad = ro::Px(3.0f);
       dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(p0.x + pad, p0.y + pad),
                    ImVec2(p1.x - pad, p1.y - pad));
     }
@@ -6883,7 +6904,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       char rf[8];
       std::snprintf(rf, sizeof(rf), "+%d", it.refine);
       const ImVec2 ts = ImGui::CalcTextSize(rf);
-      const ImVec2 rp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+      const ImVec2 rp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
       const ImU32 white = IM_COL32(255, 255, 255, 255);
       for (int oy = -1; oy <= 1; ++oy)
         for (int ox = -1; ox <= 1; ++ox)
@@ -6994,7 +7015,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
       char q[12];
       std::snprintf(q, sizeof(q), "%d", am.amount);
       const ImVec2 ts = ImGui::CalcTextSize(q);
-      const ImVec2 rp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+      const ImVec2 rp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
       const ImU32 white = IM_COL32(255, 255, 255, 255);
       for (int oy = -1; oy <= 1; ++oy)
         for (int ox = -1; ox <= 1; ++ox)
@@ -7272,8 +7293,9 @@ void CharacterSheet::DrawDoll(float avail_w) {
   // Bloc poupée : 2 colonnes de slots + avatar central, largeur fixe CENTRÉE
   // horizontalement (MÊME méthode que l'en-tête : start_x + marge -> sinon le bloc
   // est collé à gauche). La disposition dépend de l'onglet (branches ci-dessous).
-  const float sz = kSlotSz, gap = kSlotGap, avatar_w = kAvatarW;
-  const float block_w = kDollBlockW;
+  const float sz = ro::Px(kSlotSz), gap = ro::Px(kSlotGap),
+              avatar_w = ro::Px(kAvatarW);
+  const float block_w = ro::Px(kDollBlockW);
   const float ox = start_x + std::max(0.0f, (avail_w - block_w) * 0.5f);  // centre
   const float y0 = ImGui::GetCursorPosY() + 2.0f;
   const float lx = ox;                              // colonne gauche
@@ -7356,7 +7378,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   const float fh = ImGui::GetFrameHeightWithSpacing();
   const float combo_w = PoseComboW();
   const float gif_w   = GifButtonW();
-  const float line_gap = kPoseLineGap;  // écart net combo / bouton
+  const float line_gap = ro::Px(kPoseLineGap);  // écart net combo / bouton
   // La colonne est dimensionnée pour cette ligne (cf. DollPaneW), mais elle peut
   // malgré tout être trop étroite : le joueur a rétréci la fenêtre, ou une scrollbar
   // verticale est apparue et a pris sa largeur sur le contenu. Dans ce cas le bouton
@@ -7516,7 +7538,8 @@ void CharacterSheet::DrawStatsPanel() {
   const float start = ImGui::GetCursorPosX();          // colonne LABEL (gauche)
   // Colonne VALEURS alignée : après le plus large label ("Esq.P") + marge. Toutes les
   // valeurs (primaires + dérivées) démarrent à ce x -> chiffres en colonne.
-  const float val_x = start + ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + kStatValGap;
+  const float val_x =
+      start + ImGui::CalcTextSize(i18n::Tr("Esq.P")).x + ro::Px(kStatValGap);
   const float cost_w = StatCostW();  // largeur réservée au coût, à droite du +
   const float max_w = ImGui::CalcTextSize(i18n::Tr("Max")).x + ImGui::GetStyle().FramePadding.x * 2.0f + 4.0f;
   // Petit fond arrondi gris léger derrière le NOM de chaque stat (limité au libellé).
@@ -8129,9 +8152,11 @@ void CharacterSheet::OnRenderUI() {
   g_win_snap.force_wide = (tab_ == 4 || tab_ == 5) || want_wide_;
   want_wide_ = false;
   ImGui::SetNextWindowSizeConstraints(
-      ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow, 450.0f),
+      ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow,
+             ro::Px(450.0f)),
       ImVec2(g_win_snap.wide, 10000.0f), SnapCharSheetWidth);
-  ImGui::SetNextWindowSize(ImVec2(g_win_snap.wide, 490.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(g_win_snap.wide, ro::Px(490.0f)),
+                           ImGuiCond_FirstUseEver);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);

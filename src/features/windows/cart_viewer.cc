@@ -356,7 +356,9 @@ void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, I
     dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImGuiCol_FrameBg));
     return;
   }
-  const float tw = static_cast<float>(tile.w), th = static_cast<float>(tile.h);
+  // À l'échelle, comme les cases qu'elles pavent (cf. inventory_viewer).
+  const float tw = ro::Px(static_cast<float>(tile.w));
+  const float th = ro::Px(static_cast<float>(tile.h));
   auto floorTo = [](float v, float o, float step) {
     int n = static_cast<int>((v - o) / step);
     if (o + n * step > v) --n;
@@ -726,7 +728,10 @@ void CartViewer::OnRenderUI() {
   ImGui::BeginChild("cartgrid", ImVec2(0.0f, childH), true,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
   {
-    const float cell = 32.0f, gap = 0.0f;  // tuiles natives 32px, jointives
+    // Tuiles de 32 px (taille native du client), jointives, À L'ÉCHELLE de
+    // l'interface — même règle que la grille d'inventaire, dont ceci est le
+    // jumeau.
+    const float cell = ro::Px(32.0f), gap = 0.0f;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     const float availw = ImGui::GetContentRegionAvail().x;  // exclut déjà la scrollbar
     const float availh = ImGui::GetContentRegionAvail().y;

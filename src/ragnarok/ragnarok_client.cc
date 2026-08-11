@@ -525,6 +525,12 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   // Sans ça, toute chaîne CP949 s'affiche en carrés. Voir ui/ro_imgui.h.
   ro::LoadKoreanFont();
   ImGui::StyleColorsDark();
+  // 🔴 APRÈS le thème, et pas avant : ce premier appel photographie le style à
+  // 100 % pour servir de référence à tous les changements d'échelle ultérieurs.
+  // Pris avant StyleColorsDark, il aurait figé les couleurs d'un autre thème —
+  // et surtout, l'échelle lue au chargement de la DLL ne s'appliquerait jamais,
+  // faute de contexte ImGui à ce moment-là.
+  ro::ApplyUiScale();
   ImGui_ImplWin32_Init(hwnd);
   ImGuiIO& io = ImGui::GetIO();
   io.MouseDrawCursor = false;

@@ -126,7 +126,7 @@ void ScreenFx::DrawSettings() {
   bool save  = false;  // persist to disk (on release, not every drag frame)
   if (ro::RoCheckbox(i18n::Tr("Overlay FPS"), &fps_overlay_)) save = true;
   auto slider = [&](const char* label, float* v, float lo, float hi) {
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(label, v, lo, hi)) apply = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   };
@@ -173,7 +173,7 @@ void ScreenFx::DrawSettings() {
     // catalogue et l'inscrirait comme « à traduire ». Rien ne se voit à l'écran,
     // mais le gabarit d'export se remplit de textes déjà traduits.
     const char* filters[] = {"Aucun", "Noir & blanc", "Sépia", "Négatif", "Daltonien"};
-    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SetNextItemWidth(ro::Px(180.0f));
     if (ro::RoCombo(i18n::Tr("Filtre"), &fx_.filter, filters, IM_ARRAYSIZE(filters))) {
       apply = true;
       save  = true;

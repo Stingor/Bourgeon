@@ -54,4 +54,19 @@ int UiFontFamily(int fallback);
 // d'auto-login.
 void SaveUiFontFamily(int family);
 
+// ── L'échelle de toute l'interface ───────────────────────────────────────────
+// Un pourcentage (100 = taille d'origine), pour les écrans très définis où une
+// interface calibrée en pixels devient minuscule. `fallback` est rendu quand
+// aucun fichier ne porte le réglage — premier lancement compris.
+//
+// 🔴 ICI, et pour la MÊME raison que la police juste au-dessus : ce réglage doit
+// agir dès l'écran de login. `bourgeon_settings.yaml` n'est relu qu'à l'entrée
+// en jeu — l'échelle n'aurait pris qu'une fois connecté, et la relecture aurait
+// écrasé un changement fait entre-temps.
+//
+// Contrairement à la police, aucune ancienne place à reprendre : le réglage
+// naît ici.
+int UiScalePercent(int fallback);
+void SaveUiScalePercent(int percent);
+
 }  // namespace startup

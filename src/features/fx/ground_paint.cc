@@ -230,7 +230,7 @@ void DrawSettings() {
     // Poser les hooks dès l'activation : ils ne servent à rien tant que la case est
     // décochée, et EnsureInstalled est idempotent.
     EnsureInstalled();
-    ImGui::SetNextItemWidth(200.0f);
+    ImGui::SetNextItemWidth(ro::Px(200.0f));
     ColorEdit4WithAlphaBar(i18n::Tr("Couleur du sol"), g_col);
     // Le picker renvoie true à CHAQUE frame de drag : on ne persiste qu'au relâchement,
     // sinon on réécrit tout le YAML des dizaines de fois par seconde.

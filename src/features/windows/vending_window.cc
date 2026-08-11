@@ -123,6 +123,27 @@ constexpr float kBsW = 520.0f;
 constexpr float kBsH = 500.0f;
 constexpr float kBsPaneRows = 5.0f;  // hauteur des deux listes du haut
 
+// ── Achat chez un vendeur : REDIMENSIONNABLE ─────────────────────────────────
+// Elle était en AlwaysAutoResize, comme les deux petits panneaux du dessus. Ça ne
+// tenait plus : cette fenêtre-là porte deux tableaux (l'offre et le panier) dont
+// la hauteur suit le NOMBRE D'OBJETS. Une échoppe bien remplie la faisait
+// descendre sous le bas de l'écran, sans le moindre moyen de la raccourcir — et
+// l'échelle de l'interface a rendu le débordement systématique.
+//
+// Le passage en redimensionnable apporte aussi la barre de défilement (ImGui la
+// pose dès que le contenu dépasse) et permet aux colonnes de nom d'être en
+// WidthStretch : c'est le même raisonnement que la fenêtre de composition, et il
+// est détaillé au-dessus de kColAct.
+//
+// Taille d'OUVERTURE seulement (FirstUseEver) : ensuite la fenêtre appartient au
+// joueur, et ImGui la mémorise. Plus de largeur MAXIMALE — elle n'existait que
+// pour empêcher l'auto-resize de s'étaler sur le nom d'objet le plus long, et
+// c'est désormais le joueur qui décide.
+constexpr float kBuyW    = 560.0f;
+constexpr float kBuyH    = 460.0f;
+constexpr float kBuyMinW = 380.0f;  // sous ça, les colonnes chiffrées mangent le nom
+constexpr float kBuyMinH = 240.0f;  // un tableau, les totaux et la rangée de boutons
+
 // ── Côté CLIENT : acheter chez un vendeur ────────────────────────────────────
 // Deux fenêtres ouvertes ensemble quand on clique sur une échoppe (RTTI relu en
 // live, jeu running) :
@@ -1610,8 +1631,8 @@ void VendingWindow::OnRenderUI() {
       ro::SetNextWindowBodyColor(ro::ListBodyColorU32());
       // Même garde que l'historique : « Tout est vendu. » est plus court que le
       // titre, et l'autoresize seul rognerait la barre de titre.
-      ImGui::SetNextWindowSizeConstraints(ImVec2(kMinPanelW, 0.0f),
-                                          ImVec2(kMaxPanelW, FLT_MAX));
+      ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(kMinPanelW), 0.0f),
+                                          ImVec2(ro::Px(kMaxPanelW), FLT_MAX));
       // La croix de la barre de titre fait ce que fait la croix native : elle MET
       // FIN à la boutique. La faire simplement masquer laissait l'échoppe tourner
       // sans plus aucune UI pour la reprendre — un cul-de-sac.
@@ -1629,9 +1650,9 @@ void VendingWindow::OnRenderUI() {
           // Les noms composés (refine, cartes, emplacements) sont de longueur
           // très variable ; toute valeur en dur rognait les plus longs.
           ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn(i18n::Tr("Reste"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Reste"), ImGuiTableColumnFlags_WidthFixed, ro::Px(45.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(90.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, ro::Px(90.0f));
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < myshop_.size(); ++i) {
             const Row& r = myshop_[i];
@@ -1714,8 +1735,8 @@ void VendingWindow::OnRenderUI() {
       // AlwaysAutoResize dimensionne sur le CONTENU seul : sur une liste vide
       // (« Aucune vente. ») la fenêtre devient plus étroite que son propre titre,
       // qui se retrouve rogné. La contrainte de largeur minimale règle le cas.
-      ImGui::SetNextWindowSizeConstraints(ImVec2(kMinPanelW, 0.0f),
-                                          ImVec2(kMaxPanelW, FLT_MAX));
+      ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(kMinPanelW), 0.0f),
+                                          ImVec2(ro::Px(kMaxPanelW), FLT_MAX));
       // Croix = vraie fermeture. Sans danger ICI seulement parce qu'on n'affiche
       // ce panneau qu'une fois le shop fini : la cmd 201 passe par
       // UIWindowMgr_SaveRectAndCloseWindow, qui DÉTRUIT la fenêtre native — et
@@ -1737,9 +1758,9 @@ void VendingWindow::OnRenderUI() {
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
           ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Montant"), ImGuiTableColumnFlags_WidthFixed, 90.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, ro::Px(45.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(90.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Montant"), ImGuiTableColumnFlags_WidthFixed, ro::Px(90.0f));
           ImGui::TableHeadersRow();
           long long total = 0;
           for (size_t i = 0; i < log_.size(); ++i) {
@@ -1799,8 +1820,10 @@ void VendingWindow::OnRenderUI() {
     if (vendor_panel_) {
       RefreshVendorShop();
       ro::SetNextWindowBodyColor(ro::ListBodyColorU32());
-      ImGui::SetNextWindowSizeConstraints(ImVec2(kMinPanelW, 0.0f),
-                                          ImVec2(kMaxPanelW, FLT_MAX));
+      ImGui::SetNextWindowSize(ImVec2(ro::Px(kBuyW), ro::Px(kBuyH)),
+                               ImGuiCond_FirstUseEver);
+      ImGui::SetNextWindowSizeConstraints(
+          ImVec2(ro::Px(kBuyMinW), ro::Px(kBuyMinH)), ImVec2(FLT_MAX, FLT_MAX));
       bool keep_vendor = true;
       bool close_vendor = false;
       // « ### » fige l'identifiant ImGui : le nom du vendeur arrive une frame
@@ -1811,20 +1834,24 @@ void VendingWindow::OnRenderUI() {
                       vendor_name_);
       else
         std::snprintf(title, sizeof(title), i18n::Tr("Shop###vending_buy"));
-      if (ro::BeginRoWindow(title, &keep_vendor,
-                            ImGuiWindowFlags_AlwaysAutoResize |
-                            ImGuiWindowFlags_NoCollapse)) {
+      // Ni AlwaysAutoResize ni NoResize : la fenêtre se redimensionne à la
+      // poignée, et BeginRoWindow y peint le grip RO du coin bas-droit.
+      if (ro::BeginRoWindow(title, &keep_vendor, ImGuiWindowFlags_NoCollapse)) {
         char cell[48];
         if (offers_.empty()) {
           ImGui::TextDisabled(i18n::Tr("Le shop est vide."));
         } else if (ImGui::BeginTable("##t_offer", 5,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
-          ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+          // 🔴 « Objet » en WidthStretch, les autres à largeur fixe : c'est ce
+          // qui rend le redimensionnement utile. En WidthFixed la colonne se
+          // calait sur le nom le plus long et la place gagnée en élargissant la
+          // fenêtre partait en vide à droite.
+          ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
+          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, ro::Px(45.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
+          ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < offers_.size(); ++i) {
             const BuyRow& o = offers_[i];
@@ -1852,7 +1879,7 @@ void VendingWindow::OnRenderUI() {
 
             ImGui::TableNextColumn();
             if (i < offer_qty_.size()) {
-              ImGui::SetNextItemWidth(56.0f);
+              ImGui::SetNextItemWidth(ro::Px(56.0f));
               ImGui::InputInt("##q", &offer_qty_[i], 0, 0);
               if (offer_qty_[i] < 1) offer_qty_[i] = 1;
               if (offer_qty_[i] > o.stock) offer_qty_[i] = o.stock;
@@ -1905,10 +1932,10 @@ void VendingWindow::OnRenderUI() {
         } else if (ImGui::BeginTable("##t_basket", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn(i18n::Tr("Panier"), ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 45.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
-          ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Panier"), ImGuiTableColumnFlags_WidthStretch);
+          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, ro::Px(45.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
+          ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
           ImGui::TableHeadersRow();
           int remove_at = -1;
           for (size_t i = 0; i < basket_.size(); ++i) {
@@ -2012,8 +2039,8 @@ void VendingWindow::OnRenderUI() {
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
           ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
-          ImGui::TableSetupColumn(i18n::Tr("Voulu"), ImGuiTableColumnFlags_WidthFixed, 52.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Voulu"), ImGuiTableColumnFlags_WidthFixed, ro::Px(52.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < bs_wanted_rows_.size(); ++i) {
             const BuyRow& w = bs_wanted_rows_[i];
@@ -2043,9 +2070,9 @@ void VendingWindow::OnRenderUI() {
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
           ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
-          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 56.0f);
-          ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, ro::Px(46.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, ro::Px(56.0f));
+          ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < bs_avail_.size(); ++i) {
             const Row& a = bs_avail_[i];
@@ -2060,7 +2087,7 @@ void VendingWindow::OnRenderUI() {
 
             ImGui::TableNextColumn();
             if (i < bs_qty_.size()) {
-              ImGui::SetNextItemWidth(52.0f);
+              ImGui::SetNextItemWidth(ro::Px(52.0f));
               ImGui::InputInt("##q", &bs_qty_[i], 0, 0);
               if (bs_qty_[i] < 1) bs_qty_[i] = 1;
               if (bs_qty_[i] > sellable) bs_qty_[i] = sellable;
@@ -2112,9 +2139,9 @@ void VendingWindow::OnRenderUI() {
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
           ImGui::TableSetupColumn(i18n::Tr("Objet"), ImGuiTableColumnFlags_WidthStretch);
-          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, 46.0f);
-          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
-          ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+          ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed, ro::Px(46.0f));
+          ImGui::TableSetupColumn(i18n::Tr("Total"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
+          ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
           ImGui::TableHeadersRow();
           for (size_t i = 0; i < bs_sell_rows_.size(); ++i) {
             const Row& s = bs_sell_rows_[i];
@@ -2657,7 +2684,7 @@ void VendingWindow::OnRenderUI() {
     }
 
     if (buying_) {
-      ImGui::SetNextItemWidth(160.0f);
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
       ImGui::InputInt(i18n::Tr("Limite de zeny d'achat"), &zeny_limit_, 0, 0);
       if (zeny_limit_ < 0) zeny_limit_ = 0;
       ImGui::SameLine();

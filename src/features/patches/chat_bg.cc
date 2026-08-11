@@ -304,7 +304,7 @@ bool ChatTweaks::DrawBackgroundGroup(int group_id) {
       SeparatorText(i18n::Tr("Sauvegarder une couleur comme preset"));
     }
     // ── Enregistrer la couleur courante ─────────────────────────────────────
-    ImGui::SetNextItemWidth(120.0f);
+    ImGui::SetNextItemWidth(ro::Px(120.0f));
     ImGui::InputTextWithHint("##preset_name", i18n::Tr("Nom du préréglage"), preset_name_buf_,
                              sizeof(preset_name_buf_));
     SameLine();

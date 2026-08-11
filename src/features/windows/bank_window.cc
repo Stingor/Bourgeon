@@ -481,9 +481,16 @@ void BankWindow::OnRenderUI() {
   // 1:1, sans étirement, et les bandes tombent pile sur les lignes de widgets.
   // Sans fond (bmp absent du GRF), on retombe sur une largeur dérivée de la police :
   // le facteur 23 est le rapport largeur/corps-de-police du bitmap (345 / 15).
+  //
+  // 🔴 Le tout À L'ÉCHELLE de l'interface. Ce fond est la seule pièce d'art de
+  // Bourgeon dont la taille COMMANDE une fenêtre : laissé à ses 345 px pendant
+  // que la police doublait, il donnait une banque où plus rien ne tenait. Le
+  // blit reste 1:1 vis-à-vis de la fenêtre — c'est le couple (fenêtre, fond) qui
+  // grandit ensemble, donc les bandes tombent toujours sur les lignes.
   const ro::GameTexture& bg = BackgroundTexture();
-  const float window_w = bg.tex ? static_cast<float>(bg.w)
-                               : (std::max)(300.0f, ImGui::GetFontSize() * 23.0f);
+  const float window_w =
+      bg.tex ? ro::Px(static_cast<float>(bg.w))
+             : (std::max)(ro::Px(300.0f), ImGui::GetFontSize() * 23.0f);
   ImGui::SetNextWindowSize(ImVec2(window_w, 0.0f), ImGuiCond_Always);
 
   // (Pas de puce « Options » dans le titre : cette fenêtre n'a plus aucun réglage,
@@ -511,8 +518,9 @@ void BankWindow::OnRenderUI() {
     ImGui::GetWindowDrawList()->AddImage(
         static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(bg.tex)),
         ImVec2(win_pos.x, body_top),
-        ImVec2(win_pos.x + bg.w, body_top + bg.h), ImVec2(0.0f, 0.0f),
-        ImVec2(1.0f, 1.0f), ro::SkinImageTint());
+        ImVec2(win_pos.x + ro::Px(static_cast<float>(bg.w)),
+               body_top + ro::Px(static_cast<float>(bg.h))),
+        ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), ro::SkinImageTint());
   }
 
   // Relecture par FRAME (et pas seulement au tick de 100 ms) : après un dépôt, le

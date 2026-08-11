@@ -297,7 +297,7 @@ void MoonlightUi::DrawInterfacePanel() {
       // valeur en cours de route, et les entrées suivantes se compareraient au
       // code qu'on vient tout juste de poser.
       const std::string current = i18n::LanguageCode();
-      ImGui::SetNextItemWidth(160.0f);
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
       // `TrId` et non `Tr` : RoBeginCombo fait `PushID(label)`, donc un libellé
       // traduit donnerait un widget différent à chaque langue. C'est le premier
       // cas du chantier, et il sera la règle pour tout ce qui porte un état.
@@ -361,7 +361,7 @@ void MoonlightUi::DrawInterfacePanel() {
     SameLine(); HelpMarker(
         i18n::Tr("Affiche une grille plein écran pour aligner ton interface "
         "(comme les add-ons d'interface de WoW)."));
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     changed |= WheelSliderInt(i18n::Tr("Taille grille"), &grid_.cell_size_px, 4, 128);
     changed |= ro::RoCheckbox(i18n::Tr("Aimanter à la grille"), &grid_.snap);
     SameLine(); HelpMarker(

@@ -13,6 +13,7 @@
 #include "bourgeon.h"        // Bourgeon::Instance().IsMapLoading() / IsGameActive() (gate anti-crash warp)
 #include "features/fx/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
 #include "features/moonlight_ui/moonlight_ui.h"  // helpers UI du toolkit (namespace mui)
+#include "ui/ro_imgui.h"  // ro::Px (échelle de l'interface, largeurs de contrôles)
 #include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -313,7 +314,7 @@ void DrawDebugControls() {
   ImGui::Separator();
 
   // Seul l'ordinal est saisi ; l'id concret est résolu par le getter NATIF GetHatEffectID.
-  ImGui::SetNextItemWidth(120.0f);
+  ImGui::SetNextItemWidth(ro::Px(120.0f));
   if (ImGui::InputInt(i18n::Tr("Ordinal"), &g_ui_ordinal) || g_resolved_concrete <= 0)
     g_resolved_concrete = ResolveConcreteId(g_ui_ordinal);
   ImGui::SameLine();
@@ -502,7 +503,7 @@ void DrawDebugControls() {
   }
 
   ImGui::Checkbox(i18n::Tr("Cacher en jeu (overlay seul)"), &g_suppress);
-  ImGui::SetNextItemWidth(180.0f);
+  ImGui::SetNextItemWidth(ro::Px(180.0f));
   ImGui::Combo("Blend", &g_blend_mode,
                i18n::Tr("Natif par primitive\0Alpha normal\0Additif global\0"));
   if (ImGui::IsItemHovered())
@@ -530,7 +531,7 @@ void DrawDebugControls() {
   ImGui::SameLine();
   ImGui::TextDisabled(i18n::Tr("ancre (%.0f,%.0f)%s"), g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : i18n::Tr(" [non projetée]"));
 
-  ImGui::SetNextItemWidth(180.0f);
+  ImGui::SetNextItemWidth(ro::Px(180.0f));
   ImGui::SliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Garde-fou large par défaut (la géométrie « traînée » est LÉGITIME :\n"
@@ -546,7 +547,7 @@ void DrawDebugControls() {
   if (g_catalog_built) {
     static char filter[32] = "";
     static bool only_impl = true;   // par défaut on masque les inertes : ils ne rendront JAMAIS rien
-    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SetNextItemWidth(ro::Px(180.0f));
     ImGui::InputText("filtre", filter, sizeof(filter));
     ImGui::SameLine();
     ImGui::Checkbox(i18n::Tr("implémentés seulement"), &only_impl);

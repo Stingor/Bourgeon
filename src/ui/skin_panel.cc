@@ -1,11 +1,18 @@
 #include "ui/skin_panel.h"
 
+#include <cstdio>  // std::snprintf (libellés « 125 % » du combo d'échelle)
+
 #include "imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "utils/startup_settings.h"  // la police vit avec les réglages d'avant-jeu
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
+// Le client rend-il en DirectX 7 ? (posé par le proxy DirectDraw ; cf.
+// ddraw/proxy_idirectdraw.cc, et la liste des modules inertes dans ce mode dans
+// features/systems/dx7_warning.h.)
+extern bool g_imgui_dx7_active;
 
 namespace ro {
 namespace {
@@ -17,6 +24,11 @@ void SetColor255(float* rgba, int red, int green, int blue) {
   rgba[2] = blue / 255.f;
   rgba[3] = 1.f;
 }
+
+// Les paliers d'échelle proposés. ENTIERS ou demi-entiers, délibérément : l'art
+// du skin est échantillonné en POINT (pixel-art net), et un facteur quelconque
+// y donnerait des bordures d'épaisseur inégale d'un bord à l'autre.
+constexpr int kScaleSteps[] = {100, 125, 150, 175, 200};
 
 }  // namespace
 
@@ -121,6 +133,38 @@ void DrawUiFontCombo(const char* label, float width) {
   if (changed) startup::SaveUiFontFamily(UiFontFamily());
 }
 
+void DrawUiScaleCombo(const char* label, float width) {
+  // ⚠ INERTE EN DIRECTX 7, et il faut le DIRE plutôt que de laisser un réglage
+  // sans effet visible. Le backend DX9 re-rastérise les glyphes à la taille
+  // demandée ; notre backend DX7 maison n'a pas de chemin de texture dynamique,
+  // l'atlas y serait simplement étiré — du texte flou. Même politique que
+  // ScreenFx, la capture d'écran ou les mini-jeux (cf. dx7_warning.h).
+  const bool dx7 = g_imgui_dx7_active;
+  char preview[16];
+  std::snprintf(preview, sizeof(preview), "%d %%", UiScalePercent());
+
+  bool changed = false;
+  if (dx7) ImGui::BeginDisabled();
+  ImGui::SetNextItemWidth(width);
+  if (RoBeginCombo(label, preview)) {
+    for (const int step : kScaleSteps) {
+      char item[16];
+      std::snprintf(item, sizeof(item), "%d %%", step);
+      if (ImGui::Selectable(item, UiScalePercent() == step) &&
+          UiScalePercent() != step) {
+        SetUiScalePercent(step);
+        changed = true;
+      }
+    }
+    RoEndCombo();
+  }
+  if (dx7) ImGui::EndDisabled();
+
+  // Enregistré ICI, comme la police juste au-dessus : ce réglage vit dans le
+  // fichier de démarrage, qu'aucun appelant du panneau ne sauvegarde.
+  if (changed) startup::SaveUiScalePercent(UiScalePercent());
+}
+
 bool DrawSkinPanel() {
   bool changed = false;
 
@@ -136,6 +180,21 @@ bool DrawSkinPanel() {
       "chemins de fichiers du jeu (réglage de débogage) sortent en carrés.\n"
       "ProggyClean est la police intégrée d'ImGui, minuscule et sans accents "
       "élégants."));
+
+  // ── L'échelle de toute l'interface ─────────────────────────────────────────
+  // Comme la police : réglage d'avant-jeu, qui s'enregistre lui-même.
+  DrawUiScaleCombo(i18n::TrId("Échelle de l'interface", "bourgeon_ui_scale"),
+                   180.f);
+  SameLine();
+  HelpMarker(
+      i18n::Tr("Agrandit TOUTE l'interface Bourgeon — texte, fenêtres, boutons, "
+      "cadres — sans toucher au jeu lui-même. Pour les grands écrans très "
+      "définis (ultrawide, 4K), où une interface calibrée en pixels devient "
+      "minuscule.\n\n"
+      "Les fenêtres déjà ouvertes gardent la taille qu'on leur avait donnée : "
+      "les redimensionner une fois suffit.\n\n"
+      "Sans effet en DirectX 7 (le réglage y est grisé) : ce mode ne sait pas "
+      "redessiner les lettres à une autre taille, il ne ferait que les étirer."));
 
   // (Le skin RO n'est plus optionnel : c'est l'habillage standard des fenêtres
   // ImGui Bourgeon. Seuls ses réglages restent configurables.)

@@ -1834,13 +1834,13 @@ void WeaponRefineWindow::DrawList(float list_h) {
     // décroissant, c'est ce qu'on cherche (quelle arme est la plus montée).
     ImGui::TableSetupColumn("+", ImGuiTableColumnFlags_WidthFixed |
                                      ImGuiTableColumnFlags_PreferSortDescending,
-                            26.0f);
+                            ro::Px(26.0f));
     ImGui::TableSetupColumn(i18n::Tr("Arme"), ImGuiTableColumnFlags_WidthStretch);
     if (show_cards_)
       ImGui::TableSetupColumn(i18n::Tr("Slots"),
                               ImGuiTableColumnFlags_WidthFixed |
                                   ImGuiTableColumnFlags_PreferSortDescending,
-                              38.0f);
+                              ro::Px(38.0f));
     ImGui::TableHeadersRow();
 
     // Le tri VIENT de changer ? On ramène alors la sélection sur la première

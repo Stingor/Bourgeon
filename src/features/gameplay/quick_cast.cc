@@ -510,7 +510,7 @@ void QuickCast::DrawSettings() {
       "PVP/GVG), le mode ciblage classique reste armé — rien n'est perdu."));
 
   if (ground_enabled_ || target_enabled_) {
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (mui::WheelSliderInt(i18n::Tr("Cadence (ms)"), &repeat_ms_, 50, 1000)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SameLine();
@@ -540,7 +540,7 @@ void QuickCast::DrawSettings() {
       "rien : une seule utilisation, comme avant.\n\n"
       "Attention : chaque répétition CONSOMME un objet — dont le dernier."));
   if (item_enabled_) {
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (mui::WheelSliderInt(i18n::Tr("Cadence objet (ms)"), &item_repeat_ms_, 20, 1000))
       save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;

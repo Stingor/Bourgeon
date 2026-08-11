@@ -734,7 +734,7 @@ void CashShopWindow::OnRenderUI() {
         if (s.key == cur_slot_) { cur_label = s.label; found = true; break; }
       if (!found) cur_slot_ = -1;  // slot disparu -> Tous
     }
-    ImGui::SetNextItemWidth(200.0f);
+    ImGui::SetNextItemWidth(ro::Px(200.0f));
     if (ro::RoBeginCombo("##cs_slot", cur_label)) {
       if (ImGui::Selectable(i18n::Tr("Emplacement: tous"), cur_slot_ == -1)) cur_slot_ = -1;
       for (const auto& s : slots)
@@ -749,7 +749,7 @@ void CashShopWindow::OnRenderUI() {
   if (slot_filter_useful) ImGui::SameLine();
   ImGui::TextUnformatted(i18n::Tr("Tri"));
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(90.0f);
+  ImGui::SetNextItemWidth(ro::Px(90.0f));
   const char* kSortLabels[] = {"Nom", "ID", "Coût"};
   if (ro::RoBeginCombo("##cs_sort", kSortLabels[cur_sort_])) {
     for (int s = 0; s < 3; ++s)
@@ -780,16 +780,22 @@ void CashShopWindow::OnRenderUI() {
                     preview_active_ ? ImGuiWindowFlags_NoScrollWithMouse : 0);
   bool preview_now = false;  // un aperçu survolé cette frame ?
   {
-    const float card_h = 100.0f, gap = 4.0f, box = 78.0f;
+    // 🔴 TOUTE la géométrie de la carte passe par l'échelle de l'interface. Le
+    // nom de l'item, le prix et les libellés des boutons sont du TEXTE : ils
+    // grandissent avec le réglage, et une carte restée haute de 100 px les
+    // laissait se chevaucher par-dessus une illustration minuscule.
+    // (`MaxButtonWidth` plus bas est déjà à l'échelle : il mesure du texte et
+    // ajoute des caps d'art que ro:: convertit lui-même.)
+    const float card_h = ro::Px(100.0f), gap = ro::Px(4.0f), box = ro::Px(78.0f);
     // Géométrie INTERNE de la carte. Tout ce qui ne dépend que de sa HAUTEUR est
     // calculé ici, car sa largeur s'en déduit (cf. card_w juste en dessous).
-    const float pad_x = 5.0f, pad_y = 3.0f;   // = WindowPadding de la carte
-    const float gap2 = 8.0f;                  // image <-> colonne prix + boutons
+    const float pad_x = ro::Px(5.0f), pad_y = ro::Px(3.0f);  // = WindowPadding
+    const float gap2 = ro::Px(8.0f);          // image <-> colonne prix + boutons
     const float header_h = card_h - box;      // marge bas reduite -> image + grande
     const float cont_h = card_h - 2.0f * pad_y;
     const float low_top = header_h - pad_y;   // Y contenu = bas de la bande
     const float LH = cont_h - low_top;        // hauteur de la zone basse
-    const float img = LH - 10.0f;             // image un peu plus petite -> marges
+    const float img = LH - ro::Px(10.0f);     // image un peu plus petite -> marges
     // Largeur calée sur les LIBELLÉS TRADUITS, pas sur le français : les 89 px que
     // laissait la carte d'origine tiennent « Achat 1-Click », pas « 1-Click buy » ni
     // « Compra en 1 clic » — ils débordaient de leur bouton. On élargit la carte
@@ -797,9 +803,9 @@ void CashShopWindow::OnRenderUI() {
     // les libellés pleine taille quand la place existe) : la grille recalcule
     // simplement son nombre de colonnes, et le snap de fenêtre suit (g_snap.cardw).
     const float card_w =
-        std::max(172.0f, 2.0f * pad_x + img + gap2 +
-                             ro::MaxButtonWidth({i18n::Tr("Panier"),
-                                                 i18n::Tr("Achat 1-Click")}));
+        std::max(ro::Px(172.0f), 2.0f * pad_x + img + gap2 +
+                                     ro::MaxButtonWidth({i18n::Tr("Panier"),
+                                                         i18n::Tr("Achat 1-Click")}));
     const float cont_w = card_w - 2.0f * pad_x;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
     const float grid_inner_w = ImGui::GetContentRegionAvail().x;
@@ -864,7 +870,7 @@ void CashShopWindow::OnRenderUI() {
       ImDrawList* dl = ImGui::GetWindowDrawList();
       const ImVec2 wp = ImGui::GetWindowPos();
       dl->AddRectFilled(wp, ImVec2(wp.x + card_w, wp.y + header_h),
-                        card_head, 6.0f,
+                        card_head, ro::Px(6.0f),
                         ImDrawFlags_RoundCornersTop);  // bandeau (couleur skin), coins hauts arrondis
       // Nom sur UNE SEULE ligne : au lieu de wrapper, on REDUIT la police pour tenir
       // dans la largeur de la carte (draw-list a taille custom). Centre verticalement
@@ -873,11 +879,11 @@ void CashShopWindow::OnRenderUI() {
         const char* nm = ShortName(ci.id);
         ImFont* font = ImGui::GetFont();
         const float base = ImGui::GetFontSize();
-        const float availw = card_w - 8.0f;
+        const float availw = card_w - ro::Px(8.0f);
         const float tw = ImGui::CalcTextSize(nm).x;  // largeur a la taille de base
         float fsz = (tw > availw && tw > 0.0f) ? base * (availw / tw) : base;
         if (fsz < base * 0.55f) fsz = base * 0.55f;
-        const ImVec2 tp(wp.x + 4.0f, wp.y + (header_h - fsz) * 0.5f);
+        const ImVec2 tp(wp.x + ro::Px(4.0f), wp.y + (header_h - fsz) * 0.5f);
         dl->AddText(font, fsz, tp, card_txt, nm);
       }
       // 2) Rangée du bas ancrée : image à GAUCHE, prix + Buy à DROITE.
@@ -1014,7 +1020,7 @@ void CashShopWindow::OnRenderUI() {
     const float step = ImGui::GetFrameHeight();  // bouton carre = hauteur de ligne
     if (ro::RoButton("-", step, step) && e.amount > 1) --e.amount;
     ImGui::SameLine(0.0f, 2.0f);
-    ImGui::SetNextItemWidth(42.0f);
+    ImGui::SetNextItemWidth(ro::Px(42.0f));
     if (ImGui::InputInt("##qty", &e.amount, 0, 0)) {
       if (e.amount < 1) e.amount = 1;
       if (e.amount > 9999) e.amount = 9999;

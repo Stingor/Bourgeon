@@ -925,7 +925,7 @@ void TradeWindow::OnRenderUI() {
   ImGui::BeginDisabled(my_locked_);
   ImGui::TextColored(kBlack, i18n::Tr("Zeny à offrir :"));
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(120.0f);
+  ImGui::SetNextItemWidth(ro::Px(120.0f));
   ImGui::InputInt("##trade_zeny", &zeny_input_, 0, 0);
   if (zeny_input_ < 0) zeny_input_ = 0;
   // Case « Screenshot Trade » du natif — libellé lu dans la table de messages du

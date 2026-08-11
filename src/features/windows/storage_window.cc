@@ -308,9 +308,13 @@ const BarTex& StorageTabArt(BarTex (&art)[2], bool selected) {
 // Largeur du strip d'onglets de storage = largeur NATIVE de l'art. Sert aussi à
 // la rangée de CATÉGORIES, qui s'indente d'autant pour démarrer à l'abscisse de
 // la table (le strip la précède). Appeler EnsureTabTextures avant.
+// 🔴 « NATIVE » veut dire « à la taille de l'art », PAS « en pixels d'écran » :
+// la valeur passe par l'échelle de l'interface comme tout le reste du chrome.
+// Sans ça, agrandir l'interface laissait des onglets de 23 px accolés à une
+// table dont le texte avait doublé — le défaut le plus visible du storage.
 float StorageStripWidth() {
   const BarTex& art = g_stg_tab[0].tex ? g_stg_tab[0] : g_stg_tab[1];
-  return art.tex && art.w > 0 ? static_cast<float>(art.w) : 23.0f;
+  return ro::Px(art.tex && art.w > 0 ? static_cast<float>(art.w) : 23.0f);
 }
 
 // Hauteur du strip horizontal = hauteur NATIVE des images (repli 22 px). Même
@@ -320,7 +324,7 @@ float TabStripHeight() {
   for (int c = 0; c < kNumStgCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
-  return h > 0.0f ? h : 22.0f;
+  return ro::Px(h > 0.0f ? h : 22.0f);  // à l'échelle, cf. StorageStripWidth
 }
 
 // Teinte des AddImage d'onglets = luminosité du skin RO (l'opacité vient déjà de
@@ -335,7 +339,7 @@ float TabStripWidth() {
   for (int c = 0; c < kNumStgCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tab[c][s].w > w) w = static_cast<float>(g_tab[c][s].w);
-  return w > 0.0f ? w : 22.0f;
+  return ro::Px(w > 0.0f ? w : 22.0f);  // à l'échelle, cf. StorageStripWidth
 }
 
 // Largeur du strip en mode TEXTE VERTICAL : le libellé est tourné à 90°, donc sa
@@ -1285,7 +1289,10 @@ void StorageWindow::OnRenderUI() {
 
   // Le footer RO est épinglé en bas : la table (ou, en disposition VERTICALE, les
   // deux colonnes liste d'onglets + corps) doit lui laisser sa place.
-  const float kFooterH = 21.0f;
+  // Hauteur du bandeau btnbar du bas, à l'échelle : il porte l'art de la barre,
+  // le compteur et le bouton « Quitter », tous trois mis à l'échelle. La table
+  // au-dessus réserve cette hauteur, donc les deux restent d'accord.
+  const float kFooterH = ro::Px(21.0f);
   const float body_h = -(kFooterH + ImGui::GetStyle().ItemSpacing.y);
 
   // Rect (écran) de l'onglet ACTIF : sert au « pont » qui mange le bord entre le
@@ -1357,10 +1364,11 @@ void StorageWindow::OnRenderUI() {
           // Hauteur du bouton = longueur du libellé -> le nom entier tient dans un
           // strip étroit, sans abréviation.
           const float ih = ImGui::CalcTextSize(i18n::Tr(kStgCats[c].label)).x +
-                           ImGui::GetStyle().FramePadding.y * 2.0f + 6.0f;
+                           ImGui::GetStyle().FramePadding.y * 2.0f + ro::Px(6.0f);
+          const float tab_inset = ro::Px(4.0f);
           const ImVec2 p = ImGui::GetCursorScreenPos();
-          if (ImGui::InvisibleButton("tab", ImVec2(tabW-4.0f, ih))) select_tab(c);
-          const ImVec2 pe(p.x + tabW-4.0f, p.y + ih);
+          if (ImGui::InvisibleButton("tab", ImVec2(tabW - tab_inset, ih))) select_tab(c);
+          const ImVec2 pe(p.x + tabW - tab_inset, p.y + ih);
           const bool hov = ImGui::IsItemHovered();
           // Couleurs prises au THÈME (ImGuiCol_Tab*) : les onglets suivent le skin
           // comme ceux du TabBar horizontal, au lieu d'un gris/blanc en dur.
@@ -1381,7 +1389,9 @@ void StorageWindow::OnRenderUI() {
               (std::min)(pe.x, tdl->GetClipRectMax().x),
               (std::min)(pe.y, tdl->GetClipRectMax().y));
           if (cmax.x > cmin.x && cmax.y > cmin.y)
-            AddTextVertical(tdl, ImVec2((p.x + pe.x-2.0f) * 0.5f, (p.y + pe.y) * 0.5f),
+            AddTextVertical(tdl,
+                            ImVec2((p.x + pe.x - ro::Px(2.0f)) * 0.5f,
+                                   (p.y + pe.y) * 0.5f),
                             ImGui::GetColorU32(ImGuiCol_Text), i18n::Tr(kStgCats[c].label),
                             cmin, cmax);
         }
@@ -1566,12 +1576,12 @@ void StorageWindow::OnRenderUI() {
     // entrepôt on est en train de renommer une fois le nom remplacé.
     ImGui::TextDisabled(i18n::Tr("%s (id %u)"), tab.name, static_cast<unsigned>(tab.id));
     ImGui::Separator();
-    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SetNextItemWidth(ro::Px(180.0f));
     // Le hint montre le nom serveur : laisser vide, c'est le garder.
     if (ImGui::InputTextWithHint("Nom", tab.name, custom.name, sizeof(custom.name)))
       save_settings();
     int icon = static_cast<int>(custom.icon_id);
-    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SetNextItemWidth(ro::Px(180.0f));
     if (ImGui::InputInt(i18n::Tr("Icône (id d'item)"), &icon)) {
       custom.icon_id = icon > 0 ? static_cast<uint32_t>(icon) : 0;
       save_settings();
@@ -1623,11 +1633,13 @@ void StorageWindow::OnRenderUI() {
       ImGui::PushID(static_cast<int>(tab.id));
       const BarTex& art = StorageTabArt(g_stg_tabh, sel);
       const bool has_art = art.tex && art.w > 0 && art.h > 0;
-      // Gabarit = taille NATIVE de l'art, jamais étirée (repli sur ses mesures
-      // si les .bmp manquent, pour que la mise en page ne bouge pas).
-      const ImVec2 sz = has_art ? ImVec2(static_cast<float>(art.w),
-                                         static_cast<float>(art.h))
-                                : ImVec2(27.0f, 25.0f);
+      // Gabarit = taille de l'art (repli sur ses mesures si les .bmp manquent,
+      // pour que la mise en page ne bouge pas), MISE À L'ÉCHELLE de l'interface.
+      // « Jamais étirée » vaut à l'intérieur d'une échelle donnée : l'art n'est
+      // pas déformé, il suit le même facteur que tout le reste.
+      const ImVec2 sz = has_art ? ImVec2(ro::Px(static_cast<float>(art.w)),
+                                         ro::Px(static_cast<float>(art.h)))
+                                : ImVec2(ro::Px(27.0f), ro::Px(25.0f));
       const ImVec2 cur = ImGui::GetCursorScreenPos();
       // Icône EN COULEUR sur l'onglet actif — et au survol d'un inactif, qui
       // annonce ainsi ce qu'on va activer. Sinon niveaux de gris : c'est le
@@ -1653,17 +1665,21 @@ void StorageWindow::OnRenderUI() {
       // Intérieur COMMUN aux deux états : l'inactif se ferme 2 px avant le bas,
       // on centre donc sur la plus petite des deux boîtes — le contenu ne saute
       // pas d'un pixel quand l'onglet devient actif.
-      const ImVec2 in_min(p.x + 1.0f, p.y + 1.0f);
-      const ImVec2 in_max(pe.x - 1.0f, pe.y - 1.0f - kStgArtClosedInset);
+      const ImVec2 in_min(p.x + ro::Px(1.0f), p.y + ro::Px(1.0f));
+      const ImVec2 in_max(pe.x - ro::Px(1.0f),
+                          pe.y - ro::Px(1.0f + kStgArtClosedInset));
       dl->PushClipRect(in_min, in_max, true);
       if (use_icon) {
-        // Taille NATIVE, centrée : l'icône (24) déborde d'un pixel ou deux du
-        // cadre (23/25 utiles), et c'est sa marge transparente qui est rognée.
-        // La redimensionner la rendrait floue pour gagner ces deux pixels.
+        // Centrée, à la taille de l'art × l'échelle : l'icône (24) déborde d'un
+        // pixel ou deux du cadre (23/25 utiles), et c'est sa marge transparente
+        // qui est rognée. Elle suit l'échelle comme son cadre — laissée à 24 px
+        // dans un onglet deux fois plus grand, elle flotterait au milieu.
+        const float iw = ro::Px(static_cast<float>(ic.w));
+        const float ih = ro::Px(static_cast<float>(ic.h));
         const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
-        const ImVec2 ip(std::floor(c.x - ic.w * 0.5f), std::floor(c.y - ic.h * 0.5f));
+        const ImVec2 ip(std::floor(c.x - iw * 0.5f), std::floor(c.y - ih * 0.5f));
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
-                     ImVec2(ip.x + ic.w, ip.y + ic.h), ImVec2(0, 0), ImVec2(1, 1),
+                     ImVec2(ip.x + iw, ip.y + ih), ImVec2(0, 0), ImVec2(1, 1),
                      ro::SkinImageTint());
       } else {
         // Libellé : couleur de texte pour l'actif (et le survolé), gris sinon —
@@ -1701,7 +1717,8 @@ void StorageWindow::OnRenderUI() {
     // Largeur = taille NATIVE de l'art, jamais étirée (repli sur ses mesures si
     // les .bmp manquent, pour que la mise en page ne bouge pas).
     const BarTex& art_ref = g_stg_tab[0].tex ? g_stg_tab[0] : g_stg_tab[1];
-    const float w = art_ref.tex && art_ref.w > 0 ? static_cast<float>(art_ref.w) : 23.0f;
+    const float w =
+        ro::Px(art_ref.tex && art_ref.w > 0 ? static_cast<float>(art_ref.w) : 23.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     // Même parti pris que le strip de catégories : pas de scrollbar dans une
     // colonne de ~20 px, mais la molette scrolle si les onglets débordent.
@@ -1720,9 +1737,9 @@ void StorageWindow::OnRenderUI() {
       ImGui::PushID(static_cast<int>(tab.id));
       const BarTex& art = StorageTabArt(g_stg_tab, sel);
       const bool has_art = art.tex && art.w > 0 && art.h > 0;
-      const ImVec2 sz = has_art ? ImVec2(static_cast<float>(art.w),
-                                         static_cast<float>(art.h))
-                                : ImVec2(w, 27.0f);
+      const ImVec2 sz = has_art ? ImVec2(ro::Px(static_cast<float>(art.w)),
+                                         ro::Px(static_cast<float>(art.h)))
+                                : ImVec2(w, ro::Px(27.0f));  // `w` est déjà à l'échelle
       const ImVec2 cur = ImGui::GetCursorScreenPos();
       // Couleur sur l'actif et sur le survolé, gris sinon — même règle que la
       // rangée horizontale. Le survol est testé avant l'émission du bouton, la
@@ -1745,14 +1762,17 @@ void StorageWindow::OnRenderUI() {
         dl->AddRect(p, pe, kStgTabBorder, 2.0f, ImDrawFlags_RoundCornersLeft, 1.0f);
       // Intérieur COMMUN aux deux états : ici c'est le bord DROIT que l'inactif
       // ferme 2 px avant (l'actif s'ouvre par là, vers la table).
-      const ImVec2 in_min(p.x + 1.0f, p.y + 1.0f);
-      const ImVec2 in_max(pe.x - 1.0f - kStgArtClosedInset, pe.y - 1.0f);
+      const ImVec2 in_min(p.x + ro::Px(1.0f), p.y + ro::Px(1.0f));
+      const ImVec2 in_max(pe.x - ro::Px(1.0f + kStgArtClosedInset),
+                          pe.y - ro::Px(1.0f));
       dl->PushClipRect(in_min, in_max, true);
       if (use_icon) {
+        const float iw = ro::Px(static_cast<float>(ic.w));
+        const float ih = ro::Px(static_cast<float>(ic.h));
         const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
-        const ImVec2 ip(std::floor(c.x - ic.w * 0.5f), std::floor(c.y - ic.h * 0.5f));
+        const ImVec2 ip(std::floor(c.x - iw * 0.5f), std::floor(c.y - ih * 0.5f));
         dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
-                     ImVec2(ip.x + ic.w, ip.y + ic.h), ImVec2(0, 0), ImVec2(1, 1),
+                     ImVec2(ip.x + iw, ip.y + ih), ImVec2(0, 0), ImVec2(1, 1),
                      ro::SkinImageTint());
       } else {
         // Libellé À PLAT (plus tourné à 90°) : le cadre fait la taille d'une
@@ -1991,23 +2011,23 @@ void StorageWindow::OnRenderUI() {
     ImGui::TableSetupColumn(i18n::Tr("Index"), ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending |
                                        col_opt(show_index_col_),
-                            54.0f);
+                            ro::Px(54.0f));
     ImGui::TableSetupColumn(i18n::Tr("Item"), ImGuiTableColumnFlags_WidthStretch |
                                         ImGuiTableColumnFlags_DefaultSort);
     ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed |
                                       col_opt(show_id_col_),
-                            60.0f);
+                            ro::Px(60.0f));
     ImGui::TableSetupColumn(i18n::Tr("Slots"), ImGuiTableColumnFlags_WidthFixed |
                                          ImGuiTableColumnFlags_PreferSortDescending |
                                          col_opt(show_slots_col_),
-                            24.0f);
+                            ro::Px(24.0f));
     ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending,
-                            36.0f);
+                            ro::Px(36.0f));
     ImGui::TableSetupColumn(i18n::Tr("Prix revente"), ImGuiTableColumnFlags_WidthFixed |
                                         ImGuiTableColumnFlags_PreferSortDescending |
                                         col_opt(show_value_col_),
-                            72.0f);
+                            ro::Px(72.0f));
     ImGui::TableHeadersRow();
 
     if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) { // tri demandé
@@ -2041,7 +2061,9 @@ void StorageWindow::OnRenderUI() {
       }
     }
 
-    constexpr float kIcon = 22.0f;  // hauteur d'affichage de l'icône
+    // Hauteur d'affichage de l'icône, à l'échelle de l'interface : elle est
+    // calée sur la rangée, dont la hauteur suit la police.
+    const float kIcon = ro::Px(22.0f);
     for (int idx : view) {
       ImGui::TableNextRow();
       // 🔴 Chaque cellule vise sa colonne par son INDEX, jamais « la suivante » :
@@ -2071,8 +2093,9 @@ void StorageWindow::OnRenderUI() {
       }
       // Marqueur favori : petite étoile dorée en coin haut-gauche de l'icône.
       if (IsFavorite(items_[idx].id))
-        DrawFavStar(ImGui::GetWindowDrawList(), icon_pos.x + 5.0f, icon_pos.y + 5.0f,
-                    5.0f, IM_COL32(255, 205, 40, 255), IM_COL32(60, 40, 0, 220));
+        DrawFavStar(ImGui::GetWindowDrawList(), icon_pos.x + ro::Px(5.0f),
+                    icon_pos.y + ro::Px(5.0f), ro::Px(5.0f),
+                    IM_COL32(255, 205, 40, 255), IM_COL32(60, 40, 0, 220));
       ImGui::SameLine();
       ImGui::PushID(idx);
       // Équipement cassé : l'ombre rouge du natif sous le nom. Soumise AVANT le
@@ -2288,19 +2311,27 @@ void StorageWindow::OnRenderUI() {
     const float fy1 = wp.y + ws.y - st.WindowPadding.y;
     const float fy0 = fy1 - kFooterH;
     ro::DrawBar(fx0, fy0, fx1, fy1);
-    const float iw = ro::DrawIconNum(fx0 + 6.0f, fy0 + (kFooterH - 14.0f) * 0.5f);
+    // `DrawIconNum` rend sa largeur DÉJÀ à l'échelle : elle sert telle quelle à
+    // avancer jusqu'au compteur.
+    const float iw = ro::DrawIconNum(fx0 + ro::Px(6.0f),
+                                     fy0 + (kFooterH - ro::Px(14.0f)) * 0.5f);
     const ImVec2 tsz = ImGui::CalcTextSize(cnt);
     ImGui::GetWindowDrawList()->AddText(
-        ImVec2(fx0 + 6.0f + iw + 4.0f, fy0 + (kFooterH - tsz.y) * 0.5f),
+        ImVec2(fx0 + ro::Px(6.0f) + iw + ro::Px(4.0f),
+               fy0 + (kFooterH - tsz.y) * 0.5f),
         ImGui::GetColorU32(ImGuiCol_Text), cnt);
     // Bouton Quitter (RO) aligné à DROITE du footer -> ferme le storage (envoie
     // CZ_CloseKafra). Marge à droite pour ne pas recouvrir le grip de resize du coin.
-    const float bw = 48.0f;
-    ImGui::SetCursorScreenPos(ImVec2(fx1 - bw - 18.0f, fy0));
+    // Largeur mesurée sur le libellé TRADUIT plutôt que fixée à 48 px : à grande
+    // échelle « Quitter » ne tenait plus dans un bouton resté étroit, et le texte
+    // s'y rétrécissait au lieu de grandir avec le reste.
+    const float bw = std::max(ro::Px(48.0f), ro::ButtonWidth(i18n::Tr("Quitter")));
+    ImGui::SetCursorScreenPos(ImVec2(fx1 - bw - ro::Px(18.0f), fy0));
     HelpMarker(desc.c_str());
     SameLine();
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.0f);
-    if (ro::RoButton(i18n::Tr("Quitter"), bw - 4.0f, kFooterH - 4.0f)) SendCloseStorage();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ro::Px(2.0f));
+    if (ro::RoButton(i18n::Tr("Quitter"), bw - ro::Px(4.0f), kFooterH - ro::Px(4.0f)))
+      SendCloseStorage();
   }
 
   // DRAG d'un item storage : suit le curseur ; au relâché, la CIBLE décide du sens :
@@ -2350,7 +2381,7 @@ void StorageWindow::OnRenderUI() {
   // premier plan (et ImGui les recadre tout seul près des bords de l'écran).
   // Le cadre sysbox du client est peint à la main derrière le contenu.
   if (show_desc_tooltip_ && hover_desc_id_ != 0) {
-    constexpr float kW = 330.0f;  // largeur max (wrap du texte)
+    const float kW = ro::Px(330.0f);  // largeur max (wrap du texte), à l'échelle
     const float edge = ro::DescPanelEdge();
     // Fond BLANC ARRONDI peint par ImGui lui-même (comme la vraie fenêtre de desc),
     // et bordure ImGui SUPPRIMÉE : c'était elle, le liseré sombre à angles droits —

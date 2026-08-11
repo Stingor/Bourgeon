@@ -25,6 +25,11 @@
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
+// Le client rend-il en DirectX 7 ? (posé par le proxy DirectDraw ; cf.
+// ddraw/proxy_idirectdraw.cc.) L'échelle de l'interface y est inerte : ce
+// chemin-là n'a pas de rastérisation dynamique des glyphes.
+extern bool g_imgui_dx7_active;
+
 namespace ro {
 namespace {
 
@@ -446,6 +451,52 @@ ImFont* g_chat_fonts[kChatFamilyCount][3] = {};  // [famille][0=normal,1=gras,2=
 // chargement de l'atlas, comme l'était le booléen qu'il remplace.
 int g_ui_family = 0;
 
+// ── L'échelle de toute l'interface ──────────────────────────────────────────
+// Deux valeurs, et elles ne disent PAS la même chose :
+//   • `g_ui_scale_pct` = le CHOIX du joueur. C'est lui qu'on persiste et qu'on
+//     affiche, et il survit intact à tout ce qui suit.
+//   • `g_ui_scale` = le facteur EFFECTIVEMENT appliqué, celui que multiplie
+//     `Px`. Il vaut 1.0 quoi qu'ait choisi le joueur quand le client rend en
+//     DirectX 7, où l'échelle est inerte.
+// Le tenir à part du pourcentage évite aussi une division dans `Px`, appelé des
+// centaines de fois par frame.
+//
+// 🔴 Le facteur ne se recalcule QUE dans ApplyUiScale. Toute la cohérence tient
+// à ça : l'art (via `Px`) et le style ImGui changent d'échelle au même instant.
+// Le poser dès `SetUiScalePercent` donnerait une frame où le chrome a déjà
+// grandi dans un style resté petit.
+//
+// Mémorisés avant même que le contexte ImGui existe (le réglage est lu au
+// chargement de la DLL), comme la famille de police ci-dessus.
+int   g_ui_scale_pct = 100;
+float g_ui_scale     = 1.0f;
+
+// L'état DirectX 7 constaté au dernier ApplyUiScale. Le mode de rendu n'est
+// connu qu'une fois le device créé, soit APRÈS le premier appel : il faut donc
+// le surveiller. Sans ça, un joueur qui a réglé 150 % en DX9 puis rebasculé en
+// DX7 garderait une interface étirée AVEC le réglage grisé — plus aucun moyen
+// de revenir en arrière.
+bool g_dx7_applied = false;
+
+// Le style à 100 %, photographié au tout premier ApplyUiScale. Chaque
+// application repart de LUI : `ScaleAllSizes` tronque à l'entier, donc
+// enchaîner ×1.5 puis ×(1/1.5) sur le style courant ne rendrait pas les valeurs
+// de départ — un aller-retour 100 → 150 → 100 laisserait l'interface de travers.
+ImGuiStyle g_style_ref;
+bool       g_style_ref_taken = false;
+
+// 🔴 Un changement d'échelle ne s'applique JAMAIS sur-le-champ : il est marqué
+// ici, et posé entre deux frames par ApplyPendingUiScale.
+//
+// Le réglage se change depuis un panneau, donc au beau milieu d'une frame — et
+// à cet instant, BeginRoWindow a NEUF `PushStyleVar` en vol. Réécrire le style
+// sous eux ne casserait rien tout de suite, mais leurs `PopStyleVar` de fin de
+// fenêtre restaureraient les valeurs mémorisées AVANT le push, c'est-à-dire
+// celles de l'ancienne échelle : neuf champs du style seraient revenus en
+// arrière pendant que tous les autres suivaient la nouvelle. Un style à moitié
+// converti, et qui le reste jusqu'au changement suivant.
+bool g_scale_dirty = false;
+
 // La police d'une famille pour l'INTERFACE, ou nullptr s'il faut retomber sur
 // Malgun (famille absente du système, ou index hors table).
 ImFont* UiFamilyFont(int style) {
@@ -599,8 +650,22 @@ ImFont* FontItalic() {
 }
 
 int         ChatFamilyCount() { return kChatFamilyCount; }
+
+// 🔴 UN NOM DE POLICE NE SE TRADUIT PAS. « Verdana », « Segoe UI », « Consolas »
+// sont des noms propres : les passer par `Tr` ne changeait rien à l'écran, mais
+// les inscrivait au relevé des textes SANS TRADUCTION dès que le joueur ouvrait
+// le menu — un gabarit d'export qui se remplit de lignes qu'on ne peut que
+// recopier à l'identique, et où les vrais manques se noient.
+//
+// Le critère est porté par la DONNÉE, pas par un index : une entrée sans fichier
+// de police (`regular == nullptr`) ne désigne aucune police réelle — c'est
+// l'entrée logique « Système (défaut) », la seule dont le libellé soit une
+// phrase, donc la seule à traduire. Une famille ajoutée plus tard sera
+// automatiquement du bon côté.
 const char* ChatFamilyLabel(int i) {
-  return (i >= 0 && i < kChatFamilyCount) ? i18n::Tr(kChatFamilies[i].label) : "";
+  if (i < 0 || i >= kChatFamilyCount) return "";
+  const ChatFamily& fam = kChatFamilies[i];
+  return fam.regular ? fam.label : i18n::Tr(fam.label);
 }
 
 // La police d'une famille, pour un style donné. Repli en cascade — famille
@@ -887,6 +952,82 @@ void SetFontEnabled(bool enabled) {
 
 bool IsFontEnabled() { return g_ui_family >= 0; }
 
+// ── L'échelle de l'interface ─────────────────────────────────────────────────
+void ApplyUiScale() {
+  // Appelée avant CreateContext (au chargement de la DLL) : rien à appliquer
+  // pour l'instant, la valeur est mémorisée et ragnarok_client rappellera juste
+  // après avoir créé le contexte.
+  if (!ImGui::GetCurrentContext()) return;
+  g_scale_dirty = false;
+  // Le facteur effectif, calculé ICI et nulle part ailleurs — c'est ce qui fait
+  // basculer l'art et le style au même instant. En DX7 il retombe à 1.0 : le
+  // backend maison n'y re-rastérise pas les glyphes, agrandir ne donnerait
+  // qu'un atlas étiré (cf. features/systems/dx7_warning.h).
+  g_dx7_applied = g_imgui_dx7_active;
+  g_ui_scale = g_dx7_applied ? 1.0f
+                             : static_cast<float>(g_ui_scale_pct) / 100.0f;
+  ImGuiStyle& style = ImGui::GetStyle();
+  if (!g_style_ref_taken) {
+    g_style_ref = style;
+    g_style_ref_taken = true;
+  }
+
+  // On remet les LONGUEURS de la référence — et rien d'autre. Trois champs
+  // repartent donc de leur valeur COURANTE, parce qu'ils n'appartiennent pas à
+  // l'échelle :
+  //   • `Colors` : la photo date de l'initialisation, un thème appliqué depuis
+  //     serait défait à chaque changement d'échelle.
+  //   • `FontSizeBase` (et sa demande en attente) : c'est ImGui qui le tient —
+  //     `UpdateFontsNewFrame` le renseigne à la première frame et
+  //     `SetCurrentFont` le réécrit en cours de route. La photo, prise avant la
+  //     première frame, ne contient qu'un 0 « pas encore décidé », et
+  //     `ScaleAllSizes` ne le touche pas non plus. Le lui rendre serait lui
+  //     reprendre une valeur qu'il vient de calculer.
+  ImVec4 colors[ImGuiCol_COUNT];
+  memcpy(colors, style.Colors, sizeof(colors));
+  const float font_size_base = style.FontSizeBase;
+  const float font_size_next = style._NextFrameFontSizeBase;
+  style = g_style_ref;
+  memcpy(style.Colors, colors, sizeof(colors));
+  style.FontSizeBase = font_size_base;
+  style._NextFrameFontSizeBase = font_size_next;
+
+  // 🔴 RIEN à 100 %. `ScaleAllSizes(1.0f)` n'est PAS un no-op — il passe chaque
+  // champ à `ImTrunc` et cumule `_MainScale` — et le style doit rester
+  // exactement celui que tout le reste du code a toujours connu.
+  if (g_ui_scale != 1.0f) style.ScaleAllSizes(g_ui_scale);
+  // La police, elle, se multiplie proprement : en DX9 le backend re-rastérise
+  // les glyphes à la taille demandée, donc du texte NET et pas un atlas étiré.
+  style.FontScaleMain = g_ui_scale;
+}
+
+void SetUiScalePercent(int percent) {
+  // Bornes. En dessous de 100 il n'y a rien à gagner : l'art du skin est déjà à
+  // sa taille minimale et le réduire mangerait des lignes de pixels entières
+  // (échantillonnage POINT). Au-delà de 200, une fenêtre ne tient plus sur un
+  // écran ordinaire. Une valeur venue d'un yaml trafiqué se ramène dedans.
+  if (percent < 100) percent = 100;
+  if (percent > 200) percent = 200;
+  if (percent == g_ui_scale_pct) return;
+  g_ui_scale_pct = percent;
+  // Marqué, pas appliqué : cf. g_scale_dirty. Le facteur lui-même ne bouge
+  // qu'à l'application, pour que l'art et le style basculent ensemble.
+  g_scale_dirty = true;
+}
+
+void ApplyPendingUiScale() {
+  // Le mode de rendu peut avoir été découvert depuis la dernière application
+  // (le device DirectDraw se crée après notre initialisation) : on le relit à
+  // chaque frame, c'est un test de booléen. Cf. g_dx7_applied.
+  if (g_dx7_applied != g_imgui_dx7_active) g_scale_dirty = true;
+  if (!g_scale_dirty) return;
+  ApplyUiScale();
+}
+
+int   UiScalePercent() { return g_ui_scale_pct; }
+float UiScale()        { return g_ui_scale; }
+float Px(float pixels) { return pixels * g_ui_scale; }
+
 void TextCp949(const char* cp949) {
   ImGui::TextUnformatted(Cp949ToUtf8(cp949));
 }
@@ -1076,7 +1217,7 @@ bool BlitPart(ImDrawList* dl, const SkinTex& t, ImVec2 p0, ImVec2 p1,
 bool SysButton(ImDrawList* dl, const SkinTex& off, const SkinTex& on, ImVec2 tl) {
   tl.x = ImFloor(tl.x);
   tl.y = ImFloor(tl.y);
-  const ImVec2 br(tl.x + (float)off.w, tl.y + (float)off.h);
+  const ImVec2 br(tl.x + Px((float)off.w), tl.y + Px((float)off.h));
   const bool hovered = ImGui::IsMouseHoveringRect(tl, br, false);
   const SkinTex& t = (hovered && on.tex) ? on : off;
   BlitStretch(dl, t, tl, br);
@@ -1102,7 +1243,7 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   // à 13px À GAUCHE du slot : la marge droite est occupée par le cadre -> scrollbar
   // DANS le cadre, pas par-dessus le bord.
   float x1 = bb.Max.x;
-  const float kRoScrollW = 13.0f;
+  const float kRoScrollW = Px(13.0f);
   if (x1 - x0 > kRoScrollW) x1 = x0 + kRoScrollW;
   const float y0 = bb.Min.y;
   float y1 = bb.Max.y;
@@ -1112,8 +1253,8 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   const bool has_grip = !(w->Flags & ImGuiWindowFlags_ChildWindow) &&
                         !(w->Flags & ImGuiWindowFlags_NoResize) &&
                         !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize);
-  if (has_grip) y1 -= (float)skin::kBtnResize.h;
-  const float arrow = (float)skin::kScroll0Up.h;  // 13
+  if (has_grip) y1 -= Px((float)skin::kBtnResize.h);
+  const float arrow = Px((float)skin::kScroll0Up.h);  // 13
   const float track_top = y0 + arrow, track_bot = y1 - arrow;
   const float track_h = track_bot - track_top;
   const float smax = w->ScrollMax.y;
@@ -1183,12 +1324,12 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   dl->AddCallback(ImCb_PointFilter, nullptr);
   // Piste : chevauche les flèches de 2px (elles sont peintes par-dessus) → jointure
   // sans trou (seamless).
-  BlitStretch(dl, g_s0mid, ImVec2(x0, track_top - 2.0f),
-              ImVec2(x1, track_bot + 2.0f));
+  BlitStretch(dl, g_s0mid, ImVec2(x0, track_top - Px(2.0f)),
+              ImVec2(x1, track_bot + Px(2.0f)));
   BlitStretch(dl, g_s0up, ImVec2(x0, y0), ImVec2(x1, y0 + arrow));
   BlitStretch(dl, g_s0down, ImVec2(x0, y1 - arrow), ImVec2(x1, y1));
   if (scrollable && track_h > grab_h) {
-    const float cap = (float)skin::kScroll0BarUp.h;  // 4
+    const float cap = Px((float)skin::kScroll0BarUp.h);  // 4
     const float gy = ImFloor(grab_y);
     BlitStretch(dl, g_s0bar_up, ImVec2(x0, gy), ImVec2(x1, gy + cap));
     BlitStretch(dl, g_s0bar_down, ImVec2(x0, gy + grab_h - cap),
@@ -1412,20 +1553,27 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     ImGui::PushStyleColor(ImGuiCol_WindowBg, body_col);
     ++g_skin_colors;
   }
+  // ⚠ La bordure reste à 1 px À TOUTE ÉCHELLE, seule exception du chrome. Les
+  // autres longueurs sont des surfaces d'art ; celle-ci est un trait, et ImGui
+  // le dessine anti-aliasé : à 150 %, 1.5 px donnerait un liseré baveux là où
+  // 1 px reste net. Un cadre fin sur une grande fenêtre ne choque pas.
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   // Arrondi bas fixe ~3px (le haut est couvert par l'art titre).
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Px(3.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);  // opacité globale
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);  // inputs arrondis ~3
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Px(3.0f));  // inputs arrondis ~3
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);  // largeur pièces RO
-  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, Px(13.0f));  // largeur pièces RO
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, Px(2.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, Px(6.0f));
 
   // Hauteur de barre de titre ImGui = FontSize + FramePadding.y*2. On règle
   // FramePadding.y pour qu'elle vaille EXACTEMENT la hauteur de l'art (17px),
   // sinon l'art est étiré verticalement (plus haut que le natif, dégradé déformé).
-  float pad_y = ((float)skin::kTitlebarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  // 🔴 L'art passe par `Px`, la police NON : elle suit déjà `FontScaleMain`. Les
+  // deux grandissent donc du même facteur et la barre reste juste — c'est cette
+  // soustraction qui garde le titre centré à n'importe quelle échelle.
+  float pad_y = (Px((float)skin::kTitlebarLeft.h) - ImGui::GetFontSize()) * 0.5f;
   if (pad_y < 0.0f) pad_y = 0.0f;
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
@@ -1462,7 +1610,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     const ImRect tb = w->Collapsed ? w->Rect() : w->TitleBarRect();
     ImDrawList* dl = w->DrawList;
     const float y0 = tb.Min.y, y1 = tb.Max.y;
-    const float capL = (float)g_tl.w, capR = (float)g_tr.w;
+    const float capL = Px((float)g_tl.w), capR = Px((float)g_tr.w);
 
     // Après Begin, la clip rect du draw list est réduite à la zone de contenu
     // (sous le titre) → tout dessin dans la barre de titre serait découpé.
@@ -1485,8 +1633,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     // Bullet sys_base devant le titre : décoratif (comme le natif RO), ou bouton
     // si SetNextWindowTitleBullet a été appelé — art « on » au survol, curseur
     // main, et le clic est remonté à l'appelant via TitleBulletClicked().
-    const float base_sz = (float)g_base.w;  // 11
-    const float base_x = tb.Min.x + 5.0f;
+    const float base_sz = Px((float)g_base.w);  // 11
+    const float base_x = tb.Min.x + Px(5.0f);
     const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
     const ImVec2 base_tl(base_x, base_y);
     const ImVec2 base_br(base_x + base_sz, base_y + base_sz);
@@ -1494,8 +1642,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     if (bullet_btn) {
       // Cible élargie de 2px : 11px est trop petit pour viser confortablement.
       bullet_hovered = ImGui::IsMouseHoveringRect(
-          ImVec2(base_tl.x - 2.0f, base_tl.y - 2.0f),
-          ImVec2(base_br.x + 2.0f, base_br.y + 2.0f), false);
+          ImVec2(base_tl.x - Px(2.0f), base_tl.y - Px(2.0f)),
+          ImVec2(base_br.x + Px(2.0f), base_br.y + Px(2.0f)), false);
       if (bullet_hovered) {
         SetHoverCursor(kRoCursorHand);
         g_bullet_clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
@@ -1504,7 +1652,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     const SkinTex& base_tex =
         (bullet_hovered && g_base_on.tex) ? g_base_on : g_base;
     if (base_tex.tex) BlitStretch(dl, base_tex, base_tl, base_br);
-    const float text_x = base_x + base_sz + 4.0f;
+    const float text_x = base_x + base_sz + Px(4.0f);
 
     // Titre par-dessus (couleur configurable ; coupe le "##id").
     char nbuf[128];
@@ -1517,23 +1665,23 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
         ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
                g_cfg.title_text[3] * g_cfg.alpha));  // suit l'opacité
     const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.5f),
+    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.5f)),
                 title_tx, nbuf);
 
     // Boutons système à droite : close (seulement si la fenêtre est fermable,
     // p_open != null) collé au bord droit ; mini à sa gauche, masqué si NoCollapse.
     const bool show_mini = !(imgui_window_flags & ImGuiWindowFlags_NoCollapse);
-    const float by = y0 + (tb.GetHeight() - (float)g_close.h) * 0.5f;
-    float bx = tb.Max.x - 4.0f;  // curseur depuis le bord droit
+    const float by = y0 + (tb.GetHeight() - Px((float)g_close.h)) * 0.5f;
+    float bx = tb.Max.x - Px(4.0f);  // curseur depuis le bord droit
     bool close_clicked = false;
     if (p_open) {
-      ImVec2 close_tl(bx - (float)g_close.w, by);
+      ImVec2 close_tl(bx - Px((float)g_close.w), by);
       close_clicked = SysButton(dl, g_close, g_close_on, close_tl);
-      bx = close_tl.x - 2.0f;
+      bx = close_tl.x - Px(2.0f);
     }
     bool mini_clicked = false;
     if (show_mini) {
-      ImVec2 mini_tl(bx - (float)g_mini.w, by);
+      ImVec2 mini_tl(bx - Px((float)g_mini.w), by);
       mini_clicked = SysButton(dl, g_mini, g_mini_on, mini_tl);
     }
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
@@ -1552,8 +1700,9 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     if (!w->Collapsed && !(w->Flags & ImGuiWindowFlags_NoResize) &&
         !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize)) {
       EnsureTex("btn_resize.bmp", skin::kBtnResize, g_resize);
-      const float rw = (float)g_resize.w, rh = (float)g_resize.h;
-      const ImVec2 br(w->Pos.x + w->Size.x - 2.0f, w->Pos.y + w->Size.y - 2.0f);
+      const float rw = Px((float)g_resize.w), rh = Px((float)g_resize.h);
+      const ImVec2 br(w->Pos.x + w->Size.x - Px(2.0f),
+                      w->Pos.y + w->Size.y - Px(2.0f));
       const ImVec2 tl(br.x - rw, br.y - rh);
       dl->PushClipRect(tl, br, false);
       dl->AddCallback(ImCb_PointFilter, nullptr);
@@ -1641,7 +1790,15 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 13.0f);  // largeur des pièces RO
+  // 🔴 À l'échelle, OBLIGATOIREMENT : c'est le slot que DrawRoScrollbar remplit,
+  // et il y peint désormais des pièces de `Px(13)`. Un slot resté à 13 px les
+  // laisserait déborder sur le contenu.
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, Px(13.0f));  // pièces RO
+  // ⚠ `padding`, `line_gap` et `rounding` ne passent PAS par Px, et c'est
+  // délibéré : ce sont des réglages du JOUEUR, et la chatbox porte déjà sa propre
+  // échelle (ChatWindow::ui_scale_pct). Surtout, ChatWindow calcule ses hauteurs
+  // de ligne avec ces MÊMES valeurs brutes — les mettre à l'échelle ici et pas
+  // là-bas désaccorderait le dessin des fragments de leur interligne.
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                       ImVec2(skin.padding, skin.padding));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -1697,7 +1854,9 @@ static void ChatEdgeResize(ImGuiWindow* w) {
   if (max_size.x < min_size.x) max_size.x = min_size.x;
   if (max_size.y < min_size.y) max_size.y = min_size.y;
 
-  const float kBand = 8.0f;  // épaisseur de la zone de saisie du bord
+  const float kBand = Px(8.0f);  // épaisseur de la zone de saisie du bord
+  // ⚠ Pas de Px : c'est une tolérance en pixels d'ÉCRAN (« la fenêtre touche-t-elle
+  // le bord ? »), pas une longueur d'interface. L'échelle n'a rien à y voir.
   const float kTol  = 2.0f;  // « collé à l'écran » à deux pixels près
   const ImVec2 pos = w->Pos, size = w->SizeFull;
   const bool live[4] = {
@@ -1902,13 +2061,13 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
     ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, IM_COL32(0, 0, 0, 0));
     ++g_modal_colors;
   }
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);  // cf. BeginRoWindow
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Px(3.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Px(3.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, Px(3.0f));
   // Barre de titre = hauteur EXACTE de l'art (sinon l'art titlebar est étiré).
-  float pad_y = ((float)skin::kTitlebarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  float pad_y = (Px((float)skin::kTitlebarLeft.h) - ImGui::GetFontSize()) * 0.5f;
   if (pad_y < 0.0f) pad_y = 0.0f;
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
@@ -1938,7 +2097,7 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
     const ImRect tb = w->TitleBarRect();
     ImDrawList* dl = w->DrawList;
     const float y0 = tb.Min.y, y1 = tb.Max.y;
-    const float capL = (float)g_tl.w, capR = (float)g_tr.w;
+    const float capL = Px((float)g_tl.w), capR = Px((float)g_tr.w);
     dl->PushClipRect(tb.Min, tb.Max, false);
     if (!g_tl.tex)
       dl->AddRectFilledMultiColor(tb.Min, tb.Max, IM_COL32(126, 158, 224, 255),
@@ -1949,13 +2108,13 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
     BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
     BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
     BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
-    const float base_sz = (float)g_base.w;
-    const float base_x = tb.Min.x + 5.0f;
+    const float base_sz = Px((float)g_base.w);
+    const float base_x = tb.Min.x + Px(5.0f);
     const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
     if (g_base.tex)
       BlitStretch(dl, g_base, ImVec2(base_x, base_y),
                   ImVec2(base_x + base_sz, base_y + base_sz));
-    const float text_x = base_x + base_sz + 4.0f;
+    const float text_x = base_x + base_sz + Px(4.0f);
     char nbuf[128];
     const char* end = ImGui::FindRenderedTextEnd(title);
     size_t n = (size_t)(end - title);
@@ -1966,7 +2125,7 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
         ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
                g_cfg.title_text[3] * g_cfg.alpha));
     const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.5f),
+    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.5f)),
                 title_tx, nbuf);
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
@@ -1999,21 +2158,21 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
   g_skin_colors += 2;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);  // bordure 1px c2c2c2
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Px(4.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Px(3.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 0.0f);
   // Scrollbar 13px + épaisseur du cadre sysbox (14px) réservée : ImGui garde le
   // contenu à l'écart du cadre ET la scrollbar (dessinée à 13px à gauche du slot,
   // cf. DrawRoScrollbar) se retrouve DANS le cadre au lieu de par-dessus le bord.
   ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize,
-                      6.0f + (float)skin::kSysboxLm.w);
-  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 2.0f);
+                      Px(6.0f + (float)skin::kSysboxLm.w));
+  ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, Px(2.0f));
   // Contenu : côtés = épaisseur sysbox +2px, peu en haut/bas.
-  const float e = (float)skin::kSysboxLm.w;  // 14
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + 2.0f, 7.0f));
+  const float e = Px((float)skin::kSysboxLm.w);  // 14
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + Px(2.0f), Px(7.0f)));
   // Barre de titre = hauteur de l'art skill_upbar (20px).
-  float pad_y = ((float)skin::kUpbarLeft.h - ImGui::GetFontSize()) * 0.5f;
+  float pad_y = (Px((float)skin::kUpbarLeft.h) - ImGui::GetFontSize()) * 0.5f;
   if (pad_y < 0.0f) pad_y = 0.0f;
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
@@ -2037,7 +2196,7 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
     const ImRect wr = w->Rect();
     ImDrawList* dl = w->DrawList;
     const float y0 = tb.Min.y, y1 = tb.Max.y;
-    const float ucL = (float)g_up_l.w, ucR = (float)g_up_r.w;
+    const float ucL = Px((float)g_up_l.w), ucR = Px((float)g_up_r.w);
 
     dl->PushClipRect(wr.Min, wr.Max, false);  // couvre toute la fenêtre (titre+cadre)
     dl->AddCallback(ImCb_PointFilter, nullptr);
@@ -2066,12 +2225,12 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
         ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
                g_cfg.title_text[3] * g_cfg.alpha));
     const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    const ImVec2 tpos(tb.Min.x + 8.0f,
-                      y0 + (tb.GetHeight() - ts.y) * 0.5f - 1.0f);
+    const ImVec2 tpos(tb.Min.x + Px(8.0f),
+                      y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.0f));
     // Ombre optionnelle du titre (ex. rouge 0x5050fa pour un item cassé), décalée
     // +1,+1 sous le texte du titre.
     if (title_shadow)
-      dl->AddText(ImVec2(tpos.x + 1.0f, tpos.y + 1.0f), title_shadow, nbuf);
+      dl->AddText(ImVec2(tpos.x + Px(1.0f), tpos.y + Px(1.0f)), title_shadow, nbuf);
     dl->AddText(tpos, ttx, nbuf);
 
     // Bouton close (seulement si fermable), collé au bord droit du titre.
@@ -2079,8 +2238,8 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
     if (p_open) {
       EnsureTex("basic_interface\\sys_close_off.bmp", skin::kSysCloseOff, g_close);
       EnsureTex("basic_interface\\sys_close_on.bmp", skin::kSysCloseOn, g_close_on);
-      const float by = y0 + (tb.GetHeight() - (float)g_close.h) * 0.5f;
-      ImVec2 ctl(tb.Max.x - (float)g_close.w - 5.0f, by);
+      const float by = y0 + (tb.GetHeight() - Px((float)g_close.h)) * 0.5f;
+      ImVec2 ctl(tb.Max.x - Px((float)g_close.w) - Px(5.0f), by);
       close_clicked = SysButton(dl, g_close, g_close_on, ctl);
     }
     // Grip de resize RO dans le coin bas-droite (si redimensionnable). Le grip
@@ -2088,8 +2247,8 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
     if (!w->Collapsed && !(w->Flags & ImGuiWindowFlags_NoResize) &&
         !(w->Flags & ImGuiWindowFlags_AlwaysAutoResize)) {
       EnsureTex("btn_resize.bmp", skin::kBtnResize, g_resize);
-      const float rw = (float)g_resize.w, rh = (float)g_resize.h;
-      const ImVec2 rbr(wr.Max.x - 4.0f, wr.Max.y - 4.0f);
+      const float rw = Px((float)g_resize.w), rh = Px((float)g_resize.h);
+      const ImVec2 rbr(wr.Max.x - Px(4.0f), wr.Max.y - Px(4.0f));
       const ImVec2 rtl(rbr.x - rw, rbr.y - rh);
       BlitStretch(dl, g_resize, rtl, rbr);
       if (ImGui::IsMouseHoveringRect(rtl, rbr, false))
@@ -2117,12 +2276,12 @@ bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
   // aux sous-panneaux le même liseré arrondi que la fenêtre de description parente
   // (le sysbox seul rend un cadre carré/parfois non visible sur ces petits panneaux).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Px(4.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_cfg.alpha);
-  const float e = (float)skin::kSysboxLm.w;  // 14
+  const float e = Px((float)skin::kSysboxLm.w);  // 14
   // Côtés = e+2 (marge intérieure vs cadre sysbox) ; haut/bas = 6px (panneaux
   // cartes/options COMPACTS, demandé).
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + 2.0f, 6.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + Px(2.0f), Px(6.0f)));
   g_skin_vars = 4;
 
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
@@ -2157,7 +2316,10 @@ bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
 
 void EndRoDescPanel() { EndRoWindow(); }
 
-float DescPanelEdge() { return (float)skin::kSysboxLm.w; }
+// À l'échelle, comme le cadre qu'elle décrit : les appelants s'en servent pour
+// réserver la marge de leur contenu, et une marge restée à 14 px laisserait le
+// texte passer SOUS un cadre devenu deux fois plus épais.
+float DescPanelEdge() { return Px((float)skin::kSysboxLm.w); }
 
 // Cadre « panneau desc » (fond clair + sysbox 9-slice) dessiné à la main dans un
 // rect arbitraire, sur un ImDrawList arbitraire. Même art que BeginRoDescPanel,
@@ -2180,7 +2342,7 @@ void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
   EnsureTex("sysbox_ld.bmp", skin::kSysboxLd, g_sb_ld);
   EnsureTex("sysbox_md.bmp", skin::kSysboxMd, g_sb_md);
   EnsureTex("sysbox_rd.bmp", skin::kSysboxRd, g_sb_rd);
-  const float e = (float)skin::kSysboxLm.w;
+  const float e = Px((float)skin::kSysboxLm.w);
   dl->PushClipRect(p0, p1, false);
   dl->AddCallback(ImCb_PointFilter, nullptr);
   BlitStretch(dl, g_sb_lu, ImVec2(x0, y0), ImVec2(x0 + e, y0 + e));
@@ -2299,15 +2461,17 @@ void TooltipIfTruncated(const FittedLabel& f, const char* label) {
 // TRADUITS au lieu du français. Les dimensions des caps sont statiques (blobs du
 // skin), aucune texture n'a besoin d'être chargée pour répondre.
 float ButtonWidth(const char* label) {
+  // Le texte est DÉJÀ à l'échelle (la police suit FontScaleMain) : seules les
+  // caps de l'art et la marge de confort passent par Px.
   return ImGui::CalcTextSize(label, nullptr, true).x +
-         static_cast<float>(skin::kBtnOutLeft.w) +
-         static_cast<float>(skin::kBtnOutRight.w) + 12.0f;
+         Px(static_cast<float>(skin::kBtnOutLeft.w) +
+            static_cast<float>(skin::kBtnOutRight.w) + 12.0f);
 }
 
 float SmallButtonWidth(const char* label) {
   return ImGui::CalcTextSize(label, nullptr, true).x +
-         static_cast<float>(skin::ksBtnOutLeft.w) +
-         static_cast<float>(skin::ksBtnOutRight.w);
+         Px(static_cast<float>(skin::ksBtnOutLeft.w) +
+            static_cast<float>(skin::ksBtnOutRight.w));
 }
 
 float MaxButtonWidth(std::initializer_list<const char*> labels) {
@@ -2336,18 +2500,18 @@ bool RoButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\btn_press_mid.bmp",   skin::kBtnPressMid,   g_btn_press_m);
   EnsureTex("basic_interface\\btn_press_right.bmp", skin::kBtnPressRight, g_btn_press_r);
 
-  const float capL = (float)skin::kBtnOutLeft.w;
-  const float capR = (float)skin::kBtnOutRight.w;
-  const float nativeH = (float)skin::kBtnOutLeft.h;
+  const float capL = Px((float)skin::kBtnOutLeft.w);
+  const float capR = Px((float)skin::kBtnOutRight.w);
+  const float nativeH = Px((float)skin::kBtnOutLeft.h);
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
-  if (w <= 0.0f) w = ts.x + capL + capR + 12.0f;
+  if (w <= 0.0f) w = ts.x + capL + capR + Px(12.0f);
   if (h <= 0.0f) h = nativeH;
   // Largeur imposée par l'appelant : elle a pu être calculée pour le français alors
   // qu'on affiche l'anglais ou l'espagnol. Place disponible = l'espace PHYSIQUE entre
   // les deux caps, moins 2 px pour ne pas coller à l'art. Surtout PAS les 12 px de
   // marge de la largeur auto : c'est du confort, pas de l'encombrement — les décompter
   // ici rapetissait des libellés qui tenaient très bien.
-  const FittedLabel fit = FitButtonLabel(label, w - capL - capR - 2.0f);
+  const FittedLabel fit = FitButtonLabel(label, w - capL - capR - Px(2.0f));
 
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
@@ -2387,7 +2551,7 @@ bool RoButton(const char* label, float w, float h) {
   // Centrage sur les dimensions RETENUES (fit.size = hauteur de ligne à cette
   // taille) : identique à ts quand le libellé n'a pas eu à être réduit.
   const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
-                  p0.y + (h - fit.size) * 0.5f + (held ? 1.0f : 0.0f));
+                  p0.y + (h - fit.size) * 0.5f + (held ? Px(1.0f) : 0.0f));
   // Bouton enfoncé : libellé en gras. L'art « press » se distingue mal de l'état
   // survolé sur les petites tailles, la graisse tranche tout de suite.
   DrawButtonLabel(dl, tp,
@@ -2410,9 +2574,9 @@ bool RoSmallButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\sbtn_press_mid.bmp",   skin::ksBtnPressMid,   g_sbtn_press_m);
   EnsureTex("basic_interface\\sbtn_press_right.bmp", skin::ksBtnPressRight, g_sbtn_press_r);
 
-  const float capL = (float)skin::ksBtnOutLeft.w;
-  const float capR = (float)skin::ksBtnOutRight.w;
-  const float nativeH = (float)skin::ksBtnOutLeft.h;
+  const float capL = Px((float)skin::ksBtnOutLeft.w);
+  const float capR = Px((float)skin::ksBtnOutRight.w);
+  const float nativeH = Px((float)skin::ksBtnOutLeft.h);
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   if (w <= 0.0f) w = ts.x + capL + capR; // +12px pour RoButton, pas pour le petit bouton
   if (h <= 0.0f) h = nativeH;
@@ -2428,7 +2592,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   // resserrer et ces 3 px le font mordre sur la marge gauche — hors clip rect de
   // la fenêtre (ou de la colonne), donc rogné à gauche.
   if (ImGui::GetCurrentWindow()->DC.IsSameLine)
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 3.0f);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - Px(3.0f));
 
   // Le petit bouton est plus court que du texte : on le pose 3 px sous le haut
   // de la ligne pour le recentrer. Surtout PAS en déplaçant le curseur Y : quand
@@ -2437,7 +2601,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   // décalent encore de 3 px — le premier bouton apparaissait alors 3 px plus
   // haut que ses voisins. On réserve donc un item 3 px plus haut que l'art et on
   // dessine l'art dans sa partie basse : l'origine de la ligne reste intacte.
-  const float art_drop_y = 3.0f;
+  const float art_drop_y = Px(3.0f);
 
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h + art_drop_y));
@@ -2476,7 +2640,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   }
 
   const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
-                  p0.y + (h - fit.size) * 0.5f - 1.0f);  // -1 pour centrer le texte correctement dans la case
+                  p0.y + (h - fit.size) * 0.5f - Px(1.0f));  // -1 pour centrer le texte correctement dans la case
   DrawButtonLabel(dl, tp,
                   disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
                            : ImGui::GetColorU32(ImGuiCol_Text),
@@ -2490,8 +2654,8 @@ bool RoCheckbox(const char* label, bool* v) {
   if (!v) return false;
   EnsureTex("checkbox_0.bmp", skin::kCheckbox0, g_cb0);
   EnsureTex("checkbox_1.bmp", skin::kCheckbox1, g_cb1);
-  const float sz = (float)skin::kCheckbox0.w;  // 10x10
-  const float gapx = 4.0f;
+  const float sz = Px((float)skin::kCheckbox0.w);  // 10x10
+  const float gapx = Px(4.0f);
   ImGui::PushID(label);
   const ImVec2 start = ImGui::GetCursorScreenPos();
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
@@ -2506,7 +2670,8 @@ bool RoCheckbox(const char* label, bool* v) {
   // +2 : la case et le label sont posés sur la ligne de base naturelle (haut de
   // ligne) plutôt que 2px au-dessus, sinon le « (?) » d'un HelpMarker en SameLine
   // (dessiné à start.y) se retrouve décalé sous le label.
-  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f + 2.0f));
+  const ImVec2 bmin(ImFloor(start.x),
+                    ImFloor(start.y + (h - sz) * 0.5f + Px(2.0f)));
   const ImVec2 bmax(bmin.x + sz, bmin.y + sz);
   if (g_cb0.tex) {
     dl->AddCallback(ImCb_PointFilter, nullptr);
@@ -2514,8 +2679,8 @@ bool RoCheckbox(const char* label, bool* v) {
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
   } else {
     dl->AddRect(bmin, bmax, IM_COL32(96, 112, 152, 255));
-    if (*v) dl->AddRectFilled(ImVec2(bmin.x + 2, bmin.y + 2),
-                              ImVec2(bmax.x - 2, bmax.y - 2),
+    if (*v) dl->AddRectFilled(ImVec2(bmin.x + Px(2.0f), bmin.y + Px(2.0f)),
+                              ImVec2(bmax.x - Px(2.0f), bmax.y - Px(2.0f)),
                               IM_COL32(96, 112, 152, 255));
   }
   dl->AddText(ImVec2(start.x + sz + gapx, start.y + (h - ts.y) * 0.5f), // aligné case + HelpMarker (voir bmin)
@@ -2534,8 +2699,8 @@ bool RadioImage(const char* label, bool selected) {
   EnsureTexClient("radiobtn_on.bmp", s_on);
   EnsureTexClient("radiobtn_off.bmp", s_off);
   const SkinTex& t = selected ? s_on : s_off;
-  const float sz = (t.h > 0) ? (float)t.h : 11.0f;  // taille native, repli 11px
-  const float gapx = 4.0f;
+  const float sz = Px((t.h > 0) ? (float)t.h : 11.0f);  // taille native, repli 11px
+  const float gapx = Px(4.0f);
   ImGui::PushID(label);
   const ImVec2 start = ImGui::GetCursorScreenPos();
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
@@ -2544,7 +2709,8 @@ bool RadioImage(const char* label, bool selected) {
   if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
 
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const ImVec2 bmin(ImFloor(start.x), ImFloor(start.y + (h - sz) * 0.5f + 2.0f));
+  const ImVec2 bmin(ImFloor(start.x),
+                    ImFloor(start.y + (h - sz) * 0.5f + Px(2.0f)));
   const ImVec2 bmax(bmin.x + sz, bmin.y + sz);
   if (t.tex) {
     dl->AddCallback(ImCb_PointFilter, nullptr);
@@ -2599,13 +2765,33 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
   const char* label_end = ImGui::FindRenderedTextEnd(label);
   const ImVec2 label_size = ImGui::CalcTextSize(label, label_end, false);
   // La valeur est affichée À DROITE de la barre (une scrollbar RO fait 13px de
-  // haut : le texte n'y tient pas centré comme sur un slider ImGui). Largeur
-  // réservée avec un plancher, sinon la barre se raccourcit/rallonge à chaque
+  // haut : le texte n'y tient pas centré comme sur un slider ImGui). La largeur
+  // lui est RÉSERVÉE d'avance, sinon la barre se raccourcit/rallonge à chaque
   // changement de nombre de chiffres (barre qui « respire »).
+  //
+  // 🔴 Réservée sur les BORNES RÉELLES du slider, plus sur un gabarit de six
+  // chiffres. Le gabarit tenait tant que la police était petite ; mis à
+  // l'échelle il double, et sur un slider étroit (ceux du panneau de skin, qui
+  // n'imposent pas leur largeur et prennent 65 % d'une colonne) il mangeait
+  // toute la piste — au point de passer sous le seuil de `has_arrows` et de
+  // faire DISPARAÎTRE les flèches à 200 %. « 1.50 » réserve désormais quatre
+  // caractères, pas six.
+  //
+  // Les bornes ne bougeant pas, la largeur reste stable : la barre ne respire
+  // toujours pas. La valeur courante entre quand même dans le calcul — un
+  // appelant peut passer une valeur hors bornes, et elle ne doit pas déborder.
+  char bound_lo[64], bound_hi[64];
+  const char* lo_end =
+      bound_lo + ImGui::DataTypeFormatString(bound_lo, IM_COUNTOF(bound_lo), dt,
+                                             p_min, format);
+  const char* hi_end =
+      bound_hi + ImGui::DataTypeFormatString(bound_hi, IM_COUNTOF(bound_hi), dt,
+                                             p_max, format);
   const float value_w =
       ImMax(ImGui::CalcTextSize(value_buf, value_end).x,
-            ImGui::CalcTextSize("000000").x);
-  const float barh = g_s1l.tex ? (float)g_s1l.h : 13.0f;  // hauteur de l'art
+            ImMax(ImGui::CalcTextSize(bound_lo, lo_end).x,
+                  ImGui::CalcTextSize(bound_hi, hi_end).x));
+  const float barh = Px(g_s1l.tex ? (float)g_s1l.h : 13.0f);  // hauteur de l'art
   const float w = ImGui::CalcItemWidth();
   const float frame_h =
       ImMax(barh, label_size.y + style.FramePadding.y * 2.0f);
@@ -2629,8 +2815,9 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
   const ImRect bar(frame_bb.Min.x, bary,
                    frame_bb.Max.x - value_w - style.ItemInnerSpacing.x,
                    bary + barh);
-  const float arrow = g_s1l.tex ? (float)g_s1l.w : barh;
-  const bool has_arrows = (bar.GetWidth() > arrow * 2.0f + 8.0f);
+  // `barh` en repli : DÉJÀ à l'échelle, on ne le repasse pas par Px.
+  const float arrow = g_s1l.tex ? Px((float)g_s1l.w) : barh;
+  const bool has_arrows = (bar.GetWidth() > arrow * 2.0f + Px(8.0f));
   const ImRect track(has_arrows ? bar.Min.x + arrow : bar.Min.x, bar.Min.y,
                      has_arrows ? bar.Max.x - arrow : bar.Max.x, bar.Max.y);
 
@@ -2696,7 +2883,7 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
   // Comportement slider sur la PISTE (entre les flèches) : le thumb ne passe
   // jamais sous une flèche, comme sur une scrollbar.
   ImRect grab_bb;
-  ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 16.0f);  // thumb « scrollbar »
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, Px(16.0f));  // thumb « scrollbar »
   if (ImGui::SliderBehavior(track, id, dt, p_data, p_min, p_max, format, flags,
                             &grab_bb))
     value_changed = true;
@@ -2709,13 +2896,13 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
     dl->AddCallback(ImCb_PointFilter, nullptr);
     // Piste débordant de 2px sous les flèches -> jointure sans trou (cf. la
     // scrollbar verticale).
-    BlitStretch(dl, g_s1m, ImVec2(track.Min.x - 2.0f, bar.Min.y),
-                ImVec2(track.Max.x + 2.0f, bar.Max.y));
+    BlitStretch(dl, g_s1m, ImVec2(track.Min.x - Px(2.0f), bar.Min.y),
+                ImVec2(track.Max.x + Px(2.0f), bar.Max.y));
     if (has_arrows) {
       BlitStretch(dl, g_s1l, bar.Min, ImVec2(track.Min.x, bar.Max.y));
       BlitStretch(dl, g_s1r, ImVec2(track.Max.x, bar.Min.y), bar.Max);
     }
-    const float cap = g_s1bar_l.tex ? (float)g_s1bar_l.w : 4.0f;
+    const float cap = Px(g_s1bar_l.tex ? (float)g_s1bar_l.w : 4.0f);
     const float gx0 = ImFloor(grab_bb.Min.x), gx1 = ImFloor(grab_bb.Max.x);
     if (gx1 > gx0) {
       BlitStretch(dl, g_s1bar_l, ImVec2(gx0, bar.Min.y),
@@ -2765,8 +2952,11 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
   EnsureTexClient("basic_interface\\txtbox_btn_b.bmp", g_tb_btn_b);
   EnsureTexClient("basic_interface\\txtbox_btn_c.bmp", g_tb_btn_c);
 
-  const float arrow_w = g_tb_btn_a.tex ? (float)g_tb_btn_a.w : 16.0f;
-  const float h = g_tb_btn_a.tex ? (float)g_tb_btn_a.h : ImGui::GetFrameHeight();
+  const float arrow_w = Px(g_tb_btn_a.tex ? (float)g_tb_btn_a.w : 16.0f);
+  // Repli sans texture : GetFrameHeight() suit DÉJÀ l'échelle (police + padding
+  // du style, tous deux mis à l'échelle) — pas de Px par-dessus.
+  const float h = g_tb_btn_a.tex ? Px((float)g_tb_btn_a.h)
+                                 : ImGui::GetFrameHeight();
   const float w = ImGui::CalcItemWidth();
 
   ImGui::PushID(label);
@@ -2802,15 +2992,16 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
   } else {  // repli : triangle vers le bas
     const float cx = (arrowMin.x + p1.x) * 0.5f, cy = (p0.y + p1.y) * 0.5f;
-    dl->AddTriangleFilled(ImVec2(cx - 3, cy - 2), ImVec2(cx + 3, cy - 2),
-                          ImVec2(cx, cy + 3), U32(c.body_text));
+    dl->AddTriangleFilled(ImVec2(cx - Px(3.0f), cy - Px(2.0f)),
+                          ImVec2(cx + Px(3.0f), cy - Px(2.0f)),
+                          ImVec2(cx, cy + Px(3.0f)), U32(c.body_text));
   }
   // Texte de sélection (clippé au champ).
   if (preview_value && preview_value[0]) {
     const char* end = ImGui::FindRenderedTextEnd(preview_value);
     const float th = ImGui::CalcTextSize(preview_value, end).y;
     dl->PushClipRect(p0, ImVec2(arrowMin.x, p1.y), true);
-    dl->AddText(ImVec2(p0.x + 4.0f, p0.y + (h - th) * 0.5f), U32(c.body_text),
+    dl->AddText(ImVec2(p0.x + Px(4.0f), p0.y + (h - th) * 0.5f), U32(c.body_text),
                 preview_value, end);
     dl->PopClipRect();
   }
@@ -2867,7 +3058,7 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
         combo_bb.GetBL(), size_expected, &popup_win->AutoPosLastDirection, r_outer,
         combo_bb, ImGuiPopupPositionPolicy_ComboBox));
   } else {
-    ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + 1.0f));
+    ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + Px(1.0f)));
   }
   ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(c.body_col[0], c.body_col[1],
                                                  c.body_col[2], c.body_col[3]));
@@ -2969,31 +3160,37 @@ void DrawRoTab(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool selected, bool hovered
     fill.y = ImMin(fill.y + 0.055f, 1.0f);
     fill.z = ImMin(fill.z + 0.055f, 1.0f);
   }
+  // 🔴 DEUX unités dans cette fonction, à ne jamais confondre : les coordonnées
+  // DESTINATION (à l'écran) passent par `Px`, les rects SOURCE restent en pixels
+  // de la texture. Mélanger les deux échantillonnerait à côté du coin.
+  const float corner = Px(kTabCorner);  // le coin, à l'écran
+  const float edge   = Px(1.0f);        // le filet d'1 px de l'art, à l'écran
+
   // L'onglet ACTIF descend jusqu'en bas du rect (il se fond dans le contenu) ;
   // l'inactif s'arrête 1 px plus haut, là où son art referme le bord.
-  const float fill_y1 = selected ? p1.y : p1.y - 1.0f;
-  if (fill_y1 > p0.y + 1.0f)
-    dl->AddRectFilled(ImVec2(p0.x + 1.0f, p0.y + 1.0f),
-                      ImVec2(p1.x - 1.0f, fill_y1), ImGui::GetColorU32(fill),
-                      2.0f, ImDrawFlags_RoundCornersTop);
+  const float fill_y1 = selected ? p1.y : p1.y - edge;
+  if (fill_y1 > p0.y + edge)
+    dl->AddRectFilled(ImVec2(p0.x + edge, p0.y + edge),
+                      ImVec2(p1.x - edge, fill_y1), ImGui::GetColorU32(fill),
+                      Px(2.0f), ImDrawFlags_RoundCornersTop);
 
   if (!l.tex || !m.tex || !r.tex) return;  // bmp absent du client -> fond seul
   const float lh = (float)l.h;
   const float mw = (float)m.w, mh = (float)m.h;
   const float rw = (float)r.w, rh = (float)r.h;
-  // Coins à l'échelle 1:1, bords étirés (uniformes -> aucun artefact).
-  BlitPart(dl, l, p0, ImVec2(p0.x + kTabCorner, p0.y + kTabCorner),
+  // Coins à l'échelle de l'art, bords étirés (uniformes -> aucun artefact).
+  BlitPart(dl, l, p0, ImVec2(p0.x + corner, p0.y + corner),
            0.0f, 0.0f, kTabCorner, kTabCorner);
-  BlitPart(dl, l, ImVec2(p0.x, p0.y + kTabCorner), ImVec2(p0.x + 1.0f, p1.y),
+  BlitPart(dl, l, ImVec2(p0.x, p0.y + corner), ImVec2(p0.x + edge, p1.y),
            0.0f, kTabCorner, 1.0f, lh);
-  BlitPart(dl, r, ImVec2(p1.x - kTabCorner, p0.y), ImVec2(p1.x, p0.y + kTabCorner),
+  BlitPart(dl, r, ImVec2(p1.x - corner, p0.y), ImVec2(p1.x, p0.y + corner),
            rw - kTabCorner, 0.0f, rw, kTabCorner);
-  BlitPart(dl, r, ImVec2(p1.x - 1.0f, p0.y + kTabCorner), ImVec2(p1.x, p1.y),
+  BlitPart(dl, r, ImVec2(p1.x - edge, p0.y + corner), ImVec2(p1.x, p1.y),
            rw - 1.0f, kTabCorner, rw, rh);
-  BlitPart(dl, m, ImVec2(p0.x + kTabCorner, p0.y),
-           ImVec2(p1.x - kTabCorner, p0.y + 1.0f), 0.0f, 0.0f, mw, 1.0f);
+  BlitPart(dl, m, ImVec2(p0.x + corner, p0.y),
+           ImVec2(p1.x - corner, p0.y + edge), 0.0f, 0.0f, mw, 1.0f);
   if (!selected)  // ligne du bas : l'onglet inactif se ferme côté contenu
-    BlitPart(dl, m, ImVec2(p0.x, p1.y - 1.0f), ImVec2(p1.x, p1.y),
+    BlitPart(dl, m, ImVec2(p0.x, p1.y - edge), ImVec2(p1.x, p1.y),
              0.0f, mh - 1.0f, mw, mh);
 }
 
@@ -3023,7 +3220,7 @@ void DrawRoTabBarArt(ImGuiTabBar* tb) {
     // une abscisse fractionnaire ressort épaissi ou effacé en filtrage POINT.
     const float x0 = ImFloor(bar.Min.x + IM_TRUNC(tab.Offset - tb->ScrollingAnim));
     const float x1 = ImFloor(x0 + tab.Width);
-    if (x1 - x0 < kTabCorner * 2.0f) continue;  // trop étroit pour les 2 coins
+    if (x1 - x0 < Px(kTabCorner) * 2.0f) continue;  // trop étroit pour les 2 coins
     // VisibleTabId (et non SelectedTabId) : c'est l'onglet dont le CONTENU est
     // affiché, y compris pendant un aperçu Ctrl+Tab.
     const bool sel = (tb->VisibleTabId == tab.ID);
@@ -3037,7 +3234,7 @@ void DrawRoTabBarArt(ImGuiTabBar* tb) {
   // onglets inactifs portent déjà cette ligne dans leur art, il ne manque que
   // l'après-dernier-onglet.
   if (last_x < bar.Max.x && g_tab_m_off.tex)
-    BlitPart(dl, g_tab_m_off, ImVec2(last_x, y1 - 1.0f),
+    BlitPart(dl, g_tab_m_off, ImVec2(last_x, y1 - Px(1.0f)),
              ImVec2(bar.Max.x, y1), 0.0f, (float)g_tab_m_off.h - 1.0f,
              (float)g_tab_m_off.w, (float)g_tab_m_off.h);
   dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
@@ -3104,7 +3301,7 @@ void DrawBar(float x0, float y0, float x1, float y1) {
   EnsureTex("basic_interface\\btnbar_mid.bmp", skin::kBtnbarMid, g_bar_m);
   EnsureTex("basic_interface\\btnbar_right.bmp", skin::kBtnbarRight, g_bar_r);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  const float cap = (float)skin::kBtnbarLeft.w;  // 21
+  const float cap = Px((float)skin::kBtnbarLeft.w);  // 21
   dl->AddCallback(ImCb_PointFilter, nullptr);
   BlitStretch(dl, g_bar_l, ImVec2(x0, y0), ImVec2(x0 + cap, y1));
   BlitStretch(dl, g_bar_r, ImVec2(x1 - cap, y0), ImVec2(x1, y1));
@@ -3117,10 +3314,13 @@ float DrawIconNum(float x, float y) {
   if (!g_iconnum.tex) return 0.0f;
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddCallback(ImCb_PointFilter, nullptr);
+  // La largeur RENDUE est aussi celle que l'appelant avance : les deux passent
+  // par Px, sinon le texte qui suit l'icône chevaucherait l'art agrandi.
   BlitStretch(dl, g_iconnum, ImVec2(ImFloor(x), ImFloor(y)),
-              ImVec2(ImFloor(x) + g_iconnum.w, ImFloor(y) + g_iconnum.h));
+              ImVec2(ImFloor(x) + Px((float)g_iconnum.w),
+                     ImFloor(y) + Px((float)g_iconnum.h)));
   dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-  return (float)g_iconnum.w;
+  return Px((float)g_iconnum.w);
 }
 
 // Shared body of both CP949 input widgets: `hint` null selects plain InputText.

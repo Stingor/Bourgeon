@@ -1581,7 +1581,7 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
     return;
   }
   static ImGuiTextFilter s_filter;
-  ImGui::SetNextItemWidth(180.0f);
+  ImGui::SetNextItemWidth(ro::Px(180.0f));
   s_filter.Draw("Filtrer (objet)");
 
   const ImGuiTableFlags flags = ImGuiTableFlags_Borders |
@@ -1594,8 +1594,8 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
     ImGui::TableSetupColumn(i18n::Tr("Taux"), ImGuiTableColumnFlags_WidthFixed |
                                         ImGuiTableColumnFlags_PreferSortDescending |
                                         ImGuiTableColumnFlags_DefaultSort,
-                            70.0f);
-    ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, 95.0f);
+                            ro::Px(70.0f));
+    ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, ro::Px(95.0f));
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
@@ -1696,7 +1696,7 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
     ImGui::TableSetupColumn(i18n::Tr("Nombre"),
                             ImGuiTableColumnFlags_WidthFixed |
                                 ImGuiTableColumnFlags_PreferSortDescending,
-                            80.0f);
+                            ro::Px(80.0f));
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
@@ -1737,8 +1737,8 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
     ImGui::TableSetupColumn(i18n::Tr("Niveau"),
                             ImGuiTableColumnFlags_WidthFixed |
                                 ImGuiTableColumnFlags_PreferSortDescending,
-                            60.0f);
-    ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed, 50.0f);
+                            ro::Px(60.0f));
+    ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed, ro::Px(50.0f));
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 

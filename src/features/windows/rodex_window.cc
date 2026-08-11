@@ -1689,10 +1689,10 @@ void RodexWindow::DrawMailList() {
   } else if (ImGui::BeginTable("rodex_table", 4,
                                ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                    ImGuiTableFlags_SizingStretchProp)) {
-    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
-    ImGui::TableSetupColumn(i18n::Tr("Expéditeur"), ImGuiTableColumnFlags_WidthStretch, 0.34f);
-    ImGui::TableSetupColumn(i18n::Tr("Sujet"), ImGuiTableColumnFlags_WidthStretch, 0.50f);
-    ImGui::TableSetupColumn(i18n::Tr("Expire"), ImGuiTableColumnFlags_WidthFixed, 52.0f);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(26.0f));
+    ImGui::TableSetupColumn(i18n::Tr("Expéditeur"), ImGuiTableColumnFlags_WidthStretch, ro::Px(0.34f));
+    ImGui::TableSetupColumn(i18n::Tr("Sujet"), ImGuiTableColumnFlags_WidthStretch, ro::Px(0.50f));
+    ImGui::TableSetupColumn(i18n::Tr("Expire"), ImGuiTableColumnFlags_WidthFixed, ro::Px(52.0f));
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
@@ -1955,7 +1955,7 @@ void RodexWindow::DrawComposeWindow() {
 
   // ── Destinataire ──
   ImGui::TextColored(kBlack, i18n::Tr("Destinataire"));
-  ImGui::SetNextItemWidth(200.0f);
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
   ImGui::InputText("##rodex_to", to_, sizeof(to_));
   ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Vérifier"))) CheckRecipient();
@@ -1995,7 +1995,7 @@ void RodexWindow::DrawComposeWindow() {
 
   // ── Zeny joint + frais ──
   ImGui::TextColored(kBlack, i18n::Tr("Zeny à joindre"));
-  ImGui::SetNextItemWidth(160.0f);
+  ImGui::SetNextItemWidth(ro::Px(160.0f));
   ImGui::InputScalar("##rodex_zeny", ImGuiDataType_S64, &attach_zeny_);
   if (attach_zeny_ < 0) attach_zeny_ = 0;
   // Frais d'envoi : on AFFICHE ce que le client a calculé (fenêtre native +0xf8),

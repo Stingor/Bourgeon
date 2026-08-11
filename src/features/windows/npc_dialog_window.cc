@@ -1499,7 +1499,7 @@ void NpcDialogWindow::DrawInput() {
     input_need_focus_ = false;
   }
   if (input_mode_ == kInputNumber) {
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     const bool enter = ImGui::InputText(
         "##num", num_buf_, sizeof(num_buf_),
         ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);

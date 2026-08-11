@@ -11,6 +11,7 @@ namespace {
 
 // Les clés, sous la racine du fichier de démarrage.
 constexpr const char* kUiFontFamilyKey = "ui_font_family";
+constexpr const char* kUiScaleKey = "ui_scale_percent";
 // L'ancien booléen « police Malgun » : faux = police intégrée d'ImGui. Il n'a
 // jamais vécu qu'au vieil emplacement, d'où sa lecture en repli seulement.
 constexpr const char* kLegacyMalgunKey = "malgun_font";
@@ -27,6 +28,43 @@ YAML::Node LoadDocument(const std::string& path) {
   } catch (const std::exception&) {
     return YAML::Node();
   }
+}
+
+// Pose UNE clé entière à la racine du fichier de démarrage, en préservant tout
+// le reste.
+//
+// 🔴 On RELIT puis on remplace la seule clé : ce document porte aussi la langue
+// et les sections `auto_login`, `char_select` et `moonlight_auth`. L'écrire à
+// plat le tronquerait — changer de police effacerait les identifiants
+// d'auto-login.
+//
+// `what` nomme le réglage dans le journal : « impossible d'écrire … » sans dire
+// QUOI n'a pas été retenu n'aide personne à comprendre ce qu'il vient de perdre.
+// Un nom NU (« police de l'interface »), sans article : la phrase l'encadre de
+// guillemets, ce qui lui évite d'avoir à s'accorder avec le réglage du jour.
+void SaveRootKey(const char* key, int value, const char* what) {
+  const std::string path = paths::StartupSettingsPath();
+  YAML::Node root;
+  try {
+    root = YAML::LoadFile(path);
+  } catch (const std::exception&) {
+    // Absent au premier lancement, ou illisible : on repart d'un document vide
+    // plutôt que de renoncer à enregistrer le choix du joueur.
+  }
+  if (!root.IsMap()) root = YAML::Node(YAML::NodeType::Map);
+  root[key] = value;
+
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    LogDiag("[startup] impossible d'écrire {} — réglage « {} » non retenu", path,
+            what);
+    return;
+  }
+  file << YAML::Dump(root) << "\n";
+  file.flush();
+  // ⚠ Vérifier APRÈS écriture : un disque plein ou un fichier verrouillé ne se
+  // manifeste qu'ici, l'ouverture ayant réussi.
+  if (!file) LogDiag("[startup] écriture de {} incomplète", path);
 }
 
 }  // namespace
@@ -71,28 +109,22 @@ int UiFontFamily(int fallback) {
 }
 
 void SaveUiFontFamily(int family) {
-  const std::string path = paths::StartupSettingsPath();
-  YAML::Node root;
-  try {
-    root = YAML::LoadFile(path);
-  } catch (const std::exception&) {
-    // Absent au premier lancement, ou illisible : on repart d'un document vide
-    // plutôt que de renoncer à enregistrer le choix du joueur.
-  }
-  if (!root.IsMap()) root = YAML::Node(YAML::NodeType::Map);
-  root[kUiFontFamilyKey] = family;
+  SaveRootKey(kUiFontFamilyKey, family, "police de l'interface");
+}
 
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  if (!file) {
-    LogDiag("[startup] impossible d'écrire {} — la police ne sera pas retenue",
-            path);
-    return;
-  }
-  file << YAML::Dump(root) << "\n";
-  file.flush();
-  // ⚠ Vérifier APRÈS écriture : un disque plein ou un fichier verrouillé ne se
-  // manifeste qu'ici, l'ouverture ayant réussi.
-  if (!file) LogDiag("[startup] écriture de {} incomplète", path);
+// Pas de repli sur l'ancien fichier, contrairement à la police : ce réglage
+// n'a jamais vécu ailleurs. Et aucune borne ici — c'est ro::SetUiScalePercent
+// qui sait ce qu'une échelle valide veut dire, et lui seul.
+int UiScalePercent(int fallback) {
+  const YAML::Node root = LoadDocument(paths::StartupSettingsPath());
+  if (!root.IsMap()) return fallback;
+  const YAML::Node scale = root[kUiScaleKey];
+  if (!scale) return fallback;
+  return scale.as<int>(fallback);
+}
+
+void SaveUiScalePercent(int percent) {
+  SaveRootKey(kUiScaleKey, percent, "échelle de l'interface");
 }
 
 }  // namespace startup

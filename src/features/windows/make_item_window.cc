@@ -2656,12 +2656,12 @@ void MakeItemWindow::DrawList() {
     // l'écran (l'aperçu au survol et la description le donnent déjà) et une
     // colonne de plus rognait le nom, qui est la seule chose que le joueur lit.
     // Trier par id reste utile — c'est l'ordre « par famille d'objet ».
-    ImGui::TableSetupColumn("##icone", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+    ImGui::TableSetupColumn("##icone", ImGuiTableColumnFlags_WidthFixed, ro::Px(28.0f));
     ImGui::TableSetupColumn(i18n::Tr("Produit"), ImGuiTableColumnFlags_DefaultSort);
     if (show_owned_)
-      ImGui::TableSetupColumn(i18n::Tr("Possédé"), ImGuiTableColumnFlags_WidthFixed, 58.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Possédé"), ImGuiTableColumnFlags_WidthFixed, ro::Px(58.0f));
     if (show_craftable)
-      ImGui::TableSetupColumn(i18n::Tr("Faisable"), ImGuiTableColumnFlags_WidthFixed, 60.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Faisable"), ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
     ImGui::TableHeadersRow();
 
     // Vue triée : on ne touche JAMAIS à `entries_`, qui reste dans l'ordre du
@@ -3792,7 +3792,7 @@ void MakeItemWindow::DrawFooter() {
   // boutons ImGui nus au milieu d'un pied entièrement habillé RO.
   if (ro::RoSmallButton(i18n::Tr("-##batchdec")) && batch_target_ > 1) --batch_target_;
   SameLine();
-  ImGui::SetNextItemWidth(56.0f);
+  ImGui::SetNextItemWidth(ro::Px(56.0f));
   // step = 0 : on supprime les flèches natives d'InputInt, les nôtres les
   // remplacent de part et d'autre.
   if (ImGui::InputInt("##batch", &batch_target_, 0, 0)) {
@@ -3994,7 +3994,7 @@ bool MakeItemWindow::DrawSettings() {
     if (!unlimited) {
       // ro::RoSliderInt, pas ImGui::SliderInt : même raison que les cases à
       // cocher — le panneau porte le skin RO de bout en bout.
-      ImGui::SetNextItemWidth(160.0f);
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
       if (ro::RoSliderInt(i18n::Tr("Exemplaires au maximum"), &auto_reuse_max_, 1, 50)) {
         auto_reuse_cap_ = auto_reuse_max_;  // mémorisé pour le prochain décochage
         changed = true;

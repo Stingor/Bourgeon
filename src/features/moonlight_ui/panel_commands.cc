@@ -62,7 +62,7 @@ void MoonlightUi::DrawCommandsPanel() {
         // @noks — combo 4 options (off / self / party / guild)
         {
           static const char* kNoksLabels[] = { "Off", "Self", "Party", "Guild" };
-          ImGui::SetNextItemWidth(100.0f);
+          ImGui::SetNextItemWidth(ro::Px(100.0f));
           if (ro::RoBeginCombo("@noks", kNoksLabels[noks_mode_ < 4 ? noks_mode_ : 0])) {
             for (int i = 0; i < 4; ++i) {
               const bool selected = (noks_mode_ == i);
@@ -91,7 +91,7 @@ void MoonlightUi::DrawCommandsPanel() {
         Spacing();
         {// @autoloot
           int rate = aloot_rate_;
-          ImGui::SetNextItemWidth(130.0f);
+          ImGui::SetNextItemWidth(ro::Px(130.0f));
           if (WheelSliderInt("@autoloot", &rate, 0, 100, "%d%%")) {
             aloot_rate_ = rate;
             SendSetting(kSettingAlootRate, static_cast<uint16_t>(rate));
@@ -105,7 +105,7 @@ void MoonlightUi::DrawCommandsPanel() {
         Separator();
         { // @autolootpognon
           int min_zeny = aloot_min_zeny_;
-          ImGui::SetNextItemWidth(130.0f);
+          ImGui::SetNextItemWidth(ro::Px(130.0f));
           if (ImGui::InputInt("@autolootpognon (z)", &min_zeny, 0, 0)) {
             if (min_zeny < 0) min_zeny = 0;
             if (min_zeny > 1000000) min_zeny = 1000000;
@@ -197,7 +197,7 @@ void MoonlightUi::DrawCommandsPanel() {
             aloot_ids_.clear();
             SendSetting(kSettingAlootId, 0);
           }
-          ImGui::SetNextItemWidth(100.0f);
+          ImGui::SetNextItemWidth(ro::Px(100.0f));
           ImGui::InputInt("##alootid_input", &aloot_id_input_, 0, 0);
           if (aloot_id_input_ < 0) aloot_id_input_ = 0;
           SameLine();
@@ -333,14 +333,14 @@ void MoonlightUi::DrawCommandsPanel() {
               ImGui::TextDisabled(i18n::Tr("(aucun)"));
             }
           }
-          ImGui::SetNextItemWidth(120.0f);
+          ImGui::SetNextItemWidth(ro::Px(120.0f));
           ImGui::InputText("##preset_name", alootid_preset_input_,
                            sizeof(alootid_preset_input_));
           SameLine();
           ro::RoCheckbox(i18n::Tr("Renommer##preset_toggle"), &alootid_rename_open_);
           if (alootid_rename_open_) {
             SameLine();
-            ImGui::SetNextItemWidth(120.0f);
+            ImGui::SetNextItemWidth(ro::Px(120.0f));
             ImGui::InputText("##preset_rename", alootid_rename_input_,
                              sizeof(alootid_rename_input_));
           }
@@ -410,7 +410,7 @@ void MoonlightUi::DrawCommandsPanel() {
             } else {
               preview = "-- choisir --";
             }
-            ImGui::SetNextItemWidth(120.0f);
+            ImGui::SetNextItemWidth(ro::Px(120.0f));
             if (ImGui::BeginCombo("##preset_select", preview)) {
               for (const auto& p : alootid_presets_) {
                 const bool sel = (p.slot_no == alootid_selected_preset_);
@@ -484,7 +484,7 @@ bool MoonlightUi::DrawSortModeCombo(SortTarget target) {
   // RoCombo indexe kSortLabels sans garde : une valeur hors table (mode ajouté côté
   // moonlight, yaml bidouillé) lirait à côté.
   if (*value < 0 || *value >= IM_ARRAYSIZE(kSortLabels)) *value = 0;
-  ImGui::SetNextItemWidth(130.0f);
+  ImGui::SetNextItemWidth(ro::Px(130.0f));
   const bool changed = ro::RoCombo(label, value, kSortLabels, IM_ARRAYSIZE(kSortLabels));
   if (changed) SendSetting(setting_id, static_cast<uint16_t>(*value));
   SameLine(); HelpMarker(help);

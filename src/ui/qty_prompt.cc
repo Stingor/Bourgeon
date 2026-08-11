@@ -69,7 +69,7 @@ int QuantityPrompt(const void* owner, const char* action_label, int max_amount,
   if (RoButton("-")) --g_amount;
   ImGui::SameLine(0.0f, 2.0f);
   if (appearing) ImGui::SetKeyboardFocusHere();  // cible l'InputInt qui suit
-  ImGui::SetNextItemWidth(90.0f);
+  ImGui::SetNextItemWidth(ro::Px(90.0f));
   ImGui::InputInt("##ro_qty", &g_amount, 0, 0);
   ImGui::SameLine(0.0f, 2.0f);
   if (RoButton("+")) ++g_amount;

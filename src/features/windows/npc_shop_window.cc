@@ -1022,8 +1022,8 @@ void NpcShopWindow::OnRenderUI() {
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn(i18n::Tr("Objet"));
-      ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(150.0f));
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
         const char* nm = itemcell::NameById(b.id);
@@ -1074,10 +1074,10 @@ void NpcShopWindow::OnRenderUI() {
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn(i18n::Tr("Objet"));
-      ImGui::TableSetupColumn(i18n::Tr("Vente"), ImGuiTableColumnFlags_WidthFixed, 110.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Vente"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
       // Plus large qu'a l'achat : le dernier bouton porte le stack en clair
       // (« +30000 » au pire), pas l'abrege « +1k ».
-      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 172.0f);
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(172.0f));
       ImGui::TableHeadersRow();
       for (const auto& s : sell_items_) {
         // Nom COMPOSÉ (+refine, préfixes/suffixes de cartes) quand on a pu le
@@ -1146,7 +1146,7 @@ void NpcShopWindow::OnRenderUI() {
     const float step = ImGui::GetFrameHeight();
     if (ro::RoButton("-", step, step) && e.amount > 1) --e.amount;
     ImGui::SameLine(0.0f, 2.0f);
-    ImGui::SetNextItemWidth(42.0f);
+    ImGui::SetNextItemWidth(ro::Px(42.0f));
     if (ImGui::InputInt("##qty", &e.amount, 0, 0)) {
       if (e.amount < 1) e.amount = 1;
       if (e.amount > e.max) e.amount = e.max;  // vente = qté possédée ; achat = stack

@@ -173,19 +173,28 @@ void BugReport::TitleBarButton(const Context& ctx) {
   // Largeur donnée EXPLICITEMENT (même formule que le mode auto de RoSmallButton)
   // pour la connaître avant de placer le curseur : la mesurer après coup ferait
   // sauter le bouton d'une frame à chaque ouverture — le défaut qu'on corrige.
+  //
+  // 🔴 LES CAPS PASSENT PAR `ro::Px`, EXACTEMENT COMME DANS RoSmallButton. Cette
+  // formule DOIT rendre le même nombre que le mode auto du bouton : c'est elle
+  // qui le positionne. Mesurée sur l'art non mis à l'échelle pendant que le
+  // bouton, lui, se dessinait à l'échelle, elle le faisait déborder de la barre
+  // de titre — le décalage visible dès que le réglage quittait 100 %.
   const float bw = ImGui::CalcTextSize(label).x +
-                   static_cast<float>(ro::skin::ksBtnOutLeft.w +
-                                      ro::skin::ksBtnOutRight.w);
+                   ro::Px(static_cast<float>(ro::skin::ksBtnOutLeft.w +
+                                             ro::skin::ksBtnOutRight.w));
   // La croix de fermeture vit à 5 px du bord droit : on lui laisse sa largeur plus
   // 4 px de respiration.
-  const float bx =
-      wp.x + ww - static_cast<float>(ro::skin::kSysCloseOff.w) - 9.0f - bw;
+  const float bx = wp.x + ww -
+                   ro::Px(static_cast<float>(ro::skin::kSysCloseOff.w) + 9.0f) - bw;
   // RoSmallButton peint son art 3 px SOUS le haut de son item : on remonte d'autant
   // pour que ce soit l'ART, et non l'item, qui soit centré dans la barre. Le +1 est
   // un ajustement optique — centré au pixel près, le bouton paraît haut.
-  const float by = wp.y +
-                   (title_h - static_cast<float>(ro::skin::ksBtnOutLeft.h)) * 0.5f -
-                   3.0f + 1.0f;
+  // (Le décalage de 3 px est `art_drop_y` chez RoSmallButton, à l'échelle lui
+  // aussi : les deux valeurs doivent rester la même.)
+  const float by =
+      wp.y +
+      (title_h - ro::Px(static_cast<float>(ro::skin::ksBtnOutLeft.h))) * 0.5f -
+      ro::Px(3.0f) + ro::Px(1.0f);
 
   // 🔴 Le clip rect du corps EXCLUT la barre de titre. Sans ce PushClipRect, le
   // bouton ne serait pas seulement invisible : il serait INERTE — ImGui::ItemAdd

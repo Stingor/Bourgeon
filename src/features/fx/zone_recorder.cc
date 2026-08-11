@@ -772,7 +772,7 @@ void ZoneRecorder::DrawSettings() {
   // sans le second terme, un réglage fait à la molette ne serait JAMAIS enregistré
   // (cf. l'avertissement de WheelSliderInt dans ui/ro_widgets.h).
   auto slider = [&](const char* label, int* value, int lo, int hi) {
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     const bool changed = WheelSliderInt(label, value, lo, hi);
     if (ImGui::IsItemDeactivatedAfterEdit() || (changed && !ImGui::IsItemActive()))
       save = true;

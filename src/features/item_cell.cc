@@ -499,12 +499,15 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
                  const itemdesc::SimpleOpt* opts, int opt_count, int refine,
                  const char* name, bool damaged) {
   if (id == 0) return;
-  constexpr float kWidth = 330.0f;  // largeur max (wrap du texte)
+  // Largeur max (wrap du texte), à l'échelle : c'est un cadre autour de TEXTE,
+  // et un plafond resté à 330 px sur une police doublée transformait chaque
+  // description en colonne de deux mots. (`DescPanelEdge` suit déjà l'échelle.)
+  const float kWidth = ro::Px(330.0f);
   const float edge = ro::DescPanelEdge();
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));  // sur fond clair
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ro::Px(4.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));
   ImGui::SetNextWindowSizeConstraints(
       ImVec2(0.0f, 0.0f), ImVec2(kWidth, ImGui::GetIO().DisplaySize.y * 0.8f));
@@ -717,7 +720,12 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
   if (!draw_list) return;
 
   if (icon.tex && icon.w > 0 && icon.h > 0) {
-    float dw = static_cast<float>(icon.w), dh = static_cast<float>(icon.h);
+    // 🔴 L'icône part de sa taille d'art MISE À L'ÉCHELLE, pas de sa taille en
+    // pixels : la case grandit avec le réglage d'interface, et une icône restée
+    // à 24 px y flotterait au milieu. Le rapport icône/case est ainsi le même à
+    // toutes les échelles — et à 100 % la valeur ne change pas d'un pixel.
+    float dw = ro::Px(static_cast<float>(icon.w));
+    float dh = ro::Px(static_cast<float>(icon.h));
     if (dw > cell || dh > cell) {  // réduire seulement, jamais agrandir
       const float s = cell / (dw > dh ? dw : dh);
       dw *= s; dh *= s;
@@ -738,7 +746,7 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
   else if (amount > 1) std::snprintf(badge, sizeof(badge), "%d", amount);
   if (badge[0]) {
     const ImVec2 ts = ImGui::CalcTextSize(badge);
-    const ImVec2 bp(p1.x - ts.x - 2, p1.y - ts.y - 1);
+    const ImVec2 bp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
     const ImU32 white = IM_COL32(255, 255, 255, 255);
     for (int oy = -1; oy <= 1; ++oy)      // cerne : les 8 voisins en blanc…
       for (int ox = -1; ox <= 1; ++ox)

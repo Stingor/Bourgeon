@@ -690,10 +690,10 @@ void ChatBalloon::DrawSettings() {
       save = true;
 
     if (!follow_native_life_) {
-      ImGui::SetNextItemWidth(160.0f);
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
       if (WheelSliderInt(i18n::Tr("Durée de base (ms)"), &base_life_ms_, 1500, 10000)) save = true;
       if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-      ImGui::SetNextItemWidth(160.0f);
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
       if (WheelSliderInt(i18n::Tr("Rallonge par caractère (ms)"), &per_char_ms_, 0, 120)) save = true;
       if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
       ImGui::TextDisabled(i18n::Tr(
@@ -701,13 +701,13 @@ void ChatBalloon::DrawSettings() {
           "disparaît aussi vite qu'un « ok »."));
     }
 
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderInt(i18n::Tr("Décalage vertical"), &y_offset_, -40, 40)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Taille du texte"), &font_scale_, 0.7f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Largeur maximale (fraction d'écran)"),
                          &max_width_ratio_, 0.15f, 0.60f))
       save = true;
@@ -716,7 +716,7 @@ void ChatBalloon::DrawSettings() {
     // Plancher à 0.25 : en dessous la bulle est illisible sans être invisible,
     // donc le réglage ne servirait qu'à croire à un bug d'affichage. Qui veut
     // s'en passer éteint la chatbox ImGui.
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Opacité"), &opacity_, 0.25f, 1.0f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   }

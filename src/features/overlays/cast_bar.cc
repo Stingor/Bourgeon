@@ -514,7 +514,7 @@ void CastBar::DrawSettings() {
     // Libellés BRUTS : RoCombo les traduit à la lecture (un i18n::Tr posé sur un
     // tableau statique serait figé au chargement de la DLL).
     const char* name_modes[] = {"Jamais", "Si pas déjà annoncé", "Toujours"};
-    ImGui::SetNextItemWidth(200.0f);
+    ImGui::SetNextItemWidth(ro::Px(200.0f));
     if (ro::RoCombo(i18n::Tr("Nom de la compétence"), &name_mode_, name_modes,
                     IM_ARRAYSIZE(name_modes)))
       save = true;
@@ -534,22 +534,22 @@ void CastBar::DrawSettings() {
 
     if (ro::RoCheckbox(i18n::Tr("Bordure"), &border_)) save = true;
 
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderInt(i18n::Tr("Largeur"), &width_, 30, 300)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderInt(i18n::Tr("Hauteur"), &height_, 3, 40)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderInt(i18n::Tr("Décalage vertical"), &y_offset_, -60, 60)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Arrondi"), &rounding_, 0.0f, 12.0f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Taille du texte"), &font_scale_, 0.6f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(i18n::Tr("Opacité"), &opacity_, 0.25f, 1.0f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
 

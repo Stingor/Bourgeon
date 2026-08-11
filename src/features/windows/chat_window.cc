@@ -2889,7 +2889,7 @@ void ChatWindow::DrawDockedWindow() {
       // lit rien. Le texte repasse en sombre le temps de ces deux widgets — et
       // seulement eux : le libellé de la case, lui, est sur le fond sombre.
       ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-      ImGui::SetNextItemWidth(180.0f);
+      ImGui::SetNextItemWidth(ro::Px(180.0f));
       ImGui::InputTextWithHint("##chat_search", i18n::Tr("Rechercher…"), search_,
                                sizeof(search_));
       ImGui::SameLine();
@@ -4545,7 +4545,7 @@ bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
 
 void ChatWindow::DrawInputRow() {
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-  ImGui::SetNextItemWidth(90.0f);
+  ImGui::SetNextItemWidth(ro::Px(90.0f));
   if (focus_whisper_next_) {
     ImGui::SetKeyboardFocusHere();
     // Consommée seulement le geste fini, exactement comme pour la saisie plus
@@ -4604,7 +4604,7 @@ void ChatWindow::DrawInputRow() {
   // seule information que la combo apporte.
   const bool channel_selected = whisper_[0] == '#';
   const char* preview = channel_selected ? whisper_ : kModes[mode];
-  ImGui::SetNextItemWidth(80.0f);
+  ImGui::SetNextItemWidth(ro::Px(80.0f));
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   if (ro::RoBeginCombo("##chat_mode", preview)) {
     for (int i = 0; i < static_cast<int>(_countof(kModes)); ++i) {
@@ -5395,7 +5395,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     rename_id_ = channel->id;
     CopyBounded(rename_buf_, sizeof(rename_buf_), channel->name.c_str());
   }
-  ImGui::SetNextItemWidth(170.0f);
+  ImGui::SetNextItemWidth(ro::Px(170.0f));
   if (ImGui::InputText("##chat_rename", rename_buf_, sizeof(rename_buf_),
                        ImGuiInputTextFlags_EnterReturnsTrue)) {
     // Un nom vide rendrait l'onglet inattrapable : on refuse en silence plutôt que
@@ -6488,7 +6488,7 @@ bool ChatWindow::DrawSettings() {
   }
   // Famille de police du log. Les familles sont bakées au démarrage : le choix
   // s'applique donc immédiatement, sans redémarrage.
-  ImGui::SetNextItemWidth(160.0f);
+  ImGui::SetNextItemWidth(ro::Px(160.0f));
   if (ro::RoBeginCombo(i18n::Tr("Police###chatwnd_family"),
                        ro::ChatFamilyLabel(font_family_))) {
     for (int f = 0; f < ro::ChatFamilyCount(); ++f) {

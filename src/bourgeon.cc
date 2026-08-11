@@ -199,6 +199,13 @@ bool Bourgeon::Initialize() {
   // l'atlas.
   ro::SetUiFontFamily(startup::UiFontFamily(ro::UiFontFamily()));
 
+  // L'échelle de l'interface suit le même chemin, et pour les mêmes raisons :
+  // elle doit valoir dès la première fenêtre dessinée, donc dès le login. Ici
+  // encore il n'y a pas de contexte ImGui — `SetUiScalePercent` mémorise, et
+  // c'est `ro::ApplyUiScale()`, juste après `ImGui::CreateContext()`
+  // (ragnarok_client.cc), qui la posera sur le style.
+  ro::SetUiScalePercent(startup::UiScalePercent(ro::UiScalePercent()));
+
   if (!client_.Initialize()) {
     LogError("Bourgeon failed to initialize");
     return false;
@@ -439,6 +446,12 @@ bool IsNativeUiHidden() {
 }  // namespace
 
 void Bourgeon::RenderUI() {
+  // Un changement d'échelle de l'interface demandé à la frame précédente se pose
+  // ICI, et nulle part ailleurs : c'est le seul instant de la frame où le style
+  // ImGui n'est sous aucun PushStyleVar. Avant le clamp, qui doit mesurer les
+  // fenêtres à leur taille neuve. Voir ui/ro_imgui.h.
+  ro::ApplyPendingUiScale();
+
   // Aucune fenêtre ImGui ne sort de l'écran de jeu. En PREMIÈRE ligne, avant tout
   // return anticipé et avant le moindre Begin de plugin : on est juste après
   // ImGui::NewFrame() (les deux chemins de rendu, DX7 et DX9, appellent RenderUI
@@ -1013,7 +1026,7 @@ void Bourgeon::ShowLogWindow() {
   ImGui::SameLine();
   ImGui::Checkbox(i18n::Tr("Suivre"), &follow);
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(220.0f);
+  ImGui::SetNextItemWidth(ro::Px(220.0f));
   ImGui::InputTextWithHint("##logfilter", i18n::Tr("filtre (sous-chaîne)"), filter,
                             sizeof(filter));
   ImGui::SameLine();

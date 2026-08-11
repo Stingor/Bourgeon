@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "ui/imgui_escape.h"
+#include "ui/ro_imgui.h"  // ro::Px (échelle de l'interface, largeurs de colonnes)
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 
@@ -270,9 +271,9 @@ void CheatDetector::OnRenderUI() {
                                 | ImGuiTableFlags_ScrollY;
     if (ImGui::BeginTable("##det", 3, flags,
                           ImVec2(0, ImGui::GetContentRegionAvail().y))) {
-      ImGui::TableSetupColumn(i18n::Tr("Outil"),  ImGuiTableColumnFlags_WidthFixed,  110.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Outil"),  ImGuiTableColumnFlags_WidthFixed,  ro::Px(110.0f));
       ImGui::TableSetupColumn(i18n::Tr("Detail"), ImGuiTableColumnFlags_WidthStretch);
-      ImGui::TableSetupColumn(i18n::Tr("Vu"),     ImGuiTableColumnFlags_WidthFixed,   80.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Vu"),     ImGuiTableColumnFlags_WidthFixed,   ro::Px(80.0f));
       ImGui::TableSetupScrollFreeze(0, 1);
       ImGui::TableHeadersRow();
 

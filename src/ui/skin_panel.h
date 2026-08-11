@@ -50,6 +50,15 @@ void EnsureDefaultSkinPresets();
 // langue à l'autre — au login, précisément pendant qu'on en change.
 void DrawUiFontCombo(const char* label, float width);
 
+// Le combo « échelle de toute l'interface » (100 à 200 % par paliers). Même
+// nature que celui de la police : réglage d'AVANT le jeu, qui persiste lui-même
+// dans le fichier de démarrage (startup::SaveUiScalePercent) — d'où l'absence
+// de valeur de retour, il n'y a rien à remonter à l'appelant.
+//
+// ⚠ Se grise tout seul sous le proxy DirectX 7, où l'échelle est sans effet
+// (pas de re-rastérisation des glyphes). Voir features/systems/dx7_warning.h.
+void DrawUiScaleCombo(const char* label, float width);
+
 // Section complète « Skin RO » : police, réglages du skin, gestion des presets.
 // À placer dans un panneau ImGui existant. Renvoie true si quelque chose a
 // changé — l'appelant décide alors de sauvegarder.

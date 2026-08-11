@@ -2312,7 +2312,7 @@ void CharSelect::OnRenderLoginUI() {
     ImGui::Text(i18n::Tr("Supprimer DÉFINITIVEMENT « %s » ?"), del_popup_name_);
     ImGui::TextUnformatted(i18n::Tr("Action IRRÉVERSIBLE. Saisis l'email du compte pour confirmer :"));
     ImGui::Spacing();
-    ImGui::SetNextItemWidth(300.0f);
+    ImGui::SetNextItemWidth(ro::Px(300.0f));
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     const bool submit = ImGui::InputTextWithHint(
         "##del_email", i18n::Tr("email du compte"), del_email_, sizeof(del_email_),
@@ -2376,7 +2376,7 @@ void CharSelect::OnRenderLoginUI() {
     // Formulaire (droite) : nom, sexe, GRILLE d'icônes de coiffure, couleur.
     ImGui::BeginGroup();
     ImGui::TextUnformatted(i18n::Tr("Nom"));
-    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SetNextItemWidth(ro::Px(220.0f));
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     ImGui::InputTextWithHint("##cname", i18n::Tr("nom du personnage"), create_name_,
                              sizeof(create_name_));
@@ -2724,7 +2724,7 @@ void CharSelect::OnRenderLoginUI() {
   if (ro::BeginRoPopupModal(i18n::Tr("Renommer le personnage###bourgeon_charsel_rename"))) {
     ImGui::Text(i18n::Tr("Nom actuel : %s"), LocalToUtf8(rename_old_));
     ImGui::TextUnformatted(i18n::Tr("Nouveau nom"));
-    ImGui::SetNextItemWidth(240.0f);
+    ImGui::SetNextItemWidth(ro::Px(240.0f));
     if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     ImGui::InputTextWithHint("##rname", i18n::Tr("nouveau nom"), rename_buf_,
                              sizeof(rename_buf_));

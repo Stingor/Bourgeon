@@ -1407,8 +1407,9 @@ void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
   if (illust.tex || has_desc) ImGui::Separator();
   if (illust.tex && illust.w > 0 && illust.h > 0) {
     ImGui::Image(reinterpret_cast<ImTextureID>(illust.tex),
-                 ImVec2(static_cast<float>(illust.w), static_cast<float>(illust.h)));
-    if (has_desc) ImGui::SameLine(0, 8);
+                 ImVec2(ro::Px(static_cast<float>(illust.w)),
+                        ro::Px(static_cast<float>(illust.h))));
+    if (has_desc) ImGui::SameLine(0, ro::Px(8.0f));
   }
   if (has_desc) {
     ImGui::BeginGroup();
@@ -1964,7 +1965,7 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
   char flabel[80];
   _snprintf_s(flabel, sizeof(flabel), _TRUNCATE, "Filtrer (monstre)##%s",
               table_id);
-  ImGui::SetNextItemWidth(180.0f);
+  ImGui::SetNextItemWidth(ro::Px(180.0f));
   filter.Draw(flabel);
 
   std::vector<const DropSrc*> view;
@@ -1981,9 +1982,9 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
     ImGui::TableSetupColumn(i18n::Tr("Taux"), ImGuiTableColumnFlags_WidthFixed |
                                         ImGuiTableColumnFlags_PreferSortDescending |
                                         ImGuiTableColumnFlags_DefaultSort,
-                            70.0f);
+                            ro::Px(70.0f));
     if (show_type)
-      ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, 105.0f);
+      ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, ro::Px(105.0f));
     ImGui::TableHeadersRow();
 
     if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
@@ -2415,12 +2416,16 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   // panneau et se fait couper à droite.
   float text_wrap = wrap;
   if (img.tex && img.w > 0 && img.h > 0) {
-    const float h = (std::min)(kSimpleIllustH, static_cast<float>(img.h));
+    // La vignette suit l'échelle : plafond ET taille d'art, pour qu'elle garde
+    // la même place vis-à-vis du texte à côté d'elle (dont le wrap se déduit de
+    // sa largeur juste en dessous).
+    const float h = (std::min)(ro::Px(kSimpleIllustH),
+                               ro::Px(static_cast<float>(img.h)));
     const float w = h * img.w / static_cast<float>(img.h);
     ImGui::Image(reinterpret_cast<ImTextureID>(img.tex), ImVec2(w, h));
     if (has_desc) {
-      ImGui::SameLine(0, 8);
-      if (text_wrap > 0.0f) text_wrap -= w + 8.0f;
+      ImGui::SameLine(0, ro::Px(8.0f));
+      if (text_wrap > 0.0f) text_wrap -= w + ro::Px(8.0f);
     }
   }
   if (has_desc) {
@@ -2561,7 +2566,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
       // Miroir PvP : cible = toi-même (ta def/élément/gear encaissent le sort).
       const bool self_changed =
           ro::RoCheckbox(i18n::Tr("Contre moi-même (PvP)"), &dmg_target_self_);
-      ImGui::SetNextItemWidth(120.0f);
+      ImGui::SetNextItemWidth(ro::Px(120.0f));
       if (dmg_target_self_) ImGui::BeginDisabled();
       ImGui::InputInt(i18n::Tr("Cible : ID monstre (0 = neutre)"), &dmg_target_input_,
                       0, 0);
@@ -2887,10 +2892,15 @@ void ItemDescWindow::RenderItemWindow() {
   // Largeur mini DYNAMIQUE : large (500) seulement quand la comparaison 2 colonnes
   // est affichée ; en vue simple, 320 -> la fenêtre peut être étroite (avant, le
   // 500 bloquait même un item seul). Redimensionnable, ImGui mémorise la taille.
-  const float min_w = has_cmp ? 500.0f : 320.0f;
-  ImGui::SetNextWindowSizeConstraints(ImVec2(min_w, 300.0f),
-                                      ImVec2(1800.0f, 900.0f));
-  ImGui::SetNextWindowSize(ImVec2(560.0f, 420.0f), ImGuiCond_FirstUseEver);
+  // 🔴 Minimums, plafonds et taille d'ouverture à l'échelle : ces fenêtres n'ont
+  // qu'un contenu, du TEXTE. Un minimum resté à 320 px sur une police doublée
+  // n'empêche plus rien, et la taille d'ouverture donnait une fenêtre où chaque
+  // ligne se coupait en deux.
+  const float min_w = ro::Px(has_cmp ? 500.0f : 320.0f);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(min_w, ro::Px(300.0f)),
+                                      ImVec2(ro::Px(1800.0f), ro::Px(900.0f)));
+  ImGui::SetNextWindowSize(ImVec2(ro::Px(560.0f), ro::Px(420.0f)),
+                           ImGuiCond_FirstUseEver);
   if (item_need_pos_) {
     // Mode « près de la souris » : on force la position au curseur. Mode « dernière
     // position » : on NE touche PAS la position (ImGui réutilise celle mémorisée
@@ -2942,8 +2952,9 @@ void ItemDescWindow::RenderItemWindow() {
     const IconTex& ic = is_card ? cill : icon;
     if (ic.tex && ic.w > 0 && ic.h > 0) {
       // Taille native, ratio préservé, plafonnée (évite la déformation 48x48).
-      const float kMax = 120.0f;
-      float w = static_cast<float>(ic.w), h = static_cast<float>(ic.h);
+      const float kMax = ro::Px(120.0f);
+      float w = ro::Px(static_cast<float>(ic.w));
+      float h = ro::Px(static_cast<float>(ic.h));
       const float big = (w > h) ? w : h;
       if (big > kMax) { const float s = kMax / big; w *= s; h *= s; }
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, h));
@@ -2953,8 +2964,8 @@ void ItemDescWindow::RenderItemWindow() {
           ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
           ImGui::BeginTooltip();
           ImGui::Image(reinterpret_cast<ImTextureID>(cill.tex),
-                       ImVec2(static_cast<float>(cill.w),
-                              static_cast<float>(cill.h)));
+                       ImVec2(ro::Px(static_cast<float>(cill.w)),
+                              ro::Px(static_cast<float>(cill.h))));
           ImGui::EndTooltip();
           ImGui::PopStyleColor(2);
         } else {  // équipement à viewID (ou costume à hat effect) -> aperçu du perso
@@ -3542,9 +3553,10 @@ void ItemDescWindow::RenderSkillWindow() {
     s_id = skill_.id;
   }
 
-  ImGui::SetNextWindowSizeConstraints(ImVec2(500.0f, 300.0f),
-                                      ImVec2(1800.0f, 900.0f));
-  ImGui::SetNextWindowSize(ImVec2(520.0f, 360.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(500.0f), ro::Px(300.0f)),
+                                      ImVec2(ro::Px(1800.0f), ro::Px(900.0f)));
+  ImGui::SetNextWindowSize(ImVec2(ro::Px(520.0f), ro::Px(360.0f)),
+                           ImGuiCond_FirstUseEver);
   if (skill_need_pos_) {
     if (desc_spawn_at_cursor_)  // sinon : dernière position mémorisée par ImGui
       ImGui::SetNextWindowPos(ImVec2(static_cast<float>(skill_spawn_x_),
@@ -3672,9 +3684,10 @@ void ItemDescWindow::RenderBookWindow() {
   // conversion en UTF-8, sinon ImGui affiche un losange à leur place.
   LocalizeLines(be.lines, be.line_count);
 
-  ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 240.0f),
-                                      ImVec2(1800.0f, 1000.0f));
-  ImGui::SetNextWindowSize(ImVec2(620.0f, 460.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(360.0f), ro::Px(240.0f)),
+                                      ImVec2(ro::Px(1800.0f), ro::Px(1000.0f)));
+  ImGui::SetNextWindowSize(ImVec2(ro::Px(620.0f), ro::Px(460.0f)),
+                           ImGuiCond_FirstUseEver);
   if (book_need_pos_) {
     if (desc_spawn_at_cursor_)  // sinon : dernière position mémorisée par ImGui
       ImGui::SetNextWindowPos(ImVec2(static_cast<float>(book_spawn_x_),

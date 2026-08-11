@@ -186,6 +186,70 @@ ImFont*     ChatFamilyFont(int index, bool bold, bool italic);
 bool KoreanGlyphsWanted();
 bool IsFontEnabled();
 
+// ── L'ÉCHELLE de toute l'interface ───────────────────────────────────────────
+// Un pourcentage : 100 = la taille d'origine, 200 = le double. Sert aux écrans
+// très définis (un 21:9 en 3440×1440, un 4K), où une interface calibrée en
+// pixels sur du 1024×768 devient illisible sans que rien ne soit « cassé ».
+//
+// 🔴 100 % EST LE CHEMIN D'ORIGINE, À L'IDENTIQUE. `Px` rend alors son argument
+// (v * 1.0f est exact en IEEE-754, pas d'arrondi qui traîne), `ApplyUiScale`
+// n'appelle PAS `ScaleAllSizes` — qui n'est pas neutre à 1.0, il tronque chaque
+// champ du style et cumule `_MainScale` — et la police garde son
+// `FontScaleMain` d'usine. Un joueur qui ne touche à rien voit exactement ce
+// qu'il voyait avant.
+//
+// ⚠ DX9 SEULEMENT, en pratique. Le backend officiel re-rastérise les glyphes à
+// la taille demandée (`ImGuiBackendFlags_RendererHasTextures`) ; notre backend
+// DX7 maison ne le déclare pas, donc l'atlas y serait ÉTIRÉ — du texte flou.
+// L'échelle rejoint la liste des modules inertes sous le proxy DirectDraw (cf.
+// features/systems/dx7_warning.h), et son réglage s'y grise.
+//
+// Les paliers proposés au joueur sont ENTIERS ou demi-entiers (100/125/150/…) :
+// l'art du skin est échantillonné en POINT (pixel-art net), et un facteur
+// quelconque y donnerait des bordures d'épaisseur inégale.
+// Le CHOIX du joueur — celui qu'on persiste et qu'on affiche au réglage. Il
+// reste ce qu'il est même là où l'échelle ne s'applique pas (DX7) : ce que le
+// joueur a demandé ne doit pas se perdre parce qu'il a changé de mode de rendu.
+void SetUiScalePercent(int percent);
+int  UiScalePercent();
+
+// Le facteur EFFECTIVEMENT appliqué (1.0f à 100 %). C'est lui qu'on multiplie —
+// et il vaut 1.0 en DirectX 7 quel que soit le choix ci-dessus. Les deux ne
+// s'accordent donc pas toujours, et c'est voulu.
+float UiScale();
+
+// Une longueur d'ART ou de MARGE, en pixels d'origine, mise à l'échelle. Tout
+// ce qui est mesuré sur une pièce du skin (hauteur de barre de titre, cap d'un
+// 3-slice, côté d'une case à cocher) passe par ici :
+//   const float cap = ro::Px((float)skin::kTitlebarLeft.w);
+// 🔴 PAS pour ce qui dérive déjà de la police (`GetFontSize`, `CalcTextSize`) :
+// celle-ci suit `FontScaleMain` toute seule, la remultiplier la ferait grossir
+// au carré.
+float Px(float pixels);
+
+// Applique l'échelle courante au style ImGui (police + toutes les longueurs).
+// À appeler UNE fois après `ImGui::CreateContext()` + le thème de couleurs — le
+// premier appel photographie le style à 100 %, qui sert ensuite de référence à
+// tous les changements. `SetUiScalePercent` s'en charge ensuite tout seul.
+//
+// 🔴 On repart TOUJOURS de cette photo, jamais du style courant : `ScaleAllSizes`
+// tronque à l'entier, si bien qu'enchaîner ×1.5 puis ×(1/1.5) ne rendrait pas
+// les valeurs de départ. Sans référence, un aller-retour 100 → 150 → 100
+// laisserait l'interface durablement de travers.
+void ApplyUiScale();
+
+// Pose l'échelle demandée depuis la dernière frame, s'il y en a une. À appeler
+// UNE fois par frame, entre `ImGui::NewFrame()` et le premier `Begin` — la même
+// fenêtre de tir que le clamp des fenêtres (Bourgeon::RenderUI). Ne coûte rien
+// tant que personne n'a touché au réglage.
+//
+// 🔴 C'EST LE SEUL MOMENT OÙ LE STYLE PEUT CHANGER. `SetUiScalePercent` se
+// contente donc de marquer : appelé depuis un panneau, il tomberait en pleine
+// frame, sous les `PushStyleVar` de la fenêtre qui le dessine — dont les `Pop`
+// de fin restaureraient ensuite les valeurs de l'ANCIENNE échelle par-dessus la
+// nouvelle, laissant un style à moitié converti.
+void ApplyPendingUiScale();
+
 // Affiche une chaîne CP949 comme texte ImGui (convertit en UTF-8 d'abord).
 void TextCp949(const char* cp949);
 

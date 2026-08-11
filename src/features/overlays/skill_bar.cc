@@ -1156,11 +1156,14 @@ bool SkillBar::PointOverAnyBar(float x, float y) const {
     const int   cols  = std::max(1, bc.columns);
     const int   count = std::min(bc.slot_count, maxSlots);
     const int   rows  = (count + cols - 1) / cols;
-    const float step  = bc.icon_size + bc.spacing;
-    const float x0 = static_cast<float>(bc.x) - kBarDropMargin;
-    const float y0 = static_cast<float>(bc.y) - kBarDropMargin;
-    const float x1 = static_cast<float>(bc.x) + cols * step + kBarDropMargin;
-    const float y1 = static_cast<float>(bc.y) + rows * step + kBarDropMargin;
+    // À l'échelle, comme le dessin (cf. DrawBar) : ce rect doit recouvrir ce que
+    // le joueur voit, sinon le lâcher d'un raccourci rate la barre agrandie.
+    const float step  = ro::Px(bc.icon_size + bc.spacing);
+    const float margin = ro::Px(kBarDropMargin);
+    const float x0 = static_cast<float>(bc.x) - margin;
+    const float y0 = static_cast<float>(bc.y) - margin;
+    const float x1 = static_cast<float>(bc.x) + cols * step + margin;
+    const float y1 = static_cast<float>(bc.y) + rows * step + margin;
     if (x >= x0 && x < x1 && y >= y0 && y < y1) return true;
   }
   return false;
@@ -1218,8 +1221,20 @@ void SkillBar::UpdateDragRemoval() {
 void SkillBar::DrawBar(int bar) {
   if (bar < 0 || bar >= kBarCount) return;
   BarCfg& bc = bars_[bar];
-  const float icon_size_ = bc.icon_size;  // taille/espacement PAR BARRE (locals = alias des champs bc)
-  const float spacing_   = bc.spacing;
+  // Taille/espacement PAR BARRE, MIS À L'ÉCHELLE ici et une seule fois : tout le
+  // reste de la fonction en dérive (step, winw/winh, hit-test des cases, texte de
+  // niveau, cooldown, libellé de touche), donc c'est le seul endroit à convertir.
+  //
+  // 🔴 `bc.icon_size` reste le CHOIX du joueur, en pixels à 100 % — c'est lui
+  // qu'on persiste et qu'affiche le slider « Taille ». L'échelle s'applique au
+  // dessin, pas au réglage : sinon changer d'échelle réécrirait le réglage, et le
+  // joueur retrouverait « 128 px » dans un slider borné à 64.
+  //
+  // ⚠ En revanche `bc.x` / `bc.y` ne passent PAS par Px : ce sont des positions
+  // d'écran posées à la main par le joueur. Les mettre à l'échelle déplacerait la
+  // barre au premier changement de réglage.
+  const float icon_size_ = ro::Px(bc.icon_size);
+  const float spacing_   = ro::Px(bc.spacing);
   const int region   = bar;                     // index de barre == région native
   const int maxSlots = kRegions[region].count;  // 36 (skills) / 9 (items)
   const int keyCat   = kRegions[region].hotkeyCat;
@@ -1503,7 +1518,10 @@ void SkillBar::DrawBar(int bar) {
         else
           std::snprintf(left, sizeof(left), "%lu", (ms + 999) / 1000);
         ImFont* font = ImGui::GetFont();
-        const float cs = std::max(8.0f, icon_size_ * 0.42f);
+        // Taille de police EXPLICITE : elle ne suit pas FontScaleMain, mais elle
+        // dérive d'`icon_size_` qui est déjà à l'échelle — seul le plancher
+        // devait être converti.
+        const float cs = std::max(ro::Px(8.0f), icon_size_ * 0.42f);
         const ImVec2 cz = font->CalcTextSizeA(cs, 1.0e30f, 0.0f, left);
         boldAddF(font, cs,
                  ImVec2(p0.x + (icon_size_ - cz.x) * 0.5f,
@@ -1521,8 +1539,8 @@ void SkillBar::DrawBar(int bar) {
       GetSlotKeyLabel(keyCat, slot, key, sizeof(key));
       if (key[0]) {
         ImFont* font = ImGui::GetFont();
-        float ks = std::max(7.0f, icon_size_ * 0.30f * key_scale_);  // proportionnel à l'icône × réglage
-        const float maxW = icon_size_ - 3.0f;           // marge à droite de la case
+        float ks = std::max(ro::Px(7.0f), icon_size_ * 0.30f * key_scale_);  // ∝ icône × réglage
+        const float maxW = icon_size_ - ro::Px(3.0f);   // marge à droite de la case
         const float w = font->CalcTextSizeA(ks, 1.0e30f, 0.0f, key).x;
         if (w > maxW && w > 0.0f) ks *= maxW / w;        // rétrécit un libellé long (ex "Ctrl + F1")
         boldAddF(font, ks, ImVec2(p0.x + 1.5f, p0.y + 0.5f), cKeyTxt, key);
