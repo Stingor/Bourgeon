@@ -18,7 +18,11 @@
 // Quit). The engine is a global-state museum and cannot be restarted in-process:
 // one DOOM per client run.
 //
-// Needs doom1.wad (shareware) next to the client exe. DX9 only.
+// Needs an IWAD next to the client exe — any of the ones the engine knows
+// (doom.wad, doom2.wad, tnt.wad, plutonia.wad, freedoom*.wad, chex.wad,
+// hacx.wad, doom1.wad shareware); the full games work exactly like the
+// shareware one. When several are there the player picks one (kChoose) before
+// the engine boots, since it boots only once per process. DX9 only.
 class Doom : public Plugin {
  public:
   const char* name() const override { return "DOOM"; }
@@ -26,9 +30,9 @@ class Doom : public Plugin {
   void OnRenderUI() override;
 
   // Menu checkbox toggle. Disabling hides the window and pauses the engine
-  // (ticking stops); re-enabling resumes where it was. Re-enabling after a
-  // "WAD not found" retries the WAD check (Create was never called there, so
-  // it's safe — unlike kDead/kQuit, which stay terminal for the process).
+  // (ticking stops); re-enabling resumes where it was. Re-enabling from "WAD
+  // not found" or "pick a WAD" re-scans the folder (Create was never called
+  // there, so it's safe — unlike kDead/kQuit, which stay terminal).
   bool enabled() const { return enabled_; }
   void SetEnabled(bool on);
 
@@ -43,19 +47,27 @@ class Doom : public Plugin {
 
  private:
   enum class State {
-    kIdle,     // not started yet (starts on first enabled frame)
-    kNoWad,    // doom1.wad not found — engine NOT started (I_Error would fire)
+    kIdle,     // not started yet (scans on first enabled frame)
+    kNoWad,    // no IWAD found — engine NOT started (I_Error would fire)
+    kChoose,   // several IWADs found — waiting for the player's pick
     kRunning,  // engine alive, ticking while enabled
     kQuit,     // user quit from DOOM's own menu — engine is a zombie, never tick
     kDead,     // I_Error fired (longjmp'd out) — never tick again
   };
 
-  void Start();          // WAD check + doomgeneric_Create (once per process)
-  void PumpEngine();     // 35 Hz-paced doomgeneric_Tick + texture upload
-  void DrawWindow();     // the ImGui window (framebuffer + input capture)
+  void Start();               // IWAD scan -> boot, ask, or kNoWad
+  void StartWith(int iwad);   // doomgeneric_Create on that IWAD (once per process)
+  void PumpEngine();          // 35 Hz-paced doomgeneric_Tick + texture upload
+  void DrawWindow();          // the ImGui window (framebuffer + input capture)
 
   bool  enabled_ = false;
   State state_   = State::kIdle;
+
+  // IWADs found next to the client, as indices into kIwads (doom.cc); a
+  // static_assert there keeps this array big enough.
+  int found_[16]    = {};
+  int found_count_  = 0;
+  int wad_index_    = -1;  // the one booted, -1 until then
 
   void* texture_ = nullptr;  // IDirect3DTexture9* (created lazily, owned here)
   unsigned tex_epoch_ = 0;   // device epoch de texture_ (cf Overlay_DeviceEpoch)

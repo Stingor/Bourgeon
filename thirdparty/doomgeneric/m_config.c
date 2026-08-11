@@ -2087,9 +2087,7 @@ void M_SetConfigDir(char *dir)
 char *M_GetSaveGameDir(char *iwadname)
 {
     char *savegamedir;
-#if ORIGCODE
     char *topdir;
-#endif
 
     // If not "doing" a configuration directory (Windows), don't "do"
     // a savegame directory, either.
@@ -2115,9 +2113,27 @@ char *M_GetSaveGameDir(char *iwadname)
 
         free(topdir);
 #else
-        savegamedir = M_StringJoin(configdir, DIR_SEPARATOR_S, ".savegame/", NULL);
+        // BOURGEON PATCH: one savegame folder PER IWAD, exactly like the
+        // ORIGCODE branch above. The client folder may hold several IWADs
+        // (doom.wad, doom2.wad, tnt.wad...) and the plugin lets the player pick
+        // one per session: with a single flat folder the six save slots would
+        // be shared across games, and loading a slot written under another IWAD
+        // is meaningless - usually an I_Error on a missing texture or lump.
+        // M_MakeDirectory is a plain mkdir (not recursive): create the parent
+        // first, and end up with "doom\.savegame\doom2.wad" plus a separator.
+        // NEVER end one of these comments with a backslash: line continuation
+        // is spliced BEFORE comments are recognised, so it would swallow the
+        // statement below - and this lib builds with /w, so C4010 stays silent.
+        topdir = M_StringJoin(configdir, ".savegame", NULL);
+
+        M_MakeDirectory(topdir);
+
+        savegamedir = M_StringJoin(topdir, DIR_SEPARATOR_S, iwadname,
+                                   DIR_SEPARATOR_S, NULL);
 
         M_MakeDirectory(savegamedir);
+
+        free(topdir);
 
         printf ("Using %s for savegames\n", savegamedir);
 #endif

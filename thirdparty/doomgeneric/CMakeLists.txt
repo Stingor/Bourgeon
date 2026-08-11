@@ -98,7 +98,12 @@ target_include_directories(doomgeneric PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 # /W0 (et non /w) : le generateur VS le traduit en <WarningLevel>TurnOffAllWarnings,
 # alors que /w partirait en AdditionalOptions et entrerait en conflit avec le
 # WarningLevel implicite de MSBuild (warning D9025 a chaque compilation).
-target_compile_options(doomgeneric PRIVATE /W0)
+# ...sauf C4010 (commentaire // termine par un antislash), promu en ERREUR : la
+# continuation de ligne est appliquee AVANT la reconnaissance des commentaires, donc
+# l'instruction suivante disparait du programme. Vecu le 2026-08-11 sur le patch
+# savegame de m_config.c (variable non initialisee -> c0000005 dans mkdir), et /W0
+# le rendait totalement muet. Aucun fichier vendored n'a ce defaut aujourd'hui.
+target_compile_options(doomgeneric PRIVATE /W0 /we4010)
 # FEATURE_SOUND routes sfx through our DirectSound backend (i_dsound.c, which
 # provides the DG_sound_module/DG_music_module the dispatcher expects).
 target_compile_definitions(doomgeneric PRIVATE

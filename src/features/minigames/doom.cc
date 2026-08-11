@@ -5,6 +5,7 @@
 
 #include <csetjmp>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -41,7 +42,39 @@ extern "C" int I_GetTime(void);
 namespace {
 constexpr int    kW     = DOOMGENERIC_RESX;  // 640 (2x pixel-perfect of 320x200)
 constexpr int    kH     = DOOMGENERIC_RESY;  // 400
-constexpr char   kWad[] = "doom1.wad";       // relative to the client CWD
+
+// The IWADs the vendored engine can identify: thirdparty/doomgeneric/d_iwad.c
+// iwads[] restricted to IWAD_MASK_DOOM (heretic/hexen/strife are outside the
+// mask, hence outside this list). The engine keys the game off the FILE NAME
+// (IdentifyIWADByName), so a renamed WAD is a mis-identified one — we pass the
+// real names through and never rename.
+// Looked up relative to the client CWD: the engine's own search paths (registry,
+// DOOMWADDIR, ...) are compiled out upstream (ORIGCODE is undef'd in config.h),
+// so D_FindWADByName only ever resolves what M_FileExists finds from there.
+// Order = biggest game first, shareware last (it decides nothing when several
+// are present — the player picks — but keeps the list readable).
+struct Iwad {
+  const char* file;
+  const char* label;  // proper name, NOT translated
+};
+constexpr Iwad kIwads[] = {
+    {"doom2.wad",     "Doom II: Hell on Earth"},
+    {"plutonia.wad",  "Final Doom: The Plutonia Experiment"},
+    {"tnt.wad",       "Final Doom: TNT: Evilution"},
+    {"doom.wad",      "Doom (Ultimate / registered)"},
+    {"freedoom2.wad", "Freedoom: Phase 2"},
+    {"freedoom1.wad", "Freedoom: Phase 1"},
+    {"freedm.wad",    "FreeDM"},
+    {"chex.wad",      "Chex Quest"},
+    {"hacx.wad",      "Hacx"},
+    {"doom1.wad",     "Doom (shareware)"},
+};
+constexpr int kIwadCount = static_cast<int>(sizeof(kIwads) / sizeof(kIwads[0]));
+
+bool WadPresent(const char* file) {
+  const DWORD attr = GetFileAttributesA(file);
+  return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
 }  // namespace
 
 // ── Engine-facing state (file scope: referenced by the extern "C" callbacks) ──
@@ -244,35 +277,61 @@ static void PumpDoomMouse(bool over_image) {
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 void Doom::SetEnabled(bool on) {
-  // Retry the WAD check when re-enabling after "not found": Create was never
-  // called in kNoWad, so this is safe (unlike kDead/kQuit, which stay
-  // terminal — the engine cannot restart in-process once it has run).
-  if (on && state_ == State::kNoWad) state_ = State::kIdle;
+  // Re-scan the folder when re-enabling from a state where Create was never
+  // called (WAD added since, or a pick not made yet) — safe, unlike kDead and
+  // kQuit, which stay terminal: the engine cannot restart in-process.
+  if (on && (state_ == State::kNoWad || state_ == State::kChoose))
+    state_ = State::kIdle;
   enabled_ = on;
 }
 
 bool Doom::WantsKeyboard() { return g_doom_wants_keys; }
 
 void Doom::Start() {
-  if (GetFileAttributesA(kWad) == INVALID_FILE_ATTRIBUTES) {
+  static_assert(kIwadCount <= 16, "found_ (doom.h) is too small for kIwads");
+  found_count_ = 0;
+  for (int i = 0; i < kIwadCount; ++i)
+    if (WadPresent(kIwads[i].file)) found_[found_count_++] = i;
+
+  if (found_count_ == 0) {
     state_ = State::kNoWad;
-    // LogInfo("[DOOM] {} not found in the client folder — not starting", kWad);
+    // LogInfo("[DOOM] no IWAD in the client folder — not starting");
     return;
   }
-  // argv is kept BY POINTER by the engine (myargv) — must outlive the process.
+  // One IWAD: nothing to ask. Several: the player picks BEFORE we boot, because
+  // the engine only ever starts ONCE per process — there is no switching later.
+  if (found_count_ == 1)
+    StartWith(found_[0]);
+  else
+    state_ = State::kChoose;
+}
+
+void Doom::StartWith(int iwad_index) {
+  // argv is kept BY POINTER by the engine (myargv) — must outlive the process,
+  // hence the statics. The WAD name is COPIED into a static buffer rather than
+  // pointing at kIwads[].file: myargv entries are handed around as char*, and
+  // a literal in .rdata is one stray write away from a crash.
   static char  arg0[] = "doom";
   static char  arg1[] = "-iwad";
-  static char  arg2[] = "doom1.wad";
+  static char  arg2[64];
   static char  arg3[] = "-nogui";  // I_Error must never pop a modal MessageBox
   static char* argv[] = {arg0, arg1, arg2, arg3};
-  // LogInfo("[DOOM] starting engine ({})...", kWad);
+
+  const char* file = kIwads[iwad_index].file;
+  size_t      len  = std::strlen(file);
+  if (len >= sizeof(arg2)) len = sizeof(arg2) - 1;
+  std::memcpy(arg2, file, len);
+  arg2[len] = '\0';
+
+  wad_index_ = iwad_index;
+  // LogInfo("[DOOM] starting engine ({})...", file);
   const unsigned long t0 = GetTickCount();
   if (GuardedCreate(4, argv)) {
     state_ = State::kRunning;
     // LogInfo("[DOOM] engine up in {} ms — rip and tear!", GetTickCount() - t0);
   } else {
     state_ = State::kDead;
-    LogError("[DOOM] I_Error during startup: {}", g_doom_fatal);
+    LogError("[DOOM] I_Error during startup ({}): {}", file, g_doom_fatal);
   }
 }
 
@@ -337,11 +396,31 @@ void Doom::DrawWindow() {
     switch (state_) {
       case State::kNoWad:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                           i18n::Tr("doom1.wad introuvable !"));
+                           i18n::Tr("Aucun WAD DOOM à côté du client !"));
         ImGui::TextUnformatted(
-            i18n::Tr("Place le shareware doom1.wad à côté du client (même dossier que\n"
-            "l'exe du jeu), puis décoche/recoche la case dans le menu."));
+            i18n::Tr("Place un WAD dans le dossier du client (même dossier que l'exe du\n"
+            "jeu) : doom.wad (Doom complet), doom2.wad, tnt.wad, plutonia.wad,\n"
+            "freedoom1.wad, freedoom2.wad, chex.wad, hacx.wad ou doom1.wad\n"
+            "(shareware). Puis décoche/recoche la case dans le menu."));
         break;
+      case State::kChoose: {
+        ImGui::TextUnformatted(
+            i18n::Tr("Plusieurs WAD trouvés à côté du client. Choisis lequel lancer :"));
+        ImGui::TextDisabled(
+            i18n::Tr("Le moteur ne démarre qu'une fois par session : ce choix tient\n"
+            "jusqu'au redémarrage du client."));
+        ImGui::Spacing();
+        for (int i = 0; i < found_count_; ++i) {
+          char label[128];
+          std::snprintf(label, sizeof(label), "%s  (%s)", kIwads[found_[i]].label,
+                        kIwads[found_[i]].file);
+          if (ImGui::Button(label)) {
+            StartWith(found_[i]);
+            break;  // state_ changed under our feet — stop drawing the list
+          }
+        }
+        break;
+      }
       case State::kDead:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                            i18n::Tr("DOOM a crashé (I_Error) :"));
@@ -426,10 +505,16 @@ void Doom::OnRenderUI() {
 }
 
 const char* Doom::StatusText() const {
+  // kRunning names the WAD actually booted, so the menu says WHICH DOOM runs.
+  static char running[192];
   switch (state_) {
-    case State::kIdle:    return i18n::Tr("prêt (nécessite doom1.wad à côté du client)");
-    case State::kNoWad:   return i18n::Tr("doom1.wad INTROUVABLE dans le dossier du client");
-    case State::kRunning: return i18n::Tr("en cours — knee-deep in the dead");
+    case State::kIdle:    return i18n::Tr("prêt (nécessite un WAD DOOM à côté du client)");
+    case State::kNoWad:   return i18n::Tr("aucun WAD DOOM dans le dossier du client");
+    case State::kChoose:  return i18n::Tr("plusieurs WAD trouvés — choisis dans la fenêtre");
+    case State::kRunning:
+      std::snprintf(running, sizeof(running), i18n::Tr("en cours — %s"),
+                    wad_index_ >= 0 ? kIwads[wad_index_].label : "DOOM");
+      return running;
     case State::kQuit:    return i18n::Tr("quitté (relance le client pour rejouer)");
     case State::kDead:    return i18n::Tr("crashé (I_Error) — voir bourgeon.log");
   }

@@ -111,7 +111,10 @@ void MoonlightUi::DrawFunPanels() {
       SameLine(); HelpMarker(
           i18n::Tr("Le vrai DOOM (moteur doomgeneric embarqué), rendu dans une fenêtre "
           "par-dessus le jeu.\n\n"
-          "Nécessite doom1.wad (shareware) à côté de l'exe du client.\n"
+          "Nécessite un WAD à côté de l'exe du client : doom.wad (Doom complet), "
+          "doom2.wad, tnt.wad, plutonia.wad, freedoom1.wad, freedoom2.wad, "
+          "chex.wad, hacx.wad ou doom1.wad (shareware). Si plusieurs sont "
+          "présents, la fenêtre te fait choisir au lancement.\n"
           "Clique la fenêtre DOOM pour capturer le clavier : ZQSD (AZERTY), "
           "WASD ou flèches pour bouger, Ctrl tirer, Espace/E ouvrir, Shift "
           "courir, Échap menu.\n"
