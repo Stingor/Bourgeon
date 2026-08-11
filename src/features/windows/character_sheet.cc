@@ -6912,9 +6912,22 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
     }
   } else {  // slot vide : abreviation grisee
+    // 🔴 Le libellé doit tenir DANS la case, il est donc MESURÉ puis rétréci s'il
+    // déborde. La case est en pixels d'art (44) et la police de l'interface est un
+    // réglage du joueur : les deux ne se suivent pas, aucune taille écrite en dur ne
+    // peut garantir que « Garment » rentre — il sortait des deux côtés. On garde le
+    // terme du jeu (Garment, pas Cloak) et c'est le rendu qui cède.
     const char* ab = SlotAbbrev(slot);
-    const ImVec2 ts = ImGui::CalcTextSize(ab);
-    dl->AddText(ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
+    ImFont* font = ImGui::GetFont();
+    const float base  = ImGui::GetFontSize();
+    const float avail = sz - ro::Px(4.0f);  // marge intérieure symétrique
+    ImVec2 ts = ImGui::CalcTextSize(ab);
+    float fs = base;
+    if (ts.x > avail && ts.x > 0.0f) {
+      fs = std::max(base * (avail / ts.x), ro::Px(6.0f));
+      ts = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, ab);
+    }
+    dl->AddText(font, fs, ImVec2(p0.x + (sz - ts.x) * 0.5f, p0.y + (sz - ts.y) * 0.5f),
                 IM_COL32(120, 120, 120, 255), ab);
   }
 
