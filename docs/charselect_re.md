@@ -518,9 +518,9 @@ Conséquences côté plugin :
 * Outil d'enquête, gardé : **`uiwnd::ListWindowIds()`** énumère les fenêtres
   vivantes (liste circulaire `mgr+0x17C`, nœuds `{suivant, précédent, fenêtre}`,
   id à `+0x2c`) — `FindWindow(id)` ne sait répondre qu'à qui connaît déjà l'id, ce
-  qui est inutile quand la question est « quel écran natif est là ? ». Le
-  garde-fou `LogKeySwallow` s'en sert et ne parle que si la frappe avalée
-  n'intéressait aucun champ ImGui.
+  qui est inutile quand la question est « quel écran natif est là ? ». C'est en
+  la journalisant temporairement dans le hook de WndProc qu'on a lu
+  `[0x257, 0x257, 0x116]` et identifié l'écran ; la trace, elle, a été retirée.
 
 `CHARACTER_INFO+0x9E` (DelRevDate) > 0 ⇒ suppression programmée en cours (délai
 restant, secondes) — bloque l'entrée en jeu. Réservation/annulation (0x197/0x198)

@@ -69,16 +69,6 @@ class CharSelect : public Plugin {
   // couverture `Covering()` : elle décrit ce qui est RÉELLEMENT à l'écran.
   bool NativeScreenHasKeyboard() const;
 
-  // Notre écran couvre-t-il le natif ? Vrai tant que la table, le voile d'attente
-  // ou un fondu ont été dessinés à la frame courante ou à la précédente.
-  //
-  // 🔴 Un compteur de FRAMES, pas un booléen remis à zéro en tête de rendu : ce
-  // prédicat est interrogé depuis le hook de WndProc, donc possiblement au milieu
-  // d'une frame, entre la remise à zéro et la couverture. Un booléen répondrait
-  // alors « découvert » à tort et lâcherait le clavier au natif pendant que notre
-  // table est à l'écran. Même motif que ro::FullscreenCursorActive().
-  bool Covering() const;
-
  private:
   // Vue décodée d'un slot (depuis CHARACTER_INFO, offsets dans charselect_re.md).
   struct CharView {
@@ -148,6 +138,16 @@ class CharSelect : public Plugin {
   // (clavier + souris) : le natif ne doit être ni vu ni cliqué, même une frame.
   void DrawWaitCover(const char* label);
 
+  // Notre écran couvre-t-il le natif ? Vrai tant que la table, le voile d'attente
+  // ou un fondu ont été dessinés à la frame courante ou à la précédente.
+  //
+  // 🔴 Un compteur de FRAMES, pas un booléen remis à zéro en tête de rendu : ce
+  // prédicat est interrogé depuis le hook de WndProc (via NativeScreenHasKeyboard),
+  // donc possiblement au milieu d'une frame, entre la remise à zéro et la
+  // couverture. Un booléen répondrait alors « découvert » à tort et lâcherait le
+  // clavier au natif pendant que notre table est à l'écran. Même motif que
+  // ro::FullscreenCursorActive().
+  bool Covering() const;
   // À appeler juste avant chaque Begin() plein écran (table, voile, fondu).
   void MarkCovering();
   // Rend explicitement le clavier ET la souris au natif pour la frame suivante.
