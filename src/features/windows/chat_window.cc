@@ -4166,8 +4166,32 @@ void ChatWindow::DrawLines(const Channel& channel) {
   // Le geste retenu plus haut, joué ici — hors du verrou. (La description, elle,
   // reste ARMÉE : elle passe par le natif, proscrit pendant une frame ImGui.)
   if (click_target.valid()) {
-    if (click_shift) links::PostToChat(click_target);
-    else             links::OpenDescription(click_target);
+    // 🔴 DANS une conversation 1:1, le pseudo désigne celui à qui l'on est DÉJÀ en
+    // train d'écrire — c'est le seul qui y soit cliquable, en tête des lignes
+    // reçues comme dans l'écho « ( To Nom ) » de nos envois. Y préparer le
+    // chuchotement de la barre principale serait pire qu'inutile : le clavier — et
+    // donc la réponse — partirait dans une AUTRE fenêtre que celle qu'on regarde.
+    // Le clic rend donc le focus à la saisie de la conversation, le seul champ qui
+    // ait un sens ici. (Le menu du clic droit, lui, garde tout son intérêt.)
+    //
+    // ⚠ Sauf DOCKÉE dans la fenêtre principale (groupe 0) : là, la conversation
+    // n'a pas de saisie à elle — `DrawGroupWindow` est le seul à dessiner
+    // `DrawWhisperInput` — et le joueur y répond justement par la barre et sa box
+    // destinataire. Le geste ordinaire est alors le bon ; poser `whisper_focus`
+    // sur ce canal-là ne ferait qu'y laisser un drapeau que personne ne consomme.
+    const bool peer_of_this_talk = click_target.kind == links::Target::kPlayer &&
+                                   channel.group != 0 &&
+                                   click_target.player_name == channel.whisper_with;
+    if (click_shift) {
+      links::PostToChat(click_target);
+    } else if (peer_of_this_talk) {
+      // Par l'index plutôt que par la référence reçue : `channel` est const, et
+      // c'est bien le canal AFFICHÉ qu'on retrouve — sa clé est son correspondant.
+      const int index = FindWhisperChannel(channel.whisper_with);
+      if (index >= 0) channels_[index].whisper_focus = true;
+    } else {
+      links::OpenDescription(click_target);
+    }
   }
   // ⚠ Ouverture et rendu du popup dans la MÊME fenêtre ImGui (ici l'enfant du
   // log) : son identifiant se hache avec la pile d'ids de la fenêtre courante.

@@ -1523,6 +1523,16 @@ log arrive bien trop facilement pour ça. Seul repli : la ligne de saisie masqu�
 par le joueur (`input_bar_` faux) — il n'y a alors aucun champ où poser le nom,
 et la conversation 1:1, qui porte sa saisie à elle, vaut mieux qu'un clic inerte.
 
+⚠ **DANS une conversation 1:1, le geste ne va PAS à la barre principale.** Le
+seul pseudo cliquable y est celui du correspondant (en tête des lignes reçues, et
+dans l'écho « ( To Nom ) » de nos envois) : c'est déjà à lui qu'on écrit, et
+envoyer le clavier dans la barre principale ferait partir la réponse depuis une
+**autre fenêtre** que celle qu'on regarde. Le clic y rend donc le focus à la
+saisie de la conversation (`Channel::whisper_focus`, le même chemin qu'après un
+envoi). Exception dans l'exception : une conversation **dockée** dans la fenêtre
+principale (`group == 0`) n'a pas de saisie à elle — `DrawWhisperInput` n'est
+dessiné que par `DrawGroupWindow` — donc là, le geste ordinaire reprend.
+
 ⚠ **L'AID obfusqué est retiré du texte** (`StripWhisperAidTag`) : le client colle
 « [ To Nom (813-524) ] : … », et ce nombre ne dit rien à personne. Ôté du
 **préfixe seulement**, borné au premier « : » — au-delà c'est le message, et
