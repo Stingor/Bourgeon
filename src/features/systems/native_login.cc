@@ -22,6 +22,14 @@ constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
 constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
 constexpr int       kCharServerWndId = 2;          // « Select Service » (choix du char-server)
+// DEUX écrans natifs de création de personnage, et il faut connaître les deux.
+// 0x116 = UINewMakeCharWnd (« Character Creation », plein écran, ctor 0x0079F890) :
+//   celui de l'ÉTAT 8 du mode login (0x00D254BA), donc celui où atterrit un compte
+//   SANS personnage — la fenêtre 0x115 n'est alors jamais construite.
+// 0xC8  = UIMakeCharWnd (ancien dialogue, ctor 0x0086BC10) : ouvert par le contrôle
+//   0x1A0 du char-select (case 416, 0x0079E03A) et par les variantes 4/5 de l'état 7.
+constexpr int       kNewMakeCharWndId = 0x116;     // UINewMakeCharWnd (278)
+constexpr int       kMakeCharWndId    = 0xC8;      // UIMakeCharWnd (200)
 
 // Offsets UILoginWnd (tous prouvés au désasm — cf. login_connect_re.md).
 constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler natif)
@@ -234,6 +242,24 @@ bool native_login::CharSelectWindowPresent() {
   // tête de CLoginMode_OnStateEnter). Aucun résidu, donc.
   __try {
     return uiwnd::FindWindow(kCharSelectWndId) != nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
+bool native_login::MakeCharWindowPresent() {
+  // ⚠ MESURÉ LE 2026-08-11, et c'était tout le bug : sur un compte SANS
+  // personnage, l'inventaire des fenêtres vivantes (uiwnd::ListWindowIds) rend
+  // `[0x257, 0x257, 0x116]` pendant que le joueur tape son nom. Ni 0x115 ni 0xC8
+  // — l'écran est la fenêtre **0x116**, construite par l'état 8 du mode login.
+  // Ne tester que 0xC8 revenait à conclure « aucun écran natif » et à garder le
+  // clavier : la saisie du nom était impossible.
+  //
+  // Le dialogue 0xC8, lui, ne remplace pas le char-select (le contrôle 0x1A0 fait
+  // un simple MakeWindow, sans changement d'état) : 0x115 répond encore à côté.
+  __try {
+    return uiwnd::FindWindow(kNewMakeCharWndId) != nullptr ||
+           uiwnd::FindWindow(kMakeCharWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

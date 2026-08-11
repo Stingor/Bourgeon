@@ -56,15 +56,28 @@ class CharSelect : public Plugin {
 
   // L'écran de sélection NATIF est-il celui qui a la main ? Le hook de WndProc
   // s'en sert pour NE PAS confisquer Entrée/Espace au client dans ce cas : sur un
-  // écran natif assumé (mode classique, dialogue natif de création, compte sans
-  // personnage), le clavier appartient au jeu — c'est ainsi qu'on valide la
-  // saisie d'un nom. Sans cette exception, la protection contre le martèlement
-  // d'Entrée aurait rendu ces écrans-là inutilisables sans souris.
+  // écran natif assumé (mode classique, fenêtre native de création), le clavier
+  // appartient au jeu — c'est ainsi qu'on saisit et valide un nom. Sans cette
+  // exception, la protection contre le martèlement d'Entrée rend ces écrans-là
+  // inutilisables.
   //
-  // Prédicat SANS état de rendu (comme les autres WantsEnterKey) : il se déduit
-  // de la config, des replis explicites et de faits natifs, jamais d'un drapeau
-  // posé à la frame précédente.
+  // 🔴 La règle de fond : **on ne garde le clavier que tant qu'on tient l'écran**.
+  // Un prédicat purement « déductif » (config + faits natifs) s'est révélé faux
+  // dès qu'on rendait la main sans le prévoir : compte sans personnage, voile
+  // d'attente expiré, fenêtre de création ouverte par une Entrée résiduelle — le
+  // natif était visible, cliquable, et muet au clavier. D'où la sonde de
+  // couverture `Covering()` : elle décrit ce qui est RÉELLEMENT à l'écran.
   bool NativeScreenHasKeyboard() const;
+
+  // Notre écran couvre-t-il le natif ? Vrai tant que la table, le voile d'attente
+  // ou un fondu ont été dessinés à la frame courante ou à la précédente.
+  //
+  // 🔴 Un compteur de FRAMES, pas un booléen remis à zéro en tête de rendu : ce
+  // prédicat est interrogé depuis le hook de WndProc, donc possiblement au milieu
+  // d'une frame, entre la remise à zéro et la couverture. Un booléen répondrait
+  // alors « découvert » à tort et lâcherait le clavier au natif pendant que notre
+  // table est à l'écran. Même motif que ro::FullscreenCursorActive().
+  bool Covering() const;
 
  private:
   // Vue décodée d'un slot (depuis CHARACTER_INFO, offsets dans charselect_re.md).
@@ -134,6 +147,16 @@ class CharSelect : public Plugin {
   // est là mais que nos données ne sont pas prêtes. Il COUVRE (rendu) et CAPTE
   // (clavier + souris) : le natif ne doit être ni vu ni cliqué, même une frame.
   void DrawWaitCover(const char* label);
+
+  // À appeler juste avant chaque Begin() plein écran (table, voile, fondu).
+  void MarkCovering();
+  // Rend explicitement le clavier ET la souris au natif pour la frame suivante.
+  // À appeler sur les chemins où l'on NE dessine RIEN alors que le char-select
+  // natif est à l'écran : sans ça `io.WantCaptureKeyboard` peut rester vrai
+  // (ImGui garde une fenêtre focalisée / son curseur de navigation), et le hook
+  // de WndProc avale alors toutes les frappes destinées au natif — écran visible
+  // et cliquable, mais impossible d'y taper un nom de personnage.
+  void ReleaseInputToNative();
 
   // Dessine le paperdoll du slot ancré sur son siège : pieds au point (cx, chair_y),
   // corps de hauteur `box_h` (px écran) étendu vers le haut, centré en X. Composé
@@ -233,6 +256,9 @@ class CharSelect : public Plugin {
   // personnage n'a jamais de liste à décoder, il ne doit pas rester enfermé
   // derrière un voile.
   unsigned long screen_arrived_tick_ = 0;
+  // Dernière frame ImGui où l'on a couvert le natif (cf. Covering()). Très
+  // négatif au départ = « jamais couvert » (GetFrameCount() part de 0).
+  int cover_frame_ = -1000;
   // Mode « Personnaliser » : glisser les sièges et les blocs d'interface, molette
   // = taille du pantin, galerie de décors. Ce qui n'était qu'un outil d'auteur
   // (bascule F10 commentée, dont la seule sortie était un LogDiag à recopier dans

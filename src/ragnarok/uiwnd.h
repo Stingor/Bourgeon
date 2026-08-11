@@ -136,8 +136,46 @@ inline void SetPos(void* wnd, int x, int y) {
 // (player_jump.cc : +0x10/+0x14, position MONDE en float). Même nom, structure
 // différente : c'est précisément pour ça qu'ils sont qualifiés `uiwnd::` ici.
 constexpr int kOffVisible = 0x28;  // int : 0 = hors rendu ET hors hit-test
+constexpr int kOffWndId   = 0x2c;  // int : identifiant de fenêtre (celui de MakeWindow)
 constexpr int kOffPosX    = 0x1c;  // int : x écran
 constexpr int kOffPosY    = 0x20;  // int : y écran
+
+// ── Inventaire des fenêtres VIVANTES ─────────────────────────────────────────
+// `FindWindow(id)` ne répond qu'à qui connaît DÉJÀ l'identifiant cherché. Elle ne
+// sait donc pas répondre à « quelle fenêtre native est à l'écran en ce moment ? »
+// — la question qu'on se pose quand un écran natif inattendu prend la main.
+//
+// Le manager tient une liste circulaire doublement chaînée dont la SENTINELLE est
+// pointée par `mgr+0x17C` ; chaque nœud vaut {suivant, précédent, fenêtre}, la
+// fenêtre étant à +8. Relevé dans `UIWindowMgr_DestroyAllWindows 0x00a482f0`, qui
+// la parcourt exactement ainsi (`v5 = *v4`, fenêtre en `v5[2]`, jusqu'au retour à
+// la sentinelle).
+//
+// Écrit les identifiants (`+0x2c`) dans `out_ids` et renvoie le nombre écrit.
+// Borné par `max_ids` ET par un garde-fou de parcours : une liste corrompue ne
+// doit pas faire tourner le client en rond.
+constexpr int kOffWindowList = 0x17C;
+
+inline int ListWindowIds(int* out_ids, int max_ids) {
+  int n = 0;
+  __try {
+    void* sentinel = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(Mgr()) + kOffWindowList);
+    if (!sentinel) return 0;
+    void* node = *reinterpret_cast<void**>(sentinel);
+    for (int guard = 0; node && node != sentinel && n < max_ids && guard < 256;
+         ++guard) {
+      void* wnd = *(reinterpret_cast<void**>(node) + 2);
+      if (wnd)
+        out_ids[n++] =
+            *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(wnd) + kOffWndId);
+      node = *reinterpret_cast<void**>(node);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return n;
+  }
+  return n;
+}
 
 // Visibilité. C'est le drapeau que les modules de features/windows/ mettent à 0
 // pour cacher la native sans la détruire : elle continue de recevoir ses paquets

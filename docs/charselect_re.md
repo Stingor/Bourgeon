@@ -452,6 +452,76 @@ fenêtre** `0x115` (`native_login::CharSelectWindowPresent()`) : `OnStateEnter` 
 `UIWindowMgr_DestroyAllWindows 0x00a482f0` en tête, donc **aucune fenêtre ne survit à
 un changement d'état** — zéro résidu.
 
+### Compte SANS personnage, et la fenêtre native de création (2026-08-11)
+
+Deux faits natifs, mesurés au désassemblage, qui commandent tout le comportement du
+plugin sur un compte neuf :
+
+1. **`cmd 8` du dispatcher cherche le slot dans une liste de taille `mode+0x1CC`**
+   (`CLoginMode_SendMsg 0x00d2a130`, case 8 : `if (count <= 0) return 0;` puis
+   parcours de `count` enregistrements de 175 o en comparant `+0x8A` au slot
+   demandé). Sur un compte sans personnage, `count == 0` ⇒ **tous les slots
+   répondent `nullptr`** — indiscernable, en l'état, d'une liste pas encore
+   décodée. C'est ce qui faisait rester le plugin sur son voile « Chargement des
+   personnages… » puis rendre l'écran au char-select NATIF.
+2. **Il y a DEUX écrans natifs de création, et un compte vide n'ouvre pas celui
+   qu'on croit.** Mesuré en jeu le 2026-08-11 (`uiwnd::ListWindowIds`, inventaire
+   de la liste `mgr+0x17C`) pendant que le joueur tapait un nom : les fenêtres
+   vivantes étaient **`[0x257, 0x257, 0x116]`** — ni `0x115`, ni `0xC8`.
+
+   | id | classe | monté par |
+   |----|--------|-----------|
+   | **0x116** (278) | `UINewMakeCharWnd` (ctor `0x0079F890`, vtable `0x0101DCC4`) | **état 8** du mode login (`0x00D254BA`) — l'écran plein « Character Creation » |
+   | 0xC8 (200) | `UIMakeCharWnd` (ctor `0x0086BC10`, vtable `0x010303F0`) | contrôle `0x1A0` du char-select (case 416, `0x0079E03A`) et variantes 4/5 de l'état 7 |
+
+   Table des états (`byte_D26808[état]` → `jpt_D267A4`) : **7 = char-select**
+   (`0x00D251A0`, `MakeWindow(0x115)` + une annexe `0xC7`/`0xC8` selon
+   `dword_15FFA80`), **8 = création** (`0x00D254BA`), **9 = entrée en jeu**.
+   Un compte sans personnage part directement en état 8 : **`0x115` n'est jamais
+   construite**. Le contrôle `0x1A0`, lui, ne détruit rien (simple `MakeWindow`,
+   aucun changement d'état) — `0x115` reste alors vivante derrière `0xC8`.
+
+Conséquences côté plugin :
+
+* `native_login::MakeCharWindowPresent()` teste **`0x116` ET `0xC8`** = « le joueur
+  saisit un nom ». Le plugin **se découvre** et lui rend clavier + souris. Ces
+  fenêtres peuvent s'ouvrir **sans qu'on l'ait demandé** : le bouton par défaut du
+  char-select natif est « Créer » quand le slot sélectionné est vide, et une
+  Entrée en file suffit (`UIWindowMgr_OnKeyDown` ne regarde jamais la visibilité).
+  D'où aussi le rejet, dans le hook de WndProc, d'une Entrée d'auto-confirm
+  (canal marqué `PostGameKey`) qui arriverait alors que `0x115` existe déjà.
+* **`MoonlightAuth::charsel_reached_` se latche aussi sur `0x116`** : sinon, sur un
+  compte vide, le latch ne tombe jamais (il n'attendait que `0x115`),
+  l'auto-confirmation continue de poster des Entrées **dans l'écran de saisie du
+  nom**, et la détection d'échec reste armée sur une session pourtant établie.
+* Un aller-retour par un de ces écrans **ne périme pas la liste**
+  (`screen_gone_tick_` n'est pas repoussé) : le serveur ne renvoie pas de liste au
+  retour, seulement `HC_ACCEPT_MAKECHAR`.
+* « Aucun slot rempli » vaut **compte vide** dès que le dernier témoin de salve a
+  plus de `kDecodeGraceMs` (600 ms) — le plugin affiche alors sa salle avec tous
+  les sièges libres, et la création se fait dans le popup ImGui. Témoins observés
+  (jamais interceptés) : `0x006B`, `0x0B72`, et désormais **`0x082D`
+  HC_ACCEPT_ENTER2**, émis dans la même salve et porteur d'information même quand
+  la liste est vide.
+* Le clavier suit **l'écran** : `CharSelect::Covering()` (compteur de frames, pas
+  un booléen — le prédicat est interrogé depuis le WndProc, éventuellement au
+  milieu d'une frame). Découvert ⇒ `SetNextFrameWantCaptureKeyboard(false)`
+  explicite : sans lui, ImGui garde une fenêtre focalisée après avoir couvert et
+  `io.WantCaptureKeyboard` reste vrai, ce qui fait avaler les frappes destinées au
+  natif par la garde générale de `WindowProcHook`.
+* 🔴 **Et un FILET, parce qu'une sonde ne connaît jamais toutes les fenêtres** :
+  si la salve du char-server est passée (`list_tick_`) et que nous ne couvrons
+  rien, `NativeScreenHasKeyboard()` répond **oui** quel que soit l'écran natif
+  affiché. C'est ce filet qui manquait — un écran inconnu (`0x116`) suffisait à
+  faire mourir toutes les frappes dans le hook devant un champ de saisie visible.
+  Une sonde qui ne reconnaît pas une fenêtre doit se taire, pas confisquer.
+* Outil d'enquête, gardé : **`uiwnd::ListWindowIds()`** énumère les fenêtres
+  vivantes (liste circulaire `mgr+0x17C`, nœuds `{suivant, précédent, fenêtre}`,
+  id à `+0x2c`) — `FindWindow(id)` ne sait répondre qu'à qui connaît déjà l'id, ce
+  qui est inutile quand la question est « quel écran natif est là ? ». Le
+  garde-fou `LogKeySwallow` s'en sert et ne parle que si la frappe avalée
+  n'intéressait aucun champ ImGui.
+
 `CHARACTER_INFO+0x9E` (DelRevDate) > 0 ⇒ suppression programmée en cours (délai
 restant, secondes) — bloque l'entrée en jeu. Réservation/annulation (0x197/0x198)
 restent **100 % en ImGui** (pas de dialogue natif) ; création et suppression

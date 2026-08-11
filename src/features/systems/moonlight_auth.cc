@@ -753,7 +753,13 @@ void MoonlightAuth::OnRenderLoginUI() {
     // tombait immédiatement, l'auto-confirmation ne tirait plus et le joueur restait
     // bloqué sur la fenêtre « Select Service » (choix du char-server, id 2). Les
     // fenêtres, elles, sont purgées à chaque changement d'état du mode.
-    if (!charsel_reached_ && native_login::CharSelectWindowPresent())
+    // 🔴 …ET l'écran natif de CRÉATION (0x116) : un compte SANS personnage
+    // n'arrive jamais sur le char-select, le client va droit à l'état 8. Sans ce
+    // second terme le latch ne tombait pas, l'auto-confirmation continuait de
+    // poster des Entrées — dans un écran de saisie de nom — et la détection
+    // d'échec restait armée sur une session pourtant établie.
+    if (!charsel_reached_ && (native_login::CharSelectWindowPresent() ||
+                              native_login::MakeCharWindowPresent()))
       charsel_reached_ = true;
     if (charsel_reached_) return;
 

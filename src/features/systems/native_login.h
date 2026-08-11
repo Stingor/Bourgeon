@@ -94,4 +94,18 @@ bool CharServerWindowPresent();
 // dans le char-select).
 bool CharSelectWindowPresent();
 
+// True si un écran NATIF de CRÉATION de personnage est vivant. Il y en a DEUX, et
+// il faut connaître les deux :
+//   · **0x116 `UINewMakeCharWnd`** — l'écran plein « Character Creation », monté
+//     par l'ÉTAT 8 du mode login. C'est là qu'atterrit un compte SANS personnage,
+//     et dans ce cas la fenêtre du char-select (0x115) n'existe JAMAIS.
+//   · 0xC8 `UIMakeCharWnd` — l'ancien dialogue, ouvert par le contrôle 0x1A0 du
+//     char-select natif (donc AUSSI par une simple Entrée sur un slot vide, sans
+//     que personne ne l'ait demandé). Là, 0x115 reste vivante derrière lui.
+//
+// 🔴 C'est la sonde qui dit « le joueur saisit un nom de personnage » — et cette
+// saisie se fait AU CLAVIER, cf. CharSelect::NativeScreenHasKeyboard. Se tromper
+// de fenêtre, c'est confisquer le clavier devant un écran de création.
+bool MakeCharWindowPresent();
+
 }  // namespace native_login

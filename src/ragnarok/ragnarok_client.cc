@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <array>
+#include <cstdio>
 #include <iomanip>
 #include <sstream>
 
@@ -15,6 +16,7 @@
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/systems/moonlight_auth.h"        // WantsKeyboard (écrans de login)
+#include "features/systems/native_login.h"          // CharSelectWindowPresent (Entrée tardive)
 #include "features/windows/char_select.h"           // NativeScreenHasKeyboard
 #include "features/windows/make_item_window.h"      // WantsEnterKey (avale VK_RETURN)
 #include "features/windows/npc_dialog_window.h"     // EatsKey (touches du dialogue NPC)
@@ -25,6 +27,7 @@
 #include "ragnarok/configuration.h"
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
+#include "ragnarok/uiwnd.h"                         // ListWindowIds (inventaire natif)
 #include "ui/ro_imgui.h"
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
@@ -56,6 +59,47 @@ static HWND g_game_hwnd = nullptr;
 // pilote clavier ne produit jamais (il vaut toujours au moins 1) : aucune frappe
 // réelle ne peut porter cette valeur, la reconnaissance est donc sans ambiguïté.
 constexpr LPARAM kSyntheticKeyLParam = 0x00420000;
+
+// ── Garde-fou : une frappe avalée que PERSONNE ne réclame ────────────────────
+// Deux gardes indépendantes retiennent des touches pendant le parcours de login :
+// celle du parcours (MoonlightAuth::WantsKeyboard + CharSelect) et la règle
+// générale io.WantCaptureKeyboard. Quand le joueur constate « le clavier ne
+// répond pas », rien ne dit laquelle des deux a mangé la touche, ni sur quel
+// état — et il a fallu cette trace pour découvrir que l'écran de création d'un
+// compte vide est la fenêtre 0x116, qu'aucune de nos sondes ne connaissait.
+//
+// Elle reste en place, mais MUETTE en usage normal : on ne journalise que si
+// AUCUN champ ImGui ne réclame la frappe (`WantTextInput`), c'est-à-dire
+// précisément le cas louche « avalée pour rien ». Une ligne toutes les 2 s au
+// plus (LogDiag = warn, actif en release).
+static void LogKeySwallow(const char* gate, UINT msg, WPARAM wparam) {
+  ImGuiIO& io = ImGui::GetIO();
+  if (io.WantTextInput) return;  // saisie ImGui : avalage normal, rien à dire
+  static unsigned long last = 0;
+  const unsigned long now = GetTickCount();
+  if (last != 0 && (now - last) < 2000) return;
+  last = now;
+  CharSelect* const cs = Bourgeon::Instance().char_select();
+  // Quelles fenêtres natives sont RÉELLEMENT à l'écran ? Sans cet inventaire on
+  // ne peut que deviner un identifiant et le tester (FindWindow), ce qui a déjà
+  // conduit à conclure « aucune fenêtre » alors qu'un écran natif était bien là.
+  int ids[32] = {0};
+  const int n = uiwnd::ListWindowIds(ids, 32);
+  char list[256] = {0};
+  int pos = 0;
+  for (int i = 0; i < n && pos < static_cast<int>(sizeof(list)) - 12; ++i)
+    pos += std::snprintf(list + pos, sizeof(list) - pos, "%s0x%x",
+                         i ? "," : "", ids[i]);
+  LogDiag("[clavier] msg=0x{:x} wParam={} AVALÉ par « {} » | fenêtres=[{}] "
+          "charsel_wnd={} makechar_wnd={} couvre={} natif_a_le_clavier={} "
+          "WantCaptureKbd={}",
+          static_cast<unsigned>(msg), static_cast<unsigned>(wparam), gate, list,
+          native_login::CharSelectWindowPresent(),
+          native_login::MakeCharWindowPresent(),
+          cs != nullptr && cs->Covering(),
+          cs != nullptr && cs->NativeScreenHasKeyboard(),
+          io.WantCaptureKeyboard);
+}
 
 static bool IsMouseOverAnyImGuiWindow(float mx, float my);
 // Same, but ALSO counts click-through (locked) windows — used to decide whether
@@ -587,8 +631,17 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
   // propre UI la traiterait comme une frappe du joueur : l'Entrée postée pour
   // valider « Select Service » atterrissait dans le char-select ImGui et
   // déclenchait une entrée en jeu non demandée.
-  if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP) && lParam == kSyntheticKeyLParam)
+  if ((uMsg == WM_KEYDOWN || uMsg == WM_KEYUP) && lParam == kSyntheticKeyLParam) {
+    // ⚠ Sauf une Entrée d'auto-confirm ARRIVÉE TROP TARD. Ces frappes visent la
+    // fenêtre « Select Service » ; postées (PostMessage), elles peuvent être
+    // dépilées APRÈS que le char-select natif s'est ouvert — et là, Entrée clique
+    // son bouton par défaut : entrée en jeu sur un personnage non choisi, ou
+    // ouverture de la fenêtre native de création quand le slot est vide (compte
+    // neuf). L'auto-confirm cesse d'en poster dès que cette fenêtre existe ; on
+    // jette donc celles qui la trouvent déjà là — leur travail est fini.
+    if (wParam == VK_RETURN && native_login::CharSelectWindowPresent()) return 0;
     return WndProcRef(hwnd, uMsg, wParam, lParam);
+  }
 
   // ── Le sélecteur de variante du panneau emoji de Windows, jeté ici ─────────
   // Win+. envoie « ❤️ » en DEUX caractères : le cœur, puis U+FE0F qui demande la
@@ -682,8 +735,14 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
         if (auto* auth = Bourgeon::Instance().moonlight_auth()) {
           if (auth->WantsKeyboard()) {
             auto* char_select = Bourgeon::Instance().char_select();
-            if (char_select == nullptr || !char_select->NativeScreenHasKeyboard())
+            if (char_select == nullptr || !char_select->NativeScreenHasKeyboard()) {
+              // DIAGNOSTIC (temporaire) : dire QUI avale, et sur quel état. Sans
+              // ça, « le clavier n'arrive pas au natif » ne désigne pas sa garde —
+              // il y en a deux ici, et io.WantCaptureKeyboard plus bas avale
+              // indépendamment de ce prédicat.
+              LogKeySwallow("garde login", uMsg, wParam);
               return 0;
+            }
           }
         }
       }
@@ -839,6 +898,10 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
           case WM_KEYDOWN: case WM_KEYUP:
           case WM_SYSKEYDOWN: case WM_SYSKEYUP:
           case WM_CHAR: case WM_UNICHAR:
+            // DIAGNOSTIC (temporaire) — cf. LogKeySwallow : cette garde-ci avale
+            // sur l'état ImGui seul, sans rien savoir du parcours de login.
+            if (native_login::AtLoginScreen())
+              LogKeySwallow("io.WantCaptureKeyboard", uMsg, wParam);
             return 0;
         }
       }

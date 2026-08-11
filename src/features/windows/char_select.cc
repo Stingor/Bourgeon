@@ -129,6 +129,12 @@ constexpr unsigned long kEnterGraceMs = 400;
 // CHARACTER_INFO appartiennent à la session courante.
 constexpr uint16_t kOpCharList     = 0x006B;  // HC_ACCEPT_ENTER (variable)
 constexpr uint16_t kOpCharListPage = 0x0B72;  // HC_ACK_CHARINFO_PER_PAGE (variable)
+// HC_ACCEPT_ENTER2 : les COMPTES de slots (normal / premium / billing / créables)
+// que SlotCapacity relit ensuite dans les globales. Le serveur l'émet dans la MÊME
+// salve que la liste, juste avant elle (rAthena `chclif_mmo_char_send`) : c'est un
+// second témoin du même fait, et il porte de l'information même quand le compte
+// n'a aucun personnage — le cas où la liste, elle, est vide.
+constexpr uint16_t kOpCharSlots    = 0x082D;  // HC_ACCEPT_ENTER2 (variable)
 // Repli de sûreté : au-delà de ce délai sans avoir vu de paquet de liste, on
 // s'arme quand même (et on le SIGNALE une fois). Sans ce repli, un opcode qui ne
 // serait pas celui de ce client rendrait la table définitivement invisible — une
@@ -140,6 +146,11 @@ constexpr unsigned long kListWaitMs = 3000;
 // delà on rend la main au natif (un compte sans personnage n'aurait sinon plus
 // aucune issue, sa liste ne devenant jamais décodable).
 constexpr unsigned long kCoverWaitMs = 3000;
+// Sursis de DÉCODAGE, à compter du dernier témoin de salve reçu : le temps que le
+// handler natif remplisse les CHARACTER_INFO. Au-delà, « aucun slot rempli » n'est
+// plus un chargement en cours mais un compte SANS PERSONNAGE — et celui-là doit
+// voir la salle, tous sièges libres, pas le char-select natif.
+constexpr unsigned long kDecodeGraceMs = 600;
 
 // Comptes de slots renseignés par HC_ACCEPT_ENTER2 (serveur). Capacité = somme.
 constexpr uintptr_t kNormalSlots   = 0x015ffd60;
@@ -650,10 +661,13 @@ CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
   // doit continuer à peupler les CHARACTER_INFO. Aucun payload ne nous intéresse,
   // seulement le fait qu'un paquet de liste soit arrivé -> forward_len = 0.
   // 0x006B = HC_ACCEPT_ENTER (liste complète, variable) ;
-  // 0x0B72 = HC_ACK_CHARINFO_PER_PAGE (liste paginée, variable).
+  // 0x0B72 = HC_ACK_CHARINFO_PER_PAGE (liste paginée, variable) ;
+  // 0x082D = HC_ACCEPT_ENTER2 (comptes de slots, même salve — seul témoin qui
+  //          porte encore de l'information quand le compte n'a AUCUN personnage).
   // Cf. docs/charselect_re.md.
   Bourgeon::Instance().RegisterObserveOpcode(kOpCharList, 0);
   Bourgeon::Instance().RegisterObserveOpcode(kOpCharListPage, 0);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpCharSlots, 0);
   try {
     // Réglage d'AVANT le jeu : fichier de démarrage, ancien yaml en secours.
     const YAML::Node cs = startup::Section("char_select");
@@ -1072,7 +1086,8 @@ void CharSelect::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
                               uint16_t /*len*/) {
   // Purement passif : on ne lit AUCUN octet du paquet (forward_len = 0), on note
   // seulement l'instant. Le handler natif fait tout le travail de décodage.
-  if (opcode == kOpCharList || opcode == kOpCharListPage) {
+  if (opcode == kOpCharList || opcode == kOpCharListPage ||
+      opcode == kOpCharSlots) {
     list_tick_ = GetTickCount();
     if (list_tick_ == 0) list_tick_ = 1;  // 0 = « jamais reçu », réservé
   }
@@ -1151,7 +1166,7 @@ void CharSelect::DrawTransitionFade(const char* label, unsigned long since) {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  g_cover_active = true;  // on couvre encore le natif (détour de msgbox)
+  MarkCovering();  // on couvre encore le natif (détour de msgbox + clavier)
   // MÊME nom de fenêtre que la table : ImGui garde ainsi le même état/z-order, la
   // transition ne provoque aucun saut.
   ImGui::Begin("##charselect_full", nullptr,
@@ -1172,26 +1187,63 @@ void CharSelect::DrawTransitionFade(const char* label, unsigned long since) {
   ImGui::PopStyleColor();  // WindowBg
 }
 
+bool CharSelect::Covering() const {
+  return ImGui::GetCurrentContext() != nullptr &&
+         (ImGui::GetFrameCount() - cover_frame_) <= 1;
+}
+
+void CharSelect::MarkCovering() {
+  g_cover_active = true;  // détour de msgbox : la modale native serait invisible
+  if (ImGui::GetCurrentContext()) cover_frame_ = ImGui::GetFrameCount();
+}
+
+void CharSelect::ReleaseInputToNative() {
+  // On ne dessine rien : le char-select natif est à l'écran, à lui le clavier et
+  // la souris. On le dit à ImGui EXPLICITEMENT plutôt que d'espérer qu'il n'en
+  // veuille plus : après avoir couvert, il garde une fenêtre focalisée (et son
+  // curseur de navigation dès qu'une flèche ou une Entrée a été frappée), ce qui
+  // suffit à maintenir io.WantCaptureKeyboard — et le hook de WndProc avale alors
+  // toutes les frappes, y compris celles destinées à la fenêtre native de
+  // création de personnage.
+  if (ImGui::GetCurrentContext() == nullptr) return;
+  ImGui::SetNextFrameWantCaptureKeyboard(false);
+  ImGui::SetNextFrameWantCaptureMouse(false);
+}
+
 bool CharSelect::NativeScreenHasKeyboard() const {
-  // Hors char-select, rien à dire : c'est le parcours de login, dont MoonlightAuth
-  // garde la touche (les écrans natifs y sont masqués derrière le formulaire).
-  if (!native_login::CharSelectWindowPresent()) return false;
+  // Fenêtre native de CRÉATION ouverte : elle attend un NOM au clavier, et elle
+  // peut s'ouvrir sans nous (une Entrée résiduelle sur le char-select natif
+  // clique son bouton par défaut ; sur un compte sans personnage, c'est « Créer »).
+  // Testée en PREMIER : elle prime sur tout le reste, y compris sur le fait que
+  // le char-select natif soit encore là derrière (il l'est — cf.
+  // native_login::MakeCharWindowPresent).
+  if (native_login::MakeCharWindowPresent()) return true;
+  // Hors char-select : soit on est encore dans le parcours de login (formulaire,
+  // pilotage du natif) et le clavier reste à ImGui, soit le client affiche un
+  // écran natif que nous ne connaissons pas.
+  if (!native_login::CharSelectWindowPresent()) {
+    // 🔴 FILET. La salve du char-server est passée (`list_tick_`), donc le
+    // pilotage du login est TERMINÉ ; et nous ne couvrons rien. Quel que soit
+    // l'écran natif affiché, il appartient alors au joueur.
+    //
+    // C'est exactement ce filet qui manquait : sur un compte sans personnage le
+    // client ouvre l'écran de création `0x116`, que ni la sonde du char-select ni
+    // (à l'époque) celle de la création ne connaissaient — le prédicat répondait
+    // « non » et TOUTES les frappes mouraient dans le hook, devant un écran de
+    // saisie de nom parfaitement visible. Une sonde qui ne connaît pas une
+    // fenêtre doit se taire, pas confisquer.
+    return list_tick_ != 0 && !Covering();
+  }
   // Écran natif ASSUMÉ : plugin désactivé, repli « Mode Classique », dialogue
   // natif en cours (création / suppression), ou login non-Moonlight (règle
   // produit : login natif => char-select natif).
   if (!enabled_ || native_fallback_ || native_op_) return true;
   if (!force_ && (auth_ == nullptr || !auth_->DroveMoonlightLogin())) return true;
-  // Compte SANS aucun personnage : notre scène ne s'affiche pas (rien à peupler)
-  // et le joueur crée son premier personnage dans la fenêtre native — où le nom
-  // se valide à l'Entrée. Fait natif, pas un drapeau de rendu.
-  //
-  // ⚠ Mais pas tout de suite : au tout début, « aucun personnage » est aussi ce
-  // que voit un compte normal dont la liste n'est pas encore décodée, et notre
-  // voile d'attente couvre alors l'écran. Même borne que lui (kCoverWaitMs), pour
-  // que couverture et clavier ne se contredisent jamais.
-  if (!native_login::CharListLoaded())
-    return (GetTickCount() - screen_arrived_tick_) >= kCoverWaitMs;
-  return false;  // notre scène tient l'écran
+  // Et sinon : le clavier suit L'ÉCRAN. Tant que la table (ou le voile, ou un
+  // fondu) couvre, il est à ImGui ; dès qu'on rend la main au natif — voile
+  // expiré sans données exploitables — il redevient le sien, sans quoi cet
+  // écran-là n'est plus pilotable qu'à la souris.
+  return !Covering();
 }
 
 void CharSelect::DrawWaitCover(const char* label) {
@@ -1215,7 +1267,7 @@ void CharSelect::DrawWaitCover(const char* label) {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  g_cover_active = true;  // on couvre le natif (détour de msgbox)
+  MarkCovering();  // on couvre le natif (détour de msgbox + clavier)
   // MÊME nom de fenêtre que la table et que le fondu : ImGui garde le même
   // état/z-order, l'arrivée de la scène ne provoque aucun saut.
   ImGui::Begin("##charselect_full", nullptr,
@@ -1568,16 +1620,40 @@ void CharSelect::OnRenderLoginUI() {
   // elles, sont purgées à chaque changement d'état du mode : FindWindow(0x115) ne
   // répond que si le char-select natif est RÉELLEMENT à l'écran.
   const bool screen_alive = NativeCharSelectAlive();
+  // Fenêtre native de CRÉATION ouverte (0xC8) ? Elle ne remplace pas le
+  // char-select (rien n'est détruit), mais c'est un SOUS-ÉCRAN : la session
+  // char-server continue derrière.
+  const bool make_char = native_login::MakeCharWindowPresent();
   // FRONT présent -> absent : c'est l'instant de référence de la fraîcheur. On ne
   // l'enregistre QUE sur le front — le rafraîchir à chaque frame d'absence rendrait
   // toute liste « périmée », puisque le paquet arrive justement pendant l'absence.
-  if (screen_was_alive_ && !screen_alive) screen_gone_tick_ = GetTickCount();
+  //
+  // ⚠ Et pas pendant un SOUS-ÉCRAN natif : passer par la fenêtre de création ne
+  // quitte pas la session, et le serveur ne renvoie PAS de liste au retour
+  // (HC_ACCEPT_MAKECHAR suffit au natif). Périmer la liste là ferait ré-attendre
+  // trois secondes un paquet qui ne viendra jamais, puis journaliser une alerte.
+  if (screen_was_alive_ && !screen_alive && !make_char)
+    screen_gone_tick_ = GetTickCount();
   // FRONT absent -> présent : départ du voile d'attente (cf. DrawWaitCover).
   if (!screen_was_alive_ && screen_alive) screen_arrived_tick_ = GetTickCount();
   screen_was_alive_ = screen_alive;
   if (!screen_alive) {
     active_ = false;
     active_since_ = 0;
+    return;
+  }
+
+  // ── Fenêtre native de création à l'écran : on s'efface ───────────────────────
+  // Elle peut s'ouvrir SANS nous : le bouton par défaut du char-select natif,
+  // c'est « Créer » quand le slot sélectionné est vide, et une Entrée en file
+  // (joueur qui martèle, auto-confirm du char-server) suffit à la déclencher.
+  // La couvrir, c'est l'enfermer : elle resterait sous notre décor, invisible,
+  // avec le clavier confisqué — le joueur ne peut ni la remplir ni l'annuler.
+  // On rend donc l'écran ET les entrées, jusqu'à ce qu'elle se ferme.
+  if (make_char) {
+    active_ = false;
+    active_since_ = 0;
+    ReleaseInputToNative();
     return;
   }
 
@@ -1607,14 +1683,22 @@ void CharSelect::OnRenderLoginUI() {
       // laisser visible, c'est le laisser cliquable et le laisser réagir aux
       // Entrées encore en file (entrée en jeu / création non demandées).
       if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
+      else ReleaseInputToNative();  // découvert -> le natif reprend les entrées
       return;
     }
     if (!list_warned_) {
       list_warned_ = true;
-      LogError("[CharSelect] aucun paquet de liste (0x{:04X}/0x{:04X}) vu en {} ms "
-              "-> table armée sans confirmation. Si ça se répète, l'opcode de "
-              "liste de ce client n'est pas celui observé.",
-              kOpCharList, kOpCharListPage, kListWaitMs);
+      // Les deux causes possibles n'appellent pas le même correctif, et seul le
+      // journal peut les distinguer : list_tick_ == 0 = AUCUN paquet de liste
+      // observé (mauvais opcode / hook de lecture muet) ; list_tick_ non nul mais
+      // antérieur = la liste date d'avant la dernière sortie d'écran (on est
+      // revenu sur l'écran sans que le serveur en repousse une).
+      LogError("[CharSelect] liste non confirmée après {} ms -> table armée sans "
+               "confirmation (list_tick={}, screen_gone={}). 0 = aucun paquet "
+               "0x{:04X}/0x{:04X}/0x{:04X} observé ; sinon la liste est plus "
+               "ancienne que la dernière sortie d'écran.",
+               kListWaitMs, list_tick_, screen_gone_tick_, kOpCharList,
+               kOpCharListPage, kOpCharSlots);
     }
   } else {
     wait_since_ = 0;
@@ -1624,6 +1708,7 @@ void CharSelect::OnRenderLoginUI() {
   if (cap <= 0) {
     active_ = false;
     if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
+    else ReleaseInputToNative();
     return;
   }
 
@@ -1633,9 +1718,23 @@ void CharSelect::OnRenderLoginUI() {
   for (int i = 0; i < cap && i < 128; ++i) {
     if (ReadSlot(i, &views[i])) ++nfilled;
   }
-  if (nfilled == 0) {  // liste pas encore décodable — ou compte sans personnage
+  // 🔴 « Aucun slot rempli » recouvre DEUX situations opposées :
+  //   - la liste n'est pas encore DÉCODÉE -> couvrir et attendre ;
+  //   - le compte n'a AUCUN personnage -> lui montrer la salle, tous sièges
+  //     libres, pour qu'il y crée son premier personnage (popup ImGui).
+  // Les confondre renvoyait tout compte neuf au char-select NATIF au bout de
+  // trois secondes de voile : plus de scène du tout, et un écran natif qu'on
+  // continuait de priver du clavier — donc plus aucun moyen de créer, ni chez
+  // nous ni chez lui.
+  //
+  // On distingue par le DÉLAI DEPUIS LA SALVE : nos témoins (0x082D en tête)
+  // peuvent précéder d'une frame ou deux le décodage des CHARACTER_INFO par le
+  // handler natif. Passé ce court sursis, zéro slot rempli veut dire zéro
+  // personnage.
+  if (nfilled == 0 && may_cover &&
+      (now - list_tick_) < kDecodeGraceMs) {
     active_ = false;
-    if (may_cover) DrawWaitCover(i18n::Tr("Chargement des personnages…"));
+    DrawWaitCover(i18n::Tr("Chargement des personnages…"));
     return;
   }
   if (!active_) active_since_ = GetTickCount();   // arrivée sur l'écran (edge)
@@ -1662,6 +1761,13 @@ void CharSelect::OnRenderLoginUI() {
       op_prev_nfilled_ = -1;
       selected_ = -1;  // relaissera l'autofocus se replacer
     } else {
+      // Le dialogue natif attend des frappes (nom du personnage, code de
+      // suppression) : on relâche EXPLICITEMENT le clavier d'ImGui. Ne rien
+      // dessiner de focusable ne suffit pas — après avoir couvert, ImGui garde
+      // une fenêtre focalisée et io.WantCaptureKeyboard reste vrai, ce qui fait
+      // avaler la frappe par le hook de WndProc. La souris, elle, reste à ImGui :
+      // le bouton « Revenir à la table » ci-dessous doit rester cliquable.
+      ImGui::SetNextFrameWantCaptureKeyboard(false);
       ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_Always);
       ImGui::SetNextWindowBgAlpha(0.85f);
       ImGui::Begin("##charsel_return", nullptr,
@@ -1718,7 +1824,7 @@ void CharSelect::OnRenderLoginUI() {
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
       ImGuiWindowFlags_NoBringToFrontOnFocus;
-  g_cover_active = true;  // on couvre le natif -> le détour supprime sa msgbox de refus
+  MarkCovering();  // on couvre le natif -> le détour supprime sa msgbox de refus
   ImGui::Begin("##charselect_full", nullptr, fs);
   ImDrawList* dl = ImGui::GetWindowDrawList();
 
