@@ -182,6 +182,7 @@
 "Coupe la marche dès que tu lâches la touche, au lieu de laisser le personnage finir le trajet demandé.": "Corta la marcha en cuanto sueltas la tecla, en vez de dejar que el personaje termine el camino pedido."
 "Interface de jeu": "Interfaz de juego"
 "Langue": "Idioma"
+"Langue de l'interface": "Idioma de la interfaz"
 "Police": "Fuente"
 "Langue de l'interface Bourgeon. Le jeu lui-même (noms d'objets, descriptions, messages du serveur) n'est pas concerné.\nUne langue grisée est connue mais son fichier de traduction est absent de SaveData\\lang\\.": "Idioma de la interfaz de Bourgeon. El juego en sí (nombres de objetos, descripciones, mensajes del servidor) no se ve afectado.\nUn idioma en gris es conocido pero falta su archivo de traducción en SaveData\\lang\\."
 "%zu textes sans traduction": "%zu textos sin traducir"

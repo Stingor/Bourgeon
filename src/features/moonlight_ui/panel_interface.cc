@@ -287,10 +287,17 @@ void MoonlightUi::DrawInterfacePanel() {
         "Barre d'action). Ils sont grisés tant que cette case est décochée : "
         "sans elle, ces fenêtres n'existent pas."));
 
-    // ── Langue de l'interface ────────────────────────────────────────────────
-    // Le seul réglage de tout le panneau dont le libellé se traduit LUI-MÊME :
-    // c'est aussi le seul qu'un joueur doit pouvoir retrouver quand l'interface
-    // est déjà dans une langue qu'il ne lit pas.
+    // ── Langue, police et échelle de l'interface ─────────────────────────────
+    // Les trois réglages qui s'appliquent à TOUTE l'interface Bourgeon, groupés
+    // ici. Les deux derniers vivaient dans la section « Skin RO » de la
+    // navigation ci-dessous, où il fallait deviner qu'un skin change aussi la
+    // police et la taille du texte — ils ne parlent pas d'habillage de fenêtre,
+    // ils parlent de l'interface entière, comme la langue.
+    //
+    // Le libellé de la langue se traduit LUI-MÊME, et il dit « de l'interface » :
+    // c'est le seul réglage qu'un joueur doit pouvoir retrouver quand l'interface
+    // est déjà dans une langue qu'il ne lit pas, et il ne touche PAS à la langue
+    // du serveur (noms d'objets, messages) — ce que le libellé nu laissait croire.
     {
       // COPIE et non référence : i18n::SetLanguage écrit dans la chaîne globale
       // au milieu de la boucle ci-dessous. Une référence changerait donc de
@@ -301,7 +308,7 @@ void MoonlightUi::DrawInterfacePanel() {
       // `TrId` et non `Tr` : RoBeginCombo fait `PushID(label)`, donc un libellé
       // traduit donnerait un widget différent à chaque langue. C'est le premier
       // cas du chantier, et il sera la règle pour tout ce qui porte un état.
-      if (ro::RoBeginCombo(i18n::TrId("Langue", "bourgeon_language"),
+      if (ro::RoBeginCombo(i18n::TrId("Langue de l'interface", "bourgeon_language"),
                            i18n::LabelOf(current))) {
         for (const i18n::Language& language : i18n::AvailableLanguages()) {
           const bool selected = (current == language.code);
@@ -355,6 +362,33 @@ void MoonlightUi::DrawInterfacePanel() {
             "traduire. N'y figure que ce qui a été AFFICHÉ : ouvre les fenêtres "
             "concernées avant d'exporter."));
       }
+
+      // ── La police de toute l'interface ─────────────────────────────────────
+      // Elle s'enregistre TOUTE SEULE (fichier de démarrage) : rien à remonter
+      // dans `changed`, qui ne parle que de bourgeon_settings.yaml.
+      ro::DrawUiFontCombo(i18n::TrId("Police de l'interface", "bourgeon_ui_font"),
+                          ro::Px(160.0f));
+      SameLine(); HelpMarker(
+          i18n::Tr("Police de toute l'UI ImGui. Le gras et l'italique suivent la "
+          "famille choisie, ainsi que la chatbox réglée sur « Système ».\n\n"
+          "Malgun Gothic est la seule à couvrir le coréen : avec une autre, les "
+          "chemins de fichiers du jeu (réglage de débogage) sortent en carrés.\n"
+          "ProggyClean est la police intégrée d'ImGui, minuscule et sans accents "
+          "élégants."));
+
+      // ── L'échelle de toute l'interface ─────────────────────────────────────
+      // Comme la police : réglage d'avant-jeu, qui s'enregistre lui-même.
+      ro::DrawUiScaleCombo(i18n::TrId("Échelle de l'interface", "bourgeon_ui_scale"),
+                           ro::Px(160.0f));
+      SameLine(); HelpMarker(
+          i18n::Tr("Agrandit TOUTE l'interface Bourgeon — texte, fenêtres, boutons, "
+          "cadres — sans toucher au jeu lui-même. Pour les grands écrans très "
+          "définis (ultrawide, 4K), où une interface calibrée en pixels devient "
+          "minuscule.\n\n"
+          "Les fenêtres déjà ouvertes gardent la taille qu'on leur avait donnée : "
+          "les redimensionner une fois suffit.\n\n"
+          "Sans effet en DirectX 7 (le réglage y est grisé) : ce mode ne sait pas "
+          "redessiner les lettres à une autre taille, il ne ferait que les étirer."));
     }
 
     changed |= ro::RoCheckbox(i18n::Tr("Grille d'alignement"), &grid_.show);

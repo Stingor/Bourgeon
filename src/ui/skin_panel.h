@@ -7,7 +7,8 @@
 
 // ── skin_panel : le panneau de réglage du skin RO, côté TOOLKIT ──────────────
 // Cette section ne pilote aucun plugin : elle configure le socle ImGui lui-même
-// (ro::SkinConfig, la police Malgun, les presets de couleurs). Elle vivait dans
+// (ro::SkinConfig et les presets de couleurs — la police et l'échelle, elles,
+// ne sont plus DANS la section, seulement dessinées d'ici). Elle vivait dans
 // features/moonlight_ui/panel_interface.cc pour la seule raison qu'elle s'affiche
 // dans le panneau Moonlight — mais un panneau n'appartient pas à la fenêtre qui
 // le dessine, il appartient à la couche dont il règle l'état.
@@ -36,8 +37,9 @@ int& SkinPresetSelection();
 // appeler après avoir chargé les presets du disque.
 void EnsureDefaultSkinPresets();
 
-// Le combo « police de toute l'interface », seul : la section ci-dessous le pose
-// en tête, et l'écran de login à côté du choix de la langue.
+// Le combo « police de toute l'interface », seul. Il n'est PLUS dans la section
+// ci-dessous : ses deux poseurs sont l'en-tête « Interface de jeu » du panneau
+// Moonlight et l'écran de login, tous deux à côté du choix de la langue.
 //
 // 🔴 Il PERSISTE lui-même son choix (startup::SaveUiFontFamily), au lieu de le
 // rendre à l'appelant comme le reste du panneau. C'est un réglage d'AVANT le
@@ -51,20 +53,25 @@ void EnsureDefaultSkinPresets();
 void DrawUiFontCombo(const char* label, float width);
 
 // Le combo « échelle de toute l'interface » (100 à 200 % par paliers). Même
-// nature que celui de la police : réglage d'AVANT le jeu, qui persiste lui-même
-// dans le fichier de démarrage (startup::SaveUiScalePercent) — d'où l'absence
-// de valeur de retour, il n'y a rien à remonter à l'appelant.
+// nature que celui de la police, et posé au même endroit : réglage d'AVANT le
+// jeu, qui persiste lui-même dans le fichier de démarrage
+// (startup::SaveUiScalePercent) — d'où l'absence de valeur de retour, il n'y a
+// rien à remonter à l'appelant.
 //
 // ⚠ Se grise tout seul sous le proxy DirectX 7, où l'échelle est sans effet
 // (pas de re-rastérisation des glyphes). Voir features/systems/dx7_warning.h.
 void DrawUiScaleCombo(const char* label, float width);
 
-// Section complète « Skin RO » : police, réglages du skin, gestion des presets.
-// À placer dans un panneau ImGui existant. Renvoie true si quelque chose a
-// changé — l'appelant décide alors de sauvegarder.
+// Section complète « Skin RO » : réglages du skin et gestion des presets — soit
+// l'HABILLAGE des fenêtres, et lui seul. À placer dans un panneau ImGui
+// existant. Renvoie true si quelque chose a changé — l'appelant décide alors de
+// sauvegarder.
 //
-// ⚠ La police n'est PAS dans ce « quelque chose » : elle ne vit plus dans
-// bourgeon_settings.yaml et s'enregistre toute seule (cf. DrawUiFontCombo).
+// La police et l'échelle n'y sont plus : elles s'appliquent à toute l'interface,
+// pas à son habillage, et sont posées à côté de la langue (cf. les deux combos
+// ci-dessus). Elles ne vivent d'ailleurs pas dans bourgeon_settings.yaml et
+// s'enregistrent toutes seules — rien qu'elles changent n'aurait pu remonter
+// dans la valeur de retour.
 bool DrawSkinPanel();
 
 }  // namespace ro

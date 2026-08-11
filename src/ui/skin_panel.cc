@@ -168,33 +168,13 @@ void DrawUiScaleCombo(const char* label, float width) {
 bool DrawSkinPanel() {
   bool changed = false;
 
-  // ── La police de toute l'interface ─────────────────────────────────────────
-  // Elle s'enregistre toute seule (fichier de démarrage) : rien à remonter dans
-  // `changed`, qui ne parle que de bourgeon_settings.yaml.
-  DrawUiFontCombo(i18n::TrId("Police de l'interface", "bourgeon_ui_font"), 180.f);
-  SameLine();
-  HelpMarker(
-      i18n::Tr("Police de toute l'UI ImGui. Le gras et l'italique suivent la "
-      "famille choisie, ainsi que la chatbox réglée sur « Système ».\n\n"
-      "Malgun Gothic est la seule à couvrir le coréen : avec une autre, les "
-      "chemins de fichiers du jeu (réglage de débogage) sortent en carrés.\n"
-      "ProggyClean est la police intégrée d'ImGui, minuscule et sans accents "
-      "élégants."));
-
-  // ── L'échelle de toute l'interface ─────────────────────────────────────────
-  // Comme la police : réglage d'avant-jeu, qui s'enregistre lui-même.
-  DrawUiScaleCombo(i18n::TrId("Échelle de l'interface", "bourgeon_ui_scale"),
-                   180.f);
-  SameLine();
-  HelpMarker(
-      i18n::Tr("Agrandit TOUTE l'interface Bourgeon — texte, fenêtres, boutons, "
-      "cadres — sans toucher au jeu lui-même. Pour les grands écrans très "
-      "définis (ultrawide, 4K), où une interface calibrée en pixels devient "
-      "minuscule.\n\n"
-      "Les fenêtres déjà ouvertes gardent la taille qu'on leur avait donnée : "
-      "les redimensionner une fois suffit.\n\n"
-      "Sans effet en DirectX 7 (le réglage y est grisé) : ce mode ne sait pas "
-      "redessiner les lettres à une autre taille, il ne ferait que les étirer."));
+  // (La police et l'échelle de l'interface ne sont PLUS ici : elles ont rejoint
+  // le choix de la langue, en tête de l'en-tête « Interface de jeu ». Ce sont
+  // les trois réglages qui s'appliquent à TOUTE l'interface, et aucun des trois
+  // n'a de rapport avec l'habillage des fenêtres — les chercher dans une section
+  // « Skin RO » supposait de deviner qu'un skin change aussi la police et la
+  // taille du texte. Les deux combos restent des fonctions publiques de ce
+  // fichier : l'écran de login pose déjà celui de la police.)
 
   // (Le skin RO n'est plus optionnel : c'est l'habillage standard des fenêtres
   // ImGui Bourgeon. Seuls ses réglages restent configurables.)
