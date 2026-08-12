@@ -98,14 +98,26 @@ class PaletteEditor : public Plugin {
   // Personnage pour lequel l'état courant a été bâti, 0 = aucun.
   uint32_t session_cid_ = 0;
 
-  // Pose sur la recette ce que le personnage porte RÉELLEMENT sur la tête.
+  // Pose sur la recette la COUPE que le personnage porte réellement.
   //
-  // 🔴 Deux règles opposées, parce que les deux valeurs n'ont pas le même
-  // maître. La COUPE écrase : elle appartient au serveur, qui l'applique pour de
-  // bon, et sa globale client suit. La COULEUR ne fait que combler un trou :
-  // c'est nous qui l'injectons, la globale du client l'ignore, et l'imposer
-  // effacerait à chaque ouverture la couleur choisie par le joueur.
+  // 🔴 Elle écrase, parce qu'elle appartient au serveur : il l'applique pour de
+  // bon (`pc_changelook`) et la globale du client suit, donc un passage chez un
+  // styliste NPC fait autorité sur ce que notre recette croyait savoir.
+  //
+  // ⛔ La COULEUR de cheveux, elle, n'est PAS comblée ici — voir le .cc : le
+  // faire transformait « rien d'imposé » en choix explicite, et la fenêtre
+  // annonçait une couleur que le joueur n'avait pas demandée.
   void SeedWornHead();
+
+  // La recette telle qu'elle doit voyager SANS son porteur : code copié, lien de
+  // chat, préréglage rangé.
+  //
+  // 🔴 Ce que la recette laisse ouvert (-1 = « rien d'imposé ») change de sens
+  // dès qu'elle quitte son personnage. Sur un joueur en vue, -1 laisse paraître
+  // la couleur que le serveur lui a donnée — c'est juste, et ça suit même un
+  // passage chez le styliste. Dans un code, le même -1 devient « la tienne »
+  // chez qui le colle. On fige donc ici, et seulement ici.
+  ro::PaletteRecipe ShareableRecipe() const;
 
   // Recharge le sprite du corps du joueur et redétecte les rampes.
   // Rend false (et renseigne `error_`) si le corps n'est pas recolorable.

@@ -304,23 +304,42 @@ void PaletteEditor::SeedWornHead() {
   // nous dire — et c'est la coupe réellement portée qui fait autorité.
   recipe_.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
 
-  // La COULEUR de cheveux se comble aussi, mais SANS écraser, et cette
-  // asymétrie n'est pas un oubli : les deux valeurs n'ont pas le même maître.
+  // ⛔ La COULEUR de cheveux ne se comble PAS ici, et ce fut une erreur de
+  // l'essayer (2026-08-12, corrigé le jour même).
   //
-  // La coupe appartient au serveur — il l'applique vraiment (`pc_changelook`)
-  // et la globale du client suit. La couleur, elle, est NOTRE injection : on
-  // écrit un chemin de palette sur l'acteur, et `kHairCol` n'en sait rien, il
-  // porte encore la couleur d'origine. L'imposer ici effacerait donc la couleur
-  // choisie par le joueur à chaque ouverture de la fenêtre.
+  // Le besoin était réel — un code partagé doit porter une couleur, sans quoi il
+  // arrive dans les cheveux du destinataire — mais l'endroit était faux. Combler
+  // ici transforme « rien d'imposé » en CHOIX EXPLICITE, et ça se voit : la
+  // fenêtre annonçait « Couleur de cheveux (22) » là où le joueur n'avait rien
+  // demandé, sans que rien ne change ni sur lui ni sur le pantin. Une interface
+  // qui revendique un choix qu'on n'a pas fait est pire qu'incomplète.
   //
-  // 🔴 Mais il faut bien la combler, sinon un joueur qui n'a jamais ouvert le
-  // sélecteur partage un style dont la couleur de cheveux vaut « la tienne » :
-  // il se croit copié, et son destinataire garde la sienne. Un style se doit
-  // d'être complet — c'est ce que le mot promet.
-  if (recipe_.hair_palette_id <= 0) {
-    recipe_.hair_palette_id =
+  // Le comblement appartient à `ShareableRecipe`, au moment de FABRIQUER un code
+  // — le seul contexte où -1 change de sens.
+}
+
+ro::PaletteRecipe PaletteEditor::ShareableRecipe() const {
+  ro::PaletteRecipe out = recipe_;
+  // 🔴 « Rien d'imposé » (-1) ne veut pas dire la même chose ici et là, et c'est
+  // toute la subtilité de ce champ.
+  //
+  // Sur un joueur EN VUE, -1 est exactement juste : son acteur porte déjà la
+  // couleur que le serveur lui a donnée, et ne rien imposer la laisse paraître.
+  // Mieux : un passage chez le styliste se voit alors tout seul, sans que notre
+  // recette ait à l'apprendre.
+  //
+  // Dans un CODE, le même -1 devient « la tienne » chez celui qui le colle : le
+  // style arrive dans les cheveux du destinataire, qui se croit copié à tort. Un
+  // code voyage sans son porteur, il doit donc être COMPLET. On fige ici ce que
+  // la recette laissait ouvert — et seulement ici.
+  if (out.hair_palette_id <= 0) {
+    out.hair_palette_id =
         static_cast<int16_t>(*reinterpret_cast<int*>(kHairCol));
   }
+  if (out.hair_style <= 0) {
+    out.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
+  }
+  return out;
 }
 
 bool PaletteEditor::SeedFromShared() {
@@ -1093,20 +1112,29 @@ void PaletteEditor::SetOpen(bool open) {
   if (open == open_) return;
   open_ = open;
   if (open_) {
-    // 🔴 Amorcer AVANT de charger : la recette porte la teinte de base, et c'est
-    // elle qui décide sur quel fichier de palette les rampes sont détectées.
-    SeedFromShared();
-    // Même si l'amorçage a échoué : la tête part de ce qui est PORTÉ, faute de
-    // quoi la fenêtre s'ouvrirait sur une coupe et une couleur que le joueur
-    // n'a pas.
-    SeedWornHead();
-    // 🔴 La référence du brouillon se cale sur ce qu'on vient d'afficher, y
-    // compris quand l'amorçage a échoué. Sans ça, l'écart de départ serait celui
-    // d'une recette vierge contre une tête portée — donc non nul — et la fenêtre
-    // proposerait dès l'ouverture suivante de « récupérer » un brouillon que le
-    // joueur n'a jamais composé. Un filet qui se déclenche tout seul cesse d'être
-    // lu.
-    applied_ = recipe_;
+    // 🔴 Tout ceci ne vaut QUE tant que le joueur n'a rien posé.
+    //
+    // Rouvrir la fenêtre ne doit rien changer à ce qu'il avait composé : il l'a
+    // FERMÉE, pas annulée. Sans cette garde, un « tout réinitialiser » suivi
+    // d'une fermeture revenait défait à la réouverture — la coupe repassait à
+    // celle qu'il porte, et le brouillon mis de côté était effacé par la remise
+    // à niveau de `applied_` juste en dessous. Le joueur voyait donc son travail
+    // disparaître pour avoir fermé une fenêtre.
+    if (!touched_) {
+      // 🔴 Amorcer AVANT de charger : la recette porte la teinte de base, et
+      // c'est elle qui décide sur quel fichier de palette les rampes sont
+      // détectées.
+      SeedFromShared();
+      // Même si l'amorçage a échoué : la tête part de ce qui est PORTÉ, faute de
+      // quoi la fenêtre s'ouvrirait sur une coupe que le joueur n'a pas.
+      SeedWornHead();
+      // La référence du brouillon se cale sur ce qu'on vient d'afficher. Sans
+      // ça, l'écart de départ serait celui d'une recette vierge contre une tête
+      // portée — donc non nul — et la fenêtre proposerait dès l'ouverture
+      // suivante de « récupérer » un brouillon jamais composé. Un filet qui se
+      // déclenche tout seul cesse d'être lu.
+      applied_ = recipe_;
+    }
     Reload();
   }
   // Rien à défaire à la fermeture : l'éditeur n'a jamais touché au personnage.
@@ -1547,6 +1575,15 @@ void PaletteEditor::OnRenderUI() {
           // ⚠ Sans conséquence tant qu'on ne valide pas : le personnage ne
           // change qu'à la validation, et fermer la fenêtre n'engage rien.
           recipe_.hair_style = 1;
+          // 🔴 Le drapeau de geste EXPLICITE, et il manquait depuis le début.
+          //
+          // Il dit « le joueur a demandé le vide, c'est un choix » — sans quoi
+          // rien ne distingue cet état de « la fenêtre n'a pas encore été
+          // amorcée », et tout ce qui comble un vide se croit autorisé à le
+          // défaire : l'amorçage depuis le serveur, et la remise à niveau de la
+          // tête portée à la réouverture. Le commentaire de `SeedFromShared` a
+          // toujours décrit ce drapeau comme posé ici ; il ne l'était pas.
+          touched_ = true;
           // 🔴 RECHARGER : la teinte de base vient de changer, donc la base
           // fusionnée et le découpage des rampes aussi.
           Reload();
@@ -1744,7 +1781,11 @@ void PaletteEditor::OnRenderUI() {
         if (ro::RoButton(i18n::Tr("Enregistrer"))) {
           // Le nom est CONSERVÉ après l'enregistrement : on vient peut-être de
           // mettre à jour un préréglage existant, et on peut vouloir enchaîner.
-          fx::palette_cache::PresetSave(preset_name_, recipe_);
+          // 🔴 La recette PARTAGEABLE : un préréglage se recharge des semaines
+          // plus tard, éventuellement sur un autre personnage. Y laisser
+          // « couleur d'origine » lui ferait prendre celle du moment, et le
+          // joueur ne retrouverait pas l'allure qu'il croyait avoir rangée.
+          fx::palette_cache::PresetSave(preset_name_, ShareableRecipe());
         }
 
         // ── Code partageable ────────────────────────────────────────────
@@ -1753,7 +1794,10 @@ void PaletteEditor::OnRenderUI() {
         // que 90 caractères d'hexadécimal ne se lisent ni ne se retapent.
         ImGui::Separator();
         if (ro::RoButton(i18n::Tr("Copier le code"))) {
-          const std::string code = fx::palette_cache::EncodeShare(recipe_);
+          // 🔴 `ShareableRecipe` et non `recipe_` : un code quitte son porteur.
+          // « Couleur d'origine » y deviendrait « la tienne » chez qui le colle.
+          const std::string code =
+              fx::palette_cache::EncodeShare(ShareableRecipe());
           ImGui::SetClipboardText(code.c_str());
           shared_tick_ = ImGui::GetTime();
         }
@@ -1762,7 +1806,9 @@ void PaletteEditor::OnRenderUI() {
         // joueur qui envoie, comme pour tout autre lien.
         if (ro::RoButton(i18n::Tr("Partager dans le chat"))) {
           if (auto* chat = Bourgeon::Instance().chat_window()) {
-            const std::string code = fx::palette_cache::EncodeShare(recipe_);
+            // Même raison que pour « Copier le code » : le lien voyage seul.
+            const std::string code =
+                fx::palette_cache::EncodeShare(ShareableRecipe());
             // Pseudo nul = le nôtre, résolu par la chatbox : le getter natif et
             // la conversion de code-page sont chez elle.
             chat->AppendStyleLink(code.c_str(), nullptr);
