@@ -75,6 +75,15 @@ class PaletteEditor : public Plugin {
   // le corps portait encore les couleurs nues du sprite.
   bool SeedFromShared();
 
+  // Pose sur la recette ce que le personnage porte RÉELLEMENT sur la tête.
+  //
+  // 🔴 Deux règles opposées, parce que les deux valeurs n'ont pas le même
+  // maître. La COUPE écrase : elle appartient au serveur, qui l'applique pour de
+  // bon, et sa globale client suit. La COULEUR ne fait que combler un trou :
+  // c'est nous qui l'injectons, la globale du client l'ignore, et l'imposer
+  // effacerait à chaque ouverture la couleur choisie par le joueur.
+  void SeedWornHead();
+
   // Recharge le sprite du corps du joueur et redétecte les rampes.
   // Rend false (et renseigne `error_`) si le corps n'est pas recolorable.
   //
@@ -199,6 +208,28 @@ class PaletteEditor : public Plugin {
   // la recette neutre et se verraient donc défaire par le rattrapage suivant.
   bool touched_ = false;
 
+  // ── Le brouillon : ce que le joueur composait et n'a pas validé ─────────
+  //
+  // 🔴 Écrit sur DISQUE en cours de route, pas à la fermeture de la fenêtre.
+  // L'accident visé — plantage, coupure, client tué — ne passe justement pas par
+  // une fermeture propre, et n'attraper que celle-ci ne protégerait que du cas
+  // où le joueur n'a rien perdu.
+  //
+  // Le prix est une écriture de fichier, donc pas à chaque frame : on attend que
+  // le joueur ait fini de bouger. Un glissement de curseur produit des dizaines
+  // d'états par seconde dont aucun ne mérite le disque.
+  void TickDraft();
+
+  // Le style tel qu'il est POSÉ sur le personnage. Le brouillon n'existe que par
+  // son écart avec `recipe_` — tant que les deux coïncident, il n'y a rien à
+  // récupérer, et proposer de recharger l'identique serait un bouton qui ment.
+  ro::PaletteRecipe applied_;
+
+  // Encodage de `recipe_` vu à la frame précédente, et l'instant où il a changé.
+  // `draft_tick_` à 0 = rien en attente d'écriture.
+  std::string draft_seen_;
+  double draft_tick_ = 0.0;
+
   // Nom en cours de saisie pour un nouveau préréglage.
   char preset_name_[32] = {0};
 
@@ -275,6 +306,21 @@ class PaletteEditor : public Plugin {
   ro::PaletteRamp preview_ramps_[ro::kMaxRamps];
   int preview_ramp_count_ = 0;
   int preview_dir_ = 0;
+
+  // Le sprite de corps sur lequel l'aperçu se pose, relu sur l'ACTEUR.
+  //
+  // 🔴 Distinct de `body_path_`, qui n'existe que si l'éditeur a été ouvert —
+  // or cette fenêtre s'ouvre depuis un lien de chat. En le partageant, l'aperçu
+  // retombait sur le sprite déduit de (classe, sexe) et perdait les tenues de 3e
+  // et 4e classe : le style s'affichait alors sur un corps qui n'était pas celui
+  // du joueur, donc sur d'autres pièces que celles qu'il croyait voir.
+  //
+  // Il sert aussi de témoin de changement : tant qu'il ne bouge pas, rien n'est
+  // reconstruit — une reconstruction coûte l'analyse complète d'un `.spr`.
+  std::string preview_body_path_;
+
+  // (Re)construit la base et les rampes de l'aperçu sur le corps courant.
+  void RebuildStylePreview();
 
   // La palette du `.spr` seule, brute : l'ingrédient qu'on garde pour fusionner
   // les 553 palettes de vêtement sans relire le sprite à chaque vignette.

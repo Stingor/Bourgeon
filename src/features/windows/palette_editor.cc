@@ -41,6 +41,16 @@ constexpr uintptr_t kGetJob = 0x00D5B580;
 constexpr uintptr_t kOwnJobId = 0x015FB9C8;
 // AID du joueur local — et son GID côté acteur, d'où la clé de recette.
 constexpr uintptr_t kOwnAid = 0x015FB9A4;
+// 🔴 `g_Own_CharId`, à ne PAS confondre avec l'AID ci-dessus : c'est lui qui
+// identifie un PERSONNAGE, donc la clé sous laquelle se range un brouillon. Deux
+// personnages du même compte partagent l'AID et n'ont pourtant ni le même corps
+// ni le même style.
+constexpr uintptr_t kOwnCharId = 0x015FB9A8;
+
+// Délai d'inactivité avant d'écrire le brouillon sur disque. Assez long pour
+// qu'un glissement de curseur ne produise qu'une écriture, assez court pour que
+// ce qui est perdu tienne dans une seconde de réglages.
+constexpr double kDraftDelay = 1.5;
 
 using GetSexFn = int(__fastcall*)(void*, void*);
 using GetJobFn = int(__fastcall*)(void*, void*);
@@ -55,6 +65,7 @@ int OwnJob() {
 }
 int OwnBody() { return *reinterpret_cast<int*>(kOwnJobId); }
 uint32_t OwnGid() { return *reinterpret_cast<uint32_t*>(kOwnAid); }
+uint32_t OwnCharId() { return *reinterpret_cast<uint32_t*>(kOwnCharId); }
 
 // Apparence courante, telle que le client la tient à jour sur ZC_SPRITE_CHANGE.
 // Mêmes globales que `BuildOwnDollLook` (features/overlays/basic_info.cc).
@@ -68,12 +79,17 @@ constexpr uintptr_t kHairCol    = 0x015FB290;  // palette de cheveux
 // numéro, survol, sélection, clic — est identique partout et n'a pas à être
 // recopié trois fois. Rend true si le joueur vient de choisir.
 //
+// `double_clic`, s'il est fourni, passe à true quand le joueur a DOUBLE-cliqué :
+// il a arrêté son choix et veut refermer. Le simple clic, lui, laisse la grille
+// ouverte — c'est ce qui permet de comparer trois coiffures en les essayant sur
+// le pantin, qui est justement la raison d'être de ces grilles.
+//
 // ⚠ `ImGui::IsRectVisible` avant de dessiner : une grille de 553 cases n'en
 // montre qu'une centaine, et charger les autres coûterait des textures que
 // personne ne regarde. Même garde que la grille de création de personnage.
 template <typename DessineCase>
 bool GrillePicker(int premier, int dernier, int cols, float cote, int* valeur,
-                  DessineCase dessine) {
+                  DessineCase dessine, bool* double_clic = nullptr) {
   bool choisi = false;
   ImDrawList* dl = ImGui::GetWindowDrawList();
   for (int v = premier; v <= dernier; ++v) {
@@ -97,6 +113,15 @@ bool GrillePicker(int premier, int dernier, int cols, float cote, int* valeur,
     if (ImGui::IsItemClicked()) {
       *valeur = v;
       choisi = true;
+    }
+    // Le premier clic du double a déjà posé la valeur juste au-dessus ; celui-ci
+    // n'ajoute que le congé. On repose quand même `*valeur`, parce que rien ne
+    // garantit que les deux clics ont visé la même case.
+    if (double_clic != nullptr && ImGui::IsItemHovered() &&
+        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      *valeur = v;
+      choisi = true;
+      *double_clic = true;
     }
     if (sel)
       dl->AddRect(p, p1, IM_COL32(255, 210, 110, 255), 3.0f, 0, 2.0f);
@@ -163,24 +188,58 @@ const uint8_t* PaletteEditor::PalettePreview(int palette_id, int* budget) {
   return fusion.data();
 }
 
+void PaletteEditor::SeedWornHead() {
+  // 🔴 La coiffure part de celle que le personnage PORTE, et écrase donc celle
+  // qu'un amorçage vient éventuellement de poser. La recette peut être en
+  // retard — un passage chez un styliste NPC change `sd->status.hair` sans rien
+  // nous dire — et c'est la coupe réellement portée qui fait autorité.
+  recipe_.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
+
+  // La COULEUR de cheveux se comble aussi, mais SANS écraser, et cette
+  // asymétrie n'est pas un oubli : les deux valeurs n'ont pas le même maître.
+  //
+  // La coupe appartient au serveur — il l'applique vraiment (`pc_changelook`)
+  // et la globale du client suit. La couleur, elle, est NOTRE injection : on
+  // écrit un chemin de palette sur l'acteur, et `kHairCol` n'en sait rien, il
+  // porte encore la couleur d'origine. L'imposer ici effacerait donc la couleur
+  // choisie par le joueur à chaque ouverture de la fenêtre.
+  //
+  // 🔴 Mais il faut bien la combler, sinon un joueur qui n'a jamais ouvert le
+  // sélecteur partage un style dont la couleur de cheveux vaut « la tienne » :
+  // il se croit copié, et son destinataire garde la sienne. Un style se doit
+  // d'être complet — c'est ce que le mot promet.
+  if (recipe_.hair_palette_id <= 0) {
+    recipe_.hair_palette_id =
+        static_cast<int16_t>(*reinterpret_cast<int*>(kHairCol));
+  }
+}
+
 bool PaletteEditor::SeedFromShared() {
   if (seeded_) return false;
   // 🔴 Ne JAMAIS écraser ce que le joueur a déjà posé. Le rattrapage tourne à
-  // chaque frame tant qu'il n'a pas abouti ; sans ces deux gardes, il annulerait
+  // chaque frame tant qu'il n'a pas abouti ; sans cette garde, il annulerait
   // sous les doigts un préréglage chargé ou un code collé.
   //
-  // Une recette non neutre suffit pour la plupart des gestes — bouger un
-  // curseur, choisir une teinte de base, coller un code. Les deux EFFACEMENTS y
-  // échappent, puisqu'ils rendent justement la recette neutre : « tout
-  // réinitialiser » se serait vu défaire aussitôt. D'où le drapeau explicite,
-  // qui dit « le joueur a demandé le vide, c'est un choix ».
-  if (touched_ || !recipe_.IsNeutral()) return false;
+  // ⚠ Une seconde garde a existé ici — « et la recette est encore neutre » —
+  // en doublure de celle-ci. Elle rendait le rattrapage MORT : l'ouverture de la
+  // fenêtre pose la coupe portée, ce qui suffit à rendre la recette non neutre,
+  // donc plus aucune tentative n'aboutissait après la première. Un éditeur
+  // ouvert avant l'arrivée de nos couleurs restait vide pour de bon — et valider
+  // depuis cet état AURAIT EFFACÉ le style du joueur. Tous les gestes qu'elle
+  // prétendait protéger posent déjà `touched_`.
+  if (touched_) return false;
   if (!fx::style_sync::LocalRecipe(&recipe_)) return false;
   // 🔴 Verrouillé sur le SUCCÈS seulement. Le verrouiller sur un échec — ce qui
   // arrivait quand l'éditeur s'ouvrait avant que les couleurs ne soient connues
   // — figeait une recette vide pour toute la session, et le joueur ne pouvait
   // plus retoucher ses couleurs qu'après une reconnexion.
   seeded_ = true;
+  // L'amorçage rend la recette du SERVEUR : ce que le personnage porte
+  // réellement sur la tête reprend donc la main par-dessus.
+  SeedWornHead();
+  // Ce qui vient du serveur EST ce qui est posé sur le personnage : c'est le
+  // point de référence à partir duquel un brouillon se mesure.
+  applied_ = recipe_;
   return true;
 }
 
@@ -260,11 +319,43 @@ bool PaletteEditor::Reload() {
   return true;
 }
 
+void PaletteEditor::TickDraft() {
+  const uint32_t cid = OwnCharId();
+  if (cid == 0) return;
+
+  const std::string courant = fx::palette_cache::EncodeShare(recipe_);
+  if (courant != draft_seen_) {
+    // Le joueur vient de bouger quelque chose : on note l'instant et on attend
+    // qu'il s'arrête. Un glissement de curseur repasse ici à chaque frame et
+    // repousse donc l'écriture d'autant.
+    draft_seen_ = courant;
+    draft_tick_ = ImGui::GetTime();
+    return;
+  }
+  if (draft_tick_ == 0.0) return;                          // rien en attente
+  if (ImGui::GetTime() - draft_tick_ < kDraftDelay) return;
+  draft_tick_ = 0.0;
+
+  // 🔴 On n'enregistre que l'ÉCART avec ce qui est posé. Revenir à son style
+  // validé doit faire disparaître le brouillon, sinon le bouton continuerait de
+  // proposer un état que le joueur porte déjà — et le premier clic dessus ne
+  // ferait rien, ce qui se lit comme une panne.
+  if (courant == fx::palette_cache::EncodeShare(applied_))
+    fx::palette_cache::DraftSave(cid, nullptr);
+  else
+    fx::palette_cache::DraftSave(cid, &recipe_);
+}
+
 void PaletteEditor::Apply() {
   if (base_.size() < 1024 || ramp_count_ == 0) return;
   const uint32_t gid = OwnGid();
   if (gid == 0) return;
   touched_ = true;  // geste explicite : plus de rattrapage d'amorçage
+  // Ce qui est validé n'est plus un brouillon : la réserve se vide, et l'écart
+  // qui la nourrit retombe à zéro.
+  applied_ = recipe_;
+  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  draft_tick_ = 0.0;
   // 🔴 On injecte MÊME quand tous les réglages sont à zéro, et c'est délibéré.
   //
   // La base de l'édition est la palette INTERNE du .spr, pas la palette externe
@@ -310,6 +401,11 @@ void PaletteEditor::RestoreServerColors() {
   // et valider.
   // Geste explicite : plus de rattrapage d'amorçage par-dessus (cf. touched_).
   touched_ = true;
+  // L'apparence native devient ce qui est posé, et la réserve se vide : après
+  // avoir demandé le vide, on ne se voit pas proposer de recharger l'avant.
+  applied_ = recipe_;
+  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  draft_tick_ = 0.0;
   // 🔴 Purger AUSSI le registre de propagation. Notre propre recette y dort
   // depuis le login (le serveur nous la repousse), et la boucle d'application la
   // REPOSERAIT au tick suivant — `HasRecipe` vient justement de retomber, donc
@@ -549,16 +645,22 @@ void PaletteEditor::DrawHairStylePicker() {
                                                   : *reinterpret_cast<int*>(kHairCol);
   int choix = recipe_.hair_style > 0 ? recipe_.hair_style
                                      : *reinterpret_cast<int*>(kHair);
+  bool ferme = false;
   if (GrillePicker(1, maxi, kCols, kCote, &choix,
                    [&](int v, ImVec2 p, float c) {
                      ro::DrawHeadIcon(ImGui::GetWindowDrawList(), p.x, p.y, c, v,
                                       sex, couleur, /*allow_upscale=*/true,
                                       job);
-                   })) {
+                   },
+                   &ferme)) {
     recipe_.hair_style = static_cast<int16_t>(choix);
     touched_ = true;
   }
   ImGui::EndChild();
+  // 🔴 Après `EndChild`, jamais dedans : la fermeture vise le popup, et la
+  // demander depuis un enfant reviendrait à parier sur la pile de fenêtres
+  // d'ImGui plutôt que sur ce qu'on veut dire.
+  if (ferme) ImGui::CloseCurrentPopup();
   ImGui::EndPopup();
 }
 
@@ -581,16 +683,19 @@ void PaletteEditor::DrawHairColorPicker() {
   // création, et c'est la seule façon honnête de montrer une couleur de cheveux :
   // une pastille unie ne dit rien du dégradé qu'une palette applique.
   int choix = recipe_.hair_palette_id > 0 ? recipe_.hair_palette_id : 0;
+  bool ferme = false;
   if (GrillePicker(1, maxi, kCols, kCote, &choix,
                    [&](int v, ImVec2 p, float c) {
                      ro::DrawHeadIcon(ImGui::GetWindowDrawList(), p.x, p.y, c,
                                       coupe, sex, v, /*allow_upscale=*/true,
                                       job);
-                   })) {
+                   },
+                   &ferme)) {
     recipe_.hair_palette_id = static_cast<int16_t>(choix);
     touched_ = true;
   }
   ImGui::EndChild();
+  if (ferme) ImGui::CloseCurrentPopup();
   ImGui::EndPopup();
 }
 
@@ -643,6 +748,7 @@ void PaletteEditor::DrawBodyPalettePicker() {
   // lieu d'ouvrir 48 fichiers dans la même.
   int budget = 12;
   int choix = recipe_.palette_id > 0 ? recipe_.palette_id : 0;
+  bool ferme = false;
   if (GrillePicker(premier, dernier, kCols, kCote, &choix,
                    [&](int v, ImVec2 p, float c) {
                      const uint8_t* rgba = PalettePreview(v, &budget);
@@ -664,7 +770,8 @@ void PaletteEditor::DrawBodyPalettePicker() {
                                     /*anim_seconds=*/0.0f, /*action=*/0,
                                     /*ms_per_frame=*/0.0f,
                                     /*allow_upscale=*/true);
-                   })) {
+                   },
+                   &ferme)) {
     recipe_.palette_id = static_cast<int16_t>(choix);
     touched_ = true;
     // 🔴 Rechargement COMPLET : la teinte de base change la fusion, donc le
@@ -672,6 +779,7 @@ void PaletteEditor::DrawBodyPalettePicker() {
     Reload();
   }
   ImGui::EndChild();
+  if (ferme) ImGui::CloseCurrentPopup();
   ImGui::EndPopup();
 }
 
@@ -683,21 +791,34 @@ void PaletteEditor::OpenStylePreview(const char* code, const char* owner_utf8) {
   preview_recipe_ = recu;
   preview_code_ = code;
   preview_owner_ = owner_utf8 != nullptr ? owner_utf8 : "";
-  preview_base_.clear();
-  preview_ramp_count_ = 0;
   preview_dir_ = 0;
 
+  // 🔴 La base n'est PAS construite ici, mais à la première frame — et le chemin
+  // vidé est ce qui la déclenche. Elle l'était ici, et l'aperçu montrait alors
+  // un corps qui n'était pas celui du joueur : cette fenêtre s'ouvre depuis un
+  // LIEN DE CHAT, sans que l'éditeur ait forcément servi, donc à un moment où
+  // rien n'a encore résolu le sprite porté. Différer d'une frame fait tomber ce
+  // cas et celui du joueur qui change de tenue pendant l'aperçu, par le même
+  // chemin.
+  preview_body_path_.clear();
+  preview_base_.clear();
+  preview_ramp_count_ = 0;
+  preview_open_ = true;
+}
+
+void PaletteEditor::RebuildStylePreview() {
+  preview_base_.clear();
+  preview_ramp_count_ = 0;
   // 🔴 La base est construite avec la teinte de base DU STYLE REÇU, pas la
   // nôtre : c'est elle qui décide de la fusion, donc du découpage des rampes.
   // Réutiliser notre `base_` appliquerait les réglages reçus à côté.
   fx::palette_base::Body b;
-  if (fx::palette_base::BuildForGid(OwnGid(), recu.palette_id, &b) ==
-      fx::palette_base::kOk) {
-    preview_base_ = b.base;
-    std::memcpy(preview_ramps_, b.ramps, sizeof(preview_ramps_));
-    preview_ramp_count_ = b.ramp_count;
-  }
-  preview_open_ = true;
+  if (fx::palette_base::BuildForGid(OwnGid(), preview_recipe_.palette_id, &b) !=
+      fx::palette_base::kOk)
+    return;
+  preview_base_ = b.base;
+  std::memcpy(preview_ramps_, b.ramps, sizeof(preview_ramps_));
+  preview_ramp_count_ = b.ramp_count;
 }
 
 void PaletteEditor::TryStyleCode(const char* code) {
@@ -715,6 +836,34 @@ void PaletteEditor::TryStyleCode(const char* code) {
 
 void PaletteEditor::DrawStylePreview() {
   if (!preview_open_) return;
+
+  // ── Le corps sur lequel l'aperçu se pose ──────────────────────────────────
+  //
+  // 🔴 Relu sur l'ACTEUR à chaque frame, et non hérité de l'éditeur. Deux cas,
+  // tous deux constatés :
+  //   * cette fenêtre s'ouvre depuis un lien de chat, sans que l'éditeur ait
+  //     jamais servi. `body_path_` était alors vide, le pantin retombait sur le
+  //     sprite déduit de (classe, sexe), et les tenues de 3e et 4e classe
+  //     disparaissaient : le style s'affichait sur un corps qui n'était pas le
+  //     nôtre — donc sur d'autres pièces que celles qu'on croyait voir ;
+  //   * le joueur équipe ou retire sa tenue pendant que l'aperçu est ouvert, et
+  //     il attend de le voir suivre.
+  // Même leçon qu'ailleurs dans ce module : le sprite RÉELLEMENT porté fait
+  // autorité, jamais ce qu'on en déduirait.
+  //
+  // Le chemin sert aussi de témoin : tant qu'il ne bouge pas, on ne reconstruit
+  // rien — une reconstruction coûte l'analyse complète d'un `.spr`.
+  {
+    char spr[352];
+    const bool lu =
+        fx::palette_inject::ActorBodySpritePath(OwnGid(), spr, sizeof(spr));
+    const char* porte = (lu && spr[0] != '\0') ? spr : "";
+    if (preview_body_path_ != porte) {
+      preview_body_path_ = porte;
+      RebuildStylePreview();
+    }
+  }
+
   char titre[128];
   std::snprintf(titre, sizeof(titre), "%s###style_preview",
                 i18n::Tr("Aperçu d'un style"));
@@ -749,7 +898,10 @@ void PaletteEditor::DrawStylePreview() {
     if (preview_recipe_.hair_palette_id > 0)
       look.hair_color = preview_recipe_.hair_palette_id;
     if (preview_recipe_.hair_style > 0) look.hair = preview_recipe_.hair_style;
-    if (!body_path_.empty()) look.body_spr_override = body_path_.c_str();
+    // Le sprite de l'aperçu, pas celui de l'éditeur : l'éditeur peut n'avoir
+    // jamais été ouvert.
+    if (!preview_body_path_.empty())
+      look.body_spr_override = preview_body_path_.c_str();
 
     static uint8_t rgba[1024];
     static std::string cle;
@@ -804,11 +956,17 @@ void PaletteEditor::SetOpen(bool open) {
     // 🔴 Amorcer AVANT de charger : la recette porte la teinte de base, et c'est
     // elle qui décide sur quel fichier de palette les rampes sont détectées.
     SeedFromShared();
-    // 🔴 La coiffure part de celle que le personnage PORTE, et écrase donc celle
-    // qu'un amorçage vient éventuellement de poser. La recette peut être en
-    // retard — un passage chez un styliste NPC change `sd->status.hair` sans
-    // rien nous dire — et c'est la coupe réellement portée qui fait autorité.
-    recipe_.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
+    // Même si l'amorçage a échoué : la tête part de ce qui est PORTÉ, faute de
+    // quoi la fenêtre s'ouvrirait sur une coupe et une couleur que le joueur
+    // n'a pas.
+    SeedWornHead();
+    // 🔴 La référence du brouillon se cale sur ce qu'on vient d'afficher, y
+    // compris quand l'amorçage a échoué. Sans ça, l'écart de départ serait celui
+    // d'une recette vierge contre une tête portée — donc non nul — et la fenêtre
+    // proposerait dès l'ouverture suivante de « récupérer » un brouillon que le
+    // joueur n'a jamais composé. Un filet qui se déclenche tout seul cesse d'être
+    // lu.
+    applied_ = recipe_;
     Reload();
   }
   // Rien à défaire à la fermeture : l'éditeur n'a jamais touché au personnage.
@@ -883,6 +1041,11 @@ void PaletteEditor::OnRenderUI() {
   // recette amorcée porte une teinte de base, donc une autre palette sous les
   // rampes.
   if (!seeded_ && SeedFromShared()) Reload();
+
+  // Le brouillon est mis à l'abri PENDANT l'édition, pas à la fermeture : ce
+  // dont il protège — plantage, coupure, client tué — ne passe pas par une
+  // fermeture propre.
+  TickDraft();
 
   if (need_pos_) {
     const ImGuiIO& io = ImGui::GetIO();
@@ -1305,7 +1468,37 @@ void PaletteEditor::OnRenderUI() {
       // Purement LOCAUX : le serveur n'en sait rien et n'a pas à en savoir. Un
       // préréglage n'est pas une apparence, c'est un brouillon qu'on reprend.
       ImGui::Separator();
+      // 🔴 La section s'ouvre d'elle-même quand il y a un brouillon à récupérer,
+      // et une seule fois. C'est le seul moment où quelqu'un a besoin de la
+      // trouver sans savoir qu'elle existe : il vient de perdre une session, et
+      // un bouton de sauvetage replié dans un menu ne sauve personne. Le reste du
+      // temps la section reste comme le joueur l'a laissée.
+      const bool a_brouillon = fx::palette_cache::HasDraft(OwnCharId());
+      if (a_brouillon) ImGui::SetNextItemOpen(true, ImGuiCond_Once);
       if (ImGui::TreeNode(i18n::Tr("Préréglages"))) {
+        // ── Le dernier style non validé ────────────────────────────────────
+        if (a_brouillon) {
+          if (ro::RoButton(i18n::Tr("Dernier style non validé"))) {
+            ro::PaletteRecipe brouillon;
+            if (fx::palette_cache::DraftLoad(OwnCharId(), &brouillon)) {
+              recipe_ = brouillon;
+              touched_ = true;  // même raison que pour un préréglage
+              // 🔴 Rechargement COMPLET : le brouillon porte sa propre teinte de
+              // base, donc ni la fusion ni les rampes ne sont les mêmes.
+              Reload();
+            }
+          }
+          if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+            ImGui::TextUnformatted(
+                i18n::Tr("Ce que tu composais la dernière fois sans le valider. "
+                         "Gardé sur cet ordinateur, pour ce personnage."));
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+          }
+          ImGui::Separator();
+        }
         std::string noms[fx::palette_cache::kMaxPresets];
         const int n = fx::palette_cache::PresetNames(
             noms, fx::palette_cache::kMaxPresets);
@@ -1339,7 +1532,21 @@ void PaletteEditor::OnRenderUI() {
           // Largeur explicite : même piège d'auto-dimensionnement que plus haut.
           if (ImGui::Selectable(noms[i].c_str(), false, 0,
                                 ImVec2(ImGui::GetFontSize() * 9.0f, 0.0f))) {
-            if (fx::palette_cache::PresetLoad(noms[i], &recipe_)) {
+            // 🔴 Maj+clic = poser le lien dans le chat. C'est la convention de
+            // gestes du projet, la même que sur un objet ou une compétence, et
+            // c'est justement ce qui la rend utile : le joueur n'a rien de neuf
+            // à apprendre. Le geste s'arrête au dépôt dans la barre de saisie —
+            // c'est lui qui envoie.
+            if (ImGui::GetIO().KeyShift) {
+              ro::PaletteRecipe partage;
+              if (fx::palette_cache::PresetLoad(noms[i], &partage)) {
+                if (auto* chat = Bourgeon::Instance().chat_window()) {
+                  const std::string code =
+                      fx::palette_cache::EncodeShare(partage);
+                  chat->AppendStyleLink(code.c_str(), nullptr);
+                }
+              }
+            } else if (fx::palette_cache::PresetLoad(noms[i], &recipe_)) {
               // Geste explicite : plus de rattrapage d'amorçage par-dessus, même
               // si le préréglage se trouve être neutre (cf. `SeedFromShared`).
               touched_ = true;
@@ -1361,6 +1568,12 @@ void PaletteEditor::OnRenderUI() {
               // de base, donc la fusion et les rampes ne sont plus les mêmes.
               Reload();
             }
+          }
+          if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(
+                i18n::Tr("Clic : charger. Maj+clic : lien dans le chat."));
+            ImGui::EndTooltip();
           }
           ImGui::PopID();
         }

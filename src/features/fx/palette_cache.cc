@@ -296,6 +296,89 @@ void PresetDelete(const std::string& raw_name) {
   }
 }
 
+// ── Brouillon ───────────────────────────────────────────────────────────────
+// Un troisième fichier, et pour la même raison qui en avait fait un deuxième :
+// trois natures de donnée. Le cache reflète le serveur et se reconstruit tout
+// seul ; un préréglage est un choix NOMMÉ que le joueur a posé ; un brouillon
+// est un accident qu'on rattrape — il s'écrase sans prévenir et disparaît dès
+// qu'il est validé. Les mélanger obligerait à distinguer à la lecture ce qu'on
+// distingue ici gratuitement, et un effacement de brouillon toucherait un
+// fichier où dorment des préréglages.
+namespace {
+
+std::map<uint32_t, std::string> g_drafts;  // char_id -> "<version>:<hex>"
+bool g_drafts_loaded = false;
+
+std::string DraftsPath() {
+  std::string p = paths::PaletteCachePath();
+  const size_t dot = p.rfind(".yaml");
+  if (dot != std::string::npos) p.replace(dot, 5, "_draft.yaml");
+  return p;
+}
+
+void EnsureDrafts() {
+  if (g_drafts_loaded) return;
+  g_drafts_loaded = true;
+  try {
+    const YAML::Node root = YAML::LoadFile(DraftsPath());
+    if (!root || !root.IsMap()) return;
+    for (const auto& kv : root) {
+      const uint32_t id = kv.first.as<uint32_t>(0u);
+      const std::string val = kv.second.as<std::string>("");
+      if (id == 0 || val.empty()) continue;
+      // 🔴 Filtré DÈS LA LECTURE, contrairement au cache et aux préréglages. La
+      // fenêtre ne propose son bouton que si un brouillon existe : garder en
+      // mémoire une entrée d'une version périmée — qui ne se décodera jamais —
+      // afficherait un bouton qui ne fait rien, ce qui se lit comme une panne.
+      ro::PaletteRecipe jetable;
+      if (Decode(val, &jetable)) g_drafts[id] = val;
+    }
+  } catch (const std::exception&) {
+    // Absent au premier lancement : cas nominal.
+  }
+}
+
+void FlushDrafts() {
+  YAML::Node root(YAML::NodeType::Map);
+  for (const auto& kv : g_drafts) root[kv.first] = kv.second;
+  std::ofstream f(DraftsPath(), std::ios::binary | std::ios::trunc);
+  if (!f) {
+    LogError("[palette] brouillon non écrit : {}", DraftsPath());
+    return;
+  }
+  f << root << "\n";
+}
+
+}  // namespace
+
+void DraftSave(uint32_t char_id, const ro::PaletteRecipe* recipe) {
+  if (char_id == 0) return;
+  EnsureDrafts();
+  if (recipe) {
+    const std::string encoded = Encode(*recipe);
+    auto it = g_drafts.find(char_id);
+    if (it != g_drafts.end() && it->second == encoded) return;  // rien de neuf
+    g_drafts[char_id] = encoded;
+  } else if (g_drafts.erase(char_id) == 0) {
+    return;  // rien à effacer : pas de réécriture inutile
+  }
+  FlushDrafts();
+}
+
+bool DraftLoad(uint32_t char_id, ro::PaletteRecipe* out) {
+  if (char_id == 0 || !out) return false;
+  EnsureDrafts();
+  auto it = g_drafts.find(char_id);
+  if (it == g_drafts.end()) return false;
+  return Decode(it->second, out);
+}
+
+bool HasDraft(uint32_t char_id) {
+  if (char_id == 0) return false;
+  EnsureDrafts();
+  return g_drafts.count(char_id) != 0;
+}
+
 std::string EncodeShare(const ro::PaletteRecipe& recipe) {
   return Encode(recipe);
 }

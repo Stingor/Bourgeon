@@ -64,6 +64,30 @@ bool PresetSave(const std::string& name, const ro::PaletteRecipe& recipe);
 bool PresetLoad(const std::string& name, ro::PaletteRecipe* out);
 void PresetDelete(const std::string& name);
 
+// ── Brouillon : le dernier style COMPOSÉ mais jamais validé ─────────────────
+//
+// 🔴 Il ne répond qu'à un accident : le joueur cherche sa couleur, ne valide
+// pas, et perd la session — plantage, coupure, déconnexion, une envie de partir
+// se coucher. Rien d'autre ne garde cet état. Le serveur ne connaît que ce qui a
+// été validé ; le cache ci-dessus ne fait que refléter le serveur ; un
+// préréglage demande un geste explicite, précisément celui que n'a pas fait
+// quelqu'un qui n'avait pas fini. Sans cette réserve, une demi-heure de réglages
+// s'évapore sans que le joueur ait rien fait de mal.
+//
+// PAR PERSONNAGE, comme le cache : une recette ne vaut que pour le corps sur
+// lequel elle a été composée, et rendre à un personnage le brouillon d'un autre
+// lui poserait des couleurs qui ne veulent rien dire.
+//
+// ⚠ Un seul brouillon par personnage, écrasé à chaque fois. Ce n'est pas un
+// historique : c'est un filet, et un filet à plusieurs mailles demanderait au
+// joueur de choisir entre des états qu'il ne sait plus distinguer.
+void DraftSave(uint32_t char_id, const ro::PaletteRecipe* recipe);
+bool DraftLoad(uint32_t char_id, ro::PaletteRecipe* out);
+
+// Y a-t-il quelque chose à récupérer ? Interrogé à chaque frame par la fenêtre,
+// donc volontairement plus léger qu'un `DraftLoad` — pas de décodage.
+bool HasDraft(uint32_t char_id);
+
 // ── Code partageable ────────────────────────────────────────────────────────
 //
 // La MÊME chaîne que celle rangée en base et dans le cache : `<version>:<palette
