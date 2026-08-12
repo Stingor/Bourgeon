@@ -69,6 +69,10 @@ std::map<uint32_t, unsigned long> g_first_seen;
 // doit relancer la restauration, sinon le second reste sur son apparence native.
 uint32_t g_restored_cid = 0;
 
+// Personnage actuellement en jeu. 🔴 Sert à détecter un CHANGEMENT de
+// personnage sans quitter le client — voir `ForgetPreviousCharacter`.
+uint32_t g_session_cid = 0;
+
 // Notre propre recette, telle que le serveur nous la renvoie, et l'état de
 // l'éditeur qui décide si on a le droit de la reposer.
 ro::PaletteRecipe g_local_recipe;
@@ -521,9 +525,99 @@ void StyleSync::RestoreLocalFromCache() {
   LogDiag("[palette] couleurs restaurées du cache local (cid={})", cid);
 }
 
+// Changement de PERSONNAGE sans quitter le client.
+//
+// 🔴 Notre registre de recettes est indexé par GID — c'est-à-dire par l'AID, qui
+// ne change PAS d'un personnage à l'autre du même compte — et rien ne le vidait.
+// Le personnage suivant héritait donc de la palette du précédent : un novice
+// fraîchement créé arrivait dans les couleurs d'un 4e classe. Le symptôme est
+// caractéristique et vaut diagnostic : chez les AUTRES, l'apparence était juste
+// — le serveur, lui, range bien le style par personnage. Un décalage qui n'existe
+// que sur son propre écran désigne toujours un état que nous seuls tenons.
+//
+// ⚠ Et le serveur ne pouvait pas nous rattraper : à un personnage SANS style il
+// n'envoie rien du tout. Une absence de message ne corrige rien — c'est
+// précisément pourquoi cette purge doit être faite ici, et non attendue de lui.
+//
+// Pire, la garde « il a déjà une recette » de `RestoreLocalFromCache` prenait cet
+// héritage pour un travail déjà fait, et s'abstenait donc de charger la bonne.
+//
+// ⚠ Les recettes des AUTRES joueurs ne sont pas purgées, et c'est délibéré :
+// elles sont indexées par leur propre AID, le serveur les renvoie à chaque entrée
+// en zone, et de ce point de vue un changement de personnage n'est qu'un
+// changement de carte de plus.
+void StyleSync::ForgetPreviousCharacter() {
+  const uint32_t cid = OwnCharId();
+  if (cid == 0) return;              // char-select : rien à conclure
+  if (cid == g_session_cid) return;  // le cas de très loin le plus fréquent
+  const uint32_t precedent = g_session_cid;
+  g_session_cid = cid;
+  if (precedent == 0) return;        // première entrée en jeu de la session
+
+  // 🔴 On ne touche PAS à l'injection ici, et surtout pas via `ClearRecipe` :
+  // celui-ci rendrait à l'acteur le chemin de palette mémorisé, qui est à cet
+  // instant celui du personnage PRÉCÉDENT. On repeindrait le nouveau avec la
+  // couleur de vêtement de son prédécesseur — le contraire du but.
+  //
+  // La purge de l'injection se fait au CHAR-SELECT (`ForgetLocalActor`), au seul
+  // moment où l'acteur n'existe pas et où il n'y a donc rien à ménager. Ce
+  // qu'on fait ici n'est que le rattrapage de nos propres registres, au cas où
+  // ce passage aurait été manqué.
+  const uint32_t gid = OwnGid();
+  if (gid != 0) {
+    // Ces états portent sur le corps du personnage PRÉCÉDENT : les laisser
+    // ferait juger le nouveau sur l'analyse de l'ancien.
+    g_remote.erase(gid);
+    g_repair_seen.erase(gid);
+    g_first_seen.erase(gid);
+  }
+  // Notre recette locale sert à amorcer l'éditeur : la garder ferait proposer au
+  // nouveau venu les couleurs de son prédécesseur.
+  g_local_recipe = ro::PaletteRecipe();
+  g_has_local = false;
+  // Et la restauration depuis le cache doit être REFAITE, avec la clé du
+  // nouveau personnage.
+  g_restored_cid = 0;
+  LogDiag("[palette] personnage changé ({} -> {}) : style précédent oublié",
+          precedent, cid);
+}
+
+// Le retour au char-select : notre acteur vient de cesser d'exister.
+//
+// 🔴 C'est LE bon moment, et le seul. Tout ce que nous savons de cet acteur est
+// indexé par son GID — c'est-à-dire l'AID, qui ne change pas d'un personnage à
+// l'autre du même compte — donc sans cette purge le suivant hérite de la palette
+// du précédent. Le symptôme valait diagnostic : chez les autres joueurs
+// l'apparence était juste, et le char-select aussi. Le serveur range bien par
+// personnage, notre cache local aussi ; un décalage visible sur son seul écran
+// désigne toujours un état que nous sommes seuls à tenir.
+//
+// ⚠ Et le serveur ne pouvait pas nous rattraper : à un personnage SANS style il
+// n'envoie rien du tout, et une absence de message ne corrige rien.
+//
+// Ici l'acteur n'existe plus : `ForgetActor` est donc obligatoire, `ClearRecipe`
+// écrirait dans un pointeur caduc et rendrait de surcroît un chemin périmé.
+void StyleSync::ForgetLocalActor() {
+  const uint32_t gid = OwnGid();
+  if (gid == 0) return;
+  if (!fx::palette_inject::HasRecipe(gid) && g_session_cid == 0) return;
+  fx::palette_inject::ForgetActor(gid);
+  g_remote.erase(gid);
+  g_repair_seen.erase(gid);
+  g_first_seen.erase(gid);
+  g_local_recipe = ro::PaletteRecipe();
+  g_has_local = false;
+  g_local_editing = false;
+  g_restored_cid = 0;
+  g_session_cid = 0;
+}
+
 void StyleSync::OnRenderUI() {
   // Idempotent, et sur le FIL DE RENDU comme l'exige la pose des détours.
   fx::palette_inject::EnsureInstalled();
+  // 🔴 AVANT la restauration : celle-ci se croirait déjà faite en voyant la
+  // recette héritée du personnage précédent.
+  ForgetPreviousCharacter();
   RestoreLocalFromCache();
 }
 
@@ -533,6 +627,9 @@ void StyleSync::OnRenderLoginUI() {
   // est monté — sinon le détour manque sa reconstruction et les couleurs
   // arrivent avec une seconde de retard.
   fx::palette_inject::EnsureInstalled();
+  // Nous sommes entre deux personnages : rien de l'ancien ne doit franchir cet
+  // écran. Idempotent — après le premier passage il n'y a plus rien à oublier.
+  ForgetLocalActor();
 }
 
 void StyleSync::OnTick() {

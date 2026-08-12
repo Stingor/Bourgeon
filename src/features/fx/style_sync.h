@@ -223,6 +223,23 @@ class StyleSync : public Plugin {
   // a choisi ses propres couleurs.
   int AutoRepair(int budget);
 
+  // Notre acteur vient de cesser d'exister (retour au char-select) : on oublie
+  // tout ce qui le concernait.
+  //
+  // 🔴 Le bon moment, et le seul, pour purger l'injection : l'acteur n'existe
+  // pas, donc il n'y a rien à ménager. En jeu, `ClearRecipe` lui rendrait le
+  // chemin de palette mémorisé — celui du personnage précédent.
+  void ForgetLocalActor();
+
+  // Oublie le style du personnage PRÉCÉDENT quand on en change sans quitter le
+  // client.
+  //
+  // 🔴 Notre registre de recettes est indexé par GID, c'est-à-dire par l'AID —
+  // qui ne change PAS d'un personnage à l'autre du même compte. Sans cette
+  // purge, le suivant hérite de la palette du précédent, et le serveur ne peut
+  // pas nous rattraper : à un personnage sans style, il n'envoie rien du tout.
+  void ForgetPreviousCharacter();
+
   // Pose NOS couleurs depuis le cache local dès que l'acteur existe, sans
   // attendre que le serveur nous les renvoie. Sans elle, la connexion affiche
   // une autre apparence pendant une bonne seconde. Idempotente.

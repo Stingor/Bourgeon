@@ -319,6 +319,37 @@ bool PaletteEditor::Reload() {
   return true;
 }
 
+void PaletteEditor::ResetForNewCharacter() {
+  recipe_ = ro::PaletteRecipe();
+  applied_ = ro::PaletteRecipe();
+  // 🔴 Le verrou d'amorçage est le plus traître des trois : il dit « déjà
+  // amorcé », donc rouvrir la fenêtre après un changement de personnage
+  // ressortait la recette du PRÉCÉDENT et la proposait à valider.
+  seeded_ = false;
+  touched_ = false;
+  draft_seen_.clear();
+  draft_tick_ = 0.0;
+  // Vider le chemin suffit à faire jeter par `Reload` tout ce qui en dérive :
+  // vignettes de teinte, sprite décodé de la pipette, rampes, base fusionnée.
+  body_path_.clear();
+  // L'aperçu d'un style reçu porte le corps de l'ancien personnage.
+  preview_body_path_.clear();
+  preview_base_.clear();
+  preview_ramp_count_ = 0;
+
+  // 🔴 On ne RÉAMORCE pas ici, et c'est délibéré : la recette locale appartient
+  // à `StyleSync`, qui purge la sienne dans SON tour de frame. Rien ne dit que
+  // le nôtre passe après — amorcer maintenant figerait peut-être la recette de
+  // l'ancien personnage, définitivement, puisque l'amorçage ne se fait qu'une
+  // fois. Le rattrapage par frame s'en charge dès que la valeur est saine.
+  //
+  // La tête, elle, se lit sur les globales du client : aucun ordre à supposer.
+  if (open_) {
+    SeedWornHead();
+    applied_ = recipe_;
+  }
+}
+
 void PaletteEditor::TickDraft() {
   const uint32_t cid = OwnCharId();
   if (cid == 0) return;
@@ -981,6 +1012,19 @@ void PaletteEditor::OnRenderUI() {
   // être en cours d'exécution pendant qu'on réécrit leurs cinq premiers octets.
   fx::palette_inject::EnsureInstalled();
 
+  // ── Changement de personnage sans quitter le client ─────────────────────
+  //
+  // 🔴 AVANT le raccourci : sinon un Alt+P frappé la même frame ouvrirait la
+  // fenêtre sur l'état de l'ancien personnage, et l'amorçage — qui ne se fait
+  // qu'une fois — figerait sa recette pour toute la session.
+  {
+    const uint32_t cid = OwnCharId();
+    if (cid != 0 && cid != session_cid_) {
+      if (session_cid_ != 0) ResetForNewCharacter();
+      session_cid_ = cid;
+    }
+  }
+
   // 🔴 Le raccourci est lu AVANT tout retour anticipé — sinon il n'ouvrirait
   // jamais la fenêtre depuis l'état fermé. Et il ne se déclenche pas pendant
   // qu'on écrit : `NativeTextInputHasFocus` réplique la garde de
@@ -1543,7 +1587,12 @@ void PaletteEditor::OnRenderUI() {
                 if (auto* chat = Bourgeon::Instance().chat_window()) {
                   const std::string code =
                       fx::palette_cache::EncodeShare(partage);
-                  chat->AppendStyleLink(code.c_str(), nullptr);
+                  // 🔴 Le NOM DU PRÉRÉGLAGE comme étiquette, pas notre pseudo.
+                  // Celui-ci est déjà en tête de la ligne de chat : le répéter
+                  // dans le lien n'apprend rien, et empêche surtout de
+                  // distinguer trois préréglages postés à la suite. L'étiquette
+                  // doit porter ce que le lecteur ne sait pas encore.
+                  chat->AppendStyleLink(code.c_str(), noms[i].c_str());
                 }
               }
             } else if (fx::palette_cache::PresetLoad(noms[i], &recipe_)) {

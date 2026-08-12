@@ -53,7 +53,27 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
                int ramp_count, const ro::PaletteRecipe& recipe);
 
 // Retire la recette d'un acteur : il retrouve exactement son rendu natif.
+//
+// ⚠ Suppose que l'acteur EXISTE : c'est en le remettant sur son chemin d'origine
+// que la fonction fait son travail. Quand il n'existe plus — retour au
+// char-select, changement de personnage — c'est `ForgetActor` qu'il faut.
 void ClearRecipe(uint32_t gid);
+
+// Oublie TOUT ce qu'on sait de cet acteur, sans toucher à aucun acteur.
+//
+// 🔴 À appeler quand l'acteur a cessé d'exister, typiquement au retour vers le
+// char-select. `ClearRecipe` n'y convient pas et serait même NUISIBLE : il rend
+// à l'acteur le chemin de palette MÉMORISÉ, qui est alors celui du personnage
+// précédent — on repeindrait le suivant avec la couleur de vêtement de son
+// prédécesseur.
+//
+// 🔴 Le drapeau `color_forced` est la vraie raison d'être de cette fonction. Il
+// interdit de recapturer le chemin natif tant qu'il est levé — protection juste
+// pour un acteur donné, poison d'un personnage à l'autre : le nouveau venu se
+// voyait refuser la capture de SON chemin, et gardait donc la base de l'ancien.
+// Comme le GID vaut l'AID, qui ne change pas entre deux personnages du même
+// compte, rien ne distinguait les deux sans cet appel.
+void ForgetActor(uint32_t gid);
 
 // ── Couleur de CHEVEUX ──────────────────────────────────────────────────────
 //

@@ -642,6 +642,26 @@ void ClearRecipe(uint32_t gid) {
   }
 }
 
+void ForgetActor(uint32_t gid) {
+  if (gid == 0) return;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  auto it = g_recipes.find(gid);
+  if (it != g_recipes.end()) {
+    // Même traitement qu'ailleurs : le bloc est mis à la retraite, jamais
+    // libéré — le cache d'atlas du client garde son adresse en clé.
+    Retire(std::move(it->second.block));
+    g_recipes.erase(it);
+  }
+  // 🔴 L'entrée natif part ENTIÈREMENT, `color_forced` compris. C'est tout
+  // l'objet de cette fonction : ce drapeau interdit de recapturer le chemin
+  // natif, et le laisser levé ferait refuser au personnage SUIVANT la capture du
+  // sien — il hériterait de la base de son prédécesseur, sur le même AID.
+  g_native_paths.erase(gid);
+  g_hair.erase(gid);
+  // ⚠ Aucun acteur n'est touché, et c'est la condition d'emploi : celui qu'on
+  // oublie n'existe plus, son pointeur mémorisé ne vaut plus rien.
+}
+
 bool NativePalettePath(uint32_t gid, char* out, size_t out_size) {
   if (!out || out_size == 0) return false;
   out[0] = '\0';

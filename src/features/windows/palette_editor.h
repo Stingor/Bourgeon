@@ -75,6 +75,18 @@ class PaletteEditor : public Plugin {
   // le corps portait encore les couleurs nues du sprite.
   bool SeedFromShared();
 
+  // Jette tout ce qui appartenait au personnage précédent.
+  //
+  // 🔴 Rien dans cette fenêtre ne vaut pour deux personnages : ni la recette, ni
+  // le sprite chargé, ni le verrou d'amorçage. Ce dernier est le plus traître —
+  // il dit « déjà amorcé », donc sans cette remise à zéro, rouvrir la fenêtre
+  // après un changement de personnage ressortait la recette du PRÉCÉDENT et la
+  // proposait à valider.
+  void ResetForNewCharacter();
+
+  // Personnage pour lequel l'état courant a été bâti, 0 = aucun.
+  uint32_t session_cid_ = 0;
+
   // Pose sur la recette ce que le personnage porte RÉELLEMENT sur la tête.
   //
   // 🔴 Deux règles opposées, parce que les deux valeurs n'ont pas le même
