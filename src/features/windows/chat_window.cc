@@ -234,11 +234,15 @@ bool IsMirrorImage(const std::string& url) {
 ChatWindow* g_chat_window = nullptr;
 void*       g_tramp_chat_action = nullptr;
 
-// Copie POD des deux chaînes du client. Le tampon de texte est large : un
-// broadcast dépasse allègrement une ligne de chat ordinaire.
+// Copie POD du texte du client. Le tampon est large : un broadcast dépasse
+// allègrement une ligne de chat ordinaire.
+//
+// 🔴 PAS DE CHAMP `sender`, ET C'EST LE CORRECTIF : le sender que le client tend
+// à ses deux points d'entrée n'est jamais poussé par ses propres appelants (la
+// démonstration est dans `Ingest`). Le recopier, c'était déréférencer une adresse
+// arbitraire à chaque ligne de chat — et surtout la croire.
 struct RawChatLine {
   char text[1024];
-  char sender[64];
 };
 
 // Recopie une chaîne du client sans jamais faire confiance à sa terminaison.
@@ -250,13 +254,12 @@ void CopyBounded(char* dst, size_t dst_size, const char* src) {
   dst[i] = '\0';
 }
 
-// SEH pur — aucun objet C++ ici (règle MSVC C2712) : on met les chaînes du client
-// à l'abri, et TOUT le reste du traitement travaille ensuite sur nos tampons.
-bool SafeCopyChatStrings(const char* text, const char* sender, RawChatLine* out) {
+// SEH pur — aucun objet C++ ici (règle MSVC C2712) : on met la chaîne du client
+// à l'abri, et TOUT le reste du traitement travaille ensuite sur notre tampon.
+bool SafeCopyChatText(const char* text, RawChatLine* out) {
   bool ok = false;
   __try {
     CopyBounded(out->text, sizeof(out->text), text);
-    CopyBounded(out->sender, sizeof(out->sender), sender);
     ok = out->text[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     ok = false;
@@ -335,6 +338,7 @@ uint32_t DeobfuscateAid(const char* display) {
 // tranché. Voir docs/chatbox_re.md §12 pour tout le chemin.
 int __cdecl ChatActionFilter(int action, const char* text, int color,
                              int type, const char* sender) {
+  (void)sender;  // reçu par l'ABI du natif, jamais lu — voir `Ingest`
   // 🔴 Action 3 = `ToggleWindow(mgr, 1)` + msg 0x10 : le client RECRÉE sa chatbox
   // pour déployer sa barre de saisie. La détruire après coup depuis OnProcessInput
   // laissait la native visible quelques frames, le temps d'un aller-retour. On
@@ -369,7 +373,10 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
   if (action != 1 && action != 0x13) return 0;
 
   RawChatLine raw;
-  if (!SafeCopyChatStrings(text, sender, &raw)) return 0;
+  // ⚠ `sender` n'est PAS transmis, et n'est utilisé nulle part dans ce détour :
+  // il est reçu parce que le natif lit ce 5ᵉ argument pile, pas parce qu'il vaut
+  // quelque chose (cf. `Ingest`).
+  if (!SafeCopyChatText(text, &raw)) return 0;
 
   for (const char* pattern : kBlockedMsgs)
     if (std::strstr(raw.text, pattern) != nullptr) return 1;
@@ -395,8 +402,7 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
     // n'est plus jamais drainée.
     if (action != 0x13) {
       ++g_chat_window->ingest_seen_;
-      g_chat_window->Ingest(raw.text, static_cast<uint32_t>(color), raw.sender, type,
-                            'A');
+      g_chat_window->Ingest(raw.text, static_cast<uint32_t>(color), type, 'A');
     }
     // 🔴 BLOQUER, mais seulement quand NOTRE fenêtre a pris le relais. Sans
     // fenêtre native pour la consommer, `ChatAction` empile la ligne dans la file
@@ -488,16 +494,22 @@ __declspec(naked) void ChatToggleInputBarStub() {
 // fait son propre épilogue (RET N) — zéro risque ABI.
 //
 // Après les trois push : action@esp+0x10, texte@+0x14, couleur@+0x18,
-// sender@+0x1c, type@+0x20. Chaque push décale esp de 4 et l'argument suivant est
+// type@+0x1c, sender@+0x20. Chaque push décale esp de 4 et l'argument suivant est
 // 4 plus loin : les cinq lectures se font donc toutes à +0x20.
+//
+// ⚠ Les push vont de DROITE À GAUCHE (__cdecl) : le PREMIER alimente le DERNIER
+// paramètre. Le premier `mov` lit donc le 5ᵉ argument pile — le « sender » du
+// natif, dont `Ingest` démontre qu'il ne contient rien — et le second le TYPE.
+// L'ordre du code est bon ; ce sont ces deux commentaires-ci qui l'annonçaient à
+// l'envers, restés à la lecture d'avant la correction du 2026-08-04.
 __declspec(naked) void ChatActionStub() {
   __asm {
     push eax
     push ecx
     push edx
-    mov  eax, [esp+0x20]   // type
+    mov  eax, [esp+0x20]   // sender (5e arg pile, arg_10)
     push eax
-    mov  eax, [esp+0x20]   // sender
+    mov  eax, [esp+0x20]   // type   (4e arg pile)
     push eax
     mov  eax, [esp+0x20]   // couleur
     push eax
@@ -1094,16 +1106,20 @@ void SnapHeightToRows(ImGuiSizeCallbackData* data) {
 }  // namespace
 
 // Ingestion depuis le WndProc natif (case 0x25). Mêmes protections que le détour
-// de ChatAction : les chaînes du client sont recopiées sous SEH avant tout.
+// de ChatAction : la chaîne du client est recopiée sous SEH avant tout.
 // ⚠ L'ordre des arguments n'est PAS celui de ChatAction : ici c'est
 // (texte, couleur, TYPE, sender) — le type et le sender sont intervertis.
+//
+// 🔴 `sender` est reçu mais JAMAIS transmis : le WndProc ne fait que relayer le
+// 5ᵉ argument pile de `ChatAction`, que personne n'a poussé (cf. `Ingest`).
 void chatwnd::IngestNativeLine(const char* text, uint32_t rgb, int type,
                                const char* sender) {
+  (void)sender;
   if (g_chat_window == nullptr) return;
   RawChatLine raw;
-  if (!SafeCopyChatStrings(text, sender, &raw)) return;
+  if (!SafeCopyChatText(text, &raw)) return;
   ++g_chat_window->ingest_seen_;
-  g_chat_window->Ingest(raw.text, rgb, raw.sender, type, 'W');
+  g_chat_window->Ingest(raw.text, rgb, type, 'W');
 }
 
 // ── L'angle mort : nos PROPRES lignes ────────────────────────────────────────
@@ -1124,12 +1140,12 @@ bool chatwnd::IngestPluginLine(const char* text, uint32_t rgb) {
   // ici doublerait la ligne. Même règle que le détour de ChatAction.
   if (NativeChatAlive()) return false;
   RawChatLine raw;
-  if (!SafeCopyChatStrings(text, nullptr, &raw)) return false;
+  if (!SafeCopyChatText(text, &raw)) return false;
   ++g_chat_window->ingest_seen_;
   // Type 0 : c'est celui sous lequel le natif les affichait (relevé en jeu,
   // « t00W » sur les lignes du DPS meter et du relais). Source 'P' pour les
   // distinguer en mode diagnostic — ni le serveur ('A'/'W'), ni le natif : nous.
-  g_chat_window->Ingest(raw.text, rgb, raw.sender, 0, 'P');
+  g_chat_window->Ingest(raw.text, rgb, 0, 'P');
   return true;
 }
 
@@ -1495,6 +1511,71 @@ std::string WhisperPeerFromLabel(const std::string& label, bool* outgoing) {
   if (inner.empty() || inner.size() >= kNameFieldLen) return std::string();
   return inner;
 }
+
+// Les types de ligne qui portent un LOCUTEUR — les seuls où un fragment de texte
+// peut désigner quelqu'un, et donc les seuls où l'on accepte d'en faire un lien
+// joueur avec son menu (chuchoter, inviter dans le groupe, dans la guilde,
+// ajouter en ami). Ce sont ceux dont le natif extrait lui-même le sender
+// ({1, 3, 4, 0x15}, docs/chatbox_re.md §3.1) plus le chuchotement, dont le
+// libellé de tête nomme le correspondant.
+//
+// 🔴 Partout ailleurs — annonces, messages système, objets ramassés — le mot de
+// tête est un MOT, pas quelqu'un, et proposer de l'inviter en guilde n'a aucun
+// sens. ⚠ Le type NE SUFFIT PAS : voir `LooksLikeSelfMessage` juste en dessous,
+// qui écarte les messages du serveur, lesquels arrivent en type 1 comme le chat.
+bool TypeCarriesSpeaker(uint8_t type) {
+  return type == 1 || type == kTypeWhisper || type == 3 || type == 4 ||
+         type == 0x15;
+}
+
+// 🔴 UN MESSAGE DU SERVEUR SE FAIT PASSER POUR DU CHAT PUBLIC — mesuré en jeu.
+// `clif_displaymessage` (ZC 0x008E) est la voie par laquelle le serveur parle au
+// joueur : réponses d'@commande, confirmations de réglage, avertissements. Son
+// handler `GameMode_OnRecv_SelfChat_ZC008E 0x00ccbc60` termine par
+//     ChatAction(mgr, 1, texte, 0xFF00, 1)          (0x00ccbe1b)
+// — donc **type 1, exactement celui du chat public**. Rien dans le type ni dans
+// le texte ne l'en distingue : quand le serveur écrit « Autolootid : liste
+// effacee », la règle « Nom : msg » du natif en tire le locuteur « Autolootid »,
+// et on offrait sur ce mot le menu d'un joueur (chuchoter, inviter en guilde).
+// Relevé dans l'historique : `t: 1 / rgb: 65280 / from: Autolootid`.
+//
+// La COULEUR, elle, les sépare, et elle n'est pas une convention mais une
+// constante du client :
+//   * 0x008E (serveur → nous) : 0xFF00 EN DUR, quelle que soit la ligne ;
+//   * 0x008D (un joueur parle, `GameMode_OnRecv_EntityChat_ZC008D 0x00cc8310`) :
+//     0xFFFFFF, 0xFFFF, 0xFFFF00 ou 0x1D8A3F selon `g_ServiceType` — et la seule
+//     branche qui pourrait en donner une autre passe par `sub_A72820`, qui est
+//     un stub `return 0` sur ce client. Le chat d'un joueur n'est donc JAMAIS
+//     vert, et aucun lien légitime ne se perd ici.
+//
+// ⚠ Le serveur peut aussi cesser d'écrire « Mot : valeur » (fait pour les
+// messages de Moonlight, `clif.cpp`), mais ça ne protège que CES messages-là :
+// rAthena en compte des centaines d'autres. Cette garde-ci les couvre tous.
+constexpr uint32_t kSelfMessageRgb = 0x00FF00;
+bool LooksLikeSelfMessage(uint8_t type, uint32_t rgb) {
+  return type == 1 && rgb == kSelfMessageRgb;
+}
+
+// Le libellé de tête a-t-il la forme que le CLIENT compose pour un chuchotement ?
+// Ses quatre en-têtes sont tous délimités, ESPACES INTÉRIEURS COMPRIS
+// (`sub_CAFD00`, les quatre branches) :
+//   « [ Friend Nom (aid) ] : »  « [ Nom (aid) ] : »   (le staff, sans mot-clé)
+//   « [ Member Nom (aid) ] : »  « ( From Nom [aid] ) : »
+// et le suffixe est toujours « ] : » (0x010922cc) ou « ) : » (0x010922f8).
+//
+// 🔴 C'est cette paire d'espaces qui fait tout le travail : une annonce balisée
+// « [Event] : … » ne les a pas. Sans elle, il ne resterait aucune différence
+// entre une annonce du serveur et un chuchotement du staff.
+bool LooksLikeWhisperLabel(const std::string& label) {
+  const size_t begin = label.find_first_not_of(' ');
+  const size_t end   = label.find_last_not_of(' ');
+  if (begin == std::string::npos || end < begin + 3) return false;
+  const bool opens =
+      (label[begin] == '(' || label[begin] == '[') && label[begin + 1] == ' ';
+  const bool closes =
+      (label[end] == ')' || label[end] == ']') && label[end - 1] == ' ';
+  return opens && closes;
+}
 // Un chuchotement du STAFF : le client le trahit par son TYPE.
 //
 // Le serveur lève `isAdmin` dans ZC_WHISPER (0x0097) quand l'expéditeur est du
@@ -1508,16 +1589,24 @@ std::string WhisperPeerFromLabel(const std::string& label, bool* outgoing) {
 //   * l'INFORMATION — devenue le marqueur « (GM) », posé après le pseudo.
 //
 // 🔴 La reconnaissance ne se fait PAS sur le seul type : un vrai broadcast serait
-// alors pris pour un chuchotement. Il faut un en-tête de chuchotement reconnu
-// (`WhisperPeerFromLabel`), ce qu'aucune annonce serveur ne porte.
+// alors pris pour un chuchotement. Il faut l'EN-TÊTE COMPOSÉ par le client
+// (`LooksLikeWhisperLabel`), ce qu'aucune annonce serveur ne porte.
+//
+// ⚠ `WhisperPeerFromLabel` seul ne suffit PAS à cette question, et c'était le
+// défaut : il accepte aussi le pseudo NU, parce que la fenêtre 1:1 lui en donne
+// un. Toute annonce « Mot : quelque chose » dont le premier mot tient en 24
+// caractères devenait donc un chuchotement du staff — retypée, marquée « (GM) »,
+// et son premier mot promu joueur cliquable.
 //
 // Rend true si la ligne est un chuchotement de GM.
 bool TagGmWhisper(std::string* text, uint8_t* type) {
   if (*type != kTypeBroadcast || text->empty()) return false;
   const size_t body  = text->find(" : ");
   const size_t limit = (body == std::string::npos) ? text->size() : body;
+  const std::string label = text->substr(0, limit);
+  if (!LooksLikeWhisperLabel(label)) return false;  // une annonce : on n'y touche pas
   bool outgoing = false;
-  const std::string peer = WhisperPeerFromLabel(text->substr(0, limit), &outgoing);
+  const std::string peer = WhisperPeerFromLabel(label, &outgoing);
   if (peer.empty()) return false;  // une vraie annonce : on n'y touche pas
 
   *type = static_cast<uint8_t>(kTypeWhisper);
@@ -1545,7 +1634,17 @@ void ChatWindow::RememberWhisperPeer(const Line& line) {
 }
 
 // Rend cliquable le pseudo de tête, où qu'il soit dans le libellé.
+//
+// 🔴 SECONDE BARRIÈRE, sur le TYPE. Le lien qu'on pose ici ouvre un menu qui
+// agit sur un joueur — chuchoter, inviter dans le groupe ou la guilde, ajouter en
+// ami. Le poser sur une ligne qui ne porte aucun locuteur, c'est proposer ces
+// gestes sur un mot ; le serveur répond alors « ce personnage n'existe pas », et
+// c'est nous qui avons menti. La première barrière est en amont (`Ingest` ne
+// remplit `sender` que pour ces types-là) ; celle-ci tient l'invariant à
+// l'endroit où le lien naît, pour la prochaine source de lignes.
 void ChatWindow::MarkSenderAsPlayerLink(Line* line) const {
+  if (!TypeCarriesSpeaker(line->type)) return;
+  if (LooksLikeSelfMessage(line->type, line->rgb)) return;  // le serveur, pas un joueur
   bool outgoing = false;
   const std::string name = WhisperPeerFromLabel(line->sender, &outgoing);
   if (name.empty()) return;
@@ -1589,8 +1688,7 @@ void ChatWindow::MarkSenderAsPlayerLink(Line* line) const {
 }
 
 // ── Ingestion ────────────────────────────────────────────────────────────────
-void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
-                        int type, char source) {
+void ChatWindow::Ingest(const char* text, uint32_t rgb, int type, char source) {
   Line line;
   line.source = source;
   line.rgb  = (rgb != 0) ? (rgb & 0xFFFFFF) : kDefaultRgb;
@@ -1619,22 +1717,38 @@ void ChatWindow::Ingest(const char* text, uint32_t rgb, const char* sender,
   TagGmWhisper(&cleaned, &line.type);
   text = cleaned.c_str();
 
-  // Sender : donné par l'appelant, sinon extrait du texte comme le natif le fait
-  // pour les formats « Nom : msg » (types public/groupe/guilde/clan) — il cherche
-  // le mot 16 bits ` :` et borne le nom à 24 caractères.
-  const char* raw_sender = sender;
-  char extracted[32] = {};
-  if ((raw_sender == nullptr || raw_sender[0] == '\0') &&
-      (line.type == 1 || line.type == 3 || line.type == 4 || line.type == 0x15)) {
-    const char* separator = std::strstr(text, " :");
-    if (separator != nullptr && (separator - text) <= 24) {
+  // ── Le LOCUTEUR ─────────────────────────────────────────────────────────────
+  // 🔴 LE `sender` DU CLIENT N'EN EST PAS UN : PERSONNE NE LE POUSSE.
+  // `ChatAction` lit bien un 5ᵉ argument pile (`arg_10`, qu'il relaie au msg 0x25
+  // en p5), mais ses appelants n'en empilent que QUATRE :
+  //     0x00cb7983  ChatAction(mgr, 1, texte, couleur, 0x19)   les annonces
+  //     0x00cb0ade  ChatAction(mgr, 1, texte, 0xFFFF, type)    les chuchotements
+  // Ce qu'on lisait là était donc un RÉSIDU DE PILE — un pointeur laissé par un
+  // appel précédent, souvent une chaîne encore vivante, parfois le texte de la
+  // ligne elle-même. Le natif ne s'en aperçoit pas : son `case 0x25` réécrit le
+  // sender depuis le TEXTE pour les types {1,3,4,0x15} et n'en fait rien pour les
+  // autres. Nous le prenions pour argent comptant.
+  //
+  // On fait donc comme le WndProc : le locuteur se lit dans le TEXTE, et
+  // uniquement sur les lignes qui en portent un — ce qui exclut les types sans
+  // locuteur ET les messages du serveur, qui empruntent le type du chat public
+  // (cf. `LooksLikeSelfMessage` : c'est là qu'était « Autolootid »).
+  char extracted[64] = {};
+  if (TypeCarriesSpeaker(line.type) &&
+      !LooksLikeSelfMessage(line.type, line.rgb)) {
+    // Le natif cherche le mot 16 bits ` :` et borne le nom à 24 caractères. Le
+    // chuchotement fait exception : sa tête n'est pas un pseudo nu mais le
+    // libellé composé par le client (« ( From Nom ) : »), plus long — d'où la
+    // même borne de 40 que dans `IngestWhisperLine`, qui découpe déjà celui-là.
+    const size_t limit     = (line.type == kTypeWhisper) ? 40u : 24u;
+    const char*  separator = std::strstr(text, " :");
+    if (separator != nullptr &&
+        static_cast<size_t>(separator - text) <= limit) {
       CopyBounded(extracted, sizeof(extracted), text);
       extracted[separator - text] = '\0';
-      raw_sender = extracted;
+      if (extracted[0] != '\0') line.sender = ro::WireToUtf8(extracted);
     }
   }
-  if (raw_sender != nullptr && raw_sender[0] != '\0')
-    line.sender = ro::WireToUtf8(raw_sender);
 
   ParseText(text, &line);
   MarkSenderAsPlayerLink(&line);

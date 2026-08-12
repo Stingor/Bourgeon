@@ -193,8 +193,12 @@ class ChatWindow : public Plugin {
   bool DrawSettings();
 
   // Appelée par le détour de ChatAction, sur le fil du jeu, pour les actions qui
-  // ajoutent une ligne (1 et 0x13). `text`/`sender` sont les chaînes du client,
-  // déjà recopiées dans des tampons à nous : rien n'est retenu d'elles.
+  // ajoutent une ligne (1 et 0x13). `text` est la chaîne du client, déjà
+  // recopiée dans un tampon à nous : rien n'est retenu d'elle.
+  //
+  // 🔴 AUCUN `sender` NE TRAVERSE ICI, et c'est délibéré : celui que le client
+  // tend à ses points d'entrée est un résidu de pile (démonstration dans le
+  // corps d'`Ingest`). Le locuteur se lit dans le TEXTE, comme le fait le natif.
   //
   // `source` marque QUI a fourni la ligne : 'A' = le détour de `ChatAction`,
   // 'W' = le `case 0x25` du WndProc natif. Il n'est affiché qu'en mode
@@ -203,8 +207,7 @@ class ChatWindow : public Plugin {
   // même ligne, ou le serveur qui l'envoie deux fois — et elles se corrigent à
   // des endroits opposés. Deux `A` (ou deux `W`) accusent le serveur ; un `A` et
   // un `W` nous accusent.
-  void Ingest(const char* text, uint32_t rgb, const char* sender, int type,
-              char source);
+  void Ingest(const char* text, uint32_t rgb, int type, char source);
 
   // ── Chuchotement 1:1 ────────────────────────────────────────────────────────
   // Range une ligne de conversation privée dans la fenêtre du correspondant, en

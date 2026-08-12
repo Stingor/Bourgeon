@@ -230,6 +230,36 @@ Flux exact :
 > **msg 0x73 est un NO-OP dans la fenêtre principale** (`if (msg==0x73) return 0`)
 > → la voie `ChatAction 0x13` est **morte** sur ce client.
 
+> 🔴 **LE `sender` (p6) EST UN RÉSIDU DE PILE — découvert le 2026-08-12.**
+> `ChatAction` le lit comme 5ᵉ argument pile (`arg_10` / `v86 = [ebp+18h]`) et le
+> relaie ici, mais **ses appelants n'en empilent que quatre** :
+> `0x00cb7983 ChatAction(mgr, 1, texte, couleur, 0x19)` (annonces, handler
+> `sub_00CB7510`) et `0x00cb0ade ChatAction(mgr, 1, texte, 0xFFFF, type)`
+> (chuchotements, `sub_CAFD00`). Ce que le natif lit là est donc un pointeur
+> laissé par un appel précédent — souvent une chaîne encore vivante.
+> Le client ne s'en aperçoit pas : l'étape 1 ci-dessus **réécrit** le sender
+> depuis le texte pour {1,3,4,0x15}, et pour les autres types il ne sert qu'à
+> l'étape 2 (comparaison au propre nom) et au stockage RAW.
+> ⇒ **Un ingesteur ne doit JAMAIS croire ce paramètre** : le locuteur se lit dans
+> le TEXTE, et seulement sur les lignes qui en portent un.
+
+> 🔴🔴 **LE SERVEUR PARLE EN TYPE 1, COMME LE CHAT PUBLIC — mesuré le 2026-08-12.**
+> `clif_displaymessage` (ZC **0x008E**, réponses d'@commande, confirmations de
+> réglage) finit dans `GameMode_OnRecv_SelfChat_ZC008E 0x00ccbc60` par
+> **`ChatAction(mgr, 1, texte, 0xFF00, 1)`** (`0x00ccbe1b`) : **type 1**, celui du
+> chat public. Un message « Autolootid : liste effacee » passe donc la règle
+> « Nom : msg » de l'étape 1 et se voit attribuer le locuteur « Autolootid » —
+> relevé tel quel dans notre historique : `t: 1 / rgb: 65280 / from: Autolootid`.
+> C'est ce qui offrait un menu de JOUEUR (chuchoter, inviter en guilde) sur un mot.
+>
+> **Ce qui les sépare est la COULEUR, et c'est une constante du client** :
+> 0x008E écrit toujours `0xFF00` ; le chat d'un joueur (`0x008D`,
+> `GameMode_OnRecv_EntityChat_ZC008D 0x00cc8310`) écrit `0xFFFFFF`, `0xFFFF`,
+> `0xFFFF00` ou `0x1D8A3F` selon `g_ServiceType` — sa seule autre branche passe
+> par `sub_A72820`, **stub `return 0`** sur ce client. Le chat public n'est donc
+> jamais vert : la paire (type 1, `0x00FF00`) identifie le serveur sans ambiguïté.
+> ⇒ `chat_window.cc`, `LooksLikeSelfMessage`.
+
 ### 3.1.1 ✅ ENUM COMPLET DES 25 TYPES (= la table de filtre `node+0x2C+i`)
 
 Résolu via les 25 libellés poussés par `UIBattleMsgOptionWnd_ctor 0x008d6ba0`
@@ -314,6 +344,11 @@ Couleur = RGB (0 → blanc).
 > `ChatAction` (fenêtre détruite), et le symptôme est déroutant : **toutes les
 > lignes arrivent en type 0**, parce qu'on lit un pointeur écrêté par la
 > validation du type.
+> 🔴 **Corollaire trouvé le 2026-08-12 : ce 5ᵉ argument n'est POUSSÉ PAR PERSONNE.**
+> `ChatAction` le lit (`v86 = [ebp+18h]`) et le relaie, mais annonces
+> (`0x00cb7983`) et chuchotements (`0x00cb0ade`) n'empilent que quatre arguments.
+> Le « sender » qu'on reçoit ici est donc un résidu de pile — détail complet en
+> §3.1. Bourgeon ne le lit plus nulle part (`chat_window.cc`, `Ingest`).
 
 ### 3.3 `Chat_HandleChatMessage` @ `0x00c7a460` — L'EXÉCUTEUR DES COMMANDES SLASH
 
@@ -761,10 +796,14 @@ limite** (elle n'est drainée qu'à la création de la fenêtre). Supprimer la
 fenêtre SANS intercepter `ChatAction` = fuite mémoire illimitée.
 → Le remplacement se fait donc **au niveau de `UIWindowMgr_ChatAction
 0x00a4ad20`** (hook, actions 1/0x13 déviées vers notre modèle) :
-- On y reçoit directement **(texte, couleurRGB, sender, TYPE)** — le type que
-  l'ancienne stratégie devait aller repêcher dans le case 0x25. Enum §3.1.1.
-- Extraction du sender « Nom : msg » pour les types {1,3,4,0x15} : à refaire
-  chez nous (word ` :` 0x3A20, ≤24c, blanchi si == own name) — trivial.
+- On y reçoit directement **(texte, couleurRGB, TYPE, sender)** — ordre corrigé
+  §3.2 — le type que l'ancienne stratégie devait aller repêcher dans le case
+  0x25. Enum §3.1.1.
+- 🔴 **Le `sender` reçu ne vaut rien** (résidu de pile, §3.1) : le locuteur
+  s'extrait du TEXTE, « Nom : msg », pour les types {1,3,4,0x15} (word ` :`
+  0x3A20, ≤24c, blanchi si == own name) — et du libellé « ( From Nom ) : » pour
+  le chuchotement (≤40c). Sur **tout autre type**, il n'y a PAS de locuteur : le
+  premier mot d'une annonce n'est pas un joueur.
 - Broadcast : type 0x19 ou (type 0 && couleur 0xFF).
 - Respecter le gate replay (`g_ReplayActive`) comme l'original.
 - Actions à conserver/décider : 3 (ouvrir → focus ImGui), 6 (/savechat → notre
