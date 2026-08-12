@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "features/systems/bug_report.h"  // Context : le rapport contextuel
 #include "ui/palette_ramps.h"
 #include "ui/spr_act.h"  // Resource : les index de palette, pour la pipette
 
@@ -74,6 +75,16 @@ class PaletteEditor : public Plugin {
   // première ouverture où les curseurs annonçaient la bonne palette pendant que
   // le corps portait encore les couleurs nues du sprite.
   bool SeedFromShared();
+
+  // Ce qu'il faut à quelqu'un d'AUTRE pour reproduire un défaut de cette
+  // fenêtre.
+  //
+  // 🔴 Un défaut de style ne se reproduit ni sur description ni sur capture :
+  // une recette ne porte aucune couleur et ne veut rien dire hors du sprite sur
+  // lequel elle a été composée. Mais la scène entière tient en quelques
+  // centaines d'octets — le code de partage et le sprite porté suffisent. C'est
+  // ce rapport de force qui justifie un bouton ici plus qu'ailleurs.
+  BugReport::Context BugContext() const;
 
   // Jette tout ce qui appartenait au personnage précédent.
   //

@@ -31,6 +31,7 @@ class BugReport : public Plugin {
     kSkill   = 2,
     kNpc     = 3,
     kQuest   = 4,
+    kStyle   = 5,
   };
 
   // Contexte capturé au moment du clic. `label` est montré au joueur (lisible),

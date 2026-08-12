@@ -155,7 +155,116 @@ float LargeurGrille(int cols, float cote, bool avec_ascenseur) {
          (avec_ascenseur ? ImGui::GetStyle().ScrollbarSize : 0.0f);
 }
 
+// Recopie en ASCII STRICT, tout octet hors 0x20-0x7E devenant `%NN`.
+//
+// 🔴 Les chemins de sprite RO traversent des dossiers CORÉENS encodés en CP949
+// (`인간족\몸통\남`), et le suffixe de sexe fait partie du nom de fichier. Les
+// laisser bruts donnerait du charabia sur Discord et dans la base ; les remplacer
+// par '?' perdrait justement ce suffixe, qui désigne la moitié du corps édité. Le
+// pourcentage garde l'information ET reste du JSON valide.
+//
+// Les guillemets et l'antislash sont échappés au passage : un chemin RO en est
+// plein, et un JSON cassé n'est plus lisible par personne.
+void AppendAscii(std::string* out, const char* src, size_t max) {
+  if (!src) return;
+  for (size_t i = 0; src[i] != '\0' && i < max; ++i) {
+    const unsigned char c = static_cast<unsigned char>(src[i]);
+    if (c == '"' || c == '\\') {
+      out->push_back('\\');
+      out->push_back(static_cast<char>(c));
+    } else if (c >= 0x20 && c <= 0x7E) {
+      out->push_back(static_cast<char>(c));
+    } else {
+      char hex[8];
+      std::snprintf(hex, sizeof(hex), "%%%02X", c);
+      *out += hex;
+    }
+  }
+}
+
 }  // namespace
+
+// Ce qu'il faut à quelqu'un d'autre pour REPRODUIRE le défaut, et rien de plus.
+//
+// 🔴 Un défaut de style est presque impossible à reproduire sur description ou
+// capture d'écran, et c'est ce qui justifie ce bouton plus qu'ailleurs : une
+// recette ne porte AUCUNE couleur, elle ne veut rien dire hors du sprite sur
+// lequel elle a été composée. Mais toute la reproduction tient en quelques
+// centaines d'octets — le code de partage et le sprite porté suffisent à remonter
+// la scène exacte.
+//
+// Le choix des champs vient des défauts RÉELLEMENT rencontrés pendant le
+// développement, pas d'une idée de ce qui pourrait servir :
+//   * `spr`    — le sprite réellement porté. Décisif : chaque défaut de cette
+//                fenêtre y a ramené, et une base fausse fausse tout le reste.
+//   * `style`  — le code de partage : la recette entière, rejouable telle quelle.
+//   * `ramps`  — les rampes détectées. « Ce curseur ne change pas cette zone »
+//                se lit là, et nulle part ailleurs.
+//   * `cover`  — la part du corps qu'AUCUN curseur n'atteint. Répond d'un coup
+//                à « il manque une couleur ».
+//   * `actor`  — la base vient-elle de l'acteur ou du repli par déduction ? Les
+//                deux ne désignent pas forcément le même sprite.
+//   * `inject` — une recette est-elle réellement posée sur le personnage ? C'est
+//                ce qui sépare « mal calculé » de « pas appliqué ».
+//
+// ⚠ Ni identité, ni carte, ni position : le serveur les ajoute depuis la session,
+// et le client n'a pas à les affirmer.
+BugReport::Context PaletteEditor::BugContext() const {
+  BugReport::Context c;
+  c.category = BugReport::kStyle;
+
+  std::string js = "{\"ver\":";
+  js += std::to_string(static_cast<int>(fx::style_sync::kWireVersion));
+  js += ",\"spr\":\"";
+  AppendAscii(&js, body_path_.c_str(), 200);
+  js += "\",\"style\":\"";
+  AppendAscii(&js, fx::palette_cache::EncodeShare(recipe_).c_str(), 160);
+  js += "\",\"cover\":[";
+  js += std::to_string(pixels_covered_);
+  js += ',';
+  js += std::to_string(pixels_total_);
+  js += "],\"actor\":";
+  js += resolved_from_actor_ ? "true" : "false";
+  js += ",\"inject\":";
+  js += fx::palette_inject::HasRecipe(OwnGid()) ? "true" : "false";
+  js += ",\"seed\":";
+  js += seeded_ ? "true" : "false";
+  // Un brouillon en cours signale que le joueur n'a pas encore validé : le
+  // personnage ne porte donc PAS ce qu'il décrit.
+  js += ",\"draft\":";
+  js += (fx::palette_cache::EncodeShare(recipe_) !=
+         fx::palette_cache::EncodeShare(applied_))
+            ? "true"
+            : "false";
+  js += ",\"ramps\":[";
+  for (int i = 0; i < ramp_count_; ++i) {
+    if (i) js += ',';
+    js += '[';
+    js += std::to_string(static_cast<int>(ramps_[i].start));
+    js += ',';
+    js += std::to_string(static_cast<int>(ramps_[i].length));
+    js += ',';
+    js += std::to_string(ramps_[i].pixels);
+    js += ',';
+    js += std::to_string(ramps_[i].hue);
+    js += ']';
+  }
+  js += ']';
+  if (!error_.empty()) {
+    js += ",\"err\":\"";
+    AppendAscii(&js, error_.c_str(), 120);
+    js += '"';
+  }
+  js += '}';
+  // Le serveur borne à 1024 : on coupe ici plutôt que de lui laisser produire un
+  // JSON tronqué au milieu d'une chaîne, qu'aucun outil ne relirait.
+  c.json = js.size() <= 1024 ? js : "{\"ver\":0,\"err\":\"contexte trop long\"}";
+
+  // Le libellé est ce que le JOUEUR voit : il doit reconnaître de quoi on parle,
+  // pas lire le rapport.
+  c.label = i18n::Tr("Style du personnage");
+  return c;
+}
 
 const uint8_t* PaletteEditor::PalettePreview(int palette_id, int* budget) {
   auto it = palette_preview_.find(palette_id);
@@ -1138,8 +1247,7 @@ void PaletteEditor::OnRenderUI() {
       ImGui::PopTextWrapPos();
       if (ro::RoButton(i18n::Tr("Réessayer"))) Reload();
     } else {
-      ImGui::TextUnformatted(i18n::Tr("Choisissez une pièce, puis réglez sa "
-                                      "couleur. Le personnage change en direct."));
+      ImGui::TextUnformatted(i18n::Tr("Choisissez une pièce, puis réglez sa couleur."));
       ImGui::PopTextWrapPos();
 
       // ── Ce que les curseurs atteignent VRAIMENT ───────────────────────────
@@ -1686,6 +1794,17 @@ void PaletteEditor::OnRenderUI() {
 
       if (picker_open) ImGui::EndDisabled();
     }
+
+    // 🔴 EN DERNIER dans la fenêtre, et hors de tout BeginChild : le placement
+    // se calcule depuis `GetWindowPos` et le curseur de layout n'est pas
+    // restauré derrière (cf. BugReport::TitleBarButton).
+    //
+    // Dans la BARRE DE TITRE plutôt qu'en pied de page, et ici la raison est
+    // criante : le bas de cette fenêtre bouge sans arrêt — « Envoyé. » qui
+    // apparaît, le bouton de brouillon qui va et vient, l'arbre des préréglages
+    // qu'on déplie. Un bouton de signalement qui glisse sous le curseur et ouvre
+    // son infobulle tout seul se ferait cliquer par accident.
+    if (auto* br = Bourgeon::Instance().bug_report()) br->TitleBarButton(BugContext());
   }
   ro::EndRoWindow();
 
