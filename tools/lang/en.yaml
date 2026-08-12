@@ -2678,6 +2678,8 @@
 "Applique ce style à ton personnage — jusqu'ici, rien n'a changé hors de cet aperçu. Les autres joueurs te verront ainsi, et ta coiffure change pour de bon.": "Applies this style to your character — until now nothing has changed outside this preview. Other players will see you this way, and your hairstyle changes for good."
 "Envoyé.": "Sent."
 "Préréglages": "Presets"
+"(ombre)": "(shaded)"
+"Zone d'ombre du sprite : la clarté de cette pièce plafonne à %d %%. Les réglages gardent le modelé du dégradé, donc une pièce peinte sombre le reste — tu peux changer sa teinte, pas l'éclairer.": "Shaded area of the sprite: this part's brightness caps at %d%%. Adjustments keep the gradient's shading, so a part painted dark stays dark — you can change its hue, not light it up."
 "Revenir à mon style": "Reset to current"
 "Annule tes retouches en cours et revient à ce que ton personnage porte. Ton travail reste récupérable par « Dernier style non validé ».": "Discards your pending edits and goes back to what your character wears. Your work stays recoverable through \"Last unapplied style\"."
 "Rien à annuler : l'aperçu montre déjà ce que ton personnage porte.": "Nothing to discard: the preview already shows what your character wears."

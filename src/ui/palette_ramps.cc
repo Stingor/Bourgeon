@@ -413,6 +413,18 @@ uint32_t RampColor(const uint8_t* palette, size_t palette_size,
          static_cast<uint32_t>(palette[4 * i + 2]);
 }
 
+int RampValueCeiling(const uint8_t* palette, size_t palette_size,
+                     const PaletteRamp& ramp) {
+  if (!palette || palette_size < 1024) return 255;
+  const int i = RampRefIndex(ramp);
+  const int r = palette[4 * i], g = palette[4 * i + 1], b = palette[4 * i + 2];
+  const int v = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
+  // ×2 : c'est exactement `val = +100` en sortie de `AdjustToReach`, dont la
+  // borne fait toute cette limite. Les deux doivent bouger ensemble.
+  const int ceiling = v * 2;
+  return ceiling > 255 ? 255 : ceiling;
+}
+
 RampAdjust AdjustToReach(const uint8_t* palette, size_t palette_size,
                          const PaletteRamp& ramp, uint32_t target) {
   RampAdjust adj;

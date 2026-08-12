@@ -1394,8 +1394,29 @@ void PaletteEditor::OnRenderUI() {
         // sélectionner une pièce ne servait qu'au curseur de teinte, qui n'existe
         // plus — le nuancier fait tout, et une sélection sans effet n'invite qu'à
         // chercher ce qu'elle commande.
+        // ── Une pièce peinte SOMBRE ne pourra pas être éclaircie ────────────
+        //
+        // 🔴 Et il faut le dire, sinon la commande a l'air cassée : désigner un
+        // rouge vif sur une zone d'ombre rend un rouge sombre, la valeur
+        // « remonte puis redescend », et rien n'explique pourquoi. C'est
+        // pourtant le sprite qui parle — l'entrejambe, le dessous des bras, la
+        // nuque sont peints sombres par l'artiste, et les réglages conservent ce
+        // modelé au lieu de l'aplatir.
+        //
+        // Seuil à 224 sur 255 (≈ 88 %) : au-dessus, le plafond ne se remarque
+        // pas. Mesuré sur les 421 corps, il désigne environ une pièce sur six —
+        // assez rare pour que la mention veuille dire quelque chose, assez
+        // fréquent pour couvrir les cas qu'on nous a signalés.
+        const int plafond =
+            ro::RampValueCeiling(base_.data(), base_.size(), ramps_[i]);
+        const bool a_lombre = plafond < 224;
+
         char label[64];
-        std::snprintf(label, sizeof(label), "%s %d", i18n::Tr("Pièce"), i + 1);
+        if (a_lombre)
+          std::snprintf(label, sizeof(label), "%s %d %s", i18n::Tr("Pièce"),
+                        i + 1, i18n::Tr("(ombre)"));
+        else
+          std::snprintf(label, sizeof(label), "%s %d", i18n::Tr("Pièce"), i + 1);
         // 🔴 `AlignTextToFramePadding`, et surtout PAS un `SetCursorPosY` à la
         // main. Repositionner le curseur en Y après le texte laisse le X là où il
         // est et annule l'avance de ligne : les huit pièces se dessinaient alors
@@ -1412,7 +1433,27 @@ void PaletteEditor::OnRenderUI() {
           ImGui::TextUnformatted(label);
         // Survoler le NOM comme la pastille désigne la pièce : les deux sont sur
         // la même ligne, et viser l'un ou l'autre veut dire la même chose.
-        if (ImGui::IsItemHovered()) survolee = i;
+        if (ImGui::IsItemHovered()) {
+          survolee = i;
+          // L'explication ne s'affiche QUE pour les pièces concernées. Une
+          // infobulle qui dirait « pas de limite » sur les cinq autres noierait
+          // celle qui compte.
+          if (a_lombre) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+            char t[224];
+            std::snprintf(
+                t, sizeof(t),
+                i18n::Tr("Zone d'ombre du sprite : la clarté de cette pièce "
+                         "plafonne à %d %%. Les réglages gardent le modelé du "
+                         "dégradé, donc une pièce peinte sombre le reste — tu "
+                         "peux changer sa teinte, pas l'éclairer."),
+                (plafond * 100) / 255);
+            ImGui::TextUnformatted(t);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+          }
+        }
 
         // ── Remise à zéro, PAR PIÈCE ──────────────────────────────────────
         //

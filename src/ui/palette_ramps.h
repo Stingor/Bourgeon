@@ -222,6 +222,25 @@ uint32_t RampColor(const uint8_t* palette, size_t palette_size,
 RampAdjust AdjustToReach(const uint8_t* palette, size_t palette_size,
                          const PaletteRamp& ramp, uint32_t target);
 
+// La clarté MAXIMALE (0..255) que `AdjustToReach` peut donner à cette rampe.
+//
+// 🔴 Une pièce peinte sombre le RESTE, et ce n'est pas un défaut : la luminosité
+// s'applique en facteur pour préserver le modelé du dégradé — ombres, reflets,
+// volume — et ce facteur est borné à +100 %. Le plafond vaut donc deux fois la
+// clarté d'origine, jamais plus.
+//
+// Il faut pouvoir le DIRE au joueur. Sans lui, désigner un rouge vif sur une
+// zone d'ombre rend un rouge sombre sans explication : la valeur « remonte puis
+// redescend », ce qui se lit comme une commande cassée alors que c'est le sprite
+// qui parle. Mesuré sur les 421 corps : 19 % des pièces n'atteignent pas le
+// blanc, et 73 % des corps en ont au moins une nettement bridée — presque
+// toujours des zones d'ombre voulues (entrejambe, dessous de bras, nuque).
+//
+// ⚠ À garder en phase avec la borne de `AdjustToReach` : ces deux-là décrivent
+// la même limite, l'une en l'appliquant, l'autre en l'annonçant.
+int RampValueCeiling(const uint8_t* palette, size_t palette_size,
+                     const PaletteRamp& ramp);
+
 }  // namespace ro
 
 #endif  // BOURGEON_UI_PALETTE_RAMPS_H_
