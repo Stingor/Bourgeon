@@ -49,6 +49,25 @@ struct PaletteRamp {
   uint8_t length = 0;   // nombre d'index
   int pixels = 0;       // surface occupée, toutes images confondues
   int hue = -1;         // teinte dominante en degrés (0-359), -1 si neutre/gris
+
+  // L'index qui REPRÉSENTE la rampe : sa pastille de couleur dans l'éditeur, et
+  // le point d'appui quand le joueur désigne une couleur.
+  //
+  // 🔴 Le milieu de la plage, mais parmi les index PEINTS ET NON NOIRS. La
+  // règle naïve — le milieu tout court — tombait sur du noir pur pour 84 des
+  // 3302 pièces mesurées : leur pastille s'affichait noire alors que la pièce
+  // monte jusqu'au blanc (mesuré sur `biolo_남` pièce 5 : milieu à 0, index le
+  // plus clair peint à 255). Le joueur voyait un carré noir qui refusait de
+  // changer, ce qui ressemble à une panne au point d'appeler un rapport de bug.
+  // Pire, `AdjustToReach` y calculait un réglage de luminosité NUL, sa garde
+  // `from.v > 0` échouant sur un noir.
+  //
+  // ⚠ Cet index est purement LOCAL. Il ne voyage pas, et rien de ce qui voyage
+  // n'en dépend : `ApplyRecipe` traite tous les index de la rampe et ne le
+  // consulte jamais. Il échappe donc à la règle « toute modification des DEUX
+  // côtés » — la référence Python n'a pas à le connaître, et le changer ne
+  // périme aucune recette.
+  uint8_t ref = 0;
 };
 
 // Le réglage d'UNE rampe, dans l'un de deux modes.

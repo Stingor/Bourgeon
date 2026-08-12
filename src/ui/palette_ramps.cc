@@ -123,6 +123,54 @@ int DominantHue(const uint8_t* palette, const int usage[256], int begin,
   return deg >= 360 ? deg - 360 : deg;
 }
 
+// L'index qui REPRÉSENTE la rampe : le milieu de ses index PEINTS ET NON NOIRS.
+//
+// 🔴 Deux exclusions, et chacune répare un mensonge distinct.
+//
+// Les index JAMAIS PEINTS n'apparaissent nulle part à l'écran : leur couleur ne
+// décrit rien, et une rampe éparse pouvait se voir résumer par une entrée que
+// personne ne verra jamais.
+//
+// Le NOIR PUR est pire, parce qu'il n'est pas seulement faux, il est bloquant :
+// une pastille noire refuse de changer, ce qui ressemble à une panne, et
+// `AdjustToReach` y calcule un réglage de luminosité NUL puisque sa garde
+// `from.v > 0` échoue. Mesuré sur les 421 corps : 84 pièces sur 3302 (2,5 %)
+// avaient une pastille noire alors que la pièce, elle, se recolore
+// parfaitement — teinte et saturation étant imposées à TOUS les index.
+//
+// Repli sur le milieu nu si la rampe n'a que du noir ou du vide : elle est alors
+// vraiment noire, et la pastille a raison de le dire.
+int RepresentativeIndex(const uint8_t* palette, const int usage[256], int begin,
+                        int end) {
+  int first = -1, last = -1, count = 0;
+  for (int i = begin; i < end; ++i) {
+    if (usage[i] == 0) continue;
+    if (palette[4 * i] == 0 && palette[4 * i + 1] == 0 &&
+        palette[4 * i + 2] == 0)
+      continue;
+    if (first < 0) first = i;
+    last = i;
+    ++count;
+  }
+  if (count == 0) {
+    const int mid = begin + (end - begin) / 2;
+    return mid < 0 ? 0 : (mid > 255 ? 255 : mid);
+  }
+  // Le milieu des index RETENUS, en les reparcourant : ils ne sont pas
+  // forcément contigus, donc (first + last) / 2 pourrait retomber sur un trou.
+  const int cible = count / 2;
+  int vu = 0;
+  for (int i = first; i <= last; ++i) {
+    if (usage[i] == 0) continue;
+    if (palette[4 * i] == 0 && palette[4 * i + 1] == 0 &&
+        palette[4 * i + 2] == 0)
+      continue;
+    if (vu == cible) return i;
+    ++vu;
+  }
+  return last;
+}
+
 // Ce qui décide du RANG d'une rampe : sa surface, pondérée par sa franchise.
 //
 // 🔴 Tout en ENTIERS, et c'est la raison d'être de cette fonction. Le classement
@@ -264,6 +312,12 @@ int DetectRamps(const uint8_t* palette, size_t palette_size,
     s.ramp.length = static_cast<uint8_t>(length);
     s.ramp.pixels = pixels;
     s.ramp.hue = DominantHue(palette, usage, begin, end);
+    // 🔴 Calculé ICI, et pas dans `RampColor` : c'est le seul endroit où `usage`
+    // est sous la main. Le faire plus tard obligerait à le trimballer jusqu'à
+    // l'interface, ou à s'en passer — c'est-à-dire à retomber sur la règle naïve
+    // que ce champ existe précisément pour remplacer.
+    s.ramp.ref = static_cast<uint8_t>(
+        RepresentativeIndex(palette, usage, begin, end));
     s.score = RampScore(palette, usage, begin, end, pixels);
   };
 
@@ -336,8 +390,14 @@ int DetectRamps(const spract::Resource& res, PaletteRamp* out, int max_out) {
 
 namespace {
 
-// L'index « représentatif » d'une rampe : son milieu.
-int RampMidIndex(const PaletteRamp& ramp) {
+// L'index représentatif, tel que `DetectRamps` l'a choisi.
+//
+// ⚠ Repli sur le milieu nu quand `ref` vaut 0, c'est-à-dire quand la rampe n'est
+// pas passée par la détection — index 0 est le transparent, il ne peut jamais
+// être choisi, donc 0 signifie sans ambiguïté « non renseigné ». Le cas se
+// produit pour une `PaletteRamp` construite à la main dans un essai.
+int RampRefIndex(const PaletteRamp& ramp) {
+  if (ramp.ref != 0) return ramp.ref;
   const int i = ramp.start + ramp.length / 2;
   return (i < 0) ? 0 : (i > 255 ? 255 : i);
 }
@@ -347,7 +407,7 @@ int RampMidIndex(const PaletteRamp& ramp) {
 uint32_t RampColor(const uint8_t* palette, size_t palette_size,
                    const PaletteRamp& ramp) {
   if (!palette || palette_size < 1024) return 0;
-  const int i = RampMidIndex(ramp);
+  const int i = RampRefIndex(ramp);
   return (static_cast<uint32_t>(palette[4 * i]) << 16) |
          (static_cast<uint32_t>(palette[4 * i + 1]) << 8) |
          static_cast<uint32_t>(palette[4 * i + 2]);
@@ -357,7 +417,7 @@ RampAdjust AdjustToReach(const uint8_t* palette, size_t palette_size,
                          const PaletteRamp& ramp, uint32_t target) {
   RampAdjust adj;
   if (!palette || palette_size < 1024) return adj;
-  const int i = RampMidIndex(ramp);
+  const int i = RampRefIndex(ramp);
   const Hsv from = EntryHsv(palette, i);
   const Hsv to = RgbToHsv(static_cast<int>((target >> 16) & 0xFF),
                           static_cast<int>((target >> 8) & 0xFF),
