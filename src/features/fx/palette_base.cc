@@ -1,6 +1,9 @@
 #include "features/fx/palette_base.h"
 
 #include <cstring>
+#include <deque>
+#include <map>
+#include <string>
 
 #include "features/fx/palette_inject.h"
 #include "ui/spr_act.h"
@@ -51,7 +54,75 @@ Status BuildFromSpritePath(const char* spr_base, uint32_t gid, Body* out) {
   return BuildFromPaths(spr_base, pal_path.c_str(), out);
 }
 
+namespace {
+
+// ── Cache des bases construites, par couple (sprite, palette) ────────────────
+//
+// 🔴 Une construction coûte l'analyse COMPLÈTE d'un `.spr` : une centaine
+// d'images décodées, puis un comptage sur chacun de leurs pixels. C'est de loin
+// la dépense de ce module — et elle se répétait à l'identique pour CHAQUE
+// acteur, alors que dans une ville vingt joueurs se partagent une poignée de
+// classes et de couleurs de vêtement.
+//
+// Le symptôme : à la connexion, les joueurs ayant un style apparaissaient une
+// seconde dans leurs couleurs d'origine avant que la recette ne se pose. Le
+// serveur n'y était pour rien — il envoie le style au moment même où le joueur
+// entre en vue. C'est la boucle d'application qui, ne s'accordant que deux
+// constructions par battement, mettait N/2 battements à traiter N joueurs.
+//
+// ⚠ Le contenu ne dépend QUE des deux chemins, et ce sont deux FICHIERS : ils ne
+// changent pas en cours de session, donc rien à invalider. Les échecs sont mis
+// en cache eux aussi — un fichier absent le reste, et le relire cinq fois pour
+// aboutir au même « non » ne sert personne.
+constexpr size_t kMaxCache = 64;
+
+struct Cached {
+  Status status = kNoSprite;
+  Body body;
+};
+std::map<std::string, Cached> g_cache;
+std::deque<std::string> g_cache_order;  // ordre d'arrivée, pour évincer
+
+Status BuildUncached(const char* spr_base, const char* pal_path, Body* out);
+
+}  // namespace
+
 Status BuildFromPaths(const char* spr_base, const char* pal_path, Body* out) {
+  if (!out) return kNoSprite;
+  if (!spr_base || !*spr_base) return BuildUncached(spr_base, pal_path, out);
+
+  std::string key = spr_base;
+  key += '|';
+  if (pal_path && *pal_path) key += pal_path;
+
+  auto it = g_cache.find(key);
+  if (it != g_cache.end()) {
+    *out = it->second.body;
+    out->cached = true;
+    return it->second.status;
+  }
+
+  const Status st = BuildUncached(spr_base, pal_path, out);
+  out->cached = false;
+
+  // Éviction du plus ancien. Une file d'arrivée plutôt qu'un vrai LRU : sur une
+  // carte, l'ensemble des apparences visibles tient largement sous le plafond,
+  // et un LRU coûterait un remaniement à chaque lecture pour un gain nul.
+  Cached& e = g_cache[key];
+  e.status = st;
+  e.body = *out;
+  e.body.cached = true;  // toute relecture de cette entrée EST un succès de cache
+  g_cache_order.push_back(key);
+  while (g_cache_order.size() > kMaxCache) {
+    g_cache.erase(g_cache_order.front());
+    g_cache_order.pop_front();
+  }
+  return st;
+}
+
+namespace {
+
+Status BuildUncached(const char* spr_base, const char* pal_path, Body* out) {
   if (!out) return kNoSprite;
   out->spr_path.clear();
   out->base.clear();
@@ -59,6 +130,7 @@ Status BuildFromPaths(const char* spr_base, const char* pal_path, Body* out) {
   out->ramp_count = 0;
   out->pixels_total = 0;
   out->pixels_covered = 0;
+  out->cached = false;
   if (!spr_base || !*spr_base) return kNoSprite;
   out->spr_path = spr_base;
 
@@ -128,6 +200,8 @@ Status BuildFromPaths(const char* spr_base, const char* pal_path, Body* out) {
 
   return out->ramp_count ? kOk : kNoRamp;
 }
+
+}  // namespace
 
 Status BuildForGid(uint32_t gid, Body* out) {
   char spr[300];

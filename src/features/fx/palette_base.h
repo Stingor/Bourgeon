@@ -54,6 +54,16 @@ struct Body {
   // contours noirs parfaitement voulus.
   int pixels_black_native = 0;
   int pixels_black_merged = 0;
+
+  // Ce résultat venait-il du cache, donc sans rien coûter ?
+  //
+  // 🔴 Exposé pour que la boucle d'application des recettes puisse budgéter ce
+  // qui COÛTE au lieu de compter des appels. Elle s'accorde deux constructions
+  // par battement pour ne pas figer l'image sur une carte peuplée ; sans ce
+  // drapeau, elle compterait aussi les vingt reprises gratuites du même corps et
+  // ferait attendre les joueurs pour rien — c'était exactement le symptôme :
+  // une seconde de couleurs d'origine à la connexion.
+  bool cached = false;
 };
 
 enum Status {

@@ -366,7 +366,13 @@ int StyleSync::ApplyPending(int budget) {
       ++it;
       continue;
     }
-    ++done;
+    // 🔴 On ne décompte que ce qui a COÛTÉ. Une base ressortie du cache — le cas
+    // de très loin le plus fréquent sur une carte peuplée, où vingt joueurs se
+    // partagent une poignée d'apparences — ne prend aucun temps et ne doit donc
+    // pas prendre de budget. Compter les appels au lieu du travail faisait
+    // attendre dix-neuf joueurs pour la construction d'un seul : à la connexion,
+    // ils apparaissaient une seconde dans leurs couleurs d'origine.
+    if (!body.cached) ++done;
     if (st != fx::palette_base::kOk) {
       if (++r.attempts >= kMaxAttempts) {
         LogDiag("[palette] gid={} abandonné après {} essais (statut {})", gid,
