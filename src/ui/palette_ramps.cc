@@ -123,6 +123,46 @@ int DominantHue(const uint8_t* palette, const int usage[256], int begin,
   return deg >= 360 ? deg - 360 : deg;
 }
 
+// Ce qui décide du RANG d'une rampe : sa surface, pondérée par sa franchise.
+//
+// 🔴 Tout en ENTIERS, et c'est la raison d'être de cette fonction. Le classement
+// choisit QUELLES pièces reçoivent un curseur, et une recette ne désigne les
+// siennes que par un NUMÉRO DE RANG. Deux clients qui départageraient deux
+// rampes autrement montreraient donc le même joueur avec d'autres pièces
+// colorées. Un flottant dans la clé de tri suffirait à l'introduire — c'est le
+// piège d'arrondi déjà payé une fois entre Python et C++.
+//
+// La saturation d'une entrée vaut `(max - min) * 255 / max`, la définition HSV
+// ramenée aux entiers, moyennée en pondérant par les PIXELS : une couleur vive
+// posée sur trois pixels ne doit pas colorer tout le verdict.
+//
+// Le facteur va de 256 (gris pur) à 511 (saturation maximale) : une pièce
+// franche l'emporte sur un aplat terne jusqu'à 1,99 fois plus grand — assez pour
+// remonter les rangs 9 mesurés, pas assez pour faire passer une paillette devant
+// une tunique.
+//
+// ⚠ 64 bits obligatoires : un corps dépasse le million de pixels toutes images
+// confondues, et ×511 sortirait d'un `int`. Python compte en précision infinie,
+// donc un débordement ici ne se verrait que sur les gros sprites — exactement
+// ceux qui comptent.
+int64_t RampScore(const uint8_t* palette, const int usage[256], int begin,
+                  int end, int pixels) {
+  int64_t sat_sum = 0, px_sum = 0;
+  for (int i = begin; i < end; ++i) {
+    const int u = usage[i];
+    if (u == 0) continue;
+    const int r = palette[4 * i], g = palette[4 * i + 1],
+              b = palette[4 * i + 2];
+    const int high = (std::max)((std::max)(r, g), b);
+    const int low = (std::min)((std::min)(r, g), b);
+    const int sat = high ? ((high - low) * 255) / high : 0;
+    sat_sum += static_cast<int64_t>(sat) * u;
+    px_sum += u;
+  }
+  const int64_t mean = px_sum ? sat_sum / px_sum : 0;
+  return static_cast<int64_t>(pixels) * (256 + mean);
+}
+
 }  // namespace
 
 void CountIndexUsage(const spract::Resource& res, int usage[256]) {
@@ -197,7 +237,14 @@ int DetectRamps(const uint8_t* palette, size_t palette_size,
   if (!palette || palette_size < 1024 || !usage || !out || max_out <= 0)
     return 0;
 
-  PaletteRamp found[256];
+  // La rampe et sa clé de tri. Le score reste LOCAL : il ne sert qu'à classer,
+  // et le publier inviterait à le transmettre — or ce qui voyage est le rang,
+  // pas le score, chaque client recalculant le sien sur son propre `.spr`.
+  struct Scored {
+    PaletteRamp ramp;
+    int64_t score = 0;
+  };
+  Scored found[256];
   int count = 0;
 
   int begin = -1;
@@ -212,11 +259,12 @@ int DetectRamps(const uint8_t* palette, size_t palette_size,
     int pixels = 0;
     for (int i = begin; i < end; ++i) pixels += usage[i];
     if (pixels < kMinPixels) return;
-    PaletteRamp& r = found[count++];
-    r.start = static_cast<uint8_t>(begin);
-    r.length = static_cast<uint8_t>(length);
-    r.pixels = pixels;
-    r.hue = DominantHue(palette, usage, begin, end);
+    Scored& s = found[count++];
+    s.ramp.start = static_cast<uint8_t>(begin);
+    s.ramp.length = static_cast<uint8_t>(length);
+    s.ramp.pixels = pixels;
+    s.ramp.hue = DominantHue(palette, usage, begin, end);
+    s.score = RampScore(palette, usage, begin, end, pixels);
   };
 
   for (int i = 1; i < 256; ++i) {
@@ -255,17 +303,26 @@ int DetectRamps(const uint8_t* palette, size_t palette_size,
   close(256);
 
   // Les plus VISIBLES d'abord : c'est l'ordre des curseurs de l'éditeur, et le
-  // plafond doit couper les rampes anecdotiques, pas la tunique. Tri STABLE, de
-  // sorte qu'à surface égale l'ordre reste celui des index — sans quoi deux
-  // clients pourraient numéroter les rampes différemment et une recette
-  // désignerait la mauvaise pièce du costume.
+  // plafond doit couper les rampes anecdotiques, pas la tunique.
+  //
+  // 🔴 « Visible » n'est PAS « grand ». Classer au seul nombre de pixels faisait
+  // perdre les pièces petites mais FRANCHES — une rune rouge sur une armure, un
+  // œil qui brille — au profit de grands aplats ternes. Mesuré sur les 421
+  // corps : 265 gardaient au moins une couleur saturée hors des huit retenues,
+  // presque toujours au rang 9. Monter le plafond n'y répondait pas (12 →
+  // encore 194 corps, 16 → encore 117) : c'était le CRITÈRE qui était faux, pas
+  // le nombre.
+  //
+  // Tri STABLE sur une clé ENTIÈRE, de sorte qu'à score égal l'ordre reste celui
+  // des index — sans quoi deux clients numéroteraient les rampes différemment et
+  // une recette désignerait la mauvaise pièce du costume.
   std::stable_sort(found, found + count,
-                   [](const PaletteRamp& a, const PaletteRamp& b) {
-                     return a.pixels > b.pixels;
+                   [](const Scored& a, const Scored& b) {
+                     return a.score > b.score;
                    });
 
   const int n = (count < max_out) ? count : max_out;
-  for (int i = 0; i < n; ++i) out[i] = found[i];
+  for (int i = 0; i < n; ++i) out[i] = found[i].ramp;
   return n;
 }
 

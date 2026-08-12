@@ -537,9 +537,15 @@ def main():
     ap.add_argument("--image", type=int, default=0, help="image du .spr à rendre")
     ap.add_argument("--rampes-max", type=int, default=RAMPES_MAX,
                     help="plafond de rampes exposées (fixe la taille de la recette)")
+    ap.add_argument("--croiser", metavar="DOSSIER",
+                    help="écrit cas.bin + python.txt pour la validation croisée "
+                         "octet par octet avec src/ui/palette_ramps.cc")
     args = ap.parse_args()
     RAMPES_MAX = args.rampes_max
     vfs = Vfs(args.client, GRFS)
+
+    if args.croiser:
+        return croiser(args, vfs)
 
     if args.lister:
         return lister(args, vfs)
@@ -664,6 +670,106 @@ def lister(args, vfs):
         print("\n%d corps SANS rampe détectée :" % len(sans_rampe))
         for nom in sans_rampe[:10]:
             print("   ", nom)
+
+
+def recette_test(n):
+    """Le réglage d'épreuve du rang `n` — DÉTERMINISTE et sans flottant caché.
+
+    Il n'imite aucun goût de joueur : il balaie les deux modes et les deux signes
+    pour que la comparaison Python ↔ C++ traverse toutes les branches
+    d'`appliquer`, y compris les saturations qui débordent et les luminosités qui
+    s'écroulent. Les mêmes entiers sont recalculés côté C++ par la même formule —
+    les transmettre serait plus fragile que les redériver.
+    """
+    if n % 2:                                   # rangs impairs : mode ABSOLU
+        return (float((n * 53) % 360), float((n * 17) % 101),
+                float((n * 7) % 41 - 20), True)
+    return (float((n * 91) % 719 - 359), float((n * 23) % 201 - 100),
+            float((n * 13) % 201 - 100), False)
+
+
+def _fnv1a(octets):
+    """FNV-1a 64 bits : trois lignes, aucune dépendance, et un écart d'un seul
+    octet change tout le condensé. C'est tout ce qu'on demande à une empreinte
+    de comparaison."""
+    h = 0xcbf29ce484222325
+    for b in octets:
+        h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def croiser(args, vfs):
+    """Écrit le dossier de VALIDATION CROISÉE avec le C++ du jeu.
+
+    🔴 Pourquoi cette passe existe : une recette ne porte aucune couleur, rien
+    que des rangs de rampes et des décalages. Si `tools/palette_ramps.py` et
+    `src/ui/palette_ramps.cc` divergent d'un seul index, deux joueurs ne voient
+    pas le même personnage — et l'écart est INVISIBLE en revue de code, puisque
+    les deux fichiers disent la même chose en deux langages. Seule la sortie
+    tranche, sur les 421 corps, octet par octet.
+
+    Deux fichiers en sortent :
+      * `cas.bin` — les ENTRÉES, pour que le C++ parte exactement des mêmes
+        octets sans avoir à relire les GRF ni à reproduire le VFS ;
+      * `python.txt` — les SORTIES de référence, une ligne par corps.
+    Le harnais C++ lit le premier, réécrit le second, et un `diff` conclut.
+
+    Format de `cas.bin`, petit-boutiste :
+        "BRMP" | nb_cas:u32 | { nom_len:u16 | nom | palette:1024 | usage:256×u32 }
+    """
+    os.makedirs(args.croiser, exist_ok=True)
+    serveur = None
+    if args.pal:
+        brut = vfs.lire(args.pal)
+        if brut is None:
+            sys.exit("palette introuvable : %s" % args.pal)
+        serveur = lire_pal(brut)
+
+    cas, lignes = [], []
+    for sexe in ("m", "f"):
+        for chemin in vfs.lister(dossier_corps(sexe), ".spr"):
+            octets = vfs.lire(chemin)
+            if octets is None:
+                continue
+            court = chemin.rsplit("\\", 1)[-1]
+            try:
+                images, palette = lire_spr(octets)
+                usage = compter_usage(images)
+            except Exception as exc:
+                print("  ! %s : %s" % (court, exc))
+                continue
+            base = fusionner_serveur(palette, serveur)
+            rampes = detecter_rampes(base, usage)
+            recette = {n: recette_test(n) for n in range(len(rampes))}
+            peinte = appliquer(base, rampes, recette)
+
+            cas.append((court, base, usage))
+            champs = ";".join(
+                "%d,%d,%d,%d" % (r["debut"], r["longueur"], r["pixels"],
+                                 -1 if r["teinte"] is None else r["teinte"])
+                for r in rampes)
+            lignes.append("%s|%d|%s|%016x"
+                          % (court, len(rampes), champs, _fnv1a(peinte)))
+
+    chemin_bin = os.path.join(args.croiser, "cas.bin")
+    with open(chemin_bin, "wb") as f:
+        f.write(b"BRMP")
+        f.write(struct.pack("<I", len(cas)))
+        for nom, base, usage in cas:
+            brut = nom.encode("utf-8")
+            f.write(struct.pack("<H", len(brut)))
+            f.write(brut)
+            f.write(bytes(base[:1024]))
+            f.write(struct.pack("<256I", *usage))
+
+    chemin_txt = os.path.join(args.croiser, "python.txt")
+    with open(chemin_txt, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lignes) + "\n")
+
+    print("%d corps  ->  %s" % (len(cas), chemin_bin))
+    print("%d lignes ->  %s" % (len(lignes), chemin_txt))
+    print("\nCompiler tools/xcheck_ramps.cc, lui passer cas.bin, "
+          "puis comparer sa sortie a python.txt.")
 
 
 if __name__ == "__main__":

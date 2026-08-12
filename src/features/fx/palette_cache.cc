@@ -69,55 +69,32 @@ std::string Encode(const ro::PaletteRecipe& recipe) {
 }
 
 bool Decode(const std::string& s, ro::PaletteRecipe* out) {
-  // 🔴 La VERSION d'abord. Une entrée v1 décrit d'autres pièces du costume (la
-  // détection de rampes a changé) : on l'IGNORE, la relire poserait des couleurs
-  // au hasard. Une v2, en revanche, se MIGRE — ses réglages restent valides, il
-  // lui manque seulement le numéro de palette, qui vaut alors « celle du
-  // serveur ».
-  int palette_id = -1, hair_id = -1, hair_style = -1;
-  size_t plen = 0;
-  if (s.size() == 2 + kHexChars && s.compare(0, 2, "2:") == 0) {
-    plen = 2;  // v2 : ni palette, ni cheveux, ni coiffure
-  } else if (s.compare(0, 2, "3:") == 0) {
-    // v3 : "<3>:<palette>:<hex>" — les cheveux manquent, ils valent « ceux du
-    // personnage ».
-    const size_t sep = s.find(':', 2);
-    if (sep == std::string::npos) return false;
-    palette_id = std::atoi(s.c_str() + 2);
-    plen = sep + 1;
-    if (s.size() != plen + kHexChars) return false;
-  } else if (s.compare(0, 2, "4:") == 0) {
-    // v4 : "<4>:<palette>:<cheveux>:<hex>" — la coiffure manque, elle vaut
-    // « celle du personnage ». Les réglages, eux, restent valides.
-    const size_t sep1 = s.find(':', 2);
-    if (sep1 == std::string::npos) return false;
-    const size_t sep2 = s.find(':', sep1 + 1);
-    if (sep2 == std::string::npos) return false;
-    palette_id = std::atoi(s.c_str() + 2);
-    hair_id = std::atoi(s.c_str() + sep1 + 1);
-    plen = sep2 + 1;
-    if (s.size() != plen + kHexChars) return false;
-  } else {
-    char head[8];
-    const int n =
-        std::snprintf(head, sizeof(head), "%d:", fx::style_sync::kWireVersion);
-    if (s.size() < static_cast<size_t>(n) || s.compare(0, n, head) != 0)
-      return false;
-    const size_t sep1 = s.find(':', n);
-    if (sep1 == std::string::npos) return false;
-    const size_t sep2 = s.find(':', sep1 + 1);
-    if (sep2 == std::string::npos) return false;
-    const size_t sep3 = s.find(':', sep2 + 1);
-    if (sep3 == std::string::npos) return false;
-    palette_id = std::atoi(s.c_str() + n);
-    hair_id = std::atoi(s.c_str() + sep1 + 1);
-    hair_style = std::atoi(s.c_str() + sep2 + 1);
-    plen = sep3 + 1;
-    if (s.size() != plen + kHexChars) return false;
-  }
-  out->palette_id = static_cast<int16_t>(palette_id);
-  out->hair_palette_id = static_cast<int16_t>(hair_id);
-  out->hair_style = static_cast<int16_t>(hair_style);
+  // 🔴 La VERSION d'abord, et une SEULE est acceptée : la courante.
+  //
+  // Des branches de migration ont existé (v2→v3→v4→v5) tant que les versions
+  // n'ajoutaient que des CHAMPS — les réglages de rampes, eux, gardaient leur
+  // sens. La v6 est d'une autre nature : elle change le CLASSEMENT des rampes,
+  // donc le rang 3 d'hier ne désigne plus la même pièce du costume. Migrer
+  // reviendrait à repeindre les bottes en couleur de cape, avec l'aplomb du
+  // format valide. Une entrée d'une autre version est donc IGNORÉE, et le joueur
+  // retrouve son apparence native — un cache se refait, une confiance non.
+  char head[8];
+  const int n =
+      std::snprintf(head, sizeof(head), "%d:", fx::style_sync::kWireVersion);
+  if (s.size() < static_cast<size_t>(n) || s.compare(0, n, head) != 0)
+    return false;
+  const size_t sep1 = s.find(':', n);
+  if (sep1 == std::string::npos) return false;
+  const size_t sep2 = s.find(':', sep1 + 1);
+  if (sep2 == std::string::npos) return false;
+  const size_t sep3 = s.find(':', sep2 + 1);
+  if (sep3 == std::string::npos) return false;
+  const size_t plen = sep3 + 1;
+  if (s.size() != plen + kHexChars) return false;
+
+  out->palette_id = static_cast<int16_t>(std::atoi(s.c_str() + n));
+  out->hair_palette_id = static_cast<int16_t>(std::atoi(s.c_str() + sep1 + 1));
+  out->hair_style = static_cast<int16_t>(std::atoi(s.c_str() + sep2 + 1));
 
   uint8_t bytes[ro::kMaxRamps * fx::style_sync::kRampBytes];
   for (int i = 0; i < kHexChars; i += 2) {

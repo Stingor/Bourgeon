@@ -167,6 +167,15 @@ bool MergeServerPalette(const uint8_t* sprite, size_t sprite_size,
 // `usage` vient de `CountIndexUsage` : un index jamais peint n'appartient à
 // aucune rampe, sinon on exposerait des curseurs qui ne changent rien.
 // Rend le nombre de rampes écrites dans `out` (au plus `kMaxRamps`).
+//
+// 🔴 « Visible » n'est PAS « grand » : le rang vaut `pixels × (256 + saturation
+// moyenne)`, pas la seule surface. Une pièce petite mais FRANCHE — une rune
+// rouge, un œil qui brille — passe donc devant un grand aplat terne. Mesuré sur
+// les 421 corps : 24 d'entre eux récupèrent ainsi une couleur vive qui tombait
+// hors des huit retenues, dont la monture du Dragon Knight qui avait motivé le
+// changement. 🔴 Ce classement fait PARTIE du protocole — une recette ne
+// désigne ses pièces que par un rang, donc le modifier oblige à incrémenter
+// `fx::style_sync::kWireVersion` et à jeter les recettes antérieures.
 int DetectRamps(const uint8_t* palette, size_t palette_size,
                 const int usage[256], PaletteRamp* out, int max_out);
 

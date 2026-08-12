@@ -78,20 +78,28 @@ constexpr int kCzBytes      = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
 constexpr int kZcHeadBytes  = 4 + 2;                                 // 6
 constexpr int kZcEntryBytes = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
 
-// 🔴 À incrémenter dès que la disposition change — et `ro::kMaxRamps` en fait
-// partie, puisqu'il dimensionne le bloc de réglages. Un client qui reçoit une
-// version inconnue IGNORE l'entrée : mieux vaut des couleurs natives qu'une
-// palette lue de travers.
-// v2 (2026-08-11) : `kMinLength` passé de 3 à 1 dans la détection de rampes. Les
-// frontières et le CLASSEMENT des rampes changent, donc une recette v1 désigne
-// d'autres pièces — il faut la jeter, pas la réinterpréter.
-// v3 (2026-08-11) : ajout de `palette_id`, la palette de vêtement officielle sur
-// laquelle la recette s'applique. Une v2 se MIGRE (palette_id = -1, la palette du
-// serveur) au lieu d'être jetée : ses réglages de rampes restent valides.
-// v4 (2026-08-11) : ajout de `hair_palette_id`. Une v3 se MIGRE (cheveux = ceux
-// du personnage) ; ses réglages de corps restent valides.
-// v5 (2026-08-12) : ajout de `hair_style`, la COIFFURE. Une v4 se MIGRE (coupe =
-// celle du personnage).
+// 🔴 À incrémenter dès que la disposition OU le sens des rampes change — et
+// `ro::kMaxRamps` en fait partie, puisqu'il dimensionne le bloc de réglages.
+//
+// ── Ce que cet octet sert VRAIMENT ───────────────────────────────────────────
+// Pas à migrer : une seule version est acceptée, l'autre est jetée, et le joueur
+// retrouve son apparence native. Il sert à survivre au fait que le client et le
+// serveur ne sont JAMAIS déployés à la même seconde. Pendant un patch, des
+// clients d'hier et d'aujourd'hui se croisent sur la même carte ; sans cet
+// octet, celui qui reçoit une recette d'une autre époque la lit quand même et
+// peint les mauvaises pièces du costume, avec l'aplomb d'un format valide. Un
+// joueur en couleurs natives se remarque à peine ; un joueur aux bottes couleur
+// de cape se signale comme un bug.
+//
+// ⚠ C'est aussi pourquoi les recettes ne se « rattrapent » pas : rien ne
+// distingue, dans le bloc de réglages, une recette d'avant d'une recette
+// d'après. Seul cet octet le dit.
+//
+// v6 (2026-08-12) : classement des rampes pondéré par la saturation. Pas un
+// octet ne bouge dans la trame — c'est le SENS des rangs qui change, une recette
+// ne désignant ses pièces que par un rang. Les cinq versions précédentes
+// (2026-08-11/12) ajoutaient des champs et se migraient ; celle-ci se jette,
+// comme la v2 qui avait déjà déplacé les frontières de rampes.
 //
 // 🔴 Elle est la seule entrée que le serveur INTERPRÈTE. Tout le reste, il le
 // range sans le comprendre ; celle-ci, il l'applique par `pc_changelook`, ce qui
@@ -99,13 +107,13 @@ constexpr int kZcEntryBytes = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
 // à la zone par le ZC_SPRITE_CHANGE natif — clients vanilla compris. Elle est
 // ici parce que POUR LE JOUEUR la coiffure fait partie du style, et que c'est
 // son point de vue qui commande le format.
-constexpr uint8_t kWireVersion = 5;
+constexpr uint8_t kWireVersion = 6;
 
 constexpr uint8_t kFlagClear = 0x01;  // « ce joueur n'a plus de recette »
 
 // 🔴 Le garde-fou du protocole. Ces tailles sont recopiées à la main côté
 // serveur (moonlight : packets_struct.hpp, PACKET_CZ_BOURGEON_STYLE et
-// PACKET_BOURGEON_PALETTE_ENTRY). Faire varier `ro::kMaxRamps` les changerait
+// PACKET_BOURGEON_STYLE_ENTRY). Faire varier `ro::kMaxRamps` les changerait
 // SANS ERREUR — le client enverrait 50 octets là où le serveur en attend 46, et
 // rAthena rejetterait la trame en silence. Ces assertions transforment cet
 // accident muet en échec de compilation, à charge de bumper `kWireVersion` et de
