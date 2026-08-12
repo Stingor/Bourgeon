@@ -337,16 +337,22 @@ class ChatWindow : public Plugin {
   // l'affichage, c'est le libellé LOCAL (donc traduit) qui gagne.
   bool AppendSettingLink(const char* key);
 
-  // Poser le lien d'un STYLE : « [Style: Pseudo] ». Balise `<STYL>pseudo:code`.
+  // Poser le lien d'un STYLE : « [Style: Étiquette] ». Balise
+  // `<STYL>étiquette:code`.
   //
   // 🔴 Le CODE voyage EN ENTIER, contrairement à tous les autres liens qui ne
   // transportent qu'une désignation. Un objet ou un monstre existent chez le
   // lecteur ; un style n'est connu que tant que son porteur est en vue, et un
   // lien qui meurt quand la personne change de carte vaut moins que pas de lien.
   //
+  // `owner_utf8` est une ÉTIQUETTE, pas une identité : le pseudo du porteur
+  // quand on partage son propre style (nul = le nôtre, résolu ici), mais le nom
+  // du préréglage quand on partage celui-ci. C'est ce que le lecteur ne sait pas
+  // encore qui doit s'y trouver — le pseudo de l'expéditeur, lui, est déjà en
+  // tête de sa ligne de chat.
+  //
   // ⚠ La balise fait donc une centaine de caractères, visibles bruts chez un
-  // client sans Bourgeon — le pseudo est en tête pour garder le début lisible.
-  // Refusé (false) si le pseudo contient ':' ou '<', qui découperaient la balise.
+  // client sans Bourgeon — l'étiquette est en tête pour garder le début lisible.
   bool AppendStyleLink(const char* code, const char* owner_utf8);
 
   // Arme une commande (`@iteminfo`, `@mobinfo`…) pour le prochain FlushPending.

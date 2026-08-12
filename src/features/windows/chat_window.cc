@@ -6298,20 +6298,24 @@ bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
   PruneItemLinks();
   if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
 
-  // Pseudo absent = le NÔTRE. C'est ici qu'il se résout, et pas chez l'appelant :
-  // le getter natif et la conversion depuis la code-page du fil vivent dans ce
-  // fichier, et l'éditeur de style n'a pas à les connaître.
+  // Étiquette absente = notre PSEUDO. C'est ici qu'il se résout, et pas chez
+  // l'appelant : le getter natif et la conversion depuis la code-page du fil
+  // vivent dans ce fichier, et l'éditeur de style n'a pas à les connaître.
   std::string owner = owner_utf8 != nullptr ? owner_utf8 : "";
   if (owner.empty()) {
     char brut[32] = {};
     if (ReadOwnCharName(brut, sizeof(brut))) owner = ro::WireToUtf8(brut);
   }
-  // 🔴 Ni ':' ni '<' dans le pseudo : ce sont les séparateurs de la balise, et un
-  // nom qui en contient la découperait de travers. Aucun pseudo RO n'en porte,
-  // mais la balise peut aussi venir d'ailleurs.
-  if (owner.find(':') != std::string::npos ||
-      owner.find('<') != std::string::npos)
-    return false;
+  // 🔴 Ni ':' ni '<' dans l'étiquette : ce sont les séparateurs de la balise, et
+  // elle se découperait de travers.
+  //
+  // On REMPLACE au lieu de refuser, depuis que l'étiquette peut être un nom de
+  // préréglage : celui-là est tapé par le joueur, donc « Rouge : v2 » est un nom
+  // parfaitement raisonnable. Refuser aurait fait un Maj+clic qui ne produit
+  // rien et n'explique rien — la pire des réponses. Un pseudo RO, lui, n'en
+  // porte jamais : pour lui ce remplacement ne se voit pas.
+  for (char& c : owner)
+    if (c == ':' || c == '<') c = '-';
 
   std::string wire = "<STYL>";
   wire += owner;
