@@ -100,8 +100,19 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi,
 // transparence à régler — une entrée de palette de sprite, par exemple, dont
 // l'octet d'alpha ne veut rien dire. Un curseur qui ne commande rien est pire
 // qu'absent : il invite à le bouger.
+//
+// `numeric_inputs` à false ne laisse que le NUANCIER : ni R/G/B, ni T/S/V, ni
+// hexadécimal.
+//
+// 🔴 C'est le bon défaut dès que le nombre ne veut rien dire pour celui qui
+// choisit. « #DC9084 » sur une pièce de costume ne se compare à rien, ne se
+// retient pas, et donne surtout à croire qu'on peut l'IMPOSER — alors que la
+// valeur affichée est celle d'un index représentatif, et que la luminosité reste
+// relative au dégradé. Trois rangées de chiffres pour une commande qui n'existe
+// pas, c'est une promesse qu'on ne tient pas. Un fond de chat, lui, se recopie
+// d'un thème à l'autre : là, l'hexadécimal sert.
 bool RoColorSwatch(const char* label, float rgba[4], bool* out_open = nullptr,
-                   bool with_alpha = true);
+                   bool with_alpha = true, bool numeric_inputs = true);
 
 // Style compact (padding/espacement réduits) — pour les panneaux dense en champs.
 // Toujours par paire.

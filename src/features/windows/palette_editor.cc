@@ -1364,7 +1364,17 @@ void PaletteEditor::OnRenderUI() {
         // transparence d'une entrée de palette ne veut rien dire — `ApplyRecipe`
         // le laisse INTACT, et seul l'index 0 est transparent. Un curseur qui ne
         // commande rien inviterait à le bouger pour rien.
-        if (RoColorSwatch("##sw", rgb, &this_open, /*with_alpha=*/false)) {
+        //
+        // 🔴 Et RIEN QUE le nuancier : ni R/G/B, ni T/S/V, ni hexadécimal. Ces
+        // chiffres décrivent l'index REPRÉSENTATIF de la pièce, pas la pièce —
+        // le reste du dégradé garde son modelé et ne vaut pas cette valeur. Les
+        // afficher laisse croire qu'on impose une couleur exacte, alors que la
+        // luminosité reste relative et qu'elle plafonne à ce que la rampe
+        // permet. « #DC9084 » sur un pantalon ne se compare à rien et ne se
+        // retient pas : trois rangées de chiffres pour une commande qui n'existe
+        // pas.
+        if (RoColorSwatch("##sw", rgb, &this_open, /*with_alpha=*/false,
+                          /*numeric_inputs=*/false)) {
           const uint32_t target =
               (static_cast<uint32_t>(rgb[0] * 255.0f + 0.5f) << 16) |
               (static_cast<uint32_t>(rgb[1] * 255.0f + 0.5f) << 8) |

@@ -23,7 +23,7 @@ void HelpMarker(const char* desc) {
 // « Fermer ». Ce qui n'est PAS repris, ce sont les préréglages : ils appartiennent
 // aux fonds du chat natif, qu'ils patchent dans le .text.
 bool RoColorSwatch(const char* label, float rgba[4], bool* out_open,
-                   bool with_alpha) {
+                   bool with_alpha, bool numeric_inputs) {
   bool changed = false;
   if (out_open) *out_open = false;
   ImGui::PushID(label);
@@ -49,9 +49,14 @@ bool RoColorSwatch(const char* label, float rgba[4], bool* out_open,
   // dessous pendant ce temps — d'où `out_open`, qui le lui dit.
   const bool open = ImGui::BeginPopup("picker");
   if (open) {
+    // `NoInputs` coupe d'un coup les deux rangées de curseurs (R/G/B et T/S/V)
+    // ET le champ hexadécimal : ImGui les garde sous la même condition. C'est
+    // aussi le drapeau qu'il se pose à lui-même pour le nuancier qu'il ouvre
+    // depuis un `ColorButton`, donc la combinaison est celle prévue.
     const int pick_flags = ImGuiColorEditFlags_NoSidePreview |
                            (with_alpha ? ImGuiColorEditFlags_AlphaBar
-                                       : ImGuiColorEditFlags_NoAlpha);
+                                       : ImGuiColorEditFlags_NoAlpha) |
+                           (numeric_inputs ? 0 : ImGuiColorEditFlags_NoInputs);
     changed |= ImGui::ColorPicker4("##pick", rgba, pick_flags);
     if (ro::RoButton(i18n::Tr("Fermer"))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
