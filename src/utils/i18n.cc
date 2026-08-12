@@ -31,6 +31,11 @@ constexpr const char* kSourceLanguage = "fr";
 
 std::string g_code = kSourceLanguage;
 
+// La génération du catalogue (cf. CatalogEpoch dans l'en-tête). Elle avance dans
+// ReloadCatalog, qui est le SEUL endroit où le contenu du catalogue change —
+// SetLanguage et LoadLanguageSetting passent tous deux par lui.
+unsigned g_epoch = 0;
+
 // ── Les textes réclamés mais absents du catalogue ────────────────────────────
 // Trié : le gabarit exporté est stable d'une exécution à l'autre, donc lisible en
 // diff plutôt que réordonné au hasard.
@@ -165,9 +170,17 @@ const char* TrId(const char* fr, const char* stable_id) {
 
 const std::string& LanguageCode() { return g_code; }
 
+unsigned CatalogEpoch() { return g_epoch; }
+
 void ReloadCatalog() {
   g_catalog.clear();
   g_missing.clear();
+  // 🔴 EN TÊTE, et pas à la sortie : la fonction a quatre retours anticipés
+  // (français, fichier absent, YAML qui n'est pas une table, fichier corrompu) et
+  // TOUS changent le catalogue — le vider EST un changement. Un incrément posé à
+  // la fin ne serait pas fait sur le chemin le plus visible de tous : le retour
+  // à la langue source.
+  ++g_epoch;
 
   if (g_code.empty()) g_code = kSourceLanguage;
   if (g_code == kSourceLanguage) return;  // rien à charger : le code EST la langue

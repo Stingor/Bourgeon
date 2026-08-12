@@ -98,6 +98,21 @@ bool SetLanguage(const std::string& code);
 // corriger.
 void ReloadCatalog();
 
+// ── La GÉNÉRATION du catalogue ───────────────────────────────────────────────
+// Un compteur qui avance à CHAQUE (re)chargement du catalogue, donc à chaque
+// changement de langue. Il ne veut rien dire seul : il se compare à la valeur
+// qu'on avait mémorisée.
+//
+// 🔴 À METTRE DANS LA CLÉ DE TOUT CACHE QUI MESURE DU TEXTE TRADUIT. Une largeur
+// calculée avec `CalcTextSize(Tr(...))` puis conservée est calibrée pour UNE
+// langue et fausse pour les autres — « Suivi de quête » devient « Seguimiento de
+// misiones ». La panne est MUETTE : le texte est simplement coupé, sans erreur ni
+// avertissement, et elle ne se voit qu'en changeant de langue EN COURS DE PARTIE.
+// Mesurer les libellés traduits ne suffit donc pas : encore faut-il les remesurer
+// quand la traduction change — un cache qui ne s'invalide que sur la police
+// laisse le bug entier derrière lui.
+unsigned CatalogEpoch();
+
 // ── La langue, au CHARGEMENT DE LA DLL ───────────────────────────────────────
 // À appeler une fois, tôt, avant que quoi que ce soit ne dessine.
 //

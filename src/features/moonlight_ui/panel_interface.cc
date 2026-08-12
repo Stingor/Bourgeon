@@ -434,25 +434,44 @@ void MoonlightUi::DrawInterfacePanel() {
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
     // rester lisible sur fenêtre étroite.
-    // La mesure des 13 libellés ne dépend que de la POLICE : on la garde en cache
-    // au lieu de refaire 13 CalcTextSize à chaque frame, et on la réinvalide quand
-    // la police change (bascule du skin RO, taille de police).
+    // La mesure des 20 libellés ne dépend que de la POLICE et de la LANGUE : on la
+    // garde en cache au lieu de refaire 20 CalcTextSize à chaque frame, et on la
+    // réinvalide dès que l'une des deux bouge.
+    //
+    // 🔴 LA LANGUE FAIT PARTIE DE LA CLÉ, au même titre que la police. Sans elle,
+    // la largeur restait celle de la langue affichée en premier : en passant de
+    // l'anglais à l'espagnol, la liste gardait la mesure des libellés anglais —
+    // plus courts — et « Seguimiento de misiones » sortait coupé net à
+    // « Seguimiento de m ». Rien ne le signalait, et changer de police « réparait »
+    // le symptôme le temps d'une remesure, ce qui égarait le diagnostic.
     const ImGuiStyle& st = ImGui::GetStyle();
     static float s_labels_w    = 0.0f;   // largeur du plus long libellé, en px
     static ImFont* s_labels_font = nullptr;
     static float s_labels_size = 0.0f;
-    if (s_labels_font != ImGui::GetFont() || s_labels_size != ImGui::GetFontSize()) {
+    static unsigned s_labels_lang = 0u;  // i18n::CatalogEpoch() de la mesure
+    if (s_labels_font != ImGui::GetFont() ||
+        s_labels_size != ImGui::GetFontSize() ||
+        s_labels_lang != i18n::CatalogEpoch()) {
       s_labels_w = 0.0f;
       for (const IfaceEntry& entry : kIfaceSections)
         s_labels_w = (std::max)(s_labels_w, ImGui::CalcTextSize(i18n::Tr(entry.label)).x);
       s_labels_font = ImGui::GetFont();
       s_labels_size = ImGui::GetFontSize();
+      s_labels_lang = i18n::CatalogEpoch();
     }
-    float nav_w = s_labels_w + st.WindowPadding.x * 2.0f + st.FramePadding.x * 2.0f;
+    const float nav_w_wanted =
+        s_labels_w + st.WindowPadding.x * 2.0f + st.FramePadding.x * 2.0f;
     const float nav_w_min = ImGui::GetFontSize() * 5.0f;
     const float nav_w_max =
         (std::max)(nav_w_min, ImGui::GetContentRegionAvail().x * 0.4f);
-    nav_w = (std::min)((std::max)(nav_w, nav_w_min), nav_w_max);
+    const float nav_w =
+        (std::min)((std::max)(nav_w_wanted, nav_w_min), nav_w_max);
+    // La borne a mordu : les libellés ne tiennent pas et ImGui les coupe NET, sans
+    // même une ellipse pour le dire. C'est ce qui arrive à une fenêtre étroite dans
+    // une langue verbeuse — « Suivi de quête » fait 14 signes, « Seguimiento de
+    // misiones » en fait 23. On ne triche pas sur la largeur (le contenu à droite
+    // en a besoin), on rend le libellé lisible autrement : en infobulle.
+    const bool nav_clipped = nav_w < nav_w_wanted;
     const float nav_h = ImGui::GetTextLineHeightWithSpacing() * kIfaceCount
                       + st.WindowPadding.y * 2.0f;
 
@@ -483,14 +502,30 @@ void MoonlightUi::DrawInterfacePanel() {
         // penser — et il n'aurait aucun moyen de comprendre pourquoi.
         iface_nav_ = entry.id;
       }
-      // Le geste n'a aucune trace visible : sans cette ligne, il n'existe que
-      // pour qui l'a lu dans un changelog. Après un délai, pour ne pas encombrer
-      // une liste qu'on survole en permanence — et seulement quand il y a une
-      // barre de chat pour l'accueillir.
-      if (link_posts &&
-          ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags))
-        ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cette "
-                                   "section dans le chat"));
+      // Deux choses à dire au survol, et aucune n'est toujours vraie :
+      //   • le libellé ENTIER, quand la liste est trop étroite pour lui — sinon
+      //     rien ne permet de lire une entrée coupée ;
+      //   • le geste de lien, qui n'a aucune trace visible et n'existerait que
+      //     pour qui l'a lu dans un changelog — seulement s'il y a une barre de
+      //     chat pour l'accueillir.
+      // Une seule infobulle porte les deux : deux `SetTooltip` d'affilée sur le
+      // même item, c'est le second qui écrase le premier. Le délai vient du style
+      // (`ForTooltip`) : la liste se survole en permanence, elle ne doit pas
+      // clignoter au passage.
+      if ((link_posts || nav_clipped) &&
+          ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags)) {
+        const char* const gesture =
+            link_posts ? i18n::Tr("Maj + clic : poser le lien de cette "
+                                  "section dans le chat")
+                       : nullptr;
+        // Format « %s » plutôt que la chaîne nue : une traduction est une donnée
+        // de fichier, et un « % » qui s'y glisserait serait lu comme une
+        // conversion — avec un argument qui n'existe pas.
+        if (nav_clipped && gesture != nullptr)
+          ImGui::SetTooltip("%s\n%s", i18n::Tr(entry.label), gesture);
+        else
+          ImGui::SetTooltip("%s", nav_clipped ? i18n::Tr(entry.label) : gesture);
+      }
     }
     ImGui::EndChild();
 
