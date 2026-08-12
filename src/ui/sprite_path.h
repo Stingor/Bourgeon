@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 // ── Briques de chemin d'un sprite de PERSONNAGE ──────────────────────────────
 //
 // Trois jetons reviennent dans tous les gabarits du client — le dossier de
@@ -25,5 +27,54 @@ bool IsDoramJob(int job);
 
 // Dossier de race, en CP949 : 도람족 (Doram) ou 인간족 (humain). Jamais nul.
 const char* RaceFolder(int job);
+
+// Nom de ressource du CORPS (ex. `DRAGON_KNIGHT`, `기사`), tel que le client le
+// rend — c'est-à-dire en MAJUSCULES pour les classes nommées en ASCII, alors que
+// les fichiers du GRF sont en minuscules. Le client ne recolle les deux qu'au
+// VFS, où `Grf_NormalizePath` applique `_strlwr` ; toute comparaison faite en
+// amont doit donc ignorer la casse ASCII (et ELLE SEULE : abaisser un octet
+// CP949 abîmerait le coréen).
+//
+// 🔴 `body` est la CLASSE qui nomme le sprite, pas un « style » :
+// `Job_ResolveBodyClass(job, body, 1)` ne lit `job` que pour reconnaître un bébé
+// ou une monture, et c'est `body` qu'il remappe. Le laisser à 0 demande la
+// classe 0 — tout le monde en Novice.
+//
+// `out_job` (facultatif) rend la classe EFFECTIVE (cls + 3950), celle dont la
+// tête et les coiffes doivent suivre la race.
+bool BodyResName(int job, int body, char* out, size_t out_size,
+                 int* out_job = nullptr);
+
+// Chemin VFS du corps, SANS extension : `data\sprite\<race>\몸통\<sexe>\<nom>_<sexe>`.
+//
+// 🔴 `data\sprite\`, PAS `data\` : le gabarit du client est relatif à la racine
+// des SPRITES, et les DEUX préfixes que les couches natives ajoutent l'un après
+// l'autre sont à poser soi-même dès qu'on les court-circuite.
+bool BodySpritePath(int job, int body, int sex, char* out, size_t out_size,
+                    int* out_job = nullptr);
+
+// Chemin VFS complet du `.pal` de CORPS pour cette couleur de vêtement, ex.
+// `data\palette\몸\body_56.pal`.
+//
+// 🔴 Le dossier dépend de la RACE : un Doram a le sien, et les deux indexations
+// n'ont rien de commun (mesuré : 46 % des pixels d'un corps Doram tombent sur
+// des index que la palette humaine laisse noirs). Ne jamais recomposer ce chemin
+// à la main — passer par ici.
+void BodyPalettePath(int color, int job, char* out, size_t out_size);
+
+// Même chose, mais la RACE est lue dans le chemin du sprite au lieu d'être
+// déduite d'une classe.
+//
+// 🔴 C'est ce qui permet de servir un AUTRE joueur : on n'a pas sa classe, mais
+// le client a déjà résolu son sprite, et le dossier de race y figure. Rend false
+// si le chemin ne suit pas le gabarit `data\sprite\<race>\...`.
+bool BodyPalettePathForSprite(const char* spr_base, int color, char* out,
+                              size_t out_size);
+
+// Palette de CHEVEUX, chemin RELATIF à `palette\` (`머리\head_3.pal`, ou
+// `<race>\머리\head_3.pal` pour un Doram) — la forme sous laquelle l'acteur
+// porte le sien. Race lue dans le chemin du sprite de TÊTE.
+bool HairPaletteRelForSprite(const char* head_spr, int color, char* out,
+                             size_t out_size);
 
 }  // namespace ro

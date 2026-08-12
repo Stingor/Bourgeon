@@ -17,3 +17,7 @@ bourgeon_moonlight_pw.bin
 # Cache/état de l'IDE — aucun intérêt en versionné, et ça bruite les diffs.
 .vs/
 *.user
+
+# Cache Python des outils de tools/
+__pycache__/
+*.pyc

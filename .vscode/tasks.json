@@ -17,6 +17,23 @@
             }
         },
         {
+            // Même garantie que « Build Release (clean) » — aucune unité de bourgeon
+            // ne survit au rebuild, donc pas d'.obj compilé contre un ancien en-tête —
+            // mais on ne purge QUE les objets de la DLL : les bibliothèques tierces
+            // ne voient aucun en-tête de src/, un changement chez nous ne peut pas les
+            // périmer. `--clean-first` les détruisait pour rien à chaque fois.
+            "label": "Build Release (clean bourgeon)",
+            "type": "shell",
+            "command": "Remove-Item -Recurse -Force '${workspaceFolder}/build/src/bourgeon.dir/Release' -ErrorAction SilentlyContinue; & 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20 | Tee-Object -FilePath '${workspaceFolder}/build/last_build.log'; $code = $LASTEXITCODE; $errs = @(Select-String -Path '${workspaceFolder}/build/last_build.log' -Pattern ': (fatal )?error [A-Z]+[0-9]+' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line.Trim() } | Select-Object -Unique); Write-Host ''; if ($errs.Count) { Write-Host ('===== ' + $errs.Count + ' ERREUR(S) =====') -ForegroundColor Red; $errs | ForEach-Object { Write-Host $_ -ForegroundColor Red } } else { Write-Host '===== BUILD OK, aucune erreur =====' -ForegroundColor Green }; exit $(if ($null -eq $code) { 1 } else { $code })",
+            "group": "build",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "reveal": "always",
+                "revealProblems": "onProblem",
+                "panel": "shared"
+            }
+        },
+        {
             "label": "Build Release",
             "type": "shell",
             "command": "& 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build '${workspaceFolder}/build' --config Release --target ALL_BUILD -j 20 | Tee-Object -FilePath '${workspaceFolder}/build/last_build.log'; $code = $LASTEXITCODE; $errs = @(Select-String -Path '${workspaceFolder}/build/last_build.log' -Pattern ': (fatal )?error [A-Z]+[0-9]+' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line.Trim() } | Select-Object -Unique); Write-Host ''; if ($errs.Count) { Write-Host ('===== ' + $errs.Count + ' ERREUR(S) =====') -ForegroundColor Red; $errs | ForEach-Object { Write-Host $_ -ForegroundColor Red } } else { Write-Host '===== BUILD OK, aucune erreur =====' -ForegroundColor Green }; exit $(if ($null -eq $code) { 1 } else { $code })",

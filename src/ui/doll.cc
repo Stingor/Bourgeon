@@ -13,22 +13,6 @@
 namespace ro {
 namespace {
 
-// ── Gabarit du corps, lu DANS le binaire (client 20250716) ───────────────────
-//
-// `\몸통\%s\%s_%s.%s` = `\몸통\<sexe>\<job>_<sexe>.<extension>`. Un seul gabarit
-// sert le .spr et le .act — l'extension est le dernier %s.
-//
-// Il est ASSEMBLÉ à l'exécution par `Job_BuildBodySpritePath` (0x00b43af0), qui
-// lui colle devant le préfixe de race puis rend un `std::string`. 🔴 On ne
-// l'appelle pas : l'interop std::string avec le natif est précisément ce qui
-// plantait au char-select (edi corrompu). On concatène nous-mêmes.
-//
-// 🔴 Le préfixe de race n'est PAS constant : `Race_GetBodyPrefix6` (0x00b44190)
-// rend `도람족` pour un Doram et `인간족` pour tout le monde d'autre. Il vient
-// donc de `ro::RaceFolder` (ui/sprite_path.h) — l'écrire en dur, c'était perdre
-// le Summoner et, avec son corps, le pantin entier.
-constexpr uintptr_t kFmtBodyTail = 0x01088A18;
-
 // ── Palette de vêtements ─────────────────────────────────────────────────────
 //
 // 🔴 `몸\body_<couleur>.pal`, PAS `몸\<job>_<sexe>_<couleur>.pal`.
@@ -45,94 +29,37 @@ constexpr uintptr_t kFmtBodyTail = 0x01088A18;
 // Voir Scripts/Patches/SharedPal.qjs pour la mécanique.
 constexpr const char kBodyPalFolder[] = "\xB8\xF6";  // 몸
 
-// ── Nom de SPRITE du corps ───────────────────────────────────────────────────
+// ── Nom et chemin de SPRITE du corps ─────────────────────────────────────────
 //
-// 🔴 PAS `Job_GetDisplayNameOrResName`. Celui-là rend le nom de RESSOURCE pour
-// un monstre (sex = -1) mais le nom D'AFFICHAGE pour un personnage : on
-// obtenait « High Wizard », « White Smith », « Novice » — des libellés d'IHM,
-// avec espaces, qui ne désignent aucun fichier. Tous les pantins échouaient.
+// 🔴 Les deux résolveurs ont MIGRÉ vers `ui/sprite_path.{h,cc}` : ce sont des
+// briques de CHEMIN, et l'éditeur de palette en a besoin comme le pantin. Les
+// dupliquer aurait fait diverger deux copies du même piège (le nom du client
+// sort en MAJUSCULES là où les fichiers sont en minuscules).
 //
-// Le bon chemin est celui de `Job_BuildBodySpritePath` (0x00b43af0) :
-//   1. `Job_ResolveBodyClass(job, body, 1)` -> index de classe de corps ;
-//   2. ce même index dans le tableau de noms lu par `sub_D81560` (0x00d81560).
-//
-// ⚠ C'est le BODY STYLE qui choisit le sprite ; `job` ne sert qu'à décider
-// bébé / variante alternative. Passer `job` comme index donnait déjà un nom
-// plausible pour les classes ordinaires, et faux dès qu'un style est posé.
-//
-// `sub_D81560` n'est qu'un accès à ce tableau enrobé dans un std::string — on
-// lit donc le tableau, comme pour les coiffes : pas d'interop std::string.
-// Bornes = g_UIWindowContextKey (0x015FA3C0) + 5277*4 et + 5278*4.
-constexpr uintptr_t kJobResolveBodyClass = 0x00D99150;
-constexpr uintptr_t kBodyResNamesBegin   = 0x015FF634;
-constexpr uintptr_t kBodyResNamesEnd     = 0x015FF638;
-
-using ResolveBodyClassFn = int(__stdcall*)(int job, int body, char sub3950);
-
-// `out_job` (facultatif) reçoit la CLASSE effective du corps — l'index rendu
-// par `Job_ResolveBodyClass` remis à son échelle d'origine (+3950).
-//
-// 🔴 C'est elle, et non `look.job`, qui décide de la race du corps : le natif
-// passe très exactement `index + 3950` à `Race_GetBodyPrefix6`. La distinction
-// compte dès qu'un style de corps est équipé, et c'est aussi le seul champ
-// fiable quand l'appelant renseigne `body` sans `job`.
-bool BodyResName(int job, int body, char* out, size_t out_size,
-                 int* out_job = nullptr) {
-  if (!out || out_size == 0) return false;
-  out[0] = '\0';
-  if (out_job) *out_job = job;
-  bool ok = false;
-  __try {
-    // Le 3e argument à 1 retranche 3950 au résultat : c'est ce qui transforme
-    // un id de classe 4xxx en index de tableau.
-    const int cls = reinterpret_cast<ResolveBodyClassFn>(kJobResolveBodyClass)(
-        job, body, 1);
-    if (out_job) *out_job = cls + 3950;
-    char** begin = *reinterpret_cast<char***>(kBodyResNamesBegin);
-    char** end   = *reinterpret_cast<char***>(kBodyResNamesEnd);
-    // 🔴 `sub_D81560` ne borne PAS son index — on le fait, sinon une classe
-    // inconnue lit hors du vecteur.
-    if (begin && end > begin && cls >= 0 && cls < static_cast<int>(end - begin)) {
-      const char* name = begin[cls];
-      if (name && *name) {
-        lstrcpynA(out, name, static_cast<int>(out_size));
-        ok = out[0] != '\0';
-      }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
-  return ok;
-}
-
-// Chemin VFS du corps, SANS extension.
-//
-// 🔴 `data\sprite\`, PAS `data\` : le gabarit du client est relatif à la racine
-// des SPRITES, et les deux préfixes que les couches natives ajoutent
-// (« sprite\ » selon l'extension, puis « data\ ») sont à poser nous-mêmes
-// puisqu'on les court-circuite.
-//
-// `out_job` (facultatif) : la classe effective du corps, cf. `BodyResName`.
-// L'appelant s'en sert pour la TÊTE et les COIFFES, qui doivent suivre la même
-// race que le corps.
+// Ce qui reste ici n'est qu'un adaptateur : `DollLook` est un type de doll.h,
+// que sprite_path n'a pas à connaître.
 bool BodyBasePath(const DollLook& look, char* out, size_t out_size,
                   int* out_job = nullptr) {
-  char job[128] = {0};
-  int  body_job = look.job;
-  if (!BodyResName(look.job, look.body, job, sizeof(job), &body_job))
-    return false;
-  if (out_job) *out_job = body_job;
-
-  const char* sex = SexFolder(look.sex);
-  char tail[256];
-  // ⚠ `std::snprintf` : le gabarit n'est pas un littéral (il est lu dans le
-  // binaire), et la famille sécurisée déclencherait C4774.
-  std::snprintf(tail, sizeof(tail),
-                reinterpret_cast<const char*>(kFmtBodyTail), sex, job, sex,
-                "spr");
-  const size_t n = std::strlen(tail);
-  if (n > 4) tail[n - 4] = '\0';  // retire « .spr » : sprite_view veut une base
-
-  std::snprintf(out, out_size, "data\\sprite\\%s%s", RaceFolder(body_job), tail);
-  return true;
+  // 🔴 Le chemin IMPOSÉ gagne. La déduction ci-dessous rejoue
+  // `Job_ResolveBodyClass` et ses cas particuliers (styles alternatifs,
+  // montures, costumes) : là où elle diverge, le pantin montre un AUTRE corps
+  // que celui à l'écran — les 3e et 4e classes s'affichaient en tenue de base.
+  // Qui possède le chemin réel n'a aucune raison de le laisser redeviner.
+  //
+  // La CLASSE effective, elle, reste déduite : elle ne sert qu'à choisir la race
+  // (donc les dossiers de tête et de coiffes), et le chemin imposé ne la porte
+  // pas sous une forme exploitable.
+  if (look.body_spr_override != nullptr && *look.body_spr_override != '\0') {
+    if (out_job != nullptr) {
+      char ignore[352];
+      if (!BodySpritePath(look.job, look.body, look.sex, ignore, sizeof(ignore),
+                          out_job))
+        *out_job = look.job;
+    }
+    lstrcpynA(out, look.body_spr_override, static_cast<int>(out_size));
+    return out[0] != '\0';
+  }
+  return BodySpritePath(look.job, look.body, look.sex, out, out_size, out_job);
 }
 
 // 🔴 Le dossier dépend de la RACE, et les fichiers ne se partagent PAS.
@@ -146,10 +73,10 @@ bool BodyBasePath(const DollLook& look, char* out, size_t out_size,
 // pixels opaques du corps Doram tombent sur des index que la palette humaine
 // laisse NOIRS, et 5 index sur 74 seulement y portent la couleur attendue. Les
 // deux races n'ont pas la même indexation — aucun fichier commun n'est possible.
-void BodyPalettePath(int color, int job, char* out, size_t out_size) {
-  std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal",
-                IsDoramJob(job) ? RaceFolder(job) : kBodyPalFolder, color);
-}
+// 🔴 MIGRÉ vers `ui\sprite_path` pour la même raison que les résolveurs de
+// sprite : le char-select en a besoin pour reconstruire la base d'édition d'un
+// personnage, et deux copies auraient fini par diverger sur le cas Doram.
+using ro::BodyPalettePath;
 
 // ── Une pièce du pantin ──────────────────────────────────────────────────────
 constexpr int kMaxQuads  = 96;  // toutes pièces confondues
@@ -483,7 +410,16 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     BodyPalettePath(look.clothes_color, race_job, pal, sizeof(pal));
 
   Piece body;
-  if (!LoadPiece(base, nullptr, pal, &body)) return false;
+  // Palette composée par le joueur : elle prime sur le `.pal` déduit de la
+  // couleur de vêtement, et c'est le seul chemin par lequel les couleurs de
+  // l'éditeur peuvent apparaître ici — elles n'existent dans aucun fichier.
+  if (look.body_palette && look.body_palette_key) {
+    body.loaded = LoadSpritePairRawPalette(base, nullptr, look.body_palette_key,
+                                           look.body_palette, &body.res);
+    if (!body.loaded) return false;
+  } else if (!LoadPiece(base, nullptr, pal, &body)) {
+    return false;
+  }
 
   const unsigned body_pose = PieceAction(body.res, pose);
 
@@ -825,18 +761,20 @@ bool DrawDoll(ImDrawList* draw_list, const DollLook& look, float x, float y,
     list[list_n].accessory = false;  // la TÊTE : référence, jamais animée
     list[list_n].head_ref  = true;
     list[list_n].tag       = "tete";
-    // 🔴 De DOS, la tête passe DERRIÈRE le corps.
+    // 🔴 La tête n'est JAMAIS dans le seau `behind` — dans aucune orientation.
     //
-    // Le natif ne traite pas la tête à part : `Actor_BuildLayerDrawOrder`
-    // (0x007ad0b0) construit l'empilement de ses huit parties, puis le parcourt
-    // À L'ENVERS quand le drapeau `acteur+0x45` est posé — tout bascule d'un
-    // coup, la tête comme le reste.
+    // Elle l'a été de dos (`behind = back_view`), et c'était un défaut visible :
+    // le corps recouvrait la chevelure dès qu'on faisait pivoter le personnage,
+    // sur les vues de côté comme de dos. Constaté à l'usage le 2026-08-12, et
+    // conforme à la TABLE D'ORDRE ci-dessus, qui donne « bouclier · CORPS · tête »
+    // de dos : le corps d'abord, la tête ensuite.
     //
-    // Debout, l'inversion ne se voit pas : la tête est au-dessus des épaules,
-    // rien ne se recouvre. Elle saute aux yeux dès que le personnage se PENCHE
-    // — au ramassage, le buste doit masquer la nuque, et la tête dessinée en
-    // dernier passait par-dessus le dos.
-    list[list_n].behind = back_view;
+    // ⚠ L'ordre d'ÉMISSION natif dit l'inverse (`Actor_SelectPartLayerByDir`
+    // 0x00d38850 émet la partie 1 avant la partie 0, dans les DEUX groupes de
+    // direction) — mais ce n'est pas lui qui décide : `CActorSprite_DeferQuadSorted`
+    // (0x006046e0) RETRIE derrière. Se fier à l'émission seule, c'est lire la
+    // moitié du mécanisme, et c'est ce qui a produit ce défaut.
+    list[list_n].behind = false;
     if (look.hair_color >= 0)
       HairPalettePath(look.hair_color, race_job, list[list_n].pal,
                       sizeof(list[list_n].pal));

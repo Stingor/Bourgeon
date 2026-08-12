@@ -88,7 +88,20 @@ bool WheelSliderInt(const char* label, int* v, int lo, int hi,
 //
 // `rgba` est au format picker (0..1, RGBA). Renvoie true tant que la couleur
 // change — donc à chaque frame d'un glissement dans le nuancier.
-bool RoColorSwatch(const char* label, float rgba[4]);
+//
+// `out_open` (facultatif) dit si le nuancier est ouvert CETTE frame. 🔴 Il est
+// là pour un piège réel : le popup s'ouvre sous la pastille et RECOUVRE la suite
+// de la fenêtre. Un appelant qui pose des curseurs juste en dessous doit les
+// neutraliser pendant ce temps (`ImGui::BeginDisabled`), sinon viser le nuancier
+// revient à attraper une poignée restée dessous.
+//
+// `with_alpha` à false retire la barre d'opacité ET la composante A de l'aperçu
+// comme du champ hexadécimal. À utiliser dès que la couleur choisie n'a pas de
+// transparence à régler — une entrée de palette de sprite, par exemple, dont
+// l'octet d'alpha ne veut rien dire. Un curseur qui ne commande rien est pire
+// qu'absent : il invite à le bouger.
+bool RoColorSwatch(const char* label, float rgba[4], bool* out_open = nullptr,
+                   bool with_alpha = true);
 
 // Style compact (padding/espacement réduits) — pour les panneaux dense en champs.
 // Toujours par paire.

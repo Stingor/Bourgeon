@@ -3,10 +3,24 @@
 #include <Windows.h>  // SEH autour des lectures du binaire
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 namespace ro {
 namespace {
+
+// ── Corps : résolution du nom de classe et du chemin ─────────────────────────
+// `Job_ResolveBodyClass` (0x00d99150). Son 3e argument à 1 retranche 3950 au
+// résultat : c'est ce qui transforme un id de classe 4xxx en index de tableau.
+constexpr uintptr_t kJobResolveBodyClass = 0x00D99150;
+// Les deux bornes du vecteur de noms de corps (std::vector<char*>).
+constexpr uintptr_t kBodyResNamesBegin = 0x015FF634;
+constexpr uintptr_t kBodyResNamesEnd   = 0x015FF638;
+// Gabarit CP949 `\몸통\%s\%s_%s.%s`, LU DANS LE BINAIRE : nos sources sont en
+// UTF-8 et un littéral coréen y serait mal encodé.
+constexpr uintptr_t kFmtBodyTail = 0x01088A18;
+
+using ResolveBodyClassFn = int(__stdcall*)(int job, int body, char sub3950);
 
 // Jetons CP949, en hexadécimal ÉCHAPPÉ — nos sources sont en UTF-8, un littéral
 // coréen y serait mal encodé et ne désignerait aucun dossier du GRF.
@@ -40,6 +54,88 @@ constexpr const char kRaceHumanFallback[] = "\xC0\xCE\xB0\xA3\xC1\xB7";  // 인�
 
 const char* SexFolder(int sex) { return sex ? kSexMale : kSexFemale; }
 
+void BodyPalettePath(int color, int job, char* out, size_t out_size) {
+  // 몸 — dossier UNISEXE des palettes de corps. Le client vanilla range les
+  // `.pal` par sexe ; le patch WARP `BodyPalUnisex` réécrit le gabarit pour
+  // qu'une seule palette serve tout le monde (cf. WARP0716/LastSession.yml).
+  //
+  // 🔴 Le dossier dépend de la RACE, et les fichiers ne se partagent PAS.
+  // `Job_BuildBodyPalettePath_impl` (0x00b42580) a deux gabarits : `몸\…` pour un
+  // humain, un préfixe de race pour un Doram — et le patch garde cette
+  // distinction. Mesuré le 2026-08-04 sur `summoner_남.spr` : 46 % des pixels
+  // opaques d'un corps Doram tombent sur des index que la palette humaine laisse
+  // NOIRS. Les deux races n'ont pas la même indexation ; aucun fichier commun
+  // n'est possible.
+  static constexpr char kBodyPalFolder[] = "\xB8\xF6";  // 몸
+  std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal",
+                IsDoramJob(job) ? RaceFolder(job) : kBodyPalFolder, color);
+}
+
+bool BodyPalettePathForSprite(const char* spr_base, int color, char* out,
+                              size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (!spr_base || !*spr_base || color < 0) return false;
+  static constexpr char kBodyPalFolder[] = "\xB8\xF6";  // 몸
+
+  // 🔴 La race se lit DANS le chemin du sprite, et non depuis la classe. C'est
+  // ce qui permet de servir un AUTRE joueur, dont on n'a pas la classe : le
+  // client a déjà résolu son sprite, et le dossier de race y est. Gabarit :
+  // `data\sprite\<race>\몸통\<sexe>\<nom>`.
+  const char* p = std::strstr(spr_base, "sprite\\");
+  if (!p) return false;
+  p += 7;
+  const char* fin = std::strchr(p, '\\');
+  if (!fin) return false;
+  const size_t n = static_cast<size_t>(fin - p);
+
+  // Humain (ou race inconnue) : le dossier de palettes UNISEXE `몸`. Doram : son
+  // propre dossier, dont l'indexation n'a rien de commun avec l'humaine.
+  char race[32];
+  if (n >= sizeof(race)) return false;
+  std::memcpy(race, p, n);
+  race[n] = '\0';
+  const bool humain = std::memcmp(race, kRaceHumanFallback, kRaceLen) == 0;
+  std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal",
+                humain ? kBodyPalFolder : race, color);
+  return true;
+}
+
+bool HairPaletteRelForSprite(const char* head_spr, int color, char* out,
+                             size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (!head_spr || !*head_spr || color < 0) return false;
+  static constexpr char kHairPalFolder[] = "\xB8\xD3\xB8\xAE";  // 머리
+
+  // Race lue dans le chemin du sprite de TÊTE, pour la même raison que pour le
+  // corps : on n'a pas la classe d'un autre joueur, mais le client a déjà résolu
+  // son sprite.
+  const char* p = std::strstr(head_spr, "sprite\\");
+  if (!p) return false;
+  p += 7;
+  const char* fin = std::strchr(p, '\\');
+  if (!fin) return false;
+  const size_t n = static_cast<size_t>(fin - p);
+  char race[32];
+  if (n >= sizeof(race)) return false;
+  std::memcpy(race, p, n);
+  race[n] = '\0';
+
+  // 🔴 Chemin RELATIF à `palette\` : c'est sous cette forme que l'acteur porte
+  // le sien, le préfixe de type étant recollé par le chargeur de ressources.
+  //
+  // ⚠ Les deux races ne partagent AUCUN fichier : mesuré le 2026-08-04, 90 % des
+  // pixels opaques d'une tête Doram tombent sur des index que `head_<c>.pal`
+  // laisse noirs.
+  if (std::memcmp(race, kRaceHumanFallback, kRaceLen) == 0)
+    std::snprintf(out, out_size, "%s\\head_%d.pal", kHairPalFolder, color);
+  else
+    std::snprintf(out, out_size, "%s\\%s\\head_%d.pal", race, kHairPalFolder,
+                  color);
+  return true;
+}
+
 bool IsDoramJob(int job) {
   bool doram = false;
   __try {
@@ -65,6 +161,52 @@ const char* RaceFolder(int job) {
   }
   if (folder[idx][0] != '\0') return folder[idx];
   return idx ? kRaceDoramFallback : kRaceHumanFallback;
+}
+
+bool BodyResName(int job, int body, char* out, size_t out_size, int* out_job) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (out_job) *out_job = job;
+  bool ok = false;
+  __try {
+    const int cls = reinterpret_cast<ResolveBodyClassFn>(kJobResolveBodyClass)(
+        job, body, 1);
+    if (out_job) *out_job = cls + 3950;
+    char** begin = *reinterpret_cast<char***>(kBodyResNamesBegin);
+    char** end   = *reinterpret_cast<char***>(kBodyResNamesEnd);
+    // 🔴 `sub_D81560` ne borne PAS son index — on le fait, sinon une classe
+    // inconnue lit hors du vecteur.
+    if (begin && end > begin && cls >= 0 && cls < static_cast<int>(end - begin)) {
+      const char* name = begin[cls];
+      if (name && *name) {
+        lstrcpynA(out, name, static_cast<int>(out_size));
+        ok = out[0] != '\0';
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+  return ok;
+}
+
+bool BodySpritePath(int job, int body, int sex, char* out, size_t out_size,
+                    int* out_job) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  char name[128] = {0};
+  int body_job = job;
+  if (!BodyResName(job, body, name, sizeof(name), &body_job)) return false;
+  if (out_job) *out_job = body_job;
+
+  const char* sex_folder = SexFolder(sex);
+  char tail[256];
+  // ⚠ `std::snprintf` : le gabarit n'est pas un littéral (il est lu dans le
+  // binaire), et la famille sécurisée déclencherait C4774.
+  std::snprintf(tail, sizeof(tail), reinterpret_cast<const char*>(kFmtBodyTail),
+                sex_folder, name, sex_folder, "spr");
+  const size_t n = std::strlen(tail);
+  if (n > 4) tail[n - 4] = '\0';  // retire « .spr » : on rend une BASE
+
+  std::snprintf(out, out_size, "data\\sprite\\%s%s", RaceFolder(body_job), tail);
+  return out[0] != '\0';
 }
 
 }  // namespace ro

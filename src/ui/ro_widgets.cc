@@ -22,12 +22,15 @@ void HelpMarker(const char* desc) {
 // mêmes dimensions de pastille (20×20), mêmes drapeaux de nuancier, même bouton
 // « Fermer ». Ce qui n'est PAS repris, ce sont les préréglages : ils appartiennent
 // aux fonds du chat natif, qu'ils patchent dans le .text.
-bool RoColorSwatch(const char* label, float rgba[4]) {
+bool RoColorSwatch(const char* label, float rgba[4], bool* out_open,
+                   bool with_alpha) {
   bool changed = false;
+  if (out_open) *out_open = false;
   ImGui::PushID(label);
   const ImVec4 swatch(rgba[0], rgba[1], rgba[2], rgba[3]);
-  if (ImGui::ColorButton("##btn", swatch, ImGuiColorEditFlags_AlphaPreview,
-                         ImVec2(20, 20)))
+  const int btn_flags = with_alpha ? ImGuiColorEditFlags_AlphaPreview
+                                   : ImGuiColorEditFlags_NoAlpha;
+  if (ImGui::ColorButton("##btn", swatch, btn_flags, ImVec2(20, 20)))
     ImGui::OpenPopup("picker");
   ImGui::SameLine();
   // Le libellé peut porter un identifiant caché (`##` ou `###`) : on n'affiche
@@ -39,13 +42,21 @@ bool RoColorSwatch(const char* label, float rgba[4]) {
     ++visible_end;
   ImGui::TextUnformatted(label, visible_end);
 
-  if (ImGui::BeginPopup("picker")) {
-    changed |= ImGui::ColorPicker4("##pick", rgba,
-                                   ImGuiColorEditFlags_AlphaBar |
-                                       ImGuiColorEditFlags_NoSidePreview);
+  // 🔴 Le nuancier RECOUVRE ce qui suit dans la fenêtre, et c'est inévitable :
+  // un popup s'ouvre sous l'item qui l'appelle. Le déplacer hors de la fenêtre
+  // supprimerait bien le recouvrement, mais un sélecteur qui surgit à côté de sa
+  // pastille est déroutant. C'est donc à l'APPELANT de neutraliser ce qui passe
+  // dessous pendant ce temps — d'où `out_open`, qui le lui dit.
+  const bool open = ImGui::BeginPopup("picker");
+  if (open) {
+    const int pick_flags = ImGuiColorEditFlags_NoSidePreview |
+                           (with_alpha ? ImGuiColorEditFlags_AlphaBar
+                                       : ImGuiColorEditFlags_NoAlpha);
+    changed |= ImGui::ColorPicker4("##pick", rgba, pick_flags);
     if (ro::RoButton(i18n::Tr("Fermer"))) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
   }
+  if (out_open) *out_open = open;
   ImGui::PopID();
   return changed;
 }

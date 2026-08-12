@@ -41,6 +41,7 @@ class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
 class PetWindow;
+class PaletteEditor;
 class EntityContextMenu;
 class EntityInspector;
 class FpsView;
@@ -107,6 +108,9 @@ class Bourgeon {
   ItemDescWindow* item_desc();
   MonsterInfoWindow* monster_info();
   PetWindow* pet_window();
+  // Éditeur de couleurs du personnage (Alt+P). Exposé pour que la feuille de
+  // perso puisse l'ouvrir : c'est là que le joueur regarde son apparence.
+  PaletteEditor* palette_editor();
   EntityContextMenu* entity_context_menu();
   EntityInspector* entity_inspector();
   FpsView* fps_view();
@@ -284,6 +288,7 @@ class Bourgeon {
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
+  PaletteEditor* palette_editor_ = nullptr;    // idem
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem
   EntityInspector* entity_inspector_ = nullptr;       // idem
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_

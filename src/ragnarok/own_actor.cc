@@ -157,6 +157,20 @@ void ReadSlot(void* actor, int slot, char* spr, size_t spr_size, char* act,
 
 }  // namespace
 
+bool ActorSlotSpritePath(void* actor, int slot, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
+  out[0] = '\0';
+  if (!actor) return false;
+  void* cells = nullptr;
+  void* frames = nullptr;
+  // 🔴 `SlotPair` exige les DEUX ressources. Ce n'est pas une lourdeur ici : un
+  // emplacement qui n'a gardé que ses cellules est un emplacement PÉRIMÉ — une
+  // arme déséquipée dont la ressource traîne — et lire son chemin ferait
+  // ressusciter un sprite que le jeu ne dessine plus.
+  SlotPair(actor, slot, &cells, &frames);
+  return ResBasePath(cells, out, out_size);
+}
+
 bool ReadOwnActorSprites(OwnActorSprites* out) {
   if (!out) return false;
   std::memset(out, 0, sizeof(*out));

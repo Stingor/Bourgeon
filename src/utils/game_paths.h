@@ -65,6 +65,16 @@ std::string ChatHistoryPath();
 // ⚠ PARTAGÉ lui aussi (langue + trois sections de login) : ne jamais le réécrire
 // sans fusionner le document existant.
 std::string StartupSettingsPath();
+
+// Couleurs de corps composées par le joueur, une entrée par PERSONNAGE :
+// `SaveData\bourgeon_palettes.yaml`. Le dossier est créé au besoin.
+//
+// 🔴 Ce n'est PAS la source de vérité — le serveur l'est, et il renvoie sa
+// recette au joueur à chaque connexion. Ce cache existe pour le CHAR-SELECT, le
+// seul écran où le client n'a pas encore parlé au map-server et ne peut donc
+// rien savoir de ses couleurs. Sans lui, un personnage s'y afficherait dans son
+// apparence native puis changerait en entrant en jeu.
+std::string PaletteCachePath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

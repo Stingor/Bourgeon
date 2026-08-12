@@ -9,6 +9,8 @@
 
 #include "bourgeon.h"
 #include "features/craft_data.h"                    // la recette d'un lien kRecipe
+#include "features/fx/palette_cache.h"              // DecodeShare : validité d'un kStyle
+#include "features/windows/palette_editor.h"        // aperçu / essai d'un style
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
 #include "features/systems/image_preview.h"         // aperçu d'une image de chat
 #include "features/windows/cashshop_window.h"       // disponibilité au vote shop
@@ -284,6 +286,24 @@ Target FromSetting(const char* key) {
   return t;
 }
 
+Target FromStyle(const char* code, const char* owner_utf8) {
+  Target t;
+  if (code == nullptr || *code == '\0') return t;
+  // 🔴 Validé ICI, pas au clic. Un code d'une version périmée ou tronqué par le
+  // filtre du serveur ne doit pas devenir un lien qui échoue au moment où on
+  // l'ouvre : même règle qu'une recette absente.
+  ro::PaletteRecipe essai;
+  if (!fx::palette_cache::DecodeShare(code, &essai)) return t;
+  t.kind        = Target::kStyle;
+  t.style_code  = code;
+  t.style_owner = owner_utf8 != nullptr ? owner_utf8 : "";
+  char buf[96];
+  std::snprintf(buf, sizeof(buf), "[%s: %s]", i18n::Tr("Style"),
+                t.style_owner.empty() ? "?" : t.style_owner.c_str());
+  t.label = buf;
+  return t;
+}
+
 void OpenDescription(const Target& target) {
   switch (target.kind) {
     case Target::kItem: {
@@ -305,6 +325,16 @@ void OpenDescription(const Target& target) {
       break;
     }
     case Target::kUrl: OpenUrl(target.url.c_str()); break;
+    case Target::kStyle: {
+      // La « description » d'un style, c'est de le VOIR. Une fenêtre d'aperçu
+      // porte un pantin — le nôtre — habillé de ce style : c'est la seule façon
+      // honnête de montrer une recette, qui ne porte aucune couleur et ne veut
+      // rien dire hors d'un sprite. Fenêtre ImGui, donc rien à différer.
+      if (auto* pe = Bourgeon::Instance().palette_editor())
+        pe->OpenStylePreview(target.style_code.c_str(),
+                             target.style_owner.c_str());
+      break;
+    }
     case Target::kSetting: {
       // Rien de natif ici : OpenSettingTarget ne fait que poser l'état que le
       // prochain rendu consomme (déplier la fenêtre + ouvrir l'en-tête +, pour
@@ -354,6 +384,9 @@ bool PostToChat(const Target& target) {
   if (target.kind == Target::kItem) return chat->AppendItemLinkFromLink(target.item);
   if (target.kind == Target::kSetting)
     return chat->AppendSettingLink(target.setting_key.c_str());
+  if (target.kind == Target::kStyle)
+    return chat->AppendStyleLink(target.style_code.c_str(),
+                                 target.style_owner.c_str());
   return false;
 }
 
@@ -635,6 +668,22 @@ void DrawMenu(const char* popup_id, const Target& target) {
       }
       case Target::kSetting: {
         if (ImGui::MenuItem(i18n::Tr("Ouvrir ce réglage"))) OpenDescription(target);
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        break;
+      }
+      case Target::kStyle: {
+        if (ImGui::MenuItem(i18n::Tr("Voir ce style"))) OpenDescription(target);
+        if (ImGui::MenuItem(i18n::Tr("Essayer dans l'éditeur"))) {
+          // ⚠ Charge le style dans l'ÉDITEUR, sans rien appliquer au personnage :
+          // il faudra valider, comme pour n'importe quel réglage. Un lien de chat
+          // vient d'un autre joueur — il ne doit pas pouvoir changer une
+          // apparence par un simple clic.
+          if (auto* pe = Bourgeon::Instance().palette_editor())
+            pe->TryStyleCode(target.style_code.c_str());
+        }
+        // Le code NU, pour le coller ailleurs — un forum, un ami hors du jeu.
+        if (ImGui::MenuItem(i18n::Tr("Copier le code")))
+          ImGui::SetClipboardText(target.style_code.c_str());
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         break;
       }
