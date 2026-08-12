@@ -85,6 +85,46 @@ bool IconShown(int cmd_id) {
   return *reinterpret_cast<uint8_t*>(kVisTable + idx) == 1;
 }
 
+// ── Signalement « nouveau » (le N rouge du courrier) ───────────────────────
+// Le natif ne peint pas une pastille par-dessus l'icône : `BuildIconList`
+// @0x00812fb0 crée une SECONDE UIMenuIcon (bitmaps bt_<name>_new.bmp /
+// _new_press.bmp) pour les cinq commandes qui en ont une — status 0xC0,
+// item 0xC2, skill 0xC4, achievement 0x1D9, mail 0x1DC — puis
+// `RebuildNodes` @0x00814150 montre l'une OU l'autre.
+// Ce qui décide, c'est une std::list<int> des commandes à signaler portée par
+// la fenêtre elle-même : sentinelle à +0xC4, taille à +0xC8, nœuds
+// {next, prev, valeur}. Elle est alimentée par son propre OnMsg (action 6,
+// commande 286, arg = id d'icône, arg suivant = 1 allumer / 0 éteindre) —
+// c'est ce qu'appellent les handlers RODEX : allumage à l'arrivée d'un
+// courrier non lu, extinction dans 0x00cfb6b0 quand le compteur de non-lus
+// (g_RodexMgr+0x18) retombe à zéro.
+// On LIT cette liste au lieu de rejouer la règle métier : le signalement suit
+// donc exactement le natif, pour les cinq icônes et sans code par icône. Elle
+// reste tenue à jour alors même que la grille native est vidée (GridClear ne
+// touche qu'à la liste de nœuds de RENDU, +0x4).
+constexpr int kOffBadgeList = 0xC4;  // std::list<int> : sentinelle
+constexpr int kOffBadgeSize = 0xC8;  // taille de cette liste
+
+// Relève les commandes signalées dans `out` (au plus `cap`). Renvoie le nombre
+// lu, 0 si la fenêtre est absente ou la liste illisible. Isolée du reste pour
+// garder le __try loin de tout objet à destructeur.
+int ReadBadgeCmdIds(void* wnd, int* out, int cap) {
+  if (!wnd) return 0;
+  int n = 0;
+  __try {
+    char* w = reinterpret_cast<char*>(wnd);
+    int* head = *reinterpret_cast<int**>(w + kOffBadgeList);
+    const int count = *reinterpret_cast<int*>(w + kOffBadgeSize);
+    if (!head || count <= 0 || count > cap) return 0;
+    int* node = reinterpret_cast<int*>(head[0]);  // premier élément
+    while (n < count && node && node != head) {
+      out[n++] = node[2];                         // nœud : next, prev, valeur
+      node = reinterpret_cast<int*>(node[0]);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+  return n;
+}
+
 void* LoadGameTexture(const char* path) {
   void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
   if (!mgr) return nullptr;
@@ -193,6 +233,22 @@ void MenuIcons::BuildIconList() {
   icons_built_ = true;
 }
 
+// Recopie dans les icônes le signalement « nouveau » tenu par la fenêtre native.
+// Appelée depuis OnTick (phase update, ~100 ms) : un badge n'a pas besoin de la
+// fréquence d'affichage, et on évite un FindWindow par frame.
+void MenuIcons::RefreshBadges() {
+  constexpr int kMaxFlagged = 32;
+  int flagged[kMaxFlagged];
+  const int n = ReadBadgeCmdIds(uiwnd::SafeFindWindow(kMenuIconWndId), flagged,
+                                kMaxFlagged);
+  for (Icon& ic : icons_) {
+    bool on = false;
+    for (int i = 0; i < n && !on; ++i) on = (flagged[i] == ic.cmd_id);
+    if (!on) ic.new_fail = 0;  // réarme le chargement pour le prochain allumage
+    ic.badge = on;
+  }
+}
+
 float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
   constexpr float kSnap = 10.0f;  // px magnetism radius
   float best = v, best_dist = kSnap;
@@ -264,6 +320,7 @@ void MenuIcons::OnTick() {
     pending_refresh_ = false;
     RequestServerRefresh();
   }
+  if (enabled_ && in_game_ && icons_built_) RefreshBadges();
   FlushPending();
 }
 
@@ -327,7 +384,10 @@ void MenuIcons::OnRenderUI() {
   {
     static unsigned s_epoch = 0;
     const unsigned e = Overlay_DeviceEpoch();
-    if (e != s_epoch) { for (Icon& ic : icons_) ic.tex = nullptr; s_epoch = e; }
+    if (e != s_epoch) {
+      for (Icon& ic : icons_) { ic.tex = nullptr; ic.tex_new = nullptr; ic.new_fail = 0; }
+      s_epoch = e;
+    }
   }
 
   for (int i = 0; i < static_cast<int>(icons_.size()); ++i) {
@@ -336,14 +396,35 @@ void MenuIcons::OnRenderUI() {
     if (!ic.tex) ic.tex = LoadIconTexture(ic.name, &ic.w, &ic.h);  // lazy/retry
     if (!ic.tex) continue;
 
+    // Icône signalée : on charge son bitmap « _new » (celui qui porte le N) à la
+    // première frame où le natif l'allume. Trois échecs et on renonce jusqu'au
+    // prochain allumage : la plupart des icônes n'ont PAS de bt_<name>_new.bmp,
+    // et une recherche GRF par frame pour un fichier absent se paierait cher.
+    if (ic.badge && !ic.tex_new && ic.new_fail < 3) {
+      char new_name[64];
+      std::snprintf(new_name, sizeof(new_name), "%s_new", ic.name);
+      ic.tex_new = LoadIconTexture(new_name, &ic.nw, &ic.nh);
+      if (!ic.tex_new) ++ic.new_fail;
+    }
+    // Le bitmap « _new » déborde vers le haut (le natif le pose 6 px plus haut
+    // que l'icône normale, même x). On aligne les BAS sur la hauteur MESURÉE
+    // plutôt que de recopier ce 6 : la fenêtre grandit d'autant, sinon ImGui
+    // rognerait le badge à son bord. (ic.x, ic.y) reste l'ancre de l'icône
+    // normale, donc la position enregistrée ne bouge pas quand le badge s'allume.
+    const bool  badge  = ic.badge && ic.tex_new != nullptr;
+    const int   draw_w = badge ? ic.nw : ic.w;
+    const int   draw_h = badge ? ic.nh : ic.h;
+    const float over_y = static_cast<float>(draw_h - ic.h);  // débordement vers le haut
+
     char id[32];
     std::snprintf(id, sizeof(id), "##micon_%X", ic.cmd_id);
     // Pin the window to the stored position every frame (NoMove) and drive any
     // drag ourselves, so the drawn icon and its hit-rect never desync.
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(ic.x),
-                                   static_cast<float>(ic.y)), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(ic.w),
-                                    static_cast<float>(ic.h)), ImGuiCond_Always);
+                                   static_cast<float>(ic.y) - over_y),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(draw_w),
+                                    static_cast<float>(draw_h)), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     const ImGuiWindowFlags f =
@@ -354,23 +435,27 @@ void MenuIcons::OnRenderUI() {
         ImGuiWindowFlags_NoNav;
     ImGui::Begin(id, nullptr, f);
     const ImVec2 p0 = ImGui::GetWindowPos();
-    const ImVec2 p1(p0.x + ic.w, p0.y + ic.h);
+    const ImVec2 p1(p0.x + draw_w, p0.y + draw_h);
+    // Coin haut-gauche de l'icône elle-même : décalé du débordement du badge.
+    // C'est LUI qui sert au glisser et à l'aimantage, qui raisonnent tous sur
+    // (ic.x, ic.y) et sur la taille de l'icône normale.
+    const ImVec2 icon_p0(p0.x, p0.y + over_y);
 
     // Frameless: a transparent full-window button (interaction) + the bitmap
     // drawn directly, so there's no ImGui button frame around the icon.
     ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
     const bool clicked = ImGui::InvisibleButton(
-        "b", ImVec2(static_cast<float>(ic.w), static_cast<float>(ic.h)));
+        "b", ImVec2(static_cast<float>(draw_w), static_cast<float>(draw_h)));
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddImage((ImTextureID)(uintptr_t)ic.tex, p0, p1);
+    dl->AddImage((ImTextureID)(uintptr_t)(badge ? ic.tex_new : ic.tex), p0, p1);
 
     if (edit_mode_) {
       const ImVec2 mp = ImGui::GetIO().MousePos;
       if (ImGui::IsItemActivated()) {
         dragging_   = i;
-        drag_off_x_ = mp.x - p0.x;
-        drag_off_y_ = mp.y - p0.y;
+        drag_off_x_ = mp.x - icon_p0.x;
+        drag_off_y_ = mp.y - icon_p0.y;
       }
       if (dragging_ == i && ImGui::IsItemActive()) {
         float nx = mp.x - drag_off_x_, ny = mp.y - drag_off_y_;

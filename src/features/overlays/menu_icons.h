@@ -40,6 +40,14 @@ class MenuIcons : public Plugin {
     int         w = 0, h = 0;
     int         x = 0, y = 0;   // screen position
     bool        hidden = false; // user-hidden via the MoonlightUi list
+    // Signalement « nouveau » (courrier non lu, succès débloqué…) : le natif ne
+    // pose pas de pastille par-dessus, il affiche une SECONDE icône complète
+    // \menu_icon\bt_<name>_new.bmp à la place de la normale. Elle est plus haute
+    // (le badge déborde vers le haut), d'où sa taille propre.
+    bool        badge = false;      // le natif signale cette commande
+    void*       tex_new = nullptr;  // bitmap « _new », chargé à la demande
+    int         nw = 0, nh = 0;
+    int         new_fail = 0;       // échecs de chargement (icônes sans bitmap _new)
   };
 
   // Persisted per-icon position/visibility, keyed by icon name. MoonlightUi loads
@@ -62,6 +70,7 @@ class MenuIcons : public Plugin {
   std::vector<Icon> icons_;
 
   void BuildIconList();         // populate icons_ with the functional icons
+  void RefreshBadges();         // relève les commandes signalées par le natif
   void HideNativeGrid(bool hide);
   void DispatchCommand(int cmd_id);
   // Magnetic snap of value v (extent ext) on one axis to other icons' edges.
