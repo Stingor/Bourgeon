@@ -2657,7 +2657,7 @@
 "Pour le faire revenir : clic droit sur un autre NPC du même\nfichier puis « Recharger son fichier de script », ou\n@reloadnpcfile. Rien n'est perdu sur le disque.": "To bring it back: right-click another NPC from the same\nfile then \"Reload its script file\", or use\n@reloadnpcfile. Nothing is lost on disk."
 "Décharger": "Unload"
 "Style du personnage": "Character Style"
-"Choisissez une pièce, puis réglez sa couleur. Le personnage change en direct.": "Pick a part, then adjust its colour. Your character changes live."
+"Choisissez une pièce, puis réglez sa couleur.": "Pick a part, then adjust its colour."
 "Pièce": "Part"
 "Teinte": "Hue"
 "Réinitialiser cette pièce": "Reset this part"
