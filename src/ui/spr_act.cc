@@ -310,7 +310,14 @@ bool ParseSpr(const uint8_t* data, size_t size, Resource* out) {
   // palettisée n'en a pas : on garde alors du noir opaque, jamais lu.
   uint32_t pal[256];
   for (int i = 0; i < 256; ++i) pal[i] = 0xFF000000u;
-  if (!raw_idx.empty()) DecodePalette(data + (size - 1024), 1024, pal);
+  out->palette.clear();
+  if (!raw_idx.empty()) {
+    DecodePalette(data + (size - 1024), 1024, pal);
+    // Conservée BRUTE (RGBA du fichier), pas sous sa forme décodée : `pal`
+    // ci-dessus a déjà forcé l'alpha et vidé l'index 0, ce qui convient pour
+    // dessiner mais fausserait tout raisonnement sur les couleurs d'origine.
+    out->palette.assign(data + (size - 1024), data + size);
+  }
 
   out->indexed.clear();
   out->indexed.reserve(raw_idx.size());

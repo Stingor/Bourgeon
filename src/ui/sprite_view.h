@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>  // uint8_t (LoadSpritePairRawPalette)
+
 // ── Afficher N'IMPORTE QUEL .spr/.act dans ImGui ─────────────────────────────
 //
 // La brique générique posée sur ui/spr_act.h : chargement par CHEMIN, cache,
@@ -65,6 +67,18 @@ bool LoadSpriteRecolored(const char* base_path, const char* pal_path,
 // `.spr` restent deux ressources distinctes.
 bool LoadSpritePair(const char* spr_base, const char* act_base,
                     const char* pal_path, SpriteRes* res);
+
+// Même chose, mais la palette est fournie EN MÉMOIRE : 1024 octets RGBA, comme
+// dans un `.pal`. C'est ce qu'il faut pour une palette qui n'existe dans aucun
+// fichier — celle que le joueur compose dans l'éditeur de couleurs.
+//
+// 🔴 `key` prend la place du chemin dans le cache de teintes du sprite, et suit
+// donc la même règle : deux appels de même clé PARTAGENT leurs textures. Elle
+// doit par conséquent identifier le CONTENU, pas seulement son propriétaire —
+// sinon une palette modifiée ressortirait sous les textures de la précédente.
+bool LoadSpritePairRawPalette(const char* spr_base, const char* act_base,
+                              const char* key, const uint8_t* rgba,
+                              SpriteRes* res);
 
 // Nombre d'ACTIONS du .act. Sert à replier une pose sur ce que le fichier
 // contient réellement : une pièce rapportée (coiffe) en a souvent moins que le

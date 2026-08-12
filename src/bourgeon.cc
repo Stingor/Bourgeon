@@ -53,6 +53,8 @@
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/fx/style_sync.h"
+#include "features/windows/palette_editor.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
@@ -123,6 +125,7 @@ LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
+PaletteEditor* Bourgeon::palette_editor() { return palette_editor_; }
 EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
 }
@@ -858,6 +861,19 @@ void Bourgeon::LoadPlugins() {
     auto pet_window = std::make_unique<PetWindow>();
     pet_window_ = pet_window.get();
     plugins_.emplace_back(std::move(pet_window));
+
+    // Éditeur de couleurs du personnage (Alt+P). Son OnRenderUI pose aussi,
+    // paresseusement, les détours d'injection de palette — depuis le fil de
+    // rendu, seul moment où les fonctions visées ne sont pas en cours
+    // d'exécution.
+    auto palette_editor = std::make_unique<PaletteEditor>();
+    palette_editor_ = palette_editor.get();
+    plugins_.emplace_back(std::move(palette_editor));
+
+    // Propagation des couleurs : envoie la recette du joueur et applique celles
+    // des autres. Séparé de l'éditeur exprès — il doit tourner même si le joueur
+    // n'ouvre jamais la fenêtre, sans quoi personne ne verrait personne.
+    plugins_.emplace_back(std::make_unique<StyleSync>());
 
     // Menu du clic droit sur une entité. Son constructeur pose LE détour de
     // GameMode_ShowEntityContextMenu — le seul chemin qui produise le menu du

@@ -32,6 +32,9 @@
 #include "features/overlays/cast_bar.h"  // barre « Cast » : contenu et présence
 #include "features/systems/bourgeon_opcodes.h"  // kHatEffectMap (ZC 0x0F17)
 #include "features/fx/ez_effect_capture.h"  // capture PARTAGÉE des effets EZ (doll + aperçu)
+#include "features/fx/palette_cache.h"   // DollKey (clé de teinte du composeur)
+#include "features/fx/palette_inject.h"  // InjectedPalette (couleurs composées)
+#include "features/fx/style_sync.h"    // LocalRecipe (couleur de cheveux choisie)
 #include "features/moonlight_ui/moonlight_ui.h"  // shared AlignGrid (snap + draw)
 #include "utils/gif_writer.h"       // GifWrite
 #include "utils/hooking/hook_manager.h"
@@ -149,6 +152,8 @@ constexpr uintptr_t kHeadMidView = 0x015fb29c;  // g_OwnLook_HeadMidViewId
 // 🔴 La CLASSE qui nomme le sprite de corps — second argument de
 // `Job_ResolveBodyClass`. À ne pas confondre avec le job ajusté par la monture.
 constexpr uintptr_t kOwnJobId    = 0x015fb9c8;
+// AID du joueur — et GID de son acteur, donc la clé de sa palette composée.
+constexpr uintptr_t kOwnAid      = 0x015fb9a4;
 
 // CTexture -> handle GPU natif. L'offset dépend du back-end.
 constexpr int kCTexOffDX9 = 0x12c, kCTexOffDX7 = 0x128;
@@ -1076,6 +1081,57 @@ void CaptureHatEffectOrdinal(int ordinal) {
 //
 // `eq` doit survivre à l'usage de `look` : celui-ci ne garde que des POINTEURS
 // vers ses chaînes de chemins.
+// ── Les couleurs composées par le joueur, pour un pantin ────────────────────
+//
+// 🔴 Un pantin recompose ses couleurs À PARTIR DES FICHIERS. Sans ce raccord, il
+// afficherait donc la palette d'AVANT pendant que le personnage en scène porte
+// les nouvelles — le joueur se verrait de deux couleurs différentes dans la même
+// fenêtre.
+//
+// La palette vient de l'INJECTION, pas d'un recalcul : ce sont exactement les
+// octets qui sont rendus à l'écran, et les reproduire ici ferait deux chemins à
+// garder d'accord. Le tampon est statique et vit jusqu'au `DrawDoll` de la même
+// frame, qui n'en garde rien (il ne fait qu'un slot de teinte).
+bool FillOwnDollPalette(ro::DollLook* look) {
+  static uint8_t rgba[1024];
+  static std::string key;
+  const uint32_t gid = *reinterpret_cast<const uint32_t*>(kOwnAid);
+  if (gid == 0) return false;
+
+  // 🔴 Le sprite de corps LU sur l'acteur, pas celui qu'on déduirait de
+  // (classe, sexe, monture). La déduction rejoue `Job_ResolveBodyClass` et ses
+  // cas particuliers, et là où elle diverge le pantin montre un AUTRE corps que
+  // celui à l'écran — les 3e et 4e classes s'affichaient en tenue de base
+  // (constaté le 2026-08-12). Statique : `DollLook` ne garde qu'un pointeur, et
+  // le dessin a lieu plus tard dans la frame.
+  static char spr[352];
+  if (fx::palette_inject::ActorBodySpritePath(gid, spr, sizeof(spr)) &&
+      spr[0] != '\0')
+    look->body_spr_override = spr;
+
+  // ── Les CHEVEUX d'abord, car ils sont indépendants du corps ───────────────
+  // Le pantin compose sa tête depuis un NUMÉRO de couleur, exactement comme le
+  // fait le styliste — il n'y a donc rien à injecter, juste à lui donner le bon.
+  // 🔴 Sans ça, il lirait la couleur du serveur : la tête du pantin resterait à
+  // sa teinte d'origine pendant que celle du personnage en scène a changé.
+  ro::PaletteRecipe recette;
+  if (fx::style_sync::LocalRecipe(&recette) && recette.hair_palette_id > 0)
+    look->hair_color = recette.hair_palette_id;
+  // 🔴 Rien à faire pour la COUPE : elle vit dans la globale d'apparence que le
+  // client tient à jour sur ZC_SPRITE_CHANGE, et `BuildOwnDollLook` l'a déjà
+  // lue. C'est le serveur qui la possède, donc elle est juste par construction.
+
+  if (!fx::palette_inject::InjectedPalette(gid, rgba, sizeof(rgba)))
+    return false;
+  // 🔴 La clé identifie le CONTENU : le cache de teintes du composeur partage
+  // ses textures entre appels de même clé, donc une clé figée ferait ressortir
+  // les couleurs précédentes à chaque mouvement de curseur.
+  key = fx::palette_cache::DollKey(gid, rgba);
+  look->body_palette = rgba;
+  look->body_palette_key = key.c_str();
+  return true;
+}
+
 void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
                       rag::OwnActorSprites* eq) {
   using GetSexFn = int(__fastcall*)(void*, void*);
@@ -1095,6 +1151,10 @@ void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
   // déjà l'ajustement, et `Job_ResolveBodyClass` refait lui-même le remap
   // (4008 -> 4014) à partir des deux.
   look->body = *reinterpret_cast<int*>(kOwnJobId);
+  // Couleurs composées par le joueur, si elles sont posées sur son acteur. Sans
+  // ça, ce pantin montrerait les couleurs d'avant pendant que le personnage en
+  // scène porte les nouvelles.
+  FillOwnDollPalette(look);
   // ── Coiffes : les VUES du serveur, pas les items portés ───────────────────
   //
   // 🔴 Le viewID ne se déduit PAS de l'équipement. Moonlight a un système de
@@ -1299,6 +1359,9 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   // 🔴 `body` = la CLASSE (cf. RenderPlayerAvatar) : c'est elle qui nomme le
   // sprite de corps. À 0, tout le monde s'affichait en Novice.
   look.body = *reinterpret_cast<int*>(kOwnJobId);
+  // Idem pour l'aperçu d'équipement (description d'objet, échoppe) : il montre
+  // TON personnage portant l'objet, donc tes couleurs.
+  FillOwnDollPalette(&look);
   look.head_top = (slot == PV_TOP)     ? view_id : 0;
   look.head_mid = (slot == PV_MID)     ? view_id : 0;
   look.head_low = (slot == PV_LOW)     ? view_id : 0;

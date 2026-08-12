@@ -337,6 +337,18 @@ class ChatWindow : public Plugin {
   // l'affichage, c'est le libellé LOCAL (donc traduit) qui gagne.
   bool AppendSettingLink(const char* key);
 
+  // Poser le lien d'un STYLE : « [Style: Pseudo] ». Balise `<STYL>pseudo:code`.
+  //
+  // 🔴 Le CODE voyage EN ENTIER, contrairement à tous les autres liens qui ne
+  // transportent qu'une désignation. Un objet ou un monstre existent chez le
+  // lecteur ; un style n'est connu que tant que son porteur est en vue, et un
+  // lien qui meurt quand la personne change de carte vaut moins que pas de lien.
+  //
+  // ⚠ La balise fait donc une centaine de caractères, visibles bruts chez un
+  // client sans Bourgeon — le pseudo est en tête pour garder le début lisible.
+  // Refusé (false) si le pseudo contient ':' ou '<', qui découperaient la balise.
+  bool AppendStyleLink(const char* code, const char* owner_utf8);
+
   // Arme une commande (`@iteminfo`, `@mobinfo`…) pour le prochain FlushPending.
   // Même canal que l'envoi d'une ligne tapée — donc le pipeline COMPLET du
   // client. 🔴 Publique parce que le menu des liens (features/link_gesture.cc)
@@ -401,7 +413,13 @@ class ChatWindow : public Plugin {
     // réglages Bourgeon, et le clic l'ouvre. C'est le premier lien qui parle du
     // CLIENT plutôt que du monde — « va voir ce réglage » est ce qu'on répond
     // vingt fois par jour dans un chat d'entraide.
-    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting };
+    // `kStyle` est le second lien qui ne parle pas du monde : il porte le STYLE
+    // d'un joueur — couleurs de corps, palette de cheveux, coiffure. 🔴 Il
+    // transporte le CODE en entier, pas un pseudo à résoudre : un style ne se
+    // retrouve nulle part une fois son porteur hors de vue, et un lien qui meurt
+    // quand la personne change de carte vaut moins que pas de lien (même règle
+    // que `kRecipe` sur une recette absente).
+    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
     // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message
@@ -428,6 +446,11 @@ class ChatWindow : public Plugin {
     // posée QUE si cette version la reconnaît — sinon le fragment n'est pas un
     // lien du tout (le texte reste lisible, il ne mène simplement nulle part).
     std::string setting_key;
+    // kStyle : le code de style, tel qu'il a voyagé, et le pseudo de son auteur.
+    // Le code est ce que `palette_cache::EncodeShare` produit — la même chaîne
+    // que le presse-papiers.
+    std::string style_code;
+    std::string style_owner;
     // kUrl : l'adresse NUE. Séparée du texte parce que le texte affiché peut
     // emporter la ponctuation qui suit (« regarde https://… ! ») alors que
     // l'adresse ouverte, elle, doit s'arrêter avant.
@@ -1010,6 +1033,8 @@ class ChatWindow : public Plugin {
     uint8_t     mob_rank = 0;
     std::string mob_name;
     std::string setting_key;  // kSetting
+    std::string style_code;   // kStyle : le code, tel qu'il partira
+    std::string style_owner;  // kStyle : le pseudo affiché
     // La balise RELUE, pour que le lien posé dans la saisie soit déjà un objet
     // cliquable — c'est ce que fait le natif, qui accroche un vrai bouton sur sa
     // ligne de saisie (`UIItemTagButton`) plutôt que d'y écrire du texte mort.

@@ -18,6 +18,7 @@
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
 #include "features/craft_data.h" // recette d'un lien <CRAF>
+#include "features/fx/palette_cache.h"  // DecodeShare : validité d'un <STYL>
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
 #include "features/moonlight_ui/moonlight_ui.h"   // iface:: (sections de <SETL>)
 #include "features/staff_gate.h" // IsStaff (export des emotes)
@@ -2298,6 +2299,53 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
             // comporter comme tel.
             current.text += '[';
             current.text += fallback;
+            current.text += ']';
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
+    // STYLE D'UN JOUEUR — balise à NOUS : `<STYL>pseudo:code</STYL>`.
+    //
+    // 🔴 Le CODE voyage en entier, et c'est ce qui distingue ce lien de tous les
+    // autres. Un objet, un monstre, une recette existent chez le lecteur : il
+    // suffit de les désigner. Un style n'existe NULLE PART une fois son porteur
+    // hors de vue — la recette qu'on reçoit d'un joueur en zone disparaît avec
+    // lui. Transporter le pseudo seul ferait un lien qui meurt quand la personne
+    // change de carte, et le projet a déjà tranché ce cas : un lien qui n'ouvre
+    // rien vaut moins que pas de lien (cf. `<CRAF>` sur une recette absente).
+    //
+    // ⚠ La ligne est donc longue chez un client SANS Bourgeon, qui verra la
+    // balise brute. Le pseudo vient en tête pour que le début reste lisible.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<STYL>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</STYL>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const std::string owner(body, c1);
+          const std::string code(c1 + 1, close);
+          // Le code est VALIDÉ à l'analyse, pas au clic. Un lien qui se révèle
+          // illisible au moment où on l'ouvre est une promesse trahie ; ici il
+          // retombe en texte ordinaire, ce qui se comprend tout seul.
+          ro::PaletteRecipe essai;
+          if (!code.empty() && fx::palette_cache::DecodeShare(code, &essai)) {
+            flush();
+            Run link;
+            link.kind        = Run::kStyle;
+            link.style_code  = code;
+            link.style_owner = owner;
+            char label[96];
+            std::snprintf(label, sizeof(label), "[%s: %s]", i18n::Tr("Style"),
+                          owner.empty() ? "?" : owner.c_str());
+            link.text = label;
+            out->runs.push_back(link);
+          } else if (!owner.empty()) {
+            // Code d'une version trop ancienne, ou tronqué par le filtre du
+            // serveur : on garde le nom, sans prétendre mener quelque part.
+            current.text += '[';
+            current.text += owner;
             current.text += ']';
           }
           p = close + 7;
@@ -5882,6 +5930,8 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
     case Run::kUrl: return links::FromUrl(run.url.c_str());
     case Run::kPlayer: return links::FromPlayer(run.text.c_str());
     case Run::kSetting: return links::FromSetting(run.setting_key.c_str());
+    case Run::kStyle:
+      return links::FromStyle(run.style_code.c_str(), run.style_owner.c_str());
     default: return links::Target{};
   }
 }
@@ -5898,6 +5948,8 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
     return t;
   }
   if (link.kind == Run::kSetting) return links::FromSetting(link.setting_key.c_str());
+  if (link.kind == Run::kStyle)
+    return links::FromStyle(link.style_code.c_str(), link.style_owner.c_str());
   return links::FromItem(link.item, link.display.c_str());
 }
 
@@ -6223,6 +6275,67 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   pending.display     = display;
   pending.kind        = Run::kSetting;
   pending.setting_key = key;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
+// Poser le lien d'un STYLE : « [Style: Pseudo] ».
+//
+// 🔴 Le CODE part en entier dans la balise, contrairement à tous les autres
+// liens qui ne transportent qu'une désignation. Un objet ou un monstre existent
+// chez le lecteur ; un style, non — il n'est connu que tant que son porteur est
+// en vue. Le lien serait donc mort dès que la personne change de carte.
+//
+// ⚠ La balise est LONGUE (une centaine de caractères) et un client sans Bourgeon
+// la verra brute. Le pseudo est placé en tête pour que le début reste lisible.
+// Le champ `wire` est dimensionné en conséquence.
+bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
+  if (!imgui_enabled_ || !input_bar_ || code == nullptr || *code == '\0')
+    return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  // Pseudo absent = le NÔTRE. C'est ici qu'il se résout, et pas chez l'appelant :
+  // le getter natif et la conversion depuis la code-page du fil vivent dans ce
+  // fichier, et l'éditeur de style n'a pas à les connaître.
+  std::string owner = owner_utf8 != nullptr ? owner_utf8 : "";
+  if (owner.empty()) {
+    char brut[32] = {};
+    if (ReadOwnCharName(brut, sizeof(brut))) owner = ro::WireToUtf8(brut);
+  }
+  // 🔴 Ni ':' ni '<' dans le pseudo : ce sont les séparateurs de la balise, et un
+  // nom qui en contient la découperait de travers. Aucun pseudo RO n'en porte,
+  // mais la balise peut aussi venir d'ailleurs.
+  if (owner.find(':') != std::string::npos ||
+      owner.find('<') != std::string::npos)
+    return false;
+
+  std::string wire = "<STYL>";
+  wire += owner;
+  wire += ':';
+  wire += code;
+  wire += "</STYL>";
+
+  char display[96];
+  std::snprintf(display, sizeof(display), "[%s: %s]", i18n::Tr("Style"),
+                owner.empty() ? "?" : owner.c_str());
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+
+  PendingLink pending;
+  pending.wire        = wire;
+  pending.display     = display;
+  pending.kind        = Run::kStyle;
+  pending.style_code  = code;
+  pending.style_owner = owner;
   item_links_.push_back(std::move(pending));
   if (battle_mode_) input_open_ = true;
   focus_input_next_ = true;

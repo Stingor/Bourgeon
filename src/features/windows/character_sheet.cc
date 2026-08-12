@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
+#include "features/windows/palette_editor.h"  // bouton « Mes couleurs »
 #include "features/systems/bourgeon_opcodes.h"  // kStatBonus (ZC 0x0F10)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
@@ -3068,6 +3069,18 @@ void CharacterSheet::DrawPresetsTab() {
     UnequipAll(true);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Retire aussi les costumes (têtes + cape)"));
+  // Style du personnage : c'est ici que le joueur regarde son apparence, donc
+  // ici que le raccourci a du sens. Alt+P reste, mais un raccourci qu'on ne
+  // découvre nulle part n'existe pas.
+  ImGui::SameLine(0.0f, 4.0f);
+  if (ro::RoButton(i18n::Tr("Mon style"),
+                   ro::ButtonWidth(i18n::Tr("Mon style")))) {
+    if (PaletteEditor* editeur = Bourgeon::Instance().palette_editor())
+      editeur->Toggle();
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip(i18n::Tr("Couleurs du corps, coiffure et couleur de "
+                               "cheveux (Alt+P)"));
   ImGui::Spacing();
   ImGui::Separator();
   ImGui::Spacing();

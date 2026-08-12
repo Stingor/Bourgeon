@@ -227,6 +227,25 @@ int PaletteSlot(Entry* e, const char* pal_path) {
   return static_cast<int>(e->pals.size() - 1);
 }
 
+// Slot de teinte alimenté en MÉMOIRE (1024 octets RGBA), pas par un fichier.
+//
+// 🔴 `key` remplace le chemin dans le cache de teintes, avec la même règle : deux
+// appels de même clé partagent leurs textures. La clé doit donc porter la
+// VERSION de la palette — deux palettes différentes sous la même clé rendraient
+// les textures de la première, mise en cache. C'est à l'appelant de le garantir
+// ; `palette_cache::DollKey` s'en charge en y hachant le contenu.
+int PaletteSlotFromBytes(Entry* e, const char* key, const uint8_t* rgba) {
+  if (!key || !*key || !rgba) return 0;
+  for (size_t i = 0; i < e->pals.size(); ++i)
+    if (e->pals[i].path == key) return static_cast<int>(i);
+
+  PaletteSet set;
+  if (!spract::DecodePalette(rgba, 1024, set.pal)) return 0;
+  set.path = key;
+  e->pals.push_back(std::move(set));
+  return static_cast<int>(e->pals.size() - 1);
+}
+
 // Rend les pixels et les textures d'une entrée, mais PAS l'entrée : les
 // poignées que les appelants gardent restent valides et la ré-analyse aura lieu
 // toute seule au prochain usage.
@@ -502,6 +521,17 @@ bool LoadSpritePair(const char* spr_base, const char* act_base,
   res->res = e;
   res->failed = (e == nullptr);
   res->palette = e ? PaletteSlot(e, pal_path) : 0;
+  return !res->failed;
+}
+
+bool LoadSpritePairRawPalette(const char* spr_base, const char* act_base,
+                              const char* key, const uint8_t* rgba,
+                              SpriteRes* res) {
+  if (!res || !spr_base || !*spr_base) return false;
+  Entry* e = Acquire(spr_base, act_base);
+  res->res = e;
+  res->failed = (e == nullptr);
+  res->palette = e ? PaletteSlotFromBytes(e, key, rgba) : 0;
   return !res->failed;
 }
 

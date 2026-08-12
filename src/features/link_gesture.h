@@ -44,7 +44,10 @@ struct Target {
   // n'ouvre donc pas une description mais le panneau, déjà déplié au bon endroit :
   // c'est ce qu'on veut dire quand on aide quelqu'un, et « le panneau Moonlight,
   // Interface de jeu, huitième entrée » ne marche jamais à la voix.
-  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting };
+  // kStyle — le STYLE d'un joueur : couleurs de corps, palette de cheveux,
+  // coiffure. Le geste gauche en montre un APERÇU (un pantin le portant), le
+  // menu propose de l'essayer ou d'en copier le code.
+  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle };
   uint8_t kind = kNone;
 
   // kItem — la balise RELUE, pas seulement l'id : elle porte le refine, les
@@ -72,6 +75,14 @@ struct Target {
   // sections partagent le même espace de clés (cf. iface::DestLabel).
   std::string setting_key;
 
+  // kStyle — le CODE en entier, et le pseudo de son auteur.
+  //
+  // 🔴 Le code voyage, il ne se résout pas. Un style n'existe nulle part une
+  // fois son porteur hors de vue : le désigner par un pseudo ferait un lien qui
+  // meurt quand la personne change de carte.
+  std::string style_code;
+  std::string style_owner;  // UTF-8
+
   std::string label;  // ce que le menu affiche en tête (UTF-8)
 
   bool valid() const { return kind != kNone; }
@@ -93,6 +104,11 @@ Target FromUrl(const char* url);
 // destinataire de la barre de chat, le clavier dans la saisie. La fenêtre 1:1,
 // elle, reste au menu.
 Target FromPlayer(const char* name_utf8);
+
+// Le STYLE d'un joueur, tel qu'un lien de chat le porte. Rend une cible vide si
+// le code est illisible ou d'une version périmée — même règle qu'une recette
+// absente : un lien qui n'ouvrirait rien vaut moins que pas de lien.
+Target FromStyle(const char* code, const char* owner_utf8);
 
 // Le libellé VISIBLE d'un lien de réglage : « [Réglage: Objet obtenu] ». Composé
 // LOCALEMENT, jamais transmis tout fait — chacun le lit dans SA langue, et le

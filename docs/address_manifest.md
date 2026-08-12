@@ -5,16 +5,16 @@ C'est la check-list du portage : chaque adresse ci-dessous est à retrouver
 dans le nouvel exe, puis à corriger à CHAQUE site listé (un seul pour les
 entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 
-- **660 adresses distinctes**, 858 sites
+- **664 adresses distinctes**, 867 sites
 - ⚓ 49 portées par l'annuaire (`ragnarok/*.h`, `ui/game_texture.h`)
-- 91 présentes dans plusieurs fichiers (candidates annuaire si cohérentes)
+- 93 présentes dans plusieurs fichiers (candidates annuaire si cohérentes)
 
 | Adresse | Nom(s) | Sites | Commentaire |
 |---|---|---|---|
-| `0x00420000` | kSyntheticKeyLParam | `ragnarok\ragnarok_client.cc:58` |  |
+| `0x00420000` | kSyntheticKeyLParam | `ragnarok\ragnarok_client.cc:59` |  |
 | `0x004e52a0` | kStdStringCopyCtor | `features\windows\chat_window.cc:432` | __thiscall(dst, src), retn 4 |
 | `0x004f08f0` | ⚓ kStdStringDtor, kStdStringDtorAddr, kStrDtor | `features\windows\chat_window.cc:95`<br>`ragnarok\globals.h:210`<br>`ragnarok\held_sprites.cc:41` | __thiscall(this) |
-| `0x004f1940` | kStdStringAssign | `features\windows\chat_window.cc:94` | __thiscall(this, src, len) |
+| `0x004f1940` | kStdStringAssign | `features\fx\palette_inject.cc:51`<br>`features\windows\chat_window.cc:94` | __thiscall(this, src, len) |
 | `0x00519df0` | ⚓ kGetFieldAddr | `ragnarok\lua.h:46` | lua_getfield(L, idx, k) |
 | `0x0051a290` | ⚓ kPCallAddr | `ragnarok\lua.h:47` | lua_pcall(L, nargs, nres, errfunc) |
 | `0x0051a4b0` | ⚓ kPushNumberAddr | `ragnarok\lua.h:48` | lua_pushnumber(L, double) |
@@ -36,6 +36,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x0055d680` | kDX9DrawGround | `features\fx\ground_paint.cc:50` | RendererDX9_DrawGroundTiles(this = renderer DX9) |
 | `0x0055d850` | kDX9DrawTerrain | `features\fx\ground_paint.cc:76` | RendererDX9_DrawTerrainSurfaces |
 | `0x005663d0` | ⚓ kAtlasBuildAddr | `ragnarok\render.h:54` |  |
+| `0x00566770` | kConvertRgbaToArgb1555 | `features\fx\palette_inject.cc:45` |  |
 | `0x00566b70` | ⚓ kAtlasGetCachedAddr | `ragnarok\render.h:53` |  |
 | `0x00568760` | kSpriteRef | `features\overlays\status_icon_bar.cc:47` | __thiscall(cache,path,0,0,1,0) -> ref (5 args!) |
 | `0x00573fc0` | kZlibDecompress | `ui\spr_act.cc:36` | __cdecl |
@@ -89,7 +90,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x0073a1f0` | kGetSkillNameLua | `features\overlays\cast_bar.cc:35`<br>`features\overlays\skill_bar.cc:97`<br>`features\windows\character_sheet.cc:2388`<br>`features\windows\craft_atlas.cc:43`<br>`features\windows\monster_info_window.cc:393` | char* GetSkillName(int id) (__cdecl, via Lua) |
 | `0x0073adb0` | kIsLevelUseSkill | `features\windows\character_sheet.cc:1012` | __cdecl(id) : l'effet dépend-il du niveau ? |
 | `0x0075f850` | (littéral) | `ragnarok\configuration.h:62` |  |
-| `0x0079d5e0` | kSelCharRenderPatch | `ragnarok\ragnarok_client.cc:224` | mov ecx,[esi+0x120] |
+| `0x0079d5e0` | kSelCharRenderPatch | `ragnarok\ragnarok_client.cc:225` | mov ecx,[esi+0x120] |
 | `0x0079d610` | kCharSelOnMsg | `features\windows\char_select.cc:118` | vtbl+0x94, RET 0x18 |
 | `0x007a6df0` | kColorChip | `features\patches\inventory_tweaks.cc:141` | FUN_007a6df0(x,y,&r,&g,&b) -> colorchip.bmp pixel |
 | `0x007a7fa0` | kStdVectorIntPushBack | `features\windows\entity_context_menu.cc:91` | __thiscall(vec*, int*) |
@@ -200,7 +201,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00a2c600` | kFriendListAddByName | `features\windows\chat_window.cc:199` |  |
 | `0x00a2cc20` | kWhisperPivotAddr | `features\windows\chat_window.cc:535` |  |
 | `0x00a2e770` | ⚓ kCloseWindowAddr | `ragnarok\uiwnd.h:58` | UIWindowMgr::Close(id) |
-| `0x00a31a30` | (littéral) | `features\windows\char_select.cc:307`<br>`features\windows\char_select.cc:310` |  |
+| `0x00a31a30` | (littéral) | `features\windows\char_select.cc:318`<br>`features\windows\char_select.cc:321` |  |
 | `0x00a33005` | kSnapLoopHook | `features\patches\window_pos_tweaks.cc:336` | MOV ECX,[EBP-0x88] (8B 8D 78 FF FF FF) |
 | `0x00a336d0` | kWndAtPointAddr | `features\gameplay\quick_cast.cc:34` |  |
 | `0x00a388f0` | kFriendListContains | `features\windows\entity_context_menu.cc:99` | __thiscall(mgr, name) |
@@ -217,7 +218,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00a5e960` | (littéral) | `ragnarok\configuration.h:32` |  |
 | `0x00a69eb0` | kActorListFindByGid, kFindByGID | `features\gameplay\player_jump.cc:18`<br>`features\windows\entity_context_menu.cc:95` | ActorList_FindByGID(actorMgr,gid)->acteur |
 | `0x00a727f0` | kActiveIdSetContains | `features\windows\entity_context_menu.cc:92` | __cdecl(aid) -> bool |
-| `0x00a74410` | kCursorRenderFn | `ragnarok\ragnarok_client.cc:82` | CursorMgr_RenderSprite |
+| `0x00a74410` | kCursorRenderFn | `ragnarok\ragnarok_client.cc:83` | CursorMgr_RenderSprite |
 | `0x00a75340` | ⚓ kModeMgrGetActiveAddr | `ragnarok\globals.h:136` |  |
 | `0x00a756e0` | (littéral) | `ragnarok\configuration.h:108` |  |
 | `0x00a797b0` | kQuadTreeQueryPointAddr | `features\gameplay\quick_cast.cc:26` |  |
@@ -225,6 +226,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00a85be0` | kBannedAddr | `ragnarok\pet.cc:105` |  |
 | `0x00a88ab0` | kLoadToMemory | `ui\spr_act.cc:30` | __thiscall(mgr, path, DWORD*, char) |
 | `0x00a892c0` | kFreeBuffer | `ui\spr_act.cc:31` | __stdcall(void*) |
+| `0x00a8d3e0` | kFindCachedRes | `features\fx\palette_inject.cc:31` |  |
 | `0x00a8d4a0` | ⚓ kLoad | `ui\game_texture.h:35` | __fastcall(mgr, _, key) -> tex |
 | `0x00a8e800` | kResAddRef, kTexAddRef | `features\fx\weapon_dual_sprites.cc:21`<br>`features\overlays\basic_info.cc:924` | resource AddRef (ECX = res) |
 | `0x00a8f910` | kResRelease | `features\fx\weapon_dual_sprites.cc:22` | resource Release (ECX = res) |
@@ -232,9 +234,9 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00a94870` | kFmtComma64 | `features\windows\bank_window.cc:42` |  |
 | `0x00a948d0` | kFmtComma, kFmtComma32 | `features\patches\inventory_tweaks.cc:53`<br>`features\windows\bank_window.cc:43`<br>`features\windows\inventory_viewer.cc:86` | __cdecl(value,buf,size) -> thousands-separated |
 | `0x00a94930` | kStdStringFromFmt | `features\windows\character_sheet.cc:1451` | (dst, fmt, …) -> std::string du jeu |
-| `0x00a98400` | kXmlFindChild | `features\systems\native_login.cc:53` | __thiscall(node, name) -> node |
-| `0x00a98460` | kXmlFindNextSibling | `features\systems\native_login.cc:54` | __thiscall(node, name) -> node |
-| `0x00a984c0` | kXmlGetText | `features\systems\native_login.cc:55` | __fastcall(node) -> std::string* |
+| `0x00a98400` | kXmlFindChild | `features\systems\native_login.cc:61` | __thiscall(node, name) -> node |
+| `0x00a98460` | kXmlFindNextSibling | `features\systems\native_login.cc:62` | __thiscall(node, name) -> node |
+| `0x00a984c0` | kXmlGetText | `features\systems\native_login.cc:63` | __fastcall(node) -> std::string* |
 | `0x00a9a7d0` | ⚓ kCallGlobalVaAddr | `ragnarok\lua.h:60` |  |
 | `0x00a9bc90` | ⚓ kExecFileAddr | `ragnarok\lua.h:61` |  |
 | `0x00a9ed30` | kGetAddr | `ragnarok\msgstring.h:25` |  |
@@ -287,15 +289,16 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00c93cb0` | kHitTestFn | `features\overlays\status_icon_bar.cc:113` |  |
 | `0x00c9df00` | (littéral) | `ragnarok\configuration.h:92` |  |
 | `0x00c9e1dd` | (littéral) | `ragnarok\configuration.h:97` |  |
-| `0x00ca0c5d` | (littéral) | `bourgeon.cc:150` |  |
+| `0x00ca0c5d` | (littéral) | `bourgeon.cc:151` |  |
 | `0x00caa2e0` | (littéral) | `ragnarok\configuration.h:89` |  |
-| `0x00cb13c6` | (littéral) | `bourgeon.cc:150` |  |
+| `0x00cb13c6` | (littéral) | `bourgeon.cc:151` |  |
 | `0x00cf8b10` | kRecvDeleteResult | `features\windows\rodex_window.cc:291` |  |
 | `0x00cfd0c0` | kRecvAckReadRodex | `features\windows\rodex_window.cc:235` | Recv_ZC_AckReadRodex_0x0B63 |
 | `0x00d00010` | kApplyCheckNameAck | `features\windows\rodex_window.cc:337` | __stdcall, retn 0x10 |
-| `0x00d21210` | (littéral) | `features\windows\char_select.cc:243`<br>`features\windows\char_select.cc:246` |  |
+| `0x00d21210` | (littéral) | `features\windows\char_select.cc:254`<br>`features\windows\char_select.cc:257` |  |
 | `0x00d272e0` | (littéral) | `ragnarok\configuration.h:110` |  |
 | `0x00d36ee4` | kActFrameCall | `features\fx\weapon_dual_sprites.cc:20` | CALL Act_GetFrame (E8 rel32) |
+| `0x00d3dc90` | kRebuildBodyPalettePath | `features\fx\palette_inject.cc:39` |  |
 | `0x00d403a0` | kBuildWeaponLayers | `features\fx\weapon_dual_sprites.cc:19` | CActorSprite_BuildWeaponLayers |
 | `0x00d54c40` | kShopAddOrMerge | `features\windows\vending_window.cc:373` |  |
 | `0x00d54d80` | kAvailAddOrMerge | `features\windows\vending_window.cc:376` |  |
@@ -309,8 +312,8 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00d57e40` | kBasketRemove | `features\windows\vending_window.cc:385` | (session, rec) — 2 args ! |
 | `0x00d5a720` | kBuildIconPath, kEngBuildPath | `features\minigames\roggle.cc:208`<br>`features\overlays\skill_bar.cc:582`<br>`features\patches\chat.cc:102`<br>`ui\icon_cache.cc:15` | __fastcall(session, 0, idstr, outbuf, 0) |
 | `0x00d5a980` | kGetSkillInfo | `features\overlays\skill_bar.cc:69` | SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé |
-| `0x00d5b580` | (littéral) | `features\overlays\basic_info.cc:126`<br>`features\overlays\basic_info.cc:1085`<br>`features\overlays\basic_info.cc:1294`<br>`features\windows\character_sheet.cc:818`<br>`features\windows\character_sheet.cc:2424` |  |
-| `0x00d5bb40` | kJobDisplayName, kJobNameAddr, kJobResName | `features\overlays\basic_info.cc:128`<br>`features\windows\char_select.cc:383`<br>`features\windows\character_sheet.cc:820`<br>`features\windows\character_sheet.cc:833`<br>`features\windows\entity_inspector.cc:47`<br>`features\windows\rodex_window.cc:369`<br>… +2 | __thiscall(ctx, classId, sex) |
+| `0x00d5b580` | kGetJob | `features\overlays\basic_info.cc:126`<br>`features\overlays\basic_info.cc:1085`<br>`features\overlays\basic_info.cc:1294`<br>`features\windows\character_sheet.cc:818`<br>`features\windows\character_sheet.cc:2424`<br>`features\windows\palette_editor.cc:25` |  |
+| `0x00d5bb40` | kJobDisplayName, kJobNameAddr, kJobResName | `features\overlays\basic_info.cc:128`<br>`features\windows\char_select.cc:394`<br>`features\windows\character_sheet.cc:820`<br>`features\windows\character_sheet.cc:833`<br>`features\windows\entity_inspector.cc:47`<br>`features\windows\rodex_window.cc:369`<br>… +2 | __thiscall(ctx, classId, sex) |
 | `0x00d5bea0` | kShopGetAt | `features\windows\vending_window.cc:357` |  |
 | `0x00d5bf40` | kShopAmountBySrc | `features\windows\vending_window.cc:403` |  |
 | `0x00d5c160` | kAvailGetAt | `features\windows\vending_window.cc:356` |  |
@@ -326,14 +329,14 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00d7f380` | kMailReturnAttachments | `features\windows\rodex_window.cc:65` |  |
 | `0x00d7f480` | kMailClearAttachSlots | `features\windows\rodex_window.cc:66` |  |
 | `0x00d7fa90` | kGetInvItemAddr, kSkillEntryFill | `features\overlays\skill_bar.cc:257`<br>`features\overlays\skill_bar.cc:600`<br>`features\overlays\skill_bar.cc:671`<br>`features\windows\character_sheet.cc:135` | __stdcall(out, id) |
-| `0x00d7fd30` | (littéral) | `features\windows\char_select.cc:878` |  |
+| `0x00d7fd30` | (littéral) | `features\windows\char_select.cc:892` |  |
 | `0x00d7fe40` | kOwnGetCharName | `features\windows\chat_window.cc:549` | __thiscall(ctxKey) -> char* |
 | `0x00d80140` | kMailAttachCountFn | `features\windows\rodex_window.cc:80` | __thiscall(session) -> int |
 | `0x00d806a0` | kActorFindByGid | `features\windows\entity_inspector.cc:30`<br>`ragnarok\pet.cc:102` | __stdcall(gid) |
 | `0x00d80810` | kSkillGetAt | `ragnarok\homunculus.cc:65` |  |
 | `0x00d80950` | kGetHotKey | `features\hotkey_util.cc:22`<br>`features\overlays\skill_bar.cc:455` | GetHotKey(out, category, slot) __stdcall RET 0xc |
 | `0x00d823f0` | kEggToMobAddr | `ragnarok\pet.cc:103` |  |
-| `0x00d84760` | kGetSex | `features\overlays\basic_info.cc:138` | GetSex(session) |
+| `0x00d84760` | kGetSex | `features\overlays\basic_info.cc:138`<br>`features\windows\palette_editor.cc:22` | GetSex(session) |
 | `0x00d87380` | kGetEFSTImg | `features\overlays\status_icon_bar.cc:46` | __thiscall(session,id,layer) -> const char* |
 | `0x00d89ed0` | kTitleGetStr | `features\windows\character_sheet.cc:2036` |  |
 | `0x00d8a010` | kWeaponSpr | `ragnarok\held_sprites.cc:25` |  |
@@ -343,13 +346,13 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00d8a1d0` | kItemIdToWeaponClass | `features\fx\weapon_dual_sprites.cc:23` | Weapon_ItemIdToWeaponClass |
 | `0x00d8e6c0` | kIsBerserkActive | `features\patches\berserk_chat_unlock.cc:19` |  |
 | `0x00d96c20` | kSetShortCut | `features\overlays\skill_bar.cc:56` | SkillMgr_SetShortCutSlot |
-| `0x00d99150` | kJobResolveBodyClass | `ui\doll.cc:66` |  |
+| `0x00d99150` | kJobResolveBodyClass | `ui\sprite_path.cc:15` |  |
 | `0x00d99860` | kAdoptionEligible | `features\windows\entity_context_menu.cc:128` | __stdcall(aid) -> bool |
 | `0x00d99ca0` | kJobGetMaxBaseLevel | `features\overlays\basic_info.cc:2612` | __stdcall(jobId) |
 | `0x00d99d30` | kJobGetMaxJobLevel | `features\overlays\basic_info.cc:2613` | __stdcall(jobId) |
 | `0x00d9a960` | kCntCostume | `features\windows\inventory_viewer.cc:55` | __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34) |
 | `0x00d9aa70` | kCntEquipped | `features\windows\inventory_viewer.cc:54` | __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4) |
-| `0x00d9cf80` | kJobIsDoram | `ui\sprite_path.cc:21` |  |
+| `0x00d9cf80` | kJobIsDoram | `ui\sprite_path.cc:35` |  |
 | `0x00d9d220` | kIsHostileOrSpecial | `features\windows\entity_context_menu.cc:132` | __stdcall(aid, job) -> bool |
 | `0x00da8f90` | kSetItemSlot | `features\overlays\skill_bar.cc:256` |  |
 | `0x00dbbc4f` | ⚓ kGameOperatorNewAddr | `ragnarok\globals.h:195` | __cdecl(size) -> void*, jamais nul |
@@ -363,6 +366,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x00ffe060` | (littéral) | `features\overlays\quest_tracker.h:18` | hunt progress lines ("mob ( x / y )") |
 | `0x00ffff00` | (littéral) | `features\windows\character_sheet.cc:1390` |  |
 | `0x00ffffff` | kDefaultRgb | `features\minigames\roggle.cc:269`<br>`features\minigames\rojeweled.cc:402`<br>`features\minigames\rojeweled.cc:428`<br>`features\overlays\chat_balloon.cc:389`<br>`features\overlays\chat_balloon.h:142`<br>`features\overlays\entity_names.cc:150`<br>… +9 | couleur de repli (ZC_NPC_CHAT, Talkie Box) |
+| `0x01011dbc` | kPaletteResVtable | `features\fx\palette_inject.cc:57` |  |
 | `0x01013e88` | kStrCanvasCy | `features\overlays\basic_info.cc:450` | DAT_01013e88 (soustrait de workBuf[1]) |
 | `0x0101ca18` | kCashVTable | `features\windows\cashshop_window.cc:35` |  |
 | `0x0101d424` | kCharSelWndVtbl | `features\windows\char_select.cc:117` | garde anti-pointeur périmé |
@@ -446,21 +450,21 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x01047d7c` | (littéral) | `features\fx\screen_fx.cc:276`<br>`features\fx\screen_fx.cc:277` |  |
 | `0x0104dee4` | kCameraVtable | `features\gameplay\fps_view.cc:14`<br>`features\gameplay\keyboard_move.cc:21` | g_CCamera_vtable (validates pCam) |
 | `0x010758d8` | kCEZ2STRVtbl | `features\fx\ez_effect_capture.cc:45` | CEZ2STREffect (.str name-based) -> à EXCLURE |
-| `0x01088a18` | kFmtBodyTail | `ui\doll.cc:30` |  |
+| `0x01088a18` | kFmtBodyTail | `ui\sprite_path.cc:21` |  |
 | `0x01088a6c` | kFmtHead | `ui\head_icon.cc:28` |  |
-| `0x01088a80` | kFmtHeadgearDoram | `ui\doll.cc:225` |  |
-| `0x01088a9c` | kFmtHeadgear | `ui\doll.cc:214` |  |
-| `0x01088b88` | kFmtGarmentFlat | `ui\doll.cc:271` | sprite\로브\%s\%s.%s |
-| `0x01088bbc` | kFmtGarmentJob | `ui\doll.cc:272` | sprite\로브\%s\%s\%s_%s.%s |
-| `0x01088c2c` | kRaceDoramAddr | `ui\sprite_path.cc:28` | 도람족 |
-| `0x01088c34` | kRaceHumanAddr | `ui\sprite_path.cc:29` | 인간족 |
+| `0x01088a80` | kFmtHeadgearDoram | `ui\doll.cc:133` |  |
+| `0x01088a9c` | kFmtHeadgear | `ui\doll.cc:122` |  |
+| `0x01088b88` | kFmtGarmentFlat | `ui\doll.cc:179` | sprite\로브\%s\%s.%s |
+| `0x01088bbc` | kFmtGarmentJob | `ui\doll.cc:180` | sprite\로브\%s\%s\%s_%s.%s |
+| `0x01088c2c` | kRaceDoramAddr | `ui\sprite_path.cc:42` | 도람족 |
+| `0x01088c34` | kRaceHumanAddr | `ui\sprite_path.cc:43` | 인간족 |
 | `0x01088c48` | kEzChildVtbl | `features\fx\ez_effect_capture.cc:29` | vtable du nœud EZ enfant (celui que Draw dessine) |
 | `0x010904b8` | kGameModeVtable | `features\gameplay\quick_cast.cc:46`<br>`ragnarok\configuration.h:74` |  |
 | `0x01091520` | (littéral) | `features\fx\screen_fx.cc:297` |  |
 | `0x01091528` | (littéral) | `features\fx\screen_fx.cc:298` |  |
 | `0x010932f0` | kVtblCLoginMode | `features\systems\native_login.cc:16` | garde de mode |
-| `0x011e40d4` | kMouseScreenXAddr | `features\gameplay\quick_cast.cc:37`<br>`ragnarok\ragnarok_client.cc:166` |  |
-| `0x011e40d8` | kMouseScreenYAddr | `features\gameplay\quick_cast.cc:38`<br>`ragnarok\ragnarok_client.cc:167` |  |
+| `0x011e40d4` | kMouseScreenXAddr | `features\gameplay\quick_cast.cc:37`<br>`ragnarok\ragnarok_client.cc:167` |  |
+| `0x011e40d8` | kMouseScreenYAddr | `features\gameplay\quick_cast.cc:38`<br>`ragnarok\ragnarok_client.cc:168` |  |
 | `0x011e40e4` | kMouseLButtonState | `features\windows\entity_context_menu.cc:61` |  |
 | `0x011e40e8` | kMouseRButtonState | `features\windows\entity_context_menu.cc:62` |  |
 | `0x0120451c` | kForbidden1 | `ragnarok\pet.cc:112` |  |
@@ -502,7 +506,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x0136e6c8` | kVecBegin | `features\overlays\status_icon_bar.cc:50` | std::vector<StatusIcon>::begin (raw bytes) |
 | `0x0136e6cc` | kVecEnd | `features\overlays\status_icon_bar.cc:51` | ::end |
 | `0x0159b818` | ⚓ kClientCodePageAddr | `ragnarok\globals.h:186` |  |
-| `0x0159b8a8` | kClientInfoXmlDoc | `features\systems\native_login.cc:52` | racine du document parsé |
+| `0x0159b8a8` | kClientInfoXmlDoc | `features\systems\native_login.cc:60` | racine du document parsé |
 | `0x0159c07c` | kClanStatePtr | `features\windows\chat_window.cc:129` | *(byte*)(*ptr + 0x5C) = clan |
 | `0x0159c188` | kGuildBuf, kGuildObj | `features\patches\status_tweaks.cc:117`<br>`features\windows\character_sheet.cc:418` | std::string buffer/ptr union |
 | `0x0159c198` | kGuildLen | `features\patches\status_tweaks.cc:115` | std::string _Mysize (0 == no guild) |
@@ -535,7 +539,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x015fa94c` | (littéral) | `features\overlays\skill_bar.cc:180` |  |
 | `0x015faadc` | kChannelRegistryAddr | `features\windows\chat_window.cc:78` |  |
 | `0x015faae4` | kDetachedRegistryAddr | `features\windows\chat_window.cc:79` |  |
-| `0x015fb23c` | kAccountSex | `features\windows\char_select.cc:196` |  |
+| `0x015fb23c` | kAccountSex | `features\windows\char_select.cc:207` |  |
 | `0x015fb278` | kHair | `features\overlays\basic_info.cc:139` | style de coiffure |
 | `0x015fb28c` | kClothesCol | `features\overlays\basic_info.cc:140` | palette de vêtements |
 | `0x015fb290` | kHairCol | `features\overlays\basic_info.cc:141` | palette de cheveux |
@@ -543,7 +547,7 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x015fb298` | kHeadTopView | `features\overlays\basic_info.cc:147` | g_OwnLook_HeadTopViewId |
 | `0x015fb29c` | kHeadMidView | `features\overlays\basic_info.cc:148` | g_OwnLook_HeadMidViewId |
 | `0x015fb2a0` | kGarmentView | `features\overlays\basic_info.cc:142` | g_OwnLook_GarmentRobeViewId |
-| `0x015fb2a4` | kGarmentUseNewDrawOnTop | `ui\doll.cc:275` |  |
+| `0x015fb2a4` | kGarmentUseNewDrawOnTop | `ui\doll.cc:183` |  |
 | `0x015fb2d4` | kCartNumItems | `features\windows\cart_viewer.cc:75` |  |
 | `0x015fb2d8` | kCartMaxItems | `features\windows\cart_viewer.cc:76` |  |
 | `0x015fb2dc` | kCartWeight | `features\windows\cart_viewer.cc:77` |  |
@@ -566,9 +570,9 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x015fb3f0` | kEggInvIndex | `ragnarok\pet.cc:27` | -1 = aucun |
 | `0x015fb3f4` | kPrevHunger | `ragnarok\pet.cc:28` | la faim sauvée avant écrasement |
 | `0x015fb99c` | kAutoFeed | `ragnarok\pet.cc:29` | écrit par le handler de ZC 0x02D9 |
-| `0x015fb9a4` | kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAidAddr, kOwnHandlePtr | `features\fx\ez_effect_capture.cc:44`<br>`features\gameplay\quick_cast.cc:41`<br>`features\windows\char_select.cc:198`<br>`features\windows\character_sheet.cc:140`<br>`features\windows\entity_context_menu.cc:151`<br>`features\windows\make_item_window.cc:313`<br>… +1 | handle/AID du joueur |
+| `0x015fb9a4` | kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAid, kOwnAidAddr, kOwnHandlePtr | `features\fx\ez_effect_capture.cc:44`<br>`features\gameplay\quick_cast.cc:41`<br>`features\windows\char_select.cc:209`<br>`features\windows\character_sheet.cc:140`<br>`features\windows\entity_context_menu.cc:151`<br>`features\windows\make_item_window.cc:313`<br>… +2 | handle/AID du joueur |
 | `0x015fb9a8` | kOwnCharId | `features\hotkey_util.cc:23`<br>`features\windows\character_sheet.cc:85` | g_Own_CharId (cf. project_own_session_globals) |
-| `0x015fb9c8` | kOwnJobId, kOwnJobIdAddr | `features\overlays\basic_info.cc:151`<br>`features\windows\monster_info_window.cc:436` | g_Own_JobId |
+| `0x015fb9c8` | kOwnJobId, kOwnJobIdAddr | `features\overlays\basic_info.cc:151`<br>`features\windows\monster_info_window.cc:436`<br>`features\windows\palette_editor.cc:28` | g_Own_JobId |
 | `0x015fb9d0` | (littéral) | `features\overlays\basic_info.cc:68` |  |
 | `0x015fb9d8` | kOwnBaseExpNext | `features\overlays\basic_info.cc:68`<br>`features\overlays\basic_info.cc:2614` | g_Own_BaseExpNext (INT64) |
 | `0x015fb9e0` | kOwnJobExpNext | `features\overlays\basic_info.cc:69`<br>`features\overlays\basic_info.cc:2615` | g_Own_JobExpNext  (INT64) |
@@ -617,10 +621,10 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x015fbab4` | kInvCount | `features\windows\character_sheet.cc:87`<br>`features\windows\inventory_viewer.cc:53` | _Mysize |
 | `0x015fbad8` | kStorageListHead | `features\windows\storage_window.cc:115`<br>`features\windows\storage_window.cc:835` |  |
 | `0x015fbae0` | kCartListHead | `features\windows\cart_viewer.cc:60` | sentinelle std::list (head) |
-| `0x015ff634` | kBodyResNamesBegin | `ui\doll.cc:67` |  |
-| `0x015ff638` | kBodyResNamesEnd | `ui\doll.cc:68` |  |
-| `0x015ff658` | kHeadgearNamesBegin | `ui\doll.cc:190` |  |
-| `0x015ff65c` | kHeadgearNamesEnd | `ui\doll.cc:191` |  |
+| `0x015ff634` | kBodyResNamesBegin | `ui\sprite_path.cc:17` |  |
+| `0x015ff638` | kBodyResNamesEnd | `ui\sprite_path.cc:18` |  |
+| `0x015ff658` | kHeadgearNamesBegin | `ui\doll.cc:98` |  |
+| `0x015ff65c` | kHeadgearNamesEnd | `ui\doll.cc:99` |  |
 | `0x015ff7e0` | kNativeList | `ragnarok\skill_cooldowns.cc:28` | g_ShortCutCooldownList (objet std::list) |
 | `0x015ff804` | kInPartyFlag | `features\windows\entity_context_menu.cc:154` |  |
 | `0x015ff838` | kInputTargetMode | `features\windows\chat_window.cc:126` | 0 public 1 groupe 2 guilde 3 clan 4 alliés |
@@ -647,10 +651,10 @@ entrées ⚓ : leurs déclinaisons passent par l'annuaire).
 | `0x015ff9b4` | kPresent | `ragnarok\homunculus.cc:35` | != 0 <=> un homoncule est invoqué |
 | `0x015ff9c4` | kAtkRange | `ragnarok\homunculus.cc:36` |  |
 | `0x015ffd14` | kShowEquipFlag | `features\windows\character_sheet.cc:141` | 1 = équip visible des autres (validé live) |
-| `0x015ffd60` | kNormalSlots | `features\windows\char_select.cc:145` |  |
-| `0x015ffd64` | kPremiumSlots | `features\windows\char_select.cc:146` |  |
-| `0x015ffd68` | kBillingSlots | `features\windows\char_select.cc:147` |  |
-| `0x015ffd6c` | kCreatableSlots | `features\windows\char_select.cc:148` |  |
+| `0x015ffd60` | kNormalSlots | `features\windows\char_select.cc:156` |  |
+| `0x015ffd64` | kPremiumSlots | `features\windows\char_select.cc:157` |  |
+| `0x015ffd68` | kBillingSlots | `features\windows\char_select.cc:158` |  |
+| `0x015ffd6c` | kCreatableSlots | `features\windows\char_select.cc:159` |  |
 | `0x015ffd78` | ⚓ kStateHolderAddr | `ragnarok\lua.h:33` |  |
 | `0x015ffd80` | kGridIds | `features\overlays\status_icon_bar.cc:52` | int[100] laid-out ids (-1 empty) |
 | `0x015fffa0` | kDropLockGlobal | `features\windows\inventory_viewer.cc:373` |  |

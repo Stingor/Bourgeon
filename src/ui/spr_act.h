@@ -116,6 +116,17 @@ struct Resource {
   // Souvent vide : la plupart des .act n'en portent aucun.
   std::vector<std::string> sound_files;
 
+  // La palette EMBARQUÉE, telle quelle : 256 entrées RGBA, soit le dernier
+  // kilo-octet du .spr. Vide si le fichier n'a aucune image palettisée.
+  //
+  // Les images portent déjà leurs couleurs résolues dans `argb` ; ceci est la
+  // SOURCE, dont on a besoin pour raisonner sur les couleurs elles-mêmes —
+  // détecter les rampes d'un costume, dériver une teinte. Le client fait pareil
+  // de son côté (`CSprRes_Load` la convertit en ARGB1555 et la garde à +0x110,
+  // vérifié en mémoire live), et c'est cette palette-là qu'il applique quand
+  // aucune palette externe n'est assignée.
+  std::vector<uint8_t> palette;
+
   // L'image d'un calque, ou nullptr si l'index sort de sa section.
   const Image* Get(int index, int type) const;
 };

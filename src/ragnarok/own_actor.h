@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>  // size_t (ActorSlotSpritePath)
+
 // ── Ce que le client a DÉJÀ résolu sur l'acteur du joueur ────────────────────
 //
 // Un personnage à l'écran n'est pas fait que de son corps : il tient une arme,
@@ -52,5 +54,22 @@ struct OwnActorSprites {
 // emplacement d'arme périmé n'en garde souvent qu'une, et le dessiner
 // ressusciterait une arme déséquipée.
 bool ReadOwnActorSprites(OwnActorSprites* out);
+
+// Le chemin du `.spr` chargé dans un emplacement de N'IMPORTE QUEL acteur —
+// base sans extension, préfixée `data\`, exactement comme les champs ci-dessus.
+//
+// C'est la même lecture que `ReadOwnActorSprites`, ouverte à un acteur qu'on
+// nous désigne : le composite d'un AUTRE joueur porte ses ressources aux mêmes
+// offsets, et c'est le seul moyen de savoir quel sprite de corps le client a
+// résolu pour lui sans recopier toute la logique de classe et de monture.
+//
+// 🔴 L'emplacement **0 est le CORPS** (cf. les trois branches de
+// `CActorSprite_BuildPartQuads` : partie 0 = corps, partie 1 = tête) ; 5 =
+// l'arme, 6 = sa traînée, 7 = le bouclier.
+//
+// ⚠ `actor` n'est pas validé — l'appelant doit tenir d'une source sûre qu'il
+// pointe un acteur vivant. Les déréférencements sont sous SEH, donc un pointeur
+// mort rend false au lieu de tuer le client, mais ce n'est pas une licence.
+bool ActorSlotSpritePath(void* actor, int slot, char* out, size_t out_size);
 
 }  // namespace rag

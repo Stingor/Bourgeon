@@ -80,6 +80,38 @@ struct DollLook {
   int hair = 0;           // id de coiffure BRUT (le remap est fait ici)
   int hair_color = -1;    // -1 = palette d'origine du sprite
   int clothes_color = -1; // -1 = palette d'origine du sprite
+
+  // Palette du CORPS fournie EN MÉMOIRE : 1024 octets RGBA, comme dans un
+  // `.pal`. Non nul = elle REMPLACE le fichier déduit de `clothes_color`.
+  //
+  // 🔴 Elle existe pour les couleurs que le joueur compose lui-même : celles-là
+  // ne sont écrites dans AUCUN fichier (cf. features/fx/palette_inject), et le
+  // composeur ne savait jusqu'ici teindre qu'à partir d'un chemin sur disque —
+  // ce qui rendait l'éditeur invisible au char-select.
+  //
+  // `body_palette_key` identifie ce contenu dans le cache de teintes du sprite.
+  // Il doit changer avec les octets, pas seulement avec le personnage : deux
+  // palettes différentes sous la même clé ressortiraient sous les textures de la
+  // première. `palette_cache::DollKey` produit une clé correcte.
+  const uint8_t* body_palette = nullptr;
+  const char*    body_palette_key = nullptr;
+
+  // Sprite de CORPS imposé : chemin de base sans extension, tel que le client
+  // l'a résolu (`data\sprite\<race>\몸통\<sexe>\…`). Non nul = il REMPLACE la
+  // déduction faite depuis (job, body, sexe).
+  //
+  // 🔴 Il existe parce que la déduction ÉCHOUE sur les 3e et 4e classes : elle
+  // rejoue `Job_ResolveBodyClass` et sa demi-douzaine de cas particuliers —
+  // styles de corps alternatifs, montures, costumes — et là où elle diverge, le
+  // pantin affiche un AUTRE corps que celui à l'écran (constaté le 2026-08-12 :
+  // une 4e classe rendue en tenue de base). Qui dispose du chemin réel — l'acteur
+  // le porte, cf. `palette_inject::ActorBodySpritePath` — doit le donner ici
+  // plutôt que laisser redeviner.
+  //
+  // ⚠ Sans effet au char-select : il n'y a pas d'acteur, donc pas de chemin à
+  // lire, et la déduction reste le seul recours.
+  const char*    body_spr_override = nullptr;
+
   int head_low = 0;       // accessoire du bas   (0 = aucun)
   int head_top = 0;       // accessoire du haut
   int head_mid = 0;       // accessoire du milieu

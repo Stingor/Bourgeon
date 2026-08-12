@@ -18,6 +18,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,9 @@
 #include "features/systems/native_login.h"  // sondes d'écran (fenêtre 0x115, liste)
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"  // mui::LastItemWheel (verrou molette anti-défilement)
+#include "ui/sprite_path.h"              // BodySpritePath / BodyPalettePath
+#include "features/fx/palette_base.h"    // base d'édition (fusion + rampes)
+#include "features/fx/palette_cache.h"   // couleurs composées par le joueur
 #include "utils/hooking/hook_manager.h"  // détour Net_OnDeleteCharReserveAck
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
@@ -874,6 +878,95 @@ static float RefDollSpanUnits(int anim) {
   return cached[anim];
 }
 
+namespace {
+
+// La palette composée par le joueur pour CE personnage, prête pour le composeur.
+// Rend nullptr s'il n'en a pas — le pantin garde alors son apparence native.
+//
+// 🔴 Le résultat est CACHÉ. Le construire coûte l'analyse complète d'un `.spr`
+// (une centaine d'images), et cet écran dessine une dizaine de pantins par
+// FRAME : le refaire à chaque passage effondrerait la salle. La signature couvre
+// tout ce qui change le résultat, donc le cache s'invalide seul quand le joueur
+// se re-personnalise.
+const uint8_t* CustomBodyPalette(uint32_t char_id, int job, int body, int sex,
+                                 int clothes_color, const char** out_key,
+                                 int* out_hair_color) {
+  *out_key = nullptr;
+  if (char_id == 0) return nullptr;
+
+  struct Cached {
+    uint64_t sig = ~0ull;
+    std::vector<uint8_t> rgba;  // 1024 o, vide = ce perso n'a pas de recette
+    std::string key;
+    int hair = -1;              // couleur de cheveux imposée, -1 = celle du perso
+  };
+  static std::map<uint32_t, Cached> cache;
+
+  // 🔴 La GÉNÉRATION du cache fait partie de la signature. Sans elle, un « ce
+  // personnage n'a pas de couleurs » calculé au premier passage sur cet écran
+  // n'était plus jamais revérifié : les couleurs n'apparaissaient qu'après avoir
+  // quitté et relancé le jeu.
+  const uint64_t sig = (static_cast<uint64_t>(job) << 48) ^
+                       (static_cast<uint64_t>(body) << 32) ^
+                       (static_cast<uint64_t>(sex) << 24) ^
+                       (static_cast<uint64_t>(clothes_color & 0xFFFF) << 8) ^
+                       (static_cast<uint64_t>(fx::palette_cache::Generation())
+                        << 40);
+  Cached& c = cache[char_id];
+  if (c.sig != sig) {
+    c.sig = sig;
+    c.rgba.clear();
+    c.key.clear();
+    c.hair = -1;
+
+    ro::PaletteRecipe recipe;
+    if (fx::palette_cache::Load(char_id, &recipe)) {
+      // La couleur de cheveux n'a besoin d'AUCUN calcul : le composeur sait déjà
+      // teindre une tête à partir d'un numéro, c'est ce qu'il fait pour la
+      // couleur du styliste. On lui en donne un autre.
+      c.hair = recipe.hair_palette_id > 0 ? recipe.hair_palette_id : -1;
+      // 🔴 Pas de COUPE ici : elle vient de la liste de personnages (`v.hair`),
+      // parce que c'est le serveur qui la possède. La relire de notre cache
+      // serait une seconde source de vérité, en retard d'une session.
+      char spr[512];
+      // 🔴 Ici le sprite est forcément DÉDUIT : il n'y a pas d'acteur au
+      // char-select, donc rien sur quoi lire ce que le client a résolu. Sur un
+      // corps où la déduction diverge, l'aperçu différera du rendu en jeu.
+      if (ro::BodySpritePath(job, body, sex, spr, sizeof(spr))) {
+        char pal[160] = {0};
+        // 🔴 La TEINTE DE BASE de la recette prime sur la couleur de vêtement du
+        // personnage. C'est elle qui a servi de base en jeu ; l'ignorer ici
+        // fusionnerait une autre palette, donc détecterait d'autres rampes, et
+        // les réglages tomberaient à côté. C'est ce qui faisait que les couleurs
+        // n'apparaissaient « pas toujours » sur ce pantin.
+        const int couleur =
+            recipe.palette_id > 0 ? recipe.palette_id : clothes_color;
+        if (couleur >= 0)
+          ro::BodyPalettePath(couleur, job, pal, sizeof(pal));
+        fx::palette_base::Body base;
+        if (fx::palette_base::BuildFromPaths(spr, pal[0] ? pal : nullptr,
+                                             &base) == fx::palette_base::kOk) {
+          c.rgba.assign(1024, 0);
+          if (ro::ApplyRecipe(base.base.data(), base.base.size(), base.ramps,
+                              base.ramp_count, recipe, c.rgba.data(),
+                              c.rgba.size()))
+            c.key = fx::palette_cache::DollKey(char_id, c.rgba.data());
+          else
+            c.rgba.clear();
+        }
+      }
+    }
+  }
+  // La couleur de cheveux est rendue MÊME sans palette de corps : les deux
+  // choix sont indépendants, et un joueur peut n'avoir teint que ses cheveux.
+  if (out_hair_color) *out_hair_color = c.hair;
+  if (c.rgba.empty() || c.key.empty()) return nullptr;
+  *out_key = c.key.c_str();
+  return c.rgba.data();
+}
+
+}  // namespace
+
 void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
                            float box_h, const charsel::Seat& pose,
                            int seat_index) {
@@ -918,6 +1011,14 @@ void CharSelect::DrawDollAt(const CharView& v, float cx, float chair_y,
   dl.hair          = v.hair;
   dl.hair_color    = v.hair_color;
   dl.clothes_color = v.clothes_color;
+  // Couleurs composées par le joueur : elles priment sur le `.pal` de vêtement.
+  // Sans ça, un personnage recoloré s'afficherait ici dans son apparence native
+  // puis changerait en entrant en jeu.
+  int hair_custom = -1;
+  dl.body_palette = CustomBodyPalette(v.gid, v.job, v.body, v.sex_eff,
+                                      v.clothes_color, &dl.body_palette_key,
+                                      &hair_custom);
+  if (hair_custom > 0) dl.hair_color = hair_custom;
   dl.head_low      = v.head_low;
   dl.head_top      = v.head_top;
   dl.head_mid      = v.head_mid;
