@@ -495,13 +495,17 @@ void PaletteEditor::TickDraft() {
   if (ImGui::GetTime() - draft_tick_ < kDraftDelay) return;
   draft_tick_ = 0.0;
 
-  // 🔴 On n'enregistre que l'ÉCART avec ce qui est posé. Revenir à son style
-  // validé doit faire disparaître le brouillon, sinon le bouton continuerait de
-  // proposer un état que le joueur porte déjà — et le premier clic dessus ne
-  // ferait rien, ce qui se lit comme une panne.
-  if (courant == fx::palette_cache::EncodeShare(applied_))
-    fx::palette_cache::DraftSave(cid, nullptr);
-  else
+  // 🔴 On n'enregistre que l'ÉCART avec ce qui est posé : un état identique à ce
+  // que le personnage porte n'est pas un brouillon, et le proposer ferait un
+  // bouton dont le clic ne change rien — ce qui se lit comme une panne.
+  //
+  // ⛔ Mais revenir à cet état n'EFFACE PAS le brouillon, et cette asymétrie est
+  // le cœur du filet. Elle l'a d'ailleurs été à l'envers : le brouillon était
+  // effacé dès que l'écart se refermait, si bien que « Revenir à mon style »
+  // aurait jeté ce qu'il est censé rendre récupérable. Le brouillon garde donc
+  // le dernier état NON VALIDÉ — c'est ce que son nom promet — et ne disparaît
+  // qu'à la validation ou à la suppression du style.
+  if (courant != fx::palette_cache::EncodeShare(applied_))
     fx::palette_cache::DraftSave(cid, &recipe_);
 }
 
@@ -1512,24 +1516,66 @@ void PaletteEditor::OnRenderUI() {
       // MATIÈRE du dégradé — mais il doublait une commande déjà présente et
       // demandait de « sélectionner » une pièce avant d'agir. Le nuancier suffit,
       // et tout réglage est désormais une couleur imposée.
-      if (ro::RoButton(i18n::Tr("Tout réinitialiser")))
+      // ── TROIS retours en arrière, et ils ne se recouvrent pas ────────────
+      //
+      // 🔴 La confusion entre eux a été signalée deux fois, et la deuxième a
+      // montré qu'il en MANQUAIT un. Ils répondent à trois questions distinctes
+      // que le joueur se pose vraiment :
+      //   « annule mes retouches »  -> Revenir à mon style   (ce qu'il PORTE)
+      //   « donne-moi une page blanche » -> Repartir de zéro (état CANONIQUE)
+      //   « enlève tout ça »        -> Supprimer mon style   (serveur COMPRIS)
+      // Le premier manquait, et « Tout réinitialiser » en tenait lieu de
+      // travers : il rendait une page blanche là où on demandait un retour en
+      // arrière. D'où son nouveau nom, qui dit ce qu'il fait au lieu de le
+      // suggérer.
+      const bool a_des_retouches =
+          fx::palette_cache::EncodeShare(recipe_) !=
+          fx::palette_cache::EncodeShare(applied_);
+      if (!a_des_retouches) ImGui::BeginDisabled();
+      if (ro::RoButton(i18n::Tr("Revenir à mon style"))) {
+        // 🔴 Le brouillon est mis à l'abri AVANT, et sans attendre le délai
+        // d'inactivité : ce bouton jette exactement ce qu'il protège. Sans ça,
+        // un clic malheureux perdrait une demi-heure de réglages sans retour
+        // possible — alors que « Dernier style non validé » est juste à côté.
+        if (OwnCharId() != 0)
+          fx::palette_cache::DraftSave(OwnCharId(), &recipe_);
+        draft_tick_ = 0.0;
+        recipe_ = applied_;
+        touched_ = true;  // geste explicite (cf. SeedFromShared)
+        // 🔴 RECHARGER : la teinte de base peut différer, donc la fusion et le
+        // découpage des rampes aussi.
+        Reload();
+      }
+      if (!a_des_retouches) ImGui::EndDisabled();
+      if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+        ImGui::TextUnformatted(
+            a_des_retouches
+                ? i18n::Tr("Annule tes retouches en cours et revient à ce que "
+                           "ton personnage porte. Ton travail reste "
+                           "récupérable par « Dernier style non validé ».")
+                : i18n::Tr("Rien à annuler : l'aperçu montre déjà ce que ton "
+                           "personnage porte."));
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+      }
+
+      if (ro::RoButton(i18n::Tr("Repartir de zéro")))
         ImGui::OpenPopup("##confirm_reset");
       if (ImGui::IsItemHovered()) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
         ImGui::TextUnformatted(
-            i18n::Tr("Remet l'aperçu à zéro : les huit pièces, la teinte de "
-                     "base, la couleur de cheveux et la coiffure. Ton "
-                     "personnage ne change qu'à la validation."));
+            i18n::Tr("Page blanche : les huit pièces, la teinte de base, la "
+                     "couleur de cheveux et la première coiffure. Ce n'est PAS "
+                     "un retour à ce que tu portes. Ton personnage ne change "
+                     "qu'à la validation."));
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
       }
 
-      // 🔴 Deux « retours en arrière » DISTINCTS, et la confusion entre les deux
-      // a été signalée : celui du dessus remet l'aperçu à zéro (on garde une
-      // palette personnalisée), celui du dessous SUPPRIME la palette. Le second
-      // ne restaure pas « ce qui a été partagé en dernier » — il efface, ici et
-      // sur le serveur. D'où un libellé qui dit ce qu'il fait.
+      // Le troisième EFFACE, ici et sur le serveur — d'où un libellé qui le dit.
       if (ro::RoButton(i18n::Tr("Supprimer mon style")))
         ImGui::OpenPopup("##confirm_suppr");
       if (ImGui::IsItemHovered()) {
