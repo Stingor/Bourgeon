@@ -32,7 +32,7 @@ void DrawRules() {
       BulletWrapped(i18n::Tr("Tout ce qui se rapporte au serveur est la propriété exclusive des administrateurs."));
       BulletWrapped(i18n::Tr("Le langage SMS est à proscrire."));
       BulletWrapped(i18n::Tr("L'exploitation d'un bug ou abus = sanction. Prévenez immédiatement un administrateur."));
-      BulletWrapped(i18n::Tr("Si vous abusez du cashshop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus..."));
+      BulletWrapped(i18n::Tr("Si vous abusez du Vote Shop en votant avec plusieurs comptes forum… \ngare à vous c'est comme avec les impôts, \ntant qu'on est pas contrôlé c'est la fête, mais quand ils vous tombent dessus..."));
       ImGui::TreePop();
     }
     Spacing();

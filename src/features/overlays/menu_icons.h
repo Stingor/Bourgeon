@@ -33,7 +33,19 @@ class MenuIcons : public Plugin {
   bool geometry_dirty_ = false;
 
   struct Icon {
-    const char* name;   // bitmap base name -> \menu_icon\bt_<name>.bmp
+    const char* name;   // bitmap base name -> \<dir><name>.bmp
+    // Dossier + préfixe du bitmap sous 유저인터페이스\. Les 25 icônes de la
+    // grille sont toutes en « menu_icon\bt_ », mais le bouton du cash shop —
+    // qui rejoint la liste pour hériter du mode édition, de l'aimantage et de
+    // la persistance — est une fenêtre native à lui et son art vit ailleurs.
+    const char* dir = nullptr;
+    // Fenêtre native à qui adresser le clic : la grille (0x133) pour les 25
+    // icônes, sa propre fenêtre (190) pour le bouton du cash shop. C'est ce
+    // champ, et non `cmd_id`, qui sépare les deux familles partout ailleurs
+    // (signalement « nouveau », liste de réglages, position par défaut) : les
+    // deux commandes 0xC0 du client, « status » et « cash shop », se
+    // confondraient sinon.
+    int         wnd_id = 0;
     int         cmd_id; // UI command id (routed on click)
     int         msg_id; // tooltip message id
     void*       tex = nullptr;  // IDirect3DTexture9* (lazily loaded)
@@ -64,7 +76,11 @@ class MenuIcons : public Plugin {
   bool icons_built_ = false;
   bool grid_hidden_ = false;
   bool pending_refresh_ = false;  // request a server clif_refresh (drains in OnTick)
-  int  pending_cmd_ = 0;   // click queued in OnRenderUI, dispatched from OnTick
+  // Clic mis en file pendant le rendu, rejoué en phase d'input. On garde l'ID de
+  // la fenêtre destinataire, JAMAIS son pointeur : le client détruit ses
+  // fenêtres, et une frame plus tard le pointeur serait libéré.
+  int  pending_wnd_ = 0;
+  int  pending_cmd_ = 0;
   int  dragging_    = -1;  // index of the icon being dragged in edit mode, else -1
   float drag_off_x_ = 0.0f, drag_off_y_ = 0.0f;  // mouse-to-origin offset at grab
   std::vector<Icon> icons_;
@@ -72,7 +88,10 @@ class MenuIcons : public Plugin {
   void BuildIconList();         // populate icons_ with the functional icons
   void RefreshBadges();         // relève les commandes signalées par le natif
   void HideNativeGrid(bool hide);
-  void DispatchCommand(int cmd_id);
+  // Accorde le bouton natif du cash shop et notre copie ImGui : un seul endroit
+  // décide qui des deux se voit (cf. le pavé de commentaire dans le .cc).
+  void SyncCashShopButton();
+  void DispatchCommand(int wnd_id, int cmd_id);
   // Magnetic snap of value v (extent ext) on one axis to other icons' edges.
   float SnapIcon(float v, float ext, int self, bool y_axis) const;
 };

@@ -5,6 +5,10 @@ niveaux, HP/SP, Zeny, poids, barres d'exp) et de la grille d'icônes de menu qui
 se docke juste en dessous : constructeurs, vtables, layout, dispatch des messages,
 sources des valeurs live, et comment Bourgeon masque/réimplémente le tout.
 
+Le **§4** documente en plus le bouton « cash shop » posé près de la minimap
+(`UInCash_CallWnd`, ID 190) : ce n'est pas une icône de la grille, mais son
+réglage vit dans la même section du panneau Moonlight.
+
 Client `20250716` (Moonlight-Destiny), base `0x00400000`, **pas de rebase ASLR**
 (Ghidra == live). Adresses/offsets renommés + commentés dans Ghidra, plusieurs
 points vérifiés en live avec x32dbg. Réimplémentation ImGui côté client dans
@@ -245,6 +249,146 @@ brute de `+0x1c/+0x20` à `-10000`. Attraper à la création évite le flicker d
   même code que le bouton natif. La déférence à `OnTick` réduit sans éliminer.
 - Cacher l'ImGui quand le HUD est remplacé (carte monde) : `FindWindow(0x8c) != null`
   est un signal per-frame fiable (la fenêtre est détruite à la fermeture).
+
+---
+
+## 4. Le bouton « cash shop » près de la minimap — `UInCash_CallWnd` (ID 190)
+
+Le petit bouton carré posé au coin haut-droit, contre la minimap, qui ouvre le
+cash shop. **Ce n'est pas une icône de la grille du §2** : c'est une `UIWindow` à
+elle seule, et elle a son propre interrupteur — la commande de chat `/cashshop`.
+
+### Identité & création
+- Window-manager **ID 190 (`0xBE`)** ; singleton caché à `g_UIWindowMgr+0x24C`
+  (= `0x0131f734`). RTTI/vtable **`??_7UInCash_CallWnd@@6B@` @ `0x010349e4`**.
+- ctor **`UInCash_CallWnd_ctor` @ `0x0088f870`** — `UIWindow_composite_ctor`,
+  `operator new(0xB4)` = objet de 180 octets.
+- `MakeWindow` case 190 @ **`0x00a3d3f7`** : `SetSize(43, 43)` (`0x2B`) puis
+  `SetPos(largeur_écran − 187, 16)` — la largeur venant de
+  `*(g_SceneRenderQueue 0x012515f8) + 0x28`.
+- **Seul créateur : `GameMode_OnEnterMapSetup` @ `0x00c6bbad`**, à CHAQUE entrée
+  de carte, sauf quand la map courante est `new_event.rsw`. La création n'est
+  **pas** gardée par l'option (contrairement à sa voisine, la fenêtre `0x9F`,
+  gardée par `OptionInfo_GetValue(0x10E)`) : c'est la queue commune du case,
+  ci-dessous, qui applique le réglage.
+- Slots de vtable utiles : **`+0x38` = `UIWindow_SetVisible` (`0x005aad80`)**,
+  `+0x3c` = `OnCreate`, `+0x94` = `OnMsg`. `DrawContent` (`+0x50`) est un **stub** :
+  la fenêtre ne peint rien, elle n'est que le porteur de son bouton enfant.
+
+### Contenu & clic
+- **`UInCash_CallWnd_OnCreate` @ `0x008b2790`** crée l'**unique** enfant, un
+  `UIBitmapButton` dont les TROIS états (normal / survol / pressé) pointent le
+  **même** fichier : `유저인터페이스\basic_interface\NC_CashShop.bmp`. Command id
+  posé à **192 (`0xC0`)**, position enfant `(0, 0)`.
+- **`UInCash_CallWnd_OnMsg` @ `0x008cf7c0`** — action 6, commande 192 :
+  - Steam/Stove (`g_IsStoveLive` `0x015ffcb2`) : `GameMode::SendMsg(cmd 331, 2)` ;
+  - sinon : `GameMode::SendMsg(cmd 323, 0)` → envoi de **CZ_SE_CASHSHOP_OPEN2
+    `0x0B6D`**, donc le même chemin d'ouverture que décrit dans le RE du cash shop.
+
+### L'interrupteur : la commande `/cashshop`
+Les commandes de jeu sont indexées par la **table `TT_*` @ `0x01008120`** (296
+entrées, `TT_GetIndexByName` @ `0x0068d140`), publiée en globales Lua par
+`TT_SerializeTableToLua` @ `0x0068e510`. Celle qui nous intéresse est
+**`TT_SHOW_CASHSHOP_BTN_ON_OFF` = index 218 (`0xDA`)**.
+
+Deux chemins écrivent cette option, et ils font la même chose :
+
+| Chemin | Adresse | Geste |
+|---|---|---|
+| Commande de chat `/cashshop` | `Chat_HandleChatMessage` case 218 @ `0x00c7c83b` | **BASCULE** : `FindWindow(190)` (sort si nul), `OptionInfo_SetValue(218, !valeur)`, puis `wnd->vtbl[0x38](valeur)` |
+| Menu « Game Settings » | `GameSettingsCmd_ShowCashShopBtn_OnOff` @ `0x00693300` (enregistré par `CGameSettingsMgr_Init_Func` @ `0x00691c20`) | **IMPOSE** une valeur, même paire `OptionInfo_SetValue` + `SetVisible` |
+
+- Accesseurs de l'option : **`OptionInfo_GetValue` @ `0x0068ea70`** et
+  **`OptionInfo_SetValue` @ `0x0068fd50`**, tous deux `__cdecl(indexTT[, valeur])`,
+  sur la table de hachage `0x012515fc`. `GetValue` rend le booléen dans l'octet
+  faible d'EAX, et **0 quand la clé est absente**.
+- **Persistance : le client s'en charge.** `OptionInfo_SaveToFile` @ `0x00d78970`
+  (appelée depuis `WinMainCRTStartup_Run`, donc à la fermeture propre du jeu)
+  appelle la globale Lua `SaveToFileCmdOnOffValueEx` qui déverse la liste on/off
+  dans `SaveData\OptionInfo.lua` ; au démarrage, `OptionInfo_LoadAndApplyAll`
+  la relit via `SetCmdOnOffList` → `c_SetCmdOnOffList` @ `0x00a9ce50`.
+- **La visibilité survit aux changements de carte toute seule** : la queue commune
+  du case 190 @ **`0x00a3d473`** (atteinte aussi bien par la branche « neuve » que
+  par la branche « singleton déjà là ») refait
+  `SetVisible(wnd, OptionInfo_GetValue(218))`.
+
+### Voisins de la même famille (mêmes gestes, autres fenêtres)
+| Commande | Index TT | Cible |
+|---|---|---|
+| `TT_SHOW_CASHSHOP_BTN_ON_OFF` | 218 | fenêtre **190** — `GameSettingsCmd_ShowCashShopBtn_OnOff` `0x00693300` |
+| `TT_SHOW_GOLDPCCAFE_ON_OFF` | 219 | fenêtre **267** (`0x10B`) — `0x00693360` |
+| `TT_SHOW_ROULETTE_BTN_ON_OFF` | 220 | `0x00693470` |
+| `TT_SHOW_MINIMAP_BUTTON_ONOFF` | 223 | pas de fenêtre dédiée : `OnMsg 502` sur `dword_131f6a8` — `0x00693410` |
+
+### Côté Bourgeon — l'interrupteur
+Case à cocher **« Bouton du cash shop »** dans la section *Menu Icons* du panneau
+Moonlight ([`menu_icons.cc`](../src/features/overlays/menu_icons.cc),
+`MenuIcons::DrawSettings`). Elle est **hors** du `BeginDisabled` de la section :
+ce bouton est une fenêtre du client, il reste réglable que la grille ImGui
+remplace la native ou non.
+
+Elle écrit la même option que la commande de chat — `OptionInfo_SetValue(218, v)` —
+à une nuance près : elle **impose** la valeur au lieu de basculer, sinon la case
+et le jeu pourraient diverger. Conséquences voulues :
+
+- **rien à persister côté Bourgeon** pour l'état on/off (pas de clé YAML) :
+  l'option est celle du client, écrite dans `SaveData\OptionInfo.lua` ;
+- taper `/cashshop` en jeu met la case à jour toute seule, puisqu'elle **lit**
+  l'option à chaque frame plutôt que de tenir un état à elle ;
+- hors carte, quand la fenêtre n'existe pas encore, la case fonctionne quand même
+  (l'option suffit, la prochaine création l'appliquera) — là où la commande
+  native, elle, sort sans rien faire sur un `FindWindow(190)` nul.
+
+### Côté Bourgeon — le rendre déplaçable
+Le bouton est une **entrée de plein droit de `icons_`**, la liste du §3 : il hérite
+donc du mode édition, de l'aimantage aux icônes voisines et à la grille
+d'alignement, du clamp à l'écran et de la persistance par nom (clé `NC_CashShop`
+sous `menu_icons:` dans le YAML). Le choix était « bouger la fenêtre native » ou
+« la masquer et la redessiner » : c'est le second, parce que c'est déjà toute
+l'architecture du fichier — aucune mécanique de glisser à réécrire.
+
+Deux champs neufs de `Icon` portent les seules différences avec une icône de grille :
+
+| Champ | Icônes de la grille | Bouton du cash shop |
+|---|---|---|
+| `dir` (dossier + préfixe sous `유저인터페이스\`) | `menu_icon\bt_` | `basic_interface\` |
+| `wnd_id` (destinataire du clic) | `0x133` → handler `FUN_00814a70` | `190` → son propre `OnMsg(6, 192)` |
+
+`wnd_id` — et non `cmd_id` — sépare les deux familles **partout** : le client a
+DEUX commandes `0xC0`, « status » et « cash shop ». Trois endroits en dépendent :
+
+- `RefreshBadges` : sans le test, le badge « nouveau » de *status* allumerait le
+  bouton du cash shop, qui chercherait ensuite un `NC_CashShop_new.bmp` inexistant ;
+- le **nom de la fenêtre ImGui** porteuse est `##micon_<wnd>_<cmd>` : deux fenêtres
+  ImGui homonymes n'en feraient qu'une, la seconde héritant de la position et de la
+  zone cliquable de la première ;
+- la liste show/hide des réglages saute l'entrée (sa case est celle ci-dessus).
+
+`MenuIcons::SyncCashShopButton` est le **seul** endroit qui décide qui, du natif ou
+de notre copie, se voit. Elle tourne depuis `OnTick` — pas seulement aux bascules —
+parce que le client **recrée sa fenêtre visible à chaque entrée de carte**. Règle :
+le natif ne se montre que si l'option est allumée **et** que notre copie ne prend
+pas le relais, « prendre le relais » exigeant que son bitmap soit *effectivement*
+chargé (sinon : première frame, ou texture perdue à une remise à zéro du device,
+et il n'y aurait plus aucun bouton).
+
+**Infobulle = `MSI_CASHSHOP` (`0xC41`)**, le nom que le SERVEUR donne à sa
+boutique : moonlight a rebaptisé toute la famille dans sa propre msgstringtable,
+donc la ligne vaut **« Vote Shop »** — la monnaie n'y est pas de l'argent mais les
+votes des joueurs. La lire au lieu de l'écrire en dur fait suivre d'office une
+prochaine retouche de la table, et c'est déjà ce que fait l'icône « shop » de la
+grille (`{"shop", 0x200, 0xC41}`), comme le titre de la fenêtre dans
+[`cashshop_window.cc`](../src/features/windows/cashshop_window.cc).
+
+> ⚠ **Ne PAS prendre `MSI_OUTSIDE_CASHSHOP_BTN_TOOLTIP` (id 3582)**, dont le nom
+> promet pourtant l'infobulle de ce bouton exact : le natif ne s'en sert nulle
+> part et la ligne n'a jamais été remplie — elle vaut « Title », comme sa voisine
+> 3580 vaut « Material ». Vérifier le TEXTE d'un MSI avant de s'y fier :
+> `D:\Mes documents\GitHub\references\msgstringtable.csv`, n° de ligne = id (0-based).
+
+**Nommage à l'écran : « Vote Shop », jamais « cash shop ».** Le nom natif ne
+survit que dans les commentaires, les noms de symboles et le nom de la commande
+`/cashshop` ; toute chaîne visible du joueur dit « Vote Shop ».
 
 ---
 

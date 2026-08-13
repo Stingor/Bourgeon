@@ -573,7 +573,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
           if (shop->imgui_enabled_ && shop->FindItem(id, nullptr, &price)) {
             char label[80];
             std::snprintf(label, sizeof(label),
-                          i18n::Tr("Vote shop : ajouter au panier (%d pts)"), price);
+                          i18n::Tr("Vote Shop : ajouter au panier (%d pts)"), price);
             if (ImGui::MenuItem(label)) shop->OpenWithItem(id);
           }
         }

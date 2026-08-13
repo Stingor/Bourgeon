@@ -1272,7 +1272,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Shop joueur (vending, buying store et achat chez un vendeur)\n"
       "  • Feuille de personnage (Alt+F), grimoire compris : l'icône « Skill » et\n"
       "    Alt+S ouvrent son onglet Grimoire au lieu de la fenêtre native\n"
-      "  • Cash shop et shops PNJ\n"
+      "  • Vote Shop et shops PNJ\n"
       "  • Banque de zeny (Ctrl+B), ouverte aussi par le sac de zeny du footer\n"
       "    de l'inventaire\n"
       "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"

@@ -3074,14 +3074,14 @@ void ItemDescWindow::RenderItemWindow() {
       if (shop->imgui_enabled_ && shop->FindItem(snap.id, nullptr, &price)) {
         if (action_row) ImGui::SameLine();
         char vs[64];
-        std::snprintf(vs, sizeof(vs), i18n::Tr("Vote shop : %d pts%s"), price, selId);
+        std::snprintf(vs, sizeof(vs), i18n::Tr("Vote Shop : %d pts%s"), price, selId);
         // Même remarque que pour le bouton alootid ci-dessus : le doré ne
         // survivait pas au skin (art dessiné main), et le blanc du texte se
         // serait perdu sur lui. Ce bouton n'a pas d'état à signaler — son
         // libellé porte le prix, qui est toute l'information.
         if (ro::RoSmallButton(vs)) shop->OpenWithItem(snap.id);
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(i18n::Tr("Ouvre le vote shop avec cet objet dans le panier."));
+          ImGui::SetTooltip(i18n::Tr("Ouvre le Vote Shop avec cet objet dans le panier."));
       }
     }
 

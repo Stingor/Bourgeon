@@ -133,11 +133,13 @@ void* LoadGameTexture(const char* path) {
   return reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
 }
 
-// Loads \menu_icon\bt_<name>.bmp via the game, decodes BGRA->A8R8G8B8 with
-// magenta colorkey, uploads to a D3D9 texture. Returns the texture or nullptr
-// (and fills w/h when known).
-void* LoadIconTexture(const char* name, int* out_w, int* out_h) {
-  std::string path = std::string(kUIDir) + "\\menu_icon\\bt_" + name + ".bmp";
+// Loads \<dir><name>.bmp via the game, decodes BGRA->A8R8G8B8 with magenta
+// colorkey, uploads to a D3D9 texture. Returns the texture or nullptr (and
+// fills w/h when known). `dir` porte le dossier ET le préfixe de nom, parce que
+// les deux changent d'une famille d'icônes à l'autre (« menu_icon\bt_ » pour la
+// grille, « basic_interface\ » pour le bouton du cash shop).
+void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h) {
+  std::string path = std::string(kUIDir) + "\\" + dir + name + ".bmp";
   void* tex = LoadGameTexture(path.c_str());
   if (!tex) return nullptr;
   const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
@@ -172,6 +174,9 @@ void PatchValue(uintptr_t addr, T value) {
   }
 }
 
+// Dossier + préfixe de nom des bitmaps de la grille, sous 유저인터페이스\.
+constexpr char kGridIconDir[] = "menu_icon\\bt_";
+
 // name, cmd_id, tooltip msg_id (from UIMenuIcon_SetHelpTextByCmdId @0x00814550).
 struct IconDef { const char* name; int cmd_id; int msg_id; };
 const IconDef kIconTable[] = {
@@ -185,6 +190,92 @@ const IconDef kIconTable[] = {
     {"adventurerAgency", 0x220, 0xDBA}, {"repute", 0x237, 0xEF3},
     {"adventureguide", 0x245, 0xFD5},   {"probability", 0x24B, 0x1017},
 };
+
+// ── Le bouton « cash shop » posé près de la minimap ────────────────────────
+// Ce n'est PAS une icône de la grille : c'est une fenêtre native à elle seule,
+// `UInCash_CallWnd` (id 190 / 0xBE, vtable 0x010349e4). Son seul créateur est
+// `GameMode_OnEnterMapSetup` @0x00c6bbad, qui la fabrique à CHAQUE entrée de
+// carte (sauf sur `new_event.rsw`) ; le case 190 de MakeWindow @0x00a3d3f7 la
+// dimensionne 43x43 et la pose en (largeur_écran - 187, 16), c'est-à-dire au
+// coin haut-droit, contre la minimap. Elle ne dessine rien elle-même (son
+// DrawContent est un stub) : son unique enfant est un bouton bitmap
+// `\basic_interface\NC_CashShop.bmp` dont le clic part en
+// `GameMode::SendMsg(cmd 323)` -> CZ_SE_CASHSHOP_OPEN2 0x0B6D.
+//
+// Le client sait déjà la masquer, et c'est ce geste-là qu'on rejoue : la
+// commande de chat `/cashshop` (`Chat_HandleChatMessage` case 218 @0x00c7c83b)
+// BASCULE l'option de jeu TT_SHOW_CASHSHOP_BTN_ON_OFF — l'index 218 de la table
+// des commandes @0x01008120 — puis applique `UIWindow_SetVisible(190, valeur)`.
+// On impose une valeur au lieu de basculer, sans quoi la case à cocher et le
+// jeu pourraient diverger ; pour le reste c'est la MÊME option, donc taper
+// `/cashshop` en jeu met la case à jour toute seule.
+//
+// 🔴 Rien à persister de notre côté, et rien à réappliquer : l'option vit dans
+// la table OptionInfo du client, que `OptionInfo_SaveToFile` (appelée à la
+// fermeture propre du jeu) écrit dans `SaveData\OptionInfo.lua` ; et la queue
+// commune du case 190 @0x00a3d473 refait `SetVisible(OptionInfo_GetValue(218))`
+// à chaque création, donc le réglage survit seul aux changements de carte.
+//
+// ── Et pourquoi il est DANS `icons_` ──────────────────────────────────────
+// Pour être déplaçable comme les 25 autres, il fallait choisir : bouger la
+// fenêtre native, ou la masquer et la redessiner. C'est le second, parce que
+// c'est déjà toute l'architecture de ce fichier — l'entrée gagne d'un coup le
+// mode édition, l'aimantage aux voisines, le clamp à l'écran et la persistance
+// par nom, sans une ligne de plus. Deux différences seulement avec une icône de
+// grille, portées par les champs `dir` et `wnd_id` de `Icon` : son art vit dans
+// `basic_interface\` et son clic va à SA fenêtre (OnMsg action 6, commande 192)
+// au lieu du handler de la grille.
+//
+// 🔴 Le natif recrée sa fenêtre VISIBLE à chaque entrée de carte (cf. plus haut)
+// : la masquer une fois ne suffit pas, d'où `SyncCashShopButton` rejouée depuis
+// `OnTick`. Elle est le SEUL endroit qui décide qui du natif ou de notre copie
+// se voit — règle : le natif ne se montre que si l'option du client est allumée
+// ET que notre remplacement ne prend pas le relais.
+constexpr int kCashShopBtnWndId  = 190;  // UInCash_CallWnd
+constexpr int kTtShowCashShopBtn = 218;  // TT_SHOW_CASHSHOP_BTN_ON_OFF
+constexpr uintptr_t kOptionInfoGetValue = 0x0068ea70;  // __cdecl(ttIndex) -> bool
+constexpr uintptr_t kOptionInfoSetValue = 0x0068fd50;  // __cdecl(ttIndex, value)
+using OptionInfoGetFn = uint8_t(__cdecl*)(unsigned int);
+using OptionInfoSetFn = int(__cdecl*)(unsigned int, char);
+
+// L'icône côté Bourgeon. `NC_CashShop.bmp` sert les TROIS états du bouton natif
+// (normal / survol / pressé) : un seul bitmap à charger.
+constexpr char kCashShopIconDir[]  = "basic_interface\\";
+constexpr char kCashShopIconName[] = "NC_CashShop";
+constexpr int  kCashShopCmdId = 192;    // commande du bouton enfant (0xC0)
+// Infobulle : **MSI_CASHSHOP**, le nom que le serveur donne à sa boutique — soit
+// « Vote Shop » sur moonlight, où la monnaie n'est pas de l'argent mais les votes
+// des joueurs. Le lire au lieu de l'écrire en dur, c'est suivre d'office une
+// prochaine retouche de la table, et c'est déjà ce que fait l'icône « shop » de
+// la grille. ⚠ Ne PAS prendre `MSI_OUTSIDE_CASHSHOP_BTN_TOOLTIP` (3582), dont le
+// nom promet pourtant l'infobulle de CE bouton : le natif ne s'en sert nulle part
+// et la ligne du serveur n'a jamais été remplie — elle vaut « Title », comme sa
+// voisine 3580 vaut « Material ».
+constexpr int  kCashShopMsgId = 0xC41;  // MSI_CASHSHOP
+// Position par défaut du natif, recopiée de MakeWindow case 190 : elle ne sert
+// que le tout premier lancement, et seulement si la fenêtre n'est pas encore née
+// au moment où on construit la liste — sinon on lit la vraie, sur l'objet vivant.
+constexpr int kCashShopDefaultRightMargin = 187;
+constexpr int kCashShopDefaultY           = 16;
+
+// Le natif rend l'octet de poids faible d'EAX : l'option est un booléen.
+bool CashShopButtonShown() {
+  __try {
+    return reinterpret_cast<OptionInfoGetFn>(kOptionInfoGetValue)(
+               kTtShowCashShopBtn) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Écrit l'option, et RIEN d'autre : c'est `SyncCashShopButton` qui en tire la
+// visibilité du natif comme de notre copie. Marche même hors carte, où la
+// fenêtre n'existe pas encore — la prochaine création appliquera l'option ; là
+// où la commande native, elle, sort sans rien faire sur un FindWindow(190) nul.
+void SetCashShopButtonShown(bool shown) {
+  __try {
+    reinterpret_cast<OptionInfoSetFn>(kOptionInfoSetValue)(kTtShowCashShopBtn,
+                                                           shown ? 1 : 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 
 // Ask the server to clif_refresh us (reuses the CZ 0x0F04 settings packet with a
 // REFRESH id). The client receives the resulting ZC_NPCACK_MAPMOVE (0x91) in its
@@ -211,26 +302,57 @@ void MenuIcons::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 
 void MenuIcons::BuildIconList() {
   icons_.clear();
+  // Applique la position enregistrée. `allow_hidden` est faux pour le bouton du
+  // cash shop : sa visibilité appartient à l'option du client, pas à notre YAML.
+  const auto apply_saved = [this](Icon& ic, bool allow_hidden) {
+    const auto it = saved_.find(ic.name);
+    if (it == saved_.end() || !it->second.valid) return;
+    if (it->second.x >= 0) ic.x = it->second.x;
+    if (it->second.y >= 0) ic.y = it->second.y;
+    if (allow_hidden) ic.hidden = it->second.hidden;
+  };
+
   int shown = 0;
   for (const auto& d : kIconTable) {
     if (!IconShown(d.cmd_id)) continue;  // skip native-hidden / non-functional
     Icon ic;
     ic.name = d.name;
+    ic.dir = kGridIconDir;
+    ic.wnd_id = kMenuIconWndId;
     ic.cmd_id = d.cmd_id;
     ic.msg_id = d.msg_id;
     ic.x = 24 + (shown % 6) * 40;   // default grid
     ic.y = 160 + (shown / 6) * 40;
-    // Apply any persisted position / visibility for this icon.
-    const auto it = saved_.find(d.name);
-    if (it != saved_.end() && it->second.valid) {
-      if (it->second.x >= 0) ic.x = it->second.x;
-      if (it->second.y >= 0) ic.y = it->second.y;
-      ic.hidden = it->second.hidden;
-    }
+    apply_saved(ic, true);
     icons_.push_back(ic);
     ++shown;
   }
+
+  // Le bouton du cash shop, à la suite : même liste, donc même mode édition,
+  // même aimantage et même persistance. Sa position par défaut est celle que le
+  // CLIENT donne à sa fenêtre, relevée sur l'objet vivant plutôt que recopiée du
+  // désassemblage — le repli n'existe que pour le cas où elle ne serait pas
+  // encore née (voir kCashShopDefault*).
+  {
+    Icon ic;
+    ic.name = kCashShopIconName;
+    ic.dir = kCashShopIconDir;
+    ic.wnd_id = kCashShopBtnWndId;
+    ic.cmd_id = kCashShopCmdId;
+    ic.msg_id = kCashShopMsgId;
+    ic.x = static_cast<int>(ImGui::GetIO().DisplaySize.x) -
+           kCashShopDefaultRightMargin;
+    ic.y = kCashShopDefaultY;
+    if (void* w = uiwnd::SafeFindWindow(kCashShopBtnWndId)) {
+      ic.x = uiwnd::PosX(w);
+      ic.y = uiwnd::PosY(w);
+    }
+    apply_saved(ic, false);
+    icons_.push_back(ic);
+  }
+
   icons_built_ = true;
+  SyncCashShopButton();  // pose `hidden` du bouton dès la construction
 }
 
 // Recopie dans les icônes le signalement « nouveau » tenu par la fenêtre native.
@@ -242,11 +364,33 @@ void MenuIcons::RefreshBadges() {
   const int n = ReadBadgeCmdIds(uiwnd::SafeFindWindow(kMenuIconWndId), flagged,
                                 kMaxFlagged);
   for (Icon& ic : icons_) {
+    // 🔴 Seules les icônes DE LA GRILLE : la liste ne porte que des commandes de
+    // la grille, et le bouton du cash shop partage la commande 0xC0 avec
+    // « status » — il s'allumerait à sa place, puis chercherait en vain un
+    // bitmap `NC_CashShop_new.bmp` qui n'existe pas.
+    if (ic.wnd_id != kMenuIconWndId) { ic.badge = false; continue; }
     bool on = false;
     for (int i = 0; i < n && !on; ++i) on = (flagged[i] == ic.cmd_id);
     if (!on) ic.new_fail = 0;  // réarme le chargement pour le prochain allumage
     ic.badge = on;
   }
+}
+
+// Qui, du bouton natif ou de notre copie ImGui, se montre. Rejouée depuis
+// OnTick parce que le client RECRÉE sa fenêtre visible à chaque entrée de carte.
+void MenuIcons::SyncCashShopButton() {
+  const bool on = CashShopButtonShown();
+  // « Remplacé » veut dire remplacé POUR DE BON : notre copie n'existe à l'écran
+  // qu'une fois son bitmap chargé. Tant qu'il ne l'est pas — première frame, ou
+  // texture perdue à une remise à zéro du device — on laisse le natif, plutôt
+  // que de risquer plus aucun bouton du tout.
+  bool replaced = false;
+  for (Icon& ic : icons_) {
+    if (ic.wnd_id != kCashShopBtnWndId) continue;
+    ic.hidden = !on;
+    replaced = enabled_ && ic.tex != nullptr;
+  }
+  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(kCashShopBtnWndId), on && !replaced);
 }
 
 float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
@@ -291,24 +435,33 @@ void MenuIcons::HideNativeGrid(bool hide) {
   }
 }
 
-void MenuIcons::DispatchCommand(int cmd_id) {
-  void* wnd = uiwnd::FindWindow(kMenuIconWndId);
+void MenuIcons::DispatchCommand(int wnd_id, int cmd_id) {
+  void* wnd = uiwnd::SafeFindWindow(wnd_id);
   if (!wnd) {
-    LogDiag("[MenuIcons] menu-icon window not found for cmd 0x{:X}", cmd_id);
+    LogDiag("[MenuIcons] window 0x{:X} not found for cmd 0x{:X}", wnd_id, cmd_id);
     return;
   }
-  // action 6 = button-click command; the handler reads the cmd id from arg3.
-  reinterpret_cast<CmdHandlerFn>(kCmdHandler)(wnd, 0, 6, cmd_id, 0, 0, 0);
+  if (wnd_id == kMenuIconWndId) {
+    // action 6 = button-click command; the handler reads the cmd id from arg3.
+    reinterpret_cast<CmdHandlerFn>(kCmdHandler)(wnd, 0, 6, cmd_id, 0, 0, 0);
+    return;
+  }
+  // Les icônes qui SONT une fenêtre native (le bouton du cash shop) : leur
+  // propre OnMsg est déjà le handler du clic. On le lui passe tel quel plutôt
+  // que de refaire son travail — c'est lui qui connaît, par exemple, la branche
+  // Steam/Stove (cmd 331) au lieu du CZ 0x0B6D ordinaire.
+  uiwnd::OnMsg(wnd, 6, cmd_id);
 }
 
 void MenuIcons::FlushPending() {
   if (pending_cmd_ == 0) return;
-  const int cmd = pending_cmd_;
+  const int wnd = pending_wnd_, cmd = pending_cmd_;
+  pending_wnd_ = 0;
   pending_cmd_ = 0;
   // Driven from the game's input phase (ProcessInput, every frame) so the
   // command runs with native click timing/context — never from the Present hook,
   // and never while the HUD is replaced (world map, etc.).
-  if (enabled_ && in_game_ && !uiwnd::IsHudReplaced()) DispatchCommand(cmd);
+  if (enabled_ && in_game_ && !uiwnd::IsHudReplaced()) DispatchCommand(wnd, cmd);
 }
 
 // Fallback only: OnTick is throttled to ~100ms, so ProcessInput (which runs
@@ -321,6 +474,10 @@ void MenuIcons::OnTick() {
     RequestServerRefresh();
   }
   if (enabled_ && in_game_ && icons_built_) RefreshBadges();
+  // Hors du test `enabled_` : c'est aussi ce qui REND le bouton natif quand on
+  // cesse de le remplacer. Et le client le recrée visible à chaque entrée de
+  // carte, donc il faut y repasser régulièrement, pas seulement aux bascules.
+  if (in_game_) SyncCashShopButton();
   FlushPending();
 }
 
@@ -351,6 +508,11 @@ bool MenuIcons::DrawSettings() {
     ImGui::TextDisabled(i18n::Tr("(disponible une fois en jeu)"));
   } else {
     for (auto& ic : icon_list) {
+      // Le bouton du cash shop est bien dans la liste (il se déplace comme les
+      // autres) mais PAS ici : sa visibilité a déjà sa case plus bas, celle qui
+      // écrit l'option du client. Deux cases pour le même réglage, ce serait
+      // une de trop — et son `cmd_id` 0xC0 doublonnerait le PushID de « status ».
+      if (ic.wnd_id != kMenuIconWndId) continue;
       bool shown = !ic.hidden;
       ImGui::PushID(ic.cmd_id);
       if (ro::RoCheckbox(ic.name, &shown)) {
@@ -363,6 +525,26 @@ bool MenuIcons::DrawSettings() {
   }
 
   ImGui::EndDisabled();
+
+  // ── Boutons natifs posés hors de la grille ────────────────────────────────
+  // Hors du BeginDisabled ci-dessus À DESSEIN : ce bouton-là est une fenêtre du
+  // client, il reste réglable que notre grille ImGui remplace la native ou non.
+  // « Vote Shop » et non « cash shop » : le client l'appelle ainsi parce que sa
+  // monnaie est de l'argent, mais sur moonlight elle n'est faite que des votes
+  // des joueurs pour le serveur. Le nom natif ne survit que dans les commentaires
+  // et les noms de symboles, jamais à l'écran.
+  SeparatorText(i18n::Tr("Boutons natifs"));
+  bool cash_btn = CashShopButtonShown();
+  if (ro::RoCheckbox(i18n::Tr("Bouton du Vote Shop"), &cash_btn)) {
+    SetCashShopButtonShown(cash_btn);
+    SyncCashShopButton();  // sans attendre le tick : effet immédiat à l'écran
+  }
+  SameLine(); HelpMarker(
+      i18n::Tr("Le bouton carré posé près de la minimap, qui ouvre le Vote Shop.\n"
+      "Exactement le réglage de la commande /cashshop : c'est le client qui le\n"
+      "retient, dans SaveData\\OptionInfo.lua.\n"
+      "Icônes déplaçables activées, il se déplace comme les autres icônes."));
+
   return changed;
 }
 
@@ -393,7 +575,7 @@ void MenuIcons::OnRenderUI() {
   for (int i = 0; i < static_cast<int>(icons_.size()); ++i) {
     Icon& ic = icons_[i];
     if (ic.hidden) continue;  // user-hidden via the MoonlightUi list
-    if (!ic.tex) ic.tex = LoadIconTexture(ic.name, &ic.w, &ic.h);  // lazy/retry
+    if (!ic.tex) ic.tex = LoadIconTexture(ic.dir, ic.name, &ic.w, &ic.h);  // lazy/retry
     if (!ic.tex) continue;
 
     // Icône signalée : on charge son bitmap « _new » (celui qui porte le N) à la
@@ -403,7 +585,7 @@ void MenuIcons::OnRenderUI() {
     if (ic.badge && !ic.tex_new && ic.new_fail < 3) {
       char new_name[64];
       std::snprintf(new_name, sizeof(new_name), "%s_new", ic.name);
-      ic.tex_new = LoadIconTexture(new_name, &ic.nw, &ic.nh);
+      ic.tex_new = LoadIconTexture(ic.dir, new_name, &ic.nw, &ic.nh);
       if (!ic.tex_new) ++ic.new_fail;
     }
     // Le bitmap « _new » déborde vers le haut (le natif le pose 6 px plus haut
@@ -416,8 +598,12 @@ void MenuIcons::OnRenderUI() {
     const int   draw_h = badge ? ic.nh : ic.h;
     const float over_y = static_cast<float>(draw_h - ic.h);  // débordement vers le haut
 
-    char id[32];
-    std::snprintf(id, sizeof(id), "##micon_%X", ic.cmd_id);
+    // 🔴 La fenêtre porteuse est identifiée par le COUPLE (fenêtre, commande) :
+    // le bouton du cash shop et l'icône « status » ont tous deux la commande
+    // 0xC0, et deux fenêtres ImGui du même nom n'en font qu'UNE — la seconde
+    // s'attribuerait la position et la zone cliquable de la première.
+    char id[40];
+    std::snprintf(id, sizeof(id), "##micon_%X_%X", ic.wnd_id, ic.cmd_id);
     // Pin the window to the stored position every frame (NoMove) and drive any
     // drag ourselves, so the drawn icon and its hit-rect never desync.
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(ic.x),
@@ -487,7 +673,10 @@ void MenuIcons::OnRenderUI() {
       dl->AddRectFilled(p0, p1, IM_COL32(255, 220, 80, hovered ? 70 : 35));
       dl->AddRect(p0, p1, IM_COL32(255, 220, 80, 220));
     } else {
-      if (clicked) pending_cmd_ = ic.cmd_id;  // dispatched from OnTick/input phase
+      if (clicked) {  // dispatched from OnTick/input phase
+        pending_wnd_ = ic.wnd_id;
+        pending_cmd_ = ic.cmd_id;
+      }
       if (hovered) {
         // Utf8 et non Cp949 : cette infobulle est dessinee par ImGui, pas par
         // le moteur de texte natif.
