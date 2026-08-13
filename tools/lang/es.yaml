@@ -2688,3 +2688,17 @@
 "d'origine": "original"
 "palette": "paleta"
 "Les couleurs officielles du styliste servent de point de départ ; tes réglages s'appliquent par-dessus. Changer de teinte de base peut redécouper les pièces.": "Los colores oficiales del estilista sirven de punto de partida; tus ajustes se aplican encima. Cambiar el color base puede redividir las piezas."
+
+# ── Menú Escape (GameMenu, sustituye la ventana nativa UIEscOptionWnd id 155) ──
+# Las etiquetas nativas están PINTADAS en esc_XX*.bmp: el cliente nunca las tuvo
+# como cadenas, y por eso el menú ImGui sí se puede traducir.
+"Options du jeu###bourgeon_game_menu": "Opciones del juego###bourgeon_game_menu"
+"Vous êtes mort !###bourgeon_game_menu": "¡Has muerto!###bourgeon_game_menu"
+"Sélection du personnage": "Selección de personaje"
+"Réglages du jeu": "Ajustes del juego"
+"Configuration des raccourcis": "Configuración de atajos"
+"Retour au jeu": "Volver al juego"
+"Retour au point de sauvegarde": "Volver al punto de guardado"
+"Résurrection": "Resurrección"
+"Confirmation###bourgeon_game_menu_savepoint": "Confirmación###bourgeon_game_menu_savepoint"
+"Revenir au point de sauvegarde ?": "¿Volver al punto de guardado?"

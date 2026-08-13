@@ -2728,3 +2728,19 @@
 "d'origine": "original"
 "palette": "palette"
 "Les couleurs officielles du styliste servent de point de départ ; tes réglages s'appliquent par-dessus. Changer de teinte de base peut redécouper les pièces.": "The stylist's official colours are the starting point; your adjustments apply on top. Changing the base colour may re-cut the parts."
+
+# ── Escape menu (GameMenu, replaces the native UIEscOptionWnd id 155) ─────────
+# The native button labels are PAINTED into esc_XX*.bmp, so the client never had
+# them as strings — which is exactly why the ImGui menu can be translated at all.
+# The English values below are the client's own wording, so a player switching to
+# English reads the same words the native menu used.
+"Options du jeu###bourgeon_game_menu": "Game Options###bourgeon_game_menu"
+"Vous êtes mort !###bourgeon_game_menu": "You are dead!###bourgeon_game_menu"
+"Sélection du personnage": "Character Select"
+"Réglages du jeu": "Game Settings"
+"Configuration des raccourcis": "Shortcut Configuration"
+"Retour au jeu": "Return to game"
+"Retour au point de sauvegarde": "Return to last save point"
+"Résurrection": "Resurrection"
+"Confirmation###bourgeon_game_menu_savepoint": "Confirmation###bourgeon_game_menu_savepoint"
+"Revenir au point de sauvegarde ?": "Go back to your save point?"

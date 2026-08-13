@@ -28,6 +28,7 @@
 #include "features/patches/inventory_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
+#include "features/windows/game_menu.h"
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -107,6 +108,7 @@ StorageWindow* Bourgeon::storage_window() { return storage_window_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 BankWindow* Bourgeon::bank_window() { return bank_window_; }
+GameMenu* Bourgeon::game_menu() { return game_menu_; }
 CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
 NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
 VendingWindow* Bourgeon::vending_window() { return vending_window_; }
@@ -738,6 +740,14 @@ void Bourgeon::LoadPlugins() {
     auto bank_window = std::make_unique<BankWindow>();
     bank_window_ = bank_window.get();
     plugins_.emplace_back(std::move(bank_window));
+  }
+  {
+    // Menu Échap (« Game Options », id 155) : remplace la native, qui est masquée à
+    // la naissance puis DÉTRUITE au tick. C'est lui qui commande l'accès à Game
+    // Settings et à Shortcut Settings — leur seul chemin d'ouverture.
+    auto game_menu = std::make_unique<GameMenu>();
+    game_menu_ = game_menu.get();
+    plugins_.emplace_back(std::move(game_menu));
   }
   {
     auto cashshop_window = std::make_unique<CashShopWindow>();

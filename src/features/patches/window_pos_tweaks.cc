@@ -16,6 +16,7 @@
 #include "features/windows/rodex_window.h"  // hide-native-at-creation (courrier 0x107/0x109)
 #include "features/windows/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
 #include "features/windows/pet_window.h"  // hide-native-at-creation (fiche pet 88 / menu 260)
+#include "features/windows/game_menu.h"  // hide-native-at-creation (menu Échap 155)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -178,6 +179,16 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
         (windowID >= 0x3c && windowID <= 0x42)) {
       if (auto* cs = Bourgeon::Instance().character_sheet())
         cs->HandleReplacedNativeCreation(win, windowID);
+    }
+    // Le MENU ÉCHAP (« Game Options », UIEscOptionWnd id 155). Son unique
+    // constructeur est le case 155 de CETTE fonction (0x00A3F24D) : comme GameMenu
+    // DÉTRUIT la fenêtre au tick, elle n'existe jamais, donc toute demande
+    // d'ouverture — touche Échap comme bouton 193 de la barre d'icônes — repasse
+    // forcément ici. Un seul point d'interception suffit, et il n'y a pas de
+    // deuxième chemin à couvrir. Cf. docs/game_option_re.md §5.2.
+    if (windowID == 155) {
+      if (auto* gm = Bourgeon::Instance().game_menu())
+        gm->HandleNativeCreation(win);
     }
     // Le PET : la fiche (UIPetInfoWnd id 88), le menu de commandes qu'elle
     // ouvrait (UIMenuWnd id 260) et la fenêtre d'évolution (UIPetEvolutionWnd

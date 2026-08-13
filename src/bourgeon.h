@@ -27,6 +27,7 @@ class StorageWindow;
 class InventoryViewer;
 class CartViewer;
 class BankWindow;
+class GameMenu;
 class CashShopWindow;
 class NpcShopWindow;
 class VendingWindow;
@@ -87,6 +88,7 @@ class Bourgeon {
   InventoryViewer* inventory_viewer();
   CartViewer* cart_viewer();
   BankWindow* bank_window();
+  GameMenu* game_menu();
   CashShopWindow* cashshop_window();
   NpcShopWindow* npc_shop_window();
   VendingWindow* vending_window();
@@ -263,6 +265,7 @@ class Bourgeon {
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CartViewer* cart_viewer_ = nullptr;            // non-owning, lifetime tied to plugins_
   BankWindow* bank_window_ = nullptr;          // non-owning, lifetime tied to plugins_
+  GameMenu* game_menu_ = nullptr;              // non-owning, lifetime tied to plugins_
   CashShopWindow* cashshop_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   NpcShopWindow* npc_shop_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_

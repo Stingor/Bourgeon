@@ -71,6 +71,8 @@ set(BOURGEON_FILES
 	"features/windows/entity_context_menu.h"
 	"features/windows/entity_inspector.cc"
 	"features/windows/entity_inspector.h"
+	"features/windows/game_menu.cc"
+	"features/windows/game_menu.h"
 	"features/windows/inventory_viewer.cc"
 	"features/windows/inventory_viewer.h"
 	"features/windows/item_desc_window.cc"
