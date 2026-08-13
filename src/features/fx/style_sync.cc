@@ -642,6 +642,12 @@ void StyleSync::OnTick() {
   // (La restauration locale, elle, tente sa chance à CHAQUE frame — cf.
   // OnRenderUI. La refaire ici ne coûterait qu'une comparaison, mais ne
   // gagnerait rien.)
+  //
+  // 🔴 D'ABORD le chien de garde : une recette POSÉE qui ne s'affiche plus est
+  // un défaut visible, là où les deux étapes suivantes ne font qu'accélérer un
+  // affichage encore à venir. Ne rien reposer est le cas courant, et il ne
+  // coûte qu'une comparaison de chemin par porteur de recette.
+  fx::palette_inject::ReassertPaths();
   if (!g_remote.empty() && ApplyPending(kApplyBudget) > 0) return;
   // Les recettes ensuite : elles portent un choix explicite du joueur, la
   // réparation n'est qu'un défaut.

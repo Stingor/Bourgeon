@@ -730,6 +730,51 @@ bool ActorBodySpritePath(uint32_t gid, char* out, size_t out_size) {
   return rag::ActorSlotSpritePath(actor, 0, out, out_size);
 }
 
+int ReassertPaths() {
+  // Les GID d'abord, sous verrou, et le verrou RELÂCHÉ avant de toucher au
+  // moindre acteur : `ApplyPathToActor` appelle du code du jeu, et le tenir
+  // sous notre mutex nous exposerait à un ordre de prise inverse du détour.
+  std::vector<uint32_t> gids;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    gids.reserve(g_recipes.size());
+    for (const auto& kv : g_recipes) gids.push_back(kv.first);
+  }
+
+  // Ce qu'on a déjà signalé, pour ne pas inonder le journal si un jour quelque
+  // chose réécrit le chemin à chaque frame : une ligne par PERTE, pas par
+  // passage. Fil de rendu uniquement, donc pas de verrou.
+  static std::map<uint32_t, bool> signale;
+
+  int reposes = 0;
+  for (uint32_t gid : gids) {
+    void* actor = KnownActor(gid);
+    if (!actor) continue;  // acteur mort ou jamais vu : rien à réparer
+    char porte[128];
+    if (!ReadActorPalettePath(actor, porte, sizeof(porte))) continue;
+    // Déjà le nôtre : le cas de très loin le plus fréquent, et il ne coûte
+    // qu'une comparaison de neuf octets.
+    if (_strnicmp(porte, kMarkerRel, static_cast<int>(kMarkerRelLen)) == 0) {
+      signale.erase(gid);  // une perte ultérieure sera de nouveau signalée
+      continue;
+    }
+
+    char relatif[64];
+    MakePath(gid, relatif, sizeof(relatif));
+    if (ApplyPathToActor(actor, relatif, /*unlock_color=*/true)) {
+      std::lock_guard<std::mutex> lock(g_mutex);
+      g_native_paths[gid].color_forced = true;
+    }
+    ++reposes;
+    if (!signale[gid]) {
+      signale[gid] = true;
+      LogDiag("[palette] gid={} avait repris le chemin natif ({}) : reposé",
+              gid, porte);
+    }
+  }
+  return reposes;
+}
+
 bool HasRecipe(uint32_t gid) {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_recipes.find(gid) != g_recipes.end();

@@ -122,6 +122,21 @@ bool NativePalettePath(uint32_t gid, char* out, size_t out_size);
 // toute façon pas les variables d'entrée, seulement le composite déjà monté.
 bool ActorBodySpritePath(uint32_t gid, char* out, size_t out_size);
 
+// Repose notre chemin sur tout acteur qui porte une recette mais qui a repris
+// son chemin de palette NATIF. Rend le nombre d'acteurs réparés.
+//
+// 🔴 Pourquoi ce chien de garde existe : le détour de reconstruction est notre
+// seule occasion d'écrire, or `acteur+0x1C` peut être réécrit ailleurs. Symptôme
+// rapporté le 2026-08-13 — après une longue mise en veille de la fenêtre, le
+// CORPS redevenait noir (la palette native d'une 4e classe laisse des index
+// noirs, cf. la réparation automatique) pendant que la TÊTE restait juste, et
+// seul un changement de carte le corrigeait. Un changement de carte, c'est
+// exactement une reconstruction : la recette était donc intacte, seul le chemin
+// avait été perdu.
+//
+// ⚠ À appeler depuis le FIL DE RENDU : on écrit dans un acteur.
+int ReassertPaths();
+
 // Cet acteur a-t-il une recette active ?
 bool HasRecipe(uint32_t gid);
 
