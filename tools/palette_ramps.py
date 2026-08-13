@@ -43,7 +43,15 @@ import sys
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from grf_reader import Vfs                                    # noqa: E402
+# ⚠ Import TOLÉRANT, et c'est voulu : ce fichier est aussi déployé seul sur
+# l'hôte web, qui appelle `--palette` sur des chemins disque et n'a ni GRF ni
+# installation du client. Une dépendance obligatoire y forcerait à embarquer un
+# lecteur d'archives dont ce chemin ne se sert jamais. Tous les AUTRES modes
+# échouent explicitement plus bas si le lecteur manque.
+try:
+    from grf_reader import Vfs                                # noqa: E402
+except ImportError:                                           # pragma: no cover
+    Vfs = None
 
 CLIENT_DEFAUT = r"E:\Nouveau dossier\Moonlight-Destiny"
 
@@ -84,6 +92,13 @@ RAMPES_MAX = 8
 # Somme R+V+B en dessous de laquelle une entrée compte comme « noire ». Bas
 # exprès (24 sur 765) : seulement ce qui est indistinguable du noir à l'œil.
 NOIR_SOMME = 24
+
+# 🔴 Doit valoir `BOURGEON_STYLE_WIRE_VERSION` (moonlight packets_struct.hpp) et
+# `kWireVersion` (Bourgeon style_sync.h). Une recette d'une AUTRE version est
+# JETÉE, jamais réinterprétée : la v6 a changé le CLASSEMENT des rampes, donc le
+# rang 3 d'hier ne désigne plus la même pièce du costume. Migrer repeindrait les
+# bottes en couleur de cape.
+VERSION_STOCKAGE = 6
 
 
 def _octet(x):
@@ -454,6 +469,100 @@ def appliquer(palette, rampes, recette):
 
 
 # ---------------------------------------------------------------------------
+# La forme STOCKÉE d'une recette — le pont vers le site web
+# ---------------------------------------------------------------------------
+#
+# 🔴 Pourquoi ce point d'entrée existe. Le site de Moonlight compose déjà les
+# personnages en PHP (il lit les .spr et les .act, empile corps + tête +
+# coiffes), et sa classe `GetSprite` colore depuis une simple propriété
+# `palette`. Il ne lui manque donc QUE le calcul de cette palette — c'est-à-dire
+# exactement la partie qui doit être byte-exacte avec le jeu.
+#
+# La porter en PHP donnerait une TROISIÈME implémentation de l'algorithme de
+# rampes à garder synchronisée. Or il a déjà changé six fois (v2 à v6), et
+# chaque divergence se traduirait par un site qui affiche des couleurs posées au
+# hasard — sans erreur nulle part. Le site appelle donc CE fichier, qui est la
+# référence contre laquelle le C++ est validé croisé.
+def decoder_stocke(valeur):
+    """« <version>:<palette>:<cheveux>:<coiffure>:<80 hex> » → dict, ou None.
+
+    Rend None sur TOUTE version autre que `VERSION_STOCKAGE`, sur une longueur
+    fausse, ou sur un caractère non hexadécimal. Même règle que le serveur et le
+    client : une recette qu'on ne sait pas relire est JETÉE, jamais devinée.
+
+    Le dict porte `palette_id`, `cheveux_id`, `coiffure` (−1 = « rien imposé »)
+    et `reglages`, prêt pour `appliquer`.
+    """
+    if not valeur:
+        return None
+    bouts = valeur.split(":")
+    if len(bouts) != 5:
+        return None
+    try:
+        version, palette_id, cheveux_id, coiffure = (int(x) for x in bouts[:4])
+    except ValueError:
+        return None
+    if version != VERSION_STOCKAGE:
+        return None
+
+    hexa = bouts[4].strip()
+    # 5 octets par rampe : teinte int16 LE, sat int8, lum int8, absolu uint8.
+    attendu = RAMPES_MAX * 5 * 2
+    if len(hexa) != attendu:
+        return None
+    try:
+        octets = bytes.fromhex(hexa)
+    except ValueError:
+        return None
+
+    reglages = {}
+    for n in range(RAMPES_MAX):
+        base = n * 5
+        teinte = octets[base] | (octets[base + 1] << 8)
+        if teinte >= 0x8000:                      # int16 signé
+            teinte -= 0x10000
+        sat = octets[base + 2]
+        if sat >= 0x80:
+            sat -= 0x100
+        lum = octets[base + 3]
+        if lum >= 0x80:
+            lum -= 0x100
+        absolu = octets[base + 4] != 0
+        # `appliquer` saute déjà les réglages neutres ; on ne les range même pas.
+        if not absolu and teinte == 0 and sat == 0 and lum == 0:
+            continue
+        reglages[n] = (float(teinte), float(sat), float(lum), absolu)
+
+    return {
+        "version": version,
+        "palette_id": palette_id,
+        "cheveux_id": cheveux_id,
+        "coiffure": coiffure,
+        "reglages": reglages,
+    }
+
+
+def palette_finale(spr_octets, pal_octets, reglages):
+    """Les 1024 octets RGBA que le rendu doit employer, ou None.
+
+    ⚠ L'ORDRE est le même que dans l'éditeur, et il n'est pas indifférent : on
+    fusionne AVANT de détecter. Les frontières de rampes ne sont pas les mêmes
+    des deux côtés de la fusion — détecter sur le sprite nu donnerait des rampes
+    valides mais désignant d'autres pièces du costume.
+    """
+    lu = lire_spr(spr_octets)
+    if lu is None:
+        return None
+    images, sprite_pal = lu
+    if not sprite_pal:
+        return None                    # .spr sans palette : rien à recolorer
+    usage = compter_usage(images)
+    base = fusionner_serveur(sprite_pal, lire_pal(pal_octets) if pal_octets
+                             else None)
+    return appliquer(base, detecter_rampes(base, usage), reglages or {})
+
+
+# ---------------------------------------------------------------------------
 # Sortie PNG (sans dépendance : le format est trivial en RGB brut)
 # ---------------------------------------------------------------------------
 def ecrire_png(chemin, largeur, hauteur, rgb):
@@ -516,6 +625,97 @@ def chemin_corps(nom, sexe):
     return "%s\\%s_%s.spr" % (dossier_corps(sexe), nom, suffixe)
 
 
+def sortir_palette(spr_chemin, pal_chemin, stocke):
+    """Les 1024 octets RGBA sur STDOUT. Code 1 = « rends SANS recette ».
+
+    🔴 L'échec est SILENCIEUX et sans sortie, jamais une palette approximative.
+    L'appelant (le site) doit alors employer le `.pal` du serveur tel quel : un
+    personnage dans ses couleurs d'origine est un défaut visible et
+    compréhensible ; un personnage peint avec une recette mal relue est un
+    signalement de bug qu'on ne saura pas reproduire.
+
+    ⚠ C'est aussi ce qui rend une copie PÉRIMÉE de ce fichier inoffensive : une
+    version de recette qu'elle ne connaît pas est refusée, donc le site retombe
+    sur l'apparence native. Une copie périmée dégrade, elle ne ment pas.
+    """
+    # Le serveur web lance cet outil sous une locale minimale (souvent « C ») :
+    # sans ça, un accent dans un message sortirait en échappements illisibles.
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+    def echec(motif):
+        """Refuser reste silencieux pour l'APPELANT, pas pour l'exploitant.
+
+        🔴 La version précédente repliait quatre causes distinctes sur le même
+        `return 1` sans un mot : côté site, « pas de palette » ne disait pas si
+        la recette était périmée, le sprite introuvable ou la détection en
+        échec. Une journée de diagnostic pour une ligne manquante.
+        """
+        sys.stderr.write("palette_ramps: " + motif + "\n")
+        sys.stderr.flush()
+        return 1
+
+    recette = decoder_stocke(stocke)
+    if recette is None:
+        return echec("recette illisible (%s)" % _motif_recette(stocke))
+
+    try:
+        with open(spr_chemin, "rb") as f:
+            spr = f.read()
+    except OSError as e:
+        return echec("sprite illisible : %s (%s)" % (spr_chemin, e.strerror))
+
+    # `-` = ce personnage n'a AUCUNE palette de vêtement (couleur 0) : le sprite
+    # fait alors foi tout seul, exactement comme dans le jeu.
+    pal = None
+    if pal_chemin and pal_chemin != "-":
+        try:
+            with open(pal_chemin, "rb") as f:
+                pal = f.read()
+        except OSError as e:
+            # Non bloquant : le sprite porte déjà sa propre palette. On le dit
+            # quand même, parce qu'un .pal manquant change le rendu.
+            sys.stderr.write("palette_ramps: .pal ignoré : %s (%s)\n"
+                             % (pal_chemin, e.strerror))
+
+    finale = palette_finale(spr, pal, recette["reglages"])
+    if finale is None:
+        return echec("calcul impossible : %s n'a pas de palette exploitable "
+                     "(sprite non indexé, tronqué, ou format inattendu)"
+                     % spr_chemin)
+    if len(finale) != 1024:
+        return echec("palette de %d octets au lieu de 1024" % len(finale))
+
+    sys.stdout.buffer.write(finale)
+    sys.stdout.buffer.flush()
+    return 0
+
+
+def _motif_recette(valeur):
+    """Pourquoi `decoder_stocke` a refusé — pour le message d'erreur seulement.
+
+    On refait le tri ici plutôt que de faire remonter une cause : le décodeur
+    doit rester une porte fermée qui répond oui ou non, sans que l'appelant
+    puisse être tenté d'agir sur le détail du refus.
+    """
+    if not valeur:
+        return "chaîne vide"
+    bouts = valeur.split(":")
+    if len(bouts) != 5:
+        return "%d champs au lieu de 5" % len(bouts)
+    try:
+        version = int(bouts[0])
+    except ValueError:
+        return "version « %s » non numérique" % bouts[0][:16]
+    if version != VERSION_STOCKAGE:
+        return "version %d, cet outil lit la %d" % (version, VERSION_STOCKAGE)
+    attendu = RAMPES_MAX * 5 * 2
+    hexa = bouts[4].strip()
+    if len(hexa) != attendu:
+        return "%d caractères hexa au lieu de %d" % (len(hexa), attendu)
+    return "caractère non hexadécimal, ou champ non numérique"
+
+
 def main():
     global RAMPES_MAX
     if hasattr(sys.stdout, "reconfigure"):
@@ -537,11 +737,29 @@ def main():
     ap.add_argument("--image", type=int, default=0, help="image du .spr à rendre")
     ap.add_argument("--rampes-max", type=int, default=RAMPES_MAX,
                     help="plafond de rampes exposées (fixe la taille de la recette)")
+    ap.add_argument("--palette", nargs=3, metavar=("SPR", "PAL", "RECETTE"),
+                    help="écrit sur STDOUT les 1024 octets RGBA de la palette "
+                         "finale. SPR et PAL sont des chemins DISQUE (PAL vaut "
+                         "'-' si aucune palette de vêtement) ; RECETTE est la "
+                         "valeur brute de char_reg_str. Sortie VIDE et code 1 "
+                         "si la recette est d'une autre version ou illisible — "
+                         "l'appelant doit alors rendre SANS recette.")
     ap.add_argument("--croiser", metavar="DOSSIER",
                     help="écrit cas.bin + python.txt pour la validation croisée "
                          "octet par octet avec src/ui/palette_ramps.cc")
     args = ap.parse_args()
     RAMPES_MAX = args.rampes_max
+
+    # 🔴 AVANT le Vfs : cet appel travaille sur des chemins DISQUE et doit
+    # tourner sur l'hôte web, où il n'y a ni installation du client ni GRF.
+    # 🔴 `sys.exit` et non `return` : `__main__` appelle `main()` sans propager
+    # sa valeur, donc un `return 1` sortirait avec le code 0 et le site croirait
+    # à une palette valide en lisant zéro octet.
+    if args.palette:
+        sys.exit(sortir_palette(*args.palette))
+
+    if Vfs is None:
+        sys.exit("grf_reader.py manquant : seul --palette fonctionne sans lui.")
     vfs = Vfs(args.client, GRFS)
 
     if args.croiser:
