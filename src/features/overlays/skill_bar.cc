@@ -1089,8 +1089,12 @@ void SkillBar::DrawSettings() {
     BarCfg& bc = bars_[b];
     ImGui::PushID(b);
     bool vis = bc.visible;
-    if (ro::RoCheckbox(kBarNames[b], &vis)) { bc.visible = vis; changed = true; }
-    if (bc.visible && ImGui::TreeNode("cfg", i18n::Tr("Réglages %s"), kBarNames[b])) {
+    // Tr sur la VARIABLE : ces libellés viennent d'une table, donc invisibles à
+    // l'extracteur statique — et le gabarit « Réglages %s » n'était traduit qu'à
+    // moitié, son trou restant français.
+    if (ro::RoCheckbox(i18n::Tr(kBarNames[b]), &vis)) { bc.visible = vis; changed = true; }
+    if (bc.visible && ImGui::TreeNode("cfg", i18n::Tr("Réglages %s"),
+                                      i18n::Tr(kBarNames[b]))) {
       changed |= WheelSliderInt(i18n::Tr("Colonnes"), &bc.columns, 1, 12);
       changed |= WheelSliderInt(i18n::Tr("Nb slots"), &bc.slot_count, 1, kRegions[b].count);
       changed |= WheelSliderFloat(i18n::Tr("Taille"), &bc.icon_size, 16.0f, 64.0f, "%.0f px", 1.0f);

@@ -59,7 +59,12 @@ struct Src {
   long long   max_const;  // if != 0, literal max overriding *max (zeny = INT32 cap)
   bool        wide;       // true = INT64, false = INT32
   bool        grouped;    // thousands-group the amount in the label (zeny)
-  const char* label;
+  // 🔴 PAS de `label` ici. Il y en avait un, copie exacte de
+  // BasicInfo::kBarLabels — deux sources de vérité pour les mêmes sept libellés,
+  // l'une peinte sur la barre, l'autre dans les réglages. Elles ont dérivé : en
+  // traduisant celle-ci, la case à cocher « Poids » restait française en EN/ES.
+  // Le libellé se lit maintenant à un seul endroit, kBarLabels, indexé par BarId
+  // comme cette table.
   const char* win_id;     // ImGui window id (### keeps it stable)
 };
 // Zeny (g_PlayerZeny @0x015fba90) and Weight (cur @0x015fbaa0 / max @0x015fba9c)
@@ -68,17 +73,17 @@ struct Src {
 // relative to the INT32 hard cap (kZenyMax) and shows the amount thousands-grouped.
 constexpr long long kZenyMax = 2147483647LL;  // INT32_MAX = client hard zeny cap
 const Src kSrc[BasicInfo::kBarCount] = {
-  {0x015fb9d0, 0x015fb9d8, 0,        true,  false, "Base",  "###BIBaseExp"},
-  {0x015fb9e8, 0x015fb9e0, 0,        true,  false, "Job",   "###BIJobExp"},
-  {0x015ff908, 0x015ff90c, 0,        false, false, "HP",    "###BIHp"},
-  {0x015ff910, 0x015ff914, 0,        false, false, "SP",    "###BISp"},
-  {rag::kZenyAddr, rag::kZenyAddr, kZenyMax, false, true,  "Zeny",  "###BIZeny"},
-  {0x015fbaa0, 0x015fba9c, 0,        false, false, "Poids", "###BIWeight"},
+  {0x015fb9d0, 0x015fb9d8, 0,        true,  false, "###BIBaseExp"},
+  {0x015fb9e8, 0x015fb9e0, 0,        true,  false, "###BIJobExp"},
+  {0x015ff908, 0x015ff90c, 0,        false, false, "###BIHp"},
+  {0x015ff910, 0x015ff914, 0,        false, false, "###BISp"},
+  {rag::kZenyAddr, rag::kZenyAddr, kZenyMax, false, true,  "###BIZeny"},
+  {0x015fbaa0, 0x015fba9c, 0,        false, false, "###BIWeight"},
   // Incantation : AUCUNE globale à lire. Ses valeurs sont l'écoulé et la durée
   // totale du cast en cours, relevés sur l'acteur par CastBar et poussés à
   // DrawBar depuis OnRenderUI. Les deux adresses nulles sont là pour garder la
   // table alignée sur BarId — elles ne sont jamais déréférencées.
-  {0,          0,          0,        false, false, "Cast",  "###BICast"},
+  {0,          0,          0,        false, false, "###BICast"},
 };
 
 // Formats a signed integer with thousands separators (1234567 -> "1,234,567")
@@ -1968,7 +1973,13 @@ bool BasicInfo::DrawBar(BarId id, long long cur, long long max,
     if (border_) dl->AddRect(p0, p1, border, rounding);
 
     if (text_mode_ != 0) {
-      const char* label = kSrc[id].label;
+      // Le libellé vient d'une TABLE : Tr prend donc une variable, et le
+      // catalogue porte ces clés sans que l'extracteur statique puisse les voir
+      // (même cas que les items de RoCombo). Sans ça la barre de poids restait
+      // « Poids » en anglais comme en espagnol. Les termes du jeu — HP, SP,
+      // Zeny, Base, Job, Cast — y figurent à l'identique : ils ne changent pas
+      // de langue, mais leur entrée les garde hors de la liste des manquants.
+      const char* label = i18n::Tr(BasicInfo::kBarLabels[id]);
       char buf[96];
       if (label_override != nullptr)  // barre d'incantation : texte déjà composé
         std::snprintf(buf, sizeof(buf), "%s", label_override);
@@ -2388,7 +2399,10 @@ bool BasicInfo::DrawSettings() {
   Indent();
     for (int i = 0; i < BasicInfo::kBarCount; ++i) {
       if (i) SameLine();
-      changed |= ro::RoCheckbox(BasicInfo::kBarLabels[i], &bars_[i].show);
+      // Tr, et sur la VARIABLE : ces libellés viennent d'une table, invisible à
+      // l'extracteur statique. C'est ce qui manquait ici — « Poids » restait
+      // français en EN/ES alors que sa traduction était au catalogue.
+      changed |= ro::RoCheckbox(i18n::Tr(BasicInfo::kBarLabels[i]), &bars_[i].show);
     }
     SameLine(); HelpMarker(i18n::Tr("Affiche/cache chaque barre indépendamment."));
   Unindent();
@@ -2424,7 +2438,10 @@ bool BasicInfo::DrawSettings() {
 
   for (int i = 0; i < BasicInfo::kBarCount; ++i) {
     char lbl[32];
-    std::snprintf(lbl, sizeof(lbl), i18n::Tr("Couleur %s"), BasicInfo::kBarLabels[i]);
+    // Le gabarit ET son trou : « Color %s » avec « Poids » dedans ne serait
+    // traduit qu'à moitié.
+    std::snprintf(lbl, sizeof(lbl), i18n::Tr("Couleur %s"),
+                  i18n::Tr(BasicInfo::kBarLabels[i]));
     changed |= ColorEdit4WithAlphaBar(lbl, bars_[i].fill);
   }
   changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), bg_color_);
@@ -2514,7 +2531,7 @@ bool BasicInfo::DrawSettings() {
   for (int i = 0; i < BasicInfo::kPortCount; ++i) {
     auto& e = ports_[i];
     ImGui::PushID(i);
-    changed |= ro::RoCheckbox(BasicInfo::kPortLabels[i], &e.show);
+    changed |= ro::RoCheckbox(i18n::Tr(BasicInfo::kPortLabels[i]), &e.show);
     Indent();
     changed |= ColorEdit4WithAlphaBar(i18n::Tr("Fond / Opacité"), e.bg);
     if (i != BasicInfo::kPortHead) {

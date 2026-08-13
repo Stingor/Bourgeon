@@ -66,7 +66,10 @@ void MoonlightUi::DrawCommandsPanel() {
           if (ro::RoBeginCombo("@noks", kNoksLabels[noks_mode_ < 4 ? noks_mode_ : 0])) {
             for (int i = 0; i < 4; ++i) {
               const bool selected = (noks_mode_ == i);
-              if (ImGui::Selectable(kNoksLabels[i], selected)) {
+              // Ce sont les arguments LITTÉRAUX de @noks côté serveur, pas des
+              // libellés : traduits, l'interface dirait « Groupe » pour un mode
+              // qui s'écrit « party ».
+              if (ImGui::Selectable(kNoksLabels[i], selected)) {  // i18n-exempt
                 noks_mode_ = i;
                 SendSetting(kSettingNoksMode, static_cast<uint16_t>(i));
               }

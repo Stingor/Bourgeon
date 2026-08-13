@@ -24,6 +24,9 @@
 # Two keys come from a static table (kCats[] in cart_viewer.cc), where Tr takes a
 # variable rather than a literal: the static extractor cannot see them, only the
 # in-game export can. They are listed here all the same.
+"Items": "Items"
+"Onglet 1": "Tab 1"
+"Onglet 2": "Tab 2"
 "Tout": "All"
 "Sol uni (fond de capture)": "Flat ground (capture backdrop)"
 "Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\nde la scène : la géométrie et le z-buffer du sol restent intacts, donc\nl'occlusion par le terrain reste correcte.\nL'eau, le ciel et le brouillard ne sont PAS affectés.\nDX9 uniquement (le chemin de rendu DX7 est une autre famille de fonctions).": "Repaints the whole .gnd terrain in a solid colour, without touching the rest\nof the scene: the ground geometry and z-buffer stay intact, so\nocclusion by the terrain remains correct.\nWater, sky and fog are NOT affected.\nDX9 only (the DX7 render path is a different family of functions)."
@@ -1713,6 +1716,9 @@
 # translation keeps its « ###... ». Simpler than TrId, and it keeps OpenPopup
 # and BeginRoPopupModal agreeing with each other.
 "Aucun": "None"
+"Pourcentage": "Percentage"
+"Valeurs": "Values"
+"Les deux": "Both"
 "Noir & blanc": "Black & white"
 "Sépia": "Sepia"
 "Négatif": "Negative"
@@ -1779,6 +1785,7 @@
 "Arrière-Gauche": "Rear left"
 "Dos": "Back"
 "Arrière-Droite": "Rear right"
+"Profil-Droite": "Right profile"
 "Droite": "Right"
 "Profil-Droit": "Right profile"
 "STR — Force : augmente l'ATK physique et le poids max.": "STR — Strength: raises physical ATK and maximum weight."
@@ -2070,6 +2077,11 @@
 "Rompre la relation###bourgeon_guild_relation": "Break the relation###bourgeon_guild_relation"
 "SIMPLE": "SIMPLE"
 "SP": "SP"
+"HP": "HP"
+"Poids": "Weight"
+"Base": "Base"
+"Job": "Job"
+"Zeny": "Zeny"
 "SP : %lld / %lld": "SP: %lld / %lld"
 "STR %d  AGI %d  VIT %d": "STR %d  AGI %d  VIT %d"
 "Saut": "Jump"
@@ -2244,6 +2256,7 @@
 "Page %d / %d": "Page %d / %d"
 "Personnage###bourgeon_charsheet": "Character###bourgeon_charsheet"
 "Police###chatwnd_family": "Font###chatwnd_family"
+"Portrait": "Portrait"
 "Pseudo": "Name"
 "Rechercher...": "Search..."
 "Rechercher…": "Search…"

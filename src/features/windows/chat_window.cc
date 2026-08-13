@@ -4794,7 +4794,7 @@ void ChatWindow::DrawInputRow() {
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   if (ro::RoBeginCombo("##chat_mode", preview)) {
     for (int i = 0; i < static_cast<int>(_countof(kModes)); ++i) {
-      if (ImGui::Selectable(kModes[i], !channel_selected && mode == i)) {
+      if (ImGui::Selectable(i18n::Tr(kModes[i]), !channel_selected && mode == i)) {
         WriteSendMode(i);
         // Choisir un mode natif, c'est choisir de NE PLUS parler au canal : sans
         // ce nettoyage la box garderait son « #canal », qui l'emporte sur le mode
