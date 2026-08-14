@@ -731,7 +731,15 @@ void HotkeySettings::OnRenderUI() {
   // Le seul RÉGLAGE de cette fenêtre. Son libellé vient du client (MsgStringTable
   // 1775), comme les onglets. L'état vif est lu dans g_ChangeChatMode : c'est la
   // source de vérité, et elle bouge aussi quand le joueur passe par la native.
-  bool battle_mode = BattleModeEnabled();
+  // 🔴 AFFICHAGE OPTIMISTE TANT QUE LA BASCULE EST EN VOL. L'état vif
+  // (`g_ChangeChatMode`) est bien la source de vérité — il bouge aussi quand le
+  // joueur passe par la native — mais il n'est écrit qu'au TICK, alors que la
+  // case se redessine à chaque frame. La lire sans nuance faisait revenir la
+  // coche à sa position d'avant pendant les quelques frames de l'aller-retour :
+  // un clignotement qu'on prendrait volontiers pour un raté du natif masqué,
+  // alors que c'est notre propre différé qui se voit.
+  bool battle_mode = (pending_battle_mode_ >= 0) ? (pending_battle_mode_ != 0)
+                                                 : BattleModeEnabled();
   const char* battle_label = msgstr::Utf8(kMsgBattleMode);
   if (ro::RoCheckbox((battle_label && *battle_label) ? battle_label
                                                      : i18n::Tr("Mode combat"),
