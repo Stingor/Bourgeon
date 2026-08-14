@@ -5080,7 +5080,7 @@ void ChatWindow::LoadLayout() {
       break;
     }
   }
-  LogDiag("[Chat] disposition rechargée : {} canaux", channels_.size());
+  LogInfo("[Chat] disposition rechargée : {} canaux", channels_.size());
 }
 
 void ChatWindow::SaveLayout() const {
@@ -5266,7 +5266,7 @@ void ChatWindow::LoadHistory() {
   std::memset(type_count_, 0, sizeof(type_count_));
   counted_lines_ = 0;
   TrimLines();
-  LogDiag("[Chat] historique rechargé : {} lignes", restored.size() - 1);
+  LogInfo("[Chat] historique rechargé : {} lignes", restored.size() - 1);
 }
 
 // Nouvel onglet. Le nom par défaut est celui du client (`NewTab_N`) : ce nom finit

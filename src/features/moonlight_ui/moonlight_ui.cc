@@ -1688,7 +1688,7 @@ void MoonlightUi::UpdateRelay() {
     // de « on ne se croit pas sur la bonne carte » — deux causes sans rapport, et
     // le même silence. C'est la seconde qui avait mordu (nom de carte tronqué).
     if (active != relay->chat_active())
-      LogDiag("[MoonlightUi] relais Discord {} (reglage={} carte={})",
+      LogInfo("[MoonlightUi] relais Discord {} (reglage={} carte={})",
               active ? "ACTIF" : "muet", discord_chat_, on_discord_relay_map_);
     relay->set_chat_active(active);
   }
@@ -1839,7 +1839,7 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
             *reinterpret_cast<const uint32_t*>(data + 6 + i * 6 + 2));
     const std::string lvl =
         (level < 0) ? std::string(i18n::Tr("ABSENT")) : std::to_string(level);
-    LogDiag("[MoonlightUi] reglages recus : {} entree(s), niveau de groupe {}",
+    LogInfo("[MoonlightUi] reglages recus : {} entree(s), niveau de groupe {}",
             setting_count, lvl);
   }
 
