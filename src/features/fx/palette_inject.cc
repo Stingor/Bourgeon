@@ -563,7 +563,7 @@ void EnsureInstalled() {
   // Un trampoline nul = SetHook a échoué (prologue non relocalisable). Le détour
   // ne doit alors JAMAIS avaler l'appel : sans palette, le corps du joueur ne
   // serait plus dessiné du tout au lieu d'être recoloré.
-  LogDiag("palette_inject: find={} rebuild={} tete={}",
+  LogDebug("palette_inject: find={} rebuild={} tete={}",
           static_cast<const void*>(g_orig_find),
           static_cast<const void*>(g_orig_rebuild),
           static_cast<const void*>(g_orig_rebuild_head));
@@ -746,7 +746,7 @@ void ClearHairPalette(uint32_t gid) {
   if (g_orig_rebuild_head) {
     if (void* actor = KnownActor(gid)) g_orig_rebuild_head(actor, nullptr);
   }
-  LogDiag("[palette] couleur de cheveux retirée pour gid={}", gid);
+  LogDebug("[palette] couleur de cheveux retirée pour gid={}", gid);
 }
 
 bool ActorBodySpritePath(uint32_t gid, char* out, size_t out_size) {

@@ -259,7 +259,7 @@ bool PresetSave(const std::string& raw_name, const ro::PaletteRecipe& recipe) {
     if (kv.first == name) {  // homonyme : on remplace, sans doublon dans la liste
       kv.second = encoded;
       FlushPresets();
-      LogDiag("[palette] préréglage '{}' mis à jour", name);
+      LogDebug("[palette] préréglage '{}' mis à jour", name);
       return true;
     }
   }
@@ -270,7 +270,7 @@ bool PresetSave(const std::string& raw_name, const ro::PaletteRecipe& recipe) {
   }
   g_presets.emplace_back(name, encoded);
   FlushPresets();
-  LogDiag("[palette] préréglage '{}' créé ({} au total)", name,
+  LogDebug("[palette] préréglage '{}' créé ({} au total)", name,
           g_presets.size());
   return true;
 }

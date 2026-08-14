@@ -149,7 +149,7 @@ void PruneIfCrowded() {
       it = g_remote.erase(it);
     }
   }
-  LogDiag("[palette] registre élagué : {} -> {}", avant, g_remote.size());
+  LogDebug("[palette] registre élagué : {} -> {}", avant, g_remote.size());
 }
 
 void SendOne(const ro::PaletteRecipe& recipe, bool clear) {
@@ -480,7 +480,7 @@ int StyleSync::AutoRepair(int budget) {
     fx::palette_inject::SetRecipe(gid, body.base.data(), body.ramps,
                                   body.ramp_count, neutre);
     g_repair_seen[gid] = 1;
-    LogDiag("[palette] gid={} réparé : {} px noirs sur {} récupérés", gid,
+    LogDebug("[palette] gid={} réparé : {} px noirs sur {} récupérés", gid,
             repaired, body.pixels_total);
   }
   return done;
@@ -528,7 +528,7 @@ void StyleSync::RestoreLocalFromCache() {
   g_local_recipe = recipe;
   g_has_local = true;
   g_restored_cid = cid;
-  LogDiag("[palette] couleurs restaurées du cache local (cid={})", cid);
+  LogDebug("[palette] couleurs restaurées du cache local (cid={})", cid);
 }
 
 // Changement de PERSONNAGE sans quitter le client.
@@ -584,7 +584,7 @@ void StyleSync::ForgetPreviousCharacter() {
   // Et la restauration depuis le cache doit être REFAITE, avec la clé du
   // nouveau personnage.
   g_restored_cid = 0;
-  LogDiag("[palette] personnage changé ({} -> {}) : style précédent oublié",
+  LogDebug("[palette] personnage changé ({} -> {}) : style précédent oublié",
           precedent, cid);
 }
 
