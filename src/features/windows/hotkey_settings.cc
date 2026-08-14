@@ -286,8 +286,27 @@ void HotkeySettings::RefreshRows() {
         Row entry;
         entry.tab = tab;
         entry.category = category;
-        if (userhotkey::ReadBinding(category, row, &entry.binding))
-          rows_.push_back(entry);
+        if (!userhotkey::ReadBinding(category, row, &entry.binding)) continue;
+        // 🔴 SANS SURCHARGE, C'EST LE DÉFAUT QUI AGIT — et le natif affiche
+        // pourtant « Not Assigned ». `UserKeys.lua` ne contient QUE les
+        // surcharges (vérifié : `USERKEY_2` vide alors que les commandes
+        // d'interface fonctionnent), donc une ligne vide veut dire « touche du
+        // client », pas « aucune touche ». Reprendre le natif à la lettre aurait
+        // fait mentir la table sur la MAJORITÉ de ses lignes.
+        if (!entry.binding.assigned) {
+          userhotkey::Binding fallback;
+          if (userhotkey::ReadDefaultBinding(category, entry.binding.command_index,
+                                             &fallback) &&
+              fallback.assigned) {
+            entry.binding.key_code1 = fallback.key_code1;
+            entry.binding.key_code2 = fallback.key_code2;
+            std::snprintf(entry.binding.key_name, sizeof(entry.binding.key_name),
+                          "%s", fallback.key_name);
+            entry.binding.assigned = true;
+            entry.from_default = true;
+          }
+        }
+        rows_.push_back(entry);
       }
     }
   }
@@ -324,64 +343,67 @@ bool HotkeySettings::DrawRowMenu(const Row& row) {
   if (!ImGui::BeginPopupContextItem("##hotkey_row_menu")) return false;
 
   bool wrote = false;
-  const bool is_action = (row.action_index >= 0);
 
-  // « Touche du client » n'a de sens que pour SES commandes : le catalogue de
-  // Bourgeon ne propose aucun défaut, remettre le sien reviendrait à effacer.
-  if (!is_action) {
-    if (ImGui::MenuItem(i18n::Tr("Remettre la touche par défaut"))) {
-      userhotkey::Binding fallback;
-      if (userhotkey::ReadDefaultBinding(row.category, row.binding.command_index,
-                                         &fallback)) {
-        int  main_vk = 0;
-        bool ctrl = false, alt = false, shift = false;
-        SplitClientKeys(fallback, &main_vk, &ctrl, &alt, &shift);
-        // Le défaut peut très bien être déjà pris par un autre raccourci — le
-        // joueur l'a peut-être déplacé lui-même. On le contrôle donc comme
-        // n'importe quelle affectation, plutôt que de créer un doublon muet.
-        char what[96];
-        if (main_vk != 0 &&
-            hotkeys::Conflict(main_vk, ctrl, alt, shift, hotkeys::Owner::kClientCommand,
-                              hotkeys::ClientSelf(row.category, row.binding.command_index),
-                              what, sizeof(what))) {
-          std::snprintf(capture_error_, sizeof(capture_error_),
-                        i18n::Tr("Déjà utilisé par %s — choisis une autre touche."),
-                        what);
-        } else {
-          pending_write_.valid = true;
-          pending_write_.category = row.category;
-          pending_write_.command_index = row.binding.command_index;
-          pending_write_.key1 = main_vk;
-          pending_write_.key2 = ModifierVk(ctrl, alt, shift);
-          std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
-                        row.binding.label);
-          capture_error_[0] = '\0';
-          wrote = true;
-        }
-      } else {
-        std::snprintf(capture_error_, sizeof(capture_error_), "%s",
-                      i18n::Tr("Le client ne donne aucune touche par défaut à "
-                               "cette commande."));
-      }
-    }
-  }
-
-  if (ImGui::MenuItem(i18n::Tr("Effacer la touche"), nullptr, false,
-                      row.binding.assigned || row.binding.key_code1 != 0)) {
-    if (is_action) {
+  if (row.action_index >= 0) {
+    // Nos actions, elles, savent vraiment n'avoir aucune touche : notre stockage
+    // sait écrire « rien ».
+    if (ImGui::MenuItem(i18n::Tr("Effacer la touche"), nullptr, false,
+                        row.binding.assigned)) {
       hotkeys::SetBinding(row.action_index, hotkeys::Binding());
       if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+      capture_error_[0] = '\0';
+      wrote = true;
+    }
+    ImGui::EndPopup();
+    if (wrote) rows_dirty_ = true;
+    return wrote;
+  }
+
+  // ── Commandes du CLIENT ────────────────────────────────────────────────────
+  // 🔴 UNE SEULE ÉCRITURE POSSIBLE, ET DEUX LIBELLÉS POUR LA DÉCRIRE. Effacer une
+  // commande du jeu retire sa SURCHARGE, rien de plus : `UserKeys.lua` n'a pas de
+  // façon d'exprimer « aucune touche », et la table par défaut du client reprend
+  // aussitôt la main. Le libellé dit donc ce qui va RÉELLEMENT se passer — remettre
+  // la touche d'origine quand il y en a une, effacer quand il n'y en a pas — plutôt
+  // que de promettre un effacement que le client ne sait pas tenir.
+  userhotkey::Binding fallback;
+  const bool has_default =
+      userhotkey::ReadDefaultBinding(row.category, row.binding.command_index,
+                                     &fallback) &&
+      fallback.assigned;
+  // Rien à retirer si la ligne montre DÉJÀ le défaut : il n'y a pas de surcharge.
+  const bool has_override = !row.from_default && row.binding.assigned;
+
+  if (ImGui::MenuItem(has_default ? i18n::Tr("Remettre la touche par défaut")
+                                  : i18n::Tr("Effacer la touche"),
+                      nullptr, false, has_override)) {
+    // Le défaut qui va reprendre la main peut très bien être occupé par une autre
+    // commande que le joueur a déplacée là. On le contrôle donc comme n'importe
+    // quelle affectation, plutôt que de créer un doublon muet.
+    int  main_vk = 0;
+    bool ctrl = false, alt = false, shift = false;
+    if (has_default) SplitClientKeys(fallback, &main_vk, &ctrl, &alt, &shift);
+    char what[96];
+    if (main_vk != 0 &&
+        hotkeys::Conflict(main_vk, ctrl, alt, shift, hotkeys::Owner::kClientCommand,
+                          hotkeys::ClientSelf(row.category, row.binding.command_index),
+                          what, sizeof(what))) {
+      std::snprintf(capture_error_, sizeof(capture_error_),
+                    i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
     } else {
       pending_write_.valid = true;
       pending_write_.category = row.category;
       pending_write_.command_index = row.binding.command_index;
-      pending_write_.key1 = 0;  // 0/0 = effacement, c'est la convention du pont
+      // 0/0 = retirer la surcharge (la convention du pont). On n'ÉCRIT pas le
+      // défaut : le laisser reprendre la main garde le fichier propre, et c'est
+      // exactement ce que fait le [Reset] du client.
+      pending_write_.key1 = 0;
       pending_write_.key2 = 0;
       std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
                     row.binding.label);
+      capture_error_[0] = '\0';
+      wrote = true;
     }
-    capture_error_[0] = '\0';
-    wrote = true;
   }
 
   ImGui::EndPopup();
@@ -431,38 +453,44 @@ bool HotkeySettings::RunCapture(const Row& row) {
     return false;
   }
 
-  const bool clear = ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
-                     ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
-  int vkey = clear ? 0 : hotkeys::CaptureMainVk();
-  if (!clear && vkey == 0) return false;
+  // 🔴 DEUX JEUX DE TOUCHES, ET LA DISTINCTION EST DE FOND. Une commande du
+  // CLIENT part par SON dispatch, qui accepte bien plus que `ProcessPushButton` —
+  // Impr. écran, le pavé numérique, la ponctuation. Une action de BOURGEON, elle,
+  // ne nous revient que par `OnKeyDown` : lui offrir une touche que le jeu ne
+  // route pas donnerait un raccourci muet.
+  //
+  // ⚠ Suppr et Retour arrière n'effacent PLUS pendant la capture : ce sont des
+  // touches que le client sait affecter, et les réserver à un geste les rendait
+  // impossibles à choisir. L'effacement est au clic droit, où il est visible.
+  const int vkey = (row.action_index >= 0) ? hotkeys::CaptureMainVk()
+                                           : hotkeys::CaptureAnyVk();
+  if (vkey == 0) return false;
 
   ImGuiIO& io = ImGui::GetIO();
-  const bool ctrl = !clear && io.KeyCtrl;
-  const bool alt = !clear && io.KeyAlt;
-  const bool shift = !clear && io.KeyShift;
+  const bool ctrl = io.KeyCtrl;
+  const bool alt = io.KeyAlt;
+  const bool shift = io.KeyShift;
 
   // ⚠ Le client ne retient qu'UN modificateur (`key2`) : lui en passer deux en
   // perdrait un en silence, et la touche affectée ne serait pas celle affichée.
   // Nos propres actions, elles, en acceptent autant qu'on veut.
-  if (!clear && row.action_index < 0 && ModifierCount(ctrl, alt, shift) > 1) {
+  if (row.action_index < 0 && ModifierCount(ctrl, alt, shift) > 1) {
     std::snprintf(capture_error_, sizeof(capture_error_), "%s",
                   i18n::Tr("Le jeu ne retient qu'un seul modificateur (Ctrl, Alt "
                            "ou Maj) par raccourci."));
     return false;
   }
 
-  if (!clear) {
-    char what[96];
-    const hotkeys::Owner owner = (row.action_index >= 0) ? hotkeys::Owner::kAction
-                                                         : hotkeys::Owner::kClientCommand;
-    const int self_index = (row.action_index >= 0)
-                               ? row.action_index
-                               : hotkeys::ClientSelf(row.category, row.binding.command_index);
-    if (hotkeys::Conflict(vkey, ctrl, alt, shift, owner, self_index, what, sizeof(what))) {
-      std::snprintf(capture_error_, sizeof(capture_error_),
-                    i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
-      return false;
-    }
+  char what[96];
+  const hotkeys::Owner owner = (row.action_index >= 0) ? hotkeys::Owner::kAction
+                                                       : hotkeys::Owner::kClientCommand;
+  const int self_index = (row.action_index >= 0)
+                             ? row.action_index
+                             : hotkeys::ClientSelf(row.category, row.binding.command_index);
+  if (hotkeys::Conflict(vkey, ctrl, alt, shift, owner, self_index, what, sizeof(what))) {
+    std::snprintf(capture_error_, sizeof(capture_error_),
+                  i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
+    return false;
   }
 
   if (row.action_index >= 0) {
@@ -704,8 +732,13 @@ void HotkeySettings::OnRenderUI() {
       } else {
         // Cellule cliquable plutôt que bouton : toute la colonne est une cible,
         // et la ligne garde l'aspect d'un tableau.
-        char cell[80];
-        if (binding.assigned) {
+        char cell[96];
+        if (binding.assigned && entry.from_default) {
+          // Marquée, pas masquée : la touche AGIT, mais le joueur ne l'a pas
+          // choisie — c'est celle que le client donne d'origine.
+          std::snprintf(cell, sizeof(cell), i18n::Tr("%s  (défaut)"),
+                        binding.key_name);
+        } else if (binding.assigned) {
           std::snprintf(cell, sizeof(cell), "%s", binding.key_name);
         } else {
           // Le natif distingue les deux cas, et c'est une vraie information : un
@@ -722,10 +755,8 @@ void HotkeySettings::OnRenderUI() {
         if (!binding.assigned) ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip("%s",
-                            i18n::Tr("Clic : choisir une touche.  Clic droit : "
-                                     "effacer, ou remettre celle du client.  "
-                                     "Pendant la capture, Suppr efface et Échap "
-                                     "annule."));
+                            i18n::Tr("Clic : choisir une touche (Échap annule).  "
+                                     "Clic droit : revenir à la touche d'origine."));
         }
         wrote = DrawRowMenu(entry);
       }

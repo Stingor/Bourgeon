@@ -51,7 +51,25 @@ ImGuiKey VkToImGuiKey(int vkey);
 
 // Première touche PRINCIPALE pressée cette frame (modificateurs exclus), en VK
 // Windows ; 0 si aucune. À appeler pendant le rendu ImGui.
+//
+// Jeu RESTREINT — lettres, chiffres, F1..F12, Espace — et c'est délibéré pour les
+// actions de BOURGEON : ce sont les touches dont on SAIT que le natif les route
+// vers `ProcessPushButton`, d'où viennent `OnKeyDown` et notre dispatch. Une
+// touche non routée donnerait un raccourci muet, indiagnosticable côté joueur.
 int CaptureMainVk();
+
+// Le jeu LARGE : tout ce qui précède, plus F13..F24, la ponctuation, le pavé
+// numérique, les touches d'édition et de navigation, Impr. écran et Pause.
+//
+// 🔴 RÉSERVÉ AUX COMMANDES DU CLIENT. Elles ne passent pas par notre dispatch
+// mais par le sien, qui accepte bien plus que `ProcessPushButton` : s'en tenir au
+// jeu restreint rendait IRRÉCUPÉRABLE toute commande dont la touche par défaut
+// n'y figure pas — « Screenshot » sur Impr. écran, par exemple, était effaçable
+// et plus jamais réattribuable (constaté en jeu le 2026-08-14).
+//
+// ⚠ Échap n'y est pas, ni les modificateurs seuls : la première annule la
+// capture, les seconds ne sont pas des touches principales.
+int CaptureAnyVk();
 
 // Libellé lisible du combo : « Ctrl+Maj+F1 », « Espace », « (aucun) ».
 void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap);

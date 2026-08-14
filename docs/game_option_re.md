@@ -801,6 +801,32 @@ exit. »* — d'où la remarque du §2.7 : couper le processus sans passer par
 `SaveData\UserKeys.lua` ne contient **que les surcharges** (le fichier du client
 commence à `[9]`, les slots 0-8 = F1..F9 étant restés aux défauts).
 
+#### 🔴 Conséquence énorme : une commande du jeu ne peut PAS être « déliée »
+
+Constaté en jeu puis vérifié sur le fichier le 2026-08-14. `USERKEY_2` — la
+catégorie **Interface** — était **vide**, et pourtant toutes ses commandes
+fonctionnaient, *Screenshot* sur Impr. écran comprise. Effacer une touche depuis
+la fenêtre (native ou la nôtre) retire donc la **surcharge**, et la **table par
+défaut du client reprend aussitôt la main** :
+
+* `UserHotkey_ResolveBehavior` (`0x00A32C10`) interroge le global Lua
+  **`GetBehaviorOfHotKey2(kc1, kc2, …)`** (fmt `"ddd>d"`) **à chaque frappe** — la
+  résolution est donc VIVANTE : une écriture par `ChangeUserHotKey` agit
+  immédiatement, sans relog. C'est aussi pourquoi la table par défaut répond
+  encore quand la surcharge est vide : la recherche se fait **par TOUCHE**, et
+  effacer la touche d'une commande ne retire pas l'entrée par défaut de cette
+  touche-là ;
+* `GetHotKey`, lui, rend la surcharge — d'où l'incohérence visible : le natif
+  affiche *« Not Assigned »* sur une ligne dont la touche marche toujours.
+
+📌 **Pour un portage** : afficher `GetHotKey` tel quel fait mentir la table sur la
+majorité de ses lignes (le fichier est presque vide sur un compte neuf). Il faut
+retomber sur `GetOriginalHotKeyInfo` quand la surcharge est absente — et le
+**contrôle de collision doit en faire autant**, sans quoi il laisse poser une
+touche qu'une commande du jeu déclenche déjà. Et un bouton « effacer » ne doit pas
+promettre ce que le client ne sait pas tenir : sur une commande qui a un défaut,
+l'effacement est en réalité un *retour au défaut*.
+
 Ponts C→Lua voisins (déjà connus) : `UserHotkey_Lua_ChangeHotKey` 0x005D56D0,
 `…ClearUserHotKeys` 0x005D4910, `…SaveUserHotKeys2` 0x005D54C0,
 `…GetHotKey` 0x00D80950, `…GetOriginalListSize` 0x00D81680 ;

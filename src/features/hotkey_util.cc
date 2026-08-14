@@ -31,6 +31,53 @@ int ReadInt(uintptr_t addr) {
 // Frame ImGui du dernier PingCapture ; très négatif = aucune capture connue.
 int g_capture_frame = -1000;
 
+// ── Touches hors lettres / chiffres / F1-F12 / Espace ────────────────────────
+// L'INVERSE de la table du backend Win32 d'ImGui (VK -> ImGuiKey). Elle est donc
+// indépendante de la disposition du clavier : le backend classe par code VIRTUEL,
+// et repasser par la même correspondance rend exactement le VK d'origine — celui
+// que `UserKeys.lua` stocke. Le NOM affiché, lui, vient du client (`GetKeyDes`),
+// qui sait l'adapter à la disposition.
+//
+// ⚠ Ni Échap ni les modificateurs : voir `CaptureAnyVk`.
+struct KeyVk {
+  ImGuiKey key;
+  int      vk;
+};
+const KeyVk kExtendedKeys[] = {
+    {ImGuiKey_F13, VK_F13}, {ImGuiKey_F14, VK_F14}, {ImGuiKey_F15, VK_F15},
+    {ImGuiKey_F16, VK_F16}, {ImGuiKey_F17, VK_F17}, {ImGuiKey_F18, VK_F18},
+    {ImGuiKey_F19, VK_F19}, {ImGuiKey_F20, VK_F20}, {ImGuiKey_F21, VK_F21},
+    {ImGuiKey_F22, VK_F22}, {ImGuiKey_F23, VK_F23}, {ImGuiKey_F24, VK_F24},
+    // Édition et navigation.
+    {ImGuiKey_Tab, VK_TAB},           {ImGuiKey_Enter, VK_RETURN},
+    {ImGuiKey_Backspace, VK_BACK},    {ImGuiKey_Insert, VK_INSERT},
+    {ImGuiKey_Delete, VK_DELETE},     {ImGuiKey_Home, VK_HOME},
+    {ImGuiKey_End, VK_END},           {ImGuiKey_PageUp, VK_PRIOR},
+    {ImGuiKey_PageDown, VK_NEXT},     {ImGuiKey_LeftArrow, VK_LEFT},
+    {ImGuiKey_RightArrow, VK_RIGHT},  {ImGuiKey_UpArrow, VK_UP},
+    {ImGuiKey_DownArrow, VK_DOWN},
+    // Verrous et touches système.
+    {ImGuiKey_CapsLock, VK_CAPITAL},  {ImGuiKey_ScrollLock, VK_SCROLL},
+    {ImGuiKey_NumLock, VK_NUMLOCK},   {ImGuiKey_Pause, VK_PAUSE},
+    {ImGuiKey_PrintScreen, VK_SNAPSHOT},
+    // Ponctuation (codes OEM : le backend les classe par VK, pas par caractère).
+    {ImGuiKey_Apostrophe, VK_OEM_7},     {ImGuiKey_Comma, VK_OEM_COMMA},
+    {ImGuiKey_Minus, VK_OEM_MINUS},      {ImGuiKey_Period, VK_OEM_PERIOD},
+    {ImGuiKey_Slash, VK_OEM_2},          {ImGuiKey_Semicolon, VK_OEM_1},
+    {ImGuiKey_Equal, VK_OEM_PLUS},       {ImGuiKey_LeftBracket, VK_OEM_4},
+    {ImGuiKey_Backslash, VK_OEM_5},      {ImGuiKey_RightBracket, VK_OEM_6},
+    {ImGuiKey_GraveAccent, VK_OEM_3},
+    // Pavé numérique.
+    {ImGuiKey_Keypad0, VK_NUMPAD0}, {ImGuiKey_Keypad1, VK_NUMPAD1},
+    {ImGuiKey_Keypad2, VK_NUMPAD2}, {ImGuiKey_Keypad3, VK_NUMPAD3},
+    {ImGuiKey_Keypad4, VK_NUMPAD4}, {ImGuiKey_Keypad5, VK_NUMPAD5},
+    {ImGuiKey_Keypad6, VK_NUMPAD6}, {ImGuiKey_Keypad7, VK_NUMPAD7},
+    {ImGuiKey_Keypad8, VK_NUMPAD8}, {ImGuiKey_Keypad9, VK_NUMPAD9},
+    {ImGuiKey_KeypadDecimal, VK_DECIMAL},  {ImGuiKey_KeypadDivide, VK_DIVIDE},
+    {ImGuiKey_KeypadMultiply, VK_MULTIPLY},{ImGuiKey_KeypadSubtract, VK_SUBTRACT},
+    {ImGuiKey_KeypadAdd, VK_ADD},          {ImGuiKey_KeypadEnter, VK_RETURN},
+};
+
 }  // namespace
 
 int ImGuiKeyToVk(ImGuiKey key) {
@@ -38,6 +85,8 @@ int ImGuiKeyToVk(ImGuiKey key) {
   if (key >= ImGuiKey_0 && key <= ImGuiKey_9)     return 0x30 + (key - ImGuiKey_0);
   if (key >= ImGuiKey_F1 && key <= ImGuiKey_F12)  return 0x70 + (key - ImGuiKey_F1);
   if (key == ImGuiKey_Space)                      return VK_SPACE;
+  for (const KeyVk& entry : kExtendedKeys)
+    if (entry.key == key) return entry.vk;
   return 0;
 }
 
@@ -46,6 +95,8 @@ ImGuiKey VkToImGuiKey(int vkey) {
   if (vkey >= 0x30 && vkey <= 0x39) return static_cast<ImGuiKey>(ImGuiKey_0 + (vkey - 0x30));
   if (vkey >= 0x70 && vkey <= 0x7B) return static_cast<ImGuiKey>(ImGuiKey_F1 + (vkey - 0x70));
   if (vkey == VK_SPACE)             return ImGuiKey_Space;
+  for (const KeyVk& entry : kExtendedKeys)
+    if (entry.vk == vkey) return entry.key;
   return ImGuiKey_None;
 }
 
@@ -57,6 +108,21 @@ int CaptureMainVk() {
   for (ImGuiKey k = ImGuiKey_F1; k <= ImGuiKey_F12; k = static_cast<ImGuiKey>(k + 1))
     if (ImGui::IsKeyPressed(k, false)) return ImGuiKeyToVk(k);
   if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) return VK_SPACE;
+  return 0;
+}
+
+int CaptureAnyVk() {
+  if (const int vkey = CaptureMainVk()) return vkey;
+  for (const KeyVk& entry : kExtendedKeys) {
+    // Impr. écran est traitée à part, juste en dessous.
+    if (entry.key == ImGuiKey_PrintScreen) continue;
+    if (ImGui::IsKeyPressed(entry.key, false)) return entry.vk;
+  }
+  // 🔴 IMPR. ÉCRAN SE CAPTURE AU RELÂCHEMENT. Windows n'émet PAS de WM_KEYDOWN
+  // pour cette touche — seulement le WM_KEYUP. C'est déjà pour ça que le client
+  // la traite dans `Game_MainWndProc` sur `case WM_KEYUP`. Guetter un appui la
+  // rendait donc invisible, et la commande « Screenshot » inréattribuable.
+  if (ImGui::IsKeyReleased(ImGuiKey_PrintScreen)) return VK_SNAPSHOT;
   return 0;
 }
 
@@ -195,7 +261,18 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     const int row_count = userhotkey::RowCount(category);
     for (int row = 0; row < row_count; ++row) {
       userhotkey::Binding binding;
-      if (!userhotkey::ReadBinding(category, row, &binding) || !binding.assigned) continue;
+      if (!userhotkey::ReadBinding(category, row, &binding)) continue;
+      // 🔴 UNE COMMANDE SANS SURCHARGE N'EST PAS LIBRE : `UserKeys.lua` ne
+      // contient QUE les surcharges, et la table par DÉFAUT du client continue de
+      // répondre pour tout le reste (vérifié le 2026-08-14 : `USERKEY_2` est vide
+      // sur cette installation, et les commandes d'interface marchent). Ne regarder
+      // que les surcharges laissait donc poser une touche qu'une commande du jeu
+      // déclenche déjà — le cas le plus fréquent, puisque le fichier est presque
+      // vide sur un compte neuf.
+      if (!binding.assigned &&
+          !userhotkey::ReadDefaultBinding(category, binding.command_index, &binding))
+        continue;
+      if (!binding.assigned) continue;
       if (category == self_category && binding.command_index == self_command) continue;
       auto is_modifier = [](int key_code) {
         return key_code == VK_CONTROL || key_code == VK_SHIFT || key_code == VK_MENU;
@@ -210,7 +287,8 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       // Le libellé du client est déjà en UTF-8 et layout-aware : on le rend tel
       // quel plutôt qu'un vague « un raccourci natif », pour que le joueur sache
       // QUOI aller changer.
-      std::snprintf(what, cap, i18n::Tr("le raccourci du jeu « %s »"), binding.label);
+      std::snprintf(what, cap, i18n::Tr("le raccourci du jeu « %s »"),
+                    binding.label[0] ? binding.label : "?");
       return true;
     }
   }

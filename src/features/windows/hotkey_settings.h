@@ -130,6 +130,11 @@ class HotkeySettings : public Plugin {
     int category = -1;
     // Action BOURGEON : son index dans hotkey_actions. -1 pour le client.
     int action_index = -1;
+    // La touche affichée vient de la table par DÉFAUT du client, faute de
+    // surcharge dans `UserKeys.lua` — cas le plus courant, le fichier ne portant
+    // que les surcharges. Elle agit exactement comme une autre : le marquer sert
+    // à dire au joueur qu'il n'a rien choisi là, pas que la ligne est inerte.
+    bool from_default = false;
   };
 
   // Lignes de l'onglet courant — tout quand « Tout » est actif. Relues à
