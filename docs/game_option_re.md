@@ -342,9 +342,9 @@ Elle **n'est pas** dans le `switch` de `MakeWindow` : `GameSettingsUI_RegisterFa
 | 2 | 4143 | `MSI_GAME_SETTINGS_TAB_EFFECT` | Effects |
 | 3 | 4144 | `MSI_GAME_SETTINGS_TAB_CONTROL` | Controls |
 | 4 | 4145 | `MSI_GAME_SETTINGS_TAB_GRAPHICS` | Graphics |
-| 5 | **4217** | `MSI_GAME_SETTINGS_TAB_ETC` | Other |
+| 5 | **4222** | `MSI_GAME_SETTINGS_TAB_ETC` | Other |
 
-⚠ Le cinquième id n'est **pas** contigu aux quatre autres (4217, pas 4146) :
+⚠ Le cinquième id n'est **pas** contigu aux quatre autres (4222, pas 4146) :
 `4146` est déjà `MSI_GAME_SETTINGS_EMBLEM_FRAME`. Une boucle `base + i` sur cinq
 onglets afficherait « Emblem Border » comme dernier onglet.
 
@@ -460,7 +460,20 @@ zackdreaver / llchrisll », 14 943 octets, **62 entrées** :
 |---|---|---|---|
 | `EFFECT` (1) | 11 | — | 11 |
 | `CONTROL` (2) | 11 | — | 11 |
-| `ETC` (3) | 21 | 19 | 40 |
+| `ETC` (**4**) | 21 | 19 | 40 |
+
+🔴 **`ETC` vaut 4, PAS 3 — la numérotation n'est pas contiguë.** 3 est `GRAPHIC`,
+un onglet dont la page est câblée en dur et qui n'a donc **aucune ligne** dans la
+table. Supposer la suite 1/2/3 rendait l'onglet « Divers » VIDE dans le panneau
+ImGui, alors que ses 40 lignes s'affichaient dans la vue « Tout » (qui ne filtre
+rien) — symptôme qui dit exactement « la constante de filtre est fausse ».
+Vérifié en lisant les doubles poussés par le chargeur : `0x00FD4420` = 1.0
+(EFFECT), `0x0100A0A8` = 2.0 (CONTROL), `0x01006BE8` = 4.0 (ETC).
+
+⚠ Corollaire pour un panneau de remplacement : ses onglets À LUI (une vue
+« Tout », une page Basique) doivent porter des valeurs **hors** de cette
+numérotation — négatives, par exemple. Un pseudo-onglet à 4 entrait en collision
+avec `ETC` le jour où celui-ci a été lu correctement.
 
 📌 **`Tooltip` n'est PAS une infobulle** : le champ contient la **commande slash
 équivalente** (`/aura2`, `/noctrl\n/nc`, parfois deux séparées par un saut de
@@ -471,7 +484,7 @@ un panneau de remplacement.
 chargeur les résout en ids par `sub_A9E640` avant de les ranger en `+0x5C`/`+0x60`.
 
 **Les 296 noms d'options sont dans l'exe.** `CGameSettingsMgr_LoadTableFromLua`
-pousse d'abord comme globales Lua les constantes `EFFECT=1 CONTROL=2 ETC=3` et
+pousse d'abord comme globales Lua les constantes `EFFECT=1 CONTROL=2 GRAPHIC=3 ETC=4` et
 `ONOFF=0 EXE=1`, puis **les 296 chaînes de `off_1008120`, index = valeur** :
 c'est l'énumération **`TALKTYPE`** complète, celle-là même qui sert d'`ID`. Elle
 recoupe exactement la liste des cinq options inversées — `TT_FULL_AURA_ON_OFF`,
@@ -772,6 +785,27 @@ ignore `0x0B93`, elle ne bouge pas — et c'est la vérité, pas un bug d'affich
 ⚠ **Sens du drapeau, à l'envers du nom du libellé** : `byte_1602430 == 1` veut dire
 « recevoir de tout le monde », c'est-à-dire filtre anti-spam **désactivé** — le
 libellé `..._RODEX_SPAM_ON` (4151) nomme l'AUTRE bouton.
+
+##### ⛔ SUR MOONLIGHT, CE RÉGLAGE EST MORT (vérifié sur les sources, 2026-08-14)
+
+Constaté en jeu : la case ne bouge pas. Ce n'est pas un défaut du portage — le
+serveur n'écoute pas le paquet, et **la fenêtre native est aussi inerte**.
+
+- `src/map/clif_packetdb.hpp` ne contient **aucune entrée `0x0b9x`** ;
+  `clif_parse_configuration` n'est branché que sur **`0x02d8`** (10 octets).
+  `0x0B93` part donc dans le vide.
+- Et même mappé, ça ne suffirait pas : le client envoie **`type = 1`**, qui vaut
+  `CONFIG_CALL` dans `e_config_type` (`sd->status.disable_call`). rAthena n'a
+  **aucun type RODEX** — 0 `OPEN_EQUIPMENT_WINDOW`, 1 `CALL`, 2 `PET_AUTOFEED`,
+  3 `HOMUNCULUS_AUTOFEED`, 5 `DISABLE_SHOWCOSTUMES`. Router naïvement `0x0B93`
+  vers le handler de `0x02d8` ferait donc basculer **« refuser les appels »**
+  quand le joueur croit régler son courrier : un bug pire que l'inertie.
+
+➡ Le faire vivre demande un **travail serveur** : un type `CONFIG_RODEX_SPAM`,
+`parseable_packet(0x0b93, 12, clif_parse_configuration, 2, 6)`, un champ persisté
+sur le personnage, l'émission de `0x0B95` à l'entrée en jeu et le contrôle à
+l'envoi d'un courrier. Tant que ce n'est pas fait, la case reste honnêtement
+immobile — c'est exactement ce que fait le client d'origine.
 
 #### Skin — une combo, et une purge de toutes les textures
 
