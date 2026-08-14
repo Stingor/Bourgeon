@@ -329,9 +329,9 @@
 # [156] How to Whisper: Enter a Character's Name on the left side of chat window and type your message on the right side. The Tab key helps you move between these boxes.
 "MSI_EXPLAIN_TIP9": "Cómo susurrar: escribe el nombre del personaje a la izquierda de la ventana de chat y tu mensaje a la derecha. La tecla Tab permite pasar de un campo a otro."
 # [157] /!,/?,/ho,/lv,/lv2,/swt,/ic,/an,/ag,/$,/??,/thx,/wah,/sry,/heh,/swt2,/hmm,/no1,/??,/omg,/oh,/X,/hp,/go,/sob,/gg,/kis,/kis2,/pif,/ok: Emotion icons corresponding to Alt + (1~9) Ctrl + (-=\\\\)
-"MSI_EXPLAIN_TIP10": "/!,/?,/ho,/lv,/lv2,/swt,/ic,/an,/ag,/$,/??,/thx,/wah,/sry,/heh,/swt2,/hmm,/no1,/??,/omg,/oh,/X,/hp,/go,/sob,/gg,/kis,/kis2,/pif,/ok: iconos de emoción correspondientes a Alt + (1~9) Ctrl + (-=\\\\\\\\)"
+"MSI_EXPLAIN_TIP10": "/!,/?,/ho,/lv,/lv2,/swt,/ic,/an,/ag,/$,/??,/thx,/wah,/sry,/heh,/swt2,/hmm,/no1,/??,/omg,/oh,/X,/hp,/go,/sob,/gg,/kis,/kis2,/pif,/ok: iconos de emoción correspondientes a Alt + (1~9) Ctrl + (-=\\)"
 # [158] How to Speak to Party: Add '%' in front of every message.(Example: \\%Hello\\)
-"MSI_EXPLAIN_TIP11": "Cómo hablar al grupo: añade '%' delante de cada mensaje.(Ejemplo: \\\\%Hola\\\\)"
+"MSI_EXPLAIN_TIP11": "Cómo hablar al grupo: añade '%' delante de cada mensaje.(Ejemplo: \\%Hola\\)"
 # [159] You haven't learned enough Basic Skills to Trade.
 "MSI_NOT_ENOUGH_SKILLLEVE1": "No tienes suficientes niveles de Basic Skill para intercambiar."
 # [160] You haven't learned enough Basic Skills to use Emotion icons.
@@ -1463,7 +1463,7 @@
 # [725] Internet cafe is paying now.
 "MSI_BILLING_INTERNET_CAFE": "El cibercafé se hace cargo del pago."
 # [726] Prepaid voucher validate until %d days %d hours %d minutes later.\\nTime limit voucher validate untill %d hours %d minutes later.   <<< formats : %d %d %d %d %d
-"MSI_BILLING_BOTH": "Cupón prepago válido aún %d días %d horas %d minutos.\\\\nCupón de tiempo limitado válido aún %d horas %d minutos."
+"MSI_BILLING_BOTH": "Cupón prepago válido aún %d días %d horas %d minutos.\nCupón de tiempo limitado válido aún %d horas %d minutos."
 # [727] /bingbing: Rotates player counter clockwise.
 "MSI_EXPLAIN_BINGBING": "/bingbing: gira al personaje en sentido antihorario."
 # [728] /bangbang: Rotates player clockwise.
@@ -1495,17 +1495,17 @@
 # [741] nProtect KeyCrypt
 "MSI_KEYCRYPT": "nProtect KeyCrypt"
 # [742] Keyboard Driver has been detected. \\n\\nDo you want to install a program for keyboard security?    \\n\\n(After installation, System Reboot is required)
-"MSI_KEYCRYPT_INSTALL_KEYDRIVER": "Se ha detectado un controlador de teclado. \\\\n\\\\n¿Desea instalar un programa de seguridad del teclado?    \\\\n\\\\n(Tras la instalación es necesario reiniciar el sistema)"
+"MSI_KEYCRYPT_INSTALL_KEYDRIVER": "Se ha detectado un controlador de teclado. \n\n¿Desea instalar un programa de seguridad del teclado?    \n\n(Tras la instalación es necesario reiniciar el sistema)"
 # [743] Installation has been completed.  \\n\\nSystem will be rebooted.
-"MSI_KEYCRYPT_REBOOT": "La instalación ha finalizado.  \\\\n\\\\nEl sistema se reiniciará."
+"MSI_KEYCRYPT_REBOOT": "La instalación ha finalizado.  \n\nEl sistema se reiniciará."
 # [744] Installation has been failed.
 "MSI_KEYCRYPT_INSTALLFAIL": "La instalación ha fallado."
 # [745] Keyboard Security will be skipped.
 "MSI_KEYCRYPT_SKIPKEYCRYPT": "Se omitirá la seguridad del teclado."
 # [746] Required file for Keyboard Security is not existing.  \\n\\n(npkeyc.vxd, npkeyc.sys, npkeycs.sys)
-"MSI_KEYCRYPT_NOKEYCRYPTFILE": "No se encuentra el archivo necesario para la seguridad del teclado.  \\\\n\\\\n(npkeyc.vxd, npkeyc.sys, npkeycs.sys)"
+"MSI_KEYCRYPT_NOKEYCRYPTFILE": "No se encuentra el archivo necesario para la seguridad del teclado.  \n\n(npkeyc.vxd, npkeyc.sys, npkeycs.sys)"
 # [747] USB Keyboard has been detected. \\n\\nDo you want to install a program for keyboard security?    \\n\\n(After installation, System Reboot is required)
-"MSI_KEYCRYPT_USBKEYBOARD": "Se ha detectado un teclado USB. \\\\n\\\\n¿Desea instalar un programa de seguridad del teclado?    \\\\n\\\\n(Tras la instalación es necesario reiniciar el sistema)"
+"MSI_KEYCRYPT_USBKEYBOARD": "Se ha detectado un teclado USB. \n\n¿Desea instalar un programa de seguridad del teclado?    \n\n(Tras la instalación es necesario reiniciar el sistema)"
 # [748] ftp://ragnarok.nefficient.co.kr/pub/ragnarok/ragnarok0526.exe
 "MSI_FINDHACK_PATH": "ftp://ragnarok.nefficient.co.kr/pub/ragnarok/ragnarok0526.exe"
 # [749] FindHack is not installed correctly. Please download ragnarok0226.exe and install it in RagnarokOnline directory.(%d).   <<< formats : %d
@@ -2655,9 +2655,9 @@
 # [1321] Memorial Dungeon, [%s] is already booked.   <<< formats : %s
 "MSI_MDUNGEON_SUBSCRIPTION_ERROR_RIGHT": "El Memorial Dungeon [%s] ya está reservado."
 # [1322] Memorial Dungeon, [%s] is created.\\n Please enter in 5 minutes.   <<< formats : %s
-"MSI_MDUNGEON_SUBSCRIPTION_ERROR_EXIST": "Se ha creado el Memorial Dungeon [%s].\\\\n Entre en los próximos 5 minutos."
+"MSI_MDUNGEON_SUBSCRIPTION_ERROR_EXIST": "Se ha creado el Memorial Dungeon [%s].\n Entre en los próximos 5 minutos."
 # [1323] Failed to create Memorial Dungeon, [%s].\\n Please try again.   <<< formats : %s
-"MSI_MDUNGEON_SUBSCRIPTION_CANCEL_FAIL": "No se pudo crear el Memorial Dungeon [%s].\\\\n Inténtelo de nuevo."
+"MSI_MDUNGEON_SUBSCRIPTION_CANCEL_FAIL": "No se pudo crear el Memorial Dungeon [%s].\n Inténtelo de nuevo."
 # [1324] The character blocked the party invitation.
 "MSI_JOINMSG_REFUSE": "Este personaje bloquea las invitaciones de grupo."
 # [1325] Block all party invitations.
@@ -3421,7 +3421,7 @@
 # [1706] Can purchase upto %d pieces of the same item at a time.   <<< formats : %d
 "MSI_CAN_BUY_ITEM_NUM": "Puedes comprar hasta %d unidades del mismo objeto a la vez."
 # [1707] User customized key is saved to [%s\\%s]   <<< formats : %s %s
-"MSI_SAVE_HOTKEY_TO_FILE": "Los atajos personalizados se guardan en [%s\\\\%s]"
+"MSI_SAVE_HOTKEY_TO_FILE": "Los atajos personalizados se guardan en [%s\\%s]"
 # [1708] [%s] is currently busy and cannot accept the request.   <<< formats : %s
 "MSI_CHARACTER_IS_BUSY": "[%s] está ocupado y no puede aceptar la solicitud."
 # [1709] RO_HELP
@@ -4885,7 +4885,7 @@
 # [2438] This Account is permanently Banned.
 "MSI_CHN_BLOCK_FOREVER": "Esta cuenta está baneada permanentemente."
 # [2439] This Account is banned.\\nTermination Time:%04d-%02d-%02d %02d:%02d    <<< formats : %04d %02d %02d %02d %02d
-"MSI_CHN_BLOCK": "Esta cuenta está baneada.\\\\nFin de la sanción: %04d-%02d-%02d %02d:%02d"
+"MSI_CHN_BLOCK": "Esta cuenta está baneada.\nFin de la sanción: %04d-%02d-%02d %02d:%02d"
 # [2440] Monster(Tab)
 "MSI_WORLDMAP_MSG1": "Monstruo(Tab)"
 # [2441] Map(Alt)
@@ -5483,7 +5483,7 @@
 # [2738] SCRIPT ERROR AID
 "MSI_UISCRIPT_ERROR_GUIDE": "AYUDA DE ERROR DE SCRIPT"
 # [2739] \\nErrorfile : %s\\nErrorLine : %d line\\nErrorContent: \\n*before line : %s \\n*Errorline : %s \\n*next line:\\n %s   <<< formats : %s %d %s %s %s
-"MSI_UISCRIPT_ERROR_GUIDE_MSG": "\\\\nArchivo con error : %s\\\\nLínea con error : línea %d\\\\nContenido del error : \\\\n*línea anterior : %s \\\\n*línea con error : %s \\\\n*línea siguiente :\\\\n %s"
+"MSI_UISCRIPT_ERROR_GUIDE_MSG": "\nArchivo con error : %s\nLínea con error : línea %d\nContenido del error : \n*línea anterior : %s \n*línea con error : %s \n*línea siguiente :\n %s"
 # [2740] ^ff0000Do you want to purchase the item? after confirmation will consume %d point and %d crackers.   <<< formats : %d %d
 "MSI_TAIWAN_CASH_BUY_RECONFIRM": "^ff0000¿Quieres comprar este objeto? Al confirmar se consumirán %d punto y %d crackers."
 # [2741] Close
@@ -5677,7 +5677,7 @@
 # [2835] Press an arrow to choose the style you want.
 "MSI_STYLING_SHOP_OPENING_COMMENT": "Pulsa una flecha para elegir el estilo que quieras."
 # [2836] Come and see the new styles.\\n(Purchased accessories will be sent via RODEX.)
-"MSI_STYLING_SHOP_SUCCESS": "Ven a ver los nuevos estilos.\\\\n(Los accesorios comprados se enviarán por RODEX.)"
+"MSI_STYLING_SHOP_SUCCESS": "Ven a ver los nuevos estilos.\n(Los accesorios comprados se enviarán por RODEX.)"
 # [2837] Basic style
 "MSI_STYLING_SHOP_BASICSTYLE": "Estilo básico"
 # [2838] You can level up the skill from the base Lv. %d.   <<< formats : %d
@@ -5923,7 +5923,7 @@
 # [2958] Acknowledgement of family member registrations.
 "MSI_BABY_INDEPENDENCE_RODEX_TITLE": "Confirmación del registro de miembros de la familia."
 # [2959] Dear whom it may concern. \\r\\n\\r\\n Today, \\%s\\ and \\%s\\ 's son/daughter \\%s\\ has fully separated and independent from your member of family.\\r\\n\\r\\nHereat, we inform you in writing.\\r\\n\\r\\nPlease contact to Prontera Family Affairs if you have any enquiries.\\r\\n\\r\\nThank you.   <<< formats : %s %s %s
-"MSI_BABY_INDEPENDENCE_RODEX_CONTENTS": "A quien corresponda. \\\\r\\\\n\\\\r\\\\n Hoy, el hijo/la hija de \\\\%s\\\\ y \\\\%s\\\\, \\\\%s\\\\, se ha separado por completo de tu familia y es independiente.\\\\r\\\\n\\\\r\\\\nPor la presente te lo comunicamos por escrito.\\\\r\\\\n\\\\r\\\\nSi tienes alguna duda, contacta con Asuntos Familiares de Prontera.\\\\r\\\\n\\\\r\\\\nGracias."
+"MSI_BABY_INDEPENDENCE_RODEX_CONTENTS": "A quien corresponda. \r\n\r\n Hoy, el hijo/la hija de \\%s\\ y \\%s\\, \\%s\\, se ha separado por completo de tu familia y es independiente.\r\n\r\nPor la presente te lo comunicamos por escrito.\r\n\r\nSi tienes alguna duda, contacta con Asuntos Familiares de Prontera.\r\n\r\nGracias."
 # [2960] Equip
 "MSI_EQUIPMENT": "Equipar"
 # [2961] No image
@@ -5935,7 +5935,7 @@
 # [2964] You have to wait for one day before delegating a new Guild leader
 "MSI_IMPOSSIBLE_CHANGE_GUILD_MASTER_NOT_TIME": "Debes esperar un día antes de designar a un nuevo líder del gremio"
 # [2965] When adopted, character will not able to transcend, maximum stats will be limited, MaxHP and MaxSP will be reduced.\\nAre you sure you want to continue?
-"MSI_SUGGEST_BABY3": "Al ser adoptado, el personaje no podrá trascender, sus stats máximas quedarán limitadas y su MaxHP y MaxSP se reducirán.\\\\n¿Seguro que quieres continuar?"
+"MSI_SUGGEST_BABY3": "Al ser adoptado, el personaje no podrá trascender, sus stats máximas quedarán limitadas y su MaxHP y MaxSP se reducirán.\n¿Seguro que quieres continuar?"
 # [2966] Refine
 "MSI_REFINING": "Refinar"
 # [2967] Use Blacksmith's Blessing
@@ -5961,9 +5961,9 @@
 # [2977] Are you sure you want to change your Homunculus's name to ^0000ff%s^000000?   <<< formats : %s
 "MSI_CHANGE_HOMUN_NAME": "¿Seguro que quieres cambiar el nombre de tu Homunculus a ^0000ff%s^000000?"
 # [2978] You can be \\called\\\" with Emergency Call. (/call)\"
-"MSI_BLOCK_CALL_PERMIT": "Puedes ser \\\\llamado\\\\\\\" con Emergency Call. (/call)\\\""
+"MSI_BLOCK_CALL_PERMIT": "Puedes ser \\llamado\" con Emergency Call. (/call)\""
 # [2979] You cannot be \\called\\\" with Emergency Call. (/call)\"
-"MSI_BLOCK_CALL_REJECT": "No puedes ser \\\\llamado\\\\\\\" con Emergency Call. (/call)\\\""
+"MSI_BLOCK_CALL_REJECT": "No puedes ser \\llamado\" con Emergency Call. (/call)\""
 # [2980] Display Call messages
 "MSI_BLOCK_CALL_NOTIFY": "Mostrar los mensajes de llamada"
 # [2981] This character is currently opening a shop and can't be deleted
@@ -6061,7 +6061,7 @@
 # [3027] You can't invite or withdraw while in Memorial dungeon.
 "MSI_CANNOT_JOIN_AND_LEAVE_PARTY_IN_MAKING_MEMORIALDUNGEON": "No se puede invitar ni salir del grupo dentro de una mazmorra Memorial."
 # [3028] Profanity detected.\\nPlease check again.
-"MSI_ERROR_INCLUDE_VALGARISM": "Se ha detectado lenguaje ofensivo.\\\\nCompruébelo de nuevo."
+"MSI_ERROR_INCLUDE_VALGARISM": "Se ha detectado lenguaje ofensivo.\nCompruébelo de nuevo."
 # [3029] Please enter at least %d characters. If you don't have account, please click [Register] button to create account.   <<< formats : %d
 "MSI_MUST_ID_EXCEED_CHAR": "Introduzca al menos %d caracteres. Si no tiene cuenta, haga clic en el botón [Register] para crear una."
 # [3030] Please enter at least %d characters.   <<< formats : %d
@@ -6129,7 +6129,7 @@
 # [3061] Purchase reward items
 "MSI_ZENY_LOTTO_REWARD_ITEM": "Objetos de recompensa por compra"
 # [3062] ^1a1a1a1 ^b%d ^/b Lottery will spend \\n^4435b2%d zeny^1a1a1a\\nBuy it?   <<< formats : %d %d
-"MSI_ZENY_LOTTO_ASK_PURCHASE": "^1a1a1a1 ^b%d ^/b tickets de lotería costarán \\\\n^4435b2%d zeny^1a1a1a\\\\n¿Comprar?"
+"MSI_ZENY_LOTTO_ASK_PURCHASE": "^1a1a1a1 ^b%d ^/b tickets de lotería costarán \n^4435b2%d zeny^1a1a1a\n¿Comprar?"
 # [3063] Lottery purchase success
 "MSI_ZENY_LOTTO_RESULT_SUCCESS": "Compra de lotería realizada"
 # [3064] Insufficient Zeny to purchase lottery ticket
@@ -6205,7 +6205,7 @@
 # [3099] Purchase Zeny
 "MSI_ZENY_LOTTO_RODEX_REFUND_TITLE": "Compra en zeny"
 # [3100] Refund amount: %d Zeny\\r\\nRefund reason: Server failed to draw lottery   <<< formats : %d
-"MSI_ZENY_LOTTO_RODEX_REFUND_CONTENTS": "Importe reembolsado: %d zeny\\\\r\\\\nMotivo del reembolso: el servidor no pudo realizar el sorteo"
+"MSI_ZENY_LOTTO_RODEX_REFUND_CONTENTS": "Importe reembolsado: %d zeny\r\nMotivo del reembolso: el servidor no pudo realizar el sorteo"
 # [3101] Add small party window
 "MSI_ADD_MINI_PARTYWND": "Añadir la ventana pequeña de grupo"
 # [3102] Remove small party window
@@ -6447,7 +6447,7 @@
 # [3220] '%lld' Base Experience   <<< formats : %lld
 "MSI_NOTIFY_EXP_INT64": "'%lld' experiencia base"
 # [3221] ^b- Stall Fee Information^/b\\nA certain percentage of fees will be added depending on the stall setting price.\\n^b- Stall Opening Restrictions Information^/b\\nIf the total sales price of the character's Zeny and items for sale is 2,147,483,647 or more, you cannot open a stall.\\n
-"MSI_CHARGE_FEE_HELP": "^b- Información sobre las tarifas del shop^/b\\\\nSe añade un porcentaje de tarifa según el precio fijado en el shop.\\\\n^b- Información sobre las restricciones de apertura del shop^/b\\\\nSi el total de los zeny del personaje y del precio de venta de sus objetos es 2,147,483,647 o más, no puedes abrir un shop.\\\\n"
+"MSI_CHARGE_FEE_HELP": "^b- Información sobre las tarifas del shop^/b\nSe añade un porcentaje de tarifa según el precio fijado en el shop.\n^b- Información sobre las restricciones de apertura del shop^/b\nSi el total de los zeny del personaje y del precio de venta de sus objetos es 2,147,483,647 o más, no puedes abrir un shop.\n"
 # [3222] Total amount : 
 "MSI_METCHANT_SHOP_PRICE_INCLUDED_CHARGE_FEE": "Importe total:"
 # [3223] ~ When selling items, total amount of zeny received 
@@ -6563,7 +6563,7 @@
 # [3278] %s can't be used in this map.   <<< formats : %s
 "MSI_ITEMMOVERESTRICT_WHITELIST": "%s no se puede usar en este mapa."
 # [3279] Auto \\nFeeding
-"MSI_HOMUN_SELF_FEEDING": "Alimentación \\\\nauto"
+"MSI_HOMUN_SELF_FEEDING": "Alimentación \nauto"
 # [3280] You can't feed Homunculus while the RODEX window is open.
 "MSI_FAILED_HOMUN_SELF_FEEDING_CLOSE_RODEX": "No puedes alimentar al Homunculus con la ventana RODEX abierta."
 # [3281] Homunculus has been fed. [%s] - %d remaining   <<< formats : %s %d
@@ -6573,7 +6573,7 @@
 # [3283] Homunculus Automatic Feeding is OFF
 "MSI_HOMUN_SELF_FEEDING_OFF": "La alimentación automática del Homunculus está desactivada"
 # [3284] Homunculus receives \\n10% of master's experience.   <<< formats : % o
-"MSI_HOMUN_SELF_FEEDING_EXP_INFORMATION": "El Homunculus recibe \\\\n10% de la experiencia de su maestro."
+"MSI_HOMUN_SELF_FEEDING_EXP_INFORMATION": "El Homunculus recibe \n10% de la experiencia de su maestro."
 # [3285] Rate : %d%%   <<< formats : %d
 "MSI_REFINING_RATE": "Tasa: %d%%"
 # [3286] The target isn't in attack range vicinity. Please use 'Alt + Right Click' to command Homunculus attacks a target.
@@ -6911,9 +6911,9 @@
 # [3452] Sprite Marble effect is OFF
 "MSI_SPRITEMABLE_OFF": "El efecto Sprite Marble está desactivado"
 # [3453] This account has limited in-game access due to a secondary password mis-input. \\n %02d hour %02d minute until released, To release it go to -> Change personal information -> and enter your secondary password.   <<< formats : %02d %02d
-"MSI_BAN_BLOCK_CHARCTER_SERVER_SECOND_PASSWORD": "Esta cuenta tiene el acceso al juego limitado por un error en la contraseña secundaria. \\\\n %02d hora %02d minuto hasta el desbloqueo. Para desbloquearla, ve a -> Cambiar información personal -> e introduce tu contraseña secundaria."
+"MSI_BAN_BLOCK_CHARCTER_SERVER_SECOND_PASSWORD": "Esta cuenta tiene el acceso al juego limitado por un error en la contraseña secundaria. \n %02d hora %02d minuto hasta el desbloqueo. Para desbloquearla, ve a -> Cambiar información personal -> e introduce tu contraseña secundaria."
 # [3454] You've entered wrong password 3 times. Your account will be locked for 24 hours to secure your account.\\n To release it go to -> Change personal information -> and enter your secondary password.
-"MSI_SECOND_PASSWORD_INFO_5": "Has introducido una contraseña incorrecta 3 veces. Tu cuenta se bloqueará durante 24 horas para protegerla.\\\\n Para desbloquearla, ve a -> Cambiar información personal -> e introduce tu contraseña secundaria."
+"MSI_SECOND_PASSWORD_INFO_5": "Has introducido una contraseña incorrecta 3 veces. Tu cuenta se bloqueará durante 24 horas para protegerla.\n Para desbloquearla, ve a -> Cambiar información personal -> e introduce tu contraseña secundaria."
 # [3455] Officer
 "MSI_CHECK_ATTENDANCE_RODEX_SENDER": "Oficial"
 # [3456] Day %d attendance reward.   <<< formats : %d
@@ -6929,7 +6929,7 @@
 # [3461] Guild level is at maximum, you can no longer contribute to guild exp.
 "MSI_CANNOT_OFFER_GUILD_EXP_MAX_LEVEL": "El nivel del gremio está al máximo, ya no puedes contribuir a la EXP de gremio."
 # [3462] To keep your account secure, please login to MOTP homepage.\\nPlease try to log in to the home page.
-"MSI_FORCED_WEB_LOGIN": "Para proteger tu cuenta, inicia sesión en la web de MOTP.\\\\nIntenta iniciar sesión en la página web."
+"MSI_FORCED_WEB_LOGIN": "Para proteger tu cuenta, inicia sesión en la web de MOTP.\nIntenta iniciar sesión en la página web."
 # [3463] Physical attack and magical attack have been improved.
 "MSI_INC_ATTACKDAMAGE_ABILITYPOWER": "El ataque físico y el ataque mágico han aumentado."
 # [3464] Physical attack and magical attack have been reduced.
@@ -6973,7 +6973,7 @@
 # [3484] Forced Closure of Your Stall
 "MSI_STORE_ASSISTANT_TRADE_FORCED_REMOVAL_TITLE": "Cierre forzoso de tu puesto"
 # [3485] Hello. This is the Game Master Team.\\r\\nYour part-time stall in question was forced to close after being found to be in violation of it's operating policy.\\r\\nIf you would like further confirmation, please submit a 1:1 inquiry with an available Game Master.\\r\\nThank you.
-"MSI_STORE_ASSISTANT_TRADE_FORCED_REMOVAL_CONTENT": "Hola. Aquí el equipo de Game Masters.\\\\r\\\\nTu puesto fue cerrado a la fuerza tras comprobarse que infringía las normas de funcionamiento.\\\\r\\\\nSi deseas más información, envía una consulta individual a un Game Master disponible.\\\\r\\\\nGracias."
+"MSI_STORE_ASSISTANT_TRADE_FORCED_REMOVAL_CONTENT": "Hola. Aquí el equipo de Game Masters.\r\nTu puesto fue cerrado a la fuerza tras comprobarse que infringía las normas de funcionamiento.\r\nSi deseas más información, envía una consulta individual a un Game Master disponible.\r\nGracias."
 # [3486] You can't enter value more than 50%.
 "MSI_CAN_NOT_OFFER_EXP_LIMIT_RATE": "No puedes introducir un valor superior al 50%."
 # [3487] Sent a request to join the party.
@@ -7265,15 +7265,15 @@
 # [3630] Commercial/Defense Check
 "MSI_GUILD_AGIT_INVESTMENT_INFO": "Control comercio/defensa"
 # [3631] Would you like to move to %s Management Territory?\\n%d Zeny will be consumed with every move.\\n(%d Zeny will be consumed during WoE times.)   <<< formats : %s %d %d
-"MSI_GUILD_AGIT_ARE_YOU_MOVE_AGIT": "¿Desea desplazarse al territorio de gestión %s?\\\\nSe consumirán %d zeny en cada desplazamiento.\\\\n(Se consumirán %d zeny durante la WoE.)"
+"MSI_GUILD_AGIT_ARE_YOU_MOVE_AGIT": "¿Desea desplazarse al territorio de gestión %s?\nSe consumirán %d zeny en cada desplazamiento.\n(Se consumirán %d zeny durante la WoE.)"
 # [3632] \\nManagement Territory: %s\\n   <<< formats : %s
-"MSI_GUILD_AGIT_SHOW_INVESTMENT_INFO": "\\\\nTerritorio de gestión: %s\\\\n"
+"MSI_GUILD_AGIT_SHOW_INVESTMENT_INFO": "\nTerritorio de gestión: %s\n"
 # [3633] This feature is not available in WoE territory.
 "MSI_GUILD_AGIT_MOVE_FAIL_MAP": "Esta función no está disponible en territorio WoE."
 # [3634] This character has not acquired Basic Skills skill.
 "MSI_NOT_LEARN_BASIC_SKILL": "Este personaje no ha aprendido la habilidad Basic Skills."
 # [3635] The connected IP cannot be used for Ragnarok:Zero.\\nPlease contact the customer center or homepage.
-"MSI_BAN_IP_BLOCK_FOR_ZERO": "La IP conectada no puede usarse en Ragnarok:Zero.\\\\nContacta con el servicio de atención al cliente o la página oficial."
+"MSI_BAN_IP_BLOCK_FOR_ZERO": "La IP conectada no puede usarse en Ragnarok:Zero.\nContacta con el servicio de atención al cliente o la página oficial."
 # [3636] Mounting/Dismounting
 "MSI_TOOLTIP_OF_OPTIONOFF_BTN": "Montar/Desmontar"
 # [3637] Import
@@ -7323,7 +7323,7 @@
 # [3659] Limit: %d   <<< formats : %d
 "MSI_ACCOUNT_LIMITED_SALE_ITEM_LIMIT_NUM": "Límite: %d"
 # [3660] >> ItemName: %s\\nQuantity: %d\\nSales Period: %02d/%02d - %02d:%02d ~ %02d/%02d - %02d:%02d   <<< formats : %s %d %02d %02d %02d %02d %02d %02d %02d %02d
-"MSI_ACCOUNT_LIMITED_TOOL_RESULT_FORMAT": ">> Nombre del objeto: %s\\\\nCantidad: %d\\\\nPeriodo de venta: %02d/%02d - %02d:%02d ~ %02d/%02d - %02d:%02d"
+"MSI_ACCOUNT_LIMITED_TOOL_RESULT_FORMAT": ">> Nombre del objeto: %s\nCantidad: %d\nPeriodo de venta: %02d/%02d - %02d:%02d ~ %02d/%02d - %02d:%02d"
 # [3661] Sold Out
 "MSI_ACCOUNT_LIMITED_SALE_ITEM_SOLD_OUT": "Agotado"
 # [3662] [%s] is currently in a non-summonable area.   <<< formats : %s
@@ -7391,9 +7391,9 @@
 # [3693] That rodex can be opened on server %s.   <<< formats : %s
 "MSI_GLOBALRODEX_NOT_ABLE_TO_OPEN_MAIL_IN_CUR_SERVER": "Ese RODEX solo puede abrirse en el servidor %s."
 # [3694] [Notice] Are you sure you want to delete all mails in the mailbox? \\n (Only mail from the %s server will be deleted.)   <<< formats : %s
-"MSI_GLOBALRODEX_MESSAGE_DELETE_ALL_ON_ADMIN": "[Notice] ¿Seguro que quieres eliminar todos los correos del buzón? \\\\n (Solo se eliminarán los correos del servidor %s.)"
+"MSI_GLOBALRODEX_MESSAGE_DELETE_ALL_ON_ADMIN": "[Notice] ¿Seguro que quieres eliminar todos los correos del buzón? \n (Solo se eliminarán los correos del servidor %s.)"
 # [3695] [Notice] Would you like to receive all the attached items in your letterbox? \\n (You can only receive mail from the %s server.)   <<< formats : %s
-"MSI_GLOBALRODEX_MESSAGE_RECEIVE_ALL": "[Notice] ¿Quieres recibir todos los objetos adjuntos de tu buzón? \\\\n (Solo puedes recibir correos del servidor %s.)"
+"MSI_GLOBALRODEX_MESSAGE_RECEIVE_ALL": "[Notice] ¿Quieres recibir todos los objetos adjuntos de tu buzón? \n (Solo puedes recibir correos del servidor %s.)"
 # [3696] This mail can only be deleted from server %s.   <<< formats : %s
 "MSI_GLOBALRODEX_REFUSE_DELETING": "Este correo solo puede eliminarse desde el servidor %s."
 # [3697] This mail can only be received from the %s server.   <<< formats : %s
@@ -7655,7 +7655,7 @@
 # [3825] message
 "MSI_GUILD_AGIT_TITLE": "mensaje"
 # [3826] The total of items to be sold exceeds the amount of Zeny you can have. \\nPlease correct the quantity and price.
-"MSI_MERCHANTSHOP_TOTA_LOVER_ZENY_ERR": "El total de los objetos a vender supera la cantidad de zeny que puede poseer. \\\\nCorrija la cantidad y el precio."
+"MSI_MERCHANTSHOP_TOTA_LOVER_ZENY_ERR": "El total de los objetos a vender supera la cantidad de zeny que puede poseer. \nCorrija la cantidad y el precio."
 # [3827] Reputation Status
 "MSI_REPUTE_WND": "Estado de reputación"
 # [3828] %u / 1000 P   <<< formats : %u
@@ -7965,7 +7965,7 @@
 # [3983] Sort Mini Party Window
 "MSI_SORT_MINIPARTY": "Ordenar la miniventana de grupo"
 # [3984] It is evenly distributed.\\nItems cannot be obtained because the weight or type of party members is excessive.
-"MSI_PICKUP_FAILED_PARTY_MEMBER": "Distribución equitativa.\\\\nNo se pueden obtener los objetos porque el peso o el tipo de los miembros del grupo lo impide."
+"MSI_PICKUP_FAILED_PARTY_MEMBER": "Distribución equitativa.\nNo se pueden obtener los objetos porque el peso o el tipo de los miembros del grupo lo impide."
 # [3985] [%s] obtained '+%d %s' from [%s].   <<< formats : %s %d %s %s
 "MSI_BROADCASTING_SPECIAL_ITEM_OBTAIN_ADD_LEVEL": "[%s] obtuvo '+%d %s' de [%s]."
 # [3986] Please reopen your mailbox.
@@ -8193,7 +8193,7 @@
 # [4097] Graphics API
 "MSI_GRAPHIC_SETTING_RENDER_SYSTEM": "API gráfica"
 # [4098] ^FF2931Used %s items are not\\nsubject to subscription cancellation\\n, and cannot be exchanged again for %s.   <<< formats : %s %s
-"MSI_PAY_CONFIRM_BY_ITEM": "^FF2931Los objetos %s usados no son\\\\nreembolsables\\\\n, y no se pueden volver a cambiar por %s."
+"MSI_PAY_CONFIRM_BY_ITEM": "^FF2931Los objetos %s usados no son\nreembolsables\n, y no se pueden volver a cambiar por %s."
 # [4099] D
 "MSI_ENCHANT_MARK_1": "D"
 # [4100] C
@@ -8265,7 +8265,7 @@
 # [4133] Gender change cannot be performed while transformed.
 "MSI_GENDER_CHANGE_FAILED_CAUSE_MONSTER_TRANSFORM": "No se puede cambiar de sexo mientras estás transformado."
 # [4134] Do you want to change your character's gender?\\n^ff0000You must leave your party or guild to change it.^000000
-"MSI_GENDER_CHANGE_MESSAGE_CONFIRM": "¿Quieres cambiar el sexo de tu personaje?\\\\n^ff0000Debes salir de tu grupo o gremio para cambiarlo.^000000"
+"MSI_GENDER_CHANGE_MESSAGE_CONFIRM": "¿Quieres cambiar el sexo de tu personaje?\n^ff0000Debes salir de tu grupo o gremio para cambiarlo.^000000"
 # [4135] Gender change begins
 "MSI_GENDER_CHANGE_MESSAGE_OK": "Comienza el cambio de sexo"
 # [4136] Item usage has been cancelled.
@@ -8381,7 +8381,7 @@
 # [4191] Confirm Character Deletion
 "MSI_CHECK_CHAR_DELETE_TEXT": "Confirmar la eliminación del personaje"
 # [4192] This account has been restricted from accessing the game due to an incorrect secondary password input. \\n The restriction will be lifted at {2:02}/{1:02}/{0:04} {3:02}:{4:02}. To lift the restriction, please go to the homepage -> Change personal information -> Secondary password and authenticate yourself.
-"MSI_BAN_BLOCK_CHARCTER_SERVER_SECOND_PASSWORD_BR": "Esta cuenta tiene restringido el acceso al juego por introducir una contraseña secundaria incorrecta. \\\\n La restricción se levantará el {2:02}/{1:02}/{0:04} a las {3:02}:{4:02}. Para levantarla, ve a la página principal -> Cambiar información personal -> Contraseña secundaria y autentifícate."
+"MSI_BAN_BLOCK_CHARCTER_SERVER_SECOND_PASSWORD_BR": "Esta cuenta tiene restringido el acceso al juego por introducir una contraseña secundaria incorrecta. \n La restricción se levantará el {2:02}/{1:02}/{0:04} a las {3:02}:{4:02}. Para levantarla, ve a la página principal -> Cambiar información personal -> Contraseña secundaria y autentifícate."
 # [4193] You must be equipped with a Shotgun, Gatling Gun or Grenade Launcher.
 "MSI_USESKILL_FAIL_NEED_SHOTGUN_OR_GATLING_OR_GRANADE": "Debes tener equipada una Shotgun, una Gatling Gun o un Grenade Launcher."
 # [4194] >> There is no specified location for the Tag to be used.
@@ -8391,7 +8391,7 @@
 # [4196] Error Code - %08d   <<< formats : %08d
 "MSI_ERRORPOPUP_TITLE": "Código de error - %08d"
 # [4197] Please take a screenshot of the error code\\nand contact an GM.
-"MSI_ERRORPOPUP_DETAIL": "Haz una captura de pantalla del código de error\\\\ny contacta con un GM."
+"MSI_ERRORPOPUP_DETAIL": "Haz una captura de pantalla del código de error\ny contacta con un GM."
 # [4198] You have gone off route. Please go back.
 "MSI_NAVIGATION_RS_REFAILTARGETROUTE": "Te has salido de la ruta. Vuelve atrás."
 # [4199] This reward that can be obtained after obtaining the previous one.
@@ -8657,7 +8657,7 @@
 # [4329] *The fixed casting of the skill is not affected by fixed casting reduction options for items and skills.
 "MSI_SKILL_DELAY_FLAG_DISABLE_FIXEDCASTING_REDUCTION": "*El lanzamiento fijo de la habilidad no se ve afectado por las opciones de reducción de lanzamiento fijo de objetos y habilidades."
 # [4330] *The variable casting of the skill is not reduced by status,\\n and is not affected by variable casting reduction options of items and skills.
-"MSI_SKILL_DELAY_FLAG_NOREDUCT": "*El lanzamiento variable de la habilidad no se reduce con los atributos,\\\\n y no se ve afectado por las opciones de reducción de lanzamiento variable de objetos y habilidades."
+"MSI_SKILL_DELAY_FLAG_NOREDUCT": "*El lanzamiento variable de la habilidad no se reduce con los atributos,\n y no se ve afectado por las opciones de reducción de lanzamiento variable de objetos y habilidades."
 # [4331] If refining fails, the refining value is maintained.
 "MSI_REFINING_FAIL_ITEM_SAFE": "Si el refinamiento falla, el nivel de refinamiento se mantiene."
 # [4332] A skill cooldown of 3 seconds x the level of the summoned spirit is applied.

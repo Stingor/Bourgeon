@@ -129,7 +129,22 @@ class GameSettings : public Plugin {
     // jamais alloué — sa durée de vie dépasse celle de la structure.
     const char* slash = nullptr;
   };
-  PendingWrite pending_write_;
+  // 🔴 UNE FILE, et un affichage OPTIMISTE par-dessus.
+  //
+  // Les écritures sont différées au tick (elles traversent un handler natif), et
+  // l'affichage relit l'état à chaque frame : entre le clic et le tick, la case
+  // se redessinait donc dans son ANCIEN état puis basculait — un clignotement,
+  // exactement celui qu'avait le Battle Mode de la table des raccourcis.
+  // `PendingValue` fait afficher ce que le joueur vient de demander tant que
+  // l'écriture n'a pas eu lieu.
+  //
+  // Une FILE et non une seule case : deux clics rapprochés tiennent dans le même
+  // tick, et la seconde demande écrasait la première sans que rien ne le dise.
+  std::vector<PendingWrite> pending_writes_;
+
+  // La valeur à AFFICHER pour cette option : celle en attente s'il y en a une,
+  // sinon celle du client. La dernière demande gagne — c'est le dernier clic.
+  bool PendingValue(int id, bool actual) const;
 
   bool pending_reset_ = false;
   bool confirm_reset_ = false;

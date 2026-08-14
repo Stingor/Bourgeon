@@ -24,8 +24,25 @@ using GetById_t = const char*(__cdecl*)(unsigned int);
 
 GetById_t g_orig_get_by_id = nullptr;
 
-// id -> texte déjà converti dans la code-page du client.
-std::unordered_map<int, const char*> g_by_id;
+// 🔴 INDEXÉ PAR LE TEXTE ANGLAIS, PAS PAR L'ID — et ce n'est pas un détail de
+// mise en œuvre, c'est ce qui rend la traduction JUSTE.
+//
+// Première version : `id -> traduction`, l'id étant le numéro de ligne du csv.
+// Faux. Constaté en jeu le 2026-08-14 : le titre du panneau, demandé à l'id 4241
+// où le csv place `MSI_OPTION_ESC`, sortait « Indoor teleport is not supported. »
+// — et les ids 4216/4217 rendaient « NO MSG » quand le natif, lui, affichait le
+// bon libellé. Le client résout ses ids autrement que par la position dans le
+// fichier, et bâtir la table sur cette hypothèse revenait à distribuer les
+// traductions au hasard passé un certain rang.
+//
+// On ne résout donc plus rien : le hook demande au CLIENT son texte anglais
+// (par le trampoline) et cherche CE TEXTE. La correspondance
+// « clé MSI_* -> texte anglais » vient du csv, où elle est sur la même ligne,
+// donc à l'abri de tout décalage d'indexation.
+//
+// ⚠ Deux entrées de même texte anglais partagent leur traduction. C'est voulu :
+// ce sont les mêmes mots, ils doivent se dire pareil.
+std::unordered_map<std::string, const char*> g_by_text;
 
 // 🔴 STOCKAGE PERSISTANT DES CHAÎNES. `std::deque` et non `vector` : les
 // pointeurs rendus au client doivent rester valides, et un vector qui réalloue
@@ -129,6 +146,10 @@ constexpr uintptr_t kFreeBufferAddr   = 0x00a892c0;
 using LoadToMemoryFn = void*(__fastcall*)(void*, void*, const char*, DWORD*, char);
 using FreeBufferFn   = int(__stdcall*)(void*);
 
+// Défini plus bas : le dés-échappement, partagé par le csv du client et par
+// notre catalogue — les deux emploient les mêmes séquences.
+std::string Unescape(const std::string& s);
+
 // ⚠ Fonction SÉPARÉE, et sans le moindre objet C++ : MSVC refuse `__try` dans une
 // fonction qui doit dérouler des destructeurs (C2712).
 void* LoadClientFile(const char* path, DWORD* size) {
@@ -138,9 +159,14 @@ void* LoadClientFile(const char* path, DWORD* size) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-// clé `MSI_*` -> id. Vide si le csv est introuvable.
-std::unordered_map<std::string, int> ReadClientTable() {
-  std::unordered_map<std::string, int> keys;
+// clé `MSI_*` -> texte ANGLAIS, tel que le client l'affichera. Vide si le csv est
+// introuvable.
+//
+// ⚠ Le texte est DÉS-ÉCHAPPÉ ici, comme le fait le parseur du client
+// (`sub_A9E800`) au chargement : c'est la forme dés-échappée que rendra
+// `GetById`, donc celle qu'il faut indexer pour la retrouver.
+std::unordered_map<std::string, std::string> ReadClientTable() {
+  std::unordered_map<std::string, std::string> keys;
 
   DWORD size = 0;
   void* buffer = LoadClientFile("data\\msgstringtable.csv", &size);
@@ -152,23 +178,32 @@ std::unordered_map<std::string, int> ReadClientTable() {
     return keys;
   }
 
-  // Découpage sur les fins de ligne : l'index de LIGNE est l'id (ligne 1 = id 0),
-  // et seule la première colonne (la clé, en base64) nous intéresse.
+  // Deux colonnes en base64 sur la même ligne : la clé, puis le texte. C'est
+  // cette CO-LOCALISATION qui fait la valeur du fichier — la paire est juste
+  // quelle que soit la façon dont le client numérote ses messages.
+  //
+  // ⚠ Une ligne du fichier porte TROIS colonnes (un texte à deux valeurs) : on
+  // prend la deuxième, comme le client.
   const char* p = static_cast<const char*>(buffer);
   const char* end = p + size;
-  int id = 0;
   while (p < end) {
     const char* eol = p;
     while (eol < end && *eol != '\n') ++eol;
     const char* stop = eol;
     if (stop > p && stop[-1] == '\r') --stop;
+
     const char* comma = p;
     while (comma < stop && *comma != ',') ++comma;
-    if (comma > p) {
+    if (comma > p && comma < stop) {
+      const char* second = comma + 1;
+      const char* comma2 = second;
+      while (comma2 < stop && *comma2 != ',') ++comma2;
       std::string key = Base64Decode(p, static_cast<std::size_t>(comma - p));
-      if (!key.empty()) keys.emplace(std::move(key), id);
+      std::string text =
+          Base64Decode(second, static_cast<std::size_t>(comma2 - second));
+      if (!key.empty() && !text.empty())
+        keys.emplace(std::move(key), Unescape(text));
     }
-    ++id;
     p = (eol < end) ? eol + 1 : end;
   }
 
@@ -182,6 +217,13 @@ std::unordered_map<std::string, int> ReadClientTable() {
 // commentaires en `#`. Un mini-parseur suffit et évite de faire dépendre un
 // module `ragnarok/` de yaml-cpp pour deux caractères de syntaxe.
 
+// ⚠ LES MÊMES SÉQUENCES QUE LE PARSEUR DU CLIENT, ni plus ni moins
+// (`sub_A9E800` : `\r \n \t \' \" \\`). Le `\'` avait été oublié à la première
+// écriture — un apostrophe échappé serait ressorti avec son antislash.
+//
+// 🔴 Une séquence INCONNUE garde son antislash. Le client fait pareil, et les
+// chemins de ressources en dépendent : « data\aura » perdrait son séparateur si
+// l'on avalait le `\a`.
 std::string Unescape(const std::string& s) {
   std::string out;
   out.reserve(s.size());
@@ -192,8 +234,9 @@ std::string Unescape(const std::string& s) {
         case 'r':  out.push_back('\r'); break;
         case 't':  out.push_back('\t'); break;
         case '"':  out.push_back('"');  break;
+        case '\'': out.push_back('\''); break;
         case '\\': out.push_back('\\'); break;
-        default:   out.push_back(s[i]); break;
+        default:   out.push_back('\\'); out.push_back(s[i]); break;
       }
     } else {
       out.push_back(s[i]);
@@ -239,9 +282,14 @@ const char* __cdecl GetByIdHook(unsigned int id) {
     g_loading = false;
     g_pending = false;
   }
-  const char* ours = Lookup(static_cast<int>(id));
-  if (ours) return ours;
-  return g_orig_get_by_id ? g_orig_get_by_id(id) : "";
+
+  // On demande TOUJOURS son texte au client d'abord : c'est lui la clé de
+  // recherche, et c'est aussi le repli quand la traduction manque.
+  const char* original = g_orig_get_by_id ? g_orig_get_by_id(id) : "";
+  if (!original || !*original || g_by_text.empty()) return original ? original : "";
+
+  const auto it = g_by_text.find(original);
+  return (it == g_by_text.end()) ? original : it->second;
 }
 
 void InstallHook() {
@@ -258,7 +306,7 @@ void InstallHook() {
 // construire la table `id -> texte`. ⚠ N'est JAMAIS appelée depuis
 // l'initialisation de Bourgeon — voir le commentaire de `GetByIdHook`.
 void LoadCatalogNow() {
-  g_by_id.clear();
+  g_by_text.clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
   g_stats.language = i18n::LanguageCode();
@@ -271,7 +319,7 @@ void LoadCatalogNow() {
   std::ifstream in(path, std::ios::binary);
   if (!in) return;  // pas de catalogue pour cette langue : le natif répond seul
 
-  const std::unordered_map<std::string, int> keys = ReadClientTable();
+  const std::unordered_map<std::string, std::string> keys = ReadClientTable();
   if (keys.empty()) return;
 
   std::string line, key, value;
@@ -281,28 +329,27 @@ void LoadCatalogNow() {
 
     const auto found = keys.find(key);
     if (found == keys.end()) continue;  // clé inconnue du client : on ignore
-    const int id = found->second;
+    const std::string& english = found->second;
+    if (english.empty()) continue;
 
     // 🔴 LE CONTRÔLE QUI ÉVITE LE CRASH : la traduction doit consommer les mêmes
-    // arguments que l'original. On interroge le NATIF pour l'original — pas le
-    // csv relu — parce que c'est lui que le client passera à `printf`.
-    const char* original = g_orig_get_by_id
-                               ? g_orig_get_by_id(static_cast<unsigned>(id))
-                               : nullptr;
-    if (original && *original) {
-      if (FormatSequence(original) != FormatSequence(value)) {
-        ++g_stats.rejected;
-        LogDiag("[msgstring] {} ({}) refusée : formats différents — « {} » vs « {} »",
-                key, id, original, value);
-        continue;
-      }
+    // arguments que l'original, sinon le client passe ses arguments à un format
+    // qui ne les attend pas.
+    if (FormatSequence(english) != FormatSequence(value)) {
+      ++g_stats.rejected;
+      LogDiag("[msgstring] {} refusée : formats différents — « {} » vs « {} »",
+              key, english, value);
+      continue;
     }
 
     // Conversion UNE fois, vers la code-page que le natif sait dessiner.
     const char* local = ro::Utf8ToLocal(value.c_str());
     if (!local) continue;
     g_storage.emplace_back(local);
-    g_by_id[id] = g_storage.back().c_str();
+    // ⚠ `emplace` et non `operator[]` : deux clés peuvent porter le MÊME texte
+    // anglais, et la première traduction gagne. Écraser reviendrait à laisser le
+    // dernier passage décider, sans que rien ne le signale.
+    g_by_text.emplace(english, g_storage.back().c_str());
     ++g_stats.entries;
   }
 
@@ -313,8 +360,11 @@ void LoadCatalogNow() {
 }  // namespace
 
 const char* Lookup(int id) {
-  const auto it = g_by_id.find(id);
-  return (it == g_by_id.end()) ? nullptr : it->second;
+  if (!g_orig_get_by_id || g_by_text.empty()) return nullptr;
+  const char* original = g_orig_get_by_id(static_cast<unsigned>(id));
+  if (!original || !*original) return nullptr;
+  const auto it = g_by_text.find(original);
+  return (it == g_by_text.end()) ? nullptr : it->second;
 }
 
 void Reload() {
@@ -333,7 +383,7 @@ void Reload() {
   // Rechargement demandé : on repart d'une table vide, et le prochain message
   // relira tout. Les chaînes déjà rendues au client, elles, ne sont pas libérées
   // (cf. `g_storage`) — il peut encore en tenir des pointeurs.
-  g_by_id.clear();
+  g_by_text.clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
   g_pending = true;

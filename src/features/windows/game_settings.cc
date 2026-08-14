@@ -33,14 +33,20 @@ constexpr int kGameSettingsWndId = 0x271E;  // 10014
 // ⚠ Le cinquième id n'est PAS contigu aux quatre autres : 4146 est déjà
 // « Emblem Border ». Une boucle `base + i` afficherait ce libellé comme onglet.
 //
-// 🔴 TOUS PASSENT PAR `Utf8Or`, JAMAIS PAR `Utf8`. Constaté en jeu le 2026-08-14 :
-// sur Moonlight, **4216 et 4217 rendent « NO MSG »** alors que 4142-4146, juste
-// à côté, répondent correctement — et que les deux textes sont bel et bien
-// présents dans `data\msgstringtable.csv` (calibré : 1483 = « Game Options »,
-// 1548 = la confirmation de retour au point de sauvegarde). La cause exacte n'est
-// PAS établie : le `.txt` du GRF s'arrête à 4024 entrées, le `.csv` en a 4361, et
-// je n'ai pas pu lire la table en mémoire du client pour trancher lequel il
-// charge vraiment. Le repli, lui, ne dépend pas de la réponse.
+// 🔴 TOUS PASSENT PAR `Utf8Or`, JAMAIS PAR `Utf8` — ET LES IDS CI-DESSOUS SONT
+// DOUTEUX PAR NATURE.
+//
+// Cause établie le 2026-08-14, après trois symptômes qui disaient la même chose :
+// 4216/4217 rendaient « NO MSG », le natif affichait pourtant le bon libellé, et
+// le titre demandé à 4241 sortait « Indoor teleport is not supported. »
+// **Le client ne numérote PAS ses messages par leur ligne dans
+// `msgstringtable.csv`.** Tout id relevé en lisant ce fichier est donc une
+// supposition, juste par accident dans les petits rangs et fausse plus loin.
+//
+// Le repli de `Utf8Or` est ce qui rend la fenêtre correcte malgré cela : quand
+// l'id vise à côté, on affiche notre propre libellé traduit plutôt que le texte
+// d'un autre message. (La traduction globale, elle, ne dépend plus du tout des
+// ids : elle s'indexe sur le TEXTE anglais — cf. ragnarok/msgstring_override.cc.)
 constexpr int kMsgTabBasic    = 4142;
 constexpr int kMsgTabEffect   = 4143;
 constexpr int kMsgTabControl  = 4144;
@@ -186,19 +192,24 @@ void GameSettings::OnTick() {
     return;
   }
 
-  if (pending_write_.valid) {
-    const PendingWrite write = pending_write_;
-    pending_write_ = PendingWrite();
-    if (write.exec) {
-      gamesettings::Exec(write.id);
-    } else if (write.slash) {
-      // Option absente de la table des drapeaux : seul le chemin par nom de
-      // commande sait l'y insérer. Si le client ne connaît pas la commande, on
-      // retombe sur l'écriture ordinaire plutôt que de ne rien faire.
-      if (!gamesettings::SetOnByCommand(write.slash, write.on))
+  if (!pending_writes_.empty()) {
+    // Toutes les écritures en attente, pas une par tick : ce sont des clics du
+    // joueur, donc quelques-unes au plus, et les étaler ferait durer le
+    // clignotement que l'affichage optimiste vient justement de supprimer.
+    const std::vector<PendingWrite> writes = pending_writes_;
+    pending_writes_.clear();
+    for (const PendingWrite& write : writes) {
+      if (write.exec) {
+        gamesettings::Exec(write.id);
+      } else if (write.slash) {
+        // Option absente de la table des drapeaux : seul le chemin par nom de
+        // commande sait l'y insérer. Si le client ne connaît pas la commande, on
+        // retombe sur l'écriture ordinaire plutôt que de ne rien faire.
+        if (!gamesettings::SetOnByCommand(write.slash, write.on))
+          gamesettings::SetOn(write.id, write.on);
+      } else {
         gamesettings::SetOn(write.id, write.on);
-    } else {
-      gamesettings::SetOn(write.id, write.on);
+      }
     }
     rows_dirty_ = true;
     return;
@@ -207,6 +218,14 @@ void GameSettings::OnTick() {
   // 🔴 DÉTRUIRE, pas masquer : le hook de création l'a rendue invisible, mais une
   // native vivante avale un appui sur deux et garde le clavier.
   if (uiwnd::FindWindow(kGameSettingsWndId)) uiwnd::CloseWindow(kGameSettingsWndId);
+}
+
+bool GameSettings::PendingValue(int id, bool actual) const {
+  // À rebours : la DERNIÈRE demande pour cet id est celle du dernier clic.
+  for (auto it = pending_writes_.rbegin(); it != pending_writes_.rend(); ++it) {
+    if (!it->exec && it->id == id) return it->on;
+  }
+  return actual;
 }
 
 void GameSettings::RefreshRows() {
@@ -402,29 +421,33 @@ void GameSettings::DrawBasicTab() {
   // ── Les deux bascules de la page Basique qui sont de simples TALKTYPE ───────
   mui::SeparatorText(i18n::Tr("Affichage"));
 
-  bool emblem = gamesettings::IsOn(kTtEmblemFrame);
+  bool emblem = PendingValue(kTtEmblemFrame, gamesettings::IsOn(kTtEmblemFrame));
   if (ro::RoCheckbox(
           msgstr::Utf8Or(kMsgEmblemFrame, i18n::Tr("Bordure d'emblème")), &emblem)) {
-    pending_write_.valid = true;
-    pending_write_.id = kTtEmblemFrame;
-    pending_write_.on = emblem;
+    PendingWrite write;
+    write.valid = true;
+    write.id = kTtEmblemFrame;
+    write.on = emblem;
     // 🔴 PAR LA COMMANDE, pas par l'id. `/frame` est absent de `CmdOnOffList`
     // dans `SaveData\OptionInfo.lua`, donc la clé de cette option n'existe pas
     // dans la table des drapeaux — et `SetFlagRaw` refuse de créer ce qu'il ne
     // trouve pas. Le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE
     // NATIVE (constaté en jeu). Le chemin par nom de commande, lui, insère.
-    pending_write_.slash = "/frame";
+    write.slash = "/frame";
+    pending_writes_.push_back(write);
   }
   ImGui::SameLine();
   mui::HelpMarker(i18n::Tr("Encadre l'emblème de guilde affiché à côté des noms."));
 
-  bool login = gamesettings::IsOn(kTtLoginNotify);
+  bool login = PendingValue(kTtLoginNotify, gamesettings::IsOn(kTtLoginNotify));
   if (ro::RoCheckbox(
           msgstr::Utf8Or(kMsgLoginNotify, i18n::Tr("Notification de connexion")),
           &login)) {
-    pending_write_.valid = true;
-    pending_write_.id = kTtLoginNotify;
-    pending_write_.on = login;
+    PendingWrite write;
+    write.valid = true;
+    write.id = kTtLoginNotify;
+    write.on = login;
+    pending_writes_.push_back(write);
   }
   ImGui::SameLine();
   mui::HelpMarker(
@@ -487,22 +510,26 @@ void GameSettings::DrawListTab(int tab) {
         // Ligne EXE : le natif dessine un bouton « appliquer » à la place de la
         // case. Le libellé de ces lignes EST la commande (« /sit », « /where »).
         if (ro::RoSmallButton(i18n::Tr("Exécuter"))) {
-          pending_write_.valid = true;
-          pending_write_.exec = true;
-          pending_write_.id = row.option.id;
+          PendingWrite write;
+          write.valid = true;
+          write.exec = true;
+          write.id = row.option.id;
+          pending_writes_.push_back(write);
         }
         ImGui::SameLine();
         ImGui::TextUnformatted(row.option.title);
       } else {
-        bool value = row.value;
+        bool value = PendingValue(row.option.id, row.value);
         if (ro::RoCheckbox(row.option.title, &value)) {
-          pending_write_.valid = true;
-          pending_write_.id = row.option.id;
-          pending_write_.on = value;
+          PendingWrite write;
+          write.valid = true;
+          write.id = row.option.id;
+          write.on = value;
+          pending_writes_.push_back(write);
         }
         // Marqueur « plus au défaut » : le natif ne le dit nulle part, et c'est
         // pourtant la première question qu'on se pose devant une liste d'options.
-        if (row.value != row.option.default_on) {
+        if (value != row.option.default_on) {
           ImGui::SameLine();
           ImGui::TextColored(kChangedText, "*");
           if (ImGui::IsItemHovered()) {
