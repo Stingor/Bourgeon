@@ -1366,9 +1366,18 @@ ImGuiWindow* g_esc_close_target = nullptr;    // à fermer au prochain Begin
 bool g_esc_any = false;                        // ≥1 ouverte (lu par le WndProc)
 bool* g_esc_min_request = nullptr;             // flag « replier » de la fenêtre principale
 bool g_esc_suppress = false;                   // un popup modal capte Échap ce frame
+bool g_esc_skip_next = false;                  // la prochaine fenêtre sort de la pile
 }  // namespace
 
+void SkipNextEscapeWindow() { g_esc_skip_next = true; }
+
 void RegisterEscapeWindow(bool* p_open) {
+  // Consommé INCONDITIONNELLEMENT, avant tout autre test : `BeginRoWindow`
+  // appelle toujours cette fonction, donc le drapeau ne peut pas fuir sur la
+  // fenêtre suivante — même si celle-ci sort par un des `return` ci-dessous.
+  const bool skip = g_esc_skip_next;
+  g_esc_skip_next = false;
+  if (skip) return;
   if (!p_open || !*p_open) return;
   ImGuiWindow* w = ImGui::GetCurrentWindow();
   if (!w) return;

@@ -55,6 +55,13 @@ void StaffTools::OnRenderUI() {
     need_pos_ = false;
   }
 
+  // 🔴 HORS DE LA PILE ÉCHAP : cette fenêtre ne se ferme QUE par sa croix ou par
+  // sa bascule. C'est un établi qu'on garde ouvert en jouant, et chaque Échap
+  // destiné au menu du jeu le refermerait par surprise. En sortir a un second
+  // effet, voulu lui aussi : elle n'AVALE plus Échap, qui continue donc d'ouvrir
+  // le menu même quand l'établi est au premier plan.
+  ro::SkipNextEscapeWindow();
+
   // Titre à suffixe STABLE : la fenêtre garde position et taille d'une langue à
   // l'autre. « Staff Tools » n'est pas traduit — c'est le nom que le staff se
   // donne, et il figure tel quel dans le menu Échap qui l'ouvre.

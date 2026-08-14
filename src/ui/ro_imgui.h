@@ -532,6 +532,17 @@ void RegisterEscapeWindow(bool* p_open);   // interne aux BeginRo*Window
 void ProcessEscapeStack();                 // à appeler 1×/frame après tous les OnRenderUI
 bool AnyEscapeWindowOpen();                // lu par le WndProc pour avaler Échap
 
+// Sort la PROCHAINE fenêtre RO de la pile Échap : elle ne se fermera pas sur
+// Échap, et n'avalera pas la touche non plus. À appeler juste AVANT son
+// BeginRoWindow, qui consomme le drapeau.
+//
+// 🔴 À RÉSERVER aux fenêtres qu'on garde ouvertes EN TRAVAILLANT — l'établi du
+// staff, par exemple. Pour tout le reste, Échap doit fermer : c'est le geste que
+// le joueur essaie en premier, et une fenêtre qui lui résiste passe pour bloquée.
+// Ici, l'inverse est vrai : l'établi resterait ouvert pendant qu'on joue, et
+// chaque Échap destiné au menu du jeu le refermerait par surprise.
+void SkipNextEscapeWindow();
+
 // Neutralise la pile Échap pour CE frame : à appeler tant qu'un popup modal ImGui
 // (ex. la modale « Signaler un bug ») est ouvert, AVANT ProcessEscapeStack. Sans
 // ça, Échap fermerait à la fois la modale ET la fenêtre RO derrière. Race-free :
