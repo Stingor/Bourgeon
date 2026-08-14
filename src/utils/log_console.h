@@ -9,6 +9,19 @@
 
 #include "spdlog/spdlog.h"
 
+// Une ligne du journal telle que la fenêtre en jeu la consomme : le texte déjà
+// mis en forme par spdlog, et le NIVEAU d'où elle vient.
+//
+// 🔴 Le niveau est MÉMORISÉ, jamais relu dans le texte. Chercher « [info] » dans
+// la ligne formatée marcherait aujourd'hui et casserait silencieusement demain :
+// le motif de spdlog est configurable (il peut cesser d'écrire le niveau), et un
+// message peut parfaitement contenir « [info] » lui-même — un paquet relayé, un
+// bout de Lua, une ligne de log serveur recopiée.
+struct LogLine {
+  std::string text;
+  spdlog::level::level_enum level = spdlog::level::info;
+};
+
 // Thread-safe, capacity-bounded ring buffer that mirrors every emitted log line
 // (info/warn/error — whatever passes the active level) so the in-game ImGui log
 // window can display them.  It is fed by an in-memory spdlog sink installed in
@@ -23,11 +36,12 @@ class LogLineBuffer {
   LogLineBuffer(const LogLineBuffer&) = delete;
   void operator=(const LogLineBuffer&) = delete;
 
-  // Append one already-formatted line (trailing newline stripped by the sink).
+  // Append one already-formatted line (trailing newline stripped by the sink),
+  // with the level of the record it came from.
   // Drops the oldest line once the capacity is reached.
-  void Push(std::string line);
+  void Push(std::string line, spdlog::level::level_enum level);
   // Replace |out| with a snapshot of the buffered lines, oldest first.
-  void Snapshot(std::vector<std::string>* out) const;
+  void Snapshot(std::vector<LogLine>* out) const;
   // Drop every buffered line (« Vider » in the in-game log window). Useful to
   // isolate what a single action logs, without restarting the client.
   void Clear();
@@ -36,7 +50,7 @@ class LogLineBuffer {
   LogLineBuffer() = default;
 
   mutable std::mutex mutex_;
-  std::deque<std::string> lines_;
+  std::deque<LogLine> lines_;
   static constexpr std::size_t kCapacity = 2000;
 };
 

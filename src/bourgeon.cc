@@ -3,6 +3,8 @@
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
+#include <cstdio>  // std::snprintf (compteur de lignes de la fenêtre de logs)
+
 #include "imgui.h"
 #include "ragnarok/skill_cooldowns.h"
 #include "ui/ro_imgui.h"
@@ -1026,7 +1028,7 @@ void Bourgeon::ShowLogWindow() {
   // compte pour un diagnostic en cours.
   constexpr size_t kMaxShown = 2000;
 
-  static std::vector<std::string> log_lines;
+  static std::vector<LogLine> log_lines;
   static std::vector<char> flat;      // tampon NUL-terminé pour ImGui
   static size_t last_count = static_cast<size_t>(-1);
   static char   filter[64] = {0};
@@ -1034,29 +1036,69 @@ void Bourgeon::ShowLogWindow() {
   static bool   follow = true;
   static bool   scroll_to_end = false;
 
+  // ── Filtre par NIVEAU ────────────────────────────────────────────────────────
+  // Les macros du projet ne couvrent que trois niveaux spdlog effectifs, et le
+  // joueur qui cherche « logwarn » doit les retrouver sous leurs noms de MACRO,
+  // pas sous ceux de spdlog :
+  //   LogInfo  → info      LogDiag → warn      LogError → error
+  // 🔴 Il n'existe PAS de LogWarn distinct : LogDiag EST le niveau warn (cf.
+  // utils/log_console.h). Une case « Diag » et une case « Warn » séparées
+  // mentiraient — c'est un seul et même bouton, étiqueté pour les deux noms.
+  // LogDebug est compilé hors des builds release : sa case n'existe que là où
+  // des lignes de debug peuvent réellement arriver, plutôt que de proposer un
+  // filtre qui ne peut jamais rien montrer.
+  static bool lvl_debug = true;
+  static bool lvl_info = true;
+  static bool lvl_warn = true;
+  static bool lvl_error = true;
+  static int  last_mask = -1;
+  static size_t kept_count = 0;
+  const int mask = (lvl_debug ? 1 : 0) | (lvl_info ? 2 : 0) |
+                   (lvl_warn ? 4 : 0) | (lvl_error ? 8 : 0);
+
+  // trace et critical n'ont aucune macro dédiée, mais rien n'interdit à spdlog
+  // d'en produire : on les rattache au voisin le plus proche pour qu'une ligne
+  // ne puisse jamais devenir INVISIBLE quelles que soient les cases cochées.
+  auto level_shown = [&](spdlog::level::level_enum lvl) {
+    switch (lvl) {
+      case spdlog::level::trace:
+      case spdlog::level::debug: return lvl_debug;
+      case spdlog::level::info:  return lvl_info;
+      case spdlog::level::warn:  return lvl_warn;
+      default:                   return lvl_error;  // err + critical
+    }
+  };
+
   LogLineBuffer::instance().Snapshot(&log_lines);
 
   // Le tampon n'est reconstruit que si quelque chose a changé : le remettre à
   // plat à chaque frame recopierait des centaines de kilo-octets pour rien, et
   // ferait sauter la sélection en cours sous la souris du joueur.
   const bool filter_changed = std::strcmp(filter, last_filter) != 0;
-  if (log_lines.size() != last_count || filter_changed) {
+  if (log_lines.size() != last_count || filter_changed || mask != last_mask) {
     last_count = log_lines.size();
+    last_mask = mask;
     std::strncpy(last_filter, filter, sizeof(last_filter) - 1);
     last_filter[sizeof(last_filter) - 1] = '\0';
+
+    auto passes = [&](const LogLine& line) {
+      return level_shown(line.level) &&
+             (!filter[0] || line.text.find(filter) != std::string::npos);
+    };
 
     std::string joined;
     size_t kept = 0;
     // Deux passes : on compte d'abord les lignes retenues pour ne garder que
     // les kMaxShown DERNIÈRES (la queue), pas les premières.
     for (const auto& line : log_lines)
-      if (!filter[0] || line.find(filter) != std::string::npos) ++kept;
+      if (passes(line)) ++kept;
+    kept_count = kept;
     const size_t skip = kept > kMaxShown ? kept - kMaxShown : 0;
     size_t seen = 0;
     for (const auto& line : log_lines) {
-      if (filter[0] && line.find(filter) == std::string::npos) continue;
+      if (!passes(line)) continue;
       if (seen++ < skip) continue;
-      joined += line;
+      joined += line.text;
       if (joined.empty() || joined.back() != '\n') joined += '\n';
     }
     flat.assign(joined.begin(), joined.end());
@@ -1079,6 +1121,39 @@ void Bourgeon::ShowLogWindow() {
                             sizeof(filter));
   ImGui::SameLine();
   ImGui::TextDisabled(i18n::Tr("(sélection souris · Ctrl+A · Ctrl+C)"));
+
+  // Deuxième rangée : les niveaux. Chaque case porte la couleur que la ligne
+  // aurait en console, pour qu'on la reconnaisse sans lire l'étiquette.
+  auto level_box = [](const char* label, bool* on, ImVec4 color,
+                      const char* tip) {
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::Checkbox(label, on);
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+    ImGui::SameLine();
+  };
+
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted(i18n::Tr("Niveaux :"));
+  ImGui::SameLine();
+#ifdef BOURGEON_DEBUG
+  level_box(i18n::Tr("Debug"), &lvl_debug, ImVec4(0.60f, 0.60f, 0.60f, 1.00f),
+            i18n::Tr("LogDebug — compilé uniquement dans les builds de debug."));
+#endif
+  level_box(i18n::Tr("Info"), &lvl_info, ImVec4(0.80f, 0.88f, 0.80f, 1.00f),
+            i18n::Tr("LogInfo — le déroulé normal du client."));
+  level_box(i18n::Tr("Diag / Warn"), &lvl_warn, ImVec4(1.00f, 0.78f, 0.35f, 1.00f),
+            i18n::Tr("LogDiag — même niveau que warn ; il n'y a pas de LogWarn "
+                     "séparé."));
+  level_box(i18n::Tr("Erreur"), &lvl_error, ImVec4(1.00f, 0.45f, 0.45f, 1.00f),
+            i18n::Tr("LogError — ce qui a échoué."));
+
+  // Le compte RETENU face au total : sans lui, un niveau décoché ressemble à un
+  // journal vide, et on cherche la panne du mauvais côté.
+  char counts[64];
+  std::snprintf(counts, sizeof(counts), i18n::Tr("%zu / %zu lignes"), kept_count,
+                log_lines.size());
+  ImGui::TextDisabled("%s", counts);
 
   // ⚠ ReadOnly : ImGui n'écrit pas dans le tampon, mais il gère la sélection et
   // la copie exactement comme un champ éditable. `AllowTabInput` reste OFF pour

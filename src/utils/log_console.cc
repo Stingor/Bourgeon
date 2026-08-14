@@ -26,7 +26,9 @@ class UiLogSink : public spdlog::sinks::base_sink<std::mutex> {
     std::string line(buf.data(), buf.size());
     while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
       line.pop_back();
-    LogLineBuffer::instance().Push(std::move(line));
+    // Le niveau voyage AVEC la ligne : la fenêtre en jeu filtre dessus, et le
+    // texte formaté n'est pas une source fiable pour le retrouver.
+    LogLineBuffer::instance().Push(std::move(line), msg.level);
   }
   void flush_() override {}
 };
@@ -157,13 +159,13 @@ void LogConsole::ApplyConsoleLevel(spdlog::level::level_enum console_level) {
   p_logger_->set_level(std::min(console_level, capture_floor_));
 }
 
-void LogLineBuffer::Push(std::string line) {
+void LogLineBuffer::Push(std::string line, spdlog::level::level_enum level) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (lines_.size() >= kCapacity) lines_.pop_front();
-  lines_.push_back(std::move(line));
+  lines_.push_back(LogLine{std::move(line), level});
 }
 
-void LogLineBuffer::Snapshot(std::vector<std::string> *out) const {
+void LogLineBuffer::Snapshot(std::vector<LogLine> *out) const {
   std::lock_guard<std::mutex> lock(mutex_);
   out->assign(lines_.begin(), lines_.end());
 }

@@ -110,8 +110,8 @@ void StaffTools::OnRenderUI() {
       i18n::Tr("Miroir en jeu de tout ce que le client journalise "
       "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
       "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
-      "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
-      "restreint l'affichage à une sous-chaîne.\n\n"
+      "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». L'affichage se restreint "
+      "à une sous-chaîne et aux niveaux cochés — Info, Diag / Warn, Erreur.\n\n"
       "Réservé au staff, et le droit est revérifié à chaque frame : la "
       "fenêtre disparaît si le niveau de groupe change en cours de session."));
 
