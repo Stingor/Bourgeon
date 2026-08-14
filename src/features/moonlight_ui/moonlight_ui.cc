@@ -2288,7 +2288,14 @@ void MoonlightUi::OnRenderUI() {
     // rouvre la fenêtre — c'est écrit dans l'infobulle, parce qu'une fermeture
     // sans retour connu se refuse d'instinct.
     ImGui::Separator();
-    if (ro::RoButton(i18n::Tr("Fermer"))) {
+    // Calé à DROITE du bord courant, et recalculé à chaque frame : la fenêtre est
+    // redimensionnable, donc une position posée une fois se décollerait du bord au
+    // premier redimensionnement. `GetContentRegionMax` suit la largeur utile, et la
+    // largeur du bouton est MESURÉE sur le libellé traduit — « Fermer », « Close »
+    // et « Cerrar » n'ont pas la même.
+    const float close_w = ro::MaxButtonWidth({i18n::Tr("Fermer")});
+    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - close_w);
+    if (ro::RoButton(i18n::Tr("Fermer"), close_w)) {
       ui_visible_ = false;
       SaveSettings();
     }
