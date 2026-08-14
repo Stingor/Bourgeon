@@ -71,6 +71,11 @@ constexpr int kCmdCommitAndClose   = 184;
 // (`if (param_1 != *(this + 264)) return 0;`) — d'où la lecture de +0x108.
 constexpr int kOffToggleButton     = 0x108;
 
+bool KeyboardMoveEnabled() {
+  auto* keyboard_move = Bourgeon::Instance().keyboard_move();
+  return keyboard_move && keyboard_move->enabled();
+}
+
 bool BattleModeEnabled() {
   __try {
     return *reinterpret_cast<const uint8_t*>(kChangeChatModeAddr) != 0;
@@ -327,33 +332,38 @@ void HotkeySettings::RefreshRows() {
     rows_.push_back(entry);
   };
 
-  for (int i = 0; i < hotkeys::ActionCount(); ++i)
-    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr));
-
-  // Le saut : sa touche se réglait jusqu'ici dans un coin du panneau « Fun », loin
-  // de tous les autres raccourcis. Elle est ici AUSSI — même valeur, deux endroits
-  // pour l'atteindre.
+  // 🔴 LE JEU D'ABORD, LES FENÊTRES ENSUITE. Le saut et le déplacement sont les
+  // deux seules lignes qui touchent au personnage : les mettre APRÈS quinze
+  // ouvertures de fenêtres les enterrait sous la ligne de flottaison, et on ne
+  // trouve pas ce qu'on ne voit pas.
+  //
+  // Le saut se réglait jusqu'ici dans un coin du panneau « Fun », loin de tous les
+  // autres raccourcis. Il est ici AUSSI — même valeur, deux endroits pour
+  // l'atteindre.
   if (Bourgeon::Instance().player_jump()) add_own(RowKind::kJump, 0, i18n::Tr("Saut"));
 
-  // Les huit touches du déplacement clavier, seulement quand il est ACTIF : les
-  // montrer éteintes ferait croire à un réglage qui ne pilote rien, et elles ne
-  // sont contrôlées en conflit que dans ce cas-là non plus.
-  if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
-    if (keyboard_move->enabled()) {
-      static const char* kMoveLabels[KeyboardMove::kMoveKeyCount] = {
-          "Déplacement : avancer",       "Déplacement : reculer",
-          "Déplacement : vers la gauche", "Déplacement : vers la droite",
-          "Déplacement : avancer (2)",   "Déplacement : reculer (2)",
-          "Déplacement : vers la gauche (2)", "Déplacement : vers la droite (2)",
-      };
-      // Les défauts viennent d'une instance construite par défaut : ils restent
-      // écrits UNE seule fois, dans keyboard_move.h, jamais recopiés ici.
-      static const KeyboardMove kDefaults;
-      for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot)
-        add_own(RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
-                kDefaults.keys_[slot]);
-    }
+  // ⚠ MONTRÉES MÊME QUAND LE DÉPLACEMENT EST ÉTEINT. Les cacher paraissait propre
+  // — un réglage qui ne pilote rien — mais il est OFF par défaut : personne ne les
+  // voyait, et personne ne pouvait deviner qu'il fallait d'abord activer la
+  // fonctionnalité ailleurs pour que ses touches apparaissent ici. Le libellé
+  // grisé dit l'inactivité sans rien cacher (cf. le rendu).
+  if (Bourgeon::Instance().keyboard_move()) {
+    static const char* kMoveLabels[KeyboardMove::kMoveKeyCount] = {
+        "Déplacement : avancer",           "Déplacement : reculer",
+        "Déplacement : vers la gauche",    "Déplacement : vers la droite",
+        "Déplacement : avancer (2)",       "Déplacement : reculer (2)",
+        "Déplacement : vers la gauche (2)", "Déplacement : vers la droite (2)",
+    };
+    // Les défauts viennent d'une instance construite par défaut : ils restent
+    // écrits UNE seule fois, dans keyboard_move.h, jamais recopiés ici.
+    static const KeyboardMove kDefaults;
+    for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot)
+      add_own(RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
+              kDefaults.keys_[slot]);
   }
+
+  for (int i = 0; i < hotkeys::ActionCount(); ++i)
+    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr));
 }
 
 // ── Liaisons de Bourgeon : un seul point de lecture et d'écriture ────────────
@@ -799,8 +809,20 @@ void HotkeySettings::OnRenderUI() {
         ImGui::TableSetColumnIndex(column++);
         ImGui::TextColored(kSecondaryText, "%s", TabLabel(entry.tab));
       }
+      // Une ligne de déplacement dont la fonctionnalité est éteinte est GRISÉE :
+      // sa touche est réglable, mais elle ne pilote rien tant que le déplacement
+      // au clavier n'est pas activé dans le panneau. Le dire en couleur évite
+      // d'avoir à cacher la ligne — ce qui la rendait introuvable.
+      const bool inert = (entry.kind == RowKind::kMove) && !KeyboardMoveEnabled();
       ImGui::TableSetColumnIndex(column++);
-      ImGui::TextUnformatted(binding.label);
+      if (inert) ImGui::TextColored(kSecondaryText, "%s", binding.label);
+      else       ImGui::TextUnformatted(binding.label);
+      if (inert && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s",
+                          i18n::Tr("Le déplacement au clavier est désactivé : "
+                                   "cette touche ne fera rien tant qu'il ne sera "
+                                   "pas activé dans les réglages de Bourgeon."));
+      }
 
       // ── Touche d'origine ─────────────────────────────────────────────────
       // Non cliquable : c'est un repère, pas un réglage — ce que le client
