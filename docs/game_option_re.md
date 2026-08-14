@@ -753,7 +753,8 @@ ceil(taille/36)`, bouton Next affiché. **36 lignes par page** (2 × 18).
 `UIHotKeyWnd_UpdatePagingButtons` (0x008F99F0) : Prev visible si `page > 1`,
 Next visible si `page < total`.
 
-**Les quatre boutons** (`OnMsg` msg 6) :
+**Les quatre boutons** (`OnMsg` **msg 6**, la commande étant le paramètre
+SUIVANT — `UIHotKeyWnd_OnMsg` 0x008FB130) :
 
 | cmd | bouton | effet |
 |---|---|---|
@@ -771,7 +772,11 @@ tout. (Le texte `MsgString(1490)` *« Stored shortcut key combination will be
 initialized. Do you want to continue? »* existe, mais **`OnMsg` case 363 n'affiche
 aucune modale** : la confirmation n'est pas sur ce chemin.)
 
-**Enable Battle Mode** — msg **213** émis par le toggle (`a2 == +0x108`) :
+**Enable Battle Mode** — 🔴 **213 est une COMMANDE, pas un message** : comme 184,
+185 et 363, elle ne se lit que sous **`msg == 6`** (clic bouton). Envoyée en
+message, elle tombe dans `UIWindow_OnMsg_Default`, qui ne fait rien et ne se
+plaint pas — la bascule semble alors marcher à l'écran et n'agit jamais (erreur
+faite puis corrigée le 2026-08-14). Émise par le toggle (`param_1 == +0x108`) :
 `g_ChangeChatMode ← (a5 != 0)`. Si on active, la fenêtre de chat est simplement
 invalidée ; si on désactive, le client déploie la barre de saisie
 (`g_ChatInputBarDeployed = 1`, `sub_8F9840`), refait le bandeau d'onglets
