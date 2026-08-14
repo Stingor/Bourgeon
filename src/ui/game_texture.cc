@@ -76,20 +76,44 @@ GameTexture TextureFromGameFile(const char* path) {
   return {Overlay_CreateTextureARGB(argb.data(), w, h), w, h};
 }
 
-GameTexture CachedTextureFromGameFile(const char* path) {
+namespace {
+
+// Le cache et son epoch de device, sortis de la fonction pour qu'une seconde —
+// l'invalidation explicite — puisse les atteindre.
+std::unordered_map<std::string, GameTexture>& TexCache() {
   static std::unordered_map<std::string, GameTexture> s_cache;
-  static unsigned s_epoch = 0;
+  return s_cache;
+}
+unsigned g_cache_epoch = 0;
+
+}  // namespace
+
+GameTexture CachedTextureFromGameFile(const char* path) {
+  auto& cache = TexCache();
   // Textures en D3DPOOL_DEFAULT : elles meurent au reset du device, et un handle
   // libéré passé à AddImage plante dans ddraw. Même garde que ui/icon_cache.cc.
   const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch != s_epoch) {
-    s_cache.clear();
-    s_epoch = epoch;
+  if (epoch != g_cache_epoch) {
+    // ⚠ On JETTE sans relâcher : ces handles appartiennent à un device qui
+    // n'existe plus, et les relâcher planterait. C'est l'inverse de
+    // InvalidateGameTextures, où le device est toujours là.
+    cache.clear();
+    g_cache_epoch = epoch;
   }
   if (!path || !path[0]) return {};
-  auto found = s_cache.find(path);
-  if (found != s_cache.end()) return found->second;
-  return s_cache[path] = TextureFromGameFile(path);
+  auto found = cache.find(path);
+  if (found != cache.end()) return found->second;
+  return cache[path] = TextureFromGameFile(path);
+}
+
+void InvalidateGameTextures() {
+  auto& cache = TexCache();
+  // Le device est VIVANT ici : les handles sont à nous, et les abandonner serait
+  // une fuite à chaque changement de skin.
+  for (auto& entry : cache) {
+    if (entry.second.tex) Overlay_ReleaseTexture(entry.second.tex);
+  }
+  cache.clear();
 }
 
 }  // namespace ro

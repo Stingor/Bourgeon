@@ -52,7 +52,11 @@ constexpr int kMsiEvolutionLow   = 2576;  // 0xA10 « intimité insuffisante »
 constexpr int kMsiAutoFeeding    = 2577;  // 0xA11
 constexpr int kMsiNameForbidden  = 2812;  // 0xAFC
 constexpr int kMsiRenameConfirm  = 2931;  // 0xB73
-constexpr int kMsiNameRejected   = 2932;  // 0xB84
+// ⚠ 2948, pas 2932 : le commentaire 0xB84 disait déjà 2948, la valeur décimale
+// avait glissé. 2932 est `MSI_STORE_ASSISTANT_TRADE_DATE` (« Trade Date: ») — un
+// refus de nom se serait affiché comme un en-tête d'échoppe. Cf.
+// tools/lang/msgstring_ids.csv, la seule source d'id qui fasse foi.
+constexpr int kMsiNameRejected   = 2948;  // 0xB84 MSI_CANNOT_USE_NAME
 constexpr int kMsiFeedNoMail     = 2985;  // 0xBA9 « ferme le courrier d'abord »
 constexpr int kMsiFeedBlocked    = 3550;  // 0xDDE
 

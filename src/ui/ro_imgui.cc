@@ -1146,6 +1146,33 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
   return Overlay_CreateTextureARGB(argb.data(), w, h);
 }
 
+// ── Époque des pièces de skin ───────────────────────────────────────────────
+//
+// Les `SkinTex` se rechargent quand cette valeur change. Deux évènements la font
+// changer, et un seul était prévu à l'origine :
+//   1. un RESET DE DEVICE — les textures sont en D3DPOOL_DEFAULT, leurs handles
+//      sont morts, et les relâcher planterait : on les abandonne ;
+//   2. un CHANGEMENT DE SKIN du client — les handles sont vivants mais les
+//      FICHIERS derrière les mêmes chemins ont changé (`SkinMgr_SetSkin` purge
+//      tout le gestionnaire de textures natif, docs/game_option_re.md §3.9).
+//
+// ⚠ Dans le second cas, abandonner les handles est une fuite — quelques dizaines
+// de petites textures d'interface, une fois par changement de skin manuel. C'est
+// assumé : les `SkinTex` sont des statiques disséminés dans une trentaine de
+// widgets, et tenir un registre de tous pour les relâcher coûterait bien plus
+// cher que ce qu'il économise.
+unsigned g_tex_epoch = 0;          // strictement croissant : jamais deux fois la même
+unsigned g_last_device_epoch = 0;
+
+unsigned TexEpoch() {
+  const unsigned dev = Overlay_DeviceEpoch();
+  if (dev != g_last_device_epoch) {
+    g_last_device_epoch = dev;
+    ++g_tex_epoch;
+  }
+  return g_tex_epoch;
+}
+
 // Charge la pièce depuis les fichiers du client (GRF/data) via le loader natif.
 // Les dimensions (b.w/b.h) sont connues d'avance → layout stable même avant que la
 // texture soit chargée. Retente tant que la texture n'est pas prête (device pas
@@ -1153,7 +1180,8 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
 void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
   // Texture D3DPOOL_DEFAULT : morte après reset/recréation du device -> on lâche
   // le handle mort pour forcer un rechargement (sinon BlitStretch/AddImage plante).
-  const unsigned dev_e = Overlay_DeviceEpoch();
+  // Même garde pour un changement de skin, cf. TexEpoch().
+  const unsigned dev_e = TexEpoch();
   if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }
   out.w = b.w;
   out.h = b.h;
@@ -1172,8 +1200,8 @@ void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
 // pour les ressources natives toujours présentes (txtbox_btn_*). out.tex reste nul
 // si le BMP manque -> le widget dessine un repli à plat.
 void* EnsureTexClient(const char* rel_path, SkinTex& out) {
-  const unsigned dev_e = Overlay_DeviceEpoch();
-  if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }  // device changé -> recharge
+  const unsigned dev_e = TexEpoch();
+  if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }  // device ou skin changé -> recharge
   if (out.tex) return out.tex;
   int w = 0, h = 0;
   void* t = LoadClientBmp(rel_path, &w, &h);
@@ -1347,6 +1375,8 @@ void DrawRoScrollbar(ImGuiWindow* w) {
 }
 
 }  // namespace
+
+void InvalidateSkinTextures() { ++g_tex_epoch; }
 
 RoSkinConfig& SkinConfig() { return g_cfg; }
 

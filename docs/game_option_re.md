@@ -655,33 +655,148 @@ Utile pour un portage : ce sont les textes exacts à réafficher.
 | 4182 | `MOUSE_EXCLUSIVE_TEXT` | In windowed mode, the mouse cursor does not go out of the window |
 | 4183-4185 | `SCREEN_MODE`, `FULLSCREEN_MODE`, `WINDOW_MODE` | Window Mode / Fullscreen / Windowed |
 | 4186 | `TRILINEAR` | Trilinear Filtering |
-| 4216 | `LOGINOUT` | Login Notification |
-| 4220 / 4221 | `EMBLEM_ON/_OFF` | Guild Emblem On / Off |
+| 4221 | `LOGINOUT` | Login Notification |
+| 4222 | `TAB_ETC` | Other |
+| 4225 / 4226 | `EMBLEM_ON/_OFF` | Guild Emblem On / Off |
 | 1483 | `MSI_ESC_OPTIONWND` | Game Options |
-| **4241** | `MSI_OPTION_ESC` | Options (ESC) |
+| **4232** | `MSI_OPTION_ESC` | Options (ESC) |
 
-⚠ **Correction (2026-08-14) : `MSI_OPTION_ESC` est à 4241, pas 4240.** 4240 est
-`MSI_EXPANSION_MINIMAP` (« Expanded Minimap »). Calibré sur `msgstringtable.csv`
-avec deux témoins sûrs — 1483 = « Game Options », 1548 = la confirmation de
-retour au point de sauvegarde.
+#### ✅ D'OÙ VIENT UN ID — CAUSE ÉTABLIE, 2026-08-14
 
-#### 🔴 Certains de ces ids rendent « NO MSG » EN JEU (constaté le 2026-08-14)
+Les ids de ce tableau ont d'abord été relevés en **comptant les lignes de
+`data\msgstringtable.csv`**. C'est faux, et le tableau ci-dessus porte les valeurs
+corrigées.
 
-Sur Moonlight, **4216** (`LOGINOUT`) et **4217** (`TAB_ETC`) sortent
-**« NO MSG »** à l'écran, alors que 4142-4146 — juste à côté — répondent
-correctement et que les deux textes sont bel et bien dans `msgstringtable.csv`.
+**L'id d'un message est son index dans `g_MsgStringSymbolNames` (`0x0104F0A8`),
+une table de 4355 pointeurs vers des clés `MSI_*` compilée DANS L'EXE.** Le csv,
+lui, ne fait qu'associer une clé à un texte ; son ordre ne l'engage à rien, et le
+client s'y retrouve par dictionnaire, pas par rang.
 
-Cause **non établie** : le `.txt` du GRF n'a que **4024** entrées, le `.csv` en a
-**4361**, les deux fichiers sont identiques entre disque et GRF, et il n'a pas été
-possible de lire la table en mémoire du client pour trancher lequel il charge
-(le processus n'était pas lancé). Ce qui est sûr, c'est la **sentinelle** :
+Les deux ordres coïncident dans les petits rangs, ce qui rend l'erreur invisible
+longtemps. Mesuré sur le client déployé :
+
+- l'exe connaît **4355** clés (ids 0..4354), le csv livré en a **4360** lignes ;
+- ils sont identiques jusqu'à l'id **4074**, puis un bloc de huit clés est permuté
+  avec un autre (`MSI_DECOM_*` ↔ `MSI_RESET_CASH_EMOTION_INFO`/`MSI_RUNESYSTEM_*`) ;
+- **40 clés du csv sont inconnues de l'exe** (`MSI_AUTO_HUNT_*` à la ligne 4222,
+  `MSI_PETINFO_ALERT` et les `..._WITH_ITEM_LINK` à la ligne 4334), et chacune
+  décale tout ce qui suit ;
+- **36 clés de l'exe sont absentes du csv**, dont `MSI_ACCOUNT_LIMITED_*`.
+
+C'est ce décalage qui expliquait les trois symptômes du portage, tous constatés en
+jeu le même jour : 4216/4217 rendaient « NO MSG » (ils visent des
+`MSI_ACCOUNT_LIMITED_*` que le csv n'a pas), et le titre demandé à 4241 sortait
+« Indoor teleport is not supported. » (`MSI_CANNOT_MOVE_INDOOR_MAP`).
+
+➡ **La table est extraite dans [`tools/lang/msgstring_ids.csv`](../tools/lang/msgstring_ids.csv)** —
+4355 lignes `id,clé`. C'est la seule source d'id qui fasse foi ; ne jamais compter
+les lignes de `msgstringtable.csv`.
+
+⚠ **Et malgré cela, `msgstr::Utf8Or(id, repli)` reste la règle** — jamais
+`msgstr::Utf8(id)` nu pour un libellé de fenêtre. La table extraite vient de l'exe
+**vanilla** que désassemble IDA, alors que le client livré est WARP-patché et
+pourrait embarquer un autre csv. Sans repli, l'échec est MUET :
 `MsgStringTable_GetById` (0x00A9ED30) rend exactement `"NO MSG"` pour un id connu
-mais sans texte, et `"NO MSG : <id>"` au-delà de 4355.
+mais sans texte, `"NO MSG : <id>"` au-delà de 4354, et ça part à l'écran comme un
+vrai libellé.
 
-➡ **Conséquence pour tout portage** : ne jamais afficher `msgstr::Utf8(id)` nu
-pour un libellé de fenêtre. Utiliser **`msgstr::Utf8Or(id, repli)`**, qui détecte
-les deux sentinelles. Sans lui l'échec est MUET — le client ne se plaint pas, et
-« NO MSG » part à l'écran comme s'il s'agissait d'un vrai libellé.
+📌 La **traduction** du client, elle, ne dépend d'aucun id : elle s'indexe sur le
+TEXTE anglais rendu (`ragnarok/msgstring_override.cc`), ce qui la met hors de
+portée de toute question de numérotation.
+
+### 3.9 ✅ Skin, RODEX et priorité — les trois derniers groupes (RE du 2026-08-14)
+
+Ces trois-là étaient restés au natif faute de RE. Ils n'ont **rien en commun** :
+ni magasin, ni chemin d'écriture, ni même la question de savoir qui décide. C'est
+la seule chose à retenir avant d'y toucher — les traiter comme des options
+ordinaires produirait trois bugs différents.
+
+Chaque groupe est une sous-classe de `GameSettingsUI::CUIGroup` et n'écrase que
+**trois slots** de sa vtable : `[15] OnCreate` (bâtir les widgets), `[16]`
+(réafficher les libellés depuis la `msgstringtable`), `[54] ResetToDefault` et
+`[55] RefreshFromState` (recocher les boutons d'après l'état réel).
+
+| groupe | vtable | OnCreate | Reset `[54]` | Refresh `[55]` |
+|---|---|---|---|---|
+| `CUIGroupSkin` | `0x01047104` | `0x009DCFD0` | `0x009EDA40` | `0x009F09C0` |
+| `CUIGroupRodexSpam` | `0x010473B0` | `0x009DC410` | `0x009ED9E0` | `0x009F0980` |
+| `CUIGroupProcessPriority` | `0x01047494` | `0x009DB3C0` | `0x009ED9C0` | `0x009F0910` |
+
+#### Priorité du processus — 100 % locale, et persistée en Lua
+
+`0x009EF070` est le handler des trois radios. Il compare le bouton cliqué aux
+widgets `this[33]/[35]/[37]` et fait, en tout et pour tout :
+
+```c
+dwPriorityClass = X;                              // 0x0160232C
+SetPriorityClass(GetCurrentProcess(), X);
+```
+
+avec `X` ∈ `HIGH_PRIORITY_CLASS` (0x80) / `NORMAL_PRIORITY_CLASS` (0x20) /
+`IDLE_PRIORITY_CLASS` (0x40, que le client intitule « Low »). Aucun paquet, aucune
+écriture disque **depuis ce chemin**.
+
+🔴 **Deux choses que la fenêtre ne dit pas, et qui changent la lecture du réglage :**
+
+1. **Il ne vaut que fenêtre au premier plan.** `sub_DB74B0` (le handler
+   d'activation, appelé depuis `Game_MainWndProc`) force `IDLE_PRIORITY_CLASS`
+   **sans condition** à la perte du focus, et restaure `dwPriorityClass` au
+   retour. Un joueur qui teste en ALT-TAB ne mesurera jamais son réglage.
+2. **Il EST persistant**, mais par un autre chemin : `OptionInfoList["PriorityClass"]`
+   dans `SaveData\OptionInfo.lua`, relu au démarrage (`WinMainCRTStartup_Run`
+   applique `dwPriorityClass` juste après le mutex d'instance unique). Écrire le
+   global suffit donc à ce que le client sauvegarde la bonne valeur en sortant.
+
+#### RODEX — le serveur décide, le client ne fait que demander
+
+`0x009EF0F0` envoie **`CZ 0x0B93`, 12 octets fixes** — et les champs sont alignés
+sur 4, ce n'est pas un `struct` packé :
+
+```c
+struct { uint16 opcode; uint16 pad; int32 type; int32 value; }
+//        0x0B93                     1 (RODEX)   1 = recevoir de tout le monde
+```
+
+🔴 **Le client n'écrit JAMAIS son propre drapeau.** `byte_1602430` n'est touché que
+par deux handlers de RÉCEPTION :
+
+| paquet | handler | rôle |
+|---|---|---|
+| `ZC 0x0B94` (14 o.) | `0x00CF97A0` | un changement : pose le drapeau, annonce au chat `MSI_RODEX_SPAMOPTION_ON/OFF`, et `MSI_RODEX_SPAMOPTION_FAIL` en cas d'échec |
+| `ZC 0x0B95` (var.) | `0x00CF8290` | la liste complète à l'entrée en jeu : des couples `{type, valeur}`, dont le type 1 |
+
+➡ Un panneau de remplacement **ne doit donc pas afficher optimiste** : la case ne
+bouge qu'au retour du serveur, exactement comme les radios natives. Si le serveur
+ignore `0x0B93`, elle ne bouge pas — et c'est la vérité, pas un bug d'affichage.
+
+⚠ **Sens du drapeau, à l'envers du nom du libellé** : `byte_1602430 == 1` veut dire
+« recevoir de tout le monde », c'est-à-dire filtre anti-spam **désactivé** — le
+libellé `..._RODEX_SPAM_ON` (4151) nomme l'AUTRE bouton.
+
+#### Skin — une combo, et une purge de toutes les textures
+
+Gestionnaire à `0x011FE3A8` :
+
+| adresse | champ | contenu |
+|---|---|---|
+| `0x011FE3C4` | `+0x1C` | index courant, **−1 = aucun skin** |
+| `0x011FE3D4` / `0x011FE3D8` | `+0x2C` / `+0x30` | `vector<std::string>` des noms (24 o. par entrée) |
+| `0x007A6F10` | — | `GetSkinName(index)`, `−1` rend le nom par défaut |
+| `0x007A7F70` | — | `SetSkin(index)` |
+
+`SetSkin` retient l'index puis appelle `UITextureMgr::PurgeByExtension("bmp")`
+(`0x00A8F740`) : **toutes les textures .bmp du client sont détruites** pour se
+recharger depuis le dossier du nouveau skin.
+
+🔴 **Conséquence pour nous, et elle n'est pas facultative** : tout cache de
+textures côté Bourgeon devient faux — les mêmes chemins désignent d'autres images.
+`ro::InvalidateGameTextures()` existe pour ça, et l'appel doit se faire **au tick,
+pas en frame** : c'est une commande native (gel muet) *et* une libération de
+textures que la frame en cours dessine encore.
+
+La combo native ajoute d'abord `<Basic Skin>` (id 0) puis un item par entrée du
+vecteur ; l'id d'item vaut donc `index + 1`, ce que confirme `0x009ED040`
+(`item_id − 1` → `SetSkin`) et `0x009F09C0` (sélection = `index + 1`).
 
 ---
 
@@ -1334,7 +1449,7 @@ de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent �
 |---|---|---|
 | Game Options 155 | ✅ portée | `features/windows/game_menu.{h,cc}` |
 | Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
-| Game Settings 0x271E | ✅ portée **sauf** Graphics / skin / priorité / RODEX | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
+| Game Settings 0x271E | ✅ portée **sauf l'onglet Graphics** — Basique complet, skin / RODEX / priorité compris (§3.9) | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
 
 Les trois sont **ON par défaut et HORS du groupe « Interface moderne »** : ce sont
 des écrans de réglages, pas des morceaux de HUD, et aucun n'a besoin du reste de

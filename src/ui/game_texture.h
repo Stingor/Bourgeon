@@ -64,6 +64,19 @@ GameTexture TextureFromGameFile(const char* path);
 // qu'une recherche de table.
 GameTexture CachedTextureFromGameFile(const char* path);
 
+// Vide ce cache, textures relâchées.
+//
+// 🔴 À appeler quand le CONTENU d'un chemin change sans que le device bouge : le
+// seul cas connu est le changement de skin, qui purge le gestionnaire de textures
+// du client pour que les mêmes chemins servent d'autres images. Sans cela, nos
+// copies mémorisées afficheraient l'ancien skin jusqu'au prochain reset de device.
+//
+// ⚠ JAMAIS pendant une frame ImGui : relâcher une texture que la frame en cours
+// référence encore corrompt le tas (feedback_texture_release_defer_frame).
+// L'appelant diffère au tick — c'est de toute façon obligatoire pour le
+// changement de skin lui-même, qui est une commande native.
+void InvalidateGameTextures();
+
 // Mêmes pixels, mais rendus à l'APPELANT au lieu d'être téléversés au GPU : pour
 // les traitements côté CPU (l'éditeur d'emblème importe ainsi une icône d'item,
 // qui fait justement 24x24 comme un emblème).

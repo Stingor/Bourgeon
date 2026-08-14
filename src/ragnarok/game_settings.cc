@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "bourgeon.h"  // Bourgeon::SendPacket (le CZ du réglage RODEX)
 #include "ragnarok/globals.h"
 #include "ragnarok/talktype.h"
 #include "ragnarok/uiwnd.h"
@@ -83,6 +84,41 @@ constexpr uintptr_t kSoundSet3DAddr        = 0x00600ab0;
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdBgmToggled = 90;
+
+// ── Les trois groupes câblés en dur de la page Basique (docs §3.9) ───────────
+
+// La classe de priorité que le client a posée. `CUIGroupProcessPriority` coche
+// ses boutons dessus (0x009F0910) et son reset y remet NORMAL (0x009ED9C0).
+constexpr uintptr_t kPriorityClassAddr = 0x0160232c;
+
+// Le drapeau RODEX, écrit UNIQUEMENT par les deux handlers de réception
+// (0x00CF8290 pour la liste d'entrée, 0x00CF97A0 pour un changement).
+constexpr uintptr_t kRodexAcceptAllAddr = 0x01602430;
+
+// CZ_CONFIG : `{ u16 opcode ; u16 bourrage ; i32 type ; i32 valeur }`, 12 octets
+// fixes — c'est la longueur que la table du client donne pour 0x0B93, et les
+// champs sont bien alignés sur 4 (relevé au désassemblage de 0x009EF0F0, pas
+// déduit d'un `struct` supposé packé).
+constexpr uint16_t kCzConfigOpcode  = 0x0b93;
+constexpr int32_t  kCzConfigRodex   = 1;  // le seul type que ce client émette
+
+// Gestionnaire de skins. `this[7]` = index courant, `this[11]/this[12]` = le
+// vecteur de noms (des `std::string`, 24 octets pièce).
+constexpr uintptr_t kSkinMgrAddr       = 0x011fe3a8;
+constexpr uintptr_t kSkinCurrentAddr   = 0x011fe3c4;  // mgr+0x1C
+constexpr uintptr_t kSkinVecBeginAddr  = 0x011fe3d4;  // mgr+0x2C
+constexpr uintptr_t kSkinVecEndAddr    = 0x011fe3d8;  // mgr+0x30
+constexpr int       kSkinRecordSize    = 24;          // sizeof(std::string)
+
+// `GetSkinName(index)` — rend un `const char*` du client, déjà résolu (court ou
+// alloué). `-1` donne le nom de l'entrée par défaut.
+using SkinGetName_t = const char*(__thiscall*)(void*, int);
+constexpr uintptr_t kSkinGetNameAddr = 0x007a6f10;
+
+// `SetSkin(index)` — retient l'index PUIS purge toutes les textures .bmp du
+// gestionnaire, pour qu'elles se rechargent depuis le nouveau dossier.
+using SkinSet_t = void(__thiscall*)(void*, int);
+constexpr uintptr_t kSkinSetAddr = 0x007a7f70;
 
 void* Mgr() {
   __try {
@@ -346,5 +382,99 @@ void SetBgmEnabled(bool on) {
 bool EffectSoundEnabled() { return RawFlag(TT_EFFECT_SOUND_ON_OFF); }
 
 void SetEffectSoundEnabled(bool on) { SetRawFlag(TT_EFFECT_SOUND_ON_OFF, on); }
+
+// ── Priorité du processus ───────────────────────────────────────────────────
+
+int ProcessPriority() {
+  __try {
+    return static_cast<int>(*reinterpret_cast<const uint32_t*>(kPriorityClassAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return kPriorityNormal; }
+}
+
+void SetProcessPriority(int priority_class) {
+  if (priority_class != kPriorityHigh && priority_class != kPriorityNormal &&
+      priority_class != kPriorityLow)
+    return;
+  // ⚠ On refait le geste du client au lieu d'appeler sa fonction : la sienne
+  // (0x009EF070) est une méthode du groupe natif et choisit la valeur en
+  // COMPARANT le bouton cliqué à trois pointeurs de widgets — sans la fenêtre,
+  // elle n'a rien à comparer. Les deux lignes qu'elle exécute ensuite sont
+  // celles-ci, dans cet ordre.
+  ::SetPriorityClass(::GetCurrentProcess(), static_cast<DWORD>(priority_class));
+  __try {
+    *reinterpret_cast<uint32_t*>(kPriorityClassAddr) =
+        static_cast<uint32_t>(priority_class);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// ── RODEX ───────────────────────────────────────────────────────────────────
+
+bool RodexAcceptsEveryone() {
+  __try {
+    return *reinterpret_cast<const uint8_t*>(kRodexAcceptAllAddr) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return true; }
+}
+
+void RequestRodexAcceptsEveryone(bool accept) {
+#pragma pack(push, 1)
+  struct CzConfig {
+    uint16_t opcode;
+    uint16_t padding;
+    int32_t  type;
+    int32_t  value;
+  };
+#pragma pack(pop)
+  static_assert(sizeof(CzConfig) == 12, "CZ 0x0B93 fait 12 octets");
+
+  CzConfig packet{};
+  packet.opcode  = kCzConfigOpcode;
+  packet.padding = 0;
+  packet.type    = kCzConfigRodex;
+  packet.value   = accept ? 1 : 0;
+  Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&packet),
+                                  sizeof(packet));
+}
+
+// ── Skin ────────────────────────────────────────────────────────────────────
+
+int SkinCount() {
+  __try {
+    const uint8_t* begin = *reinterpret_cast<const uint8_t* const*>(kSkinVecBeginAddr);
+    const uint8_t* end   = *reinterpret_cast<const uint8_t* const*>(kSkinVecEndAddr);
+    if (!begin || !end || end < begin) return 0;
+    return static_cast<int>((end - begin) / kSkinRecordSize);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+bool SkinName(int index, char* out, int out_size) {
+  if (!out || out_size <= 0) return false;
+  out[0] = '\0';
+  if (index != kSkinDefault && (index < 0 || index >= SkinCount())) return false;
+  __try {
+    const char* name = reinterpret_cast<SkinGetName_t>(kSkinGetNameAddr)(
+        reinterpret_cast<void*>(kSkinMgrAddr), index);
+    if (!name || !*name) return false;
+    const char* utf8 = ro::LocalToUtf8(name);
+    if (!utf8) return false;
+    std::strncpy(out, utf8, static_cast<size_t>(out_size) - 1);
+    out[out_size - 1] = '\0';
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
+}
+
+int CurrentSkin() {
+  __try {
+    return static_cast<int>(*reinterpret_cast<const int32_t*>(kSkinCurrentAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return kSkinDefault; }
+}
+
+void SetSkin(int index) {
+  if (index != kSkinDefault && (index < 0 || index >= SkinCount())) return;
+  if (index == CurrentSkin()) return;  // le natif teste aussi : sinon purge à vide
+  __try {
+    reinterpret_cast<SkinSet_t>(kSkinSetAddr)(
+        reinterpret_cast<void*>(kSkinMgrAddr), index);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 
 }  // namespace gamesettings

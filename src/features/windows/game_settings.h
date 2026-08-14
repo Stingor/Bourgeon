@@ -14,15 +14,14 @@
 // ── CE QUI EST PORTÉ, ET CE QUI RESTE AU NATIF ──────────────────────────────
 // Portés : **Effets**, **Contrôles**, **Divers** — les trois onglets que le
 // client construit à partir d'une TABLE (62 lignes lues dans `GameSettings.lub`),
-// donc les seuls qui se rejouent sans rien figer ; plus, dans **Basique**, le
-// groupe Audio et les deux bascules qui sont de simples `TALKTYPE`.
+// donc les seuls qui se rejouent sans rien figer — et **Basique en entier** :
+// son groupe Audio, ses deux bascules `TALKTYPE`, puis le **skin**, le **courrier
+// (RODEX)** et la **priorité du processus**, dont chacun a fallu RE séparément
+// parce qu'aucun ne passe par la table d'options (docs §3.9).
 //
-// Laissés au natif, derrière un bouton : **Graphismes** (résolution, carte,
-// filtrage — un reset de device qu'on ne sait pas déclencher depuis l'extérieur,
-// et que `Setup.exe` couvre déjà), le **skin**, la **priorité du processus** et
-// le réglage **RODEX**. Ces trois derniers n'écrivent pas dans la table d'options
-// et demanderaient chacun leur propre RE ; les laisser au client coûte un clic et
-// ne ment sur rien.
+// Reste au natif, derrière un bouton : **Graphismes** seulement (résolution,
+// carte, filtrage). C'est un reset de device qu'on ne sait pas déclencher depuis
+// l'extérieur, et que `Setup.exe` couvre déjà.
 //
 // ── POURQUOI CE PANNEAU EST PLUS UTILE QUE LE NATIF ─────────────────────────
 //   - une RECHERCHE, et une vue « Tout » qui fusionne les trois onglets : le
@@ -148,6 +147,18 @@ class GameSettings : public Plugin {
 
   bool pending_reset_ = false;
   bool confirm_reset_ = false;
+
+  // Changement de skin demandé, appliqué au TICK. Il ne rejoint pas la file
+  // ci-dessus : ce n'est pas une bascule d'option, et surtout il fait bien plus
+  // qu'écrire un drapeau — le client PURGE toutes ses textures .bmp, ce qui tue
+  // aussi celles que nos propres caches gardent.
+  //
+  // 🔴 Différé pour DEUX raisons cumulées, dont chacune suffirait : c'est une
+  // commande native (freeze muet si elle tombe dans une frame ImGui), et elle
+  // relâche des textures que la frame en cours est en train de dessiner
+  // (feedback_texture_release_defer_frame).
+  static constexpr int kNoPendingSkin = -2;  // ≠ kSkinDefault, qui vaut -1
+  int pending_skin_ = kNoPendingSkin;
 
   // Une ligne affichée. On RECOPIE la description du client au lieu de pointer
   // dedans : le vecteur source peut être réalloué, et une infobulle qui survit à

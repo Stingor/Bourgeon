@@ -159,4 +159,74 @@ void SetBgmEnabled(bool on);
 bool EffectSoundEnabled();
 void SetEffectSoundEnabled(bool on);
 
+// ── Les trois derniers groupes de la page Basique ────────────────────────────
+// (RE : docs/game_option_re.md §3.9 — `CUIGroupSkin`, `CUIGroupRodexSpam`,
+// `CUIGroupProcessPriority`)
+//
+// Aucun des trois ne passe par la table d'options : chacun a son propre magasin,
+// et c'est pour cela qu'ils étaient restés au natif. Ils n'ont en commun que leur
+// place dans la fenêtre — leurs trois mécaniques n'ont rien à voir entre elles,
+// et c'est justement ce qu'il faut savoir avant de les toucher.
+
+// ── Priorité du processus ───────────────────────────────────────────────────
+// Purement locale, purement Windows : le natif appelle `SetPriorityClass` sur son
+// propre processus et retient la valeur dans un global. Rien n'est envoyé au
+// serveur, rien n'est écrit sur le disque — le réglage ne survit PAS à la
+// fermeture du client, exactement comme dans la fenêtre native.
+
+enum Priority {
+  kPriorityHigh   = 0x80,  // HIGH_PRIORITY_CLASS
+  kPriorityNormal = 0x20,  // NORMAL_PRIORITY_CLASS — le défaut du client
+  kPriorityLow    = 0x40,  // IDLE_PRIORITY_CLASS ; le client l'appelle « Low »
+};
+
+// La classe de priorité que le CLIENT croit avoir posée. On lit son global plutôt
+// que `GetPriorityClass` : c'est lui que la fenêtre native consulte pour cocher
+// ses boutons, et deux sources qui divergeraient donneraient deux écrans en
+// désaccord.
+int  ProcessPriority();
+
+// Applique et mémorise, dans cet ordre — le global est ce que le natif relira.
+void SetProcessPriority(int priority_class);
+
+// ── RODEX : accepter le courrier de n'importe qui ───────────────────────────
+//
+// 🔴 CE RÉGLAGE APPARTIENT AU SERVEUR. Le client n'écrit JAMAIS son propre
+// drapeau : il envoie `CZ 0x0B93` et attend que le serveur le lui renvoie
+// (`ZC 0x0B94` pour un changement, `ZC 0x0B95` pour la liste complète à
+// l'entrée en jeu). Un affichage optimiste mentirait donc — si le serveur ignore
+// le paquet, la case doit RESTER où elle est. C'est ce que fait le natif.
+
+// Vrai = « recevoir le courrier de tout le monde » (le filtre anti-spam est
+// DÉSACTIVÉ). C'est le sens du drapeau du client, pas celui de son libellé
+// `..._RODEX_SPAM_ON`, qui nomme l'autre bouton radio.
+bool RodexAcceptsEveryone();
+
+// Demande le changement au serveur. Ne modifie rien localement, et n'a aucun
+// effet visible tant que le serveur n'a pas répondu.
+void RequestRodexAcceptsEveryone(bool accept);
+
+// ── Skin de l'interface ─────────────────────────────────────────────────────
+// Le gestionnaire (`0x011FE3A8`) tient la liste des skins installés et l'index
+// courant. Le natif remplit sa liste déroulante avec, sans rien filtrer.
+
+constexpr int kSkinDefault = -1;  // « <Basic Skin> » : aucun skin appliqué
+
+// Nombre de skins INSTALLÉS, sans compter l'entrée « par défaut ».
+int SkinCount();
+
+// Nom du skin `index` (`kSkinDefault` pour le nom de l'entrée par défaut),
+// converti en UTF-8. Faux si l'index sort de la liste.
+bool SkinName(int index, char* out, int out_size);
+
+// Index courant. `kSkinDefault` quand aucun skin n'est appliqué.
+int CurrentSkin();
+
+// 🔴 PURGE TOUTES LES TEXTURES .bmp DU CLIENT. Le natif vide le gestionnaire de
+// textures pour que les images se rechargent depuis le dossier du nouveau skin :
+// tout handle de texture gardé au-delà de cet appel est mort. L'appelant DOIT
+// donc invalider ses propres caches (`ro::InvalidateGameTextures`), et ne jamais
+// appeler ceci au milieu d'une frame ImGui.
+void SetSkin(int index);
+
 }  // namespace gamesettings

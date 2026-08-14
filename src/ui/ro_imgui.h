@@ -437,6 +437,18 @@ bool RoCheckbox(const char* label, bool* v);
 // bmp sont absents du GRF/data. Un joueur qui remplace les bmp voit son skin.
 bool RadioImage(const char* label, bool selected);
 
+// Force le rechargement de TOUTES les pièces de skin chargées depuis le client.
+//
+// 🔴 Un seul appelant légitime : le changement de skin du jeu. `SkinMgr_SetSkin`
+// purge le gestionnaire de textures natif, et les mêmes chemins servent ensuite
+// d'autres images — sans cet appel, nos fenêtres garderaient l'ancienne apparence
+// jusqu'au prochain reset de device. Les resets de device, eux, sont déjà couverts
+// tout seuls.
+//
+// ⚠ À appeler AU TICK, jamais en frame : les pièces sont dessinées par la frame en
+// cours. Cf. docs/game_option_re.md §3.9.
+void InvalidateSkinTextures();
+
 // Combo box (menu déroulant) habillé RO : champ (fond input + bordure) + bouton
 // flèche txtbox_btn_a/b/c (états normal/survol/pressé, texture native du client),
 // liste ouverte en popup au fond « corps » RO. S'utilise EXACTEMENT comme

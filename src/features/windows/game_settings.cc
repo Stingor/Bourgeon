@@ -6,12 +6,14 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <iterator>  // std::size
 
 #include "bourgeon.h"
 #include "imgui.h"
 #include "ragnarok/game_settings.h"
 #include "ragnarok/msgstring.h"
 #include "ragnarok/uiwnd.h"
+#include "ui/game_texture.h"  // ro::InvalidateGameTextures (changement de skin)
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
@@ -33,32 +35,50 @@ constexpr int kGameSettingsWndId = 0x271E;  // 10014
 // ⚠ Le cinquième id n'est PAS contigu aux quatre autres : 4146 est déjà
 // « Emblem Border ». Une boucle `base + i` afficherait ce libellé comme onglet.
 //
-// 🔴 TOUS PASSENT PAR `Utf8Or`, JAMAIS PAR `Utf8` — ET LES IDS CI-DESSOUS SONT
-// DOUTEUX PAR NATURE.
+// 🔴 TOUS PASSENT PAR `Utf8Or`, JAMAIS PAR `Utf8`, ET LES IDS VIENNENT DE
+// `tools/lang/msgstring_ids.csv` — PAS DES LIGNES DE `msgstringtable.csv`.
 //
-// Cause établie le 2026-08-14, après trois symptômes qui disaient la même chose :
-// 4216/4217 rendaient « NO MSG », le natif affichait pourtant le bon libellé, et
-// le titre demandé à 4241 sortait « Indoor teleport is not supported. »
-// **Le client ne numérote PAS ses messages par leur ligne dans
-// `msgstringtable.csv`.** Tout id relevé en lisant ce fichier est donc une
-// supposition, juste par accident dans les petits rangs et fausse plus loin.
+// Le client ne numérote pas ses messages par leur rang dans le csv : il porte sa
+// propre table de clés, `g_MsgStringSymbolNames` (0x0104F0A8, 4355 entrées), et
+// c'est L'INDEX DANS CETTE TABLE qui est l'id. Le csv livré, lui, a 4360 lignes
+// et diverge dès la 4075e — un bloc y est permuté, et 40 clés lui sont propres.
+// Les deux coïncident dans les petits rangs, ce qui rend l'erreur invisible
+// jusqu'à ce qu'elle ne le soit plus : trois ids relevés à la ligne étaient faux
+// (l'onglet « Other » et « Login Notification » sortaient « NO MSG », et le titre
+// affichait « Indoor teleport is not supported. »).
 //
-// Le repli de `Utf8Or` est ce qui rend la fenêtre correcte malgré cela : quand
-// l'id vise à côté, on affiche notre propre libellé traduit plutôt que le texte
-// d'un autre message. (La traduction globale, elle, ne dépend plus du tout des
-// ids : elle s'indexe sur le TEXTE anglais — cf. ragnarok/msgstring_override.cc.)
-constexpr int kMsgTabBasic    = 4142;
-constexpr int kMsgTabEffect   = 4143;
-constexpr int kMsgTabControl  = 4144;
-constexpr int kMsgTabEtc      = 4217;
+// ⚠ Les cinq ids de la page Basique ne sont PAS contigus : 4145 est déjà
+// l'onglet Graphismes, et 4147..4159 les libellés des groupes câblés en dur. Une
+// boucle `base + i` afficherait n'importe quoi.
+//
+// `Utf8Or` reste la règle malgré la table : le client de PRODUCTION est
+// WARP-patché et son csv peut différer de l'exe qu'on désassemble. Le repli
+// affiche notre libellé traduit plutôt que le texte d'un autre message. (La
+// traduction globale, elle, ne dépend d'aucun id : elle s'indexe sur le TEXTE
+// anglais — cf. ragnarok/msgstring_override.cc.)
+constexpr int kMsgTabBasic    = 4142;  // MSI_GAME_SETTINGS_TAB_BASIC
+constexpr int kMsgTabEffect   = 4143;  // MSI_GAME_SETTINGS_TAB_EFFECT
+constexpr int kMsgTabControl  = 4144;  // MSI_GAME_SETTINGS_TAB_CONTROL
+constexpr int kMsgTabEtc      = 4222;  // MSI_GAME_SETTINGS_TAB_ETC
 constexpr int kMsgEmblemFrame = 4146;  // MSI_GAME_SETTINGS_EMBLEM_FRAME
-constexpr int kMsgLoginNotify = 4216;  // MSI_GAME_SETTINGS_LOGINOUT
-// ⚠ `MSI_OPTION_ESC` est à **4241**, pas 4240 : 4240 est `MSI_EXPANSION_MINIMAP`
-// (« Expanded Minimap »). Le §3.8 du doc portait la mauvaise valeur, et sans le
-// repli la fenêtre se serait intitulée « Expanded Minimap ».
-constexpr int kMsgWindowTitle = 4241;
+constexpr int kMsgLoginNotify = 4221;  // MSI_GAME_SETTINGS_LOGINOUT
+constexpr int kMsgWindowTitle = 4232;  // MSI_OPTION_ESC — « Options (ESC) »
 // « Set Basic Settings? » — la confirmation que le natif pose sur son [Reset].
 constexpr int kMsgResetConfirm = 3166;
+
+// ── Les libellés des trois derniers groupes de la page Basique ──────────────
+constexpr int kMsgSkin           = 1497;  // MSI_SKIN
+constexpr int kMsgSkinDefault    = 3090;  // MSI_BASIC_SKIN — « <Basic Skin> »
+constexpr int kMsgMail           = 3136;  // MSI_MAIL
+constexpr int kMsgRodexAcceptAll = 4152;  // ..._RODEX_SPAM_OFF
+constexpr int kMsgRodexBlock     = 4151;  // ..._RODEX_SPAM_ON
+constexpr int kMsgPriority       = 4153;  // ..._PROCESS_PRIORITY
+constexpr int kMsgPriorityHigh   = 4154;
+constexpr int kMsgPriorityHighTip   = 4155;
+constexpr int kMsgPriorityNormal    = 4156;
+constexpr int kMsgPriorityNormalTip = 4157;
+constexpr int kMsgPriorityLow       = 4158;  // ..._IDLE, que le client dit « Low »
+constexpr int kMsgPriorityLowTip    = 4159;
 
 // ── Les deux bascules câblées en dur de l'onglet Basique ────────────────────
 // 🔴 Ce sont les SEULS identifiants d'option que ce fichier connaisse, et ce
@@ -189,6 +209,18 @@ void GameSettings::OnTick() {
     pending_reset_ = false;
     gamesettings::ResetAllToDefault();
     rows_dirty_ = true;
+    return;
+  }
+
+  if (pending_skin_ != kNoPendingSkin) {
+    const int skin = pending_skin_;
+    pending_skin_ = kNoPendingSkin;
+    // 🔴 L'ORDRE COMPTE. On jette NOS textures d'abord : après `SetSkin`, les
+    // chemins mémorisés désignent d'autres images, et un cache gardé afficherait
+    // l'ancien skin jusqu'au prochain reset de device.
+    ro::InvalidateGameTextures();   // les .bmp mémorisés par chemin
+    ro::InvalidateSkinTextures();   // les pièces d'habillage de nos propres fenêtres
+    gamesettings::SetSkin(skin);
     return;
   }
 
@@ -337,8 +369,8 @@ void GameSettings::OnRenderUI() {
   if (ro::RoButton(label_graphics, btn_w)) pending_open_native_ = true;
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s",
-                      i18n::Tr("Ouvre la fenêtre du client pour ce qui n'est pas "
-                               "repris ici : graphismes, skin, priorité, courrier."));
+                      i18n::Tr("Ouvre la fenêtre du client pour la seule chose "
+                               "qui n'est pas reprise ici : les graphismes."));
   }
   ImGui::SameLine();
   if (ro::RoButton(label_reset, btn_w)) confirm_reset_ = true;
@@ -453,13 +485,140 @@ void GameSettings::DrawBasicTab() {
   mui::HelpMarker(
       i18n::Tr("Annonce au chat les connexions et déconnexions de vos amis."));
 
+  // ── Courrier (RODEX) ───────────────────────────────────────────────────────
+  // 🔴 AUCUN AFFICHAGE OPTIMISTE ICI, et c'est délibéré. Le client n'écrit jamais
+  // ce drapeau lui-même : il demande au serveur (CZ 0x0B93) et attend sa réponse
+  // (ZC 0x0B94). Faire bouger la case tout de suite affirmerait un changement que
+  // personne n'a confirmé — et si le serveur ignore le paquet, elle mentirait pour
+  // de bon. Le natif fait pareil : ses boutons ne bougent qu'au retour du serveur.
+  mui::SeparatorText(msgstr::Utf8Or(kMsgMail, i18n::Tr("Courrier")));
+
+  bool rodex_all = gamesettings::RodexAcceptsEveryone();
+  if (ro::RoCheckbox(
+          msgstr::Utf8Or(kMsgRodexAcceptAll,
+                         i18n::Tr("Recevoir le courrier de tout le monde")),
+          &rodex_all)) {
+    gamesettings::RequestRodexAcceptsEveryone(rodex_all);
+  }
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Décoché, le serveur bloque le courrier des joueurs inconnus.\n"
+               "Le réglage appartient au serveur : la case ne bouge qu'une fois "
+               "sa réponse reçue."));
+
+  // ── Priorité du processus ──────────────────────────────────────────────────
+  // Réglage purement local (SetPriorityClass) : il s'applique immédiatement, sans
+  // passer par la file — il ne touche ni au réseau, ni à une fenêtre native.
+  //
+  // ⚠ Il ne vaut que FENÊTRE AU PREMIER PLAN : le client se rabat de force sur
+  // « Low » dès qu'il perd le focus (docs §3.9). Le dire, sinon le joueur croira
+  // que le réglage n'a pas pris.
+  mui::SeparatorText(msgstr::Utf8Or(kMsgPriority, i18n::Tr("Priorité du jeu")));
+  ImGui::SameLine();
+  // Ce que le natif ne dit nulle part, et qui décide si le réglage sert à
+  // quelque chose : c'est du temps CPU, pas du GPU, et seulement au premier plan.
+  mui::HelpMarker(
+      i18n::Tr("Règle la part de temps PROCESSEUR que Windows accorde au jeu "
+               "face aux autres programmes.\n\n"
+               "Haute : le jeu passe avant le reste. Utile seulement si la "
+               "machine est déjà chargée ; sur un PC au repos, aucun gain.\n"
+               "Normale : à égalité avec les autres programmes. C'est le défaut.\n"
+               "Basse : le jeu ne tourne que quand rien d'autre ne réclame le "
+               "processeur — à réserver aux calculs de fond, il devient vite "
+               "saccadé.\n\n"
+               "Sans effet sur la carte graphique : des ralentissements dus au "
+               "GPU ne bougeront pas d'un cran.\n"
+               "Conservé d'une session à l'autre."));
+
+  struct PriorityChoice {
+    int value;
+    int label_id;
+    int tip_id;
+    const char* fallback;  // déjà traduit : `Tr` veut un LITTÉRAL au point d'appel
+  };
+  // ⚠ Table LOCALE, refaite à chaque frame, et non `static` : les pointeurs de
+  // `Tr` appartiennent au catalogue et meurent au changement de langue.
+  const PriorityChoice choices[] = {
+      {gamesettings::kPriorityHigh, kMsgPriorityHigh, kMsgPriorityHighTip,
+       i18n::Tr("Haute")},
+      {gamesettings::kPriorityNormal, kMsgPriorityNormal, kMsgPriorityNormalTip,
+       i18n::Tr("Normale")},
+      {gamesettings::kPriorityLow, kMsgPriorityLow, kMsgPriorityLowTip,
+       i18n::Tr("Basse")},
+  };
+
+  const int priority = gamesettings::ProcessPriority();
+  for (int i = 0; i < static_cast<int>(std::size(choices)); ++i) {
+    const PriorityChoice& choice = choices[i];
+    if (i > 0) ImGui::SameLine();
+    if (ro::RadioImage(msgstr::Utf8Or(choice.label_id, choice.fallback),
+                       priority == choice.value)) {
+      gamesettings::SetProcessPriority(choice.value);
+    }
+    // La description du client, telle quelle — elle explique le compromis mieux
+    // qu'une paraphrase, et elle suit sa langue. Vide, l'infobulle est tue.
+    if (ImGui::IsItemHovered()) {
+      const char* tip = msgstr::Utf8Or(choice.tip_id, "");
+      if (tip && *tip) ImGui::SetTooltip("%s", tip);
+    }
+  }
+  ImGui::TextColored(kSecondaryText, "%s",
+                     i18n::Tr("Ne vaut que fenêtre active : en arrière-plan, le "
+                              "client se met de lui-même en priorité basse."));
+
+  // ── Skin de l'interface ────────────────────────────────────────────────────
+  mui::SeparatorText(msgstr::Utf8Or(kMsgSkin, i18n::Tr("Skin")));
+
+  const int skin_count = gamesettings::SkinCount();
+  const int current_skin = (pending_skin_ != kNoPendingSkin)
+                               ? pending_skin_
+                               : gamesettings::CurrentSkin();
+  char current_name[128];
+  if (!gamesettings::SkinName(current_skin, current_name, sizeof(current_name))) {
+    std::strncpy(current_name, msgstr::Utf8Or(kMsgSkinDefault, i18n::Tr("Par défaut")),
+                 sizeof(current_name) - 1);
+    current_name[sizeof(current_name) - 1] = '\0';
+  }
+
+  ImGui::SetNextItemWidth(ro::Px(220.0f));
+  if (ImGui::BeginCombo("###gs_skin", current_name)) {
+    char name[128];
+    if (!gamesettings::SkinName(gamesettings::kSkinDefault, name, sizeof(name))) {
+      std::strncpy(name, msgstr::Utf8Or(kMsgSkinDefault, i18n::Tr("Par défaut")),
+                   sizeof(name) - 1);
+      name[sizeof(name) - 1] = '\0';
+    }
+    if (ImGui::Selectable(name, current_skin == gamesettings::kSkinDefault))
+      pending_skin_ = gamesettings::kSkinDefault;
+
+    for (int i = 0; i < skin_count; ++i) {
+      if (!gamesettings::SkinName(i, name, sizeof(name))) continue;
+      ImGui::PushID(i);
+      if (ImGui::Selectable(name, current_skin == i)) pending_skin_ = i;
+      ImGui::PopID();
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Remplace les images de l'interface du client.\n"
+               "Le changement recharge toutes les textures : un temps d'arrêt "
+               "d'une fraction de seconde est normal."));
+
+  if (skin_count == 0) {
+    ImGui::TextColored(kSecondaryText, "%s",
+                       i18n::Tr("Aucun skin installé — seule l'apparence "
+                                "d'origine est disponible."));
+  }
+
   mui::PopStyleCompact();
 
-  // Ce que cet onglet ne reprend pas — dit franchement plutôt que laissé deviner.
+  // Ce que cet onglet ne reprend toujours pas — dit franchement plutôt que laissé
+  // deviner. Les graphismes restent au client : ce sont des resets de device.
   ImGui::Spacing();
   ImGui::TextColored(kSecondaryText, "%s",
-                     i18n::Tr("Skin, priorité, courrier et graphismes restent dans "
-                              "la fenêtre du client (bouton ci-dessous)."));
+                     i18n::Tr("Les réglages graphiques (résolution, mode d'écran, "
+                              "filtrage) restent dans la fenêtre du client."));
 }
 
 void GameSettings::DrawListTab(int tab) {
